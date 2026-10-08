@@ -260,7 +260,10 @@ engine/core/htmlui/compat/
   UrlResolver.{h,cpp}                       p2-core   URL parse/resolve/classify, data: URIs
   ImportManifest.{h,cpp}                    p2-core   manifest model, reader (writer in editor)
   RmlLogTranslator.{h,cpp}                  p2-core   RmlUi log -> diagnostics
-  CompatApi.{h,cpp}                         p2-core   facade: checkDocument(), locateElement()
+  CompatApi.{h,cpp}                         p2-core   facade: checkStylesheet(), cssPropertyName(), RmlUi verification
+  CompatApiDocument.cpp                     seam: p2-core stubs checkDocument/locateElement/collectRemoteReferences; p2-html owns it
+  Hash.{h,cpp}                              p2-core   SHA-1 (data: URI names, keyframe renames), SHA-256 (manifest), FNV-1a 64 (cache keys)
+  CompatSources.cmake                       p2-core   globs the compat directories into JASPERENGINE_SRCS; the UA embed step
   css/CssTokenizer.{h,cpp}                  p2-core   CSS Syntax 3 tokenizer
   css/CssParser.{h,cpp}, css/CssAst.h       p2-core   rules, declarations, nesting, positions
   css/CssSerialize.{h,cpp}                  p2-core   component values -> text
@@ -283,7 +286,11 @@ engine/core/htmlui/compat/
   runtime/{CompatProperties,FocusTracker,AnimationFill,ListMarkers}.{h,cpp}       p2-runtime
   runtime/{SvgPreprocess,LucideIcons}.{h,cpp}                                     p2-runtime
   ua/useragent.css                          p2-ua (p2-core commits a minimal version)
+  ua/*.svg                                  p2-ua (the UA's internal images, embedded with the sheet, served as @htmlui/ua/<name>)
   ua/UserAgentStyle.{h,cpp}                 p2-core (embeds useragent.css at build time)
+  ua/embed_ua.cmake                         p2-core (ua/*.css + ua/*.svg -> generated htmlui_ua.h)
+engine/shaders/htmlui_ua.h                  p2-core   stand-in for builds without the embed step (Xcode); the Apple export writes the real one
+tools/htmlui/xcode_sync_compat.py           p2-core   adds new compat files to the Xcode workspace (CMake globs them)
 editor/htmlui/                              p2-importers
   HttpClient.{h,cpp}, RemoteImporter.{h,cpp}, GoogleFontsImporter.{h,cpp},
   StylesheetImporter.{h,cpp}, ImageImporter.{h,cpp}, LottieImporter.{h,cpp},
@@ -325,12 +332,22 @@ class SourceFiles {
 public:
     // Registers a file once per compile session; returns its id (>= 1).
     uint32_t add(std::string path, std::string text, SourceRef includedFrom = {});
+    uint32_t find(std::string_view path) const;                   // 0 when not registered
     const std::string& path(uint32_t file) const;
     std::string_view text(uint32_t file) const;
     SourcePos position(uint32_t file, uint32_t offset) const;   // binary search on line starts
     SourceRef includedFrom(uint32_t file) const;                  // @import / <link> chain
+    uint32_t codePointLength(SourceRef) const;  std::string_view slice(SourceRef) const;
+    std::string originText(uint32_t file) const;                  // "imported by ui/menu.css:3", "linked by ui/menu.html:4"
 };
+bool stripUtf8Bom(std::string&);
+std::vector<uint32_t> sanitizeUtf8(std::string&);   // invalid sequences -> U+FFFD, offsets of the replacements
 ```
+
+`CompatTypes.h` (as implemented) also holds the value types several packages share:
+`Span<T>` (C++17 has no `std::span`), `RemoteReference`, `RcssLineMap` (`lines[i]` = output
+line i + 1, `at(line)`), `RmlSourceMap` (`elementRefs`, `lineRefs`, `line(rmlLine)`), and
+`SourceRef::cover`.
 
 Line starts are computed once per file; `\r\n`, `\r` and `\n` end a line. The column of an
 offset is the number of UTF-8 lead bytes between the line start and the offset, plus one.
@@ -342,7 +359,7 @@ offset is the number of UTF-8 lead bytes between the line start and the offset, 
 enum class Severity : uint8_t { Error, Warning, Info };
 
 struct DiagCode {
-    DiagArea area;        // GEN, HTML, CSS, SEL, AT, IMP, SVG
+    DiagArea area;        // GEN, HTML, CSS, SEL, AT, IMP, SVG (DiagnosticCodes.h, with Severity)
     uint16_t number;      // never reused; Appendix F
     std::string id() const;   // "HTMLUI-CSS-0004"
 };
@@ -362,17 +379,28 @@ struct Diagnostic {
 class DiagnosticSink {
 public:
     explicit DiagnosticSink(const SourceFiles& files, size_t limit = 1000);
-    // Fills file/line/column/length from ref; deduplicates identical (code, ref, subject).
+    // Fills file/line/column/length (and origin, for @import/<link> chains) from ref;
+    // deduplicates identical (code, ref, subject). Severity: the registry's.
     void report(DiagCode code, SourceRef ref, std::string message,
                 std::string suggestion = {}, std::string replacement = {}, std::string subject = {});
-    void report(Diagnostic diagnostic);
-    const std::vector<Diagnostic>& diagnostics() const;
+    // the given severity for "by case" codes, the registry's for the others
+    void reportAs(Severity, DiagCode, SourceRef, std::string message, std::string suggestion = {},
+                  std::string replacement = {}, std::string subject = {});
+    void report(Diagnostic diagnostic);                 // located by the caller
+    void report(Diagnostic diagnostic, SourceRef ref);  // located at ref
+    const std::vector<Diagnostic>& diagnostics() const; // sorted
+    std::vector<Diagnostic> take();
     size_t count(Severity severity) const;
+    bool truncated() const;
+    void locate(Diagnostic&, SourceRef) const;
 };
 
 std::string toText(const Diagnostic&);          // "ui/menu.css:12:5: warning: message (fix: suggestion) [HTMLUI-CSS-0006]"
-nlohmann::json toJson(const Diagnostic&);       // {severity, code, message, suggestion, replacement,
+                                                // severity words error/warning/info; unknown location parts left out
+nlohmann::json toJson(const Diagnostic&);       // {severity, code, name, message, suggestion, replacement,
                                                 //  subject, file, line, column, length, origin}
+void sortDiagnostics(std::vector<Diagnostic>&);
+std::string diagnosticSummary(std::string_view documentPath, const std::vector<Diagnostic>&);
 // Writes errors/warnings one per line with Log::error/Log::warn, prefixed "[HTML UI] ".
 // Infos: one summary line through Log::print ("[HTML UI] ui/menu.html: 0 errors, 3 warnings,
 // 12 notes"), and each info through Log::verbose when verbose is on.
@@ -399,17 +427,24 @@ Stable codes live in `DiagnosticCodes.cpp` as a table:
 struct DiagCodeInfo {
     DiagCode code;
     Severity severity;        // default severity
+    bool severityByCase;      // "by case" in Appendix F
     const char* name;         // kebab-case, e.g. "unsupported-property"
     const char* title;        // short title for docs
     const char* help;         // paragraph for the generated docs: what happened, how to fix
 };
 Span<const DiagCodeInfo> diagnosticCodes();
 const DiagCodeInfo* findDiagnosticCode(std::string_view id);   // "HTMLUI-CSS-0004" or name
+const DiagCodeInfo* findDiagnosticCode(DiagCode);
+const char* diagAreaName(DiagArea); const char* severityName(Severity);
+// one constant per row, the name in CamelCase: codes::UnsupportedProperty, codes::FileNotFound, ...
+namespace codes { inline constexpr DiagCode UnsupportedProperty{DiagArea::CSS, 2}; /* ... */ }
 ```
 
 The full initial list is Appendix F. Rules: a code is never renumbered or reused; a new
-situation gets a new number; tests assert the table is sorted, unique and that every code
-used in the sources is in the table (a grep-based test, 5.1).
+situation gets a new number (a registry row and a `codes::` constant); tests assert the table
+is sorted, unique, dense per area, and that every literal `HTMLUI-AREA-NNNN` and every
+`codes::Name` used in `engine/core/htmlui/compat` and `editor/htmlui` is in the table
+(`compat_codes_test.cpp`).
 
 ### 3.5 Support tables
 
@@ -440,8 +475,13 @@ enum class RewriteId : uint16_t { None, Background, BackgroundLonghand, Border, 
     LogicalBox, PlaceAlign, AlignKeyword, Overflow, OverflowWrap, WhiteSpace, Filter,
     MaskImage, ClipPath, ListStyle, ObjectFit, ImageRendering, AccentColor, Appearance,
     IndividualTransform, ColorValue, Cursor, PointerEvents, TabIndexLike, Direction,
-    SvgPaint, ScrollbarStyle, Gap, BorderSpacing, Visibility, ZIndex, Opacity, Count };
+    SvgPaint, ScrollbarStyle, Gap, BorderSpacing, Visibility, ZIndex, Opacity,
+    Sizing, Flex, Grid, Content, All, LineClamp,   // added by p2-core: rewrites Appendix A needs that had no id
+    Count };
+enum class SelectorKind : uint8_t { Selector, PseudoClass, PseudoElement };   // phase 4's selector/pseudo_class/pseudo_element
 
+// As implemented: every table row carries support, fork, supportWithFork, note and
+// suggestion (so phase 3 flips features and phase 4 prints "Instead" without struct changes).
 struct PropertySupport {
     const char* name;            // "background", "-webkit-text-stroke"
     Support support;             // without fork features
@@ -449,40 +489,64 @@ struct PropertySupport {
     Support supportWithFork;     // when the feature is present
     bool inherited;              // CSS inheritance
     const char* initial;         // CSS initial value as CSS text ("0", "currentColor", "normal")
+    bool rmluiDefaultDiffers;    // RmlUi's default is not the CSS initial value (3.9.6 step 5)
     RewriteId rewrite;           // RewriteId::None = pass through after value normalization
     const char* output;          // RCSS it produces: "decorator; background-color"
     const char* note;            // one line for the matrix
     const char* suggestion;      // used in the drop diagnostic
-    const char* spec;            // "CSS2.1", "css-backgrounds-3", "webkit"
+    const char* spec;            // "CSS2.1", "css-backgrounds-3", "webkit", "rmlui", "compat"
 };
-struct ValueSupport    { const char* property; const char* value; Support support;
-                         ForkFeature fork; const char* output; const char* note; };
-struct SelectorSupport { SelectorKind kind; const char* name; Support support;
-                         ForkFeature fork; const char* output; const char* note; };
-struct AtRuleSupport   { const char* name; Support support; const char* note; };
-struct MediaFeatureSupport { const char* name; Support support; const char* output; const char* note; };
-struct ElementSupport  { const char* name; Support support; const char* rmlTag; const char* note; };
-struct AttributeSupport{ const char* element /* "*" = global */; const char* name;
-                         Support support; const char* output; const char* note; };
-struct InputTypeSupport{ const char* type; Support support; const char* rmlType; const char* note; };
-struct UnitSupport     { const char* unit; Support support; ForkFeature fork; const char* output; const char* note; };
-struct FunctionSupport { const char* name; Support support; ForkFeature fork; const char* note; };
+struct ValueSupport    { const char* property; const char* value; Support support; ForkFeature fork;
+                         Support supportWithFork; const char* output; const char* note; const char* suggestion; };
+struct SelectorSupport { SelectorKind kind; const char* name; Support support; ForkFeature fork;
+                         Support supportWithFork; const char* output; const char* note; const char* suggestion; };
+struct AtRuleSupport   { const char* name /* "@media" */; Support support; ForkFeature fork; Support supportWithFork;
+                         const char* output; const char* note; const char* suggestion; };
+struct MediaFeatureSupport { const char* name; Support support; ForkFeature fork; Support supportWithFork;
+                         const char* output; const char* note; const char* suggestion; };
+struct ElementSupport  { const char* name; Support support; ForkFeature fork; Support supportWithFork;
+                         const char* rmlTag; const char* display /* the UA sheet's */; const char* note; const char* suggestion; };
+struct AttributeSupport{ const char* element /* "*" = global */; const char* name /* "data-*", "on*" patterns */;
+                         Support support; ForkFeature fork; Support supportWithFork; const char* output;
+                         const char* note; const char* suggestion; };
+struct InputTypeSupport{ const char* type; Support support; ForkFeature fork; Support supportWithFork;
+                         const char* rmlType; bool reported; Severity severity /* HTMLUI-HTML-0008 */;
+                         const char* note; const char* suggestion; };
+struct UnitSupport     { const char* unit; Support support; ForkFeature fork; Support supportWithFork;
+                         const char* output; const char* note; const char* suggestion; };
+struct FunctionSupport { const char* name; Support support; ForkFeature fork; Support supportWithFork;
+                         const char* output; const char* note; const char* suggestion; };
 
-Span<const PropertySupport> propertyTable();  const PropertySupport* findProperty(std::string_view);
+Span<const PropertySupport> propertyTable();  const PropertySupport* findProperty(std::string_view);   // "--x" finds "--*"
 Span<const ValueSupport> valueTable();         Span<const ValueSupport> valuesOf(std::string_view property);
+const ValueSupport* findValue(std::string_view property, std::string_view value);
 Span<const SelectorSupport> selectorTable();   Span<const AtRuleSupport> atRuleTable();
-Span<const MediaFeatureSupport> mediaFeatureTable();
+const SelectorSupport* findPseudoClass(std::string_view); const SelectorSupport* findPseudoElement(std::string_view);
+const SelectorSupport* findSelector(SelectorKind, std::string_view);  const AtRuleSupport* findAtRule(std::string_view);
+Span<const MediaFeatureSupport> mediaFeatureTable();  const MediaFeatureSupport* findMediaFeature(std::string_view);
 Span<const ElementSupport> elementTable();     Span<const AttributeSupport> attributeTable();
+const ElementSupport* findElement(std::string_view);
+const AttributeSupport* findAttribute(std::string_view element, std::string_view name);   // own row, then "*"
 Span<const InputTypeSupport> inputTypeTable(); Span<const UnitSupport> unitTable();
 Span<const FunctionSupport> functionTable();
+const InputTypeSupport* findInputType(std::string_view); const UnitSupport* findUnit(std::string_view);
+const FunctionSupport* findFunction(std::string_view);
 // The support with the given fork features present.
 Support effectiveSupport(Support base, ForkFeature fork, Support withFork, const ForkFeatures&);
+template<typename Row> Support effectiveSupport(const Row&, const ForkFeatures&);
+const char* supportName(Support); const char* rewriteIdName(RewriteId); const char* selectorKindName(SelectorKind);
 ```
 
 Contract for phase 4: every row has `note` filled for statuses other than `Native`, and a
 `suggestion` for `Unsupported`; property names are unique and sorted; every `RewriteId`
 other than `None` has a registered rewrite function (test). Table content is Appendices
 A–E; the table files are the authority if they drift from this document (they must not).
+As implemented (p2-core), the property table has a row for every name of the W3C property
+index (`fixtures/compat/css-properties.txt`, 731 names), every RmlUi property and
+shorthand, and the vendor/legacy names of Appendix A (800 rows); the many draft properties
+the appendix does not list are Unsupported (with a suggestion) or Ignored (no effect in a
+game UI). Every `RewriteId` is used by at least one row; Unsupported/Ignored rows never
+dispatch to a rewrite.
 
 ### 3.6 Fork features (coordination with phase 3)
 
@@ -491,10 +555,14 @@ A–E; the table files are the authority if they drift from this document (they 
 class ForkFeatures {
 public:
     static ForkFeatures present();              // compiled-in table, see below
+    static ForkFeatures none();  static ForkFeatures all();
     static ForkFeatures probe();                // runtime probes, needs Rml::Initialise()
+    static std::optional<bool> probe(ForkFeature);   // nullopt: not observable (GroupOpacity) or RmlUi not initialised
     bool has(ForkFeature) const;
     ForkFeatures with(ForkFeature, bool) const; // tests force both code paths
+    uint64_t bits() const;  static ForkFeatures fromBits(uint64_t);   // cache keys
 };
+const char* forkFeatureName(ForkFeature);  ForkFeature findForkFeature(std::string_view);
 ```
 
 - `ForkFeatures.cpp` holds `constexpr bool kPresent[ForkFeature::Count]`, all `false` in
@@ -528,7 +596,9 @@ public:
   - `PseudoElements`, `RootIsWhere`, `Fixed`: a probe document in a scratch 64×64 context:
     `#a::before{content:"x";display:block;width:3px;height:3px}` gives `#a` a generated box
     of 3×3; `:is(#b){width:5px}` and `:root{width:7px}` resolve; a `position:fixed` child of a
-    scrolled container keeps its viewport offset.
+    scrolled, positioned and offset container keeps its viewport offset (as implemented: the
+    container has margins, so an absolute box would land elsewhere). The probes run inside an
+    `RmlLogTranslator::Capture`, so the warnings they provoke never reach the log.
   - `GroupOpacity`: not observable without rendering; the table entry is authoritative.
 - `CompatOptions::fork` defaults to `present()`. Every rewrite that depends on a feature
   checks `options.fork.has(feature)` and, when present, emits the CSS unchanged (still
@@ -752,6 +822,19 @@ stylesheet set, script list, template list, element counter).
 | `javascript:`, `mailto:`, `tel:`, other schemes | dropped, `HTMLUI-HTML-0023` Info |
 | missing local file | kept, `HTMLUI-GEN-0001` Error naming the resolved path |
 
+As implemented (p2-core): `UrlResolver(const FileAccess& files = {}, const ImportManifest*
+manifest = nullptr)`; `static UrlKind classify(url)` (`Empty, Relative, RootRelative,
+EnginePath` (`data://`, `lua://`, kept as written), `Virtual` (`@htmlui/…`), `Remote, Data,
+Fragment, OtherScheme`); `ResolvedUrl resolve(url, fromFile, resourceKind, checkExists)` and
+`resolve(url, fromFile, resourceKind, SourceRef, DiagnosticSink*)` which reports the
+diagnostics of the table (plus `HTMLUI-IMP-0009` for a manifest entry whose file is missing).
+`ResolvedUrl{kind, url, assetPath, emitted, fragment, exists, outsideAssets, entry, mimeType,
+data}`: query strings and fragments are not part of the local file (`icons.svg?v=2#home` →
+`ui/icons.svg`, emitted with `#home`), local paths are percent-decoded, a data: URI comes back
+decoded with its `@htmlui/data/<sha1-12>.<ext>` path and the caller registers it in
+`VirtualFiles` under its compile (owner). Helpers: `parseDataUri`, `extensionForMime`,
+`dataPath`, `joinPath`, `normalizePath`, `percentDecode`.
+
 `ImportManifest` (p2-core, runtime reader):
 
 ```cpp
@@ -770,8 +853,14 @@ struct ImportEntry {
 class ImportManifest {
 public:
     static const ImportManifest& get();          // loads htmlui-imports/manifest.json once, reloads when the file changes
+    static std::shared_ptr<const ImportManifest> current();   // the same, safe across threads/reloads
+    static void reload();  static void notifyFileChanged(std::string_view assetPath);   // hot reload (H2 calls it)
+    static ImportManifest load(const FileAccess&);             // checks outside a loaded project, not cached
+    static bool parse(std::string_view json, ImportManifest&, std::string* error);
     const ImportEntry* find(std::string_view url) const;
-    static std::string normalizeUrl(std::string_view url);
+    const std::vector<ImportEntry>& entries() const;  bool loaded() const;  void add(ImportEntry);   // sorted by url
+    static std::string normalizeUrl(std::string_view url);    // lowercase scheme/host, http -> https, "//h" -> "https://h",
+                                                              // default ports and the fragment dropped, query kept
 };
 ```
 
@@ -914,9 +1003,26 @@ struct Rule {
 };
 struct Stylesheet { std::vector<Rule> rules; uint32_t file; };
 
-Stylesheet parseStylesheet(uint32_t file, std::string_view css, DiagnosticSink&);
+Stylesheet parseStylesheet(uint32_t file, std::string_view css, DiagnosticSink&, uint32_t baseOffset = 0);
 std::vector<Declaration> parseDeclarationList(uint32_t file, std::string_view css, uint32_t baseOffset, DiagnosticSink&);
 ```
+
+As implemented (p2-core): `tokenize(css, baseOffset, TokenizeOptions{unicodeRanges},
+std::vector<TokenizeError>*)` (unicode-range tokens only on request, since `u+a` is also a
+selector; `Token` has `rangeStart/rangeEnd`, `isIdent()`, `isDelim()`); `Rule` also keeps its
+block raw (`block`, `blockRef`: "consume a simple block") next to the parsed
+`declarations`/`rules` (CSS Syntax 2024: every block is mixed contents; declarations after
+nested rules keep their source position in `ref`); `ComponentValue::closed`. The CSS Syntax
+entry points are public for tests and rewriters: `parseBlockContents`, `parseRuleList(...,
+topLevel)`, `parseRule`, `parseDeclaration`, `parseComponentValueList`, `parseComponentValue`,
+each with an optional `std::vector<ParseError>*` (`InvalidRule, InvalidDeclaration,
+UnclosedBlock, UnclosedFunction, UnmatchedCloser, BadString, BadUrl, EofInString, EofInUrl,
+EofInComment, InvalidEscape, Empty, ExtraInput`); helpers `splitAtCommas`, `trimWhitespace`,
+`extentOf`. A declaration or rule broken by a bad string/url reports the bad token only. The
+`unicode-range` descriptor is re-tokenized with unicode-range tokens. css-parsing-tests
+follow the 2021 draft; `compat_parser_test.cpp` lists the three inputs where the 2024
+algorithms differ (`declaration_list.json` "@ media …", `one_declaration.json` "foo:;" and
+"foo:;bar:;") and checks their 2024 result instead.
 
 - Parsing follows the CSS Syntax 3 algorithms ("consume a list of rules", "consume a
   qualified rule", "consume a block's contents" from the 2024 draft with nested rules).
@@ -1574,7 +1680,13 @@ Output is plain, one construct per line, no comments, `\n` line ends. RmlUi's wa
 about a virtual sheet (`at @htmlui/doc/3f9a0c12/ui/menu.css.rcss:12`) or an inline style
 (`in ui/menu.html: 40`) are mapped back through these maps.
 
-`CssRewriter` (the seam, declared by p2-core, implemented by p2-css):
+`RcssMediaCondition` is defined in `RcssWriter.h` (`negated`, `features`, and `raw`, written
+verbatim when set; `text()`); the writer has a `DeclarationList` mode (style attributes: one
+line `name: value; name: value;`) and `take()` closes open blocks.
+
+`CssRewriter` (the seam, declared by p2-core, implemented by p2-css; as implemented the class
+is a pimpl, so p2-css keeps its state in `CssRewriter::Impl` inside `CssRewriter.cpp` and never
+edits the header):
 
 ```cpp
 struct StylesheetInput {
@@ -1586,25 +1698,47 @@ struct StylesheetInput {
     uint32_t elementLoc = 0;          // StyleAttribute: data-htmlui-loc of the element
 };
 struct StylesheetOutput {
+    StylesheetInput::Kind kind;
     std::string rcss;                 // whole sheet, or the declaration list for StyleAttribute
     RcssLineMap lines;
-    std::string virtualPath;          // File: "@htmlui/doc/<key>/<asset path>.rcss" (key: the document compile key in hex, because the rewrite of a shared file depends on the whole document); else ""
+    std::string virtualPath;          // File: RewriteContext::virtualDirectory + asset path + ".rcss"; else ""
+    std::string sourcePath;           // File: the .css; else the HTML file
+    uint32_t elementLoc = 0;
+};
+struct RewriteContext {               // per document session
+    FileAccess files;                 // @import reads, existence checks (FileData when empty)
+    const ImportManifest* manifest = nullptr;   // ImportManifest::get() when null
+    std::string virtualDirectory;     // "@htmlui/doc/<key hex>/": the loader knows the key, the rewriter does not
+    std::string documentPath;
 };
 struct RewriteResult {
     std::vector<StylesheetOutput> sheets;      // same order as the inputs
+    StylesheetOutput importantSheet;           // the !important hoisting sheet (3.9.6 step 7), after the author sheets
     std::vector<std::string> dependencies;     // every file read (imports, fonts checked)
     std::vector<RemoteReference> remoteRefs;   // URLs found (fonts, images, imports)
+    std::vector<std::pair<std::string, std::shared_ptr<const std::string>>> virtualFiles;   // data: URIs to register
     bool dependsOnViewport = false;
     std::vector<std::string> animationFillNames;   // keyframes needing AnimationFill
+    std::vector<std::string> fontFamilies, declaredFontFamilies;   // HTMLUI-CSS-0023 check (3.12.1)
 };
 class CssRewriter {
 public:
-    CssRewriter(const CompatOptions&, SourceFiles&, DiagnosticSink&);
-    RewriteResult rewrite(std::span<const StylesheetInput> inputs);   // one session per document
-    static std::string rewriteSelector(std::string_view selector, DiagnosticSink*);  // Lua querySelector
-    static std::string rewriteDeclarations(std::string_view css, DiagnosticSink*);  // Lua style.cssText
+    CssRewriter(const CompatOptions&, SourceFiles&, DiagnosticSink&, RewriteContext context = {});
+    RewriteResult rewrite(Span<const StylesheetInput> inputs);   // one session per document
+    static std::string rewriteSelector(std::string_view selector, DiagnosticSink*,
+                                       const CompatOptions& = CompatOptions());   // Lua querySelector
+    static std::string rewriteDeclarations(std::string_view css, DiagnosticSink*,
+                                           const CompatOptions& = CompatOptions());  // Lua style.cssText
+private:
+    struct Impl; std::unique_ptr<Impl> impl;
 };
 ```
+
+The pass-through p2-core ships parses each input, flattens nested rules by prefixing their
+parents (`&` replaced), re-serializes declarations (double-quoted strings, no `!important`),
+keeps `@media` (prelude verbatim), `@keyframes`, `@font-face`, `@decorator`, `@spritesheet`,
+drops other at-rules, and collects remote URLs (`@import` → `stylesheet`, or
+`google-fonts-css` for fonts.googleapis.com; `@font-face` → `font`; others `image`).
 
 ### 3.10 User-agent stylesheet
 
@@ -1613,6 +1747,18 @@ public:
 declarations) once per process; the result is the virtual file `@htmlui/ua.rcss`, linked
 first by every document, so RmlUi parses and caches it once. It is embedded into the engine
 at build time (CMake `file(READ)` into a generated header; no runtime file).
+
+As implemented (p2-core): `ua/embed_ua.cmake` embeds every `ua/*.css` and `ua/*.svg` into
+`htmlui_ua.h` (build directory, ahead of the include path); `engine/shaders/htmlui_ua.h` is
+an empty stand-in for builds without the step (the Xcode workspace), and the editor's export
+writes the real header there from `UserAgentStyle::buildEmbeddedHeader()` (a test checks it
+equals the CMake one). `UserAgentStyle`: `embeddedFiles()`, `source()`, `get(const
+ForkFeatures& = present()) -> shared_ptr<const Sheet{rcss, lines, diagnostics, virtualPath,
+fork, files}>` (rewritten once per fork-feature set, registered in `VirtualFiles` and in
+`RmlLogTranslator`; `@htmlui/ua.rcss` for `present()`, `@htmlui/ua-<bits>.rcss` for forced
+sets because RmlUi caches sheets by path), `registerInternalFiles()` (every other embedded
+file as `@htmlui/ua/<name>`; `get()` calls it), `clearCache()`. p2-ua adds its SVGs to `ua/`
+and they are embedded and served with no further wiring.
 
 Source: the HTML Living Standard rendering section (§15) and Chromium's `html.css`
 (`third_party/blink/renderer/core/html/resources/html.css`) and form-control themes as of
@@ -1730,7 +1876,12 @@ pass; the values written here are the starting point.
 
 All registered once from `compat::registerRuntime()` (seam in `runtime/RuntimeRegistry.cpp`),
 called by phase 0's `HtmlUI::acquire()` right after `Rml::Initialise()` and before any
-document or stylesheet is loaded (hook H1). Each emulation is skipped when the fork already
+document or stylesheet is loaded (hook H1). As implemented, the seam has two more entry
+points with their call sites already in place (p2-core): `releaseRuntime()` after
+`Rml::Shutdown()` in `HtmlUI::release()` (instancers RmlUi does not own), and
+`updateRuntime(Rml::Context*)` in `HtmlUIContext::update()` right before `Context::Update`
+(every screen and texture context: `FocusTracker::update`, `AnimationFill::update`), so
+p2-runtime only fills `RuntimeRegistry.cpp`. Each emulation is skipped when the fork already
 has the feature (3.6, `ForkFeatures::present()`). Instancers replace RmlUi's for the
 same tag; everything below is standard RmlUi public API (no fork patch).
 
@@ -1850,9 +2001,9 @@ glyphs missing in the font fall back through the font engine's chain.
 #### 3.12.1 DocumentLoader
 
 ```cpp
-struct CompatOptions {
+struct CompatOptions {   // CompatOptions.h
     ForkFeatures fork = ForkFeatures::present();
-    Rml::Vector2i viewport{1280, 720};    // canvas size in CSS px at load
+    CompatSize viewport{1280, 720};       // canvas size in CSS px at load ({x, y}; no RmlUi type: the editor uses it)
     float dpRatio = 1.0f;
     bool touchDevice = false;            // System::isTouchDevice()
     std::string colorScheme = "light";  // initial theme activated after load
@@ -1912,6 +2063,8 @@ public:
 // Paths are asset-relative, like everywhere in compat. Empty functions = FileData. When set,
 // every read of the check goes through it: documents, stylesheets, existence of images/fonts,
 // and the import manifest (read per check instead of through ImportManifest::get()).
+// (As implemented in CompatOptions.h; readAssetFile/assetFileExists in VirtualFiles.h apply
+// it, virtual files first.)
 struct FileAccess {
     std::function<bool(const std::string& assetPath, std::string& content)> read;
     std::function<bool(const std::string& assetPath)> exists;
@@ -1924,12 +2077,24 @@ CheckReport checkStylesheet(const std::string& cssPath, const CheckOptions&);
 // Source of an element of a loaded document (reads data-htmlui-loc).
 std::optional<Diagnostic /* location fields only */> locateElement(const CompatDocument&, const Rml::Element*);
 std::vector<RemoteReference> collectRemoteReferences(const std::string& htmlPath);   // importers
+std::vector<RemoteReference> collectRemoteReferences(const std::string& htmlPath, const FileAccess&);
+// verifyWithRmlUi: RmlUi parses compat's RCSS; its messages come back as HTMLUI-GEN-0006 (needs RmlUi)
+std::vector<Diagnostic> verifyRcssWithRmlUi(const std::string& rcss, const std::string& virtualPath,
+                                            const RcssLineMap&, const SourceFiles&);
 // The CSS name an author writes for an RCSS property compat emits ("decorator" ->
 // "background-image", "font-effect" -> "text-shadow"); the input when the names agree.
 // Table-driven from PropertySupport::output; used by phase 4's inspector.
 std::string cssPropertyName(std::string_view rcssProperty);
 ```
 
+As implemented, `CompatApi.cpp` (p2-core) holds `checkStylesheet` (reads through
+`files`, sanitizes UTF-8, rewrites the sheet alone, verifies with RmlUi — acquiring HtmlUI for
+the check when nothing else has — and returns sorted diagnostics, files and remote
+references), `cssPropertyName`, `verifyRcssWithRmlUi` and `collectRemoteReferences(htmlPath)`;
+`CompatApiDocument.cpp` is p2-html's seam (`checkDocument`, `locateElement`,
+`collectRemoteReferences(htmlPath, files)`), shipped with `checkDocument` returning one
+`HTMLUI-GEN-0004` and stylesheet-only reference collection. `CompatDocument` is
+forward-declared in `CompatApi.h` and defined by p2-html in `DocumentLoader.h`.
 Exported with `JASPERENGINE_API` and free of RmlUi/lexbor types in their signatures (except
 `locateElement`, which takes an `Rml::Element*` and is engine-internal), so editor code can
 call `checkDocument`, `checkStylesheet`, the support tables and `diagnosticCodes()` through
@@ -2011,6 +2176,18 @@ phase-0's `RmlSystem::LogMessage` (hook H3):
   from compile key and source URL to the live `UIDocument`s; `UIDocument::getDiagnostics()`
   returns compile-time plus runtime diagnostics); returns true;
 - passes everything else through.
+
+As implemented (p2-core): the registry is not keyed by `UIDocument`; the loader registers each
+loaded compile with `RmlLogTranslator::add(Registration{key, owner, files, mappings, sink})`
+(`LineMapping{url, firstLine, lines}`: the virtual sheets with `firstLine` 1, each inline
+`<style>` with the RmlUi line of its first output line, and the RML with its `lineRefs`;
+the narrowest mapping holding a valid ref for the line wins) and `remove(handle)`s it on
+unload; `sink` appends to that document's runtime diagnostics. A translated message reads
+`RmlUi: <RmlUi's text without its location>`, `subject` = the property RmlUi names, and is
+also recorded for the Inspector (`HtmlUIFileLog::recordMessage`). `RmlLogTranslator::Capture`
+(RAII, per thread, nesting) collects every message instead of logging it (checks, fork
+probes, p2-css's acceptance test); `findLocation`, `normalizeUrl` and `translate` are public
+for tests. Infos (LT_INFO/LT_DEBUG) stay RmlSystem's.
 
 ### 3.13 Importers (editor, p2-importers)
 
@@ -2227,11 +2404,11 @@ merged code, the package applies the hook at the equivalent place.
 
 | Id | Where (phase-0/1 file) | Change | Package |
 |---|---|---|---|
-| H1 | phase 0's `HtmlUI::acquire()` (after `Rml::Initialise()`) and `UIDocumentSystem::update` | call `compat::registerRuntime()` right after `Rml::Initialise()`; in `UIDocumentSystem::update`, call `FocusTracker::update(context)` and `AnimationFill::update()` before `Context::Update` (each only when its emulation is active, 3.6); build `CompatOptions` from the canvas (`Engine::Scaling`) and `System::isTouchDevice()` | p2-html (registerRuntime body: p2-runtime) |
+| H1 | phase 0's `HtmlUI::acquire()` (after `Rml::Initialise()`) and `UIDocumentSystem::update` | call `compat::registerRuntime()` right after `Rml::Initialise()`; in `UIDocumentSystem::update`, call `FocusTracker::update(context)` and `AnimationFill::update()` before `Context::Update` (each only when its emulation is active, 3.6); build `CompatOptions` from the canvas (`Engine::Scaling`) and `System::isTouchDevice()` | call sites done by p2-core: `registerRuntime()` in `HtmlUI::acquire`, `releaseRuntime()` after `Rml::Shutdown` in `HtmlUI::release`, `updateRuntime(context)` (FocusTracker/AnimationFill) in `HtmlUIContext::update` before `Context::Update`; bodies p2-runtime; `CompatOptions` from the canvas: p2-html |
 | H1b | `HtmlUIContext::loadDocument` (phase 0, the single place that turns a component's `filename` into an `ElementDocument`; used by `UIDocumentSystem::update`, `loadDocumentNow` and phase 1's reload) | for `.html`/`.htm`: `DocumentLoader::load(context, path, options, &compiled)` (`.rml` keeps RmlUi's loader); keep the `shared_ptr<const CompatDocument>` per entity in `UIDocumentSystem` and expose `std::shared_ptr<const compat::CompatDocument> getCompiledDocument(Entity) const` and `const std::vector<compat::Diagnostic>& getDiagnostics(Entity) const` (compile-time + runtime, the same list as `UIDocument::getDiagnostics()`); on canvas resize call `restyleForViewport` for documents with `dependsOnViewport` | p2-html |
 | H2 | phase 1's `UIDocumentSystem::getDocumentFiles` / `reloadChangedFiles` | dependencies and the stylesheet-only restyle of 3.12.3 | p2-html |
-| H3 | `RmlSystem::LogMessage` | `if (compat::RmlLogTranslator::handle(type, message)) return true;` first (before phase 0's `[HTML UI] ` logging) | p2-html |
-| H3b | `RmlFile::Open` | paths starting with `@htmlui/` are served from `VirtualFiles` | p2-html |
+| H3 | `RmlSystem::LogMessage` | `if (compat::RmlLogTranslator::handle(type, message)) return true;` first (before phase 0's `[HTML UI] ` logging) | p2-core (done: the translator, its captures and the UA sheet's mapping need it before wave 2) |
+| H3b | `RmlFile::Open` / `RmlFile::LoadFile` | paths starting with `@htmlui/` (or `/@htmlui/`) are served from `VirtualFiles` | p2-core (done: VirtualFiles is p2-core's) |
 | H4 | `UIDocument` | `getDiagnostics()`, `setColorScheme()`, `setReducedMotion()`, `htmlnavigate` default action (load the linked document in the same component) | p2-html |
 | H5 | `HtmlUIClassesLua.cpp` | the Lua hooks of 3.12.4 | p2-html (dialog/lucide calls into p2-runtime classes) |
 | H6 | `RmlFontEngine` | font effects are phase 1's (`phase-1-integration.md` §3.13, p1-rtt); p2-runtime only verifies them through the `text-shadow` → `font-effect` golden. Adds the family registry query `bool hasFamily(const std::string& name)` (over phase 0's `FontRegistry`) for `HTMLUI-CSS-0023`, and test-only `setRenderTextForTesting(bool)` (5.3) | p2-runtime |
@@ -2318,11 +2495,57 @@ tested with fork features off and on where 3.6 applies.
   `compat_manifest_test.cpp`, `compat_logtranslator_test.cpp` (sentinel swallowed, sheet
   and inline line mapping with real RmlUi messages produced by loading broken RCSS).
 
+#### p2-core as implemented: what the wave-2 packages find in place
+
+Built and merged by p2-core (October 2026). The interfaces above are the binding ones; this
+list says where each wave-2 package plugs in without editing p2-core's files.
+
+- **Build.** `engine/core/htmlui/compat/CompatSources.cmake` globs `compat/*.cpp`,
+  `css/*.cpp`, `css/props/*.cpp`, `html/*.cpp`, `html/transforms/*.cpp`, `runtime/*.cpp`,
+  `tables/*.cpp`, `ua/*.cpp` into the engine; tests: `engine/tests/htmlui/compat/*.cpp` are
+  globbed into `jasperengine-htmlui-tests`. New files need no CMake edit; run
+  `python3 tools/htmlui/xcode_sync_compat.py` to add them to the Xcode workspace (ids derived
+  from the path, so parallel branches merge by keeping both lines). Include compat headers
+  as `"htmlui/compat/..."`. Shared test helpers: `engine/tests/htmlui/compat/CompatTestCommon.h`
+  (fixture paths, css-parsing-tests JSON conversion).
+- **p2-css:** replace `css/CssRewriter.cpp` (keep `CssRewriter.h`; state in
+  `CssRewriter::Impl`); everything else in `css/` is yours to add. Available: tokenizer
+  (`TokenizeOptions`), parser (raw + parsed blocks, nesting, positions), `CssSerialize`
+  (`serialize`, `serializeIdent/String/Url`, locale-free `formatNumber`), `RcssWriter`
+  (+`RcssMediaCondition`), `SupportTables` (+ `findValue`, `findPseudoClass`, ...),
+  `UrlResolver`, `ImportManifest`, `DiagnosticSink::reportAs` for "by case" codes,
+  `codes::` constants, `Hash` (`sha1Hex` for `kf-<sha1-8>`), `RmlLogTranslator::Capture` and
+  `verifyRcssWithRmlUi` for `compat_css_rmlui_accepts_test.cpp`. The UA sheet already goes
+  through `CssRewriter` (`UserAgentStyle::get`).
+- **p2-html:** own `CompatApiDocument.cpp` (implement `checkDocument`, `locateElement`,
+  `collectRemoteReferences(htmlPath, files)`; replace the test
+  `CompatApi.CheckDocumentIsAStubUntilTheHtmlStage` in `compat_core_test.cpp`); define
+  `CompatDocument` (forward-declared in `CompatApi.h`), `DocumentScript`, `HtmlTemplate` in
+  `DocumentLoader.h`; register each loaded compile with `RmlLogTranslator::add` and its
+  virtual files with `VirtualFiles::add(path, content, key)` / `removeOwner(key)`; link the UA
+  sheet as `UserAgentStyle::get(options.fork)->virtualPath` (with a leading `/`);
+  `ImportManifest::notifyFileChanged(path)` in H2. `RmlFile` already serves `@htmlui/` paths
+  and `RmlSystem` already calls the translator.
+- **p2-runtime:** own `runtime/RuntimeRegistry.cpp` (`registerRuntime`, `releaseRuntime`,
+  `updateRuntime(context)` are already called from `HtmlUI::acquire/release` and
+  `HtmlUIContext::update`); hooks H6–H9 as specified.
+- **p2-ua:** own `ua/useragent.css` (minimal now) and add the internal SVGs to `ua/`: they are
+  embedded with the sheet and served as `@htmlui/ua/<name>` (UA rules reference
+  `/@htmlui/ua/check.svg`); `UserAgentStyle::get()` gives the rewritten sheet and its
+  diagnostics for `compat_ua_test.cpp`.
+- **p2-importers:** `ImportManifest` (+`add`, `parse`, `normalizeUrl`), `UrlResolver`,
+  `sha256Hex` (manifest checksums), `collectRemoteReferences` (stylesheets now, documents once
+  p2-html lands), the CSS parser for Google Fonts CSS.
+- **Diagnostic codes:** a new code is a row in `DiagnosticCodes.cpp` plus a `codes::`
+  constant in `DiagnosticCodes.h` (the next free number of its area); `compat_codes_test.cpp`
+  scans `engine/core/htmlui/compat` and `editor/htmlui` for unregistered ids and constants.
+
 ### p2-html (wave 2): HTML stage, loader, engine hooks
 
 - **Owns:** `engine/libs/lexbor/` (vendoring, patch, `PATCHES.md`, CMake), `compat/html/*`,
-  `compat/DocumentLoader.*`, `compat/LuaHooks.*`, hooks H1 (call sites), H1b, H2, H3, H3b,
-  H4, H5, H14; `NOTICE.md` lexbor entry.
+  `compat/DocumentLoader.*`, `compat/LuaHooks.*`, `compat/CompatApiDocument.cpp` (seam),
+  hooks H1 (`CompatOptions` from the canvas), H1b, H2, H4, H5, H14 (H1's registration call
+  sites, H3 and H3b were done by p2-core); `NOTICE.md` lexbor entry.
 - **Depends on:** p2-core. Uses `CssRewriter` through its interface (works with the
   pass-through until p2-css lands).
 - **Deliverables:** 3.7, 3.8 (HTML side), 3.12 complete; `checkDocument` implemented;

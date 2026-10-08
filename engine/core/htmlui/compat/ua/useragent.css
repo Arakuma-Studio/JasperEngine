@@ -1,0 +1,22 @@
+/*
+ * The HTML UI user-agent stylesheet, in standard CSS: the browser defaults every document
+ * starts from (phase-2 spec 3.10). The compat rewriter turns it into RCSS once per process
+ * (the virtual file @htmlui/ua.rcss, linked first by every document with
+ * origin="user-agent"). Type, attribute, class and pseudo-class selectors only, never ids:
+ * every author rule outranks it through the #htmlui-root band.
+ *
+ * Minimal version (p2-core): the display of the HTML elements. p2-ua replaces it with the
+ * full sheet of 3.10, calibrated against Chromium.
+ */
+
+html, body, address, article, aside, blockquote, center, details, dialog, dd, div, dl, dt,
+fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr,
+legend, li, listing, main, menu, nav, ol, optgroup, p, plaintext, pre, search, section,
+summary, ul, xmp {
+    display: block;
+}
+
+[hidden], area, base, datalist, head, link, meta, noembed, noframes, param, rp, script,
+style, template, title {
+    display: none;
+}

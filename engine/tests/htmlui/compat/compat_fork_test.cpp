@@ -1,0 +1,85 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// Fork features (phase-2 §3.6): the compiled-in table matches the runtime probes of the
+// vendored RmlUi, and the set operations tests use to force both code paths.
+
+#include "htmlui/compat/ForkFeatures.h"
+
+#include "harness/TestSystem.h"
+
+#include "HtmlUI.h"
+#include "RmlSystem.h"
+
+#include <RmlUi/Core/Core.h>
+
+#include <gtest/gtest.h>
+
+using namespace jasperengine;
+using namespace jasperengine::htmlui::compat;
+
+TEST(ForkFeatures, TableMatchesProbes){
+    ASSERT_TRUE(HtmlUI::acquire());
+    HtmlUI::getSystemInterface().resetCounters();
+
+    const ForkFeatures present = ForkFeatures::present();
+    size_t probed = 0;
+    for (size_t i = 1; i < (size_t)ForkFeature::Count; i++){
+        const ForkFeature feature = (ForkFeature)i;
+        const std::optional<bool> result = ForkFeatures::probe(feature);
+        if (feature == ForkFeature::GroupOpacity){
+            EXPECT_FALSE(result.has_value()) << "GroupOpacity is not observable without rendering";
+            continue;
+        }
+        ASSERT_TRUE(result.has_value()) << forkFeatureName(feature) << " could not be probed";
+        EXPECT_EQ(*result, present.has(feature)) << forkFeatureName(feature) << ": the probe disagrees with kPresent";
+        probed++;
+    }
+    EXPECT_EQ(probed, (size_t)ForkFeature::Count - 2);
+    EXPECT_EQ(ForkFeatures::probe(), present);
+
+    // the probes' warnings never reach the log, and they leave no context behind
+    EXPECT_EQ(HtmlUI::getSystemInterface().getWarningCount(), 0u);
+    EXPECT_EQ(HtmlUI::getSystemInterface().getErrorCount(), 0u);
+    EXPECT_EQ(Rml::GetNumContexts(), 0);
+    HtmlUI::release();
+}
+
+TEST(ForkFeatures, ProbesNeedRmlUi){
+    ASSERT_FALSE(HtmlUI::isInitialized());
+    EXPECT_FALSE(ForkFeatures::probe(ForkFeature::Calc).has_value());
+    EXPECT_EQ(ForkFeatures::probe(), ForkFeatures::present());
+}
+
+TEST(ForkFeatures, PhaseTwoHasNoFeature){
+    // polarity: true = the fork has it; phase 2 ships every entry false
+    const ForkFeatures present = ForkFeatures::present();
+    for (size_t i = 0; i < (size_t)ForkFeature::Count; i++)
+        EXPECT_FALSE(present.has((ForkFeature)i)) << forkFeatureName((ForkFeature)i);
+    EXPECT_EQ(present, ForkFeatures::none());
+}
+
+TEST(ForkFeatures, WithBitsAndNames){
+    const ForkFeatures none = ForkFeatures::none();
+    const ForkFeatures calc = none.with(ForkFeature::Calc, true);
+    EXPECT_TRUE(calc.has(ForkFeature::Calc));
+    EXPECT_FALSE(calc.has(ForkFeature::Grid));
+    EXPECT_FALSE(none.has(ForkFeature::Calc));   // with() returns a copy
+    EXPECT_NE(calc, none);
+    EXPECT_EQ(calc.with(ForkFeature::Calc, false), none);
+    EXPECT_FALSE(calc.with(ForkFeature::None, true).has(ForkFeature::None));
+
+    const ForkFeatures all = ForkFeatures::all();
+    for (size_t i = 1; i < (size_t)ForkFeature::Count; i++)
+        EXPECT_TRUE(all.has((ForkFeature)i));
+    EXPECT_FALSE(all.has(ForkFeature::None));
+    EXPECT_EQ(ForkFeatures::fromBits(all.bits()), all);
+    EXPECT_EQ(ForkFeatures::fromBits(~uint64_t(0)), all);
+    EXPECT_EQ(ForkFeatures::fromBits(calc.bits()), calc);
+
+    EXPECT_STREQ(forkFeatureName(ForkFeature::TimingFunctions), "TimingFunctions");
+    EXPECT_STREQ(forkFeatureName(ForkFeature::None), "None");
+    for (size_t i = 1; i < (size_t)ForkFeature::Count; i++)
+        EXPECT_EQ(findForkFeature(forkFeatureName((ForkFeature)i)), (ForkFeature)i);
+    EXPECT_EQ(findForkFeature("NoSuchFeature"), ForkFeature::None);
+}
