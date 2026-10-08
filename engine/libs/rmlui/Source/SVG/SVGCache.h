@@ -38,11 +38,12 @@ namespace SVG {
 		/// @param[in] element Element for which to calculate the dimensions and color.
 		/// @param[in] crop_to_content Crop the rendered SVG to its contents.
 		/// @param[in] area The area of the element used to determine the SVG dimensions.
+		/// @param[in] colour_override Fork (JasperEngine): the colour to multiply the image with, instead of the element's image-color x opacity.
 		/// @return A handle to the SVG data, with automatic reference counting.
 		///	@note When changing color or dimensions of an SVG without changing the source file, it's best to get a
 		/// new handle before releasing the old one, to avoid unnecessarily reloading data.
 		static SharedPtr<SVGData> GetHandle(const String& source_id, const String& source, SourceType source_type, Element* element,
-			const bool crop_to_content, const BoxArea area);
+			const bool crop_to_content, const BoxArea area, const ColourbPremultiplied* colour_override = nullptr);
 	};
 
 } // namespace SVG
