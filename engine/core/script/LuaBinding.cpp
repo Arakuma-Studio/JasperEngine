@@ -76,6 +76,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -144,8 +145,11 @@ namespace {
         backtrace_symbols_fd(frames, count, STDERR_FILENO);
 #endif
         std::fflush(stderr);
-        if (abortHere)
+        if (abortHere){
+            // not a SIGABRT a crash guard (callWithCrashGuard) or crash reporter would catch
+            std::signal(SIGABRT, SIG_DFL);
             std::abort();
+        }
     }
 
     void* threadCheckedLuaAlloc(void* ud, void* ptr, size_t osize, size_t nsize){
