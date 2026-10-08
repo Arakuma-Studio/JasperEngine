@@ -10,6 +10,7 @@
 #include "Log.h"
 #include "Scene.h"
 #include "component/UIDocumentComponent.h"
+#include "manager/SceneManager.h"
 #include "object/ui/UIElementInternal.h"
 #include "subsystem/UIDocumentSystem.h"
 
@@ -198,18 +199,20 @@ AnimTargetList AnimTargets::fromSelector(const std::string& selector, const UIEl
         querySelectorAll(rootElement, selector, list);
         return list;
     }
-    // the documents of every running scene, the current scene's first: a HUD is often a child
-    // scene layered over the scene whose script animates it
+    // The documents of every scene of the game, the current scene's first: a HUD is often a
+    // child scene layered over the scene whose script animates it, and a scene's scripts start
+    // (init) before the scene runs, so the game's created scenes (SceneManager) count too
     std::vector<Scene*> scenes;
-    Scene* current = Engine::getScene();
-    if (!current)
-        current = Engine::getMainScene();
-    if (current)
-        scenes.push_back(current);
-    for (Scene* layer : Engine::getSceneLayers()){
-        if (layer && std::find(scenes.begin(), scenes.end(), layer) == scenes.end())
-            scenes.push_back(layer);
-    }
+    auto add = [&scenes](Scene* scene){
+        if (scene && std::find(scenes.begin(), scenes.end(), scene) == scenes.end())
+            scenes.push_back(scene);
+    };
+    add(Engine::getScene());
+    add(Engine::getMainScene());
+    for (Scene* layer : Engine::getSceneLayers())
+        add(layer);
+    for (Scene* created : SceneManager::getScenePtrs())
+        add(created);
     for (Scene* scene : scenes){
         std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
         if (!system)

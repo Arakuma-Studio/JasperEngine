@@ -22,6 +22,8 @@
 #include "component/UIDocumentComponent.h"
 #include "htmlui/anim/AnimEngine.h"
 #include "htmlui/anim/AnimLua.h"
+#include "htmlui/anim/AnimTargets.h"
+#include "manager/SceneManager.h"
 #include "object/Camera.h"
 #include "object/Primitive.h"
 #include "object/ui/Button.h"
@@ -906,9 +908,31 @@ TEST_F(IntegrationTest, ModelReloadInInitIsNotAnOnLoadOfLaterHandlers){
     lua("loads, unloads = nil, nil");
 }
 
-TEST_F(IntegrationTest, AnimeSelectorsReachEveryRunningScene){
-    // the main scene has no #box; a HUD scene layered over it has
+TEST_F(IntegrationTest, AnimeSelectorsReachEveryScene){
     fixture.reset(new SceneFixture());
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+
+    // a scene whose scripts start (init) before it runs, as every scene of an exported game
+    // and of the editor's play: only registered with SceneManager, its document loaded
+    {
+        std::unique_ptr<Scene> starting(new Scene());
+        std::unique_ptr<UIDocument> document(new UIDocument(starting.get()));
+        SceneManager::setScenePtr(4242, starting.get());
+        ASSERT_TRUE(document->load("p1/integration/combined.html"));
+        TestSystem::get().clearLogs();
+        EXPECT_EQ(AnimTargets::fromSelector("#box").size(), 1u);
+        EXPECT_EQ(lua(R"(anim = anime.animate("#box", { translateX = 100, duration = 1000 }))"), "");
+        EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "no target found"), 0u);
+        clearGlobals();
+        AnimEngine::instance().reset();
+        SceneManager::removeScenePtr(4242);
+        document.reset();
+        starting.reset();
+        EXPECT_EQ(AnimTargets::fromSelector("#box").size(), 0u);
+    }
+
+    // the main scene has no #box; a HUD scene layered over it has
+
     textureDocument.reset(new UIDocument(fixture->addDocument("p1/texture_form.html")));
     std::unique_ptr<Scene> layer(new Scene());
     std::unique_ptr<Camera> layerCamera(new Camera(layer.get()));
