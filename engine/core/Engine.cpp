@@ -1390,10 +1390,12 @@ bool Engine::transformCoordPos(float& x, float& y){
     return ((x >= 0) && (x <= Engine::getCanvasWidth()) && (y >= 0) && (y <= Engine::getCanvasHeight()));
 }
 
-// ---- input. Order per event (phase-1 spec §3.6.1): HTML UI documents, top scene layer first
-// (the first scene whose document consumes stops the document walk); then the component UI of
-// every scene, except that a scene whose document took a press does not give it to its
-// component UI; then the game, unless the UI consumed it and ignoreEventsHandledByUI is set.
+// ---- input. Order per pointer event (phase-1 spec §3.6.1, §3.15): HTML UI screen documents,
+// top scene layer first (the first scene whose document consumes stops the document walk);
+// then the component UI of every scene, except that a scene whose document took a press does
+// not give it to its component UI; then the documents on meshes (texture mode), which the
+// screen-space UI covers; then the game, unless the UI consumed it and ignoreEventsHandledByUI
+// is set. Keys and text: documents, then the game, then the component UI.
 
 namespace {
 
