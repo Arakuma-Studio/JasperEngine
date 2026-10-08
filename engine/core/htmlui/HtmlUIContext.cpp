@@ -6,6 +6,7 @@
 #include "HtmlUI.h"
 #include "RmlRenderer.h"
 #include "RmlTextInputHandler.h"
+#include "compat/runtime/RuntimeRegistry.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -183,8 +184,11 @@ void HtmlUIContext::unloadDocument(Rml::ElementDocument* document){
 }
 
 void HtmlUIContext::update(){
-    if (context)
+    if (context){
+        // focus tracking, animation fill modes (phase-2 hook H1)
+        htmlui::compat::updateRuntime(context);
         context->Update();
+    }
     markUpdated();
 }
 

@@ -55,6 +55,9 @@ namespace jasperengine::htmlui::compat {
 
     // Strips a UTF-8 byte order mark; true when one was there.
     JASPERENGINE_API bool stripUtf8Bom(std::string& text);
+    // Replaces every invalid UTF-8 sequence (and NUL) by U+FFFD; returns the byte offsets of
+    // the replacements in the result (HTMLUI-GEN-0003 is reported at the first).
+    JASPERENGINE_API std::vector<uint32_t> sanitizeUtf8(std::string& text);
 
 }
 

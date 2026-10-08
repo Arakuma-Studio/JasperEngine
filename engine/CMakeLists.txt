@@ -970,6 +970,10 @@ set(JASPERENGINE_SRCS
     core/util/XMLUtils.cpp
 )
 
+# HTML/CSS compatibility layer (phase 2): globbed per directory
+include(core/htmlui/compat/CompatSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${HTMLUI_COMPAT_SRCS})
+
 if(JASPERENGINE_PHYSICS_2D)
     list(APPEND JASPERENGINE_SRCS
         core/object/physics/Rigidbody2D.cpp
@@ -1008,6 +1012,8 @@ add_library(
     ${RENDER_SOKOL_SRC}
     ${JASPERENGINE_SRCS}
 )
+
+jasperengine_htmlui_compat_embed(jasperengine)
 
 target_compile_definitions(jasperengine
     PUBLIC

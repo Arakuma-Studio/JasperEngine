@@ -175,3 +175,54 @@ bool jasperengine::htmlui::compat::stripUtf8Bom(std::string& text){
     }
     return false;
 }
+
+std::vector<uint32_t> jasperengine::htmlui::compat::sanitizeUtf8(std::string& text){
+    std::vector<uint32_t> replaced;
+    std::string out;
+    bool changed = false;
+    size_t i = 0;
+    const size_t size = text.size();
+    while (i < size){
+        const unsigned char c = (unsigned char)text[i];
+        size_t length = 0;
+        uint32_t value = 0, minimum = 0;
+        if (c >= 0x01 && c < 0x80){
+            length = 1;
+        }else if ((c & 0xE0) == 0xC0){
+            length = 2; value = c & 0x1F; minimum = 0x80;
+        }else if ((c & 0xF0) == 0xE0){
+            length = 3; value = c & 0x0F; minimum = 0x800;
+        }else if ((c & 0xF8) == 0xF0){
+            length = 4; value = c & 0x07; minimum = 0x10000;
+        }
+        bool valid = length > 0 && i + length <= size;
+        if (valid && length > 1){
+            for (size_t k = 1; k < length; k++){
+                const unsigned char next = (unsigned char)text[i + k];
+                if ((next & 0xC0) != 0x80){
+                    valid = false;
+                    break;
+                }
+                value = (value << 6) | (next & 0x3F);
+            }
+            if (valid && (value < minimum || value > 0x10FFFF || (value >= 0xD800 && value <= 0xDFFF)))
+                valid = false;
+        }
+        if (!valid){
+            if (!changed){
+                out.assign(text, 0, i);
+                changed = true;
+            }
+            replaced.push_back((uint32_t)out.size());
+            out += "\xEF\xBF\xBD";
+            i += 1;
+            continue;
+        }
+        if (changed)
+            out.append(text, i, length);
+        i += length;
+    }
+    if (changed)
+        text = std::move(out);
+    return replaced;
+}

@@ -6,6 +6,7 @@
 #include "HtmlUIClock.h"
 #include "HtmlUIDependencies.h"
 #include "RmlTextInputHandler.h"
+#include "compat/RmlLogTranslator.h"
 #include "Engine.h"
 #include "Log.h"
 
@@ -67,6 +68,11 @@ double RmlSystem::GetElapsedTime(){
 }
 
 bool RmlSystem::LogMessage(Rml::Log::Type type, const Rml::String& message){
+    // compat first (phase-2 hook H3): the `unset` sentinel is dropped, messages about compat
+    // output are logged at the user's file and line, checks and probes capture theirs
+    if (htmlui::compat::RmlLogTranslator::handle(type, message))
+        return true;
+
     switch (type){
         case Rml::Log::LT_ERROR:
         case Rml::Log::LT_ASSERT:
