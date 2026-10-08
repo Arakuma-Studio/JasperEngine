@@ -14,6 +14,7 @@
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "htmlui/HtmlUIDependencies.h"
+#include "htmlui/compat/ua/UserAgentStyle.h"
 #include "component/UIDocumentComponent.h"
 
 #include "stb_image.h"
@@ -2192,6 +2193,9 @@ bool editor::Exporter::copyEngine() {
                 return false;
             }
         }
+
+        // Same for the HTML UI's user-agent stylesheet and its SVGs (engine/core/htmlui/compat/ua)
+        FileUtils::writeIfChanged(dst / "htmlui_ua.h", htmlui::compat::UserAgentStyle::buildEmbeddedHeader());
     }
 
     fs::path cmakeSrc = sdkRoot / "CMakeLists.txt";
