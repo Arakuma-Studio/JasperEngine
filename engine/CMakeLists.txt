@@ -950,6 +950,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/UIDocumentSystemInput.cpp
     core/subsystem/UIDocumentSystemScript.cpp
     core/subsystem/UIDocumentSystemReload.cpp
+    core/subsystem/UIDocumentSystemCompat.cpp
     core/subsystem/UIDocumentSystemTexture.cpp
     core/texture/Framebuffer.cpp
     core/texture/IBLEnvironment.cpp

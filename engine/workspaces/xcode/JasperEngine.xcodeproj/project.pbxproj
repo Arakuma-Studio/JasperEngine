@@ -1750,6 +1750,34 @@
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		434F4D50E078D11CDFB8B102 /* LucideTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50CBE65DD75C83B698 /* LucideTransform.cpp */; };
+		434F4D5049EADCF54EBCDBB4 /* LucideTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50CBE65DD75C83B698 /* LucideTransform.cpp */; };
+		434F4D500960317E1CB57707 /* HeadTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50111854240B665359 /* HeadTransform.cpp */; };
+		434F4D5043849FCFFE88430F /* HeadTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50111854240B665359 /* HeadTransform.cpp */; };
+		434F4D5004A3B591EC39C43A /* FormTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500C7E0235FC2841DC /* FormTransform.cpp */; };
+		434F4D50B46621DB4AA257EF /* FormTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500C7E0235FC2841DC /* FormTransform.cpp */; };
+		434F4D5001F1092F7F7004CC /* ElementTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B0F8F5CD84835074 /* ElementTransform.cpp */; };
+		434F4D505EC50554C2E2C30C /* ElementTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B0F8F5CD84835074 /* ElementTransform.cpp */; };
+		434F4D5056CC90C9ACE678F3 /* AttributeTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D505FF23DDE883ADFA4 /* AttributeTransform.cpp */; };
+		434F4D502EB9C7C691619B6C /* AttributeTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D505FF23DDE883ADFA4 /* AttributeTransform.cpp */; };
+		434F4D50F17376E1CB99539C /* RmlSerializer.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50F4CE229F3BFBEB0A /* RmlSerializer.h */; };
+		434F4D50AE1A9764BA26D757 /* RmlSerializer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D507777A550BDE5455D /* RmlSerializer.cpp */; };
+		434F4D507BCFB16FD64C31DC /* RmlSerializer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D507777A550BDE5455D /* RmlSerializer.cpp */; };
+		434F4D50996BF4DA21A30F55 /* HtmlTree.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D504893852BE4B5F5C8 /* HtmlTree.h */; };
+		434F4D502FED8043D4252CE4 /* HtmlTree.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5045D8F1D3A8EC9D8E /* HtmlTree.cpp */; };
+		434F4D5047A092AFA7289D71 /* HtmlTree.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5045D8F1D3A8EC9D8E /* HtmlTree.cpp */; };
+		434F4D508D6C02454C87AE95 /* HtmlTransform.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5034F343A4FD5FB1EF /* HtmlTransform.h */; };
+		434F4D50DB12B1CB3CDA4F5F /* HtmlTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5034DFAD67D2EF3023 /* HtmlTransform.cpp */; };
+		434F4D50D56335A8F8FDA018 /* HtmlTransform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5034DFAD67D2EF3023 /* HtmlTransform.cpp */; };
+		434F4D5082DBB4D9ADB89F0A /* HtmlParser.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D502024ACA446520A29 /* HtmlParser.h */; };
+		434F4D504107F2F97C2A96A3 /* HtmlParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BA31B2C078F7D711 /* HtmlParser.cpp */; };
+		434F4D50F2E341B58B100FBA /* HtmlParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BA31B2C078F7D711 /* HtmlParser.cpp */; };
+		434F4D508075F5D0E874A97E /* LuaHooks.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5085138F8D30FFE72D /* LuaHooks.h */; };
+		434F4D507838E07EB7D1C391 /* LuaHooks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50C0AD7CD5745AB482 /* LuaHooks.cpp */; };
+		434F4D5052B47B3EB1238C14 /* LuaHooks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50C0AD7CD5745AB482 /* LuaHooks.cpp */; };
+		434F4D5022EC1F87AAF948B8 /* DocumentLoader.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50F0089B21B89BC7B8 /* DocumentLoader.h */; };
+		434F4D506555EC95DD5E685B /* DocumentLoader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50473667574A7A054B /* DocumentLoader.cpp */; };
+		434F4D503EC689DDFCE731A8 /* DocumentLoader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50473667574A7A054B /* DocumentLoader.cpp */; };
 		434F4D50A227D91B03F18A89 /* UserAgentStyle.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50927A4DF805745C98 /* UserAgentStyle.h */; };
 		434F4D50D88FB37BBE13E9F1 /* UserAgentStyle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500146D11FAD7506A4 /* UserAgentStyle.cpp */; };
 		434F4D50EB40AB893E4E3EBD /* UserAgentStyle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500146D11FAD7506A4 /* UserAgentStyle.cpp */; };
@@ -1878,6 +1906,8 @@
 		48544D4C00000000000002BC /* UIDocumentSystemInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */; };
 		48544D4C00000000000002BE /* UIDocumentSystemReload.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */; };
 		48544D4C00000000000002BF /* UIDocumentSystemReload.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */; };
+		434F4D50538F06695ED71387 /* UIDocumentSystemCompat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B100210E90294042 /* UIDocumentSystemCompat.cpp */; };
+		434F4D500A100490707D04BC /* UIDocumentSystemCompat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B100210E90294042 /* UIDocumentSystemCompat.cpp */; };
 		48544D4C00000000000002D1 /* HtmlUIContextInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D0 /* HtmlUIContextInput.cpp */; };
 		48544D4C00000000000002D2 /* HtmlUIContextInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D0 /* HtmlUIContextInput.cpp */; };
 		48544D4C00000000000002D5 /* RmlKeyMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D4 /* RmlKeyMap.cpp */; };
@@ -4556,6 +4586,23 @@
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		434F4D50CBE65DD75C83B698 /* LucideTransform.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LucideTransform.cpp; sourceTree = "<group>"; };
+		434F4D50111854240B665359 /* HeadTransform.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HeadTransform.cpp; sourceTree = "<group>"; };
+		434F4D500C7E0235FC2841DC /* FormTransform.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FormTransform.cpp; sourceTree = "<group>"; };
+		434F4D50B0F8F5CD84835074 /* ElementTransform.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementTransform.cpp; sourceTree = "<group>"; };
+		434F4D505FF23DDE883ADFA4 /* AttributeTransform.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AttributeTransform.cpp; sourceTree = "<group>"; };
+		434F4D50F4CE229F3BFBEB0A /* RmlSerializer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlSerializer.h; sourceTree = "<group>"; };
+		434F4D507777A550BDE5455D /* RmlSerializer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlSerializer.cpp; sourceTree = "<group>"; };
+		434F4D504893852BE4B5F5C8 /* HtmlTree.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlTree.h; sourceTree = "<group>"; };
+		434F4D5045D8F1D3A8EC9D8E /* HtmlTree.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlTree.cpp; sourceTree = "<group>"; };
+		434F4D5034F343A4FD5FB1EF /* HtmlTransform.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlTransform.h; sourceTree = "<group>"; };
+		434F4D5034DFAD67D2EF3023 /* HtmlTransform.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlTransform.cpp; sourceTree = "<group>"; };
+		434F4D502024ACA446520A29 /* HtmlParser.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlParser.h; sourceTree = "<group>"; };
+		434F4D50BA31B2C078F7D711 /* HtmlParser.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlParser.cpp; sourceTree = "<group>"; };
+		434F4D5085138F8D30FFE72D /* LuaHooks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaHooks.h; sourceTree = "<group>"; };
+		434F4D50C0AD7CD5745AB482 /* LuaHooks.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LuaHooks.cpp; sourceTree = "<group>"; };
+		434F4D50F0089B21B89BC7B8 /* DocumentLoader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DocumentLoader.h; sourceTree = "<group>"; };
+		434F4D50473667574A7A054B /* DocumentLoader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DocumentLoader.cpp; sourceTree = "<group>"; };
 		434F4D50927A4DF805745C98 /* UserAgentStyle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UserAgentStyle.h; sourceTree = "<group>"; };
 		434F4D500146D11FAD7506A4 /* UserAgentStyle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UserAgentStyle.cpp; sourceTree = "<group>"; };
 		434F4D500A0947F4D46DAE4A /* ValueTable.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ValueTable.cpp; sourceTree = "<group>"; };
@@ -4641,6 +4688,7 @@
 		48544D4C00000000000002B8 /* UIValue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIValue.h; sourceTree = "<group>"; };
 		48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemInput.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemReload.cpp; sourceTree = "<group>"; };
+		434F4D50B100210E90294042 /* UIDocumentSystemCompat.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemCompat.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002D0 /* HtmlUIContextInput.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIContextInput.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002D3 /* RmlKeyMap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlKeyMap.h; sourceTree = "<group>"; };
 		48544D4C00000000000002D4 /* RmlKeyMap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlKeyMap.cpp; sourceTree = "<group>"; };
@@ -6573,6 +6621,7 @@
 				48544D4C0000000000000038 /* UIDocumentSystem.cpp */,
 				48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */,
 				48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */,
+				434F4D50B100210E90294042 /* UIDocumentSystemCompat.cpp */,
 				48544D4C00000000000002C0 /* UIDocumentSystemRender.cpp */,
 				48544D4C00000000000002C3 /* UIDocumentSystemScript.cpp */,
 				48544D4C00000000000002C6 /* UIDocumentSystemTexture.cpp */,
@@ -8090,6 +8139,11 @@
 				434F4D50BF8F733F0834AB06 /* UrlResolver.h */,
 				434F4D50EA637A197D77CB44 /* VirtualFiles.cpp */,
 				434F4D50B80CF1CB57782FD4 /* VirtualFiles.h */,
+				434F4D5055EE9ABA09EAFC15 /* html */,
+				434F4D50473667574A7A054B /* DocumentLoader.cpp */,
+				434F4D50F0089B21B89BC7B8 /* DocumentLoader.h */,
+				434F4D50C0AD7CD5745AB482 /* LuaHooks.cpp */,
+				434F4D5085138F8D30FFE72D /* LuaHooks.h */,
 			);
 			path = compat;
 			sourceTree = "<group>";
@@ -8142,6 +8196,34 @@
 				434F4D50927A4DF805745C98 /* UserAgentStyle.h */,
 			);
 			path = ua;
+			sourceTree = "<group>";
+		};
+		434F4D5055EE9ABA09EAFC15 /* html */ = {
+			isa = PBXGroup;
+			children = (
+				434F4D50EDB6B259B5D91158 /* transforms */,
+				434F4D50BA31B2C078F7D711 /* HtmlParser.cpp */,
+				434F4D502024ACA446520A29 /* HtmlParser.h */,
+				434F4D5034DFAD67D2EF3023 /* HtmlTransform.cpp */,
+				434F4D5034F343A4FD5FB1EF /* HtmlTransform.h */,
+				434F4D5045D8F1D3A8EC9D8E /* HtmlTree.cpp */,
+				434F4D504893852BE4B5F5C8 /* HtmlTree.h */,
+				434F4D507777A550BDE5455D /* RmlSerializer.cpp */,
+				434F4D50F4CE229F3BFBEB0A /* RmlSerializer.h */,
+			);
+			path = html;
+			sourceTree = "<group>";
+		};
+		434F4D50EDB6B259B5D91158 /* transforms */ = {
+			isa = PBXGroup;
+			children = (
+				434F4D505FF23DDE883ADFA4 /* AttributeTransform.cpp */,
+				434F4D50B0F8F5CD84835074 /* ElementTransform.cpp */,
+				434F4D500C7E0235FC2841DC /* FormTransform.cpp */,
+				434F4D50111854240B665359 /* HeadTransform.cpp */,
+				434F4D50CBE65DD75C83B698 /* LucideTransform.cpp */,
+			);
+			path = transforms;
 			sourceTree = "<group>";
 		};
 		48544D4C0000000000000047 /* htmlui */ = {
@@ -9436,6 +9518,12 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				434F4D50F17376E1CB99539C /* RmlSerializer.h in Headers */,
+				434F4D50996BF4DA21A30F55 /* HtmlTree.h in Headers */,
+				434F4D508D6C02454C87AE95 /* HtmlTransform.h in Headers */,
+				434F4D5082DBB4D9ADB89F0A /* HtmlParser.h in Headers */,
+				434F4D508075F5D0E874A97E /* LuaHooks.h in Headers */,
+				434F4D5022EC1F87AAF948B8 /* DocumentLoader.h in Headers */,
 				434F4D50A227D91B03F18A89 /* UserAgentStyle.h in Headers */,
 				434F4D504A25F34A784F3C33 /* RuntimeRegistry.h in Headers */,
 				434F4D50185F6D57FA6C2CA9 /* RcssWriter.h in Headers */,
@@ -11164,6 +11252,17 @@
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				434F4D5049EADCF54EBCDBB4 /* LucideTransform.cpp in Sources */,
+				434F4D5043849FCFFE88430F /* HeadTransform.cpp in Sources */,
+				434F4D50B46621DB4AA257EF /* FormTransform.cpp in Sources */,
+				434F4D505EC50554C2E2C30C /* ElementTransform.cpp in Sources */,
+				434F4D502EB9C7C691619B6C /* AttributeTransform.cpp in Sources */,
+				434F4D507BCFB16FD64C31DC /* RmlSerializer.cpp in Sources */,
+				434F4D5047A092AFA7289D71 /* HtmlTree.cpp in Sources */,
+				434F4D50D56335A8F8FDA018 /* HtmlTransform.cpp in Sources */,
+				434F4D50F2E341B58B100FBA /* HtmlParser.cpp in Sources */,
+				434F4D5052B47B3EB1238C14 /* LuaHooks.cpp in Sources */,
+				434F4D503EC689DDFCE731A8 /* DocumentLoader.cpp in Sources */,
 				434F4D50EB40AB893E4E3EBD /* UserAgentStyle.cpp in Sources */,
 				434F4D506C72DE70E462A382 /* ValueTable.cpp in Sources */,
 				434F4D5031F95685ECA34523 /* UnitTable.cpp in Sources */,
@@ -11222,6 +11321,7 @@
 				48544D4C00000000000002D5 /* RmlKeyMap.cpp in Sources */,
 				48544D4C00000000000002D9 /* RmlTextInputHandler.cpp in Sources */,
 				48544D4C00000000000002BE /* UIDocumentSystemReload.cpp in Sources */,
+				434F4D50538F06695ED71387 /* UIDocumentSystemCompat.cpp in Sources */,
 				48544D4C00000000000002C1 /* UIDocumentSystemRender.cpp in Sources */,
 				48544D4C00000000000002C4 /* UIDocumentSystemScript.cpp in Sources */,
 				48544D4C00000000000002C7 /* UIDocumentSystemTexture.cpp in Sources */,
@@ -11442,6 +11542,17 @@
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				434F4D50E078D11CDFB8B102 /* LucideTransform.cpp in Sources */,
+				434F4D500960317E1CB57707 /* HeadTransform.cpp in Sources */,
+				434F4D5004A3B591EC39C43A /* FormTransform.cpp in Sources */,
+				434F4D5001F1092F7F7004CC /* ElementTransform.cpp in Sources */,
+				434F4D5056CC90C9ACE678F3 /* AttributeTransform.cpp in Sources */,
+				434F4D50AE1A9764BA26D757 /* RmlSerializer.cpp in Sources */,
+				434F4D502FED8043D4252CE4 /* HtmlTree.cpp in Sources */,
+				434F4D50DB12B1CB3CDA4F5F /* HtmlTransform.cpp in Sources */,
+				434F4D504107F2F97C2A96A3 /* HtmlParser.cpp in Sources */,
+				434F4D507838E07EB7D1C391 /* LuaHooks.cpp in Sources */,
+				434F4D506555EC95DD5E685B /* DocumentLoader.cpp in Sources */,
 				434F4D50D88FB37BBE13E9F1 /* UserAgentStyle.cpp in Sources */,
 				434F4D502E599AAF1490A558 /* ValueTable.cpp in Sources */,
 				434F4D501A2CE6046EB9432E /* UnitTable.cpp in Sources */,
@@ -11500,6 +11611,7 @@
 				48544D4C00000000000002D6 /* RmlKeyMap.cpp in Sources */,
 				48544D4C00000000000002DA /* RmlTextInputHandler.cpp in Sources */,
 				48544D4C00000000000002BF /* UIDocumentSystemReload.cpp in Sources */,
+				434F4D500A100490707D04BC /* UIDocumentSystemCompat.cpp in Sources */,
 				48544D4C00000000000002C2 /* UIDocumentSystemRender.cpp in Sources */,
 				48544D4C00000000000002C5 /* UIDocumentSystemScript.cpp in Sources */,
 				48544D4C00000000000002C8 /* UIDocumentSystemTexture.cpp in Sources */,

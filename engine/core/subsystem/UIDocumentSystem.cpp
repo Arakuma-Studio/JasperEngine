@@ -155,6 +155,7 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
                 scriptDocumentLoaded(entity);
             }else{
                 document.loadFailed = true;
+                compatDocumentLoaded(entity);   // p2-html: why it failed (getDiagnostics)
             }
         }
 
@@ -176,6 +177,7 @@ void UIDocumentSystem::applyComponent(Entity entity, UIDocumentComponent& docume
     if (forceApply || visible != document.appliedVisible){
         if (visible){
             rmlDocument->Show(Rml::ModalFlag::None, Rml::FocusFlag::None);
+            if (forceApply) compatDocumentShown(rmlDocument);   // p2-html: autofocus
         }else{
             rmlDocument->Hide();
         }
@@ -209,6 +211,9 @@ void UIDocumentSystem::update(double dt){
     for (size_t i = 0; i < components->size(); i++){
         applyComponent(components->getEntity(i), components->getComponentFromIndex(i));
     }
+
+    // p2-html: <script type="text/lua"> of the documents loaded above, before the layout
+    compatRunScripts();
 
     // control characters that came without their key down this frame, before the layout
     updateInput();
@@ -305,6 +310,7 @@ bool UIDocumentSystem::loadDocumentNow(Entity entity){
     // style and layout, so elements and their boxes can be queried right away
     context->update();
     textureUpdate();
+    compatRunScripts();   // p2-html: its <script type="text/lua">
 
     return document->loaded;
 }

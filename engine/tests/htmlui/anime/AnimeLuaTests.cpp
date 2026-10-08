@@ -306,7 +306,7 @@ TEST_F(AnimeLuaTest, SelectorsOnDocuments){
     ASSERT_TRUE(GpuEnvironment::ensure());
     SceneFixture fixture;
     UIDocument& document = fixture.add<UIDocument>();
-    ASSERT_TRUE(document.load("p1/anime.html"));
+    ASSERT_TRUE(document.load("p1/anime.rml"));
     HtmlUIClock::setFixedTime(1.0);
     AnimEngine::instance().reset();
     AnimEngine::instance().tick(HtmlUIClock::now());
@@ -336,7 +336,7 @@ TEST_F(AnimeLuaTest, UIElementHandlesFromLua){
     ASSERT_TRUE(GpuEnvironment::ensure());
     SceneFixture fixture;
     UIDocument& document = fixture.add<UIDocument>();
-    ASSERT_TRUE(document.load("p1/anime.html"));
+    ASSERT_TRUE(document.load("p1/anime.rml"));
     HtmlUIClock::setFixedTime(1.0);
     AnimEngine::instance().reset();
     AnimEngine::instance().tick(HtmlUIClock::now());

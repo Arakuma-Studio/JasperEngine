@@ -35,7 +35,7 @@ namespace {
             GpuEnvironment::setView(640, 360, 640, 360, Scaling::FITWIDTH);
             fixture.reset(new SceneFixture());
             document = &fixture->add<UIDocument>();
-            ASSERT_TRUE(document->load("ecs/input.html"));
+            ASSERT_TRUE(document->load("ecs/input.rml"));
             button = document->getElementById("button");
             ASSERT_TRUE(button.isValid());
 

@@ -16,6 +16,7 @@
 #include "render/Render.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -24,6 +25,7 @@ namespace Rml {
     class Context;
     class Element;
     class ElementDocument;
+    class EventListener;
 }
 
 namespace jasperengine {
@@ -57,6 +59,23 @@ namespace jasperengine {
         // document, or a document with a background colour or a decorator (phase 1)
         bool isPointerOverContent() const;
         void setDebuggerVisible(bool visible);
+
+        // --- phase 2 (p2-html, hooks H1/H1b/H4) ---
+        // .html/.htm documents load through the compat layer (DocumentLoader::load, with
+        // options from this context: its size, density ratio, themes); .rml through RmlUi
+        static bool isCompatPath(const std::string& path);
+        // color scheme ("light"/"dark") and reduced motion: RmlUi themes of the whole context
+        // (media queries prefers-color-scheme / prefers-reduced-motion), kept for later loads
+        void setColorScheme(const std::string& scheme);
+        const std::string& getColorScheme() const;
+        void setReducedMotion(bool reduced);
+        bool getReducedMotion() const;
+        // the default action of the htmlnavigate event (an <a href> click that no listener
+        // prevented): called with the document and the href (UIDocumentSystem loads it)
+        void setNavigateHandler(std::function<void(Rml::ElementDocument*, const std::string&)> handler);
+        // Info lines of the compat diagnostics one by one (AppSettings::htmlUiVerboseDiagnostics)
+        static void setVerboseDiagnostics(bool verbose);
+        static bool getVerboseDiagnostics();
 
         // --- p1-input (HtmlUIContextInput.cpp, phase-1 spec §3.6) ---
         // touch pointers with their ids (RmlUi treats each as the primary button)
@@ -123,6 +142,15 @@ namespace jasperengine {
         std::unique_ptr<RmlTextInputHandler> textInputHandler;
         std::vector<int> touches;   // touch pointers down in RmlUi
         float wheelScale;
+
+        // --- phase 2 (p2-html) ---
+        std::string colorScheme = "light";
+        bool reducedMotion = false;
+        std::function<void(Rml::ElementDocument*, const std::string&)> navigateHandler;
+        std::unique_ptr<Rml::EventListener> navigateListener;   // on the context root (bubble phase)
+        void applyThemes();
+        // documents laid out with viewport-dependent values follow a size change (§3.12.1)
+        void restyleForViewport();
     };
 
 }

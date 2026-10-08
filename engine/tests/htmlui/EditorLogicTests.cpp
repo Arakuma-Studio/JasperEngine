@@ -626,7 +626,7 @@ TEST(HtmlUITemplates, CreatesDocumentAndStyleSheetWithFreeNames){
     // the document links its stylesheet and has one heading and one button
     std::ifstream html(directory / "NewDocument.html");
     const std::string text((std::istreambuf_iterator<char>(html)), std::istreambuf_iterator<char>());
-    EXPECT_NE(text.find("<link type=\"text/css\" href=\"NewDocument.css\"/>"), std::string::npos);
+    EXPECT_NE(text.find("<link rel=\"stylesheet\" href=\"NewDocument.css\">"), std::string::npos);
     EXPECT_NE(text.find("<h1"), std::string::npos);
     EXPECT_NE(text.find("<button"), std::string::npos);
 

@@ -25,6 +25,11 @@ namespace Rml {
     class ElementDocument;
 }
 
+namespace jasperengine::htmlui::compat {
+    struct CompatDocument;
+    struct Diagnostic;
+}
+
 namespace jasperengine{
 
     class Framebuffer;
@@ -41,6 +46,7 @@ namespace jasperengine{
     struct HtmlUIScriptState;   // p1-lua     (UIDocumentSystemScript.cpp)
     struct HtmlUIReloadState;   // p1-editor  (UIDocumentSystemReload.cpp)
     struct HtmlUITextureState;  // p1-rtt     (UIDocumentSystemTexture.cpp)
+    struct HtmlUICompatState;   // p2-html    (UIDocumentSystemCompat.cpp)
 
     // phase of a pointer event handed to texture-mode documents (dispatchWorldPointer)
     enum class PointerPhase { DOWN, MOVE, UP, CANCEL };
@@ -173,6 +179,24 @@ namespace jasperengine{
         // NULL_ENTITY when that was the screen context, the game or nothing
         Entity getTextureFocus() const;
 
+        // --- p2-html (UIDocumentSystemCompat.cpp, phase-2 §3.12, hooks H1b/H4) ---
+        // the compile of an .html document (the compat layer's RML, source map, diagnostics);
+        // null for .rml documents and before the load
+        std::shared_ptr<const htmlui::compat::CompatDocument> getCompiledDocument(Entity entity) const;
+        // compile-time + runtime diagnostics (RmlUi's messages mapped back, Lua script
+        // errors): the list UIDocument::getDiagnostics() returns
+        const std::vector<htmlui::compat::Diagnostic>& getDiagnostics(Entity entity) const;
+        // prefers-color-scheme ("light", "dark") and prefers-reduced-motion of the context the
+        // entity's document is in (RmlUi themes are per context)
+        void setColorScheme(Entity entity, const std::string& scheme);
+        void setReducedMotion(Entity entity, bool reduced);
+        // the scene's Lua scripts started (LuaBinding::initializeLuaScripts): the documents'
+        // <script type="text/lua"> run now and after every later (re)load, until the play stops
+        void startDocumentScripts();
+        // Info diagnostics logged one by one (the editor's htmlUiVerboseDiagnostics setting)
+        static void setVerboseDiagnostics(bool verbose);
+        static bool isVerboseDiagnostics();
+
     private:
         // HtmlUI::acquire and the context, the first time the scene has a document
         bool ensureContext();
@@ -204,6 +228,7 @@ namespace jasperengine{
         friend struct HtmlUIScriptState;
         friend struct HtmlUIReloadState;
         friend struct HtmlUITextureState;
+        friend struct HtmlUICompatState;
 
         // --- p1-render ---
         std::shared_ptr<HtmlUIRenderState> renderState;
@@ -266,6 +291,23 @@ namespace jasperengine{
         bool isWorldPointerCaptured(int pointer, int button, bool touch) const;   // button < 0: any mouse button
         bool dispatchWorldWheel(float dx, float dy, int mods);   // the hovered texture document
         void textureMouseLeave();
+
+        // --- p2-html ---
+        std::shared_ptr<HtmlUICompatState> compatState;
+        HtmlUICompatState& getCompatState();
+        // scriptDocumentLoaded (every load and reload): navigation, themes, its Lua scripts queued
+        void compatDocumentLoaded(Entity entity);
+        // applyComponent, a freshly loaded document shown: autofocus
+        void compatDocumentShown(Rml::ElementDocument* document);
+        // the queued document scripts: update() before the context update, the end of a synchronous load
+        void compatRunScripts();
+        // releaseScriptState (play stop): no more document scripts
+        void compatScriptsStopped();
+        // hook H2: a stylesheet-only change of an .html document: the new compile's sheets swap
+        // in place when its RML (and scripts, templates) did not change; false = needs a full reload
+        bool compatRestyle(Entity entity);
+        // hook H2: the compat dependencies of a loaded .html document (CSS, imports, Lua src, manifest)
+        std::vector<std::string> compatDependencies(Rml::ElementDocument* document) const;
     };
 
 }
