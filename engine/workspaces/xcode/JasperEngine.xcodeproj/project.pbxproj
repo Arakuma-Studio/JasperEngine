@@ -1750,6 +1750,9 @@
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		434F4D5021EB5BE965A49483 /* LucideIcons.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5004A5BD8DA28C89EE /* LucideIcons.h */; };
+		434F4D50C808E0558791BBFE /* LucideIcons.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5004562E83BA673A8C /* LucideIcons.cpp */; };
+		434F4D50A480D91B1154DD00 /* LucideIcons.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5004562E83BA673A8C /* LucideIcons.cpp */; };
 		434F4D50A227D91B03F18A89 /* UserAgentStyle.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50927A4DF805745C98 /* UserAgentStyle.h */; };
 		434F4D50D88FB37BBE13E9F1 /* UserAgentStyle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500146D11FAD7506A4 /* UserAgentStyle.cpp */; };
 		434F4D50EB40AB893E4E3EBD /* UserAgentStyle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500146D11FAD7506A4 /* UserAgentStyle.cpp */; };
@@ -4214,6 +4217,8 @@
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		434F4D5004A5BD8DA28C89EE /* LucideIcons.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LucideIcons.h; sourceTree = "<group>"; };
+		434F4D5004562E83BA673A8C /* LucideIcons.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LucideIcons.cpp; sourceTree = "<group>"; };
 		434F4D50927A4DF805745C98 /* UserAgentStyle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UserAgentStyle.h; sourceTree = "<group>"; };
 		434F4D500146D11FAD7506A4 /* UserAgentStyle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UserAgentStyle.cpp; sourceTree = "<group>"; };
 		434F4D500A0947F4D46DAE4A /* ValueTable.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ValueTable.cpp; sourceTree = "<group>"; };
@@ -7423,6 +7428,8 @@
 			children = (
 				434F4D500522B76D415E56EC /* RuntimeRegistry.cpp */,
 				434F4D50B0141481E046294D /* RuntimeRegistry.h */,
+				434F4D5004562E83BA673A8C /* LucideIcons.cpp */,
+				434F4D5004A5BD8DA28C89EE /* LucideIcons.h */,
 			);
 			path = runtime;
 			sourceTree = "<group>";
@@ -8284,6 +8291,7 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				434F4D5021EB5BE965A49483 /* LucideIcons.h in Headers */,
 				434F4D50A227D91B03F18A89 /* UserAgentStyle.h in Headers */,
 				434F4D504A25F34A784F3C33 /* RuntimeRegistry.h in Headers */,
 				434F4D50185F6D57FA6C2CA9 /* RcssWriter.h in Headers */,
@@ -9960,6 +9968,7 @@
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				434F4D50A480D91B1154DD00 /* LucideIcons.cpp in Sources */,
 				434F4D50EB40AB893E4E3EBD /* UserAgentStyle.cpp in Sources */,
 				434F4D506C72DE70E462A382 /* ValueTable.cpp in Sources */,
 				434F4D5031F95685ECA34523 /* UnitTable.cpp in Sources */,
@@ -10238,6 +10247,7 @@
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				434F4D50C808E0558791BBFE /* LucideIcons.cpp in Sources */,
 				434F4D50D88FB37BBE13E9F1 /* UserAgentStyle.cpp in Sources */,
 				434F4D502E599AAF1490A558 /* ValueTable.cpp in Sources */,
 				434F4D501A2CE6046EB9432E /* UnitTable.cpp in Sources */,

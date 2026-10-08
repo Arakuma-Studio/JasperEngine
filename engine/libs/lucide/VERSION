@@ -1,0 +1,6 @@
+Lucide 1.53.0
+tag:    1.53.0 (latest release, 2026-10-08)
+commit: b56741cf30c08fc7248bf41ddd3a261367aa9579
+source: https://github.com/lucide-icons/lucide
+icons:  1869 (264 aliases)
+built:  python3 tools/htmlui/build_lucide_pack.py <checkout of tag 1.53.0> engine/libs/lucide/lucide.pack
