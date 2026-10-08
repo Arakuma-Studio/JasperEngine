@@ -146,7 +146,7 @@ HtmlUIInputState& UIDocumentSystem::getInputState(){
     return *inputState;
 }
 
-bool UIDocumentSystem::eventOnPointerDown(int pointer, int button, float x, float y, int mods, bool touch){
+bool UIDocumentSystem::eventOnPointerDown(int pointer, int button, float x, float y, int mods, bool touch, bool world){
     if (isWorldPointerCaptured(pointer, button, touch)) return dispatchWorldPointer(pointer, button, x, y, mods, PointerPhase::DOWN, touch);
     HtmlUIInputState& state = getInputState();
     bool consumed = false;
@@ -178,11 +178,11 @@ bool UIDocumentSystem::eventOnPointerDown(int pointer, int button, float x, floa
         getContext()->getTextInputHandler().requestKeyboard();
 
     // p1-rtt: texture-mode documents get the event here when the screen documents did not take it
-    if (consumed) textureFocusScreen(); else consumed = dispatchWorldPointer(pointer, button, x, y, mods, PointerPhase::DOWN, touch);
+    if (consumed) textureFocusScreen(); else if (world) consumed = dispatchWorldPointer(pointer, button, x, y, mods, PointerPhase::DOWN, touch);
     return consumed;
 }
 
-bool UIDocumentSystem::eventOnPointerUp(int pointer, int button, float x, float y, int mods, bool touch){
+bool UIDocumentSystem::eventOnPointerUp(int pointer, int button, float x, float y, int mods, bool touch, bool world){
     if (isWorldPointerCaptured(pointer, button, touch)) return dispatchWorldPointer(pointer, button, x, y, mods, PointerPhase::UP, touch);
     HtmlUIInputState& state = getInputState();
     std::set<int>& captures = touch ? state.capturedTouches : state.capturedButtons;
@@ -212,11 +212,11 @@ bool UIDocumentSystem::eventOnPointerUp(int pointer, int button, float x, float 
         }
     }
 
-    if (!consumed) consumed = dispatchWorldPointer(pointer, button, x, y, mods, PointerPhase::UP, touch);
+    if (!consumed && world) consumed = dispatchWorldPointer(pointer, button, x, y, mods, PointerPhase::UP, touch);
     return consumed;
 }
 
-bool UIDocumentSystem::eventOnPointerMove(int pointer, float x, float y, int mods, bool touch){
+bool UIDocumentSystem::eventOnPointerMove(int pointer, float x, float y, int mods, bool touch, bool world){
     if (isWorldPointerCaptured(pointer, -1, touch)) return dispatchWorldPointer(pointer, -1, x, y, mods, PointerPhase::MOVE, touch);
     HtmlUIInputState& state = getInputState();
     bool consumed = false;
@@ -237,7 +237,7 @@ bool UIDocumentSystem::eventOnPointerMove(int pointer, float x, float y, int mod
         }
     }
 
-    if (!consumed) consumed = dispatchWorldPointer(pointer, -1, x, y, mods, PointerPhase::MOVE, touch); else if (!touch) textureMouseLeave();
+    if (!consumed){ if (world) consumed = dispatchWorldPointer(pointer, -1, x, y, mods, PointerPhase::MOVE, touch); }else if (!touch) textureMouseLeave();
     return consumed;
 }
 

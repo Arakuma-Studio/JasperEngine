@@ -302,3 +302,191 @@ TEST_F(IntegrationTest, PlayStopCyclesLeakNothing){
     for (uint32_t id : handles.buffers) EXPECT_FALSE(isBufferValid(id)) << "buffer " << id;
     for (uint32_t id : handles.images) EXPECT_FALSE(isImageValid(id)) << "image " << id;
 }
+
+namespace {
+
+    // counts the events of one type on an element
+    class CountingListener : public Rml::EventListener {
+    public:
+        int count = 0;
+        void ProcessEvent(Rml::Event&) override{ count++; }
+    };
+
+    // the canvas point a world point projects to through the scene camera
+    Vector2 project(Scene& scene, const Vector3& world){
+        const CameraComponent& camera = scene.getComponent<CameraComponent>(scene.getCamera());
+        Vector4 clip = camera.viewProjectionMatrix * Vector4(world.x, world.y, world.z, 1.0f);
+        const float x = clip.x / clip.w, y = clip.y / clip.w;
+        return Vector2((x + 1.0f) * 0.5f * Engine::getCanvasWidth(), (1.0f - y) * 0.5f * Engine::getCanvasHeight());
+    }
+
+    // One 3D scene with the three kinds of UI: a screen document (ecs/input.html: #button at
+    // (100, 100) 160x48 on a transparent body), component UI buttons, and a texture-mode
+    // document (p1/texture_input.html: #tl and #br quadrants on a transparent body) on a
+    // wall, all fed through the engine's Engine::system* entry points
+    class InputRoutingTest : public IntegrationTest {
+    protected:
+        void SetUp() override{
+            IntegrationTest::SetUp();
+            Engine::onMouseDown.add(callbackTag, std::function<void(int, float, float, int)>([this](int, float, float, int){ gameDowns++; }));
+            Engine::onMouseUp.add(callbackTag, std::function<void(int, float, float, int)>([this](int, float, float, int){ gameUps++; }));
+            Engine::onTouchStart.add(callbackTag, std::function<void(int, float, float)>([this](int, float, float){ gameTouches++; }));
+        }
+
+        void TearDown() override{
+            Engine::onMouseDown.remove(callbackTag);
+            Engine::onMouseUp.remove(callbackTag);
+            Engine::onTouchStart.remove(callbackTag);
+            Engine::systemTouchCancel();
+            IntegrationTest::TearDown();
+        }
+
+        void createRoutingScene(){
+            fixture.reset(new SceneFixture());
+            Camera& camera = fixture->add<Camera>();
+            camera.setPosition(0, 0, 5);
+            camera.setTarget(0, 0, 0);
+            camera.activate();
+            // a 3D scene takes component UI events when asked to (a UI camera's scene does by default)
+            fixture->getScene().setEnableUIEvents(true);
+
+            Primitive& wall = fixture->add<Primitive>();
+            wall.createWall(2, 2);
+            wall.setPosition(1.5f, 0, 0);
+
+            screenDocument.reset(new UIDocument(fixture->addDocument("ecs/input.html")));
+            textureDocument.reset(new UIDocument(fixture->addDocument("p1/texture_input.html")));
+            UIDocumentComponent& component = texture().getComponent<UIDocumentComponent>();
+            component.renderMode = UIDocumentRenderMode::TEXTURE;
+            component.textureWidth = 256;
+            component.textureHeight = 256;
+            component.inputSurface = wall.getEntity();
+            ASSERT_TRUE(fixture->waitUntilLoaded());
+
+            // a component button over the world document's #tl, one where nothing else is
+            tl = project(fixture->getScene(), Vector3(1.0f, 0.5f, 0));
+            br = project(fixture->getScene(), Vector3(2.0f, -0.5f, 0));
+            worldBody = project(fixture->getScene(), Vector3(2.0f, 0.5f, 0));
+            overWorld = &fixture->add<Button>();
+            overWorld->setPosition(tl.x - 15, tl.y - 15);
+            overWorld->setSize(30, 30);
+            alone = &fixture->add<Button>();
+            alone->setPosition(20, 280);
+            alone->setSize(60, 40);
+            overWorld->getComponent<ButtonComponent>().onPress.add(callbackTag, std::function<void()>([this](){ overWorldPresses++; }));
+            alone->getComponent<ButtonComponent>().onPress.add(callbackTag, std::function<void()>([this](){ alonePresses++; }));
+            GpuEnvironment::drawFrames(2);
+
+            Rml::ElementDocument* world = system().getDocument(texture().getEntity());
+            ASSERT_NE(world, nullptr);
+            worldTl = world->GetElementById("tl");
+            worldBr = world->GetElementById("br");
+            screenButton = system().getDocument(screen().getEntity())->GetElementById("button");
+            ASSERT_TRUE(worldTl && worldBr && screenButton);
+            worldTl->AddEventListener(Rml::EventId::Click, &worldTlClicks);
+            worldBr->AddEventListener(Rml::EventId::Click, &worldBrClicks);
+            screenButton->AddEventListener(Rml::EventId::Click, &screenClicks);
+        }
+
+        void removeListeners(){
+            worldTl->RemoveEventListener(Rml::EventId::Click, &worldTlClicks);
+            worldBr->RemoveEventListener(Rml::EventId::Click, &worldBrClicks);
+            screenButton->RemoveEventListener(Rml::EventId::Click, &screenClicks);
+        }
+
+        void click(Vector2 point){
+            Engine::systemMouseMove(point.x, point.y, 0);
+            Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, point.x, point.y, 0);
+            Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, point.x, point.y, 0);
+        }
+
+        void tap(int pointer, Vector2 point){
+            Engine::systemTouchStart(pointer, point.x, point.y);
+            Engine::systemTouchEnd(pointer, point.x, point.y);
+        }
+
+        Vector2 tl, br, worldBody;
+        Button* overWorld = nullptr;
+        Button* alone = nullptr;
+        Rml::Element* worldTl = nullptr;
+        Rml::Element* worldBr = nullptr;
+        Rml::Element* screenButton = nullptr;
+        CountingListener worldTlClicks, worldBrClicks, screenClicks;
+        int gameDowns = 0, gameUps = 0, gameTouches = 0, overWorldPresses = 0, alonePresses = 0;
+    };
+
+}
+
+TEST_F(InputRoutingTest, ScreenDocumentsThenComponentUIThenWorldThenGame){
+    createRoutingScene();
+    ASSERT_TRUE(Engine::isIgnoreEventsHandledByUI());
+
+    // the screen document's button: the document's, nobody else's
+    click(Vector2(180, 124));
+    EXPECT_EQ(screenClicks.count, 1);
+    EXPECT_EQ(gameDowns, 0);
+
+    // a component button where nothing else is: the component UI's
+    click(Vector2(50, 300));
+    EXPECT_EQ(alonePresses, 1);
+    EXPECT_EQ(gameDowns, 0);
+
+    // the world document's #br: the world document's
+    click(br);
+    EXPECT_EQ(worldBrClicks.count, 1);
+    EXPECT_EQ(system().getTextureFocus(), texture().getEntity());
+    EXPECT_EQ(gameDowns, 0);
+
+    // a component button drawn over the world document's #tl: the component UI is in front
+    // of the 3D world, so the button gets the press and the document under it nothing; the
+    // press elsewhere takes the keys away from the world document
+    click(tl);
+    EXPECT_EQ(overWorldPresses, 1);
+    EXPECT_EQ(worldTlClicks.count, 0);
+    EXPECT_FALSE(worldTl->IsPseudoClassSet("hover"));
+    EXPECT_EQ(system().getTextureFocus(), NULL_ENTITY);
+    EXPECT_EQ(gameDowns, 0);
+
+    // hovering the component button does not hover the world element under it
+    Engine::systemMouseMove(br.x, br.y, 0);
+    EXPECT_TRUE(worldBr->IsPseudoClassSet("hover"));
+    Engine::systemMouseMove(tl.x, tl.y, 0);
+    EXPECT_FALSE(worldTl->IsPseudoClassSet("hover"));
+    EXPECT_FALSE(worldBr->IsPseudoClassSet("hover"));
+
+    // a press taken by the world document keeps the pointer over the component button
+    // (capture): the release is the document's, the button is not pressed
+    Engine::systemMouseMove(br.x, br.y, 0);
+    Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, br.x, br.y, 0);
+    EXPECT_TRUE(worldBr->IsPseudoClassSet("active"));
+    Engine::systemMouseMove(tl.x, tl.y, 0);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, tl.x, tl.y, 0);
+    EXPECT_FALSE(worldBr->IsPseudoClassSet("active"));
+    EXPECT_FALSE(system().hasPointerCapture(0, D_MOUSE_BUTTON_LEFT, false));
+    EXPECT_EQ(overWorldPresses, 1);
+    EXPECT_EQ(gameDowns, 0);
+    EXPECT_EQ(gameUps, 0);
+
+    // the world document's transparent body and empty space: the game's
+    click(worldBody);
+    EXPECT_EQ(gameDowns, 1);
+    click(Vector2(600, 330));
+    EXPECT_EQ(gameDowns, 2);
+    EXPECT_EQ(worldTlClicks.count, 0);
+    EXPECT_EQ(worldBrClicks.count, 1);
+    EXPECT_EQ(screenClicks.count, 1);
+
+    // touch follows the same order
+    tap(1, tl);
+    EXPECT_EQ(overWorldPresses, 2);
+    EXPECT_EQ(worldTlClicks.count, 0);
+    tap(2, br);
+    EXPECT_EQ(worldBrClicks.count, 2);
+    tap(3, Vector2(180, 124));
+    EXPECT_EQ(screenClicks.count, 2);
+    EXPECT_EQ(gameTouches, 0);
+    tap(4, worldBody);
+    EXPECT_EQ(gameTouches, 1);
+
+    removeListeners();
+}

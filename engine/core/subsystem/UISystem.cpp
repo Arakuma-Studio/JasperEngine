@@ -3336,6 +3336,10 @@ bool UISystem::eventOnPointerMove(float x, float y){
     return false;
 }
 
+bool UISystem::isPointerOverUI() const{
+    return isLiveUIEntity(lastUIFromPointerHover) || isLiveUIEntity(lastUIFromPointer);
+}
+
 bool UISystem::isCoordInside(float x, float y, Transform& transform, RectTransformComponent& layout){
     Vector3 point = transform.worldRotation.getRotationMatrix() * Vector3(x, y, 0);
 
