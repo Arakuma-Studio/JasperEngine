@@ -196,36 +196,43 @@ class LucideIcons {
             this.loadCheckout(lucideDir);
         else if (fs.existsSync(LUCIDE_PACK))
             this.loadPack(fs.readFileSync(LUCIDE_PACK));
-        this.source = lucideDir ? `checkout ${lucideDir}` : (fs.existsSync(LUCIDE_PACK) ? 'engine/libs/lucide/lucide.pack' : 'none');
+        this.source = lucideDir ? `checkout ${path.basename(lucideDir)}` :
+            (fs.existsSync(LUCIDE_PACK) ? `engine/libs/lucide/lucide.pack (Lucide ${this.release})` : 'none');
     }
 
-    // engine/libs/lucide/lucide.pack, written by tools/htmlui/build_lucide_pack.py
+    // engine/libs/lucide/lucide.pack, written by tools/htmlui/build_lucide_pack.py (little
+    // endian): "LUCP", u32 format version, u32 payload size, zlib payload {u32 icon count,
+    // u32 alias count, u16+bytes release tag, icons {u16+name, u32 offset, u32 length},
+    // aliases {u16+name, u32 icon index}, u32 markup size, markup}
     loadPack(data){
-        const payload = zlib.inflateSync(data.subarray(data.indexOf(0x78)));
-        const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
-        if (payload.toString('latin1', 0, 4) !== 'LUCP')
+        if (data.toString('latin1', 0, 4) !== 'LUCP')
             throw new Error('lucide.pack: bad magic');
-        let at = 8;
-        const iconCount = view.getUint32(at, true); at += 4;
-        const aliasCount = view.getUint32(at, true); at += 4;
-        const readString = () => { const length = view.getUint16(at, true); at += 2; const text = payload.toString('utf8', at, at + length); at += length; return text; };
+        const version = data.readUInt32LE(4);
+        if (version !== 1)
+            throw new Error(`lucide.pack: format version ${version} is not 1`);
+        const payload = zlib.inflateSync(data.subarray(12));
+        if (payload.length !== data.readUInt32LE(8))
+            throw new Error('lucide.pack: payload size mismatch');
+        let at = 0;
+        const u16 = () => { const v = payload.readUInt16LE(at); at += 2; return v; };
+        const u32 = () => { const v = payload.readUInt32LE(at); at += 4; return v; };
+        const string = () => { const length = u16(); const text = payload.toString('utf8', at, at + length); at += length; return text; };
+        const iconCount = u32();
+        const aliasCount = u32();
+        this.release = string();
         const entries = [];
-        for (let i = 0; i < iconCount; i++){
-            const name = readString();
-            const offset = view.getUint32(at, true); at += 4;
-            const length = view.getUint32(at, true); at += 4;
-            entries.push({ name, offset, length });
-        }
-        const aliasEntries = [];
-        for (let i = 0; i < aliasCount; i++){
-            const alias = readString();
-            const index = view.getUint32(at, true); at += 4;
-            aliasEntries.push({ alias, index });
-        }
+        for (let i = 0; i < iconCount; i++)
+            entries.push({ name: string(), offset: u32(), length: u32() });
+        const aliases = [];
+        for (let i = 0; i < aliasCount; i++)
+            aliases.push({ alias: string(), index: u32() });
+        const markupSize = u32();
         const markup = at;
+        if (markup + markupSize !== payload.length)
+            throw new Error('lucide.pack: markup size mismatch');
         for (const entry of entries)
             this.icons.set(entry.name, payload.toString('utf8', markup + entry.offset, markup + entry.offset + entry.length));
-        for (const { alias, index } of aliasEntries)
+        for (const { alias, index } of aliases)
             this.aliases.set(alias, entries[index].name);
     }
 
@@ -422,6 +429,17 @@ async function capturePage(browser, name, html, manifest, lucide, extraCss, with
         const png = await page.screenshot({ omitBackground: true, caret: 'hide' });
         const layout = withLayout ? await page.evaluate(() => {
             const round = (value) => Math.round(value * 100) / 100;
+            // under a CSS transform the client rect is the transformed bounding box, which the
+            // engine's layout boxes do not include: such elements are compared by the images only
+            const transformed = (element) => {
+                for (let e = element; e && e.nodeType === 1; e = e.parentElement){
+                    const style = getComputedStyle(e);
+                    if ((style.transform !== 'none' && style.transform !== 'matrix(1, 0, 0, 1, 0, 0)') ||
+                        style.translate !== 'none' || style.rotate !== 'none' || style.scale !== 'none')
+                        return true;
+                }
+                return false;
+            };
             const elements = [];
             for (const element of document.querySelectorAll('[id]')){
                 const box = element.getBoundingClientRect();
@@ -429,6 +447,8 @@ async function capturePage(browser, name, html, manifest, lucide, extraCss, with
                 const tolerance = element.getAttribute('data-ref-tol');
                 if (tolerance)
                     entry.tol = tolerance;
+                if (transformed(element))
+                    entry.transformed = true;
                 elements.push(entry);
             }
             return elements;
