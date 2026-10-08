@@ -15,6 +15,7 @@ namespace jasperengine{
         sg_image image;
         sg_sampler sampler;
         sg_view view;
+        size_t streamBytes;   // RGBA8/R8 dynamic textures: the size every update must have (0 = not checked)
 
         sg_image_type getTextureType(TextureType textureType);
         sg_filter getFilter(TextureFilter textureFilter);
@@ -44,12 +45,18 @@ namespace jasperengine{
                     ColorFormat colorFormat, int numMipmaps, void* data[], size_t size[],
                     TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV);
 
+        // sampleCount > 1: an MSAA attachment, never sampled (no texture view or sampler);
+        // depthStencil: DEPTH_STENCIL instead of DEPTH (not sampled either); resolve: a 1-sample
+        // MSAA resolve attachment, sampled like a colour attachment
         bool createFramebufferTexture(
                     TextureType type, bool depth, bool shadowMap, int width, int height,
                     TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV,
-                    ColorFormat colorFormat = ColorFormat::RGBA);
+                    ColorFormat colorFormat = ColorFormat::RGBA, int sampleCount = 1,
+                    bool depthStencil = false, bool resolve = false);
 
         bool createDynamicTexture(const std::string& label, int width, int height);
+        bool createDynamicTexture(const std::string& label, int width, int height,
+                    ColorFormat colorFormat, TextureFilter filter);
         void updateTexture(const void* data, size_t size);
 
         void destroyTexture();

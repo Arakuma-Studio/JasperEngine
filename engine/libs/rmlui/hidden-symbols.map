@@ -3,8 +3,9 @@
    default visibility, so the std templates it instantiates over RmlUi types (containers of
    Rml::Vertex, Rml::ElementDocument*, ...) and members taking RmlUi types would otherwise be
    exported; --exclude-libs only covers librmlui.a's own objects. RmlUi is an engine detail
-   (docs/html-ui/DESIGN.md, swappable core). */
+   (docs/html-ui/DESIGN.md, swappable core). The vector libraries behind it (ThorVG's tvg::,
+   LunaSVG's lunasvg::) are engine details too. */
 {
     global: *;
-    local: extern "C++" { *Rml::*; };
+    local: extern "C++" { *Rml::*; *tvg::*; *lunasvg::*; };
 };

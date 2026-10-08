@@ -36,6 +36,9 @@ editor::SceneRender2D::SceneRender2D(Scene* scene, unsigned int width, unsigned 
     tileLines = overlay(new LineRenderer(scene));
     tileLines->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
     tileLines->setVisible(false);
+    documentLines = overlay(new LineRenderer(scene));
+    documentLines->addLine(Vector3::ZERO, Vector3::ZERO, Vector4::ZERO);
+    documentLines->setVisible(false);
     scene->setDefaultEntityPool(EntityPool::User);
 
     createLines(width, height);
@@ -93,6 +96,7 @@ editor::SceneRender2D::~SceneRender2D(){
 
     delete gridLines;
     delete tileLines;
+    delete documentLines;
 }
 
 // square marker for an editable point (occluder polygon points, line endpoints)
@@ -683,6 +687,8 @@ void editor::SceneRender2D::createOrUpdateJointLines(Entity entity, const Joint2
 }
 
 void editor::SceneRender2D::createLines(unsigned int width, unsigned int height){
+    canvasFrameWidth = width;
+    canvasFrameHeight = height;
     lines->clearLines();
 
     lines->addLine(Vector3(0, -1000000, 0), Vector3(0, 1000000, 0), Vector4(0.2, 0.8, 0.4, 1.0));
@@ -745,6 +751,7 @@ void editor::SceneRender2D::hideAllGizmos(){
     lines->setVisible(false);
     gridLines->setVisible(false);
     tileLines->setVisible(false);
+    documentLines->setVisible(false);
     for (auto& pair : containerLines) {
         pair.second->setVisible(false);
     }
@@ -1092,6 +1099,26 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
                 so.icon->setVisible(false);
             }
         }
+    }
+
+    // --- Canvas outline for a selected UI Document (documents are not pickable here:
+    // they are selected in the Hierarchy) ---
+    documentLines->clearLines();
+    documentLines->setVisible(false);
+    for (Entity entity : selEntities){
+        const UIDocumentComponent* document = scene->findComponent<UIDocumentComponent>(entity);
+        if (!document || document->renderMode != UIDocumentRenderMode::SCREEN || !scene->isEntityActiveInHierarchy(entity))
+            continue;
+
+        const float w = (float)canvasFrameWidth;
+        const float h = (float)canvasFrameHeight;
+        const Vector4 color = document->enabled ? Vector4(0.89f, 0.30f, 0.15f, 1.0f) : Vector4(0.89f, 0.30f, 0.15f, 0.4f);
+        documentLines->addLine(Vector3(0, 0, 0), Vector3(w, 0, 0), color);
+        documentLines->addLine(Vector3(w, 0, 0), Vector3(w, h, 0), color);
+        documentLines->addLine(Vector3(w, h, 0), Vector3(0, h, 0), color);
+        documentLines->addLine(Vector3(0, h, 0), Vector3(0, 0, 0), color);
+        documentLines->setVisible(true);
+        break;
     }
 
     // --- Tile outlines for selected tilemap ---

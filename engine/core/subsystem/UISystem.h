@@ -150,6 +150,9 @@ namespace jasperengine{
         bool eventOnPointerDown(float x, float y);
         bool eventOnPointerUp(float x, float y);
         bool eventOnPointerMove(float x, float y);
+        // the last pointer event was over a UI element (hovered or pressed): documents on
+        // meshes behind it do not get the pointer (HTML UI, Engine::systemMouseMove)
+        bool isPointerOverUI() const;
 
         // basic UIs
         bool createOrUpdatePolygon(PolygonComponent& polygon, UIComponent& ui, RectTransformComponent& layout);

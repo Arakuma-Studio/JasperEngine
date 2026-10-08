@@ -1,0 +1,26 @@
+<html>
+<head>
+    <title>font synthesis</title>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="../golden/golden.css"/>
+    <style>
+        /* Synthetic bold and italic of the built-in Roboto Regular (no other face loaded):
+           CSS font-synthesis, phase-1 spec §3.13 (512x384 canvas) */
+        .line { left: 20px; font-family: Roboto; font-size: 40px; }
+        #regular { top: 10px; }
+        #bold { top: 70px; font-weight: bold; }
+        #italic { top: 130px; font-style: italic; }
+        #both { top: 190px; font-weight: bold; font-style: italic; }
+        #small { top: 260px; font-size: 16px; }
+        #small-bold { font-weight: bold; color: #ffc040; }
+        #small-italic { font-style: italic; color: #40c0ff; }
+    </style>
+</head>
+<body>
+    <div id="regular" class="abs line">IIIIII Regular</div>
+    <div id="bold" class="abs line">IIIIII Bold</div>
+    <div id="italic" class="abs line">IIIIII Italic</div>
+    <div id="both" class="abs line">IIIIII Both</div>
+    <div id="small" class="abs line">Mixed: <span id="small-bold">bold</span> and <span id="small-italic">italic</span> words</div>
+</body>
+</html>

@@ -36,6 +36,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
@@ -613,6 +614,14 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
         }
     });
 
+    // the document itself; references inside its HTML/CSS are not rewritten (phase 4)
+    visitComponents(registry->getComponentArray<UIDocumentComponent>(), [&](UIDocumentComponent& document) {
+        if (!document.filename.empty() && transform(document.filename)) {
+            document.needReload = true;
+            changed = true;
+        }
+    });
+
     return changed;
 }
 
@@ -720,6 +729,9 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
     visitComponents(registry->getComponentArray<AudioSourceComponent>(), [&](AudioSourceComponent& sound) {
         addFile(resources.sounds, sound.filename);
     });
+
+    // UIDocumentComponent: nothing to preload. RmlUi reads a document and its stylesheets when
+    // it loads it, and its images through RmlRenderer::LoadTexture, not the texture pool
 
     return resources;
 }
@@ -1375,6 +1387,42 @@ void editor::Project::cleanupShaderFilePath(const std::filesystem::path& deleted
     });
 }
 
+std::vector<editor::SceneProject*> editor::Project::getHtmlUIScenes() {
+    std::vector<SceneProject*> result;
+    for (SceneProject& sceneProject : scenes) {
+        if (sceneProject.scene) {
+            result.push_back(&sceneProject);
+        }
+    }
+    for (const std::unique_ptr<PrefabStage>& stage : prefabStages) {
+        if (stage && stage->sceneProject.scene) {
+            result.push_back(&stage->sceneProject);
+        }
+    }
+
+    // the played scene runs in place; its child scenes run as copies
+    std::scoped_lock lock(playSessionMutex);
+    if (activePlaySession && !activePlaySession->cancelled.load(std::memory_order_acquire) &&
+        activePlaySession->startupSucceeded.load(std::memory_order_acquire)) {
+        for (const PlayRuntimeScene& entry : activePlaySession->runtimeScenes) {
+            if (entry.ownedRuntime && entry.runtime && entry.runtime->scene &&
+                std::find(result.begin(), result.end(), entry.runtime) == result.end()) {
+                result.push_back(entry.runtime);
+            }
+        }
+    }
+    return result;
+}
+
+editor::HtmlUIWatcher& editor::Project::getHtmlUIWatcher() {
+    return htmlUIWatcher;
+}
+
+void editor::Project::notifyHtmlUIFileSaved(const std::filesystem::path& path) {
+    (void)path;
+    htmlUIWatcher.requestCheck();
+}
+
 void editor::Project::refreshLinkedMaterials(bool force) {
     if (materialFileLinks.empty()) {
         return;
@@ -1642,6 +1690,24 @@ void editor::Project::setVSyncEnabled(bool enabled){
 
 bool editor::Project::isVSyncEnabled() const{
     return vsyncEnabled;
+}
+
+bool editor::Project::isValidHtmlUiMsaaSamples(int samples){
+    return samples == 1 || samples == 2 || samples == 4 || samples == 8;
+}
+
+void editor::Project::setHtmlUiMsaaSamples(int samples){
+    int valid = 1;
+    while (valid * 2 <= samples && valid < 8){
+        valid *= 2;
+    }
+    this->htmlUiMsaaSamples = valid;
+    // documents already drawn pick it up when their target is created again
+    UIDocumentSystem::setPreferredSampleCount(valid);
+}
+
+int editor::Project::getHtmlUiMsaaSamples() const{
+    return htmlUiMsaaSamples;
 }
 
 void editor::Project::setWindowMode(WindowMode windowMode){
@@ -2887,10 +2953,10 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
 
-    // HTML UI documents draw untextured and textured geometry (RmlRenderer)
+    // HTML UI documents draw geometry, gradients and layer/filter passes (RmlRenderer)
     if (scene->isComponentRegistered<UIDocumentComponent>() && scene->getComponentArray<UIDocumentComponent>()->size() > 0) {
-        insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(false), 0);
-        insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(true), 0);
+        for (const auto& variant : ShaderPool::getHtmlUIVariants())
+            insertKeys(variant.first, variant.second, 0);
     }
 
     // 2D lights with shadows render occluder segments through the shadow2d
@@ -4209,6 +4275,7 @@ void editor::Project::resetConfigs() {
     scalingMode = defaultScalingMode;
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
+    setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     windowMode = defaultWindowMode;
     windowWidth = defaultWindowWidth;
     windowHeight = defaultWindowHeight;
@@ -5479,7 +5546,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D});
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples);
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -7124,7 +7191,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D});
+        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples);
         if (hasMissingSceneSources()) {
             generatedSourcesDirty.store(true);
         }
@@ -7719,6 +7786,9 @@ void editor::Project::stop(uint32_t sceneId) {
                 std::scoped_lock lock(playSessionMutex);
                 runtimeScenes = session->runtimeScenes;
             }
+
+            // anime: every animation of the play, and its script callbacks, before the scripts go
+            AnimEngine::instance().reset();
 
             const bool libraryConnected = conector.isLibraryConnected();
             if (libraryConnected) {

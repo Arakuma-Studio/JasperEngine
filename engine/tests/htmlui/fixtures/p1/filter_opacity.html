@@ -1,0 +1,21 @@
+<html>
+<head>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="p1.css"/>
+    <style>
+        /* G06: filter: opacity groups the subtree (a layer): the overlap shows only the top child */
+        #group { left: 40px; top: 40px; width: 300px; height: 200px; filter: opacity(0.5); }
+        #red { position: absolute; left: 0px; top: 0px; width: 160px; height: 120px; background-color: #ff0000; }
+        #blue { position: absolute; left: 80px; top: 60px; width: 160px; height: 120px; background-color: #0000ff; }
+        /* the same children without the filter: each at 50 % through its colour */
+        #plain { left: 40px; top: 260px; width: 300px; height: 100px; }
+        #plain div { position: absolute; width: 120px; height: 60px; }
+        #plain .r { left: 0px; top: 0px; background-color: #ff000080; }
+        #plain .b { left: 60px; top: 30px; background-color: #0000ff80; }
+    </style>
+</head>
+<body>
+    <div id="group" class="abs"><div id="red"/><div id="blue"/></div>
+    <div id="plain" class="abs"><div class="r"/><div class="b"/></div>
+</body>
+</html>

@@ -28,6 +28,7 @@ namespace jasperengine::editor {
         int m_scalingModeIndex = 0;
         int m_textureStrategyIndex = 0;
         bool m_vsyncEnabled = true;
+        int m_htmlUiMsaaIndex = 2;   // htmlUiMsaaValues: 1, 2, 4, 8
         int m_windowModeIndex = 0;
         int m_windowWidth = 0;
         int m_windowHeight = 0;

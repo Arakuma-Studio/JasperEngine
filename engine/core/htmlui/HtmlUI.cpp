@@ -7,12 +7,17 @@
 #include "RmlFile.h"
 #include "RmlFontEngine.h"
 #include "RmlSystem.h"
+#include "vector/UILottieElement.h"
 
 #include "Engine.h"
 #include "Log.h"
+#include "LunaSVGRuntime.h"
+#include "ThorVGRuntime.h"
 
 #include <RmlUi/Core.h>
+#ifdef JASPERENGINE_HTMLUI_DEBUGGER
 #include <RmlUi/Debugger.h>
+#endif
 
 #include <algorithm>
 #include <vector>
@@ -25,8 +30,11 @@ namespace {
 
     int referenceCount = 0;
 
+#ifdef JASPERENGINE_HTMLUI_DEBUGGER
     bool debuggerInitialised = false;
+#endif
     HtmlUIContext* debuggerContext = nullptr;
+    bool debuggerVisible = false;
 
     std::vector<HtmlUIContext*>& registeredContexts(){
         static std::vector<HtmlUIContext*> contexts;
@@ -73,6 +81,13 @@ bool HtmlUI::acquire(){
         return false;
     }
 
+    // Vector graphics: Rml::Initialise already registered the SVG plugin (RMLUI_SVG_PLUGIN,
+    // LunaSVG), which needs the engine's fonts for <text>; <lottie> runs on ThorVG. RmlUi
+    // forgets element instancers at shutdown, so the lottie one is registered every time.
+    LunaSVGRuntime::ensureFonts();
+    ThorVGRuntime::acquire();
+    UILottieElement::registerInstancer();
+
     referenceCount = 1;
     subscribeViewDestroyed();
 
@@ -93,13 +108,20 @@ void HtmlUI::release(){
         Log::error("[HTML UI] %u HTML UI context(s) still alive when RmlUi shuts down", (unsigned int)registeredContexts().size());
     }
 
+#ifdef JASPERENGINE_HTMLUI_DEBUGGER
     if (debuggerInitialised){
         Rml::Debugger::Shutdown();
         debuggerInitialised = false;
     }
+#endif
     debuggerContext = nullptr;
+    debuggerVisible = false;
 
     Rml::Shutdown();
+
+    // after Rml::Shutdown: the documents (and their ThorVG animations) are gone
+    UILottieElement::releaseInstancer();
+    ThorVGRuntime::release();
 
     Engine::onViewDestroyed.remove(viewDestroyedTag);
 }
@@ -170,6 +192,14 @@ size_t HtmlUI::getContextCount(){
 }
 
 void HtmlUI::setDebuggerContext(HtmlUIContext* context, bool visible){
+#ifndef JASPERENGINE_HTMLUI_DEBUGGER
+    (void)visible;
+    if (context){
+        Log::warn("[HTML UI] the RmlUi debugger is not compiled into this build (JASPERENGINE_HTMLUI_DEBUGGER)");
+    }
+    debuggerContext = nullptr;
+    debuggerVisible = false;
+#else
     Rml::Context* rmlContext = context ? context->getRmlContext() : nullptr;
 
     if (!rmlContext){
@@ -181,6 +211,7 @@ void HtmlUI::setDebuggerContext(HtmlUIContext* context, bool visible){
             debuggerInitialised = false;
         }
         debuggerContext = nullptr;
+        debuggerVisible = false;
         return;
     }
 
@@ -200,15 +231,30 @@ void HtmlUI::setDebuggerContext(HtmlUIContext* context, bool visible){
         if (!Rml::Debugger::Initialise(rmlContext)){
             Log::error("[HTML UI] the RmlUi debugger could not be initialised");
             debuggerContext = nullptr;
+            debuggerVisible = false;
             return;
         }
         debuggerInitialised = true;
     }
 
     debuggerContext = context;
+    debuggerVisible = visible;
     Rml::Debugger::SetVisible(visible);
+#endif
 }
 
 HtmlUIContext* HtmlUI::getDebuggerContext(){
     return debuggerContext;
+}
+
+bool HtmlUI::isDebuggerVisible(){
+    return debuggerContext && debuggerVisible;
+}
+
+bool HtmlUI::isDebuggerCompiled(){
+#ifdef JASPERENGINE_HTMLUI_DEBUGGER
+    return true;
+#else
+    return false;
+#endif
 }

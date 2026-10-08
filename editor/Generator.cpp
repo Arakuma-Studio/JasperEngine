@@ -522,7 +522,7 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/WinInputRouter.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/GamepadWin.cpp\n";
     content += "        )\n";
-    content += "        list(APPEND PLATFORM_LIBS gdi32 user32 shell32)\n";
+    content += "        list(APPEND PLATFORM_LIBS gdi32 user32 shell32 imm32)\n";
     content += "        if(JASPERENGINE_GRAPHIC_BACKEND STREQUAL \"vulkan\")\n";
     content += "            add_definitions(\"-DSOKOL_VULKAN\")\n";
     content += "            add_definitions(\"-DVK_USE_PLATFORM_WIN32_KHR\")\n";
@@ -542,6 +542,7 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/WindowMac.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/SystemMac.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/MacInputRouter.mm\n";
+    content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/MacTextInputClient.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/main.mm\n";
     content += "        )\n";
     content += "        list(APPEND PLATFORM_LIBS \"-framework Cocoa\" \"-framework QuartzCore\" \"-framework GameController\")\n";
@@ -1974,7 +1975,7 @@ bool editor::Generator::hasSceneSource(const std::string& sceneName, const fs::p
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     // The editor used to emit a GLFW application host into every project. It is
@@ -2139,6 +2140,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         case TextureStrategy::RESIZE: mainContent += "    Engine::setTextureStrategy(TextureStrategy::RESIZE);\n"; break;
         case TextureStrategy::NONE:   mainContent += "    Engine::setTextureStrategy(TextureStrategy::NONE);\n"; break;
     }
+
+    // MSAA of the HTML UI targets (Project Settings > Graphics), before any document draws
+    mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";
 
     // Tags and Layers, before any scene or script can ask for them
     if (!tagsAndLayers.tags.empty()) {

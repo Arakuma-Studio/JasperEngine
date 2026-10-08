@@ -40,7 +40,9 @@ namespace jasperengine::editor {
         HEADER,
         LUA,
         AUDIO,
-        FONT
+        FONT,
+        HTML,
+        CSS
     };
 
     struct FileEntry {
@@ -110,6 +112,8 @@ namespace jasperengine::editor {
         Texture luaIcon;
         Texture audioIcon;
         Texture fontIcon;
+        Texture htmlIcon;
+        Texture cssIcon;
         // Bounded cache of GPU thumbnail textures; must stay well below the
         // sokol image/sampler pool sizes (2048), which are shared with scenes
         static constexpr size_t MAX_THUMBNAIL_TEXTURES = 512;
@@ -329,6 +333,8 @@ namespace jasperengine::editor {
         void revealAsset(const fs::path& absolutePath);
         void assetsCreateFolder();
         void assetsCreateScript(bool lua);
+        // Assets > Create > HTML Document: NewDocument.html + NewDocument.css (HtmlUITemplates)
+        void assetsCreateHtmlDocument();
         void assetsShowInFileManager();
         void assetsOpenSelected();
         void assetsRenameSelected();

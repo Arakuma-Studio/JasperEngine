@@ -34,12 +34,21 @@ namespace jasperengine {
                 ColorFormat colorFormat, int numMipmaps, void* data[], size_t size[],
                 TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV);
 
+        // sampleCount > 1: MSAA attachment (not sampled); depthStencil: DEPTH_STENCIL format
+        // (not sampled); resolve: the 1-sample resolve image of an MSAA colour attachment
         bool createFramebufferTexture(
                 TextureType type, bool depth, bool shadowMap, int width, int height,
                 TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV,
-                ColorFormat colorFormat = ColorFormat::RGBA);
+                ColorFormat colorFormat = ColorFormat::RGBA, int sampleCount = 1,
+                bool depthStencil = false, bool resolve = false);
 
+        // RGBA32F, NEAREST (bone matrices)
         bool createDynamicTexture(const std::string& label, int width, int height);
+        // RGBA -> RGBA8, RED -> R8; stream update, CLAMP_TO_EDGE, no mipmaps, the given min/mag
+        // filter. updateTexture then takes exactly width * height * 4 (or 1) bytes, rows top first
+        bool createDynamicTexture(const std::string& label, int width, int height,
+                                  ColorFormat format, TextureFilter filter);
+        // at most once per frame (sokol); the next draw that samples the texture sees the data
         void updateTexture(const void* data, size_t size);
 
         void destroyTexture();

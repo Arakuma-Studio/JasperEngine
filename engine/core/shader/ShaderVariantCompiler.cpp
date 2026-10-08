@@ -355,6 +355,16 @@ void addHtmlUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, c
     if (prop & (1 << 0))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
 }
 
+// exclusive: one of them per variant (ShaderPool::getHtmlUIPostProperties)
+void addHtmlUIPostPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
+    if (prop & (1 << 0))  defs.push_back({"HAS_PASSTHROUGH", "1"});          // 'Pas'
+    if (prop & (1 << 1))  defs.push_back({"HAS_COLOR_MATRIX", "1"});         // 'Cmx'
+    if (prop & (1 << 2))  defs.push_back({"HAS_BLEND_MASK", "1"});           // 'Msk'
+    if (prop & (1 << 3))  defs.push_back({"HAS_DROP_SHADOW", "1"});          // 'Shd'
+    if (prop & (1 << 4))  defs.push_back({"HAS_BLUR", "1"});                 // 'Blr'
+    if (prop & (1 << 5))  defs.push_back({"HAS_UNPREMULTIPLY", "1"});        // 'Unp'
+}
+
 void addPointsPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
     if (prop & (1 << 0))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
     if (prop & (1 << 1))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
@@ -424,6 +434,15 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
         args.vert_file = "htmlui.vert";
         args.frag_file = "htmlui.frag";
         addHtmlUIPropertyDefinitions(args.defines, properties);
+    }else if (shaderType == ShaderType::HTMLUI_GRADIENT){
+        // the geometry vertex shader with its texture coordinates (the gradient's positions)
+        args.vert_file = "htmlui.vert";
+        args.frag_file = "htmlui_gradient.frag";
+        args.defines.push_back({"HAS_TEXTURE", "1"});
+    }else if (shaderType == ShaderType::HTMLUI_POST){
+        args.vert_file = "htmlui_post.vert";
+        args.frag_file = "htmlui_post.frag";
+        addHtmlUIPostPropertyDefinitions(args.defines, properties);
     }else{
         return false;
     }

@@ -22,6 +22,7 @@
 #include "component/AnimationComponent.h"
 #include "component/BoneComponent.h"
 #include "component/ButtonComponent.h"
+#include "component/UIDocumentComponent.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 #include "component/MeshComponent.h"
@@ -2165,6 +2166,7 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<PanelComponent>()))       return objectClass("Panel");
     if (signature.test(scene->getComponentId<ImageComponent>()))       return objectClass("Image");
     if (signature.test(scene->getComponentId<LayoutGroupComponent>())) return objectClass("LayoutGroup");
+    if (signature.test(scene->getComponentId<UIDocumentComponent>()))  return objectClass("UIDocument");
     if (signature.test(scene->getComponentId<UIComponent>()))          return objectClass("RectTransform");
     if (signature.test(scene->getComponentId<Light2DComponent>()))     return objectClass("Light2D");
     if (signature.test(scene->getComponentId<ShadowCaster2DComponent>()))  return objectClass("ShadowCaster2D");

@@ -11,15 +11,31 @@
 #if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
+
+// The macOS EngineView is a MacViewMetal, whose text input client this reaches
+#include "MacTextInputClient.h"
 #endif
 
 #if TARGET_OS_IPHONE
+#import <UIKit/UIKit.h>
 #import <MetalKit/MetalKit.h>
 
 #import "ios/AdMobAdapter.h"
+#import "ios/EngineView.h"
 
 static AdMobAdapter* admob = nil;
+
+// The text input lives on the view, which owns the hidden text field
+static EngineView* appleEngineView(){
+    MTKView* view = Renderer.view;
+    return [view isKindOfClass:[EngineView class]] ? (EngineView*)view : nil;
+}
 #endif
+
+static std::string appleUtf8String(NSString* text){
+    const char* utf8 = [text UTF8String];
+    return utf8 ? std::string(utf8) : std::string();
+}
 
 #if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
 static bool appleMouseLocked = false;
@@ -97,7 +113,8 @@ sg_swapchain JasperEngineApple::getSokolSwapchain(){
 
 void JasperEngineApple::setMouseCursor(jasperengine::CursorType type){
 #if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
-    NSCursor* cursor;
+    // NSCursor has no public busy or help cursor, so WAIT, PROGRESS and HELP stay arrows
+    NSCursor* cursor = [NSCursor arrowCursor];
     if (type == jasperengine::CursorType::ARROW){
         cursor = [NSCursor arrowCursor];
     }else if (type == jasperengine::CursorType::IBEAM){
@@ -118,6 +135,10 @@ void JasperEngineApple::setMouseCursor(jasperengine::CursorType type){
         cursor = [NSCursor closedHandCursor];
     }else if (type == jasperengine::CursorType::NOT_ALLOWED){
         cursor = [NSCursor operationNotAllowedCursor];
+    }else if (type == jasperengine::CursorType::GRAB){
+        cursor = [NSCursor openHandCursor];
+    }else if (type == jasperengine::CursorType::GRABBING){
+        cursor = [NSCursor closedHandCursor];
     }
 
     [cursor set];
@@ -158,15 +179,53 @@ bool JasperEngineApple::isTouchDevice(){
 #endif
 }
 
+// The engine runs inside the MTKView's draw callback, on the main thread, so the
+// UIKit and AppKit calls below need no dispatch.
+
+// The hidden text field starts empty (its sentinel): the engine keeps the text being
+// edited, so the current text passed here is not needed.
 void JasperEngineApple::showVirtualKeyboard(std::wstring text){
 #if TARGET_OS_IPHONE
-    [Renderer.view becomeFirstResponder];
+    [appleEngineView() showTextInput];
 #endif
 }
 
 void JasperEngineApple::hideVirtualKeyboard(){
 #if TARGET_OS_IPHONE
-    [Renderer.view resignFirstResponder];
+    [appleEngineView() hideTextInput];
+#else
+    // No virtual keyboard on macOS: end the IME session the engine dropped
+    jasperengine::macDiscardMarkedText(Renderer.view);
+#endif
+}
+
+void JasperEngineApple::setClipboardText(const std::string& utf8){
+    NSString* text = [[NSString alloc] initWithBytes:utf8.data() length:utf8.size() encoding:NSUTF8StringEncoding];
+    if (!text)
+        return;
+#if TARGET_OS_IPHONE
+    [UIPasteboard generalPasteboard].string = text;
+#else
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    [pasteboard clearContents];
+    [pasteboard setString:text forType:NSPasteboardTypeString];
+#endif
+}
+
+std::string JasperEngineApple::getClipboardText(){
+#if TARGET_OS_IPHONE
+    return appleUtf8String([UIPasteboard generalPasteboard].string);
+#else
+    return appleUtf8String([[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString]);
+#endif
+}
+
+// Engine pixels, top left: the drawable's pixels, as touches and the mouse report them
+void JasperEngineApple::setTextInputArea(float x, float y, float width, float height){
+#if TARGET_OS_IPHONE
+    [appleEngineView() setTextInputArea:CGRectMake(x, y, width, height)];
+#else
+    jasperengine::macSetTextInputArea(Renderer.view, x, y, width, height);
 #endif
 }
 

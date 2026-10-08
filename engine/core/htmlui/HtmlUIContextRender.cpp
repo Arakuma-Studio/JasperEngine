@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // The render half of HtmlUIContext (HtmlUIContext.h): the context draws its documents into
-// its own offscreen target before any camera pass, and the camera pass composites that
-// target as one quad.
+// its own offscreen RmlRenderTarget before any camera pass (layers, filters and stencil clips
+// included), and the camera pass composites layer 0 as one quad.
 
 #include "HtmlUIContext.h"
 
@@ -34,57 +34,128 @@ namespace {
         return false;
     }
 
+    int preferredSampleCount = 4;
+
+}
+
+void HtmlUIContext::setPreferredSampleCount(int samples){
+    // 1, 2, 4 or 8: anything else goes to the nearest of them
+    int clamped = 1;
+    if (samples >= 8)
+        clamped = 8;
+    else if (samples >= 4)
+        clamped = 4;
+    else if (samples >= 2)
+        clamped = 2;
+    if (clamped != samples)
+        Log::warn("[HTML UI] MSAA sample count %d is not 1, 2, 4 or 8: %d is used", samples, clamped);
+    preferredSampleCount = clamped;
+}
+
+int HtmlUIContext::getPreferredSampleCount(){
+    return preferredSampleCount;
+}
+
+int HtmlUIContext::getSampleCount() const{
+    if (preferredSampleCount <= 1)
+        return 1;
+    // the first sg_query_pixelformat calls of the engine, cached
+    const RenderFeatures& features = SystemRender::getFeatures();
+    if (!features.msaaRGBA8 || !features.msaaDepthStencil)
+        return 1;
+    return preferredSampleCount;
+}
+
+void HtmlUIContext::markUpdated(){
+    updatedSinceRender = true;
 }
 
 bool HtmlUIContext::render(const Rect& viewRect){
-    if (!renderer){
-        renderedThisFrame = false;
+    if (!renderer)
+        return false;
+
+    // once per sokol frame: a second call (the editor's Game view after the frame's own
+    // passes) keeps the first one's result
+    const uint64_t frame = SystemRender::getFrameCount();
+    if (lastRenderFrame == frame)
+        return hasContent;
+    lastRenderFrame = frame;
+
+    if (!context){
+        hasContent = false;
         return false;
     }
 
-    // once per sokol frame: a second call (the editor's Game view after the frame's own
-    // passes) keeps the first one's result, the stream buffers take one update a frame
-    if (renderer->hasFrame(SystemRender::getFrameCount()))
-        return renderedThisFrame;
-
-    renderedThisFrame = false;
-
-    if (!context)
-        return false;
+    // textures RmlUi made before the view existed have no GPU texture: it makes them again
+    // while it draws (as after a view loss)
+    if (renderer->takeTexturesWithoutView()){
+        Rml::ReleaseTextures(renderer.get());
+        updatedSinceRender = true;
+    }
 
     const Rml::Vector2i size((int)std::lround(viewRect.getWidth()), (int)std::lround(viewRect.getHeight()));
     const Rml::Vector2i contextDimensions = context->GetDimensions();
-    if (size.x <= 0 || size.y <= 0 || contextDimensions.x <= 0 || contextDimensions.y <= 0 || !hasVisibleDocument(context))
+    if (size.x <= 0 || size.y <= 0 || contextDimensions.x <= 0 || contextDimensions.y <= 0 || !hasVisibleDocument(context)){
+        hasContent = false;
         return false;
+    }
 
     // view pixels per document pixel; glyphs rasterize at it (quantized), so text stays
     // crisp on a scaled canvas (a change regenerates the text)
     pixelRatio = std::min(std::max(viewRect.getWidth() / (float)contextDimensions.x, 0.25f), 8.0f);
     const float rasterScale = std::min(std::max(std::round(pixelRatio * 4.0f) / 4.0f, 1.0f), 4.0f);
-    HtmlUI::getFontEngine().setRasterScale(rasterScale);
+    HtmlUI::getFontEngine().setRasterScale(context->GetRenderManager(), rasterScale);
 
-    if (size != targetSize || !target.isCreated()){
-        target.destroyFramebuffer();
-        if (!target.createFramebuffer(TextureType::TEXTURE_2D, size.x, size.y, TextureFilter::LINEAR, TextureFilter::LINEAR,
-                                      TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE, false)){
+    // recreated when the view size or the sample count changes; a second size (another view)
+    // keeps its own target
+    const int samples = getSampleCount();
+    auto matches = [&](const std::unique_ptr<RmlRenderTarget>& t){
+        return t && t->isCreated() && t->getWidth() == size.x && t->getHeight() == size.y && t->getSampleCount() == samples;
+    };
+    if (!matches(renderTarget)){
+        if (!spareTarget)
+            spareTarget.reset(new RmlRenderTarget());
+        std::swap(renderTarget, spareTarget);
+        hasContent = false;
+        if (spareTarget->isCreated() && spareTarget->getSampleCount() != samples)
+            spareTarget->destroy();
+    }
+    if (renderTarget->ensure(size.x, size.y, samples) || !renderTarget->isCreated()){
+        hasContent = false;
+        if (!renderTarget->isCreated()){
             Log::error("[HTML UI] could not create the %d x %d document target of '%s'", size.x, size.y, name.c_str());
-            targetSize = Rml::Vector2i(0, 0);
+            renderTarget->destroy();
             return false;
         }
-        targetSize = size;
     }
 
-    renderer->beginFrame(contextDimensions, targetSize);
-    context->Render();
-    renderedThisFrame = renderer->endFrame(target, pass);
-    if (renderedThisFrame)
-        renderedOnce = true;
+    // nothing changed since the last frame: the target still holds it
+    if (hasContent && !updatedSinceRender && contextDimensions == targetDimensions)
+        return true;
 
-    return renderedThisFrame;
+    if (!renderer->beginFrame(*renderTarget, contextDimensions)){
+        // shaders still compiling: nothing drawn, the old content (if any) stays valid
+        renderer->endFrame();
+        return hasContent;
+    }
+    context->Render();
+    if (renderer->endFrame()){
+        hasContent = true;
+        renderedOnce = true;
+        updatedSinceRender = false;
+        targetDimensions = contextDimensions;
+    }
+
+    return hasContent;
 }
 
 void HtmlUIContext::composite(PipelineType colorPipeline, bool flipY){
-    if (!renderedThisFrame || !renderer || !target.isCreated())
+    composite(colorPipeline, flipY ? Rml::Matrix4f::Scale(1.0f, -1.0f, 1.0f) : Rml::Matrix4f::Identity());
+}
+
+void HtmlUIContext::composite(PipelineType colorPipeline, const Rml::Matrix4f& clipFromQuad){
+    FramebufferRender* layer = renderTarget ? renderTarget->getComposited() : nullptr;
+    if (!hasContent || !renderer || !layer)
         return;
 
     // the camera pass's target, without depth: documents are in front of everything
@@ -92,12 +163,14 @@ void HtmlUIContext::composite(PipelineType colorPipeline, bool flipY){
     if (colorPipeline == PIP_DEFAULT || colorPipeline == PIP_DEFAULT_NODEPTH)
         compositePipeline = PIP_DEFAULT_NODEPTH;
 
-    renderer->drawComposite(target.getColorTexture(), compositePipeline, flipY);
+    renderer->drawComposite(layer->getColorTexture(), compositePipeline, clipFromQuad);
 }
 
 void HtmlUIContext::releaseGpuResources(){
-    renderedThisFrame = false;
+    hasContent = false;
     renderedOnce = false;
+    updatedSinceRender = true;
+    lastRenderFrame = UINT64_MAX;
 
     // RmlUi gives its textures back (and loads them again when it draws next), so no
     // handle points at a texture that went with the view
@@ -108,8 +181,10 @@ void HtmlUIContext::releaseGpuResources(){
         renderer->releaseGpuResources();
     }
 
-    target.destroyFramebuffer();
-    targetSize = Rml::Vector2i(0, 0);
+    if (renderTarget)
+        renderTarget->destroy();
+    if (spareTarget)
+        spareTarget->destroy();
 }
 
 bool HtmlUIContext::hasRenderedFrame() const{
@@ -121,7 +196,11 @@ float HtmlUIContext::getPixelRatio() const{
 }
 
 FramebufferRender* HtmlUIContext::getTarget(){
-    return target.isCreated() ? &target : nullptr;
+    return renderTarget ? renderTarget->getComposited() : nullptr;
+}
+
+RmlRenderTarget* HtmlUIContext::getRenderTarget(){
+    return renderTarget.get();
 }
 
 RmlRenderer& HtmlUIContext::getRenderer(){

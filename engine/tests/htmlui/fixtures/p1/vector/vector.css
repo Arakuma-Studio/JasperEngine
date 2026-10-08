@@ -1,0 +1,4 @@
+/* Vector fixtures (p1-vector goldens G19, G20, G22): a transparent body the size of the
+   512x384 context, absolutely placed boxes. RCSS syntax (phase 1). */
+body { position: absolute; left: 0; top: 0; width: 512px; height: 384px; margin: 0; padding: 0; }
+.abs { position: absolute; }

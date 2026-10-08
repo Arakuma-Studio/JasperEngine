@@ -1,0 +1,17 @@
+<html>
+<head>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="p1.css"/>
+    <style>
+        /* G01: overflow hidden + border-radius clips an image and text (stencil Set) */
+        #clip { left: 40px; top: 40px; width: 200px; height: 150px; border-radius: 50px; overflow: hidden; background-color: #204080; }
+        #clip img { position: absolute; left: -20px; top: -20px; width: 240px; height: 190px; }
+        #label { position: absolute; left: 20px; top: 100px; width: 400px; font-size: 32px; color: #ffff00; }
+        #outside { left: 300px; top: 40px; width: 150px; height: 150px; background-color: #40a040; }
+    </style>
+</head>
+<body>
+    <div id="clip" class="abs"><img src="../common/checker.png"/><div id="label">Clipped text runs out</div></div>
+    <div id="outside" class="abs"/>
+</body>
+</html>

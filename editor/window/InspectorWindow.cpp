@@ -9,6 +9,8 @@
 #include "util/Util.h"
 #include "util/UIUtils.h"
 #include "util/FileDialogs.h"
+#include "window/CodeEditor.h"
+#include "subsystem/UIDocumentSystem.h"
 #include "util/EntityPayload.h"
 #include "util/CameraTextureLink.h"
 #include "external/IconsFontAwesome6.h"
@@ -229,6 +231,11 @@ static std::vector<editor::EnumEntry> entriesAudioAttenuation = {
     { (int)AudioSourceAttenuation::INVERSE_DISTANCE, "Inverse Distance" },
     { (int)AudioSourceAttenuation::LINEAR_DISTANCE, "Linear Distance" },
     { (int)AudioSourceAttenuation::EXPONENTIAL_DISTANCE, "Exponential Distance" }
+};
+
+static std::vector<editor::EnumEntry> entriesUIDocumentRenderMode = {
+    { (int)UIDocumentRenderMode::SCREEN, "Screen" },
+    { (int)UIDocumentRenderMode::TEXTURE, "Texture" }
 };
 
 static std::vector<editor::EnumEntry> entriesAudioState = {
@@ -8845,16 +8852,207 @@ void editor::InspectorWindow::drawMirrorComponent(ComponentType cpType, ScenePro
 }
 
 void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    UIDocumentComponent& document = sceneProject->scene->getComponent<UIDocumentComponent>(entities[0]);
+    UIDocumentSystem* documents = sceneProject->scene->getSystem<UIDocumentSystem>().get();
+
     RowSettings sourceSettings;
-    sourceSettings.help = "HTML file shown over the scene, relative to the assets folder (e.g. ui/menu.html).";
+    sourceSettings.help = "HTML file of the document, relative to the assets folder (e.g. ui/menu.html).";
 
     RowSettings sortSettings;
     sortSettings.help = "Documents with a higher sort order draw on top of the scene's other documents.";
 
-    beginTable(cpType, getLabelSize("Sort Order"));
-    propertyRow(RowPropertyType::String, cpType, "filename", "Source", sceneProject, entities, sourceSettings);
+    RowSettings interactiveSettings;
+    interactiveSettings.help = "Receives pointer, keyboard and text input. Off: the game gets every event.";
+
+    RowSettings modeSettings;
+    modeSettings.enumEntries = &entriesUIDocumentRenderMode;
+    modeSettings.help = "Screen: drawn over the scene. Texture: rendered into a texture that a material, Mesh or Image shows.";
+
+    RowSettings sizeSettings;
+    sizeSettings.intMin = 1;
+    sizeSettings.intMax = 8192;
+    sizeSettings.secondColSize = 6 * ImGui::GetFontSize();
+
+    RowSettings surfaceSettings;
+    surfaceSettings.help = "Mesh whose surface receives the pointer (hit test on its UVs). None: this GameObject's own mesh.";
+
+    RowSettings ratioSettings;
+    ratioSettings.secondColSize = 6 * ImGui::GetFontSize();
+    ratioSettings.stepSize = 0.05f;
+    // ImGui prints a format without a conversion as it is
+    ratioSettings.format = (document.pixelRatio == 0.0f) ? "Auto" : "%.2f";
+    ratioSettings.help = "Document pixels per CSS pixel. 0 = Auto: the canvas-to-screen scale (1 in Texture mode).";
+
+    beginTable(cpType, getLabelSize("Texture Height"));
+
+    if (entities.size() == 1) {
+        Entity entity = entities[0];
+
+        auto setDocumentFilename = [&](const std::filesystem::path& selectedPath) -> bool {
+            std::filesystem::path assetsPath = std::filesystem::absolute(project->getAssetsPath()).lexically_normal();
+            std::filesystem::path filePath = std::filesystem::absolute(project->resolveAssetPath(selectedPath)).lexically_normal();
+
+            std::error_code errorCode;
+            std::filesystem::path relative = std::filesystem::relative(filePath, assetsPath, errorCode);
+            const std::string relativePath = relative.generic_string();
+            if (errorCode || relative.empty() || *relative.begin() == "..") {
+                ImGui::OpenPopup("HTML Document Error");
+                return false;
+            }
+            if (!Util::isHtmlFile(relativePath)) {
+                return false;
+            }
+
+            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+                new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "filename", relativePath)
+            );
+            return true;
+        };
+
+        const std::string currentPath = document.filename;
+
+        prefabRowProperty = "filename";
+        if (propertyHeader("Source", -1, !currentPath.empty())) {
+            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+                new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "filename", "")
+            );
+        }
+
+        const std::string displayName = currentPath.empty() ? "< Not set >" : std::filesystem::path(currentPath).filename().string();
+        const float availWidth = ImGui::GetContentRegionAvail().x;
+        const float buttonWidth = ImGui::CalcTextSize(ICON_FA_FOLDER_OPEN).x + ImGui::GetStyle().FramePadding.x * 2;
+
+        ImGui::BeginGroup();
+
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
+        ImGui::BeginChild("uidocumentfilename", ImVec2(availWidth - buttonWidth - ImGui::GetStyle().ItemSpacing.x, ImGui::GetFrameHeight()),
+            false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        const float textWidth = ImGui::CalcTextSize(displayName.c_str()).x;
+        const float childAvail = ImGui::GetContentRegionAvail().x;
+        ImGui::SetCursorPosX(std::max(0.0f, childAvail - textWidth - 2));
+        ImGui::SetCursorPosY(ImGui::GetStyle().FramePadding.y);
+        if (currentPath.empty())
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::Text("%s", displayName.c_str());
+        if (currentPath.empty())
+            ImGui::PopStyleColor();
+        ImGui::EndChild();
+        if (!currentPath.empty()){
+            ImGui::SetItemTooltip("%s", currentPath.c_str());
+        }
+        ImGui::PopStyleColor();
+
+        ImGui::SameLine();
+
+        if (ImGui::Button(ICON_FA_FOLDER_OPEN "##uidocument_load")) {
+            std::string path = editor::FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_HTML);
+            if (!path.empty()) {
+                setDocumentFilename(path);
+            }
+        }
+
+        ImGui::EndGroup();
+
+        if (sceneProject->playState == ScenePlayState::STOPPED) {
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
+                    std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(payload);
+                    if (!receivedStrings.empty()) {
+                        std::filesystem::path droppedPath(receivedStrings[0]);
+                        std::filesystem::path filePath = project->resolveAssetPath(droppedPath);
+                        std::error_code errorCode;
+                        std::filesystem::path relative = std::filesystem::relative(std::filesystem::absolute(filePath), std::filesystem::absolute(project->getAssetsPath()), errorCode);
+                        if (!errorCode && Util::isHtmlFile(relative.generic_string()) && payload->IsDelivery()) {
+                            if (setDocumentFilename(droppedPath)) {
+                                ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
+                            }
+                        }
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+        }
+
+        if (ImGui::BeginPopupModal("HTML Document Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Selected file must be an .html, .htm or .rml file within the assets directory.");
+            ImGui::Separator();
+            const float buttonModalWidth = 120;
+            ImGui::SetCursorPosX((ImGui::GetWindowSize().x - buttonModalWidth) * 0.5f);
+            if (ImGui::Button("OK", ImVec2(buttonModalWidth, 0))) {
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+
+        // Open in the code editor, Reload keeping the document's state
+        propertyHeader("");
+        ImGui::BeginDisabled(currentPath.empty());
+        if (ImGui::Button(ICON_FA_FILE_CODE " Open##uidocument_open")) {
+            if (CodeEditor* codeEditor = Backend::getApp().getCodeEditor())
+                codeEditor->openFile((project->getAssetsPath() / currentPath).string(), true);
+        }
+        ImGui::SetItemTooltip("Edit the document in the code editor");
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_ROTATE " Reload##uidocument_reload")) {
+            if (documents) documents->reloadDocument(entity, true);
+            sceneProject->needUpdateRender = true;
+        }
+        ImGui::SetItemTooltip("Load the document again, keeping scroll, focus and form values (saved files reload by themselves)");
+        ImGui::EndDisabled();
+    }else{
+        propertyRow(RowPropertyType::String, cpType, "filename", "Source", sceneProject, entities, sourceSettings);
+    }
+
     propertyRow(RowPropertyType::Int, cpType, "sortOrder", "Sort Order", sceneProject, entities, sortSettings);
+    propertyRow(RowPropertyType::Bool, cpType, "interactive", "Interactive", sceneProject, entities, interactiveSettings);
+    propertyRow(RowPropertyType::Enum, cpType, "renderMode", "Render Mode", sceneProject, entities, modeSettings);
+    if (document.renderMode == UIDocumentRenderMode::TEXTURE) {
+        propertyRow(RowPropertyType::Int, cpType, "textureWidth", "Texture Width", sceneProject, entities, sizeSettings);
+        propertyRow(RowPropertyType::Int, cpType, "textureHeight", "Texture Height", sceneProject, entities, sizeSettings);
+        propertyRow(RowPropertyType::LocalEntity, cpType, "inputSurface", "Input Surface", sceneProject, entities, surfaceSettings);
+    }
+    propertyRow(RowPropertyType::FloatPositive, cpType, "pixelRatio", "Pixel Ratio", sceneProject, entities, ratioSettings);
+
     endTable();
+
+    if (entities.size() != 1 || !documents) {
+        return;
+    }
+    const Entity entity = entities[0];
+
+    // the RmlUi debugger is global: showing it here hides it in the scene that had it
+    const bool debuggerShown = documents->isDebuggerVisible();
+    if (ImGui::Button(debuggerShown ? ICON_FA_BUG " Hide HTML UI Debugger##uidocument_debugger" : ICON_FA_BUG " Show HTML UI Debugger##uidocument_debugger")) {
+        documents->setDebuggerVisible(!debuggerShown);
+        sceneProject->needUpdateRender = true;
+    }
+    ImGui::SetItemTooltip("RmlUi's element inspector and log, drawn over this scene's documents");
+
+    // what RmlUi said while loading this document (and since), with the file and line it gave
+    const std::vector<HtmlUIMessage>& messages = documents->getDocumentMessages(entity);
+    std::string header = "Messages";
+    if (!messages.empty()) header += " (" + std::to_string(messages.size()) + ")";
+    ImGui::SeparatorText(header.c_str());
+    if (messages.empty()) {
+        ImGui::TextDisabled(document.filename.empty() ? "No document" : (documents->isDocumentLoaded(entity) ? "No warnings or errors" : "Not loaded yet"));
+        return;
+    }
+
+    const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
+    const float height = std::min((float)messages.size(), 8.0f) * lineHeight + ImGui::GetStyle().WindowPadding.y * 2.0f;
+    ImGui::BeginChild("##uidocument_messages", ImVec2(0, height), ImGuiChildFlags_Borders);
+    for (const HtmlUIMessage& message : messages) {
+        const bool error = message.level == HtmlUIMessageLevel::Error;
+        ImGui::PushStyleColor(ImGuiCol_Text, error ? Theme::Colors::ErrorText : Theme::Colors::WarningText);
+        ImGui::TextUnformatted(error ? ICON_FA_CIRCLE_EXCLAMATION : ICON_FA_TRIANGLE_EXCLAMATION);
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+        ImGui::TextWrapped("%s", message.text.c_str());
+        if (!message.file.empty() && ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s:%d", message.file.c_str(), message.line);
+        }
+    }
+    ImGui::EndChild();
 }
 
 void editor::InspectorWindow::drawReflectionProbeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){

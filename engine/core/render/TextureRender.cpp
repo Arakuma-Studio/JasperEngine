@@ -40,9 +40,10 @@ bool TextureRender::createTextureCubeWithMips(
 bool TextureRender::createFramebufferTexture(
                 TextureType type, bool depth, bool shadowMap, int width, int height,
                 TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV,
-                ColorFormat colorFormat){
+                ColorFormat colorFormat, int sampleCount, bool depthStencil, bool resolve){
     if (Engine::isViewLoaded() && !isCreated())
-        return backend.createFramebufferTexture(type, depth, shadowMap, width, height, minFilter, magFilter, wrapU, wrapV, colorFormat);
+        return backend.createFramebufferTexture(type, depth, shadowMap, width, height, minFilter, magFilter, wrapU, wrapV, colorFormat,
+                                                sampleCount, depthStencil, resolve);
     else
         return false;
 }
@@ -50,6 +51,12 @@ bool TextureRender::createFramebufferTexture(
 bool TextureRender::createDynamicTexture(const std::string& label, int width, int height){
     return Engine::isViewLoaded() && !isCreated() &&
         backend.createDynamicTexture(label, width, height);
+}
+
+bool TextureRender::createDynamicTexture(const std::string& label, int width, int height,
+                                         ColorFormat format, TextureFilter filter){
+    return Engine::isViewLoaded() && !isCreated() &&
+        backend.createDynamicTexture(label, width, height, format, filter);
 }
 
 void TextureRender::updateTexture(const void* data, size_t size){

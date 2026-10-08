@@ -67,13 +67,13 @@ When phase 1 is merged:
    `UIEvent`) and data binding (`UIDataModel`) driven from Lua tables or C++ `UIValue`s, with
    two-way binding, `data-for` arrays and `data-event-*`. Element handles are safe after
    their document unloads. LuaLS stubs and API suggestions cover every new class.
-5. **Vector graphics run on ThorVG.**
+5. **Vector graphics run on LunaSVG (SVG) and ThorVG (Lottie)** (phase-0 benchmark decision).
    - SVG (`<svg src>`, inline `<svg>`, `decorator: svg(...)`, tinting) is rasterised by
-     ThorVG.
+     LunaSVG, through RmlUi's SVG plugin.
    - A new `<lottie>` element, also on ThorVG, supports `.json` and `.lottie`, autoplay,
      loop, speed, direction, segments and markers, and has a control API. Each element
      updates one reusable RGBA8 texture, and only when the frame changes.
-   - `TextureData` loads `.svg` textures through ThorVG; nanosvg is removed.
+   - `TextureData` loads `.svg` textures through LunaSVG; nanosvg is removed.
 6. **Animation.** A global Lua table `anime` mirrors Anime.js v4: `animate`, `stagger`,
    `createTimeline`, `createTimer`, `createSpring`, easing names and functions, callbacks,
    playback control and `utils`. It animates element styles (individual transforms, colours,
@@ -140,7 +140,11 @@ branches (wave 0). These files hold declarations, and three small implementation
 packages call: the RGBA8 dynamic texture, the `HtmlUITexture` struct and the UI clock
 (`HtmlUIClock`). Each package then **defines** its own declarations in files it owns. A
 declared but undefined non-virtual member compiles and links as long as nobody calls it, so
-every worktree builds from the start.
+every worktree builds from the start. Where a package calls a declaration of a package that
+merges **after** it (or would block on it while working in parallel), wave 0 defines a
+minimal stub marked `// HTMLUI_P1_STUB: <owner>`; the owner replaces it and removes the
+marker (the list is at the end of this section; `grep -rn HTMLUI_P1_STUB engine` must be
+empty when phase 1 is merged).
 
 Phase 0 already created most of these files as working code (its skeletons became real
 implementations in waves 2–3): `UIDocumentComponent.h`, `UIDocumentSystem.{h,cpp}`,
@@ -150,15 +154,19 @@ creates a second copy or renames a phase-0 member. Phase-0 members stay (phase-0
 them); phase-1 members are added next to them.
 
 **Per-package state, no shared private members.** `UIDocumentSystem` gets one opaque state
-object per package:
+object per package. The structs are declared at namespace scope (so a package can define
+its struct `JASPERENGINE_INTERNAL` when it holds hidden types such as `HtmlUIContext`, as
+phase 0's `UIDocumentContext` does) and are friends of `UIDocumentSystem`:
 
 ```cpp
-// engine/core/subsystem/UIDocumentSystem.h (wave 0 additions, private section)
+// engine/core/subsystem/UIDocumentSystem.h (wave 0)
 struct HtmlUIRenderState;   // p1-render  (UIDocumentSystemRender.cpp)
 struct HtmlUIInputState;    // p1-input   (UIDocumentSystemInput.cpp)
 struct HtmlUIScriptState;   // p1-lua     (UIDocumentSystemScript.cpp)
 struct HtmlUIReloadState;   // p1-editor  (UIDocumentSystemReload.cpp)
 struct HtmlUITextureState;  // p1-rtt     (UIDocumentSystemTexture.cpp)
+// private section of UIDocumentSystem, one block per package:
+friend struct HtmlUIRenderState; /* … one friend line per state … */
 std::shared_ptr<HtmlUIRenderState>  renderState;   // shared_ptr: deleter bound at creation,
 std::shared_ptr<HtmlUIInputState>   inputState;    // so ~UIDocumentSystem (phase-0 .cpp)
 std::shared_ptr<HtmlUIScriptState>  scriptState;   // never needs the complete types
@@ -167,21 +175,32 @@ std::shared_ptr<HtmlUITextureState> textureState;
 ```
 
 Each package creates its state lazily in its own `.cpp` (`if (!inputState) inputState =
-std::make_shared<HtmlUIInputState>();`) and defines the struct there. The phase-0
-`UIDocumentSystem.cpp` changes only by the one-line calls listed per package.
+std::make_shared<HtmlUIInputState>();`) and defines the struct there. The five `.cpp` files
+exist from wave 0 (already listed in `engine/CMakeLists.txt` and the Xcode project), some
+holding only the stubs below; the public declarations and the private blocks of
+`UIDocumentSystem.h` are grouped per package (`// --- p1-input ---`), and a package adds its
+own private helpers inside its block, so parallel additions do not touch the same lines. The
+phase-0 `UIDocumentSystem.cpp` changes only by the one-line calls listed per package.
 
 **Public C++ API without RmlUi types.** Headers outside `engine/core/htmlui/` and outside
 `*Internal.h` files never include RmlUi headers, because DESIGN principle 3 keeps RmlUi
 swappable. Handles hold a `std::shared_ptr` to an internal struct defined in a `.cpp` or
-`*Internal.h`.
+`*Internal.h`. Engine code that needs the RmlUi element behind a `UIElement` (p1-anim targets,
+phase-2 hooks, phase-4 inspectors) includes `engine/core/object/ui/UIElementInternal.h`
+(wave 0): it defines phase 0's `UIElementHandle { Rml::ObserverPtr<Rml::Element> element; }`
+(moved there from `UIElement.cpp`; p1-lua adds the detached-pool token to it) and
+`UIElementAccess::get(const UIElement&) -> Rml::Element*` /
+`UIElementAccess::wrap(Rml::Element*) -> UIElement` (a friend of `UIElement`). `UIEvent` and
+`UIDataModel` make `struct HtmlUIScriptAccess` (p1-lua, `HtmlUIScriptInternal.h`) a friend,
+so p1-lua creates and reads their state without another header change.
 
-Wave-0 files, with the exact contents the coordinator commits:
+Wave-0 files, with the contents the coordinator commits:
 
-1. **`engine/core/htmlui/HtmlUITexture.h`** — what every `Rml::TextureHandle` points to in
+1. **`engine/core/htmlui/HtmlUITexture.{h,cpp}`** — what every `Rml::TextureHandle` points to in
    phase 1:
    ```cpp
    namespace jasperengine {
-   struct HtmlUITexture {
+   struct JASPERENGINE_API HtmlUITexture {
        enum class Kind : uint8_t { STATIC, DYNAMIC, RENDER_TARGET, EXTERNAL };
        Kind kind = Kind::STATIC;
        TextureRender* render = nullptr;            // sampled texture
@@ -190,6 +209,13 @@ Wave-0 files, with the exact contents the coordinator commits:
        int width = 0, height = 0;
        bool dead = false;                          // GPU object dropped by view loss (phase-0 releaseGpuResources)
        uint64_t lastUpdateFrame = UINT64_MAX;      // DYNAMIC: one sg_update_image per frame
+       ~HtmlUITexture();                           // destroys ownedRender's GPU texture unless dead; non-copyable
+       // DYNAMIC helpers (wave 0): TextureRender::createDynamicTexture below; nullptr (logged) on failure
+       static std::unique_ptr<HtmlUITexture> createDynamic(const std::string& label, int width, int height,
+                                                           ColorFormat format = ColorFormat::RGBA,
+                                                           TextureFilter filter = TextureFilter::LINEAR);
+       bool update(const void* data, size_t size); // false (nothing uploaded) if this frame already updated it
+       bool canUpdate() const;                     // DYNAMIC, alive, not yet updated this frame (SystemRender::getFrameCount)
    };
    }
    ```
@@ -197,32 +223,61 @@ Wave-0 files, with the exact contents the coordinator commits:
    - Every UI texture holds premultiplied RGBA8 (or R8 coverage); every upload path
      premultiplies (phase-0 `LoadTexture` on the CPU, ThorVG `ABGR8888`, font pages), so the
      shader never premultiplies.
-   - `RmlRenderer::ReleaseTexture` deletes the struct, which destroys whatever it owns.
+   - `RmlRenderer::ReleaseTexture` deletes the struct, which destroys whatever it owns (a
+     `dead` texture without GPU calls: view loss already destroyed it).
    - `EXTERNAL` points at a texture owned by someone else, for example a `Framebuffer` a
      script passes in.
    - Phase 0's internal `RmlTexture { TextureRender render; width; height; dead }`
      (`phase-0-foundation.md` §3.5.2) is migrated to this struct by p1-render, keeping the
-     view-loss behaviour (`dead` handles are freed without GPU calls).
+     view-loss behaviour (`dead` handles are freed without GPU calls). Until that migration
+     lands, the phase-0 renderer does not understand an `HtmlUITexture` handle, so drawing a
+     DYNAMIC texture through RmlUi (p1-vector's Lottie goldens) needs `p1-render` merged.
 2. **`engine/core/render/TextureRender.h` / `engine/renders/sokol/SokolTexture.{h,cpp}`** —
    an RGBA8 dynamic texture. These are new overloads; the old RGBA32F path
    (`SokolTexture.cpp:331-366`, used for bones) is untouched:
    ```cpp
-   bool createDynamicTexture(const std::string& label, int width, int height,
-                             ColorFormat format, TextureFilter filter);   // RGBA → SG_PIXELFORMAT_RGBA8,
-                                                                         // RED → R8; usage.stream_update,
-                                                                         // CLAMP_TO_EDGE, given min/mag filter
+   bool TextureRender::createDynamicTexture(const std::string& label, int width, int height,
+                                            ColorFormat format, TextureFilter filter);
+       // RGBA → SG_PIXELFORMAT_RGBA8, RED → R8 (anything else, or a size ≤ 0: logged, false);
+       // usage.stream_update, CLAMP_TO_EDGE, no mipmaps, the given min/mag filter (a mipmap
+       // filter samples with its base filter)
    ```
    `updateTexture(const void*, size_t)` stays the update call (one update per frame, as
-   sokol requires).
+   sokol requires); for these textures it rejects, with an error, a size other than
+   width × height × 4 (or 1), which sokol would otherwise over-read. Test builds
+   (`JASPERENGINE_TEXTURE_READBACK`) give Vulkan sampled images `TRANSFER_SRC` so tests read
+   dynamic textures back (`readTexturePixels`, harness `Readback.h`).
 3. **`engine/core/component/UIDocumentComponent.h`** — the full phase-1 field list (§3.8.1).
    Fields that already exist from phase 0 keep their names; the new ones are appended.
 4. **`engine/core/subsystem/UIDocumentSystem.h`** — the state pointers above, plus the
-   public method declarations listed in §3.5, §3.6, §3.8.6, §3.9.5 and §3.12.
+   public method declarations listed in §3.5, §3.6, §3.8.6, §3.8.7, §3.9.5 and §3.12, and:
+   - `PointerPhase`, `HtmlUIMessageLevel { Info, Warning, Error }` and
+     `HtmlUIMessage { level, text, file, line }` at namespace scope;
+   - `HtmlUIRenderStats` (§3.2.8) in its own RmlUi-free header
+     `engine/core/htmlui/HtmlUIRenderStats.h`, which `UIDocumentSystem.h` includes;
+   - `static void setPreferredSampleCount(int)` / `static int getPreferredSampleCount()`
+     (p1-render): the exported entry to `HtmlUIContext::setPreferredSampleCount`, which is
+     `JASPERENGINE_INTERNAL` and so cannot be called by the editor (shared engine) or by
+     generated game code (no RmlUi include path) (§3.8.8);
+   - `Framebuffer* getTargetTexture(Entity) const` (p1-rtt): `UIDocument::getTargetTexture`
+     is defined once in wave 0 as a call to it, so p1-rtt touches only its own file;
+   - private, p1-lua block: `void scriptDocumentReloaded(Entity, const
+     std::unordered_map<Rml::Element*, Rml::Element*>& oldToNew)` — the hook p1-editor's full
+     reload calls (§3.8.6 step 4) after the new document loaded, while the old one is still
+     alive (RmlUi destroys unloaded documents at the next context update). `oldToNew` maps
+     the old document and its id-ed elements to their counterparts; p1-lua moves those
+     elements' listeners (its `HtmlUIScriptState::onDocumentReloaded`) and warns about the
+     dropped ones.
+   - `setDebuggerVisible` returns `bool` from wave 0 on (§3.8.7).
 5. **`engine/core/object/ui/UIValue.h`, `UIEvent.h`, `UIDataModel.h`** (new) and the
    phase-0 **`engine/core/object/ui/UIElement.h`, `UIDocument.h`** (extended) — the public API
-   declarations of §3.9, verbatim. They sit next to phase 0's `UIDocument`/`UIElement`, so the
-   C++ script API snapshot needs no new include directory and no public header includes
-   RmlUi (phase 0 §3.1).
+   declarations of §3.9, verbatim except: `UIEvent`'s state is `std::shared_ptr<HtmlUIEventState>`
+   (`Scene.h` already has an `enum class UIEventState`, which `struct UIEventState` would
+   collide with); `UIValue`'s private storage is `type`, `boolValue`, `numberValue`,
+   `stringValue`, `items` (array elements or object values) and `itemKeys` (object keys,
+   insertion order), which p1-lua may change (it owns `UIValue`). They sit next to phase 0's
+   `UIDocument`/`UIElement`, so the C++ script API snapshot needs no new include directory and
+   no public header includes RmlUi (phase 0 §3.1). Plus `UIElementInternal.h` (above).
 6. **`engine/core/htmlui/HtmlUIClock.{h,cpp}`** — the UI clock, implemented in wave 0 because
    p1-input, p1-vector, p1-anim and p1-render all read it:
    ```cpp
@@ -235,7 +290,7 @@ Wave-0 files, with the exact contents the coordinator commits:
    class JASPERENGINE_API HtmlUIClock {
    public:
        static double now();                                    // fixed time if set, else the accumulated time
-       static void advance(double unscaledSeconds);            // once per engine frame (below)
+       static void advance(double unscaledSeconds);            // once per engine frame (below); no-op while fixed
        static void setFixedTime(std::optional<double> seconds);// tests, goldens, tools; nullopt = run
        static std::optional<double> getFixedTime();
        static void reset();                                    // tests: time 0, no fixed time
@@ -245,13 +300,50 @@ Wave-0 files, with the exact contents the coordinator commits:
    - `Engine::systemDraw` calls `HtmlUIClock::advance(dt)` once per frame, before the scene
      updates, with the frame's delta **before** `timeScale` (the fixed delta when
      `setFixedDeltatime` is set, else the measured delta capped by `maxDeltatime`) and 0 for
-     frames during which a host holds the simulation.
-   - The editor in edit mode (no `Engine::systemDraw` update) advances it with its own frame
-     time from `App::engineRender`, so the Scene view runs CSS transitions and keyframes.
+     frames during which a host holds the simulation or the app is paused (`systemPause`):
+     the frames that run no scene update.
+   - While a fixed time is set, `advance` does nothing; clearing it
+     (`setFixedTime(std::nullopt)`) resumes the running time **from the fixed value**, so
+     `now()` never jumps on release. Negative or non-finite deltas and fixed times are
+     ignored (the fixed time with a `[HTML UI]` warning).
+   - The editor needs no hook of its own: in edit mode `App::engineRender` draws the Scene
+     view (and the Game view pass) through `Engine::systemDraw`, which updates the stopped
+     scene and advances the clock, so the Scene view runs CSS transitions and keyframes. The
+     clock only stands still while the editor does not redraw; keeping the view redrawing
+     while a document animates is p1-editor's (§3.8.6). (An extra advance from
+     `App::engineRender` would count edit-mode time twice.)
    - `RmlSystem::GetElapsedTime()` returns `HtmlUIClock::now()` (one-line change to the
-     phase-0 file, which used `Engine::getSystemTime()`).
+     phase-0 file, which used `Engine::getSystemTime()`). RmlUi's double-click detection reads
+     the same clock: two clicks with no frame between them (fixed or held time) count as a
+     double click.
 
-The wave-0 commit must build (`tools/build.sh linux`) and keep all phase-0 tests green.
+**Wave-0 stubs** (`// HTMLUI_P1_STUB: <owner>`; every other new declaration is left
+undefined for its owner):
+
+| File | Function | Owner | Stub behaviour | Why it is needed early |
+|---|---|---|---|---|
+| `UIDocumentSystem.cpp` (phase-0 file) | `bool UIDocumentSystem::setDebuggerVisible(bool)` | p1-editor | phase-0 behaviour, returns `true` (phase 0 always compiles the debugger in) | return type changed in the header |
+| `UIDocumentSystem.cpp` | `bool UIDocumentSystem::isDebuggerVisible() const` | p1-editor | returns this scene's requested state | p1-lua's static `UIDocument::isDebuggerVisible` |
+| `UIDocumentSystemReload.cpp` | `void UIDocumentSystem::reloadDocument(Entity, bool)` | p1-editor | `needReload = true` + `loadDocumentNow` (nothing preserved) | p1-lua (`createDataModel` reload, `UIDocument::reload`) merges before p1-editor |
+| `UIDocumentSystemScript.cpp` | `void UIDocumentSystem::scriptDocumentReloaded(Entity, const std::unordered_map<Rml::Element*, Rml::Element*>&)` | p1-lua | nothing (listeners are not moved) | p1-editor's reload calls it before p1-lua lands in its worktree |
+| `UIDocumentSystemRender.cpp` | `static void setPreferredSampleCount(int)`, `static int getPreferredSampleCount()` | p1-render | stores/returns the value (default 4) | p1-editor's project setting and `Generator.cpp` init line |
+| `UIDocumentSystemTexture.cpp` | `Framebuffer* UIDocumentSystem::getTargetTexture(Entity) const` | p1-rtt | `nullptr` | p1-lua binds `UIDocument::getTargetTexture`; p1-rtt merges last |
+
+Defined for real in wave 0 (not stubs): `UIDocumentSystem::getDocument(Entity)` in
+`UIDocumentSystemReload.cpp` (a lookup in phase 0's `documents` map; p1-lua and p1-anim reach
+documents through it before p1-editor lands; p1-rtt keeps texture-mode documents reachable
+through it), `UIDocument::getTargetTexture()` (`UIDocument.cpp`, forwards to the system),
+`UIElementAccess`, `HtmlUIClock`, `HtmlUITexture` and the dynamic texture.
+
+Known cross-package calls that are **not** stubbed, because the caller merges after the
+callee and can merge `html-ui` first: p1-lua's `UIEvent` key fields use p1-input's
+`RmlKeyMap` (DOM `key`/`code`, §3.6.2); p1-vector's Lottie drawing needs p1-render's
+`HtmlUITexture` migration (item 1); p1-anim's element integration needs p1-lua's `UIElement`
+and its Lua class; p1-editor's listener re-attachment test needs p1-lua's real
+`scriptDocumentReloaded`.
+
+The wave-0 commit must build (`tools/build.sh linux`, web, android) and keep all phase-0
+tests green.
 
 ---
 
@@ -335,6 +427,12 @@ The blend factors (rgb and alpha both, `SG_BLENDOP_ADD`):
   `sg_apply_pipeline`, skipping the call when the pipeline equals the last one applied.
   The existing `beginDraw(PipelineType, bool)` (`ObjectRender.h:47`) is unchanged.
 - Existing `endLoad(...)` users are untouched.
+- `ObjectRender::setIndexBuffer(BufferRender*, size_t byteOffset = 0)` takes a byte offset
+  (geometry sub-allocated in shared buffers, §3.2.3), and `BufferRender::appendBuffer(size,
+  data) -> offset` wraps `sg_append_buffer` (main thread; the frame's transient geometry).
+- The skip of a redundant `sg_apply_pipeline` keys on the pipeline applied last in the pass
+  (`SokolPipelineCache::apply`); every `CameraRender::startRenderPass` and the fixed-type
+  `beginDraw(PipelineType)` reset it.
 - While editing `SokolObject::beginLoad`, also zero `nodepth_pip`, `rtt_nodepth_pip`,
   `zprepass_pip` and `zprepass_rtt_pip`. Today `SokolObject.cpp:139-154` leaves them
   uninitialised.
@@ -365,7 +463,7 @@ struct FramebufferDesc {
     int sampleCount = 1;                    // > 1: MSAA colour + 1-sample resolve texture
     TextureFilter minFilter = TextureFilter::LINEAR, magFilter = TextureFilter::LINEAR;
     TextureWrap wrapU = TextureWrap::CLAMP_TO_EDGE, wrapV = TextureWrap::CLAMP_TO_EDGE;
-    const FramebufferRender* shareDepthStencil = nullptr; // reuse its depth-stencil image
+    const FramebufferRender* shareDepthStencil = nullptr; // reuse its depth-stencil attachment
     std::string label;
 };
 bool createFramebuffer(const FramebufferDesc& desc);
@@ -379,6 +477,14 @@ int  getSampleCount() const;
   - an MSAA `DEPTH_STENCIL` image with the same sample count (or the shared one);
   - views for each.
 - `get()` fills `resolves[0]` and `depth_stencil`.
+- `shareDepthStencil` shares the depth-stencil **attachment view**, not only the image: on
+  GLES3/WebGL2 (no MSAA texture bindings) sokol keeps an MSAA attachment's storage in a
+  renderbuffer per view, so two views of one image would not share the stencil. The owner
+  must outlive the borrowers (destroying a borrower leaves the view alone).
+- MSAA and `DEPTH_STENCIL` images get no texture view or sampler (they are never sampled;
+  GLES rejects texture views of MSAA images); the resolve image is sampled.
+- `Framebuffer::create(const FramebufferDesc&)` builds (and later `create()` calls rebuild)
+  from a description. The Lua bindings select the old overloads with `luabridge::overload`.
 - `createFramebufferTexture` (`SokolTexture.cpp:442-496`) accepts the sample count and the
   depth-stencil format. Today it has `sample_count = 1` at 472 and `DEPTH` at 475.
 - The Vulkan `initializeAttachments` (`SokolFramebuffer.cpp:167-190`) also covers the
@@ -400,11 +506,12 @@ lost there.
 
 **Sample count choice.** `HtmlUIContext::getSampleCount()` is decided once when the GPU is
 ready, in this order:
-1. If the override `HtmlUIContext::setPreferredSampleCount(int)` is set (default 4; the
-   editor setting is in §3.8.8), use it, clamped to 1/2/4/8.
-2. Otherwise use 4 if `sg_query_pixelformat(SG_PIXELFORMAT_RGBA8).msaa` and
+1. The preferred count `HtmlUIContext::setPreferredSampleCount(int)` (default 4; the editor
+   setting is in §3.8.8), taken to 1/2/4/8 (another value: the nearest below, with a
+   warning).
+2. It is used when `sg_query_pixelformat(SG_PIXELFORMAT_RGBA8).msaa` and
    `sg_query_pixelformat(SG_PIXELFORMAT_DEPTH_STENCIL).msaa` are both true.
-3. Otherwise use 1.
+3. Otherwise 1. The count is read every frame, so a changed setting recreates the targets.
 
 No engine code calls `sg_query_features`/`sg_query_pixelformat` today; these are the first
 calls.
@@ -414,6 +521,8 @@ calls.
   come from `Framebuffer`/`FramebufferRender` with a `FramebufferDesc`.
 - `SystemRender::getFeatures()` returns a POD with `originTopLeft`, `msaaRGBA8` and
   `msaaDepthStencil`, cached on the first call.
+- `SystemRender::getPipelineCacheMisses/getPipelineApplies/getPipelineCacheSize` expose the
+  cache's counters (the renderer's per-frame statistics are their deltas).
 
 ---
 
@@ -480,19 +589,36 @@ The pass state machine is new compared with GL3, which rebinds framebuffers free
   composite reads `layers[0]`'s colour texture (the resolve texture when MSAA).
 
 #### 3.2.3 Geometry
-- **`CompileGeometry`** copies vertices (`Rml::Vertex`: float2 position, ubyte4 premultiplied
-  colour, float2 uv, stride 20) and int indices into **pooled DYNAMIC buffers**. This
-  replaces phase 0's per-frame streaming of all geometry into two STREAM buffers
-  (`phase-0-foundation.md` D6): with layers and filters a frame has many passes, and
-  re-uploading static geometry every frame no longer pays. Phase 0's leak counters
-  (`getLiveGeometryCount`, `getLiveTextureCount`) keep their names and meaning.
-  - size classes are powers of two, minimum 4 KiB;
-  - one vertex buffer and one index buffer per geometry;
-  - indices are `UINT32`;
-  - a buffer released in frame N can be reused from frame N+1, because sokol allows one
-    update per buffer per frame (`VALIDATE_UPDATEBUF_ONCE`).
-- **Drawing.** One `ObjectRender` per program (colour, texture, gradient, each effect, each
-  post variant) is set up with `endLoadDynamic(TRIANGLES, UINT32)`. Each draw swaps
+- **`CompileGeometry`** keeps RmlUi's spans (valid until `ReleaseGeometry`) and the data
+  (`Rml::Vertex`: float2 position, ubyte4 premultiplied colour, float2 uv, stride 20; int
+  indices used as `UINT32`) is uploaded **once** into persistent buffers. This replaces phase
+  0's per-frame streaming of all geometry into two STREAM buffers (`phase-0-foundation.md`
+  D6): with layers and filters a frame has many passes, and re-uploading static geometry every
+  frame no longer pays. Phase 0's leak counters (`getLiveGeometryCount`,
+  `getLiveTextureCount`) keep their names and meaning. As implemented (the first version of
+  this spec said "one pooled DYNAMIC buffer per geometry", which fails in practice):
+  - RmlUi compiles geometry in the middle of rendering, interleaved with draws, and sokol
+    allows one update per buffer and frame. A geometry drawn for the first time in a frame
+    is therefore appended (`sg_append_buffer`) to that frame's **transient** vertex/index
+    buffers and drawn from there; at `endFrame` it moves into **persistent storage**, which
+    this frame's draws did not read, so updating it then is safe;
+  - persistent storage: geometries up to 16 KiB share 64 KiB **pages** (bump-allocated in a
+    CPU copy, 16-byte aligned, uploaded whole at most once a frame, started over once all
+    their geometries are released; a page freed in frame N is reused from N+1); a larger
+    geometry gets a **dedicated buffer** of a power-of-two size class (minimum 4 KiB);
+  - one buffer per geometry would exhaust sokol's fixed buffer pool (8192, shared with the
+    whole engine) with a few thousand elements; pages keep it to a few dozen buffers;
+  - every geometry buffer is `STREAM`: sokol's Vulkan backend waits for the queue to idle on
+    every `dynamic_update` update, while stream updates go through the per-frame staging
+    buffer; both keep their content until the next update on every backend;
+  - free storage beyond 16 MiB is destroyed; view loss drops everything and the spans
+    re-upload on the next draw.
+- **Drawing.** One `ObjectRender` per program (geometry, gradient, each effect, each post
+  variant) is set up with `endLoadDynamic(TRIANGLES, UINT32)` (post variants: vertexless,
+  `NONE`). All geometry, textured or not, draws with the `HTMLUI` `Tex` variant, untextured
+  geometry sampling a 1x1 white texture: text and boxes then share one pipeline, so a page of
+  buttons with labels switches pipelines only when the stencil or blend changes (G24). The
+  untextured `HTMLUI` variant stays registered and exported but is not used by the renderer. Each draw swaps
   `replaceVertexBuffer` / `setIndexBuffer` / `addTexture`, then calls `beginDraw(state)`,
   `applyUniformBlock` and `draw(0, count, 1)`. Bindings are applied inside `draw()`
   (`SokolObject.cpp:494-497`), so swapping them between `beginDraw` and `draw` is valid.
@@ -528,11 +654,16 @@ These follow GL3; the differences are listed.
 - **`PushLayer()`** — grows `layers` if needed, then switches to it with CLEAR on first
   bind.
 - **`CompositeLayers(src, dst, blend, filters)`**:
+  0. A `Blend` composite of a layer nothing was drawn into (still waiting for its clear) is
+     skipped: it would change nothing.
   1. End the open pass, so `src` is resolved.
   2. Set the *post source* to `src`'s colour texture. There is no copy, unlike GL3's
      `BlitLayerToPostprocessPrimary`.
   3. Each filter reads the post source, writes the free post-process target, and that target
-     becomes the source. This replaces GL3's primary/secondary swaps.
+     becomes the source. This replaces GL3's primary/secondary swaps. The source layer is
+     only read, never written: `backdrop-filter` composites the layer it draws on (as the
+     source) into its temp layer, so an in-place filter (blur) runs from the layer into a
+     post-process target (`RmlFilterContext::primary()` may be the layer).
   4. Switch to `dst` with LOAD and draw the source with `Pas` (opacity 1). The state is
      `PREMULTIPLIED`, or `NONE` for `BlendMode::Replace`, with the current scissor and the
      stencil test when `clipMaskEnabled`.
@@ -576,8 +707,10 @@ These follow GL3; the differences are listed.
 #### 3.2.6 Shaders (`CompileShader` / `RenderShader`)
 - **Gradients.** `linear-gradient`, `radial-gradient` and `conic-gradient` (with
   `repeating`) are mapped exactly as GL3 lines 1647-1673, to `{func, p, v, stops}`. At most
-  16 stops; extra stops are dropped with a warning naming the element's decorator. They are
-  drawn with `HTMLUI_GRADIENT`.
+  16 stops; extra stops are dropped with a warning naming the gradient function (the
+  renderer does not know the element). They are drawn with `HTMLUI_GRADIENT`. Colours are
+  interpolated **linearly** between stop positions, as CSS does (GL3 uses `smoothstep`), and
+  a hard stop (equal positions) switches at its position.
 - **Any other name** (including RmlUi's `decorator: shader("name")`) logs a warning listing
   the supported names and returns 0, so nothing is drawn and nothing fails silently. Phase 5
   claims its own handles before this fallback (§3.3.3).
@@ -647,13 +780,13 @@ Notes on the table:
 | File | Where | What |
 |---|---|---|
 | `engine/core/render/Render.h` | after phase 0's `HTMLUI` (itself after `POSTPROCESS`) | `HTMLUI_GRADIENT, HTMLUI_POST` (phase 5 appends `UI_EFFECT` after them) |
-| `engine/core/pool/ShaderPool.cpp` | `parseShaderTypeToken` 53-116 (before 113) | `htmlui_gradient`, `htmlui_post` |
+| `engine/core/pool/ShaderPool.cpp` | `parseShaderTypeToken` 53-116 (before 113) | `htmluigradient`, `htmluipost` (no underscore: shader basenames split type and properties at the first `_`, so `htmlui_post_Pas` would parse as `htmlui`; CLI specs normalize, so `htmlui_post:Pas` still works) |
 | same | `getShaderTypeName` 389-408 | display and short names |
 | same | `getShaderPropertyCount` 410-428 | GRADIENT 0, POST 6 |
 | same | `getShaderPropertyName` 430-508 | `Pas/Passthrough`, `Cmx/ColorMatrix`, `Msk/BlendMask`, `Shd/DropShadow`, `Blr/Blur`, `Unp/Unpremultiply` |
 | same + `ShaderPool.h:162-164` | ~1000-1029 | `enum class HtmlUIPostVariant { PASSTHROUGH, COLOR_MATRIX, BLEND_MASK, DROP_SHADOW, BLUR, UNPREMULTIPLY };` and `static uint32_t getHtmlUIPostProperties(HtmlUIPostVariant)` next to phase 0's `getHtmlUIProperties(bool)` |
 | `engine/core/shader/ShaderVariantCompiler.cpp` | `setupShaderArgs` 367-421 (before `else{return false;}` at 419) | vert/frag names; `addHtmlUIPostPropertyDefinitions` next to phase 0's `addHtmlUIPropertyDefinitions` |
-| `editor/shader/ShaderVariantCollector.cpp` | next to phase 0's per-entity `HTMLUI` keys (~490-498) | for an entity with a `UIDocumentComponent`: `HTMLUI_GRADIENT` and all 6 `HTMLUI_POST` variants (phase 0 already adds both `HTMLUI` variants) |
+| `editor/shader/ShaderVariantCollector.cpp` | next to phase 0's per-entity `HTMLUI` keys (~490-498) | for an entity with a `UIDocumentComponent`: `HTMLUI_GRADIENT` and all 6 `HTMLUI_POST` variants (phase 0 already adds both `HTMLUI` variants); every list loops over `ShaderPool::getHtmlUIVariants()` (all 9) |
 | `editor/Project.cpp` | ~2872-2884 (parallel list) | the same keys |
 | `engine/core/subsystem/RenderSystem.cpp` | `getShaderVariants` 1861-1946 | the same keys for an entity with `UIDocumentComponent` |
 | `editor/window/dialog/ExportWindow.cpp` | `typeValues[]` 1236-1242 | append the two types |
@@ -695,7 +828,11 @@ or effect shader type in phase 1.
       // fullscreen triangle (htmlui_post.vert convention) into dst with the given program and state;
       // applyUniforms is called after beginDraw so the caller uploads its uniform blocks and textures
       void drawFullscreen(Framebuffer& dst, ObjectRender& program, const PipelineState& state,
-                          const std::function<void(ObjectRender&)>& applyUniforms);
+                          const std::function<void(ObjectRender&)>& applyUniforms,
+                          LoadAction load = LoadAction::CLEAR);   // LOAD: draw on over dst's content
+      PipelineState postState(BlendMode blend = BlendMode::NONE) const; // 1 sample, no depth
+      RmlRenderer& getRenderer();
+      bool isPrimaryLayer() const;   // primary() is still the (read-only) source layer
   };
   }
   ```
@@ -771,8 +908,10 @@ Call sites:
    `drawView` (which calls `drawFramePasses()` once per frame through its `frameDrawn`
    guard), so it is already outside any pass and keeps Vulkan to one swapchain pass.
    `UIDocumentSystem::draw()` stays empty.
-   - Phase 1 removes phase 0's editor gate (`renderDocuments = rv().secondary ||
-     !drawEditorOverlays`), so the Scene view of UI and 2D scenes shows documents (item 3).
+   - Phase 1 replaces phase 0's editor gate (`renderDocuments = rv().secondary ||
+     !drawEditorOverlays`): a Scene view frame renders documents when the scene camera is a
+     UI or orthographic one, so the Scene view of UI and 2D scenes shows documents (item 3);
+     a 3D scene's Scene view (which never composites them) does not render them.
    - `viewRect` keeps sizing the screen context's target (phase 0 §3.5.4: target = view
      pixels, pixel ratio, font raster scale); texture contexts use their own size (§3.12).
 2. **`renderOffscreen()` is idempotent per frame.** Each context has `bool
@@ -786,7 +925,10 @@ Call sites:
    stays and passes the camera, so documents draw in front of component UI:
    - **`CAMERA_UI` or `CAMERA_2D`** (game cameras and the editor's `SceneRender2D` camera):
      a quad covering the canvas rectangle (0,0)–(canvasW, canvasH) in the world space
-     where `RectTransform` UI lives, drawn with the camera's view-projection. The editor
+     where `RectTransform` UI lives, drawn with the camera's view-projection. The canvas is
+     the context's layout size (the editor's reference size, else the canvas); the
+     document's top edge is at y = 0 under a UI camera (y down) and at y = canvasH under an
+     orthographic one (y up, where component UI is flipped too). The editor
      Scene view of UI and 2D scenes therefore shows documents in place while panning and
      zooming. Phase 0's `!passDrawsOverlays` gate is replaced by this rule.
    - **3D cameras:** phase 0's viewport-filling quad, in the main game camera only (phase 0
@@ -820,14 +962,14 @@ Changes to existing functions:
 |---|---|
 | `systemMouseDown`/`Up` (1465/1490) | Documents first, for buttons 0-2 (`D_MOUSE_BUTTON_1..3` map to RmlUi buttons 0, 1, 2). Then `UISystem` (button 1 only, unchanged). Then the game, with `uiEventReceived` covering both systems. |
 | `systemMouseMove` (1516) | Documents, then `UISystem`, then the game. |
-| `systemMouseScroll` (1542) | Now reaches documents: `ProcessMouseWheel(Vector2f(-xoffset, -yoffset) × wheelScale, mods)`. The engine sends positive y = up (GLFW convention); RmlUi wants positive = down/right. RmlUi multiplies the delta by `UNIT_SCROLL_LENGTH × dp ratio` (`Source/Core/Context.cpp:827-828`). `wheelScale` comes from `HtmlUIContext::setWheelScale(float)`, default 1, so one platform wheel step is one RmlUi scroll unit. The game's `onMouseScroll` runs only if the document did not consume it. |
+| `systemMouseScroll` (1542) | Now reaches documents: `ProcessMouseWheel(Vector2f(-xoffset, -yoffset) × wheelScale, mods)`. The engine sends positive y = up and positive x = **left** (GLFW convention); RmlUi wants positive = down/right. *(p1-input: the Linux router (button 6 = left) and the Windows `WM_MOUSEHWHEEL` path sent positive x = right; both now follow GLFW like Web, macOS, Android and ImGui's `MouseWheelH`.)* RmlUi multiplies the delta by `UNIT_SCROLL_LENGTH × dp ratio` (`Source/Core/Context.cpp:827-828`). `wheelScale` comes from `HtmlUIContext::setWheelScale(float)`, default 1, so one platform wheel step is one RmlUi scroll unit. The game's `onMouseScroll` runs only if the document did not consume it. |
 | `systemMouseEnter`/`Leave` (1549/1554) | Leave → `ProcessMouseLeave()` on every context. Enter → nothing; the next move re-activates. |
-| `systemKeyDown` (1559) | New order: **documents → game `onKeyDown` → `UISystem`**. The game is skipped when a document consumed the key and `ignoreEventsHandledByUI`. |
+| `systemKeyDown` (1559) | New order: **documents → game `onKeyDown` → `UISystem`**. The game is skipped when a document consumed the key and `ignoreEventsHandledByUI`; `UISystem` is skipped whenever a document consumed it (a key typed into a document field must not also type into a component `InputField`). |
 | `systemKeyUp` (1571) | Reaches documents. Consumed iff the matching key down was consumed (per-key bitset in `HtmlUIInputState`), so the game never sees an up without a down. |
-| `systemCharInput` (1577) | On platforms where `sizeof(wchar_t) == 2`, combines surrogates: a pending high surrogate waits for the low one; a lone surrogate becomes U+FFFD. The result goes to documents as UTF-8. The game's `onCharInput` and `UISystem::eventOnCharInput` still receive each `wchar_t` unit as today. |
+| `systemCharInput` (1577) | Combines surrogates (`engine/core/util/Utf16Combiner.h`; on every platform, as surrogates are never code points): a pending high surrogate waits for the low one; a lone surrogate becomes U+FFFD, and a high one still pending when `systemDraw` starts is flushed as U+FFFD. The result goes to documents as UTF-8. The game's `onCharInput` (unless consumed and `ignoreEventsHandledByUI`) and `UISystem::eventOnCharInput` (unless consumed) still receive each `wchar_t` unit; a lone high unit counts as consumed when a document text field has focus. |
 | `systemTextInput` (new) | Documents get the whole string. Then, unless consumed, each code point goes to `onCharInput` and `UISystem` (two surrogate units on 16-bit `wchar_t`). |
 | `systemTouchStart/Move/End` (1380/1426/1403) | Documents get `ProcessTouchStart/Move/End({Touch{pointer, pos}}, mods)` with the real pointer id. |
-| `systemTouchCancel` (1448/1455) | Now reaches documents (`ProcessTouchCancel`). |
+| `systemTouchCancel` (1448/1455) | Now reaches documents (`ProcessTouchCancel`, after a `ProcessMouseLeave` so the cancel never clicks). The game's `onTouchCancel` is skipped for a finger a document had taken. |
 
 Document dispatch rules:
 - Scenes are walked **top layer first** (reverse of `getScenesSnapshot()`, `Engine.cpp:182`),
@@ -835,6 +977,13 @@ Document dispatch rules:
   §3.7.3); the first scene whose document consumes stops the document walk.
 - `UISystem` keeps its current all-scenes behaviour, plus phase 0's rule that a pointer-down
   consumed by a scene's document is not given to that scene's `UISystem`.
+- *(p1-input)* Releases (mouse up, touch end) go to the documents of every scene not turned
+  off (phase 0's looser gate), top first; once one consumed it, the scenes below get it only
+  if they hold that pointer (`hasPointerCapture`). Moves: below the scene whose document took
+  the move, documents get `ProcessMouseLeave` (their hover clears) unless they hold a press.
+  Key ups go to every scene (each consumes only the ups of its own consumed downs).
+- *(p1-input)* Cursor: `UISystem` sets the cursor on every move, so `systemMouseMove` applies
+  the hovered document element's cursor (`UIDocumentSystem::getPointerCursor`) after it.
 - Modifiers go to RmlUi on every call, including pointer events, through
   `RmlKeyMap::toRmlModifiers` (replacing phase 0's inline mapping).
 
@@ -853,7 +1002,12 @@ bool eventOnTextInput(const std::string& utf8);
 bool eventOnImeComposition(const std::string& utf8, int cursor);
 void eventOnImeCancel();
 bool hasFocusedTextInput() const;
+// p1-input additions: the document holds this pointer since its down (touch: pointer id;
+// mouse: button); the CSS cursor under the pointer (ARROW when not over content)
+bool hasPointerCapture(int pointer, int button, bool touch) const;
+CursorType getPointerCursor() const;
 ```
+Mouse events use pointer 0 with `touch = false`; their capture is keyed by button.
 These replace the phase-0 pointer methods; phase 0's signatures become thin wrappers, and
 phase 0's `HtmlUIContext::processMouse*` helpers gain pointer ids and touch variants (phase 5
 adds its pointer calls there, §3.3.3).
@@ -877,18 +1031,22 @@ after the screen context declined the event.
 - **Wheel:** consumed iff `ProcessMouseWheel` returns false, or the hover element is
   blocking.
 - **Key down/up:** consumed iff
-  - the focus element is not the document/root and `ProcessKeyDown` returned false
-    (propagation stopped or `preventDefault`, §3.14); or
   - the focus element is a text control (`input` of a text type, `textarea`, `select`) and
-    the key is not one of Escape and F1–F25.
+    the key is not one of Escape and F1–F25 — this rule alone decides for text controls,
+    because RmlUi's text widget stops the propagation of every key it sees
+    (`WidgetTextInput::ProcessEvent`), so `ProcessKeyDown` returns false for Escape too; or
+  - otherwise, the focus element is not the document/root and `ProcessKeyDown` returned false
+    (propagation stopped or `preventDefault`, §3.14).
 - **Text and IME:** consumed iff a text control has focus.
 
 **Control characters.** `\b`, `\r`, `\n`, `\t` and `0x1B` arriving as text are not inserted.
 Several platforms send them as characters (Linux `XLookupString`, Windows `WM_CHAR`,
 Android BACK → `\b`, editor `PlayInput` lines 166-221).
 - If no matching key down (BACKSPACE, ENTER, TAB, ESCAPE) reached documents in the same
-  frame, a synthetic key down/up is sent instead.
-- Otherwise the character is dropped.
+  frame, a synthetic key down/up is sent instead, at the next `UIDocumentSystem::update`
+  (frame end), and only while a text field has focus.
+- Otherwise the character is dropped. Matching is counted per key in both orders (the editor
+  sends the character before its key down).
 - This keeps Android's soft-keyboard backspace working without double deletes on desktop.
 
 **Key map.** `engine/core/htmlui/RmlKeyMap.{h,cpp}`:
@@ -904,10 +1062,20 @@ Android BACK → `\b`, editor `PlayInput` lines 166-221).
   `KM_CTRL`, because RmlUi's text widget reads only `ctrl_key` for copy/cut/paste/select-all
   (`WidgetTextInput.cpp:529-618`).
 - It also provides the DOM `key`/`code` strings for `UIEvent` (§3.9.3), from the D_KEY plus
-  shift state.
+  shift state: `int fromRmlKey(KeyIdentifier)` (keydown events carry only the RmlUi key; the
+  table is one-to-one apart from `KI_UNKNOWN`), `std::string domCode(int dKey)`,
+  `std::string domKey(int dKey, int dMods)` (shift, and caps lock for letters), and
+  `int fromRmlModifiers(int)`. `setAppleModifiers(bool)`/`isAppleModifiers()` is the
+  injectable Cmd→Ctrl flag. p1-lua: `keyCode = fromRmlKey(key_identifier)`,
+  `key = domKey(keyCode, fromRmlModifiers(modifier params))`, `code = domCode(keyCode)`.
 
 **Focus → virtual keyboard and IME.** `engine/core/htmlui/RmlTextInputHandler.{h,cpp}`, an
-`Rml::TextInputHandler` installed on every context (passed to `Rml::CreateContext`):
+`Rml::TextInputHandler` installed on every context (passed to `Rml::CreateContext`; one per
+`HtmlUIContext`, which owns it, with `setCanvasMapper` for the context → canvas mapping of
+the caret area: texture contexts (p1-rtt) set their own). The touch, wheel and handler
+accessors of `HtmlUIContext` (`processTouchStart/Move/End/Cancel`, `hasTouch`,
+`processMouseWheel`, `setWheelScale` (default 1, 0.25 on Web), `getTextInputHandler`) live
+in the new `engine/core/htmlui/HtmlUIContextInput.cpp` (p1-input):
 - `OnActivate(ctx)`: remember the context, then
   `System::instance().showVirtualKeyboard(utf8ToWString(current value))`.
 - `OnDeactivate` / `OnDestroy`: cancel any composition, then `hideVirtualKeyboard()`.
@@ -930,13 +1098,21 @@ Android BACK → `\b`, editor `PlayInput` lines 166-221).
 virtual void setClipboardText(const std::string& utf8);
 virtual std::string getClipboardText();
 virtual void setTextInputArea(float x, float y, float width, float height); // screen pixels, top-left origin
-enum class MouseCursor { ARROW, POINTER, TEXT, CROSSHAIR, MOVE, NOT_ALLOWED, WAIT, PROGRESS,
-                         RESIZE_EW, RESIZE_NS, RESIZE_NWSE, RESIZE_NESW, HELP, GRAB, GRABBING };
-virtual void setMouseCursor(MouseCursor cursor);   // base: no-op (mobile, headless)
 ```
+*(p1-input)* The engine already had a cursor API on every platform: `enum class CursorType`
+(`ARROW, IBEAM, CROSSHAIR, POINTING_HAND, RESIZE_EW, RESIZE_NS, RESIZE_NWSE, RESIZE_NESW,
+RESIZE_ALL, NOT_ALLOWED`), `System::setMouseCursor(CursorType)` implemented by the Linux,
+Windows, macOS, Apple and Web layers, `Engine::setMouseCursor/getMouseCursor` and Lua
+`Engine.mouseCursor`/`CursorType`. A second enum would duplicate it, so `CursorType` gains
+`WAIT, PROGRESS, HELP, GRAB, GRABBING` (appended) and `using MouseCursor = CursorType;` keeps
+the planned name (`POINTER` = `POINTING_HAND`, `TEXT` = `IBEAM`, `MOVE` = `RESIZE_ALL`).
+`RmlSystem::SetMouseCursor` goes through `Engine::setMouseCursor`, so the editor Game view
+and `Engine::getMouseCursor` see it too; `RmlSystem::cursorFromCss` maps names (first known
+keyword of a comma list).
 - `setMouseCursor`: Linux X11 `XCreateFontCursor` + `XDefineCursor`; Windows `LoadCursor` +
   `SetCursor` (kept across `WM_SETCURSOR`); macOS `NSCursor`; Web `canvas.style.cursor`;
-  editor Game view `ImGui::SetMouseCursor`; Android/iOS no-op. CSS names map as `default` →
+  editor Game view `ImGui::SetMouseCursor` (`PlayInput` applies `Engine::getMouseCursor()`
+  while the pointer is over the game image); Android/iOS no-op. CSS names map as `default` →
   ARROW, `pointer` → POINTER, `text` → TEXT, `ew-resize`/`col-resize` → RESIZE_EW, …;
   unknown names → ARROW. Phase 3 passes the first supported keyword of a CSS cursor list.
 - The base implementation keeps an in-process clipboard string, so headless tests work.
@@ -952,8 +1128,11 @@ virtual void setMouseCursor(MouseCursor cursor);   // base: no-op (mobile, headl
   `getClipboardText` with `ImGui::SetClipboardText` / `ImGui::GetClipboardText`. These are
   backed by the editor's X11, Win32 and NSPasteboard implementations
   (`editor/backend/BackendLinux.cpp:2197/2275`, `imgui_impl_win32`, `imgui_impl_osx`).
-- ImGui characters are 16-bit (`IMGUI_USE_WCHAR32` is off, `libs/imgui/imconfig.h:70`), so
-  astral characters arrive as surrogates and are combined by `systemCharInput` (§3.6.1).
+- ImGui characters are 16-bit (`IMGUI_USE_WCHAR32` is off, `libs/imgui/imconfig.h:70`).
+  *(p1-input: ImGui does not keep surrogates there; it turns an astral character into U+FFFD
+  in `InputQueueCharacters`. `PlayInput` therefore reads this frame's text events from
+  `ImGuiContext::InputEventsTrail`, which holds the whole code point, and sends it to
+  `systemCharInput` as one unit (two surrogates where `wchar_t` is 16 bits).)*
 
 MCP `send_input` (`editor/mcp/tools/PlayTools.cpp`):
 - `text` sends the whole UTF-8 string through `Engine::systemTextInput`. Today line 2279
@@ -979,7 +1158,7 @@ None of the platforms uses sokol_app; each has its own windowing (research §4).
 | **macOS** (`engine/platform/mac/`) | `NSPasteboard.generalPasteboard`, `clearContents` / `setString:forType:NSPasteboardTypeString` / `stringForType:`. | New `MacTextInputClient.{h,mm}` holds the `NSTextInputClient` logic shared by `MacViewMetal`, `MacViewGL` and `MacViewVulkan`, replacing the stubs at `MacViewMetal.mm:65-75`, `MacViewGL.mm:86-96` and `MacViewVulkan.mm:87-97`: `setMarkedText:selectedRange:replacementRange:` → `systemImeComposition(utf8, selectedRange.location)`; `unmarkText` → commit the marked text; `insertText:` → `systemTextInput(utf8)` with the whole string (replacing the UTF-16 unit loop at `MacInputRouter.mm:146`); `hasMarkedText`/`markedRange`/`selectedRange`; `firstRectForCharacterRange:` → the last `setTextInputArea`, via `convertRectToScreen:`; on deactivate `[[view inputContext] discardMarkedText]`. | none | — |
 | **iOS** (`engine/platform/apple/ios/`) | `UIPasteboard.generalPasteboard.string`. | `EngineView` (MTKView `<UIKeyInput>`, `ios/EngineView.h:6`) owns a hidden `UITextField` (alpha 0.01, 1×1, moved to the text-input area). It keeps the sentinel text `" "` so backspace on empty is detected. Delegate `textField:shouldChangeCharactersInRange:replacementString:`: deleting the sentinel → `systemKeyDown/Up(D_KEY_BACKSPACE)` + `systemCharInput('\b')`; otherwise, when `markedTextRange == nil`, → `systemTextInput`. `UITextFieldTextDidChangeNotification`: if `markedTextRange != nil` → `systemImeComposition(markedText)`, else commit the pending composition. This is the hidden-text-field approach SDL uses on iOS. `UIKeyInput` on `EngineView` is removed; component `InputField` gets the same text through `systemTextInput` → `onCharInput`/`UISystem`. | `showVirtualKeyboard` (`JasperEngineApple.mm:161`) → `[textField becomeFirstResponder]`; `hideVirtualKeyboard` (167) → `resignFirstResponder`. | `pressesBegan/pressesEnded` (iOS 13.4+ `UIKey.keyCode` HID usage → D_KEY table in a new `KeyCodesIOS.h`, modifiers from `UIKey.modifierFlags`) → `systemKeyDown/Up`. iOS today has no key events. |
 | **Android** (`engine/platform/android/` + `java/.../MainActivity.java`) | `MainActivity` gets `public void setClipboardText(String)` (posts to the UI thread with `runOnUiThread`, `ClipboardManager.setPrimaryClip(ClipData.newPlainText)`) and `public String getClipboardText()`. `JasperEngineAndroid` calls them over JNI (`AttachCurrentThread` on the game thread, cached `jmethodID`s). | In the `GameTextInputState` diff (`NativeEngine.cpp:442-469`), while `Engine::wantsTextComposition()`: text outside the composing region (`composingRegion.start/end`) is diffed against the previous committed text. Removals → `systemKeyDown/Up(D_KEY_BACKSPACE)` per removed code point; additions → `systemTextInput`; the composing span → `systemImeComposition(span, cursor - start)`, or `systemImeCancel` when the region becomes empty without a commit. Otherwise the legacy unit diff is unchanged, for component `InputField`. Diff in code points, not `wchar_t` units. | Unchanged (`showSoftInput`, `NativeEngine.cpp:376`). | `AMOTION_EVENT_ACTION_SCROLL` (`AXIS_VSCROLL/HSCROLL`) → `systemMouseScroll`. `AINPUT_SOURCE_MOUSE` hover (`ACTION_HOVER_MOVE/ENTER/EXIT`) → `systemMouseMove` / `systemMouseEnter` / `systemMouseLeave`. Both in `handleGameActivityInput` (828). |
-| **Web** (`engine/platform/emscripten/`) | `setClipboardText` → `navigator.clipboard.writeText` (`EM_JS`; keydown is a user activation), falling back to a hidden textarea + `document.execCommand('copy')`. Paste: a `paste` listener on the IME textarea and on `document` → `systemTextInput(clipboardData.getData('text/plain'))`. Ctrl/Cmd+V keydown is **not** sent to documents on Web, because RmlUi would ask synchronously for the clipboard, which the async browser clipboard cannot answer. `getClipboardText` returns the text of the last `paste` event. | A hidden `<textarea id="jasper-ime">` is created on startup (`EM_JS`), positioned by `setTextInputArea` (canvas-relative CSS px), and focused on `showVirtualKeyboard`, blurred on hide. `compositionstart/update` → `systemImeComposition(e.data)`; `compositionend` → `systemTextInput(e.data)`; `input` with `inputType == 'insertText'` and not composing → `systemTextInput(e.data)`. The textarea value is cleared after each event. While it is focused, the existing `keypress` → `systemCharInput` path (`JasperEngineWeb.cpp:523-529`) is skipped so text is not inserted twice; keydown/keyup keep working. | Focusing the textarea opens the mobile keyboard. | — |
+| **Web** (`engine/platform/emscripten/`) | `setClipboardText` → `navigator.clipboard.writeText` (`EM_JS`; keydown is a user activation), falling back to a hidden textarea + `document.execCommand('copy')`. Paste: a `paste` listener on the IME textarea and on `document` → `systemTextInput(clipboardData.getData('text/plain'))`. Ctrl/Cmd+V keydown is **not** sent to documents on Web, because RmlUi would ask synchronously for the clipboard, which the async browser clipboard cannot answer. `getClipboardText` returns the text of the last `paste` event. | A hidden `<textarea id="jasper-ime">` is created on startup (`EM_JS`), positioned by `setTextInputArea` (canvas-relative CSS px), and focused on `showVirtualKeyboard`, blurred on hide. `compositionstart/update` → `systemImeComposition(e.data)` (cursor at the end of the composition: browsers do not report it); `compositionend` → `systemTextInput(e.data)` (`systemImeCancel` when empty); keydown/keyup with `keyCode` 229 (composition, Android soft keyboard) are not sent, and the soft keyboard's `beforeinput` `deleteContentBackward`/`insertLineBreak` become BACKSPACE/ENTER; `input` with `inputType == 'insertText'` and not composing → `systemTextInput(e.data)`. The textarea value is cleared after each event. While it is focused, the existing `keypress` → `systemCharInput` path (`JasperEngineWeb.cpp:523-529`) is skipped so text is not inserted twice; keydown/keyup keep working. | Focusing the textarea opens the mobile keyboard. | — |
 
 `setTextInputArea` takes screen pixels. `Engine::setTextInputArea` converts canvas → screen
 with `viewRect` (the inverse of `transformCoordPos`).
@@ -1220,8 +1399,11 @@ Full reload with state preservation:
   (630-690), it does not skip while playing. An edit-mode change also sets
   `needUpdateRender` so the Scene view redraws.
 - **Scene view in edit mode.** Phase 0 already calls `UIDocumentSystem::update(0)` next to
-  every edit-mode `UISystem::update(0)` (phase 0 §3.7.5 A1); the editor advances the UI clock
-  in edit mode (§3.0 item 6).
+  every edit-mode `UISystem::update(0)` (phase 0 §3.7.5 A1); edit-mode frames run through
+  `Engine::systemDraw`, which advances the UI clock (§3.0 item 6). The Scene view redraws only
+  when `sceneNeedsRender` says so (`App::engineRender`), so p1-editor keeps it redrawing while
+  a document of the scene runs a transition or animation (the RmlUi context asks for the next
+  update), and stops when it does not.
   - `SceneRender2D::update` (825) draws the selected document's canvas rectangle as an
     outline, like other 2D gizmos.
   - Documents are not pickable in the Scene view; they are selected in the Hierarchy.
@@ -1277,8 +1459,54 @@ the Lua tree (`isLuaExportFile`, 706-716). That is harmless; the runtime reads t
 **MSAA project setting.** `htmlUiMsaaSamples` (1/2/4/8, default 4) is stored with the other
 project settings in `Project`. It is shown in the Project Settings window and settable
 through MCP `set_project_settings`. Exports write it as
-`HtmlUIContext::setPreferredSampleCount(n)` into the generated init code (`Generator.cpp`);
-the editor applies it directly when a project opens or the setting changes.
+`UIDocumentSystem::setPreferredSampleCount(n)` into the generated init code (`Generator.cpp`);
+the editor applies it with the same call when a project opens or the setting changes. (Not
+`HtmlUIContext::setPreferredSampleCount` directly: that class is `JASPERENGINE_INTERNAL`,
+hidden from the editor's shared engine, and its header needs RmlUi's include path, which
+generated game code does not have; the `UIDocumentSystem` statics forward to it, §3.0
+item 4.)
+
+#### 3.8.9 Implementation notes (p1-editor, as built)
+Where the code differs from or adds to the text above:
+- **Scanner.** `HtmlUIReference` also has `bool absolute` (an absolute filesystem path: the
+  export warns). Besides the listed sources it reads `link type="text/template"` (TEMPLATE),
+  `@spritesheet { src: ... }` (IMAGE) and RCSS's bare `@font-face { src: font.ttf; }`, which
+  RmlUi 6.3 opens as written, i.e. from the asset root, not relative to the sheet (the
+  scanner resolves it the same way). Helpers next to it: `scanHtmlUIDocumentText`,
+  `scanHtmlUIStyleSheetText`, `resolveHtmlUIPath`, `normalizeHtmlUIPath`,
+  `getHtmlUIReferenceKind`, `parseHtmlUIMessageLocation`, and the runtime log
+  `HtmlUIFileLog` (load scopes for files and messages, per-renderer lazy texture loads, an
+  observer for messages outside a load) in the same RmlUi-free header.
+- **Absolute document paths.** `RmlSystem::joinPath` kept a leading `/` out of the joined
+  path (phase-0 bug); an absolute document now keeps its links absolute (tests, tools).
+- **Fonts.** `RmlFontEngine::reloadFontFile` uses a new `FontRegistry::reloadFile(path)`,
+  which parses the file again and swaps the faces registered from it.
+- **`reloadChangedFiles`** reports `stylesheetOnly = true` for image-only changes too (the DOM
+  is kept); a file seen for the first time (an image loaded at draw time after the document)
+  gets its stamp recorded without a reload.
+- **onLoad/onUnload** come from p1-lua's hooks (`scriptDocumentLoading/Loaded/Unloading`,
+  fired at the end of the next `update`). The full reload calls them itself, in this order:
+  capture, `scriptDocumentLoading`, load the new document, `scriptDocumentReloaded(entity,
+  oldToNew)`, `scriptDocumentUnloading` + unload of the old one, restore, `scriptDocumentLoaded`.
+  `UIDocument::reload` and a late `createDataModel` reach this reload through
+  `reloadDocument(entity, true)`.
+- **Redraw while animating**: `UIDocumentSystem::getNextUpdateDelay()` (RmlUi's
+  `Context::GetNextUpdateDelay`, infinity without documents); `App` redraws a stopped scene
+  while it is 0 and wakes up when a later update is due. The watcher and these wake-ups run
+  from `App::show` on every loop iteration, because `engineRender` does not run while the
+  editor idles (otherwise a file saved by an external editor would wait for input).
+- **Debugger**: the Game view toggle lives in `GameWindow.cpp` (its toolbar), and hides the
+  debugger again when play stops. `HtmlUI::isDebuggerVisible/isDebuggerCompiled` were added.
+- **Exporter**: the documents are collected while `loadAndSaveAllScenes` has every scene
+  loaded; a missing file behind an absolute path is an error as well as the warning.
+  `Exporter::checkHtmlUIReferences(projectPath, assetsPath, documents, errors, warnings)` is
+  the static, testable half.
+- **`collectResourcesInRegistry`** adds nothing for documents: RmlUi reads them on load and
+  its images through `RmlRenderer::LoadTexture`, not the texture pool the preload fills.
+- **Assets > Create > HTML Document** writes through `editor/util/HtmlUITemplates`
+  (ImGui-free, tested in `EditorLogicTests`). MCP cannot click ImGui menus: the MCP tests
+  create the GameObject with `create_entity type=ui_document` (the Hierarchy entry's
+  creation type); MCP `list_assets`/`get_asset_info` gain the types `html` and `css`.
 
 ---
 
@@ -1317,7 +1545,7 @@ public:
     float getDeltaX() const; float getDeltaY() const;
     std::string getData() const;                  // textinput / IME
     UIValue getDetail() const;                    // custom events (dispatchEvent)
-private: std::shared_ptr<struct UIEventState> state;
+private: std::shared_ptr<HtmlUIEventState> state;   // not UIEventState: Scene.h has an enum of that name
 };
 ```
 `engine/core/object/ui/UIElement.h` (phase 0's class, extended; every phase-0 member stays:
@@ -1460,7 +1688,7 @@ static void setDebuggerVisible(bool); static bool isDebuggerVisible();
 - **Play stop.** The Lua state is never recreated between plays (`Project.cpp:7195`,
   7663-7719). Documents are destroyed with their scenes, which releases every listener and
   data-model ref. A test checks that `liveLuaRefs()` is 0 after stop.
-- **Events.** A `UIEvent` handle wraps a `UIEventState` that is invalidated when
+- **Events.** A `UIEvent` handle wraps a `HtmlUIEventState` that is invalidated when
   `ProcessEvent` returns.
 
 #### 3.9.3 Events: names and fields
@@ -1598,6 +1826,82 @@ document through phase 0's `loadDocumentNow`, so
 - The Xcode project (`engine/workspaces/xcode/JasperEngine.xcodeproj/project.pbxproj`, which
   lists sources explicitly, e.g. lines 91-92) gets every new engine source of every package.
   Each package adds its own files there.
+
+#### 3.9.6 As implemented (p1-lua)
+Details the implementation fixed, binding for the packages that build on it:
+- **Internal header.** `engine/core/object/ui/HtmlUIScriptInternal.h` declares
+  `HtmlUIEventState`, `UIDataModelState`, `HtmlUIDataModelRecord`, `HtmlUIScriptState` (its
+  methods are defined in `UIDocumentSystemScript.cpp`), `HtmlUIElementRegistry` (handle tokens
+  and the detached pool), `HtmlUIScriptAccess` and `HtmlUILua` (Lua conversions, defined in
+  `HtmlUIClassesLua.cpp`: `pushValue`, `toValue`, `pushEvent`, `pushElement`, `pushModel`,
+  `call`). These structs hold RmlUi types only by pointer or through an RmlUi base class and
+  are not `JASPERENGINE_INTERNAL` (`UIDocumentSystem` holds `HtmlUIScriptState`; a hidden type
+  there makes GCC warn). `UIDocumentSystem::getScriptState()` (public, engine-internal) gives
+  the state. `HtmlUIEventListener.h` holds `HtmlUIEventListener` and `HtmlUIEventNames` (DOM
+  name mapping; DOM `change` is the RmlUi event `htmlui-change`, synthesized per context by a
+  capture listener on the context root).
+- **Handles and the detached pool** are process-wide, like RmlUi. Every `UIElementHandle`
+  carries the element's token (`HtmlUIElementRegistry::token`, one per element, shared by all
+  its handles). Detached trees are pooled by root with their document and context; at the end
+  of each `UIDocumentSystem::update` a tree no handle reaches (no live token on any of its
+  elements) is destroyed. Pools go with their document (unload) and context.
+- **Hooks in the phase-0 `UIDocumentSystem.cpp`** (one line each): `load()` →
+  `scriptLoadDocuments()` (every enabled document loads with the scene); `ensureContext()` →
+  `scriptContextCreated()` (data models into the new context, change synthesizer);
+  `destroyContext()` (first line) → `scriptContextDestroying()`; `applyComponent` after a load →
+  `scriptDocumentLoaded(entity)`; `unloadEntityDocument` → `scriptDocumentUnloading(entity,
+  document)`; `onComponentRemoved` → `scriptComponentRemoved(entity)`; end of `update()` →
+  `scriptUpdate()`; and before `context->loadDocument` in `applyComponent` →
+  `scriptDocumentLoading(filename)`, which creates an empty placeholder RmlUi model (missing
+  variables allowed) for every `data-model` name of the file that no script created yet, so a
+  document loads without RmlUi errors in edit mode and before `init`; `createDataModel` removes
+  the placeholder and reloads the document. `onLoad`/`onUnload` are queued by the load/unload
+  hooks and fired after the context update (never inside `applyComponent`'s loop), or at once
+  after a synchronous load (`Scene::load`, `UIDocument::load`, a getter that loads a due
+  document), so a script's `init` is not called back for the load before it. A reload path that
+  bypasses `applyComponent`/`unloadEntityDocument` (p1-editor) calls the hooks itself.
+- **Play stop.** The editor plays the main scene in place (its snapshot is restored), so
+  documents are not destroyed with a scene at stop. `LuaBinding::cleanupLuaScripts(Scene*)`
+  (one additive line) calls `UIDocumentSystem::releaseScriptState()`: data models removed,
+  documents unloaded at once (listeners and their Lua functions, detached elements and DOM
+  changes go) and loaded again at the next update. `Engine::clearComponentSubscriptions` clears
+  `UIDocumentComponent::onLoad/onUnload` like the other component events.
+  `UIDocument` getters load a due document first, so a script's `init` works whichever of
+  `Scene::load` and the scripts' init runs first.
+- **Data models** live in `HtmlUIScriptState` per scene, owned by the creating entity. They
+  survive the context (view loss destroys and recreates it: the RmlUi side is rebuilt) and are
+  removed by `removeDataModel`, with the component, or with the system. A model removed by one
+  of its own data-event callbacks is destroyed after the update.
+- **Lua.** In Lua the data model is the proxy (a plain userdata named `UIDataModel` with
+  `__index/__newindex/__len/__pairs/__eq/__tostring`; nested tables are proxies with a path),
+  not a LuaBridge value class; the top level answers the methods `onChange, removeOnChange,
+  dirty, dirtyAll, getName, isValid, get, set` first, so these cannot be data keys. Lua tables
+  with keys 1..n (or empty) become arrays, other tables objects with sorted keys.
+  `addEventListener`, `removeEventListener`, `dispatchEvent`, `createDataModel`,
+  `getDataModel` and `classList:add/remove` are `lua_CFunction`s (they take Lua functions and
+  option tables and raise errors with no C++ object alive), typed in the stub generator's
+  `OVERRIDES`; `_PARAM_TYPE_OVERRIDES` exists (empty) for `luabridge::LuaRef` parameters of
+  later packages (p1-anim). A dead element is detected in front of LuaBridge's `__index` /
+  `__newindex` of `UIElement`, `UIClassList`, `UIStyle`, `UIDataset`, so every member but
+  `isValid` raises. Queries and navigation return `nil` for no element. Lua diagnostics:
+  `UIDocument.getLiveLuaRefCount()` (= `HtmlUIScriptState::liveLuaRefs()`).
+- **Stub fragments** `engine/core/script/binding/stubs/*.lua` are added to the generated stubs
+  (a fragment named like a generated file is appended to it); `CMakeLists.txt` lists them as
+  dependencies of the stub generation.
+- **Fork patch** (§3.14 patch 1): a prevented event counts as consumed for every caller
+  (`DispatchEvent` returns false: a prevented `wheel` does not scroll, a prevented `mousedown`
+  starts no drag), and the text input of a prevented key down is dropped until the next key
+  down or key up. `UIElement::dispatchEvent` reads the prevented flag through an event
+  parameter set by `UIEvent::preventDefault`.
+- **Key fields.** `keyCode = RmlKeyMap::fromRmlKey(key_identifier)`, `key = domKey(keyCode,
+  fromRmlModifiers(modifier parameters))`, `code = domCode(keyCode)` (p1-input); `repeat`: RmlUi
+  has no repeat flag, so the context root's capture listener (the one that synthesizes
+  `change`) tracks held keys and marks a key down of a held key as a repeat.
+- **`UIDocumentComponent` in Lua** (`UIDocument:getUIDocumentComponent()`): `filename`,
+  `sortOrder`, `enabled`, `interactive`, `needReload`, ro `loaded`, and the events `onLoad`,
+  `onUnload` (the script-event generator of p1-editor uses them).
+- **`data-for` indices** (`i` in `data-for="item, i : items"`) are 0-based, as RmlUi gives
+  them; the guide says so.
 
 ---
 
@@ -1744,8 +2048,10 @@ Behaviour:
     assets for `Picture::resolver`;
   - ZIP64, encryption and multi-disk archives are rejected with an error event.
 
-#### 3.10.4 `TextureData` moves to ThorVG
-`loadSvgTexture` (`TextureData.cpp:241-305`) becomes ThorVG:
+#### 3.10.4 `TextureData` moves to LunaSVG (originally: ThorVG)
+Under the chosen path (§3.10.2) this is LunaSVG (`LunaSVGRuntime::rasterize`, straight alpha
+through `Bitmap::convertToRGBA`, same size rule and cap); the ThorVG wording below was the
+pre-decision plan. `loadSvgTexture` (`TextureData.cpp:241-305`) becomes ThorVG:
 - `Picture::load(data, size, "svg")`;
 - size = intrinsic (96 dpi) × `?svgScale=`, capped at 16384 as today (264-273);
 - `SwCanvas` with `ColorSpace::ABGR8888S`, **straight alpha**, matching the engine's
@@ -1764,6 +2070,32 @@ masks, text) than nanosvg. **Regression test:** the four `.svg` assets in the te
 load at the same pixel size as with nanosvg, with alpha-weighted mean colour within 2/255;
 phase 0's `icon.svg` goldens (`render_images`, `images`) and `RmlRendererTest.LoadTextureSvg`
 still pass (regenerate only with an inspected, explained difference).
+
+
+#### 3.10.5 As implemented (p1-vector, recorded deviations)
+- **SVG plugin registration:** `RMLUI_SVG_PLUGIN` is defined on the `rmlui` target, so
+  `Rml::Initialise` registers the plugin itself (upstream `Core.cpp`); `HtmlUI::acquire` only
+  registers the `lottie` instancer (after every `Rml::Initialise`, RmlUi forgets instancers at
+  shutdown), calls `ThorVGRuntime::acquire` and `LunaSVGRuntime::ensureFonts`. `rmlui` links
+  `lunasvg`.
+- **LunaSVG build:** no system font scan and no file access (`LUNASVG_DISABLE_LOAD_SYSTEM_FONTS`,
+  `LUNASVG_DISABLE_EXTERNAL_RESOURCES`, `PLUTOVG_DISABLE_FONT_FACE_CACHE_LOAD`):
+  `engine/core/util/LunaSVGRuntime` registers the built-in Roboto under the generic families
+  and LunaSVG's fallback names. `<image href>` inside SVG takes `data:` URIs only (LunaSVG has
+  no resolver hook).
+- **ThorVG config:** loaders lottie, png, jpg, raw, sfnt (no SVG loader vendored); no
+  threads, file IO, expressions, partial rendering or SIMD.
+- **Frames and loops:** frames follow lottie-web (N frames shown as 0..N-1, one pass = N/fps
+  seconds); `segment="a b"` is `[a, b)`; a loop count is the number of plays in total
+  (`loop="3"`: two `loop` events then `complete`; `0` = forever); in bounce mode one iteration
+  is there and back. The frame index is an integer, so the texture is updated once per
+  animation frame.
+- **Events:** dispatched with `DispatchEvent(type, {message}, interruptible = false, bubbles =
+  false)`; the events of a load (`load`, `error`, autoplay's `play`) are dispatched in a later
+  engine frame, so listeners added after `LoadDocument` (scripts' `init`) get them.
+- **Fit:** the animation is scaled to fit the content box keeping its aspect ratio, centred.
+- **Images in Lottie:** the resolver tries the engine's file layer (`<lottie dir>/<u><p>`),
+  then the `.lottie` archive (`images/` or `i/`).
 
 ---
 
@@ -1787,8 +2119,8 @@ Ported from Anime.js 4.5.0 (`/tmp/htmlui-src/anime/src`, MIT):
 | `AnimSpring.{h,cpp}` | Port of `Spring` (`easings/spring/index.js`): parameters `mass, stiffness, damping, velocity` or `bounce, duration`; `solve`, `compute` (settling duration via rest threshold .0005, rest 200 ms, step .02), `onComplete` at the perceived duration. |
 | `AnimValue.{h,cpp}` | Value decomposition: numbers with units, relative `+= -= *=`, colours (`#rgb[a]`, `#rrggbb[aa]`, `rgb()/rgba()/hsl()/hsla()`) interpolated per channel in non-premultiplied 0–255 RGBA as Anime does, and complex strings (numbers inside a template string). |
 | `AnimTargets.{h,cpp}` | Targets: `UIElement`, a list of elements, a selector string (resolved against every loaded document of the current scene, or the `root` param), and plain tables through a `TableTarget` adapter interface implemented in the Lua binding. |
-| `AnimProperty.{h,cpp}` | Writers. **Individual transforms** `translateX/Y/Z`, `rotate`, `rotateX/Y/Z`, `scale`, `scaleX/Y/Z`, `skew`, `skewX/Y`, `perspective` keep a per-element transform state and write one `Rml::Transform` built from `Rml::TransformPrimitive`s in Anime's order (insertion order) to `PropertyId::Transform`. `opacity` → `Rml::Property(float, Unit::NUMBER)`. Single lengths (`width height left top right bottom margin* padding* font-size border-*-width border-radius gap letter-spacing line-height`) → `Rml::Property(v, unit)`. Colours (`color background-color border-*-color image-color`) → `Rml::Property(Colourb)`. **Custom properties** (`'--glow'`, any `--name`) are interpolated as numbers, lengths or colours by their value shape and written every frame with `Element::SetProperty("--name", text)`, so `var(--name)` users (phase-5 effect parameters included) follow. Anything else → the complex-string path and `Element::SetProperty(name, string)`. Unit mismatch between from and to is resolved through `Element::ResolveLength`/computed values into px. |
-| `AnimTimer.{h,cpp}`, `AnimAnimation.{h,cpp}`, `AnimTimeline.{h,cpp}` | Playback: `duration` (default 1000 ms), `delay`, `loopDelay`, `loop` (count / `true` = infinite), `alternate`, `reversed`, `autoplay` (default true), `playbackRate`, `playbackEase`, `frameRate`, `ease` (default `out(2)`), `composition` (`replace` default, `none`, `blend` = additive sum of active numeric tweens on the same property), keyframes (value arrays; arrays of `{to, duration, ease, delay}`; percentage keyframes `{["0%"]={...}}`), `from/to` objects, function values `function(target, index, total)`. Callbacks `onBegin`, `onBeforeUpdate`, `onUpdate`, `onRender`, `onLoop`, `onPause`, `onComplete`. Methods `play, pause, resume, restart, reverse, alternate, seek(ms), stretch(ms), cancel, revert, complete, then(fn)`. Properties `currentTime, progress, iterationProgress, duration, paused, began, completed, reversed, id`. Timeline: `add(targets, params[, position])`, `add(timer)`, `set(targets, props[, position])`, `call(fn[, position])`, `label(name[, position])`, `sync(animation[, position])`, `remove(...)`, `init()`; positions per `parseTimelinePosition` (numbers, `"+=100"`, `"-=100"`, `"*=2"`, `"<"`, `"<<"`, `"label"`, `"label+=50"`), `defaults`. |
+| `AnimProperty.{h,cpp}` | Writers. **Individual transforms** `translateX/Y/Z`, `rotate`, `rotateX/Y/Z`, `scale`, `scaleX/Y/Z`, `skew`, `skewX/Y`, `perspective` keep a per-element transform state (seeded from the element's inline `transform`) and write one `Rml::Transform` built from `Rml::TransformPrimitive`s in Anime 4.5's order (perspective, translate, rotate, scale, skew — `buildTransformString`; Lua tables have no insertion order anyway) to `PropertyId::Transform`, once per render pass. `opacity` → `Rml::Property(float, Unit::NUMBER)`. Single lengths (`width height left top right bottom margin* padding* font-size border-*-width border-radius gap letter-spacing line-height`) → `Rml::Property(v, unit)`. Colours (`color background-color border-*-color image-color`) → `Rml::Property(Colourb)`. **Custom properties** (`'--glow'`, any `--name`) are interpolated as numbers, lengths or colours by their value shape and written every frame with `Element::SetProperty("--name", text)`, so `var(--name)` users (phase-5 effect parameters included) follow. Anything else → the complex-string path and `Element::SetProperty(name, string)`. Unit mismatch between from and to is resolved through `Element::ResolveLength`/computed values into px. |
+| `AnimTimer.{h,cpp}`, `AnimAnimation.{h,cpp}`, `AnimTimeline.{h,cpp}` | Playback: `duration` (default 1000 ms), `delay`, `loopDelay`, `loop` (count / `true` = infinite), `alternate`, `reversed`, `autoplay` (default true), `playbackRate`, `playbackEase`, `frameRate`, `ease` (default `out(2)`), `composition` (`replace` default, `none`, `blend` = additive sum of active numeric tweens on the same property), keyframes (value arrays; arrays of `{to, duration, ease, delay}`; percentage keyframes `{["0%"]={...}}`), `from/to` objects, function values `function(target, index, total)`. Callbacks `onBegin`, `onBeforeUpdate`, `onUpdate`, `onRender`, `onLoop`, `onPause`, `onComplete`. Methods `play, pause, resume, restart, reverse, alternate, seek(ms), stretch(ms), cancel, revert, complete, then(fn)` (`then` is a Lua keyword: Lua calls it `andThen(fn)`; no Promise). Properties `currentTime, progress, iterationProgress, duration, paused, began, completed, reversed, id`. Timeline: `add(targets, params[, position])`, `add(timer)`, `set(targets, props[, position])`, `call(fn[, position])`, `label(name[, position])`, `sync(animation[, position])`, `remove(...)`, `init()`; positions per `parseTimelinePosition` (numbers, `"+=100"`, `"-=100"`, `"*=2"`, `"<"`, `"<<"`, `"label"`, `"label+=50"`), `defaults`. |
 | `AnimEngine.{h,cpp}` | One process-wide engine. `tick(double uiTimeSeconds)` (the `HtmlUIClock` time) advances only when the time changed, so it is idempotent per frame. `reset()` drops everything. |
 
 Lua surface:
@@ -1800,7 +2132,17 @@ Lua surface:
 - `anime.utils`: `set`, `get`, `remove`, `random`, `randomPick`, `shuffle`, `clamp`,
   `round`, `snap`, `wrap`, `mapRange`, `lerp`, `damp`, `degToRad`, `radToDeg`,
   `roundPad`, `padStart`, `padEnd`.
-- Callbacks receive the animation object.
+- Callbacks receive the animation object. Function values receive `(target, index, total)` with
+  Anime's 0-based index (stagger `from = 2` likewise).
+- C++: `Anime::animate/createTimeline/createTimer/createSpring/stagger` (`htmlui/anim/Anime.h`) over
+  `AnimParam` trees and `AnimTargetList`s (`AnimTargets::fromElement/fromSelector`, `AnimObjectTarget`).
+- Implementation notes (recorded at implementation): a timer starts at the engine's last tick
+  time, which already gives the first frame one frame of progress, so Anime's 12 ms resume head
+  start is dropped (the reference recordings undo it too); the engine ticks every frame it is
+  given (no 240 fps grid of the engine clock; per-timer `frameRate` is kept); selectors resolve
+  against the documents of `Engine::getScene()` (or `root`); the game clock accumulates the
+  positive deltas of `Engine::getGameTime()`; reads of element values use the inline style only
+  (`Element::GetLocalProperty` includes stylesheet rules, Anime reads `element.style`).
 - **Plain table targets** animate numeric fields (`rawget`/`rawset`, numbers only; colour
   strings in tables are interpolated as colours and written back as `#rrggbbaa`).
 
@@ -1829,7 +2171,7 @@ Lua surface:
 
   Both are one-line additive hooks.
 
-**Stubs.** `engine/core/script/binding/stubs/anime.lua` holds `---@class` shapes:
+**Stubs.** The `anime` lua_CFunctions get their LuaLS signatures from `OVERRIDES` entries in `generate_lua_stubs.py` (additive block); `engine/core/script/binding/stubs/anime.lua` holds `---@class` shapes:
 `AnimeAnimationParams`, `AnimeTimelineParams`, `AnimeTimerParams`, `AnimeSpringParams`,
 `AnimeStaggerParams`, the `AnimeAnimation`/`AnimeTimeline`/`AnimeTimer` method docs, and
 the `anime` table.
@@ -1837,7 +2179,10 @@ the `anime` table.
 **Reference values.** `engine/tests/htmlui/anime/gen_reference.mjs` runs on the host with
 node (`/usr/bin/node`, v20) against `/tmp/htmlui-src/anime/src`. It writes
 `engine/tests/htmlui/anime/reference.json` (checked in), sampling every easing at 101
-points, spring durations, stagger outputs and timeline offsets.
+points, spring durations, stagger outputs and timeline offsets, value decomposition, utils, and
+frame-by-frame recordings of animations, timers and timelines on plain objects driven by Anime's
+own engine with a fake clock (values, callbacks in order, state), which `AnimeReferenceTests`
+replays through `AnimEngine::tickMilliseconds`.
 
 ---
 
@@ -1856,11 +2201,27 @@ needs its own size, target and input space.
 Switching `renderMode` at runtime (`needReload`) moves the document between contexts by
 reloading it, with state preservation.
 
+*As implemented (p1-rtt):* the context's layout size is `textureWidth/pixelRatio ×
+textureHeight/pixelRatio` CSS px, rendered at `pixelRatio` (its dp ratio and font raster
+scale) into a `textureWidth × textureHeight` target, which is what the input mapping below
+("divided by the dp ratio") implies. The document stays in `UIDocumentSystem::documents`, so
+`getDocument`/`getElementById`/`UIDocument` reach it like a screen document; the phase-0
+`UIDocumentSystem.cpp` gains one-line calls (`textureLoadDocument` in `applyComponent`,
+`textureUnloadDocument`, `textureRemoveEntity`, `textureUpdate`, `textureRenderOffscreen`,
+`textureAllRendered` in `isAllLoaded`, `textureDestroyAll` in `destroyContext`). Size and
+ratio changes follow the component without a reload. `getTargetTexture` returns one
+`Framebuffer` per entity that lives as long as the system (consumers keep the pointer); a
+document that goes destroys only its GPU texture, and the same object is created again (its
+version bump rebinds consumers).
+
 #### 3.12.2 Target texture
 - Each texture context renders through `RmlRenderer` into its own `RmlRenderTarget`, with
   the same MSAA and stencil as screen documents.
 - At the end of its render, one `HTMLUI_POST` `Unp` pass copies `layers[0]` into
-  `Framebuffer targetTexture` (RGBA8, 1 sample, no depth, LINEAR, CLAMP). It
+  `Framebuffer targetTexture` (RGBA8, 1 sample, no depth, LINEAR, CLAMP). p1-render ships the
+  entry point: `RmlRenderer::drawUnpremultiplied(RmlRenderTarget&, FramebufferRender& dst,
+  width, height)` (outside a frame; `dst` created from a `FramebufferDesc` with
+  `DepthStencilFormat::NONE`, unit-tested: top-left origin, straight alpha). It
   un-premultiplies, because consumers (`Image` through `ui.frag`, mesh materials) expect
   straight-alpha sRGB data.
 - The image is top-left origin, the engine's RTT convention, so `Image::setTexture(Framebuffer*)`
@@ -1868,7 +2229,9 @@ reloading it, with state preservation.
   upright.
 - `Framebuffer::create()` bumps its version, so consumers rebind
   (`Texture::isFramebufferOutdated`).
-- `UIDocument::getTargetTexture()` returns it (Lua `doc:getTargetTexture()`).
+- `UIDocument::getTargetTexture()` returns it (Lua `doc:getTargetTexture()`): wave 0 defines it
+  as `UIDocumentSystem::getTargetTexture(entity)`, which p1-rtt defines in
+  `UIDocumentSystemTexture.cpp` (replacing the wave-0 stub).
 - Texture documents are never composited into the camera pass.
 
 #### 3.12.3 World-space input
@@ -1910,6 +2273,26 @@ consume it, because screen-space UI is drawn over the 3D world.
 - Keys and text go to the context that holds focus: the context that received the last
   pointer-down, screen or texture.
 
+*As implemented (p1-rtt, after p1-input merged):* a captured world pointer must bypass the
+screen context, so each `eventOnPointer*` has two calls: `if (isWorldPointerCaptured(...))
+return dispatchWorldPointer(...)` at the top and the offer after the screen declined (a
+consumed screen down clears the texture focus, `textureFocusScreen`). Captures are per touch
+id and per mouse button (a mouse move is captured while any button is). `hasPointerCapture`
+includes world captures, so the engine's up routing reaches the scene. The key, text and IME
+methods and `hasFocusedTextInput` use `keyContext()` (the focused texture document's context,
+else the screen context) instead of the screen context. Wheel goes to the hovered texture
+document when the screen did not take it, and mouse leave reaches texture documents. Touch
+uses `HtmlUIContext::processTouch*` with the real ids; the consume rule is p1-input's
+`isPointerOverContent`. The target fill is p1-render's `RmlRenderer::drawUnpremultiplied`
+into an RGBA8, 1-sample, depth-less `Framebuffer` (`FramebufferDesc`), done only when the
+context drew a new frame (or the texture was recreated); a hidden document leaves the texture
+cleared to transparent. Texture contexts add to `getRenderStats`. Data models created by a
+texture document's scripts live in its context (`modelContext(owner)`; p1-lua's
+`createModel`, `scriptContextCreated` and `scriptDocumentLoading(filename, target)` take it
+into account), and its context gets the DOM change-event synthesizer. Lua binds
+`UIDocumentRenderMode` and the component's `renderMode`, `textureWidth`, `textureHeight`,
+`inputSurface`, `pixelRatio`.
+
 ---
 
 ### 3.13 Font effects (p1-rtt)
@@ -1923,8 +2306,12 @@ deferred texture release of phase 0 §3.6.4 stays valid), glyphs are keyed by
 `(FontFace*, glyphIndex, rasterPixelSize)` plus the effect fingerprint, and versions bump
 the one global `GetVersion`.
 
-- **`PrepareFontEffects(face, effects)`** returns a handle to a `FontEffectSet`, cached by
-  `(face, effects fingerprint)` (`FontEffect::GetFingerprint`).
+- **`PrepareFontEffects(face, effects)`** returns a handle to an effect set
+  (`RmlFontEffects::Set`), cached by the effects' fingerprints (`FontEffect::GetFingerprint`,
+  which RmlUi's parser computes from the type and every property, colour included; the
+  instance address for an effect made without the parser). *As implemented:* the set does
+  not depend on the face (glyphs are made per face when a string is generated), so it is not
+  part of the key; sets live until `Shutdown`, because RmlUi keeps the handles.
 - **One `EffectLayer` per effect.**
   - For effects with `HasUniqueTexture()` (outline, glow, blur), the layer owns a glyph atlas
     (RGBA8, premultiplied). Each glyph is generated on demand from the `FontFace::rasterizeGlyph`
@@ -1933,6 +2320,12 @@ the one global `GetVersion`.
     ColorFormat::A8}` (`Include/RmlUi/Core/FontGlyph.h`). It is sized with
     `GetGlyphMetrics(origin, dims, glyph)` and filled with `GenerateGlyphTexture(dest, dims,
     stride, glyph)`.
+  - *As implemented:* effect glyphs are made at **document resolution** (raster scale 1,
+    keyed by the document pixel size and the effect id), whatever the context's raster scale.
+    RmlUi's effects size their work in pixels of the bitmap they are given (outline width,
+    blur radius), and `font-effect` lengths are CSS px: a bitmap at the raster scale would
+    make a 2px outline 1 CSS px thin on a 2x screen. The cost is slightly softer effect
+    edges on high-DPI targets; contexts with different scales share effect glyphs.
   - Shadow (shared texture) reuses the base atlas with the effect's origin offset.
   - Atlas pages are `CallbackTexture`s created through `GenerateTexture`, packed with phase
     0's `GlyphAtlas` (RGBA8 variant), append-only: a full page starts a new page, never a
@@ -1952,7 +2345,14 @@ the one global `GetVersion`.
 `bold`), glyphs are emboldened by dilating the coverage bitmap by `max(1, size/24)` physical
 px and the advance grows by the same amount; when italic is requested and only an upright
 face exists, quads are sheared by 12° (`x += (baseline - y) * tan 12°`, CSS
-`font-synthesis` default). Both are part of the glyph cache key.
+`font-synthesis` default). Both are part of the glyph cache key. *As implemented:* the
+strength is `max(1, size/24)` **document** px (layout does not change with the raster scale);
+the bitmap dilation is that times the raster scale, rounded, at least 1 physical px, and
+spreads right and up (FreeType's `FT_Bitmap_Embolden` direction: baseline and left edge stay).
+Every glyph of an emboldened face with a non-zero advance grows by the strength, in
+`GetStringWidth` and `GenerateString` alike. The italic shear is geometry only (the bitmap is
+the upright one), so only the bold dilation is in the glyph key; effect quads are sheared
+with the text. Synthesis applies to every face of the chain (fallback faces too).
 
 **Per-context raster scale** (deferred here by phase 0 D5): phase 0 has one global
 `setRasterScale`. With texture contexts (own pixel ratio) next to the screen context, a
@@ -1960,7 +2360,13 @@ global scale would flip every frame. `RmlFontEngine::setRasterScale(Rml::RenderM
 float)` stores the scale per render manager (one per `HtmlUIContext`); `GenerateString`
 uses the scale of the `render_manager` it is given; the glyph cache key already contains
 `rasterPixelSize`, so contexts with different scales share faces and keep separate glyphs.
-The global version bumps only when a context's scale changes.
+The global version bumps only when a context's scale changes. *As implemented:* phase 0's
+`setRasterScale(float)` stays as the default for render managers without their own scale
+(it keeps its phase-0 behaviour of dropping glyphs, and is only called by tests);
+`getRasterScale(const RenderManager&)` reads a context's scale; the per-manager scales are
+dropped by `ReleaseFontResources` (RmlUi's `ReleaseRenderManagers` goes through it, and a
+later manager may reuse an address). `GlyphAtlas` gains a `bytesPerPixel` constructor
+argument (1 = R8, 4 = RGBA8) for the effect pages.
 
 ---
 
@@ -1980,6 +2386,42 @@ Each patch is a separate commit prefixed `rmlui:`, with a `docs/html-ui/FORK.md`
 2. **`rmlui: SVG plugin rasterises with ThorVG`** (p1-vector, §3.10.2), preceded by the
    vendoring commit `rmlui: vendor SVG plugin (6.3)` (§3.10.1). The rasteriser patch is not
    made under the LunaSVG fallback; the vendoring is made in both cases.
+
+### 3.15 Integration decisions (p1-integrate, binding)
+The packages were verified one by one; running them together (`TestIntegrationP1.cpp`,
+`test_html_ui_integration.py`, the exported Linux game and the Web build of one project using
+every phase-1 feature) showed where they met wrongly. Decided and implemented:
+
+1. **Pointer order: screen documents, component UI, documents on meshes, game.** §3.12.3 put
+   the world dispatch inside `eventOnPointer*`, which the engine calls before `UISystem`, so a
+   HUD button over a terminal screen lost its clicks to the document on the mesh. Screen-space
+   UI is drawn over the 3D world, so `eventOnPointerDown/Up/Move(..., bool world = true)` take
+   `world = false` from `Engine::system*`, which then calls `dispatchWorldPointer(..., bool
+   covered)` after `UISystem` (`covered`: a screen document or the component UI took the
+   event; the world documents only lose hover and key focus). A pointer a world document
+   captured still goes to it first. `UISystem::isPointerOverUI()` reports a hover over a
+   component UI element (its `eventOnPointerMove` returns true only while one is pressed).
+2. **Documents load before the view.** An exported game runs its start scene's scripts' `init`
+   in `Engine::systemInit`, before the platform loads the view (`systemViewLoaded`): the
+   phase-0 rule "no context without a view" made every `getElementById` in `init` return nil
+   there (the editor's play and the tests always had a view). Loading and layout need no GPU,
+   so `ensureContext`/`loadDocumentNow` work without a view (`update()` still waits for it);
+   the GPU call layout can make (`RmlRenderer::LoadTexture` for an `<img>`'s size) keeps the
+   size only, and the context's first render with a view makes RmlUi load its textures again
+   (`RmlRenderer::takeTexturesWithoutView`, `Rml::ReleaseTextures`).
+3. **anime selectors search every scene of the game**: the current scene's documents first, then
+   the running layers (`Engine::getSceneLayers()`), then the scenes created but not running yet
+   (`SceneManager::getScenePtrs()`: a scene's scripts start before the scene runs, and a HUD is
+   usually a child scene). §3.11's "the current scene" found nothing in `init` and in HUDs.
+4. **A data model's reload is part of `createDataModel`**: its `onUnload`/`onLoad` run before the
+   call returns (as for `UIDocument::load`), so handlers registered after it in `init` are not
+   called for it (they bound every listener twice).
+5. **Texture-mode contexts count everywhere the screen context does**: `releaseScriptState` (play
+   stop) updates them too, so the listeners of texture documents (Lua refs, C++ callbacks of a
+   script library unloaded right after the stop) go at once; `getNextUpdateDelay` is the
+   minimum over all contexts, so an animated document on a mesh keeps the editor redrawing.
+6. **Apple Debug builds** define `JASPERENGINE_HTMLUI_DEBUGGER` (Xcode Debug configurations of
+   the engine, app and `rmlui-*` targets), as CMake does for `CMAKE_BUILD_TYPE=Debug`.
 
 ---
 
@@ -2006,6 +2448,11 @@ Each package merges `html-ui` into its branch before finishing (BRIEF).
 
 Worktrees: `/var/lib/orquester/workspaces/jaspersito/JasperEngine-2-wt/<slug>` on branch
 `hui/<slug>`.
+
+Wave 0 already created `UIDocumentSystem{Render,Input,Script,Reload,Texture}.cpp` (listed in
+CMake and Xcode, some holding `HTMLUI_P1_STUB`s, §3.0); "New" below means the package owns
+the file and writes its content. Every package removes the stubs it owns and checks
+`grep -rn "HTMLUI_P1_STUB: <slug>" engine` is empty before it finishes.
 
 ---
 
@@ -2119,8 +2566,9 @@ android. Windows, macOS and iOS: §5.4 rules.
   adds its own line).
 - `editor/util/ProjectUtils.cpp` (`getEntityClassInfo`), `PropertyCmd`
   (`isNonStructuralProperty`), deferred by phase 0.
-- `editor/App.cpp` (`App::engineRender`): `HtmlUIClock::advance(frame time)` in edit mode
-  (§3.0 item 6).
+- `editor/App.cpp` (`App::engineRender`): keep the Scene view redrawing while a document
+  animates (§3.8.6). No clock call: edit-mode frames advance the UI clock through
+  `Engine::systemDraw` (§3.0 item 6).
 - `engine/tests/htmlui/CMakeLists.txt`: the editor sources compiled into the test target
   (`EditorLogicTests`, §5.1).
 - `RmlFile.cpp`, `RmlFontEngine.cpp` (`reloadFontFile`, dependency log).
@@ -2243,8 +2691,8 @@ section).
 - `UIDocumentSystemInput.cpp`: one `dispatchWorldPointer` call per pointer method.
 - `RmlRenderer` (render-to-`Framebuffer` entry point using the `Unp` variant that p1-render
   ships).
-- `UIDocument.cpp`: `getTargetTexture`.
-- `engine/CMakeLists.txt` sources, Xcode project.
+- `engine/CMakeLists.txt` sources, Xcode project. (`UIDocument::getTargetTexture` is
+  already defined by wave 0; p1-rtt defines `UIDocumentSystem::getTargetTexture`.)
 
 **Dependencies:**
 - Font effects: wave 0.
@@ -2353,7 +2801,7 @@ Stream round-trip and Catalog behaviour are tested end to end in `test_html_ui_e
 (§5.3), because `Stream` needs the editor.
 
 **Vector** (`VectorTests.cpp`)
-- SVG rasterised by ThorVG at 3 sizes. The output is premultiplied: no channel exceeds alpha.
+- SVG rasterised by LunaSVG (benchmark decision) at 3 sizes. The output is premultiplied: no channel exceeds alpha.
   `crop_to_content` gives a smaller intrinsic size. `TextureData` SVG output is straight
   alpha and keeps nanosvg-era sizes (§3.10.4).
 - `LottiePlayback`: frame for given time, speed, direction, bounce, loop count and segment;
@@ -2380,7 +2828,8 @@ Stream round-trip and Catalog behaviour are tested end to end in `test_html_ui_e
   cancelled silently.
 - `reset()` frees every Lua ref.
 
-**RTT and font effects** (`TextureModeTests.cpp`, `FontEffectTests.cpp`)
+**RTT and font effects** (`TestTextureMode.cpp`, `TestFontEffects.cpp`: the repository's
+`Test*.cpp` naming; the font goldens are in `TestGoldenFontEffects.cpp`)
 - `raycastMeshUV`:
   - plane primitive centre → (0.5, 0.5);
   - corners within 1e-4;
@@ -2411,7 +2860,7 @@ Stream round-trip and Catalog behaviour are tested end to end in `test_html_ui_e
 | G11 | `backdrop_filter.html` | `backdrop-filter: blur(10px)` panel over a colourful image and text |
 | G12 | `gradients_linear.html` | angles 0/45/90/180deg, 5 stops, `repeating-linear-gradient` |
 | G13 | `gradients_radial_conic.html` | radial circle/ellipse, repeating radial, conic, repeating conic |
-| G14 | `box_shadow.html` | outer, inset, spread, blur, with border-radius (SaveLayerAsTexture) |
+| G14 | `box_shadow.html` | outer, inset, spread, blur, with border-radius (SaveLayerAsTexture). RmlUi 6.3 clips the shadow shape to outside the border box *before* blurring it (as its GL3 renderer), so the blurred shadow has an offset: a zero-offset, zero-spread blurred shadow draws nothing |
 | G15 | `mask_image.html` | `mask-image` with a gradient and with an image (SaveLayerAsMaskImage) |
 | G16 | `msaa_rounded.html` | large radii and thin rotated borders with 4x MSAA. The test also renders at sample count 1 and asserts the images differ on edge pixels. |
 | G17 | `layers_nested.html` | opacity inside blur inside a backdrop panel (layer depth 3, pass splitting) |
@@ -2422,7 +2871,7 @@ Stream round-trip and Catalog behaviour are tested end to end in `test_html_ui_e
 | G23 | `opacity_text.html` | text with `opacity:.5` over a gradient (premultiplied correctness) |
 | G24 | `many_elements.html` | 500 small rounded buttons. Asserts pipeline applies ≤ 10 and passes = 1 (performance golden). |
 | G25 | `texture_mode` | a TEXTURE document read back from its target texture (straight alpha) |
-| G26 | `font_effects.html` | shadow, outline 2px, glow, blur on 32px text |
+| G26 | `font_effects.html` | shadow, outline 2px, glow, blur on 32px text (plus `p1/font_synthesis`: synthetic bold/italic of Roboto Regular) |
 
 G01–G20 and G22–G24 (G21 was dropped with the phase-1 effect registry) must pass on **glcore and vulkan** against the same images. A difference beyond the
 tolerance on one backend is a bug to fix, not a tolerance to raise.
@@ -2572,7 +3021,7 @@ How the unbuildable targets are kept correct:
 - [ ] `<lottie>` supports all attributes of §3.10.3, `.lottie` files, the control API in C++
   and Lua, and its events. It uses one in-place RGBA8 texture per element, updated only on
   frame change (unit test) — G22.
-- [ ] `TextureData` SVG is on ThorVG; nanosvg is removed; the regression test passes.
+- [ ] `TextureData` SVG is on LunaSVG (benchmark decision); nanosvg is removed; the regression test passes.
 
 **Animation**
 - [ ] `anime.animate`, `createTimeline`, `createTimer`, `createSpring`, `stagger`, the
@@ -2593,7 +3042,7 @@ How the unbuildable targets are kept correct:
   Windows/macOS/iOS hunks are listed and reviewed per §5.4.
 - [ ] All tests of §5 pass; every produced screenshot has been looked at.
 - [ ] `docs/mcp/guide/html-ui.md` (sections named per package), `docs/mcp/guide/lua-api.md`,
-  `docs/html-ui/FORK.md` (two patches), `NOTICE.md` (ThorVG) and the MCP tool docs are
+  `docs/html-ui/FORK.md` (the `PreventDefault` patch, the SVG plugin vendoring), `NOTICE.md` (ThorVG, LunaSVG) and the MCP tool docs are
   updated.
 - [ ] No GPU object leaks: loading and unloading a document 100 times in a test returns
   `HtmlUIRenderStats.geometryLive`, the live texture count and the pipeline cache size to

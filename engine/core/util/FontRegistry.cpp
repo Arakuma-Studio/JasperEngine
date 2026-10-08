@@ -8,6 +8,7 @@
 #include "Log.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <map>
 #include <mutex>
 
@@ -232,6 +233,35 @@ std::shared_ptr<FontFace> FontRegistry::getOrLoadFile(const std::string& path, i
         reg.files.erase(it);
     }
     return face;
+}
+
+int FontRegistry::reloadFile(const std::string& path, std::string* error){
+    Registry& reg = registry();
+    std::lock_guard<std::recursive_mutex> lock(reg.mutex);
+
+    int replaced = 0;
+    const std::string prefix = path + "#";
+    for (auto& file : reg.files){
+        if (file.first.compare(0, prefix.size(), prefix) != 0)
+            continue;
+        std::shared_ptr<FontFace> oldFace = file.second.lock();
+        if (!oldFace)
+            continue;
+
+        const int faceIndex = std::atoi(file.first.c_str() + prefix.size());
+        std::shared_ptr<FontFace> newFace = FontFace::loadFile(path, faceIndex, error);
+        if (!newFace)
+            continue;
+
+        for (Entry& entry : reg.entries){
+            if (entry.face == oldFace)
+                entry.face = newFace;
+        }
+        std::replace(reg.fallbacks.begin(), reg.fallbacks.end(), oldFace, newFace);
+        file.second = newFace;
+        replaced++;
+    }
+    return replaced;
 }
 
 void FontRegistry::clear(){

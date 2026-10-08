@@ -36,8 +36,18 @@ namespace jasperengine {
         RESIZE_NWSE,
         RESIZE_NESW,
         RESIZE_ALL,
-        NOT_ALLOWED
+        NOT_ALLOWED,
+        // appended for the CSS cursor keywords of HTML UI documents (wait, progress, help, grab, grabbing)
+        WAIT,
+        PROGRESS,
+        HELP,
+        GRAB,
+        GRABBING
     };
+
+    // The name the HTML UI specs use (phase-1 spec §3.6.3): one enum for component UI, scripts and
+    // documents. POINTER is POINTING_HAND, TEXT is IBEAM and MOVE is RESIZE_ALL.
+    using MouseCursor = CursorType;
 
     // How the mouse cursor behaves. A single authoritative state replaces the old
     // independent "show cursor" and "mouse locked" flags: visibility and motion
@@ -63,6 +73,9 @@ namespace jasperengine {
 
         System() {}
 
+        // the base clipboard (setClipboardText/getClipboardText)
+        std::string clipboardText;
+
     public:
         std::vector<std::string> args;
 
@@ -84,6 +97,14 @@ namespace jasperengine {
 
         virtual void showVirtualKeyboard(std::wstring text = L"");
         virtual void hideVirtualKeyboard();
+
+        // The system clipboard, UTF-8 text. The base implementation keeps an in-process
+        // string (headless runs, tests); every platform layer replaces it.
+        virtual void setClipboardText(const std::string& utf8);
+        virtual std::string getClipboardText();
+        // Where text is being typed, in screen pixels from the top-left of the view: places
+        // the IME candidate window or the platform's text field. The base does nothing.
+        virtual void setTextInputArea(float x, float y, float width, float height);
 
         virtual bool isFullscreen();
         virtual void requestFullscreen();

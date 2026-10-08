@@ -573,21 +573,6 @@ TEST_F(RmlFontEngineTest, EmptyString){
     EXPECT_EQ(engine.getPageCount(), 0u);
 }
 
-TEST_F(RmlFontEngineTest, FontEffectsWarnOnce){
-    Rml::FontFaceHandle face = handle("sans-serif", 24);
-    EXPECT_EQ(engine.PrepareFontEffects(face, {}), 0u);
-    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "font-effect"), 0u);
-
-    Rml::ElementDocument* document = context->LoadDocumentFromMemory(R"(
-        <rml><head><style>body { display: block; font-family: sans-serif; font-size: 20px; font-effect: shadow(2px 2px black); }</style></head>
-        <body>shadow <span>twice</span></body></rml>)", "[effects]");
-    ASSERT_NE(document, nullptr);
-    document->Show();
-    context->Update();
-    context->Render();
-    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "[HTML UI] font-effect is not supported yet (phase 1)"), 1u);
-}
-
 TEST_F(RmlFontEngineTest, DebuggerFontLoads){
     ASSERT_TRUE(Rml::Debugger::Initialise(context));
     EXPECT_TRUE(FontRegistry::hasFamily("rmlui-debugger-font"));

@@ -309,12 +309,12 @@ namespace {
                 if (const UIComponent* ui = registry->findComponent<UIComponent>(entity)){
                     collectUI(*ui);
                 }
-                // an HTML UI document draws untextured and textured geometry (RmlRenderer)
-                // (asked first: an editor built without the document component's registration
-                // must not throw while it saves)
+                // an HTML UI document draws geometry, gradients and its layer/filter passes
+                // (RmlRenderer) (asked first: an editor built without the document component's
+                // registration must not throw while it saves)
                 if (registry->isComponentRegistered<UIDocumentComponent>() && registry->findComponent<UIDocumentComponent>(entity)){
-                    insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(false), 0);
-                    insertKeys(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(true), 0);
+                    for (const auto& variant : ShaderPool::getHtmlUIVariants())
+                        insertKeys(variant.first, variant.second, 0);
                 }
                 const PointsComponent* points = registry->findComponent<PointsComponent>(entity);
                 if (points || registry->findComponent<ParticleSystemComponent>(entity)){

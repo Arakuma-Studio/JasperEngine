@@ -230,6 +230,10 @@ namespace jasperengine {
 
         // Remove a stored scene pointer.
         static void removeScenePtr(uint32_t id);
+
+        // Every stored scene pointer (the game's created scenes, also while their scripts
+        // start, before they run), by scene ID.
+        static std::vector<Scene*> getScenePtrs();
     };
 
 } // namespace jasperengine

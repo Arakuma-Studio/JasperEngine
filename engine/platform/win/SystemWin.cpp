@@ -12,7 +12,20 @@
 #include "D3D11Context.h"
 #endif
 
+#include <cstring>
+
 using namespace jasperengine;
+
+std::string jasperengine::winWideToUtf8(const wchar_t* text, int length) {
+    if (!text || length <= 0) return {};
+    const int count = WideCharToMultiByte(
+        CP_UTF8, 0, text, length, nullptr, 0, nullptr, nullptr);
+    if (count <= 0) return {};
+    std::string result(static_cast<size_t>(count), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text, length, result.data(), count,
+                        nullptr, nullptr);
+    return result;
+}
 
 SystemWin::SystemWin(WinInputRouter* router) : router(router) {
 }
@@ -100,6 +113,67 @@ void SystemWin::setMousePosition(float x, float y) {
     // sees, which reports no motion of its own while captured.
     if (router) router->setMousePosition(x, y);
     WindowWin::setMousePosition(x, y);
+}
+
+void SystemWin::hideVirtualKeyboard() {
+    if (router) router->cancelComposition();
+    System::hideVirtualKeyboard();
+}
+
+void SystemWin::setClipboardText(const std::string& utf8) {
+    // Without an owner window EmptyClipboard leaves the clipboard ownerless,
+    // and SetClipboardData then fails.
+    HWND window = WindowWin::handle();
+    if (!window) return;
+
+    // Filled before opening, so the clipboard is held for as short as possible
+    const std::wstring text = winUtf8ToWide(utf8);
+    const size_t bytes = (text.size() + 1) * sizeof(wchar_t);
+    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
+    if (!memory) return;
+    void* target = GlobalLock(memory);
+    if (!target) {
+        GlobalFree(memory);
+        return;
+    }
+    std::memcpy(target, text.c_str(), bytes);
+    GlobalUnlock(memory);
+
+    // Another application may have it open; the copy is dropped then
+    if (!OpenClipboard(window)) {
+        GlobalFree(memory);
+        return;
+    }
+    EmptyClipboard();
+    // Once SetClipboardData succeeds the memory belongs to the system
+    if (!SetClipboardData(CF_UNICODETEXT, memory))
+        GlobalFree(memory);
+    CloseClipboard();
+}
+
+std::string SystemWin::getClipboardText() {
+    if (!IsClipboardFormatAvailable(CF_UNICODETEXT)) return {};
+    if (!OpenClipboard(WindowWin::handle())) return {};
+
+    // Copied out first so the clipboard is closed before converting
+    std::wstring text;
+    if (HANDLE data = GetClipboardData(CF_UNICODETEXT)) {
+        if (const wchar_t* chars = static_cast<const wchar_t*>(GlobalLock(data))) {
+            // Bounded by the block in case the writer left out the terminator
+            const size_t capacity = GlobalSize(data) / sizeof(wchar_t);
+            size_t length = 0;
+            while (length < capacity && chars[length] != L'\0') ++length;
+            text.assign(chars, length);
+            GlobalUnlock(data);
+        }
+    }
+    CloseClipboard();
+
+    return winWideToUtf8(text.data(), static_cast<int>(text.size()));
+}
+
+void SystemWin::setTextInputArea(float x, float y, float width, float height) {
+    if (router) router->setTextInputArea(x, y, width, height);
 }
 
 // An exported game ships its assets next to the executable, so the relative

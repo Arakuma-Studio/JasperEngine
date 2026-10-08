@@ -16,6 +16,7 @@
 #include "util/ScriptParser.h"
 #include "util/ScopedDefaultEntityPool.h"
 #include "util/CxxStandards.h"
+#include "util/HtmlUIWatcher.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -575,6 +576,7 @@ namespace jasperengine::editor{
         Scaling scalingMode;
         TextureStrategy textureStrategy;
         bool vsyncEnabled;
+        int htmlUiMsaaSamples;
         WindowMode windowMode;
         unsigned int windowWidth;
         unsigned int windowHeight;
@@ -629,6 +631,7 @@ namespace jasperengine::editor{
 
         // Prefab Mode: the open prefab stages, bottom first (editor/PrefabStage.cpp)
         std::vector<std::unique_ptr<PrefabStage>> prefabStages;
+        HtmlUIWatcher htmlUIWatcher;
         bool prefabAutoSave = true;
         PrefabContextVisibility prefabContextVisibility = PrefabContextVisibility::Gray;
         // Saved from a stage while a scene played: the scene restored by Stop follows them then
@@ -940,6 +943,7 @@ namespace jasperengine::editor{
         static constexpr Scaling defaultScalingMode = Scaling::FITWIDTH;
         static constexpr TextureStrategy defaultTextureStrategy = TextureStrategy::NONE;
         static constexpr bool defaultVSyncEnabled = true;
+        static constexpr int defaultHtmlUiMsaaSamples = 4;
         static constexpr WindowMode defaultWindowMode = WindowMode::WINDOWED;
         static constexpr unsigned int defaultWindowWidth = defaultCanvasWidth;
         static constexpr unsigned int defaultWindowHeight = defaultCanvasHeight;
@@ -979,6 +983,12 @@ namespace jasperengine::editor{
 
         void setVSyncEnabled(bool enabled);
         bool isVSyncEnabled() const;
+
+        // MSAA samples of the HTML UI targets (1, 2, 4 or 8; others round down to one of
+        // them), applied to the editor's documents at once and written into exports
+        void setHtmlUiMsaaSamples(int samples);
+        int getHtmlUiMsaaSamples() const;
+        static bool isValidHtmlUiMsaaSamples(int samples);
 
         void setWindowMode(WindowMode windowMode);
         WindowMode getWindowMode() const;
@@ -1136,6 +1146,15 @@ namespace jasperengine::editor{
         bool loadProject(const std::filesystem::path path, bool updateLastOpened = true);
 
         void refreshLinkedMaterials(bool force = false);
+
+        //=== HTML UI hot reload ===
+        // The scenes whose documents the HtmlUIWatcher checks: the loaded scenes, Prefab Mode
+        // stages and the playing copies of child scenes
+        std::vector<SceneProject*> getHtmlUIScenes();
+        HtmlUIWatcher& getHtmlUIWatcher();
+        // the code editor saved a file: the watcher checks now (any file; it filters itself)
+        void notifyHtmlUIFileSaved(const std::filesystem::path& path);
+
         void updateGeneratedSources();
         void markGeneratedSourcesDirty();
 

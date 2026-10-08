@@ -22,6 +22,7 @@
 #include "component/ModelComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TextComponent.h"
+#include "component/UIDocumentComponent.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/TextureData.h"
 #include "util/CameraTextureLink.h"
@@ -260,6 +261,14 @@ const EnumOptions& probeUpdateModeOptions() {
         {(int)ReflectionProbeUpdateMode::ON_MOVE, "on_move", "On Move"},
         {(int)ReflectionProbeUpdateMode::INTERVAL, "interval", "Interval"},
         {(int)ReflectionProbeUpdateMode::MANUAL, "manual", "Manual"}
+    };
+    return options;
+}
+
+const EnumOptions& uiDocumentRenderModeOptions() {
+    static const EnumOptions options = {
+        {(int)UIDocumentRenderMode::SCREEN, "screen", "Screen"},
+        {(int)UIDocumentRenderMode::TEXTURE, "texture", "Texture"}
     };
     return options;
 }
@@ -733,6 +742,9 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
         case ComponentType::ReflectionProbeComponent:
             if (name == "mode") return &probeModeOptions();
             if (name == "updateMode") return &probeUpdateModeOptions();
+            break;
+        case ComponentType::UIDocumentComponent:
+            if (name == "renderMode") return &uiDocumentRenderModeOptions();
             break;
         case ComponentType::CameraComponent:
             if (name == "type") return &cameraTypeOptions();

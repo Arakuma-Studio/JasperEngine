@@ -42,6 +42,8 @@ namespace jasperengine::editor {
         // Scene drawn by the edit-mode pass and whether it needs drawing again
         uint32_t editPassSceneId = NULL_PROJECT_SCENE;
         bool editPassDirty = true;
+        // the played scene whose RmlUi debugger the toolbar showed (hidden again on stop)
+        uint32_t htmlUiDebuggerSceneId = NULL_PROJECT_SCENE;
         bool editPassRendered = false;
         // what the view shows: the running game, or the edit-mode pass
         Framebuffer framebuffer;
@@ -50,7 +52,7 @@ namespace jasperengine::editor {
         void saveSettings();
         void drawToolbar();
         void drawContent(uint32_t sceneId);
-        void drawStats(ImVec2 imageMin, ImVec2 imageMax);
+        void drawStats(ImVec2 imageMin, ImVec2 imageMax, const SceneProject* sceneProject);
         bool computeAspect(float& aspect) const;
         uint32_t getTargetSceneId() const;
 

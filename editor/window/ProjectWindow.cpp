@@ -17,7 +17,11 @@
 #include "resources/icons/lua-icon_png.h"
 #include "resources/icons/audio-icon_png.h"
 #include "resources/icons/font-icon_png.h"
+#include "resources/icons/html-icon_png.h"
+#include "resources/icons/css-icon_png.h"
 
+#include "Out.h"
+#include "util/HtmlUITemplates.h"
 #include "command/type/CopyFileCmd.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateMaterialFileCmd.h"
@@ -745,6 +749,10 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.12f, 0.62f, 0.39f, 1.0f));
         case FileType::FONT:
             return ImGui::GetColorU32(ImVec4(0.84f, 0.27f, 0.31f, 1.0f));
+        case FileType::HTML:
+            return ImGui::GetColorU32(ImVec4(0.89f, 0.30f, 0.15f, 1.0f));
+        case FileType::CSS:
+            return ImGui::GetColorU32(ImVec4(0.40f, 0.20f, 0.60f, 1.0f));
         case FileType::NONE:
         default:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
@@ -2093,6 +2101,12 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::directory_entry
         }else if (Util::isFontFile(fileEntry.extension)){
             fileEntry.type = FileType::FONT;
             fileEntry.icon = fontIcon.getRender();
+        }else if (Util::isHtmlFile(fileEntry.extension)){
+            fileEntry.type = FileType::HTML;
+            fileEntry.icon = htmlIcon.getRender();
+        }else if (Util::isCssFile(fileEntry.extension)){
+            fileEntry.type = FileType::CSS;
+            fileEntry.icon = cssIcon.getRender();
         }
 
         if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL ||
@@ -3159,6 +3173,14 @@ void editor::ProjectWindow::show() {
         fontIcon.setData("editor:resources:font_icon", data);
         fontIcon.load();
 
+        data.loadTextureFromMemory(html_icon_png, html_icon_png_len);
+        htmlIcon.setData("editor:resources:html_icon", data);
+        htmlIcon.load();
+
+        data.loadTextureFromMemory(css_icon_png, css_icon_png_len);
+        cssIcon.setData("editor:resources:css_icon", data);
+        cssIcon.load();
+
         scanDirectory(project->getProjectPath().string());
 
         firstOpen = false;
@@ -3575,6 +3597,31 @@ void editor::ProjectWindow::assetsCreateScript(bool lua) {
     if (lua) {
         startRename(fileName);
     }
+}
+
+void editor::ProjectWindow::assetsCreateHtmlDocument() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+
+    const std::string name = HtmlUITemplates::uniqueDocumentName(currentPath);
+    std::string error;
+    if (!HtmlUITemplates::createDocument(currentPath, name, error)) {
+        Backend::getApp().registerAlert("Create HTML Document", error);
+        return;
+    }
+    if (!project->isInsideAssetsPath(currentPath / (name + ".html"))) {
+        Out::warning("[HTML UI] %s.html is outside the assets directory: a UI Document can only use files under %s",
+                     name.c_str(), project->getAssetsPath().string().c_str());
+    }
+
+    scanDirectory(currentPath);
+    const std::string fileName = name + ".html";
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    startRename(fileName);
 }
 
 void editor::ProjectWindow::assetsShowInFileManager() {

@@ -8,8 +8,9 @@
 
 using namespace jasperengine;
 
-GlyphAtlas::GlyphAtlas(unsigned int width, unsigned int height, int padding){
+GlyphAtlas::GlyphAtlas(unsigned int width, unsigned int height, int padding, int bytesPerPixel){
     this->padding = std::max(0, padding);
+    this->bytesPerPixel = std::max(1, bytesPerPixel);
     reset(width, height);
 }
 
@@ -17,7 +18,7 @@ void GlyphAtlas::reset(unsigned int width, unsigned int height){
     this->width = width;
     this->height = height;
 
-    pixels.assign((size_t)width * (size_t)height, 0);
+    pixels.assign((size_t)width * (size_t)height * (size_t)bytesPerPixel, 0);
     shelves.clear();
 }
 
@@ -74,8 +75,10 @@ void GlyphAtlas::blit(const unsigned char* source, int width, int height, int x,
     int copyWidth = std::min(width, (int)this->width - x);
     int copyHeight = std::min(height, (int)this->height - y);
 
+    const size_t bpp = (size_t)bytesPerPixel;
     for (int row = 0; row < copyHeight; row++){
-        std::memcpy(&pixels[(size_t)(y + row) * this->width + (size_t)x], source + (size_t)row * (size_t)width, (size_t)copyWidth);
+        std::memcpy(&pixels[((size_t)(y + row) * this->width + (size_t)x) * bpp], source + (size_t)row * (size_t)width * bpp,
+                    (size_t)copyWidth * bpp);
     }
 }
 
@@ -93,4 +96,8 @@ unsigned int GlyphAtlas::getHeight() const{
 
 int GlyphAtlas::getPadding() const{
     return padding;
+}
+
+int GlyphAtlas::getBytesPerPixel() const{
+    return bytesPerPixel;
 }

@@ -1,0 +1,27 @@
+<html>
+<head>
+    <title>font effects</title>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="../golden/golden.css"/>
+    <style>
+        /* G26: RmlUi's four font effects on 32 px text (512x384 canvas). RCSS syntax:
+           shadow(offset-x offset-y colour), outline(width colour),
+           glow(outline-width blur-width offset-x offset-y colour), blur(width colour) */
+        .line { left: 20px; font-size: 32px; }
+        #shadow { top: 10px; font-effect: shadow(3px 3px #ff4040); }
+        #outline { top: 70px; color: #202020; font-effect: outline(2px #ff8000); }
+        #glow { top: 130px; font-effect: glow(2px 6px 0px 0px #40ff40); }
+        #blur { top: 190px; color: #ffffff; font-effect: blur(4px #4080ff); }
+        #combined { top: 250px; color: #ffff00; font-effect: shadow(4px 4px #ff00ff), outline(1px #000000); }
+        #plain { top: 310px; color: #ffffff; }
+    </style>
+</head>
+<body>
+    <div id="shadow" class="abs line">Shadow 3px</div>
+    <div id="outline" class="abs line">Outline 2px</div>
+    <div id="glow" class="abs line">Glow 2px 6px</div>
+    <div id="blur" class="abs line">Blur 4px</div>
+    <div id="combined" class="abs line">Shadow + outline</div>
+    <div id="plain" class="abs line">No effect</div>
+</body>
+</html>

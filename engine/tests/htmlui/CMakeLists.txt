@@ -18,10 +18,20 @@ target_compile_options(gtest PRIVATE -w)
 file(GLOB HTMLUI_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/harness/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/anime/*.cpp
+)
+
+# editor logic without ImGui or editor state, tested here because the editor has no
+# googletest target (EditorLogicTests.cpp)
+set(HTMLUI_TEST_EDITOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../editor")
+set(HTMLUI_TEST_EDITOR_SOURCES
+    ${HTMLUI_TEST_EDITOR_DIR}/window/widget/HtmlCssLexer.cpp
+    ${HTMLUI_TEST_EDITOR_DIR}/util/HtmlUITemplates.cpp
 )
 
 add_executable(jasperengine-htmlui-tests
     ${HTMLUI_TEST_SOURCES}
+    ${HTMLUI_TEST_EDITOR_SOURCES}
     ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
 )
 
@@ -30,6 +40,7 @@ target_include_directories(jasperengine-htmlui-tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/harness
     ${JASPERENGINE_ROOT}/platform/linux
     ${JASPERENGINE_ROOT}/platform/common
+    ${HTMLUI_TEST_EDITOR_DIR}
 )
 
 find_package(X11 REQUIRED)

@@ -193,9 +193,11 @@ R"JE(
   create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes and UI
   scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a UI
   camera: put HUDs and menus in a UI scene attached as a child scene (set_child_scene).
-- HTML/CSS UI: a uidocument component (filename = an .html under assets) draws that document
-  over its scene, in front of the component UI. Phase 0 documents are XML-well-formed HTML
-  styled with RmlUi's RCSS, not browser CSS: read jasper://docs/html-ui before writing one.
+- HTML/CSS UI: a uidocument component (filename = an .html under assets; create_entity
+  type=ui_document) draws that document over its scene, in front of the component UI. Saved
+  .html/.css changes reload by themselves (edit and play mode). Phase 0 documents are
+  XML-well-formed HTML styled with RmlUi's RCSS, not browser CSS: read jasper://docs/html-ui
+  before writing one.
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with

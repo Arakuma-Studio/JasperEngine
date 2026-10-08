@@ -25,8 +25,23 @@ namespace jasperengine {
         // which reports no motion of its own while captured.
         void setMousePosition(double x, double y);
 
+        // XIM for the window: text arrives as UTF-8 through the user's input method (IBus,
+        // fcitx...), which draws its own preedit; documents get the committed text. Events go
+        // through filterEvent before handleEvent.
+        void openInputMethod(Display* display, Window window);
+        void closeInputMethod();
+        // true when the input method consumed the event
+        bool filterEvent(XEvent& event);
+        void setFocus(bool focused);
+        // the caret, window pixels: where an over-the-spot input method draws
+        void setTextInputArea(int x, int y, int height);
+
     private:
         void handleKey(XKeyEvent& event, bool pressed);
+
+        XIM inputMethod = nullptr;
+        XIC inputContext = nullptr;
+        bool spotLocation = false;   // the context takes XNSpotLocation (XIMPreeditPosition)
 
         // X11 carries no repeat flag, so a press for a key already held is one.
         // Indexed by X keycode, which Xlib bounds to 8..255.

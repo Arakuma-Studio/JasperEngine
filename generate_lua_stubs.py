@@ -1128,7 +1128,16 @@ class Bindings:
                 cls.doc = chain_doc + c.doc
             elif c.name == 'endClass':
                 if cls is not None:
-                    self.classes.append(cls)
+                    # LuaBridge re-opens a registered class (beginClass<T> again, e.g.
+                    # HtmlUIVectorLua.cpp adds the <lottie> methods to UIElement): one class
+                    reopened = next((k for k in self.classes if k.name == cls.name and k.cpp == cls.cpp), None)
+                    if reopened is not None:
+                        reopened.members.extend(cls.members)
+                        reopened.ctors.extend(cls.ctors)
+                        if not reopened.doc:
+                            reopened.doc = cls.doc
+                    else:
+                        self.classes.append(cls)
                 cls = None
             elif c.name == 'addVariable':
                 if ns is not None:
@@ -1947,6 +1956,109 @@ for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
                           ([('scene', 'Scene'), ('origin', _vec), ('direction', _vec), ('maxDistance', 'number'),
                             ('layerMask?', 'integer')], _ret)]}
 
+# HTML UI (phase 1, p1-lua): the element API's lua_CFunctions (they take Lua functions and
+# option tables, and raise errors with no C++ object alive)
+_LISTENER = 'fun(event: UIEvent)'
+_LISTENER_OPTIONS = 'boolean|UIEventListenerOptions'
+for _cls, _target in (('UIElement', 'the element'), ('UIDocument', 'the document element')):
+    OVERRIDES[(_cls, 'addEventListener')] = {
+        'doc': [f'Calls `listener` with a UIEvent when a `type` event reaches {_target} (browser names: click,',
+                'keydown, input, change, wheel ...). `options` is `true` for the capture phase, or',
+                '`{capture = boolean, once = boolean}`. The same function, type and phase again is ignored.'],
+        'overloads': [([('type', 'string'), ('listener', _LISTENER), ('options?', _LISTENER_OPTIONS)], '')]}
+    OVERRIDES[(_cls, 'removeEventListener')] = {
+        'doc': ['Removes the listener added with the same type, function and capture phase.'],
+        'overloads': [([('type', 'string'), ('listener', _LISTENER), ('options?', _LISTENER_OPTIONS)], '')]}
+OVERRIDES[('UIElement', 'dispatchEvent')] = {
+    'doc': ['Sends a `type` event from the element (custom names too); listeners read `detail` as',
+            '`event.detail` (a copy). Returns false when a listener called preventDefault().'],
+    'overloads': [([('type', 'string'), ('detail?', 'any'), ('bubbles?', 'boolean')], 'boolean')]}
+OVERRIDES[('UIDocument', 'createDataModel')] = {
+    'doc': ['Creates the data model `name` (data-model="name" in the document) from a table: functions',
+            'become data-event callbacks (`data-event-click="buy(i)"` calls `buy(event, i)`), every other',
+            'value the model\'s data, read and written through the returned proxy (`model.gold = 20`).',
+            'Its top-level keys are fixed. A loaded document that uses the model reloads.'],
+    'overloads': [([('name', 'string'), ('initial', 'table')], 'UIDataModel')]}
+OVERRIDES[('UIDocument', 'getDataModel')] = {
+    'doc': ['The proxy of a data model this document created, or nil.'],
+    'overloads': [([('name', 'string')], 'UIDataModel|nil')]}
+OVERRIDES[('UIClassList', 'add')] = {
+    'doc': ['Adds the classes.'], 'overloads': [([('...', 'string')], '')]}
+OVERRIDES[('UIClassList', 'remove')] = {
+    'doc': ['Removes the classes.'], 'overloads': [([('...', 'string')], '')]}
+
+# Precise LuaLS types of parameters whose C++ type says nothing (luabridge::LuaRef becomes
+# `any`): (Lua class, member, parameter name) -> Lua type. A `luabridge::LuaRef` parameter of a
+# bound function that takes a callback or a parameter table belongs here.
+_PARAM_TYPE_OVERRIDES = {
+}
+# anime (engine/core/script/binding/HtmlUIAnimeLua.cpp, phase-1 p1-anim): the parameter tables
+# are the Anime*Params classes of engine/core/script/binding/stubs/anime.lua
+_ANIME_TARGETS = 'AnimeTargets'
+OVERRIDES.update({
+    ('anime', 'animate'): {
+        'doc': ['Animates `targets` (a CSS selector, a UIElement, a plain table, or a list of them) as',
+                '`params` says: properties to animate plus duration, delay, ease, loop, callbacks ... (Anime.js v4).'],
+        'overloads': [([('targets', _ANIME_TARGETS), ('params', 'AnimeAnimationParams')], 'AnimeAnimation')]},
+    ('anime', 'createTimeline'): {
+        'doc': ['A timeline: animations, timers, calls and labels placed at positions.'],
+        'overloads': [([('params?', 'AnimeTimelineParams')], 'AnimeTimeline')]},
+    ('anime', 'createTimer'): {
+        'doc': ['A timer: a duration with loops and callbacks, animating nothing.'],
+        'overloads': [([('params?', 'AnimeTimerParams')], 'AnimeTimer')]},
+    ('anime', 'createSpring'): {
+        'doc': ['A spring easing (`ease = spring`); the animation lasts its settling duration.'],
+        'overloads': [([('params?', 'AnimeSpringParams')], 'AnimeSpring')]},
+    ('anime', 'spring'): {
+        'doc': ['Same as anime.createSpring.'],
+        'overloads': [([('params?', 'AnimeSpringParams')], 'AnimeSpring')]},
+    ('anime', 'stagger'): {
+        'doc': ['A function value spreading `value` (or the range {from, to}) over the targets: for',
+                'delays, property values or timeline positions.'],
+        'overloads': [([('value', 'number|string|number[]|string[]'), ('params?', 'AnimeStaggerParams')], 'AnimeStagger')]},
+    ('anime', 'cubicBezier'): {
+        'doc': ['A cubic Bézier easing (CSS cubic-bezier()).'],
+        'overloads': [([('x1', 'number'), ('y1', 'number'), ('x2', 'number'), ('y2', 'number')], 'AnimeEase')]},
+    ('anime', 'steps'): {
+        'doc': ['A stepped easing (CSS steps(); jump-start when `fromStart`).'],
+        'overloads': [([('steps', 'integer'), ('fromStart?', 'boolean')], 'AnimeEase')]},
+    ('anime', 'linear'): {
+        'doc': ['A piecewise linear easing through the points (numbers, or "value percent%" strings).'],
+        'overloads': [([('...', 'number|string')], 'AnimeEase')]},
+    ('anime', 'irregular'): {
+        'doc': ['A random steps easing.'],
+        'overloads': [([('length?', 'integer'), ('randomness?', 'number')], 'AnimeEase')]},
+    ('AnimeEase', '__call'): {
+        'doc': ['ease(t): the eased value; for the parametric eases (in, out, inOut, outIn, *Back, *Elastic)',
+                'ease(params...) makes a new ease (anime.eases.outElastic(1, .6)).'],
+        'overloads': [([('t', 'number')], 'number'), ([('...', 'number')], 'AnimeEase')]},
+    ('AnimeStagger', '__call'): {
+        'doc': ['The staggered value of the target at `index` (0-based, as Anime) of `total`.'],
+        'overloads': [([('target', 'any'), ('index', 'integer'), ('total?', 'integer')], 'number|string')]},
+    ('AnimeTimer', 'andThen'): {
+        'doc': ['Calls `fn(self)` once completed (at once when already completed): Anime\'s then(),',
+                'renamed because `then` is a Lua keyword.'],
+        'overloads': [([('fn', 'fun(timer: AnimeTimer)')], 'AnimeTimer')]},
+    ('AnimeTimeline', 'add'): {
+        'doc': ['Adds an animation of `targets` at `position` (default: the end), or a timer',
+                '(`timerParams`), or syncs an anime object. A stagger position adds one child per target.'],
+        'overloads': [([('targets', _ANIME_TARGETS), ('params', 'AnimeAnimationParams'), ('position?', 'AnimeTimelinePosition')], 'AnimeTimeline'),
+                      ([('timerParams', 'AnimeTimerParams'), ('position?', 'AnimeTimelinePosition')], 'AnimeTimeline'),
+                      ([('timer', 'AnimeTimer'), ('position?', 'AnimeTimelinePosition')], 'AnimeTimeline')]},
+    ('AnimeTimeline', 'set'): {
+        'doc': ['Sets `props` on `targets` at `position`.'],
+        'overloads': [([('targets', _ANIME_TARGETS), ('props', 'AnimeAnimationParams'), ('position?', 'AnimeTimelinePosition')], 'AnimeTimeline')]},
+    ('AnimeTimeline', 'call'): {
+        'doc': ['Calls `fn(timeline)` when the playhead crosses `position`.'],
+        'overloads': [([('fn', 'fun(timeline: AnimeTimeline)'), ('position?', 'AnimeTimelinePosition')], 'AnimeTimeline')]},
+    ('AnimeTimeline', 'sync'): {
+        'doc': ['Drives `timer` (an animation, timer or timeline) from this timeline, from `position`.'],
+        'overloads': [([('timer', 'AnimeTimer'), ('position?', 'AnimeTimelinePosition')], 'AnimeTimeline')]},
+    ('AnimeTimeline', 'remove'): {
+        'doc': ['Removes the tweens of `targets` (of `property` only, when given) from the timeline.'],
+        'overloads': [([('targets', _ANIME_TARGETS), ('property?', 'string')], 'AnimeTimeline')]},
+})
+
 # Handler arguments of Engine events, by name (types come from the C++ declaration)
 ENGINE_EVENT_ARGS = {
     'onKeyDown': ['key', 'isRepeat', 'mods'], 'onKeyUp': ['key', 'isRepeat', 'mods'],
@@ -2098,7 +2210,7 @@ class Builder:
             return lt[0].lower() + lt[1:]
         return f'arg{index + 1}'
 
-    def to_lua_sig(self, sig, c, drop_self, optional_bools):
+    def to_lua_sig(self, sig, c, drop_self, optional_bools, member=None):
         params = list(sig.params)
         if drop_self and params:
             params = params[1:]
@@ -2110,7 +2222,11 @@ class Builder:
             desc = ''
             if lt == 'any' and bare_type(t)[0] not in ('LuaRef', 'luabridge::LuaRef'):
                 desc = f'C++ {bare_type(t)[0]} (not a Lua class)'
-            lp.append((lua_name(nm or self.default_param_name(t, idx), used), lt, False, desc))
+            name = lua_name(nm or self.default_param_name(t, idx), used)
+            override = _PARAM_TYPE_OVERRIDES.get((c.name, member.name if member else None, nm or name))
+            if override:
+                lt, desc = override, ''
+            lp.append((name, lt, False, desc))
         if optional_bools:
             k = len(lp) - 1
             while k >= 0 and lp[k][1] == 'boolean':
@@ -2148,7 +2264,7 @@ class Builder:
                 self.unresolve(c, m, 'reads its arguments from the Lua stack: needs a signature in OVERRIDES')
                 continue
             drop_self = kind == 'free' and m.kind == 'Method'
-            sigs.append(self.to_lua_sig(sig, c, drop_self, single))
+            sigs.append(self.to_lua_sig(sig, c, drop_self, single, m))
         m.lua_sigs = sigs
         doc = list(m.call.doc)
         for s in sigs:
@@ -2815,7 +2931,26 @@ def generate(binding_dir, core_dir):
     builder.build()
     emitter = Emitter(builder)
     files = emitter.emit_all()
+    add_stub_fragments(files, os.path.join(binding_dir, 'stubs'))
     return files, builder, emitter.plugin
+
+
+def add_stub_fragments(files, fragments_dir):
+    """Hand-written LuaLS files (binding/stubs/*.lua: `---@class` shapes of parameter tables and
+    what the bindings cannot describe) join the generated ones; a fragment named like a generated
+    file is appended to it."""
+    if not os.path.isdir(fragments_dir):
+        return
+    for fn in sorted(os.listdir(fragments_dir)):
+        if not fn.endswith('.lua'):
+            continue
+        with open(os.path.join(fragments_dir, fn), 'r', encoding='utf-8') as f:
+            text = f.read().replace('\r\n', '\n')
+        body = text[len('---@meta _\n'):] if text.startswith('---@meta _\n') else text
+        if fn in files:
+            files[fn] = files[fn].rstrip('\n') + '\n\n' + body.lstrip('\n')
+        else:
+            files[fn] = FILE_HEADER + body.lstrip('\n')
 
 
 def main():

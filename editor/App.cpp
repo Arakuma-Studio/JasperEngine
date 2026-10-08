@@ -261,6 +261,7 @@ enum class AppMenuCommand : uint32_t {
     AddComponent,
     AssetsCreateFolder,
     AssetsCreateLuaScript,
+    AssetsCreateHtmlDocument,
     AssetsCreateCppScript,
     AssetsShowInFileManager,
     AssetsOpen,
@@ -526,6 +527,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuSeparator(),
             menuCommand(AppMenuCommand::AssetsCreateLuaScript, "Lua Script"),
             menuCommand(AppMenuCommand::AssetsCreateCppScript, "C++ Script"),
+            menuSeparator(),
+            menuCommand(AppMenuCommand::AssetsCreateHtmlDocument, "HTML Document"),
             menuSeparator(),
             menuSubmenu("Scene", newSceneItems(), !isProjectBusy)
         }),
@@ -853,6 +856,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateCppScript:
             projectWindow->assetsCreateScript(false);
+            break;
+        case AppMenuCommand::AssetsCreateHtmlDocument:
+            projectWindow->assetsCreateHtmlDocument();
             break;
         case AppMenuCommand::AssetsShowInFileManager:
             projectWindow->assetsShowInFileManager();
@@ -1869,6 +1875,8 @@ void editor::App::show(){
 
     EntityClipboard::update();
 
+    pollHtmlUI();
+
     // Scripts ran in engineRender, so drop what they destroyed before any window reads the selection
     for (SceneProject& sceneProject : project.getScenes()) {
         const bool running = sceneProject.playState == ScenePlayState::PLAYING || sceneProject.playState == ScenePlayState::PAUSED;
@@ -2451,6 +2459,47 @@ void editor::App::processProjectChange() {
     requestRedraw();
 }
 
+// Every loop iteration, idle ones too (engineRender only runs on drawn frames): HTML UI hot
+// reload, and the document animations due now wake the loop up
+void editor::App::pollHtmlUI(){
+    bool wake = !project.getHtmlUIWatcher().update(&project).empty();
+
+    const auto now = std::chrono::steady_clock::now();
+    for (const auto& pair : htmlUIRedrawTimes) {
+        if (now >= pair.second) wake = true;
+    }
+
+    if (wake) requestRedraw();
+}
+
+bool editor::App::wantsHtmlUIRedraw(const SceneProject& sceneProject){
+    UIDocumentSystem* documents = sceneProject.scene->getSystem<UIDocumentSystem>().get();
+    const double delay = documents ? documents->getNextUpdateDelay() : std::numeric_limits<double>::infinity();
+    const auto now = std::chrono::steady_clock::now();
+
+    if (!std::isfinite(delay)) {
+        htmlUIRedrawTimes.erase(sceneProject.id);
+        return false;
+    }
+    if (delay <= 0.0) {
+        htmlUIRedrawTimes.erase(sceneProject.id);
+        return true;
+    }
+
+    // a later update (a transition delay, the next keyframe): wake up then, without
+    // redrawing until it is due
+    auto it = htmlUIRedrawTimes.find(sceneProject.id);
+    if (it == htmlUIRedrawTimes.end()) {
+        htmlUIRedrawTimes[sceneProject.id] = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(delay));
+        return false;
+    }
+    if (now >= it->second) {
+        htmlUIRedrawTimes.erase(it);
+        return true;
+    }
+    return false;
+}
+
 void editor::App::engineRender(){
     if (projectLoading) {
         SystemRender::executeQueue();
@@ -2498,18 +2547,19 @@ void editor::App::engineRender(){
             // isAllLoaded skips empty UIs, and an image builds its geometry only once its texture loads
             auto us = sp.scene->getSystem<UISystem>();
             if (us && us->hasPendingImages()) active = true;
-            // HTML documents (and their shaders) loading, until one frame shows them; only a
-            // Game view frame does (the Scene view does not draw documents yet), so without
-            // one, redrawing would never end
-            if (gameWindow->wantsEditPass(sp.id) || gameWindow->hostsScene(sp.id)) {
-                if (auto ds = sp.scene->getSystem<UIDocumentSystem>(); ds && !ds->isAllLoaded()) active = true;
-            }
+            // HTML documents (and their shaders) loading, until one frame shows them
+            if (auto ds = sp.scene->getSystem<UIDocumentSystem>(); ds && !ds->isAllLoaded()) active = true;
             if (sp.sceneRender->isPreviewCameraActive()) active = true;
             gaugeAnimating = sp.sceneRender->getUILayer()->isCameraGaugeAnimating();
             if (thumbnailsPending) active = true;
             // Preview scenes (shape, material, direction) only draw inside systemDraw().
             if (Engine::hasScenesToExecuteOnce()) active = true;
         }
+
+        // A stopped scene's HTML documents running a CSS transition or animation: redraw
+        // while RmlUi asks for the next update, at the time it asks for (edit-mode frames
+        // advance the UI clock through Engine::systemDraw)
+        if (!active && sp.scene && sp.playState != ScenePlayState::PLAYING && wantsHtmlUIRedraw(sp)) active = true;
 
         if (active) {
             sp.renderSettleFrames = RENDER_SETTLE_FRAMES;
@@ -3517,7 +3567,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      transmission adds foliageTransmission to u_fs_pbrParams.
     // v29: sprite and tilemap UVs (HAS_TEXTURERECT) use centroid interpolation, so MSAA
     //      edge pixels no longer sample outside their atlas rect.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v29";
+    // v30: HTML UI gradient and post-process shaders (HTMLUI_GRADIENT, HTMLUI_POST).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v30";
 }
 
 void editor::App::pushTabNotificationStyle(){

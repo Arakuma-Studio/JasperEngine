@@ -33,6 +33,11 @@ VkResult createSokolImage(VkDevice device, const VkImageCreateInfo* createInfo,
     VkImageCreateInfo info = *createInfo;
     if (info.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
         info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+#if defined(JASPERENGINE_TEXTURE_READBACK)
+    // the tests also read sampled textures back (dynamic textures)
+    if (!(info.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT))
+        info.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+#endif
     return vkCreateImage(device, &info, allocator, image);
 }
 }
@@ -64,6 +69,7 @@ SokolTexture::SokolTexture(){
     image.id = SG_INVALID_ID;
     sampler.id = SG_INVALID_ID;
     view.id = SG_INVALID_ID;
+    streamBytes = 0;
 }
 
 SokolTexture::SokolTexture(const SokolTexture& rhs) = default;
@@ -353,9 +359,59 @@ bool SokolTexture::createDynamicTexture(const std::string& label, int width, int
     return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
 }
 
+bool SokolTexture::createDynamicTexture(const std::string& label, int width, int height,
+            ColorFormat colorFormat, TextureFilter filter){
+    sg_pixel_format pixelFormat;
+    size_t bytesPerPixel;
+    if (colorFormat == ColorFormat::RGBA){
+        pixelFormat = SG_PIXELFORMAT_RGBA8;
+        bytesPerPixel = 4;
+    }else if (colorFormat == ColorFormat::RED){
+        pixelFormat = SG_PIXELFORMAT_R8;
+        bytesPerPixel = 1;
+    }else{
+        Log::error("Dynamic texture '%s': only RGBA8 and R8 are supported", label.c_str());
+        return false;
+    }
+    if (width <= 0 || height <= 0){
+        Log::error("Dynamic texture '%s': invalid size %i x %i", label.c_str(), width, height);
+        return false;
+    }
+
+    sg_image_desc imageDesc = {};
+    imageDesc.usage.stream_update = true;
+    imageDesc.width = width;
+    imageDesc.height = height;
+    imageDesc.pixel_format = pixelFormat;
+    imageDesc.label = label.c_str();
+
+    // no mipmaps: a mipmap filter samples level 0 with its base filter
+    sg_sampler_desc samplerDesc = {};
+    samplerDesc.min_filter = getFilter(filter);
+    samplerDesc.mag_filter = getFilter(filter);
+    samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+
+    if (Engine::isAsyncThread()){
+        image = SokolCmdQueue::add_command_make_image(imageDesc);
+        sampler = SokolCmdQueue::add_command_make_sampler(samplerDesc);
+    }else{
+        image = sg_make_image(imageDesc);
+        sampler = sg_make_sampler(samplerDesc);
+    }
+    createTextureView(label.c_str());
+    streamBytes = (size_t)width * (size_t)height * bytesPerPixel;
+    return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
+}
+
 void SokolTexture::updateTexture(const void* data, size_t size){
     if (image.id == SG_INVALID_ID || !data || size == 0)
         return;
+    // sokol reads width * height * bpp bytes whatever the size says
+    if (streamBytes != 0 && size != streamBytes){
+        Log::error("Dynamic texture update of %zu bytes ignored: the texture takes %zu", size, streamBytes);
+        return;
+    }
 
     sg_image_data imageData = {};
     imageData.mip_levels[0] = {data, size};
@@ -442,10 +498,12 @@ void SokolTexture::createTextureView(const char* label){
 bool SokolTexture::createFramebufferTexture(
             TextureType type, bool depth, bool shadowMap, int width, int height,
             TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV,
-            ColorFormat colorFormat){
+            ColorFormat colorFormat, int sampleCount, bool depthStencil, bool resolve){
     sg_image_desc img_desc = {0};
     if (depth){
         img_desc.usage.depth_stencil_attachment = true;
+    }else if (resolve){
+        img_desc.usage.resolve_attachment = true;
     }else{
         img_desc.usage.color_attachment = true;
     }
@@ -469,23 +527,32 @@ bool SokolTexture::createFramebufferTexture(
     }
 
     //if not set Sokol gets default from sg_desc.context.sample_count
-    img_desc.sample_count = 1;
+    img_desc.sample_count = (sampleCount > 1 && !resolve) ? sampleCount : 1;
 
     if (depth){
-        img_desc.pixel_format = SG_PIXELFORMAT_DEPTH;
-        img_desc.label = "framebuffer-depth-image";
+        img_desc.pixel_format = depthStencil ? SG_PIXELFORMAT_DEPTH_STENCIL : SG_PIXELFORMAT_DEPTH;
+        img_desc.label = depthStencil ? "framebuffer-depth-stencil-image" : "framebuffer-depth-image";
     } else {
         img_desc.pixel_format = (colorFormat == ColorFormat::RED) ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
-        img_desc.label = "framebuffer-color-image";
+        img_desc.label = (img_desc.sample_count > 1) ? "framebuffer-msaa-color-image" : (resolve ? "framebuffer-resolve-image" : "framebuffer-color-image");
     }
+
+    // multisampled and depth-stencil attachments are only rendered to (an MSAA image is
+    // sampled through its resolve image)
+    const bool sampled = img_desc.sample_count == 1 && !(depth && depthStencil);
 
     if (Engine::isAsyncThread()){
         image = SokolCmdQueue::add_command_make_image(img_desc);
-        sampler = SokolCmdQueue::add_command_make_sampler(sampler_desc);
+        if (sampled)
+            sampler = SokolCmdQueue::add_command_make_sampler(sampler_desc);
     }else{
         image = sg_make_image(img_desc);
-        sampler = sg_make_sampler(sampler_desc);
+        if (sampled)
+            sampler = sg_make_sampler(sampler_desc);
     }
+
+    if (!sampled)
+        return image.id != SG_INVALID_ID;
 
     createTextureView(img_desc.label);
 
@@ -521,6 +588,7 @@ void SokolTexture::destroyTexture(){
     image.id = SG_INVALID_ID;
     sampler.id = SG_INVALID_ID;
     view.id = SG_INVALID_ID;
+    streamBytes = 0;
 }
 
 uint32_t SokolTexture::getGLHandler() const{

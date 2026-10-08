@@ -403,7 +403,8 @@ Setters: `UserSettings.setBoolForKey(k, v)`, `setIntegerForKey`, `setLongForKey`
 `requestFullscreen()`, `exitFullscreen()`, `isWindowMaximized()`, `maximizeWindow()`,
 `restoreWindow()`, `setWindowSize(w, h)`, `isWindowResizable()`, `setWindowResizable(b)`,
 `setWindowTitle(s)`, `quit()`, `showVirtualKeyboard(text)`, `hideVirtualKeyboard()`,
-`getDirSeparator()`, `getAssetPath()`, `getUserDataPath()`, `getLuaPath()`,
+`setClipboardText(s)`, `getClipboardText()` (the system clipboard, UTF-8; on Web the text of
+the last copy or paste), `getDirSeparator()`, `getAssetPath()`, `getUserDataPath()`, `getLuaPath()`,
 `getShaderPath()`; ads/web: `initializeAdMob()`, `setMaxAdContentRating(AdMobRating.*)`,
 `loadInterstitialAd(id)`, `isInterstitialAdLoaded()`, `showInterstitialAd()`,
 `initializeCrazyGamesSDK()`, `showCrazyGamesAd(type)`, `happytimeCrazyGames()`,
@@ -908,6 +909,59 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
 - `Skybox`: `setTextures(...)`, `setTexture(...)`, rw `color`, `alpha`, `rotation`.
 - `Terrain`, `ReflectionProbe`, `Mirror`, `Bone`: editor-configured; see bindings.
 
+### 4.18 HTML/CSS documents: UIDocument, UIElement, UIEvent, data models
+
+Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
+
+- `UIDocument` (GameObject; `UIDocument(scene)` adds the component, `UIDocument(scene, entity)`):
+  rw `filename`, `title`, `visible`, `sortOrder`; ro `loaded`, `body`; `load(file)`,
+  `reload()`, `show()`, `hide()`, `getElementById(id)`, `querySelector(sel)`,
+  `querySelectorAll(sel)`, `createElement(tag)`, `createTextNode(text)`,
+  `addEventListener(type, fn[, capture|{capture=, once=}])`, `removeEventListener(...)`,
+  `createDataModel(name, table)` (returns the model proxy), `getDataModel(name)`,
+  `removeDataModel(name)`, `getTargetTexture()` (TEXTURE mode: a `Framebuffer`, else nil),
+  `getUIDocumentComponent()` (rw `filename`, `sortOrder`, `enabled`, `interactive`,
+  `renderMode` (`UIDocumentRenderMode.SCREEN`/`TEXTURE`, applied at the next load: set
+  `needReload = true`), `textureWidth`, `textureHeight`, `inputSurface`, `pixelRatio`,
+  `needReload`; ro `loaded`; events `onLoad`, `onUnload`); events `onLoad`, `onUnload`;
+  static `UIDocument.setDebuggerVisible(b)`, `isDebuggerVisible()`, `getLiveLuaRefCount()`.
+  Getters load a document that is due, so `init` can query elements.
+- `UIElement` (weak handle; `nil` when a query finds nothing; any use but `isValid()` of a
+  dead one raises): rw `id`, `className`, `textContent`, `innerHTML`, `value`, `checked`,
+  `disabled`, `scrollTop`, `scrollLeft`; ro `tagName`, `parentElement`, `children`,
+  `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`,
+  `childElementCount`, `scrollWidth`, `scrollHeight`, `clientWidth`, `clientHeight`,
+  `offsetWidth`, `offsetHeight`, `offsetLeft`, `offsetTop`, `classList`, `style`, `dataset`;
+  methods `getAttribute`, `setAttribute`, `hasAttribute`, `removeAttribute`, `getAttributes`,
+  `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains`, `appendChild`,
+  `insertBefore`, `removeChild`, `replaceChild`, `remove`, `cloneNode([deep])`, `focus`,
+  `blur`, `click`, `scrollIntoView`, `scrollTo`, `scrollBy`, `getBoundingClientRect` (UIRect),
+  `addEventListener`, `removeEventListener`, `dispatchEvent(type[, detail[, bubbles]])`.
+  `<lottie>` elements also: `play()`, `pause()`, `stop()`, `seek(seconds)`, `setFrame(f)`,
+  `setSpeed(s)`, `setDirection(1|-1)`, `setLoop(b)`, `setLoopCount(n)`,
+  `setSegment(from, to)`, `setMarker(name)`, `isPlaying()`, `getCurrentFrame()`,
+  `getTotalFrames()`, `getDuration()` (events `load`, `error`, `play`, `pause`, `loop`,
+  `complete`).
+- `classList:add(...)`, `remove(...)`, `toggle(name[, force])`, `contains(name)`;
+  `style.fontSize` / `style["font-size"]` (computed value; assign the inline style, `""`/nil
+  removes); `dataset.userName` (`data-user-name`).
+- `UIEvent` (valid while the listener runs): `type`, `target`, `currentTarget`, `eventPhase`,
+  `key`, `code`, `keyCode`, `["repeat"]`, `ctrlKey`, `shiftKey`, `altKey`, `metaKey`,
+  `clientX`, `clientY`, `button` (0 left, 1 middle, 2 right), `deltaX`, `deltaY`, `data`,
+  `detail`, `defaultPrevented`; `stopPropagation()`, `stopImmediatePropagation()`,
+  `preventDefault()`.
+- Data model proxy: fields read/write the model (`model.gold = 1`, `model.items[1].name`,
+  `table.insert(model.items, t)`); top-level keys fixed; methods `onChange(name, fn)`,
+  `removeOnChange(id)`, `dirty(name)`, `dirtyAll()`, `get(path)`, `set(path, v)`,
+  `getName()`, `isValid()`. `data-for` indices are 0-based.
+- `anime` (global table, Anime.js v4): `anime.animate(targets, params)`,
+  `createTimeline(params)`, `createTimer(params)`, `createSpring(params)`,
+  `stagger(value[, params])`, `cubicBezier`, `steps`, `linear`, `irregular`, `anime.eases.*`,
+  `anime.utils.*`; targets are selectors (documents of every scene of the game), `UIElement`s,
+  plain tables or lists; animations have `play`, `pause`, `resume`, `restart`, `reverse`,
+  `seek(ms)`, `cancel`, `revert`, `complete`, `andThen(fn)` and `currentTime`, `progress`,
+  `paused`, `completed`, `cancelled`. Full reference: `jasper://docs/html-ui` ("Animation").
+
 ---
 
 ## 5. Enums (exact Lua spelling; values are integers)
@@ -936,9 +990,10 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
 | `RayFilter` | `BODY_2D`, `BODY_3D`, `BOUNDS` |
 | `Scaling` | `FITWIDTH`, `FITHEIGHT`, `LETTERBOX`, `CROP`, `STRETCH`, `NATIVE` |
 | `Platform` | `MacOS`, `iOS`, `Web`, `Android`, `Linux`, `Windows` |
-| `CursorType` | `ARROW`, `IBEAM`, `CROSSHAIR`, `POINTING_HAND`, `RESIZE_EW`, `RESIZE_NS`, `RESIZE_NWSE`, `RESIZE_NESW`, `RESIZE_ALL`, `NOT_ALLOWED` |
+| `CursorType` | `ARROW`, `IBEAM`, `CROSSHAIR`, `POINTING_HAND`, `RESIZE_EW`, `RESIZE_NS`, `RESIZE_NWSE`, `RESIZE_NESW`, `RESIZE_ALL`, `NOT_ALLOWED`, `WAIT`, `PROGRESS`, `HELP`, `GRAB`, `GRABBING` |
 | `MouseMode` | `NORMAL`, `HIDDEN`, `CAPTURED`, `CONFINED` |
 | `UIEventState` | `NOT_SET`, `ENABLED`, `DISABLED` |
+| `UIDocumentRenderMode` | `SCREEN`, `TEXTURE` |
 | `TextureFilter` | `NEAREST`, `LINEAR`, `NEAREST_MIPMAP_NEAREST`, `NEAREST_MIPMAP_LINEAR`, `LINEAR_MIPMAP_NEAREST`, `LINEAR_MIPMAP_LINEAR` |
 | `TextureWrap` | `REPEAT`, `MIRRORED_REPEAT`, `CLAMP_TO_EDGE`, `CLAMP_TO_BORDER` |
 | `PrimitiveType` | `TRIANGLES`, `TRIANGLE_STRIP`, `POINTS`, `LINES` |

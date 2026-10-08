@@ -741,7 +741,7 @@ static Entity findDumpEntity(Project& project, const YAML::Node& op, SceneProjec
 //       autoSave {value} | tickPrefab {wait, editing} (the per-frame upkeep: Auto Save) |
 //       undoStage / redoStage | setCmd {entity, component, property, value: Vector3},
 //       createChild {entity, name}, deleteEntity {entity} (through the undo history),
-//       create {scene | stage: true, name, kind: empty|box|sphere|light, position};
+//       create {scene | stage: true, name, kind: empty|box|sphere|light|sun|text|image|ui_document, position};
 //       `stage: true` makes `entity` a path in the shown stage
 // "@/x" in an op's path: x next to the ops file
 static fs::path sceneDumpOpsDir;
@@ -758,7 +758,7 @@ static EntityCreationType creationKind(const YAML::Node& op) {
         {"empty", EntityCreationType::GAMEOBJECT}, {"box", EntityCreationType::BOX},
         {"sphere", EntityCreationType::SPHERE}, {"light", EntityCreationType::POINT_LIGHT},
         {"sun", EntityCreationType::DIRECTIONAL_LIGHT}, {"text", EntityCreationType::TEXT},
-        {"image", EntityCreationType::IMAGE},
+        {"image", EntityCreationType::IMAGE}, {"ui_document", EntityCreationType::UI_DOCUMENT},
     };
     const std::string kind = op["kind"] ? op["kind"].as<std::string>() : std::string("empty");
     auto it = kinds.find(kind);
