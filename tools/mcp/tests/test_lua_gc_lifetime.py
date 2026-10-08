@@ -108,10 +108,13 @@ async def stop_and_collect(ed: Editor) -> None:
     await ed.call("wait", frames=3)
     await ed.check_alive()
     await ed.call("editor_status")
+    errors = [e.get("message", "") for e in await ed.console_since(types=["error"], limit=1000)]
+    ed.check(not errors, f"errors logged: {errors[:10]}")
 
 
 async def test_main_scene_objects_collected_after_stop(ed: Editor):
     s = await setup(ed)
+    await ed.console_since(None, limit=1)   # errors are checked from here
     await play(ed, s["solo"])
     ed.check_eq(await lua(ed, "return script('SoloMaker', 'GcSoloMaker', 'GcSolo').made"), [1], "the script ran")
     await stop_and_collect(ed)
@@ -119,6 +122,7 @@ async def test_main_scene_objects_collected_after_stop(ed: Editor):
 
 async def test_child_scene_objects_collected_after_stop(ed: Editor):
     s = await setup(ed)
+    await ed.console_since(None, limit=1)   # errors are checked from here
     await play(ed, s["main"])
     ed.check_eq(await lua(ed, "return script('ChildMaker', 'GcChildMaker', 'GcChild').made"), [1],
                 "the child scene's script ran")
@@ -132,6 +136,7 @@ async def test_collected_handle_destroys_its_entity_while_playing(ed: Editor):
     handle that gave up ownership (entityOwned = false) leaves it to the scene, and handles
     the script keeps are untouched."""
     s = await setup(ed)
+    await ed.console_since(None, limit=1)   # errors are checked from here
     await play(ed, s["main"])
     got = await lua(ed, """
         local maker = script('ChildMaker', 'GcChildMaker', 'GcChild')
@@ -156,6 +161,7 @@ async def test_repeated_play_stop_cycles(ed: Editor):
     """Play and stop several times, collecting inside and outside play: stale handles of earlier
     sessions are collected while later Play copies (maybe at the same addresses) live."""
     s = await setup(ed)
+    await ed.console_since(None, limit=1)   # errors are checked from here
     for i in range(4):
         await play(ed, s["main"] if i % 2 == 0 else s["solo"])
         await lua(ed, "collectgarbage('collect'); return true")

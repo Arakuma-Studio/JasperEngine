@@ -18,13 +18,13 @@ Model::Model(Scene* scene): Mesh(scene){
 Model::Model(Scene* scene, Entity entity): Mesh(scene, entity){
 }
 
+// a destructor must not throw: only a live entity that still has its ModelComponent
 Model::~Model(){
-    if (isEntityOwned()){
-        ModelComponent& model = getComponent<ModelComponent>();
-
-        scene->getSystem<MeshSystem>()->clearBoneMapping(model);
-        scene->getSystem<MeshSystem>()->clearAnimationMapping(model);
-        scene->getSystem<MeshSystem>()->clearMeshNodeMapping(model);
+    ModelComponent* model = ownsLiveEntity() ? scene->findComponent<ModelComponent>(entity) : nullptr;
+    if (model){
+        scene->getSystem<MeshSystem>()->clearBoneMapping(*model);
+        scene->getSystem<MeshSystem>()->clearAnimationMapping(*model);
+        scene->getSystem<MeshSystem>()->clearMeshNodeMapping(*model);
     }
 }
 

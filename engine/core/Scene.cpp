@@ -27,6 +27,8 @@ Scene::Scene(EntityPool defaultPool) : EntityRegistry(defaultPool) {
 }
 
 void Scene::init(){
+    lifetime = std::make_shared<char>(0);
+
     registerSystem<ActionSystem>();
     registerSystem<MeshSystem>();
     registerSystem<UISystem>();
@@ -44,6 +46,9 @@ void Scene::init(){
 }
 
 Scene::~Scene(){
+    // first: handles that own entities of this scene and go during (or after) its teardown
+    // leave them to it
+    lifetime.reset();
     // GameObject::destroy calls still pending for it
     ObjectManager::forgetScene(this);
     // sounds of a deleted scene would play on; not in destroy(), which also runs on view recreation
@@ -58,6 +63,10 @@ static void removeComponentSubscriptionsByTag(Scene* scene, const std::string& s
     for (size_t i = 0; i < components->size(); i++) {
         callback(components->getComponentFromIndex(i), substring);
     }
+}
+
+std::weak_ptr<char> Scene::getLifetime() const{
+    return lifetime;
 }
 
 void Scene::removeSubscriptionsByTag(const std::string& substring) {
