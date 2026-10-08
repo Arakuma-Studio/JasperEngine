@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSS rewrites</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  @layer base, theme;
+
+  :root {
+    --tile: url(assets/tile.png);
+    --sample-bg: #334155;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    line-height: 16px;
+    color: #e2e8f0;
+    background: #111827;
+  }
+
+  .cases {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 8px;
+    padding: 14px 16px;
+  }
+
+  .case { width: 148px; }
+
+  .s {
+    position: relative;
+    width: 148px;
+    height: 80px;
+  }
+
+  .label {
+    display: block;
+    height: 16px;
+    margin-top: 4px;
+    color: #94a3b8;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  /* colors */
+  .rgba { background-color: rgba(239, 68, 68, 0.5); }
+  .rgb-space { background-color: rgb(59 130 246 / 60%); }
+  .hsl { background: hsl(280 70% 55%); }
+  .hsla { background-color: hsla(140, 60%, 45%, 0.8); }
+  .named { background-color: tomato; border: 6px solid rebeccapurple; }
+  .hex4 { background: #f80c; }
+  .oklch { background: oklch(70% 0.15 200); }
+  .mix { background: color-mix(in srgb, #ef4444 40%, #3b82f6); }
+
+  /* backgrounds */
+  .layers {
+    background:
+      radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.7) 0, rgba(255, 255, 255, 0.7) 12px, transparent 13px),
+      linear-gradient(135deg, #f59e0b, #db2777);
+  }
+  .cover { background: url(assets/photo.png) center / cover no-repeat; }
+  .contain { background: #0f172a url(assets/photo.png) center / contain no-repeat; }
+  .repeat { background-color: var(--sample-bg); background-image: url(assets/tile.png); }
+  .space { background: var(--sample-bg) url(assets/tile.png) space; }
+  .round { background: var(--sample-bg) url(assets/tile.png) round; background-size: 24px 24px; }
+  .position { background: var(--sample-bg) url(assets/tile.png) no-repeat right 10px bottom 8px; }
+
+  /* borders and outlines */
+  .border { border: 3px solid #22c55e; background: #052e16; }
+  .circle { width: 80px; border-radius: 50%; background: #06b6d4; }
+  .outline { margin: 6px; width: 136px; height: 68px; background: #78350f; outline: 2px solid #f59e0b; outline-offset: 2px; }
+  .sides { border-width: 4px 8px; border-style: solid; border-color: #ef4444 #22c55e #3b82f6 #eab308; background: #1e293b; }
+  .shadows { margin: 4px 10px 10px 4px; width: 134px; height: 66px; background: #1e293b; box-shadow: 0 0 0 4px #fbbf24, 6px 6px 0 #7c3aed; }
+
+  /* text */
+  .glow, .stroke {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    font-weight: 700;
+    background: var(--sample-bg);
+  }
+  .glow { color: #ffffff; text-shadow: 0 0 8px #22d3ee, 0 0 2px #22d3ee; }
+  .stroke { color: #fde047; -webkit-text-stroke: 1px #be123c; }
+  .clamp-font {
+    font-size: clamp(14px, 2vw, 28px);
+    width: clamp(40px, 10vw, 148px);
+    background: #4338ca;
+  }
+  .calc { width: calc(40px + 2rem); height: calc(100px - 1.25rem); background: #0d9488; }
+
+  /* lists */
+  .list { background: var(--sample-bg); padding: 6px 0 0 28px; }
+  .list.square { list-style-type: square; }
+  .list.roman { list-style-type: lower-roman; }
+
+  /* shapes, images, effects */
+  .poly { background: linear-gradient(#a855f7, #6366f1); clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+  .clip-circle { background: #f97316; clip-path: circle(35% at 50% 50%); }
+  .clip-inset { background: #14b8a6; clip-path: inset(10px 20px round 12px); }
+  .fit-cover, .fit-contain { width: 148px; height: 80px; background: #0f172a; }
+  .fit-cover { object-fit: cover; }
+  .fit-contain { object-fit: contain; }
+  .pixel { width: 72px; height: 72px; image-rendering: pixelated; }
+  .icon { color: #4ade80; background: var(--sample-bg); display: flex; align-items: center; justify-content: center; }
+  .icon svg { width: 48px; height: 48px; }
+  .drop { margin: 10px 30px; width: 88px; height: 56px; border-radius: 10px; background: #eab308; filter: drop-shadow(4px 6px 4px rgba(0, 0, 0, 0.7)); }
+  .mask { background: #3b82f6; -webkit-mask-image: linear-gradient(to right, #000, transparent); mask-image: linear-gradient(to right, #000, transparent); }
+  .vmin { width: 8vmin; height: 8vmin; background: #ec4899; }
+
+  /* gradients and transforms */
+  .angle { background: linear-gradient(45deg, #f43f5e 0%, #f43f5e 30%, #8b5cf6 70%); }
+  .ellipse { background: radial-gradient(ellipse at top, #fde68a, #b45309); }
+  .conic { width: 80px; border-radius: 50%; background: conic-gradient(from 90deg, #ef4444, #eab308, #22c55e, #3b82f6, #ef4444); }
+  .stripes { background: repeating-linear-gradient(45deg, #334155 0 8px, #64748b 8px 16px); }
+  .webkit-gradient { background: -webkit-linear-gradient(top, #22d3ee, #1e40af); }
+  .rotate { margin: 10px 24px; width: 100px; height: 60px; background: #10b981; transform: rotate(12deg) scale(0.8); }
+
+  /* cascade */
+  .inherit-parent { border-radius: 16px; background: #0ea5e9; padding: 12px; }
+  .inherit-parent .child { border-radius: inherit; height: 56px; background: #f8fafc; }
+  #s-important { background: #ef4444; }
+  .important { background: #22c55e !important; }
+
+  .nest {
+    background: #312e81;
+    & .dot {
+      position: absolute;
+      left: 54px;
+      top: 20px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #fbbf24;
+    }
+  }
+
+  .mq { background: #ef4444; }
+  @media (width >= 600px) {
+    .mq { background: #84cc16; }
+  }
+
+  .sup { background: #ef4444; }
+  @supports (display: flex) {
+    .sup { background: #a3e635; }
+  }
+  @supports not (display: flex) {
+    .sup { border: 8px solid #ef4444; }
+  }
+
+  @layer theme {
+    .lay { background: #f472b6; }
+  }
+  @layer base {
+    .lay { background: #ef4444; }
+  }
+</style>
+</head>
+<body>
+<div class="cases" id="cases">
+  <div class="case"><div class="s rgba" id="s-rgba"></div><span class="label">rgba() alpha</span></div>
+  <div class="case"><div class="s rgb-space" id="s-rgb-space"></div><span class="label">rgb() space / alpha</span></div>
+  <div class="case"><div class="s hsl" id="s-hsl"></div><span class="label">hsl() space</span></div>
+  <div class="case"><div class="s hsla" id="s-hsla"></div><span class="label">hsla() legacy</span></div>
+  <div class="case"><div class="s named" id="s-named"></div><span class="label">named colors</span></div>
+  <div class="case"><div class="s hex4" id="s-hex4"></div><span class="label">#rgba hex</span></div>
+  <div class="case"><div class="s oklch" id="s-oklch"></div><span class="label">oklch()</span></div>
+  <div class="case"><div class="s mix" id="s-mix"></div><span class="label">color-mix()</span></div>
+
+  <div class="case"><div class="s layers" id="s-layers"></div><span class="label">two layers</span></div>
+  <div class="case"><div class="s cover" id="s-cover"></div><span class="label">url() cover</span></div>
+  <div class="case"><div class="s contain" id="s-contain"></div><span class="label">url() contain</span></div>
+  <div class="case"><div class="s repeat" id="s-repeat"></div><span class="label">repeat</span></div>
+  <div class="case"><div class="s space" id="s-space"></div><span class="label">repeat: space</span></div>
+  <div class="case"><div class="s round" id="s-round"></div><span class="label">repeat: round</span></div>
+  <div class="case"><div class="s position" id="s-position"></div><span class="label">position edges</span></div>
+  <div class="case"><div class="s border" id="s-border"></div><span class="label">border shorthand</span></div>
+
+  <div class="case"><div class="s circle" id="s-circle"></div><span class="label">radius 50%</span></div>
+  <div class="case"><div class="s outline" id="s-outline"></div><span class="label">outline + offset</span></div>
+  <div class="case"><div class="s sides" id="s-sides"></div><span class="label">per-side borders</span></div>
+  <div class="case"><div class="s shadows" id="s-shadows"></div><span class="label">box-shadow list</span></div>
+  <div class="case"><div class="s glow" id="s-glow">Glow</div><span class="label">text-shadow</span></div>
+  <div class="case"><div class="s stroke" id="s-stroke">Stroke</div><span class="label">text-stroke</span></div>
+  <div class="case"><div class="s clamp-font" id="s-clamp">Aa</div><span class="label">clamp()</span></div>
+  <div class="case"><div class="s calc" id="s-calc"></div><span class="label">calc() static</span></div>
+
+  <div class="case"><ul class="s list square" id="s-square"><li>square</li><li>bullets</li></ul><span class="label">list-style square</span></div>
+  <div class="case"><ol class="s list roman" id="s-roman"><li>one</li><li>two</li><li>three</li></ol><span class="label">lower-roman</span></div>
+  <div class="case"><div class="s poly" id="s-poly"></div><span class="label">clip-path polygon</span></div>
+  <div class="case"><div class="s clip-circle" id="s-clip-circle"></div><span class="label">clip-path circle</span></div>
+  <div class="case"><div class="s clip-inset" id="s-clip-inset"></div><span class="label">clip-path inset</span></div>
+  <div class="case"><img class="s fit-cover" id="s-fit-cover" src="assets/photo.png" alt=""><span class="label">object-fit cover</span></div>
+  <div class="case"><img class="s fit-contain" id="s-fit-contain" src="assets/photo.png" alt=""><span class="label">object-fit contain</span></div>
+  <div class="case"><div class="s"><img class="pixel" id="s-pixel" src="assets/pixel-sword.png" alt=""></div><span class="label">pixelated</span></div>
+
+  <div class="case"><div class="s icon" id="s-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div><span class="label">currentColor icon</span></div>
+  <div class="case"><div class="s"><div class="drop" id="s-drop"></div></div><span class="label">drop-shadow()</span></div>
+  <div class="case"><div class="s mask" id="s-mask"></div><span class="label">mask-image</span></div>
+  <div class="case"><div class="s vmin" id="s-vmin"></div><span class="label">vmin</span></div>
+  <div class="case"><div class="s angle" id="s-angle"></div><span class="label">linear 45deg stops</span></div>
+  <div class="case"><div class="s ellipse" id="s-ellipse"></div><span class="label">radial ellipse</span></div>
+  <div class="case"><div class="s conic" id="s-conic"></div><span class="label">conic-gradient</span></div>
+  <div class="case"><div class="s stripes" id="s-stripes"></div><span class="label">repeating-linear</span></div>
+
+  <div class="case"><div class="s webkit-gradient" id="s-webkit"></div><span class="label">-webkit- gradient</span></div>
+  <div class="case"><div class="s"><div class="rotate" id="s-rotate"></div></div><span class="label">rotate + scale</span></div>
+  <div class="case"><div class="s inherit-parent" id="s-inherit"><div class="child"></div></div><span class="label">inherit</span></div>
+  <div class="case"><div class="s important" id="s-important"></div><span class="label">!important</span></div>
+  <div class="case"><div class="s nest" id="s-nest"><div class="dot"></div></div><span class="label">nesting</span></div>
+  <div class="case"><div class="s mq" id="s-mq"></div><span class="label">@media range</span></div>
+  <div class="case"><div class="s sup" id="s-sup"></div><span class="label">@supports</span></div>
+  <div class="case"><div class="s lay" id="s-lay"></div><span class="label">@layer order</span></div>
+</div>
+</body>
+</html>

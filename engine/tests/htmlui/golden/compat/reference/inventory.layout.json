@@ -1,0 +1,81 @@
+{
+ "page": "inventory.html",
+ "viewport": [
+  1280,
+  720
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "states": {},
+ "requires": "grid, pseudo-elements",
+ "lucide": [
+  "apple",
+  "bomb",
+  "coins",
+  "crown",
+  "flask-conical",
+  "gem",
+  "key-round",
+  "scroll",
+  "shield",
+  "sword",
+  "wand-sparkles"
+ ],
+ "elements": [
+  {
+   "id": "inventory",
+   "tag": "section",
+   "x": 255,
+   "y": 214.81,
+   "w": 466,
+   "h": 290.38
+  },
+  {
+   "id": "inv-title",
+   "tag": "h1",
+   "x": 276,
+   "y": 237,
+   "w": 141.58,
+   "h": 25.19
+  },
+  {
+   "id": "gold",
+   "tag": "span",
+   "x": 623.66,
+   "y": 235.81,
+   "w": 76.34,
+   "h": 22.39
+  },
+  {
+   "id": "grid",
+   "tag": "div",
+   "x": 276,
+   "y": 276.19,
+   "w": 424,
+   "h": 208
+  },
+  {
+   "id": "slot-sword",
+   "tag": "div",
+   "x": 276,
+   "y": 276.19,
+   "w": 64,
+   "h": 64
+  },
+  {
+   "id": "slot-last",
+   "tag": "div",
+   "x": 636,
+   "y": 420.19,
+   "w": 64,
+   "h": 64
+  },
+  {
+   "id": "tooltip",
+   "tag": "aside",
+   "x": 745,
+   "y": 271.33,
+   "w": 280,
+   "h": 177.34
+  }
+ ]
+}

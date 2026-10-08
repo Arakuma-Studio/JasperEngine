@@ -1,0 +1,120 @@
+{
+ "page": "main-menu.html",
+ "viewport": [
+  1280,
+  720
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "states": {
+  "hover": "#btn-new"
+ },
+ "requires": "",
+ "lucide": [
+  "log-out",
+  "play",
+  "scroll-text",
+  "settings",
+  "sparkles"
+ ],
+ "elements": [
+  {
+   "id": "panel",
+   "tag": "div",
+   "x": 430,
+   "y": 50.7,
+   "w": 420,
+   "h": 618.59
+  },
+  {
+   "id": "logo",
+   "tag": "div",
+   "x": 604,
+   "y": 91.7,
+   "w": 72,
+   "h": 72
+  },
+  {
+   "id": "crest",
+   "tag": "img",
+   "x": 616,
+   "y": 103.7,
+   "w": 48,
+   "h": 48
+  },
+  {
+   "id": "title",
+   "tag": "h1",
+   "x": 479,
+   "y": 179.7,
+   "w": 322,
+   "h": 81.59,
+   "tol": "text"
+  },
+  {
+   "id": "subtitle",
+   "tag": "p",
+   "x": 511.69,
+   "y": 267.3,
+   "w": 256.61,
+   "h": 21,
+   "tol": "text"
+  },
+  {
+   "id": "buttons",
+   "tag": "nav",
+   "x": 479,
+   "y": 316.3,
+   "w": 322,
+   "h": 308
+  },
+  {
+   "id": "btn-continue",
+   "tag": "button",
+   "x": 479,
+   "y": 316.3,
+   "w": 322,
+   "h": 52
+  },
+  {
+   "id": "btn-new",
+   "tag": "button",
+   "x": 479,
+   "y": 380.3,
+   "w": 322,
+   "h": 52
+  },
+  {
+   "id": "btn-settings",
+   "tag": "button",
+   "x": 479,
+   "y": 444.3,
+   "w": 322,
+   "h": 52
+  },
+  {
+   "id": "btn-credits",
+   "tag": "button",
+   "x": 479,
+   "y": 508.3,
+   "w": 322,
+   "h": 52
+  },
+  {
+   "id": "btn-quit",
+   "tag": "button",
+   "x": 479,
+   "y": 572.3,
+   "w": 322,
+   "h": 52
+  },
+  {
+   "id": "version",
+   "tag": "footer",
+   "x": 1094.14,
+   "y": 686,
+   "w": 161.86,
+   "h": 18,
+   "tol": "text"
+  }
+ ]
+}

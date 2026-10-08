@@ -1,0 +1,231 @@
+{
+ "page": "settings.html",
+ "viewport": [
+  1280,
+  720
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "states": {
+  "focus": "#player-name"
+ },
+ "requires": "",
+ "lucide": [],
+ "elements": [
+  {
+   "id": "settings",
+   "tag": "div",
+   "x": 200,
+   "y": 75,
+   "w": 880,
+   "h": 570
+  },
+  {
+   "id": "header",
+   "tag": "header",
+   "x": 201,
+   "y": 76,
+   "w": 878,
+   "h": 76
+  },
+  {
+   "id": "heading",
+   "tag": "h1",
+   "x": 229,
+   "y": 100.5,
+   "w": 132.25,
+   "h": 26,
+   "tol": "text"
+  },
+  {
+   "id": "tabs",
+   "tag": "nav",
+   "x": 685.19,
+   "y": 94,
+   "w": 365.81,
+   "h": 39
+  },
+  {
+   "id": "tab-graphics",
+   "tag": "button",
+   "x": 685.19,
+   "y": 94,
+   "w": 92.78,
+   "h": 39,
+   "tol": "text"
+  },
+  {
+   "id": "tab-audio",
+   "tag": "button",
+   "x": 781.97,
+   "y": 94,
+   "w": 71.69,
+   "h": 39,
+   "tol": "text"
+  },
+  {
+   "id": "tab-controls",
+   "tag": "button",
+   "x": 857.66,
+   "y": 94,
+   "w": 89.48,
+   "h": 39,
+   "tol": "text"
+  },
+  {
+   "id": "tab-gameplay",
+   "tag": "button",
+   "x": 951.14,
+   "y": 94,
+   "w": 99.86,
+   "h": 39,
+   "tol": "text"
+  },
+  {
+   "id": "body",
+   "tag": "div",
+   "x": 201,
+   "y": 152,
+   "w": 878,
+   "h": 416
+  },
+  {
+   "id": "col-left",
+   "tag": "section",
+   "x": 229,
+   "y": 176,
+   "w": 395,
+   "h": 368
+  },
+  {
+   "id": "quality",
+   "tag": "select",
+   "x": 444,
+   "y": 210,
+   "w": 180,
+   "h": 37
+  },
+  {
+   "id": "fov",
+   "tag": "input",
+   "x": 534,
+   "y": 263,
+   "w": 90,
+   "h": 35
+  },
+  {
+   "id": "brightness",
+   "tag": "input",
+   "x": 378,
+   "y": 327,
+   "w": 200,
+   "h": 6
+  },
+  {
+   "id": "music",
+   "tag": "input",
+   "x": 378,
+   "y": 374,
+   "w": 200,
+   "h": 8
+  },
+  {
+   "id": "checks",
+   "tag": "div",
+   "x": 229,
+   "y": 410,
+   "w": 395,
+   "h": 83
+  },
+  {
+   "id": "vsync",
+   "tag": "input",
+   "x": 229,
+   "y": 411.5,
+   "w": 18,
+   "h": 18
+  },
+  {
+   "id": "fps",
+   "tag": "input",
+   "x": 229,
+   "y": 442.5,
+   "w": 18,
+   "h": 18
+  },
+  {
+   "id": "blur",
+   "tag": "input",
+   "x": 229,
+   "y": 473.5,
+   "w": 18,
+   "h": 18
+  },
+  {
+   "id": "player-name",
+   "tag": "input",
+   "x": 404,
+   "y": 509,
+   "w": 220,
+   "h": 35
+  },
+  {
+   "id": "col-right",
+   "tag": "section",
+   "x": 656,
+   "y": 176,
+   "w": 395,
+   "h": 368
+  },
+  {
+   "id": "keybinds",
+   "tag": "table",
+   "x": 656,
+   "y": 210,
+   "w": 395,
+   "h": 263.5
+  },
+  {
+   "id": "last-row",
+   "tag": "tr",
+   "x": 656,
+   "y": 434,
+   "w": 395,
+   "h": 39
+  },
+  {
+   "id": "footer",
+   "tag": "footer",
+   "x": 201,
+   "y": 568,
+   "w": 878,
+   "h": 76
+  },
+  {
+   "id": "reset",
+   "tag": "a",
+   "x": 229,
+   "y": 596.75,
+   "w": 103.16,
+   "h": 19.5,
+   "tol": "text"
+  },
+  {
+   "id": "cancel",
+   "tag": "button",
+   "x": 805.23,
+   "y": 585,
+   "w": 93.03,
+   "h": 43,
+   "tol": "text"
+  },
+  {
+   "id": "save",
+   "tag": "button",
+   "x": 910.27,
+   "y": 585,
+   "w": 140.73,
+   "h": 43,
+   "tol": "text"
+  }
+ ]
+}

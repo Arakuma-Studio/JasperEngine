@@ -1,0 +1,4 @@
+Chromium 153.0.8010.12 (chrome-headless-shell revision 1243), playwright-core 1.63.0
+Generic font families: the engine's built-in Roboto (engine/core/util/DefaultFont.h) through fontconfig
+Lucide: checkout /tmp/htmlui-src/lucide
+Written by tools/htmlui/render-reference.mjs; do not edit.
