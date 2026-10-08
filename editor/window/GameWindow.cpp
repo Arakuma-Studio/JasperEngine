@@ -10,6 +10,7 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "Widgets.h"
 #include "external/IconsFontAwesome6.h"
+#include "subsystem/UIDocumentSystem.h"
 
 #include <algorithm>
 #include <cmath>
@@ -346,7 +347,26 @@ void editor::GameWindow::drawToolbar() {
     }
     ImGui::SetItemTooltip("Zoom into the game image (double-click resets)");
 
+    // The played scene's HTML UI documents (the RmlUi debugger inspects and draws in them)
+    UIDocumentSystem* playedDocuments = nullptr;
+    const uint32_t playedSceneId = project->getPlaySessionSceneId();
+    if (playedSceneId != NULL_PROJECT_SCENE) {
+        SceneProject* played = project->getScene(playedSceneId);
+        if (played && played->scene && played->playState == ScenePlayState::PLAYING) {
+            playedDocuments = played->scene->getSystem<UIDocumentSystem>().get();
+        }
+    }
+    if (!playedDocuments && htmlUiDebuggerSceneId != NULL_PROJECT_SCENE) {
+        // play stopped: the debugger was the game's
+        SceneProject* shown = project->getScene(htmlUiDebuggerSceneId);
+        if (shown && shown->scene) {
+            if (UIDocumentSystem* documents = shown->scene->getSystem<UIDocumentSystem>().get()) documents->setDebuggerVisible(false);
+        }
+        htmlUiDebuggerSceneId = NULL_PROJECT_SCENE;
+    }
+
     // Right side toggles, as icons when the view is too narrow for their names
+    const char* debuggerLabel = "HTML UI Debugger##GameHtmlUiDebugger";
     const char* touchLabel = ICON_FA_MOBILE_SCREEN "##GameTouch";
     const char* maximizeLabel = "Maximize On Play##GameMaximize";
     const char* statsLabel = "Stats##GameStats";
@@ -355,11 +375,13 @@ void editor::GameWindow::drawToolbar() {
         return ImGui::CalcTextSize(label, nullptr, true).x + style.FramePadding.x * 2.0f;
     };
     auto groupWidth = [&]() {
-        return buttonWidth(touchLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) + style.ItemSpacing.x * 2.0f;
+        return buttonWidth(debuggerLabel) + buttonWidth(touchLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) +
+               style.ItemSpacing.x * 3.0f;
     };
     ImGui::SameLine();
     const float contentRight = ImGui::GetWindowContentRegionMax().x;
     if (contentRight - groupWidth() < ImGui::GetCursorPosX()) {
+        debuggerLabel = ICON_FA_BUG "##GameHtmlUiDebugger";
         maximizeLabel = ICON_FA_MAXIMIZE "##GameMaximize";
         statsLabel = ICON_FA_CHART_SIMPLE "##GameStats";
     }
@@ -368,6 +390,16 @@ void editor::GameWindow::drawToolbar() {
         ImGui::SetCursorPosX(rightX);
     }
 
+    const bool debuggerShown = playedDocuments && playedDocuments->isDebuggerVisible();
+    ImGui::BeginDisabled(!playedDocuments);
+    if (toggleButton(debuggerLabel, debuggerShown, "HTML UI Debugger: RmlUi's element inspector over the playing scene's documents")) {
+        if (playedDocuments->setDebuggerVisible(!debuggerShown)) {
+            htmlUiDebuggerSceneId = debuggerShown ? NULL_PROJECT_SCENE : playedSceneId;
+        }
+    }
+    ImGui::EndDisabled();
+
+    ImGui::SameLine();
     const bool simulateTouch = project->isSimulateTouch();
     ImGui::BeginDisabled(project->isAnyScenePlaying());
     if (toggleButton(touchLabel, simulateTouch, "Simulate touch: play as a touch device (the mouse acts as one finger)")) {

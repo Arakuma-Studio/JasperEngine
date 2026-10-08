@@ -2196,7 +2196,7 @@ void searchFilesTool(const CallPtr& call) {
 void registerAssetTools(McpRegistry& registry) {
     using namespace schema;
 
-    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "script", "scene", "prefab", "material", "shader", "folder", "other"};
+    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "folder", "other"};
 
     {
         ToolDef tool;

@@ -1744,6 +1744,9 @@
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		4544495431300000000000A2 /* HtmlUIDependencies.h in Headers */ = {isa = PBXBuildFile; fileRef = 4544495431300000000000A1 /* HtmlUIDependencies.h */; };
+		4544495431300000000000A4 /* HtmlUIDependencies.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4544495431300000000000A3 /* HtmlUIDependencies.cpp */; };
+		4544495431300000000000A5 /* HtmlUIDependencies.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4544495431300000000000A3 /* HtmlUIDependencies.cpp */; };
 		414E494D4500000000000002 /* AnimAnimation.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000001 /* AnimAnimation.h */; };
 		414E494D4500000000000004 /* AnimCommon.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000003 /* AnimCommon.h */; };
 		414E494D4500000000000006 /* AnimEasing.h in Headers */ = {isa = PBXBuildFile; fileRef = 414E494D4500000000000005 /* AnimEasing.h */; };
@@ -4127,6 +4130,8 @@
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		4544495431300000000000A1 /* HtmlUIDependencies.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIDependencies.h; sourceTree = "<group>"; };
+		4544495431300000000000A3 /* HtmlUIDependencies.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIDependencies.cpp; sourceTree = "<group>"; };
 		414E494D4500000000000001 /* AnimAnimation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimAnimation.h; sourceTree = "<group>"; };
 		414E494D4500000000000003 /* AnimCommon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimCommon.h; sourceTree = "<group>"; };
 		414E494D4500000000000005 /* AnimEasing.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimEasing.h; sourceTree = "<group>"; };
@@ -7235,6 +7240,8 @@
 				48544D4C0000000000000003 /* HtmlUI.cpp */,
 				48544D4C00000000000002A6 /* HtmlUIClock.h */,
 				48544D4C00000000000002A8 /* HtmlUIClock.cpp */,
+				4544495431300000000000A1 /* HtmlUIDependencies.h */,
+				4544495431300000000000A3 /* HtmlUIDependencies.cpp */,
 				48544D4C00000000000002AB /* HtmlUIRenderStats.h */,
 				48544D4C00000000000002AD /* HtmlUITexture.h */,
 				48544D4C00000000000002AF /* HtmlUITexture.cpp */,
@@ -8054,6 +8061,7 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				4544495431300000000000A2 /* HtmlUIDependencies.h in Headers */,
 				414E494D4500000000000002 /* AnimAnimation.h in Headers */,
 				414E494D4500000000000004 /* AnimCommon.h in Headers */,
 				414E494D4500000000000006 /* AnimEasing.h in Headers */,
@@ -9706,6 +9714,7 @@
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				4544495431300000000000A4 /* HtmlUIDependencies.cpp in Sources */,
 				414E494D450000000000001E /* AnimAnimation.cpp in Sources */,
 				414E494D4500000000000021 /* AnimCommon.cpp in Sources */,
 				414E494D4500000000000024 /* AnimEasing.cpp in Sources */,
@@ -9956,6 +9965,7 @@
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				4544495431300000000000A5 /* HtmlUIDependencies.cpp in Sources */,
 				414E494D450000000000001F /* AnimAnimation.cpp in Sources */,
 				414E494D4500000000000022 /* AnimCommon.cpp in Sources */,
 				414E494D4500000000000025 /* AnimEasing.cpp in Sources */,

@@ -61,6 +61,9 @@ namespace jasperengine::editor {
         static std::string audioSourceStateToString(AudioSourceState state);
         static AudioSourceState stringToAudioSourceState(const std::string& str);
 
+        static std::string uiDocumentRenderModeToString(UIDocumentRenderMode mode);
+        static UIDocumentRenderMode stringToUIDocumentRenderMode(const std::string& str);
+
         static std::string audioSourceAttenuationToString(AudioSourceAttenuation attenuation);
         static AudioSourceAttenuation stringToAudioSourceAttenuation(const std::string& str);
 

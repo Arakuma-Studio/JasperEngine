@@ -1466,6 +1466,48 @@ hidden from the editor's shared engine, and its header needs RmlUi's include pat
 generated game code does not have; the `UIDocumentSystem` statics forward to it, §3.0
 item 4.)
 
+#### 3.8.9 Implementation notes (p1-editor, as built)
+Where the code differs from or adds to the text above:
+- **Scanner.** `HtmlUIReference` also has `bool absolute` (an absolute filesystem path: the
+  export warns). Besides the listed sources it reads `link type="text/template"` (TEMPLATE),
+  `@spritesheet { src: ... }` (IMAGE) and RCSS's bare `@font-face { src: font.ttf; }`, which
+  RmlUi 6.3 opens as written, i.e. from the asset root, not relative to the sheet (the
+  scanner resolves it the same way). Helpers next to it: `scanHtmlUIDocumentText`,
+  `scanHtmlUIStyleSheetText`, `resolveHtmlUIPath`, `normalizeHtmlUIPath`,
+  `getHtmlUIReferenceKind`, `parseHtmlUIMessageLocation`, and the runtime log
+  `HtmlUIFileLog` (load scopes for files and messages, per-renderer lazy texture loads, an
+  observer for messages outside a load) in the same RmlUi-free header.
+- **Absolute document paths.** `RmlSystem::joinPath` kept a leading `/` out of the joined
+  path (phase-0 bug); an absolute document now keeps its links absolute (tests, tools).
+- **Fonts.** `RmlFontEngine::reloadFontFile` uses a new `FontRegistry::reloadFile(path)`,
+  which parses the file again and swaps the faces registered from it.
+- **`reloadChangedFiles`** reports `stylesheetOnly = true` for image-only changes too (the DOM
+  is kept); a file seen for the first time (an image loaded at draw time after the document)
+  gets its stamp recorded without a reload.
+- **onLoad/onUnload** come from p1-lua's hooks (`scriptDocumentLoading/Loaded/Unloading`,
+  fired at the end of the next `update`). The full reload calls them itself, in this order:
+  capture, `scriptDocumentLoading`, load the new document, `scriptDocumentReloaded(entity,
+  oldToNew)`, `scriptDocumentUnloading` + unload of the old one, restore, `scriptDocumentLoaded`.
+  `UIDocument::reload` and a late `createDataModel` reach this reload through
+  `reloadDocument(entity, true)`.
+- **Redraw while animating**: `UIDocumentSystem::getNextUpdateDelay()` (RmlUi's
+  `Context::GetNextUpdateDelay`, infinity without documents); `App` redraws a stopped scene
+  while it is 0 and wakes up when a later update is due. The watcher and these wake-ups run
+  from `App::show` on every loop iteration, because `engineRender` does not run while the
+  editor idles (otherwise a file saved by an external editor would wait for input).
+- **Debugger**: the Game view toggle lives in `GameWindow.cpp` (its toolbar), and hides the
+  debugger again when play stops. `HtmlUI::isDebuggerVisible/isDebuggerCompiled` were added.
+- **Exporter**: the documents are collected while `loadAndSaveAllScenes` has every scene
+  loaded; a missing file behind an absolute path is an error as well as the warning.
+  `Exporter::checkHtmlUIReferences(projectPath, assetsPath, documents, errors, warnings)` is
+  the static, testable half.
+- **`collectResourcesInRegistry`** adds nothing for documents: RmlUi reads them on load and
+  its images through `RmlRenderer::LoadTexture`, not the texture pool the preload fills.
+- **Assets > Create > HTML Document** writes through `editor/util/HtmlUITemplates`
+  (ImGui-free, tested in `EditorLogicTests`). MCP cannot click ImGui menus: the MCP tests
+  create the GameObject with `create_entity type=ui_document` (the Hierarchy entry's
+  creation type); MCP `list_assets`/`get_asset_info` gain the types `html` and `css`.
+
 ---
 
 ### 3.9 Scripting (p1-lua)

@@ -711,6 +711,17 @@ endforeach()
 add_subdirectory(libs/harfbuzz)
 add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
+# The RmlUi debugger (Source/Debugger, UIDocumentSystem::setDebuggerVisible): the editor, Debug
+# exports and the HTML UI tests have it; release games leave it out
+if(JASPERENGINE_SHARED OR JASPERENGINE_HTMLUI_TESTS OR CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(JASPERENGINE_HTMLUI_DEBUGGER_DEFAULT ON)
+else()
+    set(JASPERENGINE_HTMLUI_DEBUGGER_DEFAULT OFF)
+endif()
+option(JASPERENGINE_HTMLUI_DEBUGGER "Compile the RmlUi debugger into the HTML UI" ${JASPERENGINE_HTMLUI_DEBUGGER_DEFAULT})
+if(JASPERENGINE_HTMLUI_DEBUGGER)
+    add_definitions(-DJASPERENGINE_HTMLUI_DEBUGGER)
+endif()
 add_subdirectory(libs/lunasvg)
 add_subdirectory(libs/thorvg)
 add_subdirectory(libs/rmlui)
@@ -799,6 +810,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/HtmlUIClock.cpp
     core/htmlui/HtmlUIContext.cpp
     core/htmlui/HtmlUIContextRender.cpp
+    core/htmlui/HtmlUIDependencies.cpp
     core/htmlui/HtmlUITexture.cpp
     core/htmlui/RmlFile.cpp
     core/htmlui/RmlFontEngine.cpp

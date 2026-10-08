@@ -420,6 +420,8 @@ editor::SyntaxLanguage languageForPath(const fs::path& path) {
     if (ext == ".c" || editor::Util::isSourceFile(ext) || editor::Util::isHeaderFile(ext) || editor::Util::isShaderFile(ext))
         return editor::SyntaxLanguage::Cpp;
     if (ext == ".cmake" || path.filename() == "CMakeLists.txt") return editor::SyntaxLanguage::CMake;
+    if (ext == ".html" || ext == ".htm" || ext == ".rml") return editor::SyntaxLanguage::Html;
+    if (ext == ".css" || ext == ".rcss") return editor::SyntaxLanguage::Css;
 
     return editor::SyntaxLanguage::None;
 }
@@ -1413,6 +1415,8 @@ bool editor::CodeEditor::save(EditorInstance& instance) {
         if (Util::isLuaFile(fullPath.string())) {
             Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {fullPath});
         }
+        // HTML UI documents depending on it reload now instead of at the next poll
+        project->notifyHtmlUIFileSaved(fullPath);
 
         return true;
     } catch (const std::exception&) {

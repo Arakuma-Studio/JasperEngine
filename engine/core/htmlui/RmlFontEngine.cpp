@@ -3,6 +3,7 @@
 
 #include "RmlFontEngine.h"
 
+#include "HtmlUIDependencies.h"
 #include "Log.h"
 #include "util/FontFace.h"
 #include "util/FontRegistry.h"
@@ -70,6 +71,7 @@ bool RmlFontEngine::registerLoaded(const std::shared_ptr<FontFace>& face, const 
 }
 
 bool RmlFontEngine::LoadFontFace(const Rml::String& file_name, int face_index, bool fallback_face, Rml::Style::FontWeight weight){
+    HtmlUIFileLog::recordFile(file_name);
     std::string error;
     std::shared_ptr<FontFace> face = FontRegistry::getOrLoadFile(file_name, face_index, &error);
     return registerLoaded(face, error, "", toWeight(weight), -1, fallback_face);
@@ -77,6 +79,7 @@ bool RmlFontEngine::LoadFontFace(const Rml::String& file_name, int face_index, b
 
 bool RmlFontEngine::LoadFontFace(const Rml::String& file_name, int face_index, const Rml::String& family,
                                  Rml::Style::FontStyle style, Rml::Style::FontWeight weight, bool fallback_face){
+    HtmlUIFileLog::recordFile(file_name);
     std::string error;
     std::shared_ptr<FontFace> face = FontRegistry::getOrLoadFile(file_name, face_index, &error);
     // the style is only meaningful with a family; without one everything comes from the file
@@ -451,6 +454,20 @@ void RmlFontEngine::retireHandles(){
     handles.clear();
     widths.clear();
     version++;
+}
+
+bool RmlFontEngine::reloadFontFile(const std::string& path){
+    std::string error;
+    const int replaced = FontRegistry::reloadFile(path, &error);
+    if (replaced == 0){
+        if (!error.empty())
+            Log::error("[HTML UI] %s", error.c_str());
+        return false;
+    }
+
+    retireHandles();
+    clearGlyphs();
+    return true;
 }
 
 void RmlFontEngine::setRasterScale(float scale){

@@ -8,6 +8,7 @@
 #include "util/CameraTextureLink.h"
 #include "external/IconsFontAwesome6.h"
 
+#include <algorithm>
 #include <cctype>
 
 namespace {
@@ -470,6 +471,13 @@ namespace {
     static const FastPropertyDescriptor kUIDocumentProperties[] = {
         makeFastProperty<UIDocumentComponent, std::string, &UIDocumentComponent::filename>("filename", PropertyType::String, UpdateFlags_UIDocument_Reload),
         makeFastProperty<UIDocumentComponent, int, &UIDocumentComponent::sortOrder>("sortOrder", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<UIDocumentComponent, bool, &UIDocumentComponent::interactive>("interactive", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<UIDocumentComponent, UIDocumentRenderMode, &UIDocumentComponent::renderMode>("renderMode", PropertyType::Enum, UpdateFlags_UIDocument_Reload),
+        // clamped to 1..8192 by updateEntity
+        makeFastProperty<UIDocumentComponent, int, &UIDocumentComponent::textureWidth>("textureWidth", PropertyType::Int, UpdateFlags_UIDocument_Reload),
+        makeFastProperty<UIDocumentComponent, int, &UIDocumentComponent::textureHeight>("textureHeight", PropertyType::Int, UpdateFlags_UIDocument_Reload),
+        makeFastProperty<UIDocumentComponent, Entity, &UIDocumentComponent::inputSurface>("inputSurface", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<UIDocumentComponent, float, &UIDocumentComponent::pixelRatio>("pixelRatio", PropertyType::Float, UpdateFlags_UIDocument_Reload),
     };
 
     static const FastPropertyDescriptor kCameraProperties[] = {
@@ -4428,6 +4436,10 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
     }
     if (updateFlags & UpdateFlags_UIDocument_Reload){
         if (UIDocumentComponent* document = registry->findComponent<UIDocumentComponent>(entity)){
+            // filename, render mode, texture size, pixel ratio (sortOrder is re-applied each update)
+            document->textureWidth = std::clamp(document->textureWidth, 1, 8192);
+            document->textureHeight = std::clamp(document->textureHeight, 1, 8192);
+            if (!(document->pixelRatio >= 0.0f)) document->pixelRatio = 0.0f;
             document->needReload = true;
         }
     }

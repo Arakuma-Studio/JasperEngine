@@ -27,6 +27,10 @@ namespace jasperengine::editor{
         std::map<Entity, SoundObjects> soundObjects;
         std::map<Entity, Light2DObjects> light2DObjects;
         LineRenderer* tileLines = nullptr;
+        // the canvas rectangle, outlined while a UI Document is selected (its documents fill it)
+        LineRenderer* documentLines = nullptr;
+        unsigned int canvasFrameWidth = 0;
+        unsigned int canvasFrameHeight = 0;
         bool isUI;
         int viewportWidth;
         int viewportHeight;

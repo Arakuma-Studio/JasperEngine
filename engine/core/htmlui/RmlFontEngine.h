@@ -66,6 +66,10 @@ namespace jasperengine {
         int GetVersion(Rml::FontFaceHandle handle) override;   // one global version
         void ReleaseFontResources() override;                  // drops handles, glyph cache, pages; faces stay registered
 
+        // hot reload: the font file changed on disk. Its faces are parsed again (FontRegistry::reloadFile),
+        // glyphs and handles are dropped so text is regenerated. False when no loaded face uses it.
+        bool reloadFontFile(const std::string& path);
+
         void setRasterScale(float scale);   // physical px per document px; change -> clear glyphs/pages, version++
         float getRasterScale() const;
         size_t getPageCount() const;        // tests

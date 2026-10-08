@@ -216,6 +216,7 @@ const std::vector<EntityKind>& entityKinds() {
         {"panel", EntityCreationType::PANEL, "Panel"},
         {"polygon", EntityCreationType::POLYGON, "Polygon"},
         {"layout_group", EntityCreationType::LAYOUT_GROUP, "Layout Group"},
+        {"ui_document", EntityCreationType::UI_DOCUMENT, "UI Document"},
         {"animation", EntityCreationType::ANIMATION, "Animation"},
         {"sprite_animation", EntityCreationType::SPRITE_ANIMATION, "Sprite Animation"},
         {"position_tween", EntityCreationType::POSITION_TWEEN, "Position Tween"},
@@ -241,7 +242,7 @@ const EntityKind* findKind(const std::string& given) {
         {"light2d", "light_2d"}, {"point_light_2d", "light_2d"}, {"rigidbody_2d", "rigidbody2d"},
         {"rigidbody3d", "rigidbody"}, {"joint", "joint3d"}, {"joint_2d", "joint2d"}, {"progress_bar", "progressbar"},
         {"sun", "directional_light"}, {"audio", "audio_source"}, {"ui_image", "image"}, {"ui_text", "text"},
-        {"label", "text"}, {"quad", "plane"}
+        {"label", "text"}, {"quad", "plane"}, {"uidocument", "ui_document"}, {"html", "ui_document"}
     };
     auto alias = aliases.find(key);
     if (alias != aliases.end()) key = alias->second;

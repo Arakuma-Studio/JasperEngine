@@ -1057,6 +1057,19 @@ AudioSourceState editor::Stream::stringToAudioSourceState(const std::string& str
     return AudioSourceState::Stopped;
 }
 
+std::string editor::Stream::uiDocumentRenderModeToString(UIDocumentRenderMode mode) {
+    switch (mode) {
+        case UIDocumentRenderMode::TEXTURE: return "texture";
+        case UIDocumentRenderMode::SCREEN:
+        default: return "screen";
+    }
+}
+
+UIDocumentRenderMode editor::Stream::stringToUIDocumentRenderMode(const std::string& str) {
+    if (str == "texture") return UIDocumentRenderMode::TEXTURE;
+    return UIDocumentRenderMode::SCREEN;
+}
+
 std::string editor::Stream::audioSourceAttenuationToString(AudioSourceAttenuation attenuation) {
     switch (attenuation) {
         case AudioSourceAttenuation::NO_ATTENUATION: return "no_attenuation";
@@ -1855,6 +1868,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     root["scalingMode"] = scalingModeToString(project->getScalingMode());
     root["textureStrategy"] = textureStrategyToString(project->getTextureStrategy());
     root["vsync"] = project->isVSyncEnabled();
+    root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
 
     root["windowMode"] = windowModeToString(project->getWindowMode());
     root["windowWidth"] = project->getWindowWidth();
@@ -2197,6 +2211,10 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     if (node["vsync"].IsDefined()) {
         project->setVSyncEnabled(YamlNumbers::as<bool>(node["vsync"]));
+    }
+
+    if (node["htmlUiMsaaSamples"].IsDefined()) {
+        project->setHtmlUiMsaaSamples(YamlNumbers::as<int>(node["htmlUiMsaaSamples"]));
     }
 
     if (node["windowMode"]) {
@@ -6033,11 +6051,21 @@ YAML::Node editor::Stream::encodeUIDocumentComponent(const UIDocumentComponent& 
     node["filename"] = document.filename;
     node["sortOrder"] = document.sortOrder;
 
+    // phase 1: only what differs from the defaults (decode restores the defaults)
+    const UIDocumentComponent defaults;
+    if (document.interactive != defaults.interactive) node["interactive"] = document.interactive;
+    if (document.renderMode != defaults.renderMode) node["renderMode"] = uiDocumentRenderModeToString(document.renderMode);
+    if (document.textureWidth != defaults.textureWidth) node["textureWidth"] = document.textureWidth;
+    if (document.textureHeight != defaults.textureHeight) node["textureHeight"] = document.textureHeight;
+    if (document.inputSurface != defaults.inputSurface) node["inputSurface"] = document.inputSurface;
+    if (document.pixelRatio != defaults.pixelRatio) encodeFinite(node, "pixelRatio", document.pixelRatio);
+
     return node;
 }
 
 UIDocumentComponent editor::Stream::decodeUIDocumentComponent(const YAML::Node& node, const UIDocumentComponent* oldDocument) {
-    // the old one's runtime state (its loaded document) stays while the file is the same
+    // the old one's runtime state (its loaded document, onLoad/onUnload) stays while the file
+    // and the render settings are the same
     UIDocumentComponent document;
 
     if (oldDocument) {
@@ -6048,7 +6076,24 @@ UIDocumentComponent editor::Stream::decodeUIDocumentComponent(const YAML::Node& 
     if (node["sortOrder"]) document.sortOrder = YamlNumbers::as<int>(node["sortOrder"]);
     if (node["enabled"]) document.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
-    if (oldDocument && oldDocument->filename != document.filename) {
+    // phase-1 keys are omitted at their defaults, so a missing key is the default, not the
+    // old value (paste and play-stop restore decode over an existing component); the
+    // clipboard fills a key it has no default for with an empty scalar, which is the default too
+    const UIDocumentComponent defaults;
+    auto given = [&node](const char* key) {
+        const YAML::Node value = node[key];
+        return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
+    };
+    document.interactive = given("interactive") ? YamlNumbers::as<bool>(node["interactive"]) : defaults.interactive;
+    document.renderMode = given("renderMode") ? stringToUIDocumentRenderMode(node["renderMode"].as<std::string>()) : defaults.renderMode;
+    document.textureWidth = given("textureWidth") ? std::clamp(YamlNumbers::as<int>(node["textureWidth"]), 1, 8192) : defaults.textureWidth;
+    document.textureHeight = given("textureHeight") ? std::clamp(YamlNumbers::as<int>(node["textureHeight"]), 1, 8192) : defaults.textureHeight;
+    document.inputSurface = given("inputSurface") ? YamlNumbers::as<Entity>(node["inputSurface"]) : defaults.inputSurface;
+    document.pixelRatio = given("pixelRatio") ? std::max(0.0f, decodeFinite(node["pixelRatio"], defaults.pixelRatio)) : defaults.pixelRatio;
+
+    if (oldDocument && (oldDocument->filename != document.filename || oldDocument->renderMode != document.renderMode ||
+                        oldDocument->textureWidth != document.textureWidth || oldDocument->textureHeight != document.textureHeight ||
+                        oldDocument->pixelRatio != document.pixelRatio)) {
         document.needReload = true;
     }
 

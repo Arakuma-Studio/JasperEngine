@@ -3,6 +3,7 @@
 
 #include "RmlFile.h"
 
+#include "HtmlUIDependencies.h"
 #include "io/Data.h"
 
 #include <cstdio>
@@ -29,6 +30,9 @@ Rml::FileHandle RmlFile::Open(const Rml::String& path){
     // an empty path would resolve to the asset directory itself
     if (path.empty())
         return 0;
+
+    // hot reload: the files a document load reads (UIDocumentSystem's load scope), missing ones too
+    HtmlUIFileLog::recordFile(path);
 
     RmlFileHandle* handle = new RmlFileHandle();
     if (handle->data.open(path.c_str()) != FileErrors::FILEDATA_OK){
@@ -100,6 +104,8 @@ size_t RmlFile::Length(Rml::FileHandle file){
 bool RmlFile::LoadFile(const Rml::String& path, Rml::String& out_data){
     if (path.empty())
         return false;
+
+    HtmlUIFileLog::recordFile(path);
 
     Data data;
     if (data.open(path.c_str()) != FileErrors::FILEDATA_OK)

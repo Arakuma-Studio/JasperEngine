@@ -3,6 +3,7 @@
 
 #include "CustomTextEditor.h"
 #include "InputTextContextMenu.h"
+#include "RcssProperties.h"
 #include "SemanticSuggestions.h"
 #include "engine_api_suggestions.h"
 #include "external/IconsFontAwesome6.h"
@@ -277,6 +278,17 @@ void CustomTextEditor::initializeLanguage() {
             languageDef.multiLineCommentEnd = "]]";
             break;
 
+        // HtmlCssLexer tokenizes these, the delimiters only document the language
+        case SyntaxLanguage::Html:
+            languageDef.multiLineCommentStart = "<!--";
+            languageDef.multiLineCommentEnd = "-->";
+            break;
+
+        case SyntaxLanguage::Css:
+            languageDef.multiLineCommentStart = "/*";
+            languageDef.multiLineCommentEnd = "*/";
+            break;
+
         default:
             break;
     }
@@ -359,6 +371,13 @@ void CustomTextEditor::initializeSuggestions() {
     if (language == SyntaxLanguage::Lua || language == SyntaxLanguage::Cpp) {
         addEngineAPISuggestions();
     }
+
+    // Offered only where a property name goes, see updateSuggestions
+    if (isHtmlOrCss()) {
+        for (size_t i = 0; i < kRcssPropertyCount; ++i) {
+            suggestions->AddSymbol(kRcssProperties[i], SuggestionKind::Property, "RCSS property");
+        }
+    }
 }
 
 void CustomTextEditor::addEngineAPISuggestions() {
@@ -414,6 +433,8 @@ const char* CustomTextEditor::GetLanguageName() const {
         case SyntaxLanguage::Cpp: return "C++";
         case SyntaxLanguage::Lua: return "Lua";
         case SyntaxLanguage::CMake: return "CMake";
+        case SyntaxLanguage::Html: return "HTML";
+        case SyntaxLanguage::Css: return "CSS";
         default: return "Plain Text";
     }
 }
@@ -550,6 +571,30 @@ void CustomTextEditor::tokenizeLine(int lineIndex) {
 
     lineTokens[lineIndex].clear();
     const std::string& line = lines[lineIndex];
+
+    if (isHtmlOrCss()) {
+        // tokenizeAll goes top to bottom, so the previous line's end state is current. An empty
+        // line passes it on unchanged
+        if (static_cast<int>(lineEndStates.size()) < static_cast<int>(lines.size())) {
+            lineEndStates.resize(lines.size());
+        }
+        HtmlCssLexer::State state = lineIndex > 0 ? lineEndStates[lineIndex - 1] : HtmlCssLexer::State();
+        for (const auto& token : HtmlCssLexer::lexLine(htmlCssLanguage(), line, state)) {
+            TokenType type = TokenType::Default;
+            switch (token.kind) {
+                case HtmlCssLexer::Kind::Comment: type = TokenType::Comment; break;
+                case HtmlCssLexer::Kind::Keyword: type = TokenType::Keyword; break;
+                case HtmlCssLexer::Kind::Type: type = TokenType::Type; break;
+                case HtmlCssLexer::Kind::String: type = TokenType::String; break;
+                case HtmlCssLexer::Kind::Number: type = TokenType::Number; break;
+                case HtmlCssLexer::Kind::Builtin: type = TokenType::Function; break;
+                case HtmlCssLexer::Kind::Preprocessor: type = TokenType::Preprocessor; break;
+            }
+            lineTokens[lineIndex].push_back({token.start, token.length, type});
+        }
+        lineEndStates[lineIndex] = state;
+        return;
+    }
 
     if (line.empty()) return;
 
@@ -748,9 +793,28 @@ void CustomTextEditor::tokenizeAll() {
     maxLineWidthDirty = true;
     lineTokens.clear();
     lineTokens.resize(lines.size());
+    // Every line is retokenized after an edit, so a changed end state reaches the lines below
+    lineEndStates.clear();
+    if (isHtmlOrCss()) lineEndStates.resize(lines.size());
     for (int i = 0; i < static_cast<int>(lines.size()); ++i) {
         tokenizeLine(i);
     }
+}
+
+HtmlCssLexer::Language CustomTextEditor::htmlCssLanguage() const {
+    return language == SyntaxLanguage::Css ? HtmlCssLexer::Language::Css : HtmlCssLexer::Language::Html;
+}
+
+bool CustomTextEditor::atCssPropertyName(const TextPosition& wordStart) const {
+    if (!isHtmlOrCss() || wordStart.line < 0 || wordStart.line >= static_cast<int>(lines.size())) return false;
+
+    HtmlCssLexer::State state;
+    if (wordStart.line > 0 && wordStart.line - 1 < static_cast<int>(lineEndStates.size())) {
+        state = lineEndStates[wordStart.line - 1];
+    }
+    // The state right before the word tells where it is
+    HtmlCssLexer::lexLine(htmlCssLanguage(), lines[wordStart.line].substr(0, wordStart.column), state);
+    return HtmlCssLexer::expectsCssProperty(htmlCssLanguage(), state);
 }
 
 TokenType CustomTextEditor::classifyWord(const std::string& word) const {
@@ -1860,6 +1924,19 @@ TextPosition CustomTextEditor::findWordStart(const TextPosition& pos) const {
     return result;
 }
 
+TextPosition CustomTextEditor::findCompletionWordStart(const TextPosition& pos) const {
+    if (!isHtmlOrCss()) return findWordStart(pos);
+
+    TextPosition result = pos;
+    const std::string& line = lines[result.line];
+
+    while (result.column > 0 && (isWordChar(line[result.column - 1]) || line[result.column - 1] == '-')) {
+        --result.column;
+    }
+
+    return result;
+}
+
 TextPosition CustomTextEditor::findWordEnd(const TextPosition& pos) const {
     TextPosition result = pos;
     const std::string& line = lines[result.line];
@@ -2117,7 +2194,7 @@ SuggestionContext CustomTextEditor::buildSuggestionContext() const {
 
     const TextPosition& pos = cursors[primaryCursor].position;
 
-    TextPosition wordStart = findWordStart(pos);
+    TextPosition wordStart = findCompletionWordStart(pos);
     ctx.currentWord = getRange(wordStart, pos);
 
     if (pos.line >= 0 && pos.line < static_cast<int>(lines.size())) {
@@ -2551,9 +2628,16 @@ void CustomTextEditor::updateSuggestions(bool manualInvoke) {
 
     SuggestionContext ctx = buildSuggestionContext();
     ctx.manualInvoke = manualInvoke;
-    autoCompleteAnchor = findWordStart(cursors[primaryCursor].position);
+    autoCompleteAnchor = findCompletionWordStart(cursors[primaryCursor].position);
 
     currentSuggestions = suggestions->GetSuggestions(ctx);
+
+    // RCSS property names only where a property name goes
+    if (isHtmlOrCss() && !atCssPropertyName(autoCompleteAnchor)) {
+        currentSuggestions.erase(std::remove_if(currentSuggestions.begin(), currentSuggestions.end(),
+                                                [](const SuggestionItem& item) { return item.kind == SuggestionKind::Property; }),
+                                 currentSuggestions.end());
+    }
 
     // Close the popup if filtering (e.g. backspace) left nothing to show
     if (showAutoComplete && currentSuggestions.empty()) {
@@ -3356,6 +3440,9 @@ void CustomTextEditor::handleTextInput() {
                 bool shouldTrigger = false;
                 if (autoComplete) {
                     if ((c < 128 && std::isalnum(static_cast<unsigned char>(c))) || c == '_' || c == '.' || c == ':') {
+                        shouldTrigger = true;
+                    } else if (c == '-' && isHtmlOrCss()) {
+                        // Hyphenated names: background-color
                         shouldTrigger = true;
                     } else if (c == '>' && language == SyntaxLanguage::Cpp) {
                         // Trigger for '->' operator
