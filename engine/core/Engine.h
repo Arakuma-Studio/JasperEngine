@@ -317,6 +317,8 @@ namespace jasperengine {
         static bool hasScenesToExecuteOnce();
         static Scene* getMainScene();
         static Scene* getLastScene();
+        // every running scene: the main scene and its layers (child scenes), bottom first
+        static std::vector<Scene*> getSceneLayers();
 
         static void pauseGameEvents(bool pause);
         

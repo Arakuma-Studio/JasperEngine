@@ -27,6 +27,7 @@
 #include "object/ui/Button.h"
 #include "object/ui/HtmlUIScriptInternal.h"
 #include "render/SystemRender.h"
+#include "subsystem/RenderSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Framebuffer.h"
 
@@ -903,4 +904,45 @@ TEST_F(IntegrationTest, ModelReloadInInitIsNotAnOnLoadOfLaterHandlers){
     EXPECT_EQ(cppLoads, 1);
     texture().getComponent<UIDocumentComponent>().onLoad.remove(callbackTag);
     lua("loads, unloads = nil, nil");
+}
+
+TEST_F(IntegrationTest, AnimeSelectorsReachEveryRunningScene){
+    // the main scene has no #box; a HUD scene layered over it has
+    fixture.reset(new SceneFixture());
+    textureDocument.reset(new UIDocument(fixture->addDocument("p1/texture_form.html")));
+    std::unique_ptr<Scene> layer(new Scene());
+    std::unique_ptr<Camera> layerCamera(new Camera(layer.get()));
+    layerCamera->setType(CameraType::CAMERA_UI);
+    layerCamera->activate();
+    std::unique_ptr<UIDocument> hud(new UIDocument(layer.get()));
+    hud->setFilename("p1/integration/combined.html");
+    Engine::addSceneLayer(layer.get());
+    Scene* mainScene = &fixture->getScene();
+    Scene* layerScene = layer.get();
+    const bool loaded = GpuEnvironment::runFrames([mainScene, layerScene](){
+        for (Scene* scene : {mainScene, layerScene}){
+            if (!scene->getSystem<RenderSystem>()->isAllLoaded() || !scene->getSystem<UIDocumentSystem>()->isAllLoaded())
+                return false;
+        }
+        return true;
+    });
+
+    if (loaded){
+        const float left = hud->getElementById("box").getBoundingClientRect().left;
+        EXPECT_EQ(lua(R"(anim = anime.animate("#box", { translateX = 100, duration = 1000, ease = "linear" }))"), "");
+        drawFramesAt(time, 10, 0.05);
+        EXPECT_NEAR(hud->getElementById("box").getBoundingClientRect().left, left + 50.0f, 3.0f);
+        EXPECT_EQ(luaText("anim.cancelled"), "false");
+        // utils.set with a selector too
+        EXPECT_EQ(lua(R"(anime.utils.set("#box", { opacity = 0.5 }))"), "");
+        EXPECT_EQ(hud->getElementById("box").getStyle("opacity"), "0.5");
+    }
+
+    clearGlobals();
+    AnimEngine::instance().reset();
+    Engine::removeScene(layer.get());
+    hud.reset();
+    layerCamera.reset();
+    layer.reset();
+    ASSERT_TRUE(loaded);
 }

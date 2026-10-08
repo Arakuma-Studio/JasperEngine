@@ -16,6 +16,7 @@
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 
+#include <algorithm>
 #include <cmath>
 #include <unordered_map>
 
@@ -197,19 +198,28 @@ AnimTargetList AnimTargets::fromSelector(const std::string& selector, const UIEl
         querySelectorAll(rootElement, selector, list);
         return list;
     }
-    Scene* scene = Engine::getScene();
-    if (!scene)
-        scene = Engine::getMainScene();
-    if (!scene)
-        return list;
-    std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
-    if (!system)
-        return list;
-    auto components = scene->getComponentArray<UIDocumentComponent>();
-    for (size_t i = 0; i < components->size(); i++){
-        Rml::ElementDocument* document = system->getDocument(components->getEntity(i));
-        if (document)
-            querySelectorAll(document, selector, list);
+    // the documents of every running scene, the current scene's first: a HUD is often a child
+    // scene layered over the scene whose script animates it
+    std::vector<Scene*> scenes;
+    Scene* current = Engine::getScene();
+    if (!current)
+        current = Engine::getMainScene();
+    if (current)
+        scenes.push_back(current);
+    for (Scene* layer : Engine::getSceneLayers()){
+        if (layer && std::find(scenes.begin(), scenes.end(), layer) == scenes.end())
+            scenes.push_back(layer);
+    }
+    for (Scene* scene : scenes){
+        std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
+        if (!system)
+            continue;
+        auto components = scene->getComponentArray<UIDocumentComponent>();
+        for (size_t i = 0; i < components->size(); i++){
+            Rml::ElementDocument* document = system->getDocument(components->getEntity(i));
+            if (document)
+                querySelectorAll(document, selector, list);
+        }
     }
     return list;
 }

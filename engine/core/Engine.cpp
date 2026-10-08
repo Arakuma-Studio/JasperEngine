@@ -190,6 +190,10 @@ std::vector<Scene*> Engine::getScenesSnapshot(){
     return scenes;
 }
 
+std::vector<Scene*> Engine::getSceneLayers(){
+    return getScenesSnapshot();
+}
+
 void Engine::addSceneLayer(Scene* scene){
     if (Engine::isAsyncThread())
         drawSemaphore.acquire();
