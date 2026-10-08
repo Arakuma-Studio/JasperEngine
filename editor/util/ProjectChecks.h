@@ -82,11 +82,13 @@ namespace jasperengine::editor {
         };
         // A Lua script: its syntax, then, when it parses and L is set, its properties read as
         // the editor reads them (ProjectUtils::runLuaScriptProperties: this RUNS the script's top
-        // level in L). A script whose top level fails ("runtime error at load: ...") or whose
-        // property defaults can't be read is an error. path names the chunk and the findings.
+        // level in L, an isolated state like newIsolatedLuaState's). A script whose top level
+        // fails ("runtime error at load: ...") or whose property defaults can't be read is an
+        // error. path names the chunk and the findings.
         static LuaScriptCheck checkLuaScript(const std::string& code, const std::string& path, lua_State* L);
 
-        // An isolated lua_State for checkLuaScript outside the editor (the CLI): no io, os
+        // An isolated lua_State for checkLuaScript and the editor's reading of script properties
+        // (ProjectUtils::readLuaScriptProperties), any thread: no io, os
         // (but time/clock/date), debug, dofile/loadfile, binary chunks or native modules;
         // print does nothing; require loads the project's Lua modules from luaRoot like the
         // engine's loader; the engine's globals (engineGlobals) read as inert stand-ins
@@ -94,7 +96,8 @@ namespace jasperengine::editor {
         // Close it with closeIsolatedLuaState.
         static lua_State* newIsolatedLuaState(const std::filesystem::path& luaRoot, const std::vector<std::string>& engineGlobals);
         static void closeIsolatedLuaState(lua_State* L);
-        // The global names of the engine's Lua state (LuaBinding, after Engine::systemInit)
+        // The global names of the engine's Lua state as the engine made it (LuaBinding::
+        // getEngineGlobalNames, after Engine::systemInit): any thread
         static std::vector<std::string> engineLuaGlobals();
 
         // ---- C++ scripts
