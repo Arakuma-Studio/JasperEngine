@@ -140,6 +140,10 @@ namespace jasperengine{
         std::vector<Reloaded> reloadChangedFiles(const std::vector<std::string>& files);
         bool setDebuggerVisible(bool visible);   // false when the debugger is not compiled in
         bool isDebuggerVisible() const;
+        // seconds until a document of this scene needs the next update to animate (CSS
+        // transitions, @keyframes): 0 while animating, infinity when nothing is scheduled.
+        // The editor keeps the Scene view redrawing by it in edit mode
+        double getNextUpdateDelay() const;
 
         // --- p1-lua (UIDocumentSystemScript.cpp, §3.9.5) ---
         std::vector<std::string> getDataModelNames(Entity entity) const;
@@ -228,6 +232,11 @@ namespace jasperengine{
 
         // --- p1-editor ---
         std::shared_ptr<HtmlUIReloadState> reloadState;
+        HtmlUIReloadState& getReloadState();
+        // context->loadDocument inside the runtime file log scope; records the document's
+        // files, their stamps, its messages and the load count
+        Rml::ElementDocument* loadEntityDocument(Entity entity, const std::string& filename);
+        void reloadContextDestroyed();           // the context's lazy file log, the debugger owner
 
         // --- p1-rtt ---
         std::shared_ptr<HtmlUITextureState> textureState;
@@ -243,6 +252,8 @@ namespace jasperengine{
         std::vector<HtmlUIContext*> getTextureContexts() const;   // renderOffscreen(): statistics
         // the context data models of owner live in (its texture context, else the screen one; p1-lua)
         HtmlUIContext* modelContext(Entity owner) const;
+        // the context an entity's document lives in: its texture context, else the screen one (p1-editor's reload)
+        HtmlUIContext* documentContext(Entity entity) const;
         // p1-input's calls: keys/text/IME go to the context that took the last press (a texture
         // document's, or the screen's when it has a shown document); null = no document's
         HtmlUIContext* keyContext() const;

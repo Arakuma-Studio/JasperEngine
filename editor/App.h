@@ -43,6 +43,7 @@
 #include <queue>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace jasperengine::editor::mcp {
@@ -102,6 +103,8 @@ namespace jasperengine::editor{
         // Whether engineRender() drew a scene this frame, and a wake callback the
         // backend loop uses to decide when it can idle.
         bool renderedSceneThisFrame = false;
+        // when a stopped scene's HTML documents want their next update (CSS animations), by scene id
+        std::unordered_map<uint32_t, std::chrono::steady_clock::time_point> htmlUIRedrawTimes;
         std::function<void()> wakeCallback;
         // Guards wakeCallback: worker threads (MCP transports) wake the loop while the main
         // thread may be clearing it at shutdown
@@ -263,6 +266,8 @@ namespace jasperengine::editor{
         void renderGameViewPass(SceneProject& sceneProject);
         void renderGameViewSecondary(SceneProject& sceneProject);
         void renderRunningScene(SceneProject& sceneProject);
+        void pollHtmlUI();
+        bool wantsHtmlUIRedraw(const SceneProject& sceneProject);
         void renderSceneBesideGame(SceneProject& sceneProject);
 
         void closeWindow();

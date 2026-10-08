@@ -144,9 +144,30 @@ namespace jasperengine::editor{
             return audioExtensions.find(ext) != audioExtensions.end();
         }
 
+        // HTML UI documents (UIDocumentComponent::filename); .rml is RmlUi's own markup
+        inline static bool isHtmlFile(const std::string& path) {
+             static const std::unordered_set<std::string> htmlExtensions = {
+                ".html", ".htm", ".rml"
+            };
+
+            const std::string ext = fileExtension(path);
+            return htmlExtensions.find(ext) != htmlExtensions.end();
+        }
+
+        // HTML UI stylesheets; .rcss is RmlUi's own
+        inline static bool isCssFile(const std::string& path) {
+             static const std::unordered_set<std::string> cssExtensions = {
+                ".css", ".rcss"
+            };
+
+            const std::string ext = fileExtension(path);
+            return cssExtensions.find(ext) != cssExtensions.end();
+        }
+
         // Files referenced relative to the assets directory
         inline static bool isAssetFile(const std::string& path) {
-            return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path);
+            return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
+                   isHtmlFile(path) || isCssFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {

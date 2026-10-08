@@ -99,7 +99,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::ProgressbarComponent, "Progress indicator"},
             {ComponentType::LayoutGroupComponent, "Arranges child elements in a row, column or grid"},
             {ComponentType::PolygonComponent, "Filled UI polygon"},
-            {ComponentType::UIDocumentComponent, "Shows an HTML/CSS document over the scene"},
+            {ComponentType::UIDocumentComponent, "HTML/CSS document rendered by the engine"},
         }},
         {"Animation", ICON_FA_FILM, {
             {ComponentType::AnimationComponent, "Plays a sequence of actions"},

@@ -22,6 +22,7 @@
 #include "Scene.h"
 #include "component/CameraComponent.h"
 #include "htmlui/HtmlUIContext.h"
+#include "htmlui/HtmlUIDependencies.h"
 #include "htmlui/RmlKeyMap.h"
 #include "htmlui/RmlRenderer.h"
 #include "htmlui/RmlTextInputHandler.h"
@@ -162,13 +163,17 @@ HtmlUITextureState& UIDocumentSystem::getTextureState(){
     return *textureState;
 }
 
-HtmlUIContext* UIDocumentSystem::modelContext(Entity owner) const{
+HtmlUIContext* UIDocumentSystem::documentContext(Entity entity) const{
     if (textureState){
-        auto it = textureState->entries.find(owner);
+        auto it = textureState->entries.find(entity);
         if (it != textureState->entries.end())
             return it->second.context.get();
     }
     return getContext();
+}
+
+HtmlUIContext* UIDocumentSystem::modelContext(Entity owner) const{
+    return documentContext(owner);
 }
 
 Rml::ElementDocument* UIDocumentSystem::textureLoadDocument(Entity entity, UIDocumentComponent& document){
@@ -264,6 +269,7 @@ void UIDocumentSystem::textureRemoveEntity(Entity entity){
         }
     }
     HtmlUIElementRegistry::freeContext(rmlContext);
+    HtmlUIFileLog::forgetRenderer(&entry.context->getRenderer());
 
     // the target object stays (consumers may still point at it), its GPU texture goes
     if (entry.target)

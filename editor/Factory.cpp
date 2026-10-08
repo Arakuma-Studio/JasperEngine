@@ -1599,6 +1599,13 @@ std::string editor::Factory::createUIDocumentComponent(int indentSpaces, EntityR
     code << ind << "uidocument.filename = " << formatString(document.filename) << ";\n";
     code << ind << "uidocument.sortOrder = " << formatInt(document.sortOrder) << ";\n";
     if (!document.enabled) code << ind << "uidocument.enabled = false;\n";
+    const UIDocumentComponent defaults;
+    if (document.interactive != defaults.interactive) code << ind << "uidocument.interactive = " << formatBool(document.interactive) << ";\n";
+    if (document.renderMode != defaults.renderMode) code << ind << "uidocument.renderMode = UIDocumentRenderMode::" << (document.renderMode == UIDocumentRenderMode::TEXTURE ? "TEXTURE" : "SCREEN") << ";\n";
+    if (document.textureWidth != defaults.textureWidth) code << ind << "uidocument.textureWidth = " << formatInt(document.textureWidth) << ";\n";
+    if (document.textureHeight != defaults.textureHeight) code << ind << "uidocument.textureHeight = " << formatInt(document.textureHeight) << ";\n";
+    if (document.inputSurface != defaults.inputSurface) code << ind << "uidocument.inputSurface = " << formatEntity(document.inputSurface, entityVarNames) << ";\n";
+    if (document.pixelRatio != defaults.pixelRatio) code << ind << "uidocument.pixelRatio = " << formatFloat(document.pixelRatio) << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "UIDocumentComponent", "uidocument", assignExisting);
     return code.str();
 }

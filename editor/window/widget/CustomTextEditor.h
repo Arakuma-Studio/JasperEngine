@@ -4,6 +4,7 @@
 #pragma once
 
 #include "imgui.h"
+#include "HtmlCssLexer.h"
 #include <string>
 #include <vector>
 #include <unordered_set>
@@ -23,7 +24,9 @@ namespace jasperengine::editor {
         None,
         Cpp,
         Lua,
-        CMake
+        CMake,
+        Html,
+        Css
     };
 
     // Token types for syntax highlighting
@@ -210,6 +213,8 @@ namespace jasperengine::editor {
         // Text data
         std::vector<std::string> lines;
         std::vector<std::vector<Token>> lineTokens;
+        // Html and Css: the lexer state at the end of each line, the next line starts from it
+        std::vector<HtmlCssLexer::State> lineEndStates;
 
         // Cursors and selection
         std::vector<Cursor> cursors;
@@ -331,6 +336,12 @@ namespace jasperengine::editor {
         std::string findEnclosingType(int lineIndex) const;
         void tokenizeLine(int lineIndex);
         void tokenizeAll();
+        bool isHtmlOrCss() const { return language == SyntaxLanguage::Html || language == SyntaxLanguage::Css; }
+        HtmlCssLexer::Language htmlCssLanguage() const;
+        // Html and Css: the word starting at wordStart goes where a CSS property name does
+        bool atCssPropertyName(const TextPosition& wordStart) const;
+        // Start of the word completion replaces; in Html and Css it spans hyphens (background-color)
+        TextPosition findCompletionWordStart(const TextPosition& pos) const;
         TokenType classifyWord(const std::string& word) const;
 
         void setLinesFromText(const std::string& text);

@@ -12,6 +12,7 @@
 #include "RmlFilterContext.h"
 
 #include "Engine.h"
+#include "HtmlUIDependencies.h"
 #include "Log.h"
 #include "pool/ShaderPool.h"
 #include "render/FramebufferRender.h"
@@ -679,6 +680,7 @@ HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, 
 }
 
 Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source){
+    HtmlUIFileLog::recordLazyFile(this, source);   // hot reload: images are loaded at draw time
     TextureData data;
     if (source.empty() || !data.loadTextureFromFile(source.c_str())){
         Log::error("[HTML UI] could not load image '%s'", source.c_str());

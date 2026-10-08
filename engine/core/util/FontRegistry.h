@@ -42,6 +42,10 @@ namespace jasperengine {
         // cache for STBText: the same file parsed once while someone holds it. On failure
         // nullptr and `error` (see FontFace::loadFile), nothing logged.
         static std::shared_ptr<FontFace> getOrLoadFile(const std::string& path, int faceIndex = 0, std::string* error = nullptr);
+        // hot reload (HTML UI): parses the file of every cached face of `path` again and puts the
+        // new faces where the old ones were registered. Holders of the old faces keep them.
+        // Returns the number of faces replaced; on a parse error the old faces stay (`error` set).
+        static int reloadFile(const std::string& path, std::string* error = nullptr);
         static void clear();   // tests; Engine::clearPools does not touch it
     };
 

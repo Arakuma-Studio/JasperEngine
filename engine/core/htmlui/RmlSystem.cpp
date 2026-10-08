@@ -4,6 +4,7 @@
 #include "RmlSystem.h"
 
 #include "HtmlUIClock.h"
+#include "HtmlUIDependencies.h"
 #include "RmlTextInputHandler.h"
 #include "Engine.h"
 #include "Log.h"
@@ -29,8 +30,9 @@ namespace {
     }
 
     // resolves "." and ".." like FileData::simplifyPath, always with '/'; ".." above the
-    // root is dropped
+    // root is dropped; an absolute path stays absolute
     std::string simplifyPath(const std::string& path){
+        const bool absolute = !path.empty() && path[0] == '/';
         std::vector<std::string> parts;
         size_t start = 0;
         while (start <= path.size()){
@@ -49,7 +51,7 @@ namespace {
             start = end + 1;
         }
 
-        std::string result;
+        std::string result = absolute ? "/" : "";
         for (size_t i = 0; i < parts.size(); i++){
             if (i > 0)
                 result += '/';
@@ -87,6 +89,13 @@ bool RmlSystem::LogMessage(Rml::Log::Type type, const Rml::String& message){
 
     if (logListener)
         logListener(type, message);
+
+    // the Inspector's per-document messages (UIDocumentSystem::getDocumentMessages)
+    if (type == Rml::Log::LT_ERROR || type == Rml::Log::LT_ASSERT){
+        HtmlUIFileLog::recordMessage(HtmlUIFileLog::Level::Error, message);
+    }else if (type == Rml::Log::LT_WARNING){
+        HtmlUIFileLog::recordMessage(HtmlUIFileLog::Level::Warning, message);
+    }
 
     // never break into a debugger
     return true;

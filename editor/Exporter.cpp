@@ -13,6 +13,8 @@
 #include "util/ShaderHeaderBuilder.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCompiler.h"
+#include "htmlui/HtmlUIDependencies.h"
+#include "component/UIDocumentComponent.h"
 
 #include "stb_image.h"
 #include "stb_image_resize2.h"
@@ -26,6 +28,7 @@
 #include <cstring>
 #include <fstream>
 #include <future>
+#include <iterator>
 #include <map>
 #include <vector>
 
@@ -561,6 +564,8 @@ void editor::Exporter::runExport() {
     if (isCancelled()) { setError("Build cancelled"); return; }
     // Lua before assets, which skips the sources the lua tree took
     if (!copyLua()) return;
+    if (isCancelled()) { setError("Build cancelled"); return; }
+    if (!checkHtmlUIReferences()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyAssets()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
@@ -1428,6 +1433,21 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 project->saveSceneToPath(sceneProject.id, sceneProject.filepath);
             }
 
+            // The UI Documents the build ships, checked by checkHtmlUIReferences()
+            htmlUIDocuments.clear();
+            for (const auto& sceneProject : scenes) {
+                if (sceneProject.filepath.empty() || !sceneProject.scene) {
+                    continue;
+                }
+                auto documents = sceneProject.scene->getComponentArray<UIDocumentComponent>();
+                for (size_t d = 0; d < documents->size(); d++) {
+                    const UIDocumentComponent& document = documents->getComponentFromIndex(d);
+                    if (!document.filename.empty()) {
+                        htmlUIDocuments.push_back({sceneProject.name, sceneProject.scene->getEntityName(documents->getEntity(d)), document.filename});
+                    }
+                }
+            }
+
             // A disabled backend silently drops its components from the generated sources
             auto warnDroppedPhysics = [&](const char* backend, auto usesBackend) {
                 std::string names;
@@ -1473,6 +1493,103 @@ bool editor::Exporter::loadAndSaveAllScenes() {
     }
 
     return true;
+}
+
+bool editor::Exporter::checkHtmlUIReferences(const fs::path& projectPath, const fs::path& assetsPath,
+                                             const std::vector<std::pair<std::string, std::string>>& documents,
+                                             std::vector<std::string>& errors, std::vector<std::string>& warnings) {
+    std::error_code ec;
+    const fs::path assetsRoot = fs::weakly_canonical(assetsPath, ec);
+
+    // reported as project-relative paths (assets/ui/menu.html), like the MCP tools
+    std::string prefix = fs::path(assetsPath).lexically_relative(projectPath).generic_string();
+    if (prefix.empty() || prefix == ".") {
+        prefix.clear();
+    } else if (prefix.back() != '/') {
+        prefix += '/';
+    }
+    auto shown = [&prefix](const std::string& assetPath) {
+        return prefix + assetPath;
+    };
+
+    const HtmlUIFileReader reader = [&assetsRoot](const std::string& path, std::string* content) -> bool {
+        const fs::path file = fs::path(path).is_absolute() ? fs::path(path) : assetsRoot / path;
+        std::error_code error;
+        if (!fs::is_regular_file(file, error)) {
+            return false;
+        }
+        if (content) {
+            std::ifstream stream(file, std::ios::binary);
+            if (!stream) {
+                return false;
+            }
+            content->assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+        }
+        return true;
+    };
+
+    std::set<std::string> checked;
+    for (const auto& [where, filename] : documents) {
+        const std::string document = normalizeHtmlUIPath(filename);
+        if (!checked.insert(document).second) {
+            continue;
+        }
+        if (!reader(document, nullptr)) {
+            errors.push_back(shown(document) + ": the document is missing (UI Document of " + where + ")");
+            continue;
+        }
+
+        for (const HtmlUIReference& reference : collectHtmlUIReferences(document, reader)) {
+            const std::string location = shown(reference.fromFile) + ":" + std::to_string(reference.line) + ":" + std::to_string(reference.column);
+            if (reference.remote) {
+                errors.push_back(location + ": remote " + getHtmlUIReferenceKindName(reference.kind) + " '" + reference.raw +
+                                 "': games load no URLs; download it into the project's assets directory (phase 2 adds importers)");
+            } else if (reference.outsideAssets) {
+                errors.push_back(location + ": '" + reference.raw + "' resolves outside the assets directory, which is all a build ships");
+            } else if (reference.absolute) {
+                warnings.push_back(location + ": '" + reference.raw + "' is an absolute path: it only exists on this machine; use a path relative to the document");
+                if (reference.missing) {
+                    errors.push_back(location + ": '" + reference.raw + "' does not exist");
+                }
+            } else if (reference.missing) {
+                errors.push_back(location + ": " + getHtmlUIReferenceKindName(reference.kind) + " '" + reference.raw + "' not found (" +
+                                 shown(reference.path) + ")");
+            }
+        }
+    }
+
+    return errors.empty();
+}
+
+bool editor::Exporter::checkHtmlUIReferences() {
+    if (htmlUIDocuments.empty()) {
+        return true;
+    }
+    setProgress("Checking HTML UI references...", 0.25f);
+
+    std::vector<std::pair<std::string, std::string>> documents;
+    for (const HtmlUIDocumentUse& use : htmlUIDocuments) {
+        documents.push_back({"'" + use.entity + "' in scene '" + use.scene + "'", use.filename});
+    }
+
+    std::vector<std::string> errors;
+    std::vector<std::string> warnings;
+    const bool ok = checkHtmlUIReferences(project->getProjectPath(), project->getAssetsPath(), documents, errors, warnings);
+
+    for (const std::string& warning : warnings) {
+        Out::warning("[HTML UI] %s", warning.c_str());
+    }
+    if (ok) {
+        return true;
+    }
+
+    std::string message = "HTML UI documents refer to files the build cannot ship:";
+    for (const std::string& error : errors) {
+        Out::error("[HTML UI] %s", error.c_str());
+        message += "\n" + error;
+    }
+    setError(message);
+    return false;
 }
 
 bool editor::Exporter::copyGenerated() {

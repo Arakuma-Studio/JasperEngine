@@ -624,3 +624,48 @@ TEST_F(TextureModeTest, KeysTextAndDataModels){
     EXPECT_EQ(system().getContext()->getRmlContext()->GetDataModels().count("form"), 0u);
     EXPECT_EQ(system().getTextureContext(entity)->getRmlContext()->GetDataModels().count("form"), 1u);
 }
+
+TEST_F(TextureModeTest, StatePreservingReload){
+    Primitive& surface = wall(0, 0, 0);
+    UIDocument document = textureDocument("p1/texture_form.html", surface.getEntity());
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    const Entity entity = document.getEntity();
+    HtmlUIContext* context = system().getTextureContext(entity);
+    ASSERT_NE(context, nullptr);
+    Framebuffer* target = system().getTargetTexture(entity);
+
+    // a value typed into the field, then p1-editor's full reload (hot reload of the .html)
+    const Vector2 field = project(scene(), Vector3(-0.5f, 0.75f, 0));
+    EXPECT_TRUE(system().eventOnPointerDown(0, D_MOUSE_BUTTON_LEFT, field.x, field.y, 0, false));
+    EXPECT_TRUE(system().eventOnPointerUp(0, D_MOUSE_BUTTON_LEFT, field.x, field.y, 0, false));
+    EXPECT_TRUE(system().eventOnTextInput("kept"));
+    GpuEnvironment::drawFrames(1);
+    Rml::ElementDocument* before = system().getDocument(entity);
+    const uint32_t loads = system().getLoadCount(entity);
+
+    system().reloadDocument(entity, true);
+    GpuEnvironment::drawFrames(2);
+
+    Rml::ElementDocument* after = system().getDocument(entity);
+    ASSERT_NE(after, nullptr);
+    EXPECT_NE(after, before);
+    EXPECT_GT(system().getLoadCount(entity), loads);
+    // in its own context still, with its texture, and the value kept
+    EXPECT_EQ(system().getTextureContext(entity), context);
+    EXPECT_EQ(after->GetContext(), context->getRmlContext());
+    EXPECT_EQ(context->getRmlContext()->GetNumDocuments(), 1);
+    EXPECT_EQ(system().getTargetTexture(entity), target);
+    Rml::Element* name = after->GetElementById("name");
+    ASSERT_NE(name, nullptr);
+    EXPECT_EQ(name->GetAttribute<Rml::String>("value", ""), "kept");
+    EXPECT_EQ(system().getContext()->getRmlContext()->GetNumDocuments(), 0);
+
+    // a state-preserving reload that switches to SCREEN moves it, the texture context goes
+    document.getComponent<UIDocumentComponent>().renderMode = UIDocumentRenderMode::SCREEN;
+    system().reloadDocument(entity, true);
+    GpuEnvironment::drawFrames(2);
+    EXPECT_EQ(system().getTextureContext(entity), nullptr);
+    ASSERT_NE(system().getDocument(entity), nullptr);
+    EXPECT_EQ(system().getDocument(entity)->GetContext(), system().getContext()->getRmlContext());
+    EXPECT_EQ(system().getDocument(entity)->GetElementById("name")->GetAttribute<Rml::String>("value", ""), "kept");
+}

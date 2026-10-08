@@ -434,6 +434,12 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<ReflectionProbeComponent>(entity, {});
         updateFlags |= Catalog::getComponentStructuralUpdateFlags(ComponentType::ReflectionProbeComponent);
 
+    }else if (type == EntityCreationType::UI_DOCUMENT){
+
+        // the document file is chosen in the Inspector (Source)
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<UIDocumentComponent>(entity, {});
+
     }else if (type == EntityCreationType::ANIMATION){
 
         scene->addComponent<ActionComponent>(entity, {});
