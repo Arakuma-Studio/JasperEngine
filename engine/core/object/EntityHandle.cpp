@@ -9,6 +9,7 @@ EntityHandle::EntityHandle(Scene* scene){
     this->scene = scene;
     this->entity = scene->createEntity();
     this->entityOwned = true;
+    this->sceneLifetime = scene->getLifetime();
 }
 
 EntityHandle::EntityHandle(Scene* scene, Entity entity){
@@ -17,9 +18,15 @@ EntityHandle::EntityHandle(Scene* scene, Entity entity){
     this->entityOwned = false;
 }
 
+// The entity goes with its owning handle, unless the scene went first: it destroyed the
+// entity with the others, and its pointer is dangling.
 EntityHandle::~EntityHandle(){
-    if (scene && entityOwned)
+    if (ownsLiveEntity())
         scene->destroyEntity(entity);
+}
+
+bool EntityHandle::ownsLiveEntity() const{
+    return entityOwned && scene && !sceneLifetime.expired() && scene->isEntityCreated(entity);
 }
 
 // Copies are non-owning observers: at most one handle may own an entity, otherwise the
@@ -36,6 +43,7 @@ EntityHandle& EntityHandle::operator=(const EntityHandle& rhs){
         scene = rhs.scene;
         entity = rhs.entity;
         entityOwned = false;
+        sceneLifetime.reset();
     }
 
     return *this;
@@ -47,6 +55,7 @@ EntityHandle::EntityHandle(EntityHandle&& rhs) noexcept{
     scene = rhs.scene;
     entity = rhs.entity;
     entityOwned = rhs.entityOwned;
+    sceneLifetime = std::move(rhs.sceneLifetime);
     rhs.entityOwned = false;
 }
 
@@ -55,6 +64,7 @@ EntityHandle& EntityHandle::operator=(EntityHandle&& rhs) noexcept{
         scene = rhs.scene;
         entity = rhs.entity;
         entityOwned = rhs.entityOwned;
+        sceneLifetime = std::move(rhs.sceneLifetime);
         rhs.entityOwned = false;
     }
 
@@ -127,5 +137,11 @@ bool EntityHandle::isEntityOwned() const{
 }
 
 void EntityHandle::setEntityOwned(bool entityOwned){
+    // taking ownership: from here on the handle watches the scene's lifetime
+    if (entityOwned && !this->entityOwned && scene){
+        sceneLifetime = scene->getLifetime();
+    }else if (!entityOwned){
+        sceneLifetime.reset();
+    }
     this->entityOwned = entityOwned;
 }

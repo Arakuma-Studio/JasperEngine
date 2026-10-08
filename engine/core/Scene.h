@@ -11,6 +11,7 @@
 #include "SceneSettings.h"
 #include "render/Render.h"
 #include "math/Vector2.h"
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -42,6 +43,9 @@ namespace jasperengine{
         UIEventState uiEventState;
 
         std::vector<std::pair<std::string, std::shared_ptr<SubSystem>>> systems;
+
+        // Alive from construction to the start of the destructor (see getLifetime)
+        std::shared_ptr<char> lifetime;
 
         void init();
         Entity createDefaultCamera();
@@ -82,6 +86,17 @@ namespace jasperengine{
         Scene();
         Scene(EntityPool defaultPool);
         virtual ~Scene();
+
+        // A scene is its entities' only registry: a copy would share their sub-resources
+        Scene(const Scene&) = delete;
+        Scene& operator=(const Scene&) = delete;
+
+        // Expires when the scene starts being deleted. A handle that owns an entity
+        // (EntityHandle(Scene*)) keeps it to know whether the scene is still there when it
+        // goes: a GameObject made from Lua goes when the garbage collector takes it, which
+        // can be after its scene was deleted (a Play copy at play stop, or any scene before
+        // lua_close at shutdown). The scene destroys all its entities, so nothing leaks.
+        std::weak_ptr<char> getLifetime() const;
 
         void load();
         void destroy();

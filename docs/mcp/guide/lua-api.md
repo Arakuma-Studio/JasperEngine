@@ -609,6 +609,11 @@ Constructors: every wrapper has `(Scene, Entity)` to wrap an existing entity. Mo
 `(Scene)` which creates a new entity with that component. Exceptions: `Rigidbody2D`,
 `Rigidbody` and `Bone` have only `(Scene, Entity)`; `AudioSource` also has `(Scene, is3D)`.
 
+A wrapper made with `(Scene)` owns its new entity (`entityOwned` is true): when the garbage
+collector takes it, the entity is destroyed. Keep it (e.g. in `self`) as long as the object
+should exist, or set `entityOwned = false` to leave the entity to the scene. A wrapper collected
+after its scene ended (play stop, scene change) does nothing: the scene destroyed the entity.
+
 ### 4.1 EntityHandle (base of everything)
 
 | Member | Kind |
