@@ -67,13 +67,13 @@ When phase 1 is merged:
    `UIEvent`) and data binding (`UIDataModel`) driven from Lua tables or C++ `UIValue`s, with
    two-way binding, `data-for` arrays and `data-event-*`. Element handles are safe after
    their document unloads. LuaLS stubs and API suggestions cover every new class.
-5. **Vector graphics run on ThorVG.**
+5. **Vector graphics run on LunaSVG (SVG) and ThorVG (Lottie)** (phase-0 benchmark decision).
    - SVG (`<svg src>`, inline `<svg>`, `decorator: svg(...)`, tinting) is rasterised by
-     ThorVG.
+     LunaSVG, through RmlUi's SVG plugin.
    - A new `<lottie>` element, also on ThorVG, supports `.json` and `.lottie`, autoplay,
      loop, speed, direction, segments and markers, and has a control API. Each element
      updates one reusable RGBA8 texture, and only when the frame changes.
-   - `TextureData` loads `.svg` textures through ThorVG; nanosvg is removed.
+   - `TextureData` loads `.svg` textures through LunaSVG; nanosvg is removed.
 6. **Animation.** A global Lua table `anime` mirrors Anime.js v4: `animate`, `stagger`,
    `createTimeline`, `createTimer`, `createSpring`, easing names and functions, callbacks,
    playback control and `utils`. It animates element styles (individual transforms, colours,
@@ -2006,8 +2006,10 @@ Behaviour:
     assets for `Picture::resolver`;
   - ZIP64, encryption and multi-disk archives are rejected with an error event.
 
-#### 3.10.4 `TextureData` moves to ThorVG
-`loadSvgTexture` (`TextureData.cpp:241-305`) becomes ThorVG:
+#### 3.10.4 `TextureData` moves to LunaSVG (originally: ThorVG)
+Under the chosen path (§3.10.2) this is LunaSVG (`LunaSVGRuntime::rasterize`, straight alpha
+through `Bitmap::convertToRGBA`, same size rule and cap); the ThorVG wording below was the
+pre-decision plan. `loadSvgTexture` (`TextureData.cpp:241-305`) becomes ThorVG:
 - `Picture::load(data, size, "svg")`;
 - size = intrinsic (96 dpi) × `?svgScale=`, capped at 16384 as today (264-273);
 - `SwCanvas` with `ColorSpace::ABGR8888S`, **straight alpha**, matching the engine's
@@ -2026,6 +2028,32 @@ masks, text) than nanosvg. **Regression test:** the four `.svg` assets in the te
 load at the same pixel size as with nanosvg, with alpha-weighted mean colour within 2/255;
 phase 0's `icon.svg` goldens (`render_images`, `images`) and `RmlRendererTest.LoadTextureSvg`
 still pass (regenerate only with an inspected, explained difference).
+
+
+#### 3.10.5 As implemented (p1-vector, recorded deviations)
+- **SVG plugin registration:** `RMLUI_SVG_PLUGIN` is defined on the `rmlui` target, so
+  `Rml::Initialise` registers the plugin itself (upstream `Core.cpp`); `HtmlUI::acquire` only
+  registers the `lottie` instancer (after every `Rml::Initialise`, RmlUi forgets instancers at
+  shutdown), calls `ThorVGRuntime::acquire` and `LunaSVGRuntime::ensureFonts`. `rmlui` links
+  `lunasvg`.
+- **LunaSVG build:** no system font scan and no file access (`LUNASVG_DISABLE_LOAD_SYSTEM_FONTS`,
+  `LUNASVG_DISABLE_EXTERNAL_RESOURCES`, `PLUTOVG_DISABLE_FONT_FACE_CACHE_LOAD`):
+  `engine/core/util/LunaSVGRuntime` registers the built-in Roboto under the generic families
+  and LunaSVG's fallback names. `<image href>` inside SVG takes `data:` URIs only (LunaSVG has
+  no resolver hook).
+- **ThorVG config:** loaders lottie, png, jpg, raw, sfnt (no SVG loader vendored); no
+  threads, file IO, expressions, partial rendering or SIMD.
+- **Frames and loops:** frames follow lottie-web (N frames shown as 0..N-1, one pass = N/fps
+  seconds); `segment="a b"` is `[a, b)`; a loop count is the number of plays in total
+  (`loop="3"`: two `loop` events then `complete`; `0` = forever); in bounce mode one iteration
+  is there and back. The frame index is an integer, so the texture is updated once per
+  animation frame.
+- **Events:** dispatched with `DispatchEvent(type, {message}, interruptible = false, bubbles =
+  false)`; the events of a load (`load`, `error`, autoplay's `play`) are dispatched in a later
+  engine frame, so listeners added after `LoadDocument` (scripts' `init`) get them.
+- **Fit:** the animation is scaled to fit the content box keeping its aspect ratio, centred.
+- **Images in Lottie:** the resolver tries the engine's file layer (`<lottie dir>/<u><p>`),
+  then the `.lottie` archive (`images/` or `i/`).
 
 ---
 
@@ -2695,7 +2723,7 @@ Stream round-trip and Catalog behaviour are tested end to end in `test_html_ui_e
 (§5.3), because `Stream` needs the editor.
 
 **Vector** (`VectorTests.cpp`)
-- SVG rasterised by ThorVG at 3 sizes. The output is premultiplied: no channel exceeds alpha.
+- SVG rasterised by LunaSVG (benchmark decision) at 3 sizes. The output is premultiplied: no channel exceeds alpha.
   `crop_to_content` gives a smaller intrinsic size. `TextureData` SVG output is straight
   alpha and keeps nanosvg-era sizes (§3.10.4).
 - `LottiePlayback`: frame for given time, speed, direction, bounce, loop count and segment;
@@ -2915,7 +2943,7 @@ How the unbuildable targets are kept correct:
 - [ ] `<lottie>` supports all attributes of §3.10.3, `.lottie` files, the control API in C++
   and Lua, and its events. It uses one in-place RGBA8 texture per element, updated only on
   frame change (unit test) — G22.
-- [ ] `TextureData` SVG is on ThorVG; nanosvg is removed; the regression test passes.
+- [ ] `TextureData` SVG is on LunaSVG (benchmark decision); nanosvg is removed; the regression test passes.
 
 **Animation**
 - [ ] `anime.animate`, `createTimeline`, `createTimer`, `createSpring`, `stagger`, the
@@ -2936,7 +2964,7 @@ How the unbuildable targets are kept correct:
   Windows/macOS/iOS hunks are listed and reviewed per §5.4.
 - [ ] All tests of §5 pass; every produced screenshot has been looked at.
 - [ ] `docs/mcp/guide/html-ui.md` (sections named per package), `docs/mcp/guide/lua-api.md`,
-  `docs/html-ui/FORK.md` (two patches), `NOTICE.md` (ThorVG) and the MCP tool docs are
+  `docs/html-ui/FORK.md` (the `PreventDefault` patch, the SVG plugin vendoring), `NOTICE.md` (ThorVG, LunaSVG) and the MCP tool docs are
   updated.
 - [ ] No GPU object leaks: loading and unloading a document 100 times in a test returns
   `HtmlUIRenderStats.geometryLive`, the live texture count and the pipeline cache size to

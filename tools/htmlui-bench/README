@@ -3,9 +3,11 @@ SVG library benchmark: LunaSVG vs ThorVG (software renderer) vs nanosvg
 Results and decision: docs/html-ui/svg-benchmark.md. Standalone, not part of the engine build.
 
 Sources (read-only): LUNASVG_DIR=/tmp/htmlui-src/lunasvg, THORVG_DIR=/tmp/htmlui-src/thorvg,
-nanosvg and stb from engine/libs. Everything is compiled here with the same flags (-O2; -Os for
+NANOSVG_DIR=/tmp/htmlui-src/nanosvg/src (scripts/fetch_nanosvg.sh clones the pinned commit: the
+engine's former copy, removed in phase 1), stb from engine/libs. Everything is compiled here with the same flags (-O2; -Os for
 size probes). All commands from the repository root; outputs go to build/htmlui-bench (git-ignored).
 
+0. nanosvg (git):                     tools/htmlui-bench/scripts/fetch_nanosvg.sh
 1. Corpus (git, curl, python3):       tools/htmlui-bench/scripts/fetch_corpus.sh
 2. Python venv for references/compare/report:
      python3 -m venv /tmp/htmlui-src-bench/venv

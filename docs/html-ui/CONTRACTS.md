@@ -26,9 +26,10 @@ Conventions that apply everywhere:
 | Name | Kind | Provider | Consumers | Ref |
 |---|---|---|---|---|
 | `engine/libs/rmlui/` (RmlUi 6.3 Core + Debugger), target `rmlui` (static, `RMLUI_STATIC_LIB`, hidden visibility, `RMLUI_NO_FILE_INTERFACE_DEFAULT`) | vendored lib | P0 p0-foundation | all | P0 §3.2 |
-| RmlUi SVG plugin (`Source/SVG`, `Include/RmlUi/SVG`), `RMLUI_SVG_PLUGIN` | vendored lib | P1 p1-vector | P2 H8, P3 §3.9 | P1 §3.10.1 |
+| RmlUi SVG plugin (`Source/SVG`, `Include/RmlUi/SVG`), `RMLUI_SVG_PLUGIN` (upstream, on LunaSVG; registered by `Rml::Initialise`) | vendored lib | P1 p1-vector | P2 H8, P3 §3.9 | P1 §3.10.1, §3.10.5 |
 | RmlUi `Tests/` (fork unit tests) | vendored lib | P3 p3-testkit | P3 all | P3 §4, §5.1 |
-| `engine/libs/thorvg/` (1.2.0, `thorvg`, `TVG_STATIC`), `ThorVGRuntime::acquire/release` | vendored lib + helper | P1 p1-vector | P2 H8 (`rasterizeSvg`, `html-shape`), P3 | P1 §3.10.1 |
+| `engine/libs/thorvg/` (1.2.0, `thorvg`, `TVG_STATIC`; Lottie only, no SVG loader), `ThorVGRuntime::acquire/release` | vendored lib + helper | P1 p1-vector | P3 | P1 §3.10.1, §3.10.5 |
+| `engine/libs/lunasvg/` (3.5.0 + plutovg 1.3.3, `lunasvg`, `LUNASVG_BUILD_STATIC`), `LunaSVGRuntime::ensureFonts/rasterize` (`engine/core/util/`) | vendored lib + helper | P1 p1-vector | P2 H8 (`rasterizeSvg`, `html-shape`) | P1 §3.10.5 |
 | `engine/libs/lexbor/` (3.1.0 subset + offset patch) | vendored lib | P2 p2-html | P2 | P2 §3.7.1 |
 | `engine/libs/lucide/lucide.pack` | data | P2 p2-runtime | P2, P4 `import_files icons` | P2 §3.11.8 |
 | `docs/html-ui/FORK.md` (vendored subset, patch table) | doc | P0 p0-foundation | P1, P2 (H8), P3, P5 append rows | P0 §3.2.5 |
@@ -139,9 +140,9 @@ Conventions that apply everywhere:
 
 | Name | Kind | Provider | Consumers | Ref |
 |---|---|---|---|---|
-| `<svg>` / `decorator: svg()` on ThorVG (fork patch `rmlui: SVG plugin rasterises with ThorVG`) | element | P1 p1-vector | P2 H8 (`SvgPreprocess`, `rasterizeSvg`) | P1 §3.10.2 |
-| `<lottie>` (`UILottieElement`, attributes `src autoplay loop speed direction mode segment marker animation`; events) | element | P1 p1-vector | P2 (web-component mapping, H9 adds `playonhover`) | P1 §3.10.3 |
-| `TextureData` SVG on ThorVG; nanosvg removed | engine | P1 p1-vector | — | P1 §3.10.4 |
+| `<svg>` / `decorator: svg()` on LunaSVG (upstream plugin; the ThorVG rasteriser patch is not made: benchmark decision) | element | P1 p1-vector | P2 H8 (`SvgPreprocess`, `rasterizeSvg`) | P1 §3.10.2, §3.10.5 |
+| `<lottie>` (`UILottieElement`, `engine/core/htmlui/vector/`; attributes `src autoplay loop speed direction mode segment marker animation`; events `load error play pause loop complete`, `error` parameter `message`), `LottiePlayback`, `DotLottie` | element | P1 p1-vector | P2 (web-component mapping, H9 adds `playonhover`) | P1 §3.10.3, §3.10.5 |
+| `TextureData` SVG on LunaSVG; nanosvg removed | engine | P1 p1-vector | — | P1 §3.10.4 |
 | `anime` (`animate`, `createTimeline`, `createTimer`, `createSpring`, `stagger`, `eases`, `utils`), custom-property animation; C++ `Anime` / `AnimParam` / `AnimTargets` (`htmlui/anim/`); `AnimEngine::tick(HtmlUIClock::now())`, `reset()`, `addResetListener`; `AnimLua::getLiveLuaRefs()` | Lua/C++ | P1 p1-anim | P2 (`<script type="text/lua">` env), P4 examples, P5 C7 | P1 §3.11 |
 
 ## 10. Compatibility layer (phase 2, `jasperengine::htmlui::compat`)

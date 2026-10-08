@@ -6,8 +6,8 @@ pool), send_input clicks a button (a Lua listener counts it) and a data-for row
 (data-event-click), the data-bound list grows on table.insert (screenshot probe +
 childElementCount), and after stop no Lua reference is left (UIDocument.getLiveLuaRefCount).
 
-Sections owned by other phase-1 packages are appended below (p1-vector: Lottie control and
-its events; p1-anim: anime.animate / timelines).
+Sections owned by other phase-1 packages are appended below (p1-anim: anime.animate /
+timelines; p1-vector: Lottie control and its events).
 
 Runs on a scratch copy of the fixture project (canvas 1280 x 720).
 """
@@ -363,3 +363,147 @@ async def test_anime_timeline_labels_and_clocks(ed: Editor):
                 "play stop cancelled the endless animation")
     errors = await anime_errors(ed)
     ed.check(not errors, f"[HTML UI] errors: {errors}")
+
+
+# ================================================================================================
+# p1-vector section: <lottie> control from Lua and its events (phase-1 §3.10.3)
+# ================================================================================================
+
+LOTTIE_DOC = "assets/ui/lottie.html"
+LOTTIE_JSON = "assets/ui/lottie/shapes.json"
+# 200 x 200, 30 fps, 60 frames: a red box moving x 50 -> 150 (centre y 60) and a circle at
+# (100, 145) whose fill goes blue -> green (the C++ tests' fixture)
+LOTTIE_SOURCE = (Path(__file__).resolve().parents[3] / "engine/tests/htmlui/fixtures/p1/lottie/shapes.json").read_text()
+LOTTIE_HTML = """<html>
+<head>
+    <title>lottie</title>
+    <style>
+        body { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0;
+               font-family: sans-serif; font-size: 16px; color: #ffffff; }
+        div { display: block; }
+        #anim { position: absolute; left: 100px; top: 100px; width: 200px; height: 200px; }
+        #broken { position: absolute; left: 400px; top: 100px; width: 50px; height: 50px; }
+        #label { position: absolute; left: 400px; top: 300px; }
+    </style>
+</head>
+<body>
+    <lottie id="anim" src="lottie/shapes.json"/>
+    <lottie id="broken" src="lottie/missing.json"/>
+    <div id="label">not a lottie</div>
+</body>
+</html>
+"""
+
+LOTTIE_SCRIPT = """---@class LottieScript : ScriptInstance
+local LottieScript = { properties = {} }
+
+function LottieScript:init()
+    local doc = UIDocument(self.scene, self.entity)
+    lottieEvents = {}
+    local anim = doc:getElementById("anim")
+    for _, name in ipairs({ "load", "play", "pause", "loop", "complete" }) do
+        anim:addEventListener(name, function(event) lottieEvents[#lottieEvents + 1] = event.type end)
+    end
+    -- the document loaded (in the editor, before play): its load/error events are past;
+    -- a new src loads again and fires them
+    doc:getElementById("broken"):addEventListener("error", function(event)
+        lottieError = event.detail and event.detail.message
+    end)
+    doc:getElementById("broken"):setAttribute("src", "lottie/missing2.json")
+end
+
+return LottieScript
+"""
+
+LOTTIE_RED = (230, 51, 26)
+LOTTIE_TEAL = (26, 140, 140)
+
+
+async def test_lottie_setup(ed: Editor):
+    """A UI scene with a <lottie> document and a script listening to its events."""
+    await ed.console_since(None, limit=1)
+    made = await ed.call("create_scene", name="HtmlUiLottie", type="UI")
+    S["lottie_scene"] = made["scene"]["id"]
+    await ed.call("set_scene_settings", scene=S["lottie_scene"], settings={"background_color": [0.118, 0.118, 0.118, 1.0]})
+    await ed.call("write_file", path=LOTTIE_JSON, content=LOTTIE_SOURCE)
+    await ed.call("write_file", path=LOTTIE_DOC, content=LOTTIE_HTML)
+    ent = await ed.call("create_entity", scene=S["lottie_scene"], type="empty", name="LottieDoc")
+    await ed.call("add_component", scene=S["lottie_scene"], entity=ent["entity_id"], component="UIDocument",
+                  values={"uidocument": {"filename": LOTTIE_DOC}})
+    await ed.call("create_script", kind="lua", name="LottieScript", content=LOTTIE_SCRIPT,
+                  scene=S["lottie_scene"], entity=ent["entity_id"])
+    await ed.call("save_scene", scene=S["lottie_scene"], path="scenes/HtmlUiLottie")
+    started = await ed.call("play", action="start", scene=S["lottie_scene"])
+    ed.check(started, "play started")
+    await ed.call("wait", frames=3)
+
+
+async def test_lottie_control_and_events(ed: Editor):
+    """play/pause/seek/setSegment from Lua, the load/error/play/pause/complete events, and the
+    animation on screen in the Game view."""
+    try:
+        r = await ed.call_raw("wait", {"until": "lottieError ~= nil", "timeout_seconds": 10})
+        ed.check(not r.is_error, f"the error event reached init's listener: {r.text[:300]}")
+        values = await anime_lua(ed, """
+            local anim = object('LottieDoc', 'UIDocument'):getElementById('anim')
+            return lottieError, lottieEvents[1], anim:isPlaying(), anim:getTotalFrames(), anim:getDuration(),
+                   anim:getCurrentFrame()
+        """)
+        ed.check("could not read 'ui/lottie/missing2.json'" in str(values[0]), f"event.detail.message: {values[0]}")
+        ed.check_eq(values[1:], [None, False, 60, 2, 0], "loaded (no event since play started), paused on the first frame")
+
+        # play, then pause: the frame stands still while paused
+        await anime_lua(ed, "object('LottieDoc', 'UIDocument'):getElementById('anim'):play()")
+        await ed.call("wait", frames=10)
+        values = await anime_lua(ed, """
+            local anim = object('LottieDoc', 'UIDocument'):getElementById('anim')
+            local playing = anim:isPlaying()
+            anim:pause()
+            pausedAt = anim:getCurrentFrame()
+            return playing, anim:isPlaying(), pausedAt > 0
+        """)
+        ed.check_eq(values, [True, False, True], "play then pause")
+        await ed.call("wait", frames=10)
+        ed.check_eq(await anime_lua(ed, "return object('LottieDoc', 'UIDocument'):getElementById('anim'):getCurrentFrame() == pausedAt"),
+                    [True], "paused: the frame does not move")
+
+        # seek to 1 s (frame 30): the box at x 100, the circle half way to green
+        values = await anime_lua(ed, """
+            local anim = object('LottieDoc', 'UIDocument'):getElementById('anim')
+            anim:seek(1.0)
+            return anim:getCurrentFrame()
+        """)
+        ed.check_eq(values, [30], "seek(1.0)")
+        await ed.call("wait", frames=3)
+        shot = await anime_shoot(ed, "lottie-seek")
+        ed.check(near(shot.px(200, 160), LOTTIE_RED, 12), f"the box at frame 30: {shot.px(200, 160)}")
+        ed.check(near(shot.px(175, 160), LOTTIE_RED, 12), f"the box spans x 170..230: {shot.px(175, 160)}")
+        ed.check(not near(shot.px(240, 160), LOTTIE_RED, 40), f"right of the box: {shot.px(240, 160)}")
+        ed.check(not near(shot.px(140, 160), LOTTIE_RED, 40), f"not at its frame-0 place: {shot.px(140, 160)}")
+        ed.check(near(shot.px(200, 245), LOTTIE_TEAL, 12), f"the circle at frame 30: {shot.px(200, 245)}")
+
+        # a segment to its end: complete
+        await anime_lua(ed, """
+            completed = false
+            local anim = object('LottieDoc', 'UIDocument'):getElementById('anim')
+            anim:addEventListener('complete', function() completed = true end)
+            anim:setSegment(50, 60)
+            anim:play()
+        """)
+        r = await ed.call_raw("wait", {"until": "completed", "timeout_seconds": 10})
+        ed.check(not r.is_error, f"the complete event: {r.text[:300]}")
+        values = await anime_lua(ed, """
+            local anim = object('LottieDoc', 'UIDocument'):getElementById('anim')
+            local count = {}
+            for _, name in ipairs(lottieEvents) do count[name] = (count[name] or 0) + 1 end
+            return anim:isPlaying(), anim:getCurrentFrame(), count.load, count.play, count.pause, count.complete
+        """)
+        ed.check_eq(values, [False, 59, None, 2, 1, 1], "complete on the last frame; event counts")
+
+        # another element: an error in the Console, nothing raised
+        await ed.console_since(None, limit=1)
+        await anime_lua(ed, "object('LottieDoc', 'UIDocument'):getElementById('label'):play()")
+        errors = await anime_errors(ed)
+        ed.check(any("is not a <lottie> element" in e for e in errors), f"play() on a <div>: {errors}")
+    finally:
+        await ed.call("play", action="stop")

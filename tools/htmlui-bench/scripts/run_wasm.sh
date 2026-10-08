@@ -21,19 +21,20 @@ SHARDS="${SHARDS:-4}"
 CORES="${CORES:-8 9 10 11}"
 LUNASVG_DIR="${LUNASVG_DIR:-/tmp/htmlui-src/lunasvg}"
 THORVG_DIR="${THORVG_DIR:-/tmp/htmlui-src/thorvg}"
+NANOSVG_DIR="${NANOSVG_DIR:-/tmp/htmlui-src/nanosvg/src}"
 PHASES="${*:-build selftest time render size}"
 mkdir -p "$RAW"
 
 if ! command -v em++ > /dev/null && [ -z "${IN_WASM_CONTAINER:-}" ]; then
     # Re-run this script inside the web image, same paths, then give the files back to the user.
     exec docker run --rm -e IN_WASM_CONTAINER=1 -e SHARDS="$SHARDS" -e CORES="$CORES" \
-        -e LUNASVG_DIR="$LUNASVG_DIR" -e THORVG_DIR="$THORVG_DIR" \
-        -v "$ROOT:$ROOT" -v "$LUNASVG_DIR:$LUNASVG_DIR:ro" -v "$THORVG_DIR:$THORVG_DIR:ro" \
+        -e LUNASVG_DIR="$LUNASVG_DIR" -e THORVG_DIR="$THORVG_DIR" -e NANOSVG_DIR="$NANOSVG_DIR" \
+        -v "$ROOT:$ROOT" -v "$LUNASVG_DIR:$LUNASVG_DIR:ro" -v "$THORVG_DIR:$THORVG_DIR:ro" -v "$NANOSVG_DIR:$NANOSVG_DIR:ro" \
         -w "$ROOT" "$IMAGE" bash -c "'$HERE/run_wasm.sh' $PHASES; rc=\$?; chown -R $(id -u):$(id -g) '$B'; exit \$rc"
 fi
 
 want() { case " $PHASES " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
-COMMON=(-DCMAKE_BUILD_TYPE=Release -DTHORVG_THREADS=OFF -DTHORVG_AVX=OFF -DLUNASVG_DIR="$LUNASVG_DIR" -DTHORVG_DIR="$THORVG_DIR")
+COMMON=(-DCMAKE_BUILD_TYPE=Release -DTHORVG_THREADS=OFF -DTHORVG_AVX=OFF -DLUNASVG_DIR="$LUNASVG_DIR" -DTHORVG_DIR="$THORVG_DIR" -DNANOSVG_DIR="$NANOSVG_DIR")
 SVGBENCH=(node "$B/wasm/svgbench.js")
 
 if want build; then
