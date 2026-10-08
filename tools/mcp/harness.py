@@ -283,6 +283,8 @@ def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch"
         env["DISPLAY"] = display
     env["HOME"] = str(scratch.home)
     env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+    # the engine's Lua state used off the main thread aborts the editor (LuaBinding::ThreadCheck)
+    env.setdefault("JASPER_LUA_THREAD_CHECK", "abort")
     return cmd + args, env, scratch.root
 
 
