@@ -1,0 +1,33 @@
+<html>
+<head>
+    <title>texture effects</title>
+    <link type="text/css" href="../../common/base.css"/>
+    <style>
+        /* p1-integrate: a TEXTURE-mode document (256x256 CSS px) using stencil clips, layers
+           and filters, read back from its straight-alpha target texture */
+        body { position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; padding: 0; }
+        .abs { position: absolute; }
+        /* a circle (rounded clip): left half red, right half blue */
+        #clip { left: 16px; top: 16px; width: 96px; height: 96px; overflow: hidden; border-radius: 48px; background-color: #ff0000; }
+        #clip div { position: absolute; left: 48px; top: 0; width: 48px; height: 96px; background-color: #0000ff; }
+        /* a blurred white square */
+        #blur { left: 144px; top: 16px; width: 96px; height: 96px; filter: blur(6px); }
+        #blur div { position: absolute; left: 24px; top: 24px; width: 48px; height: 48px; background-color: #ffffff; }
+        /* a group at half opacity: the overlap shows only the blue box */
+        #group { left: 16px; top: 144px; width: 96px; height: 96px; filter: opacity(0.5); }
+        #group .r { position: absolute; left: 0; top: 0; width: 64px; height: 64px; background-color: #ff0000; }
+        #group .b { position: absolute; left: 32px; top: 32px; width: 64px; height: 64px; background-color: #0000ff; }
+        /* outlined text inside a drop-shadow filter inside a rotated rounded clip */
+        #turn { left: 136px; top: 152px; width: 104px; height: 64px; overflow: hidden; border-radius: 12px;
+                background-color: #208020; transform: rotate(-8deg); }
+        #turn div { position: absolute; left: 8px; top: 12px; font-size: 28px; color: #ffffff;
+                    font-effect: outline(2px #000000); filter: drop-shadow(#ff00ff 3px 3px 0px); }
+    </style>
+</head>
+<body>
+    <div id="clip" class="abs"><div></div></div>
+    <div id="blur" class="abs"><div></div></div>
+    <div id="group" class="abs"><div class="r"></div><div class="b"></div></div>
+    <div id="turn" class="abs"><div>Text</div></div>
+</body>
+</html>

@@ -84,7 +84,7 @@ namespace jasperengine{
         void setReferenceSize(int width, int height);
         void clearReferenceSize();
 
-        bool loadDocumentNow(Entity entity);           // UIDocument::load: synchronous when the view is loaded
+        bool loadDocumentNow(Entity entity);           // UIDocument::load, getters in init: synchronous, also before the view loads
         bool isDocumentLoaded(Entity entity) const;
         UIElement getElementById(Entity entity, const std::string& id) const;
         UIElement getDocumentBody(Entity entity) const;
@@ -108,9 +108,12 @@ namespace jasperengine{
         static int getPreferredSampleCount();
 
         // --- p1-input (UIDocumentSystemInput.cpp, §3.6.2); the phase-0 pointer methods above become wrappers ---
-        bool eventOnPointerDown(int pointer, int button, float x, float y, int mods, bool touch);
-        bool eventOnPointerUp(int pointer, int button, float x, float y, int mods, bool touch);
-        bool eventOnPointerMove(int pointer, float x, float y, int mods, bool touch);
+        // world = false: the screen documents only (and a pointer a texture-mode document
+        // holds); the engine offers the event to the documents on meshes after the component
+        // UI, which is drawn over the 3D world (dispatchWorldPointer)
+        bool eventOnPointerDown(int pointer, int button, float x, float y, int mods, bool touch, bool world = true);
+        bool eventOnPointerUp(int pointer, int button, float x, float y, int mods, bool touch, bool world = true);
+        bool eventOnPointerMove(int pointer, float x, float y, int mods, bool touch, bool world = true);
         bool eventOnTouchCancel(int pointer);
         bool eventOnWheel(float dx, float dy, int mods);
         void eventOnMouseLeave();
@@ -160,8 +163,10 @@ namespace jasperengine{
         // documents shown on meshes: a ray from the scene camera through the canvas point,
         // hit-tested against each interactive document's inputSurface (or own entity), nearest
         // first, at the document point of the hit's uv. A document that took a down keeps the
-        // pointer until the up (capture). True = consumed.
-        bool dispatchWorldPointer(int pointer, int button, float canvasX, float canvasY, int mods, PointerPhase phase, bool touch);
+        // pointer until the up (capture). True = consumed. covered: screen-space UI in front of
+        // the world (a screen document, the component UI) took the event, so the documents on
+        // meshes only lose the pointer (hover, and key focus on a press)
+        bool dispatchWorldPointer(int pointer, int button, float canvasX, float canvasY, int mods, PointerPhase phase, bool touch, bool covered = false);
         Framebuffer* getTargetTexture(Entity entity) const;        // TEXTURE mode target; nullptr otherwise
         HtmlUIContext* getTextureContext(Entity entity) const;     // internal/tests: a texture-mode document's own context
         // the texture-mode document that took the last pointer-down (it gets keys and text);

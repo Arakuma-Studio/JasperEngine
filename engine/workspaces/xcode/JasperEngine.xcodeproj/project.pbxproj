@@ -3192,6 +3192,9 @@
 		718FDDF42837CA9A00AF314C /* hlsl5.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hlsl5.h; sourceTree = "<group>"; };
 		71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolCmdQueue.cpp; sourceTree = "<group>"; };
 		503152450000000000000001 /* SokolPipelineCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolPipelineCache.cpp; sourceTree = "<group>"; };
+		503152450000000000000010 /* PipelineState.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PipelineState.h; sourceTree = "<group>"; };
+		503152450000000000000011 /* SokolPipelineCache.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SokolPipelineCache.h; sourceTree = "<group>"; };
+		503152450000000000000012 /* RmlFilterContext.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlFilterContext.h; sourceTree = "<group>"; };
 		71A41CB429AC3D7C006953D3 /* SokolCmdQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SokolCmdQueue.h; sourceTree = "<group>"; };
 		71A800012AD9A001007C91BA /* harfbuzz.cc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = harfbuzz.cc; sourceTree = "<group>"; };
 		71A800022AD9A001007C91BA /* hb.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hb.h; sourceTree = "<group>"; };
@@ -5583,6 +5586,7 @@
 				7128D0FF25C2354A00965B51 /* SystemRender.h */,
 				7162FC4025962A0E0075B97D /* TextureRender.cpp */,
 				7162FC3B25962A0E0075B97D /* TextureRender.h */,
+				503152450000000000000010 /* PipelineState.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -5798,6 +5802,7 @@
 				7162FC8E25962A0E0075B97D /* SokolBuffer.h */,
 				71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */,
 				503152450000000000000001 /* SokolPipelineCache.cpp */,
+				503152450000000000000011 /* SokolPipelineCache.h */,
 				71A41CB429AC3D7C006953D3 /* SokolCmdQueue.h */,
 				71CC83A926B8D54800EEBB93 /* SokolFramebuffer.cpp */,
 				71CC83A826B8D54800EEBB93 /* SokolFramebuffer.h */,
@@ -7269,6 +7274,7 @@
 				48544D4C0000000052540007 /* UIWorldRaycast.cpp */,
 				48544D4C0000000000000018 /* RmlRenderer.h */,
 				48544D4C000000000000001A /* RmlRenderer.cpp */,
+				503152450000000000000012 /* RmlFilterContext.h */,
 				48544D4C000000000000001D /* RmlSystem.h */,
 				48544D4C000000000000001F /* RmlSystem.cpp */,
 				48544D4C00000000000002D3 /* RmlKeyMap.h */,
@@ -11455,6 +11461,7 @@
 					TVG_STATIC,
 					LUNASVG_BUILD_STATIC,
 					PLUTOVG_BUILD_STATIC,
+					JASPERENGINE_HTMLUI_DEBUGGER,
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
@@ -11695,6 +11702,7 @@
 					TVG_STATIC,
 					LUNASVG_BUILD_STATIC,
 					PLUTOVG_BUILD_STATIC,
+					JASPERENGINE_HTMLUI_DEBUGGER,
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../core",
@@ -11799,6 +11807,7 @@
 					TVG_STATIC,
 					LUNASVG_BUILD_STATIC,
 					PLUTOVG_BUILD_STATIC,
+					JASPERENGINE_HTMLUI_DEBUGGER,
 				);
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../core",
@@ -11901,6 +11910,7 @@
 					TVG_STATIC,
 					LUNASVG_BUILD_STATIC,
 					PLUTOVG_BUILD_STATIC,
+					JASPERENGINE_HTMLUI_DEBUGGER,
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
@@ -12758,6 +12768,7 @@
 					RMLUI_NO_FILE_INTERFACE_DEFAULT,
 					RMLUI_SVG_PLUGIN,
 					LUNASVG_BUILD_STATIC,
+					JASPERENGINE_HTMLUI_DEBUGGER,
 				);
 				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
 				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
@@ -12821,6 +12832,7 @@
 					RMLUI_NO_FILE_INTERFACE_DEFAULT,
 					RMLUI_SVG_PLUGIN,
 					LUNASVG_BUILD_STATIC,
+					JASPERENGINE_HTMLUI_DEBUGGER,
 				);
 				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
 				GCC_SYMBOLS_PRIVATE_EXTERN = YES;

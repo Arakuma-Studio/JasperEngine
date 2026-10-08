@@ -620,7 +620,15 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
 }
 
 double UIDocumentSystem::getNextUpdateDelay() const{
-    if (!context || !getContext()->getRmlContext() || documents.empty())
-        return std::numeric_limits<double>::infinity();
-    return getContext()->getRmlContext()->GetNextUpdateDelay();
+    double delay = std::numeric_limits<double>::infinity();
+    if (!context || documents.empty())
+        return delay;
+    // the screen context and every texture-mode document's own context (p1-rtt)
+    std::vector<HtmlUIContext*> contexts = getTextureContexts();
+    contexts.push_back(getContext());
+    for (HtmlUIContext* each : contexts){
+        if (each && each->getRmlContext())
+            delay = std::min(delay, (double)each->getRmlContext()->GetNextUpdateDelay());
+    }
+    return delay;
 }

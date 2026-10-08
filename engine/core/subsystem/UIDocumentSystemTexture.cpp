@@ -478,7 +478,7 @@ void UIDocumentSystem::textureMouseLeave(){
     }
 }
 
-bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canvasX, float canvasY, int mods, PointerPhase phase, bool touch){
+bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canvasX, float canvasY, int mods, PointerPhase phase, bool touch, bool covered){
     if (!textureState || textureState->entries.empty())
         return false;
     HtmlUITextureState& state = *textureState;
@@ -578,10 +578,11 @@ bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canva
         return false;
     }
 
-    // every interactive, shown document whose surface the ray hits, nearest first
+    // every interactive, shown document whose surface the ray hits, nearest first; none
+    // under screen-space UI that took the event (it is drawn over the world)
     struct Candidate { Entity entity; HtmlUITextureDocument* entry; UIWorldHit hit; };
     std::vector<Candidate> candidates;
-    if (hasCamera){
+    if (hasCamera && !covered){
         for (auto& pair : state.entries){
             const UIDocumentComponent* document = scene->findComponent<UIDocumentComponent>(pair.first);
             auto doc = documents.find(pair.first);

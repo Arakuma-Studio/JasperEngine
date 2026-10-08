@@ -2387,6 +2387,42 @@ Each patch is a separate commit prefixed `rmlui:`, with a `docs/html-ui/FORK.md`
    vendoring commit `rmlui: vendor SVG plugin (6.3)` (§3.10.1). The rasteriser patch is not
    made under the LunaSVG fallback; the vendoring is made in both cases.
 
+### 3.15 Integration decisions (p1-integrate, binding)
+The packages were verified one by one; running them together (`TestIntegrationP1.cpp`,
+`test_html_ui_integration.py`, the exported Linux game and the Web build of one project using
+every phase-1 feature) showed where they met wrongly. Decided and implemented:
+
+1. **Pointer order: screen documents, component UI, documents on meshes, game.** §3.12.3 put
+   the world dispatch inside `eventOnPointer*`, which the engine calls before `UISystem`, so a
+   HUD button over a terminal screen lost its clicks to the document on the mesh. Screen-space
+   UI is drawn over the 3D world, so `eventOnPointerDown/Up/Move(..., bool world = true)` take
+   `world = false` from `Engine::system*`, which then calls `dispatchWorldPointer(..., bool
+   covered)` after `UISystem` (`covered`: a screen document or the component UI took the
+   event; the world documents only lose hover and key focus). A pointer a world document
+   captured still goes to it first. `UISystem::isPointerOverUI()` reports a hover over a
+   component UI element (its `eventOnPointerMove` returns true only while one is pressed).
+2. **Documents load before the view.** An exported game runs its start scene's scripts' `init`
+   in `Engine::systemInit`, before the platform loads the view (`systemViewLoaded`): the
+   phase-0 rule "no context without a view" made every `getElementById` in `init` return nil
+   there (the editor's play and the tests always had a view). Loading and layout need no GPU,
+   so `ensureContext`/`loadDocumentNow` work without a view (`update()` still waits for it);
+   the GPU call layout can make (`RmlRenderer::LoadTexture` for an `<img>`'s size) keeps the
+   size only, and the context's first render with a view makes RmlUi load its textures again
+   (`RmlRenderer::takeTexturesWithoutView`, `Rml::ReleaseTextures`).
+3. **anime selectors search every scene of the game**: the current scene's documents first, then
+   the running layers (`Engine::getSceneLayers()`), then the scenes created but not running yet
+   (`SceneManager::getScenePtrs()`: a scene's scripts start before the scene runs, and a HUD is
+   usually a child scene). §3.11's "the current scene" found nothing in `init` and in HUDs.
+4. **A data model's reload is part of `createDataModel`**: its `onUnload`/`onLoad` run before the
+   call returns (as for `UIDocument::load`), so handlers registered after it in `init` are not
+   called for it (they bound every listener twice).
+5. **Texture-mode contexts count everywhere the screen context does**: `releaseScriptState` (play
+   stop) updates them too, so the listeners of texture documents (Lua refs, C++ callbacks of a
+   script library unloaded right after the stop) go at once; `getNextUpdateDelay` is the
+   minimum over all contexts, so an animated document on a mesh keeps the editor redrawing.
+6. **Apple Debug builds** define `JASPERENGINE_HTMLUI_DEBUGGER` (Xcode Debug configurations of
+   the engine, app and `rmlui-*` targets), as CMake does for `CMAKE_BUILD_TYPE=Debug`.
+
 ---
 
 ## 4. Work packages

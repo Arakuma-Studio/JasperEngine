@@ -919,9 +919,13 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `querySelectorAll(sel)`, `createElement(tag)`, `createTextNode(text)`,
   `addEventListener(type, fn[, capture|{capture=, once=}])`, `removeEventListener(...)`,
   `createDataModel(name, table)` (returns the model proxy), `getDataModel(name)`,
-  `removeDataModel(name)`, `getTargetTexture()`, `getUIDocumentComponent()` (rw `filename`,
-  `sortOrder`, `enabled`, `interactive`; events `onLoad`, `onUnload`); events `onLoad`, `onUnload`; static
-  `UIDocument.setDebuggerVisible(b)`, `isDebuggerVisible()`, `getLiveLuaRefCount()`.
+  `removeDataModel(name)`, `getTargetTexture()` (TEXTURE mode: a `Framebuffer`, else nil),
+  `getUIDocumentComponent()` (rw `filename`, `sortOrder`, `enabled`, `interactive`,
+  `renderMode` (`UIDocumentRenderMode.SCREEN`/`TEXTURE`, applied at the next load: set
+  `needReload = true`), `textureWidth`, `textureHeight`, `inputSurface`, `pixelRatio`,
+  `needReload`; ro `loaded`; events `onLoad`, `onUnload`); events `onLoad`, `onUnload`;
+  static `UIDocument.setDebuggerVisible(b)`, `isDebuggerVisible()`, `getLiveLuaRefCount()`.
+  Getters load a document that is due, so `init` can query elements.
 - `UIElement` (weak handle; `nil` when a query finds nothing; any use but `isValid()` of a
   dead one raises): rw `id`, `className`, `textContent`, `innerHTML`, `value`, `checked`,
   `disabled`, `scrollTop`, `scrollLeft`; ro `tagName`, `parentElement`, `children`,
@@ -933,6 +937,11 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `insertBefore`, `removeChild`, `replaceChild`, `remove`, `cloneNode([deep])`, `focus`,
   `blur`, `click`, `scrollIntoView`, `scrollTo`, `scrollBy`, `getBoundingClientRect` (UIRect),
   `addEventListener`, `removeEventListener`, `dispatchEvent(type[, detail[, bubbles]])`.
+  `<lottie>` elements also: `play()`, `pause()`, `stop()`, `seek(seconds)`, `setFrame(f)`,
+  `setSpeed(s)`, `setDirection(1|-1)`, `setLoop(b)`, `setLoopCount(n)`,
+  `setSegment(from, to)`, `setMarker(name)`, `isPlaying()`, `getCurrentFrame()`,
+  `getTotalFrames()`, `getDuration()` (events `load`, `error`, `play`, `pause`, `loop`,
+  `complete`).
 - `classList:add(...)`, `remove(...)`, `toggle(name[, force])`, `contains(name)`;
   `style.fontSize` / `style["font-size"]` (computed value; assign the inline style, `""`/nil
   removes); `dataset.userName` (`data-user-name`).
@@ -945,6 +954,13 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `table.insert(model.items, t)`); top-level keys fixed; methods `onChange(name, fn)`,
   `removeOnChange(id)`, `dirty(name)`, `dirtyAll()`, `get(path)`, `set(path, v)`,
   `getName()`, `isValid()`. `data-for` indices are 0-based.
+- `anime` (global table, Anime.js v4): `anime.animate(targets, params)`,
+  `createTimeline(params)`, `createTimer(params)`, `createSpring(params)`,
+  `stagger(value[, params])`, `cubicBezier`, `steps`, `linear`, `irregular`, `anime.eases.*`,
+  `anime.utils.*`; targets are selectors (documents of every scene of the game), `UIElement`s,
+  plain tables or lists; animations have `play`, `pause`, `resume`, `restart`, `reverse`,
+  `seek(ms)`, `cancel`, `revert`, `complete`, `andThen(fn)` and `currentTime`, `progress`,
+  `paused`, `completed`, `cancelled`. Full reference: `jasper://docs/html-ui` ("Animation").
 
 ---
 
@@ -977,6 +993,7 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 | `CursorType` | `ARROW`, `IBEAM`, `CROSSHAIR`, `POINTING_HAND`, `RESIZE_EW`, `RESIZE_NS`, `RESIZE_NWSE`, `RESIZE_NESW`, `RESIZE_ALL`, `NOT_ALLOWED`, `WAIT`, `PROGRESS`, `HELP`, `GRAB`, `GRABBING` |
 | `MouseMode` | `NORMAL`, `HIDDEN`, `CAPTURED`, `CONFINED` |
 | `UIEventState` | `NOT_SET`, `ENABLED`, `DISABLED` |
+| `UIDocumentRenderMode` | `SCREEN`, `TEXTURE` |
 | `TextureFilter` | `NEAREST`, `LINEAR`, `NEAREST_MIPMAP_NEAREST`, `NEAREST_MIPMAP_LINEAR`, `LINEAR_MIPMAP_NEAREST`, `LINEAR_MIPMAP_LINEAR` |
 | `TextureWrap` | `REPEAT`, `MIRRORED_REPEAT`, `CLAMP_TO_EDGE`, `CLAMP_TO_BORDER` |
 | `PrimitiveType` | `TRIANGLES`, `TRIANGLE_STRIP`, `POINTS`, `LINES` |

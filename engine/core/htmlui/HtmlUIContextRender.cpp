@@ -86,6 +86,13 @@ bool HtmlUIContext::render(const Rect& viewRect){
         return false;
     }
 
+    // textures RmlUi made before the view existed have no GPU texture: it makes them again
+    // while it draws (as after a view loss)
+    if (renderer->takeTexturesWithoutView()){
+        Rml::ReleaseTextures(renderer.get());
+        updatedSinceRender = true;
+    }
+
     const Rml::Vector2i size((int)std::lround(viewRect.getWidth()), (int)std::lround(viewRect.getHeight()));
     const Rml::Vector2i contextDimensions = context->GetDimensions();
     if (size.x <= 0 || size.y <= 0 || contextDimensions.x <= 0 || contextDimensions.y <= 0 || !hasVisibleDocument(context)){

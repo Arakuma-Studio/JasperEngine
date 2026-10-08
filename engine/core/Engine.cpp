@@ -190,6 +190,10 @@ std::vector<Scene*> Engine::getScenesSnapshot(){
     return scenes;
 }
 
+std::vector<Scene*> Engine::getSceneLayers(){
+    return getScenesSnapshot();
+}
+
 void Engine::addSceneLayer(Scene* scene){
     if (Engine::isAsyncThread())
         drawSemaphore.acquire();
@@ -1386,10 +1390,12 @@ bool Engine::transformCoordPos(float& x, float& y){
     return ((x >= 0) && (x <= Engine::getCanvasWidth()) && (y >= 0) && (y <= Engine::getCanvasHeight()));
 }
 
-// ---- input. Order per event (phase-1 spec §3.6.1): HTML UI documents, top scene layer first
-// (the first scene whose document consumes stops the document walk); then the component UI of
-// every scene, except that a scene whose document took a press does not give it to its
-// component UI; then the game, unless the UI consumed it and ignoreEventsHandledByUI is set.
+// ---- input. Order per pointer event (phase-1 spec §3.6.1, §3.15): HTML UI screen documents,
+// top scene layer first (the first scene whose document consumes stops the document walk);
+// then the component UI of every scene, except that a scene whose document took a press does
+// not give it to its component UI; then the documents on meshes (texture mode), which the
+// screen-space UI covers; then the game, unless the UI consumed it and ignoreEventsHandledByUI
+// is set. Keys and text: documents, then the game, then the component UI.
 
 namespace {
 
@@ -1460,6 +1466,24 @@ namespace {
         return consumed;
     }
 
+    // Documents on meshes (texture mode) are part of the 3D world, which the screen documents
+    // and the component UI are drawn over: they are offered a pointer event after both, top
+    // layer first. covered: screen-space UI took the event (or a world document of a scene
+    // above did), so they only lose the pointer (hover, key focus). A pointer a world document
+    // holds since its press went to it with the screen documents (UIDocumentSystem::
+    // eventOnPointer*, capture). release: the looser gate of releases (a covered scene too).
+    bool dispatchToWorldDocuments(const std::vector<Scene*>& scenes, bool covered, bool release,
+                                  const std::function<bool(UIDocumentSystem*, bool)>& event){
+        bool consumed = false;
+        for (auto it = scenes.rbegin(); it != scenes.rend(); ++it){
+            if (release ? (*it)->getEnableUIEvents() == UIEventState::DISABLED : !canSendDocumentEvents(*it))
+                continue;
+            if (event((*it)->getSystem<UIDocumentSystem>().get(), covered || consumed))
+                consumed = true;
+        }
+        return consumed;
+    }
+
     // the game's and the component UI's character input: one wchar_t unit per call, as before
     // documents existed (two surrogates where wchar_t is 16 bits)
     void sendCharacterToGame(uint32_t codepoint, bool toComponentUI, bool toGame, const std::vector<Scene*>& scenes){
@@ -1493,9 +1517,10 @@ void Engine::systemTouchStart(int pointer, float x, float y){
         uiEventReceived = false;
         const std::vector<Scene*> scenes = getScenesSnapshot();
 
-        // documents are in front of the component UI: one they consume does not reach it
+        // screen documents are in front of the component UI (one they consume does not reach
+        // it), which is in front of the documents on meshes
         Scene* documentScene = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
-            return documents->eventOnPointerDown(pointer, D_MOUSE_BUTTON_1, x, y, Input::getModifiers(), true);
+            return documents->eventOnPointerDown(pointer, D_MOUSE_BUTTON_1, x, y, Input::getModifiers(), true, false);
         });
         if (documentScene)
             uiEventReceived = true;
@@ -1505,6 +1530,11 @@ void Engine::systemTouchStart(int pointer, float x, float y){
                 if (scene->getSystem<UISystem>()->eventOnPointerDown(x, y))
                     uiEventReceived = true;
         }
+
+        if (dispatchToWorldDocuments(scenes, uiEventReceived, false, [&](UIDocumentSystem* documents, bool covered){
+                return documents->dispatchWorldPointer(pointer, D_MOUSE_BUTTON_1, x, y, Input::getModifiers(), PointerPhase::DOWN, true, covered);
+            }))
+            uiEventReceived = true;
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onTouchStart.call(pointer, x, y);
@@ -1526,7 +1556,7 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
         const std::vector<Scene*> scenes = getScenesSnapshot();
 
         if (dispatchReleaseToDocuments(scenes, pointer, D_MOUSE_BUTTON_1, true, [&](UIDocumentSystem* documents){
-                return documents->eventOnPointerUp(pointer, D_MOUSE_BUTTON_1, x, y, Input::getModifiers(), true);
+                return documents->eventOnPointerUp(pointer, D_MOUSE_BUTTON_1, x, y, Input::getModifiers(), true, false);
             }))
             uiEventReceived = true;
 
@@ -1536,6 +1566,11 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
                 if (scene->getSystem<UISystem>()->eventOnPointerUp(x, y))
                     uiEventReceived = true;
         }
+
+        if (dispatchToWorldDocuments(scenes, uiEventReceived, true, [&](UIDocumentSystem* documents, bool covered){
+                return documents->dispatchWorldPointer(pointer, D_MOUSE_BUTTON_1, x, y, Input::getModifiers(), PointerPhase::UP, true, covered);
+            }))
+            uiEventReceived = true;
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onTouchEnd.call(pointer, x, y);
@@ -1558,7 +1593,7 @@ void Engine::systemTouchMove(int pointer, float x, float y){
 
         // only the document a finger started on tracks it, so every scene is offered the move
         for (UIDocumentSystem* documents : documentSystemsTopFirst(scenes)){
-            if (documents->eventOnPointerMove(pointer, x, y, Input::getModifiers(), true))
+            if (documents->eventOnPointerMove(pointer, x, y, Input::getModifiers(), true, false))
                 uiEventReceived = true;
         }
 
@@ -1567,6 +1602,11 @@ void Engine::systemTouchMove(int pointer, float x, float y){
                 if (scene->getSystem<UISystem>()->eventOnPointerMove(x, y))
                     uiEventReceived = true;
         }
+
+        if (dispatchToWorldDocuments(scenes, uiEventReceived, false, [&](UIDocumentSystem* documents, bool covered){
+                return documents->dispatchWorldPointer(pointer, -1, x, y, Input::getModifiers(), PointerPhase::MOVE, true, covered);
+            }))
+            uiEventReceived = true;
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onTouchMove.call(pointer, x, y);
@@ -1614,9 +1654,10 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
         uiEventReceived = false;
         const std::vector<Scene*> scenes = getScenesSnapshot();
 
-        // documents are in front of the component UI: one they consume does not reach it
+        // screen documents are in front of the component UI (one they consume does not reach
+        // it), which is in front of the documents on meshes
         Scene* documentScene = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
-            return documents->eventOnPointerDown(0, button, x, y, mods, false);
+            return documents->eventOnPointerDown(0, button, x, y, mods, false, false);
         });
         if (documentScene)
             uiEventReceived = true;
@@ -1627,6 +1668,11 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
                     if (scene->getSystem<UISystem>()->eventOnPointerDown(x, y))
                         uiEventReceived = true;
         }
+
+        if (dispatchToWorldDocuments(scenes, uiEventReceived, false, [&](UIDocumentSystem* documents, bool covered){
+                return documents->dispatchWorldPointer(0, button, x, y, mods, PointerPhase::DOWN, false, covered);
+            }))
+            uiEventReceived = true;
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onMouseDown.call(button, x, y, mods);
@@ -1649,7 +1695,7 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
         const std::vector<Scene*> scenes = getScenesSnapshot();
 
         if (dispatchReleaseToDocuments(scenes, 0, button, false, [&](UIDocumentSystem* documents){
-                return documents->eventOnPointerUp(0, button, x, y, mods, false);
+                return documents->eventOnPointerUp(0, button, x, y, mods, false, false);
             }))
             uiEventReceived = true;
 
@@ -1660,6 +1706,11 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
                     if (scene->getSystem<UISystem>()->eventOnPointerUp(x, y))
                         uiEventReceived = true;
         }
+
+        if (dispatchToWorldDocuments(scenes, uiEventReceived, true, [&](UIDocumentSystem* documents, bool covered){
+                return documents->dispatchWorldPointer(0, button, x, y, mods, PointerPhase::UP, false, covered);
+            }))
+            uiEventReceived = true;
 
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onMouseUp.call(button, x, y, mods);
@@ -1689,18 +1740,29 @@ void Engine::systemMouseMove(float x, float y, int mods){
                 documents->eventOnMouseLeave();
                 continue;
             }
-            if (documents->eventOnPointerMove(0, x, y, mods, false)){
+            if (documents->eventOnPointerMove(0, x, y, mods, false, false)){
                 if (!cursorDocuments)
                     cursorDocuments = documents;
                 uiEventReceived = true;
             }
         }
 
+        // over a component UI element (hovered, not only pressed) the world is covered
+        bool overComponentUI = false;
         for (Scene* scene : scenes){
-            if (canSendUIEvents(scene))
-                if (scene->getSystem<UISystem>()->eventOnPointerMove(x, y))
+            if (canSendUIEvents(scene)){
+                UISystem* ui = scene->getSystem<UISystem>().get();
+                if (ui->eventOnPointerMove(x, y))
                     uiEventReceived = true;
+                if (ui->isPointerOverUI())
+                    overComponentUI = true;
+            }
         }
+
+        if (dispatchToWorldDocuments(scenes, uiEventReceived || overComponentUI, false, [&](UIDocumentSystem* documents, bool covered){
+                return documents->dispatchWorldPointer(0, -1, x, y, mods, PointerPhase::MOVE, false, covered);
+            }))
+            uiEventReceived = true;
 
         // the component UI sets its cursor on every move; a document in front of it wins
         if (cursorDocuments){

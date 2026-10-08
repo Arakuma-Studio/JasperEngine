@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <set>
 
 #include <emscripten/emscripten.h>
 
@@ -147,7 +148,10 @@ EM_JS(void, jasper_ime_create, (), {
         "pointer-events:none;white-space:pre;z-index:0;";
     document.body.appendChild(ta);
 
-    var state = { composing: false, softKey: false };
+    // suppress: jasper_ime_focus(0) is clearing and blurring the textarea, which makes the
+    // browser commit a composition the engine already cancelled (compositionend, input)
+    var state = { composing: false, softKey: false, suppress: false };
+    var away = function() { return state.suppress || document.activeElement !== ta; };
     Module.jasperIme = state;
     // ccall copies strings onto the 4 MB stack
     var MAX_TEXT = 262144;
@@ -165,18 +169,20 @@ EM_JS(void, jasper_ime_create, (), {
     });
     ta.addEventListener("compositionend", function(e) {
         state.composing = false;
+        if (away()) { ta.value = ""; return; }
         var data = e.data || "";
         if (data.length > 0) ccall("jasper_web_text_input", null, ["string"], [clip(data)]);
         else ccall("jasper_web_ime_cancel", null, [], []);
         ta.value = "";
     });
     ta.addEventListener("beforeinput", function(e) {
-        if (state.composing || e.isComposing || !state.softKey) return;
+        if (state.composing || e.isComposing || !state.softKey || away()) return;
         // keys a soft keyboard sends without a key code of their own
         if (e.inputType === "deleteContentBackward") ccall("jasper_web_soft_key", null, ["number"], [259]);
         else if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") ccall("jasper_web_soft_key", null, ["number"], [257]);
     });
     ta.addEventListener("input", function(e) {
+        if (away()) { ta.value = ""; return; }
         if (state.composing || e.isComposing) return;
         if (e.inputType === "insertText" && e.data) ccall("jasper_web_text_input", null, ["string"], [clip(e.data)]);
         ta.value = "";
@@ -198,9 +204,14 @@ EM_JS(void, jasper_ime_focus, (int focus), {
     if (focus) {
         if (document.activeElement !== ta) ta.focus({ preventScroll: true });
     } else if (document.activeElement === ta) {
-        if (Module.jasperIme) Module.jasperIme.composing = false;
-        ta.value = "";
-        ta.blur();
+        var state = Module.jasperIme;
+        if (state) { state.composing = false; state.suppress = true; }
+        try {
+            ta.value = "";
+            ta.blur();
+        } finally {
+            if (state) state.suppress = false;
+        }
     }
 });
 
@@ -708,7 +719,15 @@ EM_BOOL JasperEngineWeb::key_callback(int eventType, const EmscriptenKeyboardEve
     // and its text comes through the IME textarea
     if (eventType == EMSCRIPTEN_EVENT_KEYDOWN)
         jasper_ime_set_soft_key(e->keyCode == 229);
-    if ((eventType == EMSCRIPTEN_EVENT_KEYDOWN || eventType == EMSCRIPTEN_EVENT_KEYUP) && e->keyCode == 229)
+    // Chrome gives the real key code to the up of a key whose down was 229: that up is the
+    // composition's too, so the engine never sees an up without its down
+    static std::set<int> imeKeys;
+    if (eventType == EMSCRIPTEN_EVENT_KEYDOWN && e->keyCode == 229){
+        if (code != 0)
+            imeKeys.insert(code);
+        return 0;
+    }
+    if (eventType == EMSCRIPTEN_EVENT_KEYUP && (e->keyCode == 229 || imeKeys.erase(code) > 0))
         return 0;
 
     // Ctrl/Cmd+V while a document text field has focus is left to the browser, whose paste

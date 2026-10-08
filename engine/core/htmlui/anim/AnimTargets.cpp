@@ -10,12 +10,14 @@
 #include "Log.h"
 #include "Scene.h"
 #include "component/UIDocumentComponent.h"
+#include "manager/SceneManager.h"
 #include "object/ui/UIElementInternal.h"
 #include "subsystem/UIDocumentSystem.h"
 
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 
+#include <algorithm>
 #include <cmath>
 #include <unordered_map>
 
@@ -197,19 +199,30 @@ AnimTargetList AnimTargets::fromSelector(const std::string& selector, const UIEl
         querySelectorAll(rootElement, selector, list);
         return list;
     }
-    Scene* scene = Engine::getScene();
-    if (!scene)
-        scene = Engine::getMainScene();
-    if (!scene)
-        return list;
-    std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
-    if (!system)
-        return list;
-    auto components = scene->getComponentArray<UIDocumentComponent>();
-    for (size_t i = 0; i < components->size(); i++){
-        Rml::ElementDocument* document = system->getDocument(components->getEntity(i));
-        if (document)
-            querySelectorAll(document, selector, list);
+    // The documents of every scene of the game, the current scene's first: a HUD is often a
+    // child scene layered over the scene whose script animates it, and a scene's scripts start
+    // (init) before the scene runs, so the game's created scenes (SceneManager) count too
+    std::vector<Scene*> scenes;
+    auto add = [&scenes](Scene* scene){
+        if (scene && std::find(scenes.begin(), scenes.end(), scene) == scenes.end())
+            scenes.push_back(scene);
+    };
+    add(Engine::getScene());
+    add(Engine::getMainScene());
+    for (Scene* layer : Engine::getSceneLayers())
+        add(layer);
+    for (Scene* created : SceneManager::getScenePtrs())
+        add(created);
+    for (Scene* scene : scenes){
+        std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
+        if (!system)
+            continue;
+        auto components = scene->getComponentArray<UIDocumentComponent>();
+        for (size_t i = 0; i < components->size(); i++){
+            Rml::ElementDocument* document = system->getDocument(components->getEntity(i));
+            if (document)
+                querySelectorAll(document, selector, list);
+        }
     }
     return list;
 }

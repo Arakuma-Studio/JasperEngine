@@ -271,6 +271,10 @@ void HtmlUIScriptState::reloadUsersOf(Entity owner, const std::string& name){
 
     if (uses){
         system->reloadDocument(owner, true);
+        // the reload is part of the createDataModel call (a script's init makes its models
+        // first, then registers onLoad): its onUnload/onLoad run now, as for UIDocument::load,
+        // not later for handlers registered after it
+        fireNotifications();
     }
 }
 
@@ -406,8 +410,13 @@ void UIDocumentSystem::releaseScriptState(){
         }
     }
     // the unloaded documents are destroyed now, and with them their listeners' Lua functions
+    // and C++ callbacks (the editor unloads a C++ script library right after the play stop);
+    // texture-mode documents unload in their own contexts (p1-rtt)
     if (context){
         getContext()->update();
+    }
+    for (HtmlUIContext* textureContext : getTextureContexts()){
+        textureContext->update();
     }
 
     if (scriptState){

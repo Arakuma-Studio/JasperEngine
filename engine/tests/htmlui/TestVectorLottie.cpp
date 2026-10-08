@@ -690,5 +690,6 @@ TEST_F(LottieElementTest, ControlApiOnOtherElementsLogsOnce){
     EXPECT_FALSE(anim.isValid());
     TestSystem::get().clearLogs();
     anim.pause();
-    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "UIElement: element no longer exists"), 1u);
+    // as every UIElement method on a dead handle: the [HTML UI] warning, once per method
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "[HTML UI] UIElement: element no longer exists"), 1u);
 }

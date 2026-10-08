@@ -106,8 +106,9 @@ namespace jasperengine {
         // the shared target of an element (invalid element: nullptr)
         static AnimTargetPtr fromElement(const UIElement& element);
         static AnimTargetList fromElements(const std::vector<UIElement>& elements);
-        // querySelectorAll on root's document subtree, or on every loaded document of the
-        // current scene (Engine::getScene()) when root is invalid; a bad selector logs a warning
+        // querySelectorAll on root's document subtree, or (root invalid) on every loaded document
+        // of the game's scenes: the current scene, the running layers, then the scenes created
+        // but not running yet (SceneManager); a bad selector logs a warning
         static AnimTargetList fromSelector(const std::string& selector, const UIElement& root);
         static AnimTargetList fromSelector(const std::string& selector);
         // the shared target animating an anime object's currentTime/progress (Timeline::sync)

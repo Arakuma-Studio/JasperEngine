@@ -726,3 +726,12 @@ Scene* SceneManager::getScenePtr(uint32_t id) {
 void SceneManager::removeScenePtr(uint32_t id) {
     scenePtrs.erase(id);
 }
+
+std::vector<Scene*> SceneManager::getScenePtrs() {
+    std::vector<Scene*> scenes;
+    scenes.reserve(scenePtrs.size());
+    for (const auto& pair : scenePtrs) {
+        scenes.push_back(pair.second);
+    }
+    return scenes;
+}
