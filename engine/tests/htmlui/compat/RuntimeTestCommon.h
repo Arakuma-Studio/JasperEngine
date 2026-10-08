@@ -22,6 +22,30 @@
 
 namespace jasperengine::test::compat {
 
+    // the recording interface, counting the stencil clip masks RmlUi asks for
+    class RuntimeRecording : public RecordingRenderInterface {
+    public:
+        void EnableClipMask(bool enable) override{
+            if (enable)
+                clipMaskEnables++;
+        }
+        void RenderToClipMask(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation) override{
+            (void)geometry;
+            (void)translation;
+            clipMaskRenders++;
+            if (operation == Rml::ClipMaskOperation::Intersect)
+                clipMaskIntersects++;
+        }
+        void beginFrame(){
+            RecordingRenderInterface::beginFrame();
+            clipMaskEnables = clipMaskRenders = clipMaskIntersects = 0;
+        }
+
+        int clipMaskEnables = 0;
+        int clipMaskRenders = 0;
+        int clipMaskIntersects = 0;
+    };
+
     class RuntimeContextTest : public ::testing::Test {
     protected:
         static constexpr int width = 800;
@@ -106,7 +130,7 @@ namespace jasperengine::test::compat {
             frame();
         }
 
-        RecordingRenderInterface recording;
+        RuntimeRecording recording;
         Rml::Context* context = nullptr;
         Rml::ElementDocument* document = nullptr;
         std::string name;

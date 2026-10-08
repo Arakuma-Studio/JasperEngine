@@ -74,6 +74,9 @@ namespace jasperengine::htmlui {
     // viewBox and preserveAspectRatio apply) into premultiplied RGBA8, rows top first.
     // Empty on a parse error or a size outside 1..16384 (logged).
     JASPERENGINE_API std::vector<uint8_t> rasterizeSvg(std::string_view xml, int width, int height);
+    // The SVG's intrinsic size in CSS px (LunaSVG's: width/height, else the viewBox);
+    // false when it cannot be parsed or has no size.
+    JASPERENGINE_API bool svgIntrinsicSize(std::string_view xml, float& width, float& height);
 
 }
 

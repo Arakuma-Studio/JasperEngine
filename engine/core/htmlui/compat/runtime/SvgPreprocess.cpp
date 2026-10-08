@@ -427,3 +427,14 @@ std::vector<uint8_t> jasperengine::htmlui::rasterizeSvg(std::string_view xml, in
     }
     return rgba;
 }
+
+bool jasperengine::htmlui::svgIntrinsicSize(std::string_view xml, float& width, float& height){
+    width = height = 0.0f;
+    LunaSVGRuntime::ensureFonts();
+    std::unique_ptr<lunasvg::Document> document = lunasvg::Document::loadFromData(xml.data(), xml.size());
+    if (!document)
+        return false;
+    width = document->width();
+    height = document->height();
+    return width > 0.0f && height > 0.0f;
+}
