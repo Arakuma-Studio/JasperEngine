@@ -1037,3 +1037,28 @@ TEST_F(IntegrationTest, ScriptsUseDocumentsBeforeTheViewLoads){
     EXPECT_EQ(luaNumber("clicks"), 1);
     lua("clicks = nil");
 }
+
+TEST_F(IntegrationTest, AnimatedTextureDocumentKeepsTheEditorRedrawing){
+    // The editor redraws a stopped scene while UIDocumentSystem::getNextUpdateDelay() is 0
+    // (CSS animations, a playing Lottie in edit mode): a TEXTURE-mode document animates in its
+    // own context, which counts too
+    fixture.reset(new SceneFixture());
+    UIDocumentSystem& documents = *fixture->getScene().getSystem<UIDocumentSystem>();
+    EXPECT_TRUE(std::isinf(documents.getNextUpdateDelay()));
+
+    // a still screen document and an animated (Lottie, @keyframes) texture-mode one
+    screenDocument.reset(new UIDocument(fixture->addDocument("p1/texture_form.html")));
+    textureDocument.reset(new UIDocument(fixture->addDocument("p1/integration/combined.html", 1)));
+    UIDocumentComponent& component = texture().getComponent<UIDocumentComponent>();
+    component.renderMode = UIDocumentRenderMode::TEXTURE;
+    component.textureWidth = 640;
+    component.textureHeight = 360;
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    drawFramesAt(time, 2, 0.1);
+    EXPECT_EQ(documents.getNextUpdateDelay(), 0.0);
+
+    // hidden: nothing to redraw for
+    texture().hide();
+    drawFramesAt(time, 2, 0.1);
+    EXPECT_TRUE(std::isinf(documents.getNextUpdateDelay()));
+}
