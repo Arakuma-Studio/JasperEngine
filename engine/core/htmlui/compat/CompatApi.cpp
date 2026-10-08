@@ -192,7 +192,8 @@ std::string jasperengine::htmlui::compat::cssPropertyName(std::string_view rcssP
             if (!exact || std::strlen(row.name) < std::strlen(exact->name))
                 exact = &row;
         }else if (output.size() > rcssProperty.size() && output.substr(0, rcssProperty.size()) == rcssProperty &&
-                  (output[rcssProperty.size()] == ' ' || output[rcssProperty.size()] == ';' || output[rcssProperty.size()] == ',')){
+                  (output[rcssProperty.size()] == ' ' || output[rcssProperty.size()] == ';' || output[rcssProperty.size()] == ',' ||
+                   output[rcssProperty.size()] == ':')){
             if (!prefix || std::strlen(row.name) < std::strlen(prefix->name))
                 prefix = &row;
         }

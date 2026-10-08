@@ -30,22 +30,21 @@ namespace {
         return std::tie(a.file, a.line, a.column, a.code) < std::tie(b.file, b.line, b.column, b.code);
     }
 
+    // every run of whitespace (line breaks included) as one space, trimmed
     std::string oneLine(const std::string& text){
         std::string result;
         result.reserve(text.size());
-        bool lastSpace = false;
+        bool pendingSpace = false;
         for (char c : text){
-            if (c == '\n' || c == '\r' || c == '\t'){
-                if (!lastSpace)
-                    result += ' ';
-                lastSpace = true;
-            }else{
-                result += c;
-                lastSpace = (c == ' ');
+            if (c == '\n' || c == '\r' || c == '\t' || c == ' '){
+                pendingSpace = !result.empty();
+                continue;
             }
+            if (pendingSpace)
+                result += ' ';
+            pendingSpace = false;
+            result += c;
         }
-        while (!result.empty() && result.back() == ' ')
-            result.pop_back();
         return result;
     }
 

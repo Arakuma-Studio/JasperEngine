@@ -86,7 +86,7 @@ div { display: block; }
 #a::before { content: "x"; display: block; width: 3px; height: 3px; }
 :is(#b) { width: 5px; }
 :root { width: 7px; }
-#s { position: relative; overflow: scroll; width: 20px; height: 20px; }
+#s { position: relative; margin-left: 20px; margin-top: 20px; overflow: scroll; width: 20px; height: 20px; }
 #tall { height: 100px; }
 #f { position: fixed; top: 2px; left: 2px; width: 1px; height: 1px; }
 </style>

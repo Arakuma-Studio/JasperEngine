@@ -100,7 +100,8 @@ namespace {
             text.erase(pos, 1);
         while ((pos = text.find("  ")) != std::string::npos)
             text.erase(pos, 1);
-        while (!text.empty() && isSpace(text.back()))
+        // the diagnostic text has no final period
+        while (!text.empty() && (isSpace(text.back()) || text.back() == '.'))
             text.pop_back();
         return text;
     }

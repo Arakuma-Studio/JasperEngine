@@ -477,7 +477,16 @@ namespace {
         void report(DiagnosticSink* sink) const {
             if (!sink)
                 return;
+            // a bad string or url already explains the declaration or rule it breaks
+            std::vector<uint32_t> badTokens;
             for (const ParseError& error : errors_){
+                if (error.kind == ParseError::Kind::BadString || error.kind == ParseError::Kind::BadUrl)
+                    badTokens.push_back(error.offset);
+            }
+            for (const ParseError& error : errors_){
+                if ((error.kind == ParseError::Kind::InvalidRule || error.kind == ParseError::Kind::InvalidDeclaration) &&
+                    std::find(badTokens.begin(), badTokens.end(), error.offset) != badTokens.end())
+                    continue;
                 const SourceRef at{file, error.offset, error.length};
                 const std::string_view text = error.length > 0 && error.offset >= base && error.offset - base < css.size()
                     ? css.substr(error.offset - base, std::min<size_t>(error.length, css.size() - (error.offset - base)))

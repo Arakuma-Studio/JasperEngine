@@ -75,6 +75,9 @@ std::string UserAgentStyle::virtualPath(const ForkFeatures& fork){
 }
 
 std::shared_ptr<const UserAgentStyle::Sheet> UserAgentStyle::get(const ForkFeatures& fork){
+    // the sheet's own images (check marks, arrows) come with it
+    registerInternalFiles();
+
     Cache& c = cache();
     std::lock_guard<std::mutex> lock(c.mutex);
     const auto found = c.sheets.find(fork.bits());
