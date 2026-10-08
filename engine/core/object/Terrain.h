@@ -20,6 +20,11 @@ namespace jasperengine{
         Terrain(Scene* scene, Entity entity);
         virtual ~Terrain();
 
+        Terrain(const Terrain& rhs);
+        Terrain& operator=(const Terrain& rhs);
+        Terrain(Terrain&& rhs) noexcept;
+        Terrain& operator=(Terrain&& rhs) noexcept;
+
         bool createTerrain();
 
         void setHeightMap(const std::string& path);

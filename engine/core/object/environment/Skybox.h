@@ -14,6 +14,11 @@ namespace jasperengine{
         Skybox(Scene* scene, Entity entity);
         virtual ~Skybox();
 
+        Skybox(const Skybox& rhs);
+        Skybox& operator=(const Skybox& rhs);
+        Skybox(Skybox&& rhs) noexcept;
+        Skybox& operator=(Skybox&& rhs) noexcept;
+
         bool load();
 
         void setTextures(const std::string& id,

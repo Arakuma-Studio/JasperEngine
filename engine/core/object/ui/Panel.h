@@ -21,6 +21,11 @@ namespace jasperengine{
         Panel(Scene* scene, Entity entity);
         virtual ~Panel();
 
+        Panel(const Panel& rhs);
+        Panel& operator=(const Panel& rhs);
+        Panel(Panel&& rhs) noexcept;
+        Panel& operator=(Panel&& rhs) noexcept;
+
         bool hasHeader() const;
 
         Image getHeaderImageObject() const;

@@ -16,6 +16,11 @@ namespace jasperengine{
         Progressbar(Scene* scene, Entity entity);
         virtual ~Progressbar();
 
+        Progressbar(const Progressbar& rhs);
+        Progressbar& operator=(const Progressbar& rhs);
+        Progressbar(Progressbar&& rhs) noexcept;
+        Progressbar& operator=(Progressbar&& rhs) noexcept;
+
         bool hasFill() const;
         Image getFillObject() const;
 

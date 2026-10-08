@@ -21,6 +21,11 @@ namespace jasperengine {
         AudioSource(Scene* scene, Entity entity);
         virtual ~AudioSource();
 
+        AudioSource(const AudioSource& rhs);
+        AudioSource& operator=(const AudioSource& rhs);
+        AudioSource(AudioSource&& rhs) noexcept;
+        AudioSource& operator=(AudioSource&& rhs) noexcept;
+
         int loadSound(const std::string& filename);
         void destroySound();
 

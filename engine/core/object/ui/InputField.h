@@ -20,6 +20,11 @@ namespace jasperengine{
         InputField(Scene* scene, Entity entity);
         virtual ~InputField();
 
+        InputField(const InputField& rhs);
+        InputField& operator=(const InputField& rhs);
+        InputField(InputField&& rhs) noexcept;
+        InputField& operator=(InputField&& rhs) noexcept;
+
         bool hasText() const;
         Text getTextObject() const;
         Polygon getCursorObject() const;

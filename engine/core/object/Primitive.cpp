@@ -16,6 +16,11 @@ Primitive::Primitive(Scene* scene, Entity entity): Mesh(scene, entity){
 Primitive::~Primitive(){
 }
 
+Primitive::Primitive(const Primitive& rhs) = default;
+Primitive& Primitive::operator=(const Primitive& rhs) = default;
+Primitive::Primitive(Primitive&& rhs) noexcept = default;
+Primitive& Primitive::operator=(Primitive&& rhs) noexcept = default;
+
 void Primitive::createPlane(float width, float depth){
     scene->getSystem<MeshSystem>()->createPlane(getComponent<MeshComponent>(), width, depth);
 }

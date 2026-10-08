@@ -18,6 +18,11 @@ namespace jasperengine{
         LineRenderer(Scene* scene, Entity entity);
         virtual ~LineRenderer();
 
+        LineRenderer(const LineRenderer& rhs);
+        LineRenderer& operator=(const LineRenderer& rhs);
+        LineRenderer(LineRenderer&& rhs) noexcept;
+        LineRenderer& operator=(LineRenderer&& rhs) noexcept;
+
         bool load();
 
         void setMaxLines(unsigned int maxLines);

@@ -28,6 +28,11 @@ Model::~Model(){
     }
 }
 
+Model::Model(const Model& rhs) = default;
+Model& Model::operator=(const Model& rhs) = default;
+Model::Model(Model&& rhs) noexcept = default;
+Model& Model::operator=(Model&& rhs) noexcept = default;
+
 bool Model::loadModel(const std::string& filename){
     std::string ext = FileData::getFilePathExtension(filename);
 

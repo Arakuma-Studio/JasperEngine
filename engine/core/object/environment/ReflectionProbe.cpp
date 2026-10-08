@@ -15,6 +15,11 @@ ReflectionProbe::ReflectionProbe(Scene* scene, Entity entity): GameObject(scene,
 ReflectionProbe::~ReflectionProbe(){
 }
 
+ReflectionProbe::ReflectionProbe(const ReflectionProbe& rhs) = default;
+ReflectionProbe& ReflectionProbe::operator=(const ReflectionProbe& rhs) = default;
+ReflectionProbe::ReflectionProbe(ReflectionProbe&& rhs) noexcept = default;
+ReflectionProbe& ReflectionProbe::operator=(ReflectionProbe&& rhs) noexcept = default;
+
 void ReflectionProbe::invalidateCapture(){
     ReflectionProbeComponent& probe = getComponent<ReflectionProbeComponent>();
 
