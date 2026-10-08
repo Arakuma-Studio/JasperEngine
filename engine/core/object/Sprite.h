@@ -11,11 +11,18 @@
 #include "Mesh.h"
 #include "ShadowCaster2D.h"
 
+#include <memory>
+
 namespace jasperengine{
     class JASPERENGINE_API Sprite: public Mesh{
 
     private:
-        SpriteAnimation* animation;
+        // The action startAnimation makes (it owns an entity of its own). Copies of the
+        // wrapper share it, as they view the same sprite: whichever drives the animation
+        // drives that one, and it goes with the last wrapper holding it.
+        std::shared_ptr<SpriteAnimation> animation;
+
+        SpriteAnimation& ensureAnimation();
 
         void applyFrameRect(Rect frameRect);
 
@@ -30,6 +37,8 @@ namespace jasperengine{
 
         Sprite(const Sprite& rhs);
         Sprite& operator=(const Sprite& rhs);
+        Sprite(Sprite&& rhs) noexcept;
+        Sprite& operator=(Sprite&& rhs) noexcept;
 
         bool createSprite();
 
