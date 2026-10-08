@@ -8,7 +8,9 @@
 
 #include "htmlui/compat/runtime/RuntimeRegistry.h"
 
+#include "htmlui/compat/runtime/AnimationFill.h"
 #include "htmlui/compat/runtime/CompatProperties.h"
+#include "htmlui/compat/runtime/FocusTracker.h"
 #include "htmlui/compat/runtime/HtmlBorderImageDecorator.h"
 #include "htmlui/compat/runtime/HtmlLayerDecorator.h"
 #include "htmlui/compat/runtime/HtmlShapeDecorator.h"
@@ -58,6 +60,8 @@ void jasperengine::htmlui::compat::registerRuntime(){
 
 void jasperengine::htmlui::compat::releaseRuntime(){
     Runtime& r = runtime();
+    FocusTracker::reset();
+    AnimationFill::reset();
     SvgElementHook::uninstall();
     CompatProperties::reset();
     r.layer.reset();
@@ -66,5 +70,9 @@ void jasperengine::htmlui::compat::releaseRuntime(){
     r.registered = false;
 }
 
-void jasperengine::htmlui::compat::updateRuntime(Rml::Context*){
+void jasperengine::htmlui::compat::updateRuntime(Rml::Context* context){
+    // phase 3's FocusPseudoClasses and AnimationLonghands turn these off (§3.6): the gates
+    // go here when the features exist
+    FocusTracker::update(context);
+    AnimationFill::update(context);
 }

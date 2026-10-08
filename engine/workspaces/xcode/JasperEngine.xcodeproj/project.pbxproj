@@ -1750,6 +1750,12 @@
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		434F4D5005F674476E935FC5 /* FocusTracker.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5052C81C4A091F36D6 /* FocusTracker.h */; };
+		434F4D506A42D41FB27BA228 /* FocusTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D504D89272287F4A7D2 /* FocusTracker.cpp */; };
+		434F4D508AD9DC8644133218 /* FocusTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D504D89272287F4A7D2 /* FocusTracker.cpp */; };
+		434F4D50D7C015741EBF9343 /* AnimationFill.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50C5421D9613E95570 /* AnimationFill.h */; };
+		434F4D50AC93327B4FFFE6A8 /* AnimationFill.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E8C538450613E6C2 /* AnimationFill.cpp */; };
+		434F4D50D2112CB8992F3D7E /* AnimationFill.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E8C538450613E6C2 /* AnimationFill.cpp */; };
 		434F4D50DBDDFD9589AAD0DE /* HtmlShapeDecorator.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5088DD1B7D6C8F10E1 /* HtmlShapeDecorator.h */; };
 		434F4D500C2E5FAB7B5CBBFD /* HtmlShapeDecorator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D506676FE50C81F4AF8 /* HtmlShapeDecorator.cpp */; };
 		434F4D50B99A062B61577BD4 /* HtmlShapeDecorator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D506676FE50C81F4AF8 /* HtmlShapeDecorator.cpp */; };
@@ -4241,6 +4247,10 @@
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		434F4D5052C81C4A091F36D6 /* FocusTracker.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FocusTracker.h; sourceTree = "<group>"; };
+		434F4D504D89272287F4A7D2 /* FocusTracker.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FocusTracker.cpp; sourceTree = "<group>"; };
+		434F4D50C5421D9613E95570 /* AnimationFill.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimationFill.h; sourceTree = "<group>"; };
+		434F4D50E8C538450613E6C2 /* AnimationFill.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimationFill.cpp; sourceTree = "<group>"; };
 		434F4D5088DD1B7D6C8F10E1 /* HtmlShapeDecorator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlShapeDecorator.h; sourceTree = "<group>"; };
 		434F4D506676FE50C81F4AF8 /* HtmlShapeDecorator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlShapeDecorator.cpp; sourceTree = "<group>"; };
 		434F4D50349037416CF308B7 /* HtmlLayerDecorator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlLayerDecorator.h; sourceTree = "<group>"; };
@@ -7486,6 +7496,10 @@
 				434F4D50349037416CF308B7 /* HtmlLayerDecorator.h */,
 				434F4D506676FE50C81F4AF8 /* HtmlShapeDecorator.cpp */,
 				434F4D5088DD1B7D6C8F10E1 /* HtmlShapeDecorator.h */,
+				434F4D50E8C538450613E6C2 /* AnimationFill.cpp */,
+				434F4D50C5421D9613E95570 /* AnimationFill.h */,
+				434F4D504D89272287F4A7D2 /* FocusTracker.cpp */,
+				434F4D5052C81C4A091F36D6 /* FocusTracker.h */,
 			);
 			path = runtime;
 			sourceTree = "<group>";
@@ -8347,6 +8361,8 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				434F4D5005F674476E935FC5 /* FocusTracker.h in Headers */,
+				434F4D50D7C015741EBF9343 /* AnimationFill.h in Headers */,
 				434F4D50DBDDFD9589AAD0DE /* HtmlShapeDecorator.h in Headers */,
 				434F4D50DFCD57733196760E /* HtmlLayerDecorator.h in Headers */,
 				434F4D506229ECCECAC0F039 /* HtmlBorderImageDecorator.h in Headers */,
@@ -10032,6 +10048,8 @@
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				434F4D508AD9DC8644133218 /* FocusTracker.cpp in Sources */,
+				434F4D50D2112CB8992F3D7E /* AnimationFill.cpp in Sources */,
 				434F4D50B99A062B61577BD4 /* HtmlShapeDecorator.cpp in Sources */,
 				434F4D503DFE2DE405C4B6BF /* HtmlLayerDecorator.cpp in Sources */,
 				434F4D5042483C9FCBB3F019 /* HtmlBorderImageDecorator.cpp in Sources */,
@@ -10319,6 +10337,8 @@
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				434F4D506A42D41FB27BA228 /* FocusTracker.cpp in Sources */,
+				434F4D50AC93327B4FFFE6A8 /* AnimationFill.cpp in Sources */,
 				434F4D500C2E5FAB7B5CBBFD /* HtmlShapeDecorator.cpp in Sources */,
 				434F4D5005F1DCD8EE6B68FA /* HtmlLayerDecorator.cpp in Sources */,
 				434F4D50A971D58BE2E0F131 /* HtmlBorderImageDecorator.cpp in Sources */,
