@@ -102,6 +102,150 @@ component (the Hierarchy's *Create > UI > UI Document*).
 - Images: PNG, JPG (and the other formats the engine loads) and SVG files (LunaSVG, see
   "SVG and Lottie"); Lottie animations as `.json` or `.lottie`.
 
+## Writing HTML/CSS for the engine
+
+Documents are **standard HTML5 and CSS**, written as for a browser (phase 2). The engine parses
+the HTML like a browser does (no XML strictness: unclosed `<p>`, `<br>`, unquoted attributes,
+`&nbsp;` and every named entity are fine), applies a **user-agent stylesheet** equivalent to
+Chromium's defaults, and rewrites the CSS for its layout engine. A page written for Chrome at
+the canvas size looks the same in the engine, within the limits listed below: the golden
+pages of the engine's test suite (a main menu, a HUD, a settings screen, a confirm dialog,
+unstyled HTML, a gallery of 48 CSS rewrites) are compared pixel by pixel and box by box with
+Chromium 153.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="menu.css">
+</head>
+<body>
+  <div class="panel">
+    <h1>Void Chronicles</h1>
+    <button class="btn primary"><i data-lucide="play"></i> Continue</button>
+    <button class="btn"><i data-lucide="settings"></i> Settings</button>
+  </div>
+  <script type="text/lua">
+    document:querySelector(".btn.primary"):addEventListener("click", function() print("continue") end)
+  </script>
+</body>
+</html>
+```
+
+```css
+:root { --primary: #7c3aed; --glass: rgba(255, 255, 255, 0.08); }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', sans-serif; min-height: 100vh; display: flex; align-items: center;
+       justify-content: center; background: linear-gradient(135deg, #0f0c29, #302b63); color: #fff; }
+.panel { width: 420px; padding: 40px; background: var(--glass); backdrop-filter: blur(12px);
+         border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 16px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37); }
+h1 { font-family: 'Orbitron', sans-serif; text-shadow: 0 0 20px rgba(124, 58, 237, 0.8); }
+.btn { width: 100%; padding: 12px 20px; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 10px;
+       background: rgba(255, 255, 255, 0.06); color: #fff; font: inherit; transition: all .3s ease; }
+.btn:hover { background: linear-gradient(90deg, var(--primary), #4f46e5); }
+.btn.primary { background: linear-gradient(135deg, var(--primary), #4f46e5); }
+```
+
+### The page
+
+- `<html>` is the document's root element and `<body>` its child, as in a browser: `html {}`,
+  `:root {}`, `body {}`, `rem` and `html { font-size: 62.5% }` behave as in CSS. The page
+  covers the canvas (CSS `px` = canvas pixels, `100vw` x `100vh` = the canvas); media queries
+  see the canvas size.
+- The background is **transparent**, not white: the UI draws over the game. Give `html` or
+  `body` a background for a full-screen menu (a `body` background covers the whole canvas, as
+  in CSS).
+- Default styles come from the user-agent stylesheet: block and inline display, heading sizes
+  and margins, paragraph and list margins, `body { margin: 8px }`, list markers, tables, links
+  (`#0000ee`, underlined), and form controls that look like Chromium's light theme (buttons,
+  text fields, checkboxes and radios in the accent color, sliders, `<select>`, `<progress>`),
+  classic 15 px scrollbars and a focus ring for keyboard focus. Every rule you write beats
+  every user-agent rule, whatever its specificity, as in a browser.
+- `accent-color` colors checkboxes, radios, sliders and progress bars; `appearance: none`
+  removes a control's own look so your `background`, `border` and `::-webkit-slider-thumb`
+  styles draw alone.
+- `:focus` and `:focus-visible` match the focused element only (`:focus-within` its
+  ancestors too); Tab moves the focus through buttons, links, inputs and `tabindex="0"`.
+
+### Scripts, icons, remote files
+
+- **No JavaScript.** `<script>` with JavaScript is not run (an error diagnostic says so, with a
+  tailored hint for known libraries); `on*` attributes too. Use `<script type="text/lua">`
+  (inline or `src="menu.lua"`): it runs after the document loads with `document` bound to the
+  `UIDocument` and the element API of "Scripting" (`querySelector`, `addEventListener`,
+  `classList`, `style`, ...), and Lua errors point at the HTML line. `<noscript>` content shows.
+- **Lucide icons are built in**: `<i data-lucide="play"></i>` becomes the inline SVG
+  `lucide.createIcons()` would make, colored by the CSS `color` (`currentColor`), sized by
+  CSS `width`/`height`. The Lucide `<script>` is not needed (an info says so).
+- **Remote files** (Google Fonts, CDN stylesheets, images, LottieFiles) are never fetched at
+  runtime. The editor imports them into `assets/htmlui-imports/` (fonts as static TTF, with
+  their license files) and writes `assets/htmlui-imports/manifest.json`, which the runtime
+  reads to serve each URL from the project: keep the `https://` URLs in your HTML/CSS as they
+  are. Imports run automatically when a document loads in the editor; MCP `import_files` and
+  `jasperengine-editor import-ui --project <dir> <html>` run them on demand. A remote URL that
+  was not imported is an `HTMLUI-IMP-0001` error and falls back (fonts: the next family;
+  images: not drawn).
+- Fonts: `@font-face` with TTF/OTF `url()`s (WOFF/WOFF2 sources are skipped; an imported
+  Google Font is TTF). `font-family` lists fall back in order; generic families map to the
+  built-in Roboto.
+- SVG: `<img src="icon.svg">` and inline `<svg>` draw as vectors; an SVG whose paint is
+  `currentColor` follows the element's CSS `color` (also through `<img>`, unlike a browser).
+
+### What the engine rewrites
+
+You write standard CSS; the engine translates it. Most of it is exact; where it is not, a
+diagnostic (below) says what changed.
+
+| You write | The engine |
+|---|---|
+| any CSS color: `rgba(0,0,0,.5)`, `rgb(0 0 0 / 50%)`, `hsl()`, `oklch()`, `color-mix()`, 148 names, `#rgba` | exact (hex) |
+| `border: 1px solid #fff`, per-side borders, `border-color: red green` | exact; `dashed`/`dotted`/`double` draw solid (warning), `inset`/`outset`/`groove`/`ridge` with Chromium's shades |
+| `background:` shorthands, several layers, `url()` with `cover`/`contain`/`repeat`/`space`/`round`/positions, gradients incl. `repeating-*` and `-webkit-` forms | exact |
+| `border-radius: 50%` | exact on squares and pills (a stadium on other rectangles); other `%` radii dropped until phase 3 |
+| `outline`, `outline-offset` | a ring around the box (the offset gap is filled with the outline color) |
+| `text-shadow`, `-webkit-text-stroke` | text effects (glow for blurred shadows) |
+| `transition: all .3s ease`, `animation: x .4s ease forwards`, `@keyframes` | times in `ms` work; CSS easings use the nearest built-in curve; `forwards`/`both` keep the end state |
+| `font: 600 14px/1.5 'Inter', sans-serif`, quoted family names | exact |
+| `:root` variables, `var()` | exact, also inside shorthands and gradients |
+| `@media (width >= 600px)`, `prefers-color-scheme`, `prefers-reduced-motion`, `@supports`, `@layer`, `@import`, CSS nesting (`&`), vendor prefixes | evaluated or flattened (`UIDocument:setColorScheme("dark")`, `setReducedMotion(true)` switch the two preferences) |
+| `inherit`, `initial`, `unset`, `!important` | exact for inherited properties and `!important` against equal or lower specificity (a warning names a more specific rule that still wins) |
+| `calc()`, `min()`, `max()`, `clamp()` | computed when the units allow (`calc(40px + 2rem)`); a `%` mixed with `px` keeps the `%` part (warning) until phase 3 |
+| `vmin`/`vmax`, `dvh`/`svh`, `ch`/`ex` | exact / `vh` / em multiples |
+| `clip-path` shapes, `mask-image`, `object-fit`, `image-rendering: pixelated` | exact |
+| `::-webkit-scrollbar(-thumb/-track)`, `scrollbar-width`, `scrollbar-color`, `::placeholder`, `::-webkit-slider-thumb` | the engine's scrollbar, placeholder and slider parts |
+| `position: fixed` | positioned like `absolute` against the page (no scrolling page in a game UI) until phase 3; `sticky` acts as `relative` |
+
+Not yet (phase 3 adds them; until then a warning names each use): `display: grid` (laid out as
+a wrapping flex row: fixed column counts work, placement does not), `::before`/`::after`
+(the rule is dropped: use a real element), `:has()`, `order`, `aspect-ratio`, `opacity` as a
+group (each child fades separately), `line-height: normal` (1.2: set `line-height` where text
+must line up exactly), a `<select>` sized to its longest option (128 px unless you set a
+width), a `<legend>` cut into its fieldset's border. Not planned: `<video>`, `<canvas>`,
+`<iframe>` (a placeholder box: render a scene into a texture instead), JavaScript.
+
+### Reading the diagnostics
+
+Every problem, loss or approximation is reported with the place in **your** file:
+
+```text
+[HTML UI] ui/menu.css:42:3: warning: 'font-variant-numeric' is not supported; dropped (fix: use a monospace font for aligned digits) [HTMLUI-CSS-0002]
+[HTML UI] ui/menu.html: 0 errors, 1 warning, 7 notes
+```
+
+- Format: `path:line:column: severity: message (fix: suggestion) [code]`. The code is stable
+  (`HTMLUI-<area>-<number>`, areas `GEN HTML CSS SEL AT IMP SVG`): search the support matrix
+  for it.
+- **Errors** mean something the page needs is missing (a file, an import, JavaScript);
+  **warnings** mean it draws differently from Chrome; **notes** (info) record exact rewrites
+  and are counted in the per-document summary line, listed one by one with the editor
+  setting *Verbose HTML UI diagnostics*.
+- Where to read them: the Console (each document logs its lines and a summary when it loads),
+  `UIDocument:getDiagnostics()` from Lua or C++ (each with `code`, `severity`, `message`,
+  `suggestion`, `file`, `line`, `column`), and the Inspector of the UI Document. Anything
+  RmlUi itself rejects in the translated CSS comes back as `HTMLUI-GEN-0006` at your line.
+
 ## Writing documents (RCSS)
 
 The parser is XML: close every tag (`<div/>`, `<img src="a.png"/>`, `<br/>`), quote every
