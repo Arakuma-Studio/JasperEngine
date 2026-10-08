@@ -1,22 +1,727 @@
 /*
- * The HTML UI user-agent stylesheet, in standard CSS: the browser defaults every document
- * starts from (phase-2 spec 3.10). The compat rewriter turns it into RCSS once per process
- * (the virtual file @htmlui/ua.rcss, linked first by every document with
- * origin="user-agent"). Type, attribute, class and pseudo-class selectors only, never ids:
- * every author rule outranks it through the #htmlui-root band.
+ * The HTML UI user-agent stylesheet (phase-2 spec 3.10): the browser defaults every document
+ * starts from, in standard CSS. The compat rewriter turns it into RCSS once per process and
+ * fork-feature set (the virtual file @htmlui/ua.rcss, linked first by every document with
+ * origin="user-agent").
  *
- * Minimal version (p2-core): the display of the HTML elements. p2-ua replaces it with the
- * full sheet of 3.10, calibrated against Chromium.
+ * Sources: the HTML Living Standard rendering section (15) and Chromium 153's html.css and
+ * light form-control theme, adapted to RmlUi and calibrated against the Chromium reference
+ * renders of the golden pages (engine/tests/htmlui/golden/compat/reference).
+ *
+ * Rules:
+ * - type, attribute, class and pseudo-class selectors only, never ids: every author rule
+ *   outranks this sheet through the #htmlui-root band (3.8);
+ * - no selector may need the fork (no :is(), ::before, ...): the sheet must rewrite with zero
+ *   diagnostics in every fork-feature state (compat_ua_test.cpp);
+ * - RmlUi's internal widget elements (scrollbarvertical, sliderbar, selectarrow, fill, ...) are
+ *   styled by their RML names, which authors reach through ::-webkit-scrollbar and friends;
+ * - control looks go through the companions of 3.9.8 (--html-accent, --html-check,
+ *   --html-control-bg, --html-control-border, --html-select-arrow, --html-thumb), always read
+ *   with the Chromium value as fallback, so `accent-color` and `appearance: none` work.
+ *
+ * Where Chromium's layout box and its painted look differ (form controls lay out a 2px
+ * border and paint a 1px one), the sheet keeps Chromium's border-box size and paints the 1px
+ * look: 1px border plus 1px more padding.
  */
 
-html, body, address, article, aside, blockquote, center, details, dialog, dd, div, dl, dt,
-fieldset, figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr,
-legend, li, listing, main, menu, nav, ol, optgroup, p, plaintext, pre, search, section,
-summary, ul, xmp {
+/* 1. Root and body ---------------------------------------------------------------------- */
+
+/* The HTML root is the RML document element (body#htmlui-root). The canvas is transparent:
+   a UI draws over the game, unlike the browser's white page. */
+html {
     display: block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    min-height: 100%;
+    font-family: serif;
+    font-size: 16px;
+    font-weight: normal;
+    font-style: normal;
+    line-height: normal;
+    color: CanvasText;
 }
+
+body {
+    display: block;
+    margin: 8px;
+}
+
+/* 2. Display ------------------------------------------------------------------------------ */
 
 [hidden], area, base, datalist, head, link, meta, noembed, noframes, param, rp, script,
 style, template, title {
     display: none;
+}
+
+dialog:not([open]) {
+    display: none;
+}
+
+address, article, aside, blockquote, center, details, dialog, dd, div, dl, dt, fieldset,
+figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, legend,
+listing, main, menu, nav, ol, optgroup, p, plaintext, pre, search, section, summary, ul,
+xmp {
+    display: block;
+}
+
+li {
+    display: list-item;
+}
+
+ruby, rt {
+    display: inline;
+}
+
+table {
+    display: table;
+}
+
+thead, tbody, tfoot {
+    display: table-row-group;
+}
+
+tr {
+    display: table-row;
+}
+
+td, th {
+    display: table-cell;
+}
+
+col {
+    display: table-column;
+}
+
+colgroup {
+    display: table-column-group;
+}
+
+caption {
+    display: block;
+}
+
+img, svg, lottie, input, button, select, textarea, progress, meter {
+    display: inline-block;
+}
+
+input[type="hidden"] {
+    display: none;
+}
+
+/* 3. Spacing and type --------------------------------------------------------------------- */
+
+p, dl {
+    margin: 1em 0;
+}
+
+blockquote, figure {
+    margin: 1em 40px;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-weight: bold;
+}
+
+h1 {
+    font-size: 2em;
+    margin: 0.67em 0;
+}
+
+h2 {
+    font-size: 1.5em;
+    margin: 0.83em 0;
+}
+
+h3 {
+    font-size: 1.17em;
+    margin: 1em 0;
+}
+
+h4 {
+    margin: 1.33em 0;
+}
+
+h5 {
+    font-size: 0.83em;
+    margin: 1.67em 0;
+}
+
+h6 {
+    font-size: 0.67em;
+    margin: 2.33em 0;
+}
+
+ul, ol, menu {
+    margin: 1em 0;
+    padding-left: 40px;
+}
+
+ul, menu {
+    list-style-type: disc;
+}
+
+ol {
+    list-style-type: decimal;
+}
+
+/* nested lists: no vertical margin, deeper bullets */
+ul ul, ul ol, ul menu, ul dl, ol ul, ol ol, ol menu, ol dl, menu ul, menu ol, menu menu,
+menu dl, dl ul, dl ol, dl menu, dl dl {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+ul ul, ol ul, menu ul, ul menu, ol menu, menu menu {
+    list-style-type: circle;
+}
+
+ul ul ul, ul ol ul, ul menu ul, ol ul ul, ol ol ul, ol menu ul, menu ul ul, menu ol ul,
+menu menu ul, ul ul menu, ol ul menu, menu ul menu, ul ol menu, ol ol menu, menu ol menu,
+ul menu menu, ol menu menu, menu menu menu {
+    list-style-type: square;
+}
+
+dd {
+    margin-left: 40px;
+}
+
+pre, xmp, listing, plaintext {
+    font-family: monospace;
+    white-space: pre;
+    margin: 1em 0;
+}
+
+code, kbd, samp, tt {
+    font-family: monospace;
+}
+
+b, strong {
+    font-weight: bold;
+}
+
+i, em, cite, var, dfn, address {
+    font-style: italic;
+}
+
+u, ins, abbr[title], acronym[title] {
+    text-decoration: underline;
+}
+
+s, strike, del {
+    text-decoration: line-through;
+}
+
+/* Chromium's `smaller` / `larger` from a 16px parent */
+small {
+    font-size: 0.8333em;
+}
+
+big {
+    font-size: 1.2em;
+}
+
+sub {
+    vertical-align: sub;
+    font-size: 0.8333em;
+}
+
+sup {
+    vertical-align: super;
+    font-size: 0.8333em;
+}
+
+rt {
+    font-size: 50%;
+}
+
+mark {
+    background-color: Mark;
+    color: MarkText;
+}
+
+center {
+    text-align: center;
+}
+
+nobr {
+    white-space: nowrap;
+}
+
+/* `border: 1px inset gray` as Chromium paints it */
+hr {
+    overflow: hidden;
+    margin: 0.5em auto;
+    height: 0;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #9a9a9a #eeeeee #eeeeee #9a9a9a;
+    color: gray;
+}
+
+a[href] {
+    color: LinkText;
+    text-decoration: underline;
+    cursor: pointer;
+    tab-index: auto;
+}
+
+/* 4. Tables ------------------------------------------------------------------------------- */
+
+table {
+    box-sizing: border-box;
+    border-spacing: 2px;
+}
+
+thead, tbody, tfoot, tr, td, th {
+    vertical-align: middle;
+}
+
+td, th {
+    padding: 1px;
+}
+
+th {
+    font-weight: bold;
+    text-align: center;
+}
+
+caption {
+    text-align: center;
+}
+
+/* 5. Form controls (Chromium 153, light theme) ---------------------------------------------- */
+
+input, textarea, select, button {
+    margin: 0;
+    font-size: 13.333px;
+    font-family: system-ui;
+    font-weight: normal;
+    font-style: normal;
+    line-height: normal;
+    color: FieldText;
+    letter-spacing: normal;
+    text-transform: none;
+    text-shadow: none;
+    text-align: left;
+    tab-index: auto;
+    cursor: default;
+}
+
+/* text-like inputs: Chromium lays out `padding: 1px 2px; border: 2px inset` and paints a 1px
+   #767676 frame with 2px corners; 177px is the content width of size=20 at 13.333px */
+input {
+    padding: 2px 3px;
+    border: 1px solid #767676;
+    border-radius: 2px;
+    background-color: Field;
+    width: 177px;
+    cursor: text;
+    white-space: pre;
+    overflow: hidden;
+}
+
+input::placeholder, textarea::placeholder {
+    color: #757575;
+}
+
+textarea {
+    font-family: monospace;
+    padding: 2px;
+    border: 1px solid #767676;
+    border-radius: 2px;
+    background-color: Field;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow: auto;
+    cursor: text;
+}
+
+input:focus, textarea:focus {
+    caret-color: #000000;
+}
+
+input:disabled, textarea:disabled {
+    background-color: #efefef4d;
+    border-color: #7676764d;
+    color: #545454;
+    cursor: default;
+}
+
+/* buttons: `padding: 1px 6px; border: 2px outset ButtonBorder` laid out, painted as a 1px
+   #767676 frame with 2px corners */
+button, input[type="button"], input[type="submit"], input[type="reset"], input[type="file"] {
+    box-sizing: border-box;
+    width: auto;
+    padding: 2px 7px;
+    border: 1px solid #767676;
+    border-radius: 2px;
+    background-color: ButtonFace;
+    color: ButtonText;
+    text-align: center;
+    white-space: pre;
+    cursor: default;
+}
+
+button {
+    white-space: normal;
+}
+
+button:enabled:hover, input[type="button"]:enabled:hover, input[type="submit"]:enabled:hover,
+input[type="reset"]:enabled:hover {
+    background-color: #e5e5e5;
+    border-color: #4f4f4f;
+}
+
+button:enabled:active, input[type="button"]:enabled:active, input[type="submit"]:enabled:active,
+input[type="reset"]:enabled:active {
+    background-color: #f5f5f5;
+    border-color: #8d8d8d;
+}
+
+button:disabled, input[type="button"]:disabled, input[type="submit"]:disabled,
+input[type="reset"]:disabled, input[type="file"] {
+    background-color: #efefef4d;
+    border-color: #7676764d;
+    color: #1010104d;
+}
+
+input[type="image"] {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background-color: transparent;
+    width: auto;
+    cursor: pointer;
+}
+
+/* checkbox and radio: 13x13, painted like Chromium's theme */
+input[type="checkbox"], input[type="radio"] {
+    box-sizing: border-box;
+    width: 13px;
+    height: 13px;
+    padding: 0;
+    border-width: 1px;
+    border-style: solid;
+    border-color: var(--html-control-border, #767676);
+    border-radius: 2px;
+    background-color: var(--html-control-bg, #ffffff);
+    cursor: default;
+}
+
+input[type="checkbox"] {
+    margin: 3px 3px 3px 4px;
+}
+
+input[type="radio"] {
+    margin: 3px 3px 0 5px;
+    border-radius: 9999px;
+}
+
+input[type="checkbox"]:checked {
+    border-color: var(--html-accent, #0075ff);
+    background-color: var(--html-accent, #0075ff);
+    decorator: var(--html-check, html-layer("/@htmlui/ua/check.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll));
+}
+
+/* the checked radio: an accent ring, a white gap and an accent dot */
+input[type="radio"]:checked {
+    border-color: var(--html-accent, #0075ff);
+    background-color: var(--html-accent, #0075ff);
+    box-shadow: inset 0 0 0 2px #ffffff;
+}
+
+input[type="checkbox"]:disabled, input[type="radio"]:disabled {
+    border-color: #7676764d;
+}
+
+input[type="checkbox"]:checked:disabled, input[type="radio"]:checked:disabled {
+    border-color: #0075ff4d;
+    background-color: #0075ff4d;
+}
+
+/* range: 129x16 with a 2px margin; RmlUi's slider widget parts */
+input[type="range"] {
+    box-sizing: border-box;
+    width: 129px;
+    height: 16px;
+    margin: 2px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background-color: transparent;
+    cursor: default;
+}
+
+input[type="range"] slidertrack {
+    margin-top: 5px;
+    height: 6px;
+    border: 1px solid #b2b2b2;
+    border-radius: 3px;
+    background-color: #efefef;
+}
+
+input[type="range"] sliderprogress {
+    margin-top: 5px;
+    height: 6px;
+    border-radius: 3px;
+    background-color: var(--html-accent, #0075ff);
+}
+
+input[type="range"] sliderbar {
+    width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    background-color: var(--html-accent, #0075ff);
+    decorator: var(--html-thumb, none);
+}
+
+input[type="range"] sliderarrowdec, input[type="range"] sliderarrowinc {
+    display: none;
+}
+
+input[type="range"]:disabled sliderbar, input[type="range"]:disabled sliderprogress {
+    background-color: #c5c5c5;
+}
+
+/* progress (and meter, mapped to progress): 10em x 1em; the fill is RmlUi's `fill` */
+progress {
+    box-sizing: border-box;
+    width: 10em;
+    height: 1em;
+    vertical-align: -0.2em;
+    border: 1px solid #b2b2b2;
+    border-radius: 8px;
+    background-color: #efefef;
+}
+
+progress fill {
+    border-radius: 8px;
+    background-color: var(--html-accent, #0075ff);
+}
+
+/* select: a white box with a 1px frame and Chromium's chevron */
+select {
+    box-sizing: border-box;
+    padding: 1px 0 1px 4px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: var(--html-control-border, #767676);
+    border-radius: 2px;
+    background-color: var(--html-control-bg, #ffffff);
+    color: FieldText;
+    white-space: pre;
+    cursor: default;
+}
+
+select selectvalue {
+    padding-right: 4px;
+}
+
+select selectarrow {
+    width: 16px;
+    decorator: var(--html-select-arrow, html-layer("/@htmlui/ua/arrow-down.svg" 10px 6px 3px 50% no-repeat no-repeat padding-box border-box scroll));
+}
+
+select selectbox {
+    margin-top: 1px;
+    border: 1px solid #767676;
+    background-color: Field;
+}
+
+select selectbox option {
+    padding: 0 4px 1px 4px;
+    white-space: nowrap;
+}
+
+select selectbox option:hover, select selectbox option:checked {
+    background-color: #1e90ff;
+    color: #ffffff;
+}
+
+/* optgroup labels become disabled options (3.7.3) */
+select selectbox option:disabled {
+    font-weight: bold;
+    color: FieldText;
+}
+
+select:disabled {
+    border-color: #7676764d;
+    color: #6d6d6d;
+}
+
+/* `border: 2px groove ThreeDFace`: Chromium paints the outer half dark at the top and left */
+fieldset {
+    margin: 0 2px;
+    padding: 0.35em 0.75em 0.625em;
+    border-width: 2px;
+    border-style: solid;
+    border-color: #9b9b9b #efefef #efefef #9b9b9b;
+}
+
+legend {
+    padding: 0 2px;
+}
+
+label {
+    cursor: default;
+}
+
+/* details and summary: the disclosure triangle is the summary's list marker */
+summary {
+    list-style-type: disclosure-closed;
+    cursor: default;
+    tab-index: auto;
+}
+
+details[open] > summary {
+    list-style-type: disclosure-open;
+}
+
+details:not([open]) > :not(summary) {
+    display: none;
+}
+
+/* a non-modal open dialog, centered by its auto margins (dialogs have no modal backdrop) */
+dialog {
+    position: absolute;
+    left: 0;
+    right: 0;
+    margin: auto;
+    padding: 1em;
+    border: 3px solid;
+    background-color: Canvas;
+    color: CanvasText;
+}
+
+/* 6. Focus ring ------------------------------------------------------------------------------
+   Chromium's `outline: auto`: a 2px dark ring outside the box; text fields show it on any
+   focus. The rewriter draws outlines as a box-shadow ring (3.9.7) that keeps the element's
+   own shadows. */
+
+:focus-visible {
+    outline: auto 1px;
+}
+
+html:focus-visible, body:focus-visible {
+    outline: none;
+}
+
+input:focus, textarea:focus, select:focus-visible {
+    outline: auto 1px;
+    outline-offset: 0;
+}
+
+input[type="button"]:focus, input[type="submit"]:focus, input[type="reset"]:focus,
+input[type="checkbox"]:focus, input[type="radio"]:focus, input[type="range"]:focus,
+input[type="image"]:focus, input[type="file"]:focus {
+    outline: none;
+}
+
+input[type="button"]:focus-visible, input[type="submit"]:focus-visible,
+input[type="reset"]:focus-visible, input[type="range"]:focus-visible,
+input[type="image"]:focus-visible {
+    outline: auto 1px;
+    outline-offset: 0;
+}
+
+input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible {
+    outline: auto 1px;
+    outline-offset: 2px;
+}
+
+/* 7. Scrollbars (Chromium 153's classic 15px scrollbar) ------------------------------------- */
+
+scrollbarvertical {
+    width: 15px;
+    background-color: #fcfcfc;
+}
+
+scrollbarhorizontal {
+    height: 15px;
+    background-color: #fcfcfc;
+}
+
+scrollbarvertical sliderbar {
+    margin: 0 3px;
+    min-height: 20px;
+    border-radius: 4.5px;
+    background-color: #8b8b8b;
+}
+
+scrollbarhorizontal sliderbar {
+    margin: 3px 0;
+    min-width: 20px;
+    border-radius: 4.5px;
+    background-color: #8b8b8b;
+}
+
+scrollbarvertical sliderbar:hover, scrollbarhorizontal sliderbar:hover {
+    background-color: #6e6e6e;
+}
+
+scrollbarvertical sliderbar:active, scrollbarhorizontal sliderbar:active {
+    background-color: #545454;
+}
+
+scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
+    width: 15px;
+    height: 15px;
+}
+
+scrollbarhorizontal sliderarrowdec, scrollbarhorizontal sliderarrowinc {
+    width: 15px;
+    height: 15px;
+}
+
+scrollbarvertical sliderarrowdec {
+    decorator: html-layer("/@htmlui/ua/scroll-up.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll);
+}
+
+scrollbarvertical sliderarrowinc {
+    decorator: html-layer("/@htmlui/ua/scroll-down.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll);
+}
+
+scrollbarhorizontal sliderarrowdec {
+    decorator: html-layer("/@htmlui/ua/scroll-left.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll);
+}
+
+scrollbarhorizontal sliderarrowinc {
+    decorator: html-layer("/@htmlui/ua/scroll-right.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll);
+}
+
+scrollbarcorner {
+    background-color: #fcfcfc;
+}
+
+/* 8. Companion resets: these companions must not inherit (3.9.8) ------------------------- */
+
+* {
+    --html-box-shadow: 0 0 0 0 #0000;
+    --html-outline-shadow: 0 0 0 0 #0000;
+    --html-bg-layers: linear-gradient(#0000, #0000);
+    --html-border-image: linear-gradient(#0000, #0000);
+}
+
+/* 9. Placeholders of unsupported elements (video, canvas, iframe, ...: 3.7.3) ------------- */
+
+.htmlui-unsupported {
+    display: inline-block;
+    width: 300px;
+    height: 150px;
+    background-color: #8080801a;
+    border: 1px solid #80808066;
+}
+
+.htmlui-unsupported[data-html-tag="audio"] {
+    width: 300px;
+    height: 54px;
+}
+
+/* 10. Text selection in inputs ------------------------------------------------------------- */
+
+selection {
+    background-color: #3390ff;
+    color: #ffffff;
 }
