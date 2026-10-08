@@ -84,7 +84,7 @@ namespace jasperengine{
         void setReferenceSize(int width, int height);
         void clearReferenceSize();
 
-        bool loadDocumentNow(Entity entity);           // UIDocument::load: synchronous when the view is loaded
+        bool loadDocumentNow(Entity entity);           // UIDocument::load, getters in init: synchronous, also before the view loads
         bool isDocumentLoaded(Entity entity) const;
         UIElement getElementById(Entity entity, const std::string& id) const;
         UIElement getDocumentBody(Entity entity) const;

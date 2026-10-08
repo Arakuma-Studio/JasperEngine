@@ -82,9 +82,8 @@ bool UIDocumentSystem::ensureContext(){
     if (context)
         return true;
 
-    if (!Engine::isViewLoaded())
-        return false;
-
+    // no view needed: loading and layout use no GPU (a scene's scripts run init before the
+    // platform loads the view in exported games; the textures follow once it exists)
     if (!acquired){
         acquired = HtmlUI::acquire();
         if (!acquired)
@@ -290,8 +289,9 @@ bool UIDocumentSystem::loadDocumentNow(Entity entity){
     if (!document)
         return false;
 
-    // without a view the next update after systemViewLoaded loads it
-    if (!Engine::isViewLoaded() || document->filename.empty())
+    // before the view too: a scene's scripts query their documents in init, which exported
+    // games run before the platform loads the view
+    if (document->filename.empty())
         return false;
 
     if (!ensureContext())

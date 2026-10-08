@@ -662,6 +662,16 @@ HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, 
     texture->width = width;
     texture->height = height;
 
+    // no GPU yet (scripts laid a document out before the platform loaded the view): the size
+    // only, RmlUi makes the texture again once the view exists
+    if (!Engine::isViewLoaded()){
+        texture->dead = true;
+        texturesWithoutView = true;
+        HtmlUITexture* result = texture.release();
+        liveTextures.insert(result);
+        return result;
+    }
+
     void* data[1] = {const_cast<uint8_t*>(rgba)};
     size_t size[1] = {(size_t)width * (size_t)height * 4};
     gpuCreateCount++;
@@ -1955,6 +1965,12 @@ bool RmlRenderer::drawUnpremultiplied(RmlRenderTarget& source, FramebufferRender
     }
     copyPass.endRenderPass();
     return drawn;
+}
+
+bool RmlRenderer::takeTexturesWithoutView(){
+    const bool taken = texturesWithoutView;
+    texturesWithoutView = false;
+    return taken;
 }
 
 void RmlRenderer::releaseGpuResources(){

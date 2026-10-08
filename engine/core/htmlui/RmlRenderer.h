@@ -210,6 +210,10 @@ namespace jasperengine {
         // GPU buffers, textures and framebuffers this renderer created over its life (performance tests)
         uint64_t getGpuCreateCount() const;
         size_t getGeometryBufferCount() const;  // GPU buffers holding geometry (pages, dedicated, free)
+        // RmlUi made textures before the view existed (a document laid out by a scene's script
+        // in init: <img> sizes load their file): they have no GPU texture and draw nothing
+        // until RmlUi makes them again (HtmlUIContext::render, Rml::ReleaseTextures). True once
+        bool takeTexturesWithoutView();
         // the GPU texture of a handle (nullptr when unknown or dead)
         TextureRender* getTextureRender(Rml::TextureHandle texture) const;
         // sokol ids of every buffer and image the renderer owns right now
@@ -334,6 +338,7 @@ namespace jasperengine {
         uint64_t frameAppliesStart = 0;
         size_t lastFrameDrawCount = 0;
         uint64_t gpuCreateCount = 0;
+        bool texturesWithoutView = false;
 
         // GPU objects
         std::shared_ptr<ShaderRender> geometryShader;     // HTMLUI Tex (untextured draws bind white)

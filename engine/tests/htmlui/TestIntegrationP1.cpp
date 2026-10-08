@@ -1002,3 +1002,38 @@ TEST_F(IntegrationTest, OneClockPinsCssAnimationsLottieAndAnime){
     EXPECT_NEAR(c.lottie - a.lottie, 15.0f, 1.0f);
     EXPECT_NEAR(c.box - a.box, 12.5f, 1.0f);
 }
+
+TEST_F(IntegrationTest, ScriptsUseDocumentsBeforeTheViewLoads){
+    // An exported game creates its start scene and runs the scripts' init in init(), before
+    // the platform has a view (Engine::systemInit, then systemViewLoaded). The documents load
+    // there (layout without the GPU), so init can query elements, bind listeners, make data
+    // models and animate; their textures are made once the view exists
+    Engine::systemViewDestroyed();
+    ASSERT_FALSE(Engine::isViewLoaded());
+    fixture.reset(new SceneFixture());
+    screenDocument.reset(new UIDocument(fixture->addDocument("p1/integration/combined.html")));
+    setGlobal("screenDoc", screen());
+    EXPECT_EQ(lua(R"(
+        clicks = 0
+        model = screenDoc:createDataModel("hud", { gold = 3 })
+        screenDoc:getElementById("buy"):addEventListener("click", function(event) clicks = clicks + 1 end)
+        anim = anime.animate("#box", { translateX = 100, duration = 1000 })
+    )"), "");
+    EXPECT_TRUE(screen().isLoaded());
+    EXPECT_EQ(screen().getElementById("gold").getTextContent(), "3");
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "no target found"), 0u);
+
+    Engine::systemViewLoaded();
+    Engine::systemViewChanged();
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    Screen frame;
+    ASSERT_TRUE(capture(frame, 2));
+    // the image (loaded during the layout before the view) and the SVG drew
+    EXPECT_GT(frame.countColor({16, 16, 136, 106}, 255, 255, 255, 12), 200u);
+    EXPECT_TRUE(frame.is(484, 40, 0, 255, 0, 12));
+    // the listener bound in init works
+    EXPECT_TRUE(documentSystem(fixture->getScene()).eventOnPointerDown(0, D_MOUSE_BUTTON_LEFT, 210, 220, 0, false));
+    EXPECT_TRUE(documentSystem(fixture->getScene()).eventOnPointerUp(0, D_MOUSE_BUTTON_LEFT, 210, 220, 0, false));
+    EXPECT_EQ(luaNumber("clicks"), 1);
+    lua("clicks = nil");
+}
