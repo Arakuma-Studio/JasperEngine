@@ -81,6 +81,18 @@ typedef enum {
 }
 lxb_dom_node_type_t;
 
+/*
+ * JasperEngine patch (engine/libs/lexbor/PATCHES.md): the source range of the token a node
+ * was created from, inside the buffer given to lxb_html_document_parse() in one call. NULL
+ * for nodes no token of the input created (implied html/head/body/tbody/..., adoption-agency
+ * clones, nodes created through the DOM API). Set by html/tree.c.
+ */
+#ifndef LXB_DOM_NODE_USER_VARIABLES
+#define LXB_DOM_NODE_USER_VARIABLES                                            \
+    const lxb_char_t *jasper_src_begin;                                        \
+    const lxb_char_t *jasper_src_end;
+#endif
+
 struct lxb_dom_node {
     lxb_dom_event_target_t event_target;
 

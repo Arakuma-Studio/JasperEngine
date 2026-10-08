@@ -60,6 +60,10 @@ set_target_properties(lexbor PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED ON)
 if(NOT MSVC)
     # keep every lxb_*/lexbor_* symbol inside libjasperengine when the editor builds it shared
     target_compile_options(lexbor PRIVATE -fvisibility=hidden)
+    # ceil() in core/diyfp.c
+    if(NOT APPLE AND NOT EMSCRIPTEN)
+        target_link_libraries(lexbor PRIVATE m)
+    endif()
 endif()
 
 if(EMSCRIPTEN AND EMSCRIPTEN_THREAD_SUPPORT)

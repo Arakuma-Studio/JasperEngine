@@ -435,6 +435,16 @@ lxb_html_tree_create_element_for_token(lxb_html_tree_t *tree,
     lxb_status_t status;
     lxb_dom_element_t *element = lxb_dom_interface_element(node);
 
+    /* JasperEngine patch (PATCHES.md): the start tag of an element made from the token the
+     * tokenizer produced; implied elements come from stack copies (fake tokens) and
+     * adoption-agency clones carry a base element: both keep NULL */
+    if (tree->tkz_ref != NULL && token == tree->tkz_ref->token
+        && token->base_element == NULL)
+    {
+        node->jasper_src_begin = token->begin;
+        node->jasper_src_end = token->end;
+    }
+
     if (token->base_element == NULL) {
         status = lxb_html_tree_append_attributes(tree, element, token, ns);
     }
@@ -485,6 +495,14 @@ lxb_html_tree_append_attributes(lxb_html_tree_t *tree,
 
         attr->node.local_name = token_attr->name->attr_id;
         attr->node.ns = ns;
+
+        /* JasperEngine patch (PATCHES.md): name to the end of the value (or of the name) */
+        if (tree->tkz_ref != NULL && token == tree->tkz_ref->token) {
+            attr->node.jasper_src_begin = token_attr->name_begin;
+            attr->node.jasper_src_end = (token_attr->value_end != NULL)
+                                        ? token_attr->value_end
+                                        : token_attr->name_end;
+        }
 
         /* Fix for adjust MathML/SVG attributes */
         if (tree->before_append_attr != NULL) {
@@ -768,6 +786,14 @@ lxb_html_tree_insert_character_for_data(lxb_html_tree_t *tree,
 
     lxb_dom_interface_text(text)->char_data.data = *str;
 
+    /* JasperEngine patch (PATCHES.md): the text token the node's first characters came from */
+    if (tree->tkz_ref != NULL && tree->tkz_ref->token != NULL
+        && tree->tkz_ref->token->tag_id == LXB_TAG__TEXT)
+    {
+        text->jasper_src_begin = tree->tkz_ref->token->begin;
+        text->jasper_src_end = tree->tkz_ref->token->end;
+    }
+
     if (ret_node != NULL) {
         *ret_node = text;
     }
@@ -811,6 +837,12 @@ lxb_html_tree_insert_comment(lxb_html_tree_t *tree,
                                             tree->document->dom_document.text);
     if (tree->status != LXB_STATUS_OK) {
         return NULL;
+    }
+
+    /* JasperEngine patch (PATCHES.md): the comment token */
+    if (tree->tkz_ref != NULL && token == tree->tkz_ref->token) {
+        node->jasper_src_begin = token->begin;
+        node->jasper_src_end = token->end;
     }
 
     lxb_html_tree_insert_node(pos, node, ipos);
