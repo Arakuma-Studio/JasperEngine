@@ -406,8 +406,13 @@ void UIDocumentSystem::releaseScriptState(){
         }
     }
     // the unloaded documents are destroyed now, and with them their listeners' Lua functions
+    // and C++ callbacks (the editor unloads a C++ script library right after the play stop);
+    // texture-mode documents unload in their own contexts (p1-rtt)
     if (context){
         getContext()->update();
+    }
+    for (HtmlUIContext* textureContext : getTextureContexts()){
+        textureContext->update();
     }
 
     if (scriptState){
