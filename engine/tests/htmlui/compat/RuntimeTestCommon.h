@@ -54,6 +54,12 @@ namespace jasperengine::test::compat {
         // context and every element is a block unless the style says otherwise.
         Rml::ElementDocument* show(const std::string& body, const std::string& style = "",
                                    const std::string& url = "compat/runtime/test.rml"){
+            // one document at a time
+            if (document){
+                context->UnloadAllDocuments();
+                context->Update();
+                document = nullptr;
+            }
             const std::string rml = "<rml><head><style>body { display: block; width: " + std::to_string(width) +
                                     "px; height: " + std::to_string(height) + "px; font-family: sans-serif; font-size: 16px; "
                                     "color: #000000; } div, p, ul, ol, li, summary, details, dialog, form, button { display: block; } " +
