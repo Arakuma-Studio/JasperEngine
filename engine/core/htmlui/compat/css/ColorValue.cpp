@@ -354,25 +354,26 @@ namespace {
             }
 
             std::vector<ComponentValue> args;
+            args.reserve(value.children.size());
             if (!substituteVars(value.children, args, 0))
                 return std::nullopt;
 
             if (name == "rgb" || name == "rgba")
-                return parseRgb(args, depth);
+                return parseRgb(std::move(args), depth);
             if (name == "hsl" || name == "hsla")
-                return parseHslHwb(args, ColorSpace::Hsl, depth);
+                return parseHslHwb(std::move(args), ColorSpace::Hsl, depth);
             if (name == "hwb")
-                return parseHslHwb(args, ColorSpace::Hwb, depth);
+                return parseHslHwb(std::move(args), ColorSpace::Hwb, depth);
             if (name == "lab")
-                return parseLabLike(args, ColorSpace::Lab, depth);
+                return parseLabLike(std::move(args), ColorSpace::Lab, depth);
             if (name == "lch")
-                return parseLabLike(args, ColorSpace::Lch, depth);
+                return parseLabLike(std::move(args), ColorSpace::Lch, depth);
             if (name == "oklab")
-                return parseLabLike(args, ColorSpace::Oklab, depth);
+                return parseLabLike(std::move(args), ColorSpace::Oklab, depth);
             if (name == "oklch")
-                return parseLabLike(args, ColorSpace::Oklch, depth);
+                return parseLabLike(std::move(args), ColorSpace::Oklch, depth);
             if (name == "color")
-                return parseColorFunction(args, depth);
+                return parseColorFunction(std::move(args), depth);
             if (name == "color-mix")
                 return parseColorMix(args, depth);
             if (name == "light-dark")
