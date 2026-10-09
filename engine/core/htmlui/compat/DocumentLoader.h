@@ -153,6 +153,10 @@ namespace jasperengine::htmlui::compat {
         static std::string fragmentToRml(std::string_view html, const std::string& chunkName, std::vector<Diagnostic>& diagnostics,
                                          const FragmentOptions& options);
 
+        // the same RML (the per-compile virtual directory of the sheets aside): a restyle can
+        // replace one by the other
+        static bool sameRml(const CompatDocument& a, const CompatDocument& b);
+
         static void clearCache();
         static size_t cacheSize();
 

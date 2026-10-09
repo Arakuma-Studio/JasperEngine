@@ -69,11 +69,9 @@ namespace {
 
         // text that may contain line breaks: each new line maps to `ref`
         void append(const std::string& text, SourceRef ref){
-            for (char c : text){
-                out += c;
-                if (c == '\n')
-                    lineRefs.push_back(ref);
-            }
+            out += text;
+            for (size_t at = text.find('\n'); at != std::string::npos; at = text.find('\n', at + 1))
+                lineRefs.push_back(ref);
         }
 
         void newline(SourceRef ref){
@@ -176,6 +174,8 @@ namespace {
 }
 
 std::string RmlSerializer::escapeText(const std::string& text){
+    if (text.find_first_of("&<>") == std::string::npos)
+        return text;
     std::string out;
     out.reserve(text.size());
     for (char c : text){
@@ -190,6 +190,8 @@ std::string RmlSerializer::escapeText(const std::string& text){
 }
 
 std::string RmlSerializer::escapeAttribute(const std::string& value){
+    if (value.find_first_of("&<>\"\n\r\t") == std::string::npos)
+        return value;
     std::string out;
     out.reserve(value.size());
     for (char c : value){

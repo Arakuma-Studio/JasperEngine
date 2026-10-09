@@ -11,6 +11,7 @@
 
 #include "harness/RecordingRenderInterface.h"
 
+#include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/ImportManifest.h"
 #include "htmlui/compat/VirtualFiles.h"
@@ -252,7 +253,7 @@ TEST(CompatLoader, RestylesKeepTheElements){
     // a stylesheet changed: the sheets swap in place
     VirtualFiles::add("@htmlui/test/restyle/menu.css", "#box { display: block; width: 30px; height: 10px; }");
     std::shared_ptr<const CompatDocument> edited = DocumentLoader::compile("@htmlui/test/restyle/menu.html", resized);
-    ASSERT_EQ(edited->rml, fresh->rml);
+    ASSERT_TRUE(DocumentLoader::sameRml(*edited, *fresh));
     DocumentLoader::restyle(document, edited, resized);
     rml.context->Update();
     EXPECT_EQ(document->GetElementById("box"), box);

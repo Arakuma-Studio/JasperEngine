@@ -84,6 +84,8 @@ TTY_FLAGS=()
 [[ -t 0 && -t 1 ]] && TTY_FLAGS=(-it)
 ENV_FLAGS=()
 [[ -n "${JASPER_HTMLUI_UPDATE_GOLDEN:-}" ]] && ENV_FLAGS+=(-e "JASPER_HTMLUI_UPDATE_GOLDEN=$JASPER_HTMLUI_UPDATE_GOLDEN")
+# the HTML UI performance tests' tolerance on a loaded host (compat_perf_test.cpp)
+[[ -n "${JASPER_HTMLUI_PERF_SLACK:-}" ]] && ENV_FLAGS+=(-e "JASPER_HTMLUI_PERF_SLACK=$JASPER_HTMLUI_PERF_SLACK")
 
 run() {
     docker run --rm "${TTY_FLAGS[@]}" \

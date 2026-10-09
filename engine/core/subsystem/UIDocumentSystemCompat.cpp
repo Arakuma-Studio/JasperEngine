@@ -51,11 +51,12 @@ namespace {
             if (c == '\\')
                 c = '/';
         }
-        if (path.compare(0, 8, "asset://") == 0)
+        if (path.compare(0, 8, "asset://") == 0){
             path.erase(0, 8);
-        while (!path.empty() && path[0] == '/')
-            path.erase(0, 1);
-        return path;
+            while (!path.empty() && path[0] == '/')
+                path.erase(0, 1);
+        }
+        return path;   // an absolute path (tests, tools) stays absolute
     }
 
     // "ui/menu.html:45: attempt to index a nil value" -> file, line, message
@@ -256,7 +257,7 @@ bool UIDocumentSystem::compatRestyle(Entity entity){
     if (!compiled)
         return false;
     std::shared_ptr<const CompatDocument> fresh = DocumentLoader::compile(compiled->sourcePath, compiled->options);
-    if (!fresh->compiled || fresh->rml != compiled->rml)
+    if (!fresh->compiled || !DocumentLoader::sameRml(*fresh, *compiled))
         return false;
     // scripts and templates are part of the document: a change reloads it (scripts run again)
     if (fresh->scripts.size() != compiled->scripts.size() || fresh->templates.size() != compiled->templates.size())

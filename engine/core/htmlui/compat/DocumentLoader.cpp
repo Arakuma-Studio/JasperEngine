@@ -25,6 +25,9 @@
 #include <RmlUi/Core/StyleSheetContainer.h>
 
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <atomic>
 #include <cstring>
 #include <list>
@@ -76,6 +79,23 @@ namespace {
         return path;
     }
 
+    // content stamps of the cache: checked on every lookup, so 8 bytes at a time (FNV-1a goes
+    // byte by byte); not stored anywhere outside the process
+    uint64_t contentHash(std::string_view text){
+        uint64_t hash = 0x9E3779B97F4A7C15ull ^ (uint64_t)text.size();
+        size_t i = 0;
+        for (; i + 8 <= text.size(); i += 8){
+            uint64_t word;
+            std::memcpy(&word, text.data() + i, 8);
+            hash = (hash ^ word) * 0xFF51AFD7ED558CCDull;
+            hash ^= hash >> 32;
+        }
+        uint64_t tail = 0;
+        std::memcpy(&tail, text.data() + i, text.size() - i);
+        hash = (hash ^ tail) * 0xC4CEB9FE1A85EC53ull;
+        return hash ^ (hash >> 29);
+    }
+
     uint64_t hashString(uint64_t seed, std::string_view text){
         // the length first, so "ab"+"c" and "a"+"bc" differ
         const uint64_t length = text.size();
@@ -104,11 +124,15 @@ namespace {
     }
 
     uint64_t stampOf(const FileAccess& files, const std::string& path, bool content){
+        if (content && VirtualFiles::isVirtual(path)){
+            std::shared_ptr<const std::string> text = VirtualFiles::find(path);
+            return text ? (contentHash(*text) | 1ull) : 0;
+        }
         if (content){
             std::string text;
             if (!readAssetFile(files, path, text))
                 return 0;
-            return fnv1a64(text) | 1ull;   // never 0 (missing)
+            return contentHash(text) | 1ull;   // never 0 (missing)
         }
         return assetFileExists(files, path) ? 1 : 0;
     }
@@ -194,6 +218,7 @@ namespace {
     std::shared_ptr<CompatDocument> compileText(std::shared_ptr<CompatDocument> document, std::string text,
                                                 const CompatOptions& options, const FileAccess& access){
         SourceFiles& files = document->files;
+        auto PROF_T = std::chrono::steady_clock::now(); auto PROF = [&PROF_T](const char* what){ if (std::getenv("JASPER_COMPAT_PROFILE")){ auto now = std::chrono::steady_clock::now(); std::printf("[prof] %s %.3f\n", what, std::chrono::duration<double, std::milli>(now - PROF_T).count()); PROF_T = now; } };
         DiagnosticSink sink(files, options.diagnosticLimit);
         const std::string& path = document->sourcePath;
 
@@ -215,6 +240,7 @@ namespace {
         UrlResolver urls(access, manifest);
 
         HtmlDocument parsed = HtmlParser::parseDocument(file, files.text(file), &sink);
+        PROF("PARSE");
 
         TransformContext context(options, files, sink, urls);
         context.file = file;
@@ -222,6 +248,7 @@ namespace {
         context.root = parsed.root.get();
         context.fileAccess = access;
         runTransforms(context);
+        PROF("TRANSFORM");
 
         document->title = context.title;
         document->owner = nextOwner.fetch_add(1);
@@ -255,7 +282,7 @@ namespace {
                 input.kind = StylesheetInput::Kind::File;
                 input.file = cssFile;
                 input.text = files.text(cssFile);
-                document->dependencyStamps.push_back({source.path, fnv1a64(files.text(cssFile)) | 1ull, true});
+                document->dependencyStamps.push_back({source.path, contentHash(files.text(cssFile)) | 1ull, true});
             }else{
                 input.kind = StylesheetInput::Kind::Inline;
                 input.file = file;
@@ -287,6 +314,7 @@ namespace {
         rewriteContext.rootDirection = context.rootDirection;
 
         RewriteResult result;
+        PROF("PRECSS");
         {
             CssRewriter rewriter(options, files, sink, rewriteContext);
             result = rewriter.rewrite(Span<const StylesheetInput>(inputs));
@@ -310,6 +338,7 @@ namespace {
             }
         }
         document->important = std::move(result.importantSheet);
+        PROF("CSS");
         document->important.kind = StylesheetInput::Kind::Inline;
         document->hints = writeHints(context.hintRules, path);
 
@@ -359,6 +388,7 @@ namespace {
         }
 
         RmlSerializer::Output output = RmlSerializer::writeDocument(rml);
+        PROF("SERIALIZE");
         document->rml = std::move(output.rml);
         document->sourceMap.lineRefs = std::move(output.lineRefs);
         if (!document->hints.rcss.empty())
@@ -393,7 +423,7 @@ namespace {
             addDependency(*document, dependency);
         for (const DocumentScript& script : document->scripts){
             if (!script.srcPath.empty())
-                document->dependencyStamps.push_back({script.srcPath, fnv1a64(script.code) | 1ull, true});
+                document->dependencyStamps.push_back({script.srcPath, contentHash(script.code) | 1ull, true});
         }
         document->remoteRefs = std::move(context.remoteRefs);
         for (RemoteReference& reference : result.remoteRefs){
@@ -428,6 +458,7 @@ namespace {
         document->fontFamilies = std::move(result.fontFamilies);
         document->declaredFontFamilies = std::move(result.declaredFontFamilies);
         document->diagnostics = sink.take();
+        PROF("REST");
         document->compiled = true;
 
         uint64_t key = baseKey(path, options);
@@ -463,7 +494,7 @@ namespace {
             document->dependencyStamps.push_back({document->sourcePath, 0, true});
             return document;
         }
-        document->dependencyStamps.push_back({document->sourcePath, fnv1a64(text) | 1ull, true});
+        document->dependencyStamps.push_back({document->sourcePath, contentHash(text) | 1ull, true});
         return compileText(document, std::move(text), options, access);
     }
 
@@ -631,6 +662,26 @@ void DocumentLoader::invalidate(const std::string& assetPath){
         ImportManifest::notifyFileChanged(path);
     if (Rml::GetSystemInterface())
         Rml::Factory::ClearStyleSheetCache();
+}
+
+bool DocumentLoader::sameRml(const CompatDocument& a, const CompatDocument& b){
+    if (a.rml.size() != b.rml.size() + a.virtualDirectory.size() - b.virtualDirectory.size())
+        return false;
+    // walk both, skipping each one's own virtual directory where it appears
+    size_t i = 0, j = 0;
+    while (i < a.rml.size() && j < b.rml.size()){
+        if (!a.virtualDirectory.empty() && a.rml.compare(i, a.virtualDirectory.size(), a.virtualDirectory) == 0 &&
+            !b.virtualDirectory.empty() && b.rml.compare(j, b.virtualDirectory.size(), b.virtualDirectory) == 0){
+            i += a.virtualDirectory.size();
+            j += b.virtualDirectory.size();
+            continue;
+        }
+        if (a.rml[i] != b.rml[j])
+            return false;
+        i++;
+        j++;
+    }
+    return i == a.rml.size() && j == b.rml.size();
 }
 
 void DocumentLoader::clearCache(){

@@ -7,11 +7,11 @@
 <p data-htmlui-loc="2">shown</p>
 </htmlbody></body>
 </rml>
-<!-- lua compat/html/scripts/menu.lua (compat/html/scripts/menu.lua:1) -->
--- menu script
-local y = 2
-
 <!-- lua compat/html/scripts.html:11 (compat/html/scripts.html:11) -->
 
 local x = 1
+
+<!-- lua compat/html/scripts/menu.lua (compat/html/scripts/menu.lua:1) -->
+-- menu script
+local y = 2
 

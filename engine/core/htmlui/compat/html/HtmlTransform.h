@@ -11,6 +11,7 @@
 #include "htmlui/compat/CompatOptions.h"
 #include "htmlui/compat/CompatTypes.h"
 #include "htmlui/compat/DocumentLoader.h"
+#include "htmlui/compat/SupportTables.h"
 #include "htmlui/compat/html/HtmlTree.h"
 
 #include <memory>
@@ -178,6 +179,10 @@ namespace jasperengine::htmlui::compat {
         bool parseDimension(std::string_view value, double& number, bool& percent);
         // a Lucide name written in camelCase/PascalCase -> kebab-case
         std::string kebabCase(std::string_view name);
+        // findElement / findAttribute of the support tables, memoized (the tables are scanned
+        // linearly; a document asks for the same names thousands of times)
+        const ElementSupport* elementRow(const std::string& tag);
+        const AttributeSupport* attributeRow(const std::string& tag, const std::string& name);
     }
 
 }

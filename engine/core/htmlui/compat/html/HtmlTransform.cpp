@@ -326,6 +326,30 @@ std::string html::kebabCase(std::string_view name){
     return out;
 }
 
+const ElementSupport* html::elementRow(const std::string& tag){
+    // per thread: compiles may run on several
+    thread_local std::unordered_map<std::string, const ElementSupport*> rows;
+    auto it = rows.find(tag);
+    if (it != rows.end())
+        return it->second;
+    const ElementSupport* row = findElement(tag);
+    rows.emplace(tag, row);
+    return row;
+}
+
+const AttributeSupport* html::attributeRow(const std::string& tag, const std::string& name){
+    thread_local std::unordered_map<std::string, const AttributeSupport*> rows;
+    std::string key = tag;
+    key += '\n';
+    key += name;
+    auto it = rows.find(key);
+    if (it != rows.end())
+        return it->second;
+    const AttributeSupport* row = findAttribute(tag, name);
+    rows.emplace(std::move(key), row);
+    return row;
+}
+
 // ---- the pipeline ----
 
 void jasperengine::htmlui::compat::runTransforms(TransformContext& context){

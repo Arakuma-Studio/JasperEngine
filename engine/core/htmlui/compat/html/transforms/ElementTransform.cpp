@@ -756,7 +756,7 @@ namespace {
         }
         if (element.ns == Namespace::MathMl){
             if (element.tag == "math"){
-                placeholder(context, node, index, findElement("math"));
+                placeholder(context, node, index, elementRow("math"));
                 return false;
             }
             return true;
@@ -778,18 +778,18 @@ namespace {
 
         if (tag == "video" || tag == "audio" || tag == "iframe" || tag == "canvas" || tag == "object" || tag == "embed" ||
             tag == "portal" || tag == "frameset" || tag == "frame" || tag == "applet" || tag == "marquee"){
-            placeholder(context, node, index, findElement(tag));
+            placeholder(context, node, index, elementRow(tag));
             return false;
         }
         if (tag == "track" || tag == "param" || tag == "map" || tag == "area"){
-            const ElementSupport* row = findElement(tag);
+            const ElementSupport* row = elementRow(tag);
             context.sink.report(codes::UnsupportedElement, element.ref, "<" + tag + "> is not supported and is removed",
                                 (row && row->suggestion) ? row->suggestion : "", "", tag);
             node.removeChild(&element);
             return false;
         }
         if (tag == "datalist" || tag == "selectedcontent"){
-            const ElementSupport* row = findElement(tag);
+            const ElementSupport* row = elementRow(tag);
             context.sink.report(codes::ElementMapped, element.ref, "<" + tag + "> is removed (no engine equivalent)",
                                 (row && row->suggestion) ? row->suggestion : "", "", tag);
             node.removeChild(&element);
@@ -869,7 +869,7 @@ namespace {
             return true;
         }
 
-        if (findElement(tag) == nullptr){
+        if (elementRow(tag) == nullptr){
             if (isCustomElementName(tag)){
                 context.sink.report(codes::UnknownCustomElement, element.ref,
                                     "custom element <" + tag + "> is rendered as a generic inline element (its JavaScript class does not run)",

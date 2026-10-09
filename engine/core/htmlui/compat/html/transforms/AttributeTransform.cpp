@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <unordered_map>
+#include <unordered_set>
 
 using namespace jasperengine::htmlui::compat;
 using namespace jasperengine::htmlui::compat::html;
@@ -57,6 +58,16 @@ namespace {
                 return true;
         }
         return false;
+    }
+
+    // attributes kept as they are, which need none of the checks below
+    bool isPlainAttribute(const std::string& name){
+        static const std::unordered_set<std::string> plain = {
+            "class", "type", "name", "value", "for", "href", "alt", "placeholder", "min", "max", "step", "maxlength",
+            "size", "rows", "cols", "colspan", "rowspan", "selected", "checked", "disabled", "readonly", "required",
+            "multiple", "open", "start", "reversed", "role", "label", "hidden",
+        };
+        return plain.count(name) > 0;
     }
 
     bool isEventHandler(const std::string& name){
@@ -166,17 +177,20 @@ namespace {
         TransformContext& context = walk.context;
         HintDeclarations hints;
 
-        // a copy of the names: the loop removes some
-        std::vector<std::string> names;
-        names.reserve(element.attrs.size());
-        for (const HtmlAttr& attribute : element.attrs)
-            names.push_back(attribute.name);
-
-        for (const std::string& name : names){
-            HtmlAttr* attribute = element.findAttr(name);
-            if (!attribute)
+        // by index: the loop removes some (removeAttr keeps the order of the others)
+        for (size_t index = 0; index < element.attrs.size(); index++){
+            HtmlAttr* attribute = &element.attrs[index];
+            // most attributes are kept as written: no table lookup for them
+            if (isPlainAttribute(attribute->name))
                 continue;
+            const std::string name = attribute->name;
+            const size_t count = element.attrs.size();
             const SourceRef where = whereOf(element, *attribute);
+            // what the body below removed: the next attribute now sits at index
+            struct Rewind {
+                const HtmlNode& element; size_t& index; size_t count;
+                ~Rewind(){ if (element.attrs.size() < count) index--; }
+            } rewind{element, index, count};
 
             if (name == "style"){
                 if (!trim(attribute->value).empty()){
@@ -265,13 +279,13 @@ namespace {
                 legacyHint(context, element, *attribute, hints);
                 continue;
             }
-            if (isBindingAttribute(name) && !inModel){
+            if (!inModel && name.compare(0, 5, "data-") == 0 && isBindingAttribute(name)){
                 context.sink.report(codes::BindingAttributeOutsideModel, where,
                                     "'" + name + "' is read by the engine as a data binding, but no data-model encloses it",
                                     "put it inside an element with data-model=\"name\", or rename the attribute", "", name);
                 continue;
             }
-            if (const AttributeSupport* row = findAttribute(element.tag, name)){
+            if (const AttributeSupport* row = attributeRow(element.tag, name)){
                 if (row->support == Support::Unsupported && (name == "contenteditable" || startsWith(name, "popover"))){
                     context.sink.reportAs(Severity::Warning, codes::UnsupportedAttribute, where,
                                           "'" + name + "' is not supported and is dropped", row->suggestion ? row->suggestion : "", "", name);
