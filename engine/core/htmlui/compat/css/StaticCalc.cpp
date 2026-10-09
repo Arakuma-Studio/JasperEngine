@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/StaticCalc.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/Units.h"
 

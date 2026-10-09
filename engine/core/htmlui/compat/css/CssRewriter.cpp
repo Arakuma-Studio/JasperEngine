@@ -9,6 +9,7 @@
 // through the pipeline of §3.9.6 and writes the RCSS with its line map.
 
 #include "htmlui/compat/css/CssRewriter.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/Hash.h"

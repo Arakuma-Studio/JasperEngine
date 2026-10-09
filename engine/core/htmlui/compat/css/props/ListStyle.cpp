@@ -5,6 +5,7 @@
 // (markers drawn by the li and summary elements, §3.11.6); the shorthand is split into them.
 
 #include "htmlui/compat/css/props/Rewriters.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/CssSerialize.h"
 #include "htmlui/compat/css/Units.h"

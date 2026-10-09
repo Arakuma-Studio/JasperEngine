@@ -6,6 +6,7 @@
 // the engine cannot draw; inline SVG passes through (foreignObject dropped).
 
 #include "htmlui/compat/html/HtmlTransform.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/ImportManifest.h"

@@ -4,6 +4,7 @@
 // The only file that includes lexbor: its DOM is converted into HtmlTree here.
 
 #include "htmlui/compat/html/HtmlParser.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/Diagnostics.h"
 

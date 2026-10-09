@@ -6,6 +6,7 @@
 // (runtime/LucideIcons, engine/libs/lucide/lucide.pack, p2-runtime).
 
 #include "htmlui/compat/html/HtmlTransform.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/Diagnostics.h"
 

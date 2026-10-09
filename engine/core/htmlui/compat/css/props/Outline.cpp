@@ -7,6 +7,7 @@
 // shadows and vice versa.
 
 #include "htmlui/compat/css/props/Rewriters.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/Companions.h"
 #include "htmlui/compat/css/CssParser.h"

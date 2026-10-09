@@ -6,6 +6,7 @@
 // outside a data model.
 
 #include "htmlui/compat/html/HtmlTransform.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/SourceFiles.h"

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/CssSerialize.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/CssTokenizer.h"
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/RcssWriter.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 using namespace jasperengine::htmlui::compat;
 

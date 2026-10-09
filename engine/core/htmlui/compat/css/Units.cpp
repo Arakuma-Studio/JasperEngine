@@ -2,10 +2,33 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/Units.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include <cmath>
 
 using namespace jasperengine::htmlui::compat;
+
+namespace {
+
+    // a lowercase copy of a short unit on the stack (units longer than the buffer match nothing)
+    struct LowerUnit {
+        char buffer[16];
+        std::string_view view;
+
+        explicit LowerUnit(std::string_view unit){
+            if (unit.size() > sizeof(buffer)){
+                view = std::string_view("\x01too-long");
+                return;
+            }
+            for (size_t i = 0; i < unit.size(); i++){
+                const char c = unit[i];
+                buffer[i] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+            }
+            view = std::string_view(buffer, unit.size());
+        }
+    };
+
+}
 
 std::string jasperengine::htmlui::compat::lowerAscii(std::string_view text){
     std::string result(text);
@@ -40,7 +63,8 @@ UnitCategory jasperengine::htmlui::compat::unitCategory(std::string_view unit){
         return UnitCategory::None;
     if (unit == "%")
         return UnitCategory::Percentage;
-    const std::string u = lowerAscii(unit);
+    const LowerUnit lower(unit);
+    const std::string_view u = lower.view;
     if (u == "px" || u == "in" || u == "cm" || u == "mm" || u == "q" || u == "pt" || u == "pc")
         return UnitCategory::AbsoluteLength;
     if (u == "em" || u == "rem" || u == "ch" || u == "ex" || u == "cap" || u == "ic" || u == "lh" || u == "rlh" ||
@@ -75,7 +99,8 @@ bool jasperengine::htmlui::compat::isLengthCategory(UnitCategory category){
 }
 
 std::optional<double> jasperengine::htmlui::compat::canonicalFactor(std::string_view unit){
-    const std::string u = lowerAscii(unit);
+    const LowerUnit lower(unit);
+    const std::string_view u = lower.view;
     if (u.empty())
         return 1.0;
     if (u == "px") return 1.0;
@@ -113,7 +138,12 @@ const char* jasperengine::htmlui::compat::canonicalUnit(UnitCategory category){
 
 RcssUnit jasperengine::htmlui::compat::rcssUnit(std::string_view unit){
     RcssUnit out;
-    const std::string u = lowerAscii(unit);
+    if (unit.size() > 16){
+        out.unit = lowerAscii(unit);
+        return out;
+    }
+    const LowerUnit lower(unit);
+    const std::string_view u = lower.view;
     out.unit = u;
     if (u == "q"){
         out.factor = 0.25;

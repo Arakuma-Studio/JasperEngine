@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/BaseRules.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/RewriteSession.h"
 

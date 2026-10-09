@@ -9,6 +9,7 @@
 // base rule; gradient text falls back to a solid color.
 
 #include "htmlui/compat/css/props/Rewriters.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/BaseRules.h"
 #include "htmlui/compat/css/ColorValue.h"

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/ColorValue.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/CssParser.h"
 #include "htmlui/compat/css/NamedColors.h"

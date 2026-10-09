@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/props/Rewriters.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/ImportManifest.h"
 #include "htmlui/compat/VirtualFiles.h"

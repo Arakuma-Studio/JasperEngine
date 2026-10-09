@@ -8,6 +8,7 @@
 // radii until PercentRadius; border-image through the html-border-image decorator.
 
 #include "htmlui/compat/css/props/Rewriters.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/BaseRules.h"
 #include "htmlui/compat/css/Companions.h"

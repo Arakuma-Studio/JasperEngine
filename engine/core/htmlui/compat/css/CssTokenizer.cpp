@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/CssTokenizer.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include <cmath>
 
@@ -89,7 +90,33 @@ namespace {
             return value;
         }
 
-        uint32_t peek(size_t ahead = 0) const{
+        // the byte at the position (0 at the end): fast paths over plain ASCII
+        unsigned char byte(size_t ahead = 0) const{
+            return pos + ahead < text.size() ? (unsigned char)text[pos + ahead] : 0;
+        }
+        // a byte decode() returns as is (ASCII but CR, FF and NUL)
+        static bool plain(unsigned char c){
+            return c < 0x80 && c != '\r' && c != '\f' && c != 0;
+        }
+
+        uint32_t peek() const{
+            if (pos < text.size()){
+                const unsigned char c = (unsigned char)text[pos];
+                if (plain(c))
+                    return c;
+            }
+            size_t length = 0;
+            return decode(pos, length);
+        }
+
+        uint32_t peek(size_t ahead) const{
+            if (pos + ahead < text.size()){
+                bool allPlain = true;
+                for (size_t i = 0; i <= ahead && allPlain; i++)
+                    allPlain = plain((unsigned char)text[pos + i]);
+                if (allPlain)
+                    return (unsigned char)text[pos + ahead];
+            }
             size_t at = pos;
             size_t length = 0;
             uint32_t c = decode(at, length);
@@ -103,6 +130,13 @@ namespace {
         }
 
         uint32_t next(){
+            if (pos < text.size()){
+                const unsigned char c = (unsigned char)text[pos];
+                if (plain(c)){
+                    pos++;
+                    return c;
+                }
+            }
             size_t length = 0;
             const uint32_t c = decode(pos, length);
             pos += length;
@@ -113,6 +147,9 @@ namespace {
         size_t position() const { return pos; }
         uint32_t offset() const { return base + (uint32_t)pos; }
         void reset(size_t to) { pos = to; }
+        void skip(size_t bytes) { pos += bytes; }
+        std::string_view slice(size_t from, size_t to) const { return text.substr(from, to - from); }
+        std::string_view rest() const { return text.substr(pos); }
 
     private:
         std::string_view text;
@@ -201,9 +238,22 @@ namespace {
             return c;
         }
 
+        static bool asciiIdentByte(unsigned char c){
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+        }
+
         std::string consumeIdentSequence(){
             std::string result;
             while (true){
+                // a run of ASCII name bytes is copied at once
+                size_t run = 0;
+                while (asciiIdentByte(in.byte(run)))
+                    run++;
+                if (run > 0){
+                    const size_t from = in.position();
+                    result.append(source.data() + from, run);
+                    in.skip(run);
+                }
                 const uint32_t c = in.peek();
                 if (isIdentCodePoint(c)){
                     appendUtf8(result, in.next());
@@ -216,37 +266,38 @@ namespace {
             }
         }
 
-        // the number's characters; value and integer flag
+        // the number's characters; value and integer flag (the characters are ASCII: the
+        // source bytes themselves)
         void consumeNumber(double& value, bool& integer){
             integer = true;
-            std::string repr;
-            if (in.peek() == '+' || in.peek() == '-')
-                repr += (char)in.next();
-            while (isDigit(in.peek()))
-                repr += (char)in.next();
-            if (in.peek() == '.' && isDigit(in.peek(1))){
-                repr += (char)in.next();
-                while (isDigit(in.peek()))
-                    repr += (char)in.next();
+            const size_t from = in.position();
+            if (in.byte() == '+' || in.byte() == '-')
+                in.skip(1);
+            while (isDigit(in.byte()))
+                in.skip(1);
+            if (in.byte() == '.' && isDigit(in.byte(1))){
+                in.skip(1);
+                while (isDigit(in.byte()))
+                    in.skip(1);
                 integer = false;
             }
-            const uint32_t e = in.peek();
+            const unsigned char e = in.byte();
             if (e == 'e' || e == 'E'){
-                const uint32_t afterE = in.peek(1);
-                if (isDigit(afterE) || ((afterE == '+' || afterE == '-') && isDigit(in.peek(2)))){
-                    repr += (char)in.next();
-                    if (!isDigit(in.peek()))
-                        repr += (char)in.next();
-                    while (isDigit(in.peek()))
-                        repr += (char)in.next();
+                const unsigned char afterE = in.byte(1);
+                if (isDigit(afterE) || ((afterE == '+' || afterE == '-') && isDigit(in.byte(2)))){
+                    in.skip(1);
+                    if (!isDigit(in.byte()))
+                        in.skip(1);
+                    while (isDigit(in.byte()))
+                        in.skip(1);
                     integer = false;
                 }
             }
-            value = convertNumber(repr);
+            value = convertNumber(in.slice(from, in.position()));
         }
 
         // §4.3.13 "convert a string to a number"
-        static double convertNumber(const std::string& repr){
+        static double convertNumber(std::string_view repr){
             size_t i = 0;
             double sign = 1;
             if (i < repr.size() && (repr[i] == '+' || repr[i] == '-')){
@@ -405,6 +456,18 @@ namespace {
         Token consumeString(uint32_t quote, size_t start){
             std::string value;
             while (true){
+                // a run of plain ASCII characters is copied at once
+                size_t run = 0;
+                while (true){
+                    const unsigned char b = in.byte(run);
+                    if (b == 0 || b >= 0x80 || b == quote || b == '\\' || b == '\n' || b == '\r' || b == '\f')
+                        break;
+                    run++;
+                }
+                if (run > 0){
+                    value.append(source.data() + in.position(), run);
+                    in.skip(run);
+                }
                 const uint32_t c = in.peek();
                 if (c == quote){
                     in.next();
@@ -484,26 +547,26 @@ namespace {
             if (c == kEof)
                 return make(TokenType::EndOfFile, start);
 
-            if (c == '/' && in.peek(1) == '*'){
-                in.next();
-                in.next();
-                while (true){
-                    const uint32_t d = in.next();
-                    if (d == kEof){
-                        error(TokenizeError::Kind::EofInComment);
-                        break;
-                    }
-                    if (d == '*' && in.peek() == '/'){
-                        in.next();
-                        break;
-                    }
+            if (c == '/' && in.byte(1) == '*'){
+                in.skip(2);
+                const std::string_view rest = in.rest();
+                const size_t close = rest.find("*/");
+                if (close == std::string_view::npos){
+                    in.skip(rest.size());
+                    error(TokenizeError::Kind::EofInComment);
+                }else{
+                    in.skip(close + 2);
                 }
                 return make(TokenType::Comment, start);
             }
 
             if (isWhitespace(c)){
-                while (isWhitespace(in.peek()))
-                    in.next();
+                while (true){
+                    const unsigned char b = in.byte();
+                    if (b != ' ' && b != '\t' && b != '\n' && b != '\r' && b != '\f')
+                        break;
+                    in.skip(1);
+                }
                 return make(TokenType::Whitespace, start);
             }
 

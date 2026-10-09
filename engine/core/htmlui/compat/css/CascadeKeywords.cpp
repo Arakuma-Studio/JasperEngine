@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/CascadeKeywords.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/SupportTables.h"
 #include "htmlui/compat/css/Companions.h"

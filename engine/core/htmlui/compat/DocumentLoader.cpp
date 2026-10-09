@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/DocumentLoader.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/Hash.h"
 #include "htmlui/compat/ImportManifest.h"

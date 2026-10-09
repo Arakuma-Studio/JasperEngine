@@ -5,6 +5,7 @@
 // (Lua kept, JavaScript reported), noscript, reserved names, the root mapping and templates.
 
 #include "htmlui/compat/html/HtmlTransform.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/LuaHooks.h"

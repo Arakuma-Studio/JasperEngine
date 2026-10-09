@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/html/RmlSerializer.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/DocumentLoader.h"
 
