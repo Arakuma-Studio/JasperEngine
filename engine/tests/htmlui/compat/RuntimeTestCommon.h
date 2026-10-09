@@ -35,15 +35,18 @@ namespace jasperengine::test::compat {
             clipMaskRenders++;
             if (operation == Rml::ClipMaskOperation::Intersect)
                 clipMaskIntersects++;
+            if (operation == Rml::ClipMaskOperation::Set)
+                clipMaskSets++;
         }
         void beginFrame(){
             RecordingRenderInterface::beginFrame();
-            clipMaskEnables = clipMaskRenders = clipMaskIntersects = 0;
+            clipMaskEnables = clipMaskRenders = clipMaskIntersects = clipMaskSets = 0;
         }
 
         int clipMaskEnables = 0;
         int clipMaskRenders = 0;
         int clipMaskIntersects = 0;
+        int clipMaskSets = 0;
     };
 
     class RuntimeContextTest : public ::testing::Test {

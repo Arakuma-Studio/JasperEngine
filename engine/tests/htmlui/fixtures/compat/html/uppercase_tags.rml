@@ -1,11 +1,11 @@
 <rml>
 <head>
 <link type="text/rcss" href="/@htmlui/ua.rcss" origin="user-agent"/>
-</head>
-<body id="htmlui-root" data-htmlui-loc="0">
-<htmlbody data-htmlui-loc="1">
-<div class="Box" id="Main" data-htmlui-loc="2">
-<span title="t" data-htmlui-loc="3">Upper</span></div>
+</head
+><body id="htmlui-root" data-htmlui-loc="0"
+><htmlbody data-htmlui-loc="1"
+><div class="Box" id="Main" data-htmlui-loc="2"
+><span title="t" data-htmlui-loc="3">Upper</span></div>
 <svg viewBox="0 0 10 10" data-htmlui-loc="4"><linearGradient id="g"/><rect width="5" height="5"/></svg>
 </htmlbody></body>
 </rml>

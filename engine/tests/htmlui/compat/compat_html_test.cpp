@@ -150,8 +150,10 @@ TEST(CompatHtml, RootMappingAndShape){
     const std::string& rml = compiled->rml;
     EXPECT_EQ(rml.rfind("<rml>\n<head>\n<title>T</title>\n<link type=\"text/rcss\" href=\"/@htmlui/", 0), 0u) << rml;
     EXPECT_NE(rml.find("origin=\"user-agent\""), std::string::npos);
-    EXPECT_NE(rml.find("<body data-html-id=\"app\" class=\"theme\" id=\"htmlui-root\" data-htmlui-loc=\"0\">"), std::string::npos) << rml;
-    EXPECT_NE(rml.find("<htmlbody class=\"b\" data-htmlui-loc=\"1\">"), std::string::npos) << rml;
+    // (a line break between two tags goes inside the first one's '>': white space between tags
+    // would be laid out as a space)
+    EXPECT_NE(rml.find("<body data-html-id=\"app\" class=\"theme\" id=\"htmlui-root\" data-htmlui-loc=\"0\"\n>"), std::string::npos) << rml;
+    EXPECT_NE(rml.find("<htmlbody class=\"b\" data-htmlui-loc=\"1\"\n>"), std::string::npos) << rml;
     EXPECT_NE(rml.find("</htmlbody></body>\n</rml>"), std::string::npos) << rml;
     EXPECT_EQ(compiled->title, "T");
 }
@@ -215,8 +217,8 @@ TEST(CompatHtml, FragmentsAreParsedInBodyContext){
     const std::string rml = DocumentLoader::fragmentToRml("<td>cell</td><li>a&nbsp;b<br><img src=\"img/x.png\">", "ui/menu.html (innerHTML)", diagnostics, options);
     // a td outside a table is dropped by the HTML parser in body context (text kept)
     EXPECT_EQ(rml.find("<td"), std::string::npos) << rml;
-    // (a start tag that follows another tag starts a new RML line)
-    EXPECT_NE(rml.find("<li>a\xC2\xA0" "b<br/>\n<img src=\"asset://ui/img/x.png\"/></li>"), std::string::npos) << rml;
+    // (a start tag that follows another tag starts a new RML line, the break inside the first tag)
+    EXPECT_NE(rml.find("<li>a\xC2\xA0" "b<br\n/><img src=\"asset://ui/img/x.png\"/></li>"), std::string::npos) << rml;
     // no data-htmlui-loc on runtime HTML
     EXPECT_EQ(rml.find("data-htmlui-loc"), std::string::npos);
     // the missing image is reported at the fragment
