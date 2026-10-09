@@ -74,6 +74,8 @@ namespace jasperengine::htmlui::compat {
         // The block's raw contents, as "consume a simple block" sees them; declarations and
         // rules above are the same tokens parsed as a block's contents (CSS Syntax 2024):
         // every block holds declarations and rules mixed, in source order by their refs.
+        // Filled by the CSS Syntax entry points (parseRuleList, parseRule, ...) only:
+        // parseStylesheet and parseDeclarationList leave it empty (one parse per block).
         std::vector<ComponentValue> block;
         SourceRef blockRef;                       // the block, braces included
 
