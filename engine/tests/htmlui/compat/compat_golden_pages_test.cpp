@@ -282,11 +282,7 @@ TEST_P(CompatGoldenPages, MatchesChromium){
     if (!browser.valid())
         GTEST_SKIP() << "no headless GPU context";
     TestSystem::get().clearLogs();
-    if (!browser.load(name + ".html", &error)){
-        if (error.find("not in this build") != std::string::npos)
-            GTEST_SKIP() << error;
-        FAIL() << error;
-    }
+    ASSERT_TRUE(browser.load(name + ".html", &error)) << error;
 
     // gate 5: the diagnostics snapshot
     const std::string diagnostics = browser.diagnosticsText();
@@ -307,9 +303,8 @@ TEST_P(CompatGoldenPages, MatchesChromium){
     Image engine, engineNoText;
     ASSERT_TRUE(browser.render(engine, true)) << "the page did not draw";
     ASSERT_TRUE(savePng(artifacts + "/" + name + ".png", engine));
-    const bool hasNoText = browser.render(engineNoText, false);
-    if (hasNoText)
-        ASSERT_TRUE(savePng(artifacts + "/" + name + ".notext.png", engineNoText));
+    ASSERT_TRUE(browser.render(engineNoText, false)) << "the page did not draw without text";
+    ASSERT_TRUE(savePng(artifacts + "/" + name + ".notext.png", engineNoText));
 
     const std::vector<std::string> missing = missingForkFeatures(reference.requires, hc::ForkFeatures::present());
     if (!missing.empty()){
@@ -327,7 +322,7 @@ TEST_P(CompatGoldenPages, MatchesChromium){
     // gate 1: no-text image vs Chromium
     Image referenceNoText;
     ASSERT_TRUE(loadPng(referenceDirectory() + "/" + name + ".notext.png", referenceNoText));
-    if (hasNoText){
+    {
         const ImageMetrics noText = compareImages(engineNoText, referenceNoText, kChromiumNoTextGate.channelThreshold);
         savePng(artifacts + "/" + name + ".notext.diff.png", heatMap(engineNoText, referenceNoText, kChromiumNoTextGate.channelThreshold));
         metrics << kChromiumNoTextGate.name << ": " << noText.text() << "\n";
@@ -335,8 +330,6 @@ TEST_P(CompatGoldenPages, MatchesChromium){
                                                         << " (limits " << kChromiumNoTextGate.maxFuzzyBadPercent << " %, "
                                                         << kChromiumNoTextGate.maxBlock << "); heat map " << artifacts << "/" << name
                                                         << ".notext.diff.png";
-    }else{
-        ADD_FAILURE() << "no text switch (RmlFontEngine::setRenderTextForTesting) in this build: gate 1 cannot run";
     }
 
     // gate 2: layout vs Chromium

@@ -571,6 +571,7 @@ label {
 /* details and summary: the disclosure triangle is the summary's list marker */
 summary {
     list-style-type: disclosure-closed;
+    list-style-position: inside;
     cursor: default;
     tab-index: auto;
 }

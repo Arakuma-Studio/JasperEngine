@@ -11,6 +11,7 @@
 
 #include "htmlui/compat/CompatOptions.h"
 #include "htmlui/compat/Diagnostics.h"
+#include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/ImportManifest.h"
 #include "htmlui/compat/runtime/RuntimeRegistry.h"
 
@@ -28,42 +29,12 @@
 #include <cstdio>
 #include <fstream>
 #include <sstream>
-#include <type_traits>
 #include <utility>
-
-// The engine side needs the HTML stage (p2-html's DocumentLoader); the comparisons do not.
-#if __has_include("htmlui/compat/DocumentLoader.h")
-#include "htmlui/compat/DocumentLoader.h"
-#define JASPER_BROWSER_COMPARE_HAS_LOADER 1
-#else
-#define JASPER_BROWSER_COMPARE_HAS_LOADER 0
-#endif
 
 using namespace jasperengine;
 using namespace jasperengine::test;
 using namespace jasperengine::test::compat;
 namespace hc = jasperengine::htmlui::compat;
-
-namespace {
-
-    // RmlFontEngine::setRenderTextForTesting (hook H6, p2-runtime): glyphs off, metrics kept
-    template<typename T, typename = void>
-    struct HasRenderTextSwitch : std::false_type {};
-    template<typename T>
-    struct HasRenderTextSwitch<T, std::void_t<decltype(std::declval<T&>().setRenderTextForTesting(true))>> : std::true_type {};
-
-    template<typename T>
-    bool setRenderText(T& engine, bool on){
-        if constexpr (HasRenderTextSwitch<T>::value){
-            engine.setRenderTextForTesting(on);
-            return true;
-        }else{
-            (void)engine;
-            return on;
-        }
-    }
-
-}
 
 // ---- images ---------------------------------------------------------------------------------
 
@@ -411,7 +382,7 @@ BrowserPage::BrowserPage(const Options& options): state(std::make_unique<State>(
 
 BrowserPage::~BrowserPage(){
     if (state->render){
-        setRenderText(HtmlUI::getFontEngine(), true);
+        HtmlUI::getFontEngine().setRenderTextForTesting(true);
         state->render->destroy();
         Rml::Factory::ClearStyleSheetCache();
     }
@@ -459,7 +430,6 @@ bool BrowserPage::load(const std::string& page, std::string* error){
             *error = "no GPU or HtmlUI";
         return false;
     }
-#if JASPER_BROWSER_COMPARE_HAS_LOADER
     hc::CompatOptions options;
     options.fork = state->options.fork;
     options.viewport = hc::CompatSize{state->options.width, state->options.height};
@@ -483,12 +453,6 @@ bool BrowserPage::load(const std::string& page, std::string* error){
     frame(false);
     frame(false);
     return true;
-#else
-    if (error)
-        *error = "the HTML stage (DocumentLoader, p2-html) is not in this build";
-    (void)page;
-    return false;
-#endif
 }
 
 namespace {
@@ -557,8 +521,7 @@ bool BrowserPage::render(Image& image, bool withText){
     image = Image();
     if (!valid())
         return false;
-    if (!setRenderText(HtmlUI::getFontEngine(), withText))
-        return false;   // no text switch in this build
+    HtmlUI::getFontEngine().setRenderTextForTesting(withText);
     bool drawn = false;
     // the UI shader variants compile one per frame on the first frames
     for (int i = 0; i < 40 && !drawn; i++)
@@ -597,7 +560,6 @@ std::vector<LayoutBox> BrowserPage::layout(const ReferenceLayout& reference) con
 }
 
 std::string BrowserPage::diagnosticsText() const{
-#if JASPER_BROWSER_COMPARE_HAS_LOADER
     if (!state->compiled)
         return std::string();
     std::vector<hc::Diagnostic> diagnostics = state->compiled->diagnostics;
@@ -606,7 +568,4 @@ std::string BrowserPage::diagnosticsText() const{
     for (const hc::Diagnostic& diagnostic : diagnostics)
         text += hc::toText(diagnostic) + "\n";
     return text;
-#else
-    return std::string();
-#endif
 }
