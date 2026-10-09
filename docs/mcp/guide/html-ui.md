@@ -165,9 +165,12 @@ h1 { font-family: 'Orbitron', sans-serif; text-shadow: 0 0 20px rgba(124, 58, 23
   text fields, checkboxes and radios in the accent color, sliders, `<select>`, `<progress>`),
   classic 15 px scrollbars and a focus ring for keyboard focus. Every rule you write beats
   every user-agent rule, whatever its specificity, as in a browser.
-- `accent-color` colors checkboxes, radios, sliders and progress bars; `appearance: none`
-  removes a control's own look so your `background`, `border` and `::-webkit-slider-thumb`
-  styles draw alone.
+- `accent-color` colors checkboxes, radios, sliders and progress bars (a light accent gets a
+  dark check mark, as in Chrome); `appearance: none` removes a control's own look so your
+  `background`, `border` and `::-webkit-slider-thumb` styles draw alone. As in a browser, a
+  reset such as `* { margin: 0; padding: 0; box-sizing: border-box }` does not reach a
+  control's inner parts (slider track and thumb, select arrow, scrollbars): style those
+  through their pseudo-elements.
 - `:focus` and `:focus-visible` match the focused element only (`:focus-within` its
   ancestors too); Tab moves the focus through buttons, links, inputs and `tabindex="0"`.
 
@@ -223,9 +226,13 @@ Not yet (phase 3 adds them; until then a warning names each use): `display: grid
 a wrapping flex row: fixed column counts work, placement does not), `::before`/`::after`
 (the rule is dropped: use a real element), `:has()`, `order`, `aspect-ratio`, `opacity` as a
 group (each child fades separately), `line-height: normal` (1.2: set `line-height` where text
-must line up exactly), a `<select>` sized to its longest option (128 px unless you set a
-width), a `<legend>` cut into its fieldset's border. Not planned: `<video>`, `<canvas>`,
-`<iframe>` (a placeholder box: render a scene into a texture instead), JavaScript.
+must line up exactly). Not planned: `<video>`, `<canvas>`, `<iframe>` (a placeholder box:
+render a scene into a texture instead), JavaScript. Other differences to know: a
+`<legend>` is as wide as its fieldset and the fieldset's top border runs under it (no gap is
+cut); a table without a `width` fills its container (Chrome shrinks it to its content: give
+tables a width); `border-collapse: collapse` removes the spacing but keeps each cell's own
+borders (a warning says so); font sizes are whole pixels (`13.333px` draws at 13px), so text
+can be up to a pixel or two narrower than in Chrome.
 
 ### Reading the diagnostics
 
@@ -242,7 +249,7 @@ Every problem, loss or approximation is reported with the place in **your** file
 - **Errors** mean something the page needs is missing (a file, an import, JavaScript);
   **warnings** mean it draws differently from Chrome; **notes** (info) record exact rewrites
   and are counted in the per-document summary line, listed one by one with the editor
-  setting *Verbose HTML UI diagnostics*.
+  setting *HTML UI > Verbose Diagnostics* (Editor Settings).
 - Where to read them: the Console (each document logs its lines and a summary when it loads),
   `UIDocument:getDiagnostics()` from Lua or C++ (each with `code`, `severity`, `message`,
   `suggestion`, `file`, `line`, `column`), and the Inspector of the UI Document. Anything
@@ -269,7 +276,6 @@ inline until you give it `display: block` (or `flex`). Rules that differ from br
 | `decorator: image(bg.png);` for a background image | `background-image: url(bg.png);` |
 | `-rmlui-direction: rtl;` (right-to-left base direction) | `direction: rtl;` |
 | `border-radius: 12px;` | `border-radius: 50%;` |
-| `<span>Red </span><span>Green</span>` (space inside the text) | `<span>Red</span> <span>Green</span>` (whitespace-only text between elements is dropped) |
 | `transition: background-color 0.2s cubic-in-out;` on class / pseudo-class changes | `transition: opacity 200ms ease;` |
 
 What works:
@@ -316,7 +322,7 @@ What draws (RCSS syntax, phase 1):
 | Gradients | `decorator: linear-gradient(90deg, #f00, #00f 60%, #0f0);` | also `radial-gradient(circle 40px at center, ...)`, `conic-gradient(from 30deg at 50% 50%, ...)` and the `repeating-` forms; at most **16 color stops** (the rest are dropped with a warning) |
 | Filters | `filter: blur(4px) grayscale(1) opacity(0.5);` | `opacity`, `blur`, `drop-shadow(#000 4px 4px 6px)`, `brightness`, `contrast`, `invert`, `grayscale`, `sepia`, `hue-rotate`, `saturate`, applied left to right; `filter: opacity()` is a group (the subtree fades as one image), unlike the `opacity` property |
 | Backdrop filters | `backdrop-filter: blur(10px);` | the same filters, applied to what is behind the element's border box |
-| Box shadows | `box-shadow: #00000080 4px 6px 12px 2px, #ff0 0 0 0 3px inset;` | color first, then offset x/y, blur, spread, `inset`; a blurred shadow is clipped to outside the box before it is blurred, so give it an offset or a spread (a zero-offset, zero-spread blurred shadow shows nothing) |
+| Box shadows | `box-shadow: #00000080 4px 6px 12px 2px, #ff0 0 0 0 3px inset;` | color first, then offset x/y, blur, spread, `inset`; an outer shadow is blurred and then clipped to outside the box, as in CSS (a zero-offset blurred shadow is a glow) |
 | Masks | `mask-image: linear-gradient(90deg, #000f, #0000);` or `mask-image: image(mask.png);` | the content's alpha is multiplied by the mask's |
 
 Anti-aliasing: the target is multisampled (4x by default). The project setting *HTML UI MSAA*
