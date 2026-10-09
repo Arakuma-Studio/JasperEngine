@@ -1432,10 +1432,13 @@ namespace {
             const bool keyword = CascadeKeywords::isKeywordText(out.value);
             if (out.name == "color" && out.value.compare(0, 4, "var(") != 0 && !keyword)
                 extra.push_back(OutDecl{companions::kCurrentColor, out.value, out.ref, out.important, false, true});
-            if (session.inheritCompanions.count(out.name) && out.value.find("--html-inh-") == std::string::npos && !keyword)
-                extra.push_back(OutDecl{companions::inheritName(out.name), out.value, out.ref, out.important, false, true});
-            else if (!keyword && out.value.find("--html-inh-") == std::string::npos)
-                boxShorthandCompanions(session, out, extra);
+            // (nothing to add when no rule reads a property with `inherit`)
+            if (!session.inheritCompanions.empty() && !keyword && out.value.find("--html-inh-") == std::string::npos){
+                if (session.inheritCompanions.count(out.name))
+                    extra.push_back(OutDecl{companions::inheritName(out.name), out.value, out.ref, out.important, false, true});
+                else
+                    boxShorthandCompanions(session, out, extra);
+            }
         }
         for (OutDecl& e : extra)
             output.declarations.push_back(std::move(e));
@@ -1477,7 +1480,7 @@ namespace {
             return;
         bool wanted = false;
         for (const char* longhand : found->second)
-            wanted = wanted || session.inheritCompanions.count(longhand) > 0;
+            wanted = wanted || session.inheritCompanions.count(std::string_view(longhand)) > 0;
         if (!wanted || out.value.find('/') != std::string::npos)
             return;
         // the values, split at top-level spaces (var() and functions keep theirs)
@@ -1504,7 +1507,7 @@ namespace {
         const size_t n = values.size();
         const std::string sides[4] = {values[0], values[n > 1 ? 1 : 0], values[n > 2 ? 2 : 0], values[n > 3 ? 3 : (n > 1 ? 1 : 0)]};
         for (int i = 0; i < 4; i++){
-            if (session.inheritCompanions.count(found->second[i]))
+            if (session.inheritCompanions.count(std::string_view(found->second[i])))
                 extra.push_back(OutDecl{companions::inheritName(found->second[i]), sides[i], out.ref, out.important, false, true});
         }
     }

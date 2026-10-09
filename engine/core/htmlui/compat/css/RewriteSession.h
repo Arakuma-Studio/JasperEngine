@@ -162,7 +162,7 @@ namespace jasperengine::htmlui::compat {
         bool usesBorderImage = false;
         bool usesTextShadow = false;
         bool usesTextStroke = false;
-        std::set<std::string> inheritCompanions;        // RCSS properties some rule sets to `inherit` (non-inherited)
+        std::set<std::string, std::less<>> inheritCompanions;        // RCSS properties some rule sets to `inherit` (non-inherited)
         std::set<std::string> reversedKeyframes;        // keyframes an animation plays in reverse
         std::map<std::string, std::string> keyframeNames;   // CSS name -> RCSS name
         std::set<std::string> fillKeyframes;
