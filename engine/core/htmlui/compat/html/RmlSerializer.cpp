@@ -267,3 +267,9 @@ RmlSerializer::Output RmlSerializer::writeFragment(const HtmlNode& container){
     output.lineRefs = std::move(writer.lineRefs);
     return output;
 }
+
+std::string RmlSerializer::writeElement(const HtmlNode& element){
+    Writer writer;
+    writer.writeNode(element, true);
+    return std::move(writer.out);
+}

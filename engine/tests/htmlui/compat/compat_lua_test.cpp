@@ -125,14 +125,18 @@ TEST_F(CompatLuaTest, TemplateContent){
 TEST_F(CompatLuaTest, DialogAndStyles){
     EXPECT_LUA(R"(
         local dialog = doc:getElementById("dialog")
-        local closed = 0
-        dialog:addEventListener("close", function() closed = closed + 1 end)
+        closedCount = 0
+        dialog:addEventListener("close", function() closedCount = closedCount + 1 end)
         dialog:showModal()
         assert(dialog:hasAttribute("open"))
-        dialog:close()
+        dialog:close("ok")
         assert(not dialog:hasAttribute("open"))
-        assert(closed == 1)
-
+    )");
+    // HtmlDialogElement queues `close` to the next update, as browsers queue it
+    update();
+    EXPECT_EQ(luaString("closedCount"), "1");
+    EXPECT_LUA("closedCount = nil");
+    EXPECT_LUA(R"(
         local box = doc:getElementById("box")
         box.style.width = "50px"
         box.style.cssText = "height: 30px; width: 60px"

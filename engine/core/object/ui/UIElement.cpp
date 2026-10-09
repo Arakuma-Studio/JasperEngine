@@ -10,6 +10,7 @@
 #include "Engine.h"
 #include "Log.h"
 #include "htmlui/compat/LuaHooks.h"
+#include "htmlui/compat/runtime/HtmlDialogElement.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
@@ -1079,16 +1080,29 @@ UIElement UIElement::getContent() const{
 
 void UIElement::show(){
     HTMLUI_ELEMENT()
+    if (auto* dialog = rmlui_dynamic_cast<htmlui::compat::HtmlDialogElement*>(element)){
+        dialog->show();
+        return;
+    }
     element->SetAttribute("open", "");
 }
 
 void UIElement::showModal(){
-    // no modal backdrop or focus trap (HTMLUI-HTML-0025): opened like show()
+    HTMLUI_ELEMENT()
+    // no modal backdrop or focus trap (HTMLUI-HTML-0025)
+    if (auto* dialog = rmlui_dynamic_cast<htmlui::compat::HtmlDialogElement*>(element)){
+        dialog->showModal();
+        return;
+    }
     show();
 }
 
 void UIElement::close(const std::string& returnValue){
     HTMLUI_ELEMENT()
+    if (auto* dialog = rmlui_dynamic_cast<htmlui::compat::HtmlDialogElement*>(element)){
+        dialog->close(returnValue);
+        return;
+    }
     if (!element->HasAttribute("open"))
         return;
     element->RemoveAttribute("open");

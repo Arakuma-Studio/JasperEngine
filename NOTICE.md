@@ -24,3 +24,9 @@ HTML parsing of the HTML/CSS UI's compatibility layer:
 | [lexbor](https://github.com/lexbor/lexbor) | 3.1.0 (`master` at `f4cbbcd91359`, no release tag yet) | `engine/libs/lexbor/` (Apache-2.0: `LICENSE`, `NOTICE`; one local patch, `PATCHES.md`) | HTML5 parsing of `.html` documents (`engine/core/htmlui/compat/html/HtmlParser`) |
 
 Test data: the html5lib tree-construction tests (MIT, `engine/tests/htmlui/fixtures/compat/html5lib/LICENSE`).
+
+Icons of the HTML/CSS UI:
+
+| Data | Version | Location | License | Used for |
+|---|---|---|---|---|
+| [Lucide](https://github.com/lucide-icons/lucide) icons | 1.53.0 (`b56741cf30c0`) | `engine/libs/lucide/` (`lucide.pack`, `LICENSE`, `VERSION`) | ISC; the icons derived from [Feather](https://github.com/feathericons/feather) (listed in `LICENSE`) MIT | built-in `data-lucide` icons of HTML documents |

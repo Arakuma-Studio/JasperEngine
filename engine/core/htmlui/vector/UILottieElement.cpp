@@ -16,6 +16,7 @@
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementInstancer.h>
 #include <RmlUi/Core/ElementUtilities.h>
+#include <RmlUi/Core/Event.h>
 #include <RmlUi/Core/Factory.h>
 #include <RmlUi/Core/FileInterface.h>
 #include <RmlUi/Core/MeshUtilities.h>
@@ -675,6 +676,21 @@ void UILottieElement::OnRender(){
     }
 
     geometry.Render(GetAbsoluteOffset(Rml::BoxArea::Content).Round(), drawTexture);
+}
+
+void UILottieElement::ProcessDefaultAction(Rml::Event& event){
+    Rml::Element::ProcessDefaultAction(event);
+
+    // phase-2 hook H9: playonhover
+    if (!HasAttribute("playonhover") || !booleanAttribute(GetAttribute<Rml::String>("playonhover", "")))
+        return;
+    if (event == Rml::EventId::Mouseover){
+        if (!isPlaying())
+            play();
+    }else if (event == Rml::EventId::Mouseout){
+        if (isPlaying())
+            stop();
+    }
 }
 
 // ---------------------------------------------------------------- control

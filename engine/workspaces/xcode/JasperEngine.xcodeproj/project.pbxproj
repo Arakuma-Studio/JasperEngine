@@ -1778,6 +1778,66 @@
 		434F4D5022EC1F87AAF948B8 /* DocumentLoader.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50F0089B21B89BC7B8 /* DocumentLoader.h */; };
 		434F4D506555EC95DD5E685B /* DocumentLoader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50473667574A7A054B /* DocumentLoader.cpp */; };
 		434F4D503EC689DDFCE731A8 /* DocumentLoader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50473667574A7A054B /* DocumentLoader.cpp */; };
+		434F4D5011A9AF0F092219CD /* HtmlListItemElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5000A14F3F2271D628 /* HtmlListItemElement.h */; };
+		434F4D5065C8F046601FC849 /* HtmlListItemElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5096CFE6024C0D082D /* HtmlListItemElement.cpp */; };
+		434F4D502F3E7089E2B4166F /* HtmlListItemElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5096CFE6024C0D082D /* HtmlListItemElement.cpp */; };
+		434F4D5084D4DBB9D6B28C7C /* HtmlLabelBehavior.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50341CED328DF231FD /* HtmlLabelBehavior.h */; };
+		434F4D508D1397D1AB21D7A1 /* HtmlLabelBehavior.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50690E089889C28490 /* HtmlLabelBehavior.cpp */; };
+		434F4D507E7F18E66493248E /* HtmlLabelBehavior.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50690E089889C28490 /* HtmlLabelBehavior.cpp */; };
+		434F4D50358304C96C4FA817 /* HtmlInputElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D506696FB7E653E7FA9 /* HtmlInputElement.h */; };
+		434F4D509F7AFDDFC7FA1F84 /* HtmlInputElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E4EBF0DA7D4B00B7 /* HtmlInputElement.cpp */; };
+		434F4D508B5022461D1EC225 /* HtmlInputElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E4EBF0DA7D4B00B7 /* HtmlInputElement.cpp */; };
+		434F4D503CA2804F59717F4B /* HtmlImageElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50F11F3419F160EDC3 /* HtmlImageElement.h */; };
+		434F4D506FCE350D8ED4B189 /* HtmlImageElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5094DD4C76E5AF78E0 /* HtmlImageElement.cpp */; };
+		434F4D507492FCA154A61D22 /* HtmlImageElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5094DD4C76E5AF78E0 /* HtmlImageElement.cpp */; };
+		434F4D5023C74A782E40AF9B /* HtmlFormSupport.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50BE8DA0780F2D5020 /* HtmlFormSupport.h */; };
+		434F4D503B404713ED9FD12F /* HtmlFormSupport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D502D51B2B8C1CDD21B /* HtmlFormSupport.cpp */; };
+		434F4D50B4DD19FF39ABCF17 /* HtmlFormSupport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D502D51B2B8C1CDD21B /* HtmlFormSupport.cpp */; };
+		434F4D50B746E0848A2279C5 /* HtmlDialogElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50684C0195BB82587F /* HtmlDialogElement.h */; };
+		434F4D50E243436272B646BF /* HtmlDialogElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D501DC7E7214B9C1DB0 /* HtmlDialogElement.cpp */; };
+		434F4D508C9217E42D5D6E36 /* HtmlDialogElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D501DC7E7214B9C1DB0 /* HtmlDialogElement.cpp */; };
+		434F4D5079E4CBEDF139DBD6 /* HtmlDetailsElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5013BF921A2F1D720C /* HtmlDetailsElement.h */; };
+		434F4D504A61BBC58F570A76 /* HtmlDetailsElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D503645DE8CA7142B9C /* HtmlDetailsElement.cpp */; };
+		434F4D500F20391093748151 /* HtmlDetailsElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D503645DE8CA7142B9C /* HtmlDetailsElement.cpp */; };
+		434F4D502F35E57880B12FCC /* HtmlButtonElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D504612B5CE390D975D /* HtmlButtonElement.h */; };
+		434F4D507B6BB654C0123C97 /* HtmlButtonElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5045DF7D5CFE54ACD8 /* HtmlButtonElement.cpp */; };
+		434F4D50877C90DC5B33E389 /* HtmlButtonElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5045DF7D5CFE54ACD8 /* HtmlButtonElement.cpp */; };
+		434F4D50C3310B4E63A4FE37 /* HtmlAnchorElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D507B8995B0A2426D66 /* HtmlAnchorElement.h */; };
+		434F4D50A8284B40E8FFD79D /* HtmlAnchorElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5001C1582982F1AB9A /* HtmlAnchorElement.cpp */; };
+		434F4D5081A503B205677906 /* HtmlAnchorElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5001C1582982F1AB9A /* HtmlAnchorElement.cpp */; };
+		434F4D5005F674476E935FC5 /* FocusTracker.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5052C81C4A091F36D6 /* FocusTracker.h */; };
+		434F4D506A42D41FB27BA228 /* FocusTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D504D89272287F4A7D2 /* FocusTracker.cpp */; };
+		434F4D508AD9DC8644133218 /* FocusTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D504D89272287F4A7D2 /* FocusTracker.cpp */; };
+		434F4D50D7C015741EBF9343 /* AnimationFill.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50C5421D9613E95570 /* AnimationFill.h */; };
+		434F4D50AC93327B4FFFE6A8 /* AnimationFill.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E8C538450613E6C2 /* AnimationFill.cpp */; };
+		434F4D50D2112CB8992F3D7E /* AnimationFill.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E8C538450613E6C2 /* AnimationFill.cpp */; };
+		434F4D50DBDDFD9589AAD0DE /* HtmlShapeDecorator.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5088DD1B7D6C8F10E1 /* HtmlShapeDecorator.h */; };
+		434F4D500C2E5FAB7B5CBBFD /* HtmlShapeDecorator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D506676FE50C81F4AF8 /* HtmlShapeDecorator.cpp */; };
+		434F4D50B99A062B61577BD4 /* HtmlShapeDecorator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D506676FE50C81F4AF8 /* HtmlShapeDecorator.cpp */; };
+		434F4D50DFCD57733196760E /* HtmlLayerDecorator.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50349037416CF308B7 /* HtmlLayerDecorator.h */; };
+		434F4D5005F1DCD8EE6B68FA /* HtmlLayerDecorator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D503E9028DF9C24BF5A /* HtmlLayerDecorator.cpp */; };
+		434F4D503DFE2DE405C4B6BF /* HtmlLayerDecorator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D503E9028DF9C24BF5A /* HtmlLayerDecorator.cpp */; };
+		434F4D506229ECCECAC0F039 /* HtmlBorderImageDecorator.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D500131FD23834B2686 /* HtmlBorderImageDecorator.h */; };
+		434F4D50A971D58BE2E0F131 /* HtmlBorderImageDecorator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B19BC125A7F94D30 /* HtmlBorderImageDecorator.cpp */; };
+		434F4D5042483C9FCBB3F019 /* HtmlBorderImageDecorator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B19BC125A7F94D30 /* HtmlBorderImageDecorator.cpp */; };
+		434F4D504D679D9305221237 /* DecoratorCommon.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D505D532968C4C4B951 /* DecoratorCommon.h */; };
+		434F4D508560B3ECEC137790 /* DecoratorCommon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F179EA251FC91F56 /* DecoratorCommon.cpp */; };
+		434F4D50B9E25926CB30BF62 /* DecoratorCommon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F179EA251FC91F56 /* DecoratorCommon.cpp */; };
+		434F4D505909A90761C1A33C /* SvgPreprocess.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50243C83B2BFBF291A /* SvgPreprocess.h */; };
+		434F4D50495F3CDA3DF76BFF /* SvgPreprocess.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D509304B06963F996A1 /* SvgPreprocess.cpp */; };
+		434F4D5025D6CA9779C03943 /* SvgPreprocess.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D509304B06963F996A1 /* SvgPreprocess.cpp */; };
+		434F4D50B86C8FD3B4615B87 /* SvgElementHook.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50BB2280E63781F864 /* SvgElementHook.h */; };
+		434F4D5087DCE6B7DFC648B4 /* SvgElementHook.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5093EFB3EFFF898650 /* SvgElementHook.cpp */; };
+		434F4D5038BA2C50A5CB0E92 /* SvgElementHook.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5093EFB3EFFF898650 /* SvgElementHook.cpp */; };
+		434F4D5062658FAB62A4E9DC /* ListMarkers.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5085E76CB715B039B6 /* ListMarkers.h */; };
+		434F4D503E017051FCD71D31 /* ListMarkers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50880924F7E81E3BD5 /* ListMarkers.cpp */; };
+		434F4D50D62C4D2E7598DACA /* ListMarkers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50880924F7E81E3BD5 /* ListMarkers.cpp */; };
+		434F4D50CC909A922BDC9F17 /* CompatProperties.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50F34C2E751CAE4DA0 /* CompatProperties.h */; };
+		434F4D507261D931F22C67F4 /* CompatProperties.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5092615D1D300D8DB0 /* CompatProperties.cpp */; };
+		434F4D503B47426849FF3A5B /* CompatProperties.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5092615D1D300D8DB0 /* CompatProperties.cpp */; };
+		434F4D5021EB5BE965A49483 /* LucideIcons.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5004A5BD8DA28C89EE /* LucideIcons.h */; };
+		434F4D50C808E0558791BBFE /* LucideIcons.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5004562E83BA673A8C /* LucideIcons.cpp */; };
+		434F4D50A480D91B1154DD00 /* LucideIcons.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5004562E83BA673A8C /* LucideIcons.cpp */; };
 		434F4D50A227D91B03F18A89 /* UserAgentStyle.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50927A4DF805745C98 /* UserAgentStyle.h */; };
 		434F4D50D88FB37BBE13E9F1 /* UserAgentStyle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500146D11FAD7506A4 /* UserAgentStyle.cpp */; };
 		434F4D50EB40AB893E4E3EBD /* UserAgentStyle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500146D11FAD7506A4 /* UserAgentStyle.cpp */; };
@@ -4603,6 +4663,46 @@
 		434F4D50C0AD7CD5745AB482 /* LuaHooks.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LuaHooks.cpp; sourceTree = "<group>"; };
 		434F4D50F0089B21B89BC7B8 /* DocumentLoader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DocumentLoader.h; sourceTree = "<group>"; };
 		434F4D50473667574A7A054B /* DocumentLoader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DocumentLoader.cpp; sourceTree = "<group>"; };
+		434F4D5000A14F3F2271D628 /* HtmlListItemElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlListItemElement.h; sourceTree = "<group>"; };
+		434F4D5096CFE6024C0D082D /* HtmlListItemElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlListItemElement.cpp; sourceTree = "<group>"; };
+		434F4D50341CED328DF231FD /* HtmlLabelBehavior.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlLabelBehavior.h; sourceTree = "<group>"; };
+		434F4D50690E089889C28490 /* HtmlLabelBehavior.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlLabelBehavior.cpp; sourceTree = "<group>"; };
+		434F4D506696FB7E653E7FA9 /* HtmlInputElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlInputElement.h; sourceTree = "<group>"; };
+		434F4D50E4EBF0DA7D4B00B7 /* HtmlInputElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlInputElement.cpp; sourceTree = "<group>"; };
+		434F4D50F11F3419F160EDC3 /* HtmlImageElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlImageElement.h; sourceTree = "<group>"; };
+		434F4D5094DD4C76E5AF78E0 /* HtmlImageElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlImageElement.cpp; sourceTree = "<group>"; };
+		434F4D50BE8DA0780F2D5020 /* HtmlFormSupport.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlFormSupport.h; sourceTree = "<group>"; };
+		434F4D502D51B2B8C1CDD21B /* HtmlFormSupport.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlFormSupport.cpp; sourceTree = "<group>"; };
+		434F4D50684C0195BB82587F /* HtmlDialogElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlDialogElement.h; sourceTree = "<group>"; };
+		434F4D501DC7E7214B9C1DB0 /* HtmlDialogElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlDialogElement.cpp; sourceTree = "<group>"; };
+		434F4D5013BF921A2F1D720C /* HtmlDetailsElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlDetailsElement.h; sourceTree = "<group>"; };
+		434F4D503645DE8CA7142B9C /* HtmlDetailsElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlDetailsElement.cpp; sourceTree = "<group>"; };
+		434F4D504612B5CE390D975D /* HtmlButtonElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlButtonElement.h; sourceTree = "<group>"; };
+		434F4D5045DF7D5CFE54ACD8 /* HtmlButtonElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlButtonElement.cpp; sourceTree = "<group>"; };
+		434F4D507B8995B0A2426D66 /* HtmlAnchorElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlAnchorElement.h; sourceTree = "<group>"; };
+		434F4D5001C1582982F1AB9A /* HtmlAnchorElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlAnchorElement.cpp; sourceTree = "<group>"; };
+		434F4D5052C81C4A091F36D6 /* FocusTracker.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FocusTracker.h; sourceTree = "<group>"; };
+		434F4D504D89272287F4A7D2 /* FocusTracker.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FocusTracker.cpp; sourceTree = "<group>"; };
+		434F4D50C5421D9613E95570 /* AnimationFill.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimationFill.h; sourceTree = "<group>"; };
+		434F4D50E8C538450613E6C2 /* AnimationFill.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimationFill.cpp; sourceTree = "<group>"; };
+		434F4D5088DD1B7D6C8F10E1 /* HtmlShapeDecorator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlShapeDecorator.h; sourceTree = "<group>"; };
+		434F4D506676FE50C81F4AF8 /* HtmlShapeDecorator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlShapeDecorator.cpp; sourceTree = "<group>"; };
+		434F4D50349037416CF308B7 /* HtmlLayerDecorator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlLayerDecorator.h; sourceTree = "<group>"; };
+		434F4D503E9028DF9C24BF5A /* HtmlLayerDecorator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlLayerDecorator.cpp; sourceTree = "<group>"; };
+		434F4D500131FD23834B2686 /* HtmlBorderImageDecorator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlBorderImageDecorator.h; sourceTree = "<group>"; };
+		434F4D50B19BC125A7F94D30 /* HtmlBorderImageDecorator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlBorderImageDecorator.cpp; sourceTree = "<group>"; };
+		434F4D505D532968C4C4B951 /* DecoratorCommon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DecoratorCommon.h; sourceTree = "<group>"; };
+		434F4D50F179EA251FC91F56 /* DecoratorCommon.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DecoratorCommon.cpp; sourceTree = "<group>"; };
+		434F4D50243C83B2BFBF291A /* SvgPreprocess.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SvgPreprocess.h; sourceTree = "<group>"; };
+		434F4D509304B06963F996A1 /* SvgPreprocess.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SvgPreprocess.cpp; sourceTree = "<group>"; };
+		434F4D50BB2280E63781F864 /* SvgElementHook.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SvgElementHook.h; sourceTree = "<group>"; };
+		434F4D5093EFB3EFFF898650 /* SvgElementHook.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SvgElementHook.cpp; sourceTree = "<group>"; };
+		434F4D5085E76CB715B039B6 /* ListMarkers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ListMarkers.h; sourceTree = "<group>"; };
+		434F4D50880924F7E81E3BD5 /* ListMarkers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ListMarkers.cpp; sourceTree = "<group>"; };
+		434F4D50F34C2E751CAE4DA0 /* CompatProperties.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CompatProperties.h; sourceTree = "<group>"; };
+		434F4D5092615D1D300D8DB0 /* CompatProperties.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CompatProperties.cpp; sourceTree = "<group>"; };
+		434F4D5004A5BD8DA28C89EE /* LucideIcons.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LucideIcons.h; sourceTree = "<group>"; };
+		434F4D5004562E83BA673A8C /* LucideIcons.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LucideIcons.cpp; sourceTree = "<group>"; };
 		434F4D50927A4DF805745C98 /* UserAgentStyle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UserAgentStyle.h; sourceTree = "<group>"; };
 		434F4D500146D11FAD7506A4 /* UserAgentStyle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UserAgentStyle.cpp; sourceTree = "<group>"; };
 		434F4D500A0947F4D46DAE4A /* ValueTable.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ValueTable.cpp; sourceTree = "<group>"; };
@@ -8171,6 +8271,46 @@
 			children = (
 				434F4D500522B76D415E56EC /* RuntimeRegistry.cpp */,
 				434F4D50B0141481E046294D /* RuntimeRegistry.h */,
+				434F4D5004562E83BA673A8C /* LucideIcons.cpp */,
+				434F4D5004A5BD8DA28C89EE /* LucideIcons.h */,
+				434F4D5092615D1D300D8DB0 /* CompatProperties.cpp */,
+				434F4D50F34C2E751CAE4DA0 /* CompatProperties.h */,
+				434F4D50880924F7E81E3BD5 /* ListMarkers.cpp */,
+				434F4D5085E76CB715B039B6 /* ListMarkers.h */,
+				434F4D5093EFB3EFFF898650 /* SvgElementHook.cpp */,
+				434F4D50BB2280E63781F864 /* SvgElementHook.h */,
+				434F4D509304B06963F996A1 /* SvgPreprocess.cpp */,
+				434F4D50243C83B2BFBF291A /* SvgPreprocess.h */,
+				434F4D50F179EA251FC91F56 /* DecoratorCommon.cpp */,
+				434F4D505D532968C4C4B951 /* DecoratorCommon.h */,
+				434F4D50B19BC125A7F94D30 /* HtmlBorderImageDecorator.cpp */,
+				434F4D500131FD23834B2686 /* HtmlBorderImageDecorator.h */,
+				434F4D503E9028DF9C24BF5A /* HtmlLayerDecorator.cpp */,
+				434F4D50349037416CF308B7 /* HtmlLayerDecorator.h */,
+				434F4D506676FE50C81F4AF8 /* HtmlShapeDecorator.cpp */,
+				434F4D5088DD1B7D6C8F10E1 /* HtmlShapeDecorator.h */,
+				434F4D50E8C538450613E6C2 /* AnimationFill.cpp */,
+				434F4D50C5421D9613E95570 /* AnimationFill.h */,
+				434F4D504D89272287F4A7D2 /* FocusTracker.cpp */,
+				434F4D5052C81C4A091F36D6 /* FocusTracker.h */,
+				434F4D5001C1582982F1AB9A /* HtmlAnchorElement.cpp */,
+				434F4D507B8995B0A2426D66 /* HtmlAnchorElement.h */,
+				434F4D5045DF7D5CFE54ACD8 /* HtmlButtonElement.cpp */,
+				434F4D504612B5CE390D975D /* HtmlButtonElement.h */,
+				434F4D503645DE8CA7142B9C /* HtmlDetailsElement.cpp */,
+				434F4D5013BF921A2F1D720C /* HtmlDetailsElement.h */,
+				434F4D501DC7E7214B9C1DB0 /* HtmlDialogElement.cpp */,
+				434F4D50684C0195BB82587F /* HtmlDialogElement.h */,
+				434F4D502D51B2B8C1CDD21B /* HtmlFormSupport.cpp */,
+				434F4D50BE8DA0780F2D5020 /* HtmlFormSupport.h */,
+				434F4D5094DD4C76E5AF78E0 /* HtmlImageElement.cpp */,
+				434F4D50F11F3419F160EDC3 /* HtmlImageElement.h */,
+				434F4D50E4EBF0DA7D4B00B7 /* HtmlInputElement.cpp */,
+				434F4D506696FB7E653E7FA9 /* HtmlInputElement.h */,
+				434F4D50690E089889C28490 /* HtmlLabelBehavior.cpp */,
+				434F4D50341CED328DF231FD /* HtmlLabelBehavior.h */,
+				434F4D5096CFE6024C0D082D /* HtmlListItemElement.cpp */,
+				434F4D5000A14F3F2271D628 /* HtmlListItemElement.h */,
 			);
 			path = runtime;
 			sourceTree = "<group>";
@@ -9524,6 +9664,26 @@
 				434F4D5082DBB4D9ADB89F0A /* HtmlParser.h in Headers */,
 				434F4D508075F5D0E874A97E /* LuaHooks.h in Headers */,
 				434F4D5022EC1F87AAF948B8 /* DocumentLoader.h in Headers */,
+				434F4D5011A9AF0F092219CD /* HtmlListItemElement.h in Headers */,
+				434F4D5084D4DBB9D6B28C7C /* HtmlLabelBehavior.h in Headers */,
+				434F4D50358304C96C4FA817 /* HtmlInputElement.h in Headers */,
+				434F4D503CA2804F59717F4B /* HtmlImageElement.h in Headers */,
+				434F4D5023C74A782E40AF9B /* HtmlFormSupport.h in Headers */,
+				434F4D50B746E0848A2279C5 /* HtmlDialogElement.h in Headers */,
+				434F4D5079E4CBEDF139DBD6 /* HtmlDetailsElement.h in Headers */,
+				434F4D502F35E57880B12FCC /* HtmlButtonElement.h in Headers */,
+				434F4D50C3310B4E63A4FE37 /* HtmlAnchorElement.h in Headers */,
+				434F4D5005F674476E935FC5 /* FocusTracker.h in Headers */,
+				434F4D50D7C015741EBF9343 /* AnimationFill.h in Headers */,
+				434F4D50DBDDFD9589AAD0DE /* HtmlShapeDecorator.h in Headers */,
+				434F4D50DFCD57733196760E /* HtmlLayerDecorator.h in Headers */,
+				434F4D506229ECCECAC0F039 /* HtmlBorderImageDecorator.h in Headers */,
+				434F4D504D679D9305221237 /* DecoratorCommon.h in Headers */,
+				434F4D505909A90761C1A33C /* SvgPreprocess.h in Headers */,
+				434F4D50B86C8FD3B4615B87 /* SvgElementHook.h in Headers */,
+				434F4D5062658FAB62A4E9DC /* ListMarkers.h in Headers */,
+				434F4D50CC909A922BDC9F17 /* CompatProperties.h in Headers */,
+				434F4D5021EB5BE965A49483 /* LucideIcons.h in Headers */,
 				434F4D50A227D91B03F18A89 /* UserAgentStyle.h in Headers */,
 				434F4D504A25F34A784F3C33 /* RuntimeRegistry.h in Headers */,
 				434F4D50185F6D57FA6C2CA9 /* RcssWriter.h in Headers */,
@@ -11263,6 +11423,26 @@
 				434F4D50F2E341B58B100FBA /* HtmlParser.cpp in Sources */,
 				434F4D5052B47B3EB1238C14 /* LuaHooks.cpp in Sources */,
 				434F4D503EC689DDFCE731A8 /* DocumentLoader.cpp in Sources */,
+				434F4D502F3E7089E2B4166F /* HtmlListItemElement.cpp in Sources */,
+				434F4D507E7F18E66493248E /* HtmlLabelBehavior.cpp in Sources */,
+				434F4D508B5022461D1EC225 /* HtmlInputElement.cpp in Sources */,
+				434F4D507492FCA154A61D22 /* HtmlImageElement.cpp in Sources */,
+				434F4D50B4DD19FF39ABCF17 /* HtmlFormSupport.cpp in Sources */,
+				434F4D508C9217E42D5D6E36 /* HtmlDialogElement.cpp in Sources */,
+				434F4D500F20391093748151 /* HtmlDetailsElement.cpp in Sources */,
+				434F4D50877C90DC5B33E389 /* HtmlButtonElement.cpp in Sources */,
+				434F4D5081A503B205677906 /* HtmlAnchorElement.cpp in Sources */,
+				434F4D508AD9DC8644133218 /* FocusTracker.cpp in Sources */,
+				434F4D50D2112CB8992F3D7E /* AnimationFill.cpp in Sources */,
+				434F4D50B99A062B61577BD4 /* HtmlShapeDecorator.cpp in Sources */,
+				434F4D503DFE2DE405C4B6BF /* HtmlLayerDecorator.cpp in Sources */,
+				434F4D5042483C9FCBB3F019 /* HtmlBorderImageDecorator.cpp in Sources */,
+				434F4D50B9E25926CB30BF62 /* DecoratorCommon.cpp in Sources */,
+				434F4D5025D6CA9779C03943 /* SvgPreprocess.cpp in Sources */,
+				434F4D5038BA2C50A5CB0E92 /* SvgElementHook.cpp in Sources */,
+				434F4D50D62C4D2E7598DACA /* ListMarkers.cpp in Sources */,
+				434F4D503B47426849FF3A5B /* CompatProperties.cpp in Sources */,
+				434F4D50A480D91B1154DD00 /* LucideIcons.cpp in Sources */,
 				434F4D50EB40AB893E4E3EBD /* UserAgentStyle.cpp in Sources */,
 				434F4D506C72DE70E462A382 /* ValueTable.cpp in Sources */,
 				434F4D5031F95685ECA34523 /* UnitTable.cpp in Sources */,
@@ -11553,6 +11733,26 @@
 				434F4D504107F2F97C2A96A3 /* HtmlParser.cpp in Sources */,
 				434F4D507838E07EB7D1C391 /* LuaHooks.cpp in Sources */,
 				434F4D506555EC95DD5E685B /* DocumentLoader.cpp in Sources */,
+				434F4D5065C8F046601FC849 /* HtmlListItemElement.cpp in Sources */,
+				434F4D508D1397D1AB21D7A1 /* HtmlLabelBehavior.cpp in Sources */,
+				434F4D509F7AFDDFC7FA1F84 /* HtmlInputElement.cpp in Sources */,
+				434F4D506FCE350D8ED4B189 /* HtmlImageElement.cpp in Sources */,
+				434F4D503B404713ED9FD12F /* HtmlFormSupport.cpp in Sources */,
+				434F4D50E243436272B646BF /* HtmlDialogElement.cpp in Sources */,
+				434F4D504A61BBC58F570A76 /* HtmlDetailsElement.cpp in Sources */,
+				434F4D507B6BB654C0123C97 /* HtmlButtonElement.cpp in Sources */,
+				434F4D50A8284B40E8FFD79D /* HtmlAnchorElement.cpp in Sources */,
+				434F4D506A42D41FB27BA228 /* FocusTracker.cpp in Sources */,
+				434F4D50AC93327B4FFFE6A8 /* AnimationFill.cpp in Sources */,
+				434F4D500C2E5FAB7B5CBBFD /* HtmlShapeDecorator.cpp in Sources */,
+				434F4D5005F1DCD8EE6B68FA /* HtmlLayerDecorator.cpp in Sources */,
+				434F4D50A971D58BE2E0F131 /* HtmlBorderImageDecorator.cpp in Sources */,
+				434F4D508560B3ECEC137790 /* DecoratorCommon.cpp in Sources */,
+				434F4D50495F3CDA3DF76BFF /* SvgPreprocess.cpp in Sources */,
+				434F4D5087DCE6B7DFC648B4 /* SvgElementHook.cpp in Sources */,
+				434F4D503E017051FCD71D31 /* ListMarkers.cpp in Sources */,
+				434F4D507261D931F22C67F4 /* CompatProperties.cpp in Sources */,
+				434F4D50C808E0558791BBFE /* LucideIcons.cpp in Sources */,
 				434F4D50D88FB37BBE13E9F1 /* UserAgentStyle.cpp in Sources */,
 				434F4D502E599AAF1490A558 /* ValueTable.cpp in Sources */,
 				434F4D501A2CE6046EB9432E /* UnitTable.cpp in Sources */,

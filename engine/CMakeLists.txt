@@ -976,6 +976,7 @@ set(JASPERENGINE_SRCS
 # HTML/CSS compatibility layer (phase 2): globbed per directory
 include(core/htmlui/compat/CompatSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${HTMLUI_COMPAT_SRCS})
+include(libs/lucide/lucide.cmake)
 
 if(JASPERENGINE_PHYSICS_2D)
     list(APPEND JASPERENGINE_SRCS
@@ -1017,6 +1018,7 @@ add_library(
 )
 
 jasperengine_htmlui_compat_embed(jasperengine)
+jasperengine_htmlui_lucide_embed(jasperengine)
 
 target_compile_definitions(jasperengine
     PUBLIC

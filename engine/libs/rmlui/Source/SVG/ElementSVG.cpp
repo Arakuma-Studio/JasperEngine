@@ -1,10 +1,30 @@
 #include "../../Include/RmlUi/SVG/ElementSVG.h"
+#include "../../Include/RmlUi/Core/Core.h"
+#include "../../Include/RmlUi/Core/ElementDocument.h"
 #include "../../Include/RmlUi/Core/ElementUtilities.h"
+#include "../../Include/RmlUi/Core/FileInterface.h"
 #include "../../Include/RmlUi/Core/Geometry.h"
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
+#include "../../Include/RmlUi/Core/SystemInterface.h"
 #include "SVGCache.h"
 
 namespace Rml {
+
+namespace SVG {
+	static SourceHook* source_hook = nullptr;
+
+	SourceHook::~SourceHook() {}
+
+	void SetSourceHook(SourceHook* hook)
+	{
+		source_hook = hook;
+	}
+
+	SourceHook* GetSourceHook()
+	{
+		return source_hook;
+	}
+} // namespace SVG
 
 RMLUI_RTTI_Define(ElementSVG)
 
@@ -75,6 +95,12 @@ void ElementSVG::OnPropertyChange(const PropertyIdSet& changed_properties)
 	{
 		svg_dirty = true;
 	}
+
+	if (SVG::SourceHook* hook = SVG::GetSourceHook())
+	{
+		if (hook->IsSourceProperty(changed_properties))
+			svg_dirty = true;
+	}
 }
 
 void ElementSVG::GetInnerRML(String& content) const
@@ -116,8 +142,6 @@ void ElementSVG::EnsureSourceLoaded()
 	if (source.empty())
 	{
 		const auto source_id = GetAttribute<String>("rmlui-svgdata-id", "svgdata:undefined");
-		if (handle)
-			handle.reset(); // The old handle won't be re-used so clear it.
 
 		// Build an svg wrapper tag, copying all but src attribute (expected attributes could be width, height, viewBox, etc.)
 		String svg_element_source = "<svg ";
@@ -135,10 +159,43 @@ void ElementSVG::EnsureSourceLoaded()
 		svg_element_source.append(svg_data);
 		svg_element_source.append("</svg>");
 
+		SVG::SourceHook::Result hooked;
+		SVG::SourceHook* hook = SVG::GetSourceHook();
+		if (hook && hook->ProcessSource(this, String(), svg_element_source, hooked))
+		{
+			// the new handle before the old one goes: a colour change keeps the rasterised texture
+			handle = SVG::SVGCache::GetHandle(hooked.source_id, hooked.data, SVG::SVGCache::Data, this, crop_to_content, BoxArea::Content,
+				hooked.use_colour ? &hooked.colour : nullptr);
+			return;
+		}
+
+		if (handle)
+			handle.reset(); // The old handle won't be re-used so clear it.
 		handle = SVG::SVGCache::GetHandle(source_id, svg_element_source, SVG::SVGCache::Data, this, crop_to_content, BoxArea::Content);
 	}
 	else
 	{
+		if (SVG::SourceHook* hook = SVG::GetSourceHook())
+		{
+			// The file, resolved against the document as the cache resolves it
+			String path;
+			if (ElementDocument* document = GetOwnerDocument())
+			{
+				const String document_source_url = StringUtilities::Replace(document->GetSourceURL(), '|', ':');
+				GetSystemInterface()->JoinPath(path, document_source_url, source);
+			}
+
+			String file_data;
+			SVG::SourceHook::Result hooked;
+			if (!path.empty() && GetFileInterface()->LoadFile(path, file_data) && hook->ProcessSource(this, path, file_data, hooked))
+			{
+				// the new handle before the old one goes: a colour change keeps the rasterised texture
+				handle = SVG::SVGCache::GetHandle(hooked.source_id, hooked.data, SVG::SVGCache::Data, this, crop_to_content, BoxArea::Content,
+					hooked.use_colour ? &hooked.colour : nullptr);
+				return;
+			}
+		}
+
 		handle = SVG::SVGCache::GetHandle(source, source, SVG::SVGCache::File, this, crop_to_content, BoxArea::Content);
 	}
 }

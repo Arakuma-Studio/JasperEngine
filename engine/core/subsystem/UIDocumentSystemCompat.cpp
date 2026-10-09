@@ -154,7 +154,7 @@ void UIDocumentSystem::compatDocumentLoaded(Entity entity){
         target->setReducedMotion(state.reducedMotion);
 
     // <a href="other.html">: the htmlnavigate default action loads it in the same component
-    target->setNavigateHandler([this](Rml::ElementDocument* from, const std::string& href){
+    target->setNavigateHandler([this](Rml::ElementDocument* from, const std::string& href, const std::string& url){
         for (const auto& pair : documents){
             if (pair.second != from)
                 continue;
@@ -168,7 +168,9 @@ void UIDocumentSystem::compatDocumentLoaded(Entity entity){
             const UrlKind kind = UrlResolver::classify(path);
             bool outside = false;
             std::string target;
-            if (kind == UrlKind::Relative)
+            if (!url.empty())
+                target = url;   // resolved by the anchor (HtmlAnchorElement)
+            else if (kind == UrlKind::Relative)
                 target = UrlResolver::joinPath(documentPathOf(component), UrlResolver::percentDecode(path), &outside);
             else if (kind == UrlKind::RootRelative)
                 target = UrlResolver::normalizePath(path.compare(0, 8, "asset://") == 0 ? path.substr(8) : path, &outside);

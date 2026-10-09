@@ -71,8 +71,9 @@ namespace jasperengine {
         void setReducedMotion(bool reduced);
         bool getReducedMotion() const;
         // the default action of the htmlnavigate event (an <a href> click that no listener
-        // prevented): called with the document and the href (UIDocumentSystem loads it)
-        void setNavigateHandler(std::function<void(Rml::ElementDocument*, const std::string&)> handler);
+        // prevented): called with the document, the href and the linked document's path when the
+        // anchor resolved one (`url` of the event; UIDocumentSystem loads it)
+        void setNavigateHandler(std::function<void(Rml::ElementDocument*, const std::string&, const std::string&)> handler);
 
         // --- p1-input (HtmlUIContextInput.cpp, phase-1 spec §3.6) ---
         // touch pointers with their ids (RmlUi treats each as the primary button)
@@ -143,7 +144,7 @@ namespace jasperengine {
         // --- phase 2 (p2-html) ---
         std::string colorScheme = "light";
         bool reducedMotion = false;
-        std::function<void(Rml::ElementDocument*, const std::string&)> navigateHandler;
+        std::function<void(Rml::ElementDocument*, const std::string&, const std::string&)> navigateHandler;
         std::unique_ptr<Rml::EventListener> navigateListener;   // on the context root (bubble phase)
         void applyThemes();
         // documents laid out with viewport-dependent values follow a size change (§3.12.1)

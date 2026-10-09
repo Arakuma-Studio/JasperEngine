@@ -9,10 +9,10 @@
 
 #include "Out.h"
 
-#if __has_include("htmlui/compat/runtime/LucideIcons.h")
+// the built-in Lucide pack (p2-runtime); included unconditionally: ccache's direct mode does not
+// see a __has_include that turns true and can return an object built without the header
 #include "htmlui/compat/runtime/LucideIcons.h"
 #define JASPER_HTMLUI_HAS_LUCIDE 1
-#endif
 
 #include <fstream>
 #include <set>

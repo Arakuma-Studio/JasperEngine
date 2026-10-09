@@ -11,6 +11,8 @@
 #include "htmlui/compat/ImportManifest.h"
 #include "htmlui/compat/SupportTables.h"
 #include "htmlui/compat/UrlResolver.h"
+#include "htmlui/compat/html/RmlSerializer.h"
+#include "htmlui/compat/runtime/SvgPreprocess.h"
 
 #include <algorithm>
 #include <cmath>
@@ -705,6 +707,15 @@ namespace {
     }
 
     void transformSvg(TransformContext& context, HtmlNode& svg){
+        // what the <svg> element will report when it draws (mixed currentColor, ...), at compile
+        // time and located here (p2-runtime's preprocessor; foreignObject is reported below)
+        const SvgResult preprocessed = SvgPreprocess::process(RmlSerializer::writeElement(svg), SvgUse::Inline);
+        for (Diagnostic diagnostic : preprocessed.diagnostics){
+            if (diagnostic.code == codes::SvgUnsupportedContent && preprocessed.foreignObjects > 0)
+                continue;
+            diagnostic.file.clear();
+            context.sink.report(std::move(diagnostic), svg.location());
+        }
         bool reported = false;
         std::vector<HtmlNode*> stack{&svg};
         while (!stack.empty()){

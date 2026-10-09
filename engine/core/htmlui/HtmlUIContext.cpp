@@ -57,20 +57,24 @@ namespace {
     // htmlnavigate reaching the context root unprevented (phase-2 §3.11.2, hook H4)
     class NavigateListener : public Rml::EventListener {
     public:
-        explicit NavigateListener(std::function<void(Rml::ElementDocument*, const std::string&)>* handler): handler(handler) {}
+        explicit NavigateListener(std::function<void(Rml::ElementDocument*, const std::string&, const std::string&)>* handler): handler(handler) {}
         void ProcessEvent(Rml::Event& event) override{
             if (event.IsDefaultPrevented() || !handler || !*handler)
                 return;
             Rml::Element* target = event.GetTargetElement();
             Rml::ElementDocument* document = target ? target->GetOwnerDocument() : nullptr;
+            if (event.GetParameter<bool>("external", false))
+                return;
+            // the anchor (p2-runtime) resolved it: `url` is the linked file when `document` is set
             const std::string href = event.GetParameter<Rml::String>("href", "");
-            if (document && !href.empty())
-                (*handler)(document, href);
+            const std::string url = event.GetParameter<bool>("document", false) ? event.GetParameter<Rml::String>("url", "") : std::string();
+            if (document && (!href.empty() || !url.empty()))
+                (*handler)(document, href, url);
         }
         void OnDetach(Rml::Element*) override {}
 
     private:
-        std::function<void(Rml::ElementDocument*, const std::string&)>* handler;
+        std::function<void(Rml::ElementDocument*, const std::string&, const std::string&)>* handler;
     };
 
 #if defined(__EMSCRIPTEN__)
@@ -346,7 +350,7 @@ bool HtmlUIContext::getReducedMotion() const{
     return reducedMotion;
 }
 
-void HtmlUIContext::setNavigateHandler(std::function<void(Rml::ElementDocument*, const std::string&)> handler){
+void HtmlUIContext::setNavigateHandler(std::function<void(Rml::ElementDocument*, const std::string&, const std::string&)> handler){
     navigateHandler = std::move(handler);
 }
 

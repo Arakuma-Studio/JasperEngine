@@ -45,6 +45,8 @@ namespace jasperengine::htmlui::compat {
         static Output writeDocument(Document& document);
         // the children of `container` (template content, innerHTML fragments)
         static Output writeFragment(const HtmlNode& container);
+        // one element with its content (inline SVG for the SVG preprocessor)
+        static std::string writeElement(const HtmlNode& element);
 
         static std::string escapeText(const std::string& text);
         static std::string escapeAttribute(const std::string& value);

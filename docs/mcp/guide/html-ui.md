@@ -258,8 +258,23 @@ transforms, clipping and filters apply to them as to `<img>`.
 
 - Supported well: paths, shapes, strokes (dashes, caps, joins), linear and radial gradients,
   patterns, `clipPath`, masks, markers, `<use>`/`<symbol>`, nested `<svg>`, CSS in
-  `<style>` and `style=""`, `currentColor` (black unless the SVG's own CSS sets `color`),
-  opacity, `<text>` in the built-in Roboto (any `font-family` uses it).
+  `<style>` and `style=""`, opacity, `<text>` in the built-in Roboto (any `font-family` uses
+  it).
+- `currentColor` follows the element's CSS `color`, for inline SVG and `<svg src>` files
+  alike (icons recolor on `:hover` and with transitions): an SVG whose paints are all
+  `currentColor` or `none` is rasterized once in white and tinted (`color` x `image-color` x
+  `opacity`); one that mixes `currentColor` with fixed colors is rasterized again when the
+  colour changes (`HTMLUI-SVG-0001`, info). A shape with no fill at all counts as black.
+- CSS `fill`, `stroke`, `stroke-width`, `stroke-linecap`, `stroke-linejoin`,
+  `stroke-opacity`, `fill-opacity`, `stroke-dasharray` on the `<svg>` element apply to its
+  root, as in a browser (`.icon { stroke-width: 1.5 }`); rules aimed at elements inside the
+  SVG (`svg path { ... }`) are not applied. `<foreignObject>` is dropped (`HTMLUI-SVG-0002`).
+- Icons: `<i data-lucide="house"></i>` is the [Lucide](https://lucide.dev) icon, built into
+  the engine (Lucide 1.53.0, all 1869 icons and their aliases, offline): replaced by its
+  `<svg>` exactly as `lucide.createIcons()` does (classes `lucide lucide-house`, your
+  attributes merged), so it takes the CSS `color` and `.lucide { width: 20px; stroke-width:
+  1.5 }`. Names in kebab-case, PascalCase or camelCase; an unknown name is reported with the
+  three closest ones (`HTMLUI-HTML-0021`). Setting `data-lucide` from Lua swaps the icon.
 - Not supported: SVG filters (`<filter>`, drop shadows inside the file are skipped),
   `mix-blend-mode`, scripts and animation (SMIL) inside SVG files, `<image href="file.png">`
   (only `data:` URIs: the rasteriser never reads files on its own), system fonts.
@@ -340,6 +355,30 @@ spinner:addEventListener("error", function(event) print(event.detail.message) en
 spinner:setLoopCount(2)
 spinner:play()
 ```
+
+## HTML elements with behavior
+
+Documents loaded from `.html` get these elements with their browser behavior (also in `.rml`
+documents: `img`, `input` and `label` replace RmlUi's, compatible with RmlUi's attributes):
+
+| Element | Behavior |
+|---|---|
+| `<button>` | `type="submit"` (the default) submits its `<form>` (the `submit` event carries the button's `name`/`value` and every named control), `reset` resets the form, `button` does nothing; `form="id"` works; `disabled` gets `:disabled` and no click; Enter and Space activate it |
+| `<a href>` | Enter activates; `#id` scrolls to the element; any other link dispatches `htmlnavigate` on the document (`href`, `url`, `fragment`, `document`, `external`): a `.html` link loads that document in the same component, external links only notify (there is no browser) |
+| `<input>` | the `type` attribute stays as written; `number` filters typing, steps with Up/Down by `step` within `min`/`max` and clamps on blur/Enter; `date`, `time`, `datetime-local`, `month`, `week` are text fields showing the format; `color` a text field; `reset` resets the form; `image` submits and shows `src`; `file` is a disabled "Choose File" button; Enter in a text field submits its form; Space toggles checkboxes; `autofocus` |
+| `<ol>`/`<ul>`/`<li>` | markers from `list-style-type` (disc, circle, square, decimal, decimal-leading-zero, lower/upper-alpha and -latin, lower/upper-roman, lower-greek, strings), `list-style-image`, `list-style-position`; `ol start`, `reversed`, `li value`; style them with `li::marker` |
+| `<details>`/`<summary>` | clicking (or Enter/Space on) the summary toggles `open`; a `toggle` event follows; details with the same `name` form an accordion |
+| `<dialog>` | `open` shows it; Lua `dialog:showModal()`, `show()`, `close(value)`; Escape closes a modal dialog (`cancel`, then `close`). No backdrop, no focus trap |
+| `<img>` | `object-fit`, `object-position`, `image-rendering: pixelated` (nearest sampling), SVG sources drawn at their size |
+| `<label>` | clicking it activates its control (`for="id"`, or the control inside it) |
+| `<lottie playonhover>` | plays while the pointer is over it, stops (first frame) when it leaves |
+
+`:focus` and `:focus-visible` match the focused element only (not its ancestors; those match
+`:focus-within`); `:focus-visible` after keyboard navigation and in text fields, as in
+Chromium. `animation-fill-mode: forwards`/`both` keeps the last keyframe after the animation.
+CSS backgrounds with `url()` (every `background-size`, `background-position`,
+`background-repeat` including `space`/`round`, origin, clip, `fixed`), `clip-path` shapes
+and `border-image` are drawn by the engine's own decorators.
 
 ## Input
 

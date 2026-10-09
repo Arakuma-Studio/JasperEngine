@@ -16,6 +16,7 @@
 #include "htmlui/HtmlUIDependencies.h"
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/ua/UserAgentStyle.h"
+#include "htmlui/compat/runtime/LucideIcons.h"
 #include "component/UIDocumentComponent.h"
 
 #include "stb_image.h"
@@ -2217,6 +2218,8 @@ bool editor::Exporter::copyEngine() {
 
         // Same for the HTML UI's user-agent stylesheet and its SVGs (engine/core/htmlui/compat/ua)
         FileUtils::writeIfChanged(dst / "htmlui_ua.h", htmlui::compat::UserAgentStyle::buildEmbeddedHeader());
+        // and the built-in Lucide icon pack (engine/libs/lucide)
+        FileUtils::writeIfChanged(dst / "htmlui_lucide.h", htmlui::compat::LucideIcons::buildEmbeddedHeader());
     }
 
     fs::path cmakeSrc = sdkRoot / "CMakeLists.txt";
