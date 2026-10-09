@@ -320,14 +320,7 @@ namespace {
 
         // ASCII name characters: a-z A-Z 0-9 - _
         static bool asciiIdentByte(unsigned char c){
-            static const struct Table {
-                bool name[256] = {};
-                Table(){
-                    for (int c = 0; c < 256; c++)
-                        name[c] = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
-                }
-            } table;
-            return table.name[c];
+            return (unsigned char)((c | 0x20) - 'a') < 26 || (unsigned char)(c - '0') < 10 || c == '-' || c == '_';
         }
 
         // the length of the run of ASCII name characters at the position
