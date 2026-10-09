@@ -196,7 +196,18 @@ bool ElementFormControlSelect::GetIntrinsicDimensions(Vector2f& intrinsic_dimens
 		}
 		intrinsic_dimensions.x = Math::RoundUp(widest + edges);
 	}
-	intrinsic_dimensions.y = GetLineHeight();
+	// One line tall, plus the value's vertical edges (browsers keep an internal padding there that author padding adds to).
+	float value_edges = 0.f;
+	for (int i = 0; i < GetNumChildren(true); i++)
+	{
+		Element* child = GetChild(i);
+		if (child->GetTagName() != "selectvalue")
+			continue;
+		const ComputedValues& computed = child->GetComputedValues();
+		value_edges = computed.padding_top().value + computed.padding_bottom().value + computed.border_top_width() + computed.border_bottom_width();
+		break;
+	}
+	intrinsic_dimensions.y = GetLineHeight() + value_edges;
 
 	return true;
 }
