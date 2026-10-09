@@ -21,6 +21,8 @@
 
 #include "Log.h"
 
+#include <RmlUi/Core.h>
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -325,6 +327,18 @@ TEST_P(CompatGoldenPages, MatchesChromium){
         std::cout << "[  SKIPPED ] " << name << ": image and layout gates need the fork features " << list
                   << " (phase 3); diagnostics snapshot and render checked\n";
         return;
+    }
+
+    // the engine's boxes and fonts of the reference's elements, for inspection
+    {
+        std::ostringstream boxes;
+        for (const LayoutBox& box : browser.layout(reference)){
+            Rml::Element* element = browser.document()->GetElementById(box.id);
+            const Rml::ComputedValues& computed = element->GetComputedValues();
+            boxes << box.id << " " << box.x << " " << box.y << " " << box.w << " " << box.h << " font '" << computed.font_family() << "' "
+                  << computed.font_size() << "px " << int(computed.font_weight()) << " line " << element->GetLineHeight() << "\n";
+        }
+        writeText(artifacts + "/" + name + ".engine-boxes.txt", boxes.str());
     }
 
     std::ostringstream metrics;

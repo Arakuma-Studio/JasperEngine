@@ -781,7 +781,7 @@ namespace {
             "lottie", "htmltemplate", "svg", "video", "audio", "iframe", "canvas", "object", "embed", "portal",
             "frameset", "frame", "applet", "marquee", "track", "param", "map", "area", "datalist", "selectedcontent",
             "lottie-player", "dotlottie-player", "dotlottie-wc", "picture", "img", "wbr", "slot", "meter", "output",
-            "select", "optgroup", "q", "font", "bdi", "bdo", "ruby", "rt", "rp", "dialog",
+            "select", "optgroup", "q", "font", "bdi", "bdo", "ruby", "rt", "rp", "dialog", "table", "progress",
         };
         if (special.find(tag) == special.end()){
             if (startsWith(tag, "html-reserved-"))
@@ -857,6 +857,26 @@ namespace {
         }
         if (tag == "select"){
             flattenOptgroups(context, element);
+            return true;
+        }
+        if (tag == "table"){
+            // RmlUi lays out only rows and columns in a table (a caption inside is lost), and its
+            // auto-width table spans its container: the caption, a block right before the table,
+            // sits where CSS puts it
+            for (size_t c = 0; c < element.children.size(); c++){
+                if (!element.children[c]->is("caption"))
+                    continue;
+                std::unique_ptr<HtmlNode> caption = std::move(element.children[c]);
+                element.children.erase(element.children.begin() + (long)c);
+                caption->parent = &node;
+                node.insertChild(index, std::move(caption));
+                return false;   // the slot holds the caption now; the table follows
+            }
+            return true;
+        }
+        if (tag == "progress"){
+            // the fallback content (<progress>65%</progress>) is never rendered by browsers
+            element.children.clear();
             return true;
         }
         if (tag == "optgroup"){

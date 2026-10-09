@@ -28,6 +28,7 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <utility>
 
@@ -281,7 +282,11 @@ std::string LayoutDifference::text() const{
 }
 
 float jasperengine::test::compat::layoutTolerance(const LayoutBox& reference, char field){
-    if (reference.tolerance == "text"){
+    // an auto-width table: RmlUi's table model (kept by phase 3, §2.2) spans the container
+    // instead of shrinking to the columns' content; its other edges are text-sized
+    if (reference.tolerance == "table" && field == 'w')
+        return std::numeric_limits<float>::infinity();
+    if (reference.tolerance == "text" || reference.tolerance == "table"){
         const float extent = (field == 'x' || field == 'w') ? reference.w : reference.h;
         return std::max(6.0f, 0.04f * extent);
     }
@@ -564,6 +569,17 @@ std::vector<LayoutBox> BrowserPage::layout(const ReferenceLayout& reference) con
         box.y = offset.y;
         box.w = size.x;
         box.h = size.y;
+        // a table's <caption> is laid out right before it (compat: RmlUi's tables hold rows
+        // only): Chromium's table rect includes the caption
+        Rml::Element* previous = element->GetPreviousSibling();
+        while (previous && previous->GetTagName() == "#text")
+            previous = previous->GetPreviousSibling();
+        if (box.tag == "table" && previous && previous->GetTagName() == "caption"){
+            const Rml::Vector2f captionOffset = previous->GetAbsoluteOffset(Rml::BoxArea::Border);
+            const float top = std::min(box.y, captionOffset.y);
+            box.h = box.y + box.h - top;
+            box.y = top;
+        }
         boxes.push_back(std::move(box));
     }
     return boxes;

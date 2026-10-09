@@ -574,6 +574,27 @@ namespace {
         return names;
     }
 
+    // `body` alone (the HTML body, whose background CSS propagates to the canvas)
+    bool isBodyOnly(const ComplexSelector& selector){
+        return selector.compounds.size() == 1 && selector.compounds.front().simples.size() == 1 &&
+               selector.compounds.front().simples.front().kind == SimpleSelector::Kind::Type &&
+               selector.compounds.front().simples.front().name == "body";
+    }
+
+    bool isBodyRule(const FlatRule& rule){
+        if (rule.selectors.empty())
+            return false;
+        for (const ComplexSelector& s : rule.selectors){
+            if (!isBodyOnly(s))
+                return false;
+        }
+        return true;
+    }
+
+    bool isBackgroundProperty(const std::string& name){
+        return name == "background" || name.compare(0, 11, "background-") == 0;
+    }
+
     void prePass(Session& session, const std::vector<std::vector<Declaration>>& styleAttributes){
         // selectors
         SelectorOptions authorOptions = session.selectorOptions;
@@ -712,6 +733,27 @@ namespace {
                 for (const Rule& frame : at.rule.rules)
                     scan(frame.declarations, nullptr);
             }
+        }
+
+        // background propagation (§3.10 item 1)
+        {
+            bool rootBackground = false, bodyBackground = false;
+            for (const FlatRule& rule : session.rules){
+                if (rule.dropped || rule.origin != RuleOrigin::Author)
+                    continue;
+                bool background = false;
+                for (const Declaration& d : rule.declarations)
+                    background = background || isBackgroundProperty(d.name);
+                if (!background)
+                    continue;
+                for (const ComplexSelector& s : rule.selectors){
+                    if (SelectorRewriter::isRootRule(s, session.selectorOptions))
+                        rootBackground = true;
+                }
+                if (isBodyRule(rule))
+                    bodyBackground = true;
+            }
+            session.propagateBodyBackground = bodyBackground && !rootBackground;
         }
 
         // the root font size (rem, root em) from static root rules
@@ -909,11 +951,23 @@ namespace {
             }
         }
 
+        // the body's background on the root, the body itself transparent (§3.10 item 1)
+        std::vector<OutDecl> rootBackground;
+        if (session.propagateBodyBackground && rule.origin == RuleOrigin::Author && isBodyRule(rule)){
+            for (OutDecl& d : normal){
+                if (d.name != "background-color" && d.name != "decorator" && d.name != "--html-bg-layers")
+                    continue;
+                rootBackground.push_back(d);
+                d.value = d.name == "background-color" ? "transparent" : d.name == "decorator" ? "none" : "linear-gradient(#0000, #0000)";
+            }
+        }
+
         bool any = !normal.empty() || !placeholderDeclarations.empty();
         for (const GeneratedRule& generated : output.generated)
             any = any || !generated.declarations.empty();
         if (any)
         writeUnderMedia(writer, rule.media, rule.ref, [&](){
+            writeBlock(writer, "body#htmlui-root", rootBackground, rule.ref);
             writeBlock(writer, joinSelectors(plain), normal, rule.ref);
             writeBlock(writer, joinSelectors(placeholder), placeholderDeclarations, rule.ref);
             for (const GeneratedRule& generated : output.generated)

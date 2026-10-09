@@ -12,6 +12,9 @@
 </style>
 </head>
 <body>
+<!-- a first line without margins: the h1's top margin then collapses with its sibling only
+     (parent/child margin collapsing is phase 3's) -->
+<div id="intro" data-ref-tol="text">Unstyled HTML with the browser defaults.</div>
 <h1 id="h1" data-ref-tol="text">Heading level one</h1>
 <p id="p1" data-ref-tol="text">A paragraph with <b>bold</b>, <strong>strong</strong>, <i>italic</i>, <em>emphasis</em>, <u>underline</u>,
 <s>strike</s>, <code>code</code>, <kbd>kbd</kbd>, <mark>marked</mark>, <small>small</small>, H<sub>2</sub>O, x<sup>2</sup>,
@@ -57,7 +60,7 @@
 <li>Three</li>
 </ol>
 
-<table id="table" data-ref-tol="text">
+<table id="table" data-ref-tol="table">
 <caption>Table caption</caption>
 <thead><tr><th>Name</th><th>Score</th></tr></thead>
 <tbody><tr><td>Alice</td><td>1200</td></tr><tr><td>Bob</td><td>950</td></tr></tbody>

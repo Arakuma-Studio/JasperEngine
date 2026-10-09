@@ -110,7 +110,8 @@
   .pixel { width: 72px; height: 72px; image-rendering: pixelated; }
   .icon { color: #4ade80; background: var(--sample-bg); display: flex; align-items: center; justify-content: center; }
   .icon svg { width: 48px; height: 48px; }
-  .drop { margin: 10px 30px; width: 88px; height: 56px; border-radius: 10px; background: #eab308; filter: drop-shadow(4px 6px 4px rgba(0, 0, 0, 0.7)); }
+  .pad-drop { padding: 10px 30px; }
+  .drop { width: 88px; height: 56px; border-radius: 10px; background: #eab308; filter: drop-shadow(4px 6px 4px rgba(0, 0, 0, 0.7)); }
   .mask { background: #3b82f6; -webkit-mask-image: linear-gradient(to right, #000, transparent); mask-image: linear-gradient(to right, #000, transparent); }
   .vmin { width: 8vmin; height: 8vmin; background: #ec4899; }
 
@@ -120,13 +121,14 @@
   .conic { width: 80px; border-radius: 50%; background: conic-gradient(from 90deg, #ef4444, #eab308, #22c55e, #3b82f6, #ef4444); }
   .stripes { background: repeating-linear-gradient(45deg, #334155 0 8px, #64748b 8px 16px); }
   .webkit-gradient { background: -webkit-linear-gradient(top, #22d3ee, #1e40af); }
-  .rotate { margin: 10px 24px; width: 100px; height: 60px; background: #10b981; transform: rotate(12deg) scale(0.8); }
+  .pad-rotate { padding: 10px 24px; }
+  .rotate { width: 100px; height: 60px; background: #10b981; transform: rotate(12deg) scale(0.8); }
 
   /* cascade */
   .inherit-parent { border-radius: 16px; background: #0ea5e9; padding: 12px; }
   .inherit-parent .child { border-radius: inherit; height: 56px; background: #f8fafc; }
-  #s-important { background: #ef4444; }
   .important { background: #22c55e !important; }
+  .important { background: #ef4444; }
 
   .nest {
     background: #312e81;
@@ -201,7 +203,7 @@
   <div class="case"><div class="s"><img class="pixel" id="s-pixel" src="assets/pixel-sword.png" alt=""></div><span class="label">pixelated</span></div>
 
   <div class="case"><div class="s icon" id="s-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div><span class="label">currentColor icon</span></div>
-  <div class="case"><div class="s"><div class="drop" id="s-drop"></div></div><span class="label">drop-shadow()</span></div>
+  <div class="case"><div class="s pad-drop"><div class="drop" id="s-drop"></div></div><span class="label">drop-shadow()</span></div>
   <div class="case"><div class="s mask" id="s-mask"></div><span class="label">mask-image</span></div>
   <div class="case"><div class="s vmin" id="s-vmin"></div><span class="label">vmin</span></div>
   <div class="case"><div class="s angle" id="s-angle"></div><span class="label">linear 45deg stops</span></div>
@@ -210,7 +212,7 @@
   <div class="case"><div class="s stripes" id="s-stripes"></div><span class="label">repeating-linear</span></div>
 
   <div class="case"><div class="s webkit-gradient" id="s-webkit"></div><span class="label">-webkit- gradient</span></div>
-  <div class="case"><div class="s"><div class="rotate" id="s-rotate"></div></div><span class="label">rotate + scale</span></div>
+  <div class="case"><div class="s pad-rotate"><div class="rotate" id="s-rotate"></div></div><span class="label">rotate + scale</span></div>
   <div class="case"><div class="s inherit-parent" id="s-inherit"><div class="child"></div></div><span class="label">inherit</span></div>
   <div class="case"><div class="s important" id="s-important"></div><span class="label">!important</span></div>
   <div class="case"><div class="s nest" id="s-nest"><div class="dot"></div></div><span class="label">nesting</span></div>
