@@ -1,0 +1,12 @@
+/* clip-path basic shapes through html-shape */
+.inset { clip-path: inset(10px 20px round 8px); }
+.circle { clip-path: circle(50% at 50% 50%); }
+.ellipse { clip-path: ellipse(40% 30%); }
+.polygon { clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
+.path { clip-path: path('M 0 0 L 100 0 L 50 100 Z'); }
+.xywh { clip-path: xywh(0 0 100% 50%); }
+.rect { clip-path: rect(0 100px 50px 0); }
+.box { clip-path: circle(40%) padding-box; }
+.url { clip-path: url(#clip); }
+.none { clip-path: none; }
+.units { clip-path: inset(1em calc(10px + 5px)); }

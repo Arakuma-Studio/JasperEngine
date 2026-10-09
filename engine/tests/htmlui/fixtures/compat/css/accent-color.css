@@ -1,0 +1,6 @@
+/* accent-color through --html-accent */
+:root { accent-color: #e91e63; }
+.auto { accent-color: auto; }
+.rgba { accent-color: rgba(0, 128, 0, .8); }
+.var { accent-color: var(--brand); }
+.invalid { accent-color: 12px; }

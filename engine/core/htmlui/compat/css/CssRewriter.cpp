@@ -1101,6 +1101,26 @@ namespace {
                 if (RewriteFunction function = findRewrite(row->rewrite))
                     function(context);
             }else{
+                if (name == "transform-origin" || name == "perspective-origin"){
+                    // RmlUi reads the horizontal keyword first ("top left" -> "left top")
+                    std::vector<ComponentValue> w;
+                    for (const ComponentValue& v : context.value){
+                        if (!v.isWhitespace())
+                            w.push_back(v);
+                    }
+                    auto vertical = [](const ComponentValue& v){ return v.isToken(TokenType::Ident) && (equalsNoCase(v.token.value, "top") || equalsNoCase(v.token.value, "bottom")); };
+                    auto horizontal = [](const ComponentValue& v){ return v.isToken(TokenType::Ident) && (equalsNoCase(v.token.value, "left") || equalsNoCase(v.token.value, "right")); };
+                    if (w.size() >= 2 && (vertical(w[0]) || horizontal(w[1])) && !(vertical(w[1]) || horizontal(w[0])))
+                        std::swap(w[0], w[1]);
+                    else if (w.size() == 1 && vertical(w[0]))
+                        w.insert(w.begin(), ValueNormalizer::ident("center"));
+                    context.value.clear();
+                    for (size_t i = 0; i < w.size(); i++){
+                        if (i)
+                            context.value.push_back(ValueNormalizer::whitespace());
+                        context.value.push_back(w[i]);
+                    }
+                }
                 const std::string text = context.valueText();
                 // an unsupported keyword from the value table
                 if (context.value.size() == 1 && context.value[0].isToken(TokenType::Ident)){

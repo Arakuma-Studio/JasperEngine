@@ -1,0 +1,9 @@
+/* masks: the background layer rewrite into RmlUi's mask-image */
+.fade { mask-image: linear-gradient(to bottom, #000 60%, transparent); }
+.webkit { -webkit-mask-image: radial-gradient(circle, black 50%, transparent 51%); }
+.url { mask: url(img/a.png) center / contain no-repeat; }
+.longhands { mask-image: url(img/a.png); mask-size: 32px; mask-position: center; mask-repeat: no-repeat; }
+.wk-longhands { -webkit-mask-image: url(img/b.png); -webkit-mask-size: cover; }
+.mode { mask-mode: luminance; mask-composite: add; mask-type: alpha; }
+.none { mask-image: none; }
+.with-clip { mask-image: linear-gradient(#000, transparent); clip-path: circle(50%); }

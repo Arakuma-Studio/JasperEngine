@@ -1,0 +1,7 @@
+/* object-fit / object-position (registered, read by img) */
+img.cover { object-fit: cover; object-position: center top; }
+img.contain { object-fit: contain; object-position: 20% 80%; }
+img.none { object-fit: none; object-position: left; }
+img.sd { object-fit: scale-down; object-position: 10px 0; }
+img.fill { object-fit: fill; }
+.invalid { object-fit: stretch; }

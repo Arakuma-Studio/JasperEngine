@@ -1,0 +1,6 @@
+/* appearance through the control companions */
+input[type=checkbox] { appearance: none; -webkit-appearance: none; }
+select { -moz-appearance: none; }
+.restore { appearance: auto; }
+.button { -webkit-appearance: button; }
+.invalid { appearance: fancy; }

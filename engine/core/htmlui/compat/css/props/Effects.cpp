@@ -177,7 +177,12 @@ std::optional<std::string> jasperengine::htmlui::compat::clipPathShape(DeclConte
             const std::string name = lowerAscii(v.name());
             if (name == "inset" || name == "circle" || name == "ellipse" || name == "polygon" || name == "path" || name == "xywh" ||
                 name == "rect"){
+                // the shape travels inside a double-quoted string: its own strings use single quotes
                 shape = serialize(v);
+                for (char& c : shape){
+                    if (c == '"')
+                        c = '\'';
+                }
                 continue;
             }
         }

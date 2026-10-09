@@ -116,7 +116,8 @@ bool ValueNormalizer::colorKeywordsApply(const std::string& property){
         "counter-reset", "counter-increment", "counter-set", "grid-area", "grid-template-areas", "grid-row", "grid-column",
         "grid-row-start", "grid-row-end", "grid-column-start", "grid-column-end", "content", "quotes", "list-style-type",
         "font-feature-settings", "font-variation-settings", "unicode-range", "container-name", "view-transition-name",
-        "anchor-name", "position-anchor", "cursor", "font-palette", "src", "-rmlui-language",
+        "anchor-name", "position-anchor", "cursor", "font-palette", "src", "-rmlui-language", "nav", "nav-up", "nav-down",
+        "nav-left", "nav-right",
     };
     return noColors.count(property) == 0;
 }
