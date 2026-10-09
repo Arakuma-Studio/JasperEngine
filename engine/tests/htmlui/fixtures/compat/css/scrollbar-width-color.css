@@ -1,0 +1,10 @@
+/* scrollbar-width / scrollbar-color as generated scrollbar rules */
+.none { scrollbar-width: none; }
+.thin { scrollbar-width: thin; scrollbar-color: #888 #222; }
+.auto { scrollbar-width: auto; scrollbar-color: auto; }
+html { scrollbar-width: none; }
+.gutter { scrollbar-gutter: stable; }
+.invalid { scrollbar-color: red; }
+.panel::-webkit-scrollbar { width: 6px; }
+.panel::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+.panel::-webkit-scrollbar-track { background: transparent; }

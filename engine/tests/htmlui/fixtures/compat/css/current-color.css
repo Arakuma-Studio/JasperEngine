@@ -1,0 +1,8 @@
+/* currentColor: the rule's static color, else the --html-current-color companion */
+.same-rule { color: #336699; border: 2px solid currentColor; box-shadow: 0 0 4px currentColor; }
+.companion { background-color: currentColor; outline: 1px solid currentcolor; }
+.borders-no-color { border: 3px solid; border-top: 1px dashed; }
+.color-itself { color: currentColor; }
+.icon { fill: currentColor; stroke: currentColor; }
+.gradient { background: linear-gradient(currentColor, transparent); }
+.var-color { color: var(--theme); }

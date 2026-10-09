@@ -1,0 +1,10 @@
+/* flexbox keywords RmlUi lacks */
+.f1 { flex: none; } .f2 { flex: auto; } .f3 { flex: 1; } .f4 { flex: 2 1; } .f5 { flex: 1 200px; } .f6 { flex: 1 1 0; } .f7 { flex: initial; } .f8 { flex: 0 0 50%; }
+.jc1 { justify-content: start; } .jc2 { justify-content: end; } .jc3 { justify-content: left; } .jc4 { justify-content: right; }
+.jc5 { justify-content: normal; } .jc6 { justify-content: stretch; } .jc7 { justify-content: safe center; } .jc8 { justify-content: space-evenly; }
+.ai1 { align-items: start; } .ai2 { align-items: self-end; } .ai3 { align-items: normal; } .ai4 { align-items: first baseline; } .ai5 { align-items: last baseline; }
+.as1 { align-self: end; } .as2 { align-self: unsafe flex-start; }
+.ac1 { align-content: start; } .ac2 { align-content: normal; } .ac3 { align-content: baseline; } .ac4 { align-content: space-between; }
+.gap { gap: normal; row-gap: normal 10px; column-gap: 2em; }
+.flow { flex-flow: column wrap; } .dir { flex-direction: row-reverse; } .wrap { flex-wrap: wrap-reverse; } .grow { flex-grow: 2; flex-shrink: 0; flex-basis: 30%; }
+.invalid { justify-content: sideways; }

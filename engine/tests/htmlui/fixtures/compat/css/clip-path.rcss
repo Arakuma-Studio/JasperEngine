@@ -1,0 +1,33 @@
+#htmlui-root .inset {
+mask-image: html-shape("inset(10px 20px round 8px)");
+}
+#htmlui-root .circle {
+mask-image: html-shape("circle(50% at 50% 50%)");
+}
+#htmlui-root .ellipse {
+mask-image: html-shape("ellipse(40% 30%)");
+}
+#htmlui-root .polygon {
+mask-image: html-shape("polygon(50% 0%, 100% 100%, 0% 100%)");
+}
+#htmlui-root .path {
+mask-image: html-shape("path('M 0 0 L 100 0 L 50 100 Z')");
+}
+#htmlui-root .xywh {
+mask-image: html-shape("xywh(0 0 100% 50%)");
+}
+#htmlui-root .rect {
+mask-image: html-shape("rect(0 100px 50px 0)");
+}
+#htmlui-root .box {
+mask-image: html-shape("circle(40%) padding-box");
+}
+#htmlui-root .url {
+mask-image: none;
+}
+#htmlui-root .none {
+mask-image: none;
+}
+#htmlui-root .units {
+mask-image: html-shape("inset(1em 15px)");
+}

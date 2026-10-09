@@ -1,0 +1,4 @@
+/* image-rendering (registered, nearest sampling) */
+.pixel { image-rendering: pixelated; } .crisp { image-rendering: crisp-edges; } .auto { image-rendering: auto; }
+.smooth { image-rendering: smooth; } .hq { image-rendering: high-quality; } .old { image-rendering: optimizeSpeed; } .moz { image-rendering: -moz-crisp-edges; }
+.invalid { image-rendering: blurry; }

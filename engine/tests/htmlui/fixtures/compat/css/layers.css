@@ -1,0 +1,11 @@
+/* @layer flattened: named layers first in declaration order, then unlayered rules */
+@layer reset, base, components;
+.plain { color: black; }
+@layer components { .btn { color: blue; padding: 8px; } }
+@layer reset { * { margin: 0; } }
+@layer base { body .btn { color: green; } a { color: purple; } }
+.btn { color: red; }
+a { color: orange; }
+@layer { .anon { color: gray; } }
+@layer base.typography { h1 { font-size: 2em; } }
+@layer components { @media (min-width: 600px) { .btn { padding: 12px; } } }

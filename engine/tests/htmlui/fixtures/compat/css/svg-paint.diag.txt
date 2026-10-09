@@ -1,0 +1,6 @@
+compat/css/svg-paint.css:3:117: warning: 'fill-opacity: 80%' is not supported; declaration dropped [HTMLUI-CSS-0004]
+compat/css/svg-paint.css:4:12: info: 'stroke-dashoffset' is not supported; dropped (fix: set it as a presentation attribute inside the SVG file) [HTMLUI-CSS-0002]
+compat/css/svg-paint.css:4:34: info: 'marker-end' is not supported; dropped (fix: set it as a presentation attribute inside the SVG file) [HTMLUI-CSS-0002]
+compat/css/svg-paint.css:4:59: info: 'paint-order' is not supported; dropped (fix: set it as a presentation attribute inside the SVG file) [HTMLUI-CSS-0002]
+compat/css/svg-paint.css:4:80: info: 'vector-effect' is not supported; dropped (fix: set it as a presentation attribute inside the SVG file) [HTMLUI-CSS-0002]
+compat/css/svg-paint.css:5:9: warning: 'fill: url("#g")' is not supported; declaration dropped [HTMLUI-CSS-0004]

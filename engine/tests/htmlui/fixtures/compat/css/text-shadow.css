@@ -1,0 +1,12 @@
+/* text-shadow to font effects */
+.blur0 { text-shadow: 1px 1px #000; }
+.blur { text-shadow: 0 0 10px rgba(0, 255, 255, .8); }
+.multiple { text-shadow: 0 0 5px #fff, 0 0 10px #0ff, 2px 2px 0 #000; }
+.no-color { text-shadow: 2px 2px 4px; }
+.static-color { color: #ff0; text-shadow: 0 0 6px; }
+.color-first { text-shadow: red 1px 1px 2px; }
+.none { text-shadow: none; }
+.em { text-shadow: 0.1em 0.1em 0.2em #000; }
+.var { text-shadow: var(--glow); }
+.invalid { text-shadow: 1px; }
+:root { --glow: 0 0 8px #f0f; }

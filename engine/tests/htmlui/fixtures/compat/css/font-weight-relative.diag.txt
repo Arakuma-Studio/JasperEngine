@@ -1,0 +1,3 @@
+compat/css/font-weight-relative.css:2:11: info: 'font-weight: bolder' is written as 700 (relative to a normal parent weight) (fix: write the numeric weight) [HTMLUI-CSS-0005]
+compat/css/font-weight-relative.css:2:45: info: 'font-weight: lighter' is written as 100 (relative to a normal parent weight) (fix: write the numeric weight) [HTMLUI-CSS-0005]
+compat/css/font-weight-relative.css:5:12: warning: 'font-weight: 1200' is not supported; declaration dropped (fix: use a weight between 1 and 1000) [HTMLUI-CSS-0004]

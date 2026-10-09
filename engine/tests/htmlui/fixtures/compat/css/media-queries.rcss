@@ -1,0 +1,140 @@
+#htmlui-root .a {
+width: 1px;
+}
+@media (min-width: 600px) {
+#htmlui-root .c {
+width: 3px;
+}
+}
+#htmlui-root .d {
+width: 4px;
+}
+@media (max-width: 600px) {
+#htmlui-root .f {
+width: 6px;
+}
+}
+@media (orientation: portrait) {
+#htmlui-root .f {
+width: 6px;
+}
+}
+@media (min-width: 600px) {
+#htmlui-root .g {
+width: 7px;
+}
+}
+@media (max-width: 599.98px) {
+#htmlui-root .h {
+width: 8px;
+}
+}
+@media (min-width: 400px) and (max-width: 800px) {
+#htmlui-root .i {
+width: 9px;
+}
+}
+@media (max-width: 599.98px) {
+#htmlui-root .i2 {
+width: 9px;
+}
+}
+@media (min-width: 640px) and (max-width: 960px) {
+#htmlui-root .j {
+width: 10px;
+}
+}
+@media (theme: dark) {
+#htmlui-root .k {
+width: 11px;
+}
+}
+@media (theme: light) {
+#htmlui-root .l {
+width: 12px;
+}
+}
+@media (theme: reduced-motion) {
+#htmlui-root .m {
+width: 13px;
+}
+}
+@media not (theme: reduced-motion) {
+#htmlui-root .n {
+width: 14px;
+}
+}
+#htmlui-root .o {
+width: 15px;
+}
+#htmlui-root .q {
+width: 17px;
+}
+#htmlui-root .u {
+width: 21px;
+}
+@media (max-width: 599.98px) {
+#htmlui-root .v {
+width: 22px;
+}
+}
+@media (orientation: portrait) {
+#htmlui-root .v {
+width: 22px;
+}
+}
+@media (min-width: 600px) and (orientation: landscape) {
+#htmlui-root .w {
+width: 23px;
+}
+}
+@media (min-height: 400px) and (orientation: landscape) {
+#htmlui-root .w {
+width: 23px;
+}
+}
+@media (min-aspect-ratio: 16/9) {
+#htmlui-root .z {
+width: 26px;
+}
+}
+@media (min-aspect-ratio: 4443/3332) {
+#htmlui-root .z2 {
+width: 26px;
+}
+}
+@media (min-resolution: 2x) {
+#htmlui-root .aa {
+width: 27px;
+}
+}
+@media (min-width: 600px) and (max-width: 900px) {
+#htmlui-root .bb {
+width: 28px;
+}
+}
+@media (min-width: 600px) {
+#htmlui-root .ee {
+width: 31px;
+}
+}
+@media (width: 600px) {
+#htmlui-root .ff {
+width: 32px;
+}
+}
+@media (max-width: 599.98px) {
+#htmlui-root .gg {
+width: 33px;
+}
+}
+@media (min-width: 600.02px) {
+#htmlui-root .gg {
+width: 33px;
+}
+}
+@media (min-height: 300.02px) {
+#htmlui-root .jj {
+width: 36px;
+}
+}

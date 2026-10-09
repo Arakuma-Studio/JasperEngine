@@ -1,0 +1,8 @@
+/* !important: hoisted into the generated sheet after the author sheets */
+.btn { color: red !important; padding: 4px; }
+#menu .btn { color: blue; }
+.card { background-color: #222 !important; }
+.card.active { margin: 0 !important; }
+@media (min-width: 600px) { .wide { display: none !important; } }
+body .btn { color: green; }
+.btn:hover { color: orange !important; }

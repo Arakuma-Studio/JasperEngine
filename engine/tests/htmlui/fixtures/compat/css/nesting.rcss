@@ -1,0 +1,65 @@
+#htmlui-root .card {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+}
+#htmlui-root .card .title {
+font-size: 2em;
+}
+#htmlui-root .card:hover {
+color: #0000ffff;
+--html-current-color: #0000ffff;
+}
+#htmlui-root .card .body {
+padding: 4px;
+}
+#htmlui-root .card > .icon {
+width: 16px;
+}
+#htmlui-root .card + .card {
+margin-top: 8px;
+}
+#htmlui-root .card.active {
+border-top-width: 1px;
+border-top-color: var(--html-current-color, #000000ff);
+border-right-width: 1px;
+border-right-color: var(--html-current-color, #000000ff);
+border-bottom-width: 1px;
+border-bottom-color: var(--html-current-color, #000000ff);
+border-left-width: 1px;
+border-left-color: var(--html-current-color, #000000ff);
+}
+#htmlui-root .parent .card {
+color: #808080ff;
+--html-current-color: #808080ff;
+}
+@media (min-width: 600px) {
+#htmlui-root .card {
+padding: 10px;
+}
+}
+@media (min-width: 600px) {
+#htmlui-root .card .title {
+font-size: 3em;
+}
+}
+#htmlui-root .card {
+background-color: #ffffffff;
+}
+#htmlui-root .a .c, #htmlui-root .a .d, #htmlui-root .b .c, #htmlui-root .b .d {
+color: #800080ff;
+--html-current-color: #800080ff;
+}
+#htmlui-root .a + .a, #htmlui-root .b + .b {
+margin: 0;
+}
+#htmlui-root ul > li > a {
+color: #000080ff;
+--html-current-color: #000080ff;
+}
+#htmlui-root .x {
+display: flex;
+}
+body#htmlui-root {
+color: #000000ff;
+--html-current-color: #000000ff;
+}

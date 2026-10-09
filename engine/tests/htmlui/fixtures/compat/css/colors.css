@@ -1,0 +1,22 @@
+/* every CSS Color 4 syntax becomes #rrggbbaa */
+.hex { color: #f00; background-color: #f008; border-color: #ff0000; outline-color: #ff000080; }
+.rgb { color: rgb(255, 0, 0); background-color: rgba(255, 0, 0, .5); caret-color: rgba(0 0 0 / 50%); }
+.rgb-space { color: rgb(10% 20% 30%); background-color: rgb(255 128 0 / 0.25); border-color: rgb(none 255 none); }
+.hsl { color: hsl(120, 50%, 50%); background-color: hsla(240 100% 50% / .5); border-color: hsl(0.5turn 100% 25%); }
+.hwb { color: hwb(90 10% 20%); background-color: hwb(200 0% 0% / 40%); }
+.lab { color: lab(50% 40 59.5); background-color: lch(60% 50 120deg); }
+.oklab { color: oklab(0.7 0.1 -0.1); background-color: oklch(70% 0.15 200 / .8); }
+.color-fn { color: color(srgb 1 0.5 0); background-color: color(display-p3 1 0 0); border-color: color(xyz-d65 0.2 0.3 0.4); }
+.mix { color: color-mix(in srgb, red, blue); background-color: color-mix(in oklch, #ff0000 30%, #0000ff); border-color: color-mix(in srgb, red 20%, transparent); }
+.relative { color: rgb(from red r g b / 50%); background-color: hsl(from #ff8000 calc(h + 180) s l); }
+.light-dark { color: light-dark(#111, #eee); }
+.keywords { color: transparent; background-color: RebeccaPurple; border-color: WHITE; }
+.invalid-1 { color: #ggg; }
+.invalid-2 { color: rgb(1, 2); }
+.invalid-3 { color: rgb(10%, 20, 30); }
+.invalid-4 { color: notacolor; }
+.invalid-5 { color: hsl(10, 20, 30); }
+.dynamic { --c: 255 0 0; color: rgb(var(--c) / 50%); }
+.dynamic-2 { --c: 0 0 255; }
+.static-var { --rgb: 0, 128, 255; background-color: rgba(var(--rgb), .3); }
+.gradient-stop { background-image: linear-gradient(rgba(0,0,0,.5), hsl(0 0% 100% / 0.1)); }

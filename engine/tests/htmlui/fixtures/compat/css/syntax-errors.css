@@ -1,0 +1,13 @@
+/* syntax errors recovered as browsers recover */
+.a { color: red; width 10px; height: 20px; }
+.b { color: ; margin: 0 }
+.c { color: "unterminated
+; padding: 1px; }
+.d { background: url(bad url here); width: 1px; }
+.e { width: 10px;; ;; height: 5px }
+.f } .g { color: blue; }
+.h { : value; color: green; }
+.i { color: red !important !important; }
+.j { width: 10px !imprtant; }
+.k { --x: { a: b }; color: navy; }
+.l { color: red

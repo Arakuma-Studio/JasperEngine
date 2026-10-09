@@ -1,0 +1,6 @@
+compat/css/position.css:3:10: info: 'position: fixed' acts like 'absolute' until the fork has Fixed (fix: place the element in a screen-sized container) [HTMLUI-CSS-0007]
+compat/css/position.css:3:56: warning: 'position: sticky' is drawn as 'relative' (it does not stick) (fix: pin the element with position: absolute in a non-scrolling container) [HTMLUI-CSS-0006]
+compat/css/position.css:3:90: warning: 'position: -webkit-sticky' is drawn as 'relative' (it does not stick) (fix: pin the element with position: absolute in a non-scrolling container) [HTMLUI-CSS-0006]
+compat/css/position.css:5:10: warning: 'float: inline-start' is not supported; declaration dropped (fix: use one of: none,left,right) [HTMLUI-CSS-0004]
+compat/css/position.css:5:31: warning: 'clear: inline-end' is not supported; declaration dropped (fix: use one of: none,left,right,both) [HTMLUI-CSS-0004]
+compat/css/position.css:6:12: warning: 'position: center' is not supported; declaration dropped (fix: use static, relative, absolute or fixed) [HTMLUI-CSS-0004]

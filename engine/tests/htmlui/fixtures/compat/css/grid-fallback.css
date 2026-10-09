@@ -1,0 +1,14 @@
+/* display: grid as wrapping flex items until the fork has Grid */
+.fixed { display: grid; grid-template-columns: repeat(6, 64px); gap: 8px; }
+.fr { display: grid; grid-template-columns: repeat(3, 1fr); }
+.auto-fill { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+.auto-fit { display: grid; grid-template-columns: repeat(auto-fit, minmax(10em, 1fr)); }
+.explicit { display: grid; grid-template-columns: 200px 1fr 2fr; }
+.uniform-list { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; }
+.shorthand { display: grid; grid-template: auto / repeat(2, 1fr); }
+.grid-short { display: grid; grid: auto-flow / 1fr 1fr; }
+.items { grid-column: 1 / 3; grid-row: span 2; grid-area: header; }
+.rows { grid-template-rows: 100px auto; grid-auto-flow: dense; grid-auto-rows: 50px; grid-template-areas: "a b"; }
+.gaps { grid-gap: 10px 20px; grid-row-gap: 4px; grid-column-gap: 8px; }
+.justify { justify-items: center; justify-self: end; }
+.complex { display: grid; grid-template-columns: [full-start] minmax(1rem, 1fr) [content-start] 60ch [content-end] minmax(1rem, 1fr) [full-end]; }

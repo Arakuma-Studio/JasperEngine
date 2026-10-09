@@ -1,0 +1,7 @@
+compat/css/pseudo-elements.css:2:7: warning: '::before' needs the fork's generated content; selector dropped (fix: add a real element (a span) for the content) [HTMLUI-SEL-0003]
+compat/css/pseudo-elements.css:3:7: warning: '::after' needs the fork's generated content; selector dropped (fix: add a real element (a span) for the content) [HTMLUI-SEL-0003]
+compat/css/pseudo-elements.css:4:5: warning: ':before' needs the fork's generated content; selector dropped (fix: add a real element (a span) for the content) [HTMLUI-SEL-0003]
+compat/css/pseudo-elements.css:5:8: warning: ':before' needs the fork's generated content; selector dropped (fix: add a real element (a span) for the content) [HTMLUI-SEL-0003]
+compat/css/pseudo-elements.css:6:55: info: 'padding' has no effect in ::placeholder (only color, opacity and font properties apply); dropped there [HTMLUI-CSS-0002]
+compat/css/pseudo-elements.css:6:69: info: 'background-color' has no effect in ::placeholder (only color, opacity and font properties apply); dropped there [HTMLUI-CSS-0002]
+compat/css/pseudo-elements.css:10:3: warning: '::first-letter' is not supported; selector dropped (fix: wrap the first letter in a span) [HTMLUI-SEL-0001]

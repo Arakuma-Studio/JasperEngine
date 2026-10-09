@@ -306,6 +306,15 @@ namespace {
         rewriteContext.documentPath = path;
         rewriteContext.rootId = context.rootId;
         rewriteContext.rootDirection = context.rootDirection;
+        // the <html> attributes as the author wrote them (the reserved id is compat's; the
+        // author id is rootId): `.dark .x` also matches <html class="dark"> (p2-css)
+        if (context.root){
+            for (const HtmlAttr& attribute : context.root->attrs){
+                if (attribute.name == "id" || attribute.name == "data-html-id")
+                    continue;
+                rewriteContext.rootAttributes.emplace_back(attribute.name, attribute.value);
+            }
+        }
 
         RewriteResult result;
         {

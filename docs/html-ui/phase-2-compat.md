@@ -1710,6 +1710,10 @@ struct RewriteContext {               // per document session
     const ImportManifest* manifest = nullptr;   // ImportManifest::get() when null
     std::string virtualDirectory;     // "@htmlui/doc/<key hex>/": the loader knows the key, the rewriter does not
     std::string documentPath;
+    // the attributes of the document's <html> element (name, value), lowercase names; the
+    // rewriter resolves `html#app`, `html.dark`, `html[data-theme]`, `html[dir=rtl]`
+    // statically against them (added by p2-css)
+    std::vector<std::pair<std::string, std::string>> rootAttributes;
 };
 struct RewriteResult {
     std::vector<StylesheetOutput> sheets;      // same order as the inputs
@@ -2716,7 +2720,63 @@ Built by p2-html (October 2026). Where the code differs from or adds to the text
   `color_*.json` through `ColorValue`. `compat_easing_test.cpp` checks the keyword table and
   `nearestTween` against brute force. `compat_media_test.cpp`, `compat_selector_test.cpp`
   table-driven. `compat_rewrite_registry_test.cpp`: every `RewriteId` used by a table row
-  has a registered function and every function is used. `compat_perf_test.cpp` CSS rows.
+  has a registered function and every function is used. `compat_css_perf_test.cpp` CSS rows
+  (named apart from p2-html's `compat_perf_test.cpp`).
+
+#### p2-css as implemented
+
+Built by p2-css (October 2026). The sections above keep the design; this list records the
+interfaces other packages rely on and the deviations.
+
+- **Files**: besides the owned list, `css/RewriteSession.h` (the session: `FlatRule`,
+  `FlatAtRule`, `OutDecl`, `RuleOutput`, `DeclContext` with `emit/generate/report`),
+  `css/RcssGrammar.*` (what RmlUi 6.3 and the compat-registered properties accept, per
+  property: the last check before a declaration is written, so nothing RmlUi would reject is
+  passed on) and `css/props/Rewriters.*` (the `RewriteId` → function registry). Fixtures:
+  `fixtures/compat/css/<case>.css` (87 cases; a first-line comment
+  `/* htmlui-test: kind=style-attribute|inline root-id=… root-class=… root-attr=… dir=…
+  viewport=WxH touch dp=… */` sets the inputs), shared runner `CssCaseRunner.h`, stand-ins
+  for the p2-runtime properties and decorators in `CompatRuntimeStandIns.h` (skipped when the
+  real ones are registered).
+- **`RewriteContext::rootAttributes`** (new field next to p2-html's `rootId`/`rootDirection`;
+  `DocumentLoader` fills it with the `<html>` attributes except the reserved `id` and
+  `data-html-id`): `html`/`:root` map to `body#htmlui-root` in author sheets (`body` in the UA
+  sheet), `body` to `htmlbody`; selectors on root attributes are resolved at rewrite time
+  (a variant per selector that could match the root; `:is()`/`:where()` compounds get no
+  root variant).
+- **Decorator arguments** as written (the forms §"p2-runtime as implemented" documents):
+  `html-layer("<path>" <size-x> <size-y> <pos-x> <pos-y> <repeat-x> <repeat-y> <origin>
+  <clip> <attachment>)` with `cover`/`contain` in both size slots and edge offsets as
+  `calc(100% - 10px)`; `html-shape("<basic-shape> [<box>]")` with strings inside the shape
+  (`path('…')`) in single quotes; `html-border-image("<path>" <slice ×4> fill|nofill
+  <width ×4> <outset ×4> <repeat-x> <repeat-y>)`.
+- **Output rules**: in one rule the last declaration of an output property wins and earlier
+  ones are not written (RmlUi would keep the last too, but shorthands expanding into the same
+  property would otherwise repeat it); `@media` blocks are never empty; the `@media` lines map
+  to their rule in the line map. A custom property whose value is a list holding quoted
+  strings (`--font: "Inter", sans-serif`) is written with the strings unquoted (RmlUi reads a
+  quoted string only as a whole value); a custom property holding a `{}` block is dropped
+  (`HTMLUI-CSS-0004`). `list-style-image` is written as the bare resolved path (the
+  registered property is a string).
+- **`appearance: auto`** writes the fallbacks the UA sheet gives its `var(--html-check, …)`,
+  `--html-control-bg`, `--html-control-border`, `--html-select-arrow`, `--html-thumb`
+  reads, taken from `UserAgentStyle::source()` (built-in copies of p2-ua's values when no
+  sheet is embedded).
+- **`HTMLUI-SEL-0008 selector-ignored`** (Info, new): a rule with an unknown vendor
+  pseudo-class/-element or `:dir()` is dropped, as Chromium drops it.
+- **Parser (p2-core files, changed by p2-css for speed)**: `parseStylesheet` and
+  `parseDeclarationList` parse each block once (its contents) and leave `Rule::block` empty;
+  the CSS Syntax entry points (`parseRuleList`, `parseRule`, `parseBlockContents`) still fill
+  it. The parser drops comment tokens in place. `findProperty` and `valuesOf` use an index
+  built on first use.
+- **Performance** (3.14), measured by `compat_css_perf_test.cpp` (median CPU time; targets
+  scaled by `JASPER_HTMLUI_PERF_SLACK`): a generated 54 KB sheet of 1 200 rules takes about
+  18–20 ms on the shared build host (load 40–60 on 12 cores), of which tokenize + parse
+  (p2-core) is about 3–5 ms; the 16.7 KB UA sheet of p2-ua about 3 ms. The 4 ms / 1 ms
+  targets are not met; the cost is spread (per declaration: normalization, property rewrite,
+  grammar check; per rule: selector parse/rewrite and the AST copies of `Token` /
+  `ComponentValue`). Meeting them needs a token representation without owned strings
+  (`std::string_view` into the source) in p2-core's AST, a phase-3 item.
 
 ### p2-runtime (wave 2): runtime emulations, icons, SVG
 
@@ -3721,6 +3781,7 @@ in section 3.
 | HTMLUI-SEL-0005 | Warning | selector-expansion-limit | nesting or `:is()` expansion over 256 selectors |
 | HTMLUI-SEL-0006 | Info | visited-dropped | `:visited` never matches |
 | HTMLUI-SEL-0007 | Warning | invalid-selector | selector syntax error; rule dropped |
+| HTMLUI-SEL-0008 | Info | selector-ignored | a selector Chromium itself drops (unknown vendor pseudo, `:dir()`); rule dropped as there |
 | HTMLUI-AT-0001 | by case | unsupported-at-rule | at-rule dropped |
 | HTMLUI-AT-0002 | Info | layer-flattened | `@layer` precedence approximated by order |
 | HTMLUI-AT-0003 | Info | supports-evaluated | `@supports` result |

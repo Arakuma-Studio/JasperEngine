@@ -6,6 +6,6 @@
 <htmlbody data-htmlui-loc="1">
 <p data-htmlui-loc="2">one
 two</p>
-<p style="color: red; width: 10px;" data-htmlui-loc="3">three</p>
+<p style="color: #ff0000ff; --html-current-color: #ff0000ff; width: 10px;" data-htmlui-loc="3">three</p>
 </htmlbody></body>
 </rml>

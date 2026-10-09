@@ -1,0 +1,3 @@
+compat/css/text-align.css:4:7: info: 'text-align: match-parent' is written as left [HTMLUI-CSS-0005]
+compat/css/text-align.css:4:76: info: 'text-align-last' has no effect in the engine; dropped [HTMLUI-CSS-0003]
+compat/css/text-align.css:4:114: warning: 'text-align: middle' is not supported; declaration dropped (fix: use left, right, center or justify) [HTMLUI-CSS-0004]

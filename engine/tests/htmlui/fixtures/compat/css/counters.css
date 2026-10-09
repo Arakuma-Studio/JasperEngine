@@ -1,0 +1,5 @@
+/* counters: only the implicit list-item counter */
+ol { counter-reset: list-item; }
+li { counter-increment: list-item; }
+.custom { counter-reset: section 3; counter-increment: section; counter-set: section 1; }
+.none { counter-reset: none; }

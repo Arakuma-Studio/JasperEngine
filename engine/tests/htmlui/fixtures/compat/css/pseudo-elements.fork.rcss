@@ -1,0 +1,32 @@
+#htmlui-root .badge::before {
+content: "★";
+display: block;
+width: 3px;
+height: 3px;
+}
+#htmlui-root .badge::after {
+content: "";
+position: absolute;
+}
+#htmlui-root .slider::before {
+content: "";
+background-color: #ffffffff;
+border-radius: 50%;
+transition: all 0.4s;
+}
+#htmlui-root input:placeholder-shown {
+color: #999999ff;
+--html-current-color: #999999ff;
+font-style: italic;
+}
+#htmlui-root .select selection {
+background-color: #ffff00ff;
+}
+#htmlui-root ol li > marker {
+color: #ff6347ff;
+--html-current-color: #ff6347ff;
+font-weight: bold;
+}
+#htmlui-root .scroller > scrollbarvertical > sliderbar:hover, #htmlui-root .scroller > scrollbarhorizontal > sliderbar:hover {
+background-color: #444444ff;
+}

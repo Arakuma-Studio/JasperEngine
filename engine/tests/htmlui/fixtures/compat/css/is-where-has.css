@@ -1,0 +1,11 @@
+/* :is() / :where() expanded until RootIsWhere; :has() dropped */
+:is(h1, h2, h3) { margin: 0; }
+article :is(p, li) a { color: red; }
+:where(ul, ol) :where(ul, ol) { margin: 0; }
+.card:is(.active, :hover) { color: blue; }
+:is(.a .b, .c) .d { color: green; }
+:is(.x, :has(.y)) { color: pink; }
+.list:has(> li.selected) { border: 1px solid; }
+:is(::before, .z) { color: gray; }
+:is() { color: black; }
+:is(.big):is(.a, .b, .c):is(.d, .e, .f):is(.g, .h, .i):is(.j, .k, .l):is(.m, .n, .o):is(.p, .q, .r):is(.s, .t, .u) { color: red; }

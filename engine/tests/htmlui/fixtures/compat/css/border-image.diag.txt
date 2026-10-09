@@ -1,0 +1,3 @@
+compat/css/border-image.css:6:15: info: border-image longhands are merged with the base rule at compat/css/border-image.css:5 [HTMLUI-CSS-0017]
+compat/css/border-image.css:7:11: warning: 'border-image-width' without a border-image source in the rule or a base rule is dropped (fix: set border-image in the same rule) [HTMLUI-CSS-0018]
+compat/css/border-image.css:8:13: warning: border-image with a gradient source is not supported; dropped (fix: use an image file as the source) [HTMLUI-CSS-0004]

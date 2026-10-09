@@ -1,0 +1,2 @@
+compat/css/logical-properties.css:5:83: info: unit 'ch' is approximated as 0.5em (fix: use em or rem) [HTMLUI-CSS-0005]
+compat/css/logical-properties.css:6:8: warning: 'width: fit-content' is not supported; written as 'auto' (fix: set an explicit size, or use flex) [HTMLUI-CSS-0006]

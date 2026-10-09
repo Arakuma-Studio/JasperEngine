@@ -1,0 +1,6 @@
+/* @property: the initial value on the root */
+@property --angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@property --brand { syntax: "<color>"; inherits: true; initial-value: rebeccapurple; }
+@property --no-initial { syntax: "*"; inherits: true; }
+@property not-custom { initial-value: 1; }
+.spin { transform: rotate(var(--angle)); color: var(--brand); }

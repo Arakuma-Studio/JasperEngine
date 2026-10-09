@@ -1,0 +1,4 @@
+/* htmlui-test: kind=inline */
+.inline-sheet { color: red; background: url(compat/css/img/a.png); }
+@media (min-width: 600px) { .inline-sheet { color: blue; } }
+.inline-sheet:focus { outline: 1px solid; }

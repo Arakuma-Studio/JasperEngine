@@ -1,0 +1,8 @@
+/* htmlui-test: kind=style-attribute viewport=1000x500 */
+color: red; background: rgba(0,0,0,.5); padding: 4px 8px
+border: 1px solid; width: calc(100% - 20px); transition: opacity 200ms ease
+width: 50vmin; height: 10vmax; font-size: clamp(12px, 2vw, 20px)
+margin: 0 !important; color: blue !important
+display: grid; grid-template-columns: repeat(2, 1fr); scrollbar-width: none
+colr: red; text-shadow: 0 0 4px #fff; inset: unset; color: inherit
+--local: 10px; width: var(--local); background-image: url(img/a.png)

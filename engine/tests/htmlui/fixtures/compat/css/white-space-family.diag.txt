@@ -1,0 +1,4 @@
+compat/css/white-space-family.css:5:59: info: 'text-wrap: balance' has no effect in the engine; dropped [HTMLUI-CSS-0003]
+compat/css/white-space-family.css:5:87: info: 'text-wrap: pretty' has no effect in the engine; dropped [HTMLUI-CSS-0003]
+compat/css/white-space-family.css:5:146: info: 'text-wrap-style: balance' has no effect in the engine; dropped [HTMLUI-CSS-0003]
+compat/css/white-space-family.css:6:12: warning: 'white-space: squeeze' is not supported; declaration dropped [HTMLUI-CSS-0004]

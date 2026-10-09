@@ -1,0 +1,88 @@
+#htmlui-root .l1 {
+background-color: transparent;
+decorator: linear-gradient(#ff0000ff, #0000ffff) border-box;
+}
+#htmlui-root .l2 {
+background-color: transparent;
+decorator: linear-gradient(45deg, #ff0000ff 0%, #0000ffff 100%) border-box;
+}
+#htmlui-root .l3 {
+background-color: transparent;
+decorator: linear-gradient(to right, #ff0000ff, #ffff00ff 30%, #0000ffff) border-box;
+}
+#htmlui-root .l4 {
+background-color: transparent;
+decorator: linear-gradient(to bottom right, #00000080, #00000000) border-box;
+}
+#htmlui-root .l5 {
+background-color: transparent;
+decorator: linear-gradient(90deg, #3f87a6ff, #ebf8e1ff, #f69d3cff) border-box;
+}
+#htmlui-root .l6 {
+background-color: transparent;
+decorator: linear-gradient(#ff0000ff 0% 50%, #0000ffff 50% 100%) border-box;
+}
+#htmlui-root .hint {
+background-color: transparent;
+decorator: linear-gradient(#ff0000ff, #0000ffff) border-box;
+}
+#htmlui-root .space {
+background-color: transparent;
+decorator: linear-gradient(#ff0000ff, #0000ffff) border-box;
+}
+#htmlui-root .r1 {
+background-color: transparent;
+decorator: radial-gradient(circle, #ff0000ff, #0000ffff) border-box;
+}
+#htmlui-root .r2 {
+background-color: transparent;
+decorator: radial-gradient(ellipse at 0% 0%, #ff0000ff, #00000000) border-box;
+}
+#htmlui-root .r3 {
+background-color: transparent;
+decorator: radial-gradient(circle closest-side at 30% 40%, #ffffffff, #000000ff) border-box;
+}
+#htmlui-root .r4 {
+background-color: transparent;
+decorator: radial-gradient(50px 30px at 50% 50%, #ff0000ff, #0000ffff) border-box;
+}
+#htmlui-root .r5 {
+background-color: transparent;
+decorator: radial-gradient(farthest-corner, #ff0000ff, #0000ffff) border-box;
+}
+#htmlui-root .r6 {
+background-color: transparent;
+decorator: radial-gradient(circle at 100% 10px, #ff0000ff, #0000ffff) border-box;
+}
+#htmlui-root .c1 {
+background-color: transparent;
+decorator: conic-gradient(#ff0000ff, #ffff00ff, #008000ff) border-box;
+}
+#htmlui-root .c2 {
+background-color: transparent;
+decorator: conic-gradient(from 90deg at 50% 50%, #ff0000ff 0deg, #0000ffff 180deg, #ff0000ff 360deg) border-box;
+}
+#htmlui-root .c3 {
+background-color: transparent;
+decorator: conic-gradient(from 90deg, #ff0000ff 10%, #0000ffff) border-box;
+}
+#htmlui-root .rep1 {
+background-color: transparent;
+decorator: repeating-linear-gradient(45deg, #000000ff 0% 10px, #ffffffff 10px 20px) border-box;
+}
+#htmlui-root .rep2 {
+background-color: transparent;
+decorator: repeating-radial-gradient(circle, #ff0000ff 0%, #ff0000ff 5px, #0000ffff 5px, #0000ffff 10px) border-box;
+}
+#htmlui-root .rep3 {
+background-color: transparent;
+decorator: repeating-conic-gradient(#000000ff 0% 25%, #ffffffff 0% 50%) border-box;
+}
+#htmlui-root .pattern {
+background-color: transparent;
+decorator: linear-gradient(90deg, #ff0000ff 1px, #00000000 1px) border-box;
+}
+#htmlui-root .clip {
+background-color: transparent;
+decorator: linear-gradient(#ff0000ff, #0000ffff) padding-box;
+}

@@ -1,0 +1,6 @@
+/* background-clip: text with a transparent fill falls back to a solid color */
+.title { background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.title2 { background-image: linear-gradient(to right, red, blue); background-clip: text; color: transparent; }
+.no-transparent { background: linear-gradient(red, blue); background-clip: text; }
+.base { color: transparent; background-image: linear-gradient(gold, orange); }
+.base:hover { background-clip: text; }

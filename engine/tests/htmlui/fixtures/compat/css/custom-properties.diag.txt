@@ -1,0 +1,3 @@
+compat/css/custom-properties.css:21:10: warning: 'background: var(--mixed)': the variable has no declaration in the document, or declarations of different kinds; written as is (fix: declare the variable in the CSS with one kind of value) [HTMLUI-CSS-0012]
+compat/css/custom-properties.css:22:15: warning: 'background: var(--from-lua)': the variable has no declaration in the document, or declarations of different kinds; written as is (fix: declare the variable in the CSS with one kind of value) [HTMLUI-CSS-0012]
+compat/css/custom-properties.css:22:44: warning: 'text-shadow: var(--nope)': the variable has no declaration in the document, or declarations of different kinds; written as is (fix: declare the variable in the CSS with one kind of value) [HTMLUI-CSS-0012]

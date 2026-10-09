@@ -1,0 +1,1 @@
+ui/page.html:2:41: error: image 'compat/css/img/a.png' not found (resolved to ui/compat/css/img/a.png) (fix: check the path: relative paths start at the referencing file's directory, '/' at the assets directory) [HTMLUI-GEN-0001]

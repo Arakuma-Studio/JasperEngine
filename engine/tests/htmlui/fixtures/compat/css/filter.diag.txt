@@ -1,0 +1,5 @@
+compat/css/filter.css:7:8: warning: url() filters (SVG filters) are not supported; dropped from the list (fix: use the CSS filter functions) [HTMLUI-CSS-0004]
+compat/css/filter.css:8:13: warning: url() filters (SVG filters) are not supported; dropped from the list (fix: use the CSS filter functions) [HTMLUI-CSS-0004]
+compat/css/filter.css:13:12: warning: 'filter: glow(3px)' is not supported; declaration dropped (fix: use blur(), brightness(), contrast(), drop-shadow(), grayscale(), hue-rotate(), invert(), opacity(), saturate(), sepia()) [HTMLUI-CSS-0004]
+compat/css/filter.css:14:10: warning: 'mix-blend-mode' is not supported; dropped (fix: use opacity, or pre-blended images) [HTMLUI-CSS-0002]
+compat/css/filter.css:14:34: info: 'isolation' has no effect in the engine; dropped [HTMLUI-CSS-0003]

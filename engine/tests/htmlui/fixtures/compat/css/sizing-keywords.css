@@ -1,0 +1,6 @@
+/* intrinsic sizing keywords */
+.w1 { width: min-content; } .w2 { width: max-content; } .w3 { width: fit-content; } .w4 { width: fit-content(200px); } .w5 { width: stretch; }
+.w6 { width: -webkit-fill-available; } .h1 { height: -webkit-fill-available; } .h2 { height: max-content; }
+.min1 { min-width: auto; } .min2 { min-height: auto; } .min3 { min-width: min-content; } .min4 { min-height: -webkit-fill-available; }
+.max1 { max-width: max-content; } .max2 { max-height: none; } .max3 { max-width: 100%; }
+.zero { width: 0; height: 0; } .auto { width: auto; } .invalid { width: wide; }

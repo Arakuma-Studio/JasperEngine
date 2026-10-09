@@ -1,0 +1,6 @@
+/* logical properties to physical ones (LTR) */
+.m { margin-inline: 10px 20px; margin-block: 5px; margin-inline-start: auto; margin-block-end: 1em; }
+.p { padding-inline: 1rem; padding-block: 2px 4px; padding-inline-end: 3px; padding-block-start: 0; }
+.i { inset-inline: 0; inset-block: 10px 20px; inset-inline-start: 5%; inset-block-end: auto; }
+.s { inline-size: 100px; block-size: 50%; min-inline-size: 10px; max-inline-size: 80ch; min-block-size: 0; max-block-size: none; }
+.fit { inline-size: fit-content; }

@@ -1,0 +1,2 @@
+compat/css/scrollbar-width-color.css:6:11: info: 'scrollbar-gutter' has no effect in the engine; dropped [HTMLUI-CSS-0003]
+compat/css/scrollbar-width-color.css:7:12: warning: 'scrollbar-color: #ff0000ff' is not supported; declaration dropped (fix: write two colors: thumb and track) [HTMLUI-CSS-0004]
