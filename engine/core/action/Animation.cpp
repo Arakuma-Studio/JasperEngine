@@ -32,6 +32,9 @@ Animation& Animation::operator=(const Animation& rhs){
     return *this;
 }
 
+Animation::Animation(Animation&& rhs) noexcept = default;
+Animation& Animation::operator=(Animation&& rhs) noexcept = default;
+
 bool Animation::isLoop() const{
     AnimationComponent& animation = getComponent<AnimationComponent>();
 

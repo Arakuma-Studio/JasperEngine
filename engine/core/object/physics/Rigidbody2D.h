@@ -28,6 +28,8 @@ namespace jasperengine{
 
         Rigidbody2D(const Rigidbody2D& rhs);
         Rigidbody2D& operator=(const Rigidbody2D& rhs);
+        Rigidbody2D(Rigidbody2D&& rhs) noexcept;
+        Rigidbody2D& operator=(Rigidbody2D&& rhs) noexcept;
 
         b2BodyId getBox2DBody() const;
         b2ShapeId getBox2DShape(size_t index) const;

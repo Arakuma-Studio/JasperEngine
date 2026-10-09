@@ -18,6 +18,11 @@ namespace jasperengine{
         Light2D(Scene* scene, Entity entity);
         virtual ~Light2D();
 
+        Light2D(const Light2D& rhs);
+        Light2D& operator=(const Light2D& rhs);
+        Light2D(Light2D&& rhs) noexcept;
+        Light2D& operator=(Light2D&& rhs) noexcept;
+
         void setColor(Vector3 color);
         void setColor(const float r, const float g, const float b);
         Vector3 getColor() const;

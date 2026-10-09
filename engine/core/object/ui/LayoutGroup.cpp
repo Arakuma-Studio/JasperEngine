@@ -18,6 +18,11 @@ LayoutGroup::LayoutGroup(Scene* scene, Entity entity): RectTransform(scene, enti
 LayoutGroup::~LayoutGroup(){
 }
 
+LayoutGroup::LayoutGroup(const LayoutGroup& rhs) = default;
+LayoutGroup& LayoutGroup::operator=(const LayoutGroup& rhs) = default;
+LayoutGroup::LayoutGroup(LayoutGroup&& rhs) noexcept = default;
+LayoutGroup& LayoutGroup::operator=(LayoutGroup&& rhs) noexcept = default;
+
 void LayoutGroup::setType(LayoutGroupType type){
     LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
 

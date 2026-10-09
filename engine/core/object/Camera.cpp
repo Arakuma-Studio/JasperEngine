@@ -27,6 +27,11 @@ Camera::Camera(Scene* scene, Entity entity): GameObject(scene, entity){
 Camera::~Camera(){
 }
 
+Camera::Camera(const Camera& rhs) = default;
+Camera& Camera::operator=(const Camera& rhs) = default;
+Camera::Camera(Camera&& rhs) noexcept = default;
+Camera& Camera::operator=(Camera&& rhs) noexcept = default;
+
 void Camera::applyOrthoDefaults(CameraComponent& cameraComponent){
     cameraComponent.leftClip = 0;
     cameraComponent.rightClip = Engine::getCanvasWidth();

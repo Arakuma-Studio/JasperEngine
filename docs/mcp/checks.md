@@ -74,9 +74,10 @@ format, and `compile_scripts` returns the same diagnostics as `errors`/`warnings
 
 The editor reads a Lua script's properties by running the script's top level (it returns the
 script table with its `properties`). `check` does the same, so a script that fails at load
-(`runtime error at load: ...`) or declares a property default it can't read is an error. In the
-editor (`check_script`, `sync_files`) that runs in the editor's Lua state, as it always did. The
-CLI runs every script in a fresh, isolated `lua_State` instead, so checking a file can't affect
+(`runtime error at load: ...`) or declares a property default it can't read is an error. The
+editor (the Inspector, Play's start, `check_script`, `sync_files`) and the CLI both run each
+script in a fresh, isolated `lua_State`, never the game's (which is not thread-safe, and Play
+reads the properties on its startup thread), so reading or checking a file can't affect
 anything:
 
 - no `io`, `debug`, `dofile`, `loadfile`, native modules or binary chunks; `os` has only `time`,
@@ -88,9 +89,8 @@ anything:
 - 256 MB of memory and about 100 million VM instructions (an endless loop at load is reported at
   its line).
 
-So the CLI and `check_script` agree on syntax errors, load errors that don't depend on the engine's
-state, and property declarations; a top level that depends on real engine values (rare: it runs
-before any scene) can differ.
+So the CLI and `check_script` agree, and a top level that depends on real engine values (rare: it
+runs before any scene; an engine value used as a property default, say) reads them as stand-ins.
 
 ## Examples
 

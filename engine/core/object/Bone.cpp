@@ -12,3 +12,5 @@ Bone::Bone(Scene* scene, Entity entity): GameObject(scene, entity){
 Bone::~Bone() = default;
 Bone::Bone(const Bone& rhs) = default;
 Bone& Bone::operator=(const Bone& rhs) = default;
+Bone::Bone(Bone&& rhs) noexcept = default;
+Bone& Bone::operator=(Bone&& rhs) noexcept = default;

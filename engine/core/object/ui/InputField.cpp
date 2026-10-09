@@ -21,6 +21,11 @@ InputField::InputField(Scene* scene, Entity entity): Image(scene, entity){
 InputField::~InputField(){
 }
 
+InputField::InputField(const InputField& rhs) = default;
+InputField& InputField::operator=(const InputField& rhs) = default;
+InputField::InputField(InputField&& rhs) noexcept = default;
+InputField& InputField::operator=(InputField&& rhs) noexcept = default;
+
 bool InputField::hasText() const{
     const InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     if (tecomp.text == NULL_ENTITY){

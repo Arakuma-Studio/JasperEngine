@@ -19,6 +19,11 @@ ParticleSystem::~ParticleSystem(){
 
 }
 
+ParticleSystem::ParticleSystem(const ParticleSystem& rhs) = default;
+ParticleSystem& ParticleSystem::operator=(const ParticleSystem& rhs) = default;
+ParticleSystem::ParticleSystem(ParticleSystem&& rhs) noexcept = default;
+ParticleSystem& ParticleSystem::operator=(ParticleSystem&& rhs) noexcept = default;
+
 void ParticleSystem::reset(){
     scene->getSystem<ActionSystem>()->particleActionReset(getEntity());
 }

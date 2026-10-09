@@ -17,6 +17,11 @@ LineRenderer::~LineRenderer(){
 
 }
 
+LineRenderer::LineRenderer(const LineRenderer& rhs) = default;
+LineRenderer& LineRenderer::operator=(const LineRenderer& rhs) = default;
+LineRenderer::LineRenderer(LineRenderer&& rhs) noexcept = default;
+LineRenderer& LineRenderer::operator=(LineRenderer&& rhs) noexcept = default;
+
 bool LineRenderer::load(){
     LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
