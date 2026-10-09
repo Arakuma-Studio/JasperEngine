@@ -121,6 +121,17 @@ Session::Session(const CompatOptions& options, SourceFiles& files, DiagnosticSin
         }
         selectorOptions.rootAttributes.push_back(name);
     }
+    // p2-html's fields: the <html> id and dir
+    if (!context.rootId.empty()){
+        selectorOptions.rootId = context.rootId;
+        if (std::find(selectorOptions.rootAttributes.begin(), selectorOptions.rootAttributes.end(), "id") == selectorOptions.rootAttributes.end())
+            selectorOptions.rootAttributes.push_back("id");
+    }
+    if (!context.rootDirection.empty()){
+        rootDirection = lowerAscii(context.rootDirection);
+        if (std::find(selectorOptions.rootAttributes.begin(), selectorOptions.rootAttributes.end(), "dir") == selectorOptions.rootAttributes.end())
+            selectorOptions.rootAttributes.push_back("dir");
+    }
 }
 
 const ImportManifest& Session::manifest() const{
