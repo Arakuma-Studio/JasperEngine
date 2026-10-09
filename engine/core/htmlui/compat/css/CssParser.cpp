@@ -423,6 +423,8 @@ namespace {
             rule.preludeRef = preludeExtent(rule.prelude);
             if (!rule.preludeRef.valid())
                 rule.preludeRef = ref(keyword.offset + keyword.length, keyword.offset + keyword.length);
+            else
+                rule.preludeText = Text::view(std::string_view(sourceCopy + (rule.preludeRef.offset - base), rule.preludeRef.length));
             rule.ref = ref(begin, end);
             return true;
         }

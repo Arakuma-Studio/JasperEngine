@@ -281,6 +281,9 @@ namespace jasperengine::htmlui::compat {
         bool memoCheck = false;            // JASPER_HTMLUI_CSS_MEMO=check: every memo hit is compared with the pipeline's output
         DiagnosticSink* mainSink = nullptr;
         std::string scratchText;
+        // @media preludes that were normalized without a diagnostic, by their text (the same
+        // query heads many rules); nullopt: reported something, normalized again each time
+        NameTable<std::optional<MediaResult>> mediaMemo;
         std::vector<ValueList> valuePool;     // normalized values of processOne
 
         // per property name (session-wide: the tables do not change)

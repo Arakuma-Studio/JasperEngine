@@ -146,6 +146,7 @@ namespace jasperengine::htmlui::compat {
         Text atName;                              // lowercase, without '@'
         ValueList prelude;      // selector list or at-rule prelude (raw, whitespace kept)
         SourceRef preludeRef, ref;                // the prelude; the whole rule
+        Text preludeText;                         // an at-rule's prelude as written (the bytes of preludeRef, in the parser's copy of the source)
         bool hasBlock = false;
         ArenaList<Declaration> declarations;      // style rules, @font-face, @page, keyframe blocks, ...
         ArenaList<Rule> rules;                    // nested style rules, @media/@supports/@layer bodies, keyframe selectors

@@ -355,6 +355,26 @@ namespace {
         session.sheets[scope.sheet].push_back(SheetItem{false, rule.index});
     }
 
+    // MediaQuery::normalize of an @media rule's prelude, kept by the prelude's text when it
+    // reported nothing (the result depends on the text and the options alone)
+    MediaResult mediaOf(Session& session, const Rule& rule){
+        if (rule.preludeText.empty())
+            return MediaQuery::normalize(rule.prelude, rule.preludeRef, session.options, session.sink);
+        bool made = false;
+        MediaResult fresh;
+        std::optional<MediaResult>& kept = session.mediaMemo.get(rule.preludeText, [&](std::string_view){
+            const uint64_t reports = session.sink->reports();
+            fresh = MediaQuery::normalize(rule.prelude, rule.preludeRef, session.options, session.sink);
+            made = true;
+            return session.sink->reports() == reports ? std::optional<MediaResult>(fresh) : std::optional<MediaResult>();
+        });
+        if (made)
+            return fresh;
+        if (kept)
+            return *kept;
+        return MediaQuery::normalize(rule.prelude, rule.preludeRef, session.options, session.sink);
+    }
+
     void flatten(Session& session, RuleList& rules, const FlattenScope& scope, bool topLevel);
 
     // a style rule: its declarations and nested rules in source order (CSS Nesting)
@@ -504,7 +524,7 @@ namespace {
             importsAllowed = false;
             if (name == "media"){
                 FlattenScope inner = scope;
-                const MediaResult media = MediaQuery::normalize(rule.prelude, rule.preludeRef, session.options, session.sink);
+                const MediaResult media = mediaOf(session, rule);
                 inner.media = MediaResult::conjoin(scope.media, media);
                 if (inner.media.never)
                     continue;
