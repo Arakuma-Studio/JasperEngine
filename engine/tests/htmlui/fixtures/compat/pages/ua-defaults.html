@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>User-agent defaults</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+<!-- golden page (phase-2 spec 5.3): unstyled HTML. The rules set a bundled font and pin
+     font-size and line-height, so the comparison does not depend on Chromium's per-font
+     rounding of `line-height: normal` (the engine approximates it as 1.2 until phase 3's
+     LineHeightNormal). The form controls get the 15px Chromium computes for their UA
+     `line-height: normal` (13.333px Roboto); everything else about them is the UA's. The form
+     is in the built-in Roboto: the spaces between its controls are 3.96px there (Inter's are
+     4.5px, which the engine's whole-pixel advances round up, drifting the controls apart). The
+     engine's font sizes are whole pixels (13.333px draws at 13px): the controls that are as wide
+     as their text (buttons, select) get 13px on both sides. -->
+<style>
+  body { font-family: Inter, sans-serif; font-size: 16px; line-height: 1.2; }
+  input, button, select, textarea { line-height: 15px; }
+  button, input[type="submit"], input[type="reset"], select { font-size: 13px; }
+  form { font-family: sans-serif; }
+</style>
+</head>
+<body>
+<!-- a first line without margins: the h1's top margin then collapses with its sibling only
+     (parent/child margin collapsing is phase 3's) -->
+<div id="intro" data-ref-tol="text">Unstyled HTML with the browser defaults.</div>
+<h1 id="h1" data-ref-tol="text">Heading level one</h1>
+<p id="p1" data-ref-tol="text">A paragraph with <b>bold</b>, <strong>strong</strong>, <i>italic</i>, <em>emphasis</em>, <u>underline</u>,
+<s>strike</s>, <code>code</code>, <kbd>kbd</kbd>, <mark>marked</mark>, <small>small</small>, H<sub>2</sub>O, x<sup>2</sup>,
+<abbr title="abbreviation">abbr</abbr> and <a href="#link" id="link">a link</a>.</p>
+
+<form id="form" data-ref-tol="text">
+<fieldset id="fieldset" data-ref-tol="text">
+<legend id="legend" data-ref-tol="auto-width">Fieldset legend</legend>
+<input type="text" id="text" value="Text input">
+<input type="password" id="password" value="secret">
+<input type="number" id="number" value="42">
+<input type="checkbox" id="check-on" checked>
+<input type="checkbox" id="check-off">
+<input type="radio" name="r" id="radio-on" checked>
+<input type="radio" name="r" id="radio-off">
+<br>
+<input type="range" id="range" value="30">
+<select id="select"><option>Option one</option><option>Two</option></select>
+<progress id="progress" value="0.6"></progress>
+<button type="button" id="button">Button</button>
+<input type="submit" id="submit" value="Submit">
+<input type="reset" id="reset" value="Reset">
+<button type="button" id="button-disabled" disabled>Disabled</button>
+<br>
+<textarea id="textarea" rows="2" cols="20">Text area</textarea>
+<input type="text" id="placeholder" placeholder="Placeholder">
+</fieldset>
+</form>
+
+<ul id="ul" data-ref-tol="text">
+<li>First item</li>
+<li>Second item
+<ul id="ul2" data-ref-tol="text">
+<li>Nested item
+<ul id="ul3" data-ref-tol="text"><li>Third level</li></ul>
+</li>
+</ul>
+</li>
+</ul>
+<ol id="ol" data-ref-tol="text">
+<li>One</li>
+<li>Two</li>
+<li>Three</li>
+</ol>
+
+<table id="table" data-ref-tol="auto-width">
+<caption>Scores</caption>
+<thead><tr><th>Name</th><th>Score</th></tr></thead>
+<tbody><tr><td>Alice</td><td>1200</td></tr><tr><td>Bob</td><td>950</td></tr></tbody>
+</table>
+
+<hr id="hr" data-ref-tol="text">
+<h2 id="h2" data-ref-tol="text">Heading level two</h2>
+<blockquote id="blockquote" data-ref-tol="text">A blockquote is indented on both sides.</blockquote>
+<pre id="pre" data-ref-tol="text">preformatted   text
+  keeps spaces</pre>
+<dl id="dl" data-ref-tol="text"><dt>Term</dt><dd>Definition</dd></dl>
+<details id="details" data-ref-tol="text"><summary data-ref-tol="text">Summary of closed details</summary>Hidden content</details>
+<h3 id="h3" data-ref-tol="text">Heading level three</h3>
+<h4 id="h4" data-ref-tol="text">Heading level four</h4>
+<h5 id="h5" data-ref-tol="text">Heading level five</h5>
+<h6 id="h6" data-ref-tol="text">Heading level six</h6>
+</body>
+</html>

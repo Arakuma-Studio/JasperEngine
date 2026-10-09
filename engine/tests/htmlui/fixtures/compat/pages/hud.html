@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Game HUD</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root {
+    --hp: #ef4444;
+    --hp-light: #f87171;
+    --mana: #3b82f6;
+    --mana-light: #60a5fa;
+    --xp: #eab308;
+    --panel: rgba(15, 23, 42, 0.78);
+    --border: rgba(148, 163, 184, 0.35);
+    --text: #f1f5f9;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    font-family: 'Inter', sans-serif;
+    color: var(--text);
+    line-height: 1.4;
+    user-select: none;
+  }
+
+  /* ---------- player frame (top left) ---------- */
+  .player-frame {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 18px 12px 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  }
+
+  .avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 3px solid #facc15;
+    box-shadow: 0 0 12px rgba(250, 204, 21, 0.6);
+    object-fit: cover;
+  }
+
+  .level-badge {
+    position: absolute;
+    left: 56px;
+    top: 58px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #facc15;
+    color: #1e293b;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #0f172a;
+  }
+
+  .bars { display: flex; flex-direction: column; gap: 6px; width: 220px; }
+
+  .player-name {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+
+  .bar {
+    position: relative;
+    height: 14px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 7px;
+    overflow: hidden;
+  }
+
+  .bar-fill { height: 100%; border-radius: 7px; }
+  .bar.health .bar-fill { width: 73%; background: linear-gradient(90deg, var(--hp), var(--hp-light)); }
+  .bar.mana .bar-fill { width: 45%; background: linear-gradient(90deg, var(--mana), var(--mana-light)); }
+  .bar.xp { height: 6px; }
+  .bar.xp .bar-fill { width: 62%; background: var(--xp); }
+
+  .bar-label {
+    position: absolute;
+    top: 0;
+    left: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 12px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  }
+
+  /* ---------- score (top right) ---------- */
+  .score-box {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    min-width: 200px;
+    padding: 10px 18px;
+    text-align: right;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+
+  .score-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    color: #94a3b8;
+  }
+
+  .score-value {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 30px;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+    color: #fde047;
+    text-shadow: 0 0 10px rgba(253, 224, 71, 0.5);
+  }
+
+  .combo { font-size: 12px; color: #fb923c; font-weight: 700; }
+
+  /* ---------- toast ---------- */
+  .toast {
+    position: fixed;
+    top: 24px;
+    left: 50%;
+    width: 360px;
+    margin-left: -180px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.95), rgba(21, 128, 61, 0.95));
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    animation: slideIn .4s ease forwards;
+  }
+
+  .toast svg { width: 22px; height: 22px; flex-shrink: 0; }
+  .toast-title { font-weight: 700; font-size: 14px; }
+  .toast-text { font-size: 12px; opacity: 0.9; }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ---------- ability bar (bottom center) ---------- */
+  .ability-bar {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    width: 440px;
+    margin-left: -220px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    padding: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+  }
+
+  .ability {
+    position: relative;
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, #334155, #1e293b);
+    border: 2px solid rgba(148, 163, 184, 0.4);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .ability svg { width: 28px; height: 28px; color: #e2e8f0; }
+  .ability.ready { border-color: #38bdf8; box-shadow: 0 0 10px rgba(56, 189, 248, 0.6); }
+
+  .ability .key {
+    position: absolute;
+    left: 4px;
+    top: 2px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #cbd5e1;
+  }
+
+  .cooldown {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 60%;
+    background: rgba(2, 6, 23, 0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  /* ---------- minimap (bottom right) ---------- */
+  .minimap {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.35);
+    background: radial-gradient(circle at 40% 40%, #1f4d3a 0%, #0b2018 75%);
+    box-shadow: 0 0 0 4px rgba(15, 23, 42, 0.8), 0 6px 20px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+  }
+
+  .minimap .river {
+    position: absolute;
+    left: 20px;
+    top: 90px;
+    width: 140px;
+    height: 14px;
+    background: rgba(56, 189, 248, 0.6);
+    transform: rotate(-20deg);
+  }
+
+  .minimap .marker {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  .marker.player { left: 72px; top: 72px; background: #facc15; box-shadow: 0 0 6px #facc15; }
+  .marker.enemy { left: 110px; top: 40px; background: #ef4444; }
+  .marker.quest { left: 38px; top: 48px; background: #a855f7; }
+
+  .minimap-label {
+    position: fixed;
+    right: 24px;
+    bottom: 196px;
+    width: 160px;
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: #cbd5e1;
+  }
+</style>
+</head>
+<body>
+  <div class="player-frame" id="player">
+    <img class="avatar" id="avatar" src="assets/avatar.png" alt="Hero">
+    <div class="level-badge" id="level">12</div>
+    <div class="bars" id="bars">
+      <div class="player-name" id="player-name" data-ref-tol="text">NOVA STRIKE</div>
+      <div class="bar health" id="hp-bar">
+        <div class="bar-fill" id="hp-fill"></div>
+        <span class="bar-label">730 / 1000</span>
+      </div>
+      <div class="bar mana" id="mana-bar">
+        <div class="bar-fill" id="mana-fill"></div>
+        <span class="bar-label">225 / 500</span>
+      </div>
+      <div class="bar xp" id="xp-bar"><div class="bar-fill"></div></div>
+    </div>
+  </div>
+
+  <div class="score-box" id="score">
+    <div class="score-label" data-ref-tol="text">SCORE</div>
+    <div class="score-value" id="score-value" data-ref-tol="text">128,450</div>
+    <div class="combo" data-ref-tol="text">COMBO x12</div>
+  </div>
+
+  <div class="toast" id="toast">
+    <i data-lucide="scroll"></i>
+    <div>
+      <div class="toast-title" data-ref-tol="text">Quest Updated</div>
+      <div class="toast-text" data-ref-tol="text">The Lost Relic: find the ancient shrine</div>
+    </div>
+  </div>
+
+  <div class="ability-bar" id="abilities">
+    <div class="ability ready" id="slot-1"><span class="key">1</span><i data-lucide="sword"></i></div>
+    <div class="ability" id="slot-2"><span class="key">2</span><i data-lucide="shield"></i></div>
+    <div class="ability" id="slot-3"><span class="key">3</span><i data-lucide="zap"></i><div class="cooldown" id="cooldown">3.2</div></div>
+    <div class="ability" id="slot-4"><span class="key">4</span><i data-lucide="flame"></i></div>
+    <div class="ability" id="slot-5"><span class="key">5</span><i data-lucide="heart"></i></div>
+    <div class="ability" id="slot-6"><span class="key">6</span><i data-lucide="wind"></i></div>
+  </div>
+
+  <div class="minimap-label" data-ref-tol="text">IRONWOOD VALE</div>
+  <div class="minimap" id="minimap">
+    <div class="river"></div>
+    <div class="marker quest"></div>
+    <div class="marker enemy"></div>
+    <div class="marker player" id="player-marker"></div>
+  </div>
+
+  <script>lucide.createIcons();</script>
+</body>
+</html>

@@ -6,6 +6,9 @@
 #include "htmlui/compat/runtime/CompatProperties.h"
 #include "htmlui/compat/runtime/ListMarkers.h"
 
+#include "HtmlUI.h"
+#include "RmlFontEngine.h"
+
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/ElementText.h>
 #include <RmlUi/Core/ElementUtilities.h>
@@ -166,6 +169,7 @@ void HtmlListItemElement::layoutMarker(){
                 svg->SetProperty("display", "inline-block");
                 svg->SetProperty("vertical-align", "middle");
                 markerShape = marker->InsertBefore(std::move(svg), markerTextElement);
+                markerShapeShown = true;
                 markerShapeSize = shape->size;
                 markerShape->SetInnerRML(shape->markup);
                 markerShapeSide = -1.0f;
@@ -234,4 +238,15 @@ void HtmlListItemElement::layoutMarker(){
     Rml::ElementUtilities::FormatElement(marker, Rml::Vector2f(std::max(0.0f, width), std::max(0.0f, content.y)));
     const Rml::Vector2f contentOffset = GetBox().GetPosition(Rml::BoxArea::Content);
     marker->SetOffset(Rml::Vector2f(contentOffset.x - width, contentOffset.y), this);
+}
+
+void HtmlListItemElement::OnRender(){
+    Rml::Element::OnRender();
+    // a bullet is text in CSS: with the font engine's text switched off (golden tests' no-text
+    // renders) the shape markers are hidden too
+    const bool shown = HtmlUI::getFontEngine().getRenderTextForTesting();
+    if (markerShape && shown != markerShapeShown){
+        markerShapeShown = shown;
+        markerShape->SetProperty(Rml::PropertyId::Visibility, Rml::Property(shown ? Rml::Style::Visibility::Visible : Rml::Style::Visibility::Hidden));
+    }
 }

@@ -32,10 +32,16 @@
 #include "htmlui/compat/css/props/Rewriters.h"
 
 #include <algorithm>
+#include <array>
+#include <map>
 #include <cstring>
 #include <set>
 
 using namespace jasperengine::htmlui::compat;
+
+namespace {
+    void boxShorthandCompanions(Session& session, const OutDecl& out, std::vector<OutDecl>& extra);
+}
 
 // ---- DeclContext
 
@@ -574,6 +580,27 @@ namespace {
         return names;
     }
 
+    // `body` alone (the HTML body, whose background CSS propagates to the canvas)
+    bool isBodyOnly(const ComplexSelector& selector){
+        return selector.compounds.size() == 1 && selector.compounds.front().simples.size() == 1 &&
+               selector.compounds.front().simples.front().kind == SimpleSelector::Kind::Type &&
+               selector.compounds.front().simples.front().name == "body";
+    }
+
+    bool isBodyRule(const FlatRule& rule){
+        if (rule.selectors.empty())
+            return false;
+        for (const ComplexSelector& s : rule.selectors){
+            if (!isBodyOnly(s))
+                return false;
+        }
+        return true;
+    }
+
+    bool isBackgroundProperty(const std::string& name){
+        return name == "background" || name.compare(0, 11, "background-") == 0;
+    }
+
     void prePass(Session& session, const std::vector<std::vector<Declaration>>& styleAttributes){
         // selectors
         SelectorOptions authorOptions = session.selectorOptions;
@@ -712,6 +739,27 @@ namespace {
                 for (const Rule& frame : at.rule.rules)
                     scan(frame.declarations, nullptr);
             }
+        }
+
+        // background propagation (§3.10 item 1)
+        {
+            bool rootBackground = false, bodyBackground = false;
+            for (const FlatRule& rule : session.rules){
+                if (rule.dropped || rule.origin != RuleOrigin::Author)
+                    continue;
+                bool background = false;
+                for (const Declaration& d : rule.declarations)
+                    background = background || isBackgroundProperty(d.name);
+                if (!background)
+                    continue;
+                for (const ComplexSelector& s : rule.selectors){
+                    if (SelectorRewriter::isRootRule(s, session.selectorOptions))
+                        rootBackground = true;
+                }
+                if (isBodyRule(rule))
+                    bodyBackground = true;
+            }
+            session.propagateBodyBackground = bodyBackground && !rootBackground;
         }
 
         // the root font size (rem, root em) from static root rules
@@ -909,11 +957,23 @@ namespace {
             }
         }
 
+        // the body's background on the root, the body itself transparent (§3.10 item 1)
+        std::vector<OutDecl> rootBackground;
+        if (session.propagateBodyBackground && rule.origin == RuleOrigin::Author && isBodyRule(rule)){
+            for (OutDecl& d : normal){
+                if (d.name != "background-color" && d.name != "decorator" && d.name != "--html-bg-layers")
+                    continue;
+                rootBackground.push_back(d);
+                d.value = d.name == "background-color" ? "transparent" : d.name == "decorator" ? "none" : "linear-gradient(#0000, #0000)";
+            }
+        }
+
         bool any = !normal.empty() || !placeholderDeclarations.empty();
         for (const GeneratedRule& generated : output.generated)
             any = any || !generated.declarations.empty();
         if (any)
         writeUnderMedia(writer, rule.media, rule.ref, [&](){
+            writeBlock(writer, "body#htmlui-root", rootBackground, rule.ref);
             writeBlock(writer, joinSelectors(plain), normal, rule.ref);
             writeBlock(writer, joinSelectors(placeholder), placeholderDeclarations, rule.ref);
             for (const GeneratedRule& generated : output.generated)
@@ -1271,6 +1331,8 @@ namespace {
                 extra.push_back(OutDecl{companions::kCurrentColor, out.value, out.ref, out.important, false, true});
             if (session.inheritCompanions.count(out.name) && out.value.find("--html-inh-") == std::string::npos && !keyword)
                 extra.push_back(OutDecl{companions::inheritName(out.name), out.value, out.ref, out.important, false, true});
+            else if (!keyword && out.value.find("--html-inh-") == std::string::npos)
+                boxShorthandCompanions(session, out, extra);
         }
         for (OutDecl& e : extra)
             output.declarations.push_back(std::move(e));
@@ -1290,6 +1352,57 @@ namespace {
                     }
                 }
             }
+        }
+    }
+
+}
+
+namespace {
+
+    // A box shorthand RCSS keeps as a shorthand (border-radius: 16px) whose longhands some rule
+    // reads with `inherit`: the companions of the longhands (`--html-inh-border-top-left-radius`),
+    // one value per side or corner by the CSS 1-4 value rule
+    void boxShorthandCompanions(Session& session, const OutDecl& out, std::vector<OutDecl>& extra){
+        static const std::map<std::string, std::array<const char*, 4>> shorthands = {
+            {"border-radius", {"border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius"}},
+            {"margin", {"margin-top", "margin-right", "margin-bottom", "margin-left"}},
+            {"padding", {"padding-top", "padding-right", "padding-bottom", "padding-left"}},
+            {"inset", {"top", "right", "bottom", "left"}},
+        };
+        const auto found = shorthands.find(out.name);
+        if (found == shorthands.end())
+            return;
+        bool wanted = false;
+        for (const char* longhand : found->second)
+            wanted = wanted || session.inheritCompanions.count(longhand) > 0;
+        if (!wanted || out.value.find('/') != std::string::npos)
+            return;
+        // the values, split at top-level spaces (var() and functions keep theirs)
+        std::vector<std::string> values;
+        std::string current;
+        int depth = 0;
+        for (char c : out.value){
+            if (c == '(')
+                depth++;
+            else if (c == ')')
+                depth--;
+            if (c == ' ' && depth == 0){
+                if (!current.empty())
+                    values.push_back(current);
+                current.clear();
+                continue;
+            }
+            current += c;
+        }
+        if (!current.empty())
+            values.push_back(current);
+        if (values.empty() || values.size() > 4)
+            return;
+        const size_t n = values.size();
+        const std::string sides[4] = {values[0], values[n > 1 ? 1 : 0], values[n > 2 ? 2 : 0], values[n > 3 ? 3 : (n > 1 ? 1 : 0)]};
+        for (int i = 0; i < 4; i++){
+            if (session.inheritCompanions.count(found->second[i]))
+                extra.push_back(OutDecl{companions::inheritName(found->second[i]), sides[i], out.ref, out.important, false, true});
         }
     }
 

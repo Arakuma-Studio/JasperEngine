@@ -1,0 +1,16 @@
+{
+  "name": "jasperengine-htmlui-tools",
+  "private": true,
+  "description": "Chromium reference rendering for the HTML UI golden tests (phase-2 spec 5.3). Host only: run on purpose, never in CI or Docker.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "references": "node render-reference.mjs --all --verify"
+  },
+  "dependencies": {
+    "playwright-core": "1.63.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

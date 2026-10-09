@@ -21,7 +21,8 @@ bool TableGrid::Build(Element* element_table, TableWrapper& table_wrapper)
 		Element* element = element_table->GetChild(i);
 		const Display display = element->GetDisplay();
 
-		if (display == Display::None)
+		// white space between table parts is not rendered
+		if (display == Display::None || LayoutDetails::IsCollapsibleWhiteSpaceText(element))
 			continue;
 
 		if (!non_parented_cell_elements.empty() && display != Display::TableCell)
@@ -48,6 +49,8 @@ bool TableGrid::Build(Element* element_table, TableWrapper& table_wrapper)
 			{
 				Element* element_row = element->GetChild(j);
 				const Display display_row = element_row->GetDisplay();
+				if (LayoutDetails::IsCollapsibleWhiteSpaceText(element_row))
+					continue;
 
 				if (display_row != Display::TableRow)
 				{
@@ -198,6 +201,8 @@ void TableGrid::PushRow(Element* element_row, ElementList cell_elements, TableWr
 		for (int j = 0; j < num_row_children; j++)
 		{
 			Element* element_cell = element_row->GetChild(j);
+			if (LayoutDetails::IsCollapsibleWhiteSpaceText(element_cell))
+				continue;
 
 			const Style::Display cell_display = element_cell->GetComputedValues().display();
 			if (cell_display == Style::Display::TableCell)

@@ -130,11 +130,14 @@ TEST_F(CompatDecoratorTest, SvgLayerIsRasterizedAtTheDrawnSizeAndTinted){
 TEST_F(CompatDecoratorTest, RoundedClipBoxUsesAClipMask){
     ASSERT_NE(show("<div id='square'/>", "#square { width: 40px; height: 20px; "
                    "decorator: html-layer(\"asset://compat/runtime/wide4x2.png\" 10px 5px 0% 0% repeat repeat padding-box border-box scroll); }"), nullptr);
-    EXPECT_EQ(recording.clipMaskIntersects, 0);
-    ASSERT_NE(show("<div id='round'/>", "#round { width: 40px; height: 20px; border-radius: 8px; "
+    EXPECT_EQ(recording.clipMaskRenders, 0);
+    // two rounded boxes: each clip starts its own mask with Set (an Intersect first counted on a
+    // cleared stencil, and every box after the first drew nothing)
+    ASSERT_NE(show("<div id='round'/><div id='round2'/>", "#round, #round2 { width: 40px; height: 20px; border-radius: 8px; "
                    "decorator: html-layer(\"asset://compat/runtime/wide4x2.png\" 10px 5px 0% 0% repeat repeat padding-box border-box scroll); }"), nullptr);
-    EXPECT_GE(recording.clipMaskIntersects, 1);
-    EXPECT_EQ(drawsFromSource("wide4x2.png").size(), 1u);
+    EXPECT_EQ(recording.clipMaskSets, 2);
+    EXPECT_EQ(recording.clipMaskIntersects, 0);
+    EXPECT_EQ(drawsFromSource("wide4x2.png").size(), 2u);
 }
 
 TEST_F(CompatDecoratorTest, FixedAttachmentFollowsTheViewport){

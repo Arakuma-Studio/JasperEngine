@@ -109,6 +109,8 @@ private:
 
 	// A number from 0 to 1, indicating how far along the track the bar is.
 	float bar_position;
+	// the track was given no height (horizontal orientation): the bar is centered across it
+	bool track_auto_height = false;
 	// If the bar is being dragged, this is the pixel offset from the start of the bar to where it was picked up.
 	float bar_drag_anchor;
 

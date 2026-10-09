@@ -35,7 +35,6 @@ compat/css/unsupported-properties.css:36:3: warning: 'border-block-start-radius'
 compat/css/unsupported-properties.css:37:3: warning: 'border-bottom-clip' is not supported; dropped (fix: use separate elements for the visible border segments) [HTMLUI-CSS-0002]
 compat/css/unsupported-properties.css:38:3: warning: 'border-bottom-radius' is not supported; dropped (fix: set the two corner radii, e.g. border-top-left-radius and border-top-right-radius) [HTMLUI-CSS-0002]
 compat/css/unsupported-properties.css:39:3: warning: 'border-clip' is not supported; dropped (fix: use separate elements for the visible border segments) [HTMLUI-CSS-0002]
-compat/css/unsupported-properties.css:40:3: warning: 'border-collapse' is not supported; dropped (fix: set borders on one side of each cell, or border-spacing: 0 with single borders) [HTMLUI-CSS-0002]
 compat/css/unsupported-properties.css:41:3: warning: 'border-inline-clip' is not supported; dropped (fix: use separate elements for the visible border segments) [HTMLUI-CSS-0002]
 compat/css/unsupported-properties.css:42:3: warning: 'border-inline-end-clip' is not supported; dropped (fix: use separate elements for the visible border segments) [HTMLUI-CSS-0002]
 compat/css/unsupported-properties.css:43:3: warning: 'border-inline-end-radius' is not supported; dropped (fix: set the two corner radii, e.g. border-top-left-radius and border-top-right-radius) [HTMLUI-CSS-0002]

@@ -10,6 +10,8 @@
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementUtilities.h>
 #include <RmlUi/Core/Event.h>
+#include <RmlUi/Core/Property.h>
+#include <RmlUi/Core/StyleTypes.h>
 
 using namespace jasperengine::htmlui::compat;
 
@@ -68,6 +70,19 @@ void HtmlDetailsElement::OnAttributeChange(const Rml::ElementAttributes& changed
 
 void HtmlDetailsElement::OnUpdate(){
     Rml::Element::OnUpdate();
+    // the content of a closed details is not rendered: its elements through the user-agent sheet
+    // (details:not([open]) > :not(summary)), its bare text here (no selector reaches text)
+    const bool closed = !HasAttribute("open");
+    for (int i = 0; i < GetNumChildren(); i++){
+        Rml::Element* child = GetChild(i);
+        if (child->GetTagName() != "#text")
+            continue;
+        const bool hidden = child->GetLocalProperty(Rml::PropertyId::Display) != nullptr;
+        if (closed && !hidden)
+            child->SetProperty(Rml::PropertyId::Display, Rml::Property(Rml::Style::Display::None));
+        else if (!closed && hidden)
+            child->RemoveProperty(Rml::PropertyId::Display);
+    }
     if (!pending)
         return;
     pending = false;

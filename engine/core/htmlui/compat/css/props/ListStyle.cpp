@@ -90,7 +90,8 @@ void jasperengine::htmlui::compat::rewriteListStyle(DeclContext& context){
             unsupportedValue(context, "use inside or outside");
             return;
         }
-        if (k == "inside")
+        // the user-agent sheet's own `inside` (summary's disclosure triangle, one line) is exact
+        if (k == "inside" && context.origin != RuleOrigin::UserAgent)
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "'list-style-position: inside' draws the marker outside and shifts the content");
         context.emit("list-style-position", k);
         return;
@@ -141,7 +142,7 @@ void jasperengine::htmlui::compat::rewriteListStyle(DeclContext& context){
         type = "none";
     if (type.empty())
         type = "disc";
-    if (position == "inside")
+    if (position == "inside" && context.origin != RuleOrigin::UserAgent)
         context.reportAs(Severity::Info, codes::ApproximatedMinor, "'list-style-position: inside' draws the marker outside and shifts the content");
     context.emit("list-style-type", type);
     context.emit("list-style-position", position.empty() ? "outside" : position);

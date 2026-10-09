@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Abandon quest?</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  /* Only the dialog box and its buttons are styled: lists, details, progress, the table, the
+     rule and the link keep the browser defaults. */
+  body {
+    margin: 0;
+    height: 100vh;
+    font-family: 'Inter', sans-serif;
+    line-height: 1.4;
+    background: linear-gradient(160deg, #134e4a 0%, #0f172a 60%, #1e1b4b 100%);
+  }
+
+  .scene-dim {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  dialog {
+    top: 36px;
+    width: 600px;
+    padding: 24px 28px;
+    color: #1f2937;
+    background: #f9fafb;
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+  }
+
+  dialog h2 {
+    margin-top: 0;
+    font-size: 22px;
+    color: #b91c1c;
+  }
+
+  .columns { display: flex; gap: 24px; }
+  .columns > div { flex: 1; }
+
+  .actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .actions button {
+    padding: 8px 18px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .btn-keep { background: #e5e7eb; border: 1px solid #d1d5db; color: #111827; }
+  .btn-abandon { background: #dc2626; border: 1px solid #b91c1c; color: #ffffff; }
+</style>
+</head>
+<body>
+  <div class="scene-dim"></div>
+
+  <dialog open id="confirm">
+    <h2 id="confirm-title" data-ref-tol="text">Abandon "The Lost Relic"?</h2>
+    <p id="confirm-text" data-ref-tol="text">You will lose all progress on this quest. Rewards already collected stay in your inventory.</p>
+
+    <div class="columns" id="columns">
+      <div id="col-a">
+        <strong>You will lose:</strong>
+        <ul id="lose-list" data-ref-tol="text">
+          <li>Ancient Map fragment</li>
+          <li>Shrine key
+            <ul>
+              <li>bound to this quest</li>
+            </ul>
+          </li>
+          <li>450 reputation</li>
+        </ul>
+
+        <strong>To restart later:</strong>
+        <ol id="steps" data-ref-tol="text">
+          <li>Return to Elder Mira</li>
+          <li>Pay 200 gold</li>
+          <li>Accept the quest again</li>
+        </ol>
+      </div>
+
+      <div id="col-b">
+        <label for="quest-progress">Quest progress</label><br>
+        <progress id="quest-progress" value="65" max="100">65%</progress>
+
+        <table id="stats" data-ref-tol="auto-width">
+          <caption>Statistics</caption>
+          <tr><th>Enemies</th><td>37</td></tr>
+          <tr><th>Time</th><td>2h 14m</td></tr>
+          <tr><th>Deaths</th><td>3</td></tr>
+        </table>
+
+        <details id="penalties">
+          <summary data-ref-tol="text">Show penalties</summary>
+          <div>Reputation with the Ironwood clan drops by one rank.</div>
+        </details>
+        <details open id="log">
+          <summary data-ref-tol="text">Quest log</summary>
+          <div id="log-text" data-ref-tol="text">Day 3: the shrine is sealed.</div>
+        </details>
+      </div>
+    </div>
+
+    <hr id="rule">
+    <a href="#help" id="help" data-ref-tol="text">Learn more about quests</a>
+
+    <div class="actions" id="actions">
+      <button class="btn-keep" id="keep" data-ref-tol="text">Keep playing</button>
+      <button class="btn-abandon" id="abandon" data-ref-tol="text">Abandon quest</button>
+    </div>
+  </dialog>
+</body>
+</html>

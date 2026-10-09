@@ -98,6 +98,9 @@ public:
 
 	// -- Inherited from LayoutBox --
 
+	/// True when inline content is open on the current line (white-space-only text then collapses to a space).
+	bool HasOpenInlineContent() const { return GetOpenInlineContainer() != nullptr; }
+
 	const Box* GetIfBox() const override;
 	float GetShrinkToFitWidth() const override;
 	bool GetBaselineOfLastLine(float& out_baseline) const override;

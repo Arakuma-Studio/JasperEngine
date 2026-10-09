@@ -533,6 +533,10 @@ namespace {
                 std::vector<ComponentValue> w = words(replacement);
                 if (w.size() == 1 && layerImage(scope, w[0], layer, dropped))
                     return true;
+                // a variable holding a color is the final layer's color, not its image
+                // (background: var(--bg) url(tile.png) repeat)
+                if (w.size() == 1 && isColor(scope.session, w[0]))
+                    return false;
             }
             layer.kind = Layer::Kind::Var;
             layer.image = text(v);

@@ -1,10 +1,10 @@
 <rml>
 <head>
 <link type="text/rcss" href="/@htmlui/ua.rcss" origin="user-agent"/>
-</head>
-<body id="htmlui-root" data-htmlui-loc="0">
-<htmlbody data-htmlui-loc="1">
-<p data-htmlui-loc="2">abc</p>
+</head
+><body id="htmlui-root" data-htmlui-loc="0"
+><htmlbody data-htmlui-loc="1"
+><p data-htmlui-loc="2">abc</p>
 <p data-htmlui-loc="3"/>
 <svg data-htmlui-loc="4"><text>x &lt; y &amp; z</text></svg>
 </htmlbody></body>

@@ -1783,7 +1783,13 @@ The agent-browser MCP tool is not used for goldens (shared browser, non-determin
   `--fixtures <area|name>` mode for phase-3 fixtures (sidecar below) and `--boxes-only`
   (§5.3). Same launch flags as phase 2's page mode, including `--hide-scrollbars` (the Taffy
   fixtures add their own 15 px scrollbar rule), `deviceScaleFactor: 1`, viewport from the
-  sidecar. Runs on the host (playwright and the browser cache live there), never in Docker or
+  sidecar. (Found by p2-ua: `--hide-scrollbars`, Playwright's default, also hides
+  `::-webkit-scrollbar`-styled scrollbars and they take no layout space, so the Taffy 15 px
+  scrollbar rule needs the flag removed, as phase 2's page mode does with `ignoreDefaultArgs`
+  and an injected `html::-webkit-scrollbar{display:none}`; page mode also runs with
+  JavaScript off, a fontconfig that maps generic families to the engine's built-in Roboto, a
+  fresh browser per capture, and accepts Chromium's cross-process raster noise in `--verify`:
+  phase-2 §5.3.) Runs on the host (playwright and the browser cache live there), never in Docker or
   CI; `npx playwright-core install chromium-headless-shell` installs the browser if missing.
   Phase-2 page references keep their own mode (`--all`, meta-tag states, finished animations);
   phase-3 fixtures use sidecar steps and seeked animations.

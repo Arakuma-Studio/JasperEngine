@@ -1325,7 +1325,7 @@ case names its diagnostic.
 - Logical properties (`border-inline`, `border-block`, `-start/-end`, `-width/-color/-style`)
   → physical with `direction` from the element's `dir` when known statically (the document's
   root `dir`), else LTR, Info when RTL is involved.
-- `border-collapse: collapse` → Unsupported (Warning; adjacent borders double).
+- `border-collapse: collapse` → `gap: 0` (CSS ignores `border-spacing` when borders collapse) and Approximated Warning: adjacent borders are drawn twice (as implemented, p2-ua calibration; was Unsupported, which kept the UA's 2px spacing).
   `border-spacing: x [y]` on tables → `gap: y x` (Rewritten).
 
 **Border radius**: lengths native; `%` without `PercentRadius`: values ≥ 50% → `9999px`
@@ -1875,6 +1875,74 @@ Chromium 153, adapted. Rules use only type, attribute, class and pseudo-class se
 Every UA value above that copies Chromium's look is calibrated by p2-ua against the
 `ua-defaults`, `dialog` and `settings` reference renders (5.3) until those golden tests
 pass; the values written here are the starting point.
+
+**As calibrated (p2-ua).** The sheet (`ua/useragent.css`, comments per rule) differs from the
+list above where Chromium 153's renders (reference setup of 5.3) disagreed:
+
+- Root: also `font-weight: normal; font-style: normal`. Display: also `input[type=hidden]
+  { display: none }`, `ruby, rt` inline.
+- `hr`: `border: 1px solid; border-color: #9a9a9a #eeeeee #eeeeee #9a9a9a; overflow: hidden`
+  (the two tones Chromium paints for `1px inset gray`). `a[href]` and `summary` also get
+  `tab-index: auto` (p2-runtime's focus order); `abbr[title], acronym[title]` underline.
+- Tables: `border-spacing: 2px` plus `padding: var(--html-border-spacing, 2px)`: RmlUi's
+  `gap` only separates cells, CSS spacing also separates them from the table's edges; the
+  `border-spacing` rewrite writes the companion, `border-collapse: collapse` writes `gap: 0px`
+  and `--html-border-spacing: 0px` (Warning `HTMLUI-CSS-0006`: the cells' borders are not
+  merged). `vertical-align: middle` on row groups, rows and cells.
+- Controls share `line-height: normal; font-weight: normal; font-style: normal;
+  text-transform: none; text-align: left`. Where Chromium lays out a 2px border and paints a
+  1px one, the sheet keeps the border box and paints 1px: text inputs `padding: 2px 3px;
+  border: 1px solid #767676; width: 177px` (185px border box, Chromium's `size=20` at
+  13.333px of the built-in Roboto), buttons `box-sizing: border-box; padding: 2px 7px;
+  border: 1px solid #767676; background-color: ButtonFace`. Text inputs and buttons align
+  their text's baseline (p2-runtime `HtmlInputElement::GetBaseline`).
+- Checkbox: `box-sizing: border-box`, and `vertical-align: var(--html-check-baseline, -3px)`:
+  Chromium's themed checkbox has its baseline at its border box's bottom, not at its bottom
+  margin edge (`appearance: none` writes `0px`). Radio: `margin: 3px 3px 0 5px`; checked
+  `box-shadow: inset 0 0 0 1.5px var(--html-accent-contrast, #ffffff)`. A light
+  `accent-color` (relative luminance above 0.32) gets Chromium's dark mark: the rewrite also
+  writes `--html-check` with `check-dark.svg` (#3b3b3b) and `--html-accent-contrast: #3b3b3b`.
+- Range: `box-sizing: border-box; height: var(--html-slider-height, 16px); margin: 2px;
+  overflow: visible`; `slidertrack { margin-top: var(--html-slider-track-margin, 5px);
+  height: var(--html-slider-track-height, 6px); border: var(--html-slider-track-border, 1px)
+  solid var(--html-control-border, #b2b2b2); border-radius: 3px; background-color:
+  var(--html-control-bg, #efefef) }`; `sliderprogress { height: 8px; background-color:
+  var(--html-slider-fill, var(--html-accent, #0075ff)) }` (over the track's border box);
+  `sliderbar { box-sizing: border-box; width: 16px; height: 16px; border-radius: 8px;
+  decorator: var(--html-thumb, none) }`. `appearance: none` writes `--html-slider-fill:
+  transparent; --html-slider-height: auto; --html-slider-track-margin: 0px;
+  --html-slider-track-height: auto; --html-slider-track-border: 0px` (Chromium: as tall as
+  the track, no fill, no track border); `auto` writes the fallbacks back.
+- Progress: `box-sizing: border-box; width: 10em; height: 1em; vertical-align: -0.2em;
+  border: 0.25em 0 solid transparent; border-radius: 0.5em; background-color: #efefef;
+  box-shadow: inset 0 0 0 1px #b2b2b2`; `fill { border-radius: 0.25em 0 0 0.25em }`
+  (Chromium draws a 0.5em bar).
+- Select: `padding: 0`, the internal menulist padding on `selectvalue { padding: 1px 0 1px
+  4px }` (author padding adds to it, as in Chromium; the fork sizes a select from its widest
+  option, the arrow and the value's edges, FORK.md P2-9/P2-12); `selectarrow { width: 16px }`
+  with `arrow-down.svg` 10x6 at 3px.
+- Fieldset: `border: 2px solid #c5c5c5` (one tone halfway between the groove's #9b9b9b and
+  #efefef). A fieldset whose first child is a `legend` gets the class `htmlui-legend` from the
+  HTML stage: `padding-top: 0; border-top-width: 0`, transparent side borders, and the top
+  line and sides drawn from 9px down (a 16px legend's middle) as `html-layer` strips of
+  `fieldset-border.svg`; its legend gets `margin-bottom: 0.35em`. No gap is cut around the
+  legend (the line runs under it: documented in the guide).
+- Summary: `list-style-type: disclosure-closed; list-style-position: inside`, `details[open]
+  > summary` `disclosure-open`. Dialog: `border: 3px solid`, no `fit-content`.
+- Scrollbars: track and corner `#fcfcfc`, thumb `#8b8b8b` (hover `#6e6e6e`, active `#545454`),
+  3px margin, 4.5px radius, 20px minimum; arrows 15x15 (`scroll-*.svg`).
+- Companion resets: also a rule naming the widget parts (`selectvalue … selection`), because
+  `*` does not reach them (FORK.md P2-12: type-less selectors skip the parts widgets build,
+  so an author `* { margin: 0; padding: 0 }` reset leaves the UA's part rules alone, as in
+  CSS).
+- Internal SVGs: `check.svg`, `check-dark.svg`, `arrow-down.svg`, `scroll-{up,down,left,
+  right}.svg`, `fieldset-border.svg` (a 1x1 fill, `preserveAspectRatio="none"`).
+
+Golden page `ua-defaults` pins what the engine approximates until phase 3, so the comparison
+tests the sheet: the body's font and `line-height: 1.2`, the controls' `line-height: 15px`
+(Chromium's `normal` for 13.333px Roboto), 13px for the text-sized controls (RmlUi font
+sizes are whole pixels: 13.333px draws at 13px) and Roboto for the form (whole-pixel space
+advances).
 
 ### 3.11 Runtime emulations (p2-runtime)
 
@@ -2606,10 +2674,12 @@ Built by p2-html (October 2026). Where the code differs from or adds to the text
   `foreignObject` is reported by the stage itself). `data-lucide` expansion uses p2-runtime's
   `runtime/LucideIcons.h` (`resolve`/`find`/`closest`/`svgAttributes`); the classes follow
   Lucide's `createIcons` (`lucide lucide-<attribute value>`).
-- **RML shape.** A start tag starts a new RML line when it follows another tag (inserting a line
-  break after text would add a space). RmlUi drops whitespace-only text nodes, so a space
-  between two inline elements (`<b>a</b> <i>b</i>`) is lost, as in phase 1; inside `pre`-like
-  elements whitespace-only text is written as character references, which RmlUi keeps.
+- **RML shape.** A start tag starts a new RML line when it follows another tag, the line break
+  written inside the previous tag (`</b\n><i>`, `<div\n><p>`): the fork lays out white-space-only
+  text between inline-level boxes as a space (FORK.md P2-8, p2-ua), so a break between tags would
+  be a space the HTML does not have, and one after text would add a space. A space between two
+  inline elements in the HTML (`<b>a</b> <i>b</i>`) is kept; inside `pre`-like elements
+  whitespace-only text is written as character references.
 - **DocumentLoader** (`DocumentLoader.h`): as specified, plus `compile(path, options, files)`
   (uncached, for checks), `restyle(document, shared_ptr, options)` (rebinds the document),
   `restyleForViewport` returns the compile now in use, `fragmentToRml(..., FragmentOptions)`
@@ -2907,7 +2977,7 @@ sections above keep the design, this list records the interfaces and the deviati
   HTML/CSS for the engine" in `docs/mcp/guide/html-ui.md` (what works, what is rewritten,
   how to read diagnostics, imports; phase 4 adds the generated matrix).
 - **Depends on:** p2-core; final calibration needs all wave-2 packages merged.
-- **Deliverables:** 3.10 complete and calibrated; the reference tool; the seven golden
+- **Deliverables:** 3.10 complete and calibrated; the reference tool; the eight golden
   pages (5.3) with committed references, layouts and engine goldens; the MCP e2e test.
 - **Tests:** `compat_golden_pages_test.cpp` (5.3), `compat_ua_test.cpp` (the UA sheet
   rewrites with zero diagnostics and RmlUi accepts it with zero warnings; no UA selector
@@ -3107,30 +3177,57 @@ the host's `~/.cache/ms-playwright`). Phase 3 extends this same script and `Brow
   `npx playwright-core install chromium-headless-shell` (or reused from
   `~/.cache/ms-playwright`). The script refuses to run with another browser version.
 - Launch flags: `--font-render-hinting=none --disable-font-subpixel-positioning
-  --disable-lcd-text --force-color-profile=srgb --disable-gpu --hide-scrollbars`.
+  --disable-lcd-text --force-color-profile=srgb --disable-gpu --num-raster-threads=1
+  --disable-checker-imaging`. As implemented (p2-ua), Playwright's default
+  `--hide-scrollbars` is **removed** (`ignoreDefaultArgs`): it hides every element scrollbar,
+  `::-webkit-scrollbar`-styled ones included, and they then take no layout space, while the
+  engine draws them; only the root viewport's scrollbar is hidden, by an injected
+  `html::-webkit-scrollbar{display:none!important}` (the engine's root does not scroll).
 - Viewport 1280×720, `deviceScaleFactor: 1`, `colorScheme: 'light'`,
-  `reducedMotion: 'no-preference'`.
+  `reducedMotion: 'no-preference'`, **JavaScript disabled** (the engine runs none, so inline
+  scripts must not change the reference either; `<noscript>` renders on both sides).
+- Fonts (as implemented): Chromium runs with a generated `FONTCONFIG_FILE` whose only font
+  directory holds the engine's built-in Roboto (extracted from `engine/core/util/DefaultFont.h`)
+  and which maps every generic family (`serif`, `sans-serif`, `monospace`, `system-ui`,
+  `ui-*`, `cursive`, `fantasy`, Arial, Helvetica, Times New Roman, Courier New) to it: what
+  the engine's font registry does. References do not depend on the host's fonts, and form
+  controls (`system-ui`) measure with the same face on both sides. Synthetic bold/italic of
+  the generic face is Skia's in the reference, the engine's own in the engine.
 - Requests to `https://fonts.googleapis.com/*` and every URL in the page manifest are
-  fulfilled from the manifest's local files (`page.route`), everything else remote is
-  aborted (deterministic, offline).
+  fulfilled from the manifest's local files (`page.route`; a URL next to a manifest URL, like
+  the fonts a Google Fonts CSS references relatively, maps to the file next to the local
+  copy), everything else remote is aborted (deterministic, offline).
 - `data-lucide` elements are expanded by the script from `engine/libs/lucide/lucide.pack`
-  (Node's zlib) with the same algorithm as compat, so both sides draw identical icons.
-- After `load`: `await document.fonts.ready`; all animations are finished
-  (`for (const a of document.getAnimations()) a.finish()`) so fill-mode end states are
-  captured, transitions disabled by injecting `*{transition:none!important}` before
-  load; states from `<meta name="htmlui-ref-hover" content="#selector">` (hover via
-  `page.hover`), `htmlui-ref-focus` (keyboard focus via `page.focus` after a Tab press so
-  `:focus-visible` applies), `htmlui-ref-active`.
+  (Node's zlib, the format of `tools/htmlui/build_lucide_pack.py`) with the same algorithm as
+  compat, so both sides draw identical icons (`--lucide-dir <checkout>` reads a Lucide
+  checkout instead, for development).
+- After `load`: `await document.fonts.ready`, every `<img>` decoded (`img.decode()`), all
+  finite animations finished (`a.finish()`; infinite ones paused at 0) so fill-mode end
+  states are captured, transitions disabled by an injected `*{transition:none!important}`
+  (before any state is applied: with JavaScript off nothing transitions earlier);
+  states from `<meta name="htmlui-ref-hover" content="#selector">` (hover via `page.hover`),
+  `htmlui-ref-focus` (keyboard focus via `page.focus` after a Tab press so `:focus-visible`
+  applies), `htmlui-ref-active`; then 400 ms for Chromium's high-quality image filter pass
+  before the screenshot.
 - Outputs per page into `engine/tests/htmlui/golden/compat/reference/`:
   `<page>.png` (`omitBackground: true`, transparent), `<page>.notext.png` (same page with an
   injected style `*{-webkit-text-fill-color:transparent!important;
   text-shadow:none!important;-webkit-text-stroke-color:transparent!important;
   text-decoration-color:transparent!important;caret-color:transparent!important}`, which
-  hides glyphs but keeps `currentColor` borders and icons), and `<page>.layout.json`
-  (`getBoundingClientRect` of every element with an `id`, rounded to 0.01 px, plus the
-  attribute `data-ref-tol` if present).
-- Two consecutive runs must produce byte-identical files (the script checks it with
-  `--verify`).
+  hides glyphs but keeps `currentColor` borders and icons; rendered from a fresh load, not by
+  restyling the first capture), and `<page>.layout.json` (`{page, viewport, browser, states,
+  requires, lucide, elements}`; `elements`: `getBoundingClientRect` of every element with an
+  `id` in document order, rounded to 0.01 px, `tol` from `data-ref-tol` if present, and
+  `transformed: true` when the element or an ancestor has a CSS transform: its client rect is
+  then a transformed bounding box, which the layout gate skips; the images cover it), plus
+  `VERSION` (browser, playwright, font mapping, Lucide source).
+- Every capture uses a fresh browser process: a page captured after another one in the same
+  browser can differ in a few pixels. Chromium's software raster is still not bit-exact
+  across processes on blurred rounded shapes (box-shadow glows on rounded boxes: up to ~32/255
+  on a few dozen pixels, measured on `hud.html`; one raster thread and the flags above do not
+  remove it), so `--verify` (two renders) and `--check` (against the committed files) accept
+  byte-identical files or differences of at most 40/255 on at most 0.05 % of the pixels, far
+  below the comparator's threshold of 48.
 
 **Engine side** (`BrowserCompare`, p2-ua): loads the page into a 1280×720 context with dp
 ratio 1 through `DocumentLoader::load`, applies the same states (hover: synthetic mouse move
@@ -3140,13 +3237,27 @@ declarations), renders through phase 0's offscreen golden harness on a transpare
 reads back premultiplied RGBA, and for the no-text variant calls the font engine's
 `setRenderTextForTesting(false)` (hook H6; layout is unchanged because metrics are).
 
+As implemented (p2-ua): `BrowserPage` (`engine/tests/htmlui/compat/BrowserCompare.h`)
+draws into a `RenderTestContext` target with the engine's default 4x MSAA, calls
+`compat::updateRuntime` before every `Context::Update` (as `HtmlUIContext::update`), loads
+the page with `TestSystem::setAssetPath(<fixtures>/compat/pages)` so the pages directory is
+the project's assets directory (its `htmlui-imports/manifest.json` serves the Google Fonts
+URL, as in a project), runs animations on the fixed UI clock (0 s at load, then 1000 s:
+every finite animation ends and `AnimationFill` applies its end state), focuses by real Tab
+key presses until the element has the focus, and hovers by a pointer move to the element's
+centre. The layout gate compares `Element::GetAbsoluteOffset(Border)` and the border size
+with the reference rect. The tests are `CompatGolden/CompatGoldenPages.MatchesChromium/<page>`
+(one per `pages/*.html`), `CompatGoldenReferences.CompleteAndConsistent` and the metric
+self-tests `CompatBrowserCompare.*` (no GPU). The diagnostics snapshot is
+`golden/compat/engine/<page>.diag.txt`.
+
 **Comparison policy** (calibrated on the `refrender-exp` experiment: Chromium vs Chromium
 with deliberate perturbations; metrics on premultiplied RGBA):
 
 | Metric | Definition |
 |---|---|
-| fuzzy-bad % | percentage of pixels whose best match within a 3×3 neighborhood of the other image differs by more than 48 in some channel |
-| max-block | largest mean absolute channel difference over 8×8 blocks |
+| fuzzy-bad % | percentage of pixels whose best match within a 3×3 neighborhood of the other image differs by more than 48 in some channel (as implemented: counted in both directions, a pixel bad in either counts once) |
+| max-block | largest difference of the two images' mean channel values over 8×8 blocks (the calibration's `|mean(a) - mean(b)|` per block and channel) |
 
 Measured: 1px shift 0.000% / 29.8; color #6cf→#7df 0.000% / 6.0; 4px shift 0.963% / 94.3;
 missing button 12.2% / 231.8; radius 16px→0 0.059% / 137.3; other font 1.24% / 55.2
@@ -3157,7 +3268,9 @@ Gates:
 1. **No-text image vs Chromium**: fuzzy-bad ≤ 0.5 % and max-block ≤ 64. Catches missing
    boxes, wrong radii, wrong colors, shifts ≥ 3 px; tolerates rasterizer anti-aliasing.
 2. **Layout vs Chromium**: every element with an `id`: |Δx|, |Δy|, |Δw|, |Δh| ≤ 3 px; for
-   elements marked `data-ref-tol="text"` (boxes sized by text) ≤ max(6 px, 4 %).
+   elements marked `data-ref-tol="text"` (boxes sized by text) ≤ max(6 px, 4 % of the
+   reference width for x and w, of its height for y and h). Elements under a CSS transform
+   (`transformed` in the layout JSON) are left to the image gates.
 3. **Engine golden** (`golden/compat/engine/<page>.png`, regression of our own output):
    fuzzy-bad ≤ 0.1 % with a channel threshold of 8, max-block ≤ 8. Regenerated on purpose
    with `JASPER_HTMLUI_UPDATE_GOLDEN=1` after inspecting the image.
@@ -3349,7 +3462,7 @@ I rows `HTMLUI-CSS-0003` (Info); F rows `HTMLUI-CSS-0007`. Inherited properties 
 | `border-radius`, `border-*-radius` | N / F(PercentRadius) | `≥ 50%` → `9999px`; other `%` dropped | elliptical `a / b` → first radius (A, Warning) |
 | `border-start-start-radius`, `border-start-end-radius`, `border-end-start-radius`, `border-end-end-radius` | R | physical corners | |
 | `border-image`, `border-image-source`, `-slice`, `-width`, `-outset`, `-repeat` | E | `decorator: …, html-border-image(…)` | gradient sources U |
-| `border-collapse` | U | | `separate` is the only model; `collapse` Warning |
+| `border-collapse` | A | `gap: 0` | `separate` is the only model; `collapse` writes no spacing and draws adjacent borders twice (Warning) |
 | `border-spacing` | R | `gap` on tables | |
 | `box-shadow` | N | + `--html-box-shadow` companion | |
 | `outline`, `outline-width`, `outline-style`, `outline-color` | E | box-shadow ring through companions | styles other than solid/auto → solid (Info) |

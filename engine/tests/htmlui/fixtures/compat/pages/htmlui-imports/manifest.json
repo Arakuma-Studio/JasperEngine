@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "url": "https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Orbitron:wght@700;900&display=swap",
+      "kind": "google-fonts-css",
+      "path": "htmlui-imports/fonts/inter-orbitron-438965.css",
+      "files": [
+        "htmlui-imports/fonts/inter/Inter-400.ttf",
+        "htmlui-imports/fonts/inter/Inter-600.ttf",
+        "htmlui-imports/fonts/inter/Inter-700.ttf",
+        "htmlui-imports/fonts/orbitron/Orbitron-700.ttf",
+        "htmlui-imports/fonts/orbitron/Orbitron-900.ttf"
+      ],
+      "license": "htmlui-imports/fonts/inter-orbitron-438965.licenses.txt",
+      "licenseName": "SIL Open Font License 1.1",
+      "source": "Google Fonts",
+      "fetched": "2026-10-08T12:00:00Z",
+      "sha256": "90e1f660e2aa82c1262494d360d47462d805a4f14f4cf65a786f5e9d96096425"
+    }
+  ]
+}
