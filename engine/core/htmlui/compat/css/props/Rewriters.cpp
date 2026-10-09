@@ -139,6 +139,10 @@ bool props::isWs(const ComponentValue& value){
 
 std::vector<ComponentValue> props::words(const std::vector<ComponentValue>& value){
     std::vector<ComponentValue> out;
+    size_t count = 0;
+    for (const ComponentValue& v : value)
+        count += isWs(v) ? 0 : 1;
+    out.reserve(count);
     for (const ComponentValue& v : value){
         if (!isWs(v))
             out.push_back(v);
@@ -147,9 +151,24 @@ std::vector<ComponentValue> props::words(const std::vector<ComponentValue>& valu
 }
 
 std::vector<std::vector<ComponentValue>> props::commaGroups(const std::vector<ComponentValue>& value){
-    std::vector<std::vector<ComponentValue>> groups = splitAtCommas(value);
-    for (std::vector<ComponentValue>& group : groups)
-        group = trimWhitespace(group);
+    // splitAtCommas + trimWhitespace of each group, each group copied once
+    std::vector<std::vector<ComponentValue>> groups;
+    size_t commas = 0;
+    for (const ComponentValue& v : value)
+        commas += v.isToken(TokenType::Comma) ? 1 : 0;
+    groups.reserve(commas + 1);
+    size_t begin = 0;
+    for (size_t i = 0; i <= value.size(); i++){
+        if (i < value.size() && !value[i].isToken(TokenType::Comma))
+            continue;
+        size_t a = begin, b = i;
+        while (a < b && value[a].isWhitespace())
+            a++;
+        while (b > a && value[b - 1].isWhitespace())
+            b--;
+        groups.emplace_back(value.begin() + (std::ptrdiff_t)a, value.begin() + (std::ptrdiff_t)b);
+        begin = i + 1;
+    }
     return groups;
 }
 
@@ -158,7 +177,14 @@ std::string props::text(const ComponentValue& value){
 }
 
 std::string props::text(const std::vector<ComponentValue>& value){
-    return serialize(trimWhitespace(value));
+    size_t a = 0, b = value.size();
+    while (a < b && value[a].isWhitespace())
+        a++;
+    while (b > a && value[b - 1].isWhitespace())
+        b--;
+    if (a == 0 && b == value.size())
+        return serialize(value);
+    return serialize(std::vector<ComponentValue>(value.begin() + (std::ptrdiff_t)a, value.begin() + (std::ptrdiff_t)b));
 }
 
 std::string props::join(const std::vector<std::string>& parts, const char* separator){
@@ -375,21 +401,24 @@ std::optional<std::vector<ComponentValue>> props::ruleValue(Session& session, co
 }
 
 std::string props::ruleStaticColor(Session& session, const FlatRule& rule){
-    const auto it = session.staticColors.find(rule.index);
-    if (it != session.staticColors.end())
-        return it->second;
+    if (session.staticColors.size() < session.rules.size())
+        session.staticColors.resize(session.rules.size());
+    if (rule.index < session.staticColors.size() && session.staticColors[rule.index])
+        return *session.staticColors[rule.index];
     std::string color;
     std::optional<std::vector<ComponentValue>> value = ruleValue(session, rule, "color");
     if (value && value->size() == 1 && (*value)[0].isToken(TokenType::Hash))
         color = "#" + (*value)[0].token.value;
-    session.staticColors[rule.index] = color;
+    if (rule.index < session.staticColors.size())
+        session.staticColors[rule.index] = color;
     return color;
 }
 
 std::optional<double> props::ruleFontSizePx(Session& session, const FlatRule& rule){
-    const auto it = session.fontSizes.find(rule.index);
-    if (it != session.fontSizes.end())
-        return it->second;
+    if (session.fontSizes.size() < session.rules.size())
+        session.fontSizes.resize(session.rules.size());
+    if (rule.index < session.fontSizes.size() && session.fontSizes[rule.index])
+        return *session.fontSizes[rule.index];
     std::optional<double> px;
     std::optional<std::vector<ComponentValue>> value = ruleValue(session, rule, "font-size");
     if (value && value->size() == 1){
@@ -405,7 +434,8 @@ std::optional<double> props::ruleFontSizePx(Session& session, const FlatRule& ru
             }
         }
     }
-    session.fontSizes[rule.index] = px;
+    if (rule.index < session.fontSizes.size())
+        session.fontSizes[rule.index] = px;
     return px;
 }
 

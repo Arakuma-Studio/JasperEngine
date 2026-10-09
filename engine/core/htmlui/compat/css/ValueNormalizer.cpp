@@ -4,6 +4,7 @@
 #include "htmlui/compat/css/ValueNormalizer.h"
 #include "htmlui/compat/LiteralCompare.h"
 
+#include "htmlui/compat/StringIndex.h"
 #include "htmlui/compat/css/ColorValue.h"
 #include "htmlui/compat/css/CssParser.h"
 #include "htmlui/compat/css/CssSerialize.h"
@@ -94,13 +95,13 @@ ComponentValue ValueNormalizer::currentColorCompanion(){
 }
 
 PercentBasis ValueNormalizer::percentBasisOf(const std::string& property, bool* vertical){
-    static const std::set<std::string> verticalProperties = {
+    static const StringIndex verticalProperties = makeStringSet({
         "height", "min-height", "max-height", "top", "bottom", "block-size", "min-block-size", "max-block-size",
         "inset-block", "inset-block-start", "inset-block-end", "row-gap", "background-position-y", "transform-origin-y",
         "perspective-origin-y",
-    };
+    });
     if (vertical)
-        *vertical = verticalProperties.count(property) > 0;
+        *vertical = verticalProperties.contains(property);
     if (property == "font-size" || property == "font")
         return PercentBasis::FontSize;
     if (property == "line-height")
@@ -112,15 +113,15 @@ PercentBasis ValueNormalizer::percentBasisOf(const std::string& property, bool* 
 }
 
 bool ValueNormalizer::colorKeywordsApply(const std::string& property){
-    static const std::set<std::string> noColors = {
+    static const StringIndex noColors = makeStringSet({
         "font-family", "font", "animation", "animation-name", "transition", "transition-property", "will-change",
         "counter-reset", "counter-increment", "counter-set", "grid-area", "grid-template-areas", "grid-row", "grid-column",
         "grid-row-start", "grid-row-end", "grid-column-start", "grid-column-end", "content", "quotes", "list-style-type",
         "font-feature-settings", "font-variation-settings", "unicode-range", "container-name", "view-transition-name",
         "anchor-name", "position-anchor", "cursor", "font-palette", "src", "-rmlui-language", "nav", "nav-up", "nav-down",
         "nav-left", "nav-right",
-    };
-    return noColors.count(property) == 0;
+    });
+    return !noColors.contains(property);
 }
 
 namespace {

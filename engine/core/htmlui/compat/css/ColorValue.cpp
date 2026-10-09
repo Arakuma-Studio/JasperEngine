@@ -1092,9 +1092,9 @@ std::optional<CssColor> ColorValue::parse(std::string_view css, ColorParseInfo* 
 }
 
 bool ColorValue::isColorFunction(std::string_view name){
-    static const char* const names[] = {"rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color",
-                                        "color-mix", "light-dark"};
-    for (const char* n : names){
+    static constexpr std::string_view names[] = {"rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color",
+                                                 "color-mix", "light-dark"};
+    for (std::string_view n : names){
         if (equalsNoCase(name, n))
             return true;
     }

@@ -4,6 +4,7 @@
 #include "htmlui/compat/css/RcssGrammar.h"
 #include "htmlui/compat/LiteralCompare.h"
 
+#include "htmlui/compat/StringIndex.h"
 #include "htmlui/compat/css/Easing.h"
 #include "htmlui/compat/css/Units.h"
 
@@ -162,14 +163,14 @@ namespace {
     };
 
     const PropertyGrammar* find(std::string_view name){
-        const PropertyGrammar* begin = kGrammar;
-        const PropertyGrammar* end = kGrammar + sizeof(kGrammar) / sizeof(kGrammar[0]);
-        const PropertyGrammar* it = std::lower_bound(begin, end, name, [](const PropertyGrammar& row, std::string_view n){
-            return std::string_view(row.name) < n;
-        });
-        if (it != end && name == it->name)
-            return it;
-        return nullptr;
+        static const StringIndex index = [](){
+            std::vector<std::pair<std::string_view, uint32_t>> entries;
+            for (size_t i = 0; i < sizeof(kGrammar) / sizeof(kGrammar[0]); i++)
+                entries.emplace_back(std::string_view(kGrammar[i].name), (uint32_t)i);
+            return StringIndex(entries);
+        }();
+        const uint32_t i = index.find(name);
+        return i == StringIndex::npos ? nullptr : &kGrammar[i];
     }
 
     std::string trim(std::string_view s){

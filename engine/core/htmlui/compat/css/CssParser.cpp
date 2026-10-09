@@ -766,13 +766,18 @@ std::vector<ComponentValue> jasperengine::htmlui::compat::trimWhitespace(const s
 }
 
 std::vector<std::vector<ComponentValue>> jasperengine::htmlui::compat::splitAtCommas(const std::vector<ComponentValue>& values){
-    std::vector<std::vector<ComponentValue>> groups(1);
-    for (const ComponentValue& value : values){
-        if (value.isToken(TokenType::Comma)){
-            groups.emplace_back();
+    // each group copied once, from its range
+    std::vector<std::vector<ComponentValue>> groups;
+    size_t commas = 0;
+    for (const ComponentValue& value : values)
+        commas += value.isToken(TokenType::Comma) ? 1 : 0;
+    groups.reserve(commas + 1);
+    size_t begin = 0;
+    for (size_t i = 0; i <= values.size(); i++){
+        if (i < values.size() && !values[i].isToken(TokenType::Comma))
             continue;
-        }
-        groups.back().push_back(value);
+        groups.emplace_back(values.begin() + (std::ptrdiff_t)begin, values.begin() + (std::ptrdiff_t)i);
+        begin = i + 1;
     }
     return groups;
 }

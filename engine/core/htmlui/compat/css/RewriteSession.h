@@ -172,8 +172,9 @@ namespace jasperengine::htmlui::compat {
         std::unordered_map<std::string, std::vector<PropertyUse>> propertyRules;
 
         // per-rule static facts, computed on demand
-        std::unordered_map<uint32_t, std::string> staticColors;
-        std::unordered_map<uint32_t, std::optional<double>> fontSizes;
+        // (by rule index; sized on first use)
+        std::vector<std::optional<std::string>> staticColors;
+        std::vector<std::optional<std::optional<double>>> fontSizes;
 
         // the !important sheet (§3.9.6 step 7)
         struct ImportantRule {

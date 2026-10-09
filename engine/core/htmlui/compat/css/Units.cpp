@@ -39,21 +39,6 @@ std::string jasperengine::htmlui::compat::lowerAscii(std::string_view text){
     return result;
 }
 
-bool jasperengine::htmlui::compat::equalsNoCase(std::string_view a, std::string_view b){
-    if (a.size() != b.size())
-        return false;
-    for (size_t i = 0; i < a.size(); i++){
-        char x = a[i], y = b[i];
-        if (x >= 'A' && x <= 'Z')
-            x = (char)(x - 'A' + 'a');
-        if (y >= 'A' && y <= 'Z')
-            y = (char)(y - 'A' + 'a');
-        if (x != y)
-            return false;
-    }
-    return true;
-}
-
 bool jasperengine::htmlui::compat::startsWithNoCase(std::string_view text, std::string_view prefix){
     return text.size() >= prefix.size() && equalsNoCase(text.substr(0, prefix.size()), prefix);
 }

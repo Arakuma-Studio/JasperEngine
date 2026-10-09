@@ -638,10 +638,10 @@ CalcValue CalcValue::scaled(double factor) const{
 }
 
 bool StaticCalc::isMathFunction(std::string_view name){
-    static const char* const names[] = {"calc", "min", "max", "clamp", "round", "mod", "rem", "abs", "sign", "sin", "cos",
-                                        "tan", "asin", "acos", "atan", "atan2", "pow", "sqrt", "hypot", "log", "exp",
-                                        "-webkit-calc", "-moz-calc"};
-    for (const char* n : names){
+    static constexpr std::string_view names[] = {"calc", "min", "max", "clamp", "round", "mod", "rem", "abs", "sign", "sin", "cos",
+                                                 "tan", "asin", "acos", "atan", "atan2", "pow", "sqrt", "hypot", "log", "exp",
+                                                 "-webkit-calc", "-moz-calc"};
+    for (std::string_view n : names){
         if (equalsNoCase(name, n))
             return true;
     }

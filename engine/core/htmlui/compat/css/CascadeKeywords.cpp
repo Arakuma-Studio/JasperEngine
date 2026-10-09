@@ -91,9 +91,12 @@ std::string CascadeKeywords::keywordOf(const std::vector<ComponentValue>& value)
     const ComponentValue* sole = soleValue(value);
     if (!sole || !sole->isToken(TokenType::Ident) || sole->token.value.size() > 12)
         return std::string();
-    const std::string k = lowerAscii(sole->token.value);
-    if (k == "inherit" || k == "initial" || k == "unset" || k == "revert" || k == "revert-layer")
-        return k;
+    const std::string& v = sole->token.value;
+    static constexpr std::string_view keywords[] = {"inherit", "initial", "unset", "revert", "revert-layer"};
+    for (std::string_view k : keywords){
+        if (equalsNoCase(v, k))
+            return std::string(k);
+    }
     return std::string();
 }
 

@@ -14,12 +14,19 @@
 #include <string>
 #include <string_view>
 
+// inlined at every call (the literal's length is then a constant)
+#if defined(_MSC_VER)
+#define COMPAT_LITERAL_INLINE __forceinline
+#else
+#define COMPAT_LITERAL_INLINE inline __attribute__((always_inline))
+#endif
+
 namespace jasperengine::htmlui::compat {
 
-    inline bool operator==(const std::string& a, const char* b) noexcept { return std::string_view(a) == std::string_view(b); }
-    inline bool operator==(const char* a, const std::string& b) noexcept { return std::string_view(a) == std::string_view(b); }
-    inline bool operator!=(const std::string& a, const char* b) noexcept { return std::string_view(a) != std::string_view(b); }
-    inline bool operator!=(const char* a, const std::string& b) noexcept { return std::string_view(a) != std::string_view(b); }
+    COMPAT_LITERAL_INLINE bool operator==(const std::string& a, const char* b) noexcept { return std::string_view(a) == std::string_view(b); }
+    COMPAT_LITERAL_INLINE bool operator==(const char* a, const std::string& b) noexcept { return std::string_view(a) == std::string_view(b); }
+    COMPAT_LITERAL_INLINE bool operator!=(const std::string& a, const char* b) noexcept { return std::string_view(a) != std::string_view(b); }
+    COMPAT_LITERAL_INLINE bool operator!=(const char* a, const std::string& b) noexcept { return std::string_view(a) != std::string_view(b); }
 
 }
 

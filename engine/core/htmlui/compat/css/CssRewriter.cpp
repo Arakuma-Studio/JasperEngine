@@ -830,6 +830,18 @@ namespace {
     // so earlier ones are not written
     std::vector<const OutDecl*> effective(const std::vector<OutDecl>& declarations){
         std::vector<const OutDecl*> out;
+        out.reserve(declarations.size());
+        if (declarations.size() <= 32){
+            // a rule's few declarations: a later one of the same name is found by a scan
+            for (size_t i = 0; i < declarations.size(); i++){
+                bool later = false;
+                for (size_t j = i + 1; j < declarations.size() && !later; j++)
+                    later = declarations[j].name == declarations[i].name;
+                if (!later)
+                    out.push_back(&declarations[i]);
+            }
+            return out;
+        }
         std::set<std::string> seen;
         for (size_t i = declarations.size(); i-- > 0;){
             if (seen.insert(declarations[i].name).second)
@@ -856,7 +868,8 @@ namespace {
     }
 
     // a rule (and its generated rules) under each block of a media result
-    void writeUnderMedia(RcssWriter& writer, const MediaResult& media, SourceRef ref, const std::function<void()>& body){
+    template<typename Body>
+    void writeUnderMedia(RcssWriter& writer, const MediaResult& media, SourceRef ref, const Body& body){
         if (media.never)
             return;
         if (media.always){
@@ -882,15 +895,16 @@ namespace {
         std::vector<OutDecl> normal, vmin;
         Session::ImportantRule important;
         important.rule = &rule;
+        normal.reserve(output.declarations.size());
         for (OutDecl& d : output.declarations){
             if (d.important){
-                important.declarations.push_back(d);
+                important.declarations.push_back(std::move(d));
                 continue;
             }
             if (rule.origin != RuleOrigin::StyleAttribute && hasViewportOrientation(d.value))
-                vmin.push_back(d);
+                vmin.push_back(std::move(d));
             else
-                normal.push_back(d);
+                normal.push_back(std::move(d));
         }
         if (!important.declarations.empty())
             session.important.push_back(std::move(important));
@@ -1176,8 +1190,11 @@ namespace {
             }
             normalize.remPx = session.rootFontSize.value_or(16.0);
             normalize.resolveVar = [&session](const ComponentValue& var, std::vector<ComponentValue>& out){ return session.staticVar(var, out); };
-            normalize.report = [&](DiagCode code, Severity severity, const std::string& message, const std::string& suggestion){
-                session.sink->reportAs(severity, code, d.valueRef.valid() ? d.valueRef : d.ref, message, suggestion, std::string(), name);
+            // (one captured pointer: the std::function keeps it without an allocation)
+            normalize.report = [ctx = &context](DiagCode code, Severity severity, const std::string& message, const std::string& suggestion){
+                const Declaration& declaration = ctx->declaration;
+                ctx->session.sink->reportAs(severity, code, declaration.valueRef.valid() ? declaration.valueRef : declaration.ref, message,
+                                            suggestion, std::string(), ctx->name);
             };
             NormalizeResult normalized = ValueNormalizer::normalize(d.value, normalize);
             if (!normalized.ok)
