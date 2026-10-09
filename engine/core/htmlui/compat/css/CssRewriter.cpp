@@ -46,17 +46,16 @@ namespace {
 
 // ---- DeclContext
 
-void DeclContext::emit(const std::string& property, const std::string& value){
-    emit(property, value, declaration.ref);
+void DeclContext::emit(std::string property, std::string value){
+    emit(std::move(property), std::move(value), declaration.ref);
 }
 
-void DeclContext::emit(const std::string& property, const std::string& value, SourceRef ref){
-    OutDecl out;
-    out.name = property;
-    out.value = value;
+void DeclContext::emit(std::string property, std::string value, SourceRef ref){
+    OutDecl& out = output.declarations.emplace_back();
+    out.name = std::move(property);
+    out.value = std::move(value);
     out.ref = ref.valid() ? ref : declaration.ref;
     out.important = important;
-    output.declarations.push_back(std::move(out));
 }
 
 void DeclContext::generate(const std::string& suffix, const std::string& property, const std::string& value){
@@ -1099,10 +1098,15 @@ namespace {
     }
 
     // the property name a declaration is read as (vendor prefixes resolved); "" + reported when dropped
-    std::string effectiveName(Session& session, const Declaration& d, const std::vector<Declaration>& block, bool& silentlyDropped){
+    std::string effectiveName(Session& session, const Declaration& d, const std::vector<Declaration>& block, bool& silentlyDropped,
+                              const PropertyFacts** declaredFacts = nullptr){
         silentlyDropped = false;
-        if (session.facts(d.name).row)
+        const PropertyFacts& facts = session.facts(d.name);
+        if (facts.row){
+            if (declaredFacts)
+                *declaredFacts = &facts;
             return d.name;
+        }
         for (const char* prefix : {"-webkit-", "-moz-", "-ms-", "-o-"}){
             const std::string p(prefix);
             if (d.name.compare(0, p.size(), p) != 0)
@@ -1216,7 +1220,8 @@ namespace {
 
         // 2. vendor prefixes, 3. lookup
         bool silentlyDropped = false;
-        std::string name = effectiveName(session, d, block, silentlyDropped);
+        const PropertyFacts* declaredFacts = nullptr;
+        std::string name = effectiveName(session, d, block, silentlyDropped, &declaredFacts);
         if (silentlyDropped)
             return;
         if (name.empty()){
@@ -1225,7 +1230,8 @@ namespace {
                                  closest.empty() ? std::string() : "did you mean '" + closest + "'?", closest, d.name);
             return;
         }
-        const PropertyFacts& facts = session.facts(name);
+        // (the declared name's facts when it is a property itself, the usual case)
+        const PropertyFacts& facts = declaredFacts ? *declaredFacts : session.facts(name);
         const PropertySupport* row = facts.row;
         const Support support = effectiveSupport(*row, session.options.fork);
         if (support == Support::Unsupported){

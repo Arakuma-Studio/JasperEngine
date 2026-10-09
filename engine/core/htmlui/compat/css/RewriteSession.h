@@ -108,8 +108,9 @@ namespace jasperengine::htmlui::compat {
         RuleOutput& output;
         bool dropped = false;               // the rewrite dropped the declaration
 
-        void emit(const std::string& property, const std::string& value);
-        void emit(const std::string& property, const std::string& value, SourceRef ref);
+        // (by value: a temporary is moved into the output)
+        void emit(std::string property, std::string value);
+        void emit(std::string property, std::string value, SourceRef ref);
         void generate(const std::string& suffix, const std::string& property, const std::string& value);
         // diagnostics at the declaration (or its value)
         void report(DiagCode code, const std::string& message, const std::string& suggestion = std::string(),
