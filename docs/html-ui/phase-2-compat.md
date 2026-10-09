@@ -2657,6 +2657,93 @@ list says where each wave-2 package plugs in without editing p2-core's files.
   specified), font-effects (H6) covered by a golden in p2-ua plus a unit test that RmlUi
   generates effect geometry.
 
+#### p2-runtime as implemented
+
+Built by p2-runtime (October 2026). Binding for the packages that call into it; the
+sections above keep the design, this list records the interfaces and the deviations.
+
+- **Registry** (`runtime/RuntimeRegistry.cpp`): `registerRuntime()` registers, after every
+  `Rml::Initialise`, the properties, the SVG source hook, the decorator instancers
+  `html-layer`, `html-shape`, `html-border-image` and the element instancers `button`, `a`,
+  `input`, `li`, `summary`, `details`, `dialog`, `img`, `label` (replacing RmlUi's `img`,
+  `input`, `label` for every document, `.rml` ones too: RmlUi's `sprite`/`rect` on `img` and
+  every RmlUi input type keep working); `releaseRuntime()` drops them after `Rml::Shutdown`;
+  `updateRuntime(context)` runs `FocusTracker::update` and `AnimationFill::update`, which keep
+  their own per-context state (a capture listener on the context's root for `animationend`),
+  so p2-html's `DocumentLoader::load` needs no runtime call. The phase-3 gates of §3.6
+  (`FocusPseudoClasses`, `AnimationLonghands`, `ListMarkers`, `ObjectFit`) go into
+  `updateRuntime`/`registerRuntime` when phase 3 appends those enum values;
+  `CompatProperties::registerAll()` already skips any name the fork registers.
+- **Properties** (`CompatProperties`, enum `CompatProperty`): the names of §3.11.1;
+  `object-position` is one string-parsed property holding the CSS value (any
+  `<position>`, parsed at draw time); `fill`/`stroke` take a color or the keywords `none`,
+  `currentcolor`; the paint properties default to "unset" (no value). Readers:
+  `CompatProperties::text/color/get(element, property)`.
+- **Decorator arguments** (what p2-css writes): `html-layer("<path>" <size-x> <size-y>
+  <pos-x> <pos-y> <repeat-x> <repeat-y> <origin> <clip> <attachment>)`, each one token: size
+  `auto|cover|contain|<length-percentage>`; position `left|center|right` (x) or
+  `top|center|bottom` (y), a `<length-percentage>`, or `calc(<percentage> ± <length>)` for an
+  edge offset (`right 10px` = `calc(100% - 10px)`); repeat `repeat|no-repeat|space|round`;
+  boxes `border-box|padding-box|content-box`; attachment `scroll|fixed|local` (`local` is drawn
+  as `scroll`). `html-shape("<basic-shape> [<box>]")` (the shape quoted, an optional reference
+  box keyword after it inside the quotes, default `border-box`). `html-border-image("<path>"
+  <slice ×4> fill|nofill <width ×4> <outset ×4> <repeat-x> <repeat-y>)`: slices are numbers or
+  percentages, widths `auto`, numbers (× border width) or lengths/percentages, outsets numbers
+  or lengths. Paths are what `UrlResolver` emits (`asset://…`, `/@htmlui/…`). Invalid
+  arguments log `[HTML UI] html-layer(): …` and the decorator is not instanced. The pure math
+  is public for tests: `computeLayerGeometry`, `computeBorderImageGeometry`,
+  `LayerSpec::parse`, `BasicShape::parse/toSvg`.
+- **Rasteriser**: `html-shape`, SVG layers and `htmlui::rasterizeSvg(xml, width, height)`
+  use LunaSVG (the phase-0 benchmark's choice; §3.11.3's "ThorVG" predates it). SVG layers and
+  `<img src="*.svg">` are rasterized at the drawn size × the context's pixel ratio
+  (`RmlFontEngine::getRasterScale(renderManager)`), cached process-wide (32 MB);
+  `htmlui::svgIntrinsicSize(xml, w, h)`.
+- **SVG** (H8): the fork patch `rmlui: SVG source hook` (FORK.md P2-1) adds
+  `Rml::SVG::SourceHook`; compat's `SvgElementHook` runs `SvgPreprocess::process(xml,
+  SvgUse, SvgPaintOverrides)` → `SvgResult{ok, xml, tint, foreignObjects, diagnostics,
+  withColor(css)}` (cached by content; per-element attributes `rmlui-*`, `data-*`, `aria-*`,
+  `role` are dropped from the inline wrapper so equal icons share an entry). `Color`: the
+  white raster is multiplied by color × image-color × opacity (a color change makes new
+  geometry, never a new raster); `Substitute`: the root `color` attribute gets the CSS color
+  (LunaSVG resolves `currentColor`), re-rasterized on change. A shape without any fill,
+  a stop without stop-color, an inner element redefining `color` or a fixed paint in a
+  `<style>` sheet make an SVG "mixed". `HTMLUI-SVG-0001/0002` are logged once per `<svg src>`
+  file at runtime; p2-html reports them for inline SVG at compile time from
+  `SvgResult::diagnostics`.
+- **Lucide** (§3.11.8): Lucide 1.53.0 (latest release), 1869 icons, 264 aliases, 93 KB
+  packed; format in `engine/libs/lucide/README.md`. `LucideIcons::find/resolve/closest/names`,
+  `svgAttributes(name, elementAttributes)` (the root attributes of `replaceElement`, also
+  `title` counts as an accessibility attribute, as Lucide's `hasA11yProp`), `svgMarkup`,
+  `toPascalCase/toKebabCase`; p2-html's step 7 and the Lua `setAttribute("data-lucide")`
+  hook use them. The Apple export writes `htmlui_lucide.h` like `htmlui_ua.h`.
+- **Elements**: `htmlnavigate` (on the document, bubbles, cancelable) has the parameters
+  `href`, `url` (asset-relative file or the URL), `fragment`, `document` (bool: `.html/.htm`),
+  `external` (bool); `#id`/`#`/`#top` scroll and dispatch nothing. `HtmlDialogElement::
+  show/showModal/close(returnValue)` (+ `cancel` on Escape when modal, `close` queued);
+  `HtmlDetailsElement` queues `toggle` (newState/oldState), also for a details created open
+  (as browsers), and closes same-`name` siblings. Buttons, links, summaries, checkboxes and
+  radios activate from the keyboard with HTML timing (Enter on key down, Space on key up) and
+  suppress RmlUi's own Enter/Space click of the focused element; Enter in a text field submits
+  its form (implicit submission). Reset restores inputs to the attributes they had before
+  their first update and textareas/selects to their values when the form was first seen.
+  `label` is an own element (`HtmlLabelElement` in `HtmlLabelBehavior.cpp`) rather than a
+  listener on RmlUi's: RmlUi's label stops the label's click and labels `input type=hidden`;
+  this one keeps the click propagating and activates the HTML-labeled control as the default
+  action.
+- **Markers**: list items show a marker only with `display: block`/`flow-root` (what
+  `list-item` becomes); bullets and disclosure triangles are drawn as small SVG shapes (the
+  built-in fonts lack ◦ ▪ ▸ ▾); `inside` grows the item's `padding-left` (a local property)
+  by the marker width.
+- **Hooks**: H6 `RmlFontEngine::hasFamily` (static), `setRenderTextForTesting/
+  getRenderTextForTesting`; H7 `RmlRenderer::LoadTexture` serves `@htmlui/` virtual files and
+  the `htmlui-filter=nearest` query parameter (`RmlRenderer::stripTextureFilter`), and
+  `createStaticTexture` takes a filter; H9 `<lottie playonhover>` (enter plays, leave stops, as
+  lottie-player's `hover`).
+- **What the user-agent sheet (p2-ua) must provide** for these behaviors: `tab-index: auto` on
+  `button`, `a[href]`, `summary`, form controls; `summary { list-style: disclosure-closed
+  inside }` / `details[open] > summary { list-style-type: disclosure-open }`; `dialog:not([open])
+  { display: none }`; `input[type=hidden] { display: none }`; markers style through `li > marker`.
+
 ### p2-ua (wave 2, finishes last): user-agent stylesheet, references, golden tests
 
 - **Owns:** `compat/ua/useragent.css` (replacing the minimal one), the internal UA SVGs,
