@@ -186,8 +186,9 @@ namespace {
 
     class Tokenizer {
     public:
-        Tokenizer(std::string_view css, uint32_t base, const TokenizeOptions& options, std::vector<TokenizeError>* errors, LexResult& out):
-            in(css, base), source(css), base(base), options(options), errors(errors), out(out) {}
+        Tokenizer(std::string_view css, uint32_t base, const TokenizeOptions& options, std::vector<TokenizeError>* errors, LexResult& out,
+                  bool comments):
+            in(css, base), source(css), base(base), options(options), errors(errors), out(out), comments(comments) {}
 
         void run(){
             out.source = source;
@@ -201,6 +202,8 @@ namespace {
                 consumeToken();
                 if (current->type == TokenType::EndOfFile)
                     break;
+                if (!comments && current->type == TokenType::Comment)
+                    tokens.pop_back();
             }
         }
 
@@ -290,17 +293,33 @@ namespace {
             return c;
         }
 
+        // ASCII name characters: a-z A-Z 0-9 - _
         static bool asciiIdentByte(unsigned char c){
-            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+            static const struct Table {
+                bool name[256] = {};
+                Table(){
+                    for (int c = 0; c < 256; c++)
+                        name[c] = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+                }
+            } table;
+            return table.name[c];
+        }
+
+        // the length of the run of ASCII name characters at the position
+        size_t identRun() const {
+            const char* const begin = source.data() + in.position();
+            const char* const end = source.data() + source.size();
+            const char* p = begin;
+            while (p < end && asciiIdentByte((unsigned char)*p))
+                p++;
+            return (size_t)(p - begin);
         }
 
         // appends the sequence to result
         void consumeIdentSequence(LexText& result){
             while (true){
                 // a run of ASCII name bytes is a run of the source
-                size_t run = 0;
-                while (asciiIdentByte(in.byte(run)))
-                    run++;
+                const size_t run = identRun();
                 if (run > 0){
                     appendSource(result, in.position(), run);
                     in.skip(run);
@@ -752,6 +771,7 @@ namespace {
         TokenizeOptions options;
         std::vector<TokenizeError>* errors;
         LexResult& out;
+        bool comments;
         LexToken* current = nullptr;
     };
 
@@ -841,8 +861,8 @@ const char* jasperengine::htmlui::compat::tokenTypeName(TokenType type){
 }
 
 void jasperengine::htmlui::compat::lexCss(std::string_view css, uint32_t baseOffset, const TokenizeOptions& options,
-                                          std::vector<TokenizeError>* errors, LexResult& out){
-    Tokenizer tokenizer(css, baseOffset, options, errors, out);
+                                          std::vector<TokenizeError>* errors, LexResult& out, bool comments){
+    Tokenizer tokenizer(css, baseOffset, options, errors, out, comments);
     tokenizer.run();
 }
 

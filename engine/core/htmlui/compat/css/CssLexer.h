@@ -73,9 +73,10 @@ namespace jasperengine::htmlui::compat {
         }
     };
 
-    // tokenize() without the Token conversion (comments kept, as tokenize())
+    // tokenize() without the Token conversion; comments false: no Comment tokens (the parser
+    // drops them)
     void lexCss(std::string_view css, uint32_t baseOffset, const TokenizeOptions& options, std::vector<TokenizeError>* errors,
-                LexResult& out);
+                LexResult& out, bool comments = true);
 
 }
 

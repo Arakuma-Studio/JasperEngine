@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/NamedColors.h"
+#include "htmlui/compat/StringIndex.h"
 #include "htmlui/compat/LiteralCompare.h"
 
 #include <algorithm>
@@ -101,25 +102,26 @@ namespace {
         {"windowtext", 0x000000ff},
     };
 
-    std::string lower(std::string_view text){
-        std::string result(text);
-        for (char& c : result){
-            if (c >= 'A' && c <= 'Z')
-                c = (char)(c - 'A' + 'a');
-        }
-        return result;
+    template<size_t N>
+    StringIndex indexOf(const NamedColor (&table)[N]){
+        std::vector<std::pair<std::string_view, uint32_t>> entries;
+        for (size_t i = 0; i < N; i++)
+            entries.emplace_back(std::string_view(table[i].name), (uint32_t)i);
+        return StringIndex(entries);
     }
 
+    // case-insensitive lookup through an index of the (lowercase) names
     template<size_t N>
-    const NamedColor* find(const NamedColor (&table)[N], std::string_view name){
-        const std::string key = lower(name);
-        const NamedColor* end = table + N;
-        const NamedColor* it = std::lower_bound(table, end, key, [](const NamedColor& row, const std::string& k){
-            return std::strcmp(row.name, k.c_str()) < 0;
-        });
-        if (it != end && key == it->name)
-            return it;
-        return nullptr;
+    const NamedColor* find(const NamedColor (&table)[N], const StringIndex& index, std::string_view name){
+        char buffer[32];
+        if (name.size() > sizeof(buffer))
+            return nullptr;   // longer than every name
+        for (size_t i = 0; i < name.size(); i++){
+            const char c = name[i];
+            buffer[i] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+        }
+        const uint32_t i = index.find(std::string_view(buffer, name.size()));
+        return i == StringIndex::npos ? nullptr : &table[i];
     }
 
 }
@@ -129,7 +131,8 @@ Span<const NamedColor> jasperengine::htmlui::compat::namedColors(){
 }
 
 const NamedColor* jasperengine::htmlui::compat::findNamedColor(std::string_view name){
-    return find(kNamed, name);
+    static const StringIndex index = indexOf(kNamed);
+    return find(kNamed, index, name);
 }
 
 Span<const NamedColor> jasperengine::htmlui::compat::systemColors(){
@@ -137,5 +140,6 @@ Span<const NamedColor> jasperengine::htmlui::compat::systemColors(){
 }
 
 const NamedColor* jasperengine::htmlui::compat::findSystemColor(std::string_view name){
-    return find(kSystem, name);
+    static const StringIndex index = indexOf(kSystem);
+    return find(kSystem, index, name);
 }

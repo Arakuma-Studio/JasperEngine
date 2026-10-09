@@ -1361,8 +1361,11 @@ void jasperengine::htmlui::compat::processSynthetic(DeclContext& context, const 
     std::vector<Declaration> block(1);
     Declaration& synthetic = block[0];
     synthetic.name = property;
-    synthetic.value = parseComponentValueList(value);
-    trimInPlace(synthetic.value);
+    synthetic.value = context.session.syntheticValues.get(value, [](std::string_view text){
+        std::vector<ComponentValue> parsed = parseComponentValueList(text);
+        trimInPlace(parsed);
+        return parsed;
+    });
     synthetic.ref = context.declaration.ref;
     synthetic.nameRef = context.declaration.nameRef;
     synthetic.valueRef = context.declaration.valueRef;

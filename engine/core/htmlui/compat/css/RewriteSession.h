@@ -199,6 +199,10 @@ namespace jasperengine::htmlui::compat {
         // props::varKind of a var() without fallback, by variable name, for vars.revision()
         NameTable<std::pair<uint32_t, std::string>> varKinds;
 
+        // parseComponentValueList of the values processSynthetic is given (shorthand rewrites
+        // give the same few texts again and again), trimmed
+        NameTable<std::vector<ComponentValue>> syntheticValues;
+
         // per property name (session-wide: the tables do not change)
         NameTable<PropertyFacts> propertyFacts;
         const PropertyFacts& facts(std::string_view property);

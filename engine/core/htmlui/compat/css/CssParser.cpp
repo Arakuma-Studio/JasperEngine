@@ -42,22 +42,8 @@ namespace {
                std::vector<ParseError>* errors):
             file(file), css(css), base(base), errorsOut(errors) {
             std::vector<TokenizeError> tokenizeErrors;
-            lexCss(css, base, options, &tokenizeErrors, lexed);
-            // comments removed in place
-            size_t kept = 0;
-            for (size_t i = 0; i < tokens.size(); i++){
-                LexToken& token = tokens[i];
-                if (token.type == TokenType::Comment)
-                    continue;
-                if (token.type == TokenType::BadString)
-                    errors_.push_back(ParseError{ParseError::Kind::BadString, token.offset, token.length});
-                else if (token.type == TokenType::BadUrl)
-                    errors_.push_back(ParseError{ParseError::Kind::BadUrl, token.offset, token.length});
-                if (kept != i)
-                    tokens[kept] = std::move(token);
-                kept++;
-            }
-            tokens.erase(tokens.begin() + (std::ptrdiff_t)kept, tokens.end());
+            // (without comments)
+            lexCss(css, base, options, &tokenizeErrors, lexed, false);
             matchClosers();
             for (const TokenizeError& error : tokenizeErrors){
                 ParseError::Kind kind = ParseError::Kind::InvalidEscape;
@@ -123,6 +109,10 @@ namespace {
                     open.push_back((uint32_t)i);
                     continue;
                 }
+                if (type == TokenType::BadString)
+                    errors_.push_back(ParseError{ParseError::Kind::BadString, tokens[i].offset, tokens[i].length});
+                else if (type == TokenType::BadUrl)
+                    errors_.push_back(ParseError{ParseError::Kind::BadUrl, tokens[i].offset, tokens[i].length});
                 if (!open.empty() && type == mirrorOf(tokens[open.back()].type == TokenType::Function ? TokenType::LeftParen
                                                                                                     : tokens[open.back()].type)){
                     closer[open.back()] = (uint32_t)i;

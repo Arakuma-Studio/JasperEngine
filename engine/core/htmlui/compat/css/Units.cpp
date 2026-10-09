@@ -130,6 +130,9 @@ RcssUnit jasperengine::htmlui::compat::rcssUnit(std::string_view unit){
     const LowerUnit lower(unit);
     const std::string_view u = lower.view;
     out.unit = u;
+    // the usual units are written as they are (none of the cases below)
+    if (u == "px" || u == "em" || u == "rem" || u == "s" || u == "deg" || u == "vw" || u == "vh" || u == "fr" || u == "dp")
+        return out;
     if (u == "q"){
         out.factor = 0.25;
         out.unit = "mm";
