@@ -445,11 +445,7 @@ namespace {
         bool sizeSet = false;
         std::string repeatX = "repeat", repeatY = "repeat";
         std::string attachment = "scroll";
-        // CSS's default clip is the border box, painted beneath the border; RmlUi draws
-        // decorators above the border, so the layer would hide it: by default the layer fills
-        // the padding box (what an opaque border leaves visible). An explicit
-        // background-clip: border-box is kept.
-        std::string origin = "padding-box", clip = "padding-box";
+        std::string origin = "padding-box", clip = "border-box";
         bool clipText = false;
         SourceRef ref;
     };
