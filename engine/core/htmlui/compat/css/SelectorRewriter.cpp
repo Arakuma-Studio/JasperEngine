@@ -30,6 +30,15 @@ namespace {
         return v.kind == ComponentValue::Kind::Token && v.token.type == TokenType::Delim && v.token.value.size() == 1 && v.token.value[0] == c;
     }
 
+    // out = lowerAscii(text), in place
+    inline void assignLower(std::string& out, const std::string& text){
+        out = text;
+        for (char& c : out){
+            if (c >= 'A' && c <= 'Z')
+                c = (char)(c - 'A' + 'a');
+        }
+    }
+
     bool isWs(const ComponentValue& v){
         return v.isWhitespace() || v.isToken(TokenType::Comment);
     }
@@ -222,7 +231,7 @@ namespace {
                     }
                     if (name->isToken(TokenType::Ident)){
                         simple.kind = Kind::Type;
-                        simple.name = lowerAscii(name->token.value);
+                        assignLower(simple.name, name->token.value);
                     }else if (isDelimChar(*name, '*')){
                         simple.kind = Kind::Universal;
                     }else{

@@ -239,8 +239,8 @@ void jasperengine::htmlui::compat::appendIdent(std::string& out, std::string_vie
         bool plain = !ident.empty() && !(ident.size() == 1 && ident[0] == '-') && !(ident[0] >= '0' && ident[0] <= '9') &&
                      !(ident.size() >= 2 && ident[0] == '-' && ident[1] >= '0' && ident[1] <= '9');
         for (size_t i = 0; plain && i < ident.size(); i++){
-            const char c = ident[i];
-            plain = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+            const unsigned char c = (unsigned char)ident[i];
+            plain = (unsigned char)((c | 0x20) - 'a') < 26 || (unsigned char)(c - '0') < 10 || c == '-' || c == '_';
         }
         if (plain){
             out.append(ident.data(), ident.size());
