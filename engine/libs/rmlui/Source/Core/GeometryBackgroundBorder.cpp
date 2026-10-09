@@ -51,8 +51,9 @@ BorderMetrics GeometryBackgroundBorder::ComputeBorderMetrics(Vector2f outer_posi
 		scale_factor = Math::Min(scale_factor, outer_size.y / (outer_radii[BOTTOM_LEFT] + outer_radii[TOP_LEFT]));     // Left
 		scale_factor = Math::Min(1.0f, scale_factor);
 
+		// Scaled-down radii are not rounded: rounding up made adjacent curves overlap (a 7px circle drew as a diamond).
 		for (float& radius : outer_radii)
-			radius = Math::Round(radius * scale_factor);
+			radius = (scale_factor < 1.0f ? radius * scale_factor : Math::Round(radius));
 
 		// Place the circle/ellipse centers
 		metrics.positions_circle_center = {

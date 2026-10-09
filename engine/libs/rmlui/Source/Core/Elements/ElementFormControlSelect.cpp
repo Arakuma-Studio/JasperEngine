@@ -9,6 +9,7 @@
 #include "../../../Include/RmlUi/Core/Math.h"
 #include "../../../Include/RmlUi/Core/StringUtilities.h"
 #include "WidgetDropDown.h"
+#include <algorithm>
 
 namespace Rml {
 
@@ -148,6 +149,13 @@ void ElementFormControlSelect::MoveChildren()
 	while (Element* raw_child = GetFirstChild())
 	{
 		ElementPtr child = RemoveChild(raw_child);
+		// the white space between options (kept as text since white space is laid out) is not an option
+		if (auto text = rmlui_dynamic_cast<ElementText*>(child.get()))
+		{
+			const String& value = text->GetText();
+			if (std::all_of(value.begin(), value.end(), &StringUtilities::IsWhitespace))
+				continue;
+		}
 		widget->AddOption(std::move(child), -1);
 	}
 }
