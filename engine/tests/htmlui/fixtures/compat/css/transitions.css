@@ -1,0 +1,22 @@
+/* transitions: seconds, tweens, property names RmlUi knows */
+.ms { transition: opacity 200ms; }
+.all-others { transition: all .3s ease, color 1s linear; }
+.unknown { transition: opacity .2s, --custom 1s, fill 0.5s, foo 1s; }
+.zero { transition: opacity 0s, transform 0.3s; }
+.keywords { transition: a 1s linear, b 1s ease, c 1s ease-in, d 1s ease-out, e 1s ease-in-out; }
+.real { transition: opacity 1s linear, transform 1s ease, color 1s ease-in, width 1s ease-out, height 1s ease-in-out; }
+.bezier { transition: transform .4s cubic-bezier(0.68, -0.55, 0.265, 1.55); }
+.steps { transition: opacity 1s steps(4, end), color 1s step-start; }
+.linear-fn { transition: opacity 1s linear(0, 0.25 75%, 1); }
+.default { transition: background 0.3s; }
+.delay { transition: opacity 0.5s ease-in 100ms, transform 1s -0.2s; }
+.mapped { transition: outline-color .2s, text-shadow .3s, background-image 1s, translate 1s; }
+.none { transition: none; }
+.longhands { transition-property: opacity, transform; transition-duration: 300ms, 1s; transition-timing-function: ease-out; transition-delay: 0s, 50ms; }
+.base { transition: opacity 1s ease; }
+.base:hover { transition-duration: 2s; }
+.lonely { transition-delay: 1s; }
+.behavior { transition: opacity 1s allow-discrete; transition-behavior: allow-discrete; }
+.var { transition: opacity var(--dur) var(--ease); }
+.whole { transition: var(--t); }
+:root { --dur: 150ms; --ease: cubic-bezier(.4, 0, .2, 1); --t: color 1s ease; }

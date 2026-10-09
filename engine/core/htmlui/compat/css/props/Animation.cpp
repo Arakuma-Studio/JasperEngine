@@ -267,20 +267,20 @@ namespace {
                 continue;
             if (!e.durationVar && e.durationSeconds <= 0){
                 if (report && context)
-                    context->reportAs(Severity::Info, codes::AnimationApproximated, "animation '" + e.raw + "' has no duration; it does nothing and is dropped");
+                    context->reportAs(Severity::Info, codes::AnimationApproximated, "animation '" + e.raw + "' has no duration; it does nothing and is dropped", std::string(), e.raw);
                 continue;
             }
             std::string count = e.count;
             if (!count.empty() && count != "infinite"){
                 if (e.countValue <= 0){
                     if (report && context)
-                        context->reportAs(Severity::Info, codes::AnimationApproximated, "animation '" + e.raw + "' plays 0 times; dropped");
+                        context->reportAs(Severity::Info, codes::AnimationApproximated, "animation '" + e.raw + "' plays 0 times; dropped", std::string(), e.raw);
                     continue;
                 }
                 const double rounded = std::max(1.0, std::round(e.countValue));
                 if (rounded != e.countValue && report && context)
                     context->reportAs(Severity::Info, codes::AnimationApproximated, "fractional iteration count " + count + " is rounded to " +
-                                      formatNumber(rounded));
+                                      formatNumber(rounded), std::string(), e.raw);
                 count = rounded == 1.0 ? std::string() : formatNumber(rounded);
             }
             std::string name = session.keyframeName(e.name);
@@ -298,14 +298,14 @@ namespace {
                 session.fillKeyframes.insert(name);
                 if (e.fill == "both" && report && context && !e.delay.empty() && e.delay != "0s")
                     context->reportAs(Severity::Info, codes::AnimationApproximated, "the backwards part of 'both' (first keyframe during the delay) is not emulated",
-                                      "put the first keyframe's values in the element's own style");
+                                      "put the first keyframe's values in the element's own style", e.raw);
             }else if (e.fill == "backwards" && report && context){
                 context->reportAs(Severity::Info, codes::AnimationApproximated, "'animation-fill-mode: backwards' is not emulated",
-                                  "put the first keyframe's values in the element's own style");
+                                  "put the first keyframe's values in the element's own style", e.raw);
             }
             std::string easing = e.easing ? e.easing->text : (fork ? std::string() : std::string("quadratic-out"));
             if (e.easing && report && context && !e.easing->note.empty())
-                context->reportAs(e.easing->severity, e.easing->code, e.easing->note);
+                context->reportAs(e.easing->severity, e.easing->code, e.easing->note, std::string(), e.raw);
             std::vector<std::string> parts{e.duration};
             if (!e.delay.empty() && e.delay != "0s")
                 parts.push_back(e.delay);

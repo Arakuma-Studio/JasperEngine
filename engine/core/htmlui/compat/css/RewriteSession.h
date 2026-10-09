@@ -113,7 +113,8 @@ namespace jasperengine::htmlui::compat {
         // diagnostics at the declaration (or its value)
         void report(DiagCode code, const std::string& message, const std::string& suggestion = std::string(),
                     const std::string& replacement = std::string());
-        void reportAs(Severity severity, DiagCode code, const std::string& message, const std::string& suggestion = std::string());
+        void reportAs(Severity severity, DiagCode code, const std::string& message, const std::string& suggestion = std::string(),
+                      const std::string& subject = std::string());
         void reportAt(SourceRef ref, Severity severity, DiagCode code, const std::string& message,
                       const std::string& suggestion = std::string());
         SourceRef valueRef() const;

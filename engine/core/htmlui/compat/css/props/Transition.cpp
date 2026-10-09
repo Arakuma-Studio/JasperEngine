@@ -305,13 +305,13 @@ namespace {
                 if (targets.empty()){
                     if (report && context)
                         context->reportAs(Severity::Info, codes::ApproximatedMinor, "transition entry '" + e.raw +
-                                          "' names a property the engine does not transition; entry dropped");
+                                          "' names a property the engine does not transition; entry dropped", std::string(), e.raw);
                     continue;
                 }
             }
             std::string easing = e.easing ? e.easing->text : (fork ? std::string() : std::string("quadratic-out"));
             if (e.easing && report && context && !e.easing->note.empty())
-                context->reportAs(e.easing->severity, e.easing->code, e.easing->note);
+                context->reportAs(e.easing->severity, e.easing->code, e.easing->note, std::string(), e.raw);
             std::string entry = join(targets) + " " + e.duration;
             if (!easing.empty())
                 entry += " " + easing;

@@ -70,8 +70,10 @@ void DeclContext::report(DiagCode code, const std::string& message, const std::s
     session.sink->report(code, declaration.ref, message, suggestion, replacement, name);
 }
 
-void DeclContext::reportAs(Severity severity, DiagCode code, const std::string& message, const std::string& suggestion){
-    session.sink->reportAs(severity, code, declaration.ref, message, suggestion, std::string(), name);
+void DeclContext::reportAs(Severity severity, DiagCode code, const std::string& message, const std::string& suggestion,
+                           const std::string& subject){
+    // the subject keeps several findings of one declaration apart (the sink drops repeated (code, ref, subject))
+    session.sink->reportAs(severity, code, declaration.ref, message, suggestion, std::string(), subject.empty() ? name : name + ": " + subject);
 }
 
 void DeclContext::reportAt(SourceRef ref, Severity severity, DiagCode code, const std::string& message, const std::string& suggestion){
@@ -572,11 +574,25 @@ namespace {
                 const std::string family = varFamilyOf(name);
                 const std::vector<ComponentValue> trimmed = trimWhitespace(d.value);
                 const bool whole = trimmed.size() == 1 && trimmed[0].isFunction("var");
+                const bool timing = name == "transition" || name == "animation" || name == "transition-timing-function" ||
+                                    name == "animation-timing-function";
                 for (const std::string& variable : referenced){
-                    if (!family.empty() && whole)
+                    if (!family.empty() && whole && family != "easing"){
                         session.vars.addUse(variable, family);
-                    else
-                        session.vars.addRawUse(variable);
+                        continue;
+                    }
+                    if (timing){
+                        // a variable in an easing position is written as a tween name
+                        std::vector<std::vector<ComponentValue>> values;
+                        bool easing = session.vars.expandedValues(variable, values) && !values.empty();
+                        for (const std::vector<ComponentValue>& value : values)
+                            easing = easing && !kEasingFamily.classify(session, value).empty();
+                        if (easing){
+                            session.vars.addUse(variable, "easing");
+                            continue;
+                        }
+                    }
+                    session.vars.addRawUse(variable);
                 }
                 if (name.compare(0, 12, "border-image") == 0 && !hasIdent(d.value, "none"))
                     session.usesBorderImage = true;
