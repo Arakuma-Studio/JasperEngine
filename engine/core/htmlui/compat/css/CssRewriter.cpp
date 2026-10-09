@@ -1168,6 +1168,28 @@ namespace {
         return note && std::strstr(note, "(Info)") != nullptr;
     }
 
+    // what the normalizer may read of the rule for a value (see processOne)
+    struct ValueNeeds {
+        bool staticColor = false;   // a currentcolor ident or a var()
+        bool fontSize = false;      // a function (the math functions resolve em against it)
+    };
+
+    void scanNeeds(const std::vector<ComponentValue>& values, ValueNeeds& needs){
+        for (const ComponentValue& v : values){
+            if (v.kind == ComponentValue::Kind::Token){
+                if (v.token.type == TokenType::Ident && equalsNoCase(v.token.value, "currentcolor"))
+                    needs.staticColor = true;
+                continue;
+            }
+            if (v.kind == ComponentValue::Kind::Function){
+                needs.fontSize = true;
+                if (equalsNoCase(v.token.value, "var"))
+                    needs.staticColor = true;
+            }
+            scanNeeds(v.children, needs);
+        }
+    }
+
     // one declaration through the pipeline of §3.9.6
     void processOne(Session& session, const FlatRule* rule, RuleOrigin origin, bool keyframe, const Declaration& d,
                     const std::vector<Declaration>& block, RuleOutput& output){
@@ -1332,11 +1354,16 @@ namespace {
             normalize.vertical = facts.vertical;
             normalize.options = session.options;
             if (rule && !keyframe){
-                const std::string& staticColor = props::ruleStaticColor(session, *rule);
-                if (name != "color")
-                    normalize.staticColor = staticColor;
-                if (std::optional<double> fontSize = props::ruleFontSizePx(session, *rule); fontSize && name != "font-size")
-                    normalize.emPx = *fontSize;
+                // the rule's static color is read for currentColor (written, or behind a var())
+                // and its font size by the math functions: looked up only for such values
+                ValueNeeds needs;
+                scanNeeds(d.value, needs);
+                if (needs.staticColor && name != "color")
+                    normalize.staticColor = props::ruleStaticColor(session, *rule);
+                if (needs.fontSize && name != "font-size"){
+                    if (std::optional<double> fontSize = props::ruleFontSizePx(session, *rule))
+                        normalize.emPx = *fontSize;
+                }
             }
             normalize.remPx = session.rootFontSize.value_or(16.0);
             normalize.resolveVar = [&session](const ComponentValue& var, std::vector<ComponentValue>& out){ return session.staticVar(var, out); };
