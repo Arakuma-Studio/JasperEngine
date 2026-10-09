@@ -30,13 +30,21 @@ namespace {
         return v.kind == ComponentValue::Kind::Token && v.token.type == TokenType::Delim && v.token.value.size() == 1 && v.token.value[0] == c;
     }
 
-    // out = lowerAscii(text), in place
-    inline void assignLower(std::string& out, const std::string& text){
-        out = text;
-        for (char& c : out){
-            if (c >= 'A' && c <= 'Z')
-                c = (char)(c - 'A' + 'a');
+    // out = lowerAscii(text): the text itself when it has no upper case letter
+    inline void assignLower(Text& out, const Text& text){
+        size_t upper = 0;
+        while (upper < text.size() && !(text[upper] >= 'A' && text[upper] <= 'Z'))
+            upper++;
+        if (upper == text.size()){
+            out = text;
+            return;
         }
+        char* lowered = (char*)Arena::current().allocate(text.size());
+        for (size_t i = 0; i < text.size(); i++){
+            const char c = text[i];
+            lowered[i] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+        }
+        out = Text::view(std::string_view(lowered, text.size()));
     }
 
     bool isWs(const ComponentValue& v){
@@ -73,8 +81,8 @@ namespace {
             }
         }
 
-        std::optional<std::vector<ComplexSelector>> list(bool forgiving){
-            std::vector<ComplexSelector> result;
+        std::optional<SelectorList> list(bool forgiving){
+            SelectorList result;
             // the comma-separated groups, as ranges of items
             size_t commas = 0;
             for (size_t i = 0; i < items.size(); i++)
@@ -289,7 +297,7 @@ namespace {
                         if (isSelectorListPseudo(simple.name)){
                             Parser inner(n->children, file);
                             const bool forgiving = simple.name == "is" || simple.name == "where";
-                            std::optional<std::vector<ComplexSelector>> parsed = inner.list(forgiving);
+                            std::optional<SelectorList> parsed = inner.list(forgiving);
                             if (!parsed){
                                 fail(n, "invalid selector in :" + simple.name + "()");
                                 return false;
@@ -511,12 +519,12 @@ namespace {
             return false;
         }
 
-        std::vector<ComplexSelector> expand(const ComplexSelector& selector){
+        SelectorList expand(const ComplexSelector& selector){
             // nothing to expand (the common case): the selector itself
             if (!needsExpansion(selector))
-                return std::vector<ComplexSelector>{selector};
-            std::vector<ComplexSelector> work{selector};
-            std::vector<ComplexSelector> done;
+                return SelectorList{selector};
+            SelectorList work{selector};
+            SelectorList done;
             while (!work.empty()){
                 ComplexSelector current = std::move(work.back());
                 work.pop_back();
@@ -581,7 +589,7 @@ namespace {
             if (n > 1)
                 merged.combinator = last.combinator;
             // type selectors first
-            std::vector<SimpleSelector> simples;
+            ArenaList<SimpleSelector> simples;
             for (const SimpleSelector& s : last.simples){
                 if (s.kind == Kind::Type || s.kind == Kind::Universal)
                     simples.push_back(s);
@@ -645,7 +653,7 @@ namespace {
         // the selector's compounds rewritten into `out`; Owned: the input's simple selectors are
         // moved from (the input is replaced by the result), else copied
         template<bool Owned, typename Selector>
-        bool mapCompounds(Selector& selector, std::vector<Compound>& out, bool& placeholder, bool& pseudoElement, int depth){
+        bool mapCompounds(Selector& selector, ArenaList<Compound>& out, bool& placeholder, bool& pseudoElement, int depth){
             out.reserve(selector.compounds.size());
             for (size_t c = 0; c < selector.compounds.size(); c++){
                 auto& source = selector.compounds[c];
@@ -656,9 +664,9 @@ namespace {
                            "the column combinator '||' is not supported; selector dropped", "select the cells by class", "||");
                     return false;
                 }
-                std::vector<SimpleSelector> simples;
+                ArenaList<SimpleSelector> simples;
                 simples.reserve(source.simples.size());
-                std::vector<Compound> appended;     // compounds a pseudo-element adds after this one
+                ArenaList<Compound> appended;     // compounds a pseudo-element adds after this one
                 bool removeSelf = false;            // a pseudo-element that replaces the compound
                 for (auto& simple : source.simples){
                     if (simple.hasNamespace){
@@ -667,7 +675,7 @@ namespace {
                         return false;
                     }
                     // simples after a pseudo-element belong to the element it generates
-                    std::vector<SimpleSelector>& target = appended.empty() ? simples : appended.back().simples;
+                    ArenaList<SimpleSelector>& target = appended.empty() ? simples : appended.back().simples;
                     switch (simple.kind){
                         case Kind::Type:
                             if (simple.name == "html")
@@ -757,7 +765,7 @@ namespace {
         // Rewrites the simples of one selector in place. Returns false to drop the selector;
         // sets invalidRule for a selector browsers reject (the whole rule goes).
         bool mapSelector(ComplexSelector& selector, bool& placeholder, bool& pseudoElement, int depth){
-            std::vector<Compound> out;
+            ArenaList<Compound> out;
             if (!mapCompounds<true>(selector, out, placeholder, pseudoElement, depth))
                 return false;
             selector.compounds = std::move(out);
@@ -768,7 +776,7 @@ namespace {
         bool mapSelector(const ComplexSelector& selector, ComplexSelector& result, bool& placeholder, bool& pseudoElement, int depth){
             result.ref = selector.ref;
             result.relative = selector.relative;
-            std::vector<Compound> out;
+            ArenaList<Compound> out;
             if (!mapCompounds<false>(selector, out, placeholder, pseudoElement, depth))
                 return false;
             result.compounds = std::move(out);
@@ -781,7 +789,7 @@ namespace {
             return s;
         }
 
-        bool pseudoClass(const SimpleSelector& simple, std::vector<SimpleSelector>& target, int depth){
+        bool pseudoClass(const SimpleSelector& simple, ArenaList<SimpleSelector>& target, int depth){
             const std::string& n = simple.name;
             if (!simple.function){
                 if (n == "hover" || n == "active" || n == "checked" || n == "disabled" || n == "placeholder-shown" || n == "scope" ||
@@ -856,7 +864,7 @@ namespace {
                     SimpleSelector copy = simple;
                     copy.selectors.clear();
                     for (const ComplexSelector& argument : simple.selectors){
-                        std::vector<ComplexSelector> expanded = expand(argument);
+                        SelectorList expanded = expand(argument);
                         for (ComplexSelector& variant : expanded){
                             bool placeholder = false, pseudo = false;
                             if (!mapSelector(variant, placeholder, pseudo, depth + 1) || placeholder || pseudo){
@@ -941,7 +949,7 @@ namespace {
         }
 
         // the pseudo-element mappings of Appendix B
-        bool pseudoElementOf(const SimpleSelector& simple, std::vector<SimpleSelector>& simples, std::vector<Compound>& appended,
+        bool pseudoElementOf(const SimpleSelector& simple, ArenaList<SimpleSelector>& simples, ArenaList<Compound>& appended,
                              bool& removeSelf, bool& placeholder, bool& pseudoElement){
             const std::string& n = simple.name;
             const std::string display = "::" + n + (simple.function ? "()" : "");
@@ -1060,7 +1068,7 @@ namespace {
                 }
                 if (!root)
                     continue;
-                std::vector<SimpleSelector> simples;
+                ArenaList<SimpleSelector> simples;
                 simples.push_back(makeType("body"));
                 if (author()){
                     SimpleSelector id;
@@ -1155,7 +1163,7 @@ namespace {
                 id.name = kRootId;
                 ComplexSelector rootVariant = selector;
                 Compound& first = rootVariant.compounds.front();
-                std::vector<SimpleSelector> simples;
+                ArenaList<SimpleSelector> simples;
                 simples.push_back(makeType("body"));
                 simples.push_back(id);
                 for (const SimpleSelector& s : first.simples){
@@ -1197,10 +1205,10 @@ namespace {
 
 }
 
-std::optional<std::vector<ComplexSelector>> SelectorRewriter::parseList(const ValueList& prelude, uint32_t file,
+std::optional<SelectorList> SelectorRewriter::parseList(const ValueList& prelude, uint32_t file,
                                                                         std::string* error, SourceRef* errorRef){
     Parser parser(prelude, file);
-    std::optional<std::vector<ComplexSelector>> result = parser.list(false);
+    std::optional<SelectorList> result = parser.list(false);
     if (!result){
         if (error)
             *error = parser.error;
@@ -1210,12 +1218,12 @@ std::optional<std::vector<ComplexSelector>> SelectorRewriter::parseList(const Va
     return result;
 }
 
-std::optional<std::vector<ComplexSelector>> SelectorRewriter::parseList(std::string_view text, std::string* error){
+std::optional<SelectorList> SelectorRewriter::parseList(std::string_view text, std::string* error){
     ValueList values = parseComponentValueList(text);
     return parseList(values, 0, error, nullptr);
 }
 
-SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelector>& list, const SelectorOptions& options,
+SelectorRewriteResult SelectorRewriter::rewrite(const SelectorList& list, const SelectorOptions& options,
                                                 DiagnosticSink* sink, SourceRef ruleRef){
     SelectorRewriteResult result;
     result.selectors.reserve(list.size());
@@ -1232,7 +1240,7 @@ SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelecto
         }
         // without :is()/:where() to expand, the source is mapped as it is (no copy)
         const bool expands = rewriter.needsExpansion(source);
-        std::vector<ComplexSelector> variants;
+        SelectorList variants;
         if (expands)
             variants = rewriter.expand(source);
         if (rewriter.limitReached){
@@ -1433,7 +1441,7 @@ uint32_t SelectorRewriter::specificity(const ComplexSelector& selector){
     return total;
 }
 
-bool SelectorRewriter::supported(const std::vector<ComplexSelector>& list, const SelectorOptions& options){
+bool SelectorRewriter::supported(const SelectorList& list, const SelectorOptions& options){
     SelectorRewriteResult result = rewrite(list, options, nullptr, SourceRef());
     return !result.invalid && result.selectors.size() > 0;
 }
@@ -1483,7 +1491,7 @@ std::string SelectorRewriter::baseKey(const ComplexSelector& selector){
     ComplexSelector copy = selector;
     if (!copy.compounds.empty()){
         Compound& last = copy.compounds.back();
-        std::vector<SimpleSelector> kept;
+        ArenaList<SimpleSelector> kept;
         for (const SimpleSelector& s : last.simples){
             if (s.kind == Kind::PseudoClass || s.kind == Kind::Attribute || s.kind == Kind::PseudoElement)
                 continue;

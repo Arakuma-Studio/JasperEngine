@@ -43,7 +43,7 @@ namespace jasperengine::htmlui::compat {
         uint32_t sheet = 0;            // the input (output sheet) it is written to
         uint32_t file = 0;
         RuleOrigin origin = RuleOrigin::Author;
-        std::vector<ComplexSelector> selectors;    // CSS selectors, nesting resolved
+        SelectorList selectors;    // CSS selectors, nesting resolved
         SourceRef ref, preludeRef;
         MediaResult media = MediaResult::unconditional();
         std::vector<Declaration> declarations;

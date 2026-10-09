@@ -23,8 +23,8 @@ namespace jasperengine::htmlui::compat {
         static constexpr size_t kLimit = 256;
 
         // nullopt when the product has more than kLimit selectors
-        static std::optional<std::vector<ComplexSelector>> combine(const std::vector<ComplexSelector>& parents,
-                                                                   const std::vector<ComplexSelector>& children,
+        static std::optional<SelectorList> combine(const SelectorList& parents,
+                                                                   const SelectorList& children,
                                                                    const ForkFeatures& fork);
         // one child against one parent
         static ComplexSelector substitute(const ComplexSelector& parent, const ComplexSelector& child);

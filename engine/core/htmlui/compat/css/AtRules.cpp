@@ -79,7 +79,7 @@ namespace {
             if (value.kind == ComponentValue::Kind::Function){
                 const std::string name = lowerAscii(value.name());
                 if (name == "selector"){
-                    std::optional<std::vector<ComplexSelector>> list = SelectorRewriter::parseList(value.children, file);
+                    std::optional<SelectorList> list = SelectorRewriter::parseList(value.children, file);
                     if (!list)
                         return false;
                     return SelectorRewriter::supported(*list, session.selectorOptions);

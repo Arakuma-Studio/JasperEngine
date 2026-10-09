@@ -272,7 +272,7 @@ namespace {
         MediaResult media = MediaResult::unconditional();
         int layer = -1;
         std::string layerName;                  // dotted name of the enclosing layer
-        const std::vector<ComplexSelector>* parents = nullptr;
+        const SelectorList* parents = nullptr;
         std::vector<uint32_t> importChain;
     };
 
@@ -319,7 +319,7 @@ namespace {
         return rank;
     }
 
-    void addRule(Session& session, const FlattenScope& scope, std::vector<ComplexSelector> selectors,
+    void addRule(Session& session, const FlattenScope& scope, SelectorList selectors,
                  std::vector<Declaration> declarations, SourceRef ref, SourceRef preludeRef){
         if (declarations.empty() || scope.media.never)
             return;
@@ -345,16 +345,16 @@ namespace {
     void flattenStyleRule(Session& session, Rule& rule, const FlattenScope& scope){
         std::string error;
         SourceRef errorRef;
-        std::optional<std::vector<ComplexSelector>> parsed = SelectorRewriter::parseList(rule.prelude, scope.file, &error, &errorRef);
+        std::optional<SelectorList> parsed = SelectorRewriter::parseList(rule.prelude, scope.file, &error, &errorRef);
         if (!parsed){
             session.sink->report(codes::InvalidSelector, rule.preludeRef.valid() ? rule.preludeRef : rule.ref,
                                  "invalid selector '" + serialize(trimWhitespace(rule.prelude)) + "' (" + error + "); the rule is dropped",
                                  "fix the selector syntax", std::string(), "selector");
             return;
         }
-        std::vector<ComplexSelector> selectors = std::move(*parsed);
+        SelectorList selectors = std::move(*parsed);
         if (scope.parents){
-            std::optional<std::vector<ComplexSelector>> combined = Nesting::combine(*scope.parents, selectors, session.options.fork);
+            std::optional<SelectorList> combined = Nesting::combine(*scope.parents, selectors, session.options.fork);
             if (!combined){
                 session.sink->report(codes::SelectorExpansionLimit, rule.preludeRef, "nested selectors expand to more than 256 selectors; the rule is dropped",
                                      "flatten the nesting or use fewer selectors in the parent list", std::string(), "&");
@@ -549,7 +549,7 @@ namespace {
                     continue;
                 Declaration declaration = *initial;
                 declaration.name = property;
-                std::optional<std::vector<ComplexSelector>> root = SelectorRewriter::parseList(":root");
+                std::optional<SelectorList> root = SelectorRewriter::parseList(":root");
                 if (root)
                     addRule(session, scope, *root, {declaration}, rule.ref, rule.preludeRef);
                 continue;
@@ -1739,7 +1739,7 @@ std::string CssRewriter::rewriteSelector(std::string_view selector, DiagnosticSi
     const uint32_t file = files.add("[selector]", std::string(selector));
     DiagnosticSink local(files);
     std::string error;
-    std::optional<std::vector<ComplexSelector>> list = SelectorRewriter::parseList(parseComponentValueList(files.text(file)), file, &error);
+    std::optional<SelectorList> list = SelectorRewriter::parseList(parseComponentValueList(files.text(file)), file, &error);
     std::string result;
     if (!list){
         local.report(codes::InvalidSelector, SourceRef{file, 0, (uint32_t)selector.size()}, "invalid selector '" + std::string(selector) + "' (" + error + ")");

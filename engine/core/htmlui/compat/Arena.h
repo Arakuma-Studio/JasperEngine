@@ -19,7 +19,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
+#include <new>
 #include <string_view>
+#include <utility>
 
 namespace jasperengine::htmlui::compat {
 
@@ -75,6 +78,180 @@ namespace jasperengine::htmlui::compat {
         char* cursor = nullptr;
         char* end = nullptr;
         size_t total = 0;
+    };
+
+    // A list in the current Arena with the std::vector operations the compatibility layer uses.
+    // A copy copies the elements (and so their own lists); nothing is freed, and there is no
+    // destructor: T is destroyed by forgetting it, and moved as its bytes. Growing leaves the
+    // old storage to the arena, so lists are reserved to their size where it is known.
+    // 16 bytes.
+    template<typename T>
+    class ArenaList {
+    public:
+        using value_type = T;
+        using iterator = T*;
+        using const_iterator = const T*;
+
+        constexpr ArenaList() noexcept = default;
+        ArenaList(const ArenaList& other){
+            if (other.size_ > 0){
+                data_ = Arena::current().allocateArray<T>(other.size_);
+                size_ = capacity_ = other.size_;
+                copyInto(data_, other.data_, other.data_ + other.size_);
+            }
+        }
+        ArenaList(ArenaList&& other) noexcept: data_(other.data_), size_(other.size_), capacity_(other.capacity_) {
+            other.data_ = nullptr;
+            other.size_ = other.capacity_ = 0;
+        }
+        ArenaList(std::initializer_list<T> values): ArenaList(values.begin(), values.end()) {}
+        ArenaList(const T* first, const T* last){
+            if (last > first){
+                size_ = capacity_ = (uint32_t)(last - first);
+                data_ = Arena::current().allocateArray<T>(size_);
+                copyInto(data_, first, last);
+            }
+        }
+        ArenaList& operator=(const ArenaList& other){
+            if (this != &other)
+                assign(other.data_, other.data_ + other.size_);
+            return *this;
+        }
+        ArenaList& operator=(ArenaList&& other) noexcept {
+            if (this != &other){
+                data_ = other.data_;
+                size_ = other.size_;
+                capacity_ = other.capacity_;
+                other.data_ = nullptr;
+                other.size_ = other.capacity_ = 0;
+            }
+            return *this;
+        }
+
+        size_t size() const noexcept { return size_; }
+        size_t capacity() const noexcept { return capacity_; }
+        bool empty() const noexcept { return size_ == 0; }
+        T* data() noexcept { return data_; }
+        const T* data() const noexcept { return data_; }
+        T* begin() noexcept { return data_; }
+        const T* begin() const noexcept { return data_; }
+        T* end() noexcept { return data_ + size_; }
+        const T* end() const noexcept { return data_ + size_; }
+        T& operator[](size_t index) noexcept { return data_[index]; }
+        const T& operator[](size_t index) const noexcept { return data_[index]; }
+        T& front() noexcept { return data_[0]; }
+        const T& front() const noexcept { return data_[0]; }
+        T& back() noexcept { return data_[size_ - 1]; }
+        const T& back() const noexcept { return data_[size_ - 1]; }
+
+        void clear() noexcept { size_ = 0; }
+        void reserve(size_t count){
+            if (count > capacity_)
+                grow(count);
+        }
+        void resize(size_t count){
+            if (count > capacity_)
+                grow(count);
+            for (size_t i = size_; i < count; i++)
+                new ((void*)(data_ + i)) T();
+            size_ = (uint32_t)count;
+        }
+        T& emplace_back(){
+            if (size_ == capacity_)
+                grow(capacity_ ? (size_t)capacity_ * 2 : 4);
+            return *new ((void*)(data_ + size_++)) T();
+        }
+        void push_back(const T& value){
+            // (the value may be one of the list's own: copied before the list grows)
+            Slot slot;
+            new ((void*)slot.bytes) T(value);
+            if (size_ == capacity_)
+                grow(capacity_ ? (size_t)capacity_ * 2 : 4);
+            std::memcpy((void*)(data_ + size_++), slot.bytes, sizeof(T));
+        }
+        void push_back(T&& value){
+            Slot slot;
+            new ((void*)slot.bytes) T(std::move(value));
+            if (size_ == capacity_)
+                grow(capacity_ ? (size_t)capacity_ * 2 : 4);
+            std::memcpy((void*)(data_ + size_++), slot.bytes, sizeof(T));
+        }
+        T& emplace_back(const T& value){
+            push_back(value);
+            return back();
+        }
+        T& emplace_back(T&& value){
+            push_back(std::move(value));
+            return back();
+        }
+        void pop_back() noexcept { size_--; }
+        T* insert(const T* position, const T& value){ return insert(position, &value, &value + 1); }
+        T* insert(const T* position, const T* first, const T* last){
+            const size_t at = (size_t)(position - data_);
+            const size_t count = (size_t)(last - first);
+            if (count == 0)
+                return data_ + at;
+            // (the values may be the list's own: copied before anything moves)
+            T* copies = Arena::current().allocateArray<T>(count);
+            copyInto(copies, first, last);
+            if (size_ + count > capacity_)
+                grow((size_t)capacity_ * 2 > (size_t)size_ + count ? (size_t)capacity_ * 2 : (size_t)size_ + count);
+            std::memmove((void*)(data_ + at + count), (const void*)(data_ + at), (size_ - at) * sizeof(T));
+            std::memcpy((void*)(data_ + at), (const void*)copies, count * sizeof(T));
+            size_ += (uint32_t)count;
+            return data_ + at;
+        }
+        T* erase(const T* position){ return erase(position, position + 1); }
+        T* erase(const T* first, const T* last){
+            const size_t at = (size_t)(first - data_);
+            const size_t count = (size_t)(last - first);
+            if (count > 0){
+                std::memmove((void*)(data_ + at), (const void*)(data_ + at + count), (size_ - at - count) * sizeof(T));
+                size_ -= (uint32_t)count;
+            }
+            return data_ + at;
+        }
+        void assign(const T* first, const T* last){
+            const size_t count = (size_t)(last - first);
+            // (a range of the list itself is copied before the list changes)
+            const bool own = first >= data_ && first < data_ + capacity_;
+            if (count <= capacity_ && !own){
+                copyInto(data_, first, last);
+                size_ = (uint32_t)count;
+                return;
+            }
+            T* storage = count > 0 ? Arena::current().allocateArray<T>(count) : nullptr;
+            copyInto(storage, first, last);
+            data_ = storage;
+            size_ = capacity_ = (uint32_t)count;
+        }
+        void swap(ArenaList& other) noexcept {
+            std::swap(data_, other.data_);
+            std::swap(size_, other.size_);
+            std::swap(capacity_, other.capacity_);
+        }
+
+    private:
+        struct Slot {
+            alignas(T) unsigned char bytes[sizeof(T)];
+        };
+        void grow(size_t count){
+            // (count > capacity_) the elements move as their bytes
+            T* storage = Arena::current().allocateArray<T>(count);
+            if (size_ > 0)
+                std::memcpy((void*)storage, (const void*)data_, size_ * sizeof(T));
+            data_ = storage;
+            capacity_ = (uint32_t)count;
+        }
+        // copies of [first, last) made in uninitialized storage
+        static void copyInto(T* to, const T* first, const T* last){
+            for (; first != last; ++first, ++to)
+                new ((void*)to) T(*first);
+        }
+
+        T* data_ = nullptr;
+        uint32_t size_ = 0;
+        uint32_t capacity_ = 0;
     };
 
     // makes an arena current on the thread for the scope's lifetime (scopes nest)
