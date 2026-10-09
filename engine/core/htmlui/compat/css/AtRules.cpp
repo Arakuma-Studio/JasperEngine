@@ -342,7 +342,7 @@ namespace {
 
     struct KeyframeBlock {
         std::vector<double> offsets;   // percentages
-        std::vector<OutDecl> declarations;
+        ArenaList<OutDecl> declarations;
         SourceRef ref;
     };
 

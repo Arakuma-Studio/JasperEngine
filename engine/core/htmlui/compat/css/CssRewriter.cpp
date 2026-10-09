@@ -41,19 +41,19 @@
 using namespace jasperengine::htmlui::compat;
 
 namespace {
-    void boxShorthandCompanions(Session& session, const OutDecl& out, std::vector<OutDecl>& extra);
+    void boxShorthandCompanions(Session& session, const OutDecl& out, ArenaList<OutDecl>& extra);
 }
 
 // ---- DeclContext
 
-void DeclContext::emit(std::string property, std::string value){
-    emit(std::move(property), std::move(value), declaration.ref);
+void DeclContext::emit(Text property, Text value){
+    emit(property, value, declaration.ref);
 }
 
-void DeclContext::emit(std::string property, std::string value, SourceRef ref){
+void DeclContext::emit(Text property, Text value, SourceRef ref){
     OutDecl& out = output.declarations.emplace_back();
-    out.name = std::move(property);
-    out.value = std::move(value);
+    out.name = property;
+    out.value = value;
     out.ref = ref.valid() ? ref : declaration.ref;
     out.important = important;
 }
@@ -900,7 +900,7 @@ namespace {
 
     // the declarations that take effect: in one rule the last declaration of a property wins,
     // so earlier ones are not written
-    std::vector<const OutDecl*> effective(const std::vector<OutDecl>& declarations){
+    std::vector<const OutDecl*> effective(const ArenaList<OutDecl>& declarations){
         std::vector<const OutDecl*> out;
         out.reserve(declarations.size());
         if (declarations.size() <= 32){
@@ -923,7 +923,7 @@ namespace {
         return out;
     }
 
-    void writeBlock(RcssWriter& writer, const std::string& selectors, const std::vector<OutDecl>& declarations, SourceRef ref){
+    void writeBlock(RcssWriter& writer, std::string_view selectors, const ArenaList<OutDecl>& declarations, SourceRef ref){
         if (declarations.empty() || selectors.empty())
             return;
         writer.beginRule(selectors, ref);
@@ -982,7 +982,7 @@ namespace {
         bool apart = false;
         for (const OutDecl& d : output.declarations)
             apart = apart || d.important || (rule.origin != RuleOrigin::StyleAttribute && hasViewportOrientation(d.value));
-        std::vector<OutDecl> rest, vmin;
+        ArenaList<OutDecl> rest, vmin;
         if (apart){
             Session::ImportantRule important;
             important.rule = &rule;
@@ -1000,7 +1000,7 @@ namespace {
             if (!important.declarations.empty())
                 session.important.push_back(std::move(important));
         }
-        std::vector<OutDecl>& normal = apart ? rest : output.declarations;
+        ArenaList<OutDecl>& normal = apart ? rest : output.declarations;
 
         // ::placeholder selectors take only text properties (selector lists joined as joinSelectors does)
         std::string joinedPlain, placeholderText;
@@ -1016,7 +1016,7 @@ namespace {
             }
         }
         // (one selector: its text itself)
-        const std::string& plainText = single ? rule.rewritten[0].text : joinedPlain;
+        const std::string_view plainText = single ? rule.rewritten[0].text.view() : std::string_view(joinedPlain);
         auto plainWith = [&](const std::string& suffix){
             std::string text;
             for (const RewrittenSelector& s : rule.rewritten){
@@ -1029,7 +1029,7 @@ namespace {
             }
             return text;
         };
-        std::vector<OutDecl> placeholderDeclarations;
+        ArenaList<OutDecl> placeholderDeclarations;
         if (anyPlaceholder){
             for (const OutDecl& d : normal){
                 if (placeholderProperty(d.name))
@@ -1041,7 +1041,7 @@ namespace {
         }
 
         // the body's background on the root, the body itself transparent (§3.10 item 1)
-        std::vector<OutDecl> rootBackground;
+        ArenaList<OutDecl> rootBackground;
         if (session.propagateBodyBackground && rule.origin == RuleOrigin::Author && isBodyRule(rule)){
             for (OutDecl& d : normal){
                 if (d.name != "background-color" && d.name != "decorator" && d.name != "--html-bg-layers")
@@ -1073,7 +1073,7 @@ namespace {
                 MediaResult orientationMedia;
                 orientationMedia.blocks.push_back(orientation);
                 const MediaResult media = MediaResult::conjoin(rule.media, orientationMedia);
-                std::vector<OutDecl> converted = vmin;
+                ArenaList<OutDecl> converted = vmin;
                 for (OutDecl& d : converted)
                     d.value = replaceViewportOrientation(d.value, landscape);
                 writeUnderMedia(writer, media, rule.ref, [&](){
@@ -1446,7 +1446,7 @@ namespace {
             output.declarations.resize(first);
 
         // 7. !important, companions
-        std::vector<OutDecl> extra;
+        ArenaList<OutDecl> extra;
         for (size_t i = first; i < output.declarations.size(); i++){
             OutDecl& out = output.declarations[i];
             if (out.final)
@@ -1457,7 +1457,7 @@ namespace {
                     out.important = false;
                 }else if (session.options.fork.has(ForkFeature::Important)){
                     out.important = false;
-                    out.value += " !important";
+                    out.value = Text(out.value + " !important");
                 }else if (origin == RuleOrigin::StyleAttribute){
                     out.important = false;
                 }else{
@@ -1505,7 +1505,7 @@ namespace {
     // A box shorthand RCSS keeps as a shorthand (border-radius: 16px) whose longhands some rule
     // reads with `inherit`: the companions of the longhands (`--html-inh-border-top-left-radius`),
     // one value per side or corner by the CSS 1-4 value rule
-    void boxShorthandCompanions(Session& session, const OutDecl& out, std::vector<OutDecl>& extra){
+    void boxShorthandCompanions(Session& session, const OutDecl& out, ArenaList<OutDecl>& extra){
         static const std::map<std::string, std::array<const char*, 4>> shorthands = {
             {"border-radius", {"border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius"}},
             {"margin", {"margin-top", "margin-right", "margin-bottom", "margin-left"}},

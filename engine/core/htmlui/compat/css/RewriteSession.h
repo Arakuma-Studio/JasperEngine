@@ -50,7 +50,7 @@ namespace jasperengine::htmlui::compat {
         int layer = -1;                // index in Session::layerOrder; -1 unlayered
         uint32_t order = 0;            // source order within the document
         // the selector stage
-        std::vector<RewrittenSelector> rewritten;
+        ArenaList<RewrittenSelector> rewritten;
         bool dropped = false;
     };
 
@@ -71,9 +71,10 @@ namespace jasperengine::htmlui::compat {
         uint32_t index = 0;            // into Session::rules or Session::atRules
     };
 
+    // (in the session's arena: nothing to destroy)
     struct OutDecl {
-        std::string name;
-        std::string value;
+        Text name;
+        Text value;
         SourceRef ref;
         bool important = false;
         bool vmin = false;             // holds vmin/vmax: written in orientation copies of the rule
@@ -82,14 +83,14 @@ namespace jasperengine::htmlui::compat {
 
     // a rule generated next to an author rule: <rule selector><suffix> { decls }
     struct GeneratedRule {
-        std::string suffix;            // " > *", " > scrollbarvertical"
-        std::vector<OutDecl> declarations;
+        Text suffix;                   // " > *", " > scrollbarvertical"
+        ArenaList<OutDecl> declarations;
     };
 
     // What the declaration pipeline produced for one rule (or one style attribute)
     struct RuleOutput {
-        std::vector<OutDecl> declarations;
-        std::vector<GeneratedRule> generated;
+        ArenaList<OutDecl> declarations;
+        ArenaList<GeneratedRule> generated;
     };
 
     struct Session;
@@ -109,8 +110,8 @@ namespace jasperengine::htmlui::compat {
         bool dropped = false;               // the rewrite dropped the declaration
 
         // (by value: a temporary is moved into the output)
-        void emit(std::string property, std::string value);
-        void emit(std::string property, std::string value, SourceRef ref);
+        void emit(Text property, Text value);
+        void emit(Text property, Text value, SourceRef ref);
         void generate(const std::string& suffix, const std::string& property, const std::string& value);
         // diagnostics at the declaration (or its value)
         void report(DiagCode code, const std::string& message, const std::string& suggestion = std::string(),
@@ -225,7 +226,7 @@ namespace jasperengine::htmlui::compat {
         // the !important sheet (§3.9.6 step 7)
         struct ImportantRule {
             const FlatRule* rule = nullptr;
-            std::vector<OutDecl> declarations;
+            ArenaList<OutDecl> declarations;
         };
         std::vector<ImportantRule> important;
 
