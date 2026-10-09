@@ -6,33 +6,32 @@
 <link type="text/rcss" href="/@htmlui/doc/KEY/compat/html/css/main.css.rcss"/>
 <style>
 @media (min-width: 600px) {
-.a {
-color: red;
+#htmlui-root .a {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
 }
 }
 </style>
 <style>
-.c {
-color: blue;
+#htmlui-root .c {
+color: #0000ffff;
+--html-current-color: #0000ffff;
 }
 </style>
 </head>
 <body id="htmlui-root" data-htmlui-loc="0">
 <htmlbody data-htmlui-loc="1">
-<p class="a c" style="margin: 0; color: rgb(0 0 0 / 50%);" data-htmlui-loc="2">x</p>
+<p class="a c" style="margin: 0; color: #00000080; --html-current-color: #00000080;" data-htmlui-loc="2">x</p>
 </htmlbody></body>
 </rml>
 <!-- @htmlui/doc/KEY/compat/html/css/main.css.rcss -->
-.main {
-color: #123456;
+#htmlui-root .main {
+color: #123456ff;
+--html-current-color: #123456ff;
 }
 <!-- @htmlui/doc/KEY/compat/html/css/print.css.rcss -->
-@media print {
-.print {
-color: black;
-}
-}
 <!-- @htmlui/doc/KEY/compat/html/css/main.css.rcss -->
-.main {
-color: #123456;
+#htmlui-root .main {
+color: #123456ff;
+--html-current-color: #123456ff;
 }

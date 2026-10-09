@@ -119,7 +119,7 @@ TEST(CompatLoader, CacheHitReturnsTheSamePointer){
     VirtualFiles::add("@htmlui/test/cache/menu.css", ".a { color: blue; }");
     std::shared_ptr<const CompatDocument> changed = DocumentLoader::compile("@htmlui/test/cache/menu.html", options());
     EXPECT_NE(changed, first);
-    EXPECT_NE(changed->stylesheets[0].rcss.find("blue"), std::string::npos);
+    EXPECT_NE(changed->stylesheets[0].rcss.find("#0000ffff"), std::string::npos) << changed->stylesheets[0].rcss;   // blue
     // the stale entry went, with its virtual files
     EXPECT_FALSE(VirtualFiles::exists(first->stylesheets[0].virtualPath));
 
@@ -367,8 +367,9 @@ TEST_F(CompatLoaderSceneTest, HtmlNavigateLoadsTheLinkedDocument){
 
 TEST_F(CompatLoaderSceneTest, DiagnosticsAndThemes){
     ScratchFiles files("diagnostics");
-    files.write("menu.html", "<!DOCTYPE html><html><head><style>@media (prefers-color-scheme: dark) { #box { width: 20px; } }"
-                             " #box { display: block; width: 10px; height: 10px; }</style></head>"
+    // the dark rule after the base rule: with the same specificity, the later one wins (as in CSS)
+    files.write("menu.html", "<!DOCTYPE html><html><head><style>#box { display: block; width: 10px; height: 10px; }"
+                             " @media (prefers-color-scheme: dark) { #box { width: 20px; } }</style></head>"
                              "<body><div id=\"box\"></div><video></video></body></html>");
     SceneFixture fixture;
     Scene& scene = fixture.getScene();

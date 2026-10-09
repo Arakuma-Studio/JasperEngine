@@ -15,6 +15,6 @@
 <b data-htmlui-loc="6">in head</b>
 <!-- template 1 id="row" -->
 <li class="row" data-htmlui-loc="7">
-<span class="name" data-htmlui-loc="8">Name</span> <button style="color: red;" data-htmlui-loc="9">x</button></li>
+<span class="name" data-htmlui-loc="8">Name</span> <button style="color: #ff0000ff; --html-current-color: #ff0000ff;" data-htmlui-loc="9">x</button></li>
 <!-- template 2 id="" -->
 <p data-htmlui-loc="10">no id</p>
