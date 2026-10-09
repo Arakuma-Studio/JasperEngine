@@ -313,8 +313,28 @@ namespace {
         }
     }
 
+    // One lexbor document per thread, cleaned between parses: creating one allocates its
+    // arenas and tables, which costs more than parsing a small fragment
+    struct ThreadDocument {
+        lxb_html_document_t* document = nullptr;
+        ~ThreadDocument(){
+            if (document)
+                lxb_html_document_destroy(document);
+        }
+    };
+
     lxb_html_document_t* createDocument(){
-        return lxb_html_document_create();
+        thread_local ThreadDocument holder;
+        if (!holder.document)
+            holder.document = lxb_html_document_create();
+        else
+            lxb_html_document_clean(holder.document);
+        return holder.document;
+    }
+
+    void releaseDocument(lxb_html_document_t* document){
+        // kept for the next parse (cleaned then); the memory of this one is reused
+        (void)document;
     }
 
 }
@@ -358,7 +378,7 @@ HtmlDocument HtmlParser::parseDocument(uint32_t file, std::string_view text, Dia
         sink->report(codes::InternalError, SourceRef{file, 0, 0}, "the HTML parser failed (lexbor status " + std::to_string(status) + ")");
     }
 
-    lxb_html_document_destroy(document);
+    releaseDocument(document);
 
     if (!result.root)
         result.root = HtmlNode::makeElement("html");
@@ -390,7 +410,7 @@ HtmlDocument HtmlParser::parseFragment(uint32_t file, std::string_view text, uin
         }
     }
 
-    lxb_html_document_destroy(document);
+    releaseDocument(document);
     reportSelfClosing(*result.root, sink);
     return result;
 }

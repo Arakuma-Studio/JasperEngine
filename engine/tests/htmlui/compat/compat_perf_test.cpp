@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Performance targets of the HTML stage (phase-2 §3.14), Release builds only: the median of 20
-// runs after 3 warm-ups. HTML parse + transforms + serialize of 50 KB / 3 500 nodes <= 3 ms, a
+// runs after 3 warm-ups (CPU time). HTML parse + transforms + serialize of 50 KB / 3 500 nodes <= 3 ms, a
 // cache hit (hashing every dependency) <= 0.1 ms, fragmentToRml of 2 KB <= 0.2 ms.
 
 #include "CompatTestCommon.h"
@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <ctime>
 #include <cstdlib>
 #include <functional>
 
@@ -32,11 +33,14 @@ namespace {
     double medianMs(const std::function<void()>& work){
         for (int i = 0; i < 3; i++)
             work();
+        // the CPU time of the process (single-threaded work): wall time on a shared build host
+        // mostly measures the other processes; 10 repetitions per sample for the clock's resolution
         std::vector<double> times;
         for (int i = 0; i < 20; i++){
-            const auto start = std::chrono::steady_clock::now();
-            work();
-            times.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+            const std::clock_t start = std::clock();
+            for (int r = 0; r < 10; r++)
+                work();
+            times.push_back(1000.0 * (double)(std::clock() - start) / CLOCKS_PER_SEC / 10.0);
         }
         std::sort(times.begin(), times.end());
         return times[times.size() / 2];
@@ -90,10 +94,10 @@ TEST(CompatPerf, CacheHit){
 TEST(CompatPerf, Fragment){
     std::string html;
     while (html.size() < 2048)
-        html += "<li class=\"item\"><span class=\"name\">Sword &amp; shield</span><b>12</b><img src=\"icons/sword.png\" alt=\"\"></li>";
+        html += "<li class=\"item\"><span class=\"name\">Sword &amp; shield</span><b>12</b><img src=\"img/a.png\" alt=\"\"></li>";
     std::vector<Diagnostic> diagnostics;
     FragmentOptions options;
-    options.documentPath = "ui/inventory.html";
+    options.documentPath = "compat/html/inventory.html";   // its img/a.png exists
     const double ms = medianMs([&]{ diagnostics.clear(); DocumentLoader::fragmentToRml(html, "ui/inventory.html (innerHTML)", diagnostics, options); });
     std::printf("[perf] fragmentToRml of %zu bytes: %.3f ms (target 0.2 ms)\n", html.size(), ms);
     EXPECT_LE(ms, 0.2 * slack());

@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <initializer_list>
 #include <limits>
+#include <unordered_set>
 
 using namespace jasperengine::htmlui::compat;
 using namespace jasperengine::htmlui::compat::html;
@@ -744,6 +745,7 @@ namespace {
     }
 
     void transformChildren(TransformContext& context, HtmlNode& node);
+    void reportUnknown(TransformContext& context, const HtmlNode& element);
 
     // one element; returns false when it was replaced or removed (the caller re-reads index)
     bool transformElement(TransformContext& context, HtmlNode& node, size_t& index){
@@ -763,8 +765,20 @@ namespace {
         }
 
         const std::string& tag = element.tag;
-        // compat's own names (template placeholders, reserved renames, mapped elements, the
-        // engine's <svg src> and <lottie>)
+        // most elements need nothing here: one lookup instead of the comparisons below
+        static const std::unordered_set<std::string> special = {
+            "lottie", "htmltemplate", "svg", "video", "audio", "iframe", "canvas", "object", "embed", "portal",
+            "frameset", "frame", "applet", "marquee", "track", "param", "map", "area", "datalist", "selectedcontent",
+            "lottie-player", "dotlottie-player", "dotlottie-wc", "picture", "img", "wbr", "slot", "meter", "output",
+            "select", "optgroup", "q", "font", "bdi", "bdo", "ruby", "rt", "rp", "dialog",
+        };
+        if (special.find(tag) == special.end()){
+            if (startsWith(tag, "html-reserved-"))
+                return true;
+            if (elementRow(tag) == nullptr)
+                reportUnknown(context, element);
+            return true;
+        }
         if (tag == "lottie" && element.selfClosingSyntax && !element.children.empty()){
             // the engine's <lottie/> has no content: what the parser put inside goes after it
             std::vector<std::unique_ptr<HtmlNode>> moved = std::move(element.children);
@@ -773,7 +787,8 @@ namespace {
             for (std::unique_ptr<HtmlNode>& child : moved)
                 node.insertChild(at++, std::move(child));
         }
-        if (tag == "htmltemplate" || startsWith(tag, "html-reserved-") || tag == "lottie" || tag == "svg")
+        // compat's own names (template placeholders, mapped elements, the engine's <svg src> and <lottie>)
+        if (tag == "htmltemplate" || tag == "lottie" || tag == "svg")
             return true;
 
         if (tag == "video" || tag == "audio" || tag == "iframe" || tag == "canvas" || tag == "object" || tag == "embed" ||
@@ -869,7 +884,14 @@ namespace {
             return true;
         }
 
-        if (elementRow(tag) == nullptr){
+        if (elementRow(tag) == nullptr)
+            reportUnknown(context, element);
+        return true;
+    }
+
+    void reportUnknown(TransformContext& context, const HtmlNode& element){
+        const std::string& tag = element.tag;
+        {
             if (isCustomElementName(tag)){
                 context.sink.report(codes::UnknownCustomElement, element.ref,
                                     "custom element <" + tag + "> is rendered as a generic inline element (its JavaScript class does not run)",
@@ -880,7 +902,6 @@ namespace {
                                     "use a standard element (div, span, ...)", "", tag);
             }
         }
-        return true;
     }
 
     void transformChildren(TransformContext& context, HtmlNode& node){

@@ -357,7 +357,7 @@ namespace {
                                         "'" + attribute.name + "' is a reserved attribute name; renamed " + renamed,
                                         "use another data- name", "", attribute.name);
                     attribute.name = renamed;
-                }else if (attribute.name == "class" && child.ns == Namespace::Html){
+                }else if (attribute.name == "class" && child.ns == Namespace::Html && attribute.value.find("htmlui-") != std::string::npos){
                     std::string rewritten;
                     bool changed = false;
                     for (const std::string& name : splitWhitespace(attribute.value)){

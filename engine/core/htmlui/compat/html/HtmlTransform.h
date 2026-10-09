@@ -12,6 +12,7 @@
 #include "htmlui/compat/CompatTypes.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/SupportTables.h"
+#include "htmlui/compat/UrlResolver.h"
 #include "htmlui/compat/html/HtmlTree.h"
 
 #include <memory>
@@ -25,8 +26,6 @@ namespace jasperengine::htmlui::compat {
 
     class DiagnosticSink;
     class SourceFiles;
-    class UrlResolver;
-    struct ResolvedUrl;
 
     // A stylesheet of the document, in tree order (head and body, as browsers apply them)
     struct StylesheetSource {
@@ -95,6 +94,7 @@ namespace jasperengine::htmlui::compat {
         std::vector<HintRule> hintRules;
         std::unordered_map<std::string, size_t> hintIndex;   // declarations -> hintRules index
         bool dependsOnViewport = false;   // an image choice read the viewport (sizes, media)
+        std::unordered_map<std::string, ResolvedUrl> resolvedUrls;   // local files that exist, by kind and URL
         bool reportedDialog = false;
         bool reportedRuby = false;
 

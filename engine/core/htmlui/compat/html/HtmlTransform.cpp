@@ -79,7 +79,17 @@ void TransformContext::addRemote(const std::string& url, const std::string& kind
 }
 
 std::string TransformContext::resolveUrl(std::string_view url, std::string_view kind, SourceRef ref, ResolvedUrl* out){
-    ResolvedUrl resolved = urls.resolve(url, path, kind, ref, &sink);
+    // the same URL again (icons in a list): what resolved cleanly is reused, without touching
+    // the file system; anything with a diagnostic resolves again to report it at this reference
+    const std::string key = std::string(kind) + '\n' + std::string(url);
+    auto known = resolvedUrls.find(key);
+    ResolvedUrl resolved = (known != resolvedUrls.end()) ? known->second : urls.resolve(url, path, kind, ref, &sink);
+    if (known == resolvedUrls.end()){
+        const bool clean = resolved.exists && !resolved.outsideAssets && !resolved.dropped() &&
+                           (resolved.kind == UrlKind::Relative || resolved.kind == UrlKind::RootRelative || resolved.kind == UrlKind::EnginePath);
+        if (clean)
+            resolvedUrls.emplace(key, resolved);
+    }
     if (resolved.kind == UrlKind::Remote)
         addRemote(resolved.url, std::string(kind), ref);
     if (resolved.kind == UrlKind::Data && resolved.data){

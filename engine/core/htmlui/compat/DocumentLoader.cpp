@@ -25,9 +25,6 @@
 #include <RmlUi/Core/StyleSheetContainer.h>
 
 #include <algorithm>
-#include <chrono>
-#include <cstdio>
-#include <cstdlib>
 #include <atomic>
 #include <cstring>
 #include <list>
@@ -218,7 +215,6 @@ namespace {
     std::shared_ptr<CompatDocument> compileText(std::shared_ptr<CompatDocument> document, std::string text,
                                                 const CompatOptions& options, const FileAccess& access){
         SourceFiles& files = document->files;
-        auto PROF_T = std::chrono::steady_clock::now(); auto PROF = [&PROF_T](const char* what){ if (std::getenv("JASPER_COMPAT_PROFILE")){ auto now = std::chrono::steady_clock::now(); std::printf("[prof] %s %.3f\n", what, std::chrono::duration<double, std::milli>(now - PROF_T).count()); PROF_T = now; } };
         DiagnosticSink sink(files, options.diagnosticLimit);
         const std::string& path = document->sourcePath;
 
@@ -240,7 +236,6 @@ namespace {
         UrlResolver urls(access, manifest);
 
         HtmlDocument parsed = HtmlParser::parseDocument(file, files.text(file), &sink);
-        PROF("PARSE");
 
         TransformContext context(options, files, sink, urls);
         context.file = file;
@@ -248,7 +243,6 @@ namespace {
         context.root = parsed.root.get();
         context.fileAccess = access;
         runTransforms(context);
-        PROF("TRANSFORM");
 
         document->title = context.title;
         document->owner = nextOwner.fetch_add(1);
@@ -314,7 +308,6 @@ namespace {
         rewriteContext.rootDirection = context.rootDirection;
 
         RewriteResult result;
-        PROF("PRECSS");
         {
             CssRewriter rewriter(options, files, sink, rewriteContext);
             result = rewriter.rewrite(Span<const StylesheetInput>(inputs));
@@ -338,7 +331,6 @@ namespace {
             }
         }
         document->important = std::move(result.importantSheet);
-        PROF("CSS");
         document->important.kind = StylesheetInput::Kind::Inline;
         document->hints = writeHints(context.hintRules, path);
 
@@ -388,7 +380,6 @@ namespace {
         }
 
         RmlSerializer::Output output = RmlSerializer::writeDocument(rml);
-        PROF("SERIALIZE");
         document->rml = std::move(output.rml);
         document->sourceMap.lineRefs = std::move(output.lineRefs);
         if (!document->hints.rcss.empty())
@@ -458,7 +449,6 @@ namespace {
         document->fontFamilies = std::move(result.fontFamilies);
         document->declaredFontFamilies = std::move(result.declaredFontFamilies);
         document->diagnostics = sink.take();
-        PROF("REST");
         document->compiled = true;
 
         uint64_t key = baseKey(path, options);
