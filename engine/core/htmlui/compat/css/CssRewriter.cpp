@@ -734,13 +734,8 @@ namespace {
                     for (const std::string& n : names)
                         session.reversedKeyframes.insert(session.keyframeName(n));
                 }
-                if (rule && rule->origin == RuleOrigin::Author){
-                    Session::PropertyUse use;
-                    use.rule = rule->index;
-                    use.important = d.important;
-                    use.ref = d.ref;
-                    session.propertyRules[name].push_back(use);
-                }
+                if (rule && rule->origin == RuleOrigin::Author)
+                    session.propertyUses.push_back(Session::PendingUse{&d, (uint32_t)(d.name.size() - name.size()), rule->index});
             }
         };
         for (const FlatRule& rule : session.rules){
@@ -811,7 +806,7 @@ namespace {
 
         // @layer: a layered rule that outranks an unlayered one by specificity (RmlUi) loses in CSS
         if (!session.layerOrder.empty()){
-            for (const auto& entry : session.propertyRules){
+            for (const auto& entry : session.propertyRulesIndex()){
                 for (const Session::PropertyUse& layered : entry.second){
                     const FlatRule& l = session.rules[layered.rule];
                     if (l.layer < 0 || l.dropped)
@@ -1075,7 +1070,7 @@ namespace {
     }
 
     void importantConflicts(Session& session, const FlatRule& rule, const OutDecl&, const std::string& property, SourceRef ref){
-        const auto it = session.propertyRules.find(property);
+        const auto it = session.propertyRulesIndex().find(property);
         if (it == session.propertyRules.end())
             return;
         for (const Session::PropertyUse& use : it->second){
@@ -1403,7 +1398,7 @@ namespace {
             output.declarations.size() > first)
             importantConflicts(session, *rule, output.declarations[first], name, d.ref);
         if (d.important && origin == RuleOrigin::StyleAttribute){
-            const auto it = session.propertyRules.find(name);
+            const auto it = session.propertyRulesIndex().find(name);
             if (it != session.propertyRules.end()){
                 for (const Session::PropertyUse& use : it->second){
                     if (use.important){

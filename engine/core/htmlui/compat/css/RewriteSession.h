@@ -185,7 +185,30 @@ namespace jasperengine::htmlui::compat {
             bool important = false;
             SourceRef ref;
         };
+        // (built at its first use from propertyUses, in the same order: most sheets need it
+        // only for !important and @layer, see propertyRulesIndex())
         std::unordered_map<std::string, std::vector<PropertyUse>> propertyRules;
+        struct PendingUse {
+            const Declaration* declaration = nullptr;
+            uint32_t prefix = 0;       // the vendor prefix length stripped from the declaration's name
+            uint32_t rule = 0;
+        };
+        std::vector<PendingUse> propertyUses;
+        bool propertyRulesBuilt = false;
+        std::unordered_map<std::string, std::vector<PropertyUse>>& propertyRulesIndex(){
+            if (!propertyRulesBuilt){
+                propertyRulesBuilt = true;
+                for (const PendingUse& pending : propertyUses){
+                    PropertyUse use;
+                    use.rule = pending.rule;
+                    use.important = pending.declaration->important;
+                    use.ref = pending.declaration->ref;
+                    propertyRules[pending.declaration->name.substr(pending.prefix)].push_back(use);
+                }
+                propertyUses.clear();
+            }
+            return propertyRules;
+        }
 
         // per-rule static facts, computed on demand
         // (by rule index; sized on first use)

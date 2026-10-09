@@ -3,6 +3,8 @@
 
 #include "SourceFiles.h"
 
+#include <cstring>
+
 #include <algorithm>
 
 using namespace jasperengine::htmlui::compat;
@@ -22,6 +24,20 @@ namespace {
         std::vector<uint32_t> starts;
         starts.push_back(0);
         const size_t size = text.size();
+        if (std::memchr(text.data(), '\r', size) == nullptr){
+            // only '\n' line ends: found with memchr
+            const char* const begin = text.data();
+            const char* p = begin;
+            const char* const end = begin + size;
+            while (p < end){
+                const char* newline = static_cast<const char*>(std::memchr(p, '\n', (size_t)(end - p)));
+                if (!newline)
+                    break;
+                starts.push_back((uint32_t)(newline - begin + 1));
+                p = newline + 1;
+            }
+            return starts;
+        }
         for (size_t i = 0; i < size; i++){
             const char c = text[i];
             if (c == '\n'){
