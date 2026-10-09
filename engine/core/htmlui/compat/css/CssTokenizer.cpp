@@ -198,11 +198,36 @@ namespace {
             // about one token per 2 bytes in style sheets (fewer with comments); LexTokens are small
             tokens.reserve(source.size() / 2 + 8);
             while (true){
-                current = &tokens.emplace_back();
+                LexToken& token = tokens.emplace_back();
+                current = &token;
+                // one-character tokens first (consumeToken reads them the same way)
+                const size_t at = in.position();
+                if (at < source.size()){
+                    TokenType punctuation = TokenType::EndOfFile;
+                    switch (source[at]){
+                        case '(': punctuation = TokenType::LeftParen; break;
+                        case ')': punctuation = TokenType::RightParen; break;
+                        case '[': punctuation = TokenType::LeftBracket; break;
+                        case ']': punctuation = TokenType::RightBracket; break;
+                        case '{': punctuation = TokenType::LeftBrace; break;
+                        case '}': punctuation = TokenType::RightBrace; break;
+                        case ',': punctuation = TokenType::Comma; break;
+                        case ':': punctuation = TokenType::Colon; break;
+                        case ';': punctuation = TokenType::Semicolon; break;
+                        default: break;
+                    }
+                    if (punctuation != TokenType::EndOfFile){
+                        token.type = punctuation;
+                        token.offset = base + (uint32_t)at;
+                        token.length = 1;
+                        in.skip(1);
+                        continue;
+                    }
+                }
                 consumeToken();
-                if (current->type == TokenType::EndOfFile)
+                if (token.type == TokenType::EndOfFile)
                     break;
-                if (!comments && current->type == TokenType::Comment)
+                if (!comments && token.type == TokenType::Comment)
                     tokens.pop_back();
             }
         }
