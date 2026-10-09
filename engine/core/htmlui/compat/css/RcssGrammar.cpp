@@ -289,26 +289,38 @@ namespace {
         return !v.empty();
     }
 
-    bool keywordIn(const std::string& v, const std::string& list){
-        for (const std::string& k : split(list, ',')){
-            if (v == k)
+    // calls f(segment) for each `separator`-separated, trimmed segment of a grammar string
+    // (no parentheses or quotes there); stops when f returns true
+    template<typename F>
+    bool anySegment(std::string_view s, char separator, F f){
+        size_t start = 0;
+        while (true){
+            const size_t end = s.find(separator, start);
+            std::string_view segment = s.substr(start, end == std::string_view::npos ? std::string_view::npos : end - start);
+            while (!segment.empty() && segment.front() == ' ')
+                segment.remove_prefix(1);
+            while (!segment.empty() && segment.back() == ' ')
+                segment.remove_suffix(1);
+            if (f(segment))
                 return true;
+            if (end == std::string_view::npos)
+                return false;
+            start = end + 1;
         }
-        return false;
     }
 
-    bool checkSimple(const std::string& value, const std::string& grammar);
+    bool keywordIn(std::string_view v, std::string_view list){
+        return anySegment(list, ',', [&](std::string_view k){ return v == k; });
+    }
 
-    bool checkAlternatives(const std::string& value, const std::string& grammar){
+    bool checkSimple(const std::string& value, std::string_view grammar);
+
+    bool checkAlternatives(const std::string& value, std::string_view grammar){
         // "kw:a,b|length_percent"
-        for (const std::string& alternative : split(grammar, '|')){
-            if (checkSimple(value, alternative))
-                return true;
-        }
-        return false;
+        return anySegment(grammar, '|', [&](std::string_view alternative){ return checkSimple(value, alternative); });
     }
 
-    bool checkSimple(const std::string& value, const std::string& grammar){
+    bool checkSimple(const std::string& value, std::string_view grammar){
         if (grammar.compare(0, 3, "kw:") == 0)
             return keywordIn(value, grammar.substr(3));
         if (grammar == "length")

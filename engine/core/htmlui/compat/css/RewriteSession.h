@@ -42,7 +42,6 @@ namespace jasperengine::htmlui::compat {
         uint32_t file = 0;
         RuleOrigin origin = RuleOrigin::Author;
         std::vector<ComplexSelector> selectors;    // CSS selectors, nesting resolved
-        std::string selectorText;                  // CSS text, for messages
         SourceRef ref, preludeRef;
         MediaResult media = MediaResult::unconditional();
         std::vector<Declaration> declarations;

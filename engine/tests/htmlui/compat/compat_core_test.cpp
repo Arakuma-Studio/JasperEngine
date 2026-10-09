@@ -376,31 +376,25 @@ TEST(CompatApi, CheckStylesheet){
     std::vector<std::string> lines;
     for (const Diagnostic& diagnostic : report.diagnostics)
         lines.push_back(toText(diagnostic));
-    ASSERT_EQ(lines.size(), 1u) << ::testing::PrintToString(lines);
-    EXPECT_EQ(lines[0].rfind("ui/menu.css:2:19: warning: a string is not closed", 0), 0u) << lines[0];
+    // the rewriter (p2-css) reports the bad width itself, the parser the open string, the URL
+    // resolver the remote image that is not imported
+    ASSERT_EQ(lines.size(), 3u) << ::testing::PrintToString(lines);
+    EXPECT_EQ(lines[0].rfind("ui/menu.css:1:17: warning: 'width: bogus' is not supported", 0), 0u) << lines[0];
+    EXPECT_NE(lines[0].find("[HTMLUI-CSS-0004]"), std::string::npos) << lines[0];
+    EXPECT_EQ(lines[1].rfind("ui/menu.css:2:19: warning: a string is not closed", 0), 0u) << lines[1];
+    EXPECT_NE(lines[2].find("[HTMLUI-IMP-0001]"), std::string::npos) << lines[2];
     EXPECT_EQ(report.files, std::vector<std::string>{"ui/menu.css"});
     ASSERT_EQ(report.remoteRefs.size(), 1u);
     EXPECT_EQ(report.remoteRefs[0].url, "//cdn.example.com/x.png");
 
-    // RmlUi verification: the pass-through leaves "width: bogus" for RmlUi, which rejects it
-    // at the user's line (p2-css will report it itself and pass nothing invalid on)
+    // RmlUi verification: the rewriter passes nothing invalid on, so RmlUi reports nothing
     options.verifyWithRmlUi = true;
     ASSERT_FALSE(HtmlUI::isInitialized());
     report = checkStylesheet("ui/menu.css", options);
     EXPECT_FALSE(HtmlUI::isInitialized());   // acquired for the check only
-    size_t width = 0;
-    for (const Diagnostic& diagnostic : report.diagnostics){
-        if (diagnostic.code != codes::RmluiMessage)
-            continue;
-        EXPECT_EQ(diagnostic.file, "ui/menu.css") << toText(diagnostic);
-        EXPECT_GE(diagnostic.line, 1u) << toText(diagnostic);
-        if (diagnostic.subject == "width"){
-            width++;
-            EXPECT_EQ(diagnostic.line, 1u);
-            EXPECT_EQ(diagnostic.column, 17u);
-        }
-    }
-    EXPECT_EQ(width, 1u);
+    for (const Diagnostic& diagnostic : report.diagnostics)
+        EXPECT_NE(diagnostic.code, codes::RmluiMessage) << toText(diagnostic);
+    EXPECT_EQ(report.diagnostics.size(), 3u);
 
     // invalid UTF-8
     options.verifyWithRmlUi = false;

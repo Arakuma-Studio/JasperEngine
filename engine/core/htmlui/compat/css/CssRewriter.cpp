@@ -251,7 +251,7 @@ namespace {
         return (int)session.layerOrder.size() - 1;
     }
 
-    void addRule(Session& session, const FlattenScope& scope, const std::vector<ComplexSelector>& selectors,
+    void addRule(Session& session, const FlattenScope& scope, std::vector<ComplexSelector> selectors,
                  std::vector<Declaration> declarations, SourceRef ref, SourceRef preludeRef){
         if (declarations.empty() || scope.media.never)
             return;
@@ -260,9 +260,7 @@ namespace {
         rule.sheet = scope.sheet;
         rule.file = scope.file;
         rule.origin = scope.origin;
-        rule.selectors = selectors;
-        for (size_t i = 0; i < selectors.size(); i++)
-            rule.selectorText += (i ? ", " : "") + SelectorRewriter::serialize(selectors[i]);
+        rule.selectors = std::move(selectors);
         rule.ref = ref;
         rule.preludeRef = preludeRef;
         rule.media = scope.media;
@@ -330,7 +328,8 @@ namespace {
             one.push_back(std::move(*item.rule));
             flatten(session, one, nested, false);
         }
-        addRule(session, scope, selectors, std::move(group), rule.ref, rule.preludeRef);
+        // the last use of the selectors (nested rules were flattened above)
+        addRule(session, scope, std::move(selectors), std::move(group), rule.ref, rule.preludeRef);
     }
 
     void flatten(Session& session, std::vector<Rule>& rules, const FlattenScope& scope, bool topLevel){
