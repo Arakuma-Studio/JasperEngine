@@ -97,9 +97,10 @@ namespace {
                 }
             }
 
+            const bool textControl = element.tag == std::string_view("input") || element.tag == std::string_view("textarea");
             for (const char* name : {"pattern", "minlength"}){
-                const HtmlAttr* attribute = element.findAttr(name);
-                if (attribute && isControl(element)){
+                const HtmlAttr* attribute = textControl ? element.findAttr(name) : nullptr;
+                if (attribute){
                     context.sink.reportAs(Severity::Info, codes::UnsupportedAttribute, attribute->nameRef.valid() ? attribute->nameRef : element.ref,
                                           std::string("'") + name + "' is not checked: there is no constraint validation", "validate the value from Lua", "", name);
                 }

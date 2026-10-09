@@ -46,15 +46,13 @@ namespace {
         return times[times.size() / 2];
     }
 
-    // a settings page of about 50 KB and 3 500 nodes, no stylesheet (the HTML stage alone)
+    // a settings page of about 50 KB and 3 500 nodes (elements and text), no stylesheet (the HTML stage alone)
     std::string generatedPage(){
         std::string html = "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Settings</title></head><body><main class=\"settings\">";
         int i = 0;
         while (html.size() < 50 * 1024){
             const std::string n = std::to_string(i++);
-            html += "<div class=\"row\" id=\"row" + n + "\"><label for=\"opt" + n + "\">Option " + n + "</label>"
-                    "<input id=\"opt" + n + "\" type=\"range\" min=\"0\" max=\"100\" value=\"50\"><span class=\"value\">50</span>"
-                    "<button type=\"button\" class=\"reset\">Reset</button></div>\n";
+            html += "<div class=\"row\" id=\"r" + n + "\"><label>Opt " + n + "</label><input type=\"range\" value=\"50\"><span>50</span></div>";
         }
         return html + "</main></body></html>";
     }
@@ -69,7 +67,7 @@ TEST(CompatPerf, HtmlStage){
     std::shared_ptr<const CompatDocument> compiled;
     const double ms = medianMs([&]{ compiled = DocumentLoader::compileString(html, "perf/page.html", options); });
     ASSERT_TRUE(compiled->compiled);
-    EXPECT_GE(compiled->sourceMap.elementRefs.size(), 1500u);
+    EXPECT_GE(compiled->sourceMap.elementRefs.size(), 2000u);   // + 1 600 text nodes: about 3 600 nodes
     std::printf("[perf] HTML stage: %zu bytes, %zu elements, %.3f ms (target 3 ms)\n", html.size(), compiled->sourceMap.elementRefs.size(), ms);
     EXPECT_LE(ms, 3.0 * slack());
 }

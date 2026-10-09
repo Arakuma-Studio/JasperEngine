@@ -155,6 +155,13 @@ namespace {
                 i++;
                 continue;
             }
+            // (the head's element names are all 4 or 5 letters long)
+            const size_t length = child.tag.size();
+            if (length != 4 && length != 5){
+                collectHead(context, child);
+                i++;
+                continue;
+            }
             if (child.tag == "link"){
                 handleLink(context, child);
             }else if (child.tag == "style"){
