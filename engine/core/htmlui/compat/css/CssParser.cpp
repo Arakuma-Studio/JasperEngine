@@ -292,6 +292,19 @@ namespace {
             }
         }
 
+        // the number of component values consumeComponentValues(stopAtSemicolon, nested) reads
+        size_t componentValuesCount(bool stopAtSemicolon, bool nested) const {
+            size_t i = index, count = 0;
+            while (true){
+                const TokenType type = tokens[i].type;
+                if (type == TokenType::EndOfFile || (stopAtSemicolon && type == TokenType::Semicolon) ||
+                    (type == TokenType::RightBrace && nested))
+                    return count;
+                i = skipComponent(i);
+                count++;
+            }
+        }
+
         // the index of the token where consumeComponentValues(stopAtSemicolon, nested) stops
         size_t componentValuesEnd(bool stopAtSemicolon, bool nested) const {
             size_t i = index;
@@ -307,7 +320,7 @@ namespace {
         // §5.5.7; stop not consumed
         std::vector<ComponentValue> consumeComponentValues(bool stopAtSemicolon, bool nested){
             std::vector<ComponentValue> values;
-            values.reserve(countComponents(index, componentValuesEnd(stopAtSemicolon, nested)));
+            values.reserve(componentValuesCount(stopAtSemicolon, nested));
             while (true){
                 const LexToken& token = peek();
                 if (token.type == TokenType::EndOfFile)

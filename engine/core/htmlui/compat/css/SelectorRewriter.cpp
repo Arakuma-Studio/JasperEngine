@@ -414,6 +414,56 @@ namespace {
             return n == "is" || n == "where" || n == "matches" || n == "-webkit-any" || n == "-moz-any";
         }
 
+        // pseudo-classes RmlUi matches as written (pseudoClass() keeps them)
+        static bool keptPseudoClass(const SimpleSelector& simple){
+            const std::string& n = simple.name;
+            return !simple.function &&
+                   (n == "hover" || n == "active" || n == "checked" || n == "disabled" || n == "placeholder-shown" || n == "scope" ||
+                    n == "first-child" || n == "last-child" || n == "only-child" || n == "first-of-type" || n == "last-of-type" ||
+                    n == "only-of-type" || n == "empty" || n == "selected" || n == "drag" || n == "html-focus" || n == "html-focus-visible");
+        }
+
+        // Would mapSelector() return the selector unchanged (and report nothing)? Types other
+        // than html/body/template, classes, ids other than the reserved and the root's,
+        // attributes without a flag, kept pseudo-classes, the universal selector; no namespace,
+        // column combinator, pseudo-element, nesting or root marker.
+        bool mapsToItself(const ComplexSelector& selector) const {
+            if (selector.compounds.empty())
+                return false;
+            for (const Compound& compound : selector.compounds){
+                if (compound.combinator == '|' || compound.simples.empty())
+                    return false;
+                for (const SimpleSelector& simple : compound.simples){
+                    if (simple.hasNamespace)
+                        return false;
+                    switch (simple.kind){
+                        case Kind::Type:
+                            if (simple.name == "html" || simple.name == "body" || simple.name == "template")
+                                return false;
+                            break;
+                        case Kind::Universal:
+                        case Kind::Class:
+                            break;
+                        case Kind::Id:
+                            if ((author() && simple.name == kRootId) || (!options.rootId.empty() && simple.name == options.rootId))
+                                return false;
+                            break;
+                        case Kind::Attribute:
+                            if (simple.flag)
+                                return false;
+                            break;
+                        case Kind::PseudoClass:
+                            if (!keptPseudoClass(simple))
+                                return false;
+                            break;
+                        default:
+                            return false;
+                    }
+                }
+            }
+            return true;
+        }
+
         // does expand() change the selector (an :is()/:where() to expand)?
         bool needsExpansion(const ComplexSelector& selector) const {
             if (options.fork.has(ForkFeature::RootIsWhere))
@@ -1159,6 +1209,24 @@ SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelecto
             result.selectors.clear();
             return result;
         }
+        if (!expands && rewriter.mapsToItself(source)){
+            // nothing to map, no root marker to resolve: the source is banded as it is
+            rewriter.pendingAlternate.clear();
+            rewriter.band(source, [&](std::string text, uint32_t specificity){
+                for (const RewrittenSelector& kept : result.selectors){
+                    if (kept.text == text)
+                        return;
+                }
+                RewrittenSelector out;
+                out.text = std::move(text);
+                out.specificity = specificity;
+                out.source = (uint32_t)sourceIndex;
+                out.placeholder = false;
+                out.pseudoElement = false;
+                result.selectors.push_back(std::move(out));
+            });
+            continue;
+        }
         for (size_t v = 0; v < (expands ? variants.size() : 1); v++){
             bool placeholder = false, pseudoElement = false;
             rewriter.pendingAlternate.clear();
@@ -1177,22 +1245,9 @@ SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelecto
             }
             if (!kept)
                 continue;
-            std::vector<ComplexSelector> forms;
-            forms.push_back(std::move(mapped));
-            if (!rewriter.pendingAlternate.empty()){
-                // the scrollbar mappings make two selectors (vertical and horizontal, dec and inc)
-                ComplexSelector alternate = forms.front();
-                for (Compound& compound : alternate.compounds){
-                    for (SimpleSelector& s : compound.simples){
-                        if (s.kind == Kind::Type && (s.name == "scrollbarvertical" || s.name == "sliderarrowdec"))
-                            s.name = rewriter.pendingAlternate;
-                    }
-                }
-                forms.push_back(std::move(alternate));
-            }
-            for (ComplexSelector& form : forms){
+            auto write = [&](ComplexSelector& form){
                 if (!rewriter.resolveRoot(form))
-                    continue;
+                    return;
                 rewriter.band(form, [&](std::string text, uint32_t specificity){
                     for (const RewrittenSelector& kept : result.selectors){
                         if (kept.text == text)
@@ -1206,7 +1261,21 @@ SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelecto
                     out.pseudoElement = pseudoElement;
                     result.selectors.push_back(std::move(out));
                 });
+            };
+            if (rewriter.pendingAlternate.empty()){
+                write(mapped);
+                continue;
             }
+            // the scrollbar mappings make two selectors (vertical and horizontal, dec and inc)
+            ComplexSelector alternate = mapped;
+            for (Compound& compound : alternate.compounds){
+                for (SimpleSelector& s : compound.simples){
+                    if (s.kind == Kind::Type && (s.name == "scrollbarvertical" || s.name == "sliderarrowdec"))
+                        s.name = rewriter.pendingAlternate;
+                }
+            }
+            write(mapped);
+            write(alternate);
         }
     }
     return result;
