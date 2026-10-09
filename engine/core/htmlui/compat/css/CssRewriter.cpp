@@ -320,7 +320,7 @@ namespace {
     }
 
     void addRule(Session& session, const FlattenScope& scope, SelectorList selectors,
-                 std::vector<Declaration> declarations, SourceRef ref, SourceRef preludeRef){
+                 DeclarationList declarations, SourceRef ref, SourceRef preludeRef){
         if (declarations.empty() || scope.media.never)
             return;
         const uint32_t index = (uint32_t)session.rules.size();
@@ -339,7 +339,7 @@ namespace {
         session.sheets[scope.sheet].push_back(SheetItem{false, rule.index});
     }
 
-    void flatten(Session& session, std::vector<Rule>& rules, const FlattenScope& scope, bool topLevel);
+    void flatten(Session& session, RuleList& rules, const FlattenScope& scope, bool topLevel);
 
     // a style rule: its declarations and nested rules in source order (CSS Nesting)
     void flattenStyleRule(Session& session, Rule& rule, const FlattenScope& scope){
@@ -388,7 +388,7 @@ namespace {
         std::stable_sort(items.begin(), items.end(), [](const Item& a, const Item& b){ return a.offset < b.offset; });
 
         // the parsed sheet is not used after flattening: declarations and rules are moved out
-        std::vector<Declaration> group;
+        DeclarationList group;
         FlattenScope nested = scope;
         nested.parents = &selectors;
         for (const Item& item : items){
@@ -398,7 +398,7 @@ namespace {
             }
             addRule(session, scope, selectors, std::move(group), rule.ref, rule.preludeRef);
             group.clear();
-            std::vector<Rule> one;
+            RuleList one;
             one.push_back(std::move(*item.rule));
             flatten(session, one, nested, false);
         }
@@ -406,7 +406,7 @@ namespace {
         addRule(session, scope, std::move(selectors), std::move(group), rule.ref, rule.preludeRef);
     }
 
-    void flatten(Session& session, std::vector<Rule>& rules, const FlattenScope& scope, bool topLevel){
+    void flatten(Session& session, RuleList& rules, const FlattenScope& scope, bool topLevel){
         bool importsAllowed = topLevel;
         for (Rule& rule : rules){
             if (rule.kind == Rule::Kind::Style){
@@ -624,7 +624,7 @@ namespace {
         return name == "background" || name.compare(0, 11, "background-") == 0;
     }
 
-    void prePass(Session& session, const std::vector<std::vector<Declaration>>& styleAttributes){
+    void prePass(Session& session, const std::vector<DeclarationList>& styleAttributes){
         // selectors
         SelectorOptions authorOptions = session.selectorOptions;
         authorOptions.origin = SelectorOptions::Origin::Author;
@@ -651,7 +651,7 @@ namespace {
             trimInPlace(result.value);
             return std::move(result.value);
         };
-        auto indexDeclarations = [&](const std::vector<Declaration>& declarations, uint32_t ruleId){
+        auto indexDeclarations = [&](const DeclarationList& declarations, uint32_t ruleId){
             for (const Declaration& d : declarations){
                 if (!d.isCustomProperty())
                     continue;
@@ -666,11 +666,11 @@ namespace {
             if (!rule.dropped)
                 indexDeclarations(rule.declarations, rule.index + 1);
         }
-        for (const std::vector<Declaration>& declarations : styleAttributes)
+        for (const DeclarationList& declarations : styleAttributes)
             indexDeclarations(declarations, 0);
 
         // uses, flags, conflicts index
-        auto scan = [&](const std::vector<Declaration>& declarations, const FlatRule* rule){
+        auto scan = [&](const DeclarationList& declarations, const FlatRule* rule){
             for (const Declaration& d : declarations){
                 std::vector<std::string> referenced;
                 CustomPropertyIndex::referencedVariables(d.value, referenced);
@@ -749,7 +749,7 @@ namespace {
             if (!rule.dropped)
                 scan(rule.declarations, &rule);
         }
-        for (const std::vector<Declaration>& declarations : styleAttributes)
+        for (const DeclarationList& declarations : styleAttributes)
             scan(declarations, nullptr);
         for (const FlatAtRule& at : session.atRules){
             if (at.rule.atName.find("keyframes") != std::string::npos){
@@ -1135,7 +1135,7 @@ namespace {
     }
 
     // the property name a declaration is read as (vendor prefixes resolved); "" + reported when dropped
-    std::string effectiveName(Session& session, const Declaration& d, const std::vector<Declaration>& block, bool& silentlyDropped,
+    std::string effectiveName(Session& session, const Declaration& d, const DeclarationList& block, bool& silentlyDropped,
                               const PropertyFacts** declaredFacts = nullptr){
         silentlyDropped = false;
         const PropertyFacts& facts = session.facts(d.name);
@@ -1192,7 +1192,7 @@ namespace {
 
     // one declaration through the pipeline of §3.9.6
     void processOne(Session& session, const FlatRule* rule, RuleOrigin origin, bool keyframe, const Declaration& d,
-                    const std::vector<Declaration>& block, RuleOutput& output){
+                    const DeclarationList& block, RuleOutput& output){
         if (session.options.dropTransitionsForTesting &&
             (d.name == "transition" || d.name.compare(0, 11, "transition-") == 0 || d.name.compare(0, 18, "-webkit-transition") == 0))
             return;
@@ -1552,14 +1552,15 @@ namespace {
 }
 
 void jasperengine::htmlui::compat::processDeclarations(Session& session, const FlatRule* rule, RuleOrigin origin, bool keyframe,
-                                                       const std::vector<Declaration>& declarations, RuleOutput& output){
+                                                       const DeclarationList& declarations, RuleOutput& output){
     for (const Declaration& d : declarations)
         processOne(session, rule, origin, keyframe, d, declarations, output);
 }
 
 void jasperengine::htmlui::compat::processSynthetic(DeclContext& context, const std::string& property, const std::string& value){
-    std::vector<Declaration> block(1);
-    Declaration& synthetic = block[0];
+    DeclarationList block;
+    block.reserve(1);
+    Declaration& synthetic = block.emplace_back();
     synthetic.name = property;
     synthetic.value = context.session.syntheticValues.get(value, [](std::string_view text){
         ValueList parsed = parseComponentValueList(text);
@@ -1608,8 +1609,8 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
     session.sheets.resize(inputs.size());
 
     // ---- phase A: parse and flatten
-    std::vector<std::vector<Declaration>> styleAttributes(inputs.size());
-    std::vector<std::vector<Declaration>> styleAttributeList;
+    std::vector<DeclarationList> styleAttributes(inputs.size());
+    std::vector<DeclarationList> styleAttributeList;
     for (size_t i = 0; i < inputs.size(); i++){
         const StylesheetInput& input = inputs[i];
         session.inputs.push_back(&input);

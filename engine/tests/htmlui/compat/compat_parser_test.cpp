@@ -48,7 +48,7 @@ namespace {
         for (size_t i = 0; i + 1 < tests.size(); i += 2){
             const std::string input = tests[i].get<std::string>();
             std::vector<ParseError> errors;
-            const std::vector<Rule> rules = parseRuleList(1, input, 0, topLevel, nullptr, &errors);
+            const RuleList rules = parseRuleList(1, input, 0, topLevel, nullptr, &errors);
             ParsingTestsJson json(input, 0, errors);
             const nlohmann::json actual = itemsWithErrors(json, {}, rules, errors);
             EXPECT_TRUE(jsonNear(actual, tests[i + 1])) << file << " input: " << nlohmann::json(input).dump()
@@ -219,7 +219,7 @@ TEST(CompatParser, DeclarationsImportantCaseAndRefs){
     DiagnosticSink sink(files);
     const Stylesheet sheet = parseStylesheet(file, css, sink);
     ASSERT_EQ(sheet.rules.size(), 1u);
-    const std::vector<Declaration>& d = sheet.rules[0].declarations;
+    const DeclarationList& d = sheet.rules[0].declarations;
     ASSERT_EQ(d.size(), 3u);
     EXPECT_EQ(d[0].name, "color");
     EXPECT_TRUE(d[0].important);
@@ -304,7 +304,7 @@ TEST(CompatParser, DeclarationListDropsNestedRules){
     const std::string style = "color: red; a { b: c } width: 1px";
     const uint32_t file = files.add("ui/x.html", style);
     DiagnosticSink sink(files);
-    const std::vector<Declaration> declarations = parseDeclarationList(file, style, 0, sink);
+    const DeclarationList declarations = parseDeclarationList(file, style, 0, sink);
     ASSERT_EQ(declarations.size(), 2u);
     EXPECT_EQ(declarations[0].name, "color");
     EXPECT_EQ(declarations[1].name, "width");

@@ -74,7 +74,7 @@ namespace {
         }
     }
 
-    void collectRules(const std::vector<Rule>& rules, int& fontFaces, std::vector<CssUrl>& out){
+    void collectRules(const RuleList& rules, int& fontFaces, std::vector<CssUrl>& out){
         for (const Rule& rule : rules){
             if (rule.isAt("import")){
                 for (const ComponentValue& value : rule.prelude){
@@ -99,7 +99,7 @@ namespace {
         }
     }
 
-    void collectFontFaces(const std::vector<Rule>& rules, const std::string& css, std::vector<CssFontFace>& out){
+    void collectFontFaces(const RuleList& rules, const std::string& css, std::vector<CssFontFace>& out){
         for (const Rule& rule : rules){
             if (!rule.isAt("font-face")){
                 collectFontFaces(rule.rules, css, out);

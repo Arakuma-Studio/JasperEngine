@@ -103,7 +103,7 @@ TEST(CompatTokenizer, StylesheetBytesUtf8){
         std::string bytes = fromJsonBytes(tests[i]["css_bytes"].get<std::string>());
         stripUtf8Bom(bytes);
         std::vector<ParseError> errors;
-        const std::vector<Rule> rules = parseRuleList(1, bytes, 0, true, nullptr, &errors);
+        const RuleList rules = parseRuleList(1, bytes, 0, true, nullptr, &errors);
         ParsingTestsJson json(bytes, 0, errors);
         const nlohmann::json actual = itemsWithErrors(json, {}, rules, errors);
         // at-rule names are lowercased by the parser (phase-2 §3.9.1)

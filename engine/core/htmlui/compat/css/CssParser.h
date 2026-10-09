@@ -47,7 +47,7 @@ namespace jasperengine::htmlui::compat {
                                                 uint32_t baseOffset = 0);
     // A declaration list (style="", Lua style.cssText): nested rules are dropped with
     // HTMLUI-CSS-0008.
-    JASPERENGINE_API std::vector<Declaration> parseDeclarationList(uint32_t file, std::string_view css, uint32_t baseOffset,
+    JASPERENGINE_API DeclarationList parseDeclarationList(uint32_t file, std::string_view css, uint32_t baseOffset,
                                                                    DiagnosticSink& sink);
 
     // ---- the CSS Syntax entry points (§5.4), for tests and the rewriters. sink may be null;
@@ -59,7 +59,7 @@ namespace jasperengine::htmlui::compat {
                                              DiagnosticSink* sink, std::vector<ParseError>* errors = nullptr);
     // "parse a stylesheet's contents" (topLevel: CDO/CDC skipped) or the 2021 draft's
     // "parse a list of rules" (CDO/CDC part of the rules)
-    JASPERENGINE_API std::vector<Rule> parseRuleList(uint32_t file, std::string_view css, uint32_t baseOffset, bool topLevel,
+    JASPERENGINE_API RuleList parseRuleList(uint32_t file, std::string_view css, uint32_t baseOffset, bool topLevel,
                                                      DiagnosticSink* sink, std::vector<ParseError>* errors = nullptr);
     // "parse a rule": exactly one rule (Empty / ExtraInput otherwise)
     JASPERENGINE_API std::optional<Rule> parseRule(uint32_t file, std::string_view css, uint32_t baseOffset,

@@ -185,7 +185,7 @@ namespace jasperengine::htmlui::compat {
     // does a declaration of the rule reach its property rewrite (known or vendor-prefixed
     // property, not Unsupported / Ignored, not a CSS-wide keyword)? The families merged at
     // their last declaration (backgrounds, masks, transitions, animations) only count these.
-    bool reachesRewrite(Session& session, const Declaration& declaration, const std::vector<Declaration>& block);
+    bool reachesRewrite(Session& session, const Declaration& declaration, const DeclarationList& block);
 
 }
 

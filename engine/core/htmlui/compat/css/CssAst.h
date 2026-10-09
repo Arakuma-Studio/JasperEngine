@@ -55,6 +55,8 @@ namespace jasperengine::htmlui::compat {
         int compare(size_t position, size_t count, std::string_view other) const { return view().compare(position, count, other); }
         size_t find(std::string_view text, size_t position = 0) const noexcept { return view().find(text, position); }
         size_t find(char c, size_t position = 0) const noexcept { return view().find(c, position); }
+        size_t rfind(std::string_view text, size_t position = std::string_view::npos) const noexcept { return view().rfind(text, position); }
+        size_t rfind(char c, size_t position = std::string_view::npos) const noexcept { return view().rfind(c, position); }
         std::string substr(size_t position = 0, size_t count = std::string::npos) const { return std::string(view().substr(position, count)); }
 
         friend bool operator==(const Text& a, const Text& b) noexcept { return a.view() == b.view(); }
@@ -127,7 +129,7 @@ namespace jasperengine::htmlui::compat {
     };
 
     struct Declaration {
-        std::string name;                   // lowercase unless custom property (--x keeps case)
+        Text name;                          // lowercase unless custom property (--x keeps case)
         ValueList value;  // trimmed, without !important
         bool important = false;
         SourceRef ref, nameRef, valueRef;   // whole declaration (through the value / !important), name, value
@@ -138,12 +140,12 @@ namespace jasperengine::htmlui::compat {
     struct Rule {
         enum class Kind : uint8_t { Style, At };
         Kind kind = Kind::Style;
-        std::string atName;                       // lowercase, without '@'
+        Text atName;                              // lowercase, without '@'
         ValueList prelude;      // selector list or at-rule prelude (raw, whitespace kept)
         SourceRef preludeRef, ref;                // the prelude; the whole rule
         bool hasBlock = false;
-        std::vector<Declaration> declarations;    // style rules, @font-face, @page, keyframe blocks, ...
-        std::vector<Rule> rules;                  // nested style rules, @media/@supports/@layer bodies, keyframe selectors
+        ArenaList<Declaration> declarations;      // style rules, @font-face, @page, keyframe blocks, ...
+        ArenaList<Rule> rules;                    // nested style rules, @media/@supports/@layer bodies, keyframe selectors
         // The block's raw contents, as "consume a simple block" sees them; declarations and
         // rules above are the same tokens parsed as a block's contents (CSS Syntax 2024):
         // every block holds declarations and rules mixed, in source order by their refs.
@@ -155,8 +157,12 @@ namespace jasperengine::htmlui::compat {
         bool isAt(const char* lowercaseName) const { return kind == Kind::At && atName == lowercaseName; }
     };
 
+    // lists of declarations and rules (in the current Arena, as their values)
+    using DeclarationList = ArenaList<Declaration>;
+    using RuleList = ArenaList<Rule>;
+
     struct Stylesheet {
-        std::vector<Rule> rules;
+        RuleList rules;
         uint32_t file = 0;
     };
 

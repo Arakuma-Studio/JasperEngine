@@ -491,7 +491,7 @@ bool props::accepts(const std::string& property, const std::string& value){
     return RcssGrammar::accepts(property, value);
 }
 
-bool jasperengine::htmlui::compat::reachesRewrite(Session& session, const Declaration& declaration, const std::vector<Declaration>& block){
+bool jasperengine::htmlui::compat::reachesRewrite(Session& session, const Declaration& declaration, const DeclarationList& block){
     if (!CascadeKeywords::keywordOf(declaration.value).empty())
         return false;
     const PropertySupport* row = findProperty(declaration.name);

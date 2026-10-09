@@ -398,7 +398,7 @@ namespace {
                                      "'; the keyframe is dropped", "use from, to or a percentage between 0% and 100%");
                 continue;
             }
-            std::vector<Declaration> declarations;
+            DeclarationList declarations;
             for (const Declaration& d : frame.declarations){
                 if (d.name == "animation-timing-function" || d.name == "-webkit-animation-timing-function"){
                     session.sink->reportAs(Severity::Warning, codes::AnimationApproximated, d.ref,

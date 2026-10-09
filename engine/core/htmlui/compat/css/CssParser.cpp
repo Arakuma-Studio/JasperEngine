@@ -613,7 +613,7 @@ namespace {
         }
 
         // §5.5.5, stops at '}' (not consumed) or EOF
-        void consumeBlockContents(std::vector<Declaration>& declarations, std::vector<Rule>& rules){
+        void consumeBlockContents(DeclarationList& declarations, RuleList& rules){
             while (true){
                 const LexToken& token = peek();
                 if (token.type == TokenType::Whitespace || token.type == TokenType::Semicolon){
@@ -658,8 +658,8 @@ namespace {
         }
 
         // §5.5.1 (topLevel) or the 2021 draft's "consume a list of rules"
-        std::vector<Rule> consumeRuleList(bool topLevel){
-            std::vector<Rule> rules;
+        RuleList consumeRuleList(bool topLevel){
+            RuleList rules;
             while (true){
                 const LexToken& token = peek();
                 if (token.type == TokenType::Whitespace){
@@ -823,12 +823,12 @@ Stylesheet jasperengine::htmlui::compat::parseStylesheet(uint32_t file, std::str
     return sheet;
 }
 
-std::vector<Declaration> jasperengine::htmlui::compat::parseDeclarationList(uint32_t file, std::string_view css, uint32_t baseOffset,
+DeclarationList jasperengine::htmlui::compat::parseDeclarationList(uint32_t file, std::string_view css, uint32_t baseOffset,
                                                                             DiagnosticSink& sink){
     Parser parser(file, css, baseOffset, TokenizeOptions(), nullptr);
     parser.keepRawBlocks = false;
-    std::vector<Declaration> declarations;
-    std::vector<Rule> rules;
+    DeclarationList declarations;
+    RuleList rules;
     while (true){
         parser.consumeBlockContents(declarations, rules);
         if (parser.atEnd())
@@ -860,10 +860,10 @@ Rule jasperengine::htmlui::compat::parseBlockContents(uint32_t file, std::string
     return result;
 }
 
-std::vector<Rule> jasperengine::htmlui::compat::parseRuleList(uint32_t file, std::string_view css, uint32_t baseOffset, bool topLevel,
+RuleList jasperengine::htmlui::compat::parseRuleList(uint32_t file, std::string_view css, uint32_t baseOffset, bool topLevel,
                                                               DiagnosticSink* sink, std::vector<ParseError>* errors){
     Parser parser(file, css, baseOffset, TokenizeOptions(), errors);
-    std::vector<Rule> rules = parser.consumeRuleList(topLevel);
+    RuleList rules = parser.consumeRuleList(topLevel);
     parser.report(sink);
     return rules;
 }

@@ -46,7 +46,7 @@ namespace jasperengine::htmlui::compat {
         SelectorList selectors;    // CSS selectors, nesting resolved
         SourceRef ref, preludeRef;
         MediaResult media = MediaResult::unconditional();
-        std::vector<Declaration> declarations;
+        DeclarationList declarations;
         int layer = -1;                // index in Session::layerOrder; -1 unlayered
         uint32_t order = 0;            // source order within the document
         // the selector stage
@@ -262,7 +262,7 @@ namespace jasperengine::htmlui::compat {
 
     // rewrites the declarations of a rule (or a style attribute / keyframe block)
     void processDeclarations(Session& session, const FlatRule* rule, RuleOrigin origin, bool keyframe,
-                             const std::vector<Declaration>& declarations, RuleOutput& output);
+                             const DeclarationList& declarations, RuleOutput& output);
     // runs `property: value` (CSS text) through the pipeline as part of the declaration of
     // `context` (CSS-wide keywords writing initial values, longhand expansions); the outputs
     // are added to context.output

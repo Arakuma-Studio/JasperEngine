@@ -187,8 +187,8 @@ namespace jasperengine::test::compat {
 
     // rules (or declarations and rules) and the "invalid" / "empty" / "extra-input" errors,
     // in source order, as the tests list them
-    inline nlohmann::json itemsWithErrors(ParsingTestsJson& json, const std::vector<Declaration>& declarations,
-                                          const std::vector<Rule>& rules, const std::vector<ParseError>& errors){
+    inline nlohmann::json itemsWithErrors(ParsingTestsJson& json, const DeclarationList& declarations,
+                                          const RuleList& rules, const std::vector<ParseError>& errors){
         std::vector<std::pair<uint32_t, nlohmann::json>> items;
         for (const Declaration& declaration : declarations)
             items.emplace_back(declaration.ref.offset, json.declaration(declaration));
