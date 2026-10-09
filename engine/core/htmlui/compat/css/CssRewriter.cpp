@@ -584,7 +584,7 @@ namespace {
                     session.usesTextShadow = true;
                 if (name.compare(0, 19, "-webkit-text-stroke") == 0)
                     session.usesTextStroke = true;
-                if (CascadeKeywords::keywordOf(d.value) == "inherit"){
+                if (CascadeKeywords::keywordOf(d.value) == "inherit" && !session.options.fork.has(ForkFeature::CssWideKeywords)){
                     for (const std::string& p : CascadeKeywords::outputProperties(name)){
                         const PropertySupport* row = findProperty(name);
                         const bool inherited = row ? row->inherited : CascadeKeywords::inherited(p);
@@ -802,6 +802,10 @@ namespace {
             }
         }
 
+        bool any = !normal.empty() || !placeholderDeclarations.empty();
+        for (const GeneratedRule& generated : output.generated)
+            any = any || !generated.declarations.empty();
+        if (any)
         writeUnderMedia(writer, rule.media, [&](){
             writeBlock(writer, joinSelectors(plain), normal, rule.ref);
             writeBlock(writer, joinSelectors(placeholder), placeholderDeclarations, rule.ref);
@@ -1004,7 +1008,7 @@ namespace {
         std::vector<ComponentValue> trimmed = trimWhitespace(d.value);
         if (name == "color" && trimmed.size() == 1 && trimmed[0].isToken(TokenType::Ident) && equalsNoCase(trimmed[0].token.value, "currentcolor")){
             context.emit("color", std::string("var(") + companions::kUnset + ")");
-        }else if (!CascadeKeywords::keywordOf(d.value).empty()){
+        }else if (name != "all" && !CascadeKeywords::keywordOf(d.value).empty()){
             // 5. CSS-wide keywords
             CascadeKeywords::apply(context, CascadeKeywords::keywordOf(d.value));
         }else{
@@ -1095,9 +1099,10 @@ namespace {
             }
             if (keyframe)
                 continue;
-            if (out.name == "color" && out.value.compare(0, 4, "var(") != 0)
+            const bool keyword = !CascadeKeywords::keywordOf(parseComponentValueList(out.value)).empty();
+            if (out.name == "color" && out.value.compare(0, 4, "var(") != 0 && !keyword)
                 extra.push_back(OutDecl{companions::kCurrentColor, out.value, out.ref, out.important, false, true});
-            if (session.inheritCompanions.count(out.name) && out.value.find("--html-inh-") == std::string::npos)
+            if (session.inheritCompanions.count(out.name) && out.value.find("--html-inh-") == std::string::npos && !keyword)
                 extra.push_back(OutDecl{companions::inheritName(out.name), out.value, out.ref, out.important, false, true});
         }
         for (OutDecl& e : extra)

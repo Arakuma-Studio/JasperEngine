@@ -1,0 +1,15 @@
+/* calc() and friends folded while the fork lacks Calc */
+:root { --gap: 16px; --cols: 3; --mixed: 10px; }
+.same-unit { width: calc(10px + 20px); height: calc(2em * 3); margin: calc(1in + 4px); }
+.percent-reduction { width: calc(100% - 32px); left: calc(50% - 10px); }
+.viewport { font-size: clamp(1rem, 2.5vw, 2rem); height: calc(100vh - 64px); }
+.em-mix { font-size: 20px; padding: calc(1em + 4px); }
+.minmax { width: min(100%, 600px); height: max(200px, 50vh); }
+.var-static { gap: calc(var(--gap) * 2); flex-basis: calc(100% / var(--cols)); }
+.var-dynamic { width: calc(var(--runtime) + 10px); }
+.math { width: round(17.4px); height: abs(-20px); opacity: sin(30deg); margin: mod(18px, 5px); }
+.nested { width: calc(calc(10px * 2) + min(5px, 8px)); }
+.invalid { width: calc(10px + 2deg); height: calc(100%-2px); }
+.font-percent { font-size: calc(100% + 2px); line-height: calc(1em + 50%); }
+.webkit { width: -webkit-calc(10px + 5px); }
+.var-calc { --mixed: 12px; padding: calc(var(--mixed) + 1px); }

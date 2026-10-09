@@ -1,0 +1,10 @@
+/* every row of the Appendix E unit table */
+.native { width: 10px; height: 2em; margin: 1rem 50% 10vw 10vh; padding: 1in 1cm 1mm 1pt; border-width: 1pc; left: 2dp; }
+.q { width: 40Q; }
+.viewport-variants { height: 100dvh; min-height: 100svh; max-height: 100lvh; width: 50dvw; min-width: 10svw; max-width: 90lvw; top: 10vi; bottom: 5vb; }
+.font-relative { width: 20ch; height: 3ex; margin-top: 2cap; margin-bottom: 1ic; padding-top: 2lh; padding-bottom: 1rlh; }
+.container { width: 50cqw; }
+.container-2 { height: 10cqh; }
+.angles { transform: rotate(45deg) rotate(1rad) rotate(100grad) rotate(0.5turn); }
+.times { transition: opacity 1s, color 500ms; }
+.zero { margin: 0; border-width: 0; }

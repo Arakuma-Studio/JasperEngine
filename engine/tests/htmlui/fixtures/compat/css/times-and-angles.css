@@ -1,0 +1,7 @@
+/* ms -> s, turn/grad/rad -> deg */
+:root { --dur: 250ms; --turn: 0.25turn; }
+.t { transition: opacity 200ms ease-in, transform .5s; animation: spin 1500ms linear infinite; }
+.a { transform: rotate(0.5turn) skewX(100grad); filter: hue-rotate(3.14159rad); }
+.b { background: linear-gradient(0.125turn, red, blue); }
+.c { transition-duration: 0ms; }
+@keyframes spin { to { transform: rotate(1turn); } }

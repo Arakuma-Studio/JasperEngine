@@ -337,27 +337,26 @@ namespace {
                 // [shape] [size] [at position] in RmlUi's order; legacy: <position>, <shape> <size>
                 std::string shape, sizeX, sizeY;
                 std::vector<ComponentValue> position;
-                bool at = false;
                 std::vector<ComponentValue> shapeWords = head;
                 if (legacy && groups.size() > 2){
                     // -webkit-radial-gradient(center, circle cover, ...)
                     std::vector<ComponentValue> second = words(groups[1]);
                     bool secondIsShape = !second.empty() && !isColor(scope.session, second[0]) && !isVar(second[0]);
                     position = head;
-                    at = true;
                     shapeWords = secondIsShape ? second : std::vector<ComponentValue>();
                     if (secondIsShape)
                         groups.erase(groups.begin() + 1);
                 }
+                bool atWord = false;
                 for (size_t i = 0; i < shapeWords.size(); i++){
                     const ComponentValue& v = shapeWords[i];
                     const std::string k = identOf(v);
-                    if (at){
+                    if (atWord){
                         position.push_back(v);
                         continue;
                     }
                     if (k == "at"){
-                        at = true;
+                        atWord = true;
                         continue;
                     }
                     if (k == "circle" || k == "ellipse")
@@ -953,15 +952,25 @@ namespace {
                     }
                 }
             }
+            bool applied = false, attempted = false;
             for (const Declaration& d : context.rule->declarations){
                 if (!isBackgroundFamily(d.name, mask) || d.name == "clip-path")
                     continue;
                 std::vector<ComponentValue> value = d.ref == context.declaration.ref ? context.value : normalized(context.session, d);
-                if (value.size() == 1 && isVar(value[0]))
+                if (value.size() == 1 && isVar(value[0])){
+                    applied = true;
                     continue;   // a whole-value var() is handled below for its own declaration
-                if (!applyDeclaration(scope, d.name, value, state))
+                }
+                attempted = true;
+                if (applyDeclaration(scope, d.name, value, state))
+                    applied = true;
+                else
                     context.reportAt(d.ref, Severity::Warning, codes::UnsupportedValue, "'" + d.name + ": " + text(value) + "' is not supported; dropped",
                                      "check the background syntax");
+            }
+            if (attempted && !applied && !(mask && context.name == "clip-path")){
+                context.dropped = true;
+                return;
             }
         }else{
             if (!(context.value.size() == 1 && isVar(context.value[0])) && !applyDeclaration(scope, context.name, context.value, state)){

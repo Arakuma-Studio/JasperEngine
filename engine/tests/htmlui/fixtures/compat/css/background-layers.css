@@ -1,0 +1,6 @@
+/* several layers: the first CSS layer is drawn on top (first decorator) */
+.two { background: url(img/a.png) no-repeat center, linear-gradient(#000, #fff); }
+.three { background: radial-gradient(circle, #fff 0%, transparent 70%), url(img/b.png) repeat, #222; }
+.image-list { background-image: url(img/a.png), url(img/b.png); background-repeat: no-repeat, repeat-x; background-position: center, 0 0; }
+.color-then-image { background-color: navy; background-image: linear-gradient(to right, red, blue); }
+.none-layers { background-image: none, url(img/a.png); }

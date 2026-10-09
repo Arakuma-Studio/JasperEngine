@@ -1,0 +1,11 @@
+/* inherit / initial / unset / revert until the fork has CssWideKeywords */
+.inherited { color: inherit; font-family: unset; line-height: inherit; font-size: inherit; }
+.inherited-initial { color: initial; font-size: initial; line-height: initial; text-align: initial; }
+.non-inherited { margin: unset; padding-left: initial; width: inherit; display: initial; }
+.differs { border-color: initial; border-top-color: unset; min-width: unset; }
+.revert { color: revert; opacity: revert-layer; }
+.shorthand { background: inherit; border: initial; font: inherit; }
+.parent { width: 300px; }
+.reset { all: unset; }
+.reset-initial { all: initial; }
+.reset-inherit { all: inherit; }

@@ -1,0 +1,4 @@
+/* vmin/vmax: the declaration is duplicated into orientation media blocks */
+.box { width: 50vmin; height: 50vmin; color: red; }
+.wide { font-size: 5vmax; padding: 2vmin 4vmax; }
+@media (min-width: 600px) { .box { border-radius: 10vmin; } }
