@@ -7588,15 +7588,27 @@ void editor::Project::start(uint32_t sceneId) {
             // This sets a flag to prevent the Engine from starting the NEXT frame update.
             pause(sceneId);
 
-            // 2. Stop asynchronously.
-            // We use a background thread to wait for the Main Thread to finish the CURRENT frame
-            // and unwind the stack. Destroying the scene (via stop) while the Main Thread 
-            // is still executing code inside it will cause a Segmentation Fault.
-            std::thread([this, sceneId]() {
-                // Heuristic delay to allow the stack to unwind safely
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                stop(sceneId);
-            }).detach();
+            // 2. Stop asynchronously, on the main thread once the CURRENT frame is done and its
+            // stack unwound: destroying the scene (via stop) while the main thread still runs
+            // code inside it would crash. Not from another thread: stop runs the scripts'
+            // onShutdown and releases their callbacks, all in the one Lua state, which is not
+            // thread-safe.
+            std::weak_ptr<PlaySession> crashedSession;
+            {
+                std::scoped_lock lock(playSessionMutex);
+                crashedSession = activePlaySession;
+            }
+            editor::getEditorHost().enqueueMainThreadTask([this, sceneId, crashedSession]() {
+                std::shared_ptr<PlaySession> session = crashedSession.lock();
+                {
+                    std::scoped_lock lock(playSessionMutex);
+                    // stopped meanwhile (or another session started)
+                    if (!session || activePlaySession != session) return;
+                }
+                if (!session->cancelled.load(std::memory_order_acquire)) {
+                    stop(sceneId);
+                }
+            });
         };
 
     auto session = std::make_shared<PlaySession>();

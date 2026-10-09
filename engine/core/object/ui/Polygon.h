@@ -14,6 +14,11 @@ namespace jasperengine{
         Polygon(Scene* scene, Entity entity);
         virtual ~Polygon();
 
+        Polygon(const Polygon& rhs);
+        Polygon& operator=(const Polygon& rhs);
+        Polygon(Polygon&& rhs) noexcept;
+        Polygon& operator=(Polygon&& rhs) noexcept;
+
         bool createPolygon();
         bool load();
 

@@ -20,6 +20,8 @@ namespace jasperengine{
 
         Joint3D(const Joint3D& rhs);
         Joint3D& operator=(const Joint3D& rhs);
+        Joint3D(Joint3D&& rhs) noexcept;
+        Joint3D& operator=(Joint3D&& rhs) noexcept;
 
         JPH::TwoBodyConstraint* getJoltJoint() const;
 

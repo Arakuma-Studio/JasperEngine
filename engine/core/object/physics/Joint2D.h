@@ -20,6 +20,8 @@ namespace jasperengine{
 
         Joint2D(const Joint2D& rhs);
         Joint2D& operator=(const Joint2D& rhs);
+        Joint2D(Joint2D&& rhs) noexcept;
+        Joint2D& operator=(Joint2D&& rhs) noexcept;
 
         b2JointId getBox2DJoint() const;
 

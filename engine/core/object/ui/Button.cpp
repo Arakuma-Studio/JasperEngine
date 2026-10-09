@@ -19,6 +19,11 @@ Button::Button(Scene* scene, Entity entity): Image(scene, entity){
 Button::~Button(){
 }
 
+Button::Button(const Button& rhs) = default;
+Button& Button::operator=(const Button& rhs) = default;
+Button::Button(Button&& rhs) noexcept = default;
+Button& Button::operator=(Button&& rhs) noexcept = default;
+
 bool Button::hasLabel() const{
     const ButtonComponent& btcomp = getComponent<ButtonComponent>();
     if (btcomp.label == NULL_ENTITY){

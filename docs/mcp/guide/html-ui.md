@@ -98,7 +98,9 @@ component (the Hierarchy's *Create > UI > UI Document*).
 - Keep documents, stylesheets, images and fonts under the assets directory (`assets/ui/...`).
 - References inside a document are relative to the document (`href="menu.css"`,
   `src="../images/logo.png"`); `asset://ui/logo.png` is relative to the assets directory.
-  No `http(s)://` resources: everything a document uses is a project file.
+  The game never uses the network: an `http(s)://` resource (Google Fonts, a CDN stylesheet,
+  a remote image or Lottie animation) is imported into the project by the editor first (see
+  "Remote resources (imports)").
 - Images: PNG, JPG (and the other formats the engine loads) and SVG files (LunaSVG, see
   "SVG and Lottie"); Lottie animations as `.json` or `.lottie`.
 
@@ -730,6 +732,47 @@ end
   directory or a remote `http(s)://` URL; an absolute path is a warning. RCSS's bare
   `@font-face { src: fonts/a.ttf; }` is opened from the assets directory, as RmlUi does.
 
+## Remote resources (imports)
+
+A document may link what a page for a browser links: Google Fonts, CDN stylesheets (Font
+Awesome, Bootstrap Icons, animate.css), remote images, LottieFiles animations. The editor
+downloads each of them once into `assets/htmlui-imports/` and records it in
+`assets/htmlui-imports/manifest.json`; at runtime the URL resolves through the manifest to the
+local file, so the document stays as written and exported games work offline (the manifest and
+the files ship with the assets).
+
+- **Automatic**: when the editor loads or reloads a document (scene open, play, an Inspector
+  change, a hot reload) the URLs missing from the manifest are downloaded on a background
+  worker (`[HTML UI] importing <url>` in the Console), then the document reloads.
+  *Editor Settings > General > HTML UI > Import Remote Resources* turns it off. A URL that
+  failed is not retried automatically in the same session.
+- **Inspector** (UI Document): *Remote resources: 4 imported, 1 missing* with **Import**
+  (missing and failed ones, retried), **Re-import all** and **Remove unused** (drops the
+  manifest entries no `.html`/`.css` of the project references and deletes their files), the
+  status of every URL (tooltip: local file, license, error), and the document's diagnostics
+  count with **Show in Console**.
+- **Command line** (CI, agents): `jasperengine-editor import-ui --project <dir> assets/ui/menu.html
+  [more documents] [--dest <dir>] [--force] [-q]` imports synchronously, prints the diagnostics
+  compiler-style and exits 1 when an import failed (2 for a usage error).
+- **What each kind becomes**:
+
+| Remote resource | Local files |
+|---|---|
+| Google Fonts `fonts.googleapis.com/css2`, `/css`, `/icon` | one static TTF per weight/style (`fonts/<family>/<Family>-700-italic.ttf`; ranges such as `wght@100..900` give one file per 100), a local CSS with the same `@font-face` rules (`fonts/<families>-<hash>.css`), each family's license (`OFL.txt`/`LICENSE.txt`) |
+| other stylesheets | `css/<host>/<path>.css` with every `url()` and `@import` it uses downloaded into the same tree and rewritten to relative paths; `@font-face` keeps the TTF/OTF sources (WOFF/WOFF2-only fonts: `HTMLUI-IMP-0007`, convert them) |
+| images | `images/<host>/<hash>-<name>.<ext>`, the type from the content (PNG, JPEG, GIF, BMP, TGA, SVG); WebP/AVIF are saved but the engine cannot draw them (`HTMLUI-IMP-0003`) |
+| Lottie `.json`, `.lottie`, LottieFiles pages | `lottie/<hash>-<name>/animation.json` with its images in `images/` |
+| Lucide icons (`data-lucide`) | nothing: they are built into the engine |
+
+- **Licenses**: Google Fonts record their license file (shipped with the game); LottieFiles
+  animations record the Lottie Simple License, to verify on lottiefiles.com; other images and
+  stylesheets record "unknown". Each import says so in the Console (`HTMLUI-IMP-0008`).
+- **Offline**: a failed download is an `HTMLUI-IMP-0002` error in the editor and writes
+  nothing; a URL without a manifest entry is `HTMLUI-IMP-0001` at runtime and falls back (a
+  stylesheet or font is skipped and the font chain is used, an image is not drawn, a `<lottie>`
+  stays empty); an entry whose file is gone is `HTMLUI-IMP-0009` (re-import). curl is the
+  download tool (Windows 10 1803+, macOS and Linux have it; missing: `HTMLUI-IMP-0005`).
+
 ## Hot reload
 
 - The editor checks the files every document of every open scene (playing copies included)
@@ -764,7 +807,7 @@ Later phases:
   CSS rewritten to RCSS (`border: 1px solid red`, `rgba(..., 0.5)`, `background-image: url()`,
   quoted font names, `200ms ease` transitions), standard `@font-face` and `text-shadow`,
   diagnostics with `file:line:column` and stable codes, `<script type="text/lua">` in
-  documents, importers (Google Fonts, Lucide icons, LottieFiles, remote images).
+  documents, built-in Lucide icons.
 - Phase 3, RmlUi patches: `calc()`/`min()`/`max()`/`clamp()`, grid, `::before`/`::after`,
   border styles, `%` radii, `!important`, CSS-wide keywords, `:root`/`:is`/`:where`/`:has`,
   real `position: fixed`/`sticky`, group `opacity`, `cubic-bezier()`/`steps()` in transitions.

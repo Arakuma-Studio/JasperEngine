@@ -14,6 +14,11 @@ namespace jasperengine{
         ShadowCaster2D(Scene* scene, Entity entity);
         virtual ~ShadowCaster2D();
 
+        ShadowCaster2D(const ShadowCaster2D& rhs);
+        ShadowCaster2D& operator=(const ShadowCaster2D& rhs);
+        ShadowCaster2D(ShadowCaster2D&& rhs) noexcept;
+        ShadowCaster2D& operator=(ShadowCaster2D&& rhs) noexcept;
+
         void setShape(ShadowCaster2DShape shape);
         ShadowCaster2DShape getShape() const;
 

@@ -13,6 +13,11 @@ namespace jasperengine{
         Image(Scene* scene, Entity entity);
         virtual ~Image();
 
+        Image(const Image& rhs);
+        Image& operator=(const Image& rhs);
+        Image(Image&& rhs) noexcept;
+        Image& operator=(Image&& rhs) noexcept;
+
         bool createImage();
         bool load();
 

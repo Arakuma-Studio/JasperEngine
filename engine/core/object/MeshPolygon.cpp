@@ -23,6 +23,11 @@ MeshPolygon::MeshPolygon(Scene* scene, Entity entity): Mesh(scene, entity){
 MeshPolygon::~MeshPolygon(){
 }
 
+MeshPolygon::MeshPolygon(const MeshPolygon& rhs) = default;
+MeshPolygon& MeshPolygon::operator=(const MeshPolygon& rhs) = default;
+MeshPolygon::MeshPolygon(MeshPolygon&& rhs) noexcept = default;
+MeshPolygon& MeshPolygon::operator=(MeshPolygon&& rhs) noexcept = default;
+
 bool MeshPolygon::createPolygon(){
     MeshPolygonComponent& pcomp = getComponent<MeshPolygonComponent>();
     MeshComponent& mesh = getComponent<MeshComponent>();

@@ -3,6 +3,7 @@
 
 #include "AppSettings.h"
 #include "Out.h"
+#include "subsystem/UIDocumentSystem.h"
 #include <fstream>
 #include <algorithm>
 #include <cstdlib>
@@ -72,6 +73,8 @@ GameViewSettings AppSettings::gameViewSettings;
 bool AppSettings::mcpHttpEnabled = false;
 int AppSettings::mcpHttpPort = 47615;
 std::string AppSettings::mcpHttpToken;
+bool AppSettings::htmlUiAutoImport = true;
+bool AppSettings::htmlUiVerboseDiagnostics = false;
 
 bool AppSettings::initialize(bool preferUserDirectory) {
     // Settings live in the working directory, where a run from a build tree
@@ -251,6 +254,13 @@ bool AppSettings::loadSettings() {
             if (mcpNode["http_token"]) mcpHttpToken = mcpNode["http_token"].as<std::string>();
         }
 
+        if (settingsData["html_ui"]) {
+            auto htmlUiNode = settingsData["html_ui"];
+            if (htmlUiNode["auto_import"]) htmlUiAutoImport = htmlUiNode["auto_import"].as<bool>();
+            if (htmlUiNode["verbose_diagnostics"]) htmlUiVerboseDiagnostics = htmlUiNode["verbose_diagnostics"].as<bool>();
+        }
+        UIDocumentSystem::setVerboseDiagnostics(htmlUiVerboseDiagnostics);
+
         return true;
     } catch (const std::exception& e) {
         Out::error("Failed to load settings: %s", e.what());
@@ -367,6 +377,11 @@ bool AppSettings::saveSettings() {
         mcpNode["http_port"] = mcpHttpPort;
         if (!mcpHttpToken.empty()) mcpNode["http_token"] = mcpHttpToken;
         settingsData["mcp"] = mcpNode;
+
+        YAML::Node htmlUiNode;
+        htmlUiNode["auto_import"] = htmlUiAutoImport;
+        htmlUiNode["verbose_diagnostics"] = htmlUiVerboseDiagnostics;
+        settingsData["html_ui"] = htmlUiNode;
         if (settingsData["ai_assistant"]) settingsData.remove("ai_assistant");
 
         // Save to file
@@ -571,6 +586,23 @@ bool AppSettings::getMultiViewportEnabled() {
 
 void AppSettings::setMultiViewportEnabled(bool enabled) {
     multiViewportEnabled = enabled;
+}
+
+bool AppSettings::getHtmlUiAutoImport() {
+    return htmlUiAutoImport;
+}
+
+void AppSettings::setHtmlUiAutoImport(bool enabled) {
+    htmlUiAutoImport = enabled;
+}
+
+bool AppSettings::getHtmlUiVerboseDiagnostics() {
+    return htmlUiVerboseDiagnostics;
+}
+
+void AppSettings::setHtmlUiVerboseDiagnostics(bool enabled) {
+    htmlUiVerboseDiagnostics = enabled;
+    UIDocumentSystem::setVerboseDiagnostics(enabled);
 }
 
 bool AppSettings::getEditorVSyncEnabled() {
