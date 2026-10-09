@@ -1876,6 +1876,74 @@ Every UA value above that copies Chromium's look is calibrated by p2-ua against 
 `ua-defaults`, `dialog` and `settings` reference renders (5.3) until those golden tests
 pass; the values written here are the starting point.
 
+**As calibrated (p2-ua).** The sheet (`ua/useragent.css`, comments per rule) differs from the
+list above where Chromium 153's renders (reference setup of 5.3) disagreed:
+
+- Root: also `font-weight: normal; font-style: normal`. Display: also `input[type=hidden]
+  { display: none }`, `ruby, rt` inline.
+- `hr`: `border: 1px solid; border-color: #9a9a9a #eeeeee #eeeeee #9a9a9a; overflow: hidden`
+  (the two tones Chromium paints for `1px inset gray`). `a[href]` and `summary` also get
+  `tab-index: auto` (p2-runtime's focus order); `abbr[title], acronym[title]` underline.
+- Tables: `border-spacing: 2px` plus `padding: var(--html-border-spacing, 2px)`: RmlUi's
+  `gap` only separates cells, CSS spacing also separates them from the table's edges; the
+  `border-spacing` rewrite writes the companion, `border-collapse: collapse` writes `gap: 0px`
+  and `--html-border-spacing: 0px` (Warning `HTMLUI-CSS-0006`: the cells' borders are not
+  merged). `vertical-align: middle` on row groups, rows and cells.
+- Controls share `line-height: normal; font-weight: normal; font-style: normal;
+  text-transform: none; text-align: left`. Where Chromium lays out a 2px border and paints a
+  1px one, the sheet keeps the border box and paints 1px: text inputs `padding: 2px 3px;
+  border: 1px solid #767676; width: 177px` (185px border box, Chromium's `size=20` at
+  13.333px of the built-in Roboto), buttons `box-sizing: border-box; padding: 2px 7px;
+  border: 1px solid #767676; background-color: ButtonFace`. Text inputs and buttons align
+  their text's baseline (p2-runtime `HtmlInputElement::GetBaseline`).
+- Checkbox: `box-sizing: border-box`, and `vertical-align: var(--html-check-baseline, -3px)`:
+  Chromium's themed checkbox has its baseline at its border box's bottom, not at its bottom
+  margin edge (`appearance: none` writes `0px`). Radio: `margin: 3px 3px 0 5px`; checked
+  `box-shadow: inset 0 0 0 1.5px var(--html-accent-contrast, #ffffff)`. A light
+  `accent-color` (relative luminance above 0.32) gets Chromium's dark mark: the rewrite also
+  writes `--html-check` with `check-dark.svg` (#3b3b3b) and `--html-accent-contrast: #3b3b3b`.
+- Range: `box-sizing: border-box; height: var(--html-slider-height, 16px); margin: 2px;
+  overflow: visible`; `slidertrack { margin-top: var(--html-slider-track-margin, 5px);
+  height: var(--html-slider-track-height, 6px); border: var(--html-slider-track-border, 1px)
+  solid var(--html-control-border, #b2b2b2); border-radius: 3px; background-color:
+  var(--html-control-bg, #efefef) }`; `sliderprogress { height: 8px; background-color:
+  var(--html-slider-fill, var(--html-accent, #0075ff)) }` (over the track's border box);
+  `sliderbar { box-sizing: border-box; width: 16px; height: 16px; border-radius: 8px;
+  decorator: var(--html-thumb, none) }`. `appearance: none` writes `--html-slider-fill:
+  transparent; --html-slider-height: auto; --html-slider-track-margin: 0px;
+  --html-slider-track-height: auto; --html-slider-track-border: 0px` (Chromium: as tall as
+  the track, no fill, no track border); `auto` writes the fallbacks back.
+- Progress: `box-sizing: border-box; width: 10em; height: 1em; vertical-align: -0.2em;
+  border: 0.25em 0 solid transparent; border-radius: 0.5em; background-color: #efefef;
+  box-shadow: inset 0 0 0 1px #b2b2b2`; `fill { border-radius: 0.25em 0 0 0.25em }`
+  (Chromium draws a 0.5em bar).
+- Select: `padding: 0`, the internal menulist padding on `selectvalue { padding: 1px 0 1px
+  4px }` (author padding adds to it, as in Chromium; the fork sizes a select from its widest
+  option, the arrow and the value's edges, FORK.md P2-9/P2-12); `selectarrow { width: 16px }`
+  with `arrow-down.svg` 10x6 at 3px.
+- Fieldset: `border: 2px solid #c5c5c5` (one tone halfway between the groove's #9b9b9b and
+  #efefef). A fieldset whose first child is a `legend` gets the class `htmlui-legend` from the
+  HTML stage: `padding-top: 0; border-top-width: 0`, transparent side borders, and the top
+  line and sides drawn from 9px down (a 16px legend's middle) as `html-layer` strips of
+  `fieldset-border.svg`; its legend gets `margin-bottom: 0.35em`. No gap is cut around the
+  legend (the line runs under it: documented in the guide).
+- Summary: `list-style-type: disclosure-closed; list-style-position: inside`, `details[open]
+  > summary` `disclosure-open`. Dialog: `border: 3px solid`, no `fit-content`.
+- Scrollbars: track and corner `#fcfcfc`, thumb `#8b8b8b` (hover `#6e6e6e`, active `#545454`),
+  3px margin, 4.5px radius, 20px minimum; arrows 15x15 (`scroll-*.svg`).
+- Companion resets: also a rule naming the widget parts (`selectvalue … selection`), because
+  `*` does not reach them (FORK.md P2-12: type-less selectors skip the parts widgets build,
+  so an author `* { margin: 0; padding: 0 }` reset leaves the UA's part rules alone, as in
+  CSS).
+- Internal SVGs: `check.svg`, `check-dark.svg`, `arrow-down.svg`, `scroll-{up,down,left,
+  right}.svg`, `fieldset-border.svg` (a 1x1 fill, `preserveAspectRatio="none"`).
+
+Golden page `ua-defaults` pins what the engine approximates until phase 3, so the comparison
+tests the sheet: the body's font and `line-height: 1.2`, the controls' `line-height: 15px`
+(Chromium's `normal` for 13.333px Roboto), 13px for the text-sized controls (RmlUi font
+sizes are whole pixels: 13.333px draws at 13px) and Roboto for the form (whole-pixel space
+advances).
+
 ### 3.11 Runtime emulations (p2-runtime)
 
 All registered once from `compat::registerRuntime()` (seam in `runtime/RuntimeRegistry.cpp`),
@@ -2606,10 +2674,12 @@ Built by p2-html (October 2026). Where the code differs from or adds to the text
   `foreignObject` is reported by the stage itself). `data-lucide` expansion uses p2-runtime's
   `runtime/LucideIcons.h` (`resolve`/`find`/`closest`/`svgAttributes`); the classes follow
   Lucide's `createIcons` (`lucide lucide-<attribute value>`).
-- **RML shape.** A start tag starts a new RML line when it follows another tag (inserting a line
-  break after text would add a space). RmlUi drops whitespace-only text nodes, so a space
-  between two inline elements (`<b>a</b> <i>b</i>`) is lost, as in phase 1; inside `pre`-like
-  elements whitespace-only text is written as character references, which RmlUi keeps.
+- **RML shape.** A start tag starts a new RML line when it follows another tag, the line break
+  written inside the previous tag (`</b\n><i>`, `<div\n><p>`): the fork lays out white-space-only
+  text between inline-level boxes as a space (FORK.md P2-8, p2-ua), so a break between tags would
+  be a space the HTML does not have, and one after text would add a space. A space between two
+  inline elements in the HTML (`<b>a</b> <i>b</i>`) is kept; inside `pre`-like elements
+  whitespace-only text is written as character references.
 - **DocumentLoader** (`DocumentLoader.h`): as specified, plus `compile(path, options, files)`
   (uncached, for checks), `restyle(document, shared_ptr, options)` (rebinds the document),
   `restyleForViewport` returns the compile now in use, `fragmentToRml(..., FragmentOptions)`

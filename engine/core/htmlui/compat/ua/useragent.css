@@ -740,6 +740,15 @@ scrollbarcorner {
     --html-border-image: linear-gradient(#0000, #0000);
 }
 
+/* `*` does not reach the parts widgets build (as in CSS; fork patch P2-12): they are named */
+selectvalue, selectarrow, selectbox, slidertrack, sliderbar, sliderprogress, sliderarrowdec,
+sliderarrowinc, scrollbarvertical, scrollbarhorizontal, scrollbarcorner, fill, selection {
+    --html-box-shadow: 0 0 0 0 #0000;
+    --html-outline-shadow: 0 0 0 0 #0000;
+    --html-bg-layers: linear-gradient(#0000, #0000);
+    --html-border-image: linear-gradient(#0000, #0000);
+}
+
 /* 9. Placeholders of unsupported elements (video, canvas, iframe, ...: 3.7.3) ------------- */
 
 .htmlui-unsupported {
