@@ -19,6 +19,11 @@ namespace jasperengine{
         ParticleSystem(Scene* scene, Entity entity);
         virtual ~ParticleSystem();
 
+        ParticleSystem(const ParticleSystem& rhs);
+        ParticleSystem& operator=(const ParticleSystem& rhs);
+        ParticleSystem(ParticleSystem&& rhs) noexcept;
+        ParticleSystem& operator=(ParticleSystem&& rhs) noexcept;
+
         void reset();
 
         void setMaxParticles(unsigned int maxParticles);

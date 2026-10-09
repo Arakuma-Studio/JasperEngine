@@ -14,6 +14,11 @@ namespace jasperengine{
         Action(Scene* scene, Entity entity);
         virtual ~Action();
 
+        Action(const Action& rhs);
+        Action& operator=(const Action& rhs);
+        Action(Action&& rhs) noexcept;
+        Action& operator=(Action&& rhs) noexcept;
+
         void start();
         void pause();
         void stop();

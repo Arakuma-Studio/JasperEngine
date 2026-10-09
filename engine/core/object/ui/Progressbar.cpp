@@ -18,6 +18,11 @@ Progressbar::Progressbar(Scene* scene, Entity entity): Image(scene, entity){
 Progressbar::~Progressbar(){
 }
 
+Progressbar::Progressbar(const Progressbar& rhs) = default;
+Progressbar& Progressbar::operator=(const Progressbar& rhs) = default;
+Progressbar::Progressbar(Progressbar&& rhs) noexcept = default;
+Progressbar& Progressbar::operator=(Progressbar&& rhs) noexcept = default;
+
 bool Progressbar::hasFill() const{
     const ProgressbarComponent& progresscomp = getComponent<ProgressbarComponent>();
     if (progresscomp.fill == NULL_ENTITY){

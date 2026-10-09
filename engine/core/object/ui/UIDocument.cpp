@@ -42,6 +42,11 @@ UIDocument::UIDocument(Scene* scene, Entity entity): GameObject(scene, entity){
 UIDocument::~UIDocument(){
 }
 
+UIDocument::UIDocument(const UIDocument& rhs) = default;
+UIDocument& UIDocument::operator=(const UIDocument& rhs) = default;
+UIDocument::UIDocument(UIDocument&& rhs) noexcept = default;
+UIDocument& UIDocument::operator=(UIDocument&& rhs) noexcept = default;
+
 void UIDocument::setFilename(const std::string& filename){
     UIDocumentComponent& document = getComponent<UIDocumentComponent>();
 

@@ -17,6 +17,11 @@ RectTransform::RectTransform(Scene* scene, Entity entity): GameObject(scene, ent
 RectTransform::~RectTransform(){
 }
 
+RectTransform::RectTransform(const RectTransform& rhs) = default;
+RectTransform& RectTransform::operator=(const RectTransform& rhs) = default;
+RectTransform::RectTransform(RectTransform&& rhs) noexcept = default;
+RectTransform& RectTransform::operator=(RectTransform&& rhs) noexcept = default;
+
 void RectTransform::setSize(unsigned int width, unsigned int height){
     RectTransformComponent& layout = getComponent<RectTransformComponent>();
 

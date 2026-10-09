@@ -15,6 +15,11 @@ Mirror::Mirror(Scene* scene, Entity entity): Primitive(scene, entity){
 Mirror::~Mirror(){
 }
 
+Mirror::Mirror(const Mirror& rhs) = default;
+Mirror& Mirror::operator=(const Mirror& rhs) = default;
+Mirror::Mirror(Mirror&& rhs) noexcept = default;
+Mirror& Mirror::operator=(Mirror&& rhs) noexcept = default;
+
 void Mirror::setNormal(Vector3 normal){
     MirrorComponent& mirror = getComponent<MirrorComponent>();
 

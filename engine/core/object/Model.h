@@ -19,6 +19,11 @@ namespace jasperengine{
         Model(Scene* scene, Entity entity);
         virtual ~Model();
 
+        Model(const Model& rhs);
+        Model& operator=(const Model& rhs);
+        Model(Model&& rhs) noexcept;
+        Model& operator=(Model&& rhs) noexcept;
+
         bool loadModel(const std::string& filename);
 
         bool loadOBJ(const std::string& filename);

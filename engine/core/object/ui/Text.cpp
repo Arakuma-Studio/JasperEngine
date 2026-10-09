@@ -22,6 +22,11 @@ Text::Text(Scene* scene, Entity entity): RectTransform(scene, entity){
 Text::~Text(){
 }
 
+Text::Text(const Text& rhs) = default;
+Text& Text::operator=(const Text& rhs) = default;
+Text::Text(Text&& rhs) noexcept = default;
+Text& Text::operator=(Text&& rhs) noexcept = default;
+
 bool Text::createText(){
     TextComponent& textcomp = getComponent<TextComponent>();
     UIComponent& ui = getComponent<UIComponent>();

@@ -11,6 +11,9 @@
 #include <utility>
 
 namespace jasperengine{
+    // A subclass that declares a destructor or copy operations has no implicit move: it must
+    // declare its moves too (= default when it adds no state), else a "move" of it is a copy,
+    // which never owns the entity, and the moved-from wrapper takes the entity along.
     class JASPERENGINE_API EntityHandle{
 
     protected:

@@ -21,6 +21,11 @@ Polygon::Polygon(Scene* scene, Entity entity): RectTransform(scene, entity){
 Polygon::~Polygon(){
 }
 
+Polygon::Polygon(const Polygon& rhs) = default;
+Polygon& Polygon::operator=(const Polygon& rhs) = default;
+Polygon::Polygon(Polygon&& rhs) noexcept = default;
+Polygon& Polygon::operator=(Polygon&& rhs) noexcept = default;
+
 bool Polygon::createPolygon(){
     PolygonComponent& pcomp = getComponent<PolygonComponent>();
     UIComponent& ui = getComponent<UIComponent>();

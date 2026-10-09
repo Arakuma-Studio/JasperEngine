@@ -20,6 +20,8 @@ Joint2D::Joint2D(Scene* scene, Entity entity): EntityHandle(scene, entity){
 Joint2D::~Joint2D() = default;
 Joint2D::Joint2D(const Joint2D& rhs) = default;
 Joint2D& Joint2D::operator=(const Joint2D& rhs) = default;
+Joint2D::Joint2D(Joint2D&& rhs) noexcept = default;
+Joint2D& Joint2D::operator=(Joint2D&& rhs) noexcept = default;
 
 b2JointId Joint2D::getBox2DJoint() const{
     Joint2DComponent& joint = getComponent<Joint2DComponent>();

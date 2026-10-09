@@ -16,6 +16,11 @@ namespace jasperengine{
         Text(Scene* scene, Entity entity);
         virtual ~Text();
 
+        Text(const Text& rhs);
+        Text& operator=(const Text& rhs);
+        Text(Text&& rhs) noexcept;
+        Text& operator=(Text&& rhs) noexcept;
+
         bool createText();
         bool load();
 

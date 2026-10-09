@@ -15,6 +15,11 @@ Action::Action(Scene* scene, Entity entity): EntityHandle(scene, entity){
 Action::~Action(){
 }
 
+Action::Action(const Action& rhs) = default;
+Action& Action::operator=(const Action& rhs) = default;
+Action::Action(Action&& rhs) noexcept = default;
+Action& Action::operator=(Action&& rhs) noexcept = default;
+
 void Action::start(){
     ActionComponent& action = getComponent<ActionComponent>();
 

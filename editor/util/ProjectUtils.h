@@ -78,6 +78,8 @@ public:
 
     // --- Lua script utilities ---
     static ScriptPropertyValue luaValueToScriptPropertyValue(lua_State* L, int idx, ScriptPropertyType type);
+    // The properties of a Lua script (its file, or its code being edited: errors ignored), read
+    // in an isolated state (readLuaScriptProperties): any thread
     static void loadLuaScriptProperties(ScriptEntry& entry, const std::string& luaPath);
     static void loadLuaScriptPropertiesFromString(ScriptEntry& entry, const std::string& scriptContent, const std::string& chunkName);
     // What reading a Lua script's properties did: the script failed to load (syntax) or to
@@ -91,6 +93,10 @@ public:
     // executes the file) and reads the `properties` of the table it returns, all in protected
     // calls. The chunk is named "@<chunkName>". entry keeps its properties on failure.
     static LuaPropertiesResult runLuaScriptProperties(lua_State* L, ScriptEntry& entry, const std::string& code, const std::string& chunkName);
+    // runLuaScriptProperties in a fresh state of its own (ProjectChecks::newIsolatedLuaState: the
+    // engine's globals are inert stand-ins, require reads the project's Lua directory), never
+    // the engine's: safe from any thread, and the script's top level touches no game state.
+    static LuaPropertiesResult readLuaScriptProperties(ScriptEntry& entry, const std::string& code, const std::string& chunkName);
 
     static void collectModelEntities(Scene* scene, const ModelComponent& model, std::vector<Entity>& out);
 

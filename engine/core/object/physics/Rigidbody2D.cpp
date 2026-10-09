@@ -61,6 +61,8 @@ Rigidbody2D::Rigidbody2D(Scene* scene, Entity entity): EntityHandle(scene, entit
 Rigidbody2D::~Rigidbody2D() = default;
 Rigidbody2D::Rigidbody2D(const Rigidbody2D& rhs) = default;
 Rigidbody2D& Rigidbody2D::operator=(const Rigidbody2D& rhs) = default;
+Rigidbody2D::Rigidbody2D(Rigidbody2D&& rhs) noexcept = default;
+Rigidbody2D& Rigidbody2D::operator=(Rigidbody2D&& rhs) noexcept = default;
 
 void Rigidbody2D::checkBody(const Rigidbody2DComponent& body) const{
     // Scripts start (Lua init(), C++ constructors) before their scene enters the Engine,

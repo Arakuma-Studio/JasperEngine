@@ -21,6 +21,11 @@ Mesh::Mesh(Scene* scene, Entity entity): GameObject(scene, entity){
 Mesh::~Mesh(){
 }
 
+Mesh::Mesh(const Mesh& rhs) = default;
+Mesh& Mesh::operator=(const Mesh& rhs) = default;
+Mesh::Mesh(Mesh&& rhs) noexcept = default;
+Mesh& Mesh::operator=(Mesh&& rhs) noexcept = default;
+
 bool Mesh::load(){
     MeshComponent& mesh = getComponent<MeshComponent>();
 
