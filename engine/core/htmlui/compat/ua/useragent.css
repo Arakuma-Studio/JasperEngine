@@ -413,8 +413,12 @@ input[type="checkbox"], input[type="radio"] {
     cursor: default;
 }
 
+/* a checkbox's baseline is its border box's bottom edge (Chromium's themed control), not its
+   bottom margin edge as for an empty inline-block: lowered by its 3px bottom margin. Without
+   its look (`appearance: none`) it is an empty inline-block again (--html-check-baseline 0px). */
 input[type="checkbox"] {
     margin: 3px 3px 3px 4px;
+    vertical-align: var(--html-check-baseline, -3px);
 }
 
 input[type="radio"] {
@@ -432,7 +436,7 @@ input[type="checkbox"]:checked {
 input[type="radio"]:checked {
     border-color: var(--html-accent, #0075ff);
     background-color: var(--html-accent, #0075ff);
-    box-shadow: inset 0 0 0 2px var(--html-accent-contrast, #ffffff);
+    box-shadow: inset 0 0 0 1.5px var(--html-accent-contrast, #ffffff);
 }
 
 input[type="checkbox"]:disabled, input[type="radio"]:disabled {
@@ -469,9 +473,9 @@ input[type="range"] slidertrack {
     background-color: var(--html-control-bg, #efefef);
 }
 
+/* the fill covers the track's border box (the widget places it at the track's offset) */
 input[type="range"] sliderprogress {
-    margin-top: var(--html-slider-track-margin, 5px);
-    height: 6px;
+    height: 8px;
     border-radius: 3px;
     background-color: var(--html-slider-fill, var(--html-accent, #0075ff));
 }
@@ -528,7 +532,7 @@ select {
 }
 
 select selectvalue {
-    padding-right: 4px;
+    padding-right: 0;
 }
 
 select selectarrow {
@@ -572,12 +576,18 @@ fieldset {
 }
 
 /* A fieldset whose first legend straddles its top border (marked by the HTML stage): the
-   legend starts at the fieldset's top edge, the content below it, and the top border is drawn
-   through the legend's middle (no gap is cut around the legend) */
+   legend starts at the fieldset's top edge, the content below it, and the border is drawn from
+   the legend's middle down (9px for the default 16px legend; no gap is cut around the legend):
+   the top line a gradient, the sides strips of fieldset-border.svg over transparent borders
+   that keep their 2px width */
 fieldset.htmlui-legend {
     padding-top: 0;
     border-top-width: 0;
-    decorator: linear-gradient(to bottom, #00000000 0px, #00000000 8.5px, #c5c5c5 8.5px, #c5c5c5 10.5px, #00000000 10.5px);
+    border-left-color: transparent;
+    border-right-color: transparent;
+    decorator: linear-gradient(to bottom, #00000000 0px, #00000000 8.5px, #c5c5c5 8.5px, #c5c5c5 11px, #00000000 11px),
+               html-layer("/@htmlui/ua/fieldset-border.svg" 2px 100% 0% 9px no-repeat no-repeat border-box border-box scroll),
+               html-layer("/@htmlui/ua/fieldset-border.svg" 2px 100% 100% 9px no-repeat no-repeat border-box border-box scroll);
 }
 
 fieldset.htmlui-legend > legend {

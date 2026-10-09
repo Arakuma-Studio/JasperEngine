@@ -46,6 +46,7 @@ namespace {
         static const std::map<std::string, std::string> defaults = [](){
             std::map<std::string, std::string> out = {
                 {"--html-check", "html-layer(\"/@htmlui/ua/check.svg\" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll)"},
+                {"--html-check-baseline", "-3px"},
                 {"--html-control-bg", "#ffffff"},
                 {"--html-control-border", "#767676"},
                 {"--html-select-arrow", "html-layer(\"/@htmlui/ua/arrow-down.svg\" 10px 6px 3px 50% no-repeat no-repeat padding-box border-box scroll)"},
@@ -235,6 +236,7 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
     const std::string keyword = w.size() == 1 ? identOf(w[0]) : std::string();
     if (keyword == "none"){
         context.emit("--html-check", "none");
+        context.emit("--html-check-baseline", "0px");
         context.emit("--html-control-bg", "transparent");
         context.emit("--html-control-border", "transparent");
         context.emit("--html-select-arrow", "none");
@@ -251,7 +253,7 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         keyword == "slider-horizontal" || keyword == "push-button" || keyword == "square-button"){
         if (keyword != "auto")
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "'appearance: " + keyword + "' is treated as 'auto'");
-        for (const char* companion : {"--html-check", "--html-control-bg", "--html-control-border", "--html-select-arrow", "--html-thumb",
+        for (const char* companion : {"--html-check", "--html-check-baseline", "--html-control-bg", "--html-control-border", "--html-select-arrow", "--html-thumb",
                                       "--html-slider-fill", "--html-slider-height", "--html-slider-track-margin",
                                       "--html-slider-track-height"})
             context.emit(companion, uaCompanionDefault(companion));
