@@ -281,6 +281,19 @@ void jasperengine::htmlui::compat::appendString(std::string& out, std::string_vi
     out += '"';
     size_t i = 0;
     while (i < text.size()){
+        // a run of printable ASCII without '"' and '\\' is written as it is
+        size_t run = i;
+        while (run < text.size()){
+            const unsigned char b = (unsigned char)text[run];
+            if (b < 0x20 || b >= 0x7F || b == '"' || b == '\\')
+                break;
+            run++;
+        }
+        if (run > i){
+            out.append(text.data() + i, run - i);
+            i = run;
+            continue;
+        }
         const uint32_t c = nextCodePoint(text, i);
         if (c == 0)
             out += "\xEF\xBF\xBD";

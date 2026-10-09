@@ -94,11 +94,20 @@ Span<const RewriteRegistration> jasperengine::htmlui::compat::rewriteRegistry(){
 }
 
 RewriteFunction jasperengine::htmlui::compat::findRewrite(RewriteId id){
-    for (const RewriteRegistration& r : kRegistry){
-        if (r.id == id)
-            return r.function;
-    }
-    return nullptr;
+    // the registry by id (the first registration of an id, as a search from the start finds)
+    static const std::vector<RewriteFunction> byId = [](){
+        std::vector<RewriteFunction> table;
+        for (const RewriteRegistration& r : kRegistry){
+            const size_t index = (size_t)r.id;
+            if (table.size() <= index)
+                table.resize(index + 1, nullptr);
+            if (!table[index])
+                table[index] = r.function;
+        }
+        return table;
+    }();
+    const size_t index = (size_t)id;
+    return index < byId.size() ? byId[index] : nullptr;
 }
 
 const VarFamily* jasperengine::htmlui::compat::findVarFamily(const std::string& name){

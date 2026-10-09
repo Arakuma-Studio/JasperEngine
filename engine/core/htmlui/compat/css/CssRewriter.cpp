@@ -219,6 +219,11 @@ namespace {
 
     // ---- Damerau-Levenshtein for unknown property suggestions
 
+    // text.compare(0, prefix.size(), prefix) == 0
+    inline bool startsWith(std::string_view text, std::string_view prefix){
+        return text.size() >= prefix.size() && text.compare(0, prefix.size(), prefix) == 0;
+    }
+
     size_t editDistance(const std::string& a, const std::string& b){
         const size_t n = a.size(), m = b.size();
         std::vector<std::vector<size_t>> d(n + 1, std::vector<size_t>(m + 1));
@@ -705,11 +710,11 @@ namespace {
                     }
                     session.vars.addRawUse(variable);
                 }
-                if (name.compare(0, 12, "border-image") == 0 && !hasIdent(d.value, "none"))
+                if (startsWith(name, "border-image") && !hasIdent(d.value, "none"))
                     session.usesBorderImage = true;
                 if (name == "text-shadow" && !hasIdent(d.value, "none"))
                     session.usesTextShadow = true;
-                if (name.compare(0, 19, "-webkit-text-stroke") == 0)
+                if (startsWith(name, "-webkit-text-stroke"))
                     session.usesTextStroke = true;
                 // (keywordOf(d.value) == "inherit")
                 if (sole && sole->isToken(TokenType::Ident) && equalsNoCase(sole->token.value, "inherit") &&
@@ -841,8 +846,13 @@ namespace {
     // ---- writing
 
     bool mayHaveViewportOrientation(const std::string& value){
-        for (size_t i = 0; i + 3 < value.size(); i++){
-            if ((value[i] == 'v' || value[i] == 'V') && (value[i + 1] == 'm' || value[i + 1] == 'M'))
+        // "vm" in any case with two more characters after it (vmin, vmax), found by the 'm'
+        if (value.size() < 4)
+            return false;
+        const size_t last = value.size() - 3;   // an 'm' at 1 .. last
+        for (size_t i = 1; i <= last; i++){
+            const char m = value[i];
+            if ((m == 'm' || m == 'M') && (value[i - 1] == 'v' || value[i - 1] == 'V'))
                 return true;
         }
         return false;
@@ -1430,7 +1440,7 @@ namespace {
             if (keyframe)
                 continue;
             const bool keyword = CascadeKeywords::isKeywordText(out.value);
-            if (out.name == "color" && out.value.compare(0, 4, "var(") != 0 && !keyword)
+            if (out.name == "color" && !startsWith(out.value, "var(") && !keyword)
                 extra.push_back(OutDecl{companions::kCurrentColor, out.value, out.ref, out.important, false, true});
             // (nothing to add when no rule reads a property with `inherit`)
             if (!session.inheritCompanions.empty() && !keyword && out.value.find("--html-inh-") == std::string::npos){
