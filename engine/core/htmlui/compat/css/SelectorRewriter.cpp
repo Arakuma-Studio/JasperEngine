@@ -1185,6 +1185,7 @@ std::optional<std::vector<ComplexSelector>> SelectorRewriter::parseList(std::str
 SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelector>& list, const SelectorOptions& options,
                                                 DiagnosticSink* sink, SourceRef ruleRef){
     SelectorRewriteResult result;
+    result.selectors.reserve(list.size());
     Rewriter rewriter(options, sink, ruleRef);
     for (size_t sourceIndex = 0; sourceIndex < list.size(); sourceIndex++){
         const ComplexSelector& source = list[sourceIndex];

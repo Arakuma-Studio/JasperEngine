@@ -37,7 +37,18 @@ namespace {
         return !first && ((c >= '0' && c <= '9') || c == '-' || c == '.');
     }
 
+    // is the name an XML name already (xmlName returns it unchanged)?
+    bool isXmlName(const std::string& name){
+        for (size_t i = 0; i < name.size(); i++){
+            if (!isNameCharacter((unsigned char)name[i], i == 0))
+                return false;
+        }
+        return true;
+    }
+
     std::string xmlName(const std::string& name){
+        if (isXmlName(name))
+            return name;
         std::string out;
         for (size_t i = 0; i < name.size(); i++){
             const unsigned char c = (unsigned char)name[i];
@@ -58,6 +69,15 @@ namespace {
             }
         }
         return out;
+    }
+
+    // RmlSerializer::escapeAttribute appended to out (no copy when nothing is escaped)
+    void appendEscapedAttribute(std::string& out, const std::string& value){
+        if (value.find_first_of("&<>\"\n\r\t") == std::string::npos){
+            out += value;
+            return;
+        }
+        out += RmlSerializer::escapeAttribute(value);
     }
 
     struct Writer {
@@ -96,18 +116,18 @@ namespace {
             for (const HtmlAttr& attribute : node.attrs){
                 if (attribute.name == "style" && node.hasRewrittenStyle)
                     continue;
-                const std::string name = xmlName(attribute.name);
-                if (name != attribute.name)
+                if (!isXmlName(attribute.name))
                     continue;   // not an XML name: dropped (HTML-0001 reported the parse error)
                 out += ' ';
                 out += attribute.name;
                 out += "=\"";
-                out += RmlSerializer::escapeAttribute(attribute.hasValue ? attribute.value : std::string());
+                if (attribute.hasValue)
+                    appendEscapedAttribute(out, attribute.value);
                 out += '"';
             }
             if (node.hasRewrittenStyle && !node.rewrittenStyle.empty()){
                 out += " style=\"";
-                out += RmlSerializer::escapeAttribute(node.rewrittenStyle);
+                appendEscapedAttribute(out, node.rewrittenStyle);
                 out += '"';
             }
             if (node.hasLoc){
@@ -125,6 +145,8 @@ namespace {
                 case HtmlNode::Kind::Text: {
                     if (isWhitespaceOnly(node.text) && !svg && isPreformatted(node.parent)){
                         out += referencesFor(node.text);
+                    }else if (node.text.find_first_of("&<>") == std::string::npos){
+                        append(node.text, node.location());   // (escapeText would return it unchanged)
                     }else{
                         append(RmlSerializer::escapeText(node.text), node.location());
                     }

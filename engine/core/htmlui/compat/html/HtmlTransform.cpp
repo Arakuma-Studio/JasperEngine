@@ -3,6 +3,7 @@
 
 #include "htmlui/compat/html/HtmlTransform.h"
 #include "htmlui/compat/LiteralCompare.h"
+#include "htmlui/compat/StringIndex.h"
 
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/ImportManifest.h"
@@ -339,13 +340,8 @@ std::string html::kebabCase(std::string_view name){
 
 const ElementSupport* html::elementRow(const std::string& tag){
     // per thread: compiles may run on several
-    thread_local std::unordered_map<std::string, const ElementSupport*> rows;
-    auto it = rows.find(tag);
-    if (it != rows.end())
-        return it->second;
-    const ElementSupport* row = findElement(tag);
-    rows.emplace(tag, row);
-    return row;
+    thread_local NameTable<const ElementSupport*> rows;
+    return rows.get(tag, [](std::string_view name){ return findElement(name); });
 }
 
 const AttributeSupport* html::attributeRow(const std::string& tag, const std::string& name){

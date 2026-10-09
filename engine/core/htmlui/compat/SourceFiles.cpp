@@ -193,6 +193,19 @@ bool jasperengine::htmlui::compat::stripUtf8Bom(std::string& text){
 }
 
 std::vector<uint32_t> jasperengine::htmlui::compat::sanitizeUtf8(std::string& text){
+    {
+        // plain ASCII without NUL (the common case) is valid as it is
+        bool ascii = true;
+        for (const char c : text){
+            const unsigned char b = (unsigned char)c;
+            if (b == 0 || b >= 0x80){
+                ascii = false;
+                break;
+            }
+        }
+        if (ascii)
+            return {};
+    }
     std::vector<uint32_t> replaced;
     std::string out;
     bool changed = false;

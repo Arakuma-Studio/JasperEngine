@@ -7,6 +7,7 @@
 
 #include "htmlui/compat/html/HtmlTransform.h"
 #include "htmlui/compat/LiteralCompare.h"
+#include "htmlui/compat/StringIndex.h"
 
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/ImportManifest.h"
@@ -778,13 +779,13 @@ namespace {
 
         const std::string& tag = element.tag;
         // most elements need nothing here: one lookup instead of the comparisons below
-        static const std::unordered_set<std::string> special = {
+        static const StringIndex special = makeStringSet({
             "lottie", "htmltemplate", "svg", "video", "audio", "iframe", "canvas", "object", "embed", "portal",
             "frameset", "frame", "applet", "marquee", "track", "param", "map", "area", "datalist", "selectedcontent",
             "lottie-player", "dotlottie-player", "dotlottie-wc", "picture", "img", "wbr", "slot", "meter", "output",
             "select", "optgroup", "q", "font", "bdi", "bdo", "ruby", "rt", "rp", "dialog", "table", "progress", "fieldset",
-        };
-        if (special.find(tag) == special.end()){
+        });
+        if (!special.contains(tag)){
             if (startsWith(tag, "html-reserved-"))
                 return true;
             if (elementRow(tag) == nullptr)
