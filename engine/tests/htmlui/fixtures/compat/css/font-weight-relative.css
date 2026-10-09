@@ -1,0 +1,5 @@
+/* relative weights and styles */
+.bolder { font-weight: bolder; } .lighter { font-weight: lighter; }
+.n { font-weight: 450; } .bold { font-weight: bold; } .normal { font-weight: normal; }
+.oblique { font-style: oblique; } .oblique-angle { font-style: oblique 12deg; } .italic { font-style: italic; }
+.invalid { font-weight: 1200; }

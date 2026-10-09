@@ -1,0 +1,4 @@
+/* word-break, overflow-wrap, word-wrap */
+.a { word-break: break-all; } .b { word-break: break-word; } .c { word-break: keep-all; } .d { word-break: normal; }
+.e { overflow-wrap: break-word; } .f { overflow-wrap: anywhere; } .g { overflow-wrap: normal; } .h { word-wrap: break-word; }
+.i { hyphens: auto; } .j { line-break: strict; }

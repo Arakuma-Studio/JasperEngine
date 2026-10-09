@@ -731,12 +731,25 @@ namespace {
         return walk(values);
     }
 
+    // the declarations that take effect: in one rule the last declaration of a property wins,
+    // so earlier ones are not written
+    std::vector<const OutDecl*> effective(const std::vector<OutDecl>& declarations){
+        std::vector<const OutDecl*> out;
+        std::set<std::string> seen;
+        for (size_t i = declarations.size(); i-- > 0;){
+            if (seen.insert(declarations[i].name).second)
+                out.push_back(&declarations[i]);
+        }
+        std::reverse(out.begin(), out.end());
+        return out;
+    }
+
     void writeBlock(RcssWriter& writer, const std::string& selectors, const std::vector<OutDecl>& declarations, SourceRef ref){
         if (declarations.empty() || selectors.empty())
             return;
         writer.beginRule(selectors, ref);
-        for (const OutDecl& d : declarations)
-            writer.declaration(d.name, d.value, d.ref);
+        for (const OutDecl* d : effective(declarations))
+            writer.declaration(d->name, d->value, d->ref);
         writer.endRule();
     }
 
@@ -931,7 +944,31 @@ namespace {
                 return;
             if (normalized.dependsOnViewport)
                 session.result->dependsOnViewport = true;
-            const std::vector<ComponentValue> value = trimWhitespace(normalized.value);
+            std::vector<ComponentValue> value = trimWhitespace(normalized.value);
+            // RmlUi reads a quoted string only as a whole value: in a list ("Inter", sans-serif)
+            // the strings are written unquoted (exact for font lists, the common case)
+            size_t components = 0;
+            bool hasString = false;
+            for (const ComponentValue& v : value){
+                if (!v.isWhitespace())
+                    components++;
+                if (v.isToken(TokenType::String))
+                    hasString = true;
+            }
+            if (hasString && components > 1){
+                for (ComponentValue& v : value){
+                    if (v.isToken(TokenType::String)){
+                        std::string inner;
+                        for (char c : v.token.value){
+                            if (c != '"' && c != '\\' && c != ';' && c != '}' && c != '{')
+                                inner += c;
+                        }
+                        // written raw (an ident would escape the spaces)
+                        v.token.type = TokenType::Delim;
+                        v.token.value = inner;
+                    }
+                }
+            }
             std::string text = serialize(value);
             std::vector<std::pair<std::string, std::string>> copies;
             for (const std::string& familyName : session.vars.families(d.name)){
@@ -1223,8 +1260,8 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
             RuleOutput out;
             processDeclarations(session, nullptr, RuleOrigin::StyleAttribute, false, styleAttributes[i], out);
             RcssWriter writer(RcssWriter::Mode::DeclarationList);
-            for (const OutDecl& d : out.declarations)
-                writer.declaration(d.name, d.value, d.ref);
+            for (const OutDecl* d : effective(out.declarations))
+                writer.declaration(d->name, d->value, d->ref);
             output.rcss = writer.take(output.lines);
             if (!out.generated.empty()){
                 // rules a style attribute generates (grid children, scrollbars) select the element by its location

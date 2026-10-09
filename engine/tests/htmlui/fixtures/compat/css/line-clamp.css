@@ -1,0 +1,8 @@
+/* the -webkit-line-clamp pattern */
+.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; line-height: 1.5; }
+.clamp-px { display: -webkit-box; -webkit-line-clamp: 2; line-height: 20px; }
+.clamp-no-lh { -webkit-line-clamp: 4; }
+.base { line-height: 1.25; }
+.base.short { -webkit-line-clamp: 2; }
+.standard { line-clamp: 1; }
+.none { -webkit-line-clamp: none; }

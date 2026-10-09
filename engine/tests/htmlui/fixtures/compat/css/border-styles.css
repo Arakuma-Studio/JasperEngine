@@ -1,0 +1,21 @@
+/* border styles until the fork has BorderStyle */
+.solid { border: 2px solid #808080; }
+.dashed { border: 2px dashed #808080; }
+.dotted { border: 2px dotted #808080; }
+.double { border: 3px double #808080; }
+.inset { border: 2px inset #808080; }
+.outset { border: 2px outset #808080; }
+.groove { border: 2px groove #808080; }
+.ridge { border: 2px ridge #808080; }
+.inset-black { border: 1px inset black; }
+.inset-var { border: 1px inset var(--c); }
+.hidden { border: 3px hidden red; }
+.style-alone { border-style: solid; }
+.style-none { border-width: 2px; border-style: none; }
+.style-sides { border-style: solid none dashed; }
+.style-with-width { border-width: 1px; border-style: solid; }
+.base { border-width: 5px; }
+.base:hover { border-style: solid; }
+.side-style { border-bottom-style: dotted; }
+.invalid { border-style: wavy; }
+:root { --c: red; }

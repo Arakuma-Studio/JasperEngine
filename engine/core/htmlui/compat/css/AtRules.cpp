@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <set>
 
 using namespace jasperengine::htmlui::compat;
 
@@ -426,8 +427,14 @@ namespace {
                 for (double o : offsets)
                     selector += (selector.empty() ? "" : ", ") + offsetText(o);
                 writer.atRule(selector + " {", block.ref);
-                for (const OutDecl& d : block.declarations)
-                    writer.atRule(d.name + ": " + d.value + ";", d.ref);
+                std::set<std::string> later;
+                std::vector<const OutDecl*> kept;
+                for (size_t i = block.declarations.size(); i-- > 0;){
+                    if (later.insert(block.declarations[i].name).second)
+                        kept.insert(kept.begin(), &block.declarations[i]);
+                }
+                for (const OutDecl* d : kept)
+                    writer.atRule(d->name + ": " + d->value + ";", d->ref);
                 writer.atRule("}", block.ref);
             }
             writer.atRule("}", rule.ref);

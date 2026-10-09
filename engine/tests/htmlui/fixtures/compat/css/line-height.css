@@ -1,0 +1,3 @@
+/* line-height: normal is 1.2 */
+.normal { line-height: normal; } .number { line-height: 1.5; } .px { line-height: 24px; } .percent { line-height: 150%; }
+.zero { line-height: 0; } .em { line-height: 2em; } .invalid { line-height: tall; }

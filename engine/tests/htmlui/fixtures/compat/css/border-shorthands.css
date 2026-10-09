@@ -1,0 +1,16 @@
+/* border shorthands become width and color longhands per side */
+.all { border: 2px solid #333; }
+.order { border: red dashed 1px; }
+.width-only { border: 4px; }
+.style-only { border: solid; }
+.none { border: none; }
+.zero { border: 0; }
+.side { border-top: 1px solid rgba(255,255,255,.1); border-bottom: thick double blue; }
+.widths { border-width: 1px 2px 3px 4px; border-color: red green; }
+.width-keywords { border-left-width: thin; border-right-width: medium; border-top-width: thick; }
+.colors { border-color: red green blue yellow; border-top-color: transparent; }
+.var-color { border: 1px solid var(--line); }
+.var-width { border-width: var(--w); }
+.var-all { border: var(--b); }
+.invalid { border: 1px solid red blue; }
+:root { --line: #444; --b: 1px solid red; }
