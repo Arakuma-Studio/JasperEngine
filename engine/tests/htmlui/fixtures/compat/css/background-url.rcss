@@ -1,0 +1,76 @@
+#htmlui-root .s1 {
+background-color: transparent;
+decorator: html-layer("/compat/css/img/a.png" auto auto 0px 0px no-repeat no-repeat padding-box border-box scroll);
+}
+#htmlui-root .s2 {
+background-color: transparent;
+decorator: html-layer("/compat/css/img/a.png" 100% 100% 0px 0px no-repeat no-repeat padding-box border-box scroll);
+}
+#htmlui-root .s3 {
+background-color: transparent;
+decorator: html-layer("/compat/css/img/a.png" 2em auto 50% 50% repeat repeat padding-box border-box scroll);
+}
+#htmlui-root .p1 {
+background-color: transparent;
+decorator: html-layer("/compat/css/img/a.png" auto auto 10% 20% no-repeat no-repeat padding-box border-box scroll);
+}
+#htmlui-root .p2 {
+background-color: transparent;
+decorator: html-layer("/compat/css/img/a.png" auto auto 100%-8px 100%-4px no-repeat no-repeat padding-box border-box scroll);
+}
+#htmlui-root .p3 {
+background-color: transparent;
+decorator: html-layer("/compat/css/img/a.png" auto auto 100% 100% no-repeat no-repeat padding-box border-box scroll);
+}
+#htmlui-root .p4 {
+background-color: transparent;
+decorator: html-layer("/compat/css/img/a.png" auto auto 25% 50% no-repeat no-repeat padding-box border-box scroll);
+}
+#htmlui-root .r1 {
+background-color: transparent;
+decorator: html-layer("/compat/css/img/a.png" auto auto 0% 0% repeat space padding-box border-box scroll);
+}
+#htmlui-root .r2 {
+background-color: transparent;
+decorator: html-layer("/compat/css/img/a.png" auto auto 0% 0% round no-repeat padding-box border-box scroll);
+}
+#htmlui-root .o1 {
+background-color: transparent;
+decorator: html-layer("/compat/css/img/a.png" auto auto 0% 0% no-repeat no-repeat content-box padding-box scroll);
+}
+#htmlui-root .a1 {
+background-color: transparent;
+decorator: html-layer("/compat/css/img/a.png" cover cover 50% 50% no-repeat no-repeat padding-box border-box fixed);
+}
+#htmlui-root .svg {
+background-color: transparent;
+decorator: html-layer("/compat/css/img/icon.svg" 24px auto 50% 50% no-repeat no-repeat padding-box border-box scroll);
+}
+#htmlui-root .data {
+decorator: html-layer("/@htmlui/data/4a5eb7171b58.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+}
+#htmlui-root .remote {
+background-color: transparent;
+decorator: html-layer("/compat/css/img/a.png" cover cover 50% 50% repeat repeat padding-box border-box scroll);
+}
+#htmlui-root .remote-missing {
+background-color: transparent;
+decorator: none;
+}
+#htmlui-root .manifest-missing-file {
+background-color: transparent;
+decorator: html-layer("/compat/css/img/missing.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+}
+#htmlui-root .missing {
+background-color: transparent;
+decorator: html-layer("/compat/css/img/nope.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+}
+#htmlui-root .set {
+decorator: html-layer("/compat/css/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+}
+#htmlui-root .set-webkit {
+decorator: html-layer("/compat/css/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+}
+#htmlui-root .unsupported {
+decorator: none;
+}

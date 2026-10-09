@@ -1,0 +1,43 @@
+#htmlui-root .layered {
+color: #808080ff;
+--html-current-color: #808080ff;
+}
+#htmlui-root .layered {
+color: #808080ff;
+--html-current-color: #808080ff;
+}
+#htmlui-root .from-base {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+}
+@media (min-width: 600px) {
+#htmlui-root .media-only {
+color: #800080ff;
+--html-current-color: #800080ff;
+}
+}
+#htmlui-root .from-base {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+}
+#htmlui-root .cycle-b {
+color: #0000ffff;
+--html-current-color: #0000ffff;
+}
+#htmlui-root .cycle-a {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+}
+#htmlui-root .remote-theme {
+background-color: #101010ff;
+}
+@font-face {
+font-family: Inter;
+src: fonts/Roboto-Bold.ttf;
+font-weight: 400;
+font-style: normal;
+}
+#htmlui-root .local {
+color: #000000ff;
+--html-current-color: #000000ff;
+}

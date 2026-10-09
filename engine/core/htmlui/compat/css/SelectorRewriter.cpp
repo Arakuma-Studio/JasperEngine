@@ -342,10 +342,23 @@ namespace {
 
     // ---- serialization
 
+    // An+B as RmlUi reads it ("2n+1"): the signs of the B part kept
     std::string anbText(const std::vector<ComponentValue>& arguments){
-        std::string text = serialize(trimWhitespace(arguments));
-        text.erase(std::remove(text.begin(), text.end(), ' '), text.end());
-        return lowerAscii(text);
+        std::string text;
+        for (const ComponentValue& v : arguments){
+            if (v.isWhitespace() || v.isToken(TokenType::Comment))
+                continue;
+            if (v.isToken(TokenType::Number)){
+                if (!text.empty() && v.token.number >= 0 && text.back() != '+' && text.back() != '-')
+                    text += '+';
+                text += formatNumber(v.token.number);
+            }else if (v.isToken(TokenType::Dimension)){
+                text += formatNumber(v.token.number) + lowerAscii(v.token.unit);
+            }else{
+                text += lowerAscii(serialize(v));
+            }
+        }
+        return text;
     }
 
     bool hasOf(const std::vector<ComponentValue>& arguments){
@@ -394,7 +407,7 @@ namespace {
                         const std::string& n = simple.name;
                         if (n != "is" && n != "where" && n != "matches" && n != "-webkit-any" && n != "-moz-any")
                             continue;
-                        if (options.fork.has(ForkFeature::RootIsWhere) && (n == "is" || n == "where"))
+                        if (options.fork.has(ForkFeature::RootIsWhere))
                             continue;
                         if (n == "where")
                             report(codes::IsWhereExpanded, &simple, "':where()' is expanded into separate selectors; it keeps the specificity of its arguments instead of zero",
@@ -707,8 +720,10 @@ namespace {
                     target.push_back(std::move(copy));
                     return true;
                 }
-                if ((n == "is" || n == "where") && options.fork.has(ForkFeature::RootIsWhere)){
+                if ((n == "is" || n == "where" || n == "matches" || n == "-webkit-any" || n == "-moz-any") && options.fork.has(ForkFeature::RootIsWhere)){
                     SimpleSelector copy = simple;
+                    if (n != "where")
+                        copy.name = "is";
                     copy.selectors.clear();
                     for (const ComplexSelector& argument : simple.selectors){
                         ComplexSelector variant = argument;

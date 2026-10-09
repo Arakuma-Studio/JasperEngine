@@ -1,0 +1,14 @@
+#htmlui-root .box {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+}
+@media (min-width: 600px) and (orientation: landscape) {
+#htmlui-root .box {
+border-radius: 10vh;
+}
+}
+@media (min-width: 600px) and (orientation: portrait) {
+#htmlui-root .box {
+border-radius: 10vw;
+}
+}

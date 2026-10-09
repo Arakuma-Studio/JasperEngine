@@ -1,0 +1,40 @@
+#htmlui-root *, body#htmlui-root {
+margin: 0;
+}
+#htmlui-root htmlbody .btn {
+color: #008000ff;
+--html-current-color: #008000ff;
+}
+#htmlui-root a {
+color: #800080ff;
+--html-current-color: #800080ff;
+}
+#htmlui-root .btn {
+color: #0000ffff;
+--html-current-color: #0000ffff;
+padding: 8px;
+}
+@media (min-width: 600px) {
+#htmlui-root .btn {
+padding: 12px;
+}
+}
+#htmlui-root .anon {
+color: #808080ff;
+--html-current-color: #808080ff;
+}
+#htmlui-root h1 {
+font-size: 2em;
+}
+#htmlui-root .plain {
+color: #000000ff;
+--html-current-color: #000000ff;
+}
+#htmlui-root .btn {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+}
+#htmlui-root a {
+color: #ffa500ff;
+--html-current-color: #ffa500ff;
+}

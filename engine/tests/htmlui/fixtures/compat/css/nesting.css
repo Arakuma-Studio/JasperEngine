@@ -1,0 +1,24 @@
+/* CSS Nesting flattened */
+.card {
+  color: red;
+  & .title { font-size: 2em; }
+  &:hover { color: blue; }
+  .body { padding: 4px; }
+  > .icon { width: 16px; }
+  + .card { margin-top: 8px; }
+  &.active { border: 1px solid; }
+  .parent & { color: gray; }
+  @media (min-width: 600px) { padding: 10px; .title { font-size: 3em; } }
+  background-color: white;
+  &__elem { color: green; }
+}
+.a, .b {
+  .c, .d { color: purple; }
+  & + & { margin: 0; }
+}
+ul { & > li { & > a { color: navy; } } }
+.x { @supports (display: flex) { display: flex; } }
+.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17 {
+  .k1, .k2, .k3, .k4, .k5, .k6, .k7, .k8, .k9, .k10, .k11, .k12, .k13, .k14, .k15, .k16 { color: red; }
+}
+& { color: black; }

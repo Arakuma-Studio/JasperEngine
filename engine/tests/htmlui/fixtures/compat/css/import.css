@@ -1,0 +1,17 @@
+@charset "utf-8";
+@layer theme;
+@import url(imports/base.css);
+@import "imports/media.css" screen and (min-width: 600px);
+@import url("imports/layered.css") layer(theme);
+@import url("imports/layered.css") layer;
+@import url(imports/base.css) supports(display: grid);
+@import url(imports/deep.css) supports(display: flex) print;
+@import url(imports/cycle-a.css);
+@import url(https://cdn.example.com/theme.css);
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;700");
+@import url(https://cdn.example.com/not-imported.css);
+@import url(imports/missing.css);
+@import url(data:text/css,.x{color:red});
+@import;
+.local { color: black; }
+@import url(imports/deep.css);

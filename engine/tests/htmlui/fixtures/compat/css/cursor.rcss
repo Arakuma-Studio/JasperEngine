@@ -1,0 +1,45 @@
+#htmlui-root .p {
+cursor: pointer;
+}
+#htmlui-root .d {
+cursor: default;
+}
+#htmlui-root .t {
+cursor: text;
+}
+#htmlui-root .g {
+cursor: grab;
+}
+#htmlui-root .gg {
+cursor: grabbing;
+}
+#htmlui-root .n {
+cursor: not-allowed;
+}
+#htmlui-root .url {
+cursor: pointer;
+}
+#htmlui-root .two {
+cursor: move;
+}
+#htmlui-root .pe {
+pointer-events: none;
+}
+#htmlui-root .pe2 {
+pointer-events: auto;
+}
+#htmlui-root .pe3 {
+pointer-events: auto;
+}
+#htmlui-root .caret {
+caret-color: #ff0000ff;
+}
+#htmlui-root .caret2 {
+caret-color: auto;
+}
+#htmlui-root .tab {
+tab-index: auto;
+focus: none;
+nav-up: #a;
+drag: drag;
+}

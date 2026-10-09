@@ -1,0 +1,2 @@
+compat/css/text-shadow.css:5:13: info: text-shadow without a color uses white (font effects cannot follow currentColor) (fix: give the shadow a color) [HTMLUI-CSS-0005]
+compat/css/text-shadow.css:11:12: warning: 'text-shadow: 1px' is not supported; declaration dropped (fix: write text-shadow: <x> <y> [<blur>] [<color>], ...) [HTMLUI-CSS-0004]

@@ -1,0 +1,118 @@
+#htmlui-root .all-parts {
+animation: 2s 0.5s infinite alternate paused quadratic-in-out pulse;
+-html-animation-fill: forwards;
+}
+#htmlui-root .ms {
+animation: 0.3s quadratic-out fade;
+-html-animation-fill: none;
+}
+#htmlui-root .reverse {
+animation: 1s quadratic-out slide-rev;
+-html-animation-fill: none;
+}
+#htmlui-root .alt-reverse {
+animation: 1s infinite alternate quadratic-out slide-rev;
+-html-animation-fill: none;
+}
+#htmlui-root .forwards {
+animation: 0.5s 0.2s quadratic-out fade;
+-html-animation-fill: forwards;
+}
+#htmlui-root .backwards {
+animation: 1s 1s quadratic-out fade;
+-html-animation-fill: none;
+}
+#htmlui-root .both-nodelay {
+animation: 1s quadratic-out fade;
+-html-animation-fill: forwards;
+}
+#htmlui-root .fraction {
+animation: 1s 3 quadratic-out fade;
+-html-animation-fill: none;
+}
+#htmlui-root .zero-count {
+animation: none;
+-html-animation-fill: none;
+}
+#htmlui-root .zero-duration {
+animation: none;
+-html-animation-fill: none;
+}
+#htmlui-root .none {
+animation: none;
+-html-animation-fill: none;
+}
+#htmlui-root .list {
+animation: 1s quadratic-out fade, 2s infinite linear-in-out pulse;
+-html-animation-fill: none;
+}
+#htmlui-root .longhands {
+animation: 1.5s infinite alternate paused linear-in-out pulse;
+-html-animation-fill: none;
+}
+#htmlui-root .item {
+animation: 0.4s sine-out fade;
+-html-animation-fill: forwards;
+}
+#htmlui-root .item:nth-child(2) {
+animation: 0.4s 0.1s sine-out fade;
+-html-animation-fill: forwards;
+}
+#htmlui-root .item:nth-child(3) {
+animation: 0.4s 0.2s sine-out fade;
+-html-animation-fill: forwards;
+}
+#htmlui-root .fill-only {
+-html-animation-fill: forwards;
+}
+#htmlui-root .quoted {
+animation: 1s quadratic-out kf-fc01caf3;
+-html-animation-fill: none;
+}
+#htmlui-root .bezier {
+animation: 1s sine-out pulse;
+-html-animation-fill: none;
+}
+@keyframes fade {
+0% {
+opacity: 0;
+}
+100% {
+opacity: 1;
+}
+}
+@keyframes pulse {
+0%, 100% {
+transform: scale(1);
+}
+50% {
+transform: scale(1.1);
+}
+}
+@keyframes slide {
+0% {
+left: 0;
+}
+30% {
+left: 50px;
+}
+100% {
+left: 100px;
+}
+}
+@keyframes slide-rev {
+100% {
+left: 0;
+}
+70% {
+left: 50px;
+}
+0% {
+left: 100px;
+}
+}
+@keyframes kf-fc01caf3 {
+100% {
+opacity: 0.5;
+}
+}

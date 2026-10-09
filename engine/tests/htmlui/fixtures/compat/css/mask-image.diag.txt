@@ -1,0 +1,4 @@
+compat/css/mask-image.css:7:9: info: 'mask-mode' is not supported; dropped (fix: use an alpha mask image (mask-image)) [HTMLUI-CSS-0002]
+compat/css/mask-image.css:7:31: info: 'mask-composite' is not supported; dropped (fix: use an alpha mask image (mask-image)) [HTMLUI-CSS-0002]
+compat/css/mask-image.css:7:52: info: 'mask-type' is not supported; dropped (fix: use an alpha mask image (mask-image)) [HTMLUI-CSS-0002]
+compat/css/mask-image.css:9:62: info: clip-path clips the drawing, not the pointer hit area [HTMLUI-CSS-0005]

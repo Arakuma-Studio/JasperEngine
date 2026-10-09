@@ -1,0 +1,59 @@
+#htmlui-root .ms {
+transition: opacity 0.2s quadratic-out;
+}
+#htmlui-root .all-others {
+transition: all 0.3s quadratic-out;
+}
+#htmlui-root .unknown {
+transition: opacity 0.2s quadratic-out, fill 0.5s quadratic-out;
+}
+#htmlui-root .zero {
+transition: transform 0.3s quadratic-out;
+}
+#htmlui-root .keywords {
+transition: none;
+}
+#htmlui-root .real {
+transition: opacity 1s linear-in-out, transform 1s quadratic-out, color 1s sine-in, width 1s sine-out, height 1s quadratic-in-out;
+}
+#htmlui-root .bezier {
+transition: transform 0.4s quintic-in-out;
+}
+#htmlui-root .steps {
+transition: opacity 1s linear-in-out, color 1s linear-in-out;
+}
+#htmlui-root .linear-fn {
+transition: opacity 1s quartic-in;
+}
+#htmlui-root .default {
+transition: background-color decorator 0.3s quadratic-out;
+}
+#htmlui-root .delay {
+transition: opacity 0.5s sine-in 0.1s, transform 1s quadratic-out -0.2s;
+}
+#htmlui-root .mapped {
+transition: box-shadow 0.2s quadratic-out, font-effect 0.3s quadratic-out, decorator 1s quadratic-out, transform 1s quadratic-out;
+}
+#htmlui-root .none {
+transition: none;
+}
+#htmlui-root .longhands {
+transition: opacity 0.3s sine-out, transform 1s sine-out 0.05s;
+}
+#htmlui-root .base {
+transition: opacity 1s quadratic-out;
+}
+#htmlui-root .base:hover {
+transition: opacity 2s quadratic-out;
+}
+#htmlui-root .var {
+transition: opacity var(--dur) var(--ease);
+}
+#htmlui-root .whole {
+transition: var(--t);
+}
+body#htmlui-root {
+--dur: 0.15s;
+--ease: sine-out;
+--t: color 1s quadratic-out;
+}

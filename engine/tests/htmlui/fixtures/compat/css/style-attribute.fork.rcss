@@ -1,0 +1,14 @@
+color: #ff0000ff; --html-current-color: #ff0000ff; background-color: #00000080; decorator: none; padding: 4px 8px;
+border-top-width: 1px; border-top-style: solid; border-top-color: var(--html-current-color, #000000ff); border-right-width: 1px; border-right-style: solid; border-right-color: var(--html-current-color, #000000ff); border-bottom-width: 1px; border-bottom-style: solid; border-bottom-color: var(--html-current-color, #000000ff); border-left-width: 1px; border-left-style: solid; border-left-color: var(--html-current-color, #000000ff); transition: opacity 0.2s ease;
+width: 250px; height: 100px;
+margin: 0 !important; color: #0000ffff !important; --html-current-color: #0000ffff !important;
+display: grid; grid-template-columns: repeat(2, 1fr);
+font-effect: glow(0px 2px 0px 0px #ffffffff); top: unset; right: unset; bottom: unset; left: unset; color: inherit;
+--local: 10px; width: var(--local); decorator: html-layer("/ui/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+/* important */
+#htmlui-root [data-htmlui-loc="5"] > scrollbarvertical {
+width: 0px;
+}
+#htmlui-root [data-htmlui-loc="5"] > scrollbarhorizontal {
+height: 0px;
+}

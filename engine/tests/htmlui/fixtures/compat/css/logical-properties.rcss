@@ -1,0 +1,29 @@
+#htmlui-root .m {
+margin-right: 20px;
+margin-top: 5px;
+margin-left: auto;
+margin-bottom: 1em;
+}
+#htmlui-root .p {
+padding-left: 1rem;
+padding-bottom: 4px;
+padding-right: 3px;
+padding-top: 0;
+}
+#htmlui-root .i {
+right: 0;
+top: 10px;
+left: 5%;
+bottom: auto;
+}
+#htmlui-root .s {
+width: 100px;
+height: 50%;
+min-width: 10px;
+max-width: 40em;
+min-height: 0px;
+max-height: none;
+}
+#htmlui-root .fit {
+width: auto;
+}

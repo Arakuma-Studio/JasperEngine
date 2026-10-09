@@ -1,0 +1,45 @@
+@font-face {
+font-family: Game Font;
+src: fonts/Roboto-Bold.ttf;
+font-weight: 700;
+font-style: normal;
+}
+@font-face {
+font-family: Body;
+src: fonts/Roboto-Italic.ttf;
+font-weight: 400;
+font-style: italic;
+}
+@font-face {
+font-family: Variable;
+src: fonts/Roboto-Bold.ttf;
+font-weight: 400;
+font-style: normal;
+}
+@font-face {
+font-family: Range;
+src: fonts/Roboto-Bold.ttf;
+font-weight: 500;
+font-style: normal;
+}
+@font-face {
+font-family: Oblique;
+src: fonts/Roboto-Italic.ttf;
+font-weight: 700;
+font-style: italic;
+}
+@font-face {
+font-family: Remote;
+src: fonts/Roboto-Bold.ttf;
+font-weight: 400;
+font-style: normal;
+}
+@font-face {
+font-family: Missing;
+src: compat/css/fonts/missing.ttf;
+font-weight: 400;
+font-style: normal;
+}
+#htmlui-root .use {
+font-family: Game Font, Body, Unknown Family, sans-serif;
+}

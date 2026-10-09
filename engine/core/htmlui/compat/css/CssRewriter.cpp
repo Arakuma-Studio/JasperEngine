@@ -169,13 +169,14 @@ std::optional<TypedVar> Session::typedVar(const ComponentValue& var, const std::
         for (const CustomPropertyIndex::Entry& entry : *entries){
             std::vector<std::string> nested;
             CustomPropertyIndex::referencedVariables(entry.value, nested);
-            if (!nested.empty() && !vars.inPlace(name) && kind != "color")
+            if (!nested.empty() && kind != "color")
                 return std::nullopt;
         }
     }
     TypedVar typed;
     typed.kind = kind;
-    std::string reference = "var(" + (vars.declared(name) ? vars.typedName(name, family) : name);
+    // colors are written the same in every family: the variable itself
+    std::string reference = "var(" + (vars.declared(name) && kind != "color" ? vars.typedName(name, family) : name);
     if (hasFallback && !fallback.empty()){
         std::optional<std::string> transformed = f->transform(*this, fallback, kind, SourceRef());
         if (transformed)
@@ -350,6 +351,18 @@ namespace {
                 std::optional<ImportedSheet> imported = Import::load(session, rule, scope.file, chain);
                 if (!imported)
                     continue;
+                if (!imported->supports.empty()){
+                    // supports(<declaration>) is a condition in parentheses
+                    std::vector<ComponentValue> condition = trimWhitespace(imported->supports);
+                    if (!condition.empty() && condition[0].isToken(TokenType::Ident) && !equalsNoCase(condition[0].token.value, "not")){
+                        ComponentValue block;
+                        block.kind = ComponentValue::Kind::Block;
+                        block.token.type = TokenType::LeftParen;
+                        block.children = condition;
+                        condition = {block};
+                    }
+                    imported->supports = condition;
+                }
                 if (!imported->supports.empty() && !AtRules::evaluateCondition(session, imported->supports, scope.file)){
                     session.sink->report(codes::SupportsEvaluated, rule.ref, "@import supports(" + serialize(trimWhitespace(imported->supports)) +
                                          ") is false: the sheet is not imported");
@@ -961,6 +974,13 @@ namespace {
             if (normalized.dependsOnViewport)
                 session.result->dependsOnViewport = true;
             std::vector<ComponentValue> value = trimWhitespace(normalized.value);
+            for (const ComponentValue& v : value){
+                if (v.isBlock(TokenType::LeftBrace)){
+                    session.sink->report(codes::UnsupportedValue, d.ref, "custom property '" + d.name +
+                                         "' holds a {} block, which the engine's style sheets cannot hold; dropped", std::string(), std::string(), d.name);
+                    return;
+                }
+            }
             // RmlUi reads a quoted string only as a whole value: in a list ("Inter", sans-serif)
             // the strings are written unquoted (exact for font lists, the common case)
             size_t components = 0;
@@ -991,9 +1011,13 @@ namespace {
                 const VarFamily* family = findVarFamily(familyName);
                 if (!family)
                     continue;
-                std::vector<ComponentValue> substituted = value;
+                // only a variable whose every declaration has one kind is written in that kind
+                const ComponentValue reference = ValueNormalizer::function("var", {ValueNormalizer::ident(d.name)});
+                const std::optional<TypedVar> typed = session.typedVar(reference, familyName);
+                if (!typed || typed->kind == "color")
+                    continue;
                 const std::string kind = family->classify(session, value);
-                if (kind.empty())
+                if (kind != typed->kind)
                     continue;
                 std::optional<std::string> transformed = family->transform(session, value, kind, d.ref);
                 if (!transformed)

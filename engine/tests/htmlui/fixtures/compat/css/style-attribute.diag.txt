@@ -1,0 +1,8 @@
+ui/page.html:3:27: warning: 'calc(100% - 20px)' is reduced to '100%' until the fork has calc() (fix: size the element with box-sizing, padding or flex instead) [HTMLUI-CSS-0007]
+ui/page.html:4:8: info: '50vmin' in a style attribute is evaluated for the current viewport (1000x500) [HTMLUI-CSS-0013]
+ui/page.html:4:24: info: '10vmax' in a style attribute is evaluated for the current viewport (1000x500) [HTMLUI-CSS-0013]
+ui/page.html:4:43: info: 'clamp(12px, 2vw, 20px)' compares values in different units; it is decided for the load-time context and re-evaluated when the viewport changes [HTMLUI-CSS-0013]
+ui/page.html:6:1: warning: 'display: grid' is drawn as a wrapping flex container until the fork has Grid (fix: lay the items out with flex) [HTMLUI-CSS-0007]
+ui/page.html:6:16: info: 'grid-template-columns: repeat(2, 1fr)' is approximated with flex items until the fork has Grid [HTMLUI-CSS-0007]
+ui/page.html:7:1: warning: 'colr' is not a CSS property; dropped (fix: did you mean 'color'?) [HTMLUI-CSS-0001]
+ui/page.html:8:55: error: image 'img/a.png' not found (resolved to ui/img/a.png) (fix: check the path: relative paths start at the referencing file's directory, '/' at the assets directory) [HTMLUI-GEN-0001]

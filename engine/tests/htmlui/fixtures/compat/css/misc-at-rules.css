@@ -1,0 +1,16 @@
+/* at-rules dropped with their contents, or written through */
+@container sidebar (min-width: 400px) { .a { width: 1px; } }
+@scope (.card) { .b { width: 2px; } }
+@starting-style { .c { opacity: 0; } }
+@document url-prefix() { .d { width: 3px; } }
+@-moz-document url-prefix() { .e { width: 4px; } }
+@page { margin: 1cm; }
+@namespace svg url(http://www.w3.org/2000/svg);
+@counter-style thumbs { system: cyclic; symbols: "👍"; }
+@font-feature-values Font One { @styleset { nice-style: 12; } }
+@font-palette-values --x { font-family: Bixa; }
+@view-transition { navigation: auto; }
+@unknown-rule { .f { width: 5px; } }
+@decorator tiles : tiled-box { top-left-image: a; }
+@spritesheet sheet { src: img/a.png; s1: 0px 0px 10px 10px; }
+.kept { width: 6px; }

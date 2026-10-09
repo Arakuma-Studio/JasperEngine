@@ -1,0 +1,39 @@
+#htmlui-root .native {
+width: 10px;
+height: 2em;
+margin: 1rem 50% 10vw 10vh;
+padding: 1in 1cm 1mm 1pt;
+border-width: 1pc;
+left: 2dp;
+}
+#htmlui-root .q {
+width: 10mm;
+}
+#htmlui-root .viewport-variants {
+height: 100vh;
+min-height: 100vh;
+max-height: 100vh;
+width: 50vw;
+min-width: 10vw;
+max-width: 90vw;
+top: 10vw;
+bottom: 5vh;
+}
+#htmlui-root .font-relative {
+width: 10em;
+height: 1.5em;
+margin-top: 1.4em;
+margin-bottom: 1em;
+padding-top: 2.4em;
+padding-bottom: 1.2rem;
+}
+#htmlui-root .angles {
+transform: rotate(45deg) rotate(1rad) rotate(90deg) rotate(180deg);
+}
+#htmlui-root .times {
+transition: opacity 1s, color 0.5s;
+}
+#htmlui-root .zero {
+margin: 0;
+border-width: 0px;
+}
