@@ -319,7 +319,7 @@ namespace {
         const std::vector<std::string> outset = boxValues(image.outset);
         const std::string repeatX = image.repeat[0];
         const std::string repeatY = image.repeat.size() > 1 ? image.repeat[1] : image.repeat[0];
-        return "html-border-image(" + serializeString(image.source) + " " + join(slice) + " " + (image.fill ? "fill" : "none") + " " +
+        return "html-border-image(" + serializeString(image.source) + " " + join(slice) + " " + (image.fill ? "fill" : "nofill") + " " +
                join(width) + " " + join(outset) + " " + repeatX + " " + repeatY + ")";
     }
 
