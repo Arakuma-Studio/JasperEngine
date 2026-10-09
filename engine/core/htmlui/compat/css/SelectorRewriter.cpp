@@ -25,6 +25,11 @@ namespace {
     void appendComplex(std::string& text, const ComplexSelector& selector, bool prefixed = false);
     constexpr const char* kRootId = "htmlui-root";
 
+    // a Delim token of that character
+    inline bool isDelimChar(const ComponentValue& v, char c){
+        return v.kind == ComponentValue::Kind::Token && v.token.type == TokenType::Delim && v.token.value.size() == 1 && v.token.value[0] == c;
+    }
+
     bool isWs(const ComponentValue& v){
         return v.isWhitespace() || v.isToken(TokenType::Comment);
     }
@@ -133,7 +138,7 @@ namespace {
                     const std::string& d = t->token.value;
                     if (d == ">" || d == "+" || d == "~")
                         explicitCombinator = d[0];
-                    else if (d == "|" && i + 1 < end && tokens[i + 1]->isToken(TokenType::Delim) && tokens[i + 1]->token.value == "|"){
+                    else if (d == "|" && i + 1 < end && isDelimChar(*tokens[i + 1], '|')){
                         explicitCombinator = '|';
                         i++;
                     }
@@ -159,8 +164,16 @@ namespace {
                         j++;
                     compound.simples.reserve(j - i);
                 }
-                if (selector.compounds.empty())
-                    selector.compounds.reserve(4);
+                if (selector.compounds.empty()){
+                    // at most one compound per whitespace- or combinator-separated run
+                    size_t runs = 1;
+                    for (size_t k = i + 1; k < end; k++){
+                        const ComponentValue& v = *tokens[k];
+                        if (v.isWhitespace() || isDelimChar(v, '>') || isDelimChar(v, '+') || isDelimChar(v, '~') || isDelimChar(v, '|'))
+                            runs++;
+                    }
+                    selector.compounds.reserve(runs < 3 ? runs : 3);
+                }
                 if (!parseCompound(tokens, i, end, compound))
                     return false;
                 compound.combinator = first ? (selector.relative ? combinator : 0) : (combinator ? combinator : ' ');
@@ -183,27 +196,26 @@ namespace {
                 const ComponentValue* t = tokens[i];
                 if (t->isWhitespace())
                     break;
-                if (t->isToken(TokenType::Delim) && (t->token.value == ">" || t->token.value == "+" || t->token.value == "~"))
+                if ((isDelimChar(*t, '>') || isDelimChar(*t, '+') || isDelimChar(*t, '~')))
                     break;
-                if (t->isToken(TokenType::Delim) && t->token.value == "|" && i + 1 < end && tokens[i + 1]->isToken(TokenType::Delim) &&
-                    tokens[i + 1]->token.value == "|")
+                if (isDelimChar(*t, '|') && i + 1 < end && isDelimChar(*tokens[i + 1], '|'))
                     break;
                 SimpleSelector simple;
                 simple.ref = refOf(t);
                 // type or universal, with an optional namespace prefix
-                if ((t->isToken(TokenType::Ident) || (t->isToken(TokenType::Delim) && (t->token.value == "*" || t->token.value == "|"))) &&
+                if ((t->isToken(TokenType::Ident) || ((isDelimChar(*t, '*') || isDelimChar(*t, '|')))) &&
                     !any){
                     bool hasNs = false;
                     const ComponentValue* name = t;
-                    if (t->isToken(TokenType::Delim) && t->token.value == "|"){
+                    if (isDelimChar(*t, '|')){
                         hasNs = true;
                         if (i + 1 >= end){
                             fail(t, "namespace without a name");
                             return false;
                         }
                         name = tokens[++i];
-                    }else if (i + 2 < end && tokens[i + 1]->isToken(TokenType::Delim) && tokens[i + 1]->token.value == "|" &&
-                              !(tokens[i + 2]->isToken(TokenType::Delim) && tokens[i + 2]->token.value == "|")){
+                    }else if (i + 2 < end && isDelimChar(*tokens[i + 1], '|') &&
+                              !(isDelimChar(*tokens[i + 2], '|'))){
                         hasNs = true;
                         i += 2;
                         name = tokens[i];
@@ -211,7 +223,7 @@ namespace {
                     if (name->isToken(TokenType::Ident)){
                         simple.kind = Kind::Type;
                         simple.name = lowerAscii(name->token.value);
-                    }else if (name->isToken(TokenType::Delim) && name->token.value == "*"){
+                    }else if (isDelimChar(*name, '*')){
                         simple.kind = Kind::Universal;
                     }else{
                         fail(name, "invalid type selector");
@@ -231,7 +243,7 @@ namespace {
                     simple.kind = Kind::Id;
                     simple.name = t->token.value;
                     i++;
-                }else if (t->isToken(TokenType::Delim) && t->token.value == "."){
+                }else if (isDelimChar(*t, '.')){
                     if (i + 1 >= end || !tokens[i + 1]->isToken(TokenType::Ident) || tokens[i + 1]->offset != t->offset + 1){
                         fail(t, "'.' without a class name");
                         return false;
@@ -240,7 +252,7 @@ namespace {
                     simple.name = tokens[i + 1]->token.value;
                     simple.ref = refOf(t).cover(refOf(tokens[i + 1]));
                     i += 2;
-                }else if (t->isToken(TokenType::Delim) && t->token.value == "&"){
+                }else if (isDelimChar(*t, '&')){
                     simple.kind = Kind::Nesting;
                     i++;
                 }else if (t->isBlock(TokenType::LeftBracket)){
@@ -310,11 +322,11 @@ namespace {
             }
             size_t i = 0;
             // [ns|name], [*|name], [|name]
-            if (i + 2 < t.size() + 0 && t.size() >= 3 && t[1]->isToken(TokenType::Delim) && t[1]->token.value == "|" &&
-                !(t.size() > 2 && t[2]->isToken(TokenType::Delim) && t[2]->token.value == "=")){
+            if (i + 2 < t.size() + 0 && t.size() >= 3 && isDelimChar(*t[1], '|') &&
+                !(t.size() > 2 && isDelimChar(*t[2], '='))){
                 simple.hasNamespace = true;
                 i = 2;
-            }else if (!t.empty() && t[0]->isToken(TokenType::Delim) && t[0]->token.value == "|"){
+            }else if (!t.empty() && isDelimChar(*t[0], '|')){
                 simple.hasNamespace = true;
                 i = 1;
             }
@@ -333,7 +345,7 @@ namespace {
                     simple.op = "=";
                     i++;
                 }else if ((c == "~" || c == "|" || c == "^" || c == "$" || c == "*") && i + 1 < t.size() &&
-                          t[i + 1]->isToken(TokenType::Delim) && t[i + 1]->token.value == "="){
+                          isDelimChar(*t[i + 1], '=')){
                     simple.op = c + "=";
                     i += 2;
                 }else{

@@ -847,9 +847,19 @@ bool Token::isIdent(const char* lowercase) const{
 bool ComponentValue::isFunction(const char* lowercaseName) const{
     if (kind != Kind::Function)
         return false;
-    Token probe = token;
-    probe.type = TokenType::Ident;
-    return probe.isIdent(lowercaseName);
+    // (Token::isIdent's comparison, on the function's name)
+    const std::string& value = token.value;
+    size_t i = 0;
+    for (; lowercaseName[i] != 0; i++){
+        if (i >= value.size())
+            return false;
+        char c = value[i];
+        if (c >= 'A' && c <= 'Z')
+            c = (char)(c - 'A' + 'a');
+        if (c != lowercaseName[i])
+            return false;
+    }
+    return i == value.size();
 }
 
 bool jasperengine::htmlui::compat::isIdentStartCodePoint(uint32_t c){

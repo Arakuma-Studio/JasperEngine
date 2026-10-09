@@ -711,7 +711,9 @@ namespace {
                     session.usesTextShadow = true;
                 if (name.compare(0, 19, "-webkit-text-stroke") == 0)
                     session.usesTextStroke = true;
-                if (CascadeKeywords::keywordOf(d.value) == "inherit" && !session.options.fork.has(ForkFeature::CssWideKeywords)){
+                // (keywordOf(d.value) == "inherit")
+                if (sole && sole->isToken(TokenType::Ident) && equalsNoCase(sole->token.value, "inherit") &&
+                    !session.options.fork.has(ForkFeature::CssWideKeywords)){
                     for (const std::string& p : CascadeKeywords::outputProperties(name)){
                         const PropertySupport* row = session.facts(name).row;
                         const bool inherited = row ? row->inherited : CascadeKeywords::inherited(p);
