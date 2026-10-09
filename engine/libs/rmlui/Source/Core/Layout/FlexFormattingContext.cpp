@@ -2,6 +2,7 @@
 #include "../../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../../Include/RmlUi/Core/Element.h"
 #include "../../../Include/RmlUi/Core/ElementScroll.h"
+#include "../../../Include/RmlUi/Core/ElementText.h"
 #include "../../../Include/RmlUi/Core/Profiling.h"
 #include "../../../Include/RmlUi/Core/Types.h"
 #include "ContainerBox.h"
@@ -955,8 +956,12 @@ void FlexFormattingContext::Format(Vector2f& flex_resulting_content_size, Vector
 			UniquePtr<LayoutBox> item_layout_box =
 				FormattingContext::FormatIndependent(flex_container_box, item.element, &item.box, FormattingContextType::Block);
 
-			// Set the position of the element within the flex container
-			item.element->SetOffset(flex_content_offset + item_offset, element_flex);
+			// Set the position of the element within the flex container. A text item (an anonymous flex item) keeps the
+			// offset of its first line within the anonymous block box it was formatted in.
+			Vector2f text_offset;
+			if (rmlui_dynamic_cast<ElementText*>(item.element))
+				text_offset = item.element->GetRelativeOffset(BoxArea::Border);
+			item.element->SetOffset(flex_content_offset + item_offset + text_offset, element_flex);
 
 			// The flex container baseline is simply set to the first flex item that has a baseline.
 			if (!baseline_set && item_layout_box->GetBaselineOfLastLine(flex_baseline))

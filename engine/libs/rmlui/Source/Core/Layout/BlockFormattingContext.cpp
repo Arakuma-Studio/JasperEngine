@@ -1,6 +1,7 @@
 #include "BlockFormattingContext.h"
 #include "../../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../../Include/RmlUi/Core/Element.h"
+#include "../../../Include/RmlUi/Core/ElementText.h"
 #include "../../../Include/RmlUi/Core/Profiling.h"
 #include "../../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "../../../Include/RmlUi/Core/StyleSheetSpecification.h"
@@ -116,6 +117,13 @@ UniquePtr<LayoutBox> BlockFormattingContext::Format(ContainerBox* parent_contain
 	for (int layout_iteration = 0; layout_iteration < 3; layout_iteration++)
 	{
 		bool all_children_formatted = true;
+		if (rmlui_dynamic_cast<ElementText*>(element))
+		{
+			// A run of text formatted on its own, as a flex container does with each of its children: CSS wraps it in an
+			// anonymous block box (an anonymous flex item, CSS Flexbox §4), here the block box holds the text as its
+			// inline content.
+			all_children_formatted = FormatInlineBox(container.get(), element);
+		}
 		for (int i = 0; i < element->GetNumChildren() && all_children_formatted; i++)
 		{
 			if (!FormatBlockContainerChild(container.get(), element->GetChild(i)))
