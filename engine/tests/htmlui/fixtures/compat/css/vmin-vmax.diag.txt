@@ -1,4 +1,2 @@
-compat/css/vmin-vmax.css:2:8: warning: 'width: 50vmin' is not supported; declaration dropped (fix: use auto, a length or a percentage) [HTMLUI-CSS-0004]
-compat/css/vmin-vmax.css:2:23: warning: 'height: 50vmin' is not supported; declaration dropped (fix: use auto, a length or a percentage) [HTMLUI-CSS-0004]
-compat/css/vmin-vmax.css:3:9: warning: 'font-size: 5vmax' is not supported; declaration dropped (fix: use a length or a percentage) [HTMLUI-CSS-0004]
-compat/css/vmin-vmax.css:3:27: warning: 'padding: 2vmin 4vmax' is not supported; declaration dropped [HTMLUI-CSS-0004]
+compat/css/vmin-vmax.css:5:33: info: '10vmin' (in a style attribute or keyframe, which has no per-orientation copy) is evaluated for the current viewport (1280x720) [HTMLUI-CSS-0013]
+compat/css/vmin-vmax.css:5:55: info: '20vmax' (in a style attribute or keyframe, which has no per-orientation copy) is evaluated for the current viewport (1280x720) [HTMLUI-CSS-0013]

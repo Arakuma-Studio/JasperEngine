@@ -258,8 +258,42 @@ namespace {
             if (session.layerOrder[i] == name)
                 return (int)i;
         }
+        // "a.b" declares "a" first (CSS Cascade 5)
+        const size_t dot = name.rfind('.');
+        if (dot != std::string::npos && dot > 0)
+            registerLayer(session, name.substr(0, dot));
         session.layerOrder.push_back(name);
         return (int)session.layerOrder.size() - 1;
+    }
+
+    // the cascade rank of each layer, lowest first: sibling layers in declaration order, a
+    // layer's sublayers before the layer's own rules (post-order over the layer tree)
+    std::vector<int> layerRanks(const Session& session){
+        const std::vector<std::string>& names = session.layerOrder;
+        std::vector<std::vector<size_t>> children(names.size());
+        std::vector<size_t> roots;
+        for (size_t i = 0; i < names.size(); i++){
+            const size_t dot = names[i].rfind('.');
+            size_t parent = names.size();
+            if (dot != std::string::npos && dot > 0){
+                const std::string parentName = names[i].substr(0, dot);
+                for (size_t j = 0; j < names.size(); j++){
+                    if (names[j] == parentName)
+                        parent = j;
+                }
+            }
+            (parent < names.size() ? children[parent] : roots).push_back(i);
+        }
+        std::vector<int> rank(names.size(), 0);
+        int next = 0;
+        std::function<void(size_t)> visit = [&](size_t i){
+            for (size_t child : children[i])
+                visit(child);
+            rank[i] = next++;
+        };
+        for (size_t root : roots)
+            visit(root);
+        return rank;
     }
 
     void addRule(Session& session, const FlattenScope& scope, std::vector<ComplexSelector> selectors,
@@ -916,12 +950,13 @@ namespace {
         auto orderOf = [&](const SheetItem& item){
             return item.atRule ? session.atRules[item.index].order : session.rules[item.index].order;
         };
+        const std::vector<int> ranks = layerRanks(session);
         std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b){
             const int la = layerOf(items[a]);
             const int lb = layerOf(items[b]);
-            // named layers first in declaration order, unlayered last
-            const int ka = la < 0 ? 1 << 30 : la;
-            const int kb = lb < 0 ? 1 << 30 : lb;
+            // layers first in cascade order, unlayered last
+            const int ka = la < 0 ? 1 << 30 : ranks[(size_t)la];
+            const int kb = lb < 0 ? 1 << 30 : ranks[(size_t)lb];
             if (ka != kb)
                 return ka < kb;
             return orderOf(items[a]) < orderOf(items[b]);
@@ -1127,7 +1162,8 @@ namespace {
             normalize.property = name;
             normalize.colors = ValueNormalizer::colorKeywordsApply(name);
             normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint;
-            normalize.inlineStyle = origin == RuleOrigin::StyleAttribute;
+            // a style attribute or a keyframe cannot be duplicated per orientation: vmin/vmax evaluated
+            normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
             normalize.percentBasis = ValueNormalizer::percentBasisOf(name, &normalize.vertical);
             normalize.options = session.options;
             if (rule && !keyframe){

@@ -213,7 +213,7 @@ namespace {
                     const double perUnit = unit.unit == "vmin" ? std::min(vw, vh) : std::max(vw, vh);
                     out.push_back(ValueNormalizer::dimension(t.number * perUnit, "px"));
                     result.dependsOnViewport = true;
-                    report(codes::ViewportDependent, Severity::Info, "'" + serialize(v) + "' in a style attribute is evaluated for the current viewport (" +
+                    report(codes::ViewportDependent, Severity::Info, "'" + serialize(v) + "' (in a style attribute or keyframe, which has no per-orientation copy) is evaluated for the current viewport (" +
                            std::to_string(context.options.viewport.x) + "x" + std::to_string(context.options.viewport.y) + ")");
                     return;
                 }

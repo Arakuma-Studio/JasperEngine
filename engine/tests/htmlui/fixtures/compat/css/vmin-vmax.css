@@ -2,3 +2,5 @@
 .box { width: 50vmin; height: 50vmin; color: red; }
 .wide { font-size: 5vmax; padding: 2vmin 4vmax; }
 @media (min-width: 600px) { .box { border-radius: 10vmin; } }
+@keyframes grow { from { width: 10vmin; } to { width: 20vmax; } }
+.v { --size: 8vmin; width: var(--size); }

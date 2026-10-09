@@ -1,6 +1,9 @@
 #htmlui-root *, body#htmlui-root {
 margin: 0;
 }
+#htmlui-root h1 {
+font-size: 2em;
+}
 #htmlui-root htmlbody .btn {
 color: #008000ff;
 --html-current-color: #008000ff;
@@ -22,9 +25,6 @@ padding: 12px;
 #htmlui-root .anon {
 color: #808080ff;
 --html-current-color: #808080ff;
-}
-#htmlui-root h1 {
-font-size: 2em;
 }
 #htmlui-root .plain {
 color: #000000ff;

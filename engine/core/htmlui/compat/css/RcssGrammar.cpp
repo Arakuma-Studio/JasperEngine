@@ -239,7 +239,8 @@ namespace {
         std::string unit;
         if (!numberAndUnit(v, n, unit))
             return false;
-        static const char* const units[] = {"px", "dp", "vw", "vh", "em", "rem", "in", "cm", "mm", "pt", "pc"};
+        // vmin/vmax: the writer replaces them with vw/vh per orientation before RmlUi sees them
+        static const char* const units[] = {"px", "dp", "vw", "vh", "em", "rem", "in", "cm", "mm", "pt", "pc", "vmin", "vmax"};
         if (unit.empty())
             return n == 0;
         for (const char* u : units){
