@@ -2625,8 +2625,8 @@ Built by p2-html (October 2026). Where the code differs from or adds to the text
   data models for every `data-model`) inside a capture and maps the messages, then runs the
   font check. `isHtmlDocumentPath` was added for the editor.
 - **Hooks.** H1/H1b in `HtmlUIContext::loadDocument` (options from the context: size, density
-  ratio, touch, themes, the static verbose flag `UIDocumentSystem::setVerboseDiagnostics`, which
-  p2-importers wires to `AppSettings::htmlUiVerboseDiagnostics`); `HtmlUIContext::setDimensions`
+  ratio, touch, themes, `UIDocumentSystem::getVerboseDiagnostics()`, p2-importers' static
+  behind `AppSettings::htmlUiVerboseDiagnostics`); `HtmlUIContext::setDimensions`
   restyles viewport-dependent documents; `setColorScheme/setReducedMotion` activate the RmlUi
   themes `light`/`dark`/`reduced-motion`; a transparent `htmlbody` lets the pointer through like
   a transparent document. H2 in `UIDocumentSystemReload.cpp` (compat dependencies in the file
@@ -2775,6 +2775,94 @@ Built by p2-html (October 2026). Where the code differs from or adds to the text
 - **Deliverables:** 3.13 complete: HTTP client, all importers, manifest writer, auto-import
   flow, Inspector panel, CLI subcommand, settings, licensing records, offline behavior.
 - **Tests:** 5.4.
+
+#### p2-importers as implemented
+
+Built October 2026. Where the code differs from or adds to 3.13 and 5.4:
+
+- **Files** (`editor/htmlui/`, namespace `jasperengine::editor::htmlui`): `HttpClient`,
+  `RemoteImporter` (fetch once, detect the kind, stage files, write files + manifest entry,
+  `HTMLUI-IMP-*` diagnostics; also `ImportTarget`, `ImportStaging`, `discoverRemoteReferences`,
+  URL helpers), `ContentSniffer` (magic bytes, then Content-Type and URL), `GoogleFontsImporter`,
+  `StylesheetImporter` (+ `findCssUrls`/`findFontFaces`/`applyCssEdits` over the compat CSS
+  parser; edits keep everything but the URLs byte for byte), `ImageImporter`, `LottieImporter`,
+  `ImportManifestWriter`, `HtmlUiImporters` (facade), `HtmlUiImportQueue` (worker, ImGui-free),
+  `HtmlUiAutoImport` (editor glue), `HtmlUiImportMaintenance` (per-URL states, Remove unused),
+  `HtmlUiImportPanel` (H10), `HtmlUiImportCli` (H11). **No `ZipReader`**: dotLottie archives
+  are read with the engine's exported `DotLottie`/`ZipArchive` (`htmlui/vector/DotLottie.h`,
+  phase 1), which already handle stored and deflated entries, v1 and v2 layouts and the active
+  animation.
+- **HTTP.** The command is `curl -K <config> || true` (`|| (call )` on Windows): curl's exit code
+  is not needed (the write-out line and `curl: (N)` lines carry status and errors) and
+  `CommandRunner` would log every non-zero exit to the Console. Additions:
+  `setTimeoutSeconds`, process-wide `setDefaultHostRewrite`/`setDefaultTimeoutSeconds` (clients
+  start with them: the facade creates its own), `cancelAll()` (editor shutdown kills running
+  downloads), `HttpResponse::ok()`, `readBody`, `urlQuote`/`mirrorPath`. A response reports the
+  URL as the caller named it (host rewrites undone, also after redirects). Mirror mode: the host
+  directory is the host without its port; the content type comes from the URL's extension;
+  `http://` URLs map like `https://` ones.
+- **Google Fonts.** Verified live (October 2026): css2 answers HTTP 400 for an unknown family
+  **and** for a weight the family lacks; the legacy `/css` drops a missing weight silently. On a
+  400 the importer reads `fonts.google.com/metadata/fonts` (once per session; a JSON
+  `familyMetadataList` with each family's `fonts` keys such as `400`, `700i`): an unknown family
+  is `HTMLUI-IMP-0002` with the closest name, a missing variant `HTMLUI-IMP-0006` and the request
+  is retried with the nearest variant the family has (the manifest entry keeps the document's
+  URL). Missing legacy variants are `HTMLUI-IMP-0006` too. The local CSS is always
+  `fonts/<up to 3 family slugs>-<sha1-6 of the URL>.css` (two requests for one family differ).
+  The license list is optional: when it cannot be fetched the entry's license is "unknown" with
+  an `HTMLUI-IMP-0008` note (phase 4's mirror has no license file). Font downloads that fail
+  write nothing.
+- **Stylesheets.** A resource a remote sheet references that fails to download is reported
+  (`HTMLUI-IMP-0002`) and stays remote in the local copy; the sheet itself imports. WOFF/WOFF2
+  candidates are dropped from `src` when a TTF/OTF one exists; a face with WOFF/WOFF2 only is
+  left as written (`HTMLUI-IMP-0007`). Query strings become a `-<sha1-8>` suffix of the file
+  name; `@import` chains follow up to 8 levels, a cycle ends at the file being written; a
+  Google Fonts `@import` is imported as its own `google-fonts-css` entry whose files the
+  sheet's entry lists.
+- **Lottie.** A LottieFiles page gives two entries (the page URL and the animation file URL,
+  same files). Images a `.json` names that fail to download are reported and left out.
+- **Diagnostics.** Every successful import adds `HTMLUI-IMP-0004` (Info); `file` is the
+  asset-relative document that references the URL, located by searching its text (compat's
+  `RemoteReference::ref` belongs to a `SourceFiles` the API does not return); the CLI prints
+  project-relative paths. Editor logging goes through `Out` (also without a `System`).
+- **Facade** (`HtmlUiImporters.h`): `ImportResult` gains `failed` (what → why, phase 4's
+  `failed` list) and `diagnostics`; `destDir` is project-relative or absolute inside the assets
+  ("" = `assets/htmlui-imports`; the layout below it is kept; the manifest stays in
+  `assets/htmlui-imports/`); `importLucideIcons` writes `<destDir>/<kebab-name>.svg` ("" =
+  `assets/htmlui-imports/icons`), accepts `lucide:` prefixes and PascalCase, and uses
+  `compat::LucideIcons::find/closest` (p2-runtime) through `__has_include`; `lucideIconSvg` and
+  `lucideIconsAvailable` are public. `importDocumentReferences` skips URLs whose manifest
+  entry and file exist. The header comment lists the URL templates (phase 4's mirror).
+- **Auto-import.** `HtmlUiAutoImport::update` runs from `App::pollHtmlUI` (every loop
+  iteration) and notices loads through `UIDocumentSystem::getLoadCount`; a finished batch
+  reloads the manifest (`ImportManifest::reload`), refreshes the asset database, calls
+  `reloadChangedFiles(manifest + written files)` and reloads with `reloadDocument` the documents
+  that asked for the imports and were not reloaded by it. `App::shutdownBackgroundWork` stops the
+  worker.
+- **Remove unused** also counts the phase-1 scanner's remote references (`collectHtmlUIReferences`)
+  so it never deletes what a document still uses, and follows entries listed in a used entry's
+  `files` (a sheet's Google Fonts import).
+- **H12.** `AppSettings` `html_ui: {auto_import, verbose_diagnostics}` in `settings.yaml`, two
+  checkboxes in *Editor Settings > General > HTML UI*. The verbose flag reaches the engine
+  through the new static `UIDocumentSystem::setVerboseDiagnostics/getVerboseDiagnostics`
+  (exported, like `setPreferredSampleCount`); the code that builds `CompatOptions` for a load
+  (p2-html's H1) sets `verboseDiagnostics` from it.
+- **H10** also shows the document's compat diagnostics count with *Show in Console* (all of
+  them through `logDiagnostics(..., verbose = true)`), read from
+  `UIDocumentSystem::getDiagnostics(entity)` (p2-html's H1b) when that exists.
+- **Build and tests.** The test target is defined in
+  `editor/htmlui/tests/HtmlUiEditorTests.cmake`, `include()`d by the root `CMakeLists.txt` (an
+  `add_subdirectory` would resolve the editor's relative source and include paths against the
+  subdirectory); it compiles the editor's sources without `main.cpp` plus the tests
+  (`editor/htmlui/tests/*.cpp`, googletest from `libs/yaml-cpp/test`), next to the editor
+  binary, which the CLI tests run. The linux Docker image gets `curl` as a last layer, and
+  `tools/build.sh` runs containers by image id (a worktree with an older Dockerfile may retag
+  the shared image name meanwhile). Until p2-html lands, the tests install a minimal HTML scan
+  as the discovery collector (`setReferenceCollector`). The fixture server builds the Google
+  Fonts CSS, per-weight TTFs (OS/2 weight/italic patched into one committed OFL TTF), license
+  lists, metadata and dotLottie archives itself; extra test hosts: `https://fonts.google.com/metadata`
+  → `/gfmeta/metadata`, `https://lottiefiles.com` → `/lfpage`, `status.example.com`,
+  `slow.example.com`, `redirect.example.com`.
 
 ### Merge order and integration
 

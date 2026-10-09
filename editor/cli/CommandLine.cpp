@@ -39,6 +39,7 @@
 #include "util/EntityClipboard.h"
 #include "util/EntityPath.h"
 #include "util/ProjectChecks.h"
+#include "htmlui/HtmlUiImportCli.h"
 #include "util/Util.h"
 #include "imgui.h"
 #include "command/type/RenameFileCmd.h"
@@ -235,6 +236,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " benchmark [options]      Measure scene FPS with vsync off.\n"
         << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n"
         << "  " << commandName << " check [options]          Check Lua scripts, shader forks and C++ scripts (compiler-style).\n"
+        << "  " << commandName << " import-ui [options]      Import the remote resources of HTML UI documents.\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
         << "  " << commandName << " --mcp-port <port>        Open the editor with the MCP server on HTTP.\n\n"
         << "Run a subcommand with --help for its options.\n";
@@ -2040,6 +2042,14 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
 int CommandLine::runCheckCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return runCheck(argc, argv, getCommandName(executableName));
+}
+
+int CommandLine::runImportUiCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    // the importers log nothing through the editor host: the output is the diagnostics
+    EditorHostOverrideGuard hostOverride(nullptr);
+    Out::setConsoleWindow(nullptr);
+    return htmlui::runImportUi(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
 int CommandLine::runHelpCommand(int argc, char** argv, const char* executableName) {

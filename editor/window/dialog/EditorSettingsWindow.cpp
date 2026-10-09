@@ -180,6 +180,8 @@ void EditorSettingsWindow::open(Project* project) {
 
     m_emsdkOverride = AppSettings::getEmsdkPath();
     m_editorVSyncEnabled = AppSettings::getEditorVSyncEnabled();
+    m_htmlUiAutoImport = AppSettings::getHtmlUiAutoImport();
+    m_htmlUiVerboseDiagnostics = AppSettings::getHtmlUiVerboseDiagnostics();
     m_codeEditorFontSize = AppSettings::getCodeEditorFontSize();
     m_defaultExportDirectory = AppSettings::getDefaultExportDirectory();
     refreshEmsdkStatus();
@@ -304,6 +306,22 @@ void EditorSettingsWindow::drawGeneralSettings() {
             m_editorVSyncEnabled = true;
         }
         ImGui::Checkbox("##EditorVSync", &m_editorVSyncEnabled);
+
+        sectionRow("HTML UI");
+        if (beginSettingsRow("Import Remote Resources",
+                             "When a document loads, download the Google Fonts, stylesheets, images and Lottie animations it "
+                             "references by URL into assets/htmlui-imports (the game never uses the network).",
+                             m_htmlUiAutoImport != true)) {
+            m_htmlUiAutoImport = true;
+        }
+        ImGui::Checkbox("##HtmlUiAutoImport", &m_htmlUiAutoImport);
+        if (beginSettingsRow("Verbose Diagnostics",
+                             "Log every note of the HTML/CSS compatibility layer (rewrites, approximations) to the Console, "
+                             "not only errors, warnings and the per-document summary.",
+                             m_htmlUiVerboseDiagnostics != false)) {
+            m_htmlUiVerboseDiagnostics = false;
+        }
+        ImGui::Checkbox("##HtmlUiVerboseDiagnostics", &m_htmlUiVerboseDiagnostics);
     });
 }
 
@@ -475,6 +493,8 @@ void EditorSettingsWindow::drawAdvancedSettings() {
 
 bool EditorSettingsWindow::applySettings() {
     AppSettings::setEditorVSyncEnabled(m_editorVSyncEnabled);
+    AppSettings::setHtmlUiAutoImport(m_htmlUiAutoImport);
+    AppSettings::setHtmlUiVerboseDiagnostics(m_htmlUiVerboseDiagnostics);
     AppSettings::setCodeEditorFontSize(m_codeEditorFontSize);
     AppSettings::setDefaultExportDirectory(m_defaultExportDirectory);
     AppSettings::setCMakePath(m_cmakeOverride);

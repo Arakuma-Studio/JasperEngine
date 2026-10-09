@@ -193,9 +193,11 @@ namespace jasperengine{
         // the scene's Lua scripts started (LuaBinding::initializeLuaScripts): the documents'
         // <script type="text/lua"> run now and after every later (re)load, until the play stops
         void startDocumentScripts();
-        // Info diagnostics logged one by one (the editor's htmlUiVerboseDiagnostics setting)
+        // ---- phase 2 ----
+        // --- p2-importers: the editor's AppSettings::htmlUiVerboseDiagnostics; document loads
+        // build CompatOptions::verboseDiagnostics from it (Info diagnostics logged one by one) ---
         static void setVerboseDiagnostics(bool verbose);
-        static bool isVerboseDiagnostics();
+        static bool getVerboseDiagnostics();
 
     private:
         // HtmlUI::acquire and the context, the first time the scene has a document

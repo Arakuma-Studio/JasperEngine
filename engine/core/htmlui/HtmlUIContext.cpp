@@ -11,6 +11,7 @@
 #include "compat/DocumentLoader.h"
 
 #include "Engine.h"
+#include "subsystem/UIDocumentSystem.h"
 #include "Log.h"
 #include "System.h"
 
@@ -52,8 +53,6 @@ namespace {
         }
         return isAttached(element);
     }
-
-    std::atomic<bool> verboseDiagnostics{false};
 
     // htmlnavigate reaching the context root unprevented (phase-2 §3.11.2, hook H4)
     class NavigateListener : public Rml::EventListener {
@@ -204,7 +203,7 @@ Rml::ElementDocument* HtmlUIContext::loadDocument(const std::string& path){
         options.touchDevice = System::instance().isTouchDevice();
         options.colorScheme = colorScheme;
         options.reducedMotion = reducedMotion;
-        options.verboseDiagnostics = verboseDiagnostics.load();
+        options.verboseDiagnostics = UIDocumentSystem::getVerboseDiagnostics();   // AppSettings::htmlUiVerboseDiagnostics
         document = htmlui::compat::DocumentLoader::load(context, path, options);
         if (document && !navigateListener){
             navigateListener.reset(new NavigateListener(&navigateHandler));
@@ -349,14 +348,6 @@ bool HtmlUIContext::getReducedMotion() const{
 
 void HtmlUIContext::setNavigateHandler(std::function<void(Rml::ElementDocument*, const std::string&)> handler){
     navigateHandler = std::move(handler);
-}
-
-void HtmlUIContext::setVerboseDiagnostics(bool verbose){
-    verboseDiagnostics.store(verbose);
-}
-
-bool HtmlUIContext::getVerboseDiagnostics(){
-    return verboseDiagnostics.load();
 }
 
 void HtmlUIContext::applyThemes(){

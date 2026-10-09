@@ -73,9 +73,6 @@ namespace jasperengine {
         // the default action of the htmlnavigate event (an <a href> click that no listener
         // prevented): called with the document and the href (UIDocumentSystem loads it)
         void setNavigateHandler(std::function<void(Rml::ElementDocument*, const std::string&)> handler);
-        // Info lines of the compat diagnostics one by one (AppSettings::htmlUiVerboseDiagnostics)
-        static void setVerboseDiagnostics(bool verbose);
-        static bool getVerboseDiagnostics();
 
         // --- p1-input (HtmlUIContextInput.cpp, phase-1 spec §3.6) ---
         // touch pointers with their ids (RmlUi treats each as the primary button)

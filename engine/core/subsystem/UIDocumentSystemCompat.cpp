@@ -41,8 +41,6 @@ using namespace jasperengine::htmlui::compat;
 
 namespace {
 
-    bool verbose = false;
-
     std::string documentPathOf(const UIDocumentComponent* component){
         if (!component)
             return std::string();
@@ -91,15 +89,6 @@ HtmlUICompatState& UIDocumentSystem::getCompatState(){
     if (!compatState)
         compatState = std::make_shared<HtmlUICompatState>();
     return *compatState;
-}
-
-void UIDocumentSystem::setVerboseDiagnostics(bool value){
-    verbose = value;
-    HtmlUIContext::setVerboseDiagnostics(value);
-}
-
-bool UIDocumentSystem::isVerboseDiagnostics(){
-    return verbose;
 }
 
 std::shared_ptr<const CompatDocument> UIDocumentSystem::getCompiledDocument(Entity entity) const{
