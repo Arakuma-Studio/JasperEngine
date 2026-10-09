@@ -118,6 +118,24 @@ namespace jasperengine{
         void removeEventListener(uint64_t listenerId);
         bool dispatchEvent(const std::string& type, const UIValue& detail = UIValue(), bool bubbles = true); // false if prevented
 
+        // --- phase 2 (p2-html, hook H5): HTML documents (loaded through the compat layer) ---
+        // getTagName gives the DOM tagName there (upper case for HTML: "DIV", <body> -> "BODY");
+        // the engine's own data-htmlui-* attributes and htmlui-* classes are not visible to
+        // scripts; selectors, innerHTML and style values are HTML/CSS and are rewritten
+
+        std::string getLocalName() const;           // "div", "body", "template" (lower case)
+        std::string getOuterHTML() const;
+        void setOuterHTML(const std::string& html); // replaces the element (it becomes detached)
+        // position: "beforebegin", "afterbegin", "beforeend", "afterend"
+        void insertAdjacentHTML(const std::string& position, const std::string& html);
+        // <template>: a detached fragment element holding a fresh copy of its content
+        // (appendChild/insertBefore of it move its children, like a DocumentFragment)
+        UIElement getContent() const;
+        // <dialog>: show/showModal set `open` (no modal backdrop), close removes it and dispatches `close`
+        void show(); void showModal(); void close(const std::string& returnValue = std::string());
+        std::string getCssText() const;             // the inline declarations
+        void setCssText(const std::string& css);    // replaces them
+
         // --- phase 1 (p1-vector): <lottie> control; logs an error on other elements ---
 
         void play(); void pause(); void stop(); void seek(float seconds); void setFrame(float frame);

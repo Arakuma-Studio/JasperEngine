@@ -8,43 +8,43 @@ decorator: none;
 }
 #htmlui-root .image-color {
 background-color: #ff0000ff;
-decorator: html-layer("/compat/css/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+decorator: html-layer("asset://compat/css/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
 }
 #htmlui-root .full {
 background-color: #ffffffff;
-decorator: html-layer("/compat/css/img/a.png" 50% auto calc(100% - 10px) calc(100% - 20px) no-repeat no-repeat padding-box content-box fixed);
+decorator: html-layer("asset://compat/css/img/a.png" 50% auto calc(100% - 10px) calc(100% - 20px) no-repeat no-repeat padding-box content-box fixed);
 }
 #htmlui-root .repeat-x {
 background-color: transparent;
-decorator: html-layer("/compat/css/img/a.png" auto auto 50% 0% repeat no-repeat padding-box border-box scroll);
+decorator: html-layer("asset://compat/css/img/a.png" auto auto 50% 0% repeat no-repeat padding-box border-box scroll);
 }
 #htmlui-root .repeat-y {
 background-color: transparent;
-decorator: html-layer("/compat/css/img/a.png" auto auto 0% 50% no-repeat repeat padding-box border-box scroll);
+decorator: html-layer("asset://compat/css/img/a.png" auto auto 0% 50% no-repeat repeat padding-box border-box scroll);
 }
 #htmlui-root .space-round {
 background-color: transparent;
-decorator: html-layer("/compat/css/img/a.png" auto auto 0% 0% space round padding-box border-box scroll);
+decorator: html-layer("asset://compat/css/img/a.png" auto auto 0% 0% space round padding-box border-box scroll);
 }
 #htmlui-root .cover {
 background-color: transparent;
-decorator: html-layer("/compat/css/img/a.png" cover cover 50% 50% no-repeat no-repeat padding-box border-box scroll);
+decorator: html-layer("asset://compat/css/img/a.png" cover cover 50% 50% no-repeat no-repeat padding-box border-box scroll);
 }
 #htmlui-root .contain {
 background-color: transparent;
-decorator: html-layer("/compat/css/img/a.png" contain contain 50% 50% no-repeat no-repeat padding-box border-box scroll);
+decorator: html-layer("asset://compat/css/img/a.png" contain contain 50% 50% no-repeat no-repeat padding-box border-box scroll);
 }
 #htmlui-root .lengths {
 background-color: transparent;
-decorator: html-layer("/compat/css/img/a.png" 32px 16px 10px 20px no-repeat no-repeat padding-box border-box scroll);
+decorator: html-layer("asset://compat/css/img/a.png" 32px 16px 10px 20px no-repeat no-repeat padding-box border-box scroll);
 }
 #htmlui-root .keywords {
 background-color: transparent;
-decorator: html-layer("/compat/css/img/a.png" auto 100% 0% 0% repeat repeat padding-box border-box scroll);
+decorator: html-layer("asset://compat/css/img/a.png" auto 100% 0% 0% repeat repeat padding-box border-box scroll);
 }
 #htmlui-root .border-box {
 background-color: transparent;
-decorator: html-layer("/compat/css/img/a.png" auto auto 0% 0% repeat repeat border-box border-box scroll);
+decorator: html-layer("asset://compat/css/img/a.png" auto auto 0% 0% repeat repeat border-box border-box scroll);
 }
 #htmlui-root .gradient-color {
 background-color: #000000ff;
@@ -56,5 +56,5 @@ decorator: none;
 }
 #htmlui-root .local {
 background-color: transparent;
-decorator: html-layer("/compat/css/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+decorator: html-layer("asset://compat/css/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
 }

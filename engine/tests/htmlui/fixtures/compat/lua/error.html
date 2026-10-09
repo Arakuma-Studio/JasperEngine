@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<body>
+<p id="before">x</p>
+<script type="text/lua">
+local ok = 1
+local broken = nil
+broken.field = 2
+</script>
+<script type="text/lua">
+document:getElementById("before").textContent = "second ran"
+</script>
+</body>
+</html>

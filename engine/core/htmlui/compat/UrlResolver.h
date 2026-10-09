@@ -43,7 +43,11 @@ namespace jasperengine::htmlui::compat {
         std::string url;          // as written, trimmed
         std::string assetPath;    // the local file: asset-relative (Relative, RootRelative, Remote with a manifest
                                   // entry, Data: its virtual file), as written for EnginePath; "" otherwise
-        std::string emitted;      // what RML/RCSS get: "/ui/a.png", "/@htmlui/data/<sha1-12>.png", "#id"; "" = dropped
+        // what RML/RCSS get: "asset://ui/a.png" (an asset: RmlUi's JoinPath keeps a scheme, and
+        // the engine's file layer, resource packs included, resolves it; a leading '/' would be
+        // an absolute filesystem path), "/@htmlui/data/<sha1-12>.png" (virtual files), "#id";
+        // "" = dropped
+        std::string emitted;
         std::string fragment;     // "#home" of "icons.svg#home" (kept on emitted)
         bool exists = true;       // the local file exists (checked when asked)
         bool outsideAssets = false;   // a relative path climbing above the assets directory
@@ -59,6 +63,8 @@ namespace jasperengine::htmlui::compat {
     // Classifies and resolves every URL the HTML or CSS references (phase-2 §3.7.4).
     class JASPERENGINE_API UrlResolver {
     public:
+        static constexpr const char* kAssetScheme = "asset://";
+
         // files: existence checks (FileData when empty; copied); manifest: remote URLs
         // (ImportManifest::get() when null; must outlive the resolver).
         explicit UrlResolver(const FileAccess& files = FileAccess(), const ImportManifest* manifest = nullptr);

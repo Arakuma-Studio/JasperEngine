@@ -27,12 +27,12 @@ list-style-type: decimal;
 list-style-type: disclosure-open;
 }
 #htmlui-root .h {
-list-style-image: /compat/css/img/icon.svg;
+list-style-image: asset://compat/css/img/icon.svg;
 }
 #htmlui-root .i {
 list-style-type: circle;
 list-style-position: outside;
-list-style-image: /compat/css/img/a.png;
+list-style-image: asset://compat/css/img/a.png;
 }
 #htmlui-root .j {
 list-style-type: upper-latin;

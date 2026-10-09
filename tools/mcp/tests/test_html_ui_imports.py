@@ -74,7 +74,8 @@ def mirror_file(root: Path, url: str, content: bytes) -> None:
 # the mirror, set before the Editor starts (the harness copies os.environ)
 MIRROR = Path(tempfile.mkdtemp(prefix="jasper-import-mirror-"))
 mirror_file(MIRROR, STYLE_URL, STYLE.encode())
-mirror_file(MIRROR, "https://cdn.example.com/theme/img/panel.png", png(4, 4, (255, 0, 0)))
+# url(../img/panel.png) in theme/style.css is https://cdn.example.com/img/panel.png
+mirror_file(MIRROR, "https://cdn.example.com/img/panel.png", png(4, 4, (255, 0, 0)))
 mirror_file(MIRROR, IMAGE_URL, png(4, 4, (0, 0, 255)))
 os.environ["JASPERENGINE_IMPORT_MIRROR"] = str(MIRROR)
 

@@ -4,7 +4,7 @@ width: 250px; height: 100px; font-size: 2vw;
 margin: 0; color: #0000ffff; --html-current-color: #0000ffff;
 display: flex; flex-wrap: wrap;
 font-effect: glow(0px 2px 0px 0px #ffffffff); top: var(--html-unset); right: var(--html-unset); bottom: var(--html-unset); left: var(--html-unset); color: var(--html-unset);
---local: 10px; width: var(--local); decorator: html-layer("/ui/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+--local: 10px; width: var(--local); decorator: html-layer("asset://ui/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
 /* important */
 #htmlui-root [data-htmlui-loc="5"] > * {
 flex: 1 1 33.43%;

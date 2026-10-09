@@ -106,6 +106,13 @@ component (the Hierarchy's *Create > UI > UI Document*).
 
 ## Writing documents (RCSS)
 
+> **Phase 2:** `.html`/`.htm` files are now read by an HTML5 parser (lexbor) and compiled to
+> RmlUi's dialect by the compatibility layer: `<div/>` no longer closes a `<div>` (as in a
+> browser; `HTMLUI-HTML-0026` warns), `<link rel="stylesheet">` is the standard form (the old
+> `<link type="text/css">` still loads, with a note), entities and unquoted attributes work.
+> Diagnostics name `file:line:column` with a stable code (`UIDocument:getDiagnostics()`, the
+> Console). Files in RmlUi's own dialect described below keep working as **`.rml`** documents.
+
 The parser is XML: close every tag (`<div/>`, `<img src="a.png"/>`, `<br/>`), quote every
 attribute, escape `&` and `<`. There is **no user-agent stylesheet**: every element is
 inline until you give it `display: block` (or `flex`). Rules that differ from browser CSS:
@@ -475,19 +482,42 @@ documents load again as they are on disk.
 
 | Group | Members |
 |---|---|
-| Document | `doc:getElementById(id)`, `doc:querySelector(sel)`, `doc:querySelectorAll(sel)` (array), `doc.body`, `doc:createElement(tag)`, `doc:createTextNode(text)`, `doc.title`, `doc:addEventListener/removeEventListener`, `doc:createDataModel(name, table)`, `doc:getDataModel(name)`, `doc:removeDataModel(name)`, `doc:load(file)`, `doc:reload()`, `doc.loaded`, `doc:show()/hide()`, `doc.visible`, `doc.sortOrder`, `doc.filename`, `doc.onLoad/onUnload`, `UIDocument.setDebuggerVisible(bool)` |
-| Identity / tree | `id`, `tagName` (lower case), `className`, `parentElement`, `children` (array), `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`, `childElementCount`, `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains` |
+| Document | `doc:getElementById(id)`, `doc:querySelector(sel)`, `doc:querySelectorAll(sel)` (array; CSS selectors, rewritten like the stylesheets in `.html`), `doc.body` (the `<body>`), `doc.documentElement` (the `<html>`), `doc:getDiagnostics()` (`{severity, code, name, message, suggestion, file, line, column, text}`), `doc:setColorScheme("dark"|"light")`, `doc:setReducedMotion(bool)` (the `prefers-*` media queries), `doc:createElement(tag)`, `doc:createTextNode(text)`, `doc.title`, `doc:addEventListener/removeEventListener`, `doc:createDataModel(name, table)`, `doc:getDataModel(name)`, `doc:removeDataModel(name)`, `doc:load(file)`, `doc:reload()`, `doc.loaded`, `doc:show()/hide()`, `doc.visible`, `doc.sortOrder`, `doc.filename`, `doc.onLoad/onUnload`, `UIDocument.setDebuggerVisible(bool)` |
+| Identity / tree | `id`, `tagName` (lower case in `.rml`; in `.html` the DOM's: `DIV`, `BODY`, `HTML`, `TEMPLATE`), `localName`, `className`, `parentElement`, `children` (array), `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`, `childElementCount`, `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains` |
 | Mutation | `appendChild(el)`, `insertBefore(el, ref)` (ref nil appends), `removeChild(el)`, `replaceChild(new, old)`, `remove()`, `cloneNode(deep)` |
-| Content | `textContent` (text, never parsed), `innerHTML` (markup; RML in phase 1) |
+| Content | `textContent` (text, never parsed), `innerHTML` / `outerHTML` (HTML in `.html` documents, parsed and rewritten like the document; RML in `.rml`), `insertAdjacentHTML(position, html)`, `content` (`<template>`: a fragment; `tpl.content:cloneNode(true)` then `appendChild` it) |
 | Attributes | `getAttribute(name)` (nil when absent), `setAttribute`, `hasAttribute`, `removeAttribute`, `getAttributes()` |
 | Classes / style / data | `classList:add(...)/remove(...)/toggle(name[, force])/contains(name)`; `style.backgroundColor` or `style["background-color"]` (read: computed value as CSS text; write: inline style, `""`/nil removes), `style:getPropertyValue/setProperty/removeProperty`; `dataset.userName` = `data-user-name` |
 | Forms | `value`, `checked`, `disabled` |
-| Focus / interaction | `focus()`, `blur()`, `click()` |
+| Focus / interaction | `focus()`, `blur()`, `click()`; dialogs: `show()`, `showModal()` (no backdrop), `close([returnValue])` (dispatches `close`) |
 | Scroll / geometry | `scrollTop`, `scrollLeft`, `scrollWidth`, `scrollHeight`, `clientWidth`, `clientHeight`, `offsetWidth`, `offsetHeight`, `offsetLeft`, `offsetTop`, `scrollIntoView([alignToTop])`, `scrollTo(x, y[, smooth])`, `scrollBy(dx, dy[, smooth])`, `getBoundingClientRect()` (`x y width height top left right bottom`, document px, through the transforms of the last drawn frame) |
 | Events | `addEventListener(type, fn[, capture or {capture=, once=}])`, `removeEventListener(type, fn[, capture])`, `dispatchEvent(type[, detail[, bubbles]])` (false when a listener prevented it) |
 
 Queries that find nothing return `nil`. Adding the same function for the same type and
-phase twice is ignored, as in the DOM.
+phase twice is ignored, as in the DOM. In `.html` documents the engine's own attributes
+(`data-htmlui-*`, the source location of every element) and classes (`htmlui-*`) are invisible to
+scripts; `style.cssText` reads and replaces the inline declarations.
+
+### Scripts inside a document: `<script type="text/lua">`
+
+An `.html` document can carry its own Lua, inline or as `src="menu.lua"` (relative to the
+document). Each script runs after every load and reload of the document **while the game plays**
+(the scene's Lua scripts started; never in edit mode), in its own environment table (globals
+readable, its own definitions stay local) with `document` (its `UIDocument`) and `anime` bound:
+
+```html
+<button id="play">Play</button>
+<script type="text/lua">
+document:getElementById("play"):addEventListener("click", function()
+    anime.animate("#play", { opacity = 0.5, duration = 300 })
+end)
+</script>
+```
+
+Errors are reported at the line of the HTML file (`ui/menu.html:45: ... [HTMLUI-HTML-0022]`) and
+in `getDiagnostics()`. JavaScript `<script>`s are not run (`HTMLUI-HTML-0006`; known libraries
+such as Lucide or Tailwind's CDN get a tailored note). `<a href="other.html">` loads that document
+in the same UI Document when clicked unless a listener of `htmlnavigate` calls `preventDefault()`.
 
 ### Events
 

@@ -184,7 +184,7 @@ TEST_F(HtmlUIClockTest, RmlUiAnimationsFollowTheClock){
 
     // the animation starts when the document is first updated: at the pinned time
     HtmlUIClock::setFixedTime(10.0);
-    fixture.addDocument("p1/clock_animation.html");
+    fixture.addDocument("p1/clock_animation.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     // 10 s linear fade. RmlUi 6.3 advances an animation by at most 0.1 s per update

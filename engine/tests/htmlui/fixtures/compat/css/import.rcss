@@ -33,7 +33,7 @@ background-color: #101010ff;
 }
 @font-face {
 font-family: Inter;
-src: fonts/Roboto-Bold.ttf;
+src: asset://fonts/Roboto-Bold.ttf;
 font-weight: 400;
 font-style: normal;
 }

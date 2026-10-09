@@ -60,7 +60,7 @@ namespace {
             HtmlUIClock::reset();
             fixture.reset(new SceneFixture());
             document = &fixture->add<UIDocument>();
-            ASSERT_TRUE(document->load("p1/anime.html"));
+            ASSERT_TRUE(document->load("p1/anime.rml"));
             updateDocuments(scene());
             TestSystem::get().clearLogs();
             // the UI clock pinned and stepped by the tests: the document updates tick the same time
@@ -289,7 +289,7 @@ TEST_F(AnimeElementTest, ElementTargetsGoWithTheDocument){
 
     // a running animation whose document unloads: cancelled at the next tick, targets freed by reset
     Anime::animate(target("box"), AnimParam::object({{"x", 10}, {"duration", 1000}}));
-    document->load("ecs/basic.html");
+    document->load("ecs/basic.rml");
     advance(16);
     EXPECT_EQ(AnimEngine::instance().getActiveCount(), 0u);
     AnimEngine::instance().reset();

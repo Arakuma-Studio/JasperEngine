@@ -103,6 +103,9 @@ namespace {
         {codes::DialogNotModal, I, false, "dialog-not-modal", "Dialog not modal",
          "Dialogs open and close, but showModal() has no backdrop and does not trap the focus. Add a backdrop element styled "
          "in CSS if needed."},
+        {codes::SelfClosingTag, W, false, "self-closing-tag", "Self-closing tag",
+         "In HTML, <div/> (any element that is not void, such as img, br or input) does not close the element: everything "
+         "after it goes inside it until its parent ends, which changes the layout. Browsers do the same. Write <div></div>."},
 
         // ---- CSS
         {codes::UnknownProperty, W, false, "unknown-property", "Unknown property",

@@ -194,10 +194,10 @@ TEST_F(ScriptLuaTest, ClassListStyleDataset){
 TEST_F(ScriptLuaTest, DocumentApi){
     EXPECT_LUA(R"(
         local component = doc:getUIDocumentComponent()
-        assert(component.filename == "p1/script_dom.html" and component.enabled and component.loaded)
+        assert(component.filename == "p1/script_dom.rml" and component.enabled and component.loaded)
         component.onLoad = function() end
         assert(doc.loaded and doc:isLoaded())
-        assert(doc.filename == "p1/script_dom.html")
+        assert(doc.filename == "p1/script_dom.rml")
         assert(doc.title == "script dom")
         doc.title = "T2"
         assert(doc.title == "T2")
@@ -301,7 +301,7 @@ TEST_F(ScriptLuaTest, Listeners){
     TestSystem::get().clearLogs();
 
     // unloading the document frees every listener and its Lua reference
-    ASSERT_TRUE(document->load("ecs/basic.html"));
+    ASSERT_TRUE(document->load("ecs/basic.rml"));
     update();
     EXPECT_EQ(HtmlUIScriptState::liveLuaRefs(), 0u);
 }
@@ -386,7 +386,7 @@ TEST_F(ScriptLuaTest, DeadHandlesRaise){
         result = el.style
         model = el.classList
     )");
-    ASSERT_TRUE(document->load("ecs/basic.html"));
+    ASSERT_TRUE(document->load("ecs/basic.rml"));
     setDocumentGlobal();
 
     // the message, after the location of the Lua line
@@ -432,7 +432,7 @@ TEST_F(ScriptLuaTest, LoadAndUnloadNotifications){
         doc.onLoad = function() result.loads = result.loads + 1 end
         doc.onUnload = function() result.unloads = result.unloads + 1 end
     )");
-    ASSERT_TRUE(document->load("ecs/basic.html"));
+    ASSERT_TRUE(document->load("ecs/basic.rml"));
     update();
     EXPECT_LUA("assert(result.loads == 1 and result.unloads == 1, result.loads .. ' ' .. result.unloads)");
     document->reload();
@@ -454,7 +454,7 @@ TEST_F(ScriptLuaTest, ListenersMoveOnReload){
 
     Rml::ElementDocument* oldDocument = documentSystem(scene()).getDocument(document->getEntity());
     ASSERT_NE(oldDocument, nullptr);
-    Rml::ElementDocument* newDocument = context()->LoadDocument("p1/script_dom.html");
+    Rml::ElementDocument* newDocument = context()->LoadDocument("p1/script_dom.rml");
     ASSERT_NE(newDocument, nullptr);
 
     std::unordered_map<Rml::Element*, Rml::Element*> oldToNew;

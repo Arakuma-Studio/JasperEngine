@@ -1,0 +1,7 @@
+compat/html/images.html:10:11: error: image 'img/missing.png' not found (resolved to compat/html/img/missing.png) (fix: check the path: relative paths start at the referencing file's directory, '/' at the assets directory) [HTMLUI-GEN-0001]
+compat/html/images.html:2:22: info: image candidate 'img/a.png' (1x) chosen at load for a dp ratio of 1 [HTMLUI-HTML-0017]
+compat/html/images.html:3:6: info: image candidate 'img/m.png' (800w) chosen at load for a dp ratio of 1 [HTMLUI-HTML-0017]
+compat/html/images.html:4:1: info: <picture> is replaced by its <img> with the source chosen at load [HTMLUI-HTML-0003]
+compat/html/images.html:4:56: info: image candidate 'img/wide.png' (1x) chosen at load for a dp ratio of 1 [HTMLUI-HTML-0017]
+compat/html/images.html:7:11: warning: image format of 'img/photo.webp' cannot be decoded by the engine; the image is not drawn (fix: convert it to PNG (or JPEG)) [HTMLUI-HTML-0024]
+compat/html/images.html:9:11: error: remote image 'https://images.example.com/x.png' is not imported; the image is not drawn; the element keeps its CSS size (fix: import it: MCP import_files or jasperengine-editor import-ui) [HTMLUI-IMP-0001]

@@ -2,7 +2,7 @@
 color: #ff0000ff;
 --html-current-color: #ff0000ff;
 background-color: transparent;
-decorator: html-layer("/ui/compat/css/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+decorator: html-layer("asset://ui/compat/css/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
 }
 @media (min-width: 600px) {
 #htmlui-root .inline-sheet {

@@ -26,6 +26,8 @@
 #include <RmlUi/Core.h>
 
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <set>
 
 #include <map>
 
@@ -415,12 +417,46 @@ TEST(CompatApi, CheckStylesheet){
     ASSERT_EQ(refs.size(), 1u);
 }
 
-// p2-html implements checkDocument (CompatApiDocument.cpp) and replaces this test with its own
-TEST(CompatApi, CheckDocumentIsAStubUntilTheHtmlStage){
+// checkDocument (p2-html, CompatApiDocument.cpp): the document compiled through the given file
+// access, no RmlUi needed (phase 4's CLI)
+TEST(CompatApi, CheckDocumentCompilesTheDocument){
+    std::map<std::string, std::string> disk = {
+        {"ui/menu.html", "<!DOCTYPE html><html><head><link rel=\"stylesheet\" href=\"menu.css\">"
+                         "<link rel=\"stylesheet\" href=\"https://cdn.example.com/x.css\"></head>"
+                         "<body><img src=\"missing.png\"><script>alert(1)</script></body></html>"},
+        {"ui/menu.css", "p { color: red; }"},
+    };
     CheckOptions options;
     options.verifyWithRmlUi = false;
+    options.files.read = [&disk](const std::string& path, std::string& content){
+        auto it = disk.find(path);
+        if (it == disk.end())
+            return false;
+        content = it->second;
+        return true;
+    };
+    options.files.exists = [&disk](const std::string& path){ return disk.count(path) > 0; };
     const CheckReport report = checkDocument("ui/menu.html", options);
-    ASSERT_EQ(report.diagnostics.size(), 1u);
-    EXPECT_EQ(report.diagnostics[0].code, codes::InternalError);
-    EXPECT_EQ(report.diagnostics[0].file, "ui/menu.html");
+    std::set<std::string> found;
+    for (const Diagnostic& diagnostic : report.diagnostics){
+        found.insert(diagnostic.code.id());
+        EXPECT_EQ(diagnostic.file, "ui/menu.html");
+    }
+    EXPECT_TRUE(found.count("HTMLUI-GEN-0001"));   // missing.png
+    EXPECT_TRUE(found.count("HTMLUI-IMP-0001"));   // the remote stylesheet
+    EXPECT_TRUE(found.count("HTMLUI-HTML-0006"));  // JavaScript
+    EXPECT_NE(std::find(report.files.begin(), report.files.end(), "ui/menu.html"), report.files.end());
+    EXPECT_NE(std::find(report.files.begin(), report.files.end(), "ui/menu.css"), report.files.end());
+    ASSERT_EQ(report.remoteRefs.size(), 1u);
+    EXPECT_EQ(report.remoteRefs[0].url, "https://cdn.example.com/x.css");
+    EXPECT_EQ(report.remoteRefs[0].kind, "stylesheet");
+    EXPECT_EQ(collectRemoteReferences("ui/menu.html", options.files).size(), 1u);
+
+    // a missing document: one error naming it
+    const CheckReport missing = checkDocument("ui/none.html", options);
+    ASSERT_EQ(missing.diagnostics.size(), 1u);
+    EXPECT_EQ(missing.diagnostics[0].code, codes::FileNotFound);
+    EXPECT_EQ(missing.diagnostics[0].file, "ui/none.html");
+    EXPECT_TRUE(isHtmlDocumentPath("ui/a.HTML"));
+    EXPECT_FALSE(isHtmlDocumentPath("ui/a.rml"));
 }

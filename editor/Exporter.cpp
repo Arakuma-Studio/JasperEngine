@@ -14,6 +14,7 @@
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "htmlui/HtmlUIDependencies.h"
+#include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/ua/UserAgentStyle.h"
 #include "htmlui/compat/runtime/LucideIcons.h"
 #include "component/UIDocumentComponent.h"
@@ -1538,6 +1539,26 @@ bool editor::Exporter::checkHtmlUIReferences(const fs::path& projectPath, const 
         }
         if (!reader(document, nullptr)) {
             errors.push_back(shown(document) + ": the document is missing (UI Document of " + where + ")");
+            continue;
+        }
+
+        // .html/.htm: the compat layer's own check (phase-2 hook H14): what the document loads in
+        // the game, so a remote URL the editor imported (import manifest) is fine; its errors
+        // (missing files, remote URLs without an import, ...) fail the export
+        if (htmlui::compat::isHtmlDocumentPath(document)) {
+            htmlui::compat::CheckOptions options;
+            options.verifyWithRmlUi = false;
+            options.files.read = [&reader](const std::string& path, std::string& content) { return reader(path, &content); };
+            options.files.exists = [&reader](const std::string& path) { return reader(path, nullptr); };
+            for (htmlui::compat::Diagnostic diagnostic : htmlui::compat::checkDocument(document, options).diagnostics) {
+                if (diagnostic.severity != htmlui::compat::Severity::Error) {
+                    continue;
+                }
+                if (!diagnostic.file.empty()) {
+                    diagnostic.file = shown(diagnostic.file);
+                }
+                errors.push_back(htmlui::compat::toText(diagnostic));
+            }
             continue;
         }
 

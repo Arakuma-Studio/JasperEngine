@@ -250,7 +250,7 @@ TEST_F(ScriptEventTest, ListenersFreedWithTheirElements){
     EXPECT_EQ(HtmlUIEventListener::liveCount(), before + 2);
     list.setInnerHTML("");
     EXPECT_EQ(HtmlUIEventListener::liveCount(), before + 1);
-    ASSERT_TRUE(document->load("ecs/basic.html"));
+    ASSERT_TRUE(document->load("ecs/basic.rml"));
     update();
     EXPECT_EQ(HtmlUIEventListener::liveCount(), before);
 }

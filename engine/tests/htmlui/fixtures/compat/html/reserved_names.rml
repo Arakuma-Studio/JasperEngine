@@ -1,0 +1,19 @@
+<rml>
+<head>
+<link type="text/rcss" href="/@htmlui/ua.rcss" origin="user-agent"/>
+<style>
+.htmlui-h0 {
+-rmlui-direction: rtl;
+-rmlui-language: ar;
+}
+</style>
+</head>
+<body data-html-id="app" class="dark" id="htmlui-root" data-htmlui-loc="0">
+<htmlbody class="page htmlui-h0" dir="rtl" lang="ar" data-htmlui-loc="1">
+<div data-html-reserved-id="htmlui-root" data-html-reserved-loc="9" class="html-reserved-h1 ok" data-htmlui-loc="2">x</div>
+<html-reserved-htmlbody data-htmlui-loc="3">y</html-reserved-htmlbody>
+<html-reserved-htmltemplate data-htmlui-loc="4">z</html-reserved-htmltemplate>
+<html-reserved-marker data-htmlui-loc="5">m</html-reserved-marker>
+
+</htmlbody></body>
+</rml>

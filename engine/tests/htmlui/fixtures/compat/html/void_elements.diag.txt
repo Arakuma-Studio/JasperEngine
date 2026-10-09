@@ -1,0 +1,2 @@
+compat/html/void_elements.html:2:85: info: HTML parse error: unexpected closed token; recovered as browsers do [HTMLUI-HTML-0001]
+compat/html/void_elements.html:3:1: warning: '<div/>' does not close the element in HTML: the following content goes inside it until its parent ends (fix: write <div></div>) [HTMLUI-HTML-0026]

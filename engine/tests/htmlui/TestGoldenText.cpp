@@ -110,7 +110,7 @@ namespace {
 
 TEST_F(FullPathGoldenTest, TextBasic){
     SceneFixture fixture;
-    fixture.addDocument("golden/text_basic.html");
+    fixture.addDocument("golden/text_basic.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     Screen screen;
@@ -127,7 +127,7 @@ TEST_F(FullPathGoldenTest, HiDpi){
     ASSERT_EQ(Engine::getCanvasHeight(), 360);
 
     SceneFixture fixture;
-    fixture.addDocument("golden/text_basic.html");
+    fixture.addDocument("golden/text_basic.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     Screen screen;
@@ -148,7 +148,7 @@ TEST_F(FullPathGoldenTest, TextFallbackRtl){
     expectedWarnings = 1;
 
     SceneFixture fixture;
-    fixture.addDocument("golden/text_fallback_rtl.html");
+    fixture.addDocument("golden/text_fallback_rtl.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     Screen screen;
@@ -193,7 +193,7 @@ TEST_F(FullPathGoldenTest, TextLoadedFont){
 
     {
         SceneFixture fixture;
-        fixture.addDocument("golden/text_loaded_font.html");
+        fixture.addDocument("golden/text_loaded_font.rml");
         ASSERT_TRUE(fixture.waitUntilLoaded());
 
         Screen screen;

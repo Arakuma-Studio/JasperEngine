@@ -42,6 +42,9 @@ namespace jasperengine::htmlui::compat {
         std::vector<RemoteReference> remoteRefs;
     };
 
+    // .html/.htm: a document the compat layer loads (.rml is RmlUi's own markup) (p2-html)
+    JASPERENGINE_API bool isHtmlDocumentPath(std::string_view path);
+
     // A whole document as it loads (HTML, its stylesheets, imports): the same diagnostics as
     // UIDocument::getDiagnostics() for the compile. htmlPath asset-relative.
     JASPERENGINE_API CheckReport checkDocument(const std::string& htmlPath, const CheckOptions& options);
