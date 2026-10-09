@@ -2474,8 +2474,8 @@ the p2-html report.
 
 Measured after p2-perf (§4, "p2-perf as implemented"; the shared build host under load, CPU
 time, median of 7 runs of the tests): HTML stage 2.5 ms, cache hit 0.025 ms, `fragmentToRml`
-0.12 ms (met); CSS 50 KB / 1 200 rules 6.5 ms and the UA sheet (19.5 KB as calibrated by p2-ua,
-not the ~600 lines of the estimate) 1.06 ms: **not met**, from 19.5 ms and 2.8 ms. The cold
+0.11 ms (met); CSS 50 KB / 1 200 rules 6.9 ms and the UA sheet (19.5 KB as calibrated by p2-ua,
+not the ~600 lines of the estimate) 1.1 ms: **not met**, from 20.7 ms and 2.8 ms. The cold
 `compile()` of both 50 KB inputs (no test) takes 10.9 ms, from 24.3 ms.
 
 ### 3.15 Platform notes
@@ -3111,22 +3111,26 @@ Built October 2026. Where the code differs from or adds to 3.13 and 5.4:
 
 #### p2-perf as implemented
 
-Measured with the perf tests (CPU time, Release, the shared build host at load 7–27 of 12
-cores, median of 7 interleaved runs of the binaries before and after) and by instructions
-(`perf stat -e instructions:u`, independent of the host's load):
+Measured with the perf tests (CPU time, Release, the shared build host at load 12–20 of 12
+cores, most of it other work: median of 7 interleaved runs of the binaries before and after)
+and by instructions (`perf stat -e instructions:u`, independent of the host's load):
 
 | Step (3.14) | Target | Before | After | Instructions before → after |
 |---|---|---|---|---|
-| CSS tokenize + parse + rewrite, 55 KB / 1 200 rules | 4 ms | 19.5 ms | 6.5 ms | 100.8 M → 37.4 M |
-| UA sheet rewrite (19.5 KB, p2-ua's) | 1 ms | 2.77 ms | 1.06 ms | 16.1 M → 5.6 M |
-| HTML stage, 51 KB / 3 600 nodes | 3 ms | 3.17 ms | 2.51 ms | 22.3 M → 16.7 M |
-| `fragmentToRml`, 2 KB | 0.2 ms | 0.148 ms | 0.117 ms | 0.92 M → 0.72 M |
+| CSS tokenize + parse + rewrite, 55 KB / 1 200 rules | 4 ms | 20.7 ms | 6.9 ms | 100.6 M → 37.3 M |
+| UA sheet rewrite (19.5 KB, p2-ua's) | 1 ms | 2.84 ms | 1.12 ms | 16.1 M → 5.6 M |
+| HTML stage, 51 KB / 3 600 nodes | 3 ms | 3.26 ms | 2.46 ms | 22.3 M → 16.7 M |
+| `fragmentToRml`, 2 KB | 0.2 ms | 0.154 ms | 0.114 ms | 0.92 M → 0.72 M |
 | `compile()` cache hit | 0.1 ms | 0.025 ms | 0.025 ms | |
 | cold `compile()`, 50 KB HTML + 50 KB CSS (no test) | 8 ms | 24.3 ms | 10.9 ms | 130.7 M → 61.8 M |
 
 The CSS and UA rows do not meet their targets: `CompatCssPerf.FiftyKilobyteSheet` and
-`CompatCssPerf.UserAgentSheet` fail without `JASPER_HTMLUI_PERF_SLACK` (the UA sheet by about
-6% on the loaded host).
+`CompatCssPerf.UserAgentSheet` fail without `JASPER_HTMLUI_PERF_SLACK` (the UA sheet measures
+1.03–1.12 ms between runs on the loaded host: 3.3 to 3.5 M cycles for the 1 ms). The HTML
+stage passes in a quiet run and measured 3.03 ms once under the heaviest load.
+
+WebAssembly (the CSS rewriter alone built with Emscripten at -O2, run by node; wall time,
+medians): 55 KB sheet 21.8 → 8.7 ms, UA sheet 3.6 → 1.3 ms: the same ratio as native.
 
 What changed (every item keeps the output):
 
