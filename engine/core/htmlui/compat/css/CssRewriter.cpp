@@ -1067,7 +1067,7 @@ namespace {
             return item.atRule ? session.atRules[item.index].order : session.rules[item.index].order;
         };
         const std::vector<int> ranks = layerRanks(session);
-        std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b){
+        const auto before = [&](size_t a, size_t b){
             const int la = layerOf(items[a]);
             const int lb = layerOf(items[b]);
             // layers first in cascade order, unlayered last
@@ -1076,7 +1076,10 @@ namespace {
             if (ka != kb)
                 return ka < kb;
             return orderOf(items[a]) < orderOf(items[b]);
-        });
+        };
+        // (a sheet without @layer is in order already)
+        if (!std::is_sorted(order.begin(), order.end(), before))
+            std::stable_sort(order.begin(), order.end(), before);
         return order;
     }
 

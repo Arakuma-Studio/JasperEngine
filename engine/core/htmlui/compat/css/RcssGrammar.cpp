@@ -183,9 +183,64 @@ namespace {
         return s.substr(a, b - a);
     }
 
+    // The pieces of a split: a few views kept in place (a value's words), more on the heap.
+    class Pieces {
+    public:
+        Pieces() = default;
+        Pieces(const Pieces&) = delete;
+        Pieces& operator=(const Pieces&) = delete;
+        Pieces(Pieces&& other) noexcept: count(other.count), heap(std::move(other.heap)) {
+            for (size_t i = 0; i < count && i < kInline; i++)
+                local[i] = other.local[i];
+        }
+
+        void push_back(std::string_view piece){
+            if (count < kInline){
+                local[count++] = piece;
+                return;
+            }
+            if (count == kInline)
+                heap.assign(local, local + kInline);
+            heap.push_back(piece);
+            count++;
+        }
+        // (as std::remove of empty views + erase)
+        void removeEmpty(){
+            std::string_view* items = data();
+            size_t kept = 0;
+            for (size_t i = 0; i < count; i++){
+                if (!items[i].empty())
+                    items[kept++] = items[i];
+            }
+            if (count > kInline)
+                heap.resize(kept);
+            if (count > kInline && kept <= kInline){
+                for (size_t i = 0; i < kept; i++)
+                    local[i] = heap[i];
+                heap.clear();
+            }
+            count = kept;
+        }
+
+        size_t size() const { return count; }
+        bool empty() const { return count == 0; }
+        const std::string_view& operator[](size_t i) const { return data()[i]; }
+        const std::string_view* begin() const { return data(); }
+        const std::string_view* end() const { return data() + count; }
+
+    private:
+        static constexpr size_t kInline = 8;
+        const std::string_view* data() const { return count > kInline ? heap.data() : local; }
+        std::string_view* data() { return count > kInline ? heap.data() : local; }
+
+        std::string_view local[kInline];
+        size_t count = 0;
+        std::vector<std::string_view> heap;
+    };
+
     // splits at `separator` outside parentheses and double quotes (views into s)
-    std::vector<std::string_view> split(std::string_view s, char separator){
-        std::vector<std::string_view> out;
+    Pieces split(std::string_view s, char separator){
+        Pieces out;
         int depth = 0;
         bool quote = false;
         size_t start = 0;
@@ -210,9 +265,8 @@ namespace {
             }
         }
         out.push_back(trim(s.substr(start)));
-        if (separator == ' '){
-            out.erase(std::remove(out.begin(), out.end(), std::string_view()), out.end());
-        }
+        if (separator == ' ')
+            out.removeEmpty();
         return out;
     }
 
@@ -409,7 +463,7 @@ namespace {
     }
 
     bool functionsIn(std::string_view value, Span<const std::string_view> names, char separator){
-        const std::vector<std::string_view> items = split(value, separator);
+        const Pieces items = split(value, separator);
         if (items.empty())
             return false;
         for (std::string_view item : items){
@@ -501,7 +555,7 @@ namespace {
             if (value == "none")
                 return true;
             bool all = false;
-            const std::vector<std::string_view> entries = split(value, ',');
+            const Pieces entries = split(value, ',');
             for (std::string_view entry : entries){
                 int times = 0;
                 bool property = false;
@@ -542,7 +596,7 @@ namespace {
             return true;
         }
         if (kind == "flex"){
-            const std::vector<std::string_view> words = split(value, ' ');
+            const Pieces words = split(value, ' ');
             if (words.size() == 1)
                 return value == "none" || value == "auto" || value == "initial" || isNumber(value);
             if (words.size() == 3)
@@ -571,7 +625,7 @@ namespace {
         if (kind == "font")
             return !value.empty();
         if (kind == "pair_length_percent"){
-            const std::vector<std::string_view> words = split(value, ' ');
+            const Pieces words = split(value, ' ');
             if (words.empty() || words.size() > 2)
                 return false;
             for (std::string_view word : words){
@@ -581,7 +635,7 @@ namespace {
             return true;
         }
         if (kind == "origin2" || kind == "origin3"){
-            const std::vector<std::string_view> words = split(value, ' ');
+            const Pieces words = split(value, ' ');
             if (words.empty() || words.size() > (kind == "origin2" ? 2u : 3u))
                 return false;
             for (size_t i = 0; i < words.size(); i++){
@@ -619,7 +673,7 @@ bool RcssGrammar::accepts(std::string_view property, std::string_view rawValue){
     if (grammar[0] == '@')
         return checkComplex(value, grammar.substr(1));
     if (grammar.compare(0, 4, "box:") == 0){
-        const std::vector<std::string_view> words = split(value, ' ');
+        const Pieces words = split(value, ' ');
         if (words.empty() || words.size() > 4)
             return false;
         for (std::string_view word : words){
@@ -629,7 +683,7 @@ bool RcssGrammar::accepts(std::string_view property, std::string_view rawValue){
         return true;
     }
     if (grammar.compare(0, 10, "replicate:") == 0){
-        const std::vector<std::string_view> words = split(value, ' ');
+        const Pieces words = split(value, ' ');
         if (words.empty() || words.size() > 2)
             return false;
         for (std::string_view word : words){

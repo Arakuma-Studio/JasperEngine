@@ -11,6 +11,7 @@
 // index (string literals, static tables).
 
 #include <cstdint>
+#include <cstring>
 #include <deque>
 #include <initializer_list>
 #include <string>
@@ -63,6 +64,27 @@ namespace jasperengine::htmlui::compat {
         bool contains(std::string_view key) const { return find(key) != npos; }
 
         static uint64_t hash(std::string_view key){
+            const size_t n = key.size();
+            const char* const p = key.data();
+            if (n <= 16){
+                // names are short: both ends read as words (overlapping), mixed once
+                uint64_t a = 0, b = 0;
+                if (n >= 8){
+                    std::memcpy(&a, p, 8);
+                    std::memcpy(&b, p + n - 8, 8);
+                }else if (n >= 4){
+                    uint32_t x = 0, y = 0;
+                    std::memcpy(&x, p, 4);
+                    std::memcpy(&y, p + n - 4, 4);
+                    a = x;
+                    b = y;
+                }else if (n > 0){
+                    a = (uint64_t)(unsigned char)p[0] | ((uint64_t)(unsigned char)p[n / 2] << 8) | ((uint64_t)(unsigned char)p[n - 1] << 16);
+                }
+                uint64_t h = (a ^ 0x9E3779B97F4A7C15ull) * 0xFF51AFD7ED558CCDull;
+                h ^= (b + n) * 0xC4CEB9FE1A85EC53ull;
+                return h ^ (h >> 32);
+            }
             uint64_t h = 1469598103934665603ull;
             for (const char c : key){
                 h ^= (unsigned char)c;

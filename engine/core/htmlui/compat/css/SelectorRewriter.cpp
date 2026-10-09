@@ -41,10 +41,21 @@ namespace {
         using Tokens = Span<const ComponentValue* const>;
 
         Parser(const std::vector<ComponentValue>& values, uint32_t file): file(file) {
-            items.reserve(values.size());
-            for (const ComponentValue& v : values){
-                if (!v.isToken(TokenType::Comment))
-                    items.push_back(&v);
+            // (a selector's few tokens fit the inline buffer)
+            if (values.size() > kInlineItems){
+                heapItems.reserve(values.size());
+                for (const ComponentValue& v : values){
+                    if (!v.isToken(TokenType::Comment))
+                        heapItems.push_back(&v);
+                }
+                items = Tokens(heapItems.data(), heapItems.size());
+            }else{
+                size_t count = 0;
+                for (const ComponentValue& v : values){
+                    if (!v.isToken(TokenType::Comment))
+                        inlineItems[count++] = &v;
+                }
+                items = Tokens(inlineItems, count);
             }
         }
 
@@ -52,8 +63,8 @@ namespace {
             std::vector<ComplexSelector> result;
             // the comma-separated groups, as ranges of items
             size_t commas = 0;
-            for (const ComponentValue* v : items)
-                commas += v->isToken(TokenType::Comma) ? 1 : 0;
+            for (size_t i = 0; i < items.size(); i++)
+                commas += items[i]->isToken(TokenType::Comma) ? 1 : 0;
             result.reserve(commas + 1);
             size_t begin = 0;
             for (size_t g = 0; g <= items.size(); g++){
@@ -61,15 +72,14 @@ namespace {
                     continue;
                 const Tokens group(items.data() + begin, g - begin);
                 begin = g + 1;
-                std::optional<ComplexSelector> selector = complex(group);
-                if (!selector){
+                if (!complex(group, result.emplace_back())){
+                    result.pop_back();
                     if (forgiving){
                         error.clear();
                         continue;
                     }
                     return std::nullopt;
                 }
-                result.push_back(std::move(*selector));
             }
             if (result.empty() && !forgiving){
                 fail(nullptr, "empty selector");
@@ -93,8 +103,8 @@ namespace {
             }
         }
 
-        std::optional<ComplexSelector> complex(const Tokens& tokens){
-            ComplexSelector selector;
+        // into a default-constructed selector
+        bool complex(const Tokens& tokens, ComplexSelector& selector){
             size_t i = 0;
             // trim
             size_t end = tokens.size();
@@ -104,7 +114,7 @@ namespace {
                 end--;
             if (i >= end){
                 fail(nullptr, "empty selector");
-                return std::nullopt;
+                return false;
             }
             selector.ref = SourceRef{file, tokens[i]->offset, tokens[end - 1]->offset + tokens[end - 1]->length - tokens[i]->offset};
             char combinator = 0;
@@ -131,7 +141,7 @@ namespace {
                 if (explicitCombinator){
                     if (combinator && combinator != ' '){
                         fail(t, "two combinators in a row");
-                        return std::nullopt;
+                        return false;
                     }
                     combinator = explicitCombinator;
                     i++;
@@ -152,7 +162,7 @@ namespace {
                 if (selector.compounds.empty())
                     selector.compounds.reserve(4);
                 if (!parseCompound(tokens, i, end, compound))
-                    return std::nullopt;
+                    return false;
                 compound.combinator = first ? (selector.relative ? combinator : 0) : (combinator ? combinator : ' ');
                 if (first && selector.relative && !combinator)
                     compound.combinator = 0;
@@ -162,9 +172,9 @@ namespace {
             }
             if (selector.compounds.empty() || (combinator && combinator != ' ')){
                 fail(tokens[end - 1], "selector ends with a combinator");
-                return std::nullopt;
+                return false;
             }
-            return selector;
+            return true;
         }
 
         bool parseCompound(const Tokens& tokens, size_t& i, size_t end, Compound& compound){
@@ -355,7 +365,10 @@ namespace {
             return true;
         }
 
-        std::vector<const ComponentValue*> items;
+        static constexpr size_t kInlineItems = 24;
+        const ComponentValue* inlineItems[kInlineItems];
+        std::vector<const ComponentValue*> heapItems;
+        Tokens items;
         uint32_t file;
     };
 
