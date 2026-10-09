@@ -2,7 +2,10 @@
 #include "../../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../../Include/RmlUi/Core/ElementText.h"
 #include "../../../Include/RmlUi/Core/ElementUtilities.h"
+#include "../../../Include/RmlUi/Core/Core.h"
 #include "../../../Include/RmlUi/Core/Event.h"
+#include "../../../Include/RmlUi/Core/FontEngineInterface.h"
+#include "../../../Include/RmlUi/Core/FontMetrics.h"
 #include "../../../Include/RmlUi/Core/Math.h"
 #include "../../../Include/RmlUi/Core/StringUtilities.h"
 #include "WidgetDropDown.h"
@@ -188,6 +191,21 @@ bool ElementFormControlSelect::GetIntrinsicDimensions(Vector2f& intrinsic_dimens
 	intrinsic_dimensions.y = GetLineHeight();
 
 	return true;
+}
+
+float ElementFormControlSelect::GetBaseline() const
+{
+	ElementFormControlSelect* self = const_cast<ElementFormControlSelect*>(this);
+	const FontFaceHandle font = GetFontFaceHandle();
+	if (!font)
+		return ElementFormControl::GetBaseline();
+	const FontMetrics& metrics = GetFontEngineInterface()->GetFontMetrics(font);
+	const Box& box = self->GetBox();
+	const float content = box.GetSize(BoxArea::Content).y;
+	const float line = self->GetLineHeight();
+	const float baseline_from_top = (content - line) * 0.5f + (line - (metrics.ascent + metrics.descent)) * 0.5f + metrics.ascent;
+	return box.GetEdge(BoxArea::Margin, BoxEdge::Bottom) + box.GetEdge(BoxArea::Border, BoxEdge::Bottom) +
+		box.GetEdge(BoxArea::Padding, BoxEdge::Bottom) + (content - baseline_from_top);
 }
 
 void ElementFormControlSelect::OnAttributeChange(const ElementAttributes& changed_attributes)

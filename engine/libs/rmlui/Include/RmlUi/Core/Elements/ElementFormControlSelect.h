@@ -91,6 +91,8 @@ protected:
 	/// @param[out] intrinsic_ratio Ignored.
 	/// @return True.
 	bool GetIntrinsicDimensions(Vector2f& intrinsic_dimensions, float& intrinsic_ratio) override;
+	/// The baseline of the selected value's text, as CSS aligns a select (not its bottom margin edge).
+	float GetBaseline() const override;
 
 	/// Respond to a change to the value attribute.
 	void OnAttributeChange(const ElementAttributes& changed_attributes) override;
