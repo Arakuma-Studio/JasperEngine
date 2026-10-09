@@ -6,7 +6,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
 <!-- golden page (phase-2 spec 5.3): unstyled HTML. The one rule sets a bundled font and pins
      font-size and line-height, so the comparison does not depend on Chromium's per-font
-     rounding of `line-height: normal` (the engine approximates it as 1.2 until phase 3). -->
+     rounding of `line-height: normal` (the engine approximates it as 1.2 until phase 3). The form
+     controls keep the UA's `line-height: normal` (Chromium: 15px for their 13.333px Roboto, the
+     engine: 16px), so the fieldset and what follows it are compared with the text tolerance. -->
 <style>
   body { font-family: Inter, sans-serif; font-size: 16px; line-height: 1.2; }
 </style>
@@ -20,9 +22,9 @@
 <s>strike</s>, <code>code</code>, <kbd>kbd</kbd>, <mark>marked</mark>, <small>small</small>, H<sub>2</sub>O, x<sup>2</sup>,
 <abbr title="abbreviation">abbr</abbr> and <a href="#link" id="link">a link</a>.</p>
 
-<form id="form">
-<fieldset id="fieldset">
-<legend id="legend">Fieldset legend</legend>
+<form id="form" data-ref-tol="text">
+<fieldset id="fieldset" data-ref-tol="text">
+<legend id="legend" data-ref-tol="auto-width">Fieldset legend</legend>
 <input type="text" id="text" value="Text input">
 <input type="password" id="password" value="secret">
 <input type="number" id="number" value="42">
@@ -47,9 +49,9 @@
 <ul id="ul" data-ref-tol="text">
 <li>First item</li>
 <li>Second item
-<ul id="ul2">
+<ul id="ul2" data-ref-tol="text">
 <li>Nested item
-<ul id="ul3"><li>Third level</li></ul>
+<ul id="ul3" data-ref-tol="text"><li>Third level</li></ul>
 </li>
 </ul>
 </li>
@@ -60,19 +62,19 @@
 <li>Three</li>
 </ol>
 
-<table id="table" data-ref-tol="table">
-<caption>Table caption</caption>
+<table id="table" data-ref-tol="auto-width">
+<caption>Scores</caption>
 <thead><tr><th>Name</th><th>Score</th></tr></thead>
 <tbody><tr><td>Alice</td><td>1200</td></tr><tr><td>Bob</td><td>950</td></tr></tbody>
 </table>
 
-<hr id="hr">
+<hr id="hr" data-ref-tol="text">
 <h2 id="h2" data-ref-tol="text">Heading level two</h2>
 <blockquote id="blockquote" data-ref-tol="text">A blockquote is indented on both sides.</blockquote>
 <pre id="pre" data-ref-tol="text">preformatted   text
   keeps spaces</pre>
 <dl id="dl" data-ref-tol="text"><dt>Term</dt><dd>Definition</dd></dl>
-<details id="details"><summary data-ref-tol="text">Summary of closed details</summary>Hidden content</details>
+<details id="details" data-ref-tol="text"><summary data-ref-tol="text">Summary of closed details</summary>Hidden content</details>
 <h3 id="h3" data-ref-tol="text">Heading level three</h3>
 <h4 id="h4" data-ref-tol="text">Heading level four</h4>
 <h5 id="h5" data-ref-tol="text">Heading level five</h5>

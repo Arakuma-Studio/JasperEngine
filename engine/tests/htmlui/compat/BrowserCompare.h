@@ -94,7 +94,7 @@ namespace jasperengine::test::compat {
         std::string id;
         std::string tag;
         float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f;   // border box in viewport px
-        std::string tolerance;                          // "", "text" or "table" (data-ref-tol)
+        std::string tolerance;                          // "", "text" or "auto-width" (data-ref-tol)
         bool transformed = false;                       // under a CSS transform: not compared
     };
 
@@ -116,7 +116,8 @@ namespace jasperengine::test::compat {
     };
 
     // 3 px; for "text" boxes max(6 px, 4 % of the reference width (x, w) or height (y, h));
-    // "table" (an auto-width table): as text, its width not compared
+    // "auto-width" (an auto-width table or legend: RmlUi fills the container): as text, its width
+    // not compared
     float layoutTolerance(const LayoutBox& reference, char field);
     // every reference element that is not transformed against the engine box of the same id
     std::vector<LayoutDifference> compareLayout(const std::vector<LayoutBox>& engine, const ReferenceLayout& reference);

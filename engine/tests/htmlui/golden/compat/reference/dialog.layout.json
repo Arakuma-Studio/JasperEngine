@@ -92,7 +92,7 @@
    "y": 214.61,
    "w": 131.22,
    "h": 103.56,
-   "tol": "table"
+   "tol": "auto-width"
   },
   {
    "id": "penalties",

@@ -781,7 +781,7 @@ namespace {
             "lottie", "htmltemplate", "svg", "video", "audio", "iframe", "canvas", "object", "embed", "portal",
             "frameset", "frame", "applet", "marquee", "track", "param", "map", "area", "datalist", "selectedcontent",
             "lottie-player", "dotlottie-player", "dotlottie-wc", "picture", "img", "wbr", "slot", "meter", "output",
-            "select", "optgroup", "q", "font", "bdi", "bdo", "ruby", "rt", "rp", "dialog", "table", "progress",
+            "select", "optgroup", "q", "font", "bdi", "bdo", "ruby", "rt", "rp", "dialog", "table", "progress", "fieldset",
         };
         if (special.find(tag) == special.end()){
             if (startsWith(tag, "html-reserved-"))
@@ -871,6 +871,17 @@ namespace {
                 caption->parent = &node;
                 node.insertChild(index, std::move(caption));
                 return false;   // the slot holds the caption now; the table follows
+            }
+            return true;
+        }
+        if (tag == "fieldset"){
+            // its first legend child straddles the top border (the user-agent sheet's
+            // fieldset.htmlui-legend draws that layout; no selector can tell a fieldset has one)
+            for (const std::unique_ptr<HtmlNode>& child : element.children){
+                if (child->kind == HtmlNode::Kind::Element && child->is("legend")){
+                    addClass(element, "htmlui-legend");
+                    break;
+                }
             }
             return true;
         }

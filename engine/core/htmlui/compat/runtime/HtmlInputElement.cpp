@@ -8,7 +8,10 @@
 #include "htmlui/compat/runtime/HtmlFormSupport.h"
 
 #include <RmlUi/Core/ComputedValues.h>
+#include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/ElementUtilities.h>
+#include <RmlUi/Core/FontEngineInterface.h>
+#include <RmlUi/Core/FontMetrics.h>
 #include <RmlUi/Core/Elements/ElementForm.h>
 #include <RmlUi/Core/Event.h>
 #include <RmlUi/Core/EventListener.h>
@@ -387,6 +390,26 @@ void HtmlInputElement::ProcessDefaultAction(Rml::Event& event){
 }
 
 // ---------------------------------------------------------------- type=image
+
+// A text field or a button aligns the baseline of its text (CSS: the baseline of its line box),
+// RmlUi's replaced elements their bottom margin edge (what CSS does for checkboxes, radios,
+// ranges and images, kept for them). Distance from the bottom margin edge.
+float HtmlInputElement::GetBaseline() const{
+    if (htmlType == "checkbox" || htmlType == "radio" || htmlType == "range" || htmlType == "image" || htmlType == "hidden")
+        return Rml::ElementFormControlInput::GetBaseline();
+    const Rml::FontFaceHandle font = const_cast<HtmlInputElement*>(this)->GetFontFaceHandle();
+    if (!font)
+        return Rml::ElementFormControlInput::GetBaseline();
+    const Rml::FontMetrics& metrics = Rml::GetFontEngineInterface()->GetFontMetrics(font);
+    const Rml::Box& box = const_cast<HtmlInputElement*>(this)->GetBox();
+    const float content = box.GetSize(Rml::BoxArea::Content).y;
+    // the line is centered in the content box, the text centered in the line (half-leading)
+    const float line = const_cast<HtmlInputElement*>(this)->GetLineHeight();
+    const float lineTop = (content - line) * 0.5f;
+    const float baselineFromTop = lineTop + (line - (metrics.ascent + metrics.descent)) * 0.5f + metrics.ascent;
+    return box.GetEdge(Rml::BoxArea::Margin, Rml::BoxEdge::Bottom) + box.GetEdge(Rml::BoxArea::Border, Rml::BoxEdge::Bottom) +
+           box.GetEdge(Rml::BoxArea::Padding, Rml::BoxEdge::Bottom) + (content - baselineFromTop);
+}
 
 bool HtmlInputElement::GetIntrinsicDimensions(Rml::Vector2f& dimensions, float& ratio){
     if (htmlType == "range"){

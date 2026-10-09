@@ -66,6 +66,7 @@ namespace jasperengine::htmlui::compat {
         void OnRender() override;
         void OnResize() override;
         bool GetIntrinsicDimensions(Rml::Vector2f& dimensions, float& ratio) override;
+        float GetBaseline() const override;
         void ProcessDefaultAction(Rml::Event& event) override;
 
     private:

@@ -563,13 +563,25 @@ select:disabled {
     color: #6d6d6d;
 }
 
-/* `border: 2px groove ThreeDFace`: Chromium paints the outer half dark at the top and left */
+/* `border: 2px groove ThreeDFace`: Chromium paints the two tones #9b9b9b and #efefef; one color
+   halfway between them */
 fieldset {
     margin: 0 2px;
     padding: 0.35em 0.75em 0.625em;
-    border-width: 2px;
-    border-style: solid;
-    border-color: #9b9b9b #efefef #efefef #9b9b9b;
+    border: 2px solid #c5c5c5;
+}
+
+/* A fieldset whose first legend straddles its top border (marked by the HTML stage): the
+   legend starts at the fieldset's top edge, the content below it, and the top border is drawn
+   through the legend's middle (no gap is cut around the legend) */
+fieldset.htmlui-legend {
+    padding-top: 0;
+    border-top-width: 0;
+    decorator: linear-gradient(to bottom, #00000000 0px, #00000000 8.5px, #c5c5c5 8.5px, #c5c5c5 10.5px, #00000000 10.5px);
+}
+
+fieldset.htmlui-legend > legend {
+    margin-bottom: 0.35em;
 }
 
 legend {

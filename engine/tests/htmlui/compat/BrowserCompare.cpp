@@ -282,11 +282,12 @@ std::string LayoutDifference::text() const{
 }
 
 float jasperengine::test::compat::layoutTolerance(const LayoutBox& reference, char field){
-    // an auto-width table: RmlUi's table model (kept by phase 3, §2.2) spans the container
-    // instead of shrinking to the columns' content; its other edges are text-sized
-    if (reference.tolerance == "table" && field == 'w')
+    // a box CSS sizes to its content where RmlUi fills the container (an auto-width table: RmlUi's
+    // table model, kept by phase 3 §2.2; a fieldset's legend): its width is not compared, its
+    // other edges are text-sized
+    if (reference.tolerance == "auto-width" && field == 'w')
         return std::numeric_limits<float>::infinity();
-    if (reference.tolerance == "text" || reference.tolerance == "table"){
+    if (reference.tolerance == "text" || reference.tolerance == "auto-width"){
         const float extent = (field == 'x' || field == 'w') ? reference.w : reference.h;
         return std::max(6.0f, 0.04f * extent);
     }
