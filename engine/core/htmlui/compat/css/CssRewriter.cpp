@@ -532,9 +532,12 @@ namespace {
 
     void prePass(Session& session, const std::vector<std::vector<Declaration>>& styleAttributes){
         // selectors
+        SelectorOptions authorOptions = session.selectorOptions;
+        authorOptions.origin = SelectorOptions::Origin::Author;
+        SelectorOptions userAgentOptions = session.selectorOptions;
+        userAgentOptions.origin = SelectorOptions::Origin::UserAgent;
         for (FlatRule& rule : session.rules){
-            SelectorOptions options = session.selectorOptions;
-            options.origin = rule.origin == RuleOrigin::UserAgent ? SelectorOptions::Origin::UserAgent : SelectorOptions::Origin::Author;
+            const SelectorOptions& options = rule.origin == RuleOrigin::UserAgent ? userAgentOptions : authorOptions;
             SelectorRewriteResult result = SelectorRewriter::rewrite(rule.selectors, options, session.sink, rule.preludeRef.valid() ? rule.preludeRef : rule.ref);
             rule.rewritten = std::move(result.selectors);
             if (result.invalid || rule.rewritten.empty())
@@ -710,7 +713,7 @@ namespace {
                         bool conflict = false;
                         for (const RewrittenSelector& sl : l.rewritten){
                             for (const RewrittenSelector& su : u.rewritten){
-                                if (sl.specificity > su.specificity && SelectorRewriter::subjectsOverlap(sl.source, su.source))
+                                if (sl.specificity > su.specificity && SelectorRewriter::subjectsOverlap(l.selectors[sl.source], u.selectors[su.source]))
                                     conflict = true;
                             }
                         }
@@ -928,9 +931,9 @@ namespace {
                 continue;
             for (const RewrittenSelector& mine : rule.rewritten){
                 for (const RewrittenSelector& theirs : other.rewritten){
-                    if (theirs.specificity > mine.specificity && SelectorRewriter::subjectsOverlap(mine.source, theirs.source)){
+                    if (theirs.specificity > mine.specificity && SelectorRewriter::subjectsOverlap(rule.selectors[mine.source], other.selectors[theirs.source])){
                         session.sink->report(codes::ImportantMayLose, ref, "'" + property + " !important' may lose to the more specific rule '" +
-                                             SelectorRewriter::serialize(theirs.source) + "' at " + BaseRules::location(session, other) +
+                                             SelectorRewriter::serialize(other.selectors[theirs.source]) + "' at " + BaseRules::location(session, other) +
                                              " (the engine has no !important)", "raise this selector's specificity or lower the other one");
                         return;
                     }

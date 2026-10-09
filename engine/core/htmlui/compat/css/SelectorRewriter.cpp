@@ -1058,7 +1058,8 @@ SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelecto
     SelectorRewriteResult result;
     Rewriter rewriter(options, sink, ruleRef);
     std::vector<std::string> seen;
-    for (const ComplexSelector& source : list){
+    for (size_t sourceIndex = 0; sourceIndex < list.size(); sourceIndex++){
+        const ComplexSelector& source = list[sourceIndex];
         if (source.relative){
             if (sink)
                 sink->report(codes::InvalidSelector, source.ref.valid() ? source.ref : ruleRef,
@@ -1079,7 +1080,7 @@ SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelecto
         for (ComplexSelector& variant : variants){
             bool placeholder = false, pseudoElement = false;
             rewriter.pendingAlternate.clear();
-            ComplexSelector mapped = variant;
+            ComplexSelector mapped = std::move(variant);
             const bool kept = rewriter.mapSelector(mapped, placeholder, pseudoElement, 0);
             if (rewriter.invalidRule){
                 result.invalid = true;
@@ -1088,10 +1089,11 @@ SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelecto
             }
             if (!kept)
                 continue;
-            std::vector<ComplexSelector> forms{mapped};
+            std::vector<ComplexSelector> forms;
+            forms.push_back(std::move(mapped));
             if (!rewriter.pendingAlternate.empty()){
                 // the scrollbar mappings make two selectors (vertical and horizontal, dec and inc)
-                ComplexSelector alternate = mapped;
+                ComplexSelector alternate = forms.front();
                 for (Compound& compound : alternate.compounds){
                     for (SimpleSelector& s : compound.simples){
                         if (s.kind == Kind::Type && (s.name == "scrollbarvertical" || s.name == "sliderarrowdec"))
@@ -1110,8 +1112,7 @@ SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelecto
                         continue;
                     seen.push_back(out.text);
                     out.specificity = specificity(banded);
-                    out.selector = std::move(banded);
-                    out.source = source;
+                    out.source = (uint32_t)sourceIndex;
                     out.placeholder = placeholder;
                     out.pseudoElement = pseudoElement;
                     result.selectors.push_back(std::move(out));

@@ -63,8 +63,7 @@ namespace jasperengine::htmlui::compat {
 
     struct RewrittenSelector {
         std::string text;              // RCSS
-        ComplexSelector selector;      // the rewritten form
-        ComplexSelector source;        // the CSS selector it came from (nesting already flattened)
+        uint32_t source = 0;           // the CSS selector it came from: its index in the list given to rewrite()
         uint32_t specificity = 0;      // RmlUi weights (id 1 000 000, class/attribute/pseudo-class 100 000, tag 10 000)
         bool placeholder = false;      // from ::placeholder: only color, opacity and font-* apply
         bool pseudoElement = false;    // ::before/::after kept for the fork
