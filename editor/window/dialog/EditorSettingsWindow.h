@@ -32,6 +32,8 @@ namespace jasperengine::editor {
         std::string m_emsdkOverride;
         EmsdkInfo m_emsdkInfo;
         bool m_editorVSyncEnabled = true;
+        bool m_htmlUiAutoImport = true;
+        bool m_htmlUiVerboseDiagnostics = false;
         float m_codeEditorFontSize = 0.0f;
         // Unity-style category list; indexes PreferencesCategory in the .cpp.
         int m_category = 0;

@@ -1,0 +1,2 @@
+compat/css/appearance.css:5:11: info: 'appearance: button' is treated as 'auto' [HTMLUI-CSS-0005]
+compat/css/appearance.css:6:12: warning: 'appearance: fancy' is not supported; declaration dropped (fix: use appearance: none or auto) [HTMLUI-CSS-0004]

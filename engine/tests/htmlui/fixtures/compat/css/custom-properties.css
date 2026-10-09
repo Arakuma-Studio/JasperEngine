@@ -1,0 +1,26 @@
+/* custom properties: normalized values, typing by kind, typed copies, undeclared variables */
+:root {
+  --accent: rgba(0, 0, 0, .5);
+  --bg: linear-gradient(135deg, #1e1e2e, #11111b);
+  --shared: linear-gradient(red, blue);
+  --shadow: 0 0 8px #0ff;
+  --theme-color: #333;
+  --space: 1.5rem;
+  --dur: 200ms;
+  --str: "hello";
+  --empty: ;
+  --mixed: red;
+}
+.dark { --theme-color: #eee; --mixed: linear-gradient(red, blue); }
+.uses { color: var(--accent); background: var(--bg); padding: var(--space); }
+.typed-1 { background-image: var(--shared); }
+.typed-2 { mask-image: var(--shared); }
+.shadow-text { text-shadow: var(--shadow); }
+.shadow-box { box-shadow: var(--shadow); }
+.theme { background: var(--theme-color); border: 1px solid var(--theme-color); }
+.mixed { background: var(--mixed); }
+.undeclared { background: var(--from-lua); text-shadow: var(--nope); }
+.fallback { background: var(--missing, linear-gradient(#000, #fff)); color: var(--missing2, red); }
+.chain { --a: var(--accent); color: var(--a); }
+.case { --CamelCase: 1px; width: var(--CamelCase); }
+.reserved { --html-current-color: red; }

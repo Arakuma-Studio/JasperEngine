@@ -1,0 +1,7 @@
+/* logical borders to physical sides (LTR) */
+.inline { border-inline: 1px solid red; }
+.block { border-block: 2px solid blue; }
+.start { border-inline-start: 3px solid green; border-inline-end-color: red; }
+.block-start { border-block-start-width: 4px; border-block-end-style: none; }
+.radius { border-start-start-radius: 4px; border-end-end-radius: 8px; border-start-end-radius: 2px; border-end-start-radius: 6px; }
+.widths { border-inline-width: 5px; border-block-color: #abc; }

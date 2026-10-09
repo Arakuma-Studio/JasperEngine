@@ -814,7 +814,7 @@ stylesheet set, script list, template list, element counter).
 
 | Input | Result |
 |---|---|
-| relative path (`img/a.png`, `../fonts/x.ttf`) | asset-relative path joined with the referencing file's directory, normalized; emitted with a leading `/` in RML/RCSS so RmlUi's `JoinPath` keeps it |
+| relative path (`img/a.png`, `../fonts/x.ttf`) | asset-relative path joined with the referencing file's directory, normalized; emitted as `asset://<path>` in RML/RCSS so RmlUi's `JoinPath` keeps it (as implemented by p2-html: a leading `/` is an absolute filesystem path for phase 1's `JoinPath` and the engine's file layer) |
 | root-relative `/ui/a.png` | asset-relative `ui/a.png` |
 | `http(s)://…`, `//host/…` | looked up in the import manifest; hit → local asset path; miss → `HTMLUI-IMP-0001` Error (suggestion: "import it: MCP `import_files` or `jasperengine-editor import-ui`") + fallback per kind (3.13.6) |
 | `data:[mime][;base64],…` | decoded; stored in `VirtualFiles` as `@htmlui/data/<sha1-12>.<ext>` (ext from mime: png, jpg, gif, svg, json, ttf, otf); emitted as `/@htmlui/data/…` |
@@ -1710,6 +1710,10 @@ struct RewriteContext {               // per document session
     const ImportManifest* manifest = nullptr;   // ImportManifest::get() when null
     std::string virtualDirectory;     // "@htmlui/doc/<key hex>/": the loader knows the key, the rewriter does not
     std::string documentPath;
+    // the attributes of the document's <html> element (name, value), lowercase names; the
+    // rewriter resolves `html#app`, `html.dark`, `html[data-theme]`, `html[dir=rtl]`
+    // statically against them (added by p2-css)
+    std::vector<std::pair<std::string, std::string>> rootAttributes;
 };
 struct RewriteResult {
     std::vector<StylesheetOutput> sheets;      // same order as the inputs
@@ -2567,6 +2571,98 @@ list says where each wave-2 package plugs in without editing p2-core's files.
   `data-htmlui-loc`, `template.content`, inline Lua script runs with `document` and reports
   errors at the HTML line), `compat_perf_test.cpp` (3.14 HTML rows, Release only).
 
+#### p2-html as implemented
+
+Built by p2-html (October 2026). Where the code differs from or adds to the text above:
+
+- **lexbor** is `master` at `f4cbbcd` (its `version` file says 3.1.0; upstream has no 3.1.0
+  tag). The source-offset fields are defined in the patched `dom/interfaces/node.h` (a
+  compiler definition cannot carry `;` through CMake lists); the patch also records the range of
+  elements made from an end tag (`</br>`) and of text and comment tokens (`PATCHES.md`). A
+  per-thread lexbor document is reused (cleaned) between parses. Xcode: `lexbor-ios`/`lexbor-macos`
+  targets (`tools/htmlui/xcode_add_lexbor.py`). `tools/build.sh linux` fails if
+  `libjasperengine.so` exports an `lxb_`/`lexbor_` symbol.
+- **URLs.** `UrlResolver` emits `asset://<path>` for local and imported files (not `/<path>`:
+  phase 1 made `RmlSystem::joinPath` keep absolute paths, and the engine's file layer reads a
+  leading `/` as the filesystem root); virtual files stay `/@htmlui/…`. A document opened by an
+  absolute filesystem path (tests, tools) keeps its references absolute, as in phase 1.
+- **HTML stage.** `html/HtmlTree.h` (`HtmlNode` also has `selfClosingSyntax`, a `Raw` kind for
+  Lucide shapes, and the compile's `loc`/rewritten style), `html/HtmlParser` (`parseDocument`,
+  `parseFragment`, depth limit 512 like Chromium), `html/HtmlTransform.h` (`TransformContext`,
+  one function per pass in `html/transforms/{Head,Element,Lucide,Form,Attribute}Transform.cpp`),
+  `html/RmlSerializer`. Additions to §3.7.3: `<div/>` on a non-void HTML element is reported with
+  the new code `HTMLUI-HTML-0026 self-closing-tag` (Warning: it changes the layout); the engine's
+  own `<lottie/>` is treated as void; `<link type="text/css" href>` without `rel` (RmlUi's and
+  phase 1's form) is loaded with an `HTMLUI-HTML-0010` Info; `title` attributes are kept (selectors
+  like `abbr[title]`) and reported Info; a `<noscript>` is unwrapped; `<slot>` is unwrapped;
+  a nested `<svg>` inside inline SVG becomes `<g>` (RmlUi reads inline SVG as raw text up to the
+  first `</svg>`, `HTMLUI-SVG-0002`); names that are not XML names (`<b<`) are sanitized; scripts
+  in templates or fragments are not run (`HTMLUI-HTML-0007` Info); a `<template>` placeholder
+  carries `data-htmlui-template="<n>"`; presentational hints are written as RCSS directly (not
+  through the rewriter; in fragments they go first in `style=""`). SVG `currentColor`
+  preprocessing is done by the `<svg>` element (H8, p2-runtime); the HTML stage runs
+  `SvgPreprocess::process(…, SvgUse::Inline)` on every inline `<svg>` at compile time only to
+  report its `SvgResult::diagnostics` at the element (`HTMLUI-SVG-0001`; `-0002` for
+  `foreignObject` is reported by the stage itself). `data-lucide` expansion uses p2-runtime's
+  `runtime/LucideIcons.h` (`resolve`/`find`/`closest`/`svgAttributes`); the classes follow
+  Lucide's `createIcons` (`lucide lucide-<attribute value>`).
+- **RML shape.** A start tag starts a new RML line when it follows another tag (inserting a line
+  break after text would add a space). RmlUi drops whitespace-only text nodes, so a space
+  between two inline elements (`<b>a</b> <i>b</i>`) is lost, as in phase 1; inside `pre`-like
+  elements whitespace-only text is written as character references, which RmlUi keeps.
+- **DocumentLoader** (`DocumentLoader.h`): as specified, plus `compile(path, options, files)`
+  (uncached, for checks), `restyle(document, shared_ptr, options)` (rebinds the document),
+  `restyleForViewport` returns the compile now in use, `fragmentToRml(..., FragmentOptions)`
+  (document path, options, context tag), `compiledOf/diagnosticsOf/addRuntimeDiagnostic`
+  (a binding per loaded document, removed when RmlUi destroys it), `registerDocument`,
+  `applyAutofocus`, `checkFontFamilies`, `isCompatDocument`, `sameRml`, `cacheSize`.
+  `CompatDocument` also keeps the options, the virtual directory/owner, the hint and
+  `!important` sheets with the RML lines of every inline sheet, the rewritten `style=""` values
+  by location, dependency stamps, font families. `DocumentScript` has `sourceFile`/`firstLine`:
+  the chunk runs with that many leading line breaks, so Lua reports `ui/menu.html:45:`.
+  Cache: per document path and options, an entry is valid while every dependency stamp
+  (content hash of the files read, existence of the others) is current; at most 64 entries
+  (least recently used go, with their virtual files); missing documents are not cached. The
+  virtual directory is `@htmlui/doc/<per-compile owner>/` (unique, so RmlUi's sheet cache never
+  serves a stale sheet); `data:` URIs are content-addressed and live for the process.
+  `RewriteContext` gained `rootId` and `rootDirection` (the author id and `dir` of `<html>`) for
+  p2-css.
+- **checkDocument** (`CompatApiDocument.cpp`) compiles through `CheckOptions::files`; with
+  `verifyWithRmlUi` it loads the RML into a scratch context (a null render interface, empty
+  data models for every `data-model`) inside a capture and maps the messages, then runs the
+  font check. `isHtmlDocumentPath` was added for the editor.
+- **Hooks.** H1/H1b in `HtmlUIContext::loadDocument` (options from the context: size, density
+  ratio, touch, themes, `UIDocumentSystem::getVerboseDiagnostics()`, p2-importers' static
+  behind `AppSettings::htmlUiVerboseDiagnostics`); `HtmlUIContext::setDimensions`
+  restyles viewport-dependent documents; `setColorScheme/setReducedMotion` activate the RmlUi
+  themes `light`/`dark`/`reduced-motion`; a transparent `htmlbody` lets the pointer through like
+  a transparent document. H2 in `UIDocumentSystemReload.cpp` (compat dependencies in the file
+  list, `invalidate` + `ImportManifest::notifyFileChanged` for every changed file, the manifest
+  counts as a stylesheet change, `reloadStyleSheets` recompiles and restyles when the RML,
+  scripts and templates are unchanged, else reloads in full). H4/H5 in `UIDocument`/`UIElement`
+  (C++ and Lua alike): `getDocumentElement`, `getDiagnostics`, `setColorScheme`,
+  `setReducedMotion`, `getLocalName`, `get/setOuterHTML`, `insertAdjacentHTML`, `getContent`
+  (`template.content`, a detached `htmlfragment` whose children `appendChild`/`insertBefore`
+  move), `show/showModal/close` (dialogs), `get/setCssText`; on HTML documents `getTagName` is the
+  DOM tagName (upper case: `DIV`, `BODY`, `HTML`, `TEMPLATE`), `getBody` is the HTML body.
+  Document scripts run once the scene's Lua scripts started (`LuaBinding::initializeLuaScripts`
+  calls `UIDocumentSystem::startDocumentScripts`) and after every later (re)load, before the
+  context update; play stop (`releaseScriptState`) stops them. The `htmlnavigate` default action
+  is a listener on the context root (bubble phase, so any listener can prevent it): it ignores
+  `external` links and opens the event's `url` (resolved by `HtmlAnchorElement`, when `document`
+  is true) or else the `href`. `show/showModal/close` call `HtmlDialogElement`'s (its `close`
+  event is queued: it fires on the next context update). H14 runs
+  `checkDocument` for `.html`/`.htm` exports. Code lives in `UIDocumentSystemCompat.cpp`
+  (`HtmlUICompatState`).
+- **Phase-0/1 fixtures** written in RML dialect (`<div/>`, RCSS) were renamed `.rml` (they test
+  the renderer and the RML path); the editor's *Create > HTML Document* template is standard
+  HTML/CSS now.
+- **Tests:** `compat_html_test.cpp` (25 golden cases in `fixtures/compat/html/`, the `.rml` golden
+  also lists templates, virtual sheets and Lua chunks), `compat_html5lib_test.cpp` (html5lib
+  tree-construction corpus at its last commit before the move to WPT), `compat_sourcemap_test.cpp`,
+  `compat_loader_test.cpp`, `compat_lua_test.cpp`, `compat_perf_test.cpp` (CPU time, scaled by
+  `JASPER_HTMLUI_PERF_SLACK` on loaded hosts), `CompatApi.CheckDocumentCompilesTheDocument`.
+
 ### p2-css (wave 2): CSS rewriting
 
 - **Owns:** `compat/css/CssRewriter.cpp` (replacing the seam), `css/ColorValue.*`,
@@ -2624,7 +2720,63 @@ list says where each wave-2 package plugs in without editing p2-core's files.
   `color_*.json` through `ColorValue`. `compat_easing_test.cpp` checks the keyword table and
   `nearestTween` against brute force. `compat_media_test.cpp`, `compat_selector_test.cpp`
   table-driven. `compat_rewrite_registry_test.cpp`: every `RewriteId` used by a table row
-  has a registered function and every function is used. `compat_perf_test.cpp` CSS rows.
+  has a registered function and every function is used. `compat_css_perf_test.cpp` CSS rows
+  (named apart from p2-html's `compat_perf_test.cpp`).
+
+#### p2-css as implemented
+
+Built by p2-css (October 2026). The sections above keep the design; this list records the
+interfaces other packages rely on and the deviations.
+
+- **Files**: besides the owned list, `css/RewriteSession.h` (the session: `FlatRule`,
+  `FlatAtRule`, `OutDecl`, `RuleOutput`, `DeclContext` with `emit/generate/report`),
+  `css/RcssGrammar.*` (what RmlUi 6.3 and the compat-registered properties accept, per
+  property: the last check before a declaration is written, so nothing RmlUi would reject is
+  passed on) and `css/props/Rewriters.*` (the `RewriteId` → function registry). Fixtures:
+  `fixtures/compat/css/<case>.css` (87 cases; a first-line comment
+  `/* htmlui-test: kind=style-attribute|inline root-id=… root-class=… root-attr=… dir=…
+  viewport=WxH touch dp=… */` sets the inputs), shared runner `CssCaseRunner.h`, stand-ins
+  for the p2-runtime properties and decorators in `CompatRuntimeStandIns.h` (skipped when the
+  real ones are registered).
+- **`RewriteContext::rootAttributes`** (new field next to p2-html's `rootId`/`rootDirection`;
+  `DocumentLoader` fills it with the `<html>` attributes except the reserved `id` and
+  `data-html-id`): `html`/`:root` map to `body#htmlui-root` in author sheets (`body` in the UA
+  sheet), `body` to `htmlbody`; selectors on root attributes are resolved at rewrite time
+  (a variant per selector that could match the root; `:is()`/`:where()` compounds get no
+  root variant).
+- **Decorator arguments** as written (the forms §"p2-runtime as implemented" documents):
+  `html-layer("<path>" <size-x> <size-y> <pos-x> <pos-y> <repeat-x> <repeat-y> <origin>
+  <clip> <attachment>)` with `cover`/`contain` in both size slots and edge offsets as
+  `calc(100% - 10px)`; `html-shape("<basic-shape> [<box>]")` with strings inside the shape
+  (`path('…')`) in single quotes; `html-border-image("<path>" <slice ×4> fill|nofill
+  <width ×4> <outset ×4> <repeat-x> <repeat-y>)`.
+- **Output rules**: in one rule the last declaration of an output property wins and earlier
+  ones are not written (RmlUi would keep the last too, but shorthands expanding into the same
+  property would otherwise repeat it); `@media` blocks are never empty; the `@media` lines map
+  to their rule in the line map. A custom property whose value is a list holding quoted
+  strings (`--font: "Inter", sans-serif`) is written with the strings unquoted (RmlUi reads a
+  quoted string only as a whole value); a custom property holding a `{}` block is dropped
+  (`HTMLUI-CSS-0004`). `list-style-image` is written as the bare resolved path (the
+  registered property is a string).
+- **`appearance: auto`** writes the fallbacks the UA sheet gives its `var(--html-check, …)`,
+  `--html-control-bg`, `--html-control-border`, `--html-select-arrow`, `--html-thumb`
+  reads, taken from `UserAgentStyle::source()` (built-in copies of p2-ua's values when no
+  sheet is embedded).
+- **`HTMLUI-SEL-0008 selector-ignored`** (Info, new): a rule with an unknown vendor
+  pseudo-class/-element or `:dir()` is dropped, as Chromium drops it.
+- **Parser (p2-core files, changed by p2-css for speed)**: `parseStylesheet` and
+  `parseDeclarationList` parse each block once (its contents) and leave `Rule::block` empty;
+  the CSS Syntax entry points (`parseRuleList`, `parseRule`, `parseBlockContents`) still fill
+  it. The parser drops comment tokens in place. `findProperty` and `valuesOf` use an index
+  built on first use.
+- **Performance** (3.14), measured by `compat_css_perf_test.cpp` (median CPU time; targets
+  scaled by `JASPER_HTMLUI_PERF_SLACK`): a generated 54 KB sheet of 1 200 rules takes about
+  18–20 ms on the shared build host (load 40–60 on 12 cores), of which tokenize + parse
+  (p2-core) is about 3–5 ms; the 16.7 KB UA sheet of p2-ua about 3 ms. The 4 ms / 1 ms
+  targets are not met; the cost is spread (per declaration: normalization, property rewrite,
+  grammar check; per rule: selector parse/rewrite and the AST copies of `Token` /
+  `ComponentValue`). Meeting them needs a token representation without owned strings
+  (`std::string_view` into the source) in p2-core's AST, a phase-3 item.
 
 ### p2-runtime (wave 2): runtime emulations, icons, SVG
 
@@ -2656,6 +2808,93 @@ list says where each wave-2 package plugs in without editing p2-core's files.
   fixtures), `compat_properties_test.cpp` (registered properties parse and inherit as
   specified), font-effects (H6) covered by a golden in p2-ua plus a unit test that RmlUi
   generates effect geometry.
+
+#### p2-runtime as implemented
+
+Built by p2-runtime (October 2026). Binding for the packages that call into it; the
+sections above keep the design, this list records the interfaces and the deviations.
+
+- **Registry** (`runtime/RuntimeRegistry.cpp`): `registerRuntime()` registers, after every
+  `Rml::Initialise`, the properties, the SVG source hook, the decorator instancers
+  `html-layer`, `html-shape`, `html-border-image` and the element instancers `button`, `a`,
+  `input`, `li`, `summary`, `details`, `dialog`, `img`, `label` (replacing RmlUi's `img`,
+  `input`, `label` for every document, `.rml` ones too: RmlUi's `sprite`/`rect` on `img` and
+  every RmlUi input type keep working); `releaseRuntime()` drops them after `Rml::Shutdown`;
+  `updateRuntime(context)` runs `FocusTracker::update` and `AnimationFill::update`, which keep
+  their own per-context state (a capture listener on the context's root for `animationend`),
+  so p2-html's `DocumentLoader::load` needs no runtime call. The phase-3 gates of §3.6
+  (`FocusPseudoClasses`, `AnimationLonghands`, `ListMarkers`, `ObjectFit`) go into
+  `updateRuntime`/`registerRuntime` when phase 3 appends those enum values;
+  `CompatProperties::registerAll()` already skips any name the fork registers.
+- **Properties** (`CompatProperties`, enum `CompatProperty`): the names of §3.11.1;
+  `object-position` is one string-parsed property holding the CSS value (any
+  `<position>`, parsed at draw time); `fill`/`stroke` take a color or the keywords `none`,
+  `currentcolor`; the paint properties default to "unset" (no value). Readers:
+  `CompatProperties::text/color/get(element, property)`.
+- **Decorator arguments** (what p2-css writes): `html-layer("<path>" <size-x> <size-y>
+  <pos-x> <pos-y> <repeat-x> <repeat-y> <origin> <clip> <attachment>)`, each one token: size
+  `auto|cover|contain|<length-percentage>`; position `left|center|right` (x) or
+  `top|center|bottom` (y), a `<length-percentage>`, or `calc(<percentage> ± <length>)` for an
+  edge offset (`right 10px` = `calc(100% - 10px)`); repeat `repeat|no-repeat|space|round`;
+  boxes `border-box|padding-box|content-box`; attachment `scroll|fixed|local` (`local` is drawn
+  as `scroll`). `html-shape("<basic-shape> [<box>]")` (the shape quoted, an optional reference
+  box keyword after it inside the quotes, default `border-box`). `html-border-image("<path>"
+  <slice ×4> fill|nofill <width ×4> <outset ×4> <repeat-x> <repeat-y>)`: slices are numbers or
+  percentages, widths `auto`, numbers (× border width) or lengths/percentages, outsets numbers
+  or lengths. Paths are what `UrlResolver` emits (`asset://…`, `/@htmlui/…`). Invalid
+  arguments log `[HTML UI] html-layer(): …` and the decorator is not instanced. The pure math
+  is public for tests: `computeLayerGeometry`, `computeBorderImageGeometry`,
+  `LayerSpec::parse`, `BasicShape::parse/toSvg`.
+- **Rasteriser**: `html-shape`, SVG layers and `htmlui::rasterizeSvg(xml, width, height)`
+  use LunaSVG (the phase-0 benchmark's choice; §3.11.3's "ThorVG" predates it). SVG layers and
+  `<img src="*.svg">` are rasterized at the drawn size × the context's pixel ratio
+  (`RmlFontEngine::getRasterScale(renderManager)`), cached process-wide (32 MB);
+  `htmlui::svgIntrinsicSize(xml, w, h)`.
+- **SVG** (H8): the fork patch `rmlui: SVG source hook` (FORK.md P2-1) adds
+  `Rml::SVG::SourceHook`; compat's `SvgElementHook` runs `SvgPreprocess::process(xml,
+  SvgUse, SvgPaintOverrides)` → `SvgResult{ok, xml, tint, foreignObjects, diagnostics,
+  withColor(css)}` (cached by content; per-element attributes `rmlui-*`, `data-*`, `aria-*`,
+  `role` are dropped from the inline wrapper so equal icons share an entry). `Color`: the
+  white raster is multiplied by color × image-color × opacity (a color change makes new
+  geometry, never a new raster); `Substitute`: the root `color` attribute gets the CSS color
+  (LunaSVG resolves `currentColor`), re-rasterized on change. A shape without any fill,
+  a stop without stop-color, an inner element redefining `color` or a fixed paint in a
+  `<style>` sheet make an SVG "mixed". `HTMLUI-SVG-0001/0002` are logged once per `<svg src>`
+  file at runtime; p2-html reports them for inline SVG at compile time from
+  `SvgResult::diagnostics`.
+- **Lucide** (§3.11.8): Lucide 1.53.0 (latest release), 1869 icons, 264 aliases, 93 KB
+  packed; format in `engine/libs/lucide/README.md`. `LucideIcons::find/resolve/closest/names`,
+  `svgAttributes(name, elementAttributes)` (the root attributes of `replaceElement`, also
+  `title` counts as an accessibility attribute, as Lucide's `hasA11yProp`), `svgMarkup`,
+  `toPascalCase/toKebabCase`; p2-html's step 7 and the Lua `setAttribute("data-lucide")`
+  hook use them. The Apple export writes `htmlui_lucide.h` like `htmlui_ua.h`.
+- **Elements**: `htmlnavigate` (on the document, bubbles, cancelable) has the parameters
+  `href`, `url` (asset-relative file or the URL), `fragment`, `document` (bool: `.html/.htm`),
+  `external` (bool); `#id`/`#`/`#top` scroll and dispatch nothing. `HtmlDialogElement::
+  show/showModal/close(returnValue)` (+ `cancel` on Escape when modal, `close` queued);
+  `HtmlDetailsElement` queues `toggle` (newState/oldState), also for a details created open
+  (as browsers), and closes same-`name` siblings. Buttons, links, summaries, checkboxes and
+  radios activate from the keyboard with HTML timing (Enter on key down, Space on key up) and
+  suppress RmlUi's own Enter/Space click of the focused element; Enter in a text field submits
+  its form (implicit submission). Reset restores inputs to the attributes they had before
+  their first update and textareas/selects to their values when the form was first seen.
+  `label` is an own element (`HtmlLabelElement` in `HtmlLabelBehavior.cpp`) rather than a
+  listener on RmlUi's: RmlUi's label stops the label's click and labels `input type=hidden`;
+  this one keeps the click propagating and activates the HTML-labeled control as the default
+  action.
+- **Markers**: list items show a marker only with `display: block`/`flow-root` (what
+  `list-item` becomes); bullets and disclosure triangles are drawn as small SVG shapes (the
+  built-in fonts lack ◦ ▪ ▸ ▾); `inside` grows the item's `padding-left` (a local property)
+  by the marker width.
+- **Hooks**: H6 `RmlFontEngine::hasFamily` (static), `setRenderTextForTesting/
+  getRenderTextForTesting`; H7 `RmlRenderer::LoadTexture` serves `@htmlui/` virtual files and
+  the `htmlui-filter=nearest` query parameter (`RmlRenderer::stripTextureFilter`), and
+  `createStaticTexture` takes a filter; H9 `<lottie playonhover>` (enter plays, leave stops, as
+  lottie-player's `hover`).
+- **What the user-agent sheet (p2-ua) must provide** for these behaviors: `tab-index: auto` on
+  `button`, `a[href]`, `summary`, form controls; `summary { list-style: disclosure-closed
+  inside }` / `details[open] > summary { list-style-type: disclosure-open }`; `dialog:not([open])
+  { display: none }`; `input[type=hidden] { display: none }`; markers style through `li > marker`.
 
 ### p2-ua (wave 2, finishes last): user-agent stylesheet, references, golden tests
 
@@ -2689,6 +2928,94 @@ list says where each wave-2 package plugs in without editing p2-core's files.
 - **Deliverables:** 3.13 complete: HTTP client, all importers, manifest writer, auto-import
   flow, Inspector panel, CLI subcommand, settings, licensing records, offline behavior.
 - **Tests:** 5.4.
+
+#### p2-importers as implemented
+
+Built October 2026. Where the code differs from or adds to 3.13 and 5.4:
+
+- **Files** (`editor/htmlui/`, namespace `jasperengine::editor::htmlui`): `HttpClient`,
+  `RemoteImporter` (fetch once, detect the kind, stage files, write files + manifest entry,
+  `HTMLUI-IMP-*` diagnostics; also `ImportTarget`, `ImportStaging`, `discoverRemoteReferences`,
+  URL helpers), `ContentSniffer` (magic bytes, then Content-Type and URL), `GoogleFontsImporter`,
+  `StylesheetImporter` (+ `findCssUrls`/`findFontFaces`/`applyCssEdits` over the compat CSS
+  parser; edits keep everything but the URLs byte for byte), `ImageImporter`, `LottieImporter`,
+  `ImportManifestWriter`, `HtmlUiImporters` (facade), `HtmlUiImportQueue` (worker, ImGui-free),
+  `HtmlUiAutoImport` (editor glue), `HtmlUiImportMaintenance` (per-URL states, Remove unused),
+  `HtmlUiImportPanel` (H10), `HtmlUiImportCli` (H11). **No `ZipReader`**: dotLottie archives
+  are read with the engine's exported `DotLottie`/`ZipArchive` (`htmlui/vector/DotLottie.h`,
+  phase 1), which already handle stored and deflated entries, v1 and v2 layouts and the active
+  animation.
+- **HTTP.** The command is `curl -K <config> || true` (`|| (call )` on Windows): curl's exit code
+  is not needed (the write-out line and `curl: (N)` lines carry status and errors) and
+  `CommandRunner` would log every non-zero exit to the Console. Additions:
+  `setTimeoutSeconds`, process-wide `setDefaultHostRewrite`/`setDefaultTimeoutSeconds` (clients
+  start with them: the facade creates its own), `cancelAll()` (editor shutdown kills running
+  downloads), `HttpResponse::ok()`, `readBody`, `urlQuote`/`mirrorPath`. A response reports the
+  URL as the caller named it (host rewrites undone, also after redirects). Mirror mode: the host
+  directory is the host without its port; the content type comes from the URL's extension;
+  `http://` URLs map like `https://` ones.
+- **Google Fonts.** Verified live (October 2026): css2 answers HTTP 400 for an unknown family
+  **and** for a weight the family lacks; the legacy `/css` drops a missing weight silently. On a
+  400 the importer reads `fonts.google.com/metadata/fonts` (once per session; a JSON
+  `familyMetadataList` with each family's `fonts` keys such as `400`, `700i`): an unknown family
+  is `HTMLUI-IMP-0002` with the closest name, a missing variant `HTMLUI-IMP-0006` and the request
+  is retried with the nearest variant the family has (the manifest entry keeps the document's
+  URL). Missing legacy variants are `HTMLUI-IMP-0006` too. The local CSS is always
+  `fonts/<up to 3 family slugs>-<sha1-6 of the URL>.css` (two requests for one family differ).
+  The license list is optional: when it cannot be fetched the entry's license is "unknown" with
+  an `HTMLUI-IMP-0008` note (phase 4's mirror has no license file). Font downloads that fail
+  write nothing.
+- **Stylesheets.** A resource a remote sheet references that fails to download is reported
+  (`HTMLUI-IMP-0002`) and stays remote in the local copy; the sheet itself imports. WOFF/WOFF2
+  candidates are dropped from `src` when a TTF/OTF one exists; a face with WOFF/WOFF2 only is
+  left as written (`HTMLUI-IMP-0007`). Query strings become a `-<sha1-8>` suffix of the file
+  name; `@import` chains follow up to 8 levels, a cycle ends at the file being written; a
+  Google Fonts `@import` is imported as its own `google-fonts-css` entry whose files the
+  sheet's entry lists.
+- **Lottie.** A LottieFiles page gives two entries (the page URL and the animation file URL,
+  same files). Images a `.json` names that fail to download are reported and left out.
+- **Diagnostics.** Every successful import adds `HTMLUI-IMP-0004` (Info); `file` is the
+  asset-relative document that references the URL, located by searching its text (compat's
+  `RemoteReference::ref` belongs to a `SourceFiles` the API does not return); the CLI prints
+  project-relative paths. Editor logging goes through `Out` (also without a `System`).
+- **Facade** (`HtmlUiImporters.h`): `ImportResult` gains `failed` (what → why, phase 4's
+  `failed` list) and `diagnostics`; `destDir` is project-relative or absolute inside the assets
+  ("" = `assets/htmlui-imports`; the layout below it is kept; the manifest stays in
+  `assets/htmlui-imports/`); `importLucideIcons` writes `<destDir>/<kebab-name>.svg` ("" =
+  `assets/htmlui-imports/icons`), accepts `lucide:` prefixes and PascalCase, and uses
+  `compat::LucideIcons::find/closest` (p2-runtime) through `__has_include`; `lucideIconSvg` and
+  `lucideIconsAvailable` are public. `importDocumentReferences` skips URLs whose manifest
+  entry and file exist. The header comment lists the URL templates (phase 4's mirror).
+- **Auto-import.** `HtmlUiAutoImport::update` runs from `App::pollHtmlUI` (every loop
+  iteration) and notices loads through `UIDocumentSystem::getLoadCount`; a finished batch
+  reloads the manifest (`ImportManifest::reload`), refreshes the asset database, calls
+  `reloadChangedFiles(manifest + written files)` and reloads with `reloadDocument` the documents
+  that asked for the imports and were not reloaded by it. `App::shutdownBackgroundWork` stops the
+  worker.
+- **Remove unused** also counts the phase-1 scanner's remote references (`collectHtmlUIReferences`)
+  so it never deletes what a document still uses, and follows entries listed in a used entry's
+  `files` (a sheet's Google Fonts import).
+- **H12.** `AppSettings` `html_ui: {auto_import, verbose_diagnostics}` in `settings.yaml`, two
+  checkboxes in *Editor Settings > General > HTML UI*. The verbose flag reaches the engine
+  through the new static `UIDocumentSystem::setVerboseDiagnostics/getVerboseDiagnostics`
+  (exported, like `setPreferredSampleCount`); the code that builds `CompatOptions` for a load
+  (p2-html's H1) sets `verboseDiagnostics` from it.
+- **H10** also shows the document's compat diagnostics count with *Show in Console* (all of
+  them through `logDiagnostics(..., verbose = true)`), read from
+  `UIDocumentSystem::getDiagnostics(entity)` (p2-html's H1b) when that exists.
+- **Build and tests.** The test target is defined in
+  `editor/htmlui/tests/HtmlUiEditorTests.cmake`, `include()`d by the root `CMakeLists.txt` (an
+  `add_subdirectory` would resolve the editor's relative source and include paths against the
+  subdirectory); it compiles the editor's sources without `main.cpp` plus the tests
+  (`editor/htmlui/tests/*.cpp`, googletest from `libs/yaml-cpp/test`), next to the editor
+  binary, which the CLI tests run. The linux Docker image gets `curl` as a last layer, and
+  `tools/build.sh` runs containers by image id (a worktree with an older Dockerfile may retag
+  the shared image name meanwhile). Until p2-html lands, the tests install a minimal HTML scan
+  as the discovery collector (`setReferenceCollector`). The fixture server builds the Google
+  Fonts CSS, per-weight TTFs (OS/2 weight/italic patched into one committed OFL TTF), license
+  lists, metadata and dotLottie archives itself; extra test hosts: `https://fonts.google.com/metadata`
+  → `/gfmeta/metadata`, `https://lottiefiles.com` → `/lfpage`, `status.example.com`,
+  `slow.example.com`, `redirect.example.com`.
 
 ### Merge order and integration
 
@@ -3466,6 +3793,7 @@ in section 3.
 | HTMLUI-HTML-0023 | Info | link-not-navigable | external or non-HTML link only dispatches `htmlnavigate` |
 | HTMLUI-HTML-0024 | Warning | unsupported-image-format | WebP/AVIF/other undecodable image |
 | HTMLUI-HTML-0025 | Info | dialog-not-modal | dialogs have no modal backdrop or focus trap |
+| HTMLUI-HTML-0026 | Warning | self-closing-tag | `<div/>` on an element that is not void does not close it (added by p2-html) |
 | HTMLUI-CSS-0001 | Warning | unknown-property | not a CSS property (suggestion: closest name) |
 | HTMLUI-CSS-0002 | by case | unsupported-property | CSS property not supported; dropped |
 | HTMLUI-CSS-0003 | Info | ignored-property | property has no effect in the engine |
@@ -3496,6 +3824,7 @@ in section 3.
 | HTMLUI-SEL-0005 | Warning | selector-expansion-limit | nesting or `:is()` expansion over 256 selectors |
 | HTMLUI-SEL-0006 | Info | visited-dropped | `:visited` never matches |
 | HTMLUI-SEL-0007 | Warning | invalid-selector | selector syntax error; rule dropped |
+| HTMLUI-SEL-0008 | Info | selector-ignored | a selector Chromium itself drops (unknown vendor pseudo, `:dir()`); rule dropped as there |
 | HTMLUI-AT-0001 | by case | unsupported-at-rule | at-rule dropped |
 | HTMLUI-AT-0002 | Info | layer-flattened | `@layer` precedence approximated by order |
 | HTMLUI-AT-0003 | Info | supports-evaluated | `@supports` result |

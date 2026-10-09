@@ -1005,6 +1005,9 @@ void LuaBinding::initializeLuaScripts(Scene* scene) {
         }
     }
     ObjectManager::popActiveScene();
+
+    // the scene's HTML documents run their <script type="text/lua"> from now on (phase 2)
+    scene->getSystem<UIDocumentSystem>()->startDocumentScripts();
 }
 
 void LuaBinding::initializeLuaScripts(Scene* scene, const std::vector<Entity>& entities) {

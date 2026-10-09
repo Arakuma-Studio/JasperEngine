@@ -519,7 +519,7 @@ TEST(RenderP1Test, NestedClipStencilRefs){
         ASSERT_TRUE(target.ensure(512, 384, 4));
         Rml::Context* context = Rml::CreateContext("clip-refs", Rml::Vector2i(512, 384), &renderer);
         ASSERT_NE(context, nullptr);
-        Rml::ElementDocument* document = context->LoadDocument("p1/clip_nested.html");
+        Rml::ElementDocument* document = context->LoadDocument("p1/clip_nested.rml");
         ASSERT_NE(document, nullptr);
         document->Show();
 
@@ -576,11 +576,11 @@ TEST(RenderP1Test, SteadyStateNoAllocations){
     RenderTestContext test(512, 384, 0, 0, 4);
     ASSERT_TRUE(test.isValid());
     // filters, a backdrop filter, box shadows, a mask and gradients
-    ASSERT_NE(test.load("p1/filter_chain.html"), nullptr);
-    ASSERT_NE(test.load("p1/box_shadow.html"), nullptr);
-    ASSERT_NE(test.load("p1/backdrop_filter.html"), nullptr);
-    ASSERT_NE(test.load("p1/mask_image.html"), nullptr);
-    ASSERT_NE(test.load("p1/gradients_linear.html"), nullptr);
+    ASSERT_NE(test.load("p1/filter_chain.rml"), nullptr);
+    ASSERT_NE(test.load("p1/box_shadow.rml"), nullptr);
+    ASSERT_NE(test.load("p1/backdrop_filter.rml"), nullptr);
+    ASSERT_NE(test.load("p1/mask_image.rml"), nullptr);
+    ASSERT_NE(test.load("p1/gradients_linear.rml"), nullptr);
     ASSERT_TRUE(test.renderUntilDrawn());
 
     const uint64_t buffersAndTextures = test.renderer.getGpuCreateCount();
@@ -606,9 +606,9 @@ TEST(RenderP1Test, UnloadReleasesEverything){
 
     size_t pipelinesAfterFirst = 0;
     for (int cycle = 0; cycle < 100; cycle++){
-        Rml::ElementDocument* a = test.load("p1/box_shadow.html");
-        Rml::ElementDocument* b = test.load("p1/mask_image.html");
-        Rml::ElementDocument* c = test.load("p1/filter_drop_shadow.html");
+        Rml::ElementDocument* a = test.load("p1/box_shadow.rml");
+        Rml::ElementDocument* b = test.load("p1/mask_image.rml");
+        Rml::ElementDocument* c = test.load("p1/filter_drop_shadow.rml");
         ASSERT_TRUE(a && b && c);
         ASSERT_TRUE(test.renderFrame());
         EXPECT_GT(test.renderer.getStats().geometryLive, 0u);
@@ -671,7 +671,7 @@ TEST(RenderP1Test, UnpremultipliedCopy){
 TEST(RenderP1Test, TwoViewSizesKeepTheirTargets){
     JASPER_REQUIRE_GPU();
     SceneFixture fixture;
-    fixture.addDocument("p1/filter_chain.html");
+    fixture.addDocument("p1/filter_chain.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
     UIDocumentSystem& system = *fixture.getScene().getSystem<UIDocumentSystem>();
     HtmlUIContext* context = system.getContext();

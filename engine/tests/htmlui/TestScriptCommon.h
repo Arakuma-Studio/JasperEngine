@@ -26,7 +26,7 @@ namespace jasperengine { namespace test {
     class ScriptTest : public ::testing::Test {
     protected:
         // the document file to load in SetUp ("" = none)
-        virtual const char* documentFile() const { return "p1/script_dom.html"; }
+        virtual const char* documentFile() const { return "p1/script_dom.rml"; }
 
         void SetUp() override{
             ASSERT_TRUE(GpuEnvironment::ensure()) << "no headless GPU context";

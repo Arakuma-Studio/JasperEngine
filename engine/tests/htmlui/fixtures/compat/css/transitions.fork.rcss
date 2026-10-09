@@ -1,0 +1,62 @@
+#htmlui-root .ms {
+transition: opacity 0.2s;
+}
+#htmlui-root .all-others {
+transition: all 0.3s ease, color 1s linear;
+}
+#htmlui-root .unknown {
+transition: opacity 0.2s, --custom 1s, fill 0.5s, foo 1s;
+}
+#htmlui-root .zero {
+transition: transform 0.3s;
+}
+#htmlui-root .keywords {
+transition: a 1s linear, b 1s ease, c 1s ease-in, d 1s ease-out, e 1s ease-in-out;
+}
+#htmlui-root .real {
+transition: opacity 1s linear, transform 1s ease, color 1s ease-in, width 1s ease-out, height 1s ease-in-out;
+}
+#htmlui-root .bezier {
+transition: transform 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+#htmlui-root .steps {
+transition: opacity 1s steps(4, end), color 1s step-start;
+}
+#htmlui-root .linear-fn {
+transition: opacity 1s linear(0, 0.25 75%, 1);
+}
+#htmlui-root .default {
+transition: background 0.3s;
+}
+#htmlui-root .delay {
+transition: opacity 0.5s ease-in 0.1s, transform 1s -0.2s;
+}
+#htmlui-root .mapped {
+transition: outline-color 0.2s, text-shadow 0.3s, background-image 1s, translate 1s;
+}
+#htmlui-root .none {
+transition: none;
+}
+#htmlui-root .longhands {
+transition: opacity 0.3s ease-out, transform 1s ease-out 0.05s;
+}
+#htmlui-root .base {
+transition: opacity 1s ease;
+}
+#htmlui-root .base:hover {
+transition: opacity 2s ease;
+}
+#htmlui-root .behavior {
+transition: opacity 1s;
+}
+#htmlui-root .var {
+transition: opacity var(--dur) var(--ease);
+}
+#htmlui-root .whole {
+transition: var(--t);
+}
+body#htmlui-root {
+--dur: 0.15s;
+--ease: cubic-bezier(0.4, 0, 0.2, 1);
+--t: color 1s ease;
+}

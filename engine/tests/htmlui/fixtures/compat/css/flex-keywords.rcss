@@ -1,0 +1,101 @@
+#htmlui-root .f1 {
+flex: 0 0 auto;
+}
+#htmlui-root .f2 {
+flex: 1 1 auto;
+}
+#htmlui-root .f3 {
+flex: 1 1 0%;
+}
+#htmlui-root .f4 {
+flex: 2 1 0%;
+}
+#htmlui-root .f5 {
+flex: 1 1 200px;
+}
+#htmlui-root .f6 {
+flex: 1 1 0%;
+}
+#htmlui-root .f7 {
+flex-grow: var(--html-unset);
+flex-shrink: var(--html-unset);
+flex-basis: var(--html-unset);
+}
+#htmlui-root .f8 {
+flex: 0 0 50%;
+}
+#htmlui-root .jc1 {
+justify-content: flex-start;
+}
+#htmlui-root .jc2 {
+justify-content: flex-end;
+}
+#htmlui-root .jc3 {
+justify-content: flex-start;
+}
+#htmlui-root .jc4 {
+justify-content: flex-end;
+}
+#htmlui-root .jc5 {
+justify-content: flex-start;
+}
+#htmlui-root .jc6 {
+justify-content: flex-start;
+}
+#htmlui-root .jc7 {
+justify-content: center;
+}
+#htmlui-root .jc8 {
+justify-content: space-evenly;
+}
+#htmlui-root .ai1 {
+align-items: flex-start;
+}
+#htmlui-root .ai2 {
+align-items: flex-end;
+}
+#htmlui-root .ai3 {
+align-items: stretch;
+}
+#htmlui-root .ai4 {
+align-items: baseline;
+}
+#htmlui-root .ai5 {
+align-items: baseline;
+}
+#htmlui-root .as1 {
+align-self: flex-end;
+}
+#htmlui-root .as2 {
+align-self: flex-start;
+}
+#htmlui-root .ac1 {
+align-content: flex-start;
+}
+#htmlui-root .ac2 {
+align-content: stretch;
+}
+#htmlui-root .ac3 {
+align-content: flex-start;
+}
+#htmlui-root .ac4 {
+align-content: space-between;
+}
+#htmlui-root .gap {
+gap: 0px;
+column-gap: 2em;
+}
+#htmlui-root .flow {
+flex-flow: column wrap;
+}
+#htmlui-root .dir {
+flex-direction: row-reverse;
+}
+#htmlui-root .wrap {
+flex-wrap: wrap-reverse;
+}
+#htmlui-root .grow {
+flex-grow: 2;
+flex-shrink: 0;
+flex-basis: 30%;
+}

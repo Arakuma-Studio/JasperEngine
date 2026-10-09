@@ -1,0 +1,7 @@
+/* focus pseudo-classes: leaf focus through :html-focus */
+button:focus { outline: 2px solid blue; }
+input:focus-visible { box-shadow: 0 0 0 2px orange; }
+.menu:focus-within { background-color: #eee; }
+:focus { color: red; }
+:focus:not(:focus-visible) { outline: none; }
+a:hover:focus { color: green; }

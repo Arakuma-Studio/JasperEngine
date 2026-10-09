@@ -594,6 +594,21 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/CommandRunner.cpp
     ${EDITOR_DIR}/util/ShellEnv.cpp
 
+    ${EDITOR_DIR}/htmlui/ContentSniffer.cpp
+    ${EDITOR_DIR}/htmlui/GoogleFontsImporter.cpp
+    ${EDITOR_DIR}/htmlui/HtmlUiAutoImport.cpp
+    ${EDITOR_DIR}/htmlui/HtmlUiImportCli.cpp
+    ${EDITOR_DIR}/htmlui/HtmlUiImporters.cpp
+    ${EDITOR_DIR}/htmlui/HtmlUiImportMaintenance.cpp
+    ${EDITOR_DIR}/htmlui/HtmlUiImportPanel.cpp
+    ${EDITOR_DIR}/htmlui/HtmlUiImportQueue.cpp
+    ${EDITOR_DIR}/htmlui/HttpClient.cpp
+    ${EDITOR_DIR}/htmlui/ImageImporter.cpp
+    ${EDITOR_DIR}/htmlui/ImportManifestWriter.cpp
+    ${EDITOR_DIR}/htmlui/LottieImporter.cpp
+    ${EDITOR_DIR}/htmlui/RemoteImporter.cpp
+    ${EDITOR_DIR}/htmlui/StylesheetImporter.cpp
+
     ${EDITOR_DIR}/shader/ShaderBuilder.cpp
     ${EDITOR_DIR}/shader/ShaderVariantCollector.cpp
 
@@ -879,6 +894,13 @@ add_custom_target(copy_jasperengine_editor_engine
 add_dependencies(jasperengine-editor copy_jasperengine_editor_engine)
 
 set(JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor)
+
+# jasperengine-htmlui-editor-tests: the HTML UI importers (editor/htmlui) against a local HTTP
+# fixture server, built with the editor (tools/build.sh htmlui-editor-tests, Linux)
+option(JASPERENGINE_HTMLUI_EDITOR_TESTS "Build jasperengine-htmlui-editor-tests (HTML UI importer tests)" OFF)
+if(JASPERENGINE_HTMLUI_EDITOR_TESTS)
+    include(${EDITOR_DIR}/htmlui/tests/HtmlUiEditorTests.cmake)
+endif()
 
 # Windows GUI-subsystem executables do not behave like normal CLI programs
 # when launched from cmd.exe/PowerShell. Provide a console-subsystem twin for

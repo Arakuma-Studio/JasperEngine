@@ -1,0 +1,17 @@
+/* the background layer grammar */
+.color-only { background: #123456; }
+.none { background: none; }
+.image-color { background: url(img/a.png) red; }
+.full { background: url(img/a.png) no-repeat fixed right 10px bottom 20px / 50% auto padding-box content-box #fff; }
+.repeat-x { background: url("img/a.png") repeat-x top; }
+.repeat-y { background: url('img/a.png') repeat-y left center; }
+.space-round { background: url(img/a.png) space round; }
+.cover { background: url(img/a.png) center / cover no-repeat; }
+.contain { background: url(img/a.png) 50% 50% / contain no-repeat; }
+.lengths { background: url(img/a.png) 10px 20px / 32px 16px no-repeat; }
+.keywords { background: url(img/a.png) left top / auto 100%; }
+.border-box { background: url(img/a.png) border-box; }
+.gradient-color { background: linear-gradient(red, blue), #000; }
+.transparent { background: transparent; }
+.invalid { background: url(img/a.png) red blue; }
+.local { background: url(img/a.png) local; }

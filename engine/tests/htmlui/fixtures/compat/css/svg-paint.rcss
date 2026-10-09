@@ -1,0 +1,13 @@
+#htmlui-root .lucide {
+stroke-width: 1.5;
+stroke: currentcolor;
+fill: none;
+}
+#htmlui-root svg.icon {
+fill: #ff0000ff;
+stroke: #00000080;
+stroke-linecap: round;
+stroke-linejoin: bevel;
+stroke-opacity: 0.5;
+stroke-dasharray: 4 2;
+}

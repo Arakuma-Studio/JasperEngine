@@ -326,7 +326,7 @@ TEST_F(ScriptElementTest, HandlesAfterUnload){
     UIElement created = document->createElement("div");
     ASSERT_TRUE(btn.isValid());
 
-    ASSERT_TRUE(document->load("ecs/basic.html"));
+    ASSERT_TRUE(document->load("ecs/basic.rml"));
     EXPECT_FALSE(btn.isValid());
     EXPECT_FALSE(created.isValid()) << "the detached pool goes with its document";
     EXPECT_EQ(HtmlUIElementRegistry::poolSize(), 0u);

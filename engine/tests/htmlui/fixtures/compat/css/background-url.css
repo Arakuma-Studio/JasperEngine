@@ -1,0 +1,22 @@
+/* html-layer: every size, position, repeat, origin, clip, attachment */
+.s1 { background: url(img/a.png) 0 0 / auto no-repeat; }
+.s2 { background: url(img/a.png) 0 0 / 100% 100% no-repeat; }
+.s3 { background: url(img/a.png) center / 2em auto repeat; }
+.p1 { background: url(img/a.png) left 10% top 20% no-repeat; }
+.p2 { background: url(img/a.png) right 8px bottom 4px no-repeat; }
+.p3 { background: url(img/a.png) bottom right no-repeat; }
+.p4 { background: url(img/a.png) 25% no-repeat; }
+.r1 { background: url(img/a.png) repeat space; }
+.r2 { background: url(img/a.png) round no-repeat; }
+.o1 { background: url(img/a.png) content-box padding-box no-repeat; }
+.a1 { background: url(img/a.png) fixed center / cover no-repeat; }
+.svg { background: url(img/icon.svg) center / 24px no-repeat; }
+.data { background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="); }
+.remote { background: url(https://images.example.com/hero.png) center / cover; }
+.remote-missing { background: url(https://images.example.com/not-imported.png); }
+.manifest-missing-file { background: url(https://images.example.com/gone.png); }
+.missing { background: url(img/nope.png); }
+.set { background-image: image-set(url(img/a.png) 1x, url(img/b.png) 2x); }
+.set-webkit { background-image: -webkit-image-set(url(img/a.png) 1x, url(img/b.png) 2x); }
+.unsupported { background-image: cross-fade(url(img/a.png), url(img/b.png), 50%); }
+.element { background: element(#hero); }

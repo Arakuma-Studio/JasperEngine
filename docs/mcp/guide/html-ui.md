@@ -98,7 +98,9 @@ component (the Hierarchy's *Create > UI > UI Document*).
 - Keep documents, stylesheets, images and fonts under the assets directory (`assets/ui/...`).
 - References inside a document are relative to the document (`href="menu.css"`,
   `src="../images/logo.png"`); `asset://ui/logo.png` is relative to the assets directory.
-  No `http(s)://` resources: everything a document uses is a project file.
+  The game never uses the network: an `http(s)://` resource (Google Fonts, a CDN stylesheet,
+  a remote image or Lottie animation) is imported into the project by the editor first (see
+  "Remote resources (imports)").
 - Images: PNG, JPG (and the other formats the engine loads) and SVG files (LunaSVG, see
   "SVG and Lottie"); Lottie animations as `.json` or `.lottie`.
 
@@ -248,6 +250,13 @@ Every problem, loss or approximation is reported with the place in **your** file
 
 ## Writing documents (RCSS)
 
+> **Phase 2:** `.html`/`.htm` files are now read by an HTML5 parser (lexbor) and compiled to
+> RmlUi's dialect by the compatibility layer: `<div/>` no longer closes a `<div>` (as in a
+> browser; `HTMLUI-HTML-0026` warns), `<link rel="stylesheet">` is the standard form (the old
+> `<link type="text/css">` still loads, with a note), entities and unquoted attributes work.
+> Diagnostics name `file:line:column` with a stable code (`UIDocument:getDiagnostics()`, the
+> Console). Files in RmlUi's own dialect described below keep working as **`.rml`** documents.
+
 The parser is XML: close every tag (`<div/>`, `<img src="a.png"/>`, `<br/>`), quote every
 attribute, escape `&` and `<`. There is **no user-agent stylesheet**: every element is
 inline until you give it `display: block` (or `flex`). Rules that differ from browser CSS:
@@ -393,8 +402,23 @@ transforms, clipping and filters apply to them as to `<img>`.
 
 - Supported well: paths, shapes, strokes (dashes, caps, joins), linear and radial gradients,
   patterns, `clipPath`, masks, markers, `<use>`/`<symbol>`, nested `<svg>`, CSS in
-  `<style>` and `style=""`, `currentColor` (black unless the SVG's own CSS sets `color`),
-  opacity, `<text>` in the built-in Roboto (any `font-family` uses it).
+  `<style>` and `style=""`, opacity, `<text>` in the built-in Roboto (any `font-family` uses
+  it).
+- `currentColor` follows the element's CSS `color`, for inline SVG and `<svg src>` files
+  alike (icons recolor on `:hover` and with transitions): an SVG whose paints are all
+  `currentColor` or `none` is rasterized once in white and tinted (`color` x `image-color` x
+  `opacity`); one that mixes `currentColor` with fixed colors is rasterized again when the
+  colour changes (`HTMLUI-SVG-0001`, info). A shape with no fill at all counts as black.
+- CSS `fill`, `stroke`, `stroke-width`, `stroke-linecap`, `stroke-linejoin`,
+  `stroke-opacity`, `fill-opacity`, `stroke-dasharray` on the `<svg>` element apply to its
+  root, as in a browser (`.icon { stroke-width: 1.5 }`); rules aimed at elements inside the
+  SVG (`svg path { ... }`) are not applied. `<foreignObject>` is dropped (`HTMLUI-SVG-0002`).
+- Icons: `<i data-lucide="house"></i>` is the [Lucide](https://lucide.dev) icon, built into
+  the engine (Lucide 1.53.0, all 1869 icons and their aliases, offline): replaced by its
+  `<svg>` exactly as `lucide.createIcons()` does (classes `lucide lucide-house`, your
+  attributes merged), so it takes the CSS `color` and `.lucide { width: 20px; stroke-width:
+  1.5 }`. Names in kebab-case, PascalCase or camelCase; an unknown name is reported with the
+  three closest ones (`HTMLUI-HTML-0021`). Setting `data-lucide` from Lua swaps the icon.
 - Not supported: SVG filters (`<filter>`, drop shadows inside the file are skipped),
   `mix-blend-mode`, scripts and animation (SMIL) inside SVG files, `<image href="file.png">`
   (only `data:` URIs: the rasteriser never reads files on its own), system fonts.
@@ -475,6 +499,30 @@ spinner:addEventListener("error", function(event) print(event.detail.message) en
 spinner:setLoopCount(2)
 spinner:play()
 ```
+
+## HTML elements with behavior
+
+Documents loaded from `.html` get these elements with their browser behavior (also in `.rml`
+documents: `img`, `input` and `label` replace RmlUi's, compatible with RmlUi's attributes):
+
+| Element | Behavior |
+|---|---|
+| `<button>` | `type="submit"` (the default) submits its `<form>` (the `submit` event carries the button's `name`/`value` and every named control), `reset` resets the form, `button` does nothing; `form="id"` works; `disabled` gets `:disabled` and no click; Enter and Space activate it |
+| `<a href>` | Enter activates; `#id` scrolls to the element; any other link dispatches `htmlnavigate` on the document (`href`, `url`, `fragment`, `document`, `external`): a `.html` link loads that document in the same component, external links only notify (there is no browser) |
+| `<input>` | the `type` attribute stays as written; `number` filters typing, steps with Up/Down by `step` within `min`/`max` and clamps on blur/Enter; `date`, `time`, `datetime-local`, `month`, `week` are text fields showing the format; `color` a text field; `reset` resets the form; `image` submits and shows `src`; `file` is a disabled "Choose File" button; Enter in a text field submits its form; Space toggles checkboxes; `autofocus` |
+| `<ol>`/`<ul>`/`<li>` | markers from `list-style-type` (disc, circle, square, decimal, decimal-leading-zero, lower/upper-alpha and -latin, lower/upper-roman, lower-greek, strings), `list-style-image`, `list-style-position`; `ol start`, `reversed`, `li value`; style them with `li::marker` |
+| `<details>`/`<summary>` | clicking (or Enter/Space on) the summary toggles `open`; a `toggle` event follows; details with the same `name` form an accordion |
+| `<dialog>` | `open` shows it; Lua `dialog:showModal()`, `show()`, `close(value)`; Escape closes a modal dialog (`cancel`, then `close`). No backdrop, no focus trap |
+| `<img>` | `object-fit`, `object-position`, `image-rendering: pixelated` (nearest sampling), SVG sources drawn at their size |
+| `<label>` | clicking it activates its control (`for="id"`, or the control inside it) |
+| `<lottie playonhover>` | plays while the pointer is over it, stops (first frame) when it leaves |
+
+`:focus` and `:focus-visible` match the focused element only (not its ancestors; those match
+`:focus-within`); `:focus-visible` after keyboard navigation and in text fields, as in
+Chromium. `animation-fill-mode: forwards`/`both` keeps the last keyframe after the animation.
+CSS backgrounds with `url()` (every `background-size`, `background-position`,
+`background-repeat` including `space`/`round`, origin, clip, `fixed`), `clip-path` shapes
+and `border-image` are drawn by the engine's own decorators.
 
 ## Input
 
@@ -578,19 +626,42 @@ documents load again as they are on disk.
 
 | Group | Members |
 |---|---|
-| Document | `doc:getElementById(id)`, `doc:querySelector(sel)`, `doc:querySelectorAll(sel)` (array), `doc.body`, `doc:createElement(tag)`, `doc:createTextNode(text)`, `doc.title`, `doc:addEventListener/removeEventListener`, `doc:createDataModel(name, table)`, `doc:getDataModel(name)`, `doc:removeDataModel(name)`, `doc:load(file)`, `doc:reload()`, `doc.loaded`, `doc:show()/hide()`, `doc.visible`, `doc.sortOrder`, `doc.filename`, `doc.onLoad/onUnload`, `UIDocument.setDebuggerVisible(bool)` |
-| Identity / tree | `id`, `tagName` (lower case), `className`, `parentElement`, `children` (array), `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`, `childElementCount`, `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains` |
+| Document | `doc:getElementById(id)`, `doc:querySelector(sel)`, `doc:querySelectorAll(sel)` (array; CSS selectors, rewritten like the stylesheets in `.html`), `doc.body` (the `<body>`), `doc.documentElement` (the `<html>`), `doc:getDiagnostics()` (`{severity, code, name, message, suggestion, file, line, column, text}`), `doc:setColorScheme("dark"|"light")`, `doc:setReducedMotion(bool)` (the `prefers-*` media queries), `doc:createElement(tag)`, `doc:createTextNode(text)`, `doc.title`, `doc:addEventListener/removeEventListener`, `doc:createDataModel(name, table)`, `doc:getDataModel(name)`, `doc:removeDataModel(name)`, `doc:load(file)`, `doc:reload()`, `doc.loaded`, `doc:show()/hide()`, `doc.visible`, `doc.sortOrder`, `doc.filename`, `doc.onLoad/onUnload`, `UIDocument.setDebuggerVisible(bool)` |
+| Identity / tree | `id`, `tagName` (lower case in `.rml`; in `.html` the DOM's: `DIV`, `BODY`, `HTML`, `TEMPLATE`), `localName`, `className`, `parentElement`, `children` (array), `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`, `childElementCount`, `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains` |
 | Mutation | `appendChild(el)`, `insertBefore(el, ref)` (ref nil appends), `removeChild(el)`, `replaceChild(new, old)`, `remove()`, `cloneNode(deep)` |
-| Content | `textContent` (text, never parsed), `innerHTML` (markup; RML in phase 1) |
+| Content | `textContent` (text, never parsed), `innerHTML` / `outerHTML` (HTML in `.html` documents, parsed and rewritten like the document; RML in `.rml`), `insertAdjacentHTML(position, html)`, `content` (`<template>`: a fragment; `tpl.content:cloneNode(true)` then `appendChild` it) |
 | Attributes | `getAttribute(name)` (nil when absent), `setAttribute`, `hasAttribute`, `removeAttribute`, `getAttributes()` |
 | Classes / style / data | `classList:add(...)/remove(...)/toggle(name[, force])/contains(name)`; `style.backgroundColor` or `style["background-color"]` (read: computed value as CSS text; write: inline style, `""`/nil removes), `style:getPropertyValue/setProperty/removeProperty`; `dataset.userName` = `data-user-name` |
 | Forms | `value`, `checked`, `disabled` |
-| Focus / interaction | `focus()`, `blur()`, `click()` |
+| Focus / interaction | `focus()`, `blur()`, `click()`; dialogs: `show()`, `showModal()` (no backdrop), `close([returnValue])` (dispatches `close`) |
 | Scroll / geometry | `scrollTop`, `scrollLeft`, `scrollWidth`, `scrollHeight`, `clientWidth`, `clientHeight`, `offsetWidth`, `offsetHeight`, `offsetLeft`, `offsetTop`, `scrollIntoView([alignToTop])`, `scrollTo(x, y[, smooth])`, `scrollBy(dx, dy[, smooth])`, `getBoundingClientRect()` (`x y width height top left right bottom`, document px, through the transforms of the last drawn frame) |
 | Events | `addEventListener(type, fn[, capture or {capture=, once=}])`, `removeEventListener(type, fn[, capture])`, `dispatchEvent(type[, detail[, bubbles]])` (false when a listener prevented it) |
 
 Queries that find nothing return `nil`. Adding the same function for the same type and
-phase twice is ignored, as in the DOM.
+phase twice is ignored, as in the DOM. In `.html` documents the engine's own attributes
+(`data-htmlui-*`, the source location of every element) and classes (`htmlui-*`) are invisible to
+scripts; `style.cssText` reads and replaces the inline declarations.
+
+### Scripts inside a document: `<script type="text/lua">`
+
+An `.html` document can carry its own Lua, inline or as `src="menu.lua"` (relative to the
+document). Each script runs after every load and reload of the document **while the game plays**
+(the scene's Lua scripts started; never in edit mode), in its own environment table (globals
+readable, its own definitions stay local) with `document` (its `UIDocument`) and `anime` bound:
+
+```html
+<button id="play">Play</button>
+<script type="text/lua">
+document:getElementById("play"):addEventListener("click", function()
+    anime.animate("#play", { opacity = 0.5, duration = 300 })
+end)
+</script>
+```
+
+Errors are reported at the line of the HTML file (`ui/menu.html:45: ... [HTMLUI-HTML-0022]`) and
+in `getDiagnostics()`. JavaScript `<script>`s are not run (`HTMLUI-HTML-0006`; known libraries
+such as Lucide or Tailwind's CDN get a tailored note). `<a href="other.html">` loads that document
+in the same UI Document when clicked unless a listener of `htmlnavigate` calls `preventDefault()`.
 
 ### Events
 
@@ -874,6 +945,47 @@ end
   directory or a remote `http(s)://` URL; an absolute path is a warning. RCSS's bare
   `@font-face { src: fonts/a.ttf; }` is opened from the assets directory, as RmlUi does.
 
+## Remote resources (imports)
+
+A document may link what a page for a browser links: Google Fonts, CDN stylesheets (Font
+Awesome, Bootstrap Icons, animate.css), remote images, LottieFiles animations. The editor
+downloads each of them once into `assets/htmlui-imports/` and records it in
+`assets/htmlui-imports/manifest.json`; at runtime the URL resolves through the manifest to the
+local file, so the document stays as written and exported games work offline (the manifest and
+the files ship with the assets).
+
+- **Automatic**: when the editor loads or reloads a document (scene open, play, an Inspector
+  change, a hot reload) the URLs missing from the manifest are downloaded on a background
+  worker (`[HTML UI] importing <url>` in the Console), then the document reloads.
+  *Editor Settings > General > HTML UI > Import Remote Resources* turns it off. A URL that
+  failed is not retried automatically in the same session.
+- **Inspector** (UI Document): *Remote resources: 4 imported, 1 missing* with **Import**
+  (missing and failed ones, retried), **Re-import all** and **Remove unused** (drops the
+  manifest entries no `.html`/`.css` of the project references and deletes their files), the
+  status of every URL (tooltip: local file, license, error), and the document's diagnostics
+  count with **Show in Console**.
+- **Command line** (CI, agents): `jasperengine-editor import-ui --project <dir> assets/ui/menu.html
+  [more documents] [--dest <dir>] [--force] [-q]` imports synchronously, prints the diagnostics
+  compiler-style and exits 1 when an import failed (2 for a usage error).
+- **What each kind becomes**:
+
+| Remote resource | Local files |
+|---|---|
+| Google Fonts `fonts.googleapis.com/css2`, `/css`, `/icon` | one static TTF per weight/style (`fonts/<family>/<Family>-700-italic.ttf`; ranges such as `wght@100..900` give one file per 100), a local CSS with the same `@font-face` rules (`fonts/<families>-<hash>.css`), each family's license (`OFL.txt`/`LICENSE.txt`) |
+| other stylesheets | `css/<host>/<path>.css` with every `url()` and `@import` it uses downloaded into the same tree and rewritten to relative paths; `@font-face` keeps the TTF/OTF sources (WOFF/WOFF2-only fonts: `HTMLUI-IMP-0007`, convert them) |
+| images | `images/<host>/<hash>-<name>.<ext>`, the type from the content (PNG, JPEG, GIF, BMP, TGA, SVG); WebP/AVIF are saved but the engine cannot draw them (`HTMLUI-IMP-0003`) |
+| Lottie `.json`, `.lottie`, LottieFiles pages | `lottie/<hash>-<name>/animation.json` with its images in `images/` |
+| Lucide icons (`data-lucide`) | nothing: they are built into the engine |
+
+- **Licenses**: Google Fonts record their license file (shipped with the game); LottieFiles
+  animations record the Lottie Simple License, to verify on lottiefiles.com; other images and
+  stylesheets record "unknown". Each import says so in the Console (`HTMLUI-IMP-0008`).
+- **Offline**: a failed download is an `HTMLUI-IMP-0002` error in the editor and writes
+  nothing; a URL without a manifest entry is `HTMLUI-IMP-0001` at runtime and falls back (a
+  stylesheet or font is skipped and the font chain is used, an image is not drawn, a `<lottie>`
+  stays empty); an entry whose file is gone is `HTMLUI-IMP-0009` (re-import). curl is the
+  download tool (Windows 10 1803+, macOS and Linux have it; missing: `HTMLUI-IMP-0005`).
+
 ## Hot reload
 
 - The editor checks the files every document of every open scene (playing copies included)
@@ -908,7 +1020,7 @@ Later phases:
   CSS rewritten to RCSS (`border: 1px solid red`, `rgba(..., 0.5)`, `background-image: url()`,
   quoted font names, `200ms ease` transitions), standard `@font-face` and `text-shadow`,
   diagnostics with `file:line:column` and stable codes, `<script type="text/lua">` in
-  documents, importers (Google Fonts, Lucide icons, LottieFiles, remote images).
+  documents, built-in Lucide icons.
 - Phase 3, RmlUi patches: `calc()`/`min()`/`max()`/`clamp()`, grid, `::before`/`::after`,
   border styles, `%` radii, `!important`, CSS-wide keywords, `:root`/`:is`/`:where`/`:has`,
   real `position: fixed`/`sticky`, group `opacity`, `cubic-bezier()`/`steps()` in transitions.

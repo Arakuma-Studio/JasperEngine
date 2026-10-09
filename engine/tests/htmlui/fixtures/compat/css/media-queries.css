@@ -1,0 +1,41 @@
+/* media queries normalized for RmlUi */
+@media screen { .a { width: 1px; } }
+@media print { .b { width: 2px; } }
+@media only screen and (min-width: 600px) { .c { width: 3px; } }
+@media not print { .d { width: 4px; } }
+@media not screen { .e { width: 5px; } }
+@media (max-width: 600px), (orientation: portrait) { .f { width: 6px; } }
+@media (width >= 600px) { .g { width: 7px; } }
+@media (width < 600px) { .h { width: 8px; } }
+@media (400px <= width <= 800px) { .i { width: 9px; } }
+@media (600px > width) { .i2 { width: 9px; } }
+@media (min-width: 40em) and (max-width: 60rem) { .j { width: 10px; } }
+@media (prefers-color-scheme: dark) { .k { width: 11px; } }
+@media (prefers-color-scheme: light) { .l { width: 12px; } }
+@media (prefers-reduced-motion: reduce) { .m { width: 13px; } }
+@media (prefers-reduced-motion: no-preference) { .n { width: 14px; } }
+@media (hover: hover) and (pointer: fine) { .o { width: 15px; } }
+@media (hover: none) { .p { width: 16px; } }
+@media (any-pointer: coarse) { .p2 { width: 16px; } }
+@media (color) and (color-gamut: srgb) and (monochrome: 0) { .q { width: 17px; } }
+@media (prefers-contrast: more) { .r { width: 18px; } }
+@media (forced-colors: active) { .s { width: 19px; } }
+@media (scripting: enabled) { .t { width: 20px; } }
+@media (update: fast) and (display-mode: fullscreen) and (overflow-block: scroll) and (dynamic-range: standard) { .u { width: 21px; } }
+@media not ((min-width: 600px) and (orientation: landscape)) { .v { width: 22px; } }
+@media ((min-width: 600px) or (min-height: 400px)) and (orientation: landscape) { .w { width: 23px; } }
+@media (unknown-feature: 1) { .x { width: 24px; } }
+@media (device-width: 1024px) { .y { width: 25px; } }
+@media (min-aspect-ratio: 16/9) { .z { width: 26px; } }
+@media (aspect-ratio > 4/3) { .z2 { width: 26px; } }
+@media (min-resolution: 2dppx), (min-resolution: 192dpi) { .aa { width: 27px; } }
+@media (min-width: 600px) { @media (max-width: 900px) { .bb { width: 28px; } } }
+@media (prefers-color-scheme: dark) and (prefers-reduced-motion: reduce) { .cc { width: 29px; } }
+@media (prefers-reduced-motion: no-preference) and (min-width: 600px) { .dd { width: 30px; } }
+@media (min-width: 600px) { .ee { width: 31px; } }
+@media (width: 600px) { .ff { width: 32px; } }
+@media not (width: 600px) { .gg { width: 33px; } }
+@media (min-width: 600px) and (max-width: 500px) { .hh { width: 34px; } }
+@media (height > 300px) and (width) { .jj { width: 36px; } }
+@media (inverted-colors: none) and (prefers-reduced-transparency: no-preference) and (min-color-index: 1) { .kk { width: 37px; } }
+@media garbage ( { .ii { width: 35px; } }

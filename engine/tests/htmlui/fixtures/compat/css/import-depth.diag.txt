@@ -1,0 +1,3 @@
+compat/css/imports/chain-15.css:1:1: warning: @import nested more than 16 levels deep; 'compat/css/imports/chain-16.css' is not read (fix: flatten the import chain) [HTMLUI-AT-0007]
+compat/css/imports/self.css:1:1: error: @import cycle: 'compat/css/imports/self.css' imports itself; the repeated import is dropped (fix: remove the circular @import) [HTMLUI-AT-0007]
+compat/css/imports/self.css:1:23: info: media query 'screen' is written for RmlUi as 'all' [HTMLUI-AT-0005]

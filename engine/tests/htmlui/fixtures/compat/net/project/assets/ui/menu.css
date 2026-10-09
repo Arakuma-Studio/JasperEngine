@@ -1,0 +1,10 @@
+/* what an LLM writes: a Google Fonts import, a CDN icon font, remote images */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap");
+@import url("https://cdnjs.cloudflare.com/fa/css/all.min.css");
+
+:root { --accent: #6cf; }
+.hero {
+    background-image: url("https://images.example.com/photo?w=800");
+    font-family: "Inter", sans-serif;
+}
+.logo { background: url(https://images.example.com/placeholder) no-repeat center / contain; }

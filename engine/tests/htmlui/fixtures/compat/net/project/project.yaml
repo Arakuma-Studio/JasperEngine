@@ -1,0 +1,5 @@
+name: ImportFixture
+canvasWidth: 1280
+canvasHeight: 720
+assetsDir: assets
+luaDir: scripts

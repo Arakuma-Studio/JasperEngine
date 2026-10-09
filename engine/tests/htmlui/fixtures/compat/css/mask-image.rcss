@@ -1,0 +1,24 @@
+#htmlui-root .fade {
+mask-image: linear-gradient(to bottom, #000000ff 60%, #00000000) border-box;
+}
+#htmlui-root .webkit {
+mask-image: radial-gradient(circle, #000000ff 50%, #00000000 51%) border-box;
+}
+#htmlui-root .url {
+mask-image: html-layer("asset://compat/css/img/a.png" contain contain 50% 50% no-repeat no-repeat padding-box border-box scroll);
+}
+#htmlui-root .longhands {
+mask-image: html-layer("asset://compat/css/img/a.png" 32px auto 50% 50% no-repeat no-repeat padding-box border-box scroll);
+}
+#htmlui-root .wk-longhands {
+mask-image: html-layer("asset://compat/css/img/b.png" cover cover 0% 0% repeat repeat padding-box border-box scroll);
+}
+#htmlui-root .none {
+mask-image: none;
+}
+#htmlui-root .with-clip {
+mask-image: linear-gradient(#000000ff, #00000000) border-box, html-shape("circle(50%)");
+}
+#htmlui-root .mm {
+mask-image: html-layer("asset://compat/css/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+}

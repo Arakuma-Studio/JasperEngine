@@ -46,7 +46,7 @@ TEST_F(RmlRendererGoldenTest, Boxes){
     JASPER_REQUIRE_GPU();
     RenderTestContext test;
     std::vector<uint8_t> screen;
-    ASSERT_TRUE(draw(test, "render/boxes.html", screen));
+    ASSERT_TRUE(draw(test, "render/boxes.rml", screen));
     PixelProbe probe{screen, 640};
 
     // #solid: 4 px white border around #3060c0, border box (20,20)-(148,108)
@@ -83,7 +83,7 @@ TEST_F(RmlRendererGoldenTest, Flex){
     JASPER_REQUIRE_GPU();
     RenderTestContext test;
     std::vector<uint8_t> screen;
-    ASSERT_TRUE(draw(test, "render/flex.html", screen));
+    ASSERT_TRUE(draw(test, "render/flex.rml", screen));
     PixelProbe probe{screen, 640};
 
     // flex-start: 40 px items, 10 px gaps from x = 10
@@ -131,7 +131,7 @@ TEST_F(RmlRendererGoldenTest, Images){
     JASPER_REQUIRE_GPU();
     RenderTestContext test;
     std::vector<uint8_t> screen;
-    ASSERT_TRUE(draw(test, "render/images.html", screen));
+    ASSERT_TRUE(draw(test, "render/images.rml", screen));
     PixelProbe probe{screen, 640};
 
     // checker.png at 1x: 8 px cells, the top-left one red
@@ -164,7 +164,7 @@ TEST_F(RmlRendererGoldenTest, Alpha){
     JASPER_REQUIRE_GPU();
     RenderTestContext test;
     std::vector<uint8_t> screen;
-    ASSERT_TRUE(draw(test, "render/alpha.html", screen));
+    ASSERT_TRUE(draw(test, "render/alpha.rml", screen));
     PixelProbe probe{screen, 640};
 
     // #FF000080 over #1E1E1E: 128 + 30 * 127 / 255
@@ -194,7 +194,7 @@ TEST_F(RmlRendererGoldenTest, Scissor){
     JASPER_REQUIRE_GPU();
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
-    Rml::ElementDocument* document = test.load("render/scissor.html");
+    Rml::ElementDocument* document = test.load("render/scissor.rml");
     ASSERT_NE(document, nullptr);
     Rml::Element* list = document->GetElementById("list");
     ASSERT_NE(list, nullptr);
@@ -236,7 +236,7 @@ TEST_F(RmlRendererGoldenTest, Transform){
     JASPER_REQUIRE_GPU();
     RenderTestContext test;
     std::vector<uint8_t> screen;
-    ASSERT_TRUE(draw(test, "render/transform.html", screen));
+    ASSERT_TRUE(draw(test, "render/transform.rml", screen));
     PixelProbe probe{screen, 640};
 
     EXPECT_TRUE(probe.is(70, 70, 0x60, 0x60, 0x60));
@@ -301,7 +301,7 @@ TEST_F(RmlRendererGoldenTest, ResolutionScaling){
     JASPER_REQUIRE_GPU();
     RenderTestContext test(1280, 720, 640, 360);
     ASSERT_TRUE(test.isValid());
-    Rml::ElementDocument* document = test.load("render/scissor.html");
+    Rml::ElementDocument* document = test.load("render/scissor.rml");
     ASSERT_NE(document, nullptr);
     test.context->Update();
     document->GetElementById("list")->SetScrollTop(50.0f);

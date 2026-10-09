@@ -1,0 +1,6 @@
+/* font-size keywords to px / em */
+.xxs { font-size: xx-small; } .xs { font-size: x-small; } .s { font-size: small; } .m { font-size: medium; }
+.l { font-size: large; } .xl { font-size: x-large; } .xxl { font-size: xx-large; } .xxxl { font-size: xxx-large; }
+.smaller { font-size: smaller; } .larger { font-size: larger; }
+.percent { font-size: 80%; } .em { font-size: 1.25em; } .rem { font-size: 1.5rem; } .zero { font-size: 0; }
+.invalid { font-size: huge; }

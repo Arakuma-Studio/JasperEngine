@@ -1,0 +1,6 @@
+compat/css/place-shorthands.css:3:7: info: 'justify-items' has no effect in flex layout; ignored until the fork has Grid [HTMLUI-CSS-0007]
+compat/css/place-shorthands.css:3:37: info: 'justify-items' has no effect in flex layout; ignored until the fork has Grid [HTMLUI-CSS-0007]
+compat/css/place-shorthands.css:4:7: info: 'justify-self' has no effect in flex layout; ignored until the fork has Grid [HTMLUI-CSS-0007]
+compat/css/place-shorthands.css:4:33: info: 'justify-self' has no effect in flex layout; ignored until the fork has Grid [HTMLUI-CSS-0007]
+compat/css/place-shorthands.css:5:9: info: 'safe' / 'unsafe' are dropped from 'align-content' [HTMLUI-CSS-0005]
+compat/css/place-shorthands.css:5:9: info: 'safe' / 'unsafe' are dropped from 'justify-content' [HTMLUI-CSS-0005]

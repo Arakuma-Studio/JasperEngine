@@ -1,0 +1,1 @@
+compat/css/object-fit.css:7:12: warning: 'object-fit: stretch' is not supported; declaration dropped (fix: use fill, contain, cover, none or scale-down) [HTMLUI-CSS-0004]

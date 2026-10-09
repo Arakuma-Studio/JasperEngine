@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstring>
 #include <string>
+#include <unordered_map>
 
 using namespace jasperengine::htmlui::compat;
 
@@ -46,28 +47,32 @@ const PropertySupport* jasperengine::htmlui::compat::findProperty(std::string_vi
     if (startsWith(name, "--"))
         name = "--*";
 
-    const Span<const PropertySupport> table = propertyTable();
-    const PropertySupport* it = std::lower_bound(table.begin(), table.end(), name,
-        [](const PropertySupport& row, std::string_view key){ return std::string_view(row.name) < key; });
-    if (it != table.end() && std::string_view(it->name) == name)
-        return it;
-    return nullptr;
+    // the rewriter looks up every declaration (several times): an index built once
+    static const std::unordered_map<std::string_view, const PropertySupport*> index = [](){
+        std::unordered_map<std::string_view, const PropertySupport*> map;
+        for (const PropertySupport& row : propertyTable())
+            map.emplace(std::string_view(row.name), &row);
+        return map;
+    }();
+    const auto it = index.find(name);
+    return it == index.end() ? nullptr : it->second;
 }
 
 Span<const ValueSupport> jasperengine::htmlui::compat::valuesOf(std::string_view property){
-    const Span<const ValueSupport> table = valueTable();
-    const ValueSupport* first = nullptr;
-    size_t count = 0;
-    for (const ValueSupport& row : table){
-        if (std::string_view(row.property) == property){
-            if (!first)
-                first = &row;
-            count++;
-        }else if (first){
-            break;
+    // the rows of a property are consecutive: (first, count) per property, built once
+    static const std::unordered_map<std::string_view, std::pair<const ValueSupport*, size_t>> index = [](){
+        std::unordered_map<std::string_view, std::pair<const ValueSupport*, size_t>> map;
+        for (const ValueSupport& row : valueTable()){
+            auto& entry = map[std::string_view(row.property)];
+            if (!entry.first)
+                entry.first = &row;
+            if (entry.first + entry.second == &row)
+                entry.second++;
         }
-    }
-    return first ? Span<const ValueSupport>(first, count) : Span<const ValueSupport>();
+        return map;
+    }();
+    const auto it = index.find(property);
+    return it == index.end() ? Span<const ValueSupport>() : Span<const ValueSupport>(it->second.first, it->second.second);
 }
 
 const ValueSupport* jasperengine::htmlui::compat::findValue(std::string_view property, std::string_view value){

@@ -1,0 +1,58 @@
+/* every Appendix B selector row */
+div { width: 1px; }
+* { width: 2px; }
+.cls { width: 3px; }
+#id { width: 4px; }
+[data-x] { width: 5px; }
+[data-x="a b"] { width: 6px; }
+[lang~=en] { width: 7px; }
+[lang|=en] { width: 8px; }
+[href^=http] { width: 9px; }
+[href$=".png"] { width: 10px; }
+[href*=game] { width: 11px; }
+[type=CHECKBOX i] { width: 12px; }
+[type=a s] { width: 13px; }
+ul li { width: 14px; }
+ul > li { width: 15px; }
+h1 + p { width: 16px; }
+h1 ~ p { width: 17px; }
+col || td { width: 18px; }
+svg|rect { width: 19px; }
+a, b, c { width: 20px; }
+a:hover { width: 21px; } a:active { width: 22px; } input:checked { width: 23px; } button:disabled { width: 24px; } input:placeholder-shown { width: 25px; }
+a:focus { width: 26px; } a:focus-visible { width: 27px; } nav:focus-within { width: 28px; }
+input:enabled { width: 29px; } a:link { width: 30px; } a:any-link { width: 31px; } a:visited { width: 32px; }
+input:required { width: 33px; } input:optional { width: 34px; } input:read-only { width: 35px; } input:read-write { width: 36px; }
+:root { width: 37px; } :scope { width: 38px; }
+li:first-child { width: 39px; } li:last-child { width: 40px; } li:only-child { width: 41px; } li:nth-child(2n+1) { width: 42px; }
+li:nth-last-child(2) { width: 43px; } p:first-of-type { width: 44px; } p:last-of-type { width: 45px; } p:only-of-type { width: 46px; }
+p:nth-of-type(odd) { width: 47px; } p:nth-last-of-type(even) { width: 48px; } div:empty { width: 49px; } p:not(.x) { width: 50px; }
+p:not(.a, .b) { width: 51px; } li:not(:first-child) { width: 52px; } :not(div > p) { width: 53px; }
+li:nth-child(2 of .x) { width: 54px; }
+:is(h1, h2) span { width: 55px; } :matches(.a, .b) { width: 56px; } :-webkit-any(.a, .b) { width: 57px; } :where(.c, .d) { width: 58px; }
+div:has(> img) { width: 59px; }
+:lang(en) { width: 60px; } :dir(rtl) { width: 61px; }
+input:indeterminate { width: 62px; } input:default { width: 63px; } input:valid { width: 64px; } input:invalid { width: 65px; }
+input:user-valid { width: 66px; } input:user-invalid { width: 67px; } input:in-range { width: 68px; } input:out-of-range { width: 69px; }
+input:blank { width: 70px; } :target { width: 71px; } :target-within { width: 72px; } video:playing { width: 73px; } video:paused { width: 74px; }
+:fullscreen { width: 75px; } dialog:modal { width: 76px; } :popover-open { width: 77px; } :host { width: 78px; } :host(.x) { width: 79px; }
+:host-context(.x) { width: 80px; } :state(open) { width: 81px; }
+my-element:defined { width: 82px; }
+p::before { width: 83px; } p::after { width: 84px; } p:before { width: 85px; } p:after { width: 86px; }
+input::placeholder { color: gray; width: 87px; } input::-webkit-input-placeholder { color: gray; } input::-moz-placeholder { opacity: .5; }
+p::selection { color: red; } p::-moz-selection { color: red; }
+li::marker { color: red; }
+div::-webkit-scrollbar { width: 88px; } div::-webkit-scrollbar-thumb { width: 89px; } div::-webkit-scrollbar-track { width: 90px; }
+div::-webkit-scrollbar-button { width: 91px; } div::-webkit-scrollbar-corner { width: 92px; } div::-webkit-scrollbar-track-piece { width: 93px; }
+input::-webkit-slider-thumb { width: 94px; } input::-moz-range-thumb { width: 95px; } input::-webkit-slider-runnable-track { width: 96px; }
+input::-moz-range-track { width: 97px; } input::-moz-range-progress { width: 98px; }
+progress::-webkit-progress-value { width: 99px; } progress::-moz-progress-bar { width: 100px; } progress::-webkit-progress-bar { width: 101px; }
+p::first-line { width: 102px; } p::first-letter { width: 103px; } dialog::backdrop { width: 104px; } input::file-selector-button { width: 105px; }
+::cue { width: 106px; } x::part(a) { width: 107px; } ::slotted(span) { width: 108px; } ::highlight(h) { width: 109px; }
+::view-transition-old(root) { width: 110px; } details::details-content { width: 111px; } select::picker(select) { width: 112px; }
+p:unknown-thing { width: 113px; }
+button::-moz-focus-inner { border: 0; }
+input:-webkit-autofill { width: 114px; }
+template { width: 116px; } body { width: 117px; } html { width: 118px; }
+.a .b > .c + .d ~ .e { width: 119px; }
+.bad[ { width: 115px; }

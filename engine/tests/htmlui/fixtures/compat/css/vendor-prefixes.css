@@ -1,0 +1,16 @@
+/* vendor prefixes: own rows, the unprefixed property, duplicates, prefixed values */
+.a { -webkit-transition: opacity 1s; -moz-border-radius: 4px; -webkit-box-shadow: 0 1px 2px #000; }
+.dup { -webkit-transform: scale(2); transform: scale(2); -webkit-border-radius: 3px; border-radius: 3px; }
+.box { display: -webkit-box; -webkit-box-orient: vertical; -webkit-box-pack: center; -webkit-box-align: center; }
+.flex { display: -webkit-flex; -webkit-flex: 1; }
+.ms { display: -ms-flexbox; -ms-flex-pack: justify; -ms-flex-align: center; -ms-flex: 1 0 auto; }
+.inline { display: -webkit-inline-box; }
+.grad { background: -webkit-linear-gradient(top, #fff, #000); }
+.grad2 { background-image: -moz-linear-gradient(45deg, red, blue); }
+.grad3 { background: -webkit-radial-gradient(center, circle cover, red, blue); }
+.old { background: -webkit-gradient(linear, left top, left bottom, from(#fff), to(#000)); }
+.sticky { position: -webkit-sticky; }
+.clip { -webkit-background-clip: padding-box; }
+.fill { -webkit-text-fill-color: #f0f; }
+.select { -webkit-user-select: none; -webkit-tap-highlight-color: transparent; -webkit-font-smoothing: antialiased; }
+.unknown { -webkit-made-up: 1; }

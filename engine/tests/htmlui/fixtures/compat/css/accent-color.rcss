@@ -1,0 +1,12 @@
+body#htmlui-root {
+--html-accent: #e91e63ff;
+}
+#htmlui-root .auto {
+--html-accent: #0075ffff;
+}
+#htmlui-root .rgba {
+--html-accent: #008000cc;
+}
+#htmlui-root .var {
+--html-accent: var(--brand);
+}

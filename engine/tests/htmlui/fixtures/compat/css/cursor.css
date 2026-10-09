@@ -1,0 +1,6 @@
+/* cursor keywords; url() cursors use the fallback */
+.p { cursor: pointer; } .d { cursor: default; } .t { cursor: text; } .g { cursor: grab; } .gg { cursor: grabbing; } .n { cursor: not-allowed; }
+.url { cursor: url(img/cursor.cur) 4 4, pointer; } .two { cursor: url(a.png), url(b.png), move; }
+.invalid { cursor: hand; } .pe { pointer-events: none; } .pe2 { pointer-events: visiblePainted; } .pe3 { pointer-events: auto; }
+.caret { caret-color: red; } .caret2 { caret-color: auto; }
+.tab { tab-index: auto; focus: none; nav-up: #a; drag: drag; }

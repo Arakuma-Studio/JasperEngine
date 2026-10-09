@@ -94,6 +94,14 @@ namespace jasperengine {
         size_t getEffectPageCount() const;  // tests: RGBA8 pages of effect glyphs
         size_t getEffectSetCount() const;   // tests: prepared effect sets
 
+        // phase-2 hook H6: whether a family is known (a generic family, a built-in or a loaded
+        // face), for HTMLUI-CSS-0023 (FontRegistry::hasFamily)
+        static bool hasFamily(const std::string& name);
+        // tests (phase-2 golden pages, "no-text" variant): false keeps text layout and metrics but
+        // generates no glyph quads (base text and font effects); a change bumps the version
+        void setRenderTextForTesting(bool render);
+        bool getRenderTextForTesting() const;
+
         // tests: the faces of a handle's chain, primary first; the "family, family" list split
         // and normalized as GetFontFaceHandle does
         std::vector<const FontFace*> getChain(Rml::FontFaceHandle handle) const;
@@ -184,6 +192,7 @@ namespace jasperengine {
 
         int version = 1;
         float rasterScale = 1.0f;
+        bool renderText = true;
         bool warnedOverflow = false;
 
         Rml::FontMetrics emptyMetrics = {};

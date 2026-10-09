@@ -89,7 +89,7 @@ TEST_F(UIDocumentSystemTest, LoadsOnUpdate){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
 
-    UIDocument document = fixture.addDocument("ecs/basic.html");
+    UIDocument document = fixture.addDocument("ecs/basic.rml");
     EXPECT_TRUE(documentSystem(scene).hasDocuments());
     EXPECT_FALSE(document.isLoaded());
     EXPECT_FALSE(documentSystem(scene).isAllLoaded());
@@ -146,7 +146,7 @@ TEST_F(UIDocumentSystemTest, MissingFileFailsWithError){
     EXPECT_EQ(errors("could not load document 'ecs/missing.html'"), 1u);
 
     // a fixed filename loads
-    document.setFilename("ecs/basic.html");
+    document.setFilename("ecs/basic.rml");
     updateDocuments(scene);
     EXPECT_TRUE(component.loaded);
     EXPECT_FALSE(component.loadFailed);
@@ -156,12 +156,12 @@ TEST_F(UIDocumentSystemTest, FilenameChangeReloads){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
 
-    UIDocument document = fixture.addDocument("ecs/basic.html");
+    UIDocument document = fixture.addDocument("ecs/basic.rml");
     updateDocuments(scene);
     UIElement box = document.getElementById("box");
     ASSERT_TRUE(box.isValid());
 
-    document.setFilename("ecs/second.html");
+    document.setFilename("ecs/second.rml");
     EXPECT_TRUE(document.getComponent<UIDocumentComponent>().needReload);
     updateDocuments(scene);
 
@@ -175,12 +175,12 @@ TEST_F(UIDocumentSystemTest, FilenameChangeReloads){
 
     // the same filename again does not reload
     Rml::ElementDocument* second = findDocument(scene, "ecs second");
-    document.setFilename("ecs/second.html");
+    document.setFilename("ecs/second.rml");
     updateDocuments(scene);
     EXPECT_EQ(findDocument(scene, "ecs second"), second);
 
     // a component edit through the update flag (the editor's path) reloads
-    document.getComponent<UIDocumentComponent>().filename = "ecs/basic.html";
+    document.getComponent<UIDocumentComponent>().filename = "ecs/basic.rml";
     document.reload();
     updateDocuments(scene);
     EXPECT_NE(findDocument(scene, "ecs basic"), nullptr);
@@ -193,7 +193,7 @@ TEST_F(UIDocumentSystemTest, EmptyFilenameUnloads){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
 
-    UIDocument document = fixture.addDocument("ecs/basic.html");
+    UIDocument document = fixture.addDocument("ecs/basic.rml");
     updateDocuments(scene);
     ASSERT_TRUE(document.isLoaded());
 
@@ -213,7 +213,7 @@ TEST_F(UIDocumentSystemTest, RemoveComponentUnloads){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
 
-    UIDocument document = fixture.addDocument("ecs/basic.html");
+    UIDocument document = fixture.addDocument("ecs/basic.rml");
     updateDocuments(scene);
     UIElement body = document.getBody();
     ASSERT_TRUE(body.isValid());
@@ -238,7 +238,7 @@ TEST_F(UIDocumentSystemTest, DestroyEntityUnloads){
     {
         // owns its entity: destroyed with it
         UIDocument document(&scene);
-        document.setFilename("ecs/basic.html");
+        document.setFilename("ecs/basic.rml");
         updateDocuments(scene);
         entity = document.getEntity();
         box = document.getElementById("box");
@@ -261,7 +261,7 @@ TEST_F(UIDocumentSystemTest, DisabledHides){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
 
-    UIDocument document = fixture.addDocument("ecs/basic.html");
+    UIDocument document = fixture.addDocument("ecs/basic.rml");
     updateDocuments(scene);
     Rml::ElementDocument* rml = findDocument(scene, "ecs basic");
     ASSERT_NE(rml, nullptr);
@@ -293,7 +293,7 @@ TEST_F(UIDocumentSystemTest, InactiveInHierarchyHides){
     Scene& scene = fixture.getScene();
 
     GameObject& parent = fixture.add<GameObject>();
-    UIDocument document = fixture.addDocument("ecs/basic.html");
+    UIDocument document = fixture.addDocument("ecs/basic.rml");
     parent.addChild(document.getEntity());
     updateDocuments(scene);
     Rml::ElementDocument* rml = findDocument(scene, "ecs basic");
@@ -314,8 +314,8 @@ TEST_F(UIDocumentSystemTest, SortOrderZIndex){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
 
-    UIDocument a = fixture.addDocument("ecs/overlap_a.html", 0);
-    UIDocument b = fixture.addDocument("ecs/overlap_b.html", 1);
+    UIDocument a = fixture.addDocument("ecs/overlap_a.rml", 0);
+    UIDocument b = fixture.addDocument("ecs/overlap_b.rml", 1);
     updateDocuments(scene);
 
     Rml::ElementDocument* rmlA = findDocument(scene, "ecs overlap a");
@@ -343,8 +343,8 @@ TEST_F(UIDocumentSystemTest, FocusDoesNotReorder){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
 
-    fixture.addDocument("ecs/overlap_a.html", 0);
-    fixture.addDocument("ecs/overlap_b.html", 1);
+    fixture.addDocument("ecs/overlap_a.rml", 0);
+    fixture.addDocument("ecs/overlap_b.rml", 1);
     updateDocuments(scene);
     ASSERT_EQ(idAt(scene, 150, 150), "b-box");
 
@@ -361,7 +361,7 @@ TEST_F(UIDocumentSystemTest, CanvasResizeUpdatesDimensions){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
 
-    UIDocument document = fixture.addDocument("ecs/basic.html");
+    UIDocument document = fixture.addDocument("ecs/basic.rml");
     updateDocuments(scene);
     EXPECT_EQ(documentSystem(scene).getContext()->getDimensions(), Rml::Vector2i(640, 360));
 
@@ -381,7 +381,7 @@ TEST_F(UIDocumentSystemTest, ReferenceSizeOverrides){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
 
-    UIDocument document = fixture.addDocument("ecs/basic.html");
+    UIDocument document = fixture.addDocument("ecs/basic.rml");
     // set before the context exists: it is created at that size
     documentSystem(scene).setReferenceSize(1280, 720);
     updateDocuments(scene);
@@ -402,12 +402,12 @@ TEST_F(UIDocumentSystemTest, ReferenceSizeOverrides){
 TEST_F(UIDocumentSystemTest, TwoScenesTwoContexts){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
-    UIDocument document = fixture.addDocument("ecs/basic.html");
+    UIDocument document = fixture.addDocument("ecs/basic.rml");
 
     // a second scene (not a layer: only its system is updated)
     std::unique_ptr<Scene> other(new Scene());
     std::unique_ptr<UIDocument> otherDocument(new UIDocument(other.get()));
-    otherDocument->setFilename("ecs/second.html");
+    otherDocument->setFilename("ecs/second.rml");
 
     updateDocuments(scene);
     updateDocuments(*other);
@@ -435,7 +435,7 @@ TEST_F(UIDocumentSystemTest, TwoScenesTwoContexts){
 TEST_F(UIDocumentSystemTest, SceneDestroyReleasesHtmlUI){
     std::unique_ptr<Scene> scene(new Scene());
     std::unique_ptr<UIDocument> document(new UIDocument(scene.get()));
-    document->setFilename("ecs/basic.html");
+    document->setFilename("ecs/basic.rml");
     updateDocuments(*scene);
     ASSERT_TRUE(document->isLoaded());
     EXPECT_EQ(HtmlUI::getReferenceCount(), 1);
@@ -459,7 +459,7 @@ TEST_F(UIDocumentSystemTest, ViewDestroyedAndReloaded){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
 
-    UIDocument document = fixture.addDocument("ecs/basic.html");
+    UIDocument document = fixture.addDocument("ecs/basic.rml");
     updateDocuments(scene);
     ASSERT_TRUE(document.isLoaded());
 
@@ -487,7 +487,7 @@ TEST_F(UIDocumentSystemTest, DebuggerToggle){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
 
-    fixture.addDocument("ecs/basic.html");
+    fixture.addDocument("ecs/basic.rml");
     updateDocuments(scene);
     ASSERT_TRUE(fontEngineHasFonts());
 
@@ -497,7 +497,7 @@ TEST_F(UIDocumentSystemTest, DebuggerToggle){
     EXPECT_EQ(HtmlUI::getDebuggerContext(), nullptr);
     std::unique_ptr<UIDocument> otherDocument(new UIDocument(other.get()));
     otherDocument->setEntityOwned(false);
-    otherDocument->setFilename("ecs/second.html");
+    otherDocument->setFilename("ecs/second.rml");
     updateDocuments(*other);
     ASSERT_NE(documentSystem(*other).getContext(), nullptr);
     EXPECT_EQ(HtmlUI::getDebuggerContext(), documentSystem(*other).getContext());
@@ -528,7 +528,7 @@ TEST_F(UIDocumentSystemTest, DebuggerShutsDownWithTheScene){
     {
         SceneFixture fixture;
         Scene& scene = fixture.getScene();
-        fixture.addDocument("ecs/basic.html");
+        fixture.addDocument("ecs/basic.rml");
         updateDocuments(scene);
         ASSERT_TRUE(fontEngineHasFonts());
         documentSystem(scene).setDebuggerVisible(true);
@@ -547,8 +547,8 @@ TEST_F(UIDocumentTest, LoadNowAndGetElementById){
     EXPECT_FALSE(document.isLoaded());
 
     // synchronous: elements and layout right away, no update needed
-    EXPECT_TRUE(document.load("ecs/basic.html"));
-    EXPECT_EQ(document.getFilename(), "ecs/basic.html");
+    EXPECT_TRUE(document.load("ecs/basic.rml"));
+    EXPECT_EQ(document.getFilename(), "ecs/basic.rml");
     EXPECT_TRUE(document.isLoaded());
 
     UIElement box = document.getElementById("box");
@@ -573,7 +573,7 @@ TEST_F(UIDocumentTest, LoadNowAndGetElementById){
     EXPECT_EQ(errors("could not load document 'ecs/missing.html'"), 1u);
 
     // and loads again
-    EXPECT_TRUE(document.load("ecs/second.html"));
+    EXPECT_TRUE(document.load("ecs/second.rml"));
     EXPECT_TRUE(document.getElementById("second").isValid());
 }
 
@@ -593,7 +593,7 @@ TEST_F(UIDocumentTest, ShowHide){
 
     UIDocument& document = fixture.add<UIDocument>();
     EXPECT_TRUE(document.isVisible());
-    ASSERT_TRUE(document.load("ecs/basic.html"));
+    ASSERT_TRUE(document.load("ecs/basic.rml"));
     Rml::ElementDocument* rml = findDocument(scene, "ecs basic");
     ASSERT_NE(rml, nullptr);
 
@@ -615,7 +615,7 @@ TEST_F(UIDocumentTest, ShowHide){
 
     // a document loaded while hidden stays hidden
     document.hide();
-    ASSERT_TRUE(document.load("ecs/second.html"));
+    ASSERT_TRUE(document.load("ecs/second.rml"));
     Rml::ElementDocument* second = findDocument(scene, "ecs second");
     ASSERT_NE(second, nullptr);
     EXPECT_FALSE(second->IsVisible());
@@ -625,7 +625,7 @@ TEST_F(UIDocumentTest, ReloadKeepsSortOrder){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
 
-    UIDocument document = fixture.addDocument("ecs/basic.html", 3);
+    UIDocument document = fixture.addDocument("ecs/basic.rml", 3);
     EXPECT_EQ(document.getSortOrder(), 3);
     updateDocuments(scene);
     Rml::ElementDocument* rml = findDocument(scene, "ecs basic");
@@ -654,7 +654,7 @@ TEST_F(UIDocumentClonerTest, InstantiateCopiesFields){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
 
-    UIDocument document = fixture.addDocument("ecs/overlap_a.html", 4);
+    UIDocument document = fixture.addDocument("ecs/overlap_a.rml", 4);
     updateDocuments(scene);
     ASSERT_TRUE(document.isLoaded());
 
@@ -662,7 +662,7 @@ TEST_F(UIDocumentClonerTest, InstantiateCopiesFields){
     ASSERT_EQ(copies.size(), 1u);
 
     UIDocumentComponent& copy = scene.getComponent<UIDocumentComponent>(copies[0]);
-    EXPECT_EQ(copy.filename, "ecs/overlap_a.html");
+    EXPECT_EQ(copy.filename, "ecs/overlap_a.rml");
     EXPECT_EQ(copy.sortOrder, 4);
     EXPECT_TRUE(copy.enabled);
     // its own document, loaded by the next update

@@ -230,6 +230,10 @@ std::string UrlResolver::joinPath(const std::string& fromFile, std::string_view 
         base.erase(0, 8);
     const size_t slash = base.rfind('/');
     const std::string directory = slash == std::string::npos ? std::string() : base.substr(0, slash + 1);
+    // a document opened by an absolute filesystem path (tests, tools) keeps its references
+    // absolute, as phase 1's RmlSystem::joinPath does
+    if (!base.empty() && base[0] == '/')
+        return "/" + normalizePath(directory + std::string(relative), outside);
     return normalizePath(directory + std::string(relative), outside);
 }
 
@@ -332,7 +336,7 @@ ResolvedUrl UrlResolver::resolve(std::string_view input, const std::string& from
             result.assetPath = normalizePath(entry->path);
             std::string withoutQuery = result.url;
             splitQueryAndFragment(withoutQuery, result.fragment);
-            result.emitted = "/" + result.assetPath + result.fragment;
+            result.emitted = std::string(kAssetScheme) + result.assetPath + result.fragment;
             if (checkExists)
                 result.exists = assetFileExists(files, result.assetPath);
             break;
@@ -360,7 +364,14 @@ ResolvedUrl UrlResolver::resolve(std::string_view input, const std::string& from
             }else{
                 result.assetPath = joinPath(fromFile, path, &result.outsideAssets);
             }
-            result.emitted = "/" + result.assetPath + result.fragment;
+            // an absolute filesystem path (a document opened by one) and compat's own virtual
+            // files (a document compiled from them) are written as such
+            if (!result.assetPath.empty() && result.assetPath[0] == '/')
+                result.emitted = result.assetPath + result.fragment;
+            else if (VirtualFiles::isVirtual(result.assetPath))
+                result.emitted = "/" + result.assetPath + result.fragment;
+            else
+                result.emitted = std::string(kAssetScheme) + result.assetPath + result.fragment;
             if (checkExists)
                 result.exists = !result.outsideAssets && assetFileExists(files, result.assetPath);
             break;

@@ -46,11 +46,20 @@ namespace jasperengine::htmlui::compat {
 
     // Per-document session settings besides CompatOptions.
     struct RewriteContext {
+        // p2-css: every attribute of the document's <html> as written (id, class, dir, lang,
+        // data-*, ...; rootId/rootDirection below are the same id and dir): selectors whose
+        // first compound uses the root's classes or attribute names also get a variant on the
+        // root itself (`.dark .x` when <html class="dark">); the loader fills it.
+        std::vector<std::pair<std::string, std::string>> rootAttributes;
         FileAccess files;                         // @import and existence checks; FileData when empty
         const ImportManifest* manifest = nullptr; // remote URLs; ImportManifest::get() when null
         std::string virtualDirectory;             // "@htmlui/doc/<key hex>/" (the document compile key);
                                                   // File outputs get virtualDirectory + asset path + ".rcss"
         std::string documentPath;                 // "ui/menu.html": inline sheets, origins
+        // p2-html: the author id of the document's <html> (selectors `#id` on it name the root,
+        // §3.8) and its dir (logical properties, §3.9.7); "" when none
+        std::string rootId;
+        std::string rootDirection;
     };
 
     struct RewriteResult {

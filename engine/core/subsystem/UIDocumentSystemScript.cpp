@@ -395,6 +395,7 @@ HtmlUIScriptState& UIDocumentSystem::getScriptState(){
 }
 
 void UIDocumentSystem::releaseScriptState(){
+    compatScriptsStopped();   // p2-html: document scripts run with the scene's scripts only
     if (!scriptState && documents.empty())
         return;
 
@@ -524,6 +525,7 @@ void UIDocumentSystem::scriptDocumentLoading(const std::string& filename, HtmlUI
 
 void UIDocumentSystem::scriptDocumentLoaded(Entity entity){
     getScriptState().notifications.push_back({entity, true});
+    compatDocumentLoaded(entity);   // p2-html: navigation, themes, <script type="text/lua">
 }
 
 void UIDocumentSystem::scriptDocumentUnloading(Entity entity, Rml::ElementDocument* document){

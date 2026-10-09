@@ -360,14 +360,14 @@ namespace SVG {
 	}
 
 	SharedPtr<SVGData> SVGCache::GetHandle(const String& source_id, const String& source, SourceType source_type, Element* element,
-		const bool crop_to_content, const BoxArea area)
+		const bool crop_to_content, const BoxArea area, const ColourbPremultiplied* colour_override)
 	{
 		RenderManager* render_manager = element->GetRenderManager();
 		if (!render_manager)
 			return {};
 
 		const ComputedValues& computed = element->GetComputedValues();
-		const ColourbPremultiplied colour = computed.image_color().ToPremultiplied(computed.opacity());
+		const ColourbPremultiplied colour = colour_override ? *colour_override : computed.image_color().ToPremultiplied(computed.opacity());
 		Vector2i dimensions(element->GetBox().GetSize(area).Round());
 		if (dimensions.x == 0 || dimensions.y == 0)
 			dimensions = {0, 0};

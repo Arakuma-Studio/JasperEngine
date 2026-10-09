@@ -1,0 +1,5 @@
+compat/css/flex-keywords.css:4:77: info: 'safe' / 'unsafe' are dropped from 'justify-content' [HTMLUI-CSS-0005]
+compat/css/flex-keywords.css:5:137: info: 'align-items: last baseline' is written as 'baseline' [HTMLUI-CSS-0005]
+compat/css/flex-keywords.css:6:34: info: 'safe' / 'unsafe' are dropped from 'align-self' [HTMLUI-CSS-0005]
+compat/css/flex-keywords.css:8:21: warning: 'row-gap: normal 10px' is not supported; declaration dropped (fix: use a length or percentage) [HTMLUI-CSS-0004]
+compat/css/flex-keywords.css:10:12: warning: 'justify-content: sideways' is not supported; declaration dropped (fix: use one of: flex-start,flex-end,center,space-between,space-around,space-evenly) [HTMLUI-CSS-0004]

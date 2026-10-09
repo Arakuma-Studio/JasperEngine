@@ -1,0 +1,2 @@
+compat/css/property-at-rule.css:2:1: info: @property --angle { inherits: false } cannot be honored: the value inherits (fix: set the property on the elements that use it) [HTMLUI-AT-0010]
+compat/css/property-at-rule.css:5:1: info: @property needs a custom property name; dropped [HTMLUI-AT-0010]

@@ -1,0 +1,4 @@
+compat/css/background-longhands.css:4:17: info: background longhands are merged with the layers of the base rule at compat/css/background-longhands.css:3 [HTMLUI-CSS-0017]
+compat/css/background-longhands.css:5:15: warning: 'background-size' without a background image in the rule or a base rule is dropped (fix: set background-image in the same rule) [HTMLUI-CSS-0018]
+compat/css/background-longhands.css:6:11: warning: 'background-position' without a background image in the rule or a base rule is dropped (fix: set background-image in the same rule) [HTMLUI-CSS-0018]
+compat/css/background-longhands.css:9:10: warning: 'background-blend-mode' is not supported; dropped (fix: pre-blend the images, or layer elements with opacity) [HTMLUI-CSS-0002]

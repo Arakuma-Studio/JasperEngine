@@ -103,6 +103,9 @@ namespace {
         {codes::DialogNotModal, I, false, "dialog-not-modal", "Dialog not modal",
          "Dialogs open and close, but showModal() has no backdrop and does not trap the focus. Add a backdrop element styled "
          "in CSS if needed."},
+        {codes::SelfClosingTag, W, false, "self-closing-tag", "Self-closing tag",
+         "In HTML, <div/> (any element that is not void, such as img, br or input) does not close the element: everything "
+         "after it goes inside it until its parent ends, which changes the layout. Browsers do the same. Write <div></div>."},
 
         // ---- CSS
         {codes::UnknownProperty, W, false, "unknown-property", "Unknown property",
@@ -189,6 +192,9 @@ namespace {
          "There is no browsing history, so :visited never matches; the rule was dropped."},
         {codes::InvalidSelector, W, false, "invalid-selector", "Invalid selector",
          "The selector has a syntax error; the rule was dropped, as in a browser."},
+        {codes::SelectorIgnored, I, false, "selector-ignored", "Selector ignored",
+         "A selector feature that cannot apply in a game UI (:dir(), an unknown vendor-prefixed pseudo-class or pseudo-element "
+         "Chromium also drops) was dropped with its selector or rule."},
 
         // ---- AT
         {codes::UnsupportedAtRule, W, true, "unsupported-at-rule", "Unsupported at-rule",

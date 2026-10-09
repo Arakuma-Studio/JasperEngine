@@ -725,6 +725,8 @@ endif()
 add_subdirectory(libs/lunasvg)
 add_subdirectory(libs/thorvg)
 add_subdirectory(libs/rmlui)
+# the HTML5 parser of the HTML UI compatibility layer (engine/core/htmlui/compat/html)
+add_subdirectory(libs/lexbor)
 
 if(JASPERENGINE_RUNTIME_SHADERS)
     # A game only needs the back end of its own graphics API (GLSL is always in);
@@ -759,7 +761,7 @@ endif()
 
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
-    harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui ${JASPERENGINE_PHYSICS_LIBS})
+    harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor ${JASPERENGINE_PHYSICS_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
 
@@ -948,6 +950,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/UIDocumentSystemInput.cpp
     core/subsystem/UIDocumentSystemScript.cpp
     core/subsystem/UIDocumentSystemReload.cpp
+    core/subsystem/UIDocumentSystemCompat.cpp
     core/subsystem/UIDocumentSystemTexture.cpp
     core/texture/Framebuffer.cpp
     core/texture/IBLEnvironment.cpp
@@ -973,6 +976,7 @@ set(JASPERENGINE_SRCS
 # HTML/CSS compatibility layer (phase 2): globbed per directory
 include(core/htmlui/compat/CompatSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${HTMLUI_COMPAT_SRCS})
+include(libs/lucide/lucide.cmake)
 
 if(JASPERENGINE_PHYSICS_2D)
     list(APPEND JASPERENGINE_SRCS
@@ -1014,6 +1018,7 @@ add_library(
 )
 
 jasperengine_htmlui_compat_embed(jasperengine)
+jasperengine_htmlui_lucide_embed(jasperengine)
 
 target_compile_definitions(jasperengine
     PUBLIC
@@ -1033,7 +1038,7 @@ target_link_libraries(
 
     PUBLIC
 
-    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui
+    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor
     ${JASPERENGINE_PHYSICS_LIBS}
 )
 
@@ -1111,6 +1116,8 @@ if(JASPERENGINE_SHARED)
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,librmlui.a")
         # the vector libraries (hidden visibility too): LunaSVG/plutovg for SVG, ThorVG for Lottie
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,liblunasvg.a:libthorvg.a")
+        # the HTML parser of the compat layer (hidden visibility too; C, so lxb_*/lexbor_* symbols)
+        target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,liblexbor.a")
         # and what engine code instantiates over RmlUi types (see the script; ELF only)
         if(NOT WIN32)
             target_link_options(jasperengine PRIVATE "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/libs/rmlui/hidden-symbols.map")

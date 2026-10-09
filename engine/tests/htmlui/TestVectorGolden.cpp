@@ -65,7 +65,7 @@ TEST_F(VectorGoldenTest, SvgFile){
     JASPER_REQUIRE_GPU();
     RenderTestContext test(512, 384, 0, 0, 4);
     ASSERT_TRUE(test.isValid());
-    ASSERT_NE(test.load("p1/vector/svg_file.html"), nullptr);
+    ASSERT_NE(test.load("p1/vector/svg_file.rml"), nullptr);
     ASSERT_TRUE(test.renderUntilDrawn());
     std::vector<uint8_t> screen;
     ASSERT_TRUE(test.readScreen(screen));
@@ -103,7 +103,7 @@ TEST_F(VectorGoldenTest, SvgInline){
     JASPER_REQUIRE_GPU();
     RenderTestContext test(512, 384, 0, 0, 4);
     ASSERT_TRUE(test.isValid());
-    ASSERT_NE(test.load("p1/vector/svg_inline.html"), nullptr);
+    ASSERT_NE(test.load("p1/vector/svg_inline.rml"), nullptr);
     ASSERT_TRUE(test.renderUntilDrawn());
     std::vector<uint8_t> screen;
     ASSERT_TRUE(test.readScreen(screen));
@@ -139,7 +139,7 @@ TEST_F(VectorGoldenTest, LottieFrames){
     JASPER_REQUIRE_GPU();
     RenderTestContext test(512, 384, 0, 0, 4);
     ASSERT_TRUE(test.isValid());
-    Rml::ElementDocument* document = test.load("p1/vector/lottie_frames.html");
+    Rml::ElementDocument* document = test.load("p1/vector/lottie_frames.rml");
     ASSERT_NE(document, nullptr);
 
     struct Frame {

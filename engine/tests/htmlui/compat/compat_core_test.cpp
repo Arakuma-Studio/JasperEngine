@@ -26,6 +26,8 @@
 #include <RmlUi/Core.h>
 
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <set>
 
 #include <map>
 
@@ -280,16 +282,19 @@ TEST(CompatRewriterSeam, PassThroughSession){
     const StylesheetOutput& sheet = result.sheets[0];
     EXPECT_EQ(sheet.virtualPath, "@htmlui/doc/0123abcd/ui/menu.css.rcss");
     EXPECT_EQ(sheet.sourcePath, "ui/menu.css");
-    EXPECT_NE(sheet.rcss.find(".card {\ncolor: red;\nfont-family: \"Inter\", sans-serif;\n}\n"), std::string::npos) << sheet.rcss;
-    EXPECT_NE(sheet.rcss.find(".card .title {\nwidth: 10px;\n}"), std::string::npos) << sheet.rcss;
-    EXPECT_NE(sheet.rcss.find("@media (min-width: 600px) {\n.card {\npadding: 4px;\n}\n}"), std::string::npos) << sheet.rcss;
+    // the p2-css rewriter: the #htmlui-root band, #rrggbbaa colors, the currentColor companion
+    EXPECT_NE(sheet.rcss.find("#htmlui-root .card {\ncolor: #ff0000ff;\n--html-current-color: #ff0000ff;\nfont-family: Inter, sans-serif;\n}\n"),
+              std::string::npos) << sheet.rcss;
+    EXPECT_NE(sheet.rcss.find("#htmlui-root .card .title {\nwidth: 10px;\n}"), std::string::npos) << sheet.rcss;
+    EXPECT_NE(sheet.rcss.find("@media (min-width: 600px) {\n#htmlui-root .card {\npadding: 4px;\n}\n}"), std::string::npos) << sheet.rcss;
     EXPECT_NE(sheet.rcss.find("@keyframes fade {"), std::string::npos) << sheet.rcss;
     // every output line maps into the stylesheet
     for (const SourceRef& ref : sheet.lines.lines)
         EXPECT_EQ(ref.file, file);
 
     const StylesheetOutput& inlineStyle = result.sheets[1];
-    EXPECT_EQ(inlineStyle.rcss, "color: blue; width: \"x\";");
+    // width: 'x' is not a width: dropped (HTMLUI-CSS-0004)
+    EXPECT_EQ(inlineStyle.rcss, "color: #0000ffff; --html-current-color: #0000ffff;");
     EXPECT_EQ(inlineStyle.elementLoc, 4u);
     EXPECT_EQ(inlineStyle.lines.lines[0].offset, 12u);
 
@@ -298,10 +303,14 @@ TEST(CompatRewriterSeam, PassThroughSession){
     EXPECT_EQ(result.remoteRefs[1].url, "https://images.example.com/a.png");
     EXPECT_EQ(result.remoteRefs[1].kind, "image");
     EXPECT_EQ(result.dependencies, std::vector<std::string>{"ui/menu.css"});
-    EXPECT_EQ(sink.size(), 0u);
+    // the two remote files are not imported (no manifest), nesting is flattened, the bad width
+    std::vector<std::string> codes;
+    for (const Diagnostic& d : sink.diagnostics())
+        codes.push_back(d.code.id());
+    EXPECT_EQ(codes, (std::vector<std::string>{"HTMLUI-IMP-0001", "HTMLUI-AT-0008", "HTMLUI-IMP-0001", "HTMLUI-CSS-0004"}));
 
     EXPECT_EQ(CssRewriter::rewriteSelector("  .a  >  p:hover ", nullptr), ".a > p:hover");
-    EXPECT_EQ(CssRewriter::rewriteDeclarations("color: red; margin : 0", nullptr), "color: red; margin: 0;");
+    EXPECT_EQ(CssRewriter::rewriteDeclarations("color: red; margin : 0", nullptr), "color: #ff0000ff; --html-current-color: #ff0000ff; margin: 0;");
 }
 
 // ---- user-agent sheet
@@ -369,31 +378,25 @@ TEST(CompatApi, CheckStylesheet){
     std::vector<std::string> lines;
     for (const Diagnostic& diagnostic : report.diagnostics)
         lines.push_back(toText(diagnostic));
-    ASSERT_EQ(lines.size(), 1u) << ::testing::PrintToString(lines);
-    EXPECT_EQ(lines[0].rfind("ui/menu.css:2:19: warning: a string is not closed", 0), 0u) << lines[0];
+    // the rewriter (p2-css) reports the bad width itself, the parser the open string, the URL
+    // resolver the remote image that is not imported
+    ASSERT_EQ(lines.size(), 3u) << ::testing::PrintToString(lines);
+    EXPECT_EQ(lines[0].rfind("ui/menu.css:1:17: warning: 'width: bogus' is not supported", 0), 0u) << lines[0];
+    EXPECT_NE(lines[0].find("[HTMLUI-CSS-0004]"), std::string::npos) << lines[0];
+    EXPECT_EQ(lines[1].rfind("ui/menu.css:2:19: warning: a string is not closed", 0), 0u) << lines[1];
+    EXPECT_NE(lines[2].find("[HTMLUI-IMP-0001]"), std::string::npos) << lines[2];
     EXPECT_EQ(report.files, std::vector<std::string>{"ui/menu.css"});
     ASSERT_EQ(report.remoteRefs.size(), 1u);
     EXPECT_EQ(report.remoteRefs[0].url, "//cdn.example.com/x.png");
 
-    // RmlUi verification: the pass-through leaves "width: bogus" for RmlUi, which rejects it
-    // at the user's line (p2-css will report it itself and pass nothing invalid on)
+    // RmlUi verification: the rewriter passes nothing invalid on, so RmlUi reports nothing
     options.verifyWithRmlUi = true;
     ASSERT_FALSE(HtmlUI::isInitialized());
     report = checkStylesheet("ui/menu.css", options);
     EXPECT_FALSE(HtmlUI::isInitialized());   // acquired for the check only
-    size_t width = 0;
-    for (const Diagnostic& diagnostic : report.diagnostics){
-        if (diagnostic.code != codes::RmluiMessage)
-            continue;
-        EXPECT_EQ(diagnostic.file, "ui/menu.css") << toText(diagnostic);
-        EXPECT_GE(diagnostic.line, 1u) << toText(diagnostic);
-        if (diagnostic.subject == "width"){
-            width++;
-            EXPECT_EQ(diagnostic.line, 1u);
-            EXPECT_EQ(diagnostic.column, 17u);
-        }
-    }
-    EXPECT_EQ(width, 1u);
+    for (const Diagnostic& diagnostic : report.diagnostics)
+        EXPECT_NE(diagnostic.code, codes::RmluiMessage) << toText(diagnostic);
+    EXPECT_EQ(report.diagnostics.size(), 3u);
 
     // invalid UTF-8
     options.verifyWithRmlUi = false;
@@ -414,12 +417,46 @@ TEST(CompatApi, CheckStylesheet){
     ASSERT_EQ(refs.size(), 1u);
 }
 
-// p2-html implements checkDocument (CompatApiDocument.cpp) and replaces this test with its own
-TEST(CompatApi, CheckDocumentIsAStubUntilTheHtmlStage){
+// checkDocument (p2-html, CompatApiDocument.cpp): the document compiled through the given file
+// access, no RmlUi needed (phase 4's CLI)
+TEST(CompatApi, CheckDocumentCompilesTheDocument){
+    std::map<std::string, std::string> disk = {
+        {"ui/menu.html", "<!DOCTYPE html><html><head><link rel=\"stylesheet\" href=\"menu.css\">"
+                         "<link rel=\"stylesheet\" href=\"https://cdn.example.com/x.css\"></head>"
+                         "<body><img src=\"missing.png\"><script>alert(1)</script></body></html>"},
+        {"ui/menu.css", "p { color: red; }"},
+    };
     CheckOptions options;
     options.verifyWithRmlUi = false;
+    options.files.read = [&disk](const std::string& path, std::string& content){
+        auto it = disk.find(path);
+        if (it == disk.end())
+            return false;
+        content = it->second;
+        return true;
+    };
+    options.files.exists = [&disk](const std::string& path){ return disk.count(path) > 0; };
     const CheckReport report = checkDocument("ui/menu.html", options);
-    ASSERT_EQ(report.diagnostics.size(), 1u);
-    EXPECT_EQ(report.diagnostics[0].code, codes::InternalError);
-    EXPECT_EQ(report.diagnostics[0].file, "ui/menu.html");
+    std::set<std::string> found;
+    for (const Diagnostic& diagnostic : report.diagnostics){
+        found.insert(diagnostic.code.id());
+        EXPECT_EQ(diagnostic.file, "ui/menu.html");
+    }
+    EXPECT_TRUE(found.count("HTMLUI-GEN-0001"));   // missing.png
+    EXPECT_TRUE(found.count("HTMLUI-IMP-0001"));   // the remote stylesheet
+    EXPECT_TRUE(found.count("HTMLUI-HTML-0006"));  // JavaScript
+    EXPECT_NE(std::find(report.files.begin(), report.files.end(), "ui/menu.html"), report.files.end());
+    EXPECT_NE(std::find(report.files.begin(), report.files.end(), "ui/menu.css"), report.files.end());
+    ASSERT_EQ(report.remoteRefs.size(), 1u);
+    EXPECT_EQ(report.remoteRefs[0].url, "https://cdn.example.com/x.css");
+    EXPECT_EQ(report.remoteRefs[0].kind, "stylesheet");
+    EXPECT_EQ(collectRemoteReferences("ui/menu.html", options.files).size(), 1u);
+
+    // a missing document: one error naming it
+    const CheckReport missing = checkDocument("ui/none.html", options);
+    ASSERT_EQ(missing.diagnostics.size(), 1u);
+    EXPECT_EQ(missing.diagnostics[0].code, codes::FileNotFound);
+    EXPECT_EQ(missing.diagnostics[0].file, "ui/none.html");
+    EXPECT_TRUE(isHtmlDocumentPath("ui/a.HTML"));
+    EXPECT_FALSE(isHtmlDocumentPath("ui/a.rml"));
 }

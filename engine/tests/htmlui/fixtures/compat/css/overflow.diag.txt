@@ -1,0 +1,2 @@
+compat/css/overflow.css:4:11: info: 'overflow-clip-margin' has no effect in the engine; dropped [HTMLUI-CSS-0003]
+compat/css/overflow.css:5:12: warning: 'overflow: sideways' is not supported; declaration dropped (fix: use visible, hidden, auto or scroll) [HTMLUI-CSS-0004]

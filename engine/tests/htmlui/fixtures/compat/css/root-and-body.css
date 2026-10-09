@@ -1,0 +1,19 @@
+/* htmlui-test: root-id=app root-class=dark,theme root-attr=data-theme,lang */
+html { font-size: 16px; }
+:root { --x: 1; }
+body { margin: 0; }
+html > body { padding: 0; }
+html body .a { color: red; }
+#app { color: blue; }
+#app .panel { color: green; }
+html.dark .panel { color: white; }
+.dark .card { color: black; }
+.theme { --y: 2; }
+[data-theme=dark] .btn { color: gray; }
+[data-other] .btn { color: pink; }
+.not-on-root .x { color: teal; }
+* { box-sizing: border-box; }
+* > p { margin: 0; }
+:root:hover { color: orange; }
+div:root { color: purple; }
+#htmlui-root { color: lime; }

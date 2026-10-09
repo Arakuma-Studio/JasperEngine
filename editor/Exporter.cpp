@@ -14,7 +14,9 @@
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "htmlui/HtmlUIDependencies.h"
+#include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/ua/UserAgentStyle.h"
+#include "htmlui/compat/runtime/LucideIcons.h"
 #include "component/UIDocumentComponent.h"
 
 #include "stb_image.h"
@@ -1540,6 +1542,26 @@ bool editor::Exporter::checkHtmlUIReferences(const fs::path& projectPath, const 
             continue;
         }
 
+        // .html/.htm: the compat layer's own check (phase-2 hook H14): what the document loads in
+        // the game, so a remote URL the editor imported (import manifest) is fine; its errors
+        // (missing files, remote URLs without an import, ...) fail the export
+        if (htmlui::compat::isHtmlDocumentPath(document)) {
+            htmlui::compat::CheckOptions options;
+            options.verifyWithRmlUi = false;
+            options.files.read = [&reader](const std::string& path, std::string& content) { return reader(path, &content); };
+            options.files.exists = [&reader](const std::string& path) { return reader(path, nullptr); };
+            for (htmlui::compat::Diagnostic diagnostic : htmlui::compat::checkDocument(document, options).diagnostics) {
+                if (diagnostic.severity != htmlui::compat::Severity::Error) {
+                    continue;
+                }
+                if (!diagnostic.file.empty()) {
+                    diagnostic.file = shown(diagnostic.file);
+                }
+                errors.push_back(htmlui::compat::toText(diagnostic));
+            }
+            continue;
+        }
+
         for (const HtmlUIReference& reference : collectHtmlUIReferences(document, reader)) {
             const std::string location = shown(reference.fromFile) + ":" + std::to_string(reference.line) + ":" + std::to_string(reference.column);
             if (reference.remote) {
@@ -2196,6 +2218,8 @@ bool editor::Exporter::copyEngine() {
 
         // Same for the HTML UI's user-agent stylesheet and its SVGs (engine/core/htmlui/compat/ua)
         FileUtils::writeIfChanged(dst / "htmlui_ua.h", htmlui::compat::UserAgentStyle::buildEmbeddedHeader());
+        // and the built-in Lucide icon pack (engine/libs/lucide)
+        FileUtils::writeIfChanged(dst / "htmlui_lucide.h", htmlui::compat::LucideIcons::buildEmbeddedHeader());
     }
 
     fs::path cmakeSrc = sdkRoot / "CMakeLists.txt";

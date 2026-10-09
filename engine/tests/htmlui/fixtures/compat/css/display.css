@@ -1,0 +1,12 @@
+/* every display value */
+.block { display: block; } .inline { display: inline; } .ib { display: inline-block; } .fr { display: flow-root; }
+.flex { display: flex; } .if { display: inline-flex; } .table { display: table; } .it { display: inline-table; }
+.tr { display: table-row; } .trg { display: table-row-group; } .tc { display: table-column; } .tcg { display: table-column-group; }
+.td { display: table-cell; } .none { display: none; }
+.grid { display: grid; } .igrid { display: inline-grid; }
+.contents { display: contents; } .li { display: list-item; } .caption { display: table-caption; }
+.thg { display: table-header-group; } .tfg { display: table-footer-group; }
+.runin { display: run-in; } .ruby { display: ruby; } .rt { display: ruby-text; } .rb { display: ruby-base; }
+.wb { display: -webkit-box; } .wf { display: -webkit-flex; } .ms { display: -ms-flexbox; } .wib { display: -webkit-inline-box; }
+.two1 { display: block flow; } .two2 { display: inline flow-root; } .two3 { display: inline flex; } .two4 { display: block grid; }
+.invalid { display: wobbly; }

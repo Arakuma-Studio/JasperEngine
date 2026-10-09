@@ -1,0 +1,1 @@
+compat/css/accent-color.css:6:12: warning: 'accent-color: 12px' is not supported; declaration dropped (fix: write a CSS color or auto) [HTMLUI-CSS-0004]

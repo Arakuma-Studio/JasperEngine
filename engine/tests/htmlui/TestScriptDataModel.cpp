@@ -21,7 +21,7 @@ namespace {
         const char* documentFile() const override { return ""; }
 
         void loadModelDocument(){
-            ASSERT_TRUE(document->load("p1/script_model.html"));
+            ASSERT_TRUE(document->load("p1/script_model.rml"));
             update();
         }
 
@@ -184,7 +184,7 @@ TEST_F(ScriptDataModelTest, LuaErrors){
 }
 
 TEST_F(ScriptDataModelTest, CreateAfterLoadReloadsTheDocument){
-    ASSERT_TRUE(document->load("p1/script_model.html"));
+    ASSERT_TRUE(document->load("p1/script_model.rml"));
     update();
     // no model yet: an empty placeholder binds data-model="shop" without errors
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);

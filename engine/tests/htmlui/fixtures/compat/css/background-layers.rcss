@@ -1,0 +1,18 @@
+#htmlui-root .two {
+background-color: transparent;
+decorator: html-layer("asset://compat/css/img/a.png" auto auto 50% 50% no-repeat no-repeat padding-box border-box scroll), linear-gradient(#000000ff, #ffffffff) border-box;
+}
+#htmlui-root .three {
+background-color: #222222ff;
+decorator: radial-gradient(circle, #ffffffff 0%, #00000000 70%) border-box, html-layer("asset://compat/css/img/b.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+}
+#htmlui-root .image-list {
+decorator: html-layer("asset://compat/css/img/a.png" auto auto 50% 50% no-repeat no-repeat padding-box border-box scroll), html-layer("asset://compat/css/img/b.png" auto auto 0px 0px repeat no-repeat padding-box border-box scroll);
+}
+#htmlui-root .color-then-image {
+background-color: #000080ff;
+decorator: linear-gradient(to right, #ff0000ff, #0000ffff) border-box;
+}
+#htmlui-root .none-layers {
+decorator: html-layer("asset://compat/css/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+}
