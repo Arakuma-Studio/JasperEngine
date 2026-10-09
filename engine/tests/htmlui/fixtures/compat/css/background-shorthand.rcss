@@ -12,7 +12,7 @@ decorator: html-layer("/compat/css/img/a.png" auto auto 0% 0% repeat repeat padd
 }
 #htmlui-root .full {
 background-color: #ffffffff;
-decorator: html-layer("/compat/css/img/a.png" 50% auto 100%-10px 100%-20px no-repeat no-repeat padding-box content-box fixed);
+decorator: html-layer("/compat/css/img/a.png" 50% auto calc(100% - 10px) calc(100% - 20px) no-repeat no-repeat padding-box content-box fixed);
 }
 #htmlui-root .repeat-x {
 background-color: transparent;

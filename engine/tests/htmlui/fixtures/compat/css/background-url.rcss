@@ -16,7 +16,7 @@ decorator: html-layer("/compat/css/img/a.png" auto auto 10% 20% no-repeat no-rep
 }
 #htmlui-root .p2 {
 background-color: transparent;
-decorator: html-layer("/compat/css/img/a.png" auto auto 100%-8px 100%-4px no-repeat no-repeat padding-box border-box scroll);
+decorator: html-layer("/compat/css/img/a.png" auto auto calc(100% - 8px) calc(100% - 4px) no-repeat no-repeat padding-box border-box scroll);
 }
 #htmlui-root .p3 {
 background-color: transparent;

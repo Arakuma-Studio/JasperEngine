@@ -56,7 +56,8 @@ namespace {
                 return formatNumber(percent) + "%";
             if (percent == 0)
                 return length;
-            return formatNumber(percent) + "%" + (length[0] == '-' ? "" : "+") + length;
+            // html-layer reads calc(<percentage> +|- <length>) (HtmlLayerDecorator, 3.11.3)
+            return "calc(" + formatNumber(percent) + "% " + (length[0] == '-' ? "- " + length.substr(1) : "+ " + length) + ")";
         }
         // the RmlUi gradient position (no combined offsets)
         std::string gradientText(bool& lost) const {
