@@ -44,7 +44,10 @@ namespace {
             std::vector<TokenizeError> tokenizeErrors;
             // (without comments)
             lexCss(css, base, options, &tokenizeErrors, lexed, false);
-            matchClosers();
+            for (uint32_t i : lexed.bad){
+                errors_.push_back(ParseError{tokens[i].type == TokenType::BadString ? ParseError::Kind::BadString : ParseError::Kind::BadUrl,
+                                             tokens[i].offset, tokens[i].length});
+            }
             for (const TokenizeError& error : tokenizeErrors){
                 ParseError::Kind kind = ParseError::Kind::InvalidEscape;
                 switch (error.kind){
@@ -97,37 +100,10 @@ namespace {
                    type == TokenType::Function;
         }
 
-        // closer[i]: for a block or function opening at i, the index of the token that closes it
-        // (the EndOfFile token when unclosed), as "consume a simple block / a function" finds it:
-        // only the innermost open block's mirror closes, any other closer is a plain token
-        void matchClosers(){
-            closer.assign(tokens.size(), 0);
-            std::vector<uint32_t> open;
-            for (size_t i = 0; i < tokens.size(); i++){
-                const TokenType type = tokens[i].type;
-                if (isOpening(type)){
-                    open.push_back((uint32_t)i);
-                    continue;
-                }
-                if (type == TokenType::BadString)
-                    errors_.push_back(ParseError{ParseError::Kind::BadString, tokens[i].offset, tokens[i].length});
-                else if (type == TokenType::BadUrl)
-                    errors_.push_back(ParseError{ParseError::Kind::BadUrl, tokens[i].offset, tokens[i].length});
-                if (!open.empty() && type == mirrorOf(tokens[open.back()].type == TokenType::Function ? TokenType::LeftParen
-                                                                                                    : tokens[open.back()].type)){
-                    closer[open.back()] = (uint32_t)i;
-                    open.pop_back();
-                }
-            }
-            const uint32_t end = (uint32_t)tokens.size() - 1;
-            for (uint32_t i : open)
-                closer[i] = end;
-        }
-
         // the index after the component value starting at i
         size_t skipComponent(size_t i) const {
             if (isOpening(tokens[i].type)){
-                const size_t close = closer[i];
+                const size_t close = tokens[i].closer;
                 return tokens[close].type == TokenType::EndOfFile ? close : close + 1;
             }
             return tokens[i].type == TokenType::EndOfFile ? i : i + 1;
@@ -235,7 +211,7 @@ namespace {
         // the children of the block or function opening at the position: their number is known
         // from the matching closer, so the vector is allocated once
         void reserveChildren(ComponentValue& value){
-            const size_t close = closer[index];
+            const size_t close = tokens[index].closer;
             const size_t count = countComponents(index + 1, close);
             if (count > 0)
                 value.children.reserve(count);
@@ -789,7 +765,6 @@ namespace {
         // Rule::block (the raw block) is kept for the CSS Syntax entry points; the
         // compatibility layer's parseStylesheet/parseDeclarationList only use the contents
         bool keepRawBlocks = true;
-        std::vector<uint32_t> closer;   // matchClosers()
         std::vector<ParseError> errors_;
         std::vector<ParseError>* errorsOut;
     };

@@ -23,25 +23,37 @@ namespace jasperengine::htmlui::compat {
 
     // a run of text: in the source (decoded == false) or in LexResult::text
     struct LexText {
-        uint32_t begin = 0;
-        uint32_t length = 0;
-        bool decoded = false;
+        uint32_t begin;
+        uint32_t length : 31;
+        uint32_t decoded : 1;
+
+        constexpr LexText(): begin(0), length(0), decoded(0) {}
+        constexpr LexText(uint32_t begin, uint32_t length, bool decoded): begin(begin), length(length), decoded(decoded ? 1u : 0u) {}
     };
 
+    // 40 bytes: a style sheet has a token per 3 to 4 bytes, and the list is read twice
     struct LexToken {
         TokenType type = TokenType::EndOfFile;
         bool isInteger = false;
         bool hashIsId = false;
         uint32_t offset = 0, length = 0;          // as Token (with the base offset)
         LexText value, unit;
-        double number = 0;
-        uint32_t rangeStart = 0, rangeEnd = 0;
+        union {
+            double number = 0;                    // Number, Percentage, Dimension
+            uint32_t range[2];                    // UnicodeRange: start, end
+            // Function, LeftParen, LeftBracket, LeftBrace: the index of the token that closes
+            // it (the EndOfFile token when unclosed), as "consume a simple block / a function"
+            // finds it: only the innermost open block's mirror closes, any other closer is a
+            // plain token
+            uint32_t closer;
+        };
     };
 
     struct LexResult {
         std::string_view source;                   // the tokenized text (without the base offset)
         std::string text;                          // decoded values
         std::vector<LexToken> tokens;              // ends with one EndOfFile token
+        std::vector<uint32_t> bad;                 // the indexes of the BadString and BadUrl tokens
 
         std::string_view view(const LexText& t) const {
             return std::string_view((t.decoded ? text.data() : source.data()) + t.begin, t.length);
@@ -54,9 +66,11 @@ namespace jasperengine::htmlui::compat {
             out.hashIsId = lex.hashIsId;
             out.offset = lex.offset;
             out.length = lex.length;
-            out.rangeStart = lex.rangeStart;
-            out.rangeEnd = lex.rangeEnd;
-            out.number = lex.number;
+            const bool numeric = lex.type == TokenType::Number || lex.type == TokenType::Percentage || lex.type == TokenType::Dimension;
+            const bool range = lex.type == TokenType::UnicodeRange;
+            out.rangeStart = range ? lex.range[0] : 0;
+            out.rangeEnd = range ? lex.range[1] : 0;
+            out.number = numeric ? lex.number : 0;
             // (most tokens have neither: whitespace, punctuation, numbers)
             if (lex.value.length > 0){
                 const std::string_view v = view(lex.value);

@@ -1025,13 +1025,13 @@ algorithms differ (`declaration_list.json` "@ media …", `one_declaration.json`
 "foo:;bar:;") and checks their 2024 result instead.
 
 As implemented (p2-perf): the tokenizer's own output is compact (`css/CssLexer.h`, internal:
-`LexToken` holds no string, its value and unit are views into the source, or into a side
-buffer when an escape or a non-ASCII character had to be decoded); `tokenize()` converts it to
+`LexToken`, 40 bytes, holds no string, its value and unit are views into the source, or into
+a side buffer when an escape or a non-ASCII character had to be decoded); `tokenize()` converts it to
 `Token`s and the parser builds the `Token` of each component value straight from it, so every
 token is read once: "consume a declaration, else a rule from the same position" is decided
-before consuming (`declarationParses`), the closing token of every block is matched once
-(`matchClosers`) and the children of a block, a value and a prelude are allocated to their
-count. Rules, declarations and component values are built in place. `Token` and
+before consuming (`declarationParses`), the closing token of every block is matched while
+tokenizing (`LexToken::closer`) and the children of a block, a value and a prelude are
+allocated to their count. Rules, declarations and component values are built in place. `Token` and
 `ComponentValue` keep their members (reordered by size: 96 and 136 bytes); `CssSerialize.h`
 also appends into a caller's buffer (`appendSerialized`, `appendToken`, `appendIdent`,
 `appendString`, `appendNumber`: the `serialize*`/`formatNumber` forms are wrappers).

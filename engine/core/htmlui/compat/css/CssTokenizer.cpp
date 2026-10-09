@@ -195,22 +195,28 @@ namespace {
             out.text.clear();
             std::vector<LexToken>& tokens = out.tokens;
             tokens.clear();
+            out.bad.clear();
             // about one token per 2 bytes in style sheets (fewer with comments); LexTokens are small
             tokens.reserve(source.size() / 2 + 8);
+            // the blocks and functions still open (LexToken::closer is set as each one closes)
+            std::vector<uint32_t> open;
             while (true){
+                const uint32_t index = (uint32_t)tokens.size();
                 LexToken& token = tokens.emplace_back();
                 current = &token;
                 // one-character tokens first (consumeToken reads them the same way)
                 const size_t at = in.position();
                 if (at < source.size()){
                     TokenType punctuation = TokenType::EndOfFile;
+                    TokenType closes = TokenType::EndOfFile;   // the opening token it mirrors
+                    bool opens = false;
                     switch (source[at]){
-                        case '(': punctuation = TokenType::LeftParen; break;
-                        case ')': punctuation = TokenType::RightParen; break;
-                        case '[': punctuation = TokenType::LeftBracket; break;
-                        case ']': punctuation = TokenType::RightBracket; break;
-                        case '{': punctuation = TokenType::LeftBrace; break;
-                        case '}': punctuation = TokenType::RightBrace; break;
+                        case '(': punctuation = TokenType::LeftParen; opens = true; break;
+                        case ')': punctuation = TokenType::RightParen; closes = TokenType::LeftParen; break;
+                        case '[': punctuation = TokenType::LeftBracket; opens = true; break;
+                        case ']': punctuation = TokenType::RightBracket; closes = TokenType::LeftBracket; break;
+                        case '{': punctuation = TokenType::LeftBrace; opens = true; break;
+                        case '}': punctuation = TokenType::RightBrace; closes = TokenType::LeftBrace; break;
                         case ',': punctuation = TokenType::Comma; break;
                         case ':': punctuation = TokenType::Colon; break;
                         case ';': punctuation = TokenType::Semicolon; break;
@@ -221,15 +227,34 @@ namespace {
                         token.offset = base + (uint32_t)at;
                         token.length = 1;
                         in.skip(1);
+                        if (opens){
+                            open.push_back(index);
+                        }else if (closes != TokenType::EndOfFile && !open.empty()){
+                            LexToken& opening = tokens[open.back()];
+                            if ((opening.type == TokenType::Function ? TokenType::LeftParen : opening.type) == closes){
+                                opening.closer = index;
+                                open.pop_back();
+                            }
+                        }
                         continue;
                     }
                 }
                 consumeToken();
+                // (a closing token is one character: the branch above read it)
+                switch (token.type){
+                    case TokenType::Function: open.push_back(index); break;
+                    case TokenType::BadString:
+                    case TokenType::BadUrl: out.bad.push_back(index); break;
+                    default: break;
+                }
                 if (token.type == TokenType::EndOfFile)
                     break;
                 if (!comments && token.type == TokenType::Comment)
                     tokens.pop_back();
             }
+            const uint32_t end = (uint32_t)tokens.size() - 1;
+            for (uint32_t index : open)
+                tokens[index].closer = end;
         }
 
     private:
@@ -654,8 +679,8 @@ namespace {
                 }
             }
             LexToken& token = make(TokenType::UnicodeRange, start);
-            token.rangeStart = first;
-            token.rangeEnd = last;
+            token.range[0] = first;
+            token.range[1] = last;
             return;
         }
 
