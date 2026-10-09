@@ -20,6 +20,7 @@
 #include "render/SystemRender.h"
 #include "texture/Framebuffer.h"
 #include "texture/TextureData.h"
+#include "compat/VirtualFiles.h"
 
 #include <RmlUi/Core/DecorationTypes.h>
 #include <RmlUi/Core/Dictionary.h>
@@ -655,7 +656,7 @@ bool RmlRenderer::bindGeometry(Rml::CompiledGeometryHandle handle, ObjectRender&
     return true;
 }
 
-HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, int height, const char* label){
+HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, int height, const char* label, TextureFilter filter){
     std::unique_ptr<HtmlUITexture> texture = std::make_unique<HtmlUITexture>();
     texture->kind = HtmlUITexture::Kind::STATIC;
     texture->ownedRender = std::make_unique<TextureRender>();
@@ -675,9 +676,9 @@ HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, 
     void* data[1] = {const_cast<uint8_t*>(rgba)};
     size_t size[1] = {(size_t)width * (size_t)height * 4};
     gpuCreateCount++;
-    // LINEAR min filter: no mipmaps
+    // LINEAR (or NEAREST) min filter: no mipmaps
     if (!texture->ownedRender->createTexture(label, width, height, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data, size,
-                                             TextureFilter::LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE)){
+                                             filter, filter, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE)){
         texture->ownedRender->destroyTexture();
         texture->dead = true;
         return nullptr;
@@ -689,10 +690,29 @@ HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, 
     return result;
 }
 
-Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source){
+Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& rmlSource){
+    // phase-2 hook H7: "?htmlui-filter=nearest" (image-rendering: pixelated) asks for nearest
+    // sampling and is not part of the file; "@htmlui/..." paths are compat's virtual files
+    bool nearest = false;
+    const std::string source = stripTextureFilter(rmlSource, nearest);
+    const TextureFilter filter = nearest ? TextureFilter::NEAREST : TextureFilter::LINEAR;
+
     HtmlUIFileLog::recordLazyFile(this, source);   // hot reload: images are loaded at draw time
     TextureData data;
-    if (source.empty() || !data.loadTextureFromFile(source.c_str())){
+    bool loaded = false;
+    if (htmlui::compat::VirtualFiles::isVirtual(source)){
+        // a "?svgScale=" suffix stays meaningful for virtual SVGs
+        float svgScale = 1.0f;
+        const std::string path = TextureData::parseSvgScalePath(source, &svgScale);
+        const std::shared_ptr<const std::string> content = htmlui::compat::VirtualFiles::find(path);
+        if (content && !content->empty()){
+            data.setSVGScale(svgScale);
+            loaded = data.loadTextureFromMemory(reinterpret_cast<unsigned char*>(const_cast<char*>(content->data())), (unsigned int)content->size());
+        }
+    }else{
+        loaded = !source.empty() && data.loadTextureFromFile(source.c_str());
+    }
+    if (!loaded){
         Log::error("[HTML UI] could not load image '%s'", source.c_str());
         return 0;
     }
@@ -729,7 +749,7 @@ Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, c
         out[3] = a;
     }
 
-    HtmlUITexture* texture = createStaticTexture(rgba.data(), width, height, "htmlui-image");
+    HtmlUITexture* texture = createStaticTexture(rgba.data(), width, height, "htmlui-image", filter);
     if (!texture){
         Log::error("[HTML UI] could not create the texture of image '%s'", source.c_str());
         return 0;
@@ -737,6 +757,29 @@ Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, c
 
     texture_dimensions = Rml::Vector2i(width, height);
     return reinterpret_cast<Rml::TextureHandle>(texture);
+}
+
+std::string RmlRenderer::stripTextureFilter(const std::string& source, bool& nearest){
+    static const std::string parameter = "htmlui-filter=nearest";
+    nearest = false;
+    const size_t query = source.find('?');
+    if (query == std::string::npos)
+        return source;
+    // the query's parameters without htmlui-filter (others, like svgScale, stay)
+    std::string kept;
+    size_t start = query + 1;
+    while (start <= source.size()){
+        size_t end = source.find('&', start);
+        if (end == std::string::npos)
+            end = source.size();
+        const std::string item = source.substr(start, end - start);
+        if (item == parameter)
+            nearest = true;
+        else if (!item.empty())
+            kept += (kept.empty() ? "" : "&") + item;
+        start = end + 1;
+    }
+    return source.substr(0, query) + (kept.empty() ? "" : "?" + kept);
 }
 
 Rml::TextureHandle RmlRenderer::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions){
