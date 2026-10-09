@@ -366,7 +366,8 @@ void jasperengine::htmlui::compat::rewriteAnimationLonghand(DeclContext& context
         for (const Declaration& d : context.rule->declarations){
             if (!isAnimationFamily(d.name))
                 continue;
-            last = &d;
+            if (reachesRewrite(context.session, d, context.rule->declarations))
+                last = &d;
             const std::string p = plain(d.name);
             if (p == "animation" || p == "animation-name")
                 hasShorthand = true;
@@ -398,14 +399,14 @@ void jasperengine::htmlui::compat::rewriteAnimationLonghand(DeclContext& context
                 return;
             }
             for (const Declaration& d : base->declarations){
-                if (isAnimationFamily(d.name))
+                if (isAnimationFamily(d.name) && reachesRewrite(context.session, d, base->declarations))
                     applyAnimation(context.session, d.name, normalizedValue(context.session, d), entries);
             }
             context.reportAs(Severity::Info, codes::MergedFromBaseRule, "animation longhands are merged with the base rule at " +
                              BaseRules::location(context.session, *base));
         }
         for (const Declaration& d : context.rule->declarations){
-            if (!isAnimationFamily(d.name))
+            if (!isAnimationFamily(d.name) || !reachesRewrite(context.session, d, context.rule->declarations))
                 continue;
             const std::vector<ComponentValue> value = d.ref == context.declaration.ref ? context.value : normalizedValue(context.session, d);
             if (!applyAnimation(context.session, d.name, value, entries))

@@ -117,6 +117,7 @@ perspective: var(--html-unset);
 transform: var(--html-unset);
 transition: var(--html-unset);
 animation: var(--html-unset);
+--html-inh-animation: var(--html-unset);
 decorator: var(--html-unset);
 --html-inh-decorator: var(--html-unset);
 mask-image: var(--html-unset);
@@ -200,6 +201,7 @@ perspective: var(--html-unset);
 transform: var(--html-unset);
 transition: var(--html-unset);
 animation: var(--html-unset);
+--html-inh-animation: var(--html-unset);
 decorator: var(--html-unset);
 --html-inh-decorator: var(--html-unset);
 mask-image: var(--html-unset);
@@ -234,4 +236,14 @@ word-break: var(--html-unset);
 cursor: var(--html-unset);
 pointer-events: var(--html-unset);
 font-effect: var(--html-unset);
+}
+@keyframes spin {
+100% {
+transform: rotate(360deg);
+}
+}
+#htmlui-root .ak {
+-html-animation-fill: none;
+--html-inh-animation: 1s quadratic-out spin;
+animation: var(--html-inh-animation, none 0s ease 0s 1 normal none running);
 }

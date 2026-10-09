@@ -228,3 +228,12 @@ cursor: inherit;
 pointer-events: inherit;
 font-effect: inherit;
 }
+@keyframes spin {
+100% {
+transform: rotate(360deg);
+}
+}
+#htmlui-root .ak {
+-html-animation-fill: none;
+animation: inherit;
+}

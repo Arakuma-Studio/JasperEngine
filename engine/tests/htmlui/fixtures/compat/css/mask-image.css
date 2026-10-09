@@ -7,3 +7,4 @@
 .mode { mask-mode: luminance; mask-composite: add; mask-type: alpha; }
 .none { mask-image: none; }
 .with-clip { mask-image: linear-gradient(#000, transparent); clip-path: circle(50%); }
+.mm { mask-image: url(img/a.png); mask-mode: alpha; }

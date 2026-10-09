@@ -46,6 +46,9 @@ transition: opacity 1s quadratic-out;
 #htmlui-root .base:hover {
 transition: opacity 2s quadratic-out;
 }
+#htmlui-root .behavior {
+transition: opacity 1s quadratic-out;
+}
 #htmlui-root .var {
 transition: opacity var(--dur) var(--ease);
 }

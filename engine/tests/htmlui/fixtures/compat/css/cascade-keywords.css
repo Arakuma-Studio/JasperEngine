@@ -9,3 +9,5 @@
 .reset { all: unset; }
 .reset-initial { all: initial; }
 .reset-inherit { all: inherit; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.ak { animation: spin 1s; animation-delay: inherit; }

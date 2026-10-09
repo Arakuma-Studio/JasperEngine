@@ -323,9 +323,11 @@ namespace {
         return join(out, ", ");
     }
 
+    // the declarations merged into one transition (transition-behavior is Ignored in the table:
+    // it never reaches the merge, so it cannot be the family's last declaration)
     bool isTransitionFamily(const std::string& name){
         return name == "transition" || name == "transition-property" || name == "transition-duration" || name == "transition-timing-function" ||
-               name == "transition-delay" || name == "transition-behavior" || name == "-webkit-transition" ||
+               name == "transition-delay" || name == "-webkit-transition" ||
                name == "-webkit-transition-property" || name == "-webkit-transition-duration" ||
                name == "-webkit-transition-timing-function" || name == "-webkit-transition-delay";
     }
@@ -474,7 +476,7 @@ void jasperengine::htmlui::compat::rewriteTransitionLonghand(DeclContext& contex
         const Declaration* last = nullptr;
         bool hasShorthand = false;
         for (const Declaration& d : context.rule->declarations){
-            if (isTransitionFamily(d.name))
+            if (isTransitionFamily(d.name) && reachesRewrite(context.session, d, context.rule->declarations))
                 last = &d;
             if (plain(d.name) == "transition" || plain(d.name) == "transition-property")
                 hasShorthand = true;
@@ -497,14 +499,14 @@ void jasperengine::htmlui::compat::rewriteTransitionLonghand(DeclContext& contex
                 return;
             }
             for (const Declaration& d : base->declarations){
-                if (isTransitionFamily(d.name))
+                if (isTransitionFamily(d.name) && reachesRewrite(context.session, d, base->declarations))
                     applyTransition(context.session, d.name, normalizedValue(context.session, d), entries);
             }
             context.reportAs(Severity::Info, codes::MergedFromBaseRule, "transition longhands are merged with the base rule at " +
                              BaseRules::location(context.session, *base));
         }
         for (const Declaration& d : context.rule->declarations){
-            if (!isTransitionFamily(d.name))
+            if (!isTransitionFamily(d.name) || !reachesRewrite(context.session, d, context.rule->declarations))
                 continue;
             const std::vector<ComponentValue> value = d.ref == context.declaration.ref ? context.value : normalizedValue(context.session, d);
             if (!applyTransition(context.session, d.name, value, entries)){

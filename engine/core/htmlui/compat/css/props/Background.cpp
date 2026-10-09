@@ -917,9 +917,7 @@ namespace {
         if (context.rule && !context.keyframe){
             const Declaration* last = nullptr;
             for (const Declaration& d : context.rule->declarations){
-                if (isBackgroundFamily(d.name, mask) && !(mask && d.name == "clip-path"))
-                    last = &d;
-                if (mask && d.name == "clip-path")
+                if (isBackgroundFamily(d.name, mask) && reachesRewrite(context.session, d, context.rule->declarations))
                     last = &d;
             }
             if (last && last->ref != context.declaration.ref)
@@ -941,7 +939,7 @@ namespace {
                         quiet.report = nullptr;
                         quiet.file = base->ref.file;
                         for (const Declaration& d : base->declarations){
-                            if (isBackgroundFamily(d.name, mask) && d.name != "clip-path")
+                            if (isBackgroundFamily(d.name, mask) && d.name != "clip-path" && reachesRewrite(context.session, d, base->declarations))
                                 applyDeclaration(quiet, d.name, normalized(context.session, d), state);
                         }
                         context.reportAs(Severity::Info, codes::MergedFromBaseRule, std::string(mask ? "mask" : "background") +
@@ -957,7 +955,7 @@ namespace {
             }
             bool applied = false, attempted = false;
             for (const Declaration& d : context.rule->declarations){
-                if (!isBackgroundFamily(d.name, mask) || d.name == "clip-path")
+                if (!isBackgroundFamily(d.name, mask) || d.name == "clip-path" || !reachesRewrite(context.session, d, context.rule->declarations))
                     continue;
                 std::vector<ComponentValue> value = d.ref == context.declaration.ref ? context.value : normalized(context.session, d);
                 if (value.size() == 1 && isVar(value[0])){

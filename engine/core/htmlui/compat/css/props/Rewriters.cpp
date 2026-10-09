@@ -5,6 +5,7 @@
 
 #include "htmlui/compat/ImportManifest.h"
 #include "htmlui/compat/VirtualFiles.h"
+#include "htmlui/compat/css/CascadeKeywords.h"
 #include "htmlui/compat/css/ColorValue.h"
 #include "htmlui/compat/css/CssParser.h"
 #include "htmlui/compat/css/CssSerialize.h"
@@ -422,4 +423,31 @@ std::string props::physicalSide(Session& session, const std::string& logical){
 
 bool props::accepts(const std::string& property, const std::string& value){
     return RcssGrammar::accepts(property, value);
+}
+
+bool jasperengine::htmlui::compat::reachesRewrite(Session& session, const Declaration& declaration, const std::vector<Declaration>& block){
+    if (!CascadeKeywords::keywordOf(declaration.value).empty())
+        return false;
+    const PropertySupport* row = findProperty(declaration.name);
+    if (!row){
+        // a vendor prefix is read as the standard property unless the block has that too
+        for (const char* prefix : {"-webkit-", "-moz-", "-ms-", "-o-"}){
+            const std::string p(prefix);
+            if (declaration.name.compare(0, p.size(), p) != 0)
+                continue;
+            const std::string base = declaration.name.substr(p.size());
+            row = findProperty(base);
+            if (!row)
+                continue;
+            for (const Declaration& other : block){
+                if (other.name == base)
+                    return false;
+            }
+            break;
+        }
+    }
+    if (!row)
+        return false;
+    const Support support = effectiveSupport(*row, session.options.fork);
+    return support != Support::Unsupported && support != Support::Ignored;
 }

@@ -3,3 +3,4 @@ compat/css/cascade-keywords.css:6:11: info: 'revert' is treated as 'unset' (no c
 compat/css/cascade-keywords.css:6:26: info: 'revert-layer' is treated as 'unset' (no cascade origins) [HTMLUI-CSS-0005]
 compat/css/cascade-keywords.css:7:14: info: 'background: inherit' copies the nearest ancestor's declared background-color (relative units re-resolve here) [HTMLUI-CSS-0011]
 compat/css/cascade-keywords.css:11:18: info: 'all: inherit' resets the inherited properties only [HTMLUI-CSS-0005]
+compat/css/cascade-keywords.css:13:27: info: 'animation-delay: inherit' copies the nearest ancestor's declared animation (relative units re-resolve here) [HTMLUI-CSS-0011]
