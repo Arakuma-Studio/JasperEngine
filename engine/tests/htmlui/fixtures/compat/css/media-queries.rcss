@@ -133,3 +133,8 @@ width: 33px;
 width: 33px;
 }
 }
+@media (min-height: 300.02px) {
+#htmlui-root .jj {
+width: 36px;
+}
+}

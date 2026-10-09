@@ -148,16 +148,16 @@ width: 52px;
 #htmlui-root :not(div > p), body#htmlui-root:not(div > p) {
 width: 53px;
 }
-#htmlui-root :is(h1, h2) span, body#htmlui-root:is(h1, h2) span {
+#htmlui-root :is(h1, h2) span {
 width: 55px;
 }
-#htmlui-root :is(.a, .b), body#htmlui-root:is(.a, .b) {
+#htmlui-root :is(.a, .b) {
 width: 56px;
 }
-#htmlui-root :is(.a, .b), body#htmlui-root:is(.a, .b) {
+#htmlui-root :is(.a, .b) {
 width: 57px;
 }
-#htmlui-root :where(.c, .d), body#htmlui-root:where(.c, .d) {
+#htmlui-root :where(.c, .d) {
 width: 58px;
 }
 #htmlui-root [lang|="en"] {

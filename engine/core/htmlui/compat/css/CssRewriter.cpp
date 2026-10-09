@@ -273,10 +273,10 @@ namespace {
         session.rules.push_back(std::move(rule));
     }
 
-    void flatten(Session& session, const std::vector<Rule>& rules, const FlattenScope& scope, bool topLevel);
+    void flatten(Session& session, std::vector<Rule>& rules, const FlattenScope& scope, bool topLevel);
 
     // a style rule: its declarations and nested rules in source order (CSS Nesting)
-    void flattenStyleRule(Session& session, const Rule& rule, const FlattenScope& scope){
+    void flattenStyleRule(Session& session, Rule& rule, const FlattenScope& scope){
         std::string error;
         SourceRef errorRef;
         std::optional<std::vector<ComplexSelector>> parsed = SelectorRewriter::parseList(rule.prelude, scope.file, &error, &errorRef);
@@ -304,35 +304,38 @@ namespace {
         // declarations and nested rules in source order
         struct Item {
             uint32_t offset;
-            const Declaration* declaration;
-            const Rule* rule;
+            Declaration* declaration;
+            Rule* rule;
         };
         std::vector<Item> items;
-        for (const Declaration& d : rule.declarations)
+        items.reserve(rule.declarations.size() + rule.rules.size());
+        for (Declaration& d : rule.declarations)
             items.push_back(Item{d.ref.offset, &d, nullptr});
-        for (const Rule& r : rule.rules)
+        for (Rule& r : rule.rules)
             items.push_back(Item{r.ref.offset, nullptr, &r});
         std::stable_sort(items.begin(), items.end(), [](const Item& a, const Item& b){ return a.offset < b.offset; });
 
+        // the parsed sheet is not used after flattening: declarations and rules are moved out
         std::vector<Declaration> group;
         FlattenScope nested = scope;
         nested.parents = &selectors;
         for (const Item& item : items){
             if (item.declaration){
-                group.push_back(*item.declaration);
+                group.push_back(std::move(*item.declaration));
                 continue;
             }
             addRule(session, scope, selectors, std::move(group), rule.ref, rule.preludeRef);
             group.clear();
-            std::vector<Rule> one{*item.rule};
+            std::vector<Rule> one;
+            one.push_back(std::move(*item.rule));
             flatten(session, one, nested, false);
         }
         addRule(session, scope, selectors, std::move(group), rule.ref, rule.preludeRef);
     }
 
-    void flatten(Session& session, const std::vector<Rule>& rules, const FlattenScope& scope, bool topLevel){
+    void flatten(Session& session, std::vector<Rule>& rules, const FlattenScope& scope, bool topLevel){
         bool importsAllowed = topLevel;
-        for (const Rule& rule : rules){
+        for (Rule& rule : rules){
             if (rule.kind == Rule::Kind::Style){
                 importsAllowed = false;
                 flattenStyleRule(session, rule, scope);
@@ -442,7 +445,7 @@ namespace {
                 at.sheet = scope.sheet;
                 at.file = scope.file;
                 at.origin = scope.origin;
-                at.rule = rule;
+                at.rule = std::move(rule);
                 at.media = scope.media;
                 at.layer = scope.layer;
                 at.order = session.nextOrder++;
@@ -546,7 +549,10 @@ namespace {
             context.customProperty = true;
             context.options = session.options;
             NormalizeResult result = ValueNormalizer::normalize(value, context);
-            return result.ok ? trimWhitespace(result.value) : trimWhitespace(value);
+            if (!result.ok)
+                return trimWhitespace(value);
+            trimInPlace(result.value);
+            return std::move(result.value);
         };
         auto indexDeclarations = [&](const std::vector<Declaration>& declarations, uint32_t ruleId){
             for (const Declaration& d : declarations){
@@ -585,8 +591,8 @@ namespace {
                     }
                 }
                 const std::string family = varFamilyOf(name);
-                const std::vector<ComponentValue> trimmed = trimWhitespace(d.value);
-                const bool whole = trimmed.size() == 1 && trimmed[0].isFunction("var");
+                const ComponentValue* sole = soleValue(d.value);
+                const bool whole = sole && sole->isFunction("var");
                 const bool timing = name == "transition" || name == "animation" || name == "transition-timing-function" ||
                                     name == "animation-timing-function";
                 for (const std::string& variable : referenced){
@@ -675,17 +681,17 @@ namespace {
             for (const Declaration& d : rule.declarations){
                 if (d.name != "font-size")
                     continue;
-                std::vector<ComponentValue> v = trimWhitespace(d.value);
-                if (v.size() != 1)
+                const ComponentValue* v = soleValue(d.value);
+                if (!v)
                     continue;
-                if (v[0].isToken(TokenType::Percentage))
-                    session.rootFontSize = 16.0 * v[0].token.number / 100.0;
-                else if (v[0].isToken(TokenType::Dimension)){
-                    const std::string unit = lowerAscii(v[0].token.unit);
+                if (v->isToken(TokenType::Percentage))
+                    session.rootFontSize = 16.0 * v->token.number / 100.0;
+                else if (v->isToken(TokenType::Dimension)){
+                    const std::string unit = lowerAscii(v->token.unit);
                     if (unit == "em" || unit == "rem")
-                        session.rootFontSize = 16.0 * v[0].token.number;
+                        session.rootFontSize = 16.0 * v->token.number;
                     else if (std::optional<double> factor = canonicalFactor(unit); factor && unitCategory(unit) == UnitCategory::AbsoluteLength)
-                        session.rootFontSize = v[0].token.number * *factor;
+                        session.rootFontSize = v->token.number * *factor;
                 }
             }
         }
@@ -724,7 +730,17 @@ namespace {
 
     // ---- writing
 
+    bool mayHaveViewportOrientation(const std::string& value){
+        for (size_t i = 0; i + 3 < value.size(); i++){
+            if ((value[i] == 'v' || value[i] == 'V') && (value[i + 1] == 'm' || value[i + 1] == 'M'))
+                return true;
+        }
+        return false;
+    }
+
     std::string replaceViewportOrientation(const std::string& value, bool landscape){
+        if (!mayHaveViewportOrientation(value))
+            return value;
         std::vector<ComponentValue> values = parseComponentValueList(value);
         std::function<void(std::vector<ComponentValue>&)> walk = [&](std::vector<ComponentValue>& list){
             for (ComponentValue& v : list){
@@ -744,6 +760,8 @@ namespace {
     }
 
     bool hasViewportOrientation(const std::string& value){
+        if (!mayHaveViewportOrientation(value))
+            return false;
         std::vector<ComponentValue> values = parseComponentValueList(value);
         std::function<bool(const std::vector<ComponentValue>&)> walk = [&](const std::vector<ComponentValue>& list){
             for (const ComponentValue& v : list){
@@ -973,7 +991,8 @@ namespace {
                 return;
             if (normalized.dependsOnViewport)
                 session.result->dependsOnViewport = true;
-            std::vector<ComponentValue> value = trimWhitespace(normalized.value);
+            std::vector<ComponentValue> value = std::move(normalized.value);
+            trimInPlace(value);
             for (const ComponentValue& v : value){
                 if (v.isBlock(TokenType::LeftBrace)){
                     session.sink->report(codes::UnsupportedValue, d.ref, "custom property '" + d.name +
@@ -1082,12 +1101,13 @@ namespace {
         context.important = d.important && !keyframe;
 
         // the color property's own currentColor is `inherit`
-        std::vector<ComponentValue> trimmed = trimWhitespace(d.value);
-        if (name == "color" && trimmed.size() == 1 && trimmed[0].isToken(TokenType::Ident) && equalsNoCase(trimmed[0].token.value, "currentcolor")){
+        const ComponentValue* sole = soleValue(d.value);
+        const std::string keyword = name != "all" ? CascadeKeywords::keywordOf(d.value) : std::string();
+        if (name == "color" && sole && sole->isToken(TokenType::Ident) && equalsNoCase(sole->token.value, "currentcolor")){
             context.emit("color", std::string("var(") + companions::kUnset + ")");
-        }else if (name != "all" && !CascadeKeywords::keywordOf(d.value).empty()){
+        }else if (!keyword.empty()){
             // 5. CSS-wide keywords
-            CascadeKeywords::apply(context, CascadeKeywords::keywordOf(d.value));
+            CascadeKeywords::apply(context, keyword);
         }else{
             // 4. value normalization
             NormalizeContext normalize;
@@ -1114,7 +1134,8 @@ namespace {
                 return;
             if (normalized.dependsOnViewport)
                 session.result->dependsOnViewport = true;
-            context.value = trimWhitespace(normalized.value);
+            context.value = std::move(normalized.value);
+            trimInPlace(context.value);
             if (context.value.empty())
                 return;
 
@@ -1196,7 +1217,7 @@ namespace {
             }
             if (keyframe)
                 continue;
-            const bool keyword = !CascadeKeywords::keywordOf(parseComponentValueList(out.value)).empty();
+            const bool keyword = CascadeKeywords::isKeywordText(out.value);
             if (out.name == "color" && out.value.compare(0, 4, "var(") != 0 && !keyword)
                 extra.push_back(OutDecl{companions::kCurrentColor, out.value, out.ref, out.important, false, true});
             if (session.inheritCompanions.count(out.name) && out.value.find("--html-inh-") == std::string::npos && !keyword)
@@ -1232,15 +1253,17 @@ void jasperengine::htmlui::compat::processDeclarations(Session& session, const F
 }
 
 void jasperengine::htmlui::compat::processSynthetic(DeclContext& context, const std::string& property, const std::string& value){
-    Declaration synthetic;
+    std::vector<Declaration> block(1);
+    Declaration& synthetic = block[0];
     synthetic.name = property;
-    synthetic.value = trimWhitespace(parseComponentValueList(value));
+    synthetic.value = parseComponentValueList(value);
+    trimInPlace(synthetic.value);
     synthetic.ref = context.declaration.ref;
     synthetic.nameRef = context.declaration.nameRef;
     synthetic.valueRef = context.declaration.valueRef;
     synthetic.important = context.declaration.important;
     RuleOutput output;
-    processOne(context.session, context.rule, context.origin, context.keyframe, synthetic, {synthetic}, output);
+    processOne(context.session, context.rule, context.origin, context.keyframe, synthetic, block, output);
     for (OutDecl& d : output.declarations){
         d.ref = context.declaration.ref;
         context.output.declarations.push_back(std::move(d));
@@ -1292,7 +1315,7 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
             if (!path.empty())
                 result.dependencies.push_back(path);
         }
-        const Stylesheet sheet = parseStylesheet(input.file, input.text, impl->sink, input.baseOffset);
+        Stylesheet sheet = parseStylesheet(input.file, input.text, impl->sink, input.baseOffset);
         FlattenScope scope;
         scope.sheet = (uint32_t)i;
         scope.file = input.file;

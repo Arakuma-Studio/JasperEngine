@@ -9,6 +9,7 @@
 #include "htmlui/compat/css/RcssGrammar.h"
 #include "htmlui/compat/css/RewriteSession.h"
 #include "htmlui/compat/css/Units.h"
+#include "htmlui/compat/css/ValueNormalizer.h"
 
 #include <map>
 
@@ -86,13 +87,22 @@ namespace {
 }
 
 std::string CascadeKeywords::keywordOf(const std::vector<ComponentValue>& value){
-    std::vector<ComponentValue> trimmed = trimWhitespace(value);
-    if (trimmed.size() != 1 || !trimmed[0].isToken(TokenType::Ident))
+    const ComponentValue* sole = soleValue(value);
+    if (!sole || !sole->isToken(TokenType::Ident) || sole->token.value.size() > 12)
         return std::string();
-    const std::string k = lowerAscii(trimmed[0].token.value);
+    const std::string k = lowerAscii(sole->token.value);
     if (k == "inherit" || k == "initial" || k == "unset" || k == "revert" || k == "revert-layer")
         return k;
     return std::string();
+}
+
+bool CascadeKeywords::isKeywordText(std::string_view value){
+    while (!value.empty() && (value.front() == ' ' || value.front() == '\t' || value.front() == '\n'))
+        value.remove_prefix(1);
+    while (!value.empty() && (value.back() == ' ' || value.back() == '\t' || value.back() == '\n'))
+        value.remove_suffix(1);
+    return equalsNoCase(value, "inherit") || equalsNoCase(value, "initial") || equalsNoCase(value, "unset") ||
+           equalsNoCase(value, "revert") || equalsNoCase(value, "revert-layer");
 }
 
 std::vector<std::string> CascadeKeywords::outputProperties(const std::string& cssProperty){

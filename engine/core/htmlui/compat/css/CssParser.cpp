@@ -39,17 +39,22 @@ namespace {
                std::vector<ParseError>* errors):
             file(file), css(css), base(base), errorsOut(errors) {
             std::vector<TokenizeError> tokenizeErrors;
-            std::vector<Token> all = tokenize(css, base, options, &tokenizeErrors);
-            tokens.reserve(all.size());
-            for (Token& token : all){
+            tokens = tokenize(css, base, options, &tokenizeErrors);
+            // comments removed in place
+            size_t kept = 0;
+            for (size_t i = 0; i < tokens.size(); i++){
+                Token& token = tokens[i];
                 if (token.type == TokenType::Comment)
                     continue;
                 if (token.type == TokenType::BadString)
                     errors_.push_back(ParseError{ParseError::Kind::BadString, token.offset, token.length});
                 else if (token.type == TokenType::BadUrl)
                     errors_.push_back(ParseError{ParseError::Kind::BadUrl, token.offset, token.length});
-                tokens.push_back(std::move(token));
+                if (kept != i)
+                    tokens[kept] = std::move(token);
+                kept++;
             }
+            tokens.erase(tokens.begin() + (std::ptrdiff_t)kept, tokens.end());
             for (const TokenizeError& error : tokenizeErrors){
                 ParseError::Kind kind = ParseError::Kind::InvalidEscape;
                 switch (error.kind){
@@ -191,6 +196,24 @@ namespace {
         void consumeBlock(Rule& rule){
             const size_t open = index;
             rule.hasBlock = true;
+            if (!keepRawBlocks){
+                // the contents pass alone: it ends on the same closing brace
+                const Token& opening = next();
+                consumeBlockContents(rule.declarations, rule.rules);
+                uint32_t end = opening.offset + opening.length;
+                if (peek().type == TokenType::RightBrace){
+                    const Token& closing = next();
+                    end = closing.offset + closing.length;
+                }else{
+                    error(ParseError::Kind::UnclosedBlock, opening.offset, opening.length);
+                    if (index > open + 1){
+                        const Token& last = tokens[index - 1];
+                        end = std::max(end, last.offset + last.length);
+                    }
+                }
+                rule.blockRef = ref(opening.offset, end);
+                return;
+            }
             const size_t errorsBefore = errors_.size();
             ComponentValue raw = consumeSimpleBlock();
             const size_t afterRaw = index;
@@ -558,6 +581,9 @@ namespace {
         uint32_t base;
         std::vector<Token> tokens;
         size_t index = 0;
+        // Rule::block (the raw block) is kept for the CSS Syntax entry points; the
+        // compatibility layer's parseStylesheet/parseDeclarationList only use the contents
+        bool keepRawBlocks = true;
         std::vector<ParseError> errors_;
         std::vector<ParseError>* errorsOut;
     };
@@ -598,6 +624,7 @@ Stylesheet jasperengine::htmlui::compat::parseStylesheet(uint32_t file, std::str
     Stylesheet sheet;
     sheet.file = file;
     Parser parser(file, css, baseOffset, TokenizeOptions(), nullptr);
+    parser.keepRawBlocks = false;
     sheet.rules = parser.consumeRuleList(true);
     parser.report(&sink);
     return sheet;
@@ -606,6 +633,7 @@ Stylesheet jasperengine::htmlui::compat::parseStylesheet(uint32_t file, std::str
 std::vector<Declaration> jasperengine::htmlui::compat::parseDeclarationList(uint32_t file, std::string_view css, uint32_t baseOffset,
                                                                             DiagnosticSink& sink){
     Parser parser(file, css, baseOffset, TokenizeOptions(), nullptr);
+    parser.keepRawBlocks = false;
     std::vector<Declaration> declarations;
     std::vector<Rule> rules;
     while (true){

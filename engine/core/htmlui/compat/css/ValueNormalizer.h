@@ -51,6 +51,11 @@ namespace jasperengine::htmlui::compat {
         bool currentColor = false;            // currentColor became the companion
     };
 
+    // the only non-whitespace component of a value (null when there are none or several)
+    JASPERENGINE_API const ComponentValue* soleValue(const std::vector<ComponentValue>& values);
+    // trimWhitespace without the copy
+    JASPERENGINE_API void trimInPlace(std::vector<ComponentValue>& values);
+
     class JASPERENGINE_API ValueNormalizer {
     public:
         static NormalizeResult normalize(const std::vector<ComponentValue>& value, const NormalizeContext& context);

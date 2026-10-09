@@ -12,6 +12,7 @@
 // companion var(--html-inh-P, <initial>).
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace jasperengine::htmlui::compat {
@@ -23,6 +24,8 @@ namespace jasperengine::htmlui::compat {
     public:
         // the CSS-wide keyword a value is ("" when it is not one)
         static std::string keywordOf(const std::vector<ComponentValue>& value);
+        // the same for serialized (output) text
+        static bool isKeywordText(std::string_view value);
         // writes the declaration for a CSS-wide keyword
         static void apply(DeclContext& context, const std::string& keyword);
         // the RCSS properties a CSS property writes (shorthands expanded)

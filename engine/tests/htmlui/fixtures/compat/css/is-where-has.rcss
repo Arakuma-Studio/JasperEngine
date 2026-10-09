@@ -8,7 +8,7 @@ color: #ff0000ff;
 #htmlui-root ul ul, #htmlui-root ul ol, #htmlui-root ol ul, #htmlui-root ol ol {
 margin: 0;
 }
-#htmlui-root .active.card, #htmlui-root :hover.card {
+#htmlui-root .card.active, #htmlui-root .card:hover {
 color: #0000ffff;
 --html-current-color: #0000ffff;
 }

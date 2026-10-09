@@ -476,6 +476,28 @@ namespace {
 
 }
 
+const ComponentValue* jasperengine::htmlui::compat::soleValue(const std::vector<ComponentValue>& values){
+    const ComponentValue* sole = nullptr;
+    for (const ComponentValue& v : values){
+        if (v.isWhitespace())
+            continue;
+        if (sole)
+            return nullptr;
+        sole = &v;
+    }
+    return sole;
+}
+
+void jasperengine::htmlui::compat::trimInPlace(std::vector<ComponentValue>& values){
+    while (!values.empty() && values.back().isWhitespace())
+        values.pop_back();
+    size_t leading = 0;
+    while (leading < values.size() && values[leading].isWhitespace())
+        leading++;
+    if (leading)
+        values.erase(values.begin(), values.begin() + (std::ptrdiff_t)leading);
+}
+
 NormalizeResult ValueNormalizer::normalize(const std::vector<ComponentValue>& value, const NormalizeContext& context){
     Walker walker(context);
     std::vector<ComponentValue> out = walker.list(value);
