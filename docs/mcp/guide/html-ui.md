@@ -468,7 +468,7 @@ readable, its own definitions stay local) with `document` (its `UIDocument`) and
 <button id="play">Play</button>
 <script type="text/lua">
 document:getElementById("play"):addEventListener("click", function()
-    anime.animate("#play", { scale = { 1, 1.1, 1 }, duration = 300 })
+    anime.animate("#play", { opacity = 0.5, duration = 300 })
 end)
 </script>
 ```
