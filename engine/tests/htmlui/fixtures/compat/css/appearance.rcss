@@ -16,13 +16,13 @@
 --html-check: html-layer("/@htmlui/ua/check.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll);
 --html-control-bg: #ffffffff;
 --html-control-border: #767676ff;
---html-select-arrow: html-layer("/@htmlui/ua/arrow-down.svg" 100% 100% 50% 50% no-repeat no-repeat content-box border-box scroll);
---html-thumb: linear-gradient(var(--html-accent, #0075ffff), var(--html-accent, #0075ffff));
+--html-select-arrow: html-layer("/@htmlui/ua/arrow-down.svg" 10px 6px 3px 50% no-repeat no-repeat padding-box border-box scroll);
+--html-thumb: none;
 }
 #htmlui-root .button {
 --html-check: html-layer("/@htmlui/ua/check.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll);
 --html-control-bg: #ffffffff;
 --html-control-border: #767676ff;
---html-select-arrow: html-layer("/@htmlui/ua/arrow-down.svg" 100% 100% 50% 50% no-repeat no-repeat content-box border-box scroll);
---html-thumb: linear-gradient(var(--html-accent, #0075ffff), var(--html-accent, #0075ffff));
+--html-select-arrow: html-layer("/@htmlui/ua/arrow-down.svg" 10px 6px 3px 50% no-repeat no-repeat padding-box border-box scroll);
+--html-thumb: none;
 }

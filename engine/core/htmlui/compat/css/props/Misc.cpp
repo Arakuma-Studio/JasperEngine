@@ -9,12 +9,15 @@
 #include "htmlui/compat/css/props/Rewriters.h"
 
 #include "htmlui/compat/css/CascadeKeywords.h"
+#include "htmlui/compat/css/ColorValue.h"
 #include "htmlui/compat/css/Companions.h"
 #include "htmlui/compat/css/CssSerialize.h"
 #include "htmlui/compat/css/RcssGrammar.h"
 #include "htmlui/compat/css/Units.h"
+#include "htmlui/compat/ua/UserAgentStyle.h"
 
 #include <cmath>
+#include <map>
 
 using namespace jasperengine::htmlui::compat;
 using namespace jasperengine::htmlui::compat::props;
@@ -36,13 +39,67 @@ namespace {
         context.emit(property, value);
     }
 
-    // the UA's control looks (`appearance: auto`); the user-agent stylesheet reads each with
-    // the same default as fallback
-    constexpr const char* kCheckLayer =
-        "html-layer(\"/@htmlui/ua/check.svg\" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll)";
-    constexpr const char* kSelectArrowLayer =
-        "html-layer(\"/@htmlui/ua/arrow-down.svg\" 100% 100% 50% 50% no-repeat no-repeat content-box border-box scroll)";
-    constexpr const char* kThumbLayer = "linear-gradient(var(--html-accent, #0075ffff), var(--html-accent, #0075ffff))";
+    // the UA's control looks (`appearance: auto`): the fallbacks the user-agent stylesheet
+    // gives its var(--html-…) reads, taken from its source (3.9.7 "UI"); these when it has
+    // none (a build without the embedded sheet)
+    const std::string& uaCompanionDefault(const std::string& name){
+        static const std::map<std::string, std::string> defaults = [](){
+            std::map<std::string, std::string> out = {
+                {"--html-check", "html-layer(\"/@htmlui/ua/check.svg\" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll)"},
+                {"--html-control-bg", "#ffffff"},
+                {"--html-control-border", "#767676"},
+                {"--html-select-arrow", "html-layer(\"/@htmlui/ua/arrow-down.svg\" 10px 6px 3px 50% no-repeat no-repeat padding-box border-box scroll)"},
+                {"--html-thumb", "none"},
+            };
+            const std::string_view ua = UserAgentStyle::source();
+            for (auto& entry : out){
+                const std::string needle = "var(" + entry.first + ",";
+                const size_t at = ua.find(needle);
+                if (at == std::string_view::npos)
+                    continue;
+                // the fallback runs to the var()'s closing parenthesis
+                const size_t start = at + needle.size();
+                int depth = 1;
+                bool quote = false;
+                size_t i = start;
+                for (; i < ua.size(); i++){
+                    const char c = ua[i];
+                    if (quote){
+                        if (c == '\\')
+                            i++;
+                        else if (c == '"')
+                            quote = false;
+                        continue;
+                    }
+                    if (c == '"')
+                        quote = true;
+                    else if (c == '(')
+                        depth++;
+                    else if (c == ')' && --depth == 0)
+                        break;
+                }
+                if (depth != 0)
+                    continue;
+                std::string_view fallback = ua.substr(start, i - start);
+                while (!fallback.empty() && (fallback.front() == ' ' || fallback.front() == '\n'))
+                    fallback.remove_prefix(1);
+                while (!fallback.empty() && (fallback.back() == ' ' || fallback.back() == '\n'))
+                    fallback.remove_suffix(1);
+                if (!fallback.empty())
+                    entry.second = std::string(fallback);
+            }
+            // colors as the rewriter writes them (#rrggbbaa)
+            for (auto& entry : out){
+                ColorParseInfo info;
+                if (std::optional<CssColor> color = ColorValue::parse(entry.second, &info))
+                    entry.second = ColorValue::hex(ColorValue::toRgba8(*color));
+            }
+            return out;
+        }();
+        static const std::string empty;
+        const auto it = defaults.find(name);
+        return it == defaults.end() ? empty : it->second;
+    }
 
 }
 
@@ -163,11 +220,8 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         keyword == "slider-horizontal" || keyword == "push-button" || keyword == "square-button"){
         if (keyword != "auto")
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "'appearance: " + keyword + "' is treated as 'auto'");
-        context.emit("--html-check", kCheckLayer);
-        context.emit("--html-control-bg", "#ffffffff");
-        context.emit("--html-control-border", "#767676ff");
-        context.emit("--html-select-arrow", kSelectArrowLayer);
-        context.emit("--html-thumb", kThumbLayer);
+        for (const char* companion : {"--html-check", "--html-control-bg", "--html-control-border", "--html-select-arrow", "--html-thumb"})
+            context.emit(companion, uaCompanionDefault(companion));
         return;
     }
     unsupportedValue(context, "use appearance: none or auto");
