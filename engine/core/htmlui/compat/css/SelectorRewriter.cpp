@@ -467,11 +467,11 @@ namespace {
                 if (s.kind == Kind::Type || s.kind == Kind::Universal)
                     simples.push_back(s);
             }
-            for (const SimpleSelector& s : last.simples){
+            for (const SimpleSelector& s : merged.simples){
                 if (s.kind != Kind::Type && s.kind != Kind::Universal)
                     simples.push_back(s);
             }
-            for (const SimpleSelector& s : merged.simples){
+            for (const SimpleSelector& s : last.simples){
                 if (s.kind != Kind::Type && s.kind != Kind::Universal)
                     simples.push_back(s);
             }
@@ -961,6 +961,8 @@ namespace {
                         break;
                     }
                     case Kind::PseudoClass:
+                        if (s.name == "is" || s.name == "where")
+                            return false;
                         if (s.name == "first-child" || s.name == "last-child" || s.name == "only-child" ||
                             s.name.compare(0, 4, "nth-") == 0 || s.name == "first-of-type" || s.name == "last-of-type" ||
                             s.name == "only-of-type")
