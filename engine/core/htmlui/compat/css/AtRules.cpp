@@ -315,8 +315,10 @@ namespace {
             session.sink->reportAs(Severity::Info, codes::FontSource, srcRef, "font sources in " + list + " format are skipped (the engine reads TTF/OTF)");
         }
         if (!chosen){
-            session.sink->reportAs(Severity::Warning, codes::FontSource, srcRef, "@font-face '" + family + "' has no TrueType/OpenType source; the rule is dropped",
-                                   "convert the font to TTF (remote fonts are imported as TTF by the editor)");
+            // its own subject: the Info about skipped formats has the same code and location
+            session.sink->reportAs(Severity::Warning, codes::FontSource, srcRef.valid() ? srcRef : rule.ref,
+                                   "@font-face '" + family + "' has no TrueType/OpenType source; the rule is dropped",
+                                   "convert the font to TTF (remote fonts are imported as TTF by the editor)", std::string(), family);
             return;
         }
         const std::string path = props::resolveUrlIn(session, chosen->url, at.file, chosen->ref, "font");

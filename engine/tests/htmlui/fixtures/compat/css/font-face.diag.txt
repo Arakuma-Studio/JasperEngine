@@ -2,6 +2,7 @@ compat/css/font-face.css:3:33: info: local() font sources are skipped (fonts com
 compat/css/font-face.css:3:169: info: @font-face descriptor 'font-display' is dropped [HTMLUI-AT-0011]
 compat/css/font-face.css:3:189: info: @font-face descriptor 'unicode-range' is dropped [HTMLUI-AT-0011]
 compat/css/font-face.css:4:33: info: font sources in woff2, woff format are skipped (the engine reads TTF/OTF) [HTMLUI-CSS-0022]
+compat/css/font-face.css:4:33: warning: @font-face 'Woff' has no TrueType/OpenType source; the rule is dropped (fix: convert the font to TTF (remote fonts are imported as TTF by the editor)) [HTMLUI-CSS-0022]
 compat/css/font-face.css:5:76: info: font-weight range 100 900 is registered as 400 (variable fonts render their default instance) (fix: import static instances of the weights you use) [HTMLUI-AT-0011]
 compat/css/font-face.css:5:98: info: @font-face descriptor 'font-stretch' is dropped [HTMLUI-AT-0011]
 compat/css/font-face.css:5:122: info: @font-face descriptor 'size-adjust' is dropped [HTMLUI-AT-0011]
