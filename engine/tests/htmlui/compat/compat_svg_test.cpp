@@ -360,3 +360,31 @@ TEST_F(CompatSvgElementTest, ResultsAreCached){
 TEST_F(CompatSvgElementTest, HookIsInstalledWhileRmlUiRuns){
     EXPECT_EQ(Rml::SVG::GetSourceHook(), &SvgElementHook::instance());
 }
+
+TEST_F(CompatSvgElementTest, ContextsDoNotShareCacheEntries){
+    // the same inline SVG in two contexts: each draws with its own render manager's geometry
+    // and texture, and one context going away leaves the other intact
+    const std::string body = std::string("<div>") + kLucideHeart + "</div>";
+    ASSERT_NE(show(body, "svg { display: block; }"), nullptr);
+    RuntimeRecording otherRecording;
+    Rml::Context* other = Rml::CreateContext(name + "-svg-other", Rml::Vector2i(200, 200), &otherRecording);
+    ASSERT_NE(other, nullptr);
+    Rml::ElementDocument* second = other->LoadDocumentFromMemory(
+        "<rml><head><style>body { display: block; width: 200px; height: 200px; } svg, div { display: block; }</style></head><body>" + body +
+        "</body></rml>", "compat/runtime/other.rml");
+    ASSERT_NE(second, nullptr);
+    second->Show();
+    other->Update();
+    otherRecording.beginFrame();
+    other->Render();
+    EXPECT_EQ(otherRecording.getDraws().size(), 1u);
+    EXPECT_NE(otherRecording.getGeometry(otherRecording.getDraws()[0].geometry), nullptr);
+
+    other->UnloadAllDocuments();
+    other->Update();
+    Rml::RemoveContext(name + "-svg-other");
+    Rml::ReleaseTextures(&otherRecording);
+    frame();
+    EXPECT_EQ(drawsOf(Rml::Vector2i(24, 24)).size(), 1u);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u);
+}

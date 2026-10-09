@@ -12,6 +12,7 @@
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/PropertyIdSet.h>
 
+#include <cstdint>
 #include <mutex>
 #include <set>
 #include <unordered_map>
@@ -170,7 +171,11 @@ bool SvgElementHook::ProcessSource(Rml::Element* element, const Rml::String& pat
     if (!path.empty())
         logOnce(path, svg->diagnostics);
 
-    const std::string id = "htmlui-svg:" + toHex(fnv1a64(svg->xml)) + ":" + std::to_string(svg->xml.size());
+    // The plugin's cache shares one document (and its geometry and texture) per source id
+    // across every element: the render manager is part of the id, so contexts (the editor's
+    // views, texture-mode documents) never draw with another context's resources
+    const std::string id = "htmlui-svg:" + toHex(fnv1a64(svg->xml)) + ":" + std::to_string(svg->xml.size()) + "@" +
+                           toHex((uint64_t)reinterpret_cast<uintptr_t>(element->GetRenderManager()));
     const Rml::ComputedValues& computed = element->GetComputedValues();
     const Rml::Colourb color = computed.color();
     switch (svg->tint){
