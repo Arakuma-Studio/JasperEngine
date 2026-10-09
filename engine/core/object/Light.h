@@ -23,6 +23,11 @@ namespace jasperengine{
         Light(Scene* scene, Entity entity);
         virtual ~Light();
 
+        Light(const Light& rhs);
+        Light& operator=(const Light& rhs);
+        Light(Light&& rhs) noexcept;
+        Light& operator=(Light&& rhs) noexcept;
+
         void setType(LightType type);
         LightType getType() const;
 

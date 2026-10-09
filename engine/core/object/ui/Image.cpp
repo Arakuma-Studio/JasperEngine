@@ -20,6 +20,11 @@ Image::Image(Scene* scene, Entity entity): RectTransform(scene, entity){
 Image::~Image(){
 }
 
+Image::Image(const Image& rhs) = default;
+Image& Image::operator=(const Image& rhs) = default;
+Image::Image(Image&& rhs) noexcept = default;
+Image& Image::operator=(Image&& rhs) noexcept = default;
+
 bool Image::createImage(){
     ImageComponent& img = getComponent<ImageComponent>();
     UIComponent& ui = getComponent<UIComponent>();

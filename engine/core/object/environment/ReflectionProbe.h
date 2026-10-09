@@ -21,6 +21,11 @@ namespace jasperengine{
         ReflectionProbe(Scene* scene, Entity entity);
         virtual ~ReflectionProbe();
 
+        ReflectionProbe(const ReflectionProbe& rhs);
+        ReflectionProbe& operator=(const ReflectionProbe& rhs);
+        ReflectionProbe(ReflectionProbe&& rhs) noexcept;
+        ReflectionProbe& operator=(ReflectionProbe&& rhs) noexcept;
+
         void setMode(ReflectionProbeMode mode);
         ReflectionProbeMode getMode() const;
 

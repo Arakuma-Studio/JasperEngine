@@ -18,6 +18,11 @@ Light2D::Light2D(Scene* scene, Entity entity): GameObject(scene, entity){
 Light2D::~Light2D(){
 }
 
+Light2D::Light2D(const Light2D& rhs) = default;
+Light2D& Light2D::operator=(const Light2D& rhs) = default;
+Light2D::Light2D(Light2D&& rhs) noexcept = default;
+Light2D& Light2D::operator=(Light2D&& rhs) noexcept = default;
+
 void Light2D::setColor(Vector3 color){
     Light2DComponent& lightcomp = getComponent<Light2DComponent>();
 

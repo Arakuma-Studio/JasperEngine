@@ -83,8 +83,10 @@ Engine events registered with `RegisterEngineEvent` are skipped while the script
 GameObject is inactive or the script entry is disabled. `RegisterEvent` (component/physics
 events) is not guarded.
 
-The editor reads `properties` by executing the file in the editor's Lua state, so keep the
-top level free of side effects (only define the table and functions).
+The editor reads `properties` by executing the file in an isolated Lua state of its own
+(engine globals there are inert stand-ins, see [checks](../checks.md)), and the game runs it
+again for every instance, so keep the top level free of side effects (only define the table
+and functions) and the defaults plain values.
 
 ### 1.2 `properties` entries
 

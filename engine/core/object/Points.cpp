@@ -16,6 +16,11 @@ Points::Points(Scene* scene, Entity entity): GameObject(scene, entity){
 Points::~Points(){
 }
 
+Points::Points(const Points& rhs) = default;
+Points& Points::operator=(const Points& rhs) = default;
+Points::Points(Points&& rhs) noexcept = default;
+Points& Points::operator=(Points&& rhs) noexcept = default;
+
 bool Points::load(){
     PointsComponent& pointscomp = getComponent<PointsComponent>();
 

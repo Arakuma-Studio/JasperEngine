@@ -22,6 +22,11 @@ namespace jasperengine{
         GameObject(Scene* scene, Entity entity);
         virtual ~GameObject();
 
+        GameObject(const GameObject& rhs);
+        GameObject& operator=(const GameObject& rhs);
+        GameObject(GameObject&& rhs) noexcept;
+        GameObject& operator=(GameObject&& rhs) noexcept;
+
         // Unity's Object.Instantiate. From a prefab: in the active scene (Engine::getScene)
         // or `scene`; from a GameObject: a copy with its children, components and scripts
         // (references among them go to the copies), in the original's scene. The root is

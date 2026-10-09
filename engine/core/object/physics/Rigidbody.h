@@ -39,6 +39,8 @@ namespace jasperengine{
 
         Rigidbody(const Rigidbody& rhs);
         Rigidbody& operator=(const Rigidbody& rhs);
+        Rigidbody(Rigidbody&& rhs) noexcept;
+        Rigidbody& operator=(Rigidbody&& rhs) noexcept;
 
         const JPH::Body& getJoltBody() const;
         JPH::Body& getJoltBodyWrite() const;

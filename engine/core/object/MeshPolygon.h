@@ -14,6 +14,11 @@ namespace jasperengine{
         MeshPolygon(Scene* scene, Entity entity);
         virtual ~MeshPolygon();
 
+        MeshPolygon(const MeshPolygon& rhs);
+        MeshPolygon& operator=(const MeshPolygon& rhs);
+        MeshPolygon(MeshPolygon&& rhs) noexcept;
+        MeshPolygon& operator=(MeshPolygon&& rhs) noexcept;
+
         bool createPolygon();
 
         void addVertex(Vector3 vertex);

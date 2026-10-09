@@ -20,6 +20,11 @@ Light::Light(Scene* scene, Entity entity): GameObject(scene, entity){
 Light::~Light(){
 }
 
+Light::Light(const Light& rhs) = default;
+Light& Light::operator=(const Light& rhs) = default;
+Light::Light(Light&& rhs) noexcept = default;
+Light& Light::operator=(Light&& rhs) noexcept = default;
+
 void Light::setType(LightType type){
     LightComponent& lightcomp = getComponent<LightComponent>();
 

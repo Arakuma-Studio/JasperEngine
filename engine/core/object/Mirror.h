@@ -16,6 +16,11 @@ namespace jasperengine{
         Mirror(Scene* scene, Entity entity);
         virtual ~Mirror();
 
+        Mirror(const Mirror& rhs);
+        Mirror& operator=(const Mirror& rhs);
+        Mirror(Mirror&& rhs) noexcept;
+        Mirror& operator=(Mirror&& rhs) noexcept;
+
         void setNormal(Vector3 normal);
         void setNormal(const float x, const float y, const float z);
         Vector3 getNormal() const;

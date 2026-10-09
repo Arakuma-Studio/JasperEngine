@@ -18,6 +18,11 @@ Scrollbar::Scrollbar(Scene* scene, Entity entity): Image(scene, entity){
 Scrollbar::~Scrollbar(){
 }
 
+Scrollbar::Scrollbar(const Scrollbar& rhs) = default;
+Scrollbar& Scrollbar::operator=(const Scrollbar& rhs) = default;
+Scrollbar::Scrollbar(Scrollbar&& rhs) noexcept = default;
+Scrollbar& Scrollbar::operator=(Scrollbar&& rhs) noexcept = default;
+
 bool Scrollbar::hasBar() const{
     const ScrollbarComponent& scrollcomp = getComponent<ScrollbarComponent>();
     if (scrollcomp.bar == NULL_ENTITY){

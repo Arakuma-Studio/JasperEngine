@@ -16,6 +16,8 @@ namespace jasperengine{
 
         Animation(const Animation& rhs);
         Animation& operator=(const Animation& rhs);
+        Animation(Animation&& rhs) noexcept;
+        Animation& operator=(Animation&& rhs) noexcept;
 
         bool isLoop() const;
         void setLoop(bool loop);
