@@ -11,14 +11,24 @@
 #include "htmlui/compat/runtime/AnimationFill.h"
 #include "htmlui/compat/runtime/CompatProperties.h"
 #include "htmlui/compat/runtime/FocusTracker.h"
+#include "htmlui/compat/runtime/HtmlAnchorElement.h"
 #include "htmlui/compat/runtime/HtmlBorderImageDecorator.h"
+#include "htmlui/compat/runtime/HtmlButtonElement.h"
+#include "htmlui/compat/runtime/HtmlDetailsElement.h"
+#include "htmlui/compat/runtime/HtmlDialogElement.h"
+#include "htmlui/compat/runtime/HtmlImageElement.h"
+#include "htmlui/compat/runtime/HtmlInputElement.h"
+#include "htmlui/compat/runtime/HtmlLabelBehavior.h"
+#include "htmlui/compat/runtime/HtmlListItemElement.h"
 #include "htmlui/compat/runtime/HtmlLayerDecorator.h"
 #include "htmlui/compat/runtime/HtmlShapeDecorator.h"
 #include "htmlui/compat/runtime/SvgElementHook.h"
 
+#include <RmlUi/Core/ElementInstancer.h>
 #include <RmlUi/Core/Factory.h>
 
 #include <memory>
+#include <vector>
 
 using namespace jasperengine::htmlui::compat;
 
@@ -29,7 +39,14 @@ namespace {
         std::unique_ptr<HtmlLayerDecoratorInstancer> layer;
         std::unique_ptr<HtmlShapeDecoratorInstancer> shape;
         std::unique_ptr<HtmlBorderImageDecoratorInstancer> borderImage;
+        std::vector<std::unique_ptr<Rml::ElementInstancer>> elements;
     };
+
+    template<typename T>
+    void registerElement(Runtime& r, const char* tag){
+        r.elements.push_back(std::make_unique<Rml::ElementInstancerGeneric<T>>());
+        Rml::Factory::RegisterElementInstancer(tag, r.elements.back().get());
+    }
 
     Runtime& runtime(){
         static Runtime value;
@@ -55,6 +72,17 @@ void jasperengine::htmlui::compat::registerRuntime(){
     Rml::Factory::RegisterDecoratorInstancer("html-shape", r.shape.get());
     Rml::Factory::RegisterDecoratorInstancer("html-border-image", r.borderImage.get());
 
+    // element instancers (§3.11.2), replacing RmlUi's for the same tags (img, input, label)
+    registerElement<HtmlButtonElement>(r, "button");
+    registerElement<HtmlAnchorElement>(r, "a");
+    registerElement<HtmlInputElement>(r, "input");
+    registerElement<HtmlListItemElement>(r, "li");
+    registerElement<HtmlSummaryElement>(r, "summary");
+    registerElement<HtmlDetailsElement>(r, "details");
+    registerElement<HtmlDialogElement>(r, "dialog");
+    registerElement<HtmlImageElement>(r, "img");
+    registerElement<HtmlLabelElement>(r, "label");
+
     r.registered = true;
 }
 
@@ -67,6 +95,7 @@ void jasperengine::htmlui::compat::releaseRuntime(){
     r.layer.reset();
     r.shape.reset();
     r.borderImage.reset();
+    r.elements.clear();
     r.registered = false;
 }
 

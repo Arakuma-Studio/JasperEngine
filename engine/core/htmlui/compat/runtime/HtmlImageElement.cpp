@@ -12,6 +12,7 @@
 #include <RmlUi/Core/ElementUtilities.h>
 #include <RmlUi/Core/MeshUtilities.h>
 #include <RmlUi/Core/PropertyIdSet.h>
+#include <RmlUi/Core/RenderBox.h>
 #include <RmlUi/Core/RenderManager.h>
 #include <RmlUi/Core/Spritesheet.h>
 #include <RmlUi/Core/StyleSheet.h>
@@ -167,7 +168,11 @@ void HtmlImageElement::generateGeometry(){
     if (!renderManager || !loaded)
         return;
 
-    const Rml::Vector2f box = GetBox().GetSize(Rml::BoxArea::Content);
+    // the content box as RmlUi's img draws it (rounded so neighbours meet without gaps),
+    // relative to the border box
+    const Rml::RenderBox renderBox = GetRenderBox(Rml::BoxArea::Content);
+    const Rml::Vector2f box = renderBox.GetFillSize();
+    const Rml::Vector2f origin = renderBox.GetFillOffset();
     const ObjectFit fit = parseObjectFit(CompatProperties::text(*this, CompatProperty::ObjectFit));
     CssPosition position;
     const std::string positionText = CompatProperties::text(*this, CompatProperty::ObjectPosition);
@@ -202,7 +207,7 @@ void HtmlImageElement::generateGeometry(){
     }
     const Rml::ColourbPremultiplied colour = base.ToPremultiplied(computed.opacity());
     Rml::Mesh mesh;
-    Rml::MeshUtilities::GenerateQuad(mesh, Rml::Vector2f(quad.rect.x, quad.rect.y), Rml::Vector2f(quad.rect.width, quad.rect.height), colour,
+    Rml::MeshUtilities::GenerateQuad(mesh, origin + Rml::Vector2f(quad.rect.x, quad.rect.y), Rml::Vector2f(quad.rect.width, quad.rect.height), colour,
                                      Rml::Vector2f(quad.u0, quad.v0), Rml::Vector2f(quad.u1, quad.v1));
     geometry = renderManager->MakeGeometry(std::move(mesh));
 }
@@ -212,7 +217,7 @@ void HtmlImageElement::OnRender(){
     if (geometryDirty)
         generateGeometry();
     if (geometry)
-        geometry.Render(GetAbsoluteOffset(Rml::BoxArea::Content), texture);
+        geometry.Render(GetAbsoluteOffset(Rml::BoxArea::Border), texture);
 }
 
 void HtmlImageElement::OnResize(){

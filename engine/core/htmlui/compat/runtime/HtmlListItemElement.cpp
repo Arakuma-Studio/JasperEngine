@@ -84,8 +84,12 @@ void HtmlListItemElement::OnAttributeChange(const Rml::ElementAttributes& change
     Rml::Element::OnAttributeChange(changed_attributes);
     // a new value renumbers this item and the ones after it
     if (changed_attributes.count("value")){
-        if (Rml::Element* list = GetParentNode())
-            list->DirtyLayout();
+        if (Rml::Element* list = GetParentNode()){
+            for (int i = 0; i < list->GetNumChildren(); i++){
+                if (auto* item = rmlui_dynamic_cast<HtmlListItemElement*>(list->GetChild(i)))
+                    item->DirtyLayout();
+            }
+        }
         DirtyLayout();
     }
 }

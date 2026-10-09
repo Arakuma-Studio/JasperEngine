@@ -60,7 +60,7 @@ void HtmlLabelElement::OnPseudoClassChange(const Rml::String& pseudo_class, bool
 
 void HtmlLabelElement::ProcessDefaultAction(Rml::Event& event){
     Rml::Element::ProcessDefaultAction(event);
-    if (event != Rml::EventId::Click || forwarding)
+    if (event.GetId() != Rml::EventId::Click || forwarding)
         return;
     Rml::Element* control = getControl();
     // a click on the control itself (inside the label) is the control's

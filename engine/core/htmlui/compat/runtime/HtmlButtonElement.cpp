@@ -75,7 +75,7 @@ void HtmlButtonElement::ProcessDefaultAction(Rml::Event& event){
         forms::activateFromKey(this, event);
         return;
     }
-    if (event != Rml::EventId::Click)
+    if (event.GetId() != Rml::EventId::Click)
         return;
 
     const std::string type = getType();

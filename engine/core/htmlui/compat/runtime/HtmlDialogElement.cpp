@@ -102,7 +102,7 @@ void HtmlDialogElement::OnUpdate(){
 
 void HtmlDialogElement::ProcessDefaultAction(Rml::Event& event){
     Rml::Element::ProcessDefaultAction(event);
-    if (event != Rml::EventId::Keydown || !modal || !isOpen())
+    if (event.GetId() != Rml::EventId::Keydown || !modal || !isOpen())
         return;
     const auto key = (Rml::Input::KeyIdentifier)event.GetParameter<int>("key_identifier", 0);
     if (key != Rml::Input::KI_ESCAPE)
