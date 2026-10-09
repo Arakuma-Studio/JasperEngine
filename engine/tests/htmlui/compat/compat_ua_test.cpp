@@ -195,7 +195,9 @@ TEST(CompatUaSheet, RewritesWithoutDiagnosticsInEveryForkState){
 TEST(CompatUaSheet, RmlUiAcceptsItWithoutWarnings){
     RmlUiSession rml;
     ASSERT_TRUE(rml.ok);
-    for (const ForkFeatures& fork : {ForkFeatures::present(), ForkFeatures::none(), ForkFeatures::all()}){
+    // the states this RmlUi build can parse: with a feature the fork lacks, compat passes the
+    // CSS through (border-style, calc(), ...) and RmlUi 6.3 rejects it, as it must
+    for (const ForkFeatures& fork : {ForkFeatures::present(), ForkFeatures::none()}){
         const std::shared_ptr<const UserAgentStyle::Sheet> sheet = UserAgentStyle::get(fork);
         ASSERT_NE(sheet, nullptr);
         const std::vector<Diagnostic> verified = verifyRcssWithRmlUi(sheet->rcss, sheet->virtualPath, sheet->lines, *sheet->files);

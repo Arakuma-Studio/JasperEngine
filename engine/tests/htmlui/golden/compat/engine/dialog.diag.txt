@@ -1,0 +1,7 @@
+dialog.html:20:5: info: 'position: fixed' acts like 'absolute' until the fork has Fixed (fix: place the element in a screen-sized container) [HTMLUI-CSS-0007]
+dialog.html:68:3: info: dialogs have no modal backdrop or focus trap (showModal opens it like show) (fix: cover the screen with a positioned element behind the dialog) [HTMLUI-HTML-0025]
+htmlui-imports/fonts/inter-orbitron-438965.css:5:3: info: @font-face descriptor 'font-display' is dropped [HTMLUI-AT-0011]
+htmlui-imports/fonts/inter-orbitron-438965.css:12:3: info: @font-face descriptor 'font-display' is dropped [HTMLUI-AT-0011]
+htmlui-imports/fonts/inter-orbitron-438965.css:19:3: info: @font-face descriptor 'font-display' is dropped [HTMLUI-AT-0011]
+htmlui-imports/fonts/inter-orbitron-438965.css:26:3: info: @font-face descriptor 'font-display' is dropped [HTMLUI-AT-0011]
+htmlui-imports/fonts/inter-orbitron-438965.css:33:3: info: @font-face descriptor 'font-display' is dropped [HTMLUI-AT-0011]

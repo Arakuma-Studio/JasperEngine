@@ -383,8 +383,12 @@ BrowserPage::BrowserPage(const Options& options): state(std::make_unique<State>(
 BrowserPage::~BrowserPage(){
     if (state->render){
         HtmlUI::getFontEngine().setRenderTextForTesting(true);
-        state->render->destroy();
+        // the cache holds the pages' sheets by path: dropped while RmlUi is still up (destroy
+        // releases HtmlUI, which may shut RmlUi down)
+        if (state->render->context)
+            state->render->context->UnloadAllDocuments();
         Rml::Factory::ClearStyleSheetCache();
+        state->render->destroy();
     }
     HtmlUIClock::reset();
     TestSystem::get().setAssetPath("");
@@ -424,6 +428,18 @@ bool BrowserPage::frame(bool draw){
     return drawn;
 }
 
+// RmlUi advances an animation by at most 0.1 s per update (ElementAnimation.cpp), so the
+// fixed UI clock steps by 0.1 s: 30 s of updates end every finite animation of the pages, and
+// the compat runtime applies fill modes on animationend, as the reference script's
+// Animation.finish()
+void BrowserPage::settleAnimations(){
+    const double start = HtmlUIClock::now();
+    for (int step = 1; step <= 300; step++){
+        HtmlUIClock::setFixedTime(start + 0.1 * step);
+        frame(false);
+    }
+}
+
 bool BrowserPage::load(const std::string& page, std::string* error){
     if (!valid()){
         if (error)
@@ -445,13 +461,7 @@ bool BrowserPage::load(const std::string& page, std::string* error){
     }
     if (!state->document->IsVisible())
         state->document->Show();
-    // the document starts its animations at time 0; at 1000 s every finite one has ended
-    // (fill modes applied by the compat runtime on animationend), as the reference script's
-    // Animation.finish()
-    frame(false);
-    HtmlUIClock::setFixedTime(1000.0);
-    frame(false);
-    frame(false);
+    settleAnimations();
     return true;
 }
 

@@ -16,6 +16,7 @@
 #include "harness/ImageCompare.h"
 #include "harness/TestSystem.h"
 
+#include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/ForkFeatures.h"
 
 #include "Log.h"
@@ -283,6 +284,16 @@ TEST_P(CompatGoldenPages, MatchesChromium){
         GTEST_SKIP() << "no headless GPU context";
     TestSystem::get().clearLogs();
     ASSERT_TRUE(browser.load(name + ".html", &error)) << error;
+
+    // what compat made of the page, for inspection
+    if (const std::shared_ptr<const hc::CompatDocument> compiled = browser.compiled()){
+        std::string rcss;
+        for (const hc::StylesheetOutput& sheet : compiled->stylesheets)
+            rcss += "/* " + (sheet.virtualPath.empty() ? std::string("inline <style>") : sheet.virtualPath) + " */\n" + sheet.rcss + "\n";
+        rcss += "/* hints */\n" + compiled->hints.rcss + "\n/* !important */\n" + compiled->important.rcss;
+        writeText(artifacts + "/" + name + ".rml", compiled->rml);
+        writeText(artifacts + "/" + name + ".rcss", rcss);
+    }
 
     // gate 5: the diagnostics snapshot
     const std::string diagnostics = browser.diagnosticsText();

@@ -164,6 +164,8 @@ void HtmlImageElement::generateGeometry(){
     geometryDirty = false;
     geometry = Rml::Geometry();
     texture = Rml::Texture();
+    // replaced content is clipped to the rounded padding box, as in CSS (a round avatar)
+    clipGeometry = decorators::makeClipGeometry(this, Rml::BoxArea::Padding);
     Rml::RenderManager* renderManager = GetRenderManager();
     if (!renderManager || !loaded)
         return;
@@ -216,8 +218,11 @@ void HtmlImageElement::OnRender(){
     ensureLoaded();
     if (geometryDirty)
         generateGeometry();
-    if (geometry)
-        geometry.Render(GetAbsoluteOffset(Rml::BoxArea::Border), texture);
+    if (!geometry)
+        return;
+    const Rml::Vector2f offset = GetAbsoluteOffset(Rml::BoxArea::Border);
+    decorators::RoundedClip clip(this, clipGeometry, offset);
+    geometry.Render(offset, texture);
 }
 
 void HtmlImageElement::OnResize(){
@@ -237,7 +242,9 @@ void HtmlImageElement::OnAttributeChange(const Rml::ElementAttributes& changed_a
 void HtmlImageElement::OnPropertyChange(const Rml::PropertyIdSet& changed_properties){
     Rml::Element::OnPropertyChange(changed_properties);
     if (changed_properties.Contains(Rml::PropertyId::ImageColor) || changed_properties.Contains(Rml::PropertyId::Opacity) ||
-        changed_properties.Contains(Rml::PropertyId::Color))
+        changed_properties.Contains(Rml::PropertyId::Color) || changed_properties.Contains(Rml::PropertyId::BorderTopLeftRadius) ||
+        changed_properties.Contains(Rml::PropertyId::BorderTopRightRadius) || changed_properties.Contains(Rml::PropertyId::BorderBottomRightRadius) ||
+        changed_properties.Contains(Rml::PropertyId::BorderBottomLeftRadius))
         geometryDirty = true;
     for (CompatProperty property : {CompatProperty::ObjectFit, CompatProperty::ObjectPosition}){
         const Rml::PropertyId id = CompatProperties::id(property);

@@ -179,6 +179,7 @@ namespace jasperengine::test::compat {
         struct State;
         std::unique_ptr<State> state;
         bool frame(bool draw);   // true when a frame was drawn
+        void settleAnimations();
     };
 
 }
