@@ -38,12 +38,12 @@ namespace {
     }
 
     struct Shadow {
-        std::vector<ComponentValue> lengths;
+        ValueList lengths;
         std::string color;
     };
 
     // one shadow "x y [blur] [color]" (color first or last); false when malformed
-    bool parseShadow(Session& session, const std::vector<ComponentValue>& group, Shadow& shadow){
+    bool parseShadow(Session& session, const ValueList& group, Shadow& shadow){
         for (const ComponentValue& v : words(group)){
             if (isLength(session, v)){
                 shadow.lengths.push_back(v);
@@ -59,10 +59,10 @@ namespace {
     }
 
     // text-shadow -> font-effect list; nullopt when malformed
-    std::optional<std::string> fontEffects(Session& session, const std::vector<ComponentValue>& value, const std::string& fallbackColor,
+    std::optional<std::string> fontEffects(Session& session, const ValueList& value, const std::string& fallbackColor,
                                            bool* usedWhite){
         std::vector<std::string> effects;
-        for (const std::vector<ComponentValue>& group : commaGroups(value)){
+        for (const ValueList& group : commaGroups(value)){
             Shadow shadow;
             if (!parseShadow(session, group, shadow))
                 return std::nullopt;
@@ -89,15 +89,15 @@ namespace {
         return join(effects, ", ");
     }
 
-    std::string classifyShadows(Session& session, const std::vector<ComponentValue>& value){
-        std::vector<ComponentValue> w = words(value);
+    std::string classifyShadows(Session& session, const ValueList& value){
+        ValueList w = words(value);
         if (w.size() == 1 && isIdent(w[0], "none"))
             return "effects";
         return fontEffects(session, value, std::string(), nullptr) ? "effects" : std::string();
     }
 
-    std::optional<std::string> transformShadows(Session& session, const std::vector<ComponentValue>& value, const std::string&, SourceRef){
-        std::vector<ComponentValue> w = words(value);
+    std::optional<std::string> transformShadows(Session& session, const ValueList& value, const std::string&, SourceRef){
+        ValueList w = words(value);
         if (w.size() == 1 && isIdent(w[0], "none"))
             return std::string(companions::kNoEffect);
         return fontEffects(session, value, std::string(), nullptr);
@@ -125,7 +125,7 @@ namespace {
     std::string ruleStroke(DeclContext& context, const char* property){
         if (!context.rule)
             return std::string();
-        std::optional<std::vector<ComponentValue>> value = ruleValue(context.session, *context.rule, property);
+        std::optional<ValueList> value = ruleValue(context.session, *context.rule, property);
         return value ? text(*value) : std::string();
     }
 
@@ -134,7 +134,7 @@ namespace {
 const VarFamily jasperengine::htmlui::compat::kFontEffectFamily = {"font-effect", classifyShadows, transformShadows};
 
 void jasperengine::htmlui::compat::rewriteTextShadow(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1 && isIdent(w[0], "none")){
         companions::emitTextShadow(context, std::string());
         return;
@@ -157,7 +157,7 @@ void jasperengine::htmlui::compat::rewriteTextShadow(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteTextStroke(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     std::string width, color;
     if (context.name == "-webkit-text-stroke"){
         for (const ComponentValue& v : w){
@@ -205,7 +205,7 @@ void jasperengine::htmlui::compat::rewriteTextStroke(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteTextFillColor(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() != 1){
         unsupportedValue(context);
         return;
@@ -214,7 +214,7 @@ void jasperengine::htmlui::compat::rewriteTextFillColor(DeclContext& context){
     if (context.rule && w[0].isToken(TokenType::Hash) && w[0].token.value.size() == 8 && w[0].token.value.compare(6, 2, "00") == 0){
         for (const Declaration& d : context.rule->declarations){
             if (d.name == "background-clip" || d.name == "-webkit-background-clip"){
-                std::vector<ComponentValue> v = words(d.value);
+                ValueList v = words(d.value);
                 if (!v.empty() && isIdent(v.back(), "text"))
                     return;
             }
@@ -228,7 +228,7 @@ void jasperengine::htmlui::compat::rewriteTextFillColor(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteTextDecoration(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     std::vector<std::string> lines;
     std::vector<std::string> dropped;
     for (const ComponentValue& v : w){
@@ -263,7 +263,7 @@ void jasperengine::htmlui::compat::rewriteTextDecoration(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteTextAlign(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
     const bool rtl = context.session.rootDirection == "rtl";
     if (k == "left" || k == "right" || k == "center" || k == "justify"){
@@ -300,7 +300,7 @@ void jasperengine::htmlui::compat::rewriteTextAlign(DeclContext& context){
 
 void jasperengine::htmlui::compat::rewriteWhiteSpace(DeclContext& context){
     const std::string& n = context.name;
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     std::vector<std::string> k;
     for (const ComponentValue& v : w)
         k.push_back(identOf(v));
@@ -395,7 +395,7 @@ void jasperengine::htmlui::compat::rewriteWhiteSpace(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteOverflowWrap(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
     if (context.name == "word-break"){
         if (k == "normal" || k == "break-all" || k == "break-word"){
@@ -425,7 +425,7 @@ void jasperengine::htmlui::compat::rewriteOverflowWrap(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteLineClamp(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1 && isIdent(w[0], "none"))
         return;
     if (w.size() != 1 || !w[0].isToken(TokenType::Number) || w[0].token.number < 1){
@@ -434,7 +434,7 @@ void jasperengine::htmlui::compat::rewriteLineClamp(DeclContext& context){
     }
     const double lines = std::floor(w[0].token.number);
     // the line height of the rule or its base rule
-    std::optional<std::vector<ComponentValue>> lineHeight;
+    std::optional<ValueList> lineHeight;
     if (context.rule){
         lineHeight = ruleValue(context.session, *context.rule, "line-height");
         if (!lineHeight){

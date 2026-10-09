@@ -15,7 +15,7 @@ namespace {
     constexpr int kMaxDepth = 8;
     constexpr size_t kMaxAlternatives = 32;
 
-    bool containsVar(const std::vector<ComponentValue>& values){
+    bool containsVar(const ValueList& values){
         for (const ComponentValue& v : values){
             if (v.kind == ComponentValue::Kind::Function && equalsNoCase(v.name(), "var"))
                 return true;
@@ -44,7 +44,7 @@ const std::vector<CustomPropertyIndex::Entry>* CustomPropertyIndex::find(const s
     return it == entries.end() ? nullptr : &it->second;
 }
 
-std::string CustomPropertyIndex::varName(const ComponentValue& var, std::vector<ComponentValue>* fallback, bool* hasFallback){
+std::string CustomPropertyIndex::varName(const ComponentValue& var, ValueList* fallback, bool* hasFallback){
     if (hasFallback)
         *hasFallback = false;
     if (var.kind != ComponentValue::Kind::Function || !equalsNoCase(var.name(), "var"))
@@ -75,7 +75,7 @@ std::string CustomPropertyIndex::varName(const ComponentValue& var, std::vector<
     return name;
 }
 
-void CustomPropertyIndex::referencedVariables(const std::vector<ComponentValue>& value, std::vector<std::string>& names){
+void CustomPropertyIndex::referencedVariables(const ValueList& value, std::vector<std::string>& names){
     for (const ComponentValue& v : value){
         if (v.kind == ComponentValue::Kind::Function && equalsNoCase(v.name(), "var")){
             const std::string name = varName(v);
@@ -90,12 +90,12 @@ void CustomPropertyIndex::referencedVariables(const std::vector<ComponentValue>&
 namespace {
 
     // replaces every var() of value by its static replacement; false when one has none
-    bool substitute(const CustomPropertyIndex& index, const std::vector<ComponentValue>& value, std::vector<ComponentValue>& out, int depth){
+    bool substitute(const CustomPropertyIndex& index, const ValueList& value, ValueList& out, int depth){
         if (depth > kMaxDepth)
             return false;
         for (const ComponentValue& v : value){
             if (v.kind == ComponentValue::Kind::Function && equalsNoCase(v.name(), "var")){
-                std::vector<ComponentValue> replacement;
+                ValueList replacement;
                 if (!index.resolve(v, replacement))
                     return false;
                 if (!substitute(index, replacement, out, depth + 1))
@@ -117,14 +117,14 @@ namespace {
 
 }
 
-std::optional<std::vector<ComponentValue>> CustomPropertyIndex::staticValue(const std::string& name) const{
+std::optional<ValueList> CustomPropertyIndex::staticValue(const std::string& name) const{
     const std::vector<Entry>* list = find(name);
     if (!list || list->empty())
         return std::nullopt;
     std::optional<std::string> text;
-    std::vector<ComponentValue> value;
+    ValueList value;
     for (const Entry& entry : *list){
-        std::vector<ComponentValue> resolved;
+        ValueList resolved;
         thread_local int depth = 0;
         if (depth > kMaxDepth)
             return std::nullopt;
@@ -144,13 +144,13 @@ std::optional<std::vector<ComponentValue>> CustomPropertyIndex::staticValue(cons
     return value;
 }
 
-bool CustomPropertyIndex::resolve(const ComponentValue& var, std::vector<ComponentValue>& out) const{
-    std::vector<ComponentValue> fallback;
+bool CustomPropertyIndex::resolve(const ComponentValue& var, ValueList& out) const{
+    ValueList fallback;
     bool hasFallback = false;
     const std::string name = varName(var, &fallback, &hasFallback);
     if (name.empty())
         return false;
-    if (std::optional<std::vector<ComponentValue>> value = staticValue(name)){
+    if (std::optional<ValueList> value = staticValue(name)){
         out = std::move(*value);
         return true;
     }
@@ -161,7 +161,7 @@ bool CustomPropertyIndex::resolve(const ComponentValue& var, std::vector<Compone
     return false;
 }
 
-bool CustomPropertyIndex::expandedValues(const std::string& name, std::vector<std::vector<ComponentValue>>& out) const{
+bool CustomPropertyIndex::expandedValues(const std::string& name, std::vector<ValueList>& out) const{
     thread_local int depth = 0;
     const std::vector<Entry>* list = find(name);
     if (!list || depth > kMaxDepth)
@@ -170,23 +170,23 @@ bool CustomPropertyIndex::expandedValues(const std::string& name, std::vector<st
     bool ok = true;
     for (const Entry& entry : *list){
         // expand nested vars into every combination (bounded)
-        std::vector<std::vector<ComponentValue>> partial{{}};
+        std::vector<ValueList> partial{{}};
         for (const ComponentValue& v : entry.value){
             if (v.kind == ComponentValue::Kind::Function && equalsNoCase(v.name(), "var")){
-                std::vector<ComponentValue> fallback;
+                ValueList fallback;
                 bool hasFallback = false;
                 const std::string nested = varName(v, &fallback, &hasFallback);
-                std::vector<std::vector<ComponentValue>> options;
+                std::vector<ValueList> options;
                 if (nested.empty() || (!expandedValues(nested, options) && !(hasFallback && !declared(nested)))){
                     ok = false;
                     break;
                 }
                 if (options.empty())
                     options.push_back(fallback);
-                std::vector<std::vector<ComponentValue>> next;
-                for (const std::vector<ComponentValue>& prefix : partial){
-                    for (const std::vector<ComponentValue>& option : options){
-                        std::vector<ComponentValue> combined = prefix;
+                std::vector<ValueList> next;
+                for (const ValueList& prefix : partial){
+                    for (const ValueList& option : options){
+                        ValueList combined = prefix;
                         combined.insert(combined.end(), option.begin(), option.end());
                         next.push_back(std::move(combined));
                         if (next.size() > kMaxAlternatives)
@@ -196,12 +196,12 @@ bool CustomPropertyIndex::expandedValues(const std::string& name, std::vector<st
                 partial = std::move(next);
                 continue;
             }
-            for (std::vector<ComponentValue>& prefix : partial)
+            for (ValueList& prefix : partial)
                 prefix.push_back(v);
         }
         if (!ok)
             break;
-        for (std::vector<ComponentValue>& p : partial)
+        for (ValueList& p : partial)
             out.push_back(trimWhitespace(p));
         if (out.size() > kMaxAlternatives)
             break;

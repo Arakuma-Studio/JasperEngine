@@ -24,7 +24,7 @@ namespace jasperengine::htmlui::compat {
         // @supports: true when the condition holds with the current fork features
         // (HTMLUI-AT-0003 Info names the result)
         static bool evaluateSupports(Session& session, const Rule& rule);
-        static bool evaluateCondition(Session& session, const std::vector<ComponentValue>& condition, uint32_t file);
+        static bool evaluateCondition(Session& session, const ValueList& condition, uint32_t file);
 
         // the at-rules that are dropped (HTMLUI-AT-0001, Warning or Info per Appendix C);
         // false when the at-rule is not one of them

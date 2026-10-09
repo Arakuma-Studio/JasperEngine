@@ -165,18 +165,18 @@ std::string Session::keyframeName(const std::string& css){
     return name;
 }
 
-bool Session::staticVar(const ComponentValue& var, std::vector<ComponentValue>& out) const{
+bool Session::staticVar(const ComponentValue& var, ValueList& out) const{
     return vars.resolve(var, out);
 }
 
 std::optional<TypedVar> Session::typedVar(const ComponentValue& var, const std::string& family){
-    std::vector<ComponentValue> fallback;
+    ValueList fallback;
     bool hasFallback = false;
     const std::string name = CustomPropertyIndex::varName(var, &fallback, &hasFallback);
     const VarFamily* f = findVarFamily(family);
     if (name.empty() || !f)
         return std::nullopt;
-    std::vector<std::vector<ComponentValue>> values;
+    std::vector<ValueList> values;
     if (!vars.declared(name)){
         if (!hasFallback)
             return std::nullopt;
@@ -185,7 +185,7 @@ std::optional<TypedVar> Session::typedVar(const ComponentValue& var, const std::
         return std::nullopt;
     }
     std::string kind;
-    for (const std::vector<ComponentValue>& value : values){
+    for (const ValueList& value : values){
         const std::string k = f->classify(*this, value);
         if (k.empty())
             return std::nullopt;
@@ -429,7 +429,7 @@ namespace {
                     continue;
                 if (!imported->supports.empty()){
                     // supports(<declaration>) is a condition in parentheses
-                    std::vector<ComponentValue> condition = trimWhitespace(imported->supports);
+                    ValueList condition = trimWhitespace(imported->supports);
                     if (!condition.empty() && condition[0].isToken(TokenType::Ident) && !equalsNoCase(condition[0].token.value, "not")){
                         ComponentValue block;
                         block.kind = ComponentValue::Kind::Block;
@@ -465,7 +465,7 @@ namespace {
             if (name == "layer"){
                 // statement: declares the order; block: its rules in that layer
                 std::vector<std::string> names;
-                for (const std::vector<ComponentValue>& group : splitAtCommas(rule.prelude)){
+                for (const ValueList& group : splitAtCommas(rule.prelude)){
                     const std::string n = serialize(trimWhitespace(group));
                     if (!n.empty())
                         names.push_back(scope.layerName.empty() ? n : scope.layerName + "." + n);
@@ -560,7 +560,7 @@ namespace {
 
     // ---- pre-pass helpers
 
-    bool hasIdent(const std::vector<ComponentValue>& values, std::string_view lowercase){
+    bool hasIdent(const ValueList& values, std::string_view lowercase){
         for (const ComponentValue& v : values){
             if (v.isToken(TokenType::Ident) && equalsNoCase(v.token.value, lowercase))
                 return true;
@@ -571,12 +571,12 @@ namespace {
     }
 
     // animation names of an `animation` shorthand or `animation-name` value
-    std::vector<std::string> animationNames(const std::string& property, const std::vector<ComponentValue>& value){
+    std::vector<std::string> animationNames(const std::string& property, const ValueList& value){
         static const std::set<std::string> keywords = {
             "none", "infinite", "normal", "reverse", "alternate", "alternate-reverse", "forwards", "backwards", "both", "running",
             "paused", "linear", "ease", "ease-in", "ease-out", "ease-in-out", "step-start", "step-end", "initial", "inherit", "unset"};
         std::vector<std::string> names;
-        for (const std::vector<ComponentValue>& group : splitAtCommas(value)){
+        for (const ValueList& group : splitAtCommas(value)){
             for (const ComponentValue& v : group){
                 if (v.isToken(TokenType::String)){
                     names.push_back(v.token.value);
@@ -640,7 +640,7 @@ namespace {
         BaseRules::index(session);
 
         // the custom property index (values normalized quietly; phase B reports)
-        auto normalizeQuietly = [&](const std::vector<ComponentValue>& value, const std::string& name){
+        auto normalizeQuietly = [&](const ValueList& value, const std::string& name){
             NormalizeContext context;
             context.property = name;
             context.customProperty = true;
@@ -699,9 +699,9 @@ namespace {
                     }
                     if (timing){
                         // a variable in an easing position is written as a tween name
-                        std::vector<std::vector<ComponentValue>> values;
+                        std::vector<ValueList> values;
                         bool easing = session.vars.expandedValues(variable, values) && !values.empty();
-                        for (const std::vector<ComponentValue>& value : values)
+                        for (const ValueList& value : values)
                             easing = easing && !kEasingFamily.classify(session, value).empty();
                         if (easing){
                             session.vars.addUse(variable, "easing");
@@ -861,8 +861,8 @@ namespace {
     std::string replaceViewportOrientation(const std::string& value, bool landscape){
         if (!mayHaveViewportOrientation(value))
             return value;
-        std::vector<ComponentValue> values = parseComponentValueList(value);
-        std::function<void(std::vector<ComponentValue>&)> walk = [&](std::vector<ComponentValue>& list){
+        ValueList values = parseComponentValueList(value);
+        std::function<void(ValueList&)> walk = [&](ValueList& list){
             for (ComponentValue& v : list){
                 if (v.isToken(TokenType::Dimension)){
                     const std::string unit = lowerAscii(v.token.unit);
@@ -882,8 +882,8 @@ namespace {
     bool hasViewportOrientation(const std::string& value){
         if (!mayHaveViewportOrientation(value))
             return false;
-        std::vector<ComponentValue> values = parseComponentValueList(value);
-        std::function<bool(const std::vector<ComponentValue>&)> walk = [&](const std::vector<ComponentValue>& list){
+        ValueList values = parseComponentValueList(value);
+        std::function<bool(const ValueList&)> walk = [&](const ValueList& list){
             for (const ComponentValue& v : list){
                 if (v.isToken(TokenType::Dimension)){
                     const std::string unit = lowerAscii(v.token.unit);
@@ -1174,7 +1174,7 @@ namespace {
         bool fontSize = false;      // a function (the math functions resolve em against it)
     };
 
-    void scanNeeds(const std::vector<ComponentValue>& values, ValueNeeds& needs){
+    void scanNeeds(const ValueList& values, ValueNeeds& needs){
         for (const ComponentValue& v : values){
             if (v.kind == ComponentValue::Kind::Token){
                 if (v.token.type == TokenType::Ident && equalsNoCase(v.token.value, "currentcolor"))
@@ -1213,7 +1213,7 @@ namespace {
                 return;
             if (normalized.dependsOnViewport)
                 session.result->dependsOnViewport = true;
-            std::vector<ComponentValue> value = std::move(normalized.value);
+            ValueList value = std::move(normalized.value);
             trimInPlace(value);
             for (const ComponentValue& v : value){
                 if (v.isBlock(TokenType::LeftBrace)){
@@ -1366,14 +1366,14 @@ namespace {
                 }
             }
             normalize.remPx = session.rootFontSize.value_or(16.0);
-            normalize.resolveVar = [&session](const ComponentValue& var, std::vector<ComponentValue>& out){ return session.staticVar(var, out); };
+            normalize.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
             // (one captured pointer: the std::function keeps it without an allocation)
             normalize.report = [ctx = &context](DiagCode code, Severity severity, const std::string& message, const std::string& suggestion){
                 const Declaration& declaration = ctx->declaration;
                 ctx->session.sink->reportAs(severity, code, declaration.valueRef.valid() ? declaration.valueRef : declaration.ref, message,
                                             suggestion, std::string(), ctx->name);
             };
-            std::vector<ComponentValue> storage;
+            ValueList storage;
             if (!session.valuePool.empty()){
                 storage = std::move(session.valuePool.back());
                 session.valuePool.pop_back();
@@ -1397,7 +1397,7 @@ namespace {
             }else{
                 if (name == "transform-origin" || name == "perspective-origin"){
                     // RmlUi reads the horizontal keyword first ("top left" -> "left top")
-                    std::vector<ComponentValue> w;
+                    ValueList w;
                     for (const ComponentValue& v : context.value){
                         if (!v.isWhitespace())
                             w.push_back(v);
@@ -1562,7 +1562,7 @@ void jasperengine::htmlui::compat::processSynthetic(DeclContext& context, const 
     Declaration& synthetic = block[0];
     synthetic.name = property;
     synthetic.value = context.session.syntheticValues.get(value, [](std::string_view text){
-        std::vector<ComponentValue> parsed = parseComponentValueList(text);
+        ValueList parsed = parseComponentValueList(text);
         trimInPlace(parsed);
         return parsed;
     });
@@ -1732,6 +1732,9 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
 }
 
 std::string CssRewriter::rewriteSelector(std::string_view selector, DiagnosticSink* sink, const CompatOptions& options){
+    // (no session: the parsed selector lives in this arena)
+    Arena arena;
+    ArenaScope scope(arena);
     SourceFiles files;
     const uint32_t file = files.add("[selector]", std::string(selector));
     DiagnosticSink local(files);

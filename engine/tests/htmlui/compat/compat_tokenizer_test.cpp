@@ -62,7 +62,7 @@ TEST(CompatTokenizer, ComponentValueList){
         std::vector<ParseError> errors;
         TokenizeOptions options;
         options.unicodeRanges = true;   // the 2021 draft makes them everywhere
-        const std::vector<ComponentValue> values = parseComponentValueList(input, 0, options, &errors);
+        const ValueList values = parseComponentValueList(input, 0, options, &errors);
         ParsingTestsJson json(input, 0, errors);
         const nlohmann::json actual = json.list(values);
         EXPECT_TRUE(jsonNear(actual, tests[i + 1])) << "input: " << nlohmann::json(input).dump()

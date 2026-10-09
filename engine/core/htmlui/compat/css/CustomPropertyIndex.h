@@ -25,7 +25,7 @@ namespace jasperengine::htmlui::compat {
     class JASPERENGINE_API CustomPropertyIndex {
     public:
         struct Entry {
-            std::vector<ComponentValue> value;   // normalized
+            ValueList value;   // normalized
             SourceRef ref;                       // the declaration
             uint32_t rule = 0;                   // FlatRule index + 1, 0 for a style attribute
         };
@@ -40,13 +40,13 @@ namespace jasperengine::htmlui::compat {
 
         // The value every declaration of the variable shares, with nested var() resolved
         // (depth 8); nullopt when undeclared, declared with different values, or not static.
-        std::optional<std::vector<ComponentValue>> staticValue(const std::string& name) const;
+        std::optional<ValueList> staticValue(const std::string& name) const;
         // The var()'s static value, or its fallback when the variable is undeclared.
-        bool resolve(const ComponentValue& var, std::vector<ComponentValue>& out) const;
+        bool resolve(const ComponentValue& var, ValueList& out) const;
 
         // Every declared value with nested var() replaced (each variable's declarations
         // expanded), up to 32 alternatives; false when a nested variable is undeclared.
-        bool expandedValues(const std::string& name, std::vector<std::vector<ComponentValue>>& out) const;
+        bool expandedValues(const std::string& name, std::vector<ValueList>& out) const;
 
         // ---- uses by structured rewrites (typed copies)
         // family: "decorator", "mask", "font-effect", "transition", "animation", "font-family",
@@ -60,9 +60,9 @@ namespace jasperengine::htmlui::compat {
         std::string typedName(const std::string& name, const std::string& family) const;
 
         // the var() name and fallback of a var() function ("" when malformed)
-        static std::string varName(const ComponentValue& var, std::vector<ComponentValue>* fallback = nullptr, bool* hasFallback = nullptr);
+        static std::string varName(const ComponentValue& var, ValueList* fallback = nullptr, bool* hasFallback = nullptr);
         // the variable names a value references (var(--x) anywhere in it)
-        static void referencedVariables(const std::vector<ComponentValue>& value, std::vector<std::string>& names);
+        static void referencedVariables(const ValueList& value, std::vector<std::string>& names);
 
     private:
         std::map<std::string, std::vector<Entry>> entries;

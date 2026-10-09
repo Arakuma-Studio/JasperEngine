@@ -54,7 +54,7 @@ namespace {
     public:
         using Tokens = Span<const ComponentValue* const>;
 
-        Parser(const std::vector<ComponentValue>& values, uint32_t file): file(file) {
+        Parser(const ValueList& values, uint32_t file): file(file) {
             // (a selector's few tokens fit the inline buffer)
             if (values.size() > kInlineItems){
                 heapItems.reserve(values.size());
@@ -396,7 +396,7 @@ namespace {
     // ---- serialization
 
     // An+B as RmlUi reads it ("2n+1"): the signs of the B part kept
-    std::string anbText(const std::vector<ComponentValue>& arguments){
+    std::string anbText(const ValueList& arguments){
         std::string text;
         for (const ComponentValue& v : arguments){
             if (v.isWhitespace() || v.isToken(TokenType::Comment))
@@ -414,7 +414,7 @@ namespace {
         return text;
     }
 
-    bool hasOf(const std::vector<ComponentValue>& arguments){
+    bool hasOf(const ValueList& arguments){
         for (const ComponentValue& v : arguments){
             if (v.isToken(TokenType::Ident) && equalsNoCase(v.token.value, "of"))
                 return true;
@@ -1197,7 +1197,7 @@ namespace {
 
 }
 
-std::optional<std::vector<ComplexSelector>> SelectorRewriter::parseList(const std::vector<ComponentValue>& prelude, uint32_t file,
+std::optional<std::vector<ComplexSelector>> SelectorRewriter::parseList(const ValueList& prelude, uint32_t file,
                                                                         std::string* error, SourceRef* errorRef){
     Parser parser(prelude, file);
     std::optional<std::vector<ComplexSelector>> result = parser.list(false);
@@ -1211,7 +1211,7 @@ std::optional<std::vector<ComplexSelector>> SelectorRewriter::parseList(const st
 }
 
 std::optional<std::vector<ComplexSelector>> SelectorRewriter::parseList(std::string_view text, std::string* error){
-    std::vector<ComponentValue> values = parseComponentValueList(text);
+    ValueList values = parseComponentValueList(text);
     return parseList(values, 0, error, nullptr);
 }
 

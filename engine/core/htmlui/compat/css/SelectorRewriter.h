@@ -37,7 +37,7 @@ namespace jasperengine::htmlui::compat {
         std::string name;              // type (lowercase), id, class, attribute name, pseudo name (lowercase, no colons)
         std::string op;                // attribute: "", "=", "~=", "|=", "^=", "$=", "*="
         std::string value;             // attribute value (unescaped)
-        std::vector<ComponentValue> arguments;      // raw arguments of a functional pseudo
+        ValueList arguments;      // raw arguments of a functional pseudo
         std::vector<ComplexSelector> selectors;     // parsed selector-list arguments (:is, :where, :not, :has, ...)
     };
 
@@ -79,7 +79,7 @@ namespace jasperengine::htmlui::compat {
     public:
         // Parses a selector list (a style rule prelude); nested-rule forms (&, leading
         // combinators) are accepted. nullopt on a syntax error; errorRef/error say where/why.
-        static std::optional<std::vector<ComplexSelector>> parseList(const std::vector<ComponentValue>& prelude, uint32_t file,
+        static std::optional<std::vector<ComplexSelector>> parseList(const ValueList& prelude, uint32_t file,
                                                                      std::string* error = nullptr, SourceRef* errorRef = nullptr);
         static std::optional<std::vector<ComplexSelector>> parseList(std::string_view text, std::string* error = nullptr);
 

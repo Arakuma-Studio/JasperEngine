@@ -110,7 +110,7 @@ namespace {
 
     void appendBlockOrFunction(std::string& out, const ComponentValue& value, const SerializeOptions& options);
 
-    void appendList(std::string& out, const std::vector<ComponentValue>& values, const SerializeOptions& options){
+    void appendList(std::string& out, const ValueList& values, const SerializeOptions& options){
         bool lastWasWhitespace = false;
         const ComponentValue* previous = nullptr;
         for (const ComponentValue& value : values){
@@ -406,7 +406,7 @@ void jasperengine::htmlui::compat::appendSerialized(std::string& out, const Comp
         appendBlockOrFunction(out, value, options);
 }
 
-void jasperengine::htmlui::compat::appendSerialized(std::string& out, const std::vector<ComponentValue>& values, const SerializeOptions& options){
+void jasperengine::htmlui::compat::appendSerialized(std::string& out, const ValueList& values, const SerializeOptions& options){
     appendList(out, values, options);
 }
 
@@ -416,7 +416,7 @@ std::string jasperengine::htmlui::compat::serialize(const ComponentValue& value,
     return out;
 }
 
-std::string jasperengine::htmlui::compat::serialize(const std::vector<ComponentValue>& values, const SerializeOptions& options){
+std::string jasperengine::htmlui::compat::serialize(const ValueList& values, const SerializeOptions& options){
     std::string out;
     appendList(out, values, options);
     return out;

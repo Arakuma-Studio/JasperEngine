@@ -11,6 +11,7 @@
 // RmlUi's default is the CSS initial value, else that value; `inherit` -> the textual
 // companion var(--html-inh-P, <initial>).
 
+#include "htmlui/compat/css/CssAst.h"
 #include <string>
 #include <string_view>
 #include <vector>
@@ -18,12 +19,11 @@
 namespace jasperengine::htmlui::compat {
 
     struct DeclContext;
-    struct ComponentValue;
 
     class CascadeKeywords {
     public:
         // the CSS-wide keyword a value is ("" when it is not one)
-        static std::string keywordOf(const std::vector<ComponentValue>& value);
+        static std::string keywordOf(const ValueList& value);
         // the same for serialized (output) text
         static bool isKeywordText(std::string_view value);
         // writes the declaration for a CSS-wide keyword

@@ -891,7 +891,7 @@ bool ComponentValue::isFunction(const char* lowercaseName) const{
     if (kind != Kind::Function)
         return false;
     // (Token::isIdent's comparison, on the function's name)
-    const std::string& value = token.value;
+    const Text& value = token.value;
     size_t i = 0;
     for (; lowercaseName[i] != 0; i++){
         if (i >= value.size())
@@ -974,8 +974,12 @@ std::vector<Token> jasperengine::htmlui::compat::tokenize(std::string_view css, 
                                                           const TokenizeOptions& options, std::vector<TokenizeError>* errors){
     LexResult lexed;
     lexCss(css, baseOffset, options, errors, lexed);
+    // the tokens' texts are views into copies of the source and of the decoded text
+    Arena& arena = Arena::current();
+    const char* sourceCopy = arena.copy(lexed.source.data(), lexed.source.size());
+    const char* textCopy = arena.copy(lexed.text.data(), lexed.text.size());
     std::vector<Token> tokens(lexed.tokens.size());
     for (size_t i = 0; i < tokens.size(); i++)
-        lexed.toToken(lexed.tokens[i], tokens[i]);
+        lexed.toToken(lexed.tokens[i], tokens[i], sourceCopy, textCopy);
     return tokens;
 }

@@ -103,7 +103,7 @@ namespace jasperengine::htmlui::compat {
         const Declaration& declaration;
         std::string name;                   // the CSS property (vendor prefix resolved), lowercase
         const PropertySupport* row = nullptr;
-        std::vector<ComponentValue> value;  // normalized (colors hex, times s, units mapped, calc folded)
+        ValueList value;  // normalized (colors hex, times s, units mapped, calc folded)
         bool important = false;
         RuleOutput& output;
         bool dropped = false;               // the rewrite dropped the declaration
@@ -142,6 +142,12 @@ namespace jasperengine::htmlui::compat {
 
     struct Session {
         Session(const CompatOptions& options, SourceFiles& files, DiagnosticSink& sink, const RewriteContext& context);
+
+        // everything the session parses and builds (token texts, value lists, selectors) lives
+        // in its arena, current for the session's lifetime and released with it; declared
+        // first: the members below are destroyed before it
+        Arena arena;
+        ArenaScope arenaScope{arena};
 
         CompatOptions options;
         SourceFiles& files;
@@ -228,12 +234,12 @@ namespace jasperengine::htmlui::compat {
 
         // parseComponentValueList of the values processSynthetic is given (shorthand rewrites
         // give the same few texts again and again), trimmed
-        NameTable<std::vector<ComponentValue>> syntheticValues;
+        NameTable<ValueList> syntheticValues;
 
         // buffers reused from one rule / declaration to the next (their contents are cleared,
         // their memory kept)
         RuleOutput scratchOutput;                               // writeRule
-        std::vector<std::vector<ComponentValue>> valuePool;     // normalized values of processOne
+        std::vector<ValueList> valuePool;     // normalized values of processOne
 
         // per property name (session-wide: the tables do not change)
         NameTable<PropertyFacts> propertyFacts;
@@ -245,7 +251,7 @@ namespace jasperengine::htmlui::compat {
         std::string assetPathOf(uint32_t file) const { return files.path(file); }
         std::string keyframeName(const std::string& css);
         // a var() function's static value (every declaration of the variable identical and static)
-        bool staticVar(const ComponentValue& var, std::vector<ComponentValue>& out) const;
+        bool staticVar(const ComponentValue& var, ValueList& out) const;
         // A var() used at a position of a structured rewrite (family: "decorator", "font-effect",
         // ...): its kind and how to write it; nullopt when the variable cannot be typed
         // (undeclared, mixed kinds): the caller reports HTMLUI-CSS-0012.

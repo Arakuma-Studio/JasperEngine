@@ -55,7 +55,7 @@ namespace {
         return f;
     }
 
-    bool parseEntry(Session& session, const std::vector<ComponentValue>& group, Entry& entry){
+    bool parseEntry(Session& session, const ValueList& group, Entry& entry){
         entry.raw = text(group);
         bool durationSet = false, delaySet = false, countSet = false, directionSet = false, fillSet = false, stateSet = false;
         for (const ComponentValue& v : words(group)){
@@ -154,12 +154,12 @@ namespace {
         return name.compare(0, 8, "-webkit-") == 0 ? name.substr(8) : name;
     }
 
-    bool applyAnimation(Session& session, const std::string& rawName, const std::vector<ComponentValue>& value, std::vector<Entry>& entries){
+    bool applyAnimation(Session& session, const std::string& rawName, const ValueList& value, std::vector<Entry>& entries){
         const std::string name = plain(rawName);
-        std::vector<std::vector<ComponentValue>> groups = commaGroups(value);
+        std::vector<ValueList> groups = commaGroups(value);
         if (name == "animation"){
             entries.clear();
-            for (const std::vector<ComponentValue>& group : groups){
+            for (const ValueList& group : groups){
                 Entry e;
                 if (!parseEntry(session, group, e))
                     return false;
@@ -172,7 +172,7 @@ namespace {
             entries.clear();
             for (size_t i = 0; i < groups.size(); i++){
                 Entry e = previous.empty() ? Entry() : previous[i % previous.size()];
-                std::vector<ComponentValue> w = words(groups[i]);
+                ValueList w = words(groups[i]);
                 if (w.size() != 1 || !(w[0].isToken(TokenType::Ident) || w[0].isToken(TokenType::String)))
                     return false;
                 e.name = w[0].token.value;
@@ -186,7 +186,7 @@ namespace {
         if (entries.empty())
             entries.push_back(Entry());
         for (size_t i = 0; i < entries.size(); i++){
-            std::vector<ComponentValue> w = words(groups[i % groups.size()]);
+            ValueList w = words(groups[i % groups.size()]);
             if (w.size() != 1)
                 return false;
             Entry& e = entries[i];
@@ -248,14 +248,14 @@ namespace {
         return true;
     }
 
-    std::vector<ComponentValue> normalizedValue(Session& session, const Declaration& d){
+    ValueList normalizedValue(Session& session, const Declaration& d){
         NormalizeContext context;
         context.property = plain(d.name);
         context.colors = false;
         context.options = session.options;
-        context.resolveVar = [&session](const ComponentValue& var, std::vector<ComponentValue>& out){ return session.staticVar(var, out); };
+        context.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
         NormalizeResult result = ValueNormalizer::normalize(d.value, context);
-        return result.ok ? trimWhitespace(result.value) : std::vector<ComponentValue>();
+        return result.ok ? trimWhitespace(result.value) : ValueList();
     }
 
     // the RCSS animation value; fill: the -html-animation-fill value
@@ -326,12 +326,12 @@ namespace {
         return join(out, ", ");
     }
 
-    std::string classifyAnimation(Session& session, const std::vector<ComponentValue>& value){
+    std::string classifyAnimation(Session& session, const ValueList& value){
         std::vector<Entry> entries;
         return applyAnimation(session, "animation", value, entries) ? "animations" : std::string();
     }
 
-    std::optional<std::string> transformAnimation(Session& session, const std::vector<ComponentValue>& value, const std::string&, SourceRef){
+    std::optional<std::string> transformAnimation(Session& session, const ValueList& value, const std::string&, SourceRef){
         std::vector<Entry> entries;
         if (!applyAnimation(session, "animation", value, entries))
             return std::nullopt;
@@ -388,7 +388,7 @@ void jasperengine::htmlui::compat::rewriteAnimationLonghand(DeclContext& context
             if (!base){
                 if (onlyFill){
                     // fill mode alone: the AnimationFill property only
-                    std::vector<ComponentValue> w = words(context.value);
+                    ValueList w = words(context.value);
                     const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
                     context.emit("-html-animation-fill", (k == "forwards" || k == "both") ? "forwards" : "none");
                     return;
@@ -409,7 +409,7 @@ void jasperengine::htmlui::compat::rewriteAnimationLonghand(DeclContext& context
         for (const Declaration& d : context.rule->declarations){
             if (!isAnimationFamily(d.name) || !reachesRewrite(context.session, d, context.rule->declarations))
                 continue;
-            const std::vector<ComponentValue> value = d.ref == context.declaration.ref ? context.value : normalizedValue(context.session, d);
+            const ValueList value = d.ref == context.declaration.ref ? context.value : normalizedValue(context.session, d);
             if (!applyAnimation(context.session, d.name, value, entries))
                 context.reportAt(d.ref, Severity::Warning, codes::UnsupportedValue, "'" + d.name + ": " + text(value) + "' is not supported; dropped",
                                  "write animation: <name> <duration> <easing> <delay> <count> <direction> <fill-mode>");

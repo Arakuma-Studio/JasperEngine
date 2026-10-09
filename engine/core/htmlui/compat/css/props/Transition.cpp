@@ -71,7 +71,7 @@ namespace jasperengine::htmlui::compat::props {
             result.note = "'" + serialize(v) + "' is drawn as a linear easing until the fork has TimingFunctions";
             return result;
         }
-        std::vector<std::vector<ComponentValue>> args = commaGroups(v.children);
+        std::vector<ValueList> args = commaGroups(v.children);
         if (name == "cubic-bezier"){
             if (args.size() != 4)
                 return std::nullopt;
@@ -93,8 +93,8 @@ namespace jasperengine::htmlui::compat::props {
         // linear(): stops "<output> [<input>%]{0,2}"
         std::vector<std::pair<double, double>> points;
         std::vector<std::pair<double, std::optional<double>>> raw;
-        for (const std::vector<ComponentValue>& arg : args){
-            std::vector<ComponentValue> w = words(arg);
+        for (const ValueList& arg : args){
+            ValueList w = words(arg);
             if (w.empty() || !w[0].isToken(TokenType::Number))
                 return std::nullopt;
             const double output = w[0].token.number;
@@ -208,7 +208,7 @@ namespace {
     }
 
     // one shorthand entry; false when malformed
-    bool parseEntry(Session& session, const std::vector<ComponentValue>& group, Entry& entry){
+    bool parseEntry(Session& session, const ValueList& group, Entry& entry){
         entry.raw = text(group);
         bool propertySet = false, durationSet = false, delaySet = false;
         for (const ComponentValue& v : words(group)){
@@ -338,12 +338,12 @@ namespace {
     }
 
     // applies one declaration of the family to the entries; false when malformed
-    bool applyTransition(Session& session, const std::string& rawName, const std::vector<ComponentValue>& value, std::vector<Entry>& entries){
+    bool applyTransition(Session& session, const std::string& rawName, const ValueList& value, std::vector<Entry>& entries){
         const std::string name = plain(rawName);
-        std::vector<std::vector<ComponentValue>> groups = commaGroups(value);
+        std::vector<ValueList> groups = commaGroups(value);
         if (name == "transition"){
             entries.clear();
-            for (const std::vector<ComponentValue>& group : groups){
+            for (const ValueList& group : groups){
                 Entry e;
                 if (!parseEntry(session, group, e))
                     return false;
@@ -358,7 +358,7 @@ namespace {
             entries.clear();
             for (size_t i = 0; i < groups.size(); i++){
                 Entry e = previous.empty() ? Entry() : previous[i % previous.size()];
-                std::vector<ComponentValue> w = words(groups[i]);
+                ValueList w = words(groups[i]);
                 if (w.size() != 1 || !w[0].isToken(TokenType::Ident))
                     return false;
                 e.property = w[0].token.value;
@@ -373,7 +373,7 @@ namespace {
         if (entries.empty())
             entries.push_back(Entry());
         for (size_t i = 0; i < entries.size(); i++){
-            std::vector<ComponentValue> w = words(groups[i % groups.size()]);
+            ValueList w = words(groups[i % groups.size()]);
             if (w.size() != 1)
                 return false;
             Entry& e = entries[i];
@@ -414,22 +414,22 @@ namespace {
         return true;
     }
 
-    std::vector<ComponentValue> normalizedValue(Session& session, const Declaration& d){
+    ValueList normalizedValue(Session& session, const Declaration& d){
         NormalizeContext context;
         context.property = plain(d.name);
         context.colors = false;
         context.options = session.options;
-        context.resolveVar = [&session](const ComponentValue& var, std::vector<ComponentValue>& out){ return session.staticVar(var, out); };
+        context.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
         NormalizeResult result = ValueNormalizer::normalize(d.value, context);
-        return result.ok ? trimWhitespace(result.value) : std::vector<ComponentValue>();
+        return result.ok ? trimWhitespace(result.value) : ValueList();
     }
 
-    std::string classifyTransition(Session& session, const std::vector<ComponentValue>& value){
+    std::string classifyTransition(Session& session, const ValueList& value){
         std::vector<Entry> entries;
         return applyTransition(session, "transition", value, entries) ? "transitions" : std::string();
     }
 
-    std::optional<std::string> transformTransition(Session& session, const std::vector<ComponentValue>& value, const std::string&, SourceRef){
+    std::optional<std::string> transformTransition(Session& session, const ValueList& value, const std::string&, SourceRef){
         std::vector<Entry> entries;
         if (!applyTransition(session, "transition", value, entries))
             return std::nullopt;
@@ -437,13 +437,13 @@ namespace {
         return text.empty() ? std::string("none") : text;
     }
 
-    std::string classifyEasing(Session& session, const std::vector<ComponentValue>& value){
-        std::vector<ComponentValue> w = words(value);
+    std::string classifyEasing(Session& session, const ValueList& value){
+        ValueList w = words(value);
         return w.size() == 1 && props::easingOf(session, w[0]) ? "easing" : std::string();
     }
 
-    std::optional<std::string> transformEasing(Session& session, const std::vector<ComponentValue>& value, const std::string&, SourceRef){
-        std::vector<ComponentValue> w = words(value);
+    std::optional<std::string> transformEasing(Session& session, const ValueList& value, const std::string&, SourceRef){
+        ValueList w = words(value);
         if (w.size() != 1)
             return std::nullopt;
         std::optional<props::EasingResult> e = props::easingOf(session, w[0]);
@@ -509,7 +509,7 @@ void jasperengine::htmlui::compat::rewriteTransitionLonghand(DeclContext& contex
         for (const Declaration& d : context.rule->declarations){
             if (!isTransitionFamily(d.name) || !reachesRewrite(context.session, d, context.rule->declarations))
                 continue;
-            const std::vector<ComponentValue> value = d.ref == context.declaration.ref ? context.value : normalizedValue(context.session, d);
+            const ValueList value = d.ref == context.declaration.ref ? context.value : normalizedValue(context.session, d);
             if (!applyTransition(context.session, d.name, value, entries)){
                 context.reportAt(d.ref, Severity::Warning, codes::UnsupportedValue, "'" + d.name + ": " + text(value) + "' is not supported; dropped",
                                  "write transition: <property> <duration> <easing> <delay>");

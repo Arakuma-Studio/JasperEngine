@@ -146,8 +146,8 @@ bool props::isWs(const ComponentValue& value){
     return value.isWhitespace() || value.isToken(TokenType::Comment);
 }
 
-std::vector<ComponentValue> props::words(const std::vector<ComponentValue>& value){
-    std::vector<ComponentValue> out;
+ValueList props::words(const ValueList& value){
+    ValueList out;
     size_t count = 0;
     for (const ComponentValue& v : value)
         count += isWs(v) ? 0 : 1;
@@ -159,9 +159,9 @@ std::vector<ComponentValue> props::words(const std::vector<ComponentValue>& valu
     return out;
 }
 
-std::vector<std::vector<ComponentValue>> props::commaGroups(const std::vector<ComponentValue>& value){
+std::vector<ValueList> props::commaGroups(const ValueList& value){
     // splitAtCommas + trimWhitespace of each group, each group copied once
-    std::vector<std::vector<ComponentValue>> groups;
+    std::vector<ValueList> groups;
     size_t commas = 0;
     for (const ComponentValue& v : value)
         commas += v.isToken(TokenType::Comma) ? 1 : 0;
@@ -185,7 +185,7 @@ std::string props::text(const ComponentValue& value){
     return serialize(value);
 }
 
-std::string props::text(const std::vector<ComponentValue>& value){
+std::string props::text(const ValueList& value){
     size_t a = 0, b = value.size();
     while (a < b && value[a].isWhitespace())
         a++;
@@ -193,7 +193,7 @@ std::string props::text(const std::vector<ComponentValue>& value){
         b--;
     if (a == 0 && b == value.size())
         return serialize(value);
-    return serialize(std::vector<ComponentValue>(value.begin() + (std::ptrdiff_t)a, value.begin() + (std::ptrdiff_t)b));
+    return serialize(ValueList(value.begin() + (std::ptrdiff_t)a, value.begin() + (std::ptrdiff_t)b));
 }
 
 std::string props::join(const std::vector<std::string>& parts, const char* separator){
@@ -222,8 +222,8 @@ bool props::isVar(const ComponentValue& value){
 
 namespace {
 
-    std::string kindOfValue(const std::vector<ComponentValue>& raw){
-        std::vector<ComponentValue> value = props::words(raw);
+    std::string kindOfValue(const ValueList& raw){
+        ValueList value = props::words(raw);
         if (value.size() != 1)
             return value.empty() ? "empty" : "other";
         const ComponentValue& v = value[0];
@@ -255,12 +255,12 @@ namespace {
 
 namespace {
 
-    std::string computeVarKind(Session& session, const std::string& name, const std::vector<ComponentValue>& fallback, bool hasFallback);
+    std::string computeVarKind(Session& session, const std::string& name, const ValueList& fallback, bool hasFallback);
 
 }
 
 std::string props::varKind(Session& session, const ComponentValue& var){
-    std::vector<ComponentValue> fallback;
+    ValueList fallback;
     bool hasFallback = false;
     const std::string name = CustomPropertyIndex::varName(var, &fallback, &hasFallback);
     if (hasFallback)
@@ -277,12 +277,12 @@ std::string props::varKind(Session& session, const ComponentValue& var){
 
 namespace {
 
-    std::string computeVarKind(Session& session, const std::string& name, const std::vector<ComponentValue>& fallback, bool hasFallback){
+    std::string computeVarKind(Session& session, const std::string& name, const ValueList& fallback, bool hasFallback){
         if (name == "--html-current-color")
             return "color";
         if (name.empty())
             return "other";
-        std::vector<std::vector<ComponentValue>> values;
+        std::vector<ValueList> values;
         if (!session.vars.declared(name)){
             if (!hasFallback)
                 return "undeclared";
@@ -291,7 +291,7 @@ namespace {
             return "mixed";
         }
         std::string kind;
-        for (const std::vector<ComponentValue>& value : values){
+        for (const ValueList& value : values){
             std::string k = kindOfValue(value);
             if (k == "zero")
                 k = kind.empty() ? "zero" : (kind == "length" || kind == "number" ? kind : "zero");
@@ -415,8 +415,8 @@ std::optional<TypedVar> props::wholeVar(DeclContext& context, const std::string&
     return typed;
 }
 
-std::optional<std::vector<ComponentValue>> props::ruleValue(Session& session, const FlatRule& rule, const std::string& property){
-    std::optional<std::vector<ComponentValue>> result;
+std::optional<ValueList> props::ruleValue(Session& session, const FlatRule& rule, const std::string& property){
+    std::optional<ValueList> result;
     for (const Declaration& d : rule.declarations){
         if (d.name != property)
             continue;
@@ -424,7 +424,7 @@ std::optional<std::vector<ComponentValue>> props::ruleValue(Session& session, co
         context.property = property;
         context.colors = ValueNormalizer::colorKeywordsApply(property);
         context.options = session.options;
-        context.resolveVar = [&session](const ComponentValue& var, std::vector<ComponentValue>& out){ return session.staticVar(var, out); };
+        context.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
         NormalizeResult normalized = ValueNormalizer::normalize(d.value, context);
         if (normalized.ok)
             result = trimWhitespace(normalized.value);
@@ -438,7 +438,7 @@ const std::string& props::ruleStaticColor(Session& session, const FlatRule& rule
     if (rule.index < session.staticColors.size() && session.staticColors[rule.index])
         return *session.staticColors[rule.index];
     std::string color;
-    std::optional<std::vector<ComponentValue>> value = ruleValue(session, rule, "color");
+    std::optional<ValueList> value = ruleValue(session, rule, "color");
     if (value && value->size() == 1 && (*value)[0].isToken(TokenType::Hash))
         color = "#" + (*value)[0].token.value;
     if (rule.index < session.staticColors.size()){
@@ -455,7 +455,7 @@ std::optional<double> props::ruleFontSizePx(Session& session, const FlatRule& ru
     if (rule.index < session.fontSizes.size() && session.fontSizes[rule.index])
         return *session.fontSizes[rule.index];
     std::optional<double> px;
-    std::optional<std::vector<ComponentValue>> value = ruleValue(session, rule, "font-size");
+    std::optional<ValueList> value = ruleValue(session, rule, "font-size");
     if (value && value->size() == 1){
         px = lengthPx((*value)[0]);
         if (!px && (*value)[0].isToken(TokenType::Dimension) && equalsNoCase((*value)[0].token.unit, "rem"))

@@ -30,8 +30,8 @@ namespace {
     }
 
     // the transform function of an individual property; "" for none, nullopt when invalid
-    std::optional<std::string> functionOf(Session& session, const std::string& property, const std::vector<ComponentValue>& value){
-        std::vector<ComponentValue> w = words(value);
+    std::optional<std::string> functionOf(Session& session, const std::string& property, const ValueList& value){
+        ValueList w = words(value);
         if (w.size() == 1 && isIdent(w[0], "none"))
             return std::string();
         if (property == "translate"){
@@ -83,13 +83,13 @@ namespace {
         return std::nullopt;
     }
 
-    std::vector<ComponentValue> normalized(Session& session, const Declaration& d){
+    ValueList normalized(Session& session, const Declaration& d){
         NormalizeContext context;
         context.property = d.name;
         context.options = session.options;
-        context.resolveVar = [&session](const ComponentValue& var, std::vector<ComponentValue>& out){ return session.staticVar(var, out); };
+        context.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
         NormalizeResult result = ValueNormalizer::normalize(d.value, context);
-        return result.ok ? trimWhitespace(result.value) : std::vector<ComponentValue>();
+        return result.ok ? trimWhitespace(result.value) : ValueList();
     }
 
 }
@@ -105,7 +105,7 @@ bool jasperengine::htmlui::compat::ruleHasIndividualTransform(const FlatRule& ru
 void jasperengine::htmlui::compat::rewriteIndividualTransform(DeclContext& context){
     std::string translate, rotate, scale, transform;
     bool transformSet = false;
-    auto apply = [&](const std::string& name, const std::vector<ComponentValue>& value) -> bool {
+    auto apply = [&](const std::string& name, const ValueList& value) -> bool {
         if (name == "transform"){
             transform = text(value);
             if (transform == "none")
@@ -152,7 +152,7 @@ void jasperengine::htmlui::compat::rewriteIndividualTransform(DeclContext& conte
         for (const Declaration& d : context.rule->declarations){
             if (d.name != "transform" && !isIndividual(d.name))
                 continue;
-            const std::vector<ComponentValue> value = d.ref == context.declaration.ref ? context.value : normalized(context.session, d);
+            const ValueList value = d.ref == context.declaration.ref ? context.value : normalized(context.session, d);
             if (!apply(d.name, value))
                 context.reportAt(d.ref, Severity::Warning, codes::UnsupportedValue, "'" + d.name + ": " + text(value) + "' is not supported; dropped");
         }

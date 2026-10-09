@@ -29,7 +29,7 @@ namespace {
     }
 
     // the flex shorthand in RmlUi's three-value form
-    std::optional<std::string> flexValue(Session& session, const std::vector<ComponentValue>& w){
+    std::optional<std::string> flexValue(Session& session, const ValueList& w){
         if (w.size() == 1){
             const std::string k = identOf(w[0]);
             if (k == "none")
@@ -60,7 +60,7 @@ namespace {
     }
 
     // an alignment keyword RmlUi knows; safe/unsafe dropped
-    std::optional<std::string> alignKeyword(DeclContext& context, const std::string& property, const std::vector<ComponentValue>& w){
+    std::optional<std::string> alignKeyword(DeclContext& context, const std::string& property, const ValueList& w){
         std::vector<std::string> keywords;
         bool overflowPosition = false;
         for (const ComponentValue& v : w){
@@ -105,7 +105,7 @@ namespace {
 
 void jasperengine::htmlui::compat::rewriteFlex(DeclContext& context){
     const std::string& n = context.name;
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1 && isVar(w[0])){
         context.emit(n == "-ms-flex" ? "flex" : n, text(w[0]));
         return;
@@ -186,7 +186,7 @@ void jasperengine::htmlui::compat::rewriteFlex(DeclContext& context){
 
 void jasperengine::htmlui::compat::rewriteAlignKeyword(DeclContext& context){
     const std::string& n = context.name;
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (n == "justify-items" || n == "justify-self"){
         if (context.fork(ForkFeature::Grid)){
             context.emit(n, context.valueText());
@@ -210,11 +210,11 @@ void jasperengine::htmlui::compat::rewriteAlignKeyword(DeclContext& context){
 
 void jasperengine::htmlui::compat::rewritePlaceAlign(DeclContext& context){
     const std::string& n = context.name;
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     // "<align> [<justify>]": split where the second keyword group starts
-    std::vector<ComponentValue> first, second;
+    ValueList first, second;
     size_t i = 0;
-    auto takeGroup = [&](std::vector<ComponentValue>& group){
+    auto takeGroup = [&](ValueList& group){
         while (i < w.size()){
             const std::string k = identOf(w[i]);
             group.push_back(w[i]);

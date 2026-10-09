@@ -68,7 +68,7 @@ namespace jasperengine::htmlui::compat {
     JASPERENGINE_API std::optional<Declaration> parseDeclaration(uint32_t file, std::string_view css, uint32_t baseOffset,
                                                                  DiagnosticSink* sink, std::vector<ParseError>* errors = nullptr);
     // "parse a list of component values" / "parse a component value"
-    JASPERENGINE_API std::vector<ComponentValue> parseComponentValueList(std::string_view css, uint32_t baseOffset = 0,
+    JASPERENGINE_API ValueList parseComponentValueList(std::string_view css, uint32_t baseOffset = 0,
                                                                          const TokenizeOptions& options = {},
                                                                          std::vector<ParseError>* errors = nullptr);
     JASPERENGINE_API std::optional<ComponentValue> parseComponentValue(std::string_view css, uint32_t baseOffset = 0,
@@ -78,11 +78,11 @@ namespace jasperengine::htmlui::compat {
     // ---- helpers over component values
 
     // groups split at top-level commas (each group untrimmed)
-    JASPERENGINE_API std::vector<std::vector<ComponentValue>> splitAtCommas(const std::vector<ComponentValue>& values);
+    JASPERENGINE_API std::vector<ValueList> splitAtCommas(const ValueList& values);
     // without leading/trailing whitespace
-    JASPERENGINE_API std::vector<ComponentValue> trimWhitespace(const std::vector<ComponentValue>& values);
+    JASPERENGINE_API ValueList trimWhitespace(const ValueList& values);
     // the source extent of a sequence (invalid when empty)
-    JASPERENGINE_API SourceRef extentOf(uint32_t file, const std::vector<ComponentValue>& values);
+    JASPERENGINE_API SourceRef extentOf(uint32_t file, const ValueList& values);
 
     JASPERENGINE_API const char* parseErrorName(ParseError::Kind kind);   // "invalid-rule", ...
 

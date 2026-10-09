@@ -232,8 +232,8 @@ namespace {
     }
 
     // applies one border-image declaration; false on a value it cannot read
-    bool applyBorderImage(DeclContext& context, const std::string& property, const std::vector<ComponentValue>& value, BorderImage& image){
-        std::vector<ComponentValue> w = words(value);
+    bool applyBorderImage(DeclContext& context, const std::string& property, const ValueList& value, BorderImage& image){
+        ValueList w = words(value);
         auto source = [&](const ComponentValue& v) -> bool {
             if (isIdent(v, "none")){
                 image.source.clear();
@@ -358,7 +358,7 @@ namespace {
 
 void jasperengine::htmlui::compat::rewriteBorder(DeclContext& context){
     const std::string& n = context.name;
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     const Sides sides = sidesOf(context.session, n);
     const std::string part = partOf(n);
 
@@ -435,7 +435,7 @@ void jasperengine::htmlui::compat::rewriteBorder(DeclContext& context){
     std::string width, style, color;
     bool widthGiven = false;
     if (w.size() == 1 && isVar(w[0])){
-        std::vector<ComponentValue> resolved;
+        ValueList resolved;
         if (!context.session.staticVar(w[0], resolved)){
             context.reportAs(Severity::Warning, codes::VarUntyped, "'" + context.sourceText() +
                              "': a border shorthand from a variable cannot be split into width and color; written as is",
@@ -473,7 +473,7 @@ void jasperengine::htmlui::compat::rewriteBorder(DeclContext& context){
 
 void jasperengine::htmlui::compat::rewriteBorderStyle(DeclContext& context){
     const std::string& n = context.name;
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     std::vector<std::string> styles;
     for (const ComponentValue& v : w){
         const std::string k = identOf(v);
@@ -520,7 +520,7 @@ void jasperengine::htmlui::compat::rewriteBorderStyle(DeclContext& context){
             if (const FlatRule* base = BaseRules::find(context.session, *context.rule, [&](const FlatRule& candidate){
                     return ruleSetsWidth(candidate, side);
                 })){
-                if (std::optional<std::vector<ComponentValue>> value = ruleValue(context.session, *base, property)){
+                if (std::optional<ValueList> value = ruleValue(context.session, *base, property)){
                     if (value->size() == 1 && widthOf(context.session, (*value)[0]))
                         width = *widthOf(context.session, (*value)[0]);
                 }
@@ -541,7 +541,7 @@ void jasperengine::htmlui::compat::rewriteBorderStyle(DeclContext& context){
 
 void jasperengine::htmlui::compat::rewriteBorderRadius(DeclContext& context){
     const std::string& n = context.name;
-    std::vector<ComponentValue> horizontal;
+    ValueList horizontal;
     bool elliptical = false;
     for (const ComponentValue& v : context.value){
         if (v.isToken(TokenType::Delim) && v.token.isDelim('/')){
@@ -550,10 +550,10 @@ void jasperengine::htmlui::compat::rewriteBorderRadius(DeclContext& context){
         }
         horizontal.push_back(v);
     }
-    std::vector<ComponentValue> w = words(horizontal);
+    ValueList w = words(horizontal);
     if (elliptical){
         // a / b: equal radii are circular arcs, others are drawn with the horizontal radius
-        std::vector<ComponentValue> vertical;
+        ValueList vertical;
         bool after = false;
         for (const ComponentValue& v : context.value){
             if (v.isToken(TokenType::Delim) && v.token.isDelim('/')){
@@ -663,7 +663,7 @@ void jasperengine::htmlui::compat::rewriteBorderImage(DeclContext& context){
     BorderImage image;
     bool fromRule = false;
     bool sourceSet = false;
-    auto apply = [&](const std::string& property, const std::vector<ComponentValue>& value, SourceRef){
+    auto apply = [&](const std::string& property, const ValueList& value, SourceRef){
         std::string p = property;
         if (p.compare(0, 8, "-webkit-") == 0)
             p = p.substr(8);
@@ -735,7 +735,7 @@ namespace {
         for (const Declaration& d : context.rule->declarations){
             if (d.name != "border-collapse")
                 continue;
-            const std::vector<ComponentValue> value = words(d.value);
+            const ValueList value = words(d.value);
             if (value.size() == 1 && identOf(value[0]) == "collapse")
                 return true;
         }
@@ -746,7 +746,7 @@ namespace {
 
 void jasperengine::htmlui::compat::rewriteBorderSpacing(DeclContext& context){
     if (context.name == "border-collapse"){
-        std::vector<ComponentValue> w = words(context.value);
+        ValueList w = words(context.value);
         const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
         if (k == "separate")
             return;   // the engine's (only) model
@@ -764,7 +764,7 @@ void jasperengine::htmlui::compat::rewriteBorderSpacing(DeclContext& context){
     }
     if (collapsesBorders(context))
         return;   // the rule collapses borders: no spacing, as in CSS
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.empty() || w.size() > 2){
         unsupportedValue(context);
         return;

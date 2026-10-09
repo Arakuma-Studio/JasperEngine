@@ -87,7 +87,7 @@ namespace jasperengine::test::compat {
             }
         }
 
-        nlohmann::json list(const std::vector<ComponentValue>& values){
+        nlohmann::json list(const ValueList& values){
             nlohmann::json result = nlohmann::json::array();
             for (size_t i = 0; i < values.size(); i++){
                 const ComponentValue& value = values[i];

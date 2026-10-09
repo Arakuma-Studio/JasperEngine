@@ -36,8 +36,8 @@ namespace {
     }
 
     // the family names of a font-family list; false when it is not one
-    bool familyNames(const std::vector<ComponentValue>& value, std::vector<std::string>& names){
-        for (const std::vector<ComponentValue>& group : splitAtCommas(value)){
+    bool familyNames(const ValueList& value, std::vector<std::string>& names){
+        for (const ValueList& group : splitAtCommas(value)){
             std::string name;
             bool quoted = false;
             for (const ComponentValue& v : trimWhitespace(group)){
@@ -80,12 +80,12 @@ namespace {
         return join(names, ", ");
     }
 
-    std::string classifyFamilies(Session&, const std::vector<ComponentValue>& value){
+    std::string classifyFamilies(Session&, const ValueList& value){
         std::vector<std::string> names;
         return familyNames(value, names) ? "list" : std::string();
     }
 
-    std::optional<std::string> transformFamilies(Session& session, const std::vector<ComponentValue>& value, const std::string&, SourceRef){
+    std::optional<std::string> transformFamilies(Session& session, const ValueList& value, const std::string&, SourceRef){
         std::vector<std::string> names;
         if (!familyNames(value, names))
             return std::nullopt;
@@ -144,7 +144,7 @@ void jasperengine::htmlui::compat::rewriteFontFamily(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteFontSize(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() != 1){
         unsupportedValue(context);
         return;
@@ -184,7 +184,7 @@ void jasperengine::htmlui::compat::rewriteFontSize(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteFontWeight(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1){
         const std::string k = identOf(w[0]);
         if (k == "bolder" || k == "lighter"){
@@ -211,7 +211,7 @@ void jasperengine::htmlui::compat::rewriteFontWeight(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteFontStyle(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     const std::string k = w.empty() ? std::string() : identOf(w[0]);
     if (k == "oblique"){
         context.emit("font-style", "italic");
@@ -229,7 +229,7 @@ void jasperengine::htmlui::compat::rewriteFontStyle(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteLineHeight(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1 && isIdent(w[0], "normal")){
         context.emit("line-height", "1.2");
         return;
@@ -246,7 +246,7 @@ void jasperengine::htmlui::compat::rewriteLineHeight(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteFont(DeclContext& context){
-    std::vector<ComponentValue> value = context.value;
+    ValueList value = context.value;
     for (const ComponentValue& v : value){
         if (isVar(v)){
             context.reportAs(Severity::Warning, codes::VarUntyped, "'font' with var() cannot be split into longhands; written as is",
@@ -255,7 +255,7 @@ void jasperengine::htmlui::compat::rewriteFont(DeclContext& context){
             return;
         }
     }
-    std::vector<ComponentValue> w = words(value);
+    ValueList w = words(value);
     if (w.size() == 1 && w[0].isToken(TokenType::Ident)){
         const std::string k = identOf(w[0]);
         if (k == "caption" || k == "icon" || k == "menu" || k == "message-box" || k == "small-caption" || k == "status-bar"){
@@ -306,7 +306,7 @@ void jasperengine::htmlui::compat::rewriteFont(DeclContext& context){
         break;
     }
     // size
-    std::vector<ComponentValue> size, lineHeight, family;
+    ValueList size, lineHeight, family;
     if (i < value.size())
         size.push_back(value[i++]);
     while (i < value.size() && value[i].isWhitespace())

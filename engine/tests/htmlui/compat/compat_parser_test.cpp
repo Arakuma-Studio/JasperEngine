@@ -348,8 +348,8 @@ TEST(CompatParser, KeyframesAndFontFaceBlocks){
 }
 
 TEST(CompatParser, HelpersSplitAndTrim){
-    const std::vector<ComponentValue> values = parseComponentValueList(" a b , c(d, e) , f ");
-    const std::vector<std::vector<ComponentValue>> groups = splitAtCommas(values);
+    const ValueList values = parseComponentValueList(" a b , c(d, e) , f ");
+    const std::vector<ValueList> groups = splitAtCommas(values);
     ASSERT_EQ(groups.size(), 3u);
     EXPECT_EQ(trimWhitespace(groups[0]).size(), 3u);
     ASSERT_EQ(trimWhitespace(groups[1]).size(), 1u);

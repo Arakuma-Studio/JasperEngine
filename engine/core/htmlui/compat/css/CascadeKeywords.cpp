@@ -87,7 +87,7 @@ namespace {
 
 }
 
-std::string CascadeKeywords::keywordOf(const std::vector<ComponentValue>& value){
+std::string CascadeKeywords::keywordOf(const ValueList& value){
     const ComponentValue* sole = soleValue(value);
     if (!sole || !sole->isToken(TokenType::Ident) || sole->token.value.size() > 12)
         return std::string();

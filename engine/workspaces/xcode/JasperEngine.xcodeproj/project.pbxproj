@@ -1750,6 +1750,9 @@
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		434F4D507D7BFEE5F218EEC6 /* Arena.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5040E9455FCD450F67 /* Arena.h */; };
+		434F4D502C6392B25636A0F9 /* Arena.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50ECBC67D4F3E0662E /* Arena.cpp */; };
+		434F4D50B92138D5E718E024 /* Arena.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50ECBC67D4F3E0662E /* Arena.cpp */; };
 		434F4D50B88C42DFC604BA5F /* CssLexer.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50A862FC3C452BCFC0 /* CssLexer.h */; };
 		434F4D5096627280F66F9581 /* StringIndex.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50ECC6BB256DF8EA34 /* StringIndex.h */; };
 		434F4D50175E3C4BCECBB3DD /* LiteralCompare.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5097B58E481998D2A0 /* LiteralCompare.h */; };
@@ -4727,6 +4730,8 @@
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		434F4D5040E9455FCD450F67 /* Arena.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Arena.h; sourceTree = "<group>"; };
+		434F4D50ECBC67D4F3E0662E /* Arena.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Arena.cpp; sourceTree = "<group>"; };
 		434F4D50A862FC3C452BCFC0 /* CssLexer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CssLexer.h; sourceTree = "<group>"; };
 		434F4D50ECC6BB256DF8EA34 /* StringIndex.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StringIndex.h; sourceTree = "<group>"; };
 		434F4D5097B58E481998D2A0 /* LiteralCompare.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LiteralCompare.h; sourceTree = "<group>"; };
@@ -8378,6 +8383,8 @@
 				434F4D5085138F8D30FFE72D /* LuaHooks.h */,
 				434F4D5097B58E481998D2A0 /* LiteralCompare.h */,
 				434F4D50ECC6BB256DF8EA34 /* StringIndex.h */,
+				434F4D50ECBC67D4F3E0662E /* Arena.cpp */,
+				434F4D5040E9455FCD450F67 /* Arena.h */,
 			);
 			path = compat;
 			sourceTree = "<group>";
@@ -9849,6 +9856,7 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				434F4D507D7BFEE5F218EEC6 /* Arena.h in Headers */,
 				434F4D50B88C42DFC604BA5F /* CssLexer.h in Headers */,
 				434F4D5096627280F66F9581 /* StringIndex.h in Headers */,
 				434F4D50175E3C4BCECBB3DD /* LiteralCompare.h in Headers */,
@@ -11624,6 +11632,7 @@
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				434F4D50B92138D5E718E024 /* Arena.cpp in Sources */,
 				434F4D5012A32150F51A6F60 /* Transition.cpp in Sources */,
 				434F4D50413C1865182E4938 /* Transform.cpp in Sources */,
 				434F4D5086F15EE10969161E /* Text.cpp in Sources */,
@@ -11964,6 +11973,7 @@
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				434F4D502C6392B25636A0F9 /* Arena.cpp in Sources */,
 				434F4D503AFB9B941608861B /* Transition.cpp in Sources */,
 				434F4D50154F750197582B21 /* Transform.cpp in Sources */,
 				434F4D50D55D03300CF40186 /* Text.cpp in Sources */,

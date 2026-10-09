@@ -63,7 +63,7 @@ namespace {
 
 void jasperengine::htmlui::compat::rewriteListStyle(DeclContext& context){
     const std::string& n = context.name;
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1 && isVar(w[0]) && n != "list-style"){
         context.emit(n, text(w[0]));
         return;

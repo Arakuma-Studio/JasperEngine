@@ -25,7 +25,7 @@ namespace {
     }
 
     // a filter list for RmlUi; dropped: url() filters removed. nullopt when malformed
-    std::optional<std::string> filters(Session& session, const std::vector<ComponentValue>& value, const std::string& currentColor,
+    std::optional<std::string> filters(Session& session, const ValueList& value, const std::string& currentColor,
                                        bool& droppedUrl){
         std::vector<std::string> out;
         droppedUrl = false;
@@ -37,7 +37,7 @@ namespace {
             if (v.kind != ComponentValue::Kind::Function)
                 return std::nullopt;
             const std::string name = lowerAscii(v.name());
-            std::vector<ComponentValue> args = words(v.children);
+            ValueList args = words(v.children);
             if (name == "drop-shadow"){
                 std::vector<std::string> lengths;
                 std::string color;
@@ -98,16 +98,16 @@ namespace {
         return join(out);
     }
 
-    std::string classifyFilters(Session& session, const std::vector<ComponentValue>& value){
-        std::vector<ComponentValue> w = words(value);
+    std::string classifyFilters(Session& session, const ValueList& value){
+        ValueList w = words(value);
         if (w.size() == 1 && isIdent(w[0], "none"))
             return "filters";
         bool droppedUrl = false;
         return filters(session, value, "#000000ff", droppedUrl) ? "filters" : std::string();
     }
 
-    std::optional<std::string> transformFilters(Session& session, const std::vector<ComponentValue>& value, const std::string&, SourceRef){
-        std::vector<ComponentValue> w = words(value);
+    std::optional<std::string> transformFilters(Session& session, const ValueList& value, const std::string&, SourceRef){
+        ValueList w = words(value);
         if (w.size() == 1 && isIdent(w[0], "none"))
             return std::string("none");
         bool droppedUrl = false;
@@ -122,7 +122,7 @@ void jasperengine::htmlui::compat::rewriteFilter(DeclContext& context){
     std::string name = context.name;
     if (name == "-webkit-backdrop-filter")
         name = "backdrop-filter";
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1 && isIdent(w[0], "none")){
         context.emit(name, "none");
         return;
@@ -154,11 +154,11 @@ std::optional<std::string> jasperengine::htmlui::compat::clipPathShape(DeclConte
     NormalizeContext normalize;
     normalize.property = "clip-path";
     normalize.options = context.session.options;
-    normalize.resolveVar = [&context](const ComponentValue& var, std::vector<ComponentValue>& out){ return context.session.staticVar(var, out); };
+    normalize.resolveVar = [&context](const ComponentValue& var, ValueList& out){ return context.session.staticVar(var, out); };
     NormalizeResult normalized = ValueNormalizer::normalize(declaration.value, normalize);
     if (!normalized.ok)
         return std::nullopt;
-    std::vector<ComponentValue> w = words(normalized.value);
+    ValueList w = words(normalized.value);
     if (w.size() == 1 && isIdent(w[0], "none"))
         return std::nullopt;
     std::string shape, box;

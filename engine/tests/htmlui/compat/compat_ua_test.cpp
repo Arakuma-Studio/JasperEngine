@@ -75,7 +75,7 @@ namespace {
 
     std::vector<std::string> selectorsOf(const Rule& rule){
         std::vector<std::string> selectors;
-        for (const std::vector<ComponentValue>& part : splitAtCommas(rule.prelude))
+        for (const ValueList& part : splitAtCommas(rule.prelude))
             selectors.push_back(serialize(trimWhitespace(part)));
         return selectors;
     }

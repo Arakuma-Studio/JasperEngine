@@ -47,7 +47,7 @@ namespace jasperengine::htmlui::compat {
         // keywords of a relative color: "r", "h", "alpha", ...)
         std::function<std::optional<double>(std::string_view identifier)> identifier;
         // A var() function's static replacement; false when the variable is not static
-        std::function<bool(const ComponentValue& var, std::vector<ComponentValue>& replacement)> resolveVar;
+        std::function<bool(const ComponentValue& var, ValueList& replacement)> resolveVar;
         // px per relative unit (em, rem, vw, vh, %, ...) to compare or reduce incomparable
         // terms with the load-time context; nullopt = unknown (the expression cannot fold)
         std::function<std::optional<double>(std::string_view unit)> pxPerUnit;
@@ -72,7 +72,7 @@ namespace jasperengine::htmlui::compat {
         // or needs a context it does not have.
         static std::optional<CalcValue> evaluate(const ComponentValue& value, CalcContext& context, std::string* error = nullptr);
         // The sum of a list of component values (the inside of calc()).
-        static std::optional<CalcValue> evaluateSum(const std::vector<ComponentValue>& values, CalcContext& context,
+        static std::optional<CalcValue> evaluateSum(const ValueList& values, CalcContext& context,
                                                     std::string* error = nullptr);
 
         // Resolves every relative term with context.pxPerUnit into px (numbers stay); nullopt
