@@ -173,6 +173,12 @@ namespace jasperengine{
         // NULL_ENTITY when that was the screen context, the game or nothing
         Entity getTextureFocus() const;
 
+        // ---- phase 2 ----
+        // --- p2-importers: the editor's AppSettings::htmlUiVerboseDiagnostics; document loads
+        // build CompatOptions::verboseDiagnostics from it (Info diagnostics logged one by one) ---
+        static void setVerboseDiagnostics(bool verbose);
+        static bool getVerboseDiagnostics();
+
     private:
         // HtmlUI::acquire and the context, the first time the scene has a document
         bool ensureContext();

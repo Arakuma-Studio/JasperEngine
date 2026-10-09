@@ -1,0 +1,5 @@
+/* @import chain: b.css imports this sheet back (a cycle), Google Fonts by URL */
+@import url("b.css");
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@700");
+.chain-a { background: url(https://images.example.com/photo?w=800) center / cover; font-family: "Orbitron", sans-serif; }
+@media (min-width: 600px) { .chain-a { background-image: url('../fa/img/wide.png'); } }

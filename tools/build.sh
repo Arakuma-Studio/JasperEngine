@@ -6,6 +6,7 @@
 #   tools/build.sh web [--clean]       engine sample project for Emscripten
 #   tools/build.sh android [--clean]   engine sample project APK (debug)
 #   tools/build.sh htmlui-tests [--clean]  builds and runs jasperengine-htmlui-tests headless
+#   tools/build.sh htmlui-editor-tests      builds the linux editor with jasperengine-htmlui-editor-tests, runs them
 #   tools/build.sh shell <target>      interactive shell in that target's image
 #
 # BUILD_TYPE overrides the CMake build type (default Release, Debug for web).
@@ -14,6 +15,8 @@
 # htmlui-tests: HTMLUI_BACKEND=glcore|vulkan (default glcore), RUN=0 builds only,
 # HTMLUI_TEST_ARGS goes to the test binary (e.g. --gtest_filter=Golden*),
 # JASPER_HTMLUI_UPDATE_GOLDEN=1 rewrites the golden images (glcore only).
+# htmlui-editor-tests: HTMLUI_TEST_ARGS goes to the test binary, RUN=0 builds only,
+# HTMLUI_LIVE_NETWORK=1 adds the live Google Fonts test.
 # From a git worktree, the main checkout's ccache and .git are shared.
 set -euo pipefail
 
@@ -22,7 +25,7 @@ EDITOR_TARGET=jasperengine-editor
 ENGINE_TARGET=jasperengine-project
 
 usage() {
-    sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -43,13 +46,13 @@ for arg in "$@"; do
 done
 
 case "$TARGET" in
-    linux|web|android|htmlui-tests) ;;
+    linux|web|android|htmlui-tests|htmlui-editor-tests) ;;
     *) usage ;;
 esac
 
 # The tests run in the linux image, next to the linux build output
 IMAGE_TARGET="$TARGET"
-[[ "$TARGET" == htmlui-tests ]] && IMAGE_TARGET=linux
+[[ "$TARGET" == htmlui-tests || "$TARGET" == htmlui-editor-tests ]] && IMAGE_TARGET=linux
 IMAGE="jasperengine/${IMAGE_TARGET}-build"
 OUT="build/$IMAGE_TARGET"
 CACHE="build/.cache"
@@ -58,8 +61,9 @@ MAIN="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/
 JOBS_FLAG=""
 [[ -n "${JOBS:-}" ]] && JOBS_FLAG="-j $JOBS"
 
-# Rebuilding an unchanged image is a no-op thanks to the layer cache.
-docker build -q -t "$IMAGE" -f "$ROOT/docker/$IMAGE_TARGET.Dockerfile" "$ROOT/docker" >/dev/null
+# Rebuilding an unchanged image is a no-op thanks to the layer cache. The containers run the
+# image by id: other worktrees (with another Dockerfile) may retag the shared name meanwhile.
+IMAGE_ID="$(docker build -q -t "$IMAGE" -f "$ROOT/docker/$IMAGE_TARGET.Dockerfile" "$ROOT/docker")"
 
 HTMLUI_BACKEND="${HTMLUI_BACKEND:-glcore}"
 LINUX_BACKEND="${GRAPHIC_BACKEND:-glcore}"
@@ -76,7 +80,7 @@ CLEAN_DIR="$OUT"
 
 if [[ $CLEAN -eq 1 ]]; then
     # Files inside may belong to the container user; remove them from inside.
-    docker run --rm -v "$ROOT:/src" -w /src "$IMAGE" rm -rf "$CLEAN_DIR"
+    docker run --rm -v "$ROOT:/src" -w /src "$IMAGE_ID" rm -rf "$CLEAN_DIR"
 fi
 mkdir -p "$ROOT/$OUT" "$ROOT/$CACHE/home" "$MAIN/$CACHE/ccache"
 
@@ -84,6 +88,7 @@ TTY_FLAGS=()
 [[ -t 0 && -t 1 ]] && TTY_FLAGS=(-it)
 ENV_FLAGS=()
 [[ -n "${JASPER_HTMLUI_UPDATE_GOLDEN:-}" ]] && ENV_FLAGS+=(-e "JASPER_HTMLUI_UPDATE_GOLDEN=$JASPER_HTMLUI_UPDATE_GOLDEN")
+[[ -n "${HTMLUI_LIVE_NETWORK:-}" ]] && ENV_FLAGS+=(-e "HTMLUI_LIVE_NETWORK=$HTMLUI_LIVE_NETWORK")
 
 run() {
     docker run --rm "${TTY_FLAGS[@]}" \
@@ -95,7 +100,7 @@ run() {
         -e CCACHE_DIR=/ccache \
         -e GRADLE_USER_HOME="/src/$CACHE/gradle" \
         "${ENV_FLAGS[@]}" \
-        "$IMAGE" "$@"
+        "$IMAGE_ID" "$@"
 }
 
 if [[ $SHELL_MODE -eq 1 ]]; then
@@ -153,6 +158,17 @@ htmlui-tests)
         set -f  # a --gtest_filter pattern is not a glob
         env $VK_ENV xvfb-run -a -s '-screen 0 1600x900x24' \
             $TESTS_DIR/tests/htmlui/jasperengine-htmlui-tests ${HTMLUI_TEST_ARGS:-}
+    "
+    ;;
+htmlui-editor-tests)
+    BT="${BUILD_TYPE:-Release}"
+    run bash -euo pipefail -c "
+        cmake -S . -B $OUT/editor -G Ninja -DCMAKE_BUILD_TYPE=$BT -DJASPERENGINE_HTMLUI_EDITOR_TESTS=ON \
+            -DCMAKE_INSTALL_PREFIX=$OUT/editor-install $CCACHE_FLAGS
+        cmake --build $OUT/editor --target jasperengine-editor jasperengine-htmlui-editor-tests $JOBS_FLAG
+        [[ '${RUN:-1}' == 0 ]] && exit 0
+        set -f  # a --gtest_filter pattern is not a glob
+        xvfb-run -a -s '-screen 0 1600x900x24' $OUT/editor/jasperengine-htmlui-editor-tests ${HTMLUI_TEST_ARGS:-}
     "
     ;;
 android)

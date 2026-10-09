@@ -1,0 +1,6 @@
+/* a stylesheet whose font only comes as WOFF2/WOFF */
+@font-face {
+  font-family: "Woff Only";
+  src: url(fonts/woffonly.woff2) format("woff2"), url(fonts/woffonly.woff) format("woff");
+}
+.woff-only { font-family: "Woff Only", sans-serif; }
