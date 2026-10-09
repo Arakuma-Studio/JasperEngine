@@ -42,6 +42,7 @@ namespace jasperengine::htmlui::compat {
 
     protected:
         void OnLayout() override;
+        void OnRender() override;
         void OnAttributeChange(const Rml::ElementAttributes& changed_attributes) override;
 
         // the marker's text (the summary element overrides it with the disclosure triangle)
@@ -57,6 +58,7 @@ namespace jasperengine::htmlui::compat {
         float markerShapeSize = 0.0f;          // em
         float markerShapeSide = -1.0f;         // px last set
         std::string markerShapeMarkup;
+        bool markerShapeShown = true;          // shapes follow the font engine's text switch (tests)
         std::string markerText;                // the ListMarkers text
         std::string shownText;                 // what the marker's text node shows
         std::string markerImageSource;

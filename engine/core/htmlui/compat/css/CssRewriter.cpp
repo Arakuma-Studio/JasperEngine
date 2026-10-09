@@ -32,10 +32,16 @@
 #include "htmlui/compat/css/props/Rewriters.h"
 
 #include <algorithm>
+#include <array>
+#include <map>
 #include <cstring>
 #include <set>
 
 using namespace jasperengine::htmlui::compat;
+
+namespace {
+    void boxShorthandCompanions(Session& session, const OutDecl& out, std::vector<OutDecl>& extra);
+}
 
 // ---- DeclContext
 
@@ -1325,6 +1331,8 @@ namespace {
                 extra.push_back(OutDecl{companions::kCurrentColor, out.value, out.ref, out.important, false, true});
             if (session.inheritCompanions.count(out.name) && out.value.find("--html-inh-") == std::string::npos && !keyword)
                 extra.push_back(OutDecl{companions::inheritName(out.name), out.value, out.ref, out.important, false, true});
+            else if (!keyword && out.value.find("--html-inh-") == std::string::npos)
+                boxShorthandCompanions(session, out, extra);
         }
         for (OutDecl& e : extra)
             output.declarations.push_back(std::move(e));
@@ -1344,6 +1352,57 @@ namespace {
                     }
                 }
             }
+        }
+    }
+
+}
+
+namespace {
+
+    // A box shorthand RCSS keeps as a shorthand (border-radius: 16px) whose longhands some rule
+    // reads with `inherit`: the companions of the longhands (`--html-inh-border-top-left-radius`),
+    // one value per side or corner by the CSS 1-4 value rule
+    void boxShorthandCompanions(Session& session, const OutDecl& out, std::vector<OutDecl>& extra){
+        static const std::map<std::string, std::array<const char*, 4>> shorthands = {
+            {"border-radius", {"border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius"}},
+            {"margin", {"margin-top", "margin-right", "margin-bottom", "margin-left"}},
+            {"padding", {"padding-top", "padding-right", "padding-bottom", "padding-left"}},
+            {"inset", {"top", "right", "bottom", "left"}},
+        };
+        const auto found = shorthands.find(out.name);
+        if (found == shorthands.end())
+            return;
+        bool wanted = false;
+        for (const char* longhand : found->second)
+            wanted = wanted || session.inheritCompanions.count(longhand) > 0;
+        if (!wanted || out.value.find('/') != std::string::npos)
+            return;
+        // the values, split at top-level spaces (var() and functions keep theirs)
+        std::vector<std::string> values;
+        std::string current;
+        int depth = 0;
+        for (char c : out.value){
+            if (c == '(')
+                depth++;
+            else if (c == ')')
+                depth--;
+            if (c == ' ' && depth == 0){
+                if (!current.empty())
+                    values.push_back(current);
+                current.clear();
+                continue;
+            }
+            current += c;
+        }
+        if (!current.empty())
+            values.push_back(current);
+        if (values.empty() || values.size() > 4)
+            return;
+        const size_t n = values.size();
+        const std::string sides[4] = {values[0], values[n > 1 ? 1 : 0], values[n > 2 ? 2 : 0], values[n > 3 ? 3 : (n > 1 ? 1 : 0)]};
+        for (int i = 0; i < 4; i++){
+            if (session.inheritCompanions.count(found->second[i]))
+                extra.push_back(OutDecl{companions::inheritName(found->second[i]), sides[i], out.ref, out.important, false, true});
         }
     }
 
