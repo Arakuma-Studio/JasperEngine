@@ -525,6 +525,13 @@ namespace {
             return layerImage(scope, *candidate, layer, dropped);
         }
         if (name == "var"){
+            // a static variable is read as what it holds; a dynamic one is written as is
+            std::vector<ComponentValue> replacement;
+            if (scope.session.staticVar(v, replacement)){
+                std::vector<ComponentValue> w = words(replacement);
+                if (w.size() == 1 && layerImage(scope, w[0], layer, dropped))
+                    return true;
+            }
             layer.kind = Layer::Kind::Var;
             layer.image = text(v);
             return true;
@@ -806,30 +813,23 @@ namespace {
                     return false;
                 layer.positionSet = true;
             }else if (name == "background-position-x" || name == "background-position-y"){
-                Axis x, y;
-                std::vector<ComponentValue> one = w;
-                if (one.size() == 1 && one[0].isToken(TokenType::Ident) && name == "background-position-y"){
-                    // "top" / "bottom" / "center"
-                    if (!parsePosition(scope.session, one, x, y))
-                        return false;
-                    layer.y = y;
-                }else if (name == "background-position-y"){
-                    Axis tmp;
-                    std::vector<ComponentValue> withX{ValueNormalizer::ident("left")};
-                    withX.push_back(ValueNormalizer::whitespace());
-                    withX.insert(withX.end(), one.begin(), one.end());
-                    if (!parsePosition(scope.session, one, x, y) || one.size() != 1){
-                        if (!parsePosition(scope.session, withX, tmp, y))
-                            return false;
-                    }else{
-                        y = x;
-                    }
-                    layer.y = y;
-                }else{
-                    if (!parsePosition(scope.session, one, x, y))
-                        return false;
-                    layer.x = x;
+                // one axis: read as a position with the other axis centered
+                const bool horizontal = name == "background-position-x";
+                std::vector<ComponentValue> position;
+                if (!horizontal){
+                    position.push_back(ValueNormalizer::ident("center"));
+                    position.push_back(ValueNormalizer::whitespace());
                 }
+                for (const ComponentValue& v : w){
+                    position.push_back(v);
+                    position.push_back(ValueNormalizer::whitespace());
+                }
+                if (horizontal)
+                    position.push_back(ValueNormalizer::ident("center"));
+                Axis x, y;
+                if (w.empty() || !parsePosition(scope.session, position, x, y))
+                    return false;
+                (horizontal ? layer.x : layer.y) = horizontal ? x : y;
                 layer.positionSet = true;
             }else if (name == "background-size"){
                 if (!setSize(scope.session, layer, w))

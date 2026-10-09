@@ -185,10 +185,6 @@ std::optional<TypedVar> Session::typedVar(const ComponentValue& var, const std::
 
 namespace {
 
-    bool isWs(const ComponentValue& v){
-        return v.isWhitespace() || v.isToken(TokenType::Comment);
-    }
-
     // ---- Damerau-Levenshtein for unknown property suggestions
 
     size_t editDistance(const std::string& a, const std::string& b){
@@ -1042,7 +1038,9 @@ namespace {
                 return;
 
             // 6. the property rewrite
-            if (row->rewrite != RewriteId::None){
+            if (name == "transform" && rule && ruleHasIndividualTransform(*rule)){
+                // written with translate / rotate / scale (Transform.cpp)
+            }else if (row->rewrite != RewriteId::None){
                 if (RewriteFunction function = findRewrite(row->rewrite))
                     function(context);
             }else{
@@ -1225,20 +1223,11 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
             output.rcss = writer.take(output.lines);
             if (!out.generated.empty()){
                 // rules a style attribute generates (grid children, scrollbars) select the element by its location
-                Session::ImportantRule generated;
-                generated.rule = nullptr;
-                FlatRule synthetic;
-                synthetic.index = (uint32_t)-1;
-                synthetic.origin = RuleOrigin::Author;
-                RewrittenSelector selector;
-                selector.text = "#htmlui-root [data-htmlui-loc=\"" + std::to_string(input.elementLoc) + "\"]";
-                synthetic.rewritten.push_back(selector);
-                RcssWriter importantWriter;
-                (void)importantWriter;
+                const std::string selector = "#htmlui-root [data-htmlui-loc=\"" + std::to_string(input.elementLoc) + "\"]";
                 for (const GeneratedRule& g : out.generated){
                     StylesheetOutput& sheet = result.importantSheet;
                     RcssWriter w;
-                    writeBlock(w, selector.text + g.suffix, g.declarations, g.declarations.empty() ? SourceRef() : g.declarations.front().ref);
+                    writeBlock(w, selector + g.suffix, g.declarations, g.declarations.empty() ? SourceRef() : g.declarations.front().ref);
                     RcssLineMap lines;
                     const std::string text = w.take(lines);
                     sheet.rcss += text;

@@ -14,6 +14,8 @@
 #include "htmlui/compat/css/RcssGrammar.h"
 #include "htmlui/compat/css/Units.h"
 
+#include <cmath>
+
 using namespace jasperengine::htmlui::compat;
 using namespace jasperengine::htmlui::compat::props;
 
@@ -43,8 +45,6 @@ namespace {
     bool parseShadow(Session& session, const std::vector<ComponentValue>& group, Shadow& shadow){
         for (const ComponentValue& v : words(group)){
             if (isLength(session, v)){
-                if (!shadow.color.empty() && shadow.lengths.size() >= 2 && false)
-                    return false;
                 shadow.lengths.push_back(v);
             }else if (isColor(session, v) || isVar(v)){
                 if (!shadow.color.empty())

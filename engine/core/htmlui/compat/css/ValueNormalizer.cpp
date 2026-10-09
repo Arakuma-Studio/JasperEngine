@@ -317,8 +317,11 @@ namespace {
                 result.dependsOnViewport = true;
                 report(codes::ForkFallback, Severity::Warning, "'" + written + "' compares a percentage with a length; it is decided for the current viewport",
                        "set the size with max-width / min-width, or flex");
-            }else if (calc.usedViewport){
-                result.dependsOnViewport = true;
+            }else if (calc.usedContext){
+                if (calc.usedViewport)
+                    result.dependsOnViewport = true;
+                report(codes::ViewportDependent, Severity::Info, "'" + written + "' compares values in different units; it is decided for the load-time context" +
+                       std::string(calc.usedViewport ? " and re-evaluated when the viewport changes" : ""));
             }
             CalcValue folded = *value;
             if (folded.terms.size() > 1){

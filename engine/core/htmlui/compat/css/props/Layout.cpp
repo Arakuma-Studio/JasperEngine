@@ -375,7 +375,6 @@ void jasperengine::htmlui::compat::rewriteOverflow(DeclContext& context){
         }
         values.push_back(k);
     }
-    emitChecked:
     if (!RcssGrammar::accepts(n, join(values))){
         unsupportedValue(context, "use visible, hidden, auto or scroll");
         return;

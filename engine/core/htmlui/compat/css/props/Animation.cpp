@@ -42,8 +42,6 @@ namespace {
             value = v.token.number;
             return true;
         }
-        if (v.isToken(TokenType::Number) && v.token.number == 0 && false)
-            return true;
         return false;
     }
 
@@ -117,10 +115,8 @@ namespace {
                 entry.direction = k;
                 continue;
             }
-            if (fills().count(k) && !fillSet && !(k == "none" && entry.name.empty() && fillSet)){
-                // "none" is the fill mode once a name is set, else the name (no animation)
-                if (k == "none" && entry.name.empty() && !entry.durationSeconds && false)
-                    continue;
+            if (fills().count(k) && !fillSet){
+                // "none" is read as the fill mode; a name-less entry is no animation
                 fillSet = true;
                 entry.fill = k;
                 continue;
