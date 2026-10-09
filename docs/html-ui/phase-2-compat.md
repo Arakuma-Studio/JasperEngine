@@ -814,7 +814,7 @@ stylesheet set, script list, template list, element counter).
 
 | Input | Result |
 |---|---|
-| relative path (`img/a.png`, `../fonts/x.ttf`) | asset-relative path joined with the referencing file's directory, normalized; emitted with a leading `/` in RML/RCSS so RmlUi's `JoinPath` keeps it |
+| relative path (`img/a.png`, `../fonts/x.ttf`) | asset-relative path joined with the referencing file's directory, normalized; emitted as `asset://<path>` in RML/RCSS so RmlUi's `JoinPath` keeps it (as implemented by p2-html: a leading `/` is an absolute filesystem path for phase 1's `JoinPath` and the engine's file layer) |
 | root-relative `/ui/a.png` | asset-relative `ui/a.png` |
 | `http(s)://…`, `//host/…` | looked up in the import manifest; hit → local asset path; miss → `HTMLUI-IMP-0001` Error (suggestion: "import it: MCP `import_files` or `jasperengine-editor import-ui`") + fallback per kind (3.13.6) |
 | `data:[mime][;base64],…` | decoded; stored in `VirtualFiles` as `@htmlui/data/<sha1-12>.<ext>` (ext from mime: png, jpg, gif, svg, json, ttf, otf); emitted as `/@htmlui/data/…` |
@@ -2567,6 +2567,92 @@ list says where each wave-2 package plugs in without editing p2-core's files.
   `data-htmlui-loc`, `template.content`, inline Lua script runs with `document` and reports
   errors at the HTML line), `compat_perf_test.cpp` (3.14 HTML rows, Release only).
 
+#### p2-html as implemented
+
+Built by p2-html (October 2026). Where the code differs from or adds to the text above:
+
+- **lexbor** is `master` at `f4cbbcd` (its `version` file says 3.1.0; upstream has no 3.1.0
+  tag). The source-offset fields are defined in the patched `dom/interfaces/node.h` (a
+  compiler definition cannot carry `;` through CMake lists); the patch also records the range of
+  elements made from an end tag (`</br>`) and of text and comment tokens (`PATCHES.md`). A
+  per-thread lexbor document is reused (cleaned) between parses. Xcode: `lexbor-ios`/`lexbor-macos`
+  targets (`tools/htmlui/xcode_add_lexbor.py`). `tools/build.sh linux` fails if
+  `libjasperengine.so` exports an `lxb_`/`lexbor_` symbol.
+- **URLs.** `UrlResolver` emits `asset://<path>` for local and imported files (not `/<path>`:
+  phase 1 made `RmlSystem::joinPath` keep absolute paths, and the engine's file layer reads a
+  leading `/` as the filesystem root); virtual files stay `/@htmlui/…`. A document opened by an
+  absolute filesystem path (tests, tools) keeps its references absolute, as in phase 1.
+- **HTML stage.** `html/HtmlTree.h` (`HtmlNode` also has `selfClosingSyntax`, a `Raw` kind for
+  Lucide shapes, and the compile's `loc`/rewritten style), `html/HtmlParser` (`parseDocument`,
+  `parseFragment`, depth limit 512 like Chromium), `html/HtmlTransform.h` (`TransformContext`,
+  one function per pass in `html/transforms/{Head,Element,Lucide,Form,Attribute}Transform.cpp`),
+  `html/RmlSerializer`. Additions to §3.7.3: `<div/>` on a non-void HTML element is reported with
+  the new code `HTMLUI-HTML-0026 self-closing-tag` (Warning: it changes the layout); the engine's
+  own `<lottie/>` is treated as void; `<link type="text/css" href>` without `rel` (RmlUi's and
+  phase 1's form) is loaded with an `HTMLUI-HTML-0010` Info; `title` attributes are kept (selectors
+  like `abbr[title]`) and reported Info; a `<noscript>` is unwrapped; `<slot>` is unwrapped;
+  a nested `<svg>` inside inline SVG becomes `<g>` (RmlUi reads inline SVG as raw text up to the
+  first `</svg>`, `HTMLUI-SVG-0002`); names that are not XML names (`<b<`) are sanitized; scripts
+  in templates or fragments are not run (`HTMLUI-HTML-0007` Info); a `<template>` placeholder
+  carries `data-htmlui-template="<n>"`; presentational hints are written as RCSS directly (not
+  through the rewriter; in fragments they go first in `style=""`). SVG `currentColor`
+  preprocessing is left to the `<svg>` element (H8, p2-runtime), which sees inline SVG too.
+  Lucide expansion uses p2-runtime's `runtime/LucideIcons.h` when the build has it
+  (`__has_include`; without it `HTMLUI-HTML-0021` says the pack is missing).
+- **RML shape.** A start tag starts a new RML line when it follows another tag (inserting a line
+  break after text would add a space). RmlUi drops whitespace-only text nodes, so a space
+  between two inline elements (`<b>a</b> <i>b</i>`) is lost, as in phase 1; inside `pre`-like
+  elements whitespace-only text is written as character references, which RmlUi keeps.
+- **DocumentLoader** (`DocumentLoader.h`): as specified, plus `compile(path, options, files)`
+  (uncached, for checks), `restyle(document, shared_ptr, options)` (rebinds the document),
+  `restyleForViewport` returns the compile now in use, `fragmentToRml(..., FragmentOptions)`
+  (document path, options, context tag), `compiledOf/diagnosticsOf/addRuntimeDiagnostic`
+  (a binding per loaded document, removed when RmlUi destroys it), `registerDocument`,
+  `applyAutofocus`, `checkFontFamilies`, `isCompatDocument`, `sameRml`, `cacheSize`.
+  `CompatDocument` also keeps the options, the virtual directory/owner, the hint and
+  `!important` sheets with the RML lines of every inline sheet, the rewritten `style=""` values
+  by location, dependency stamps, font families. `DocumentScript` has `sourceFile`/`firstLine`:
+  the chunk runs with that many leading line breaks, so Lua reports `ui/menu.html:45:`.
+  Cache: per document path and options, an entry is valid while every dependency stamp
+  (content hash of the files read, existence of the others) is current; at most 64 entries
+  (least recently used go, with their virtual files); missing documents are not cached. The
+  virtual directory is `@htmlui/doc/<per-compile owner>/` (unique, so RmlUi's sheet cache never
+  serves a stale sheet); `data:` URIs are content-addressed and live for the process.
+  `RewriteContext` gained `rootId` and `rootDirection` (the author id and `dir` of `<html>`) for
+  p2-css.
+- **checkDocument** (`CompatApiDocument.cpp`) compiles through `CheckOptions::files`; with
+  `verifyWithRmlUi` it loads the RML into a scratch context (a null render interface, empty
+  data models for every `data-model`) inside a capture and maps the messages, then runs the
+  font check. `isHtmlDocumentPath` was added for the editor.
+- **Hooks.** H1/H1b in `HtmlUIContext::loadDocument` (options from the context: size, density
+  ratio, touch, themes, the static verbose flag `UIDocumentSystem::setVerboseDiagnostics`, which
+  p2-importers wires to `AppSettings::htmlUiVerboseDiagnostics`); `HtmlUIContext::setDimensions`
+  restyles viewport-dependent documents; `setColorScheme/setReducedMotion` activate the RmlUi
+  themes `light`/`dark`/`reduced-motion`; a transparent `htmlbody` lets the pointer through like
+  a transparent document. H2 in `UIDocumentSystemReload.cpp` (compat dependencies in the file
+  list, `invalidate` + `ImportManifest::notifyFileChanged` for every changed file, the manifest
+  counts as a stylesheet change, `reloadStyleSheets` recompiles and restyles when the RML,
+  scripts and templates are unchanged, else reloads in full). H4/H5 in `UIDocument`/`UIElement`
+  (C++ and Lua alike): `getDocumentElement`, `getDiagnostics`, `setColorScheme`,
+  `setReducedMotion`, `getLocalName`, `get/setOuterHTML`, `insertAdjacentHTML`, `getContent`
+  (`template.content`, a detached `htmlfragment` whose children `appendChild`/`insertBefore`
+  move), `show/showModal/close` (dialogs), `get/setCssText`; on HTML documents `getTagName` is the
+  DOM tagName (upper case: `DIV`, `BODY`, `HTML`, `TEMPLATE`), `getBody` is the HTML body.
+  Document scripts run once the scene's Lua scripts started (`LuaBinding::initializeLuaScripts`
+  calls `UIDocumentSystem::startDocumentScripts`) and after every later (re)load, before the
+  context update; play stop (`releaseScriptState`) stops them. The `htmlnavigate` default action
+  is a listener on the context root (bubble phase, so any listener can prevent it). H14 runs
+  `checkDocument` for `.html`/`.htm` exports. Code lives in `UIDocumentSystemCompat.cpp`
+  (`HtmlUICompatState`).
+- **Phase-0/1 fixtures** written in RML dialect (`<div/>`, RCSS) were renamed `.rml` (they test
+  the renderer and the RML path); the editor's *Create > HTML Document* template is standard
+  HTML/CSS now.
+- **Tests:** `compat_html_test.cpp` (25 golden cases in `fixtures/compat/html/`, the `.rml` golden
+  also lists templates, virtual sheets and Lua chunks), `compat_html5lib_test.cpp` (html5lib
+  tree-construction corpus at its last commit before the move to WPT), `compat_sourcemap_test.cpp`,
+  `compat_loader_test.cpp`, `compat_lua_test.cpp`, `compat_perf_test.cpp` (CPU time, scaled by
+  `JASPER_HTMLUI_PERF_SLACK` on loaded hosts), `CompatApi.CheckDocumentCompilesTheDocument`.
+
 ### p2-css (wave 2): CSS rewriting
 
 - **Owns:** `compat/css/CssRewriter.cpp` (replacing the seam), `css/ColorValue.*`,
@@ -3423,6 +3509,7 @@ in section 3.
 | HTMLUI-HTML-0023 | Info | link-not-navigable | external or non-HTML link only dispatches `htmlnavigate` |
 | HTMLUI-HTML-0024 | Warning | unsupported-image-format | WebP/AVIF/other undecodable image |
 | HTMLUI-HTML-0025 | Info | dialog-not-modal | dialogs have no modal backdrop or focus trap |
+| HTMLUI-HTML-0026 | Warning | self-closing-tag | `<div/>` on an element that is not void does not close it (added by p2-html) |
 | HTMLUI-CSS-0001 | Warning | unknown-property | not a CSS property (suggestion: closest name) |
 | HTMLUI-CSS-0002 | by case | unsupported-property | CSS property not supported; dropped |
 | HTMLUI-CSS-0003 | Info | ignored-property | property has no effect in the engine |
