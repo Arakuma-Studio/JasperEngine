@@ -152,5 +152,20 @@ async def test_failed_url_not_retried(ed: Editor):
     ed.check_eq(after, before, "the failed URL is not retried in the same session")
 
 
+async def test_inspector_panel(ed: Editor):
+    """The Inspector's Remote resources section (H10); the screenshot is for a human to look at."""
+    if "scene" not in S:
+        skip("setup skipped")
+    await ed.call("select_scene", scene=S["scene"])
+    await ed.call("select_entities", scene=S["scene"], entity=S["entity"])
+    await ed.call("focus_window", window="inspector")
+    await asyncio.sleep(1.0)
+    shot = await ed.call_raw("screenshot", {"view": "editor", "max_width": 1600})
+    ed.check(not shot.is_error and shot.images, f"editor screenshot: {shot.text[:300]}")
+    out = ed.scratch.root / "html-ui-imports-inspector.png"
+    out.write_bytes(shot.images[0][0])
+    print(f"inspector screenshot: {out}")
+
+
 async def test_cleanup():
     shutil.rmtree(MIRROR, ignore_errors=True)
