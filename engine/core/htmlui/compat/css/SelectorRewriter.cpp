@@ -1103,8 +1103,7 @@ namespace {
         template<typename Emit>
         void band(const ComplexSelector& selector, const Emit& emit){
             if (!author() || startsAtRoot(selector)){
-                std::string text;
-                text.reserve(48);
+                std::string text;   // (often short: kept in the string itself)
                 appendComplex(text, selector);
                 emit(std::move(text), SelectorRewriter::specificity(selector));
                 return;
