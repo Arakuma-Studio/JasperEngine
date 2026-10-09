@@ -133,6 +133,9 @@ namespace jasperengine::htmlui::compat {
         ValueList value;  // trimmed, without !important
         bool important = false;
         SourceRef ref, nameRef, valueRef;   // whole declaration (through the value / !important), name, value
+        // the declaration as written (the bytes of ref, in the parser's copy of the source);
+        // empty for a declaration that was not parsed from a style sheet or a style attribute
+        Text text;
 
         bool isCustomProperty() const { return name.size() >= 2 && name[0] == '-' && name[1] == '-'; }
     };

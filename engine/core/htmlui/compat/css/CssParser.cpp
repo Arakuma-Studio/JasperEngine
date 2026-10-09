@@ -609,6 +609,7 @@ namespace {
             declaration.valueRef = declaration.value.empty() ? ref(valueBegin, valueBegin)
                                                              : ref(declaration.value.front().offset, endOf(declaration.value.back()));
             declaration.ref = ref(nameToken.offset, declarationEnd);
+            declaration.text = Text::view(std::string_view(sourceCopy + (nameToken.offset - base), declarationEnd - nameToken.offset));
             return true;
         }
 

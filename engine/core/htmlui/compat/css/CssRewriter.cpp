@@ -35,6 +35,8 @@
 #include <algorithm>
 #include <array>
 #include <map>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <set>
 
@@ -59,6 +61,7 @@ void DeclContext::emit(Text property, Text value, SourceRef ref){
 }
 
 void DeclContext::generate(const std::string& suffix, const std::string& property, const std::string& value){
+    session.memoTaint++;   // (a generated rule: not a declaration of the rule's own block)
     for (GeneratedRule& rule : output.generated){
         if (rule.suffix == suffix){
             OutDecl out{property, value, declaration.ref, false, false};
@@ -95,6 +98,7 @@ std::string DeclContext::valueText() const{
 }
 
 std::string DeclContext::sourceText() const{
+    session.memoTaint++;   // (of the declaration as written, which a made declaration does not have)
     return declaration.name + ": " + serialize(trimWhitespace(declaration.value));
 }
 
@@ -106,6 +110,16 @@ bool DeclContext::fork(ForkFeature feature) const{
 
 Session::Session(const CompatOptions& options, SourceFiles& files, DiagnosticSink& sink, const RewriteContext& context):
     options(options), files(files), sink(&sink), context(context), urls(context.files, context.manifest) {
+    mainSink = &sink;
+    // JASPER_HTMLUI_CSS_MEMO: "off" (no declaration memo), "check" (every hit compared)
+    static const int memoMode = [](){
+        const char* value = std::getenv("JASPER_HTMLUI_CSS_MEMO");
+        if (!value)
+            return 0;
+        return std::strcmp(value, "off") == 0 ? 1 : (std::strcmp(value, "check") == 0 ? 2 : 0);
+    }();
+    memoDisabled = memoMode == 1;
+    memoCheck = memoMode == 2;
     selectorOptions.fork = options.fork;
     for (const auto& attribute : context.rootAttributes){
         const std::string name = lowerAscii(attribute.first);
@@ -166,10 +180,12 @@ std::string Session::keyframeName(const std::string& css){
 }
 
 bool Session::staticVar(const ComponentValue& var, ValueList& out) const{
+    memoTaint++;
     return vars.resolve(var, out);
 }
 
 std::optional<TypedVar> Session::typedVar(const ComponentValue& var, const std::string& family){
+    memoTaint++;
     ValueList fallback;
     bool hasFallback = false;
     const std::string name = CustomPropertyIndex::varName(var, &fallback, &hasFallback);
@@ -1144,6 +1160,7 @@ namespace {
                 *declaredFacts = &facts;
             return d.name;
         }
+        session.memoTaint++;   // (the block's other declarations decide a prefixed property)
         for (const char* prefix : {"-webkit-", "-moz-", "-ms-", "-o-"}){
             const std::string p(prefix);
             if (d.name.compare(0, p.size(), p) != 0)
@@ -1191,6 +1208,296 @@ namespace {
     }
 
     // one declaration through the pipeline of §3.9.6
+    // what processDeclared made of a declaration
+    struct Processed {
+        bool completed = false;   // the pipeline ran to its end (not dropped on the way)
+        std::string name;         // the effective property name
+    };
+
+    // The pipeline of a declared property (not a custom property): its declarations are
+    // appended to output.declarations from `first` on.
+    Processed processDeclared(Session& session, const FlatRule* rule, RuleOrigin origin, bool keyframe, const Declaration& d,
+                              const DeclarationList& block, RuleOutput& output, const size_t first){
+        Processed done;
+        bool silentlyDropped = false;
+        const PropertyFacts* declaredFacts = nullptr;
+        std::string name = effectiveName(session, d, block, silentlyDropped, &declaredFacts);
+        if (silentlyDropped)
+            return done;
+        if (name.empty()){
+            const std::string closest = closestProperty(d.name);
+            session.sink->report(codes::UnknownProperty, d.nameRef.valid() ? d.nameRef : d.ref, "'" + d.name + "' is not a CSS property; dropped",
+                                 closest.empty() ? std::string() : "did you mean '" + closest + "'?", closest, d.name);
+            return done;
+        }
+        // (the declared name's facts when it is a property itself, the usual case)
+        const PropertyFacts& facts = declaredFacts ? *declaredFacts : session.facts(name);
+        const PropertySupport* row = facts.row;
+        const Support support = effectiveSupport(*row, session.options.fork);
+        if (support == Support::Unsupported){
+            Severity severity = isInfoNote(row->note) ? Severity::Info : Severity::Warning;
+            std::string suggestion = row->suggestion;
+            if (name == "aspect-ratio" && rule){
+                for (const ComplexSelector& s : rule->selectors){
+                    const std::string tag = SelectorRewriter::subjectTag(s);
+                    if (tag == "img" || tag == "svg" || tag == "video")
+                        severity = Severity::Info;
+                }
+            }
+            if ((name == "counter-reset" || name == "counter-increment" || name == "counter-set")){
+                bool onlyListItem = true;
+                for (const ComponentValue& v : d.value){
+                    if (v.isToken(TokenType::Ident) && !equalsNoCase(v.token.value, "list-item") && !equalsNoCase(v.token.value, "none"))
+                        onlyListItem = false;
+                }
+                if (onlyListItem)
+                    severity = Severity::Info;
+            }
+            session.sink->reportAs(severity, codes::UnsupportedProperty, d.ref, "'" + name + "' is not supported; dropped", suggestion,
+                                   std::string(), name);
+            return done;
+        }
+        if (support == Support::Ignored){
+            session.sink->report(codes::IgnoredProperty, d.ref, "'" + name + "' has no effect in the engine; dropped", row->suggestion,
+                                 std::string(), name);
+            return done;
+        }
+
+        DeclContext context{session, RuleRef{rule, &session.memoTaint}, origin, keyframe, d, name, row, {}, false, output, false};
+        context.important = d.important && !keyframe;
+        // the normalized value is built in a vector of the session's pool, returned when done
+        struct ValueStorage {
+            DeclContext& context;
+            ~ValueStorage(){
+                context.value.clear();
+                if (context.value.capacity() > 0 && context.value.capacity() <= 64)
+                    context.session.valuePool.push_back(std::move(context.value));
+            }
+        } valueStorage{context};
+
+        // the color property's own currentColor is `inherit`
+        const ComponentValue* sole = soleValue(d.value);
+        const std::string keyword = name != "all" ? CascadeKeywords::keywordOf(d.value) : std::string();
+        if (name == "color" && sole && sole->isToken(TokenType::Ident) && equalsNoCase(sole->token.value, "currentcolor")){
+            context.emit("color", std::string("var(") + companions::kUnset + ")");
+        }else if (!keyword.empty()){
+            // 5. CSS-wide keywords
+            CascadeKeywords::apply(context, keyword);
+        }else{
+            // 4. value normalization
+            NormalizeContext normalize;
+            normalize.property = name;
+            normalize.colors = facts.colorKeywords;
+            normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint;
+            // a style attribute or a keyframe cannot be duplicated per orientation: vmin/vmax evaluated
+            normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
+            normalize.percentBasis = facts.percentBasis;
+            normalize.vertical = facts.vertical;
+            normalize.options = session.options;
+            if (rule && !keyframe){
+                // the rule's static color is read for currentColor (written, or behind a var())
+                // and its font size by the math functions: looked up only for such values
+                ValueNeeds needs;
+                scanNeeds(d.value, needs);
+                // (both read the rule's other declarations)
+                if (needs.staticColor && name != "color"){
+                    session.memoTaint++;
+                    normalize.staticColor = props::ruleStaticColor(session, *rule);
+                }
+                if (needs.fontSize && name != "font-size"){
+                    session.memoTaint++;
+                    if (std::optional<double> fontSize = props::ruleFontSizePx(session, *rule))
+                        normalize.emPx = *fontSize;
+                }
+            }
+            normalize.remPx = session.rootFontSize.value_or(16.0);
+            normalize.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
+            // (one captured pointer: the std::function keeps it without an allocation)
+            normalize.report = [ctx = &context](DiagCode code, Severity severity, const std::string& message, const std::string& suggestion){
+                const Declaration& declaration = ctx->declaration;
+                ctx->session.sink->reportAs(severity, code, declaration.valueRef.valid() ? declaration.valueRef : declaration.ref, message,
+                                            suggestion, std::string(), ctx->name);
+            };
+            ValueList storage;
+            if (!session.valuePool.empty()){
+                storage = std::move(session.valuePool.back());
+                session.valuePool.pop_back();
+            }
+            NormalizeResult normalized = ValueNormalizer::normalize(d.value, normalize, std::move(storage));
+            context.value = std::move(normalized.value);
+            if (!normalized.ok)
+                return done;
+            if (normalized.dependsOnViewport)
+                session.result->dependsOnViewport = true;
+            trimInPlace(context.value);
+            if (context.value.empty())
+                return done;
+
+            // 6. the property rewrite
+            if (name == "transform" && rule)
+                session.memoTaint++;
+            if (name == "transform" && rule && ruleHasIndividualTransform(*rule)){
+                // written with translate / rotate / scale (Transform.cpp)
+            }else if (row->rewrite != RewriteId::None){
+                if (RewriteFunction function = findRewrite(row->rewrite))
+                    function(context);
+            }else{
+                if (name == "transform-origin" || name == "perspective-origin"){
+                    // RmlUi reads the horizontal keyword first ("top left" -> "left top")
+                    ValueList w;
+                    for (const ComponentValue& v : context.value){
+                        if (!v.isWhitespace())
+                            w.push_back(v);
+                    }
+                    auto vertical = [](const ComponentValue& v){ return v.isToken(TokenType::Ident) && (equalsNoCase(v.token.value, "top") || equalsNoCase(v.token.value, "bottom")); };
+                    auto horizontal = [](const ComponentValue& v){ return v.isToken(TokenType::Ident) && (equalsNoCase(v.token.value, "left") || equalsNoCase(v.token.value, "right")); };
+                    if (w.size() >= 2 && (vertical(w[0]) || horizontal(w[1])) && !(vertical(w[1]) || horizontal(w[0])))
+                        std::swap(w[0], w[1]);
+                    else if (w.size() == 1 && vertical(w[0]))
+                        w.insert(w.begin(), ValueNormalizer::ident("center"));
+                    context.value.clear();
+                    for (size_t i = 0; i < w.size(); i++){
+                        if (i)
+                            context.value.push_back(ValueNormalizer::whitespace());
+                        context.value.push_back(w[i]);
+                    }
+                }
+                const std::string text = context.valueText();
+                // an unsupported keyword from the value table
+                if (context.value.size() == 1 && context.value[0].isToken(TokenType::Ident)){
+                    if (const ValueSupport* value = findValue(name, lowerAscii(context.value[0].token.value))){
+                        if (effectiveSupport(*value, session.options.fork) == Support::Unsupported){
+                            context.reportAs(Severity::Warning, codes::UnsupportedValue, "'" + name + ": " + text + "' is not supported; declaration dropped",
+                                             value->suggestion);
+                            return done;
+                        }
+                    }
+                }
+                if (!facts.rcssKnown){
+                    context.reportAs(Severity::Warning, codes::UnsupportedProperty, "'" + name + "' is not supported by the engine; dropped", row->suggestion);
+                    return done;
+                }
+                if (!RcssGrammar::accepts(name, text)){
+                    std::string suggestion;
+                    const std::string keywords = RcssGrammar::keywords(name);
+                    if (!keywords.empty())
+                        suggestion = "use one of: " + keywords;
+                    context.reportAs(Severity::Warning, codes::UnsupportedValue, "'" + name + ": " + text + "' is not supported; declaration dropped",
+                                     suggestion);
+                    return done;
+                }
+                context.emit(name, text);
+            }
+        }
+        if (context.dropped)
+            output.declarations.resize(first);
+
+        // 7. !important, companions
+        ArenaList<OutDecl> extra;
+        for (size_t i = first; i < output.declarations.size(); i++){
+            OutDecl& out = output.declarations[i];
+            if (out.final)
+                continue;
+            out.final = true;
+            if (d.important){
+                if (keyframe){
+                    out.important = false;
+                }else if (session.options.fork.has(ForkFeature::Important)){
+                    out.important = false;
+                    out.value = Text(out.value + " !important");
+                }else if (origin == RuleOrigin::StyleAttribute){
+                    out.important = false;
+                }else{
+                    out.important = true;
+                }
+            }
+            if (keyframe)
+                continue;
+            const bool keyword = CascadeKeywords::isKeywordText(out.value);
+            if (out.name == "color" && !startsWith(out.value, "var(") && !keyword)
+                extra.push_back(OutDecl{companions::kCurrentColor, out.value, out.ref, out.important, false, true});
+            // (nothing to add when no rule reads a property with `inherit`)
+            if (!session.inheritCompanions.empty() && !keyword && out.value.find("--html-inh-") == std::string::npos){
+                if (session.inheritCompanions.count(out.name))
+                    extra.push_back(OutDecl{companions::inheritName(out.name), out.value, out.ref, out.important, false, true});
+                else
+                    boxShorthandCompanions(session, out, extra);
+            }
+        }
+        for (OutDecl& e : extra)
+            output.declarations.push_back(std::move(e));
+
+        done.completed = true;
+        done.name = std::move(name);
+        return done;
+    }
+
+    // ---- the declaration memo (Session::MemoEntry)
+
+    constexpr uint32_t kNoMemo = 0xFFFFFFFFu;
+
+    uint32_t memoFind(const Session& session, uint64_t hash, const Declaration& d, uint8_t bits){
+        if (session.memoSlots.empty())
+            return kNoMemo;
+        const size_t mask = session.memoSlots.size() - 1;
+        for (size_t i = (size_t)hash & mask; session.memoSlots[i] != kNoMemo; i = (i + 1) & mask){
+            const Session::MemoEntry& entry = session.memoEntries[session.memoSlots[i]];
+            if (entry.hash == hash && entry.bits == bits && entry.file == d.ref.file && entry.text == d.text)
+                return session.memoSlots[i];
+        }
+        return kNoMemo;
+    }
+
+    void memoInsert(Session& session, const Session::MemoEntry& entry){
+        if ((session.memoEntries.size() + 1) * 2 > session.memoSlots.size()){
+            session.memoSlots.assign(session.memoSlots.empty() ? 64 : session.memoSlots.size() * 2, kNoMemo);
+            const size_t mask = session.memoSlots.size() - 1;
+            for (uint32_t index = 0; index < (uint32_t)session.memoEntries.size(); index++){
+                size_t i = (size_t)session.memoEntries[index].hash & mask;
+                while (session.memoSlots[i] != kNoMemo)
+                    i = (i + 1) & mask;
+                session.memoSlots[i] = index;
+            }
+        }
+        const size_t mask = session.memoSlots.size() - 1;
+        size_t i = (size_t)entry.hash & mask;
+        while (session.memoSlots[i] != kNoMemo)
+            i = (i + 1) & mask;
+        session.memoSlots[i] = (uint32_t)session.memoEntries.size();
+        session.memoEntries.push_back(entry);
+    }
+
+    bool sameRef(const SourceRef& a, const SourceRef& b){
+        return a.file == b.file && a.offset == b.offset && a.length == b.length;
+    }
+
+    // JASPER_HTMLUI_CSS_MEMO=check: the pipeline's output for the declaration is the entry's
+    [[maybe_unused]] void memoVerify(Session& session, const FlatRule* rule, RuleOrigin origin, bool keyframe, const Declaration& d,
+                                     const DeclarationList& block, uint32_t index){
+        const uint32_t taint = session.memoTaint;
+        const uint64_t reports = session.sink->reports();
+        const size_t fonts = session.result->fontFamilies.size();
+        RuleOutput check;
+        const Processed done = processDeclared(session, rule, origin, keyframe, d, block, check, 0);
+        const Session::MemoEntry& entry = session.memoEntries[index];
+        bool same = session.memoTaint == taint && session.sink->reports() == reports && check.generated.empty() &&
+                    done.completed == entry.completed && entry.name == done.name && check.declarations.size() == entry.count &&
+                    session.result->fontFamilies.size() - fonts == entry.fontCount;
+        for (size_t i = 0; same && i < entry.count; i++){
+            const OutDecl& a = check.declarations[i];
+            const OutDecl& b = session.memoOutput[entry.first + i];
+            same = a.name == b.name && a.value == b.value && a.important == b.important && a.vmin == b.vmin && a.final == b.final &&
+                   sameRef(a.ref, d.ref);
+        }
+        for (size_t i = 0; same && i < entry.fontCount; i++)
+            same = session.result->fontFamilies[fonts + i] == session.memoFonts[entry.fontFirst + i];
+        if (!same){
+            std::fprintf(stderr, "[HTML UI] declaration memo mismatch for '%s'\n", std::string(d.text).c_str());
+            std::abort();
+        }
+        session.result->fontFamilies.resize(fonts);
+    }
+
     void processOne(Session& session, const FlatRule* rule, RuleOrigin origin, bool keyframe, const Declaration& d,
                     const DeclarationList& block, RuleOutput& output){
         if (session.options.dropTransitionsForTesting &&
@@ -1278,207 +1585,62 @@ namespace {
         }
 
         // 2. vendor prefixes, 3. lookup
-        bool silentlyDropped = false;
-        const PropertyFacts* declaredFacts = nullptr;
-        std::string name = effectiveName(session, d, block, silentlyDropped, &declaredFacts);
-        if (silentlyDropped)
-            return;
-        if (name.empty()){
-            const std::string closest = closestProperty(d.name);
-            session.sink->report(codes::UnknownProperty, d.nameRef.valid() ? d.nameRef : d.ref, "'" + d.name + "' is not a CSS property; dropped",
-                                 closest.empty() ? std::string() : "did you mean '" + closest + "'?", closest, d.name);
-            return;
-        }
-        // (the declared name's facts when it is a property itself, the usual case)
-        const PropertyFacts& facts = declaredFacts ? *declaredFacts : session.facts(name);
-        const PropertySupport* row = facts.row;
-        const Support support = effectiveSupport(*row, session.options.fork);
-        if (support == Support::Unsupported){
-            Severity severity = isInfoNote(row->note) ? Severity::Info : Severity::Warning;
-            std::string suggestion = row->suggestion;
-            if (name == "aspect-ratio" && rule){
-                for (const ComplexSelector& s : rule->selectors){
-                    const std::string tag = SelectorRewriter::subjectTag(s);
-                    if (tag == "img" || tag == "svg" || tag == "video")
-                        severity = Severity::Info;
-                }
-            }
-            if ((name == "counter-reset" || name == "counter-increment" || name == "counter-set")){
-                bool onlyListItem = true;
-                for (const ComponentValue& v : d.value){
-                    if (v.isToken(TokenType::Ident) && !equalsNoCase(v.token.value, "list-item") && !equalsNoCase(v.token.value, "none"))
-                        onlyListItem = false;
-                }
-                if (onlyListItem)
-                    severity = Severity::Info;
-            }
-            session.sink->reportAs(severity, codes::UnsupportedProperty, d.ref, "'" + name + "' is not supported; dropped", suggestion,
-                                   std::string(), name);
-            return;
-        }
-        if (support == Support::Ignored){
-            session.sink->report(codes::IgnoredProperty, d.ref, "'" + name + "' has no effect in the engine; dropped", row->suggestion,
-                                 std::string(), name);
-            return;
-        }
-
-        DeclContext context{session, rule, origin, keyframe, d, name, row, {}, false, output, false};
-        context.important = d.important && !keyframe;
-        // the normalized value is built in a vector of the session's pool, returned when done
-        struct ValueStorage {
-            DeclContext& context;
-            ~ValueStorage(){
-                context.value.clear();
-                if (context.value.capacity() > 0 && context.value.capacity() <= 64)
-                    context.session.valuePool.push_back(std::move(context.value));
-            }
-        } valueStorage{context};
-
-        // the color property's own currentColor is `inherit`
-        const ComponentValue* sole = soleValue(d.value);
-        const std::string keyword = name != "all" ? CascadeKeywords::keywordOf(d.value) : std::string();
-        if (name == "color" && sole && sole->isToken(TokenType::Ident) && equalsNoCase(sole->token.value, "currentcolor")){
-            context.emit("color", std::string("var(") + companions::kUnset + ")");
-        }else if (!keyword.empty()){
-            // 5. CSS-wide keywords
-            CascadeKeywords::apply(context, keyword);
+        // ---- the pipeline, or what it made of the same declaration before (the memo)
+        Processed done;
+        const bool memo = session.memoOn && !d.text.empty() && session.sink == session.mainSink;
+        if (!memo){
+            done = processDeclared(session, rule, origin, keyframe, d, block, output, first);
         }else{
-            // 4. value normalization
-            NormalizeContext normalize;
-            normalize.property = name;
-            normalize.colors = facts.colorKeywords;
-            normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint;
-            // a style attribute or a keyframe cannot be duplicated per orientation: vmin/vmax evaluated
-            normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
-            normalize.percentBasis = facts.percentBasis;
-            normalize.vertical = facts.vertical;
-            normalize.options = session.options;
-            if (rule && !keyframe){
-                // the rule's static color is read for currentColor (written, or behind a var())
-                // and its font size by the math functions: looked up only for such values
-                ValueNeeds needs;
-                scanNeeds(d.value, needs);
-                if (needs.staticColor && name != "color")
-                    normalize.staticColor = props::ruleStaticColor(session, *rule);
-                if (needs.fontSize && name != "font-size"){
-                    if (std::optional<double> fontSize = props::ruleFontSizePx(session, *rule))
-                        normalize.emPx = *fontSize;
+            const uint8_t bits = (uint8_t)((d.important ? 1 : 0) | (keyframe ? 2 : 0) | (rule ? 4 : 0) | ((unsigned)origin << 3));
+            const uint64_t hash = StringIndex::hash(d.text) ^ ((uint64_t)bits * 0x9E3779B97F4A7C15ull) ^ ((uint64_t)d.ref.file << 40);
+            const uint32_t found = memoFind(session, hash, d, bits);
+            if (found != kNoMemo && session.memoEntries[found].pure){
+                if (session.memoCheck)
+                    memoVerify(session, rule, origin, keyframe, d, block, found);
+                const Session::MemoEntry& entry = session.memoEntries[found];
+                for (uint32_t i = 0; i < entry.count; i++){
+                    OutDecl& out = output.declarations.emplace_back();
+                    out = session.memoOutput[entry.first + i];
+                    out.ref = d.ref;
                 }
-            }
-            normalize.remPx = session.rootFontSize.value_or(16.0);
-            normalize.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
-            // (one captured pointer: the std::function keeps it without an allocation)
-            normalize.report = [ctx = &context](DiagCode code, Severity severity, const std::string& message, const std::string& suggestion){
-                const Declaration& declaration = ctx->declaration;
-                ctx->session.sink->reportAs(severity, code, declaration.valueRef.valid() ? declaration.valueRef : declaration.ref, message,
-                                            suggestion, std::string(), ctx->name);
-            };
-            ValueList storage;
-            if (!session.valuePool.empty()){
-                storage = std::move(session.valuePool.back());
-                session.valuePool.pop_back();
-            }
-            NormalizeResult normalized = ValueNormalizer::normalize(d.value, normalize, std::move(storage));
-            context.value = std::move(normalized.value);
-            if (!normalized.ok)
-                return;
-            if (normalized.dependsOnViewport)
-                session.result->dependsOnViewport = true;
-            trimInPlace(context.value);
-            if (context.value.empty())
-                return;
-
-            // 6. the property rewrite
-            if (name == "transform" && rule && ruleHasIndividualTransform(*rule)){
-                // written with translate / rotate / scale (Transform.cpp)
-            }else if (row->rewrite != RewriteId::None){
-                if (RewriteFunction function = findRewrite(row->rewrite))
-                    function(context);
+                for (uint32_t i = 0; i < entry.fontCount; i++)
+                    session.result->fontFamilies.push_back(session.memoFonts[entry.fontFirst + i]);
+                done.completed = entry.completed;
+                done.name = entry.name;
+            }else if (found != kNoMemo){
+                done = processDeclared(session, rule, origin, keyframe, d, block, output, first);
             }else{
-                if (name == "transform-origin" || name == "perspective-origin"){
-                    // RmlUi reads the horizontal keyword first ("top left" -> "left top")
-                    ValueList w;
-                    for (const ComponentValue& v : context.value){
-                        if (!v.isWhitespace())
-                            w.push_back(v);
-                    }
-                    auto vertical = [](const ComponentValue& v){ return v.isToken(TokenType::Ident) && (equalsNoCase(v.token.value, "top") || equalsNoCase(v.token.value, "bottom")); };
-                    auto horizontal = [](const ComponentValue& v){ return v.isToken(TokenType::Ident) && (equalsNoCase(v.token.value, "left") || equalsNoCase(v.token.value, "right")); };
-                    if (w.size() >= 2 && (vertical(w[0]) || horizontal(w[1])) && !(vertical(w[1]) || horizontal(w[0])))
-                        std::swap(w[0], w[1]);
-                    else if (w.size() == 1 && vertical(w[0]))
-                        w.insert(w.begin(), ValueNormalizer::ident("center"));
-                    context.value.clear();
-                    for (size_t i = 0; i < w.size(); i++){
-                        if (i)
-                            context.value.push_back(ValueNormalizer::whitespace());
-                        context.value.push_back(w[i]);
-                    }
+                const uint32_t taint = session.memoTaint;
+                const uint64_t reports = session.sink->reports();
+                const size_t generated = output.generated.size();
+                const size_t fonts = session.result->fontFamilies.size();
+                done = processDeclared(session, rule, origin, keyframe, d, block, output, first);
+                Session::MemoEntry entry;
+                entry.hash = hash;
+                entry.text = d.text;
+                entry.file = d.ref.file;
+                entry.bits = bits;
+                entry.pure = session.memoTaint == taint && session.sink->reports() == reports && output.generated.size() == generated;
+                for (size_t i = first; entry.pure && i < output.declarations.size(); i++)
+                    entry.pure = sameRef(output.declarations[i].ref, d.ref);
+                if (entry.pure){
+                    entry.completed = done.completed;
+                    entry.name = Text(done.name);
+                    entry.first = (uint32_t)session.memoOutput.size();
+                    entry.count = (uint32_t)(output.declarations.size() - first);
+                    for (size_t i = first; i < output.declarations.size(); i++)
+                        session.memoOutput.push_back(output.declarations[i]);
+                    entry.fontFirst = (uint32_t)session.memoFonts.size();
+                    entry.fontCount = (uint32_t)(session.result->fontFamilies.size() - fonts);
+                    for (size_t i = fonts; i < session.result->fontFamilies.size(); i++)
+                        session.memoFonts.push_back(session.result->fontFamilies[i]);
                 }
-                const std::string text = context.valueText();
-                // an unsupported keyword from the value table
-                if (context.value.size() == 1 && context.value[0].isToken(TokenType::Ident)){
-                    if (const ValueSupport* value = findValue(name, lowerAscii(context.value[0].token.value))){
-                        if (effectiveSupport(*value, session.options.fork) == Support::Unsupported){
-                            context.reportAs(Severity::Warning, codes::UnsupportedValue, "'" + name + ": " + text + "' is not supported; declaration dropped",
-                                             value->suggestion);
-                            return;
-                        }
-                    }
-                }
-                if (!facts.rcssKnown){
-                    context.reportAs(Severity::Warning, codes::UnsupportedProperty, "'" + name + "' is not supported by the engine; dropped", row->suggestion);
-                    return;
-                }
-                if (!RcssGrammar::accepts(name, text)){
-                    std::string suggestion;
-                    const std::string keywords = RcssGrammar::keywords(name);
-                    if (!keywords.empty())
-                        suggestion = "use one of: " + keywords;
-                    context.reportAs(Severity::Warning, codes::UnsupportedValue, "'" + name + ": " + text + "' is not supported; declaration dropped",
-                                     suggestion);
-                    return;
-                }
-                context.emit(name, text);
+                memoInsert(session, entry);
             }
         }
-        if (context.dropped)
-            output.declarations.resize(first);
-
-        // 7. !important, companions
-        ArenaList<OutDecl> extra;
-        for (size_t i = first; i < output.declarations.size(); i++){
-            OutDecl& out = output.declarations[i];
-            if (out.final)
-                continue;
-            out.final = true;
-            if (d.important){
-                if (keyframe){
-                    out.important = false;
-                }else if (session.options.fork.has(ForkFeature::Important)){
-                    out.important = false;
-                    out.value = Text(out.value + " !important");
-                }else if (origin == RuleOrigin::StyleAttribute){
-                    out.important = false;
-                }else{
-                    out.important = true;
-                }
-            }
-            if (keyframe)
-                continue;
-            const bool keyword = CascadeKeywords::isKeywordText(out.value);
-            if (out.name == "color" && !startsWith(out.value, "var(") && !keyword)
-                extra.push_back(OutDecl{companions::kCurrentColor, out.value, out.ref, out.important, false, true});
-            // (nothing to add when no rule reads a property with `inherit`)
-            if (!session.inheritCompanions.empty() && !keyword && out.value.find("--html-inh-") == std::string::npos){
-                if (session.inheritCompanions.count(out.name))
-                    extra.push_back(OutDecl{companions::inheritName(out.name), out.value, out.ref, out.important, false, true});
-                else
-                    boxShorthandCompanions(session, out, extra);
-            }
-        }
-        for (OutDecl& e : extra)
-            output.declarations.push_back(std::move(e));
+        if (!done.completed)
+            return;
+        const std::string& name = done.name;
 
         if (d.important && rule && !keyframe && origin == RuleOrigin::Author && !session.options.fork.has(ForkFeature::Important) &&
             output.declarations.size() > first)
@@ -1571,8 +1733,16 @@ void jasperengine::htmlui::compat::processSynthetic(DeclContext& context, const 
     synthetic.nameRef = context.declaration.nameRef;
     synthetic.valueRef = context.declaration.valueRef;
     synthetic.important = context.declaration.important;
+    if (context.session.memoOn){
+        // (the text the memo knows it by: no source text holds "property: value")
+        std::string& text = context.session.scratchText;
+        text.assign(property);
+        text += '\x01';
+        text += value;
+        synthetic.text = Text(text);
+    }
     RuleOutput output;
-    processOne(context.session, context.rule, context.origin, context.keyframe, synthetic, block, output);
+    processOne(context.session, context.rule.untracked(), context.origin, context.keyframe, synthetic, block, output);
     for (OutDecl& d : output.declarations){
         d.ref = context.declaration.ref;
         context.output.declarations.push_back(std::move(d));
@@ -1640,6 +1810,8 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
 
     // ---- pre-pass
     prePass(session, styleAttributeList);
+    // (the session's facts about the document are complete: declarations can be memoized)
+    session.memoOn = !session.memoDisabled;
 
     // ---- phase B: rewrite and write
     for (size_t i = 0; i < inputs.size(); i++){

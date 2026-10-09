@@ -260,6 +260,7 @@ namespace {
 }
 
 std::string props::varKind(Session& session, const ComponentValue& var){
+    session.memoTaint++;
     ValueList fallback;
     bool hasFallback = false;
     const std::string name = CustomPropertyIndex::varName(var, &fallback, &hasFallback);
@@ -371,6 +372,7 @@ std::optional<std::string> props::urlOf(const ComponentValue& value){
 }
 
 std::string props::resolveUrlIn(Session& session, const std::string& url, uint32_t file, SourceRef ref, const char* kind){
+    session.memoTaint++;   // (the file's directory, the manifest, the result's dependencies)
     const std::string fromPath = session.files.path(file);
     const ResolvedUrl resolved = session.urls.resolve(url, fromPath, kind, ref, session.sink);
     if (resolved.kind == UrlKind::Remote){
@@ -404,6 +406,7 @@ std::string props::resolveUrl(DeclContext& context, const ComponentValue& value,
 }
 
 std::optional<TypedVar> props::wholeVar(DeclContext& context, const std::string& family){
+    context.session.memoTaint++;
     if (context.value.size() != 1 || !isVar(context.value[0]))
         return std::nullopt;
     std::optional<TypedVar> typed = context.session.typedVar(context.value[0], family);
@@ -492,6 +495,7 @@ bool props::accepts(const std::string& property, const std::string& value){
 }
 
 bool jasperengine::htmlui::compat::reachesRewrite(Session& session, const Declaration& declaration, const DeclarationList& block){
+    session.memoTaint++;
     if (!CascadeKeywords::keywordOf(declaration.value).empty())
         return false;
     const PropertySupport* row = findProperty(declaration.name);

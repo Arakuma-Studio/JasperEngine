@@ -95,10 +95,24 @@ namespace jasperengine::htmlui::compat {
 
     struct Session;
 
+    // DeclContext::rule. Reading the rule (not testing it for null) counts in Session::memoTaint:
+    // the declaration's output then depends on its rule and is not kept by the declaration
+    // memo (processOne).
+    struct RuleRef {
+        const FlatRule* pointer = nullptr;
+        uint32_t* taint = nullptr;
+
+        explicit operator bool() const { return pointer != nullptr; }
+        operator const FlatRule*() const { ++*taint; return pointer; }
+        const FlatRule* operator->() const { ++*taint; return pointer; }
+        const FlatRule& operator*() const { ++*taint; return *pointer; }
+        const FlatRule* untracked() const { return pointer; }
+    };
+
     // Everything a property rewrite sees about the declaration it rewrites.
     struct DeclContext {
         Session& session;
-        const FlatRule* rule = nullptr;     // nullptr: a style attribute or a keyframe block
+        RuleRef rule;                       // null: a style attribute or a keyframe block
         RuleOrigin origin = RuleOrigin::Author;
         bool keyframe = false;
         const Declaration& declaration;
@@ -240,6 +254,33 @@ namespace jasperengine::htmlui::compat {
         // buffers reused from one rule / declaration to the next (their contents are cleared,
         // their memory kept)
         RuleOutput scratchOutput;                               // writeRule
+
+        // The declaration memo (processOne): the output of a declaration that depends on its
+        // text alone (nothing read from its rule, its block or the custom properties, no URL
+        // resolved, no diagnostic, no generated rule) is kept under that text and written
+        // again for the same text in the same situation. On from the writing phase on
+        // (memoOn), while the diagnostics go to the session's own sink.
+        struct MemoEntry {
+            uint64_t hash = 0;
+            Text text;                     // Declaration::text
+            uint32_t file = 0;
+            uint8_t bits = 0;              // important, keyframe, in a rule, origin
+            bool pure = false;             // false: known to depend on more than its text
+            bool completed = false;        // the pipeline ran to its end (the checks after it apply)
+            Text name;                     // the effective property name
+            uint32_t first = 0, count = 0; // in memoOutput
+            uint32_t fontFirst = 0, fontCount = 0;   // in memoFonts: the font families it reported
+        };
+        std::vector<MemoEntry> memoEntries;
+        std::vector<uint32_t> memoSlots;
+        ArenaList<OutDecl> memoOutput;
+        std::vector<std::string> memoFonts;
+        mutable uint32_t memoTaint = 0;    // counts the reads that make a declaration depend on more than its text
+        bool memoOn = false;
+        bool memoDisabled = false;         // JASPER_HTMLUI_CSS_MEMO=off
+        bool memoCheck = false;            // JASPER_HTMLUI_CSS_MEMO=check: every memo hit is compared with the pipeline's output
+        DiagnosticSink* mainSink = nullptr;
+        std::string scratchText;
         std::vector<ValueList> valuePool;     // normalized values of processOne
 
         // per property name (session-wide: the tables do not change)
