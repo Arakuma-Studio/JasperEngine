@@ -414,18 +414,22 @@ namespace {
             return n == "is" || n == "where" || n == "matches" || n == "-webkit-any" || n == "-moz-any";
         }
 
-        std::vector<ComplexSelector> expand(const ComplexSelector& selector){
-            // nothing to expand (the common case): the selector itself
-            bool any = false;
-            if (!options.fork.has(ForkFeature::RootIsWhere)){
-                for (const Compound& compound : selector.compounds){
-                    for (const SimpleSelector& simple : compound.simples){
-                        if (simple.kind == Kind::PseudoClass && expandable(simple.name))
-                            any = true;
-                    }
+        // does expand() change the selector (an :is()/:where() to expand)?
+        bool needsExpansion(const ComplexSelector& selector) const {
+            if (options.fork.has(ForkFeature::RootIsWhere))
+                return false;
+            for (const Compound& compound : selector.compounds){
+                for (const SimpleSelector& simple : compound.simples){
+                    if (simple.kind == Kind::PseudoClass && expandable(simple.name))
+                        return true;
                 }
             }
-            if (!any)
+            return false;
+        }
+
+        std::vector<ComplexSelector> expand(const ComplexSelector& selector){
+            // nothing to expand (the common case): the selector itself
+            if (!needsExpansion(selector))
                 return std::vector<ComplexSelector>{selector};
             std::vector<ComplexSelector> work{selector};
             std::vector<ComplexSelector> done;
@@ -554,22 +558,25 @@ namespace {
             return name.size() > 1 && name[0] == '-';
         }
 
-        // Rewrites the simples of one selector in place. Returns false to drop the selector;
-        // sets invalidRule for a selector browsers reject (the whole rule goes).
-        bool mapSelector(ComplexSelector& selector, bool& placeholder, bool& pseudoElement, int depth){
-            std::vector<Compound> out;
+        // the selector's compounds rewritten into `out`; Owned: the input's simple selectors are
+        // moved from (the input is replaced by the result), else copied
+        template<bool Owned, typename Selector>
+        bool mapCompounds(Selector& selector, std::vector<Compound>& out, bool& placeholder, bool& pseudoElement, int depth){
+            out.reserve(selector.compounds.size());
             for (size_t c = 0; c < selector.compounds.size(); c++){
-                // the selector is replaced by the mapped compounds: its own are moved from
-                Compound compound = std::move(selector.compounds[c]);
+                auto& source = selector.compounds[c];
+                Compound compound;
+                compound.combinator = source.combinator;
                 if (compound.combinator == '|'){
-                    report(codes::UnsupportedSelector, compound.simples.empty() ? nullptr : &compound.simples[0],
+                    report(codes::UnsupportedSelector, source.simples.empty() ? nullptr : &source.simples[0],
                            "the column combinator '||' is not supported; selector dropped", "select the cells by class", "||");
                     return false;
                 }
                 std::vector<SimpleSelector> simples;
+                simples.reserve(source.simples.size());
                 std::vector<Compound> appended;     // compounds a pseudo-element adds after this one
                 bool removeSelf = false;            // a pseudo-element that replaces the compound
-                for (SimpleSelector& simple : compound.simples){
+                for (auto& simple : source.simples){
                     if (simple.hasNamespace){
                         report(codes::UnsupportedSelector, &simple, "namespaced selector '" + SelectorRewriter::serialize(simple) + "' is not supported; selector dropped",
                                "remove the namespace prefix", "namespace");
@@ -586,12 +593,12 @@ namespace {
                             else if (simple.name == "template")
                                 target.push_back(makeType("htmltemplate"));
                             else
-                                target.push_back(std::move(simple));
+                                target.push_back(forward<Owned>(simple));
                             break;
                         case Kind::Universal:
                         case Kind::Class:
                         case Kind::RootMarker:
-                            target.push_back(std::move(simple));
+                            target.push_back(forward<Owned>(simple));
                             break;
                         case Kind::Nesting:
                             // a top-level '&' is :scope, the root
@@ -606,10 +613,10 @@ namespace {
                             if (!options.rootId.empty() && simple.name == options.rootId)
                                 target.push_back(rootMarker());
                             else
-                                target.push_back(std::move(simple));
+                                target.push_back(forward<Owned>(simple));
                             break;
                         case Kind::Attribute: {
-                            SimpleSelector copy = simple;
+                            SimpleSelector copy = forward<Owned>(simple);
                             if (copy.flag){
                                 report(codes::SelectorRewritten, &simple,
                                        std::string("attribute selector flag '") + copy.flag + "' is removed" + (copy.flag == 'i' ? "; matching is case-sensitive" : ""),
@@ -652,8 +659,36 @@ namespace {
                     out.push_back(std::move(extra));
                 }
             }
+            return true;
+        }
+
+        template<bool Owned, typename T>
+        static decltype(auto) forward(T& value){
+            if constexpr (Owned)
+                return std::move(value);
+            else
+                return static_cast<const T&>(value);
+        }
+
+        // Rewrites the simples of one selector in place. Returns false to drop the selector;
+        // sets invalidRule for a selector browsers reject (the whole rule goes).
+        bool mapSelector(ComplexSelector& selector, bool& placeholder, bool& pseudoElement, int depth){
+            std::vector<Compound> out;
+            if (!mapCompounds<true>(selector, out, placeholder, pseudoElement, depth))
+                return false;
             selector.compounds = std::move(out);
             return !selector.compounds.empty();
+        }
+
+        // the same into `result`, `selector` left as it is
+        bool mapSelector(const ComplexSelector& selector, ComplexSelector& result, bool& placeholder, bool& pseudoElement, int depth){
+            result.ref = selector.ref;
+            result.relative = selector.relative;
+            std::vector<Compound> out;
+            if (!mapCompounds<false>(selector, out, placeholder, pseudoElement, depth))
+                return false;
+            result.compounds = std::move(out);
+            return !result.compounds.empty();
         }
 
         static SimpleSelector rootMarker(){
@@ -664,7 +699,6 @@ namespace {
 
         bool pseudoClass(const SimpleSelector& simple, std::vector<SimpleSelector>& target, int depth){
             const std::string& n = simple.name;
-            const std::string display = ":" + n + (simple.function ? "()" : "");
             if (!simple.function){
                 if (n == "hover" || n == "active" || n == "checked" || n == "disabled" || n == "placeholder-shown" || n == "scope" ||
                     n == "first-child" || n == "last-child" || n == "only-child" || n == "first-of-type" || n == "last-of-type" ||
@@ -795,6 +829,8 @@ namespace {
                 report(codes::UnsupportedSelector, &simple, "':has()' is not supported; selector dropped", "set a class from Lua", ":has()");
                 return false;
             }
+            // ":name" or ":name()" for the messages (the supported pseudo-classes above return first)
+            const std::string display = ":" + n + (simple.function ? "()" : "");
             if (const SelectorSupport* row = findPseudoClass(display)){
                 if (row->support == Support::Unsupported){
                     report(codes::UnsupportedSelector, &simple, "'" + display + "' is not supported; selector dropped", row->suggestion, row->name);
@@ -1018,11 +1054,14 @@ namespace {
         void band(const ComplexSelector& selector, const Emit& emit){
             if (!author() || startsAtRoot(selector)){
                 std::string text;
+                text.reserve(48);
                 appendComplex(text, selector);
                 emit(std::move(text), SelectorRewriter::specificity(selector));
                 return;
             }
-            std::string text = "#";
+            std::string text;
+            text.reserve(48);
+            text += '#';
             text += kRootId;
             appendComplex(text, selector, true);
             // the band compound is one id selector
@@ -1107,7 +1146,11 @@ SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelecto
             result.selectors.clear();
             return result;
         }
-        std::vector<ComplexSelector> variants = rewriter.expand(source);
+        // without :is()/:where() to expand, the source is mapped as it is (no copy)
+        const bool expands = rewriter.needsExpansion(source);
+        std::vector<ComplexSelector> variants;
+        if (expands)
+            variants = rewriter.expand(source);
         if (rewriter.limitReached){
             if (sink)
                 sink->report(codes::SelectorExpansionLimit, ruleRef, "the selector list expands to more than 256 selectors; the rule is dropped",
@@ -1116,11 +1159,17 @@ SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelecto
             result.selectors.clear();
             return result;
         }
-        for (ComplexSelector& variant : variants){
+        for (size_t v = 0; v < (expands ? variants.size() : 1); v++){
             bool placeholder = false, pseudoElement = false;
             rewriter.pendingAlternate.clear();
-            ComplexSelector mapped = std::move(variant);
-            const bool kept = rewriter.mapSelector(mapped, placeholder, pseudoElement, 0);
+            ComplexSelector mapped;
+            bool kept;
+            if (expands){
+                mapped = std::move(variants[v]);
+                kept = rewriter.mapSelector(mapped, placeholder, pseudoElement, 0);
+            }else{
+                kept = rewriter.mapSelector(source, mapped, placeholder, pseudoElement, 0);
+            }
             if (rewriter.invalidRule){
                 result.invalid = true;
                 result.selectors.clear();

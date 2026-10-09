@@ -20,15 +20,16 @@ namespace jasperengine::htmlui::compat {
         Semicolon, Comma, LeftBracket, RightBracket, LeftParen, RightParen, LeftBrace, RightBrace,
         Comment, EndOfFile };
 
+    // (members ordered by size: 96 bytes)
     struct Token {
         TokenType type = TokenType::EndOfFile;
-        uint32_t offset = 0, length = 0;   // source bytes (with the base offset of tokenize())
-        std::string value;                 // unescaped ident/string/url/function/at-keyword/hash name; Delim char (UTF-8)
-        double number = 0;                 // Number/Percentage/Dimension (Percentage: 50 for "50%")
-        bool isInteger = false;
-        std::string unit;                  // Dimension, unescaped, case kept
+        bool isInteger = false;            // Number/Percentage/Dimension
         bool hashIsId = false;             // Hash: "id" type (a valid identifier follows '#')
+        uint32_t offset = 0, length = 0;   // source bytes (with the base offset of tokenize())
         uint32_t rangeStart = 0, rangeEnd = 0;   // UnicodeRange
+        double number = 0;                 // Number/Percentage/Dimension (Percentage: 50 for "50%")
+        std::string value;                 // unescaped ident/string/url/function/at-keyword/hash name; Delim char (UTF-8)
+        std::string unit;                  // Dimension, unescaped, case kept
 
         bool is(TokenType t) const { return type == t; }
         bool isDelim(char c) const { return type == TokenType::Delim && value.size() == 1 && value[0] == c; }
@@ -40,10 +41,10 @@ namespace jasperengine::htmlui::compat {
     struct ComponentValue {
         enum class Kind : uint8_t { Token, Block, Function };
         Kind kind = Kind::Token;
+        bool closed = true;                 // Block/Function: false when the input ended before the closing token
+        uint32_t offset = 0, length = 0;    // whole extent in the source (blocks: through the closing token, if any)
         Token token;                        // Token; for a block its opening token, for a function the Function token
         std::vector<ComponentValue> children;
-        uint32_t offset = 0, length = 0;    // whole extent in the source (blocks: through the closing token, if any)
-        bool closed = true;                 // Block/Function: false when the input ended before the closing token
 
         bool isToken(TokenType t) const { return kind == Kind::Token && token.type == t; }
         bool isBlock(TokenType opening) const { return kind == Kind::Block && token.type == opening; }
