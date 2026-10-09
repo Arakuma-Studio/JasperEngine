@@ -318,8 +318,9 @@ namespace {
                  std::vector<Declaration> declarations, SourceRef ref, SourceRef preludeRef){
         if (declarations.empty() || scope.media.never)
             return;
-        FlatRule rule;
-        rule.index = (uint32_t)session.rules.size();
+        const uint32_t index = (uint32_t)session.rules.size();
+        FlatRule& rule = session.rules.emplace_back();
+        rule.index = index;
         rule.sheet = scope.sheet;
         rule.file = scope.file;
         rule.origin = scope.origin;
@@ -331,7 +332,6 @@ namespace {
         rule.layer = scope.layer;
         rule.order = session.nextOrder++;
         session.sheets[scope.sheet].push_back(SheetItem{false, rule.index});
-        session.rules.push_back(std::move(rule));
     }
 
     void flatten(Session& session, std::vector<Rule>& rules, const FlattenScope& scope, bool topLevel);
@@ -915,8 +915,19 @@ namespace {
         if (declarations.empty() || selectors.empty())
             return;
         writer.beginRule(selectors, ref);
-        for (const OutDecl* d : effective(declarations))
-            writer.declaration(d->name, d->value, d->ref);
+        if (declarations.size() <= 32){
+            // effective() without its list: a declaration a later one of the same name replaces is skipped
+            for (size_t i = 0; i < declarations.size(); i++){
+                bool later = false;
+                for (size_t j = i + 1; j < declarations.size() && !later; j++)
+                    later = declarations[j].name == declarations[i].name;
+                if (!later)
+                    writer.declaration(declarations[i].name, declarations[i].value, declarations[i].ref);
+            }
+        }else{
+            for (const OutDecl* d : effective(declarations))
+                writer.declaration(d->name, d->value, d->ref);
+        }
         writer.endRule();
     }
 

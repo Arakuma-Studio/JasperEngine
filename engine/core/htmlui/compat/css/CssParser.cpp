@@ -400,6 +400,12 @@ namespace {
 
         std::optional<Rule> consumeAtRule(bool nested){
             Rule rule;
+            if (!consumeAtRuleInto(rule, nested))
+                return std::nullopt;
+            return rule;
+        }
+
+        bool consumeAtRuleInto(Rule& rule, bool nested){
             rule.kind = Rule::Kind::At;
             const LexToken& keyword = next();
             rule.atName = toLowerAscii(std::string(valueOf(keyword)));
@@ -437,7 +443,7 @@ namespace {
             if (!rule.preludeRef.valid())
                 rule.preludeRef = ref(keyword.offset + keyword.length, keyword.offset + keyword.length);
             rule.ref = ref(begin, end);
-            return rule;
+            return true;
         }
 
         static bool looksLikeCustomProperty(const std::vector<ComponentValue>& prelude){
@@ -478,6 +484,12 @@ namespace {
 
         std::optional<Rule> consumeQualifiedRule(bool stopAtSemicolon, bool nested){
             Rule rule;
+            if (!consumeQualifiedRuleInto(rule, stopAtSemicolon, nested))
+                return std::nullopt;
+            return rule;
+        }
+
+        bool consumeQualifiedRuleInto(Rule& rule, bool stopAtSemicolon, bool nested){
             rule.kind = Rule::Kind::Style;
             const uint32_t begin = position();
             rule.prelude.reserve(preludeCount(stopAtSemicolon, nested));
@@ -486,12 +498,12 @@ namespace {
                 const LexToken& token = peek();
                 if (token.type == TokenType::EndOfFile || (stopAtSemicolon && token.type == TokenType::Semicolon)){
                     error(ParseError::Kind::InvalidRule, begin, (token.offset > begin ? token.offset - begin : 0));
-                    return std::nullopt;
+                    return false;
                 }
                 if (token.type == TokenType::RightBrace){
                     if (nested){
                         error(ParseError::Kind::InvalidRule, begin, (token.offset > begin ? token.offset - begin : 0));
-                        return std::nullopt;
+                        return false;
                     }
                     error(ParseError::Kind::UnmatchedCloser, token.offset, token.length);
                     tokenValue(rule.prelude.emplace_back());
@@ -507,14 +519,14 @@ namespace {
                             consumeBlock(dropped);
                         }
                         error(ParseError::Kind::InvalidRule, errorBegin, position() > errorBegin ? position() - errorBegin : 0);
-                        return std::nullopt;
+                        return false;
                     }
                     consumeBlock(rule);
                     rule.preludeRef = preludeExtent(rule.prelude);
                     if (!rule.preludeRef.valid())
                         rule.preludeRef = ref(rule.blockRef.offset, rule.blockRef.offset);
                     rule.ref = ref(begin, rule.blockRef.offset + rule.blockRef.length);
-                    return rule;
+                    return true;
                 }
                 consumeComponentValue(rule.prelude.emplace_back());
             }
@@ -542,10 +554,16 @@ namespace {
         // §5.5.6
         std::optional<Declaration> consumeDeclaration(bool nested){
             Declaration declaration;
+            if (!consumeDeclarationInto(declaration, nested))
+                return std::nullopt;
+            return declaration;
+        }
+
+        bool consumeDeclarationInto(Declaration& declaration, bool nested){
             const LexToken& nameToken = peek();
             if (nameToken.type != TokenType::Ident){
                 consumeBadDeclarationRemnants(nested);
-                return std::nullopt;
+                return false;
             }
             next();
             const std::string_view nameText = valueOf(nameToken);
@@ -556,7 +574,7 @@ namespace {
             discardWhitespace();
             if (peek().type != TokenType::Colon){
                 consumeBadDeclarationRemnants(nested);
-                return std::nullopt;
+                return false;
             }
             const LexToken& colon = next();
             discardWhitespace();
@@ -593,7 +611,7 @@ namespace {
                         hasOther = true;
                 }
                 if (hasBraceBlock && hasOther)
-                    return std::nullopt;
+                    return false;
             }
 
             if (!custom && declaration.name == "unicode-range" && !values.empty()){
@@ -610,7 +628,7 @@ namespace {
             declaration.valueRef = declaration.value.empty() ? ref(valueBegin, valueBegin)
                                                              : ref(declaration.value.front().offset, endOf(declaration.value.back()));
             declaration.ref = ref(nameToken.offset, declarationEnd);
-            return declaration;
+            return true;
         }
 
         // §5.5.5, stops at '}' (not consumed) or EOF
@@ -624,8 +642,8 @@ namespace {
                 if (token.type == TokenType::EndOfFile || token.type == TokenType::RightBrace)
                     return;
                 if (token.type == TokenType::AtKeyword){
-                    if (std::optional<Rule> rule = consumeAtRule(true))
-                        rules.push_back(std::move(*rule));
+                    if (!consumeAtRuleInto(rules.emplace_back(), true))
+                        rules.pop_back();
                     continue;
                 }
 
@@ -633,15 +651,15 @@ namespace {
                 // position: decided first (declarationParses), so each token is read once
                 const bool declarationShaped = looksLikeDeclarationStart();
                 if (declarationParses(true)){
-                    std::optional<Declaration> declaration = consumeDeclaration(true);
-                    if (declaration)
-                        declarations.push_back(std::move(*declaration));
+                    if (!consumeDeclarationInto(declarations.emplace_back(), true))
+                        declarations.pop_back();
                     continue;
                 }
 
-                std::optional<Rule> rule = consumeQualifiedRule(true, true);
-                if (rule){
-                    rules.push_back(std::move(*rule));
+                const bool ruleParsed = consumeQualifiedRuleInto(rules.emplace_back(), true, true);
+                if (!ruleParsed)
+                    rules.pop_back();
+                if (ruleParsed){
                 }else if (declarationShaped && !errors_.empty() && errors_.back().kind == ParseError::Kind::InvalidRule){
                     errors_.back().kind = ParseError::Kind::InvalidDeclaration;
                 }
@@ -674,12 +692,12 @@ namespace {
                     continue;
                 }
                 if (token.type == TokenType::AtKeyword){
-                    if (std::optional<Rule> rule = consumeAtRule(false))
-                        rules.push_back(std::move(*rule));
+                    if (!consumeAtRuleInto(rules.emplace_back(), false))
+                        rules.pop_back();
                     continue;
                 }
-                if (std::optional<Rule> rule = consumeQualifiedRule(false, false))
-                    rules.push_back(std::move(*rule));
+                if (!consumeQualifiedRuleInto(rules.emplace_back(), false, false))
+                    rules.pop_back();
             }
         }
 
