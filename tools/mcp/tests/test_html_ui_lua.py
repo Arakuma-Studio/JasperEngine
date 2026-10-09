@@ -128,7 +128,8 @@ async def test_element_api(ed: Editor):
                doc:getElementById('list').childElementCount - 1, #doc:querySelectorAll('.row') - 1,
                doc:querySelector('#gold').textContent, doc:getElementById('nope') == nil, doc.title
     """)
-    ed.check_eq(values, ["button", "div", "Click", True, "170px", 2, 2, "10", True, "lua"], "element API")
+    # an .html document: tagName is the DOM's, upper case (phase 2, compat layer hook H5)
+    ed.check_eq(values, ["button", "DIV", "Click", True, "170px", 2, 2, "10", True, "lua"], "element API")
 
     values = await lua(ed, """
         local doc = object('Menu', 'UIDocument')

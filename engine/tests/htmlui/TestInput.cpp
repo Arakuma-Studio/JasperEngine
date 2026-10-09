@@ -81,7 +81,7 @@ namespace {
             GpuEnvironment::setView(640, 360, 640, 360, Scaling::FITWIDTH);
             fixture.reset(new SceneFixture());
             UIDocument& ui = fixture->add<UIDocument>();
-            ASSERT_TRUE(ui.load("p1/input/input.html"));
+            ASSERT_TRUE(ui.load("p1/input/input.rml"));
             document = rmlContext(scene())->GetDocument(0);
             ASSERT_NE(document, nullptr);
             // scrolls land at once, without the smooth-scroll animation
@@ -326,7 +326,7 @@ TEST_F(InputTest, PointerConsumeRules){
 
 TEST_F(InputTest, OpaqueDocumentBlocksLikeACanvas){
     UIDocument& opaque = fixture->add<UIDocument>();
-    ASSERT_TRUE(opaque.load("p1/input/opaque.html"));
+    ASSERT_TRUE(opaque.load("p1/input/opaque.rml"));
     opaque.setSortOrder(10);
     updateDocuments(scene());
 

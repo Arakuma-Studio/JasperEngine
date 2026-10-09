@@ -37,8 +37,13 @@ namespace Rml {
     class Event;
 }
 
+namespace jasperengine::htmlui::compat {
+    struct DocumentScript;
+}
+
 namespace jasperengine{
 
+    class UIDocument;
     class UIDocumentSystem;
     class HtmlUIValueDefinition;
     struct HtmlUIDataModelRecord;
@@ -219,6 +224,11 @@ namespace jasperengine{
         // calls the function below its nargs arguments with a traceback; logs and returns
         // false on error (what names the callback in the log)
         static bool call(lua_State* L, int nargs, const std::string& what);
+        // phase 2 (p2-html, §3.12.4): a <script type="text/lua"> of a document, in a fresh
+        // environment (__index = _G) with `document` and `anime` bound; the chunk is named after
+        // its file and starts at its line, so errors read "ui/menu.html:45: ...". False with the
+        // Lua error (and traceback) in `error` when it fails; nothing is logged
+        static bool runDocumentScript(UIDocument& document, const htmlui::compat::DocumentScript& script, std::string* error = nullptr);
     };
 
 }

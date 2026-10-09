@@ -88,6 +88,8 @@ TTY_FLAGS=()
 [[ -t 0 && -t 1 ]] && TTY_FLAGS=(-it)
 ENV_FLAGS=()
 [[ -n "${JASPER_HTMLUI_UPDATE_GOLDEN:-}" ]] && ENV_FLAGS+=(-e "JASPER_HTMLUI_UPDATE_GOLDEN=$JASPER_HTMLUI_UPDATE_GOLDEN")
+# the HTML UI performance tests' tolerance on a loaded host (compat_perf_test.cpp)
+[[ -n "${JASPER_HTMLUI_PERF_SLACK:-}" ]] && ENV_FLAGS+=(-e "JASPER_HTMLUI_PERF_SLACK=$JASPER_HTMLUI_PERF_SLACK")
 [[ -n "${HTMLUI_LIVE_NETWORK:-}" ]] && ENV_FLAGS+=(-e "HTMLUI_LIVE_NETWORK=$HTMLUI_LIVE_NETWORK")
 
 run() {
@@ -130,6 +132,13 @@ linux)
         if [[ \$leaked != 0 ]]; then
             echo \"libjasperengine.so exports \$leaked RmlUi symbols:\" >&2
             nm -D -C $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep 'Rml::' | head -20 >&2
+            exit 1
+        fi
+        # and so does lexbor, the compat layer's HTML parser (engine/libs/lexbor)
+        leaked=\$(nm -D $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep -cE ' (lxb|lexbor)_' || true)
+        if [[ \$leaked != 0 ]]; then
+            echo \"libjasperengine.so exports \$leaked lexbor symbols:\" >&2
+            nm -D $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep -E ' (lxb|lexbor)_' | head -20 >&2
             exit 1
         fi
         [[ '${SKIP_ENGINE:-0}' == 1 ]] && exit 0

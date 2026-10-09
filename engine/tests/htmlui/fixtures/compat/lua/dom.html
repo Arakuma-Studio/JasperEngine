@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html id="app" lang="en">
+<head>
+    <title>lua dom</title>
+    <style>
+        #box { width: 100px; height: 20px; }
+    </style>
+</head>
+<body class="page">
+    <div id="box" class="panel" tabindex="0" data-kind="main">box</div>
+    <ul id="list"></ul>
+    <template id="row"><li class="row"><span class="name">Name</span></li></template>
+    <dialog id="dialog"><p>Dialog</p></dialog>
+    <p id="out">not run</p>
+    <input id="field" type="email" value="a@b.c">
+    <i id="icon" data-lucide="play"></i>
+    <script type="text/lua">
+        document:getElementById("out").textContent = "ran " .. type(anime)
+        scriptGlobal = (document.body ~= nil)
+    </script>
+</body>
+</html>

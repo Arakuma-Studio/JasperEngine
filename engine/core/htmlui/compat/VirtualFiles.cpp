@@ -4,6 +4,11 @@
 #include "VirtualFiles.h"
 
 #include "io/Data.h"
+#include "io/FileData.h"
+#include "io/ResourcePack.h"
+#include "System.h"
+
+#include <cstdio>
 
 #include <map>
 #include <mutex>
@@ -149,6 +154,13 @@ bool jasperengine::htmlui::compat::assetFileExists(const FileAccess& access, con
     }
     if (path.empty())
         return false;
-    Data data;
-    return data.open(path.c_str()) == FileErrors::FILEDATA_OK;
+    // without reading the file (images can be large): the resource pack's index, else an open
+    // through the platform (Android assets and the Web preload included)
+    if (ResourcePack::contains(path))
+        return true;
+    FILE* file = System::instance().platformFopen(FileData::getSystemPath(path).c_str(), "rb");
+    if (!file)
+        return false;
+    std::fclose(file);
+    return true;
 }

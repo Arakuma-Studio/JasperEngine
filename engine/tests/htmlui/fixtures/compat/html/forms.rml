@@ -1,0 +1,52 @@
+<rml>
+<head>
+<link type="text/rcss" href="/@htmlui/ua.rcss" origin="user-agent"/>
+</head>
+<body id="htmlui-root" data-htmlui-loc="0">
+<htmlbody data-htmlui-loc="1">
+<form data-htmlui-loc="2">
+<input type="text" name="t" placeholder="Name" pattern="[a-z]+" minlength="2" required="" data-htmlui-loc="3"/>
+<input type="password" data-htmlui-loc="4"/>
+<input type="checkbox" data-htmlui-loc="5"/>
+<input type="radio" data-htmlui-loc="6"/>
+<input type="range" min="0" max="10" step="1" data-htmlui-loc="7"/>
+<input type="submit" value="Go" data-htmlui-loc="8"/>
+<input type="button" value="B" data-htmlui-loc="9"/>
+<input type="reset" data-htmlui-loc="10"/>
+<input type="image" src="asset://compat/html/img/a.png" data-htmlui-loc="11"/>
+<input type="hidden" data-htmlui-loc="12"/>
+<input type="search" data-htmlui-loc="13"/>
+<input type="email" data-htmlui-loc="14"/>
+<input type="url" data-htmlui-loc="15"/>
+<input type="tel" data-htmlui-loc="16"/>
+<input type="number" data-htmlui-loc="17"/>
+<input type="color" data-htmlui-loc="18"/>
+<input type="date" data-htmlui-loc="19"/>
+<input type="time" data-htmlui-loc="20"/>
+<input type="datetime-local" data-htmlui-loc="21"/>
+<input type="month" data-htmlui-loc="22"/>
+<input type="week" data-htmlui-loc="23"/>
+<input type="file" data-htmlui-loc="24"/>
+<input type="bogus" data-htmlui-loc="25"/>
+<button type="submit" name="b" value="1" data-htmlui-loc="26">Submit</button>
+<button type="reset" data-htmlui-loc="27">Reset</button>
+<button type="button" data-htmlui-loc="28">Plain</button>
+<select name="s" data-htmlui-loc="29">
+<option disabled="" class="htmlui-optgroup" data-htmlui-loc="30">Group A</option>
+<option data-htmlui-loc="31">a1</option>
+<option data-htmlui-loc="32">a2</option>
+<option disabled="" class="htmlui-optgroup" data-htmlui-loc="33">Off</option>
+<option disabled="" data-htmlui-loc="34">b1</option>
+<option data-htmlui-loc="35">c</option></select>
+<textarea rows="3" cols="20" data-htmlui-loc="36">initial text</textarea>
+<fieldset disabled="" data-htmlui-loc="37">
+<legend data-htmlui-loc="38">
+<input type="checkbox" id="in-legend" data-htmlui-loc="39"/></legend>
+<input type="text" id="disabled-by-fieldset" disabled="" data-htmlui-loc="40"/>
+<button disabled="" data-htmlui-loc="41">b</button></fieldset>
+<label for="t" data-htmlui-loc="42">Label</label>
+<label data-htmlui-loc="43">
+<input type="checkbox" data-htmlui-loc="44"/> wrapped</label>
+</form>
+</htmlbody></body>
+</rml>

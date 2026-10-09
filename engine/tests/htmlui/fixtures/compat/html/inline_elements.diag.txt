@@ -1,0 +1,4 @@
+compat/html/inline_elements.html:3:100: info: <meter> is drawn as <progress> (low ignored) (fix: color the bar with a class for low/high states) [HTMLUI-HTML-0003]
+compat/html/inline_elements.html:3:4: info: ruby annotations are laid out inline after their base at half size (no ruby layout); <rp> is hidden [HTMLUI-HTML-0003]
+compat/html/inline_elements.html:3:80: info: <output> is written as <span> [HTMLUI-HTML-0003]
+compat/html/inline_elements.html:4:1: info: <datalist> is removed (no engine equivalent) (fix: offer the choices with a select or buttons) [HTMLUI-HTML-0003]

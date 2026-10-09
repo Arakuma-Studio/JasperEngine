@@ -1,0 +1,34 @@
+<rml>
+<head>
+<link type="text/rcss" href="/@htmlui/ua.rcss" origin="user-agent"/>
+<style>
+.htmlui-h0 {
+-rmlui-direction: rtl;
+}
+.htmlui-h1 {
+-rmlui-direction: auto;
+}
+.htmlui-h2 {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+font-family: Arial, Times;
+font-size: 24px;
+}
+.htmlui-h3 {
+color: #c00000ff;
+--html-current-color: #c00000ff;
+}
+</style>
+</head>
+<body id="htmlui-root" data-htmlui-loc="0">
+<htmlbody data-htmlui-loc="1">
+<p data-htmlui-loc="2">
+<q data-htmlui-loc="3">“quote <q data-htmlui-loc="4">‘nested’</q>”</q> <span class="htmlui-h0" data-htmlui-loc="5">rtl</span> <span class="htmlui-h1" data-htmlui-loc="6">isolated</span> <span class="htmlui-h2" data-htmlui-loc="7">font</span> <span class="htmlui-h3" data-htmlui-loc="8">legacy</span></p>
+<p data-htmlui-loc="9">
+<ruby data-htmlui-loc="10">漢<rp data-htmlui-loc="11">(</rp>
+<rt data-htmlui-loc="12">kan</rt>
+<rp data-htmlui-loc="13">)</rp></ruby> a​b slotted <span data-htmlui-loc="14">42</span> <progress value="3" max="8" data-htmlui-loc="15">5</progress></p>
+
+<center data-htmlui-loc="16">centered</center>
+</htmlbody></body>
+</rml>

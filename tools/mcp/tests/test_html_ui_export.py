@@ -4,8 +4,8 @@
   exports: the source export's assets/ and, with the native resource pack, resources.pak
   hold every one of them.
 - A missing reference, a path outside the assets directory and a remote URL fail the export
-  (Exporter::checkHtmlUIReferences) with project-relative file:line:column in the message;
-  an absolute path is only a warning.
+  (Exporter::checkHtmlUIReferences; for .html documents the compat layer's checkDocument,
+  phase-2 hook H14) with project-relative file:line:column in the message.
 - JASPER_SLOW_BUILD=1 also builds the Desktop player and runs it (run_build) with the document
   on screen.
 
@@ -159,14 +159,17 @@ async def test_broken_references_fail_the_export(ed: Editor):
         raw, r = await export_source(ed, ed.scratch.root / "export-html-ui-broken")
         ed.check_eq(r["status"], "failed", f"the export should fail: {raw.text[:2000]}")
         message = str(r.get("message", "")) + str(r.get("result", "")) + raw.text
-        for needle in ("assets/ui/broken.html:4:", "https://cdn.example.com/theme.css",
-                       "assets/ui/broken.html:7:", "img/nothere.png", "assets/ui/broken.html:8:", "outside the assets directory"):
+        # .html documents are checked by the compat layer (phase-2 hook H14): its diagnostics, in
+        # the common text format, with project-relative paths
+        for needle in ("assets/ui/broken.html:4:", "https://cdn.example.com/theme.css", "HTMLUI-IMP-0001",
+                       "assets/ui/broken.html:7:", "img/nothere.png", "HTMLUI-GEN-0001",
+                       "assets/ui/broken.html:8:", "above the assets directory"):
             ed.check(needle in message, f"'{needle}' not in the failure: {message[:3000]}")
         # file:line:column exactly: the remote URL starts at column 33 of line 4
         ed.check("assets/ui/broken.html:4:33:" in message, f"remote URL position: {message[:3000]}")
-        warnings = await ed.console_since(None, types=["warning"], limit=1000)
-        ed.check(any("absolute-only-here.png" in w.get("message", "") and "absolute path" in w.get("message", "")
-                     for w in warnings), f"no warning for the absolute path: {[w.get('message') for w in warnings][-10:]}")
+        # "/tmp/..." is a root-relative URL in HTML (the assets directory), not a filesystem path
+        ed.check("assets/ui/broken.html:9:" in message and "absolute-only-here.png" in message,
+                 f"the root-relative image: {message[:3000]}")
     finally:
         await ed.call("set_properties", scene=S["scene"], entity=S["menu"], values={"uidocument": {"filename": "assets/ui/export.html"}})
         await ed.call("save_scene", scene=S["scene"])

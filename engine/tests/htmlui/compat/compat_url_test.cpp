@@ -82,22 +82,22 @@ TEST(CompatUrl, RelativeAndRootRelative){
     ResolvedUrl a = resolver.resolve("img/a.png", "ui/menu.html", "image");
     EXPECT_EQ(a.kind, UrlKind::Relative);
     EXPECT_EQ(a.assetPath, "ui/img/a.png");
-    EXPECT_EQ(a.emitted, "/ui/img/a.png");
+    EXPECT_EQ(a.emitted, "asset://ui/img/a.png");
     EXPECT_TRUE(a.exists);
     EXPECT_TRUE(a.local());
 
     ResolvedUrl up = resolver.resolve("../fonts/x.ttf", "ui/menu.css", "font");
     EXPECT_EQ(up.assetPath, "fonts/x.ttf");
-    EXPECT_EQ(up.emitted, "/fonts/x.ttf");
+    EXPECT_EQ(up.emitted, "asset://fonts/x.ttf");
     EXPECT_TRUE(up.exists);
 
     ResolvedUrl dots = resolver.resolve("./img/../img/./a.png", "ui/menu.html", "image");
     EXPECT_EQ(dots.assetPath, "ui/img/a.png");
 
-    ResolvedUrl root = resolver.resolve("/ui/img/a.png", "deep/dir/page.html", "image");
+    ResolvedUrl root = resolver.resolve("asset://ui/img/a.png", "deep/dir/page.html", "image");
     EXPECT_EQ(root.kind, UrlKind::RootRelative);
     EXPECT_EQ(root.assetPath, "ui/img/a.png");
-    EXPECT_EQ(root.emitted, "/ui/img/a.png");
+    EXPECT_EQ(root.emitted, "asset://ui/img/a.png");
 
     ResolvedUrl scheme = resolver.resolve("asset://ui/img/a.png", "x.html", "image");
     EXPECT_EQ(scheme.assetPath, "ui/img/a.png");
@@ -106,7 +106,7 @@ TEST(CompatUrl, RelativeAndRootRelative){
     ResolvedUrl fragment = resolver.resolve("icons.svg?v=2#home", "ui/menu.html", "svg");
     EXPECT_EQ(fragment.assetPath, "ui/icons.svg");
     EXPECT_EQ(fragment.fragment, "#home");
-    EXPECT_EQ(fragment.emitted, "/ui/icons.svg#home");
+    EXPECT_EQ(fragment.emitted, "asset://ui/icons.svg#home");
     EXPECT_TRUE(fragment.exists);
 
     // percent-encoded names
@@ -131,7 +131,7 @@ TEST(CompatUrl, MissingLocalFileIsKeptAndReported){
     DiagnosticSink sink(files);
     const ResolvedUrl missing = resolver.resolve("img/b.png", "ui/menu.html", "image", SourceRef{file, 10, 9}, &sink);
     EXPECT_FALSE(missing.exists);
-    EXPECT_EQ(missing.emitted, "/ui/img/b.png");   // kept
+    EXPECT_EQ(missing.emitted, "asset://ui/img/b.png");   // kept
     ASSERT_EQ(sink.size(), 1u);
     const Diagnostic& d = sink.diagnostics()[0];
     EXPECT_EQ(d.code, codes::FileNotFound);
@@ -157,7 +157,7 @@ TEST(CompatUrl, RemoteThroughTheManifest){
     EXPECT_EQ(hit.kind, UrlKind::Remote);
     ASSERT_NE(hit.entry, nullptr);
     EXPECT_EQ(hit.assetPath, "htmlui-imports/images/example.com/1234-photo.jpg");
-    EXPECT_EQ(hit.emitted, "/htmlui-imports/images/example.com/1234-photo.jpg#top");
+    EXPECT_EQ(hit.emitted, "asset://htmlui-imports/images/example.com/1234-photo.jpg#top");
     EXPECT_TRUE(hit.exists);
     EXPECT_EQ(sink.size(), 0u);
 

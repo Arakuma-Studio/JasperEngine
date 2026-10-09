@@ -1,0 +1,2 @@
+compat/html/comments_cdata.html:3:17: info: HTML parse error: abrupt closing of empty comment; recovered as browsers do [HTMLUI-HTML-0001]
+compat/html/comments_cdata.html:4:6: info: HTML parse error: cdata in html content; recovered as browsers do [HTMLUI-HTML-0001]

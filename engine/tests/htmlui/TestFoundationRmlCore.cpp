@@ -182,7 +182,7 @@ TEST(RmlCoreSmokeTest, LoadDocumentFromFileJoinsPaths){
 
     // RmlFile reads it relative to the asset root (the fixtures); the linked base.css and
     // the image resolve relative to the document through RmlSystem::JoinPath
-    Rml::ElementDocument* document = context->LoadDocument("common/foundation.html");
+    Rml::ElementDocument* document = context->LoadDocument("common/foundation.rml");
     ASSERT_NE(document, nullptr);
     document->Show();
     context->Update();

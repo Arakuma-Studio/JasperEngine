@@ -21,7 +21,7 @@ using namespace jasperengine::test;
 
 TEST_F(FullPathGoldenTest, Orientation){
     SceneFixture fixture;
-    fixture.addDocument("golden/orientation.html");
+    fixture.addDocument("golden/orientation.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     Screen screen;
@@ -47,7 +47,7 @@ TEST_F(FullPathGoldenTest, Orientation){
 
 TEST_F(FullPathGoldenTest, BoxesBorders){
     SceneFixture fixture;
-    fixture.addDocument("render/boxes.html");
+    fixture.addDocument("render/boxes.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     Screen screen;
@@ -86,7 +86,7 @@ TEST_F(FullPathGoldenTest, BoxesBorders){
 
 TEST_F(FullPathGoldenTest, Flexbox){
     SceneFixture fixture;
-    fixture.addDocument("golden/flexbox.html");
+    fixture.addDocument("golden/flexbox.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     Screen screen;
@@ -145,7 +145,7 @@ TEST_F(FullPathGoldenTest, Flexbox){
 
 TEST_F(FullPathGoldenTest, Images){
     SceneFixture fixture;
-    fixture.addDocument("render/images.html");
+    fixture.addDocument("render/images.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     Screen screen;
@@ -187,7 +187,7 @@ TEST_F(FullPathGoldenTest, AlphaBlend){
     under.setSize(600, 40);
     under.setColor(1.0f, 1.0f, 0.0f, 1.0f);
 
-    fixture.addDocument("render/alpha.html");
+    fixture.addDocument("render/alpha.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     Screen screen;
@@ -213,7 +213,7 @@ TEST_F(FullPathGoldenTest, AlphaBlend){
 
 TEST_F(FullPathGoldenTest, OverflowScissor){
     SceneFixture fixture;
-    UIDocument document = fixture.addDocument("golden/overflow_scissor.html");
+    UIDocument document = fixture.addDocument("golden/overflow_scissor.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     // scroll the list by two rows from test code (wheel input is phase 1)
@@ -269,7 +269,7 @@ TEST_F(FullPathGoldenTest, OverflowScissor){
 
 TEST_F(FullPathGoldenTest, Transform){
     SceneFixture fixture;
-    fixture.addDocument("golden/transform.html");
+    fixture.addDocument("golden/transform.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     Screen screen;

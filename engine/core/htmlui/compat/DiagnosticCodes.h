@@ -88,6 +88,7 @@ namespace jasperengine::htmlui::compat {
         inline constexpr DiagCode LinkNotNavigable{DiagArea::HTML, 23};
         inline constexpr DiagCode UnsupportedImageFormat{DiagArea::HTML, 24};
         inline constexpr DiagCode DialogNotModal{DiagArea::HTML, 25};
+        inline constexpr DiagCode SelfClosingTag{DiagArea::HTML, 26};   // p2-html
         // CSS
         inline constexpr DiagCode UnknownProperty{DiagArea::CSS, 1};
         inline constexpr DiagCode UnsupportedProperty{DiagArea::CSS, 2};

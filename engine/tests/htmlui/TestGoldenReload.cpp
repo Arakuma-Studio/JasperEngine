@@ -65,13 +65,13 @@ TEST_F(FullPathGoldenTest, ReloadReadsEditedStyleSheet){
     std::filesystem::create_directories(root + "/common");
     std::filesystem::copy_file(std::string(JASPER_HTMLUI_TEST_SOURCE_DIR) + "/fixtures/common/base.css", root + "/common/base.css",
                                std::filesystem::copy_options::overwrite_existing);
-    writeFile(root + "/golden-reload/reload.html", reloadHtml);
+    writeFile(root + "/golden-reload/reload.rml", reloadHtml);
     writeFile(root + "/golden-reload/reload.css", reloadCss("#ff0000"));
 
     SceneFixture fixture;
     // keeps RmlUi initialised through the reloads
-    fixture.addDocument("golden/orientation.html");
-    UIDocument document = fixture.addDocument("data://golden-reload/reload.html");
+    fixture.addDocument("golden/orientation.rml");
+    UIDocument document = fixture.addDocument("data://golden-reload/reload.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
     ASSERT_TRUE(document.isLoaded());
 
@@ -92,7 +92,7 @@ TEST_F(FullPathGoldenTest, ReloadReadsEditedStyleSheet){
     writeFile(root + "/golden-reload/reload.css", reloadCss("#0000ff"));
     document.setFilename("");
     GpuEnvironment::drawFrames(1);
-    document.setFilename("data://golden-reload/reload.html");
+    document.setFilename("data://golden-reload/reload.rml");
     Screen third;
     ASSERT_TRUE(capture(third, 2));
     EXPECT_TRUE(third.is(320, 180, 0, 0, 255));
@@ -108,8 +108,8 @@ TEST_F(FullPathGoldenTest, NoLeaksAfterSceneReload){
         std::vector<uint32_t> buffers, images;
         {
             SceneFixture fixture;
-            fixture.addDocument("render/images.html");
-            fixture.addDocument("golden/text_basic.html", 1);
+            fixture.addDocument("render/images.rml");
+            fixture.addDocument("golden/text_basic.rml", 1);
             ASSERT_TRUE(fixture.waitUntilLoaded());
 
             HtmlUIContext* context = fixture.getScene().getSystem<UIDocumentSystem>()->getContext();

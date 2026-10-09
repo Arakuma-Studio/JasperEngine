@@ -69,7 +69,7 @@ namespace {
 
 TEST_F(TextFeatureGoldenTest, FontEffects){
     SceneFixture fixture;
-    fixture.addDocument("p1/font_effects.html");
+    fixture.addDocument("p1/font_effects.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     Screen screen;
@@ -137,7 +137,7 @@ TEST_F(TextFeatureGoldenTest, FontSynthesis){
     FontRegistry::clear();
 
     SceneFixture fixture;
-    fixture.addDocument("p1/font_synthesis.html");
+    fixture.addDocument("p1/font_synthesis.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     Screen screen;

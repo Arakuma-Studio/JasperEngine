@@ -51,6 +51,10 @@ namespace jasperengine::htmlui::compat {
         std::string virtualDirectory;             // "@htmlui/doc/<key hex>/" (the document compile key);
                                                   // File outputs get virtualDirectory + asset path + ".rcss"
         std::string documentPath;                 // "ui/menu.html": inline sheets, origins
+        // p2-html: the author id of the document's <html> (selectors `#id` on it name the root,
+        // §3.8) and its dir (logical properties, §3.9.7); "" when none
+        std::string rootId;
+        std::string rootDirection;
     };
 
     struct RewriteResult {

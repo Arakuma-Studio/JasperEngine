@@ -24,6 +24,7 @@
 #include "object/ui/HtmlUIScriptInternal.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Framebuffer.h"
+#include "htmlui/compat/DocumentLoader.h"
 
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
@@ -1102,6 +1103,51 @@ void HtmlUILua::pushModel(lua_State* L, const std::shared_ptr<UIDataModelState>&
     pushProxy(L, state, std::vector<PathKey>());
 }
 
+bool HtmlUILua::runDocumentScript(UIDocument& document, const htmlui::compat::DocumentScript& script, std::string* error){
+    lua_State* L = LuaBinding::getLuaState();
+    if (!L){
+        if (error)
+            *error = "no Lua state";
+        return false;
+    }
+    const int top = lua_gettop(L);
+
+    // as many line breaks as the code starts after, so Lua's line numbers are the file's
+    std::string code(script.firstLine > 1 ? script.firstLine - 1 : 0, '\n');
+    code += script.code;
+    const std::string chunk = "=" + (script.sourceFile.empty() ? script.chunkName : script.sourceFile);
+    if (luaL_loadbuffer(L, code.data(), code.size(), chunk.c_str()) != LUA_OK){
+        if (error)
+            *error = lua_isstring(L, -1) ? lua_tostring(L, -1) : "syntax error";
+        lua_settop(L, top);
+        return false;
+    }
+
+    // a fresh environment per script: globals stay readable (__index = _G), what the script
+    // defines stays its own
+    lua_newtable(L);
+    lua_newtable(L);
+    lua_pushglobaltable(L);
+    lua_setfield(L, -2, "__index");
+    lua_setmetatable(L, -2);
+    if (!luabridge::push(L, document))
+        lua_pushnil(L);
+    lua_setfield(L, -2, "document");
+    lua_getglobal(L, "anime");
+    lua_setfield(L, -2, "anime");
+    if (!lua_setupvalue(L, -2, 1))   // _ENV
+        lua_pop(L, 1);
+
+    if (LuaBinding::pcallWithTraceback(L, 0, 0) != LUA_OK){
+        if (error)
+            *error = lua_isstring(L, -1) ? lua_tostring(L, -1) : "runtime error";
+        lua_settop(L, top);
+        return false;
+    }
+    lua_settop(L, top);
+    return true;
+}
+
 bool HtmlUILua::call(lua_State* L, int nargs, const std::string& what){
     if (LuaBinding::pcallWithTraceback(L, nargs, 0) != LUA_OK){
         Log::error("[HTML UI] Lua error in %s: %s", what.c_str(), LuaBinding::getLuaStackErrorString(L, -1).c_str());
@@ -1250,6 +1296,16 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addFunction("removeStyleProperty", &UIElement::removeStyleProperty)
         .addFunction("getBoundingBox", &UIElement::getBoundingBox)
         .addFunction("isPseudoClassSet", &UIElement::isPseudoClassSet)
+        // phase 2 (p2-html): HTML documents
+        .addProperty("localName", &UIElement::getLocalName)
+        .addProperty("outerHTML", &UIElement::getOuterHTML, &UIElement::setOuterHTML)
+        .addFunction("insertAdjacentHTML", &UIElement::insertAdjacentHTML)
+        // <template>: a fragment with a copy of its content (cloneNode it, append it)
+        .addProperty("content", [](const UIElement* self) -> std::optional<UIElement> { return optionalElement(self->getContent()); })
+        // <dialog>
+        .addFunction("show", &UIElement::show)
+        .addFunction("showModal", &UIElement::showModal)
+        .addFunction("close", [](UIElement* self, std::optional<std::string> returnValue) { self->close(returnValue.value_or(std::string())); })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1283,9 +1339,16 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addIndexMetaMethod([](UIStyle& self, const luabridge::LuaRef& key, lua_State* L) -> luabridge::LuaRef {
             if (!key.isString() || isStyleMethod(key.unsafe_cast<std::string>()))
                 return luabridge::LuaRef(L);
+            // the inline declarations as text (phase 2)
+            if (key.unsafe_cast<std::string>() == "cssText")
+                return luabridge::LuaRef(L, self.element.getCssText());
             return luabridge::LuaRef(L, self.element.getStyle(cssName(key.unsafe_cast<std::string>())));
         })
         .addNewIndexMetaMethod([](UIStyle& self, const luabridge::LuaRef& key, const luabridge::LuaRef& value, lua_State* L) -> luabridge::LuaRef {
+            if (key.isString() && key.unsafe_cast<std::string>() == "cssText"){
+                self.element.setCssText(value.isNil() ? std::string() : value.tostring());
+                return luabridge::LuaRef(L);
+            }
             if (key.isString()){
                 const std::string name = cssName(key.unsafe_cast<std::string>());
                 if (value.isNil()){
@@ -1397,6 +1460,30 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         // after every (re)load / before every unload of the document
         .addProperty("onLoad", [] (UIDocument* self, lua_State* L) -> FunctionSubscribe<void()>* { return &self->getComponent<UIDocumentComponent>().onLoad; }, [] (UIDocument* self, lua_State* L) { self->getComponent<UIDocumentComponent>().onLoad = L; })
         .addProperty("onUnload", [] (UIDocument* self, lua_State* L) -> FunctionSubscribe<void()>* { return &self->getComponent<UIDocumentComponent>().onUnload; }, [] (UIDocument* self, lua_State* L) { self->getComponent<UIDocumentComponent>().onUnload = L; })
+        // phase 2 (p2-html): the <html> element (body is the HTML <body>), diagnostics, themes
+        .addProperty("documentElement", [](const UIDocument* self) -> std::optional<UIElement> { return optionalElement(self->getDocumentElement()); })
+        .addFunction("getDiagnostics", [](const UIDocument* self, lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef list = luabridge::newTable(L);
+            int index = 1;
+            for (const htmlui::compat::Diagnostic& diagnostic : self->getDiagnostics()){
+                luabridge::LuaRef item = luabridge::newTable(L);
+                item["severity"] = std::string(htmlui::compat::severityName(diagnostic.severity));
+                item["code"] = diagnostic.code.id();
+                if (const htmlui::compat::DiagCodeInfo* info = htmlui::compat::findDiagnosticCode(diagnostic.code))
+                    item["name"] = std::string(info->name);
+                item["message"] = diagnostic.message;
+                item["suggestion"] = diagnostic.suggestion;
+                item["subject"] = diagnostic.subject;
+                item["file"] = diagnostic.file;
+                item["line"] = (int)diagnostic.line;
+                item["column"] = (int)diagnostic.column;
+                item["text"] = htmlui::compat::toText(diagnostic);
+                list[index++] = item;
+            }
+            return list;
+        })
+        .addFunction("setColorScheme", &UIDocument::setColorScheme)
+        .addFunction("setReducedMotion", &UIDocument::setReducedMotion)
         .endClass();
 
 #endif //DISABLE_LUA_BINDINGS
