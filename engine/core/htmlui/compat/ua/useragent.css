@@ -466,7 +466,7 @@ input[type="range"] {
 input[type="range"] slidertrack {
     margin-top: var(--html-slider-track-margin, 5px);
     height: var(--html-slider-track-height, 6px);
-    border-width: 1px;
+    border-width: var(--html-slider-track-border, 1px);
     border-style: solid;
     border-color: var(--html-control-border, #b2b2b2);
     border-radius: 3px;
@@ -481,6 +481,7 @@ input[type="range"] sliderprogress {
 }
 
 input[type="range"] sliderbar {
+    box-sizing: border-box;
     width: 16px;
     height: 16px;
     border-radius: 8px;
@@ -520,7 +521,7 @@ progress fill {
 /* select: a white box with a 1px frame and Chromium's chevron */
 select {
     box-sizing: border-box;
-    padding: 1px 0 1px 4px;
+    padding: 0;
     border-width: 1px;
     border-style: solid;
     border-color: var(--html-control-border, #767676);
@@ -531,8 +532,9 @@ select {
     cursor: default;
 }
 
+/* Chromium's internal menulist padding, which author padding adds to */
 select selectvalue {
-    padding-right: 0;
+    padding: 1px 0 1px 4px;
 }
 
 select selectarrow {
@@ -577,15 +579,14 @@ fieldset {
 
 /* A fieldset whose first legend straddles its top border (marked by the HTML stage): the
    legend starts at the fieldset's top edge, the content below it, and the border is drawn from
-   the legend's middle down (9px for the default 16px legend; no gap is cut around the legend):
-   the top line a gradient, the sides strips of fieldset-border.svg over transparent borders
-   that keep their 2px width */
+   the legend's middle down (9px for the default 16px legend; no gap is cut around the legend),
+   as strips of fieldset-border.svg; the side borders stay 2px wide, transparent */
 fieldset.htmlui-legend {
     padding-top: 0;
     border-top-width: 0;
     border-left-color: transparent;
     border-right-color: transparent;
-    decorator: linear-gradient(to bottom, #00000000 0px, #00000000 8.5px, #c5c5c5 8.5px, #c5c5c5 11px, #00000000 11px),
+    decorator: html-layer("/@htmlui/ua/fieldset-border.svg" 100% 2px 0% 9px no-repeat no-repeat border-box border-box scroll),
                html-layer("/@htmlui/ua/fieldset-border.svg" 2px 100% 0% 9px no-repeat no-repeat border-box border-box scroll),
                html-layer("/@htmlui/ua/fieldset-border.svg" 2px 100% 100% 9px no-repeat no-repeat border-box border-box scroll);
 }

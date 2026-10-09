@@ -55,6 +55,7 @@ namespace {
                 {"--html-slider-height", "16px"},
                 {"--html-slider-track-margin", "5px"},
                 {"--html-slider-track-height", "6px"},
+                {"--html-slider-track-border", "1px"},
             };
             const std::string_view ua = UserAgentStyle::source();
             for (auto& entry : out){
@@ -246,6 +247,7 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         context.emit("--html-slider-height", "auto");
         context.emit("--html-slider-track-margin", "0px");
         context.emit("--html-slider-track-height", "auto");
+        context.emit("--html-slider-track-border", "0px");
         return;
     }
     if (keyword == "auto" || keyword == "menulist" || keyword == "button" || keyword == "textfield" || keyword == "checkbox" ||
@@ -253,9 +255,9 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         keyword == "slider-horizontal" || keyword == "push-button" || keyword == "square-button"){
         if (keyword != "auto")
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "'appearance: " + keyword + "' is treated as 'auto'");
-        for (const char* companion : {"--html-check", "--html-check-baseline", "--html-control-bg", "--html-control-border", "--html-select-arrow", "--html-thumb",
-                                      "--html-slider-fill", "--html-slider-height", "--html-slider-track-margin",
-                                      "--html-slider-track-height"})
+        for (const char* companion : {"--html-check", "--html-check-baseline", "--html-control-bg", "--html-control-border",
+                                      "--html-select-arrow", "--html-thumb", "--html-slider-fill", "--html-slider-height",
+                                      "--html-slider-track-margin", "--html-slider-track-height", "--html-slider-track-border"})
             context.emit(companion, uaCompanionDefault(companion));
         return;
     }
