@@ -960,36 +960,51 @@ namespace {
     }
 
     void writeRule(Session& session, const FlatRule& rule, RcssWriter& writer){
-        RuleOutput output;
+        RuleOutput& output = session.scratchOutput;
+        output.declarations.clear();
+        output.generated.clear();
         processDeclarations(session, &rule, rule.origin, false, rule.declarations, output);
 
-        std::vector<OutDecl> normal, vmin;
-        Session::ImportantRule important;
-        important.rule = &rule;
-        normal.reserve(output.declarations.size());
-        for (OutDecl& d : output.declarations){
-            if (d.important){
-                important.declarations.push_back(std::move(d));
-                continue;
+        // !important and vmin/vmax declarations are written apart: without any (the usual
+        // case) the output is the rule's block as it is
+        bool apart = false;
+        for (const OutDecl& d : output.declarations)
+            apart = apart || d.important || (rule.origin != RuleOrigin::StyleAttribute && hasViewportOrientation(d.value));
+        std::vector<OutDecl> rest, vmin;
+        if (apart){
+            Session::ImportantRule important;
+            important.rule = &rule;
+            rest.reserve(output.declarations.size());
+            for (OutDecl& d : output.declarations){
+                if (d.important){
+                    important.declarations.push_back(std::move(d));
+                    continue;
+                }
+                if (rule.origin != RuleOrigin::StyleAttribute && hasViewportOrientation(d.value))
+                    vmin.push_back(std::move(d));
+                else
+                    rest.push_back(std::move(d));
             }
-            if (rule.origin != RuleOrigin::StyleAttribute && hasViewportOrientation(d.value))
-                vmin.push_back(std::move(d));
-            else
-                normal.push_back(std::move(d));
+            if (!important.declarations.empty())
+                session.important.push_back(std::move(important));
         }
-        if (!important.declarations.empty())
-            session.important.push_back(std::move(important));
+        std::vector<OutDecl>& normal = apart ? rest : output.declarations;
 
         // ::placeholder selectors take only text properties (selector lists joined as joinSelectors does)
-        std::string plainText, placeholderText;
+        std::string joinedPlain, placeholderText;
         bool anyPlaceholder = false;
-        for (const RewrittenSelector& s : rule.rewritten){
-            std::string& text = s.placeholder ? placeholderText : plainText;
-            anyPlaceholder = anyPlaceholder || s.placeholder;
-            if (!text.empty())
-                text += ", ";
-            text += s.text;
+        const bool single = rule.rewritten.size() == 1 && !rule.rewritten[0].placeholder;
+        if (!single){
+            for (const RewrittenSelector& s : rule.rewritten){
+                std::string& text = s.placeholder ? placeholderText : joinedPlain;
+                anyPlaceholder = anyPlaceholder || s.placeholder;
+                if (!text.empty())
+                    text += ", ";
+                text += s.text;
+            }
         }
+        // (one selector: its text itself)
+        const std::string& plainText = single ? rule.rewritten[0].text : joinedPlain;
         auto plainWith = [&](const std::string& suffix){
             std::string text;
             for (const RewrittenSelector& s : rule.rewritten){
@@ -1029,7 +1044,8 @@ namespace {
             any = any || !generated.declarations.empty();
         if (any)
         writeUnderMedia(writer, rule.media, rule.ref, [&](){
-            writeBlock(writer, "body#htmlui-root", rootBackground, rule.ref);
+            if (!rootBackground.empty())
+                writeBlock(writer, "body#htmlui-root", rootBackground, rule.ref);
             writeBlock(writer, plainText, normal, rule.ref);
             writeBlock(writer, placeholderText, placeholderDeclarations, rule.ref);
             for (const GeneratedRule& generated : output.generated)
@@ -1274,6 +1290,15 @@ namespace {
 
         DeclContext context{session, rule, origin, keyframe, d, name, row, {}, false, output, false};
         context.important = d.important && !keyframe;
+        // the normalized value is built in a vector of the session's pool, returned when done
+        struct ValueStorage {
+            DeclContext& context;
+            ~ValueStorage(){
+                context.value.clear();
+                if (context.value.capacity() > 0 && context.value.capacity() <= 64)
+                    context.session.valuePool.push_back(std::move(context.value));
+            }
+        } valueStorage{context};
 
         // the color property's own currentColor is `inherit`
         const ComponentValue* sole = soleValue(d.value);
@@ -1309,12 +1334,17 @@ namespace {
                 ctx->session.sink->reportAs(severity, code, declaration.valueRef.valid() ? declaration.valueRef : declaration.ref, message,
                                             suggestion, std::string(), ctx->name);
             };
-            NormalizeResult normalized = ValueNormalizer::normalize(d.value, normalize);
+            std::vector<ComponentValue> storage;
+            if (!session.valuePool.empty()){
+                storage = std::move(session.valuePool.back());
+                session.valuePool.pop_back();
+            }
+            NormalizeResult normalized = ValueNormalizer::normalize(d.value, normalize, std::move(storage));
+            context.value = std::move(normalized.value);
             if (!normalized.ok)
                 return;
             if (normalized.dependsOnViewport)
                 session.result->dependsOnViewport = true;
-            context.value = std::move(normalized.value);
             trimInPlace(context.value);
             if (context.value.empty())
                 return;

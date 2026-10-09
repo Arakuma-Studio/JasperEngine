@@ -133,7 +133,13 @@ namespace {
         NormalizeResult result;
 
         std::vector<ComponentValue> list(const std::vector<ComponentValue>& values){
-            std::vector<ComponentValue> out;
+            return list(values, std::vector<ComponentValue>());
+        }
+
+        // (out: storage to build the list in)
+        std::vector<ComponentValue> list(const std::vector<ComponentValue>& values, std::vector<ComponentValue>&& storage){
+            std::vector<ComponentValue> out = std::move(storage);
+            out.clear();
             out.reserve(values.size());
             for (const ComponentValue& v : values){
                 if (!result.ok)
@@ -511,8 +517,13 @@ void jasperengine::htmlui::compat::trimInPlace(std::vector<ComponentValue>& valu
 }
 
 NormalizeResult ValueNormalizer::normalize(const std::vector<ComponentValue>& value, const NormalizeContext& context){
+    return normalize(value, context, std::vector<ComponentValue>());
+}
+
+NormalizeResult ValueNormalizer::normalize(const std::vector<ComponentValue>& value, const NormalizeContext& context,
+                                           std::vector<ComponentValue>&& storage){
     Walker walker(context);
-    std::vector<ComponentValue> out = walker.list(value);
+    std::vector<ComponentValue> out = walker.list(value, std::move(storage));
     NormalizeResult result = walker.result;
     result.value = std::move(out);
     return result;

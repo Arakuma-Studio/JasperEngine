@@ -230,6 +230,11 @@ namespace jasperengine::htmlui::compat {
         // give the same few texts again and again), trimmed
         NameTable<std::vector<ComponentValue>> syntheticValues;
 
+        // buffers reused from one rule / declaration to the next (their contents are cleared,
+        // their memory kept)
+        RuleOutput scratchOutput;                               // writeRule
+        std::vector<std::vector<ComponentValue>> valuePool;     // normalized values of processOne
+
         // per property name (session-wide: the tables do not change)
         NameTable<PropertyFacts> propertyFacts;
         const PropertyFacts& facts(std::string_view property);
