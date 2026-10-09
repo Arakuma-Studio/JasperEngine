@@ -38,6 +38,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "htmlui/HtmlUiAutoImport.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -2463,6 +2464,7 @@ void editor::App::processProjectChange() {
 // reload, and the document animations due now wake the loop up
 void editor::App::pollHtmlUI(){
     bool wake = !project.getHtmlUIWatcher().update(&project).empty();
+    wake = htmlui::HtmlUiAutoImport::get().update(&project) || wake;
 
     const auto now = std::chrono::steady_clock::now();
     for (const auto& pair : htmlUIRedrawTimes) {
@@ -3210,6 +3212,7 @@ void editor::App::shutdownBackgroundWork() {
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
     mcp::McpServer::get().stop();
+    htmlui::HtmlUiAutoImport::get().shutdown();
     setWakeCallback(nullptr);
 }
 

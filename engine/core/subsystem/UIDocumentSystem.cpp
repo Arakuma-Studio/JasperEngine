@@ -13,6 +13,8 @@
 #include "htmlui/HtmlUIClock.h"
 #include "htmlui/anim/AnimEngine.h"
 
+#include <atomic>
+
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/Input.h>
@@ -404,4 +406,15 @@ bool UIDocumentSystem::isDebuggerVisible() const{
 
 HtmlUIContext* UIDocumentSystem::getContext() const{
     return context;
+}
+
+// p2-importers: process-wide, set by the editor's settings
+static std::atomic<bool> htmlUiVerboseDiagnostics{false};
+
+void UIDocumentSystem::setVerboseDiagnostics(bool verbose){
+    htmlUiVerboseDiagnostics = verbose;
+}
+
+bool UIDocumentSystem::getVerboseDiagnostics(){
+    return htmlUiVerboseDiagnostics;
 }
