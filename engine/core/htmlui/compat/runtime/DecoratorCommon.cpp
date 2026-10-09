@@ -196,6 +196,78 @@ std::vector<std::string> decorators::tokenize(std::string_view text){
     return tokens;
 }
 
+bool decorators::parseCssPosition(const std::vector<std::string>& input, Rml::Element* element, CssPosition& out){
+    out = CssPosition();
+    std::vector<std::string> t;
+    for (const std::string& token : input)
+        t.push_back(lower(token));
+    if (t.empty() || t.size() > 4)
+        return false;
+    const auto horizontalKeyword = [](const std::string& v){ return v == "left" || v == "right"; };
+    const auto verticalKeyword = [](const std::string& v){ return v == "top" || v == "bottom"; };
+    const auto keyword = [&](const std::string& v){ return horizontalKeyword(v) || verticalKeyword(v) || v == "center"; };
+    const auto keywordPercent = [](const std::string& v){ return (v == "left" || v == "top") ? 0.0f : v == "center" ? 50.0f : 100.0f; };
+    // a length-percentage into one axis (percent + px)
+    const auto axisValue = [&](const std::string& v, float& percent, float& offset) -> bool {
+        Length length;
+        if (!parseLength(v, length))
+            return false;
+        percent = length.isPercent() ? length.value : 0.0f;
+        offset = length.isPercent() ? 0.0f : resolve(element, length, 0.0f);
+        return true;
+    };
+
+    if (t.size() <= 2){
+        std::string x = t[0], y = t.size() == 2 ? t[1] : std::string("center");
+        if (t.size() == 1 && verticalKeyword(t[0])){
+            x = "center";
+            y = t[0];
+        }
+        if (verticalKeyword(x) || horizontalKeyword(y))
+            std::swap(x, y);
+        if (verticalKeyword(x) || horizontalKeyword(y))
+            return false;
+        if (keyword(x))
+            out.percentX = keywordPercent(x);
+        else if (!axisValue(x, out.percentX, out.offsetX))
+            return false;
+        if (keyword(y))
+            out.percentY = keywordPercent(y);
+        else if (!axisValue(y, out.percentY, out.offsetY))
+            return false;
+        return true;
+    }
+
+    // 3 or 4 values: edge keywords, each with an optional offset from that edge
+    bool haveX = false, haveY = false;
+    size_t i = 0;
+    while (i < t.size()){
+        const std::string edge = t[i++];
+        if (!keyword(edge))
+            return false;
+        float percent = 0.0f, offset = 0.0f;
+        const bool hasOffset = edge != "center" && i < t.size() && !keyword(t[i]);
+        if (hasOffset && !axisValue(t[i++], percent, offset))
+            return false;
+        bool horizontal = horizontalKeyword(edge);
+        if (edge == "center")
+            horizontal = !haveX;
+        float& targetPercent = horizontal ? out.percentX : out.percentY;
+        float& targetOffset = horizontal ? out.offsetX : out.offsetY;
+        if ((horizontal && haveX) || (!horizontal && haveY))
+            return false;
+        if (edge == "right" || edge == "bottom"){
+            targetPercent = 100.0f - percent;
+            targetOffset = -offset;
+        }else{
+            targetPercent = keywordPercent(edge) + percent;
+            targetOffset = offset;
+        }
+        (horizontal ? haveX : haveY) = true;
+    }
+    return true;
+}
+
 std::string decorators::stringArgument(const Rml::PropertyDictionary& properties, Rml::PropertyId id){
     const Rml::Property* property = properties.GetProperty(id);
     return property ? property->Get<Rml::String>() : std::string();

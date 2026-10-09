@@ -54,6 +54,16 @@ namespace jasperengine::htmlui::compat::decorators {
     // splits on whitespace and commas outside parentheses and quotes; commas are kept as "," tokens
     std::vector<std::string> tokenize(std::string_view text);
 
+    // A CSS <position> (1 to 4 values: keywords, lengths, percentages, edge offsets) as a
+    // percentage plus an offset per axis: x = percentX% of the free space + offsetX px, as
+    // background-position and object-position place an object (lengths resolved for `element`;
+    // percentages after an edge keyword measured from that edge). False when not a position.
+    struct CssPosition {
+        float percentX = 50.0f, offsetX = 0.0f;
+        float percentY = 50.0f, offsetY = 0.0f;
+    };
+    bool parseCssPosition(const std::vector<std::string>& tokens, Rml::Element* element, CssPosition& out);
+
     // the string argument of a decorator property (RmlUi's string parser keeps it as written)
     std::string stringArgument(const Rml::PropertyDictionary& properties, Rml::PropertyId id);
 
@@ -76,6 +86,8 @@ namespace jasperengine::htmlui::compat::decorators {
         bool load(Rml::Element* element, const std::string& path);
 
         bool isSvg() const { return svg != nullptr; }
+        // a monochrome currentColor SVG: drawn white, multiplied by the element's CSS color
+        bool tintsWithColor() const { return svg && svg->tint == SvgTint::Color; }
         // CSS px (document px x RmlUi's dp ratio for raster images, the SVG's own size for SVG)
         Rml::Vector2f intrinsicSize() const { return intrinsic; }
         bool hasIntrinsicSize() const { return intrinsic.x > 0.0f && intrinsic.y > 0.0f; }
