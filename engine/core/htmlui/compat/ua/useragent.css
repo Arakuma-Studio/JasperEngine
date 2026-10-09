@@ -441,11 +441,12 @@ input[type="checkbox"]:checked:disabled, input[type="radio"]:checked:disabled {
     background-color: #0075ff4d;
 }
 
-/* range: 129x16 with a 2px margin; RmlUi's slider widget parts */
+/* range: 129x16 with a 2px margin; RmlUi's slider widget parts. With `appearance: none` the
+   companions make it as tall as its track, with no value fill (Chromium). */
 input[type="range"] {
     box-sizing: border-box;
     width: 129px;
-    height: 16px;
+    height: var(--html-slider-height, 16px);
     margin: 2px;
     padding: 0;
     border: 0;
@@ -455,18 +456,20 @@ input[type="range"] {
 }
 
 input[type="range"] slidertrack {
-    margin-top: 5px;
+    margin-top: var(--html-slider-track-margin, 5px);
     height: 6px;
-    border: 1px solid #b2b2b2;
+    border-width: 1px;
+    border-style: solid;
+    border-color: var(--html-control-border, #b2b2b2);
     border-radius: 3px;
-    background-color: #efefef;
+    background-color: var(--html-control-bg, #efefef);
 }
 
 input[type="range"] sliderprogress {
-    margin-top: 5px;
+    margin-top: var(--html-slider-track-margin, 5px);
     height: 6px;
     border-radius: 3px;
-    background-color: var(--html-accent, #0075ff);
+    background-color: var(--html-slider-fill, var(--html-accent, #0075ff));
 }
 
 input[type="range"] sliderbar {

@@ -389,6 +389,22 @@ void HtmlInputElement::ProcessDefaultAction(Rml::Event& event){
 // ---------------------------------------------------------------- type=image
 
 bool HtmlInputElement::GetIntrinsicDimensions(Rml::Vector2f& dimensions, float& ratio){
+    if (htmlType == "range"){
+        // RmlUi's slider is 16px tall; a range with an auto height (appearance: none, through the
+        // user-agent sheet's companions) is as tall as its track's border box, as in Chromium
+        const bool result = Rml::ElementFormControlInput::GetIntrinsicDimensions(dimensions, ratio);
+        for (int i = 0; i < GetNumChildren(true); i++){
+            Rml::Element* child = GetChild(i);
+            if (!child || child->GetTagName() != "slidertrack")
+                continue;
+            const Rml::ComputedValues& computed = child->GetComputedValues();
+            if (computed.height().type == Rml::Style::Height::Length)
+                dimensions.y = computed.height().value + computed.padding_top().value + computed.padding_bottom().value +
+                               computed.border_top_width() + computed.border_bottom_width();
+            break;
+        }
+        return result;
+    }
     if (htmlType != "image")
         return Rml::ElementFormControlInput::GetIntrinsicDimensions(dimensions, ratio);
     if (imageDirty){

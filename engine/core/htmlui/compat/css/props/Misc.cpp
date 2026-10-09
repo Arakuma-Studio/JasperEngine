@@ -50,6 +50,9 @@ namespace {
                 {"--html-control-border", "#767676"},
                 {"--html-select-arrow", "html-layer(\"/@htmlui/ua/arrow-down.svg\" 10px 6px 3px 50% no-repeat no-repeat padding-box border-box scroll)"},
                 {"--html-thumb", "none"},
+                {"--html-slider-fill", "var(--html-accent, #0075ff)"},
+                {"--html-slider-height", "16px"},
+                {"--html-slider-track-margin", "5px"},
             };
             const std::string_view ua = UserAgentStyle::source();
             for (auto& entry : out){
@@ -213,6 +216,10 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         context.emit("--html-control-border", "transparent");
         context.emit("--html-select-arrow", "none");
         context.emit("--html-thumb", "none");
+        // a range without its look: no value fill, as tall as its track (Chromium)
+        context.emit("--html-slider-fill", "transparent");
+        context.emit("--html-slider-height", "auto");
+        context.emit("--html-slider-track-margin", "0px");
         return;
     }
     if (keyword == "auto" || keyword == "menulist" || keyword == "button" || keyword == "textfield" || keyword == "checkbox" ||
@@ -220,7 +227,8 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         keyword == "slider-horizontal" || keyword == "push-button" || keyword == "square-button"){
         if (keyword != "auto")
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "'appearance: " + keyword + "' is treated as 'auto'");
-        for (const char* companion : {"--html-check", "--html-control-bg", "--html-control-border", "--html-select-arrow", "--html-thumb"})
+        for (const char* companion : {"--html-check", "--html-control-bg", "--html-control-border", "--html-select-arrow", "--html-thumb",
+                                      "--html-slider-fill", "--html-slider-height", "--html-slider-track-margin"})
             context.emit(companion, uaCompanionDefault(companion));
         return;
     }
