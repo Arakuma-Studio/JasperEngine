@@ -269,9 +269,12 @@ a[href] {
 
 /* 4. Tables ------------------------------------------------------------------------------- */
 
+/* border-spacing is RmlUi's gap between cells; CSS also spaces the cells from the table's
+   edges: the companion the border-spacing rewrite writes pads the table */
 table {
     box-sizing: border-box;
     border-spacing: 2px;
+    padding: var(--html-border-spacing, 2px);
 }
 
 thead, tbody, tfoot, tr, td, th {

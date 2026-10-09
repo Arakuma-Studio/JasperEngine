@@ -732,6 +732,7 @@ void jasperengine::htmlui::compat::rewriteBorderSpacing(DeclContext& context){
                          "'border-collapse: collapse' keeps every cell's borders: adjacent borders are drawn twice",
                          "set borders on one side of each cell (border-bottom on cells, for example)");
         context.emit("gap", "0px");
+        context.emit("--html-border-spacing", "0px");
         return;
     }
     if (collapsesBorders(context))
@@ -750,4 +751,7 @@ void jasperengine::htmlui::compat::rewriteBorderSpacing(DeclContext& context){
     const std::string x = lengthText(w[0]);
     const std::string y = w.size() > 1 ? lengthText(w[1]) : x;
     context.emit("gap", y == x ? x : y + " " + x);
+    // CSS spacing also separates the cells from the table's edges, RmlUi's gap only the cells:
+    // the user-agent sheet pads tables with it
+    context.emit("--html-border-spacing", y == x ? x : y + " " + x);
 }
