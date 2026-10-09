@@ -120,6 +120,7 @@ namespace jasperengine::htmlui::compat {
         inline constexpr DiagCode SelectorExpansionLimit{DiagArea::SEL, 5};
         inline constexpr DiagCode VisitedDropped{DiagArea::SEL, 6};
         inline constexpr DiagCode InvalidSelector{DiagArea::SEL, 7};
+        inline constexpr DiagCode SelectorIgnored{DiagArea::SEL, 8};   // added by p2-css
         // AT
         inline constexpr DiagCode UnsupportedAtRule{DiagArea::AT, 1};
         inline constexpr DiagCode LayerFlattened{DiagArea::AT, 2};

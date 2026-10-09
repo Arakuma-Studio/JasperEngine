@@ -189,6 +189,9 @@ namespace {
          "There is no browsing history, so :visited never matches; the rule was dropped."},
         {codes::InvalidSelector, W, false, "invalid-selector", "Invalid selector",
          "The selector has a syntax error; the rule was dropped, as in a browser."},
+        {codes::SelectorIgnored, I, false, "selector-ignored", "Selector ignored",
+         "A selector feature that cannot apply in a game UI (:dir(), an unknown vendor-prefixed pseudo-class or pseudo-element "
+         "Chromium also drops) was dropped with its selector or rule."},
 
         // ---- AT
         {codes::UnsupportedAtRule, W, true, "unsupported-at-rule", "Unsupported at-rule",
