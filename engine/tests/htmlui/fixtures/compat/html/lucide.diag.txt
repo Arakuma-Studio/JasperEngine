@@ -1,4 +1,1 @@
-compat/html/lucide.html:2:17: warning: Lucide icon 'play' is not drawn: this build has no Lucide icon pack [HTMLUI-HTML-0021]
-compat/html/lucide.html:3:17: warning: Lucide icon 'ArrowRight' is not drawn: this build has no Lucide icon pack [HTMLUI-HTML-0021]
-compat/html/lucide.html:4:20: warning: Lucide icon 'home' is not drawn: this build has no Lucide icon pack [HTMLUI-HTML-0021]
-compat/html/lucide.html:5:17: warning: Lucide icon 'not-an-icon-name' is not drawn: this build has no Lucide icon pack [HTMLUI-HTML-0021]
+compat/html/lucide.html:5:17: warning: Lucide icon 'not-an-icon-name' does not exist; the element stays empty (fix: did you mean: git-compare, lens-concave, monitor-pause) [HTMLUI-HTML-0021]
