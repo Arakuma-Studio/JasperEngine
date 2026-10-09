@@ -17,6 +17,11 @@ namespace jasperengine{
         Button(Scene* scene, Entity entity);
         virtual ~Button();
 
+        Button(const Button& rhs);
+        Button& operator=(const Button& rhs);
+        Button(Button&& rhs) noexcept;
+        Button& operator=(Button&& rhs) noexcept;
+
         bool hasLabel() const;
         Text getLabelObject() const;
 

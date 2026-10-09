@@ -13,6 +13,11 @@ namespace jasperengine{
         LayoutGroup(Scene* scene);
         LayoutGroup(Scene* scene, Entity entity);
         virtual ~LayoutGroup();
+
+        LayoutGroup(const LayoutGroup& rhs);
+        LayoutGroup& operator=(const LayoutGroup& rhs);
+        LayoutGroup(LayoutGroup&& rhs) noexcept;
+        LayoutGroup& operator=(LayoutGroup&& rhs) noexcept;
         
         void setType(LayoutGroupType type);
         LayoutGroupType getType() const;

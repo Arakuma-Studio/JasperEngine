@@ -15,6 +15,8 @@ namespace jasperengine{
 
         Bone(const Bone& rhs);
         Bone& operator=(const Bone& rhs);
+        Bone(Bone&& rhs) noexcept;
+        Bone& operator=(Bone&& rhs) noexcept;
     };
 }
 

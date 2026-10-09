@@ -8,6 +8,9 @@
 #include "Stream.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "util/Util.h"
+#include "util/ProjectChecks.h"
+#include "script/LuaBinding.h"
+#include "System.h"
 
 #include <algorithm>
 #include <cctype>
@@ -1809,43 +1812,39 @@ ScriptPropertyValue editor::ProjectUtils::luaValueToScriptPropertyValue(lua_Stat
 }
 
 void editor::ProjectUtils::loadLuaScriptProperties(ScriptEntry& entry, const std::string& luaPath) {
-    lua_State* L = LuaBinding::getLuaState();
-    if (!L) return;
-
-    if (luaL_dofile(L, luaPath.c_str()) != LUA_OK) {
-        Out::error("Failed to load Lua script \"%s\": %s", luaPath.c_str(), lua_tostring(L, -1));
-        lua_pop(L, 1);
+    std::string code;
+    if (!ProjectChecks::readFile(luaPath, code)) {
+        Out::error("Failed to load Lua script \"%s\": cannot open %s", luaPath.c_str(), luaPath.c_str());
         return;
     }
 
-    if (!lua_istable(L, -1)) {
-        lua_pop(L, 1);
-        return;
-    }
-
-    std::string error;
-    if (!parseLuaPropertiesTableProtected(L, entry, &error)) {
-        Out::error("Failed to read the properties of Lua script \"%s\": %s", luaPath.c_str(), error.c_str());
+    const LuaPropertiesResult result = readLuaScriptProperties(entry, code, luaPath);
+    if (result.status == LuaPropertiesResult::LoadError || result.status == LuaPropertiesResult::RunError) {
+        Out::error("Failed to load Lua script \"%s\": %s", luaPath.c_str(), result.message.c_str());
+    } else if (result.status == LuaPropertiesResult::PropertyError) {
+        Out::error("Failed to read the properties of Lua script \"%s\": %s", luaPath.c_str(), result.message.c_str());
     }
 }
 
 void editor::ProjectUtils::loadLuaScriptPropertiesFromString(ScriptEntry& entry, const std::string& scriptContent, const std::string& chunkName) {
-    lua_State* L = LuaBinding::getLuaState();
-    if (!L) return;
+    // errors are ignored: the code may be mid-edit
+    readLuaScriptProperties(entry, scriptContent, chunkName);
+}
 
-    if (luaL_dostring(L, scriptContent.c_str()) != LUA_OK) {
-        // Silently ignore parse errors for in-memory content (code may be mid-edit)
-        lua_pop(L, 1);
-        return;
+// Never the engine's state (LuaBinding::getLuaState): Lua states are not thread-safe, and Play
+// reads the properties on its startup thread while the main thread runs Lua; nor should a
+// script's top level run in the game's state each time the editor looks at it.
+editor::ProjectUtils::LuaPropertiesResult editor::ProjectUtils::readLuaScriptProperties(ScriptEntry& entry, const std::string& code, const std::string& chunkName) {
+    lua_State* L = ProjectChecks::newIsolatedLuaState(std::filesystem::path(System::instance().getLuaPath()), LuaBinding::getEngineGlobalNames());
+    if (!L) {
+        LuaPropertiesResult result;
+        result.status = LuaPropertiesResult::LoadError;
+        result.message = "no Lua state to read the properties in (out of memory?)";
+        return result;
     }
-
-    if (!lua_istable(L, -1)) {
-        lua_pop(L, 1);
-        return;
-    }
-
-    // a property that can't be read is ignored like a parse error (the code may be mid-edit)
-    parseLuaPropertiesTableProtected(L, entry, nullptr);
+    const LuaPropertiesResult result = runLuaScriptProperties(L, entry, code, chunkName);
+    ProjectChecks::closeIsolatedLuaState(L);
+    return result;
 }
 
 editor::ProjectUtils::LuaPropertiesResult editor::ProjectUtils::runLuaScriptProperties(lua_State* L, ScriptEntry& entry, const std::string& code, const std::string& chunkName) {

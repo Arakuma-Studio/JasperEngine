@@ -26,6 +26,11 @@ namespace jasperengine{
         UIDocument(Scene* scene, Entity entity);
         virtual ~UIDocument();
 
+        UIDocument(const UIDocument& rhs);
+        UIDocument& operator=(const UIDocument& rhs);
+        UIDocument(UIDocument&& rhs) noexcept;
+        UIDocument& operator=(UIDocument&& rhs) noexcept;
+
         // --- phase 0 ---
 
         void setFilename(const std::string& filename);   // loads at the next update

@@ -18,6 +18,11 @@ namespace jasperengine{
         RectTransform(Scene* scene, Entity entity);
         virtual ~RectTransform();
 
+        RectTransform(const RectTransform& rhs);
+        RectTransform& operator=(const RectTransform& rhs);
+        RectTransform(RectTransform&& rhs) noexcept;
+        RectTransform& operator=(RectTransform&& rhs) noexcept;
+
         void setSize(unsigned int width, unsigned int height);
         void setWidth(unsigned int width);
         void setHeight(unsigned int height);

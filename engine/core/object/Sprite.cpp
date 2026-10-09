@@ -12,27 +12,25 @@ using namespace jasperengine;
 
 Sprite::Sprite(Scene* scene): Mesh(scene){
     addComponent<SpriteComponent>();
-    animation = NULL;
 }
 
 Sprite::Sprite(Scene* scene, Entity entity): Mesh(scene, entity){
-    animation = NULL;
 }
 
 Sprite::~Sprite(){
-    delete animation;
 }
 
-Sprite::Sprite(const Sprite& rhs): Mesh(rhs){
-    animation = rhs.animation;
-}
+Sprite::Sprite(const Sprite& rhs) = default;
+Sprite& Sprite::operator=(const Sprite& rhs) = default;
+Sprite::Sprite(Sprite&& rhs) noexcept = default;
+Sprite& Sprite::operator=(Sprite&& rhs) noexcept = default;
 
-Sprite& Sprite::operator=(const Sprite& rhs){
-    Mesh::operator =(rhs);
-
-    animation = rhs.animation;
-
-    return *this;
+SpriteAnimation& Sprite::ensureAnimation(){
+    if (!animation){
+        animation = std::make_shared<SpriteAnimation>(scene);
+        animation->setTarget(entity);
+    }
+    return *animation;
 }
 
 bool Sprite::createSprite(){
@@ -245,12 +243,10 @@ void Sprite::setFrame(const std::string& name){
 }
 
 void Sprite::startAnimation(std::vector<int> frames, std::vector<int> framesTime, bool loop){
-    if (!animation){
-        animation = new SpriteAnimation(scene);
-        animation->setTarget(entity);
-    }else if (animation->isRunning()){
+    if (animation && animation->isRunning()){
         stopAnimation();
     }
+    ensureAnimation();
 
     if (frames.size() > 0 && framesTime.size() > 0){
         animation->setAnimation(frames, framesTime, loop);
@@ -261,24 +257,20 @@ void Sprite::startAnimation(std::vector<int> frames, std::vector<int> framesTime
 }
 
 void Sprite::startAnimation(int startFrame, int endFrame, int interval, bool loop){
-    if (!animation){
-        animation = new SpriteAnimation(scene);
-        animation->setTarget(entity);
-    }else if (animation->isRunning()){
+    if (animation && animation->isRunning()){
         stopAnimation();
     }
+    ensureAnimation();
 
     animation->setAnimation(startFrame, endFrame, interval, loop);
     animation->start();
 }
 
 void Sprite::startAnimation(const std::string& name, int interval, bool loop){
-    if (!animation){
-        animation = new SpriteAnimation(scene);
-        animation->setTarget(entity);
-    }else if (animation->isRunning()){
+    if (animation && animation->isRunning()){
         stopAnimation();
     }
+    ensureAnimation();
 
     SpriteComponent& spritecomp = getComponent<SpriteComponent>();
     std::vector<int> frames;

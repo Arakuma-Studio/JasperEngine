@@ -19,6 +19,11 @@ Terrain::Terrain(Scene* scene, Entity entity): Mesh(scene, entity){
 Terrain::~Terrain(){
 }
 
+Terrain::Terrain(const Terrain& rhs) = default;
+Terrain& Terrain::operator=(const Terrain& rhs) = default;
+Terrain::Terrain(Terrain&& rhs) noexcept = default;
+Terrain& Terrain::operator=(Terrain&& rhs) noexcept = default;
+
 bool Terrain::createTerrain(){
     TerrainComponent& terrain = getComponent<TerrainComponent>();
     MeshComponent& mesh = getComponent<MeshComponent>();

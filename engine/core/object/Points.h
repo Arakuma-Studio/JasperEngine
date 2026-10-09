@@ -19,6 +19,11 @@ namespace jasperengine{
         Points(Scene* scene, Entity entity);
         virtual ~Points();
 
+        Points(const Points& rhs);
+        Points& operator=(const Points& rhs);
+        Points(Points&& rhs) noexcept;
+        Points& operator=(Points&& rhs) noexcept;
+
         bool load();
 
         void setMaxPoints(unsigned int maxPoints);

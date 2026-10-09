@@ -9,8 +9,13 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
+
 int main(int argc, char** argv){
     ::testing::InitGoogleTest(&argc, argv);
+
+    // the engine's Lua state used off its thread aborts the run (LuaBinding::ThreadCheck)
+    setenv("JASPER_LUA_THREAD_CHECK", "abort", 0);
 
     jasperengine::test::GpuEnvironment::initEngine(argc, argv);
     ::testing::AddGlobalTestEnvironment(new jasperengine::test::GpuTestEnvironment());
