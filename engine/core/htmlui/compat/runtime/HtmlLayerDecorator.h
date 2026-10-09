@@ -84,7 +84,7 @@ namespace jasperengine::htmlui::compat {
     //   calc(100% - 10px)); repeat: repeat | no-repeat | space | round; origin/clip:
     //   border-box | padding-box | content-box; attachment: scroll | fixed | local (local is
     //   drawn as scroll).
-    struct JASPERENGINE_API LayerSpec {
+    struct JASPERENGINE_INTERNAL LayerSpec {
         std::string path;
         LayerSizeMode sizeMode = LayerSizeMode::Lengths;
         bool autoX = true, autoY = true;

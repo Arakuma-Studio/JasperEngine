@@ -24,7 +24,7 @@ namespace jasperengine::htmlui::compat {
     // pairs), path() (fill rule, SVG path data in reference-box px), xywh() and rect() (with
     // round). An optional trailing box keyword (border-box, padding-box, content-box,
     // margin-box, fill-box, stroke-box, view-box) picks the reference box (default border-box).
-    struct JASPERENGINE_API BasicShape {
+    struct JASPERENGINE_INTERNAL BasicShape {
         std::string text;            // the shape as given
         Rml::BoxArea box = Rml::BoxArea::Border;
 

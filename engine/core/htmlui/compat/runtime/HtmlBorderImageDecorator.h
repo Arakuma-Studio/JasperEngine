@@ -31,7 +31,7 @@ namespace jasperengine::htmlui::compat {
     // width: <length-percentage> (of the border image area) | <number> (x the border width) |
     // auto (the slice); outset: <length> | <number> (x the border width); repeat: stretch |
     // repeat | round | space.
-    struct JASPERENGINE_API BorderImageSpec {
+    struct JASPERENGINE_INTERNAL BorderImageSpec {
         std::string path;
         std::array<decorators::Length, 4> slice;       // NUMBER or PERCENT, top right bottom left
         bool fill = false;

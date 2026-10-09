@@ -20,7 +20,7 @@ namespace jasperengine::htmlui::compat {
     // Where an object of `objectSize` is drawn in a box of `boxSize` for object-fit and
     // object-position (CSS Images 3 §5), cropped to the box: the destination rectangle and its
     // texture coordinates. False when nothing is visible.
-    JASPERENGINE_API bool computeObjectFit(ObjectFit fit, Rml::Vector2f objectSize, Rml::Vector2f boxSize,
+    JASPERENGINE_INTERNAL bool computeObjectFit(ObjectFit fit, Rml::Vector2f objectSize, Rml::Vector2f boxSize,
                                            const decorators::CssPosition& position, LayerQuad& out);
     JASPERENGINE_API ObjectFit parseObjectFit(const std::string& value);   // fill for unknown values
 
