@@ -5,6 +5,8 @@
 #include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/Diagnostics.h"
+#include "htmlui/compat/css/CssLexer.h"
+#include "htmlui/compat/css/Units.h"
 
 #include <algorithm>
 
@@ -40,11 +42,11 @@ namespace {
                std::vector<ParseError>* errors):
             file(file), css(css), base(base), errorsOut(errors) {
             std::vector<TokenizeError> tokenizeErrors;
-            tokens = tokenize(css, base, options, &tokenizeErrors);
+            lexCss(css, base, options, &tokenizeErrors, lexed);
             // comments removed in place
             size_t kept = 0;
             for (size_t i = 0; i < tokens.size(); i++){
-                Token& token = tokens[i];
+                LexToken& token = tokens[i];
                 if (token.type == TokenType::Comment)
                     continue;
                 if (token.type == TokenType::BadString)
@@ -79,25 +81,29 @@ namespace {
 
         // ---- token stream
 
-        const Token& peek() const { return tokens[index]; }
+        const LexToken& peek() const { return tokens[index]; }
         bool atEnd() const { return tokens[index].type == TokenType::EndOfFile; }
-        const Token& next(){
-            const Token& token = tokens[index];
+        const LexToken& next(){
+            const LexToken& token = tokens[index];
             if (token.type != TokenType::EndOfFile)
                 index++;
             return token;
         }
-        // the token at the position as a component value's token: moved out of the list when
-        // nothing reads the list again (parseStylesheet, parseDeclarationList, component value
-        // lists), copied otherwise (the raw-block passes of the CSS Syntax entry points re-read)
+        // the token at the position as a component value's token (built from the lexer's views)
         void takeNext(Token& into){
-            Token& token = tokens[index];
+            const LexToken& token = tokens[index];
             if (token.type != TokenType::EndOfFile)
                 index++;
-            if (moveTokens && token.type != TokenType::EndOfFile)
-                into = std::move(token);
-            else
-                into = token;
+            lexed.toToken(token, into);
+        }
+
+        std::string_view valueOf(const LexToken& token) const { return lexed.value(token); }
+        bool isIdent(const LexToken& token, std::string_view lowercase) const {
+            return token.type == TokenType::Ident && equalsNoCase(valueOf(token), lowercase);
+        }
+        bool isDelim(const LexToken& token, char c) const {
+            const std::string_view v = valueOf(token);
+            return token.type == TokenType::Delim && v.size() == 1 && v[0] == c;
         }
 
         static bool isOpening(TokenType type){
@@ -152,10 +158,11 @@ namespace {
         // after a failed declaration attempt would re-read moved tokens)
         bool declarationParses(bool nested) const {
             size_t i = index;
-            const Token& name = tokens[i];
-            if (name.type != TokenType::Ident)
+            const LexToken& nameToken = tokens[i];
+            if (nameToken.type != TokenType::Ident)
                 return false;
-            const bool custom = name.value.size() >= 2 && name.value[0] == '-' && name.value[1] == '-';
+            const std::string_view name = valueOf(nameToken);
+            const bool custom = name.size() >= 2 && name[0] == '-' && name[1] == '-';
             i++;
             while (tokens[i].type == TokenType::Whitespace)
                 i++;
@@ -189,8 +196,8 @@ namespace {
             if (!brace)
                 return true;
             // "! important" at the end is not part of the value
-            if (lastOther != SIZE_MAX && previousOther != SIZE_MAX && tokens[lastOther].isIdent("important") &&
-                tokens[previousOther].isDelim('!'))
+            if (lastOther != SIZE_MAX && previousOther != SIZE_MAX && isIdent(tokens[lastOther], "important") &&
+                isDelim(tokens[previousOther], '!'))
                 others -= 2;
             return others == 0;
         }
@@ -226,7 +233,7 @@ namespace {
 
         // into a default-constructed value (an element already in its vector)
         void consumeComponentValue(ComponentValue& value){
-            const Token& token = peek();
+            const LexToken& token = peek();
             if (token.type == TokenType::LeftBrace || token.type == TokenType::LeftBracket || token.type == TokenType::LeftParen)
                 consumeSimpleBlock(value);
             else if (token.type == TokenType::Function)
@@ -257,7 +264,7 @@ namespace {
             block.offset = block.token.offset;
             const TokenType ending = mirrorOf(block.token.type);
             while (true){
-                const Token& token = peek();
+                const LexToken& token = peek();
                 if (token.type == ending){
                     next();
                     block.length = token.offset + token.length - block.offset;
@@ -279,7 +286,7 @@ namespace {
             takeNext(function.token);
             function.offset = function.token.offset;
             while (true){
-                const Token& token = peek();
+                const LexToken& token = peek();
                 if (token.type == TokenType::RightParen){
                     next();
                     function.length = token.offset + token.length - function.offset;
@@ -312,7 +319,7 @@ namespace {
             std::vector<ComponentValue> values;
             values.reserve(countComponents(index, componentValuesEnd(stopAtSemicolon, nested)));
             while (true){
-                const Token& token = peek();
+                const LexToken& token = peek();
                 if (token.type == TokenType::EndOfFile)
                     return values;
                 if (stopAtSemicolon && token.type == TokenType::Semicolon)
@@ -353,16 +360,16 @@ namespace {
             rule.hasBlock = true;
             if (!keepRawBlocks){
                 // the contents pass alone: it ends on the same closing brace
-                const Token& opening = next();
+                const LexToken& opening = next();
                 consumeBlockContents(rule.declarations, rule.rules);
                 uint32_t end = opening.offset + opening.length;
                 if (peek().type == TokenType::RightBrace){
-                    const Token& closing = next();
+                    const LexToken& closing = next();
                     end = closing.offset + closing.length;
                 }else{
                     error(ParseError::Kind::UnclosedBlock, opening.offset, opening.length);
                     if (index > open + 1){
-                        const Token& last = tokens[index - 1];
+                        const LexToken& last = tokens[index - 1];
                         end = std::max(end, last.offset + last.length);
                     }
                 }
@@ -391,14 +398,14 @@ namespace {
         std::optional<Rule> consumeAtRule(bool nested){
             Rule rule;
             rule.kind = Rule::Kind::At;
-            const Token& keyword = next();
-            rule.atName = toLowerAscii(keyword.value);
+            const LexToken& keyword = next();
+            rule.atName = toLowerAscii(std::string(valueOf(keyword)));
             const uint32_t begin = keyword.offset;
             uint32_t end = keyword.offset + keyword.length;
             rule.prelude.reserve(preludeCount(true, nested));
 
             while (true){
-                const Token& token = peek();
+                const LexToken& token = peek();
                 if (token.type == TokenType::Semicolon){
                     end = token.offset + token.length;
                     next();
@@ -473,7 +480,7 @@ namespace {
             rule.prelude.reserve(preludeCount(stopAtSemicolon, nested));
 
             while (true){
-                const Token& token = peek();
+                const LexToken& token = peek();
                 if (token.type == TokenType::EndOfFile || (stopAtSemicolon && token.type == TokenType::Semicolon)){
                     error(ParseError::Kind::InvalidRule, begin, (token.offset > begin ? token.offset - begin : 0));
                     return std::nullopt;
@@ -512,7 +519,7 @@ namespace {
 
         void consumeBadDeclarationRemnants(bool nested){
             while (true){
-                const Token& token = peek();
+                const LexToken& token = peek();
                 if (token.type == TokenType::EndOfFile)
                     return;
                 if (token.type == TokenType::Semicolon){
@@ -532,14 +539,15 @@ namespace {
         // §5.5.6
         std::optional<Declaration> consumeDeclaration(bool nested){
             Declaration declaration;
-            const Token& nameToken = peek();
+            const LexToken& nameToken = peek();
             if (nameToken.type != TokenType::Ident){
                 consumeBadDeclarationRemnants(nested);
                 return std::nullopt;
             }
             next();
-            const bool custom = nameToken.value.size() >= 2 && nameToken.value[0] == '-' && nameToken.value[1] == '-';
-            declaration.name = custom ? nameToken.value : toLowerAscii(nameToken.value);
+            const std::string_view nameText = valueOf(nameToken);
+            const bool custom = nameText.size() >= 2 && nameText[0] == '-' && nameText[1] == '-';
+            declaration.name = custom ? std::string(nameText) : toLowerAscii(std::string(nameText));
             declaration.nameRef = ref(nameToken.offset, nameToken.offset + nameToken.length);
 
             discardWhitespace();
@@ -547,7 +555,7 @@ namespace {
                 consumeBadDeclarationRemnants(nested);
                 return std::nullopt;
             }
-            const Token& colon = next();
+            const LexToken& colon = next();
             discardWhitespace();
             const uint32_t valueBegin = position() < colon.offset + colon.length ? colon.offset + colon.length : position();
 
@@ -605,7 +613,7 @@ namespace {
         // §5.5.5, stops at '}' (not consumed) or EOF
         void consumeBlockContents(std::vector<Declaration>& declarations, std::vector<Rule>& rules){
             while (true){
-                const Token& token = peek();
+                const LexToken& token = peek();
                 if (token.type == TokenType::Whitespace || token.type == TokenType::Semicolon){
                     next();
                     continue;
@@ -651,7 +659,7 @@ namespace {
         std::vector<Rule> consumeRuleList(bool topLevel){
             std::vector<Rule> rules;
             while (true){
-                const Token& token = peek();
+                const LexToken& token = peek();
                 if (token.type == TokenType::Whitespace){
                     next();
                     continue;
@@ -754,12 +762,12 @@ namespace {
         uint32_t file;
         std::string_view css;
         uint32_t base;
-        std::vector<Token> tokens;
+        LexResult lexed;
+        std::vector<LexToken>& tokens = lexed.tokens;
         size_t index = 0;
         // Rule::block (the raw block) is kept for the CSS Syntax entry points; the
         // compatibility layer's parseStylesheet/parseDeclarationList only use the contents
         bool keepRawBlocks = true;
-        bool moveTokens = false;
         std::vector<uint32_t> closer;   // matchClosers()
         std::vector<ParseError> errors_;
         std::vector<ParseError>* errorsOut;
@@ -807,7 +815,6 @@ Stylesheet jasperengine::htmlui::compat::parseStylesheet(uint32_t file, std::str
     sheet.file = file;
     Parser parser(file, css, baseOffset, TokenizeOptions(), nullptr);
     parser.keepRawBlocks = false;
-    parser.moveTokens = true;
     sheet.rules = parser.consumeRuleList(true);
     parser.report(&sink);
     return sheet;
@@ -817,7 +824,6 @@ std::vector<Declaration> jasperengine::htmlui::compat::parseDeclarationList(uint
                                                                             DiagnosticSink& sink){
     Parser parser(file, css, baseOffset, TokenizeOptions(), nullptr);
     parser.keepRawBlocks = false;
-    parser.moveTokens = true;
     std::vector<Declaration> declarations;
     std::vector<Rule> rules;
     while (true){
@@ -825,7 +831,7 @@ std::vector<Declaration> jasperengine::htmlui::compat::parseDeclarationList(uint
         if (parser.atEnd())
             break;
         // a stray '}' ends nothing in a declaration list
-        const Token& closer = parser.next();
+        const LexToken& closer = parser.next();
         parser.error(ParseError::Kind::UnmatchedCloser, closer.offset, closer.length);
     }
     for (const Rule& rule : rules)
@@ -843,7 +849,7 @@ Rule jasperengine::htmlui::compat::parseBlockContents(uint32_t file, std::string
         parser.consumeBlockContents(result.declarations, result.rules);
         if (parser.atEnd())
             break;
-        const Token& closer = parser.next();
+        const LexToken& closer = parser.next();
         parser.error(ParseError::Kind::UnmatchedCloser, closer.offset, closer.length);
     }
     result.ref = SourceRef{file, baseOffset, (uint32_t)css.size()};
@@ -904,7 +910,6 @@ std::vector<ComponentValue> jasperengine::htmlui::compat::parseComponentValueLis
                                                                                   const TokenizeOptions& options,
                                                                                   std::vector<ParseError>* errors){
     Parser parser(0, css, baseOffset, options, errors);
-    parser.moveTokens = true;
     return parser.consumeComponentValues(false, false);
 }
 

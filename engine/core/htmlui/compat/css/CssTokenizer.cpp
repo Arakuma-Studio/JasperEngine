@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/CssTokenizer.h"
+#include "htmlui/compat/css/CssLexer.h"
 #include "htmlui/compat/LiteralCompare.h"
 
 #include <cmath>
@@ -185,20 +186,22 @@ namespace {
 
     class Tokenizer {
     public:
-        Tokenizer(std::string_view css, uint32_t base, const TokenizeOptions& options, std::vector<TokenizeError>* errors):
-            in(css, base), source(css), base(base), options(options), errors(errors) {}
+        Tokenizer(std::string_view css, uint32_t base, const TokenizeOptions& options, std::vector<TokenizeError>* errors, LexResult& out):
+            in(css, base), source(css), base(base), options(options), errors(errors), out(out) {}
 
-        std::vector<Token> run(){
-            std::vector<Token> tokens;
-            // about one token per 2-3 bytes in real style sheets; tokens are built in place
-            tokens.reserve(source.size() / 2 + 2);
+        void run(){
+            out.source = source;
+            out.text.clear();
+            std::vector<LexToken>& tokens = out.tokens;
+            tokens.clear();
+            // about one token per 2 bytes in style sheets (fewer with comments); LexTokens are small
+            tokens.reserve(source.size() / 2 + 8);
             while (true){
                 current = &tokens.emplace_back();
                 consumeToken();
                 if (current->type == TokenType::EndOfFile)
                     break;
             }
-            return tokens;
         }
 
     private:
@@ -207,9 +210,57 @@ namespace {
                 errors->push_back(TokenizeError{kind, in.offset()});
         }
 
+        // ---- values as source runs (or decoded text once something had to be decoded)
+
+        void toDecoded(LexText& t){
+            const size_t begin = out.text.size();
+            out.text.append(source.data() + t.begin, t.length);
+            t.begin = (uint32_t)begin;
+            t.decoded = true;
+        }
+
+        void appendSource(LexText& t, size_t from, size_t count){
+            if (count == 0)
+                return;
+            if (!t.decoded){
+                if (t.length == 0){
+                    t.begin = (uint32_t)from;
+                    t.length = (uint32_t)count;
+                    return;
+                }
+                if (t.begin + t.length == from){
+                    t.length += (uint32_t)count;
+                    return;
+                }
+                toDecoded(t);
+            }
+            out.text.append(source.data() + from, count);
+            t.length += (uint32_t)count;
+        }
+
+        void appendCodePoint(LexText& t, uint32_t c){
+            if (!t.decoded)
+                toDecoded(t);
+            const size_t before = out.text.size();
+            appendUtf8(out.text, c);
+            t.length += (uint32_t)(out.text.size() - before);
+        }
+
+        // c was read by in.next() from `at`: the source byte itself when it is one plain ASCII byte
+        void appendRead(LexText& t, uint32_t c, size_t at){
+            if (c < 0x80 && in.position() == at + 1 && (unsigned char)source[at] == c)
+                appendSource(t, at, 1);
+            else
+                appendCodePoint(t, c);
+        }
+
+        std::string_view view(const LexText& t) const {
+            return std::string_view((t.decoded ? out.text.data() : source.data()) + t.begin, t.length);
+        }
+
         // the token being read (an element of the output, filled in place)
-        Token& make(TokenType type, size_t start){
-            Token& token = *current;
+        LexToken& make(TokenType type, size_t start){
+            LexToken& token = *current;
             token.type = type;
             token.offset = base + (uint32_t)start;
             token.length = (uint32_t)(in.position() - start);
@@ -244,15 +295,14 @@ namespace {
         }
 
         // appends the sequence to result
-        void consumeIdentSequence(std::string& result){
+        void consumeIdentSequence(LexText& result){
             while (true){
-                // a run of ASCII name bytes is copied at once
+                // a run of ASCII name bytes is a run of the source
                 size_t run = 0;
                 while (asciiIdentByte(in.byte(run)))
                     run++;
                 if (run > 0){
-                    const size_t from = in.position();
-                    result.append(source.data() + from, run);
+                    appendSource(result, in.position(), run);
                     in.skip(run);
                 }
                 // what ends a name in practice: an ASCII byte that is neither a name character nor '\\'
@@ -261,10 +311,10 @@ namespace {
                     return;
                 const uint32_t c = in.peek();
                 if (isIdentCodePoint(c)){
-                    appendUtf8(result, in.next());
+                    appendCodePoint(result, in.next());
                 }else if (c == '\\' && validEscape(c, in.peek(1))){
                     in.next();
-                    appendUtf8(result, consumeEscape());
+                    appendCodePoint(result, consumeEscape());
                 }else{
                     return;
                 }
@@ -351,19 +401,19 @@ namespace {
             consumeNumber(value, integer);
             if (startsIdent(in.peek(), in.peek(1), in.peek(2))){
                 consumeIdentSequence(current->unit);
-                Token& token = make(TokenType::Dimension, start);
+                LexToken& token = make(TokenType::Dimension, start);
                 token.number = value;
                 token.isInteger = integer;
                 return;
             }
             if (in.peek() == '%'){
                 in.next();
-                Token& token = make(TokenType::Percentage, start);
+                LexToken& token = make(TokenType::Percentage, start);
                 token.number = value;
                 token.isInteger = integer;
                 return;
             }
-            Token& token = make(TokenType::Number, start);
+            LexToken& token = make(TokenType::Number, start);
             token.number = value;
             token.isInteger = integer;
             return;
@@ -381,20 +431,21 @@ namespace {
 
         // after "url(" and its whitespace
         void consumeUrl(size_t start){
-            std::string value;
+            LexText value;
             while (isWhitespace(in.peek()))
                 in.next();
             while (true){
+                const size_t at = in.position();
                 const uint32_t c = in.next();
                 if (c == ')'){
-                    Token& token = make(TokenType::Url, start);
-                    token.value = std::move(value);
+                    LexToken& token = make(TokenType::Url, start);
+                    token.value = value;
                     return;
                 }
                 if (c == kEof){
                     error(TokenizeError::Kind::EofInUrl);
-                    Token& token = make(TokenType::Url, start);
-                    token.value = std::move(value);
+                    LexToken& token = make(TokenType::Url, start);
+                    token.value = value;
                     return;
                 }
                 if (isWhitespace(c)){
@@ -402,15 +453,15 @@ namespace {
                         in.next();
                     if (in.peek() == ')'){
                         in.next();
-                        Token& token = make(TokenType::Url, start);
-                        token.value = std::move(value);
+                        LexToken& token = make(TokenType::Url, start);
+                        token.value = value;
                         return;
                     }
                     if (in.peek() == kEof){
                         in.next();
                         error(TokenizeError::Kind::EofInUrl);
-                        Token& token = make(TokenType::Url, start);
-                        token.value = std::move(value);
+                        LexToken& token = make(TokenType::Url, start);
+                        token.value = value;
                         return;
                     }
                     consumeBadUrlRemnants();
@@ -422,7 +473,7 @@ namespace {
                 }
                 if (c == '\\'){
                     if (validEscape(c, in.peek())){
-                        appendUtf8(value, consumeEscape());
+                        appendCodePoint(value, consumeEscape());
                     }else{
                         error(TokenizeError::Kind::InvalidEscape);
                         consumeBadUrlRemnants();
@@ -430,14 +481,14 @@ namespace {
                     }
                     continue;
                 }
-                appendUtf8(value, c);
+                appendRead(value, c, at);
             }
         }
 
         void consumeIdentLike(size_t start){
             // the name is read into the token's value (the token being built)
-            std::string& name = current->value;
-            consumeIdentSequence(name);
+            consumeIdentSequence(current->value);
+            const std::string_view name = view(current->value);
             const bool isUrl = name.size() == 3 && (name[0] | 0x20) == 'u' && (name[1] | 0x20) == 'r' && (name[2] | 0x20) == 'l';
             if (isUrl && in.peek() == '('){
                 in.next();
@@ -450,7 +501,7 @@ namespace {
                     make(TokenType::Function, start);
                     return;
                 }
-                name.clear();
+                current->value = LexText();
                 consumeUrl(start);
                 return;
             }
@@ -463,7 +514,7 @@ namespace {
         }
 
         void consumeString(uint32_t quote, size_t start){
-            std::string value;
+            LexText value;
             while (true){
                 // a run of plain ASCII characters is copied at once
                 size_t run = 0;
@@ -474,7 +525,7 @@ namespace {
                     run++;
                 }
                 if (run > 0){
-                    value.append(source.data() + in.position(), run);
+                    appendSource(value, in.position(), run);
                     in.skip(run);
                 }
                 const uint32_t c = in.peek();
@@ -490,6 +541,7 @@ namespace {
                     // not consumed: it starts the next token
                     { make(TokenType::BadString, start); return; }
                 }
+                const size_t at = in.position();
                 in.next();
                 if (c == '\\'){
                     const uint32_t after = in.peek();
@@ -499,13 +551,13 @@ namespace {
                         in.next();
                         continue;
                     }
-                    appendUtf8(value, consumeEscape());
+                    appendCodePoint(value, consumeEscape());
                     continue;
                 }
-                appendUtf8(value, c);
+                appendRead(value, c, at);
             }
-            Token& token = make(TokenType::String, start);
-            token.value = std::move(value);
+            LexToken& token = make(TokenType::String, start);
+            token.value = value;
             return;
         }
 
@@ -543,7 +595,7 @@ namespace {
                     }
                 }
             }
-            Token& token = make(TokenType::UnicodeRange, start);
+            LexToken& token = make(TokenType::UnicodeRange, start);
             token.rangeStart = first;
             token.rangeEnd = last;
             return;
@@ -603,7 +655,7 @@ namespace {
                     in.next();
                     const bool id = startsIdent(in.peek(), in.peek(1), in.peek(2));
                     consumeIdentSequence(current->value);
-                    Token& token = make(TokenType::Hash, start);
+                    LexToken& token = make(TokenType::Hash, start);
                     token.hashIsId = id;
                     return;
                 }
@@ -658,7 +710,7 @@ namespace {
                 if (startsIdent(in.peek(1), in.peek(2), in.peek(3))){
                     in.next();
                     consumeIdentSequence(current->value);
-                    Token& token = make(TokenType::AtKeyword, start);
+                    LexToken& token = make(TokenType::AtKeyword, start);
                     return;
                 }
                 { delim(start); return; }
@@ -689,8 +741,8 @@ namespace {
 
         void delim(size_t start){
             const uint32_t c = in.next();
-            Token& token = make(TokenType::Delim, start);
-            appendUtf8(token.value, c);
+            LexToken& token = make(TokenType::Delim, start);
+            appendRead(token.value, c, start);
             return;
         }
 
@@ -699,7 +751,8 @@ namespace {
         uint32_t base;
         TokenizeOptions options;
         std::vector<TokenizeError>* errors;
-        Token* current = nullptr;
+        LexResult& out;
+        LexToken* current = nullptr;
     };
 
 }
@@ -787,8 +840,18 @@ const char* jasperengine::htmlui::compat::tokenTypeName(TokenType type){
     return "?";
 }
 
+void jasperengine::htmlui::compat::lexCss(std::string_view css, uint32_t baseOffset, const TokenizeOptions& options,
+                                          std::vector<TokenizeError>* errors, LexResult& out){
+    Tokenizer tokenizer(css, baseOffset, options, errors, out);
+    tokenizer.run();
+}
+
 std::vector<Token> jasperengine::htmlui::compat::tokenize(std::string_view css, uint32_t baseOffset,
                                                           const TokenizeOptions& options, std::vector<TokenizeError>* errors){
-    Tokenizer tokenizer(css, baseOffset, options, errors);
-    return tokenizer.run();
+    LexResult lexed;
+    lexCss(css, baseOffset, options, errors, lexed);
+    std::vector<Token> tokens(lexed.tokens.size());
+    for (size_t i = 0; i < tokens.size(); i++)
+        lexed.toToken(lexed.tokens[i], tokens[i]);
+    return tokens;
 }
