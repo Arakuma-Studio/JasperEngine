@@ -238,6 +238,45 @@ namespace {
                         }
                         continue;
                     }
+                    // white space and plain ASCII names (consumeToken reads them the same way)
+                    const unsigned char b = (unsigned char)source[at];
+                    if (b == ' ' || b == '\n' || b == '\t'){
+                        size_t i = at + 1;
+                        while (i < source.size()){
+                            const char w = source[i];
+                            if (w != ' ' && w != '\n' && w != '\t' && w != '\r' && w != '\f')
+                                break;
+                            i++;
+                        }
+                        in.skip(i - at);
+                        token.type = TokenType::Whitespace;
+                        token.offset = base + (uint32_t)at;
+                        token.length = (uint32_t)(i - at);
+                        continue;
+                    }
+                    const unsigned char lower = (unsigned char)(b | 0x20);
+                    if (((lower >= 'a' && lower <= 'z') && !(options.unicodeRanges && lower == 'u')) || b == '_'){
+                        const size_t run = identRun();
+                        const size_t after = at + run;
+                        const unsigned char next = after < source.size() ? (unsigned char)source[after] : 0;
+                        const bool ended = after == source.size() || (next < 0x80 && next != 0 && next != '\\');
+                        const bool url = run == 3 && lower == 'u' && (source[at + 1] | 0x20) == 'r' && (source[at + 2] | 0x20) == 'l';
+                        if (ended && !(url && next == '(')){
+                            token.value = LexText{(uint32_t)at, (uint32_t)run, false};
+                            token.offset = base + (uint32_t)at;
+                            if (next == '('){
+                                in.skip(run + 1);
+                                token.type = TokenType::Function;
+                                token.length = (uint32_t)run + 1;
+                                open.push_back(index);
+                            }else{
+                                in.skip(run);
+                                token.type = TokenType::Ident;
+                                token.length = (uint32_t)run;
+                            }
+                            continue;
+                        }
+                    }
                 }
                 consumeToken();
                 // (a closing token is one character: the branch above read it)
