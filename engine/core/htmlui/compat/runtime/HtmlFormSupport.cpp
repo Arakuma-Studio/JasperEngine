@@ -147,15 +147,22 @@ void forms::reset(Rml::ElementForm* form){
     }
 }
 
-bool forms::activateFromKey(Rml::Element* element, Rml::Event& event){
+bool forms::activateFromKey(Rml::Element* element, Rml::Event& event, Activation activation){
     if (event.GetTargetElement() != element)
         return false;
+    // RmlUi's document clicks a focused tab-index:auto element on Enter and Space key down (its
+    // default action, after this one): stopping the event keeps it to one activation, at the
+    // time HTML has it
     const auto key = (Rml::Input::KeyIdentifier)event.GetParameter<int>("key_identifier", 0);
-    if (event == Rml::EventId::Keydown && (key == Rml::Input::KI_RETURN || key == Rml::Input::KI_NUMPADENTER)){
-        element->Click();
+    const bool enter = key == Rml::Input::KI_RETURN || key == Rml::Input::KI_NUMPADENTER;
+    const bool space = key == Rml::Input::KI_SPACE;
+    if (event == Rml::EventId::Keydown && (enter || space)){
+        if (enter && activation != Activation::SpaceOnly)
+            element->Click();
+        event.StopPropagation();
         return true;
     }
-    if (event == Rml::EventId::Keyup && key == Rml::Input::KI_SPACE){
+    if (event == Rml::EventId::Keyup && space && activation != Activation::EnterOnly){
         element->Click();
         return true;
     }

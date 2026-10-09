@@ -10,6 +10,7 @@
 
 #include "Export.h"
 
+#include <cstdint>
 #include <string>
 
 namespace Rml {
@@ -37,8 +38,12 @@ namespace jasperengine::htmlui::compat::forms {
     // those not recorded yet (reset controls call it on their first update, before any edit).
     void rememberDefaults(Rml::ElementForm* form);
 
-    // HTML button activation: Enter on key down, Space on key up -> Click() (true when handled).
-    bool activateFromKey(Rml::Element* element, Rml::Event& event);
+    // HTML keyboard activation -> Click(): Enter on key down, Space on key up (buttons); Space
+    // only (checkboxes, radios); Enter only (links: Space does nothing). The key down of both
+    // keys is stopped so RmlUi's own Enter/Space click does not happen as well. True when the
+    // event was one of them.
+    enum class Activation : uint8_t { EnterAndSpace, SpaceOnly, EnterOnly };
+    bool activateFromKey(Rml::Element* element, Rml::Event& event, Activation activation = Activation::EnterAndSpace);
 
     bool isDisabled(Rml::Element* element);
     std::string lowerAttribute(Rml::Element* element, const char* name, const char* fallback = "");

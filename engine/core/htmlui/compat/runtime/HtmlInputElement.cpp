@@ -75,8 +75,11 @@ public:
                 if (type == "number" && (key == Rml::Input::KI_UP || key == Rml::Input::KI_DOWN)){
                     input->stepBy(key == Rml::Input::KI_UP ? 1 : -1);
                     event.PreventDefault();
-                }else if (type == "number" && (key == Rml::Input::KI_RETURN || key == Rml::Input::KI_NUMPADENTER)){
-                    input->clampToRange();
+                }else if ((key == Rml::Input::KI_RETURN || key == Rml::Input::KI_NUMPADENTER) && isTextLike(type) && !input->IsDisabled()){
+                    // here, before RmlUi's text widget, which stops the key event
+                    if (type == "number")
+                        input->clampToRange();
+                    input->implicitSubmit();
                 }
                 break;
             }
@@ -373,19 +376,11 @@ void HtmlInputElement::ProcessDefaultAction(Rml::Event& event){
                 return;
             }
         }else if (event == Rml::EventId::Keydown || event == Rml::EventId::Keyup){
-            const auto key = (Rml::Input::KeyIdentifier)event.GetParameter<int>("key_identifier", 0);
             const bool buttonLike = type == "submit" || type == "button" || type == "reset" || type == "image";
             if (buttonLike && forms::activateFromKey(this, event))
                 return;
-            if ((type == "checkbox" || type == "radio") && event == Rml::EventId::Keyup && key == Rml::Input::KI_SPACE){
-                Click();
+            if ((type == "checkbox" || type == "radio") && forms::activateFromKey(this, event, forms::Activation::SpaceOnly))
                 return;
-            }
-            if (isTextLike(type) && event == Rml::EventId::Keydown && (key == Rml::Input::KI_RETURN || key == Rml::Input::KI_NUMPADENTER)){
-                Rml::ElementFormControlInput::ProcessDefaultAction(event);
-                implicitSubmit();
-                return;
-            }
         }
     }
     Rml::ElementFormControlInput::ProcessDefaultAction(event);

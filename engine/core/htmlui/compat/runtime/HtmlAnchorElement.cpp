@@ -144,10 +144,8 @@ void HtmlAnchorElement::ProcessDefaultAction(Rml::Event& event){
     Rml::Element::ProcessDefaultAction(event);
     if (!HasAttribute("href"))
         return;
-    if (event == Rml::EventId::Keydown){
-        const auto key = (Rml::Input::KeyIdentifier)event.GetParameter<int>("key_identifier", 0);
-        if (event.GetTargetElement() == this && (key == Rml::Input::KI_RETURN || key == Rml::Input::KI_NUMPADENTER))
-            Click();
+    if (event == Rml::EventId::Keydown || event == Rml::EventId::Keyup){
+        forms::activateFromKey(this, event, forms::Activation::EnterOnly);
         return;
     }
     if (event == Rml::EventId::Click)
