@@ -811,7 +811,7 @@ namespace {
     }
 
     // a rule (and its generated rules) under each block of a media result
-    void writeUnderMedia(RcssWriter& writer, const MediaResult& media, const std::function<void()>& body){
+    void writeUnderMedia(RcssWriter& writer, const MediaResult& media, SourceRef ref, const std::function<void()>& body){
         if (media.never)
             return;
         if (media.always){
@@ -819,7 +819,7 @@ namespace {
             return;
         }
         for (const MediaConjunction& block : media.blocks){
-            writer.beginMedia(block.toRcss());
+            writer.beginMedia(block.toRcss(), ref);
             body();
             writer.endMedia();
         }
@@ -869,7 +869,7 @@ namespace {
         for (const GeneratedRule& generated : output.generated)
             any = any || !generated.declarations.empty();
         if (any)
-        writeUnderMedia(writer, rule.media, [&](){
+        writeUnderMedia(writer, rule.media, rule.ref, [&](){
             writeBlock(writer, joinSelectors(plain), normal, rule.ref);
             writeBlock(writer, joinSelectors(placeholder), placeholderDeclarations, rule.ref);
             for (const GeneratedRule& generated : output.generated)
@@ -888,7 +888,7 @@ namespace {
                 std::vector<OutDecl> converted = vmin;
                 for (OutDecl& d : converted)
                     d.value = replaceViewportOrientation(d.value, landscape);
-                writeUnderMedia(writer, media, [&](){
+                writeUnderMedia(writer, media, rule.ref, [&](){
                     writeBlock(writer, joinSelectors(plain), converted, rule.ref);
                 });
             }
@@ -1393,7 +1393,7 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
             std::vector<std::string> selectors;
             for (const RewrittenSelector& s : rule.rewritten)
                 selectors.push_back(s.text);
-            writeUnderMedia(writer, rule.media, [&](){
+            writeUnderMedia(writer, rule.media, rule.ref, [&](){
                 writeBlock(writer, joinSelectors(selectors), important.declarations, rule.ref);
             });
         }

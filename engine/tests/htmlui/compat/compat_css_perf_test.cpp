@@ -3,7 +3,8 @@
 
 // CSS rows of the phase-2 performance targets (§3.14): tokenize + parse + rewrite of a 50 KB
 // stylesheet with 1 200 rules in at most 4 ms, the user-agent sheet in at most 1 ms. Release
-// builds only; each target is the median of 20 runs after 3 warm-ups.
+// builds only; each measure is the median CPU time of 20 runs after 3 warm-ups, the targets
+// scaled by JASPER_HTMLUI_PERF_SLACK on a loaded host.
 
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/SourceFiles.h"

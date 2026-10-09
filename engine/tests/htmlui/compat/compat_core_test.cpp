@@ -280,16 +280,19 @@ TEST(CompatRewriterSeam, PassThroughSession){
     const StylesheetOutput& sheet = result.sheets[0];
     EXPECT_EQ(sheet.virtualPath, "@htmlui/doc/0123abcd/ui/menu.css.rcss");
     EXPECT_EQ(sheet.sourcePath, "ui/menu.css");
-    EXPECT_NE(sheet.rcss.find(".card {\ncolor: red;\nfont-family: \"Inter\", sans-serif;\n}\n"), std::string::npos) << sheet.rcss;
-    EXPECT_NE(sheet.rcss.find(".card .title {\nwidth: 10px;\n}"), std::string::npos) << sheet.rcss;
-    EXPECT_NE(sheet.rcss.find("@media (min-width: 600px) {\n.card {\npadding: 4px;\n}\n}"), std::string::npos) << sheet.rcss;
+    // the p2-css rewriter: the #htmlui-root band, #rrggbbaa colors, the currentColor companion
+    EXPECT_NE(sheet.rcss.find("#htmlui-root .card {\ncolor: #ff0000ff;\n--html-current-color: #ff0000ff;\nfont-family: Inter, sans-serif;\n}\n"),
+              std::string::npos) << sheet.rcss;
+    EXPECT_NE(sheet.rcss.find("#htmlui-root .card .title {\nwidth: 10px;\n}"), std::string::npos) << sheet.rcss;
+    EXPECT_NE(sheet.rcss.find("@media (min-width: 600px) {\n#htmlui-root .card {\npadding: 4px;\n}\n}"), std::string::npos) << sheet.rcss;
     EXPECT_NE(sheet.rcss.find("@keyframes fade {"), std::string::npos) << sheet.rcss;
     // every output line maps into the stylesheet
     for (const SourceRef& ref : sheet.lines.lines)
         EXPECT_EQ(ref.file, file);
 
     const StylesheetOutput& inlineStyle = result.sheets[1];
-    EXPECT_EQ(inlineStyle.rcss, "color: blue; width: \"x\";");
+    // width: 'x' is not a width: dropped (HTMLUI-CSS-0004)
+    EXPECT_EQ(inlineStyle.rcss, "color: #0000ffff; --html-current-color: #0000ffff;");
     EXPECT_EQ(inlineStyle.elementLoc, 4u);
     EXPECT_EQ(inlineStyle.lines.lines[0].offset, 12u);
 
@@ -298,10 +301,14 @@ TEST(CompatRewriterSeam, PassThroughSession){
     EXPECT_EQ(result.remoteRefs[1].url, "https://images.example.com/a.png");
     EXPECT_EQ(result.remoteRefs[1].kind, "image");
     EXPECT_EQ(result.dependencies, std::vector<std::string>{"ui/menu.css"});
-    EXPECT_EQ(sink.size(), 0u);
+    // the two remote files are not imported (no manifest), nesting is flattened, the bad width
+    std::vector<std::string> codes;
+    for (const Diagnostic& d : sink.diagnostics())
+        codes.push_back(d.code.id());
+    EXPECT_EQ(codes, (std::vector<std::string>{"HTMLUI-IMP-0001", "HTMLUI-AT-0008", "HTMLUI-IMP-0001", "HTMLUI-CSS-0004"}));
 
     EXPECT_EQ(CssRewriter::rewriteSelector("  .a  >  p:hover ", nullptr), ".a > p:hover");
-    EXPECT_EQ(CssRewriter::rewriteDeclarations("color: red; margin : 0", nullptr), "color: red; margin: 0;");
+    EXPECT_EQ(CssRewriter::rewriteDeclarations("color: red; margin : 0", nullptr), "color: #ff0000ff; --html-current-color: #ff0000ff; margin: 0;");
 }
 
 // ---- user-agent sheet
