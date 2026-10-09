@@ -244,35 +244,58 @@ namespace {
 
 }
 
+namespace {
+
+    std::string computeVarKind(Session& session, const std::string& name, const std::vector<ComponentValue>& fallback, bool hasFallback);
+
+}
+
 std::string props::varKind(Session& session, const ComponentValue& var){
     std::vector<ComponentValue> fallback;
     bool hasFallback = false;
     const std::string name = CustomPropertyIndex::varName(var, &fallback, &hasFallback);
-    if (name == "--html-current-color")
-        return "color";
-    if (name.empty())
-        return "other";
-    std::vector<std::vector<ComponentValue>> values;
-    if (!session.vars.declared(name)){
-        if (!hasFallback)
-            return "undeclared";
-        values.push_back(fallback);
-    }else if (!session.vars.expandedValues(name, values)){
-        return "mixed";
-    }
-    std::string kind;
-    for (const std::vector<ComponentValue>& value : values){
-        std::string k = kindOfValue(value);
-        if (k == "zero")
-            k = kind.empty() ? "zero" : (kind == "length" || kind == "number" ? kind : "zero");
-        if (kind.empty() || kind == "zero")
-            kind = k;
-        else if (k != kind && k != "zero")
+    if (hasFallback)
+        return computeVarKind(session, name, fallback, true);
+    // the kind of a variable without fallback depends on the index alone: kept per name
+    const uint32_t revision = session.vars.revision();
+    std::pair<uint32_t, std::string>& kept = session.varKinds.get(name, [&](std::string_view){
+        return std::make_pair(revision, computeVarKind(session, name, fallback, false));
+    });
+    if (kept.first != revision)
+        kept = std::make_pair(revision, computeVarKind(session, name, fallback, false));
+    return kept.second;
+}
+
+namespace {
+
+    std::string computeVarKind(Session& session, const std::string& name, const std::vector<ComponentValue>& fallback, bool hasFallback){
+        if (name == "--html-current-color")
+            return "color";
+        if (name.empty())
+            return "other";
+        std::vector<std::vector<ComponentValue>> values;
+        if (!session.vars.declared(name)){
+            if (!hasFallback)
+                return "undeclared";
+            values.push_back(fallback);
+        }else if (!session.vars.expandedValues(name, values)){
             return "mixed";
+        }
+        std::string kind;
+        for (const std::vector<ComponentValue>& value : values){
+            std::string k = kindOfValue(value);
+            if (k == "zero")
+                k = kind.empty() ? "zero" : (kind == "length" || kind == "number" ? kind : "zero");
+            if (kind.empty() || kind == "zero")
+                kind = k;
+            else if (k != kind && k != "zero")
+                return "mixed";
+        }
+        if (kind == "zero")
+            kind = "length";
+        return kind;
     }
-    if (kind == "zero")
-        kind = "length";
-    return kind;
+
 }
 
 bool props::isColor(Session& session, const ComponentValue& value){

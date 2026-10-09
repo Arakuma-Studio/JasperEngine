@@ -196,6 +196,9 @@ namespace jasperengine::htmlui::compat {
         };
         std::vector<ImportantRule> important;
 
+        // props::varKind of a var() without fallback, by variable name, for vars.revision()
+        NameTable<std::pair<uint32_t, std::string>> varKinds;
+
         // per property name (session-wide: the tables do not change)
         NameTable<PropertyFacts> propertyFacts;
         const PropertyFacts& facts(std::string_view property);

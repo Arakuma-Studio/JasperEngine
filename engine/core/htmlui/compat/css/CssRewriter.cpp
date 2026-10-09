@@ -357,6 +357,12 @@ namespace {
             }
         }
 
+        // no nested rules (the common case): the declarations, in source order already, are the rule
+        if (rule.rules.empty()){
+            addRule(session, scope, std::move(selectors), std::move(rule.declarations), rule.ref, rule.preludeRef);
+            return;
+        }
+
         // declarations and nested rules in source order
         struct Item {
             uint32_t offset;
@@ -1415,6 +1421,8 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
                 result.dependencies.push_back(path);
         }
         Stylesheet sheet = parseStylesheet(input.file, input.text, impl->sink, input.baseOffset);
+        // about one flat rule per top-level rule
+        session.rules.reserve(session.rules.size() + sheet.rules.size());
         FlattenScope scope;
         scope.sheet = (uint32_t)i;
         scope.file = input.file;
