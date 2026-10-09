@@ -205,6 +205,27 @@ bool BlockFormattingContext::FormatBlockContainerChild(BlockContainer* parent_co
 		return true;
 	}
 
+	// White space that starts or ends a line collapses away (CSS Text 3 §4.1.1): between blocks, and after the last
+	// inline-level box of a container, it makes no box.
+	if (LayoutDetails::IsCollapsibleWhiteSpaceText(element))
+	{
+		if (!parent_container->HasOpenInlineContent())
+			return true;
+		bool inline_follows = false;
+		for (Element* sibling = element->GetNextSibling(); sibling; sibling = sibling->GetNextSibling())
+		{
+			const ComputedValues& sibling_computed = sibling->GetComputedValues();
+			if (sibling_computed.display() == Style::Display::None || sibling_computed.position() == Style::Position::Absolute ||
+				sibling_computed.position() == Style::Position::Fixed || LayoutDetails::IsCollapsibleWhiteSpaceText(sibling))
+				continue;
+			inline_follows = (GetOuterDisplayType(sibling_computed.display()) == OuterDisplayType::InlineLevel &&
+				sibling_computed.float_() == Style::Float::None);
+			break;
+		}
+		if (!inline_follows)
+			return true;
+	}
+
 	auto& computed = element->GetComputedValues();
 	const Style::Display display = computed.display();
 

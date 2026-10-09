@@ -258,7 +258,8 @@ void FlexFormattingContext::Format(Vector2f& flex_resulting_content_size, Vector
 		Element* element = element_flex->GetChild(i);
 		const ComputedValues& computed = element->GetComputedValues();
 
-		if (computed.display() == Style::Display::None)
+		// White space between flex items is not rendered (CSS Flexbox §4).
+		if (computed.display() == Style::Display::None || LayoutDetails::IsCollapsibleWhiteSpaceText(element))
 		{
 			continue;
 		}
