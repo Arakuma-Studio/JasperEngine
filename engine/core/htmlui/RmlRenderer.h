@@ -125,7 +125,11 @@ namespace jasperengine {
         Rml::CompiledGeometryHandle CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) override;
         void RenderGeometry(Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, Rml::TextureHandle texture) override;
         void ReleaseGeometry(Rml::CompiledGeometryHandle geometry) override;
+        // phase-2 hook H7: "@htmlui/..." sources are compat's virtual files; the query parameter
+        // htmlui-filter=nearest gives the texture nearest sampling (image-rendering: pixelated)
         Rml::TextureHandle LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source) override;
+        // the source without its htmlui-filter=nearest query parameter (other parameters stay)
+        static std::string stripTextureFilter(const std::string& source, bool& nearest);
         Rml::TextureHandle GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions) override;
         // deletes the HtmlUITexture behind any handle (also those handed to RmlUi through
         // CallbackTextureInterface::SetTextureHandle), after the frame when one is in progress
@@ -292,7 +296,8 @@ namespace jasperengine {
         void destroyGeometryBuffers();
 
         // textures
-        HtmlUITexture* createStaticTexture(const uint8_t* rgba, int width, int height, const char* label);
+        HtmlUITexture* createStaticTexture(const uint8_t* rgba, int width, int height, const char* label,
+                                           TextureFilter filter = TextureFilter::LINEAR);
         HtmlUITexture* toTexture(Rml::TextureHandle handle);
         void destroyTexture(HtmlUITexture* texture);
         void flushPendingReleases();

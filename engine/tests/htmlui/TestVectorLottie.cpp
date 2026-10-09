@@ -693,3 +693,37 @@ TEST_F(LottieElementTest, ControlApiOnOtherElementsLogsOnce){
     // as every UIElement method on a dead handle: the [HTML UI] warning, once per method
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "[HTML UI] UIElement: element no longer exists"), 1u);
 }
+
+// phase-2 hook H9: playonhover (lottie-player's `hover`): the pointer entering plays, leaving
+// stops at the first frame
+TEST_F(LottieElementTest, PlayOnHover){
+    JASPER_REQUIRE_GPU();
+    UILottieElement* lottie = load("src=\"shapes.json\" playonhover");
+    ASSERT_NE(lottie, nullptr);
+    settle(0.0);
+    EXPECT_FALSE(lottie->isPlaying());
+    events.clear();
+
+    const Rml::Vector2f centre = lottie->GetAbsoluteOffset(Rml::BoxArea::Border) + lottie->GetBox().GetSize() * 0.5f;
+    context->ProcessMouseMove((int)centre.x, (int)centre.y, 0);
+    frame(0.5);
+    EXPECT_TRUE(lottie->isPlaying());
+    EXPECT_EQ(events.count("play"), 1u);
+    EXPECT_GT(lottie->getCurrentFrame(), 0.0f);
+
+    // moving inside does not restart it
+    context->ProcessMouseMove((int)centre.x + 1, (int)centre.y, 0);
+    frame(0.6);
+    EXPECT_EQ(events.count("play"), 1u);
+
+    context->ProcessMouseMove(500, 380, 0);
+    frame(0.7);
+    EXPECT_FALSE(lottie->isPlaying());
+    EXPECT_EQ(lottie->getCurrentFrame(), 0.0f);
+
+    // playonhover="false" (or none) does nothing on hover
+    lottie->SetAttribute("playonhover", "false");
+    context->ProcessMouseMove((int)centre.x, (int)centre.y, 0);
+    frame(0.8);
+    EXPECT_FALSE(lottie->isPlaying());
+}

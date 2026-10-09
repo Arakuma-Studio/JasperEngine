@@ -6,7 +6,38 @@
 namespace Rml {
 namespace SVG {
 	struct SVGData;
-}
+
+	/**
+	    Fork (JasperEngine, phase-2 hook H8): lets the host rewrite an <svg> element's source before it is rasterised
+	    (to resolve currentColor against the element's CSS color, apply CSS paint properties) and choose the colour the
+	    rasterised image is multiplied with. Set with SetSourceHook(); the plugin's own behaviour is unchanged without one.
+	 */
+	class RMLUICORE_API SourceHook {
+	public:
+		struct Result {
+			/// Cache id of the processed source: must differ whenever `data` differs.
+			String source_id;
+			/// The processed SVG document (text).
+			String data;
+			/// Multiply the image by `colour` instead of the element's image-color x opacity.
+			bool use_colour = false;
+			ColourbPremultiplied colour;
+		};
+
+		virtual ~SourceHook();
+
+		/// Called when an element loads its source. `path` is the file the source was resolved to (empty for inline
+		/// SVG), `source` the SVG text (file contents, or the inline SVG wrapped in its <svg> tag).
+		/// @return True to use `result`, false to keep the plugin's own behaviour for this element.
+		virtual bool ProcessSource(Element* element, const String& path, const String& source, Result& result) = 0;
+		/// @return True when a change of these properties needs the element's source to be processed again.
+		virtual bool IsSourceProperty(const PropertyIdSet& changed_properties) = 0;
+	};
+
+	/// Installs the hook (nullptr removes it); it must outlive every <svg> element using it.
+	RMLUICORE_API void SetSourceHook(SourceHook* hook);
+	RMLUICORE_API SourceHook* GetSourceHook();
+} // namespace SVG
 
 class RMLUICORE_API ElementSVG : public Element {
 public:
