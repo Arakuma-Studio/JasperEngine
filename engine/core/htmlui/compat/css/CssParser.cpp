@@ -56,6 +56,7 @@ namespace {
                 kept++;
             }
             tokens.erase(tokens.begin() + (std::ptrdiff_t)kept, tokens.end());
+            matchClosers();
             for (const TokenizeError& error : tokenizeErrors){
                 ParseError::Kind kind = ParseError::Kind::InvalidEscape;
                 switch (error.kind){
@@ -86,6 +87,114 @@ namespace {
                 index++;
             return token;
         }
+        // the token at the position as a component value's token: moved out of the list when
+        // nothing reads the list again (parseStylesheet, parseDeclarationList, component value
+        // lists), copied otherwise (the raw-block passes of the CSS Syntax entry points re-read)
+        void takeNext(Token& into){
+            Token& token = tokens[index];
+            if (token.type != TokenType::EndOfFile)
+                index++;
+            if (moveTokens && token.type != TokenType::EndOfFile)
+                into = std::move(token);
+            else
+                into = token;
+        }
+
+        static bool isOpening(TokenType type){
+            return type == TokenType::LeftBrace || type == TokenType::LeftBracket || type == TokenType::LeftParen ||
+                   type == TokenType::Function;
+        }
+
+        // closer[i]: for a block or function opening at i, the index of the token that closes it
+        // (the EndOfFile token when unclosed), as "consume a simple block / a function" finds it:
+        // only the innermost open block's mirror closes, any other closer is a plain token
+        void matchClosers(){
+            closer.assign(tokens.size(), 0);
+            std::vector<uint32_t> open;
+            for (size_t i = 0; i < tokens.size(); i++){
+                const TokenType type = tokens[i].type;
+                if (isOpening(type)){
+                    open.push_back((uint32_t)i);
+                    continue;
+                }
+                if (!open.empty() && type == mirrorOf(tokens[open.back()].type == TokenType::Function ? TokenType::LeftParen
+                                                                                                    : tokens[open.back()].type)){
+                    closer[open.back()] = (uint32_t)i;
+                    open.pop_back();
+                }
+            }
+            const uint32_t end = (uint32_t)tokens.size() - 1;
+            for (uint32_t i : open)
+                closer[i] = end;
+        }
+
+        // the index after the component value starting at i
+        size_t skipComponent(size_t i) const {
+            if (isOpening(tokens[i].type)){
+                const size_t close = closer[i];
+                return tokens[close].type == TokenType::EndOfFile ? close : close + 1;
+            }
+            return tokens[i].type == TokenType::EndOfFile ? i : i + 1;
+        }
+
+        // the number of component values from i up to (not including) the token at end
+        size_t countComponents(size_t i, size_t end) const {
+            size_t count = 0;
+            while (i < end){
+                i = skipComponent(i);
+                count++;
+            }
+            return count;
+        }
+
+        // Would consumeDeclaration(nested) at the position return a declaration? The same
+        // decision without consuming anything (so no token is consumed twice: the rule pass
+        // after a failed declaration attempt would re-read moved tokens)
+        bool declarationParses(bool nested) const {
+            size_t i = index;
+            const Token& name = tokens[i];
+            if (name.type != TokenType::Ident)
+                return false;
+            const bool custom = name.value.size() >= 2 && name.value[0] == '-' && name.value[1] == '-';
+            i++;
+            while (tokens[i].type == TokenType::Whitespace)
+                i++;
+            if (tokens[i].type != TokenType::Colon)
+                return false;
+            if (custom)
+                return true;
+            i++;
+            // the values as consumeComponentValues(true, nested) reads them: a {} block next to
+            // anything but whitespace (and a trailing !important) makes it a rule
+            bool brace = false;
+            size_t others = 0;
+            size_t lastOther = SIZE_MAX, previousOther = SIZE_MAX;   // the last two non-whitespace values
+            while (true){
+                const TokenType type = tokens[i].type;
+                if (type == TokenType::EndOfFile || type == TokenType::Semicolon)
+                    break;
+                if (type == TokenType::RightBrace && nested)
+                    break;
+                if (type == TokenType::LeftBrace){
+                    brace = true;
+                    previousOther = lastOther;
+                    lastOther = SIZE_MAX;   // a block is neither '!' nor 'important'
+                }else if (type != TokenType::Whitespace){
+                    others++;
+                    previousOther = lastOther;
+                    lastOther = i;
+                }
+                i = skipComponent(i);
+            }
+            if (!brace)
+                return true;
+            // "! important" at the end is not part of the value
+            if (lastOther != SIZE_MAX && previousOther != SIZE_MAX && tokens[lastOther].isIdent("important") &&
+                tokens[previousOther].isDelim('!'))
+                others -= 2;
+            return others == 0;
+        }
+
         void discardWhitespace(){
             while (peek().type == TokenType::Whitespace)
                 index++;
@@ -98,30 +207,53 @@ namespace {
 
         // ---- component values (§5.5.8-5.5.10)
 
-        ComponentValue tokenValue(const Token& token){
-            ComponentValue value;
+        // the token at the position as a component value
+        void tokenValue(ComponentValue& value){
             value.kind = ComponentValue::Kind::Token;
-            value.token = token;
+            takeNext(value.token);
+            const Token& token = value.token;
             value.offset = token.offset;
             value.length = token.length;
             if (token.type == TokenType::RightParen || token.type == TokenType::RightBracket)
                 error(ParseError::Kind::UnmatchedCloser, token.offset, token.length);
-            return value;
         }
 
         ComponentValue consumeComponentValue(){
+            ComponentValue value;
+            consumeComponentValue(value);
+            return value;
+        }
+
+        // into a default-constructed value (an element already in its vector)
+        void consumeComponentValue(ComponentValue& value){
             const Token& token = peek();
             if (token.type == TokenType::LeftBrace || token.type == TokenType::LeftBracket || token.type == TokenType::LeftParen)
-                return consumeSimpleBlock();
-            if (token.type == TokenType::Function)
-                return consumeFunction();
-            return tokenValue(next());
+                consumeSimpleBlock(value);
+            else if (token.type == TokenType::Function)
+                consumeFunction(value);
+            else
+                tokenValue(value);
+        }
+
+        // the children of the block or function opening at the position: their number is known
+        // from the matching closer, so the vector is allocated once
+        void reserveChildren(ComponentValue& value){
+            const size_t close = closer[index];
+            const size_t count = countComponents(index + 1, close);
+            if (count > 0)
+                value.children.reserve(count);
         }
 
         ComponentValue consumeSimpleBlock(){
             ComponentValue block;
+            consumeSimpleBlock(block);
+            return block;
+        }
+
+        void consumeSimpleBlock(ComponentValue& block){
             block.kind = ComponentValue::Kind::Block;
-            block.token = next();
+            reserveChildren(block);
+            takeNext(block.token);
             block.offset = block.token.offset;
             const TokenType ending = mirrorOf(block.token.type);
             while (true){
@@ -129,43 +261,56 @@ namespace {
                 if (token.type == ending){
                     next();
                     block.length = token.offset + token.length - block.offset;
-                    return block;
+                    return;
                 }
                 if (token.type == TokenType::EndOfFile){
                     block.closed = false;
                     error(ParseError::Kind::UnclosedBlock, block.token.offset, block.token.length);
                     block.length = (block.children.empty() ? block.token.offset + block.token.length : endOf(block.children.back())) - block.offset;
-                    return block;
+                    return;
                 }
-                block.children.push_back(consumeComponentValue());
+                consumeComponentValue(block.children.emplace_back());
             }
         }
 
-        ComponentValue consumeFunction(){
-            ComponentValue function;
+        void consumeFunction(ComponentValue& function){
             function.kind = ComponentValue::Kind::Function;
-            function.token = next();
+            reserveChildren(function);
+            takeNext(function.token);
             function.offset = function.token.offset;
             while (true){
                 const Token& token = peek();
                 if (token.type == TokenType::RightParen){
                     next();
                     function.length = token.offset + token.length - function.offset;
-                    return function;
+                    return;
                 }
                 if (token.type == TokenType::EndOfFile){
                     function.closed = false;
                     error(ParseError::Kind::UnclosedFunction, function.token.offset, function.token.length);
                     function.length = (function.children.empty() ? function.token.offset + function.token.length : endOf(function.children.back())) - function.offset;
-                    return function;
+                    return;
                 }
-                function.children.push_back(consumeComponentValue());
+                consumeComponentValue(function.children.emplace_back());
+            }
+        }
+
+        // the index of the token where consumeComponentValues(stopAtSemicolon, nested) stops
+        size_t componentValuesEnd(bool stopAtSemicolon, bool nested) const {
+            size_t i = index;
+            while (true){
+                const TokenType type = tokens[i].type;
+                if (type == TokenType::EndOfFile || (stopAtSemicolon && type == TokenType::Semicolon) ||
+                    (type == TokenType::RightBrace && nested))
+                    return i;
+                i = skipComponent(i);
             }
         }
 
         // §5.5.7; stop not consumed
         std::vector<ComponentValue> consumeComponentValues(bool stopAtSemicolon, bool nested){
             std::vector<ComponentValue> values;
+            values.reserve(countComponents(index, componentValuesEnd(stopAtSemicolon, nested)));
             while (true){
                 const Token& token = peek();
                 if (token.type == TokenType::EndOfFile)
@@ -176,10 +321,10 @@ namespace {
                     if (nested)
                         return values;
                     error(ParseError::Kind::UnmatchedCloser, token.offset, token.length);
-                    values.push_back(tokenValue(next()));
+                    tokenValue(values.emplace_back());
                     continue;
                 }
-                values.push_back(consumeComponentValue());
+                consumeComponentValue(values.emplace_back());
             }
         }
 
@@ -190,7 +335,16 @@ namespace {
         }
 
         SourceRef preludeExtent(const std::vector<ComponentValue>& prelude) const {
-            return extentOf(file, trimWhitespace(prelude));
+            size_t begin = 0, end = prelude.size();
+            while (begin < end && prelude[begin].isWhitespace())
+                begin++;
+            while (end > begin && prelude[end - 1].isWhitespace())
+                end--;
+            if (begin == end)
+                return SourceRef{};
+            const uint32_t from = prelude[begin].offset;
+            const uint32_t to = endOf(prelude[end - 1]);
+            return SourceRef{file, from, to > from ? to - from : 0};
         }
 
         // at the '{': the raw block, then its contents parsed
@@ -255,7 +409,7 @@ namespace {
                     if (nested)
                         break;
                     error(ParseError::Kind::UnmatchedCloser, token.offset, token.length);
-                    rule.prelude.push_back(tokenValue(next()));
+                    tokenValue(rule.prelude.emplace_back());
                     end = endOf(rule.prelude.back());
                     continue;
                 }
@@ -264,7 +418,7 @@ namespace {
                     end = rule.blockRef.offset + rule.blockRef.length;
                     break;
                 }
-                rule.prelude.push_back(consumeComponentValue());
+                consumeComponentValue(rule.prelude.emplace_back());
                 end = endOf(rule.prelude.back());
             }
 
@@ -310,7 +464,7 @@ namespace {
                         return std::nullopt;
                     }
                     error(ParseError::Kind::UnmatchedCloser, token.offset, token.length);
-                    rule.prelude.push_back(tokenValue(next()));
+                    tokenValue(rule.prelude.emplace_back());
                     continue;
                 }
                 if (token.type == TokenType::LeftBrace){
@@ -332,7 +486,7 @@ namespace {
                     rule.ref = ref(begin, rule.blockRef.offset + rule.blockRef.length);
                     return rule;
                 }
-                rule.prelude.push_back(consumeComponentValue());
+                consumeComponentValue(rule.prelude.emplace_back());
             }
         }
 
@@ -444,15 +598,15 @@ namespace {
                     continue;
                 }
 
-                const size_t mark = index;
-                const size_t errorMark = errors_.size();
+                // "consume a declaration", and when it returns nothing the rule from the same
+                // position: decided first (declarationParses), so each token is read once
                 const bool declarationShaped = looksLikeDeclarationStart();
-                if (std::optional<Declaration> declaration = consumeDeclaration(true)){
-                    declarations.push_back(std::move(*declaration));
+                if (declarationParses(true)){
+                    std::optional<Declaration> declaration = consumeDeclaration(true);
+                    if (declaration)
+                        declarations.push_back(std::move(*declaration));
                     continue;
                 }
-                index = mark;
-                errors_.resize(errorMark);
 
                 std::optional<Rule> rule = consumeQualifiedRule(true, true);
                 if (rule){
@@ -585,6 +739,8 @@ namespace {
         // Rule::block (the raw block) is kept for the CSS Syntax entry points; the
         // compatibility layer's parseStylesheet/parseDeclarationList only use the contents
         bool keepRawBlocks = true;
+        bool moveTokens = false;
+        std::vector<uint32_t> closer;   // matchClosers()
         std::vector<ParseError> errors_;
         std::vector<ParseError>* errorsOut;
     };
@@ -626,6 +782,7 @@ Stylesheet jasperengine::htmlui::compat::parseStylesheet(uint32_t file, std::str
     sheet.file = file;
     Parser parser(file, css, baseOffset, TokenizeOptions(), nullptr);
     parser.keepRawBlocks = false;
+    parser.moveTokens = true;
     sheet.rules = parser.consumeRuleList(true);
     parser.report(&sink);
     return sheet;
@@ -635,6 +792,7 @@ std::vector<Declaration> jasperengine::htmlui::compat::parseDeclarationList(uint
                                                                             DiagnosticSink& sink){
     Parser parser(file, css, baseOffset, TokenizeOptions(), nullptr);
     parser.keepRawBlocks = false;
+    parser.moveTokens = true;
     std::vector<Declaration> declarations;
     std::vector<Rule> rules;
     while (true){
@@ -721,6 +879,7 @@ std::vector<ComponentValue> jasperengine::htmlui::compat::parseComponentValueLis
                                                                                   const TokenizeOptions& options,
                                                                                   std::vector<ParseError>* errors){
     Parser parser(0, css, baseOffset, options, errors);
+    parser.moveTokens = true;
     return parser.consumeComponentValues(false, false);
 }
 

@@ -190,12 +190,12 @@ namespace {
 
         std::vector<Token> run(){
             std::vector<Token> tokens;
-            tokens.reserve(source.size() / 3 + 2);
+            // about one token per 2-3 bytes in real style sheets; tokens are built in place
+            tokens.reserve(source.size() / 2 + 2);
             while (true){
-                Token token = consumeToken();
-                const bool end = token.type == TokenType::EndOfFile;
-                tokens.push_back(std::move(token));
-                if (end)
+                current = &tokens.emplace_back();
+                consumeToken();
+                if (current->type == TokenType::EndOfFile)
                     break;
             }
             return tokens;
@@ -207,8 +207,9 @@ namespace {
                 errors->push_back(TokenizeError{kind, in.offset()});
         }
 
-        Token make(TokenType type, size_t start){
-            Token token;
+        // the token being read (an element of the output, filled in place)
+        Token& make(TokenType type, size_t start){
+            Token& token = *current;
             token.type = type;
             token.offset = base + (uint32_t)start;
             token.length = (uint32_t)(in.position() - start);
@@ -242,8 +243,8 @@ namespace {
             return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
         }
 
-        std::string consumeIdentSequence(){
-            std::string result;
+        // appends the sequence to result
+        void consumeIdentSequence(std::string& result){
             while (true){
                 // a run of ASCII name bytes is copied at once
                 size_t run = 0;
@@ -261,7 +262,7 @@ namespace {
                     in.next();
                     appendUtf8(result, consumeEscape());
                 }else{
-                    return result;
+                    return;
                 }
             }
         }
@@ -335,29 +336,28 @@ namespace {
             return sign * value * std::pow(10.0, exponentSign * exponent);
         }
 
-        Token consumeNumeric(size_t start){
+        void consumeNumeric(size_t start){
             double value = 0;
             bool integer = true;
             consumeNumber(value, integer);
             if (startsIdent(in.peek(), in.peek(1), in.peek(2))){
-                std::string unit = consumeIdentSequence();
-                Token token = make(TokenType::Dimension, start);
+                consumeIdentSequence(current->unit);
+                Token& token = make(TokenType::Dimension, start);
                 token.number = value;
                 token.isInteger = integer;
-                token.unit = std::move(unit);
-                return token;
+                return;
             }
             if (in.peek() == '%'){
                 in.next();
-                Token token = make(TokenType::Percentage, start);
+                Token& token = make(TokenType::Percentage, start);
                 token.number = value;
                 token.isInteger = integer;
-                return token;
+                return;
             }
-            Token token = make(TokenType::Number, start);
+            Token& token = make(TokenType::Number, start);
             token.number = value;
             token.isInteger = integer;
-            return token;
+            return;
         }
 
         void consumeBadUrlRemnants(){
@@ -371,45 +371,45 @@ namespace {
         }
 
         // after "url(" and its whitespace
-        Token consumeUrl(size_t start){
+        void consumeUrl(size_t start){
             std::string value;
             while (isWhitespace(in.peek()))
                 in.next();
             while (true){
                 const uint32_t c = in.next();
                 if (c == ')'){
-                    Token token = make(TokenType::Url, start);
+                    Token& token = make(TokenType::Url, start);
                     token.value = std::move(value);
-                    return token;
+                    return;
                 }
                 if (c == kEof){
                     error(TokenizeError::Kind::EofInUrl);
-                    Token token = make(TokenType::Url, start);
+                    Token& token = make(TokenType::Url, start);
                     token.value = std::move(value);
-                    return token;
+                    return;
                 }
                 if (isWhitespace(c)){
                     while (isWhitespace(in.peek()))
                         in.next();
                     if (in.peek() == ')'){
                         in.next();
-                        Token token = make(TokenType::Url, start);
+                        Token& token = make(TokenType::Url, start);
                         token.value = std::move(value);
-                        return token;
+                        return;
                     }
                     if (in.peek() == kEof){
                         in.next();
                         error(TokenizeError::Kind::EofInUrl);
-                        Token token = make(TokenType::Url, start);
+                        Token& token = make(TokenType::Url, start);
                         token.value = std::move(value);
-                        return token;
+                        return;
                     }
                     consumeBadUrlRemnants();
-                    return make(TokenType::BadUrl, start);
+                    { make(TokenType::BadUrl, start); return; }
                 }
                 if (c == '"' || c == '\'' || c == '(' || isNonPrintable(c)){
                     consumeBadUrlRemnants();
-                    return make(TokenType::BadUrl, start);
+                    { make(TokenType::BadUrl, start); return; }
                 }
                 if (c == '\\'){
                     if (validEscape(c, in.peek())){
@@ -417,7 +417,7 @@ namespace {
                     }else{
                         error(TokenizeError::Kind::InvalidEscape);
                         consumeBadUrlRemnants();
-                        return make(TokenType::BadUrl, start);
+                        { make(TokenType::BadUrl, start); return; }
                     }
                     continue;
                 }
@@ -425,8 +425,10 @@ namespace {
             }
         }
 
-        Token consumeIdentLike(size_t start){
-            std::string name = consumeIdentSequence();
+        void consumeIdentLike(size_t start){
+            // the name is read into the token's value (the token being built)
+            std::string& name = current->value;
+            consumeIdentSequence(name);
             const bool isUrl = name.size() == 3 && (name[0] | 0x20) == 'u' && (name[1] | 0x20) == 'r' && (name[2] | 0x20) == 'l';
             if (isUrl && in.peek() == '('){
                 in.next();
@@ -436,24 +438,22 @@ namespace {
                 const uint32_t a = in.peek();
                 const uint32_t b = in.peek(1);
                 if (a == '"' || a == '\'' || (isWhitespace(a) && (b == '"' || b == '\''))){
-                    Token token = make(TokenType::Function, start);
-                    token.value = std::move(name);
-                    return token;
+                    make(TokenType::Function, start);
+                    return;
                 }
-                return consumeUrl(start);
+                name.clear();
+                consumeUrl(start);
+                return;
             }
             if (in.peek() == '('){
                 in.next();
-                Token token = make(TokenType::Function, start);
-                token.value = std::move(name);
-                return token;
+                make(TokenType::Function, start);
+                return;
             }
-            Token token = make(TokenType::Ident, start);
-            token.value = std::move(name);
-            return token;
+            make(TokenType::Ident, start);
         }
 
-        Token consumeString(uint32_t quote, size_t start){
+        void consumeString(uint32_t quote, size_t start){
             std::string value;
             while (true){
                 // a run of plain ASCII characters is copied at once
@@ -479,7 +479,7 @@ namespace {
                 }
                 if (isNewline(c)){
                     // not consumed: it starts the next token
-                    return make(TokenType::BadString, start);
+                    { make(TokenType::BadString, start); return; }
                 }
                 in.next();
                 if (c == '\\'){
@@ -495,12 +495,12 @@ namespace {
                 }
                 appendUtf8(value, c);
             }
-            Token token = make(TokenType::String, start);
+            Token& token = make(TokenType::String, start);
             token.value = std::move(value);
-            return token;
+            return;
         }
 
-        Token consumeUnicodeRange(size_t start){
+        void consumeUnicodeRange(size_t start){
             // "U+" already consumed
             std::string digits;
             int questionMarks = 0;
@@ -534,18 +534,18 @@ namespace {
                     }
                 }
             }
-            Token token = make(TokenType::UnicodeRange, start);
+            Token& token = make(TokenType::UnicodeRange, start);
             token.rangeStart = first;
             token.rangeEnd = last;
-            return token;
+            return;
         }
 
-        Token consumeToken(){
+        void consumeToken(){
             const size_t start = in.position();
             const uint32_t c = in.peek();
 
             if (c == kEof)
-                return make(TokenType::EndOfFile, start);
+                { make(TokenType::EndOfFile, start); return; }
 
             if (c == '/' && in.byte(1) == '*'){
                 in.skip(2);
@@ -557,7 +557,7 @@ namespace {
                 }else{
                     in.skip(close + 2);
                 }
-                return make(TokenType::Comment, start);
+                { make(TokenType::Comment, start); return; }
             }
 
             if (isWhitespace(c)){
@@ -567,58 +567,57 @@ namespace {
                         break;
                     in.skip(1);
                 }
-                return make(TokenType::Whitespace, start);
+                { make(TokenType::Whitespace, start); return; }
             }
 
             if (c == '"' || c == '\''){
                 in.next();
-                return consumeString(c, start);
+                { consumeString(c, start); return; }
             }
 
             if (c == '#'){
                 if (isIdentCodePoint(in.peek(1)) || validEscape(in.peek(1), in.peek(2))){
                     in.next();
                     const bool id = startsIdent(in.peek(), in.peek(1), in.peek(2));
-                    std::string name = consumeIdentSequence();
-                    Token token = make(TokenType::Hash, start);
-                    token.value = std::move(name);
+                    consumeIdentSequence(current->value);
+                    Token& token = make(TokenType::Hash, start);
                     token.hashIsId = id;
-                    return token;
+                    return;
                 }
-                return delim(start);
+                { delim(start); return; }
             }
 
             switch (c){
-                case '(': in.next(); return make(TokenType::LeftParen, start);
-                case ')': in.next(); return make(TokenType::RightParen, start);
-                case '[': in.next(); return make(TokenType::LeftBracket, start);
-                case ']': in.next(); return make(TokenType::RightBracket, start);
-                case '{': in.next(); return make(TokenType::LeftBrace, start);
-                case '}': in.next(); return make(TokenType::RightBrace, start);
-                case ',': in.next(); return make(TokenType::Comma, start);
-                case ':': in.next(); return make(TokenType::Colon, start);
-                case ';': in.next(); return make(TokenType::Semicolon, start);
+                case '(': in.next(); { make(TokenType::LeftParen, start); return; }
+                case ')': in.next(); { make(TokenType::RightParen, start); return; }
+                case '[': in.next(); { make(TokenType::LeftBracket, start); return; }
+                case ']': in.next(); { make(TokenType::RightBracket, start); return; }
+                case '{': in.next(); { make(TokenType::LeftBrace, start); return; }
+                case '}': in.next(); { make(TokenType::RightBrace, start); return; }
+                case ',': in.next(); { make(TokenType::Comma, start); return; }
+                case ':': in.next(); { make(TokenType::Colon, start); return; }
+                case ';': in.next(); { make(TokenType::Semicolon, start); return; }
                 default: break;
             }
 
             if (c == '+' || c == '.'){
                 if (startsNumber(c, in.peek(1), in.peek(2)))
-                    return consumeNumeric(start);
-                return delim(start);
+                    { consumeNumeric(start); return; }
+                { delim(start); return; }
             }
 
             if (c == '-'){
                 if (startsNumber(c, in.peek(1), in.peek(2)))
-                    return consumeNumeric(start);
+                    { consumeNumeric(start); return; }
                 if (in.peek(1) == '-' && in.peek(2) == '>'){
                     in.next();
                     in.next();
                     in.next();
-                    return make(TokenType::CDC, start);
+                    { make(TokenType::CDC, start); return; }
                 }
                 if (startsIdent(c, in.peek(1), in.peek(2)))
-                    return consumeIdentLike(start);
-                return delim(start);
+                    { consumeIdentLike(start); return; }
+                { delim(start); return; }
             }
 
             if (c == '<'){
@@ -627,50 +626,49 @@ namespace {
                     in.next();
                     in.next();
                     in.next();
-                    return make(TokenType::CDO, start);
+                    { make(TokenType::CDO, start); return; }
                 }
-                return delim(start);
+                { delim(start); return; }
             }
 
             if (c == '@'){
                 if (startsIdent(in.peek(1), in.peek(2), in.peek(3))){
                     in.next();
-                    std::string name = consumeIdentSequence();
-                    Token token = make(TokenType::AtKeyword, start);
-                    token.value = std::move(name);
-                    return token;
+                    consumeIdentSequence(current->value);
+                    Token& token = make(TokenType::AtKeyword, start);
+                    return;
                 }
-                return delim(start);
+                { delim(start); return; }
             }
 
             if (c == '\\'){
                 if (validEscape(c, in.peek(1)))
-                    return consumeIdentLike(start);
+                    { consumeIdentLike(start); return; }
                 error(TokenizeError::Kind::InvalidEscape);
-                return delim(start);
+                { delim(start); return; }
             }
 
             if (isDigit(c))
-                return consumeNumeric(start);
+                { consumeNumeric(start); return; }
 
             if (options.unicodeRanges && (c == 'u' || c == 'U') && in.peek(1) == '+' &&
                 (isHexDigit(in.peek(2)) || in.peek(2) == '?')){
                 in.next();
                 in.next();
-                return consumeUnicodeRange(start);
+                { consumeUnicodeRange(start); return; }
             }
 
             if (isIdentStartCodePoint(c))
-                return consumeIdentLike(start);
+                { consumeIdentLike(start); return; }
 
-            return delim(start);
+            { delim(start); return; }
         }
 
-        Token delim(size_t start){
+        void delim(size_t start){
             const uint32_t c = in.next();
-            Token token = make(TokenType::Delim, start);
+            Token& token = make(TokenType::Delim, start);
             appendUtf8(token.value, c);
-            return token;
+            return;
         }
 
         Reader in;
@@ -678,6 +676,7 @@ namespace {
         uint32_t base;
         TokenizeOptions options;
         std::vector<TokenizeError>* errors;
+        Token* current = nullptr;
     };
 
 }
