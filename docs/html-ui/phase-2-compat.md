@@ -1325,7 +1325,7 @@ case names its diagnostic.
 - Logical properties (`border-inline`, `border-block`, `-start/-end`, `-width/-color/-style`)
   → physical with `direction` from the element's `dir` when known statically (the document's
   root `dir`), else LTR, Info when RTL is involved.
-- `border-collapse: collapse` → Unsupported (Warning; adjacent borders double).
+- `border-collapse: collapse` → `gap: 0` (CSS ignores `border-spacing` when borders collapse) and Approximated Warning: adjacent borders are drawn twice (as implemented, p2-ua calibration; was Unsupported, which kept the UA's 2px spacing).
   `border-spacing: x [y]` on tables → `gap: y x` (Rewritten).
 
 **Border radius**: lengths native; `%` without `PercentRadius`: values ≥ 50% → `9999px`
@@ -3392,7 +3392,7 @@ I rows `HTMLUI-CSS-0003` (Info); F rows `HTMLUI-CSS-0007`. Inherited properties 
 | `border-radius`, `border-*-radius` | N / F(PercentRadius) | `≥ 50%` → `9999px`; other `%` dropped | elliptical `a / b` → first radius (A, Warning) |
 | `border-start-start-radius`, `border-start-end-radius`, `border-end-start-radius`, `border-end-end-radius` | R | physical corners | |
 | `border-image`, `border-image-source`, `-slice`, `-width`, `-outset`, `-repeat` | E | `decorator: …, html-border-image(…)` | gradient sources U |
-| `border-collapse` | U | | `separate` is the only model; `collapse` Warning |
+| `border-collapse` | A | `gap: 0` | `separate` is the only model; `collapse` writes no spacing and draws adjacent borders twice (Warning) |
 | `border-spacing` | R | `gap` on tables | |
 | `box-shadow` | N | + `--html-box-shadow` companion | |
 | `outline`, `outline-width`, `outline-style`, `outline-color` | E | box-shadow ring through companions | styles other than solid/auto → solid (Info) |

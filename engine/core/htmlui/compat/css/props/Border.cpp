@@ -699,7 +699,43 @@ void jasperengine::htmlui::compat::rewriteBorderImage(DeclContext& context){
     companions::emitBorderImage(context, image.source.empty() ? std::string() : borderImageDecorator(image));
 }
 
+namespace {
+
+    // `border-collapse: collapse` in the declaration's rule: CSS ignores border-spacing then
+    bool collapsesBorders(const DeclContext& context){
+        if (!context.rule)
+            return false;
+        for (const Declaration& d : context.rule->declarations){
+            if (d.name != "border-collapse")
+                continue;
+            const std::vector<ComponentValue> value = words(d.value);
+            if (value.size() == 1 && identOf(value[0]) == "collapse")
+                return true;
+        }
+        return false;
+    }
+
+}
+
 void jasperengine::htmlui::compat::rewriteBorderSpacing(DeclContext& context){
+    if (context.name == "border-collapse"){
+        std::vector<ComponentValue> w = words(context.value);
+        const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
+        if (k == "separate")
+            return;   // the engine's (only) model
+        if (k != "collapse"){
+            unsupportedValue(context, "use separate or collapse");
+            return;
+        }
+        // the collapsing model's spacing is none; its merged borders are not drawn
+        context.reportAs(Severity::Warning, codes::ApproximatedVisible,
+                         "'border-collapse: collapse' keeps every cell's borders: adjacent borders are drawn twice",
+                         "set borders on one side of each cell (border-bottom on cells, for example)");
+        context.emit("gap", "0px");
+        return;
+    }
+    if (collapsesBorders(context))
+        return;   // the rule collapses borders: no spacing, as in CSS
     std::vector<ComponentValue> w = words(context.value);
     if (w.empty() || w.size() > 2){
         unsupportedValue(context);
