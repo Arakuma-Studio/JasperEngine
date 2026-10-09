@@ -20,6 +20,11 @@ namespace jasperengine{
         Mesh(Scene* scene, Entity entity);
         virtual ~Mesh();
 
+        Mesh(const Mesh& rhs);
+        Mesh& operator=(const Mesh& rhs);
+        Mesh(Mesh&& rhs) noexcept;
+        Mesh& operator=(Mesh&& rhs) noexcept;
+
         bool load();
 
         void setTexture(const std::string& path);

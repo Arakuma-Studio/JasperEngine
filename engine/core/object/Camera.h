@@ -27,6 +27,11 @@ namespace jasperengine{
         Camera(Scene* scene, Entity entity);
         virtual ~Camera();
 
+        Camera(const Camera& rhs);
+        Camera& operator=(const Camera& rhs);
+        Camera(Camera&& rhs) noexcept;
+        Camera& operator=(Camera&& rhs) noexcept;
+
         void activate();
 
         void setOrtho(float left, float right, float bottom, float top, float nearValue, float farValue);

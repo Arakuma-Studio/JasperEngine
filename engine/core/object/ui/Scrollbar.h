@@ -18,6 +18,11 @@ namespace jasperengine{
         Scrollbar(Scene* scene, Entity entity);
         virtual ~Scrollbar();
 
+        Scrollbar(const Scrollbar& rhs);
+        Scrollbar& operator=(const Scrollbar& rhs);
+        Scrollbar(Scrollbar&& rhs) noexcept;
+        Scrollbar& operator=(Scrollbar&& rhs) noexcept;
+
         bool hasBar() const;
         Image getBarObject() const;
 

@@ -161,7 +161,7 @@ TEST_F(EntityHandleLifetimeTest, OwnershipMovesAndCanBeTaken){
     std::unique_ptr<Scene> scene(new Scene());
 
     // a move carries the ownership: the moved-from handle leaves the entity alone (the
-    // subclasses declare a destructor, so only EntityHandle itself moves; theirs copy)
+    // subclasses: TestWrapperOwnership.cpp)
     EntityHandle* first = new EntityHandle(scene.get());
     Entity entity = first->getEntity();
     {

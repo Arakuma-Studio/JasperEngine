@@ -28,7 +28,6 @@
 #include "command/type/PropertyCmd.h"
 #include "component/ScriptComponent.h"
 #include "pool/TextureDataPool.h"
-#include "script/LuaBinding.h"
 #include "texture/Material.h"
 #include "texture/Texture.h"
 #include "util/ProjectChecks.h"
@@ -1300,9 +1299,11 @@ void checkScriptTool(const CallPtr& call) {
 
     Json data = {{"path", name}, {"language", language}};
     if (language == "lua") {
-        // Syntax, then the properties the Inspector will show: like the Inspector, this runs the
-        // chunk's top level in the editor's Lua state (the CLI uses an isolated one)
-        const ProjectChecks::LuaScriptCheck check = ProjectChecks::checkLuaScript(code, name, LuaBinding::getLuaState());
+        // Syntax, then the properties the Inspector will show: like the Inspector and the CLI, this
+        // runs the chunk's top level in an isolated Lua state, not the game's
+        lua_State* L = ProjectChecks::newIsolatedLuaState(project->getLuaPath(), ProjectChecks::engineLuaGlobals());
+        const ProjectChecks::LuaScriptCheck check = ProjectChecks::checkLuaScript(code, name, L);
+        ProjectChecks::closeIsolatedLuaState(L);
         data["ok"] = check.findings.empty();
         data["findings"] = ProjectChecks::toJson(check.findings);
         if (!check.syntaxOk) {

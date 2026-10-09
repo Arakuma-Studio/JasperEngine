@@ -14,6 +14,11 @@ namespace jasperengine{
         Primitive(Scene* scene, Entity entity);
         virtual ~Primitive();
 
+        Primitive(const Primitive& rhs);
+        Primitive& operator=(const Primitive& rhs);
+        Primitive(Primitive&& rhs) noexcept;
+        Primitive& operator=(Primitive&& rhs) noexcept;
+
         void createPlane(float width, float depth);
         void createPlane(float width, float depth, unsigned int tiles);
 

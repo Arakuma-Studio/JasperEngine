@@ -20,6 +20,11 @@ GameObject::GameObject(Scene* scene, Entity entity): EntityHandle(scene, entity)
 GameObject::~GameObject(){
 }
 
+GameObject::GameObject(const GameObject& rhs) = default;
+GameObject& GameObject::operator=(const GameObject& rhs) = default;
+GameObject::GameObject(GameObject&& rhs) noexcept = default;
+GameObject& GameObject::operator=(GameObject&& rhs) noexcept = default;
+
 GameObject GameObject::instantiate(const PrefabAsset& prefab){
     Scene* scene = ObjectManager::getActiveScene();
     return GameObject(scene, ObjectManager::instantiate(prefab, scene));

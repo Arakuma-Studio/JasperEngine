@@ -19,6 +19,11 @@ namespace jasperengine{
         Tilemap(Scene* scene, Entity entity);
         virtual ~Tilemap();
 
+        Tilemap(const Tilemap& rhs);
+        Tilemap& operator=(const Tilemap& rhs);
+        Tilemap(Tilemap&& rhs) noexcept;
+        Tilemap& operator=(Tilemap&& rhs) noexcept;
+
         bool createTilemap();
 
         int findRectByString(const std::string& name);
