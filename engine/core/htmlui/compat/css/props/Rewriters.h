@@ -155,7 +155,7 @@ namespace jasperengine::htmlui::compat {
         // the static value a rule declares for a property (normalized), last one wins
         std::optional<std::vector<ComponentValue>> ruleValue(Session& session, const FlatRule& rule, const std::string& property);
         // the rule's static color (#rrggbbaa) or ""
-        std::string ruleStaticColor(Session& session, const FlatRule& rule);
+        const std::string& ruleStaticColor(Session& session, const FlatRule& rule);
         // the rule's static font-size in px (absolute lengths only)
         std::optional<double> ruleFontSizePx(Session& session, const FlatRule& rule);
 

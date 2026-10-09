@@ -223,7 +223,8 @@ namespace {
                 out.push_back(ValueNormalizer::dimension(t.number, unit.unit));
                 return;
             }
-            if (unit.unit != lowerAscii(t.unit) || unit.factor != 1.0){
+            // (unit.unit is lowercase)
+            if (!equalsNoCase(unit.unit, t.unit) || unit.factor != 1.0){
                 out.push_back(ValueNormalizer::dimension(t.number * unit.factor, unit.unit));
                 return;
             }
@@ -287,7 +288,7 @@ namespace {
             const std::string name = lowerAscii(v.name());
             const bool calcFamily = StaticCalc::isCalcFamily(name) || name == "-webkit-calc" || name == "-moz-calc";
             if (calcFamily && context.options.fork.has(ForkFeature::Calc)){
-                ComponentValue copy = v;
+                ComponentValue copy = shell(v);
                 if (name != "calc" && name != "min" && name != "max" && name != "clamp")
                     copy.token.value = "calc";
                 copy.children = list(v.children);
@@ -400,8 +401,7 @@ namespace {
         }
 
         void var(const ComponentValue& v, std::vector<ComponentValue>& out){
-            ComponentValue copy = v;
-            copy.children.clear();
+            ComponentValue copy = shell(v);
             bool afterComma = false;
             std::vector<ComponentValue> fallback;
             for (const ComponentValue& child : v.children){
@@ -435,9 +435,8 @@ namespace {
                 return;
             }
             if (v.kind == ComponentValue::Kind::Block){
-                ComponentValue copy = v;
-                copy.children = list(v.children);
-                out.push_back(std::move(copy));
+                out.push_back(shell(v));
+                out.back().children = list(v.children);
                 return;
             }
             const std::string name = lowerAscii(v.name());
@@ -466,9 +465,20 @@ namespace {
                 color(v, out);
                 return;
             }
-            ComponentValue copy = v;
+            ComponentValue copy = shell(v);
             copy.children = list(v.children);
             out.push_back(std::move(copy));
+        }
+
+        // a copy of v without its children (the caller sets them)
+        static ComponentValue shell(const ComponentValue& v){
+            ComponentValue copy;
+            copy.kind = v.kind;
+            copy.token = v.token;
+            copy.offset = v.offset;
+            copy.length = v.length;
+            copy.closed = v.closed;
+            return copy;
         }
 
         const NormalizeContext& context;

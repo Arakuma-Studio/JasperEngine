@@ -135,6 +135,18 @@ Session::Session(const CompatOptions& options, SourceFiles& files, DiagnosticSin
     }
 }
 
+const PropertyFacts& Session::facts(std::string_view property){
+    return propertyFacts.get(property, [](std::string_view name){
+        PropertyFacts f;
+        f.row = findProperty(name);
+        const std::string text(name);
+        f.colorKeywords = ValueNormalizer::colorKeywordsApply(text);
+        f.percentBasis = ValueNormalizer::percentBasisOf(text, &f.vertical);
+        f.rcssKnown = RcssGrammar::known(name);
+        return f;
+    });
+}
+
 const ImportManifest& Session::manifest() const{
     return urls.manifest();
 }
@@ -631,10 +643,10 @@ namespace {
                     continue;
                 }
                 std::string name = d.name;
-                if (!findProperty(name)){
+                if (!session.facts(name).row){
                     for (const char* prefix : {"-webkit-", "-moz-", "-ms-", "-o-"}){
                         const std::string p(prefix);
-                        if (name.compare(0, p.size(), p) == 0 && findProperty(name.substr(p.size())))
+                        if (name.compare(0, p.size(), p) == 0 && session.facts(std::string_view(name).substr(p.size())).row)
                             name = name.substr(p.size());
                     }
                 }
@@ -669,7 +681,7 @@ namespace {
                     session.usesTextStroke = true;
                 if (CascadeKeywords::keywordOf(d.value) == "inherit" && !session.options.fork.has(ForkFeature::CssWideKeywords)){
                     for (const std::string& p : CascadeKeywords::outputProperties(name)){
-                        const PropertySupport* row = findProperty(name);
+                        const PropertySupport* row = session.facts(name).row;
                         const bool inherited = row ? row->inherited : CascadeKeywords::inherited(p);
                         if (!inherited && !CascadeKeywords::inherited(p))
                             session.inheritCompanions.insert(p);
@@ -909,12 +921,30 @@ namespace {
         if (!important.declarations.empty())
             session.important.push_back(std::move(important));
 
-        // ::placeholder selectors take only text properties
-        std::vector<std::string> plain, placeholder;
-        for (const RewrittenSelector& s : rule.rewritten)
-            (s.placeholder ? placeholder : plain).push_back(s.text);
+        // ::placeholder selectors take only text properties (selector lists joined as joinSelectors does)
+        std::string plainText, placeholderText;
+        bool anyPlaceholder = false;
+        for (const RewrittenSelector& s : rule.rewritten){
+            std::string& text = s.placeholder ? placeholderText : plainText;
+            anyPlaceholder = anyPlaceholder || s.placeholder;
+            if (!text.empty())
+                text += ", ";
+            text += s.text;
+        }
+        auto plainWith = [&](const std::string& suffix){
+            std::string text;
+            for (const RewrittenSelector& s : rule.rewritten){
+                if (s.placeholder)
+                    continue;
+                if (!text.empty())
+                    text += ", ";
+                text += s.text;
+                text += suffix;
+            }
+            return text;
+        };
         std::vector<OutDecl> placeholderDeclarations;
-        if (!placeholder.empty()){
+        if (anyPlaceholder){
             for (const OutDecl& d : normal){
                 if (placeholderProperty(d.name))
                     placeholderDeclarations.push_back(d);
@@ -929,10 +959,10 @@ namespace {
             any = any || !generated.declarations.empty();
         if (any)
         writeUnderMedia(writer, rule.media, rule.ref, [&](){
-            writeBlock(writer, joinSelectors(plain), normal, rule.ref);
-            writeBlock(writer, joinSelectors(placeholder), placeholderDeclarations, rule.ref);
+            writeBlock(writer, plainText, normal, rule.ref);
+            writeBlock(writer, placeholderText, placeholderDeclarations, rule.ref);
             for (const GeneratedRule& generated : output.generated)
-                writeBlock(writer, joinSelectors(plain, generated.suffix), generated.declarations, rule.ref);
+                writeBlock(writer, plainWith(generated.suffix), generated.declarations, rule.ref);
         });
 
         if (!vmin.empty()){
@@ -948,7 +978,7 @@ namespace {
                 for (OutDecl& d : converted)
                     d.value = replaceViewportOrientation(d.value, landscape);
                 writeUnderMedia(writer, media, rule.ref, [&](){
-                    writeBlock(writer, joinSelectors(plain), converted, rule.ref);
+                    writeBlock(writer, plainText, converted, rule.ref);
                 });
             }
         }
@@ -1005,14 +1035,14 @@ namespace {
     // the property name a declaration is read as (vendor prefixes resolved); "" + reported when dropped
     std::string effectiveName(Session& session, const Declaration& d, const std::vector<Declaration>& block, bool& silentlyDropped){
         silentlyDropped = false;
-        if (findProperty(d.name))
+        if (session.facts(d.name).row)
             return d.name;
         for (const char* prefix : {"-webkit-", "-moz-", "-ms-", "-o-"}){
             const std::string p(prefix);
             if (d.name.compare(0, p.size(), p) != 0)
                 continue;
             const std::string base = d.name.substr(p.size());
-            if (!findProperty(base))
+            if (!session.facts(base).row)
                 continue;
             for (const Declaration& other : block){
                 if (other.name == base){
@@ -1129,7 +1159,8 @@ namespace {
                                  closest.empty() ? std::string() : "did you mean '" + closest + "'?", closest, d.name);
             return;
         }
-        const PropertySupport* row = findProperty(name);
+        const PropertyFacts& facts = session.facts(name);
+        const PropertySupport* row = facts.row;
         const Support support = effectiveSupport(*row, session.options.fork);
         if (support == Support::Unsupported){
             Severity severity = isInfoNote(row->note) ? Severity::Info : Severity::Warning;
@@ -1175,14 +1206,15 @@ namespace {
             // 4. value normalization
             NormalizeContext normalize;
             normalize.property = name;
-            normalize.colors = ValueNormalizer::colorKeywordsApply(name);
+            normalize.colors = facts.colorKeywords;
             normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint;
             // a style attribute or a keyframe cannot be duplicated per orientation: vmin/vmax evaluated
             normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
-            normalize.percentBasis = ValueNormalizer::percentBasisOf(name, &normalize.vertical);
+            normalize.percentBasis = facts.percentBasis;
+            normalize.vertical = facts.vertical;
             normalize.options = session.options;
             if (rule && !keyframe){
-                const std::string staticColor = props::ruleStaticColor(session, *rule);
+                const std::string& staticColor = props::ruleStaticColor(session, *rule);
                 if (name != "color")
                     normalize.staticColor = staticColor;
                 if (std::optional<double> fontSize = props::ruleFontSizePx(session, *rule); fontSize && name != "font-size")
@@ -1244,7 +1276,7 @@ namespace {
                         }
                     }
                 }
-                if (!RcssGrammar::known(name)){
+                if (!facts.rcssKnown){
                     context.reportAs(Severity::Warning, codes::UnsupportedProperty, "'" + name + "' is not supported by the engine; dropped", row->suggestion);
                     return;
                 }

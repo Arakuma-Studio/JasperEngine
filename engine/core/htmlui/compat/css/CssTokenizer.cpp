@@ -255,10 +255,14 @@ namespace {
                     result.append(source.data() + from, run);
                     in.skip(run);
                 }
+                // what ends a name in practice: an ASCII byte that is neither a name character nor '\\'
+                const unsigned char b = in.byte();
+                if (b < 0x80 && b != 0 && b != '\\')
+                    return;
                 const uint32_t c = in.peek();
                 if (isIdentCodePoint(c)){
                     appendUtf8(result, in.next());
-                }else if (validEscape(c, in.peek(1))){
+                }else if (c == '\\' && validEscape(c, in.peek(1))){
                     in.next();
                     appendUtf8(result, consumeEscape());
                 }else{
@@ -330,9 +334,14 @@ namespace {
                 while (i < repr.size() && isDigit((unsigned char)repr[i]))
                     exponent = exponent * 10 + (repr[i++] - '0');
             }
+            // powers of ten up to 1e22 are exact doubles: pow() would return the same values
+            static constexpr double kPow10[] = {1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12,
+                                                1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22};
             double value = integerPart;
             if (fractionDigits > 0)
-                value += fraction / std::pow(10.0, fractionDigits);
+                value += fraction / (fractionDigits <= 22 ? kPow10[fractionDigits] : std::pow(10.0, fractionDigits));
+            if (exponent == 0)
+                return sign * value;   // * pow(10, 0) == * 1
             return sign * value * std::pow(10.0, exponentSign * exponent);
         }
 
@@ -542,6 +551,20 @@ namespace {
 
         void consumeToken(){
             const size_t start = in.position();
+            {
+                // the common starts first: a name (letters, '_') or a number (digits); the
+                // general dispatch below decides them the same way
+                const unsigned char b = in.byte();
+                const unsigned char lower = (unsigned char)(b | 0x20);
+                if (((lower >= 'a' && lower <= 'z') && !(options.unicodeRanges && lower == 'u')) || b == '_'){
+                    consumeIdentLike(start);
+                    return;
+                }
+                if (b >= '0' && b <= '9'){
+                    consumeNumeric(start);
+                    return;
+                }
+            }
             const uint32_t c = in.peek();
 
             if (c == kEof)

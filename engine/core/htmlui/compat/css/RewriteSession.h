@@ -12,6 +12,7 @@
 #include "htmlui/compat/CompatOptions.h"
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/SourceFiles.h"
+#include "htmlui/compat/StringIndex.h"
 #include "htmlui/compat/SupportTables.h"
 #include "htmlui/compat/UrlResolver.h"
 #include "htmlui/compat/css/CssAst.h"
@@ -19,6 +20,7 @@
 #include "htmlui/compat/css/CustomPropertyIndex.h"
 #include "htmlui/compat/css/MediaQuery.h"
 #include "htmlui/compat/css/SelectorRewriter.h"
+#include "htmlui/compat/css/ValueNormalizer.h"
 
 #include <map>
 #include <memory>
@@ -128,6 +130,15 @@ namespace jasperengine::htmlui::compat {
         std::string reference;             // "var(--x)" or "var(--x--decorator)" (with the fallback when given)
     };
 
+    // What the declaration pipeline looks up about a property name, computed once per name
+    struct PropertyFacts {
+        const PropertySupport* row = nullptr;                    // findProperty
+        bool colorKeywords = true;                               // ValueNormalizer::colorKeywordsApply
+        PercentBasis percentBasis = PercentBasis::ContainingBlock;   // ValueNormalizer::percentBasisOf
+        bool vertical = false;
+        bool rcssKnown = false;                                  // RcssGrammar::known
+    };
+
     struct Session {
         Session(const CompatOptions& options, SourceFiles& files, DiagnosticSink& sink, const RewriteContext& context);
 
@@ -162,6 +173,7 @@ namespace jasperengine::htmlui::compat {
 
         // base rules: selector text -> rules (cascade order)
         std::unordered_map<std::string, std::vector<uint32_t>> baseIndex;
+        bool baseIndexBuilt = false;    // built by the first BaseRules::find (most sheets never need it)
 
         // CSS property -> the rules declaring it (!important and @layer conflict checks)
         struct PropertyUse {
@@ -174,6 +186,7 @@ namespace jasperengine::htmlui::compat {
         // per-rule static facts, computed on demand
         // (by rule index; sized on first use)
         std::vector<std::optional<std::string>> staticColors;
+        std::string scratchColor;       // ruleStaticColor of a rule outside `rules`
         std::vector<std::optional<std::optional<double>>> fontSizes;
 
         // the !important sheet (§3.9.6 step 7)
@@ -182,6 +195,10 @@ namespace jasperengine::htmlui::compat {
             std::vector<OutDecl> declarations;
         };
         std::vector<ImportantRule> important;
+
+        // per property name (session-wide: the tables do not change)
+        NameTable<PropertyFacts> propertyFacts;
+        const PropertyFacts& facts(std::string_view property);
 
         // helpers
         bool fork(ForkFeature feature) const { return options.fork.has(feature); }

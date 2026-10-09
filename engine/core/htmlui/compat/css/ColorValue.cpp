@@ -1176,9 +1176,13 @@ uint32_t ColorValue::toRgba8(const CssColor& color, bool* clipped){
 }
 
 std::string ColorValue::hex(uint32_t rgba){
-    char buffer[10];
-    std::snprintf(buffer, sizeof(buffer), "#%08x", rgba);
-    return buffer;
+    // "#%08x"
+    static const char digits[] = "0123456789abcdef";
+    char buffer[9];
+    buffer[0] = '#';
+    for (int i = 0; i < 8; i++)
+        buffer[1 + i] = digits[(rgba >> (28 - 4 * i)) & 0xF];
+    return std::string(buffer, 9);
 }
 
 std::string ColorValue::toHex(const ComponentValue& value, ColorParseInfo& info, const ColorContext& context, bool* clipped){

@@ -11,7 +11,9 @@
 // index (string literals, static tables).
 
 #include <cstdint>
+#include <deque>
 #include <initializer_list>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -76,6 +78,59 @@ namespace jasperengine::htmlui::compat {
             bool used = false;
         };
         std::vector<Slot> slots;
+        size_t mask = 0;
+    };
+
+    // Names seen at run time to a value computed once per name (per-property facts of a
+    // rewrite session): the same open addressing, growing; values are stable in memory.
+    template<typename T>
+    class NameTable {
+    public:
+        // the value of `name`, made by make(name) the first time
+        template<typename Make>
+        T& get(std::string_view name, const Make& make){
+            const uint64_t h = StringIndex::hash(name);
+            if (!slots.empty()){
+                size_t i = (size_t)h & mask;
+                while (slots[i] != kEmpty){
+                    Entry& entry = entries[slots[i]];
+                    if (entry.hash == h && entry.name == name)
+                        return entry.value;
+                    i = (i + 1) & mask;
+                }
+            }
+            if ((entries.size() + 1) * 2 > slots.size())
+                grow();
+            entries.push_back(Entry{std::string(name), h, make(name)});
+            place((uint32_t)(entries.size() - 1));
+            return entries.back().value;
+        }
+
+    private:
+        static constexpr uint32_t kEmpty = 0xFFFFFFFFu;
+        struct Entry {
+            std::string name;
+            uint64_t hash;
+            T value;
+        };
+
+        void place(uint32_t index){
+            size_t i = (size_t)entries[index].hash & mask;
+            while (slots[i] != kEmpty)
+                i = (i + 1) & mask;
+            slots[i] = index;
+        }
+
+        void grow(){
+            const size_t capacity = slots.empty() ? 64 : slots.size() * 2;
+            slots.assign(capacity, kEmpty);
+            mask = capacity - 1;
+            for (uint32_t i = 0; i < (uint32_t)entries.size(); i++)
+                place(i);
+        }
+
+        std::deque<Entry> entries;
+        std::vector<uint32_t> slots;
         size_t mask = 0;
     };
 

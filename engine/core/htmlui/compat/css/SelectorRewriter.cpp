@@ -38,7 +38,10 @@ namespace {
 
     class Parser {
     public:
+        using Tokens = Span<const ComponentValue* const>;
+
         Parser(const std::vector<ComponentValue>& values, uint32_t file): file(file) {
+            items.reserve(values.size());
             for (const ComponentValue& v : values){
                 if (!v.isToken(TokenType::Comment))
                     items.push_back(&v);
@@ -47,15 +50,17 @@ namespace {
 
         std::optional<std::vector<ComplexSelector>> list(bool forgiving){
             std::vector<ComplexSelector> result;
-            std::vector<std::vector<const ComponentValue*>> groups(1);
-            for (const ComponentValue* v : items){
-                if (v->isToken(TokenType::Comma)){
-                    groups.emplace_back();
+            // the comma-separated groups, as ranges of items
+            size_t commas = 0;
+            for (const ComponentValue* v : items)
+                commas += v->isToken(TokenType::Comma) ? 1 : 0;
+            result.reserve(commas + 1);
+            size_t begin = 0;
+            for (size_t g = 0; g <= items.size(); g++){
+                if (g < items.size() && !items[g]->isToken(TokenType::Comma))
                     continue;
-                }
-                groups.back().push_back(v);
-            }
-            for (const std::vector<const ComponentValue*>& group : groups){
+                const Tokens group(items.data() + begin, g - begin);
+                begin = g + 1;
                 std::optional<ComplexSelector> selector = complex(group);
                 if (!selector){
                     if (forgiving){
@@ -88,7 +93,7 @@ namespace {
             }
         }
 
-        std::optional<ComplexSelector> complex(const std::vector<const ComponentValue*>& tokens){
+        std::optional<ComplexSelector> complex(const Tokens& tokens){
             ComplexSelector selector;
             size_t i = 0;
             // trim
@@ -137,6 +142,15 @@ namespace {
                 if (sawWhitespace && !first && !combinator)
                     combinator = ' ';
                 Compound compound;
+                {
+                    // at most one simple selector per token up to the next whitespace
+                    size_t j = i;
+                    while (j < end && !tokens[j]->isWhitespace())
+                        j++;
+                    compound.simples.reserve(j - i);
+                }
+                if (selector.compounds.empty())
+                    selector.compounds.reserve(4);
                 if (!parseCompound(tokens, i, end, compound))
                     return std::nullopt;
                 compound.combinator = first ? (selector.relative ? combinator : 0) : (combinator ? combinator : ' ');
@@ -153,7 +167,7 @@ namespace {
             return selector;
         }
 
-        bool parseCompound(const std::vector<const ComponentValue*>& tokens, size_t& i, size_t end, Compound& compound){
+        bool parseCompound(const Tokens& tokens, size_t& i, size_t end, Compound& compound){
             bool any = false;
             while (i < end){
                 const ComponentValue* t = tokens[i];

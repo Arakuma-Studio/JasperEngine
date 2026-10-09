@@ -10,20 +10,34 @@
 
 using namespace jasperengine::htmlui::compat;
 
-void BaseRules::index(Session& session){
-    session.baseIndex.clear();
-    for (const FlatRule& rule : session.rules){
-        if (rule.origin != RuleOrigin::Author || rule.dropped)
-            continue;
-        for (const ComplexSelector& selector : rule.selectors){
-            std::vector<uint32_t>& list = session.baseIndex[SelectorRewriter::serialize(selector)];
-            if (list.empty() || list.back() != rule.index)
-                list.push_back(rule.index);
+namespace {
+
+    // the index of BaseRules::index: the rules' origin, selectors and `dropped` are final once
+    // the selectors are rewritten, so building it at the first lookup gives the same index
+    void build(Session& session){
+        session.baseIndexBuilt = true;
+        session.baseIndex.clear();
+        for (const FlatRule& rule : session.rules){
+            if (rule.origin != RuleOrigin::Author || rule.dropped)
+                continue;
+            for (const ComplexSelector& selector : rule.selectors){
+                std::vector<uint32_t>& list = session.baseIndex[SelectorRewriter::serialize(selector)];
+                if (list.empty() || list.back() != rule.index)
+                    list.push_back(rule.index);
+            }
         }
     }
+
+}
+
+void BaseRules::index(Session& session){
+    session.baseIndex.clear();
+    session.baseIndexBuilt = false;
 }
 
 const FlatRule* BaseRules::find(Session& session, const FlatRule& rule, const std::function<bool(const FlatRule&)>& sets){
+    if (!session.baseIndexBuilt)
+        build(session);
     const FlatRule* best = nullptr;
     uint32_t ruleSpecificity = 0;
     for (const RewrittenSelector& s : rule.rewritten)

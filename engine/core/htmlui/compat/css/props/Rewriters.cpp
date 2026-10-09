@@ -400,7 +400,7 @@ std::optional<std::vector<ComponentValue>> props::ruleValue(Session& session, co
     return result;
 }
 
-std::string props::ruleStaticColor(Session& session, const FlatRule& rule){
+const std::string& props::ruleStaticColor(Session& session, const FlatRule& rule){
     if (session.staticColors.size() < session.rules.size())
         session.staticColors.resize(session.rules.size());
     if (rule.index < session.staticColors.size() && session.staticColors[rule.index])
@@ -409,9 +409,12 @@ std::string props::ruleStaticColor(Session& session, const FlatRule& rule){
     std::optional<std::vector<ComponentValue>> value = ruleValue(session, rule, "color");
     if (value && value->size() == 1 && (*value)[0].isToken(TokenType::Hash))
         color = "#" + (*value)[0].token.value;
-    if (rule.index < session.staticColors.size())
-        session.staticColors[rule.index] = color;
-    return color;
+    if (rule.index < session.staticColors.size()){
+        session.staticColors[rule.index] = std::move(color);
+        return *session.staticColors[rule.index];
+    }
+    session.scratchColor = std::move(color);
+    return session.scratchColor;
 }
 
 std::optional<double> props::ruleFontSizePx(Session& session, const FlatRule& rule){

@@ -395,6 +395,7 @@ namespace {
             rule.atName = toLowerAscii(keyword.value);
             const uint32_t begin = keyword.offset;
             uint32_t end = keyword.offset + keyword.length;
+            rule.prelude.reserve(preludeCount(true, nested));
 
             while (true){
                 const Token& token = peek();
@@ -447,10 +448,29 @@ namespace {
         }
 
         // §5.5.3; `invalid` set when a rule-shaped construct was dropped
+        // the number of prelude component values from the position (to the '{' or the stop)
+        size_t preludeCount(bool stopAtSemicolon, bool nested) const {
+            size_t i = index, count = 0;
+            while (true){
+                const TokenType type = tokens[i].type;
+                if (type == TokenType::EndOfFile || type == TokenType::LeftBrace || (stopAtSemicolon && type == TokenType::Semicolon))
+                    return count;
+                if (type == TokenType::RightBrace){
+                    if (nested)
+                        return count;
+                    i++;
+                }else{
+                    i = skipComponent(i);
+                }
+                count++;
+            }
+        }
+
         std::optional<Rule> consumeQualifiedRule(bool stopAtSemicolon, bool nested){
             Rule rule;
             rule.kind = Rule::Kind::Style;
             const uint32_t begin = position();
+            rule.prelude.reserve(preludeCount(stopAtSemicolon, nested));
 
             while (true){
                 const Token& token = peek();
