@@ -140,9 +140,16 @@ namespace {
             }
 
             const SourceRef location = node.location();
-            if (!svg && afterTag() && !out.empty() && out.back() != '\n')
-                newline(location);
-            else if (!svg && !out.empty() && out.back() == '\n')
+            if (!svg && afterTag() && !out.empty() && out.back() != '\n'){
+                // each start tag begins an RML line (line numbers map to the source), but a line
+                // break between two tags would be a text node, a space in the layout: it goes
+                // inside the previous tag, before its '>' or '/>' (`</b` + newline + `>`)
+                size_t at = out.size() - 1;
+                if (at > 0 && out[at - 1] == '/')
+                    at--;
+                out.insert(at, "\n");
+                lineRefs.push_back(location);
+            }else if (!svg && !out.empty() && out.back() == '\n')
                 lineRefs.back() = location;
 
             const std::string name = nameOf(node);
