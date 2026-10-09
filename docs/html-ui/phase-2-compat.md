@@ -2596,9 +2596,12 @@ Built by p2-html (October 2026). Where the code differs from or adds to the text
   in templates or fragments are not run (`HTMLUI-HTML-0007` Info); a `<template>` placeholder
   carries `data-htmlui-template="<n>"`; presentational hints are written as RCSS directly (not
   through the rewriter; in fragments they go first in `style=""`). SVG `currentColor`
-  preprocessing is left to the `<svg>` element (H8, p2-runtime), which sees inline SVG too.
-  Lucide expansion uses p2-runtime's `runtime/LucideIcons.h` when the build has it
-  (`__has_include`; without it `HTMLUI-HTML-0021` says the pack is missing).
+  preprocessing is done by the `<svg>` element (H8, p2-runtime); the HTML stage runs
+  `SvgPreprocess::process(…, SvgUse::Inline)` on every inline `<svg>` at compile time only to
+  report its `SvgResult::diagnostics` at the element (`HTMLUI-SVG-0001`; `-0002` for
+  `foreignObject` is reported by the stage itself). `data-lucide` expansion uses p2-runtime's
+  `runtime/LucideIcons.h` (`resolve`/`find`/`closest`/`svgAttributes`); the classes follow
+  Lucide's `createIcons` (`lucide lucide-<attribute value>`).
 - **RML shape.** A start tag starts a new RML line when it follows another tag (inserting a line
   break after text would add a space). RmlUi drops whitespace-only text nodes, so a space
   between two inline elements (`<b>a</b> <i>b</i>`) is lost, as in phase 1; inside `pre`-like
@@ -2641,7 +2644,10 @@ Built by p2-html (October 2026). Where the code differs from or adds to the text
   Document scripts run once the scene's Lua scripts started (`LuaBinding::initializeLuaScripts`
   calls `UIDocumentSystem::startDocumentScripts`) and after every later (re)load, before the
   context update; play stop (`releaseScriptState`) stops them. The `htmlnavigate` default action
-  is a listener on the context root (bubble phase, so any listener can prevent it). H14 runs
+  is a listener on the context root (bubble phase, so any listener can prevent it): it ignores
+  `external` links and opens the event's `url` (resolved by `HtmlAnchorElement`, when `document`
+  is true) or else the `href`. `show/showModal/close` call `HtmlDialogElement`'s (its `close`
+  event is queued: it fires on the next context update). H14 runs
   `checkDocument` for `.html`/`.htm` exports. Code lives in `UIDocumentSystemCompat.cpp`
   (`HtmlUICompatState`).
 - **Phase-0/1 fixtures** written in RML dialect (`<div/>`, RCSS) were renamed `.rml` (they test
