@@ -2738,8 +2738,9 @@ interfaces other packages rely on and the deviations.
   viewport=WxH touch dp=… */` sets the inputs), shared runner `CssCaseRunner.h`, stand-ins
   for the p2-runtime properties and decorators in `CompatRuntimeStandIns.h` (skipped when the
   real ones are registered).
-- **`RewriteContext::rootAttributes`** (new field, set by p2-html's loader from the `<html>`
-  element): `html`/`:root` map to `body#htmlui-root` in author sheets (`body` in the UA
+- **`RewriteContext::rootAttributes`** (new field next to p2-html's `rootId`/`rootDirection`;
+  `DocumentLoader` fills it with the `<html>` attributes except the reserved `id` and
+  `data-html-id`): `html`/`:root` map to `body#htmlui-root` in author sheets (`body` in the UA
   sheet), `body` to `htmlbody`; selectors on root attributes are resolved at rewrite time
   (a variant per selector that could match the root; `:is()`/`:where()` compounds get no
   root variant).

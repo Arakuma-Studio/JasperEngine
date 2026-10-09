@@ -16,6 +16,16 @@ summary, ul, xmp {
     display: block;
 }
 
+/* the root is the initial containing block: the viewport (the rewriter maps html to the RML
+   body and body to htmlbody, so author `body` rules no longer size the root) */
+html {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    min-height: 100%;
+}
+
 [hidden], area, base, datalist, head, link, meta, noembed, noframes, param, rp, script,
 style, template, title {
     display: none;
