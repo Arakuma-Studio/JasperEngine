@@ -287,8 +287,10 @@ namespace {
 
         // a color-interpolation method ("in oklch") anywhere in the first group is dropped
         std::vector<ComponentValue> head = words(groups[0]);
+        bool interpolation = false;
         for (size_t i = 0; i + 1 < head.size(); i++){
             if (isIdent(head[i], "in")){
+                interpolation = true;
                 say(scope, Severity::Info, codes::ApproximatedMinor, "gradient color interpolation '" + text(head[i + 1]) +
                     "' is dropped (sRGB interpolation)");
                 size_t end = i + 2;
@@ -425,7 +427,7 @@ namespace {
         }
         if (lostOffset)
             say(scope, Severity::Info, codes::ApproximatedMinor, "a gradient position offset from an edge is dropped (the edge is used)");
-        std::optional<std::string> stops = colorStops(scope, groups, headIsStop || head.empty() ? 0 : 1, conic, middleColor);
+        std::optional<std::string> stops = colorStops(scope, groups, headIsStop || (head.empty() && !interpolation) ? 0 : 1, conic, middleColor);
         if (!stops)
             return std::nullopt;
         return name + "(" + (prefix.empty() ? std::string() : prefix + ", ") + *stops + ")";

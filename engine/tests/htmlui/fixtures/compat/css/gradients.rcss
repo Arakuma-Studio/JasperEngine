@@ -28,7 +28,7 @@ decorator: linear-gradient(#ff0000ff, #0000ffff) border-box;
 }
 #htmlui-root .space {
 background-color: transparent;
-decorator: none;
+decorator: linear-gradient(#ff0000ff, #0000ffff) border-box;
 }
 #htmlui-root .r1 {
 background-color: transparent;
