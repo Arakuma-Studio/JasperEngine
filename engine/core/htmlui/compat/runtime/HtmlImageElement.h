@@ -66,6 +66,7 @@ namespace jasperengine::htmlui::compat {
         bool sourceDirty = true;
         bool geometryDirty = true;
         Rml::Geometry geometry;
+        Rml::Geometry clipGeometry;   // the rounded padding box (empty without border-radius)
         Rml::Texture texture;
     };
 

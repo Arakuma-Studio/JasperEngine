@@ -199,6 +199,7 @@ void Element::Render()
 	{
 		meta->background_border.Render(this);
 		meta->effects.RenderEffects(RenderStage::Decoration);
+		meta->background_border.RenderBorder(this);
 
 		{
 			RMLUI_ZoneScopedNC("OnRender", 0x228B22);

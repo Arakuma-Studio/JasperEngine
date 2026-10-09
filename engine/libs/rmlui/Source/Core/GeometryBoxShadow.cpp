@@ -216,10 +216,20 @@ void GeometryBoxShadow::GenerateTexture(CallbackTexture& out_shadow_texture, Geo
 			}
 			else
 			{
+				// CSS: an outer shadow is blurred first and then shown only outside the border box,
+				// so a blurred shadow without offset or spread (a glow) still shows around the box.
+				// With a blur the shadow is drawn unclipped into the blur layer and the clip applies
+				// when the blurred layer is composited.
 				Mesh mesh = mesh_padding_border;
 				Geometry geometry_padding_border = render_manager.MakeGeometry(std::move(mesh));
+				if (blur)
+				{
+					render_manager.DisableClipMask();
+					geometry_shadow.Render(shadow_offset + info.element_offset_in_texture);
+				}
 				render_manager.SetClipMask(ClipMaskOperation::SetInverse, &geometry_padding_border, info.element_offset_in_texture);
-				geometry_shadow.Render(shadow_offset + info.element_offset_in_texture);
+				if (!blur)
+					geometry_shadow.Render(shadow_offset + info.element_offset_in_texture);
 			}
 
 			if (blur)

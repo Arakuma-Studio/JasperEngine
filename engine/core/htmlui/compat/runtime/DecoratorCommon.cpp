@@ -411,7 +411,10 @@ RoundedClip::RoundedClip(Rml::Element* element, Rml::Geometry& clip, Rml::Vector
     transform = saved.transform;
     Rml::ClipMaskGeometryList list = saved.clip_mask_list;
     const bool identity = transform == Rml::Matrix4f::Identity();
-    list.push_back(Rml::ClipMaskGeometry{Rml::ClipMaskOperation::Intersect, &clip, translation, identity ? nullptr : &transform});
+    // the first mask of a list sets the stencil (as RmlUi's own clip lists): an Intersect
+    // there would count on a cleared stencil and drew nothing after the first such clip
+    const Rml::ClipMaskOperation operation = list.empty() ? Rml::ClipMaskOperation::Set : Rml::ClipMaskOperation::Intersect;
+    list.push_back(Rml::ClipMaskGeometry{operation, &clip, translation, identity ? nullptr : &transform});
     renderManager->SetClipMask(std::move(list));
     active = true;
 }

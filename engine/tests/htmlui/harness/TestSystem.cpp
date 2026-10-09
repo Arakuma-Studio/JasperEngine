@@ -48,7 +48,13 @@ sg_swapchain TestSystem::getSokolSwapchain(){
 #endif
 
 std::string TestSystem::getAssetPath(){
+    if (!assetPathOverride.empty())
+        return assetPathOverride;
     return JASPER_HTMLUI_TEST_SOURCE_DIR "/fixtures";
+}
+
+void TestSystem::setAssetPath(const std::string& path){
+    assetPathOverride = path;
 }
 
 std::string TestSystem::getUserDataPath(){

@@ -263,7 +263,17 @@ Rml::FontEffectsHandle RmlFontEngine::PrepareFontEffects(Rml::FontFaceHandle han
 
 const Rml::FontMetrics& RmlFontEngine::GetFontMetrics(Rml::FontFaceHandle handle){
     FaceHandle* face = toHandle(handle);
-    return face ? face->metrics : emptyMetrics;
+    if (!face)
+        return emptyMetrics;
+    if (!renderText){
+        // the no-text test variant hides text decorations too (as the reference's
+        // text-decoration-color: transparent); the layout metrics stay
+        static thread_local Rml::FontMetrics noDecoration;
+        noDecoration = face->metrics;
+        noDecoration.underline_thickness = 0.0f;
+        return noDecoration;
+    }
+    return face->metrics;
 }
 
 RmlFontEngine::FaceHandle* RmlFontEngine::toHandle(Rml::FontFaceHandle handle) const{

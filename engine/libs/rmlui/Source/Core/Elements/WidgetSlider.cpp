@@ -237,7 +237,8 @@ void WidgetSlider::FormatElements(const Vector2f containing_block, float slider_
 		: (track_box.GetCumulativeEdge(BoxArea::Content, BoxEdge::Left) + track_box.GetCumulativeEdge(BoxArea::Content, BoxEdge::Right));
 	// If no height has been explicitly specified for the track, it'll be initialised to -1 as per normal block
 	// elements. We'll fix that up here.
-	if (orientation == HORIZONTAL && content.y < 0)
+	track_auto_height = (orientation == HORIZONTAL && content.y < 0);
+	if (track_auto_height)
 		content.y = parent_box.GetSize().y;
 
 	// Now we size the arrows.
@@ -559,10 +560,14 @@ void WidgetSlider::PositionBar()
 		const float edge_right = bar->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Right);
 
 		const float traversable_track_length = track_dimensions.x - bar_dimensions.x - edge_left - edge_right;
-		const Vector2f offset = {
+		Vector2f offset = {
 			track->GetRelativeOffset().x + edge_left + traversable_track_length * bar_position,
 			bar->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Top),
 		};
+		// A track without a height of its own (CSS: an auto-height slider track shrinks to its thumb and is centered
+		// in the slider): the bar is centered across the track.
+		if (track_auto_height)
+			offset.y += track->GetRelativeOffset().y + 0.5f * (track_dimensions.y - bar->GetBox().GetSize(BoxArea::Margin).y);
 		bar->SetOffset(offset.Round(), parent);
 	}
 }

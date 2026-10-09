@@ -167,6 +167,9 @@ namespace jasperengine::htmlui::compat {
         std::set<std::string> fillKeyframes;
         std::optional<double> rootFontSize;             // px, from static root rules
         std::string rootDirection;                      // "rtl" or "ltr"
+        // §3.10 item 1: no root rule sets a background and a `body` rule does: the body's
+        // background is written on the root (it covers the canvas, as CSS propagates it)
+        bool propagateBodyBackground = false;
         SelectorOptions selectorOptions;
         uint32_t nextOrder = 0;
         bool nestingReported = false;

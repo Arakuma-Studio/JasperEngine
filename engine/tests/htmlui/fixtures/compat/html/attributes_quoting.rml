@@ -1,13 +1,13 @@
 <rml>
 <head>
 <link type="text/rcss" href="/@htmlui/ua.rcss" origin="user-agent"/>
-</head>
-<body id="htmlui-root" data-htmlui-loc="0">
-<htmlbody data-htmlui-loc="1">
-<div id="unquoted" class="single quoted" data-x="double" hidden="" data-empty="" data-htmlui-loc="2">x</div>
+</head
+><body id="htmlui-root" data-htmlui-loc="0"
+><htmlbody data-htmlui-loc="1"
+><div id="unquoted" class="single quoted" data-x="double" hidden="" data-empty="" data-htmlui-loc="2">x</div>
 <input type="checkbox" checked="" disabled="" data-htmlui-loc="3"/>
-<select data-htmlui-loc="4">
-<option selected="" data-htmlui-loc="5">a</option>
-<option data-htmlui-loc="6">b</option></select>
+<select data-htmlui-loc="4"
+><option selected="" data-htmlui-loc="5">a</option
+><option data-htmlui-loc="6">b</option></select>
 </htmlbody></body>
 </rml>

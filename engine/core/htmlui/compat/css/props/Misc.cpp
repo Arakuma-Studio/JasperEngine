@@ -47,10 +47,16 @@ namespace {
         static const std::map<std::string, std::string> defaults = [](){
             std::map<std::string, std::string> out = {
                 {"--html-check", "html-layer(\"/@htmlui/ua/check.svg\" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll)"},
+                {"--html-check-baseline", "-3px"},
                 {"--html-control-bg", "#ffffff"},
                 {"--html-control-border", "#767676"},
                 {"--html-select-arrow", "html-layer(\"/@htmlui/ua/arrow-down.svg\" 10px 6px 3px 50% no-repeat no-repeat padding-box border-box scroll)"},
                 {"--html-thumb", "none"},
+                {"--html-slider-fill", "var(--html-accent, #0075ff)"},
+                {"--html-slider-height", "16px"},
+                {"--html-slider-track-margin", "5px"},
+                {"--html-slider-track-height", "6px"},
+                {"--html-slider-track-border", "1px"},
             };
             const std::string_view ua = UserAgentStyle::source();
             for (auto& entry : out){
@@ -203,6 +209,28 @@ void jasperengine::htmlui::compat::rewriteAccentColor(DeclContext& context){
         return;
     }
     context.emit(companions::kAccent, text(w[0]));
+
+    // Chromium draws the check mark and the checked radio's gap dark (#3b3b3b) on a light accent
+    // (relative luminance above ~0.32, measured on Chromium 153), white otherwise
+    std::vector<ComponentValue> color = w;
+    if (isVar(w[0])){
+        std::vector<ComponentValue> replacement;
+        if (!context.session.staticVar(w[0], replacement))
+            return;   // set at runtime: the user-agent's white mark
+        color = words(replacement);
+    }
+    const std::string hex = color.size() == 1 ? text(color[0]) : std::string();
+    if (hex.size() < 7 || hex[0] != '#')
+        return;
+    const auto channel = [&](size_t at){
+        const double c = std::strtol(hex.substr(at, 2).c_str(), nullptr, 16) / 255.0;
+        return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+    };
+    const double luminance = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+    const bool light = luminance > 0.32;
+    context.emit("--html-check", std::string("html-layer(\"/@htmlui/ua/") + (light ? "check-dark.svg" : "check.svg") +
+                                 "\" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll)");
+    context.emit("--html-accent-contrast", light ? "#3b3b3bff" : "#ffffffff");
 }
 
 void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
@@ -210,10 +238,17 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
     const std::string keyword = w.size() == 1 ? identOf(w[0]) : std::string();
     if (keyword == "none"){
         context.emit("--html-check", "none");
+        context.emit("--html-check-baseline", "0px");
         context.emit("--html-control-bg", "transparent");
         context.emit("--html-control-border", "transparent");
         context.emit("--html-select-arrow", "none");
         context.emit("--html-thumb", "none");
+        // a range without its look: no value fill, as tall as its track (Chromium)
+        context.emit("--html-slider-fill", "transparent");
+        context.emit("--html-slider-height", "auto");
+        context.emit("--html-slider-track-margin", "0px");
+        context.emit("--html-slider-track-height", "auto");
+        context.emit("--html-slider-track-border", "0px");
         return;
     }
     if (keyword == "auto" || keyword == "menulist" || keyword == "button" || keyword == "textfield" || keyword == "checkbox" ||
@@ -221,7 +256,9 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         keyword == "slider-horizontal" || keyword == "push-button" || keyword == "square-button"){
         if (keyword != "auto")
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "'appearance: " + keyword + "' is treated as 'auto'");
-        for (const char* companion : {"--html-check", "--html-control-bg", "--html-control-border", "--html-select-arrow", "--html-thumb"})
+        for (const char* companion : {"--html-check", "--html-check-baseline", "--html-control-bg", "--html-control-border",
+                                      "--html-select-arrow", "--html-thumb", "--html-slider-fill", "--html-slider-height",
+                                      "--html-slider-track-margin", "--html-slider-track-height", "--html-slider-track-border"})
             context.emit(companion, uaCompanionDefault(companion));
         return;
     }

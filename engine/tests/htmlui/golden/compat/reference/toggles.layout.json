@@ -1,0 +1,85 @@
+{
+ "page": "toggles.html",
+ "viewport": [
+  1280,
+  720
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "states": {},
+ "requires": "pseudo-elements",
+ "lucide": [],
+ "elements": [
+  {
+   "id": "card",
+   "tag": "div",
+   "x": 410,
+   "y": 135,
+   "w": 460,
+   "h": 450
+  },
+  {
+   "id": "sw-loot",
+   "tag": "label",
+   "x": 785,
+   "y": 224,
+   "w": 52,
+   "h": 28
+  },
+  {
+   "id": "sw-subs",
+   "tag": "label",
+   "x": 785,
+   "y": 277,
+   "w": 52,
+   "h": 28
+  },
+  {
+   "id": "sw-shake",
+   "tag": "label",
+   "x": 785,
+   "y": 330,
+   "w": 52,
+   "h": 28
+  },
+  {
+   "id": "sw-aim",
+   "tag": "label",
+   "x": 785,
+   "y": 383,
+   "w": 52,
+   "h": 28
+  },
+  {
+   "id": "checks",
+   "tag": "div",
+   "x": 443,
+   "y": 424,
+   "w": 394,
+   "h": 132
+  },
+  {
+   "id": "box-1",
+   "tag": "span",
+   "x": 443,
+   "y": 443,
+   "w": 22,
+   "h": 22
+  },
+  {
+   "id": "box-2",
+   "tag": "span",
+   "x": 443,
+   "y": 479,
+   "w": 22,
+   "h": 22
+  },
+  {
+   "id": "box-3",
+   "tag": "span",
+   "x": 443,
+   "y": 515,
+   "w": 22,
+   "h": 22
+  }
+ ]
+}

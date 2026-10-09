@@ -1,8 +1,15 @@
 #include "../../../Include/RmlUi/Core/Elements/ElementFormControlSelect.h"
+#include "../../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../../Include/RmlUi/Core/ElementText.h"
 #include "../../../Include/RmlUi/Core/ElementUtilities.h"
+#include "../../../Include/RmlUi/Core/Core.h"
 #include "../../../Include/RmlUi/Core/Event.h"
+#include "../../../Include/RmlUi/Core/FontEngineInterface.h"
+#include "../../../Include/RmlUi/Core/FontMetrics.h"
+#include "../../../Include/RmlUi/Core/Math.h"
+#include "../../../Include/RmlUi/Core/StringUtilities.h"
 #include "WidgetDropDown.h"
+#include <algorithm>
 
 namespace Rml {
 
@@ -142,16 +149,82 @@ void ElementFormControlSelect::MoveChildren()
 	while (Element* raw_child = GetFirstChild())
 	{
 		ElementPtr child = RemoveChild(raw_child);
+		// the white space between options (kept as text since white space is laid out) is not an option
+		if (auto text = rmlui_dynamic_cast<ElementText*>(child.get()))
+		{
+			const String& value = text->GetText();
+			if (std::all_of(value.begin(), value.end(), &StringUtilities::IsWhitespace))
+				continue;
+		}
 		widget->AddOption(std::move(child), -1);
 	}
 }
 
 bool ElementFormControlSelect::GetIntrinsicDimensions(Vector2f& intrinsic_dimensions, float& /*ratio*/)
 {
-	intrinsic_dimensions.x = 128 * ElementUtilities::GetDensityIndependentPixelRatio(this);
-	intrinsic_dimensions.y = GetLineHeight();
+	// As wide as its widest option's text plus the arrow and the value's horizontal edges, as browsers size a select (128
+	// dp without options).
+	float widest = -1.f;
+	const int num_options = GetNumOptions();
+	for (int i = 0; i < num_options; i++)
+	{
+		Element* option = GetOption(i);
+		if (!option)
+			continue;
+		String text;
+		option->GetInnerRML(text);
+		widest = Math::Max(widest, (float)ElementUtilities::GetStringWidth(this, StringUtilities::DecodeRml(text)));
+	}
+	if (widest < 0.f)
+	{
+		intrinsic_dimensions.x = 128 * ElementUtilities::GetDensityIndependentPixelRatio(this);
+	}
+	else
+	{
+		float edges = 0.f;
+		for (int i = 0; i < GetNumChildren(true); i++)
+		{
+			Element* child = GetChild(i);
+			const ComputedValues& computed = child->GetComputedValues();
+			const String& tag = child->GetTagName();
+			if (tag != "selectarrow" && tag != "selectvalue")
+				continue;
+			edges += computed.padding_left().value + computed.padding_right().value + computed.border_left_width() + computed.border_right_width() +
+				computed.margin_left().value + computed.margin_right().value;
+			if (tag == "selectarrow" && computed.width().type == Style::Width::Length)
+				edges += computed.width().value;
+		}
+		intrinsic_dimensions.x = Math::RoundUp(widest + edges);
+	}
+	// One line tall, plus the value's vertical edges (browsers keep an internal padding there that author padding adds to).
+	float value_edges = 0.f;
+	for (int i = 0; i < GetNumChildren(true); i++)
+	{
+		Element* child = GetChild(i);
+		if (child->GetTagName() != "selectvalue")
+			continue;
+		const ComputedValues& computed = child->GetComputedValues();
+		value_edges = computed.padding_top().value + computed.padding_bottom().value + computed.border_top_width() + computed.border_bottom_width();
+		break;
+	}
+	intrinsic_dimensions.y = GetLineHeight() + value_edges;
 
 	return true;
+}
+
+float ElementFormControlSelect::GetBaseline() const
+{
+	ElementFormControlSelect* self = const_cast<ElementFormControlSelect*>(this);
+	const FontFaceHandle font = GetFontFaceHandle();
+	if (!font)
+		return ElementFormControl::GetBaseline();
+	const FontMetrics& metrics = GetFontEngineInterface()->GetFontMetrics(font);
+	const Box& box = self->GetBox();
+	const float content = box.GetSize(BoxArea::Content).y;
+	const float line = self->GetLineHeight();
+	const float baseline_from_top = (content - line) * 0.5f + (line - (metrics.ascent + metrics.descent)) * 0.5f + metrics.ascent;
+	return box.GetEdge(BoxArea::Margin, BoxEdge::Bottom) + box.GetEdge(BoxArea::Border, BoxEdge::Bottom) +
+		box.GetEdge(BoxArea::Padding, BoxEdge::Bottom) + (content - baseline_from_top);
 }
 
 void ElementFormControlSelect::OnAttributeChange(const ElementAttributes& changed_attributes)

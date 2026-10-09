@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- golden page (phase-2 spec 5.3): the reference captures "New Game" hovered -->
+    <meta name="htmlui-ref-hover" content="#btn-new">
+    <title>Void Chronicles — Main Menu</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="main-menu.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div class="background-glow"></div>
+
+    <main class="menu-container">
+        <div class="menu-panel" id="panel">
+            <div class="logo" id="logo">
+                <img src="assets/crest.svg" alt="" class="crest" id="crest">
+            </div>
+            <h1 class="game-title" id="title" data-ref-tol="text">Void Chronicles</h1>
+            <p class="subtitle" id="subtitle" data-ref-tol="text">Echoes of the Fallen Star</p>
+
+            <nav class="menu-buttons" id="buttons">
+                <button class="menu-btn primary" id="btn-continue">
+                    <i data-lucide="play"></i>
+                    <span>Continue</span>
+                    <span class="hint">Chapter 4</span>
+                </button>
+                <button class="menu-btn" id="btn-new">
+                    <i data-lucide="sparkles"></i>
+                    <span>New Game</span>
+                </button>
+                <button class="menu-btn" id="btn-settings">
+                    <i data-lucide="settings"></i>
+                    <span>Settings</span>
+                </button>
+                <button class="menu-btn" id="btn-credits">
+                    <i data-lucide="scroll-text"></i>
+                    <span>Credits</span>
+                </button>
+                <button class="menu-btn danger" id="btn-quit">
+                    <i data-lucide="log-out"></i>
+                    <span>Quit</span>
+                </button>
+            </nav>
+        </div>
+    </main>
+
+    <footer class="version" id="version" data-ref-tol="text">v1.4.2 &middot; Build 2026.10.08</footer>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

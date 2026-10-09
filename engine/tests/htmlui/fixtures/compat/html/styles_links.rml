@@ -18,10 +18,10 @@ color: #0000ffff;
 --html-current-color: #0000ffff;
 }
 </style>
-</head>
-<body id="htmlui-root" data-htmlui-loc="0">
-<htmlbody data-htmlui-loc="1">
-<p class="a c" style="margin: 0; color: #00000080; --html-current-color: #00000080;" data-htmlui-loc="2">x</p>
+</head
+><body id="htmlui-root" data-htmlui-loc="0"
+><htmlbody data-htmlui-loc="1"
+><p class="a c" style="margin: 0; color: #00000080; --html-current-color: #00000080;" data-htmlui-loc="2">x</p>
 </htmlbody></body>
 </rml>
 <!-- @htmlui/doc/KEY/compat/html/css/main.css.rcss -->

@@ -1,6 +1,7 @@
 #include "BlockFormattingContext.h"
 #include "../../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../../Include/RmlUi/Core/Element.h"
+#include "../../../Include/RmlUi/Core/ElementText.h"
 #include "../../../Include/RmlUi/Core/Profiling.h"
 #include "../../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "../../../Include/RmlUi/Core/StyleSheetSpecification.h"
@@ -116,6 +117,13 @@ UniquePtr<LayoutBox> BlockFormattingContext::Format(ContainerBox* parent_contain
 	for (int layout_iteration = 0; layout_iteration < 3; layout_iteration++)
 	{
 		bool all_children_formatted = true;
+		if (rmlui_dynamic_cast<ElementText*>(element))
+		{
+			// A run of text formatted on its own, as a flex container does with each of its children: CSS wraps it in an
+			// anonymous block box (an anonymous flex item, CSS Flexbox §4), here the block box holds the text as its
+			// inline content.
+			all_children_formatted = FormatInlineBox(container.get(), element);
+		}
 		for (int i = 0; i < element->GetNumChildren() && all_children_formatted; i++)
 		{
 			if (!FormatBlockContainerChild(container.get(), element->GetChild(i)))
@@ -195,6 +203,27 @@ bool BlockFormattingContext::FormatBlockContainerChild(BlockContainer* parent_co
 	{
 		parent_container->AddBreak();
 		return true;
+	}
+
+	// White space that starts or ends a line collapses away (CSS Text 3 §4.1.1): between blocks, and after the last
+	// inline-level box of a container, it makes no box.
+	if (LayoutDetails::IsCollapsibleWhiteSpaceText(element))
+	{
+		if (!parent_container->HasOpenInlineContent())
+			return true;
+		bool inline_follows = false;
+		for (Element* sibling = element->GetNextSibling(); sibling; sibling = sibling->GetNextSibling())
+		{
+			const ComputedValues& sibling_computed = sibling->GetComputedValues();
+			if (sibling_computed.display() == Style::Display::None || sibling_computed.position() == Style::Position::Absolute ||
+				sibling_computed.position() == Style::Position::Fixed || LayoutDetails::IsCollapsibleWhiteSpaceText(sibling))
+				continue;
+			inline_follows = (GetOuterDisplayType(sibling_computed.display()) == OuterDisplayType::InlineLevel &&
+				sibling_computed.float_() == Style::Float::None);
+			break;
+		}
+		if (!inline_follows)
+			return true;
 	}
 
 	auto& computed = element->GetComputedValues();

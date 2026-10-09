@@ -154,7 +154,7 @@ namespace {
         {"border-bottom-width", N, FF::None, N, false, "medium", false, RW::Border, "", "keywords thin 1px, medium 3px, thick 5px (rewritten)", "", "css-backgrounds-3"},
         {"border-boundary", I, FF::None, I, true, "none", false, RW::None, "", "only affects round displays", "", "css-round-display-1"},
         {"border-clip", U, FF::None, U, false, "none", false, RW::None, "", "partial borders (CSS Borders 4 draft) are not supported", "use separate elements for the visible border segments", "css-borders-4"},
-        {"border-collapse", U, FF::None, U, true, "separate", false, RW::None, "", "only the separated border model; collapse doubles adjacent borders (Warning)", "set borders on one side of each cell, or border-spacing: 0 with single borders", "CSS2.1"},
+        {"border-collapse", A, FF::None, A, true, "separate", false, RW::BorderSpacing, "gap", "only the separated border model: collapse writes gap: 0 and draws adjacent borders twice (Warning)", "set borders on one side of each cell", "CSS2.1"},
         {"border-color", N, FF::None, N, false, "currentcolor", true, RW::Border, "", "colors normalized; currentcolor through the --html-current-color companion", "", "css-backgrounds-3"},
         {"border-end-end-radius", R, FF::None, R, false, "0", false, RW::BorderRadius, "border-bottom-right-radius", "physical corner (LTR; an RTL root swaps the inline sides)", "", "css-logical-1"},
         {"border-end-start-radius", R, FF::None, R, false, "0", false, RW::BorderRadius, "border-bottom-left-radius", "physical corner (LTR; an RTL root swaps the inline sides)", "", "css-logical-1"},

@@ -40,7 +40,10 @@ namespace jasperengine { namespace test {
         sg_swapchain getSokolSwapchain() override;
 #endif
 
-        std::string getAssetPath() override;      // <source>/fixtures
+        std::string getAssetPath() override;      // <source>/fixtures, or the override
+        // another asset root (absolute; "" = the fixtures): a test that loads a fixture
+        // directory as a project's assets directory (phase-2 golden pages: their import manifest)
+        void setAssetPath(const std::string& path);
         std::string getUserDataPath() override;   // <binary>/userdata
         std::string getCachePath() override;      // <binary>/userdata
         std::string getLuaPath() override;        // <source>/fixtures
@@ -69,6 +72,7 @@ namespace jasperengine { namespace test {
     private:
         int screenWidth = 640;
         int screenHeight = 360;
+        std::string assetPathOverride;
 
         mutable std::mutex logMutex;
         std::vector<LogEntry> logs;

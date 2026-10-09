@@ -10,15 +10,15 @@ height: 180px;
 width: 200px;
 }
 </style>
-</head>
-<body id="htmlui-root" data-htmlui-loc="0">
-<htmlbody data-htmlui-loc="1">
-<div id="v" class="clip htmlui-unsupported htmlui-h0" data-html-tag="video" data-htmlui-loc="2"/>
+</head
+><body id="htmlui-root" data-htmlui-loc="0"
+><htmlbody data-htmlui-loc="1"
+><div id="v" class="clip htmlui-unsupported htmlui-h0" data-html-tag="video" data-htmlui-loc="2"/>
 <div class="htmlui-unsupported" data-html-tag="audio" data-htmlui-loc="3"/>
 <div class="htmlui-unsupported htmlui-h1" data-html-tag="iframe" data-htmlui-loc="4"/>
-<div id="c" class="htmlui-unsupported" data-html-tag="canvas" data-htmlui-loc="5"/>
-<div class="htmlui-unsupported" data-html-tag="object" data-htmlui-loc="6"/>
-<div class="htmlui-unsupported" data-html-tag="embed" data-htmlui-loc="7"/>
+<div id="c" class="htmlui-unsupported" data-html-tag="canvas" data-htmlui-loc="5"
+/><div class="htmlui-unsupported" data-html-tag="object" data-htmlui-loc="6"
+/><div class="htmlui-unsupported" data-html-tag="embed" data-htmlui-loc="7"/>
 <div class="htmlui-unsupported" data-html-tag="marquee" data-htmlui-loc="8"/>
 </htmlbody></body>
 </rml>
