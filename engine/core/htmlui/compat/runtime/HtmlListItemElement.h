@@ -20,7 +20,8 @@ namespace jasperengine::htmlui::compat {
     // `marker` element (author `li::marker` rules are rewritten to `li > marker`): not in
     // `children`, not counted by :first-child or :nth-child, not in the layout flow. After each
     // layout of the item it is filled (ListMarkers text from list-style-type, or an <img> for
-    // list-style-image), formatted with the item's font and placed:
+    // list-style-image; the bullets and disclosure triangles as an inline SVG shape sized by the
+    // font, since the built-in fonts lack their glyphs), formatted with the item's font and placed:
     // - outside (the default): its right edge at the item's content box, its top at the first
     //   line, as Chromium places it;
     // - inside: the same, with the item's padding-left grown by the marker width (Approximated:
@@ -52,7 +53,12 @@ namespace jasperengine::htmlui::compat {
         Rml::Element* marker = nullptr;
         Rml::ElementText* markerTextElement = nullptr;
         Rml::Element* markerImage = nullptr;
-        std::string markerText;
+        Rml::Element* markerShape = nullptr;   // bullets and triangles: an inline <svg>
+        float markerShapeSize = 0.0f;          // em
+        float markerShapeSide = -1.0f;         // px last set
+        std::string markerShapeMarkup;
+        std::string markerText;                // the ListMarkers text
+        std::string shownText;                 // what the marker's text node shows
         std::string markerImageSource;
         float insideShift = 0.0f;   // px added to padding-left for list-style-position: inside
         bool markerVisible = false;

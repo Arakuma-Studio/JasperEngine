@@ -20,6 +20,31 @@ using namespace jasperengine::htmlui::compat;
 
 namespace {
 
+    // Bullets and disclosure triangles are drawn as shapes, as browsers draw them: the
+    // built-in fonts have no glyphs for most of them (U+25E6, U+25AA, U+25B8, U+25BE).
+    // An SVG in a 10 x 10 view box (currentColor: the marker's color) and its size in em.
+    struct MarkerShape {
+        const char* text;      // the ListMarkers text it replaces
+        const char* markup;
+        float size;
+    };
+
+    const MarkerShape kShapes[] = {
+        {"\xE2\x80\xA2 ", "<circle cx='5' cy='5' r='5' fill='currentColor'/>", 0.35f},
+        {"\xE2\x97\xA6 ", "<circle cx='5' cy='5' r='4.2' fill='none' stroke='currentColor' stroke-width='1.6'/>", 0.35f},
+        {"\xE2\x96\xAA ", "<rect width='10' height='10' fill='currentColor'/>", 0.35f},
+        {"\xE2\x96\xB8 ", "<path d='M1.5 0L9.5 5L1.5 10Z' fill='currentColor'/>", 0.55f},
+        {"\xE2\x96\xBE ", "<path d='M0 1.5H10L5 9.5Z' fill='currentColor'/>", 0.55f},
+    };
+
+    const MarkerShape* shapeFor(const std::string& text){
+        for (const MarkerShape& shape : kShapes){
+            if (text == shape.text)
+                return &shape;
+        }
+        return nullptr;
+    }
+
     bool parseInt(const std::string& text, int& value){
         if (text.empty())
             return false;
@@ -116,13 +141,45 @@ void HtmlListItemElement::layoutMarker(){
     std::string text = listItem ? markerTextFor(type) : std::string();
     if (!listItem)
         image.clear();
-    // an image marker is the image and a space
     if (!image.empty())
         text = " ";
-
-    if (text != markerText){
-        markerText = text;
-        markerTextElement->SetText(text);
+    markerText = text;
+    // an image or a shape marker is the image or shape and a space
+    const MarkerShape* shape = image.empty() ? shapeFor(text) : nullptr;
+    const std::string shown = shape ? std::string(" ") : text;
+    if (shown != shownText){
+        shownText = shown;
+        markerTextElement->SetText(shown);
+    }
+    const std::string shapeMarkup = shape ? shape->markup : "";
+    if (shapeMarkup != markerShapeMarkup){
+        markerShapeMarkup = shapeMarkup;
+        if (markerShape){
+            marker->RemoveChild(markerShape);
+            markerShape = nullptr;
+        }
+        if (shape){
+            Rml::XMLAttributes attributes;
+            attributes["viewBox"] = Rml::Variant(Rml::String("0 0 10 10"));
+            Rml::ElementPtr svg = Rml::Factory::InstanceElement(marker, "svg", "svg", attributes);
+            if (svg){
+                svg->SetProperty("display", "inline-block");
+                svg->SetProperty("vertical-align", "middle");
+                markerShape = marker->InsertBefore(std::move(svg), markerTextElement);
+                markerShapeSize = shape->size;
+                markerShape->SetInnerRML(shape->markup);
+                markerShapeSide = -1.0f;
+            }
+        }
+    }
+    if (markerShape){
+        // the size follows the item's font
+        const float side = markerShapeSize * GetComputedValues().font_size();
+        if (side != markerShapeSide){
+            markerShapeSide = side;
+            markerShape->SetProperty(Rml::PropertyId::Width, Rml::Property(side, Rml::Unit::PX));
+            markerShape->SetProperty(Rml::PropertyId::Height, Rml::Property(side, Rml::Unit::PX));
+        }
     }
     if (image != markerImageSource){
         markerImageSource = image;
@@ -139,7 +196,7 @@ void HtmlListItemElement::layoutMarker(){
         }
     }
 
-    const bool visible = !markerText.empty() && (listItem && (markerText != " " || markerImage));
+    const bool visible = !markerText.empty() && listItem && (markerText != " " || markerImage);
     if (visible != markerVisible){
         markerVisible = visible;
         marker->SetProperty("display", visible ? "block" : "none");
@@ -147,7 +204,9 @@ void HtmlListItemElement::layoutMarker(){
 
     float width = 0.0f;
     if (visible){
-        width = (float)Rml::ElementUtilities::GetStringWidth(markerTextElement, markerText);
+        width = (float)Rml::ElementUtilities::GetStringWidth(markerTextElement, shownText);
+        if (markerShape)
+            width += markerShapeSize * GetComputedValues().font_size();
         if (markerImage){
             Rml::Vector2f size;
             float ratio = 0.0f;
