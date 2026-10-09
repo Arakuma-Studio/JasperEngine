@@ -8,6 +8,7 @@
 // radii until PercentRadius; border-image through the html-border-image decorator.
 
 #include "htmlui/compat/css/props/Rewriters.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/BaseRules.h"
 #include "htmlui/compat/css/Companions.h"
@@ -27,6 +28,28 @@ using namespace jasperengine::htmlui::compat::props;
 namespace {
 
     const char* const kSides[] = {"top", "right", "bottom", "left"};
+    // the longhands of each side
+    const std::string_view kSideWidth[] = {"border-top-width", "border-right-width", "border-bottom-width", "border-left-width"};
+    const std::string_view kSideStyle[] = {"border-top-style", "border-right-style", "border-bottom-style", "border-left-style"};
+    const std::string_view kSideColor[] = {"border-top-color", "border-right-color", "border-bottom-color", "border-left-color"};
+
+    // up to four sides (0 top .. 3 left)
+    struct Sides {
+        int items[4] = {0, 0, 0, 0};
+        size_t count = 0;
+        Sides(std::initializer_list<int> list){
+            for (int side : list)
+                items[count++] = side;
+        }
+        const int* begin() const { return items; }
+        const int* end() const { return items + count; }
+        size_t size() const { return count; }
+        int operator[](size_t i) const { return items[i]; }
+    };
+
+    bool startsWith(std::string_view text, std::string_view prefix){
+        return text.size() >= prefix.size() && text.compare(0, prefix.size(), prefix) == 0;
+    }
 
     void unsupportedValue(DeclContext& context, const std::string& suggestion = std::string()){
         context.reportAs(Severity::Warning, codes::UnsupportedValue, "'" + context.name + ": " + context.valueText() +
@@ -101,27 +124,29 @@ namespace {
     }
 
     // the sides a border property names
-    std::vector<int> sidesOf(Session& session, const std::string& name){
-        const bool rtl = session.rootDirection == "rtl";
-        const int inlineStart = rtl ? 1 : 3, inlineEnd = rtl ? 3 : 1;
-        if (name.compare(0, 13, "border-inline") == 0){
-            if (name.compare(0, 19, "border-inline-start") == 0)
+    Sides sidesOf(Session& session, std::string_view name){
+        if (startsWith(name, "border-inline")){
+            const bool rtl = session.rootDirection == "rtl";
+            const int inlineStart = rtl ? 1 : 3, inlineEnd = rtl ? 3 : 1;
+            if (startsWith(name, "border-inline-start"))
                 return {inlineStart};
-            if (name.compare(0, 17, "border-inline-end") == 0)
+            if (startsWith(name, "border-inline-end"))
                 return {inlineEnd};
             return {3, 1};
         }
-        if (name.compare(0, 12, "border-block") == 0){
-            if (name.compare(0, 18, "border-block-start") == 0)
+        if (startsWith(name, "border-block")){
+            if (startsWith(name, "border-block-start"))
                 return {0};
-            if (name.compare(0, 16, "border-block-end") == 0)
+            if (startsWith(name, "border-block-end"))
                 return {2};
             return {0, 2};
         }
-        for (int i = 0; i < 4; i++){
-            const std::string prefix = std::string("border-") + kSides[i];
-            if (name.compare(0, prefix.size(), prefix) == 0)
-                return {i};
+        if (startsWith(name, "border-")){
+            const std::string_view rest = name.substr(7);
+            for (int i = 0; i < 4; i++){
+                if (startsWith(rest, kSides[i]))
+                    return {i};
+            }
         }
         return {0, 1, 2, 3};
     }
@@ -137,20 +162,19 @@ namespace {
     }
 
     // the border style of a rule for a side (none when unknown)
-    void emitStyle(DeclContext& context, const std::vector<int>& sides, const std::string& style, const std::string& color,
+    void emitStyle(DeclContext& context, const Sides& sides, const std::string& style, const std::string& color,
                    const std::string& width, bool widthGiven){
         const bool fork = context.fork(ForkFeature::BorderStyle);
         for (int side : sides){
-            const std::string prefix = std::string("border-") + kSides[side];
-            std::string sideWidth = width;
-            std::string sideColor = color;
             if (fork){
                 if (widthGiven || style != "none")
-                    context.emit(prefix + "-width", sideWidth);
-                context.emit(prefix + "-style", style);
-                context.emit(prefix + "-color", sideColor);
+                    context.emit(std::string(kSideWidth[side]), width);
+                context.emit(std::string(kSideStyle[side]), style);
+                context.emit(std::string(kSideColor[side]), color);
                 continue;
             }
+            std::string sideWidth = width;
+            std::string sideColor = color;
             if (style == "none" || style == "hidden")
                 sideWidth = "0px";
             if (style == "inset" || style == "outset" || style == "groove" || style == "ridge"){
@@ -160,8 +184,8 @@ namespace {
                     sideColor = hexText(shade(*rgba, darken));
                 }
             }
-            context.emit(prefix + "-width", sideWidth);
-            context.emit(prefix + "-color", sideColor);
+            context.emit(std::string(kSideWidth[side]), std::move(sideWidth));
+            context.emit(std::string(kSideColor[side]), std::move(sideColor));
         }
     }
 
@@ -177,10 +201,13 @@ namespace {
     }
 
     bool ruleSetsWidth(const FlatRule& rule, int side){
+        const std::string_view sideWidth = kSideWidth[side];
+        const std::string_view sideBorder = sideWidth.substr(0, sideWidth.size() - 6);   // border-<side>
         for (const Declaration& d : rule.declarations){
-            const std::string& n = d.name;
-            if (n == "border" || n == "border-width" || n == std::string("border-") + kSides[side] ||
-                n == std::string("border-") + kSides[side] + "-width")
+            const std::string_view n = d.name;
+            if (!startsWith(n, "border"))
+                continue;
+            if (n == "border" || n == "border-width" || n == sideBorder || n == sideWidth)
                 return true;
         }
         return false;
@@ -332,7 +359,7 @@ namespace {
 void jasperengine::htmlui::compat::rewriteBorder(DeclContext& context){
     const std::string& n = context.name;
     std::vector<ComponentValue> w = words(context.value);
-    const std::vector<int> sides = sidesOf(context.session, n);
+    const Sides sides = sidesOf(context.session, n);
     const std::string part = partOf(n);
 
     if (n.compare(0, 13, "border-inline") == 0 || n.compare(0, 12, "border-block") == 0){
@@ -400,7 +427,7 @@ void jasperengine::htmlui::compat::rewriteBorder(DeclContext& context){
         }
         std::vector<std::string> box = boxValues(colors);
         for (int i = 0; i < 4; i++)
-            context.emit(std::string("border-") + kSides[i] + "-color", box[(size_t)i]);
+            context.emit(std::string(kSideColor[i]), std::move(box[(size_t)i]));
         return;
     }
 
@@ -456,7 +483,7 @@ void jasperengine::htmlui::compat::rewriteBorderStyle(DeclContext& context){
         }
         styles.push_back(k);
     }
-    std::vector<int> sides = sidesOf(context.session, n);
+    const Sides sides = sidesOf(context.session, n);
     std::vector<std::string> perSide(4);
     if (sides.size() == 1){
         if (styles.size() != 1){
@@ -473,14 +500,14 @@ void jasperengine::htmlui::compat::rewriteBorderStyle(DeclContext& context){
     }
     if (context.fork(ForkFeature::BorderStyle)){
         for (int side : sides)
-            context.emit(std::string("border-") + kSides[side] + "-style", perSide[(size_t)side]);
+            context.emit(std::string(kSideStyle[side]), perSide[(size_t)side]);
         return;
     }
     bool reportedMedium = false;
     for (int side : sides){
         const std::string& style = perSide[(size_t)side];
         reportStyle(context, style);
-        const std::string property = std::string("border-") + kSides[side] + "-width";
+        const std::string property(kSideWidth[side]);
         if (style == "none" || style == "hidden"){
             context.emit(property, "0px");
             continue;

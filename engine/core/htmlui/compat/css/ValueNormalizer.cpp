@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/ValueNormalizer.h"
+#include "htmlui/compat/LiteralCompare.h"
 
+#include "htmlui/compat/StringIndex.h"
 #include "htmlui/compat/css/ColorValue.h"
 #include "htmlui/compat/css/CssParser.h"
 #include "htmlui/compat/css/CssSerialize.h"
@@ -93,13 +95,13 @@ ComponentValue ValueNormalizer::currentColorCompanion(){
 }
 
 PercentBasis ValueNormalizer::percentBasisOf(const std::string& property, bool* vertical){
-    static const std::set<std::string> verticalProperties = {
+    static const StringIndex verticalProperties = makeStringSet({
         "height", "min-height", "max-height", "top", "bottom", "block-size", "min-block-size", "max-block-size",
         "inset-block", "inset-block-start", "inset-block-end", "row-gap", "background-position-y", "transform-origin-y",
         "perspective-origin-y",
-    };
+    });
     if (vertical)
-        *vertical = verticalProperties.count(property) > 0;
+        *vertical = verticalProperties.contains(property);
     if (property == "font-size" || property == "font")
         return PercentBasis::FontSize;
     if (property == "line-height")
@@ -111,15 +113,15 @@ PercentBasis ValueNormalizer::percentBasisOf(const std::string& property, bool* 
 }
 
 bool ValueNormalizer::colorKeywordsApply(const std::string& property){
-    static const std::set<std::string> noColors = {
+    static const StringIndex noColors = makeStringSet({
         "font-family", "font", "animation", "animation-name", "transition", "transition-property", "will-change",
         "counter-reset", "counter-increment", "counter-set", "grid-area", "grid-template-areas", "grid-row", "grid-column",
         "grid-row-start", "grid-row-end", "grid-column-start", "grid-column-end", "content", "quotes", "list-style-type",
         "font-feature-settings", "font-variation-settings", "unicode-range", "container-name", "view-transition-name",
         "anchor-name", "position-anchor", "cursor", "font-palette", "src", "-rmlui-language", "nav", "nav-up", "nav-down",
         "nav-left", "nav-right",
-    };
-    return noColors.count(property) == 0;
+    });
+    return !noColors.contains(property);
 }
 
 namespace {
@@ -131,7 +133,13 @@ namespace {
         NormalizeResult result;
 
         std::vector<ComponentValue> list(const std::vector<ComponentValue>& values){
-            std::vector<ComponentValue> out;
+            return list(values, std::vector<ComponentValue>());
+        }
+
+        // (out: storage to build the list in)
+        std::vector<ComponentValue> list(const std::vector<ComponentValue>& values, std::vector<ComponentValue>&& storage){
+            std::vector<ComponentValue> out = std::move(storage);
+            out.clear();
             out.reserve(values.size());
             for (const ComponentValue& v : values){
                 if (!result.ok)
@@ -221,7 +229,8 @@ namespace {
                 out.push_back(ValueNormalizer::dimension(t.number, unit.unit));
                 return;
             }
-            if (unit.unit != lowerAscii(t.unit) || unit.factor != 1.0){
+            // (unit.unit is lowercase)
+            if (!equalsNoCase(unit.unit, t.unit) || unit.factor != 1.0){
                 out.push_back(ValueNormalizer::dimension(t.number * unit.factor, unit.unit));
                 return;
             }
@@ -285,7 +294,7 @@ namespace {
             const std::string name = lowerAscii(v.name());
             const bool calcFamily = StaticCalc::isCalcFamily(name) || name == "-webkit-calc" || name == "-moz-calc";
             if (calcFamily && context.options.fork.has(ForkFeature::Calc)){
-                ComponentValue copy = v;
+                ComponentValue copy = shell(v);
                 if (name != "calc" && name != "min" && name != "max" && name != "clamp")
                     copy.token.value = "calc";
                 copy.children = list(v.children);
@@ -398,8 +407,7 @@ namespace {
         }
 
         void var(const ComponentValue& v, std::vector<ComponentValue>& out){
-            ComponentValue copy = v;
-            copy.children.clear();
+            ComponentValue copy = shell(v);
             bool afterComma = false;
             std::vector<ComponentValue> fallback;
             for (const ComponentValue& child : v.children){
@@ -433,9 +441,8 @@ namespace {
                 return;
             }
             if (v.kind == ComponentValue::Kind::Block){
-                ComponentValue copy = v;
-                copy.children = list(v.children);
-                out.push_back(std::move(copy));
+                out.push_back(shell(v));
+                out.back().children = list(v.children);
                 return;
             }
             const std::string name = lowerAscii(v.name());
@@ -464,9 +471,20 @@ namespace {
                 color(v, out);
                 return;
             }
-            ComponentValue copy = v;
+            ComponentValue copy = shell(v);
             copy.children = list(v.children);
             out.push_back(std::move(copy));
+        }
+
+        // a copy of v without its children (the caller sets them)
+        static ComponentValue shell(const ComponentValue& v){
+            ComponentValue copy;
+            copy.kind = v.kind;
+            copy.token = v.token;
+            copy.offset = v.offset;
+            copy.length = v.length;
+            copy.closed = v.closed;
+            return copy;
         }
 
         const NormalizeContext& context;
@@ -499,8 +517,13 @@ void jasperengine::htmlui::compat::trimInPlace(std::vector<ComponentValue>& valu
 }
 
 NormalizeResult ValueNormalizer::normalize(const std::vector<ComponentValue>& value, const NormalizeContext& context){
+    return normalize(value, context, std::vector<ComponentValue>());
+}
+
+NormalizeResult ValueNormalizer::normalize(const std::vector<ComponentValue>& value, const NormalizeContext& context,
+                                           std::vector<ComponentValue>&& storage){
     Walker walker(context);
-    std::vector<ComponentValue> out = walker.list(value);
+    std::vector<ComponentValue> out = walker.list(value, std::move(storage));
     NormalizeResult result = walker.result;
     result.value = std::move(out);
     return result;

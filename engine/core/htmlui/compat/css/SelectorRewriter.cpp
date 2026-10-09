@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/SelectorRewriter.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/SupportTables.h"
@@ -18,7 +19,25 @@ namespace {
     using Kind = SimpleSelector::Kind;
 
     constexpr size_t kExpansionLimit = 256;
+
+    // selector text (defined with SelectorRewriter::serialize below); `prefixed`: written after a
+    // compound of its own, so the first compound gets its combinator
+    void appendComplex(std::string& text, const ComplexSelector& selector, bool prefixed = false);
     constexpr const char* kRootId = "htmlui-root";
+
+    // a Delim token of that character
+    inline bool isDelimChar(const ComponentValue& v, char c){
+        return v.kind == ComponentValue::Kind::Token && v.token.type == TokenType::Delim && v.token.value.size() == 1 && v.token.value[0] == c;
+    }
+
+    // out = lowerAscii(text), in place
+    inline void assignLower(std::string& out, const std::string& text){
+        out = text;
+        for (char& c : out){
+            if (c >= 'A' && c <= 'Z')
+                c = (char)(c - 'A' + 'a');
+        }
+    }
 
     bool isWs(const ComponentValue& v){
         return v.isWhitespace() || v.isToken(TokenType::Comment);
@@ -33,33 +52,48 @@ namespace {
 
     class Parser {
     public:
+        using Tokens = Span<const ComponentValue* const>;
+
         Parser(const std::vector<ComponentValue>& values, uint32_t file): file(file) {
-            for (const ComponentValue& v : values){
-                if (!v.isToken(TokenType::Comment))
-                    items.push_back(&v);
+            // (a selector's few tokens fit the inline buffer)
+            if (values.size() > kInlineItems){
+                heapItems.reserve(values.size());
+                for (const ComponentValue& v : values){
+                    if (!v.isToken(TokenType::Comment))
+                        heapItems.push_back(&v);
+                }
+                items = Tokens(heapItems.data(), heapItems.size());
+            }else{
+                size_t count = 0;
+                for (const ComponentValue& v : values){
+                    if (!v.isToken(TokenType::Comment))
+                        inlineItems[count++] = &v;
+                }
+                items = Tokens(inlineItems, count);
             }
         }
 
         std::optional<std::vector<ComplexSelector>> list(bool forgiving){
             std::vector<ComplexSelector> result;
-            std::vector<std::vector<const ComponentValue*>> groups(1);
-            for (const ComponentValue* v : items){
-                if (v->isToken(TokenType::Comma)){
-                    groups.emplace_back();
+            // the comma-separated groups, as ranges of items
+            size_t commas = 0;
+            for (size_t i = 0; i < items.size(); i++)
+                commas += items[i]->isToken(TokenType::Comma) ? 1 : 0;
+            result.reserve(commas + 1);
+            size_t begin = 0;
+            for (size_t g = 0; g <= items.size(); g++){
+                if (g < items.size() && !items[g]->isToken(TokenType::Comma))
                     continue;
-                }
-                groups.back().push_back(v);
-            }
-            for (const std::vector<const ComponentValue*>& group : groups){
-                std::optional<ComplexSelector> selector = complex(group);
-                if (!selector){
+                const Tokens group(items.data() + begin, g - begin);
+                begin = g + 1;
+                if (!complex(group, result.emplace_back())){
+                    result.pop_back();
                     if (forgiving){
                         error.clear();
                         continue;
                     }
                     return std::nullopt;
                 }
-                result.push_back(std::move(*selector));
             }
             if (result.empty() && !forgiving){
                 fail(nullptr, "empty selector");
@@ -83,8 +117,8 @@ namespace {
             }
         }
 
-        std::optional<ComplexSelector> complex(const std::vector<const ComponentValue*>& tokens){
-            ComplexSelector selector;
+        // into a default-constructed selector
+        bool complex(const Tokens& tokens, ComplexSelector& selector){
             size_t i = 0;
             // trim
             size_t end = tokens.size();
@@ -94,7 +128,7 @@ namespace {
                 end--;
             if (i >= end){
                 fail(nullptr, "empty selector");
-                return std::nullopt;
+                return false;
             }
             selector.ref = SourceRef{file, tokens[i]->offset, tokens[end - 1]->offset + tokens[end - 1]->length - tokens[i]->offset};
             char combinator = 0;
@@ -113,7 +147,7 @@ namespace {
                     const std::string& d = t->token.value;
                     if (d == ">" || d == "+" || d == "~")
                         explicitCombinator = d[0];
-                    else if (d == "|" && i + 1 < end && tokens[i + 1]->isToken(TokenType::Delim) && tokens[i + 1]->token.value == "|"){
+                    else if (d == "|" && i + 1 < end && isDelimChar(*tokens[i + 1], '|')){
                         explicitCombinator = '|';
                         i++;
                     }
@@ -121,7 +155,7 @@ namespace {
                 if (explicitCombinator){
                     if (combinator && combinator != ' '){
                         fail(t, "two combinators in a row");
-                        return std::nullopt;
+                        return false;
                     }
                     combinator = explicitCombinator;
                     i++;
@@ -132,8 +166,25 @@ namespace {
                 if (sawWhitespace && !first && !combinator)
                     combinator = ' ';
                 Compound compound;
+                {
+                    // at most one simple selector per token up to the next whitespace
+                    size_t j = i;
+                    while (j < end && !tokens[j]->isWhitespace())
+                        j++;
+                    compound.simples.reserve(j - i);
+                }
+                if (selector.compounds.empty()){
+                    // at most one compound per whitespace- or combinator-separated run
+                    size_t runs = 1;
+                    for (size_t k = i + 1; k < end; k++){
+                        const ComponentValue& v = *tokens[k];
+                        if (v.isWhitespace() || isDelimChar(v, '>') || isDelimChar(v, '+') || isDelimChar(v, '~') || isDelimChar(v, '|'))
+                            runs++;
+                    }
+                    selector.compounds.reserve(runs < 3 ? runs : 3);
+                }
                 if (!parseCompound(tokens, i, end, compound))
-                    return std::nullopt;
+                    return false;
                 compound.combinator = first ? (selector.relative ? combinator : 0) : (combinator ? combinator : ' ');
                 if (first && selector.relative && !combinator)
                     compound.combinator = 0;
@@ -143,46 +194,45 @@ namespace {
             }
             if (selector.compounds.empty() || (combinator && combinator != ' ')){
                 fail(tokens[end - 1], "selector ends with a combinator");
-                return std::nullopt;
+                return false;
             }
-            return selector;
+            return true;
         }
 
-        bool parseCompound(const std::vector<const ComponentValue*>& tokens, size_t& i, size_t end, Compound& compound){
+        bool parseCompound(const Tokens& tokens, size_t& i, size_t end, Compound& compound){
             bool any = false;
             while (i < end){
                 const ComponentValue* t = tokens[i];
                 if (t->isWhitespace())
                     break;
-                if (t->isToken(TokenType::Delim) && (t->token.value == ">" || t->token.value == "+" || t->token.value == "~"))
+                if ((isDelimChar(*t, '>') || isDelimChar(*t, '+') || isDelimChar(*t, '~')))
                     break;
-                if (t->isToken(TokenType::Delim) && t->token.value == "|" && i + 1 < end && tokens[i + 1]->isToken(TokenType::Delim) &&
-                    tokens[i + 1]->token.value == "|")
+                if (isDelimChar(*t, '|') && i + 1 < end && isDelimChar(*tokens[i + 1], '|'))
                     break;
                 SimpleSelector simple;
                 simple.ref = refOf(t);
                 // type or universal, with an optional namespace prefix
-                if ((t->isToken(TokenType::Ident) || (t->isToken(TokenType::Delim) && (t->token.value == "*" || t->token.value == "|"))) &&
+                if ((t->isToken(TokenType::Ident) || ((isDelimChar(*t, '*') || isDelimChar(*t, '|')))) &&
                     !any){
                     bool hasNs = false;
                     const ComponentValue* name = t;
-                    if (t->isToken(TokenType::Delim) && t->token.value == "|"){
+                    if (isDelimChar(*t, '|')){
                         hasNs = true;
                         if (i + 1 >= end){
                             fail(t, "namespace without a name");
                             return false;
                         }
                         name = tokens[++i];
-                    }else if (i + 2 < end && tokens[i + 1]->isToken(TokenType::Delim) && tokens[i + 1]->token.value == "|" &&
-                              !(tokens[i + 2]->isToken(TokenType::Delim) && tokens[i + 2]->token.value == "|")){
+                    }else if (i + 2 < end && isDelimChar(*tokens[i + 1], '|') &&
+                              !(isDelimChar(*tokens[i + 2], '|'))){
                         hasNs = true;
                         i += 2;
                         name = tokens[i];
                     }
                     if (name->isToken(TokenType::Ident)){
                         simple.kind = Kind::Type;
-                        simple.name = lowerAscii(name->token.value);
-                    }else if (name->isToken(TokenType::Delim) && name->token.value == "*"){
+                        assignLower(simple.name, name->token.value);
+                    }else if (isDelimChar(*name, '*')){
                         simple.kind = Kind::Universal;
                     }else{
                         fail(name, "invalid type selector");
@@ -202,7 +252,7 @@ namespace {
                     simple.kind = Kind::Id;
                     simple.name = t->token.value;
                     i++;
-                }else if (t->isToken(TokenType::Delim) && t->token.value == "."){
+                }else if (isDelimChar(*t, '.')){
                     if (i + 1 >= end || !tokens[i + 1]->isToken(TokenType::Ident) || tokens[i + 1]->offset != t->offset + 1){
                         fail(t, "'.' without a class name");
                         return false;
@@ -211,7 +261,7 @@ namespace {
                     simple.name = tokens[i + 1]->token.value;
                     simple.ref = refOf(t).cover(refOf(tokens[i + 1]));
                     i += 2;
-                }else if (t->isToken(TokenType::Delim) && t->token.value == "&"){
+                }else if (isDelimChar(*t, '&')){
                     simple.kind = Kind::Nesting;
                     i++;
                 }else if (t->isBlock(TokenType::LeftBracket)){
@@ -281,11 +331,11 @@ namespace {
             }
             size_t i = 0;
             // [ns|name], [*|name], [|name]
-            if (i + 2 < t.size() + 0 && t.size() >= 3 && t[1]->isToken(TokenType::Delim) && t[1]->token.value == "|" &&
-                !(t.size() > 2 && t[2]->isToken(TokenType::Delim) && t[2]->token.value == "=")){
+            if (i + 2 < t.size() + 0 && t.size() >= 3 && isDelimChar(*t[1], '|') &&
+                !(t.size() > 2 && isDelimChar(*t[2], '='))){
                 simple.hasNamespace = true;
                 i = 2;
-            }else if (!t.empty() && t[0]->isToken(TokenType::Delim) && t[0]->token.value == "|"){
+            }else if (!t.empty() && isDelimChar(*t[0], '|')){
                 simple.hasNamespace = true;
                 i = 1;
             }
@@ -304,7 +354,7 @@ namespace {
                     simple.op = "=";
                     i++;
                 }else if ((c == "~" || c == "|" || c == "^" || c == "$" || c == "*") && i + 1 < t.size() &&
-                          t[i + 1]->isToken(TokenType::Delim) && t[i + 1]->token.value == "="){
+                          isDelimChar(*t[i + 1], '=')){
                     simple.op = c + "=";
                     i += 2;
                 }else{
@@ -336,7 +386,10 @@ namespace {
             return true;
         }
 
-        std::vector<const ComponentValue*> items;
+        static constexpr size_t kInlineItems = 24;
+        const ComponentValue* inlineItems[kInlineItems];
+        std::vector<const ComponentValue*> heapItems;
+        Tokens items;
         uint32_t file;
     };
 
@@ -391,7 +444,77 @@ namespace {
         }
 
         // :is()/:where() expanded into the cross product (until RootIsWhere)
+        static bool expandable(const std::string& n){
+            return n == "is" || n == "where" || n == "matches" || n == "-webkit-any" || n == "-moz-any";
+        }
+
+        // pseudo-classes RmlUi matches as written (pseudoClass() keeps them)
+        static bool keptPseudoClass(const SimpleSelector& simple){
+            const std::string& n = simple.name;
+            return !simple.function &&
+                   (n == "hover" || n == "active" || n == "checked" || n == "disabled" || n == "placeholder-shown" || n == "scope" ||
+                    n == "first-child" || n == "last-child" || n == "only-child" || n == "first-of-type" || n == "last-of-type" ||
+                    n == "only-of-type" || n == "empty" || n == "selected" || n == "drag" || n == "html-focus" || n == "html-focus-visible");
+        }
+
+        // Would mapSelector() return the selector unchanged (and report nothing)? Types other
+        // than html/body/template, classes, ids other than the reserved and the root's,
+        // attributes without a flag, kept pseudo-classes, the universal selector; no namespace,
+        // column combinator, pseudo-element, nesting or root marker.
+        bool mapsToItself(const ComplexSelector& selector) const {
+            if (selector.compounds.empty())
+                return false;
+            for (const Compound& compound : selector.compounds){
+                if (compound.combinator == '|' || compound.simples.empty())
+                    return false;
+                for (const SimpleSelector& simple : compound.simples){
+                    if (simple.hasNamespace)
+                        return false;
+                    switch (simple.kind){
+                        case Kind::Type:
+                            if (simple.name == "html" || simple.name == "body" || simple.name == "template")
+                                return false;
+                            break;
+                        case Kind::Universal:
+                        case Kind::Class:
+                            break;
+                        case Kind::Id:
+                            if ((author() && simple.name == kRootId) || (!options.rootId.empty() && simple.name == options.rootId))
+                                return false;
+                            break;
+                        case Kind::Attribute:
+                            if (simple.flag)
+                                return false;
+                            break;
+                        case Kind::PseudoClass:
+                            if (!keptPseudoClass(simple))
+                                return false;
+                            break;
+                        default:
+                            return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        // does expand() change the selector (an :is()/:where() to expand)?
+        bool needsExpansion(const ComplexSelector& selector) const {
+            if (options.fork.has(ForkFeature::RootIsWhere))
+                return false;
+            for (const Compound& compound : selector.compounds){
+                for (const SimpleSelector& simple : compound.simples){
+                    if (simple.kind == Kind::PseudoClass && expandable(simple.name))
+                        return true;
+                }
+            }
+            return false;
+        }
+
         std::vector<ComplexSelector> expand(const ComplexSelector& selector){
+            // nothing to expand (the common case): the selector itself
+            if (!needsExpansion(selector))
+                return std::vector<ComplexSelector>{selector};
             std::vector<ComplexSelector> work{selector};
             std::vector<ComplexSelector> done;
             while (!work.empty()){
@@ -519,21 +642,25 @@ namespace {
             return name.size() > 1 && name[0] == '-';
         }
 
-        // Rewrites the simples of one selector in place. Returns false to drop the selector;
-        // sets invalidRule for a selector browsers reject (the whole rule goes).
-        bool mapSelector(ComplexSelector& selector, bool& placeholder, bool& pseudoElement, int depth){
-            std::vector<Compound> out;
+        // the selector's compounds rewritten into `out`; Owned: the input's simple selectors are
+        // moved from (the input is replaced by the result), else copied
+        template<bool Owned, typename Selector>
+        bool mapCompounds(Selector& selector, std::vector<Compound>& out, bool& placeholder, bool& pseudoElement, int depth){
+            out.reserve(selector.compounds.size());
             for (size_t c = 0; c < selector.compounds.size(); c++){
-                Compound compound = selector.compounds[c];
+                auto& source = selector.compounds[c];
+                Compound compound;
+                compound.combinator = source.combinator;
                 if (compound.combinator == '|'){
-                    report(codes::UnsupportedSelector, compound.simples.empty() ? nullptr : &compound.simples[0],
+                    report(codes::UnsupportedSelector, source.simples.empty() ? nullptr : &source.simples[0],
                            "the column combinator '||' is not supported; selector dropped", "select the cells by class", "||");
                     return false;
                 }
                 std::vector<SimpleSelector> simples;
+                simples.reserve(source.simples.size());
                 std::vector<Compound> appended;     // compounds a pseudo-element adds after this one
                 bool removeSelf = false;            // a pseudo-element that replaces the compound
-                for (const SimpleSelector& simple : compound.simples){
+                for (auto& simple : source.simples){
                     if (simple.hasNamespace){
                         report(codes::UnsupportedSelector, &simple, "namespaced selector '" + SelectorRewriter::serialize(simple) + "' is not supported; selector dropped",
                                "remove the namespace prefix", "namespace");
@@ -550,12 +677,12 @@ namespace {
                             else if (simple.name == "template")
                                 target.push_back(makeType("htmltemplate"));
                             else
-                                target.push_back(simple);
+                                target.push_back(forward<Owned>(simple));
                             break;
                         case Kind::Universal:
                         case Kind::Class:
                         case Kind::RootMarker:
-                            target.push_back(simple);
+                            target.push_back(forward<Owned>(simple));
                             break;
                         case Kind::Nesting:
                             // a top-level '&' is :scope, the root
@@ -570,10 +697,10 @@ namespace {
                             if (!options.rootId.empty() && simple.name == options.rootId)
                                 target.push_back(rootMarker());
                             else
-                                target.push_back(simple);
+                                target.push_back(forward<Owned>(simple));
                             break;
                         case Kind::Attribute: {
-                            SimpleSelector copy = simple;
+                            SimpleSelector copy = forward<Owned>(simple);
                             if (copy.flag){
                                 report(codes::SelectorRewritten, &simple,
                                        std::string("attribute selector flag '") + copy.flag + "' is removed" + (copy.flag == 'i' ? "; matching is case-sensitive" : ""),
@@ -616,8 +743,36 @@ namespace {
                     out.push_back(std::move(extra));
                 }
             }
+            return true;
+        }
+
+        template<bool Owned, typename T>
+        static decltype(auto) forward(T& value){
+            if constexpr (Owned)
+                return std::move(value);
+            else
+                return static_cast<const T&>(value);
+        }
+
+        // Rewrites the simples of one selector in place. Returns false to drop the selector;
+        // sets invalidRule for a selector browsers reject (the whole rule goes).
+        bool mapSelector(ComplexSelector& selector, bool& placeholder, bool& pseudoElement, int depth){
+            std::vector<Compound> out;
+            if (!mapCompounds<true>(selector, out, placeholder, pseudoElement, depth))
+                return false;
             selector.compounds = std::move(out);
             return !selector.compounds.empty();
+        }
+
+        // the same into `result`, `selector` left as it is
+        bool mapSelector(const ComplexSelector& selector, ComplexSelector& result, bool& placeholder, bool& pseudoElement, int depth){
+            result.ref = selector.ref;
+            result.relative = selector.relative;
+            std::vector<Compound> out;
+            if (!mapCompounds<false>(selector, out, placeholder, pseudoElement, depth))
+                return false;
+            result.compounds = std::move(out);
+            return !result.compounds.empty();
         }
 
         static SimpleSelector rootMarker(){
@@ -628,7 +783,6 @@ namespace {
 
         bool pseudoClass(const SimpleSelector& simple, std::vector<SimpleSelector>& target, int depth){
             const std::string& n = simple.name;
-            const std::string display = ":" + n + (simple.function ? "()" : "");
             if (!simple.function){
                 if (n == "hover" || n == "active" || n == "checked" || n == "disabled" || n == "placeholder-shown" || n == "scope" ||
                     n == "first-child" || n == "last-child" || n == "only-child" || n == "first-of-type" || n == "last-of-type" ||
@@ -759,6 +913,8 @@ namespace {
                 report(codes::UnsupportedSelector, &simple, "':has()' is not supported; selector dropped", "set a class from Lua", ":has()");
                 return false;
             }
+            // ":name" or ":name()" for the messages (the supported pseudo-classes above return first)
+            const std::string display = ":" + n + (simple.function ? "()" : "");
             if (const SelectorSupport* row = findPseudoClass(display)){
                 if (row->support == Support::Unsupported){
                     report(codes::UnsupportedSelector, &simple, "'" + display + "' is not supported; selector dropped", row->suggestion, row->name);
@@ -975,23 +1131,28 @@ namespace {
             return true;
         }
 
-        std::vector<ComplexSelector> band(const ComplexSelector& selector){
-            std::vector<ComplexSelector> result;
+        // The RCSS selectors of a rewritten selector (text and specificity): author selectors go
+        // under the #htmlui-root band (written as a prefix: no copy of the selector), plus the
+        // root variant when the first compound could match the root element
+        template<typename Emit>
+        void band(const ComplexSelector& selector, const Emit& emit){
             if (!author() || startsAtRoot(selector)){
-                result.push_back(selector);
-                return result;
+                std::string text;   // (often short: kept in the string itself)
+                appendComplex(text, selector);
+                emit(std::move(text), SelectorRewriter::specificity(selector));
+                return;
             }
-            ComplexSelector banded = selector;
-            Compound root;
-            SimpleSelector id;
-            id.kind = Kind::Id;
-            id.name = kRootId;
-            root.simples.push_back(id);
-            if (!banded.compounds.empty() && banded.compounds.front().combinator == 0)
-                banded.compounds.front().combinator = ' ';
-            banded.compounds.insert(banded.compounds.begin(), root);
-            result.push_back(std::move(banded));
+            std::string text;
+            text.reserve(48);
+            text += '#';
+            text += kRootId;
+            appendComplex(text, selector, true);
+            // the band compound is one id selector
+            emit(std::move(text), 1000000 + SelectorRewriter::specificity(selector));
             if (!selector.compounds.empty() && couldBeRoot(selector.compounds.front())){
+                SimpleSelector id;
+                id.kind = Kind::Id;
+                id.name = kRootId;
                 ComplexSelector rootVariant = selector;
                 Compound& first = rootVariant.compounds.front();
                 std::vector<SimpleSelector> simples;
@@ -1002,9 +1163,10 @@ namespace {
                         simples.push_back(s);
                 }
                 first.simples = std::move(simples);
-                result.push_back(std::move(rootVariant));
+                std::string variantText;
+                appendComplex(variantText, rootVariant);
+                emit(std::move(variantText), SelectorRewriter::specificity(rootVariant));
             }
-            return result;
         }
     };
 
@@ -1056,8 +1218,8 @@ std::optional<std::vector<ComplexSelector>> SelectorRewriter::parseList(std::str
 SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelector>& list, const SelectorOptions& options,
                                                 DiagnosticSink* sink, SourceRef ruleRef){
     SelectorRewriteResult result;
+    result.selectors.reserve(list.size());
     Rewriter rewriter(options, sink, ruleRef);
-    std::vector<std::string> seen;
     for (size_t sourceIndex = 0; sourceIndex < list.size(); sourceIndex++){
         const ComplexSelector& source = list[sourceIndex];
         if (source.relative){
@@ -1068,7 +1230,11 @@ SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelecto
             result.selectors.clear();
             return result;
         }
-        std::vector<ComplexSelector> variants = rewriter.expand(source);
+        // without :is()/:where() to expand, the source is mapped as it is (no copy)
+        const bool expands = rewriter.needsExpansion(source);
+        std::vector<ComplexSelector> variants;
+        if (expands)
+            variants = rewriter.expand(source);
         if (rewriter.limitReached){
             if (sink)
                 sink->report(codes::SelectorExpansionLimit, ruleRef, "the selector list expands to more than 256 selectors; the rule is dropped",
@@ -1077,11 +1243,35 @@ SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelecto
             result.selectors.clear();
             return result;
         }
-        for (ComplexSelector& variant : variants){
+        if (!expands && rewriter.mapsToItself(source)){
+            // nothing to map, no root marker to resolve: the source is banded as it is
+            rewriter.pendingAlternate.clear();
+            rewriter.band(source, [&](std::string text, uint32_t specificity){
+                for (const RewrittenSelector& kept : result.selectors){
+                    if (kept.text == text)
+                        return;
+                }
+                RewrittenSelector out;
+                out.text = std::move(text);
+                out.specificity = specificity;
+                out.source = (uint32_t)sourceIndex;
+                out.placeholder = false;
+                out.pseudoElement = false;
+                result.selectors.push_back(std::move(out));
+            });
+            continue;
+        }
+        for (size_t v = 0; v < (expands ? variants.size() : 1); v++){
             bool placeholder = false, pseudoElement = false;
             rewriter.pendingAlternate.clear();
-            ComplexSelector mapped = std::move(variant);
-            const bool kept = rewriter.mapSelector(mapped, placeholder, pseudoElement, 0);
+            ComplexSelector mapped;
+            bool kept;
+            if (expands){
+                mapped = std::move(variants[v]);
+                kept = rewriter.mapSelector(mapped, placeholder, pseudoElement, 0);
+            }else{
+                kept = rewriter.mapSelector(source, mapped, placeholder, pseudoElement, 0);
+            }
             if (rewriter.invalidRule){
                 result.invalid = true;
                 result.selectors.clear();
@@ -1089,114 +1279,150 @@ SelectorRewriteResult SelectorRewriter::rewrite(const std::vector<ComplexSelecto
             }
             if (!kept)
                 continue;
-            std::vector<ComplexSelector> forms;
-            forms.push_back(std::move(mapped));
-            if (!rewriter.pendingAlternate.empty()){
-                // the scrollbar mappings make two selectors (vertical and horizontal, dec and inc)
-                ComplexSelector alternate = forms.front();
-                for (Compound& compound : alternate.compounds){
-                    for (SimpleSelector& s : compound.simples){
-                        if (s.kind == Kind::Type && (s.name == "scrollbarvertical" || s.name == "sliderarrowdec"))
-                            s.name = rewriter.pendingAlternate;
-                    }
-                }
-                forms.push_back(std::move(alternate));
-            }
-            for (ComplexSelector& form : forms){
+            auto write = [&](ComplexSelector& form){
                 if (!rewriter.resolveRoot(form))
-                    continue;
-                for (ComplexSelector& banded : rewriter.band(form)){
+                    return;
+                rewriter.band(form, [&](std::string text, uint32_t specificity){
+                    for (const RewrittenSelector& kept : result.selectors){
+                        if (kept.text == text)
+                            return;
+                    }
                     RewrittenSelector out;
-                    out.text = serialize(banded);
-                    if (std::find(seen.begin(), seen.end(), out.text) != seen.end())
-                        continue;
-                    seen.push_back(out.text);
-                    out.specificity = specificity(banded);
+                    out.text = std::move(text);
+                    out.specificity = specificity;
                     out.source = (uint32_t)sourceIndex;
                     out.placeholder = placeholder;
                     out.pseudoElement = pseudoElement;
                     result.selectors.push_back(std::move(out));
+                });
+            };
+            if (rewriter.pendingAlternate.empty()){
+                write(mapped);
+                continue;
+            }
+            // the scrollbar mappings make two selectors (vertical and horizontal, dec and inc)
+            ComplexSelector alternate = mapped;
+            for (Compound& compound : alternate.compounds){
+                for (SimpleSelector& s : compound.simples){
+                    if (s.kind == Kind::Type && (s.name == "scrollbarvertical" || s.name == "sliderarrowdec"))
+                        s.name = rewriter.pendingAlternate;
                 }
             }
+            write(mapped);
+            write(alternate);
         }
     }
     return result;
 }
 
-std::string SelectorRewriter::serialize(const SimpleSelector& s){
-    switch (s.kind){
-        case Kind::Type: return (s.hasNamespace ? "|" : "") + serializeIdent(s.name);
-        case Kind::Universal: return "*";
-        case Kind::Id: return "#" + serializeIdent(s.name);
-        case Kind::Class: return "." + serializeIdent(s.name);
-        case Kind::Nesting: return "&";
-        case Kind::RootMarker: return ":root";
-        case Kind::Attribute: {
-            std::string text = "[" + serializeIdent(s.name);
-            if (!s.op.empty())
-                text += s.op + serializeString(s.value);
-            if (s.flag){
-                text += ' ';
-                text += s.flag;
-            }
-            return text + "]";
+namespace {
+
+    void appendSimple(std::string& text, const SimpleSelector& s);
+
+    void appendCompound(std::string& text, const Compound& compound){
+        // a universal selector only when the compound has nothing else
+        bool onlyUniversal = true;
+        for (const SimpleSelector& s : compound.simples){
+            if (s.kind != Kind::Universal)
+                onlyUniversal = false;
         }
-        case Kind::PseudoClass:
-        case Kind::PseudoElement: {
-            std::string text = s.kind == Kind::PseudoElement && !s.legacyColon ? "::" : ":";
-            text += s.name;
-            if (s.function){
-                text += "(";
-                if (!s.selectors.empty()){
-                    for (size_t i = 0; i < s.selectors.size(); i++){
-                        if (i > 0)
-                            text += ", ";
-                        text += serialize(s.selectors[i]);
-                    }
-                }else if (s.name.compare(0, 4, "nth-") == 0){
-                    text += anbText(s.arguments);
-                }else{
-                    text += jasperengine::htmlui::compat::serialize(trimWhitespace(s.arguments));
-                }
-                text += ")";
-            }
-            return text;
+        for (const SimpleSelector& s : compound.simples){
+            if (s.kind == Kind::Universal && !onlyUniversal)
+                continue;
+            appendSimple(text, s);
         }
     }
-    return std::string();
+
+    void appendCombinator(std::string& text, char combinator, bool first){
+        switch (combinator){
+            case '>': text += !first ? " > " : "> "; break;
+            case '+': text += !first ? " + " : "+ "; break;
+            case '~': text += !first ? " ~ " : "~ "; break;
+            case '|': text += " || "; break;
+            default: text += " "; break;
+        }
+    }
+
+    // `prefixed`: the selector is written after another compound (the #htmlui-root band), so its
+    // first compound gets its combinator (a descendant one when it has none)
+    void appendComplex(std::string& text, const ComplexSelector& selector, bool prefixed){
+        for (size_t i = 0; i < selector.compounds.size(); i++){
+            const Compound& compound = selector.compounds[i];
+            if (prefixed && i == 0)
+                appendCombinator(text, compound.combinator ? compound.combinator : ' ', false);
+            else if (i > 0 || (selector.relative && compound.combinator))
+                appendCombinator(text, compound.combinator, i == 0);
+            appendCompound(text, compound);
+        }
+    }
+
+    void appendSimple(std::string& text, const SimpleSelector& s){
+        switch (s.kind){
+            case Kind::Type:
+                if (s.hasNamespace)
+                    text += '|';
+                appendIdent(text, s.name);
+                return;
+            case Kind::Universal: text += '*'; return;
+            case Kind::Id: text += '#'; appendIdent(text, s.name); return;
+            case Kind::Class: text += '.'; appendIdent(text, s.name); return;
+            case Kind::Nesting: text += '&'; return;
+            case Kind::RootMarker: text += ":root"; return;
+            case Kind::Attribute: {
+                text += '[';
+                appendIdent(text, s.name);
+                if (!s.op.empty()){
+                    text += s.op;
+                    appendString(text, s.value);
+                }
+                if (s.flag){
+                    text += ' ';
+                    text += s.flag;
+                }
+                text += ']';
+                return;
+            }
+            case Kind::PseudoClass:
+            case Kind::PseudoElement: {
+                text += s.kind == Kind::PseudoElement && !s.legacyColon ? "::" : ":";
+                text += s.name;
+                if (s.function){
+                    text += "(";
+                    if (!s.selectors.empty()){
+                        for (size_t i = 0; i < s.selectors.size(); i++){
+                            if (i > 0)
+                                text += ", ";
+                            appendComplex(text, s.selectors[i]);
+                        }
+                    }else if (s.name.compare(0, 4, "nth-") == 0){
+                        text += anbText(s.arguments);
+                    }else{
+                        appendSerialized(text, trimWhitespace(s.arguments));
+                    }
+                    text += ")";
+                }
+                return;
+            }
+        }
+    }
+
+}
+
+std::string SelectorRewriter::serialize(const SimpleSelector& s){
+    std::string text;
+    appendSimple(text, s);
+    return text;
 }
 
 std::string SelectorRewriter::serialize(const Compound& compound){
     std::string text;
-    // a universal selector only when the compound has nothing else
-    bool onlyUniversal = true;
-    for (const SimpleSelector& s : compound.simples){
-        if (s.kind != Kind::Universal)
-            onlyUniversal = false;
-    }
-    for (const SimpleSelector& s : compound.simples){
-        if (s.kind == Kind::Universal && !onlyUniversal)
-            continue;
-        text += serialize(s);
-    }
+    appendCompound(text, compound);
     return text;
 }
 
 std::string SelectorRewriter::serialize(const ComplexSelector& selector){
     std::string text;
-    for (size_t i = 0; i < selector.compounds.size(); i++){
-        const Compound& compound = selector.compounds[i];
-        if (i > 0 || (selector.relative && compound.combinator)){
-            switch (compound.combinator){
-                case '>': text += i > 0 ? " > " : "> "; break;
-                case '+': text += i > 0 ? " + " : "+ "; break;
-                case '~': text += i > 0 ? " ~ " : "~ "; break;
-                case '|': text += " || "; break;
-                default: text += " "; break;
-            }
-        }
-        text += serialize(compound);
-    }
+    appendComplex(text, selector);
     return text;
 }
 

@@ -32,6 +32,9 @@ namespace jasperengine::htmlui::compat {
 
         void clear();
         void add(const std::string& name, Entry entry);
+        // changes with every clear() and add() (results computed from the index can be kept
+        // while it is the same)
+        uint32_t revision() const { return revisionCount; }
         const std::vector<Entry>* find(const std::string& name) const;
         bool declared(const std::string& name) const { return find(name) != nullptr; }
 
@@ -65,6 +68,7 @@ namespace jasperengine::htmlui::compat {
         std::map<std::string, std::vector<Entry>> entries;
         std::map<std::string, std::set<std::string>> uses;
         std::set<std::string> rawUses;
+        uint32_t revisionCount = 0;
     };
 
 }

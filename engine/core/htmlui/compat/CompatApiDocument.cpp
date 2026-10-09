@@ -5,6 +5,7 @@
 // locateElement (data-htmlui-loc), the importers' reference discovery.
 
 #include "htmlui/compat/CompatApi.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/RmlLogTranslator.h"

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "UrlResolver.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "Diagnostics.h"
 #include "Hash.h"

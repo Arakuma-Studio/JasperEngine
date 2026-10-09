@@ -58,7 +58,20 @@ namespace jasperengine::htmlui::compat {
 
     // lowercase ASCII copy
     JASPERENGINE_API std::string lowerAscii(std::string_view text);
-    JASPERENGINE_API bool equalsNoCase(std::string_view a, std::string_view b);
+    inline bool equalsNoCase(std::string_view a, std::string_view b){
+        if (a.size() != b.size())
+            return false;
+        for (size_t i = 0; i < a.size(); i++){
+            char x = a[i], y = b[i];
+            if (x >= 'A' && x <= 'Z')
+                x = (char)(x - 'A' + 'a');
+            if (y >= 'A' && y <= 'Z')
+                y = (char)(y - 'A' + 'a');
+            if (x != y)
+                return false;
+        }
+        return true;
+    }
     JASPERENGINE_API bool startsWithNoCase(std::string_view text, std::string_view prefix);
 
 }

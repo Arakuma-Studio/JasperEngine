@@ -7,6 +7,7 @@
 // direction.
 
 #include "htmlui/compat/css/props/Rewriters.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/CascadeKeywords.h"
 #include "htmlui/compat/css/ColorValue.h"

@@ -12,6 +12,7 @@
 #include "htmlui/compat/CompatOptions.h"
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/SourceFiles.h"
+#include "htmlui/compat/StringIndex.h"
 #include "htmlui/compat/SupportTables.h"
 #include "htmlui/compat/UrlResolver.h"
 #include "htmlui/compat/css/CssAst.h"
@@ -19,6 +20,7 @@
 #include "htmlui/compat/css/CustomPropertyIndex.h"
 #include "htmlui/compat/css/MediaQuery.h"
 #include "htmlui/compat/css/SelectorRewriter.h"
+#include "htmlui/compat/css/ValueNormalizer.h"
 
 #include <map>
 #include <memory>
@@ -106,8 +108,9 @@ namespace jasperengine::htmlui::compat {
         RuleOutput& output;
         bool dropped = false;               // the rewrite dropped the declaration
 
-        void emit(const std::string& property, const std::string& value);
-        void emit(const std::string& property, const std::string& value, SourceRef ref);
+        // (by value: a temporary is moved into the output)
+        void emit(std::string property, std::string value);
+        void emit(std::string property, std::string value, SourceRef ref);
         void generate(const std::string& suffix, const std::string& property, const std::string& value);
         // diagnostics at the declaration (or its value)
         void report(DiagCode code, const std::string& message, const std::string& suggestion = std::string(),
@@ -126,6 +129,15 @@ namespace jasperengine::htmlui::compat {
     struct TypedVar {
         std::string kind;                  // the classifier's kind ("color", "layers", ...)
         std::string reference;             // "var(--x)" or "var(--x--decorator)" (with the fallback when given)
+    };
+
+    // What the declaration pipeline looks up about a property name, computed once per name
+    struct PropertyFacts {
+        const PropertySupport* row = nullptr;                    // findProperty
+        bool colorKeywords = true;                               // ValueNormalizer::colorKeywordsApply
+        PercentBasis percentBasis = PercentBasis::ContainingBlock;   // ValueNormalizer::percentBasisOf
+        bool vertical = false;
+        bool rcssKnown = false;                                  // RcssGrammar::known
     };
 
     struct Session {
@@ -150,7 +162,7 @@ namespace jasperengine::htmlui::compat {
         bool usesBorderImage = false;
         bool usesTextShadow = false;
         bool usesTextStroke = false;
-        std::set<std::string> inheritCompanions;        // RCSS properties some rule sets to `inherit` (non-inherited)
+        std::set<std::string, std::less<>> inheritCompanions;        // RCSS properties some rule sets to `inherit` (non-inherited)
         std::set<std::string> reversedKeyframes;        // keyframes an animation plays in reverse
         std::map<std::string, std::string> keyframeNames;   // CSS name -> RCSS name
         std::set<std::string> fillKeyframes;
@@ -165,6 +177,7 @@ namespace jasperengine::htmlui::compat {
 
         // base rules: selector text -> rules (cascade order)
         std::unordered_map<std::string, std::vector<uint32_t>> baseIndex;
+        bool baseIndexBuilt = false;    // built by the first BaseRules::find (most sheets never need it)
 
         // CSS property -> the rules declaring it (!important and @layer conflict checks)
         struct PropertyUse {
@@ -172,11 +185,36 @@ namespace jasperengine::htmlui::compat {
             bool important = false;
             SourceRef ref;
         };
+        // (built at its first use from propertyUses, in the same order: most sheets need it
+        // only for !important and @layer, see propertyRulesIndex())
         std::unordered_map<std::string, std::vector<PropertyUse>> propertyRules;
+        struct PendingUse {
+            const Declaration* declaration = nullptr;
+            uint32_t prefix = 0;       // the vendor prefix length stripped from the declaration's name
+            uint32_t rule = 0;
+        };
+        std::vector<PendingUse> propertyUses;
+        bool propertyRulesBuilt = false;
+        std::unordered_map<std::string, std::vector<PropertyUse>>& propertyRulesIndex(){
+            if (!propertyRulesBuilt){
+                propertyRulesBuilt = true;
+                for (const PendingUse& pending : propertyUses){
+                    PropertyUse use;
+                    use.rule = pending.rule;
+                    use.important = pending.declaration->important;
+                    use.ref = pending.declaration->ref;
+                    propertyRules[pending.declaration->name.substr(pending.prefix)].push_back(use);
+                }
+                propertyUses.clear();
+            }
+            return propertyRules;
+        }
 
         // per-rule static facts, computed on demand
-        std::unordered_map<uint32_t, std::string> staticColors;
-        std::unordered_map<uint32_t, std::optional<double>> fontSizes;
+        // (by rule index; sized on first use)
+        std::vector<std::optional<std::string>> staticColors;
+        std::string scratchColor;       // ruleStaticColor of a rule outside `rules`
+        std::vector<std::optional<std::optional<double>>> fontSizes;
 
         // the !important sheet (§3.9.6 step 7)
         struct ImportantRule {
@@ -184,6 +222,22 @@ namespace jasperengine::htmlui::compat {
             std::vector<OutDecl> declarations;
         };
         std::vector<ImportantRule> important;
+
+        // props::varKind of a var() without fallback, by variable name, for vars.revision()
+        NameTable<std::pair<uint32_t, std::string>> varKinds;
+
+        // parseComponentValueList of the values processSynthetic is given (shorthand rewrites
+        // give the same few texts again and again), trimmed
+        NameTable<std::vector<ComponentValue>> syntheticValues;
+
+        // buffers reused from one rule / declaration to the next (their contents are cleared,
+        // their memory kept)
+        RuleOutput scratchOutput;                               // writeRule
+        std::vector<std::vector<ComponentValue>> valuePool;     // normalized values of processOne
+
+        // per property name (session-wide: the tables do not change)
+        NameTable<PropertyFacts> propertyFacts;
+        const PropertyFacts& facts(std::string_view property);
 
         // helpers
         bool fork(ForkFeature feature) const { return options.fork.has(feature); }

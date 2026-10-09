@@ -41,7 +41,7 @@ namespace jasperengine::htmlui::compat {
     };
     const VarFamily* findVarFamily(const std::string& name);
     // the family the declarations of a property type their var() uses in ("" = written as declared)
-    std::string varFamilyOf(const std::string& property);
+    std::string_view varFamilyOf(std::string_view property);
 
     // ---- the rewrites (css/props/*.cpp)
     void rewriteBackground(DeclContext&);
@@ -155,7 +155,7 @@ namespace jasperengine::htmlui::compat {
         // the static value a rule declares for a property (normalized), last one wins
         std::optional<std::vector<ComponentValue>> ruleValue(Session& session, const FlatRule& rule, const std::string& property);
         // the rule's static color (#rrggbbaa) or ""
-        std::string ruleStaticColor(Session& session, const FlatRule& rule);
+        const std::string& ruleStaticColor(Session& session, const FlatRule& rule);
         // the rule's static font-size in px (absolute lengths only)
         std::optional<double> ruleFontSizePx(Session& session, const FlatRule& rule);
 

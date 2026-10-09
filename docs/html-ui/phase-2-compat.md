@@ -1024,6 +1024,18 @@ follow the 2021 draft; `compat_parser_test.cpp` lists the three inputs where the
 algorithms differ (`declaration_list.json` "@ media …", `one_declaration.json` "foo:;" and
 "foo:;bar:;") and checks their 2024 result instead.
 
+As implemented (p2-perf): the tokenizer's own output is compact (`css/CssLexer.h`, internal:
+`LexToken`, 40 bytes, holds no string, its value and unit are views into the source, or into
+a side buffer when an escape or a non-ASCII character had to be decoded); `tokenize()` converts it to
+`Token`s and the parser builds the `Token` of each component value straight from it, so every
+token is read once: "consume a declaration, else a rule from the same position" is decided
+before consuming (`declarationParses`), the closing token of every block is matched while
+tokenizing (`LexToken::closer`) and the children of a block, a value and a prelude are
+allocated to their count. Rules, declarations and component values are built in place. `Token` and
+`ComponentValue` keep their members (reordered by size: 96 and 136 bytes); `CssSerialize.h`
+also appends into a caller's buffer (`appendSerialized`, `appendToken`, `appendIdent`,
+`appendString`, `appendNumber`: the `serialize*`/`formatNumber` forms are wrappers).
+
 - Parsing follows the CSS Syntax 3 algorithms ("consume a list of rules", "consume a
   qualified rule", "consume a block's contents" from the 2024 draft with nested rules).
 - Block contents of style rules accept declarations and nested rules mixed (CSS Nesting).
@@ -2460,6 +2472,12 @@ Debug builds are not measured. lexbor adds about 0.9 MB to the engine binary (mo
 entity and interface tables) and the Lucide pack 140 KB; the Web build size is reported in
 the p2-html report.
 
+Measured after p2-perf (§4, "p2-perf as implemented"; the shared build host under load, CPU
+time, median of 7 runs of the tests): HTML stage 2.5 ms, cache hit 0.025 ms, `fragmentToRml`
+0.11 ms (met); CSS 50 KB / 1 200 rules 6.9 ms and the UA sheet (19.5 KB as calibrated by p2-ua,
+not the ~600 lines of the estimate) 1.1 ms: **not met**, from 20.7 ms and 2.8 ms. The cold
+`compile()` of both 50 KB inputs (no test) takes 10.9 ms, from 24.3 ms.
+
 ### 3.15 Platform notes
 
 - lexbor: `ports/windows_nt` on Windows, `ports/posix` everywhere else (Linux, macOS,
@@ -2839,14 +2857,9 @@ interfaces other packages rely on and the deviations.
   the CSS Syntax entry points (`parseRuleList`, `parseRule`, `parseBlockContents`) still fill
   it. The parser drops comment tokens in place. `findProperty` and `valuesOf` use an index
   built on first use.
-- **Performance** (3.14), measured by `compat_css_perf_test.cpp` (median CPU time; targets
-  scaled by `JASPER_HTMLUI_PERF_SLACK`): a generated 54 KB sheet of 1 200 rules takes about
-  18–20 ms on the shared build host (load 40–60 on 12 cores), of which tokenize + parse
-  (p2-core) is about 3–5 ms; the 16.7 KB UA sheet of p2-ua about 3 ms. The 4 ms / 1 ms
-  targets are not met; the cost is spread (per declaration: normalization, property rewrite,
-  grammar check; per rule: selector parse/rewrite and the AST copies of `Token` /
-  `ComponentValue`). Meeting them needs a token representation without owned strings
-  (`std::string_view` into the source) in p2-core's AST, a phase-3 item.
+- **Performance** (3.14), measured by `compat_css_perf_test.cpp` (median CPU time): as
+  delivered by p2-css a generated 54 KB sheet of 1 200 rules took 18–20 ms and the UA sheet
+  about 3 ms. See "p2-perf as implemented" below for the current numbers and what remains.
 
 ### p2-runtime (wave 2): runtime emulations, icons, SVG
 
@@ -3086,6 +3099,99 @@ Built October 2026. Where the code differs from or adds to 3.13 and 5.4:
   lists, metadata and dotLottie archives itself; extra test hosts: `https://fonts.google.com/metadata`
   → `/gfmeta/metadata`, `https://lottiefiles.com` → `/lfpage`, `status.example.com`,
   `slow.example.com`, `redirect.example.com`.
+
+### p2-perf (after wave 2): performance of the compatibility layer
+
+- **Owns:** no file of its own: changes inside `compat/css/*`, `compat/html/*`,
+  `compat/tables/TableLookup.cpp`, `compat/SourceFiles.cpp`, `compat/DiagnosticCodes.cpp`;
+  adds the internal headers `compat/LiteralCompare.h`, `compat/StringIndex.h`,
+  `compat/css/CssLexer.h`.
+- **Rule:** the output is byte-identical (RCSS, RML, line maps, source maps, diagnostics): no
+  golden is regenerated; no target or slack factor of 3.14 is changed.
+
+#### p2-perf as implemented
+
+Measured with the perf tests (CPU time, Release, the shared build host at load 12–20 of 12
+cores, most of it other work: median of 7 interleaved runs of the binaries before and after)
+and by instructions (`perf stat -e instructions:u`, independent of the host's load):
+
+| Step (3.14) | Target | Before | After | Instructions before → after |
+|---|---|---|---|---|
+| CSS tokenize + parse + rewrite, 55 KB / 1 200 rules | 4 ms | 20.7 ms | 6.9 ms | 100.6 M → 37.3 M |
+| UA sheet rewrite (19.5 KB, p2-ua's) | 1 ms | 2.84 ms | 1.12 ms | 16.1 M → 5.6 M |
+| HTML stage, 51 KB / 3 600 nodes | 3 ms | 3.26 ms | 2.46 ms | 22.3 M → 16.7 M |
+| `fragmentToRml`, 2 KB | 0.2 ms | 0.154 ms | 0.114 ms | 0.92 M → 0.72 M |
+| `compile()` cache hit | 0.1 ms | 0.025 ms | 0.025 ms | |
+| cold `compile()`, 50 KB HTML + 50 KB CSS (no test) | 8 ms | 24.3 ms | 10.9 ms | 130.7 M → 61.8 M |
+
+The CSS and UA rows do not meet their targets: `CompatCssPerf.FiftyKilobyteSheet` and
+`CompatCssPerf.UserAgentSheet` fail without `JASPER_HTMLUI_PERF_SLACK` (the UA sheet measures
+1.03–1.12 ms between runs on the loaded host: 3.3 to 3.5 M cycles for the 1 ms). The HTML
+stage passes in a quiet run and measured 3.03 ms once under the heaviest load.
+
+WebAssembly (the CSS rewriter alone built with Emscripten at -O2, run by node; wall time,
+medians): 55 KB sheet 21.8 → 8.7 ms, UA sheet 3.6 → 1.3 ms: the same ratio as native.
+
+What changed (every item keeps the output):
+
+- **Comparisons.** `text == "literal"` on a `std::string` called libstdc++'s out-of-line
+  `compare(const char*)` (strlen + memcmp; 11% of the instructions). The compat `.cpp` files
+  include `LiteralCompare.h`, whose overloads compare through `string_view` (inlined: constant
+  length, size checked first). Name tables are looked up through `StringIndex` (open
+  addressing; property table, RCSS grammar, named and system colors, element and attribute
+  sets) and per-name facts are kept in a `NameTable` (`Session::facts`: table row, percentage
+  basis, color keywords, RCSS grammar membership, once per property name of a session).
+- **Tokenizer and parser.** See 3.9.1 (compact lexer tokens, one read per token, exact
+  allocations, in-place construction).
+- **Serializer and writer.** One output buffer: `appendSerialized` and friends, selectors
+  serialized into one string, `RcssWriter` appends without temporary lines, numbers and colors
+  formatted without `snprintf`/`to_string`.
+- **Selectors.** The parser reads ranges of the prelude (no token copies, selectors built in
+  place); a selector without `:is()`/`:where()` is mapped without the expansion pass, one that
+  maps to itself (types, classes, ids, attributes, the pseudo-classes RmlUi matches) is banded
+  from the parsed list directly, and the `#htmlui-root` band is written as a prefix instead of
+  a copy of the selector.
+- **Declarations.** The rule output and the normalized value buffers are reused across rules
+  and declarations; a rule's static color and font size are looked up only for values that can
+  read them (`currentcolor`, `var()`, functions); `RcssGrammar` checks views without
+  allocating (and without `strtod` for plain decimals); `var()` kinds are kept per variable
+  for a `CustomPropertyIndex::revision()`; the values `processSynthetic` is given are parsed
+  once per session; value groups (`splitAtCommas`, `commaGroups`, `words`) are copied once.
+- **Indexes built on demand.** The base-rule index (3.9.8), the property-use index of the
+  `!important`/`@layer` checks and the source-order sort of a style rule's block are built
+  only when something needs them (most sheets never do).
+- **HTML stage.** The RML serializer writes names and escaped text without copies when
+  nothing changes; ASCII sources skip the UTF-8 repair pass; attributes are converted in
+  place; element rows are cached per thread in a `NameTable`.
+
+Interfaces: `CssSerialize.h` gains the `append*` functions; `ValueNormalizer::normalize(value,
+context, storage)`; `CustomPropertyIndex::revision()`; `DeclContext::emit` takes its strings by
+value (moved into the output); `props::ruleStaticColor` returns a reference; `varFamilyOf`
+takes and returns `string_view`; `equalsNoCase` is inline in `Units.h`; `Session` (internal)
+has `facts()`, `propertyRulesIndex()` (instead of reading `propertyRules`), per-rule caches as
+vectors and `inheritCompanions` with a transparent comparator. `Token`, `ComponentValue` and
+`SimpleSelector` keep their members in a different order (no aggregate initialization relied on
+it).
+
+What the two missed targets would need. After these changes the cost is flat: no function
+holds more than 5% (profile of the 55 KB sheet: declaration pipeline 43% of the time, parser
+17%, flattening with selector parsing 10%, selector rewriting and the pre-pass 7%, destruction
+of the session 9%; malloc/free about 17% across all of them). The simplest possible rule
+(`.a { padding: 12px }`) costs about 16 500 instructions, 1 200 of them 20 M: the 4 ms of the
+target on this host. Three things set that floor and each is an interface of the AST, not a
+hot spot: (1) every rule owns about eight heap blocks (prelude, declarations, each value, the
+selector list with a vector per compound and per compound's simple selectors, the rewritten
+selectors and their texts), most of them above glibc's fast-bin size because a
+`ComponentValue` is 136 bytes and a `SimpleSelector` 168; (2) values are `std::vector<
+ComponentValue>` trees that the normalizer, the property rewrites and their helpers copy
+(`words`, `commaGroups`, `context.value`), each copy constructing two `std::string`s per
+token; (3) the property rewrites build their result as strings that the grammar check then
+splits again. Reaching 4 ms needs an arena for the per-session AST (one allocation domain
+freed at once), tokens that reference the source instead of owning strings (the lexer already
+produces them: `LexToken`), and rewrites that read spans of the declared value: a change of
+`CssAst.h`, `SelectorRewriter.h` and every function of `css/props/` that takes
+`std::vector<ComponentValue>`, which this package did not attempt under the byte-identical
+rule.
 
 ### Merge order and integration
 

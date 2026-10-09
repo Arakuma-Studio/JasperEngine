@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/ColorValue.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/CssParser.h"
 #include "htmlui/compat/css/NamedColors.h"
@@ -353,25 +354,26 @@ namespace {
             }
 
             std::vector<ComponentValue> args;
+            args.reserve(value.children.size());
             if (!substituteVars(value.children, args, 0))
                 return std::nullopt;
 
             if (name == "rgb" || name == "rgba")
-                return parseRgb(args, depth);
+                return parseRgb(std::move(args), depth);
             if (name == "hsl" || name == "hsla")
-                return parseHslHwb(args, ColorSpace::Hsl, depth);
+                return parseHslHwb(std::move(args), ColorSpace::Hsl, depth);
             if (name == "hwb")
-                return parseHslHwb(args, ColorSpace::Hwb, depth);
+                return parseHslHwb(std::move(args), ColorSpace::Hwb, depth);
             if (name == "lab")
-                return parseLabLike(args, ColorSpace::Lab, depth);
+                return parseLabLike(std::move(args), ColorSpace::Lab, depth);
             if (name == "lch")
-                return parseLabLike(args, ColorSpace::Lch, depth);
+                return parseLabLike(std::move(args), ColorSpace::Lch, depth);
             if (name == "oklab")
-                return parseLabLike(args, ColorSpace::Oklab, depth);
+                return parseLabLike(std::move(args), ColorSpace::Oklab, depth);
             if (name == "oklch")
-                return parseLabLike(args, ColorSpace::Oklch, depth);
+                return parseLabLike(std::move(args), ColorSpace::Oklch, depth);
             if (name == "color")
-                return parseColorFunction(args, depth);
+                return parseColorFunction(std::move(args), depth);
             if (name == "color-mix")
                 return parseColorMix(args, depth);
             if (name == "light-dark")
@@ -1091,9 +1093,9 @@ std::optional<CssColor> ColorValue::parse(std::string_view css, ColorParseInfo* 
 }
 
 bool ColorValue::isColorFunction(std::string_view name){
-    static const char* const names[] = {"rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color",
-                                        "color-mix", "light-dark"};
-    for (const char* n : names){
+    static constexpr std::string_view names[] = {"rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color",
+                                                 "color-mix", "light-dark"};
+    for (std::string_view n : names){
         if (equalsNoCase(name, n))
             return true;
     }
@@ -1175,9 +1177,13 @@ uint32_t ColorValue::toRgba8(const CssColor& color, bool* clipped){
 }
 
 std::string ColorValue::hex(uint32_t rgba){
-    char buffer[10];
-    std::snprintf(buffer, sizeof(buffer), "#%08x", rgba);
-    return buffer;
+    // "#%08x"
+    static const char digits[] = "0123456789abcdef";
+    char buffer[9];
+    buffer[0] = '#';
+    for (int i = 0; i < 8; i++)
+        buffer[1 + i] = digits[(rgba >> (28 - 4 * i)) & 0xF];
+    return std::string(buffer, 9);
 }
 
 std::string ColorValue::toHex(const ComponentValue& value, ColorParseInfo& info, const ColorContext& context, bool* clipped){

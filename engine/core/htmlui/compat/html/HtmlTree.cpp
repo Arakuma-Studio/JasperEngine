@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/html/HtmlTree.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include <algorithm>
 

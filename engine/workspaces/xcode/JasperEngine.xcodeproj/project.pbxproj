@@ -1750,6 +1750,9 @@
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		434F4D50B88C42DFC604BA5F /* CssLexer.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50A862FC3C452BCFC0 /* CssLexer.h */; };
+		434F4D5096627280F66F9581 /* StringIndex.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50ECC6BB256DF8EA34 /* StringIndex.h */; };
+		434F4D50175E3C4BCECBB3DD /* LiteralCompare.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5097B58E481998D2A0 /* LiteralCompare.h */; };
 		434F4D503AFB9B941608861B /* Transition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D505AB218BF82D32AC8 /* Transition.cpp */; };
 		434F4D5012A32150F51A6F60 /* Transition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D505AB218BF82D32AC8 /* Transition.cpp */; };
 		434F4D50154F750197582B21 /* Transform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50A75FFBDB70780D71 /* Transform.cpp */; };
@@ -4724,6 +4727,9 @@
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		434F4D50A862FC3C452BCFC0 /* CssLexer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CssLexer.h; sourceTree = "<group>"; };
+		434F4D50ECC6BB256DF8EA34 /* StringIndex.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StringIndex.h; sourceTree = "<group>"; };
+		434F4D5097B58E481998D2A0 /* LiteralCompare.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LiteralCompare.h; sourceTree = "<group>"; };
 		434F4D505AB218BF82D32AC8 /* Transition.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Transition.cpp; sourceTree = "<group>"; };
 		434F4D50A75FFBDB70780D71 /* Transform.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Transform.cpp; sourceTree = "<group>"; };
 		434F4D5072332EB9A6CD9877 /* Text.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Text.cpp; sourceTree = "<group>"; };
@@ -8370,6 +8376,8 @@
 				434F4D50F0089B21B89BC7B8 /* DocumentLoader.h */,
 				434F4D50C0AD7CD5745AB482 /* LuaHooks.cpp */,
 				434F4D5085138F8D30FFE72D /* LuaHooks.h */,
+				434F4D5097B58E481998D2A0 /* LiteralCompare.h */,
+				434F4D50ECC6BB256DF8EA34 /* StringIndex.h */,
 			);
 			path = compat;
 			sourceTree = "<group>";
@@ -8422,6 +8430,7 @@
 				434F4D5018517D099336F187 /* Units.h */,
 				434F4D50725A619D3FFDE830 /* ValueNormalizer.cpp */,
 				434F4D50626E24432634EE7B /* ValueNormalizer.h */,
+				434F4D50A862FC3C452BCFC0 /* CssLexer.h */,
 			);
 			path = css;
 			sourceTree = "<group>";
@@ -9840,6 +9849,9 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				434F4D50B88C42DFC604BA5F /* CssLexer.h in Headers */,
+				434F4D5096627280F66F9581 /* StringIndex.h in Headers */,
+				434F4D50175E3C4BCECBB3DD /* LiteralCompare.h in Headers */,
 				434F4D50648281E1959F7D2D /* Rewriters.h in Headers */,
 				434F4D5022FE1EE374F7D2BF /* ValueNormalizer.h in Headers */,
 				434F4D50C13148F27074D876 /* Units.h in Headers */,

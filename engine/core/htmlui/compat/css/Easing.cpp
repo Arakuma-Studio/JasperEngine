@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/Easing.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/Units.h"
 

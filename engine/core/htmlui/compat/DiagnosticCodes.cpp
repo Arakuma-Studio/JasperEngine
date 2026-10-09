@@ -3,6 +3,7 @@
 
 #include "DiagnosticCodes.h"
 
+#include <algorithm>
 #include <cstdio>
 
 using namespace jasperengine::htmlui::compat;
@@ -273,9 +274,22 @@ namespace {
 }
 
 std::string DiagCode::id() const{
-    char buffer[32];
-    std::snprintf(buffer, sizeof(buffer), "HTMLUI-%s-%04u", diagAreaName(area), (unsigned int)number);
-    return buffer;
+    // "HTMLUI-%s-%04u"
+    std::string text = "HTMLUI-";
+    text += diagAreaName(area);
+    text += '-';
+    char digits[8];
+    int count = 0;
+    unsigned int n = number;
+    do {
+        digits[count++] = (char)('0' + n % 10);
+        n /= 10;
+    } while (n != 0);
+    for (int i = count; i < 4; i++)
+        text += '0';
+    while (count > 0)
+        text += digits[--count];
+    return text;
 }
 
 Span<const DiagCodeInfo> jasperengine::htmlui::compat::diagnosticCodes(){
@@ -291,6 +305,13 @@ const DiagCodeInfo* jasperengine::htmlui::compat::findDiagnosticCode(std::string
 }
 
 const DiagCodeInfo* jasperengine::htmlui::compat::findDiagnosticCode(DiagCode code){
+    // the registry is sorted by area then number (compat_codes_test)
+    const DiagCodeInfo* begin = std::begin(registry);
+    const DiagCodeInfo* end = std::end(registry);
+    const DiagCodeInfo* it = std::lower_bound(begin, end, code, [](const DiagCodeInfo& info, const DiagCode& c){ return info.code < c; });
+    if (it != end && it->code == code)
+        return it;
+    // (a registry out of order would still be searched)
     for (const DiagCodeInfo& info : registry){
         if (info.code == code)
             return &info;

@@ -6,6 +6,8 @@
 // outside a data model.
 
 #include "htmlui/compat/html/HtmlTransform.h"
+#include "htmlui/compat/LiteralCompare.h"
+#include "htmlui/compat/StringIndex.h"
 
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/SourceFiles.h"
@@ -62,12 +64,12 @@ namespace {
 
     // attributes kept as they are, which need none of the checks below
     bool isPlainAttribute(const std::string& name){
-        static const std::unordered_set<std::string> plain = {
+        static const StringIndex plain = makeStringSet({
             "class", "type", "name", "value", "for", "href", "alt", "placeholder", "min", "max", "step", "maxlength",
             "size", "rows", "cols", "colspan", "rowspan", "selected", "checked", "disabled", "readonly", "required",
             "multiple", "open", "start", "reversed", "role", "label", "hidden",
-        };
-        return plain.count(name) > 0;
+        });
+        return plain.contains(name);
     }
 
     bool isEventHandler(const std::string& name){

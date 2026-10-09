@@ -35,6 +35,14 @@ namespace jasperengine::htmlui::compat {
     // 0.2, 1, -3.5, 0.333333: at most `decimals` decimals, no exponent, "-0" written as "0"
     JASPERENGINE_API std::string formatNumber(double value, int decimals = 6);
 
+    // The same, appended to `out` (one output buffer instead of a string per token)
+    JASPERENGINE_API void appendSerialized(std::string& out, const ComponentValue& value, const SerializeOptions& options = {});
+    JASPERENGINE_API void appendSerialized(std::string& out, const std::vector<ComponentValue>& values, const SerializeOptions& options = {});
+    JASPERENGINE_API void appendToken(std::string& out, const Token& token);
+    JASPERENGINE_API void appendIdent(std::string& out, std::string_view ident);
+    JASPERENGINE_API void appendString(std::string& out, std::string_view text);
+    JASPERENGINE_API void appendNumber(std::string& out, double value, int decimals = 6);
+
 }
 
 #endif //COMPAT_CSS_CSSSERIALIZE_H

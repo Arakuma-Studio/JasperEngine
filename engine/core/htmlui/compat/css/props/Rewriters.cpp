@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/props/Rewriters.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/ImportManifest.h"
 #include "htmlui/compat/VirtualFiles.h"
@@ -93,11 +94,20 @@ Span<const RewriteRegistration> jasperengine::htmlui::compat::rewriteRegistry(){
 }
 
 RewriteFunction jasperengine::htmlui::compat::findRewrite(RewriteId id){
-    for (const RewriteRegistration& r : kRegistry){
-        if (r.id == id)
-            return r.function;
-    }
-    return nullptr;
+    // the registry by id (the first registration of an id, as a search from the start finds)
+    static const std::vector<RewriteFunction> byId = [](){
+        std::vector<RewriteFunction> table;
+        for (const RewriteRegistration& r : kRegistry){
+            const size_t index = (size_t)r.id;
+            if (table.size() <= index)
+                table.resize(index + 1, nullptr);
+            if (!table[index])
+                table[index] = r.function;
+        }
+        return table;
+    }();
+    const size_t index = (size_t)id;
+    return index < byId.size() ? byId[index] : nullptr;
 }
 
 const VarFamily* jasperengine::htmlui::compat::findVarFamily(const std::string& name){
@@ -108,7 +118,7 @@ const VarFamily* jasperengine::htmlui::compat::findVarFamily(const std::string& 
     return nullptr;
 }
 
-std::string jasperengine::htmlui::compat::varFamilyOf(const std::string& property){
+std::string_view jasperengine::htmlui::compat::varFamilyOf(std::string_view property){
     if (property == "background" || property == "background-image")
         return "decorator";
     if (property == "mask" || property == "mask-image" || property == "-webkit-mask" || property == "-webkit-mask-image")
@@ -125,7 +135,7 @@ std::string jasperengine::htmlui::compat::varFamilyOf(const std::string& propert
         return "filter";
     if (property == "transition-timing-function" || property == "animation-timing-function")
         return "easing";
-    return std::string();
+    return std::string_view();
 }
 
 // ---- helpers
@@ -138,6 +148,10 @@ bool props::isWs(const ComponentValue& value){
 
 std::vector<ComponentValue> props::words(const std::vector<ComponentValue>& value){
     std::vector<ComponentValue> out;
+    size_t count = 0;
+    for (const ComponentValue& v : value)
+        count += isWs(v) ? 0 : 1;
+    out.reserve(count);
     for (const ComponentValue& v : value){
         if (!isWs(v))
             out.push_back(v);
@@ -146,9 +160,24 @@ std::vector<ComponentValue> props::words(const std::vector<ComponentValue>& valu
 }
 
 std::vector<std::vector<ComponentValue>> props::commaGroups(const std::vector<ComponentValue>& value){
-    std::vector<std::vector<ComponentValue>> groups = splitAtCommas(value);
-    for (std::vector<ComponentValue>& group : groups)
-        group = trimWhitespace(group);
+    // splitAtCommas + trimWhitespace of each group, each group copied once
+    std::vector<std::vector<ComponentValue>> groups;
+    size_t commas = 0;
+    for (const ComponentValue& v : value)
+        commas += v.isToken(TokenType::Comma) ? 1 : 0;
+    groups.reserve(commas + 1);
+    size_t begin = 0;
+    for (size_t i = 0; i <= value.size(); i++){
+        if (i < value.size() && !value[i].isToken(TokenType::Comma))
+            continue;
+        size_t a = begin, b = i;
+        while (a < b && value[a].isWhitespace())
+            a++;
+        while (b > a && value[b - 1].isWhitespace())
+            b--;
+        groups.emplace_back(value.begin() + (std::ptrdiff_t)a, value.begin() + (std::ptrdiff_t)b);
+        begin = i + 1;
+    }
     return groups;
 }
 
@@ -157,7 +186,14 @@ std::string props::text(const ComponentValue& value){
 }
 
 std::string props::text(const std::vector<ComponentValue>& value){
-    return serialize(trimWhitespace(value));
+    size_t a = 0, b = value.size();
+    while (a < b && value[a].isWhitespace())
+        a++;
+    while (b > a && value[b - 1].isWhitespace())
+        b--;
+    if (a == 0 && b == value.size())
+        return serialize(value);
+    return serialize(std::vector<ComponentValue>(value.begin() + (std::ptrdiff_t)a, value.begin() + (std::ptrdiff_t)b));
 }
 
 std::string props::join(const std::vector<std::string>& parts, const char* separator){
@@ -217,35 +253,58 @@ namespace {
 
 }
 
+namespace {
+
+    std::string computeVarKind(Session& session, const std::string& name, const std::vector<ComponentValue>& fallback, bool hasFallback);
+
+}
+
 std::string props::varKind(Session& session, const ComponentValue& var){
     std::vector<ComponentValue> fallback;
     bool hasFallback = false;
     const std::string name = CustomPropertyIndex::varName(var, &fallback, &hasFallback);
-    if (name == "--html-current-color")
-        return "color";
-    if (name.empty())
-        return "other";
-    std::vector<std::vector<ComponentValue>> values;
-    if (!session.vars.declared(name)){
-        if (!hasFallback)
-            return "undeclared";
-        values.push_back(fallback);
-    }else if (!session.vars.expandedValues(name, values)){
-        return "mixed";
-    }
-    std::string kind;
-    for (const std::vector<ComponentValue>& value : values){
-        std::string k = kindOfValue(value);
-        if (k == "zero")
-            k = kind.empty() ? "zero" : (kind == "length" || kind == "number" ? kind : "zero");
-        if (kind.empty() || kind == "zero")
-            kind = k;
-        else if (k != kind && k != "zero")
+    if (hasFallback)
+        return computeVarKind(session, name, fallback, true);
+    // the kind of a variable without fallback depends on the index alone: kept per name
+    const uint32_t revision = session.vars.revision();
+    std::pair<uint32_t, std::string>& kept = session.varKinds.get(name, [&](std::string_view){
+        return std::make_pair(revision, computeVarKind(session, name, fallback, false));
+    });
+    if (kept.first != revision)
+        kept = std::make_pair(revision, computeVarKind(session, name, fallback, false));
+    return kept.second;
+}
+
+namespace {
+
+    std::string computeVarKind(Session& session, const std::string& name, const std::vector<ComponentValue>& fallback, bool hasFallback){
+        if (name == "--html-current-color")
+            return "color";
+        if (name.empty())
+            return "other";
+        std::vector<std::vector<ComponentValue>> values;
+        if (!session.vars.declared(name)){
+            if (!hasFallback)
+                return "undeclared";
+            values.push_back(fallback);
+        }else if (!session.vars.expandedValues(name, values)){
             return "mixed";
+        }
+        std::string kind;
+        for (const std::vector<ComponentValue>& value : values){
+            std::string k = kindOfValue(value);
+            if (k == "zero")
+                k = kind.empty() ? "zero" : (kind == "length" || kind == "number" ? kind : "zero");
+            if (kind.empty() || kind == "zero")
+                kind = k;
+            else if (k != kind && k != "zero")
+                return "mixed";
+        }
+        if (kind == "zero")
+            kind = "length";
+        return kind;
     }
-    if (kind == "zero")
-        kind = "length";
-    return kind;
+
 }
 
 bool props::isColor(Session& session, const ComponentValue& value){
@@ -373,22 +432,28 @@ std::optional<std::vector<ComponentValue>> props::ruleValue(Session& session, co
     return result;
 }
 
-std::string props::ruleStaticColor(Session& session, const FlatRule& rule){
-    const auto it = session.staticColors.find(rule.index);
-    if (it != session.staticColors.end())
-        return it->second;
+const std::string& props::ruleStaticColor(Session& session, const FlatRule& rule){
+    if (session.staticColors.size() < session.rules.size())
+        session.staticColors.resize(session.rules.size());
+    if (rule.index < session.staticColors.size() && session.staticColors[rule.index])
+        return *session.staticColors[rule.index];
     std::string color;
     std::optional<std::vector<ComponentValue>> value = ruleValue(session, rule, "color");
     if (value && value->size() == 1 && (*value)[0].isToken(TokenType::Hash))
         color = "#" + (*value)[0].token.value;
-    session.staticColors[rule.index] = color;
-    return color;
+    if (rule.index < session.staticColors.size()){
+        session.staticColors[rule.index] = std::move(color);
+        return *session.staticColors[rule.index];
+    }
+    session.scratchColor = std::move(color);
+    return session.scratchColor;
 }
 
 std::optional<double> props::ruleFontSizePx(Session& session, const FlatRule& rule){
-    const auto it = session.fontSizes.find(rule.index);
-    if (it != session.fontSizes.end())
-        return it->second;
+    if (session.fontSizes.size() < session.rules.size())
+        session.fontSizes.resize(session.rules.size());
+    if (rule.index < session.fontSizes.size() && session.fontSizes[rule.index])
+        return *session.fontSizes[rule.index];
     std::optional<double> px;
     std::optional<std::vector<ComponentValue>> value = ruleValue(session, rule, "font-size");
     if (value && value->size() == 1){
@@ -404,7 +469,8 @@ std::optional<double> props::ruleFontSizePx(Session& session, const FlatRule& ru
             }
         }
     }
-    session.fontSizes[rule.index] = px;
+    if (rule.index < session.fontSizes.size())
+        session.fontSizes[rule.index] = px;
     return px;
 }
 

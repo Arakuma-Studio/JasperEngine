@@ -4,6 +4,7 @@
 // Lookups over the support tables (the data is in the other files of this directory).
 
 #include "htmlui/compat/SupportTables.h"
+#include "htmlui/compat/StringIndex.h"
 
 #include <algorithm>
 #include <cstring>
@@ -48,14 +49,15 @@ const PropertySupport* jasperengine::htmlui::compat::findProperty(std::string_vi
         name = "--*";
 
     // the rewriter looks up every declaration (several times): an index built once
-    static const std::unordered_map<std::string_view, const PropertySupport*> index = [](){
-        std::unordered_map<std::string_view, const PropertySupport*> map;
-        for (const PropertySupport& row : propertyTable())
-            map.emplace(std::string_view(row.name), &row);
-        return map;
+    static const Span<const PropertySupport> rows = propertyTable();
+    static const StringIndex index = [](){
+        std::vector<std::pair<std::string_view, uint32_t>> entries;
+        for (size_t i = 0; i < rows.size(); i++)
+            entries.emplace_back(std::string_view(rows[i].name), (uint32_t)i);
+        return StringIndex(entries);
     }();
-    const auto it = index.find(name);
-    return it == index.end() ? nullptr : it->second;
+    const uint32_t i = index.find(name);
+    return i == StringIndex::npos ? nullptr : &rows[i];
 }
 
 Span<const ValueSupport> jasperengine::htmlui::compat::valuesOf(std::string_view property){

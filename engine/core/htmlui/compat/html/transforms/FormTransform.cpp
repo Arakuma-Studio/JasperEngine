@@ -5,6 +5,7 @@
 // selectors keep matching); the runtime's HtmlInputElement maps it to an RmlUi type.
 
 #include "htmlui/compat/html/HtmlTransform.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/SupportTables.h"

@@ -59,6 +59,9 @@ namespace jasperengine::htmlui::compat {
     class JASPERENGINE_API ValueNormalizer {
     public:
         static NormalizeResult normalize(const std::vector<ComponentValue>& value, const NormalizeContext& context);
+        // the same; the result's value is built in `storage` (its contents are dropped, its memory reused)
+        static NormalizeResult normalize(const std::vector<ComponentValue>& value, const NormalizeContext& context,
+                                         std::vector<ComponentValue>&& storage);
 
         // the percentage basis and orientation of a property
         static PercentBasis percentBasisOf(const std::string& property, bool* vertical = nullptr);

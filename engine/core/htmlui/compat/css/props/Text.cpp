@@ -6,6 +6,7 @@
 // word breaking, line clamping.
 
 #include "htmlui/compat/css/props/Rewriters.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/BaseRules.h"
 #include "htmlui/compat/css/Companions.h"

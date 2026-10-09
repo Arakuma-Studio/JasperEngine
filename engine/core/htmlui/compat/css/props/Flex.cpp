@@ -5,6 +5,7 @@
 // keywords RmlUi lacks, place-* shorthands, gaps, legacy -webkit-box-* / -ms-flex* names.
 
 #include "htmlui/compat/css/props/Rewriters.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/CssSerialize.h"
 #include "htmlui/compat/css/RcssGrammar.h"

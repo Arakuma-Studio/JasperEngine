@@ -9,6 +9,7 @@
 // through the pipeline of §3.9.6 and writes the RCSS with its line map.
 
 #include "htmlui/compat/css/CssRewriter.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/Hash.h"
@@ -45,17 +46,16 @@ namespace {
 
 // ---- DeclContext
 
-void DeclContext::emit(const std::string& property, const std::string& value){
-    emit(property, value, declaration.ref);
+void DeclContext::emit(std::string property, std::string value){
+    emit(std::move(property), std::move(value), declaration.ref);
 }
 
-void DeclContext::emit(const std::string& property, const std::string& value, SourceRef ref){
-    OutDecl out;
-    out.name = property;
-    out.value = value;
+void DeclContext::emit(std::string property, std::string value, SourceRef ref){
+    OutDecl& out = output.declarations.emplace_back();
+    out.name = std::move(property);
+    out.value = std::move(value);
     out.ref = ref.valid() ? ref : declaration.ref;
     out.important = important;
-    output.declarations.push_back(std::move(out));
 }
 
 void DeclContext::generate(const std::string& suffix, const std::string& property, const std::string& value){
@@ -140,6 +140,18 @@ Session::Session(const CompatOptions& options, SourceFiles& files, DiagnosticSin
     }
 }
 
+const PropertyFacts& Session::facts(std::string_view property){
+    return propertyFacts.get(property, [](std::string_view name){
+        PropertyFacts f;
+        f.row = findProperty(name);
+        const std::string text(name);
+        f.colorKeywords = ValueNormalizer::colorKeywordsApply(text);
+        f.percentBasis = ValueNormalizer::percentBasisOf(text, &f.vertical);
+        f.rcssKnown = RcssGrammar::known(name);
+        return f;
+    });
+}
+
 const ImportManifest& Session::manifest() const{
     return urls.manifest();
 }
@@ -206,6 +218,11 @@ std::optional<TypedVar> Session::typedVar(const ComponentValue& var, const std::
 namespace {
 
     // ---- Damerau-Levenshtein for unknown property suggestions
+
+    // text.compare(0, prefix.size(), prefix) == 0
+    inline bool startsWith(std::string_view text, std::string_view prefix){
+        return text.size() >= prefix.size() && text.compare(0, prefix.size(), prefix) == 0;
+    }
 
     size_t editDistance(const std::string& a, const std::string& b){
         const size_t n = a.size(), m = b.size();
@@ -306,8 +323,9 @@ namespace {
                  std::vector<Declaration> declarations, SourceRef ref, SourceRef preludeRef){
         if (declarations.empty() || scope.media.never)
             return;
-        FlatRule rule;
-        rule.index = (uint32_t)session.rules.size();
+        const uint32_t index = (uint32_t)session.rules.size();
+        FlatRule& rule = session.rules.emplace_back();
+        rule.index = index;
         rule.sheet = scope.sheet;
         rule.file = scope.file;
         rule.origin = scope.origin;
@@ -319,7 +337,6 @@ namespace {
         rule.layer = scope.layer;
         rule.order = session.nextOrder++;
         session.sheets[scope.sheet].push_back(SheetItem{false, rule.index});
-        session.rules.push_back(std::move(rule));
     }
 
     void flatten(Session& session, std::vector<Rule>& rules, const FlattenScope& scope, bool topLevel);
@@ -348,6 +365,12 @@ namespace {
                 session.nestingReported = true;
                 session.sink->report(codes::NestingFlattened, rule.preludeRef, "nested rules are flattened (& replaced by the parent selector)");
             }
+        }
+
+        // no nested rules (the common case): the declarations, in source order already, are the rule
+        if (rule.rules.empty()){
+            addRule(session, scope, std::move(selectors), std::move(rule.declarations), rule.ref, rule.preludeRef);
+            return;
         }
 
         // declarations and nested rules in source order
@@ -537,7 +560,7 @@ namespace {
 
     // ---- pre-pass helpers
 
-    bool hasIdent(const std::vector<ComponentValue>& values, const char* lowercase){
+    bool hasIdent(const std::vector<ComponentValue>& values, std::string_view lowercase){
         for (const ComponentValue& v : values){
             if (v.isToken(TokenType::Ident) && equalsNoCase(v.token.value, lowercase))
                 return true;
@@ -657,21 +680,21 @@ namespace {
                     continue;
                 }
                 std::string name = d.name;
-                if (!findProperty(name)){
+                if (!session.facts(name).row){
                     for (const char* prefix : {"-webkit-", "-moz-", "-ms-", "-o-"}){
                         const std::string p(prefix);
-                        if (name.compare(0, p.size(), p) == 0 && findProperty(name.substr(p.size())))
+                        if (name.compare(0, p.size(), p) == 0 && session.facts(std::string_view(name).substr(p.size())).row)
                             name = name.substr(p.size());
                     }
                 }
-                const std::string family = varFamilyOf(name);
+                const std::string_view family = varFamilyOf(name);
                 const ComponentValue* sole = soleValue(d.value);
                 const bool whole = sole && sole->isFunction("var");
                 const bool timing = name == "transition" || name == "animation" || name == "transition-timing-function" ||
                                     name == "animation-timing-function";
                 for (const std::string& variable : referenced){
                     if (!family.empty() && whole && family != "easing"){
-                        session.vars.addUse(variable, family);
+                        session.vars.addUse(variable, std::string(family));
                         continue;
                     }
                     if (timing){
@@ -687,15 +710,17 @@ namespace {
                     }
                     session.vars.addRawUse(variable);
                 }
-                if (name.compare(0, 12, "border-image") == 0 && !hasIdent(d.value, "none"))
+                if (startsWith(name, "border-image") && !hasIdent(d.value, "none"))
                     session.usesBorderImage = true;
                 if (name == "text-shadow" && !hasIdent(d.value, "none"))
                     session.usesTextShadow = true;
-                if (name.compare(0, 19, "-webkit-text-stroke") == 0)
+                if (startsWith(name, "-webkit-text-stroke"))
                     session.usesTextStroke = true;
-                if (CascadeKeywords::keywordOf(d.value) == "inherit" && !session.options.fork.has(ForkFeature::CssWideKeywords)){
+                // (keywordOf(d.value) == "inherit")
+                if (sole && sole->isToken(TokenType::Ident) && equalsNoCase(sole->token.value, "inherit") &&
+                    !session.options.fork.has(ForkFeature::CssWideKeywords)){
                     for (const std::string& p : CascadeKeywords::outputProperties(name)){
-                        const PropertySupport* row = findProperty(name);
+                        const PropertySupport* row = session.facts(name).row;
                         const bool inherited = row ? row->inherited : CascadeKeywords::inherited(p);
                         if (!inherited && !CascadeKeywords::inherited(p))
                             session.inheritCompanions.insert(p);
@@ -716,13 +741,8 @@ namespace {
                     for (const std::string& n : names)
                         session.reversedKeyframes.insert(session.keyframeName(n));
                 }
-                if (rule && rule->origin == RuleOrigin::Author){
-                    Session::PropertyUse use;
-                    use.rule = rule->index;
-                    use.important = d.important;
-                    use.ref = d.ref;
-                    session.propertyRules[name].push_back(use);
-                }
+                if (rule && rule->origin == RuleOrigin::Author)
+                    session.propertyUses.push_back(Session::PendingUse{&d, (uint32_t)(d.name.size() - name.size()), rule->index});
             }
         };
         for (const FlatRule& rule : session.rules){
@@ -793,7 +813,7 @@ namespace {
 
         // @layer: a layered rule that outranks an unlayered one by specificity (RmlUi) loses in CSS
         if (!session.layerOrder.empty()){
-            for (const auto& entry : session.propertyRules){
+            for (const auto& entry : session.propertyRulesIndex()){
                 for (const Session::PropertyUse& layered : entry.second){
                     const FlatRule& l = session.rules[layered.rule];
                     if (l.layer < 0 || l.dropped)
@@ -826,8 +846,13 @@ namespace {
     // ---- writing
 
     bool mayHaveViewportOrientation(const std::string& value){
-        for (size_t i = 0; i + 3 < value.size(); i++){
-            if ((value[i] == 'v' || value[i] == 'V') && (value[i + 1] == 'm' || value[i + 1] == 'M'))
+        // "vm" in any case with two more characters after it (vmin, vmax), found by the 'm'
+        if (value.size() < 4)
+            return false;
+        const size_t last = value.size() - 3;   // an 'm' at 1 .. last
+        for (size_t i = 1; i <= last; i++){
+            const char m = value[i];
+            if ((m == 'm' || m == 'M') && (value[i - 1] == 'v' || value[i - 1] == 'V'))
                 return true;
         }
         return false;
@@ -877,6 +902,18 @@ namespace {
     // so earlier ones are not written
     std::vector<const OutDecl*> effective(const std::vector<OutDecl>& declarations){
         std::vector<const OutDecl*> out;
+        out.reserve(declarations.size());
+        if (declarations.size() <= 32){
+            // a rule's few declarations: a later one of the same name is found by a scan
+            for (size_t i = 0; i < declarations.size(); i++){
+                bool later = false;
+                for (size_t j = i + 1; j < declarations.size() && !later; j++)
+                    later = declarations[j].name == declarations[i].name;
+                if (!later)
+                    out.push_back(&declarations[i]);
+            }
+            return out;
+        }
         std::set<std::string> seen;
         for (size_t i = declarations.size(); i-- > 0;){
             if (seen.insert(declarations[i].name).second)
@@ -890,8 +927,19 @@ namespace {
         if (declarations.empty() || selectors.empty())
             return;
         writer.beginRule(selectors, ref);
-        for (const OutDecl* d : effective(declarations))
-            writer.declaration(d->name, d->value, d->ref);
+        if (declarations.size() <= 32){
+            // effective() without its list: a declaration a later one of the same name replaces is skipped
+            for (size_t i = 0; i < declarations.size(); i++){
+                bool later = false;
+                for (size_t j = i + 1; j < declarations.size() && !later; j++)
+                    later = declarations[j].name == declarations[i].name;
+                if (!later)
+                    writer.declaration(declarations[i].name, declarations[i].value, declarations[i].ref);
+            }
+        }else{
+            for (const OutDecl* d : effective(declarations))
+                writer.declaration(d->name, d->value, d->ref);
+        }
         writer.endRule();
     }
 
@@ -903,7 +951,8 @@ namespace {
     }
 
     // a rule (and its generated rules) under each block of a media result
-    void writeUnderMedia(RcssWriter& writer, const MediaResult& media, SourceRef ref, const std::function<void()>& body){
+    template<typename Body>
+    void writeUnderMedia(RcssWriter& writer, const MediaResult& media, SourceRef ref, const Body& body){
         if (media.never)
             return;
         if (media.always){
@@ -923,31 +972,65 @@ namespace {
     }
 
     void writeRule(Session& session, const FlatRule& rule, RcssWriter& writer){
-        RuleOutput output;
+        RuleOutput& output = session.scratchOutput;
+        output.declarations.clear();
+        output.generated.clear();
         processDeclarations(session, &rule, rule.origin, false, rule.declarations, output);
 
-        std::vector<OutDecl> normal, vmin;
-        Session::ImportantRule important;
-        important.rule = &rule;
-        for (OutDecl& d : output.declarations){
-            if (d.important){
-                important.declarations.push_back(d);
-                continue;
+        // !important and vmin/vmax declarations are written apart: without any (the usual
+        // case) the output is the rule's block as it is
+        bool apart = false;
+        for (const OutDecl& d : output.declarations)
+            apart = apart || d.important || (rule.origin != RuleOrigin::StyleAttribute && hasViewportOrientation(d.value));
+        std::vector<OutDecl> rest, vmin;
+        if (apart){
+            Session::ImportantRule important;
+            important.rule = &rule;
+            rest.reserve(output.declarations.size());
+            for (OutDecl& d : output.declarations){
+                if (d.important){
+                    important.declarations.push_back(std::move(d));
+                    continue;
+                }
+                if (rule.origin != RuleOrigin::StyleAttribute && hasViewportOrientation(d.value))
+                    vmin.push_back(std::move(d));
+                else
+                    rest.push_back(std::move(d));
             }
-            if (rule.origin != RuleOrigin::StyleAttribute && hasViewportOrientation(d.value))
-                vmin.push_back(d);
-            else
-                normal.push_back(d);
+            if (!important.declarations.empty())
+                session.important.push_back(std::move(important));
         }
-        if (!important.declarations.empty())
-            session.important.push_back(std::move(important));
+        std::vector<OutDecl>& normal = apart ? rest : output.declarations;
 
-        // ::placeholder selectors take only text properties
-        std::vector<std::string> plain, placeholder;
-        for (const RewrittenSelector& s : rule.rewritten)
-            (s.placeholder ? placeholder : plain).push_back(s.text);
+        // ::placeholder selectors take only text properties (selector lists joined as joinSelectors does)
+        std::string joinedPlain, placeholderText;
+        bool anyPlaceholder = false;
+        const bool single = rule.rewritten.size() == 1 && !rule.rewritten[0].placeholder;
+        if (!single){
+            for (const RewrittenSelector& s : rule.rewritten){
+                std::string& text = s.placeholder ? placeholderText : joinedPlain;
+                anyPlaceholder = anyPlaceholder || s.placeholder;
+                if (!text.empty())
+                    text += ", ";
+                text += s.text;
+            }
+        }
+        // (one selector: its text itself)
+        const std::string& plainText = single ? rule.rewritten[0].text : joinedPlain;
+        auto plainWith = [&](const std::string& suffix){
+            std::string text;
+            for (const RewrittenSelector& s : rule.rewritten){
+                if (s.placeholder)
+                    continue;
+                if (!text.empty())
+                    text += ", ";
+                text += s.text;
+                text += suffix;
+            }
+            return text;
+        };
         std::vector<OutDecl> placeholderDeclarations;
-        if (!placeholder.empty()){
+        if (anyPlaceholder){
             for (const OutDecl& d : normal){
                 if (placeholderProperty(d.name))
                     placeholderDeclarations.push_back(d);
@@ -973,11 +1056,12 @@ namespace {
             any = any || !generated.declarations.empty();
         if (any)
         writeUnderMedia(writer, rule.media, rule.ref, [&](){
-            writeBlock(writer, "body#htmlui-root", rootBackground, rule.ref);
-            writeBlock(writer, joinSelectors(plain), normal, rule.ref);
-            writeBlock(writer, joinSelectors(placeholder), placeholderDeclarations, rule.ref);
+            if (!rootBackground.empty())
+                writeBlock(writer, "body#htmlui-root", rootBackground, rule.ref);
+            writeBlock(writer, plainText, normal, rule.ref);
+            writeBlock(writer, placeholderText, placeholderDeclarations, rule.ref);
             for (const GeneratedRule& generated : output.generated)
-                writeBlock(writer, joinSelectors(plain, generated.suffix), generated.declarations, rule.ref);
+                writeBlock(writer, plainWith(generated.suffix), generated.declarations, rule.ref);
         });
 
         if (!vmin.empty()){
@@ -993,7 +1077,7 @@ namespace {
                 for (OutDecl& d : converted)
                     d.value = replaceViewportOrientation(d.value, landscape);
                 writeUnderMedia(writer, media, rule.ref, [&](){
-                    writeBlock(writer, joinSelectors(plain), converted, rule.ref);
+                    writeBlock(writer, plainText, converted, rule.ref);
                 });
             }
         }
@@ -1011,7 +1095,7 @@ namespace {
             return item.atRule ? session.atRules[item.index].order : session.rules[item.index].order;
         };
         const std::vector<int> ranks = layerRanks(session);
-        std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b){
+        const auto before = [&](size_t a, size_t b){
             const int la = layerOf(items[a]);
             const int lb = layerOf(items[b]);
             // layers first in cascade order, unlayered last
@@ -1020,12 +1104,15 @@ namespace {
             if (ka != kb)
                 return ka < kb;
             return orderOf(items[a]) < orderOf(items[b]);
-        });
+        };
+        // (a sheet without @layer is in order already)
+        if (!std::is_sorted(order.begin(), order.end(), before))
+            std::stable_sort(order.begin(), order.end(), before);
         return order;
     }
 
     void importantConflicts(Session& session, const FlatRule& rule, const OutDecl&, const std::string& property, SourceRef ref){
-        const auto it = session.propertyRules.find(property);
+        const auto it = session.propertyRulesIndex().find(property);
         if (it == session.propertyRules.end())
             return;
         for (const Session::PropertyUse& use : it->second){
@@ -1048,16 +1135,21 @@ namespace {
     }
 
     // the property name a declaration is read as (vendor prefixes resolved); "" + reported when dropped
-    std::string effectiveName(Session& session, const Declaration& d, const std::vector<Declaration>& block, bool& silentlyDropped){
+    std::string effectiveName(Session& session, const Declaration& d, const std::vector<Declaration>& block, bool& silentlyDropped,
+                              const PropertyFacts** declaredFacts = nullptr){
         silentlyDropped = false;
-        if (findProperty(d.name))
+        const PropertyFacts& facts = session.facts(d.name);
+        if (facts.row){
+            if (declaredFacts)
+                *declaredFacts = &facts;
             return d.name;
+        }
         for (const char* prefix : {"-webkit-", "-moz-", "-ms-", "-o-"}){
             const std::string p(prefix);
             if (d.name.compare(0, p.size(), p) != 0)
                 continue;
             const std::string base = d.name.substr(p.size());
-            if (!findProperty(base))
+            if (!session.facts(base).row)
                 continue;
             for (const Declaration& other : block){
                 if (other.name == base){
@@ -1074,6 +1166,28 @@ namespace {
 
     bool isInfoNote(const char* note){
         return note && std::strstr(note, "(Info)") != nullptr;
+    }
+
+    // what the normalizer may read of the rule for a value (see processOne)
+    struct ValueNeeds {
+        bool staticColor = false;   // a currentcolor ident or a var()
+        bool fontSize = false;      // a function (the math functions resolve em against it)
+    };
+
+    void scanNeeds(const std::vector<ComponentValue>& values, ValueNeeds& needs){
+        for (const ComponentValue& v : values){
+            if (v.kind == ComponentValue::Kind::Token){
+                if (v.token.type == TokenType::Ident && equalsNoCase(v.token.value, "currentcolor"))
+                    needs.staticColor = true;
+                continue;
+            }
+            if (v.kind == ComponentValue::Kind::Function){
+                needs.fontSize = true;
+                if (equalsNoCase(v.token.value, "var"))
+                    needs.staticColor = true;
+            }
+            scanNeeds(v.children, needs);
+        }
     }
 
     // one declaration through the pipeline of §3.9.6
@@ -1165,7 +1279,8 @@ namespace {
 
         // 2. vendor prefixes, 3. lookup
         bool silentlyDropped = false;
-        std::string name = effectiveName(session, d, block, silentlyDropped);
+        const PropertyFacts* declaredFacts = nullptr;
+        std::string name = effectiveName(session, d, block, silentlyDropped, &declaredFacts);
         if (silentlyDropped)
             return;
         if (name.empty()){
@@ -1174,7 +1289,9 @@ namespace {
                                  closest.empty() ? std::string() : "did you mean '" + closest + "'?", closest, d.name);
             return;
         }
-        const PropertySupport* row = findProperty(name);
+        // (the declared name's facts when it is a property itself, the usual case)
+        const PropertyFacts& facts = declaredFacts ? *declaredFacts : session.facts(name);
+        const PropertySupport* row = facts.row;
         const Support support = effectiveSupport(*row, session.options.fork);
         if (support == Support::Unsupported){
             Severity severity = isInfoNote(row->note) ? Severity::Info : Severity::Warning;
@@ -1207,6 +1324,15 @@ namespace {
 
         DeclContext context{session, rule, origin, keyframe, d, name, row, {}, false, output, false};
         context.important = d.important && !keyframe;
+        // the normalized value is built in a vector of the session's pool, returned when done
+        struct ValueStorage {
+            DeclContext& context;
+            ~ValueStorage(){
+                context.value.clear();
+                if (context.value.capacity() > 0 && context.value.capacity() <= 64)
+                    context.session.valuePool.push_back(std::move(context.value));
+            }
+        } valueStorage{context};
 
         // the color property's own currentColor is `inherit`
         const ComponentValue* sole = soleValue(d.value);
@@ -1220,30 +1346,44 @@ namespace {
             // 4. value normalization
             NormalizeContext normalize;
             normalize.property = name;
-            normalize.colors = ValueNormalizer::colorKeywordsApply(name);
+            normalize.colors = facts.colorKeywords;
             normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint;
             // a style attribute or a keyframe cannot be duplicated per orientation: vmin/vmax evaluated
             normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
-            normalize.percentBasis = ValueNormalizer::percentBasisOf(name, &normalize.vertical);
+            normalize.percentBasis = facts.percentBasis;
+            normalize.vertical = facts.vertical;
             normalize.options = session.options;
             if (rule && !keyframe){
-                const std::string staticColor = props::ruleStaticColor(session, *rule);
-                if (name != "color")
-                    normalize.staticColor = staticColor;
-                if (std::optional<double> fontSize = props::ruleFontSizePx(session, *rule); fontSize && name != "font-size")
-                    normalize.emPx = *fontSize;
+                // the rule's static color is read for currentColor (written, or behind a var())
+                // and its font size by the math functions: looked up only for such values
+                ValueNeeds needs;
+                scanNeeds(d.value, needs);
+                if (needs.staticColor && name != "color")
+                    normalize.staticColor = props::ruleStaticColor(session, *rule);
+                if (needs.fontSize && name != "font-size"){
+                    if (std::optional<double> fontSize = props::ruleFontSizePx(session, *rule))
+                        normalize.emPx = *fontSize;
+                }
             }
             normalize.remPx = session.rootFontSize.value_or(16.0);
             normalize.resolveVar = [&session](const ComponentValue& var, std::vector<ComponentValue>& out){ return session.staticVar(var, out); };
-            normalize.report = [&](DiagCode code, Severity severity, const std::string& message, const std::string& suggestion){
-                session.sink->reportAs(severity, code, d.valueRef.valid() ? d.valueRef : d.ref, message, suggestion, std::string(), name);
+            // (one captured pointer: the std::function keeps it without an allocation)
+            normalize.report = [ctx = &context](DiagCode code, Severity severity, const std::string& message, const std::string& suggestion){
+                const Declaration& declaration = ctx->declaration;
+                ctx->session.sink->reportAs(severity, code, declaration.valueRef.valid() ? declaration.valueRef : declaration.ref, message,
+                                            suggestion, std::string(), ctx->name);
             };
-            NormalizeResult normalized = ValueNormalizer::normalize(d.value, normalize);
+            std::vector<ComponentValue> storage;
+            if (!session.valuePool.empty()){
+                storage = std::move(session.valuePool.back());
+                session.valuePool.pop_back();
+            }
+            NormalizeResult normalized = ValueNormalizer::normalize(d.value, normalize, std::move(storage));
+            context.value = std::move(normalized.value);
             if (!normalized.ok)
                 return;
             if (normalized.dependsOnViewport)
                 session.result->dependsOnViewport = true;
-            context.value = std::move(normalized.value);
             trimInPlace(context.value);
             if (context.value.empty())
                 return;
@@ -1286,7 +1426,7 @@ namespace {
                         }
                     }
                 }
-                if (!RcssGrammar::known(name)){
+                if (!facts.rcssKnown){
                     context.reportAs(Severity::Warning, codes::UnsupportedProperty, "'" + name + "' is not supported by the engine; dropped", row->suggestion);
                     return;
                 }
@@ -1327,12 +1467,15 @@ namespace {
             if (keyframe)
                 continue;
             const bool keyword = CascadeKeywords::isKeywordText(out.value);
-            if (out.name == "color" && out.value.compare(0, 4, "var(") != 0 && !keyword)
+            if (out.name == "color" && !startsWith(out.value, "var(") && !keyword)
                 extra.push_back(OutDecl{companions::kCurrentColor, out.value, out.ref, out.important, false, true});
-            if (session.inheritCompanions.count(out.name) && out.value.find("--html-inh-") == std::string::npos && !keyword)
-                extra.push_back(OutDecl{companions::inheritName(out.name), out.value, out.ref, out.important, false, true});
-            else if (!keyword && out.value.find("--html-inh-") == std::string::npos)
-                boxShorthandCompanions(session, out, extra);
+            // (nothing to add when no rule reads a property with `inherit`)
+            if (!session.inheritCompanions.empty() && !keyword && out.value.find("--html-inh-") == std::string::npos){
+                if (session.inheritCompanions.count(out.name))
+                    extra.push_back(OutDecl{companions::inheritName(out.name), out.value, out.ref, out.important, false, true});
+                else
+                    boxShorthandCompanions(session, out, extra);
+            }
         }
         for (OutDecl& e : extra)
             output.declarations.push_back(std::move(e));
@@ -1341,7 +1484,7 @@ namespace {
             output.declarations.size() > first)
             importantConflicts(session, *rule, output.declarations[first], name, d.ref);
         if (d.important && origin == RuleOrigin::StyleAttribute){
-            const auto it = session.propertyRules.find(name);
+            const auto it = session.propertyRulesIndex().find(name);
             if (it != session.propertyRules.end()){
                 for (const Session::PropertyUse& use : it->second){
                     if (use.important){
@@ -1374,7 +1517,7 @@ namespace {
             return;
         bool wanted = false;
         for (const char* longhand : found->second)
-            wanted = wanted || session.inheritCompanions.count(longhand) > 0;
+            wanted = wanted || session.inheritCompanions.count(std::string_view(longhand)) > 0;
         if (!wanted || out.value.find('/') != std::string::npos)
             return;
         // the values, split at top-level spaces (var() and functions keep theirs)
@@ -1401,7 +1544,7 @@ namespace {
         const size_t n = values.size();
         const std::string sides[4] = {values[0], values[n > 1 ? 1 : 0], values[n > 2 ? 2 : 0], values[n > 3 ? 3 : (n > 1 ? 1 : 0)]};
         for (int i = 0; i < 4; i++){
-            if (session.inheritCompanions.count(found->second[i]))
+            if (session.inheritCompanions.count(std::string_view(found->second[i])))
                 extra.push_back(OutDecl{companions::inheritName(found->second[i]), sides[i], out.ref, out.important, false, true});
         }
     }
@@ -1418,8 +1561,11 @@ void jasperengine::htmlui::compat::processSynthetic(DeclContext& context, const 
     std::vector<Declaration> block(1);
     Declaration& synthetic = block[0];
     synthetic.name = property;
-    synthetic.value = parseComponentValueList(value);
-    trimInPlace(synthetic.value);
+    synthetic.value = context.session.syntheticValues.get(value, [](std::string_view text){
+        std::vector<ComponentValue> parsed = parseComponentValueList(text);
+        trimInPlace(parsed);
+        return parsed;
+    });
     synthetic.ref = context.declaration.ref;
     synthetic.nameRef = context.declaration.nameRef;
     synthetic.valueRef = context.declaration.valueRef;
@@ -1478,6 +1624,8 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
                 result.dependencies.push_back(path);
         }
         Stylesheet sheet = parseStylesheet(input.file, input.text, impl->sink, input.baseOffset);
+        // about one flat rule per top-level rule
+        session.rules.reserve(session.rules.size() + sheet.rules.size());
         FlattenScope scope;
         scope.sheet = (uint32_t)i;
         scope.file = input.file;

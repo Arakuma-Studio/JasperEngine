@@ -4,6 +4,7 @@
 // The only file that includes lexbor: its DOM is converted into HtmlTree here.
 
 #include "htmlui/compat/html/HtmlParser.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/Diagnostics.h"
 
@@ -157,11 +158,15 @@ namespace {
                     out->implied = !out->ref.valid();
                     out->selfClosingSyntax = selfClosing;
                     const bool keepCase = out->ns != Namespace::Html;
+                    size_t attributes = 0;
+                    for (const lxb_dom_attr_t* attribute = element->first_attr; attribute; attribute = attribute->next)
+                        attributes++;
+                    out->attrs.reserve(attributes);
                     for (const lxb_dom_attr_t* attribute = element->first_attr; attribute; attribute = attribute->next){
-                        HtmlAttr converted;
+                        HtmlAttr& converted = out->attrs.emplace_back();
                         convertAttribute(attribute, keepCase, converted);
-                        if (!converted.name.empty())
-                            out->attrs.push_back(std::move(converted));
+                        if (converted.name.empty())
+                            out->attrs.pop_back();
                     }
                     return out;
                 }

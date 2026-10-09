@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/CssSerialize.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/CssTokenizer.h"
 
@@ -124,7 +125,7 @@ namespace {
                 out += options.exactSeparators ? "/**/" : " ";
             lastWasWhitespace = false;
             if (value.kind == ComponentValue::Kind::Token)
-                out += serializeToken(value.token);
+                appendToken(out, value.token);
             else
                 appendBlockOrFunction(out, value, options);
             previous = &value;
@@ -133,7 +134,7 @@ namespace {
 
     void appendBlockOrFunction(std::string& out, const ComponentValue& value, const SerializeOptions& options){
         if (value.kind == ComponentValue::Kind::Function){
-            out += serializeIdent(value.token.value);
+            appendIdent(out, value.token.value);
             out += '(';
             appendList(out, value.children, options);
             out += ')';
@@ -149,9 +150,24 @@ namespace {
 
 }
 
-std::string jasperengine::htmlui::compat::formatNumber(double value, int decimals){
-    if (!std::isfinite(value))
-        return "0";
+namespace {
+
+    // the decimal digits of v at the end of buffer (returns the first one)
+    char* writeDigits(char* end, uint64_t v){
+        do {
+            *--end = (char)('0' + (int)(v % 10));
+            v /= 10;
+        } while (v != 0);
+        return end;
+    }
+
+}
+
+void jasperengine::htmlui::compat::appendNumber(std::string& out, double value, int decimals){
+    if (!std::isfinite(value)){
+        out += '0';
+        return;
+    }
     if (decimals < 0)
         decimals = 0;
     if (decimals > 9)
@@ -173,31 +189,64 @@ std::string jasperengine::htmlui::compat::formatNumber(double value, int decimal
             digits.insert(digits.begin(), (char)('0' + (int)digit));
             rest = std::floor(rest / 10.0);
         } while (rest >= 1.0);
-        return negative ? "-" + digits : digits;
+        if (negative)
+            out += '-';
+        out += digits;
+        return;
     }
 
     const uint64_t scaled = (uint64_t)std::llround(magnitude * scale);
-    if (scaled == 0)
-        return "0";
+    if (scaled == 0){
+        out += '0';
+        return;
+    }
     const uint64_t divisor = (uint64_t)scale;
     const uint64_t integer = scaled / divisor;
     uint64_t fraction = scaled % divisor;
 
-    std::string result = negative ? "-" : "";
-    result += std::to_string(integer);
+    char buffer[48];
+    char* const end = buffer + sizeof(buffer);
+    char* text = writeDigits(end - 16, integer);   // integer part, then the fraction after it
+    char* cursor = end - 16;
+    if (negative)
+        *--text = '-';
     if (fraction != 0){
-        std::string fractionText = std::to_string(fraction);
-        fractionText.insert(0, (size_t)decimals - fractionText.size(), '0');
-        while (!fractionText.empty() && fractionText.back() == '0')
-            fractionText.pop_back();
-        result += '.';
-        result += fractionText;
+        // `decimals` digits with leading zeros, trailing zeros dropped
+        char digits[16];
+        for (int i = decimals - 1; i >= 0; i--){
+            digits[i] = (char)('0' + (int)(fraction % 10));
+            fraction /= 10;
+        }
+        int count = decimals;
+        while (count > 0 && digits[count - 1] == '0')
+            count--;
+        *cursor++ = '.';
+        for (int i = 0; i < count; i++)
+            *cursor++ = digits[i];
     }
-    return result;
+    out.append(text, (size_t)(cursor - text));
 }
 
-std::string jasperengine::htmlui::compat::serializeIdent(std::string_view ident){
+std::string jasperengine::htmlui::compat::formatNumber(double value, int decimals){
     std::string out;
+    appendNumber(out, value, decimals);
+    return out;
+}
+
+void jasperengine::htmlui::compat::appendIdent(std::string& out, std::string_view ident){
+    // the common case: ASCII name characters, not starting with a digit or "-<digit>", not "-"
+    {
+        bool plain = !ident.empty() && !(ident.size() == 1 && ident[0] == '-') && !(ident[0] >= '0' && ident[0] <= '9') &&
+                     !(ident.size() >= 2 && ident[0] == '-' && ident[1] >= '0' && ident[1] <= '9');
+        for (size_t i = 0; plain && i < ident.size(); i++){
+            const unsigned char c = (unsigned char)ident[i];
+            plain = (unsigned char)((c | 0x20) - 'a') < 26 || (unsigned char)(c - '0') < 10 || c == '-' || c == '_';
+        }
+        if (plain){
+            out.append(ident.data(), ident.size());
+            return;
+        }
+    }
     size_t i = 0;
     size_t index = 0;
     while (i < ident.size()){
@@ -220,13 +269,31 @@ std::string jasperengine::htmlui::compat::serializeIdent(std::string_view ident)
         }
         index++;
     }
+}
+
+std::string jasperengine::htmlui::compat::serializeIdent(std::string_view ident){
+    std::string out;
+    appendIdent(out, ident);
     return out;
 }
 
-std::string jasperengine::htmlui::compat::serializeString(std::string_view text){
-    std::string out = "\"";
+void jasperengine::htmlui::compat::appendString(std::string& out, std::string_view text){
+    out += '"';
     size_t i = 0;
     while (i < text.size()){
+        // a run of printable ASCII without '"' and '\\' is written as it is
+        size_t run = i;
+        while (run < text.size()){
+            const unsigned char b = (unsigned char)text[run];
+            if (b < 0x20 || b >= 0x7F || b == '"' || b == '\\')
+                break;
+            run++;
+        }
+        if (run > i){
+            out.append(text.data() + i, run - i);
+            i = run;
+            continue;
+        }
         const uint32_t c = nextCodePoint(text, i);
         if (c == 0)
             out += "\xEF\xBF\xBD";
@@ -239,23 +306,33 @@ std::string jasperengine::htmlui::compat::serializeString(std::string_view text)
             appendUtf8(out, c);
     }
     out += '"';
+}
+
+std::string jasperengine::htmlui::compat::serializeString(std::string_view text){
+    std::string out;
+    appendString(out, text);
     return out;
 }
 
 std::string jasperengine::htmlui::compat::serializeUrl(std::string_view url){
-    return "url(" + serializeString(url) + ")";
+    std::string out = "url(";
+    appendString(out, url);
+    out += ')';
+    return out;
 }
 
-std::string jasperengine::htmlui::compat::serializeToken(const Token& t){
+void jasperengine::htmlui::compat::appendToken(std::string& out, const Token& t){
     switch (t.type){
-        case TokenType::Ident: return serializeIdent(t.value);
-        case TokenType::Function: return serializeIdent(t.value) + "(";
-        case TokenType::AtKeyword: return "@" + serializeIdent(t.value);
+        case TokenType::Ident: appendIdent(out, t.value); return;
+        case TokenType::Function: appendIdent(out, t.value); out += '('; return;
+        case TokenType::AtKeyword: out += '@'; appendIdent(out, t.value); return;
         case TokenType::Hash: {
-            if (t.hashIsId)
-                return "#" + serializeIdent(t.value);
+            out += '#';
+            if (t.hashIsId){
+                appendIdent(out, t.value);
+                return;
+            }
             // "#1a": the name is not an identifier; escape only what is not a name character
-            std::string out = "#";
             size_t i = 0;
             while (i < t.value.size()){
                 const uint32_t c = nextCodePoint(t.value, i);
@@ -268,22 +345,23 @@ std::string jasperengine::htmlui::compat::serializeToken(const Token& t){
                     appendUtf8(out, c);
                 }
             }
-            return out;
+            return;
         }
-        case TokenType::String: return serializeString(t.value);
-        case TokenType::BadString: return "";
-        case TokenType::Url: return serializeUrl(t.value);
-        case TokenType::BadUrl: return "";
-        case TokenType::Delim: return t.value;
-        case TokenType::Number: return formatNumber(t.number);
-        case TokenType::Percentage: return formatNumber(t.number) + "%";
+        case TokenType::String: appendString(out, t.value); return;
+        case TokenType::BadString: return;
+        case TokenType::Url: out += "url("; appendString(out, t.value); out += ')'; return;
+        case TokenType::BadUrl: return;
+        case TokenType::Delim: out += t.value; return;
+        case TokenType::Number: appendNumber(out, t.number); return;
+        case TokenType::Percentage: appendNumber(out, t.number); out += '%'; return;
         case TokenType::Dimension: {
-            std::string unit = serializeIdent(t.unit);
+            appendNumber(out, t.number);
             // "1e3" as a unit would read as an exponent: escape the 'e' of such units
             if (!t.unit.empty() && (t.unit[0] == 'e' || t.unit[0] == 'E') && t.unit.size() > 1 &&
                 ((t.unit[1] >= '0' && t.unit[1] <= '9') || t.unit[1] == '-' || t.unit[1] == '+'))
-                unit = "\\" + unit;
-            return formatNumber(t.number) + unit;
+                out += '\\';
+            appendIdent(out, t.unit);
+            return;
         }
         case TokenType::UnicodeRange: {
             static const char* hex = "0123456789ABCDEF";
@@ -292,36 +370,49 @@ std::string jasperengine::htmlui::compat::serializeToken(const Token& t){
                 do { s.insert(s.begin(), hex[v & 0xF]); v >>= 4; } while (v != 0);
                 return s;
             };
-            std::string out = "U+" + toHex(t.rangeStart);
+            out += "U+" + toHex(t.rangeStart);
             if (t.rangeEnd != t.rangeStart)
                 out += "-" + toHex(t.rangeEnd);
-            return out;
+            return;
         }
-        case TokenType::Whitespace: return " ";
-        case TokenType::CDO: return "<!--";
-        case TokenType::CDC: return "-->";
-        case TokenType::Colon: return ":";
-        case TokenType::Semicolon: return ";";
-        case TokenType::Comma: return ",";
-        case TokenType::LeftBracket: return "[";
-        case TokenType::RightBracket: return "]";
-        case TokenType::LeftParen: return "(";
-        case TokenType::RightParen: return ")";
-        case TokenType::LeftBrace: return "{";
-        case TokenType::RightBrace: return "}";
+        case TokenType::Whitespace: out += ' '; return;
+        case TokenType::CDO: out += "<!--"; return;
+        case TokenType::CDC: out += "-->"; return;
+        case TokenType::Colon: out += ':'; return;
+        case TokenType::Semicolon: out += ';'; return;
+        case TokenType::Comma: out += ','; return;
+        case TokenType::LeftBracket: out += '['; return;
+        case TokenType::RightBracket: out += ']'; return;
+        case TokenType::LeftParen: out += '('; return;
+        case TokenType::RightParen: out += ')'; return;
+        case TokenType::LeftBrace: out += '{'; return;
+        case TokenType::RightBrace: out += '}'; return;
         case TokenType::Comment:
         case TokenType::EndOfFile:
-            return "";
+            return;
     }
-    return "";
+}
+
+std::string jasperengine::htmlui::compat::serializeToken(const Token& t){
+    std::string out;
+    appendToken(out, t);
+    return out;
+}
+
+void jasperengine::htmlui::compat::appendSerialized(std::string& out, const ComponentValue& value, const SerializeOptions& options){
+    if (value.kind == ComponentValue::Kind::Token)
+        appendToken(out, value.token);
+    else
+        appendBlockOrFunction(out, value, options);
+}
+
+void jasperengine::htmlui::compat::appendSerialized(std::string& out, const std::vector<ComponentValue>& values, const SerializeOptions& options){
+    appendList(out, values, options);
 }
 
 std::string jasperengine::htmlui::compat::serialize(const ComponentValue& value, const SerializeOptions& options){
     std::string out;
-    if (value.kind == ComponentValue::Kind::Token)
-        out = serializeToken(value.token);
-    else
-        appendBlockOrFunction(out, value, options);
+    appendSerialized(out, value, options);
     return out;
 }
 

@@ -7,6 +7,7 @@
 // AnimationFill runtime (-html-animation-fill), longhands merged with the rule or a base rule.
 
 #include "htmlui/compat/css/props/Rewriters.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/BaseRules.h"
 #include "htmlui/compat/css/CssParser.h"

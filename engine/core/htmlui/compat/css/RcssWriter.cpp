@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/RcssWriter.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 using namespace jasperengine::htmlui::compat;
 
@@ -54,9 +55,9 @@ void RcssWriter::beginRule(std::string_view selectors, SourceRef ref){
         return;
     if (ruleOpen)
         endRule();
-    std::string text(selectors);
-    text += " {";
-    line(text, ref);
+    output.append(selectors.data(), selectors.size());
+    output += " {\n";
+    map.lines.push_back(ref);
     ruleOpen = true;
     ruleRef = ref;
 }
@@ -69,19 +70,21 @@ void RcssWriter::endRule(){
 }
 
 void RcssWriter::declaration(std::string_view name, std::string_view value, SourceRef ref){
-    std::string text(name);
-    text += ": ";
-    text.append(value.data(), value.size());
-    text += ';';
     if (mode == Mode::DeclarationList){
         if (!output.empty())
             output += ' ';
-        output += text;
+    }
+    output.append(name.data(), name.size());
+    output += ": ";
+    output.append(value.data(), value.size());
+    output += ';';
+    if (mode == Mode::DeclarationList){
         if (map.lines.empty())
             map.lines.push_back(ref);
         return;
     }
-    line(text, ref);
+    output += '\n';
+    map.lines.push_back(ref);
 }
 
 void RcssWriter::atRule(std::string_view text, SourceRef ref){

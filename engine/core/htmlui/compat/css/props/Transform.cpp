@@ -6,6 +6,7 @@
 // the transform list), with the rule's or a base rule's transform.
 
 #include "htmlui/compat/css/props/Rewriters.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/BaseRules.h"
 #include "htmlui/compat/css/CssParser.h"

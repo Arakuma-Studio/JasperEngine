@@ -3,6 +3,8 @@
 
 #include "SourceFiles.h"
 
+#include <cstring>
+
 #include <algorithm>
 
 using namespace jasperengine::htmlui::compat;
@@ -22,6 +24,20 @@ namespace {
         std::vector<uint32_t> starts;
         starts.push_back(0);
         const size_t size = text.size();
+        if (std::memchr(text.data(), '\r', size) == nullptr){
+            // only '\n' line ends: found with memchr
+            const char* const begin = text.data();
+            const char* p = begin;
+            const char* const end = begin + size;
+            while (p < end){
+                const char* newline = static_cast<const char*>(std::memchr(p, '\n', (size_t)(end - p)));
+                if (!newline)
+                    break;
+                starts.push_back((uint32_t)(newline - begin + 1));
+                p = newline + 1;
+            }
+            return starts;
+        }
         for (size_t i = 0; i < size; i++){
             const char c = text[i];
             if (c == '\n'){
@@ -177,6 +193,19 @@ bool jasperengine::htmlui::compat::stripUtf8Bom(std::string& text){
 }
 
 std::vector<uint32_t> jasperengine::htmlui::compat::sanitizeUtf8(std::string& text){
+    {
+        // plain ASCII without NUL (the common case) is valid as it is
+        bool ascii = true;
+        for (const char c : text){
+            const unsigned char b = (unsigned char)c;
+            if (b == 0 || b >= 0x80){
+                ascii = false;
+                break;
+            }
+        }
+        if (ascii)
+            return {};
+    }
     std::vector<uint32_t> replaced;
     std::string out;
     bool changed = false;

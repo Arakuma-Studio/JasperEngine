@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/CustomPropertyIndex.h"
+#include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/CssParser.h"
 #include "htmlui/compat/css/CssSerialize.h"
@@ -27,12 +28,14 @@ namespace {
 }
 
 void CustomPropertyIndex::clear(){
+    revisionCount++;
     entries.clear();
     uses.clear();
     rawUses.clear();
 }
 
 void CustomPropertyIndex::add(const std::string& name, Entry entry){
+    revisionCount++;
     entries[name].push_back(std::move(entry));
 }
 
