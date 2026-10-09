@@ -418,6 +418,27 @@ namespace {
             double value = 0;
             bool integer = true;
             consumeNumber(value, integer);
+            {
+                // what usually follows: a unit of ASCII letters, '%', or a byte that starts no name
+                const unsigned char b = in.byte();
+                const unsigned char lower = (unsigned char)(b | 0x20);
+                const bool plainEnd = b == ' ' || b == ';' || b == ',' || b == ')' || b == '}' || b == '/' || b == '\n' ||
+                                      b == '\t' || (b == 0 && in.atEnd());
+                if (plainEnd){
+                    LexToken& token = make(TokenType::Number, start);
+                    token.number = value;
+                    token.isInteger = integer;
+                    return;
+                }
+                if (lower >= 'a' && lower <= 'z'){
+                    // startsIdent: a letter always starts a name
+                    consumeIdentSequence(current->unit);
+                    LexToken& token = make(TokenType::Dimension, start);
+                    token.number = value;
+                    token.isInteger = integer;
+                    return;
+                }
+            }
             if (startsIdent(in.peek(), in.peek(1), in.peek(2))){
                 consumeIdentSequence(current->unit);
                 LexToken& token = make(TokenType::Dimension, start);
@@ -628,7 +649,37 @@ namespace {
                 const unsigned char b = in.byte();
                 const unsigned char lower = (unsigned char)(b | 0x20);
                 if (((lower >= 'a' && lower <= 'z') && !(options.unicodeRanges && lower == 'u')) || b == '_'){
+                    // a name of ASCII name characters ended by a plain ASCII byte: an ident, or a
+                    // function when '(' follows (but url(, which consumeIdentLike reads)
+                    const size_t run = identRun();
+                    const size_t after = start + run;
+                    const unsigned char next = after < source.size() ? (unsigned char)source[after] : 0;
+                    const bool ended = after == source.size() || (next < 0x80 && next != 0 && next != '\\');
+                    const bool url = run == 3 && (b | 0x20) == 'u' && (source[start + 1] | 0x20) == 'r' && (source[start + 2] | 0x20) == 'l';
+                    if (ended && !(url && next == '(')){
+                        current->value = LexText{(uint32_t)start, (uint32_t)run, false};
+                        in.skip(run);
+                        if (next == '('){
+                            in.skip(1);
+                            make(TokenType::Function, start);
+                        }else{
+                            make(TokenType::Ident, start);
+                        }
+                        return;
+                    }
                     consumeIdentLike(start);
+                    return;
+                }
+                if (b == ' ' || b == '\n' || b == '\t'){
+                    size_t i = start + 1;
+                    while (i < source.size()){
+                        const char w = source[i];
+                        if (w != ' ' && w != '\n' && w != '\t' && w != '\r' && w != '\f')
+                            break;
+                        i++;
+                    }
+                    in.skip(i - start);
+                    make(TokenType::Whitespace, start);
                     return;
                 }
                 if (b >= '0' && b <= '9'){
