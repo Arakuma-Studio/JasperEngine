@@ -1,0 +1,11 @@
+<rml>
+<head>
+<link type="text/rcss" href="/@htmlui/ua.rcss" origin="user-agent"/>
+</head>
+<body id="htmlui-root" data-htmlui-loc="0">
+<htmlbody data-htmlui-loc="1">
+<p data-htmlui-loc="2"> ©…→—× © no semicolon &amp; &lt;tag&gt;</p>
+<p title="a &amp; b &quot;q&quot;" data-htmlui-loc="3">😀 � € ©</p>
+<p data-htmlui-loc="4">stray &lt; and &amp; signs, a<b< p="" data-htmlui-loc="5">
+</b<></p></htmlbody></body>
+</rml>

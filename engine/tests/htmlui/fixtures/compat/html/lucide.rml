@@ -1,0 +1,12 @@
+<rml>
+<head>
+<link type="text/rcss" href="/@htmlui/ua.rcss" origin="user-agent"/>
+</head>
+<body id="htmlui-root" data-htmlui-loc="0">
+<htmlbody data-htmlui-loc="1">
+<i data-lucide="play" data-htmlui-loc="2"/>
+<i data-lucide="ArrowRight" class="big" stroke-width="1.5" style="width: 32px;" data-htmlui-loc="3"/>
+<span data-lucide="home" aria-label="Home" data-htmlui-loc="4"/>
+<i data-lucide="not-an-icon-name" data-htmlui-loc="5"/>
+</htmlbody></body>
+</rml>

@@ -437,9 +437,10 @@ void jasperengine::htmlui::compat::transformHead(TransformContext& context){
             if (sibling->is("body"))
                 body = sibling.get();
         }
+        size_t at = 0;
         for (std::unique_ptr<HtmlNode>& leftover : head->children){
             if (leftover->kind == HtmlNode::Kind::Element && body)
-                body->insertChild(0, std::move(leftover));
+                body->insertChild(at++, std::move(leftover));
         }
         break;
     }

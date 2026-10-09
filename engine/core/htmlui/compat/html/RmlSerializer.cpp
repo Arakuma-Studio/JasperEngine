@@ -28,6 +28,23 @@ namespace {
         return false;
     }
 
+    // XML names: what the HTML parser accepts in a name and XML does not ("<b<", "a\"b") is
+    // replaced (the parse error was reported); "" when nothing is left
+    bool isNameCharacter(unsigned char c, bool first){
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == ':' || c >= 0x80)
+            return true;
+        return !first && ((c >= '0' && c <= '9') || c == '-' || c == '.');
+    }
+
+    std::string xmlName(const std::string& name){
+        std::string out;
+        for (size_t i = 0; i < name.size(); i++){
+            const unsigned char c = (unsigned char)name[i];
+            out += isNameCharacter(c, out.empty()) ? (char)c : (out.empty() ? 'x' : '-');
+        }
+        return out;
+    }
+
     std::string referencesFor(const std::string& whitespace){
         std::string out;
         for (char c : whitespace){
@@ -73,13 +90,16 @@ namespace {
                 return "body";
             if (&node == body)
                 return "htmlbody";
-            return node.tag;
+            return xmlName(node.tag);
         }
 
         void writeAttributes(const HtmlNode& node){
             for (const HtmlAttr& attribute : node.attrs){
                 if (attribute.name == "style" && node.hasRewrittenStyle)
                     continue;
+                const std::string name = xmlName(attribute.name);
+                if (name != attribute.name)
+                    continue;   // not an XML name: dropped (HTML-0001 reported the parse error)
                 out += ' ';
                 out += attribute.name;
                 out += "=\"";
