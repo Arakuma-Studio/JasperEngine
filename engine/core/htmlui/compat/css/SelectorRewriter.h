@@ -27,17 +27,18 @@ namespace jasperengine::htmlui::compat {
 
     struct SimpleSelector {
         enum class Kind : uint8_t { Type, Universal, Id, Class, Attribute, PseudoClass, PseudoElement, Nesting, RootMarker };
+        // (members ordered by size)
         Kind kind = Kind::Universal;
-        std::string name;              // type (lowercase), id, class, attribute name, pseudo name (lowercase, no colons)
         bool hasNamespace = false;     // ns|E, *|E, |E, [ns|a]
-        std::string op;                // attribute: "", "=", "~=", "|=", "^=", "$=", "*="
-        std::string value;             // attribute value (unescaped)
         char flag = 0;                 // attribute: 'i' or 's'
         bool function = false;         // :name(...)
-        std::vector<ComponentValue> arguments;      // raw arguments of a functional pseudo
-        std::vector<ComplexSelector> selectors;     // parsed selector-list arguments (:is, :where, :not, :has, ...)
         bool legacyColon = false;      // :before / :after written with one colon
         SourceRef ref;
+        std::string name;              // type (lowercase), id, class, attribute name, pseudo name (lowercase, no colons)
+        std::string op;                // attribute: "", "=", "~=", "|=", "^=", "$=", "*="
+        std::string value;             // attribute value (unescaped)
+        std::vector<ComponentValue> arguments;      // raw arguments of a functional pseudo
+        std::vector<ComplexSelector> selectors;     // parsed selector-list arguments (:is, :where, :not, :has, ...)
     };
 
     struct Compound {
