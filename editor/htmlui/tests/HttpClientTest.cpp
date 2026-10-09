@@ -87,9 +87,17 @@ TEST(HttpClient, ConnectionRefusedIsAnError){
 
 TEST(HttpClient, UrlsWithQuotesAndSpacesNeverReachAShell){
     HttpClient client;
-    // a quote, a $ and a backtick in the query: the config file carries them, no shell sees them
-    const HttpResponse response = client.get("https://images.example.com/photo?w=800&q=\"$(touch /tmp/x)`id`");
+    // a quote, a $, a backtick and spaces in the query: the config file carries them (percent-encoded
+    // where a URL cannot hold them), no shell sees them
+    const fs::path marker = fs::temp_directory_path() / "jasper-http-shell-marker";
+    fs::remove(marker);
+    sharedServer().reset();
+    const HttpResponse response = client.get("https://images.example.com/photo?w=800&q=\"$(touch " + marker.string() + ")`id` x");
     EXPECT_TRUE(response.ok()) << response.error;
+    EXPECT_FALSE(fs::exists(marker));
+    const auto requests = sharedServer().requests();
+    ASSERT_EQ(requests.size(), 1u);
+    EXPECT_EQ(requests[0].first, "/img/photo?w=800&q=%22$(touch%20" + marker.string() + ")%60id%60%20x");
 }
 
 TEST(HttpClient, UrlQuoteMatchesPython){

@@ -185,7 +185,7 @@ TEST(Stylesheets, LocalPaths){
     EXPECT_EQ(StylesheetImporter::localPath(importer, "https://cdn.example.com/a.min", "css"),
               "htmlui-imports/css/cdn.example.com/a.min.css");
     const std::string query = StylesheetImporter::localPath(importer, "https://cdn.example.com/f.ttf?v=6.5", "ttf");
-    EXPECT_EQ(query.compare(0, 39, "htmlui-imports/css/cdn.example.com/f-"), 0) << query;
+    EXPECT_EQ(query.compare(0, 37, "htmlui-imports/css/cdn.example.com/f-"), 0) << query;
     EXPECT_EQ(query.substr(query.size() - 4), ".ttf");
 }
 
@@ -238,7 +238,7 @@ TEST(Images, Sniffing){
     EXPECT_EQ(sniffContent("\x89PNG\r\n\x1A\n....", "", "").type, Type::Png);
     EXPECT_EQ(sniffContent(std::string("\xFF\xD8\xFF\xE0", 4), "application/octet-stream", "").type, Type::Jpeg);
     EXPECT_EQ(sniffContent("GIF89a..", "", "").type, Type::Gif);
-    EXPECT_EQ(sniffContent("RIFF\x10\0\0\0WEBPVP8L", "", "").type, Type::WebP);
+    EXPECT_EQ(sniffContent(std::string("RIFF\x10\0\0\0WEBPVP8L", 16), "", "").type, Type::WebP);
     EXPECT_EQ(sniffContent(std::string("\0\0\0\x1C" "ftypavif", 12), "", "").type, Type::Avif);
     EXPECT_EQ(sniffContent("\xEF\xBB\xBF<?xml version=\"1.0\"?>\n<!-- c --><!DOCTYPE svg><svg/>", "text/plain", "").type, Type::Svg);
     EXPECT_EQ(sniffContent("<svg xmlns='http://www.w3.org/2000/svg'/>", "", "").type, Type::Svg);

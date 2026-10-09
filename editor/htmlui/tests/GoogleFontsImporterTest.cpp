@@ -293,7 +293,8 @@ TEST(GoogleFonts, LiveNetwork){
     }
     EXPECT_TRUE(project.exists("assets/htmlui-imports/fonts/inter/OFL.txt"));
     EXPECT_TRUE(project.exists("assets/htmlui-imports/fonts/press-start-2p/OFL.txt"));
-    const ImportEntry* entry = project.manifest().find(url);
+    const compat::ImportManifest manifest = project.manifest();
+    const ImportEntry* entry = manifest.find(url);
     ASSERT_NE(entry, nullptr);
     EXPECT_EQ(entry->licenseName, "SIL Open Font License 1.1");
 }

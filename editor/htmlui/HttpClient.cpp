@@ -124,6 +124,23 @@ namespace {
         return line;
     }
 
+    // what a browser does with characters a URL cannot hold as they are (curl refuses them)
+    std::string encodeForRequest(const std::string& url){
+        static const char* hex = "0123456789ABCDEF";
+        std::string out;
+        for (unsigned char c : url){
+            if (c <= 0x20 || c >= 0x7F || c == '"' || c == '<' || c == '>' || c == '\\' || c == '^' || c == '`' || c == '{' ||
+                c == '|' || c == '}'){
+                out += '%';
+                out += hex[c >> 4];
+                out += hex[c & 15];
+            }else{
+                out += (char)c;
+            }
+        }
+        return out;
+    }
+
     bool isWriteOutLine(const std::string& line){
         return line.size() >= 4 && std::isdigit((unsigned char)line[0]) && std::isdigit((unsigned char)line[1]) &&
                std::isdigit((unsigned char)line[2]) && line[3] == ' ';
@@ -331,7 +348,7 @@ HttpResponse HttpClient::get(const std::string& url){
     HttpResponse response;
     response.finalUrl = url;
 
-    const std::string requestUrl = rewrite(url);
+    const std::string requestUrl = encodeForRequest(rewrite(url));
     const fs::path body = newTempFile(".body");
     const fs::path config = newTempFile(".curlrc");
     {

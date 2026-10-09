@@ -41,7 +41,7 @@ namespace {
     };
 
     // what the runtime's resolver says about each URL of the menu, through the project's manifest
-    std::vector<compat::Diagnostic> resolveAtRuntime(const TempProject& project, const std::vector<std::string>& urls){
+    std::vector<compat::Diagnostic> resolveAtRuntime(const TempProject& project, const std::vector<std::string>& urls, bool filesExist = true){
         const compat::FileAccess files = project.target().fileAccess();
         const ImportManifest manifest = ImportManifest::load(files);
         const UrlResolver resolver(files, &manifest);
@@ -49,7 +49,7 @@ namespace {
         compat::DiagnosticSink sink(sources);
         for (const std::string& url : urls){
             const compat::ResolvedUrl resolved = resolver.resolve(url, "ui/menu.html", "image", compat::SourceRef{}, &sink);
-            if (resolved.entry){
+            if (resolved.entry && filesExist){
                 EXPECT_FALSE(resolved.dropped()) << url;
                 EXPECT_TRUE(project.exists("assets/" + resolved.assetPath)) << url << " -> " << resolved.assetPath;
             }
@@ -77,14 +77,14 @@ TEST(ManifestWriter, SortedAtomicAndReplacing){
     ASSERT_TRUE(writer.add({a}));
 
     const std::string json = project.read("assets/htmlui-imports/manifest.json");
-    EXPECT_LT(json.find("https://a.example.com:443/y.png"), json.find("https://b.example.com/x.png"));
+    EXPECT_LT(json.find("https://a.example.com/y.png"), json.find("https://b.example.com/x.png"));
     EXPECT_NE(json.find("\"version\": 1"), std::string::npos);
     // the runtime reads what the writer wrote
     ImportManifest parsed;
     std::string error;
     ASSERT_TRUE(ImportManifest::parse(json, parsed, &error)) << error;
     ASSERT_EQ(parsed.entries().size(), 2u);
-    EXPECT_EQ(parsed.entries()[0].url, "https://a.example.com:443/y.png");
+    EXPECT_EQ(parsed.entries()[0].url, "https://a.example.com/y.png");   // the default port dropped
     EXPECT_NE(parsed.find("http://b.example.com/x.png"), nullptr);
     // no temporary file left behind
     size_t files = 0;
@@ -207,7 +207,7 @@ TEST(Discovery, MissingFileOfAnEntryIsReimported){
     const std::string path = project.manifest().find("https://images.example.com/placeholder")->path;
     fs::remove(project.assets() / path);
 
-    const auto runtime = resolveAtRuntime(project, {"https://images.example.com/placeholder"});
+    const auto runtime = resolveAtRuntime(project, {"https://images.example.com/placeholder"}, false);
     EXPECT_EQ(withCode(runtime, "HTMLUI-IMP-0009").size(), 1u) << dump(runtime);
 
     const ImportResult again = importDocumentReferences(project.root(), "assets/ui/menu.css", "");
