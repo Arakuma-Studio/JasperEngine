@@ -109,7 +109,7 @@ const VarFamily* jasperengine::htmlui::compat::findVarFamily(const std::string& 
     return nullptr;
 }
 
-std::string jasperengine::htmlui::compat::varFamilyOf(const std::string& property){
+std::string_view jasperengine::htmlui::compat::varFamilyOf(std::string_view property){
     if (property == "background" || property == "background-image")
         return "decorator";
     if (property == "mask" || property == "mask-image" || property == "-webkit-mask" || property == "-webkit-mask-image")
@@ -126,7 +126,7 @@ std::string jasperengine::htmlui::compat::varFamilyOf(const std::string& propert
         return "filter";
     if (property == "transition-timing-function" || property == "animation-timing-function")
         return "easing";
-    return std::string();
+    return std::string_view();
 }
 
 // ---- helpers

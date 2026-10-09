@@ -41,7 +41,7 @@ namespace jasperengine::htmlui::compat {
     };
     const VarFamily* findVarFamily(const std::string& name);
     // the family the declarations of a property type their var() uses in ("" = written as declared)
-    std::string varFamilyOf(const std::string& property);
+    std::string_view varFamilyOf(std::string_view property);
 
     // ---- the rewrites (css/props/*.cpp)
     void rewriteBackground(DeclContext&);

@@ -20,8 +20,8 @@ using namespace jasperengine::htmlui::compat;
 namespace {
 
     struct PropertyGrammar {
-        const char* name;
-        const char* grammar;   // alternatives separated by '|'; see check()
+        std::string_view name;
+        std::string_view grammar;   // alternatives separated by '|'; see check()
     };
 
     // RmlUi 6.3 RegisterDefaultProperties (StyleSheetSpecification.cpp) and compat's registered

@@ -555,7 +555,7 @@ namespace {
 
     // ---- pre-pass helpers
 
-    bool hasIdent(const std::vector<ComponentValue>& values, const char* lowercase){
+    bool hasIdent(const std::vector<ComponentValue>& values, std::string_view lowercase){
         for (const ComponentValue& v : values){
             if (v.isToken(TokenType::Ident) && equalsNoCase(v.token.value, lowercase))
                 return true;
@@ -682,14 +682,14 @@ namespace {
                             name = name.substr(p.size());
                     }
                 }
-                const std::string family = varFamilyOf(name);
+                const std::string_view family = varFamilyOf(name);
                 const ComponentValue* sole = soleValue(d.value);
                 const bool whole = sole && sole->isFunction("var");
                 const bool timing = name == "transition" || name == "animation" || name == "transition-timing-function" ||
                                     name == "animation-timing-function";
                 for (const std::string& variable : referenced){
                     if (!family.empty() && whole && family != "easing"){
-                        session.vars.addUse(variable, family);
+                        session.vars.addUse(variable, std::string(family));
                         continue;
                     }
                     if (timing){
