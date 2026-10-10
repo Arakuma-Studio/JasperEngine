@@ -15,6 +15,7 @@
 #include <cctype>
 #include <cmath>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <system_error>
 #include <chrono>
@@ -3000,7 +3001,23 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
         prefabContents.push_back(std::move(content));
     }
 
-    ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys);
+    ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, scriptsSetLightCapacity());
+}
+
+bool editor::Project::scriptsSetLightCapacity() const {
+    // Scene.maxLightsPerObject (Lua) or Scene::setMaxLightsPerObject (C++): the one way the
+    // light capacity tier of the lit variants changes at runtime
+    for (const fs::path& script : findProjectFiles([](const std::string& path) { return Util::isScriptFile(path); })) {
+        std::ifstream file(getProjectPath() / script, std::ios::binary);
+        if (!file) {
+            continue;
+        }
+        const std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        if (content.find("axLightsPerObject") != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void editor::Project::buildStandaloneShaderCache() {

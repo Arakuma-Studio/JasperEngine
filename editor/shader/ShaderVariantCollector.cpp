@@ -117,7 +117,8 @@ namespace {
     // The lighting setups a scene can be in: its own content, with any of the build's prefabs
     // spawned in it. A skybox's environment maps light meshes only once they are built, so
     // the setups without them are reachable too (an asynchronous load draws before that).
-    std::vector<MeshShaderEnvironment> reachableEnvironments(Scene* scene, uint32_t sceneFacts, const std::vector<uint32_t>& prefabFacts){
+    std::vector<MeshShaderEnvironment> reachableEnvironments(Scene* scene, uint32_t sceneFacts, const std::vector<uint32_t>& prefabFacts,
+                                                             bool allLightCapacities){
         std::set<uint32_t> reached{sceneFacts};
         std::vector<uint32_t> pending{sceneFacts};
         while (!pending.empty()){
@@ -143,6 +144,15 @@ namespace {
             MeshShaderEnvironment environment = toEnvironment(facts, scene);
             if (distinct.insert(environmentBits(environment)).second){
                 environments.push_back(environment);
+            }
+            // a script setting maxLightsPerObject reaches the other capacity tiers
+            if (allLightCapacities && environment.lights){
+                for (int capacity : {4, 8, 16}){
+                    environment.lightCapacity = capacity;
+                    if (distinct.insert(environmentBits(environment)).second){
+                        environments.push_back(environment);
+                    }
+                }
             }
         }
         return environments;
@@ -517,7 +527,7 @@ namespace {
 
 void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
                                                   const std::vector<ShaderVariantContent>& prefabContents,
-                                                  std::set<ShaderKey>& keys){
+                                                  std::set<ShaderKey>& keys, bool allLightCapacities){
     if (!scene || !sceneContent.registry){
         return;
     }
@@ -536,7 +546,7 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         }
     }
 
-    const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts);
+    const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities);
 
     Collector collector(scene, environments, keys);
     collector.collect(sceneContent);

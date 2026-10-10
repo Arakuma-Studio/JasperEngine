@@ -27,11 +27,16 @@ namespace jasperengine::editor {
     // prefab a script spawns can bring its own: every combination the scene's content and the
     // build's prefabs can reach is collected, for the scene's own GameObjects and for every
     // prefab spawned into it.
+    //
+    // Lit variants are keyed by the per-object light capacity tier (4, 8 or 16 lights, from
+    // the scene's maxLightsPerObject). Only a script can change it at runtime: with
+    // allLightCapacities (the project's scripts set maxLightsPerObject) every tier is
+    // collected, else only the scene's own.
     class ShaderVariantCollector {
     public:
         static void collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
                                  const std::vector<ShaderVariantContent>& prefabContents,
-                                 std::set<ShaderKey>& keys);
+                                 std::set<ShaderKey>& keys, bool allLightCapacities = false);
     };
 
 }
