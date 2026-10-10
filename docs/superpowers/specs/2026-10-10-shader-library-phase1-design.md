@@ -564,3 +564,98 @@ exports, builds, runs and screenshots it without errors or missing-shader log li
 
 Every requirement above is implemented, every check in section 11 passes, the work is
 merged into `shader-library`, and a review pass found no open correctness bugs.
+
+## 13. Implementation notes
+
+Decisions taken while implementing phase 1, and deviations from the text above. They
+override the sections they refer to; later agents follow them.
+
+### 13.1 Shader system (sl/p1-core)
+
+- `@require position` exists (`SURFACE_POSITION`, `v_position`), beside the inputs of
+  section 4. `surface_vs.glsl` writes a varying only when a `SURFACE_*` define asks for it
+  (the compiler adds them from `@require`, in both stages), because an output the
+  fragment stage does not read fails the cross-compile.
+- `shaderFeatures` entries may be `!<DEFINE>`: they turn a `default=on` feature off.
+- Colour defaults in manifests (`color`, `hdrcolor`) are written sRGB and stored linear,
+  like edited values.
+- Render state: AUTO everywhere keeps the legacy alpha-blend pipeline even for opaque
+  objects (identical to the old path); only an explicit `NONE` (`blend=opaque`) disables
+  blending. Library shaders that are opaque say `@state blend=opaque`.
+
+### 13.2 Unified lighting (sl/p1-lighting)
+
+- Variant bits: `Vtl` = 28 (`USE_VERTEX_LIGHTS`), `Lc4` = 29 and `L16` = 30 (capacity
+  tier; neither = 8 lights, so default keys did not change).
+- The spot mask atlas tile of each pixel light is packed into `counts.zw` of the lights
+  block (3 bits per light, 7 = none, lights 0-7 in z, 8-15 in w).
+- Fog lives in the frame block (`fogColor_type`, `fogDensity_start_end`): `fog.glsl`
+  declares `u_fs_frame` itself, `getFogColor(vec3)` is unchanged. The engine-internal
+  frame members appended after `ambient` are `lightingInfo`, `environment`,
+  `viewportInfo`, `fogColor_type`, `fogDensity_start_end` (frame.glsl and `frame_t`).
+
+### 13.3 Integration
+
+- One frame block path: `RenderSystem::updatePassFrame(camera, transform)` fills
+  `passFrame` once per camera pass, contract members (`fillFrameBlock`) then the
+  engine-internal ones (`fillFrameLighting`), before that camera's shadow passes and draws:
+  the scene camera (before the frame's shadow maps and again for its colour pass),
+  render-to-texture cameras, mirror reflections, reflection probe faces and editor
+  views (including their own shadow passes). Every draw resolves its frame slots once at
+  load (`ShaderLibraryBindings`, also for the built-in shaders) and uploads the block once
+  (`applyFrameBlock`). The editor's "no fog" view setting is applied to the block.
+  `frame.resolution` is the pass's target size (camera texture, fixed resolution, or view).
+- Lighting modes. `MaterialLighting` gained `NONE` (appended, value 4) so a shader listing
+  `none` with another default can be drawn unlit. The effective mode
+  (`RenderSystem::resolveLighting`) is `material.lighting` when the shader lists it, else
+  the shader's default (first `@lighting` entry, `none` without the directive; built-in
+  Lit and forks without a manifest: `PIXEL`, listing pixel, vertex, mixed). An unlisted
+  request is logged once per material/shader pair. The editor's lighting combo should list
+  `RenderSystem::supportsLighting` modes. A manifest shader in a lit mode gets
+  `USE_PUNCTUAL` (pixel, mixed), `USE_VERTEX_LIGHTS` (vertex, mixed), shadows for pixel
+  lights, normals (`HAS_NORMALS` when the mesh has them), and never Lit's IBL, SSAO or
+  material normal map. Without scene lights (or `receiveLights` off) it compiles
+  `MATERIAL_UNLIT`, as Lit does: lit library shaders draw their unlit colour then.
+  `ShaderVariantCollector` uses the same functions, so its keys are identical.
+- A pixel-lit (`USE_PUNCTUAL`) variant of a manifest shader is compiled with
+  `SURFACE_POSITION` and `SURFACE_NORMALS` whatever `@require` says: its fragment stage
+  must read `v_position` and `v_normal` under `USE_PUNCTUAL`.
+- Light units (`lights.glsl`): every helper returns light to multiply directly by the
+  surface colour, with Lambert's 1/PI inside, as Lit's `BRDF_lambertian`: `ambientLight`
+  (scene ambient plus the lights over the cap, which the engine folds with 1/PI),
+  `vertexDiffuse`, `lambert(LightSample, n)` and `blinnPhong(LightSample, n, v,
+  shininess)` (normalised, times the specular colour). Only `LightSample.radiance` is raw.
+  `ambientLightScaled` was removed. Lit was adjusted to the same units (renders the same).
+  Lit's dielectric diffuse stays about 4% below a library shader's for the same albedo:
+  its `albedoColor` is `base * (1 - f0)` (the energy its specular takes), not a unit.
+- `v_vertexLight` (surface_vs.glsl and mesh.vert) is `vertexDiffuse`, plus `ambientLight`
+  in vertex mode (no `USE_PUNCTUAL`: the fragment stage has no lights block). A library
+  fragment shader adds it as is. With `USE_SHADOWS` it must call `lightShadow` for its
+  pixel lights (the `v_lightProjPos[]` varyings must be read). Loop pixel lights as
+  `for (i < LIGHT_CAPACITY) { if (i >= pixelLightCount()) break; ... }`.
+- Varyings link by name: the shader compiler gives each fragment input the location of
+  the vertex output of the same name before cross-compiling (glslang numbers each stage
+  in declaration order, which broke GL/HLSL/MSL/Vulkan linking when a library `.frag`
+  declared its inputs in another order than `surface_vs.glsl`). A fragment shader may
+  declare its inputs in any order; every one must still be read (and every output used).
+- `simple_lit` builds its normal-map tangent frame from screen-space derivatives (no
+  `@require tangents`: `@require` cannot depend on a feature, and declaring tangents for
+  every variant would leave unread varyings without `NORMAL_MAP`). The normal map applies
+  to pixel lights only.
+- Compile matrix: each lit mode at each capacity tier (8, 4, 16), with and without
+  shadows, plus the no-scene-lights (unlit) fallback; the first mode at tier 8 with every
+  feature set; the mesh cases per mode.
+- Export: lit variants depend on the capacity tier, which only a script can change at
+  runtime (`scene.maxLightsPerObject`, `Scene::setMaxLightsPerObject`). When any project
+  script mentions `maxLightsPerObject`/`MaxLightsPerObject`, the collector adds every tier
+  (4, 8, 16) to each lit environment; otherwise only the scene's own tier ships (a tier
+  switch then compiles at runtime, or misses its variants without the runtime compiler).
+- `check_shader` / `check --shaders` compile a mesh shader that has a manifest in the
+  variant of its default lighting mode (UVs, normals, vertex colour, scene lights for a lit
+  default) instead of properties 0, so the lit path and the textures it samples are
+  checked; the full matrix stays `shaders --library`.
+- Library shader signatures include the embedded library hash, so the editor's cached
+  builds of library shaders are rebuilt when an include changes; the editor shader cache
+  moved to `v31`.
+- Lua cannot write `Material.baseColorFactor`, `metallicFactor` or `roughnessFactor` (read
+  only on the copy `getMaterial` returns); fixtures use glTF materials or `setColor`.
