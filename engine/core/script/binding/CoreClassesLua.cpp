@@ -1003,18 +1003,17 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        // Mesh::getMaterial hands back a copy, so these stay read-only: a write would look
-        // like it worked and change nothing. Use Mesh::setMaterial.
+        // Mesh::getMaterial hands back a copy: the values are written on it, then the copy is
+        // set back (m.roughnessFactor = 0.2; mesh:setMaterial(m)). Textures stay read-only.
         .beginClass<Material>("Material")
-        .addProperty("baseColorFactor", &Material::baseColorFactor)
-        .addProperty("metallicFactor", &Material::metallicFactor)
-        .addProperty("roughnessFactor", &Material::roughnessFactor)
-        .addProperty("alphaMode", &Material::alphaMode)
-        // writable for the copy getMaterial returns: m.lighting = ...; mesh:setMaterial(m)
+        .addProperty("baseColorFactor", &Material::baseColorFactor, &Material::baseColorFactor)
+        .addProperty("metallicFactor", &Material::metallicFactor, &Material::metallicFactor)
+        .addProperty("roughnessFactor", &Material::roughnessFactor, &Material::roughnessFactor)
+        .addProperty("alphaMode", &Material::alphaMode, &Material::alphaMode)
         .addProperty("lighting", &Material::lighting, &Material::lighting)
-        .addProperty("alphaCutoff", &Material::alphaCutoff)
-        .addProperty("foliageTransmission", &Material::foliageTransmission)
-        .addProperty("emissiveFactor", &Material::emissiveFactor)
+        .addProperty("alphaCutoff", &Material::alphaCutoff, &Material::alphaCutoff)
+        .addProperty("foliageTransmission", &Material::foliageTransmission, &Material::foliageTransmission)
+        .addProperty("emissiveFactor", &Material::emissiveFactor, &Material::emissiveFactor)
         .addProperty("baseColorTexture", &Material::baseColorTexture)
         .addProperty("emissiveTexture", &Material::emissiveTexture)
         .addProperty("metallicRoughnessTexture", &Material::metallicRoughnessTexture)

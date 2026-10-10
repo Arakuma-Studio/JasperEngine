@@ -265,6 +265,21 @@ void MeshSystem::applySubmeshOverride(const Submesh& saved, Submesh& submesh) {
         material.normalTexCoord = savedMaterial.normalTexCoord;
     }
 
+    if (fields & SubmeshOverride_Shader)         material.shader         = savedMaterial.shader;
+    if (fields & SubmeshOverride_ShaderParams)   material.shaderParams   = savedMaterial.shaderParams;
+    if (fields & SubmeshOverride_ShaderTextures) material.shaderTextures = savedMaterial.shaderTextures;
+    if (fields & SubmeshOverride_ShaderFeatures) material.shaderFeatures = savedMaterial.shaderFeatures;
+    if (fields & SubmeshOverride_BlendMode)      material.blendMode      = savedMaterial.blendMode;
+    if (fields & SubmeshOverride_CullMode)       material.cullMode       = savedMaterial.cullMode;
+    if (fields & SubmeshOverride_DepthWrite)     material.depthWrite     = savedMaterial.depthWrite;
+    if (fields & SubmeshOverride_DepthTest)      material.depthTest      = savedMaterial.depthTest;
+    if (fields & SubmeshOverride_DepthOffset) {
+        material.depthOffsetFactor = savedMaterial.depthOffsetFactor;
+        material.depthOffsetUnits = savedMaterial.depthOffsetUnits;
+    }
+    if (fields & SubmeshOverride_SortPriority)   material.sortPriority   = savedMaterial.sortPriority;
+    if (fields & SubmeshOverride_Lighting)       material.lighting       = savedMaterial.lighting;
+
     if (fields & SubmeshOverride_FaceCulling)   submesh.faceCulling   = saved.faceCulling;
     if (fields & SubmeshOverride_TextureShadow) submesh.textureShadow = saved.textureShadow;
     if (fields & SubmeshOverride_PrimitiveType) submesh.primitiveType = saved.primitiveType;
