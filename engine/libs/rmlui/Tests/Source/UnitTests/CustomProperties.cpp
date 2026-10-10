@@ -499,7 +499,9 @@ TEST_CASE("custom_properties.data_model")
 	String bg_color = "";
 	model.Bind("bg_color", &bg_color);
 
-	TestsShell::SetNumExpectedWarnings(1); // Invalid value during substitution.
+	// Invalid value during substitution: when the document loads, and again when it is shown (visibility is inherited, FORK.md
+	// P3-4: showing the document restyles the div).
+	TestsShell::SetNumExpectedWarnings(2);
 	ElementDocument* document = context->LoadDocumentFromMemory(data_model_rml);
 	document->Show();
 	Element* div = document->GetElementById("div");
@@ -1403,15 +1405,13 @@ TEST_CASE("custom_properties.misc_properties")
 		Element* div = TestsShell::GetElementChild(document, 0);
 
 		CHECK(div->GetComputedValues().has_box_shadow());
-		CHECK(div->GetProperty(PropertyId::BoxShadow)->Get<BoxShadowList>() ==
-			BoxShadowList{BoxShadow{
-				ColourbPremultiplied{0, 255, 0, 255},
-				NumericValue{0, Unit::DP},
-				NumericValue{8, Unit::DP},
-				NumericValue{24, Unit::DP},
-				NumericValue{0, Unit::DP},
-				false,
-			}});
+		BoxShadow expected_shadow;
+		expected_shadow.color = ColourbPremultiplied{0, 255, 0, 255};
+		expected_shadow.offset_x = NumericValue{0, Unit::DP};
+		expected_shadow.offset_y = NumericValue{8, Unit::DP};
+		expected_shadow.blur_radius = NumericValue{24, Unit::DP};
+		expected_shadow.spread_distance = NumericValue{0, Unit::DP};
+		CHECK(div->GetProperty(PropertyId::BoxShadow)->Get<BoxShadowList>() == BoxShadowList{expected_shadow});
 	}
 
 	SUBCASE("flex")
