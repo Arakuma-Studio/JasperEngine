@@ -289,8 +289,9 @@ void main() {
             f_specular += getIBLRadianceGGX(n, v, v_position, materialInfo.perceptualRoughness, materialInfo.f0);
             f_diffuse += getIBLRadianceLambertian(n, v, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
             #ifdef USE_PUNCTUAL
-                // the lights over the object's cap, folded into its SH ambient (zero without any)
-                vec3 overflowLight = max(ambientLight(n) - frame.ambient.rgb, vec3(0.0)) / M_PI;
+                // the lights over the object's cap, folded into its SH ambient (zero without any;
+                // already divided by PI, see includes/lights.glsl)
+                vec3 overflowLight = max(ambientLight(n) - frame.ambient.rgb, vec3(0.0));
                 float overflowNdotV = clampedDot(n, v);
                 f_specular += envRadianceGGX(overflowLight, overflowNdotV, materialInfo.perceptualRoughness, materialInfo.f0);
                 f_diffuse += envRadianceLambertian(overflowLight, overflowNdotV, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
@@ -300,13 +301,13 @@ void main() {
             // lights, plus the lights over the object's cap from its SH ambient, which is the
             // scene ambient alone when none is over the cap
             #ifdef USE_PUNCTUAL
-                vec3 ambientLight = ambientLightScaled(n, frame.ambient.rgb, 1.0 / M_PI);
+                vec3 envLight = frame.ambient.rgb + max(ambientLight(n) - frame.ambient.rgb, vec3(0.0));
             #else
-                vec3 ambientLight = frame.ambient.rgb;
+                vec3 envLight = frame.ambient.rgb;
             #endif
             float ambNdotV = clampedDot(n, v);
-            f_specular += envRadianceGGX(ambientLight, ambNdotV, materialInfo.perceptualRoughness, materialInfo.f0);
-            f_diffuse += envRadianceLambertian(ambientLight, ambNdotV, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
+            f_specular += envRadianceGGX(envLight, ambNdotV, materialInfo.perceptualRoughness, materialInfo.f0);
+            f_diffuse += envRadianceLambertian(envLight, ambNdotV, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
         #endif
 
         #if defined(HAS_UV_SET1) || defined(HAS_UV_SET2)
@@ -382,7 +383,8 @@ void main() {
         #endif
 
         #ifdef USE_VERTEX_LIGHTS
-            // the vertex lights: Lambert diffuse, as the pixel lights' (BRDF_lambertian)
+            // the vertex lights: Lambert diffuse, as the pixel lights' (BRDF_lambertian); the
+            // 1/PI is inside vertexDiffuse (includes/lights.glsl)
             #ifdef USE_PUNCTUAL
                 vec3 vertexLight = v_vertexLight;
             #else
@@ -390,7 +392,7 @@ void main() {
                 // the scene ambient part of which is applied above
                 vec3 vertexLight = max(v_vertexLight - frame.ambient.rgb, vec3(0.0));
             #endif
-            f_diffuse += vertexLight * materialInfo.albedoColor / M_PI;
+            f_diffuse += vertexLight * materialInfo.albedoColor;
         #endif
 
         f_emissive = pbrParams.emissiveFactor;

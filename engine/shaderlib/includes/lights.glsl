@@ -2,23 +2,39 @@
 // engine under one cap (SceneSettings::maxLightsPerObject), in one data layout for both
 // stages. Define LIGHTS_VS (in a .vert) or LIGHTS_FS (in a .frag) before including, only in
 // the stages that read the lights: GL drivers strip an unused block, which breaks the bind
-// slots. The block layout and the functions up to lightShadow are a contract with the
-// library shaders; functions may be added, none changed.
+// slots. The block layout and the functions (getLight to lightShadow) are a contract with
+// the library shaders; functions may be added, none changed.
 //
 // Pixel lights are indices [0, pixelLightCount()), the vertex lights follow them, up to
 // pixelLightCount() + vertexLightCount(). Loop with the constant LIGHT_CAPACITY bound (HLSL
 // unrolls a loop that samples spot masks or shadow maps):
 //
+//     vec3 light = ambientLight(n);
 //     for (int i = 0; i < LIGHT_CAPACITY; i++){
 //         if (i >= pixelLightCount()) break;
-//         LightSample light = getLight(i, v_position);
-//         diffuse += light.radiance * max(dot(n, light.direction), 0.0);
+//         LightSample s = getLight(i, v_position);
+//         light += lambert(s, n) * lightShadow(i, v_position, n); // lightShadow: USE_SHADOWS only
 //     }
+//     color = albedo * light;
 //
-// Units: radiance is colour * intensity * attenuation, with no 1/PI; ambientLight (scene
-// ambient plus the lights over the cap) and vertexDiffuse use the same units. A shader
-// dividing its direct light by PI, as the built-in Lit does, scales the light part of the
-// ambient the same way with ambientLightScaled.
+// Units, the one convention for every shader: ambientLight, vertexDiffuse, lambert and
+// blinnPhong return light to multiply directly by the surface colour (albedo for diffuse,
+// the specular colour for blinnPhong). Lambert's 1/PI is inside them, as in the built-in
+// Lit's BRDF_lambertian, so one light looks equally bright in Lit and in a library shader,
+// per pixel and per vertex. Only LightSample.radiance (colour * intensity * attenuation)
+// is the raw light, for a shader with its own BRDF: divide its diffuse by PI to match.
+// ambientLight is the scene ambient (frame.ambient) plus the lights over the cap, folded
+// by the engine in the same units.
+//
+// In a library shader (includes/surface_vs.glsl):
+//   - USE_PUNCTUAL (pixel, mixed): the fragment stage declares LIGHTS_FS, adds
+//     ambientLight(n) and the pixel lights; v_position and v_normal are always written.
+//   - USE_VERTEX_LIGHTS (vertex, mixed): v_vertexLight holds vertexDiffuse, plus
+//     ambientLight when USE_PUNCTUAL is off (vertex mode: the fragment stage has no lights
+//     block). Add it as is: light += v_vertexLight.
+//   - USE_SHADOWS (pixel lights that receive shadows): call lightShadow for the pixel
+//     lights, which reads the v_lightProjPos[] varyings surface_vs.glsl writes (an unread
+//     varying fails the cross-compile).
 //
 // Fragment stage: with USE_PUNCTUAL, spot lights with a projected mask apply it
 // (u_spotMaskAtlas, declared here); with USE_SHADOWS the shadow maps are declared here and
@@ -166,7 +182,11 @@ LightSample getLight(int index, vec3 worldPosition){
     return lightSample;
 }
 
-// scene ambient plus the lights over the cap, for a world normal; linear, never negative
+// 1/PI: Lambert's normalisation, inside every helper below
+const float LIGHT_INV_PI = 0.31830988618;
+
+// scene ambient plus the lights over the cap, for a world normal; light to multiply by
+// albedo, linear, never negative
 vec3 ambientLight(vec3 worldNormal){
     return max(vec3(
         dot(objectLights.shR.xyz, worldNormal) + objectLights.shR.w,
@@ -174,14 +194,22 @@ vec3 ambientLight(vec3 worldNormal){
         dot(objectLights.shB.xyz, worldNormal) + objectLights.shB.w), vec3(0.0));
 }
 
-// ambientLight with the part the lights over the cap add scaled by lightScale, so it stays
-// in step with a shader's own direct light (Lit: 1/PI). sceneAmbient is the scene's ambient
-// (frame.ambient.rgb); with no light over the cap this returns it unchanged.
-vec3 ambientLightScaled(vec3 worldNormal, vec3 sceneAmbient, float lightScale){
-    return sceneAmbient + max(ambientLight(worldNormal) - sceneAmbient, vec3(0.0)) * lightScale;
+// Lambert diffuse of one light: light to multiply by albedo (radiance * max(n.l, 0) / PI)
+vec3 lambert(LightSample lightSample, vec3 worldNormal){
+    return lightSample.radiance * (max(dot(worldNormal, lightSample.direction), 0.0) * LIGHT_INV_PI);
 }
 
-// sum of the Lambert diffuse (radiance * max(n.l, 0)) of the vertex lights
+// Normalised Blinn-Phong specular of one light, light to multiply by the specular colour:
+// radiance * n.l * (shininess + 8) / (8 PI) * max(n.h, 0)^shininess. viewDirection is from
+// the surface towards the camera, normalised.
+vec3 blinnPhong(LightSample lightSample, vec3 worldNormal, vec3 viewDirection, float shininess){
+    float NdotL = max(dot(worldNormal, lightSample.direction), 0.0);
+    vec3 halfway = normalize(lightSample.direction + viewDirection);
+    float NdotH = max(dot(worldNormal, halfway), 0.0);
+    return lightSample.radiance * (NdotL * (shininess + 8.0) * (0.125 * LIGHT_INV_PI) * pow(NdotH, shininess));
+}
+
+// sum of the Lambert diffuse of the vertex lights, light to multiply by albedo (as lambert)
 vec3 vertexDiffuse(vec3 worldPosition, vec3 worldNormal){
     vec3 diffuse = vec3(0.0);
     int first = pixelLightCount();
@@ -193,7 +221,7 @@ vec3 vertexDiffuse(vec3 worldPosition, vec3 worldNormal){
         float NdotL = max(dot(worldNormal, normalize(pointToLight)), 0.0);
         diffuse += getLightConeAttenuation(light, pointToLight) * light.intensity * light.color * NdotL;
     }
-    return diffuse;
+    return diffuse * LIGHT_INV_PI;
 }
 
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS)

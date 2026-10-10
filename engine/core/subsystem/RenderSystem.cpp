@@ -1228,9 +1228,11 @@ namespace {
     }
 
     // a light over the cap into an L1 SH ambient: its Lambert diffuse, kept non-negative as
-    // radiance * (1 + n.l) / 4 (the energy of max(n.l, 0) over the sphere)
+    // radiance * (1 + n.l) / 4 (the energy of max(n.l, 0) over the sphere), divided by PI
+    // like every light lights.glsl hands a shader (light to multiply by albedo, as Lit's
+    // BRDF_lambertian), so the SH is the scene ambient plus the folded lights as is
     void foldLight(const Vector4& colorIntensity, const Vector3& towardsLight, float attenuation, Vector4 sh[3]){
-        const float scale = 0.25f * colorIntensity.w * attenuation;
+        const float scale = (0.25f / 3.14159265f) * colorIntensity.w * attenuation;
         for (int c = 0; c < 3; c++){
             const float radiance = scale * colorIntensity[c];
             sh[c] += Vector4(radiance * towardsLight.x, radiance * towardsLight.y, radiance * towardsLight.z, radiance);
@@ -1627,11 +1629,11 @@ void RenderSystem::buildLegacyLighting(const MeshComponent& mesh, uint32_t prope
         leftOut = true;
     }
     if (leftOut){
-        // the SH at no particular normal (its constant term), its light part divided by PI
-        // as Lit-like forks divide their direct light
+        // the SH at no particular normal (its constant term); its light part is already
+        // divided by PI (foldLight), as Lit-like forks divide their direct light
         Vector3 flat;
         for (int c = 0; c < 3; c++){
-            flat[c] = lightListAmbient[c] + std::max(sh[c].w - lightListAmbient[c], 0.0f) / 3.14159265f;
+            flat[c] = lightListAmbient[c] + std::max(sh[c].w - lightListAmbient[c], 0.0f);
         }
         block.globalIllum = Vector4(flat.x, flat.y, flat.z, 1.0f);
     }

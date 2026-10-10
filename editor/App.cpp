@@ -3511,7 +3511,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      lights.glsl) with vertex-light ('Vtl') and capacity-tier ('Lc4', 'L16') bits; Lit
     //      reads the camera and fog from the frame block (u_fs_fog and u_fs_lighting are gone
     //      from the built-in shader; forks declaring u_fs_lighting are still filled).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v30";
+    // v31: one light unit for every shader (includes/lights.glsl): vertexDiffuse and the
+    //      folded SH lights carry Lambert's 1/PI, so Lit no longer divides them itself.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v31";
 }
 
 void editor::App::pushTabNotificationStyle(){
