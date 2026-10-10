@@ -626,9 +626,20 @@ void ElementStyle::TransitionPropertyChanges(const PropertySources& sources, Pro
 	}
 }
 
+#ifdef RMLUI_TESTS_ENABLED
+static int num_definition_updates = 0;
+int ElementStyle::GetNumDefinitionUpdates()
+{
+	return num_definition_updates;
+}
+#endif
+
 void ElementStyle::UpdateDefinition()
 {
 	RMLUI_ZoneScoped;
+#ifdef RMLUI_TESTS_ENABLED
+	num_definition_updates++;
+#endif
 
 	SharedPtr<const ElementDefinition> new_definition;
 

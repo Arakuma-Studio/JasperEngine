@@ -32,6 +32,11 @@ public:
 	/// Builds up a style sheet's index recursively.
 	void BuildIndex(StyleSheetIndex& styled_node_index) const;
 
+	/// The compound selector of the node.
+	const CompoundSelector& GetSelector() const { return selector; }
+	/// The parent node, nullptr for the root node.
+	const StyleSheetNode* GetParent() const { return parent; }
+
 	/// Imports properties from a single rule definition into the node's properties and sets the appropriate specificity on them. Any existing
 	/// attributes sharing a key with a new attribute will be overwritten if they are of a lower specificity.
 	/// @param[in] properties The properties to import.

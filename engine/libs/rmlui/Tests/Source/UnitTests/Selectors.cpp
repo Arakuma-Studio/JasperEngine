@@ -1,4 +1,5 @@
 #include "../Common/TestsShell.h"
+#include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/Element.h>
@@ -555,6 +556,7 @@ TEST_CASE("Selectors.placeholder")
 
 	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
 	// The following sets "::placeholder-shown" rather than ":placeholder-shown", which should be recognized as two different pseudo-classes.
+	// (Phase 3: '::name' is a pseudo-element, so '::placeholder-shown' is an unknown one; such selectors are invalid.)
 	document->GetElementById("D")->SetPseudoClass(":placeholder-shown", true);
 	document->Show();
 
@@ -565,14 +567,19 @@ TEST_CASE("Selectors.placeholder")
 	};
 
 	CheckSelector(":placeholder-shown", "A");
-	CheckSelector("::placeholder-shown", "D");
-	CheckSelector("div::placeholder-shown", "D");
+	// Each invalid selector warns twice: invalid, and the query is empty.
+	TestsShell::SetNumExpectedWarnings(4);
+	CheckSelector("::placeholder-shown", "");
+	CheckSelector("div::placeholder-shown", "");
+	TestsShell::SetNumExpectedWarnings(0);
 
 	CheckSelector("input:placeholder-shown", "A");
 	CheckSelector("input.text:placeholder-shown", "A");
 	CheckSelector("input[type=text]:placeholder-shown", "A");
 	CheckSelector("input[type=password]:placeholder-shown", "");
+	TestsShell::SetNumExpectedWarnings(2);
 	CheckSelector("input::other", "");
+	TestsShell::SetNumExpectedWarnings(0);
 
 	document->GetElementById("B")->SetAttribute("value", "");
 	TestsShell::RenderLoop();
@@ -585,6 +592,189 @@ TEST_CASE("Selectors.placeholder")
 	document->GetElementById("B")->SetAttribute("value", "Some value again");
 	TestsShell::RenderLoop();
 	CheckSelector(":placeholder-shown", "");
+
+	context->UnloadDocument(document);
+	TestsShell::ShutdownShell();
+}
+
+// Phase 3, cascade (docs/html-ui/phase-3-fork-patches.md 3.5): :root, :is(), :where(), :has(), the form-state
+// pseudo-classes, attribute flags, :nth-child(An+B of S), the An+B grammar, and invalid selectors dropped with a warning.
+static const String level4_rml = R"(
+<rml>
+<head>
+	<style>
+		body { width: 400px; }
+	</style>
+</head>
+<body>
+	<div id="R" class="row">
+		<p id="R1" class="done"/><p id="R2"/><p id="R3" class="done"/><p id="R4"/><p id="R5" class="done"/>
+	</div>
+	<form id="F">
+		<input id="I1" type="text"/>
+		<input id="I2" type="text" disabled=""/>
+		<input id="I3" type="text" readonly="" required=""/>
+		<input id="I4" type="checkbox" checked=""/>
+		<input id="I5" type="submit"/>
+		<fieldset id="FS" disabled="">
+			<legend id="L"><input id="LI" type="text"/></legend>
+			<input id="FI" type="text"/>
+		</fieldset>
+		<button id="B1"/>
+	</form>
+	<a id="A1" href="#x"/><a id="A2"/>
+	<div id="T" lang="EN-us" data-x="Hello"/>
+	<ul id="U"><li id="U1"><input id="UC" type="checkbox"/></li><li id="U2"/></ul>
+	<div id="S1" class="card"/><div id="S2" class="badge"/>
+</body>
+</rml>
+)";
+
+TEST_CASE("Selectors.Level4")
+{
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = context->LoadDocumentFromMemory(level4_rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+
+	auto Query = [&](const String& selector) {
+		ElementList elements;
+		document->QuerySelectorAll(elements, selector);
+		return ElementListToIds(elements);
+	};
+
+	SUBCASE("root, is, where")
+	{
+		CHECK(document->Matches(":root"));
+		CHECK(Query(":root") == "");
+		CHECK(Query(":is(#R1, #R3)") == "R1 R3");
+		CHECK(Query("#R > :is(.done, #R2):not(#R5)") == "R1 R2 R3");
+		CHECK(Query(":where(#R2, #R4)") == "R2 R4");
+		CHECK(Query(":matches(#R2)") == "R2");
+		// forgiving: the invalid argument is left out
+		CHECK(Query(":is(#R1, ::nonsense, #R2)") == "R1 R2");
+		CHECK(Query(":where(:unknown-thing, #R3)") == "R3");
+	}
+
+	SUBCASE("has")
+	{
+		CHECK(Query("div:has(> .done)") == "R");
+		CHECK(Query("li:has(input)") == "U1");
+		CHECK(Query("li:has(> input:checked)") == "");
+		CHECK(Query("div:has(+ .badge)") == "S1");
+		// every div before the badge among its siblings
+		CHECK(Query("div:has(~ .badge)") == "R T S1");
+		CHECK(Query(":has(#nothing)") == "");
+		TestsShell::SetNumExpectedWarnings(2);
+		CHECK(Query("div:has(:has(p))") == "");
+		TestsShell::SetNumExpectedWarnings(0);
+	}
+
+	SUBCASE("form states")
+	{
+		CHECK(Query("input:enabled") == "I1 I3 I4 I5 LI UC");
+		CHECK(Query(":disabled") == "I2 FS FI");
+		CHECK(Query(":read-write") == "I1 LI");
+		CHECK(Query("input:read-only") == "I2 I3 I4 I5 FI UC");
+		CHECK(Query(":required") == "I3");
+		CHECK(Query("input:optional") == "I1 I2 I4 LI FI UC");
+		CHECK(Query(":default") == "I4 I5");
+		CHECK(Query(":link") == "A1");
+		CHECK(Query(":any-link") == "A1");
+		CHECK(Query(":visited") == "");
+		CHECK(Query(":target") == "");
+		document->SetTarget("T");
+		CHECK(Query(":target") == "T");
+		document->SetTarget("");
+		CHECK(Query(":indeterminate") == "");
+		document->GetElementById("FS")->RemoveAttribute("disabled");
+		CHECK(Query(":disabled") == "I2");
+	}
+
+	SUBCASE("attribute flags")
+	{
+		CHECK(Query("[data-x=hello]") == "");
+		CHECK(Query("[data-x=hello i]") == "T");
+		CHECK(Query("[data-x='HELLO' i]") == "T");
+		CHECK(Query("[data-x='Hello' s]") == "T");
+		CHECK(Query("[data-x='hello' s]") == "");
+		CHECK(Query("[lang|=en i]") == "T");
+		CHECK(Query("[data-x^=HE i]") == "T");
+	}
+
+	SUBCASE("nth-child of S and An+B")
+	{
+		CHECK(Query("#R > :nth-child(2 of .done)") == "R3");
+		CHECK(Query("#R > :nth-last-child(1 of .done)") == "R5");
+		CHECK(Query("#R > :nth-child(odd of .done)") == "R1 R5");
+		CHECK(Query("#R > :nth-child(-n+2)") == "R1 R2");
+		CHECK(Query("#R > :nth-child(+2n - 1)") == "R1 R3 R5");
+		CHECK(Query("#R > :nth-child(n+4)") == "R4 R5");
+		CHECK(Query("#R > :nth-child(3)") == "R3");
+		CHECK(Query("#R > :nth-child(-3n+5)") == "R2 R5");
+		// three warnings each: the argument, the invalid selector, the empty query
+		TestsShell::SetNumExpectedWarnings(9);
+		CHECK(Query("#R > :nth-child(2 n)") == "");
+		CHECK(Query("#R > :nth-child(abc)") == "");
+		CHECK(Query("#R > :nth-child(+ 2)") == "");
+		TestsShell::SetNumExpectedWarnings(0);
+	}
+
+	SUBCASE("invalid selectors are dropped")
+	{
+		// an unknown pseudo-class, a pseudo-element in the middle, a leading or trailing combinator
+		TestsShell::SetNumExpectedWarnings(8);
+		CHECK(Query(":frobnicate") == "");
+		CHECK(Query("p::before span") == "");
+		CHECK(Query("> p") == "");
+		CHECK(Query("p >") == "");
+		TestsShell::SetNumExpectedWarnings(0);
+		// pseudo-classes are case-insensitive
+		CHECK(Query("#R > P:FIRST-CHILD") == "");
+		CHECK(Query("#R > p:FIRST-CHILD") == "R1");
+	}
+
+	context->UnloadDocument(document);
+	TestsShell::ShutdownShell();
+}
+
+static const String specificity_rml = R"(
+<rml>
+<head>
+	<style>
+		div { display: block; }
+		:where(#a) { width: 10px; }
+		div { width: 20px; }
+		:is(#b, span) { width: 30px; }
+		#b { width: 40px; }
+		#c:has(> span) { width: 50px; }
+		#c.x { width: 60px; }
+		:nth-child(1 of .d) { width: 70px; }
+		.d.e { width: 80px; }
+	</style>
+</head>
+<body><div id="a"/><div id="b"/><div id="c" class="x"><span/></div><div id="d" class="d e"/></body>
+</rml>
+)";
+
+TEST_CASE("Selectors.Specificity")
+{
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = context->LoadDocumentFromMemory(specificity_rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+
+	auto width = [&](const char* id) { return document->GetElementById(id)->GetComputedValues().width().value; };
+	// :where() adds nothing: the later type rule wins
+	CHECK(width("a") == 20.f);
+	// :is() takes its most specific argument (an id): a later id rule of the same specificity wins
+	CHECK(width("b") == 40.f);
+	// :has() takes its argument's specificity without the scope: #c:has(> span) is an id and a type, #c.x an id and a class
+	CHECK(width("c") == 60.f);
+	// :nth-child(of S) is a pseudo-class plus S: two classes, a later rule with two classes wins
+	CHECK(width("d") == 80.f);
 
 	context->UnloadDocument(document);
 	TestsShell::ShutdownShell();

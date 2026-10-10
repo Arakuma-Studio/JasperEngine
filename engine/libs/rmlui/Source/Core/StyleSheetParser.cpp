@@ -109,6 +109,23 @@ static void ParseAttributeSelector(AttributeSelector& attribute, const String& r
 	// Move cursor past operator. Non-'=' symbols are always followed by '=' so move two characters.
 	size_t i_value_begin = i_operator + (c == '=' ? 1 : 2);
 	String value = StringUtilities::StripWhitespace(rule.substr(i_value_begin, end - i_value_begin));
+
+	// A case-sensitivity flag after the value, separated by white space: 'i' (ASCII case-insensitive) or 's' (Selectors 4).
+	const size_t flag_separator = value.find_last_of(" \t\n\r\f");
+	if (flag_separator != String::npos && flag_separator + 2 == value.size() && !IsEscapedCharacter(value, flag_separator))
+	{
+		const char flag = value.back();
+		const String unflagged = StringUtilities::StripWhitespace(value.substr(0, flag_separator));
+		const bool quoted_value = unflagged.size() >= 2 &&
+			((unflagged.front() == '"' && unflagged.back() == '"') || (unflagged.front() == '\'' && unflagged.back() == '\''));
+		const bool plain_value = unflagged.find_first_of(" \t\n\r\f\"'") == String::npos;
+		if ((flag == 'i' || flag == 'I' || flag == 's' || flag == 'S') && (quoted_value || plain_value))
+		{
+			attribute.case_insensitive = (flag == 'i' || flag == 'I');
+			value = unflagged;
+		}
+	}
+
 	if (value.size() >= 2 && ((value.front() == '"' && value.back() == '"') || (value.front() == '\'' && value.back() == '\'')))
 		value = value.substr(1, value.size() - 2);
 
@@ -1030,6 +1047,12 @@ StyleSheetNodeListRaw StyleSheetParser::ConstructNodes(StyleSheetNode& root_node
 	return leaf_nodes;
 }
 
+StyleSheetNode* StyleSheetParser::ConstructNode(StyleSheetNode& root_node, const String& selector)
+{
+	const PropertyDictionary empty_properties;
+	return ImportProperties(&root_node, selector, empty_properties, 0);
+}
+
 void StyleSheetParser::ReadProperties(AbstractPropertyParser& property_parser)
 {
 	RMLUI_ZoneScoped;
@@ -1134,10 +1157,21 @@ void StyleSheetParser::ReadProperties(AbstractPropertyParser& property_parser)
 	}
 }
 
-StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const String& rule, const PropertyDictionary& properties,
-	int rule_specificity)
+// The pseudo-element a '::name' (or legacy ':before'/':after') selector names; None for an unknown one.
+static PseudoElementType GetPseudoElementType(const String& name, bool legacy_colon)
 {
-	StyleSheetNode* leaf_node = node;
+	if (name == "before")
+		return PseudoElementType::Before;
+	if (name == "after")
+		return PseudoElementType::After;
+	if (name == "marker" && !legacy_colon)
+		return PseudoElementType::Marker;
+	return PseudoElementType::None;
+}
+
+bool StyleSheetParser::ParseCompoundSelectors(const String& rule, Vector<CompoundSelector>& compounds)
+{
+	compounds.clear();
 
 	// Create each node going down the tree.
 	for (size_t index = 0; index < rule.size();)
@@ -1145,20 +1179,44 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 		CompoundSelector selector;
 
 		// Determine the combinator connecting the previous node if any.
-		for (; index > 0 && index < rule.size(); index++)
+		bool explicit_combinator = false;
+		for (; index < rule.size(); index++)
 		{
 			bool reached_end_of_combinators = false;
 			switch (rule[index])
 			{
-			case ' ': break;
-			case '>': selector.combinator = SelectorCombinator::Child; break;
-			case '+': selector.combinator = SelectorCombinator::NextSibling; break;
-			case '~': selector.combinator = SelectorCombinator::SubsequentSibling; break;
+			case ' ':
+			case '\t':
+			case '\n':
+			case '\r':
+			case '\f': break;
+			case '>':
+			case '+':
+			case '~':
+				// A selector starts with a compound, and two combinators in a row are invalid.
+				if (compounds.empty() || explicit_combinator)
+					return false;
+				explicit_combinator = true;
+				selector.combinator = (rule[index] == '>' ? SelectorCombinator::Child
+						: rule[index] == '+'                 ? SelectorCombinator::NextSibling
+															 : SelectorCombinator::SubsequentSibling);
+				break;
 			default: reached_end_of_combinators = true; break;
 			}
 			if (reached_end_of_combinators)
 				break;
 		}
+		if (index >= rule.size())
+		{
+			// Trailing white space ends the selector; a trailing combinator is invalid.
+			if (explicit_combinator)
+				return false;
+			break;
+		}
+
+		// A pseudo-element ends the selector: nothing may follow it (':hover::before' is the form for a state).
+		if (!compounds.empty() && compounds.back().pseudo_element != PseudoElementType::None)
+			return false;
 
 		// Determine the node's requirements.
 		while (index < rule.size())
@@ -1169,20 +1227,20 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 			if (rule[start_index] == '*')
 				start_index += 1;
 
-			if (rule[start_index] == '[')
+			if (start_index < rule.size() && rule[start_index] == '[')
 			{
 				end_index = FindAttributeSelectorEnd(rule, start_index);
 				if (end_index == String::npos)
-					return nullptr;
+					return false;
 				end_index += 1;
 			}
-			else
+			else if (start_index < rule.size())
 			{
 				int parenthesis_count = 0;
 
 				if (rule[start_index] == ':')
 				{
-					// Parse pseudo-element ::A as pseudo-class with name :A
+					// A pseudo-element '::name'.
 					if (end_index < rule.size() && rule[end_index] == ':')
 						end_index += 1;
 				}
@@ -1190,7 +1248,7 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 				// Read until we hit the next identifier. Don't match inside parenthesis in case of structural selectors.
 				for (; end_index < rule.size(); end_index++)
 				{
-					static const String identifiers = "#.:[ >+~";
+					static const String identifiers = "#.:[ >+~\t\n\r\f";
 					if (parenthesis_count == 0 && identifiers.find(rule[end_index]) != String::npos && !IsEscapedCharacter(rule, end_index))
 						break;
 
@@ -1199,9 +1257,15 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 					else if (rule[end_index] == ')' && !IsEscapedCharacter(rule, end_index))
 						parenthesis_count -= 1;
 				}
+				if (parenthesis_count != 0)
+					return false;
 			}
 
-			if (end_index > start_index)
+			// Nothing may follow a pseudo-element in its compound either.
+			if (end_index > start_index && selector.pseudo_element != PseudoElementType::None)
+				return false;
+
+			if (end_index > start_index && start_index < rule.size())
 			{
 				switch (rule[start_index])
 				{
@@ -1209,12 +1273,28 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 				case '.': selector.class_names.push_back(ExtractUnescapedSelectorToken(rule, start_index + 1, end_index)); break;
 				case ':':
 				{
-					String pseudo_class_name = ExtractUnescapedSelectorToken(rule, start_index + 1, end_index);
-					StructuralSelector node_selector = StyleSheetFactory::GetSelector(pseudo_class_name);
+					const bool double_colon = (start_index + 1 < end_index && rule[start_index + 1] == ':');
+					String pseudo_name = ExtractUnescapedSelectorToken(rule, start_index + (double_colon ? 2 : 1), end_index);
+					// Pseudo-class and pseudo-element names are ASCII case-insensitive; their arguments are kept as written.
+					const size_t name_end = Math::Min(pseudo_name.find('('), pseudo_name.size());
+					pseudo_name = StringUtilities::ToLower(pseudo_name.substr(0, name_end)) + pseudo_name.substr(name_end);
+
+					const PseudoElementType pseudo_element = GetPseudoElementType(pseudo_name, !double_colon);
+					if (pseudo_element != PseudoElementType::None)
+					{
+						selector.pseudo_element = pseudo_element;
+						break;
+					}
+					if (double_colon)
+						return false; // An unknown pseudo-element.
+
+					StructuralSelector node_selector = StyleSheetFactory::GetSelector(pseudo_name);
 					if (node_selector.type != StructuralSelectorType::Invalid)
 						selector.structural_selectors.push_back(node_selector);
+					else if (pseudo_name.find('(') == String::npos && StyleSheetFactory::IsPseudoClass(pseudo_name))
+						selector.pseudo_class_names.push_back(std::move(pseudo_name));
 					else
-						selector.pseudo_class_names.push_back(std::move(pseudo_class_name));
+						return false; // An unknown pseudo-class, or an invalid argument.
 				}
 				break;
 				case '[':
@@ -1222,7 +1302,7 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 					const size_t i_attr_begin = start_index + 1;
 					const size_t i_attr_end = end_index - 1;
 					if (i_attr_end <= i_attr_begin)
-						return nullptr;
+						return false;
 
 					AttributeSelector attribute;
 					ParseAttributeSelector(attribute, rule, i_attr_begin, i_attr_end);
@@ -1237,8 +1317,8 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 			index = end_index;
 
 			// If we reached a combinator then we submit the current node and start fresh with a new node.
-			static const String combinators(" >+~");
-			if (combinators.find(rule[index]) != String::npos)
+			static const String combinators(" >+~\t\n\r\f");
+			if (index >= rule.size() || combinators.find(rule[index]) != String::npos)
 				break;
 		}
 
@@ -1248,6 +1328,23 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 		std::sort(selector.pseudo_class_names.begin(), selector.pseudo_class_names.end());
 		std::sort(selector.structural_selectors.begin(), selector.structural_selectors.end());
 
+		compounds.push_back(std::move(selector));
+	}
+
+	return !compounds.empty();
+}
+
+StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const String& rule, const PropertyDictionary& properties,
+	int rule_specificity)
+{
+	// The whole selector is read before any node is made: an invalid selector leaves the tree as it was.
+	Vector<CompoundSelector> compounds;
+	if (!ParseCompoundSelectors(rule, compounds))
+		return nullptr;
+
+	StyleSheetNode* leaf_node = node;
+	for (CompoundSelector& selector : compounds)
+	{
 		// Add the new child node, or retrieve the existing child if we have an exact match.
 		leaf_node = leaf_node->GetOrCreateChildNode(std::move(selector));
 	}

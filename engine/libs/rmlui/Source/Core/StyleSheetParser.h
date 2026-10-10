@@ -9,6 +9,7 @@ class PropertyDictionary;
 class Stream;
 class StyleSheetNode;
 class AbstractPropertyParser;
+struct CompoundSelector;
 struct PropertySource;
 using StyleSheetNodeListRaw = Vector<StyleSheetNode*>;
 
@@ -39,6 +40,9 @@ public:
 	/// @param[in] selectors The selector rules as a string value.
 	/// @return The list of leaf nodes in the constructed tree, which are all owned by the root node.
 	static StyleSheetNodeListRaw ConstructNodes(StyleSheetNode& root_node, const String& selectors);
+	/// Converts a single selector to nodes, without logging.
+	/// @return The leaf node of the selector, or nullptr if it is invalid.
+	static StyleSheetNode* ConstructNode(StyleSheetNode& root_node, const String& selector);
 
 	/// Initialises property parsers. Call after initialisation of StylesheetSpecification.
 	static void Initialise();
@@ -57,6 +61,11 @@ private:
 	/// @param[in] rule_specificity The specific of the rule
 	/// @return The leaf node of the rule, or nullptr on parse failure.
 	static StyleSheetNode* ImportProperties(StyleSheetNode* node, const String& rule, const PropertyDictionary& properties, int rule_specificity);
+
+	/// Reads a complex selector into its compound selectors, outermost first.
+	/// @return False when the selector is invalid: a syntax error, an unknown pseudo-class or pseudo-element, a
+	/// pseudo-element anywhere but at the end.
+	static bool ParseCompoundSelectors(const String& rule, Vector<CompoundSelector>& compounds);
 
 	/// Attempts to parse a @keyframes block
 	bool ParseKeyframeBlock(KeyframesMap& keyframes_map, const String& identifier, const String& rules, const PropertyDictionary& properties);

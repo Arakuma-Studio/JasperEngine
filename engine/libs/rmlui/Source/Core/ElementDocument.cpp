@@ -7,6 +7,7 @@
 #include "../../Include/RmlUi/Core/StyleSheet.h"
 #include "../../Include/RmlUi/Core/StyleSheetContainer.h"
 #include "DocumentHeader.h"
+#include "ElementCascade.h"
 #include "ElementStyle.h"
 #include "EventDispatcher.h"
 #include "Layout/LayoutDetails.h"
@@ -152,6 +153,9 @@ void ElementDocument::ProcessHeader(const DocumentHeader* document_header)
 
 	// Store the source address that we came from
 	source_url = document_header->source;
+	const size_t fragment = source_url.rfind('#');
+	if (fragment != String::npos)
+		target = source_url.substr(fragment + 1);
 
 	// Construct a new header and copy the template details across
 	DocumentHeader header;
@@ -262,6 +266,26 @@ void ElementDocument::SetTitle(const String& _title)
 const String& ElementDocument::GetTitle() const
 {
 	return title;
+}
+
+void ElementDocument::SetTarget(const String& id)
+{
+	if (id == target)
+		return;
+	Element* old_target = (target.empty() ? nullptr : GetElementById(target));
+	target = id;
+	Element* new_target = (target.empty() ? nullptr : GetElementById(target));
+	// :target changes for the two elements (and what depends on them through combinators).
+	for (Element* element : {old_target, new_target})
+	{
+		if (element)
+			ElementCascade::DirtyDefinition(element, true);
+	}
+}
+
+const String& ElementDocument::GetTarget() const
+{
+	return target;
 }
 
 const String& ElementDocument::GetSourceURL() const

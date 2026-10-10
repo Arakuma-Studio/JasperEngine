@@ -167,6 +167,42 @@ const Sprite* StyleSheet::GetSprite(const String& name) const
 	return spritesheet_list.GetSprite(name);
 }
 
+bool StyleSheet::HasPseudoElementRules(PseudoElementType type) const
+{
+	return type != PseudoElementType::None && !styled_node_index.pseudo_element_nodes[int(type) - 1].empty();
+}
+
+SharedPtr<const ElementDefinition> StyleSheet::GetElementDefinition(const Element* originating_element, PseudoElementType type) const
+{
+	if (type == PseudoElementType::None)
+		return GetElementDefinition(originating_element);
+
+	RMLUI_ASSERT_NONRECURSIVE;
+	static Vector<const StyleSheetNode*> applicable_nodes;
+	applicable_nodes.clear();
+
+	for (const StyleSheetNode* node : styled_node_index.pseudo_element_nodes[int(type) - 1])
+	{
+		if (node->IsApplicable(originating_element, nullptr))
+			applicable_nodes.push_back(node);
+	}
+	if (applicable_nodes.empty())
+		return nullptr;
+
+	std::sort(applicable_nodes.begin(), applicable_nodes.end(), [](const StyleSheetNode* a, const StyleSheetNode* b) {
+		const int a_specificity = a->GetSpecificity();
+		const int b_specificity = b->GetSpecificity();
+		if (a_specificity == b_specificity)
+			return a < b;
+		return a_specificity < b_specificity;
+	});
+
+	SharedPtr<const ElementDefinition>& definition = node_cache[applicable_nodes];
+	if (!definition)
+		definition = MakeShared<const ElementDefinition>(applicable_nodes);
+	return definition;
+}
+
 SharedPtr<const ElementDefinition> StyleSheet::GetElementDefinition(const Element* element) const
 {
 	RMLUI_ASSERT_NONRECURSIVE;

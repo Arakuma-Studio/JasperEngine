@@ -41,6 +41,7 @@ add_executable(${TARGET_NAME}
 	RootFontSize.cpp
 	PropertySpecification.cpp
 	Selectors.cpp
+	SelectorsHas.cpp
 	ShorthandTypes.cpp
 	Specificity_Basic.cpp
 	Specificity_MediaQuery.cpp

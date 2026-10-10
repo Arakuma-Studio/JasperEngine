@@ -56,6 +56,13 @@ public:
 	/// Returns the source address of this document.
 	const String& GetSourceURL() const;
 
+	/// Sets the id of the document's target element, what CSS's :target matches (a URL fragment). Initially the fragment
+	/// of the source URL, if any.
+	/// @param[in] id The id, or empty for no target.
+	void SetTarget(const String& id);
+	/// Returns the id of the document's target element (see SetTarget).
+	const String& GetTarget() const;
+
 	/// Returns the document's compiled style sheet.
 	/// @note The style sheet may be regenerated when media query parameters change, invalidating the pointer.
 	const StyleSheet* GetStyleSheet() const override;
@@ -161,6 +168,7 @@ private:
 
 	String title;
 	String source_url;
+	String target;
 
 	SharedPtr<StyleSheetContainer> style_sheet_container;
 

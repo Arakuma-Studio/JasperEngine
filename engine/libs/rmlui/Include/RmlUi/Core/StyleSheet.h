@@ -17,6 +17,7 @@ class StyleSheetContainer;
 class StyleSheetParser;
 struct PropertySource;
 struct Sprite;
+enum class PseudoElementType : uint8_t;
 
 using DecoratorPtrList = Vector<SharedPtr<const Decorator>>;
 
@@ -56,6 +57,13 @@ public:
 
 	/// Returns the compiled element definition for a given element and its hierarchy.
 	SharedPtr<const ElementDefinition> GetElementDefinition(const Element* element) const;
+	/// Returns the compiled element definition of a pseudo-element (phase 3): the rules ending in that pseudo-element
+	/// whose selector matches the originating element; null when none does.
+	SharedPtr<const ElementDefinition> GetElementDefinition(const Element* originating_element, PseudoElementType type) const;
+	/// True when some rule of the sheet ends in the pseudo-element.
+	bool HasPseudoElementRules(PseudoElementType type) const;
+	/// What the :has() selectors of the sheet depend on (invalidation).
+	const StyleSheetIndex::HasDependencies& GetHasDependencies() const { return styled_node_index.has; }
 
 	/// Returns a list of instanced decorators from the declarations. The instances are cached for faster future retrieval.
 	const DecoratorPtrList& InstanceDecorators(RenderManager& render_manager, const DecoratorDeclarationList& declaration_list,

@@ -1,6 +1,7 @@
 #include "StyleSheetNode.h"
 #include "../../Include/RmlUi/Core/Element.h"
 #include "../../Include/RmlUi/Core/Profiling.h"
+#include "../../Include/RmlUi/Core/StringUtilities.h"
 #include "../../Include/RmlUi/Core/StyleSheet.h"
 #include "StyleSheetFactory.h"
 #include "StyleSheetSelector.h"
@@ -113,8 +114,90 @@ UniquePtr<StyleSheetNode> StyleSheetNode::DeepCopy(StyleSheetNode* in_parent) co
 	return node;
 }
 
+// Collects what the :has() selectors of a compound (also inside :is(), :where(), :not()) depend on.
+static void CollectHasDependencies(const CompoundSelector& selector, bool subject, bool inside_has, StyleSheetIndex::HasDependencies& has)
+{
+	if (inside_has)
+	{
+		if (!selector.tag.empty())
+			has.names.insert(selector.tag);
+		if (!selector.id.empty())
+			has.names.insert("#" + selector.id);
+		for (const String& name : selector.class_names)
+			has.names.insert("." + name);
+		for (const String& name : selector.pseudo_class_names)
+			has.names.insert(":" + name);
+		for (const AttributeSelector& attribute : selector.attributes)
+			has.names.insert("[" + attribute.name);
+	}
+
+	for (const StructuralSelector& structural : selector.structural_selectors)
+	{
+		const bool is_has = (structural.type == StructuralSelectorType::Has);
+		if (is_has)
+		{
+			has.used = true;
+			has.in_non_subject |= !subject;
+			for (bool sibling : structural.selector_tree->sibling_relative)
+				has.sibling_relative |= sibling;
+		}
+		else if (inside_has)
+		{
+			// The tree-structural pseudo-classes depend on insertions and removals, which always re-match; the form-state
+			// ones on attributes.
+			switch (structural.type)
+			{
+			case StructuralSelectorType::Enabled:
+			case StructuralSelectorType::Disabled:
+				has.names.insert("[disabled");
+				has.names.insert(":disabled");
+				break;
+			case StructuralSelectorType::ReadOnly:
+			case StructuralSelectorType::ReadWrite:
+				has.names.insert("[readonly");
+				has.names.insert("[disabled");
+				has.names.insert("[type");
+				break;
+			case StructuralSelectorType::Required:
+			case StructuralSelectorType::Optional: has.names.insert("[required"); break;
+			case StructuralSelectorType::Default:
+				has.names.insert("[checked");
+				has.names.insert("[selected");
+				has.names.insert("[type");
+				break;
+			case StructuralSelectorType::AnyLink: has.names.insert("[href"); break;
+			case StructuralSelectorType::Indeterminate:
+				has.names.insert("[indeterminate");
+				has.names.insert("[value");
+				has.names.insert("[checked");
+				break;
+			case StructuralSelectorType::Target: has.names.insert("[id"); break;
+			default: break;
+			}
+		}
+		if (!structural.selector_tree)
+			continue;
+		for (const StyleSheetNode* leaf : structural.selector_tree->leafs)
+		{
+			for (const StyleSheetNode* node = leaf; node; node = node->GetParent())
+				CollectHasDependencies(node->GetSelector(), subject, inside_has || is_has, has);
+		}
+	}
+}
+
 void StyleSheetNode::BuildIndex(StyleSheetIndex& styled_node_index) const
 {
+	if (!selector.structural_selectors.empty())
+		CollectHasDependencies(selector, children.empty(), false, styled_node_index.has);
+
+	// A node ending in a pseudo-element is matched against the originating element, through its own index.
+	if (selector.pseudo_element != PseudoElementType::None)
+	{
+		if (!properties.Empty())
+			styled_node_index.pseudo_element_nodes[int(selector.pseudo_element) - 1].push_back(this);
+		return;
+	}
+
 	// If this has properties defined, then we insert it into the styled node index.
 	if (!properties.Empty())
 	{
@@ -234,8 +317,15 @@ bool StyleSheetNode::MatchAttributes(const Element* element) const
 		else
 			variant->GetInto(buffer);
 
-		const String& element_value = *element_value_ptr;
-		const String& css_value = attribute.value;
+		// The 'i' flag compares ASCII case-insensitively.
+		String folded_element_value, folded_css_value;
+		if (attribute.case_insensitive)
+		{
+			folded_element_value = StringUtilities::ToLower(*element_value_ptr);
+			folded_css_value = StringUtilities::ToLower(attribute.value);
+		}
+		const String& element_value = (attribute.case_insensitive ? folded_element_value : *element_value_ptr);
+		const String& css_value = (attribute.case_insensitive ? folded_css_value : attribute.value);
 
 		auto BeginsWith = [](const String& target, const String& prefix) {
 			return prefix.size() <= target.size() && std::equal(prefix.begin(), prefix.end(), target.begin());
@@ -411,6 +501,10 @@ void StyleSheetNode::CalculateAndSetSpecificity()
 
 	if (!selector.id.empty())
 		specificity += SelectorSpecificity::ID;
+
+	// A pseudo-element counts as a type selector.
+	if (selector.pseudo_element != PseudoElementType::None)
+		specificity += SelectorSpecificity::Tag;
 
 	specificity += SelectorSpecificity::Class * (int)selector.class_names.size();
 	specificity += SelectorSpecificity::Attribute * (int)selector.attributes.size();

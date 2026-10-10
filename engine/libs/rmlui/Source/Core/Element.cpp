@@ -20,6 +20,7 @@
 #include "DataModel.h"
 #include "ElementAnimation.h"
 #include "ElementBackgroundBorder.h"
+#include "ElementCascade.h"
 #include "ElementDefinition.h"
 #include "ElementEffects.h"
 #include "ElementMeta.h"
@@ -73,7 +74,7 @@ RMLUI_RTTI_Define(Element)
 Element::Element(const String& tag) :
 	local_stacking_context(false), local_stacking_context_forced(false), stacking_context_dirty(false), computed_values_are_default_initialized(true),
 	visible(true), offset_fixed(false), absolute_offset_dirty(true), rounded_main_padding_size_dirty(true), dirty_definition(false),
-	dirty_child_definitions(false), dirty_animation(false), dirty_transition(false), dirty_transform(false), dirty_perspective(false),
+	dirty_child_definitions(false), dirty_definition_self(false), dirty_animation(false), dirty_transition(false), dirty_transform(false), dirty_perspective(false),
 	display_contents(false), tag(tag), relative_offset_base(0, 0), relative_offset_position(0, 0), absolute_offset(0, 0), scroll_offset(0, 0)
 {
 	RMLUI_ASSERT(tag == StringUtilities::ToLower(tag));
@@ -262,7 +263,10 @@ ElementPtr Element::Clone() const
 void Element::SetClass(const String& class_name, bool activate)
 {
 	if (meta->style.SetClass(class_name, activate))
+	{
 		DirtyDefinition(DirtyNodes::SelfAndSiblings);
+		ElementCascade::OnHasDependencyChange(this, ElementCascade::Change::Class, class_name);
+	}
 }
 
 bool Element::IsClassSet(const String& class_name) const
@@ -837,6 +841,7 @@ void Element::SetPseudoClass(const String& pseudo_class, bool activate)
 	{
 		// Include siblings in case of RCSS presence of sibling combinators '+', '~'.
 		DirtyDefinition(DirtyNodes::SelfAndSiblings);
+		ElementCascade::OnHasDependencyChange(this, ElementCascade::Change::PseudoClass, pseudo_class);
 		OnPseudoClassChange(pseudo_class, activate);
 	}
 }
@@ -1405,7 +1410,10 @@ Element* Element::AppendChild(ElementPtr child, bool dom_element)
 	DirtyDefinition(DirtyNodes::Self);
 
 	if (dom_element)
+	{
 		DirtyLayout();
+		ElementCascade::OnHasDependencyChange(this, ElementCascade::Change::Structure, String());
+	}
 
 	return child_ptr;
 }
@@ -1450,6 +1458,7 @@ Element* Element::InsertBefore(ElementPtr child, Element* adjacent_element)
 
 		DirtyStackingContext();
 		DirtyDefinition(DirtyNodes::Self);
+		ElementCascade::OnHasDependencyChange(this, ElementCascade::Change::Structure, String());
 	}
 	else
 	{
@@ -1535,6 +1544,7 @@ ElementPtr Element::RemoveChild(Element* child)
 			DirtyLayout();
 			DirtyStackingContext();
 			DirtyDefinition(DirtyNodes::Self);
+			ElementCascade::OnHasDependencyChange(this, ElementCascade::Change::Structure, String());
 
 			return detached_child;
 		}
@@ -1850,6 +1860,8 @@ void Element::OnAttributeChange(const ElementAttributes& changed_attributes)
 	// Any change to the attributes may affect which styles apply to the current element, in particular due to attribute selectors, ID selectors, and
 	// class selectors. This can further affect all siblings or descendants due to sibling or descendant combinators.
 	DirtyDefinition(DirtyNodes::SelfAndSiblings);
+	for (const auto& element_attribute : changed_attributes)
+		ElementCascade::OnHasDependencyChange(this, ElementCascade::Change::Attribute, element_attribute.first);
 }
 
 void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
@@ -2632,12 +2644,19 @@ void Element::UpdateDefinition()
 	if (dirty_definition)
 	{
 		dirty_definition = false;
+		dirty_definition_self = false;
 
 		// Dirty definition implies all our descendent elements. Anything that can change the definition of this element can also change the
 		// definition of any descendants due to the presence of RCSS descendant or child combinators. In principle this also applies to sibling
 		// combinators, but those are handled during the DirtyDefinition call.
 		dirty_child_definitions = true;
 
+		GetStyle()->UpdateDefinition();
+	}
+	else if (dirty_definition_self)
+	{
+		// The element alone may match differently (:has(), phase 3); its descendants are not affected.
+		dirty_definition_self = false;
 		GetStyle()->UpdateDefinition();
 	}
 

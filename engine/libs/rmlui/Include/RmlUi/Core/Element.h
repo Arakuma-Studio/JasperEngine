@@ -38,6 +38,7 @@ class StyleSheet;
 class StyleSheetContainer;
 class TransformState;
 class LayoutDetails;
+class ElementCascade;
 struct ElementMeta;
 struct StackingContextChild;
 
@@ -749,6 +750,7 @@ private:
 
 	bool dirty_definition : 1; // Implies dirty child definitions as well.
 	bool dirty_child_definitions : 1;
+	bool dirty_definition_self : 1; // Re-match this element alone (its :has() selectors, phase 3).
 
 	bool dirty_animation : 1;
 	bool dirty_transition : 1;
@@ -826,6 +828,7 @@ private:
 	friend class Rml::ReplacedBox;
 	friend class Rml::LayoutEngine;
 	friend class Rml::ElementScroll;
+	friend class Rml::ElementCascade;
 	friend RMLUICORE_API void Rml::ReleaseFontResources();
 };
 

@@ -28,6 +28,10 @@ public:
 
 	/// Update this definition if required
 	void UpdateDefinition();
+#ifdef RMLUI_TESTS_ENABLED
+	/// The number of UpdateDefinition calls so far, of every element (tests measure selector invalidation with it).
+	static int GetNumDefinitionUpdates();
+#endif
 
 	/// Sets or removes a pseudo-class on the element.
 	/// @param[in] pseudo_class The pseudo class to activate or deactivate.
