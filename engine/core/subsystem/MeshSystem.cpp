@@ -4476,7 +4476,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         transform.needUpdate = true;
     }
 
-    mesh.cullingMode = CullingMode::BACK;
+    // cullingMode is the user's (a glTF has none to give): a load keeps it
     mesh.windingOrder = (matrix.determinant() < 0.0) ? WindingOrder::CW : WindingOrder::CCW;
 
     if (asyncLoad) {
@@ -4641,7 +4641,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 mesh.numSubmeshes = static_cast<unsigned int>(mesh.submeshes.size());
             }
 
-            mesh.cullingMode = CullingMode::BACK;
             // Legacy skinned children stay at identity; hierarchy children use their node transform.
             double windingDet = nodeSkin && !useNodeHierarchy
                 ? matrix.determinant()
