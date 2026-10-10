@@ -78,7 +78,11 @@ namespace jasperengine::test::compat {
     // :is() and :not(), some selector lists and a few @media blocks. The size and the rule
     // count are the row's, which leaves 1.5 declarations for a rule where the pages have 3.9.
     // Deterministic: a fixed seed, no clock.
-    inline std::string representativeSheet(SheetShape* shape = nullptr){
+    //
+    // pageShape: the same sheet with the pages' rules instead of the row's count: 3.9
+    // declarations a rule, so about 450 rules in the same 55 KB (what a real sheet of that
+    // size holds; the row's 1 200 rules are the heavier case, with more selectors).
+    inline std::string representativeSheet(SheetShape* shape = nullptr, bool pageShape = false){
         uint32_t state = 0x2F6E2B1u;
         auto next = [&state](){
             state = state * 1664525u + 1013904223u;
@@ -284,11 +288,18 @@ namespace jasperengine::test::compat {
         };
         auto rule = [&](){
             std::string text = selector();
+            // (the page shape is written the way the pages are: a declaration a line)
             if (pick(100) < 6)
-                text += "," + selector();
-            text += "{";
+                text += (pageShape ? ", " : ",") + selector();
+            text += pageShape ? " {\n" : "{";
             const uint32_t roll = pick(100);
-            const int count = roll < 62 ? 1 : (roll < 90 ? 2 : (roll < 97 ? 3 : 4));
+            int count = roll < 62 ? 1 : (roll < 90 ? 2 : (roll < 97 ? 3 : 4));
+            if (pageShape){
+                // the pages: 22% of the rules have 1 declaration, 17% 2, 19% 3, 10% 4, 6% 5, 8% 6, 18% 7 to 10
+                static const int counts[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+                                             4, 4, 4, 4, 4, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 8, 8, 9, 9, 10};
+                count = counts[roll % 50];
+            }
             for (int i = 0; i < count; i++){
                 int at = (int)pick((uint32_t)totalWeight);
                 size_t index = 0;
@@ -303,7 +314,7 @@ namespace jasperengine::test::compat {
                     declaration = written[index][pick((uint32_t)written[index].size())];
                 }else{
                     for (int attempt = 0; attempt < 4; attempt++){
-                        declaration = name + ":" + valueOf(name);
+                        declaration = name + (pageShape ? ": " : ":") + valueOf(name);
                         if (seen.count(declaration) == 0)
                             break;
                     }
@@ -316,14 +327,18 @@ namespace jasperengine::test::compat {
                 if (name == "background" || name == "background-color" || name == "background-size" || name == "transition" ||
                     name == "transition-duration" || name == "animation" || name == "outline" || name == "outline-offset" || name == "text-shadow")
                     made.familyDeclarations++;
-                text += (i ? ";" : "") + declaration;
+                if (pageShape)
+                    text += "  " + declaration + ";\n";
+                else
+                    text += (i ? ";" : "") + declaration;
             }
             made.rules++;
             return text + "}\n";
         };
-        while (made.rules < 1200){
+        const size_t ruleCount = pageShape ? 100000 : 1200;
+        while (made.rules < ruleCount && !(pageShape && css.size() >= 55 * 1024 - 60)){
             // (about one rule in thirty sits in an @media block of three)
-            if (made.rules % 90 == 89 && made.rules + 3 <= 1200){
+            if (made.rules % 90 == 89 && made.rules + 3 <= ruleCount){
                 static const char* const queries[] = {"(max-width:768px)", "(min-width:1280px)", "(orientation:portrait)", "(max-height:540px)"};
                 css += std::string("@media ") + queries[pick(4)] + "{\n";
                 for (int i = 0; i < 3; i++){

@@ -68,6 +68,31 @@ TEST(CompatCssPerf, FiftyKilobyteSheet){
 #endif
 }
 
+// The same row on a sheet of the same size with the rules of a real one (3.9 declarations a
+// rule, about 450 rules): FiftyKilobyteSheet has the row's 1 200 rules, which is more
+// selectors than 55 KB of a real sheet hold.
+TEST(CompatCssPerf, FiftyKilobyteSheetOfPageRules){
+    SheetShape shape;
+    const std::string css = representativeSheet(&shape, true);
+    EXPECT_GE(css.size(), 50u * 1024u);
+    EXPECT_LE(css.size(), 60u * 1024u);
+    EXPECT_NEAR((double)shape.declarations / (double)shape.rules, 3.9, 0.3);
+    EXPECT_NEAR(100.0 * (double)shape.repeated / (double)shape.declarations, 41.0, 1.5);
+    std::printf("[ perf ] the sheet of page rules: %zu bytes, %zu rules (%zu in @media), %zu declarations (%.1f a rule), %.0f%% repeat an earlier one, "
+                "%.1f%% of the background/transition/animation/outline/text-shadow families, %.1f%% read a custom property\n",
+                css.size(), shape.rules, shape.mediaRules, shape.declarations, (double)shape.declarations / (double)shape.rules,
+                100.0 * (double)shape.repeated / (double)shape.declarations,
+                100.0 * (double)shape.familyDeclarations / (double)shape.declarations, 100.0 * (double)shape.varReads / (double)shape.declarations);
+#ifdef NDEBUG
+    const double ms = gatedCpuMs([&](){ rewriteOnce(css); }, 1, 4.0 * perfSlack());
+    std::printf("[ perf ] CSS tokenize + parse + rewrite (page rules), %zu bytes: %.3f ms\n", css.size(), ms);
+    EXPECT_LE(ms, 4.0 * perfSlack());
+#else
+    rewriteOnce(css);
+    GTEST_SKIP() << "performance targets are measured in Release builds";
+#endif
+}
+
 TEST(CompatCssPerf, UserAgentSheet){
     const std::string css(UserAgentStyle::source());
 #ifdef NDEBUG
