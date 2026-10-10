@@ -509,6 +509,9 @@ void ElementDocument::UpdateDocument()
 
 void ElementDocument::UpdateLayout()
 {
+	// CSS counters (phase 3): the texts of the pseudo-elements and list markers that show them, before formatting.
+	ElementCascade::ResolveCounters(*this);
+
 	// Note: Carefully consider when to call this function for performance reasons.
 	// Ideally, only called once per update loop.
 	if (layout_dirty)

@@ -170,6 +170,11 @@ private:
 	String source_url;
 	String target;
 
+	// Phase 3, cascade: the document uses CSS counters (or list markers, quotes), and they must be resolved before the next
+	// layout (ElementCascade::ResolveCounters).
+	bool counters_used = false;
+	bool counters_dirty = false;
+
 	SharedPtr<StyleSheetContainer> style_sheet_container;
 
 	Context* context;
@@ -181,6 +186,7 @@ private:
 	bool position_dirty;
 
 	friend class Rml::Context;
+	friend class Rml::ElementCascade;
 	friend class Rml::Factory;
 };
 

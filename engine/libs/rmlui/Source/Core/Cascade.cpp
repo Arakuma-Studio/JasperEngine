@@ -187,6 +187,48 @@ namespace Cascade {
 		return false;
 	}
 
+	// The generated-content properties read their value as written: strings keep their quotes (the generic value split
+	// unquotes a single string and rejects several). A value with var() takes the usual path.
+	static bool ParseRawDeclaration(const PropertySpecification& specification, PropertyDictionary& dictionary, const String& name,
+		const String& value, bool& result)
+	{
+		const String stripped = StringUtilities::StripWhitespace(value);
+		if (stripped.find("var(") != String::npos)
+			return false;
+
+		if (const PropertyDefinition* definition = specification.GetProperty(name))
+		{
+			switch (definition->GetId())
+			{
+			case PropertyId::Content:
+			case PropertyId::Quotes:
+			case PropertyId::CounterReset:
+			case PropertyId::CounterIncrement:
+			case PropertyId::CounterSet:
+			case PropertyId::ListStyleType:
+			case PropertyId::ListStyleImage: break;
+			default: return false;
+			}
+			Property property;
+			result = definition->ParseValue(property, stripped);
+			if (result)
+				dictionary.SetProperty(definition->GetId(), property);
+			return true;
+		}
+
+		const ShorthandDefinition* shorthand = specification.GetShorthand(name);
+		if (!shorthand || shorthand->id != ShorthandId::ListStyle || !shorthand->parser)
+			return false;
+		PropertyDictionary parsed;
+		result = shorthand->parser(parsed, *shorthand, stripped, specification);
+		if (result)
+		{
+			for (const auto& [id, property] : parsed.GetProperties())
+				dictionary.SetProperty(id, property);
+		}
+		return true;
+	}
+
 	bool ParseDeclaration(const PropertySpecification& specification, PropertyDictionary& dictionary, const String& name, const String& value,
 		bool& result)
 	{
@@ -196,10 +238,12 @@ namespace Cascade {
 			return true;
 		if (!dictionary.HasImportantProperties())
 		{
-			if (!ParseKeywordDeclaration(specification, dictionary, name, value))
-				return false;
-			result = true;
-			return true;
+			if (ParseKeywordDeclaration(specification, dictionary, name, value))
+			{
+				result = true;
+				return true;
+			}
+			return ParseRawDeclaration(specification, dictionary, name, value, result);
 		}
 
 		// A normal declaration does not override an important one of the same block.

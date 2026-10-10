@@ -9,6 +9,7 @@ add_executable(${TARGET_NAME}
 	CalculationTypes.cpp
 	ContainingBlockOverride.cpp
 	Core.cpp
+	Counters.cpp
 	CustomProperties.cpp
 	DataBinding.cpp
 	DataExpression.cpp
@@ -33,6 +34,7 @@ add_executable(${TARGET_NAME}
 	IntrinsicSizing.cpp
 	Layout.cpp
 	LayoutChildren.cpp
+	ListMarkers.cpp
 	Localization.cpp
 	main.cpp
 	Math.cpp
@@ -41,6 +43,7 @@ add_executable(${TARGET_NAME}
 	Properties.cpp
 	RootFontSize.cpp
 	PropertySpecification.cpp
+	PseudoElements.cpp
 	Selectors.cpp
 	SelectorsHas.cpp
 	ShorthandTypes.cpp

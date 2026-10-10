@@ -645,7 +645,12 @@ void ElementStyle::UpdateDefinition()
 
 	if (const StyleSheet* style_sheet = element->GetStyleSheet())
 	{
-		new_definition = style_sheet->GetElementDefinition(element);
+		// A pseudo-element's rules match through its originating element (phase 3).
+		const PseudoElementType pseudo_element_type = element->GetPseudoElementType();
+		if (pseudo_element_type == PseudoElementType::None)
+			new_definition = style_sheet->GetElementDefinition(element);
+		else if (Element* originating_element = element->GetParentNode())
+			new_definition = style_sheet->GetElementDefinition(originating_element, pseudo_element_type);
 	}
 
 	// Switch the property definitions if the definition has changed.

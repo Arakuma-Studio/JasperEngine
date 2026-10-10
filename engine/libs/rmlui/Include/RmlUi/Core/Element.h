@@ -420,6 +420,9 @@ public:
 	/// @param[in] type The pseudo-element.
 	/// @return The pseudo-element, or nullptr if the element has none of that type.
 	Element* GetPseudoElement(PseudoElementType type) const;
+	/// Returns the pseudo-element type of this element: None for an ordinary element, else the ::before, ::after or
+	/// ::marker it is (phase 3).
+	PseudoElementType GetPseudoElementType() const;
 	/// Recursively search for the first ancestor of this node matching the given selector.
 	/// @param[in] selectors The selector or comma-separated selectors to match against.
 	/// @return The ancestor if found, or nullptr if no ancestor could be matched.

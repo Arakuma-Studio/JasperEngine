@@ -1,6 +1,9 @@
 #include "ElementCascade.h"
 #include "../../Include/RmlUi/Core/ComputedValues.h"
+#include "../../Include/RmlUi/Core/ElementDocument.h"
 #include "../../Include/RmlUi/Core/StyleSheet.h"
+#include "CounterResolver.h"
+#include "ElementMeta.h"
 #include "StyleSheetSelector.h"
 
 namespace Rml {
@@ -41,6 +44,47 @@ void ElementCascade::MarkHasSubject(Element* element, bool in_non_subject)
 		DirtyDefinition(element, true);
 	else
 		element->dirty_definition_self = true;
+}
+
+Element*& ElementCascade::PseudoElementSlot(Element& element, PseudoElementType type)
+{
+	RMLUI_ASSERT(type != PseudoElementType::None);
+	return element.meta->pseudo_elements[int(type) - 1];
+}
+
+void ElementCascade::DirtyPseudoElements(Element& element)
+{
+	element.meta->pseudo_dirty = true;
+}
+
+bool ElementCascade::TakePseudoDirty(Element& element)
+{
+	const bool dirty = element.meta->pseudo_dirty;
+	element.meta->pseudo_dirty = false;
+	return dirty;
+}
+
+void ElementCascade::DirtyCounters(ElementDocument& document)
+{
+	document.counters_used = true;
+	document.counters_dirty = true;
+}
+
+void ElementCascade::DirtyCountersIfUsed(Element& element)
+{
+	if (ElementDocument* document = element.GetOwnerDocument())
+	{
+		if (document->counters_used)
+			document->counters_dirty = true;
+	}
+}
+
+void ElementCascade::ResolveCounters(ElementDocument& document)
+{
+	if (!document.counters_dirty)
+		return;
+	document.counters_dirty = false;
+	CounterResolver::Resolve(document);
 }
 
 bool ElementCascade::IsUnfocusable(const Element* element)

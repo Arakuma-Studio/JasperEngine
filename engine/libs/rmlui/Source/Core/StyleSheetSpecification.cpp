@@ -2,6 +2,7 @@
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
 #include "Cascade.h"
+#include "ContentValue.h"
 #include "IdNameMap.h"
 #include "PropertyParserAlignment.h"
 #include "PropertyParserAnimation.h"
@@ -283,6 +284,19 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	// -- Values (p3-values) --
 
 	// -- Cascade (p3-cascade) --
+	{
+		// Generated content (ContentValue.h); the instances live as long as the program, as the default parsers do.
+		static PropertyParserContent content_parser;
+		static PropertyParserQuotes quotes_parser;
+		static PropertyParserCounterList counter_list_parser;
+		static PropertyParserListStyleType list_style_type_parser;
+		static PropertyParserUrl url_parser;
+		RegisterParser("content", &content_parser);
+		RegisterParser("quotes", &quotes_parser);
+		RegisterParser("counter_list", &counter_list_parser);
+		RegisterParser("list_style_type", &list_style_type_parser);
+		RegisterParser("url", &url_parser);
+	}
 
 	// -- Paint (p3-paint) --
 
@@ -537,6 +551,20 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 		RegisterShorthand(ShorthandId::All, "all", all_properties, ShorthandType::Custom);
 		properties.SetShorthandParser(ShorthandId::All, &Cascade::ParseAllShorthand);
 	}
+	// Generated content and lists (3.6): pseudo-elements, counters, list markers.
+	RegisterProperty(PropertyId::Content, "content", "normal", false, true).AddParser("keyword", "normal, none").AddParser("content");
+	RegisterProperty(PropertyId::Quotes, "quotes", "auto", true, false).AddParser("keyword", "auto, none").AddParser("quotes");
+	RegisterProperty(PropertyId::CounterReset, "counter-reset", "none", false, false).AddParser("keyword", "none").AddParser("counter_list", "reversed");
+	RegisterProperty(PropertyId::CounterIncrement, "counter-increment", "none", false, false).AddParser("keyword", "none").AddParser("counter_list");
+	RegisterProperty(PropertyId::CounterSet, "counter-set", "none", false, false).AddParser("keyword", "none").AddParser("counter_list");
+	RegisterProperty(PropertyId::ListStyleType, "list-style-type", "disc", true, false)
+		.AddParser("list_style_type",
+			"disc, circle, square, decimal, decimal-leading-zero, lower-alpha, lower-latin, upper-alpha, upper-latin, lower-roman, upper-roman, "
+			"lower-greek, disclosure-open, disclosure-closed, none");
+	RegisterProperty(PropertyId::ListStylePosition, "list-style-position", "outside", true, false).AddParser("keyword", "outside, inside");
+	RegisterProperty(PropertyId::ListStyleImage, "list-style-image", "none", true, false).AddParser("keyword", "none").AddParser("url");
+	RegisterShorthand(ShorthandId::ListStyle, "list-style", "list-style-type, list-style-position, list-style-image", ShorthandType::Custom);
+	properties.SetShorthandParser(ShorthandId::ListStyle, &ParseListStyleShorthand);
 
 	// -- Paint (p3-paint) --
 

@@ -15,6 +15,7 @@
 #include "ElementCascade.h"
 #include "EventDispatcher.h"
 #include "PluginRegistry.h"
+#include "PseudoElements.h"
 #include "ScrollController.h"
 #include "StreamFile.h"
 #include <algorithm>
@@ -1486,8 +1487,10 @@ Element* Context::GetElementAtPoint(Vector2f point, const Element* ignore_elemen
 			within_element = clip_region.Contains(Vector2i(point));
 	}
 
+	// A hit on a pseudo-element (or inside one) is a hit on its originating element (phase 3): events target it and its
+	// :hover applies, so 'a:hover::after' rules follow the pointer.
 	if (within_element)
-		return element;
+		return PseudoElements::GetOriginatingElement(element);
 
 	return nullptr;
 }

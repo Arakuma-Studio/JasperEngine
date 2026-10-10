@@ -33,6 +33,24 @@ public:
 	/// no longer get an inline 'focus: none').
 	static bool IsUnfocusable(const Element* element);
 
+	/// Dirties the layout of the element's document.
+	static void DirtyLayout(Element& element) { element.DirtyLayout(); }
+
+	/// The slot of the element's pseudo-element of a type (ElementMeta).
+	static Element*& PseudoElementSlot(Element& element, PseudoElementType type);
+	/// Marks the element to generate its pseudo-elements again (PseudoElements::Update).
+	static void DirtyPseudoElements(Element& element);
+	/// Clears the mark and returns whether it was set.
+	static bool TakePseudoDirty(Element& element);
+
+	/// Marks the document to resolve its counters before its next layout (CounterResolver), and remembers that it uses
+	/// counters (its structure changes then dirty them too).
+	static void DirtyCounters(ElementDocument& document);
+	/// Dirties the counters of the element's document when the document uses counters (a structural change).
+	static void DirtyCountersIfUsed(Element& element);
+	/// Resolves the document's counters when dirty (ElementDocument::UpdateLayout, before formatting).
+	static void ResolveCounters(ElementDocument& document);
+
 private:
 	static void MarkHasSubject(Element* element, bool in_non_subject);
 };
