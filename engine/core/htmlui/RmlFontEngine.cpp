@@ -152,6 +152,11 @@ std::vector<std::string> RmlFontEngine::splitFamilyList(const std::string& famil
     return names;
 }
 
+void RmlFontEngine::markFamilyReported(const std::string& family){
+    for (const std::string& name : splitFamilyList(family))
+        warnedFamilies.insert(name);
+}
+
 Rml::FontFaceHandle RmlFontEngine::GetFontFaceHandle(const Rml::String& family, Rml::Style::FontStyle style,
                                                      Rml::Style::FontWeight weight, int size){
     if (size <= 0)

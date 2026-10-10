@@ -97,6 +97,10 @@ namespace jasperengine {
         // phase-2 hook H6: whether a family is known (a generic family, a built-in or a loaded
         // face), for HTMLUI-CSS-0023 (FontRegistry::hasFamily)
         static bool hasFamily(const std::string& name);
+        // A family that is not loaded and that something else reports to the user (the compat
+        // layer names it at the document that asks for it, HTMLUI-CSS-0023): the engine's own
+        // "font-family '<name>' is not loaded" warning is not logged for it.
+        void markFamilyReported(const std::string& family);
         // tests (phase-2 golden pages, "no-text" variant): false keeps text layout and metrics but
         // generates no glyph quads (base text and font effects); a change bumps the version
         void setRenderTextForTesting(bool render);

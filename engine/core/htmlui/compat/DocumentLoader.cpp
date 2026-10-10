@@ -15,6 +15,8 @@
 #include "htmlui/compat/html/RmlSerializer.h"
 #include "htmlui/compat/ua/UserAgentStyle.h"
 
+#include "htmlui/HtmlUI.h"
+#include "htmlui/RmlFontEngine.h"
 #include "util/FontRegistry.h"
 
 #include <RmlUi/Core/Context.h>
@@ -758,6 +760,11 @@ Rml::ElementDocument* DocumentLoader::load(Rml::Context* context, const std::str
     std::shared_ptr<Binding> binding = std::make_shared<Binding>();
     binding->compiled = compiled;
     binding->translatorHandle = registerBinding(binding);
+
+    // the families the document names and nothing provides are reported below, at the
+    // document (HTMLUI-CSS-0023): the font engine's own warning about them would say it again
+    for (const Diagnostic& unknown : checkFontFamilies(*compiled))
+        HtmlUI::getFontEngine().markFamilyReported(unknown.subject);
 
     Rml::ElementDocument* document = context->LoadDocumentFromMemory(compiled->rml, compiled->sourcePath);
     if (!document){

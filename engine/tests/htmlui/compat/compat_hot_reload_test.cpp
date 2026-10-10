@@ -334,3 +334,38 @@ TEST_F(CompatHotReloadTest, DocumentScriptListenersAreAttachedOncePerReload){
     luaRun("hotRuns, hotClicks, hotPlain = nil, nil, nil; collectgarbage()");
     EXPECT_EQ(HtmlUIScriptState::liveLuaRefs(), 0u);
 }
+
+// A family an .html document names and nothing provides is reported by the compat layer, at
+// the document, as a note (HTMLUI-CSS-0023): the font engine's own warning ("font-family
+// '<name>' is not loaded", no location) is not logged as well. It still is for an .rml
+// document, which has no other report.
+TEST_F(CompatHotReloadTest, UnknownFontFamilyIsReportedOnceAtTheDocument){
+    write("ui/hot.css", std::string(documentCss) + "body { font-family: 'P2 Missing Face', 'Segoe UI', sans-serif; }\n");
+    write("ui/plain.rml", "<rml><head><style>body { display: block; font-family: P2 Rml Missing Face, sans-serif; }</style></head>"
+                          "<body>text</body></rml>\n");
+    expectedWarnings = 1;   // the .rml document's
+
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    UIDocument document = fixture.addDocument("ui/hot.html");
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    GpuEnvironment::drawFrames(2);
+    UIDocumentSystem& system = documentSystem(scene);
+
+    size_t notes = 0;
+    for (const hc::Diagnostic& diagnostic : system.getDiagnostics(document.getEntity())){
+        if (diagnostic.code == hc::codes::UnknownFontFamily){
+            notes++;
+            EXPECT_EQ(diagnostic.severity, hc::Severity::Info);
+            EXPECT_EQ(diagnostic.file, "ui/hot.html");
+        }
+    }
+    EXPECT_EQ(notes, 2u) << "one note per family";
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "is not loaded"), 0u) << logText(D_LOG_WARN);
+
+    UIDocument plain = fixture.addDocument("ui/plain.rml", 1);
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    GpuEnvironment::drawFrames(2);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "font-family 'p2 rml missing face' is not loaded"), 1u) << logText(D_LOG_WARN);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "is not loaded"), 1u) << logText(D_LOG_WARN);
+}
