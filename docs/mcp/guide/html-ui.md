@@ -198,8 +198,9 @@ h1 { font-family: 'Orbitron', sans-serif; text-shadow: 0 0 20px rgba(124, 58, 23
   `lucide.createIcons()` would make, colored by the CSS `color` (`currentColor`), sized by
   CSS `width`/`height`. The Lucide `<script>` is not needed (an info says so).
 - **Remote files** (Google Fonts, CDN stylesheets, images, LottieFiles) are never fetched at
-  runtime. The editor imports them into `assets/htmlui-imports/` (fonts as static TTF, with
-  their license files) and writes `assets/htmlui-imports/manifest.json`, which the runtime
+  runtime. The editor imports them into `htmlui-imports/` in the project's assets directory
+  (`assets/htmlui-imports/` in a project whose assets directory is `assets`; fonts as static
+  TTF, with their license files) and writes `htmlui-imports/manifest.json` there, which the runtime
   reads to serve each URL from the project: keep the `https://` URLs in your HTML/CSS as they
   are. Imports run automatically when a document loads in the editor, and
   `jasperengine-editor import-ui --project <dir> <html>` runs them from the command line (MCP
