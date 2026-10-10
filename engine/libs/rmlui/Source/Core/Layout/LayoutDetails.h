@@ -31,6 +31,22 @@ struct ContainingBlock {
 /// The boxes a container lays out, in layout order (see LayoutDetails::GetLayoutChildren).
 using LayoutChildList = Vector<Element*>;
 
+/// A LayoutChildList borrowed from a stack of lists kept for reuse, so that listing the layout children of every box
+/// allocates nothing once warm. Lists are returned in reverse order of borrowing (scoped, as layout recursion is).
+class ScopedLayoutChildList {
+public:
+	ScopedLayoutChildList();
+	~ScopedLayoutChildList();
+	ScopedLayoutChildList(const ScopedLayoutChildList&) = delete;
+	ScopedLayoutChildList& operator=(const ScopedLayoutChildList&) = delete;
+
+	LayoutChildList& operator*() { return *list; }
+	LayoutChildList* operator->() { return list; }
+
+private:
+	LayoutChildList* list;
+};
+
 enum class BuildBoxMode {
 	Block,          // Sets edges and size if available, auto width can result in shrink-to-fit width, auto margins are used for alignment.
 	Inline,         // Sets edges, ignores width, height, and auto margins.

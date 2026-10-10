@@ -166,12 +166,12 @@ Vector2f FlexFormattingContext::GetMinContentSize(Element* element)
 	// Percentages of an indefinite containing block are resolved as zero.
 	const Vector2f indefinite_containing_block(0.f, -1.f);
 
-	LayoutChildList children;
-	LayoutDetails::GetLayoutChildren(element, children, true);
+	ScopedLayoutChildList children;
+	LayoutDetails::GetLayoutChildren(element, *children, true);
 
 	float sum = 0.f, widest = 0.f;
 	int num_items = 0;
-	for (Element* child : children)
+	for (Element* child : *children)
 	{
 		const ComputedValues& child_computed = child->GetComputedValues();
 		if (child_computed.display() == Style::Display::None || LayoutDetails::IsCollapsibleWhiteSpaceText(child) ||
@@ -329,12 +329,12 @@ void FlexFormattingContext::Format(Vector2f& flex_resulting_content_size, Vector
 
 	// -- Build a list of all flex items with base size information --
 	// The items in order-modified document order (pseudo-elements and 'display: contents' children included).
-	LayoutChildList flex_children;
-	LayoutDetails::GetLayoutChildren(element_flex, flex_children, true);
+	ScopedLayoutChildList flex_children;
+	LayoutDetails::GetLayoutChildren(element_flex, *flex_children, true);
 	Vector<FlexItem> items;
-	items.reserve(flex_children.size());
+	items.reserve(flex_children->size());
 
-	for (Element* element : flex_children)
+	for (Element* element : *flex_children)
 	{
 		const ComputedValues& computed = element->GetComputedValues();
 

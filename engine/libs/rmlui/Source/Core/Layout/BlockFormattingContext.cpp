@@ -187,11 +187,11 @@ bool BlockFormattingContext::FormatInlineBox(BlockContainer* parent_container, E
 
 bool BlockFormattingContext::FormatChildren(BlockContainer* container, Element* element)
 {
-	LayoutChildList children;
-	LayoutDetails::GetLayoutChildren(element, children, false);
-	for (size_t i = 0; i < children.size(); i++)
+	ScopedLayoutChildList children;
+	LayoutDetails::GetLayoutChildren(element, *children, false);
+	for (size_t i = 0; i < children->size(); i++)
 	{
-		if (!FormatBlockContainerChild(container, children, i))
+		if (!FormatBlockContainerChild(container, *children, i))
 			return false;
 	}
 	return true;

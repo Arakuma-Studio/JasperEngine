@@ -13,9 +13,9 @@ bool TableGrid::Build(Element* element_table, TableWrapper& table_wrapper)
 	RMLUI_ASSERT(rows.empty() && columns.empty() && cells.empty() && open_cells.empty());
 	ElementList non_parented_cell_elements;
 
-	LayoutChildList table_children;
-	LayoutDetails::GetLayoutChildren(element_table, table_children, false);
-	for (Element* element : table_children)
+	ScopedLayoutChildList table_children;
+	LayoutDetails::GetLayoutChildren(element_table, *table_children, false);
+	for (Element* element : *table_children)
 	{
 		using Display = Style::Display;
 
@@ -41,12 +41,12 @@ bool TableGrid::Build(Element* element_table, TableWrapper& table_wrapper)
 		}
 		else if (display == Display::TableRowGroup)
 		{
-			LayoutChildList row_group_children;
-			LayoutDetails::GetLayoutChildren(element, row_group_children, false);
+			ScopedLayoutChildList row_group_children;
+			LayoutDetails::GetLayoutChildren(element, *row_group_children, false);
 			const int row_group_index = (int)rows.size();
 			int num_rows_added = 0;
 
-			for (Element* element_row : row_group_children)
+			for (Element* element_row : *row_group_children)
 			{
 				const Display display_row = element_row->GetDisplay();
 				if (LayoutDetails::IsCollapsibleWhiteSpaceText(element_row))
@@ -137,9 +137,9 @@ void TableGrid::PushColumnGroup(Element* element_column_group)
 	if (group_span == 0)
 	{
 		// Look through the column group to find all its column children.
-		LayoutChildList column_group_children;
-		LayoutDetails::GetLayoutChildren(element_column_group, column_group_children, false);
-		for (Element* child : column_group_children)
+		ScopedLayoutChildList column_group_children;
+		LayoutDetails::GetLayoutChildren(element_column_group, *column_group_children, false);
+		for (Element* child : *column_group_children)
 		{
 			if (child->GetDisplay() == Style::Display::TableColumn)
 			{
@@ -195,11 +195,11 @@ void TableGrid::PushRow(Element* element_row, ElementList cell_elements, TableWr
 	{
 		RMLUI_ASSERT(cell_elements.empty());
 
-		LayoutChildList row_children;
-		LayoutDetails::GetLayoutChildren(element_row, row_children, false);
-		cell_elements.reserve(row_children.size());
+		ScopedLayoutChildList row_children;
+		LayoutDetails::GetLayoutChildren(element_row, *row_children, false);
+		cell_elements.reserve(row_children->size());
 
-		for (Element* element_cell : row_children)
+		for (Element* element_cell : *row_children)
 		{
 			if (LayoutDetails::IsCollapsibleWhiteSpaceText(element_cell))
 				continue;

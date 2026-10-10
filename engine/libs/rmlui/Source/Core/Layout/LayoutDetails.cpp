@@ -28,6 +28,23 @@ bool LayoutDetails::IsCollapsibleWhiteSpaceText(Element* element)
 	return std::all_of(value.begin(), value.end(), &StringUtilities::IsWhitespace);
 }
 
+static Vector<UniquePtr<LayoutChildList>> layout_child_list_pool;
+static size_t layout_child_lists_borrowed = 0;
+
+ScopedLayoutChildList::ScopedLayoutChildList()
+{
+	if (layout_child_lists_borrowed == layout_child_list_pool.size())
+		layout_child_list_pool.push_back(MakeUnique<LayoutChildList>());
+	list = layout_child_list_pool[layout_child_lists_borrowed++].get();
+	list->clear();
+}
+
+ScopedLayoutChildList::~ScopedLayoutChildList()
+{
+	RMLUI_ASSERT(layout_child_lists_borrowed > 0 && layout_child_list_pool[layout_child_lists_borrowed - 1].get() == list);
+	layout_child_lists_borrowed--;
+}
+
 static void AppendLayoutChildren(Element* parent, LayoutChildList& children)
 {
 	auto Append = [&children](Element* child) {

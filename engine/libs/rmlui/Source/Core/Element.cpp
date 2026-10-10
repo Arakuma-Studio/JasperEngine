@@ -2472,9 +2472,9 @@ void Element::AddChildrenToStackingContext(Vector<StackingContextChild>& stackin
 
 	// The children in the order they are laid out, which is CSS paint order: ::marker, ::before, the DOM children, ::after;
 	// the children of a 'display: contents' child in its place; the items of a flex container in 'order' order.
-	LayoutChildList layout_children;
-	LayoutDetails::GetLayoutChildren(this, layout_children, is_flex_container);
-	for (Element* child : layout_children)
+	ScopedLayoutChildList layout_children;
+	LayoutDetails::GetLayoutChildren(this, *layout_children, is_flex_container);
+	for (Element* child : *layout_children)
 		child->AddToStackingContext(stacking_children, is_flex_container, false);
 
 	// Then the other non-DOM children (scrollbars and the parts of widgets), each painted as a unit.
