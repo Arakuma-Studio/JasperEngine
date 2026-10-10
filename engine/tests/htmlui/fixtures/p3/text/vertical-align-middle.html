@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: vertical-align middle and friends</title>
+<style>
+  /* Inline-blocks aligned on a line of text: middle (half the x-height above the baseline), text-top and text-bottom (the parent’s font ascent and descent), lengths and percentages of the line height. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  @font-face { font-family: "Roboto Text"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  .line { position: absolute; left: 10px; font-size: 20px; line-height: 40px; background: #e0e8f0; white-space: nowrap; }
+  .b { display: inline-block; width: 10px; height: 10px; background: #e04040; }
+</style>
+</head>
+<body>
+<div class="line" id="line" style="top: 10px">XX<span class="b" id="middle" style="vertical-align: middle"></span>X<span class="b" id="text-top" style="vertical-align: text-top"></span>X<span class="b" id="text-bottom" style="vertical-align: text-bottom"></span>X<span class="b" id="length" style="vertical-align: 6px"></span>X<span class="b" id="percent" style="vertical-align: -25%"></span>X<span class="b" id="baseline"></span></div>
+</body>
+</html>

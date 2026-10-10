@@ -274,7 +274,6 @@ flex/balance_wrap_row owner=p3-layout reason=flex-wrap # #test-root h: engine 30
 flex/bevy_issue_10343_grid owner=p3-grid reason=grid-unsupported # #test-root > 0.0.0 w: engine 0.000, Chromium 90.000 (difference -90.000)
 flex/bevy_issue_21240 owner=p3-grid reason=grid-unsupported # #test-root w: engine 296.000, Chromium 200.000 (difference 96.000)
 flex/bevy_issue_9530 owner=p3-layout reason=flex-alignment # #test-root x: engine 362.000, Chromium 0.000 (difference 362.000)
-flex/do_not_clamp_height_of_absolute_node_to_height_of_its_overflow_hidden_parent owner=p3-layout reason=absolute-position # #test-root > 0 w: engine 50.000, Chromium 100.000 (difference -50.000)
 flex/flex_absolute_width_keywords owner=p3-layout reason=absolute-position # #test-root > 0 w: engine 40.000, Chromium 120.000 (difference -80.000)
 flex/flex_absolute_width_stretch_inset_margin owner=p3-layout reason=absolute-position # #test-root > 0 w: engine 40.000, Chromium 105.000 (difference -65.000)
 flex/flex_basis_content_column owner=p3-layout reason=flex-min-max # #test-root > 0 h: engine 100.000, Chromium 20.000 (difference 80.000)
