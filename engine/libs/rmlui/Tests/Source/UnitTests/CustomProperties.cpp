@@ -324,9 +324,10 @@ TEST_CASE("custom_properties.shorthand_font")
 		TestsShell::RenderLoop();
 		CHECK(div->GetComputedValues().font_size() == 12);
 		CHECK(div->GetComputedValues().font_weight() == Style::FontWeight::Bold);
-		CHECK(div->GetComputedValues().line_height().value == 12.0f * 1.2f);
+		// The initial line height is 'normal' (phase 3, values): LatoLatin's line spacing at 12px, 14px (6.3: 1.2).
+		CHECK(div->GetComputedValues().line_height().value == 14.f);
 		CHECK(p->GetComputedValues().font_weight() == Style::FontWeight::Bold);
-		CHECK(p->GetComputedValues().line_height().value == 12.0f * 1.2f);
+		CHECK(p->GetComputedValues().line_height().value == 14.f);
 	}
 
 	SUBCASE("overriding a single property that's also in a shorthand")

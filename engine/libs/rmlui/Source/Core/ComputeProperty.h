@@ -58,6 +58,9 @@ Style::FontWeight ComputeRelativeFontWeight(int keyword, Style::FontWeight paren
 
 Style::Clip ComputeClip(const Property* property);
 
+// The used value of 'line-height: normal' in a font face (1.2 times the font size without one).
+float ComputeNormalLineHeight(FontFaceHandle font_face, float font_size);
+
 Style::LineHeight ComputeLineHeight(const Property* property, float font_size, float document_font_size, float dp_ratio, Vector2f vp_dimensions);
 
 Style::VerticalAlign ComputeVerticalAlign(const Property* property, float line_height, float font_size, float document_font_size, float dp_ratio,

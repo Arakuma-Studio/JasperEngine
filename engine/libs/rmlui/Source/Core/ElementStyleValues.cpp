@@ -126,6 +126,29 @@ void ElementStyle::ComputeFontRelativeValues(Style::ComputedValues& values, Font
 	const FontFaceHandle font_face = values.font_face_handle();
 	font_unit_scope.SetFontFace(font_face);
 
+	// 'line-height: normal' is the line spacing of the face.
+	const Style::LineHeight line_height = values.line_height();
+	if (line_height.inherit_type == Style::LineHeight::Normal &&
+		(font_face != loop_font_face || font_face != previous_font_face || GetDirtyPropertiesRef().properties.Contains(PropertyId::LineHeight)))
+	{
+		const float value = ComputeNormalLineHeight(font_face, font_size);
+		if (value != line_height.value)
+		{
+			values.line_height(Style::LineHeight(value, Style::LineHeight::Normal, line_height.inherit_value));
+			DirtyProperty(PropertyId::LineHeight);
+			// Vertical-align lengths of the line height: computed again.
+			if (const Property* vertical_align = GetLocalProperty(PropertyId::VerticalAlign))
+			{
+				SmallUnorderedSet<String> variable_dependencies;
+				bool dirty_font_face_handle = false;
+				if ((vertical_align = ResolveVariables(PropertyId::VerticalAlign, vertical_align, variable_dependencies, property_storage)))
+					ComputeValue(values, dp_ratio, vp_dimensions, font_size, document_font_size, dirty_font_face_handle, PropertyId::VerticalAlign,
+						vertical_align);
+				DirtyProperty(PropertyId::VerticalAlign);
+			}
+		}
+	}
+
 	// 'ch' and 'ex' lengths were computed against the inherited face: compute them again against the element's own,
 	// and report them changed when the face differs from the one of the last computation.
 	if (font_face != loop_font_face || font_face != previous_font_face)

@@ -394,3 +394,73 @@ TEST_CASE("Values.font_shorthand")
 	document->Close();
 	context->Update();
 }
+
+namespace {
+
+float NormalLineHeight(Element* element)
+{
+	const FontMetrics& metrics = GetFontEngineInterface()->GetFontMetrics(element->GetFontFaceHandle());
+	return Math::Round(metrics.ascent) + Math::Round(metrics.descent) + Math::Round(Math::Max(metrics.line_spacing - metrics.ascent - metrics.descent, 0.f));
+}
+
+} // namespace
+
+TEST_CASE("Values.line_height_normal")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+
+	CHECK(ParsedString("line-height", "normal") == "normal");
+	CHECK(ParsedString("line-height", "NORMAL") == "normal");
+	CHECK(StyleSheetSpecification::GetProperty(PropertyId::LineHeight)->GetDefaultValue()->ToString() == "normal");
+	CHECK(DefaultComputedValues().line_height().inherit_type == Style::LineHeight::Normal);
+
+	ElementDocument* document = LoadValues(context, "#b { font-size: 40px; } #b { vertical-align: 50%; display: inline-block; }");
+	Element* a = document->GetElementById("a");
+	Element* b = document->GetElementById("b");
+	REQUIRE(a->GetFontFaceHandle());
+
+	// The initial value: the face's ascent, descent and line gap, each rounded.
+	const float normal_a = NormalLineHeight(a);
+	const float normal_b = NormalLineHeight(b);
+	CHECK(normal_a > 20.f);
+	CHECK(normal_b > 1.5f * normal_a);
+	CHECK(a->GetComputedValues().line_height().value == normal_a);
+	CHECK(a->GetComputedValues().line_height().inherit_type == Style::LineHeight::Normal);
+	// Inherited as the keyword: the child's own face.
+	CHECK(b->GetComputedValues().line_height().value == normal_b);
+	CHECK(b->GetComputedValues().vertical_align().value == doctest::Approx(0.5f * normal_b));
+
+	// A number inherits as a number, and 'normal' again resolves per face.
+	a->SetProperty("line-height", "2");
+	context->Update();
+	CHECK(b->GetComputedValues().line_height().value == doctest::Approx(80.f));
+	CHECK(b->GetComputedValues().vertical_align().value == doctest::Approx(40.f));
+	a->SetProperty("line-height", "normal");
+	context->Update();
+	CHECK(b->GetComputedValues().line_height().value == normal_b);
+	CHECK(b->GetComputedValues().vertical_align().value == doctest::Approx(0.5f * normal_b));
+
+	// A font change follows.
+	b->SetProperty("font-size", "10px");
+	context->Update();
+	CHECK(b->GetComputedValues().line_height().value == NormalLineHeight(b));
+	CHECK(b->GetComputedValues().line_height().value < normal_a);
+	a->SetProperty("font-size", "30px");
+	context->Update();
+	CHECK(a->GetComputedValues().line_height().value == NormalLineHeight(a));
+	CHECK(a->GetComputedValues().line_height().value > normal_a);
+
+	// The font shorthand resets it.
+	b->SetProperty("line-height", "3");
+	b->SetProperty("font", "20px LatoLatin");
+	context->Update();
+	CHECK(b->GetComputedValues().line_height().inherit_type == Style::LineHeight::Normal);
+	CHECK(b->GetComputedValues().line_height().value == normal_a);
+
+	// Without a font face: 1.2 times the font size.
+	CHECK(ComputeNormalLineHeight(0, 10.f) == doctest::Approx(12.f));
+
+	document->Close();
+	context->Update();
+}

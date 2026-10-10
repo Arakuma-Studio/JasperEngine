@@ -267,6 +267,23 @@ bool ComputeDefiniteNumber(const Property* property, float font_size, float docu
 	return true;
 }
 
+float ComputeNormalLineHeight(FontFaceHandle font_face, float font_size)
+{
+	if (font_face)
+	{
+		if (FontEngineInterface* font_engine = GetFontEngineInterface())
+		{
+			// As Chromium: the ascent, the descent and the line gap, each rounded to whole pixels.
+			const FontMetrics& metrics = font_engine->GetFontMetrics(font_face);
+			const float line_gap = Math::Max(metrics.line_spacing - metrics.ascent - metrics.descent, 0.f);
+			const float line_spacing = Math::Round(metrics.ascent) + Math::Round(metrics.descent) + Math::Round(line_gap);
+			if (line_spacing > 0.f)
+				return line_spacing;
+		}
+	}
+	return 1.2f * font_size;
+}
+
 Style::FontWeight ComputeRelativeFontWeight(int keyword, Style::FontWeight parent_weight)
 {
 	const int parent = (parent_weight == Style::FontWeight::Auto ? 400 : int(parent_weight));
@@ -327,6 +344,10 @@ Style::LineHeight ComputeLineHeight(const Property* property, float font_size, f
 		float value = ComputeLength(property->GetNumericValue(), font_size, document_font_size, dp_ratio, vp_dimensions);
 		return Style::LineHeight(value, Style::LineHeight::Length, value);
 	}
+
+	// 'normal' (phase 3, values): the font face's line spacing, set once the face is known (ElementStyle).
+	if (property->unit == Unit::KEYWORD)
+		return Style::LineHeight(ComputeNormalLineHeight(0, font_size), Style::LineHeight::Normal, 1.2f);
 
 	float scale_factor = 1.0f;
 
