@@ -85,7 +85,8 @@ void GeometryBackgroundBorder::DrawBackground(const BorderMetrics& metrics, Colo
 	FillBackground(offset_vertices);
 }
 
-void GeometryBackgroundBorder::DrawBorder(const BorderMetrics& metrics, EdgeSizes edge_sizes, const ColourbPremultiplied border_colors[4])
+void GeometryBackgroundBorder::DrawBorder(const BorderMetrics& metrics, EdgeSizes edge_sizes, const ColourbPremultiplied border_colors[4],
+	Vector2f top_gap)
 {
 	RMLUI_ASSERT(border_colors);
 
@@ -121,6 +122,30 @@ void GeometryBackgroundBorder::DrawBorder(const BorderMetrics& metrics, EdgeSize
 		{
 			RMLUI_ASSERTMSG(draw_corner[corner] && draw_corner[(corner + 1) % 4],
 				"Border edges can only be drawn if both of its connected corners are drawn.");
+
+			if (edge1 == TOP && top_gap.y > top_gap.x)
+			{
+				// The top edge is interrupted (Element::GetBorderTopCut): it runs from the corner to a pair of vertices where
+				// the gap begins, and on from a pair where the gap ends. The gap stays within the straight part of the edge.
+				const float x_min = Math::Max(metrics.positions_inner[TOP_LEFT].x, metrics.positions_outer[TOP_LEFT].x + metrics.outer_radii[TOP_LEFT]);
+				const float x_max =
+					Math::Min(metrics.positions_inner[TOP_RIGHT].x, metrics.positions_outer[TOP_RIGHT].x - metrics.outer_radii[TOP_RIGHT]);
+				if (x_max > x_min)
+				{
+					const float x0 = Math::Clamp(metrics.positions_outer[TOP_LEFT].x + top_gap.x, x_min, x_max);
+					const float x1 = Math::Clamp(metrics.positions_outer[TOP_LEFT].x + top_gap.y, x_min, x_max);
+					const float y_outer = metrics.positions_outer[TOP_LEFT].y;
+					const float y_inner = metrics.positions_inner[TOP_LEFT].y;
+					if (x1 > x0)
+					{
+						FillEdge((int)vertices.size());
+						DrawPoint(Vector2f(x0, y_inner), border_colors[TOP]);
+						DrawPoint(Vector2f(x0, y_outer), border_colors[TOP]);
+						DrawPoint(Vector2f(x1, y_inner), border_colors[TOP]);
+						DrawPoint(Vector2f(x1, y_outer), border_colors[TOP]);
+					}
+				}
+			}
 
 			FillEdge(edge1 == LEFT ? offset_vertices : (int)vertices.size());
 		}

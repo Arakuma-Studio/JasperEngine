@@ -82,7 +82,7 @@ Geometry* ElementBackgroundBorder::GetClipGeometry(Element* element, BoxArea cli
 	if (render_manager && !geometry)
 	{
 		Mesh mesh = geometry.Release(Geometry::ReleaseMode::ClearMesh);
-		MeshUtilities::GenerateBackground(mesh, element->GetRenderBox(clip_area), ColourbPremultiplied(255));
+		MeshUtilities::GenerateBackground(mesh, element->GetRenderBox(clip_area, 0, false), ColourbPremultiplied(255));
 		geometry = render_manager->MakeGeometry(std::move(mesh));
 	}
 

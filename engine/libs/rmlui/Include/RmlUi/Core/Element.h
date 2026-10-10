@@ -131,8 +131,9 @@ public:
 	/// Returns one of the render boxes describing how to generate the geometry for the corresponding element's box.
 	/// @param[in] fill_area The box area that acts as the background, or fill, of the render box.
 	/// @param[in] index The index of the desired box, with 0 being the main box. If outside of bounds, the main render box will be returned.
+	/// @param[in] with_border_top_cut The box as it is painted, with the element's top border cut (GetBorderTopCut). False: the box as it is laid out (clipping).
 	/// @return The requested render box.
-	RenderBox GetRenderBox(BoxArea fill_area = BoxArea::Padding, int index = 0);
+	RenderBox GetRenderBox(BoxArea fill_area = BoxArea::Padding, int index = 0, bool with_border_top_cut = true);
 	/// Returns the number of boxes making up this element's geometry.
 	/// @return the number of boxes making up this element's geometry.
 	int GetNumBoxes();
@@ -611,6 +612,19 @@ protected:
 	virtual void OnResize();
 	/// Called during a layout operation, when the element is being positioned and sized.
 	virtual void OnLayout();
+	/// A lowered and interrupted top border: what an HTML fieldset whose legend sits on its border paints. Everything painted
+	/// in the element's main box (background, borders, box shadows, decorators) starts `inset` px below the top of its border
+	/// box, and no top border is drawn from `gap_begin` to `gap_end` (px from the left border edge).
+	struct BorderTopCut {
+		float inset = 0.f;
+		float gap_begin = 0.f;
+		float gap_end = 0.f;
+	};
+	/// Called when the element's render box is made. Returns true when the element has a top border cut; such an element
+	/// calls DirtyBorderTopCut() when the cut changes.
+	virtual bool GetBorderTopCut(BorderTopCut& cut);
+	/// The top border cut changed: the background, borders, box shadows and decorators are generated again.
+	void DirtyBorderTopCut();
 	/// Called when the 'dp'-ratio has been changed.
 	virtual void OnDpRatioChange();
 	/// Called when the current document's compiled style sheet has been changed. This may result in changed sprites.
