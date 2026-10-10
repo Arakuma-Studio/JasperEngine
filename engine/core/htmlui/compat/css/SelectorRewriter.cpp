@@ -949,7 +949,12 @@ namespace {
                     return true;
                 }
                 if (n == "root"){
-                    target.push_back(rootMarker());
+                    // with the fork (RootIsWhere) the pseudo-class is kept next to the root element's
+                    // selector, so that ':root' weighs more than 'html' as it does in CSS
+                    SimpleSelector marker = rootMarker();
+                    if (options.fork.has(ForkFeature::RootIsWhere))
+                        marker.flag = 'p';
+                    target.push_back(marker);
                     return true;
                 }
                 if (n == "defined"){
@@ -1197,6 +1202,8 @@ namespace {
                     simples.push_back(id);
                 }
                 for (const SimpleSelector& s : compound.simples){
+                    if (s.kind == Kind::RootMarker && s.flag == 'p')
+                        simples.push_back(makePseudo("root"));
                     if (s.kind == Kind::RootMarker || s.kind == Kind::Universal)
                         continue;
                     if (s.kind == Kind::Type)

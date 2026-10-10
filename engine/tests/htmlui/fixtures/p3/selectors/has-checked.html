@@ -6,7 +6,7 @@
 <style>
   html, body { margin: 0; }
   /* checkboxes without their native look: a plain 16x16 box whose color shows :checked */
-  input[type="checkbox"] { appearance: none; position: absolute; left: 4px; top: 4px; width: 16px; height: 16px; margin: 0; padding: 0; border: 0; background-color: #ffffff; outline: none; }
+  input[type="checkbox"] { appearance: none; position: absolute; left: 4px; top: 4px; width: 16px; height: 16px; margin: 0; padding: 0; border: 0; border-radius: 0; background-color: #ffffff; outline: none; }
   input[type="checkbox"]:checked { background-color: #202020; }
 
   /* 1. li:has(> input:checked): only the direct child counts; #cb is toggled by the steps */
@@ -46,7 +46,7 @@
   <li id="li3"><span id="deep"><input type="checkbox" id="cbdeep" checked></span></li>
 </ul>
 <div id="c1" class="card"><div id="c1i"><span id="b1" class="badge"></span></div></div>
-<div id="c2" class="card"><span id="nb"></span></div>
+<div id="c2" class="card"><span class="nb"></span></div>
 <div id="a1" class="a"></div><div id="x1" class="x"></div>
 <div id="a2" class="a"></div><div id="y2" class="y"></div><div id="z2" class="z"></div>
 <div id="panel"><input type="checkbox" id="cb2" checked></div>

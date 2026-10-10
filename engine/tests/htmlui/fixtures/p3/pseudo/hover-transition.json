@@ -1,5 +1,5 @@
 {
- "comment": "Transitions on pseudo-elements (spec 3.6.2): hovering #link starts #link:hover::after's linear 1s background-color transition from #0000ff to #ff0000; 'mid' is at 0.25 s (#4000bf) and 'end' at 1 s (#ff0000); #link:hover::before switches at once (gray to green).",
+ "comment": "Transitions on pseudo-elements (spec 3.6.2): hovering #link starts #link:hover::after's linear 1s width transition from 20px to 60px; 'mid' is at 0.25 s (30px) and 'end' at 1 s (60px); #link:hover::before switches at once (gray to green).",
  "viewport": [130, 60],
  "steps": [
   {"capture": "rest"},
