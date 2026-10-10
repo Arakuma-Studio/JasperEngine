@@ -40,6 +40,15 @@ void ContainerBox::AddRelativeElement(Element* element)
 		relative_elements.push_back(element);
 }
 
+void ContainerBox::ShiftStaticPositions(Element* static_relative_offset_parent, Vector2f delta)
+{
+	for (auto& absolute_element : absolute_elements)
+	{
+		if (absolute_element.second.static_position_offset_parent == static_relative_offset_parent)
+			absolute_element.second.static_position += delta;
+	}
+}
+
 bool ContainerBox::IsScrollContainer() const
 {
 	return LayoutDetails::IsScrollContainer(overflow_x, overflow_y);

@@ -35,7 +35,8 @@ UniquePtr<LayoutBox> FormattingContext::FormatIndependent(ContainerBox* parent_c
 	else if (display == Display::InlineBlock || display == Display::FlowRoot || display == Display::TableCell || computed.float_() != Float::None ||
 		computed.position() == Position::Absolute || computed.position() == Position::Fixed ||
 		LayoutDetails::IsScrollContainer(computed.overflow_x(), computed.overflow_y()) || !element->GetParentNode() ||
-		element->GetParentNode()->GetDisplay() == Display::Flex)
+		element->GetParentNode()->GetDisplay() == Display::Flex || element->GetParentNode()->GetDisplay() == Display::InlineFlex ||
+		(display != Display::Inline && computed.align_content() != Style::AlignContent::Normal))
 	{
 		type = FormattingContextType::Block;
 	}

@@ -1,18 +1,18 @@
 #include "LayoutDetails.h"
 #include "../../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../../Include/RmlUi/Core/Element.h"
-#include "../../../Include/RmlUi/Core/ElementText.h"
-#include "../../../Include/RmlUi/Core/StringUtilities.h"
 #include "../../../Include/RmlUi/Core/ElementScroll.h"
 #include "../../../Include/RmlUi/Core/ElementText.h"
 #include "../../../Include/RmlUi/Core/Math.h"
 #include "../../../Include/RmlUi/Core/Profiling.h"
+#include "../../../Include/RmlUi/Core/StringUtilities.h"
+#include "BlockContainer.h"
 #include "ContainerBox.h"
 #include "FormattingContext.h"
 #include "LayoutEngine.h"
-#include <float.h>
-
+#include "ReplacedFormattingContext.h"
 #include <algorithm>
+#include <float.h>
 
 namespace Rml {
 
@@ -288,7 +288,7 @@ void LayoutDetails::BuildBoxSizeAndMargins(Box& box, Vector2f min_size, Vector2f
 	{
 		// The element is block, so we need to run the box through the ringer to potentially evaluate auto margins and dimensions.
 		BuildBoxWidth(box, computed, min_size.x, max_size.x, containing_block, element, replaced_element);
-		BuildBoxHeight(box, computed, min_size.y, max_size.y, containing_block.y);
+		BuildBoxHeight(box, computed, min_size.y, max_size.y, containing_block);
 	}
 }
 
@@ -472,6 +472,132 @@ namespace {
 bool LayoutDetails::IsMeasuringContentOf(const Element* element)
 {
 	return element == measuring_content_of;
+}
+
+namespace {
+	// The 'justify-self' of a block-level box ('auto': its parent's 'justify-items'), as the justify-items keywords.
+	Style::JustifyItems ResolveJustifySelf(Element* element, bool& safe)
+	{
+		const ComputedValues& computed = element->GetComputedValues();
+		const Style::JustifySelf justify_self = computed.justify_self();
+		if (justify_self != Style::JustifySelf::Auto)
+		{
+			safe = (computed.justify_self_overflow() == Style::OverflowAlignment::Safe);
+			return static_cast<Style::JustifyItems>(static_cast<int>(justify_self) - 1);
+		}
+		if (Element* parent = element->GetParentNode())
+		{
+			const ComputedValues& parent_computed = parent->GetComputedValues();
+			safe = (parent_computed.justify_items_overflow() == Style::OverflowAlignment::Safe);
+			return parent_computed.justify_items();
+		}
+		safe = false;
+		return Style::JustifyItems::Legacy;
+	}
+} // namespace
+
+bool LayoutDetails::IsJustifiedFitContent(Element* element)
+{
+	using Style::JustifyItems;
+	bool safe = false;
+	switch (ResolveJustifySelf(element, safe))
+	{
+	case JustifyItems::FlexStart:
+	case JustifyItems::FlexEnd:
+	case JustifyItems::Center:
+	case JustifyItems::Start:
+	case JustifyItems::End:
+	case JustifyItems::SelfStart:
+	case JustifyItems::SelfEnd:
+	case JustifyItems::Left:
+	case JustifyItems::Right: return true;
+	default: break;
+	}
+	return false;
+}
+
+float LayoutDetails::GetJustifySelfOffset(Element* element, float free_space)
+{
+	using Style::JustifyItems;
+	const ComputedValues& computed = element->GetComputedValues();
+	if (computed.margin_left().type == Style::Margin::Auto || computed.margin_right().type == Style::Margin::Auto)
+		return 0.f;
+
+	bool safe = false;
+	const JustifyItems justify = ResolveJustifySelf(element, safe);
+	if (safe && free_space < 0.f)
+		return 0.f;
+	switch (justify)
+	{
+	case JustifyItems::Center: return 0.5f * free_space;
+	case JustifyItems::FlexEnd:
+	case JustifyItems::End:
+	case JustifyItems::SelfEnd:
+	case JustifyItems::Right: return free_space;
+	default: break;
+	}
+	return 0.f;
+}
+
+bool LayoutDetails::HasDefiniteHeight(Element* element)
+{
+	const ComputedValues& computed = element->GetComputedValues();
+	if (computed.height().type != Style::Height::Auto)
+		return true;
+	if ((computed.position() == Style::Position::Absolute || computed.position() == Style::Position::Fixed) &&
+		computed.top().type != Style::Top::Auto && computed.bottom().type != Style::Bottom::Auto)
+		return true;
+	Element* parent = element->GetParentNode();
+	if (!parent)
+		return true;
+	const Style::Display parent_display = parent->GetDisplay();
+	return parent_display == Style::Display::Flex || parent_display == Style::Display::InlineFlex || parent_display == Style::Display::Grid ||
+		parent_display == Style::Display::InlineGrid;
+}
+
+float LayoutDetails::GetIntrinsicEdgesWidth(const LayoutBox& layout_box)
+{
+	const Box* box = layout_box.GetIfBox();
+	if (!box)
+		return 0.f;
+
+	Element* element = nullptr;
+	switch (layout_box.GetType())
+	{
+	case LayoutBox::Type::BlockContainer: element = static_cast<const BlockContainer&>(layout_box).GetElement(); break;
+	case LayoutBox::Type::FlexContainer:
+	case LayoutBox::Type::TableWrapper: element = const_cast<ContainerBox&>(static_cast<const ContainerBox&>(layout_box)).GetElement(); break;
+	case LayoutBox::Type::Replaced: element = static_cast<const ReplacedBox&>(layout_box).GetElement(); break;
+	default: break;
+	}
+	if (!element)
+		return box->GetSizeAcross(BoxDirection::Horizontal, BoxArea::Margin, BoxArea::Padding);
+
+	const ComputedValues& computed = element->GetComputedValues();
+	return ResolveValue(computed.margin_left(), 0.f) + ResolveValue(computed.margin_right(), 0.f) +
+		Math::Max(0.f, ResolveValue(computed.padding_left(), 0.f)) + Math::Max(0.f, ResolveValue(computed.padding_right(), 0.f)) +
+		box->GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Border);
+}
+
+void LayoutDetails::ShiftContentOffsets(Element* container, float delta)
+{
+	auto shift = [container, delta](Element* parent, auto& shift_ref) -> void {
+		const int num_children = parent->GetNumChildren(true);
+		for (int i = 0; i < num_children; i++)
+		{
+			Element* child = parent->GetChild(i);
+			if (child->GetOffsetParent() == container)
+			{
+				child->relative_offset_base.y += delta;
+				child->DirtyAbsoluteOffset();
+			}
+			// Inline elements (and 'display: contents') place their content against the container.
+			const Style::Display display = child->GetDisplay();
+			if (display == Style::Display::Inline || display == Style::Display::Contents)
+				shift_ref(child, shift_ref);
+		}
+	};
+	shift(container, shift);
 }
 
 float LayoutDetails::GetContentWidth(Element* element, AvailableSpace available_width, Vector2f containing_block, float known_height)
@@ -760,7 +886,8 @@ void LayoutDetails::BuildBoxWidth(Box& box, const ComputedValues& computed, floa
 		// See CSS 2.1 section 10.3.7 for when this should be applied.
 		const bool shrink_to_fit = !replaced_element &&
 			((computed.float_() != Style::Float::None) || (absolutely_positioned && inset_auto) ||
-				(computed.display() == Style::Display::InlineBlock || computed.display() == Style::Display::InlineFlex));
+				(computed.display() == Style::Display::InlineBlock || computed.display() == Style::Display::InlineFlex) ||
+				(!absolutely_positioned && IsJustifiedFitContent(element)));
 
 		if (!shrink_to_fit)
 		{
@@ -780,8 +907,11 @@ void LayoutDetails::BuildBoxWidth(Box& box, const ComputedValues& computed, floa
 	// Otherwise, the margins that are set to auto will pick up the remaining width of the containing block.
 	else if (num_auto_margins > 0)
 	{
-		const float margin =
+		float margin =
 			(containing_block.x - (GetInsetWidth() + box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Margin))) / float(num_auto_margins);
+		// Over-constrained: 'auto' margins are treated as 0 in normal flow (CSS 2.1 §10.3.3).
+		if (!absolutely_positioned)
+			margin = Math::Max(margin, 0.f);
 
 		if (margins_auto[0])
 			box.SetEdge(BoxArea::Margin, BoxEdge::Left, margin);
@@ -804,8 +934,9 @@ void LayoutDetails::BuildBoxWidth(Box& box, const ComputedValues& computed, floa
 		box.SetContent(content_area);
 }
 
-void LayoutDetails::BuildBoxHeight(Box& box, const ComputedValues& computed, float min_height, float max_height, float containing_block_height)
+void LayoutDetails::BuildBoxHeight(Box& box, const ComputedValues& computed, float min_height, float max_height, Vector2f containing_block)
 {
+	const float containing_block_height = containing_block.y;
 	RMLUI_ZoneScoped;
 
 	Vector2f content_area = box.GetSize();
@@ -826,7 +957,8 @@ void LayoutDetails::BuildBoxHeight(Box& box, const ComputedValues& computed, flo
 		else
 		{
 			margins_auto[i] = false;
-			box.SetEdge(BoxArea::Margin, i == 0 ? BoxEdge::Top : BoxEdge::Bottom, ResolveValue(margin_value, containing_block_height));
+			// Percentage margins refer to the containing block's width, vertical ones too (CSS 2.1 §8.3).
+			box.SetEdge(BoxArea::Margin, i == 0 ? BoxEdge::Top : BoxEdge::Bottom, ResolveValue(margin_value, containing_block.x));
 		}
 	}
 
@@ -857,8 +989,9 @@ void LayoutDetails::BuildBoxHeight(Box& box, const ComputedValues& computed, flo
 			content_area.y = Math::Max(0.0f, content_area.y);
 		}
 	}
-	// Otherwise, the margins that are set to auto will pick up the remaining height of the containing block.
-	else if (num_auto_margins > 0)
+	// Otherwise, the margins that are set to auto will pick up the remaining height of the containing block: for absolutely
+	// positioned boxes only, 'auto' vertical margins are 0 in normal flow (CSS 2.1 §10.6.3).
+	else if (num_auto_margins > 0 && absolutely_positioned)
 	{
 		const float margin =
 			(containing_block_height - (GetInsetHeight() + box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Margin))) / float(num_auto_margins);
@@ -880,7 +1013,7 @@ void LayoutDetails::BuildBoxHeight(Box& box, const ComputedValues& computed, flo
 			box.SetContent(content_area);
 
 			if (num_auto_margins > 0)
-				BuildBoxHeight(box, computed, min_height, max_height, containing_block_height);
+				BuildBoxHeight(box, computed, min_height, max_height, containing_block);
 
 			return;
 		}

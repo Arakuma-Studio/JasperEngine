@@ -8,6 +8,7 @@ namespace Rml {
 class Box;
 class BlockContainer;
 class ContainerBox;
+class LayoutBox;
 
 /**
     ComputedAxisSize is an abstraction of an element's computed size properties along a single axis, either horizontally or vertically,
@@ -157,6 +158,23 @@ public:
 	/// reports its content width even when its 'width' is definite, and its min-/max- sizes do not apply.
 	static bool IsMeasuringContentOf(const Element* element);
 
+	/// The horizontal offset of an in-flow block-level box in its containing block by its 'justify-self' (CSS Box Alignment 3
+	/// §6.1, the parent's 'justify-items' for 'auto'), given the free space beside its margin box. Zero for 'normal' and
+	/// 'stretch', and for boxes with an 'auto' horizontal margin (the margins take the space).
+	static float GetJustifySelfOffset(Element* element, float free_space);
+	/// True if an in-flow block-level box with an 'auto' width is sized as 'fit-content' by its 'justify-self' (any value but
+	/// 'normal', 'stretch', 'auto' resolving to them, and the baseline values).
+	static bool IsJustifiedFitContent(Element* element);
+	/// Moves the content of a block container (the elements positioned against it, through inline elements) down by 'delta',
+	/// for its 'align-content'.
+	static void ShiftContentOffsets(Element* container, float delta);
+	/// True if the height of an element's box does not depend on its content (CSS Sizing 3 'definite'), as percentages of
+	/// it need: a definite 'height', an absolutely positioned box with 'top' and 'bottom', a flex or grid item, the root.
+	static bool HasDefiniteHeight(Element* element);
+	/// The horizontal margins, borders and paddings of a box as they contribute to an intrinsic width (percentages of the
+	/// indefinite width being measured count as 0).
+	static float GetIntrinsicEdgesWidth(const LayoutBox& layout_box);
+
 	/// Build computed axis size along the horizontal direction (width and friends).
 	static ComputedAxisSize BuildComputedHorizontalSize(const ComputedValues& computed);
 	/// Build computed axis size along the vertical direction (height and friends).
@@ -202,8 +220,8 @@ private:
 	/// @param[in] computed The computed values of the element the box is being generated for.
 	/// @param[in] min_height The minimum content height of the element.
 	/// @param[in] max_height The maximum content height of the element.
-	/// @param[in] containing_block_height The height of the containing block.
-	static void BuildBoxHeight(Box& box, const ComputedValues& computed, float min_height, float max_height, float containing_block_height);
+	/// @param[in] containing_block The size of the containing block (percentage margins resolve against its width).
+	static void BuildBoxHeight(Box& box, const ComputedValues& computed, float min_height, float max_height, Vector2f containing_block);
 };
 
 } // namespace Rml

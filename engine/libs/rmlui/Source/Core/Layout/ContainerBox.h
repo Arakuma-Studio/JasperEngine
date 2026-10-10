@@ -45,6 +45,8 @@ public:
 		std::optional<Rectanglef> containing_block = std::nullopt, std::optional<StaticPositionArea> static_position_area = std::nullopt);
 	// Adds a relatively positioned element which we act as a containing block for.
 	void AddRelativeElement(Element* element);
+	// Moves the static positions of our absolutely positioned elements given relative to 'static_relative_offset_parent'.
+	void ShiftStaticPositions(Element* static_relative_offset_parent, Vector2f delta);
 
 	ContainerBox* GetParent() { return parent_container; }
 	Element* GetElement() { return element; }

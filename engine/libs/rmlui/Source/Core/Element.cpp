@@ -2396,6 +2396,9 @@ void Element::UpdateOffset()
 		{
 			const Box& parent_box = offset_parent->GetBox();
 			Vector2f containing_block = parent_box.GetSize();
+			// Percentages of a containing block height that depends on its content resolve as 'auto' (CSS 2.1 §9.4.3).
+			if (!LayoutDetails::HasDefiniteHeight(offset_parent))
+				containing_block.y = -1.f;
 
 			if (computed.left().type != Left::Auto)
 				relative_offset_position.x = ResolveValue(computed.left(), containing_block.x);
@@ -2404,10 +2407,14 @@ void Element::UpdateOffset()
 			else
 				relative_offset_position.x = 0;
 
+			auto resolve_vertical = [&](Style::LengthPercentageAuto value) {
+				return (value.type == Style::LengthPercentageAuto::Length || containing_block.y >= 0.f) ? ResolveValue(value, containing_block.y)
+																										: 0.f;
+			};
 			if (computed.top().type != Top::Auto)
-				relative_offset_position.y = ResolveValue(computed.top(), containing_block.y);
+				relative_offset_position.y = resolve_vertical(computed.top());
 			else if (computed.bottom().type != Bottom::Auto)
-				relative_offset_position.y = -1 * ResolveValue(computed.bottom(), containing_block.y);
+				relative_offset_position.y = -1 * resolve_vertical(computed.bottom());
 			else
 				relative_offset_position.y = 0;
 		}
