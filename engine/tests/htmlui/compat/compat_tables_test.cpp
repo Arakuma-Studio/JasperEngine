@@ -105,14 +105,20 @@ TEST(CompatTables, EveryRmlUiPropertyAndShorthandHasARow){
     RmlUiSession rml;
     ASSERT_TRUE(rml.ok);
 
+    // (phase 3 declares the ids of every feature in the fork's ID.h at once; an id whose package has not
+    // registered it yet has no name and nothing parses into it)
     size_t checked = 0;
     for (size_t id = 1; id < (size_t)Rml::PropertyId::NumDefinedIds; id++){
+        if (!Rml::StyleSheetSpecification::GetProperty((Rml::PropertyId)id))
+            continue;
         const std::string& name = Rml::StyleSheetSpecification::GetPropertyName((Rml::PropertyId)id);
         ASSERT_FALSE(name.empty()) << id;
         EXPECT_NE(findProperty(name), nullptr) << "RmlUi property '" << name << "' has no row";
         checked++;
     }
     for (size_t id = 1; id < (size_t)Rml::ShorthandId::NumDefinedIds; id++){
+        if (!Rml::StyleSheetSpecification::GetShorthand((Rml::ShorthandId)id))
+            continue;
         const std::string& name = Rml::StyleSheetSpecification::GetShorthandName((Rml::ShorthandId)id);
         ASSERT_FALSE(name.empty()) << id;
         EXPECT_NE(findProperty(name), nullptr) << "RmlUi shorthand '" << name << "' has no row";
