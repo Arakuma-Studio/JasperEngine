@@ -10,6 +10,7 @@
 #include <RmlUi/Core/PropertyDictionary.h>
 #include <RmlUi/Core/StyleSheetSpecification.h>
 #include <doctest.h>
+#include <float.h>
 
 using namespace Rml;
 
@@ -170,6 +171,8 @@ TEST_CASE("BorderStyle.computed_width")
 
 TEST_CASE("BorderStyle.geometry")
 {
+	// The exact geometry, without the feathering of the edges (checked below).
+	SetGeometryFeathering(false);
 	const ColourbPremultiplied red(255, 0, 0, 255), blue(0, 0, 255, 255), none(0, 0);
 	auto render_box = [](float width, Style::BorderStyle style) {
 		RenderBox box(Vector2f(60.f - 2.f * width, 40.f - 2.f * width), Vector2f(0.f), EdgeSizes{width, width, width, width}, CornerSizes{});
@@ -250,12 +253,26 @@ TEST_CASE("BorderStyle.geometry")
 		const ColourbPremultiplied base(200, 100, 50, 255);
 		const ColourbPremultiplied dark = GeometryBorderStyles::DarkColor(base);
 		CHECK(dark == ColourbPremultiplied(116, 58, 29, 255));
+		const ColourbPremultiplied light = GeometryBorderStyles::LightColor(base);
+		CHECK(light == ColourbPremultiplied(255, 127, 63, 255));
+		// Colours darker than #202020 are lightened for both parts (Light, then Light again), black to fixed greys; colours
+		// lighter than #ebebeb are their own light part.
+		CHECK(GeometryBorderStyles::DarkColor(ColourbPremultiplied(0, 0, 0, 255)) == ColourbPremultiplied(84, 84, 84, 255));
+		CHECK(GeometryBorderStyles::LightColor(ColourbPremultiplied(0, 0, 0, 255)) == ColourbPremultiplied(168, 168, 168, 255));
+		CHECK(GeometryBorderStyles::DarkColor(ColourbPremultiplied(32, 32, 32, 255)) == ColourbPremultiplied(116, 116, 116, 255));
+		CHECK(GeometryBorderStyles::LightColor(ColourbPremultiplied(32, 32, 32, 255)) == ColourbPremultiplied(200, 200, 200, 255));
+		CHECK(GeometryBorderStyles::DarkColor(ColourbPremultiplied(34, 34, 34, 255)) == ColourbPremultiplied(0, 0, 0, 255));
+		CHECK(GeometryBorderStyles::LightColor(ColourbPremultiplied(34, 34, 34, 255)) == ColourbPremultiplied(118, 118, 118, 255));
+		CHECK(GeometryBorderStyles::DarkColor(ColourbPremultiplied(240, 240, 240, 255)) == ColourbPremultiplied(156, 156, 156, 255));
+		CHECK(GeometryBorderStyles::LightColor(ColourbPremultiplied(240, 240, 240, 255)) == ColourbPremultiplied(240, 240, 240, 255));
+		CHECK(GeometryBorderStyles::LightColor(ColourbPremultiplied(235, 235, 235, 255)) == ColourbPremultiplied(255, 255, 255, 255));
+		CHECK(GeometryBorderStyles::DarkColor(ColourbPremultiplied(255, 255, 255, 255)) == ColourbPremultiplied(171, 171, 171, 255));
 		const ColourbPremultiplied base_colors[4] = {base, base, base, base};
 
 		Mesh inset;
 		MeshUtilities::GenerateBackgroundBorder(inset, render_box(6.f, Style::BorderStyle::Inset), none, base_colors);
 		CHECK(CountColour(inset, dark) > 0);
-		CHECK(CountColour(inset, base) > 0);
+		CHECK(CountColour(inset, light) > 0);
 
 		// Groove: top and left dark outside, light inside; the bottom and right the other way round.
 		Mesh groove;
@@ -263,10 +280,10 @@ TEST_CASE("BorderStyle.geometry")
 		bool top_outer_dark = false, bottom_outer_light = false;
 		for (const Vertex& vertex : groove.vertices)
 		{
-			if (vertex.position.y == 0.f && vertex.position.x > 5.f && vertex.position.x < 55.f)
+			if (vertex.position.y == 0.f)
 				top_outer_dark |= (vertex.colour == dark);
-			if (vertex.position.y == 40.f && vertex.position.x > 5.f && vertex.position.x < 55.f)
-				bottom_outer_light |= (vertex.colour == base);
+			if (vertex.position.y == 40.f)
+				bottom_outer_light |= (vertex.colour == light);
 		}
 		CHECK(top_outer_dark);
 		CHECK(bottom_outer_light);
@@ -282,9 +299,59 @@ TEST_CASE("BorderStyle.geometry")
 			box.GetBorderWidths(), mixed, box.GetBorderStyles()));
 		Mesh mesh;
 		MeshUtilities::GenerateBackgroundBorder(mesh, box, none, mixed);
+		// No vertex mixes the colours (the curves' feathered rims only fade them).
 		for (const Vertex& vertex : mesh.vertices)
-			CHECK((vertex.colour == red || vertex.colour == blue));
+			CHECK((vertex.colour.red == 0 || vertex.colour.blue == 0));
 		CHECK(CountColour(mesh, red) > 0);
 		CHECK(CountColour(mesh, blue) > 0);
 	}
+
+	SetGeometryFeathering(true);
+}
+
+TEST_CASE("BorderStyle.feathering")
+{
+	// Feathered edges (anti-aliasing): the opaque part moves half a pixel inwards, a ring fades to transparent half a pixel
+	// outside; pixel-aligned edges stay where they are for pixel centres.
+	REQUIRE(GetGeometryFeathering());
+	const ColourbPremultiplied red(255, 0, 0, 255), none(0, 0);
+	const ColourbPremultiplied colors[4] = {red, red, red, red};
+
+	RenderBox box(Vector2f(20.f), Vector2f(0.f), EdgeSizes{4.f, 4.f, 4.f, 4.f}, CornerSizes{});
+	Mesh mesh;
+	MeshUtilities::GenerateBackgroundBorder(mesh, box, none, colors);
+	float min_opaque_x = FLT_MAX, max_opaque_x = -FLT_MAX, min_x = FLT_MAX, max_x = -FLT_MAX;
+	for (const Vertex& vertex : mesh.vertices)
+	{
+		min_x = Math::Min(min_x, vertex.position.x);
+		max_x = Math::Max(max_x, vertex.position.x);
+		if (vertex.colour == red)
+		{
+			min_opaque_x = Math::Min(min_opaque_x, vertex.position.x);
+			max_opaque_x = Math::Max(max_opaque_x, vertex.position.x);
+		}
+		else
+		{
+			CHECK(vertex.colour == none);
+		}
+	}
+	CHECK(min_x == doctest::Approx(-1.f));
+	CHECK(max_x == doctest::Approx(29.f));
+	CHECK(min_opaque_x == doctest::Approx(0.5f));
+	CHECK(max_opaque_x == doctest::Approx(27.5f));
+
+	// A background alone is feathered at its edge; under a border its edge stays sharp (no seam).
+	Mesh background;
+	MeshUtilities::GenerateBackgroundBorder(background, RenderBox(Vector2f(20.f), Vector2f(0.f), EdgeSizes{}, CornerSizes{10.f, 10.f, 10.f, 10.f}),
+		red, colors);
+	bool transparent_rim = false;
+	for (const Vertex& vertex : background.vertices)
+		transparent_rim |= (vertex.colour == none);
+	CHECK(transparent_rim);
+
+	// The clip geometry is never feathered.
+	Mesh clip;
+	MeshUtilities::GenerateBackground(clip, RenderBox(Vector2f(20.f), Vector2f(0.f), EdgeSizes{}, CornerSizes{10.f, 10.f, 10.f, 10.f}), red);
+	for (const Vertex& vertex : clip.vertices)
+		CHECK(vertex.colour == red);
 }

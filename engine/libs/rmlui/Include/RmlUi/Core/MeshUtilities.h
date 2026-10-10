@@ -8,6 +8,13 @@ namespace Rml {
 
 struct Mesh;
 
+/// Feathers every edge of the backgrounds and borders MeshUtilities::GenerateBackgroundBorder generates (anti-aliasing by a
+/// one-pixel ring fading to transparent, close to the coverage Chromium computes): on by default, for render targets
+/// without multisampling. Off, only curved edges (rounded corners, round dots) are feathered and multisampling resolves the
+/// straight ones. Set it before documents generate their geometry; GenerateBackground (clip masks) is never feathered.
+RMLUICORE_API void SetGeometryFeathering(bool enable);
+RMLUICORE_API bool GetGeometryFeathering();
+
 /**
     A class containing helper functions for generating meshes.
 
@@ -42,7 +49,8 @@ public:
 	/// @param[in] render_box The render box which determines the background and border geometry.
 	/// @param[in] background_color The color applied to the background, set alpha to zero to not generate the background.
 	/// @param[in] border_colors A four-element array of border colors in top-right-bottom-left order.
-	/// @note Vertex positions are relative to the border-box, vertex texture coordinates are default initialized.
+	/// @note Vertex positions are relative to the border-box, vertex texture coordinates are default initialized. The edges
+	/// are feathered unless SetGeometryFeathering(false), and the border is drawn with the render box's border styles.
 	static void GenerateBackgroundBorder(Mesh& mesh, const RenderBox& render_box, ColourbPremultiplied background_color,
 		const ColourbPremultiplied border_colors[4]);
 

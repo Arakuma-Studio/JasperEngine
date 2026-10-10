@@ -8,6 +8,18 @@
 
 namespace Rml {
 
+static bool geometry_feathering = true;
+
+void SetGeometryFeathering(bool enable)
+{
+	geometry_feathering = enable;
+}
+
+bool GetGeometryFeathering()
+{
+	return geometry_feathering;
+}
+
 void MeshUtilities::GenerateQuad(Mesh& mesh, Vector2f origin, Vector2f dimensions, ColourbPremultiplied colour)
 {
 	GenerateQuad(mesh, origin, dimensions, colour, Vector2f(0, 0), Vector2f(1, 1));
@@ -86,16 +98,31 @@ void MeshUtilities::GenerateBackgroundBorder(Mesh& out_mesh, const RenderBox& re
 	GeometryBackgroundBorder geometry(vertices, indices);
 	const BorderMetrics metrics =
 		GeometryBackgroundBorder::ComputeBorderMetrics(render_box.GetBorderOffset(), border_widths, fill_size, render_box.GetBorderRadius());
+	const BorderStyles border_styles = render_box.GetBorderStyles();
+
+	// Anti-aliasing (phase 3, 3.7.3): with feathering every edge of the background and the border is feathered; without
+	// it (a multisampled target) only curved edges are, multisampling resolving the straight ones. Square, solid borders
+	// without feathering keep the fast path.
+	bool rounded = false;
+	for (float radius : metrics.outer_radii)
+		rounded |= (radius > 0.f);
+	const FeatherEdges edges = (geometry_feathering ? FeatherEdges::All : FeatherEdges::Curves);
 
 	if (has_background)
-		geometry.DrawBackground(metrics, background_color);
+	{
+		// A background inside a border and the border's inner edge stay sharp where they meet, so that no seam shows.
+		if (geometry_feathering || rounded)
+			GeometryBorderStyles::DrawBackground(vertices, indices, metrics, background_color, has_border ? FeatherEdges::None : edges);
+		else
+			geometry.DrawBackground(metrics, background_color);
+	}
 
 	if (has_border)
 	{
 		// Styles other than solid, and sides of different colours meeting at a rounded corner, need the styled generator.
-		const BorderStyles border_styles = render_box.GetBorderStyles();
-		if (GeometryBorderStyles::IsNeeded(metrics, border_widths, border_colors, border_styles))
-			GeometryBorderStyles::DrawBorder(vertices, indices, metrics, border_widths, border_colors, border_styles, render_box.GetBorderTopGap());
+		if (geometry_feathering || rounded || GeometryBorderStyles::IsNeeded(metrics, border_widths, border_colors, border_styles))
+			GeometryBorderStyles::DrawBorder(vertices, indices, metrics, border_widths, border_colors, border_styles, render_box.GetBorderTopGap(),
+				edges, !has_background);
 		else
 			geometry.DrawBorder(metrics, border_widths, border_colors, render_box.GetBorderTopGap());
 	}
