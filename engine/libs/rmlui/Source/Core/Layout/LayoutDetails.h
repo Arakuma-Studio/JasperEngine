@@ -28,6 +28,9 @@ struct ContainingBlock {
 	Vector2f size;
 };
 
+/// The boxes a container lays out, in layout order (see LayoutDetails::GetLayoutChildren).
+using LayoutChildList = Vector<Element*>;
+
 enum class BuildBoxMode {
 	Block,          // Sets edges and size if available, auto width can result in shrink-to-fit width, auto margins are used for alignment.
 	Inline,         // Sets edges, ignores width, height, and auto margins.
@@ -43,6 +46,15 @@ class LayoutDetails {
 public:
 	/// A text element of white space only that CSS collapses away (white-space other than pre, pre-wrap, break-spaces).
 	static bool IsCollapsibleWhiteSpaceText(Element* element);
+
+	/// Returns the boxes to lay out inside an element, in order: its ::marker, its ::before, its DOM children, its ::after
+	/// (pseudo-elements once they are generated, Element::GetPseudoElement). A 'display: contents' child is replaced by its
+	/// own layout children, recursively. With 'apply_order' (flex and grid containers) the list is stable-sorted by the
+	/// 'order' property, so that the boxes are placed, and painted, in order-modified document order.
+	/// @param[in] parent The element whose boxes to list.
+	/// @param[out] children Cleared, then filled.
+	/// @param[in] apply_order True to sort by 'order'.
+	static void GetLayoutChildren(Element* parent, LayoutChildList& children, bool apply_order);
 
 	/// Generates the box dimensions for an element.
 	/// @param[out] box The box to be built.

@@ -137,7 +137,7 @@ private:
 	{
 		if (value.type != Style::LengthPercentageAuto::Auto)
 			return ResolveValue(value, containing_block);
-		if (position == Style::Position::Relative)
+		if (position == Style::Position::Relative || position == Style::Position::Sticky)
 			return 0.0f;
 		return fallback_func();
 	}

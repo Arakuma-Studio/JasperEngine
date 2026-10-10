@@ -67,9 +67,17 @@ namespace Style {
 		TableRowGroup,
 		TableColumn,
 		TableColumnGroup,
-		TableCell
+		TableCell,
+		// Phase 3 (groundwork): 'grid' and 'inline-grid' are parsed once grid layout exists (p3-grid); until its formatting
+		// context, 'list-item' is laid out as a block (its ::marker: p3-cascade); 'contents' generates no box, its children
+		// are laid out in its place (LayoutDetails::GetLayoutChildren).
+		Grid,
+		InlineGrid,
+		ListItem,
+		Contents,
 	};
-	enum class Position : uint8_t { Static, Relative, Absolute, Fixed };
+	// 'sticky' is laid out as 'relative' until sticky offsets (p3-layout).
+	enum class Position : uint8_t { Static, Relative, Absolute, Fixed, Sticky };
 
 	using Top = LengthPercentageAuto;
 	using Right = LengthPercentageAuto;

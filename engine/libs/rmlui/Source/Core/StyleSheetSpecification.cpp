@@ -353,9 +353,10 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::BorderBottomLeftRadius, "border-bottom-left-radius", "0px", false, false).AddParser("length");
 	RegisterShorthand(ShorthandId::BorderRadius, "border-radius", "border-top-left-radius, border-top-right-radius, border-bottom-right-radius, border-bottom-left-radius", ShorthandType::Box);
 
+	// 'grid=14, inline-grid=15' join the display keywords with grid layout (p3-grid): ForkFeature::Grid's probe parses them.
 	RegisterProperty(PropertyId::Display, "display", "inline", false, true)
-		.AddParser("keyword", "none, block, inline, inline-block, flow-root, flex, inline-flex, table, inline-table, table-row, table-row-group, table-column, table-column-group, table-cell");
-	RegisterProperty(PropertyId::Position, "position", "static", false, true).AddParser("keyword", "static, relative, absolute, fixed");
+		.AddParser("keyword", "none, block, inline, inline-block, flow-root, flex, inline-flex, table, inline-table, table-row, table-row-group, table-column, table-column-group, table-cell, list-item=16, contents=17");
+	RegisterProperty(PropertyId::Position, "position", "static", false, true).AddParser("keyword", "static, relative, absolute, fixed, sticky");
 	RegisterProperty(PropertyId::Top, "top", "auto", false, false).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
 	RegisterProperty(PropertyId::Right, "right", "auto", false, false).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
 	RegisterProperty(PropertyId::Bottom, "bottom", "auto", false, false).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
@@ -493,6 +494,7 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	*/
 
 	// -- Groundwork (p3-base) --
+	RegisterProperty(PropertyId::Order, "order", "0", false, true).AddParser("number");
 	// A browser optimization hint with no visual effect: accepted, so it neither fails nor needs a rewrite.
 	RegisterProperty(PropertyId::WillChange, "will-change", "auto", false, false).AddParser("keyword", "auto").AddParser("string");
 

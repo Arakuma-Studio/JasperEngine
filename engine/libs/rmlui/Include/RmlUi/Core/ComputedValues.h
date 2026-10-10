@@ -39,8 +39,8 @@ namespace Style {
 			left_type(LengthPercentageAuto::Auto), z_index_type(NumberAuto::Auto)
 		{}
 
-		Display display : 4;
-		Position position : 2;
+		Display display : 5;
+		Position position : 3;
 
 		Float float_ : 2;
 		Clear clear : 2;
@@ -216,6 +216,7 @@ namespace Style {
 		*/
 
 		// -- Groundwork (p3-base) --
+		int order = 0;
 
 		// -- Values (p3-values) --
 
@@ -350,6 +351,7 @@ namespace Style {
 
 		// -- Phase 3: one section per package (see RareValues) --
 		// Groundwork (p3-base)
+		int               order()                      const { return rare.order; }
 
 		// Values (p3-values)
 
@@ -455,6 +457,7 @@ namespace Style {
 
 		// Phase 3: one section per package (see RareValues)
 		// Groundwork (p3-base)
+		void order                     (int value)               { rare.order                      = value; }
 
 		// Values (p3-values)
 

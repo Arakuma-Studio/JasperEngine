@@ -249,13 +249,14 @@ void FlexFormattingContext::Format(Vector2f& flex_resulting_content_size, Vector
 	const float cross_gap_size = ResolveValue(main_axis_horizontal ? row_gap : column_gap, cross_size_base_value);
 
 	// -- Build a list of all flex items with base size information --
-	const int num_flex_children = element_flex->GetNumChildren();
+	// The items in order-modified document order (pseudo-elements and 'display: contents' children included).
+	LayoutChildList flex_children;
+	LayoutDetails::GetLayoutChildren(element_flex, flex_children, true);
 	Vector<FlexItem> items;
-	items.reserve(num_flex_children);
+	items.reserve(flex_children.size());
 
-	for (int i = 0; i < num_flex_children; i++)
+	for (Element* element : flex_children)
 	{
-		Element* element = element_flex->GetChild(i);
 		const ComputedValues& computed = element->GetComputedValues();
 
 		// White space between flex items is not rendered (CSS Flexbox §4).
@@ -269,7 +270,7 @@ void FlexFormattingContext::Format(Vector2f& flex_resulting_content_size, Vector
 			absolute_containing_block->AddAbsoluteElement(element, {}, element_flex);
 			continue;
 		}
-		else if (computed.position() == Style::Position::Relative)
+		else if (computed.position() == Style::Position::Relative || computed.position() == Style::Position::Sticky)
 		{
 			flex_container_box->AddRelativeElement(element);
 		}

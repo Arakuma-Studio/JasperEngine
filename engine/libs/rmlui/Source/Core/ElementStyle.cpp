@@ -1511,6 +1511,8 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 
 	// -- Groundwork (p3-base) --
 	case PropertyId::Order:
+		values.order(p->Get<int>());
+		break;
 	case PropertyId::JustifyItems:
 	case PropertyId::JustifySelf:
 	case PropertyId::WillChange:

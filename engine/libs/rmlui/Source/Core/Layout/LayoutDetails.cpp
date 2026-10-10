@@ -28,6 +28,42 @@ bool LayoutDetails::IsCollapsibleWhiteSpaceText(Element* element)
 	return std::all_of(value.begin(), value.end(), &StringUtilities::IsWhitespace);
 }
 
+static void AppendLayoutChildren(Element* parent, LayoutChildList& children)
+{
+	auto Append = [&children](Element* child) {
+		if (child->GetComputedValues().display() == Style::Display::Contents)
+			AppendLayoutChildren(child, children);
+		else
+			children.push_back(child);
+	};
+
+	if (Element* marker = parent->GetPseudoElement(PseudoElementType::Marker))
+		Append(marker);
+	if (Element* before = parent->GetPseudoElement(PseudoElementType::Before))
+		Append(before);
+	const int num_children = parent->GetNumChildren();
+	for (int i = 0; i < num_children; i++)
+		Append(parent->GetChild(i));
+	if (Element* after = parent->GetPseudoElement(PseudoElementType::After))
+		Append(after);
+}
+
+void LayoutDetails::GetLayoutChildren(Element* parent, LayoutChildList& children, bool apply_order)
+{
+	children.clear();
+	AppendLayoutChildren(parent, children);
+
+	if (apply_order)
+	{
+		const bool any_order = std::any_of(children.begin(), children.end(), [](Element* child) { return child->GetComputedValues().order() != 0; });
+		if (any_order)
+		{
+			std::stable_sort(children.begin(), children.end(),
+				[](Element* a, Element* b) { return a->GetComputedValues().order() < b->GetComputedValues().order(); });
+		}
+	}
+}
+
 // Convert width or height of a border box to the width or height of its corresponding content box.
 static inline float BorderSizeToContentSize(float border_size, float border_padding_edges_size)
 {
@@ -189,7 +225,7 @@ ContainingBlock LayoutDetails::GetContainingBlock(ContainerBox* parent_container
 
 	Vector2f containing_block = box->GetSize(area);
 
-	if (position == Position::Static || position == Position::Relative)
+	if (position == Position::Static || position == Position::Relative || position == Position::Sticky)
 	{
 		// For static elements we subtract the scrollbar size so that elements normally don't overlap their parent's
 		// scrollbars. In CSS, this would also be done for absolutely positioned elements, we might want to copy that

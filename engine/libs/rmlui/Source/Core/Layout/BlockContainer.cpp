@@ -133,7 +133,7 @@ BlockContainer* BlockContainer::OpenBlockBox(Element* child_element, const Box& 
 
 	// Store relatively positioned elements with their containing block so that their offset can be updated after
 	// their containing block has been sized.
-	if (child_element->GetPosition() == Style::Position::Relative)
+	if (child_element->GetPosition() == Style::Position::Relative || child_element->GetPosition() == Style::Position::Sticky)
 		AddRelativeElement(child_element);
 
 	child_boxes.push_back(std::move(child_container_ptr));
@@ -154,7 +154,7 @@ LayoutBox* BlockContainer::AddBlockLevelBox(UniquePtr<LayoutBox> block_level_box
 
 	child_element->SetOffset(child_position - position, element);
 
-	if (child_element->GetPosition() == Style::Position::Relative)
+	if (child_element->GetPosition() == Style::Position::Relative || child_element->GetPosition() == Style::Position::Sticky)
 		AddRelativeElement(child_element);
 
 	LayoutBox* block_level_box = block_level_box_ptr.get();
@@ -176,7 +176,7 @@ InlineBoxHandle BlockContainer::AddInlineElement(Element* element, const Box& ch
 
 	InlineBox* inline_box = inline_container->AddInlineElement(element, child_box);
 
-	if (element->GetPosition() == Style::Position::Relative)
+	if (element->GetPosition() == Style::Position::Relative || element->GetPosition() == Style::Position::Sticky)
 		AddRelativeElement(element);
 
 	return {inline_box};
@@ -250,7 +250,7 @@ void BlockContainer::AddFloatElement(Element* element, Vector2f visible_overflow
 		PlaceFloat(element, box_position.y, visible_overflow_size);
 	}
 
-	if (element->GetPosition() == Style::Position::Relative)
+	if (element->GetPosition() == Style::Position::Relative || element->GetPosition() == Style::Position::Sticky)
 		AddRelativeElement(element);
 }
 
