@@ -214,7 +214,7 @@ void jasperengine::htmlui::compat::rewriteDisplay(DeclContext& context){
         return;
     }
     const ValueSupport* row = findValue("display", keyword);
-    if (row && row->support == Support::Native){
+    if (row && effectiveSupport(*row, context.session.options.fork) == Support::Native){
         context.emit("display", keyword);
         return;
     }

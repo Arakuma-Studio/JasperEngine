@@ -61,7 +61,7 @@ dialog:not([open]) {
 
 address, article, aside, blockquote, center, details, dialog, dd, div, dl, dt, fieldset,
 figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, legend,
-listing, main, menu, nav, ol, optgroup, p, plaintext, pre, search, section, summary, ul,
+listing, main, menu, nav, ol, optgroup, p, plaintext, pre, search, section, ul,
 xmp {
     display: block;
 }
@@ -156,6 +156,9 @@ h6 {
 ul, ol, menu {
     margin: 1em 0;
     padding-left: 40px;
+    /* the list-item counter of the fork's markers (ListMarkers, PseudoElements); without the
+       feature the li emulation numbers the items and compat drops the declaration silently */
+    counter-reset: list-item;
 }
 
 ul, menu {
@@ -588,8 +591,11 @@ label {
     cursor: default;
 }
 
-/* details and summary: the disclosure triangle is the summary's list marker */
+/* details and summary: the disclosure triangle is the summary's list marker (written as a
+   list item: block without the fork's ListMarkers, where HtmlSummaryElement draws it) */
 summary {
+    display: list-item;
+    counter-increment: list-item 0;
     list-style-type: disclosure-closed;
     list-style-position: inside;
     cursor: default;

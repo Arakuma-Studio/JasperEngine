@@ -190,7 +190,7 @@ namespace {
         {"display", "grid", F, FF::Grid, N, "flex; flex-wrap: wrap", "flex-wrap fallback until the fork has Grid (Warning)", ""},
         {"display", "inline-grid", F, FF::Grid, N, "inline-flex; flex-wrap: wrap", "flex-wrap fallback until the fork has Grid (Warning)", ""},
         {"display", "contents", A, FF::None, A, "block", "the box is kept (Warning)", ""},
-        {"display", "list-item", R, FF::None, R, "block", "markers come from the li emulation", ""},
+        {"display", "list-item", R, FF::ListMarkers, N, "block", "markers come from the li emulation until the fork has ListMarkers", ""},
         {"display", "table-caption", R, FF::None, R, "block", "caption laid out as a block", ""},
         {"display", "table-header-group", A, FF::None, A, "table-row-group", "header not moved to the start (Info)", ""},
         {"display", "table-footer-group", A, FF::None, A, "table-row-group", "footer not moved to the end (Info)", ""},

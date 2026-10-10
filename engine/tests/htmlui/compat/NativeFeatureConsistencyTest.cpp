@@ -45,6 +45,7 @@ namespace {
         Declaration,   // a style="" declaration (CssRewriter::rewriteDeclarations)
         Selector,      // a selector (CssRewriter::rewriteSelector)
         Rule,          // the declaration in a stylesheet rule ".sample { ... }" (an inline <style>)
+        BeforeRule,    // the same in ".sample::before { ... }" (generated content: 'content' applies there)
     };
 
     struct FeatureSample {
@@ -72,6 +73,30 @@ namespace {
         {ForkFeature::Important, SampleKind::Rule, "color: red !important", ".sample{color:#ff0000ff;", ""},
         {ForkFeature::CssWideKeywords, SampleKind::Declaration, "color: inherit", "var(", ""},
         {ForkFeature::Grid, SampleKind::Declaration, "display: grid", "display:flex", ""},
+        // p3-cascade
+        {ForkFeature::RootIsWhere, SampleKind::Selector, ".a :where(.b, .c)", ".a .b,.a .c", ""},
+        {ForkFeature::Has, SampleKind::Selector, "li:has(> input:checked)", "", "HTMLUI-SEL-0001"},
+        {ForkFeature::Has, SampleKind::Selector, ".card:has(+ .badge, .x)", "", "HTMLUI-SEL-0001"},
+        {ForkFeature::FocusPseudoClasses, SampleKind::Selector, ".a:focus", ".a:html-focus", ""},
+        {ForkFeature::FocusPseudoClasses, SampleKind::Selector, ".a:focus-visible", ".a:html-focus-visible", ""},
+        {ForkFeature::FocusPseudoClasses, SampleKind::Selector, "form:focus-within", "form:focus", ""},
+        {ForkFeature::SelectorsLevel4, SampleKind::Selector, "input:enabled", "input:not(:disabled)", ""},
+        {ForkFeature::SelectorsLevel4, SampleKind::Selector, "[data-x=\"a\" i]", "[data-x=\"a\"]", "HTMLUI-SEL-0002"},
+        {ForkFeature::SelectorsLevel4, SampleKind::Selector, "li:nth-child(2 of .x)", "", "HTMLUI-SEL-0001"},
+        {ForkFeature::SelectorsLevel4, SampleKind::Selector, "a:any-link", "a[href]", ""},
+        {ForkFeature::SelectorsLevel4, SampleKind::Selector, "input:required:read-write", "input[required]:not([readonly])", ""},
+        {ForkFeature::SelectorsLevel4, SampleKind::Selector, "input:default, :target, :indeterminate", "", "HTMLUI-SEL-0001"},
+        {ForkFeature::PseudoElements, SampleKind::BeforeRule, "content: \"x\" attr(title) counter(item, upper-roman)", "", "HTMLUI-SEL-0003"},
+        {ForkFeature::PseudoElements, SampleKind::Declaration, "counter-reset: item 2", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::PseudoElements, SampleKind::Declaration, "counter-increment: item", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::PseudoElements, SampleKind::Declaration, "counter-set: item 5", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::PseudoElements, SampleKind::Declaration, "quotes: \"<\" \">\"", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::ListMarkers, SampleKind::Selector, "li::marker", "li > marker", ""},
+        {ForkFeature::ListMarkers, SampleKind::Declaration, "display: list-item", "display:block", ""},
+        {ForkFeature::ListMarkers, SampleKind::Declaration, "list-style-type: lower-roman", "", ""},
+        {ForkFeature::ListMarkers, SampleKind::Declaration, "list-style-position: inside", "", "HTMLUI-CSS-0005"},
+        {ForkFeature::ListMarkers, SampleKind::Declaration, "list-style-image: none", "", ""},
+        {ForkFeature::ListMarkers, SampleKind::Declaration, "list-style: square inside", "list-style-type:square", ""},
     };
 
     // lower case, no white space, no trailing ';'
@@ -103,7 +128,7 @@ namespace {
         }else if (sample.kind == SampleKind::Declaration){
             result.output = CssRewriter::rewriteDeclarations(sample.css, &sink, options);
         }else{
-            const std::string sheet = std::string(".sample { ") + sample.css + " }";
+            const std::string sheet = std::string(sample.kind == SampleKind::BeforeRule ? ".sample::before { " : ".sample { ") + sample.css + " }";
             const uint32_t file = files.add("ui/sample.html", sheet);
             CssRewriter rewriter(options, files, sink);
             StylesheetInput input;

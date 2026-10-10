@@ -22,19 +22,24 @@ namespace {
         true,    // Calc (phase 3, p3-base: upstream PR #983; docs/html-ui/FORK.md)
         false,   // BorderStyle
         false,   // PercentRadius
-        false,   // PseudoElements
-        false,   // RootIsWhere
+        true,    // PseudoElements (phase 3, p3-cascade: docs/html-ui/FORK.md)
+        true,    // RootIsWhere (phase 3, p3-cascade: docs/html-ui/FORK.md)
         false,   // Fixed
         false,   // GroupOpacity
         false,   // TimingFunctions
-        false,   // Important
-        false,   // CssWideKeywords
+        true,    // Important (phase 3, p3-cascade: docs/html-ui/FORK.md)
+        true,    // CssWideKeywords (phase 3, p3-cascade: docs/html-ui/FORK.md)
         false,   // Grid
+        true,    // Has (phase 3, p3-cascade)
+        true,    // FocusPseudoClasses (phase 3, p3-cascade)
+        true,    // SelectorsLevel4 (phase 3, p3-cascade)
+        true,    // ListMarkers (phase 3, p3-cascade)
     };
 
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {
         "None", "Calc", "BorderStyle", "PercentRadius", "PseudoElements", "RootIsWhere", "Fixed",
         "GroupOpacity", "TimingFunctions", "Important", "CssWideKeywords", "Grid",
+        "Has", "FocusPseudoClasses", "SelectorsLevel4", "ListMarkers",
     };
 
     constexpr uint64_t bitOf(ForkFeature feature){
@@ -75,6 +80,8 @@ namespace {
         bool isSelector = false;
         bool rootSelector = false;
         bool fixed = false;
+        bool focusPseudoClasses = false;
+        bool listMarkers = false;
     };
 
     const char* probeDocument = R"(<rml>
@@ -95,6 +102,8 @@ div { display: block; }
 <div id="a"></div>
 <div id="b"></div>
 <div id="s"><div id="tall"></div><div id="f"></div></div>
+<div id="fw"><div id="fc"></div></div>
+<div id="lm" style="display: list-item; list-style-type: decimal;"></div>
 </body>
 </rml>)";
 
@@ -129,11 +138,28 @@ div { display: block; }
                 // fixed: placed against the viewport, so the scroll of #s does not move it
                 result.fixed = std::fabs(f->GetAbsoluteTop() - 2.0f) < 0.5f && std::fabs(f->GetAbsoluteLeft() - 2.0f) < 0.5f;
             }
+            // a list item generates its ::marker
+            if (Rml::Element* item = document->GetElementById("lm"))
+                result.listMarkers = item->GetPseudoElement(Rml::PseudoElementType::Marker) != nullptr;
+            // :focus on the focused element only, :focus-within on its ancestors
+            Rml::Element* within = document->GetElementById("fw");
+            Rml::Element* focused = document->GetElementById("fc");
+            if (within && focused && focused->Focus()){
+                result.focusPseudoClasses = focused->IsPseudoClassSet("focus") && !within->IsPseudoClassSet("focus") &&
+                                            within->IsPseudoClassSet("focus-within");
+            }
             document->Close();
         }
 
         Rml::RemoveContext(name);
         return result;
+    }
+
+    // a sheet loads and every selector of it is valid (an invalid selector is dropped with a warning)
+    bool loadsCleanly(const char* rcss, RmlLogTranslator::Capture& capture){
+        const size_t before = capture.problems();
+        Rml::SharedPtr<Rml::StyleSheetContainer> sheet = Rml::Factory::InstanceStyleSheetString(rcss);
+        return sheet != nullptr && capture.problems() == before;
     }
 
     bool isRmlInitialised(){
@@ -209,6 +235,22 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
         case ForkFeature::GroupOpacity:
             // not observable without rendering: the table is authoritative
             return std::nullopt;
+        case ForkFeature::Has:
+            return loadsCleanly("li:has(> input:checked), .a:has(+ .b) { color: #f00; }", capture);
+        case ForkFeature::FocusPseudoClasses: {
+            const DocumentProbe result = probeWithDocument();
+            if (!result.loaded)
+                return std::nullopt;
+            return result.focusPseudoClasses;
+        }
+        case ForkFeature::ListMarkers: {
+            const DocumentProbe result = probeWithDocument();
+            if (!result.loaded)
+                return std::nullopt;
+            return result.listMarkers;
+        }
+        case ForkFeature::SelectorsLevel4:
+            return loadsCleanly("input:enabled, [lang=\"en\" i], li:nth-child(2 of .x), :read-write, :default, :target { color: #f00; }", capture);
         case ForkFeature::None:
         case ForkFeature::Count:
             break;

@@ -352,6 +352,15 @@ void jasperengine::htmlui::compat::rewriteScrollbarStyle(DeclContext& context){
     context.generate(" > scrollbarhorizontal > slidertrack", "background-color", track);
 }
 
+namespace {
+    std::string trimText(const std::string& text){
+        const size_t first = text.find_first_not_of(" \t\n");
+        if (first == std::string::npos)
+            return std::string();
+        return text.substr(first, text.find_last_not_of(" \t\n") - first + 1);
+    }
+}
+
 void jasperengine::htmlui::compat::rewriteContent(DeclContext& context){
     bool pseudoElement = false;
     if (context.rule){
@@ -361,7 +370,28 @@ void jasperengine::htmlui::compat::rewriteContent(DeclContext& context){
         }
     }
     if (context.fork(ForkFeature::PseudoElements) && pseudoElement){
-        context.emit("content", context.valueText());
+        // url() items point at the resolved resource, as in every other image property; the rest
+        // (strings, attr(), counter(), counters(), quotes) is the fork's as written
+        ValueList w = words(context.value);
+        bool hasUrl = false;
+        for (const ComponentValue& v : w)
+            hasUrl = hasUrl || (urlOf(v) && !v.isToken(TokenType::String));
+        if (!hasUrl){
+            context.emit("content", context.valueText());
+            return;
+        }
+        std::string value;
+        for (const ComponentValue& v : context.value){
+            if (urlOf(v) && !v.isToken(TokenType::String)){
+                const std::string path = resolveUrl(context, v, "image");
+                if (path.empty())
+                    return;   // reported
+                value += "url(" + serializeString(path) + ")";
+                continue;
+            }
+            appendSerialized(value, v);
+        }
+        context.emit("content", trimText(value));
         return;
     }
     context.reportAs(Severity::Info, codes::IgnoredProperty, "'content' only applies to ::before / ::after; dropped");

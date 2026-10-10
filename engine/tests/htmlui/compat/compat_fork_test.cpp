@@ -53,9 +53,17 @@ TEST(ForkFeatures, ProbesNeedRmlUi){
 
 TEST(ForkFeatures, PresentFeatures){
     // polarity: true = the fork has it; phase 2 shipped every entry false, phase 3 flips them
-    // with the fork patches (docs/html-ui/FORK.md): Calc with upstream PR #983 (p3-base)
+    // with the fork patches (docs/html-ui/FORK.md): Calc with upstream PR #983 (p3-base);
+    // Important, CssWideKeywords, RootIsWhere, Has, FocusPseudoClasses, SelectorsLevel4 (p3-cascade)
     const ForkFeatures present = ForkFeatures::present();
-    const ForkFeatures expected = ForkFeatures::none().with(ForkFeature::Calc, true);
+    const ForkFeatures expected = ForkFeatures::none()
+                                      .with(ForkFeature::Calc, true)
+                                      .with(ForkFeature::Important, true)
+                                      .with(ForkFeature::CssWideKeywords, true)
+                                      .with(ForkFeature::RootIsWhere, true)
+                                      .with(ForkFeature::Has, true)
+                                      .with(ForkFeature::FocusPseudoClasses, true)
+                                      .with(ForkFeature::SelectorsLevel4, true);
     for (size_t i = 0; i < (size_t)ForkFeature::Count; i++)
         EXPECT_EQ(present.has((ForkFeature)i), expected.has((ForkFeature)i)) << forkFeatureName((ForkFeature)i);
     EXPECT_EQ(present, expected);

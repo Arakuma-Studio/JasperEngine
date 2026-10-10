@@ -1421,6 +1421,10 @@ namespace {
                 }
                 if (onlyListItem)
                     severity = Severity::Info;
+                // the user-agent sheet's list-item counter (for the fork's markers): the li
+                // emulation numbers the items without it
+                if (onlyListItem && origin == RuleOrigin::UserAgent)
+                    return done;
             }
             session.sink->reportAs(severity, codes::UnsupportedProperty, d.ref, "'" + name + "' is not supported; dropped", suggestion,
                                    std::string(), name);
