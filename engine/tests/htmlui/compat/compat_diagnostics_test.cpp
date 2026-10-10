@@ -7,7 +7,7 @@
 
 #include "harness/TestSystem.h"
 
-#include "htmlui/compat/Diagnostics.h"
+#include "htmlui/compat/DiagnosticsJson.h"
 #include "htmlui/compat/SourceFiles.h"
 
 #include "System.h"
