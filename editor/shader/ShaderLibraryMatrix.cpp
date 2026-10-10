@@ -127,6 +127,17 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
         for (const std::string& value : group.values)
             featureSets.push_back({"keyword " + group.group + "_" + value, {group.group + "_" + value}});
     }
+    // each keyword value with every feature on (a keyword often changes what the features read)
+    if (!manifest.features.empty()){
+        for (const ShaderManifestKeywords& group : manifest.keywords){
+            for (const std::string& value : group.values){
+                std::vector<std::string> list{group.group + "_" + value};
+                for (const ShaderManifestFeature& feature : manifest.features)
+                    list.push_back(feature.define);
+                featureSets.push_back({"keyword " + group.group + "_" + value + ", all features", list});
+            }
+        }
+    }
 
     auto referenceOf = [&](const std::vector<std::string>& list){
         return ShaderReference::withFeatures(base, manifest.resolveFeatures(list));
@@ -176,6 +187,16 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
                     }else{
                         addMesh(label, referenceOf({}), inputs, lightingEnvironment);
                         addMesh(label + ", all features", referenceOf(allOn), inputs, lightingEnvironment);
+                        if (capacity == 8){
+                            // the other keyword values in this mode, with every feature on
+                            for (const ShaderManifestKeywords& group : manifest.keywords){
+                                for (size_t v = 1; v < group.values.size(); v++){
+                                    std::vector<std::string> list = allOn;
+                                    list.push_back(group.group + "_" + group.values[v]);
+                                    addMesh(label + ", keyword " + list.back() + ", all features", referenceOf(list), inputs, lightingEnvironment);
+                                }
+                            }
+                        }
                     }
                 }
             }

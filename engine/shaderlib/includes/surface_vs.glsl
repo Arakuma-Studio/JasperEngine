@@ -35,7 +35,10 @@
 //     must read them (its lights need them anyway).
 //   - USE_VERTEX_LIGHTS (vertex, mixed): out vec3 v_vertexLight, the vertex lights' Lambert
 //     diffuse (vertexDiffuse), plus ambientLight when USE_PUNCTUAL is off (vertex mode: the
-//     fragment stage has no lights block). Light to multiply by albedo, as is.
+//     fragment stage has no lights block). Light to multiply by albedo, as is. In vertex
+//     mode a shader that handles the ambient itself defines, before including, either
+//     SURFACE_NO_VERTEX_AMBIENT (v_vertexLight leaves it out) or SURFACE_VERTEX_AMBIENT
+//     (it comes apart, in out vec3 v_vertexAmbient, which the fragment stage must read).
 //   - USE_SHADOWS (pixel lights that receive shadows): out vec4 v_lightProjPos[], the
 //     shadow-map coordinates lightShadow reads; the fragment stage must call lightShadow.
 
@@ -135,6 +138,9 @@ in vec3 a_position;
     #endif
     #include "includes/lights.glsl"
     out vec3 v_vertexLight;
+    #if defined(SURFACE_VERTEX_AMBIENT) && !defined(USE_PUNCTUAL)
+        out vec3 v_vertexAmbient;
+    #endif
 #endif
 
 #ifdef USE_SHADOWS
@@ -278,7 +284,11 @@ void main() {
         #ifndef USE_PUNCTUAL
             // vertex mode: the fragment stage has no lights block, the SH ambient (the scene
             // ambient and the lights over the cap) comes along
-            v_vertexLight += ambientLight(worldNormal);
+            #if defined(SURFACE_VERTEX_AMBIENT)
+                v_vertexAmbient = ambientLight(worldNormal);
+            #elif !defined(SURFACE_NO_VERTEX_AMBIENT)
+                v_vertexLight += ambientLight(worldNormal);
+            #endif
         #endif
     #endif
 
