@@ -683,7 +683,24 @@ void editor::ProjectChecks::invalidateShaderCaches(Project* project) {
 uint64_t editor::ProjectChecks::prepareShaderCheck(Project* project, ShaderUse& use) {
     if (use.shaderType < 0) use.shaderType = guessShaderType(project, use.base);
     const uint16_t customId = ShaderPool::registerCustomShader(use.base);
-    return ShaderPool::getShaderKey(static_cast<ShaderType>(use.shaderType), 0, customId);
+    uint32_t properties = 0;
+    if (use.shaderType == static_cast<int>(ShaderType::MESH)) {
+        // a mesh shader with a manifest: the variant a mesh with UVs, normals and colours
+        // draws with in its default lighting mode (lit modes in a scene with lights), so
+        // what the lighting enables (textures sampled per pixel, the lights) is checked
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(use.base);
+        if (manifest && manifest->present) {
+            SubmeshShaderInputs inputs;
+            inputs.texCoord1 = true;
+            inputs.normal = true;
+            inputs.vertexColor4 = true;
+            inputs.manifest = manifest;
+            MeshShaderEnvironment environment;
+            environment.lights = manifest->getDefaultLighting() != ShaderLightingMode::NONE;
+            properties = RenderSystem::getSubmeshShaderVariant(environment, inputs).properties;
+        }
+    }
+    return ShaderPool::getShaderKey(static_cast<ShaderType>(use.shaderType), properties, customId);
 }
 
 std::string editor::ProjectChecks::shaderSourcePath(Project* project, const std::string& base, const std::string& source) {

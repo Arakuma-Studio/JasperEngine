@@ -26,6 +26,7 @@
 #include <array>
 #include <cmath>
 #include <map>
+#include <set>
 #include <random>
 #include <cstdint>
 #include <cstring>
@@ -2762,6 +2763,52 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     return inputs;
 }
 
+namespace {
+    MaterialLighting toMaterialLighting(ShaderLightingMode mode){
+        switch (mode){
+            case ShaderLightingMode::PIXEL:  return MaterialLighting::PIXEL;
+            case ShaderLightingMode::VERTEX: return MaterialLighting::VERTEX;
+            case ShaderLightingMode::MIXED:  return MaterialLighting::MIXED;
+            default:                         return MaterialLighting::NONE;
+        }
+    }
+}
+
+void RenderSystem::warnUnsupportedLighting(const Material& material, const std::string& shader, const ShaderManifest* manifest, const std::string& entityName){
+    static const char* const names[] = {"auto", "pixel", "vertex", "mixed", "none"};
+    const MaterialLighting resolved = resolveLighting(material.lighting, manifest);
+    // once per material and shader pair (a material is named by its file, else its GameObject)
+    static std::set<std::string> reported;
+    const std::string materialName = material.name.empty() ? entityName : material.name;
+    const std::string shaderName = shader.empty() ? std::string("Lit (built-in)") : shader;
+    if (!reported.insert(materialName + "\n" + shaderName + "\n" + names[(int)material.lighting]).second)
+        return;
+    Log::warn("Material '%s': shader '%s' has no '%s' lighting mode; drawing with its default, '%s'",
+              materialName.c_str(), shaderName.c_str(), names[(int)material.lighting], names[(int)resolved]);
+}
+
+bool RenderSystem::supportsLighting(MaterialLighting mode, const ShaderManifest* manifest){
+    if (mode == MaterialLighting::AUTO)
+        return true;
+    if (!manifest){
+        // the built-in Lit, and forks of it without a manifest
+        return mode != MaterialLighting::NONE;
+    }
+    if (manifest->lighting.empty())
+        return mode == MaterialLighting::NONE;
+    for (ShaderLightingMode listed : manifest->lighting){
+        if (toMaterialLighting(listed) == mode)
+            return true;
+    }
+    return false;
+}
+
+MaterialLighting RenderSystem::resolveLighting(MaterialLighting requested, const ShaderManifest* manifest){
+    if (requested != MaterialLighting::AUTO && supportsLighting(requested, manifest))
+        return requested;
+    return manifest ? toMaterialLighting(manifest->getDefaultLighting()) : MaterialLighting::PIXEL;
+}
+
 SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs){
     SubmeshShaderVariant variant;
 
@@ -2791,10 +2838,23 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     }
     const bool p_terrainSurface = inputs.terrain && inputs.terrainSurface;
     const bool useIBL = (environment.ibl || environment.reflectionProbes) && inputs.receiveIBL;
-    if ((environment.lights || useIBL) && inputs.receiveLights){
-        // the stages evaluating the object's lights: pixel (USE_PUNCTUAL), vertex
-        // (USE_VERTEX_LIGHTS) or both, which the lights' own shading then splits (MIXED)
-        const MaterialLighting lighting = (inputs.lighting == MaterialLighting::AUTO) ? inputs.defaultLighting : inputs.lighting;
+    // the stages evaluating the object's lights: pixel (USE_PUNCTUAL), vertex
+    // (USE_VERTEX_LIGHTS) or both, which the lights' own shading then splits (MIXED)
+    const ShaderManifest* manifest = inputs.manifest.get();
+    const MaterialLighting lighting = resolveLighting(inputs.lighting, manifest);
+    if (manifest){
+        // a shader with a manifest (a library shader, a fork declaring one): its lighting
+        // mode alone decides. A lit mode evaluates the object's lights (includes/lights.glsl)
+        // and, without scene lights, draws unlit as Lit does; IBL, SSAO and the material's
+        // PBR maps are Lit's, never a manifest shader's (normals: see @require below).
+        if (lighting != MaterialLighting::NONE && environment.lights && inputs.receiveLights){
+            p_punctual = lighting != MaterialLighting::VERTEX;
+            p_vertexLights = lighting == MaterialLighting::VERTEX || lighting == MaterialLighting::MIXED;
+            p_receiveShadows = environment.shadows && inputs.receiveShadows && p_punctual;
+        }else{
+            p_unlit = true;
+        }
+    }else if ((environment.lights || useIBL) && inputs.receiveLights){
         p_punctual = environment.lights && lighting != MaterialLighting::VERTEX;
         p_vertexLights = environment.lights && (lighting == MaterialLighting::VERTEX || lighting == MaterialLighting::MIXED);
         p_ibl = useIBL;
@@ -2834,10 +2894,12 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
 
     // Shader library (section 7.3): a manifest's @require forces the inputs it names when
     // the mesh has them, whatever the lights and textures, and only those (the varyings
-    // surface_vs.glsl writes follow @require). Lighting mode none keeps MATERIAL_UNLIT.
+    // surface_vs.glsl writes follow @require). A lit mode adds the normals the lights need
+    // (2D lights do not: its varyings follow @require); a mesh without them gets the
+    // model's +Y in surface_vs.glsl.
     bool p_vertexColorVec3 = inputs.vertexColor3;
     bool p_vertexColorVec4 = inputs.vertexColor4;
-    if (const ShaderManifest* manifest = inputs.manifest.get()){
+    if (manifest){
         const uint32_t require = manifest->require;
         if (!inputs.terrain){
             p_hasTexture1 = (require & ShaderRequire_UV1) && inputs.texCoord1;
@@ -2847,28 +2909,14 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         p_vertexColorVec3 = requiresColor && inputs.vertexColor3;
         p_vertexColorVec4 = requiresColor && inputs.vertexColor4;
 
-        if (manifest->getDefaultLighting() == ShaderLightingMode::NONE){
-            p_unlit = true;
-            p_punctual = false;
-            p_ibl = false;
-            p_receiveShadows = false;
-            p_hasNormalMap = false;
-            p_hasNormal = false;
-            p_hasTangent = false;
-        }
-        if ((require & (ShaderRequire_Normals | ShaderRequire_Tangents)) && inputs.normal)
-            p_hasNormal = true;
-        if ((require & ShaderRequire_Tangents) && inputs.tangent)
-            p_hasTangent = true;
-        if (p_unlit){
-            // 2D lights do not force normals on a library shader (its varyings follow @require)
-            p_hasNormal = (require & (ShaderRequire_Normals | ShaderRequire_Tangents)) && inputs.normal;
-            p_hasTangent = p_hasNormal && (require & ShaderRequire_Tangents) && inputs.tangent;
-        }
+        const bool requiresNormals = (require & (ShaderRequire_Normals | ShaderRequire_Tangents)) != 0;
+        p_hasNormal = (requiresNormals || p_punctual || p_vertexLights) && inputs.normal;
+        p_hasTangent = p_hasNormal && (require & ShaderRequire_Tangents) && inputs.tangent;
+        p_hasNormalMap = false;
     }
 
-    // screen-space AO modulates ambient/indirect light on lit submeshes.
-    const bool p_ssao = environment.ssao && !p_unlit && (p_punctual || p_vertexLights || p_ibl);
+    // screen-space AO modulates ambient/indirect light on lit submeshes (Lit's).
+    const bool p_ssao = environment.ssao && !p_unlit && !manifest && (p_punctual || p_vertexLights || p_ibl);
     const bool p_alphaMask = inputs.alphaMode == MaterialAlphaMode::MASK;
     const bool p_alphaOpaque = inputs.alphaMode == MaterialAlphaMode::ALPHA_OPAQUE;
     // AUTO + textureShadow preserves the legacy opt-in for editor-created
@@ -3962,6 +4010,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         const SubmeshShaderInputs shaderInputs = getSubmeshShaderInputs(mesh, mesh.submeshes[i], terrain, instmesh, hasMirror, sceneMeshShader);
         const SubmeshShaderVariant variant = getSubmeshShaderVariant(shaderEnvironment, shaderInputs);
         mesh.submeshes[i].manifest = shaderInputs.manifest;
+        if (!supportsLighting(shaderInputs.lighting, shaderInputs.manifest.get())){
+            warnUnsupportedLighting(mesh.submeshes[i].material, getSubmeshShader(mesh, mesh.submeshes[i], sceneMeshShader),
+                                    shaderInputs.manifest.get(), scene->getEntityName(entity));
+        }
 
         // what the variant enables, from the property bits (see ShaderPool::getMeshProperties)
         const uint32_t meshProperties = variant.properties;

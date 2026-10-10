@@ -29,6 +29,10 @@ namespace jasperengine {
         std::string fragFile;
         std::map<std::string, std::string> files;   // project files, by include key / path
         std::vector<std::string> defines;           // the reference's "#A,B" feature suffix, each #defined to 1
+        // a library shader or a fork with a manifest: on the library vertex path
+        // (includes/surface_vs.glsl), so a pixel-lit mesh variant also gets the world position
+        // and normal varyings (SURFACE_POSITION, SURFACE_NORMALS) its lights need
+        bool manifest = false;
         // Unambiguous description of the resolved graph (origin and content of every
         // file, in resolution order): equal signatures compile to the same shader.
         std::string signature;

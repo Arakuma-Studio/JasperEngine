@@ -656,6 +656,7 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
 
     if (ShaderReference::isLibrary(base)){
         result.library = true;
+        result.manifest = true;
         if (!getLibraryShaderPaths(base, shaderType, result.vertFile, result.fragFile, &result.error))
             return result;
         const auto& library = getLibrarySources();
@@ -667,6 +668,9 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
             }
             appendSignaturePart(signatureInput, "library:" + entry, it->second);
         }
+        // the includes it reaches are the embedded library's too: a cached build of it is
+        // stale once the library changes
+        appendSignaturePart(signatureInput, "library-hash", std::to_string(getLibraryHash()));
         // the varyings its @require asks surface_vs.glsl for (a depth program too)
         if (std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(base)){
             for (const std::string& define : manifest->getRequireDefines())
@@ -754,6 +758,7 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
     manifest.parse(vertSource, result.vertFile);
     for (const std::string& define : manifest.getRequireDefines())
         result.defines.push_back(define);
+    result.manifest = manifest.present;
 
     result.signature = signatureInput;
     result.valid = true;
@@ -820,6 +825,15 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
         // enabled @feature / @keywords defines of the variant
         for (const std::string& define : customSources->defines)
             args.defines.push_back({define, "1"});
+        // a pixel-lit (USE_PUNCTUAL) mesh variant of a manifest shader: its fragment stage
+        // evaluates the lights at the world position and normal (includes/lights.glsl), so
+        // surface_vs.glsl writes them whatever @require says
+        if (customSources->manifest && shaderType == ShaderType::MESH && (properties & (1u << 3)) && !(properties & (1u << 0))){
+            for (const char* define : {"SURFACE_POSITION", "SURFACE_NORMALS"}){
+                if (std::find(customSources->defines.begin(), customSources->defines.end(), define) == customSources->defines.end())
+                    args.defines.push_back({define, "1"});
+            }
+        }
     }
 
     if (stopped())

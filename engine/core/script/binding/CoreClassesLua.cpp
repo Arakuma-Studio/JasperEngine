@@ -361,6 +361,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("PIXEL", MaterialLighting::PIXEL)
         .addVariable("VERTEX", MaterialLighting::VERTEX)
         .addVariable("MIXED", MaterialLighting::MIXED)
+        .addVariable("NONE", MaterialLighting::NONE)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)

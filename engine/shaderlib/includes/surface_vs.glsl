@@ -29,9 +29,15 @@
 // Its depth program (<name>_depth.vert, see includes/surface_depth_vs.glsl) must displace
 // identically, or shadows and the depth pre-pass do not match.
 //
-// Lighting (includes/lights.glsl): with USE_VERTEX_LIGHTS it writes v_vertexLight, the
-// diffuse of the vertex lights; with USE_SHADOWS the shadow-map coordinates
-// v_lightProjPos[] of pixel-lit shaders that receive shadows.
+// Lighting (includes/lights.glsl, which documents the units):
+//   - USE_PUNCTUAL (pixel, mixed): the compiler adds SURFACE_POSITION and SURFACE_NORMALS,
+//     so v_position and v_normal are written whatever @require says; the fragment stage
+//     must read them (its lights need them anyway).
+//   - USE_VERTEX_LIGHTS (vertex, mixed): out vec3 v_vertexLight, the vertex lights' Lambert
+//     diffuse (vertexDiffuse), plus ambientLight when USE_PUNCTUAL is off (vertex mode: the
+//     fragment stage has no lights block). Light to multiply by albedo, as is.
+//   - USE_SHADOWS (pixel lights that receive shadows): out vec4 v_lightProjPos[], the
+//     shadow-map coordinates lightShadow reads; the fragment stage must call lightShadow.
 
 uniform u_vs_pbrParams {
     mat4 modelMatrix;
@@ -269,6 +275,11 @@ void main() {
 
     #ifdef USE_VERTEX_LIGHTS
         v_vertexLight = vertexDiffuse(worldPos.xyz / worldPos.w, worldNormal);
+        #ifndef USE_PUNCTUAL
+            // vertex mode: the fragment stage has no lights block, the SH ambient (the scene
+            // ambient and the lights over the cap) comes along
+            v_vertexLight += ambientLight(worldNormal);
+        #endif
     #endif
 
     #ifdef USE_SHADOWS

@@ -233,9 +233,8 @@ namespace jasperengine{
 		bool occlusionTexture = false;
 		bool emissiveTexture = false;
 		MaterialAlphaMode alphaMode = MaterialAlphaMode::AUTO;
+		// as the material asks; the variant resolves it against the shader (resolveLighting)
 		MaterialLighting lighting = MaterialLighting::AUTO;
-		// the shader's lighting mode for AUTO (built-in Lit: PIXEL)
-		MaterialLighting defaultLighting = MaterialLighting::PIXEL;
 		bool textureShadow = false;
 		// mesh
 		bool receiveLights = true;
@@ -1326,6 +1325,13 @@ namespace jasperengine{
 		static SubmeshShaderInputs getSubmeshShaderInputs(const MeshComponent& mesh, const Submesh& submesh, const TerrainComponent* terrain, const InstancedMeshComponent* instmesh, bool mirror,
 		                                                  const std::string& sceneMeshShader = std::string());
 		static SubmeshShaderVariant getSubmeshShaderVariant(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
+		// The lighting mode a submesh draws with: the material's when the shader lists it,
+		// else the shader's default (the first of its manifest's @lighting, NONE without one;
+		// the built-in Lit and forks without a manifest: PIXEL, listing PIXEL, VERTEX, MIXED).
+		// Never AUTO. manifest: the one the submesh draws with (SubmeshShaderInputs::manifest).
+		static MaterialLighting resolveLighting(MaterialLighting requested, const ShaderManifest* manifest);
+		// whether the shader lists the mode (AUTO: always)
+		static bool supportsLighting(MaterialLighting mode, const ShaderManifest* manifest);
 		// Whether the lit or unlit shader samples the material's textures
 		static bool checkPBRTextures(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
 		MeshShaderEnvironment getMeshShaderEnvironment() const;
