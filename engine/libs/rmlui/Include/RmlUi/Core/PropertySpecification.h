@@ -134,9 +134,11 @@ private:
 	PropertyIdSet property_ids;
 	PropertyIdSet property_ids_inherited;
 	PropertyIdSet property_ids_forcing_layout;
+	// Properties whose parser reads the value as written, quotes included (SplitOption::Raw; phase 3: font-family).
+	PropertyIdSet property_ids_raw_value;
 
 	enum class ParsePropertyResult { Success, ContainsVariable, Error };
-	enum class SplitOption { None, Whitespace, Comma };
+	enum class SplitOption { None, Whitespace, Comma, Raw };
 	ParsePropertyResult ParsePropertyValues(StringList& values_list, const String& values, SplitOption split_option) const;
 	bool ParseAnyOrderShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const StringList& values) const;
 

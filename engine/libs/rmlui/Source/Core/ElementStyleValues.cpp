@@ -87,11 +87,22 @@ bool ElementStyle::ComputeColorFirst(Style::ComputedValues& values, const Style:
 	return GetDirtyPropertiesRef().properties.Contains(PropertyId::Color);
 }
 
-const Property* ElementStyle::ResolveCurrentColor(PropertyId id, const Property* property, const Style::ComputedValues& values,
+const Property* ElementStyle::ResolveValueKeywords(PropertyId id, const Property* property, const Style::ComputedValues& values,
 	const Style::ComputedValues* parent_values, bool color_dirty, Property& current_color_storage)
 {
 	if (property->unit == Unit::KEYWORD)
 	{
+		if (id == PropertyId::FontWeight)
+		{
+			const int keyword = property->Get<int>();
+			if (keyword != FontWeightBolder && keyword != FontWeightLighter)
+				return property;
+			const Style::FontWeight parent_weight = (parent_values ? parent_values->font_weight() : DefaultComputedValues().font_weight());
+			current_color_storage = Property(int(ComputeRelativeFontWeight(keyword, parent_weight)), Unit::KEYWORD);
+			current_color_storage.definition = property->definition;
+			current_color_storage.source = property->source;
+			return &current_color_storage;
+		}
 		if (!PropertyParserColour::IsCurrentColor(*property))
 			return property;
 		// In 'color' it is the parent's color, as 'inherit'.

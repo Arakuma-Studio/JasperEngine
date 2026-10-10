@@ -9,6 +9,7 @@
 #include <RmlUi/Core/FontMetrics.h>
 #include <RmlUi/Core/Math.h>
 #include <RmlUi/Core/Property.h>
+#include <RmlUi/Core/PropertyDefinition.h>
 #include <RmlUi/Core/PropertyDictionary.h>
 #include <RmlUi/Core/StyleSheetSpecification.h>
 #include <RmlUi/Core/TextShapingContext.h>
@@ -207,3 +208,189 @@ TEST_CASE("Values.units.calc")
 	context->Update();
 }
 #endif
+
+namespace {
+
+String ParsedString(const char* property, const char* value)
+{
+	PropertyDictionary dictionary;
+	if (!StyleSheetSpecification::ParsePropertyDeclaration(dictionary, property, value))
+		return "<invalid>";
+	const Property* parsed = dictionary.GetProperty(StyleSheetSpecification::GetPropertyId(property));
+	return parsed ? parsed->ToString() : "<none>";
+}
+
+// The longhands a shorthand declaration sets, as "name: value; " in id order.
+String ParsedShorthand(const char* shorthand, const char* value)
+{
+	PropertyDictionary dictionary;
+	if (!StyleSheetSpecification::ParsePropertyDeclaration(dictionary, shorthand, value))
+		return "<invalid>";
+	String result;
+	for (const PropertyId id : {PropertyId::FontStyle, PropertyId::FontWeight, PropertyId::FontSize, PropertyId::LineHeight, PropertyId::FontFamily})
+	{
+		if (const Property* property = dictionary.GetProperty(id))
+			result += StyleSheetSpecification::GetPropertyName(id) + ": " + property->ToString() + "; ";
+	}
+	return result;
+}
+
+} // namespace
+
+TEST_CASE("Values.font_family")
+{
+	TestsShell::GetContext();
+
+	CHECK(ParsedString("font-family", "\"Inter\",  'Segoe  UI' , Sans-Serif") == "inter,segoe ui,sans-serif");
+	CHECK(ParsedString("font-family", "Open   Sans, serif") == "open sans,serif");
+	CHECK(ParsedString("font-family", "'A, B', c") == "<invalid>");
+	CHECK(ParsedString("font-family", "\"Font \\\"X\\\"\"") == "font \"x\"");
+	CHECK(ParsedString("font-family", "LatoLatin") == "latolatin");
+	CHECK(ParsedString("font-family", "a,,b") == "<invalid>");
+	CHECK(ParsedString("font-family", "\"a\" b") == "<invalid>");
+	CHECK(ParsedString("font-family", "a(b)") == "<invalid>");
+	CHECK(ParsedString("font-family", "a,") == "<invalid>");
+
+	// The font engine resolves the canonical list from left to right: an unknown family falls through.
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = LoadValues(context,
+		"#a { font-family: 'Unknown Family', LatoLatin; } #b { --family: \"Other\", 'LatoLatin'; font-family: var(--family); font: italic var(--size) var(--family); --size: 12px; }");
+	Element* a = document->GetElementById("a");
+	Element* b = document->GetElementById("b");
+	CHECK(a->GetComputedValues().font_family() == "unknown family,latolatin");
+	// Through var(), also in the font shorthand.
+	CHECK(b->GetComputedValues().font_family() == "other,latolatin");
+	CHECK(b->GetComputedValues().font_style() == Style::FontStyle::Italic);
+	CHECK(b->GetComputedValues().font_size() == 12.f);
+	document->Close();
+	context->Update();
+}
+
+TEST_CASE("Values.font_size_keywords")
+{
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = LoadValues(context, "");
+	Element* a = document->GetElementById("a");
+	Element* b = document->GetElementById("b");
+
+	struct Case {
+		const char* value;
+		float expected;
+	};
+	const Case cases[] = {
+		{"xx-small", 9.f},
+		{"x-small", 10.f},
+		{"small", 13.f},
+		{"medium", 16.f},
+		{"large", 18.f},
+		{"x-large", 24.f},
+		{"xx-large", 32.f},
+		{"xxx-large", 48.f},
+		{"smaller", 20.f / 1.2f},
+		{"larger", 24.f},
+		{"math", 20.f},
+	};
+	for (const Case& test : cases)
+	{
+		INFO(test.value);
+		a->SetProperty("font-size", test.value);
+		context->Update();
+		CHECK(a->GetComputedValues().font_size() == doctest::Approx(test.expected));
+		CHECK(b->GetComputedValues().font_size() == doctest::Approx(test.expected));
+	}
+
+	// The face is made at the rounded size, not the truncated one.
+	a->SetProperty("font-size", "12.8px");
+	context->Update();
+	CHECK(GetFontEngineInterface()->GetFontMetrics(a->GetFontFaceHandle()).size == 13);
+
+	document->Close();
+	context->Update();
+}
+
+TEST_CASE("Values.font_weight_relative")
+{
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = LoadValues(context, "");
+	Element* a = document->GetElementById("a");
+	Element* b = document->GetElementById("b");
+
+	struct Case {
+		const char* parent;
+		const char* child;
+		int expected;
+	};
+	const Case cases[] = {
+		{"400", "bolder", 700},
+		{"400", "lighter", 100},
+		{"300", "bolder", 400},
+		{"700", "bolder", 900},
+		{"700", "lighter", 400},
+		{"900", "bolder", 900},
+		{"900", "lighter", 700},
+		{"50", "lighter", 50},
+		{"600", "lighter", 400},
+		{"bold", "bolder", 900},
+	};
+	for (const Case& test : cases)
+	{
+		INFO(test.parent, " ", test.child);
+		a->SetProperty("font-weight", test.parent);
+		b->SetProperty("font-weight", test.child);
+		context->Update();
+		CHECK(int(b->GetComputedValues().font_weight()) == test.expected);
+	}
+
+	// Computed again when the parent's weight changes.
+	a->SetProperty("font-weight", "100");
+	b->SetProperty("font-weight", "bolder");
+	context->Update();
+	CHECK(int(b->GetComputedValues().font_weight()) == 400);
+	a->SetProperty("font-weight", "800");
+	context->Update();
+	CHECK(int(b->GetComputedValues().font_weight()) == 900);
+
+	document->Close();
+	context->Update();
+}
+
+TEST_CASE("Values.font_shorthand")
+{
+	TestsShell::GetContext();
+	const String defaults_style = "font-style: normal; font-weight: normal; ";
+
+	CHECK(ParsedShorthand("font", "italic bold 20px/1.5 Arial, sans-serif") ==
+		"font-style: italic; font-weight: bold; font-size: 20px; line-height: 1.5; font-family: arial,sans-serif; ");
+	CHECK(ParsedShorthand("font", "16px LatoLatin").find(defaults_style) == 0);
+	CHECK(ParsedShorthand("font", "italic normal 20px \"LatoLatin\"") ==
+		"font-style: italic; font-weight: normal; font-size: 20px; line-height: " +
+			StyleSheetSpecification::GetProperty(PropertyId::LineHeight)->GetDefaultValue()->ToString() + "; font-family: latolatin; ");
+	CHECK(ParsedShorthand("font", "700 1.5em / 2 'Open Sans'") ==
+		"font-style: normal; font-weight: 700; font-size: 1.5em; line-height: 2; font-family: open sans; ");
+	CHECK(ParsedShorthand("font", "normal normal 12px /20px a") ==
+		"font-style: normal; font-weight: normal; font-size: 12px; line-height: 20px; font-family: a; ");
+	CHECK(ParsedShorthand("font", "oblique 10deg large serif") ==
+		"font-style: italic; font-weight: normal; font-size: large; line-height: " +
+			StyleSheetSpecification::GetProperty(PropertyId::LineHeight)->GetDefaultValue()->ToString() + "; font-family: serif; ");
+	CHECK(ParsedShorthand("font", "bolder larger a") ==
+		"font-style: normal; font-weight: bolder; font-size: larger; line-height: " +
+			StyleSheetSpecification::GetProperty(PropertyId::LineHeight)->GetDefaultValue()->ToString() + "; font-family: a; ");
+
+	for (const char* invalid : {"bold", "20px", "caption", "menu", "small-caps 12px a", "condensed 12px a", "italic italic 12px a",
+			 "normal normal normal normal normal 12px a", "12px/ a", "bold 12px 'a' b", "12px/1.5"})
+	{
+		INFO(invalid);
+		CHECK(ParsedShorthand("font", invalid) == "<invalid>");
+	}
+
+	// The omitted longhands are reset.
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = LoadValues(context, "#a { font-weight: bold; font-style: italic; line-height: 3; } #a { font: 10px LatoLatin; }");
+	Element* a = document->GetElementById("a");
+	CHECK(a->GetComputedValues().font_weight() == Style::FontWeight::Normal);
+	CHECK(a->GetComputedValues().font_style() == Style::FontStyle::Normal);
+	CHECK(a->GetComputedValues().font_size() == 10.f);
+	CHECK(a->GetComputedValues().line_height().inherit_value != doctest::Approx(3.f));
+	document->Close();
+	context->Update();
+}

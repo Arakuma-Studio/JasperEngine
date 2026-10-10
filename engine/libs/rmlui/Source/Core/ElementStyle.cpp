@@ -1141,8 +1141,8 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		if (id >= PropertyId::BorderTopColor && id <= PropertyId::BorderLeftColor)
 			declared_border_colors |= 1 << (int(id) - int(PropertyId::BorderTopColor));
 
-		// Values (p3-values): 'currentcolor'.
-		property = ResolveCurrentColor(id, property, values, parent_values, color_dirty, current_color_storage);
+		// Values (p3-values): 'currentcolor', relative font weights.
+		property = ResolveValueKeywords(id, property, values, parent_values, color_dirty, current_color_storage);
 
 		ComputeValue(values, dp_ratio, vp_dimensions, font_size, document_font_size, dirty_font_face_handle, id, property);
 	}
@@ -1175,7 +1175,7 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	{
 		RMLUI_ZoneScopedN("FontFaceHandle");
 		values.font_face_handle(
-			GetFontEngineInterface()->GetFontFaceHandle(values.font_family(), values.font_style(), values.font_weight(), (int)values.font_size()));
+			GetFontEngineInterface()->GetFontFaceHandle(values.font_family(), values.font_style(), values.font_weight(), Math::RoundToInteger(values.font_size())));
 	}
 
 	// Values (p3-values): the values that depend on the font face.

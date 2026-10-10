@@ -209,10 +209,10 @@ private:
 
 	// Values (p3-values, ElementStyleValues.cpp): hooks of ComputeValues. Before the other properties, 'color' is
 	// computed, so that their 'currentcolor' is this element's color (in 'color' itself the parent's); returns whether
-	// the color is dirty. Then each property's 'currentcolor' is replaced by the color, and the properties holding one
-	// are reported changed with the color.
+	// the color is dirty. Then each property's 'currentcolor' is replaced by the color (the properties holding one are
+	// reported changed with the color), and 'bolder'/'lighter' by the weight they compute to from the parent's.
 	bool ComputeColorFirst(Style::ComputedValues& values, const Style::ComputedValues* parent_values, Property& property_storage);
-	const Property* ResolveCurrentColor(PropertyId id, const Property* property, const Style::ComputedValues& values,
+	const Property* ResolveValueKeywords(PropertyId id, const Property* property, const Style::ComputedValues& values,
 		const Style::ComputedValues* parent_values, bool color_dirty, Property& current_color_storage);
 	// After the font face is known: 'ch' and 'ex' lengths are computed again against it when it changed.
 	void ComputeFontRelativeValues(Style::ComputedValues& values, FontUnitScope& font_unit_scope, FontFaceHandle previous_font_face,

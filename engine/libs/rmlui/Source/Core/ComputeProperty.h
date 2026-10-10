@@ -51,6 +51,11 @@ bool ComputeDefiniteNumber(const Property* property, float font_size, float docu
 
 String ComputeFontFamily(String font_family);
 
+// The 'font-weight' keywords 'bolder' and 'lighter' (phase 3, values), and the weight they compute to from the
+// parent's (CSS Fonts 4, 2.2).
+enum { FontWeightBolder = 1001, FontWeightLighter = 1002 };
+Style::FontWeight ComputeRelativeFontWeight(int keyword, Style::FontWeight parent_weight);
+
 Style::Clip ComputeClip(const Property* property);
 
 Style::LineHeight ComputeLineHeight(const Property* property, float font_size, float document_font_size, float dp_ratio, Vector2f vp_dimensions);

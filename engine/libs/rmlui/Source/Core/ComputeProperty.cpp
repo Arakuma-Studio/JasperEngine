@@ -175,6 +175,21 @@ float ComputeFontsize(const Property* property, const Style::ComputedValues& val
 	}
 #endif
 
+	// The keywords (phase 3, values), in the order they are registered: the absolute sizes of CSS Fonts 4 relative to
+	// the initial 16px (Chromium's table), 'smaller'/'larger' by a factor of 1.2 of the parent's size, 'math' the parent's.
+	if (property->unit == Unit::KEYWORD)
+	{
+		static constexpr float absolute_sizes[] = {9.f, 10.f, 13.f, 16.f, 18.f, 24.f, 32.f, 48.f};
+		const int keyword = property->Get<int>();
+		if (keyword >= 0 && keyword < 8)
+			return absolute_sizes[keyword] * (DefaultComputedValues().font_size() / 16.f);
+		if (keyword == 8)
+			return parent_font_size / 1.2f;
+		if (keyword == 9)
+			return parent_font_size * 1.2f;
+		return parent_font_size;
+	}
+
 	NumericValue value = property->GetNumericValue();
 	if (Any(value.unit & (Unit::PERCENT | Unit::EM | Unit::REM)))
 	{
@@ -250,6 +265,17 @@ bool ComputeDefiniteNumber(const Property* property, float font_size, float docu
 #endif
 	result = property->Get<float>();
 	return true;
+}
+
+Style::FontWeight ComputeRelativeFontWeight(int keyword, Style::FontWeight parent_weight)
+{
+	const int parent = (parent_weight == Style::FontWeight::Auto ? 400 : int(parent_weight));
+	int weight = parent;
+	if (keyword == FontWeightBolder)
+		weight = (parent < 350 ? 400 : parent < 550 ? 700 : parent < 900 ? 900 : parent);
+	else if (keyword == FontWeightLighter)
+		weight = (parent < 100 ? parent : parent < 550 ? 100 : parent < 750 ? 400 : 700);
+	return Style::FontWeight(weight);
 }
 
 String ComputeFontFamily(String font_family)

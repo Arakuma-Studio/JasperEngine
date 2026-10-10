@@ -9,6 +9,7 @@
 #include "PropertyParserColour.h"
 #include "PropertyParserDecorator.h"
 #include "PropertyParserFilter.h"
+#include "PropertyParserFontFamily.h"
 #include "PropertyParserFontEffect.h"
 #include "PropertyParserKeyword.h"
 #include "PropertyParserNumber.h"
@@ -16,6 +17,7 @@
 #include "PropertyParserString.h"
 #include "PropertyParserTransform.h"
 #include "PropertyShorthandDefinition.h"
+#include "ValuesShorthands.h"
 
 namespace Rml {
 
@@ -280,6 +282,8 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	RegisterParser("alignment", &default_parsers->alignment);
 
 	// -- Values (p3-values) --
+	static PropertyParserFontFamily font_family_parser;
+	RegisterParser("font_family", &font_family_parser);
 
 	// -- Cascade (p3-cascade) --
 
@@ -408,13 +412,15 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::ImageColor, "image-color", "white", false, false).AddParser("color");
 	RegisterProperty(PropertyId::Opacity, "opacity", "1", false, false).AddParser("number");
 
-	RegisterProperty(PropertyId::FontFamily, "font-family", "", true, true).AddParser("string");
+	RegisterProperty(PropertyId::FontFamily, "font-family", "", true, true).AddParser("font_family");
 	RegisterProperty(PropertyId::FontStyle, "font-style", "normal", true, true).AddParser("keyword", "normal, italic");
-	RegisterProperty(PropertyId::FontWeight, "font-weight", "normal", true, true).AddParser("keyword", "normal=400, bold=700").AddParser("number");
-	RegisterProperty(PropertyId::FontSize, "font-size", "16px", true, true).AddParser("length").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ParentFontSize);
+	RegisterProperty(PropertyId::FontWeight, "font-weight", "normal", true, true).AddParser("keyword", "normal=400, bold=700, bolder=1001, lighter=1002").AddParser("number");
+	RegisterProperty(PropertyId::FontSize, "font-size", "16px", true, true)
+		.AddParser("keyword", "xx-small, x-small, small, medium, large, x-large, xx-large, xxx-large, smaller, larger, math")
+		.AddParser("length").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ParentFontSize);
 	RegisterProperty(PropertyId::FontKerning, "font-kerning", "auto", true, true).AddParser("keyword", "auto, normal, none");
 	RegisterProperty(PropertyId::LetterSpacing, "letter-spacing", "normal", true, true).AddParser("keyword", "normal").AddParser("length");
-	RegisterShorthand(ShorthandId::Font, "font", "font-style, font-weight, font-size, font-family", ShorthandType::FallThrough);
+	RegisterShorthand(ShorthandId::Font, "font", "font-style, font-weight, font-size, line-height, font-family", ShorthandType::Custom);
 
 	RegisterProperty(PropertyId::TextAlign, "text-align", "left", true, true).AddParser("keyword", "left, right, center, justify");
 	RegisterProperty(PropertyId::TextDecoration, "text-decoration", "none", true, false).AddParser("keyword", "none, underline, overline, line-through");
@@ -517,6 +523,9 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::WillChange, "will-change", "auto", false, false).AddParser("keyword", "auto").AddParser("string");
 
 	// -- Values (p3-values) --
+	properties.SetShorthandParser(ShorthandId::Font, &ParseFontShorthand);
+	// A list of quoted and unquoted names reaches the font_family parser as written.
+	properties.property_ids_raw_value.Insert(PropertyId::FontFamily);
 
 	// -- Cascade (p3-cascade) --
 
