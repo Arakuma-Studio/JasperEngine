@@ -9,6 +9,7 @@
 
 #include "Scene.h"
 #include "Log.h"
+#include "object/ui/HtmlUIEventListener.h"
 #include "object/ui/HtmlUIScriptInternal.h"
 #include "object/ui/UIDocument.h"
 #include "htmlui/HtmlUIContext.h"
@@ -231,6 +232,8 @@ void UIDocumentSystem::compatRunScripts(){
                 break;
             UIDocument handle(scene, entity);
             std::string error;
+            // the listeners it attaches are the script's (not moved by a reload: it runs again)
+            HtmlUIEventListener::ScriptScope scriptScope(document);
             if (!HtmlUILua::runDocumentScript(handle, script, &error)){
                 const Diagnostic diagnostic = scriptError(script, error);
                 Log::error("[HTML UI] %s", toText(diagnostic).c_str());

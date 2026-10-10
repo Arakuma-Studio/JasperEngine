@@ -14,6 +14,9 @@
 #include "TestDocumentCommon.h"
 
 #include "HtmlUI.h"
+#include "LuaBinding.h"
+#include "object/ui/HtmlUIEventListener.h"
+#include "object/ui/HtmlUIScriptInternal.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/ImportManifest.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -21,7 +24,10 @@
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 
+#include "lua.hpp"
+
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 
@@ -244,4 +250,87 @@ TEST_F(CompatHotReloadTest, SheetsRestyleAndTheDocumentReloads){
     EXPECT_TRUE(frame.is(525, 225, 0, 255, 0));
     // one summary line per load: two loads and two restyles
     EXPECT_LE(TestSystem::get().countLogs(0, "ui/hot.html: 0 errors"), 4u);
+}
+
+namespace {
+
+    double luaNumber(const std::string& expression){
+        lua_State* L = LuaBinding::getLuaState();
+        const std::string code = "return " + expression;
+        if (!L || luaL_loadstring(L, code.c_str()) != LUA_OK || LuaBinding::pcallWithTraceback(L, 0, 1) != LUA_OK){
+            if (L)
+                lua_pop(L, 1);
+            return std::nan("");
+        }
+        const double value = lua_isnumber(L, -1) ? lua_tonumber(L, -1) : std::nan("");
+        lua_pop(L, 1);
+        return value;
+    }
+
+    void luaRun(const std::string& code){
+        lua_State* L = LuaBinding::getLuaState();
+        ASSERT_NE(L, nullptr);
+        ASSERT_EQ(luaL_dostring(L, code.c_str()), LUA_OK) << lua_tostring(L, -1);
+    }
+
+}
+
+// The document's own <script type="text/lua"> runs again after every reload and attaches its
+// listeners again: the ones it attached to the old elements are not moved over as well (they
+// were, like a scene script's listeners on elements with an id: one more copy per reload, so
+// a click counted twice after the first reload and three times after the second). A scene
+// script's listener on the same element is still moved, once.
+TEST_F(CompatHotReloadTest, DocumentScriptListenersAreAttachedOncePerReload){
+    std::string html = documentHtml;
+    html.replace(html.find("</body>"), 7,
+        "<button id=\"go\">Go</button><div id=\"plain\">no id needed</div>\n"
+        "<script type=\"text/lua\">\n"
+        "  _G.hotRuns = (_G.hotRuns or 0) + 1\n"
+        "  document:getElementById('go'):addEventListener('click', function() _G.hotClicks = (_G.hotClicks or 0) + 1 end)\n"
+        "  document:querySelector('#plain'):addEventListener('click', function() _G.hotPlain = (_G.hotPlain or 0) + 1 end)\n"
+        "  document:addEventListener('keydown', function() end)\n"
+        "</script></body>");
+    write("ui/hot.html", html);
+    luaRun("hotRuns, hotClicks, hotPlain, sceneClicks = nil, nil, nil, nil");
+
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    UIDocument document = fixture.addDocument("ui/hot.html");
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    UIDocumentSystem& system = documentSystem(scene);
+    system.startDocumentScripts();
+    GpuEnvironment::drawFrames(2);
+    ASSERT_EQ(luaNumber("hotRuns"), 1);
+
+    // a scene script's listener (C++ here), bound once as scripts do in init
+    int sceneClicks = 0;
+    document.getElementById("go").addEventListener("click", [&sceneClicks](UIEvent&){ sceneClicks++; });
+    const size_t listeners = HtmlUIEventListener::liveCount();
+
+    for (int reload = 1; reload <= 3; reload++){
+        SCOPED_TRACE(reload);
+        write("ui/hot.html", html + "<!-- " + std::to_string(reload) + " -->\n");
+        const std::vector<UIDocumentSystem::Reloaded> reloaded = system.reloadChangedFiles({"ui/hot.html"});
+        ASSERT_EQ(reloaded.size(), 1u);
+        EXPECT_FALSE(reloaded[0].stylesheetOnly);
+        ASSERT_TRUE(fixture.waitUntilLoaded());
+        GpuEnvironment::drawFrames(2);
+        EXPECT_EQ(luaNumber("hotRuns"), reload + 1) << "the script ran again, once";
+        EXPECT_EQ(HtmlUIEventListener::liveCount(), listeners) << "as many listeners as before the reload";
+
+        luaRun("hotClicks, hotPlain = 0, 0");
+        sceneClicks = 0;
+        document.getElementById("go").click();
+        document.getElementById("plain").click();
+        GpuEnvironment::drawFrames(1);
+        EXPECT_EQ(luaNumber("hotClicks"), 1) << "one count per click";
+        EXPECT_EQ(luaNumber("hotPlain"), 1) << "the listener on an element without an id is the new run's";
+        EXPECT_EQ(sceneClicks, 1) << "the scene script's listener moved to the new element";
+    }
+    // no "listeners on elements without an id were dropped" warning for the script's own
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "were dropped by the reload"), 0u);
+
+    LuaBinding::cleanupLuaScripts(&scene);
+    luaRun("hotRuns, hotClicks, hotPlain = nil, nil, nil; collectgarbage()");
+    EXPECT_EQ(HtmlUIScriptState::liveLuaRefs(), 0u);
 }
