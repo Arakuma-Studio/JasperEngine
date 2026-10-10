@@ -1579,6 +1579,68 @@ transition-allow-discrete-display,steps-sprite,cubic-bezier-overshoot,keyframes-
 keyframes-backwards-delay,alternate-reverse,play-state-paused,per-keyframe-easing,
 starting-style-entry,box-shadow-transition,scale-rotate-translate}.html`.
 
+#### 3.13.8 `p3-animation` as implemented
+
+FORK.md rows P3-A1…P3-A5 (package-prefixed ids, so that wave-1 packages cannot collide):
+
+- **Timing functions (P3-A1).** As planned; `linear` is `linear()` without stops (the identity) and
+  serializes as `linear`; `cubic-bezier()` solves to 1e-7 in double precision (not duration-scaled).
+  Unknown easing names are invalid; RmlUi's tween names stay valid.
+- **Longhands (P3-A1).** Comma lists in one `StyleValue` type (`AnimationListValue`), parsers
+  `transition_property`, `animation_duration` (no negatives), `animation_time`, `animation_easing`,
+  `animation_iteration_count`, `animation_name`, `animation_keyword` (registered from the package's
+  own file). `animation-composition` accepts `add`/`accumulate` and composites them as `replace`
+  (compat reports them, `HTMLUI-CSS-0021`). The shorthands are `Custom`; 6.3's `PropertyId::Transition`
+  and `PropertyId::Animation` are left unregistered (reserved), their names belong to the shorthands.
+  The computed lists are cached per element (`ElementStyle::GetTransitionList/GetAnimationList`, built
+  in `ComputeValues` when a longhand changes); entries whose combined duration is zero and
+  `animation-name: none` items are left out. Deviations kept from RmlUi: several property names in one
+  transition entry (`transition: opacity width 1s`) when all are properties. Removed: the RCSS
+  reverse-adjustment number in `transition` (the CSS reversing rule replaces it). The initial easing is
+  `ease` (6.3: linear), a documented fork-only change of 6.3 test expectations.
+- **Layers and timing (P3-A2).** One `ElementAnimation` per CSS animation with an `AnimationTrack` per
+  property (offsets in [0, 1]); user animations (`Element::Animate`) still write the inline style. A
+  `display: none` element **or ancestor** cancels CSS animations and transitions (tracked per element
+  in `Element::UpdateAnimationDisplay`), as CSS requires; shown again, animations start over. Events
+  are new `EventId`s appended after `Tabchange` (`ID.h`); `transitionend` keeps 6.3's `property`
+  parameter and user animations keep 6.3's per-property `animationend`. A transition cancelled during
+  style computation dispatches `transitioncancel` at the next update (no event dispatch inside
+  `ComputeValues`).
+- **Transitions on any change (P3-A3).** The snapshot (`TransitionSnapshot`, `ElementTransitions.cpp`)
+  holds after-change values in computed form; em lengths are compared against the *declared* font
+  size of the element and its ancestors (`ElementStyle::GetDeclaredFontSize`), so an animated font
+  size does not restart em transitions every frame. Values come from declarations only (every
+  element's animation layers excluded), which is how changes produced by animations, the element's or
+  an ancestor's, never start transitions. With `transition: all` the snapshot holds every declared
+  and inherited property after the first style; a property first declared later starts from its
+  initial value. A transition list that arrives with the change (`.a.on { transition: ...; }`, the
+  "hover-only transition") is handled by keeping the before-change values when the definition
+  changes (`CaptureBeforeChangeValues`); one that arrives with an inline change does not transition.
+  "Previously `display: none`" is the element's own flag from the previous update
+  (`Element::animation_displayed`), ancestors included. `@starting-style` rules are stored with the
+  private pseudo-class `:-rmlui-starting-style` on their subject; the starting definition is the
+  element's definition with that pseudo-class set, so the rules cascade with the others, at one
+  pseudo-class more specificity (an approximation: CSS adds none). Only the element's own declared
+  starting values count (an inherited starting value is not looked up).
+- **Interpolation (P3-A4).** `box-shadow` pairwise with transparent padding; inset mismatch and
+  calc() lengths in shadows are discrete. Colours in premultiplied sRGB everywhere RmlUi interpolates
+  colours (also gradient stops, filters, decorators).
+- **Individual transforms (P3-A5).** Held as the equivalent one-function `transform` value, parsed by
+  the `transform` parser (calc() included); `Element::OnPropertyChange`'s `transform_changed` gains
+  the three ids (an additive condition in p3-paint's block).
+- **Compat.** `TimingFunctions`, `AnimationLonghands` (appended) and `IndividualTransforms` (appended)
+  are present. With `AnimationLonghands` the transition/animation rewrites write each declaration as
+  declared (normalized; transition property names that compat writes as another property are mapped:
+  background images to `decorator`, `outline`/`box-shadow` to `box-shadow`, `text-shadow` to
+  `font-effect`, `translate`/`rotate`/`scale` to `transform` without `IndividualTransforms`; packages
+  that make those native update `nativeTransitionNames` in `Transition.cpp`), keep per-keyframe
+  easing and `@starting-style` (written as `@starting-style { rule }`, inside `@media` when nested
+  there), and the `AnimationFill` runtime is skipped (its tests drive it directly).
+- **Reference tool.** `render-reference.mjs` pauses every animation to seek it, which makes Chromium
+  ignore `animation-play-state`; fixture mode now advances a CSS animation only while its computed
+  play state is `running` (no change for existing references).
+- **Fixtures.** The fourteen of 3.13 in `fixtures/p3/animation/`.
+
 ---
 
 ### 3.14 CSS Grid (package `p3-grid`)
