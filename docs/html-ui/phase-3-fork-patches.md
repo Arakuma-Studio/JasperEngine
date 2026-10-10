@@ -1322,6 +1322,9 @@ table above):
   not added after a default-ignorable (Chromium adds none after U+200B).
 - **`text-shadow`.** As planned; the decoration lines cast the shadow too. `currentcolor` is kept
   by compat (`keepsCurrentColorKeyword`).
+- **`user-select`** is registered as CSS defines it, not inherited: `none` on a text input or text
+  area turns its selection off (the cursor still moves); a container's `user-select: none` does
+  not reach the inputs inside it, as in browsers.
 - **Not done here:** the font-size rounding of the last table row is p3-values' (§3.3.4, in
   `ElementStyle.cpp`); `cursor` lists are p3-values' (§3.3.8); `vertical-align` and
   `pointer-events` needed no change (`p3/text/vertical-align-middle` passes on 6.3's rules).
