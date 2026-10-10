@@ -17,8 +17,23 @@ namespace {
         return arena;
     }
 
-    constexpr size_t kFirstBlock = 16 * 1024;
-    constexpr size_t kLargestBlock = 1024 * 1024;
+    // Every regular block has this size, and a thread keeps the blocks its arenas release
+    // for its next arenas (up to 4 MB): a rewriter session per document, per style sheet
+    // reload and per inline style would otherwise map and unmap the same memory each time
+    // (the page faults cost a quarter of a 50 KB style sheet's rewrite).
+    constexpr size_t kBlockSize = 256 * 1024;
+    constexpr size_t kKeptBlocks = 16;
+
+    struct BlockCache {
+        void* blocks[kKeptBlocks];
+        size_t count = 0;
+
+        ~BlockCache(){
+            while (count > 0)
+                std::free(blocks[--count]);
+        }
+    };
+    thread_local BlockCache tBlocks;
 
 }
 
@@ -28,12 +43,17 @@ Arena& Arena::current(){
 }
 
 void* Arena::grow(size_t bytes){
-    // blocks double up to 1 MB (a 50 KB style sheet takes about 1 MB in all)
-    size_t size = blocks ? std::min(blocks->size * 2, kLargestBlock) : kFirstBlock;
     const size_t header = (sizeof(Block) + 7u) & ~(size_t)7u;
-    if (size < bytes + header)
+    Block* block = nullptr;
+    size_t size = kBlockSize;
+    if (bytes + header <= kBlockSize){
+        BlockCache& cache = tBlocks;
+        block = (Block*)(cache.count > 0 ? cache.blocks[--cache.count] : std::malloc(kBlockSize));
+    }else{
+        // (larger than a block: its own allocation, returned to the heap)
         size = bytes + header;
-    Block* block = (Block*)std::malloc(size);
+        block = (Block*)std::malloc(size);
+    }
     block->next = blocks;
     block->size = size;
     blocks = block;
@@ -45,9 +65,13 @@ void* Arena::grow(size_t bytes){
 }
 
 void Arena::release(){
+    BlockCache& cache = tBlocks;
     while (blocks){
         Block* next = blocks->next;
-        std::free(blocks);
+        if (blocks->size == kBlockSize && cache.count < kKeptBlocks)
+            cache.blocks[cache.count++] = blocks;
+        else
+            std::free(blocks);
         blocks = next;
     }
     cursor = end = nullptr;
