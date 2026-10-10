@@ -136,3 +136,18 @@ TEST_CASE("LineBreaking.opportunities_inside_words")
 
 	document->Close();
 }
+
+TEST_CASE("LineBreaking.inline_box_content_area")
+{
+	// An inline box is as tall as its font's ascent plus descent, each rounded (CSS 2.1 §10.6.1, as browsers): 8 + 2 at
+	// 10px with the fixed-advance font; a box split over three lines spans them (its boxes, getBoundingClientRect).
+	FixedAdvanceFontScope scope;
+	ElementDocument* document = scope.Load("", "<div style='width: 0'><span id='span'>HHH" + zwsp + "HH" + zwsp + "H</span></div>");
+	Element* span = document->GetElementById("span");
+	CHECK(span->GetBox().GetSize().y == 10.f);
+	REQUIRE(span->GetNumBoxes() == 3);
+	Vector2f offset;
+	span->GetBox(2, offset);
+	CHECK(offset.y == 20.f);
+	document->Close();
+}
