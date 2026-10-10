@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>cascade: revert to the user-agent value</title>
+<style>
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  /* an author reset; the boxes below take some UA values back with revert */
+  * { margin: 0; padding: 0; }
+  body { font-family: "Ahem"; font-size: 15px; line-height: 15px; }
+  ul { list-style-type: none; }
+  li { display: block; height: 10px; }
+
+  /* 1. lists: the reset removes ul's 40px padding-left, the inner list reverts it */
+  #w1 { position: absolute; left: 10px; top: 10px; width: 120px; background-color: #e0e0e0; }
+  #u1 > li { background-color: #4060a0; }
+  #l2 { height: auto; }
+  #u2 { padding-left: revert; }
+  #u2 > li { background-color: #a06040; }
+
+  /* 2. h1 and p margins back to the UA ones (h1: 0.67em of 2em = 20.1px; p: 1em = 15px);
+        each sits alone in an absolutely positioned box, so no margin collapses with another */
+  #w2 { position: absolute; left: 150px; top: 10px; width: 60px; background-color: #e0e0e0; }
+  #w3 { position: absolute; left: 230px; top: 10px; width: 60px; background-color: #e0e0e0; }
+  h1, p { height: 10px; font-weight: normal; }
+  #h { margin: revert; background-color: #60a040; }
+  #p { margin: revert; background-color: #a04080; }
+
+  /* 3. display: revert undoes an author display: none: block for a div (UA), inline for a span
+        (no UA rule: like unset, the initial inline) */
+  .hid { display: none; }
+  #w4 { position: absolute; left: 10px; top: 120px; width: 120px; background-color: #e0e0e0; }
+  #d0, #d1 { height: 10px; }
+  #d0 { background-color: #40a0a0; }
+  #d1 { display: revert; background-color: #a0a040; }
+  #w5 { position: absolute; left: 150px; top: 120px; width: 120px; color: #602080; background-color: #e0e0e0; }
+  #s1 { display: revert; }
+  #s2 { color: #208060; }
+  /* revert on a property without UA value behaves as unset: color inherits */
+  #s3 { color: #e02020; }
+  #s3 { color: revert; }
+</style>
+</head>
+<body>
+<div id="w1"><ul id="u1"><li id="l1"></li><li id="l2"><ul id="u2"><li id="l3"></li><li id="l4"></li></ul></li><li id="l5"></li></ul></div>
+<div id="w2"><h1 id="h"></h1></div>
+<div id="w3"><p id="p"></p></div>
+<div id="w4"><div id="d0"></div><div id="d1" class="hid"></div></div>
+<div id="w5"><span id="s1" class="hid">XX</span><span id="s2">XX</span><span id="s3">X</span></div>
+</body>
+</html>

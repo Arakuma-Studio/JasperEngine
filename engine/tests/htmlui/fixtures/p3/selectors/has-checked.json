@@ -1,0 +1,10 @@
+{
+ "comment": ":has() (spec 3.5.3): li:has(> input:checked) colors #li2, not #li3 (its checked box is a grandchild), and #li1 once the steps click #cb (capture 'before' then 'after'); .card:has(.badge) at depth (#c1, not #c2); .a:has(+ .x) (#a1 only) and .a:has(~ .z) (#a2 is 30px tall); #panel:has(#cb2:checked) + #after styles a following sibling.",
+ "viewport": [250, 160],
+ "steps": [
+  {"capture": "before"},
+  {"press": "#cb"},
+  {"release": true},
+  {"capture": "after"}
+ ]
+}

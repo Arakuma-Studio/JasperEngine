@@ -1,0 +1,11 @@
+{
+ "comment": "Focus pseudo-classes (spec 3.5.4). 'keyboard': Tab focuses #input (the first tabbable element): :focus and :focus-visible on #input only (yellow fill, #c02060 border), :focus-within on #fieldwrap's ancestors #form and #outer (green, lavender), never :focus on an ancestor (no #e02020) and nothing on the sibling #other. 'mouse': a click focuses #box: :focus (blue) but not :focus-visible, and the form loses :focus-within.",
+ "viewport": [260, 120],
+ "steps": [
+  {"capture": "none"},
+  {"focus": "#input", "keyboard": true},
+  {"capture": "keyboard"},
+  {"focus": "#box"},
+  {"capture": "mouse"}
+ ]
+}

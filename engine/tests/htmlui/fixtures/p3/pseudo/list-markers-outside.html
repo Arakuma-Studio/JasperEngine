@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pseudo: outside list markers</title>
+<style>
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  /* markers take the li's color (#2060c0); the item text is a #404040 span */
+  ul, ol { position: absolute; width: 50px; margin: 0; padding: 0 0 0 50px; font-family: "Ahem"; font-size: 10px; line-height: 14px; color: #2060c0; background-color: #e8e8e8; }
+  li span { color: #404040; }
+  li { background-color: #d0d8e8; }
+  /* symbol markers at 20px: Chromium draws them as shapes sized from the font */
+  .sym { width: 40px; padding-left: 40px; font-size: 20px; line-height: 24px; }
+  #disc { left: 0; top: 10px; list-style-type: disc; }
+  #circle { left: 110px; top: 10px; list-style-type: circle; }
+  #square { left: 220px; top: 10px; list-style-type: square; }
+  #dec { left: 0; top: 70px; list-style-type: decimal; }
+  #alpha { left: 110px; top: 70px; list-style-type: lower-alpha; }
+  #roman { left: 220px; top: 70px; list-style-type: upper-roman; }
+  #none { left: 0; top: 130px; list-style-type: none; }
+  /* a 24x24 image marker: taller than the line, it grows the first line box */
+  #image { left: 110px; top: 130px; list-style-image: url("../../common/icon.svg"); }
+  /* a 16px marker (::marker font-size and color) on 10px items with 20px lines */
+  #big { left: 220px; top: 130px; line-height: 20px; list-style-type: decimal; }
+  #big li::marker { font-size: 16px; color: #c02060; }
+</style>
+</head>
+<body>
+<ul id="disc" class="sym"><li id="d1"><span>XX</span></li><li id="d2"><span>X</span></li></ul>
+<ul id="circle" class="sym"><li id="c1"><span>XX</span></li><li id="c2"><span>X</span></li></ul>
+<ul id="square" class="sym"><li id="s1"><span>XX</span></li><li id="s2"><span>X</span></li></ul>
+<ol id="dec"><li id="n1"><span>XX</span></li><li id="n2"><span>X</span></li><li id="n3"><span>X</span></li></ol>
+<ol id="alpha"><li id="a1"><span>XX</span></li><li id="a2"><span>X</span></li><li id="a3"><span>X</span></li></ol>
+<ol id="roman"><li id="r1"><span>XX</span></li><li id="r2"><span>X</span></li><li id="r3"><span>X</span></li></ol>
+<ul id="none"><li id="z1"><span>XX</span></li><li id="z2"><span>X</span></li></ul>
+<ul id="image"><li id="i1"><span>XX</span></li><li id="i2"><span>X</span></li></ul>
+<ol id="big"><li id="b1"><span>XX</span></li><li id="b2"><span>X</span></li></ol>
+</body>
+</html>

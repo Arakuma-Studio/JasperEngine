@@ -1,0 +1,4 @@
+{
+ "comment": "The list-item counter with HTML attributes (spec 3.6.3), Ahem so the numbers show as marker widths (squares incl. the '.'): <ol start=8> 8 9 10 11 (2,2,3,3); <ol reversed> of 10 items 10..1 (3,2,...); <ol reversed start=10> 10 9 8; <li value=10> and <li value=-2> in an ol: 1 10 11 -2 -1 (2,3,3,3,3); <ol start=4> upper-roman IV V VI VII (3,2,3,4); <ol reversed> with <li value=99> second: 3 99 98 (2,3,3).",
+ "viewport": [300, 180]
+}

@@ -5,6 +5,8 @@
   "base": {"owner": "p3-base", "spec": "3.1, 3.2", "content": "groundwork and calc()"},
   "values": {"owner": "p3-values", "spec": "3.2, 3.3", "content": "units, colors, fonts, line-height: normal, logical properties"},
   "cascade": {"owner": "p3-cascade", "spec": "3.4, 3.5, 3.6", "content": "!important, CSS-wide keywords, selectors, pseudo-elements, counters, list markers"},
+  "selectors": {"owner": "p3-cascade", "spec": "3.5", "content": ":root, :is(), :where(), :has(), focus pseudo-classes, form states, attribute selectors, :nth-child(of S), :empty"},
+  "pseudo": {"owner": "p3-cascade", "spec": "3.6", "content": "::before, ::after, content, counters, list markers"},
   "paint": {"owner": "p3-paint", "spec": "3.7, 3.8, 3.9", "content": "borders, radii, outline, opacity groups, stacking, backgrounds, masks, object-fit"},
   "text": {"owner": "p3-text", "spec": "3.10", "content": "text properties"},
   "layout": {"owner": "p3-layout", "spec": "3.11, 3.12", "content": "fixed, sticky, overflow, box and flex parity"},

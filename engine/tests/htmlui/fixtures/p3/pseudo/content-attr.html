@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pseudo: content: attr()</title>
+<style>
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  .host { position: absolute; left: 10px; width: 160px; height: 10px; font-family: "Ahem"; font-size: 10px; line-height: 10px; color: #404040; background-color: #e0e0e0; }
+  /* attr() alone; the steps change the attribute (AB -> ABCDE) */
+  #x { top: 10px; }
+  #x::before { content: attr(data-label); color: #2060c0; }
+  /* strings and attr() mixed: "[" attr "]" */
+  #y { top: 30px; }
+  #y::after { content: "[" attr(data-n) "]"; color: #c02060; }
+  /* a missing attribute gives the empty string; the steps add it */
+  #z { top: 50px; }
+  #z::before { content: "<" attr(data-missing) ">"; color: #20a060; }
+  /* the steps remove an attribute: its text disappears */
+  #w { top: 70px; }
+  #w::after { content: attr(title); color: #a06020; }
+</style>
+</head>
+<body>
+<div id="x" class="host" data-label="AB">X</div>
+<div id="y" class="host" data-n="7">XX</div>
+<div id="z" class="host">X</div>
+<div id="w" class="host" title="TTT">X</div>
+</body>
+</html>
