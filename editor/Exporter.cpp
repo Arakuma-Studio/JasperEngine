@@ -1566,7 +1566,7 @@ bool editor::Exporter::checkHtmlUIReferences(const fs::path& projectPath, const 
             const std::string location = shown(reference.fromFile) + ":" + std::to_string(reference.line) + ":" + std::to_string(reference.column);
             if (reference.remote) {
                 errors.push_back(location + ": remote " + getHtmlUIReferenceKindName(reference.kind) + " '" + reference.raw +
-                                 "': games load no URLs; download it into the project's assets directory (phase 2 adds importers)");
+                                 "': games load no URLs; download it into the project's assets directory (in an .html document the URL can stay: the editor imports it)");
             } else if (reference.outsideAssets) {
                 errors.push_back(location + ": '" + reference.raw + "' resolves outside the assets directory, which is all a build ships");
             } else if (reference.absolute) {
