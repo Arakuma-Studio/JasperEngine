@@ -130,6 +130,35 @@ with the patch that implements it; `ForkFeatures.TableMatchesProbes` checks them
 |---|---|---|
 | `Calc` | P3-1 | `calc()`, `min()`, `max()`, `clamp()` are type-checked and kept where RmlUi reads the value as written: properties without a rewrite, the `Sizing`, `Gap`, `FontSize`, `LineHeight`, `ZIndex` and `Opacity` rewrites, and custom properties (RmlUi substitutes them); `RcssGrammar::accepts(..., fork)` takes them for one numeric value of the right units. They stay folded statically, as without the feature, in the families a rewrite reads token by token or writes into compat decorator arguments (`border`, `background`, `box-shadow`, `clip-path`, logical properties, ...), in the custom property index the static rewrites read, and when other math functions (`round()`, `sin()`, ...) are inside; a percentage reduced there is reported as `HTMLUI-CSS-0006` (an approximation of that rewrite), not as a fork fallback. p3-values extends the fork's calc to the units and properties phase 3 adds. |
 
+### Benchmarks (p3-base)
+
+`RUN_BENCHMARKS=1 tools/htmlui/run-rmlui-tests.sh` (static Release build, as the engine links
+RmlUi), the same benchmark sources for every tree (`RMLUI_FORK_DIR`), minimum of 9 interleaved
+runs on the shared build host (load 8-15, so differences below about 5 % are noise; code-layout
+effects alone moved single cases by more than that). Before = the fork at `html-ui` 61f379f2
+(phases 0-2 and P3-T1/P3-T2), PR #983 = after P3-1, after = all of p3-base. ns per operation:
+
+| Benchmark | Before | PR #983 | After | After vs before |
+|---|---|---|---|---|
+| `elementdocument-baseline` LoadDocument + Show + Update + Render | 558 | 567 | 572 | +2.4 % |
+| `elementdocument-baseline` Clear + LoadDocument + Show + Update + Render | 1496 | 1627 | 1590 | +6.3 % |
+| `flexbox` SetInnerRML + Update + Render | 187559 | 195245 | 202958 | +8.2 % |
+| `flexbox` Update (unmodified) | 1040 | 1050 | 1100 | +5.8 % |
+| `flexbox.shrink-to-fit` Reference | 4468 | 4438 | 4600 | +3.0 % |
+| `flexbox.shrink-to-fit` Basic | 28954 | 29705 | 31549 | +9.0 % |
+| `flexbox.shrink-to-fit` Nested | 2618978 | 2685211 | 2995409 | +14.4 % (+10.1 % in a 15-run repeat) |
+| `table_basic` SetInnerRML + Update + Render | 126194 | 128719 | 133168 | +5.5 % |
+
+Justification of the case above 10 %: nested shrink-to-fit formats every box many times (each
+inline-flex level measures its content again), so it multiplies the per-box cost of P3-7: every
+box lists its layout children (`::marker`/`::before`/`::after`, `display: contents`, `order`)
+instead of walking the DOM children. Bisecting by commit put the whole step on P3-7 (P3-2…P3-6
+and P3-8…P3-11 within noise); its follow-ups took back what could be taken without giving up the
+list: reused lists (`beff2c90`), no per-child calls and paint order rebuilt only when it changes
+(`6b3a026a`). Walking the DOM in place of the list for block boxes measured a further 3 % on
+Nested and would need its own path for pseudo-elements; not done. The other cases stay below
+10 %.
+
 ## Updating upstream
 
 1. Copy the new tag over the vendored subset (same include/exclude lists).
