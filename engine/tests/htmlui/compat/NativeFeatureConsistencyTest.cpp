@@ -267,11 +267,14 @@ TEST(NativeFeatureConsistency, AbsentFeaturesKeepPhaseTwoRewrites){
         SCOPED_TRACE(std::string(forkFeatureName(sample.feature)) + ": " + sample.css);
         const Rewrite result = rewrite(sample, ForkFeatures::present().with(sample.feature, false));
         const std::string output = normalized(result.output);
-        if (*sample.absentOutput)
+        if (*sample.absentOutput){
             EXPECT_NE((output + " " + normalized(result.important)).find(normalized(sample.absentOutput)), std::string::npos) << describe(result);
-        if (*sample.absentCode)
+        }
+        if (*sample.absentCode){
             EXPECT_TRUE(hasCode(result.diagnostics, sample.absentCode)) << describe(result);
-        if (!*sample.absentOutput && !*sample.absentCode)
+        }
+        if (!*sample.absentOutput && !*sample.absentCode){
             EXPECT_EQ(output, normalized(sample.css)) << "phase 2 leaves it as it is: " << describe(result);
+        }
     }
 }

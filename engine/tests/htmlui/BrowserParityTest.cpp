@@ -275,9 +275,10 @@ TEST(BrowserFixtures, ManifestAndReferencesAreConsistent){
     EXPECT_EQ(defaults.value("box", 0.0f), 1.0f);
     std::error_code ec;
     for (const auto& entry : std::filesystem::directory_iterator(browserFixturesDirectory(), ec)){
-        if (entry.is_directory())
+        if (entry.is_directory()){
             EXPECT_TRUE(areas.count(entry.path().filename().string())) << "fixtures/p3/" << entry.path().filename().string()
                                                                        << " is not an area of manifest.json";
+        }
     }
 
     const std::vector<BrowserFixture> fixtures = listBrowserFixtures();
@@ -290,10 +291,12 @@ TEST(BrowserFixtures, ManifestAndReferencesAreConsistent){
         FixtureSidecar sidecar;
         std::string error;
         ASSERT_TRUE(loadSidecar(browserFixturesDirectory() + "/" + fixture.area + "/" + fixture.name + ".json", sidecar, &error)) << error;
-        if (sidecar.toleranceOverridden)
+        if (sidecar.toleranceOverridden){
             EXPECT_FALSE(sidecar.comment.empty()) << "a tolerance override needs a comment (spec 5.2)";
-        if (!sidecar.referenceCss.empty() || sidecar.expectMismatch)
+        }
+        if (!sidecar.referenceCss.empty() || sidecar.expectMismatch){
             EXPECT_EQ(fixture.area, "testkit") << "selfTest is for the harness's own fixtures";
+        }
         std::map<std::string, std::vector<LayoutBox>> boxes;
         ASSERT_TRUE(loadReferenceBoxes(browserReferenceDirectory() + "/" + fixture.area + "/" + fixture.name + ".boxes.json", boxes, &error))
             << error << ": node tools/htmlui/render-reference.mjs --fixtures " << fixture.id();
