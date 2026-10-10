@@ -8,6 +8,10 @@
 
 namespace Rml {
 
+namespace GridLayout {
+	class AbsoluteAreaResolver;
+}
+
 /**
     Abstraction for layout boxes that can act as a containing block.
 
@@ -82,6 +86,10 @@ protected:
 
 	/// Formats, sizes, and positions all absolute elements whose containing block is this, and offsets relative elements.
 	void ClosePositionedElements();
+
+	/// The containing block of an absolutely positioned element added without one, relative to our border box, when it is not
+	/// our padding box (a grid container's grid areas: GridContainer).
+	virtual std::optional<Rectanglef> GetAbsoluteContainingBlock(Element* element) const;
 
 	// Set the element's baseline (proxy for private access to Element).
 	void SetElementBaseline(float element_baseline);
@@ -164,6 +172,38 @@ private:
 	Box box;
 	bool has_first_baseline = false;
 	float first_baseline = 0.f;
+};
+
+/**
+    A box where grid layout occurs (GridFormattingContext).
+*/
+class GridContainer final : public ContainerBox {
+public:
+	GridContainer(Element* element, ContainerBox* parent_container);
+	~GridContainer();
+
+	// Submits the formatted box to the grid container element, and propagates any uncaught overflow to this box.
+	// @returns True if it succeeds, otherwise false if it needs to be formatted again because scrollbars were enabled.
+	bool Close(Vector2f visible_overflow_size, Vector2f scrollable_content_size, const Box& box, float element_baseline);
+
+	float GetShrinkToFitWidth() const override;
+	float GetMinContentWidth() const override;
+
+	const Box* GetIfBox() const override { return &box; }
+	String DebugDumpTree(int depth) const override;
+
+	Box& GetBox() { return box; }
+
+	// Keeps the grid areas of the absolutely positioned boxes we are the containing block of, until they are laid out.
+	void SetAbsoluteAreaResolver(UniquePtr<GridLayout::AbsoluteAreaResolver> resolver);
+
+protected:
+	std::optional<Rectanglef> GetAbsoluteContainingBlock(Element* element) const override;
+
+private:
+	Box box;
+	Vector2f containing_block;
+	UniquePtr<GridLayout::AbsoluteAreaResolver> absolute_area_resolver;
 };
 
 /**

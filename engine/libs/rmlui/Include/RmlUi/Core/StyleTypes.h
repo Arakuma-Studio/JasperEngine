@@ -68,9 +68,9 @@ namespace Style {
 		TableColumn,
 		TableColumnGroup,
 		TableCell,
-		// Phase 3 (groundwork): 'grid' and 'inline-grid' are parsed once grid layout exists (p3-grid); until its formatting
-		// context, 'list-item' is laid out as a block (its ::marker: p3-cascade); 'contents' generates no box, its children
-		// are laid out in its place (LayoutDetails::GetLayoutChildren).
+		// Phase 3: 'grid' and 'inline-grid' are grid containers (GridFormattingContext, p3-grid); until its ::marker,
+		// 'list-item' is laid out as a block (p3-cascade); 'contents' generates no box, its children are laid out in its
+		// place (LayoutDetails::GetLayoutChildren).
 		Grid,
 		InlineGrid,
 		ListItem,
@@ -248,6 +248,8 @@ namespace Style {
 	// -- Animation (p3-animation) --
 
 	// -- Grid (p3-grid) --
+	// 'grid-auto-flow': the auto-placement direction, and whether it fills holes ('dense').
+	enum class GridAutoFlow : uint8_t { Row, Column, RowDense, ColumnDense };
 
 	class ComputedValues;
 

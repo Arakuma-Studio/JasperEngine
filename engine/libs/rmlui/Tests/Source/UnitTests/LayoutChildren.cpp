@@ -165,8 +165,8 @@ TEST_CASE("LayoutChildren.values")
 	CHECK(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "display", "list-item"));
 	CHECK(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "position", "sticky"));
 	CHECK(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "order", "-3"));
-	// grid layout is not there yet: the keywords stay unknown until it is (ForkFeature::Grid's probe)
-	CHECK_FALSE(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "display", "grid"));
-	CHECK_FALSE(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "display", "inline-grid"));
+	// grid containers (p3-grid, GridParsing.display)
+	CHECK(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "display", "grid"));
+	CHECK(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "display", "inline-grid"));
 	TestsShell::ShutdownShell();
 }

@@ -22,6 +22,12 @@ public:
 	/// Set target for relative units when resolving sizes such as percentages.
 	PropertyDefinition& SetRelativeTarget(RelativeTarget relative_target);
 
+	/// Makes the parsers receive the value as written: its quotes kept, and several strings allowed
+	/// ('grid-template-areas: "a b" "c d"'). By default a value is one string with its quotes removed, or one unquoted value.
+	PropertyDefinition& SetValueAsWritten();
+	/// True if the parsers receive the value as written (SetValueAsWritten).
+	bool IsValueAsWritten() const;
+
 	/// Called when parsing a RCSS declaration.
 	/// @param property[out] The property to set the parsed value onto.
 	/// @param value[in] The raw value defined for this property.
@@ -63,6 +69,7 @@ private:
 	Vector<ParserState> parsers;
 
 	RelativeTarget relative_target;
+	bool value_as_written = false;
 };
 
 } // namespace Rml

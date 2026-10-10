@@ -29,7 +29,7 @@ namespace {
         false,   // TimingFunctions
         false,   // Important
         false,   // CssWideKeywords
-        false,   // Grid
+        true,    // Grid (phase 3, p3-grid: CSS Grid, a port of Taffy; docs/html-ui/FORK.md P3-G1..P3-G3)
         false,   // Sticky (phase 3, p3-layout: position: sticky, overflow: clip; docs/html-ui/FORK.md)
         true,    // BoxParity (phase 3, p3-layout: flex/block/sizing parity; docs/html-ui/FORK.md)
     };

@@ -1,0 +1,52 @@
+{
+ "fixture": "grid/dashboard-areas.html",
+ "viewport": [
+  300,
+  200
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "g",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 280,
+    "h": 180
+   },
+   {
+    "id": "main",
+    "tag": "div",
+    "x": 94,
+    "y": 44,
+    "w": 196,
+    "h": 122
+   },
+   {
+    "id": "footer",
+    "tag": "div",
+    "x": 10,
+    "y": 170,
+    "w": 280,
+    "h": 20
+   },
+   {
+    "id": "nav",
+    "tag": "div",
+    "x": 10,
+    "y": 44,
+    "w": 80,
+    "h": 122
+   },
+   {
+    "id": "header",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 280,
+    "h": 30
+   }
+  ]
+ }
+}

@@ -1,0 +1,7 @@
+{
+ "comment": "an inline grid is as wide as its columns' max-content sizes, laid out in the line",
+ "viewport": [
+  300,
+  40
+ ]
+}
