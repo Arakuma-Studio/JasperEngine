@@ -7,6 +7,7 @@
 #include "PropertyParserBoxShadow.h"
 #include "PropertyParserColorStopList.h"
 #include "PropertyParserColour.h"
+#include "PropertyParserCursor.h"
 #include "PropertyParserDecorator.h"
 #include "PropertyParserFilter.h"
 #include "PropertyParserFontFamily.h"
@@ -284,6 +285,8 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	// -- Values (p3-values) --
 	static PropertyParserFontFamily font_family_parser;
 	RegisterParser("font_family", &font_family_parser);
+	static PropertyParserCursor cursor_parser;
+	RegisterParser("cursor", &cursor_parser);
 
 	// -- Cascade (p3-cascade) --
 
@@ -432,7 +435,7 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::ColumnGap, "column-gap", "0px", false, true).AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
 	RegisterShorthand(ShorthandId::Gap, "gap", "row-gap, column-gap", ShorthandType::Replicate);
 
-	RegisterProperty(PropertyId::Cursor, "cursor", "", true, false).AddParser("string");
+	RegisterProperty(PropertyId::Cursor, "cursor", "", true, false).AddParser("cursor");
 
 	// Functional property specifications.
 	RegisterProperty(PropertyId::Drag, "drag", "none", false, false).AddParser("keyword", "none, drag, drag-drop, block, clone");
@@ -528,6 +531,7 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	properties.SetShorthandParser(ShorthandId::PerspectiveOrigin, &ParsePerspectiveOriginShorthand);
 	// A list of quoted and unquoted names reaches the font_family parser as written.
 	properties.property_ids_raw_value.Insert(PropertyId::FontFamily);
+	properties.property_ids_raw_value.Insert(PropertyId::Cursor);
 	size_t num_logical_shorthands = 0;
 	const LogicalShorthand* logical_shorthands = GetLogicalShorthands(num_logical_shorthands);
 	for (size_t i = 0; i < num_logical_shorthands; i++)

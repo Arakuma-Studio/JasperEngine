@@ -519,3 +519,33 @@ TEST_CASE("Values.logical_properties")
 	document->Close();
 	context->Update();
 }
+
+TEST_CASE("Values.cursor")
+{
+	Context* context = TestsShell::GetContext();
+
+	CHECK(ParsedString("cursor", "pointer") == "pointer");
+	CHECK(ParsedString("cursor", "Not-Allowed") == "not-allowed");
+	CHECK(ParsedString("cursor", "url(hand.png), pointer") == "pointer");
+	CHECK(ParsedString("cursor", "url(\"a b.cur\") 4 12, url(x.svg), grab") == "grab");
+	CHECK(ParsedString("cursor", "image-set(\"a.png\" 1x), move") == "move");
+	// Application cursor names as written.
+	CHECK(ParsedString("cursor", "arrow") == "arrow");
+	CHECK(ParsedString("cursor", "My_Cursor-2") == "My_Cursor-2");
+	CHECK(ParsedString("cursor", "x<y") == "<invalid>");
+	CHECK(ParsedString("cursor", "a b") == "<invalid>");
+	CHECK(ParsedString("cursor", "2d") == "<invalid>");
+	CHECK(ParsedString("cursor", "url(a.png)") == "<invalid>");
+	CHECK(ParsedString("cursor", "pointer, url(a.png)") == "<invalid>");
+	// Fallback keywords for the system interface.
+	CHECK(ParsedString("cursor", "url(x.png), Help, pointer") == "help, pointer");
+	CHECK(ParsedString("cursor", "zoom-in, my-cursor") == "zoom-in, my-cursor");
+	CHECK(ParsedString("cursor", "url(a.png) 4, pointer") == "<invalid>");
+
+	// The keyword reaches the system interface.
+	ElementDocument* document = LoadValues(context, "#a { cursor: url(x.png) 1 2, zoom-in; width: 50px; height: 50px; }");
+	Element* a = document->GetElementById("a");
+	CHECK(a->GetComputedValues().cursor() == "zoom-in");
+	document->Close();
+	context->Update();
+}
