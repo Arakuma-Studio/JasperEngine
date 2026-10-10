@@ -225,10 +225,12 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 	line_length = 0;
 	line_width = 0;
 
-	// Bail if we don't have a valid font face.
+	// Bail if we don't have a valid font face. White-space-only text (kept between inline-level boxes) places no glyphs,
+	// so the indentation of a document without fonts is not reported.
 	if (font_face_handle == 0)
 	{
-		LogMissingFontFace(GetParentNode() ? GetParentNode() : this);
+		if (!std::all_of(text.begin(), text.end(), [](char c) { return StringUtilities::IsWhitespace(c); }))
+			LogMissingFontFace(GetParentNode() ? GetParentNode() : this);
 		return true;
 	}
 

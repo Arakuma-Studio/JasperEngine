@@ -1,0 +1,5 @@
+{
+ "comment": "Self-test: the reference moves #b 2px to the right, one pixel beyond the box tolerance: the comparison must report #b's x and the image's bad columns.",
+ "viewport": [300, 200],
+ "selfTest": {"expect": "mismatch", "referenceCss": "#b { left: 162px !important; }"}
+}

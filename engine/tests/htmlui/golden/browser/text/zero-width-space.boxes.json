@@ -1,0 +1,44 @@
+{
+ "fixture": "text/zero-width-space.html",
+ "viewport": [
+  120,
+  100
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "row",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 40,
+    "h": 10
+   },
+   {
+    "id": "row-item",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 40,
+    "h": 10
+   },
+   {
+    "id": "min",
+    "tag": "div",
+    "x": 10,
+    "y": 40,
+    "w": 0,
+    "h": 30
+   },
+   {
+    "id": "min-text",
+    "tag": "span",
+    "x": 10,
+    "y": 40,
+    "w": 30,
+    "h": 30
+   }
+  ]
+ }
+}

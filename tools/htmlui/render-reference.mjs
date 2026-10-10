@@ -29,6 +29,29 @@
 // Outputs per page in engine/tests/htmlui/golden/compat/reference/: <page>.png (transparent
 // background), <page>.notext.png (glyphs hidden, layout unchanged), <page>.layout.json
 // (border boxes of every element with an id), plus VERSION.
+//
+// Fixture mode (phase-3 spec 5.2, 5.3), the references of the browser-parity tests:
+//
+//   node render-reference.mjs --fixtures <spec> [--fixtures <spec> ...] [--boxes-only] [--verify] [--check] [--jobs <n>]
+//     <spec>: all | p3 | <area> | <area>/<name> | taffy | taffy/<suite> | taffy/<suite>/<name>
+//   node render-reference.mjs --self-test     the testkit fixtures twice: byte-identical to each other
+//                                             and to the committed references (reproducibility)
+//
+// - p3 fixtures: engine/tests/htmlui/fixtures/p3/<area>/<name>.html with a <name>.json sidecar
+//   {viewport: [w, h], steps: [...], boxes, tolerance, comment}; the steps (hover, focus, press,
+//   release, addClass, removeClass, setStyle, setAttr, scroll, advance, capture) run in order, every
+//   capture step (or one at the end when there is none) writes golden/browser/<area>/<name>[.<suffix>].png
+//   and the boxes of every element with an id into <name>.boxes.json. JavaScript stays off (the steps
+//   run in the page's isolated evaluation), transitions are on, and every animation and transition is
+//   paused when it starts and seeked to the time `advance` steps accumulated (frame-exact captures).
+// - Taffy fixtures (but those of excluded.txt): engine/tests/htmlui/fixtures/taffy/<suite>/<name>.html at 1024x768, boxes only: the
+//   border box of #test-root (in the viewport) and of every element under it (DOM order, by child-index
+//   path; relative to #test-root), into golden/browser/taffy/<suite>.boxes.json (one file per suite).
+// - Same browser, flags, fonts (fontconfig on the built-in Roboto; fixtures load theirs from
+//   engine/tests/htmlui/fonts with @font-face) and scrollbars as page mode; every p3 fixture gets a
+//   fresh browser, Taffy fixtures (layout only) share one with a fresh context each.
+// - --verify renders twice: box JSON must be identical, images identical or within the raster noise
+//   below (reported); --check compares with the committed files. golden/browser/VERSION is written.
 
 import { chromium } from 'playwright-core';
 import fs from 'node:fs';
@@ -43,6 +66,11 @@ const REPO = path.resolve(TOOL_DIR, '..', '..');
 const PAGES_DIR = path.join(REPO, 'engine/tests/htmlui/fixtures/compat/pages');
 const OUT_DIR = path.join(REPO, 'engine/tests/htmlui/golden/compat/reference');
 const DEFAULT_FONT_HEADER = path.join(REPO, 'engine/core/util/DefaultFont.h');
+const P3_DIR = path.join(REPO, 'engine/tests/htmlui/fixtures/p3');
+const TAFFY_DIR = path.join(REPO, 'engine/tests/htmlui/fixtures/taffy');
+const BROWSER_DIR = path.join(REPO, 'engine/tests/htmlui/golden/browser');
+const TAFFY_SUITES = ['grid', 'flex', 'block', 'blockflex', 'blockgrid', 'gridflex', 'leaf', 'float'];
+const TAFFY_VIEWPORT = { width: 1024, height: 768 };
 const LUCIDE_PACK = path.join(REPO, 'engine/libs/lucide/lucide.pack');
 
 const PLAYWRIGHT_VERSION = '1.63.0';
@@ -75,12 +103,15 @@ const LUCIDE_ROOT = {
 function usage(message){
     if (message)
         console.error(`render-reference: ${message}`);
-    console.error('usage: node render-reference.mjs (--all | --page <name> ...) [--verify] [--check] [--out <dir>] [--lucide-dir <lucide checkout>]');
+    console.error('usage: node render-reference.mjs (--all | --page <name> ...) [--verify] [--check] [--out <dir>] [--lucide-dir <lucide checkout>]\n' +
+                  '       node render-reference.mjs --fixtures <all|p3|area|area/name|taffy|taffy/suite|taffy/suite/name> ... [--boxes-only] [--verify] [--check] [--out <dir>] [--jobs <n>]\n' +
+                  '       node render-reference.mjs --self-test');
     process.exit(2);
 }
 
 function parseArgs(argv){
-    const options = { pages: [], all: false, verify: false, check: false, out: OUT_DIR, lucideDir: null };
+    const options = { pages: [], all: false, verify: false, check: false, out: null, lucideDir: null, fixtures: [], boxesOnly: false, jobs: 4,
+                      selfTest: false, identical: false };
     for (let i = 0; i < argv.length; i++){
         const arg = argv[i];
         const value = () => { if (i + 1 >= argv.length) usage(`${arg} needs a value`); return argv[++i]; };
@@ -90,11 +121,30 @@ function parseArgs(argv){
         else if (arg === '--check') options.check = true;
         else if (arg === '--out') options.out = path.resolve(value());
         else if (arg === '--lucide-dir') options.lucideDir = path.resolve(value());
+        else if (arg === '--fixtures') options.fixtures.push(value().replace(/\.(html|json)$/, '').replace(/\/+$/, ''));
+        else if (arg === '--boxes-only') options.boxesOnly = true;
+        else if (arg === '--self-test') options.selfTest = true;
+        else if (arg === '--jobs') options.jobs = Math.max(1, parseInt(value(), 10) || 1);
         else if (arg === '--help' || arg === '-h') usage();
         else usage(`unknown argument ${arg}`);
     }
-    if (!options.all && options.pages.length === 0)
-        usage('name the pages (--page) or use --all');
+    if (options.selfTest){
+        // the harness's reproducibility check (spec 4, p3-testkit): the testkit fixtures twice, and
+        // against the committed references, byte for byte
+        if (options.fixtures.length || options.all || options.pages.length || options.boxesOnly)
+            usage('--self-test takes no other fixture or page option');
+        options.fixtures = ['testkit'];
+        options.verify = true;
+        options.check = true;
+        options.identical = true;
+    }
+    if (options.fixtures.length && (options.all || options.pages.length))
+        usage('--fixtures and the page options (--all, --page) are separate modes');
+    if (!options.fixtures.length && options.boxesOnly)
+        usage('--boxes-only applies to --fixtures');
+    if (!options.all && options.pages.length === 0 && options.fixtures.length === 0)
+        usage('name the pages (--page), use --all, or name fixtures (--fixtures)');
+    options.out ??= options.fixtures.length ? BROWSER_DIR : OUT_DIR;
     return options;
 }
 
@@ -586,11 +636,495 @@ function sha(buffer){
     return crypto.createHash('sha256').update(buffer).digest('hex').slice(0, 16);
 }
 
+// ===== fixture mode: the references of the phase-3 browser-parity tests (spec 5.2, 5.3) ========
+
+const STEP_KINDS = ['hover', 'focus', 'press', 'release', 'addClass', 'removeClass', 'setStyle', 'setAttr', 'scroll', 'advance', 'capture'];
+
+function listAreas(){
+    if (!fs.existsSync(P3_DIR))
+        return [];
+    return fs.readdirSync(P3_DIR, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();
+}
+
+// the fixtures of an area: <name>.html with a <name>.json sidecar
+function listP3(area){
+    const directory = path.join(P3_DIR, area);
+    return fs.readdirSync(directory).filter((f) => f.endsWith('.html') && fs.existsSync(path.join(directory, f.slice(0, -5) + '.json')))
+        .map((f) => f.slice(0, -5)).sort();
+}
+
+// the fixtures of excluded.txt (Taffy's invalid ones, rtl, writing-mode, scripts) are not compared,
+// so they have no reference
+function taffyExcluded(){
+    const file = path.join(TAFFY_DIR, 'excluded.txt');
+    if (!fs.existsSync(file))
+        return new Set();
+    return new Set(fs.readFileSync(file, 'utf8').split('\n').map((line) => line.split('#')[0].trim().split(/\s+/)[0]).filter(Boolean));
+}
+
+function listTaffy(suite){
+    const excluded = taffyExcluded();
+    return fs.readdirSync(path.join(TAFFY_DIR, suite)).filter((f) => f.endsWith('.html')).map((f) => f.slice(0, -5))
+        .filter((name) => !excluded.has(`${suite}/${name}`)).sort();
+}
+
+// --fixtures specs -> {p3: [{area, name}], taffy: Map(suite -> [names] | null for the whole suite)}
+function resolveFixtures(specs){
+    const p3 = new Map();
+    const taffy = new Map();
+    const addArea = (area) => { for (const name of listP3(area)) p3.set(`${area}/${name}`, { area, name }); };
+    const addSuite = (suite, name) => {
+        if (!TAFFY_SUITES.includes(suite))
+            throw new Error(`no Taffy suite ${suite} (${TAFFY_SUITES.join(', ')})`);
+        if (name === undefined){
+            taffy.set(suite, null);
+            return;
+        }
+        if (!fs.existsSync(path.join(TAFFY_DIR, suite, `${name}.html`)))
+            throw new Error(`no Taffy fixture ${suite}/${name}`);
+        if (taffyExcluded().has(`${suite}/${name}`))
+            throw new Error(`taffy/${suite}/${name} is excluded (excluded.txt): it is not compared and has no reference`);
+        if (taffy.get(suite) !== null)
+            taffy.set(suite, [...(taffy.get(suite) ?? []), name]);
+    };
+    for (const spec of specs){
+        const parts = spec.split('/');
+        if (spec === 'all' || spec === 'p3')
+            listAreas().forEach(addArea);
+        if (spec === 'all' || spec === 'taffy')
+            TAFFY_SUITES.forEach((suite) => addSuite(suite));
+        if (spec === 'all' || spec === 'p3' || spec === 'taffy')
+            continue;
+        if (parts[0] === 'taffy'){
+            if (parts.length > 3)
+                throw new Error(`bad fixture spec ${spec}`);
+            addSuite(parts[1], parts[2]);
+        }else if (parts.length === 1 && listAreas().includes(spec)){
+            addArea(spec);
+        }else if (parts.length === 2){
+            if (!fs.existsSync(path.join(P3_DIR, parts[0], `${parts[1]}.json`)))
+                throw new Error(`no fixture ${spec} (fixtures/p3/${spec}.html + .json)`);
+            p3.set(spec, { area: parts[0], name: parts[1] });
+        }else if (parts.length === 1){
+            const found = listAreas().filter((area) => fs.existsSync(path.join(P3_DIR, area, `${spec}.json`)));
+            if (found.length !== 1)
+                throw new Error(found.length ? `fixture ${spec} is in several areas (${found.join(', ')}): name the area` : `no fixture or area ${spec}`);
+            p3.set(`${found[0]}/${spec}`, { area: found[0], name: spec });
+        }else{
+            throw new Error(`bad fixture spec ${spec}`);
+        }
+    }
+    return { p3: [...p3.values()], taffy };
+}
+
+// The sidecar (spec 5.2): viewport, steps, boxes, tolerance (with a comment saying why), selfTest
+// (fixtures of the testkit area only: {expect: "mismatch", referenceCss}: the CSS is injected in the
+// reference alone, so the engine must be reported as different).
+function loadSidecar(area, name){
+    const file = path.join(P3_DIR, area, `${name}.json`);
+    let sidecar;
+    try { sidecar = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (error){ throw new Error(`${file}: ${error.message}`); }
+    const where = `fixtures/p3/${area}/${name}.json`;
+    const viewport = sidecar.viewport;
+    if (!Array.isArray(viewport) || viewport.length !== 2 || !viewport.every((v) => Number.isInteger(v) && v > 0 && v <= 4096))
+        throw new Error(`${where}: "viewport" must be [width, height]`);
+    const steps = sidecar.steps ?? [];
+    if (!Array.isArray(steps))
+        throw new Error(`${where}: "steps" must be a list`);
+    const target = (value) => typeof value === 'string' && /^#[A-Za-z_][\w-]*$/.test(value);
+    steps.forEach((step, index) => {
+        const keys = Object.keys(step).filter((key) => key !== 'keyboard');
+        const kind = keys[0];
+        const value = step[kind];
+        const bad = (why) => { throw new Error(`${where}: step ${index + 1} ${JSON.stringify(step)}: ${why}`); };
+        if (keys.length !== 1 || !STEP_KINDS.includes(kind))
+            bad(`one of ${STEP_KINDS.join(', ')}`);
+        if ('keyboard' in step && kind !== 'focus')
+            bad('"keyboard" goes with "focus"');
+        if (['hover', 'focus', 'press'].includes(kind) && !target(value))
+            bad('the target is "#id"');
+        if (kind === 'release' && value !== true && !target(value))
+            bad('"release": true or "#id"');
+        if (['addClass', 'removeClass'].includes(kind) && !(Array.isArray(value) && value.length === 2 && target(value[0]) && typeof value[1] === 'string'))
+            bad('["#id", "class"]');
+        if (kind === 'setStyle' && !(Array.isArray(value) && value.length === 3 && target(value[0]) && value.slice(1).every((v) => typeof v === 'string')))
+            bad('["#id", "property", "value"] ("" removes)');
+        if (kind === 'setAttr' && !(Array.isArray(value) && value.length === 3 && target(value[0]) && typeof value[1] === 'string' &&
+                                    (typeof value[2] === 'string' || value[2] === null)))
+            bad('["#id", "name", "value" or null (removes)]');
+        if (kind === 'scroll' && !(Array.isArray(value) && value.length === 3 && target(value[0]) && Number.isFinite(value[1]) && Number.isFinite(value[2])))
+            bad('["#id", x, y]');
+        if (kind === 'advance' && !(Number.isFinite(value) && value >= 0))
+            bad('seconds >= 0');
+        if (kind === 'capture' && !(typeof value === 'string' && /^[\w-]*$/.test(value)))
+            bad('a file-name suffix ([A-Za-z0-9_-]*)');
+    });
+    const captures = steps.filter((step) => 'capture' in step).map((step) => step.capture);
+    if (new Set(captures).size !== captures.length)
+        throw new Error(`${where}: capture suffixes must differ`);
+    if (sidecar.tolerance !== undefined && !(typeof sidecar.comment === 'string' && sidecar.comment.trim()))
+        throw new Error(`${where}: a "tolerance" override needs a "comment" explaining the rasterization difference (spec 5.2)`);
+    if (sidecar.selfTest !== undefined && area !== 'testkit')
+        throw new Error(`${where}: "selfTest" is for the harness's own fixtures (fixtures/p3/testkit)`);
+    return { viewport, steps, boxes: sidecar.boxes === true, selfTest: sidecar.selfTest ?? null };
+}
+
+// in the page (JavaScript off: Playwright evaluates in its own world, where state persists):
+// adopt every animation and transition that is not yet, paused at its start, seeked from then on
+async function adoptAnimations(page){
+    await page.evaluate(() => {
+        const state = window.__htmluiFixture ??= { time: 0, animations: [] };
+        for (const animation of document.getAnimations()){
+            if (state.animations.some((known) => known.animation === animation))
+                continue;
+            animation.pause();
+            animation.currentTime = 0;
+            state.animations.push({ animation, start: state.time });
+        }
+    });
+}
+
+async function advanceAnimations(page, seconds){
+    await page.evaluate((dt) => {
+        const state = window.__htmluiFixture;
+        state.time += dt;
+        // only the live ones: seeking a cancelled transition would revive it
+        const live = new Set(document.getAnimations());
+        for (const { animation, start } of state.animations){
+            if (live.has(animation))
+                animation.currentTime = (state.time - start) * 1000;
+        }
+    }, seconds);
+}
+
+// the centre of an element's border box, rounded (the engine moves its pointer to the same pixel)
+async function centreOf(page, selector){
+    const centre = await page.evaluate((s) => {
+        const element = document.querySelector(s);
+        if (!element)
+            return null;
+        const r = element.getBoundingClientRect();
+        return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+    }, selector);
+    if (!centre)
+        throw new Error(`no element ${selector}`);
+    return centre;
+}
+
+// the border box of every element with an id, in document order (phase-2 layout format)
+async function idBoxes(page){
+    return page.evaluate(() => {
+        const transformed = (element) => {
+            for (let e = element; e && e.nodeType === 1; e = e.parentElement){
+                const style = getComputedStyle(e);
+                if ((style.transform !== 'none' && style.transform !== 'matrix(1, 0, 0, 1, 0, 0)') ||
+                    style.translate !== 'none' || style.rotate !== 'none' || style.scale !== 'none')
+                    return true;
+            }
+            return false;
+        };
+        return [...document.querySelectorAll('[id]')].map((element) => {
+            const box = element.getBoundingClientRect();
+            const entry = { id: element.id, tag: element.localName, x: box.x, y: box.y, w: box.width, h: box.height };
+            if (transformed(element))
+                entry.transformed = true;
+            return entry;
+        });
+    });
+}
+
+async function waitForFonts(page, label){
+    await page.evaluate(async () => {
+        await document.fonts.ready;
+        await Promise.all([...document.images].map((image) => image.decode().catch(() => {})));
+    });
+    const failed = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'error').map((f) => f.family));
+    if (failed.length)
+        throw new Error(`${label}: fonts failed to load: ${failed.join(', ')}`);
+}
+
+async function newFixtureContext(browser, viewport, blocked){
+    const context = await browser.newContext({
+        viewport: { width: viewport[0], height: viewport[1] },
+        deviceScaleFactor: 1,
+        colorScheme: 'light',
+        reducedMotion: 'no-preference',
+        javaScriptEnabled: false,
+        locale: 'en-US',
+        timezoneId: 'UTC',
+    });
+    // fixtures are offline: everything they load is next to them
+    await context.route(/^(https?:)?\/\//, (route) => { blocked.add(route.request().url()); return route.abort('blockedbyclient'); });
+    return context;
+}
+
+// one p3 fixture in a fresh browser: {files: {name: Buffer}, blocked}
+async function renderP3Fixture(launchBrowser, { area, name }, boxesOnly){
+    const sidecar = loadSidecar(area, name);
+    const label = `${area}/${name}`;
+    const browser = await launchBrowser();
+    const blocked = new Set();
+    try {
+        const context = await newFixtureContext(browser, sidecar.viewport, blocked);
+        const page = await context.newPage();
+        await page.goto(pathToFileURL(path.join(P3_DIR, area, `${name}.html`)).href, { waitUntil: 'load' });
+        await injectStyle(page, ROOT_SCROLLBAR_CSS + (sidecar.selfTest?.referenceCss ?? ''));
+        await waitForFonts(page, label);
+        await adoptAnimations(page);
+
+        const captures = [];
+        const capture = async (suffix) => {
+            await page.waitForTimeout(SETTLE_MS);
+            const png = boxesOnly ? null : await page.screenshot({ omitBackground: true, caret: 'hide' });
+            captures.push({ suffix, png, boxes: await idBoxes(page) });
+        };
+        for (const step of sidecar.steps){
+            const [kind] = Object.keys(step).filter((key) => key !== 'keyboard');
+            const value = step[kind];
+            if (kind === 'hover'){
+                const { x, y } = await centreOf(page, value);
+                await page.mouse.move(x, y);
+            }else if (kind === 'focus' && step.keyboard){
+                // keyboard navigation (:focus-visible), as the engine's FixtureRunner does
+                let reached = false;
+                for (let i = 0; i < 64 && !reached; i++){
+                    await page.keyboard.press('Tab');
+                    reached = await page.evaluate((s) => document.activeElement === document.querySelector(s), value);
+                }
+                if (!reached)
+                    throw new Error(`${label}: Tab navigation never reached ${value}`);
+            }else if (kind === 'focus' || kind === 'press'){
+                const { x, y } = await centreOf(page, value);
+                await page.mouse.move(x, y);
+                await page.mouse.down();
+                if (kind === 'focus')
+                    await page.mouse.up();
+            }else if (kind === 'release'){
+                if (value !== true){
+                    const { x, y } = await centreOf(page, value);
+                    await page.mouse.move(x, y);
+                }
+                await page.mouse.up();
+            }else if (kind === 'advance'){
+                await advanceAnimations(page, value);
+            }else if (kind === 'capture'){
+                await capture(value);
+            }else{
+                const missing = await page.evaluate(({ kind, value }) => {
+                    const element = document.querySelector(value[0]);
+                    if (!element)
+                        return value[0];
+                    if (kind === 'addClass') element.classList.add(value[1]);
+                    else if (kind === 'removeClass') element.classList.remove(value[1]);
+                    else if (kind === 'setStyle') element.style.setProperty(value[1], value[2]);
+                    else if (kind === 'setAttr' && value[2] === null) element.removeAttribute(value[1]);
+                    else if (kind === 'setAttr') element.setAttribute(value[1], value[2]);
+                    else if (kind === 'scroll'){ element.scrollLeft = value[1]; element.scrollTop = value[2]; }
+                    return null;
+                }, { kind, value });
+                if (missing)
+                    throw new Error(`${label}: no element ${missing}`);
+            }
+            if (kind !== 'advance' && kind !== 'capture')
+                await adoptAnimations(page);
+        }
+        if (!sidecar.steps.some((step) => 'capture' in step))
+            await capture('');
+        await context.close();
+
+        const files = {};
+        for (const { suffix, png } of captures){
+            if (png)
+                files[`${area}/${name}${suffix ? '.' + suffix : ''}.png`] = png;
+        }
+        const document = {
+            fixture: `${area}/${name}.html`,
+            viewport: sidecar.viewport,
+            browser: `Chromium ${BROWSER_VERSION}`,
+            captures: Object.fromEntries(captures.map(({ suffix, boxes }) => [suffix, boxes])),
+        };
+        files[`${area}/${name}.boxes.json`] = Buffer.from(JSON.stringify(document, null, 1) + '\n');
+        return { files, blocked: [...blocked] };
+    } finally {
+        await browser.close();
+    }
+}
+
+// one Taffy fixture: [[path, tag, x, y, w, h], ...] for #test-root ("", in the viewport) and every
+// element under it (path = child indices among element children, "0.2"; relative to #test-root's
+// border box)
+async function taffyBoxes(browser, suite, name){
+    const blocked = new Set();
+    const context = await newFixtureContext(browser, [TAFFY_VIEWPORT.width, TAFFY_VIEWPORT.height], blocked);
+    try {
+        const page = await context.newPage();
+        await page.goto(pathToFileURL(path.join(TAFFY_DIR, suite, `${name}.html`)).href, { waitUntil: 'load' });
+        await injectStyle(page, ROOT_SCROLLBAR_CSS);
+        await waitForFonts(page, `taffy/${suite}/${name}`);
+        const boxes = await page.evaluate(() => {
+            const root = document.getElementById('test-root');
+            if (!root)
+                return null;
+            const origin = root.getBoundingClientRect();
+            const out = [];
+            const walk = (element, at) => {
+                const r = element.getBoundingClientRect();
+                // #test-root in the viewport (its insets and margins are tested too), the rest relative to it
+                const o = element === root ? { x: 0, y: 0 } : origin;
+                out.push([at, element.localName, r.x - o.x, r.y - o.y, r.width, r.height]);
+                [...element.children].forEach((child, index) => walk(child, at === '' ? String(index) : `${at}.${index}`));
+            };
+            walk(root, '');
+            return out;
+        });
+        if (!boxes)
+            throw new Error(`taffy/${suite}/${name}: no #test-root`);
+        if (blocked.size)
+            throw new Error(`taffy/${suite}/${name}: requested ${[...blocked].join(', ')}`);
+        return boxes;
+    } finally {
+        await context.close();
+    }
+}
+
+// every fixture of `names` with `jobs` contexts at a time in one browser: Map(name -> boxes)
+async function taffySuiteBoxes(launchBrowser, suite, names, jobs){
+    const browser = await launchBrowser();
+    try {
+        const result = new Map();
+        let next = 0;
+        const worker = async () => {
+            while (next < names.length){
+                const name = names[next++];
+                result.set(name, await taffyBoxes(browser, suite, name));
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(jobs, names.length) }, worker));
+        return result;
+    } finally {
+        await browser.close();
+    }
+}
+
+// golden/browser/taffy/<suite>.boxes.json: one fixture per line, sorted
+function taffySuiteJson(suite, fixtures){
+    const names = [...fixtures.keys()].sort();
+    const lines = names.map((name, i) => `  ${JSON.stringify(name)}: ${JSON.stringify(fixtures.get(name))}${i + 1 < names.length ? ',' : ''}`);
+    return `{\n "suite": ${JSON.stringify(suite)},\n "viewport": [${TAFFY_VIEWPORT.width}, ${TAFFY_VIEWPORT.height}],\n` +
+        ` "browser": "Chromium ${BROWSER_VERSION}",\n "fixtures": {\n${lines.join('\n')}\n }\n}\n`;
+}
+
+function readTaffySuite(file){
+    if (!fs.existsSync(file))
+        return new Map();
+    return new Map(Object.entries(JSON.parse(fs.readFileSync(file, 'utf8')).fixtures));
+}
+
+function writeVersion(directory){
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, 'VERSION'),
+        `Chromium ${BROWSER_VERSION} (chrome-headless-shell revision ${BROWSER_REVISION}), playwright-core ${PLAYWRIGHT_VERSION}\n` +
+        `Fonts: the fixtures' @font-face files (engine/tests/htmlui/fonts); generic families: the engine's built-in Roboto through fontconfig\n` +
+        `Taffy fixtures: viewport ${TAFFY_VIEWPORT.width}x${TAFFY_VIEWPORT.height}, boxes only\n` +
+        `Written by tools/htmlui/render-reference.mjs --fixtures; do not edit.\n`);
+}
+
+async function fixturesMain(options){
+    const { p3, taffy } = resolveFixtures(options.fixtures);
+    if (!p3.length && !taffy.size)
+        throw new Error('the --fixtures specs name no fixture');
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'htmlui-reference-'));
+    let failed = false;
+    try {
+        const fontconfig = writeFontconfig(temp);
+        const launchBrowser = () => launch(fontconfig);
+
+        // p3 fixtures
+        for (const fixture of p3){
+            const first = await renderP3Fixture(launchBrowser, fixture, options.boxesOnly);
+            if (options.verify){
+                const second = await renderP3Fixture(launchBrowser, fixture, options.boxesOnly);
+                for (const [file, data] of Object.entries(first.files)){
+                    const result = compareRenders(file, data, second.files[file]);
+                    // box JSON must be exact; images may carry Chromium's cross-process raster noise
+                    // (--self-test: not even that)
+                    const same = file.endsWith('.json') || options.identical ? result.identical : result.same;
+                    if (!result.identical)
+                        console.log(`  ${file}: two runs ${same ? 'agree within the raster noise' : 'DIFFER'}: ${result.text}`);
+                    failed ||= !same;
+                }
+            }
+            for (const [file, data] of Object.entries(first.files)){
+                const target = path.join(options.out, file);
+                if (options.check){
+                    const result = fs.existsSync(target) ? compareRenders(file, fs.readFileSync(target), data) : { same: false, identical: false, text: 'missing' };
+                    const same = file.endsWith('.json') || options.identical ? result.identical : result.same;
+                    console.log(`${same ? 'same   ' : 'CHANGED'} ${file}${result.identical ? '' : ` (${result.text})`}`);
+                    failed ||= !same;
+                }else{
+                    fs.mkdirSync(path.dirname(target), { recursive: true });
+                    fs.writeFileSync(target, data);
+                    console.log(`wrote ${path.relative(REPO, target)} (${sha(data)})`);
+                }
+            }
+            for (const url of first.blocked)
+                console.log(`  ${fixture.area}/${fixture.name}: blocked ${url} (fixtures are offline)`);
+        }
+
+        // Taffy suites
+        if (taffy.size && !options.boxesOnly)
+            console.log('Taffy fixtures are compared by their boxes only (--boxes-only implied)');
+        for (const [suite, selected] of taffy){
+            const names = selected ?? listTaffy(suite);
+            const started = Date.now();
+            const boxes = await taffySuiteBoxes(launchBrowser, suite, names, options.jobs);
+            console.log(`taffy/${suite}: ${names.length} fixtures in ${((Date.now() - started) / 1000).toFixed(1)} s`);
+            if (options.verify){
+                const again = await taffySuiteBoxes(launchBrowser, suite, names, options.jobs);
+                const differing = names.filter((name) => JSON.stringify(boxes.get(name)) !== JSON.stringify(again.get(name)));
+                for (const name of differing)
+                    console.log(`  taffy/${suite}/${name}: two runs DIFFER: ${JSON.stringify(boxes.get(name))} vs ${JSON.stringify(again.get(name))}`);
+                console.log(`taffy/${suite}: two runs ${differing.length ? `differ in ${differing.length} fixtures` : 'identical'}`);
+                failed ||= differing.length > 0;
+            }
+            const file = path.join(options.out, 'taffy', `${suite}.boxes.json`);
+            const committed = readTaffySuite(file);
+            if (options.check){
+                const changed = names.filter((name) => JSON.stringify(committed.get(name)) !== JSON.stringify(boxes.get(name)));
+                for (const name of changed)
+                    console.log(`CHANGED taffy/${suite}/${name}${committed.has(name) ? '' : ' (missing)'}`);
+                console.log(`${changed.length ? 'CHANGED' : 'same   '} taffy/${suite}.boxes.json (${names.length - changed.length} of ${names.length} same)`);
+                failed ||= changed.length > 0;
+            }else{
+                // a whole suite replaces the file; single fixtures update their entries
+                const merged = selected ? committed : new Map();
+                for (const [name, value] of boxes)
+                    merged.set(name, value);
+                const data = Buffer.from(taffySuiteJson(suite, merged));
+                fs.mkdirSync(path.dirname(file), { recursive: true });
+                fs.writeFileSync(file, data);
+                console.log(`wrote ${path.relative(REPO, file)} (${merged.size} fixtures, ${sha(data)})`);
+            }
+        }
+        if (!options.check)
+            writeVersion(options.out);
+        if (options.selfTest)
+            console.log(failed ? 'self-test FAILED: two renders, or a render and the committed reference, differ'
+                               : `self-test passed: ${p3.length} testkit fixtures rendered twice, byte-identical to each other and to the committed references`);
+        if (failed)
+            process.exitCode = 1;
+    } finally {
+        fs.rmSync(temp, { recursive: true, force: true });
+    }
+}
+
 async function main(){
     const options = parseArgs(process.argv.slice(2));
     const installed = JSON.parse(fs.readFileSync(path.join(TOOL_DIR, 'node_modules/playwright-core/package.json'), 'utf8')).version;
     if (installed !== PLAYWRIGHT_VERSION)
         throw new Error(`playwright-core ${installed} is installed; run npm ci (needs ${PLAYWRIGHT_VERSION})`);
+    if (options.fixtures.length)
+        return fixturesMain(options);
 
     const pages = options.all ? listPages() : options.pages;
     for (const name of pages){

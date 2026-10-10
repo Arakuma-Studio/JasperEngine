@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>testkit: Ahem text from the fonts directory</title>
+<style>
+  /* Fixtures load their fonts from engine/tests/htmlui/fonts with relative URLs (Chromium and the
+     engine alike). Ahem's glyphs are squares, so its text must match Chromium pixel for pixel. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  #text { position: absolute; left: 10px; top: 10px; font-family: "Ahem"; font-size: 20px; line-height: 1; color: #206020; }
+  #wrap { position: absolute; left: 10px; top: 60px; width: 70px; font-family: "Ahem"; font-size: 10px; line-height: 1; color: #602020; }
+</style>
+</head>
+<body>
+<div id="text">XpX ÉX</div>
+<div id="wrap">XXXX XXXX XX X</div>
+</body>
+</html>

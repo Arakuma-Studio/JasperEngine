@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="stylesheet" type="text/css" href="../base.css">
+  <title>
+    Flow-root margin collapse
+  </title>
+</head>
+<body>
+
+<div id="test-root" style="display: block; width: 200px;">
+  <div style="display: block; width: 100px;">
+    <div style="display: block; width: 40px; height: 10px; margin-top: 20px; margin-bottom: 30px;"></div>
+  </div>
+  <div style="display: flow-root; width: 100px;">
+    <div style="display: block; width: 40px; height: 10px; margin-top: 20px; margin-bottom: 30px;"></div>
+  </div>
+</div>
+
+</body>
+</html>

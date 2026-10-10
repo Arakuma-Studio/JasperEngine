@@ -1703,8 +1703,45 @@ package's owned function makes it additive (new overload, new hook call) and lis
   (`grid-unsupported`, `flex-min-auto`, `margin-collapse`, `rtl-excluded`, …); the excluded list
   (rtl, writing-mode, `x*` fixtures) separately in `excluded.txt` with reasons.
 - **Tests:** self-tests of the harness: a fixture that must match (identical simple boxes), a
-  fixture that must fail (1 px offset) — the comparison reports it; `render.mjs` reproducibility
-  (two runs byte-identical PNGs).
+  fixture that must fail (2 px offset: one pixel beyond the 1 px box tolerance; a 1 px offset is
+  within it and within the image metric's 3x3 neighbourhood, so it must pass) — the comparison
+  reports it; `render-reference.mjs` reproducibility (two runs byte-identical PNGs).
+
+**p3-testkit as implemented** (wave 0):
+- `tools/htmlui/run-rmlui-tests.sh [--docker] [--clean] [-- <doctest args>]` (§5.1): no GLFW; a
+  window-less backend (`tools/htmlui/rmlui-tests/RmlUi_Backend_Null.cpp`) and our own CMake driver
+  (`tools/htmlui/rmlui-tests/CMakeLists.txt`, globs the fork's sources) replace upstream's library
+  CMake (which lists files by name); `--docker` runs in the engine's Linux image with FreeType built
+  from source (pinned `VER-2-13-3`), the host uses `pkg-config freetype2`; the engine library never
+  links FreeType. The vendored `Tests/` subset is in FORK.md. 6.3's tests assumed white-space-only
+  text is dropped, which P2-8 changed: 39 cases failed on the fork; P3-T1 (`rmlui:` no missing-font
+  warning for white-space text) and P3-T2 (the tests walk element children: `TestsShell::
+  GetElementChild/GetNumElementChildren/GetNextElementSibling`) make all 146 cases (8306
+  assertions) pass on the fork, on the host and in Docker.
+- `render-reference.mjs --fixtures <all|p3|area|area/name|taffy|taffy/suite|taffy/suite/name>`,
+  `--boxes-only`, `--verify`, `--check`, `--jobs`, `--self-test` (§5.2, §5.3); `--self-test` renders
+  the testkit fixtures twice and requires byte-identical PNG and JSON, to each other and to the
+  committed references.
+- `engine/tests/htmlui/FixtureRunner.{h,cpp}` (sidecar reader, `FixtureRunner`, lists, Taffy
+  references), `BoxParityTest.cpp` (`Taffy/BoxParity.MatchesChromium/<suite>_<name>`,
+  `BoxParityHarness.*`, `BoxParityFixtures.ListsAndReferencesAreConsistent`), `BrowserParityTest.cpp`
+  (`P3/BrowserParity.MatchesChromium/<area>_<name>`, `BrowserCompareStrict.*`, `BrowserFixtures.*`),
+  `compat/NativeFeatureConsistencyTest.cpp` (`NativeFeatureConsistency.*`, §5.4);
+  `BrowserCompare::compareStrict` / `strictHeatMap` / `StrictGate` / `StrictMetrics`.
+- Self-test fixtures `fixtures/p3/testkit/{match-boxes, offset-1px, offset-2px, steps, ahem-text}`:
+  all match Chromium exactly (0 bad pixels, boxes equal) on the current fork, `offset-2px` is
+  reported (`#b x` 2 px, a 134-pixel bad cluster). `fixtures/p3/text/zero-width-space` is seeded as
+  a p3-text known failure (below).
+- Baseline against the fork of phases 0–2 (`known-failures.txt`): Taffy 1595 fixtures, 75 excluded,
+  1520 compared: 631 pass, 889 known failures — p3-grid 530 (`grid-unsupported`), p3-layout 307
+  (`absolute-position` 57, `margin-collapse` 55, `flex-alignment` 50, `aspect-ratio` 37, `flex-wrap`
+  27, `flex-algorithm` 24, `block-alignment` 12, `block-layout` 12, `float` 12, `flex-min-max` 10,
+  `overflow` 5, `box-sizing` 4, `intrinsic-sizing` 2), p3-text 52 (`text-zwsp`: the engine's text
+  shaper (`TextShaper::selectFace`) keeps the fallback face it picked for U+200B, which Ahem lacks,
+  for the letters after it, and RmlUi breaks no line at U+200B; about 190 fixtures build their sizes
+  from zero-width spaces, those not counted here are grid fixtures). Classes are a guide
+  (`import-taffy-fixtures.py classify`): a package that removes its cause but finds another
+  re-owns the line (`tools/htmlui/README.md`, "Known failures").
 
 ### Wave 1
 
@@ -1746,7 +1783,13 @@ and the user-facing support notes in `docs/mcp/guide/html-ui.md` for its feature
 The fork's `Tests/` must keep building and passing. They need RmlUi's sample shell (FreeType for
 `Shell::LoadFonts`, a backend for `rmlui_shell`), which the engine build does not have, so they are
 built standalone on the host (verified on this host: Ubuntu, GCC 13, FreeType 2.13 via
-`pkg-config freetype2` = 26.1.20, no GLFW/SDL packages, X11 headers without `xf86vmode.h`):
+`pkg-config freetype2` = 26.1.20, no GLFW/SDL packages, X11 headers without `xf86vmode.h`).
+**As implemented** (p3-testkit) the script differs from the sketch below: no GLFW (a window-less
+backend; `RMLUI_TESTS_USE_SHELL=1` is not supported), our own CMake driver instead of upstream's
+library CMake (`RMLUI_MATH_EXPRESSIONS` does not exist at 6.3), the upstream parts also include
+`Samples/basic/{demo,benchmark}/data` (documents the tests load), the build trees are
+`build/rmlui-tests/<host|docker>/`, and `--docker` builds in the engine's image with FreeType from
+source; see "p3-testkit as implemented" in §4. The sketch as written during spec work:
 
 ```
 # tools/htmlui/run-rmlui-tests.sh  (what it does; verified manually during spec writing)
@@ -1767,7 +1810,8 @@ cmake --build build/rmlui-tests/build -j3 --target rmlui_unit_tests
 # 4. Run (no display needed: the tests use a dummy render interface unless RMLUI_TESTS_USE_SHELL=1):
 build/rmlui-tests/build/rmlui_unit_tests
 ```
-Baseline at 6.3: `146 test cases, 8306 assertions, all passed, 0.8 s`. With PR #983: 182 cases,
+Baseline at 6.3: `146 test cases, 8306 assertions, all passed, 0.8 s`; on the fork of phases 0–2
+the same, with the 6.3 tests adapted to P2-8 (FORK.md P3-T1, P3-T2). With PR #983: 182 cases,
 10611 assertions. The script takes the upstream parts from a pinned clone of tag `6.3` (cached;
 `git clone --depth 1 -b 6.3 https://github.com/mikke89/RmlUi.git`) unless phase 0 vendored them.
 It also builds and runs `rmlui_benchmarks` with `--benchmark` subsets for style computation and
@@ -1792,15 +1836,18 @@ The agent-browser MCP tool is not used for goldens (shared browser, non-determin
   (`tools/htmlui/package.json` pins `playwright-core@1.63.0`, headless shell revision 1243 =
   Chromium 153.0.8010.12, which the script enforces; `phase-2-compat.md` §5.3) gains a
   `--fixtures <area|name>` mode for phase-3 fixtures (sidecar below) and `--boxes-only`
-  (§5.3). Same launch flags as phase 2's page mode, including `--hide-scrollbars` (the Taffy
-  fixtures add their own 15 px scrollbar rule), `deviceScaleFactor: 1`, viewport from the
-  sidecar. (Found by p2-ua: `--hide-scrollbars`, Playwright's default, also hides
-  `::-webkit-scrollbar`-styled scrollbars and they take no layout space, so the Taffy 15 px
-  scrollbar rule needs the flag removed, as phase 2's page mode does with `ignoreDefaultArgs`
-  and an injected `html::-webkit-scrollbar{display:none}`; page mode also runs with
-  JavaScript off, a fontconfig that maps generic families to the engine's built-in Roboto, a
-  fresh browser per capture, and accepts Chromium's cross-process raster noise in `--verify`:
-  phase-2 §5.3.) Runs on the host (playwright and the browser cache live there), never in Docker or
+  (§5.3). Same launch flags as phase 2's page mode, `deviceScaleFactor: 1`, viewport from the
+  sidecar. As implemented (p3-testkit), Playwright's `--hide-scrollbars` is removed in fixture mode
+  too (`ignoreDefaultArgs`) and only the root viewport's scrollbar is hidden by an injected
+  `html::-webkit-scrollbar{display:none!important}`: the flag also hides
+  `::-webkit-scrollbar`-styled scrollbars, which then take no layout space (found by p2-ua), so
+  with it the Taffy 15 px scrollbar rule would have no effect. The Taffy references take 15 px
+  scrollbars (e.g. `leaf_overflow_scrollbars_take_up_space_both_axis` is 35x25), and 1509 of the
+  1520 compared references agree with Taffy's own browser-generated expectations within 1 px
+  (the 11 others differ only by the XML's coordinate convention). Fixture mode runs with JavaScript
+  off (the steps run in Playwright's evaluation world), the same fontconfig, a fresh browser per
+  p3 fixture and one browser with a fresh context per Taffy fixture (layout only; runs with 1 and 6
+  parallel contexts give identical JSON). Runs on the host (playwright and the browser cache live there), never in Docker or
   CI; `npx playwright-core install chromium-headless-shell` installs the browser if missing.
   Phase-2 page references keep their own mode (`--all`, meta-tag states, finished animations);
   phase-3 fixtures use sidecar steps and seeked animations.
@@ -1812,19 +1859,37 @@ The agent-browser MCP tool is not used for goldens (shared browser, non-determin
   `FixtureRunner` through the UIDocument/Lua element API (hover/focus through injected input
   events), and `advance` drives the document clock deterministically through phase 1's
   `HtmlUIClock::setFixedTime` (the time `RmlSystem::GetElapsedTime` returns).
+  As implemented (p3-testkit; `tools/htmlui/README.md` has the full form): targets are `#id`;
+  also `{"press": "#id"}` (pointer down at the centre, held), `{"release": true | "#id"}`,
+  `{"removeClass": [...]}`, `setStyle` with `""` and `setAttr` with `null` remove; `focus` with
+  `"keyboard": true` presses Tab until the element has the focus, without it clicks the element
+  (the pointer stays there); pointer positions are the rounded centre of the border box on both
+  sides; without a capture step one capture is taken at the end (`<name>.png`); `"comment"` is
+  required with `"tolerance"` (`channel`, `badPercent`, `cluster`, `box`); `"boxes": true` makes
+  the boxes the oracle and the image comparison reported only (glyph rasterization differs);
+  `"selfTest": {"expect": "match" | "mismatch", "referenceCss"}` is for `fixtures/p3/testkit`
+  only (the CSS is injected into the reference alone). Areas and owners are listed in
+  `fixtures/p3/manifest.json`; `fixtures/p3/known-failures.txt` works like Taffy's (§5.3). The
+  engine clock moves in 0.05 s steps to the exact target time (RmlUi advances an animation by at
+  most 0.1 s per update); every animation and transition in the reference is paused when it
+  starts and seeked to the same time.
 - Browser side for `advance`: all animations are paused at load (`document.getAnimations()` →
   `pause()`, then `currentTime` = accumulated advance for each capture), CSS transitions are
   started by the step and seeked the same way, so captures are frame-exact.
 - Outputs (committed): `engine/tests/htmlui/golden/browser/<area>/<name>[.<capture>].png`,
-  `<name>.boxes.json` (border-box rect of every element in DOM order that has an `id`;
+  `<name>.boxes.json` (`{fixture, viewport, browser, captures: {<suffix>: [{id, tag, x, y, w, h,
+  transformed?}]}}`, unrounded: border-box rect of every element in DOM order that has an `id`;
   browsers expose no DOM geometry for `::before`/`::after`, so pseudo-element boxes are checked by
   pixels, and by unit tests on the engine side), `golden/browser/VERSION` (Chrome + playwright
   versions). References are regenerated only by `node tools/htmlui/render-reference.mjs --fixtures <area|fixture>`; changed images are
   inspected (BRIEF.md).
 - Fonts: every fixture uses `@font-face` with files in `engine/tests/htmlui/fonts/`:
   `Roboto-Regular-subset.ttf` extracted from `engine/core/util/DefaultFont.h` (same bytes the
-  engine uses) and `Ahem.ttf` (CC0, Kozea/Ahem; also converted from the woff2 embedded in Taffy's
-  `test_base_style.css`). Generic families are avoided in fixtures.
+  engine uses) and `Ahem.ttf` (CC0, Kozea/Ahem). As implemented: Ahem is Kozea/Ahem tag 1.0 as
+  released; the WOFF2 in Taffy's `test_base_style.css` is a FontForge re-save of the same font (same
+  metrics and advances, a slightly different cmap), not converted. The asset root while a fixture
+  runs is `engine/tests/htmlui`, so the fixtures' relative URLs reach `fonts/` in the engine as in
+  Chromium. Generic families are avoided in fixtures.
 - Comparison (`BrowserCompare::compareStrict`, added by p3-testkit to phase 2's
   `BrowserCompare`; phase 0's `ImageCompare` stays the engine-golden comparator): images are
   compared in premultiplied sRGB; a pixel is bad when its
@@ -1854,6 +1919,20 @@ Excluded (`excluded.txt`, with reason): fixtures whose name starts with `x` (Taf
 fixtures using `direction: rtl` (24 grid, 17 flex, 10 block) or `writing-mode` (2 grid) — §2.2.
 Every other fixture must pass at the end of phase 3.
 
+As implemented (p3-testkit): each fixture links one shared `fixtures/taffy/base.css` (Taffy's sheet
+on the local Ahem, its `::-webkit-scrollbar` rule unchanged) instead of an inline copy: one place to
+adapt, and one compiled sheet for 1595 documents; no engine UA addition is needed, the compat UA
+sheet already gives RmlUi's scrollbars Chromium's 15 px. The reference script is
+`render-reference.mjs --fixtures taffy --boxes-only`; it writes one
+`golden/browser/taffy/<suite>.boxes.json` per suite (fixture name -> `[[path, tag, x, y, w, h]]`,
+`path` = child indices among element children, `#test-root` in the viewport so its own insets and
+margins are compared, the others relative to it). `BoxParityTest` is parameterized over the
+fixture files and runs the 1520 compared fixtures in about 2 s. The exclusions are 75: 17 `x*`,
+51 `rtl-excluded`, 5 `writing-mode-excluded` (2 grid, 3 flex) and 2 `needs-script` (grid fixtures
+that build `grid-template-columns` with JavaScript, which neither side runs).
+`known-failures.txt`: `<suite>/<name> owner=<package> reason=<class> # <first difference>`; a listed
+fixture must fail, an unlisted one must pass (baseline in §4, "p3-testkit as implemented").
+
 ### 5.4 Compat consistency tests
 `engine/tests/htmlui/compat/NativeFeatureConsistencyTest.cpp` (p3-testkit creates, every package
 adds rows): for each table row whose `effectiveSupport` is `Native` with
@@ -1863,6 +1942,12 @@ output for the sample passes the declaration through (normalized) with the featu
 (c) no fallback diagnostic is emitted. For each feature of Appendix A, a test that forcing it
 absent (`ForkFeatures::with(X, false)`) still produces phase 2's rewrite or emulation (the code
 is kept, §1), and `ForkFeatures.TableMatchesProbes` (phase 2) passes with every new probe.
+As implemented: the table rows have no sample column, so the test holds the samples (`kSamples`:
+feature, kind declaration/selector/rule, CSS, and phase 2's absent output or diagnostic code); a
+feature appended to `ForkFeature` needs a sample (`EveryFeatureHasASample`), a property or
+selector row made Native by a present feature needs a sample of that feature and property
+(`NativeRowsHaveSamples`); (b) compares what RmlUi parses from the sample and from compat's
+output (custom-property companions aside), (c) allows no diagnostic at all.
 
 ### 5.5 Other suites
 - Engine golden regression (phase-0 harness) and the existing `jasperengine-htmlui-tests`.
@@ -1879,7 +1964,8 @@ Phase 3 is accepted when all boxes are checked on the merged `html-ui` branch:
 - [ ] Every phase-3 fork change is in `rmlui:` commits; FORK.md lists each patch (commits, files,
       reason, upstream status, tests), PR #983 provenance and the Taffy commit + license.
 - [ ] `tools/htmlui/run-rmlui-tests.sh` passes: all 6.3 cases (expectations changed only where FORK.md
-      documents an initial-value change), all PR #983 cases, all phase-3 cases.
+      documents an initial-value change, or P2-8's white-space text: P3-T2), all PR #983 cases, all
+      phase-3 cases.
 - [ ] Benchmarks recorded before/after for style computation, `:has`-free documents and layout;
       no unexplained regression > 10 %.
 - [ ] Zero new compiler warnings in the fork and engine on Linux GCC; Web and Android builds pass.
