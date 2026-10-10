@@ -1,5 +1,5 @@
 {
- "comment": "line-height: normal (the initial value) from each font's metrics: Roboto (built-in face) at several sizes, Ahem, a line with a larger inline span, a number inherited as a number, and normal under a parent with a length.",
- "viewport": [400, 420],
+ "comment": "line-height: normal (the initial value) from each font's metrics: Roboto (built-in face), Inter and Orbitron at several sizes, Ahem, a line with a larger inline span, a number inherited as a number, and normal under a parent with a length.",
+ "viewport": [560, 420],
  "boxes": true
 }

@@ -9,6 +9,8 @@
      Roboto is the engine's built-in face through the generic family: Chromium rejects the subset file as a
      web font (no 'name'/'post' tables), and the reference tool's fontconfig maps sans-serif to the same bytes. */
   @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  @font-face { font-family: "Inter Test"; src: url("../../compat/pages/htmlui-imports/fonts/inter/Inter-400.ttf") format("truetype"); }
+  @font-face { font-family: "Orbitron Test"; font-weight: 700; src: url("../../compat/pages/htmlui-imports/fonts/orbitron/Orbitron-700.ttf") format("truetype"); }
   html, body { margin: 0; }
   body { font-family: sans-serif; font-size: 16px; color: #203040; }
   .col { position: absolute; top: 4px; width: 150px; }
@@ -20,6 +22,9 @@
   #explicit { line-height: 1.5; }
   #reset { line-height: 20px; }
   #reset > div { line-height: normal; }
+  #fonts { left: 400px; width: 150px; }
+  .inter { font-family: "Inter Test"; }
+  .orbitron { font-family: "Orbitron Test"; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -46,6 +51,14 @@
   <div id="m1">Aa <span id="big">Bb</span> cc</div>
   <div id="explicit"><div id="e1">Num</div></div>
   <div id="reset"><div id="n1" style="font-family: Ahem">X</div></div>
+</div>
+<div class="col" id="fonts">
+  <div class="inter" id="i13" style="font-size: 13px">Line</div>
+  <div class="inter" id="i16">Line</div>
+  <div class="inter" id="i21" style="font-size: 21px">Line</div>
+  <div class="orbitron" id="o16">LINE</div>
+  <div class="orbitron" id="o23" style="font-size: 23px">LINE</div>
+  <div class="inter" id="i16wrap" style="width: 60px">Two lines wrap</div>
 </div>
 </body>
 </html>
