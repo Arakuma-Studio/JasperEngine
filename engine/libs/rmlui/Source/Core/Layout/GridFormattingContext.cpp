@@ -124,7 +124,7 @@ namespace {
 		RunMode run_mode = RunMode::PerformLayout;
 		Box box;                                         // the container's edges, and its content size when definite
 		Vector2f containing_block;                       // negative: indefinite
-		AvailableSpace measure_width;                    // ComputeWidth: a min-content or max-content constraint
+		GridLayout::AvailableSpace measure_width;        // ComputeWidth: a min-content or max-content constraint
 		Vector2f scrollbar_size;                         // the vertical scrollbar's width and the horizontal one's height
 
 		// Output.
@@ -177,11 +177,13 @@ namespace {
 		outer_node_size.width = MaybeMax(MaybeClamp(outer_node_size.width, min_size.width, max_size.width), padding_border_size.width);
 		outer_node_size.height = MaybeMax(MaybeClamp(outer_node_size.height, min_size.height, max_size.height), padding_border_size.height);
 
-		AxisPair<AvailableSpace> available_grid_space;
-		available_grid_space.width = outer_node_size.width ? AvailableSpace::Definite(*outer_node_size.width - content_box_inset.width) : measure_width;
+		AxisPair<GridLayout::AvailableSpace> available_grid_space;
+		available_grid_space.width =
+			outer_node_size.width ? GridLayout::AvailableSpace::Definite(*outer_node_size.width - content_box_inset.width) : measure_width;
 		// The block size of a box in normal flow is indefinite: a max-content constraint.
-		available_grid_space.height =
-			outer_node_size.height ? AvailableSpace::Definite(*outer_node_size.height - content_box_inset.height) : AvailableSpace::MaxContent();
+		available_grid_space.height = outer_node_size.height
+			? GridLayout::AvailableSpace::Definite(*outer_node_size.height - content_box_inset.height)
+			: GridLayout::AvailableSpace::MaxContent();
 
 		const SizeOptional inner_min_size = {MaybeSub(min_size.width, content_box_inset.width), MaybeSub(min_size.height, content_box_inset.height)};
 		const SizeOptional inner_max_size = {MaybeSub(max_size.width, content_box_inset.width), MaybeSub(max_size.height, content_box_inset.height)};
@@ -565,8 +567,10 @@ namespace {
 		// An auto width fits the content in the grid area.
 		const SizeOptional area_size = {area_width, area_height};
 		if (!width)
-			width = MaybeClamp(MeasureChildSize(item, SizeOptional{std::nullopt, height}, area_size,
-								   {AvailableSpace::Definite(area_minus_margins_width), AvailableSpace::Definite(area_minus_margins_height)}, Axis::Horizontal),
+			width = MaybeClamp(
+				MeasureChildSize(item, SizeOptional{std::nullopt, height}, area_size,
+					{GridLayout::AvailableSpace::Definite(area_minus_margins_width), GridLayout::AvailableSpace::Definite(area_minus_margins_height)},
+					Axis::Horizontal),
 				min_width, max_width);
 
 		// Format the item in its box: the definite sizes as content sizes, an indefinite height from its content.
@@ -801,7 +805,7 @@ UniquePtr<LayoutBox> GridFormattingContext::Format(ContainerBox* parent_containe
 	return grid_container_box;
 }
 
-static float ComputeIntrinsicWidth(Element* element, Vector2f containing_block, AvailableSpace constraint)
+static float ComputeIntrinsicWidth(Element* element, Vector2f containing_block, GridLayout::AvailableSpace constraint)
 {
 	GridRun run;
 	run.element = element;
@@ -825,12 +829,12 @@ static float ComputeIntrinsicWidth(Element* element, Vector2f containing_block, 
 
 float GridFormattingContext::GetMaxContentWidth(Element* element, Vector2f containing_block)
 {
-	return ComputeIntrinsicWidth(element, containing_block, AvailableSpace::MaxContent());
+	return ComputeIntrinsicWidth(element, containing_block, GridLayout::AvailableSpace::MaxContent());
 }
 
 float GridFormattingContext::GetMinContentWidth(Element* element, Vector2f containing_block)
 {
-	return ComputeIntrinsicWidth(element, containing_block, AvailableSpace::MinContent());
+	return ComputeIntrinsicWidth(element, containing_block, GridLayout::AvailableSpace::MinContent());
 }
 
 } // namespace Rml
