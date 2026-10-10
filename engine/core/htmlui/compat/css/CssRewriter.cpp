@@ -686,7 +686,7 @@ namespace {
         return true;
     }
 
-    bool isBackgroundProperty(const std::string& name){
+    bool isBackgroundProperty(std::string_view name){
         return name == "background" || name.compare(0, 11, "background-") == 0;
     }
 
@@ -911,7 +911,7 @@ namespace {
 
     // ---- writing
 
-    bool mayHaveViewportOrientation(const std::string& value){
+    bool mayHaveViewportOrientation(std::string_view value){
         // "vm" in any case with two more characters after it (vmin, vmax), found by the 'm'
         if (value.size() < 4)
             return false;
@@ -945,7 +945,7 @@ namespace {
         return serialize(values);
     }
 
-    bool hasViewportOrientation(const std::string& value){
+    bool hasViewportOrientation(std::string_view value){
         if (!mayHaveViewportOrientation(value))
             return false;
         ValueList values = parseComponentValueList(value);
@@ -1032,7 +1032,7 @@ namespace {
         }
     }
 
-    bool placeholderProperty(const std::string& name){
+    bool placeholderProperty(std::string_view name){
         return name == "color" || name == "opacity" || name.compare(0, 5, "font-") == 0 || name == "--html-current-color" ||
                name == "font-effect" || name == "letter-spacing";
     }

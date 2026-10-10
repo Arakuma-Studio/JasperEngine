@@ -51,7 +51,7 @@ namespace {
         return v.isWhitespace() || v.isToken(TokenType::Comment);
     }
 
-    bool isSelectorListPseudo(const std::string& name){
+    bool isSelectorListPseudo(std::string_view name){
         return name == "is" || name == "where" || name == "matches" || name == "-webkit-any" || name == "-moz-any" ||
                name == "not" || name == "has" || name == "host" || name == "host-context";
     }
@@ -152,7 +152,7 @@ namespace {
                 const ComponentValue* t = tokens[i];
                 char explicitCombinator = 0;
                 if (t->isToken(TokenType::Delim)){
-                    const std::string& d = t->token.value;
+                    const Text& d = t->token.value;
                     if (d == ">" || d == "+" || d == "~")
                         explicitCombinator = d[0];
                     else if (d == "|" && i + 1 < end && isDelimChar(*tokens[i + 1], '|')){
@@ -452,13 +452,13 @@ namespace {
         }
 
         // :is()/:where() expanded into the cross product (until RootIsWhere)
-        static bool expandable(const std::string& n){
+        static bool expandable(std::string_view n){
             return n == "is" || n == "where" || n == "matches" || n == "-webkit-any" || n == "-moz-any";
         }
 
         // pseudo-classes RmlUi matches as written (pseudoClass() keeps them)
         static bool keptPseudoClass(const SimpleSelector& simple){
-            const std::string& n = simple.name;
+            const Text& n = simple.name;
             return !simple.function &&
                    (n == "hover" || n == "active" || n == "checked" || n == "disabled" || n == "placeholder-shown" || n == "scope" ||
                     n == "first-child" || n == "last-child" || n == "only-child" || n == "first-of-type" || n == "last-of-type" ||
@@ -535,7 +535,7 @@ namespace {
                         const SimpleSelector& simple = compound.simples[s];
                         if (simple.kind != Kind::PseudoClass)
                             continue;
-                        const std::string& n = simple.name;
+                        const Text& n = simple.name;
                         if (n != "is" && n != "where" && n != "matches" && n != "-webkit-any" && n != "-moz-any")
                             continue;
                         if (options.fork.has(ForkFeature::RootIsWhere))
@@ -790,7 +790,7 @@ namespace {
         }
 
         bool pseudoClass(const SimpleSelector& simple, ArenaList<SimpleSelector>& target, int depth){
-            const std::string& n = simple.name;
+            const Text& n = simple.name;
             if (!simple.function){
                 if (n == "hover" || n == "active" || n == "checked" || n == "disabled" || n == "placeholder-shown" || n == "scope" ||
                     n == "first-child" || n == "last-child" || n == "only-child" || n == "first-of-type" || n == "last-of-type" ||
@@ -951,7 +951,7 @@ namespace {
         // the pseudo-element mappings of Appendix B
         bool pseudoElementOf(const SimpleSelector& simple, ArenaList<SimpleSelector>& simples, ArenaList<Compound>& appended,
                              bool& removeSelf, bool& placeholder, bool& pseudoElement){
-            const std::string& n = simple.name;
+            const Text& n = simple.name;
             const std::string display = "::" + n + (simple.function ? "()" : "");
             if (!appended.empty()){
                 report(codes::InvalidSelector, &simple, "two pseudo-elements in one selector; the rule is dropped", "", display);
