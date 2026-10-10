@@ -3235,7 +3235,11 @@ Measured as before (CPU time of the perf tests, median of 9 interleaved runs of 
 | `compile()` cache hit | 0.1 ms | 0.025 ms | | 0.025 ms |
 | cold `compile()`, 50 KB + 50 KB (no test) | 8 ms | 61.8 M | 45.8 M | 40.1 M |
 
-Every `CompatPerf`/`CompatCssPerf` test passes without `JASPER_HTMLUI_PERF_SLACK`. Read the
+Every `CompatPerf`/`CompatCssPerf` test passes without `JASPER_HTMLUI_PERF_SLACK` at these
+medians, but not with the margin asked for (a median at 75% of the target): the CSS test is
+at 77%, the HTML stage at 77%, the UA sheet at 67%. On the shared host at load 19 to 23 one
+unpinned run of the CSS test in five measured 4.0 ms or more (4.5 ms in one run of the whole
+suite), and the HTML stage 3.1 ms once in nine. Read the
 CSS row with its two columns: of the 19.6 M instructions saved on the test's sheet, 14.0 M
 (71%) are the arena tree and the other structural changes, which every sheet gets, and 5.6 M
 (29%) are the declaration memo, which a sheet gets in proportion to the declarations it
@@ -3267,9 +3271,11 @@ What changed:
   declaration as written), its file, `!important`, the origin, whether it is in a keyframe
   and in a rule. A declaration is kept only when nothing it could depend on was read while it
   was processed, which the session counts in `Session::memoTaint`: `DeclContext::rule` is a
-  `RuleRef` that counts every read of the rule (not the null test), and so do `staticVar`,
-  `typedVar`, `varKind`, URL resolution, `reachesRewrite`, the vendor-prefix lookup in the
-  block, `DeclContext::generate` and `sourceText`; any diagnostic (`DiagnosticSink::reports`)
+  `RuleRef` that counts every read of the rule (not the null test), and so do URL
+  resolution, `reachesRewrite`, the vendor-prefix lookup in the block,
+  `DeclContext::generate` and `sourceText`; reads of the custom property index (`staticVar`,
+  `typedVar`, `varKind`) do not exclude a declaration, since the index is the session's and
+  not the rule's: the entry holds for the index revision it read (`Session::memoVarReads`); any diagnostic (`DiagnosticSink::reports`)
   or an output declaration with another source reference also excludes it. A hit appends the
   kept declarations with the declaration's own reference and reports the font families the
   first run reported. A hit therefore never carries a diagnostic: a declaration that reports
@@ -3283,7 +3289,9 @@ What changed:
   counting fails there (removing the count from `RuleRef` fails two of the three tests).
 - **Reads moved to where they are needed**, so that more declarations depend on their text
   alone: the rule's font size is asked when a value resolves a font-relative unit
-  (`NormalizeContext::ruleFontSize`), not for every value with a function; `font-size` reads
+  (`NormalizeContext::ruleFontSize`), not for every value with a function, and its static
+  color at the first `currentColor` (`NormalizeContext::ruleStaticColor`), not for every
+  value with a `var()`; `font-size` reads
   its rule's selectors only for a relative size; `wholeVar` reads the variables only for a
   `var()` value.
 - **`@media` preludes** are normalized once per text when the normalization reports nothing
