@@ -15,15 +15,24 @@ struct ShorthandDefinition;
 bool ParseFontShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
 	const PropertySpecification& specification);
 
-} // namespace Rml
-
-namespace Rml {
-
 // transform-origin: a one- or two-value <position> (keywords in either order, 'top left') and an optional z length;
-// perspective-origin: a <position> of one to four values (edge offsets 'right 10px bottom 20%'). In ShorthandOrigin.cpp.
+// perspective-origin: a <position> of one, two or four values (edge offsets 'right 10px bottom 20%'). In
+// ShorthandOrigin.cpp.
 bool ParseTransformOriginShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
 	const PropertySpecification& specification);
 bool ParsePerspectiveOriginShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
 	const PropertySpecification& specification);
+
+// The logical properties of CSS Logical Properties 1 as shorthands of the physical ones, for a horizontal-tb, ltr
+// writing mode (inline = left/right, block = top/bottom; layout is never mirrored, phase-3 spec 2.2). In
+// LogicalProperties.cpp; StyleSheetSpecification registers the table in its values section.
+struct LogicalShorthand {
+	ShorthandId id;
+	const char* name;
+	const char* items; // the physical longhands or shorthands, start then end
+	ShorthandType type;
+	ShorthandParserFunction parser; // set for the Custom ones
+};
+const LogicalShorthand* GetLogicalShorthands(size_t& count);
 
 } // namespace Rml

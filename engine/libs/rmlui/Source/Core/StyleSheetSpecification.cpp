@@ -528,6 +528,15 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	properties.SetShorthandParser(ShorthandId::PerspectiveOrigin, &ParsePerspectiveOriginShorthand);
 	// A list of quoted and unquoted names reaches the font_family parser as written.
 	properties.property_ids_raw_value.Insert(PropertyId::FontFamily);
+	size_t num_logical_shorthands = 0;
+	const LogicalShorthand* logical_shorthands = GetLogicalShorthands(num_logical_shorthands);
+	for (size_t i = 0; i < num_logical_shorthands; i++)
+	{
+		const LogicalShorthand& logical = logical_shorthands[i];
+		RegisterShorthand(logical.id, logical.name, logical.items, logical.type);
+		if (logical.parser)
+			properties.SetShorthandParser(logical.id, logical.parser);
+	}
 
 	// -- Cascade (p3-cascade) --
 

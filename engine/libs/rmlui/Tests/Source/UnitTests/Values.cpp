@@ -464,3 +464,58 @@ TEST_CASE("Values.line_height_normal")
 	document->Close();
 	context->Update();
 }
+
+TEST_CASE("Values.logical_properties")
+{
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = LoadValues(context,
+		"#a { width: 300px; height: 300px; position: relative; } "
+		"#b { position: absolute; margin-inline: 10px 20px; margin-block: 5px; padding-inline-start: 3px; padding-block-end: 4px; "
+		"inset-inline-start: 7px; inset-block: 8px auto; inline-size: 50px; block-size: 40px; max-inline-size: 45px; min-block-size: 60px; "
+		"border-inline-width: 2px 4px; border-block-start-width: 1px; border-inline-color: #ff0000; border-block: 3px #0000ff; }");
+	Element* b = document->GetElementById("b");
+	REQUIRE(b);
+	const auto& computed = b->GetComputedValues();
+
+	CHECK(ResolveValue(computed.margin_left(), 0.f) == 10.f);
+	CHECK(ResolveValue(computed.margin_right(), 0.f) == 20.f);
+	CHECK(ResolveValue(computed.margin_top(), 0.f) == 5.f);
+	CHECK(ResolveValue(computed.margin_bottom(), 0.f) == 5.f);
+	CHECK(ResolveValue(computed.padding_left(), 0.f) == 3.f);
+	CHECK(ResolveValue(computed.padding_bottom(), 0.f) == 4.f);
+	CHECK(ResolveValue(computed.left(), 0.f) == 7.f);
+	CHECK(ResolveValue(computed.top(), 0.f) == 8.f);
+	CHECK(computed.bottom().type == Style::LengthPercentageAuto::Auto);
+	CHECK(ResolveValue(computed.width(), 0.f) == 50.f);
+	CHECK(ResolveValue(computed.height(), 0.f) == 40.f);
+	CHECK(ResolveValue(computed.max_width(), 0.f) == 45.f);
+	CHECK(ResolveValue(computed.min_height(), 0.f) == 60.f);
+	CHECK(computed.border_right_width() == 4);
+	// border-block (3px) comes after border-block-start-width (1px).
+	CHECK(computed.border_top_width() == 3);
+	CHECK(computed.border_bottom_width() == 3);
+	CHECK(computed.border_left_width() == 2);
+	CHECK(computed.border_left_color() == Colourb(255, 0, 0));
+	CHECK(computed.border_right_color() == Colourb(255, 0, 0));
+	CHECK(computed.border_top_color() == Colourb(0, 0, 255));
+
+	// Through var(), and the shorthands' validation.
+	b->SetProperty("--m", "1px 2px");
+	CHECK(b->SetProperty("margin-inline", "var(--m)"));
+	context->Update();
+	CHECK(ResolveValue(b->GetComputedValues().margin_left(), 0.f) == 1.f);
+	CHECK(ResolveValue(b->GetComputedValues().margin_right(), 0.f) == 2.f);
+
+	PropertyDictionary dictionary;
+	CHECK_FALSE(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "margin-inline", "1px 2px 3px"));
+	CHECK_FALSE(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "inline-size", "red"));
+	CHECK(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "padding-block", "10%"));
+	// The border styles are the paint package's longhands: the logical shorthands parse once those are registered.
+	const bool has_border_styles = StyleSheetSpecification::GetProperty(PropertyId::BorderLeftStyle) != nullptr;
+	CHECK(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "border-inline-style", "solid dashed") == has_border_styles);
+	CHECK(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "border-block-end-style", "dotted") == has_border_styles);
+	CHECK_FALSE(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "border-block-end-style", "solid solid"));
+
+	document->Close();
+	context->Update();
+}
