@@ -994,7 +994,7 @@ counters-nested,list-markers-outside,list-markers-inside,ordered-start-reversed}
 
 #### 3.6.5 `p3-cascade` as implemented
 
-Where the implementation differs from or makes precise §3.4–3.6 (FORK.md rows P3-C1…P3-C7 list
+Where the implementation differs from or makes precise §3.4–3.6 (FORK.md rows P3-C1…P3-C8 list
 the commits):
 
 - **One hook (§3.4.1, §3.4.2).** `PropertySpecification::ParsePropertyDeclaration` (a file other
