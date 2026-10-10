@@ -1,0 +1,60 @@
+{
+ "fixture": "grid/span-negative-lines.html",
+ "viewport": [
+  230,
+  160
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "g",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 200,
+    "h": 105
+   },
+   {
+    "id": "full",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 200,
+    "h": 30
+   },
+   {
+    "id": "end",
+    "tag": "div",
+    "x": 160,
+    "y": 40,
+    "w": 50,
+    "h": 60
+   },
+   {
+    "id": "span",
+    "tag": "div",
+    "x": 60,
+    "y": 70,
+    "w": 100,
+    "h": 30
+   },
+   {
+    "id": "before",
+    "tag": "div",
+    "x": 10,
+    "y": 40,
+    "w": 50,
+    "h": 60
+   },
+   {
+    "id": "implicit",
+    "tag": "div",
+    "x": 110,
+    "y": 100,
+    "w": 50,
+    "h": 15
+   }
+  ]
+ }
+}

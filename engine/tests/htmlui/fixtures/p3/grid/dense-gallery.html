@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>grid: grid-auto-flow: dense fills the holes</title>
+<style>
+  html, body { margin: 0; }
+  #sparse, #dense { position: absolute; left: 0; width: 120px; display: grid; grid-template-columns: repeat(4, 30px); grid-auto-rows: 30px; background-color: #dddddd; }
+  #sparse { top: 0; }
+  #dense { top: 100px; grid-auto-flow: row dense; }
+  .wide { grid-column: span 3; background-color: #335588; }
+  .tall { grid-row: span 2; background-color: #885533; }
+  .one { background-color: #558833; }
+</style>
+</head>
+<body>
+<div id="sparse"><div id="s1" class="wide"></div><div id="s2" class="wide"></div><div id="s3" class="one"></div><div id="s4" class="tall"></div><div id="s5" class="one"></div></div>
+<div id="dense"><div id="d1" class="wide"></div><div id="d2" class="wide"></div><div id="d3" class="one"></div><div id="d4" class="tall"></div><div id="d5" class="one"></div></div>
+</body>
+</html>
