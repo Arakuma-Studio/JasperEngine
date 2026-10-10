@@ -835,6 +835,56 @@ void ElementStyle::RemoveVarShorthand(ShorthandId id)
 		dirty_var_shorthands.insert(id);
 }
 
+void ElementStyle::SetStyleAttribute(const PropertyDictionary& properties)
+{
+	if (style_attribute)
+	{
+		for (const PropertyId id : style_attribute->properties)
+		{
+			if (!properties.GetProperty(id))
+				RemoveProperty(id);
+		}
+		for (const String& name : style_attribute->custom_properties)
+		{
+			if (!properties.GetCustomProperty(name))
+				RemoveCustomProperty(name);
+		}
+		for (const ShorthandId id : style_attribute->var_shorthands)
+		{
+			if (!properties.GetVarShorthand(id))
+				RemoveVarShorthand(id);
+		}
+	}
+	else if (properties.Empty())
+	{
+		return;
+	}
+	else
+	{
+		style_attribute = MakeUnique<StyleAttributeDeclarations>();
+	}
+
+	style_attribute->properties.Clear();
+	style_attribute->custom_properties.clear();
+	style_attribute->var_shorthands.clear();
+
+	for (const auto& name_value : properties.GetProperties())
+	{
+		SetProperty(name_value.first, name_value.second);
+		style_attribute->properties.Insert(name_value.first);
+	}
+	for (const auto& name_value : properties.GetCustomProperties())
+	{
+		SetCustomProperty(name_value.first, name_value.second);
+		style_attribute->custom_properties.push_back(name_value.first);
+	}
+	for (const auto& [shorthand_id, property] : properties.GetVarShorthands())
+	{
+		SetVarShorthand(shorthand_id, property);
+		style_attribute->var_shorthands.push_back(shorthand_id);
+	}
+}
+
 const Property* ElementStyle::GetProperty(PropertyId id) const
 {
 	const PropertyElementPair result = GetSpecifiedProperty(GetPropertySources(), id);

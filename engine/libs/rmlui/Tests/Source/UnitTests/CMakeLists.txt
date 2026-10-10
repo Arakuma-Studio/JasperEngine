@@ -27,6 +27,7 @@ add_executable(${TARGET_NAME}
 	Filter.cpp
 	FlexFormatting.cpp
 	Important.cpp
+	InlineStyle.cpp
 	InitialValues.cpp
 	IntrinsicSizing.cpp
 	Layout.cpp

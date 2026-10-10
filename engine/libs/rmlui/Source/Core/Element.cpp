@@ -1806,22 +1806,17 @@ void Element::OnAttributeChange(const ElementAttributes& changed_attributes)
 		}
 		else if (attribute == "style")
 		{
+			// The attribute's declarations replace those of its previous value (phase 3, cascade); removing it removes them.
 			if (value.GetType() == Variant::STRING)
 			{
 				PropertyDictionary properties;
 				StyleSheetParser parser;
 				parser.ParseProperties(properties, value.GetReference<String>());
-
-				for (const auto& name_value : properties.GetProperties())
-					meta->style.SetProperty(name_value.first, name_value.second);
-
-				for (const auto& name_value : properties.GetCustomProperties())
-					meta->style.SetCustomProperty(name_value.first, name_value.second);
-
-				for (const auto& [shorthand_id, property] : properties.GetVarShorthands())
-					meta->style.SetVarShorthand(shorthand_id, property);
+				meta->style.SetStyleAttribute(properties);
 			}
-			else if (value.GetType() != Variant::NONE)
+			else if (value.GetType() == Variant::NONE)
+				meta->style.SetStyleAttribute(PropertyDictionary());
+			else
 				Log::Message(Log::LT_WARNING, "Invalid 'style' attribute, string type required. In element: %s", GetAddress().c_str());
 		}
 		else if (attribute == "lang")

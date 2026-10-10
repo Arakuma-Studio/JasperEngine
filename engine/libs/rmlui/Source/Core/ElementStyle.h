@@ -81,6 +81,10 @@ public:
 	void RemoveCustomProperty(const String& name);
 	/// Removes a local var shorthand override on the element.
 	void RemoveVarShorthand(ShorthandId id);
+	/// Replaces the declarations of the element's 'style' attribute (phase 3, CSS semantics): the inline declarations
+	/// the previous attribute value set and the new one lacks are removed, the new ones set. Declarations set otherwise
+	/// (Element::SetProperty, data bindings) are kept unless the attribute sets the same property.
+	void SetStyleAttribute(const PropertyDictionary& properties);
 	/// Returns one of this element's properties, with lookup into parents for inherited properties.
 	/// @param[in] id The ID of the property to fetch the value for.
 	/// @return The value of this property for this element, or the default value if none is declared.
@@ -275,6 +279,14 @@ private:
 	PropertyDictionary expanded_shorthands;
 	// Values of running transitions and animations (most elements have none).
 	UniquePtr<AnimationLayers> animation_layers;
+
+	// What the 'style' attribute declared last (allocated with the first attribute), see SetStyleAttribute.
+	struct StyleAttributeDeclarations {
+		PropertyIdSet properties;
+		StringList custom_properties;
+		Vector<ShorthandId> var_shorthands;
+	};
+	UniquePtr<StyleAttributeDeclarations> style_attribute;
 
 	// The non-inherited properties this element declares as 'inherit' (allocated when there are any): they follow the
 	// parent's values when those change (phase 3, cascade).
