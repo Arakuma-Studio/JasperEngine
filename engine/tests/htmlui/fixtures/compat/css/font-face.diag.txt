@@ -10,7 +10,7 @@ compat/css/font-face.css:6:73: info: font-weight range 500 900 is registered as 
 compat/css/font-face.css:6:95: info: @font-face descriptor 'ascent-override' is dropped [HTMLUI-AT-0011]
 compat/css/font-face.css:6:117: info: @font-face descriptor 'descent-override' is dropped [HTMLUI-AT-0011]
 compat/css/font-face.css:6:140: info: @font-face descriptor 'line-gap-override' is dropped [HTMLUI-AT-0011]
-compat/css/font-face.css:9:47: error: remote font 'https://fonts.gstatic.com/s/nope.ttf' is not imported; the face is not registered; the text uses the fallback chain (fix: import it: MCP import_files or jasperengine-editor import-ui) [HTMLUI-IMP-0001]
+compat/css/font-face.css:9:47: error: remote font 'https://fonts.gstatic.com/s/nope.ttf' is not imported; the face is not registered; the text uses the fallback chain (fix: import it: load the document in the editor (it imports remote resources), or run jasperengine-editor import-ui) [HTMLUI-IMP-0001]
 compat/css/font-face.css:10:1: warning: @font-face without font-family is dropped (fix: add font-family: "Name";) [HTMLUI-CSS-0022]
 compat/css/font-face.css:11:1: warning: @font-face 'NoSource' has no TrueType/OpenType source; the rule is dropped (fix: convert the font to TTF (remote fonts are imported as TTF by the editor)) [HTMLUI-CSS-0022]
 compat/css/font-face.css:12:41: error: font 'fonts/missing.ttf' not found (resolved to compat/css/fonts/missing.ttf) (fix: check the path: relative paths start at the referencing file's directory, '/' at the assets directory) [HTMLUI-GEN-0001]

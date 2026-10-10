@@ -1,6 +1,6 @@
 compat/css/import.css:1:1: info: '@charset' has no effect in the engine; dropped [HTMLUI-AT-0001]
 compat/css/import.css:4:29: info: media query 'screen and (min-width: 600px)' is written for RmlUi as '(min-width: 600px)' [HTMLUI-AT-0005]
-compat/css/import.css:12:9: error: remote stylesheet 'https://cdn.example.com/not-imported.css' is not imported; the stylesheet is skipped; fonts fall back through the font chain (fix: import it: MCP import_files or jasperengine-editor import-ui) [HTMLUI-IMP-0001]
+compat/css/import.css:12:9: error: remote stylesheet 'https://cdn.example.com/not-imported.css' is not imported; the stylesheet is skipped; fonts fall back through the font chain (fix: import it: load the document in the editor (it imports remote resources), or run jasperengine-editor import-ui) [HTMLUI-IMP-0001]
 compat/css/import.css:13:9: error: stylesheet 'imports/missing.css' not found (resolved to compat/css/imports/missing.css) (fix: check the path: relative paths start at the referencing file's directory, '/' at the assets directory) [HTMLUI-GEN-0001]
 compat/css/import.css:14:1: warning: @import of a data: URI is not supported; the rule is ignored (fix: put the CSS in a file) [HTMLUI-AT-0007]
 compat/css/import.css:15:1: warning: @import without a URL is ignored (fix: write @import url("file.css");) [HTMLUI-AT-0007]
