@@ -47,6 +47,7 @@ add_executable(${TARGET_NAME}
 	StyleSheetParser.cpp
 	StyleValue.cpp
 	Template.cpp
+	TransitionsAnyChange.cpp
 	URL.cpp
 	Variant.cpp
 	XMLParser.cpp

@@ -20,6 +20,7 @@
 #include "ControlledLifetimeResource.h"
 #include "ElementDefinition.h"
 #include "PropertiesIterator.h"
+#include "ElementTransitions.h"
 #include "PropertyParserAnimation.h"
 #include "PropertyShorthandDefinition.h"
 #ifdef RMLUI_MATH_EXPRESSIONS
@@ -298,7 +299,7 @@ ElementStyle::SubstitutionResult ElementStyle::SubstituteVariableOnce(const Prop
 		SmallUnorderedSet<String>& next_cycle_chain = (property_element == sources.element ? cycle_chain : new_cycle_chain);
 
 		// We cannot always use the definition or inline properties from the style of the property element. Particularly
-		// in TransitionPropertyChanges, these are not yet set for the current element. Instead, use the passed-in
+		// for the starting style and the before-change values of transitions, these are not the current element's. Instead, use the passed-in
 		// values when the property element is the passed-in element. Otherwise, for ancestor elements, we assume they
 		// are fully determined here, so fetch them from their elements.
 		const PropertySources& next_sources = (property_element == sources.element ? sources : property_element->GetStyle()->GetPropertySources());
@@ -448,61 +449,6 @@ void ElementStyle::ExpandVarShorthands(PropertyDictionary& out_substituted_short
 	}
 }
 
-void ElementStyle::TransitionPropertyChanges(const PropertySources& sources, PropertyIdSet& changed_properties,
-	const ElementDefinition* new_definition)
-{
-	// Apply transition to relevant properties if a transition is defined on the element. Properties that are part of a
-	// transition are removed from the properties list.
-
-	RMLUI_ASSERT(sources.element);
-	if (!sources.definition || !new_definition || changed_properties.Empty())
-		return;
-
-	const TransitionList* transition_list = sources.element->GetStyle()->GetTransitionList();
-	if (!transition_list || transition_list->none)
-		return;
-	SmallUnorderedSet<String> variable_dependencies;
-
-	Property property_storage_old;
-	Property property_storage_new;
-	std::optional<PropertyDictionary> substituted_shorthands_old;
-	std::optional<PropertyDictionary> substituted_shorthands_new;
-
-	PropertySources new_sources{sources.element, new_definition, element_style_data->empty_property_dictionary};
-
-	auto add_transition = [&](const Transition& transition) {
-		const Property* start_value = GetSpecifiedProperty(sources, transition.id).property;
-		start_value = ResolveVariablesWithShorthandExpansion(sources, transition.id, start_value, substituted_shorthands_old, variable_dependencies,
-			property_storage_old);
-
-		const Property* target_value = GetSpecifiedProperty(new_sources, transition.id).property;
-		target_value = ResolveVariablesWithShorthandExpansion(new_sources, transition.id, target_value, substituted_shorthands_new,
-			variable_dependencies, property_storage_new);
-
-		bool transition_added = false;
-		if (start_value && target_value && (*start_value != *target_value))
-			transition_added = sources.element->StartTransition(transition, *start_value, *target_value, *start_value, 1.f);
-
-		return transition_added;
-	};
-
-	for (auto it = changed_properties.begin(); it != changed_properties.end();)
-	{
-		const Transition* found = transition_list->Find(*it);
-		if (!found)
-		{
-			++it;
-			continue;
-		}
-		Transition transition = *found;
-		transition.id = *it;
-		if (add_transition(transition))
-			it = changed_properties.Erase(it);
-		else
-			++it;
-	}
-}
-
 void ElementStyle::UpdateDefinition()
 {
 	RMLUI_ZoneScoped;
@@ -554,9 +500,10 @@ void ElementStyle::UpdateDefinition()
 					changed_properties.Erase(id);
 			}
 
-			// Transition changed properties if transition property is set
-			TransitionPropertyChanges(GetPropertySources(), changed_properties, new_definition.get());
 		}
+
+		// Transitions (p3-animation): the before-change values of properties whose transition comes with the new definition.
+		CaptureBeforeChangeValues(changed_properties, new_definition.get());
 
 		definition = new_definition;
 
@@ -1007,6 +954,10 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		ExpandVarShorthands(expanded_shorthands, GetPropertySources(), GetDirtyPropertiesRef());
 	}
 
+	// The transition and animation lists follow their longhands (p3-animation); transitions below use the new list.
+	UpdateAnimationLists(dirty_properties);
+	const ComputeContext transition_context{values, parent_values, document_values, dp_ratio, vp_dimensions};
+
 	// Generally, this is how it works:
 	//   1. Assign default values (clears any removed properties)
 	//   2. Inherit inheritable values from parent
@@ -1055,6 +1006,8 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		}
 		else if (parent_values)
 			values.font_size(parent_values->font_size());
+		if (const Property* transitioned = TransitionPrePass(PropertyId::FontSize, transition_context))
+			values.font_size(ComputeFontsize(transitioned, values, parent_values, document_values, dp_ratio, vp_dimensions));
 
 		if (font_size_before != values.font_size())
 		{
@@ -1090,6 +1043,8 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 			else
 				values.line_height(parent_values->line_height());
 		}
+		if (const Property* transitioned = TransitionPrePass(PropertyId::LineHeight, transition_context))
+			values.line_height(ComputeLineHeight(transitioned, font_size, document_font_size, dp_ratio, vp_dimensions));
 
 		if (line_height_before.value != values.line_height().value || line_height_before.inherit_value != values.line_height().inherit_value)
 			dirty_properties.Insert(PropertyId::VerticalAlign);
@@ -1141,6 +1096,9 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		ComputeValue(values, dp_ratio, vp_dimensions, font_size, document_font_size, dirty_font_face_handle, id, property);
 	}
 
+	// Transitions start on any change of a computed value (p3-animation).
+	TransitionChangedProperties(transition_context, dirty_properties, font_size, document_font_size, dirty_font_face_handle);
+
 	// 'currentcolor' border colors follow the color, also when only the color changed.
 	static_assert(int(PropertyId::BorderLeftColor) - int(PropertyId::BorderTopColor) == 3, "The border colors must be consecutive ids.");
 	if (declared_border_colors != 0xf)
@@ -1171,9 +1129,6 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		values.font_face_handle(
 			GetFontEngineInterface()->GetFontFaceHandle(values.font_family(), values.font_style(), values.font_weight(), (int)values.font_size()));
 	}
-
-	// The transition and animation lists follow their longhands (p3-animation).
-	UpdateAnimationLists(dirty_properties);
 
 	// Next, pass inheritable dirty properties onto our children
 	PropertyIdSet dirty_inherited_properties = (dirty_properties & StyleSheetSpecification::GetRegisteredInheritedProperties());

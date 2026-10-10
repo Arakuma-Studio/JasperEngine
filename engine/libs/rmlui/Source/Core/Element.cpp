@@ -2734,7 +2734,7 @@ ElementAnimationList::iterator Element::StartAnimation(PropertyId property_id, c
 const ElementAnimation* Element::GetTransition(PropertyId id) const
 {
 	for (const ElementAnimation& animation : animations)
-		if (animation.IsTransition() && animation.GetPropertyId() == id)
+		if (animation.IsTransition() && !animation.IsCancelled() && animation.GetPropertyId() == id)
 			return &animation;
 	return nullptr;
 }
@@ -2847,16 +2847,14 @@ bool Element::StartTransition(const Transition& transition, const Property& star
 
 void Element::CancelTransition(PropertyId id)
 {
-	for (auto it = animations.begin(); it != animations.end(); ++it)
+	// The cancel event is dispatched by the next AdvanceAnimations: this may run while the element's style is computed.
+	for (ElementAnimation& animation : animations)
 	{
-		if (it->IsTransition() && it->GetPropertyId() == id)
+		if (animation.IsTransition() && !animation.IsCancelled() && animation.GetPropertyId() == id)
 		{
-			Vector<PendingAnimationEvent> events;
-			QueueCancelEvent(events, *it, Clock::GetElapsedTime());
-			animations.erase(it);
+			animation.SetCancelled();
 			meta->style.RemoveTransitionProperty(id);
-			for (PendingAnimationEvent& event : events)
-				DispatchEvent(event.id, event.parameters);
+			animations_running = true;
 			return;
 		}
 	}
@@ -2874,7 +2872,8 @@ void Element::HandleTransitionProperty()
 	Vector<PropertyId> cancel;
 	for (const ElementAnimation& animation : animations)
 	{
-		if (animation.IsTransition() && (!displayed || !transition_list || !transition_list->Find(animation.GetPropertyId())))
+		if (animation.IsTransition() && !animation.IsCancelled() &&
+			(!displayed || !transition_list || !transition_list->Find(animation.GetPropertyId())))
 			cancel.push_back(animation.GetPropertyId());
 	}
 	for (PropertyId id : cancel)
@@ -3009,6 +3008,11 @@ void Element::AdvanceAnimations()
 
 	for (ElementAnimation& animation : animations)
 	{
+		if (animation.IsCancelled())
+		{
+			QueueCancelEvent(events, animation, time);
+			continue;
+		}
 		if (animation.GetOrigin() == ElementAnimationOrigin::User)
 		{
 			Property property = animation.UpdateAndGetProperty(time, *this);
@@ -3035,6 +3039,7 @@ void Element::AdvanceAnimations()
 			Property property = animation.GetValue(0, sample, *this);
 			if (property.unit != Unit::UNKNOWN)
 			{
+				property.definition = StyleSheetSpecification::GetProperty(animation.GetPropertyId());
 				const PropertyDictionary* layer = meta->style.GetTransitionProperties();
 				const Property* current = (layer ? layer->GetProperty(animation.GetPropertyId()) : nullptr);
 				if (!current || *current != property)
@@ -3049,7 +3054,10 @@ void Element::AdvanceAnimations()
 			animated_ids.Insert(id);
 			Property property = animation.GetValue(i, sample, *this);
 			if (property.unit != Unit::UNKNOWN)
+			{
+				property.definition = StyleSheetSpecification::GetProperty(id);
 				animated_values[id] = std::move(property);
+			}
 		}
 	}
 
@@ -3074,6 +3082,11 @@ void Element::AdvanceAnimations()
 	Vector<Dictionary> user_end_events;
 	for (auto it = animations.begin(); it != animations.end();)
 	{
+		if (it->IsCancelled())
+		{
+			it = animations.erase(it);
+			continue;
+		}
 		if (!it->IsComplete() || it->GetOrigin() == ElementAnimationOrigin::Animation)
 		{
 			++it;

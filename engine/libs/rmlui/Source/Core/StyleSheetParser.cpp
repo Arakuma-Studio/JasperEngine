@@ -12,6 +12,7 @@
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "ComputeProperty.h"
 #include "ControlledLifetimeResource.h"
+#include "ElementTransitions.h"
 #include "PropertyParserAnimation.h"
 #include "StyleSheetFactory.h"
 #include "StyleSheetNode.h"
@@ -757,7 +758,7 @@ bool StyleSheetParser::Parse(MediaBlockList& style_sheets, Stream* _stream, int 
 	parse_buffer_pos = 0;
 	stream_file_name = StringUtilities::Replace(stream->GetSourceURL().GetURL(), '|', ':');
 
-	enum class State { Global, AtRuleIdentifier, KeyframeBlock, Invalid };
+	enum class State { Global, AtRuleIdentifier, KeyframeBlock, StartingStyle, Invalid };
 	State state = State::Global;
 
 	MediaBlock current_block = {};
@@ -849,6 +850,13 @@ bool StyleSheetParser::Parse(MediaBlockList& style_sheets, Stream* _stream, int 
 					if (at_rule_identifier == "keyframes")
 					{
 						state = State::KeyframeBlock;
+					}
+					else if (at_rule_identifier == "starting-style")
+					{
+						// The style rules of @starting-style (p3-animation) give an element's before-change style when it is first
+						// styled or stops being 'display: none'.
+						at_rule_name.clear();
+						state = State::StartingStyle;
 					}
 					else if (at_rule_identifier == "decorator")
 					{
@@ -967,6 +975,47 @@ bool StyleSheetParser::Parse(MediaBlockList& style_sheets, Stream* _stream, int 
 				else
 				{
 					Log::Message(Log::LT_WARNING, "Invalid character '%c' found while parsing keyframe block in stylesheet at %s:%d", token,
+						stream_file_name.c_str(), line_number);
+					state = State::Invalid;
+				}
+			}
+			break;
+			case State::StartingStyle:
+			{
+				if (token == '{')
+				{
+					if (!current_block.stylesheet)
+						current_block = {PropertyDictionary{}, UniquePtr<StyleSheet>(new StyleSheet()), MediaQueryModifier::None};
+
+					const int rule_line_number = line_number;
+					PropertyDictionary properties;
+					PropertySpecificationParser parser(properties, StyleSheetSpecification::GetPropertySpecification());
+					ReadProperties(parser);
+
+					// Each rule is stored with the starting-style pseudo-class on its subject, which only the starting style sets.
+					StringList rule_name_list;
+					StringUtilities::ExpandString(rule_name_list, pre_token_str, ',', '(', ')');
+					for (const String& rule_name : rule_name_list)
+					{
+						const String selector = StringUtilities::StripWhitespace(rule_name) + GetStartingStyleSelectorSuffix();
+						auto source = MakeShared<PropertySource>(stream_file_name, rule_line_number, UnescapeSelectorToken(rule_name));
+						properties.SetSourceOfAllProperties(source);
+						if (!ImportProperties(current_block.stylesheet->root.get(), selector, properties, rule_count))
+						{
+							Log::Message(Log::LT_WARNING, "Invalid selector '%s' encountered while parsing stylesheet at %s:%d.", rule_name.c_str(),
+								stream_file_name.c_str(), line_number);
+						}
+					}
+					rule_count++;
+					NoteStartingStyleRules();
+				}
+				else if (token == '}')
+				{
+					state = State::Global;
+				}
+				else
+				{
+					Log::Message(Log::LT_WARNING, "Invalid character '%c' found while parsing @starting-style in stylesheet at %s:%d", token,
 						stream_file_name.c_str(), line_number);
 					state = State::Invalid;
 				}

@@ -122,6 +122,9 @@ public:
 	/// True when the animation has reached its end (a finite animation in its after phase).
 	bool IsComplete() const { return animation_complete; }
 	void SetComplete(bool complete) { animation_complete = complete; }
+	/// A cancelled transition: it applies nothing and is removed, with its cancel event, at the next update.
+	bool IsCancelled() const { return cancelled; }
+	void SetCancelled() { cancelled = true; }
 	bool IsTransition() const { return origin == ElementAnimationOrigin::Transition; }
 	bool IsInitalized() const { return !tracks.empty() && tracks[0].IsInitialized(); }
 	/// The eased progress of a transition or user animation at its last update (CSS reversing rule).
@@ -164,6 +167,7 @@ private:
 	double event_iteration = 0;
 	float last_eased_progress = 0.f;
 	bool animation_complete = false;
+	bool cancelled = false;
 };
 
 } // namespace Rml

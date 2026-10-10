@@ -11,6 +11,7 @@ namespace Rml {
 class ElementDefinition;
 class PlainPropertiesIterator;
 struct ElementAnimationStyle;
+struct TransitionSnapshot;
 class AllPropertiesIterator;
 enum class RelativeTarget;
 
@@ -248,10 +249,39 @@ private:
 	static void ExpandVarShorthands(PropertyDictionary& out_substituted_shorthands, const PropertySources& sources,
 		std::optional<DirtyPropertiesRef> dirty_properties);
 
-	static void TransitionPropertyChanges(const PropertySources& sources, PropertyIdSet& changed_properties, const ElementDefinition* new_definition);
-
 	// Rebuilds the computed transition and animation lists when their longhands are among the dirty properties.
 	void UpdateAnimationLists(const PropertyIdSet& dirty);
+
+	// -- Transitions on any change of a computed value (p3-animation, ElementTransitions.cpp) --
+	struct ComputeContext {
+		Style::ComputedValues& values;
+		const Style::ComputedValues* parent_values;
+		const Style::ComputedValues* document_values;
+		float dp_ratio;
+		Vector2f vp_dimensions;
+	};
+	// Pre-pass of 'font-size' or 'line-height': the value to compute instead of the declared one (a transition's start
+	// value) if a transition starts or stops, else nullptr.
+	const Property* TransitionPrePass(PropertyId id, const ComputeContext& context);
+	// After the main loop: starts and updates the transitions of the changed properties, and computes the values they
+	// apply now.
+	void TransitionChangedProperties(const ComputeContext& context, const PropertyIdSet& dirty, float font_size, float document_font_size,
+		bool& dirty_font_face_handle);
+	// Before the definition changes: keeps the before-change values of the changed properties the element has none for.
+	void CaptureBeforeChangeValues(const PropertyIdSet& changed_properties, const ElementDefinition* new_definition);
+	// One property: compares its declared value with the before-change value and starts, reverses or cancels its
+	// transition. Returns true if the computed value is now 'applied'.
+	bool TransitionProperty(PropertyId id, bool first_style, bool displayed, const ComputeContext& context, Property& applied);
+	// The property's value from the declarations of the element and, for inherited properties, of its ancestors, without
+	// any animation layer: the after-change value.
+	const Property* GetDeclaredValue(PropertyId id, Property& storage) const;
+	// The font size of the element's (and its ancestors') declarations, without their transitions and animations.
+	float GetDeclaredFontSize(const ComputeContext& context) const;
+	// A property in computed form: relative lengths resolved to px, so that a change of font size or viewport is a change.
+	Property ComputedForm(PropertyId id, const Property& property, const ComputeContext& context) const;
+	// The value of a property in the element's starting style (@starting-style), or nullptr if it gives none.
+	const Property* GetStartingStyleValue(PropertyId id, SharedPtr<const ElementDefinition>& starting_definition, bool& looked_up,
+		Property& storage);
 
 	// Element these properties belong to
 	Element* element;
@@ -271,6 +301,8 @@ private:
 	UniquePtr<AnimationLayers> animation_layers;
 	// The computed transition and animation lists (p3-animation; elements without transition or animation have none).
 	UniquePtr<ElementAnimationStyle> animation_style;
+	// The after-change values of the properties the element transitions (p3-animation).
+	UniquePtr<TransitionSnapshot> transition_snapshot;
 
 	PropertyIdSet dirty_properties;
 	UnorderedSet<String> dirty_variables;

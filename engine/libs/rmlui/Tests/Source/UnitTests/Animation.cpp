@@ -805,6 +805,8 @@ TEST_CASE("animation.multiple_overlapping")
 TEST_CASE("transition.display_and_visibility")
 {
 	// Display and visibility properties have special behavior that make them visible throughout the interpolation duration.
+	// Phase 3 (CSS): 'display' transitions only with 'allow-discrete', and an element shown from 'display: none' has no
+	// before-change style: it fades in from its @starting-style.
 	const String document_rml_template = R"(
 <rml>
 <head>
@@ -819,11 +821,14 @@ TEST_CASE("transition.display_and_visibility")
 			width: 300dp;
 			height: 300dp;
 			margin: auto;
-			transition: opacity display visibility 1s linear;
+			transition: opacity 1s linear, display 1s linear allow-discrete, visibility 1s linear;
 		}
 		.hide {
 			%s;
 			opacity: 0;
+		}
+		@starting-style {
+			div { opacity: 0; }
 		}
 	</style>
 </head>
@@ -838,10 +843,13 @@ TEST_CASE("transition.display_and_visibility")
 	Context* context = TestsShell::GetContext();
 
 	String document_rml;
+	bool visible_when_shown = false;
 
 	SUBCASE("display: none")
 	{
 		document_rml = CreateString(document_rml_template.c_str(), "display: none");
+		// Shown at once ('display' has no before-change value to transition from).
+		visible_when_shown = true;
 	}
 	SUBCASE("visibility")
 	{
@@ -865,7 +873,7 @@ TEST_CASE("transition.display_and_visibility")
 	};
 	const std::vector<TestCase> tests = {
 		{t_fadein0 - t_delta, 0.f, false},
-		{t_fadein0, 0.f, false, Action::Show},
+		{t_fadein0, 0.f, visible_when_shown, Action::Show},
 		{t_fadein0 + t_delta, 0.1f, true},
 		{t_fadein1 - t_delta, 0.9f, true},
 		{t_fadein1, 1.f, true},

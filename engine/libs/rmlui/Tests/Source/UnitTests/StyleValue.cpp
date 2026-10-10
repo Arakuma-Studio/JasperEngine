@@ -153,7 +153,7 @@ static const String style_value_rml = R"(
 <rml>
 <head>
 	<style>
-		div { display: block; test-length: pair(10px); test-tag: tag(first); transition: test-length test-tag 1s linear; }
+		div { display: block; test-length: pair(10px); test-tag: tag(first); transition: test-length test-tag 1s linear allow-discrete; }
 		div.end { test-length: pair(20px); test-tag: tag(second); }
 		#em { test-length: pair(2em); transition: none; }
 	</style>
