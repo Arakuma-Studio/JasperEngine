@@ -3,6 +3,7 @@
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
 #include "IdNameMap.h"
 #include "PropertyParserAlignment.h"
+#include "PropertyParserAspectRatio.h"
 #include "PropertyParserAnimation.h"
 #include "PropertyParserBoxShadow.h"
 #include "PropertyParserColorStopList.h"
@@ -287,6 +288,20 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	RegisterParser("font_family", &font_family_parser);
 	static PropertyParserCursor cursor_parser;
 	RegisterParser("cursor", &cursor_parser);
+#ifdef RMLUI_MATH_EXPRESSIONS
+	static PropertyParserNumber alpha_value_parser(Unit::NUMBER_PERCENT, Unit::UNKNOWN, MakeCalculationParseTarget(CalculationFinalType::Number));
+	static PropertyParserNumber non_negative_number_parser(Unit::NUMBER, Unit::UNKNOWN, MakeCalculationParseTarget(CalculationFinalType::Number));
+	static PropertyParserNumber integer_parser(Unit::NUMBER, Unit::UNKNOWN, MakeCalculationParseTarget(CalculationFinalType::Number));
+#else
+	static PropertyParserNumber alpha_value_parser(Unit::NUMBER_PERCENT);
+	static PropertyParserNumber non_negative_number_parser(Unit::NUMBER);
+	static PropertyParserNumber integer_parser(Unit::NUMBER);
+#endif
+	RegisterParser("alpha_value", &alpha_value_parser.SetRestriction(PropertyParserNumber::Restriction::AlphaValue));
+	RegisterParser("non_negative_number", &non_negative_number_parser.SetRestriction(PropertyParserNumber::Restriction::NonNegative));
+	RegisterParser("integer", &integer_parser.SetRestriction(PropertyParserNumber::Restriction::Integer));
+	static PropertyParserAspectRatio aspect_ratio_parser;
+	RegisterParser("aspect_ratio", &aspect_ratio_parser);
 
 	// -- Cascade (p3-cascade) --
 
@@ -378,7 +393,7 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 
 	RegisterProperty(PropertyId::BoxSizing, "box-sizing", "content-box", false, true).AddParser("keyword", "content-box, border-box");
 
-	RegisterProperty(PropertyId::ZIndex, "z-index", "auto", false, false).AddParser("keyword", "auto").AddParser("number");
+	RegisterProperty(PropertyId::ZIndex, "z-index", "auto", false, false).AddParser("keyword", "auto").AddParser("integer");
 
 	RegisterProperty(PropertyId::Width, "width", "auto", false, true).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
 	RegisterProperty(PropertyId::MinWidth, "min-width", "auto", false, true).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
@@ -413,7 +428,7 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::CaretColor, "caret-color", "auto", true, false).AddParser("keyword", "auto").AddParser("color");
 
 	RegisterProperty(PropertyId::ImageColor, "image-color", "white", false, false).AddParser("color");
-	RegisterProperty(PropertyId::Opacity, "opacity", "1", false, false).AddParser("number");
+	RegisterProperty(PropertyId::Opacity, "opacity", "1", false, false).AddParser("alpha_value");
 
 	RegisterProperty(PropertyId::FontFamily, "font-family", "", true, true).AddParser("font_family");
 	RegisterProperty(PropertyId::FontStyle, "font-style", "normal", true, true).AddParser("keyword", "normal, italic");
@@ -491,8 +506,8 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::FlexBasis, "flex-basis", "auto", false, true).AddParser("keyword", "auto").AddParser("length_percent");
 	RegisterProperty(PropertyId::FlexDirection, "flex-direction", "row", false, true).AddParser("keyword", "row, row-reverse, column, column-reverse");
 
-	RegisterProperty(PropertyId::FlexGrow, "flex-grow", "0", false, true).AddParser("number");
-	RegisterProperty(PropertyId::FlexShrink, "flex-shrink", "1", false, true).AddParser("number");
+	RegisterProperty(PropertyId::FlexGrow, "flex-grow", "0", false, true).AddParser("non_negative_number");
+	RegisterProperty(PropertyId::FlexShrink, "flex-shrink", "1", false, true).AddParser("non_negative_number");
 	RegisterProperty(PropertyId::FlexWrap, "flex-wrap", "nowrap", false, true).AddParser("keyword", "nowrap, wrap, wrap-reverse");
 	RegisterProperty(PropertyId::JustifyContent, "justify-content", "normal", false, true)
 		.AddParser("alignment", MakeAlignmentKeywords("flex-start, flex-end, center, space-between, space-around, space-evenly, stretch, normal, start, end, left, right"));

@@ -549,3 +549,48 @@ TEST_CASE("Values.cursor")
 	document->Close();
 	context->Update();
 }
+
+TEST_CASE("Values.numbers")
+{
+	Context* context = TestsShell::GetContext();
+
+	CHECK(ParsedString("opacity", "50%") == "0.5");
+	CHECK(ParsedString("opacity", "0.25") == "0.25");
+	CHECK(ParsedString("z-index", "3") == "3");
+	CHECK(ParsedString("z-index", "-2") == "-2");
+	CHECK(ParsedString("z-index", "1.5") == "<invalid>");
+	CHECK(ParsedString("z-index", "auto") == "auto");
+	CHECK(ParsedString("flex-grow", "2") == "2");
+	CHECK(ParsedString("flex-grow", "-1") == "<invalid>");
+	CHECK(ParsedString("flex-shrink", "-0.5") == "<invalid>");
+	PropertyDictionary dictionary;
+	CHECK_FALSE(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "flex", "-1 1 0px"));
+
+	ElementDocument* document = LoadValues(context, "#a { opacity: 40%; } #b { opacity: -3; }");
+	CHECK(document->GetElementById("a")->GetComputedValues().opacity() == doctest::Approx(0.4f));
+	CHECK(document->GetElementById("b")->GetComputedValues().opacity() == 0.f);
+	document->Close();
+	context->Update();
+
+	// The aspect-ratio parser (the layout package registers the property).
+	PropertyParser* aspect_ratio = StyleSheetSpecification::GetParser("aspect_ratio");
+	REQUIRE(aspect_ratio);
+	auto ratio = [&](const char* value, Property& property) { return aspect_ratio->ParseValue(property, value, ParameterMap()); };
+	Property property;
+	REQUIRE(ratio("16 / 9", property));
+	CHECK(property.unit == Unit::RATIO);
+	CHECK(property.Get<Vector2f>() == Vector2f(16.f, 9.f));
+	REQUIRE(ratio("1.5", property));
+	CHECK(property.Get<Vector2f>() == Vector2f(1.5f, 1.f));
+	REQUIRE(ratio("4/3 auto", property));
+	CHECK(property.Get<Vector2f>() == Vector2f(-4.f, -3.f));
+	REQUIRE(ratio("auto 2", property));
+	CHECK(property.Get<Vector2f>() == Vector2f(-2.f, -1.f));
+	REQUIRE(ratio("AUTO", property));
+	CHECK(property.unit == Unit::KEYWORD);
+	for (const char* invalid : {"", "-1", "16 /", "/ 9", "auto auto", "1 2", "16 / -9", "a"})
+	{
+		INFO(invalid);
+		CHECK_FALSE(ratio(invalid, property));
+	}
+}
