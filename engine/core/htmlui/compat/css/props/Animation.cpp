@@ -142,11 +142,11 @@ namespace {
         return true;
     }
 
-    bool isAnimationFamily(const std::string& name){
-        static const std::set<std::string> names = {"animation", "animation-name", "animation-duration", "animation-timing-function",
+    bool isAnimationFamily(std::string_view name){
+        static const std::set<std::string, std::less<>> names = {"animation", "animation-name", "animation-duration", "animation-timing-function",
                                                     "animation-delay", "animation-iteration-count", "animation-direction",
                                                     "animation-play-state", "animation-fill-mode"};
-        const std::string plain = name.compare(0, 8, "-webkit-") == 0 ? name.substr(8) : name;
+        const std::string_view plain = name.compare(0, 8, "-webkit-") == 0 ? name.substr(8) : name;
         return names.count(plain) > 0;
     }
 

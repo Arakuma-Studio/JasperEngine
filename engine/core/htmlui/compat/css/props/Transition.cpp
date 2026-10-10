@@ -326,7 +326,7 @@ namespace {
 
     // the declarations merged into one transition (transition-behavior is Ignored in the table:
     // it never reaches the merge, so it cannot be the family's last declaration)
-    bool isTransitionFamily(const std::string& name){
+    bool isTransitionFamily(std::string_view name){
         return name == "transition" || name == "transition-property" || name == "transition-duration" || name == "transition-timing-function" ||
                name == "transition-delay" || name == "-webkit-transition" ||
                name == "-webkit-transition-property" || name == "-webkit-transition-duration" ||

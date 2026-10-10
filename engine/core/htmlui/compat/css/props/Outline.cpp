@@ -126,7 +126,7 @@ namespace {
         return std::nullopt;
     }
 
-    bool isOutlineProperty(const std::string& name){
+    bool isOutlineProperty(std::string_view name){
         return name == "outline" || name == "outline-width" || name == "outline-style" || name == "outline-color" || name == "outline-offset";
     }
 

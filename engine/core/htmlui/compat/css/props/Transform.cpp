@@ -19,7 +19,7 @@ using namespace jasperengine::htmlui::compat::props;
 
 namespace {
 
-    bool isIndividual(const std::string& name){
+    bool isIndividual(std::string_view name){
         return name == "translate" || name == "rotate" || name == "scale";
     }
 

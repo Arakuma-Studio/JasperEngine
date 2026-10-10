@@ -350,7 +350,7 @@ namespace {
                join(width) + " " + join(outset) + " " + repeatX + " " + repeatY + ")";
     }
 
-    bool isBorderImageProperty(const std::string& name){
+    bool isBorderImageProperty(std::string_view name){
         return name.compare(0, 12, "border-image") == 0 || name.compare(0, 20, "-webkit-border-image") == 0;
     }
 
