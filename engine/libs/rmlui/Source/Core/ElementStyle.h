@@ -10,6 +10,7 @@ namespace Rml {
 
 class ElementDefinition;
 class PlainPropertiesIterator;
+struct ElementAnimationStyle;
 class AllPropertiesIterator;
 enum class RelativeTarget;
 
@@ -25,6 +26,7 @@ public:
 	/// Constructor
 	/// @param[in] element The element this structure belongs to.
 	ElementStyle(Element* element);
+	~ElementStyle();
 
 	/// Update this definition if required
 	void UpdateDefinition();
@@ -119,6 +121,11 @@ public:
 	/// The values of the layers, or nullptr when the element has none.
 	const PropertyDictionary* GetTransitionProperties() const;
 	const PropertyDictionary* GetAnimatedProperties() const;
+
+	/// The computed transition and animation lists (phase 3, p3-animation): built from the transition-* and animation-*
+	/// longhands whenever they change; nullptr when the element has no transition or no animation.
+	const TransitionList* GetTransitionList() const;
+	const AnimationList* GetAnimationList() const;
 
 	/// Resolves a numeric value with units of number, percentage, length, or angle to their canonical unit (unit-less, 'px', or 'rad').
 	/// @param[in] value The value to be resolved.
@@ -240,6 +247,9 @@ private:
 
 	static void TransitionPropertyChanges(const PropertySources& sources, PropertyIdSet& changed_properties, const ElementDefinition* new_definition);
 
+	// Rebuilds the computed transition and animation lists when their longhands are among the dirty properties.
+	void UpdateAnimationLists(const PropertyIdSet& dirty);
+
 	// Element these properties belong to
 	Element* element;
 
@@ -256,6 +266,8 @@ private:
 	PropertyDictionary expanded_shorthands;
 	// Values of running transitions and animations (most elements have none).
 	UniquePtr<AnimationLayers> animation_layers;
+	// The computed transition and animation lists (p3-animation; elements without transition or animation have none).
+	UniquePtr<ElementAnimationStyle> animation_style;
 
 	PropertyIdSet dirty_properties;
 	UnorderedSet<String> dirty_variables;

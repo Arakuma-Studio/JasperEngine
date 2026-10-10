@@ -1,9 +1,14 @@
 #include "../Common/TestsInterface.h"
 #include "../Common/TestsShell.h"
 #include "../Common/TypesToString.h"
+#include <RmlUi/Core/Animation.h>
+#include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/PropertyDictionary.h>
+#include <RmlUi/Core/StyleSheetSpecification.h>
+#include <algorithm>
 #include <doctest.h>
 #include <float.h>
 
@@ -33,7 +38,7 @@ static const String document_decorator_rml = R"(
 			background: #333;
 			height: 64px;
 			width: 64px;
-			animation: mix 0.1s;
+			animation: mix 0.1s linear;
 		}
 	</style>
 </head>
@@ -301,7 +306,7 @@ static const String document_filter_rml = R"(
 			height: 64px;
 			width: 64px;
 			decorator: image(high_scores_alien_1.tga);
-			animation: mix 0.1s;
+			animation: mix 0.1s linear;
 		}
 	</style>
 </head>
@@ -603,7 +608,7 @@ static const String document_multiple_values_rml = R"(
 			width: 300dp;
 			height: 300dp;
 			background-color: #000;
-			animation: 2s fade, 4s 1s colorize;
+			animation: 2s linear fade, 4s 1s linear colorize;
 		}
 	</style>
 </head>
@@ -714,7 +719,7 @@ static const String document_animation_multiple_values_rml = R"(
 			width: 300dp;
 			height: 300dp;
 			margin: auto;
-			animation: 1s fadein, 1s 5s fadeout;
+			animation: 1s linear fadein, 1s 5s linear fadeout;
 		}
 	</style>
 </head>
@@ -810,7 +815,7 @@ TEST_CASE("transition.display_and_visibility")
 			width: 300dp;
 			height: 300dp;
 			margin: auto;
-			transition: opacity display visibility 1s;
+			transition: opacity display visibility 1s linear;
 		}
 		.hide {
 			%s;
@@ -921,7 +926,7 @@ TEST_CASE("animation.transform_interpolation")
 		div {
 			width: 64px;
 			height: 64px;
-			animation: move 0.1s;
+			animation: move 0.1s linear;
 		}
 	</style>
 </head>
@@ -988,5 +993,194 @@ TEST_CASE("animation.transform_interpolation")
 		document->Close();
 	}
 
+	TestsShell::ShutdownShell();
+}
+
+// Phase 3 (docs/html-ui/phase-3-fork-patches.md 3.13.2-3.13.3, FORK.md P3-A1): the transition and animation shorthands and
+// longhands, and the computed lists built from them.
+
+namespace {
+
+// The longhands a declaration sets, as "name: value" lines; "<invalid>" if it does not parse.
+String ParsedLonghands(const String& name, const String& value)
+{
+	PropertyDictionary dictionary;
+	if (!StyleSheetSpecification::ParsePropertyDeclaration(dictionary, name, value))
+		return "<invalid>";
+	String result;
+	Vector<PropertyId> ids;
+	for (const auto& id_property : dictionary.GetProperties())
+		ids.push_back(id_property.first);
+	std::sort(ids.begin(), ids.end());
+	for (PropertyId id : ids)
+		result += StyleSheetSpecification::GetPropertyName(id) + ": " + dictionary.GetProperty(id)->ToString() + "\n";
+	return result;
+}
+
+String ParsedLonghand(const String& name, const String& value, PropertyId id)
+{
+	PropertyDictionary dictionary;
+	if (!StyleSheetSpecification::ParsePropertyDeclaration(dictionary, name, value))
+		return "<invalid>";
+	const Property* property = dictionary.GetProperty(id);
+	return property ? property->ToString() : "<unset>";
+}
+
+} // namespace
+
+TEST_CASE("transition.parse")
+{
+	TestsShell::GetContext();
+
+	CHECK(ParsedLonghands("transition", "opacity 200ms ease-in 0.1s") ==
+		"transition-property: opacity\ntransition-duration: 0.2s\ntransition-timing-function: ease-in\ntransition-delay: 0.1s\n"
+		"transition-behavior: normal\n");
+	CHECK(ParsedLonghands("transition", "1s") ==
+		"transition-property: all\ntransition-duration: 1s\ntransition-timing-function: ease\ntransition-delay: 0s\ntransition-behavior: normal\n");
+	CHECK(ParsedLonghand("transition", "OPACITY 1S EASE-OUT", PropertyId::TransitionTimingFunction) == "ease-out");
+	CHECK(ParsedLonghand("transition", "OPACITY 1S EASE-OUT", PropertyId::TransitionProperty) == "opacity");
+	CHECK(ParsedLonghand("transition", "opacity 0s", PropertyId::TransitionDuration) == "0s");
+	CHECK(ParsedLonghand("transition", "opacity 1s -0.5s", PropertyId::TransitionDelay) == "-0.5s");
+	CHECK(ParsedLonghand("transition", "opacity 1s allow-discrete", PropertyId::TransitionBehavior) == "allow-discrete");
+	CHECK(ParsedLonghand("transition", "allow-discrete display 1s", PropertyId::TransitionProperty) == "display");
+	CHECK(ParsedLonghand("transition", "all 1s, transform 0.5s steps(4)", PropertyId::TransitionProperty) == "all, transform");
+	CHECK(ParsedLonghand("transition", "all 1s, transform 0.5s steps(4)", PropertyId::TransitionTimingFunction) == "ease, steps(4)");
+	CHECK(ParsedLonghand("transition", "none", PropertyId::TransitionProperty) == "none");
+	CHECK(ParsedLonghand("transition", "unknown-property 1s", PropertyId::TransitionProperty) == "unknown-property");
+	CHECK(ParsedLonghand("transition", "opacity 1s cubic-bezier(0.1, 0.2, 0.3, 0.4)", PropertyId::TransitionTimingFunction) ==
+		"cubic-bezier(0.1, 0.2, 0.3, 0.4)");
+	// RmlUi's syntax: several properties in one entry, with RmlUi's tween names.
+	CHECK(ParsedLonghand("transition", "opacity width 1s cubic-in-out", PropertyId::TransitionProperty) == "opacity, width");
+	CHECK(ParsedLonghand("transition", "opacity width 1s cubic-in-out", PropertyId::TransitionTimingFunction) == "cubic-in-out, cubic-in-out");
+
+	for (const char* invalid : {"opacity 0", "opacity -1s", "opacity 1s 2s 3s", "none, opacity 1s", "opacity 1s ease linear", "opacity 1s, ",
+			 "opacity 1px", "opacity 1s 0.5", "opacity all 1s", "inherit 1s"})
+	{
+		INFO(invalid);
+		CHECK(ParsedLonghands("transition", invalid) == "<invalid>");
+	}
+
+	CHECK(ParsedLonghands("transition-duration", "1s, 200ms") == "transition-duration: 1s, 0.2s\n");
+	CHECK(ParsedLonghands("transition-duration", "-1s") == "<invalid>");
+	CHECK(ParsedLonghands("transition-delay", "-1s, 0s") == "transition-delay: -1s, 0s\n");
+	CHECK(ParsedLonghands("transition-timing-function", "ease, steps(2, start), cubic-bezier(0, 0, 1, 1), linear(0, 1)") ==
+		"transition-timing-function: ease, steps(2, jump-start), cubic-bezier(0, 0, 1, 1), linear(0 0%, 1 100%)\n");
+	CHECK(ParsedLonghands("transition-property", "opacity, none") == "<invalid>");
+	CHECK(ParsedLonghands("transition-property", "Opacity, all") == "transition-property: opacity, all\n");
+	CHECK(ParsedLonghands("transition-behavior", "allow-discrete, NORMAL") == "transition-behavior: allow-discrete, normal\n");
+	CHECK(ParsedLonghands("transition-behavior", "discrete") == "<invalid>");
+
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("animation.parse")
+{
+	TestsShell::GetContext();
+
+	CHECK(ParsedLonghands("animation", "slide 1s ease-in 0.5s 3 reverse both paused") ==
+		"animation-name: slide\nanimation-duration: 1s\nanimation-timing-function: ease-in\nanimation-delay: 0.5s\n"
+		"animation-iteration-count: 3\nanimation-direction: reverse\nanimation-fill-mode: both\nanimation-play-state: paused\n");
+	CHECK(ParsedLonghands("animation", "none") ==
+		"animation-name: none\nanimation-duration: 0s\nanimation-timing-function: ease\nanimation-delay: 0s\n"
+		"animation-iteration-count: 1\nanimation-direction: normal\nanimation-fill-mode: none\nanimation-play-state: running\n");
+	// The name is the component no other longhand takes.
+	CHECK(ParsedLonghand("animation", "1s linear linear", PropertyId::AnimationName) == "linear");
+	CHECK(ParsedLonghand("animation", "1s linear linear", PropertyId::AnimationTimingFunction) == "linear");
+	CHECK(ParsedLonghand("animation", "reverse 1s reverse", PropertyId::AnimationName) == "reverse");
+	CHECK(ParsedLonghand("animation", "2.5 fade 1s", PropertyId::AnimationIterationCount) == "2.5");
+	CHECK(ParsedLonghand("animation", "fade 1s INFINITE alternate-reverse", PropertyId::AnimationIterationCount) == "infinite");
+	CHECK(ParsedLonghand("animation", "fade 1s INFINITE alternate-reverse", PropertyId::AnimationDirection) == "alternate-reverse");
+	CHECK(ParsedLonghand("animation", "fade 200ms, other 2s 1s", PropertyId::AnimationDuration) == "0.2s, 2s");
+	CHECK(ParsedLonghand("animation", "fade 200ms, other 2s 1s", PropertyId::AnimationDelay) == "0s, 1s");
+	CHECK(ParsedLonghand("animation", "fade 0s", PropertyId::AnimationDuration) == "0s");
+	CHECK(ParsedLonghand("animation", "fade 1s 0", PropertyId::AnimationIterationCount) == "0");
+
+	for (const char* invalid : {"fade -1s", "fade 1s 1s 1s", "fade other 1s", "fade 1s -1", "fade 1px", "fade 1s, ", "initial 1s"})
+	{
+		INFO(invalid);
+		CHECK(ParsedLonghands("animation", invalid) == "<invalid>");
+	}
+
+	CHECK(ParsedLonghands("animation-iteration-count", "infinite, 0, 2.5") == "animation-iteration-count: infinite, 0, 2.5\n");
+	CHECK(ParsedLonghands("animation-iteration-count", "-1") == "<invalid>");
+	CHECK(ParsedLonghands("animation-name", "fade, none, Other") == "animation-name: fade, none, Other\n");
+	CHECK(ParsedLonghands("animation-name", "initial") == "<invalid>");
+	CHECK(ParsedLonghands("animation-direction", "alternate, REVERSE") == "animation-direction: alternate, reverse\n");
+	CHECK(ParsedLonghands("animation-fill-mode", "both, forwards, backwards, none") == "animation-fill-mode: both, forwards, backwards, none\n");
+	CHECK(ParsedLonghands("animation-play-state", "paused, running") == "animation-play-state: paused, running\n");
+	CHECK(ParsedLonghands("animation-composition", "replace, add, accumulate") == "animation-composition: replace, add, accumulate\n");
+	CHECK(ParsedLonghands("animation-delay", "-200ms") == "animation-delay: -0.2s\n");
+	CHECK(ParsedLonghands("animation-duration", "-1s") == "<invalid>");
+
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("animation.computed_lists")
+{
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = context->LoadDocumentFromMemory("<rml><body/></rml>");
+	REQUIRE(document);
+	document->Show();
+	Element* element = nullptr;
+	// (each case on a new element: 6.3's style attribute does not remove the inline properties it no longer sets)
+	auto new_element = [&]() { element = document->AppendChild(document->CreateElement("div")); };
+
+	auto transitions = [&](const String& style) {
+		new_element();
+		element->SetAttribute("style", style);
+		context->Update();
+		String result;
+		if (const TransitionList* list = element->GetComputedValues().transition())
+			for (const Transition& t : list->transitions)
+				result += (t.id == PropertyId::Invalid ? String("all") : StyleSheetSpecification::GetPropertyName(t.id)) +
+					CreateString(" %g %g %s%s; ", t.duration, t.delay, t.tween.to_string().c_str(), t.allow_discrete ? " discrete" : "");
+		return result;
+	};
+	auto animations = [&](const String& style) {
+		new_element();
+		element->SetAttribute("style", style);
+		context->Update();
+		String result;
+		if (const AnimationList* list = element->GetComputedValues().animation())
+			for (const Animation& a : *list)
+				result += a.name +
+					CreateString(" %g %g %g %d %d %d %s; ", a.duration, a.delay, a.iteration_count, (int)a.direction, (int)a.fill_mode,
+						(int)a.paused, a.tween.to_string().c_str());
+		return result;
+	};
+
+	// One entry per transition-property item; the other lists repeat, or are cut.
+	CHECK(transitions("transition-property: opacity, width, height; transition-duration: 1s, 2s") ==
+		"opacity 1 0 ease; width 2 0 ease; height 1 0 ease; ");
+	CHECK(transitions("transition-property: opacity; transition-duration: 1s, 2s") == "opacity 1 0 ease; ");
+	// A shorthand transitions its longhands; an unknown name keeps its place in the lists.
+	CHECK(transitions("transition: margin 1s linear") ==
+		"margin-top 1 0 linear; margin-right 1 0 linear; margin-bottom 1 0 linear; margin-left 1 0 linear; ");
+	CHECK(transitions("transition-property: unknown, opacity; transition-duration: 1s, 2s") == "opacity 2 0 ease; ");
+	// A combined duration of zero does nothing; a delay alone makes a transition.
+	CHECK(transitions("transition: opacity 0s") == "");
+	CHECK(transitions("transition: opacity 0s 1s") == "opacity 0 1 ease; ");
+	CHECK(transitions("transition: all 1s, opacity 2s allow-discrete") == "all 1 0 ease; opacity 2 0 ease discrete; ");
+	CHECK(transitions("transition: none") == "");
+	CHECK(transitions("") == "");
+
+	// One entry per animation-name item; 'none' items are left out.
+	CHECK(animations("animation-name: a, none, b; animation-duration: 1s, 2s") == "a 1 0 1 0 0 0 ease; b 1 0 1 0 0 0 ease; ");
+	CHECK(animations("animation: spin 2s linear -1s infinite alternate forwards paused") == "spin 2 -1 inf 2 1 1 linear; ");
+	CHECK(animations("animation: none") == "");
+
+	const TransitionList* list = nullptr;
+	new_element();
+	element->SetAttribute("style", "transition: all 1s, opacity 2s");
+	context->Update();
+	list = element->GetComputedValues().transition();
+	REQUIRE(list);
+	CHECK(list->all);
+	REQUIRE(list->Find(PropertyId::Opacity));
+	CHECK(list->Find(PropertyId::Opacity)->duration == 2.f);
+	REQUIRE(list->Find(PropertyId::Width));
+	CHECK(list->Find(PropertyId::Width)->duration == 1.f);
+
+	document->Close();
 	TestsShell::ShutdownShell();
 }

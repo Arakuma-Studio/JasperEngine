@@ -734,7 +734,7 @@ TEST_CASE("custom_properties.transition")
 	<style>
 		div {
 			background-color: red;
-			transition: all 0.2s;
+			transition: all 0.2s linear;
 		}
 
 		div.active {
@@ -783,7 +783,7 @@ TEST_CASE("custom_properties.transition_deep")
 	<style>
 		div {
 			background-color: red;
-			transition: all 0.2s;
+			transition: all 0.2s linear;
 		}
 
 		div.active {
@@ -847,7 +847,7 @@ TEST_CASE("custom_properties.shorthand_transition")
 		rcss_rules = R"(
 			div {
 				padding: 10px;
-				transition: all 0.2s;
+				transition: all 0.2s linear;
 			}
 			div.active {
 				--padding: 20px;
@@ -861,7 +861,7 @@ TEST_CASE("custom_properties.shorthand_transition")
 			div {
 				--padding: 10px;
 				padding: var(--padding);
-				transition: padding 0.2s;
+				transition: padding 0.2s linear;
 			}
 			div.active {
 				--padding: 20px;
@@ -875,7 +875,7 @@ TEST_CASE("custom_properties.shorthand_transition")
 			div {
 				--padding: 10px;
 				padding: var(--padding);
-				transition: padding 0.2s;
+				transition: padding 0.2s linear;
 			}
 			div.active {
 				--indirect: 20px;

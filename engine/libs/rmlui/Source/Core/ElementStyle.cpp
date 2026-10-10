@@ -20,6 +20,7 @@
 #include "ControlledLifetimeResource.h"
 #include "ElementDefinition.h"
 #include "PropertiesIterator.h"
+#include "PropertyParserAnimation.h"
 #include "PropertyShorthandDefinition.h"
 #ifdef RMLUI_MATH_EXPRESSIONS
 	#include "Calculation.h"
@@ -48,6 +49,8 @@ ElementStyle::ElementStyle(Element* _element)
 {
 	element = _element;
 }
+
+ElementStyle::~ElementStyle() = default;
 
 // The context-relative units a StyleValue property depends on.
 static Units GetStyleValueUnitDependencies(const Property& property)
@@ -455,17 +458,9 @@ void ElementStyle::TransitionPropertyChanges(const PropertySources& sources, Pro
 	if (!sources.definition || !new_definition || changed_properties.Empty())
 		return;
 
-	// We get the local property directly here to intercept property changes even before the computed values are ready.
-	const Property* transition_property = GetLocalProperty(PropertyId::Transition, sources.inline_properties, new_definition);
-	if (!transition_property)
+	const TransitionList* transition_list = sources.element->GetStyle()->GetTransitionList();
+	if (!transition_list || transition_list->none)
 		return;
-	if (transition_property->value.GetType() != Variant::TRANSITIONLIST)
-		return;
-
-	const TransitionList& transition_list = transition_property->value.GetReference<TransitionList>();
-	if (transition_list.none)
-		return;
-
 	SmallUnorderedSet<String> variable_dependencies;
 
 	Property property_storage_old;
@@ -491,28 +486,20 @@ void ElementStyle::TransitionPropertyChanges(const PropertySources& sources, Pro
 		return transition_added;
 	};
 
-	if (transition_list.all)
+	for (auto it = changed_properties.begin(); it != changed_properties.end();)
 	{
-		Transition transition = transition_list.transitions[0];
-		for (auto it = changed_properties.begin(); it != changed_properties.end();)
+		const Transition* found = transition_list->Find(*it);
+		if (!found)
 		{
-			transition.id = *it;
-			if (add_transition(transition))
-				it = changed_properties.Erase(it);
-			else
-				++it;
+			++it;
+			continue;
 		}
-	}
-	else
-	{
-		for (const Transition& transition : transition_list.transitions)
-		{
-			if (changed_properties.Contains(transition.id))
-			{
-				if (add_transition(transition))
-					changed_properties.Erase(transition.id);
-			}
-		}
+		Transition transition = *found;
+		transition.id = *it;
+		if (add_transition(transition))
+			it = changed_properties.Erase(it);
+		else
+			++it;
 	}
 }
 
@@ -1159,6 +1146,9 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 			GetFontEngineInterface()->GetFontFaceHandle(values.font_family(), values.font_style(), values.font_weight(), (int)values.font_size()));
 	}
 
+	// The transition and animation lists follow their longhands (p3-animation).
+	UpdateAnimationLists(dirty_properties);
+
 	// Next, pass inheritable dirty properties onto our children
 	PropertyIdSet dirty_inherited_properties = (dirty_properties & StyleSheetSpecification::GetRegisteredInheritedProperties());
 
@@ -1223,6 +1213,33 @@ void ElementStyle::RemoveAnimatedProperty(PropertyId id)
 		return;
 	animation_layers->animated_properties.RemoveProperty(id);
 	DirtyProperty(id);
+}
+
+const TransitionList* ElementStyle::GetTransitionList() const
+{
+	return (animation_style && !animation_style->transitions.none) ? &animation_style->transitions : nullptr;
+}
+
+const AnimationList* ElementStyle::GetAnimationList() const
+{
+	return (animation_style && !animation_style->animations.empty()) ? &animation_style->animations : nullptr;
+}
+
+void ElementStyle::UpdateAnimationLists(const PropertyIdSet& dirty)
+{
+	const bool transitions_dirty = !(dirty & GetTransitionLonghandIds()).Empty();
+	const bool animations_dirty = !(dirty & GetAnimationLonghandIds()).Empty();
+	if (!transitions_dirty && !animations_dirty)
+		return;
+
+	if (!animation_style)
+		animation_style = MakeUnique<ElementAnimationStyle>();
+	if (transitions_dirty)
+		animation_style->transitions = BuildTransitionList(*this);
+	if (animations_dirty)
+		animation_style->animations = BuildAnimationList(*this);
+	if (animation_style->transitions.none && animation_style->animations.empty())
+		animation_style.reset();
 }
 
 const PropertyDictionary* ElementStyle::GetTransitionProperties() const

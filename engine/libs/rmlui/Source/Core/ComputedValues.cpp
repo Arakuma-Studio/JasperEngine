@@ -58,24 +58,15 @@ namespace Style {
 } // namespace Style
 #endif
 
+// Built from the animation-* and transition-* longhands by the element's style (p3-animation).
 const AnimationList* Style::ComputedValues::animation() const
 {
-	if (auto p = GetLocalPropertyWithResolvedVariables(PropertyId::Animation))
-	{
-		if (p->unit == Unit::ANIMATION)
-			return &(p->value.GetReference<AnimationList>());
-	}
-	return nullptr;
+	return element ? element->GetStyle()->GetAnimationList() : nullptr;
 }
 
 const TransitionList* Style::ComputedValues::transition() const
 {
-	if (auto p = GetLocalPropertyWithResolvedVariables(PropertyId::Transition))
-	{
-		if (p->unit == Unit::TRANSITION)
-			return &(p->value.GetReference<TransitionList>());
-	}
-	return nullptr;
+	return element ? element->GetStyle()->GetTransitionList() : nullptr;
 }
 
 String Style::ComputedValues::font_family() const

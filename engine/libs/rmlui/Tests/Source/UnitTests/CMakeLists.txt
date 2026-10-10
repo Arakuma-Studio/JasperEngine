@@ -9,6 +9,7 @@ add_executable(${TARGET_NAME}
 	ContainingBlockOverride.cpp
 	Core.cpp
 	CustomProperties.cpp
+	Easing.cpp
 	DataBinding.cpp
 	DataExpression.cpp
 	DataModel.cpp

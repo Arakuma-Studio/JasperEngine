@@ -31,6 +31,7 @@
 #include "PluginRegistry.h"
 #include "Pool.h"
 #include "PropertiesIterator.h"
+#include "PropertyParserAnimation.h"
 #include "StyleSheetNode.h"
 #include "StyleSheetParser.h"
 #include "TransformState.h"
@@ -2015,17 +2016,6 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	if (transform_changed)
 		DirtyTransformState(false, true);
 
-	// Check for `animation' changes
-	if (changed_properties.Contains(PropertyId::Animation))
-	{
-		dirty_animation = true;
-	}
-	// Check for `transition' changes
-	if (changed_properties.Contains(PropertyId::Transition))
-	{
-		dirty_transition = true;
-	}
-
 	/*
 	  Phase 3 sections (docs/html-ui/phase-3-fork-patches.md 3.0, 3.1.3): each package reacts to its own properties in
 	  its section below, and only there (a call into the package's own source file where it needs more than a line).
@@ -2060,6 +2050,11 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	// -- Layout (p3-layout) --
 
 	// -- Animation (p3-animation) --
+	// The animation and transition lists are built from their longhands (PropertyParserAnimation).
+	if (!(changed_properties & GetAnimationLonghandIds()).Empty())
+		dirty_animation = true;
+	if (!(changed_properties & GetTransitionLonghandIds()).Empty())
+		dirty_transition = true;
 
 	// -- Grid (p3-grid) --
 }
@@ -2798,10 +2793,6 @@ bool Element::StartTransition(const Transition& transition, const Property& star
 	}
 	else
 	{
-		// Compress the duration based on the progress of the current animation
-		float f = it->GetInterpolationFactor();
-		f = 1.0f - (1.0f - f) * transition.reverse_adjustment_factor;
-		duration = duration * f;
 		// Replace old transition
 		*it = ElementAnimation{transition.id, ElementAnimationOrigin::Transition, start_value, *this, start_time, 0.0f, 1, false};
 	}
@@ -2899,6 +2890,9 @@ void Element::HandleAnimationProperty()
 				for (const auto& animation : *animation_list)
 				{
 					const Keyframes* keyframes_ptr = stylesheet->GetKeyframes(animation.name);
+					const int num_iterations = (animation.IsInfinite() ? -1 : Math::Max(1, Math::RoundToInteger(animation.iteration_count)));
+					const bool alternate =
+						(animation.direction == AnimationDirection::Alternate || animation.direction == AnimationDirection::AlternateReverse);
 					if (keyframes_ptr && keyframes_ptr->blocks.size() >= 1 && !animation.paused)
 					{
 						auto& property_ids = keyframes_ptr->property_ids;
@@ -2927,7 +2921,7 @@ void Element::HandleAnimationProperty()
 						for (PropertyId id : property_ids)
 						{
 							const Property* property = ResolveProperty(id, (has_from_key ? blocks.front().properties.GetProperty(id) : nullptr), 0);
-							StartAnimation(id, property, animation.num_iterations, animation.alternate, animation.delay, true);
+							StartAnimation(id, property, num_iterations, alternate, animation.delay, true);
 						}
 
 						// Add middle keys: Need to skip the first and last keys if they set the initial and end conditions, respectively.
