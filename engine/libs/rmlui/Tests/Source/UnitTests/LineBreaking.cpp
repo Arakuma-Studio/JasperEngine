@@ -151,3 +151,18 @@ TEST_CASE("LineBreaking.inline_box_content_area")
 	CHECK(offset.y == 20.f);
 	document->Close();
 }
+
+TEST_CASE("LineBreaking.flex_column_item_wraps_at_its_min_width")
+{
+	// A column flex item stretched to 100px but at least 200px wide formats its text at 200px: one line, not two
+	// (Taffy flex/measure_child_with_min_size_greater_than_available_space).
+	FixedAdvanceFontScope scope;
+	ElementDocument* document = scope.Load("",
+		"<div style='display: flex; flex-direction: column; width: 100px'><div id='item' style='min-width: 200px'>HHHHHHHH" + zwsp +
+			"HHHHHHHH</div></div>");
+	Element* item = document->GetElementById("item");
+	CHECK(item->GetBox().GetSize().x == 200.f);
+	CHECK(item->GetBox().GetSize().y == 10.f);
+	CHECK(LinesOf(document, "item") == StringList{"HHHHHHHH" + zwsp + "HHHHHHHH"});
+	document->Close();
+}
