@@ -169,6 +169,33 @@ namespace {
         }
 
         void color(const ComponentValue& v, ValueList& out){
+            // #rgb, #rgba, #rrggbb and #rrggbbaa are their own eight digits in lower case (what
+            // the parser and ColorValue::hex below make of them)
+            if (v.isToken(TokenType::Hash)){
+                const Text& digits = v.token.value;
+                const size_t size = digits.size();
+                if (size == 3 || size == 4 || size == 6 || size == 8){
+                    char hex[8] = {'0', '0', '0', '0', '0', '0', 'f', 'f'};
+                    bool valid = true;
+                    for (size_t i = 0; i < size && valid; i++){
+                        char c = digits[i];
+                        if (c >= 'A' && c <= 'F')
+                            c = (char)(c - 'A' + 'a');
+                        valid = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+                        if (size <= 4)
+                            hex[2 * i] = hex[2 * i + 1] = c;
+                        else
+                            hex[i] = c;
+                    }
+                    if (valid){
+                        ComponentValue& made = out.emplace_back();
+                        made.token.type = TokenType::Hash;
+                        made.token.value = Text(std::string_view(hex, 8));
+                        made.token.hashIsId = false;
+                        return;
+                    }
+                }
+            }
             ColorParseInfo info;
             bool clipped = false;
             std::optional<CssColor> parsed = ColorValue::parse(v, info, colorContext());
