@@ -90,10 +90,17 @@ bool RmlFontEngine::registerLoaded(const std::shared_ptr<FontFace>& face, const 
     return true;
 }
 
+// The registry knows a font file by its path: one spelling per file (the compat layer names an
+// asset "asset://ui/a.ttf", RCSS and the hot reload "ui/a.ttf"), or a reload of the file would
+// not find the faces loaded under the other one.
+static std::string fontFileKey(const Rml::String& file_name){
+    return normalizeHtmlUIPath(file_name);
+}
+
 bool RmlFontEngine::LoadFontFace(const Rml::String& file_name, int face_index, bool fallback_face, Rml::Style::FontWeight weight){
     HtmlUIFileLog::recordFile(file_name);
     std::string error;
-    std::shared_ptr<FontFace> face = FontRegistry::getOrLoadFile(file_name, face_index, &error);
+    std::shared_ptr<FontFace> face = FontRegistry::getOrLoadFile(fontFileKey(file_name), face_index, &error);
     return registerLoaded(face, error, "", toWeight(weight), -1, fallback_face);
 }
 
@@ -101,7 +108,7 @@ bool RmlFontEngine::LoadFontFace(const Rml::String& file_name, int face_index, c
                                  Rml::Style::FontStyle style, Rml::Style::FontWeight weight, bool fallback_face){
     HtmlUIFileLog::recordFile(file_name);
     std::string error;
-    std::shared_ptr<FontFace> face = FontRegistry::getOrLoadFile(file_name, face_index, &error);
+    std::shared_ptr<FontFace> face = FontRegistry::getOrLoadFile(fontFileKey(file_name), face_index, &error);
     // the style is only meaningful with a family; without one everything comes from the file
     int italic = family.empty() ? -1 : (style == Rml::Style::FontStyle::Italic ? 1 : 0);
     return registerLoaded(face, error, family, toWeight(weight), italic, fallback_face);
@@ -681,7 +688,7 @@ void RmlFontEngine::retireHandles(){
 
 bool RmlFontEngine::reloadFontFile(const std::string& path){
     std::string error;
-    const int replaced = FontRegistry::reloadFile(path, &error);
+    const int replaced = FontRegistry::reloadFile(normalizeHtmlUIPath(path), &error);
     if (replaced == 0){
         if (!error.empty())
             Log::error("[HTML UI] %s", error.c_str());
