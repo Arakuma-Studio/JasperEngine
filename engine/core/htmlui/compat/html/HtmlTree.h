@@ -54,6 +54,11 @@ namespace jasperengine::htmlui::compat {
         bool hasRewrittenStyle = false;    // style="" rewritten to RCSS in rewrittenStyle
         std::string rewrittenStyle;
 
+        // Nodes come from a per-thread list of freed nodes (a document makes and frees
+        // thousands in one compile): plain new and delete, as std::unique_ptr uses them.
+        static void* operator new(size_t size);
+        static void operator delete(void* node, size_t size) noexcept;
+
         static std::unique_ptr<HtmlNode> makeElement(std::string tag, Namespace ns = Namespace::Html);
         static std::unique_ptr<HtmlNode> makeText(std::string text);
         static std::unique_ptr<HtmlNode> makeRaw(std::string markup);
