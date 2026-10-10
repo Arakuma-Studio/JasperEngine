@@ -13,6 +13,8 @@
 
 namespace jasperengine{
 
+    struct ShaderManifest;
+
     // values of a forked shader's custom uniform block, by member name
     // (a vector keeps the serialized order stable)
     typedef std::vector<std::pair<std::string, Vector4>> ShaderUniformValues;
@@ -46,10 +48,39 @@ namespace jasperengine{
 
         // every member from the value of the same name (zero when unset), reserved ones skipped
         void writeValues(const ShaderUniformValues& values);
+        // the same, a member taking the first of: values, fallbackValues (when given), the
+        // manifest's @property default (when given), zero
+        void writeValues(const ShaderUniformValues& values, const ShaderUniformValues* fallbackValues, const ShaderManifest* manifest);
         void writeTime(float seconds);
         void writeResolution(float width, float height);
 
         static void writeUniform(std::vector<uint8_t>& block, const ShaderUniform& uniform, const Vector4& value);
+    };
+
+    // A custom texture (manifest @texture, or a shaderTextures entry of a shader without a
+    // manifest) a loaded shader declares: its bind slot, resolved by name at load
+    struct JASPERENGINE_API ShaderTextureSlot{
+        std::pair<int, int> slot = {-1, -1};
+        int source = -1;      // index in the object's shaderTextures, -1: the default texture
+        int fallback = 0;     // ShaderTextureDefault
+        bool cube = false;    // declared as a textureCube
+    };
+
+    // What a loaded shader reads of the shader library's engine data: the frame block
+    // (u_vs_frame / u_fs_frame, includes/frame.glsl) and its custom textures. Slots are
+    // resolved once at load, so a draw does no name lookup; -1 when not declared.
+    struct JASPERENGINE_API ShaderLibraryBindings{
+        int slotVSFrame = -1;
+        int slotFSFrame = -1;
+        unsigned int frameSize = 0; // bytes of the block the shader declares
+        std::vector<ShaderTextureSlot> textures;
+
+        void clear(){
+            slotVSFrame = -1;
+            slotFSFrame = -1;
+            frameSize = 0;
+            textures.clear();
+        }
     };
 
 }

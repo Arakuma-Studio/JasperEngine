@@ -6,6 +6,7 @@
 #include "Engine.h"
 #include "pool/ShaderPool.h"
 #include "component/TerrainComponent.h"
+#include "shader/ShaderManifest.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -329,6 +330,10 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & (1 << 6))  defs.push_back({"HAS_INSTANCING", "1"});    // 'Ist'
     if (prop & (1 << 7))  defs.push_back({"ALPHA_MASK", "1"});         // 'Ams'
     if (prop & (1 << 8))  defs.push_back({"USE_INSTANCE_FADE", "1"}); // 'Ifd'
+    if (prop & (1 << 9))  defs.push_back({"HAS_NORMALS", "1"});           // 'Nor'
+    if (prop & (1 << 10)) defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"}); // 'Vc3'
+    if (prop & (1 << 11)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"}); // 'Vc4'
+    if (prop & (1 << 12)) defs.push_back({"HAS_UV_SET1", "1"});           // 'Uv1'
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
@@ -527,17 +532,57 @@ uint64_t ShaderVariantCompiler::getLibraryHash(){
 void ShaderVariantCompiler::getCustomShaderPaths(const std::string& customShader, std::string& vertFile, std::string& fragFile){
     vertFile.clear();
     fragFile.clear();
-    if (customShader.empty())
+    const std::string base = ShaderReference::getBase(customShader);
+    if (base.empty())
         return;
 
-    const size_t separator = customShader.find('|');
+    const size_t separator = base.find('|');
     if (separator != std::string::npos){
-        vertFile = customShader.substr(0, separator);
-        fragFile = customShader.substr(separator + 1);
+        vertFile = base.substr(0, separator);
+        fragFile = base.substr(separator + 1);
     }else{
-        vertFile = customShader + ".vert";
-        fragFile = customShader + ".frag";
+        vertFile = base + ".vert";
+        fragFile = base + ".frag";
     }
+}
+
+bool ShaderVariantCompiler::getLibraryShaderPaths(const std::string& reference, ShaderType shaderType, std::string& vertFile, std::string& fragFile, std::string* error){
+    auto fail = [error](const std::string& message){
+        if (error)
+            *error = message;
+        return false;
+    };
+    vertFile.clear();
+    fragFile.clear();
+
+    const std::string name = ShaderReference::getLibraryName(reference);
+    if (!ShaderReference::isValidLibraryName(name))
+        return fail("Invalid library shader name '" + name + "' (lower case snake_case)");
+
+    // the manifests are always embedded; the full sources only with the runtime compiler,
+    // so a build without it still tells which files a variant is made of
+    auto exists = [](const std::string& path){
+        return ShaderManifests::hasLibraryFile(path) || getLibrarySources().count(path) > 0;
+    };
+    const std::string prefix = "library/" + name;
+    if (!exists(prefix + ".frag"))
+        return fail("Unknown library shader '" + name + "'");
+
+    if (shaderType == ShaderType::DEPTH){
+        vertFile = exists(prefix + "_depth.vert") ? prefix + "_depth.vert" : "library/surface_depth.vert";
+        fragFile = exists(prefix + "_depth.frag") ? prefix + "_depth.frag" : "library/surface_depth.frag";
+        return true;
+    }
+
+    fragFile = prefix + ".frag";
+    if (exists(prefix + ".vert")){
+        vertFile = prefix + ".vert";
+    }else if (shaderType == ShaderType::MESH){
+        vertFile = "library/surface.vert";
+    }else{
+        return fail("Library shader '" + name + "' has no vertex shader (library/" + name + ".vert)");
+    }
+    return true;
 }
 
 std::string ShaderVariantCompiler::getCustomShaderIncludeRoot(const std::string& customShader){
@@ -588,16 +633,52 @@ bool ShaderVariantCompiler::isSafeRelativePath(const std::string& path){
     return !normalized.empty() && *normalized.begin() != "..";
 }
 
-CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std::string& customShader, const FileReader& readProjectFile){
+CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std::string& customShader, const FileReader& readProjectFile,
+                                                                     ShaderType shaderType){
     CustomShaderSources result;
-    if (customShader.empty() || !readProjectFile){
+    const std::string base = ShaderReference::getBase(customShader);
+    std::string signatureInput;
+
+    // the variant's feature defines ("library:toon#RAMP,RIM")
+    for (const std::string& define : ShaderReference::getFeatures(customShader)){
+        if (!ShaderReference::isValidDefine(define)){
+            result.error = "Invalid shader feature '" + define + "' in " + customShader;
+            return result;
+        }
+        result.defines.push_back(define);
+        appendSignaturePart(signatureInput, "define", define);
+    }
+
+    if (ShaderReference::isLibrary(base)){
+        result.library = true;
+        if (!getLibraryShaderPaths(base, shaderType, result.vertFile, result.fragFile, &result.error))
+            return result;
+        const auto& library = getLibrarySources();
+        for (const std::string& entry : {result.vertFile, result.fragFile}){
+            auto it = library.find(entry);
+            if (it == library.end()){
+                result.error = "This build has no engine shader library to compile " + base + " from";
+                return result;
+            }
+            appendSignaturePart(signatureInput, "library:" + entry, it->second);
+        }
+        // the varyings its @require asks surface_vs.glsl for (a depth program too)
+        if (std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(base)){
+            for (const std::string& define : manifest->getRequireDefines())
+                result.defines.push_back(define);
+        }
+        result.signature = signatureInput;
+        result.valid = true;
+        return result;
+    }
+
+    if (base.empty() || !readProjectFile){
         result.error = "Custom shader project or path is unavailable.";
         return result;
     }
 
-    getCustomShaderPaths(customShader, result.vertFile, result.fragFile);
-    const std::string includeRoot = getCustomShaderIncludeRoot(customShader);
-    std::string signatureInput;
+    getCustomShaderPaths(base, result.vertFile, result.fragFile);
+    const std::string includeRoot = getCustomShaderIncludeRoot(base);
 
     auto loadEntryPoint = [&](const std::string& rel, const char* stage) -> bool {
         std::string content;
@@ -661,6 +742,14 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
     visitSource(vertSource);
     visitSource(fragSource);
 
+    // a fork with a manifest compiles with the varyings its @require asks for, as a library
+    // shader does (the entry sources are already in the signature)
+    ShaderManifest manifest;
+    manifest.parse(fragSource, result.fragFile);
+    manifest.parse(vertSource, result.vertFile);
+    for (const std::string& define : manifest.getRequireDefines())
+        result.defines.push_back(define);
+
     result.signature = signatureInput;
     result.valid = true;
     return result;
@@ -723,6 +812,9 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
             args.fileBuffers[path] = content;
         args.vert_file = customSources->vertFile;
         args.frag_file = customSources->fragFile;
+        // enabled @feature / @keywords defines of the variant
+        for (const std::string& define : customSources->defines)
+            args.defines.push_back({define, "1"});
     }
 
     if (stopped())

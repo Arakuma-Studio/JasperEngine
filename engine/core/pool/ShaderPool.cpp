@@ -8,6 +8,7 @@
 #include "io/FileData.h"
 #include "shader/RuntimeShaderCompiler.h"
 #include "shader/ShaderDataSerializer.h"
+#include "shader/ShaderVariantCompiler.h"
 #include "util/Base64.h"
 #include <cstdint>
 #include <cstdlib>
@@ -178,12 +179,19 @@ std::string ShaderPool::getCustomShaderName(uint16_t customId){
 }
 
 std::string ShaderPool::getCustomShaderBasename(uint16_t customId){
-    std::string base = getCustomShaderName(customId);
+    const std::string name = getCustomShaderName(customId);
+    std::string base = name;
     // Sanitize the project-relative base into a filesystem-safe, deterministic token
     // (e.g. "shaders/myMesh" -> "shaders_myMesh") used in .sdat filenames.
     for (char& c : base){
         if (!(std::isalnum((unsigned char)c) || c == '_'))
             c = '_';
+    }
+    // A library reference or a feature suffix ("library:toon#RAMP,RIM") is not a path:
+    // the hash of the whole string keeps it apart from a fork whose path sanitizes alike
+    // and from the same shader with other features
+    if (name.find(':') != std::string::npos || name.find('#') != std::string::npos){
+        base += "_" + ShaderVariantCompiler::toHex(ShaderVariantCompiler::hash(name)).substr(0, 8);
     }
     return base;
 }
@@ -410,7 +418,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return 28;
-        case ShaderType::DEPTH:  return 9;
+        case ShaderType::DEPTH:  return 13;
         case ShaderType::GBUFFER: return 10;
         case ShaderType::UI:     return 4;
         case ShaderType::POINTS: return 4;
@@ -470,6 +478,11 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 6: return shortName ? "Ist" : "Instancing";
             case 7: return shortName ? "Ams" : "Alpha Mask";
             case 8: return shortName ? "Ifd" : "Instance Fade";
+            // inputs a library depth program asks for (@require), never set for the built-in one
+            case 9: return shortName ? "Nor" : "Normals";
+            case 10: return shortName ? "Vc3" : "Vertex Color 3";
+            case 11: return shortName ? "Vc4" : "Vertex Color 4";
+            case 12: return shortName ? "Uv1" : "UV1";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -871,14 +884,19 @@ void ShaderPool::remove(ShaderType shaderType, uint32_t properties, uint16_t cus
 }
 
 void ShaderPool::destroyCustomShaders(){
+    // library shaders are embedded in the engine: their sources never change
+    auto isFork = [](ShaderKey key){
+        const uint16_t customId = getCustomIdFromKey(key);
+        return customId != 0 && getCustomShaderName(customId).compare(0, 8, "library:") != 0;
+    };
     for (auto& entry : getMap()){
-        if (getCustomIdFromKey(entry.first) != 0 && entry.second && entry.second->isCreated()){
+        if (isFork(entry.first) && entry.second && entry.second->isCreated()){
             entry.second->destroyShader();
         }
     }
     // Forget custom-shader build failures so an edited source is retried on the next get().
     for (auto it = failedShaders().begin(); it != failedShaders().end();){
-        if (getCustomIdFromKey(*it) != 0){
+        if (isFork(*it)){
             it = failedShaders().erase(it);
         } else {
             ++it;
@@ -964,7 +982,8 @@ uint32_t ShaderPool::getMeshProperties(
     return prop;
 }
 
-uint32_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask, bool instanceFade){
+uint32_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask, bool instanceFade,
+                                            bool normals, bool vertexColorVec3, bool vertexColorVec4, bool uv1){
     uint32_t prop = 0;
 
     prop |= texture          ? (1 <<  0) : 0;
@@ -976,6 +995,10 @@ uint32_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool mo
     prop |= instanced        ? (1 <<  6) : 0;
     prop |= alphaMask        ? (1 <<  7) : 0;
     prop |= instanceFade     ? (1 <<  8) : 0;
+    prop |= normals          ? (1 <<  9) : 0;
+    prop |= vertexColorVec3  ? (1 << 10) : 0;
+    prop |= vertexColorVec4  ? (1 << 11) : 0;
+    prop |= uv1              ? (1 << 12) : 0;
 
     return prop;
 }

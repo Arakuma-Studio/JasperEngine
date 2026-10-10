@@ -304,11 +304,14 @@ ShaderBuildResult RuntimeShaderCompiler::request(ShaderKey key){
     const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
     if (customId != 0){
         const std::string customShader = ShaderPool::getCustomShaderName(customId);
-        auto sourceIt = s.customSources.find(customShader);
+        const ShaderType shaderType = ShaderPool::getShaderTypeFromKey(key);
+        // a library shader's depth variant is its depth program: keyed by type too
+        const std::string sourceKey = customShader + "\n" + std::to_string(static_cast<int>(shaderType));
+        auto sourceIt = s.customSources.find(sourceKey);
         if (sourceIt == s.customSources.end()){
             auto sources = std::make_shared<CustomShaderSources>(
-                ShaderVariantCompiler::resolveCustomShaderSources(customShader, readAssetFile));
-            sourceIt = s.customSources.emplace(customShader, sources).first;
+                ShaderVariantCompiler::resolveCustomShaderSources(customShader, readAssetFile, shaderType));
+            sourceIt = s.customSources.emplace(sourceKey, sources).first;
         }
         job.sources = sourceIt->second;
         if (!job.sources->valid){

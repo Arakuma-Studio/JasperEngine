@@ -4,6 +4,7 @@
 #include "ShaderUniforms.h"
 
 #include "Log.h"
+#include "shader/ShaderManifest.h"
 
 #include <cstring>
 
@@ -124,6 +125,23 @@ void CustomUniformBlock::writeValues(const ShaderUniformValues& values){
             continue;
         // unset (or removed) members read zero
         writeUniform(data, members[m], ShaderUniforms::get(values, members[m].name));
+    }
+}
+
+void CustomUniformBlock::writeValues(const ShaderUniformValues& values, const ShaderUniformValues* fallbackValues, const ShaderManifest* manifest){
+    for (size_t m = 0; m < members.size(); m++){
+        if ((int)m == timeMember || (int)m == resolutionMember)
+            continue;
+        const std::string& name = members[m].name;
+        Vector4 value = Vector4::ZERO;
+        if (ShaderUniforms::has(values, name)){
+            value = ShaderUniforms::get(values, name);
+        }else if (fallbackValues && ShaderUniforms::has(*fallbackValues, name)){
+            value = ShaderUniforms::get(*fallbackValues, name);
+        }else if (manifest){
+            manifest->getDefault(name, value);
+        }
+        writeUniform(data, members[m], value);
     }
 }
 
