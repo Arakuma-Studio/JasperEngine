@@ -1,5 +1,10 @@
 #include "../Common/TestsShell.h"
 #include <RmlUi/Core/Colour.h>
+#include <RmlUi/Core/ComputedValues.h>
+#include <RmlUi/Core/Context.h>
+#include <RmlUi/Core/Element.h>
+#include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/PropertyDefinition.h>
 #include <RmlUi/Core/Property.h>
 #include <RmlUi/Core/PropertyDictionary.h>
 #include <RmlUi/Core/StyleSheetSpecification.h>
@@ -214,4 +219,75 @@ TEST_CASE("Colors.other_properties")
 	Colourb colour;
 	REQUIRE(TypeConverter<String, Colourb>::Convert("rgba(0, 0, 0, 0.5)", colour));
 	CHECK(colour == Colourb(0, 0, 0, 128));
+}
+
+TEST_CASE("Colors.currentcolor")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+
+	// Parsed to a keyword wherever a property takes a colour, serialized as written.
+	PropertyDictionary dictionary;
+	REQUIRE(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "background-color", "CurrentColor"));
+	CHECK(dictionary.GetProperty(PropertyId::BackgroundColor)->unit == Unit::KEYWORD);
+	CHECK(dictionary.GetProperty(PropertyId::BackgroundColor)->ToString() == "currentcolor");
+	CHECK(StyleSheetSpecification::GetProperty(PropertyId::BorderTopColor)->GetDefaultValue()->ToString() == "currentcolor");
+	REQUIRE(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "box-shadow", "0 0 2px currentcolor, 1px 1px red"));
+	CHECK(dictionary.GetProperty(PropertyId::BoxShadow)->ToString() == "currentcolor 0px 0px 2px, #ff0000 1px 1px");
+	CHECK(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "decorator", "linear-gradient(currentColor, transparent)"));
+	Colourb colour;
+	CHECK_FALSE(TypeConverter<String, Colourb>::Convert("currentcolor", colour));
+	CheckInvalid("color-mix(in srgb, currentcolor, red)");
+
+	const String rml = R"(
+<rml>
+<head>
+	<style>
+		body { color: #0000ff; }
+		#a { color: #ff0000; border: 1px #00ff00; border-color: currentcolor; background-color: currentColor; image-color: currentcolor; }
+		#b { color: currentcolor; background-color: currentcolor; }
+		#c { border-width: 1px; border-left-color: currentcolor; border-right-color: #00ff00; }
+	</style>
+</head>
+<body><div id="a"><div id="b"/></div><div id="c"/></body>
+</rml>
+)";
+	ElementDocument* document = context->LoadDocumentFromMemory(rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+
+	Element* a = document->GetElementById("a");
+	Element* b = document->GetElementById("b");
+	Element* c = document->GetElementById("c");
+	CHECK(a->GetComputedValues().border_top_color() == Colourb(255, 0, 0));
+	CHECK(a->GetComputedValues().border_left_color() == Colourb(255, 0, 0));
+	CHECK(a->GetComputedValues().background_color() == Colourb(255, 0, 0));
+	CHECK(a->GetComputedValues().image_color() == Colourb(255, 0, 0));
+	// In 'color' itself it is the parent's color.
+	CHECK(b->GetComputedValues().color() == Colourb(255, 0, 0));
+	CHECK(b->GetComputedValues().background_color() == Colourb(255, 0, 0));
+	CHECK(c->GetComputedValues().border_left_color() == Colourb(0, 0, 255));
+	CHECK(c->GetComputedValues().border_right_color() == Colourb(0, 255, 0));
+	CHECK(c->GetComputedValues().border_top_color() == Colourb(0, 0, 255));
+
+	// The properties follow a change of the color, also an inherited one.
+	a->SetProperty("color", "#808080");
+	context->Update();
+	CHECK(a->GetComputedValues().border_top_color() == Colourb(128, 128, 128));
+	CHECK(a->GetComputedValues().background_color() == Colourb(128, 128, 128));
+	CHECK(b->GetComputedValues().color() == Colourb(128, 128, 128));
+	CHECK(b->GetComputedValues().background_color() == Colourb(128, 128, 128));
+	document->SetProperty("color", "#ffff00");
+	context->Update();
+	CHECK(c->GetComputedValues().border_left_color() == Colourb(255, 255, 0));
+	CHECK(a->GetComputedValues().border_top_color() == Colourb(128, 128, 128));
+
+	// The root's 'currentcolor' in 'color' is the initial color.
+	document->SetProperty("color", "currentcolor");
+	context->Update();
+	CHECK(document->GetComputedValues().color() == Colourb(0, 0, 0));
+
+	document->Close();
+	context->Update();
 }

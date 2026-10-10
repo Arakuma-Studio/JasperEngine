@@ -1,5 +1,6 @@
 #include "PropertyParserColour.h"
 #include "../../Include/RmlUi/Core/Math.h"
+#include "../../Include/RmlUi/Core/Property.h"
 #include "../../Include/RmlUi/Core/StringUtilities.h"
 #include "ColorSpaces.h"
 #include "ControlledLifetimeResource.h"
@@ -518,8 +519,20 @@ PropertyParserColour::PropertyParserColour() {}
 
 PropertyParserColour::~PropertyParserColour() {}
 
+bool PropertyParserColour::IsCurrentColor(const Property& property)
+{
+	return property.unit == Unit::KEYWORD && property.value.GetType() == Variant::INT && property.value.Get<int>() == CurrentColor;
+}
+
 bool PropertyParserColour::ParseValue(Property& property, const String& value, const ParameterMap& /*parameters*/) const
 {
+	if (value.size() >= 12 && EqualsNoCase(Trim(value), "currentcolor"))
+	{
+		property.value = Variant(CurrentColor);
+		property.unit = Unit::KEYWORD;
+		return true;
+	}
+
 	Colourb colour;
 	if (!ParseColour(colour, value))
 		return false;

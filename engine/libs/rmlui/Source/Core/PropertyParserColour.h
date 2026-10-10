@@ -29,8 +29,14 @@ public:
 	/// @return True if the value was parsed successfully, false otherwise.
 	bool ParseValue(Property& property, const String& value, const ParameterMap& parameters) const override;
 
-	/// Parse a colour directly.
+	/// Parse a colour directly. 'currentcolor' is not a colour here: it has no value without an element.
 	static bool ParseColour(Colourb& colour, const String& value);
+
+	/// The keyword value 'currentcolor' parses to (Unit::KEYWORD) where a property, a box shadow or a color stop takes a
+	/// colour: the element's 'color', resolved when the values are computed (ElementStyle) or the shadow and gradient are
+	/// generated. No keyword list uses this value.
+	static constexpr int CurrentColor = 0x43430000;
+	static bool IsCurrentColor(const Property& property);
 
 	static void Initialize();
 	static void Shutdown();

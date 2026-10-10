@@ -28,9 +28,14 @@ BoxShadowGeometryInfo GeometryBoxShadow::Resolve(Element* element, const CornerS
 	RMLUI_ASSERT(p_box_shadow->value.GetType() == Variant::BOXSHADOWLIST);
 	BoxShadowList shadow_list = p_box_shadow->value.Get<BoxShadowList>();
 
-	// Resolve all lengths to px units.
+	// Resolve all lengths to px units, and 'currentcolor' to the element's color (phase 3, values).
 	for (BoxShadow& shadow : shadow_list)
 	{
+		if (shadow.current_color)
+		{
+			shadow.color = element->GetComputedValues().color().ToPremultiplied();
+			shadow.current_color = false;
+		}
 #ifdef RMLUI_MATH_EXPRESSIONS
 		auto resolve_length = [&](NumericValue value, const CalculationPtr& calculation) {
 			if (!calculation)

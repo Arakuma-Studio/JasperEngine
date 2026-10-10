@@ -249,8 +249,9 @@ TEST_CASE("Property.ToString")
 	CHECK(ParsedValue("transform", "translateX(10px)") == "translateX(10px)");
 	CHECK(ParsedValue("transform", "translate(20in, 50em)") == "translate(20in, 50em)");
 
-	CHECK(ParsedValue("box-shadow", "2px 2px 0px, rgba(0, 0, 255, 255) 4px 4px 2em") == "#000000 2px 2px 0px, #0000ff 4px 4px 2em");
-	CHECK(ParsedValue("box-shadow", "2px 2px 0px, #00ff 4px 4px 2em") == "#000000 2px 2px 0px, #0000ff 4px 4px 2em");
+	// A shadow without a color is 'currentcolor' (CSS; phase 3, values).
+	CHECK(ParsedValue("box-shadow", "2px 2px 0px, rgba(0, 0, 255, 255) 4px 4px 2em") == "currentcolor 2px 2px 0px, #0000ff 4px 4px 2em");
+	CHECK(ParsedValue("box-shadow", "2px 2px 0px, #00ff 4px 4px 2em") == "currentcolor 2px 2px 0px, #0000ff 4px 4px 2em");
 
 	// Due to conversion to and from premultiplied alpha, some color information is lost.
 	CHECK(ParsedValue("box-shadow", "#fff0 2px 2px 0px") == "#00000000 2px 2px 0px");

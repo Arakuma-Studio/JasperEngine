@@ -8,13 +8,14 @@ namespace Rml {
 struct ColorStop {
 	ColourbPremultiplied color;
 	NumericValue position;
+	bool current_color = false; // 'currentcolor': the element's color replaces 'color' when the gradient is generated
 #ifdef RMLUI_MATH_EXPRESSIONS
 	CalculationPtr position_calculation = nullptr;
 #endif
 };
 inline bool operator==(const ColorStop& a, const ColorStop& b)
 {
-	return a.color == b.color && a.position == b.position
+	return a.color == b.color && a.position == b.position && a.current_color == b.current_color
 #ifdef RMLUI_MATH_EXPRESSIONS
 		&& a.position_calculation == b.position_calculation
 #endif
@@ -31,6 +32,7 @@ struct BoxShadow {
 	NumericValue blur_radius;
 	NumericValue spread_distance;
 	bool inset = false;
+	bool current_color = false; // 'currentcolor' (also when the color is omitted): the element's color replaces 'color'
 #ifdef RMLUI_MATH_EXPRESSIONS
 	CalculationPtr offset_x_calculation = nullptr, offset_y_calculation = nullptr;
 	CalculationPtr blur_radius_calculation = nullptr, spread_distance_calculation = nullptr;
@@ -44,7 +46,7 @@ inline bool operator==(const BoxShadow& a, const BoxShadow& b)
 		&& a.offset_x_calculation == b.offset_x_calculation && a.offset_y_calculation == b.offset_y_calculation &&
 		a.blur_radius_calculation == b.blur_radius_calculation && a.spread_distance_calculation == b.spread_distance_calculation
 #endif
-		&& a.inset == b.inset;
+		&& a.inset == b.inset && a.current_color == b.current_color;
 }
 inline bool operator!=(const BoxShadow& a, const BoxShadow& b)
 {

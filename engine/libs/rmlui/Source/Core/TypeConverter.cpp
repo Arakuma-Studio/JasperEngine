@@ -247,7 +247,7 @@ bool TypeConverter<ColorStopList, String>::Convert(const ColorStopList& src, Str
 	for (size_t i = 0; i < src.size(); i++)
 	{
 		const ColorStop& stop = src[i];
-		dest += ToString(stop.color.ToNonPremultiplied());
+		dest += (stop.current_color ? String("currentcolor") : ToString(stop.color.ToNonPremultiplied()));
 
 		if (Any(stop.position.unit & Unit::NUMBER_LENGTH_PERCENT))
 			dest += " " + ToString(stop.position.number) + ToString(stop.position.unit);
@@ -292,7 +292,7 @@ bool TypeConverter<BoxShadowList, String>::Convert(const BoxShadowList& src, Str
 		if (shadow.inset)
 			temp += " inset";
 
-		dest += ToString(shadow.color.ToNonPremultiplied()) + temp;
+		dest += (shadow.current_color ? String("currentcolor") : ToString(shadow.color.ToNonPremultiplied())) + temp;
 
 		if (i < src.size() - 1)
 		{

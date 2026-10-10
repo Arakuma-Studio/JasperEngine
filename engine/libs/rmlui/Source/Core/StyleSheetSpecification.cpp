@@ -303,8 +303,8 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	    changed correspondingly, see `ComputedValues.h`.
 
 	    The defaults are the CSS initial values (phase 3, docs/html-ui/FORK.md P3-4): font-size 16px,
-	    color black, border colors 'currentcolor' (registered as black, computed as the element's color
-	    when not declared), min-width/min-height auto, opacity not inherited, visibility inherited.
+	    color black, border colors 'currentcolor' (computed as the element's color), min-width/min-height
+	    auto, opacity not inherited, visibility inherited.
 
 	    When adding new properties, it may be desirable to add it to the computed values as well.
 	    Then, make sure to resolve it as appropriate in `ElementStyle.cpp`.
@@ -338,10 +338,10 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::BorderLeftWidth, "border-left-width", "0px", false, true).AddParser("length");
 	RegisterShorthand(ShorthandId::BorderWidth, "border-width", "border-top-width, border-right-width, border-bottom-width, border-left-width", ShorthandType::Box);
 
-	RegisterProperty(PropertyId::BorderTopColor, "border-top-color", "black", false, false).AddParser("color");
-	RegisterProperty(PropertyId::BorderRightColor, "border-right-color", "black", false, false).AddParser("color");
-	RegisterProperty(PropertyId::BorderBottomColor, "border-bottom-color", "black", false, false).AddParser("color");
-	RegisterProperty(PropertyId::BorderLeftColor, "border-left-color", "black", false, false).AddParser("color");
+	RegisterProperty(PropertyId::BorderTopColor, "border-top-color", "currentcolor", false, false).AddParser("color");
+	RegisterProperty(PropertyId::BorderRightColor, "border-right-color", "currentcolor", false, false).AddParser("color");
+	RegisterProperty(PropertyId::BorderBottomColor, "border-bottom-color", "currentcolor", false, false).AddParser("color");
+	RegisterProperty(PropertyId::BorderLeftColor, "border-left-color", "currentcolor", false, false).AddParser("color");
 	RegisterShorthand(ShorthandId::BorderColor, "border-color", "border-top-color, border-right-color, border-bottom-color, border-left-color", ShorthandType::Box);
 
 	RegisterShorthand(ShorthandId::BorderTop, "border-top", "border-top-width, border-top-color", ShorthandType::FallThrough);
