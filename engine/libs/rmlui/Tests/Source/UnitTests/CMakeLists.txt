@@ -25,6 +25,7 @@ add_executable(${TARGET_NAME}
 	EventListener.cpp
 	Filter.cpp
 	FlexFormatting.cpp
+	GridParsing.cpp
 	InitialValues.cpp
 	IntrinsicSizing.cpp
 	Layout.cpp
