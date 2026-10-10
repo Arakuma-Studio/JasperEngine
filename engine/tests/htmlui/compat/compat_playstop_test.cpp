@@ -41,7 +41,9 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/ElementDocument.h>
 
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <map>
 
 using namespace jasperengine;
@@ -330,4 +332,49 @@ namespace {
 
     ::testing::Environment* const compileLeftCachedAtExit = ::testing::AddGlobalTestEnvironment(new CompileLeftCachedAtExit());
 
+}
+
+// The findings of a document are the same list wherever they are read (phase-2 spec 6):
+// UIDocument::getDiagnostics() of the loaded document and compat::checkDocument() of its
+// file. The fixture is a menu with the mistakes of a page written for a browser (a Tailwind
+// CDN script and sheet, JavaScript, onclick=, grid, sticky, a misspelled property, a remote
+// image without an import, a family that is not loaded): every one is in the list, at its
+// line and column, with its code and a suggestion.
+TEST_F(CompatPlayStopTest, DocumentAndCheckReturnTheSameFindings){
+    fixture.reset(new SceneFixture());
+    screenDocument.reset(new UIDocument(fixture->addDocument("compat/integrate/mistakes.html")));
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    drawFramesAt(time, 2, 0.0);
+
+    std::vector<std::string> loaded;
+    for (const hc::Diagnostic& diagnostic : screenDocument->getDiagnostics())
+        loaded.push_back(hc::toText(diagnostic));
+    std::vector<std::string> checked;
+    for (const hc::Diagnostic& diagnostic : hc::checkDocument("compat/integrate/mistakes.html", hc::CheckOptions()).diagnostics)
+        checked.push_back(hc::toText(diagnostic));
+    std::sort(loaded.begin(), loaded.end());
+    std::sort(checked.begin(), checked.end());
+    EXPECT_EQ(loaded, checked);
+
+    const char* expected[] = {
+        "compat/integrate/mistakes.html:7:3: warning: Tailwind Play CDN script not run",
+        "compat/integrate/mistakes.html:8:15: error: remote stylesheet 'https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css' is not imported",
+        "compat/integrate/mistakes.html:14:28: error: remote image 'https://images.example.net/logo.png' is not imported",
+        "compat/integrate/mistakes.html:16:27: error: 'onclick' (JavaScript) is not run (fix: use element:addEventListener('click', fn) in Lua",
+        "compat/integrate/mistakes.html:20:3: error: JavaScript is not run (the engine has no JavaScript engine) (fix: use <script type=\"text/lua\">",
+        "compat/integrate/mistakes.css:13:3: warning: 'position: sticky' is drawn as 'relative'",
+        "compat/integrate/mistakes.css:17:3: warning: 'backgroud-color' is not a CSS property; dropped (fix: did you mean 'background-color'?) [HTMLUI-CSS-0001]",
+        "compat/integrate/mistakes.css:22:3: warning: 'display: grid' is drawn as a wrapping flex container until the fork has Grid (fix: lay the items out with flex) [HTMLUI-CSS-0007]",
+        "compat/integrate/mistakes.html: info: font family 'Segoe UI' is not loaded and not generic",
+    };
+    for (const char* line : expected){
+        const bool found = std::any_of(loaded.begin(), loaded.end(), [line](const std::string& text){ return text.compare(0, std::strlen(line), line) == 0; });
+        EXPECT_TRUE(found) << "no finding starting with: " << line;
+    }
+    // each once
+    EXPECT_EQ(std::adjacent_find(loaded.begin(), loaded.end()), loaded.end());
+
+    // (the fixture's errors are logged: expected here)
+    TestSystem::get().clearLogs();
+    expectedWarnings = 0;
 }

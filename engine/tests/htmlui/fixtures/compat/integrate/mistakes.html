@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Star Forge</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="mistakes.css">
+</head>
+<body>
+  <div class="menu">
+    <h1 class="title">Star Forge</h1>
+    <img class="logo" src="https://images.example.net/logo.png" alt="logo">
+    <div class="buttons">
+      <button class="btn" onclick="startGame()">Play</button>
+      <button class="btn" id="quit">Quit</button>
+    </div>
+  </div>
+  <script>
+    document.getElementById('quit').addEventListener('click', () => window.close());
+  </script>
+</body>
+</html>
