@@ -79,6 +79,12 @@ namespace jasperengine::htmlui::compat {
         bool invalid = false;          // a syntax error: the whole rule is dropped (as browsers do)
     };
 
+    // A selector list read from its text by SelectorRewriter::scanList
+    struct ScannedSelectors {
+        ArenaList<RewrittenSelector> rewritten;   // what rewrite() returns for the list
+        ArenaList<Text> texts;                    // serialize() of each selector of the list
+    };
+
     class JASPERENGINE_API SelectorRewriter {
     public:
         // Parses a selector list (a style rule prelude); nested-rule forms (&, leading
@@ -86,6 +92,17 @@ namespace jasperengine::htmlui::compat {
         static std::optional<SelectorList> parseList(const ValueList& prelude, uint32_t file,
                                                                      std::string* error = nullptr, SourceRef* errorRef = nullptr);
         static std::optional<SelectorList> parseList(std::string_view text, std::string* error = nullptr);
+
+        // A style rule's selector list read from its text (the prelude as written, trimmed)
+        // without parsing it, when every selector of it maps to itself: types other than
+        // html/body/template, classes, ids, attributes without a flag or white space, the
+        // pseudo-classes RmlUi matches as written, the universal selector, combinators other
+        // than the column; an author selector's first compound cannot match the root element.
+        // Each selector is written as serialize() writes it (with the #htmlui-root band for
+        // author rules) straight from the text. false: the list needs parseList() and rewrite()
+        // (which report nothing for a list scanList() reads, so reading it earlier changes no
+        // diagnostic).
+        static bool scanList(std::string_view text, const SelectorOptions& options, ScannedSelectors& out);
 
         // Rewrites a parsed list; diagnostics at ruleRef (sink may be null).
         static SelectorRewriteResult rewrite(const SelectorList& list, const SelectorOptions& options,
@@ -112,11 +129,9 @@ namespace jasperengine::htmlui::compat {
         // serialize() and baseKey() appended to a buffer
         static void appendSerialized(std::string& out, const ComplexSelector& selector);
         static void appendBaseKey(std::string& out, const ComplexSelector& selector);
-        // A hash that two selectors with the same serialize() text share (and, with baseKey,
-        // that a selector shares with the selectors whose text is its baseKey()): made of what
-        // the text is made of (combinators, the names and what precedes them), without
-        // writing it. Selectors with different texts may share it.
-        static uint64_t textHash(const ComplexSelector& selector, bool baseKey);
+        // baseKey() of a selector given as its serialize() text, for the selectors scanList()
+        // reads (no white space inside their compounds)
+        static void appendBaseKey(std::string& out, std::string_view text);
         // the subject compound's type selector ("" when none)
         static std::string subjectTag(const ComplexSelector& selector);
         // does the selector's subject chain start at the root (html, :root, the root id)?

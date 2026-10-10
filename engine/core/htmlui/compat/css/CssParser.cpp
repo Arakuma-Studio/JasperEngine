@@ -411,6 +411,8 @@ namespace {
                     rule.preludeRef = preludeExtent(rule.prelude);
                     if (!rule.preludeRef.valid())
                         rule.preludeRef = ref(rule.blockRef.offset, rule.blockRef.offset);
+                    else
+                        rule.preludeText = Text::view(std::string_view(sourceCopy + (rule.preludeRef.offset - base), rule.preludeRef.length));
                     rule.ref = ref(begin, rule.blockRef.offset + rule.blockRef.length);
                     return true;
                 }

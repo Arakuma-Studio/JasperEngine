@@ -4,6 +4,7 @@
 #include "htmlui/compat/css/BaseRules.h"
 #include "htmlui/compat/LiteralCompare.h"
 
+#include "htmlui/compat/StringIndex.h"
 #include "htmlui/compat/css/RewriteSession.h"
 
 #include <algorithm>
@@ -62,11 +63,12 @@ namespace {
                 slots *= 2;
             session.baseSlots.assign(slots, kNoEntry);
         }
+        std::string& buffer = session.baseCandidateText;
         for (const FlatRule& rule : session.rules){
             if (rule.origin != RuleOrigin::Author || rule.dropped)
                 continue;
-            for (const ComplexSelector& selector : rule.selectors){
-                ArenaList<uint32_t>& list = entryOf(session, SelectorRewriter::textHash(selector, false), true)->rules;
+            for (size_t i = 0; i < rule.selectorCount(); i++){
+                ArenaList<uint32_t>& list = entryOf(session, StringIndex::hash(rule.selectorText(i, buffer)), true)->rules;
                 if (list.empty() || list.back() != rule.index)
                     list.push_back(rule.index);
             }
@@ -90,26 +92,23 @@ const FlatRule* BaseRules::find(Session& session, const FlatRule& rule, const st
         ruleSpecificity = std::max(ruleSpecificity, s.specificity);
     std::string& key = session.baseKeyText;
     std::string& text = session.baseCandidateText;
-    for (const ComplexSelector& selector : rule.selectors){
-        const Session::BaseEntry* entry = entryOf(session, SelectorRewriter::textHash(selector, true), false);
+    for (size_t i = 0; i < rule.selectorCount(); i++){
+        key.clear();
+        if (rule.scanned)
+            SelectorRewriter::appendBaseKey(key, rule.selectorTexts[i].view());
+        else
+            SelectorRewriter::appendBaseKey(key, rule.selectors()[i]);
+        const Session::BaseEntry* entry = entryOf(session, StringIndex::hash(key), false);
         if (!entry)
             continue;
-        key.clear();
-        SelectorRewriter::appendBaseKey(key, selector);
         for (uint32_t index : entry->rules){
             const FlatRule& candidate = session.rules[index];
             if (candidate.index == rule.index || candidate.dropped)
                 continue;
             // (the hash found it: one of its selectors has the key's text)
             bool same = false;
-            for (const ComplexSelector& other : candidate.selectors){
-                text.clear();
-                SelectorRewriter::appendSerialized(text, other);
-                if (text == key){
-                    same = true;
-                    break;
-                }
-            }
+            for (size_t j = 0; j < candidate.selectorCount() && !same; j++)
+                same = candidate.selectorText(j, text) == key;
             if (!same)
                 continue;
             uint32_t candidateSpecificity = 0;

@@ -142,6 +142,27 @@ bool DeclContext::fork(ForkFeature feature) const{
     return session.options.fork.has(feature);
 }
 
+// ---- FlatRule
+
+const SelectorList& FlatRule::selectors() const{
+    if (!selectorsParsed){
+        // (a scanned list: valid, so it parses)
+        std::optional<SelectorList> parsed = SelectorRewriter::parseList(prelude, file);
+        if (parsed)
+            parsedSelectors = std::move(*parsed);
+        selectorsParsed = true;
+    }
+    return parsedSelectors;
+}
+
+std::string_view FlatRule::selectorText(size_t i, std::string& buffer) const{
+    if (scanned)
+        return selectorTexts[i].view();
+    buffer.clear();
+    SelectorRewriter::appendSerialized(buffer, selectors()[i]);
+    return buffer;
+}
+
 // ---- Session
 
 Session::Session(const CompatOptions& options, SourceFiles& files, DiagnosticSink& sink, const RewriteContext& context):
@@ -182,6 +203,8 @@ Session::Session(const CompatOptions& options, SourceFiles& files, DiagnosticSin
         if (std::find(selectorOptions.rootAttributes.begin(), selectorOptions.rootAttributes.end(), "dir") == selectorOptions.rootAttributes.end())
             selectorOptions.rootAttributes.push_back("dir");
     }
+    userAgentSelectorOptions = selectorOptions;
+    userAgentSelectorOptions.origin = SelectorOptions::Origin::UserAgent;
 }
 
 const PropertyFacts& Session::facts(std::string_view property){
@@ -375,11 +398,36 @@ namespace {
         rule.sheet = scope.sheet;
         rule.file = scope.file;
         rule.origin = scope.origin;
-        rule.selectors = std::move(selectors);
+        rule.parsedSelectors = std::move(selectors);
+        rule.selectorsParsed = true;
         rule.ref = ref;
         rule.preludeRef = preludeRef;
         rule.media = scope.media;
         rule.declarations = std::move(declarations);
+        rule.layer = scope.layer;
+        rule.order = session.nextOrder++;
+        session.sheets[scope.sheet].push_back(SheetItem{false, rule.index});
+    }
+
+    // a rule whose selector list was scanned (SelectorRewriter::scanList): its rewritten
+    // selectors are final, its selectors are parsed from the prelude when something reads them
+    void addScannedRule(Session& session, const FlattenScope& scope, Rule& source, ScannedSelectors& scanned){
+        if (source.declarations.empty() || scope.media.never)
+            return;
+        const uint32_t index = (uint32_t)session.rules.size();
+        FlatRule& rule = session.rules.emplace_back();
+        rule.index = index;
+        rule.sheet = scope.sheet;
+        rule.file = scope.file;
+        rule.origin = scope.origin;
+        rule.prelude = std::move(source.prelude);
+        rule.scanned = true;
+        rule.selectorTexts = std::move(scanned.texts);
+        rule.rewritten = std::move(scanned.rewritten);
+        rule.ref = source.ref;
+        rule.preludeRef = source.preludeRef;
+        rule.media = scope.media;
+        rule.declarations = std::move(source.declarations);
         rule.layer = scope.layer;
         rule.order = session.nextOrder++;
         session.sheets[scope.sheet].push_back(SheetItem{false, rule.index});
@@ -409,6 +457,16 @@ namespace {
 
     // a style rule: its declarations and nested rules in source order (CSS Nesting)
     void flattenStyleRule(Session& session, Rule& rule, const FlattenScope& scope){
+        // a selector list that maps to itself is written from its text (no nested rules: they
+        // need the parsed selectors)
+        if (!scope.parents && rule.rules.empty() && !rule.preludeText.empty() && scope.origin != RuleOrigin::StyleAttribute){
+            const SelectorOptions& options = scope.origin == RuleOrigin::UserAgent ? session.userAgentSelectorOptions : session.selectorOptions;
+            ScannedSelectors scanned;
+            if (SelectorRewriter::scanList(rule.preludeText, options, scanned)){
+                addScannedRule(session, scope, rule, scanned);
+                return;
+            }
+        }
         std::string error;
         SourceRef errorRef;
         std::optional<SelectorList> parsed = SelectorRewriter::parseList(rule.prelude, scope.file, &error, &errorRef);
@@ -677,9 +735,10 @@ namespace {
     }
 
     bool isBodyRule(const FlatRule& rule){
-        if (rule.selectors.empty())
+        // (a scanned list has no `body` type selector)
+        if (rule.scanned || rule.selectors().empty())
             return false;
-        for (const ComplexSelector& s : rule.selectors){
+        for (const ComplexSelector& s : rule.selectors()){
             if (!isBodyOnly(s))
                 return false;
         }
@@ -691,14 +750,12 @@ namespace {
     }
 
     void prePass(Session& session, const std::vector<DeclarationList>& styleAttributes){
-        // selectors
-        SelectorOptions authorOptions = session.selectorOptions;
-        authorOptions.origin = SelectorOptions::Origin::Author;
-        SelectorOptions userAgentOptions = session.selectorOptions;
-        userAgentOptions.origin = SelectorOptions::Origin::UserAgent;
+        // selectors (a scanned list was rewritten when it was read)
         for (FlatRule& rule : session.rules){
-            const SelectorOptions& options = rule.origin == RuleOrigin::UserAgent ? userAgentOptions : authorOptions;
-            SelectorRewriteResult result = SelectorRewriter::rewrite(rule.selectors, options, session.sink, rule.preludeRef.valid() ? rule.preludeRef : rule.ref);
+            if (rule.scanned)
+                continue;
+            const SelectorOptions& options = rule.origin == RuleOrigin::UserAgent ? session.userAgentSelectorOptions : session.selectorOptions;
+            SelectorRewriteResult result = SelectorRewriter::rewrite(rule.selectors(), options, session.sink, rule.preludeRef.valid() ? rule.preludeRef : rule.ref);
             rule.rewritten = std::move(result.selectors);
             if (result.invalid || rule.rewritten.empty())
                 rule.dropped = true;
@@ -836,9 +893,10 @@ namespace {
                 bool background = false;
                 for (const Declaration& d : rule.declarations)
                     background = background || isBackgroundProperty(d.name);
-                if (!background)
+                // (a scanned list is never a root or body rule)
+                if (!background || rule.scanned)
                     continue;
-                for (const ComplexSelector& s : rule.selectors){
+                for (const ComplexSelector& s : rule.selectors()){
                     if (SelectorRewriter::isRootRule(s, session.selectorOptions))
                         rootBackground = true;
                 }
@@ -850,10 +908,10 @@ namespace {
 
         // the root font size (rem, root em) from static root rules
         for (const FlatRule& rule : session.rules){
-            if (rule.dropped || rule.origin != RuleOrigin::Author)
+            if (rule.dropped || rule.origin != RuleOrigin::Author || rule.scanned)
                 continue;
             bool root = false;
-            for (const ComplexSelector& s : rule.selectors){
+            for (const ComplexSelector& s : rule.selectors()){
                 if (SelectorRewriter::isRootRule(s, session.selectorOptions))
                     root = true;
             }
@@ -891,7 +949,7 @@ namespace {
                         bool conflict = false;
                         for (const RewrittenSelector& sl : l.rewritten){
                             for (const RewrittenSelector& su : u.rewritten){
-                                if (sl.specificity > su.specificity && SelectorRewriter::subjectsOverlap(l.selectors[sl.source], u.selectors[su.source]))
+                                if (sl.specificity > su.specificity && SelectorRewriter::subjectsOverlap(l.selectors()[sl.source], u.selectors()[su.source]))
                                     conflict = true;
                             }
                         }
@@ -1189,9 +1247,9 @@ namespace {
                 continue;
             for (const RewrittenSelector& mine : rule.rewritten){
                 for (const RewrittenSelector& theirs : other.rewritten){
-                    if (theirs.specificity > mine.specificity && SelectorRewriter::subjectsOverlap(rule.selectors[mine.source], other.selectors[theirs.source])){
+                    if (theirs.specificity > mine.specificity && SelectorRewriter::subjectsOverlap(rule.selectors()[mine.source], other.selectors()[theirs.source])){
                         session.sink->report(codes::ImportantMayLose, ref, "'" + property + " !important' may lose to the more specific rule '" +
-                                             SelectorRewriter::serialize(other.selectors[theirs.source]) + "' at " + BaseRules::location(session, other) +
+                                             SelectorRewriter::serialize(other.selectors()[theirs.source]) + "' at " + BaseRules::location(session, other) +
                                              " (the engine has no !important)", "raise this selector's specificity or lower the other one");
                         return;
                     }
@@ -1288,7 +1346,7 @@ namespace {
             Severity severity = isInfoNote(row->note) ? Severity::Info : Severity::Warning;
             std::string suggestion = row->suggestion;
             if (name == "aspect-ratio" && rule){
-                for (const ComplexSelector& s : rule->selectors){
+                for (const ComplexSelector& s : rule->selectors()){
                     const std::string tag = SelectorRewriter::subjectTag(s);
                     if (tag == "img" || tag == "svg" || tag == "video")
                         severity = Severity::Info;
