@@ -23,7 +23,7 @@ static const String rml_grid_document = R"(
 		#inventory.auto-fill { display: grid; grid-template-columns: repeat(auto-fill, minmax(64dp, 1fr)); grid-auto-rows: auto; }
 		#inventory.flex { display: flex; flex-wrap: wrap; }
 		#inventory.flex .slot { width: 64dp; height: 64dp; }
-		.slot { display: block; border: 2dp #777; background-color: #555; padding: 4dp; }
+		.slot { display: block; border: 2dp solid #777; background-color: #555; padding: 4dp; }
 		.slot.rare { border-color: #49f; }
 		.icon { display: block; height: 32dp; background-color: #8a6; }
 		.count { display: block; text-align: right; font-size: 12dp; color: white; }
