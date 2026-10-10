@@ -757,7 +757,7 @@ TEST_CASE("custom_properties.transition")
 	ElementDocument* document = context->LoadDocumentFromMemory(transition_rml);
 	document->Show();
 
-	Element* div = document->GetFirstChild();
+	Element* div = TestsShell::GetElementChild(document, 0);
 	CHECK(div->GetComputedValues().background_color() == Colourb(255, 0, 0, 255));
 
 	div->SetClass("active", true);
@@ -807,7 +807,7 @@ TEST_CASE("custom_properties.transition_deep")
 	ElementDocument* document = context->LoadDocumentFromMemory(transition_deep_rml);
 	document->Show();
 
-	Element* div = document->GetFirstChild();
+	Element* div = TestsShell::GetElementChild(document, 0);
 	CHECK(div->GetComputedValues().background_color() == Colourb(255, 0, 0, 255));
 
 	div->SetClass("active", true);
@@ -893,7 +893,7 @@ TEST_CASE("custom_properties.shorthand_transition")
 	ElementDocument* document = context->LoadDocumentFromMemory(CreateString(document_rml_template.c_str(), rcss_rules));
 	document->Show();
 
-	Element* div = document->GetFirstChild();
+	Element* div = TestsShell::GetElementChild(document, 0);
 	CHECK(div->GetProperty<float>("padding-top") == 10.f);
 
 	div->SetClass("active", true);
@@ -941,7 +941,7 @@ TEST_CASE("custom_properties.animation")
 	system_interface->SetManualTime(0.0);
 
 	ElementDocument* document = context->LoadDocumentFromMemory(animation_rml);
-	Element* div = document->GetFirstChild();
+	Element* div = TestsShell::GetElementChild(document, 0);
 	document->Show();
 	CHECK(div->GetComputedValues().background_color() == Colourb(0, 255, 0, 255));
 
@@ -986,7 +986,7 @@ TEST_CASE("custom_properties.shorthand_animation")
 	document->Show();
 	TestsShell::RenderLoop();
 
-	Element* div = document->GetFirstChild();
+	Element* div = TestsShell::GetElementChild(document, 0);
 
 	system_interface->SetManualTime(0.1);
 	TestsShell::RenderLoop();
@@ -1030,7 +1030,7 @@ TEST_CASE("custom_properties.combined_shorthand_animation")
 	document->Show();
 	TestsShell::RenderLoop();
 
-	Element* div = document->GetFirstChild();
+	Element* div = TestsShell::GetElementChild(document, 0);
 
 	system_interface->SetManualTime(0.1);
 	TestsShell::RenderLoop();
@@ -1206,7 +1206,7 @@ TEST_CASE("custom_properties.media_theme_integration")
 
 	Context* context = TestsShell::GetContext();
 	ElementDocument* document = context->LoadDocumentFromMemory(rml_source);
-	Element* div = document->GetChild(0);
+	Element* div = TestsShell::GetElementChild(document, 0);
 	REQUIRE(div->SetProperty("background-color", "var(--primary, blue)"));
 
 	SUBCASE("variable from @media block is absent when theme is inactive")
@@ -1400,7 +1400,7 @@ TEST_CASE("custom_properties.misc_properties")
 	}
 )"));
 		document->Show();
-		Element* div = document->GetFirstChild();
+		Element* div = TestsShell::GetElementChild(document, 0);
 
 		CHECK(div->GetComputedValues().has_box_shadow());
 		CHECK(div->GetProperty(PropertyId::BoxShadow)->Get<BoxShadowList>() ==
@@ -1421,7 +1421,7 @@ TEST_CASE("custom_properties.misc_properties")
 	div { flex: var(--flex-value); }
 )"));
 		document->Show();
-		Element* div = document->GetFirstChild();
+		Element* div = TestsShell::GetElementChild(document, 0);
 		CHECK(div->GetComputedValues().flex_grow() == 2.f);
 		CHECK(div->GetComputedValues().flex_shrink() == 3.f);
 		CHECK(div->GetComputedValues().flex_basis().type == Style::LengthPercentageAuto::Length);
@@ -1438,7 +1438,7 @@ TEST_CASE("custom_properties.misc_properties")
 	div { flex-grow: var(--grow); }
 )"));
 		document->Show();
-		Element* div = document->GetFirstChild();
+		Element* div = TestsShell::GetElementChild(document, 0);
 
 		CHECK(div->GetComputedValues().flex_grow() == 3.f);
 		CHECK(div->GetProperty(PropertyId::FlexGrow)->Get<float>() == 3.f);
@@ -1456,7 +1456,7 @@ TEST_CASE("custom_properties.misc_properties")
 	div { width: 500px; height: 400px; transform: translateX(var(--translate)); }
 )"));
 		document->Show();
-		Element* div = document->GetFirstChild();
+		Element* div = TestsShell::GetElementChild(document, 0);
 		CHECK(div->GetProperty(PropertyId::Transform)->ToString() == "translateX(50px)");
 
 		TransformPtr transform = div->GetComputedValues().transform();
@@ -1472,7 +1472,7 @@ TEST_CASE("custom_properties.misc_properties")
 	div { width: 500px; height: 400px; decorator: linear-gradient(to right, #f00, var(--decorator-color)); }
 )"));
 		document->Show();
-		Element* div = document->GetFirstChild();
+		Element* div = TestsShell::GetElementChild(document, 0);
 		const Property* decorator_property = div->GetProperty(PropertyId::Decorator);
 		DecoratorsPtr decorators = decorator_property->Get<DecoratorsPtr>();
 		REQUIRE(decorators.get());
@@ -1499,7 +1499,7 @@ TEST_CASE("custom_properties.misc_properties")
 	div { width: 500px; height: 400px; background: red; filter: blur(var(--blur-radius)); }
 )"));
 		document->Show();
-		Element* div = document->GetFirstChild();
+		Element* div = TestsShell::GetElementChild(document, 0);
 		const Property* filter_property = div->GetProperty(PropertyId::Filter);
 		FiltersPtr filters = filter_property->Get<FiltersPtr>();
 		REQUIRE(filters.get());

@@ -136,7 +136,7 @@ TEST_CASE("FlexFormatting.dp_ratio")
 	REQUIRE(document);
 	document->Show();
 
-	Element* window = document->GetChild(0);
+	Element* window = TestsShell::GetElementChild(document, 0);
 
 	constexpr float native_width = 1920.f;
 	constexpr float native_height = 1080.f;

@@ -3,10 +3,13 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/Element.h>
+#include <RmlUi/Core/ElementText.h>
 #include <RmlUi/Core/EventListener.h>
+#include <RmlUi/Core/StringUtilities.h>
 #include <RmlUi/Debugger.h>
 #include <RmlUi_Backend.h>
 #include <Shell.h>
+#include <algorithm>
 #include <cstdlib>
 #include <doctest.h>
 
@@ -217,4 +220,40 @@ void TestsShell::ResetTestsRenderInterface()
 TestsSystemInterface* TestsShell::GetTestsSystemInterface()
 {
 	return &tests_system_interface;
+}
+
+static bool IsWhiteSpaceText(Rml::Element* element)
+{
+	auto text_element = rmlui_dynamic_cast<Rml::ElementText*>(element);
+	if (!text_element)
+		return false;
+	const Rml::String& text = text_element->GetText();
+	return std::all_of(text.begin(), text.end(), [](char c) { return Rml::StringUtilities::IsWhitespace(c); });
+}
+
+Rml::Element* TestsShell::GetElementChild(Rml::Element* parent, int index)
+{
+	for (int i = 0; i < parent->GetNumChildren(); i++)
+	{
+		Rml::Element* child = parent->GetChild(i);
+		if (!IsWhiteSpaceText(child) && index-- == 0)
+			return child;
+	}
+	return nullptr;
+}
+
+int TestsShell::GetNumElementChildren(Rml::Element* parent)
+{
+	int count = 0;
+	for (int i = 0; i < parent->GetNumChildren(); i++)
+		count += IsWhiteSpaceText(parent->GetChild(i)) ? 0 : 1;
+	return count;
+}
+
+Rml::Element* TestsShell::GetNextElementSibling(Rml::Element* element)
+{
+	Rml::Element* sibling = element->GetNextSibling();
+	while (sibling && IsWhiteSpaceText(sibling))
+		sibling = sibling->GetNextSibling();
+	return sibling;
 }

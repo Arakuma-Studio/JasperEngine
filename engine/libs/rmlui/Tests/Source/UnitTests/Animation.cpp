@@ -260,7 +260,7 @@ TEST_CASE("animation.decorator")
 				property_str.c_str(), test.from.c_str(), property_str.c_str(), test.to.c_str());
 
 			ElementDocument* document = context->LoadDocumentFromMemory(document_rml, "assets/");
-			Element* element = document->GetChild(0);
+			Element* element = TestsShell::GetElementChild(document, 0);
 
 			document->Show();
 			TestsShell::RenderLoop();
@@ -387,7 +387,7 @@ TEST_CASE("animation.filter")
 			String document_rml = Rml::CreateString(document_filter_rml.c_str(), property_str, test.from.c_str(), property_str, test.to.c_str());
 
 			ElementDocument* document = context->LoadDocumentFromMemory(document_rml, "assets/");
-			Element* element = document->GetChild(0);
+			Element* element = TestsShell::GetElementChild(document, 0);
 
 			document->Show();
 
@@ -462,7 +462,7 @@ TEST_CASE("animation.case_sensitivity")
 
 		const String document_rml = CreateString(document_rml_template.c_str(), test_case.keyframe_name.c_str(), test_case.animation_name.c_str());
 		ElementDocument* document = context->LoadDocumentFromMemory(document_rml, "assets/");
-		Element* element = document->GetChild(0);
+		Element* element = TestsShell::GetElementChild(document, 0);
 		document->Show();
 		REQUIRE(element->IsVisible() == false);
 
@@ -555,7 +555,7 @@ TEST_CASE("animation.case_sensitive_distinct_keyframes")
 		INFO("Class name: ", test_case.class_name);
 		system_interface->SetManualTime(0.0);
 		ElementDocument* document = context->LoadDocumentFromMemory(document_rml, "assets/");
-		Element* element = document->GetChild(0);
+		Element* element = TestsShell::GetElementChild(document, 0);
 		element->SetClass(test_case.class_name, true);
 		document->Show();
 		REQUIRE(element->GetProperty<float>("opacity") == 0.f);
@@ -650,7 +650,7 @@ TEST_CASE("animation.multiple_values")
 	{
 		system_interface->SetManualTime(0.0);
 		ElementDocument* document = context->LoadDocumentFromMemory(document_multiple_values_rml, "assets/");
-		Element* element = document->GetChild(0);
+		Element* element = TestsShell::GetElementChild(document, 0);
 
 		document->Show();
 
@@ -766,7 +766,7 @@ TEST_CASE("animation.multiple_overlapping")
 		system_interface->SetManualTime(0.0);
 
 		ElementDocument* document = context->LoadDocumentFromMemory(document_animation_multiple_values_rml, "assets/");
-		Element* element = document->GetChild(0);
+		Element* element = TestsShell::GetElementChild(document, 0);
 
 		document->Show();
 
@@ -873,7 +873,7 @@ TEST_CASE("transition.display_and_visibility")
 		system_interface->SetManualTime(0.0);
 
 		ElementDocument* document = context->LoadDocumentFromMemory(document_rml, "assets/");
-		Element* element = document->GetChild(0);
+		Element* element = TestsShell::GetElementChild(document, 0);
 
 		document->Show();
 
@@ -977,7 +977,7 @@ TEST_CASE("animation.transform_interpolation")
 		system_interface->SetManualTime(0.5 * t_final);
 		context->Update();
 
-		Element* element = document->GetChild(0);
+		Element* element = TestsShell::GetElementChild(document, 0);
 		String transform_str = element->GetProperty<String>("transform");
 		CAPTURE(test.from);
 		CAPTURE(test.to);

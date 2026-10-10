@@ -150,7 +150,8 @@ static const Vector<QuerySelector> query_selectors =
 	{ ":last-of-type",               "Y A D1 E F0 H AttrEsc I" },
 	{ ":only-child",                 "F0",              SelectorOp::RemoveElementsByIds,  "D0",    "D1 F0" },
 	{ ":only-of-type",               "Y A E F0 I" },
-	{ "span:empty",                  "Y D0 F0" },
+	// D0 holds white space, which the fork keeps as text (docs/html-ui/FORK.md P2-8): not empty, as in browsers.
+	{ "span:empty",                  "Y F0" },
 
 	{ ".hello.world, #P span, #I",   "Z D0 D1 F0 H I",  SelectorOp::RemoveClasses,        "world", "D0 D1 F0 I" },
 	{ "body * span",                 "D0 D1 F0" },

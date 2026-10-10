@@ -8,6 +8,7 @@
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementScroll.h>
 #include <RmlUi/Core/Factory.h>
+#include <RmlUi/Core/StringUtilities.h>
 #include <doctest.h>
 
 using namespace Rml;
@@ -132,7 +133,7 @@ TEST_CASE("Element")
 	context->Update();
 	context->Render();
 
-	Element* div = document->GetFirstChild();
+	Element* div = TestsShell::GetElementChild(document, 0);
 	Element* span = div->GetChild(1);
 	REQUIRE(div);
 	REQUIRE(div->GetTagName() == "div");
@@ -228,7 +229,7 @@ TEST_CASE("Element")
 
 	SUBCASE("CloneManual")
 	{
-		Element* element = document->GetFirstChild();
+		Element* element = TestsShell::GetElementChild(document, 0);
 		REQUIRE(element->GetProperty<String>("background-color") == "#ff0000");
 		CHECK(element->Clone()->GetProperty<String>("background-color") == "#ff0000");
 
@@ -248,7 +249,7 @@ TEST_CASE("Element")
 
 	SUBCASE("SetInnerRML")
 	{
-		Element* element = document->GetFirstChild();
+		Element* element = TestsShell::GetElementChild(document, 0);
 		CHECK(element->GetInnerRML() == "This is a <span>sample</span>.");
 		element->SetInnerRML("text");
 		CHECK(element->GetInnerRML() == "text");
@@ -265,25 +266,26 @@ TEST_CASE("Element")
 
 	SUBCASE("GetInnerRML")
 	{
+		// The document's white space around the div is kept as text (fork, docs/html-ui/FORK.md P2-8).
 		String inner_rml;
 
-		inner_rml = document->GetInnerRML();
+		inner_rml = StringUtilities::StripWhitespace(document->GetInnerRML());
 		CHECK(inner_rml == R"(<div style="background-color: #ff0000;">This is a <span>sample</span>.</div>)");
 
 		div->SetProperty("background-color", "white");
-		inner_rml = document->GetInnerRML();
+		inner_rml = StringUtilities::StripWhitespace(document->GetInnerRML());
 		CHECK(inner_rml == R"(<div style="background-color: #ffffff;">This is a <span>sample</span>.</div>)");
 
 		div->RemoveProperty("background-color");
-		inner_rml = document->GetInnerRML();
+		inner_rml = StringUtilities::StripWhitespace(document->GetInnerRML());
 		CHECK(inner_rml == R"(<div>This is a <span>sample</span>.</div>)");
 
 		div->SetProperty("cursor", "x<y");
-		inner_rml = document->GetInnerRML();
+		inner_rml = StringUtilities::StripWhitespace(document->GetInnerRML());
 		CHECK(inner_rml == R"(<div style="cursor: x&lt;y;">This is a <span>sample</span>.</div>)");
 
 		span->SetProperty("font-weight", "bold");
-		inner_rml = document->GetInnerRML();
+		inner_rml = StringUtilities::StripWhitespace(document->GetInnerRML());
 		CHECK(inner_rml == R"(<div style="cursor: x&lt;y;">This is a <span style="font-weight: bold;">sample</span>.</div>)");
 	}
 
@@ -291,15 +293,15 @@ TEST_CASE("Element")
 	{
 		String inner_rml;
 
-		inner_rml = document->GetInnerRML();
+		inner_rml = StringUtilities::StripWhitespace(document->GetInnerRML());
 		CHECK(inner_rml == R"(<div style="background-color: #ff0000;">This is a <span>sample</span>.</div>)");
 
 		div->InsertBefore(document->CreateElement("img"), span);
-		inner_rml = document->GetInnerRML();
+		inner_rml = StringUtilities::StripWhitespace(document->GetInnerRML());
 		CHECK(inner_rml == R"(<div style="background-color: #ff0000;">This is a <img /><span>sample</span>.</div>)");
 
 		div->InsertBefore(document->CreateElement("button"), nullptr)->SetInnerRML("Click me");
-		inner_rml = document->GetInnerRML();
+		inner_rml = StringUtilities::StripWhitespace(document->GetInnerRML());
 		CHECK(inner_rml == R"(<div style="background-color: #ff0000;">This is a <img /><span>sample</span>.<button>Click me</button></div>)");
 	}
 

@@ -671,7 +671,7 @@ TEST_CASE("decorator.gradients_and_shader")
 
 	ElementDocument* document = context->LoadDocumentFromMemory(document_gradients_rml);
 	REQUIRE(document);
-	auto div = document->GetChild(0);
+	auto div = TestsShell::GetElementChild(document, 0);
 	REQUIRE(div);
 
 	document->Show();

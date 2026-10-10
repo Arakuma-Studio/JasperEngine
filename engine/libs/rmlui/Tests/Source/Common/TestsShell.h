@@ -2,8 +2,9 @@
 
 #include <RmlUi/Core/Types.h>
 namespace Rml {
+class Element;
 class RenderInterface;
-}
+} // namespace Rml
 class TestsRenderInterface;
 class TestsSystemInterface;
 
@@ -33,5 +34,12 @@ Rml::String GetRenderStats();
 TestsRenderInterface* GetTestsRenderInterface();
 void ResetTestsRenderInterface();
 TestsSystemInterface* GetTestsSystemInterface();
+
+// The fork keeps white-space-only text between elements as text elements (CSS Text 3: it is a space between
+// inline-level boxes; docs/html-ui/FORK.md P2-8). These walk the children of an element without them, like the DOM's
+// 'children': the child at 'index', the number of such children, and the next such sibling.
+Rml::Element* GetElementChild(Rml::Element* parent, int index);
+int GetNumElementChildren(Rml::Element* parent);
+Rml::Element* GetNextElementSibling(Rml::Element* element);
 
 } // namespace TestsShell

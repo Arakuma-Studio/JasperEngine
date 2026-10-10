@@ -154,21 +154,21 @@ TEST_CASE("Layout.ScrollableOverflow.MarginTriggersScrollbar")
 	document->Show();
 	TestsShell::RenderLoop();
 
-	CHECK(document->GetChild(0)->GetScrollHeight() == doctest::Approx(115.f));
-	CHECK(document->GetChild(0)->GetClientWidth() == doctest::Approx(100.f - 15.f)); // Height - Scrollbar
+	CHECK(TestsShell::GetElementChild(document, 0)->GetScrollHeight() == doctest::Approx(115.f));
+	CHECK(TestsShell::GetElementChild(document, 0)->GetClientWidth() == doctest::Approx(100.f - 15.f)); // Height - Scrollbar
 
-	CHECK(document->GetChild(1)->GetScrollHeight() == doctest::Approx(115.f));
-	CHECK(document->GetChild(1)->GetClientWidth() == doctest::Approx(100.f - 15.f)); // Height - Scrollbar
+	CHECK(TestsShell::GetElementChild(document, 1)->GetScrollHeight() == doctest::Approx(115.f));
+	CHECK(TestsShell::GetElementChild(document, 1)->GetClientWidth() == doctest::Approx(100.f - 15.f)); // Height - Scrollbar
 
-	CHECK(document->GetChild(2)->GetScrollWidth() == doctest::Approx(115.f));
-	CHECK(document->GetChild(2)->GetClientHeight() == doctest::Approx(100.f - 15.f)); // Width - Scrollbar
+	CHECK(TestsShell::GetElementChild(document, 2)->GetScrollWidth() == doctest::Approx(115.f));
+	CHECK(TestsShell::GetElementChild(document, 2)->GetClientHeight() == doctest::Approx(100.f - 15.f)); // Width - Scrollbar
 
 	// The last two items fits just about, no scrollbars should appear.
-	CHECK(document->GetChild(3)->GetScrollHeight() == doctest::Approx(100.f));
-	CHECK(document->GetChild(3)->GetClientWidth() == doctest::Approx(100.f)); // No scrollbar.
+	CHECK(TestsShell::GetElementChild(document, 3)->GetScrollHeight() == doctest::Approx(100.f));
+	CHECK(TestsShell::GetElementChild(document, 3)->GetClientWidth() == doctest::Approx(100.f)); // No scrollbar.
 
-	CHECK(document->GetChild(4)->GetScrollHeight() == doctest::Approx(100.f));
-	CHECK(document->GetChild(4)->GetClientWidth() == doctest::Approx(100.f)); // No scrollbar.
+	CHECK(TestsShell::GetElementChild(document, 4)->GetScrollHeight() == doctest::Approx(100.f));
+	CHECK(TestsShell::GetElementChild(document, 4)->GetClientWidth() == doctest::Approx(100.f)); // No scrollbar.
 
 	document->Close();
 	TestsShell::ShutdownShell();
@@ -213,7 +213,7 @@ TEST_CASE("Layout.ScrollableOverflow.AutoHeightHorizontalScrollbar")
 	for (int i = 0; i < 2; i++)
 	{
 		INFO("Scroller: " << i);
-		Element* e = document->GetChild(i);
+		Element* e = TestsShell::GetElementChild(document, i);
 		CHECK(e->GetClientWidth() == doctest::Approx(120.f)); // No vertical scrollbar.
 		CHECK(e->GetClientHeight() == doctest::Approx(60.f)); // Container height - scrollbar height.
 		CHECK(e->GetScrollWidth() == doctest::Approx(240.f));
@@ -223,7 +223,7 @@ TEST_CASE("Layout.ScrollableOverflow.AutoHeightHorizontalScrollbar")
 	for (int i = 2; i < 4; i++)
 	{
 		INFO("Scroller: " << i);
-		Element* e = document->GetChild(i);
+		Element* e = TestsShell::GetElementChild(document, i);
 		CHECK(e->GetClientWidth() == doctest::Approx(105.f)); // Container width - vertical scrollbar.
 		CHECK(e->GetClientHeight() == doctest::Approx(65.f)); // Container height - horizontal scrollbar.
 	}

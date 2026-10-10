@@ -34,8 +34,8 @@ TEST_CASE("elementimage.dp_ratio")
 	Context* context = TestsShell::GetContext();
 	ElementDocument* document = context->LoadDocumentFromMemory(document_wrapped_image_rml, "assets/");
 
-	Element* div = document->GetChild(0);
-	Element* img = div->GetChild(0);
+	Element* div = TestsShell::GetElementChild(document, 0);
+	Element* img = TestsShell::GetElementChild(div, 0);
 
 	document->Show();
 	const float img_width = img->GetClientWidth();
@@ -54,7 +54,7 @@ TEST_CASE("elementimage.dp_ratio")
 
 		context->SetDensityIndependentPixelRatio(4.f);
 		Element* clone_div = document->AppendChild(std::move(clone_ptr));
-		Element* clone_img = clone_div->GetChild(0);
+		Element* clone_img = TestsShell::GetElementChild(clone_div, 0);
 		context->Update();
 
 		CHECK(clone_img->GetClientWidth() == 4.f * img_width);

@@ -912,12 +912,12 @@ TEST_CASE("data_binding.data_model_on_body")
 	CHECK(document->GetElementById("array_size")->GetInnerRML() == Rml::ToString(array.size()));
 	CHECK(document->GetElementById("array_empty")->GetAttribute<bool>("empty", true) == array.empty());
 
-	Element* element = document->GetElementById("array_empty")->GetNextSibling();
+	Element* element = TestsShell::GetNextElementSibling(document->GetElementById("array_empty"));
 	size_t i = 0;
 	for (; i < array.size() && element; ++i)
 	{
 		CHECK(element->GetInnerRML() == Rml::CreateString("%zu: %d", i, array[i]));
-		element = element->GetNextSibling();
+		element = TestsShell::GetNextElementSibling(element);
 	}
 	CHECK(i == array.size());
 

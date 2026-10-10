@@ -5,6 +5,7 @@
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementText.h>
 #include <RmlUi/Core/Factory.h>
+#include <RmlUi/Core/StringUtilities.h>
 #include <doctest.h>
 
 using namespace Rml;
@@ -108,11 +109,12 @@ TEST_CASE("XMLParser.escaping_tags")
 
 	TestsShell::RenderLoop();
 
-	CHECK(document->GetNumChildren() == 1);
-	CHECK(document->GetFirstChild()->GetTagName() == "#text");
+	// The white space before <rml> is kept as a text element of the document (fork, docs/html-ui/FORK.md P2-8).
+	CHECK(TestsShell::GetNumElementChildren(document) == 1);
+	CHECK(TestsShell::GetElementChild(document, 0)->GetTagName() == "#text");
 	// Text-access should yield decoded value, while RML-access should yield encoded value
-	CHECK(static_cast<ElementText*>(document->GetFirstChild())->GetText() == "<p>&lt;span/&gt;</p>");
-	CHECK(document->GetInnerRML() == "&lt;p&gt;&amp;lt;span/&amp;gt;&lt;/p&gt;");
+	CHECK(static_cast<ElementText*>(TestsShell::GetElementChild(document, 0))->GetText() == "<p>&lt;span/&gt;</p>");
+	CHECK(StringUtilities::StripWhitespace(document->GetInnerRML()) == "&lt;p&gt;&amp;lt;span/&amp;gt;&lt;/p&gt;");
 
 	document->Close();
 	TestsShell::ShutdownShell();
@@ -161,7 +163,8 @@ TEST_CASE("XMLParser.comments_and_cdata")
 		ElementDocument* document = context->LoadDocumentFromMemory(document_source_pre + test.rml + document_source_post);
 		REQUIRE(document);
 
-		CHECK(document->GetInnerRML() == test.expected_parsed_rml);
+		// The white space before <rml> is kept as a text element of the document (fork, docs/html-ui/FORK.md P2-8).
+		CHECK(StringUtilities::StripWhitespace(document->GetInnerRML()) == test.expected_parsed_rml);
 
 		document->Close();
 		context->Update();

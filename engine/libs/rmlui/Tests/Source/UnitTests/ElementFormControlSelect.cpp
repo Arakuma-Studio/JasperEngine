@@ -170,9 +170,9 @@ TEST_CASE("form.select.value")
 		document->SetInnerRML(test.rml);
 		context->Update();
 
-		REQUIRE(document->GetNumChildren() == 1);
+		REQUIRE(TestsShell::GetNumElementChildren(document) == 1);
 
-		ElementFormControlSelect* select_element = rmlui_dynamic_cast<ElementFormControlSelect*>(document->GetFirstChild());
+		ElementFormControlSelect* select_element = rmlui_dynamic_cast<ElementFormControlSelect*>(TestsShell::GetElementChild(document, 0));
 		REQUIRE(select_element);
 
 		const String value = select_element->GetValue();
@@ -299,9 +299,9 @@ TEST_CASE("form.select.data_binding")
 
 		Element* wrapper_element = document->GetElementById("select_wrap");
 		REQUIRE(wrapper_element);
-		REQUIRE(wrapper_element->GetNumChildren() == 1);
+		REQUIRE(TestsShell::GetNumElementChildren(wrapper_element) == 1);
 
-		ElementFormControlSelect* select_element = rmlui_dynamic_cast<ElementFormControlSelect*>(wrapper_element->GetFirstChild());
+		ElementFormControlSelect* select_element = rmlui_dynamic_cast<ElementFormControlSelect*>(TestsShell::GetElementChild(wrapper_element, 0));
 		REQUIRE(select_element);
 
 		const String value = select_element->GetValue();
@@ -355,9 +355,9 @@ TEST_CASE("form.select.data-for")
 
 		Element* wrapper_element = document->GetElementById("select_wrap");
 		REQUIRE(wrapper_element);
-		REQUIRE(wrapper_element->GetNumChildren() == 1);
+		REQUIRE(TestsShell::GetNumElementChildren(wrapper_element) == 1);
 
-		ElementFormControlSelect* select_element = rmlui_dynamic_cast<ElementFormControlSelect*>(wrapper_element->GetFirstChild());
+		ElementFormControlSelect* select_element = rmlui_dynamic_cast<ElementFormControlSelect*>(TestsShell::GetElementChild(wrapper_element, 0));
 		REQUIRE(select_element);
 
 		{
