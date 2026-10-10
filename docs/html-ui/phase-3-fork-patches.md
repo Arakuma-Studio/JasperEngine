@@ -1859,7 +1859,8 @@ or makes precise §3.2 and §3.3):
   per channel, as Chromium 153 does (no CSS gamut mapping); channels round. `currentcolor` is
   `Property{Unit::KEYWORD, PropertyParserColour::CurrentColor}` in plain colour properties and a
   `current_color` flag of `BoxShadow` and `ColorStop`; no per-element id set is kept: the
-  `ComputeValues` loop replaces the keyword (every local property is visited there anyway) and
+  `ComputeValues` loop replaces the keyword (every local property is visited there anyway),
+  computing `color` at the first one it meets rather than in a pre-pass of every element, and
   reports the properties holding one changed when `color` is dirty. A shadow without a colour is
   `currentcolor` (CSS; 6.3 drew it black). Font effects and filters are instanced without an
   element: there `currentcolor` is black, and compat keeps its companion for them.
