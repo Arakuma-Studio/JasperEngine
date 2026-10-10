@@ -128,7 +128,8 @@ async def test_element_api(ed: Editor):
                doc:getElementById('list').childElementCount - 1, #doc:querySelectorAll('.row') - 1,
                doc:querySelector('#gold').textContent, doc:getElementById('nope') == nil, doc.title
     """)
-    ed.check_eq(values, ["button", "div", "Click", True, "170px", 2, 2, "10", True, "lua"], "element API")
+    # an .html document: tagName is the DOM's, upper case (phase 2, compat layer hook H5)
+    ed.check_eq(values, ["button", "DIV", "Click", True, "170px", 2, 2, "10", True, "lua"], "element API")
 
     values = await lua(ed, """
         local doc = object('Menu', 'UIDocument')
@@ -433,7 +434,11 @@ async def test_lottie_setup(ed: Editor):
     await ed.call("create_script", kind="lua", name="LottieScript", content=LOTTIE_SCRIPT,
                   scene=S["lottie_scene"], entity=ent["entity_id"])
     await ed.call("save_scene", scene=S["lottie_scene"], path="scenes/HtmlUiLottie")
-    started = await ed.call("play", action="start", scene=S["lottie_scene"])
+    # A fixed UI clock, frozen between the calls: the checks below count frames ("10 frames
+    # after play() the animation is still playing"), and on the measured clock a loaded host's
+    # frames last up to 0.25 s (Engine::maxDeltatime), so the 2 s animation was over within
+    # those 10 frames and "play then pause" failed now and then.
+    started = await ed.call("play", action="start", scene=S["lottie_scene"], fixed_fps=60, auto_pause=True)
     ed.check(started, "play started")
     await ed.call("wait", frames=3)
 
@@ -506,4 +511,5 @@ async def test_lottie_control_and_events(ed: Editor):
         errors = await anime_errors(ed)
         ed.check(any("is not a <lottie> element" in e for e in errors), f"play() on a <div>: {errors}")
     finally:
-        await ed.call("play", action="stop")
+        # (the clock options outlive a stop: back to the measured clock for the tests after)
+        await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)

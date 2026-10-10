@@ -61,8 +61,9 @@ void InlineLevelBox::SetHeightAndVerticalAlignment(float _height_above_baseline,
 	{
 	case VerticalAlign::Baseline: parent_baseline_offset = 0.f; break;
 	case VerticalAlign::Length: parent_baseline_offset = -vertical_align.value; break;
-	case VerticalAlign::Sub: parent_baseline_offset = (1.f / 5.f) * (float)parent->GetFontMetrics().size; break;
-	case VerticalAlign::Super: parent_baseline_offset = (-1.f / 3.f) * (float)parent->GetFontMetrics().size; break;
+	// sub and super shift by the browsers' amounts (CSS leaves them open): a fifth / a third of the parent's font size, plus 1px
+	case VerticalAlign::Sub: parent_baseline_offset = (1.f / 5.f) * (float)parent->GetFontMetrics().size + 1.f; break;
+	case VerticalAlign::Super: parent_baseline_offset = (-1.f / 3.f) * (float)parent->GetFontMetrics().size - 1.f; break;
 	case VerticalAlign::TextTop:
 		parent_baseline_offset = -parent->GetFontMetrics().ascent;
 		self_baseline_offset = height_above_baseline;

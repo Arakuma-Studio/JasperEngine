@@ -77,6 +77,22 @@ namespace jasperengine{
         // detaches it from its element (it is deleted)
         void remove();
 
+        // The document whose <script type="text/lua"> is running (phase 2): a listener attached
+        // meanwhile is that script's. When its document reloads, the script runs again and
+        // attaches it again, so it is removed with the old document instead of moved to the
+        // new elements (moved, every reload added one more copy of it).
+        class JASPERENGINE_INTERNAL ScriptScope {
+        public:
+            explicit ScriptScope(const Rml::Element* document);
+            ~ScriptScope();
+            ScriptScope(const ScriptScope&) = delete;
+            ScriptScope& operator=(const ScriptScope&) = delete;
+        private:
+            const Rml::Element* previous;
+        };
+        // the document whose script attached this listener; nullptr for any other listener
+        const Rml::Element* getScriptDocument() const { return scriptDocument; }
+
         void ProcessEvent(Rml::Event& event) override;
         void OnAttach(Rml::Element* element) override;
         void OnDetach(Rml::Element* element) override;
@@ -95,6 +111,7 @@ namespace jasperengine{
         Callback callback;
         Rml::ObserverPtr<Rml::Element> element;
         Rml::Element* registeredOn = nullptr;   // key in the per-element registry
+        const Rml::Element* scriptDocument = nullptr;   // see ScriptScope
         int dispatching = 0;   // ProcessEvent depth: deletion waits for it
         bool detached = false;
     };

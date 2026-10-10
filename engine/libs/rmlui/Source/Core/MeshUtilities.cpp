@@ -90,7 +90,7 @@ void MeshUtilities::GenerateBackgroundBorder(Mesh& out_mesh, const RenderBox& re
 		geometry.DrawBackground(metrics, background_color);
 
 	if (has_border)
-		geometry.DrawBorder(metrics, border_widths, border_colors);
+		geometry.DrawBorder(metrics, border_widths, border_colors, render_box.GetBorderTopGap());
 
 #if 0
 	// Debug draw vertices

@@ -1,0 +1,2 @@
+.from-base { color: red; }
+@import url("nested.css");

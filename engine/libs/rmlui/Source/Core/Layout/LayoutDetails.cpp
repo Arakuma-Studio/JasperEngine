@@ -1,6 +1,8 @@
 #include "LayoutDetails.h"
 #include "../../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../../Include/RmlUi/Core/Element.h"
+#include "../../../Include/RmlUi/Core/ElementText.h"
+#include "../../../Include/RmlUi/Core/StringUtilities.h"
 #include "../../../Include/RmlUi/Core/ElementScroll.h"
 #include "../../../Include/RmlUi/Core/ElementText.h"
 #include "../../../Include/RmlUi/Core/Math.h"
@@ -10,7 +12,21 @@
 #include "LayoutEngine.h"
 #include <float.h>
 
+#include <algorithm>
+
 namespace Rml {
+
+bool LayoutDetails::IsCollapsibleWhiteSpaceText(Element* element)
+{
+	ElementText* text = rmlui_dynamic_cast<ElementText*>(element);
+	if (!text)
+		return false;
+	const Style::WhiteSpace white_space = element->GetComputedValues().white_space();
+	if (white_space == Style::WhiteSpace::Pre || white_space == Style::WhiteSpace::Prewrap)
+		return false;
+	const String& value = text->GetText();
+	return std::all_of(value.begin(), value.end(), &StringUtilities::IsWhitespace);
+}
 
 // Convert width or height of a border box to the width or height of its corresponding content box.
 static inline float BorderSizeToContentSize(float border_size, float border_padding_edges_size)

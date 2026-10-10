@@ -1,0 +1,24 @@
+body#htmlui-root {
+--gap: 16px;
+--cols: 3;
+--mixed: 10px;
+}
+#htmlui-root .em-mix {
+font-size: 20px;
+}
+#htmlui-root .var-static {
+gap: calc(var(--gap) * 2);
+flex-basis: calc(100% / var(--cols));
+}
+#htmlui-root .var-dynamic {
+width: calc(var(--runtime) + 10px);
+}
+#htmlui-root .math {
+height: 20px;
+opacity: 0.5;
+margin: 3px;
+}
+#htmlui-root .var-calc {
+--mixed: 12px;
+padding: calc(var(--mixed) + 1px);
+}

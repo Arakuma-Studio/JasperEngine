@@ -71,7 +71,7 @@ namespace {
             fs::create_directories(dir);
             fs::copy_file(fs::path(JASPER_HTMLUI_TEST_SOURCE_DIR) / "fixtures/common/checker.png", dir / "pic.png");
             write("reload.css", reloadCss);
-            write("reload.html", reloadHtml());
+            write("reload.rml", reloadHtml());
         }
 
         void TearDown() override{
@@ -119,11 +119,11 @@ namespace {
 TEST_F(UIDocumentReloadTest, DocumentFilesAndLoadCount){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
-    UIDocument document = fixture.addDocument(path("reload.html"));
+    UIDocument document = fixture.addDocument(path("reload.rml"));
 
     // before the first load: what the scanner sees
     std::vector<std::string> files = allFiles(scene, document.getEntity());
-    EXPECT_TRUE(contains(files, path("reload.html")));
+    EXPECT_TRUE(contains(files, path("reload.rml")));
     EXPECT_TRUE(contains(files, path("reload.css")));
     EXPECT_TRUE(contains(files, path("pic.png")));
     EXPECT_EQ(documentSystem(scene).getLoadCount(document.getEntity()), 0u);
@@ -136,7 +136,7 @@ TEST_F(UIDocumentReloadTest, DocumentFilesAndLoadCount){
     // the document first, its stylesheet and image, nothing twice
     files = allFiles(scene, document.getEntity());
     ASSERT_FALSE(files.empty());
-    EXPECT_EQ(files[0], path("reload.html"));
+    EXPECT_EQ(files[0], path("reload.rml"));
     EXPECT_TRUE(contains(files, path("reload.css")));
     EXPECT_TRUE(contains(files, path("pic.png")));
     std::vector<std::string> sorted = files;
@@ -157,7 +157,7 @@ TEST_F(UIDocumentReloadTest, DocumentFilesAndLoadCount){
 TEST_F(UIDocumentReloadTest, StyleSheetChangeKeepsTheDom){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
-    UIDocument document = fixture.addDocument(path("reload.html"));
+    UIDocument document = fixture.addDocument(path("reload.rml"));
     updateDocuments(scene);
     ASSERT_TRUE(document.isLoaded());
 
@@ -193,7 +193,7 @@ TEST_F(UIDocumentReloadTest, StyleSheetChangeKeepsTheDom){
 TEST_F(UIDocumentReloadTest, DocumentChangeKeepsScrollFocusAndValues){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
-    UIDocument document = fixture.addDocument(path("reload.html"));
+    UIDocument document = fixture.addDocument(path("reload.rml"));
     UIDocumentComponent& component = document.getComponent<UIDocumentComponent>();
     int loads = 0;
     int unloads = 0;
@@ -220,7 +220,7 @@ TEST_F(UIDocumentReloadTest, DocumentChangeKeepsScrollFocusAndValues){
     const float scrollTop = list->GetScrollTop();
     UIElement handleWithoutReload = document.getElementById("box");
 
-    write("reload.html", reloadHtml("    <p id=\"added\">new paragraph</p>\n"));
+    write("reload.rml", reloadHtml("    <p id=\"added\">new paragraph</p>\n"));
     const std::vector<UIDocumentSystem::Reloaded> reloaded = documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity()));
     ASSERT_EQ(reloaded.size(), 1u);
     EXPECT_FALSE(reloaded[0].stylesheetOnly);
@@ -264,7 +264,7 @@ TEST_F(UIDocumentReloadTest, DocumentChangeKeepsScrollFocusAndValues){
 TEST_F(UIDocumentReloadTest, ReloadDocumentWithoutStateAndBeforeLoad){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
-    UIDocument document = fixture.addDocument(path("reload.html"));
+    UIDocument document = fixture.addDocument(path("reload.rml"));
 
     // not loaded yet: a plain load
     documentSystem(scene).reloadDocument(document.getEntity(), true);
@@ -287,12 +287,12 @@ TEST_F(UIDocumentReloadTest, ReloadDocumentWithoutStateAndBeforeLoad){
 TEST_F(UIDocumentReloadTest, BrokenReloadUnloadsAndFixingItLoads){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
-    UIDocument document = fixture.addDocument(path("reload.html"));
+    UIDocument document = fixture.addDocument(path("reload.rml"));
     updateDocuments(scene);
     ASSERT_TRUE(document.isLoaded());
 
-    fs::remove(dir / "reload.html");
-    const std::vector<UIDocumentSystem::Reloaded> reloaded = documentSystem(scene).reloadChangedFiles({path("reload.html")});
+    fs::remove(dir / "reload.rml");
+    const std::vector<UIDocumentSystem::Reloaded> reloaded = documentSystem(scene).reloadChangedFiles({path("reload.rml")});
     ASSERT_EQ(reloaded.size(), 1u);
     EXPECT_FALSE(document.isLoaded());
     EXPECT_TRUE(document.getComponent<UIDocumentComponent>().loadFailed);
@@ -303,18 +303,18 @@ TEST_F(UIDocumentReloadTest, BrokenReloadUnloadsAndFixingItLoads){
     TestSystem::get().clearLogs();
 
     // the file comes back: its stamp changed again
-    write("reload.html", reloadHtml());
-    ASSERT_EQ(documentSystem(scene).reloadChangedFiles({path("reload.html")}).size(), 1u);
+    write("reload.rml", reloadHtml());
+    ASSERT_EQ(documentSystem(scene).reloadChangedFiles({path("reload.rml")}).size(), 1u);
     EXPECT_TRUE(document.isLoaded());
     EXPECT_TRUE(documentSystem(scene).getDocumentMessages(document.getEntity()).empty());
     EXPECT_EQ(errors(), 0u);
 }
 
 TEST_F(UIDocumentReloadTest, MissingStyleSheetCreatedLater){
-    write("late.html", "<html><head><link type=\"text/css\" href=\"late.css\"/></head><body><div id=\"box\"></div></body></html>\n");
+    write("late.rml", "<html><head><link type=\"text/css\" href=\"late.css\"/></head><body><div id=\"box\"></div></body></html>\n");
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
-    UIDocument document = fixture.addDocument(path("late.html"));
+    UIDocument document = fixture.addDocument(path("late.rml"));
     updateDocuments(scene);
     ASSERT_TRUE(document.isLoaded());
     // the missing sheet is a dependency too
@@ -333,7 +333,7 @@ TEST_F(UIDocumentReloadTest, MissingStyleSheetCreatedLater){
 TEST_F(UIDocumentReloadTest, ImageChangeKeepsTheDocument){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
-    UIDocument document = fixture.addDocument(path("reload.html"));
+    UIDocument document = fixture.addDocument(path("reload.rml"));
     updateDocuments(scene);
     Rml::ElementDocument* rml = documentSystem(scene).getDocument(document.getEntity());
 
@@ -351,10 +351,10 @@ TEST_F(UIDocumentReloadTest, FontChangeReloadsTheDocument){
     fs::copy_file(fs::path(JASPER_HTMLUI_TEST_SOURCE_DIR) / "fixtures/fonts/Roboto-Bold.ttf", dir / "face.ttf");
     // RmlUi 6.3 opens a bare @font-face src as it is (from the asset root): an absolute path here
     write("font.css", "@font-face { font-family: Face; src: " + path("face.ttf") + "; }\nbody { display: block; font-family: Face; font-size: 20px; }\n");
-    write("font.html", "<html><head><link type=\"text/css\" href=\"font.css\"/></head><body><p id=\"text\">Text</p></body></html>\n");
+    write("font.rml", "<html><head><link type=\"text/css\" href=\"font.css\"/></head><body><p id=\"text\">Text</p></body></html>\n");
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
-    UIDocument document = fixture.addDocument(path("font.html"));
+    UIDocument document = fixture.addDocument(path("font.rml"));
     updateDocuments(scene);
     ASSERT_TRUE(document.isLoaded());
     EXPECT_TRUE(contains(allFiles(scene, document.getEntity()), path("face.ttf")));
@@ -371,7 +371,7 @@ TEST_F(UIDocumentReloadTest, FontChangeReloadsTheDocument){
 }
 
 TEST_F(UIDocumentReloadTest, MessagesOfTheDocument){
-    write("broken.html",
+    write("broken.rml",
           "<html>\n"
           "<head><link type=\"text/css\" href=\"reload.css\"/></head>\n"
           "<body>\n"
@@ -380,8 +380,8 @@ TEST_F(UIDocumentReloadTest, MessagesOfTheDocument){
           "</html>\n");
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
-    UIDocument good = fixture.addDocument(path("reload.html"));
-    UIDocument broken = fixture.addDocument(path("broken.html"));
+    UIDocument good = fixture.addDocument(path("reload.rml"));
+    UIDocument broken = fixture.addDocument(path("broken.rml"));
     updateDocuments(scene);
 
     EXPECT_TRUE(documentSystem(scene).getDocumentMessages(good.getEntity()).empty());
@@ -390,7 +390,7 @@ TEST_F(UIDocumentReloadTest, MessagesOfTheDocument){
     bool located = false;
     for (const HtmlUIMessage& message : messages){
         EXPECT_NE(message.level, HtmlUIMessageLevel::Info);
-        if (message.file == path("broken.html") && message.line == 4)
+        if (message.file == path("broken.rml") && message.line == 4)
             located = true;
     }
     EXPECT_TRUE(located) << messages.front().text;
@@ -402,9 +402,9 @@ TEST_F(UIDocumentReloadTest, MessagesOfTheDocument){
 TEST_F(UIDocumentReloadTest, StampsAreSharedBetweenCallers){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
-    UIDocument a = fixture.addDocument(path("reload.html"));
-    write("other.html", "<html><head><link type=\"text/css\" href=\"reload.css\"/></head><body/></html>\n");
-    UIDocument b = fixture.addDocument(path("other.html"));
+    UIDocument a = fixture.addDocument(path("reload.rml"));
+    write("other.rml", "<html><head><link type=\"text/css\" href=\"reload.css\"/></head><body/></html>\n");
+    UIDocument b = fixture.addDocument(path("other.rml"));
     updateDocuments(scene);
 
     // both documents use the sheet: both restyle, once
@@ -415,8 +415,8 @@ TEST_F(UIDocumentReloadTest, StampsAreSharedBetweenCallers){
     EXPECT_TRUE(documentSystem(scene).reloadChangedFiles({path("reload.css")}).empty());
 
     // only b's own file
-    write("other.html", "<html><head><link type=\"text/css\" href=\"reload.css\"/></head><body><p/></body></html>\n");
-    reloaded = documentSystem(scene).reloadChangedFiles({path("reload.css"), path("other.html"), path("reload.html")});
+    write("other.rml", "<html><head><link type=\"text/css\" href=\"reload.css\"/></head><body><p/></body></html>\n");
+    reloaded = documentSystem(scene).reloadChangedFiles({path("reload.css"), path("other.rml"), path("reload.rml")});
     ASSERT_EQ(reloaded.size(), 1u);
     EXPECT_EQ(reloaded[0].entity, b.getEntity());
     EXPECT_EQ(documentSystem(scene).getLoadCount(a.getEntity()), 2u);
@@ -425,7 +425,7 @@ TEST_F(UIDocumentReloadTest, StampsAreSharedBetweenCallers){
 }
 
 TEST_F(UIDocumentReloadTest, NextUpdateDelayWhileAnimating){
-    write("anim.html",
+    write("anim.rml",
           "<html><head><style>\n"
           "@keyframes pulse { from { opacity: 0; } to { opacity: 1; } }\n"
           "body { display: block; width: 100%; height: 100%; }\n"
@@ -437,11 +437,11 @@ TEST_F(UIDocumentReloadTest, NextUpdateDelayWhileAnimating){
     // nothing loaded: never
     EXPECT_TRUE(std::isinf(documentSystem(scene).getNextUpdateDelay()));
 
-    UIDocument still = fixture.addDocument(path("reload.html"));
+    UIDocument still = fixture.addDocument(path("reload.rml"));
     updateDocuments(scene);
     EXPECT_TRUE(std::isinf(documentSystem(scene).getNextUpdateDelay()));
 
-    UIDocument animated = fixture.addDocument(path("anim.html"));
+    UIDocument animated = fixture.addDocument(path("anim.rml"));
     updateDocuments(scene);
     updateDocuments(scene);
     EXPECT_EQ(documentSystem(scene).getNextUpdateDelay(), 0.0);
@@ -456,14 +456,14 @@ TEST_F(UIDocumentReloadTest, NextUpdateDelayWhileAnimating){
 TEST_F(UIDocumentReloadTest, DebuggerIsGlobal){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
-    fixture.addDocument(path("reload.html"));
+    fixture.addDocument(path("reload.rml"));
     updateDocuments(scene);
     ASSERT_TRUE(HtmlUI::isDebuggerCompiled());
 
     std::unique_ptr<Scene> other(new Scene());
     std::unique_ptr<UIDocument> otherDocument(new UIDocument(other.get()));
     otherDocument->setEntityOwned(false);
-    otherDocument->setFilename("ecs/second.html");
+    otherDocument->setFilename("ecs/second.rml");
     updateDocuments(*other);
 
     EXPECT_FALSE(documentSystem(scene).isDebuggerVisible());

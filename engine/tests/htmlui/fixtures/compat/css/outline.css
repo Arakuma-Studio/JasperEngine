@@ -1,0 +1,17 @@
+/* outline as the first box-shadow ring through companions */
+.solid { outline: 2px solid red; }
+.offset { outline: 2px solid red; outline-offset: 3px; }
+.negative { outline: 2px solid blue; outline-offset: -4px; }
+.none { outline: none; }
+.zero { outline: 0; }
+.style-none { outline-style: none; }
+.dashed { outline: 1px dashed green; }
+.auto { outline: auto; }
+.invert { outline: 1px solid invert; }
+.no-color { outline: 3px solid; }
+.longhands { outline-width: 4px; outline-style: solid; outline-color: #0f0; }
+.with-shadow { box-shadow: 0 2px 4px #000; outline: 1px solid white; }
+.shadow-elsewhere { box-shadow: 0 0 8px rgba(0,0,0,.5); }
+.shadow-elsewhere:focus { outline: 2px solid orange; }
+.em-offset { outline: 2px solid red; outline-offset: 0.5em; }
+.transition { transition: outline-color .2s, outline-offset 0.2s; }

@@ -1,0 +1,5 @@
+compat/html/links.html:2:113: info: link 'mailto:a@b.c' only dispatches the htmlnavigate event (there is no browser to open it) (fix: handle htmlnavigate in Lua (System:openURL is not available)) [HTMLUI-HTML-0023]
+compat/html/links.html:2:145: info: link 'img/a.png' does not point at an HTML document: it only dispatches htmlnavigate [HTMLUI-HTML-0023]
+compat/html/links.html:2:175: info: link 'javascript:void(0)' only dispatches the htmlnavigate event (there is no browser to open it) (fix: handle htmlnavigate in Lua (System:openURL is not available)) [HTMLUI-HTML-0023]
+compat/html/links.html:2:75: info: link 'https://example.com' only dispatches the htmlnavigate event (there is no browser to open it) (fix: handle htmlnavigate in Lua (System:openURL is not available)) [HTMLUI-HTML-0023]
+compat/html/links.html:4:1: info: dialogs have no modal backdrop or focus trap (showModal opens it like show) (fix: cover the screen with a positioned element behind the dialog) [HTMLUI-HTML-0025]

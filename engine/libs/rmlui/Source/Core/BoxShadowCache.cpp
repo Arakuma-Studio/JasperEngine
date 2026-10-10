@@ -76,19 +76,24 @@ static void ReleaseHandle(BoxShadowRenderable* handle)
 	handles.erase(it_handle);
 }
 
-SharedPtr<BoxShadowRenderable> BoxShadowCache::GetHandle(Element* element, const ComputedValues& computed)
+SharedPtr<BoxShadowRenderable> BoxShadowCache::GetHandle(Element* element, const ComputedValues& computed, bool include_border)
 {
 	RenderManager* render_manager = element->GetRenderManager();
 	if (!render_manager)
 		return {};
 
 	ColourbPremultiplied background_color = computed.background_color().ToPremultiplied();
-	Array<ColourbPremultiplied, 4> border_colors = {
-		computed.border_top_color().ToPremultiplied(),
-		computed.border_right_color().ToPremultiplied(),
-		computed.border_bottom_color().ToPremultiplied(),
-		computed.border_left_color().ToPremultiplied(),
-	};
+	const ColourbPremultiplied transparent(0, 0);
+	Array<ColourbPremultiplied, 4> border_colors = {transparent, transparent, transparent, transparent};
+	if (include_border)
+	{
+		border_colors = {
+			computed.border_top_color().ToPremultiplied(),
+			computed.border_right_color().ToPremultiplied(),
+			computed.border_bottom_color().ToPremultiplied(),
+			computed.border_left_color().ToPremultiplied(),
+		};
+	}
 	const CornerSizes border_radius = computed.border_radius();
 	BoxShadowGeometryInfo geom_info = GeometryBoxShadow::Resolve(element, border_radius, background_color, border_colors, computed.opacity());
 	return GetOrCreateBoxShadow(*render_manager, geom_info);

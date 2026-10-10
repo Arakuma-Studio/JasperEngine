@@ -1,0 +1,26 @@
+/* animations in the order RmlUi reads */
+.all-parts { animation: pulse 2s ease-in-out 0.5s infinite alternate both paused; }
+.ms { animation: fade 300ms; }
+.reverse { animation: slide 1s reverse; }
+.alt-reverse { animation: slide 1s infinite alternate-reverse; }
+.forwards { animation: fade .5s .2s forwards; }
+.backwards { animation: fade 1s 1s backwards; }
+.both-nodelay { animation: fade 1s both; }
+.fraction { animation: fade 1s 2.6; }
+.zero-count { animation: fade 1s 0; }
+.zero-duration { animation: fade 0s; }
+.none { animation: none; }
+.list { animation: fade 1s, pulse 2s linear infinite; }
+.longhands { animation-name: pulse; animation-duration: 1.5s; animation-iteration-count: infinite; animation-timing-function: steps(3); animation-direction: alternate; animation-play-state: paused; }
+.item { animation: fade 0.4s ease-out both; }
+.item:nth-child(2) { animation-delay: .1s; }
+.item:nth-child(3) { animation-delay: .2s; }
+.lonely { animation-duration: 3s; }
+.fill-only { animation-fill-mode: forwards; }
+.composition { animation-composition: add; animation-timeline: scroll(); }
+.quoted { animation: "my anim" 1s; }
+.bezier { animation: pulse 1s cubic-bezier(.17,.67,.83,.67); }
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes pulse { 0%, 100% { transform: scale(1) } 50% { transform: scale(1.1) } }
+@keyframes slide { 0% { left: 0 } 30% { left: 50px } 100% { left: 100px } }
+@keyframes "my anim" { to { opacity: .5 } }

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- golden page (phase-2 spec 5.3): needs the phase-3 fork for CSS Grid and ::before; until
+     then only the diagnostics snapshot and a no-crash render run -->
+<meta name="htmlui-test-requires" content="grid, pseudo-elements">
+<title>Inventory</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root {
+    --common: #9ca3af;
+    --uncommon: #22c55e;
+    --rare: #3b82f6;
+    --epic: #a855f7;
+    --legendary: #f59e0b;
+    --slot: #1f2937;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    height: 100vh;
+    font-family: 'Inter', sans-serif;
+    line-height: 1.4;
+    color: #f3f4f6;
+    background: radial-gradient(circle at 70% 20%, #3f1d38 0%, #111827 60%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+  }
+
+  .inventory {
+    padding: 20px;
+    background: rgba(17, 24, 39, 0.92);
+    border: 1px solid #374151;
+    border-radius: 14px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+  }
+
+  .inventory-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 14px;
+  }
+
+  .inventory-header h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    letter-spacing: 2px;
+  }
+
+  .gold { color: #fbbf24; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+  .gold svg { width: 16px; height: 16px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(6, 64px);
+    grid-auto-rows: 64px;
+    gap: 8px;
+  }
+
+  .slot {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--slot);
+    border: 2px solid #374151;
+    border-radius: 8px;
+  }
+
+  .slot svg { width: 30px; height: 30px; color: #e5e7eb; }
+
+  .slot.common { border-color: var(--common); }
+  .slot.uncommon { border-color: var(--uncommon); box-shadow: inset 0 0 12px rgba(34, 197, 94, 0.35); }
+  .slot.rare { border-color: var(--rare); box-shadow: inset 0 0 12px rgba(59, 130, 246, 0.4); }
+  .slot.epic { border-color: var(--epic); box-shadow: inset 0 0 14px rgba(168, 85, 247, 0.45); }
+  .slot.legendary { border-color: var(--legendary); box-shadow: 0 0 12px rgba(245, 158, 11, 0.6), inset 0 0 14px rgba(245, 158, 11, 0.45); }
+
+  .slot.selected { outline: 2px solid #ffffff; outline-offset: 2px; }
+
+  /* quantity badge */
+  .slot[data-qty]::before {
+    content: attr(data-qty);
+    position: absolute;
+    right: 4px;
+    bottom: 2px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #ffffff;
+    text-shadow: 0 1px 2px #000;
+  }
+
+  /* new-item dot */
+  .slot.new::before {
+    content: "";
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ef4444;
+    border: 2px solid #111827;
+  }
+
+  .tooltip {
+    width: 280px;
+    padding: 16px 18px;
+    background: linear-gradient(180deg, rgba(30, 27, 75, 0.97), rgba(17, 24, 39, 0.97));
+    border: 1px solid var(--legendary);
+    border-radius: 10px;
+    box-shadow: 0 0 24px rgba(245, 158, 11, 0.25);
+  }
+
+  .tooltip h2 { font-size: 18px; color: var(--legendary); }
+  .tooltip .type { font-size: 12px; color: #9ca3af; margin-bottom: 10px; }
+  .stats { list-style: none; display: grid; gap: 4px; font-size: 13px; }
+  .stats li::before { content: "+ "; color: #22c55e; }
+  .flavor { margin-top: 12px; font-size: 12px; font-style: italic; color: #d1d5db; }
+</style>
+</head>
+<body>
+  <section class="inventory" id="inventory">
+    <header class="inventory-header">
+      <h1 id="inv-title">INVENTORY</h1>
+      <span class="gold" id="gold"><i data-lucide="coins"></i>12,480</span>
+    </header>
+    <div class="grid" id="grid">
+      <div class="slot legendary selected" id="slot-sword"><i data-lucide="sword"></i></div>
+      <div class="slot epic" data-qty="2"><i data-lucide="flask-conical"></i></div>
+      <div class="slot rare new"><i data-lucide="shield"></i></div>
+      <div class="slot uncommon" data-qty="14"><i data-lucide="apple"></i></div>
+      <div class="slot common" data-qty="99"><i data-lucide="gem"></i></div>
+      <div class="slot rare"><i data-lucide="wand-sparkles"></i></div>
+      <div class="slot common"><i data-lucide="key-round"></i></div>
+      <div class="slot uncommon new"><i data-lucide="scroll"></i></div>
+      <div class="slot epic"><i data-lucide="crown"></i></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot common" data-qty="3"><i data-lucide="bomb"></i></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot" id="slot-last"></div>
+    </div>
+  </section>
+
+  <aside class="tooltip" id="tooltip">
+    <h2>Dawnbreaker</h2>
+    <p class="type">Legendary Greatsword &middot; Item Level 62</p>
+    <ul class="stats">
+      <li>48 Attack</li>
+      <li>12% Critical chance</li>
+      <li>Burns undead on hit</li>
+    </ul>
+    <p class="flavor">"Forged in the last light of a dying sun."</p>
+  </aside>
+
+  <script>lucide.createIcons();</script>
+</body>
+</html>

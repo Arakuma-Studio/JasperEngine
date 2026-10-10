@@ -1,0 +1,5 @@
+/* overflow keywords */
+.v { overflow: visible; } .h { overflow: hidden; } .a { overflow: auto; } .s { overflow: scroll; }
+.clip { overflow: clip; } .overlay { overflow: overlay; } .two { overflow: hidden auto; } .x { overflow-x: clip; } .y { overflow-y: overlay; }
+.margin { overflow-clip-margin: 4px; } .ob { overscroll-behavior: none; } .obx { overscroll-behavior-x: contain; } .oby { overscroll-behavior-y: auto; }
+.invalid { overflow: sideways; }

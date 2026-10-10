@@ -6,17 +6,24 @@
 #include "HtmlUI.h"
 #include "RmlRenderer.h"
 #include "RmlTextInputHandler.h"
+#include "compat/runtime/RuntimeRegistry.h"
+#include "compat/CompatOptions.h"
+#include "compat/DocumentLoader.h"
 
 #include "Engine.h"
+#include "subsystem/UIDocumentSystem.h"
 #include "Log.h"
+#include "System.h"
 
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/EventListener.h>
 #include <RmlUi/Core/Factory.h>
 
+#include <atomic>
 #include <cmath>
 
 using namespace jasperengine;
@@ -33,17 +40,42 @@ namespace {
     // An element that takes the pointer (phase-1 spec §3.6.2): not the context root, and
     // either an element inside a document or a document that paints its background (a
     // background colour with alpha, or a decorator), as a browser canvas would. A transparent
-    // document lets the pointer through to the game.
+    // document lets the pointer through to the game. The <body> of an HTML document (RML
+    // htmlbody, phase 2) is part of that canvas: transparent, it lets the pointer through too.
     bool isContent(Rml::Context* context, Rml::Element* element){
         if (!element || element == context->GetRootElement())
             return false;
-        if (rmlui_dynamic_cast<Rml::ElementDocument*>(element)){
+        if (rmlui_dynamic_cast<Rml::ElementDocument*>(element) ||
+            (element->GetTagName() == "htmlbody" && htmlui::compat::DocumentLoader::isCompatDocument(element))){
             const Rml::Style::ComputedValues& values = element->GetComputedValues();
             if (values.background_color().alpha == 0 && !values.has_decorator())
                 return false;
         }
         return isAttached(element);
     }
+
+    // htmlnavigate reaching the context root unprevented (phase-2 §3.11.2, hook H4)
+    class NavigateListener : public Rml::EventListener {
+    public:
+        explicit NavigateListener(std::function<void(Rml::ElementDocument*, const std::string&, const std::string&)>* handler): handler(handler) {}
+        void ProcessEvent(Rml::Event& event) override{
+            if (event.IsDefaultPrevented() || !handler || !*handler)
+                return;
+            Rml::Element* target = event.GetTargetElement();
+            Rml::ElementDocument* document = target ? target->GetOwnerDocument() : nullptr;
+            if (event.GetParameter<bool>("external", false))
+                return;
+            // the anchor (p2-runtime) resolved it: `url` is the linked file when `document` is set
+            const std::string href = event.GetParameter<Rml::String>("href", "");
+            const std::string url = event.GetParameter<bool>("document", false) ? event.GetParameter<Rml::String>("url", "") : std::string();
+            if (document && (!href.empty() || !url.empty()))
+                (*handler)(document, href, url);
+        }
+        void OnDetach(Rml::Element*) override {}
+
+    private:
+        std::function<void(Rml::ElementDocument*, const std::string&, const std::string&)>* handler;
+    };
 
 #if defined(__EMSCRIPTEN__)
     // the Web layer reports about 4 engine units per wheel notch (JasperEngineWeb wheel_callback)
@@ -89,6 +121,7 @@ bool HtmlUIContext::create(Rml::Vector2i dimensions){
     this->dimensions = dimensions;
     densityRatio = context->GetDensityIndependentPixelRatio();
     HtmlUI::registerContext(this);
+    applyThemes();
 
     return true;
 }
@@ -108,6 +141,7 @@ void HtmlUIContext::destroy(){
     // geometry goes back through RmlRenderer::ReleaseGeometry
     Rml::RemoveContext(name);
     context = nullptr;
+    navigateListener.reset();   // detached with the root element
 
     // file textures, then font textures and this renderer's render manager; in this order,
     // or a callback texture of a destroyed render manager would release through it
@@ -128,8 +162,10 @@ void HtmlUIContext::setDimensions(Rml::Vector2i dimensions){
 
     if (this->dimensions != dimensions){
         this->dimensions = dimensions;
-        if (context)
+        if (context){
             context->SetDimensions(dimensions);
+            restyleForViewport();
+        }
     }
 }
 
@@ -162,7 +198,24 @@ Rml::ElementDocument* HtmlUIContext::loadDocument(const std::string& path){
     Rml::Factory::ClearTemplateCache();
 
     // loaded hidden: UIDocumentSystem shows it
-    Rml::ElementDocument* document = context->LoadDocument(path);
+    Rml::ElementDocument* document = nullptr;
+    if (isCompatPath(path)){
+        // HTML through the compat layer (phase-2 hook H1b): CSS px are this context's px
+        htmlui::compat::CompatOptions options;
+        options.viewport = htmlui::compat::CompatSize{dimensions.x, dimensions.y};
+        options.dpRatio = densityRatio;
+        options.touchDevice = System::instance().isTouchDevice();
+        options.colorScheme = colorScheme;
+        options.reducedMotion = reducedMotion;
+        options.verboseDiagnostics = UIDocumentSystem::getVerboseDiagnostics();   // AppSettings::htmlUiVerboseDiagnostics
+        document = htmlui::compat::DocumentLoader::load(context, path, options);
+        if (document && !navigateListener){
+            navigateListener.reset(new NavigateListener(&navigateHandler));
+            context->GetRootElement()->AddEventListener("htmlnavigate", navigateListener.get(), false);
+        }
+    }else{
+        document = context->LoadDocument(path);
+    }
     if (!document){
         Log::error("[HTML UI] could not load document '%s'", path.c_str());
         return nullptr;
@@ -183,8 +236,11 @@ void HtmlUIContext::unloadDocument(Rml::ElementDocument* document){
 }
 
 void HtmlUIContext::update(){
-    if (context)
+    if (context){
+        // focus tracking, animation fill modes (phase-2 hook H1)
+        htmlui::compat::updateRuntime(context);
         context->Update();
+    }
     markUpdated();
 }
 
@@ -258,4 +314,67 @@ void HtmlUIContext::setDebuggerVisible(bool visible){
         return;
 
     HtmlUI::setDebuggerContext(this, visible);
+}
+
+// ---- phase 2 (p2-html) ----
+
+bool HtmlUIContext::isCompatPath(const std::string& path){
+    std::string extension;
+    const size_t dot = path.find_last_of('.');
+    const size_t slash = path.find_last_of("/\\");
+    if (dot == std::string::npos || (slash != std::string::npos && dot < slash))
+        return false;
+    extension = path.substr(dot);
+    for (char& c : extension){
+        if (c >= 'A' && c <= 'Z')
+            c = (char)(c - 'A' + 'a');
+    }
+    return extension == ".html" || extension == ".htm";
+}
+
+void HtmlUIContext::setColorScheme(const std::string& scheme){
+    colorScheme = (scheme == "dark") ? "dark" : "light";
+    applyThemes();
+}
+
+const std::string& HtmlUIContext::getColorScheme() const{
+    return colorScheme;
+}
+
+void HtmlUIContext::setReducedMotion(bool reduced){
+    reducedMotion = reduced;
+    applyThemes();
+}
+
+bool HtmlUIContext::getReducedMotion() const{
+    return reducedMotion;
+}
+
+void HtmlUIContext::setNavigateHandler(std::function<void(Rml::ElementDocument*, const std::string&, const std::string&)> handler){
+    navigateHandler = std::move(handler);
+}
+
+void HtmlUIContext::applyThemes(){
+    if (!context)
+        return;
+    // the compat layer writes prefers-color-scheme as (theme: light|dark) and
+    // prefers-reduced-motion as (theme: reduced-motion) (phase-2 §3.9.4)
+    context->ActivateTheme("light", colorScheme != "dark");
+    context->ActivateTheme("dark", colorScheme == "dark");
+    context->ActivateTheme("reduced-motion", reducedMotion);
+}
+
+void HtmlUIContext::restyleForViewport(){
+    if (!context)
+        return;
+    for (int i = 0; i < context->GetNumDocuments(); i++){
+        Rml::ElementDocument* document = context->GetDocument(i);
+        std::shared_ptr<const htmlui::compat::CompatDocument> compiled = htmlui::compat::DocumentLoader::compiledOf(document);
+        if (!compiled || !compiled->dependsOnViewport)
+            continue;
+        // the options it was compiled with, at the new size
+        htmlui::compat::CompatOptions resized = compiled->options;
+        resized.viewport = htmlui::compat::CompatSize{dimensions.x, dimensions.y};
+        htmlui::compat::DocumentLoader::restyleForViewport(document, compiled, resized);
+    }
 }

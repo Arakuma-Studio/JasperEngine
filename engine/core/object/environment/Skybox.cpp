@@ -16,6 +16,11 @@ Skybox::Skybox(Scene* scene, Entity entity): EntityHandle(scene, entity){
 Skybox::~Skybox(){
 }
 
+Skybox::Skybox(const Skybox& rhs) = default;
+Skybox& Skybox::operator=(const Skybox& rhs) = default;
+Skybox::Skybox(Skybox&& rhs) noexcept = default;
+Skybox& Skybox::operator=(Skybox&& rhs) noexcept = default;
+
 bool Skybox::load(){
     SkyboxComponent& sky = getComponent<SkyboxComponent>();
 

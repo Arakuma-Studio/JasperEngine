@@ -1,0 +1,6 @@
+compat/css/line-clamp.css:2:32: info: '-webkit-box-orient' is read as 'flex-direction: column' [HTMLUI-CSS-0009]
+compat/css/line-clamp.css:2:62: warning: '-webkit-line-clamp: 3' cuts the text at 3 lines (max-height 4.5em) without an ellipsis (fix: set a line-height on the rule so the cut is exact) [HTMLUI-CSS-0006]
+compat/css/line-clamp.css:3:35: warning: '-webkit-line-clamp: 2' cuts the text at 2 lines (max-height 40px) without an ellipsis (fix: set a line-height on the rule so the cut is exact) [HTMLUI-CSS-0006]
+compat/css/line-clamp.css:4:16: warning: '-webkit-line-clamp: 4' cuts the text at 4 lines (max-height 4.8em) without an ellipsis (fix: set a line-height on the rule so the cut is exact) [HTMLUI-CSS-0006]
+compat/css/line-clamp.css:6:15: warning: '-webkit-line-clamp: 2' cuts the text at 2 lines (max-height 2.4em) without an ellipsis (fix: set a line-height on the rule so the cut is exact) [HTMLUI-CSS-0006]
+compat/css/line-clamp.css:7:13: warning: 'line-clamp: 1' cuts the text at 1 lines (max-height 1.2em) without an ellipsis (fix: set a line-height on the rule so the cut is exact) [HTMLUI-CSS-0006]

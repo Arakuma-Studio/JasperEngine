@@ -1,0 +1,2 @@
+/* order is not supported */
+.first { order: -1; } .last { order: 99; } .ms { -ms-flex-order: 2; } .wk { -webkit-order: 1; }

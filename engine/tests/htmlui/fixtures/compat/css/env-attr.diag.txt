@@ -1,0 +1,5 @@
+compat/css/env-attr.css:2:22: info: 'env(safe-area-inset-top)' is 0px (no safe area) [HTMLUI-CSS-0005]
+compat/css/env-attr.css:2:64: info: 'env(safe-area-inset-bottom, 20px)' is 0px (no safe area) [HTMLUI-CSS-0005]
+compat/css/env-attr.css:3:20: info: 'env(titlebar-area-width, 100px)' uses its fallback (the variable is not defined here) [HTMLUI-CSS-0005]
+compat/css/env-attr.css:4:24: warning: 'env(keyboard-inset-height)' has no value here and no fallback; declaration dropped (fix: give env() a fallback) [HTMLUI-CSS-0004]
+compat/css/env-attr.css:5:16: warning: 'attr(data-width px)' is not supported; declaration dropped (fix: write the value in the CSS, or set it from Lua) [HTMLUI-CSS-0015]

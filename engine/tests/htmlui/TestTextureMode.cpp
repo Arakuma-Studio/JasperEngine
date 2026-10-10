@@ -207,7 +207,7 @@ TEST_F(TextureModeTest, RaycastNearestOfTwo){
 
 TEST_F(TextureModeTest, OwnContextAndTarget){
     Primitive& surface = wall(0, 0, 0);
-    UIDocument document = textureDocument("p1/texture_input.html", surface.getEntity(), 512, 256, 2.0f);
+    UIDocument document = textureDocument("p1/texture_input.rml", surface.getEntity(), 512, 256, 2.0f);
     ASSERT_TRUE(fixture->waitUntilLoaded());
 
     const Entity entity = document.getEntity();
@@ -229,7 +229,7 @@ TEST_F(TextureModeTest, OwnContextAndTarget){
     ASSERT_NE(target, nullptr);
     EXPECT_EQ(document.getTargetTexture(), target);
     // a screen document has none
-    UIDocument screen = fixture->addDocument("p1/texture_input.html");
+    UIDocument screen = fixture->addDocument("p1/texture_input.rml");
     ASSERT_TRUE(fixture->waitUntilLoaded());
     EXPECT_EQ(system().getTargetTexture(screen.getEntity()), nullptr);
     EXPECT_EQ(system().getTextureContext(screen.getEntity()), nullptr);
@@ -267,7 +267,7 @@ TEST_F(TextureModeTest, OwnContextAndTarget){
 
 TEST_F(TextureModeTest, WorldPointerReachesDocument){
     Primitive& surface = wall(0, 0, 0);
-    UIDocument document = textureDocument("p1/texture_input.html", surface.getEntity());
+    UIDocument document = textureDocument("p1/texture_input.rml", surface.getEntity());
     ASSERT_TRUE(fixture->waitUntilLoaded());
     const Entity entity = document.getEntity();
 
@@ -333,7 +333,7 @@ TEST_F(TextureModeTest, WorldPointerReachesDocument){
 
 TEST_F(TextureModeTest, WorldPointerCapture){
     Primitive& surface = wall(0, 0, 0);
-    UIDocument document = textureDocument("p1/texture_input.html", surface.getEntity());
+    UIDocument document = textureDocument("p1/texture_input.rml", surface.getEntity());
     ASSERT_TRUE(fixture->waitUntilLoaded());
     const Entity entity = document.getEntity();
     Rml::Element* tl = element(entity, "tl");
@@ -380,8 +380,8 @@ TEST_F(TextureModeTest, WorldPointerNearestFirst){
     // its transparent body passes the pointer to the one behind
     Primitive& farWall = wall(0, 0, 0);
     Primitive& nearWall = wall(0, 0, 1);
-    UIDocument farDocument = textureDocument("p1/texture_input.html", farWall.getEntity());
-    UIDocument nearDocument = textureDocument("p1/texture_input.html", nearWall.getEntity());
+    UIDocument farDocument = textureDocument("p1/texture_input.rml", farWall.getEntity());
+    UIDocument nearDocument = textureDocument("p1/texture_input.rml", nearWall.getEntity());
     ASSERT_TRUE(fixture->waitUntilLoaded());
 
     Rml::Element* farTl = element(farDocument.getEntity(), "tl");
@@ -426,7 +426,7 @@ namespace {
         }
 
         static UIDocument textureDocument(SceneFixture& fixture, int width, int height, float ratio){
-            UIDocument document = fixture.addDocument("p1/texture_mode.html");
+            UIDocument document = fixture.addDocument("p1/texture_mode.rml");
             UIDocumentComponent& component = document.getComponent<UIDocumentComponent>();
             component.renderMode = UIDocumentRenderMode::TEXTURE;
             component.textureWidth = width;
@@ -566,9 +566,9 @@ TEST_F(TextureTargetTest, NoLeaksOverReloads){
 
 TEST_F(TextureModeTest, KeysTextAndDataModels){
     Primitive& surface = wall(0, 0, 0);
-    UIDocument document = textureDocument("p1/texture_form.html", surface.getEntity());
+    UIDocument document = textureDocument("p1/texture_form.rml", surface.getEntity());
     // a screen document too: keys go to whichever took the last press
-    UIDocument screen = fixture->addDocument("p1/texture_input.html");
+    UIDocument screen = fixture->addDocument("p1/texture_input.rml");
     ASSERT_TRUE(fixture->waitUntilLoaded());
     const Entity entity = document.getEntity();
     // the screen document is out of the way until its press below
@@ -627,7 +627,7 @@ TEST_F(TextureModeTest, KeysTextAndDataModels){
 
 TEST_F(TextureModeTest, StatePreservingReload){
     Primitive& surface = wall(0, 0, 0);
-    UIDocument document = textureDocument("p1/texture_form.html", surface.getEntity());
+    UIDocument document = textureDocument("p1/texture_form.rml", surface.getEntity());
     ASSERT_TRUE(fixture->waitUntilLoaded());
     const Entity entity = document.getEntity();
     HtmlUIContext* context = system().getTextureContext(entity);

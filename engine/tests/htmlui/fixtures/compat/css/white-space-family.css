@@ -1,0 +1,6 @@
+/* white-space and the Text 4 longhands */
+.n { white-space: normal; } .p { white-space: pre; } .nw { white-space: nowrap; } .pw { white-space: pre-wrap; } .pl { white-space: pre-line; }
+.bs { white-space: break-spaces; } .pair { white-space: preserve nowrap; }
+.c1 { white-space-collapse: collapse; } .c2 { white-space-collapse: preserve; } .c3 { white-space-collapse: preserve-breaks; } .c4 { white-space-collapse: break-spaces; }
+.w1 { text-wrap: nowrap; } .w2 { text-wrap: wrap; } .w3 { text-wrap: balance; } .w4 { text-wrap: pretty; } .w5 { text-wrap-mode: nowrap; } .w6 { text-wrap-style: balance; }
+.invalid { white-space: squeeze; }

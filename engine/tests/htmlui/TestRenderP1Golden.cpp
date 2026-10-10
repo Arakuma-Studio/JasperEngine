@@ -39,9 +39,9 @@ namespace {
             EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "[HTML UI]"), 0u);
         }
 
-        // loads p1/<name>.html, draws it and reads the composited screen back
+        // loads p1/<name>.rml, draws it and reads the composited screen back
         bool draw(RenderTestContext& test, const std::string& name, std::vector<uint8_t>& screen){
-            if (!test.isValid() || !test.load("p1/" + name + ".html"))
+            if (!test.isValid() || !test.load("p1/" + name + ".rml"))
                 return false;
             return test.renderUntilDrawn() && test.readScreen(screen);
         }
@@ -438,7 +438,7 @@ TEST_F(RmlRendererP1GoldenTest, ScissorScroll){
     JASPER_REQUIRE_GPU();
     P1Context test;
     ASSERT_TRUE(test.isValid());
-    Rml::ElementDocument* document = test.load("p1/scissor_scroll.html");
+    Rml::ElementDocument* document = test.load("p1/scissor_scroll.rml");
     ASSERT_NE(document, nullptr);
     ASSERT_TRUE(test.renderUntilDrawn());
     Rml::Element* scroller = document->GetElementById("scroller");

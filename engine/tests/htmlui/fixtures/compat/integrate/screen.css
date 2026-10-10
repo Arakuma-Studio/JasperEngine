@@ -1,0 +1,9 @@
+@import url("imported.css");
+:root { --accent: #7c3aed; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: sans-serif; color: #fff; background: linear-gradient(135deg, #0f0c29, #302b63); min-height: 100vh; }
+.panel { width: 320px; padding: 24px; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 16px;
+         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37); }
+.btn { padding: 8px 16px; border: 1px solid var(--accent); border-radius: 8px; background: rgba(255, 255, 255, 0.06);
+       color: #fff; font: inherit; transition: all 200ms ease; }
+.btn:hover { background: var(--accent); }

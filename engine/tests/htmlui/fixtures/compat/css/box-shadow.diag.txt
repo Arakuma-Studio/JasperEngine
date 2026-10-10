@@ -1,0 +1,1 @@
+compat/css/box-shadow.css:10:12: warning: 'box-shadow: 1px' is not supported; declaration dropped (fix: write box-shadow: [inset] <x> <y> [<blur> [<spread>]] [<color>]) [HTMLUI-CSS-0004]

@@ -29,7 +29,8 @@ public:
 	/// @param[in] element Element for which to calculate and cache the box shadow.
 	/// @param[in] computed The computed style values of the element.
 	/// @return A handle to the BoxShadow data, with automatic reference counting.
-	static SharedPtr<BoxShadowRenderable> GetHandle(Element* element, const Style::ComputedValues& computed);
+	// include_border = false: the border is drawn separately (above the element's decorators)
+	static SharedPtr<BoxShadowRenderable> GetHandle(Element* element, const Style::ComputedValues& computed, bool include_border = true);
 };
 
 } // namespace Rml

@@ -179,7 +179,7 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 			{
 				// Shrink the scissor region to the element's client area.
 				Vector2f element_offset = clipping_element->GetAbsoluteOffset(clip_area).Round();
-				Vector2f element_size = clipping_element->GetRenderBox(clip_area).GetFillSize();
+				Vector2f element_size = clipping_element->GetRenderBox(clip_area, 0, false).GetFillSize();
 				Rectanglef element_region = Rectanglef::FromPositionSize(element_offset, element_size);
 
 				clip_region = element_region.IntersectIfValid(clip_region);

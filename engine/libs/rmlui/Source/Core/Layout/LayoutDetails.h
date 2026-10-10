@@ -40,6 +40,9 @@ enum class BuildBoxMode {
  */
 class LayoutDetails {
 public:
+	/// A text element of white space only that CSS collapses away (white-space other than pre, pre-wrap, break-spaces).
+	static bool IsCollapsibleWhiteSpaceText(Element* element);
+
 	/// Generates the box dimensions for an element.
 	/// @param[out] box The box to be built.
 	/// @param[in] containing_block The dimensions of the content area of the block containing the element.

@@ -1,0 +1,2 @@
+compat/css/important.css:2:8: warning: 'color !important' may lose to the more specific rule '#menu .btn' at compat/css/important.css:3 (the engine has no !important) (fix: raise this selector's specificity or lower the other one) [HTMLUI-CSS-0010]
+compat/css/important.css:8:14: warning: 'color !important' may lose to the more specific rule '#menu .btn' at compat/css/important.css:3 (the engine has no !important) (fix: raise this selector's specificity or lower the other one) [HTMLUI-CSS-0010]

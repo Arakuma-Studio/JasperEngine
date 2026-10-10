@@ -67,7 +67,24 @@ namespace jasperengine {
         LuaBinding();
         virtual ~LuaBinding();
         
+        // The engine's one Lua state. It belongs to the thread that made it (Engine::systemInit,
+        // the main thread): Lua states are not thread-safe, so only that thread may use it.
         static lua_State* getLuaState();
+
+        // The check of that rule: every allocation of the state (any Lua work that allocates,
+        // and every collection step) compares the thread with the owner's. A use from another
+        // thread is counted and reported on stderr (the first one); with Abort, or
+        // JASPER_LUA_THREAD_CHECK=abort in the environment when the state is made (the tests
+        // set it), the process aborts there, with a backtrace where available.
+        enum class ThreadCheck { Report, Abort };
+        static void setThreadCheck(ThreadCheck mode);
+        static ThreadCheck getThreadCheck();
+        static bool isLuaThread();
+        static size_t getOffThreadUseCount();
+
+        // The global names of the state as the engine made it (classes, helpers, standard
+        // libraries), not what scripts added since. Readable from any thread.
+        static std::vector<std::string> getEngineGlobalNames();
         
         // old lua function call
         static void luaCallback(int nargs, int nresults, int msgh);

@@ -1,0 +1,12 @@
+/* list-style properties the runtime registers */
+ul.a { list-style: square inside; }
+ol.b { list-style: decimal; }
+.c { list-style: none; }
+.d { list-style-type: lower-roman; list-style-position: outside; }
+.e { list-style-type: "→ "; }
+.f { list-style-type: armenian; }
+.g { list-style-type: disclosure-open; }
+.h { list-style-image: url(img/icon.svg); }
+.i { list-style: url(img/a.png) circle outside; }
+.j { list-style-type: upper-latin; } .k { list-style-type: lower-greek; } .l { list-style-type: decimal-leading-zero; }
+.m { list-style-type: custom-style; }

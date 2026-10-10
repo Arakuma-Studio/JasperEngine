@@ -1,0 +1,15 @@
+/* filter functions; drop-shadow takes the color first */
+.f { filter: blur(4px) brightness(1.2) contrast(110%) grayscale(1) hue-rotate(90deg) invert(0.5) opacity(80%) saturate(2) sepia(.3); }
+.ds { filter: drop-shadow(0 2px 4px rgba(0,0,0,.5)); }
+.ds-color-first { filter: drop-shadow(red 2px 2px); }
+.ds-no-color { color: #0f0; filter: drop-shadow(1px 1px 2px); }
+.ds-current { filter: drop-shadow(0 0 3px); }
+.url { filter: url(#goo) blur(2px); }
+.url-only { filter: url(filters.svg#f); }
+.none { filter: none; }
+.empty-args { filter: blur() hue-rotate(); }
+.backdrop { backdrop-filter: blur(12px) saturate(180%); -webkit-backdrop-filter: blur(12px); }
+.var { filter: var(--f); }
+.invalid { filter: glow(3px); }
+.blend { mix-blend-mode: screen; isolation: isolate; }
+:root { --f: drop-shadow(0 0 4px #fff); }

@@ -16,6 +16,11 @@ Fog::Fog(Scene* scene, Entity entity): EntityHandle(scene, entity){
 Fog::~Fog(){
 }
 
+Fog::Fog(const Fog& rhs) = default;
+Fog& Fog::operator=(const Fog& rhs) = default;
+Fog::Fog(Fog&& rhs) noexcept = default;
+Fog& Fog::operator=(Fog&& rhs) noexcept = default;
+
 FogType Fog::getType() const{
     FogComponent& fog = getComponent<FogComponent>();
     return fog.type;

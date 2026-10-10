@@ -1,0 +1,17 @@
+<rml>
+<head>
+<link type="text/rcss" href="/@htmlui/ua.rcss" origin="user-agent"/>
+</head
+><body id="htmlui-root" data-htmlui-loc="0"
+><htmlbody data-htmlui-loc="1"
+><p data-htmlui-loc="2">shown</p>
+</htmlbody></body>
+</rml>
+<!-- lua compat/html/scripts.html:11 (compat/html/scripts.html:11) -->
+
+local x = 1
+
+<!-- lua compat/html/scripts/menu.lua (compat/html/scripts/menu.lua:1) -->
+-- menu script
+local y = 2
+

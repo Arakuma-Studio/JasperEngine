@@ -1,0 +1,53 @@
+#htmlui-root .chain-15 {
+width: 15px;
+}
+#htmlui-root .chain-14 {
+width: 14px;
+}
+#htmlui-root .chain-13 {
+width: 13px;
+}
+#htmlui-root .chain-12 {
+width: 12px;
+}
+#htmlui-root .chain-11 {
+width: 11px;
+}
+#htmlui-root .chain-10 {
+width: 10px;
+}
+#htmlui-root .chain-9 {
+width: 9px;
+}
+#htmlui-root .chain-8 {
+width: 8px;
+}
+#htmlui-root .chain-7 {
+width: 7px;
+}
+#htmlui-root .chain-6 {
+width: 6px;
+}
+#htmlui-root .chain-5 {
+width: 5px;
+}
+#htmlui-root .chain-4 {
+width: 4px;
+}
+#htmlui-root .chain-3 {
+width: 3px;
+}
+#htmlui-root .chain-2 {
+width: 2px;
+}
+#htmlui-root .chain-1 {
+width: 1px;
+}
+#htmlui-root .self {
+color: #0000ffff;
+--html-current-color: #0000ffff;
+}
+#htmlui-root .after {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+}

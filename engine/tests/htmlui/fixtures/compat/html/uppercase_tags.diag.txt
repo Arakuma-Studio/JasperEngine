@@ -1,0 +1,1 @@
+compat/html/uppercase_tags.html:2:34: info: title tooltips are not shown (fix: show a tooltip element from Lua on hover) [HTMLUI-HTML-0015]

@@ -19,7 +19,7 @@ namespace {
             ASSERT_TRUE(GpuEnvironment::ensure()) << "no headless GPU context";
             fixture.reset(new SceneFixture());
             document = &fixture->add<UIDocument>();
-            ASSERT_TRUE(document->load("ecs/basic.html"));
+            ASSERT_TRUE(document->load("ecs/basic.rml"));
             TestSystem::get().clearLogs();
         }
 

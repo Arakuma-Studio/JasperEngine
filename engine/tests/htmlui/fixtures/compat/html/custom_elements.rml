@@ -1,0 +1,15 @@
+<rml>
+<head>
+<link type="text/rcss" href="/@htmlui/ua.rcss" origin="user-agent"/>
+</head
+><body id="htmlui-root" data-htmlui-loc="0"
+><htmlbody data-htmlui-loc="1"
+><lottie src="asset://compat/html/anim/spin.json" speed="1.5" loop="true" autoplay="" playonhover="" data-htmlui-loc="2"/>
+<lottie src="asset://compat/html/anim/a.lottie" loop="3" direction="-1" mode="bounce" style="background-color: #ff0000ff;" data-htmlui-loc="3"/>
+<lottie src="asset://compat/html/anim/spin.json" autoplay="" data-htmlui-loc="4"/>
+<my-widget foo="1" data-htmlui-loc="5">custom</my-widget>
+<blah data-htmlui-loc="6">unknown</blah>
+<lottie src="asset://compat/html/anim/spin.json" data-htmlui-loc="7"/>
+<p data-htmlui-loc="8">after lottie</p>
+</htmlbody></body>
+</rml>

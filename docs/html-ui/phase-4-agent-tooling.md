@@ -175,7 +175,7 @@ struct CheckReport { std::vector<Diagnostic> diagnostics; std::vector<std::strin
 CheckReport checkDocument(const std::string& htmlPath, const CheckOptions&);     // htmlPath asset-relative
 CheckReport checkStylesheet(const std::string& cssPath, const CheckOptions&);
 std::string cssPropertyName(std::string_view rcssProperty);                     // "decorator" -> "background-image"
-struct RmlSourceMap { std::vector<SourceRef> elementRefs; std::vector<SourceRef> lineRefs; };
+struct RmlSourceMap { SourceRefList elementRefs; SourceRefList lineRefs; };   // SourceRefList: size(), [i], iteration (SourceRef by value)
 // CompatDocument (sourcePath, rml, sourceMap, stylesheets with RcssLineMap, dependencies, diagnostics, files)
 // and std::optional<Diagnostic> locateElement(const CompatDocument&, const Rml::Element*)  (engine-internal)
 
@@ -1132,6 +1132,14 @@ the Catalog list), a failure of `attach_script` (its message).
 The handler is `importFilesTool` (`:1202`) and its registration is at `:2353-2364`.
 
 - `sources` items may also be `http(s)://` URLs, which go through `importUrl`.
+- With the extension in place, the suggestions of `HTMLUI-IMP-0001`/`-0009` name it again
+  (`engine/core/htmlui/compat/UrlResolver.cpp` and the registry text in `DiagnosticCodes.cpp`).
+  Phase 2 says "import it: load the document in the editor (it imports remote resources), or
+  run jasperengine-editor import-ui": until this section is implemented `import_files` copies
+  local files only ("No downloads"), so naming it sent an agent to a tool that refused (changed
+  by p2-integrate). Add "MCP import_files from_document" to both suggestions, and regenerate the
+  `.diag.txt` goldens that hold them (`fixtures/compat/css/{background-url,import,font-face}`,
+  `fixtures/compat/html/{images,styles_links}`, `compat_url_test.cpp`).
 - New `fonts` (string array) uses `importGoogleFonts`.
 - New `icons` (string array, `lucide:<name>` or a bare name) uses `importLucideIcons`.
 - New `from_document` (project-relative `.html`/`.css`) uses `importDocumentReferences`. The URLs

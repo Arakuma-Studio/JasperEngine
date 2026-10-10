@@ -1,0 +1,13 @@
+/* keyframes: selectors, declarations in keyframe mode, names */
+@keyframes simple { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lists { 0%, 50% { color: red; } 25%, 75% { color: blue; } 100% { color: green; } }
+@keyframes easing { 0% { opacity: 0; animation-timing-function: ease-in; } 100% { opacity: 1 !important; } }
+@keyframes bad-selector { from { opacity: 0 } 120% { opacity: 1 } middle { opacity: .5 } }
+@keyframes "quoted name" { to { transform: rotate(1turn) } }
+@keyframes émoji { to { opacity: 0 } }
+@-webkit-keyframes prefixed { from { opacity: 0 } to { opacity: 1 } }
+@-moz-keyframes moz { to { opacity: 1 } }
+@keyframes rewrites { from { background: linear-gradient(red, blue); box-shadow: 0 0 0 #000; border: 1px solid red; } to { background-color: rgba(0,0,0,.5); box-shadow: 0 0 20px #f00; transform: translateX(10px) rotate(45deg); } }
+@keyframes empty { }
+@keyframes nested { from { width: 10px; } @media (min-width: 1px) { to { width: 20px } } }
+.use { animation: "quoted name" 1s, émoji 2s; }

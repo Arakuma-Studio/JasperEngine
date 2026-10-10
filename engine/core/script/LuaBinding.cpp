@@ -74,12 +74,23 @@
 #include "LuaBridgeAddon.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <csignal>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <locale>
+#include <mutex>
 #include <set>
+#include <thread>
 #include <vector>
 #include <memory>
+
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <execinfo.h>
+#include <unistd.h>
+#endif
 
 using namespace jasperengine;
 
@@ -107,6 +118,83 @@ static void collectLoadedModuleNames(lua_State* L, std::set<std::string>& out){
 }
 
 
+// ---- the owner thread of the state (see LuaBinding::getLuaState)
+
+namespace {
+    std::atomic<std::thread::id> luaThread{};
+    std::atomic<int> luaThreadCheck{static_cast<int>(LuaBinding::ThreadCheck::Report)};
+    std::atomic<size_t> offThreadLuaUses{0};
+    // luaL_newstate's allocator, which the checking one forwards to
+    lua_Alloc baseLuaAlloc = nullptr;
+
+    // the engine's global names, taken when the state is made
+    std::mutex engineGlobalNamesMutex;
+    std::vector<std::string> engineGlobalNames;
+
+    void reportOffThreadLuaUse(){
+        const size_t uses = offThreadLuaUses.fetch_add(1, std::memory_order_relaxed);
+        const bool abortHere = luaThreadCheck.load(std::memory_order_relaxed) == static_cast<int>(LuaBinding::ThreadCheck::Abort);
+        if (uses > 0 && !abortHere)
+            return;
+        std::fprintf(stderr, "[JasperEngine] the engine's Lua state was used from a thread other than its own "
+                             "(Lua states are not thread-safe: run that work on the main thread)%s\n",
+                             abortHere ? "; aborting (JASPER_LUA_THREAD_CHECK=abort)" : "");
+#if defined(__linux__) && !defined(__ANDROID__)
+        void* frames[64];
+        const int count = backtrace(frames, 64);
+        backtrace_symbols_fd(frames, count, STDERR_FILENO);
+#endif
+        std::fflush(stderr);
+        if (abortHere){
+            // not a SIGABRT a crash guard (callWithCrashGuard) or crash reporter would catch
+            std::signal(SIGABRT, SIG_DFL);
+            std::abort();
+        }
+    }
+
+    void* threadCheckedLuaAlloc(void* ud, void* ptr, size_t osize, size_t nsize){
+#ifndef NO_THREAD_SUPPORT
+        if (std::this_thread::get_id() != luaThread.load(std::memory_order_relaxed))
+            reportOffThreadLuaUse();
+#endif
+        return baseLuaAlloc(ud, ptr, osize, nsize);
+    }
+
+    std::vector<std::string> collectGlobalNames(lua_State* L){
+        std::vector<std::string> names;
+        lua_pushglobaltable(L);
+        lua_pushnil(L);
+        while (lua_next(L, -2) != 0) {
+            if (lua_type(L, -2) == LUA_TSTRING) names.push_back(lua_tostring(L, -2));
+            lua_pop(L, 1);
+        }
+        lua_pop(L, 1);
+        std::sort(names.begin(), names.end());
+        return names;
+    }
+}
+
+void LuaBinding::setThreadCheck(ThreadCheck mode){
+    luaThreadCheck.store(static_cast<int>(mode), std::memory_order_relaxed);
+}
+
+LuaBinding::ThreadCheck LuaBinding::getThreadCheck(){
+    return static_cast<ThreadCheck>(luaThreadCheck.load(std::memory_order_relaxed));
+}
+
+bool LuaBinding::isLuaThread(){
+    return std::this_thread::get_id() == luaThread.load(std::memory_order_relaxed);
+}
+
+size_t LuaBinding::getOffThreadUseCount(){
+    return offThreadLuaUses.load(std::memory_order_relaxed);
+}
+
+std::vector<std::string> LuaBinding::getEngineGlobalNames(){
+    std::scoped_lock lock(engineGlobalNamesMutex);
+    return engineGlobalNames;
+}
+
 LuaBinding::LuaBinding() {
 
 }
@@ -119,11 +207,27 @@ LuaBinding::~LuaBinding() {
 void LuaBinding::createLuaState(){
     LuaBinding::luastate = luaL_newstate();
 
+    // the thread making the state owns it; from here on its allocations check the thread
+    luaThread.store(std::this_thread::get_id(), std::memory_order_relaxed);
+    const char* check = std::getenv("JASPER_LUA_THREAD_CHECK");
+    if (check && std::strcmp(check, "abort") == 0)
+        setThreadCheck(ThreadCheck::Abort);
+    void* allocData = nullptr;
+    lua_Alloc alloc = lua_getallocf(luastate, &allocData);
+    if (alloc != threadCheckedLuaAlloc){
+        baseLuaAlloc = alloc;
+        lua_setallocf(luastate, threadCheckedLuaAlloc, allocData);
+    }
+
     registerClasses(luastate);
     configureProjectLuaLoader();
     registerHelpersFunctions(luastate);
 
     collectLoadedModuleNames(luastate, baselineLuaModules);
+
+    std::vector<std::string> names = collectGlobalNames(luastate);
+    std::scoped_lock lock(engineGlobalNamesMutex);
+    engineGlobalNames = std::move(names);
 }
 
 lua_State* LuaBinding::getLuaState(){
@@ -901,6 +1005,9 @@ void LuaBinding::initializeLuaScripts(Scene* scene) {
         }
     }
     ObjectManager::popActiveScene();
+
+    // the scene's HTML documents run their <script type="text/lua"> from now on (phase 2)
+    scene->getSystem<UIDocumentSystem>()->startDocumentScripts();
 }
 
 void LuaBinding::initializeLuaScripts(Scene* scene, const std::vector<Entity>& entities) {

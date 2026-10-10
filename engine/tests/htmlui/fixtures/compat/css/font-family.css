@@ -1,0 +1,13 @@
+/* font-family lists written unquoted */
+.a { font-family: "Inter", sans-serif; }
+.b { font-family: 'Press Start 2P', cursive; }
+.c { font-family: Orbitron, Inter, SANS-SERIF; }
+.d { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.e { font-family: system-ui, ui-monospace, ui-rounded, emoji, math; }
+.f { font-family: Times New Roman, serif; }
+.g { font-family: "Font, With Comma", serif; }
+.h { font-family: var(--font-ui); }
+.i { font-family: var(--font-mono); }
+.invalid { font-family: 12px; }
+:root { --font-ui: "Inter", system-ui, sans-serif; --font-mono: 'JetBrains Mono', monospace; }
+.mono { font-family: var(--font-mono); --other: var(--font-mono); }

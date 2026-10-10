@@ -14,6 +14,8 @@
 #include "htmlui/HtmlUIContext.h"
 #include "htmlui/HtmlUIDependencies.h"
 #include "htmlui/RmlFontEngine.h"
+#include "htmlui/compat/DocumentLoader.h"
+#include "htmlui/compat/ImportManifest.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Core.h>
@@ -350,6 +352,10 @@ Rml::ElementDocument* UIDocumentSystem::loadEntityDocument(Entity entity, const 
     for (const std::string& path : opened){
         appendUnique(record.files, path);
     }
+    // p2-html (hook H2): an .html document's stylesheets, imports, Lua src files, the manifest
+    for (const std::string& path : compatDependencies(document)){
+        appendUnique(record.files, path);
+    }
     state.recordStamps(record);
     record.loadCount++;
 
@@ -475,6 +481,7 @@ void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState){
 
     // 5. notify: onUnload then onLoad, fired at the end of the next update
     scriptDocumentLoaded(entity);
+    compatRunScripts();   // p2-html: the document's <script type="text/lua"> run again
 }
 
 void UIDocumentSystem::reloadStyleSheets(Entity entity){
@@ -486,13 +493,27 @@ void UIDocumentSystem::reloadStyleSheets(Entity entity){
     HtmlUIReloadState::Document& record = state.documents[entity];
 
     std::vector<std::string> opened;
+    const bool compat = (bool)getCompiledDocument(entity);
+    bool restyled = true;
     {
         HtmlUIFileLog::Scope scope(&opened, [&record](HtmlUIFileLog::Level level, const std::string& text){
             HtmlUIReloadState::addMessage(record, level, text);
         });
         // re-reads the document's sheets (RmlUi clears its sheet cache first); the DOM, element
-        // handles, listeners, scroll and focus stay
-        it->second->ReloadStyleSheet();
+        // handles, listeners, scroll and focus stay. An .html document is recompiled instead
+        // (ReloadStyleSheet would read the .html as RML; p2-html hook H2)
+        if (compat)
+            restyled = compatRestyle(entity);
+        else
+            it->second->ReloadStyleSheet();
+    }
+    if (!restyled){
+        // the change reached the document itself (its RML, scripts or templates)
+        reloadDocument(entity, true);
+        return;
+    }
+    for (const std::string& path : compatDependencies(it->second)){
+        appendUnique(record.files, path);
     }
 
     // a sheet may @import another now
@@ -514,7 +535,14 @@ void UIDocumentSystem::reloadTexture(const std::string& path){
     // database of every context (the other scenes too) drops the image
     if (!HtmlUI::isInitialized())
         return;
-    Rml::ReleaseTexture(normalizeHtmlUIPath(path));
+    // RmlUi knows a texture by the source it was asked for, as written: the path of an .rml
+    // document's image, an asset:// URL from the compat layer, either with a query (the
+    // sampling filter of image-rendering, an SVG scale). Every spelling of the file goes.
+    const std::string file = normalizeHtmlUIPath(path);
+    for (const Rml::String& source : Rml::GetTextureSourceList()){
+        if (normalizeHtmlUIPath(source.substr(0, source.find('?'))) == file)
+            Rml::ReleaseTexture(source);
+    }
 }
 
 const std::vector<HtmlUIMessage>& UIDocumentSystem::getDocumentMessages(Entity entity) const{
@@ -539,6 +567,11 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
     std::set<std::string> asked;
     for (const std::string& file : files){
         asked.insert(normalizeHtmlUIPath(file));
+    }
+    // p2-html (hook H2): compiles that read a changed file are stale (the manifest reloads too)
+    for (const std::string& path : asked){
+        htmlui::compat::DocumentLoader::invalidate(path);
+        htmlui::compat::ImportManifest::notifyFileChanged(path);
     }
 
     // what to do per document, decided before anything reloads (a reload rewrites the stamps)
@@ -584,7 +617,11 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
             stampIt->second = now;
             changed = true;
 
-            switch (changeKindOf(path, record.filename)){
+            ChangeKind kind = changeKindOf(path, record.filename);
+            // p2-html: an import may only change CSS; compatRestyle falls back to a full reload
+            if (path == htmlui::compat::ImportManifest::kPath && getCompiledDocument(entity))
+                kind = ChangeKind::STYLESHEET;
+            switch (kind){
                 case ChangeKind::STYLESHEET: action.styleSheets = true; break;
                 case ChangeKind::IMAGE: action.images.push_back(path); break;
                 case ChangeKind::FONT: action.fonts.push_back(path); action.full = true; break;
@@ -611,7 +648,13 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
             Log::verbose("[HTML UI] reloading document of entity %u (its files changed)", (unsigned int)action.entity);
             reloadDocument(action.entity, true);
         }else if (action.styleSheets){
+            Rml::ElementDocument* before = getDocument(action.entity);
             reloadStyleSheets(action.entity);
+            // p2-html: an .html document whose RML changed was reloaded in full
+            if (getDocument(action.entity) != before){
+                reloaded.push_back({action.entity, false});
+                continue;
+            }
         }
         reloaded.push_back({action.entity, !action.full});
     }

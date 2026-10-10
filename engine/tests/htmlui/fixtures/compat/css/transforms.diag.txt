@@ -1,0 +1,5 @@
+compat/css/transforms.css:3:53: info: 'transform-style' is not supported; dropped (fix: flatten the scene: put the perspective on each transformed element) [HTMLUI-CSS-0002]
+compat/css/transforms.css:3:83: info: 'backface-visibility' is not supported; dropped (fix: hide the element from Lua when it faces away) [HTMLUI-CSS-0002]
+compat/css/transforms.css:3:112: info: 'transform-box' is not supported; dropped (fix: set transform-origin explicitly) [HTMLUI-CSS-0002]
+compat/css/transforms.css:12:15: info: 'translate' is combined with the transform of the base rule at compat/css/transforms.css:11 [HTMLUI-CSS-0017]
+compat/css/transforms.css:14:12: warning: 'rotate: sideways' is not supported; dropped [HTMLUI-CSS-0004]

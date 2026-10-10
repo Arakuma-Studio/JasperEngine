@@ -31,6 +31,11 @@ AudioSource::~AudioSource(){
 
 }
 
+AudioSource::AudioSource(const AudioSource& rhs) = default;
+AudioSource& AudioSource::operator=(const AudioSource& rhs) = default;
+AudioSource::AudioSource(AudioSource&& rhs) noexcept = default;
+AudioSource& AudioSource::operator=(AudioSource&& rhs) noexcept = default;
+
 GameObject AudioSource::getGameObject() const{
     if (!isSound3D()){
         Log::error("Cannot get object from 2D sound: enable 3D sound first");

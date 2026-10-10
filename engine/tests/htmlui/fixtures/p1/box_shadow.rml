@@ -1,0 +1,23 @@
+<html>
+<head>
+    <link type="text/css" href="../common/base.css"/>
+    <link type="text/css" href="p1.css"/>
+    <style>
+        /* G14: box-shadow (SaveLayerAsTexture): offset, blur, spread, inset, with radii */
+        #backdrop { left: 0px; top: 0px; width: 512px; height: 384px; background-color: #f0f0f0; }
+        .b { width: 120px; height: 90px; background-color: #4080c0; }
+        #outer { left: 40px; top: 40px; box-shadow: #000000 12px 12px 0px 0px; }
+        /* the fork blurs the shadow shape before clipping it to outside the border box (CSS; RmlUi
+           6.3 clipped first, so a zero offset blurred shadow without spread showed nothing) */
+        #blur { left: 220px; top: 40px; box-shadow: #000000 6px 8px 16px 0px; border-radius: 20px; }
+        #spread { left: 380px; top: 50px; width: 90px; height: 70px; box-shadow: #e02020 0px 0px 0px 10px; border-radius: 15px; }
+        #inset { left: 40px; top: 220px; width: 200px; box-shadow: #00000080 8px 8px 12px 4px inset; border-radius: 25px; }
+        #both { left: 300px; top: 220px; box-shadow: #20a020 -10px 10px 6px 2px, #ffff00 0px 0px 0px 6px inset; border-radius: 30px; }
+    </style>
+</head>
+<body>
+    <div id="backdrop" class="abs"/>
+    <div id="outer" class="abs b"/><div id="blur" class="abs b"/><div id="spread" class="abs b"/>
+    <div id="inset" class="abs b"/><div id="both" class="abs b"/>
+</body>
+</html>

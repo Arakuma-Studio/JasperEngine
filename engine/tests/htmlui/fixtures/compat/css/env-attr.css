@@ -1,0 +1,5 @@
+/* env() and attr() */
+.safe { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom, 20px); }
+.fallback { width: env(titlebar-area-width, 100px); }
+.no-fallback { height: env(keyboard-inset-height); }
+.attr { width: attr(data-width px); }

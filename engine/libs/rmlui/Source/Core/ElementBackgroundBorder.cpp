@@ -20,7 +20,7 @@ void ElementBackgroundBorder::Render(Element* element)
 	{
 		for (auto& background : backgrounds)
 		{
-			if (background.first != BackgroundType::BackgroundBorder)
+			if (background.first != BackgroundType::BackgroundBorder && background.first != BackgroundType::BorderAbove)
 				background.second.geometry.Release();
 		}
 
@@ -28,6 +28,11 @@ void ElementBackgroundBorder::Render(Element* element)
 
 		background_dirty = false;
 		border_dirty = false;
+	}
+	else if (element->GetComputedValues().has_decorator() != border_above_decorators)
+	{
+		// decorators came or went: the border moves above or below them (the clip geometries stay valid)
+		GenerateGeometry(element);
 	}
 
 	if (Background* shadow = GetBackground(BackgroundType::BoxShadowAndBackgroundBorder))
@@ -39,6 +44,15 @@ void ElementBackgroundBorder::Render(Element* element)
 	{
 		const Vector2f offset = element->GetAbsoluteOffset(BoxArea::Border);
 		background->geometry.Render(offset);
+	}
+}
+
+void ElementBackgroundBorder::RenderBorder(Element* element)
+{
+	if (Background* border = GetBackground(BackgroundType::BorderAbove))
+	{
+		if (border->geometry)
+			border->geometry.Render(element->GetAbsoluteOffset(BoxArea::Border));
 	}
 }
 
@@ -68,7 +82,7 @@ Geometry* ElementBackgroundBorder::GetClipGeometry(Element* element, BoxArea cli
 	if (render_manager && !geometry)
 	{
 		Mesh mesh = geometry.Release(Geometry::ReleaseMode::ClearMesh);
-		MeshUtilities::GenerateBackground(mesh, element->GetRenderBox(clip_area), ColourbPremultiplied(255));
+		MeshUtilities::GenerateBackground(mesh, element->GetRenderBox(clip_area, 0, false), ColourbPremultiplied(255));
 		geometry = render_manager->MakeGeometry(std::move(mesh));
 	}
 
@@ -108,17 +122,6 @@ void ElementBackgroundBorder::GenerateGeometry(Element* element)
 	const ComputedValues& computed = element->GetComputedValues();
 	const bool has_box_shadow = computed.has_box_shadow();
 
-	if (has_box_shadow)
-	{
-		// The box shadow geometry also includes the element's background and border, thus we can skip the normal background generation.
-		EraseBackground(BackgroundType::BackgroundBorder);
-		Background& shadow_background = GetOrCreateBackground(BackgroundType::BoxShadowAndBackgroundBorder);
-		shadow_background.box_shadow_and_background_border = BoxShadowCache::GetHandle(element, computed);
-		return;
-	}
-
-	EraseBackground(BackgroundType::BoxShadowAndBackgroundBorder);
-
 	const float opacity = computed.opacity();
 	ColourbPremultiplied background_color = computed.background_color().ToPremultiplied(opacity);
 	Array<ColourbPremultiplied, 4> border_colors = {
@@ -128,11 +131,43 @@ void ElementBackgroundBorder::GenerateGeometry(Element* element)
 		computed.border_left_color().ToPremultiplied(opacity),
 	};
 
+	// CSS paints the background color, then the background images, then the border: with decorators (the images) the
+	// border is drawn separately, after them (RenderBorder).
+	const bool border_above = computed.has_decorator();
+	border_above_decorators = border_above;
+	if (border_above)
+	{
+		Geometry& border_geometry = GetOrCreateBackground(BackgroundType::BorderAbove).geometry;
+		Mesh border_mesh = border_geometry.Release(Geometry::ReleaseMode::ClearMesh);
+		for (int i = 0; i < element->GetNumBoxes(); i++)
+			MeshUtilities::GenerateBackgroundBorder(border_mesh, element->GetRenderBox(BoxArea::Padding, i), ColourbPremultiplied(0, 0),
+				border_colors.data());
+		border_geometry = render_manager->MakeGeometry(std::move(border_mesh));
+	}
+	else
+	{
+		EraseBackground(BackgroundType::BorderAbove);
+	}
+
+	if (has_box_shadow)
+	{
+		// The box shadow geometry also includes the element's background and border, thus we can skip the normal background generation.
+		EraseBackground(BackgroundType::BackgroundBorder);
+		Background& shadow_background = GetOrCreateBackground(BackgroundType::BoxShadowAndBackgroundBorder);
+		shadow_background.box_shadow_and_background_border = BoxShadowCache::GetHandle(element, computed, !border_above);
+		return;
+	}
+
+	EraseBackground(BackgroundType::BoxShadowAndBackgroundBorder);
+
+	const ColourbPremultiplied transparent(0, 0);
+	const Array<ColourbPremultiplied, 4> no_border = {transparent, transparent, transparent, transparent};
 	Geometry& geometry = GetOrCreateBackground(BackgroundType::BackgroundBorder).geometry;
 	Mesh mesh = geometry.Release(Geometry::ReleaseMode::ClearMesh);
 
 	for (int i = 0; i < element->GetNumBoxes(); i++)
-		MeshUtilities::GenerateBackgroundBorder(mesh, element->GetRenderBox(BoxArea::Padding, i), background_color, border_colors.data());
+		MeshUtilities::GenerateBackgroundBorder(mesh, element->GetRenderBox(BoxArea::Padding, i), background_color,
+			border_above ? no_border.data() : border_colors.data());
 
 	geometry = render_manager->MakeGeometry(std::move(mesh));
 }

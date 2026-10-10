@@ -9,6 +9,8 @@
 
 #include "Engine.h"
 #include "Log.h"
+#include "htmlui/compat/LuaHooks.h"
+#include "htmlui/compat/runtime/HtmlDialogElement.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
@@ -77,6 +79,24 @@ namespace {
         if (Rml::ElementDocument* document = element->GetOwnerDocument())
             return document;
         return HtmlUIElementRegistry::poolDocument(rootOf(element));
+    }
+
+    // ---- phase 2 (p2-html, hook H5) ----
+
+    using htmlui::compat::LuaHooks;
+
+    // the element is in (or was detached from) an HTML document of the compat layer
+    bool isCompatElement(Rml::Element* element){
+        return LuaHooks::isCompat(documentOf(element));
+    }
+
+    // selectors of HTML documents are CSS: names (body, :focus, ...) are rewritten
+    std::string selectorFor(Rml::Element* element, const std::string& selector){
+        return isCompatElement(element) ? LuaHooks::selector(selector) : selector;
+    }
+
+    bool hiddenAttribute(Rml::Element* element, const std::string& name){
+        return LuaHooks::isHiddenAttribute(name) && isCompatElement(element);
     }
 
     // element (or one of its ancestors) is ancestor
@@ -190,6 +210,8 @@ std::string UIElement::getId() const{
 
 std::string UIElement::getTagName() const{
     HTMLUI_ELEMENT(std::string())
+    if (isCompatElement(element))
+        return LuaHooks::tagName(element);
     return element->GetTagName();
 }
 
@@ -225,41 +247,107 @@ void UIElement::setTextContent(const std::string& text){
 
 std::string UIElement::getInnerHTML() const{
     HTMLUI_ELEMENT(std::string())
+    if (isCompatElement(element))
+        return LuaHooks::innerHTML(element);
     return element->GetInnerRML();
 }
 
 void UIElement::setInnerHTML(const std::string& markup){
     HTMLUI_ELEMENT()
+    if (isCompatElement(element)){
+        element->SetInnerRML(LuaHooks::fragmentToRml(markup, documentOf(element), "innerHTML"));
+        return;
+    }
     element->SetInnerRML(markup);
 }
 
 bool UIElement::hasAttribute(const std::string& name) const{
     HTMLUI_ELEMENT(false)
+    if (hiddenAttribute(element, name))
+        return false;
     return element->HasAttribute(name);
 }
 
 std::string UIElement::getAttribute(const std::string& name) const{
     HTMLUI_ELEMENT(std::string())
+    if (isCompatElement(element)){
+        if (LuaHooks::isHiddenAttribute(name))
+            return std::string();
+        if (name == "class")
+            return LuaHooks::visibleClassNames(element->GetAttribute<Rml::String>("class", ""));
+    }
     return element->GetAttribute<Rml::String>(name, "");
 }
 
 void UIElement::setAttribute(const std::string& name, const std::string& value){
     HTMLUI_ELEMENT()
+    if (isCompatElement(element)){
+        if (LuaHooks::isHiddenAttribute(name)){
+            Log::warn("[HTML UI] UIElement::setAttribute: '%s' is reserved for the engine", name.c_str());
+            return;
+        }
+        if (name == "class"){
+            element->SetAttribute("class", LuaHooks::withHiddenClasses(value, element->GetAttribute<Rml::String>("class", "")));
+            return;
+        }
+        if (name == "style"){
+            setCssText(value);
+            return;
+        }
+        if (name == "data-lucide"){
+            // the icon is expanded again, in place (lucide.createIcons() on this element)
+            std::string shapes;
+            std::vector<std::pair<std::string, std::string>> attributes;
+            const std::string svg = LuaHooks::lucideSvg(element, value, &shapes, &attributes);
+            if (svg.empty()){
+                Log::warn("[HTML UI] Lucide icon '%s' does not exist", value.c_str());
+                element->SetAttribute(name, value);
+                return;
+            }
+            if (element->GetTagName() == "svg"){
+                for (const auto& pair : attributes){
+                    if (pair.first == "class")
+                        element->SetAttribute("class", LuaHooks::withHiddenClasses(pair.second, element->GetAttribute<Rml::String>("class", "")));
+                    else
+                        element->SetAttribute(pair.first, pair.second);
+                }
+                element->SetInnerRML(shapes);
+            }else{
+                setOuterHTML(svg);
+            }
+            return;
+        }
+    }
     element->SetAttribute(name, value);
 }
 
 void UIElement::removeAttribute(const std::string& name){
     HTMLUI_ELEMENT()
+    if (isCompatElement(element)){
+        if (LuaHooks::isHiddenAttribute(name))
+            return;
+        if (name == "class"){
+            const std::string hidden = LuaHooks::withHiddenClasses("", element->GetAttribute<Rml::String>("class", ""));
+            if (!hidden.empty()){
+                element->SetAttribute("class", hidden);
+                return;
+            }
+        }
+    }
     element->RemoveAttribute(name);
 }
 
 bool UIElement::hasClass(const std::string& name) const{
     HTMLUI_ELEMENT(false)
+    if (LuaHooks::isHiddenClass(name) && isCompatElement(element))
+        return false;
     return element->IsClassSet(name);
 }
 
 void UIElement::setClass(const std::string& name, bool active){
     HTMLUI_ELEMENT()
+    if (LuaHooks::isHiddenClass(name) && isCompatElement(element))
+        return;
     element->SetClass(name, active);
 }
 
@@ -316,11 +404,17 @@ void UIElement::setId(const std::string& id){
 
 std::string UIElement::getClassName() const{
     HTMLUI_ELEMENT(std::string())
+    if (isCompatElement(element))
+        return LuaHooks::visibleClassNames(element->GetClassNames());
     return element->GetClassNames();
 }
 
 void UIElement::setClassName(const std::string& className){
     HTMLUI_ELEMENT()
+    if (isCompatElement(element)){
+        element->SetClassNames(LuaHooks::withHiddenClasses(className, element->GetClassNames()));
+        return;
+    }
     element->SetClassNames(className);
 }
 
@@ -396,13 +490,13 @@ int UIElement::getChildElementCount() const{
 
 UIElement UIElement::querySelector(const std::string& selector) const{
     HTMLUI_ELEMENT(UIElement())
-    return wrap(element->QuerySelector(selector));
+    return wrap(element->QuerySelector(selectorFor(element, selector)));
 }
 
 std::vector<UIElement> UIElement::querySelectorAll(const std::string& selector) const{
     HTMLUI_ELEMENT(std::vector<UIElement>())
     Rml::ElementList elements;
-    element->QuerySelectorAll(elements, selector);
+    element->QuerySelectorAll(elements, selectorFor(element, selector));
     std::vector<UIElement> result;
     result.reserve(elements.size());
     for (Rml::Element* found : elements){
@@ -413,15 +507,16 @@ std::vector<UIElement> UIElement::querySelectorAll(const std::string& selector) 
 
 UIElement UIElement::closest(const std::string& selector) const{
     HTMLUI_ELEMENT(UIElement())
+    const std::string rewritten = selectorFor(element, selector);
     // the DOM's closest starts at the element itself, RmlUi's at its parent
-    if (element->Matches(selector))
+    if (element->Matches(rewritten))
         return wrap(element);
-    return wrap(element->Closest(selector));
+    return wrap(element->Closest(rewritten));
 }
 
 bool UIElement::matches(const std::string& selector) const{
     HTMLUI_ELEMENT(false)
-    return element->Matches(selector);
+    return element->Matches(selectorFor(element, selector));
 }
 
 bool UIElement::contains(const UIElement& other) const{
@@ -438,6 +533,12 @@ UIElement UIElement::appendChild(const UIElement& child){
     if (!childElement){
         Log::error("[HTML UI] UIElement::appendChild: the child is not a valid element");
         return UIElement();
+    }
+    // template.content (a DocumentFragment): its children move, the fragment stays empty
+    if (childElement->GetTagName() == LuaHooks::kFragmentTag && !childElement->GetParentNode()){
+        while (childElement->GetNumChildren() > 0)
+            element->AppendChild(childElement->RemoveChild(childElement->GetChild(0)));
+        return child;
     }
     Rml::ElementPtr taken = takeForInsertion(element, childElement, "appendChild");
     if (!taken)
@@ -459,6 +560,11 @@ UIElement UIElement::insertBefore(const UIElement& child, const UIElement& refer
     if (referenceElement->GetParentNode() != element){
         Log::error("[HTML UI] UIElement::insertBefore: the reference element is not a child of this element (NotFoundError)");
         return UIElement();
+    }
+    if (childElement->GetTagName() == LuaHooks::kFragmentTag && !childElement->GetParentNode()){
+        while (childElement->GetNumChildren() > 0)
+            element->InsertBefore(childElement->RemoveChild(childElement->GetChild(0)), referenceElement);
+        return child;
     }
     if (referenceElement == childElement)
         return child;
@@ -537,9 +643,18 @@ UIElement UIElement::cloneNode(bool deep) const{
 
 std::map<std::string, std::string> UIElement::getAttributes() const{
     HTMLUI_ELEMENT((std::map<std::string, std::string>()))
+    const bool compat = isCompatElement(element);
     std::map<std::string, std::string> attributes;
     for (const auto& pair : element->GetAttributes()){
-        attributes[pair.first] = pair.second.Get<Rml::String>();
+        if (compat && LuaHooks::isHiddenAttribute(pair.first))
+            continue;
+        std::string value = pair.second.Get<Rml::String>();
+        if (compat && pair.first == "class"){
+            value = LuaHooks::visibleClassNames(value);
+            if (value.empty())
+                continue;
+        }
+        attributes[pair.first] = value;
     }
     return attributes;
 }
@@ -548,16 +663,22 @@ std::map<std::string, std::string> UIElement::getAttributes() const{
 
 void UIElement::addClass(const std::string& name){
     HTMLUI_ELEMENT()
+    if (LuaHooks::isHiddenClass(name) && isCompatElement(element))
+        return;
     element->SetClass(name, true);
 }
 
 void UIElement::removeClass(const std::string& name){
     HTMLUI_ELEMENT()
+    if (LuaHooks::isHiddenClass(name) && isCompatElement(element))
+        return;
     element->SetClass(name, false);
 }
 
 bool UIElement::toggleClass(const std::string& name){
     HTMLUI_ELEMENT(false)
+    if (LuaHooks::isHiddenClass(name) && isCompatElement(element))
+        return false;
     const bool active = !element->IsClassSet(name);
     element->SetClass(name, active);
     return active;
@@ -565,12 +686,16 @@ bool UIElement::toggleClass(const std::string& name){
 
 bool UIElement::toggleClass(const std::string& name, bool force){
     HTMLUI_ELEMENT(false)
+    if (LuaHooks::isHiddenClass(name) && isCompatElement(element))
+        return false;
     element->SetClass(name, force);
     return force;
 }
 
 bool UIElement::containsClass(const std::string& name) const{
     HTMLUI_ELEMENT(false)
+    if (LuaHooks::isHiddenClass(name) && isCompatElement(element))
+        return false;
     return element->IsClassSet(name);
 }
 
@@ -583,7 +708,14 @@ std::string UIElement::getStyle(const std::string& property) const{
 void UIElement::setStyle(const std::string& property, const std::string& value){
     HTMLUI_ELEMENT()
     if (value.empty()){
-        element->RemoveProperty(property);
+        removeStyle(property);
+    }else if (isCompatElement(element)){
+        // CSS: rewritten into the RCSS declarations it stands for (p2-html, hook H5)
+        const auto declarations = LuaHooks::rewriteDeclarations(property + ": " + value);
+        if (declarations.empty())
+            Log::warn("[HTML UI] style '%s: %s' is not supported (dropped) on element %s", property.c_str(), value.c_str(), element->GetAddress().c_str());
+        for (const auto& declaration : declarations)
+            setStyleProperty(declaration.first, declaration.second);
     }else{
         setStyleProperty(property, value);
     }
@@ -591,17 +723,28 @@ void UIElement::setStyle(const std::string& property, const std::string& value){
 
 void UIElement::removeStyle(const std::string& property){
     HTMLUI_ELEMENT()
+    if (isCompatElement(element)){
+        // every RCSS property the CSS property is written as
+        for (const auto& declaration : LuaHooks::rewriteDeclarations(property + ": initial"))
+            element->RemoveProperty(declaration.first);
+    }
     element->RemoveProperty(property);
 }
 
 std::string UIElement::getDataset(const std::string& camelKey) const{
     HTMLUI_ELEMENT(std::string())
-    return element->GetAttribute<Rml::String>("data-" + hyphenate(camelKey), "");
+    const std::string name = "data-" + hyphenate(camelKey);
+    if (hiddenAttribute(element, name))
+        return std::string();
+    return element->GetAttribute<Rml::String>(name, "");
 }
 
 void UIElement::setDataset(const std::string& camelKey, const std::string& value){
     HTMLUI_ELEMENT()
-    element->SetAttribute("data-" + hyphenate(camelKey), value);
+    const std::string name = "data-" + hyphenate(camelKey);
+    if (hiddenAttribute(element, name))
+        return;
+    element->SetAttribute(name, value);
 }
 
 // ---- form controls ----
@@ -820,4 +963,174 @@ bool UIElement::dispatchEvent(const std::string& type, const UIValue& detail, bo
         parameters["value"] = getValue();
     element->DispatchEvent(rmlType, parameters, true, bubbles);
     return !prevented;
+}
+
+// ---- phase 2 (p2-html, hook H5) ----
+
+namespace {
+
+    // the nodes of an HTML fragment (RML for RML documents), made in the element's document
+    std::vector<Rml::ElementPtr> parseMarkup(Rml::Element* context, const std::string& markup, const char* what){
+        std::vector<Rml::ElementPtr> nodes;
+        Rml::ElementDocument* document = documentOf(context);
+        if (!document)
+            return nodes;
+        const std::string rml = isCompatElement(context) ? LuaHooks::fragmentToRml(markup, document, what) : markup;
+        Rml::ElementPtr container = document->CreateElement("div");
+        container->SetInnerRML(rml);
+        while (container->GetNumChildren() > 0)
+            nodes.push_back(container->RemoveChild(container->GetChild(0)));
+        return nodes;
+    }
+
+    // "name: value; name: value" (RCSS as written)
+    std::vector<std::pair<std::string, std::string>> splitDeclarations(const std::string& css){
+        std::vector<std::pair<std::string, std::string>> declarations;
+        size_t start = 0;
+        for (size_t i = 0; i <= css.size(); i++){
+            if (i < css.size() && css[i] != ';')
+                continue;
+            const std::string part = css.substr(start, i - start);
+            start = i + 1;
+            const size_t colon = part.find(':');
+            if (colon == std::string::npos)
+                continue;
+            auto trim = [](std::string text){
+                const size_t begin = text.find_first_not_of(" \t\r\n");
+                const size_t end = text.find_last_not_of(" \t\r\n");
+                return (begin == std::string::npos) ? std::string() : text.substr(begin, end - begin + 1);
+            };
+            const std::string name = trim(part.substr(0, colon));
+            const std::string value = trim(part.substr(colon + 1));
+            if (!name.empty() && !value.empty())
+                declarations.emplace_back(name, value);
+        }
+        return declarations;
+    }
+
+}
+
+std::string UIElement::getLocalName() const{
+    HTMLUI_ELEMENT(std::string())
+    if (isCompatElement(element))
+        return LuaHooks::localName(element);
+    return element->GetTagName();
+}
+
+std::string UIElement::getOuterHTML() const{
+    HTMLUI_ELEMENT(std::string())
+    return LuaHooks::outerHTML(element);
+}
+
+void UIElement::setOuterHTML(const std::string& html){
+    HTMLUI_ELEMENT()
+    Rml::Element* parent = element->GetParentNode();
+    if (!parent || rmlui_dynamic_cast<Rml::ElementDocument*>(element)){
+        Log::error("[HTML UI] UIElement::setOuterHTML: the element has no parent (NoModificationAllowedError)");
+        return;
+    }
+    Rml::ElementDocument* document = documentOf(element);
+    for (Rml::ElementPtr& node : parseMarkup(element, html, "outerHTML"))
+        parent->InsertBefore(std::move(node), element);
+    keepDetached(parent->RemoveChild(element), document);
+}
+
+void UIElement::insertAdjacentHTML(const std::string& position, const std::string& html){
+    HTMLUI_ELEMENT()
+    std::string where = position;
+    for (char& c : where)
+        c = (char)std::tolower((unsigned char)c);
+    Rml::Element* parent = element->GetParentNode();
+    const bool isDocument = rmlui_dynamic_cast<Rml::ElementDocument*>(element) != nullptr;
+    if ((where == "beforebegin" || where == "afterend") && (!parent || isDocument)){
+        Log::error("[HTML UI] UIElement::insertAdjacentHTML('%s'): the element has no parent (NoModificationAllowedError)", position.c_str());
+        return;
+    }
+    if (where != "beforebegin" && where != "afterbegin" && where != "beforeend" && where != "afterend"){
+        Log::error("[HTML UI] UIElement::insertAdjacentHTML: '%s' is not beforebegin, afterbegin, beforeend or afterend (SyntaxError)", position.c_str());
+        return;
+    }
+    std::vector<Rml::ElementPtr> nodes = parseMarkup(element, html, "insertAdjacentHTML");
+    // the nodes keep their order: each goes before the same reference
+    Rml::Element* parentOfNodes = (where == "beforebegin" || where == "afterend") ? parent : element;
+    Rml::Element* reference = nullptr;
+    if (where == "beforebegin")
+        reference = element;
+    else if (where == "afterend")
+        reference = element->GetNextSibling();
+    else if (where == "afterbegin")
+        reference = element->GetFirstChild();
+    for (Rml::ElementPtr& node : nodes){
+        if (reference)
+            parentOfNodes->InsertBefore(std::move(node), reference);
+        else
+            parentOfNodes->AppendChild(std::move(node));
+    }
+}
+
+UIElement UIElement::getContent() const{
+    HTMLUI_ELEMENT(UIElement())
+    if (!isCompatElement(element) || element->GetTagName() != "htmltemplate")
+        return UIElement();
+    Rml::ElementDocument* document = documentOf(element);
+    Rml::ElementPtr fragment = document->CreateElement(LuaHooks::kFragmentTag);
+    fragment->SetInnerRML(LuaHooks::templateContent(element));
+    return keepDetached(std::move(fragment), document);
+}
+
+void UIElement::show(){
+    HTMLUI_ELEMENT()
+    if (auto* dialog = rmlui_dynamic_cast<htmlui::compat::HtmlDialogElement*>(element)){
+        dialog->show();
+        return;
+    }
+    element->SetAttribute("open", "");
+}
+
+void UIElement::showModal(){
+    HTMLUI_ELEMENT()
+    // no modal backdrop or focus trap (HTMLUI-HTML-0025)
+    if (auto* dialog = rmlui_dynamic_cast<htmlui::compat::HtmlDialogElement*>(element)){
+        dialog->showModal();
+        return;
+    }
+    show();
+}
+
+void UIElement::close(const std::string& returnValue){
+    HTMLUI_ELEMENT()
+    if (auto* dialog = rmlui_dynamic_cast<htmlui::compat::HtmlDialogElement*>(element)){
+        dialog->close(returnValue);
+        return;
+    }
+    if (!element->HasAttribute("open"))
+        return;
+    element->RemoveAttribute("open");
+    Rml::Dictionary parameters;
+    if (!returnValue.empty())
+        parameters["returnValue"] = returnValue;
+    element->DispatchEvent("close", parameters, false, false);
+}
+
+std::string UIElement::getCssText() const{
+    HTMLUI_ELEMENT(std::string())
+    std::string text;
+    for (const auto& pair : element->GetLocalStyleProperties()){
+        if (!text.empty())
+            text += ' ';
+        text += Rml::StyleSheetSpecification::GetPropertyName(pair.first) + ": " + pair.second.ToString() + ";";
+    }
+    return text;
+}
+
+void UIElement::setCssText(const std::string& css){
+    HTMLUI_ELEMENT()
+    std::vector<Rml::PropertyId> ids;
+    for (const auto& pair : element->GetLocalStyleProperties())
+        ids.push_back(pair.first);
+    for (Rml::PropertyId id : ids)
+        element->RemoveProperty(id);
+    const auto declarations = isCompatElement(element) ? LuaHooks::rewriteDeclarations(css) : splitDeclarations(css);
+    for (const auto& declaration : declarations)
+        setStyleProperty(declaration.first, declaration.second);
 }

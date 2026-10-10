@@ -1,0 +1,5 @@
+/* SVG paint properties on <svg> (registered) */
+.lucide { stroke-width: 1.5; stroke: currentColor; fill: none; }
+svg.icon { fill: #f00; stroke: rgb(0 0 0 / 50%); stroke-linecap: round; stroke-linejoin: bevel; stroke-opacity: .5; fill-opacity: 80%; stroke-dasharray: 4 2; }
+svg path { stroke-dashoffset: 3; marker-end: url(#arrow); paint-order: stroke; vector-effect: non-scaling-stroke; }
+.grad { fill: url(#g); }

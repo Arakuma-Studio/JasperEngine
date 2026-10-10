@@ -4,6 +4,7 @@
 #include "RmlFile.h"
 
 #include "HtmlUIDependencies.h"
+#include "compat/VirtualFiles.h"
 #include "io/Data.h"
 
 #include <cstdio>
@@ -30,6 +31,17 @@ Rml::FileHandle RmlFile::Open(const Rml::String& path){
     // an empty path would resolve to the asset directory itself
     if (path.empty())
         return 0;
+
+    // the compat layer's in-memory files (phase-2 hook H3b): rewritten sheets, the
+    // user-agent sheet and its SVGs, data: URIs
+    if (htmlui::compat::VirtualFiles::isVirtual(path)){
+        std::shared_ptr<const std::string> content = htmlui::compat::VirtualFiles::find(path);
+        if (!content)
+            return 0;
+        RmlFileHandle* handle = new RmlFileHandle();
+        handle->data.open(reinterpret_cast<unsigned char*>(const_cast<char*>(content->data())), (unsigned int)content->size(), true, true);
+        return reinterpret_cast<Rml::FileHandle>(handle);
+    }
 
     // hot reload: the files a document load reads (UIDocumentSystem's load scope), missing ones too
     HtmlUIFileLog::recordFile(path);
@@ -104,6 +116,14 @@ size_t RmlFile::Length(Rml::FileHandle file){
 bool RmlFile::LoadFile(const Rml::String& path, Rml::String& out_data){
     if (path.empty())
         return false;
+
+    if (htmlui::compat::VirtualFiles::isVirtual(path)){
+        std::shared_ptr<const std::string> content = htmlui::compat::VirtualFiles::find(path);
+        if (!content)
+            return false;
+        out_data = *content;
+        return true;
+    }
 
     HtmlUIFileLog::recordFile(path);
 

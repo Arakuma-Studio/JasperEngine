@@ -1,0 +1,11 @@
+/* the font shorthand as longhands */
+.a { font: 16px Arial, sans-serif; }
+.b { font: italic bold 12px/30px Georgia, serif; }
+.c { font: 700 2rem/1.2 "Press Start 2P", cursive; }
+.d { font: small-caps condensed 14px Inter; }
+.e { font: oblique 10deg 300 large/normal system-ui; }
+.f { font: caption; }
+.g { font: menu; }
+.h { font: bold; }
+.i { font: var(--font); }
+.j { font: 120% / 1.5 monospace; }

@@ -9,6 +9,7 @@
 #include "UIEvent.h"
 #include "UIDataModel.h"
 #include "UIValue.h"
+#include "htmlui/compat/Diagnostics.h"
 
 #include <cstdint>
 #include <functional>
@@ -25,6 +26,11 @@ namespace jasperengine{
         UIDocument(Scene* scene);                 // adds UIDocumentComponent
         UIDocument(Scene* scene, Entity entity);
         virtual ~UIDocument();
+
+        UIDocument(const UIDocument& rhs);
+        UIDocument& operator=(const UIDocument& rhs);
+        UIDocument(UIDocument&& rhs) noexcept;
+        UIDocument& operator=(UIDocument&& rhs) noexcept;
 
         // --- phase 0 ---
 
@@ -63,6 +69,17 @@ namespace jasperengine{
         // --- phase 1 (p1-rtt) ---
 
         Framebuffer* getTargetTexture() const;           // TEXTURE mode target; nullptr otherwise (UIDocumentSystem::getTargetTexture)
+
+        // --- phase 2 (p2-html, hook H4) ---
+        // HTML documents: getBody() is the HTML <body>, this the <html> element (the RML body)
+        UIElement getDocumentElement() const;
+        // the compatibility layer's diagnostics of this document (compile time, RmlUi messages
+        // mapped to the HTML/CSS source, Lua script errors); what check --ui reports for the file
+        std::vector<htmlui::compat::Diagnostic> getDiagnostics() const;
+        // prefers-color-scheme ("light" default, "dark") and prefers-reduced-motion of the
+        // documents (per scene: every document of the scene's context follows)
+        void setColorScheme(const std::string& scheme);
+        void setReducedMotion(bool reduced);
     };
 
 }

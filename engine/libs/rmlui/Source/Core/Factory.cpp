@@ -335,9 +335,9 @@ bool Factory::InstanceElementText(Element* parent, const String& in_text)
 	if (SystemInterface* system_interface = GetSystemInterface())
 		system_interface->TranslateString(text, in_text);
 
-	// If this text node only contains white-space we don't want to construct it.
-	const bool only_white_space = std::all_of(text.begin(), text.end(), &StringUtilities::IsWhitespace);
-	if (only_white_space)
+	// White-space-only text is kept: between inline-level boxes it is a space (CSS Text 3 §4.1.1); layout skips it where
+	// CSS removes it (at the start of a line, in flex containers and between table parts). An empty text makes nothing.
+	if (text.empty())
 		return true;
 
 	// See if we need to parse it as RML, and whether the text contains data expressions (curly brackets).

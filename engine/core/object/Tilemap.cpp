@@ -17,6 +17,11 @@ Tilemap::~Tilemap(){
 
 }
 
+Tilemap::Tilemap(const Tilemap& rhs) = default;
+Tilemap& Tilemap::operator=(const Tilemap& rhs) = default;
+Tilemap::Tilemap(Tilemap&& rhs) noexcept = default;
+Tilemap& Tilemap::operator=(Tilemap&& rhs) noexcept = default;
+
 bool Tilemap::createTilemap(){
     TilemapComponent& tilemap = getComponent<TilemapComponent>();
     MeshComponent& mesh = getComponent<MeshComponent>();

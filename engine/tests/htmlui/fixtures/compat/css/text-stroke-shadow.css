@@ -1,0 +1,5 @@
+/* text-shadow and -webkit-text-stroke in one document: both through companions */
+.title { -webkit-text-stroke: 1px #000; text-shadow: 0 2px 4px #0008; }
+.glow { text-shadow: 0 0 10px gold; }
+.outline { -webkit-text-stroke: 2px white; }
+.none { text-shadow: none; }

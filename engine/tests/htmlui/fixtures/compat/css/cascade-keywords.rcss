@@ -1,0 +1,249 @@
+#htmlui-root .inherited {
+color: var(--html-unset);
+font-family: var(--html-unset);
+line-height: var(--html-unset);
+font-size: 1em;
+}
+#htmlui-root .inherited-initial {
+color: #000000ff;
+--html-current-color: #000000ff;
+font-size: 16px;
+line-height: 1.2;
+text-align: left;
+}
+#htmlui-root .non-inherited {
+margin-top: var(--html-unset);
+margin-right: var(--html-unset);
+margin-bottom: var(--html-unset);
+margin-left: var(--html-unset);
+padding-left: var(--html-unset);
+width: var(--html-inh-width, auto);
+display: var(--html-unset);
+}
+#htmlui-root .differs {
+border-right-color: var(--html-current-color, #000000ff);
+border-bottom-color: var(--html-current-color, #000000ff);
+border-left-color: var(--html-current-color, #000000ff);
+border-top-color: var(--html-current-color, #000000ff);
+min-width: 0px;
+}
+#htmlui-root .revert {
+color: var(--html-unset);
+opacity: var(--html-unset);
+}
+#htmlui-root .shorthand {
+background-color: var(--html-inh-background-color, transparent);
+decorator: var(--html-inh-decorator, none);
+border-top-width: var(--html-unset);
+border-right-width: var(--html-unset);
+border-bottom-width: var(--html-unset);
+border-left-width: var(--html-unset);
+border-top-color: var(--html-current-color, #000000ff);
+border-right-color: var(--html-current-color, #000000ff);
+border-bottom-color: var(--html-current-color, #000000ff);
+border-left-color: var(--html-current-color, #000000ff);
+font-style: var(--html-unset);
+font-weight: var(--html-unset);
+font-size: var(--html-unset);
+line-height: var(--html-unset);
+font-family: var(--html-unset);
+}
+#htmlui-root .parent {
+width: 300px;
+--html-inh-width: 300px;
+}
+#htmlui-root .reset {
+margin-top: var(--html-unset);
+margin-right: var(--html-unset);
+margin-bottom: var(--html-unset);
+margin-left: var(--html-unset);
+padding-top: var(--html-unset);
+padding-right: var(--html-unset);
+padding-bottom: var(--html-unset);
+padding-left: var(--html-unset);
+border-top-width: var(--html-unset);
+border-right-width: var(--html-unset);
+border-bottom-width: var(--html-unset);
+border-left-width: var(--html-unset);
+border-top-color: var(--html-current-color, #000000ff);
+border-right-color: var(--html-current-color, #000000ff);
+border-bottom-color: var(--html-current-color, #000000ff);
+border-left-color: var(--html-current-color, #000000ff);
+border-top-left-radius: var(--html-unset);
+border-top-right-radius: var(--html-unset);
+border-bottom-right-radius: var(--html-unset);
+border-bottom-left-radius: var(--html-unset);
+display: var(--html-unset);
+position: var(--html-unset);
+top: var(--html-unset);
+right: var(--html-unset);
+bottom: var(--html-unset);
+left: var(--html-unset);
+float: var(--html-unset);
+clear: var(--html-unset);
+box-sizing: var(--html-unset);
+z-index: var(--html-unset);
+width: var(--html-unset);
+--html-inh-width: var(--html-unset);
+min-width: 0px;
+max-width: var(--html-unset);
+height: var(--html-unset);
+min-height: 0px;
+max-height: var(--html-unset);
+line-height: var(--html-unset);
+vertical-align: var(--html-unset);
+overflow-x: var(--html-unset);
+overflow-y: var(--html-unset);
+visibility: var(--html-unset);
+text-overflow: var(--html-unset);
+color: var(--html-unset);
+caret-color: var(--html-unset);
+opacity: var(--html-unset);
+font-family: var(--html-unset);
+font-style: var(--html-unset);
+font-weight: var(--html-unset);
+font-size: var(--html-unset);
+letter-spacing: var(--html-unset);
+text-align: var(--html-unset);
+text-decoration: var(--html-unset);
+text-transform: var(--html-unset);
+white-space: var(--html-unset);
+word-break: var(--html-unset);
+row-gap: var(--html-unset);
+column-gap: var(--html-unset);
+cursor: var(--html-unset);
+pointer-events: var(--html-unset);
+perspective: var(--html-unset);
+transform: var(--html-unset);
+transition: var(--html-unset);
+animation: var(--html-unset);
+--html-inh-animation: var(--html-unset);
+decorator: var(--html-unset);
+--html-inh-decorator: var(--html-unset);
+mask-image: var(--html-unset);
+font-effect: var(--html-unset);
+filter: var(--html-unset);
+backdrop-filter: var(--html-unset);
+box-shadow: var(--html-unset);
+align-content: var(--html-unset);
+align-items: var(--html-unset);
+align-self: var(--html-unset);
+flex-basis: var(--html-unset);
+flex-direction: var(--html-unset);
+flex-grow: var(--html-unset);
+flex-shrink: var(--html-unset);
+flex-wrap: var(--html-unset);
+justify-content: var(--html-unset);
+}
+#htmlui-root .reset-initial {
+margin-top: var(--html-unset);
+margin-right: var(--html-unset);
+margin-bottom: var(--html-unset);
+margin-left: var(--html-unset);
+padding-top: var(--html-unset);
+padding-right: var(--html-unset);
+padding-bottom: var(--html-unset);
+padding-left: var(--html-unset);
+border-top-width: var(--html-unset);
+border-right-width: var(--html-unset);
+border-bottom-width: var(--html-unset);
+border-left-width: var(--html-unset);
+border-top-color: var(--html-current-color, #000000ff);
+border-right-color: var(--html-current-color, #000000ff);
+border-bottom-color: var(--html-current-color, #000000ff);
+border-left-color: var(--html-current-color, #000000ff);
+border-top-left-radius: var(--html-unset);
+border-top-right-radius: var(--html-unset);
+border-bottom-right-radius: var(--html-unset);
+border-bottom-left-radius: var(--html-unset);
+display: var(--html-unset);
+position: var(--html-unset);
+top: var(--html-unset);
+right: var(--html-unset);
+bottom: var(--html-unset);
+left: var(--html-unset);
+float: var(--html-unset);
+clear: var(--html-unset);
+box-sizing: var(--html-unset);
+z-index: var(--html-unset);
+width: var(--html-unset);
+--html-inh-width: var(--html-unset);
+min-width: 0px;
+max-width: var(--html-unset);
+height: var(--html-unset);
+min-height: 0px;
+max-height: var(--html-unset);
+line-height: 1.2;
+vertical-align: var(--html-unset);
+overflow-x: var(--html-unset);
+overflow-y: var(--html-unset);
+visibility: visible;
+text-overflow: var(--html-unset);
+color: #000000ff;
+--html-current-color: #000000ff;
+caret-color: auto;
+opacity: var(--html-unset);
+font-family: serif;
+font-style: normal;
+font-weight: normal;
+font-size: 16px;
+letter-spacing: normal;
+text-align: left;
+text-decoration: var(--html-unset);
+text-transform: none;
+white-space: normal;
+word-break: normal;
+row-gap: var(--html-unset);
+column-gap: var(--html-unset);
+cursor: auto;
+pointer-events: auto;
+perspective: var(--html-unset);
+transform: var(--html-unset);
+transition: var(--html-unset);
+animation: var(--html-unset);
+--html-inh-animation: var(--html-unset);
+decorator: var(--html-unset);
+--html-inh-decorator: var(--html-unset);
+mask-image: var(--html-unset);
+font-effect: none;
+filter: var(--html-unset);
+backdrop-filter: var(--html-unset);
+box-shadow: var(--html-unset);
+align-content: var(--html-unset);
+align-items: var(--html-unset);
+align-self: var(--html-unset);
+flex-basis: var(--html-unset);
+flex-direction: var(--html-unset);
+flex-grow: var(--html-unset);
+flex-shrink: var(--html-unset);
+flex-wrap: var(--html-unset);
+justify-content: var(--html-unset);
+}
+#htmlui-root .reset-inherit {
+line-height: var(--html-unset);
+visibility: var(--html-unset);
+color: var(--html-unset);
+caret-color: var(--html-unset);
+font-family: var(--html-unset);
+font-style: var(--html-unset);
+font-weight: var(--html-unset);
+font-size: 1em;
+letter-spacing: var(--html-unset);
+text-align: var(--html-unset);
+text-transform: var(--html-unset);
+white-space: var(--html-unset);
+word-break: var(--html-unset);
+cursor: var(--html-unset);
+pointer-events: var(--html-unset);
+font-effect: var(--html-unset);
+}
+@keyframes spin {
+100% {
+transform: rotate(360deg);
+}
+}
+#htmlui-root .ak {
+-html-animation-fill: none;
+--html-inh-animation: 1s quadratic-out spin;
+animation: var(--html-inh-animation, none 0s ease 0s 1 normal none running);
+}

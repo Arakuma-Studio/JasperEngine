@@ -1,0 +1,17 @@
+color: #ff0000ff; --html-current-color: #ff0000ff; background-color: #00000080; decorator: none; padding: 4px 8px;
+border-top-width: 1px; border-top-color: var(--html-current-color, #000000ff); border-right-width: 1px; border-right-color: var(--html-current-color, #000000ff); border-bottom-width: 1px; border-bottom-color: var(--html-current-color, #000000ff); border-left-width: 1px; border-left-color: var(--html-current-color, #000000ff); width: 100%; transition: opacity 0.2s quadratic-out;
+width: 250px; height: 100px; font-size: 2vw;
+margin: 0; color: #0000ffff; --html-current-color: #0000ffff;
+display: flex; flex-wrap: wrap;
+font-effect: glow(0px 2px 0px 0px #ffffffff); top: var(--html-unset); right: var(--html-unset); bottom: var(--html-unset); left: var(--html-unset); color: var(--html-unset);
+--local: 10px; width: var(--local); decorator: html-layer("asset://ui/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+/* important */
+#htmlui-root [data-htmlui-loc="5"] > * {
+flex: 1 1 33.43%;
+}
+#htmlui-root [data-htmlui-loc="5"] > scrollbarvertical {
+width: 0px;
+}
+#htmlui-root [data-htmlui-loc="5"] > scrollbarhorizontal {
+height: 0px;
+}

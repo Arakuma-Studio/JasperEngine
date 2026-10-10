@@ -15,6 +15,11 @@ ShadowCaster2D::ShadowCaster2D(Scene* scene, Entity entity): GameObject(scene, e
 ShadowCaster2D::~ShadowCaster2D(){
 }
 
+ShadowCaster2D::ShadowCaster2D(const ShadowCaster2D& rhs) = default;
+ShadowCaster2D& ShadowCaster2D::operator=(const ShadowCaster2D& rhs) = default;
+ShadowCaster2D::ShadowCaster2D(ShadowCaster2D&& rhs) noexcept = default;
+ShadowCaster2D& ShadowCaster2D::operator=(ShadowCaster2D&& rhs) noexcept = default;
+
 void ShadowCaster2D::setShape(ShadowCaster2DShape shape){
     ShadowCaster2DComponent& occluder = getComponent<ShadowCaster2DComponent>();
 

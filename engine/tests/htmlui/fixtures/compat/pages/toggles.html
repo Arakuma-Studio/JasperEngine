@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- golden page (phase-2 spec 5.3): the switch knobs and check marks are ::before/::after;
+     needs the phase-3 fork, until then only the diagnostics snapshot and a no-crash render run -->
+<meta name="htmlui-test-requires" content="pseudo-elements">
+<title>Gameplay options</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Inter', sans-serif;
+    line-height: 1.5;
+    color: #e5e7eb;
+    background: linear-gradient(135deg, #1e1b4b, #0f172a);
+  }
+
+  .card {
+    width: 460px;
+    padding: 28px 32px;
+    background: #111827;
+    border: 1px solid #312e81;
+    border-radius: 16px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  }
+
+  .card h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 20px;
+    letter-spacing: 2px;
+    margin-bottom: 18px;
+  }
+
+  .option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid #1f2937;
+  }
+
+  .option:last-child { border-bottom: none; }
+
+  /* the classic switch */
+  .switch {
+    position: relative;
+    display: inline-block;
+    width: 52px;
+    height: 28px;
+  }
+
+  .switch input { opacity: 0; width: 0; height: 0; }
+
+  .slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #4b5563;
+    transition: .4s;
+    border-radius: 28px;
+  }
+
+  .slider:before {
+    position: absolute;
+    content: "";
+    height: 22px;
+    width: 22px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+  }
+
+  input:checked + .slider { background-color: #6366f1; }
+  input:checked + .slider:before { transform: translateX(24px); }
+
+  /* custom check boxes */
+  .check {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+    cursor: pointer;
+  }
+
+  .check input { position: absolute; opacity: 0; }
+
+  .box {
+    position: relative;
+    width: 22px;
+    height: 22px;
+    border: 2px solid #6b7280;
+    border-radius: 6px;
+  }
+
+  .check input:checked ~ .box { background: #22c55e; border-color: #22c55e; }
+
+  .check input:checked ~ .box::after {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 1px;
+    width: 6px;
+    height: 12px;
+    border: solid #ffffff;
+    border-width: 0 3px 3px 0;
+    transform: rotate(45deg);
+  }
+</style>
+</head>
+<body>
+  <div class="card" id="card">
+    <h1>GAMEPLAY</h1>
+    <div class="option"><span>Auto-loot</span><label class="switch" id="sw-loot"><input type="checkbox" checked><span class="slider"></span></label></div>
+    <div class="option"><span>Subtitles</span><label class="switch" id="sw-subs"><input type="checkbox" checked><span class="slider"></span></label></div>
+    <div class="option"><span>Camera shake</span><label class="switch" id="sw-shake"><input type="checkbox"><span class="slider"></span></label></div>
+    <div class="option"><span>Aim assist</span><label class="switch" id="sw-aim"><input type="checkbox"><span class="slider"></span></label></div>
+    <div class="option" id="checks">
+      <div>
+        <label class="check"><input type="checkbox" checked><span class="box" id="box-1"></span>Show damage numbers</label>
+        <label class="check"><input type="checkbox"><span class="box" id="box-2"></span>Hardcore mode</label>
+        <label class="check"><input type="checkbox" checked><span class="box" id="box-3"></span>Skip intro cinematics</label>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,21 @@
+<rml>
+<head>
+<title>t</title>
+<link type="text/rcss" href="/@htmlui/ua.rcss" origin="user-agent"/>
+</head
+><body id="htmlui-root" data-htmlui-loc="0"
+><htmlbody data-htmlui-loc="1">Text before any tag
+
+<p data-htmlui-loc="2">one
+</p
+><p data-htmlui-loc="3">two
+</p
+><ul data-htmlui-loc="4"
+><li data-htmlui-loc="5">a</li
+><li data-htmlui-loc="6">b</li></ul>
+<table data-htmlui-loc="7"
+><tbody data-htmlui-loc="8"
+><tr data-htmlui-loc="9"
+><td data-htmlui-loc="10">cell</td></tr></tbody></table>
+</htmlbody></body>
+</rml>

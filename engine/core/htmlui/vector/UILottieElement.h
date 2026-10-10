@@ -28,12 +28,14 @@ namespace jasperengine {
     struct HtmlUITexture;
 
     // <lottie src="anim.json|anim.lottie" autoplay loop speed direction mode segment marker
-    // animation>: a Lottie animation rendered by ThorVG (CPU) into ONE dynamic RGBA8 texture
+    // animation playonhover>: a Lottie animation rendered by ThorVG (CPU) into ONE dynamic RGBA8 texture
     // per element (HtmlUITexture DYNAMIC), updated in place, and only when the shown frame
     // changes or the element is resized. Playback time is the UI clock (HtmlUIClock).
     // Events on the element: load, error (parameter "message"), play, pause, loop, complete.
     // The content is fitted into the content box keeping its aspect ratio, centred, and
-    // tinted by image-color x opacity like <img> and <svg>.
+    // tinted by image-color x opacity like <img> and <svg>. playonhover (phase-2 hook H9, the
+    // lottie-player `hover` attribute): the pointer entering plays, leaving stops (back to
+    // the first frame), as @lottiefiles/lottie-player does.
     class JASPERENGINE_INTERNAL UILottieElement : public Rml::Element {
     public:
         RMLUI_RTTI_DeclareWithParent(UILottieElement, Rml::Element)
@@ -87,6 +89,7 @@ namespace jasperengine {
         void OnResize() override;
         void OnAttributeChange(const Rml::ElementAttributes& changed_attributes) override;
         void OnPropertyChange(const Rml::PropertyIdSet& changed_properties) override;
+        void ProcessDefaultAction(Rml::Event& event) override;
 
     private:
         void ensureLoaded();

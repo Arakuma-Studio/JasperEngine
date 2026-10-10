@@ -1,0 +1,5 @@
+/* text-decoration: the line keyword */
+.u { text-decoration: underline; } .none { text-decoration: none; } .lt { text-decoration: line-through; }
+.full { text-decoration: underline dotted red 2px; } .two { text-decoration: underline overline; }
+.line { text-decoration-line: overline; } .style { text-decoration-style: wavy; } .color { text-decoration-color: red; }
+.thickness { text-decoration-thickness: 2px; text-underline-offset: 4px; } .blink { text-decoration: blink; }

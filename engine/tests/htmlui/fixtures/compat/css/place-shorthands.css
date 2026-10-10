@@ -1,0 +1,5 @@
+/* place-* shorthands */
+.pc { place-content: center; } .pc2 { place-content: space-between start; }
+.pi { place-items: center; } .pi2 { place-items: start end; }
+.ps { place-self: end; } .ps2 { place-self: center stretch; }
+.safe { place-content: safe center; }

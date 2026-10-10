@@ -90,10 +90,17 @@ bool RmlFontEngine::registerLoaded(const std::shared_ptr<FontFace>& face, const 
     return true;
 }
 
+// The registry knows a font file by its path: one spelling per file (the compat layer names an
+// asset "asset://ui/a.ttf", RCSS and the hot reload "ui/a.ttf"), or a reload of the file would
+// not find the faces loaded under the other one.
+static std::string fontFileKey(const Rml::String& file_name){
+    return normalizeHtmlUIPath(file_name);
+}
+
 bool RmlFontEngine::LoadFontFace(const Rml::String& file_name, int face_index, bool fallback_face, Rml::Style::FontWeight weight){
     HtmlUIFileLog::recordFile(file_name);
     std::string error;
-    std::shared_ptr<FontFace> face = FontRegistry::getOrLoadFile(file_name, face_index, &error);
+    std::shared_ptr<FontFace> face = FontRegistry::getOrLoadFile(fontFileKey(file_name), face_index, &error);
     return registerLoaded(face, error, "", toWeight(weight), -1, fallback_face);
 }
 
@@ -101,7 +108,7 @@ bool RmlFontEngine::LoadFontFace(const Rml::String& file_name, int face_index, c
                                  Rml::Style::FontStyle style, Rml::Style::FontWeight weight, bool fallback_face){
     HtmlUIFileLog::recordFile(file_name);
     std::string error;
-    std::shared_ptr<FontFace> face = FontRegistry::getOrLoadFile(file_name, face_index, &error);
+    std::shared_ptr<FontFace> face = FontRegistry::getOrLoadFile(fontFileKey(file_name), face_index, &error);
     // the style is only meaningful with a family; without one everything comes from the file
     int italic = family.empty() ? -1 : (style == Rml::Style::FontStyle::Italic ? 1 : 0);
     return registerLoaded(face, error, family, toWeight(weight), italic, fallback_face);
@@ -143,6 +150,11 @@ std::vector<std::string> RmlFontEngine::splitFamilyList(const std::string& famil
         names.push_back(name);
 
     return names;
+}
+
+void RmlFontEngine::markFamilyReported(const std::string& family){
+    for (const std::string& name : splitFamilyList(family))
+        warnedFamilies.insert(name);
 }
 
 Rml::FontFaceHandle RmlFontEngine::GetFontFaceHandle(const Rml::String& family, Rml::Style::FontStyle style,
@@ -263,7 +275,17 @@ Rml::FontEffectsHandle RmlFontEngine::PrepareFontEffects(Rml::FontFaceHandle han
 
 const Rml::FontMetrics& RmlFontEngine::GetFontMetrics(Rml::FontFaceHandle handle){
     FaceHandle* face = toHandle(handle);
-    return face ? face->metrics : emptyMetrics;
+    if (!face)
+        return emptyMetrics;
+    if (!renderText){
+        // the no-text test variant hides text decorations too (as the reference's
+        // text-decoration-color: transparent); the layout metrics stay
+        static thread_local Rml::FontMetrics noDecoration;
+        noDecoration = face->metrics;
+        noDecoration.underline_thickness = 0.0f;
+        return noDecoration;
+    }
+    return face->metrics;
 }
 
 RmlFontEngine::FaceHandle* RmlFontEngine::toHandle(Rml::FontFaceHandle handle) const{
@@ -281,6 +303,15 @@ ShapeOptions RmlFontEngine::toShapeOptions(const Rml::TextShapingContext& contex
     }
     options.language = context.language;
     return options;
+}
+
+// RmlUi hands over the line feed that ends a `white-space: pre` line (ElementText's BuildToken
+// keeps it in the token) and whatever control characters a document holds: they take no space and
+// draw nothing, as in RmlUi's own font engine (shaped, they were the missing-glyph box)
+void RmlFontEngine::decodeText(Rml::StringView string, std::vector<uint32_t>& codepoints){
+    TextShaper::decodeUtf8(string.begin(), string.size(), codepoints);
+    codepoints.erase(std::remove_if(codepoints.begin(), codepoints.end(), [](uint32_t codepoint){ return codepoint < 0x20; }),
+                     codepoints.end());
 }
 
 float RmlFontEngine::measure(const FaceHandle& handle, const std::vector<uint32_t>& codepoints, const ShapeOptions& options) const{
@@ -321,7 +352,8 @@ int RmlFontEngine::GetStringWidth(Rml::FontFaceHandle handle, Rml::StringView st
         return 0;
 
     const ShapeOptions options = toShapeOptions(context);
-    const bool withPrior = prior_character != Rml::Character::Null && options.kerning;
+    // (a control character before the string kerns with nothing)
+    const bool withPrior = (char32_t)prior_character >= 0x20 && options.kerning;
 
     if (widthsVersion != version || widths.size() > maxWidthCacheEntries){
         widths.clear();
@@ -345,7 +377,7 @@ int RmlFontEngine::GetStringWidth(Rml::FontFaceHandle handle, Rml::StringView st
         return it->second;
 
     std::vector<uint32_t> codepoints;
-    TextShaper::decodeUtf8(string.begin(), string.size(), codepoints);
+    decodeText(string, codepoints);
 
     float width;
     if (withPrior){
@@ -505,10 +537,18 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
     const float scale = scaleFor(render_manager);
 
     std::vector<uint32_t> codepoints;
-    TextShaper::decodeUtf8(string.begin(), string.size(), codepoints);
+    decodeText(string, codepoints);
 
     std::vector<ShapedGlyph> shaped;
     shape(*handle, codepoints, toShapeOptions(text_shaping_context), shaped);
+
+    if (!renderText){
+        // the no-text test variant: the same advance, no quads
+        float pen = 0.0f;
+        for (const ShapedGlyph& glyph : shaped)
+            pen += glyph.xAdvance;
+        return std::max(0, (int)std::lround(pen));
+    }
 
     // every glyph in a page first, so the textures fetched below already hold them
     for (const ShapedGlyph& glyph : shaped){
@@ -604,6 +644,21 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
     return std::max(0, (int)std::lround(width));
 }
 
+bool RmlFontEngine::hasFamily(const std::string& name){
+    return FontRegistry::hasFamily(name);
+}
+
+void RmlFontEngine::setRenderTextForTesting(bool render){
+    if (renderText == render)
+        return;
+    renderText = render;
+    version++;
+}
+
+bool RmlFontEngine::getRenderTextForTesting() const{
+    return renderText;
+}
+
 int RmlFontEngine::GetVersion(Rml::FontFaceHandle handle){
     (void)handle;
     return version;
@@ -638,7 +693,7 @@ void RmlFontEngine::retireHandles(){
 
 bool RmlFontEngine::reloadFontFile(const std::string& path){
     std::string error;
-    const int replaced = FontRegistry::reloadFile(path, &error);
+    const int replaced = FontRegistry::reloadFile(normalizeHtmlUIPath(path), &error);
     if (replaced == 0){
         if (!error.empty())
             Log::error("[HTML UI] %s", error.c_str());

@@ -1,0 +1,16 @@
+<rml>
+<head>
+<title>Standard page</title>
+<link type="text/rcss" href="/@htmlui/ua.rcss" origin="user-agent"/>
+<style>
+.htmlui-h0 {
+-rmlui-language: en;
+}
+</style>
+</head
+><body lang="en" id="htmlui-root" class="htmlui-h0" data-htmlui-loc="0">
+<htmlbody data-htmlui-loc="1"
+><p data-htmlui-loc="2">Hello</p>
+
+</htmlbody></body>
+</rml>

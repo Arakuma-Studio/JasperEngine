@@ -8,6 +8,7 @@
 #include "Engine.h"
 #include "Log.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "htmlui/compat/LuaHooks.h"
 
 #include <RmlUi/Core/ElementDocument.h>
 
@@ -41,6 +42,11 @@ UIDocument::UIDocument(Scene* scene, Entity entity): GameObject(scene, entity){
 
 UIDocument::~UIDocument(){
 }
+
+UIDocument::UIDocument(const UIDocument& rhs) = default;
+UIDocument& UIDocument::operator=(const UIDocument& rhs) = default;
+UIDocument::UIDocument(UIDocument&& rhs) noexcept = default;
+UIDocument& UIDocument::operator=(UIDocument&& rhs) noexcept = default;
 
 void UIDocument::setFilename(const std::string& filename){
     UIDocumentComponent& document = getComponent<UIDocumentComponent>();
@@ -108,7 +114,9 @@ UIElement UIDocument::getElementById(const std::string& id) const{
 }
 
 UIElement UIDocument::getBody() const{
-    loadedDocument(scene, entity);
+    // an HTML document's <body> (RML htmlbody); RmlUi's document element otherwise
+    if (Rml::Element* body = htmlui::compat::LuaHooks::body(loadedDocument(scene, entity)))
+        return UIElementAccess::wrap(body);
     return scene->getSystem<UIDocumentSystem>()->getDocumentBody(entity);
 }
 
@@ -116,7 +124,11 @@ UIElement UIDocument::getBody() const{
 
 UIElement UIDocument::querySelector(const std::string& selector) const{
     Rml::ElementDocument* document = loadedDocument(scene, entity);
-    return document ? UIElementAccess::wrap(document->QuerySelector(selector)) : UIElement();
+    if (!document)
+        return UIElement();
+    // HTML documents: CSS names (body, template, :focus, ...) -> RML (p2-html, hook H5)
+    const bool compat = htmlui::compat::LuaHooks::isCompat(document);
+    return UIElementAccess::wrap(document->QuerySelector(compat ? htmlui::compat::LuaHooks::selector(selector) : selector));
 }
 
 std::vector<UIElement> UIDocument::querySelectorAll(const std::string& selector) const{
@@ -125,7 +137,8 @@ std::vector<UIElement> UIDocument::querySelectorAll(const std::string& selector)
     if (!document)
         return result;
     Rml::ElementList elements;
-    document->QuerySelectorAll(elements, selector);
+    const bool compat = htmlui::compat::LuaHooks::isCompat(document);
+    document->QuerySelectorAll(elements, compat ? htmlui::compat::LuaHooks::selector(selector) : selector);
     result.reserve(elements.size());
     for (Rml::Element* element : elements){
         result.push_back(UIElementAccess::wrap(element));
@@ -215,4 +228,24 @@ bool UIDocument::isDebuggerVisible(){
 
 Framebuffer* UIDocument::getTargetTexture() const{
     return scene->getSystem<UIDocumentSystem>()->getTargetTexture(entity);
+}
+
+// ---- phase 2 (p2-html, hook H4) ----
+
+UIElement UIDocument::getDocumentElement() const{
+    loadedDocument(scene, entity);
+    return scene->getSystem<UIDocumentSystem>()->getDocumentBody(entity);
+}
+
+std::vector<htmlui::compat::Diagnostic> UIDocument::getDiagnostics() const{
+    loadedDocument(scene, entity);
+    return scene->getSystem<UIDocumentSystem>()->getDiagnostics(entity);
+}
+
+void UIDocument::setColorScheme(const std::string& scheme){
+    scene->getSystem<UIDocumentSystem>()->setColorScheme(entity, scheme);
+}
+
+void UIDocument::setReducedMotion(bool reduced){
+    scene->getSystem<UIDocumentSystem>()->setReducedMotion(entity, reduced);
 }

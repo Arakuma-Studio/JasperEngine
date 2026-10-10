@@ -8,6 +8,7 @@
 #include "RmlFontEngine.h"
 #include "RmlSystem.h"
 #include "vector/UILottieElement.h"
+#include "compat/runtime/RuntimeRegistry.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -87,6 +88,8 @@ bool HtmlUI::acquire(){
     LunaSVGRuntime::ensureFonts();
     ThorVGRuntime::acquire();
     UILottieElement::registerInstancer();
+    // the compat layer's runtime emulations (phase-2 hook H1), before any document loads
+    htmlui::compat::registerRuntime();
 
     referenceCount = 1;
     subscribeViewDestroyed();
@@ -121,6 +124,7 @@ void HtmlUI::release(){
 
     // after Rml::Shutdown: the documents (and their ThorVG animations) are gone
     UILottieElement::releaseInstancer();
+    htmlui::compat::releaseRuntime();
     ThorVGRuntime::release();
 
     Engine::onViewDestroyed.remove(viewDestroyedTag);

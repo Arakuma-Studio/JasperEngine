@@ -6,10 +6,14 @@
 
 #include "Scene.h"
 #include "Entity.h"
+#include <memory>
 #include <type_traits>
 #include <utility>
 
 namespace jasperengine{
+    // A subclass that declares a destructor or copy operations has no implicit move: it must
+    // declare its moves too (= default when it adds no state), else a "move" of it is a copy,
+    // which never owns the entity, and the moved-from wrapper takes the entity along.
     class JASPERENGINE_API EntityHandle{
 
     protected:
@@ -17,6 +21,13 @@ namespace jasperengine{
         Scene* scene;
 
         bool entityOwned;
+        // The scene's lifetime (Scene::getLifetime) while the handle owns the entity
+        std::weak_ptr<char> sceneLifetime;
+
+        // Owns an entity that is still there: its scene was not deleted (a Lua handle can
+        // outlive it) and did not destroy it (GameObject.destroy). Only then may the
+        // handle's destructor touch the scene.
+        bool ownsLiveEntity() const;
 
     public:
         EntityHandle(Scene* scene);

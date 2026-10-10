@@ -171,8 +171,8 @@ namespace {
 
         void createScene(){
             fixture.reset(new SceneFixture());
-            screenDocument.reset(new UIDocument(fixture->addDocument("p1/integration/combined.html")));
-            textureDocument.reset(new UIDocument(fixture->addDocument("p1/texture_form.html", 1)));
+            screenDocument.reset(new UIDocument(fixture->addDocument("p1/integration/combined.rml")));
+            textureDocument.reset(new UIDocument(fixture->addDocument("p1/texture_form.rml", 1)));
             UIDocumentComponent& component = texture().getComponent<UIDocumentComponent>();
             component.renderMode = UIDocumentRenderMode::TEXTURE;
             component.textureWidth = 256;
@@ -357,8 +357,8 @@ namespace {
             wall.createWall(2, 2);
             wall.setPosition(1.5f, 0, 0);
 
-            screenDocument.reset(new UIDocument(fixture->addDocument("ecs/input.html")));
-            textureDocument.reset(new UIDocument(fixture->addDocument("p1/texture_input.html")));
+            screenDocument.reset(new UIDocument(fixture->addDocument("ecs/input.rml")));
+            textureDocument.reset(new UIDocument(fixture->addDocument("p1/texture_input.rml")));
             UIDocumentComponent& component = texture().getComponent<UIDocumentComponent>();
             component.renderMode = UIDocumentRenderMode::TEXTURE;
             component.textureWidth = 256;
@@ -508,7 +508,7 @@ namespace {
             fs::create_directories(dir);
             fs::copy_file(fs::path(JASPER_HTMLUI_TEST_SOURCE_DIR) / "fixtures/p1/lottie/shapes.json", dir / "shapes.json");
             write("play.css", css("#ffff00"));
-            write("play.html", html(""));
+            write("play.rml", html(""));
         }
 
         std::string path(const std::string& name) const{
@@ -555,7 +555,7 @@ namespace {
 
 TEST_F(PlayReloadTest, DocumentChangeKeepsModelListenersLottieAndForm){
     fixture.reset(new SceneFixture());
-    screenDocument.reset(new UIDocument(fixture->addDocument(path("play.html"))));
+    screenDocument.reset(new UIDocument(fixture->addDocument(path("play.rml"))));
     ASSERT_TRUE(fixture->waitUntilLoaded());
     const Entity entity = screen().getEntity();
     setGlobal("screenDoc", screen());
@@ -586,8 +586,8 @@ TEST_F(PlayReloadTest, DocumentChangeKeepsModelListenersLottieAndForm){
     Rml::ElementDocument* before = system().getDocument(entity);
 
     // the .html changes while playing: a full reload that keeps the state
-    write("play.html", html("    <div id=\"extra\">new</div>\n"));
-    const std::vector<UIDocumentSystem::Reloaded> reloaded = system().reloadChangedFiles({path("play.html")});
+    write("play.rml", html("    <div id=\"extra\">new</div>\n"));
+    const std::vector<UIDocumentSystem::Reloaded> reloaded = system().reloadChangedFiles({path("play.rml")});
     ASSERT_EQ(reloaded.size(), 1u);
     EXPECT_FALSE(reloaded[0].stylesheetOnly);
     drawFramesAt(time, 2, 1.0 / 30.0);
@@ -667,7 +667,7 @@ namespace {
 
 TEST_F(IntegrationTest, TextureDocumentDrawsClipsLayersAndFilters){
     fixture.reset(new SceneFixture());
-    textureDocument.reset(new UIDocument(fixture->addDocument("p1/integration/texture_effects.html")));
+    textureDocument.reset(new UIDocument(fixture->addDocument("p1/integration/texture_effects.rml")));
     UIDocumentComponent& component = texture().getComponent<UIDocumentComponent>();
     component.renderMode = UIDocumentRenderMode::TEXTURE;
     component.textureWidth = 256;
@@ -815,7 +815,7 @@ TEST_F(TextEffectsInLayersTest, FontEffectsInsideLayersAndFilters){
     JASPER_REQUIRE_GPU();
     RenderTestContext test(512, 384, 0, 0, 4);
     ASSERT_TRUE(test.isValid());
-    ASSERT_TRUE(test.load("p1/integration/text_effects_layers.html"));
+    ASSERT_TRUE(test.load("p1/integration/text_effects_layers.rml"));
     ASSERT_TRUE(test.renderUntilDrawn());
     std::vector<uint8_t> screen;
     ASSERT_TRUE(test.readScreen(screen));
@@ -870,7 +870,7 @@ TEST_F(IntegrationTest, ModelReloadInInitIsNotAnOnLoadOfLaterHandlers){
     // then registers onLoad/onUnload: that reload is over before the handlers exist, so they
     // must not run for it (they would bind a second set of listeners); later reloads call them
     fixture.reset(new SceneFixture());
-    screenDocument.reset(new UIDocument(fixture->addDocument("p1/integration/combined.html")));
+    screenDocument.reset(new UIDocument(fixture->addDocument("p1/integration/combined.rml")));
     ASSERT_TRUE(fixture->waitUntilLoaded());
     setGlobal("screenDoc", screen());
     ASSERT_EQ(lua(R"(
@@ -888,7 +888,7 @@ TEST_F(IntegrationTest, ModelReloadInInitIsNotAnOnLoadOfLaterHandlers){
     UIValue initial = UIValue::object();
     initial["label"] = "x";
     int cppLoads = 0;
-    textureDocument.reset(new UIDocument(fixture->addDocument("p1/texture_form.html", 1)));
+    textureDocument.reset(new UIDocument(fixture->addDocument("p1/texture_form.rml", 1)));
     ASSERT_TRUE(fixture->waitUntilLoaded());
     UIDataModel form = texture().createDataModel("form", initial);
     EXPECT_TRUE(form.isValid());
@@ -918,7 +918,7 @@ TEST_F(IntegrationTest, AnimeSelectorsReachEveryScene){
         std::unique_ptr<Scene> starting(new Scene());
         std::unique_ptr<UIDocument> document(new UIDocument(starting.get()));
         SceneManager::setScenePtr(4242, starting.get());
-        ASSERT_TRUE(document->load("p1/integration/combined.html"));
+        ASSERT_TRUE(document->load("p1/integration/combined.rml"));
         TestSystem::get().clearLogs();
         EXPECT_EQ(AnimTargets::fromSelector("#box").size(), 1u);
         EXPECT_EQ(lua(R"(anim = anime.animate("#box", { translateX = 100, duration = 1000 }))"), "");
@@ -933,13 +933,13 @@ TEST_F(IntegrationTest, AnimeSelectorsReachEveryScene){
 
     // the main scene has no #box; a HUD scene layered over it has
 
-    textureDocument.reset(new UIDocument(fixture->addDocument("p1/texture_form.html")));
+    textureDocument.reset(new UIDocument(fixture->addDocument("p1/texture_form.rml")));
     std::unique_ptr<Scene> layer(new Scene());
     std::unique_ptr<Camera> layerCamera(new Camera(layer.get()));
     layerCamera->setType(CameraType::CAMERA_UI);
     layerCamera->activate();
     std::unique_ptr<UIDocument> hud(new UIDocument(layer.get()));
-    hud->setFilename("p1/integration/combined.html");
+    hud->setFilename("p1/integration/combined.rml");
     Engine::addSceneLayer(layer.get());
     Scene* mainScene = &fixture->getScene();
     Scene* layerScene = layer.get();
@@ -975,7 +975,7 @@ TEST_F(IntegrationTest, OneClockPinsCssAnimationsLottieAndAnime){
     // RmlUi keyframes, the Lottie and anime of one document all read HtmlUIClock: a pinned
     // time stops all three whatever the frames, moving it moves all three
     fixture.reset(new SceneFixture());
-    screenDocument.reset(new UIDocument(fixture->addDocument("p1/integration/combined.html")));
+    screenDocument.reset(new UIDocument(fixture->addDocument("p1/integration/combined.rml")));
     ASSERT_TRUE(fixture->waitUntilLoaded());
     setGlobal("screenDoc", screen());
     ASSERT_EQ(lua(R"(anim = anime.animate("#box", { translateX = 100, duration = 4000, ease = "linear" }))"), "");
@@ -1011,7 +1011,7 @@ TEST_F(IntegrationTest, ScriptsUseDocumentsBeforeTheViewLoads){
     Engine::systemViewDestroyed();
     ASSERT_FALSE(Engine::isViewLoaded());
     fixture.reset(new SceneFixture());
-    screenDocument.reset(new UIDocument(fixture->addDocument("p1/integration/combined.html")));
+    screenDocument.reset(new UIDocument(fixture->addDocument("p1/integration/combined.rml")));
     setGlobal("screenDoc", screen());
     EXPECT_EQ(lua(R"(
         clicks = 0
@@ -1047,8 +1047,8 @@ TEST_F(IntegrationTest, AnimatedTextureDocumentKeepsTheEditorRedrawing){
     EXPECT_TRUE(std::isinf(documents.getNextUpdateDelay()));
 
     // a still screen document and an animated (Lottie, @keyframes) texture-mode one
-    screenDocument.reset(new UIDocument(fixture->addDocument("p1/texture_form.html")));
-    textureDocument.reset(new UIDocument(fixture->addDocument("p1/integration/combined.html", 1)));
+    screenDocument.reset(new UIDocument(fixture->addDocument("p1/texture_form.rml")));
+    textureDocument.reset(new UIDocument(fixture->addDocument("p1/integration/combined.rml", 1)));
     UIDocumentComponent& component = texture().getComponent<UIDocumentComponent>();
     component.renderMode = UIDocumentRenderMode::TEXTURE;
     component.textureWidth = 640;

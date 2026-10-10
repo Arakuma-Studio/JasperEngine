@@ -14,6 +14,15 @@ static inline bool IsTextElement(const Element* element)
 	return element->GetTagName() == "#text";
 }
 
+// The elements widgets build inside a control (select, range, progress, text input, scrollbars).
+static bool IsWidgetPart(const Element* element)
+{
+	static const String parts[] = {"fill", "scrollbarcorner", "scrollbarhorizontal", "scrollbarvertical", "selectarrow", "selectbox",
+		"selection", "selectvalue", "sliderarrowdec", "sliderarrowinc", "sliderbar", "sliderprogress", "slidertrack"};
+	const String& tag = element->GetTagName();
+	return std::find(std::begin(parts), std::end(parts), tag) != std::end(parts);
+}
+
 StyleSheetNode::StyleSheetNode()
 {
 	CalculateAndSetSpecificity();
@@ -334,6 +343,13 @@ bool StyleSheetNode::IsApplicable(const Element* element, const Element* scope) 
 
 	// We could in principle just call Match() here and then go on with the ancestor style nodes. Instead, we test the requirements of this node in a
 	// particular order for performance reasons.
+
+	// A selector without a type (*, :hover, [attr]) does not reach the parts a widget builds, as CSS selectors do not reach a
+	// control's internal parts: an author's `* { margin: 0; padding: 0 }` reset left a range track or select value without
+	// their user-agent edges. Rules for the parts name them.
+	if (selector.tag.empty() && IsWidgetPart(element))
+		return false;
+
 	for (const String& name : selector.pseudo_class_names)
 	{
 		if (!element->IsPseudoClassSet(name))

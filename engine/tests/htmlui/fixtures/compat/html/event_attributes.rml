@@ -1,0 +1,30 @@
+<rml>
+<head>
+<link type="text/rcss" href="/@htmlui/ua.rcss" origin="user-agent"/>
+<style>
+.htmlui-h0 {
+tab-index: none;
+focus: auto;
+}
+.htmlui-h1 {
+tab-index: auto;
+}
+.htmlui-h2 {
+drag: drag;
+}
+</style>
+</head
+><body id="htmlui-root" data-htmlui-loc="0"
+><htmlbody data-htmlui-loc="1"
+><button data-htmlui-loc="2">Go</button>
+<div tabindex="-1" class="htmlui-h0" data-htmlui-loc="3">a</div
+><div tabindex="0" class="htmlui-h1" data-htmlui-loc="4">b</div
+><div tabindex="3" class="htmlui-h1" data-htmlui-loc="5">c</div>
+<div title="tip" draggable="true" class="htmlui-h2" data-htmlui-loc="6">d</div>
+<div data-if="show" data-htmlui-loc="7">outside a model</div>
+<div data-model="m" data-htmlui-loc="8"
+><span data-if="show" data-htmlui-loc="9">{{ name }}</span></div>
+<div id="dup" data-htmlui-loc="10"
+/><div id="dup" data-htmlui-loc="11"/>
+</htmlbody></body>
+</rml>

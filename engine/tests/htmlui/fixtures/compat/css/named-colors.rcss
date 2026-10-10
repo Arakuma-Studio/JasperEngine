@@ -1,0 +1,596 @@
+#htmlui-root .c-aliceblue {
+color: #f0f8ffff;
+--html-current-color: #f0f8ffff;
+}
+#htmlui-root .c-antiquewhite {
+color: #faebd7ff;
+--html-current-color: #faebd7ff;
+}
+#htmlui-root .c-aqua {
+color: #00ffffff;
+--html-current-color: #00ffffff;
+}
+#htmlui-root .c-aquamarine {
+color: #7fffd4ff;
+--html-current-color: #7fffd4ff;
+}
+#htmlui-root .c-azure {
+color: #f0ffffff;
+--html-current-color: #f0ffffff;
+}
+#htmlui-root .c-beige {
+color: #f5f5dcff;
+--html-current-color: #f5f5dcff;
+}
+#htmlui-root .c-bisque {
+color: #ffe4c4ff;
+--html-current-color: #ffe4c4ff;
+}
+#htmlui-root .c-black {
+color: #000000ff;
+--html-current-color: #000000ff;
+}
+#htmlui-root .c-blanchedalmond {
+color: #ffebcdff;
+--html-current-color: #ffebcdff;
+}
+#htmlui-root .c-blue {
+color: #0000ffff;
+--html-current-color: #0000ffff;
+}
+#htmlui-root .c-blueviolet {
+color: #8a2be2ff;
+--html-current-color: #8a2be2ff;
+}
+#htmlui-root .c-brown {
+color: #a52a2aff;
+--html-current-color: #a52a2aff;
+}
+#htmlui-root .c-burlywood {
+color: #deb887ff;
+--html-current-color: #deb887ff;
+}
+#htmlui-root .c-cadetblue {
+color: #5f9ea0ff;
+--html-current-color: #5f9ea0ff;
+}
+#htmlui-root .c-chartreuse {
+color: #7fff00ff;
+--html-current-color: #7fff00ff;
+}
+#htmlui-root .c-chocolate {
+color: #d2691eff;
+--html-current-color: #d2691eff;
+}
+#htmlui-root .c-coral {
+color: #ff7f50ff;
+--html-current-color: #ff7f50ff;
+}
+#htmlui-root .c-cornflowerblue {
+color: #6495edff;
+--html-current-color: #6495edff;
+}
+#htmlui-root .c-cornsilk {
+color: #fff8dcff;
+--html-current-color: #fff8dcff;
+}
+#htmlui-root .c-crimson {
+color: #dc143cff;
+--html-current-color: #dc143cff;
+}
+#htmlui-root .c-cyan {
+color: #00ffffff;
+--html-current-color: #00ffffff;
+}
+#htmlui-root .c-darkblue {
+color: #00008bff;
+--html-current-color: #00008bff;
+}
+#htmlui-root .c-darkcyan {
+color: #008b8bff;
+--html-current-color: #008b8bff;
+}
+#htmlui-root .c-darkgoldenrod {
+color: #b8860bff;
+--html-current-color: #b8860bff;
+}
+#htmlui-root .c-darkgray {
+color: #a9a9a9ff;
+--html-current-color: #a9a9a9ff;
+}
+#htmlui-root .c-darkgreen {
+color: #006400ff;
+--html-current-color: #006400ff;
+}
+#htmlui-root .c-darkgrey {
+color: #a9a9a9ff;
+--html-current-color: #a9a9a9ff;
+}
+#htmlui-root .c-darkkhaki {
+color: #bdb76bff;
+--html-current-color: #bdb76bff;
+}
+#htmlui-root .c-darkmagenta {
+color: #8b008bff;
+--html-current-color: #8b008bff;
+}
+#htmlui-root .c-darkolivegreen {
+color: #556b2fff;
+--html-current-color: #556b2fff;
+}
+#htmlui-root .c-darkorange {
+color: #ff8c00ff;
+--html-current-color: #ff8c00ff;
+}
+#htmlui-root .c-darkorchid {
+color: #9932ccff;
+--html-current-color: #9932ccff;
+}
+#htmlui-root .c-darkred {
+color: #8b0000ff;
+--html-current-color: #8b0000ff;
+}
+#htmlui-root .c-darksalmon {
+color: #e9967aff;
+--html-current-color: #e9967aff;
+}
+#htmlui-root .c-darkseagreen {
+color: #8fbc8fff;
+--html-current-color: #8fbc8fff;
+}
+#htmlui-root .c-darkslateblue {
+color: #483d8bff;
+--html-current-color: #483d8bff;
+}
+#htmlui-root .c-darkslategray {
+color: #2f4f4fff;
+--html-current-color: #2f4f4fff;
+}
+#htmlui-root .c-darkslategrey {
+color: #2f4f4fff;
+--html-current-color: #2f4f4fff;
+}
+#htmlui-root .c-darkturquoise {
+color: #00ced1ff;
+--html-current-color: #00ced1ff;
+}
+#htmlui-root .c-darkviolet {
+color: #9400d3ff;
+--html-current-color: #9400d3ff;
+}
+#htmlui-root .c-deeppink {
+color: #ff1493ff;
+--html-current-color: #ff1493ff;
+}
+#htmlui-root .c-deepskyblue {
+color: #00bfffff;
+--html-current-color: #00bfffff;
+}
+#htmlui-root .c-dimgray {
+color: #696969ff;
+--html-current-color: #696969ff;
+}
+#htmlui-root .c-dimgrey {
+color: #696969ff;
+--html-current-color: #696969ff;
+}
+#htmlui-root .c-dodgerblue {
+color: #1e90ffff;
+--html-current-color: #1e90ffff;
+}
+#htmlui-root .c-firebrick {
+color: #b22222ff;
+--html-current-color: #b22222ff;
+}
+#htmlui-root .c-floralwhite {
+color: #fffaf0ff;
+--html-current-color: #fffaf0ff;
+}
+#htmlui-root .c-forestgreen {
+color: #228b22ff;
+--html-current-color: #228b22ff;
+}
+#htmlui-root .c-fuchsia {
+color: #ff00ffff;
+--html-current-color: #ff00ffff;
+}
+#htmlui-root .c-gainsboro {
+color: #dcdcdcff;
+--html-current-color: #dcdcdcff;
+}
+#htmlui-root .c-ghostwhite {
+color: #f8f8ffff;
+--html-current-color: #f8f8ffff;
+}
+#htmlui-root .c-gold {
+color: #ffd700ff;
+--html-current-color: #ffd700ff;
+}
+#htmlui-root .c-goldenrod {
+color: #daa520ff;
+--html-current-color: #daa520ff;
+}
+#htmlui-root .c-gray {
+color: #808080ff;
+--html-current-color: #808080ff;
+}
+#htmlui-root .c-green {
+color: #008000ff;
+--html-current-color: #008000ff;
+}
+#htmlui-root .c-greenyellow {
+color: #adff2fff;
+--html-current-color: #adff2fff;
+}
+#htmlui-root .c-grey {
+color: #808080ff;
+--html-current-color: #808080ff;
+}
+#htmlui-root .c-honeydew {
+color: #f0fff0ff;
+--html-current-color: #f0fff0ff;
+}
+#htmlui-root .c-hotpink {
+color: #ff69b4ff;
+--html-current-color: #ff69b4ff;
+}
+#htmlui-root .c-indianred {
+color: #cd5c5cff;
+--html-current-color: #cd5c5cff;
+}
+#htmlui-root .c-indigo {
+color: #4b0082ff;
+--html-current-color: #4b0082ff;
+}
+#htmlui-root .c-ivory {
+color: #fffff0ff;
+--html-current-color: #fffff0ff;
+}
+#htmlui-root .c-khaki {
+color: #f0e68cff;
+--html-current-color: #f0e68cff;
+}
+#htmlui-root .c-lavender {
+color: #e6e6faff;
+--html-current-color: #e6e6faff;
+}
+#htmlui-root .c-lavenderblush {
+color: #fff0f5ff;
+--html-current-color: #fff0f5ff;
+}
+#htmlui-root .c-lawngreen {
+color: #7cfc00ff;
+--html-current-color: #7cfc00ff;
+}
+#htmlui-root .c-lemonchiffon {
+color: #fffacdff;
+--html-current-color: #fffacdff;
+}
+#htmlui-root .c-lightblue {
+color: #add8e6ff;
+--html-current-color: #add8e6ff;
+}
+#htmlui-root .c-lightcoral {
+color: #f08080ff;
+--html-current-color: #f08080ff;
+}
+#htmlui-root .c-lightcyan {
+color: #e0ffffff;
+--html-current-color: #e0ffffff;
+}
+#htmlui-root .c-lightgoldenrodyellow {
+color: #fafad2ff;
+--html-current-color: #fafad2ff;
+}
+#htmlui-root .c-lightgray {
+color: #d3d3d3ff;
+--html-current-color: #d3d3d3ff;
+}
+#htmlui-root .c-lightgreen {
+color: #90ee90ff;
+--html-current-color: #90ee90ff;
+}
+#htmlui-root .c-lightgrey {
+color: #d3d3d3ff;
+--html-current-color: #d3d3d3ff;
+}
+#htmlui-root .c-lightpink {
+color: #ffb6c1ff;
+--html-current-color: #ffb6c1ff;
+}
+#htmlui-root .c-lightsalmon {
+color: #ffa07aff;
+--html-current-color: #ffa07aff;
+}
+#htmlui-root .c-lightseagreen {
+color: #20b2aaff;
+--html-current-color: #20b2aaff;
+}
+#htmlui-root .c-lightskyblue {
+color: #87cefaff;
+--html-current-color: #87cefaff;
+}
+#htmlui-root .c-lightslategray {
+color: #778899ff;
+--html-current-color: #778899ff;
+}
+#htmlui-root .c-lightslategrey {
+color: #778899ff;
+--html-current-color: #778899ff;
+}
+#htmlui-root .c-lightsteelblue {
+color: #b0c4deff;
+--html-current-color: #b0c4deff;
+}
+#htmlui-root .c-lightyellow {
+color: #ffffe0ff;
+--html-current-color: #ffffe0ff;
+}
+#htmlui-root .c-lime {
+color: #00ff00ff;
+--html-current-color: #00ff00ff;
+}
+#htmlui-root .c-limegreen {
+color: #32cd32ff;
+--html-current-color: #32cd32ff;
+}
+#htmlui-root .c-linen {
+color: #faf0e6ff;
+--html-current-color: #faf0e6ff;
+}
+#htmlui-root .c-magenta {
+color: #ff00ffff;
+--html-current-color: #ff00ffff;
+}
+#htmlui-root .c-maroon {
+color: #800000ff;
+--html-current-color: #800000ff;
+}
+#htmlui-root .c-mediumaquamarine {
+color: #66cdaaff;
+--html-current-color: #66cdaaff;
+}
+#htmlui-root .c-mediumblue {
+color: #0000cdff;
+--html-current-color: #0000cdff;
+}
+#htmlui-root .c-mediumorchid {
+color: #ba55d3ff;
+--html-current-color: #ba55d3ff;
+}
+#htmlui-root .c-mediumpurple {
+color: #9370dbff;
+--html-current-color: #9370dbff;
+}
+#htmlui-root .c-mediumseagreen {
+color: #3cb371ff;
+--html-current-color: #3cb371ff;
+}
+#htmlui-root .c-mediumslateblue {
+color: #7b68eeff;
+--html-current-color: #7b68eeff;
+}
+#htmlui-root .c-mediumspringgreen {
+color: #00fa9aff;
+--html-current-color: #00fa9aff;
+}
+#htmlui-root .c-mediumturquoise {
+color: #48d1ccff;
+--html-current-color: #48d1ccff;
+}
+#htmlui-root .c-mediumvioletred {
+color: #c71585ff;
+--html-current-color: #c71585ff;
+}
+#htmlui-root .c-midnightblue {
+color: #191970ff;
+--html-current-color: #191970ff;
+}
+#htmlui-root .c-mintcream {
+color: #f5fffaff;
+--html-current-color: #f5fffaff;
+}
+#htmlui-root .c-mistyrose {
+color: #ffe4e1ff;
+--html-current-color: #ffe4e1ff;
+}
+#htmlui-root .c-moccasin {
+color: #ffe4b5ff;
+--html-current-color: #ffe4b5ff;
+}
+#htmlui-root .c-navajowhite {
+color: #ffdeadff;
+--html-current-color: #ffdeadff;
+}
+#htmlui-root .c-navy {
+color: #000080ff;
+--html-current-color: #000080ff;
+}
+#htmlui-root .c-oldlace {
+color: #fdf5e6ff;
+--html-current-color: #fdf5e6ff;
+}
+#htmlui-root .c-olive {
+color: #808000ff;
+--html-current-color: #808000ff;
+}
+#htmlui-root .c-olivedrab {
+color: #6b8e23ff;
+--html-current-color: #6b8e23ff;
+}
+#htmlui-root .c-orange {
+color: #ffa500ff;
+--html-current-color: #ffa500ff;
+}
+#htmlui-root .c-orangered {
+color: #ff4500ff;
+--html-current-color: #ff4500ff;
+}
+#htmlui-root .c-orchid {
+color: #da70d6ff;
+--html-current-color: #da70d6ff;
+}
+#htmlui-root .c-palegoldenrod {
+color: #eee8aaff;
+--html-current-color: #eee8aaff;
+}
+#htmlui-root .c-palegreen {
+color: #98fb98ff;
+--html-current-color: #98fb98ff;
+}
+#htmlui-root .c-paleturquoise {
+color: #afeeeeff;
+--html-current-color: #afeeeeff;
+}
+#htmlui-root .c-palevioletred {
+color: #db7093ff;
+--html-current-color: #db7093ff;
+}
+#htmlui-root .c-papayawhip {
+color: #ffefd5ff;
+--html-current-color: #ffefd5ff;
+}
+#htmlui-root .c-peachpuff {
+color: #ffdab9ff;
+--html-current-color: #ffdab9ff;
+}
+#htmlui-root .c-peru {
+color: #cd853fff;
+--html-current-color: #cd853fff;
+}
+#htmlui-root .c-pink {
+color: #ffc0cbff;
+--html-current-color: #ffc0cbff;
+}
+#htmlui-root .c-plum {
+color: #dda0ddff;
+--html-current-color: #dda0ddff;
+}
+#htmlui-root .c-powderblue {
+color: #b0e0e6ff;
+--html-current-color: #b0e0e6ff;
+}
+#htmlui-root .c-purple {
+color: #800080ff;
+--html-current-color: #800080ff;
+}
+#htmlui-root .c-rebeccapurple {
+color: #663399ff;
+--html-current-color: #663399ff;
+}
+#htmlui-root .c-red {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+}
+#htmlui-root .c-rosybrown {
+color: #bc8f8fff;
+--html-current-color: #bc8f8fff;
+}
+#htmlui-root .c-royalblue {
+color: #4169e1ff;
+--html-current-color: #4169e1ff;
+}
+#htmlui-root .c-saddlebrown {
+color: #8b4513ff;
+--html-current-color: #8b4513ff;
+}
+#htmlui-root .c-salmon {
+color: #fa8072ff;
+--html-current-color: #fa8072ff;
+}
+#htmlui-root .c-sandybrown {
+color: #f4a460ff;
+--html-current-color: #f4a460ff;
+}
+#htmlui-root .c-seagreen {
+color: #2e8b57ff;
+--html-current-color: #2e8b57ff;
+}
+#htmlui-root .c-seashell {
+color: #fff5eeff;
+--html-current-color: #fff5eeff;
+}
+#htmlui-root .c-sienna {
+color: #a0522dff;
+--html-current-color: #a0522dff;
+}
+#htmlui-root .c-silver {
+color: #c0c0c0ff;
+--html-current-color: #c0c0c0ff;
+}
+#htmlui-root .c-skyblue {
+color: #87ceebff;
+--html-current-color: #87ceebff;
+}
+#htmlui-root .c-slateblue {
+color: #6a5acdff;
+--html-current-color: #6a5acdff;
+}
+#htmlui-root .c-slategray {
+color: #708090ff;
+--html-current-color: #708090ff;
+}
+#htmlui-root .c-slategrey {
+color: #708090ff;
+--html-current-color: #708090ff;
+}
+#htmlui-root .c-snow {
+color: #fffafaff;
+--html-current-color: #fffafaff;
+}
+#htmlui-root .c-springgreen {
+color: #00ff7fff;
+--html-current-color: #00ff7fff;
+}
+#htmlui-root .c-steelblue {
+color: #4682b4ff;
+--html-current-color: #4682b4ff;
+}
+#htmlui-root .c-tan {
+color: #d2b48cff;
+--html-current-color: #d2b48cff;
+}
+#htmlui-root .c-teal {
+color: #008080ff;
+--html-current-color: #008080ff;
+}
+#htmlui-root .c-thistle {
+color: #d8bfd8ff;
+--html-current-color: #d8bfd8ff;
+}
+#htmlui-root .c-tomato {
+color: #ff6347ff;
+--html-current-color: #ff6347ff;
+}
+#htmlui-root .c-transparent {
+color: #00000000;
+--html-current-color: #00000000;
+}
+#htmlui-root .c-turquoise {
+color: #40e0d0ff;
+--html-current-color: #40e0d0ff;
+}
+#htmlui-root .c-violet {
+color: #ee82eeff;
+--html-current-color: #ee82eeff;
+}
+#htmlui-root .c-wheat {
+color: #f5deb3ff;
+--html-current-color: #f5deb3ff;
+}
+#htmlui-root .c-white {
+color: #ffffffff;
+--html-current-color: #ffffffff;
+}
+#htmlui-root .c-whitesmoke {
+color: #f5f5f5ff;
+--html-current-color: #f5f5f5ff;
+}
+#htmlui-root .c-yellow {
+color: #ffff00ff;
+--html-current-color: #ffff00ff;
+}
+#htmlui-root .c-yellowgreen {
+color: #9acd32ff;
+--html-current-color: #9acd32ff;
+}

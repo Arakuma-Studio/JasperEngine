@@ -1,0 +1,6 @@
+compat/css/counters.css:2:6: info: 'counter-reset' is not supported; dropped (fix: number the items with ol / li, or write the numbers in the markup) [HTMLUI-CSS-0002]
+compat/css/counters.css:3:6: info: 'counter-increment' is not supported; dropped (fix: number the items with ol / li, or write the numbers in the markup) [HTMLUI-CSS-0002]
+compat/css/counters.css:4:11: warning: 'counter-reset' is not supported; dropped (fix: number the items with ol / li, or write the numbers in the markup) [HTMLUI-CSS-0002]
+compat/css/counters.css:4:37: warning: 'counter-increment' is not supported; dropped (fix: number the items with ol / li, or write the numbers in the markup) [HTMLUI-CSS-0002]
+compat/css/counters.css:4:65: warning: 'counter-set' is not supported; dropped (fix: number the items with ol / li, or write the numbers in the markup) [HTMLUI-CSS-0002]
+compat/css/counters.css:5:9: info: 'counter-reset' is not supported; dropped (fix: number the items with ol / li, or write the numbers in the markup) [HTMLUI-CSS-0002]

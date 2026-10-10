@@ -1,0 +1,7 @@
+compat/css/keyframes.css:4:38: warning: per-keyframe animation-timing-function is not supported; dropped (fix: set the easing on the animation itself) [HTMLUI-CSS-0021]
+compat/css/keyframes.css:5:47: warning: invalid keyframe selector '120%'; the keyframe is dropped (fix: use from, to or a percentage between 0% and 100%) [HTMLUI-AT-0009]
+compat/css/keyframes.css:5:67: warning: invalid keyframe selector 'middle'; the keyframe is dropped (fix: use from, to or a percentage between 0% and 100%) [HTMLUI-AT-0009]
+compat/css/keyframes.css:8:20: info: @-webkit-keyframes is read as @keyframes [HTMLUI-CSS-0009]
+compat/css/keyframes.css:9:17: info: @-moz-keyframes is read as @keyframes [HTMLUI-CSS-0009]
+compat/css/keyframes.css:11:1: warning: @keyframes empty has no valid keyframes; dropped [HTMLUI-AT-0009]
+compat/css/keyframes.css:12:43: warning: at-rule inside @keyframes is dropped [HTMLUI-AT-0009]

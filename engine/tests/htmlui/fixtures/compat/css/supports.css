@@ -1,0 +1,18 @@
+/* @supports evaluated statically */
+@supports (display: flex) { .a { display: flex; } }
+@supports (display: grid) { .b { display: grid; } }
+@supports not (display: grid) { .c { float: left; } }
+@supports (aspect-ratio: 1) { .d { width: 1px; } }
+@supports (color: oklch(70% 0.1 200)) and (gap: 1rem) { .e { color: red; } }
+@supports (backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px)) { .f { backdrop-filter: blur(4px); } }
+@supports selector(:focus-visible) { .g { color: blue; } }
+@supports selector(:has(a)) { .h { color: green; } }
+@supports font-format(truetype) { .i { color: pink; } }
+@supports font-format(woff2) { .j { color: gray; } }
+@supports font-tech(color-COLRv1) { .k { color: black; } }
+@supports (text-wrap: balance) { .l { text-wrap: balance; } }
+@supports (position: sticky) { .m { position: sticky; } }
+@supports (unknown-prop: 1) { .n { color: red; } }
+@supports (display: flex) { @supports (gap: 1px) { .o { gap: 1px; } } }
+@supports (--custom: 1) { .p { color: teal; } }
+@supports (display: wobbly) { .q { color: navy; } }

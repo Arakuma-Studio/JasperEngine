@@ -1,4 +1,5 @@
 #include "../../../Include/RmlUi/Core/Elements/ElementFormControlTextArea.h"
+#include "../../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../../Include/RmlUi/Core/ElementText.h"
 #include "../../../Include/RmlUi/Core/ElementUtilities.h"
 #include "../../../Include/RmlUi/Core/Math.h"
@@ -97,7 +98,8 @@ void ElementFormControlTextArea::SetCompositionRange(int range_start, int range_
 
 bool ElementFormControlTextArea::GetIntrinsicDimensions(Vector2f& dimensions, float& /*ratio*/)
 {
-	dimensions.x = (float)(GetNumColumns() * ElementUtilities::GetStringWidth(this, "m"));
+	// As browsers size a textarea: `cols` characters of 0.6em (a monospace advance) and the room of a 15px scrollbar.
+	dimensions.x = GetNumColumns() * 0.6f * GetComputedValues().font_size() + 15.f;
 	dimensions.y = GetNumRows() * widget->GetLineHeight();
 	return true;
 }

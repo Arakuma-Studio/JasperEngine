@@ -16,6 +16,11 @@ namespace jasperengine{
         Fog(Scene* scene, Entity entity);
         virtual ~Fog();
 
+        Fog(const Fog& rhs);
+        Fog& operator=(const Fog& rhs);
+        Fog(Fog&& rhs) noexcept;
+        Fog& operator=(Fog&& rhs) noexcept;
+
         FogType getType() const;
         Vector3 getColor() const;
         float getDensity() const;

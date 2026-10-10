@@ -1,0 +1,23 @@
+/* gradients: native decorators with normalized arguments */
+.l1 { background: linear-gradient(red, blue); }
+.l2 { background: linear-gradient(45deg, red 0%, blue 100%); }
+.l3 { background: linear-gradient(to right, red, yellow 30%, blue); }
+.l4 { background: linear-gradient(to bottom right, rgba(0,0,0,.5), transparent); }
+.l5 { background: linear-gradient(0.25turn, #3f87a6, #ebf8e1, #f69d3c); }
+.l6 { background: linear-gradient(red 0 50%, blue 50% 100%); }
+.hint { background: linear-gradient(red, 30%, blue); }
+.space { background: linear-gradient(in oklch, red, blue); }
+.r1 { background: radial-gradient(circle, red, blue); }
+.r2 { background: radial-gradient(ellipse at top left, red, transparent); }
+.r3 { background: radial-gradient(closest-side circle at 30% 40%, #fff, #000); }
+.r4 { background: radial-gradient(50px 30px at center, red, blue); }
+.r5 { background: radial-gradient(farthest-corner, red, blue); }
+.r6 { background: radial-gradient(circle at right 10px top 10px, red, blue); }
+.c1 { background: conic-gradient(red, yellow, green); }
+.c2 { background: conic-gradient(from 90deg at 50% 50%, red 0deg, blue 180deg, red 360deg); }
+.c3 { background: conic-gradient(from 0.25turn, red 10%, blue); }
+.rep1 { background: repeating-linear-gradient(45deg, #000 0 10px, #fff 10px 20px); }
+.rep2 { background: repeating-radial-gradient(circle, red 0, red 5px, blue 5px, blue 10px); }
+.rep3 { background: repeating-conic-gradient(#000 0 25%, #fff 0 50%); }
+.pattern { background: linear-gradient(90deg, red 1px, transparent 1px) 0 0 / 20px 20px; }
+.clip { background: linear-gradient(red, blue) padding-box; }

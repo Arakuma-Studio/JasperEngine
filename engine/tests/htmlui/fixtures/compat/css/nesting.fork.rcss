@@ -1,0 +1,73 @@
+#htmlui-root .card {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+}
+#htmlui-root .card .title {
+font-size: 2em;
+}
+#htmlui-root .card:hover {
+color: #0000ffff;
+--html-current-color: #0000ffff;
+}
+#htmlui-root .card .body {
+padding: 4px;
+}
+#htmlui-root .card > .icon {
+width: 16px;
+}
+#htmlui-root .card + .card {
+margin-top: 8px;
+}
+#htmlui-root .card.active {
+border-top-width: 1px;
+border-top-style: solid;
+border-top-color: var(--html-current-color, #000000ff);
+border-right-width: 1px;
+border-right-style: solid;
+border-right-color: var(--html-current-color, #000000ff);
+border-bottom-width: 1px;
+border-bottom-style: solid;
+border-bottom-color: var(--html-current-color, #000000ff);
+border-left-width: 1px;
+border-left-style: solid;
+border-left-color: var(--html-current-color, #000000ff);
+}
+#htmlui-root .parent .card {
+color: #808080ff;
+--html-current-color: #808080ff;
+}
+@media (min-width: 600px) {
+#htmlui-root .card {
+padding: 10px;
+}
+}
+@media (min-width: 600px) {
+#htmlui-root .card .title {
+font-size: 3em;
+}
+}
+#htmlui-root .card {
+background-color: #ffffffff;
+}
+#htmlui-root :is(.a, .b) .c, #htmlui-root :is(.a, .b) .d {
+color: #800080ff;
+--html-current-color: #800080ff;
+}
+#htmlui-root :is(.a, .b) + :is(.a, .b) {
+margin: 0;
+}
+#htmlui-root ul > li > a {
+color: #000080ff;
+--html-current-color: #000080ff;
+}
+#htmlui-root .x {
+display: flex;
+}
+#htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k1, #htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k2, #htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k3, #htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k4, #htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k5, #htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k6, #htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k7, #htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k8, #htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k9, #htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k10, #htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k11, #htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k12, #htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k13, #htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k14, #htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k15, #htmlui-root :is(.big1, .big2, .big3, .big4, .big5, .big6, .big7, .big8, .big9, .big10, .big11, .big12, .big13, .big14, .big15, .big16, .big17) .k16 {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+}
+body#htmlui-root {
+color: #000000ff;
+--html-current-color: #000000ff;
+}

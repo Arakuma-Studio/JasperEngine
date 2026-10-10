@@ -1,0 +1,11 @@
+/* border-image through the html-border-image decorator; backgrounds share decorator through companions */
+.frame { border: 10px solid transparent; border-image: url(img/a.png) 30 round; }
+.full { border-image: url(img/a.png) 10% 20 30 40 fill / 8px 2 auto / 1px 2px stretch repeat; }
+.longhands { border-image-source: url(img/b.png); border-image-slice: 25%; border-image-width: 12px; border-image-repeat: space; border-image-outset: 2px; }
+.base { border-image: url(img/a.png) 10; }
+.base:hover { border-image-slice: 20; }
+.lonely { border-image-width: 4px; }
+.gradient { border-image: linear-gradient(red, blue) 1; }
+.none { border-image: none; }
+.bg { background: url(img/b.png) no-repeat; }
+.bg-gradient { background: linear-gradient(#000, #fff); }

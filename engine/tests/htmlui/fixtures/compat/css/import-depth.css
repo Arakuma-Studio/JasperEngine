@@ -1,0 +1,4 @@
+/* an import chain deeper than 16 files is cut; a file importing itself is a cycle */
+@import url(imports/chain-1.css);
+@import url(imports/self.css);
+.after { color: red; }

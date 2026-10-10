@@ -1,0 +1,30 @@
+#htmlui-root :is(h1, h2, h3) {
+margin: 0;
+}
+#htmlui-root article :is(p, li) a {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+}
+#htmlui-root :where(ul, ol) :where(ul, ol) {
+margin: 0;
+}
+#htmlui-root .card:is(.active, :hover) {
+color: #0000ffff;
+--html-current-color: #0000ffff;
+}
+#htmlui-root :is(.a .b, .c) .d {
+color: #008000ff;
+--html-current-color: #008000ff;
+}
+#htmlui-root :is(.x) {
+color: #ffc0cbff;
+--html-current-color: #ffc0cbff;
+}
+#htmlui-root :is(::before, .z) {
+color: #808080ff;
+--html-current-color: #808080ff;
+}
+#htmlui-root :is(.big):is(.a, .b, .c):is(.d, .e, .f):is(.g, .h, .i):is(.j, .k, .l):is(.m, .n, .o):is(.p, .q, .r):is(.s, .t, .u) {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+}

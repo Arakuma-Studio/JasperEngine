@@ -1,0 +1,10 @@
+/* pseudo-element mappings; ::before/::after need the fork */
+.badge::before { content: "★"; display: block; width: 3px; height: 3px; }
+.badge::after { content: ""; position: absolute; }
+.old:before { content: attr(data-x); }
+.slider:before { content: ''; background-color: white; border-radius: 50%; transition: .4s; }
+input::placeholder { color: #999; font-style: italic; padding: 4px; background: red; }
+.select::selection { background-color: yellow; }
+ol li::marker { color: tomato; font-weight: bold; }
+.scroller::-webkit-scrollbar-thumb:hover { background-color: #444; }
+.p::first-letter { font-size: 2em; }

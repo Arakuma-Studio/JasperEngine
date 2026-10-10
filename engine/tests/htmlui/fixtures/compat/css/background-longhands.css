@@ -1,0 +1,10 @@
+/* longhands merge with the rule's layers, or a base rule's, or are reported */
+.same-rule { background-image: url(img/a.png); background-size: 16px; background-position: right; background-repeat: no-repeat; }
+.sprite { background: url(img/a.png) no-repeat 0 0; }
+.sprite:hover { background-position: -32px 0; }
+.sprite.big { background-size: 200%; }
+.lonely { background-position: center; }
+.origin { background-image: url(img/a.png); background-origin: content-box; background-clip: padding-box; background-attachment: fixed; }
+.axis { background-image: url(img/a.png); background-position-x: right; background-position-y: 25%; }
+.blend { background-blend-mode: multiply; }
+.color { background-color: rgba(0,0,0,.25); }

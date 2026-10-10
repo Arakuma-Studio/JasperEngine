@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- golden page (phase-2 spec 5.3): the player-name field has keyboard focus -->
+  <meta name="htmlui-ref-focus" content="#player-name">
+  <title>Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b1120;
+      --panel: #111827;
+      --panel-2: #1e293b;
+      --line: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-dark: #0284c7;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text);
+      background: radial-gradient(ellipse at top, #1e293b 0%, var(--bg) 70%);
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .settings {
+      width: 880px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+    }
+
+    .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 28px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #172036, var(--panel));
+    }
+
+    .settings-header h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      line-height: 1.3;
+    }
+
+    .tabs { display: flex; gap: 4px; }
+
+    .tab {
+      padding: 8px 16px;
+      font: inherit;
+      font-weight: 600;
+      color: var(--muted);
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+    }
+
+    .tab:hover { color: var(--text); }
+
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .settings-body {
+      display: flex;
+      gap: 32px;
+      padding: 24px 28px;
+    }
+
+    .column { flex: 1; display: flex; flex-direction: column; gap: 16px; }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 32px;
+    }
+
+    .row label { color: var(--text); }
+
+    .value {
+      width: 36px;
+      text-align: right;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .slider-group { display: flex; align-items: center; gap: 10px; }
+
+    /* custom range: the input is the track */
+    input[type="range"].slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 200px;
+      height: 6px;
+      background: var(--line);
+      border-radius: 3px;
+      outline: none;
+    }
+
+    input[type="range"].slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 3px solid #ffffff;
+      cursor: pointer;
+    }
+
+    /* custom range: styled track */
+    input[type="range"].slider-track {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 200px;
+      background: transparent;
+    }
+
+    input[type="range"].slider-track::-webkit-slider-runnable-track {
+      height: 8px;
+      background: linear-gradient(90deg, var(--accent-dark), var(--accent));
+      border-radius: 4px;
+    }
+
+    input[type="range"].slider-track::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      margin-top: -4px;
+      border-radius: 50%;
+      background: #f8fafc;
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.35);
+    }
+
+    .checks { display: flex; flex-direction: column; gap: 10px; }
+
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+    }
+
+    .check input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    select,
+    input[type="text"],
+    input[type="number"] {
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 12px;
+    }
+
+    select { width: 180px; }
+    input[type="text"] { width: 220px; }
+    input[type="number"] { width: 90px; }
+
+    input:focus,
+    select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
+    }
+
+    .keybinds {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .keybinds th {
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .keybinds td {
+      padding: 6px 8px;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+    }
+
+    kbd {
+      display: inline-block;
+      min-width: 28px;
+      padding: 2px 8px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-bottom-width: 3px;
+      border-radius: 5px;
+    }
+
+    .settings-footer {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 28px;
+      border-top: 1px solid var(--line);
+      background: #0f172a;
+    }
+
+    .reset-link {
+      color: var(--muted);
+      font-size: 13px;
+      margin-right: auto;
+    }
+
+    .btn {
+      padding: 10px 22px;
+      font: inherit;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-secondary {
+      color: var(--text);
+      background: transparent;
+      border: 1px solid var(--line);
+    }
+
+    .btn-primary {
+      color: #082f49;
+      background: var(--accent);
+      border: 1px solid var(--accent);
+      box-shadow: 0 4px 14px rgba(56, 189, 248, 0.35);
+    }
+  </style>
+</head>
+<body>
+  <div class="settings" id="settings">
+    <header class="settings-header" id="header">
+      <h1 id="heading" data-ref-tol="text">SETTINGS</h1>
+      <nav class="tabs" id="tabs">
+        <button class="tab active" id="tab-graphics" data-ref-tol="text">Graphics</button>
+        <button class="tab" id="tab-audio" data-ref-tol="text">Audio</button>
+        <button class="tab" id="tab-controls" data-ref-tol="text">Controls</button>
+        <button class="tab" id="tab-gameplay" data-ref-tol="text">Gameplay</button>
+      </nav>
+    </header>
+
+    <div class="settings-body" id="body">
+      <section class="column" id="col-left">
+        <h2 class="section-title" data-ref-tol="text">Display</h2>
+
+        <div class="row">
+          <label for="quality">Graphics quality</label>
+          <select id="quality">
+            <option>Low</option>
+            <option>Medium</option>
+            <option selected>High</option>
+            <option>Ultra</option>
+          </select>
+        </div>
+
+        <div class="row">
+          <label for="fov">Field of view</label>
+          <input type="number" id="fov" value="90" min="60" max="120">
+        </div>
+
+        <div class="row">
+          <label>Brightness</label>
+          <div class="slider-group">
+            <input type="range" class="slider" id="brightness" min="0" max="100" value="65">
+            <span class="value" data-ref-tol="text">65</span>
+          </div>
+        </div>
+
+        <div class="row">
+          <label>Music volume</label>
+          <div class="slider-group">
+            <input type="range" class="slider-track" id="music" min="0" max="100" value="40">
+            <span class="value" data-ref-tol="text">40</span>
+          </div>
+        </div>
+
+        <div class="checks" id="checks">
+          <label class="check"><input type="checkbox" id="vsync" checked> V-Sync</label>
+          <label class="check"><input type="checkbox" id="fps"> Show FPS counter</label>
+          <label class="check"><input type="checkbox" id="blur" checked> Motion blur</label>
+        </div>
+
+        <div class="row">
+          <label for="player-name">Player name</label>
+          <input type="text" id="player-name" value="Nova_Strike">
+        </div>
+      </section>
+
+      <section class="column" id="col-right">
+        <h2 class="section-title" data-ref-tol="text">Key bindings</h2>
+        <table class="keybinds" id="keybinds">
+          <thead>
+            <tr><th>Action</th><th>Primary</th><th>Secondary</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Move forward</td><td><kbd>W</kbd></td><td><kbd>&uarr;</kbd></td></tr>
+            <tr><td>Jump</td><td><kbd>Space</kbd></td><td>&mdash;</td></tr>
+            <tr><td>Interact</td><td><kbd>E</kbd></td><td><kbd>F</kbd></td></tr>
+            <tr><td>Inventory</td><td><kbd>I</kbd></td><td><kbd>Tab</kbd></td></tr>
+            <tr><td>Map</td><td><kbd>M</kbd></td><td>&mdash;</td></tr>
+            <tr id="last-row"><td>Pause</td><td><kbd>Esc</kbd></td><td><kbd>P</kbd></td></tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+
+    <footer class="settings-footer" id="footer">
+      <a href="#reset" class="reset-link" id="reset" data-ref-tol="text">Reset to defaults</a>
+      <button class="btn btn-secondary" id="cancel" data-ref-tol="text">Cancel</button>
+      <button class="btn btn-primary" id="save" data-ref-tol="text">Save changes</button>
+    </footer>
+  </div>
+</body>
+</html>

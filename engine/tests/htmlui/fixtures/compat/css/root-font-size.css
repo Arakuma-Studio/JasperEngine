@@ -1,0 +1,5 @@
+/* root font sizes resolve against 16px (the RML root has no parent) */
+html { font-size: 62.5%; }
+:root { font-size: 1.25em; }
+.page { font-size: 1.6rem; padding: 2rem; }
+.child { font-size: 150%; }

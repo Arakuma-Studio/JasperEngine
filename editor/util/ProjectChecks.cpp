@@ -377,18 +377,8 @@ void editor::ProjectChecks::closeIsolatedLuaState(lua_State* L) {
 }
 
 std::vector<std::string> editor::ProjectChecks::engineLuaGlobals() {
-    std::vector<std::string> names;
-    lua_State* L = LuaBinding::getLuaState();
-    if (!L) return names;
-    lua_pushglobaltable(L);
-    lua_pushnil(L);
-    while (lua_next(L, -2) != 0) {
-        if (lua_type(L, -2) == LUA_TSTRING) names.push_back(lua_tostring(L, -2));
-        lua_pop(L, 1);
-    }
-    lua_pop(L, 1);
-    std::sort(names.begin(), names.end());
-    return names;
+    // the names the engine registered, not what scripts added since: readable from any thread
+    return LuaBinding::getEngineGlobalNames();
 }
 
 // ======================================================================== C++ scripts

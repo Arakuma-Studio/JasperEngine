@@ -21,6 +21,11 @@ Panel::Panel(Scene* scene, Entity entity): Image(scene, entity){
 Panel::~Panel(){
 }
 
+Panel::Panel(const Panel& rhs) = default;
+Panel& Panel::operator=(const Panel& rhs) = default;
+Panel::Panel(Panel&& rhs) noexcept = default;
+Panel& Panel::operator=(Panel&& rhs) noexcept = default;
+
 bool Panel::hasHeaderImage() const{
     const PanelComponent& panelcomp = getComponent<PanelComponent>();
     if (panelcomp.headerimage == NULL_ENTITY){

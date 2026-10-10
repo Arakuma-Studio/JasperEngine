@@ -1,4 +1,5 @@
 #include "../../Include/RmlUi/Core/ElementText.h"
+#include <algorithm>
 #include "../../Include/RmlUi/Core/Context.h"
 #include "../../Include/RmlUi/Core/Core.h"
 #include "../../Include/RmlUi/Core/ElementDocument.h"
@@ -253,6 +254,12 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 	// endline is found (and we're processing them), then the line is ended. kthxbai!
 	const char* token_begin = text.c_str() + line_begin;
 	const char* string_end = text.c_str() + text.size();
+
+	// A text of white space only (between two inline-level boxes) collapses to one space, except at the start of a line
+	// (CSS Text 3 §4.1.1).
+	const bool white_space_only = collapse_white_space && line_begin == 0 && !text.empty() &&
+		std::all_of(text.begin(), text.end(), [](char c) { return StringUtilities::IsWhitespace(c); });
+
 	while (token_begin != string_end)
 	{
 		String token;
@@ -265,6 +272,8 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 		// Generate the next token and determine its pixel-length.
 		bool break_line = BuildToken(token, next_token_begin, string_end, line.empty() && trim_whitespace_prefix, collapse_white_space,
 			break_at_endline, text_transform_property, decode_escape_characters);
+		if (white_space_only && token.empty() && !(line.empty() && trim_whitespace_prefix))
+			token = " ";
 		int token_width = font_engine_interface->GetStringWidth(font_face_handle, token, text_shaping_context, previous_codepoint);
 
 		// If we're breaking to fit a line box, check if the token can fit on the line before we add it.

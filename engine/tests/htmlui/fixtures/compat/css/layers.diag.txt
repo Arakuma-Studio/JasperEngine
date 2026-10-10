@@ -1,0 +1,1 @@
+compat/css/layers.css:6:27: info: 'color' in @layer base has a higher specificity than the unlayered rule at compat/css/layers.css:7; in the engine it wins, in CSS the unlayered rule does (fix: lower the layered selector's specificity or move the rule out of the layer) [HTMLUI-AT-0002]

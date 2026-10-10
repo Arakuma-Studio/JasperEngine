@@ -1,0 +1,28 @@
+#htmlui-root .btn {
+color: #ff0000ff !important;
+--html-current-color: #ff0000ff !important;
+padding: 4px;
+}
+#htmlui-root #menu .btn {
+color: #0000ffff;
+--html-current-color: #0000ffff;
+}
+#htmlui-root .card {
+background-color: #222222ff !important;
+}
+#htmlui-root .card.active {
+margin: 0 !important;
+}
+@media (min-width: 600px) {
+#htmlui-root .wide {
+display: none !important;
+}
+}
+#htmlui-root htmlbody .btn {
+color: #008000ff;
+--html-current-color: #008000ff;
+}
+#htmlui-root .btn:hover {
+color: #ffa500ff !important;
+--html-current-color: #ffa500ff !important;
+}

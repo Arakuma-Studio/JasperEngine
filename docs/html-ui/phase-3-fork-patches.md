@@ -86,7 +86,8 @@ colours, `image-set()` by dp ratio), phase 2's behaviour stays.
 | `text-decoration-style: wavy`, `text-emphasis`, `text-indent: hanging/each-line`, `hyphens: auto` | Long tail; `wavy` renders as `solid`. | listed per property |
 | `mix-blend-mode`, `background-blend-mode` | Needs blend modes beyond `Blend/Replace` in `RenderInterface::CompositeLayers` (RenderInterface.h:98-122) on all sokol backends; phase 5 (effects) owns new compositing modes. | "Not supported; use opacity or a pre-blended image." |
 | `background-clip: text` | Needs text as a mask layer per text run; phase 5 effects library provides a shader decorator for gradient text. | "Use the gradient-text effect (phase 5)." |
-| `display: ruby*`, table `border-collapse: collapse` parity, `caption-side` | Tables are rare in game UI; RmlUi's table model is kept as is. | per property |
+| `display: ruby*`, table `border-collapse: collapse` parity, `caption-side`, CSS automatic table layout | Tables are rare in game UI; RmlUi's table model is kept as is: a table without a `width` fills its container (CSS shrinks it to its content) and columns without a width share the table's width equally (CSS sizes them by content). Phase 2's golden pages leave these widths out of the layout gate (`data-ref-tol="auto-width"` on `ua-defaults`' table, the `settings` key-binding table's cells have no ids). | per property; the guide says "give tables and columns a width" |
+| Fractional font sizes and glyph advances | `FontEngineInterface` is integer (`GetFontFaceHandle(..., int size)`, `GetStringWidth -> int`): `font-size: 13.333px` (Chromium's form controls) draws at 13px and every text run is a whole number of pixels wide. Changing the interface touches every text path of the fork for a difference of at most 1-2px per run; kept. Phase 2's `ua-defaults` page pins 13px on its text-sized controls and Roboto on its form for this reason (phase-2 spec §3.10); the pins stay. | the guide's limits list |
 | `font-variant*`, `font-stretch`, `font-feature-settings`, `font-variation-settings` | Requires OpenType feature plumbing through `FontEngineInterface`; the STBText engine (phase 0) shapes with default features. | "Use a font with the desired glyphs as the default." |
 | `cursor: url(...)` custom images | Platform cursor images are not exposed by `System` on all platforms; keyword fallbacks in the list are honoured. | "Custom cursor images are not supported; the fallback keyword is used." |
 
@@ -556,6 +557,10 @@ value CSS grammar with keyword order freedom and edge offsets `right 10px bottom
 - Engine contract: the STBText engine reports `line_spacing` as `(hhea.ascender − hhea.descender +
   hhea.lineGap) × scale` (or OS/2 typo metrics when `USE_TYPO_METRICS` is set), which is what
   Chrome uses for `normal`. Verified by a golden fixture with three fonts.
+- Phase 2's golden page `ua-defaults.html` pins `line-height: 1.2` on its body and
+  `line-height: 15px` on its form controls because compat approximates `normal` as `1.2`
+  (phase-2 spec §3.10): with `LineHeightNormal` present both pins are removed from the page,
+  its Chromium reference is rendered again and it must pass the phase-2 gates without them.
 
 #### 3.3.7 Logical properties
 Shorthands mapping to physical longhands (horizontal-tb, ltr): `margin-inline(-start|-end)`,
@@ -1289,6 +1294,12 @@ intrinsic API: inline axis exact; block axis `min-content`/`max-content`/`fit-co
 (CSS for block-axis heights in horizontal writing mode). `FlexFormattingContext::GetMinContentSize`
 (new, mirrors `GetMaxContentSize`, `FlexFormattingContext.cpp:95-114`).
 
+User-agent sheet (compat, gated on `BoxParity`): `legend { width: fit-content }`. Phase 2
+renders a fieldset's legend on its top border with a gap (`HtmlFieldsetElement`, FORK.md P2-14)
+but the legend box itself is as wide as the fieldset, so `ua-defaults.html` marks it
+`data-ref-tol="auto-width"`; with the rule the mark is removed and the legend's width is gated
+(`HtmlFieldsetElement` already cuts the gap to the legend's box when it has a width).
+
 #### 3.12.5 `aspect-ratio`
 Computed: `auto`, ratio, or `auto && ratio`. Applied in `LayoutDetails::BuildBox` (block-level and
 absolutely positioned boxes: when one axis is auto and the other definite, the auto axis comes from
@@ -1783,7 +1794,13 @@ The agent-browser MCP tool is not used for goldens (shared browser, non-determin
   `--fixtures <area|name>` mode for phase-3 fixtures (sidecar below) and `--boxes-only`
   (§5.3). Same launch flags as phase 2's page mode, including `--hide-scrollbars` (the Taffy
   fixtures add their own 15 px scrollbar rule), `deviceScaleFactor: 1`, viewport from the
-  sidecar. Runs on the host (playwright and the browser cache live there), never in Docker or
+  sidecar. (Found by p2-ua: `--hide-scrollbars`, Playwright's default, also hides
+  `::-webkit-scrollbar`-styled scrollbars and they take no layout space, so the Taffy 15 px
+  scrollbar rule needs the flag removed, as phase 2's page mode does with `ignoreDefaultArgs`
+  and an injected `html::-webkit-scrollbar{display:none}`; page mode also runs with
+  JavaScript off, a fontconfig that maps generic families to the engine's built-in Roboto, a
+  fresh browser per capture, and accepts Chromium's cross-process raster noise in `--verify`:
+  phase-2 §5.3.) Runs on the host (playwright and the browser cache live there), never in Docker or
   CI; `npx playwright-core install chromium-headless-shell` installs the browser if missing.
   Phase-2 page references keep their own mode (`--all`, meta-tag states, finished animations);
   phase-3 fixtures use sidecar steps and seeked animations.

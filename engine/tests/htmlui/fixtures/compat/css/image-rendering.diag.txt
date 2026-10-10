@@ -1,0 +1,1 @@
+compat/css/image-rendering.css:4:12: warning: 'image-rendering: blurry' is not supported; declaration dropped (fix: use pixelated, crisp-edges or auto) [HTMLUI-CSS-0004]

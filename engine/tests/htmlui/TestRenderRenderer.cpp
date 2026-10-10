@@ -128,7 +128,7 @@ TEST(RmlRendererTest, GeometryLifetimeThroughContext){
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
 
-    Rml::ElementDocument* document = test.load("render/boxes.html");
+    Rml::ElementDocument* document = test.load("render/boxes.rml");
     ASSERT_NE(document, nullptr);
     ASSERT_TRUE(test.renderUntilDrawn());
     EXPECT_GT(test.renderer.getLiveGeometryCount(), 0u);
@@ -324,7 +324,7 @@ TEST(RmlRendererTest, WaitsForShaders){
     {
         RenderTestContext test;
         ASSERT_TRUE(test.isValid());
-        ASSERT_NE(test.load("render/boxes.html"), nullptr);
+        ASSERT_NE(test.load("render/boxes.rml"), nullptr);
 
         // frames are dropped (no crash, nothing drawn) until every variant exists
         EXPECT_FALSE(test.renderer.isReady());
@@ -417,7 +417,7 @@ TEST(RmlRendererTest, NoLeaksAfterContextDestroy){
     JASPER_REQUIRE_GPU();
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
-    ASSERT_NE(test.load("render/images.html"), nullptr);
+    ASSERT_NE(test.load("render/images.rml"), nullptr);
     ASSERT_TRUE(test.renderUntilDrawn());
 
     EXPECT_GT(test.renderer.getLiveGeometryCount(), 0u);
@@ -449,7 +449,7 @@ TEST(RmlRendererTest, ViewLossAndRecovery){
     JASPER_REQUIRE_GPU();
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
-    ASSERT_NE(test.load("render/images.html"), nullptr);
+    ASSERT_NE(test.load("render/images.rml"), nullptr);
     ASSERT_TRUE(test.renderUntilDrawn());
     CompareResult before = test.compareScreen("render_images");
     EXPECT_TRUE(before.passed) << before.message;

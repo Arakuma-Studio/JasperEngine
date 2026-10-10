@@ -29,7 +29,7 @@ TEST_F(FullPathGoldenTest, Letterbox){
     ASSERT_EQ(Engine::getCanvasHeight(), 360);
 
     SceneFixture fixture;
-    fixture.addDocument("golden/letterbox.html");
+    fixture.addDocument("golden/letterbox.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     Screen screen;
@@ -63,8 +63,8 @@ TEST_F(FullPathGoldenTest, Letterbox){
 
 TEST_F(FullPathGoldenTest, SortOrder){
     SceneFixture fixture;
-    UIDocument a = fixture.addDocument("golden/sort_a.html", 0);
-    UIDocument b = fixture.addDocument("golden/sort_b.html", 1);
+    UIDocument a = fixture.addDocument("golden/sort_a.rml", 0);
+    UIDocument b = fixture.addDocument("golden/sort_b.rml", 1);
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     // a (100,80)-(360,240) red, b (260,140)-(520,300) blue; overlap (260,140)-(360,240)
@@ -88,7 +88,7 @@ TEST_F(FullPathGoldenTest, SortOrder){
 
 TEST_F(FullPathGoldenTest, HoverStates){
     SceneFixture fixture;
-    UIDocument document = fixture.addDocument("golden/hover.html");
+    UIDocument document = fixture.addDocument("golden/hover.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
     UIElement button = document.getElementById("button");
     ASSERT_TRUE(button.isValid());
@@ -142,7 +142,7 @@ TEST_F(FullPathGoldenTest, ComponentUIUnder){
     text.setColor(1.0f, 1.0f, 1.0f, 1.0f);
     text.setPosition(60, 300);
 
-    fixture.addDocument("golden/component_ui_under.html");
+    fixture.addDocument("golden/component_ui_under.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     Screen screen;
@@ -164,7 +164,7 @@ TEST_F(FullPathGoldenTest, ComponentUIUnder){
 
 TEST_F(FullPathGoldenTest, TwoScenes){
     SceneFixture fixture;
-    fixture.addDocument("golden/scene_main.html");
+    fixture.addDocument("golden/scene_main.rml");
 
     // a second scene drawn as a layer over the main one (it loads the color buffer)
     std::unique_ptr<Scene> layer(new Scene());
@@ -172,7 +172,7 @@ TEST_F(FullPathGoldenTest, TwoScenes){
     layerCamera->setType(CameraType::CAMERA_UI);
     layerCamera->activate();
     std::unique_ptr<UIDocument> layerDocument(new UIDocument(layer.get()));
-    layerDocument->setFilename("golden/scene_layer.html");
+    layerDocument->setFilename("golden/scene_layer.rml");
     Engine::addSceneLayer(layer.get());
 
     Scene* layerScene = layer.get();
@@ -207,7 +207,7 @@ TEST_F(FullPathGoldenTest, TwoScenes){
 
 TEST_F(FullPathGoldenTest, Debugger){
     SceneFixture fixture;
-    fixture.addDocument("golden/debugger.html");
+    fixture.addDocument("golden/debugger.rml");
     ASSERT_TRUE(fixture.waitUntilLoaded());
 
     auto system = fixture.getScene().getSystem<UIDocumentSystem>();
