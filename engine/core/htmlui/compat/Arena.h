@@ -105,6 +105,17 @@ namespace jasperengine::htmlui::compat {
             other.size_ = other.capacity_ = 0;
         }
         ArenaList(std::initializer_list<T> values): ArenaList(values.begin(), values.end()) {}
+        // the elements [first, first + count) moved in as their bytes: the originals are
+        // forgotten, not destroyed (a parser's scratch stack hands its items over this way)
+        static ArenaList movedFrom(T* first, size_t count){
+            ArenaList list;
+            if (count > 0){
+                list.data_ = Arena::current().allocateArray<T>(count);
+                std::memcpy((void*)list.data_, (const void*)first, count * sizeof(T));
+                list.size_ = list.capacity_ = (uint32_t)count;
+            }
+            return list;
+        }
         ArenaList(const T* first, const T* last){
             if (last > first){
                 size_ = capacity_ = (uint32_t)(last - first);
