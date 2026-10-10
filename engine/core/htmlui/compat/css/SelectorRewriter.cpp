@@ -1144,19 +1144,20 @@ namespace {
         // root variant when the first compound could match the root element
         template<typename Emit>
         void band(const ComplexSelector& selector, const Emit& emit){
+            // (one buffer for every selector of the thread: the emitter copies what it keeps)
+            static thread_local std::string buffer;
+            std::string& text = buffer;
+            text.clear();
             if (!author() || startsAtRoot(selector)){
-                std::string text;   // (often short: kept in the string itself)
                 appendComplex(text, selector);
-                emit(std::move(text), SelectorRewriter::specificity(selector));
+                emit(std::string_view(text), SelectorRewriter::specificity(selector));
                 return;
             }
-            std::string text;
-            text.reserve(48);
             text += '#';
             text += kRootId;
             appendComplex(text, selector, true);
             // the band compound is one id selector
-            emit(std::move(text), 1000000 + SelectorRewriter::specificity(selector));
+            emit(std::string_view(text), 1000000 + SelectorRewriter::specificity(selector));
             if (!selector.compounds.empty() && couldBeRoot(selector.compounds.front())){
                 SimpleSelector id;
                 id.kind = Kind::Id;
@@ -1171,9 +1172,9 @@ namespace {
                         simples.push_back(s);
                 }
                 first.simples = std::move(simples);
-                std::string variantText;
-                appendComplex(variantText, rootVariant);
-                emit(std::move(variantText), SelectorRewriter::specificity(rootVariant));
+                text.clear();
+                appendComplex(text, rootVariant);
+                emit(std::string_view(text), SelectorRewriter::specificity(rootVariant));
             }
         }
     };
@@ -1254,13 +1255,13 @@ SelectorRewriteResult SelectorRewriter::rewrite(const SelectorList& list, const 
         if (!expands && rewriter.mapsToItself(source)){
             // nothing to map, no root marker to resolve: the source is banded as it is
             rewriter.pendingAlternate.clear();
-            rewriter.band(source, [&](std::string text, uint32_t specificity){
+            rewriter.band(source, [&](std::string_view text, uint32_t specificity){
                 for (const RewrittenSelector& kept : result.selectors){
                     if (kept.text == text)
                         return;
                 }
                 RewrittenSelector out;
-                out.text = std::move(text);
+                out.text = Text(text);
                 out.specificity = specificity;
                 out.source = (uint32_t)sourceIndex;
                 out.placeholder = false;
@@ -1290,13 +1291,13 @@ SelectorRewriteResult SelectorRewriter::rewrite(const SelectorList& list, const 
             auto write = [&](ComplexSelector& form){
                 if (!rewriter.resolveRoot(form))
                     return;
-                rewriter.band(form, [&](std::string text, uint32_t specificity){
+                rewriter.band(form, [&](std::string_view text, uint32_t specificity){
                     for (const RewrittenSelector& kept : result.selectors){
                         if (kept.text == text)
                             return;
                     }
                     RewrittenSelector out;
-                    out.text = std::move(text);
+                    out.text = Text(text);
                     out.specificity = specificity;
                     out.source = (uint32_t)sourceIndex;
                     out.placeholder = placeholder;
