@@ -114,6 +114,6 @@ std::optional<ImportedSheet> Import::load(Session& session, const Rule& rule, ui
                             std::to_string(invalid.size()) + " invalid UTF-8 sequence(s) replaced by U+FFFD", "save the file as UTF-8");
     }
     imported.file = file;
-    imported.sheet = parseStylesheet(file, session.files.text(file), *session.sink);
+    imported.sheet = parseStylesheet(file, session.files.text(file), *session.sink, 0, true);
     return imported;
 }

@@ -146,8 +146,9 @@ bool DeclContext::fork(ForkFeature feature) const{
 
 const SelectorList& FlatRule::selectors() const{
     if (!selectorsParsed){
-        // (a scanned list: valid, so it parses)
-        std::optional<SelectorList> parsed = SelectorRewriter::parseList(prelude, file);
+        // (a scanned list: valid, so it parses; a deferred prelude is read from its text)
+        std::optional<SelectorList> parsed = SelectorRewriter::parseList(
+            preludeDeferred ? parseComponentValueList(preludeText, preludeRef.offset) : prelude, file);
         if (parsed)
             parsedSelectors = std::move(*parsed);
         selectorsParsed = true;
@@ -421,6 +422,8 @@ namespace {
         rule.file = scope.file;
         rule.origin = scope.origin;
         rule.prelude = std::move(source.prelude);
+        rule.preludeText = source.preludeText;
+        rule.preludeDeferred = source.preludeDeferred;
         rule.scanned = true;
         rule.selectorTexts = std::move(scanned.texts);
         rule.rewritten = std::move(scanned.rewritten);
@@ -469,10 +472,11 @@ namespace {
         }
         std::string error;
         SourceRef errorRef;
-        std::optional<SelectorList> parsed = SelectorRewriter::parseList(rule.prelude, scope.file, &error, &errorRef);
+        const ValueList prelude = preludeOf(rule);
+        std::optional<SelectorList> parsed = SelectorRewriter::parseList(prelude, scope.file, &error, &errorRef);
         if (!parsed){
             session.sink->report(codes::InvalidSelector, rule.preludeRef.valid() ? rule.preludeRef : rule.ref,
-                                 "invalid selector '" + serialize(trimWhitespace(rule.prelude)) + "' (" + error + "); the rule is dropped",
+                                 "invalid selector '" + serialize(trimWhitespace(prelude)) + "' (" + error + "); the rule is dropped",
                                  "fix the selector syntax", std::string(), "selector");
             return;
         }
@@ -973,10 +977,16 @@ namespace {
         if (value.size() < 4)
             return false;
         const size_t last = value.size() - 3;   // an 'm' at 1 .. last
-        for (size_t i = 1; i <= last; i++){
-            const char m = value[i];
-            if ((m == 'm' || m == 'M') && (value[i - 1] == 'v' || value[i - 1] == 'V'))
-                return true;
+        // (the 'm's found by memchr, the lower case ones first: an upper case 'M' is rare)
+        for (const char m : {'m', 'M'}){
+            const char* const begin = value.data();
+            const char* p = begin + 1;
+            const char* const end = begin + last + 1;
+            while (p < end && (p = (const char*)std::memchr(p, m, (size_t)(end - p))) != nullptr){
+                if (p[-1] == 'v' || p[-1] == 'V')
+                    return true;
+                p++;
+            }
         }
         return false;
     }
@@ -1912,7 +1922,7 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
             if (!path.empty())
                 result.dependencies.push_back(path);
         }
-        Stylesheet sheet = parseStylesheet(input.file, input.text, impl->sink, input.baseOffset);
+        Stylesheet sheet = parseStylesheet(input.file, input.text, impl->sink, input.baseOffset, true);
         // about one flat rule per top-level rule
         session.rules.reserve(session.rules.size() + sheet.rules.size());
         FlattenScope scope;

@@ -375,6 +375,8 @@ namespace {
             rule.kind = Rule::Kind::Style;
             const uint32_t begin = position();
             const size_t mark = scratch.values.size();
+            if (deferPlainPreludes && deferPrelude(rule))
+                return true;
 
             while (true){
                 const TokenType type = look.type;
@@ -418,6 +420,51 @@ namespace {
                 }
                 consumeComponentValue();
             }
+        }
+
+        // A plain prelude (ASCII name characters, '.', '#', ':', '>', '+', '~', '*', ',' and white
+        // space up to a '{'): read as text without its tokens (they hold no error and no block),
+        // then the block. false: not plain (nothing consumed).
+        bool deferPrelude(Rule& rule){
+            const size_t start = lookStart;
+            const size_t size = css.size();
+            // (a comment before the lookahead: the token path reads it)
+            if (look.offset != base + (uint32_t)start)
+                return false;
+            size_t i = start;
+            // ("--x: ..." may be a custom property: the token path decides)
+            if (i + 1 < size && css[i] == '-' && css[i + 1] == '-')
+                return false;
+            size_t lastNonSpace = start;
+            while (i < size){
+                const char c = css[i];
+                if (c == '{')
+                    break;
+                if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'){
+                    i++;
+                    continue;
+                }
+                if (!kNameBytes.is[(unsigned char)c] && c != '.' && c != '#' && c != ':' && c != '>' && c != '+' && c != '~' &&
+                    c != '*' && c != ',')
+                    return false;
+                i++;
+                lastNonSpace = i;
+            }
+            if (i >= size || lastNonSpace == start)
+                return false;
+            rule.kind = Rule::Kind::Style;
+            rule.preludeDeferred = true;
+            const uint32_t begin = base + (uint32_t)start;
+            rule.preludeRef = ref(begin, base + (uint32_t)lastNonSpace);
+            rule.preludeText = Text::view(std::string_view(sourceCopy + start, lastNonSpace - start));
+            // the '{' is the lookahead now
+            lexer.reset(i);
+            lookStart = i;
+            lexer.next(look);
+            lastEnd = base + (uint32_t)lastNonSpace;
+            consumeBlock(rule);
+            rule.ref = ref(begin, rule.blockRef.offset + rule.blockRef.length);
+            return true;
         }
 
         void consumeBadDeclarationRemnants(bool nested){
@@ -741,6 +788,8 @@ namespace {
         // Rule::block (the raw block) is kept for the CSS Syntax entry points; the
         // compatibility layer's parseStylesheet/parseDeclarationList only use the contents
         bool keepRawBlocks = true;
+        // parseStylesheet(..., deferPlainPreludes)
+        bool deferPlainPreludes = false;
         std::vector<ParseError> errors_;
         std::vector<ParseError>* errorsOut;
         Scratch& scratch;
@@ -784,14 +833,25 @@ std::vector<ValueList> jasperengine::htmlui::compat::splitAtCommas(const ValueLi
     return groups;
 }
 
-Stylesheet jasperengine::htmlui::compat::parseStylesheet(uint32_t file, std::string_view css, DiagnosticSink& sink, uint32_t baseOffset){
+Stylesheet jasperengine::htmlui::compat::parseStylesheet(uint32_t file, std::string_view css, DiagnosticSink& sink, uint32_t baseOffset,
+                                                       bool deferPlainPreludes){
     Stylesheet sheet;
     sheet.file = file;
     Parser parser(file, css, baseOffset, TokenizeOptions(), nullptr);
     parser.keepRawBlocks = false;
+    parser.deferPlainPreludes = deferPlainPreludes;
     sheet.rules = parser.consumeRuleList(true);
     parser.report(&sink);
     return sheet;
+}
+
+ValueList jasperengine::htmlui::compat::preludeOf(const Rule& rule){
+    if (!rule.preludeDeferred)
+        return rule.prelude;
+    // the prelude's text and the white space after it, up to the block (in the parser's copy of
+    // the source, as the prelude text): the values the token path reads
+    const std::string_view text(rule.preludeText.data(), rule.blockRef.offset - rule.preludeRef.offset);
+    return parseComponentValueList(text, rule.preludeRef.offset);
 }
 
 DeclarationList jasperengine::htmlui::compat::parseDeclarationList(uint32_t file, std::string_view css, uint32_t baseOffset,

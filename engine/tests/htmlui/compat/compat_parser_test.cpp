@@ -10,10 +10,16 @@
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/SourceFiles.h"
 #include "htmlui/compat/css/CssParser.h"
+#include "htmlui/compat/css/CssSerialize.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <functional>
 #include <set>
+#include <sstream>
 
 using namespace jasperengine::test::compat;
 
@@ -355,4 +361,79 @@ TEST(CompatParser, HelpersSplitAndTrim){
     ASSERT_EQ(trimWhitespace(groups[1]).size(), 1u);
     EXPECT_TRUE(trimWhitespace(groups[1])[0].isFunction("c"));
     EXPECT_EQ(trimWhitespace(groups[2]).size(), 1u);
+}
+
+// parseStylesheet(..., deferPlainPreludes) (p2-perf2): a plain style-rule prelude is read as
+// text, and preludeOf() reads it into the values the token path builds; every other part of
+// the sheet, the diagnostics included, is the same
+namespace {
+
+    std::string ruleText(const Rule& rule){
+        std::string text = std::to_string((int)rule.kind) + "@" + std::string(rule.atName) + " " + std::to_string(rule.ref.offset) + "+" +
+                           std::to_string(rule.ref.length) + " prelude " + std::to_string(rule.preludeRef.offset) + "+" +
+                           std::to_string(rule.preludeRef.length) + " [" + std::string(rule.preludeText) + "] block " +
+                           std::to_string(rule.blockRef.offset) + "+" + std::to_string(rule.blockRef.length) + (rule.hasBlock ? " {" : "") + "\n";
+        for (const ComponentValue& v : preludeOf(rule))
+            text += "  " + serialize(v) + "@" + std::to_string(v.offset) + "+" + std::to_string(v.length);
+        text += "\n";
+        for (const Declaration& d : rule.declarations){
+            text += "  " + std::string(d.name) + ": " + serialize(d.value) + (d.important ? " !important" : "") + " " + std::to_string(d.ref.offset) +
+                    "+" + std::to_string(d.ref.length) + " [" + std::string(d.text) + "]\n";
+        }
+        for (const Rule& r : rule.rules)
+            text += ruleText(r);
+        return text;
+    }
+
+    std::string sheetText(const std::string& css, bool defer, bool& deferredAny){
+        SourceFiles files;
+        const uint32_t file = files.add("ui/defer.css", css);
+        DiagnosticSink sink(files);
+        const Stylesheet sheet = parseStylesheet(file, files.text(file), sink, 0, defer);
+        std::string text;
+        std::function<void(const RuleList&)> any = [&](const RuleList& rules){
+            for (const Rule& r : rules){
+                deferredAny = deferredAny || r.preludeDeferred;
+                any(r.rules);
+            }
+        };
+        any(sheet.rules);
+        for (const Rule& rule : sheet.rules)
+            text += ruleText(rule);
+        for (const Diagnostic& d : sink.diagnostics())
+            text += toText(d) + "\n";
+        return text;
+    }
+
+}
+
+TEST(CompatParser, DeferredPreludesReadAsTheTokensWould){
+    std::vector<std::string> sheets = {
+        ".a, .b > .c { color: red } .d{x:y}\n.e  .f\t{ a: b; .g { c: d } } @media (min-width: 1px) { h1.x:hover { a: b } }\n"
+        "@keyframes k { from { a: b } 50% { c: d } to { e: f } } a.-x #y *.z ~ b + c { } --x: y { } /* c */ .h { } .i/* c */.j { }\n"
+        ".k:not(.l) { } a[href] { } .m { .n:hover { o: p } } .q { r: s } .t",
+    };
+    std::vector<std::string> paths;
+    std::function<void(const std::string&)> collect = [&](const std::string& directory){
+        std::error_code error;
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(directory, error)){
+            if (entry.is_regular_file() && entry.path().extension() == ".css")
+                paths.push_back(entry.path().string());
+        }
+    };
+    collect(std::string(JASPER_HTMLUI_TEST_SOURCE_DIR) + "/fixtures/compat");
+    std::sort(paths.begin(), paths.end());
+    ASSERT_GT(paths.size(), 50u);
+    for (const std::string& path : paths){
+        std::ifstream in(path, std::ios::binary);
+        std::stringstream text;
+        text << in.rdbuf();
+        sheets.push_back(text.str());
+    }
+    bool deferredAny = false;
+    for (const std::string& css : sheets){
+        bool unused = false;
+        EXPECT_EQ(sheetText(css, false, unused), sheetText(css, true, deferredAny)) << css.substr(0, 200);
+    }
+    EXPECT_TRUE(deferredAny);
 }

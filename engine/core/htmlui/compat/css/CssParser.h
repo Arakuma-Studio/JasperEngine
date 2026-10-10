@@ -43,8 +43,12 @@ namespace jasperengine::htmlui::compat {
     // A whole stylesheet: rules with their blocks parsed as mixed declarations and nested
     // rules. Syntax errors are recovered as browsers do and reported as HTMLUI-CSS-0008.
     // baseOffset: where `css` starts inside `file` (an inline <style> in an HTML file).
+    // deferPlainPreludes: a style rule's plain prelude is not read into component values
+    // (Rule::preludeDeferred; the compatibility layer reads it as text, preludeOf() as values).
     JASPERENGINE_API Stylesheet parseStylesheet(uint32_t file, std::string_view css, DiagnosticSink& sink,
-                                                uint32_t baseOffset = 0);
+                                                uint32_t baseOffset = 0, bool deferPlainPreludes = false);
+    // a rule's prelude as component values (read from its text when it was deferred)
+    JASPERENGINE_API ValueList preludeOf(const Rule& rule);
     // A declaration list (style="", Lua style.cssText): nested rules are dropped with
     // HTMLUI-CSS-0008.
     JASPERENGINE_API DeclarationList parseDeclarationList(uint32_t file, std::string_view css, uint32_t baseOffset,

@@ -60,6 +60,8 @@ namespace jasperengine::htmlui::compat {
         mutable SelectorList parsedSelectors;
         mutable bool selectorsParsed = false;
         ValueList prelude;
+        Text preludeText;               // (Rule::preludeDeferred: the prelude is read from its text)
+        bool preludeDeferred = false;
         // a scanned list: serialize() of each selector (never a root or `body` rule: scanList
         // reads no html/body type, :root or root id)
         bool scanned = false;
