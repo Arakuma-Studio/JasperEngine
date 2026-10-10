@@ -81,7 +81,8 @@ public:
 	/// Called by RmlUi when it wants to retrieve the width of a string when rendered with this handle.
 	/// @param[in] handle The font handle.
 	/// @param[in] string The string to measure.
-	/// @param[in] text_shaping_context Additional parameters that provide context for text shaping.
+	/// @param[in] text_shaping_context Additional parameters that provide context for text shaping. Its letter spacing is added after each
+	/// character, its word spacing after each space (U+0020, U+00A0, U+1361); a font engine applies both, in GenerateString too.
 	/// @param[in] prior_character The optionally-specified character that immediately precedes the string. This may have an impact on the string
 	/// width due to kerning.
 	/// @return The width, in pixels, this string will occupy if rendered with this handle.

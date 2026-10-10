@@ -63,6 +63,8 @@ public:
 			if (!IsZeroWidth(c))
 			{
 				advance = size + context.letter_spacing;
+				if (c == ' ' || c == 0xA0)
+					advance += context.word_spacing;
 			}
 			if (advances)
 				advances->push_back(advance);

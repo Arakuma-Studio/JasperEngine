@@ -161,7 +161,9 @@ WidgetTextInput::WidgetTextInput(ElementFormControl* _parent)
 	lines = {Line{}};
 
 	parent = _parent;
-	parent->SetProperty(PropertyId::WhiteSpace, Property(Style::WhiteSpace::Pre));
+	// 'white-space: pre' (phase 3: the shorthand of these two)
+	parent->SetProperty(PropertyId::WhiteSpaceCollapse, Property(Style::WhiteSpaceCollapse::Preserve));
+	parent->SetProperty(PropertyId::TextWrapMode, Property(Style::TextWrapMode::Nowrap));
 	parent->SetProperty(PropertyId::OverflowX, Property(Style::Overflow::Hidden));
 	parent->SetProperty(PropertyId::OverflowY, Property(Style::Overflow::Hidden));
 	parent->SetProperty(PropertyId::Drag, Property(Style::Drag::Drag));
@@ -234,7 +236,8 @@ WidgetTextInput::~WidgetTextInput()
 
 	// This widget might be parented by an input element, which may now be constructing a completely different type.
 	// Thus, remove all properties set by this widget so they don't affect the new type.
-	parent->RemoveProperty(PropertyId::WhiteSpace);
+	parent->RemoveProperty(PropertyId::WhiteSpaceCollapse);
+	parent->RemoveProperty(PropertyId::TextWrapMode);
 	parent->RemoveProperty(PropertyId::OverflowX);
 	parent->RemoveProperty(PropertyId::OverflowY);
 	parent->RemoveProperty(PropertyId::Drag);
@@ -1120,6 +1123,8 @@ float WidgetTextInput::GetAlignmentSpecificTextOffset(const Line& line) const
 	}
 	case Style::TextAlign::Center: return Math::Max(0.0f, 0.5f * RemainingWidth(editable_line_string));
 	case Style::TextAlign::Justify: return 0;
+	case Style::TextAlign::Start: // (resolved by ComputedValues::text_align())
+	case Style::TextAlign::End: return 0;
 	}
 	return 0;
 }
@@ -1474,6 +1479,8 @@ void WidgetTextInput::UpdateCursorPosition(bool update_ideal_cursor_position)
 		case Style::TextAlign::Justify: return 0.f;
 		case Style::TextAlign::Right: return Math::Max(0.0f, GetAvailableWidth());
 		case Style::TextAlign::Center: return Math::Max(0.0f, 0.5f * GetAvailableWidth());
+		case Style::TextAlign::Start: // (resolved by ComputedValues::text_align())
+		case Style::TextAlign::End: return 0.f;
 		}
 		return 0.f;
 	};
@@ -1499,6 +1506,14 @@ void WidgetTextInput::UpdateCursorPosition(bool update_ideal_cursor_position)
 
 bool WidgetTextInput::UpdateSelection(bool selecting)
 {
+	// 'user-select: none' on the input: the cursor moves, nothing is selected (phase 3, p3-text).
+	if (selecting)
+	{
+		const Property* user_select = parent->GetProperty(PropertyId::UserSelect);
+		if (user_select && user_select->unit == Unit::KEYWORD && (Style::UserSelect)user_select->Get<int>() == Style::UserSelect::None)
+			selecting = false;
+	}
+
 	bool selection_changed = false;
 	if (!selecting)
 	{

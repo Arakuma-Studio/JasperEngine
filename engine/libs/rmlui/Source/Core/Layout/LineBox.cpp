@@ -305,7 +305,8 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 		case Style::TextAlign::Right: offset_horizontal_alignment = (line_width - box_cursor); break;
 		case Style::TextAlign::Left:    // Already left-aligned.
 		case Style::TextAlign::Justify: // Justification occurs at the text level.
-			break;
+		case Style::TextAlign::Start:   // (resolved by ComputedValues::text_align())
+		case Style::TextAlign::End: break;
 		}
 	}
 
