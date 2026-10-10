@@ -12,6 +12,7 @@
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "ComputeProperty.h"
 #include "ControlledLifetimeResource.h"
+#include "PropertyParserAnimation.h"
 #include "StyleSheetFactory.h"
 #include "StyleSheetNode.h"
 #include <algorithm>
@@ -423,7 +424,12 @@ static void PostprocessKeyframes(KeyframesMap& keyframes_map)
 		// Sort keyframes on selector value.
 		std::sort(blocks.begin(), blocks.end(), [](const KeyframeBlock& a, const KeyframeBlock& b) { return a.normalized_time < b.normalized_time; });
 
+		// A keyframe's animation-timing-function eases the segment that starts at it (phase 3); the other animation and
+		// transition properties have no effect in a keyframe (CSS Animations 1) and are dropped.
+		ProcessKeyframeTimingFunctions(blocks);
+
 		// Add all property names specified by any block
+		property_ids.clear();
 		if (blocks.size() > 0)
 			property_ids.reserve(blocks.size() * blocks[0].properties.GetNumProperties());
 		for (auto& block : blocks)
@@ -486,12 +492,8 @@ bool StyleSheetParser::ParseKeyframeBlock(KeyframesMap& keyframes_map, const Str
 			keyframes.blocks.emplace_back(selector);
 			it = (keyframes.blocks.end() - 1);
 		}
-		else
-		{
-			// In case of duplicate keyframes, we only use the latest definition as per CSS rules
-			it->properties = PropertyDictionary();
-		}
 
+		// Keyframes with the same selector cascade: the later declarations override the earlier ones (CSS Animations 1).
 		it->properties.Import(properties);
 	}
 

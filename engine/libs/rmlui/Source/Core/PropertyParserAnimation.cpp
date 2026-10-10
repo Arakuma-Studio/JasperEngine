@@ -5,6 +5,7 @@
 #include "../../Include/RmlUi/Core/PropertySpecification.h"
 #include "../../Include/RmlUi/Core/StringUtilities.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
+#include "../../Include/RmlUi/Core/StyleSheetTypes.h"
 #include "ControlledLifetimeResource.h"
 #include "Easing.h"
 #include "ElementStyle.h"
@@ -503,6 +504,32 @@ AnimationList BuildAnimationList(const ElementStyle& style)
 		result.push_back(std::move(animation));
 	}
 	return result;
+}
+
+void ProcessKeyframeTimingFunctions(Vector<KeyframeBlock>& blocks)
+{
+	for (KeyframeBlock& block : blocks)
+	{
+		if (const Property* property = block.properties.GetProperty(PropertyId::AnimationTimingFunction))
+		{
+			if (property->unit == Unit::STYLE_VALUE)
+			{
+				if (const StyleValuePtr value = property->value.Get<StyleValuePtr>())
+				{
+					const auto& items = static_cast<const AnimationListValue&>(*value).GetItems();
+					if (!items.empty())
+					{
+						block.has_tween = true;
+						block.tween = items[0].tween;
+					}
+				}
+			}
+		}
+		for (const PropertyId id : parser_data->transition_ids)
+			block.properties.RemoveProperty(id);
+		for (const PropertyId id : parser_data->animation_ids)
+			block.properties.RemoveProperty(id);
+	}
 }
 
 const PropertyIdSet& GetTransitionLonghandIds()

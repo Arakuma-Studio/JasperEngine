@@ -6,6 +6,7 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/EventListener.h>
 #include <RmlUi/Core/PropertyDictionary.h>
 #include <RmlUi/Core/StyleSheetSpecification.h>
 #include <algorithm>
@@ -545,14 +546,15 @@ TEST_CASE("animation.case_sensitive_distinct_keyframes")
 
 	struct TestCase {
 		String class_name;
+		float expected_opacity_start; // The first keyframe applies from the start (CSS).
 		float expected_opacity_end;
 	};
 
 	const Vector<TestCase> test_cases = {
-		{"show-lower", 0.25f},
-		{"show-upper", 0.5f},
-		{"show-infinite", 0.75f},
-		{"show-infinite-upper-keywords", 0.75f},
+		{"show-lower", 0.f, 0.25f},
+		{"show-upper", 0.f, 0.5f},
+		{"show-infinite", 0.75f, 0.75f},
+		{"show-infinite-upper-keywords", 0.75f, 0.75f},
 	};
 
 	for (const auto& test_case : test_cases)
@@ -563,7 +565,7 @@ TEST_CASE("animation.case_sensitive_distinct_keyframes")
 		Element* element = TestsShell::GetElementChild(document, 0);
 		element->SetClass(test_case.class_name, true);
 		document->Show();
-		REQUIRE(element->GetProperty<float>("opacity") == 0.f);
+		REQUIRE(element->GetProperty<float>("opacity") == test_case.expected_opacity_start);
 
 		constexpr double t_end = 1.0;
 		constexpr double dt = 0.1;
@@ -639,16 +641,18 @@ TEST_CASE("animation.multiple_values")
 		{t_fade_start, 0.f, {0, 0, 0}},
 		{t_fade_start + dt, 0.01f, {0, 0, 0}},
 
+		// Before its delay ends an animation without backwards fill applies nothing; from its start it applies its first keyframe.
 		{t_colorize_start - dt, 0.4f, {0, 0, 0}},
-		{t_colorize_start, 0.49f, {0, 0, 0}},
+		{t_colorize_start, 0.49f, {0xff, 0, 0}},
 		{t_colorize_start + dt, 0.5f, {0xf1, 0x50, 0}},
 
 		{t_fade_final - dt, 0.9f, {0x50, 0xf1, 0}},
-		{t_fade_final, 0.99f, {0, 0xfe, 0x00}},
+		{t_fade_final, 0.99f, {0, 0xff, 0x00}},
 		{t_fade_final + dt, 1.0f, {0, 0xfa, 0x2e}},
 
+		// At its end an animation without forwards fill applies nothing.
 		{t_colorize_final - dt, 1.0f, {0, 0x2e, 0xfa}},
-		{t_colorize_final, 1.0f, {0, 0, 0xfe}},
+		{t_colorize_final, 1.0f, {0, 0, 0}},
 		{t_colorize_final + dt, 1.0f, {0, 0, 0}},
 	};
 
@@ -749,25 +753,25 @@ TEST_CASE("animation.multiple_overlapping")
 		float opacity_min;
 		bool is_visible;
 	};
+	// The later animation of the list wins for the properties it animates while it applies a value; without fill modes,
+	// neither applies anything outside its active interval (the element's own opacity is 1 and it is visible).
 	const std::vector<TestCase> tests = {
-		{t0, 0.f, true},
-		{t0 + t_delta, greater_than_zero, true},
-		{t_fadein_final - t_delta, 0.8f, true},
+		{t0, 0.f, false},
+		{t0 + t_delta, 0.1f, true},
+		{t_fadein_final - t_delta, 0.9f, true},
 		{t_fadein_final, 1.f, true},
 		{t_fadein_final + t_delta, 1.f, true},
 		{t_fadeout_start - t_delta, 1.f, true},
 		{t_fadeout_start, 1.f, true},
-		{t_fadeout_start + t_delta, 0.8f, true},
-		{t_fadeout_final - t_delta, greater_than_zero, true},
-		{t_fadeout_final, 0.f, false},
-		{t_fadeout_final + t_delta, 0.f, false},
+		{t_fadeout_start + t_delta, 0.9f, true},
+		{t_fadeout_final - t_delta, 0.1f, true},
+		{t_fadeout_final, 1.f, true},
+		{t_fadeout_final + t_delta, 1.f, true},
 	};
+	(void)greater_than_zero;
 
-	// Currently we don't support animating the same property from multiple animations on the same element, see #608.
-	// This test only checks that we submit warnings to the user. Once we support this feature, we can enable more checks in this test.
+	// Several animations of the same property on one element (6.3 warned and kept the first, #608) composite in list order.
 	{
-		system_interface->SetNumExpectedWarnings(2);
-
 		system_interface->SetManualTime(0.0);
 
 		ElementDocument* document = context->LoadDocumentFromMemory(document_animation_multiple_values_rml, "assets/");
@@ -788,8 +792,8 @@ TEST_CASE("animation.multiple_overlapping")
 			}
 
 			INFO("Time: ", test.time);
-			(void)(element->GetProperty<float>("opacity") == test.opacity_min);
-			(void)(element->IsVisible() == test.is_visible);
+			CHECK(element->GetProperty<float>("opacity") == doctest::Approx(test.opacity_min).epsilon(0.02));
+			CHECK(element->IsVisible() == test.is_visible);
 		}
 
 		document->Close();
@@ -1180,6 +1184,372 @@ TEST_CASE("animation.computed_lists")
 	CHECK(list->Find(PropertyId::Opacity)->duration == 2.f);
 	REQUIRE(list->Find(PropertyId::Width));
 	CHECK(list->Find(PropertyId::Width)->duration == 1.f);
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+// Phase 3 (docs/html-ui/phase-3-fork-patches.md 3.13.5, FORK.md P3-A2): the animation layers and the timing model of CSS
+// animations: fill modes, direction, fractional iterations, play state, per-keyframe easing, events, display.
+
+namespace {
+
+const String timing_rml_head = R"(
+<rml>
+<head>
+	<style>
+		body { inset: 0; }
+		div { display: block; width: 10px; height: 10px; opacity: 1; }
+		@keyframes fade { from { opacity: 0.2; } to { opacity: 0.8; } }
+)";
+
+const String timing_rml_tail = R"(
+	</style>
+</head>
+<body>
+	<div id="a"/><div id="b"/><div id="c"/><div id="d"/><div id="e"/>
+</body>
+</rml>
+)";
+
+// Steps the manual clock to a time (in 0.05 s steps) and updates the context.
+struct Clock {
+	Context* context;
+	TestsSystemInterface* system;
+	double t = 0.0;
+	void AdvanceTo(double time)
+	{
+		while (t < time)
+		{
+			t = Math::Min(t + 0.05, time);
+			system->SetManualTime(t);
+			context->Update();
+		}
+	}
+	void JumpTo(double time)
+	{
+		t = time;
+		system->SetManualTime(t);
+		context->Update();
+	}
+};
+
+float Opacity(Element* element)
+{
+	return element->GetComputedValues().opacity();
+}
+
+class RecordingListener : public EventListener {
+public:
+	void ProcessEvent(Event& event) override
+	{
+		String text = event.GetType();
+		const String name = event.GetParameter<String>("animationName", event.GetParameter<String>("propertyName", ""));
+		text += " " + name + CreateString(" %g", event.GetParameter<float>("elapsedTime", -1.f));
+		log.push_back(text);
+	}
+	StringList log;
+};
+
+ElementDocument* LoadTimingDocument(Context* context, const String& style)
+{
+	ElementDocument* document = context->LoadDocumentFromMemory(timing_rml_head + style + timing_rml_tail);
+	REQUIRE(document);
+	document->Show();
+	return document;
+}
+
+} // namespace
+
+TEST_CASE("animation.fill_modes")
+{
+	Context* context = TestsShell::GetContext();
+	Clock clock{context, TestsShell::GetTestsSystemInterface()};
+	clock.system->SetManualTime(0.0);
+	ElementDocument* document = LoadTimingDocument(context, R"(
+		#a { animation: fade 1s linear 1s; }
+		#b { animation: fade 1s linear 1s forwards; }
+		#c { animation: fade 1s linear 1s backwards; }
+		#d { animation: fade 1s linear 1s both; }
+	)");
+	Element* none = document->GetElementById("a");
+	Element* forwards = document->GetElementById("b");
+	Element* backwards = document->GetElementById("c");
+	Element* both = document->GetElementById("d");
+
+	clock.AdvanceTo(0.5);
+	CHECK(Opacity(none) == doctest::Approx(1.f));
+	CHECK(Opacity(forwards) == doctest::Approx(1.f));
+	CHECK(Opacity(backwards) == doctest::Approx(0.2f));
+	CHECK(Opacity(both) == doctest::Approx(0.2f));
+
+	clock.AdvanceTo(1.5);
+	for (Element* element : {none, forwards, backwards, both})
+		CHECK(Opacity(element) == doctest::Approx(0.5f));
+
+	clock.AdvanceTo(3.0);
+	CHECK(Opacity(none) == doctest::Approx(1.f));
+	CHECK(Opacity(forwards) == doctest::Approx(0.8f));
+	CHECK(Opacity(backwards) == doctest::Approx(1.f));
+	CHECK(Opacity(both) == doctest::Approx(0.8f));
+
+	// The values live in the animation layer: the inline style is never written.
+	CHECK(forwards->GetLocalStyleProperties().empty());
+	CHECK(forwards->GetLocalProperty(PropertyId::Opacity));
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("animation.direction_and_iterations")
+{
+	Context* context = TestsShell::GetContext();
+	Clock clock{context, TestsShell::GetTestsSystemInterface()};
+	clock.system->SetManualTime(0.0);
+	ElementDocument* document = LoadTimingDocument(context, R"(
+		#a { animation: fade 1s linear reverse; }
+		#b { animation: fade 1s linear 2 alternate; }
+		#c { animation: fade 1s linear 2 alternate-reverse forwards; }
+		#d { animation: fade 1s linear 1.5 forwards; }
+		#e { animation: fade 1s linear 0 both; }
+	)");
+	Element* reverse = document->GetElementById("a");
+	Element* alternate = document->GetElementById("b");
+	Element* alternate_reverse = document->GetElementById("c");
+	Element* fractional = document->GetElementById("d");
+	Element* zero = document->GetElementById("e");
+
+	CHECK(Opacity(reverse) == doctest::Approx(0.8f));
+	CHECK(Opacity(alternate_reverse) == doctest::Approx(0.8f));
+	CHECK(Opacity(zero) == doctest::Approx(0.2f));
+
+	clock.AdvanceTo(0.25);
+	CHECK(Opacity(reverse) == doctest::Approx(0.65f));
+	CHECK(Opacity(alternate) == doctest::Approx(0.35f));
+	CHECK(Opacity(alternate_reverse) == doctest::Approx(0.65f));
+
+	clock.AdvanceTo(1.25);
+	CHECK(Opacity(reverse) == doctest::Approx(1.f));
+	CHECK(Opacity(alternate) == doctest::Approx(0.65f));
+	CHECK(Opacity(alternate_reverse) == doctest::Approx(0.35f));
+	CHECK(Opacity(fractional) == doctest::Approx(0.35f));
+
+	clock.AdvanceTo(3.0);
+	CHECK(Opacity(alternate) == doctest::Approx(1.f));
+	CHECK(Opacity(alternate_reverse) == doctest::Approx(0.8f));
+	// A fractional count ends at its fractional progress.
+	CHECK(Opacity(fractional) == doctest::Approx(0.5f));
+	CHECK(Opacity(zero) == doctest::Approx(0.2f));
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("animation.play_state")
+{
+	Context* context = TestsShell::GetContext();
+	Clock clock{context, TestsShell::GetTestsSystemInterface()};
+	clock.system->SetManualTime(0.0);
+	ElementDocument* document = LoadTimingDocument(context, R"(
+		#a { animation: fade 1s linear forwards; }
+		#b { animation: fade 1s linear forwards paused; }
+		#a.paused { animation-play-state: paused; }
+		#b.running { animation-play-state: running; }
+	)");
+	Element* element = document->GetElementById("a");
+	Element* starts_paused = document->GetElementById("b");
+
+	clock.AdvanceTo(0.25);
+	CHECK(Opacity(element) == doctest::Approx(0.35f));
+	CHECK(Opacity(starts_paused) == doctest::Approx(0.2f));
+
+	// Pausing holds the animation's time from the style change on; changing only the play state does not restart it.
+	element->SetClass("paused", true);
+	context->Update();
+	clock.AdvanceTo(2.0);
+	CHECK(Opacity(element) == doctest::Approx(0.35f));
+	element->SetClass("paused", false);
+	context->Update();
+	clock.AdvanceTo(2.25);
+	CHECK(Opacity(element) == doctest::Approx(0.5f));
+
+	// An animation paused from its start runs from its start when resumed.
+	CHECK(Opacity(starts_paused) == doctest::Approx(0.2f));
+	starts_paused->SetClass("running", true);
+	context->Update();
+	clock.AdvanceTo(2.75);
+	CHECK(Opacity(starts_paused) == doctest::Approx(0.5f));
+	clock.AdvanceTo(5.0);
+	CHECK(Opacity(element) == doctest::Approx(0.8f));
+	CHECK(Opacity(starts_paused) == doctest::Approx(0.8f));
+
+	// A change of the duration updates the running animation in place.
+	element->SetProperty("animation-duration", "2s");
+	clock.AdvanceTo(5.1);
+	CHECK(Opacity(element) == doctest::Approx(0.8f));
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("animation.keyframes")
+{
+	Context* context = TestsShell::GetContext();
+	Clock clock{context, TestsShell::GetTestsSystemInterface()};
+	clock.system->SetManualTime(0.0);
+	ElementDocument* document = LoadTimingDocument(context, R"(
+		@keyframes stepped {
+			0% { opacity: 0; animation-timing-function: steps(2); }
+			50% { opacity: 0.5; animation-timing-function: linear; }
+			100% { opacity: 1; }
+		}
+		@keyframes merged {
+			0%, 100% { opacity: 0.5; }
+			50% { opacity: 1; }
+			50% { width: 30px; }
+		}
+		@keyframes partial {
+			50% { opacity: 0; }
+		}
+		#a { animation: stepped 1s ease; }
+		#b { animation: merged 1s linear; }
+		#c { animation: partial 1s linear; opacity: 0.4; }
+	)");
+	Element* stepped = document->GetElementById("a");
+	Element* merged = document->GetElementById("b");
+	Element* partial = document->GetElementById("c");
+
+	// A segment is eased by its start keyframe's timing function; keyframes without one take the animation's.
+	clock.AdvanceTo(0.2);
+	CHECK(Opacity(stepped) == doctest::Approx(0.f));
+	clock.AdvanceTo(0.3);
+	CHECK(Opacity(stepped) == doctest::Approx(0.25f));
+	clock.AdvanceTo(0.75);
+	CHECK(Opacity(stepped) == doctest::Approx(0.75f));
+
+	// A keyframe with several selectors, and two blocks of one selector cascading.
+	CHECK(Opacity(merged) == doctest::Approx(1.f - 0.25f));
+	CHECK(merged->GetBox().GetSize().x == doctest::Approx(10.f + 20.f * 0.5f).epsilon(0.05));
+
+	// Missing 0% and 100% keyframes take the underlying value.
+	CHECK(Opacity(partial) == doctest::Approx(0.2f));
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("animation.events")
+{
+	Context* context = TestsShell::GetContext();
+	Clock clock{context, TestsShell::GetTestsSystemInterface()};
+	clock.system->SetManualTime(0.0);
+	ElementDocument* document = LoadTimingDocument(context, R"(
+		#a { animation: fade 1s linear 0.5s 2; }
+		#b.go { animation: fade 1s linear; }
+		#c { animation: fade 1s linear; }
+	)");
+	Element* element = document->GetElementById("a");
+	Element* jumping = document->GetElementById("b");
+	Element* cancelled = document->GetElementById("c");
+	RecordingListener listener;
+	for (Element* e : {element, jumping, cancelled})
+		for (const char* type : {"animationstart", "animationiteration", "animationend", "animationcancel"})
+			e->AddEventListener(type, &listener);
+
+	clock.AdvanceTo(0.25);
+	CHECK(listener.log.empty());
+	clock.AdvanceTo(0.75);
+	REQUIRE(listener.log.size() == 1);
+	CHECK(listener.log[0] == "animationstart fade 0");
+
+	// Removing a running animation cancels it.
+	cancelled->SetProperty("animation", "none");
+	clock.AdvanceTo(0.8);
+	REQUIRE(listener.log.size() == 2);
+	CHECK(listener.log[1].substr(0, 20) == "animationcancel fade");
+
+	clock.AdvanceTo(1.75);
+	REQUIRE(listener.log.size() == 3);
+	CHECK(listener.log[2] == "animationiteration fade 1");
+	clock.AdvanceTo(3.0);
+	REQUIRE(listener.log.size() == 4);
+	CHECK(listener.log[3] == "animationend fade 2");
+
+	// No time step clamp: one update past the whole animation runs it to its end, with both events.
+	jumping->SetClass("go", true);
+	clock.JumpTo(3.0);
+	clock.JumpTo(10.0);
+	REQUIRE(listener.log.size() == 6);
+	CHECK(listener.log[4] == "animationstart fade 0");
+	CHECK(listener.log[5] == "animationend fade 1");
+
+	for (Element* e : {element, jumping, cancelled})
+		for (const char* type : {"animationstart", "animationiteration", "animationend", "animationcancel"})
+			e->RemoveEventListener(type, &listener);
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("animation.display_none")
+{
+	Context* context = TestsShell::GetContext();
+	Clock clock{context, TestsShell::GetTestsSystemInterface()};
+	clock.system->SetManualTime(0.0);
+	ElementDocument* document = context->LoadDocumentFromMemory(R"(
+<rml>
+<head>
+	<style>
+		@keyframes fade { from { opacity: 0.2; } to { opacity: 0.8; } }
+		div { display: block; width: 10px; height: 10px; }
+		#child { animation: fade 1s linear forwards; }
+		.hidden { display: none; }
+	</style>
+</head>
+<body><div id="parent"><div id="child"/></div></body>
+</rml>)");
+	REQUIRE(document);
+	document->Show();
+	Element* parent = document->GetElementById("parent");
+	Element* child = document->GetElementById("child");
+	RecordingListener listener;
+	child->AddEventListener("animationcancel", &listener);
+
+	clock.AdvanceTo(0.5);
+	CHECK(Opacity(child) == doctest::Approx(0.5f));
+
+	// An ancestor set to 'display: none' cancels the animation; shown again, the animation starts over.
+	parent->SetClass("hidden", true);
+	clock.AdvanceTo(0.6);
+	REQUIRE(listener.log.size() == 1);
+	CHECK(Opacity(child) == doctest::Approx(1.f));
+	clock.AdvanceTo(2.0);
+	parent->SetClass("hidden", false);
+	clock.AdvanceTo(2.05);
+	clock.AdvanceTo(2.55);
+	CHECK(Opacity(child) == doctest::Approx(0.5f).epsilon(0.1));
+
+	child->RemoveEventListener("animationcancel", &listener);
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("animation.inline_style_kept")
+{
+	Context* context = TestsShell::GetContext();
+	Clock clock{context, TestsShell::GetTestsSystemInterface()};
+	clock.system->SetManualTime(0.0);
+	ElementDocument* document = LoadTimingDocument(context, R"(
+		#a { animation: fade 1s linear; }
+	)");
+	Element* element = document->GetElementById("a");
+	element->SetProperty("opacity", "0.3");
+	clock.AdvanceTo(0.5);
+	CHECK(Opacity(element) == doctest::Approx(0.5f));
+	REQUIRE(element->GetLocalStyleProperties().count(PropertyId::Opacity) == 1);
+	CHECK(element->GetLocalStyleProperties().find(PropertyId::Opacity)->second.Get<float>() == 0.3f);
+	clock.AdvanceTo(1.5);
+	// The animation ended (no fill): the inline value the author wrote applies again.
+	CHECK(Opacity(element) == doctest::Approx(0.3f));
 
 	document->Close();
 	TestsShell::ShutdownShell();

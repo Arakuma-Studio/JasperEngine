@@ -14,6 +14,8 @@
 #include "ComputeProperty.h"
 #include "ElementStyle.h"
 #include "TransformUtilities.h"
+#include <cmath>
+#include <limits>
 #ifdef RMLUI_MATH_EXPRESSIONS
 	#include "CalculationResolver.h"
 #endif
@@ -881,20 +883,7 @@ static void PrepareFilter(AnimationKey& key)
 		property.value = MakeShared<FilterDeclarationList>();
 }
 
-ElementAnimation::ElementAnimation(PropertyId property_id, ElementAnimationOrigin origin, const Property& current_value, Element& element,
-	double start_world_time, float duration, int num_iterations, bool alternate_direction) :
-	property_id(property_id), duration(duration), num_iterations(num_iterations), alternate_direction(alternate_direction),
-	last_update_world_time(start_world_time), origin(origin)
-{
-	if (!current_value.definition)
-	{
-		Log::Message(Log::LT_WARNING, "Property in animation key did not have a definition (while adding key '%s').",
-			current_value.ToString().c_str());
-	}
-	InternalAddKey(0.0f, current_value, element, Tween{});
-}
-
-bool ElementAnimation::InternalAddKey(float time, const Property& in_property, Element& element, Tween tween)
+bool AnimationTrack::AddKey(float offset, const Property& in_property, Element& element, Tween tween, bool has_tween)
 {
 	const Units valid_units = (Unit::NUMBER_LENGTH_PERCENT | Unit::ANGLE | Unit::COLOUR | Unit::TRANSFORM | Unit::KEYWORD | Unit::DECORATOR |
 		Unit::FILTER | Unit::STYLE_VALUE);
@@ -910,7 +899,7 @@ bool ElementAnimation::InternalAddKey(float time, const Property& in_property, E
 		return false;
 	}
 
-	keys.emplace_back(time, in_property, tween);
+	keys.emplace_back(offset, in_property, tween, has_tween);
 	Property& property = keys.back().property;
 	bool result = true;
 
@@ -936,6 +925,60 @@ bool ElementAnimation::InternalAddKey(float time, const Property& in_property, E
 	return result;
 }
 
+Property AnimationTrack::GetValue(float progress, const Tween& default_tween, bool before_flag, Element& element) const
+{
+	if (keys.empty())
+		return Property{};
+	if (keys.size() == 1)
+		return keys[0].property;
+
+	// The segment that holds the progress: from the last key at or before it (the first key before the first offset, the
+	// last segment at the end), eased by the segment's start key.
+	size_t key0 = 0;
+	for (size_t i = 0; i + 1 < keys.size(); i++)
+	{
+		if (keys[i].time <= progress)
+			key0 = i;
+	}
+	const size_t key1 = key0 + 1;
+
+	const float t0 = keys[key0].time;
+	const float t1 = keys[key1].time;
+	float local = 1.f;
+	if (t1 - t0 > 1e-6f)
+		local = (progress - t0) / (t1 - t0);
+
+	const Tween& tween = (keys[key0].has_tween ? keys[key0].tween : default_tween);
+	const float alpha = tween.Evaluate(local, before_flag);
+
+	return InterpolateProperties(keys[key0].property, keys[key1].property, alpha, element, keys[0].property.definition);
+}
+
+ElementAnimation::ElementAnimation(PropertyId property_id, ElementAnimationOrigin origin, const Property& current_value, Element& element,
+	double start_world_time, float duration, int num_iterations, bool alternate_direction) :
+	origin(origin), start_time(start_world_time), duration(duration),
+	iteration_count(num_iterations < 0 ? std::numeric_limits<float>::infinity() : float(num_iterations)),
+	direction(alternate_direction ? AnimationDirection::Alternate : AnimationDirection::Normal), timing_function(Tween::LinearFunction({}))
+{
+	if (!current_value.definition)
+	{
+		Log::Message(Log::LT_WARNING, "Property in animation key did not have a definition (while adding key '%s').",
+			current_value.ToString().c_str());
+	}
+	// Transitions show their start value during their delay.
+	if (origin == ElementAnimationOrigin::Transition)
+		fill_mode = AnimationFillMode::Backwards;
+	tracks.emplace_back(property_id);
+	if (!tracks[0].AddKey(0.0f, current_value, element, Tween{}, true))
+		tracks.clear();
+}
+
+ElementAnimation::ElementAnimation(const Animation& animation, int occurrence, double start_world_time) :
+	origin(ElementAnimationOrigin::Animation), start_time(start_world_time), delay(animation.delay), duration(animation.duration),
+	iteration_count(animation.iteration_count), direction(animation.direction), fill_mode(animation.fill_mode), paused(animation.paused),
+	hold_time(0), timing_function(animation.tween), name(animation.name), occurrence(occurrence), animation(animation)
+{}
+
 bool ElementAnimation::AddKey(float target_time, const Property& in_property, Element& element, Tween tween, bool extend_duration)
 {
 	if (!IsInitalized())
@@ -943,106 +986,206 @@ bool ElementAnimation::AddKey(float target_time, const Property& in_property, El
 		Log::Message(Log::LT_WARNING, "Element animation was not initialized properly, can't add key.");
 		return false;
 	}
-	if (!InternalAddKey(target_time, in_property, element, tween))
+
+	Vector<AnimationKey>& keys = tracks[0].GetKeys();
+	const float old_duration = duration;
+	const float new_duration = (extend_duration ? Math::Max(target_time, 0.f) : duration);
+
+	// The tween given with a key eases the segment that ends at it: it belongs to the segment's start key.
+	const AnimationKey previous_last = keys.back();
+	keys.back().tween = tween;
+	keys.back().has_tween = true;
+
+	// Keys are stored at offsets of the iteration, rescaled when the iteration grows.
+	if (new_duration != old_duration && new_duration > 0.f)
 	{
+		for (AnimationKey& key : keys)
+			key.time = key.time * old_duration / new_duration;
+	}
+	const float offset = (new_duration > 0.f ? Math::Clamp(target_time / new_duration, 0.f, 1.f) : 1.f);
+
+	if (!tracks[0].AddKey(offset, in_property, element, Tween{}, true))
+	{
+		// Restore the keys as they were.
+		if (new_duration != old_duration && new_duration > 0.f && old_duration > 0.f)
+			for (AnimationKey& key : keys)
+				key.time = key.time * new_duration / old_duration;
+		keys.back() = previous_last;
 		return false;
 	}
 
-	if (extend_duration)
-		duration = target_time;
-
+	duration = new_duration;
 	return true;
 }
 
-float ElementAnimation::GetInterpolationFactorAndKeys(int* out_key0, int* out_key1) const
+void ElementAnimation::AddTrack(AnimationTrack track)
 {
-	float t = time_since_iteration_start;
+	tracks.push_back(std::move(track));
+}
 
-	if (reverse_direction)
-		t = duration - t;
+float ElementAnimation::GetActiveDuration() const
+{
+	if (duration <= 0.f || iteration_count <= 0.f)
+		return 0.f;
+	if (std::isinf(iteration_count))
+		return std::numeric_limits<float>::infinity();
+	return duration * iteration_count;
+}
 
-	int key0 = -1;
-	int key1 = -1;
+ElementAnimation::Sample ElementAnimation::GetSample(double world_time) const
+{
+	// Web Animations, "Calculating the phase", "active time", "simple iteration progress", "directed progress".
+	Sample sample;
+	const double local_time = (paused ? hold_time : world_time - start_time);
+	const double active_duration = (double)GetActiveDuration();
+	const double end_time = Math::Max((double)delay + active_duration, 0.0);
+	const double before_active_boundary = Math::Max(Math::Min((double)delay, end_time), 0.0);
+	const double active_after_boundary = Math::Max(Math::Min((double)delay + active_duration, end_time), 0.0);
 
+	if (local_time < before_active_boundary)
+		sample.phase = AnimationPhase::Before;
+	else if (local_time >= active_after_boundary)
+		sample.phase = AnimationPhase::After;
+	else
+		sample.phase = AnimationPhase::Active;
+
+	const bool fills_backwards = (fill_mode == AnimationFillMode::Backwards || fill_mode == AnimationFillMode::Both);
+	const bool fills_forwards = (fill_mode == AnimationFillMode::Forwards || fill_mode == AnimationFillMode::Both);
+
+	double active_time = 0.0;
+	switch (sample.phase)
 	{
-		for (int i = 0; i < (int)keys.size(); i++)
-		{
-			if (keys[i].time >= t)
-			{
-				key1 = i;
-				break;
-			}
-		}
+	case AnimationPhase::Before:
+		sample.has_value = fills_backwards;
+		active_time = Math::Max(local_time - (double)delay, 0.0);
+		break;
+	case AnimationPhase::Active:
+		sample.has_value = true;
+		active_time = local_time - (double)delay;
+		break;
+	case AnimationPhase::After:
+	case AnimationPhase::Idle:
+		sample.has_value = fills_forwards;
+		active_time = Math::Max(Math::Min(local_time - (double)delay, active_duration), 0.0);
+		break;
+	}
+	sample.elapsed_time = (float)active_time;
 
-		if (key1 < 0)
-			key1 = (int)keys.size() - 1;
-		key0 = (key1 == 0 ? 0 : key1 - 1);
+	double overall_progress = 0.0;
+	if (duration <= 0.f)
+		overall_progress = (sample.phase == AnimationPhase::Before ? 0.0 : (double)iteration_count);
+	else
+		overall_progress = active_time / (double)duration;
+
+	double simple_progress = (std::isinf(overall_progress) ? 0.0 : std::fmod(overall_progress, 1.0));
+	if (simple_progress == 0.0 && sample.phase != AnimationPhase::Before && active_time == active_duration && iteration_count != 0.f &&
+		!std::isinf(overall_progress))
+		simple_progress = 1.0;
+	if (iteration_count == 0.f)
+		simple_progress = 0.0;
+
+	double current_iteration = 0.0;
+	if (sample.phase == AnimationPhase::After && std::isinf(iteration_count))
+		current_iteration = std::numeric_limits<double>::infinity();
+	else if (simple_progress == 1.0)
+		current_iteration = Math::Max(std::floor(overall_progress) - 1.0, 0.0);
+	else
+		current_iteration = std::floor(overall_progress);
+	sample.iteration = current_iteration;
+
+	bool forwards = true;
+	switch (direction)
+	{
+	case AnimationDirection::Normal: forwards = true; break;
+	case AnimationDirection::Reverse: forwards = false; break;
+	case AnimationDirection::Alternate: forwards = std::isinf(current_iteration) || std::fmod(current_iteration, 2.0) == 0.0; break;
+	case AnimationDirection::AlternateReverse: forwards = !(std::isinf(current_iteration) || std::fmod(current_iteration, 2.0) == 0.0); break;
 	}
 
-	RMLUI_ASSERT(key0 >= 0 && key0 < (int)keys.size() && key1 >= 0 && key1 < (int)keys.size());
+	sample.progress = (float)(forwards ? simple_progress : 1.0 - simple_progress);
+	sample.before_flag =
+		((sample.phase == AnimationPhase::Before && forwards) || (sample.phase == AnimationPhase::After && !forwards));
+	return sample;
+}
 
-	float alpha = 0.0f;
+Property ElementAnimation::GetValue(size_t track_index, const Sample& sample, Element& element) const
+{
+	if (track_index >= tracks.size() || !sample.has_value)
+		return Property{};
+	return tracks[track_index].GetValue(sample.progress, timing_function, sample.before_flag, element);
+}
 
-	{
-		const float t0 = keys[key0].time;
-		const float t1 = keys[key1].time;
-
-		const float eps = 1e-3f;
-
-		if (t1 - t0 > eps)
-			alpha = (t - t0) / (t1 - t0);
-
-		alpha = Math::Clamp(alpha, 0.0f, 1.0f);
-	}
-
-	alpha = keys[key1].tween(alpha);
-
-	if (out_key0)
-		*out_key0 = key0;
-	if (out_key1)
-		*out_key1 = key1;
-
-	return alpha;
+void ElementAnimation::RecordProgress(const Sample& sample)
+{
+	if (tracks.empty())
+		return;
+	// The eased progress of the first segment: a transition's output progress, for the reversing rule.
+	const Vector<AnimationKey>& keys = tracks[0].GetKeys();
+	const Tween& tween = (!keys.empty() && keys[0].has_tween ? keys[0].tween : timing_function);
+	last_eased_progress = (sample.has_value ? tween.Evaluate(sample.progress, sample.before_flag) : 0.f);
 }
 
 Property ElementAnimation::UpdateAndGetProperty(double world_time, Element& element)
 {
-	float dt = float(world_time - last_update_world_time);
-	if (keys.size() < 2 || animation_complete || dt <= 0.0f)
+	if (!IsInitalized() || tracks[0].GetKeys().size() < 2 || animation_complete)
 		return Property{};
 
-	dt = Math::Min(dt, 0.1f);
+	const Sample sample = GetSample(world_time);
+	RecordProgress(sample);
+	if (sample.phase == AnimationPhase::After)
+		animation_complete = true;
+	if (!sample.has_value && sample.phase != AnimationPhase::After)
+		return Property{};
 
-	last_update_world_time = world_time;
-	time_since_iteration_start += dt;
+	// A user animation ends at its last value.
+	Sample value_sample = sample;
+	value_sample.has_value = true;
+	return GetValue(0, value_sample, element);
+}
 
-	if (time_since_iteration_start >= duration)
-	{
-		// Next iteration
-		current_iteration += 1;
+void ElementAnimation::SetPaused(bool new_paused, double world_time)
+{
+	if (new_paused == paused)
+		return;
+	if (new_paused)
+		hold_time = world_time - start_time;
+	else
+		start_time = world_time - hold_time;
+	paused = new_paused;
+}
 
-		if (num_iterations == -1 || (current_iteration >= 0 && current_iteration < num_iterations))
-		{
-			time_since_iteration_start -= duration;
+void ElementAnimation::UpdateTiming(const Animation& new_animation, double world_time)
+{
+	delay = new_animation.delay;
+	duration = new_animation.duration;
+	iteration_count = new_animation.iteration_count;
+	direction = new_animation.direction;
+	fill_mode = new_animation.fill_mode;
+	timing_function = new_animation.tween;
+	SetPaused(new_animation.paused, world_time);
+	animation = new_animation;
+}
 
-			if (alternate_direction)
-				reverse_direction = !reverse_direction;
-		}
-		else
-		{
-			animation_complete = true;
-			time_since_iteration_start = duration;
-		}
-	}
+void ElementAnimation::SetTransitionData(const Transition& transition, const Property& in_reversing_adjusted_start, float in_reversing_factor)
+{
+	delay = transition.delay;
+	allow_discrete = transition.allow_discrete;
+	reversing_adjusted_start = in_reversing_adjusted_start;
+	reversing_shortening_factor = in_reversing_factor;
+}
 
-	int key0 = -1;
-	int key1 = -1;
+const Property* ElementAnimation::GetEndValue() const
+{
+	if (tracks.empty() || tracks[0].GetKeys().empty())
+		return nullptr;
+	return &tracks[0].GetKeys().back().property;
+}
 
-	float alpha = GetInterpolationFactorAndKeys(&key0, &key1);
-
-	Property result = InterpolateProperties(keys[key0].property, keys[key1].property, alpha, element, keys[0].property.definition);
-
-	return result;
+const Property* ElementAnimation::GetStartValue() const
+{
+	if (tracks.empty() || tracks[0].GetKeys().empty())
+		return nullptr;
+	return &tracks[0].GetKeys().front().property;
 }
 
 } // namespace Rml

@@ -13,6 +13,7 @@ class PropertyDictionary;
 class PropertySpecification;
 class StyleSheetSpecification;
 struct ShorthandDefinition;
+struct KeyframeBlock;
 
 /**
     The transition and animation longhands (phase 3, docs/html-ui/phase-3-fork-patches.md 3.13.2-3.13.3): each is a
@@ -106,6 +107,10 @@ struct ElementAnimationStyle {
 	TransitionList transitions;
 	AnimationList animations;
 };
+
+/// Takes the animation-timing-function of each @keyframes block as the block's easing, and drops the animation and
+/// transition properties from the blocks (they have no effect in a keyframe).
+void ProcessKeyframeTimingFunctions(Vector<KeyframeBlock>& blocks);
 
 /// The ids of the transition and of the animation longhands.
 const PropertyIdSet& GetTransitionLonghandIds();

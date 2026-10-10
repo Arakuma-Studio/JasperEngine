@@ -481,7 +481,7 @@ void ElementStyle::TransitionPropertyChanges(const PropertySources& sources, Pro
 
 		bool transition_added = false;
 		if (start_value && target_value && (*start_value != *target_value))
-			transition_added = sources.element->StartTransition(transition, *start_value, *target_value);
+			transition_added = sources.element->StartTransition(transition, *start_value, *target_value, *start_value, 1.f);
 
 		return transition_added;
 	};
@@ -721,6 +721,32 @@ const Property* ElementStyle::GetProperty(PropertyId id) const
 
 	// An invalid substitution makes the property behave as unset (CSS Variables 1 §3): an inherited property takes the
 	// parent's value, as ComputeValues does for the eagerly computed ones, others their initial value.
+	const PropertyDefinition* property_definition = StyleSheetSpecification::GetProperty(id);
+	if (!property_definition)
+		return nullptr;
+	if (property_definition->IsInherited())
+	{
+		if (Element* parent = result.element->GetParentNode())
+			return parent->GetStyle()->GetProperty(id);
+	}
+	return property_definition->GetDefaultValue();
+}
+
+const Property* ElementStyle::GetUnderlyingProperty(PropertyId id) const
+{
+	// GetProperty, without this element's animation layers.
+	PropertySources sources = GetPropertySources();
+	sources.animation_layers = nullptr;
+	const PropertyElementPair result = GetSpecifiedProperty(sources, id);
+	if (!result.element)
+		return result.property;
+
+	SmallUnorderedSet<String> variable_dependencies;
+	const Property* resolved =
+		result.element->GetStyle()->ResolveVariables(id, result.property, variable_dependencies, element_style_data->returned_property_storage);
+	if (resolved)
+		return resolved;
+
 	const PropertyDefinition* property_definition = StyleSheetSpecification::GetProperty(id);
 	if (!property_definition)
 		return nullptr;

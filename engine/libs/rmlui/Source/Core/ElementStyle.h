@@ -87,6 +87,9 @@ public:
 	/// @param[in] id The ID of the property to fetch the value for.
 	/// @return The value of this property for this element, or the default value if none is declared.
 	const Property* GetProperty(PropertyId id) const;
+	/// Returns one of this element's properties as GetProperty does, but without the element's own animation layers: the
+	/// value its declarations give (CSS's underlying value of an animation).
+	const Property* GetUnderlyingProperty(PropertyId id) const;
 	/// Returns one of this element's custom properties, with lookup into parents.
 	/// @param[in] name The name of the property to fetch the value for (including "--" prefix).
 	/// @return The value of this property for this element, or nullptr if no property exists with the given name.

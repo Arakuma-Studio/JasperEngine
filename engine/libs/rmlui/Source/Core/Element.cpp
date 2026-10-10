@@ -75,6 +75,7 @@ Element::Element(const String& tag) :
 	local_stacking_context(false), local_stacking_context_forced(false), stacking_context_dirty(false), computed_values_are_default_initialized(true),
 	visible(true), offset_fixed(false), absolute_offset_dirty(true), rounded_main_padding_size_dirty(true), dirty_definition(false),
 	dirty_child_definitions(false), dirty_animation(false), dirty_transition(false), dirty_transform(false), dirty_perspective(false),
+	animation_displayed(true), animations_running(false),
 	display_contents(false), tag(tag), relative_offset_base(0, 0), relative_offset_position(0, 0), absolute_offset(0, 0), scroll_offset(0, 0)
 {
 	RMLUI_ASSERT(tag == StringUtilities::ToLower(tag));
@@ -136,6 +137,7 @@ void Element::Update(float dp_ratio, Vector2f vp_dimensions)
 	meta->scroll.Update();
 
 	UpdateProperties(dp_ratio, vp_dimensions);
+	UpdateAnimationDisplay();
 
 	// Do en extra pass over the animations and properties if the 'animation' property was just changed.
 	if (dirty_animation)
@@ -150,7 +152,7 @@ void Element::Update(float dp_ratio, Vector2f vp_dimensions)
 	for (size_t i = 0; i < children.size(); i++)
 		children[i]->Update(dp_ratio, vp_dimensions);
 
-	if (!animations.empty() && IsVisible(true))
+	if (animations_running && IsVisible(true))
 	{
 		if (Context* ctx = GetContext())
 			ctx->RequestNextUpdate(0);
@@ -2660,7 +2662,7 @@ bool Element::Animate(PropertyId id, const Property& target_value, float duratio
 	float delay, const Property* start_value)
 {
 	bool result = false;
-	auto it_animation = StartAnimation(id, start_value, num_iterations, alternate_direction, delay, false);
+	auto it_animation = StartAnimation(id, start_value, num_iterations, alternate_direction, delay);
 	if (it_animation != animations.end())
 	{
 		result = it_animation->AddKey(duration, target_value, *this, tween, true);
@@ -2678,50 +2680,30 @@ bool Element::AddAnimationKey(const String& property_name, const Property& targe
 
 bool Element::AddAnimationKey(PropertyId id, const Property& target_value, float duration, Tween tween)
 {
-	ElementAnimation* animation = nullptr;
 	for (auto& existing_animation : animations)
 	{
-		if (existing_animation.GetPropertyId() == id)
-		{
-			animation = &existing_animation;
-			break;
-		}
+		if (existing_animation.GetOrigin() == ElementAnimationOrigin::User && existing_animation.GetPropertyId() == id)
+			return existing_animation.AddKey(existing_animation.GetDuration() + duration, target_value, *this, tween, true);
 	}
-	if (!animation)
-		return false;
-
-	bool result = animation->AddKey(animation->GetDuration() + duration, target_value, *this, tween, true);
-
-	return result;
+	return false;
 }
 
 ElementAnimationList::iterator Element::StartAnimation(PropertyId property_id, const Property* start_value, int num_iterations,
-	bool alternate_direction, float delay, bool initiated_by_animation_property)
+	bool alternate_direction, float delay)
 {
-	auto it = std::find_if(animations.begin(), animations.end(), [&](const ElementAnimation& el) { return el.GetPropertyId() == property_id; });
-
-	if (it != animations.end())
+	// A user animation replaces the user animation or the transition of the same property.
+	for (auto it = animations.begin(); it != animations.end(); ++it)
 	{
-		const bool allow_overwriting_animation = !initiated_by_animation_property;
-		if (!allow_overwriting_animation)
+		if (it->GetOrigin() != ElementAnimationOrigin::Animation && it->GetPropertyId() == property_id)
 		{
-			Log::Message(Log::LT_WARNING,
-				"Could not animate property '%s' on element: %s. "
-				"Please ensure that the property does not appear in multiple animations on the same element.",
-				StyleSheetSpecification::GetPropertyName(property_id).c_str(), GetAddress().c_str());
-			return it;
+			if (it->IsTransition())
+				meta->style.RemoveTransitionProperty(property_id);
+			animations.erase(it);
+			break;
 		}
-
-		*it = ElementAnimation{};
-	}
-	else
-	{
-		animations.emplace_back();
-		it = animations.end() - 1;
 	}
 
 	Property value;
-
 	if (start_value)
 	{
 		value = *start_value;
@@ -2734,265 +2716,403 @@ ElementAnimationList::iterator Element::StartAnimation(PropertyId property_id, c
 		value = *default_value;
 	}
 
-	if (value.definition)
-	{
-		ElementAnimationOrigin origin = (initiated_by_animation_property ? ElementAnimationOrigin::Animation : ElementAnimationOrigin::User);
-		double start_time = Clock::GetElapsedTime() + (double)delay;
-		*it = ElementAnimation{property_id, origin, value, *this, start_time, 0.0f, num_iterations, alternate_direction};
-	}
+	if (!value.definition)
+		return animations.end();
 
+	const double start_time = Clock::GetElapsedTime() + (double)delay;
+	animations.push_back(ElementAnimation{property_id, ElementAnimationOrigin::User, value, *this, start_time, 0.0f, num_iterations, alternate_direction});
+	auto it = animations.end() - 1;
 	if (!it->IsInitalized())
 	{
 		animations.erase(it);
-		it = animations.end();
+		return animations.end();
 	}
-
+	animations_running = true;
 	return it;
 }
 
-bool Element::AddAnimationKeyTime(PropertyId property_id, const Property* target_value, float time, Tween tween)
+const ElementAnimation* Element::GetTransition(PropertyId id) const
 {
-	if (!target_value)
-		target_value = meta->style.GetProperty(property_id);
-	if (!target_value)
-		return false;
-
-	ElementAnimation* animation = nullptr;
-
-	for (auto& existing_animation : animations)
-	{
-		if (existing_animation.GetPropertyId() == property_id)
-		{
-			animation = &existing_animation;
-			break;
-		}
-	}
-	if (!animation)
-		return false;
-
-	bool result = animation->AddKey(time, *target_value, *this, tween, true);
-
-	return result;
+	for (const ElementAnimation& animation : animations)
+		if (animation.IsTransition() && animation.GetPropertyId() == id)
+			return &animation;
+	return nullptr;
 }
 
-bool Element::StartTransition(const Transition& transition, const Property& start_value, const Property& target_value)
+namespace {
+	struct PendingAnimationEvent {
+		EventId id;
+		Dictionary parameters;
+	};
+
+	void AddTransitionEvent(Vector<PendingAnimationEvent>& events, EventId id, PropertyId property_id, float elapsed_time)
+	{
+		Dictionary parameters;
+		const String& name = StyleSheetSpecification::GetPropertyName(property_id);
+		parameters.emplace("propertyName", Variant(name));
+		parameters.emplace("elapsedTime", Variant(elapsed_time));
+		parameters.emplace("pseudoElement", Variant(String()));
+		// RmlUi 6.3's parameter.
+		parameters.emplace("property", Variant(name));
+		events.push_back(PendingAnimationEvent{id, std::move(parameters)});
+	}
+
+	void AddAnimationEvent(Vector<PendingAnimationEvent>& events, EventId id, const String& name, float elapsed_time)
+	{
+		Dictionary parameters;
+		parameters.emplace("animationName", Variant(name));
+		parameters.emplace("elapsedTime", Variant(elapsed_time));
+		parameters.emplace("pseudoElement", Variant(String()));
+		events.push_back(PendingAnimationEvent{id, std::move(parameters)});
+	}
+
+	// The elapsed time of a start event (CSS Animations 1, CSS Transitions 1): min(max(-delay, 0), active duration).
+	float StartElapsedTime(const ElementAnimation& animation)
+	{
+		return Math::Min(Math::Max(-animation.GetDelay(), 0.f), animation.GetActiveDuration());
+	}
+
+	// Queues the events of a CSS animation or transition for the phase change since its last update.
+	void QueueEvents(Vector<PendingAnimationEvent>& events, ElementAnimation& animation, const ElementAnimation::Sample& sample)
+	{
+		const AnimationPhase previous = animation.GetEventPhase();
+		const AnimationPhase phase = sample.phase;
+		const bool was_running = (previous == AnimationPhase::Active);
+		const bool was_waiting = (previous == AnimationPhase::Idle || previous == AnimationPhase::Before);
+
+		if (animation.IsTransition())
+		{
+			const PropertyId id = animation.GetPropertyId();
+			if (previous == AnimationPhase::Idle)
+				AddTransitionEvent(events, EventId::Transitionrun, id, StartElapsedTime(animation));
+			if (was_waiting && (phase == AnimationPhase::Active || phase == AnimationPhase::After))
+				AddTransitionEvent(events, EventId::Transitionstart, id, StartElapsedTime(animation));
+			if ((was_waiting || was_running) && phase == AnimationPhase::After)
+				AddTransitionEvent(events, EventId::Transitionend, id, animation.GetActiveDuration());
+		}
+		else if (animation.GetOrigin() == ElementAnimationOrigin::Animation)
+		{
+			const String& name = animation.GetName();
+			if (was_waiting && (phase == AnimationPhase::Active || phase == AnimationPhase::After))
+				AddAnimationEvent(events, EventId::Animationstart, name, StartElapsedTime(animation));
+			if (was_running && phase == AnimationPhase::Active && sample.iteration != animation.GetEventIteration())
+				AddAnimationEvent(events, EventId::Animationiteration, name, float(sample.iteration * animation.GetDuration()));
+			if ((was_waiting || was_running) && phase == AnimationPhase::After)
+				AddAnimationEvent(events, EventId::Animationend, name, animation.GetActiveDuration());
+		}
+
+		if (phase == AnimationPhase::After && previous == AnimationPhase::After)
+			return;
+		animation.SetEventState(phase, sample.iteration);
+	}
+
+	// The cancel event of a CSS animation or transition removed before its end.
+	void QueueCancelEvent(Vector<PendingAnimationEvent>& events, const ElementAnimation& animation, double world_time)
+	{
+		const AnimationPhase previous = animation.GetEventPhase();
+		if (previous == AnimationPhase::After)
+			return;
+		const float elapsed_time = animation.GetSample(world_time).elapsed_time;
+		if (animation.IsTransition())
+		{
+			if (previous != AnimationPhase::Idle)
+				AddTransitionEvent(events, EventId::Transitioncancel, animation.GetPropertyId(), elapsed_time);
+		}
+		else if (animation.GetOrigin() == ElementAnimationOrigin::Animation && previous != AnimationPhase::Idle)
+			AddAnimationEvent(events, EventId::Animationcancel, animation.GetName(), elapsed_time);
+	}
+} // namespace
+
+bool Element::StartTransition(const Transition& transition, const Property& start_value, const Property& target_value,
+	const Property& reversing_adjusted_start, float reversing_shortening_factor)
 {
-	auto it = std::find_if(animations.begin(), animations.end(), [&](const ElementAnimation& el) { return el.GetPropertyId() == transition.id; });
+	// A user animation of the property takes precedence.
+	for (const ElementAnimation& animation : animations)
+		if (animation.GetOrigin() == ElementAnimationOrigin::User && animation.GetPropertyId() == transition.id)
+			return false;
 
-	if (it != animations.end() && !it->IsTransition())
+	CancelTransition(transition.id);
+
+	ElementAnimation animation{transition.id, ElementAnimationOrigin::Transition, start_value, *this, Clock::GetElapsedTime(), 0.0f, 1, false};
+	if (!animation.IsInitalized() || !animation.AddKey(transition.duration, target_value, *this, transition.tween, true))
 		return false;
+	animation.SetTransitionData(transition, reversing_adjusted_start, reversing_shortening_factor);
+	animations.push_back(std::move(animation));
+	animations_running = true;
 
-	float duration = transition.duration;
-	double start_time = Clock::GetElapsedTime() + (double)transition.delay;
+	// The start value applies at once, also during the delay.
+	meta->style.SetTransitionProperty(transition.id, start_value);
+	return true;
+}
 
-	if (it == animations.end())
+void Element::CancelTransition(PropertyId id)
+{
+	for (auto it = animations.begin(); it != animations.end(); ++it)
 	{
-		// Add transition as new animation
-		animations.push_back(ElementAnimation{transition.id, ElementAnimationOrigin::Transition, start_value, *this, start_time, 0.0f, 1, false});
-		it = (animations.end() - 1);
+		if (it->IsTransition() && it->GetPropertyId() == id)
+		{
+			Vector<PendingAnimationEvent> events;
+			QueueCancelEvent(events, *it, Clock::GetElapsedTime());
+			animations.erase(it);
+			meta->style.RemoveTransitionProperty(id);
+			for (PendingAnimationEvent& event : events)
+				DispatchEvent(event.id, event.parameters);
+			return;
+		}
 	}
-	else
-	{
-		// Replace old transition
-		*it = ElementAnimation{transition.id, ElementAnimationOrigin::Transition, start_value, *this, start_time, 0.0f, 1, false};
-	}
-
-	bool result = it->AddKey(duration, target_value, *this, transition.tween, true);
-
-	if (result)
-		SetProperty(transition.id, start_value);
-	else
-		animations.erase(it);
-
-	return result;
 }
 
 void Element::HandleTransitionProperty()
 {
-	if (dirty_transition)
+	if (!dirty_transition)
+		return;
+	dirty_transition = false;
+
+	// Cancel the transitions of the properties the element's transition list no longer covers.
+	const TransitionList* transition_list = GetComputedValues().transition();
+	const bool displayed = animation_displayed;
+	Vector<PropertyId> cancel;
+	for (const ElementAnimation& animation : animations)
 	{
-		dirty_transition = false;
-
-		// Remove all transitions that are no longer in our local list
-		const TransitionList* keep_transitions = GetComputedValues().transition();
-
-		if (keep_transitions && keep_transitions->all)
-			return;
-
-		auto it_remove = animations.end();
-
-		if (!keep_transitions || keep_transitions->none)
-		{
-			// All transitions should be removed, but only touch the animations that originate from the 'transition' property.
-			// Move all animations to be erased in a valid state at the end of the list, and erase later.
-			it_remove = std::partition(animations.begin(), animations.end(),
-				[](const ElementAnimation& animation) -> bool { return !animation.IsTransition(); });
-		}
-		else
-		{
-			RMLUI_ASSERT(keep_transitions);
-
-			// Only remove the transitions that are not in our keep list.
-			const auto& keep_transitions_list = keep_transitions->transitions;
-
-			it_remove = std::partition(animations.begin(), animations.end(), [&keep_transitions_list](const ElementAnimation& animation) -> bool {
-				if (!animation.IsTransition())
-					return true;
-				auto it = std::find_if(keep_transitions_list.begin(), keep_transitions_list.end(),
-					[&animation](const Transition& transition) { return animation.GetPropertyId() == transition.id; });
-				bool keep_animation = (it != keep_transitions_list.end());
-				return keep_animation;
-			});
-		}
-
-		// We can decide what to do with canceled transitions here.
-		for (auto it = it_remove; it != animations.end(); ++it)
-			RemoveProperty(it->GetPropertyId());
-
-		animations.erase(it_remove, animations.end());
+		if (animation.IsTransition() && (!displayed || !transition_list || !transition_list->Find(animation.GetPropertyId())))
+			cancel.push_back(animation.GetPropertyId());
 	}
+	for (PropertyId id : cancel)
+		CancelTransition(id);
 }
 
 void Element::HandleAnimationProperty()
 {
-	// Note: We are effectively restarting all animations whenever 'dirty_animation' is set. Use the dirty flag with care,
-	// or find another approach which only updates actual "dirty" animations.
-	if (dirty_animation)
+	if (!dirty_animation)
+		return;
+	dirty_animation = false;
+
+	const double now = Clock::GetElapsedTime();
+	const AnimationList* animation_list = (animation_displayed ? meta->computed_values.animation() : nullptr);
+	const StyleSheet* stylesheet = (animation_list ? GetStyleSheet() : nullptr);
+
+	// The CSS animations as the list wants them: matched to the running ones by name and occurrence of the name, in the order of the list.
+	ElementAnimationList css_animations;
+	for (auto it = animations.begin(); it != animations.end();)
 	{
-		dirty_animation = false;
-
-		const AnimationList* animation_list = meta->computed_values.animation();
-		bool element_has_animations = ((animation_list && !animation_list->empty()) || !animations.empty());
-		const StyleSheet* stylesheet = nullptr;
-
-		if (element_has_animations)
-			stylesheet = GetStyleSheet();
-
-		if (stylesheet)
+		if (it->GetOrigin() == ElementAnimationOrigin::Animation)
 		{
-			// Remove existing animations
+			css_animations.push_back(std::move(*it));
+			it = animations.erase(it);
+		}
+		else
+			++it;
+	}
+
+	ElementAnimationList result;
+	if (animation_list && stylesheet)
+	{
+		Property property_storage;
+		SmallUnorderedMap<String, int> occurrences;
+		for (const Animation& animation : *animation_list)
+		{
+			const int occurrence = occurrences[animation.name]++;
+			auto existing = std::find_if(css_animations.begin(), css_animations.end(),
+				[&](const ElementAnimation& running) { return running.GetName() == animation.name && running.GetOccurrence() == occurrence; });
+			if (existing != css_animations.end())
 			{
-				// We only touch the animations that originate from the 'animation' property.
-				auto it_remove = std::partition(animations.begin(), animations.end(),
-					[](const ElementAnimation& animation) { return animation.GetOrigin() != ElementAnimationOrigin::Animation; });
-
-				// We can decide what to do with canceled animations here.
-				for (auto it = it_remove; it != animations.end(); ++it)
-					RemoveProperty(it->GetPropertyId());
-
-				animations.erase(it_remove, animations.end());
+				// A change of the play state, duration, ... updates the running animation.
+				if (existing->GetAnimation() != animation)
+					existing->UpdateTiming(animation, now);
+				result.push_back(std::move(*existing));
+				css_animations.erase(existing);
+				continue;
 			}
 
-			// Start animations
-			if (animation_list)
-			{
-				Property property_storage;
-				for (const auto& animation : *animation_list)
+			const Keyframes* keyframes = stylesheet->GetKeyframes(animation.name);
+			if (!keyframes || keyframes->blocks.empty())
+				continue;
+
+			ElementAnimation css_animation(animation, occurrence, now);
+			const auto& blocks = keyframes->blocks;
+			SmallUnorderedSet<String> variable_dependencies;
+			std::optional<PropertyDictionary> substituted_shorthands_cache;
+			int previous_block_index = -1;
+			auto ResolveProperty = [&](PropertyId id, const Property* property, int block_index) {
+				if (block_index != previous_block_index)
 				{
-					const Keyframes* keyframes_ptr = stylesheet->GetKeyframes(animation.name);
-					const int num_iterations = (animation.IsInfinite() ? -1 : Math::Max(1, Math::RoundToInteger(animation.iteration_count)));
-					const bool alternate =
-						(animation.direction == AnimationDirection::Alternate || animation.direction == AnimationDirection::AlternateReverse);
-					if (keyframes_ptr && keyframes_ptr->blocks.size() >= 1 && !animation.paused)
-					{
-						auto& property_ids = keyframes_ptr->property_ids;
-						auto& blocks = keyframes_ptr->blocks;
-						SmallUnorderedSet<String> variable_dependencies;
-						std::optional<PropertyDictionary> substituted_shorthands_cache;
-						int previous_block_index = -1;
-
-						auto ResolveProperty = [&](PropertyId id, const Property* property, int block_index) {
-							if (!property)
-								return property;
-							if (block_index != previous_block_index)
-							{
-								substituted_shorthands_cache.reset();
-								previous_block_index = block_index;
-							}
-							return meta->style.ResolveKeyFrameProperty(id, property, blocks[block_index].properties, substituted_shorthands_cache,
-								variable_dependencies, property_storage);
-						};
-
-						const bool has_from_key = (blocks.front().normalized_time == 0);
-						const bool has_to_key = (blocks.back().normalized_time == 1);
-
-						// If the first key defines initial conditions for a given property, use those values, else, use this element's current
-						// values.
-						for (PropertyId id : property_ids)
-						{
-							const Property* property = ResolveProperty(id, (has_from_key ? blocks.front().properties.GetProperty(id) : nullptr), 0);
-							StartAnimation(id, property, num_iterations, alternate, animation.delay, true);
-						}
-
-						// Add middle keys: Need to skip the first and last keys if they set the initial and end conditions, respectively.
-						for (int i = (has_from_key ? 1 : 0); i < (int)blocks.size() + (has_to_key ? -1 : 0); i++)
-						{
-							// Add properties of current key to animation
-							float time = blocks[i].normalized_time * animation.duration;
-							for (const auto& [id, unresolved_property] : blocks[i].properties.GetProperties())
-							{
-								const Property* property = ResolveProperty(id, &unresolved_property, i);
-								AddAnimationKeyTime(id, property, time, animation.tween);
-							}
-						}
-
-						// If the last key defines end conditions for a given property, use those values, else, use this element's current values.
-						float time = animation.duration;
-						for (PropertyId id : property_ids)
-						{
-							const Property* property =
-								ResolveProperty(id, (has_to_key ? blocks.back().properties.GetProperty(id) : nullptr), (int)blocks.size() - 1);
-							AddAnimationKeyTime(id, property, time, animation.tween);
-						}
-					}
+					substituted_shorthands_cache.reset();
+					previous_block_index = block_index;
 				}
+				return meta->style.ResolveKeyFrameProperty(id, property, blocks[block_index].properties, substituted_shorthands_cache,
+					variable_dependencies, property_storage);
+			};
+
+			// One track per property, with the keyframes that set it; a missing 0% or 100% keyframe takes the underlying value.
+			for (PropertyId id : keyframes->property_ids)
+			{
+				AnimationTrack track(id);
+				bool valid = true;
+				auto AddUnderlying = [&](float offset) {
+					const Property* underlying = meta->style.GetUnderlyingProperty(id);
+					if (!underlying || !track.AddKey(offset, *underlying, *this, Tween{}, false))
+						valid = false;
+				};
+				for (int i = 0; i < (int)blocks.size() && valid; i++)
+				{
+					const Property* property = blocks[i].properties.GetProperty(id);
+					if (!property)
+						continue;
+					if (track.GetKeys().empty() && blocks[i].normalized_time > 0.f)
+						AddUnderlying(0.f);
+					property = ResolveProperty(id, property, i);
+					if (!property || !track.AddKey(blocks[i].normalized_time, *property, *this, blocks[i].tween, blocks[i].has_tween))
+						valid = false;
+				}
+				if (valid && (track.GetKeys().empty() || track.GetKeys().back().time < 1.f))
+					AddUnderlying(1.f);
+				if (valid)
+					css_animation.AddTrack(std::move(track));
 			}
+			result.push_back(std::move(css_animation));
 		}
 	}
+
+	// The animations no longer in the list are cancelled.
+	Vector<PendingAnimationEvent> events;
+	for (const ElementAnimation& removed : css_animations)
+	{
+		QueueCancelEvent(events, removed, now);
+		for (size_t i = 0; i < removed.GetNumTracks(); i++)
+			meta->style.RemoveAnimatedProperty(removed.GetTrack(i).GetPropertyId());
+	}
+
+	for (ElementAnimation& animation : result)
+		animations.push_back(std::move(animation));
+	if (!result.empty())
+		animations_running = true;
+
+	for (PendingAnimationEvent& event : events)
+		DispatchEvent(event.id, event.parameters);
 }
 
 void Element::AdvanceAnimations()
 {
-	if (!animations.empty())
+	if (animations.empty())
 	{
-		double time = Clock::GetElapsedTime();
+		animations_running = false;
+		return;
+	}
 
-		for (auto& animation : animations)
+	const double time = Clock::GetElapsedTime();
+	Vector<PendingAnimationEvent> events;
+	bool running = false;
+
+	// The values of the CSS animations, the later animations of the list over the earlier ones.
+	SmallUnorderedMap<PropertyId, Property> animated_values;
+	PropertyIdSet animated_ids;
+
+	for (ElementAnimation& animation : animations)
+	{
+		if (animation.GetOrigin() == ElementAnimationOrigin::User)
 		{
 			Property property = animation.UpdateAndGetProperty(time, *this);
 			if (property.unit != Unit::UNKNOWN)
 				SetProperty(animation.GetPropertyId(), property);
+			if (!animation.IsComplete())
+				running = true;
+			continue;
 		}
 
-		// Move all completed animations to the end of the list
-		auto it_completed =
-			std::partition(animations.begin(), animations.end(), [](const ElementAnimation& animation) { return !animation.IsComplete(); });
+		const ElementAnimation::Sample sample = animation.GetSample(time);
+		QueueEvents(events, animation, sample);
+		if (!animation.IsPaused() && sample.phase != AnimationPhase::After)
+			running = true;
 
-		Vector<Dictionary> dictionary_list;
-		Vector<bool> is_transition;
-		dictionary_list.reserve(animations.end() - it_completed);
-		is_transition.reserve(animations.end() - it_completed);
-
-		for (auto it = it_completed; it != animations.end(); ++it)
+		if (animation.IsTransition())
 		{
-			const String& property_name = StyleSheetSpecification::GetPropertyName(it->GetPropertyId());
-
-			dictionary_list.emplace_back();
-			dictionary_list.back().emplace("property", Variant(property_name));
-			is_transition.push_back(it->IsTransition());
-
-			// Remove completed transition- and animation-initiated properties.
-			// Should behave like in HandleTransitionProperty() and HandleAnimationProperty() respectively.
-			if (it->GetOrigin() != ElementAnimationOrigin::User)
-				RemoveProperty(it->GetPropertyId());
+			animation.RecordProgress(sample);
+			if (sample.phase == AnimationPhase::After)
+			{
+				animation.SetComplete(true);
+				continue;
+			}
+			Property property = animation.GetValue(0, sample, *this);
+			if (property.unit != Unit::UNKNOWN)
+			{
+				const PropertyDictionary* layer = meta->style.GetTransitionProperties();
+				const Property* current = (layer ? layer->GetProperty(animation.GetPropertyId()) : nullptr);
+				if (!current || *current != property)
+					meta->style.SetTransitionProperty(animation.GetPropertyId(), property);
+			}
+			continue;
 		}
 
-		// Need to erase elements before submitting event, as iterators might be invalidated when calling external code.
-		animations.erase(it_completed, animations.end());
-
-		for (size_t i = 0; i < dictionary_list.size(); i++)
-			DispatchEvent(is_transition[i] ? EventId::Transitionend : EventId::Animationend, dictionary_list[i]);
+		for (size_t i = 0; i < animation.GetNumTracks(); i++)
+		{
+			const PropertyId id = animation.GetTrack(i).GetPropertyId();
+			animated_ids.Insert(id);
+			Property property = animation.GetValue(i, sample, *this);
+			if (property.unit != Unit::UNKNOWN)
+				animated_values[id] = std::move(property);
+		}
 	}
+
+	// Apply the CSS animations' values to the animation layer, and remove those no animation applies now.
+	{
+		const PropertyDictionary* layer = meta->style.GetAnimatedProperties();
+		for (const PropertyId id : animated_ids)
+		{
+			const Property* current = (layer ? layer->GetProperty(id) : nullptr);
+			auto it = animated_values.find(id);
+			if (it == animated_values.end())
+			{
+				if (current)
+					meta->style.RemoveAnimatedProperty(id);
+			}
+			else if (!current || *current != it->second)
+				meta->style.SetAnimatedProperty(id, it->second);
+		}
+	}
+
+	// Remove the user animations and transitions that reached their end.
+	Vector<Dictionary> user_end_events;
+	for (auto it = animations.begin(); it != animations.end();)
+	{
+		if (!it->IsComplete() || it->GetOrigin() == ElementAnimationOrigin::Animation)
+		{
+			++it;
+			continue;
+		}
+		if (it->IsTransition())
+			meta->style.RemoveTransitionProperty(it->GetPropertyId());
+		else
+		{
+			// RmlUi 6.3's event of a user animation.
+			Dictionary parameters;
+			parameters.emplace("property", Variant(StyleSheetSpecification::GetPropertyName(it->GetPropertyId())));
+			user_end_events.push_back(std::move(parameters));
+		}
+		it = animations.erase(it);
+	}
+
+	animations_running = running;
+
+	// Events are dispatched last, as their listeners may change the element.
+	for (Dictionary& parameters : user_end_events)
+		DispatchEvent(EventId::Animationend, parameters);
+	for (PendingAnimationEvent& event : events)
+		DispatchEvent(event.id, event.parameters);
+}
+
+void Element::UpdateAnimationDisplay()
+{
+	const bool displayed = (meta->computed_values.display() != Style::Display::None) && (!parent || parent->animation_displayed);
+	if (displayed == animation_displayed)
+		return;
+	animation_displayed = displayed;
+
+	// CSS: an element (or an ancestor) set to 'display: none' cancels its animations and transitions; shown again, its animations start
+	// from their beginning.
+	if (meta->computed_values.animation() || !animations.empty())
+		dirty_animation = true;
+	if (!animations.empty())
+		dirty_transition = true;
 }
 
 void Element::DirtyTransformState(bool perspective_dirty, bool transform_dirty)

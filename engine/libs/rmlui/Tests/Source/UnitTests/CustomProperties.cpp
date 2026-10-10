@@ -943,7 +943,8 @@ TEST_CASE("custom_properties.animation")
 	ElementDocument* document = context->LoadDocumentFromMemory(animation_rml);
 	Element* div = TestsShell::GetElementChild(document, 0);
 	document->Show();
-	CHECK(div->GetComputedValues().background_color() == Colourb(0, 255, 0, 255));
+	// The animation applies its first keyframe from its start (CSS; 6.3 applied nothing before the first time step).
+	CHECK(div->GetComputedValues().background_color() == Colourb(255, 0, 0, 255));
 
 	system_interface->SetManualTime(0.1);
 	TestsShell::RenderLoop();
