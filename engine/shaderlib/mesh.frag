@@ -118,20 +118,6 @@ uniform u_fs_pbrParams {
     in vec3 v_vertexLight;
 #endif
 
-#ifdef USE_LIGHT2D
-    uniform u_fs_lighting2d {
-        vec4 position_range[MAX_LIGHTS_2D];  //position.xy, height.z, range.w
-        vec4 color_intensity[MAX_LIGHTS_2D]; //color.rgb (linear) and intensity.w
-        vec4 falloff_shadow[MAX_LIGHTS_2D];  //falloff.x, shadowRow.y (-1.0 if no shadow), softness.z, bias.w
-        vec4 ambient;                        //ambient2D.rgb (linear, pre-multiplied by intensity) and numLights2D.w
-        vec4 atlasInfo;                      //1/atlasWidth.x, 1/MAX_LIGHTS_2D.y, atlasWidth.z
-    } lighting2d;
-    #ifdef USE_SHADOWS_2D
-        uniform texture2D u_shadow2DAtlas;
-        uniform sampler u_shadow2DAtlas_smp;
-    #endif
-#endif
-
 #ifdef USE_SSAO
     uniform texture2D u_ssaoTexture;
     uniform sampler u_ssao_smp;
@@ -184,10 +170,8 @@ const float M_PI = 3.141592653589793;
 #ifndef MATERIAL_UNLIT
     #include "includes/ibl.glsl"
 #endif
-#ifdef USE_SHADOWS_2D
-    #include "includes/depth_util.glsl"
-#endif
 #ifdef USE_LIGHT2D
+    // declares the 2D lights block and shadow atlas (shared with library shaders)
     #include "includes/lighting2d.glsl"
 #endif
 #ifdef HAS_TERRAIN
