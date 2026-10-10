@@ -11,6 +11,9 @@
 #include "GridTypes.h"
 
 namespace Rml {
+
+class LayoutBox;
+
 namespace GridLayout {
 
 	/// How the size of a track of the other axis is estimated while items are measured (CSS Grid 2, 12.1): its maximum
@@ -59,8 +62,11 @@ namespace GridLayout {
 	/// As SpannedTrackLimit, without the 'fit-content()' limits.
 	OptionalFloat SpannedFixedTrackLimit(const GridItem& item, Axis axis, const GridTrackVec& axis_tracks, OptionalFloat axis_parent_size);
 
-	/// The first baseline of an item laid out under a min-content width constraint, from its border-box top, or false.
-	bool MeasureItemBaseline(GridItem& item, SizeOptional inner_node_size, float& baseline, float& height);
+	/// The first baseline of an item laid out under a min-content width constraint, from its border-box top.
+	void MeasureItemBaseline(GridItem& item, SizeOptional inner_node_size, float& baseline, float& height);
+	/// The baseline of a formatted item from its border-box top: its text's, or that of the first item of a flex or grid
+	/// container; synthesized from the bottom border edge (of that first item, or its own) when there is none.
+	float FormattedItemBaseline(Element* element, LayoutBox* layout_box);
 
 } // namespace GridLayout
 } // namespace Rml

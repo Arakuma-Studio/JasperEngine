@@ -520,7 +520,36 @@ namespace GridLayout {
 		return limit;
 	}
 
-	bool MeasureItemBaseline(GridItem& item, SizeOptional inner_node_size, float& baseline, float& height)
+	float FormattedItemBaseline(Element* element, LayoutBox* layout_box)
+	{
+		const Box& box = element->GetBox();
+		const float border_height = box.GetSize(BoxArea::Border).y;
+		float baseline = 0.f;
+		if (layout_box && layout_box->GetBaselineOfLastLine(baseline))
+			return baseline;
+		const LayoutBox::Type type = (layout_box ? layout_box->GetType() : LayoutBox::Type::BlockContainer);
+		if (type == LayoutBox::Type::FlexContainer || type == LayoutBox::Type::GridContainer)
+		{
+			// Flex and grid containers give their element the baseline of their first item with one, from the bottom margin
+			// edge; without one, that of the first item's bottom border edge (CSS Flexbox 9.8, CSS Grid 2 11.8).
+			const float container_baseline = border_height + box.GetEdge(BoxArea::Margin, BoxEdge::Bottom) - element->GetBaseline();
+			if (container_baseline > 0.f)
+				return container_baseline;
+			ScopedLayoutChildList children;
+			LayoutDetails::GetLayoutChildren(element, *children, true);
+			for (Element* child : *children)
+			{
+				const ComputedValues& computed = child->GetComputedValues();
+				if (computed.display() == Style::Display::None || LayoutDetails::IsCollapsibleWhiteSpaceText(child) ||
+					computed.position() == Style::Position::Absolute || computed.position() == Style::Position::Fixed)
+					continue;
+				return child->GetRelativeOffset(BoxArea::Border).y + child->GetBox().GetSize(BoxArea::Border).y;
+			}
+		}
+		return border_height;
+	}
+
+	void MeasureItemBaseline(GridItem& item, SizeOptional inner_node_size, float& baseline, float& height)
 	{
 		Element* element = item.element;
 		const Vector2f containing_block(inner_node_size.width ? *inner_node_size.width : -1.f, inner_node_size.height ? *inner_node_size.height : -1.f);
@@ -536,21 +565,8 @@ namespace GridLayout {
 		}
 		RootBox root(Math::Max(containing_block, Vector2f(0.f)));
 		UniquePtr<LayoutBox> layout_box = FormattingContext::FormatIndependent(&root, element, &box, FormattingContextType::Block);
-		if (!layout_box)
-			return false;
-
-		const Box& formatted = element->GetBox();
-		height = formatted.GetSize(BoxArea::Border).y;
-		if (layout_box->GetBaselineOfLastLine(baseline))
-			return true;
-		// Flex and grid containers give their baseline to their element (from its bottom margin edge).
-		const LayoutBox::Type type = layout_box->GetType();
-		if (type == LayoutBox::Type::FlexContainer || type == LayoutBox::Type::GridContainer)
-		{
-			baseline = height + formatted.GetEdge(BoxArea::Margin, BoxEdge::Bottom) - element->GetBaseline();
-			return true;
-		}
-		return false;
+		height = element->GetBox().GetSize(BoxArea::Border).y;
+		baseline = FormattedItemBaseline(element, layout_box.get());
 	}
 
 } // namespace GridLayout

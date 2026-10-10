@@ -593,21 +593,12 @@ namespace {
 
 		item.y_position = y;
 		item.height = final_height;
-		if (!item.has_baseline && item_layout_box)
+		if (!item.has_baseline)
 		{
-			float item_baseline = 0.f;
-			if (item_layout_box->GetBaselineOfLastLine(item_baseline))
-			{
-				item.baseline = item_baseline;
-				item.has_baseline = true;
-			}
-			else if (item_layout_box->GetType() == LayoutBox::Type::FlexContainer || item_layout_box->GetType() == LayoutBox::Type::GridContainer)
-			{
-				item.baseline = final_height + item_element->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Bottom) - item_element->GetBaseline();
-				item.has_baseline = true;
-			}
+			item.baseline = FormattedItemBaseline(item_element, item_layout_box.get());
+			item.has_baseline = true;
 		}
-		else if (item.has_baseline)
+		else
 		{
 			// The baseline of a baseline-aligned item was measured with its top margin.
 			const OptionalFloat margin_top = MaybeResolve(item.margin[0], area_width);
@@ -629,16 +620,19 @@ namespace {
 	{
 		const ComputedValues& child_computed = child->GetComputedValues();
 		ContainerBox* containing_container = LayoutDetails::GetContainingBlock(container_box, child_computed.position()).container;
-		if (containing_container != container_box)
-		{
-			// The grid is not its containing block: its static position is the grid's content box start (CSS Grid 2, 10.2).
-			containing_container->AddAbsoluteElement(child, Vector2f(border_h.start + padding_h.start, border_v.start + padding_v.start), element);
-			return;
-		}
+		const bool grid_is_containing_block = (containing_container == container_box);
 
-		// Its containing block is its grid area. With both insets of an axis 'auto' it is aligned in the area by its self
-		// alignment (the static position).
-		const Rectanglef area = resolver.Resolve(child);
+		// The static-position rectangle (CSS Grid 2, 10.2): the grid area when the grid is the containing block (also its
+		// containing block), else the grid's content box.
+		Rectanglef area;
+		if (grid_is_containing_block)
+			area = resolver.Resolve(child);
+		else
+			area = Rectanglef::FromCorners(Vector2f(border_h.start + padding_h.start, border_v.start + padding_v.start),
+				Vector2f(border_box_size.x - border_h.end - padding_h.end - scrollbar_size.x,
+					border_box_size.y - border_v.end - padding_v.end - scrollbar_size.y));
+
+		// With both insets of an axis 'auto' the box is aligned in the rectangle by its self alignment.
 		Vector2f static_position = area.Position();
 		const bool auto_insets_h = (child_computed.left().type == Style::LengthPercentageAuto::Auto && child_computed.right().type == Style::LengthPercentageAuto::Auto);
 		const bool auto_insets_v = (child_computed.top().type == Style::LengthPercentageAuto::Auto && child_computed.bottom().type == Style::LengthPercentageAuto::Auto);
@@ -650,15 +644,16 @@ namespace {
 		if (align_horizontally || align_vertically)
 		{
 			// The size of its margin box, as it will be laid out: its width fits its content, its height follows.
+			const Vector2f block_size = (grid_is_containing_block ? area.Size() : LayoutDetails::GetContainingBlock(container_box, child_computed.position()).size);
 			Box child_box;
-			LayoutDetails::BuildBox(child_box, area.Size(), child, BuildBoxMode::UnalignedBlock);
+			LayoutDetails::BuildBox(child_box, block_size, child, BuildBoxMode::UnalignedBlock);
 			float content_width = child_box.GetSize().x;
 			if (content_width < 0.f)
-				content_width = LayoutDetails::GetShrinkToFitWidth(child, area.Size());
+				content_width = LayoutDetails::GetShrinkToFitWidth(child, block_size);
 			const float border_width = content_width + child_box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
 			const float border_height = child_box.GetSize().y >= 0.f
 				? child_box.GetSize().y + child_box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border, BoxArea::Padding)
-				: LayoutDetails::GetContentHeightForWidth(child, border_width, area.Size());
+				: LayoutDetails::GetContentHeightForWidth(child, border_width, block_size);
 			const Vector2f margin_box_size = Vector2f(border_width + child_box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Margin, BoxArea::Margin),
 				border_height + child_box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Margin, BoxArea::Margin));
 
@@ -676,7 +671,11 @@ namespace {
 			if (align_vertically)
 				static_position.y = Align(area.Top(), area.Height(), margin_box_size.y, align_v, safe_v);
 		}
-		container_box->AddAbsoluteElement(child, static_position, element, area);
+
+		if (grid_is_containing_block)
+			container_box->AddAbsoluteElement(child, static_position, element, area);
+		else
+			containing_container->AddAbsoluteElement(child, static_position, element);
 	}
 
 } // namespace

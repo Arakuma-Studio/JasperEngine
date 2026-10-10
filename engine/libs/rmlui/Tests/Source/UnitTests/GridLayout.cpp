@@ -336,3 +336,42 @@ TEST_CASE("GridLayout.scrolling")
 	document->Close();
 	TestsShell::ShutdownShell();
 }
+
+TEST_CASE("GridLayout.baselines")
+{
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = LoadGrid(context, R"(
+		<div class="grid" style="width: 120px; grid-template-columns: repeat(3, 40px); grid-template-rows: 40px; align-items: baseline;">
+			<div id="a" style="display: flex; width: 20px; height: 20px;"/>
+			<div id="b" style="display: flex; width: 20px; height: 20px;"><div style="width: 5px; height: 10px;"/></div>
+			<div id="c" style="display: flex; width: 20px; height: 20px; margin-top: 4px;"><div style="width: 5px; height: 5px;"/></div>
+		</div>)");
+	// A flex item without a baseline gives its first item's bottom edge (b: 10, c: 5 + its margin), an empty one its own
+	// (a: 20): the row's baselines line up at 20.
+	CheckBox(document, "a", {0, 0, 20, 20});
+	CheckBox(document, "b", {40, 10, 20, 20});
+	CheckBox(document, "c", {80, 15, 20, 20});
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("GridLayout.static_position")
+{
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = LoadGrid(context, R"(
+		<div style="position: relative; width: 200px; height: 200px;">
+			<div class="grid" style="width: 100px; height: 100px; border: 5px #000; padding: 10px;">
+				<div id="start" style="position: absolute; width: 30px; height: 30px;"/>
+				<div id="center" style="position: absolute; width: 30px; height: 30px; place-self: center;"/>
+				<div id="end" style="position: absolute; width: 30px; height: 30px; align-self: end; justify-self: end;"/>
+			</div>
+		</div>)");
+	// The containing block is the outer box: the static position is aligned in the grid's content box (CSS Grid 2, 10.2).
+	CheckBox(document, "start", {15, 15, 30, 30});
+	CheckBox(document, "center", {50, 50, 30, 30});
+	CheckBox(document, "end", {85, 85, 30, 30});
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}

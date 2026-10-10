@@ -147,9 +147,7 @@ namespace GridLayout {
 						if (!item.ParticipatesInBaselineAlignment())
 							continue;
 						float baseline = 0.f, height = 0.f;
-						const bool has_baseline = MeasureItemBaseline(item, inner_node_size, baseline, height);
-						if (!has_baseline)
-							baseline = height;
+						MeasureItemBaseline(item, inner_node_size, baseline, height);
 						// Scroll containers' baselines are clamped to their border box.
 						if (item.scroll_container.height)
 							baseline = std::max(std::min(baseline, height), 0.f);
