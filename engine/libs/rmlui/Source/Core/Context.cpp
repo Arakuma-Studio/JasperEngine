@@ -8,6 +8,7 @@
 #include "../../Include/RmlUi/Core/ElementUtilities.h"
 #include "../../Include/RmlUi/Core/Factory.h"
 #include "../../Include/RmlUi/Core/Profiling.h"
+#include "../../Include/RmlUi/Core/RenderBox.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
 #include "../../Include/RmlUi/Core/StreamMemory.h"
 #include "../../Include/RmlUi/Core/SystemInterface.h"
@@ -1388,6 +1389,42 @@ void Context::ResetActiveChain()
 	active = nullptr;
 }
 
+// CSS hit testing follows the curves of the border box (phase 3, p3-paint): a point in the rectangle of one of the
+// element's boxes but outside of the ellipse of a rounded corner is not within the element.
+static bool IsPointWithinBorderRadius(Element* element, Vector2f point)
+{
+	if (!element->GetComputedValues().has_border_radius())
+		return true;
+
+	const Vector2f origin = element->GetAbsoluteOffset(BoxArea::Border);
+	for (int i = 0; i < element->GetNumBoxes(); i++)
+	{
+		const RenderBox box = element->GetRenderBox(BoxArea::Border, i);
+		const Vector2f size = box.GetFillSize();
+		const Vector2f p = point - origin - box.GetBorderOffset();
+		if (p.x < 0.f || p.y < 0.f || p.x > size.x || p.y > size.y)
+			continue;
+
+		// The distance into the box from the corner's two edges, for top-left, top-right, bottom-right, bottom-left.
+		const Vector2f from_corner[4] = {p, {size.x - p.x, p.y}, size - p, {p.x, size.y - p.y}};
+		const CornerSizes2 radii = box.GetBorderRadius();
+		bool inside = true;
+		for (int corner = 0; corner < 4 && inside; corner++)
+		{
+			const Vector2f r = radii[corner];
+			const Vector2f d = from_corner[corner];
+			if (r.x > 0.f && r.y > 0.f && d.x < r.x && d.y < r.y)
+			{
+				const Vector2f q = (r - d) / r;
+				inside = (q.x * q.x + q.y * q.y <= 1.f);
+			}
+		}
+		if (inside)
+			return true;
+	}
+	return false;
+}
+
 Element* Context::GetElementAtPoint(Vector2f point, const Element* ignore_element, Element* element) const
 {
 	if (!element)
@@ -1456,7 +1493,7 @@ Element* Context::GetElementAtPoint(Vector2f point, const Element* ignore_elemen
 	bool projection_result = element->Project(point);
 
 	// Check if the point is actually within this element.
-	bool within_element = (projection_result && element->IsPointWithinElement(point));
+	bool within_element = (projection_result && element->IsPointWithinElement(point) && IsPointWithinBorderRadius(element, point));
 	if (within_element)
 	{
 		// The element may have been clipped out of view if it overflows an ancestor, so check its clipping region.

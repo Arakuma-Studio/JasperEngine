@@ -15,6 +15,7 @@
 #include "../../Include/RmlUi/Core/StyleSheet.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "../../Include/RmlUi/Core/TransformPrimitive.h"
+#include "CalculationResolver.h"
 #include "Clock.h"
 #include "ComputeProperty.h"
 #include "DataModel.h"
@@ -26,6 +27,7 @@
 #include "ElementStyle.h"
 #include "EventDispatcher.h"
 #include "EventSpecification.h"
+#include "GeometryBackgroundBorder.h"
 #include "Layout/LayoutDetails.h"
 #include "Layout/LayoutEngine.h"
 #include "PluginRegistry.h"
@@ -554,6 +556,12 @@ RenderBox Element::GetRenderBox(BoxArea fill_area, int index, bool with_border_t
 			border_radius[corner][axis] = Math::Max(value, 0.f);
 		}
 		GeometryBackgroundBorder::ScaleRadiiToFit(border_radius, border_size);
+		// A corner is square unless both of its radii are positive.
+		for (Vector2f& radius : border_radius)
+		{
+			if (radius.x <= 0.f || radius.y <= 0.f)
+				radius = Vector2f(0.f);
+		}
 	}
 
 	RenderBox render_box{inner_size, box.offset, edge_sizes, border_radius};

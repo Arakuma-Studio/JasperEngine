@@ -75,10 +75,6 @@ String Text(const Style::Clip& value)
 {
 	return Text(value.GetType()) + ":" + Text(value.GetNumber());
 }
-String Text(const CornerSizes& value)
-{
-	return Text(value[0]) + "," + Text(value[1]) + "," + Text(value[2]) + "," + Text(value[3]);
-}
 String Text(const TransitionList* value)
 {
 	return (!value || value->none) ? "none" : CreateString("%d transitions", (int)value->transitions.size());
@@ -179,7 +175,11 @@ String Describe(const ComputedValues& values)
 	RMLUI_FIELD(flex_grow);
 	RMLUI_FIELD(flex_shrink);
 	RMLUI_FIELD(flex_basis);
-	RMLUI_FIELD(border_radius);
+	for (int corner = 0; corner < 4; corner++)
+	{
+		for (int axis = 0; axis < 2; axis++)
+			out += CreateString("border_radius[%d][%d]=", corner, axis) + Text(values.border_radius(corner, axis)) + "\n";
+	}
 	RMLUI_FIELD(text_overflow);
 	if (values.text_overflow() == Style::TextOverflow::String)
 		RMLUI_FIELD(text_overflow_string);
