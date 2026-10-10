@@ -361,6 +361,37 @@ namespace {
     }
 }
 
+namespace {
+    // counter(name, style) / counters(name, separator, style) with a counter style the fork does
+    // not draw: it counts in decimal (phase-3 spec 2.2), said once per declaration
+    void reportCounterStyles(DeclContext& context){
+        static const char* const known[] = {"decimal", "decimal-leading-zero", "lower-alpha", "lower-latin", "upper-alpha",
+                                            "upper-latin", "lower-roman", "upper-roman", "lower-greek", "disc", "circle",
+                                            "square", "none", "disclosure-open", "disclosure-closed"};
+        for (const ComponentValue& v : context.value){
+            const bool counters = v.isFunction("counters");
+            if (!counters && !v.isFunction("counter"))
+                continue;
+            const std::vector<ValueList> arguments = commaGroups(v.children);
+            const size_t styleIndex = counters ? 2 : 1;
+            if (arguments.size() <= styleIndex)
+                continue;
+            const ValueList styleWords = words(arguments[styleIndex]);
+            const std::string style = styleWords.size() == 1 ? identOf(styleWords[0]) : std::string();
+            if (style.empty())
+                continue;   // a string, or nothing the fork reads: its own parser decides
+            bool found = false;
+            for (const char* name : known)
+                found = found || style == name;
+            if (!found){
+                context.reportAs(Severity::Info, codes::ApproximatedMinor, "counter style '" + style + "' is drawn as decimal",
+                                 "use one of: decimal, decimal-leading-zero, lower/upper-alpha/latin, lower/upper-roman, lower-greek, disc, circle, square, none");
+                return;
+            }
+        }
+    }
+}
+
 void jasperengine::htmlui::compat::rewriteContent(DeclContext& context){
     bool pseudoElement = false;
     if (context.rule){
@@ -372,6 +403,7 @@ void jasperengine::htmlui::compat::rewriteContent(DeclContext& context){
     if (context.fork(ForkFeature::PseudoElements) && pseudoElement){
         // url() items point at the resolved resource, as in every other image property; the rest
         // (strings, attr(), counter(), counters(), quotes) is the fork's as written
+        reportCounterStyles(context);
         ValueList w = words(context.value);
         bool hasUrl = false;
         for (const ComponentValue& v : w)
