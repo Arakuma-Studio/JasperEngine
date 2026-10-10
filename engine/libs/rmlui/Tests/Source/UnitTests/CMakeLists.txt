@@ -6,6 +6,7 @@ add_executable(${TARGET_NAME}
 	AnimationLayers.cpp
 	Calculation.cpp
 	CalculationTypes.cpp
+	Colors.cpp
 	ContainingBlockOverride.cpp
 	Core.cpp
 	CustomProperties.cpp

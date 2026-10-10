@@ -1160,7 +1160,7 @@ TEST_CASE("custom_properties.media_query")
 		}
 	}
 	div {
-		background-color: rgba(var(--bg-color), 127);
+		background-color: rgba(var(--bg-color), 0.5);
 	}
 	</style>
 </head>
@@ -1177,11 +1177,11 @@ TEST_CASE("custom_properties.media_query")
 
 	context->SetDimensions(Vector2i(800, 320));
 	TestsShell::RenderLoop();
-	CHECK(document->GetElementById("div")->GetComputedValues().background_color() == Colourb(0, 255, 0, 127));
+	CHECK(document->GetElementById("div")->GetComputedValues().background_color() == Colourb(0, 255, 0, 128));
 
 	context->SetDimensions(Vector2i(600, 320));
 	TestsShell::RenderLoop();
-	CHECK(document->GetElementById("div")->GetComputedValues().background_color() == Colourb(255, 255, 255, 127));
+	CHECK(document->GetElementById("div")->GetComputedValues().background_color() == Colourb(255, 255, 255, 128));
 
 	document->Close();
 	TestsShell::ShutdownShell();

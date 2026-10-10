@@ -6,8 +6,15 @@
 
 namespace Rml {
 
+namespace ColorSpaces {
+	struct Color;
+}
+
 /**
-    A property parser that parses a colour value.
+    A property parser that parses a colour value: CSS Color 4 and 5 (phase 3, values). Hex colors, the CSS named colors
+    and 'transparent', rgb()/rgba()/hsl()/hsla() in the comma and the space syntax, hwb(), lab(), lch(), oklab(), oklch(),
+    color() in the srgb, srgb-linear and xyz spaces, and color-mix(), all case-insensitive. Components out of range are
+    clamped, 'none' is zero, the alpha is a number from 0 to 1 or a percentage.
  */
 
 class PropertyParserColour : public PropertyParser {
@@ -31,24 +38,11 @@ public:
 private:
 	static ControlledLifetimeResource<struct PropertyParserColourData> parser_data;
 
-	// Parse a colour in hex-code form (e.g. #FF00FF or #00FF00FF).
+	// Parses any colour into its color space; 'depth' limits nested color-mix().
+	static bool ParseColor(ColorSpaces::Color& color, const String& value, int depth);
 	static bool ParseHexColour(Colourb& colour, const String& value);
-
-	// Parse a colour in RGB form (e.g. rgb(255, 0, 255) or rgba(0, 255, 0, 255)).
-	static bool ParseRGBColour(Colourb& colour, const String& value);
-
-	// Parse a colour in HSL form (e.g. hsl(0, 100%, 50%) or hsla(0, 100%, 50%, 1.0)).
-	static bool ParseHSLColour(Colourb& colour, const String& value);
-
-	// Parse a colour in CIELAB form (e.g. lab(100.0 0.0 0.0) or lab(50.0 -60.0 60.0 / 0.5)
-	//     or CIELCh form (e.g. lch(100.0 0.0 30) or lch(100.0 0.0 60 / 0.5)).
-	static bool ParseCIELABColour(Colourb& colour, const String& value);
-
-	// Parse a colour in Oklab form (e.g. oklab(1.0 0.0 0.0) or oklab(0.5 -0.2 0.2 / 0.5))
-	//     or Oklch form (e.g. oklch(1.0 0.0 30) or oklch(1.0 0.0 60 / 0.5)).
-	static bool ParseOklabColour(Colourb& colour, const String& value);
-
-	static bool GetColourFunctionValues(StringList& values, const String& value, bool is_comma_separated);
+	static bool ParseColorFunction(ColorSpaces::Color& color, const String& name, const String& arguments, int depth);
+	static bool ParseColorMix(ColorSpaces::Color& color, const String& arguments, int depth);
 };
 
 } // namespace Rml

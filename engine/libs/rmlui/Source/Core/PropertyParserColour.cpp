@@ -1,142 +1,509 @@
 #include "PropertyParserColour.h"
+#include "../../Include/RmlUi/Core/Math.h"
+#include "../../Include/RmlUi/Core/StringUtilities.h"
+#include "ColorSpaces.h"
 #include "ControlledLifetimeResource.h"
-#include <algorithm>
 #include <cmath>
+#include <stdlib.h>
 #include <string.h>
-#include <utility>
 
 namespace Rml {
 
-// Helper function for hsl->rgb conversion.
-static float HSL_f(float h, float s, float l, float n)
-{
-	float k = std::fmod((n + h * (1.0f / 30.0f)), 12.0f);
-	float a = s * std::min(l, 1.0f - l);
-	return l - a * std::max(-1.0f, std::min({k - 3.0f, 9.0f - k, 1.0f}));
-}
-
-// Reference: https://en.wikipedia.org/wiki/HSL_and_HSV#HSL_to_RGB_alternative
-static void HSLAToRGBA(Array<float, 4>& vals)
-{
-	if (vals[1] == 0.0f)
-	{
-		vals[0] = vals[1] = vals[2];
-	}
-	else
-	{
-		float h = std::fmod(vals[0], 360.0f);
-		if (h < 0)
-			h += 360.0f;
-		float s = vals[1];
-		float l = vals[2];
-		vals[0] = HSL_f(h, s, l, 0.0f);
-		vals[1] = HSL_f(h, s, l, 8.0f);
-		vals[2] = HSL_f(h, s, l, 4.0f);
-	}
-}
-
-// Reference: https://en.wikipedia.org/wiki/SRGB#Definition
-static float InverseSRGBNonlinearTransfer(float channel)
-{
-	return channel > 0.0031308f ? 1.055f * std::pow(channel, 1.0f / 2.4f) - 0.055f : 12.92f * channel;
-}
-
-// Reference: https://en.wikipedia.org/wiki/CIELAB_color_space#Converting_between_CIELAB_and_CIE_XYZ_coordinates
-static void CIELABToRGBA(Array<float, 4>& values)
-{
-	float y_double_prime = (values[0] + 16.0f) / 116.0f;
-	float x_double_prime = (values[1] / 500.0f) + y_double_prime;
-	float z_double_prime = y_double_prime - (values[2] / 200.0f);
-
-	float x_prime = (x_double_prime * x_double_prime * x_double_prime) > 0.008856f ? (x_double_prime * x_double_prime * x_double_prime)
-																				   : (x_double_prime - (16.0f / 116.0f)) / 7.787f;
-	float y_prime = (y_double_prime * y_double_prime * y_double_prime) > 0.008856f ? (y_double_prime * y_double_prime * y_double_prime)
-																				   : (y_double_prime - (16.0f / 116.0f)) / 7.787f;
-	float z_prime = (z_double_prime * z_double_prime * z_double_prime) > 0.008856f ? (z_double_prime * z_double_prime * z_double_prime)
-																				   : (z_double_prime - (16.0f / 116.0f)) / 7.787f;
-
-	static const Vector3f illuminant_d65_multiplicands(0.95047f, 1.0f, 1.08883f);
-
-	float x = x_prime * illuminant_d65_multiplicands.x;
-	float y = y_prime * illuminant_d65_multiplicands.y;
-	float z = z_prime * illuminant_d65_multiplicands.z;
-
-	static constexpr Array<Array<float, 3>, 3> xyz_to_srgb_matrix{
-		Array<float, 3>{+3.2404548f, -1.5371389f, -0.4985315f},
-		Array<float, 3>{-0.9692664f, +1.8760109f, +0.0415561f},
-		Array<float, 3>{+0.0556434f, -0.2040259f, +1.0572252f},
-	};
-
-	float r = xyz_to_srgb_matrix[0][0] * x + xyz_to_srgb_matrix[0][1] * y + xyz_to_srgb_matrix[0][2] * z;
-	float g = xyz_to_srgb_matrix[1][0] * x + xyz_to_srgb_matrix[1][1] * y + xyz_to_srgb_matrix[1][2] * z;
-	float b = xyz_to_srgb_matrix[2][0] * x + xyz_to_srgb_matrix[2][1] * y + xyz_to_srgb_matrix[2][2] * z;
-
-	values[0] = Math::Clamp(InverseSRGBNonlinearTransfer(r), 0.0f, 1.0f);
-	values[1] = Math::Clamp(InverseSRGBNonlinearTransfer(g), 0.0f, 1.0f);
-	values[2] = Math::Clamp(InverseSRGBNonlinearTransfer(b), 0.0f, 1.0f);
-}
-
-// References: https://en.wikipedia.org/wiki/Oklab_color_space#Conversions_between_color_spaces and https://bottosson.github.io/posts/oklab/
-static void OklabToRGBA(Array<float, 4>& values)
-{
-	static constexpr Array<Array<float, 3>, 3> oklab_to_lms_prime_matrix{
-		Array<float, 3>{+1.0f, +0.3963377774f, +0.2158037573f},
-		Array<float, 3>{+1.0f, -0.1055613458f, -0.0638541728f},
-		Array<float, 3>{+1.0f, -0.0894841775f, -1.2914855480f},
-	};
-
-	float lightness = values[0];
-	float a_axis = values[1];
-	float b_axis = values[2];
-
-	float l_prime = oklab_to_lms_prime_matrix[0][0] * lightness + oklab_to_lms_prime_matrix[0][1] * a_axis + oklab_to_lms_prime_matrix[0][2] * b_axis;
-	float m_prime = oklab_to_lms_prime_matrix[1][0] * lightness + oklab_to_lms_prime_matrix[1][1] * a_axis + oklab_to_lms_prime_matrix[1][2] * b_axis;
-	float s_prime = oklab_to_lms_prime_matrix[2][0] * lightness + oklab_to_lms_prime_matrix[2][1] * a_axis + oklab_to_lms_prime_matrix[2][2] * b_axis;
-
-	float l = l_prime * l_prime * l_prime;
-	float m = m_prime * m_prime * m_prime;
-	float s = s_prime * s_prime * s_prime;
-
-	static constexpr Array<Array<float, 3>, 3> lms_to_srgb_matrix{
-		Array<float, 3>{+4.0767416621f, -3.3077115913f, +0.2309699292f},
-		Array<float, 3>{-1.2684380046f, +2.6097574011f, -0.3413193965f},
-		Array<float, 3>{-0.0041960863f, -0.7034186147f, +1.7076147010f},
-	};
-
-	float r = lms_to_srgb_matrix[0][0] * l + lms_to_srgb_matrix[0][1] * m + lms_to_srgb_matrix[0][2] * s;
-	float g = lms_to_srgb_matrix[1][0] * l + lms_to_srgb_matrix[1][1] * m + lms_to_srgb_matrix[1][2] * s;
-	float b = lms_to_srgb_matrix[2][0] * l + lms_to_srgb_matrix[2][1] * m + lms_to_srgb_matrix[2][2] * s;
-
-	values[0] = Math::Clamp(InverseSRGBNonlinearTransfer(r), 0.0f, 1.0f);
-	values[1] = Math::Clamp(InverseSRGBNonlinearTransfer(g), 0.0f, 1.0f);
-	values[2] = Math::Clamp(InverseSRGBNonlinearTransfer(b), 0.0f, 1.0f);
-}
+using ColorSpaces::Color;
+using ColorSpaces::Space;
 
 struct PropertyParserColourData {
+	// CSS Color 4 named colors (148) and 'transparent'.
 	const UnorderedMap<String, Colourb> html_colours = {
-		{"black", Colourb(0, 0, 0)},
-		{"silver", Colourb(192, 192, 192)},
-		{"gray", Colourb(128, 128, 128)},
-		{"grey", Colourb(128, 128, 128)},
-		{"white", Colourb(255, 255, 255)},
-		{"maroon", Colourb(128, 0, 0)},
-		{"red", Colourb(255, 0, 0)},
-		{"orange", Colourb(255, 165, 0)},
-		{"purple", Colourb(128, 0, 128)},
-		{"fuchsia", Colourb(255, 0, 255)},
-		{"green", Colourb(0, 128, 0)},
-		{"lime", Colourb(0, 255, 0)},
-		{"olive", Colourb(128, 128, 0)},
-		{"yellow", Colourb(255, 255, 0)},
-		{"navy", Colourb(0, 0, 128)},
-		{"blue", Colourb(0, 0, 255)},
-		{"teal", Colourb(0, 128, 128)},
+		{"aliceblue", Colourb(240, 248, 255)},
+		{"antiquewhite", Colourb(250, 235, 215)},
 		{"aqua", Colourb(0, 255, 255)},
+		{"aquamarine", Colourb(127, 255, 212)},
+		{"azure", Colourb(240, 255, 255)},
+		{"beige", Colourb(245, 245, 220)},
+		{"bisque", Colourb(255, 228, 196)},
+		{"black", Colourb(0, 0, 0)},
+		{"blanchedalmond", Colourb(255, 235, 205)},
+		{"blue", Colourb(0, 0, 255)},
+		{"blueviolet", Colourb(138, 43, 226)},
+		{"brown", Colourb(165, 42, 42)},
+		{"burlywood", Colourb(222, 184, 135)},
+		{"cadetblue", Colourb(95, 158, 160)},
+		{"chartreuse", Colourb(127, 255, 0)},
+		{"chocolate", Colourb(210, 105, 30)},
+		{"coral", Colourb(255, 127, 80)},
+		{"cornflowerblue", Colourb(100, 149, 237)},
+		{"cornsilk", Colourb(255, 248, 220)},
+		{"crimson", Colourb(220, 20, 60)},
+		{"cyan", Colourb(0, 255, 255)},
+		{"darkblue", Colourb(0, 0, 139)},
+		{"darkcyan", Colourb(0, 139, 139)},
+		{"darkgoldenrod", Colourb(184, 134, 11)},
+		{"darkgray", Colourb(169, 169, 169)},
+		{"darkgreen", Colourb(0, 100, 0)},
+		{"darkgrey", Colourb(169, 169, 169)},
+		{"darkkhaki", Colourb(189, 183, 107)},
+		{"darkmagenta", Colourb(139, 0, 139)},
+		{"darkolivegreen", Colourb(85, 107, 47)},
+		{"darkorange", Colourb(255, 140, 0)},
+		{"darkorchid", Colourb(153, 50, 204)},
+		{"darkred", Colourb(139, 0, 0)},
+		{"darksalmon", Colourb(233, 150, 122)},
+		{"darkseagreen", Colourb(143, 188, 143)},
+		{"darkslateblue", Colourb(72, 61, 139)},
+		{"darkslategray", Colourb(47, 79, 79)},
+		{"darkslategrey", Colourb(47, 79, 79)},
+		{"darkturquoise", Colourb(0, 206, 209)},
+		{"darkviolet", Colourb(148, 0, 211)},
+		{"deeppink", Colourb(255, 20, 147)},
+		{"deepskyblue", Colourb(0, 191, 255)},
+		{"dimgray", Colourb(105, 105, 105)},
+		{"dimgrey", Colourb(105, 105, 105)},
+		{"dodgerblue", Colourb(30, 144, 255)},
+		{"firebrick", Colourb(178, 34, 34)},
+		{"floralwhite", Colourb(255, 250, 240)},
+		{"forestgreen", Colourb(34, 139, 34)},
+		{"fuchsia", Colourb(255, 0, 255)},
+		{"gainsboro", Colourb(220, 220, 220)},
+		{"ghostwhite", Colourb(248, 248, 255)},
+		{"gold", Colourb(255, 215, 0)},
+		{"goldenrod", Colourb(218, 165, 32)},
+		{"gray", Colourb(128, 128, 128)},
+		{"green", Colourb(0, 128, 0)},
+		{"greenyellow", Colourb(173, 255, 47)},
+		{"grey", Colourb(128, 128, 128)},
+		{"honeydew", Colourb(240, 255, 240)},
+		{"hotpink", Colourb(255, 105, 180)},
+		{"indianred", Colourb(205, 92, 92)},
+		{"indigo", Colourb(75, 0, 130)},
+		{"ivory", Colourb(255, 255, 240)},
+		{"khaki", Colourb(240, 230, 140)},
+		{"lavender", Colourb(230, 230, 250)},
+		{"lavenderblush", Colourb(255, 240, 245)},
+		{"lawngreen", Colourb(124, 252, 0)},
+		{"lemonchiffon", Colourb(255, 250, 205)},
+		{"lightblue", Colourb(173, 216, 230)},
+		{"lightcoral", Colourb(240, 128, 128)},
+		{"lightcyan", Colourb(224, 255, 255)},
+		{"lightgoldenrodyellow", Colourb(250, 250, 210)},
+		{"lightgray", Colourb(211, 211, 211)},
+		{"lightgreen", Colourb(144, 238, 144)},
+		{"lightgrey", Colourb(211, 211, 211)},
+		{"lightpink", Colourb(255, 182, 193)},
+		{"lightsalmon", Colourb(255, 160, 122)},
+		{"lightseagreen", Colourb(32, 178, 170)},
+		{"lightskyblue", Colourb(135, 206, 250)},
+		{"lightslategray", Colourb(119, 136, 153)},
+		{"lightslategrey", Colourb(119, 136, 153)},
+		{"lightsteelblue", Colourb(176, 196, 222)},
+		{"lightyellow", Colourb(255, 255, 224)},
+		{"lime", Colourb(0, 255, 0)},
+		{"limegreen", Colourb(50, 205, 50)},
+		{"linen", Colourb(250, 240, 230)},
+		{"magenta", Colourb(255, 0, 255)},
+		{"maroon", Colourb(128, 0, 0)},
+		{"mediumaquamarine", Colourb(102, 205, 170)},
+		{"mediumblue", Colourb(0, 0, 205)},
+		{"mediumorchid", Colourb(186, 85, 211)},
+		{"mediumpurple", Colourb(147, 112, 219)},
+		{"mediumseagreen", Colourb(60, 179, 113)},
+		{"mediumslateblue", Colourb(123, 104, 238)},
+		{"mediumspringgreen", Colourb(0, 250, 154)},
+		{"mediumturquoise", Colourb(72, 209, 204)},
+		{"mediumvioletred", Colourb(199, 21, 133)},
+		{"midnightblue", Colourb(25, 25, 112)},
+		{"mintcream", Colourb(245, 255, 250)},
+		{"mistyrose", Colourb(255, 228, 225)},
+		{"moccasin", Colourb(255, 228, 181)},
+		{"navajowhite", Colourb(255, 222, 173)},
+		{"navy", Colourb(0, 0, 128)},
+		{"oldlace", Colourb(253, 245, 230)},
+		{"olive", Colourb(128, 128, 0)},
+		{"olivedrab", Colourb(107, 142, 35)},
+		{"orange", Colourb(255, 165, 0)},
+		{"orangered", Colourb(255, 69, 0)},
+		{"orchid", Colourb(218, 112, 214)},
+		{"palegoldenrod", Colourb(238, 232, 170)},
+		{"palegreen", Colourb(152, 251, 152)},
+		{"paleturquoise", Colourb(175, 238, 238)},
+		{"palevioletred", Colourb(219, 112, 147)},
+		{"papayawhip", Colourb(255, 239, 213)},
+		{"peachpuff", Colourb(255, 218, 185)},
+		{"peru", Colourb(205, 133, 63)},
+		{"pink", Colourb(255, 192, 203)},
+		{"plum", Colourb(221, 160, 221)},
+		{"powderblue", Colourb(176, 224, 230)},
+		{"purple", Colourb(128, 0, 128)},
+		{"rebeccapurple", Colourb(102, 51, 153)},
+		{"red", Colourb(255, 0, 0)},
+		{"rosybrown", Colourb(188, 143, 143)},
+		{"royalblue", Colourb(65, 105, 225)},
+		{"saddlebrown", Colourb(139, 69, 19)},
+		{"salmon", Colourb(250, 128, 114)},
+		{"sandybrown", Colourb(244, 164, 96)},
+		{"seagreen", Colourb(46, 139, 87)},
+		{"seashell", Colourb(255, 245, 238)},
+		{"sienna", Colourb(160, 82, 45)},
+		{"silver", Colourb(192, 192, 192)},
+		{"skyblue", Colourb(135, 206, 235)},
+		{"slateblue", Colourb(106, 90, 205)},
+		{"slategray", Colourb(112, 128, 144)},
+		{"slategrey", Colourb(112, 128, 144)},
+		{"snow", Colourb(255, 250, 250)},
+		{"springgreen", Colourb(0, 255, 127)},
+		{"steelblue", Colourb(70, 130, 180)},
+		{"tan", Colourb(210, 180, 140)},
+		{"teal", Colourb(0, 128, 128)},
+		{"thistle", Colourb(216, 191, 216)},
+		{"tomato", Colourb(255, 99, 71)},
 		{"transparent", Colourb(0, 0, 0, 0)},
+		{"turquoise", Colourb(64, 224, 208)},
+		{"violet", Colourb(238, 130, 238)},
+		{"wheat", Colourb(245, 222, 179)},
+		{"white", Colourb(255, 255, 255)},
+		{"whitesmoke", Colourb(245, 245, 245)},
+		{"yellow", Colourb(255, 255, 0)},
+		{"yellowgreen", Colourb(154, 205, 50)},
 	};
 };
 
 ControlledLifetimeResource<PropertyParserColourData> PropertyParserColour::parser_data;
+
+namespace {
+
+	// Nested color-mix() levels.
+	constexpr int MaxColorDepth = 8;
+
+	bool IsSpace(char c)
+	{
+		return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f';
+	}
+
+	String Trim(const String& value)
+	{
+		size_t begin = 0, end = value.size();
+		while (begin < end && IsSpace(value[begin]))
+			++begin;
+		while (end > begin && IsSpace(value[end - 1]))
+			--end;
+		return value.substr(begin, end - begin);
+	}
+
+	bool EqualsNoCase(const String& value, const char* literal)
+	{
+		const size_t length = strlen(literal);
+		if (value.size() != length)
+			return false;
+		for (size_t i = 0; i < length; i++)
+		{
+			char c = value[i];
+			if (c >= 'A' && c <= 'Z')
+				c = char(c - 'A' + 'a');
+			if (c != literal[i])
+				return false;
+		}
+		return true;
+	}
+
+	// Splits the arguments of a color function at the top level: at commas when there is one ('comma' set), else at white
+	// space, with '/' a token of its own.
+	bool SplitArguments(const String& arguments, StringList& out, bool& comma)
+	{
+		out.clear();
+		comma = false;
+		int depth = 0;
+		for (char c : arguments)
+		{
+			if (c == '(')
+				depth++;
+			else if (c == ')')
+			{
+				if (--depth < 0)
+					return false;
+			}
+			else if (c == ',' && depth == 0)
+				comma = true;
+		}
+		if (depth != 0)
+			return false;
+
+		String current;
+		depth = 0;
+		auto flush = [&]() {
+			if (!current.empty())
+				out.push_back(std::move(current));
+			current.clear();
+		};
+		for (char c : arguments)
+		{
+			if (c == '(')
+				depth++;
+			else if (c == ')')
+				depth--;
+
+			if (depth == 0 && comma && c == ',')
+			{
+				current = Trim(current);
+				if (current.empty())
+					return false;
+				out.push_back(std::move(current));
+				current.clear();
+			}
+			else if (depth == 0 && !comma && IsSpace(c))
+				flush();
+			else if (depth == 0 && !comma && c == '/')
+			{
+				flush();
+				out.push_back("/");
+			}
+			else
+				current += c;
+		}
+		if (comma)
+		{
+			current = Trim(current);
+			if (current.empty())
+				return false;
+			out.push_back(std::move(current));
+		}
+		else
+			flush();
+		return true;
+	}
+
+	bool ParseNumber(const String& token, float& value)
+	{
+		if (token.empty())
+			return false;
+		char* end = nullptr;
+		value = strtof(token.c_str(), &end);
+		return end == token.c_str() + token.size() && std::isfinite(value);
+	}
+
+	bool ParsePercentage(const String& token, float& value)
+	{
+		if (token.size() < 2 || token.back() != '%')
+			return false;
+		return ParseNumber(token.substr(0, token.size() - 1), value);
+	}
+
+	// A hue: a number (degrees) or an angle.
+	bool ParseHue(const String& token, float& degrees)
+	{
+		if (ParseNumber(token, degrees))
+			return true;
+		size_t unit = token.size();
+		while (unit > 0 && ((token[unit - 1] >= 'a' && token[unit - 1] <= 'z') || (token[unit - 1] >= 'A' && token[unit - 1] <= 'Z')))
+			--unit;
+		float number = 0.f;
+		if (unit == token.size() || !ParseNumber(token.substr(0, unit), number))
+			return false;
+		const String suffix = token.substr(unit);
+		if (EqualsNoCase(suffix, "deg"))
+			degrees = number;
+		else if (EqualsNoCase(suffix, "rad"))
+			degrees = number * (180.f / Math::RMLUI_PI);
+		else if (EqualsNoCase(suffix, "grad"))
+			degrees = number * 0.9f;
+		else if (EqualsNoCase(suffix, "turn"))
+			degrees = number * 360.f;
+		else
+			return false;
+		return true;
+	}
+
+	enum class Kind { Number, Percentage, None, Invalid };
+
+	// A number or percentage component; 'none' when allowed.
+	Kind ParseComponent(const String& token, float& value, bool allow_none)
+	{
+		if (allow_none && EqualsNoCase(token, "none"))
+		{
+			value = 0.f;
+			return Kind::None;
+		}
+		if (ParsePercentage(token, value))
+			return Kind::Percentage;
+		if (ParseNumber(token, value))
+			return Kind::Number;
+		return Kind::Invalid;
+	}
+
+	// The alpha of a color, a number from 0 to 1 or a percentage; 'none' in the space syntax.
+	bool ParseAlpha(const String& token, Color& color, bool allow_none)
+	{
+		float value = 0.f;
+		switch (ParseComponent(token, value, allow_none))
+		{
+		case Kind::Number: color.alpha = Math::Clamp(value, 0.f, 1.f); return true;
+		case Kind::Percentage: color.alpha = Math::Clamp(value * 0.01f, 0.f, 1.f); return true;
+		case Kind::None:
+			color.alpha = 0.f;
+			color.alpha_missing = true;
+			return true;
+		case Kind::Invalid: break;
+		}
+		return false;
+	}
+
+	// Takes the three components and the alpha of the space syntax ('c1 c2 c3 [/ alpha]').
+	bool SplitSpaceSyntax(const StringList& arguments, const String* components[3], const String*& alpha)
+	{
+		alpha = nullptr;
+		if (arguments.size() == 3)
+		{
+		}
+		else if (arguments.size() == 5 && arguments[3] == "/")
+			alpha = &arguments[4];
+		else
+			return false;
+		for (int i = 0; i < 3; i++)
+		{
+			if (arguments[i] == "/")
+				return false;
+			components[i] = &arguments[i];
+		}
+		return true;
+	}
+
+	bool ParseRGB(Color& color, const StringList& arguments, bool comma)
+	{
+		color.space = Space::SRGB;
+		const String* components[3] = {};
+		const String* alpha = nullptr;
+		if (comma)
+		{
+			if (arguments.size() != 3 && arguments.size() != 4)
+				return false;
+			for (int i = 0; i < 3; i++)
+				components[i] = &arguments[i];
+			if (arguments.size() == 4)
+				alpha = &arguments[3];
+		}
+		else if (!SplitSpaceSyntax(arguments, components, alpha))
+			return false;
+
+		Kind first_kind = Kind::Invalid;
+		for (int i = 0; i < 3; i++)
+		{
+			float value = 0.f;
+			const Kind kind = ParseComponent(*components[i], value, !comma);
+			if (kind == Kind::Invalid)
+				return false;
+			// The comma syntax takes all numbers or all percentages.
+			if (comma && i > 0 && kind != first_kind)
+				return false;
+			if (i == 0)
+				first_kind = kind;
+			color.missing[i] = (kind == Kind::None);
+			color.components[i] = Math::Clamp(kind == Kind::Percentage ? value * 0.01f : value * (1.f / 255.f), 0.f, 1.f);
+		}
+		return !alpha || ParseAlpha(*alpha, color, !comma);
+	}
+
+	bool ParseHSL(Color& color, const StringList& arguments, bool comma, bool hwb)
+	{
+		color.space = (hwb ? Space::HWB : Space::HSL);
+		const String* components[3] = {};
+		const String* alpha = nullptr;
+		if (comma)
+		{
+			if (hwb || (arguments.size() != 3 && arguments.size() != 4))
+				return false;
+			for (int i = 0; i < 3; i++)
+				components[i] = &arguments[i];
+			if (arguments.size() == 4)
+				alpha = &arguments[3];
+		}
+		else if (!SplitSpaceSyntax(arguments, components, alpha))
+			return false;
+
+		if (!comma && EqualsNoCase(*components[0], "none"))
+		{
+			color.components[0] = 0.f;
+			color.missing[0] = true;
+		}
+		else if (!ParseHue(*components[0], color.components[0]))
+			return false;
+
+		for (int i = 1; i < 3; i++)
+		{
+			float value = 0.f;
+			const Kind kind = ParseComponent(*components[i], value, !comma);
+			// The comma syntax takes percentages only, the space syntax numbers too (the same scale).
+			if (kind == Kind::Invalid || (comma && kind != Kind::Percentage))
+				return false;
+			color.missing[i] = (kind == Kind::None);
+			color.components[i] = Math::Clamp(value * 0.01f, 0.f, 1.f);
+		}
+		return !alpha || ParseAlpha(*alpha, color, !comma);
+	}
+
+	// lab(), lch(), oklab(), oklch(): 'lightness_scale' is the lightness of 100%, 'axis_scale' the a/b or chroma of 100%.
+	bool ParseLabLike(Color& color, const StringList& arguments, Space space, float lightness_scale, float axis_scale)
+	{
+		color.space = space;
+		const bool polar = (space == Space::LCH || space == Space::Oklch);
+		const String* components[3] = {};
+		const String* alpha = nullptr;
+		if (!SplitSpaceSyntax(arguments, components, alpha))
+			return false;
+
+		for (int i = 0; i < 3; i++)
+		{
+			float value = 0.f;
+			if (polar && i == 2)
+			{
+				if (EqualsNoCase(*components[i], "none"))
+					color.missing[i] = true;
+				else if (!ParseHue(*components[i], value))
+					return false;
+				color.components[i] = value;
+				continue;
+			}
+			const Kind kind = ParseComponent(*components[i], value, true);
+			if (kind == Kind::Invalid)
+				return false;
+			color.missing[i] = (kind == Kind::None);
+			if (i == 0)
+				color.components[i] = Math::Clamp(kind == Kind::Percentage ? value * 0.01f * lightness_scale : value, 0.f, lightness_scale);
+			else
+			{
+				value = (kind == Kind::Percentage ? value * 0.01f * axis_scale : value);
+				// Chroma is never negative.
+				color.components[i] = (polar ? Math::Max(value, 0.f) : value);
+			}
+		}
+		return !alpha || ParseAlpha(*alpha, color, true);
+	}
+
+	// color(<space> c1 c2 c3 [/ alpha]) in the spaces this parser converts (srgb, srgb-linear, xyz, xyz-d50, xyz-d65).
+	bool ParsePredefined(Color& color, const StringList& arguments)
+	{
+		if (arguments.size() != 4 && arguments.size() != 6)
+			return false;
+		Space space = Space::SRGB;
+		if (!ColorSpaces::ParseSpace(arguments[0], space) || ColorSpaces::IsPolar(space) || space == Space::Lab || space == Space::Oklab)
+			return false;
+		color.space = space;
+		const StringList rest(arguments.begin() + 1, arguments.end());
+		const String* components[3] = {};
+		const String* alpha = nullptr;
+		if (!SplitSpaceSyntax(rest, components, alpha))
+			return false;
+		for (int i = 0; i < 3; i++)
+		{
+			float value = 0.f;
+			const Kind kind = ParseComponent(*components[i], value, true);
+			if (kind == Kind::Invalid)
+				return false;
+			color.missing[i] = (kind == Kind::None);
+			color.components[i] = (kind == Kind::Percentage ? value * 0.01f : value);
+		}
+		return !alpha || ParseAlpha(*alpha, color, true);
+	}
+
+} // namespace
 
 void PropertyParserColour::Initialize()
 {
@@ -168,43 +535,50 @@ bool PropertyParserColour::ParseColour(Colourb& colour, const String& value)
 	if (value.empty())
 		return false;
 
-	colour = {};
+	if (value[0] == '#')
+	{
+		colour = {};
+		return ParseHexColour(colour, value);
+	}
+
+	Color color;
+	if (!ParseColor(color, value, 0))
+		return false;
+	colour = ColorSpaces::ToColourb(color);
+	return true;
+}
+
+bool PropertyParserColour::ParseColor(Color& color, const String& in_value, int depth)
+{
+	if (depth > MaxColorDepth)
+		return false;
+
+	const String value = Trim(in_value);
+	if (value.empty())
+		return false;
 
 	if (value[0] == '#')
 	{
+		Colourb colour;
 		if (!ParseHexColour(colour, value))
 			return false;
-	}
-	else if (value.substr(0, 3) == "rgb")
-	{
-		if (!ParseRGBColour(colour, value))
-			return false;
-	}
-	else if (value.substr(0, 3) == "hsl")
-	{
-		if (!ParseHSLColour(colour, value))
-			return false;
-	}
-	else if (value.substr(0, 3) == "lab" || value.substr(0, 3) == "lch")
-	{
-		if (!ParseCIELABColour(colour, value))
-			return false;
-	}
-	else if (value.substr(0, 5) == "oklab" || value.substr(0, 5) == "oklch")
-	{
-		if (!ParseOklabColour(colour, value))
-			return false;
-	}
-	else
-	{
-		// Check for the specification of an HTML colour.
-		auto it = parser_data->html_colours.find(StringUtilities::ToLower(value));
-		if (it == parser_data->html_colours.end())
-			return false;
-		else
-			colour = it->second;
+		color = ColorSpaces::FromColourb(colour);
+		return true;
 	}
 
+	const size_t open = value.find('(');
+	if (open != String::npos)
+	{
+		if (value.back() != ')')
+			return false;
+		const String name = StringUtilities::ToLower(value.substr(0, open));
+		return ParseColorFunction(color, name, value.substr(open + 1, value.size() - open - 2), depth);
+	}
+
+	auto it = parser_data->html_colours.find(StringUtilities::ToLower(value));
+	if (it == parser_data->html_colours.end())
+		return false;
+	color = ColorSpaces::FromColourb(it->second);
 	return true;
 }
 
@@ -250,298 +624,112 @@ bool PropertyParserColour::ParseHexColour(Colourb& colour, const String& value)
 	return true;
 }
 
-bool PropertyParserColour::ParseRGBColour(Colourb& colour, const String& value)
+bool PropertyParserColour::ParseColorFunction(Color& color, const String& name, const String& arguments, int depth)
 {
+	if (name == "color-mix")
+		return ParseColorMix(color, arguments, depth);
+
 	StringList values;
-	values.reserve(4);
-	if (!GetColourFunctionValues(values, value, true))
+	bool comma = false;
+	if (!SplitArguments(arguments, values, comma))
 		return false;
 
-	// Check if we're parsing an 'rgba' or 'rgb' colour declaration.
-	if (value.size() > 3 && value[3] == 'a')
-	{
-		if (values.size() != 4)
-			return false;
-	}
-	else
-	{
-		if (values.size() != 3)
-			return false;
-
-		values.push_back("255");
-	}
-
-	// Parse the RGBA values.
-	for (int i = 0; i < 4; ++i)
-	{
-		int component;
-
-		// We're parsing a percentage value.
-		if (values[i].size() > 0 && values[i][values[i].size() - 1] == '%')
-			component = int((float)atof(values[i].substr(0, values[i].size() - 1).c_str()) * (255.0f / 100.0f));
-		// We're parsing a 0 -> 255 integer value.
-		else
-			component = atoi(values[i].c_str());
-
-		colour[i] = (byte)(Math::Clamp(component, 0, 255));
-	}
-
-	return true;
+	if (name == "rgb" || name == "rgba")
+		return ParseRGB(color, values, comma);
+	if (name == "hsl" || name == "hsla")
+		return ParseHSL(color, values, comma, false);
+	if (comma)
+		return false;
+	if (name == "hwb")
+		return ParseHSL(color, values, comma, true);
+	if (name == "lab")
+		return ParseLabLike(color, values, Space::Lab, 100.f, 125.f);
+	if (name == "lch")
+		return ParseLabLike(color, values, Space::LCH, 100.f, 150.f);
+	if (name == "oklab")
+		return ParseLabLike(color, values, Space::Oklab, 1.f, 0.4f);
+	if (name == "oklch")
+		return ParseLabLike(color, values, Space::Oklch, 1.f, 0.4f);
+	if (name == "color")
+		return ParsePredefined(color, values);
+	return false;
 }
 
-bool PropertyParserColour::ParseHSLColour(Colourb& colour, const String& value)
+bool PropertyParserColour::ParseColorMix(Color& color, const String& arguments, int depth)
 {
-	StringList values;
-	values.reserve(4);
-	if (!GetColourFunctionValues(values, value, true))
+	// color-mix(in <space> [<hue-method> hue]?, <color> <percentage>?, <color> <percentage>?)
+	StringList parts;
+	bool comma = false;
+	if (!SplitArguments(arguments, parts, comma) || !comma || parts.size() != 3)
 		return false;
 
-	// Check if we're parsing an 'hsla' or 'hsl' colour declaration.
-	if (value.size() > 3 && value[3] == 'a')
+	StringList method;
+	bool unused = false;
+	if (!SplitArguments(parts[0], method, unused) || method.size() < 2 || !EqualsNoCase(method[0], "in"))
+		return false;
+	Space space = Space::SRGB;
+	if (!ColorSpaces::ParseSpace(method[1], space))
+		return false;
+	ColorSpaces::HueInterpolation hue = ColorSpaces::HueInterpolation::Shorter;
+	if (method.size() == 4)
 	{
-		if (values.size() != 4)
+		if (!ColorSpaces::IsPolar(space) || !EqualsNoCase(method[3], "hue"))
 			return false;
-	}
-	else
-	{
-		if (values.size() != 3)
-			return false;
-
-		values.push_back("1.0");
-	}
-
-	// Parse the HSLA values.
-	Array<float, 4> vals;
-	// H is a number in degrees, A is a number between 0.0 and 1.0.
-	for (int i : {0, 3})
-		vals[i] = (float)atof(values[i].c_str());
-	// S and L are percentage values.
-	for (int i : {1, 2})
-		if (values[i].size() > 0 && values[i][values[i].size() - 1] == '%')
-			vals[i] = (float)atof(values[i].substr(0, values[i].size() - 1).c_str()) * (1.0f / 100.0f);
+		if (EqualsNoCase(method[2], "shorter"))
+			hue = ColorSpaces::HueInterpolation::Shorter;
+		else if (EqualsNoCase(method[2], "longer"))
+			hue = ColorSpaces::HueInterpolation::Longer;
+		else if (EqualsNoCase(method[2], "increasing"))
+			hue = ColorSpaces::HueInterpolation::Increasing;
+		else if (EqualsNoCase(method[2], "decreasing"))
+			hue = ColorSpaces::HueInterpolation::Decreasing;
 		else
 			return false;
-
-	HSLAToRGBA(vals);
-	for (int i = 0; i < 4; ++i)
-		colour[i] = (byte)(Math::Clamp((int)(vals[i] * 255.0f), 0, 255));
-
-	return true;
-}
-
-bool PropertyParserColour::ParseCIELABColour(Colourb& colour, const String& value)
-{
-	StringList values;
-	values.reserve(5);
-	if (!GetColourFunctionValues(values, value, false))
+	}
+	else if (method.size() != 2)
 		return false;
 
-	// Check if we have an alpha component.
-	if (values.size() == 5)
+	Color colors[2];
+	float percentages[2] = {};
+	bool has_percentage[2] = {};
+	for (int i = 0; i < 2; i++)
 	{
-		if (values[3] != "/")
+		StringList tokens;
+		if (!SplitArguments(parts[i + 1], tokens, unused) || tokens.empty() || tokens.size() > 2)
 			return false;
-
-		values[3] = std::move(values[4]);
-		values.pop_back();
-	}
-	else
-	{
-		if (values.size() != 3)
-			return false;
-
-		values.push_back("1.0");
-	}
-
-	Array<float, 4> lab_values;
-
-	// Parse lightness and alpha (same for both lab and lch).
-	for (int i : {0, 3})
-	{
-		// Value can either be 'none' (representing 0.0), a percentage between 0% and 100%, or a number (between 0.0 and 100.0 for lightness and between 0.0 and 1.0 for alpha).
-		if (values[i] == "none")
-			lab_values[i] = 0.0f;
-		else if (values[i][values[i].size() - 1] == '%')
+		String color_text = tokens[0];
+		if (tokens.size() == 2)
 		{
-			lab_values[i] = (float)atof(values[i].substr(0, values[i].size() - 1).c_str());
-			if (i == 3)
-				lab_values[i] /= 100.0f;
-		}
-		else
-			lab_values[i] = (float)atof(values[i].c_str());
-
-		lab_values[i] = Math::Clamp(lab_values[i], 0.0f, i == 0 ? 100.0f : 1.0f);
-	}
-
-	// Determine if colour is in CIELAB or CIELCh space.
-	if (value.substr(0, 3) == "lab")
-	{
-		// Parse A-axis (green-to-red) and B-axis (blue-to-yellow).
-		for (int i : {1, 2})
-		{
-			// Value can either be 'none' (representing 0.0), a percentage between -100% and +100% (representing -125.0 to +125.0), or a number.
-			if (values[i] == "none")
-				lab_values[i] = 0.0f;
-			else if (values[i][values[i].size() - 1] == '%')
-			{
-				static constexpr float cielab_axis_percentage_bound = 125.0f;
-				lab_values[i] = (float)atof(values[i].substr(0, values[i].size() - 1).c_str()) / 100.0f * cielab_axis_percentage_bound;
-			}
+			// The percentage before or after the color.
+			float value = 0.f;
+			if (ParsePercentage(tokens[1], value))
+				color_text = tokens[0];
+			else if (ParsePercentage(tokens[0], value))
+				color_text = tokens[1];
 			else
-				lab_values[i] = (float)atof(values[i].c_str());
-
-			// Whilst the axis values are theoretically unbounded, in practice, they only exist between -160.0 and +160.0.
-			static constexpr float cielab_axis_bound_limit = 160.0f;
-			lab_values[i] = Math::Clamp(lab_values[i], -cielab_axis_bound_limit, +cielab_axis_bound_limit);
+				return false;
+			if (value < 0.f || value > 100.f)
+				return false;
+			percentages[i] = value;
+			has_percentage[i] = true;
 		}
-	}
-	else
-	{
-		// Parse chroma; value can either be 'none' (representing 0.0), a percentage between 0% and 100% (representing 0.0 to 150.0), or a number.
-		float chroma = 0.0f;
-		if (values[1] == "none")
-			chroma = 0.0f;
-		else if (values[1][values[1].size() - 1] == '%')
-		{
-			static constexpr float cielch_maximum_percentage_chroma = 150.0f;
-			chroma = (float)atof(values[1].substr(0, values[1].size() - 1).c_str()) / 100.0f * cielch_maximum_percentage_chroma;
-		}
-		else
-			chroma = (float)atof(values[1].c_str());
-
-		// Whilst the chroma is theoretically unbounded, in practice, it does not exceed 230.0.
-		static constexpr float cielch_maximum_chroma = 230.0f;
-		chroma = Math::Clamp(chroma, 0.0f, cielch_maximum_chroma);
-
-		// Parse hue; value can either be 'none' (representing 0.0), or an angle.
-		float hue = 0.0f;
-		if (values[2] == "none")
-			hue = 0.0f;
-		else
-			hue = (float)atof(values[2].c_str());
-
-		// Convert LCh polar coordinates to LAB Cartesian coordinates.
-		lab_values[1] = chroma * Math::Cos(Math::DegreesToRadians(hue));
-		lab_values[2] = chroma * Math::Sin(Math::DegreesToRadians(hue));
-	}
-
-	CIELABToRGBA(lab_values);
-	for (int i = 0; i < 4; ++i)
-		colour[i] = (byte)(Math::Clamp((int)(lab_values[i] * 255.0f), 0, 255));
-
-	return true;
-}
-
-bool PropertyParserColour::ParseOklabColour(Colourb& colour, const String& value)
-{
-	StringList values;
-	values.reserve(5);
-	if (!GetColourFunctionValues(values, value, false))
-		return false;
-
-	// Check if we have an alpha component.
-	if (values.size() == 5)
-	{
-		if (values[3] != "/")
+		if (!ParseColor(colors[i], color_text, depth + 1))
 			return false;
-
-		values[3] = std::move(values[4]);
-		values.pop_back();
-	}
-	else
-	{
-		if (values.size() != 3)
-			return false;
-
-		values.push_back("1.0");
 	}
 
-	Array<float, 4> oklab_values;
-
-	// Parse lightness and alpha (same for both Oklab and Oklch).
-	for (int i : {0, 3})
-	{
-		// Value can either be 'none' (representing 0.0), a percentage between 0% and 100%, or a number between 0.0 and 1.0.
-		if (values[i] == "none")
-			oklab_values[i] = 0.0f;
-		else if (values[i][values[i].size() - 1] == '%')
-			oklab_values[i] = (float)atof(values[i].substr(0, values[i].size() - 1).c_str()) / 100.0f;
-		else
-			oklab_values[i] = (float)atof(values[i].c_str());
-
-		oklab_values[i] = Math::Clamp(oklab_values[i], 0.0f, 1.0f);
-	}
-
-	// Determine if colour is in Oklab or Oklch space.
-	if (value.substr(0, 5) == "oklab")
-	{
-		// Parse A-axis (green-to-red) and B-axis (blue-to-yellow).
-		for (int i : {1, 2})
-		{
-			// Value can either be 'none' (representing 0.0), a percentage between -100% and +100% (representing -0.4 to +0.4), or a number.
-			if (values[i] == "none")
-				oklab_values[i] = 0.0f;
-			else if (values[i][values[i].size() - 1] == '%')
-			{
-				static constexpr float oklab_axis_percentage_bound = 0.4f;
-				oklab_values[i] = (float)atof(values[i].substr(0, values[i].size() - 1).c_str()) / 100.0f * oklab_axis_percentage_bound;
-			}
-			else
-				oklab_values[i] = (float)atof(values[i].c_str());
-
-			// Whilst the axis values are theoretically unbounded, in practice, they only exist between -0.5 and +0.5.
-			static constexpr float oklab_axis_bound_limit = 0.5f;
-			oklab_values[i] = Math::Clamp(oklab_values[i], -oklab_axis_bound_limit, +oklab_axis_bound_limit);
-		}
-	}
-	else
-	{
-		// Parse chroma; value can either be 'none' (representing 0.0), a percentage between 0% and 100% (representing 0.0 to 0.4), or a number.
-		float chroma = 0.0f;
-		if (values[1] == "none")
-			chroma = 0.0f;
-		else if (values[1][values[1].size() - 1] == '%')
-		{
-			static constexpr float oklch_maximum_percentage_chroma = 0.4f;
-			chroma = (float)atof(values[1].substr(0, values[1].size() - 1).c_str()) / 100.0f * oklch_maximum_percentage_chroma;
-		}
-		else
-			chroma = (float)atof(values[1].c_str());
-
-		// Whilst the chroma is theoretically unbounded, in practice, it does not exceed 0.5.
-		static constexpr float oklch_maximum_chroma = 0.5f;
-		chroma = Math::Clamp(chroma, 0.0f, oklch_maximum_chroma);
-
-		// Parse hue; value can either be 'none' (representing 0.0), or an angle.
-		float hue = 0.0f;
-		if (values[2] == "none")
-			hue = 0.0f;
-		else
-			hue = (float)atof(values[2].c_str());
-
-		// Convert Oklch polar coordinates to Oklab Cartesian coordinates.
-		oklab_values[1] = chroma * Math::Cos(Math::DegreesToRadians(hue));
-		oklab_values[2] = chroma * Math::Sin(Math::DegreesToRadians(hue));
-	}
-
-	OklabToRGBA(oklab_values);
-	for (int i = 0; i < 4; ++i)
-		colour[i] = (byte)(Math::Clamp((int)(oklab_values[i] * 255.0f), 0, 255));
-
-	return true;
-}
-
-bool PropertyParserColour::GetColourFunctionValues(StringList& values, const String& value, bool is_comma_separated)
-{
-	size_t find = value.find('(');
-	if (find == String::npos)
+	// CSS Color 5, 3.1: normalizing the percentages.
+	if (!has_percentage[0] && !has_percentage[1])
+		percentages[0] = percentages[1] = 50.f;
+	else if (!has_percentage[0])
+		percentages[0] = 100.f - percentages[1];
+	else if (!has_percentage[1])
+		percentages[1] = 100.f - percentages[0];
+	const float sum = percentages[0] + percentages[1];
+	if (sum <= 0.f)
 		return false;
+	const float alpha_multiplier = (sum < 100.f ? sum * 0.01f : 1.f);
 
-	size_t begin_values = find + 1;
-
-	StringUtilities::ExpandString(values, value.substr(begin_values, value.rfind(')') - begin_values), is_comma_separated ? ',' : ' ',
-		!is_comma_separated);
-
+	color = ColorSpaces::Mix(space, hue, colors[0], colors[1], percentages[0] / sum, alpha_multiplier);
 	return true;
 }
 
