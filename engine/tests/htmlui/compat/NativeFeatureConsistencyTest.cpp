@@ -72,6 +72,27 @@ namespace {
         {ForkFeature::Important, SampleKind::Rule, "color: red !important", ".sample{color:#ff0000ff;", ""},
         {ForkFeature::CssWideKeywords, SampleKind::Declaration, "color: inherit", "var(", ""},
         {ForkFeature::Grid, SampleKind::Declaration, "display: grid", "display:flex", ""},
+        // p3-animation: the transition and animation properties as CSS writes them, translate / rotate / scale
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "animation: spin 1s ease-in 0.5s 2 reverse both paused", "spin-rev", ""},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "animation: spin 2s 1.5", "", "HTMLUI-CSS-0021"},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "animation-name: spin", "-html-animation-fill:none", ""},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "animation-duration: 200ms", "-html-animation-fill:none", ""},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "animation-timing-function: ease-in-out", "-html-animation-fill:none", ""},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "animation-delay: -0.5s", "-html-animation-fill:none", ""},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "animation-iteration-count: infinite", "-html-animation-fill:none", ""},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "animation-direction: alternate-reverse", "-html-animation-fill:none", ""},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "animation-fill-mode: both", "-html-animation-fill:forwards", ""},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "animation-play-state: paused", "-html-animation-fill:none", ""},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "animation-composition: replace", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "transition: opacity 0.2s ease-in 0.1s allow-discrete, all 1s", "transition:all1s", ""},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "transition-property: opacity", "transition:none", ""},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "transition-duration: 200ms", "transition:all0.2s", ""},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "transition-timing-function: steps(4, jump-start)", "transition:", ""},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "transition-delay: 0.5s", "transition:", ""},
+        {ForkFeature::AnimationLonghands, SampleKind::Declaration, "transition-behavior: allow-discrete", "", "HTMLUI-CSS-0003"},
+        {ForkFeature::IndividualTransforms, SampleKind::Declaration, "translate: 10px 20%", "transform:translate(10px,20%)", ""},
+        {ForkFeature::IndividualTransforms, SampleKind::Declaration, "rotate: x 45deg", "transform:rotatex(45deg)", ""},
+        {ForkFeature::IndividualTransforms, SampleKind::Declaration, "scale: 1.5 2", "transform:scale(1.5,2)", ""},
     };
 
     // lower case, no white space, no trailing ';'
