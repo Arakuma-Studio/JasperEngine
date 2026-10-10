@@ -1633,6 +1633,26 @@
 		524D4C555E5E3E6D60EA6799 /* ElementTransitions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55A253F2CACC519A83 /* ElementTransitions.cpp */; };
 		524D4C55FD256335C4F7A034 /* Easing.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BD039C8868B7E34A /* Easing.cpp */; };
 		524D4C555A1B3D505AB2EC70 /* Easing.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BD039C8868B7E34A /* Easing.cpp */; };
+		524D4C55DB1768B4D480AD70 /* GridTypes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C558631FF96FEC156CD /* GridTypes.cpp */; };
+		524D4C552A908AFC9AAA42A9 /* GridTypes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C558631FF96FEC156CD /* GridTypes.cpp */; };
+		524D4C555871BFC1B6BA95D9 /* GridTrackSizing.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BE7B5F79F6527CA5 /* GridTrackSizing.cpp */; };
+		524D4C555C92277D70325F12 /* GridTrackSizing.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BE7B5F79F6527CA5 /* GridTrackSizing.cpp */; };
+		524D4C558010A7413CAFAC8E /* GridPlacement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5593F94FB26BA6B149 /* GridPlacement.cpp */; };
+		524D4C55DD7B4F20A2B70E31 /* GridPlacement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5593F94FB26BA6B149 /* GridPlacement.cpp */; };
+		524D4C55792FFC9C73D8E95F /* GridOccupancy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55B4FE7387CEB33469 /* GridOccupancy.cpp */; };
+		524D4C55B3D1D28692220605 /* GridOccupancy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55B4FE7387CEB33469 /* GridOccupancy.cpp */; };
+		524D4C55892CC6FC50C7E38B /* GridNamedLines.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5563F6072971133EF0 /* GridNamedLines.cpp */; };
+		524D4C55583552455D556BED /* GridNamedLines.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5563F6072971133EF0 /* GridNamedLines.cpp */; };
+		524D4C55420599827594E6F3 /* GridItemMeasure.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C559F846DAD47C11EEA /* GridItemMeasure.cpp */; };
+		524D4C55314BD28AAFB854EC /* GridItemMeasure.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C559F846DAD47C11EEA /* GridItemMeasure.cpp */; };
+		524D4C551DCA7B02A213E823 /* GridFormattingContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55248EF45A1D763FDF /* GridFormattingContext.cpp */; };
+		524D4C557DEACE8956861D86 /* GridFormattingContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55248EF45A1D763FDF /* GridFormattingContext.cpp */; };
+		524D4C55E91491EF5D478EAD /* GridExplicit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55A3FD4632A30EB118 /* GridExplicit.cpp */; };
+		524D4C5590997B9278E535B0 /* GridExplicit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55A3FD4632A30EB118 /* GridExplicit.cpp */; };
+		524D4C55E015D893B39E81A2 /* GridAlignment.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C553EEDA2E46A7C770D /* GridAlignment.cpp */; };
+		524D4C550B7765080E41C089 /* GridAlignment.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C553EEDA2E46A7C770D /* GridAlignment.cpp */; };
+		524D4C5597F55F44F529FBA4 /* GridStyleValues.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5586FD47C4160E8971 /* GridStyleValues.cpp */; };
+		524D4C55C7DF5EF73370C681 /* GridStyleValues.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5586FD47C4160E8971 /* GridStyleValues.cpp */; };
 		524D4C55A8F24B08E71520C8 /* PropertyParserAlignment.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55C0A526E3E5E2A661 /* PropertyParserAlignment.cpp */; };
 		524D4C557F56782963237492 /* PropertyParserAlignment.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55C0A526E3E5E2A661 /* PropertyParserAlignment.cpp */; };
 		524D4C554F258E5F315812A8 /* StyleValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C558E983D012991D5CE /* StyleValue.cpp */; };
@@ -4692,6 +4712,16 @@
 		524D4C55CF39F53DAE41364C /* IndividualTransforms.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = IndividualTransforms.cpp; sourceTree = "<group>"; };
 		524D4C55A253F2CACC519A83 /* ElementTransitions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementTransitions.cpp; sourceTree = "<group>"; };
 		524D4C55BD039C8868B7E34A /* Easing.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Easing.cpp; sourceTree = "<group>"; };
+		524D4C558631FF96FEC156CD /* GridTypes.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GridTypes.cpp; sourceTree = "<group>"; };
+		524D4C55BE7B5F79F6527CA5 /* GridTrackSizing.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GridTrackSizing.cpp; sourceTree = "<group>"; };
+		524D4C5593F94FB26BA6B149 /* GridPlacement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GridPlacement.cpp; sourceTree = "<group>"; };
+		524D4C55B4FE7387CEB33469 /* GridOccupancy.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GridOccupancy.cpp; sourceTree = "<group>"; };
+		524D4C5563F6072971133EF0 /* GridNamedLines.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GridNamedLines.cpp; sourceTree = "<group>"; };
+		524D4C559F846DAD47C11EEA /* GridItemMeasure.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GridItemMeasure.cpp; sourceTree = "<group>"; };
+		524D4C55248EF45A1D763FDF /* GridFormattingContext.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GridFormattingContext.cpp; sourceTree = "<group>"; };
+		524D4C55A3FD4632A30EB118 /* GridExplicit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GridExplicit.cpp; sourceTree = "<group>"; };
+		524D4C553EEDA2E46A7C770D /* GridAlignment.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GridAlignment.cpp; sourceTree = "<group>"; };
+		524D4C5586FD47C4160E8971 /* GridStyleValues.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GridStyleValues.cpp; sourceTree = "<group>"; };
 		524D4C55C0A526E3E5E2A661 /* PropertyParserAlignment.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserAlignment.cpp; sourceTree = "<group>"; };
 		524D4C558E983D012991D5CE /* StyleValue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StyleValue.cpp; sourceTree = "<group>"; };
 		524D4C5597475D670B4FAC65 /* CalculationResolver.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CalculationResolver.cpp; sourceTree = "<group>"; };
@@ -8790,6 +8820,7 @@
 				524D4C5597475D670B4FAC65 /* CalculationResolver.cpp */,
 				524D4C558E983D012991D5CE /* StyleValue.cpp */,
 				524D4C55C0A526E3E5E2A661 /* PropertyParserAlignment.cpp */,
+				524D4C5586FD47C4160E8971 /* GridStyleValues.cpp */,
 				524D4C55BD039C8868B7E34A /* Easing.cpp */,
 				524D4C55A253F2CACC519A83 /* ElementTransitions.cpp */,
 				524D4C55CF39F53DAE41364C /* IndividualTransforms.cpp */,
@@ -8853,6 +8884,15 @@
 				48544D4C0000000000000269 /* ReplacedFormattingContext.cpp */,
 				48544D4C000000000000026C /* TableFormattingContext.cpp */,
 				48544D4C000000000000026F /* TableFormattingDetails.cpp */,
+				524D4C553EEDA2E46A7C770D /* GridAlignment.cpp */,
+				524D4C55A3FD4632A30EB118 /* GridExplicit.cpp */,
+				524D4C55248EF45A1D763FDF /* GridFormattingContext.cpp */,
+				524D4C559F846DAD47C11EEA /* GridItemMeasure.cpp */,
+				524D4C5563F6072971133EF0 /* GridNamedLines.cpp */,
+				524D4C55B4FE7387CEB33469 /* GridOccupancy.cpp */,
+				524D4C5593F94FB26BA6B149 /* GridPlacement.cpp */,
+				524D4C55BE7B5F79F6527CA5 /* GridTrackSizing.cpp */,
+				524D4C558631FF96FEC156CD /* GridTypes.cpp */,
 			);
 			name = Layout;
 			path = Source/Core/Layout;
@@ -12740,6 +12780,16 @@
 				524D4C55B48FED6B6C843B8B /* IndividualTransforms.cpp in Sources */,
 				524D4C550338B0929C236D2D /* ElementTransitions.cpp in Sources */,
 				524D4C55FD256335C4F7A034 /* Easing.cpp in Sources */,
+				524D4C55DB1768B4D480AD70 /* GridTypes.cpp in Sources */,
+				524D4C555871BFC1B6BA95D9 /* GridTrackSizing.cpp in Sources */,
+				524D4C558010A7413CAFAC8E /* GridPlacement.cpp in Sources */,
+				524D4C55792FFC9C73D8E95F /* GridOccupancy.cpp in Sources */,
+				524D4C55892CC6FC50C7E38B /* GridNamedLines.cpp in Sources */,
+				524D4C55420599827594E6F3 /* GridItemMeasure.cpp in Sources */,
+				524D4C551DCA7B02A213E823 /* GridFormattingContext.cpp in Sources */,
+				524D4C55E91491EF5D478EAD /* GridExplicit.cpp in Sources */,
+				524D4C55E015D893B39E81A2 /* GridAlignment.cpp in Sources */,
+				524D4C5597F55F44F529FBA4 /* GridStyleValues.cpp in Sources */,
 				524D4C55A8F24B08E71520C8 /* PropertyParserAlignment.cpp in Sources */,
 				524D4C554F258E5F315812A8 /* StyleValue.cpp in Sources */,
 				524D4C55EF9E59639250D13A /* CalculationResolver.cpp in Sources */,
@@ -12954,6 +13004,16 @@
 				524D4C5565FAFDAB83B6E72D /* IndividualTransforms.cpp in Sources */,
 				524D4C555E5E3E6D60EA6799 /* ElementTransitions.cpp in Sources */,
 				524D4C555A1B3D505AB2EC70 /* Easing.cpp in Sources */,
+				524D4C552A908AFC9AAA42A9 /* GridTypes.cpp in Sources */,
+				524D4C555C92277D70325F12 /* GridTrackSizing.cpp in Sources */,
+				524D4C55DD7B4F20A2B70E31 /* GridPlacement.cpp in Sources */,
+				524D4C55B3D1D28692220605 /* GridOccupancy.cpp in Sources */,
+				524D4C55583552455D556BED /* GridNamedLines.cpp in Sources */,
+				524D4C55314BD28AAFB854EC /* GridItemMeasure.cpp in Sources */,
+				524D4C557DEACE8956861D86 /* GridFormattingContext.cpp in Sources */,
+				524D4C5590997B9278E535B0 /* GridExplicit.cpp in Sources */,
+				524D4C550B7765080E41C089 /* GridAlignment.cpp in Sources */,
+				524D4C55C7DF5EF73370C681 /* GridStyleValues.cpp in Sources */,
 				524D4C557F56782963237492 /* PropertyParserAlignment.cpp in Sources */,
 				524D4C55049A9C363FCB9CA5 /* StyleValue.cpp in Sources */,
 				524D4C55B253A4F9148216D9 /* CalculationResolver.cpp in Sources */,

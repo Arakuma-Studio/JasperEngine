@@ -1,0 +1,7 @@
+{
+ "comment": "negative lines count from the end of the explicit grid; 'span 2 / -2' ends at a line and spans back; a line past the template adds an implicit row",
+ "viewport": [
+  230,
+  160
+ ]
+}

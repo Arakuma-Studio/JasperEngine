@@ -1,0 +1,7 @@
+{
+ "comment": "grid-template: rows / columns; auto rows take the header and footer heights, the 1fr row the rest",
+ "viewport": [
+  300,
+  200
+ ]
+}

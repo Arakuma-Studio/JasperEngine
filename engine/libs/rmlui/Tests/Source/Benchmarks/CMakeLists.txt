@@ -12,6 +12,7 @@ add_executable(${TARGET_NAME}
 	main.cpp
 	DataBinding.cpp
 	Flexbox.cpp
+	Grid.cpp
 	FontEffect.cpp
 	WidgetTextInput.cpp
 )

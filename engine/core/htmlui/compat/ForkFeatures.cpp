@@ -29,7 +29,7 @@ namespace {
         true,    // TimingFunctions (phase 3, p3-animation: CSS easing functions; docs/html-ui/FORK.md P3-A1)
         false,   // Important
         false,   // CssWideKeywords
-        false,   // Grid
+        true,    // Grid (phase 3, p3-grid: CSS Grid, a port of Taffy; docs/html-ui/FORK.md P3-G1..P3-G3)
         true,    // AnimationLonghands (phase 3, p3-animation: FORK.md P3-A1..P3-A4)
         true,    // IndividualTransforms (phase 3, p3-animation: FORK.md P3-A5)
     };

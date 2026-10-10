@@ -1,0 +1,7 @@
+{
+ "comment": "grid-template-areas places the items by area name whatever their order; a 1fr row and column take the rest",
+ "viewport": [
+  300,
+  200
+ ]
+}

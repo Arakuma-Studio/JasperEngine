@@ -23,7 +23,13 @@ HTML parsing of the HTML/CSS UI's compatibility layer:
 |---|---|---|---|
 | [lexbor](https://github.com/lexbor/lexbor) | 3.1.0 (`master` at `f4cbbcd91359`, no release tag yet) | `engine/libs/lexbor/` (Apache-2.0: `LICENSE`, `NOTICE`; one local patch, `PATCHES.md`) | HTML5 parsing of `.html` documents (`engine/core/htmlui/compat/html/HtmlParser`) |
 
-Test data: the html5lib tree-construction tests (MIT, `engine/tests/htmlui/fixtures/compat/html5lib/LICENSE`).
+Layout of the HTML/CSS UI:
+
+| Code | Version | Location | License | Used for |
+|---|---|---|---|---|
+| [Taffy](https://github.com/DioxusLabs/taffy) (`src/compute/grid`, ported to C++) | `master` at `8409f3f8c6de` | `engine/libs/rmlui/Source/Core/Layout/Grid*` (`engine/libs/rmlui/LICENSE-taffy.txt`) | MIT | CSS Grid layout in the RmlUi fork |
+
+Test data: the html5lib tree-construction tests (MIT, `engine/tests/htmlui/fixtures/compat/html5lib/LICENSE`). Taffy's layout test fixtures (MIT, `engine/tests/htmlui/fixtures/taffy/LICENSE-taffy.txt`).
 
 Icons of the HTML/CSS UI:
 
