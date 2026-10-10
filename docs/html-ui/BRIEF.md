@@ -53,6 +53,13 @@ additions only; append, don't reorder.
   tests your change could affect (the UI ones: `test_ui_anchors.py`).
 - Look at the screenshots you produce. A test that passes while the image is wrong is a
   failing test.
+- Performance tests (`CompatPerf.*`, `CompatCssPerf.*`, phase 2 spec 3.14) measure this
+  process's own work, but a loaded host still disturbs them, and several agents build at
+  once. If one fails while other builds are running, rerun it alone
+  (`HTMLUI_TEST_ARGS=--gtest_filter=CompatPerf.*:CompatCssPerf.*`) before treating it as a
+  regression, and say in your report which runs passed and failed. Never raise a target,
+  never commit a slack factor (`JASPER_HTMLUI_PERF_SLACK` is for a local look, not for a
+  result), never skip or disable one. They are gated at phase acceptance by the integrator.
 - Kill only processes you started, by PID. Never `pkill -f jasperengine-editor`. Clean up
   only the scratch directories your own runs created (exact paths), never by wildcard.
 
