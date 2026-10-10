@@ -124,8 +124,16 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
         featureSets.push_back({"all features", all});
     }
     for (const ShaderManifestKeywords& group : manifest.keywords){
-        for (const std::string& value : group.values)
+        for (const std::string& value : group.values){
             featureSets.push_back({"keyword " + group.group + "_" + value, {group.group + "_" + value}});
+            // a keyword may only matter with a feature (a second layer's combine mode)
+            if (!manifest.features.empty()){
+                std::vector<std::string> list{group.group + "_" + value};
+                for (const ShaderManifestFeature& feature : manifest.features)
+                    list.push_back(feature.define);
+                featureSets.push_back({"all features, keyword " + group.group + "_" + value, list});
+            }
+        }
     }
     // each keyword value with every feature on (a keyword often changes what the features read)
     if (!manifest.features.empty()){
