@@ -915,8 +915,8 @@ when the element loads them (hook H8), and on SVG used by CSS layers:
 
 ```cpp
 struct RmlSourceMap {
-    std::vector<SourceRef> elementRefs;   // index = data-htmlui-loc
-    std::vector<SourceRef> lineRefs;      // RML line (1-based) -> source
+    SourceRefList elementRefs;            // index = data-htmlui-loc
+    SourceRefList lineRefs;               // RML line (1-based) -> source
 };
 ```
 
@@ -1701,7 +1701,12 @@ public:
     void atRule(std::string_view text, SourceRef);   // @font-face, @keyframes blocks
     std::string take(RcssLineMap& lines);            // output + output line -> SourceRef
 };
-struct RcssLineMap { std::vector<SourceRef> lines; };
+struct RcssLineMap { SourceRefList lines; };   // SourceRefList (p2-perf): the entries of a
+                                              // std::vector<SourceRef> in 2 to 4 bytes each (an
+                                              // entry is written as its difference from the one
+                                              // before; every 32nd is kept whole): size(),
+                                              // operator[] and iteration give SourceRefs by value,
+                                              // push_back appends; entries are not changed in place
 ```
 
 Output is plain, one construct per line, no comments, `\n` line ends. RmlUi's warnings
@@ -2488,11 +2493,12 @@ Debug builds are not measured. lexbor adds about 0.9 MB to the engine binary (mo
 entity and interface tables) and the Lucide pack 140 KB; the Web build size is reported in
 the p2-html report.
 
-The tests of the rows (p2-perf, third round; `engine/tests/htmlui/compat`): HTML stage
-`CompatPerf.HtmlStage`, CSS `CompatCssPerf.FiftyKilobyteSheet`, cold compile
-`CompatPerf.ColdCompile`, cache hit `CompatPerf.CacheHit`, UA sheet
+The tests of the rows (p2-perf; `engine/tests/htmlui/compat`): HTML stage
+`CompatPerf.HtmlStage`, CSS `CompatCssPerf.FiftyKilobyteSheet` (the row's 1 200 rules) and
+`CompatCssPerf.FiftyKilobyteSheetOfPageRules` (the same size with the rules of a real sheet),
+cold compile `CompatPerf.ColdCompile`, cache hit `CompatPerf.CacheHit`, UA sheet
 `CompatCssPerf.UserAgentSheet`, fragment `CompatPerf.Fragment`, FocusTracker
-`CompatFocusTest.PerFrameCost`, memory `CompatPerf.DISABLED_MemoryKeptPerDocument`.
+`CompatFocusTest.PerFrameCost`, memory `CompatPerf.MemoryKeptPerDocument`.
 
 - **What a time gate measures** (`PerfFixtures.h`, `gatedCpuMs`): one measurement is the median
   CPU time of 20 runs after 3 warm-ups, as it always was; the gate takes the least of up to 15
@@ -2523,13 +2529,16 @@ The tests of the rows (p2-perf, third round; `engine/tests/htmlui/compat`): HTML
   sheet, the fragment, the cache hit and the focus tracker; the HTML stage is at 76%, the
   CSS sheet at 98% and the cold compile at 95% at that load (unpinned, three runs of the CSS
   gate measured 4.06 to 4.32 ms at load 30 to 35: it fails there).
-- **Memory kept per document is not met**: the document of the cold compile keeps 4.56 × its
-  HTML and CSS (486 KB for 106 KB; 5.56 × before its buffers were trimmed to their size): its
-  RML 0.94 × (every element carries `data-htmlui-loc`), its RCSS 0.98 ×, the copies of both
-  sources that locate runtime diagnostics 1.0 ×, the RCSS line map 0.56 × (12 bytes a line),
-  the 119 diagnostics 0.5 ×, the RML source map 0.46 ×. The gate exists and is disabled
-  (`--gtest_also_run_disabled_tests` runs it); reaching 4 × needs a smaller line map or
-  source map entry, which are contracts of other packages.
+- **The sheet of page rules** (`representativeSheet(shape, true)`): the same generator with
+  the pages' declarations a rule (3.7; 525 rules, 1 960 declarations in 56 KB), written a
+  declaration a line as the pages are. It has fewer selectors and more declarations than
+  the row's sheet and costs about the same.
+- **Memory kept per document** (`CompatPerf.MemoryKeptPerDocument`: the heap in use while the
+  document of the cold compile is held): 3.72 × its HTML and CSS (396 KB for 106 KB). It was
+  5.56 × before the document trimmed its buffers and 4.56 × before the line maps and the
+  source map became `SourceRefList`s: RML 0.94 ×, RCSS 0.98 ×, the copies of both sources
+  1.0 ×, 119 diagnostics 0.42 ×, the RCSS line map 0.12 × (was 0.56 ×), the RML source map
+  0.11 × (was 0.46 ×).
 
 ### 3.15 Platform notes
 
