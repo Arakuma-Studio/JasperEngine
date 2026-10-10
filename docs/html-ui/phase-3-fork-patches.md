@@ -1287,6 +1287,12 @@ table above):
   shrink-to-fit width is at least the min-content width (P3-TX4, in `LayoutDetails.cpp`).
   `FixtureRunner` boxes are the union of an element's boxes (an inline split over lines), as
   `getBoundingClientRect`.
+  Taffy known failures: the baseline's 52 `text-zwsp` lines and the 119 p3-grid re-owned to
+  p3-text once grid was native (171): 125 pass (14 + 111) and are removed; the 46 others (38 + 8)
+  fail for layout causes and are re-owned to p3-layout, each with a `(p3-text: …)` note naming it
+  (aspect-ratio, sizing keywords, flex automatic minimum size, `flex-basis: content`, absolute
+  positioning; the two float fixtures: a definite-width block adds its floats to its shrink-to-fit
+  width). No `text-zwsp` line is left.
 - **`text-transform`.** `uppercase`/`lowercase` use the full mappings (SpecialCasing's unconditional
   ones: `ß` → `SS`, `ﬁ` → `FI`, `İ` → `i̇`, final sigma); `capitalize` uses the *simple* titlecase
   mapping (`ß` stays) and Chromium's word starts (`Foo-Bar`, `Don't`, `E.G.`, `3rd`, `X_y`), both
