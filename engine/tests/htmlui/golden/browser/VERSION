@@ -1,0 +1,4 @@
+Chromium 153.0.8010.12 (chrome-headless-shell revision 1243), playwright-core 1.63.0
+Fonts: the fixtures' @font-face files (engine/tests/htmlui/fonts); generic families: the engine's built-in Roboto through fontconfig
+Taffy fixtures: viewport 1024x768, boxes only
+Written by tools/htmlui/render-reference.mjs --fixtures; do not edit.
