@@ -11,6 +11,7 @@
 #include "htmlui/compat/css/Units.h"
 
 #include <algorithm>
+#include <cstring>
 
 using namespace jasperengine::htmlui::compat;
 
@@ -1572,7 +1573,7 @@ namespace {
     // An identifier of ASCII name characters at `i`, written by appendIdent as it is and read
     // by the tokenizer as one ident token: a letter or '_' first, or '-' and a letter or '_'.
     // The index after it, or npos (the slow path reads the rest: escapes, non-ASCII, "--").
-    size_t scanIdent(std::string_view text, size_t i){
+    inline size_t scanIdent(std::string_view text, size_t i){
         const size_t size = text.size();
         if (i < size && text[i] == '-')
             i++;
@@ -1589,13 +1590,18 @@ namespace {
         return i;
     }
 
-    bool scanSpace(char c){
+    inline bool scanSpace(char c){
         return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f';
     }
 
-    void appendLower(std::string& out, std::string_view text){
+    inline char* writeLower(char* w, std::string_view text){
         for (const char c : text)
-            out += (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+            *w++ = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+        return w;
+    }
+    inline char* write(char* w, std::string_view text){
+        std::memcpy(w, text.data(), text.size());
+        return w + text.size();
     }
 
     bool equalsLower(std::string_view text, std::string_view lowercase){
@@ -1623,32 +1629,31 @@ namespace {
                n == "only-of-type";
     }
 
-    // One selector of a scanned list, written as serialize() writes it into `text` (after what
-    // it holds); false when the scan cannot decide it. `couldBeRoot`: Rewriter::couldBeRoot of
-    // its first compound.
-    bool scanComplex(std::string_view source, size_t& i, const SelectorOptions& options, bool author, std::string& text,
-                     uint32_t& specificity, bool& couldBeRoot){
+    // One selector of a scanned list, written as serialize() writes it at `w` (which has room
+    // for three bytes a byte of the source and four more); the end of what it wrote, or nullptr
+    // when the scan cannot decide it. `couldBeRoot`: Rewriter::couldBeRoot of its first compound.
+    char* scanComplex(std::string_view source, size_t& i, const SelectorOptions& options, char* w, uint32_t& specificity,
+                      bool& couldBeRoot){
         const size_t size = source.size();
         specificity = 0;
         couldBeRoot = true;
         bool firstCompound = true;
         while (true){
             // a compound: [type | *] (.class | #id | [attr] | :pseudo-class)*
-            const size_t compoundStart = text.size();
             bool universal = false, others = false;
             if (i < size && source[i] == '*'){
                 universal = true;
                 i++;
                 if (i < size && source[i] == '|')
-                    return false;
+                    return nullptr;
             }else if (i < size && (scanNameStart((unsigned char)source[i]) || source[i] == '-')){
                 const size_t end = scanIdent(source, i);
                 if (end == std::string_view::npos || (end < size && source[end] == '|'))
-                    return false;
+                    return nullptr;
                 const std::string_view name = source.substr(i, end - i);
                 if (equalsLower(name, "html") || equalsLower(name, "body") || equalsLower(name, "template"))
-                    return false;
-                appendLower(text, name);
+                    return nullptr;
+                w = writeLower(w, name);
                 specificity += 10000;
                 couldBeRoot = couldBeRoot && !firstCompound;
                 others = true;
@@ -1659,92 +1664,92 @@ namespace {
                 if (c == '.' || c == '#'){
                     const size_t end = scanIdent(source, i + 1);
                     if (end == std::string_view::npos)
-                        return false;
+                        return nullptr;
                     const std::string_view name = source.substr(i + 1, end - i - 1);
                     if (c == '#'){
                         if (name == "htmlui-root" || (!options.rootId.empty() && name == options.rootId))
-                            return false;
+                            return nullptr;
                         specificity += 1000000;
                         couldBeRoot = couldBeRoot && !firstCompound;
                     }else{
                         specificity += 100000;
-                        if (firstCompound && std::find(options.rootClasses.begin(), options.rootClasses.end(), name) == options.rootClasses.end())
+                        if (firstCompound && couldBeRoot &&
+                            std::find(options.rootClasses.begin(), options.rootClasses.end(), name) == options.rootClasses.end())
                             couldBeRoot = false;
                     }
-                    text.append(source.data() + i, end - i);
+                    w = write(w, source.substr(i, end - i));
                     i = end;
                 }else if (c == '['){
                     // [name] or [name op value], nothing else inside (no white space, no flag)
                     const size_t nameEnd = scanIdent(source, i + 1);
                     if (nameEnd == std::string_view::npos || nameEnd >= size)
-                        return false;
+                        return nullptr;
                     const std::string_view name = source.substr(i + 1, nameEnd - i - 1);
                     size_t j = nameEnd;
-                    text += '[';
-                    text.append(name.data(), name.size());
+                    *w++ = '[';
+                    w = write(w, name);
                     if (source[j] != ']'){
                         if (source[j] == '='){
-                            text += '=';
+                            *w++ = '=';
                             j++;
                         }else if ((source[j] == '~' || source[j] == '|' || source[j] == '^' || source[j] == '$' || source[j] == '*') &&
                                   j + 1 < size && source[j + 1] == '='){
-                            text.append(source.data() + j, 2);
+                            *w++ = source[j];
+                            *w++ = '=';
                             j += 2;
                         }else{
-                            return false;
+                            return nullptr;
                         }
                         // the value: an ident or a string, written as a string (appendString)
                         if (j >= size)
-                            return false;
+                            return nullptr;
+                        size_t valueBegin = j, valueEnd = j;
                         if (source[j] == '"' || source[j] == '\''){
                             const char quote = source[j];
                             size_t k = j + 1;
                             while (k < size && source[k] != quote){
                                 const unsigned char v = (unsigned char)source[k];
                                 if (v <= 0x20 || v >= 0x7F || v == '"' || v == '\\' || v == ']')
-                                    return false;
+                                    return nullptr;
                                 k++;
                             }
                             if (k >= size)
-                                return false;
-                            text += '"';
-                            text.append(source.data() + j + 1, k - j - 1);
-                            text += '"';
+                                return nullptr;
+                            valueBegin = j + 1;
+                            valueEnd = k;
                             j = k + 1;
                         }else{
-                            const size_t end = scanIdent(source, j);
-                            if (end == std::string_view::npos)
-                                return false;
-                            text += '"';
-                            text.append(source.data() + j, end - j);
-                            text += '"';
-                            j = end;
+                            valueEnd = scanIdent(source, j);
+                            if (valueEnd == std::string_view::npos)
+                                return nullptr;
+                            j = valueEnd;
                         }
+                        *w++ = '"';
+                        w = write(w, source.substr(valueBegin, valueEnd - valueBegin));
+                        *w++ = '"';
                         if (j >= size || source[j] != ']')
-                            return false;
+                            return nullptr;
                     }
-                    text += ']';
+                    *w++ = ']';
                     i = j + 1;
                     specificity += 100000;
-                    if (firstCompound){
+                    if (firstCompound && couldBeRoot){
                         bool found = false;
-                        for (const std::string& a : options.rootAttributes){
-                            if (equalsNoCase(a, name))
-                                found = true;
-                        }
+                        for (const std::string& a : options.rootAttributes)
+                            found = found || equalsNoCase(a, name);
                         if (!found)
                             couldBeRoot = false;
                     }
                 }else if (c == ':'){
                     const size_t end = scanIdent(source, i + 1);
                     if (end == std::string_view::npos || (end < size && source[end] == '('))
-                        return false;
-                    const size_t at = text.size();
-                    text += ':';
-                    appendLower(text, source.substr(i + 1, end - i - 1));
-                    const std::string_view name = std::string_view(text).substr(at + 1);
+                        return nullptr;
+                    *w++ = ':';
+                    char* const nameStart = w;
+                    w = writeLower(w, source.substr(i + 1, end - i - 1));
+                    const std::string_view name(nameStart, (size_t)(w - nameStart));
                     if (!keptPseudoClassName(name))
-                        return false;
+                        return nullptr;
                     specificity += 100000;
                     if (firstCompound && structuralPseudoClassName(name))
                         couldBeRoot = false;
@@ -1755,10 +1760,10 @@ namespace {
                 others = true;
             }
             if (!universal && !others)
-                return false;
+                return nullptr;
             // (a universal selector is written only when the compound has nothing else)
             if (universal && !others)
-                text.insert(text.begin() + (std::ptrdiff_t)compoundStart, '*');
+                *w++ = '*';
             firstCompound = false;
 
             // a combinator, the end of the selector, or the end of the list
@@ -1768,19 +1773,19 @@ namespace {
                 i++;
             }
             if (i >= size || source[i] == ',')
-                return true;
+                return w;
             const char c = source[i];
             if (c == '>' || c == '+' || c == '~'){
-                text += ' ';
-                text += c;
-                text += ' ';
+                *w++ = ' ';
+                *w++ = c;
+                *w++ = ' ';
                 i++;
                 while (i < size && scanSpace(source[i]))
                     i++;
             }else if (space){
-                text += ' ';
+                *w++ = ' ';
             }else{
-                return false;
+                return nullptr;
             }
         }
     }
@@ -1791,34 +1796,40 @@ bool SelectorRewriter::scanList(std::string_view source, const SelectorOptions& 
     const bool author = options.origin == SelectorOptions::Origin::Author;
     if (options.origin == SelectorOptions::Origin::Query || source.empty())
         return false;
-    // (one buffer for the selectors of the thread: the texts are copied to the arena)
-    static thread_local std::string buffer;
-    std::string& text = buffer;
     constexpr std::string_view kBand = "#htmlui-root ";
-    size_t i = 0;
-    uint32_t index = 0;
+    // (one buffer for the selectors of the thread: room for what any selector of the list writes)
+    static thread_local std::string buffer;
+    if (buffer.size() < kBand.size() + 3 * source.size() + 4)
+        buffer.resize(kBand.size() + 3 * source.size() + 4);
+    char* const begin = buffer.data();
+    std::memcpy(begin, kBand.data(), kBand.size());
+    char* const text = author ? begin + kBand.size() : begin;
+    // (a comma for each selector after the first, at most: the lists are allocated once)
+    size_t commas = 0;
+    for (const char c : source)
+        commas += c == ',' ? 1 : 0;
     out.rewritten.clear();
     out.texts.clear();
+    out.rewritten.reserve(commas + 1);
+    out.texts.reserve(commas + 1);
+    Arena& arena = Arena::current();
+    size_t i = 0;
+    uint32_t index = 0;
     while (true){
-        text.clear();
-        if (author)
-            text.append(kBand.data(), kBand.size());
-        const size_t prefix = text.size();
         uint32_t specificity = 0;
         bool couldBeRoot = true;
-        if (!scanComplex(source, i, options, author, text, specificity, couldBeRoot))
-            return false;
+        char* const end = scanComplex(source, i, options, text, specificity, couldBeRoot);
         // (the root variant of the band: written by rewrite())
-        if (author && couldBeRoot)
+        if (!end || (author && couldBeRoot))
             return false;
-        const Text written{std::string_view(text)};
-        out.texts.push_back(Text::view(written.view().substr(prefix)));
+        const std::string_view written = arena.copy(std::string_view(begin, (size_t)(end - begin)));
+        out.texts.push_back(Text::view(written.substr((size_t)(text - begin))));
         bool repeated = false;
         for (const RewrittenSelector& kept : out.rewritten)
             repeated = repeated || kept.text == written;
         if (!repeated){
             RewrittenSelector& selector = out.rewritten.emplace_back();
-            selector.text = written;
+            selector.text = Text::view(written);
             selector.source = index;
             selector.specificity = (author ? 1000000 : 0) + specificity;
         }
