@@ -222,6 +222,17 @@ float FloatedBoxSpace::GetShrinkToFitWidth(float edge_left, float edge_right) co
 	return left_shrink_width + right_shrink_width;
 }
 
+float FloatedBoxSpace::GetMinContentWidth() const
+{
+	float width = 0.f;
+	for (const auto& box_list : boxes)
+	{
+		for (const FloatedBox& box : box_list)
+			width = Math::Max(width, box.dimensions.x);
+	}
+	return width;
+}
+
 void* FloatedBoxSpace::operator new(size_t size)
 {
 	return LayoutPools::AllocateLayoutChunk(size);

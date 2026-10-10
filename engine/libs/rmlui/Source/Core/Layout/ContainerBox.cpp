@@ -270,6 +270,15 @@ float FlexContainer::GetShrinkToFitWidth() const
 	return FlexFormattingContext::GetMaxContentSize(element).x;
 }
 
+float FlexContainer::GetMinContentWidth() const
+{
+	// For the trivial case of a fixed width, we simply return that.
+	if (element->GetComputedValues().width().type == Style::Width::Type::Length)
+		return box.GetSize().x;
+
+	return FlexFormattingContext::GetMinContentSize(element).x;
+}
+
 String FlexContainer::DebugDumpTree(int depth) const
 {
 	return String(depth * 2, ' ') + "FlexContainer" + " | " + LayoutDetails::GetDebugElementName(element);

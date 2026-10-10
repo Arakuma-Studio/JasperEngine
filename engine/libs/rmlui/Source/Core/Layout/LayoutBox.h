@@ -23,6 +23,9 @@ public:
 	virtual bool GetBaselineOfLastLine(float& out_baseline) const;
 	// Calculates the box's inner content width, i.e. the size used to calculate the shrink-to-fit width.
 	virtual float GetShrinkToFitWidth() const;
+	// Calculates the box's inner content width when it was formatted under a min-content constraint (an available width
+	// of 0, LayoutDetails::GetMinContentWidth): its widest unbreakable content. By default its shrink-to-fit width.
+	virtual float GetMinContentWidth() const;
 
 	// Debug dump layout tree.
 	String DumpLayoutTree(int depth = 0) const { return DebugDumpTree(depth); }

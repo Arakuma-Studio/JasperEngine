@@ -4,12 +4,65 @@
 #include "../../../Include/RmlUi/Core/Profiling.h"
 #include "ContainerBox.h"
 #include "FormattingContext.h"
+#include <string.h>
 
 namespace Rml {
+
+static LayoutMeasureCache* current_measure_cache = nullptr;
+
+LayoutMeasureCache* LayoutMeasureCache::Get()
+{
+	return current_measure_cache;
+}
+
+LayoutMeasureCache::Scope::Scope() : cache(MakeUnique<LayoutMeasureCache>()), previous(current_measure_cache)
+{
+	current_measure_cache = cache.get();
+}
+
+LayoutMeasureCache::Scope::~Scope()
+{
+	current_measure_cache = previous;
+}
+
+LayoutMeasureCache::Key LayoutMeasureCache::MakeKey(Element* element, Kind kind, Vector2f containing_block, float width)
+{
+	auto Bits = [](float value) {
+		uint32_t bits;
+		memcpy(&bits, &value, sizeof(bits));
+		return bits;
+	};
+	return Key{element, kind, Bits(containing_block.x), Bits(containing_block.y), Bits(width)};
+}
+
+size_t LayoutMeasureCache::KeyHash::operator()(const Key& key) const
+{
+	size_t seed = std::hash<const void*>()(key.element);
+	for (uint32_t value : {uint32_t(key.kind), key.containing_block_x, key.containing_block_y, key.width})
+		seed ^= std::hash<uint32_t>()(value) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+	return seed;
+}
+
+bool LayoutMeasureCache::Find(Element* element, Kind kind, Vector2f containing_block, float width, float& result) const
+{
+	const auto it = entries.find(MakeKey(element, kind, containing_block, width));
+	if (it == entries.end())
+		return false;
+	result = it->second;
+	return true;
+}
+
+void LayoutMeasureCache::Insert(Element* element, Kind kind, Vector2f containing_block, float width, float result)
+{
+	entries[MakeKey(element, kind, containing_block, width)] = result;
+}
 
 void LayoutEngine::FormatElement(Element* element, Vector2f containing_block)
 {
 	RMLUI_ASSERT(element && containing_block.x >= 0 && containing_block.y >= 0);
+
+	// Intrinsic measurements are kept for the duration of this layout.
+	LayoutMeasureCache::Scope measure_cache;
 
 	RootBox root(containing_block);
 

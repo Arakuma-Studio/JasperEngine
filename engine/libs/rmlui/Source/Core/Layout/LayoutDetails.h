@@ -96,6 +96,20 @@ public:
 	/// Formats the element and returns the width of its contents.
 	static float GetShrinkToFitWidth(Element* element, Vector2f containing_block);
 
+	/// Intrinsic sizing (CSS Sizing 3): the element's min-content width, the width of its border box formatted under a
+	/// min-content constraint (no width to give: its widest unbreakable content, every soft wrap opportunity taken). A
+	/// definite 'width' is its own min-content width.
+	/// @param[in] element The element to measure.
+	/// @param[in] containing_block The containing block's size (negative: indefinite; percentages then resolve as 0).
+	/// @return The width of the border box.
+	static float GetMinContentWidth(Element* element, Vector2f containing_block);
+	/// The element's max-content width: the width of its border box formatted without a width constraint (shrink-to-fit
+	/// without the clamp to the available width). A definite 'width' is its own max-content width.
+	/// @return The width of the border box.
+	static float GetMaxContentWidth(Element* element, Vector2f containing_block);
+	/// Formats the element with a definite border-box width and returns the height of its border box.
+	static float GetContentHeightForWidth(Element* element, float border_box_width, Vector2f containing_block);
+
 	/// Build computed axis size along the horizontal direction (width and friends).
 	static ComputedAxisSize BuildComputedHorizontalSize(const ComputedValues& computed);
 	/// Build computed axis size along the vertical direction (height and friends).

@@ -19,6 +19,9 @@ public:
 
 	/// Computes max-content size for a flex container.
 	static Vector2f GetMaxContentSize(Element* element);
+	/// Computes the min-content width of a flex container (the height is not computed, 0): a single-line row container is
+	/// as wide as the sum of its items' min-content contributions, a column or multi-line one as its widest item's.
+	static Vector2f GetMinContentSize(Element* element);
 
 private:
 	FlexFormattingContext() = default;

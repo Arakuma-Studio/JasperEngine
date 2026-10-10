@@ -266,6 +266,115 @@ void LayoutDetails::BuildBoxSizeAndMargins(Box& box, Vector2f min_size, Vector2f
 	}
 }
 
+namespace {
+	// While the min-content width of an element is measured, the shrink-to-fit width of its descendants (floats,
+	// inline-blocks) is their min-content width: CSS's fit-content width, min(max-content, max(min-content, available)),
+	// with nothing available. Other layout keeps RmlUi's shrink-to-fit width.
+	bool measuring_min_content = false;
+
+	class MinContentScope {
+	public:
+		explicit MinContentScope(bool value) : previous(measuring_min_content) { measuring_min_content = value; }
+		~MinContentScope() { measuring_min_content = previous; }
+		MinContentScope(const MinContentScope&) = delete;
+		MinContentScope& operator=(const MinContentScope&) = delete;
+
+	private:
+		bool previous;
+	};
+} // namespace
+
+float LayoutDetails::GetMinContentWidth(Element* element, Vector2f containing_block)
+{
+	RMLUI_ASSERT(element);
+	LayoutMeasureCache* cache = LayoutMeasureCache::Get();
+	float result = 0.f;
+	if (cache && cache->Find(element, LayoutMeasureCache::Kind::MinContentWidth, containing_block, 0.f, result))
+		return result;
+
+	MinContentScope scope(true);
+	Box box;
+	LayoutDetails::BuildBox(box, containing_block, element, BuildBoxMode::UnalignedBlock);
+	const float edges = box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
+
+	float content_width = 0.f;
+	const Style::Display display = element->GetDisplay();
+	if (box.GetSize().x >= 0.f)
+	{
+		content_width = box.GetSize().x;
+	}
+	else if (display != Style::Display::Table && display != Style::Display::InlineTable)
+	{
+		// Format with no width to give, every line then holds one unbreakable piece of content.
+		box.SetContent({0.f, box.GetSize().y});
+		RootBox root(Math::Max(containing_block, Vector2f(0.f)));
+		if (UniquePtr<LayoutBox> layout_box = FormattingContext::FormatIndependent(&root, element, &box, FormattingContextType::Block))
+			content_width = layout_box->GetMinContentWidth();
+	}
+
+	result = content_width + edges;
+	if (cache)
+		cache->Insert(element, LayoutMeasureCache::Kind::MinContentWidth, containing_block, 0.f, result);
+	return result;
+}
+
+float LayoutDetails::GetMaxContentWidth(Element* element, Vector2f containing_block)
+{
+	RMLUI_ASSERT(element);
+	LayoutMeasureCache* cache = LayoutMeasureCache::Get();
+	float result = 0.f;
+	if (cache && cache->Find(element, LayoutMeasureCache::Kind::MaxContentWidth, containing_block, 0.f, result))
+		return result;
+
+	MinContentScope scope(false);
+	Box box;
+	LayoutDetails::BuildBox(box, containing_block, element, BuildBoxMode::UnalignedBlock);
+	const float edges = box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
+
+	float content_width = 0.f;
+	const Style::Display display = element->GetDisplay();
+	if (box.GetSize().x >= 0.f)
+	{
+		content_width = box.GetSize().x;
+	}
+	else if (display != Style::Display::Table && display != Style::Display::InlineTable)
+	{
+		// Practically unconstrained, as GetShrinkToFitWidth.
+		box.SetContent({Math::Max(containing_block.x, 0.f) + 10000.f, box.GetSize().y});
+		RootBox root(Math::Max(containing_block, Vector2f(0.f)));
+		if (UniquePtr<LayoutBox> layout_box = FormattingContext::FormatIndependent(&root, element, &box, FormattingContextType::Block))
+			content_width = layout_box->GetShrinkToFitWidth();
+	}
+
+	result = content_width + edges;
+	if (cache)
+		cache->Insert(element, LayoutMeasureCache::Kind::MaxContentWidth, containing_block, 0.f, result);
+	return result;
+}
+
+float LayoutDetails::GetContentHeightForWidth(Element* element, float border_box_width, Vector2f containing_block)
+{
+	RMLUI_ASSERT(element);
+	LayoutMeasureCache* cache = LayoutMeasureCache::Get();
+	float result = 0.f;
+	if (cache && cache->Find(element, LayoutMeasureCache::Kind::HeightForWidth, containing_block, border_box_width, result))
+		return result;
+
+	MinContentScope scope(false);
+	Box box;
+	LayoutDetails::BuildBox(box, containing_block, element, BuildBoxMode::UnalignedBlock);
+	const float edges = box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
+	box.SetContent({Math::Max(0.f, border_box_width - edges), box.GetSize().y});
+
+	RootBox root(Math::Max(containing_block, Vector2f(0.f)));
+	if (FormattingContext::FormatIndependent(&root, element, &box, FormattingContextType::Block))
+		result = element->GetBox().GetSize(BoxArea::Border).y;
+
+	if (cache)
+		cache->Insert(element, LayoutMeasureCache::Kind::HeightForWidth, containing_block, border_box_width, result);
+	return result;
+}
+
 float LayoutDetails::GetShrinkToFitWidth(Element* element, Vector2f containing_block)
 {
 	RMLUI_ASSERT(element);
@@ -289,6 +398,11 @@ float LayoutDetails::GetShrinkToFitWidth(Element* element, Vector2f containing_b
 	{
 		return 0.f;
 	}
+
+	// Inside a min-content measurement: the min-content width (see measuring_min_content).
+	if (measuring_min_content)
+		return Math::Max(0.f,
+			GetMinContentWidth(element, containing_block) - box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding));
 
 	// Use a large size for the box content width, so that it is practically unconstrained. This makes the formatting
 	// procedure act as if under a maximum content constraint. Children with percentage sizing values may be scaled

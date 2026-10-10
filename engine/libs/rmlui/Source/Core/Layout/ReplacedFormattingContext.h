@@ -25,6 +25,7 @@ public:
 	Box& GetBox() { return box; }
 
 	const Box* GetIfBox() const override { return &box; }
+	float GetMinContentWidth() const override { return box.GetSize().x; }
 	String DebugDumpTree(int depth) const override;
 
 private:

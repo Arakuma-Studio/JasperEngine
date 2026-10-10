@@ -114,6 +114,42 @@ Vector2f FlexFormattingContext::GetMaxContentSize(Element* element)
 	return flex_resulting_content_size;
 }
 
+Vector2f FlexFormattingContext::GetMinContentSize(Element* element)
+{
+	const ComputedValues& computed = element->GetComputedValues();
+	const bool row = (computed.flex_direction() == Style::FlexDirection::Row || computed.flex_direction() == Style::FlexDirection::RowReverse);
+	const bool single_line = (computed.flex_wrap() == Style::FlexWrap::Nowrap);
+
+	// Percentages of an indefinite containing block are resolved as zero.
+	const Vector2f indefinite_containing_block(0.f, -1.f);
+
+	LayoutChildList children;
+	LayoutDetails::GetLayoutChildren(element, children, true);
+
+	float sum = 0.f, widest = 0.f;
+	int num_items = 0;
+	for (Element* child : children)
+	{
+		const ComputedValues& child_computed = child->GetComputedValues();
+		if (child_computed.display() == Style::Display::None || LayoutDetails::IsCollapsibleWhiteSpaceText(child) ||
+			child_computed.position() == Style::Position::Absolute || child_computed.position() == Style::Position::Fixed)
+			continue;
+
+		const float margins = ResolveValue(child_computed.margin_left(), 0.f) + ResolveValue(child_computed.margin_right(), 0.f);
+		const float contribution = LayoutDetails::GetMinContentWidth(child, indefinite_containing_block) + margins;
+		sum += contribution;
+		widest = Math::Max(widest, contribution);
+		num_items++;
+	}
+
+	if (row && single_line)
+	{
+		const float gap = ResolveValue(computed.column_gap(), 0.f);
+		return {sum + gap * float(Math::Max(num_items - 1, 0)), 0.f};
+	}
+	return {widest, 0.f};
+}
+
 struct FlexItem {
 	// In the following, suffix '_a' means flex start edge while '_b' means flex end edge.
 	struct Size {

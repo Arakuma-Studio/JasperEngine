@@ -109,6 +109,7 @@ public:
 	bool Close(const Vector2f visible_overflow_size, Vector2f scrollable_content_size, const Box& box, float element_baseline);
 
 	float GetShrinkToFitWidth() const override;
+	float GetMinContentWidth() const override;
 
 	const Box* GetIfBox() const override { return &box; }
 	String DebugDumpTree(int depth) const override;
