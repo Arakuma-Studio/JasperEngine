@@ -49,6 +49,7 @@ add_executable(${TARGET_NAME}
 	URL.cpp
 	Variant.cpp
 	XMLParser.cpp
+	MarginCollapse.cpp
 	PluginDataModel.cpp
 )
 

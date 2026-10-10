@@ -650,8 +650,9 @@ bool BlockContainer::CloseOpenInlineContainer()
 
 		// Increment our cursor. If this close fails, it means this block container generated an automatic scrollbar. Lines
 		// without height are ignored for margin collapsing (CSS 2.1 §8.3.1).
-		const CollapsibleMarginSet pending_margin_set = trailing_margin_set;
-		if (!EncloseChildBox(inline_container, child_position, {0, child_height}, {0.f, 0.f}, pending_margin_set, child_height <= 0.f, false, false))
+		const bool empty = (child_height <= 0.f);
+		const CollapsibleMarginSet margins_after = (empty ? trailing_margin_set : CollapsibleMarginSet());
+		if (!EncloseChildBox(inline_container, child_position, {0, child_height}, {0.f, 0.f}, margins_after, empty, false, false))
 			return false;
 	}
 
