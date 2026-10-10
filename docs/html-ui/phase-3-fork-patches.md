@@ -454,8 +454,10 @@ P3-1…P3-11 list the commits):
   inline-block, but the `display` keyword list gains only `list-item` and `contents` now: the
   grid keywords are parsed once p3-grid lands (otherwise `ForkFeature::Grid`'s probe would turn
   true early). `list-item` lays out as `block` until p3-cascade's markers. Lists come from a
-  reused stack (`ScopedLayoutChildList`) so block layout does not allocate per container. A change
-  of `order` or `display` dirties the parent's stacking context, so paint follows `order`.
+  reused stack (`ScopedLayoutChildList`) so block layout does not allocate per container, and
+  read each child's `display: contents` from a flag on the element (`Element::display_contents`)
+  rather than its computed values. A change of `order`, or of `display` to or from `contents`,
+  dirties the parent's stacking context, so paint follows `order`.
 - **Alignment (§3.1.7).** `baseline` stays the existing `Baseline` value (= first baseline;
   `first baseline` parses to it) and `LastBaseline` is appended; `Left`/`Right` and `Legacy`
   only in the justify enums. `safe`/`unsafe` are stored in the keyword property's value above the
