@@ -1950,11 +1950,22 @@ list above where Chromium 153's renders (reference setup of 5.3) disagreed:
   option, the arrow and the value's edges, FORK.md P2-9/P2-12); `selectarrow { width: 16px }`
   with `arrow-down.svg` 10x6 at 3px.
 - Fieldset: `border: 2px solid #c5c5c5` (one tone halfway between the groove's #9b9b9b and
-  #efefef). A fieldset whose first child is a `legend` gets the class `htmlui-legend` from the
-  HTML stage: `padding-top: 0; border-top-width: 0`, transparent side borders, and the top
-  line and sides drawn from 9px down (a 16px legend's middle) as `html-layer` strips of
-  `fieldset-border.svg`; its legend gets `margin-bottom: 0.35em`. No gap is cut around the
-  legend (the line runs under it: documented in the guide).
+  #efefef). A fieldset with a `legend` child gets the class `htmlui-legend` from the HTML
+  stage; the runtime's `HtmlFieldsetElement` (p2-integrate; the first version drew the border
+  as `html-layer` strips of a 1x1 SVG from 9px down, with no gap, which an author `border` or
+  `background` on the fieldset doubled or removed) renders it as HTML does: when the
+  fieldset's first child (white-space text aside) is a legend in normal flow, the legend gets
+  local `margin-top: -(border-top + padding-top)` and `margin-bottom: padding-top` (it starts
+  at the top of the fieldset's border box and the content follows after the padding, whatever
+  `border` and `padding` the author gives the fieldset), and the fieldset is painted through
+  the fork's `Element::GetBorderTopCut` (FORK.md P2-14): its box starts
+  `floor((legend height - border-top) / 2)` px lower (the border is centred on the legend;
+  background, shadows and decorators follow) and the top border leaves a gap over the legend.
+  The legend is still as wide as the fieldset (RmlUi has no `fit-content` width until phase 3,
+  `phase-3-fork-patches.md` §3.12); the gap is as wide as its content (text lines and element
+  boxes) plus its padding and border, or as its box when the legend has a `width`. A legend
+  that is not the first child, or floated or positioned, is an ordinary block; so is every
+  fieldset of an `.rml` document (no class).
 - Summary: `list-style-type: disclosure-closed; list-style-position: inside`, `details[open]
   > summary` `disclosure-open`. Dialog: `border: 3px solid`, no `fit-content`.
 - Scrollbars: track and corner `#fcfcfc`, thumb `#8b8b8b` (hover `#6e6e6e`, active `#545454`),
@@ -1964,13 +1975,25 @@ list above where Chromium 153's renders (reference setup of 5.3) disagreed:
   so an author `* { margin: 0; padding: 0 }` reset leaves the UA's part rules alone, as in
   CSS).
 - Internal SVGs: `check.svg`, `check-dark.svg`, `arrow-down.svg`, `scroll-{up,down,left,
-  right}.svg`, `fieldset-border.svg` (a 1x1 fill, `preserveAspectRatio="none"`).
+  right}.svg`.
 
-Golden page `ua-defaults` pins what the engine approximates until phase 3, so the comparison
-tests the sheet: the body's font and `line-height: 1.2`, the controls' `line-height: 15px`
-(Chromium's `normal` for 13.333px Roboto), 13px for the text-sized controls (RmlUi font
-sizes are whole pixels: 13.333px draws at 13px) and Roboto for the form (whole-pixel space
-advances).
+Golden page `ua-defaults` pins what the engine approximates, so the comparison tests the
+sheet. Each pin is a limit recorded in the guide ("Not yet, and limits") and, where a later
+phase removes it, in that phase's spec:
+
+| Pin on the page | Engine limit | Removed by |
+|---|---|---|
+| `line-height: 1.2` on the body, `line-height: 15px` on the controls (Chromium's `normal` for 13.333px Roboto) | `line-height: normal` is `1.2` | phase 3 `LineHeightNormal` (`phase-3-fork-patches.md` §3.3.6, which also removes the pins) |
+| `font-size: 13px` on the text-sized controls | font sizes are whole pixels: Chromium's 13.333px draws at 13px | kept (RmlUi's font engine interface is integer; phase-3 spec §2.2) |
+| `font-family: sans-serif` (Roboto) on the form | text runs are a whole number of pixels wide, so another face's space and glyph advances differ by up to a pixel per run | kept (same row of phase-3 spec §2.2) |
+
+Two more differences are left out of its layout gate by `data-ref-tol="auto-width"` (the
+element's width is not compared): the `<legend>` is as wide as its fieldset (phase 3:
+`legend { width: fit-content }`, §3.12.4) and the table without a `width` fills its container
+(kept: RmlUi's table model, phase-3 spec §2.2). As integrated (p2-integrate), the page's
+no-text gate measures fuzzy-bad 0.064 % and max-block 44.7 against the limits 0.5 % and 64
+(63.8 before the legend's gap was cut: the 2px line under the legend filled a quarter of an
+8x8 block).
 
 ### 3.11 Runtime emulations (p2-runtime)
 
@@ -3965,7 +3988,7 @@ I rows `HTMLUI-CSS-0003` (Info); F rows `HTMLUI-CSS-0007`. Inherited properties 
 | `output` | R | `span` |
 | `progress` | N | UA look |
 | `meter` | R | `progress` |
-| `fieldset`, `legend` | N / A | legend not cut into the border |
+| `fieldset`, `legend` | E / A | `HtmlFieldsetElement`: the legend on the top border, the border centred on it with a gap (fork P2-14); the legend is as wide as the fieldset until phase 3's `fit-content` |
 | `details` | E | `HtmlDetailsElement` |
 | `summary` | E | `HtmlSummaryElement` (marker, toggle) |
 | `dialog` | E | `HtmlDialogElement` (no modal backdrop) |

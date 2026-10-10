@@ -577,24 +577,9 @@ fieldset {
     border: 2px solid #c5c5c5;
 }
 
-/* A fieldset whose first legend straddles its top border (marked by the HTML stage): the
-   legend starts at the fieldset's top edge, the content below it, and the border is drawn from
-   the legend's middle down (9px for the default 16px legend; no gap is cut around the legend),
-   as strips of fieldset-border.svg; the side borders stay 2px wide, transparent */
-fieldset.htmlui-legend {
-    padding-top: 0;
-    border-top-width: 0;
-    border-left-color: transparent;
-    border-right-color: transparent;
-    decorator: html-layer("/@htmlui/ua/fieldset-border.svg" 100% 2px 0% 9px no-repeat no-repeat border-box border-box scroll),
-               html-layer("/@htmlui/ua/fieldset-border.svg" 2px 100% 0% 9px no-repeat no-repeat border-box border-box scroll),
-               html-layer("/@htmlui/ua/fieldset-border.svg" 2px 100% 100% 9px no-repeat no-repeat border-box border-box scroll);
-}
-
-fieldset.htmlui-legend > legend {
-    margin-bottom: 0.35em;
-}
-
+/* A fieldset whose first child is a legend (marked htmlui-legend by the HTML stage): the legend
+   sits on the top border, which is centred on it and leaves a gap for it; the runtime's
+   fieldset element places the legend and cuts the border (HtmlFieldsetElement, fork P2-14) */
 legend {
     padding: 0 2px;
 }

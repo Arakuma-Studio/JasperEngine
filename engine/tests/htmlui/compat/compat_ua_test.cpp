@@ -325,7 +325,7 @@ TEST(CompatUaSheet, InternalImagesAreEmbeddedAndServed){
         ASSERT_NE(end, std::string::npos);
         referenced.insert(source.substr(at + 12, end - at - 12));
     }
-    EXPECT_GE(referenced.size(), 7u);   // check, select arrow, four scrollbar arrows, fieldset border
+    EXPECT_GE(referenced.size(), 6u);   // check, select arrow, four scrollbar arrows
 
     UserAgentStyle::get();
     for (const std::string& name : referenced){
@@ -342,7 +342,6 @@ TEST(CompatUaSheet, InternalImagesAreEmbeddedAndServed){
         size_t ink = 0;
         for (size_t i = 3; i < rgba.size(); i += 4)
             ink += rgba[i] > 0;
-        // (fieldset-border.svg is a 1x1 fill)
         EXPECT_GE(ink, std::min<size_t>(10u, (size_t)width * (size_t)height)) << "draws nothing";
         EXPECT_GT(ink, 0u) << "draws nothing";
     }
