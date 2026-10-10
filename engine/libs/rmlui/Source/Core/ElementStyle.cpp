@@ -1100,8 +1100,8 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 
 	bool dirty_font_face_handle = false;
 
-	// Values (p3-values): 'color' first, for the 'currentcolor' of the other properties.
-	const bool color_dirty = ComputeColorFirst(values, parent_values, property_storage);
+	// Values (p3-values): 'currentcolor' reads the color, computed at its first use.
+	bool color_computed = false;
 	Property current_color_storage;
 
 	// The border colors this element declares; the others are 'currentcolor', their initial value.
@@ -1142,7 +1142,7 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 			declared_border_colors |= 1 << (int(id) - int(PropertyId::BorderTopColor));
 
 		// Values (p3-values): 'currentcolor', relative font weights.
-		property = ResolveValueKeywords(id, property, values, parent_values, color_dirty, current_color_storage);
+		property = ResolveValueKeywords(id, property, values, parent_values, color_computed, current_color_storage);
 
 		ComputeValue(values, dp_ratio, vp_dimensions, font_size, document_font_size, dirty_font_face_handle, id, property);
 	}

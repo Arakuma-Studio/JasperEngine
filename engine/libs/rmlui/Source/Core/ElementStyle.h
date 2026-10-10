@@ -207,13 +207,13 @@ private:
 	void ComputeValue(Style::ComputedValues& values, float dp_ratio, Vector2f vp_dimensions, float font_size, float document_font_size,
 		bool& dirty_font_face_handle, PropertyId id, const Property* p);
 
-	// Values (p3-values, ElementStyleValues.cpp): hooks of ComputeValues. Before the other properties, 'color' is
-	// computed, so that their 'currentcolor' is this element's color (in 'color' itself the parent's); returns whether
-	// the color is dirty. Then each property's 'currentcolor' is replaced by the color (the properties holding one are
-	// reported changed with the color), and 'bolder'/'lighter' by the weight they compute to from the parent's.
-	bool ComputeColorFirst(Style::ComputedValues& values, const Style::ComputedValues* parent_values, Property& property_storage);
-	const Property* ResolveValueKeywords(PropertyId id, const Property* property, const Style::ComputedValues& values,
-		const Style::ComputedValues* parent_values, bool color_dirty, Property& current_color_storage);
+	// Values (p3-values, ElementStyleValues.cpp): hooks of ComputeValues. Each property's 'currentcolor' is replaced by
+	// this element's color (in 'color' itself the parent's), which is computed at the first one ('color_computed'); the
+	// properties holding one are reported changed with the color. 'bolder'/'lighter' are replaced by the weight they
+	// compute to from the parent's.
+	void ComputeColor(Style::ComputedValues& values, const Style::ComputedValues* parent_values);
+	const Property* ResolveValueKeywords(PropertyId id, const Property* property, Style::ComputedValues& values,
+		const Style::ComputedValues* parent_values, bool& color_computed, Property& current_color_storage);
 	// After the font face is known: 'ch' and 'ex' lengths are computed again against it when it changed.
 	void ComputeFontRelativeValues(Style::ComputedValues& values, FontUnitScope& font_unit_scope, FontFaceHandle previous_font_face,
 		FontFaceHandle loop_font_face, float dp_ratio, Vector2f vp_dimensions, float font_size, float document_font_size,

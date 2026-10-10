@@ -70,11 +70,13 @@ static bool HoldsCurrentColor(const Property& property)
 	return false;
 }
 
-bool ElementStyle::ComputeColorFirst(Style::ComputedValues& values, const Style::ComputedValues* parent_values, Property& property_storage)
+void ElementStyle::ComputeColor(Style::ComputedValues& values, const Style::ComputedValues* parent_values)
 {
+	// Without its own 'color' the element has its parent's, copied with the inherited values.
 	if (const Property* property = GetLocalProperty(PropertyId::Color))
 	{
 		SmallUnorderedSet<String> variable_dependencies;
+		Property property_storage;
 		property = ResolveVariables(PropertyId::Color, property, variable_dependencies, property_storage);
 		if (property)
 		{
@@ -84,11 +86,10 @@ bool ElementStyle::ComputeColorFirst(Style::ComputedValues& values, const Style:
 				values.color(property->Get<Colourb>());
 		}
 	}
-	return GetDirtyPropertiesRef().properties.Contains(PropertyId::Color);
 }
 
-const Property* ElementStyle::ResolveValueKeywords(PropertyId id, const Property* property, const Style::ComputedValues& values,
-	const Style::ComputedValues* parent_values, bool color_dirty, Property& current_color_storage)
+const Property* ElementStyle::ResolveValueKeywords(PropertyId id, const Property* property, Style::ComputedValues& values,
+	const Style::ComputedValues* parent_values, bool& color_computed, Property& current_color_storage)
 {
 	if (property->unit == Unit::KEYWORD)
 	{
@@ -107,15 +108,21 @@ const Property* ElementStyle::ResolveValueKeywords(PropertyId id, const Property
 			return property;
 		// In 'color' it is the parent's color, as 'inherit'.
 		const bool own_color = (id == PropertyId::Color);
+		if (!own_color && !color_computed)
+		{
+			ComputeColor(values, parent_values);
+			color_computed = true;
+		}
 		const Colourb color = own_color ? (parent_values ? parent_values->color() : DefaultComputedValues().color()) : values.color();
-		if (color_dirty && !own_color)
+		if (!own_color && GetDirtyPropertiesRef().properties.Contains(PropertyId::Color))
 			DirtyProperty(id);
 		current_color_storage = Property(color, Unit::COLOUR);
 		current_color_storage.definition = property->definition;
 		current_color_storage.source = property->source;
 		return &current_color_storage;
 	}
-	if (color_dirty && (property->unit == Unit::BOXSHADOWLIST || property->unit == Unit::DECORATOR) && HoldsCurrentColor(*property))
+	if ((property->unit == Unit::BOXSHADOWLIST || property->unit == Unit::DECORATOR) && GetDirtyPropertiesRef().properties.Contains(PropertyId::Color) &&
+		HoldsCurrentColor(*property))
 		DirtyProperty(id);
 	return property;
 }
