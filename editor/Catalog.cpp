@@ -4337,29 +4337,26 @@ std::string editor::Catalog::getShaderReferenceForProperty(Scene* scene, Entity 
     return std::string();
 }
 
+namespace {
+    // the manifest the runtime resolves lighting against: none for a shader without directives
+    const ShaderManifest* lightingManifest(const ShaderManifest* manifest) {
+        return (manifest && manifest->present) ? manifest : nullptr;
+    }
+}
+
 std::vector<MaterialLighting> editor::Catalog::getShaderLightingModes(const ShaderManifest* manifest) {
-    if (!manifest || !manifest->present) {
-        return {MaterialLighting::PIXEL, MaterialLighting::VERTEX, MaterialLighting::MIXED};
-    }
-    if (manifest->lighting.empty()) {
-        return {MaterialLighting::NONE};
-    }
-    std::vector<MaterialLighting> modes;
-    for (ShaderLightingMode mode : manifest->lighting) {
-        switch (mode) {
-            case ShaderLightingMode::NONE: modes.push_back(MaterialLighting::NONE); break;
-            case ShaderLightingMode::PIXEL: modes.push_back(MaterialLighting::PIXEL); break;
-            case ShaderLightingMode::VERTEX: modes.push_back(MaterialLighting::VERTEX); break;
-            case ShaderLightingMode::MIXED: modes.push_back(MaterialLighting::MIXED); break;
-        }
+    manifest = lightingManifest(manifest);
+    // RenderSystem decides: its default (what AUTO draws) first, then every other mode it accepts
+    const MaterialLighting defaultMode = RenderSystem::resolveLighting(MaterialLighting::AUTO, manifest);
+    std::vector<MaterialLighting> modes = {defaultMode};
+    for (MaterialLighting mode : {MaterialLighting::PIXEL, MaterialLighting::VERTEX, MaterialLighting::MIXED, MaterialLighting::NONE}) {
+        if (mode != defaultMode && RenderSystem::supportsLighting(mode, manifest)) modes.push_back(mode);
     }
     return modes;
 }
 
 bool editor::Catalog::supportsLighting(MaterialLighting mode, const ShaderManifest* manifest) {
-    if (mode == MaterialLighting::AUTO) return true;
-    const std::vector<MaterialLighting> modes = getShaderLightingModes(manifest);
-    return std::find(modes.begin(), modes.end(), mode) != modes.end();
+    return RenderSystem::supportsLighting(mode, lightingManifest(manifest));
 }
 
 uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Material& to) {
