@@ -31,6 +31,17 @@ namespace jasperengine::htmlui::compat {
         bool colors = true;                   // color keywords are colors here (not in font-family, animation names, ...)
         bool keepCurrentColorKeyword = false; // SVG paint: `currentcolor` stays a keyword
         std::string staticColor;              // the rule's own static color (#rrggbbaa): currentColor uses it
+        // when set: the rule's static color, asked at the first currentColor the value holds
+        std::function<std::string()> ruleStaticColor;
+        const std::string& color() const {
+            if (ruleStaticColor && !colorAsked){
+                colorAsked = true;
+                colorValue = ruleStaticColor();
+            }
+            return ruleStaticColor ? colorValue : staticColor;
+        }
+        mutable bool colorAsked = false;
+        mutable std::string colorValue;
         bool inlineStyle = false;             // vmin/vmax evaluated with the viewport
         PercentBasis percentBasis = PercentBasis::ContainingBlock;
         bool vertical = false;                // the percentage basis is a height (top, bottom, height, ...)

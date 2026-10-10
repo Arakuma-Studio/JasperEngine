@@ -175,8 +175,8 @@ namespace {
             if (info.currentColor){
                 if (context.keepCurrentColorKeyword){
                     out.push_back(ValueNormalizer::ident("currentcolor"));
-                }else if (!context.staticColor.empty()){
-                    out.push_back(ValueNormalizer::hash(context.staticColor.substr(1)));
+                }else if (!context.color().empty()){
+                    out.push_back(ValueNormalizer::hash(context.color().substr(1)));
                 }else{
                     out.push_back(ValueNormalizer::currentColorCompanion());
                     result.currentColor = true;

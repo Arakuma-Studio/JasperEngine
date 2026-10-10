@@ -260,7 +260,7 @@ namespace {
 }
 
 std::string props::varKind(Session& session, const ComponentValue& var){
-    session.memoTaint++;
+    session.memoVarReads++;
     ValueList fallback;
     bool hasFallback = false;
     const std::string name = CustomPropertyIndex::varName(var, &fallback, &hasFallback);

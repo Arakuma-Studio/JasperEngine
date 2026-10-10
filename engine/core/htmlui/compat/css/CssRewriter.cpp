@@ -210,12 +210,12 @@ std::string Session::keyframeName(const std::string& css){
 }
 
 bool Session::staticVar(const ComponentValue& var, ValueList& out) const{
-    memoTaint++;
+    memoVarReads++;
     return vars.resolve(var, out);
 }
 
 std::optional<TypedVar> Session::typedVar(const ComponentValue& var, const std::string& family){
-    memoTaint++;
+    memoVarReads++;
     ValueList fallback;
     bool hasFallback = false;
     const std::string name = CustomPropertyIndex::varName(var, &fallback, &hasFallback);
@@ -1351,8 +1351,11 @@ namespace {
                 scanNeeds(d.value, needs);
                 // (both read the rule's other declarations)
                 if (needs.staticColor && name != "color"){
-                    session.memoTaint++;
-                    normalize.staticColor = props::ruleStaticColor(session, *rule);
+                    // (read, and counted for the memo, when the value holds a currentColor)
+                    normalize.ruleStaticColor = [&session, rule](){
+                        session.memoTaint++;
+                        return std::string(props::ruleStaticColor(session, *rule));
+                    };
                 }
                 if (needs.fontSize && name != "font-size"){
                     // (read, and counted for the memo, when the value resolves a font-relative unit)
@@ -1646,7 +1649,10 @@ namespace {
             const uint8_t bits = (uint8_t)((d.important ? 1 : 0) | (keyframe ? 2 : 0) | (rule ? 4 : 0) | ((unsigned)origin << 3));
             const uint64_t hash = StringIndex::hash(d.text) ^ ((uint64_t)bits * 0x9E3779B97F4A7C15ull) ^ ((uint64_t)d.ref.file << 40);
             const uint32_t found = memoFind(session, hash, d, bits);
-            if (found != kNoMemo && session.memoEntries[found].pure){
+            // (an entry that read the custom properties holds for the index it read)
+            const bool usable = found != kNoMemo && session.memoEntries[found].pure &&
+                                (!session.memoEntries[found].readVars || session.memoEntries[found].varRevision == session.vars.revision());
+            if (usable){
                 if (session.memoCheck){
                     gMemoHits.fetch_add(1, std::memory_order_relaxed);
                     memoVerify(session, rule, origin, keyframe, d, block, found);
@@ -1665,11 +1671,14 @@ namespace {
                 done = processDeclared(session, rule, origin, keyframe, d, block, output, first);
             }else{
                 const uint32_t taint = session.memoTaint;
+                const uint32_t varReads = session.memoVarReads;
                 const uint64_t reports = session.sink->reports();
                 const size_t generated = output.generated.size();
                 const size_t fonts = session.result->fontFamilies.size();
                 done = processDeclared(session, rule, origin, keyframe, d, block, output, first);
                 Session::MemoEntry entry;
+                entry.readVars = session.memoVarReads != varReads;
+                entry.varRevision = session.vars.revision();
                 entry.hash = hash;
                 entry.text = d.text;
                 entry.file = d.ref.file;

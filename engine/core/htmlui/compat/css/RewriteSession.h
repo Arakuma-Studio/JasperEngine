@@ -267,6 +267,8 @@ namespace jasperengine::htmlui::compat {
             uint8_t bits = 0;              // important, keyframe, in a rule, origin
             bool pure = false;             // false: known to depend on more than its text
             bool completed = false;        // the pipeline ran to its end (the checks after it apply)
+            bool readVars = false;         // read custom properties: holds while the index is at varRevision
+            uint32_t varRevision = 0;
             Text name;                     // the effective property name
             uint32_t first = 0, count = 0; // in memoOutput
             uint32_t fontFirst = 0, fontCount = 0;   // in memoFonts: the font families it reported
@@ -276,6 +278,9 @@ namespace jasperengine::htmlui::compat {
         ArenaList<OutDecl> memoOutput;
         std::vector<std::string> memoFonts;
         mutable uint32_t memoTaint = 0;    // counts the reads that make a declaration depend on more than its text
+        // counts the reads of the custom property index: the same for every declaration of the
+        // session once the index is complete (a rule has no custom properties of its own here)
+        mutable uint32_t memoVarReads = 0;
         bool memoOn = false;
         bool memoDisabled = false;         // JASPER_HTMLUI_CSS_MEMO=off
         bool memoCheck = false;            // JASPER_HTMLUI_CSS_MEMO=check: every memo hit is compared with the pipeline's output
