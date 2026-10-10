@@ -921,7 +921,11 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
 Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 
 - `UIDocument` (GameObject; `UIDocument(scene)` adds the component, `UIDocument(scene, entity)`):
-  rw `filename`, `title`, `visible`, `sortOrder`; ro `loaded`, `body`; `load(file)`,
+  rw `filename`, `title`, `visible`, `sortOrder`; ro `loaded`, `body`, `documentElement` (the
+  `<html>`); `getDiagnostics()` (what the engine does not draw like a browser: a list of
+  `{severity, code, name, message, suggestion, file, line, column, text}`),
+  `setColorScheme("dark"|"light")`, `setReducedMotion(b)` (the `prefers-*` media queries);
+  `load(file)`,
   `reload()`, `show()`, `hide()`, `getElementById(id)`, `querySelector(sel)`,
   `querySelectorAll(sel)`, `createElement(tag)`, `createTextNode(text)`,
   `addEventListener(type, fn[, capture|{capture=, once=}])`, `removeEventListener(...)`,
@@ -934,15 +938,19 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   static `UIDocument.setDebuggerVisible(b)`, `isDebuggerVisible()`, `getLiveLuaRefCount()`.
   Getters load a document that is due, so `init` can query elements.
 - `UIElement` (weak handle; `nil` when a query finds nothing; any use but `isValid()` of a
-  dead one raises): rw `id`, `className`, `textContent`, `innerHTML`, `value`, `checked`,
-  `disabled`, `scrollTop`, `scrollLeft`; ro `tagName`, `parentElement`, `children`,
+  dead one raises): rw `id`, `className`, `textContent`, `innerHTML`, `outerHTML` (HTML in an
+  `.html` document), `value`, `checked`, `disabled`, `scrollTop`, `scrollLeft`; ro `tagName`
+  (`DIV` in an `.html` document, as in the DOM; lower case in `.rml`), `localName`, `content`
+  (a `<template>`'s fragment), `parentElement`, `children`,
   `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`,
   `childElementCount`, `scrollWidth`, `scrollHeight`, `clientWidth`, `clientHeight`,
   `offsetWidth`, `offsetHeight`, `offsetLeft`, `offsetTop`, `classList`, `style`, `dataset`;
   methods `getAttribute`, `setAttribute`, `hasAttribute`, `removeAttribute`, `getAttributes`,
   `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains`, `appendChild`,
   `insertBefore`, `removeChild`, `replaceChild`, `remove`, `cloneNode([deep])`, `focus`,
-  `blur`, `click`, `scrollIntoView`, `scrollTo`, `scrollBy`, `getBoundingClientRect` (UIRect),
+  `blur`, `click`, `insertAdjacentHTML(position, html)`, `show()`, `showModal()`,
+  `close([returnValue])` (a `<dialog>`), `scrollIntoView`, `scrollTo`, `scrollBy`,
+  `getBoundingClientRect` (UIRect),
   `addEventListener`, `removeEventListener`, `dispatchEvent(type[, detail[, bubbles]])`.
   `<lottie>` elements also: `play()`, `pause()`, `stop()`, `seek(seconds)`, `setFrame(f)`,
   `setSpeed(s)`, `setDirection(1|-1)`, `setLoop(b)`, `setLoopCount(n)`,
@@ -951,7 +959,11 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `complete`).
 - `classList:add(...)`, `remove(...)`, `toggle(name[, force])`, `contains(name)`;
   `style.fontSize` / `style["font-size"]` (computed value; assign the inline style, `""`/nil
-  removes); `dataset.userName` (`data-user-name`).
+  removes; standard CSS values in an `.html` document), `style.cssText`;
+  `dataset.userName` (`data-user-name`).
+- A document's own `<script type="text/lua">` (inline or `src`) runs while playing after every
+  load and reload of the document, with `document` (its `UIDocument`) and `anime` bound and its
+  own environment (set globals through `_G`).
 - `UIEvent` (valid while the listener runs): `type`, `target`, `currentTarget`, `eventPhase`,
   `key`, `code`, `keyCode`, `["repeat"]`, `ctrlKey`, `shiftKey`, `altKey`, `metaKey`,
   `clientX`, `clientY`, `button` (0 left, 1 middle, 2 right), `deltaX`, `deltaY`, `data`,

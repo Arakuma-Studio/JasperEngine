@@ -8,8 +8,8 @@
 #include "CompatTypes.h"
 #include "DiagnosticCodes.h"
 
-#include "json.hpp"
-
+// (no third-party header here: UIDocument.h includes this file, so it is part of the engine API
+// that C++ scripts of a project compile against; the JSON form is in DiagnosticsJson.h)
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -88,11 +88,7 @@ namespace jasperengine::htmlui::compat {
     // location parts are left out ("warning: message [...]" without a file), the message on
     // one line. The same text as phase 4's check --ui and MCP findings.
     JASPERENGINE_API std::string toText(const Diagnostic& diagnostic);
-    // {severity, code, name, message, suggestion, replacement, subject, file, line, column,
-    //  length, origin}; severity "error"/"warning"/"info", code "HTMLUI-CSS-0006", name the
-    // registry's kebab-case name
-    JASPERENGINE_API nlohmann::json toJson(const Diagnostic& diagnostic);
-    JASPERENGINE_API nlohmann::json toJson(const std::vector<Diagnostic>& diagnostics);
+    // (toJson: DiagnosticsJson.h)
 
     // Writes errors and warnings one per line with Log::error / Log::warn, prefixed
     // "[HTML UI] "; infos one per line through Log::verbose when verbose is set; then one

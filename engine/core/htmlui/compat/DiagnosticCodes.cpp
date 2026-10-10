@@ -228,8 +228,9 @@ namespace {
         // ---- IMP
         {codes::NotImported, E, false, "not-imported", "Remote resource not imported",
          "The document references a remote URL that has no entry in the project's import manifest "
-         "(assets/htmlui-imports/manifest.json); a fallback is used. Import it with the MCP tool import_files or "
-         "jasperengine-editor import-ui; the runtime never downloads."},
+         "(assets/htmlui-imports/manifest.json); a fallback is used. The editor imports it when it loads the document "
+         "(Editor Settings > HTML UI > Import Remote Resources), and so does jasperengine-editor import-ui; the runtime "
+         "never downloads."},
         {codes::DownloadFailed, E, false, "download-failed", "Download failed",
          "The editor could not download a remote resource (network error, HTTP error, timeout, unknown Google Fonts family)."},
         {codes::UnsupportedContent, W, false, "unsupported-content", "Unsupported content",

@@ -53,7 +53,14 @@ namespace jasperengine::htmlui::compat {
     };
 
     // One compiled document (phase-2 §3.12.1).
-    struct CompatDocument {
+    struct JASPERENGINE_API CompatDocument {
+        CompatDocument() = default;
+        // The virtual files of its sheets go with the compile, cached or not (a check, the
+        // importers' discovery and compileString are not cached). One owner: not copied.
+        ~CompatDocument();
+        CompatDocument(const CompatDocument&) = delete;
+        CompatDocument& operator=(const CompatDocument&) = delete;
+
         std::string sourcePath;                       // "ui/menu.html"
         std::string title;
         std::string rml;

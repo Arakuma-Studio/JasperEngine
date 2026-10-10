@@ -208,6 +208,17 @@ bool HtmlUIEventNames::isRepeat(const Rml::Event* event){
     return event && event == repeatedKeyDown && event->GetType() == "keydown";
 }
 
+// the document whose <script type="text/lua"> is running (ScriptScope); scripts run on the main thread
+static const Rml::Element* runningScriptDocument = nullptr;
+
+HtmlUIEventListener::ScriptScope::ScriptScope(const Rml::Element* document): previous(runningScriptDocument){
+    runningScriptDocument = document;
+}
+
+HtmlUIEventListener::ScriptScope::~ScriptScope(){
+    runningScriptDocument = previous;
+}
+
 HtmlUIEventListener::HtmlUIEventListener(uint64_t id, std::string domType, std::string rmlType, bool capture, bool once, Callback callback):
     id(id), domType(std::move(domType)), rmlType(std::move(rmlType)), capture(capture), once(once), callback(std::move(callback)){
     byId()[id] = this;
@@ -226,6 +237,7 @@ HtmlUIEventListener* HtmlUIEventListener::attach(Rml::Element* element, const st
         return nullptr;
 
     HtmlUIEventListener* listener = new HtmlUIEventListener(nextListenerId++, domType, rmlType, capture, once, std::move(callback));
+    listener->scriptDocument = runningScriptDocument;
     element->AddEventListener(rmlType, listener, capture);
 
     if (domType == "change"){
@@ -289,6 +301,7 @@ HtmlUIEventListener* HtmlUIEventListener::moveTo(Rml::Element* target){
         return nullptr;
 
     HtmlUIEventListener* moved = new HtmlUIEventListener(id, domType, rmlType, capture, once, std::move(callback));
+    moved->scriptDocument = scriptDocument;
     // the id now names the moved listener; this one is deleted without its callback
     byId()[id] = moved;
     target->AddEventListener(rmlType, moved, capture);

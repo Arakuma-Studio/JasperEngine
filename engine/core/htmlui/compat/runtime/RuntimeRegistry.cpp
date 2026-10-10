@@ -16,6 +16,7 @@
 #include "htmlui/compat/runtime/HtmlButtonElement.h"
 #include "htmlui/compat/runtime/HtmlDetailsElement.h"
 #include "htmlui/compat/runtime/HtmlDialogElement.h"
+#include "htmlui/compat/runtime/HtmlFieldsetElement.h"
 #include "htmlui/compat/runtime/HtmlImageElement.h"
 #include "htmlui/compat/runtime/HtmlInputElement.h"
 #include "htmlui/compat/runtime/HtmlLabelBehavior.h"
@@ -82,6 +83,7 @@ void jasperengine::htmlui::compat::registerRuntime(){
     registerElement<HtmlDialogElement>(r, "dialog");
     registerElement<HtmlImageElement>(r, "img");
     registerElement<HtmlLabelElement>(r, "label");
+    registerElement<HtmlFieldsetElement>(r, "fieldset");
 
     r.registered = true;
 }

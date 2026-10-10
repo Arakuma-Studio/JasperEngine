@@ -15,6 +15,8 @@
 #include "htmlui/compat/html/RmlSerializer.h"
 #include "htmlui/compat/ua/UserAgentStyle.h"
 
+#include "htmlui/HtmlUI.h"
+#include "htmlui/RmlFontEngine.h"
 #include "util/FontRegistry.h"
 
 #include <RmlUi/Core/Context.h>
@@ -146,6 +148,8 @@ namespace {
         return true;
     }
 
+    // an entry leaves the cache: its sheets are not served any more (a document loaded from it
+    // has read them; the compile itself goes with its last holder)
     void dropEntry(const std::shared_ptr<const CompatDocument>& document){
         if (document && document->owner)
             VirtualFiles::removeOwner(document->owner);
@@ -706,6 +710,11 @@ size_t DocumentLoader::cacheSize(){
     return store.size;
 }
 
+CompatDocument::~CompatDocument(){
+    if (owner)
+        VirtualFiles::removeOwner(owner);
+}
+
 // ---- load ----
 
 uint64_t DocumentLoader::registerDocument(const std::shared_ptr<const CompatDocument>& compiled, std::function<void(const Diagnostic&)> sink){
@@ -751,6 +760,11 @@ Rml::ElementDocument* DocumentLoader::load(Rml::Context* context, const std::str
     std::shared_ptr<Binding> binding = std::make_shared<Binding>();
     binding->compiled = compiled;
     binding->translatorHandle = registerBinding(binding);
+
+    // the families the document names and nothing provides are reported below, at the
+    // document (HTMLUI-CSS-0023): the font engine's own warning about them would say it again
+    for (const Diagnostic& unknown : checkFontFamilies(*compiled))
+        HtmlUI::getFontEngine().markFamilyReported(unknown.subject);
 
     Rml::ElementDocument* document = context->LoadDocumentFromMemory(compiled->rml, compiled->sourcePath);
     if (!document){

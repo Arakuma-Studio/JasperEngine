@@ -49,7 +49,8 @@ public:
 	void DrawBackground(const BorderMetrics& metrics, ColourbPremultiplied color);
 
 	/// Generate geometry for the border, defined by the intersection of the outer and inner areas of the border metrics.
-	void DrawBorder(const BorderMetrics& metrics, EdgeSizes edge_sizes, const ColourbPremultiplied border_colors[4]);
+	/// @param top_gap The part of the top border that is not drawn: begin (x) and end (y) in px from the left outer edge.
+	void DrawBorder(const BorderMetrics& metrics, EdgeSizes edge_sizes, const ColourbPremultiplied border_colors[4], Vector2f top_gap = {});
 
 private:
 	enum Edge { TOP, RIGHT, BOTTOM, LEFT };

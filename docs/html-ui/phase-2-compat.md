@@ -1950,11 +1950,22 @@ list above where Chromium 153's renders (reference setup of 5.3) disagreed:
   option, the arrow and the value's edges, FORK.md P2-9/P2-12); `selectarrow { width: 16px }`
   with `arrow-down.svg` 10x6 at 3px.
 - Fieldset: `border: 2px solid #c5c5c5` (one tone halfway between the groove's #9b9b9b and
-  #efefef). A fieldset whose first child is a `legend` gets the class `htmlui-legend` from the
-  HTML stage: `padding-top: 0; border-top-width: 0`, transparent side borders, and the top
-  line and sides drawn from 9px down (a 16px legend's middle) as `html-layer` strips of
-  `fieldset-border.svg`; its legend gets `margin-bottom: 0.35em`. No gap is cut around the
-  legend (the line runs under it: documented in the guide).
+  #efefef). A fieldset with a `legend` child gets the class `htmlui-legend` from the HTML
+  stage; the runtime's `HtmlFieldsetElement` (p2-integrate; the first version drew the border
+  as `html-layer` strips of a 1x1 SVG from 9px down, with no gap, which an author `border` or
+  `background` on the fieldset doubled or removed) renders it as HTML does: when the
+  fieldset's first child (white-space text aside) is a legend in normal flow, the legend gets
+  local `margin-top: -(border-top + padding-top)` and `margin-bottom: padding-top` (it starts
+  at the top of the fieldset's border box and the content follows after the padding, whatever
+  `border` and `padding` the author gives the fieldset), and the fieldset is painted through
+  the fork's `Element::GetBorderTopCut` (FORK.md P2-14): its box starts
+  `floor((legend height - border-top) / 2)` px lower (the border is centred on the legend;
+  background, shadows and decorators follow) and the top border leaves a gap over the legend.
+  The legend is still as wide as the fieldset (RmlUi has no `fit-content` width until phase 3,
+  `phase-3-fork-patches.md` §3.12); the gap is as wide as its content (text lines and element
+  boxes) plus its padding and border, or as its box when the legend has a `width`. A legend
+  that is not the first child, or floated or positioned, is an ordinary block; so is every
+  fieldset of an `.rml` document (no class).
 - Summary: `list-style-type: disclosure-closed; list-style-position: inside`, `details[open]
   > summary` `disclosure-open`. Dialog: `border: 3px solid`, no `fit-content`.
 - Scrollbars: track and corner `#fcfcfc`, thumb `#8b8b8b` (hover `#6e6e6e`, active `#545454`),
@@ -1964,13 +1975,25 @@ list above where Chromium 153's renders (reference setup of 5.3) disagreed:
   so an author `* { margin: 0; padding: 0 }` reset leaves the UA's part rules alone, as in
   CSS).
 - Internal SVGs: `check.svg`, `check-dark.svg`, `arrow-down.svg`, `scroll-{up,down,left,
-  right}.svg`, `fieldset-border.svg` (a 1x1 fill, `preserveAspectRatio="none"`).
+  right}.svg`.
 
-Golden page `ua-defaults` pins what the engine approximates until phase 3, so the comparison
-tests the sheet: the body's font and `line-height: 1.2`, the controls' `line-height: 15px`
-(Chromium's `normal` for 13.333px Roboto), 13px for the text-sized controls (RmlUi font
-sizes are whole pixels: 13.333px draws at 13px) and Roboto for the form (whole-pixel space
-advances).
+Golden page `ua-defaults` pins what the engine approximates, so the comparison tests the
+sheet. Each pin is a limit recorded in the guide ("Not yet, and limits") and, where a later
+phase removes it, in that phase's spec:
+
+| Pin on the page | Engine limit | Removed by |
+|---|---|---|
+| `line-height: 1.2` on the body, `line-height: 15px` on the controls (Chromium's `normal` for 13.333px Roboto) | `line-height: normal` is `1.2` | phase 3 `LineHeightNormal` (`phase-3-fork-patches.md` §3.3.6, which also removes the pins) |
+| `font-size: 13px` on the text-sized controls | font sizes are whole pixels: Chromium's 13.333px draws at 13px | kept (RmlUi's font engine interface is integer; phase-3 spec §2.2) |
+| `font-family: sans-serif` (Roboto) on the form | text runs are a whole number of pixels wide, so another face's space and glyph advances differ by up to a pixel per run | kept (same row of phase-3 spec §2.2) |
+
+Two more differences are left out of its layout gate by `data-ref-tol="auto-width"` (the
+element's width is not compared): the `<legend>` is as wide as its fieldset (phase 3:
+`legend { width: fit-content }`, §3.12.4) and the table without a `width` fills its container
+(kept: RmlUi's table model, phase-3 spec §2.2). As integrated (p2-integrate), the page's
+no-text gate measures fuzzy-bad 0.064 % and max-block 44.7 against the limits 0.5 % and 64
+(63.8 before the legend's gap was cut: the 2px line under the legend filled a quarter of an
+8x8 block).
 
 ### 3.11 Runtime emulations (p2-runtime)
 
@@ -2849,8 +2872,12 @@ interfaces other packages rely on and the deviations.
   `DocumentLoader` fills it with the `<html>` attributes except the reserved `id` and
   `data-html-id`): `html`/`:root` map to `body#htmlui-root` in author sheets (`body` in the UA
   sheet), `body` to `htmlbody`; selectors on root attributes are resolved at rewrite time
-  (a variant per selector that could match the root; `:is()`/`:where()` compounds get no
-  root variant).
+  (a variant per selector that could match the root; a compound that still holds `:is()` or
+  `:where()` gets no root variant. In phase 2 none does: both are always expanded into plain
+  selectors first, and those get their variants (verified by p2-integrate: `:is(.dark, .light)
+  .b` and `:where(html.dark) .a` match with the class on `<html>`). It applies once
+  `RootIsWhere` keeps them native: phase 3 resolves the root there, `phase-3-fork-patches.md`
+  §3.4).
 - **Decorator arguments** as written (the forms §"p2-runtime as implemented" documents):
   `html-layer("<path>" <size-x> <size-y> <pos-x> <pos-y> <repeat-x> <repeat-y> <origin>
   <clip> <attachment>)` with `cover`/`contain` in both size slots and edge offsets as
@@ -3965,7 +3992,7 @@ I rows `HTMLUI-CSS-0003` (Info); F rows `HTMLUI-CSS-0007`. Inherited properties 
 | `output` | R | `span` |
 | `progress` | N | UA look |
 | `meter` | R | `progress` |
-| `fieldset`, `legend` | N / A | legend not cut into the border |
+| `fieldset`, `legend` | E / A | `HtmlFieldsetElement`: the legend on the top border, the border centred on it with a gap (fork P2-14); the legend is as wide as the fieldset until phase 3's `fit-content` |
 | `details` | E | `HtmlDetailsElement` |
 | `summary` | E | `HtmlSummaryElement` (marker, toggle) |
 | `dialog` | E | `HtmlDialogElement` (no modal backdrop) |
@@ -4147,3 +4174,77 @@ in section 3.
 | HTMLUI-SVG-0001 | Info | svg-recolor | mixed-color SVG re-rasterized for `currentColor` |
 | HTMLUI-SVG-0002 | Warning | svg-unsupported-content | SVG content the renderer cannot draw (foreignObject, …) |
 | HTMLUI-SVG-0003 | Info | svg-internal-css | CSS rules targeting elements inside an SVG are not applied |
+
+## Appendix G. Phase-2 integration (p2-integrate)
+
+What the integration of the merged phase found and changed, beyond the sections it edited in
+place (§3.10 fieldset and the `ua-defaults` pins, §4 "p2-css as implemented").
+
+**Bugs fixed** (each with a regression test, one commit each):
+
+| Area | What was wrong | Fix | Test |
+|---|---|---|---|
+| Engine API | `UIDocument.h` includes `htmlui/compat/Diagnostics.h`, which included nlohmann's `json.hpp`: not part of the engine API a project's C++ scripts compile against, so every project with a C++ script failed to build and play did not start | `toJson` moved to `DiagnosticsJson.h`; `Diagnostics.h` needs the standard library only | `test_checks.py::test_cpp_cli_and_compile_scripts`, `test_trial_fixes.py::test_runtime_cpp_script_state`, `test_script.py::test_cpp_compile` (it had skipped on the error) |
+| Font engine | RmlUi keeps the line feed that ends a `white-space: pre` line in the string it hands to the font engine: it was shaped as the missing-glyph box (a box after every `<pre>` line, 11px of width) | `RmlFontEngine` drops control characters (U+0000..U+001F), as RmlUi's own font engine | `RmlFontEngineTest.ControlCharactersTakeNoSpaceAndDrawNothing`; the `ua-defaults` engine golden |
+| Fieldset | the legend's border was `html-layer` strips from the user-agent sheet: a line under the legend (the page's no-text gate at 63.8 of 64), doubled by an author `border`, removed by an author `background` | `HtmlFieldsetElement` + fork P2-14 (§3.10) | `compat_fieldset_test.cpp` |
+| Loader | a compile that is not cached (`checkDocument`/`collectRemoteReferences` with a `FileAccess`: the editor's import discovery at every document load; `compileString`) left the virtual files of its sheets for the life of the process | `CompatDocument` releases its owner's virtual files in its destructor; the registry of virtual files is never destroyed (the cached compiles are released at exit, in static destruction order) | `CompatVirtualFiles.UncachedCompilesReleaseTheirSheets`, the exit guard in `compat_playstop_test.cpp` |
+| Hot reload | phase 1's reload names a changed file by its asset path, compat hands RmlUi `asset://` URLs: a replaced image kept its old pixels (`Rml::ReleaseTexture` of another spelling), a replaced font reloaded the document with the old face (`FontRegistry` keyed by spelling) | `UIDocumentSystem::reloadTexture` releases every texture source naming the file; `RmlFontEngine` keys font files by their normalized path | `compat_hot_reload_test.cpp`, `test_html_ui_phase2.py` |
+| Document scripts | a document's `<script type="text/lua">` runs again after a reload and re-attaches its listeners, and the state-keeping reload also moved the old ones over: one more copy per reload (a click counted 2, 3, ... times) | listeners attached while a document script runs are tagged (`HtmlUIEventListener::ScriptScope`) and removed with the old document | `CompatHotReloadTest.DocumentScriptListenersAreAttachedOncePerReload`, `test_html_ui_phase2.py::test_hot_reload_play_mode` |
+| Diagnostics | `HTMLUI-IMP-0001/-0009` suggested the MCP tool `import_files`, which copies local files only until phase 4 | the suggestion names what imports a URL in phase 2 (phase-4 spec §3.6.5 adds the tool back) | the `.diag.txt` goldens, `compat_url_test.cpp` |
+| MCP | the agent instructions still said documents are XML-well-formed HTML styled with RCSS; the export error of an `.rml` document said "phase 2 adds importers" | both say what phase 2 does | `test_protocol.py`, `test_docs.py` |
+| Tests | `test_html_ui_lua.py::test_lottie_control_and_events` counted frames on the measured UI clock (a loaded host's frames last up to `Engine::maxDeltatime` = 0.25 s, the animation 2 s) | the Lottie tests play with `fixed_fps=60` and `auto_pause` | reproduced with `fixed_fps=4`: `[False, False, True]` |
+| Xcode | a bare `#include "Text.h"` resolves through the project header map, which ignores case, and lexbor added `dom/interfaces/text.h` | `GameObjectClassesLua.cpp` includes `object/ui/Text.h` | review of `project.pbxproj` (not buildable here) |
+
+**Verified, unchanged:**
+- The four simplifications p2-css kept, each with its diagnostic: `round()` of a length
+  without a step is not folded (`HTMLUI-CSS-0004` Warning, the declaration is dropped;
+  `round(a, b)` and the other math functions are, `HTMLUI-CSS-0005` Info); a `var()` whose
+  variable has more than one declaration is not resolved inside `calc()` (`HTMLUI-CSS-0012`
+  Warning, dropped); `:is()`/`:where()` and the root (above: no effect in phase 2);
+  `animation-delay: inherit` and the other longhands copy the ancestor's whole shorthand
+  (`HTMLUI-CSS-0011` Info). The guide lists all four.
+- `appearance: auto`: the copies p2-css keeps for a build without an embedded sheet equal the
+  fallbacks of p2-ua's calibrated sheet, with one exception that was a bug: the range track
+  read `--html-control-bg`/`--html-control-border` with its own grays (`#efefef`, `#b2b2b2`)
+  while checkboxes and selects read them with `#ffffff`/`#767676`, and `auto` writes one value
+  per companion, so `input[type=range] { appearance: auto }` drew a white track with a dark
+  border. The track has its own companions now (`--html-slider-track-bg`,
+  `--html-slider-track-border-color`, written by `appearance: none`/`auto`), and
+  `CompatUaSheet.AppearanceAutoWritesTheSheetsFallbacks` holds every companion to one fallback
+  that equals what `auto` writes.
+- Play stop on the compat path (`compat_playstop_test.cpp`): no Lua reference, the documents
+  of every context unloaded with their log registrations, GPU objects, cache entries and
+  virtual files constant over twelve cycles. The compiled-document cache itself is the
+  process's (§3.12.2: 64 entries, least recently used go) and is not emptied by a stop:
+  the documents load again from it.
+- Windows `curl ... || (call )` (`editor/htmlui/HttpClient.cpp`): reviewed, not run. `(call )`
+  with the space is cmd.exe's idiom that sets ERRORLEVEL 0; the command goes through
+  `cmd.exe /s /c "<command>"`, which strips only the outer quotes, so the quoted config path
+  survives; the URL and the `%{...}` write-out are in the config file, never on the command
+  line; stderr is merged and a trailing CR stripped by `CommandRunner`. `fail-with-body` needs
+  curl 7.76 (March 2021): older system curls answer `curl: option fail-with-body: is unknown`,
+  which is reported as the download error.
+- Unverifiable on the build host (Linux): Windows, macOS and iOS builds; the Xcode project was
+  reviewed against CMake (lexbor targets: 163 sources each, `LEXBOR_STATIC`, search paths; 87
+  compat sources per engine target, `xcode_sync_compat.py --check`; the embedded
+  `htmlui_ua.h`/`htmlui_lucide.h` stand-ins and the export that writes the real ones; no
+  dangling ids).
+
+**Runtime checks on the merged tree** (p2-integrate, host tools, not committed tests):
+- A project made in the editor through MCP with one document written the way an agent writes
+  for a browser (flexbox, `:root` variables, `rgba()`, `rgb(0 200 80)`, `border: 1px solid`,
+  `background: linear-gradient(90deg, …)`, `transition: background-color 200ms ease`, a
+  `font-family` list headed by a Google Font linked as `fonts.googleapis.com/css2?…` and
+  imported by the editor, an inline SVG and `<i data-lucide="check">` in `currentColor`, a
+  form with an input and a submit button, `<script type="text/lua">` that recolours the title
+  and listens to `submit`): exported for the Web (`--backend opengles`), built with
+  Emscripten in the web image and run in headless Chromium 153 through playwright-core:
+  gradient ends and centre, the card's border and `rgba(0,0,0,.5)` over the gradient, the
+  SVG's and the icon's `currentColor`, the Lua-coloured title in Orbitron (as wide as in the
+  editor, ±4 px), the button's `var(--accent)`, its `:hover` colour after the transition, the
+  form's `submit` reaching Lua (the status box turns yellow at the editor's layout position,
+  ±1 px), "0 errors, 0 warnings" in the browser console and no error. (The editor's Game view
+  showed the canvas 690 px tall: `fitwidth` scaling at the view's aspect; the game's 720 px
+  canvas centres the card 15 px lower, as Chromium does.)
+- The same project through `tools/smoke-test.sh` (export, build of the exported Linux game,
+  run under Xvfb): PASS, the game window shows the document as the Web build does.

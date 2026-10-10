@@ -162,6 +162,8 @@ async def test_inspector_panel(ed: Editor):
     await ed.call("focus_window", window="inspector")
     await asyncio.sleep(1.0)
     shot = await ed.call_raw("screenshot", {"view": "editor", "max_width": 1600})
+    if shot.is_error and "need the OpenGL renderer" in shot.text:
+        skip("whole-editor screenshots need the OpenGL editor (this one renders with another backend)")
     ed.check(not shot.is_error and shot.images, f"editor screenshot: {shot.text[:300]}")
     out = ed.scratch.root / "html-ui-imports-inspector.png"
     out.write_bytes(shot.images[0][0])

@@ -194,10 +194,12 @@ R"JE(
   scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a UI
   camera: put HUDs and menus in a UI scene attached as a child scene (set_child_scene).
 - HTML/CSS UI: a uidocument component (filename = an .html under assets; create_entity
-  type=ui_document) draws that document over its scene, in front of the component UI. Saved
-  .html/.css changes reload by themselves (edit and play mode). Phase 0 documents are
-  XML-well-formed HTML styled with RmlUi's RCSS, not browser CSS: read jasper://docs/html-ui
-  before writing one.
+  type=ui_document) draws that document over its scene, in front of the component UI. Write
+  standard HTML5 and CSS as for a browser, with <script type="text/lua"> instead of JavaScript.
+  Saved .html/.css changes reload by themselves (edit and play mode); after each save read the
+  Console: every difference from a browser is a line "[HTML UI] file:line:col: severity:
+  message (fix: ...) [HTMLUI-CSS-0004]" and each load ends with "<file>: 0 errors, ...".
+  jasper://docs/html-ui lists what is rewritten and what is not supported yet.
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
