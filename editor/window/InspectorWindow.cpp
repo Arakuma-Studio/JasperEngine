@@ -5684,6 +5684,21 @@ editor::InspectorWindow::ShaderUniformRows editor::InspectorWindow::resolveShade
     Scene* scene = sceneProject->scene;
 
     std::vector<const CustomUniformBlock*> blocks = Catalog::getShaderUniformBlocks(scene, entity, cpType);
+    if (cpType == ComponentType::MeshComponent) {
+        // a submesh whose material names its own shader takes its values from the material
+        // (its rows are in the material section), not from the mesh's shaderUniforms
+        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)) {
+            blocks.erase(std::remove_if(blocks.begin(), blocks.end(), [mesh](const CustomUniformBlock* block) {
+                for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+                    const Submesh& sub = mesh->submeshes[s];
+                    if (!sub.material.shader.empty() && (block == &sub.customVSParams || block == &sub.customFSParams ||
+                            block == &sub.customVSDepthParams || block == &sub.customFSDepthParams))
+                        return true;
+                }
+                return false;
+            }), blocks.end());
+        }
+    }
     for (const CustomUniformBlock* block : blocks) {
         for (const ShaderUniform& uniform : block->members) {
             bool listed = false;
