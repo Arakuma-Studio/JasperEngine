@@ -9,11 +9,16 @@
 --
 -- Groups are looked up by the names in GROUPS (add yours there); a missing one is skipped.
 --   tools/smoke-test.sh tools/fixtures/shader-library
+--
+-- SL_GROUPS="a,b" in the environment builds only those groups. A group built alone has
+-- ctx.solo set and may frame a close-up of itself with ctx.camera, ctx.light, ctx.ground:
+--   SMOKE_GAME_ENV="SL_GROUPS=2d" tools/smoke-test.sh tools/fixtures/shader-library
 local ShaderLibrary = { properties = {} }
 
 local GROUPS = {
     "core", "lighting", "lit", "stylized", "effects", "nature", "animated",
     "sprites", "ui", "particles", "sky", "decals", "extra",
+    "2d",
 }
 
 -- each group fills rows of COLUMNS cells, starting on the row after the previous group's
@@ -53,7 +58,8 @@ end
 
 -- sets shader on every submesh of a mesh; configure(material, submesh) edits each material
 function Context:setShader(mesh, shader, configure)
-    for i = 0, mesh:getNumSubmeshes() - 1 do
+    -- a Sprite (Tilemap, MeshPolygon) reports no submesh until its first update builds it
+    for i = 0, math.max(mesh:getNumSubmeshes(), 1) - 1 do
         local material = mesh:getMaterial(i)
         material.shader = shader
         if configure then
@@ -69,6 +75,26 @@ end
 
 function Context:fail(fmt, ...)
     fail("[" .. self.name .. "] " .. string.format(fmt, ...))
+end
+
+-- loads scripts/<name>.lua and builds it from originZ; solo: the only group built
+function ShaderLibrary:buildGroup(name, originZ, solo)
+    local ok, group = pcall(require, name)
+    if ok and type(group) == "table" and group.build then
+        local ctx = Context.new(self.scene, name, originZ)
+        ctx.solo = solo
+        ctx.camera, ctx.light, ctx.ground = self.camera, self.light, self.ground
+        local built, err = pcall(group.build, ctx)
+        if not built then
+            fail("group %s failed to build: %s", name, tostring(err))
+        end
+        log("group %s: %d objects in %d rows", name, ctx.count, ctx.rows)
+        table.insert(self.groups, { module = group, ctx = ctx })
+    elseif ok then
+        fail("group %s is not a table with build(ctx)", name)
+    elseif not tostring(group):find("no file in assets directory", 1, true) then
+        fail("group %s failed to load: %s", name, tostring(group))
+    end
 end
 
 function ShaderLibrary:init()
@@ -92,23 +118,29 @@ function ShaderLibrary:init()
     ground.position = Vector3(0, 0, -15)
     ground:setColor(0.42, 0.44, 0.48)
 
+    -- a GameObject made in Lua lives as long as its Lua object
+    self.camera, self.light, self.ground = camera, light, ground
+
+    local selected, selectedCount = nil, 0
+    local only = os.getenv("SL_GROUPS")
+    if only and only ~= "" then
+        selected = {}
+        for name in only:gmatch("[^,%s]+") do
+            selected[name] = true
+            selectedCount = selectedCount + 1
+        end
+        log("building only %s", only)
+    end
+
     self.groups = {}
     local originZ = FIRST_ROW_Z
     for _, name in ipairs(GROUPS) do
-        local ok, group = pcall(require, name)
-        if ok and type(group) == "table" and group.build then
-            local ctx = Context.new(scene, name, originZ)
-            local built, err = pcall(group.build, ctx)
-            if not built then
-                fail("group %s failed to build: %s", name, tostring(err))
+        if not selected or selected[name] then
+            self:buildGroup(name, originZ, selectedCount == 1)
+            local last = self.groups[#self.groups]
+            if last and last.ctx.name == name then
+                originZ = originZ - math.max(last.ctx.rows, 1) * ROW_DEPTH - 0.6
             end
-            log("group %s: %d objects in %d rows", name, ctx.count, ctx.rows)
-            table.insert(self.groups, { module = group, ctx = ctx })
-            originZ = originZ - math.max(ctx.rows, 1) * ROW_DEPTH - 0.6
-        elseif ok then
-            fail("group %s is not a table with build(ctx)", name)
-        elseif not tostring(group):find("no file in assets directory", 1, true) then
-            fail("group %s failed to load: %s", name, tostring(group))
         end
     end
     if #self.groups == 0 then
