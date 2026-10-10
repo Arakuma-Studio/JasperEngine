@@ -229,6 +229,8 @@ namespace Style {
 		// -- Layout (p3-layout) --
 
 		// -- Animation (p3-animation) --
+		// The individual transform properties are not 'none'.
+		bool has_translate = false, has_rotate = false, has_scale = false;
 
 		// -- Grid (p3-grid) --
 	};
@@ -317,7 +319,7 @@ namespace Style {
 		TransformOrigin   transform_origin_x()         const { return GetLengthPercentage(rare.transform_origin_x_type, rare.transform_origin_x, ComputedCalculationSlot::TransformOriginX); }
 		TransformOrigin   transform_origin_y()         const { return GetLengthPercentage(rare.transform_origin_y_type, rare.transform_origin_y, ComputedCalculationSlot::TransformOriginY); }
 		float             transform_origin_z()         const { return rare.transform_origin_z; }
-		bool              has_local_transform()        const { return rare.has_local_transform; }
+		bool              has_local_transform()        const { return rare.has_local_transform || rare.has_translate || rare.has_rotate || rare.has_scale; }
 		bool              has_local_perspective()      const { return rare.has_local_perspective; }
 		AlignContent      align_content()              const { return GetLocalPropertyAlignment(PropertyId::AlignContent, AlignContent::Normal); }
 		AlignItems        align_items()                const { return GetLocalPropertyAlignment(PropertyId::AlignItems, AlignItems::Normal); }
@@ -372,6 +374,9 @@ namespace Style {
 		// Layout (p3-layout)
 
 		// Animation (p3-animation)
+		TransformPtr      translate()                  const { return rare.has_translate ? GetLocalProperty(PropertyId::Translate, TransformPtr()) : TransformPtr(); }
+		TransformPtr      rotate()                     const { return rare.has_rotate ? GetLocalProperty(PropertyId::Rotate, TransformPtr()) : TransformPtr(); }
+		TransformPtr      scale()                      const { return rare.has_scale ? GetLocalProperty(PropertyId::Scale, TransformPtr()) : TransformPtr(); }
 
 		// Grid (p3-grid)
 
@@ -478,6 +483,9 @@ namespace Style {
 		// Layout (p3-layout)
 
 		// Animation (p3-animation)
+		void has_translate             (bool value)              { rare.has_translate              = value; }
+		void has_rotate                (bool value)              { rare.has_rotate                 = value; }
+		void has_scale                 (bool value)              { rare.has_scale                  = value; }
 
 		// Grid (p3-grid)
 

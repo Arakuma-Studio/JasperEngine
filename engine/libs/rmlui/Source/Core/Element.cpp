@@ -1935,7 +1935,9 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	const bool perspective_changed = changed_properties.Contains(PropertyId::Perspective) ||
 		changed_properties.Contains(PropertyId::PerspectiveOriginX) || changed_properties.Contains(PropertyId::PerspectiveOriginY);
 	const bool transform_changed = changed_properties.Contains(PropertyId::Transform) || changed_properties.Contains(PropertyId::TransformOriginX) ||
-		changed_properties.Contains(PropertyId::TransformOriginY) || changed_properties.Contains(PropertyId::TransformOriginZ);
+		changed_properties.Contains(PropertyId::TransformOriginY) || changed_properties.Contains(PropertyId::TransformOriginZ) ||
+		changed_properties.Contains(PropertyId::Translate) || changed_properties.Contains(PropertyId::Rotate) ||
+		changed_properties.Contains(PropertyId::Scale);
 
 	// Update the z-index and stacking context.
 	if (changed_properties.Contains(PropertyId::ZIndex) || filter_or_mask_changed || perspective_changed || transform_changed)
@@ -3197,8 +3199,12 @@ void Element::UpdateTransformState()
 		bool have_transform = false;
 		Matrix4f transform = Matrix4f::Identity();
 
-		if (TransformPtr transform_ptr = computed.transform())
+		// The individual transform properties, then 'transform' (CSS Transforms 2): translate * rotate * scale * transform.
+		const TransformPtr transform_parts[] = {computed.translate(), computed.rotate(), computed.scale(), computed.transform()};
+		for (const TransformPtr& transform_ptr : transform_parts)
 		{
+			if (!transform_ptr)
+				continue;
 			// First find the current element's transform
 			const int n = transform_ptr->GetNumPrimitives();
 			for (int i = 0; i < n; ++i)
@@ -3212,24 +3218,24 @@ void Element::UpdateTransformState()
 				transform *= matrix;
 				have_transform = true;
 			}
-
-			if (have_transform)
-			{
-				// Compute the transform origin
-				Vector3f transform_origin(pos.x + size.x * 0.5f, pos.y + size.y * 0.5f, 0);
-
-				transform_origin.x = pos.x + ResolveValue(computed.transform_origin_x(), size.x);
-				transform_origin.y = pos.y + ResolveValue(computed.transform_origin_y(), size.y);
-
-				transform_origin.z = computed.transform_origin_z();
-
-				// Make the transformation apply relative to the transform origin
-				transform = Matrix4f::Translate(transform_origin) * transform * Matrix4f::Translate(-transform_origin);
-			}
-
-			// We may want to include the local offsets here, as suggested by the CSS specs, so that the local transform is applied after the offset I
-			// believe the motivation is. Then we would need to subtract the absolute zero-offsets during geometry submit whenever we have transforms.
 		}
+
+		if (have_transform)
+		{
+			// Compute the transform origin
+			Vector3f transform_origin(pos.x + size.x * 0.5f, pos.y + size.y * 0.5f, 0);
+
+			transform_origin.x = pos.x + ResolveValue(computed.transform_origin_x(), size.x);
+			transform_origin.y = pos.y + ResolveValue(computed.transform_origin_y(), size.y);
+
+			transform_origin.z = computed.transform_origin_z();
+
+			// Make the transformation apply relative to the transform origin
+			transform = Matrix4f::Translate(transform_origin) * transform * Matrix4f::Translate(-transform_origin);
+		}
+
+		// We may want to include the local offsets here, as suggested by the CSS specs, so that the local transform is applied after the offset I
+		// believe the motivation is. Then we would need to subtract the absolute zero-offsets during geometry submit whenever we have transforms.
 
 		Element* stacking_parent = parent ? parent->ClosestStackingContextContainer() : nullptr;
 		if (stacking_parent && stacking_parent->transform_state)

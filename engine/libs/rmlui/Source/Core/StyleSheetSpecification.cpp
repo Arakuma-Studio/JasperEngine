@@ -554,6 +554,11 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 		ShorthandType::Custom);
 	properties.SetShorthandParser(ShorthandId::Animation, &ParseAnimationShorthand);
 
+	// The individual transform properties (CSS Transforms 2), composed before 'transform'.
+	RegisterProperty(PropertyId::Translate, "translate", "none", false, false).AddParser("translate");
+	RegisterProperty(PropertyId::Rotate, "rotate", "none", false, false).AddParser("rotate");
+	RegisterProperty(PropertyId::Scale, "scale", "none", false, false).AddParser("scale");
+
 	// -- Grid (p3-grid) --
 
 	instance->properties.property_map->ReserveUnnamed(PropertyId::NumDefinedIds);

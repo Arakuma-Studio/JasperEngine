@@ -9,6 +9,7 @@
 #include "ControlledLifetimeResource.h"
 #include "Easing.h"
 #include "ElementStyle.h"
+#include "IndividualTransforms.h"
 #include "PropertyShorthandDefinition.h"
 #include <limits>
 #ifdef RMLUI_MATH_EXPRESSIONS
@@ -397,10 +398,12 @@ bool PropertyParserAnimation::ParseItem(AnimationListItem& item, const String& v
 void PropertyParserAnimation::Initialize()
 {
 	parser_data.Initialize();
+	PropertyParserIndividualTransform::Initialize();
 }
 
 void PropertyParserAnimation::Shutdown()
 {
+	PropertyParserIndividualTransform::Shutdown();
 	parser_data.Shutdown();
 }
 
@@ -413,6 +416,7 @@ void PropertyParserAnimation::RegisterParsers()
 	StyleSheetSpecification::RegisterParser("animation_iteration_count", &parser_data->iteration_count);
 	StyleSheetSpecification::RegisterParser("animation_name", &parser_data->animation_name);
 	StyleSheetSpecification::RegisterParser("animation_keyword", &parser_data->keyword);
+	PropertyParserIndividualTransform::RegisterParsers();
 }
 
 TransitionList BuildTransitionList(const ElementStyle& style)

@@ -1667,9 +1667,15 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	case PropertyId::AnimationFillMode:
 	case PropertyId::AnimationPlayState:
 	case PropertyId::AnimationComposition:
+		break;
 	case PropertyId::Translate:
+		values.has_translate(p->unit == Unit::TRANSFORM && p->Get<TransformPtr>() != nullptr);
+		break;
 	case PropertyId::Rotate:
+		values.has_rotate(p->unit == Unit::TRANSFORM && p->Get<TransformPtr>() != nullptr);
+		break;
 	case PropertyId::Scale:
+		values.has_scale(p->unit == Unit::TRANSFORM && p->Get<TransformPtr>() != nullptr);
 		break;
 
 	// -- Grid (p3-grid) --
