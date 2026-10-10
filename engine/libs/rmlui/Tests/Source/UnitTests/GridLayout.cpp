@@ -219,6 +219,20 @@ TEST_CASE("GridLayout.track_sizing")
 		document->Close();
 	}
 
+	SUBCASE("calc_var_and_relative_units")
+	{
+		ElementDocument* document = LoadGrid(context, R"(
+			<div class="grid" style="--side: 30px; font-size: 10px; width: 200px; grid-template-columns: var(--side) calc(2em + 10px) minmax(1em, 1fr);
+				grid-auto-rows: calc(5px * 2); gap: var(--gap, 4px);">
+				<div id="a"/><div id="b"/><div id="c"/><div id="d"/>
+			</div>)");
+		CheckBox(document, "a", {0, 0, 30, 10});
+		CheckBox(document, "b", {34, 0, 30, 10});
+		CheckBox(document, "c", {68, 0, 132, 10});
+		CheckBox(document, "d", {0, 14, 30, 10});
+		document->Close();
+	}
+
 	SUBCASE("percentages")
 	{
 		ElementDocument* document = LoadGrid(context, R"(
