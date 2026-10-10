@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>values: currentcolor</title>
+<style>
+  /* currentcolor in borders (declared and initial), backgrounds, shadows and gradients; 'color: currentcolor' is the
+     parent's color; a hover changes the color and everything that follows it. */
+  html, body { margin: 0; }
+  div { position: absolute; }
+  .box { width: 60px; height: 40px; }
+  #a { left: 10px; top: 10px; color: #c03030; border: 4px solid; }
+  #b { left: 100px; top: 10px; color: #3060c0; border: 4px solid currentcolor; background-color: #f0f0f0; }
+  #c { left: 190px; top: 10px; color: #30a050; background-color: currentColor; }
+  #d { left: 280px; top: 10px; color: #a050a0; border-width: 3px; border-style: solid; border-color: #202020 currentcolor; }
+  #e { left: 10px; top: 80px; color: #d08020; box-shadow: 0 0 0 5px currentcolor; background: #ffffff; }
+  #f { left: 100px; top: 80px; color: #2080a0; background: linear-gradient(to right, currentColor, transparent); }
+  #g { left: 190px; top: 80px; color: #8030c0; }
+  #g > div { left: 10px; top: 10px; width: 30px; height: 20px; color: currentcolor; background-color: currentcolor; }
+  #h { left: 280px; top: 80px; color: #405060; border: 2px solid; }
+  #h:hover { color: #e04080; }
+</style>
+</head>
+<body>
+<div class="box" id="a"></div>
+<div class="box" id="b"></div>
+<div class="box" id="c"></div>
+<div class="box" id="d"></div>
+<div class="box" id="e"></div>
+<div class="box" id="f"></div>
+<div class="box" id="g"><div id="g1"></div></div>
+<div class="box" id="h"></div>
+</body>
+</html>

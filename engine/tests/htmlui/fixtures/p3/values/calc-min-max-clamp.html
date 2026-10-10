@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>values: min(), max(), clamp()</title>
+<style>
+  /* min(), max() and clamp() of percentages and lengths, resolved against the containing block at layout time:
+     the same rules in a wide and a narrow container pick different terms. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; }
+  .c { position: absolute; left: 10px; background: #eeeeee; height: 110px; }
+  #wide { top: 10px; width: 360px; }
+  #narrow { top: 130px; width: 150px; }
+  .min { width: min(100%, 200px); height: 20px; background: #3070b0; }
+  .max { width: max(50%, 120px); height: 20px; background: #b07030; margin-top: 4px; }
+  .clamp { width: clamp(100px, 50% + 20px, 250px); height: 20px; background: #30a070; margin-top: 4px; }
+  .font { font-size: clamp(10px, 4vw, 20px); color: #702080; margin-top: 4px; }
+  .pad { width: 40px; height: 10px; padding-left: max(5%, 10px); background: #a03050; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="c" id="wide">
+  <div class="min" id="w1"></div><div class="max" id="w2"></div><div class="clamp" id="w3"></div>
+  <div class="font" id="w4">XX</div><div class="pad" id="w5"></div>
+</div>
+<div class="c" id="narrow">
+  <div class="min" id="n1"></div><div class="max" id="n2"></div><div class="clamp" id="n3"></div>
+  <div class="font" id="n4">XX</div><div class="pad" id="n5"></div>
+</div>
+</body>
+</html>

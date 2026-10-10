@@ -1,0 +1,4 @@
+{
+ "comment": "calc() in sizes, margins, paddings, insets, gaps and flex-basis, nested, with em, rem, %, vw, vh and vmin.",
+ "viewport": [400, 260]
+}

@@ -1,0 +1,4 @@
+{
+ "comment": "min(), max() and clamp() of percentages and lengths in widths, paddings and font sizes, in a wide and a narrow container.",
+ "viewport": [400, 260]
+}

@@ -1,0 +1,4 @@
+{
+ "comment": "CSS Color 4 colors: rgb()/hsl() in the comma and space syntax with alpha numbers and percentages, none, hwb(), lab(), lch(), oklab(), oklch(), color(srgb), color-mix() in several spaces, named colors, colors in borders and shadows, opacity in percent.",
+ "viewport": [400, 180]
+}
