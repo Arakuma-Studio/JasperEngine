@@ -32,7 +32,10 @@ namespace jasperengine {
     // script, so letters only join inside their own font and script.
     class JASPERENGINE_API TextShaper {
     public:
-        // faces = chain (primary first), scales[i] = pixels per font unit of face i
+        // faces = chain (primary first), scales[i] = pixels per font unit of face i.
+        // A default-ignorable codepoint (zero-width space, joiners, word joiner, soft hyphen,
+        // variation selectors, bidi controls) keeps the current face: it draws nothing and
+        // takes no space, so a face without a glyph for it is no reason to switch fonts.
         static unsigned int selectFace(const std::vector<const FontFace*>& faces, uint32_t codepoint, unsigned int current);
         // appends the glyphs of codepoints[offset, offset + length) to `out`, left to right
         static void shapeRange(const std::vector<const FontFace*>& faces, const std::vector<float>& scales,
@@ -42,6 +45,9 @@ namespace jasperengine {
         static float measure(const std::vector<const FontFace*>& faces, const std::vector<float>& scales,
                              const std::vector<uint32_t>& codepoints, size_t offset, size_t length,
                              const ShapeOptions& options);
+        // Unicode's Default_Ignorable_Code_Point (DerivedCoreProperties.txt, Unicode 15.1):
+        // invisible, zero advance (HarfBuzz hides them in any face that has a space glyph)
+        static bool isDefaultIgnorable(uint32_t codepoint);
         // invalid sequences become U+FFFD
         static void decodeUtf8(const char* text, size_t length, std::vector<uint32_t>& codepoints);
     };
