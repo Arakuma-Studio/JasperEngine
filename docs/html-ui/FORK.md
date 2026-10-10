@@ -164,6 +164,35 @@ list: reused lists (`beff2c90`), no per-child calls and paint order rebuilt only
 Nested and would need its own path for pseudo-elements; not done. The other cases stay below
 10 %.
 
+### Benchmarks (p3-grid)
+
+`RUN_BENCHMARKS=1 tools/htmlui/run-rmlui-tests.sh` (static Release), minimum of 5 interleaved runs of the fork at
+`html-ui` f61ff39f (before, `RMLUI_FORK_DIR`) and with P3-G1..G3 (after), on a build host at load 55-77 (several agents
+building): single cases moved by 20-30 % in both directions between runs, so only consistent changes mean anything. ns per
+operation:
+
+| Benchmark | Before | After | After vs before |
+|---|---|---|---|
+| `elementdocument` LoadDocument + Show + Update + Render | 576 | 593 | +2.8 % |
+| `flexbox` SetInnerRML + Update + Render | 428909 | 417628 | -2.6 % |
+| `flexbox` Update (unmodified) | 2448 | 2419 | -1.2 % |
+| `flexbox.shrink-to-fit` Nested | 2932039 | 3069427 | +4.7 % |
+| `table_basic` SetInnerRML + Update + Render | 132576 | 132227 | -0.3 % |
+| `grid` (new, P3-G3) flex reference: SetInnerRML + Update | | 1418352 | |
+| `grid` fixed tracks: SetInnerRML + Update | | 1040097 | |
+| `grid` fixed tracks: relayout after a width change | | 701176 | |
+| `grid` auto-fill content-sized tracks: SetInnerRML + Update | | 1391732 | |
+| `grid` auto-fill content-sized tracks: relayout | | 1394828 | |
+| `grid` Update (unmodified), each variant | | 7556-7604 | |
+
+Three existing cases measured above 10 % in this run (`Clear + LoadDocument + Show + Update + Render` of both
+`elementdocument` documents, +14.8 % and +20.9 %, and `flexbox` scroll `SetInnerRML + Update`, +12.0 %) while their
+neighbours moved the other way by as much (`Clear + LoadDocument` -26.5 %, `LoadDocument + Show + Update` -28.9 %);
+none of them lays out a grid, and the only code P3-G1..G2 add to their paths is a display check per child of a
+formatting context, a flag check when a property is parsed and a stacking-context dirty on a `display` change: noise of
+the loaded host. The grid of 100 fixed-size slots lays out faster than the same slots as a wrapping flexbox; with
+content-sized auto-fill tracks it costs about as much as the flexbox.
+
 ## Updating upstream
 
 1. Copy the new tag over the vendored subset (same include/exclude lists).
