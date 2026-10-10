@@ -17,6 +17,8 @@
 
 #include <algorithm>
 #include <memory>
+#include <string>
+#include <unordered_map>
 
 //
 // From https://github.com/floooh/sokol-tools
@@ -581,7 +583,70 @@ static bool validate_inputs_and_outputs(const std::vector<spirvcross_t>& spirvcr
     return true;
 }
 
-bool shadercompiler::compile_to_lang(std::vector<spirvcross_t>& spirvcrossvec, const std::vector<spirv_t>& spirvvec, const std::vector<input_t>& inputs, const args_t& args){
+// glslang numbers the varyings of each stage in declaration order, so a fragment shader
+// declaring its inputs in another order than the vertex shader its outputs (a library
+// shader's own .frag against includes/surface_vs.glsl) would read the wrong ones wherever
+// the locations link them (GL 4.1, HLSL, MSL, SPIR-V). Each fragment input takes the
+// location of the vertex output of the same name: stages match by name, in any order.
+static bool match_fragment_input_locations(std::vector<uint32_t>& fragment, const std::vector<uint32_t>& vertex, const input_t& input) {
+    std::unordered_map<std::string, uint32_t> output_locations;
+    {
+        spirv_cross::Parser parser(vertex);
+        parser.parse();
+        spirv_cross::Compiler compiler(std::move(parser.get_parsed_ir()));
+        for (const spirv_cross::Resource& output : compiler.get_shader_resources().stage_outputs) {
+            if (compiler.has_decoration(output.id, spv::DecorationLocation))
+                output_locations[compiler.get_name(output.id)] = compiler.get_decoration(output.id, spv::DecorationLocation);
+        }
+    }
+    std::unordered_map<uint32_t, uint32_t> locations; // fragment input id -> location
+    {
+        spirv_cross::Parser parser(fragment);
+        parser.parse();
+        spirv_cross::Compiler compiler(std::move(parser.get_parsed_ir()));
+        for (const spirv_cross::Resource& in : compiler.get_shader_resources().stage_inputs) {
+            auto it = output_locations.find(compiler.get_name(in.id));
+            if (it != output_locations.end())
+                locations[in.id] = it->second;
+        }
+    }
+    if (locations.empty())
+        return true;
+
+    // OpDecorate [op, target-id, decoration, literal] (see patch_spirv_bind_slots)
+    const uint32_t SpvOpDecorate = 71;
+    const uint32_t SpvDecorationLocation = 30;
+    size_t offset = 5;
+    while (offset < fragment.size()) {
+        const uint32_t opcode = fragment[offset] & 0xffff;
+        const uint32_t word_count = fragment[offset] >> 16;
+        if (word_count == 0 || offset + word_count > fragment.size()) {
+            fprintf(stderr, "%s: malformed SPIRV binary\n", input.filename.c_str());
+            return false;
+        }
+        if (opcode == SpvOpDecorate && word_count == 4 && fragment[offset + 2] == SpvDecorationLocation) {
+            auto it = locations.find(fragment[offset + 1]);
+            if (it != locations.end())
+                fragment[offset + 3] = it->second;
+        }
+        offset += word_count;
+    }
+    return true;
+}
+
+bool shadercompiler::compile_to_lang(std::vector<spirvcross_t>& spirvcrossvec, const std::vector<spirv_t>& spirvvec_in, const std::vector<input_t>& inputs, const args_t& args){
+    // the fragment stage's varyings located as the vertex stage's (match_fragment_input_locations)
+    std::vector<spirv_t> spirvvec = spirvvec_in;
+    {
+        int vs = -1, fs = -1;
+        for (int s = 0; s < (int)inputs.size(); s++){
+            if (inputs[s].stage_type == stage_type_t::STAGE_VERTEX) vs = s;
+            if (inputs[s].stage_type == stage_type_t::STAGE_FRAGMENT) fs = s;
+        }
+        if (vs >= 0 && fs >= 0 && !match_fragment_input_locations(spirvvec[fs].bytecode, spirvvec[vs].bytecode, inputs[fs]))
+            return false;
+    }
+
     for (int i = 0; i < inputs.size(); i++){
         // SPIRV (Vulkan): no cross-compilation, the SPIRV bytecode itself is the
         // output; only the set/binding decorations are patched to the sokol_gfx.h

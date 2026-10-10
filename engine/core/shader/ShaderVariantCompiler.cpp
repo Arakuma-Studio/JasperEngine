@@ -27,7 +27,7 @@ namespace {
 
 // Bump when the compile pipeline changes its output for the same sources (glslang or
 // SPIRV-Cross update, different options), so runtime caches of the old output go stale.
-constexpr const char* compilerPipelineVersion = "jasperengine-shadercompiler-1";
+constexpr const char* compilerPipelineVersion = "jasperengine-shadercompiler-2"; // 2: fragment inputs located by name
 
 // Length prefixes keep the concatenation unambiguous, so two different graphs
 // cannot produce the same signature.
