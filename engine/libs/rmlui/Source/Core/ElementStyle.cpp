@@ -974,6 +974,19 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 
 	RMLUI_ZoneScopedC(0xFF7F50);
 
+	// Fast path: only the inherited visibility changed (a document or a subtree is shown or hidden) and this element does
+	// not declare its own, so it takes its parent's without every other value being computed again.
+	if (parent_values && !values_are_default_initialized && dirty_variables.empty() && dirty_var_shorthands.empty() && dirty_properties.Size() == 1 &&
+		dirty_properties.Contains(PropertyId::Visibility) && !GetLocalProperty(PropertyId::Visibility))
+	{
+		values.visibility(parent_values->visibility());
+		for (int i = 0; i < element->GetNumChildren(true); i++)
+			element->GetChild(i)->GetStyle()->dirty_properties.Insert(PropertyId::Visibility);
+		PropertyIdSet result(std::move(dirty_properties));
+		dirty_properties.Clear();
+		return result;
+	}
+
 	// We're a bit conservative here and recompute shorthand substitutions also if any variables have been dirtied at
 	// all. @performance We could be more strict and only recompute shorthands if any variables they *use* have been dirtied.
 	if (!dirty_variables.empty() || !dirty_var_shorthands.empty())

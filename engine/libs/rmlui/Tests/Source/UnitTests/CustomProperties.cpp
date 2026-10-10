@@ -499,9 +499,7 @@ TEST_CASE("custom_properties.data_model")
 	String bg_color = "";
 	model.Bind("bg_color", &bg_color);
 
-	// Invalid value during substitution: when the document loads, and again when it is shown (visibility is inherited, FORK.md
-	// P3-4: showing the document restyles the div).
-	TestsShell::SetNumExpectedWarnings(2);
+	TestsShell::SetNumExpectedWarnings(1); // Invalid value during substitution.
 	ElementDocument* document = context->LoadDocumentFromMemory(data_model_rml);
 	document->Show();
 	Element* div = document->GetElementById("div");
