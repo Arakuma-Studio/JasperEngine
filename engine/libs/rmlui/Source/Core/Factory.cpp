@@ -526,6 +526,11 @@ void Factory::ClearStyleSheetCache()
 	StyleSheetFactory::ClearStyleSheetCache();
 }
 
+void Factory::RegisterPseudoClass(const String& name)
+{
+	StyleSheetFactory::RegisterPseudoClass(name);
+}
+
 void Factory::ClearTemplateCache()
 {
 	TemplateCache::Clear();

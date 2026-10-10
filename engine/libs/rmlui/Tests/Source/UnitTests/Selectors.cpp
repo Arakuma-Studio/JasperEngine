@@ -4,6 +4,7 @@
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/Factory.h>
 #include <RmlUi/Core/Types.h>
 #include <doctest.h>
 
@@ -776,6 +777,25 @@ TEST_CASE("Selectors.Specificity")
 	// :nth-child(of S) is a pseudo-class plus S: two classes, a later rule with two classes wins
 	CHECK(width("d") == 80.f);
 
+	context->UnloadDocument(document);
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("Selectors.RegisteredPseudoClass")
+{
+	Context* context = TestsShell::GetContext();
+	Factory::RegisterPseudoClass("my-state");
+	ElementDocument* document = context->LoadDocumentFromMemory(R"(<rml><head><style>
+		div { display: block; height: 1px; }
+		div:my-state { height: 5px; }
+	</style></head><body><div id="a"/></body></rml>)");
+	REQUIRE(document);
+	document->Show();
+	Element* a = document->GetElementById("a");
+	a->SetPseudoClass("my-state", true);
+	context->Update();
+	CHECK(a->GetComputedValues().height().value == 5.f);
+	CHECK(a->Matches(":my-state"));
 	context->UnloadDocument(document);
 	TestsShell::ShutdownShell();
 }
