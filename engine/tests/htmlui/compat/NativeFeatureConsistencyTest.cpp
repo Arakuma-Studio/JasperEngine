@@ -72,6 +72,23 @@ namespace {
         {ForkFeature::Important, SampleKind::Rule, "color: red !important", ".sample{color:#ff0000ff;", ""},
         {ForkFeature::CssWideKeywords, SampleKind::Declaration, "color: inherit", "var(", ""},
         {ForkFeature::Grid, SampleKind::Declaration, "display: grid", "display:flex", ""},
+        // p3-layout
+        {ForkFeature::Sticky, SampleKind::Declaration, "position: sticky", "position:relative", ""},
+        {ForkFeature::Sticky, SampleKind::Declaration, "overflow: clip", "overflow:hidden", ""},
+        {ForkFeature::Sticky, SampleKind::Declaration, "overflow-clip-margin: 4px", "", "HTMLUI-CSS-0003"},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "aspect-ratio: 16 / 9", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "order: 2", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "flex-line-count: 2", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "justify-items: center", "", "HTMLUI-CSS-0007"},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "justify-self: end", "", "HTMLUI-CSS-0007"},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "width: fit-content", "width:auto", ""},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "max-height: min-content", "max-height:none", ""},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "min-width: auto", "min-width:0px", ""},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "display: contents", "display:block", ""},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "align-items: safe center", "align-items:center", ""},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "justify-content: start", "justify-content:flex-start", ""},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "flex-basis: content", "", "HTMLUI-CSS-0004"},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "flex-wrap: balance", "", "HTMLUI-CSS-0004"},
     };
 
     // lower case, no white space, no trailing ';'

@@ -28,8 +28,9 @@ namespace {
         return text(v);
     }
 
-    // the flex shorthand in RmlUi's three-value form
+    // the flex shorthand in RmlUi's three-value form ('content' basis: with the fork's BoxParity, else 'auto')
     std::optional<std::string> flexValue(Session& session, const ValueList& w){
+        const std::string contentBasis = session.options.fork.has(ForkFeature::BoxParity) ? "content" : "auto";
         if (w.size() == 1){
             const std::string k = identOf(w[0]);
             if (k == "none")
@@ -41,7 +42,7 @@ namespace {
             if (w[0].isToken(TokenType::Number))
                 return text(w[0]) + " 1 0%";
             if (isLength(session, w[0], true) || k == "content")
-                return "1 1 " + (k == "content" ? std::string("auto") : basisText(w[0]));
+                return "1 1 " + (k == "content" ? contentBasis : basisText(w[0]));
             return std::nullopt;
         }
         if (w.size() == 2 && w[0].isToken(TokenType::Number)){
@@ -55,7 +56,7 @@ namespace {
         }
         if (w.size() == 3 && w[0].isToken(TokenType::Number) && w[1].isToken(TokenType::Number) &&
             (isLength(session, w[2], true) || isIdent(w[2], "auto") || isIdent(w[2], "content")))
-            return text(w[0]) + " " + text(w[1]) + " " + (isIdent(w[2], "content") ? std::string("auto") : basisText(w[2]));
+            return text(w[0]) + " " + text(w[1]) + " " + (isIdent(w[2], "content") ? contentBasis : basisText(w[2]));
         return std::nullopt;
     }
 
@@ -187,8 +188,18 @@ void jasperengine::htmlui::compat::rewriteFlex(DeclContext& context){
 void jasperengine::htmlui::compat::rewriteAlignKeyword(DeclContext& context){
     const std::string& n = context.name;
     ValueList w = words(context.value);
+    // the fork has the CSS Box Alignment 3 values (BoxParity): written as they are
+    if (context.fork(ForkFeature::BoxParity) && !(w.size() == 1 && isVar(w[0]))){
+        std::string value;
+        for (const ComponentValue& v : w)
+            value += (value.empty() ? "" : " ") + lowerAscii(text(v));
+        if (RcssGrammar::accepts(n, value, context.session.options.fork)){
+            context.emit(n, value);
+            return;
+        }
+    }
     if (n == "justify-items" || n == "justify-self"){
-        if (context.fork(ForkFeature::Grid)){
+        if (context.fork(ForkFeature::Grid) || context.fork(ForkFeature::BoxParity)){
             context.emit(n, context.valueText());
             return;
         }
