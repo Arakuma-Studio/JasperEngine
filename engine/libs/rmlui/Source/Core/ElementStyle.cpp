@@ -1456,6 +1456,122 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	case PropertyId::FillImage:
 	case PropertyId::CaretColor:
 		break;
+
+	/*
+	  Phase 3 sections (docs/html-ui/phase-3-fork-patches.md 3.0, 3.1.3). Every id of ID.h has its case in the section
+	  of the package that implements it, so -Wswitch stays clean; a package edits its own section only. Ids that are
+	  not registered yet never reach this function.
+	*/
+
+	// -- Groundwork (p3-base) --
+	case PropertyId::Order:
+	case PropertyId::JustifyItems:
+	case PropertyId::JustifySelf:
+	case PropertyId::WillChange:
+		break;
+
+	// -- Values (p3-values) --
+
+	// -- Cascade (p3-cascade) --
+	case PropertyId::Content:
+	case PropertyId::Quotes:
+	case PropertyId::CounterReset:
+	case PropertyId::CounterIncrement:
+	case PropertyId::CounterSet:
+	case PropertyId::ListStyleType:
+	case PropertyId::ListStylePosition:
+	case PropertyId::ListStyleImage:
+		break;
+
+	// -- Paint (p3-paint) --
+	case PropertyId::BorderTopStyle:
+	case PropertyId::BorderRightStyle:
+	case PropertyId::BorderBottomStyle:
+	case PropertyId::BorderLeftStyle:
+	case PropertyId::RmlUi_BorderTopLeftRadiusX:
+	case PropertyId::RmlUi_BorderTopLeftRadiusY:
+	case PropertyId::RmlUi_BorderTopRightRadiusX:
+	case PropertyId::RmlUi_BorderTopRightRadiusY:
+	case PropertyId::RmlUi_BorderBottomRightRadiusX:
+	case PropertyId::RmlUi_BorderBottomRightRadiusY:
+	case PropertyId::RmlUi_BorderBottomLeftRadiusX:
+	case PropertyId::RmlUi_BorderBottomLeftRadiusY:
+	case PropertyId::OutlineWidth:
+	case PropertyId::OutlineStyle:
+	case PropertyId::OutlineColor:
+	case PropertyId::OutlineOffset:
+	case PropertyId::Isolation:
+	case PropertyId::BackgroundImage:
+	case PropertyId::BackgroundPositionX:
+	case PropertyId::BackgroundPositionY:
+	case PropertyId::BackgroundSize:
+	case PropertyId::BackgroundRepeat:
+	case PropertyId::BackgroundOrigin:
+	case PropertyId::BackgroundClip:
+	case PropertyId::BackgroundAttachment:
+	case PropertyId::MaskSize:
+	case PropertyId::MaskPositionX:
+	case PropertyId::MaskPositionY:
+	case PropertyId::MaskRepeat:
+	case PropertyId::ObjectFit:
+	case PropertyId::ObjectPositionX:
+	case PropertyId::ObjectPositionY:
+	case PropertyId::BorderImage:
+		break;
+
+	// -- Text (p3-text) --
+	case PropertyId::WordSpacing:
+	case PropertyId::OverflowWrap:
+	case PropertyId::WhiteSpaceCollapse:
+	case PropertyId::TextWrapMode:
+	case PropertyId::TextDecorationColor:
+	case PropertyId::TextDecorationStyle:
+	case PropertyId::TextDecorationThickness:
+	case PropertyId::TextUnderlineOffset:
+	case PropertyId::TextShadow:
+	case PropertyId::UserSelect:
+	case PropertyId::AccentColor:
+		break;
+
+	// -- Layout (p3-layout) --
+	case PropertyId::OverflowClipMargin:
+	case PropertyId::AspectRatio:
+	case PropertyId::ScrollbarGutter:
+		break;
+
+	// -- Animation (p3-animation) --
+	case PropertyId::TransitionProperty:
+	case PropertyId::TransitionDuration:
+	case PropertyId::TransitionTimingFunction:
+	case PropertyId::TransitionDelay:
+	case PropertyId::TransitionBehavior:
+	case PropertyId::AnimationName:
+	case PropertyId::AnimationDuration:
+	case PropertyId::AnimationTimingFunction:
+	case PropertyId::AnimationDelay:
+	case PropertyId::AnimationIterationCount:
+	case PropertyId::AnimationDirection:
+	case PropertyId::AnimationFillMode:
+	case PropertyId::AnimationPlayState:
+	case PropertyId::AnimationComposition:
+	case PropertyId::Translate:
+	case PropertyId::Rotate:
+	case PropertyId::Scale:
+		break;
+
+	// -- Grid (p3-grid) --
+	case PropertyId::GridTemplateColumns:
+	case PropertyId::GridTemplateRows:
+	case PropertyId::GridTemplateAreas:
+	case PropertyId::GridAutoColumns:
+	case PropertyId::GridAutoRows:
+	case PropertyId::GridAutoFlow:
+	case PropertyId::GridRowStart:
+	case PropertyId::GridRowEnd:
+	case PropertyId::GridColumnStart:
+	case PropertyId::GridColumnEnd:
+		break;
+
 	// Invalid properties
 	case PropertyId::Invalid:
 	case PropertyId::NumDefinedIds:

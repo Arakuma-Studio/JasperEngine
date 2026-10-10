@@ -2006,6 +2006,27 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	{
 		dirty_transition = true;
 	}
+
+	/*
+	  Phase 3 sections (docs/html-ui/phase-3-fork-patches.md 3.0, 3.1.3): each package reacts to its own properties in
+	  its section below, and only there (a call into the package's own source file where it needs more than a line).
+	*/
+
+	// -- Groundwork (p3-base) --
+
+	// -- Values (p3-values) --
+
+	// -- Cascade (p3-cascade) --
+
+	// -- Paint (p3-paint) --
+
+	// -- Text (p3-text) --
+
+	// -- Layout (p3-layout) --
+
+	// -- Animation (p3-animation) --
+
+	// -- Grid (p3-grid) --
 }
 
 void Element::OnPseudoClassChange(const String& /*pseudo_class*/, bool /*activate*/) {}

@@ -202,6 +202,27 @@ namespace Style {
 		int16_t border_top_left_radius = 0, border_top_right_radius = 0, border_bottom_right_radius = 0, border_bottom_left_radius = 0;
 		Colourb image_color = Colourb(255, 255, 255);
 		float scrollbar_margin = 0.f;
+
+		/*
+		  Phase 3 sections (docs/html-ui/phase-3-fork-patches.md 3.0, 3.1.3): each package adds its computed fields in its
+		  own section below, and only there (the matching accessors go into the same section of ComputedValues).
+		*/
+
+		// -- Groundwork (p3-base) --
+
+		// -- Values (p3-values) --
+
+		// -- Cascade (p3-cascade) --
+
+		// -- Paint (p3-paint) --
+
+		// -- Text (p3-text) --
+
+		// -- Layout (p3-layout) --
+
+		// -- Animation (p3-animation) --
+
+		// -- Grid (p3-grid) --
 	};
 
 	class ComputedValues : NonCopyMoveable {
@@ -320,6 +341,23 @@ namespace Style {
 		bool              has_backdrop_filter()        const { return rare.has_backdrop_filter; }
 		bool              has_box_shadow()             const { return rare.has_box_shadow; }
 
+		// -- Phase 3: one section per package (see RareValues) --
+		// Groundwork (p3-base)
+
+		// Values (p3-values)
+
+		// Cascade (p3-cascade)
+
+		// Paint (p3-paint)
+
+		// Text (p3-text)
+
+		// Layout (p3-layout)
+
+		// Animation (p3-animation)
+
+		// Grid (p3-grid)
+
 		// -- Assignment --
 		// Common
 		void width              (LengthPercentageAuto value) { StoreLengthPercentageAuto(ComputedCalculationSlot::Width, value); common.width_type = value.type; common.width_value = value.value; }
@@ -407,6 +445,23 @@ namespace Style {
 		void has_filter                (bool value)              { rare.has_filter                 = value; }
 		void has_backdrop_filter       (bool value)              { rare.has_backdrop_filter        = value; }
 		void has_box_shadow            (bool value)              { rare.has_box_shadow             = value; }
+
+		// Phase 3: one section per package (see RareValues)
+		// Groundwork (p3-base)
+
+		// Values (p3-values)
+
+		// Cascade (p3-cascade)
+
+		// Paint (p3-paint)
+
+		// Text (p3-text)
+
+		// Layout (p3-layout)
+
+		// Animation (p3-animation)
+
+		// Grid (p3-grid)
 
 		// clang-format on
 

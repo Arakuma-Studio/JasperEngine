@@ -10,6 +10,7 @@ template <typename ID>
 class IdNameMap {
 	Vector<String> name_map; // IDs are indices into the name_map
 	UnorderedMap<String, ID> reverse_map;
+	size_t num_reserved = 0; // Defined IDs without a name, see ReserveUnnamed().
 
 protected:
 	IdNameMap(size_t num_ids_to_reserve)
@@ -26,16 +27,30 @@ public:
 		// Should only be used for defined IDs
 		if ((size_t)id >= name_map.size())
 			name_map.resize(1 + (size_t)id);
+		else if (name_map[(size_t)id].empty() && num_reserved > 0)
+			num_reserved -= 1;
 		name_map[(size_t)id] = name;
 		bool inserted = reverse_map.emplace(name, id).second;
 		RMLUI_ASSERT(inserted);
 		(void)inserted;
 	}
 
+	/// Reserves every defined ID that has no name yet: the ID is declared (phase-3 groundwork declares the IDs of the
+	/// features still to be implemented) but nothing is registered under it. Custom IDs are created after it.
+	void ReserveUnnamed(ID number_of_defined_ids)
+	{
+		if (name_map.size() < (size_t)number_of_defined_ids)
+			name_map.resize((size_t)number_of_defined_ids);
+		num_reserved = (size_t)std::count_if(name_map.begin(), name_map.begin() + (size_t)number_of_defined_ids,
+			[](const String& name) { return name.empty(); });
+	}
+	size_t GetNumReserved() const { return num_reserved; }
+
 	bool AssertAllInserted(ID number_of_defined_ids) const
 	{
 		std::ptrdiff_t cnt = std::count_if(name_map.begin(), name_map.end(), [](const String& name) { return !name.empty(); });
-		return cnt == (std::ptrdiff_t)number_of_defined_ids && reverse_map.size() == (size_t)number_of_defined_ids;
+		return cnt + (std::ptrdiff_t)num_reserved == (std::ptrdiff_t)number_of_defined_ids &&
+			reverse_map.size() + num_reserved == (size_t)number_of_defined_ids;
 	}
 
 	ID GetId(const String& name) const
@@ -54,8 +69,8 @@ public:
 
 	ID GetOrCreateId(const String& name)
 	{
-		// All predefined properties must be set before possibly adding custom properties here
-		RMLUI_ASSERT(name_map.size() == reverse_map.size());
+		// All predefined properties must be set (or reserved) before possibly adding custom properties here
+		RMLUI_ASSERT(name_map.size() == reverse_map.size() + num_reserved);
 
 		ID next_id = static_cast<ID>(name_map.size());
 

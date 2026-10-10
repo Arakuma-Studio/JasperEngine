@@ -73,7 +73,7 @@ struct FilterDeclarationList;
 struct ColorStop;
 struct BoxShadow;
 enum class EventId : uint16_t;
-enum class PropertyId : uint8_t;
+enum class PropertyId : uint16_t;
 enum class MediaQueryId : uint8_t;
 enum class FamilyId : int;
 using TouchId = uintptr_t;

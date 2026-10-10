@@ -263,6 +263,27 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	RegisterParser("ratio", &default_parsers->ratio);
 	RegisterParser("resolution", &default_parsers->resolution);
 	RegisterParser("box_shadow", &default_parsers->box_shadow);
+
+	/*
+	  Phase 3 sections (docs/html-ui/phase-3-fork-patches.md 3.0, 3.1.3): each package registers its parsers in its own
+	  section below, and only there.
+	*/
+
+	// -- Groundwork (p3-base) --
+
+	// -- Values (p3-values) --
+
+	// -- Cascade (p3-cascade) --
+
+	// -- Paint (p3-paint) --
+
+	// -- Text (p3-text) --
+
+	// -- Layout (p3-layout) --
+
+	// -- Animation (p3-animation) --
+
+	// -- Grid (p3-grid) --
 }
 
 void StyleSheetSpecification::RegisterDefaultProperties()
@@ -455,6 +476,33 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	// Internationalization properties (internal)
 	RegisterProperty(PropertyId::RmlUi_Language, "-rmlui-language", "", true, true).AddParser("string");
 	RegisterProperty(PropertyId::RmlUi_Direction, "-rmlui-direction", "auto", true, true).AddParser("keyword", "auto, ltr, rtl");
+
+	/*
+	  Phase 3 sections (docs/html-ui/phase-3-fork-patches.md 3.0, 3.1.3, Appendix B). Every new id is declared in ID.h by
+	  groundwork; each package registers its properties and shorthands in its own section below, and only there. Ids
+	  not registered yet are reserved at the end of this function: they have no name, and nothing parses into them.
+	*/
+
+	// -- Groundwork (p3-base) --
+	// A browser optimization hint with no visual effect: accepted, so it neither fails nor needs a rewrite.
+	RegisterProperty(PropertyId::WillChange, "will-change", "auto", false, false).AddParser("keyword", "auto").AddParser("string");
+
+	// -- Values (p3-values) --
+
+	// -- Cascade (p3-cascade) --
+
+	// -- Paint (p3-paint) --
+
+	// -- Text (p3-text) --
+
+	// -- Layout (p3-layout) --
+
+	// -- Animation (p3-animation) --
+
+	// -- Grid (p3-grid) --
+
+	instance->properties.property_map->ReserveUnnamed(PropertyId::NumDefinedIds);
+	instance->properties.shorthand_map->ReserveUnnamed(ShorthandId::NumDefinedIds);
 
 	RMLUI_ASSERTMSG(instance->properties.shorthand_map->AssertAllInserted(ShorthandId::NumDefinedIds), "Missing specification for one or more Shorthand IDs.");
 	RMLUI_ASSERTMSG(instance->properties.property_map->AssertAllInserted(PropertyId::NumDefinedIds), "Missing specification for one or more Property IDs.");

@@ -10,7 +10,7 @@
 
 namespace Rml {
 
-enum class Unit;
+enum class Unit : uint64_t;
 
 /**
     Templatised TypeConverters with Template Specialisation.

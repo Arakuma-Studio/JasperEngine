@@ -161,6 +161,27 @@ namespace Style {
 
 	enum class Direction : uint8_t { Auto, Ltr, Rtl };
 
+	/*
+	  Phase 3 sections (docs/html-ui/phase-3-fork-patches.md 3.0, 3.1.3): each package adds its style types in its own
+	  section below, and only there.
+	*/
+
+	// -- Groundwork (p3-base) --
+
+	// -- Values (p3-values) --
+
+	// -- Cascade (p3-cascade) --
+
+	// -- Paint (p3-paint) --
+
+	// -- Text (p3-text) --
+
+	// -- Layout (p3-layout) --
+
+	// -- Animation (p3-animation) --
+
+	// -- Grid (p3-grid) --
+
 	class ComputedValues;
 
 } // namespace Style
