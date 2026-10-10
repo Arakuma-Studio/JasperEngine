@@ -199,3 +199,32 @@ TEST_F(TextZeroWidthEngine, MeasuredAndDrawnLikeNothing){
         }
     }
 }
+
+// TextShapingContext::word_spacing (phase 3, p3-text): added after U+0020, U+00A0 and U+1361;
+// letter spacing is not added after an invisible default-ignorable (as Chromium).
+TEST_F(TextZeroWidthEngine, WordAndLetterSpacing){
+    const Rml::FontFaceHandle face = engine.GetFontFaceHandle("ahem", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal, 10);
+    ASSERT_NE(face, 0u);
+    Rml::TextShapingContext words{language};
+    words.word_spacing = 5.0f;
+    EXPECT_EQ(engine.GetStringWidth(face, "H H\xc2\xa0H", words), 60);
+    EXPECT_EQ(engine.GetStringWidth(face, "HHH", words), 30);
+    Rml::TextShapingContext letters{language};
+    letters.letter_spacing = 2.0f;
+    EXPECT_EQ(engine.GetStringWidth(face, std::string("H") + zwsp + "H", letters), 24);
+    Rml::TextShapingContext both{language};
+    both.letter_spacing = 1.0f;
+    both.word_spacing = 10.0f;
+    EXPECT_EQ(engine.GetStringWidth(face, "H H", both), 43);
+
+    // the same advances in the generated geometry: the last square moved by the spacing
+    Rml::TexturedMeshList meshes;
+    const int width = engine.GenerateString(context->GetRenderManager(), face, 0, "H H", Rml::Vector2f(0, 20), Rml::ColourbPremultiplied(255, 255, 255, 255),
+                                            1.0f, words, meshes);
+    EXPECT_EQ(width, 35);
+    ASSERT_FALSE(meshes.empty());
+    ASSERT_GE(meshes[0].mesh.vertices.size(), 8u);
+    EXPECT_NEAR(meshes[0].mesh.vertices[4].position.x, 25.0f, 1.0f);
+    // the width cache keys on the word spacing
+    EXPECT_EQ(engine.GetStringWidth(face, "H H", Rml::TextShapingContext{language}), 30);
+}

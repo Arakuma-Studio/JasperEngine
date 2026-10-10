@@ -68,11 +68,16 @@ namespace {
             shaped.push_back(glyph);
         }
 
-        if (options.letterSpacing != 0.0f){
-            //once per cluster, on its last glyph in visual order, so marks stay on their base
+        if (options.letterSpacing != 0.0f || options.wordSpacing != 0.0f){
+            //once per cluster, on its last glyph in visual order, so marks stay on their base;
+            //letter spacing skips the invisible default-ignorables (as browsers), word spacing goes to spaces
             for (size_t i = first; i < shaped.size(); i++){
                 if (i + 1 == shaped.size() || shaped[i + 1].cluster != shaped[i].cluster){
-                    shaped[i].xAdvance += options.letterSpacing;
+                    const uint32_t codepoint = shaped[i].cluster < codepoints.size() ? codepoints[shaped[i].cluster] : 0;
+                    if (!TextShaper::isDefaultIgnorable(codepoint))
+                        shaped[i].xAdvance += options.letterSpacing;
+                    if (codepoint == 0x0020 || codepoint == 0x00A0 || codepoint == 0x1361)
+                        shaped[i].xAdvance += options.wordSpacing;
                 }
             }
         }
