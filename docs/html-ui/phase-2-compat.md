@@ -3509,7 +3509,10 @@ What changed:
 - **Malloc, free, memcpy and page faults**: `NormalizeContext` holds a pointer to the options
   and no property name; the RCSS writer grows its output without zero-filling it; constant
   names and companion lists are emitted as views; a thread keeps the storage of a session's
-  big lists and of the writer's output for its next session, as it keeps the arena's blocks.
+  big lists and of the writer's output for its next session, as it keeps the arena's blocks:
+  at most `kSpareKeptBytes` (4 MB) for all of them together, next to the arena's
+  `kArenaKeptBytes` (4 MB) in `Arena.h`; a list that would exceed the cap is freed with its
+  session (`SpareStorage::kept()` for tests; `CompatCssSpares.KeptStorageStaysWithinTheCap`).
 - **Cold compile**: a diagnostic of a linked style sheet counted the columns of the `<link>`'s
   line for its origin ("linked by page.html:1"), on a one-line 50 KB page a fifth of the
   compile: `SourceFiles::line` gives the line alone, and columns are counted eight bytes at a

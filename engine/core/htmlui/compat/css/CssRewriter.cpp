@@ -167,13 +167,17 @@ std::string_view FlatRule::selectorText(size_t i, std::string& buffer) const{
 
 Session::Session(const CompatOptions& options, SourceFiles& files, DiagnosticSink& sink, const RewriteContext& context):
     options(options), files(files), sink(&sink), context(context), urls(context.files, context.manifest) {
-    // (the storage the thread's previous session left, if any)
-    rules.swap(sessionSpare<FlatRule, 0>());
-    baseEntries.swap(sessionSpare<BaseEntry, 0>());
-    baseSlots.swap(sessionSpare<uint32_t, 0>());
-    propertyUses.swap(sessionSpare<PendingUse, 0>());
-    memoEntries.swap(sessionSpare<MemoEntry, 0>());
-    memoSlots.swap(sessionSpare<uint32_t, 1>());
+    // (the storage the thread's previous session left, if any: in use, no longer kept)
+    auto take = [](auto& list, auto& spare){
+        SpareStorage::take(spare.capacity() * sizeof(spare[0]));
+        list.swap(spare);
+    };
+    take(rules, sessionSpare<FlatRule, 0>());
+    take(baseEntries, sessionSpare<BaseEntry, 0>());
+    take(baseSlots, sessionSpare<uint32_t, 0>());
+    take(propertyUses, sessionSpare<PendingUse, 0>());
+    take(memoEntries, sessionSpare<MemoEntry, 0>());
+    take(memoSlots, sessionSpare<uint32_t, 1>());
     mainSink = &sink;
     const CssRewriter::DeclarationMemo memoMode = CssRewriter::declarationMemo();
     memoDisabled = memoMode == CssRewriter::DeclarationMemo::Off;
@@ -215,10 +219,12 @@ Session::Session(const CompatOptions& options, SourceFiles& files, DiagnosticSin
 }
 
 Session::~Session(){
-    // the lists' storage is left to the thread's next session
+    // the lists' storage is left to the thread's next session, within kSpareKeptBytes (what is
+    // not kept is freed with the session)
     auto keep = [](auto& list, auto& spare){
         list.clear();
-        if (list.capacity() > spare.capacity())
+        if (list.capacity() > spare.capacity() &&
+            SpareStorage::keep(spare.capacity() * sizeof(spare[0]), list.capacity() * sizeof(list[0])))
             spare.swap(list);
     };
     keep(rules, sessionSpare<FlatRule, 0>());

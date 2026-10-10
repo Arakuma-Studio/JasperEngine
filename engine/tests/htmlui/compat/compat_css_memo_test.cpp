@@ -12,10 +12,12 @@
 #include "CssCaseRunner.h"
 
 #include "htmlui/compat/DocumentLoader.h"
+#include "htmlui/compat/css/RewriteSession.h"
 #include "htmlui/compat/ua/UserAgentStyle.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <regex>
 
@@ -234,4 +236,28 @@ TEST(CompatCssMemo, PagesAndHtmlFixtures){
             expectSame(path, [&](){ return documentText(path, fork); });
     }
     EXPECT_EQ(CssRewriter::declarationMemoMismatches(), mismatches);
+}
+
+// p2-perf2: what a thread keeps of a rewriter session's lists and of the RCSS writer's output
+// for its next session is capped at kSpareKeptBytes (as the arena's kept blocks are at
+// kArenaKeptBytes): a style sheet whose lists exceed the cap does not pin them, and a small
+// one after it is kept again
+TEST(CompatCssSpares, KeptStorageStaysWithinTheCap){
+    std::string large;
+    for (int i = 0; large.size() < 4u * 1024u * 1024u; i++)
+        large += ".rule-" + std::to_string(i) + " .icon:hover { color: #ff0000; margin: 1px 2px; padding: 3px }\n";
+    const std::string small = ".a { color: red }\n.b > .c { padding: 4px; background: #fff }\n";
+    const std::string largeText = rewriteSheet(large, false, ForkFeatures::none());
+    EXPECT_NE(largeText.find("#htmlui-root .rule-"), std::string::npos);
+    EXPECT_LE(SpareStorage::kept(), kSpareKeptBytes);
+    // (the large sheet's flat rules alone are more than the cap: they were not kept)
+    const size_t rules = (size_t)std::count(large.begin(), large.end(), '\n');
+    EXPECT_GT(rules * sizeof(FlatRule), kSpareKeptBytes);
+    const std::string smallText = rewriteSheet(small, false, ForkFeatures::none());
+    EXPECT_NE(smallText.find("#htmlui-root .a"), std::string::npos);
+    EXPECT_LE(SpareStorage::kept(), kSpareKeptBytes);
+    EXPECT_GT(SpareStorage::kept(), 0u);
+    // again, after a small sheet first
+    rewriteSheet(large, false, ForkFeatures::none());
+    EXPECT_LE(SpareStorage::kept(), kSpareKeptBytes);
 }

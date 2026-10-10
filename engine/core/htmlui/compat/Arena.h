@@ -26,6 +26,27 @@
 
 namespace jasperengine::htmlui::compat {
 
+    // What a thread keeps from one rewrite to the next, so that its memory is not mapped again
+    // (and page-faulted) for every style sheet: the blocks its arenas release, up to
+    // kArenaKeptBytes, and the storage of a rewriter session's big lists and of the RCSS
+    // writer's output (SpareStorage), up to kSpareKeptBytes together. What would exceed a cap
+    // is freed instead of kept.
+    constexpr size_t kArenaKeptBytes = 4 * 1024 * 1024;
+    constexpr size_t kSpareKeptBytes = 4 * 1024 * 1024;
+
+    // The byte count of the spares a thread keeps (SpareStorage: CssRewriter's session lists,
+    // RcssWriter's output buffer), within kSpareKeptBytes
+    class JASPERENGINE_API SpareStorage {
+    public:
+        // a spare of `bytes` replaces one of `previous` bytes: true (and counted) when the
+        // thread's total stays within kSpareKeptBytes, false (nothing counted) otherwise
+        static bool keep(size_t previous, size_t bytes);
+        // a spare of `bytes` is taken back into use (no longer kept)
+        static void take(size_t bytes);
+        // the bytes the thread keeps (tests)
+        static size_t kept();
+    };
+
     class JASPERENGINE_API Arena {
     public:
         Arena() = default;

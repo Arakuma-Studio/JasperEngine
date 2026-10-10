@@ -175,6 +175,8 @@ namespace jasperengine::htmlui::compat {
     // (emptied, its pages already mapped): as the arena's blocks, the memory of a rewrite is not
     // mapped again for every style sheet (the page faults of fresh memory are a part of a
     // rewrite's time that no instruction count shows). `Slot` tells lists of one type apart.
+    // What a thread keeps of them and of RcssWriter's output is within kSpareKeptBytes
+    // together (Arena.h, SpareStorage): a list that would exceed it is freed with its session.
     template<typename T, int Slot>
     std::vector<T>& sessionSpare(){
         static thread_local std::vector<T> spare;

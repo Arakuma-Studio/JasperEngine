@@ -22,7 +22,10 @@ namespace {
     // reload and per inline style would otherwise map and unmap the same memory each time
     // (the page faults cost a quarter of a 50 KB style sheet's rewrite).
     constexpr size_t kBlockSize = 256 * 1024;
-    constexpr size_t kKeptBlocks = 16;
+    constexpr size_t kKeptBlocks = kArenaKeptBytes / kBlockSize;
+    static_assert(kKeptBlocks * kBlockSize == kArenaKeptBytes, "whole blocks");
+
+    thread_local size_t tSpareBytes = 0;   // SpareStorage
 
     struct BlockCache {
         void* blocks[kKeptBlocks];
@@ -35,6 +38,22 @@ namespace {
     };
     thread_local BlockCache tBlocks;
 
+}
+
+bool SpareStorage::keep(size_t previous, size_t bytes){
+    const size_t others = tSpareBytes >= previous ? tSpareBytes - previous : 0;
+    if (others + bytes > kSpareKeptBytes)
+        return false;
+    tSpareBytes = others + bytes;
+    return true;
+}
+
+void SpareStorage::take(size_t bytes){
+    tSpareBytes = tSpareBytes >= bytes ? tSpareBytes - bytes : 0;
+}
+
+size_t SpareStorage::kept(){
+    return tSpareBytes;
 }
 
 Arena& Arena::current(){

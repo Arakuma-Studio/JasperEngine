@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/RcssWriter.h"
+#include "htmlui/compat/Arena.h"
 
 #include <cstring>
 #include "htmlui/compat/LiteralCompare.h"
@@ -38,7 +39,8 @@ namespace {
 }
 
 RcssWriter::Output::~Output(){
-    if (capacity_ > tSpareOutput.capacity){
+    // (kept within kSpareKeptBytes, with the session lists)
+    if (capacity_ > tSpareOutput.capacity && SpareStorage::keep(tSpareOutput.capacity, capacity_)){
         tSpareOutput.data = std::move(data_);
         tSpareOutput.capacity = capacity_;
     }
@@ -46,6 +48,7 @@ RcssWriter::Output::~Output(){
 
 void RcssWriter::Output::grow(size_t needed){
     if (capacity_ == 0 && tSpareOutput.capacity >= needed){
+        SpareStorage::take(tSpareOutput.capacity);
         data_ = std::move(tSpareOutput.data);
         capacity_ = tSpareOutput.capacity;
         tSpareOutput.capacity = 0;
