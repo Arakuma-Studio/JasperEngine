@@ -3,6 +3,7 @@
 
 #include "htmlui/compat/css/SelectorRewriter.h"
 #include "htmlui/compat/LiteralCompare.h"
+#include "htmlui/compat/StringIndex.h"
 
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/SupportTables.h"
@@ -1492,6 +1493,57 @@ std::string SelectorRewriter::baseKey(const ComplexSelector& selector){
     std::string text;
     appendBaseKey(text, selector);
     return text;
+}
+
+uint64_t SelectorRewriter::textHash(const ComplexSelector& selector, bool baseKey){
+    uint64_t hash = 0x9E3779B97F4A7C15ull;
+    auto mix = [&hash](uint64_t value){
+        hash = (hash ^ value) * 0xFF51AFD7ED558CCDull;
+        hash ^= hash >> 29;
+    };
+    // what appendSimple writes before the name (':' for both pseudo kinds and the root marker,
+    // whose texts can be the same), and the name
+    auto simple = [&mix](const SimpleSelector& s){
+        switch (s.kind){
+            case Kind::Type: mix(StringIndex::hash(s.name)); return;
+            case Kind::Universal: mix('*'); return;
+            case Kind::Id: mix('#'); mix(StringIndex::hash(s.name)); return;
+            case Kind::Class: mix('.'); mix(StringIndex::hash(s.name)); return;
+            case Kind::Nesting: mix('&'); return;
+            case Kind::RootMarker: mix(':'); mix(StringIndex::hash("root")); return;
+            case Kind::Attribute: mix('['); mix(StringIndex::hash(s.name)); return;
+            case Kind::PseudoClass:
+            case Kind::PseudoElement: mix(':'); mix(StringIndex::hash(s.name)); return;
+        }
+    };
+    for (size_t i = 0; i < selector.compounds.size(); i++){
+        const Compound& compound = selector.compounds[i];
+        if (i > 0 || (selector.relative && compound.combinator))
+            mix(0x100u + (unsigned char)compound.combinator);
+        const bool last = baseKey && i + 1 == selector.compounds.size();
+        auto kept = [last](const SimpleSelector& s){
+            return !(last && (s.kind == Kind::PseudoClass || s.kind == Kind::Attribute || s.kind == Kind::PseudoElement));
+        };
+        // (as appendCompound and appendBaseKey: a universal selector only when nothing else is written)
+        bool any = false, onlyUniversal = true;
+        for (const SimpleSelector& s : compound.simples){
+            if (!kept(s))
+                continue;
+            any = true;
+            if (s.kind != Kind::Universal)
+                onlyUniversal = false;
+        }
+        if (!any && last){
+            mix('*');
+            continue;
+        }
+        for (const SimpleSelector& s : compound.simples){
+            if (!kept(s) || (s.kind == Kind::Universal && !onlyUniversal))
+                continue;
+            simple(s);
+        }
+    }
+    return hash;
 }
 
 void SelectorRewriter::appendSerialized(std::string& out, const ComplexSelector& selector){

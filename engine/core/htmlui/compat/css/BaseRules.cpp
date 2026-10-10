@@ -16,14 +16,13 @@ namespace {
     // the selectors are rewritten, so building it at the first lookup gives the same index
     constexpr uint32_t kNoEntry = 0xFFFFFFFFu;
 
-    // the entry of a selector text (nullptr when no rule has it and `add` is false)
-    Session::BaseEntry* entryOf(Session& session, std::string_view key, bool add){
-        const uint64_t hash = StringIndex::hash(key);
+    // the entry of a selector hash (nullptr when no rule has it and `add` is false)
+    Session::BaseEntry* entryOf(Session& session, uint64_t hash, bool add){
         if (!session.baseSlots.empty()){
             const size_t mask = session.baseSlots.size() - 1;
             for (size_t i = (size_t)hash & mask; session.baseSlots[i] != kNoEntry; i = (i + 1) & mask){
                 Session::BaseEntry& entry = session.baseEntries[session.baseSlots[i]];
-                if (entry.hash == hash && entry.key == key)
+                if (entry.hash == hash)
                     return &entry;
             }
         }
@@ -46,7 +45,6 @@ namespace {
         session.baseSlots[i] = (uint32_t)session.baseEntries.size();
         Session::BaseEntry& entry = session.baseEntries.emplace_back();
         entry.hash = hash;
-        entry.key = Text(key);
         return &entry;
     }
 
@@ -57,14 +55,11 @@ namespace {
         session.baseEntries.clear();
         session.baseSlots.clear();
         session.baseEntries.reserve(session.rules.size());
-        std::string key;
         for (const FlatRule& rule : session.rules){
             if (rule.origin != RuleOrigin::Author || rule.dropped)
                 continue;
             for (const ComplexSelector& selector : rule.selectors){
-                key.clear();
-                SelectorRewriter::appendSerialized(key, selector);
-                ArenaList<uint32_t>& list = entryOf(session, key, true)->rules;
+                ArenaList<uint32_t>& list = entryOf(session, SelectorRewriter::textHash(selector, false), true)->rules;
                 if (list.empty() || list.back() != rule.index)
                     list.push_back(rule.index);
             }
@@ -87,15 +82,28 @@ const FlatRule* BaseRules::find(Session& session, const FlatRule& rule, const st
     for (const RewrittenSelector& s : rule.rewritten)
         ruleSpecificity = std::max(ruleSpecificity, s.specificity);
     std::string& key = session.baseKeyText;
+    std::string& text = session.baseCandidateText;
     for (const ComplexSelector& selector : rule.selectors){
-        key.clear();
-        SelectorRewriter::appendBaseKey(key, selector);
-        const Session::BaseEntry* entry = entryOf(session, key, false);
+        const Session::BaseEntry* entry = entryOf(session, SelectorRewriter::textHash(selector, true), false);
         if (!entry)
             continue;
+        key.clear();
+        SelectorRewriter::appendBaseKey(key, selector);
         for (uint32_t index : entry->rules){
             const FlatRule& candidate = session.rules[index];
             if (candidate.index == rule.index || candidate.dropped)
+                continue;
+            // (the hash found it: one of its selectors has the key's text)
+            bool same = false;
+            for (const ComplexSelector& other : candidate.selectors){
+                text.clear();
+                SelectorRewriter::appendSerialized(text, other);
+                if (text == key){
+                    same = true;
+                    break;
+                }
+            }
+            if (!same)
                 continue;
             uint32_t candidateSpecificity = 0;
             for (const RewrittenSelector& s : candidate.rewritten)

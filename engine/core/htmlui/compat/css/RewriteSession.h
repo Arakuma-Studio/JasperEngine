@@ -197,16 +197,16 @@ namespace jasperengine::htmlui::compat {
         bool nestingReported = false;
 
         // base rules: selector text -> rules (cascade order)
-        // BaseRules: the author rules by the text of each of their selectors (open addressing;
-        // keys and lists in the session's arena)
+        // BaseRules: the author rules by SelectorRewriter::textHash of each of their selectors
+        // (open addressing; lists in the session's arena). A lookup compares the texts of the
+        // rules it finds.
         struct BaseEntry {
             uint64_t hash = 0;
-            Text key;
             ArenaList<uint32_t> rules;
         };
         std::vector<BaseEntry> baseEntries;
         std::vector<uint32_t> baseSlots;
-        std::string baseKeyText;       // BaseRules::find
+        std::string baseKeyText, baseCandidateText;   // BaseRules::find
         bool baseIndexBuilt = false;    // built by the first BaseRules::find (most sheets never need it)
 
         // CSS property -> the rules declaring it (!important and @layer conflict checks)

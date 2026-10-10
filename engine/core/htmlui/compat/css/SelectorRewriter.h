@@ -112,6 +112,11 @@ namespace jasperengine::htmlui::compat {
         // serialize() and baseKey() appended to a buffer
         static void appendSerialized(std::string& out, const ComplexSelector& selector);
         static void appendBaseKey(std::string& out, const ComplexSelector& selector);
+        // A hash that two selectors with the same serialize() text share (and, with baseKey,
+        // that a selector shares with the selectors whose text is its baseKey()): made of what
+        // the text is made of (combinators, the names and what precedes them), without
+        // writing it. Selectors with different texts may share it.
+        static uint64_t textHash(const ComplexSelector& selector, bool baseKey);
         // the subject compound's type selector ("" when none)
         static std::string subjectTag(const ComplexSelector& selector);
         // does the selector's subject chain start at the root (html, :root, the root id)?
