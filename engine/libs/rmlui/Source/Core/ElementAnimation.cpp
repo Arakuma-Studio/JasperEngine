@@ -23,6 +23,7 @@
 namespace Rml {
 
 static Property InterpolateProperties(const Property& p0, const Property& p1, float alpha, Element& element, const PropertyDefinition* definition);
+static NumericValue InterpolateNumericValue(NumericValue v0, NumericValue v1, float alpha, Element& element, const PropertyDefinition* definition);
 
 template <typename T>
 static T Mix(const T& v0, const T& v1, float alpha)
@@ -30,36 +31,79 @@ static T Mix(const T& v0, const T& v1, float alpha)
 	return v0 * (1.0f - alpha) + v1 * alpha;
 }
 
-static Colourf ColourToLinearSpace(Colourb c)
+// Colours interpolate in premultiplied sRGB (CSS Color 4 for legacy colours): a transparent end does not darken the other.
+// Outputs outside [0, 1] (overshooting easings) extrapolate, and the result is clamped.
+static ColourbPremultiplied InterpolatePremultipliedColour(ColourbPremultiplied c0, ColourbPremultiplied c1, float alpha)
 {
-	Colourf result;
-	// Approximate inverse sRGB function
-	result.red = c.red / 255.f;
-	result.red *= result.red;
-	result.green = c.green / 255.f;
-	result.green *= result.green;
-	result.blue = c.blue / 255.f;
-	result.blue *= result.blue;
-	result.alpha = c.alpha / 255.f;
-	return result;
-}
-
-static Colourb ColourFromLinearSpace(Colourf c)
-{
-	Colourb result;
-	result.red = (byte)Math::Clamp(Math::SquareRoot(c.red) * 255.f, 0.0f, 255.f);
-	result.green = (byte)Math::Clamp(Math::SquareRoot(c.green) * 255.f, 0.0f, 255.f);
-	result.blue = (byte)Math::Clamp(Math::SquareRoot(c.blue) * 255.f, 0.0f, 255.f);
-	result.alpha = (byte)Math::Clamp(c.alpha * 255.f, 0.0f, 255.f);
+	auto channel = [alpha](byte a, byte b) { return (byte)Math::Clamp(Math::Round(Mix(float(a), float(b), alpha)), 0.0f, 255.f); };
+	ColourbPremultiplied result;
+	result.red = channel(c0.red, c1.red);
+	result.green = channel(c0.green, c1.green);
+	result.blue = channel(c0.blue, c1.blue);
+	result.alpha = channel(c0.alpha, c1.alpha);
+	// Premultiplied channels never exceed the alpha.
+	result.red = Math::Min(result.red, result.alpha);
+	result.green = Math::Min(result.green, result.alpha);
+	result.blue = Math::Min(result.blue, result.alpha);
 	return result;
 }
 
 static Colourb InterpolateColour(Colourb c0, Colourb c1, float alpha)
 {
-	Colourf c0f = ColourToLinearSpace(c0);
-	Colourf c1f = ColourToLinearSpace(c1);
-	Colourf c = Mix(c0f, c1f, alpha);
-	return ColourFromLinearSpace(c);
+	if (c0.alpha == 255 && c1.alpha == 255)
+	{
+		auto channel = [alpha](byte a, byte b) { return (byte)Math::Clamp(Math::Round(Mix(float(a), float(b), alpha)), 0.0f, 255.f); };
+		return Colourb(channel(c0.red, c1.red), channel(c0.green, c1.green), channel(c0.blue, c1.blue), 255);
+	}
+	return InterpolatePremultipliedColour(c0.ToPremultiplied(), c1.ToPremultiplied(), alpha).ToNonPremultiplied();
+}
+
+// Box shadows interpolate pairwise, the shorter list padded with transparent zero shadows (CSS Backgrounds 3 §7.2); a
+// pair with one shadow inset and the other not makes the lists discrete.
+static bool InterpolateBoxShadows(const BoxShadowList& list0, const BoxShadowList& list1, float alpha, Element& element, BoxShadowList& result)
+{
+	const size_t count = Math::Max(list0.size(), list1.size());
+	result.clear();
+	result.reserve(count);
+	for (size_t i = 0; i < count; i++)
+	{
+		BoxShadow transparent;
+		transparent.color = ColourbPremultiplied(0, 0, 0, 0);
+		BoxShadow s0 = (i < list0.size() ? list0[i] : transparent);
+		BoxShadow s1 = (i < list1.size() ? list1[i] : transparent);
+		if (i >= list0.size())
+			s0.inset = s1.inset;
+		if (i >= list1.size())
+			s1.inset = s0.inset;
+		if (s0.inset != s1.inset)
+			return false;
+#ifdef RMLUI_MATH_EXPRESSIONS
+		if (s0.offset_x_calculation || s0.offset_y_calculation || s0.blur_radius_calculation || s0.spread_distance_calculation ||
+			s1.offset_x_calculation || s1.offset_y_calculation || s1.blur_radius_calculation || s1.spread_distance_calculation)
+			return false;
+#endif
+		auto length = [&](NumericValue v0, NumericValue v1) {
+			if (v0.unit == Unit::UNKNOWN)
+				v0 = NumericValue(0.f, Unit::PX);
+			if (v1.unit == Unit::UNKNOWN)
+				v1 = NumericValue(0.f, Unit::PX);
+			if (v0.number == 0.f && v0.unit != v1.unit)
+				v0.unit = v1.unit;
+			if (v1.number == 0.f && v1.unit != v0.unit)
+				v1.unit = v0.unit;
+			return InterpolateNumericValue(v0, v1, alpha, element, nullptr);
+		};
+		BoxShadow shadow;
+		shadow.inset = s0.inset;
+		shadow.color = InterpolatePremultipliedColour(s0.color, s1.color, alpha);
+		shadow.offset_x = length(s0.offset_x, s1.offset_x);
+		shadow.offset_y = length(s0.offset_y, s1.offset_y);
+		shadow.blur_radius = length(s0.blur_radius, s1.blur_radius);
+		shadow.blur_radius.number = Math::Max(shadow.blur_radius.number, 0.f);
+		shadow.spread_distance = length(s0.spread_distance, s1.spread_distance);
+		result.push_back(shadow);
+	}
+	return true;
 }
 
 // Merges all the primitives to a single DecomposedMatrix4 primitive
@@ -638,6 +682,14 @@ static Property InterpolateProperties(const Property& p0, const Property& p1, fl
 		return Property{std::move(result), Unit::COLORSTOPLIST};
 	}
 
+	if (p0.unit == Unit::BOXSHADOWLIST && p1.unit == Unit::BOXSHADOWLIST)
+	{
+		BoxShadowList result;
+		if (!InterpolateBoxShadows(p0.value.GetReference<BoxShadowList>(), p1.value.GetReference<BoxShadowList>(), alpha, element, result))
+			return p_discrete;
+		return Property{std::move(result), Unit::BOXSHADOWLIST};
+	}
+
 	if (p0.unit == Unit::STYLE_VALUE && p1.unit == Unit::STYLE_VALUE)
 	{
 		const StyleValuePtr v0 = p0.value.Get<StyleValuePtr>();
@@ -886,7 +938,7 @@ static void PrepareFilter(AnimationKey& key)
 bool AnimationTrack::AddKey(float offset, const Property& in_property, Element& element, Tween tween, bool has_tween)
 {
 	const Units valid_units = (Unit::NUMBER_LENGTH_PERCENT | Unit::ANGLE | Unit::COLOUR | Unit::TRANSFORM | Unit::KEYWORD | Unit::DECORATOR |
-		Unit::FILTER | Unit::STYLE_VALUE);
+		Unit::FILTER | Unit::STYLE_VALUE | Unit::BOXSHADOWLIST);
 
 	if (!Any(in_property.unit & valid_units)
 #ifdef RMLUI_MATH_EXPRESSIONS
@@ -894,8 +946,7 @@ bool AnimationTrack::AddKey(float offset, const Property& in_property, Element& 
 #endif
 	)
 	{
-		const char* property_type = (in_property.unit == Unit::BOXSHADOWLIST ? "Box shadows do not" : "Property value does not");
-		Log::Message(Log::LT_WARNING, "%s support animations or transitions. Value: %s", property_type, in_property.ToString().c_str());
+		Log::Message(Log::LT_WARNING, "Property value does not support animations or transitions. Value: %s", in_property.ToString().c_str());
 		return false;
 	}
 

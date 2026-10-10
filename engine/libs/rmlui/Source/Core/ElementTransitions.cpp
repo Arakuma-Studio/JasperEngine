@@ -102,7 +102,8 @@ bool IsInterpolable(const Property& from, const Property& to, Element& element, 
 	case Unit::TRANSFORM:
 	case Unit::DECORATOR:
 	case Unit::FILTER:
-	case Unit::COLORSTOPLIST: return true;
+	case Unit::COLORSTOPLIST:
+	case Unit::BOXSHADOWLIST: return true;
 	case Unit::STYLE_VALUE:
 	{
 		const StyleValuePtr v0 = from.value.Get<StyleValuePtr>();

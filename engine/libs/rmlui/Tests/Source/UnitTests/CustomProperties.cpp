@@ -765,7 +765,7 @@ TEST_CASE("custom_properties.transition")
 
 	system_interface->SetManualTime(0.1);
 	TestsShell::RenderLoop();
-	CHECK(div->GetComputedValues().background_color() == Colourb(180, 0, 180, 255));
+	CHECK(div->GetComputedValues().background_color() == Colourb(128, 0, 128, 255));
 
 	system_interface->SetManualTime(0.3);
 	TestsShell::RenderLoop();
@@ -815,7 +815,7 @@ TEST_CASE("custom_properties.transition_deep")
 
 	system_interface->SetManualTime(0.1);
 	TestsShell::RenderLoop();
-	CHECK(div->GetComputedValues().background_color() == Colourb(180, 0, 180, 255));
+	CHECK(div->GetComputedValues().background_color() == Colourb(128, 0, 128, 255));
 
 	system_interface->SetManualTime(0.3);
 	TestsShell::RenderLoop();
@@ -948,7 +948,7 @@ TEST_CASE("custom_properties.animation")
 
 	system_interface->SetManualTime(0.1);
 	TestsShell::RenderLoop();
-	CHECK(div->GetComputedValues().background_color() == Colourb(180, 0, 180, 255));
+	CHECK(div->GetComputedValues().background_color() == Colourb(128, 0, 128, 255));
 
 	document->Close();
 	TestsShell::ShutdownShell();

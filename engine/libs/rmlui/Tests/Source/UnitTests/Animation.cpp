@@ -4,6 +4,7 @@
 #include <RmlUi/Core/Animation.h>
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
+#include <RmlUi/Core/DecorationTypes.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/EventListener.h>
@@ -69,7 +70,7 @@ TEST_CASE("animation.decorator")
 			"horizontal-gradient(transparent transparent)",
 			"horizontal-gradient(white white)",
 
-			"horizontal-gradient(horizontal #7f7f7f3f #7f7f7f3f)",
+			"horizontal-gradient(horizontal #ffffff40 #ffffff40)",
 		},
 		{
 			"",
@@ -78,7 +79,7 @@ TEST_CASE("animation.decorator")
 			"horizontal-gradient(transparent transparent) border-box",
 			"horizontal-gradient(white white) border-box",
 
-			"horizontal-gradient(horizontal #7f7f7f3f #7f7f7f3f) border-box",
+			"horizontal-gradient(horizontal #ffffff40 #ffffff40) border-box",
 		},
 		{
 			"",
@@ -87,7 +88,7 @@ TEST_CASE("animation.decorator")
 			"none",
 			"horizontal-gradient(transparent transparent)",
 
-			"horizontal-gradient(horizontal #dcdcdcbf #dcdcdcbf)",
+			"horizontal-gradient(horizontal #ffffffbf #ffffffbf)",
 		},
 		{
 			"",
@@ -96,7 +97,7 @@ TEST_CASE("animation.decorator")
 			"none",
 			"horizontal-gradient(transparent transparent), horizontal-gradient(transparent transparent)",
 
-			"horizontal-gradient(horizontal #dcdcdcbf #dcdcdcbf), horizontal-gradient(horizontal #dcdcdcbf #dcdcdcbf)",
+			"horizontal-gradient(horizontal #ffffffbf #ffffffbf), horizontal-gradient(horizontal #ffffffbf #ffffffbf)",
 		},
 		{
 			"",
@@ -105,7 +106,7 @@ TEST_CASE("animation.decorator")
 			"horizontal-gradient(transparent transparent), horizontal-gradient(transparent transparent)",
 			"none",
 
-			"horizontal-gradient(horizontal #7f7f7f3f #7f7f7f3f), horizontal-gradient(horizontal #7f7f7f3f #7f7f7f3f)",
+			"horizontal-gradient(horizontal #ffffff40 #ffffff40), horizontal-gradient(horizontal #ffffff40 #ffffff40)",
 		},
 
 		/// Only rule declaration
@@ -116,7 +117,7 @@ TEST_CASE("animation.decorator")
 			"from_rule",
 			"to_rule",
 
-			"horizontal-gradient(horizontal #7f7f7f3f #7f7f7f3f)",
+			"horizontal-gradient(horizontal #ffffff40 #ffffff40)",
 		},
 		{
 			"",
@@ -125,7 +126,7 @@ TEST_CASE("animation.decorator")
 			"from_rule",
 			"to_rule",
 
-			"horizontal-gradient(horizontal #dcdcdcbf #dcdcdcbf)",
+			"horizontal-gradient(horizontal #ffffffbf #ffffffbf)",
 		},
 		{
 			"start-color: transparent; stop-color: transparent;",
@@ -134,7 +135,7 @@ TEST_CASE("animation.decorator")
 			"from_rule",
 			"to_rule",
 
-			"horizontal-gradient(horizontal #7f7f7f3f #7f7f7f3f)",
+			"horizontal-gradient(horizontal #ffffff40 #ffffff40)",
 		},
 
 		/// Mix rule and standard declaration
@@ -145,7 +146,7 @@ TEST_CASE("animation.decorator")
 			"from_rule",
 			"horizontal-gradient(white white)",
 
-			"horizontal-gradient(horizontal #7f7f7f3f #7f7f7f3f)",
+			"horizontal-gradient(horizontal #ffffff40 #ffffff40)",
 		},
 		{
 			"",
@@ -154,7 +155,7 @@ TEST_CASE("animation.decorator")
 			"none",
 			"to_rule",
 
-			"horizontal-gradient(horizontal #dcdcdcbf #dcdcdcbf)",
+			"horizontal-gradient(horizontal #ffffffbf #ffffffbf)",
 		},
 		{
 			"start-color: transparent; stop-color: transparent;",
@@ -163,7 +164,7 @@ TEST_CASE("animation.decorator")
 			"from_rule",
 			"none",
 
-			"horizontal-gradient(horizontal #7f7f7f3f #7f7f7f3f)",
+			"horizontal-gradient(horizontal #ffffff40 #ffffff40)",
 		},
 		{
 			"",
@@ -172,7 +173,7 @@ TEST_CASE("animation.decorator")
 			"from_rule, to_rule",
 			"horizontal-gradient(transparent transparent), horizontal-gradient(transparent transparent)",
 
-			"horizontal-gradient(horizontal #dcdcdcbf #dcdcdcbf), horizontal-gradient(horizontal #dcdcdcbf #dcdcdcbf)",
+			"horizontal-gradient(horizontal #ffffffbf #ffffffbf), horizontal-gradient(horizontal #ffffffbf #ffffffbf)",
 		},
 		{
 			"",
@@ -181,7 +182,7 @@ TEST_CASE("animation.decorator")
 			"horizontal-gradient(transparent transparent), horizontal-gradient(transparent transparent)",
 			"from_rule, to_rule",
 
-			"horizontal-gradient(horizontal #7f7f7f3f #7f7f7f3f), horizontal-gradient(horizontal #7f7f7f3f #7f7f7f3f)",
+			"horizontal-gradient(horizontal #ffffff40 #ffffff40), horizontal-gradient(horizontal #ffffff40 #ffffff40)",
 		},
 
 		// Standard declaration of linear gradients (consider string conversion a best-effort for now)
@@ -192,7 +193,7 @@ TEST_CASE("animation.decorator")
 			"linear-gradient(transparent, transparent)",
 			"linear-gradient(white, white)",
 
-			"linear-gradient(180deg unspecified unspecified unspecified #7d7d7d3f, #7d7d7d3f)",
+			"linear-gradient(180deg unspecified unspecified unspecified #ffffff40, #ffffff40)",
 		},
 		{
 			"",
@@ -201,7 +202,7 @@ TEST_CASE("animation.decorator")
 			"linear-gradient(0deg, transparent, transparent)",
 			"linear-gradient(180deg, white, white)",
 
-			"linear-gradient(45deg unspecified unspecified unspecified #7d7d7d3f, #7d7d7d3f)",
+			"linear-gradient(45deg unspecified unspecified unspecified #ffffff40, #ffffff40)",
 		},
 		{
 			"",
@@ -210,7 +211,7 @@ TEST_CASE("animation.decorator")
 			"linear-gradient(105deg, #000000 0%, #ff0000 100%)",
 			"linear-gradient(105deg, #ffffff 20%, #00ff00 60%)",
 
-			"linear-gradient(105deg unspecified unspecified unspecified #7f7f7f 5%, #dc7f00 90%)",
+			"linear-gradient(105deg unspecified unspecified unspecified #404040 5%, #bf4000 90%)",
 		},
 		{
 			"",
@@ -219,7 +220,7 @@ TEST_CASE("animation.decorator")
 			"linear-gradient(105deg, #000000 0%, #ff0000 50%, #ff00ff 100%)",
 			"linear-gradient(105deg, #ffffff 0%, #ffffff 10%, #ffffff 100%)",
 
-			"linear-gradient(105deg unspecified unspecified unspecified #7f7f7f 0%, #ff7f7f 40%, #ff7fff 100%)",
+			"linear-gradient(105deg unspecified unspecified unspecified #404040 0%, #ff4040 40%, #ff40ff 100%)",
 		},
 		{
 			"",
@@ -350,7 +351,7 @@ TEST_CASE("animation.filter")
 		{
 			"drop-shadow(#000 30px 20px 0px)",
 			"drop-shadow(#f00 30px 20px 4px)", // colors interpolated in linear space
-			"drop-shadow(#7f0000 30px 20px 1px)",
+			"drop-shadow(#400000 30px 20px 1px)",
 		},
 		{
 			"opacity(0) brightness(2)",
@@ -644,14 +645,14 @@ TEST_CASE("animation.multiple_values")
 		// Before its delay ends an animation without backwards fill applies nothing; from its start it applies its first keyframe.
 		{t_colorize_start - dt, 0.4f, {0, 0, 0}},
 		{t_colorize_start, 0.49f, {0xff, 0, 0}},
-		{t_colorize_start + dt, 0.5f, {0xf1, 0x50, 0}},
+		{t_colorize_start + dt, 0.5f, {0xe6, 0x1a, 0}},
 
-		{t_fade_final - dt, 0.9f, {0x50, 0xf1, 0}},
+		{t_fade_final - dt, 0.9f, {0x1a, 0xe6, 0}},
 		{t_fade_final, 0.99f, {0, 0xff, 0x00}},
-		{t_fade_final + dt, 1.0f, {0, 0xfa, 0x2e}},
+		{t_fade_final + dt, 1.0f, {0, 0xf7, 0x09}},
 
 		// At its end an animation without forwards fill applies nothing.
-		{t_colorize_final - dt, 1.0f, {0, 0x2e, 0xfa}},
+		{t_colorize_final - dt, 1.0f, {0, 0x08, 0xf7}},
 		{t_colorize_final, 1.0f, {0, 0, 0}},
 		{t_colorize_final + dt, 1.0f, {0, 0, 0}},
 	};
@@ -1558,6 +1559,59 @@ TEST_CASE("animation.inline_style_kept")
 	clock.AdvanceTo(1.5);
 	// The animation ended (no fill): the inline value the author wrote applies again.
 	CHECK(Opacity(element) == doctest::Approx(0.3f));
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+// Phase 3 (docs/html-ui/phase-3-fork-patches.md 3.13.6, FORK.md P3-A4): box shadows interpolate, colours in premultiplied
+// sRGB.
+TEST_CASE("animation.box_shadow_and_colours")
+{
+	Context* context = TestsShell::GetContext();
+	Clock clock{context, TestsShell::GetTestsSystemInterface()};
+	clock.system->SetManualTime(0.0);
+	ElementDocument* document = LoadTimingDocument(context, R"(
+		@keyframes shadow { from { box-shadow: 0px 0px 0px 0px #000; } to { box-shadow: 10px 10px 4px 2px #f00; } }
+		@keyframes padded { from { box-shadow: none; } to { box-shadow: 10px 10px 0px 0px #f00, 4px 4px #00f inset; } }
+		@keyframes inset { from { box-shadow: 10px 10px #f00; } to { box-shadow: 10px 10px #f00 inset; } }
+		@keyframes colour { from { background-color: #ff000000; } to { background-color: #0000ff; } }
+		#a { animation: shadow 1s linear; }
+		#b { animation: padded 1s linear; }
+		#c { animation: inset 1s linear; }
+		#d { animation: colour 1s linear; }
+	)");
+	auto shadows = [&](const char* id) {
+		const Property* property = document->GetElementById(id)->GetProperty(PropertyId::BoxShadow);
+		REQUIRE(property);
+		REQUIRE(property->unit == Unit::BOXSHADOWLIST);
+		return property->value.GetReference<BoxShadowList>();
+	};
+
+	clock.AdvanceTo(0.5);
+	{
+		const BoxShadowList list = shadows("a");
+		REQUIRE(list.size() == 1);
+		CHECK(list[0].offset_x.number == doctest::Approx(5.f));
+		CHECK(list[0].offset_y.number == doctest::Approx(5.f));
+		CHECK(list[0].blur_radius.number == doctest::Approx(2.f));
+		CHECK(list[0].spread_distance.number == doctest::Approx(1.f));
+		CHECK(list[0].color == Colourb(128, 0, 0).ToPremultiplied());
+	}
+	{
+		// The shorter list is padded with transparent zero shadows of the same inset.
+		const BoxShadowList list = shadows("b");
+		REQUIRE(list.size() == 2);
+		CHECK(list[0].offset_x.number == doctest::Approx(5.f));
+		CHECK(list[0].color.alpha == 128);
+		CHECK(list[0].color.red == 128);
+		CHECK(list[1].inset);
+		CHECK(list[1].offset_x.number == doctest::Approx(2.f));
+	}
+	// Inset against outset: discrete, switching at half way.
+	CHECK(shadows("c")[0].inset);
+	// A transparent end keeps the other colour's hue.
+	CHECK(document->GetElementById("d")->GetComputedValues().background_color() == Colourb(0, 0, 255, 128));
 
 	document->Close();
 	TestsShell::ShutdownShell();
