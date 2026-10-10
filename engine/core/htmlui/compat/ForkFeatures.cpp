@@ -29,7 +29,7 @@ namespace {
         false,   // TimingFunctions
         false,   // Important
         false,   // CssWideKeywords
-        false,   // Grid
+        true,    // Grid (phase 3, p3-grid: CSS Grid, a port of Taffy; docs/html-ui/FORK.md P3-G1..P3-G3)
     };
 
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {

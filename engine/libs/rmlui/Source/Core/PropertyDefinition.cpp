@@ -176,4 +176,15 @@ PropertyDefinition& PropertyDefinition::SetRelativeTarget(RelativeTarget relativ
 	return *this;
 }
 
+PropertyDefinition& PropertyDefinition::SetValueAsWritten()
+{
+	value_as_written = true;
+	return *this;
+}
+
+bool PropertyDefinition::IsValueAsWritten() const
+{
+	return value_as_written;
+}
+
 } // namespace Rml

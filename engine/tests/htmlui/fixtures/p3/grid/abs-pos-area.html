@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>grid: absolutely positioned items in grid areas</title>
+<style>
+  html, body { margin: 0; }
+  #g { position: absolute; left: 10px; top: 10px; width: 200px; height: 120px; padding: 10px; border: 5px solid #333333; display: grid;
+       grid-template-columns: 100px 100px; grid-template-rows: 60px 60px; background-color: #dddddd; }
+  #flow { background-color: #bbbbee; }
+  #area { position: absolute; grid-column: 2 / 3; grid-row: 1 / 3; left: 10px; top: 10px; right: 10px; bottom: 10px; background-color: #aa4444; }
+  #corner { position: absolute; grid-area: 2 / 1 / 3 / 2; right: 0; bottom: 0; width: 30px; height: 20px; background-color: #44aa44; }
+  #edge { position: absolute; grid-column: 1; top: 0; left: 0; right: 0; height: 8px; background-color: #4444aa; }
+  #center { position: absolute; grid-area: 1 / 1 / 2 / 2; width: 20px; height: 20px; justify-self: center; align-self: center; background-color: #aaaa44; }
+</style>
+</head>
+<body>
+<div id="g"><div id="flow"></div><div id="area"></div><div id="corner"></div><div id="edge"></div><div id="center"></div></div>
+</body>
+</html>

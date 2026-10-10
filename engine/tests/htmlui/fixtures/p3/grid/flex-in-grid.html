@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>grid: flex containers as grid items</title>
+<style>
+  html, body { margin: 0; }
+  #g { position: absolute; left: 0; top: 0; width: 300px; display: grid; grid-template-columns: 100px 1fr; grid-auto-rows: minmax(30px, auto); gap: 5px; background-color: #eeeeee; }
+  .f { display: flex; gap: 5px; background-color: #ddddff; }
+  .f > div { width: 20px; height: 20px; background-color: #774499; }
+  #wrap { flex-wrap: wrap; }
+  #col { flex-direction: column; justify-content: flex-end; }
+</style>
+</head>
+<body>
+<div id="g"><div id="row" class="f"><div></div><div></div></div><div id="wrap" class="f"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div><div id="col" class="f"><div></div><div></div><div></div></div></div>
+</body>
+</html>

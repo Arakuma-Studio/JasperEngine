@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>grid: fit-content() tracks</title>
+<style>
+  html, body { margin: 0; }
+  #g { position: absolute; left: 0; top: 0; width: 300px; display: grid; grid-auto-rows: 20px;
+       grid-template-columns: fit-content(100px) fit-content(100px) fit-content(40%) 1fr; background-color: #dddddd; }
+  .c { height: 10px; background-color: #222222; }
+  #g > div { background-color: #77aacc; }
+  #g > div + div { background-color: #cc77aa; }
+  #g > div + div + div { background-color: #aacc77; }
+  #g > div + div + div + div { background-color: #ccaa77; }
+</style>
+</head>
+<body>
+<div id="g"><div id="t1"><div class="c" style="width: 40px;"></div></div><div id="t2"><div class="c" style="width: 150px; display: inline-block;"></div></div><div id="t3"><div class="c" style="width: 80px;"></div></div><div id="t4"></div></div>
+</body>
+</html>

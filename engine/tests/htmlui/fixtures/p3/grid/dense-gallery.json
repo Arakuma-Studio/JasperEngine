@@ -1,0 +1,7 @@
+{
+ "comment": "sparse auto-placement leaves holes after wide items; dense placement fills them with later items",
+ "viewport": [
+  160,
+  200
+ ]
+}

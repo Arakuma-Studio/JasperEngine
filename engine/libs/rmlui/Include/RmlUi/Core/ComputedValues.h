@@ -384,7 +384,18 @@ namespace Style {
 
 		// Animation (p3-animation)
 
-		// Grid (p3-grid)
+		// Grid (p3-grid): the values of the template and placement properties are StyleValues (GridStyleValues.h), null
+		// when the property has its initial value.
+		StyleValuePtr     grid_template_columns()      const { return GetLocalProperty(PropertyId::GridTemplateColumns, StyleValuePtr()); }
+		StyleValuePtr     grid_template_rows()         const { return GetLocalProperty(PropertyId::GridTemplateRows, StyleValuePtr()); }
+		StyleValuePtr     grid_template_areas()        const { return GetLocalProperty(PropertyId::GridTemplateAreas, StyleValuePtr()); }
+		StyleValuePtr     grid_auto_columns()          const { return GetLocalProperty(PropertyId::GridAutoColumns, StyleValuePtr()); }
+		StyleValuePtr     grid_auto_rows()             const { return GetLocalProperty(PropertyId::GridAutoRows, StyleValuePtr()); }
+		GridAutoFlow      grid_auto_flow()             const { return GetLocalPropertyKeyword(PropertyId::GridAutoFlow, GridAutoFlow::Row); }
+		StyleValuePtr     grid_row_start()             const { return GetLocalProperty(PropertyId::GridRowStart, StyleValuePtr()); }
+		StyleValuePtr     grid_row_end()               const { return GetLocalProperty(PropertyId::GridRowEnd, StyleValuePtr()); }
+		StyleValuePtr     grid_column_start()          const { return GetLocalProperty(PropertyId::GridColumnStart, StyleValuePtr()); }
+		StyleValuePtr     grid_column_end()            const { return GetLocalProperty(PropertyId::GridColumnEnd, StyleValuePtr()); }
 
 		// -- Assignment --
 		// Common
