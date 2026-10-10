@@ -4229,3 +4229,22 @@ place (§3.10 fieldset and the `ua-defaults` pins, §4 "p2-css as implemented").
   compat sources per engine target, `xcode_sync_compat.py --check`; the embedded
   `htmlui_ua.h`/`htmlui_lucide.h` stand-ins and the export that writes the real ones; no
   dangling ids).
+
+**Runtime checks on the merged tree** (p2-integrate, host tools, not committed tests):
+- A project made in the editor through MCP with one document written the way an agent writes
+  for a browser (flexbox, `:root` variables, `rgba()`, `rgb(0 200 80)`, `border: 1px solid`,
+  `background: linear-gradient(90deg, …)`, `transition: background-color 200ms ease`, a
+  `font-family` list headed by a Google Font linked as `fonts.googleapis.com/css2?…` and
+  imported by the editor, an inline SVG and `<i data-lucide="check">` in `currentColor`, a
+  form with an input and a submit button, `<script type="text/lua">` that recolours the title
+  and listens to `submit`): exported for the Web (`--backend opengles`), built with
+  Emscripten in the web image and run in headless Chromium 153 through playwright-core:
+  gradient ends and centre, the card's border and `rgba(0,0,0,.5)` over the gradient, the
+  SVG's and the icon's `currentColor`, the Lua-coloured title in Orbitron (as wide as in the
+  editor, ±4 px), the button's `var(--accent)`, its `:hover` colour after the transition, the
+  form's `submit` reaching Lua (the status box turns yellow at the editor's layout position,
+  ±1 px), "0 errors, 0 warnings" in the browser console and no error. (The editor's Game view
+  showed the canvas 690 px tall: `fitwidth` scaling at the view's aspect; the game's 720 px
+  canvas centres the card 15 px lower, as Chromium does.)
+- The same project through `tools/smoke-test.sh` (export, build of the exported Linux game,
+  run under Xvfb): PASS, the game window shows the document as the Web build does.
