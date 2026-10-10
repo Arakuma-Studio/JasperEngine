@@ -48,6 +48,13 @@ struct CollapsibleMarginSet {
  */
 class BlockContainer final : public ContainerBox {
 public:
+	// The place of a box that avoids floats (FitBesideFloats), relative to the block formatting context.
+	struct FloatFit {
+		float top = 0.f;            // Its border top.
+		bool beside_floats = false; // Floats narrow its line: 'left' is its border left.
+		float left = 0.f;
+	};
+
 	/// Creates a new block box for rendering a block element.
 	/// @param[in] parent The parent of this block box. This will be nullptr for the root element.
 	/// @param[in] element The element this block box is laying out.
@@ -75,7 +82,17 @@ public:
 	/// @param[in] element The element represented by the new box.
 	/// @param[in] box The dimensions of the new box.
 	/// @return A pointer to the added block-level box.
-	LayoutBox* AddBlockLevelBox(UniquePtr<LayoutBox> block_level_box, Element* element, const Box& box);
+	LayoutBox* AddBlockLevelBox(UniquePtr<LayoutBox> block_level_box, Element* element, const Box& box, const FloatFit* float_fit = nullptr);
+
+	/// Finds where a block-level box that establishes a new formatting context goes among the floats of our block
+	/// formatting context (CSS 2.1 §9.5: its border box must not overlap them): beside them at its position after the
+	/// margins before it, or below those it does not fit beside. An automatic width takes the width left beside them.
+	/// @param[in] child_element The element of the box.
+	/// @param[in] child_box The formatted box of the element.
+	/// @param[out] out_fit Its place, for AddBlockLevelBox.
+	/// @param[out] out_content_width Its content width there, differs from the box's when the element must be formatted again.
+	/// @return False if there are no floats to avoid (the box is added as usual) or the inline container could not be closed.
+	bool FitBesideFloats(Element* child_element, const Box& child_box, FloatFit& out_fit, float& out_content_width);
 
 	// Adds an element to this block container to be handled as a floating element.
 	void AddFloatElement(Element* element, Vector2f visible_overflow_size);
@@ -221,6 +238,7 @@ private:
 	bool collapsed_through = false;              // After closing: our top and bottom margins collapse through us (we are empty).
 	bool joined_parent_top_margin = false;       // Our top margin collapses with our parent's.
 	bool clearance = false;                      // We were moved below floats.
+	bool trailing_after_clearance = false;       // The pending margins follow an empty box with clearance: they stay inside us.
 	bool adjoining_floats = false;               // Floats were placed while our top margin was open (CSS 2.1 §9.5).
 };
 

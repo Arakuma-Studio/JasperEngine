@@ -7,6 +7,7 @@
 #include "InlineContainer.h"
 #include "LayoutDetails.h"
 #include "LineBox.h"
+#include <float.h>
 
 namespace Rml {
 
@@ -47,7 +48,7 @@ bool BlockContainer::Close(BlockContainer* parent_block_container)
 	if (auto_height)
 	{
 		float content_height = box_cursor;
-		if (!bottom_margin_collapses && !top_margin_open)
+		if ((!bottom_margin_collapses || trailing_after_clearance) && !top_margin_open)
 			content_height += trailing_margin_set.Resolve();
 
 		if (!parent_block_container)
@@ -73,14 +74,25 @@ bool BlockContainer::Close(BlockContainer* parent_block_container)
 	const float margin_bottom = box.GetEdge(BoxArea::Margin, BoxEdge::Bottom);
 	collapsed_through = (top_margin_open && no_bottom_edges && box.GetSize().y == 0.f && parent_block_container);
 	bottom_margin_set = CollapsibleMarginSet();
-	if (collapsed_through)
+	if (collapsed_through && clearance)
 	{
-		bottom_margin_set = top_margin_set;
-		bottom_margin_set.Add(trailing_margin_set);
+		// Clearance fixes our border top: of our collapsed margins, what exceeds our top margin is below it (CSS 2.1 §9.5.2).
+		CollapsibleMarginSet own_margin_set = top_margin_set;
+		own_margin_set.Add(trailing_margin_set);
+		own_margin_set.Add(margin_bottom);
+		bottom_margin_set.Add(own_margin_set.Resolve() - box.GetEdge(BoxArea::Margin, BoxEdge::Top));
 	}
-	else if (bottom_margin_collapses && !top_margin_open)
-		bottom_margin_set = trailing_margin_set;
-	bottom_margin_set.Add(margin_bottom);
+	else
+	{
+		if (collapsed_through)
+		{
+			bottom_margin_set = top_margin_set;
+			bottom_margin_set.Add(trailing_margin_set);
+		}
+		else if (bottom_margin_collapses && !top_margin_open && !trailing_after_clearance)
+			bottom_margin_set = trailing_margin_set;
+		bottom_margin_set.Add(margin_bottom);
+	}
 
 	// Find the size of our content.
 	const Vector2f space_box = space->GetDimensions(FloatedBoxEdge::Overflow) - (position + box.GetPosition());
@@ -141,10 +153,11 @@ bool BlockContainer::EncloseChildBox(LayoutBox* child, Vector2f child_position, 
 
 	if (child_collapsed_through && child_clearance)
 	{
-		// An empty child moved below floats: the cursor moves to it, its own bottom margin collapses with what follows.
+		// An empty child moved below floats: the cursor moves to it. Its margins below its border top collapse with what
+		// follows, but not with our bottom margin (CSS 2.1 §8.3.1).
 		box_cursor = child_position.y;
-		trailing_margin_set = CollapsibleMarginSet();
-		trailing_margin_set.Add(child_margin_bottom_right.y);
+		trailing_margin_set = child_bottom_margin_set;
+		trailing_after_clearance = true;
 		top_margin_open = false;
 	}
 	else if (child_collapsed_through)
@@ -159,6 +172,7 @@ bool BlockContainer::EncloseChildBox(LayoutBox* child, Vector2f child_position, 
 	{
 		box_cursor = child_position.y + child_border_size.y;
 		trailing_margin_set = child_bottom_margin_set;
+		trailing_after_clearance = false;
 		top_margin_open = false;
 	}
 
@@ -188,7 +202,11 @@ BlockContainer* BlockContainer::OpenBlockBox(Element* child_element, const Box& 
 	child_container->position = PlaceBlockLevelChild(child_element, child_box, child_element->GetComputedValues().clear(),
 		child_container->top_margin_set, joins_top_margin, child_container->clearance, false);
 	if (child_container->clearance)
-		child_container->top_margin_open = false;
+	{
+		// Clearance separates its top margin from the margins before it, and fixes its position.
+		child_container->top_margin_set = CollapsibleMarginSet();
+		child_container->top_margin_set.Add(child_box.GetEdge(BoxArea::Margin, BoxEdge::Top));
+	}
 	child_container->joined_parent_top_margin = joins_top_margin;
 	child_container->top_margin_parent = (joins_top_margin ? this : nullptr);
 	child_element->SetOffset(child_container->position - position, element);
@@ -205,19 +223,32 @@ BlockContainer* BlockContainer::OpenBlockBox(Element* child_element, const Box& 
 	return child_container;
 }
 
-LayoutBox* BlockContainer::AddBlockLevelBox(UniquePtr<LayoutBox> block_level_box_ptr, Element* child_element, const Box& child_box)
+LayoutBox* BlockContainer::AddBlockLevelBox(UniquePtr<LayoutBox> block_level_box_ptr, Element* child_element, const Box& child_box,
+	const FloatFit* float_fit)
 {
 	RMLUI_ASSERT(child_box.GetSize().y >= 0.f); // Assumes child element already formatted and sized.
 
 	if (!CloseOpenInlineContainer())
 		return nullptr;
 
-	// Clear any floats to avoid overlapping them. In CSS, it is allowed to instead shrink the box and place it next to
-	// any floats, but we keep it simple here for now and just clear them.
+	// The box must not overlap floats: it was fitted among them (FitBesideFloats), or else it clears them.
 	CollapsibleMarginSet child_top_margin_set;
 	bool joins_top_margin = false, child_clearance = false;
-	Vector2f child_position =
-		PlaceBlockLevelChild(child_element, child_box, Style::Clear::Both, child_top_margin_set, joins_top_margin, child_clearance, true);
+	Vector2f child_position = PlaceBlockLevelChild(child_element, child_box, float_fit ? Style::Clear::None : Style::Clear::Both,
+		child_top_margin_set, joins_top_margin, child_clearance, true);
+	if (float_fit)
+	{
+		// Moved below floats it did not fit beside: as with clearance, its margins no longer collapse with ours.
+		if (float_fit->top > child_position.y + 0.01f)
+		{
+			child_position.y = float_fit->top;
+			child_clearance = true;
+			joins_top_margin = false;
+			top_margin_open = false;
+		}
+		if (float_fit->beside_floats)
+			child_position.x = float_fit->left;
+	}
 
 	child_element->SetOffset(child_position - position, element);
 
@@ -237,6 +268,94 @@ LayoutBox* BlockContainer::AddBlockLevelBox(UniquePtr<LayoutBox> block_level_box
 		return nullptr;
 
 	return block_level_box;
+}
+
+bool BlockContainer::FitBesideFloats(Element* child_element, const Box& child_box, FloatFit& out_fit, float& out_content_width)
+{
+	out_content_width = child_box.GetSize().x;
+	if (space->GetDimensions(FloatedBoxEdge::Margin) == Vector2f(0.f))
+		return false;
+	if (!CloseOpenInlineContainer())
+		return false;
+
+	const ComputedValues& computed = child_element->GetComputedValues();
+	const float margin_left = child_box.GetEdge(BoxArea::Margin, BoxEdge::Left);
+	const float margin_right = child_box.GetEdge(BoxArea::Margin, BoxEdge::Right);
+	const float margin_top = child_box.GetEdge(BoxArea::Margin, BoxEdge::Top);
+	const float edges = child_box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
+	const Vector2f border_size = child_box.GetSize(BoxArea::Border);
+
+	// An automatic width fills the line (LayoutDetails::BuildBoxWidth).
+	const Style::Display display = computed.display();
+	const bool auto_width = (computed.width().type == Style::Width::Auto && computed.width_keyword() == Style::SizingKeyword::None &&
+		display != Style::Display::Table && !child_element->IsReplaced() && !LayoutDetails::IsJustifiedFitContent(child_element));
+	float min_width = 0.f, max_width = FLT_MAX;
+	LayoutDetails::GetMinMaxWidth(min_width, max_width, computed, child_box, box.GetSize().x);
+
+	// Its border top after the margins before it, as PlaceBlockLevelChild places it.
+	float top = position.y + box.GetPosition().y + box_cursor;
+	if (top_margin_open && !adjoining_floats)
+	{
+		CollapsibleMarginSet margin_set = top_margin_set;
+		margin_set.Add(margin_top);
+		top += margin_set.Resolve() - top_margin_set.Resolve();
+	}
+	else
+	{
+		CollapsibleMarginSet margin_set = trailing_margin_set;
+		margin_set.Add(margin_top);
+		top += margin_set.Resolve();
+	}
+
+	const float scrollbar_width = element->GetElementScroll()->GetScrollbarSize(ElementScroll::VERTICAL);
+	const float line_left = position.x + box.GetPosition().x;
+	const float line_width = box.GetSize().x - scrollbar_width;
+	const float height = Math::Max(border_size.y, 0.01f);
+
+	// Take the first place, there or lower, where its border box fits between the floats.
+	float required_width = (auto_width ? Math::Min(min_width + edges, border_size.x) : border_size.x);
+	for (int i = 0; i < 16; i++)
+	{
+		float slot_width = 0.f;
+		const Vector2f slot = space->NextBoxPosition(this, slot_width, top, Vector2f(required_width, height), false);
+		out_fit.top = slot.y;
+
+		// A line that no float narrows: the box is placed as without floats (its negative margins may extend it outside).
+		if (slot.x <= line_left && slot_width >= line_width)
+		{
+			out_fit.beside_floats = false;
+			if (auto_width)
+				out_content_width = Math::Clamp(Math::Max(line_width - margin_left - margin_right - edges, 0.f), min_width, max_width);
+			return true;
+		}
+
+		// Floats narrow the line. They absorb the margins of the box: its border box starts after the float or its margin,
+		// whichever is further in, and an automatic width fills what is left.
+		const float left = Math::Max(slot.x, line_left + Math::Max(margin_left, 0.f));
+		const float right = Math::Min(slot.x + slot_width, line_left + line_width - Math::Max(margin_right, 0.f));
+		float border_width = border_size.x;
+		if (auto_width)
+		{
+			const float fill_width = Math::Max(Math::Max(right - left, 0.f) + margin_left + margin_right, 0.f) - margin_left - margin_right;
+			border_width = Math::Clamp(Math::Max(fill_width - edges, 0.f), min_width, max_width) + edges;
+		}
+
+		if (border_width <= slot_width + 0.01f)
+		{
+			out_fit.beside_floats = true;
+			out_fit.left = left;
+			out_content_width = border_width - edges;
+			return true;
+		}
+
+		// Too wide for this line: look for the next one that is wide enough for it.
+		required_width = Math::Max(border_width, required_width + 0.01f);
+	}
+
+	out_fit.beside_floats = false;
+	out_fit.top = space->DetermineClearPosition(top, Style::Clear::Both);
+	out_content_width = child_box.GetSize().x;
+	return true;
 }
 
 InlineBoxHandle BlockContainer::AddInlineElement(Element* element, const Box& child_box)
@@ -370,8 +489,16 @@ Vector2f BlockContainer::PlaceBlockLevelChild(Element* child_element, const Box&
 
 	// Floats placed while our top margin was open are positioned at our content top. A box establishing a new formatting
 	// context, or clearing floats, after them separates from them: the margins before it are resolved there, without it.
+	bool forced_clearance = false;
 	if (top_margin_open && adjoining_floats && (new_formatting_context || clear_property != Style::Clear::None))
+	{
 		top_margin_open = false;
+
+		// Its margin would have moved those floats with us, so the box clears them whatever its margin (the clearance may
+		// be negative, CSS 2.1 §9.5.2): its border top goes right below them.
+		const float content_top = position.y + box.GetPosition().y + box_cursor;
+		forced_clearance = (clear_property != Style::Clear::None && space->DetermineClearPosition(content_top, clear_property) > content_top);
+	}
 
 	if (top_margin_open)
 	{
@@ -397,6 +524,8 @@ Vector2f BlockContainer::PlaceBlockLevelChild(Element* child_element, const Box&
 	box_position.x += LayoutDetails::GetJustifySelfOffset(child_element, box.GetSize().x - scrollbar_width - child_box.GetSize(BoxArea::Margin).x);
 
 	// Clearance: the box moves below the floats it clears, its margins no longer collapse with ours.
+	if (forced_clearance)
+		box_position.y = position.y + box.GetPosition().y + box_cursor;
 	const float clear_position = space->DetermineClearPosition(box_position.y, clear_property);
 	if (clear_position > box_position.y)
 	{
@@ -411,8 +540,11 @@ Vector2f BlockContainer::PlaceBlockLevelChild(Element* child_element, const Box&
 
 void BlockContainer::CollapseTopMargin(const CollapsibleMarginSet& margin_set)
 {
-	const float delta = margin_set.Resolve() - top_margin_set.Resolve();
+	// Clearance fixes the position of the box at the top of the chain: the margins collapse above it without moving it.
 	BlockContainer* chain_top = this;
+	while (chain_top->top_margin_parent)
+		chain_top = chain_top->top_margin_parent;
+	const float delta = (chain_top->clearance ? 0.f : margin_set.Resolve() - top_margin_set.Resolve());
 	for (BlockContainer* container = this; container; container = container->top_margin_parent)
 	{
 		container->top_margin_set = margin_set;
@@ -582,6 +714,7 @@ void BlockContainer::ResetContents()
 	queued_float_elements.clear();
 
 	box_cursor = 0;
+	trailing_after_clearance = false;
 	trailing_margin_set = CollapsibleMarginSet();
 	adjoining_floats = false;
 	top_margin_open = (!root_space && box.GetEdge(BoxArea::Border, BoxEdge::Top) == 0.f && box.GetEdge(BoxArea::Padding, BoxEdge::Top) == 0.f);

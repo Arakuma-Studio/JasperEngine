@@ -278,7 +278,21 @@ bool BlockFormattingContext::FormatBlockContainerChild(BlockContainer* parent_co
 		// Otherwise, check if we have a sized block-level box.
 		else if (layout_box && outer_display == OuterDisplayType::BlockLevel)
 		{
-			if (!parent_container->AddBlockLevelBox(std::move(layout_box), element, element->GetBox()))
+			// A box that establishes a new formatting context does not overlap the floats of ours (CSS 2.1 §9.5): it goes
+			// beside them, narrowed if its width is automatic, or below them.
+			BlockContainer::FloatFit float_fit;
+			float fitted_width = 0.f;
+			const bool fitted = parent_container->FitBesideFloats(element, element->GetBox(), float_fit, fitted_width);
+			if (fitted && fitted_width != element->GetBox().GetSize().x)
+			{
+				Box box;
+				LayoutDetails::BuildBox(box, LayoutDetails::GetContainingBlock(parent_container, position_property).size, element);
+				box.SetContent({fitted_width, box.GetSize().y});
+				layout_box = FormattingContext::FormatIndependent(parent_container, element, &box, FormattingContextType::None);
+				if (!layout_box)
+					return false;
+			}
+			if (!parent_container->AddBlockLevelBox(std::move(layout_box), element, element->GetBox(), fitted ? &float_fit : nullptr))
 				return false;
 		}
 		// Nope, then this must be an inline-level box.
