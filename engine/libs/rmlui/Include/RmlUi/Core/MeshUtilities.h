@@ -53,6 +53,10 @@ public:
 	/// are feathered unless SetGeometryFeathering(false), and the border is drawn with the render box's border styles.
 	static void GenerateBackgroundBorder(Mesh& mesh, const RenderBox& render_box, ColourbPremultiplied background_color,
 		const ColourbPremultiplied border_colors[4]);
+	/// As above, for geometry drawn scaled: 'feather_unit' is the size of a device pixel in the mesh's units (the inverse of
+	/// the scale), so that feathered edges stay one device pixel wide.
+	static void GenerateBackgroundBorder(Mesh& mesh, const RenderBox& render_box, ColourbPremultiplied background_color,
+		const ColourbPremultiplied border_colors[4], float feather_unit);
 
 	/// Generates the background geometry for an element's area, with support for border-radius.
 	/// @param[out] mesh A mesh to append the generated vertices and indices into.

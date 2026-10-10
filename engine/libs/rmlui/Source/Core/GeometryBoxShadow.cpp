@@ -9,6 +9,7 @@
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
 #include "ElementStyle.h"
+#include "GeometryBorderStyles.h"
 #ifdef RMLUI_MATH_EXPRESSIONS
 	#include "CalculationResolver.h"
 #endif
@@ -116,9 +117,17 @@ void GeometryBoxShadow::GenerateTexture(CallbackTexture& out_shadow_texture, Geo
 {
 	RMLUI_ZoneScoped;
 
+	// The background colour covers the border box, under the border (CSS: the initial 'background-clip: border-box').
 	Mesh mesh = out_background_border_geometry.Release(Geometry::ReleaseMode::ClearMesh);
+	const ColourbPremultiplied transparent(0, 0);
+	const ColourbPremultiplied no_border[4] = {transparent, transparent, transparent, transparent};
 	for (size_t i = 0; i < info.padding_render_boxes.size(); i++)
-		MeshUtilities::GenerateBackgroundBorder(mesh, info.padding_render_boxes[i], info.background_color, info.border_colors.data());
+	{
+		const RenderBox background_box =
+			GeometryBorderStyles::BackgroundRenderBox(info.border_render_boxes[i], info.padding_render_boxes[i], info.border_colors.data());
+		MeshUtilities::GenerateBackgroundBorder(mesh, background_box, info.background_color, no_border);
+		MeshUtilities::GenerateBackgroundBorder(mesh, info.padding_render_boxes[i], transparent, info.border_colors.data());
+	}
 	out_background_border_geometry = render_manager.MakeGeometry(std::move(mesh));
 
 	// Callback for generating the box-shadow texture. Using a callback ensures that the texture can be regenerated at any time, for example if the

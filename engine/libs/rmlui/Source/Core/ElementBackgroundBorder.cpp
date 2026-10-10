@@ -8,14 +8,44 @@
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
 #include "BoxShadowCache.h"
+#include "GeometryBorderStyles.h"
 #include "GeometryBoxShadow.h"
+#include "TransformState.h"
+#include <cmath>
 
 namespace Rml {
 
 ElementBackgroundBorder::ElementBackgroundBorder() {}
 
+// The size of a device pixel in the element's units: the inverse of the scale its transform draws it with, in steps of a
+// fourth of an octave so that an animated scale generates the geometry a few times only.
+static float GetFeatherUnit(Element* element)
+{
+	const TransformState* transform_state = element->GetTransformState();
+	const Matrix4f* transform = (transform_state ? transform_state->GetTransform() : nullptr);
+	if (!transform)
+		return 1.f;
+	const Matrix4f& m = *transform;
+	const float determinant = Math::Absolute(m[0][0] * m[1][1] - m[0][1] * m[1][0]);
+	const float w = Math::Absolute(m[3][3]);
+	if (determinant < 1e-8f || w < 1e-8f)
+		return 1.f;
+	const float scale = Math::SquareRoot(determinant) / w;
+	if (Math::Absolute(scale - 1.f) < 0.05f)
+		return 1.f;
+	const float step = Math::Round(4.f * std::log2(scale)) / 4.f;
+	return Math::Clamp(std::pow(2.f, -step), 1.f / 16.f, 16.f);
+}
+
 void ElementBackgroundBorder::Render(Element* element)
 {
+	const float new_feather_unit = GetFeatherUnit(element);
+	if (new_feather_unit != feather_unit)
+	{
+		feather_unit = new_feather_unit;
+		background_dirty = true;
+	}
+
 	if (background_dirty || border_dirty)
 	{
 		for (auto& background : backgrounds)
@@ -141,7 +171,7 @@ void ElementBackgroundBorder::GenerateGeometry(Element* element)
 		Mesh border_mesh = border_geometry.Release(Geometry::ReleaseMode::ClearMesh);
 		for (int i = 0; i < element->GetNumBoxes(); i++)
 			MeshUtilities::GenerateBackgroundBorder(border_mesh, element->GetRenderBox(BoxArea::Padding, i), ColourbPremultiplied(0, 0),
-				border_colors.data());
+				border_colors.data(), feather_unit);
 		border_geometry = render_manager->MakeGeometry(std::move(border_mesh));
 	}
 	else
@@ -165,9 +195,16 @@ void ElementBackgroundBorder::GenerateGeometry(Element* element)
 	Geometry& geometry = GetOrCreateBackground(BackgroundType::BackgroundBorder).geometry;
 	Mesh mesh = geometry.Release(Geometry::ReleaseMode::ClearMesh);
 
+	// The background colour covers the border box, under the border (CSS: the initial 'background-clip: border-box').
 	for (int i = 0; i < element->GetNumBoxes(); i++)
-		MeshUtilities::GenerateBackgroundBorder(mesh, element->GetRenderBox(BoxArea::Padding, i), background_color,
-			border_above ? no_border.data() : border_colors.data());
+	{
+		const RenderBox padding_box = element->GetRenderBox(BoxArea::Padding, i);
+		const RenderBox background_box =
+			GeometryBorderStyles::BackgroundRenderBox(element->GetRenderBox(BoxArea::Border, i), padding_box, border_colors.data());
+		MeshUtilities::GenerateBackgroundBorder(mesh, background_box, background_color, no_border.data(), feather_unit);
+		if (!border_above)
+			MeshUtilities::GenerateBackgroundBorder(mesh, padding_box, transparent, border_colors.data(), feather_unit);
+	}
 
 	geometry = render_manager->MakeGeometry(std::move(mesh));
 }

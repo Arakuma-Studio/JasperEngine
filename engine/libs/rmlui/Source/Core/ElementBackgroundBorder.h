@@ -37,6 +37,9 @@ private:
 	bool background_dirty = false;
 	bool border_dirty = false;
 	bool border_above_decorators = false;   // the geometry draws the border in BorderAbove
+	// The size of a device pixel in the element's units the geometry was feathered for: the inverse of the scale of the
+	// element's transform, in steps (the geometry is generated again when the scale leaves its step).
+	float feather_unit = 1.f;
 
 	StableMap<BackgroundType, Background> backgrounds;
 };

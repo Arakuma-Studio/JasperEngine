@@ -70,6 +70,12 @@ void MeshUtilities::GenerateLine(Mesh& mesh, Vector2f position, Vector2f size, C
 void MeshUtilities::GenerateBackgroundBorder(Mesh& out_mesh, const RenderBox& render_box, ColourbPremultiplied background_color,
 	const ColourbPremultiplied border_colors[4])
 {
+	GenerateBackgroundBorder(out_mesh, render_box, background_color, border_colors, 1.f);
+}
+
+void MeshUtilities::GenerateBackgroundBorder(Mesh& out_mesh, const RenderBox& render_box, ColourbPremultiplied background_color,
+	const ColourbPremultiplied border_colors[4], float feather_unit)
+{
 	RMLUI_ASSERT(border_colors);
 
 	Vector<Vertex>& vertices = out_mesh.vertices;
@@ -112,7 +118,17 @@ void MeshUtilities::GenerateBackgroundBorder(Mesh& out_mesh, const RenderBox& re
 	{
 		// A background inside a border and the border's inner edge stay sharp where they meet, so that no seam shows.
 		if (geometry_feathering || rounded)
-			GeometryBorderStyles::DrawBackground(vertices, indices, metrics, background_color, has_border ? FeatherEdges::None : edges);
+		{
+			// The sides whose border is drawn (the background reaches a little under them).
+			EdgeSizes drawn_widths = border_widths;
+			for (int i = 0; i < 4; i++)
+			{
+				if (border_colors[i].alpha == 0 || !Style::IsBorderStylePainted(border_styles[i]))
+					drawn_widths[i] = 0.f;
+			}
+			GeometryBorderStyles::DrawBackground(vertices, indices, metrics, background_color, has_border ? FeatherEdges::None : edges,
+				has_border ? &drawn_widths : nullptr, feather_unit);
+		}
 		else
 			geometry.DrawBackground(metrics, background_color);
 	}
@@ -122,7 +138,7 @@ void MeshUtilities::GenerateBackgroundBorder(Mesh& out_mesh, const RenderBox& re
 		// Styles other than solid, and sides of different colours meeting at a rounded corner, need the styled generator.
 		if (geometry_feathering || rounded || GeometryBorderStyles::IsNeeded(metrics, border_widths, border_colors, border_styles))
 			GeometryBorderStyles::DrawBorder(vertices, indices, metrics, border_widths, border_colors, border_styles, render_box.GetBorderTopGap(),
-				edges, !has_background);
+				edges, !has_background, feather_unit);
 		else
 			geometry.DrawBorder(metrics, border_widths, border_colors, render_box.GetBorderTopGap());
 	}

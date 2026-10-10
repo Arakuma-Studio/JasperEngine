@@ -23,6 +23,9 @@ namespace {
 		Vector2f axis_outer, axis_inner;
 		float thickness = 0.f;
 		bool straight = true; // At a square corner or where a curve meets a straight edge (not inside a curve).
+		bool square = false;  // The split of a square corner: the line from the outer to the inner corner.
+		float adjacent = 0.f; // At a square corner: the width of the side next to this one.
+		Vector2f inside;      // At a square corner: across the split, towards this side.
 	};
 	using Rail = Vector<RailPair>;
 
@@ -128,11 +131,11 @@ namespace {
 		return length > 1e-6f ? -gradient / length : Vector2f(0.f);
 	}
 
-	void AddArc(Rail& rail, const BorderMetrics& metrics, int corner, float a_begin, float a_end)
+	void AddArc(Rail& rail, const BorderMetrics& metrics, int corner, float a_begin, float a_end, float unit)
 	{
 		const Vector2f radius = OuterRadius(metrics, corner);
 		const float fraction = Math::Absolute(a_end - a_begin) / (0.5f * Math::RMLUI_PI);
-		const int num_segments = Math::Max(1, int(std::ceil(float(QuarterSegments(radius)) * fraction)));
+		const int num_segments = Math::Max(1, int(std::ceil(float(QuarterSegments(radius / unit)) * fraction)));
 		for (int i = 0; i <= num_segments; i++)
 		{
 			const float angle = Math::Lerp(float(i) / float(num_segments), a_begin, a_end);
@@ -163,7 +166,29 @@ namespace {
 		size_t straight_begin = 0; // The pair where the corner at the start ends (the straight part begins).
 	};
 
-	void BuildRail(SideRail& rail, const BorderMetrics& metrics, int side, const float split[4])
+	// The pair of a side at a square corner: the corner's split, from its outer to its inner corner. 'towards' points
+	// along the side away from the corner.
+	RailPair SquarePair(const BorderMetrics& metrics, int side, int corner, int adjacent_side, Vector2f towards)
+	{
+		RailPair pair;
+		pair.outer = metrics.positions_outer[corner];
+		pair.inner = metrics.positions_inner[corner];
+		pair.centre = 0.5f * (pair.inner + pair.outer);
+		const Vector2f diagonal = pair.inner - pair.outer;
+		pair.thickness = Dot(diagonal, side_normal[side]);
+		pair.adjacent = Dot(diagonal, side_normal[adjacent_side]);
+		// The edges moved by one pixel meet at the corner moved along both normals; a side without a neighbour ends there.
+		const Vector2f miter = side_normal[side] + (pair.adjacent > 0.f ? side_normal[adjacent_side] : Vector2f(0.f));
+		pair.axis_outer = pair.axis_inner = miter;
+		pair.straight = true;
+		pair.square = true;
+		pair.inside = Vector2f(diagonal.y, -diagonal.x);
+		if (Dot(pair.inside, towards) < 0.f)
+			pair.inside = -pair.inside;
+		return pair;
+	}
+
+	void BuildRail(SideRail& rail, const BorderMetrics& metrics, int side, const float split[4], float unit)
 	{
 		rail.pairs.clear();
 		const int c0 = side, c1 = (side + 1) % 4;
@@ -171,16 +196,13 @@ namespace {
 		rail.direction = direction;
 
 		const bool square_start = !IsRounded(OuterRadius(metrics, c0));
-		const float width = Dot(metrics.positions_inner[c0] - metrics.positions_outer[c0], side_normal[side]);
 		if (square_start)
 		{
-			const Vector2f outer = metrics.positions_outer[c0], inner = metrics.positions_inner[c0];
-			const Vector2f miter = side_normal[side] + side_normal[(side + 3) % 4];
-			rail.pairs.push_back(RailPair{inner, outer, 0.5f * (inner + outer), 0.f, miter, miter, width});
+			rail.pairs.push_back(SquarePair(metrics, side, c0, (side + 3) % 4, direction));
 		}
 		else
 		{
-			AddArc(rail.pairs, metrics, c0, split[c0], EndAngle(c0));
+			AddArc(rail.pairs, metrics, c0, split[c0], EndAngle(c0), unit);
 		}
 
 		rail.straight_begin = rail.pairs.size() - 1;
@@ -188,13 +210,11 @@ namespace {
 		const bool square_end = !IsRounded(OuterRadius(metrics, c1));
 		if (square_end)
 		{
-			const Vector2f outer = metrics.positions_outer[c1], inner = metrics.positions_inner[c1];
-			const Vector2f miter = side_normal[side] + side_normal[(side + 1) % 4];
-			rail.pairs.push_back(RailPair{inner, outer, 0.5f * (inner + outer), 0.f, miter, miter, width});
+			rail.pairs.push_back(SquarePair(metrics, side, c1, (side + 1) % 4, -direction));
 		}
 		else
 		{
-			AddArc(rail.pairs, metrics, c1, StartAngle(c1), split[c1]);
+			AddArc(rail.pairs, metrics, c1, StartAngle(c1), split[c1], unit);
 		}
 
 		Rail& pairs = rail.pairs;
@@ -246,8 +266,9 @@ namespace {
 
 	class BorderWriter {
 	public:
-		BorderWriter(Vector<Vertex>& vertices, Vector<int>& indices, FeatherEdges edges) :
-			vertices(vertices), indices(indices), feather(edges == FeatherEdges::All), feather_curves(edges != FeatherEdges::None)
+		// 'unit' is the size of a device pixel in the geometry's units (1 unless the geometry is drawn scaled).
+		BorderWriter(Vector<Vertex>& vertices, Vector<int>& indices, FeatherEdges edges, float unit) :
+			vertices(vertices), indices(indices), feather(edges == FeatherEdges::All), feather_curves(edges != FeatherEdges::None), unit(unit)
 		{}
 
 		// The band between the fractions t_outer and t_inner of the side's width (0 = outer edge, 1 = inner edge), over
@@ -273,29 +294,29 @@ namespace {
 			}
 			else
 			{
-				const float fade_begin = (cut_begin ? feather_half : 0.f), fade_end = (cut_end ? feather_half : 0.f);
+				const float fade_begin = (cut_begin ? (feather_half * unit) : 0.f), fade_end = (cut_end ? (feather_half * unit) : 0.f);
 				const float body_begin = s0 + fade_begin, body_end = s1 - fade_end;
 				if (body_end >= body_begin)
 				{
 					// The fades reach a transparent margin, so that the samples of a pixel whose centre is in a fade all take it.
 					if (cut_begin)
 					{
-						pieces[num_pieces++] = {s0 - feather_half - feather_margin, s0 - feather_half, 0.f, 0.f};
-						pieces[num_pieces++] = {s0 - feather_half, body_begin, 0.f, 1.f};
+						pieces[num_pieces++] = {s0 - (feather_half * unit) - (feather_margin * unit), s0 - (feather_half * unit), 0.f, 0.f};
+						pieces[num_pieces++] = {s0 - (feather_half * unit), body_begin, 0.f, 1.f};
 					}
 					pieces[num_pieces++] = {body_begin, body_end, 1.f, 1.f};
 					if (cut_end)
 					{
-						pieces[num_pieces++] = {body_end, s1 + feather_half, 1.f, 0.f};
-						pieces[num_pieces++] = {s1 + feather_half, s1 + feather_half + feather_margin, 0.f, 0.f};
+						pieces[num_pieces++] = {body_end, s1 + (feather_half * unit), 1.f, 0.f};
+						pieces[num_pieces++] = {s1 + (feather_half * unit), s1 + (feather_half * unit) + (feather_margin * unit), 0.f, 0.f};
 					}
 				}
 				else
 				{
 					// Shorter than the fades: a peak of the dash's length.
-					const float middle = 0.5f * (s0 + s1), peak = Math::Clamp(s1 - s0, 0.f, 1.f);
-					pieces[num_pieces++] = {cut_begin ? s0 - feather_half : s0, middle, cut_begin ? 0.f : peak, peak};
-					pieces[num_pieces++] = {middle, cut_end ? s1 + feather_half : s1, peak, cut_end ? 0.f : peak};
+					const float middle = 0.5f * (s0 + s1), peak = Math::Clamp((s1 - s0) / unit, 0.f, 1.f);
+					pieces[num_pieces++] = {cut_begin ? s0 - (feather_half * unit) : s0, middle, cut_begin ? 0.f : peak, peak};
+					pieces[num_pieces++] = {middle, cut_end ? s1 + (feather_half * unit) : s1, peak, cut_end ? 0.f : peak};
 				}
 			}
 
@@ -314,11 +335,27 @@ namespace {
 				// One layout of levels for both pairs: with a solid core only if the band is thick enough at both.
 				const bool feather_band = (feather_outer || feather_inner) && a.thickness > 1e-4f && b.thickness > 1e-4f &&
 					(HalfOf(a) > 0.f || HalfOf(b) > 0.f);
-				const float needed = (feather_outer ? feather_half_curve : 0.f) + (feather_inner ? feather_half_curve : 0.f);
+				const float needed = (feather_outer ? (feather_half_curve * unit) : 0.f) + (feather_inner ? (feather_half_curve * unit) : 0.f);
 				const bool core = !feather_band || Math::Min(a.thickness, b.thickness) * (t_inner - t_outer) >= needed;
-				Level levels_a[6], levels_b[6];
+				Level levels_a[8], levels_b[8];
 				const int num_levels = BandLevels(a, t_outer, t_inner, feather_band, feather_outer, feather_inner, core, levels_a);
 				BandLevels(b, t_outer, t_inner, feather_band, feather_outer, feather_inner, core, levels_b);
+
+				// Square corners of sides of different widths: the fades of the two sides leave a sliver between the corner
+				// of the moved edges and the corner's split; it is this side's when that corner is on its side of the split.
+				if (feather_band && core)
+				{
+					for (const RailPair* pair : {&a, &b})
+					{
+						if (pair->square && ((pair == &a && k == 0) || (pair == &b && k + 2 == pairs.size())))
+						{
+							if (feather_outer)
+								CornerSliver(*pair, t_outer, 1.f, color);
+							if (feather_inner)
+								CornerSliver(*pair, t_inner, -1.f, color);
+						}
+					}
+				}
 
 				for (int i = 0; i + 1 < num_levels; i++)
 				{
@@ -366,9 +403,9 @@ namespace {
 				EmitClipped({{a, 1.f}, {b, 1.f}, {c, 1.f}, {d, 1.f}}, color);
 				return;
 			}
-			const int num_points = 4 * QuarterSegments(Vector2f(radius + 0.5f));
-			const float solid_radius = (feather_curves ? Math::Max(radius - feather_half_curve, 0.f) : radius);
-			const float centre_alpha = (feather_curves && radius < feather_half_curve ? radius / feather_half_curve : 1.f);
+			const int num_points = 4 * QuarterSegments(Vector2f((radius + 0.5f) / unit));
+			const float solid_radius = (feather_curves ? Math::Max(radius - (feather_half_curve * unit), 0.f) : radius);
+			const float centre_alpha = (feather_curves && radius < (feather_half_curve * unit) ? radius / (feather_half_curve * unit) : 1.f);
 			auto point = [&](float ring_radius, int i) {
 				return ArcPoint(center, Vector2f(ring_radius), 2.f * Math::RMLUI_PI * float(i % num_points) / float(num_points));
 			};
@@ -377,7 +414,7 @@ namespace {
 			if (feather_curves)
 			{
 				// The fade to transparent half a pixel outside, and a transparent margin (see BandLevels).
-				const float rings[3] = {solid_radius, radius + feather_half_curve, radius + feather_half_curve + feather_margin};
+				const float rings[3] = {solid_radius, radius + (feather_half_curve * unit), radius + (feather_half_curve * unit) + (feather_margin * unit)};
 				const float alphas[3] = {centre_alpha, 0.f, 0.f};
 				for (int ring = 0; ring < 2; ring++)
 				{
@@ -437,7 +474,7 @@ namespace {
 				for (int i = 0; i < count; i++)
 				{
 					const OutlinePoint& point = outline[i];
-					const float margin = (point.half > 0.f ? feather_margin : 0.f);
+					const float margin = (point.half > 0.f ? (feather_margin * unit) : 0.f);
 					const float offset = (pass == 0 ? -point.half : pass == 1 ? point.half : point.half + margin);
 					const Vector2f previous = outline[(i + count - 1) % count].position, next = outline[(i + 1) % count].position;
 					const Vector2f normal = OffsetDirection(previous, point.position, next);
@@ -468,12 +505,30 @@ namespace {
 			float alpha;
 		};
 
+		// See Strip: 'inwards' is 1 for the band's outer edge (its opaque part lies further in), -1 for its inner edge.
+		void CornerSliver(const RailPair& pair, float t, float inwards, ColourbPremultiplied color)
+		{
+			const float half = HalfOf(pair);
+			if (half <= 0.f || pair.adjacent <= 0.f || pair.thickness <= 0.f || Math::Absolute(pair.adjacent - pair.thickness) < 1e-3f)
+				return;
+			const Vector2f corner = Math::Lerp(t, pair.outer, pair.inner) - pair.axis_outer * (inwards * half);
+			if (Dot(corner - pair.outer, pair.inside) <= 0.f)
+				return;
+			const Vector2f own = Math::Lerp(t + inwards * half / pair.thickness, pair.outer, pair.inner);
+			const Vector2f other = Math::Lerp(t + inwards * half / pair.adjacent, pair.outer, pair.inner);
+			const int first = (int)vertices.size();
+			AddVertex(corner, ColourbPremultiplied(0, 0));
+			AddVertex(other, color);
+			AddVertex(own, color);
+			AddTriangle(first, first + 1, first + 2);
+		}
+
 		// The half width of the fade of the edges at a pair: 0 where they are not feathered.
 		float HalfOf(const RailPair& pair) const
 		{
 			if (pair.straight)
-				return feather ? feather_half : 0.f;
-			return feather_curves ? feather_half_curve : 0.f;
+				return feather ? (feather_half * unit) : 0.f;
+			return feather_curves ? (feather_half_curve * unit) : 0.f;
 		}
 
 		// The levels across a band at one pair: its edges, or with feathering the rims and the edges moved inwards. A
@@ -482,7 +537,7 @@ namespace {
 		// (multisampling), so that a pixel's coverage is the fade at its centre. Internal edges (between the halves of a
 		// groove or ridge) are not feathered.
 		int BandLevels(const RailPair& pair, float t_outer, float t_inner, bool feather_band, bool feather_outer, bool feather_inner, bool core,
-			Level levels[6]) const
+			Level levels[8]) const
 		{
 			const Vector2f outer = Math::Lerp(t_outer, pair.outer, pair.inner), inner = Math::Lerp(t_inner, pair.outer, pair.inner);
 			if (!feather_band)
@@ -494,7 +549,7 @@ namespace {
 			const Vector2f axis_outer = Math::Lerp(t_outer, pair.axis_outer, pair.axis_inner);
 			const Vector2f axis_inner = Math::Lerp(t_inner, pair.axis_outer, pair.axis_inner);
 			const float half = HalfOf(pair);
-			const float margin = (half > 0.f ? feather_margin : 0.f);
+			const float margin = (half > 0.f ? (feather_margin * unit) : 0.f);
 			int count = 0;
 			if (feather_outer)
 			{
@@ -503,15 +558,48 @@ namespace {
 			}
 			if (core)
 			{
-				levels[count++] = {feather_outer ? outer + axis_outer * half : outer, 1.f};
-				levels[count++] = {feather_inner ? inner - axis_inner * half : inner, 1.f};
+				if (pair.square)
+				{
+					// The opaque part stays split along the corner's own line (to its sides' colours), half a pixel in
+					// from the edges; the fades reach the corner of the edges moved outwards. Where the side next to
+					// this one is thinner, its opaque part ends further along the split: the same points are levels
+					// here, so that the two sides share their vertices on the split (no gap between them).
+					const float shift = half / pair.thickness;
+					float t_solid_outer = (feather_outer ? t_outer + shift : t_outer), t_solid_inner = (feather_inner ? t_inner - shift : t_inner);
+					float t_shared_outer = t_solid_outer, t_shared_inner = t_solid_inner;
+					if (pair.adjacent > 0.f && pair.adjacent < pair.thickness - 1e-3f)
+					{
+						const float shift_adjacent = half / pair.adjacent;
+						if (feather_outer)
+							t_shared_outer = t_outer + shift_adjacent;
+						if (feather_inner)
+							t_shared_inner = t_inner - shift_adjacent;
+						if (t_shared_outer > t_shared_inner)
+							t_shared_outer = t_shared_inner = 0.5f * (t_solid_outer + t_solid_inner);
+					}
+					levels[count++] = {Math::Lerp(t_solid_outer, pair.outer, pair.inner), 1.f};
+					levels[count++] = {Math::Lerp(t_shared_outer, pair.outer, pair.inner), 1.f};
+					levels[count++] = {Math::Lerp(t_shared_inner, pair.outer, pair.inner), 1.f};
+					levels[count++] = {Math::Lerp(t_solid_inner, pair.outer, pair.inner), 1.f};
+				}
+				else
+				{
+					const Level solid_outer = {feather_outer ? outer + axis_outer * half : outer, 1.f};
+					const Level solid_inner = {feather_inner ? inner - axis_inner * half : inner, 1.f};
+					levels[count++] = solid_outer;
+					levels[count++] = solid_outer;
+					levels[count++] = solid_inner;
+					levels[count++] = solid_inner;
+				}
 			}
 			else
 			{
 				// Thinner than its fades: a peak of the band's thickness.
 				const float band = (t_inner - t_outer) * pair.thickness;
 				const Vector2f peak = (feather_outer && feather_inner ? 0.5f * (outer + inner) : feather_outer ? inner : outer);
-				levels[count++] = {peak, Math::Clamp(feather_outer && feather_inner ? band : band + half, 0.f, 1.f)};
+				const Level peak_level = {peak, Math::Clamp((feather_outer && feather_inner ? band : band + half) / unit, 0.f, 1.f)};
+				for (int i = 0; i < 4; i++)
+					levels[count++] = peak_level;
 			}
 			if (feather_inner)
 			{
@@ -610,6 +698,7 @@ namespace {
 		Vector<int>& indices;
 		bool feather;        // Straight edges (and the cut ends of dashes) are feathered.
 		bool feather_curves; // Curves (rounded corners, round dots) are feathered.
+		float unit;
 		Vector<PolygonPoint> polygon, clipped;
 		Vector<OutlinePoint> outline;
 		struct DotClip {
@@ -723,6 +812,24 @@ ColourbPremultiplied GeometryBorderStyles::LightColor(ColourbPremultiplied color
 	return light;
 }
 
+RenderBox GeometryBorderStyles::BackgroundRenderBox(const RenderBox& border_box, const RenderBox& padding_box, const ColourbPremultiplied border_colors[4])
+{
+	const EdgeSizes widths = padding_box.GetBorderWidths();
+	const BorderStyles styles = padding_box.GetBorderStyles();
+	EdgeSizes inset = {};
+	for (int side = 0; side < 4; side++)
+	{
+		const bool gaps = (styles[side] == BorderStyle::Dotted || styles[side] == BorderStyle::Dashed || styles[side] == BorderStyle::Double);
+		if (widths[side] >= 1.f && border_colors[side].alpha == 255 && Style::IsBorderStylePainted(styles[side]) && !gaps)
+			inset[side] = 1.f;
+	}
+	// The border box as the outer box of the insets: the fill is their inner area, its radii reduced by them.
+	RenderBox box = border_box;
+	box.SetBorderWidths(inset);
+	box.SetFillSize(Math::Max(border_box.GetFillSize() - Vector2f(inset[LEFT] + inset[RIGHT], inset[TOP] + inset[BOTTOM]), Vector2f(0.f)));
+	return box;
+}
+
 bool GeometryBorderStyles::IsNeeded(const BorderMetrics& metrics, EdgeSizes edge_sizes, const ColourbPremultiplied colors[4],
 	const BorderStyles& styles)
 {
@@ -797,46 +904,57 @@ namespace {
 } // namespace
 
 void GeometryBorderStyles::DrawBackground(Vector<Vertex>& vertices, Vector<int>& indices, const BorderMetrics& metrics, ColourbPremultiplied color,
-	FeatherEdges edges)
+	FeatherEdges edges, const EdgeSizes* under_border, float feather_unit)
 {
-	const float straight_half = (edges == FeatherEdges::All ? feather_half : 0.f);
-	const float curve_half = (edges != FeatherEdges::None ? feather_half_curve : 0.f);
-	// The inner area of the metrics, its corners rounded by the inner radii.
+	const float straight_half = (edges == FeatherEdges::All ? feather_half * feather_unit : 0.f);
+	const float curve_half = (edges != FeatherEdges::None ? feather_half_curve * feather_unit : 0.f);
+
+	// The inner area of the metrics, its corners rounded by the inner radii. Under a border it reaches half a pixel
+	// below the border's inner edge (where that side has a border), so that no gap opens between the two.
 	using OutlinePoint = BorderWriter::OutlinePoint;
 	Vector<OutlinePoint> outline;
 	for (int corner = 0; corner < 4; corner++)
 	{
+		Vector2f under(0.f);
+		if (under_border)
+		{
+			const int vertical_side = (corner == 0 || corner == 3 ? LEFT : RIGHT), horizontal_side = (corner <= 1 ? TOP : BOTTOM);
+			under.x = ((*under_border)[vertical_side] > 0.f ? 0.5f * feather_unit : 0.f);
+			under.y = ((*under_border)[horizontal_side] > 0.f ? 0.5f * feather_unit : 0.f);
+		}
 		const Vector2f r = metrics.inner_radii[corner];
 		if (IsRounded(OuterRadius(metrics, corner)) && r.x > 0.f && r.y > 0.f)
 		{
-			const int num_segments = QuarterSegments(r);
+			const int num_segments = QuarterSegments(r / feather_unit);
 			for (int i = 0; i <= num_segments; i++)
 			{
 				const float angle = Math::Lerp(float(i) / float(num_segments), StartAngle(corner), EndAngle(corner));
 				const bool arc_end = (i == 0 || i == num_segments);
-				outline.push_back({ArcPoint(metrics.positions_circle_center[corner], r, angle), arc_end ? straight_half : curve_half});
+				const Vector2f outwards = -EllipseInwardNormal(r, angle);
+				outline.push_back({ArcPoint(metrics.positions_circle_center[corner], r, angle) + outwards * under, arc_end ? straight_half : curve_half});
 			}
 		}
 		else
 		{
-			outline.push_back({metrics.positions_inner[corner], straight_half});
+			const Vector2f outwards(corner == 0 || corner == 3 ? -1.f : 1.f, corner <= 1 ? -1.f : 1.f);
+			outline.push_back({metrics.positions_inner[corner] + outwards * under, straight_half});
 		}
 	}
-	BorderWriter writer(vertices, indices, edges);
+	BorderWriter writer(vertices, indices, edges, feather_unit);
 	writer.Fill(outline, color);
 }
 
 void GeometryBorderStyles::DrawBorder(Vector<Vertex>& vertices, Vector<int>& indices, const BorderMetrics& metrics, EdgeSizes edge_sizes,
-	const ColourbPremultiplied colors[4], const BorderStyles& styles, Vector2f top_gap, FeatherEdges edges, bool feather_inner_edge)
+	const ColourbPremultiplied colors[4], const BorderStyles& styles, Vector2f top_gap, FeatherEdges edges, bool feather_inner_edge, float feather_unit)
 {
 	float split[4];
 	for (int corner = 0; corner < 4; corner++)
 		split[corner] = SplitAngle(metrics, edge_sizes, corner);
 
-	BorderWriter writer(vertices, indices, edges);
+	BorderWriter writer(vertices, indices, edges, feather_unit);
 	SideRail rails[4];
 	for (int side = 0; side < 4; side++)
-		BuildRail(rails[side], metrics, side, split);
+		BuildRail(rails[side], metrics, side, split, feather_unit);
 
 	// A box with a rounded corner lays its dashes and dots out along its whole centre line, a closed path starting on the
 	// top edge where the top-left corner ends, clockwise (Chromium strokes each side with the box's centre path, clipped
