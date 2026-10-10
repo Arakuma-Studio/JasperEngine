@@ -42,12 +42,12 @@ void companions::emitOutline(DeclContext& context, const std::string& ring){
     context.emit("box-shadow", boxShadowList());
 }
 
-void companions::emitBackgroundLayers(DeclContext& context, const std::string& layers){
+void companions::emitBackgroundLayers(DeclContext& context, std::string_view layers){
     if (context.keyframe || !context.session.usesBorderImage){
-        context.emit("decorator", layers.empty() ? "none" : layers);
+        context.emit("decorator", layers.empty() ? Text::view("none") : Text(layers));
         return;
     }
-    context.emit(kBgLayers, layers.empty() ? kNoLayer : layers);
+    context.emit(kBgLayers, layers.empty() ? Text::view(kNoLayer) : Text(layers));
     context.emit("decorator", decoratorList());
 }
 

@@ -10,6 +10,7 @@
 // text-stroke font effects, `inherit` on non-inherited properties, accent and control looks).
 
 #include <string>
+#include <string_view>
 
 namespace jasperengine::htmlui::compat {
 
@@ -42,7 +43,7 @@ namespace jasperengine::htmlui::compat {
         // keyframe mode and where the document does not need the companion)
         void emitBoxShadow(DeclContext& context, const std::string& value);
         void emitOutline(DeclContext& context, const std::string& ring);
-        void emitBackgroundLayers(DeclContext& context, const std::string& layers);   // "" = none
+        void emitBackgroundLayers(DeclContext& context, std::string_view layers);      // "" = none
         void emitBorderImage(DeclContext& context, const std::string& decorator);
         void emitTextShadow(DeclContext& context, const std::string& effects);         // "" = none
         void emitTextStroke(DeclContext& context, const std::string& effect);          // "" = none

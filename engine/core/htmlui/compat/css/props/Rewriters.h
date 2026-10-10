@@ -125,6 +125,25 @@ namespace jasperengine::htmlui::compat {
         // "a b c" from words
         std::string join(const std::vector<std::string>& parts, const char* separator = " ");
 
+        // words() and commaGroups() without copies: pointers to the values of the list, and
+        // ranges of it (the list's values live in the session's arena)
+        using Words = ArenaList<const ComponentValue*>;
+        struct ValueRange {
+            const ComponentValue* first = nullptr;
+            const ComponentValue* last = nullptr;
+            const ComponentValue* begin() const { return first; }
+            const ComponentValue* end() const { return last; }
+            size_t size() const { return (size_t)(last - first); }
+            bool empty() const { return first == last; }
+        };
+        Words wordsOf(const ComponentValue* first, const ComponentValue* last);
+        inline Words wordsOf(const ValueList& value){ return wordsOf(value.begin(), value.end()); }
+        inline Words wordsOf(const ValueRange& range){ return wordsOf(range.first, range.last); }
+        // each group trimmed of whitespace
+        ArenaList<ValueRange> commaRanges(const ValueList& value);
+        // identOf() as a view: the token's text when it is lower case, a lowered copy in the arena otherwise
+        std::string_view identView(const ComponentValue& value);
+
         bool isIdent(const ComponentValue& value, const char* lowercase);
         std::string identOf(const ComponentValue& value);        // lowercase ident, "" otherwise
         bool isVar(const ComponentValue& value);

@@ -7,6 +7,11 @@
 // html-layer decorator with all ten arguments (size, position, repeat, origin, clip,
 // attachment); background-color stays native. Longhands merge with the rule's shorthand or a
 // base rule; gradient text falls back to a solid color.
+//
+// Each declaration of the family is read once into Layers (in the session's arena: keywords as
+// enums, lengths and colors as the component values they are written as), the family's
+// declarations are merged on that structure, and the decorator list is written once, into
+// one buffer, when the family's last declaration is rewritten.
 
 #include "htmlui/compat/css/props/Rewriters.h"
 #include "htmlui/compat/LiteralCompare.h"
@@ -21,87 +26,146 @@
 #include "htmlui/compat/css/ValueNormalizer.h"
 
 #include <cmath>
-#include <functional>
 
 using namespace jasperengine::htmlui::compat;
 using namespace jasperengine::htmlui::compat::props;
 
 namespace {
 
-    // where layer diagnostics go and how URLs resolve
+    // where layer diagnostics go and how URLs resolve: to the declaration being rewritten
+    // (`context`), to the session's sink at `ref` (`toSink`), or nowhere
     struct LayerScope {
         Session& session;
         uint32_t file = 0;
         SourceRef ref;
         bool mask = false;
-        std::function<void(Severity, DiagCode, const std::string&, const std::string&)> report;
+        DeclContext* context = nullptr;
+        bool toSink = false;
     };
 
     void say(LayerScope& scope, Severity severity, DiagCode code, const std::string& message, const std::string& suggestion = std::string()){
-        if (scope.report)
-            scope.report(severity, code, message, suggestion);
+        if (scope.context)
+            scope.context->reportAs(severity, code, message, suggestion);
+        else if (scope.toSink)
+            scope.session.sink->reportAs(severity, code, scope.ref, message, suggestion);
+    }
+
+    // a literal ident component value (the centered axis of background-position-x/y)
+    ComponentValue literalIdent(const char* name){
+        ComponentValue value;
+        value.token.type = TokenType::Ident;
+        value.token.value = Text::view(name);
+        return value;
+    }
+
+    bool startsWith(std::string_view text, std::string_view prefix){
+        return text.size() >= prefix.size() && text.compare(0, prefix.size(), prefix) == 0;
     }
 
     // ---- positions
 
     // one axis of a position: <percentage> + <length> offset (edge offsets: right 10px = 100% - 10px)
     struct Axis {
+        enum class Length : uint8_t { None, Px, Value };
         double percent = 0;
-        std::string length;     // "" or a length ("10px", "-10px")
-        std::string raw;        // a length-percentage written as is (var(), em, ...)
-
-        std::string text() const {
-            if (!raw.empty())
-                return raw;
-            if (length.empty())
-                return formatNumber(percent) + "%";
-            if (percent == 0)
-                return length;
-            // html-layer reads calc(<percentage> +|- <length>) (HtmlLayerDecorator, 3.11.3)
-            return "calc(" + formatNumber(percent) + "% " + (length[0] == '-' ? "- " + length.substr(1) : "+ " + length) + ")";
-        }
-        // the RmlUi gradient position (no combined offsets)
-        std::string gradientText(bool& lost) const {
-            if (!raw.empty())
-                return raw;
-            if (!length.empty() && percent != 0){
-                lost = true;
-                return formatNumber(percent) + "%";
-            }
-            if (!length.empty())
-                return length;
-            return formatNumber(percent) + "%";
-        }
+        // the length offset: none, `px` (written formatNumber(px) + "px"), or the text of
+        // `value`; `negated` flips the sign of what is written
+        Length length = Length::None;
+        bool negated = false;
+        double px = 0;
+        const ComponentValue* value = nullptr;
+        const ComponentValue* raw = nullptr;   // a length-percentage written as it is (var(), em, ...)
     };
 
-    bool negateLength(std::string& length){
-        if (length.empty())
-            return false;
-        if (length[0] == '-')
-            length.erase(0, 1);
+    void appendLength(std::string& out, const Axis& axis){
+        const size_t at = out.size();
+        if (axis.length == Axis::Length::Px){
+            appendNumber(out, axis.px);
+            out += "px";
+        }else{
+            appendSerialized(out, *axis.value);
+        }
+        if (axis.negated){
+            if (out.size() > at && out[at] == '-')
+                out.erase(at, 1);
+            else
+                out.insert(at, 1, '-');
+        }
+    }
+
+    void appendAxis(std::string& out, const Axis& axis){
+        if (axis.raw){
+            appendSerialized(out, *axis.raw);
+            return;
+        }
+        if (axis.length == Axis::Length::None){
+            appendNumber(out, axis.percent);
+            out += '%';
+            return;
+        }
+        if (axis.percent == 0){
+            appendLength(out, axis);
+            return;
+        }
+        // html-layer reads calc(<percentage> +|- <length>) (HtmlLayerDecorator, 3.11.3)
+        out += "calc(";
+        appendNumber(out, axis.percent);
+        out += "% ";
+        const size_t at = out.size();
+        appendLength(out, axis);
+        if (out[at] == '-')
+            out.replace(at, 1, "- ");
         else
-            length.insert(0, "-");
-        return true;
+            out.insert(at, "+ ");
+        out += ')';
+    }
+
+    // the RmlUi gradient position (no combined offsets)
+    void appendGradientAxis(std::string& out, const Axis& axis, bool& lost){
+        if (axis.raw){
+            appendSerialized(out, *axis.raw);
+            return;
+        }
+        if (axis.length != Axis::Length::None && axis.percent != 0){
+            lost = true;
+            appendNumber(out, axis.percent);
+            out += '%';
+            return;
+        }
+        if (axis.length != Axis::Length::None){
+            appendLength(out, axis);
+            return;
+        }
+        appendNumber(out, axis.percent);
+        out += '%';
+    }
+
+    // is the axis written "0%"?
+    bool atZero(const Axis& axis){
+        if (axis.raw || axis.length != Axis::Length::None)
+            return false;
+        std::string written;
+        appendNumber(written, axis.percent);
+        return written == "0";
     }
 
     // CSS <position> (1-4 values) into x and y
-    bool parsePosition(Session& session, const ValueList& values, Axis& x, Axis& y){
-        ValueList w = words(values);
+    bool parsePosition(Session& session, const Words& w, Axis& x, Axis& y){
         if (w.empty() || w.size() > 4)
             return false;
-        auto keyword = [](const ComponentValue& v){ return identOf(v); };
         auto isLP = [&](const ComponentValue& v){ return isLength(session, v, true) || isVar(v); };
         auto setLP = [&](Axis& axis, const ComponentValue& v){
             if (v.isToken(TokenType::Percentage)){
                 axis.percent = v.token.number;
             }else if (std::optional<double> px = lengthPx(v)){
                 axis.percent = 0;
-                axis.length = formatNumber(*px) + "px";
+                axis.length = Axis::Length::Px;
+                axis.px = *px;
             }else{
-                axis.raw = text(v);
+                axis.raw = &v;
             }
         };
-        auto edge = [](const std::string& k, bool& horizontal, double& percent) -> bool {
+        auto edge = [](std::string_view k, bool& horizontal, double& percent) -> bool {
             if (k == "left"){ horizontal = true; percent = 0; return true; }
             if (k == "right"){ horizontal = true; percent = 100; return true; }
             if (k == "top"){ horizontal = false; percent = 0; return true; }
@@ -113,7 +177,7 @@ namespace {
         x.percent = 50;
         y.percent = 50;
         if (w.size() == 1){
-            const std::string k = keyword(w[0]);
+            const std::string_view k = identView(*w[0]);
             bool horizontal = false;
             double percent = 0;
             if (k == "center")
@@ -122,14 +186,14 @@ namespace {
                 (horizontal ? x : y).percent = percent;
                 return true;
             }
-            if (isLP(w[0])){
-                setLP(x, w[0]);
+            if (isLP(*w[0])){
+                setLP(x, *w[0]);
                 return true;
             }
             return false;
         }
         if (w.size() == 2){
-            const std::string a = keyword(w[0]), b = keyword(w[1]);
+            const std::string_view a = identView(*w[0]), b = identView(*w[1]);
             bool ha = false, hb = false;
             double pa = 50, pb = 50;
             const bool ea = edge(a, ha, pa), eb = edge(b, hb, pb);
@@ -147,19 +211,19 @@ namespace {
                 }
                 return true;
             }
-            if ((ea && ha) || a == "center" || isLP(w[0])){
+            if ((ea && ha) || a == "center" || isLP(*w[0])){
                 if (ea)
                     x.percent = pa;
                 else if (a == "center")
                     x.percent = 50;
                 else
-                    setLP(x, w[0]);
+                    setLP(x, *w[0]);
                 if (eb && !hb)
                     y.percent = pb;
                 else if (b == "center")
                     y.percent = 50;
-                else if (isLP(w[1]))
-                    setLP(y, w[1]);
+                else if (isLP(*w[1]))
+                    setLP(y, *w[1]);
                 else
                     return false;
                 return true;
@@ -170,7 +234,7 @@ namespace {
         size_t i = 0;
         bool xSet = false, ySet = false;
         while (i < w.size()){
-            const std::string k = keyword(w[i]);
+            const std::string_view k = identView(*w[i]);
             bool horizontal = false;
             double percent = 50;
             if (k == "center"){
@@ -186,16 +250,19 @@ namespace {
             axis = Axis();
             axis.percent = percent;
             i++;
-            if (i < w.size() && isLP(w[i])){
-                const ComponentValue& offset = w[i];
+            if (i < w.size() && isLP(*w[i])){
+                const ComponentValue& offset = *w[i];
                 if (offset.isToken(TokenType::Percentage)){
                     axis.percent = percent == 100 ? 100 - offset.token.number : offset.token.number;
                 }else{
-                    std::optional<double> px = lengthPx(offset);
-                    std::string length = px ? formatNumber(*px) + "px" : text(offset);
-                    if (percent == 100)
-                        negateLength(length);
-                    axis.length = length;
+                    if (std::optional<double> px = lengthPx(offset)){
+                        axis.length = Axis::Length::Px;
+                        axis.px = *px;
+                    }else{
+                        axis.length = Axis::Length::Value;
+                        axis.value = &offset;
+                    }
+                    axis.negated = percent == 100;
                 }
                 i++;
             }
@@ -205,12 +272,12 @@ namespace {
 
     // ---- gradients
 
-    bool isGradientName(const std::string& name){
+    bool isGradientName(std::string_view name){
         return name == "linear-gradient" || name == "radial-gradient" || name == "conic-gradient" || name == "repeating-linear-gradient" ||
                name == "repeating-radial-gradient" || name == "repeating-conic-gradient";
     }
 
-    std::string legacySideToStandard(const std::string& side){
+    std::string_view legacySideToStandard(std::string_view side){
         if (side == "top") return "bottom";
         if (side == "bottom") return "top";
         if (side == "left") return "right";
@@ -218,18 +285,40 @@ namespace {
         return side;
     }
 
-    // color stops: drop hints, normalize positions; nullopt on a malformed stop
-    std::optional<std::string> colorStops(LayerScope& scope, const std::vector<ValueList>& groups, size_t first,
-                                          bool angular, std::string* middleColor){
-        std::vector<std::string> stops;
-        std::vector<std::string> colors;
+    // a function's name in lower case (a view of it when it is lower case already)
+    std::string_view lowerName(const ComponentValue& function){
+        const Text& name = function.name();
+        for (const char c : name){
+            if (c >= 'A' && c <= 'Z')
+                return Arena::current().copy(lowerAscii(name));
+        }
+        return name.view();
+    }
+
+    // the vendor prefix of a name ("" when none)
+    std::string_view vendorPrefix(std::string_view name){
+        for (std::string_view prefix : {std::string_view("-webkit-"), std::string_view("-moz-"), std::string_view("-o-"), std::string_view("-ms-")}){
+            if (startsWith(name, prefix))
+                return prefix;
+        }
+        return std::string_view();
+    }
+
+    bool isAngle(const ComponentValue& v){
+        return v.isToken(TokenType::Dimension) && unitCategory(v.token.unit) == UnitCategory::Angle;
+    }
+
+    // color stops written to `out`: hints dropped, positions normalized; false on a malformed stop
+    bool colorStops(LayerScope& scope, const ArenaList<ValueRange>& groups, size_t first, bool angular, std::string& out,
+                    const ComponentValue** middleColor){
+        Words colors;
         bool reportedHint = false;
+        bool any = false;
         for (size_t i = first; i < groups.size(); i++){
-            ValueList w = words(groups[i]);
+            const Words w = wordsOf(groups[i]);
             if (w.empty())
-                return std::nullopt;
-            if (w.size() == 1 && (w[0].isToken(TokenType::Percentage) || isLength(scope.session, w[0]) ||
-                                  (angular && w[0].isToken(TokenType::Dimension) && unitCategory(w[0].token.unit) == UnitCategory::Angle))){
+                return false;
+            if (w.size() == 1 && (w[0]->isToken(TokenType::Percentage) || isLength(scope.session, *w[0]) || (angular && isAngle(*w[0])))){
                 if (!reportedHint){
                     reportedHint = true;
                     say(scope, Severity::Info, codes::ApproximatedMinor, "gradient interpolation hints are dropped (the midpoint stays in the middle)");
@@ -237,124 +326,152 @@ namespace {
                 continue;
             }
             // color [pos [pos]] (the color may also come after the position)
-            std::string color;
-            std::vector<std::string> positions;
-            for (const ComponentValue& v : w){
-                if (color.empty() && (isColor(scope.session, v) || isVar(v))){
-                    color = text(v);
-                }else if (v.isToken(TokenType::Percentage) || isLength(scope.session, v) ||
-                          (angular && v.isToken(TokenType::Dimension) && unitCategory(v.token.unit) == UnitCategory::Angle)){
-                    positions.push_back(v.isToken(TokenType::Number) ? "0%" : text(v));
+            const ComponentValue* color = nullptr;
+            const ComponentValue* positions[2] = {nullptr, nullptr};
+            size_t positionCount = 0;
+            for (const ComponentValue* v : w){
+                if (!color && (isColor(scope.session, *v) || isVar(*v))){
+                    color = v;
+                }else if (v->isToken(TokenType::Percentage) || isLength(scope.session, *v) || (angular && isAngle(*v))){
+                    if (positionCount < 2)
+                        positions[positionCount] = v;
+                    positionCount++;
                 }else{
-                    return std::nullopt;
+                    return false;
                 }
             }
-            if (color.empty() || positions.size() > 2)
-                return std::nullopt;
+            if (!color || positionCount > 2)
+                return false;
             colors.push_back(color);
-            std::string stop = color;
-            for (const std::string& p : positions)
-                stop += " " + p;
-            stops.push_back(stop);
+            if (any)
+                out += ", ";
+            any = true;
+            appendSerialized(out, *color);
+            for (size_t p = 0; p < positionCount; p++){
+                out += ' ';
+                if (positions[p]->isToken(TokenType::Number))
+                    out += "0%";
+                else
+                    appendSerialized(out, *positions[p]);
+            }
         }
-        if (stops.size() < 2 && !(stops.size() == 1))
-            return std::nullopt;
+        if (!any)
+            return false;
         if (middleColor && !colors.empty())
             *middleColor = colors[colors.size() / 2];
-        return join(stops, ", ");
+        return true;
     }
 
-    // a gradient function as RmlUi's decorator; nullopt when it cannot be written
-    std::optional<std::string> gradient(LayerScope& scope, const ComponentValue& function, std::string* middleColor){
-        std::string name = lowerAscii(function.name());
+    // a gradient function as RmlUi's decorator, appended to `out`; false when it cannot be
+    // written (`out` then holds a part of it)
+    bool gradient(LayerScope& scope, const ComponentValue& function, std::string& out, const ComponentValue** middleColor){
+        std::string_view name = lowerName(function);
         bool legacy = false;
-        for (const char* prefix : {"-webkit-", "-moz-", "-o-", "-ms-"}){
-            const std::string p(prefix);
-            if (name.compare(0, p.size(), p) == 0){
-                name = name.substr(p.size());
+        const std::string_view prefixed = name;
+        for (std::string_view prefix : {std::string_view("-webkit-"), std::string_view("-moz-"), std::string_view("-o-"), std::string_view("-ms-")}){
+            if (startsWith(name, prefix)){
+                name = name.substr(prefix.size());
                 legacy = true;
             }
         }
         if (!isGradientName(name))
-            return std::nullopt;
+            return false;
         if (legacy)
-            say(scope, Severity::Info, codes::VendorPrefix, "'" + lowerAscii(function.name()) + "()' is read as '" + name + "()'");
-        std::vector<ValueList> groups = commaGroups(function.children);
+            say(scope, Severity::Info, codes::VendorPrefix, "'" + std::string(prefixed) + "()' is read as '" + std::string(name) + "()'");
+        ArenaList<ValueRange> groups = commaRanges(function.children);
         if (groups.empty())
-            return std::nullopt;
-        const bool linear = name.find("linear") != std::string::npos;
-        const bool radial = name.find("radial") != std::string::npos;
-        const bool conic = name.find("conic") != std::string::npos;
+            return false;
+        const bool linear = name.find("linear") != std::string_view::npos;
+        const bool radial = name.find("radial") != std::string_view::npos;
+        const bool conic = name.find("conic") != std::string_view::npos;
 
         // a color-interpolation method ("in oklch") anywhere in the first group is dropped
-        ValueList head = words(groups[0]);
+        Words head = wordsOf(groups[0]);
         bool interpolation = false;
         for (size_t i = 0; i + 1 < head.size(); i++){
-            if (isIdent(head[i], "in")){
+            if (isIdent(*head[i], "in")){
                 interpolation = true;
-                say(scope, Severity::Info, codes::ApproximatedMinor, "gradient color interpolation '" + text(head[i + 1]) +
+                say(scope, Severity::Info, codes::ApproximatedMinor, "gradient color interpolation '" + text(*head[i + 1]) +
                     "' is dropped (sRGB interpolation)");
                 size_t end = i + 2;
-                if (end + 1 < head.size() && isIdent(head[end + 1], "hue"))
+                if (end + 1 < head.size() && isIdent(*head[end + 1], "hue"))
                     end += 2;
                 head.erase(head.begin() + (std::ptrdiff_t)i, head.begin() + (std::ptrdiff_t)std::min(end, head.size()));
                 break;
             }
         }
         bool headIsStop = false;
-        if (!head.empty() && (isColor(scope.session, head[0]) || isVar(head[0])))
+        if (!head.empty() && (isColor(scope.session, *head[0]) || isVar(*head[0])))
             headIsStop = true;
         if (head.empty() && groups[0].size() > 0)
             headIsStop = false;
-        std::string prefix;
+        out += name;
+        out += '(';
+        const size_t prefixStart = out.size();
         bool lostOffset = false;
         if (!headIsStop && !head.empty()){
             if (linear){
-                if (head.size() == 1 && head[0].isToken(TokenType::Dimension) && unitCategory(head[0].token.unit) == UnitCategory::Angle){
-                    double angle = head[0].token.number;
+                if (head.size() == 1 && isAngle(*head[0])){
+                    double angle = head[0]->token.number;
                     if (legacy)
                         angle = std::fmod(90.0 - angle + 360.0 * 4, 360.0);
-                    prefix = formatNumber(angle) + "deg";
-                }else if (head.size() == 1 && head[0].isToken(TokenType::Number) && head[0].token.number == 0){
-                    prefix = legacy ? "90deg" : "0deg";
-                }else if (isIdent(head[0], "to") && !legacy){
-                    std::vector<std::string> sides;
-                    for (size_t i = 1; i < head.size(); i++)
-                        sides.push_back(identOf(head[i]));
-                    prefix = "to " + join(sides);
+                    appendNumber(out, angle);
+                    out += "deg";
+                }else if (head.size() == 1 && head[0]->isToken(TokenType::Number) && head[0]->token.number == 0){
+                    out += legacy ? "90deg" : "0deg";
+                }else if (isIdent(*head[0], "to") && !legacy){
+                    // "to " and the sides (idents; anything else writes nothing)
+                    out += "to ";
+                    bool first = true;
+                    for (size_t i = 1; i < head.size(); i++){
+                        const std::string_view side = identView(*head[i]);
+                        if (side.empty())
+                            continue;
+                        if (!first)
+                            out += ' ';
+                        first = false;
+                        out += side;
+                    }
                 }else if (legacy){
-                    std::vector<std::string> sides;
-                    for (const ComponentValue& v : head){
-                        const std::string k = identOf(v);
+                    ArenaList<std::string_view> sides;
+                    for (const ComponentValue* v : head){
+                        const std::string_view k = identView(*v);
                         if (k == "center")
                             continue;
                         if (k != "top" && k != "bottom" && k != "left" && k != "right")
-                            return std::nullopt;
+                            return false;
                         sides.push_back(legacySideToStandard(k));
                     }
-                    if (!sides.empty())
-                        prefix = "to " + join(sides);
+                    if (!sides.empty()){
+                        out += "to ";
+                        for (size_t i = 0; i < sides.size(); i++){
+                            if (i > 0)
+                                out += ' ';
+                            out += sides[i];
+                        }
+                    }
                 }else{
-                    return std::nullopt;
+                    return false;
                 }
             }else if (radial){
                 // [shape] [size] [at position] in RmlUi's order; legacy: <position>, <shape> <size>
-                std::string shape, sizeX, sizeY;
-                ValueList position;
-                ValueList shapeWords = head;
+                std::string_view shape, sizeKeyword[2];
+                const ComponentValue* sizeValue[2] = {nullptr, nullptr};
+                bool sizeSet[2] = {false, false};
+                Words position;
+                Words shapeWords = head;
                 if (legacy && groups.size() > 2){
                     // -webkit-radial-gradient(center, circle cover, ...)
-                    ValueList second = words(groups[1]);
-                    bool secondIsShape = !second.empty() && !isColor(scope.session, second[0]) && !isVar(second[0]);
+                    const Words second = wordsOf(groups[1]);
+                    const bool secondIsShape = !second.empty() && !isColor(scope.session, *second[0]) && !isVar(*second[0]);
                     position = head;
-                    shapeWords = secondIsShape ? second : ValueList();
+                    shapeWords = secondIsShape ? second : Words();
                     if (secondIsShape)
                         groups.erase(groups.begin() + 1);
                 }
                 bool atWord = false;
-                for (size_t i = 0; i < shapeWords.size(); i++){
-                    const ComponentValue& v = shapeWords[i];
-                    const std::string k = identOf(v);
+                for (const ComponentValue* v : shapeWords){
+                    const std::string_view k = identView(*v);
                     if (atWord){
                         position.push_back(v);
                         continue;
@@ -363,51 +480,82 @@ namespace {
                         atWord = true;
                         continue;
                     }
-                    if (k == "circle" || k == "ellipse")
+                    if (k == "circle" || k == "ellipse"){
                         shape = k;
-                    else if (k == "closest-side" || k == "farthest-side" || k == "closest-corner" || k == "farthest-corner")
-                        sizeX = k;
-                    else if (k == "cover")
-                        sizeX = "farthest-corner";
-                    else if (k == "contain")
-                        sizeX = "closest-side";
-                    else if (isLength(scope.session, v, true)){
-                        (sizeX.empty() ? sizeX : sizeY) = v.isToken(TokenType::Number) ? "0px" : text(v);
-                    }else
-                        return std::nullopt;
+                    }else if (k == "closest-side" || k == "farthest-side" || k == "closest-corner" || k == "farthest-corner"){
+                        sizeKeyword[0] = k;
+                        sizeValue[0] = nullptr;
+                        sizeSet[0] = true;
+                    }else if (k == "cover"){
+                        sizeKeyword[0] = "farthest-corner";
+                        sizeValue[0] = nullptr;
+                        sizeSet[0] = true;
+                    }else if (k == "contain"){
+                        sizeKeyword[0] = "closest-side";
+                        sizeValue[0] = nullptr;
+                        sizeSet[0] = true;
+                    }else if (isLength(scope.session, *v, true)){
+                        // (the first length, or the second one, replaced by any later one)
+                        const int at = sizeSet[0] ? 1 : 0;
+                        sizeKeyword[at] = v->isToken(TokenType::Number) ? "0px" : std::string_view();
+                        sizeValue[at] = v->isToken(TokenType::Number) ? nullptr : v;
+                        sizeSet[at] = true;
+                    }else{
+                        return false;
+                    }
                 }
-                std::vector<std::string> parts;
-                if (!shape.empty())
-                    parts.push_back(shape);
-                if (!sizeX.empty())
-                    parts.push_back(sizeX);
-                if (!sizeY.empty())
-                    parts.push_back(sizeY);
+                bool first = true;
+                auto separate = [&](){
+                    if (!first)
+                        out += ' ';
+                    first = false;
+                };
+                if (!shape.empty()){
+                    separate();
+                    out += shape;
+                }
+                for (int s = 0; s < 2; s++){
+                    if (!sizeSet[s])
+                        continue;
+                    separate();
+                    if (sizeValue[s])
+                        appendSerialized(out, *sizeValue[s]);
+                    else
+                        out += sizeKeyword[s];
+                }
                 if (!position.empty()){
                     Axis x, y;
                     if (!parsePosition(scope.session, position, x, y))
-                        return std::nullopt;
-                    parts.push_back("at " + x.gradientText(lostOffset) + " " + y.gradientText(lostOffset));
+                        return false;
+                    separate();
+                    out += "at ";
+                    appendGradientAxis(out, x, lostOffset);
+                    out += ' ';
+                    appendGradientAxis(out, y, lostOffset);
                 }
-                prefix = join(parts);
             }else if (conic){
-                std::vector<std::string> parts;
-                ValueList position;
+                Words position;
                 bool at = false;
+                bool first = true;
                 for (size_t i = 0; i < head.size(); i++){
-                    const ComponentValue& v = head[i];
+                    const ComponentValue& v = *head[i];
                     if (at){
-                        position.push_back(v);
+                        position.push_back(&v);
                         continue;
                     }
                     if (isIdent(v, "from") && i + 1 < head.size()){
-                        const ComponentValue& angle = head[i + 1];
-                        if (angle.isToken(TokenType::Number) && angle.token.number == 0)
-                            parts.push_back("from 0deg");
-                        else if (angle.isToken(TokenType::Dimension) && unitCategory(angle.token.unit) == UnitCategory::Angle)
-                            parts.push_back("from " + text(angle));
-                        else
-                            return std::nullopt;
+                        const ComponentValue& angle = *head[i + 1];
+                        if (!first)
+                            out += ' ';
+                        first = false;
+                        if (angle.isToken(TokenType::Number) && angle.token.number == 0){
+                            out += "from 0deg";
+                        }else if (isAngle(angle)){
+                            out += "from ";
+                            appendSerialized(out, angle);
+                        }else{
+                            return false;
+                        }
                         i++;
                         continue;
                     }
@@ -415,62 +563,134 @@ namespace {
                         at = true;
                         continue;
                     }
-                    return std::nullopt;
+                    return false;
                 }
                 if (!position.empty()){
                     Axis x, y;
                     if (!parsePosition(scope.session, position, x, y))
-                        return std::nullopt;
-                    parts.push_back("at " + x.gradientText(lostOffset) + " " + y.gradientText(lostOffset));
+                        return false;
+                    if (!first)
+                        out += ' ';
+                    out += "at ";
+                    appendGradientAxis(out, x, lostOffset);
+                    out += ' ';
+                    appendGradientAxis(out, y, lostOffset);
                 }
-                prefix = join(parts);
             }
         }
         if (lostOffset)
             say(scope, Severity::Info, codes::ApproximatedMinor, "a gradient position offset from an edge is dropped (the edge is used)");
-        std::optional<std::string> stops = colorStops(scope, groups, headIsStop || (head.empty() && !interpolation) ? 0 : 1, conic, middleColor);
-        if (!stops)
-            return std::nullopt;
-        return name + "(" + (prefix.empty() ? std::string() : prefix + ", ") + *stops + ")";
+        if (out.size() > prefixStart)
+            out += ", ";
+        if (!colorStops(scope, groups, headIsStop || (head.empty() && !interpolation) ? 0 : 1, conic, out, middleColor))
+            return false;
+        out += ')';
+        return true;
     }
 
     // ---- layers
 
+    enum class Repeat : uint8_t { Repeat, NoRepeat, Space, Round, RepeatX, RepeatY };
+    enum class Box : uint8_t { BorderBox, PaddingBox, ContentBox };
+
+    const char* repeatName(Repeat repeat){
+        switch (repeat){
+            case Repeat::Repeat: return "repeat";
+            case Repeat::NoRepeat: return "no-repeat";
+            case Repeat::Space: return "space";
+            case Repeat::Round: return "round";
+            case Repeat::RepeatX: return "repeat-x";
+            case Repeat::RepeatY: return "repeat-y";
+        }
+        return "repeat";
+    }
+
+    const char* boxName(Box box){
+        switch (box){
+            case Box::BorderBox: return "border-box";
+            case Box::PaddingBox: return "padding-box";
+            case Box::ContentBox: return "content-box";
+        }
+        return "border-box";
+    }
+
+    // a repeat keyword (false when it is none)
+    bool repeatOf(std::string_view k, Repeat& repeat){
+        if (k == "repeat") repeat = Repeat::Repeat;
+        else if (k == "no-repeat") repeat = Repeat::NoRepeat;
+        else if (k == "space") repeat = Repeat::Space;
+        else if (k == "round") repeat = Repeat::Round;
+        else if (k == "repeat-x") repeat = Repeat::RepeatX;
+        else if (k == "repeat-y") repeat = Repeat::RepeatY;
+        else return false;
+        return true;
+    }
+
+    // a box keyword; `text`: the text keyword (background-clip: text)
+    bool boxOf(std::string_view k, Box& box, bool& text){
+        text = false;
+        if (k == "border-box") box = Box::BorderBox;
+        else if (k == "padding-box") box = Box::PaddingBox;
+        else if (k == "content-box") box = Box::ContentBox;
+        else if (k == "text") text = true;
+        else return false;
+        return true;
+    }
+
+    // a background-size component: auto, cover, contain, 0 (written 0px) or a value's text
+    struct Size {
+        enum class Kind : uint8_t { Auto, Cover, Contain, ZeroPx, Value };
+        Kind kind = Kind::Auto;
+        const ComponentValue* value = nullptr;
+    };
+
+    void appendSize(std::string& out, const Size& size){
+        switch (size.kind){
+            case Size::Kind::Auto: out += "auto"; return;
+            case Size::Kind::Cover: out += "cover"; return;
+            case Size::Kind::Contain: out += "contain"; return;
+            case Size::Kind::ZeroPx: out += "0px"; return;
+            case Size::Kind::Value: appendSerialized(out, *size.value); return;
+        }
+    }
+
+    // (trivially copied: the layers of a declaration are copied from one to the next)
     struct Layer {
-        enum class Kind { None, Gradient, Image, Var } kind = Kind::None;
-        std::string image;            // the gradient decorator, the image path, or the var() reference
-        std::string middleColor;      // a gradient's middle stop (gradient text)
+        enum class Kind : uint8_t { None, Gradient, Image, Var };
+        Kind kind = Kind::None;
+        Text image;                                    // the gradient decorator or the image path
+        const ComponentValue* var = nullptr;           // Var: the var() written as it is
+        const ComponentValue* middleColor = nullptr;   // a gradient's middle stop (gradient text)
         Axis x, y;
         bool positionSet = false;
-        std::string sizeX = "auto", sizeY = "auto";
+        Size sizeX, sizeY;
         bool sizeSet = false;
-        std::string repeatX = "repeat", repeatY = "repeat";
-        std::string attachment = "scroll";
-        std::string origin = "padding-box", clip = "border-box";
+        Repeat repeatX = Repeat::Repeat, repeatY = Repeat::Repeat;
+        bool fixed = false;                            // background-attachment: fixed (scroll otherwise)
+        Box origin = Box::PaddingBox, clip = Box::BorderBox;
         bool clipText = false;
-        SourceRef ref;
     };
 
     struct Layers {
-        std::vector<Layer> layers;
-        std::string color;            // background-color of the shorthand ("" = transparent)
+        ArenaList<Layer> layers;
+        const ComponentValue* color = nullptr;         // background-color of the shorthand (null = transparent)
         bool colorSet = false;
     };
 
     // an image-set() candidate for the dp ratio
-    std::optional<ComponentValue> imageSetCandidate(Session& session, const ComponentValue& function){
-        struct Candidate { ComponentValue image; double resolution; };
+    const ComponentValue* imageSetCandidate(Session& session, const ComponentValue& function){
+        struct Candidate { const ComponentValue* image; double resolution; };
         std::vector<Candidate> candidates;
-        for (const ValueList& group : commaGroups(function.children)){
-            ValueList w = words(group);
+        for (const ValueRange& group : commaRanges(function.children)){
+            const Words w = wordsOf(group);
             if (w.empty())
                 continue;
             Candidate c{w[0], 1.0};
             for (size_t i = 1; i < w.size(); i++){
-                if (w[i].isToken(TokenType::Dimension) && unitCategory(w[i].token.unit) == UnitCategory::Resolution)
-                    c.resolution = w[i].token.number * canonicalFactor(w[i].token.unit).value_or(1.0);
-                else if (w[i].isFunction("type")){
-                    const std::string type = lowerAscii(text(w[i].children));
+                if (w[i]->isToken(TokenType::Dimension) && unitCategory(w[i]->token.unit) == UnitCategory::Resolution)
+                    c.resolution = w[i]->token.number * canonicalFactor(w[i]->token.unit).value_or(1.0);
+                else if (w[i]->isFunction("type")){
+                    const std::string type = lowerAscii(text(w[i]->children));
                     if (type.find("webp") != std::string::npos || type.find("avif") != std::string::npos)
                         c.resolution = -1;   // a format the engine does not decode
                 }
@@ -479,7 +699,7 @@ namespace {
                 candidates.push_back(c);
         }
         if (candidates.empty())
-            return std::nullopt;
+            return nullptr;
         const double ratio = session.options.dpRatio;
         const Candidate* best = nullptr;
         for (const Candidate& c : candidates){
@@ -493,6 +713,12 @@ namespace {
             }
         }
         return best->image;
+    }
+
+    // (one buffer for the gradients of the thread: a layer keeps a copy of its text)
+    std::string& gradientBuffer(){
+        static thread_local std::string buffer;
+        return buffer;
     }
 
     // the image of a layer: true when the component is an image (set into layer)
@@ -511,14 +737,14 @@ namespace {
                 return true;
             }
             layer.kind = Layer::Kind::Image;
-            layer.image = path;
+            layer.image = Text(path);
             return true;
         }
         if (v.kind != ComponentValue::Kind::Function)
             return false;
-        const std::string name = lowerAscii(v.name());
+        const std::string_view name = lowerName(v);
         if (name == "image-set" || name == "-webkit-image-set"){
-            std::optional<ComponentValue> candidate = imageSetCandidate(scope.session, v);
+            const ComponentValue* candidate = imageSetCandidate(scope.session, v);
             if (!candidate){
                 say(scope, Severity::Warning, codes::UnsupportedFunction, "image-set() has no candidate the engine can draw; layer dropped",
                     "list a PNG or JPEG candidate");
@@ -531,16 +757,16 @@ namespace {
             // a static variable is read as what it holds; a dynamic one is written as is
             ValueList replacement;
             if (scope.session.staticVar(v, replacement)){
-                ValueList w = words(replacement);
-                if (w.size() == 1 && layerImage(scope, w[0], layer, dropped))
+                const Words w = wordsOf(replacement);
+                if (w.size() == 1 && layerImage(scope, *w[0], layer, dropped))
                     return true;
                 // a variable holding a color is the final layer's color, not its image
                 // (background: var(--bg) url(tile.png) repeat)
-                if (w.size() == 1 && isColor(scope.session, w[0]))
+                if (w.size() == 1 && isColor(scope.session, *w[0]))
                     return false;
             }
             layer.kind = Layer::Kind::Var;
-            layer.image = text(v);
+            layer.var = &v;
             return true;
         }
         if (name == "-webkit-gradient"){
@@ -550,94 +776,98 @@ namespace {
             return true;
         }
         if (name == "element" || name == "cross-fade" || name == "-webkit-cross-fade" || name == "paint" || name == "image"){
-            say(scope, Severity::Warning, codes::UnsupportedFunction, "'" + name + "()' is not supported; layer dropped", "use url() or a gradient");
+            say(scope, Severity::Warning, codes::UnsupportedFunction, "'" + std::string(name) + "()' is not supported; layer dropped",
+                "use url() or a gradient");
             dropped = true;
             return true;
         }
-        std::string plain = name;
-        for (const char* prefix : {"-webkit-", "-moz-", "-o-", "-ms-"}){
-            const std::string p(prefix);
-            if (plain.compare(0, p.size(), p) == 0)
-                plain = plain.substr(p.size());
+        std::string_view plain = name;
+        for (std::string_view prefix : {std::string_view("-webkit-"), std::string_view("-moz-"), std::string_view("-o-"), std::string_view("-ms-")}){
+            if (startsWith(plain, prefix))
+                plain = plain.substr(prefix.size());
         }
         if (isGradientName(plain)){
-            std::optional<std::string> g = gradient(scope, v, &layer.middleColor);
-            if (!g){
+            std::string& out = gradientBuffer();
+            out.clear();
+            if (!gradient(scope, v, out, &layer.middleColor)){
                 say(scope, Severity::Warning, codes::UnsupportedValue, "'" + text(v) + "' cannot be written as a gradient decorator; layer dropped");
                 dropped = true;
                 return true;
             }
             layer.kind = Layer::Kind::Gradient;
-            layer.image = *g;
+            layer.image = Text(std::string_view(out));
             return true;
         }
         return false;
     }
 
-    bool isRepeat(const std::string& k){
-        return k == "repeat" || k == "no-repeat" || k == "space" || k == "round" || k == "repeat-x" || k == "repeat-y";
-    }
-    bool isBox(const std::string& k){
-        return k == "border-box" || k == "padding-box" || k == "content-box" || k == "text";
-    }
-
-    void setRepeat(Layer& layer, const std::vector<std::string>& values){
-        if (values.size() == 1){
-            if (values[0] == "repeat-x"){
-                layer.repeatX = "repeat";
-                layer.repeatY = "no-repeat";
-            }else if (values[0] == "repeat-y"){
-                layer.repeatX = "no-repeat";
-                layer.repeatY = "repeat";
+    // background-repeat values (the first two of `count`)
+    void setRepeat(Layer& layer, const Repeat* values, size_t count){
+        if (count == 1){
+            if (values[0] == Repeat::RepeatX){
+                layer.repeatX = Repeat::Repeat;
+                layer.repeatY = Repeat::NoRepeat;
+            }else if (values[0] == Repeat::RepeatY){
+                layer.repeatX = Repeat::NoRepeat;
+                layer.repeatY = Repeat::Repeat;
             }else{
                 layer.repeatX = layer.repeatY = values[0];
             }
-        }else if (values.size() == 2){
+        }else if (count == 2){
             layer.repeatX = values[0];
             layer.repeatY = values[1];
         }
     }
 
-    bool setSize(Session& session, Layer& layer, const ValueList& w){
-        if (w.size() == 1 && (isIdent(w[0], "cover") || isIdent(w[0], "contain"))){
-            layer.sizeX = layer.sizeY = identOf(w[0]);
+    bool setSize(Session& session, Layer& layer, const Words& w){
+        if (w.size() == 1 && (isIdent(*w[0], "cover") || isIdent(*w[0], "contain"))){
+            layer.sizeX.kind = layer.sizeY.kind = isIdent(*w[0], "cover") ? Size::Kind::Cover : Size::Kind::Contain;
+            layer.sizeX.value = layer.sizeY.value = nullptr;
             layer.sizeSet = true;
             return true;
         }
         if (w.empty() || w.size() > 2)
             return false;
-        std::string values[2] = {"auto", "auto"};
+        Size values[2];
         for (size_t i = 0; i < w.size(); i++){
-            if (isIdent(w[i], "auto"))
-                values[i] = "auto";
-            else if (isLength(session, w[i], true) || isVar(w[i]))
-                values[i] = w[i].isToken(TokenType::Number) ? "0px" : text(w[i]);
-            else
+            if (isIdent(*w[i], "auto"))
+                values[i].kind = Size::Kind::Auto;
+            else if (isLength(session, *w[i], true) || isVar(*w[i])){
+                if (w[i]->isToken(TokenType::Number)){
+                    values[i].kind = Size::Kind::ZeroPx;
+                }else{
+                    values[i].kind = Size::Kind::Value;
+                    values[i].value = w[i];
+                }
+            }else
                 return false;
         }
         layer.sizeX = values[0];
         layer.sizeY = values[1];
-        layer.sizeSet = !(values[0] == "auto" && values[1] == "auto");
+        layer.sizeSet = !(values[0].kind == Size::Kind::Auto && values[1].kind == Size::Kind::Auto);
         return true;
     }
 
     // one layer of the background / mask shorthand
-    bool parseLayer(LayerScope& scope, const ValueList& group, bool last, Layer& layer, Layers& out, bool& dropped){
+    bool parseLayer(LayerScope& scope, const ValueRange& group, bool last, Layer& layer, Layers& out, bool& dropped){
         dropped = false;
-        ValueList w = words(group);
-        ValueList position;
-        std::vector<std::string> repeat;
-        std::vector<std::string> boxes;
+        const Words w = wordsOf(group);
+        Words position;
+        Repeat repeat[2];
+        size_t repeats = 0;
+        Box boxes[2] = {Box::BorderBox, Box::BorderBox};
+        bool boxText[2] = {false, false};
+        size_t boxCount = 0;
         bool imageSet = false;
         for (size_t i = 0; i < w.size(); i++){
-            const ComponentValue& v = w[i];
-            const std::string k = identOf(v);
+            const ComponentValue& v = *w[i];
+            const std::string_view k = identView(v);
             if (v.isToken(TokenType::Delim) && v.token.isDelim('/')){
                 // position / size
-                ValueList size;
+                Words size;
                 size_t j = i + 1;
-                while (j < w.size() && (isLength(scope.session, w[j], true) || isIdent(w[j], "auto") || isIdent(w[j], "cover") ||
-                                        isIdent(w[j], "contain")) && size.size() < 2){
+                while (j < w.size() && (isLength(scope.session, *w[j], true) || isIdent(*w[j], "auto") || isIdent(*w[j], "cover") ||
+                                        isIdent(*w[j], "contain")) && size.size() < 2){
                     size.push_back(w[j]);
                     j++;
                 }
@@ -655,27 +885,36 @@ namespace {
                     continue;
                 }
             }
-            if (isRepeat(k)){
-                repeat.push_back(k);
+            Repeat r;
+            if (repeatOf(k, r)){
+                if (repeats < 2)
+                    repeat[repeats] = r;
+                repeats++;
                 continue;
             }
             if (k == "scroll" || k == "fixed" || k == "local"){
                 if (k == "local")
                     say(scope, Severity::Info, codes::ApproximatedMinor, "'background-attachment: local' is drawn as scroll");
-                layer.attachment = k == "local" ? "scroll" : k;
+                layer.fixed = k == "fixed";
                 continue;
             }
-            if (isBox(k)){
-                boxes.push_back(k);
+            Box box;
+            bool isText = false;
+            if (boxOf(k, box, isText)){
+                if (boxCount < 2){
+                    boxes[boxCount] = box;
+                    boxText[boxCount] = isText;
+                }
+                boxCount++;
                 continue;
             }
             if (k == "left" || k == "right" || k == "top" || k == "bottom" || k == "center" ||
                 isLength(scope.session, v, true) || (isVar(v) && imageSet)){
-                position.push_back(v);
+                position.push_back(&v);
                 continue;
             }
             if (last && (isColor(scope.session, v) || isVar(v)) && !out.colorSet){
-                out.color = text(v);
+                out.color = &v;
                 out.colorSet = true;
                 continue;
             }
@@ -686,66 +925,92 @@ namespace {
                 return false;
             layer.positionSet = true;
         }
-        if (!repeat.empty())
-            setRepeat(layer, repeat);
-        if (boxes.size() >= 1){
-            if (boxes[0] == "text")
+        if (repeats > 0)
+            setRepeat(layer, repeat, repeats);
+        if (boxCount >= 1){
+            if (boxText[0])
                 layer.clipText = true;
             else
                 layer.origin = boxes[0];
-            if (boxes.size() >= 2){
-                if (boxes[1] == "text")
+            if (boxCount >= 2){
+                if (boxText[1])
                     layer.clipText = true;
                 else
                     layer.clip = boxes[1];
-            }else if (boxes[0] != "text"){
+            }else if (!boxText[0]){
                 layer.clip = boxes[0];
             }
         }
         return true;
     }
 
-    // the decorator text of the layers ("" when none)
-    std::string decoratorText(LayerScope& scope, const std::vector<Layer>& layers){
-        std::vector<std::string> out;
+    // the decorator list of the layers, appended to `out` (nothing when none)
+    void appendDecorators(LayerScope& scope, const ArenaList<Layer>& layers, std::string& out){
         bool reportedPattern = false;
+        bool any = false;
+        auto separate = [&](){
+            if (any)
+                out += ", ";
+            any = true;
+        };
         for (const Layer& layer : layers){
             switch (layer.kind){
                 case Layer::Kind::None:
                     break;
                 case Layer::Kind::Var:
-                    out.push_back(layer.image);
+                    separate();
+                    appendSerialized(out, *layer.var);
                     break;
                 case Layer::Kind::Gradient: {
-                    const bool fullBox = !layer.sizeSet && (!layer.positionSet || (layer.x.text() == "0%" && layer.y.text() == "0%"));
+                    const bool fullBox = !layer.sizeSet && (!layer.positionSet || (atZero(layer.x) && atZero(layer.y)));
                     if (!fullBox && !reportedPattern){
                         reportedPattern = true;
                         say(scope, Severity::Warning, codes::ApproximatedVisible,
                             "a gradient layer with a background-size or background-position is drawn once over the whole box",
                             "draw the pattern with an image");
                     }
-                    out.push_back(layer.image + " " + layer.clip);
+                    separate();
+                    out += layer.image.view();
+                    out += ' ';
+                    out += boxName(layer.clip);
                     break;
                 }
                 case Layer::Kind::Image:
-                    out.push_back("html-layer(" + serializeString(layer.image) + " " + layer.sizeX + " " + layer.sizeY + " " + layer.x.text() + " " +
-                                  layer.y.text() + " " + layer.repeatX + " " + layer.repeatY + " " + layer.origin + " " + layer.clip + " " +
-                                  layer.attachment + ")");
+                    separate();
+                    out += "html-layer(";
+                    appendString(out, layer.image);
+                    out += ' ';
+                    appendSize(out, layer.sizeX);
+                    out += ' ';
+                    appendSize(out, layer.sizeY);
+                    out += ' ';
+                    appendAxis(out, layer.x);
+                    out += ' ';
+                    appendAxis(out, layer.y);
+                    out += ' ';
+                    out += repeatName(layer.repeatX);
+                    out += ' ';
+                    out += repeatName(layer.repeatY);
+                    out += ' ';
+                    out += boxName(layer.origin);
+                    out += ' ';
+                    out += boxName(layer.clip);
+                    out += ' ';
+                    out += layer.fixed ? "fixed" : "scroll";
+                    out += ')';
                     break;
             }
         }
-        return join(out, ", ");
     }
 
     // ---- longhands: lists applied to the image layers (CSS repetition)
 
-    bool isBackgroundFamily(const std::string& name, bool mask){
+    bool isBackgroundFamily(std::string_view name, bool mask){
         if (mask){
             if (name == "clip-path")
                 return true;
-            for (const char* prefix : {"mask", "-webkit-mask"}){
-                const std::string p(prefix);
-                if (name == p || name.compare(0, p.size() + 1, p + "-") == 0)
+            for (std::string_view prefix : {std::string_view("mask"), std::string_view("-webkit-mask")}){
+                if (name == prefix || (startsWith(name, prefix) && name.size() > prefix.size() && name[prefix.size()] == '-'))
                     return true;
             }
             return false;
@@ -756,25 +1021,28 @@ namespace {
                name == "-webkit-background-size" || name == "-webkit-background-origin";
     }
 
-    std::string plainName(const std::string& name){
-        for (const char* prefix : {"-webkit-", "-moz-"}){
-            const std::string p(prefix);
-            if (name.compare(0, p.size(), p) == 0)
-                return name.substr(p.size());
+    std::string_view plainName(std::string_view name){
+        for (std::string_view prefix : {std::string_view("-webkit-"), std::string_view("-moz-")}){
+            if (startsWith(name, prefix))
+                return name.substr(prefix.size());
         }
         return name;
     }
 
     // applies one declaration of the family to the layers; false when the value cannot be read
-    bool applyDeclaration(LayerScope& scope, const std::string& rawName, const ValueList& value, Layers& state){
-        std::string name = plainName(rawName);
-        if (scope.mask && name.compare(0, 5, "mask-") == 0)
-            name = "background-" + name.substr(5);
-        else if (scope.mask && name == "mask")
+    bool applyDeclaration(LayerScope& scope, std::string_view rawName, const ValueList& value, Layers& state){
+        std::string_view name = plainName(rawName);
+        std::string maskName;
+        if (scope.mask && startsWith(name, "mask-")){
+            maskName = "background-" + std::string(name.substr(5));
+            name = maskName;
+        }else if (scope.mask && name == "mask"){
             name = "background";
-        std::vector<ValueList> groups = commaGroups(value);
+        }
+        const ArenaList<ValueRange> groups = commaRanges(value);
         if (name == "background"){
             Layers fresh;
+            fresh.layers.reserve(groups.size());
             for (size_t i = 0; i < groups.size(); i++){
                 Layer layer;
                 bool dropped = false;
@@ -788,21 +1056,23 @@ namespace {
                 if (!dropped)
                     fresh.layers.push_back(layer);
             }
-            state = fresh;
+            state.layers = std::move(fresh.layers);
+            state.color = fresh.color;
+            state.colorSet = fresh.colorSet;
             if (!state.colorSet){
                 state.colorSet = true;
-                state.color.clear();
+                state.color = nullptr;
             }
             return true;
         }
         if (name == "background-image"){
-            std::vector<Layer> previous = state.layers;
+            const ArenaList<Layer> previous = state.layers;
             state.layers.clear();
             for (size_t i = 0; i < groups.size(); i++){
                 Layer layer = i < previous.size() ? previous[i] : (previous.empty() ? Layer() : previous[i % previous.size()]);
-                ValueList w = words(groups[i]);
+                const Words w = wordsOf(groups[i]);
                 bool dropped = false;
-                if (w.size() != 1 || !layerImage(scope, w[0], layer, dropped))
+                if (w.size() != 1 || !layerImage(scope, *w[0], layer, dropped))
                     return false;
                 if (!dropped)
                     state.layers.push_back(layer);
@@ -812,8 +1082,9 @@ namespace {
         // the per-layer longhands repeat over the layers
         if (state.layers.empty())
             state.layers.push_back(Layer());
+        static const ComponentValue kCenter = literalIdent("center");
         for (size_t i = 0; i < state.layers.size(); i++){
-            const ValueList w = words(groups[i % groups.size()]);
+            const Words w = wordsOf(groups[i % groups.size()]);
             Layer& layer = state.layers[i];
             if (name == "background-position"){
                 if (!parsePosition(scope.session, w, layer.x, layer.y))
@@ -822,17 +1093,14 @@ namespace {
             }else if (name == "background-position-x" || name == "background-position-y"){
                 // one axis: read as a position with the other axis centered
                 const bool horizontal = name == "background-position-x";
-                ValueList position;
-                if (!horizontal){
-                    position.push_back(ValueNormalizer::ident("center"));
-                    position.push_back(ValueNormalizer::whitespace());
-                }
-                for (const ComponentValue& v : w){
+                Words position;
+                position.reserve(w.size() + 1);
+                if (!horizontal)
+                    position.push_back(&kCenter);
+                for (const ComponentValue* v : w)
                     position.push_back(v);
-                    position.push_back(ValueNormalizer::whitespace());
-                }
                 if (horizontal)
-                    position.push_back(ValueNormalizer::ident("center"));
+                    position.push_back(&kCenter);
                 Axis x, y;
                 if (w.empty() || !parsePosition(scope.session, position, x, y))
                     return false;
@@ -842,29 +1110,37 @@ namespace {
                 if (!setSize(scope.session, layer, w))
                     return false;
             }else if (name == "background-repeat"){
-                std::vector<std::string> repeat;
-                for (const ComponentValue& v : w){
-                    if (!isRepeat(identOf(v)))
+                Repeat repeat[2];
+                size_t count = 0;
+                for (const ComponentValue* v : w){
+                    Repeat r;
+                    if (!repeatOf(identView(*v), r))
                         return false;
-                    repeat.push_back(identOf(v));
+                    if (count < 2)
+                        repeat[count] = r;
+                    count++;
                 }
-                setRepeat(layer, repeat);
+                setRepeat(layer, repeat, count);
             }else if (name == "background-origin"){
-                if (w.size() != 1 || !isBox(identOf(w[0])) || identOf(w[0]) == "text")
+                Box box;
+                bool isText = false;
+                if (w.size() != 1 || !boxOf(identView(*w[0]), box, isText) || isText)
                     return false;
-                layer.origin = identOf(w[0]);
+                layer.origin = box;
             }else if (name == "background-clip"){
-                if (w.size() != 1 || !isBox(identOf(w[0])))
+                Box box;
+                bool isText = false;
+                if (w.size() != 1 || !boxOf(identView(*w[0]), box, isText))
                     return false;
-                if (identOf(w[0]) == "text")
+                if (isText)
                     layer.clipText = true;
                 else
-                    layer.clip = identOf(w[0]);
+                    layer.clip = box;
             }else if (name == "background-attachment"){
-                const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
+                const std::string_view k = w.size() == 1 ? identView(*w[0]) : std::string_view();
                 if (k != "scroll" && k != "fixed" && k != "local")
                     return false;
-                layer.attachment = k == "local" ? "scroll" : k;
+                layer.fixed = k == "fixed";
             }else{
                 return false;
             }
@@ -874,7 +1150,7 @@ namespace {
 
     bool hasImageDeclaration(const FlatRule& rule, bool mask){
         for (const Declaration& d : rule.declarations){
-            const std::string n = plainName(d.name);
+            const std::string_view n = plainName(d.name);
             if (!mask && (n == "background" || n == "background-image"))
                 return true;
             if (mask && (n == "mask" || n == "mask-image"))
@@ -899,7 +1175,7 @@ namespace {
         for (const char* property : {"-webkit-text-fill-color", "color"}){
             std::optional<ValueList> value = ruleValue(session, rule, property);
             if (value && value->size() == 1 && (*value)[0].isToken(TokenType::Hash)){
-                const std::string& hex = (*value)[0].token.value;
+                const Text& hex = (*value)[0].token.value;
                 if (hex.size() == 8 && hex.compare(6, 2, "00") == 0)
                     return true;
             }
@@ -908,11 +1184,14 @@ namespace {
     }
 
     LayerScope scopeOf(DeclContext& context, bool mask){
-        LayerScope scope{context.session, context.declaration.ref.file, context.declaration.ref, mask, {}};
-        scope.report = [&context](Severity severity, DiagCode code, const std::string& message, const std::string& suggestion){
-            context.reportAs(severity, code, message, suggestion);
-        };
+        LayerScope scope{context.session, context.declaration.ref.file, context.declaration.ref, mask, &context, false};
         return scope;
+    }
+
+    // (one buffer for the decorator lists of the thread: the emitted value is a copy)
+    std::string& decoratorBuffer(){
+        static thread_local std::string buffer;
+        return buffer;
     }
 
     // the family of the rule, merged at its last declaration (and with the base rule)
@@ -941,7 +1220,7 @@ namespace {
                     });
                     if (base){
                         LayerScope quiet = scope;
-                        quiet.report = nullptr;
+                        quiet.context = nullptr;
                         quiet.file = base->ref.file;
                         for (const Declaration& d : base->declarations){
                             if (isBackgroundFamily(d.name, mask) && d.name != "clip-path" && reachesRewrite(context.session, d, base->declarations))
@@ -962,7 +1241,8 @@ namespace {
             for (const Declaration& d : context.rule->declarations){
                 if (!isBackgroundFamily(d.name, mask) || d.name == "clip-path" || !reachesRewrite(context.session, d, context.rule->declarations))
                     continue;
-                ValueList value = d.ref == context.declaration.ref ? context.value : normalized(context.session, d);
+                ValueList storage;
+                const ValueList& value = d.ref == context.declaration.ref ? context.value : (storage = normalized(context.session, d));
                 if (value.size() == 1 && isVar(value[0])){
                     applied = true;
                     continue;   // a whole-value var() is handled below for its own declaration
@@ -988,8 +1268,9 @@ namespace {
         }
 
         // a whole-value var() (the last declaration of the family)
-        if (context.value.size() == 1 && isVar(context.value[0]) && (plainName(context.name) == "background" || plainName(context.name) == "background-image" ||
-                                                                      plainName(context.name) == "mask" || plainName(context.name) == "mask-image")){
+        const std::string_view plain = plainName(context.name);
+        if (context.value.size() == 1 && isVar(context.value[0]) && (plain == "background" || plain == "background-image" ||
+                                                                      plain == "mask" || plain == "mask-image")){
             std::optional<TypedVar> typed = wholeVar(context, mask ? "mask" : "decorator");
             if (!typed){
                 context.emit(mask ? "mask-image" : "decorator", context.valueText());
@@ -997,9 +1278,9 @@ namespace {
             }
             if (typed->kind == "color"){
                 context.emit("background-color", typed->reference);
-                companions::emitBackgroundLayers(context, std::string());
+                companions::emitBackgroundLayers(context, std::string_view());
             }else{
-                if (!mask && plainName(context.name) == "background")
+                if (!mask && plain == "background")
                     context.emit("background-color", "transparent");
                 if (mask)
                     context.emit("mask-image", typed->reference);
@@ -1016,7 +1297,7 @@ namespace {
             if (layer.clipText){
                 clipText = true;
                 if (middle.empty())
-                    middle = layer.kind == Layer::Kind::Gradient ? layer.middleColor : "#ffffffff";
+                    middle = layer.kind == Layer::Kind::Gradient ? (layer.middleColor ? text(*layer.middleColor) : std::string()) : "#ffffffff";
             }
         }
         if (clipText && !mask){
@@ -1029,8 +1310,8 @@ namespace {
                 context.reportAs(Severity::Warning, codes::ApproximatedVisible, "gradient text is drawn in a solid color (" + middle + ")",
                                  "use a solid text color");
                 if (state.colorSet)
-                    context.emit("background-color", state.color.empty() ? "transparent" : state.color);
-                companions::emitBackgroundLayers(context, std::string());
+                    context.emit("background-color", state.color ? Text(text(*state.color)) : Text::view("transparent"));
+                companions::emitBackgroundLayers(context, std::string_view());
                 context.emit("color", middle);
                 return;
             }
@@ -1039,7 +1320,9 @@ namespace {
                 layer.clipText = false;
         }
 
-        const std::string decorators = decoratorText(scope, state.layers);
+        std::string& decorators = decoratorBuffer();
+        decorators.clear();
+        appendDecorators(scope, state.layers, decorators);
         if (mask){
             // clip-path shapes join the mask list
             std::string shapes;
@@ -1052,28 +1335,39 @@ namespace {
                         shapes = *shape;
                 }
             }
-            std::string all = decorators;
-            if (!shapes.empty())
-                all = all.empty() ? shapes : all + ", " + shapes;
-            context.emit("mask-image", all.empty() ? "none" : all);
+            if (!shapes.empty()){
+                if (!decorators.empty())
+                    decorators += ", ";
+                decorators += shapes;
+            }
+            context.emit("mask-image", decorators.empty() ? Text::view("none") : Text(std::string_view(decorators)));
             return;
         }
-        if (state.colorSet)
-            context.emit("background-color", state.color.empty() ? "transparent" : state.color);
+        if (state.colorSet){
+            if (state.color){
+                // (the color's text after the decorators, in the same buffer)
+                const size_t at = decorators.size();
+                appendSerialized(decorators, *state.color);
+                context.emit("background-color", Text(std::string_view(decorators).substr(at)));
+                decorators.resize(at);
+            }else{
+                context.emit("background-color", Text::view("transparent"));
+            }
+        }
         companions::emitBackgroundLayers(context, decorators);
     }
 
     // ---- var() families
 
     std::string classifyLayers(Session& session, const ValueList& value, bool mask){
-        ValueList w = words(value);
-        if (w.size() == 1 && isColor(session, w[0]))
+        const Words w = wordsOf(value);
+        if (w.size() == 1 && isColor(session, *w[0]))
             return mask ? std::string() : "color";
-        LayerScope scope{session, 0, SourceRef(), mask, {}};
+        LayerScope scope{session, 0, SourceRef(), mask, nullptr, false};
         Layers state;
         if (!applyDeclaration(scope, "background", value, state))
             return std::string();
-        if (state.colorSet && !state.color.empty())
+        if (state.colorSet && state.color)
             return std::string();   // layers and a color: two RCSS properties
         return "layers";
     }
@@ -1082,14 +1376,12 @@ namespace {
                                                SourceRef ref, bool mask){
         if (kind == "color")
             return text(value);
-        LayerScope scope{session, ref.file, ref, mask, {}};
-        scope.report = [&session, ref](Severity severity, DiagCode code, const std::string& message, const std::string& suggestion){
-            session.sink->reportAs(severity, code, ref, message, suggestion);
-        };
+        LayerScope scope{session, ref.file, ref, mask, nullptr, true};
         Layers state;
         if (!applyDeclaration(scope, "background", value, state))
             return std::nullopt;
-        const std::string decorators = decoratorText(scope, state.layers);
+        std::string decorators;
+        appendDecorators(scope, state.layers, decorators);
         return decorators.empty() ? std::string(companions::kNoLayer) : decorators;
     }
 
@@ -1120,8 +1412,8 @@ void jasperengine::htmlui::compat::rewriteMaskImage(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteClipPath(DeclContext& context){
-    ValueList w = words(context.value);
-    if (w.size() == 1 && isIdent(w[0], "none")){
+    const Words w = wordsOf(context.value);
+    if (w.size() == 1 && isIdent(*w[0], "none")){
         if (!context.rule)
             context.emit("mask-image", "none");
         else
