@@ -55,6 +55,13 @@ namespace {
         session.baseEntries.clear();
         session.baseSlots.clear();
         session.baseEntries.reserve(session.rules.size());
+        {
+            // (sized for a selector a rule and a half: no rehash while it is built)
+            size_t slots = 256;
+            while (slots < session.rules.size() * 3)
+                slots *= 2;
+            session.baseSlots.assign(slots, kNoEntry);
+        }
         for (const FlatRule& rule : session.rules){
             if (rule.origin != RuleOrigin::Author || rule.dropped)
                 continue;
