@@ -153,7 +153,7 @@ namespace {
 
     // ---- the compile ----
 
-    void numberElements(HtmlNode& node, std::vector<SourceRef>& refs){
+    void numberElements(HtmlNode& node, SourceRefList& refs){
         if (node.kind != HtmlNode::Kind::Element)
             return;
         // RmlUi makes no elements of an inline SVG's content (it is the SVG's text)
@@ -467,6 +467,11 @@ namespace {
         document->sourceMap.elementRefs.shrink_to_fit();
         document->sourceMap.lineRefs.shrink_to_fit();
         document->diagnostics.shrink_to_fit();
+        for (Diagnostic& diagnostic : document->diagnostics){
+            for (std::string* text : {&diagnostic.message, &diagnostic.suggestion, &diagnostic.replacement, &diagnostic.subject,
+                                      &diagnostic.file, &diagnostic.origin})
+                text->shrink_to_fit();
+        }
         for (StylesheetOutput* sheet : {&document->hints, &document->important}){
             sheet->rcss.shrink_to_fit();
             sheet->lines.lines.shrink_to_fit();

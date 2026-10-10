@@ -38,7 +38,7 @@ namespace jasperengine::htmlui::compat {
 
         struct Output {
             std::string rml;
-            std::vector<SourceRef> lineRefs;  // RML line (1-based) - 1 -> source
+            SourceRefList lineRefs;           // RML line (1-based) - 1 -> source
         };
 
         // the whole RML document; fills HeadItem::contentLine

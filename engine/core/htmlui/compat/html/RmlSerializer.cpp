@@ -284,7 +284,7 @@ RmlSerializer::Output RmlSerializer::writeDocument(Document& document){
 
     Output output;
     output.rml = std::move(writer.out);
-    output.lineRefs = std::move(writer.lineRefs);
+    output.lineRefs = SourceRefList(writer.lineRefs.begin(), writer.lineRefs.end());
     return output;
 }
 
@@ -294,7 +294,7 @@ RmlSerializer::Output RmlSerializer::writeFragment(const HtmlNode& container){
         writer.writeNode(*child, container.ns == Namespace::Svg);
     Output output;
     output.rml = std::move(writer.out);
-    output.lineRefs = std::move(writer.lineRefs);
+    output.lineRefs = SourceRefList(writer.lineRefs.begin(), writer.lineRefs.end());
     return output;
 }
 

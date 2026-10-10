@@ -39,7 +39,7 @@ namespace jasperengine::htmlui::compat {
         struct LineMapping {
             std::string url;                          // as RmlUi names it (a leading '/' and '|' for ':' are normalized away)
             uint32_t firstLine = 1;                   // the line number RmlUi gives (*lines)[0]
-            const std::vector<SourceRef>* lines = nullptr;   // RcssLineMap::lines or RmlSourceMap::lineRefs
+            const SourceRefList* lines = nullptr;   // RcssLineMap::lines or RmlSourceMap::lineRefs
         };
 
         struct Registration {

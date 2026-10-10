@@ -108,13 +108,8 @@ TEST(CompatPerf, ColdCompile){
 #if defined(__GLIBC__) && __GLIBC_PREREQ(2, 33)
 // "Memory kept per compiled document <= 4 x (HTML + CSS size)": the heap in use while the
 // document of ColdCompile is held, over the heap in use without it (what the thread keeps for
-// its next compiles, the arena blocks and the freed HTML nodes, is there in both).
-// DISABLED: the row is not met. This document keeps 4.56 x (486 KB for 106 KB): its RML
-// (0.94 x: every element carries data-htmlui-loc), its RCSS (0.98 x), the copies of both
-// sources that locate runtime diagnostics (1.0 x), the RCSS line map (0.56 x, 12 bytes a
-// line), 119 diagnostics (0.5 x) and the RML source map (0.46 x). Run it with
-// --gtest_also_run_disabled_tests; phase-2-compat.md 3.14 has the measure.
-TEST(CompatPerf, DISABLED_MemoryKeptPerDocument){
+// its next compiles, the arena blocks and the freed HTML nodes, is there in both)
+TEST(CompatPerf, MemoryKeptPerDocument){
     const std::string html = generatedPage() + "<link rel=\"stylesheet\" href=\"kept.css\">";
     const std::string css = representativeSheet();
     VirtualFiles::add("@htmlui/perf/kept.html", html);

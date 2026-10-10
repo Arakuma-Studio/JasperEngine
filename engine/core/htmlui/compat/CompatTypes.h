@@ -8,6 +8,8 @@
 // (engine/core/htmlui/compat, phase-2 spec §3.4). No RmlUi or lexbor header here: the
 // editor reaches the compat API through the shared engine library.
 
+#include <iterator>
+#include <initializer_list>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -91,9 +93,181 @@ namespace jasperengine::htmlui::compat {
         SourceRef ref;
     };
 
+    // A list of SourceRefs that a compiled document keeps (the RCSS line maps, the RML source
+    // map): what a std::vector<SourceRef> holds, in 2 to 4 bytes an entry instead of 12. An
+    // entry is written as its difference from the entry before it: one byte of flags (the
+    // same entry again; the file changes; the offset goes back; a length under 31), then the
+    // file's and the offset's differences and a longer length as variable-length integers.
+    // Every 32nd entry is also kept whole, so an index decodes at most 31 entries. Entries
+    // are appended and read; they are not changed in place.
+    class SourceRefList {
+    public:
+        class const_iterator {
+        public:
+            using iterator_category = std::input_iterator_tag;
+            using value_type = SourceRef;
+            using difference_type = std::ptrdiff_t;
+            using pointer = const SourceRef*;
+            using reference = SourceRef;
+
+            SourceRef operator*() const { return current; }
+            const SourceRef* operator->() const { return &current; }
+            const_iterator& operator++(){
+                index++;
+                if (index < list->count)
+                    at = decode(at, current);
+                return *this;
+            }
+            bool operator==(const const_iterator& other) const { return index == other.index; }
+            bool operator!=(const const_iterator& other) const { return index != other.index; }
+
+        private:
+            friend class SourceRefList;
+            const SourceRefList* list = nullptr;
+            const uint8_t* at = nullptr;
+            size_t index = 0;
+            SourceRef current;
+        };
+
+        SourceRefList() = default;
+        SourceRefList(std::initializer_list<SourceRef> refs){
+            for (const SourceRef& ref : refs)
+                push_back(ref);
+        }
+        template<typename Iterator>
+        SourceRefList(Iterator first, Iterator last){
+            for (; first != last; ++first)
+                push_back(*first);
+        }
+
+        size_t size() const { return count; }
+        bool empty() const { return count == 0; }
+        void clear(){
+            bytes.clear();
+            marks.clear();
+            count = 0;
+            last = SourceRef{};
+        }
+        void shrink_to_fit(){
+            bytes.shrink_to_fit();
+            marks.shrink_to_fit();
+        }
+        // the bytes the entries take (the encoded entries and the whole ones)
+        size_t byteSize() const { return bytes.size() + marks.size() * sizeof(Mark); }
+
+        void push_back(SourceRef ref){
+            if (count % kInterval == 0)
+                marks.push_back(Mark{(uint32_t)bytes.size(), last});
+            if (count > 0 && ref == last){
+                bytes.push_back(kSame);
+            }else{
+                const bool back = ref.offset < last.offset;
+                const uint32_t distance = back ? last.offset - ref.offset : ref.offset - last.offset;
+                uint8_t flags = (uint8_t)((ref.file != last.file ? kFile : 0) | (back ? kBack : 0));
+                flags |= (uint8_t)((ref.length < kLongLength ? ref.length : kLongLength) << 3);
+                bytes.push_back(flags);
+                if (ref.file != last.file)
+                    put(ref.file);
+                put(distance);
+                if (ref.length >= kLongLength)
+                    put(ref.length);
+            }
+            last = ref;
+            count++;
+        }
+        SourceRef operator[](size_t index) const {
+            const Mark& mark = marks[index / kInterval];
+            SourceRef ref = mark.previous;
+            const uint8_t* at = bytes.data() + mark.at;
+            for (size_t i = index / kInterval * kInterval; i <= index; i++)
+                at = decode(at, ref);
+            return ref;
+        }
+        SourceRef back() const { return last; }
+
+        const_iterator begin() const {
+            const_iterator it;
+            it.list = this;
+            if (count > 0)
+                it.at = decode(bytes.data(), it.current);
+            return it;
+        }
+        const_iterator end() const {
+            const_iterator it;
+            it.list = this;
+            it.index = count;
+            return it;
+        }
+        // (std::vector's insert at the end: the entries of another list or range)
+        template<typename Iterator>
+        void insert(const const_iterator&, Iterator first, Iterator last){
+            for (; first != last; ++first)
+                push_back(*first);
+        }
+
+        friend bool operator==(const SourceRefList& a, const SourceRefList& b){
+            if (a.count != b.count)
+                return false;
+            const_iterator i = a.begin(), j = b.begin();
+            for (; i != a.end(); ++i, ++j){
+                if (*i != *j)
+                    return false;
+            }
+            return true;
+        }
+        friend bool operator!=(const SourceRefList& a, const SourceRefList& b){ return !(a == b); }
+
+    private:
+        static constexpr size_t kInterval = 32;
+        static constexpr uint8_t kSame = 1, kFile = 2, kBack = 4;
+        static constexpr uint32_t kLongLength = 31;
+        // the entry before entry k * kInterval and where that entry's bytes start
+        struct Mark {
+            uint32_t at;
+            SourceRef previous;
+        };
+
+        void put(uint32_t value){
+            while (value >= 0x80){
+                bytes.push_back((uint8_t)(value | 0x80));
+                value >>= 7;
+            }
+            bytes.push_back((uint8_t)value);
+        }
+        static const uint8_t* get(const uint8_t* at, uint32_t& value){
+            value = 0;
+            for (int shift = 0;; shift += 7){
+                const uint8_t byte = *at++;
+                value |= (uint32_t)(byte & 0x7F) << shift;
+                if (!(byte & 0x80))
+                    return at;
+            }
+        }
+        // the entry written at `at`, given the entry before it in `ref`; where the next one starts
+        static const uint8_t* decode(const uint8_t* at, SourceRef& ref){
+            const uint8_t flags = *at++;
+            if (flags & kSame)
+                return at;
+            if (flags & kFile)
+                at = get(at, ref.file);
+            uint32_t distance = 0;
+            at = get(at, distance);
+            ref.offset = (flags & kBack) ? ref.offset - distance : ref.offset + distance;
+            ref.length = flags >> 3;
+            if (ref.length == kLongLength)
+                at = get(at, ref.length);
+            return at;
+        }
+
+        std::vector<uint8_t> bytes;
+        std::vector<Mark> marks;
+        uint32_t count = 0;
+        SourceRef last;
+    };
+
     // RCSS output line -> source: lines[i] is output line i + 1 (RcssWriter, §3.9.10).
     struct RcssLineMap {
-        std::vector<SourceRef> lines;
+        SourceRefList lines;
 
         // the source of a 1-based output line; invalid when out of range or generated
         SourceRef at(uint32_t line) const {
@@ -104,8 +278,8 @@ namespace jasperengine::htmlui::compat {
     // RML output -> source (RmlSerializer, §3.7.6): elementRefs[n] is the element with
     // data-htmlui-loc="n"; lineRefs[i] is RML line i + 1.
     struct RmlSourceMap {
-        std::vector<SourceRef> elementRefs;
-        std::vector<SourceRef> lineRefs;
+        SourceRefList elementRefs;
+        SourceRefList lineRefs;
 
         SourceRef line(uint32_t rmlLine) const {
             return (rmlLine >= 1 && rmlLine <= lineRefs.size()) ? lineRefs[rmlLine - 1] : SourceRef{};
