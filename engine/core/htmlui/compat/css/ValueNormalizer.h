@@ -36,6 +36,21 @@ namespace jasperengine::htmlui::compat {
         bool vertical = false;                // the percentage basis is a height (top, bottom, height, ...)
         CompatOptions options;
         double emPx = 16.0;                   // the rule's static font-size
+        // when set: the rule's static font-size (emPx when it has none), asked at the first
+        // font-relative unit the value resolves: most values resolve none
+        std::function<std::optional<double>()> ruleFontSize;
+        double em() const {
+            if (!ruleFontSize)
+                return emPx;
+            if (!emAsked){
+                emAsked = true;
+                const std::optional<double> px = ruleFontSize();
+                emValue = px ? *px : emPx;
+            }
+            return emValue;
+        }
+        mutable bool emAsked = false;
+        mutable double emValue = 16.0;
         double remPx = 16.0;                  // the root font-size
         // a var()'s static value (custom property index)
         std::function<bool(const ComponentValue& var, ValueList& out)> resolveVar;

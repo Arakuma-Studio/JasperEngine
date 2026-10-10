@@ -1355,9 +1355,11 @@ namespace {
                     normalize.staticColor = props::ruleStaticColor(session, *rule);
                 }
                 if (needs.fontSize && name != "font-size"){
-                    session.memoTaint++;
-                    if (std::optional<double> fontSize = props::ruleFontSizePx(session, *rule))
-                        normalize.emPx = *fontSize;
+                    // (read, and counted for the memo, when the value resolves a font-relative unit)
+                    normalize.ruleFontSize = [&session, rule](){
+                        session.memoTaint++;
+                        return props::ruleFontSizePx(session, *rule);
+                    };
                 }
             }
             normalize.remPx = session.rootFontSize.value_or(16.0);

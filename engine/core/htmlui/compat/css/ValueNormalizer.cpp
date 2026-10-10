@@ -241,24 +241,24 @@ namespace {
             const std::string u = lowerAscii(unit);
             const double vw = context.options.viewport.x / 100.0;
             const double vh = context.options.viewport.y / 100.0;
-            if (u == "em") return context.emPx;
+            if (u == "em") return context.em();
             if (u == "rem") return context.remPx;
             if (u == "vw" || u == "vi" || u == "dvw" || u == "svw" || u == "lvw") return vw;
             if (u == "vh" || u == "vb" || u == "dvh" || u == "svh" || u == "lvh") return vh;
             if (u == "vmin") return std::min(vw, vh);
             if (u == "vmax") return std::max(vw, vh);
-            if (u == "ch" || u == "ex") return context.emPx * 0.5;
-            if (u == "cap") return context.emPx * 0.7;
-            if (u == "ic") return context.emPx;
-            if (u == "lh") return context.emPx * 1.2;
+            if (u == "ch" || u == "ex") return context.em() * 0.5;
+            if (u == "cap") return context.em() * 0.7;
+            if (u == "ic") return context.em();
+            if (u == "lh") return context.em() * 1.2;
             if (u == "rlh") return context.remPx * 1.2;
             if (u == "dp") return context.options.dpRatio;
             if (u == "%"){
                 // a percentage compared with lengths: its basis estimated with the viewport
                 if (context.percentBasis == PercentBasis::FontSize)
-                    return context.emPx / 100.0;
+                    return context.em() / 100.0;
                 if (context.percentBasis == PercentBasis::LineHeight)
-                    return context.emPx / 100.0;
+                    return context.em() / 100.0;
                 if (context.percentBasis == PercentBasis::ContainingBlock){
                     percentEstimated = true;
                     return context.vertical ? vh : vw;
