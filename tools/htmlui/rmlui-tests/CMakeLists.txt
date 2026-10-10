@@ -37,6 +37,8 @@ set_common_target_options(rmlui_core)
 target_include_directories(rmlui_core PUBLIC "${PROJECT_SOURCE_DIR}/Include")
 target_compile_definitions(rmlui_core
     PUBLIC RMLUI_STATIC_LIB
+    # calc() (upstream PR #983, FORK.md P3-1): the engine defines it PUBLIC too (engine/libs/rmlui/CMakeLists.txt)
+    RMLUI_MATH_EXPRESSIONS
     PRIVATE RMLUI_VERSION="6.3" RMLUI_FONT_ENGINE_FREETYPE
 )
 target_link_libraries(rmlui_core PRIVATE Freetype::Freetype)
