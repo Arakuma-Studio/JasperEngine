@@ -14,6 +14,14 @@
 
 namespace jasperengine{
 
+    // Which shader stage evaluates this light on materials whose lighting is MIXED.
+    // BOTH has no preference (it follows the material; per pixel under MIXED).
+    enum class LightShading{
+        BOTH,
+        PIXEL,
+        VERTEX
+    };
+
     enum class LightType{
         DIRECTIONAL,
         POINT,
@@ -75,6 +83,8 @@ namespace jasperengine{
         // Unity Light.cullingMask: GameObjects on a layer whose bit is clear are neither
         // lit by this light nor cast its shadow
         uint32_t cullingMask = LAYER_MASK_EVERYTHING;
+
+        LightShading shading = LightShading::BOTH;
 
         bool shadows = false;
         bool automaticShadowCamera = true;

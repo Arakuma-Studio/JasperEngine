@@ -6,6 +6,7 @@
 
 #include "buffer/Buffer.h"
 #include "shader/ShaderUniforms.h"
+#include "texture/Material.h"
 #include "Engine.h"
 #include <string>
 
@@ -46,8 +47,8 @@ namespace jasperengine{
         ObjectRender render;
         std::shared_ptr<ShaderRender> shader;
         uint32_t shaderProperties = 0;
-        // optional user-forked shader: project-relative base path (no extension),
-        // empty = built-in. customShaderId is the resolved id for ShaderPool keys.
+        // optional custom shader: "library:<name>" or a project-relative fork base path
+        // (no extension), empty = built-in. customShaderId is the resolved id for ShaderPool keys.
         std::string customShader;
         uint16_t customShaderId = 0;
         int slotVSParams = -1;
@@ -56,6 +57,13 @@ namespace jasperengine{
         bool needUpdateShaderUniforms = false;
         CustomUniformBlock customVSParams;
         CustomUniformBlock customFSParams;
+        // shader library: textures by @texture uniform name and enabled @feature/@keywords
+        // defines of the shader above (library reference or fork)
+        std::vector<std::pair<std::string, Texture>> shaderTextures;
+        std::vector<std::string> shaderFeatures;
+        // AUTO keeps the built-in state (alpha blend, depth write on)
+        MaterialBlendMode blendMode = MaterialBlendMode::AUTO;
+        MaterialDepthWrite depthWrite = MaterialDepthWrite::AUTO;
 
         bool needUpdateBuffer = false;
         bool needReload = false;

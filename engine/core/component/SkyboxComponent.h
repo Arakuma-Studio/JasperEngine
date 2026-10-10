@@ -7,6 +7,7 @@
 #include "buffer/Buffer.h"
 #include "texture/Texture.h"
 #include "shader/ShaderUniforms.h"
+#include "texture/Material.h"
 #include <string>
 
 namespace jasperengine{
@@ -21,8 +22,8 @@ namespace jasperengine{
 
         ObjectRender render;
         std::shared_ptr<ShaderRender> shader;
-        // optional user-forked shader: project-relative base path (no extension),
-        // empty = built-in. customShaderId is the resolved id for ShaderPool keys.
+        // optional custom shader: "library:<name>" or a project-relative fork base path
+        // (no extension), empty = built-in. customShaderId is the resolved id for ShaderPool keys.
         std::string customShader;
         uint16_t customShaderId = 0;
         int slotVSParams = -1;
@@ -32,6 +33,10 @@ namespace jasperengine{
         bool needUpdateShaderUniforms = false;
         CustomUniformBlock customVSParams;
         CustomUniformBlock customFSParams;
+        // shader library: textures by @texture uniform name and enabled @feature/@keywords
+        // defines of the shader above (library reference or fork)
+        std::vector<std::pair<std::string, Texture>> shaderTextures;
+        std::vector<std::string> shaderFeatures;
 
         Texture texture;
         Vector4 color = Vector4(1.0, 1.0, 1.0, 1.0); //sRGB

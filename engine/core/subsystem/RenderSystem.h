@@ -58,6 +58,23 @@ namespace jasperengine{
 		Vector4 atlasInfo;                       // x = 1/atlasWidth, y = 1/MAX_LIGHTS_2D, z = atlasWidth, w = PCF tap radius
 	} fs_lighting2d_t;
 
+	// u_vs_frame / u_fs_frame (shaderlib/includes/frame.glsl): per-camera-pass data for any
+	// shader that declares the block. The layout up to ambient is a contract with the
+	// library shaders; engine-internal members may only be appended after it, in the
+	// same order as in frame.glsl.
+	typedef struct frame_t {
+		Matrix4 viewMatrix;
+		Matrix4 projectionMatrix;
+		Matrix4 viewProjectionMatrix;
+		Vector4 cameraPosition;     // xyz world position, w = 1 orthographic / 0 perspective
+		Vector4 cameraDirection;    // xyz world forward
+		Vector4 time;               // x seconds since startup, y sin(x), z cos(x), w frame delta
+		Vector4 resolution;         // xy render target size in pixels, zw 1/size
+		Vector4 mainLightDirection; // xyz towards the brightest directional light, w intensity (0 = none)
+		Vector4 mainLightColor;     // rgb linear
+		Vector4 ambient;            // rgb scene ambient (global illumination colour * intensity)
+	} frame_t;
+
 	typedef struct fs_terrain_layers_t {
 		Vector4 colorFactor[MAX_TERRAIN_LAYERS]; // rgb = linear tint, w = 1 on a PBR layer
 		Vector4 uvTransform[MAX_TERRAIN_LAYERS]; // xy = detail tiling scale, zw = offset

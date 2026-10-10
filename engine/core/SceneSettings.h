@@ -68,6 +68,10 @@ namespace jasperengine{
         Vector3 globalIllumColor = Vector3(1.0, 1.0, 1.0);    // stored linear
         float globalIllumIntensity = 0.1f;
 
+        // lights evaluated per object (1..16); the rest of the lights reaching it are folded
+        // into its spherical-harmonics ambient
+        int maxLightsPerObject = 8;
+
         // default 1.0 keeps 2D scenes visually unchanged until the user dims it
         Vector3 ambientLight2DColor = Vector3(1.0, 1.0, 1.0); // stored linear
         float ambientLight2DIntensity = 1.0f;
