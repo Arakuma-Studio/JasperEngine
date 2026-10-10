@@ -214,11 +214,14 @@ TEST_CASE("GridParsing.line")
 	CHECK(Parse(name, "2 a span") == "span 2 a");
 	CHECK(Parse(name, "SPAN 2") == "span 2");
 	for (const char* value : {"", "0", "0 a", "span", "span -1", "span 0", "auto 2", "a b", "2 3", "span span", "2 span a", "1.5", "span auto",
-			 "inherit-x y", "initial", "default"})
+			 "inherit-x y", "default"})
 	{
 		INFO(value);
 		CHECK_FALSE(Valid(name, value));
 	}
+	// 'initial' is not a line name: it is the CSS-wide keyword (p3-cascade), valid on every property.
+	CHECK(Valid(name, "initial"));
+	CHECK(Parse(name, "initial") == "initial");
 
 	auto line = ParsedValue<GridLineValue>(name, "-2 col");
 	REQUIRE(bool(line));
