@@ -126,8 +126,10 @@ public:
 	static void BuildBoxSizeAndMargins(Box& box, Vector2f min_size, Vector2f max_size, Vector2f containing_block, Element* element,
 		BuildBoxMode box_context, bool replaced_element);
 
-	/// Formats the element and returns the width of its contents.
-	static float GetShrinkToFitWidth(Element* element, Vector2f containing_block);
+	/// Formats the element and returns the width of its contents: its shrink-to-fit (fit-content) width
+	/// min(max-content, max(min-content, available)), the available width being the containing block's less the element's
+	/// margins, borders and paddings, or 'available_width' (content-box) when given (>= 0).
+	static float GetShrinkToFitWidth(Element* element, Vector2f containing_block, float available_width = -1.f);
 
 	/// Intrinsic sizing (CSS Sizing 3): the element's min-content width, the width of its border box formatted under a
 	/// min-content constraint (no width to give: its widest unbreakable content, every soft wrap opportunity taken). A
@@ -222,6 +224,16 @@ private:
 	/// @param[in] max_height The maximum content height of the element.
 	/// @param[in] containing_block The size of the containing block (percentage margins resolve against its width).
 	static void BuildBoxHeight(Box& box, const ComputedValues& computed, float min_height, float max_height, Vector2f containing_block);
+
+	/// The width and horizontal margins of an absolutely positioned box (CSS Position 3 §4.1, §4.4): resolved against its
+	/// inset-modified containing block, an 'auto' width being stretch-fit between two insets or fit-content otherwise, 'auto'
+	/// margins taking the free space only between two insets.
+	static void BuildAbsoluteBoxWidth(Box& box, const ComputedValues& computed, float min_width, float max_width, Vector2f containing_block,
+		Element* element, bool replaced_element);
+	/// The height and vertical margins of an absolutely positioned box, as BuildAbsoluteBoxWidth ('auto' between two insets
+	/// is stretch-fit, otherwise the content decides).
+	static void BuildAbsoluteBoxHeight(Box& box, const ComputedValues& computed, float min_height, float max_height, Vector2f containing_block,
+		Element* element, bool replaced_element);
 };
 
 } // namespace Rml

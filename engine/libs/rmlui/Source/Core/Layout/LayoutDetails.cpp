@@ -1,6 +1,7 @@
 #include "LayoutDetails.h"
 #include "../../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../../Include/RmlUi/Core/Element.h"
+#include "../../../Include/RmlUi/Core/ElementDocument.h"
 #include "../../../Include/RmlUi/Core/ElementScroll.h"
 #include "../../../Include/RmlUi/Core/ElementText.h"
 #include "../../../Include/RmlUi/Core/Math.h"
@@ -287,8 +288,16 @@ void LayoutDetails::BuildBoxSizeAndMargins(Box& box, Vector2f min_size, Vector2f
 	else
 	{
 		// The element is block, so we need to run the box through the ringer to potentially evaluate auto margins and dimensions.
-		BuildBoxWidth(box, computed, min_size.x, max_size.x, containing_block, element, replaced_element);
-		BuildBoxHeight(box, computed, min_size.y, max_size.y, containing_block);
+		if (computed.position() == Style::Position::Absolute || computed.position() == Style::Position::Fixed)
+		{
+			BuildAbsoluteBoxWidth(box, computed, min_size.x, max_size.x, containing_block, element, replaced_element);
+			BuildAbsoluteBoxHeight(box, computed, min_size.y, max_size.y, containing_block, element, replaced_element);
+		}
+		else
+		{
+			BuildBoxWidth(box, computed, min_size.x, max_size.x, containing_block, element, replaced_element);
+			BuildBoxHeight(box, computed, min_size.y, max_size.y, containing_block);
+		}
 	}
 }
 
@@ -401,7 +410,7 @@ float LayoutDetails::GetContentHeightForWidth(Element* element, float border_box
 	return result;
 }
 
-float LayoutDetails::GetShrinkToFitWidth(Element* element, Vector2f containing_block)
+float LayoutDetails::GetShrinkToFitWidth(Element* element, Vector2f containing_block, float available_width)
 {
 	RMLUI_ASSERT(element);
 
@@ -444,11 +453,14 @@ float LayoutDetails::GetShrinkToFitWidth(Element* element, Vector2f containing_b
 	UniquePtr<LayoutBox> layout_box = FormattingContext::FormatIndependent(&root, element, &box, FormattingContextType::Block);
 
 	float shrink_to_fit_width = layout_box->GetShrinkToFitWidth();
-	if (containing_block.x >= 0)
+	if (available_width < 0.f && containing_block.x >= 0)
+		available_width = Math::Max(0.f, containing_block.x - box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Margin, BoxArea::Padding));
+	if (available_width >= 0.f && shrink_to_fit_width > available_width)
 	{
-		const float available_width =
-			Math::Max(0.f, containing_block.x - box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Margin, BoxArea::Padding));
-		shrink_to_fit_width = Math::Min(shrink_to_fit_width, available_width);
+		// fit-content: not narrower than the min-content width (CSS 2.1 §10.3.5).
+		const float min_content_width =
+			GetMinContentWidth(element, containing_block) - box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
+		shrink_to_fit_width = Math::Max(available_width, Math::Min(min_content_width, shrink_to_fit_width));
 	}
 	return shrink_to_fit_width;
 }
@@ -932,6 +944,123 @@ void LayoutDetails::BuildBoxWidth(Box& box, const ComputedValues& computed, floa
 	}
 	else
 		box.SetContent(content_area);
+}
+
+namespace {
+	// One axis of an absolutely positioned box (CSS Position 3).
+	struct AbsoluteAxis {
+		float containing_block = 0.f;
+		bool has_inset_start = false, has_inset_end = false;
+		float inset_start = 0.f, inset_end = 0.f;
+		bool margin_start_auto = false, margin_end_auto = false;
+		float margin_start = 0.f, margin_end = 0.f; // Non-auto values.
+		// 'auto' margins take the free space only between two insets (CSS); a document (RmlUi's root of a document, laid
+		// out as absolutely positioned) centers by them without insets, as the root element does in CSS.
+		bool auto_margins_without_insets = false;
+
+		// The inset-modified containing block: its insets (a lone or two 'auto' insets resolve to 0; an over-constrained
+		// pair shrinks the weaker, end, inset).
+		float GetInsetModifiedSize() const
+		{
+			const float start = (has_inset_start ? inset_start : 0.f);
+			const float end = containing_block - (has_inset_end ? inset_end : 0.f);
+			return Math::Max(end - start, 0.f);
+		}
+		float GetStretchFitSize() const { return Math::Max(GetInsetModifiedSize() - margin_start - margin_end, 0.f); }
+		// The margins for a margin box of the given border-box size: 'auto' margins take the free space between two insets.
+		void ResolveMargins(float border_size, bool inline_axis, float& out_start, float& out_end) const
+		{
+			out_start = margin_start;
+			out_end = margin_end;
+			if (((!has_inset_start || !has_inset_end) && !auto_margins_without_insets) || (!margin_start_auto && !margin_end_auto))
+				return;
+			const float free_space = GetInsetModifiedSize() - border_size;
+			if (margin_start_auto && margin_end_auto)
+			{
+				// In the inline axis, negative free space goes to the end margin.
+				if (free_space < 0.f && inline_axis)
+				{
+					out_start = 0.f;
+					out_end = free_space;
+				}
+				else
+					out_start = out_end = 0.5f * free_space;
+			}
+			else if (margin_start_auto)
+				out_start = free_space - margin_end;
+			else
+				out_end = free_space - margin_start;
+		}
+	};
+
+	AbsoluteAxis MakeAbsoluteAxis(Style::LengthPercentageAuto inset_start, Style::LengthPercentageAuto inset_end, Style::Margin margin_start,
+		Style::Margin margin_end, float containing_block, float margin_basis)
+	{
+		AbsoluteAxis axis;
+		axis.containing_block = containing_block;
+		axis.has_inset_start = (inset_start.type != Style::LengthPercentageAuto::Auto);
+		axis.has_inset_end = (inset_end.type != Style::LengthPercentageAuto::Auto);
+		axis.inset_start = (axis.has_inset_start ? ResolveValue(inset_start, containing_block) : 0.f);
+		axis.inset_end = (axis.has_inset_end ? ResolveValue(inset_end, containing_block) : 0.f);
+		axis.margin_start_auto = (margin_start.type == Style::Margin::Auto);
+		axis.margin_end_auto = (margin_end.type == Style::Margin::Auto);
+		axis.margin_start = (axis.margin_start_auto ? 0.f : ResolveValue(margin_start, margin_basis));
+		axis.margin_end = (axis.margin_end_auto ? 0.f : ResolveValue(margin_end, margin_basis));
+		return axis;
+	}
+} // namespace
+
+void LayoutDetails::BuildAbsoluteBoxWidth(Box& box, const ComputedValues& computed, float min_width, float max_width, Vector2f containing_block,
+	Element* element, bool replaced_element)
+{
+	AbsoluteAxis axis =
+		MakeAbsoluteAxis(computed.left(), computed.right(), computed.margin_left(), computed.margin_right(), containing_block.x, containing_block.x);
+	axis.auto_margins_without_insets = (element && element == static_cast<Element*>(element->GetOwnerDocument()));
+	const float edges = box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
+	const bool table = (computed.display() == Style::Display::Table || computed.display() == Style::Display::InlineTable);
+
+	Vector2f content_area = box.GetSize();
+	if (content_area.x < 0.f)
+	{
+		const float available = Math::Max(axis.GetStretchFitSize() - edges, 0.f);
+		if (axis.has_inset_start && axis.has_inset_end && !replaced_element && !table)
+			content_area.x = available;                                                 // stretch-fit
+		else
+			content_area.x = GetShrinkToFitWidth(element, containing_block, available); // fit-content
+	}
+	content_area.x = Math::Max(Math::Clamp(content_area.x, min_width, max_width), 0.f);
+	box.SetContent(content_area);
+
+	float margin_left = 0.f, margin_right = 0.f;
+	axis.ResolveMargins(content_area.x + edges, true, margin_left, margin_right);
+	box.SetEdge(BoxArea::Margin, BoxEdge::Left, margin_left);
+	box.SetEdge(BoxArea::Margin, BoxEdge::Right, margin_right);
+}
+
+void LayoutDetails::BuildAbsoluteBoxHeight(Box& box, const ComputedValues& computed, float min_height, float max_height, Vector2f containing_block,
+	Element* element, bool replaced_element)
+{
+	// Percentage margins refer to the containing block's width (CSS 2.1 §8.3).
+	AbsoluteAxis axis =
+		MakeAbsoluteAxis(computed.top(), computed.bottom(), computed.margin_top(), computed.margin_bottom(), containing_block.y, containing_block.x);
+	axis.auto_margins_without_insets = (element && element == static_cast<Element*>(element->GetOwnerDocument()));
+	const float edges = box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border, BoxArea::Padding);
+	const bool table = (computed.display() == Style::Display::Table || computed.display() == Style::Display::InlineTable);
+
+	Vector2f content_area = box.GetSize();
+	if (content_area.y < 0.f && axis.has_inset_start && axis.has_inset_end && !replaced_element && !table && containing_block.y >= 0.f)
+		content_area.y = Math::Max(axis.GetStretchFitSize() - edges, 0.f); // stretch-fit
+	if (content_area.y >= 0.f)
+		content_area.y = Math::Max(Math::Clamp(content_area.y, min_height, max_height), 0.f);
+	box.SetContent(content_area);
+
+	// With a content-based height the margins are resolved once the height is known (they need two insets and an 'auto'
+	// margin, and then the height is stretch-fit, so it is known here).
+	float margin_top = axis.margin_start, margin_bottom = axis.margin_end;
+	if (content_area.y >= 0.f)
+		axis.ResolveMargins(content_area.y + edges, false, margin_top, margin_bottom);
+	box.SetEdge(BoxArea::Margin, BoxEdge::Top, margin_top);
+	box.SetEdge(BoxArea::Margin, BoxEdge::Bottom, margin_bottom);
 }
 
 void LayoutDetails::BuildBoxHeight(Box& box, const ComputedValues& computed, float min_height, float max_height, Vector2f containing_block)

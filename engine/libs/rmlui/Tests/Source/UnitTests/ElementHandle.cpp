@@ -291,6 +291,8 @@ TEST_CASE("ElementHandle")
 
 		target->SetProperty(PropertyId::Width, Property(100, Unit::PX));
 		target->SetProperty(PropertyId::Height, Property(100, Unit::PX));
+		// Centered by its 'auto' margins between its insets (CSS Position 3; without insets the margins would be 0).
+		target->SetProperty("inset", "0px");
 		target->SetProperty("margin", "auto");
 
 		context->Update();
@@ -322,6 +324,8 @@ TEST_CASE("ElementHandle")
 
 		target->SetProperty(PropertyId::Width, Property(100, Unit::PX));
 		target->SetProperty(PropertyId::Height, Property(100, Unit::PX));
+		// Centered by its 'auto' margins between its insets (CSS Position 3; without insets the margins would be 0).
+		target->SetProperty("inset", "0px");
 		target->SetProperty("margin", "auto");
 
 		context->Update();
@@ -345,6 +349,8 @@ TEST_CASE("ElementHandle")
 
 		target->SetProperty(PropertyId::Width, Property(100, Unit::PX));
 		target->SetProperty(PropertyId::Height, Property(100, Unit::PX));
+		// Centered by its 'auto' margins between its insets (CSS Position 3; without insets the margins would be 0).
+		target->SetProperty("inset", "0px");
 		target->SetProperty("margin", "auto");
 
 		context->Update();
@@ -372,6 +378,8 @@ TEST_CASE("ElementHandle")
 
 		target->SetProperty(PropertyId::Width, Property(100, Unit::PX));
 		target->SetProperty(PropertyId::Height, Property(100, Unit::PX));
+		// Centered by its 'auto' margins between its insets (CSS Position 3; without insets the margins would be 0).
+		target->SetProperty("inset", "0px");
 		target->SetProperty("margin", "auto");
 
 		context->Update();
