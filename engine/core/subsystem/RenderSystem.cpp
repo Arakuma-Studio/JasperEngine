@@ -682,14 +682,11 @@ void RenderSystem::updateSpotMaskAtlas(int numLights){
     std::array<int, SPOT_MASK_ATLAS_TILES> tileLights;
     tileLights.fill(-1);
 
-    // the tiles go to the spot lights with a loaded mask, in scene order, while they last
-    int tile = 0;
-    for (int i = 0; i < numLights && tile < SPOT_MASK_ATLAS_TILES; i++){
-        LightComponent& light = lights->getComponentFromIndex(i);
-        if (light.type != LightType::SPOT || light.spotMask.empty() || light.spotMask.isFramebuffer()){
-            continue;
-        }
-
+    // A light keeps its tile while that tile holds its mask (its pixels may be released once
+    // rasterized), so tiles never move between lights. Free tiles go to the lit spot lights
+    // with a mask in scene order; an unlit one keeps its tile only while no lit one needs it.
+    // Tries tile t for light i: its current source, the tile's committed copy, or a load.
+    auto tryTile = [&](int t, LightComponent& light){
         const std::string sourceId = light.spotMask.getId();
 
         auto acceptSource = [&](const std::shared_ptr<std::array<TextureData, 6>>& owner){
@@ -702,14 +699,14 @@ void RenderSystem::updateSpotMaskAtlas(int numLights){
                 return false;
             }
 
-            sourceOwners[tile] = owner;
-            sources[tile] = &sourceOwners[tile]->at(0);
-            newEntries[tile].sourceId = sourceId;
-            newEntries[tile].sourceOwner = owner.get();
-            newEntries[tile].sourcePixels = source.getData();
-            newEntries[tile].width = source.getWidth();
-            newEntries[tile].height = source.getHeight();
-            newEntries[tile].aspect = std::clamp(
+            sourceOwners[t] = owner;
+            sources[t] = &sourceOwners[t]->at(0);
+            newEntries[t].sourceId = sourceId;
+            newEntries[t].sourceOwner = owner.get();
+            newEntries[t].sourcePixels = source.getData();
+            newEntries[t].width = source.getWidth();
+            newEntries[t].height = source.getHeight();
+            newEntries[t].aspect = std::clamp(
                 static_cast<float>(source.getWidth()) / static_cast<float>(source.getHeight()),
                 0.1f, 10.0f);
             return true;
@@ -719,7 +716,7 @@ void RenderSystem::updateSpotMaskAtlas(int numLights){
         bool hasSource = acceptSource(pooledSource);
 
         if (!hasSource){
-            const SpotMaskAtlasEntry& committedEntry = spotMaskAtlasEntries[tile];
+            const SpotMaskAtlasEntry& committedEntry = spotMaskAtlasEntries[t];
             const bool canReuseCommittedTile =
                 spotMaskAtlasCreated &&
                 pooledSource &&
@@ -728,7 +725,7 @@ void RenderSystem::updateSpotMaskAtlas(int numLights){
                 !committedEntry.empty();
 
             if (canReuseCommittedTile){
-                newEntries[tile] = committedEntry;
+                newEntries[t] = committedEntry;
             }else{
                 TextureLoadResult result = light.spotMask.load();
                 if (result.state == ResourceLoadState::Finished){
@@ -737,9 +734,43 @@ void RenderSystem::updateSpotMaskAtlas(int numLights){
             }
         }
 
-        if (!newEntries[tile].empty()){
-            tileLights[tile] = i;
-            tile++;
+        return !newEntries[t].empty();
+    };
+
+    // 0: lit lights keep their tile, 1: lit lights without one take a free one, 2: unlit
+    // lights keep theirs if still free
+    for (int pass = 0; pass < 3; pass++){
+        for (int i = 0; i < numLights; i++){
+            LightComponent& light = lights->getComponentFromIndex(i);
+            if (light.type != LightType::SPOT || light.spotMask.empty() || light.spotMask.isFramebuffer()){
+                continue;
+            }
+            const bool lit = light.intensity > 0.0f && isLightActive(lights->getEntity(i), light);
+            if (lit == (pass == 2) || std::find(tileLights.begin(), tileLights.end(), i) != tileLights.end()){
+                continue;
+            }
+
+            int tile = -1;
+            if (pass == 1){
+                for (int t = 0; t < SPOT_MASK_ATLAS_TILES && tile < 0; t++){
+                    if (tileLights[t] < 0)
+                        tile = t;
+                }
+            }else{
+                const int previous = light.spotMaskTile;
+                if (previous >= 0 && previous < SPOT_MASK_ATLAS_TILES && tileLights[previous] < 0 &&
+                        spotMaskAtlasEntries[previous].sourceId == light.spotMask.getId()){
+                    tile = previous;
+                }
+            }
+
+            if (tile >= 0 && tryTile(tile, light)){
+                tileLights[tile] = i;
+            }else if (tile >= 0){
+                newEntries[tile] = SpotMaskAtlasEntry();
+                sources[tile] = nullptr;
+                sourceOwners[tile].reset();
+            }
         }
     }
 
@@ -1014,6 +1045,11 @@ void RenderSystem::fillFrameContract(frame_t& frame, const CameraComponent& came
 
 //-----Unified lighting: per-object light lists-----
 
+// spot mask tiles are packed 3 bits per light (7 = none), 8 lights per float of counts.zw
+static_assert(SPOT_MASK_ATLAS_TILES <= 7, "spot mask tiles must fit 3 bits, 7 meaning none");
+static_assert(MAX_LIGHTS_PER_OBJECT <= 16, "counts.zw hold the spot mask tiles of 16 lights");
+static_assert(MAX_LIGHTS <= 8, "the legacy eyePos.w holds the spot mask tiles of 8 lights");
+
 namespace {
     float lightLuminance(const Vector4& colorIntensity){
         return (0.2126f * colorIntensity.x + 0.7152f * colorIntensity.y + 0.0722f * colorIntensity.z) * std::max(colorIntensity.w, 0.0f);
@@ -1177,6 +1213,24 @@ void RenderSystem::updateSceneLights(){
 }
 
 void RenderSystem::updateObjectLights(){
+    // a directional light that only changed direction (a turning sun)
+    auto onlyTurned = [this](int index){
+        const SceneLight& light = sceneLights[index];
+        if (light.position_type.w != 0.0f || index >= (int)previousSceneLights.size())
+            return false;
+        SceneLight before = previousSceneLights[index];
+        before.direction_range = light.direction_range;
+        before.position_type = light.position_type;
+        return before == light;
+    };
+    auto isPicked = [](const MeshLights& picked, int index){
+        for (unsigned int k = 0; k < picked.count; k++){
+            if (picked.lights[k] == index)
+                return true;
+        }
+        return false;
+    };
+
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < meshes->size(); i++){
         MeshComponent& mesh = meshes->getComponentFromIndex(i);
@@ -1198,6 +1252,10 @@ void RenderSystem::updateObjectLights(){
             // a light that reached it changed, or a changed light reaches it now
             const LightBounds bounds(mesh.worldAABB, transform->worldPosition);
             for (int index : changedLights){
+                if (onlyTurned(index) && isPicked(picked, index)){
+                    // its rank and reach do not depend on its direction, which the draw reads
+                    continue;
+                }
                 if (picked.reachMask & (1ull << (index & 63))){
                     repick = true;
                     break;
@@ -1402,6 +1460,29 @@ void RenderSystem::buildLegacyLighting(const MeshComponent& mesh, uint32_t prope
     const int capacity = MAX_LIGHTS_PER_OBJECT;
     const int pixelCount = (int)lists.counts.x;
     const int count = std::min(pixelCount, MAX_LIGHTS);
+
+    // more than the block holds: the directional lights first (they rank first), each group
+    // in scene order; MAX_LIGHTS or fewer keep scene order, as the lights added up before
+    if (pixelCount > MAX_LIGHTS){
+        object_lights_t sorted = lists;
+        int n = 0;
+        uint32_t tiles[2] = {0, 0};
+        for (int pass = 0; pass < 2; pass++){
+            for (int k = 0; k < pixelCount; k++){
+                if ((lists.lights[k].w == 0.0f) != (pass == 0))
+                    continue;
+                for (int a = 0; a < 5; a++){
+                    sorted.lights[a * capacity + n] = lists.lights[a * capacity + k];
+                }
+                const uint32_t tile = ((uint32_t)((k < 8) ? lists.counts.z : lists.counts.w) >> (3 * (k % 8))) & 7u;
+                tiles[n / 8] |= tile << (3 * (n % 8));
+                n++;
+            }
+        }
+        sorted.counts.z = (float)tiles[0];
+        sorted.counts.w = (float)tiles[1];
+        lists = sorted;
+    }
 
     uint32_t tiles = 0;
     for (int n = 0; n < MAX_LIGHTS; n++){
@@ -11319,6 +11400,10 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
         viewShadows.fs_point_shadows = frameShadows.fs_point_shadows;
         viewShadows.fs_lighting.viewportInfo = lightingViewportInfo(camera);
         viewShadows.frame.viewportInfo = viewShadows.fs_lighting.viewportInfo;
+        viewShadows.frame.resolution = Vector4(
+            (viewShadows.frame.viewportInfo.x > 0.0f) ? 1.0f / viewShadows.frame.viewportInfo.x : 0.0f,
+            (viewShadows.frame.viewportInfo.y > 0.0f) ? 1.0f / viewShadows.frame.viewportInfo.y : 0.0f,
+            viewShadows.frame.viewportInfo.x, viewShadows.frame.viewportInfo.y);
         viewShadows.ownLightCameras = false;
         viewShadows.ownShadowInstances = false;
         viewShadows.cameraMask = frameShadows.cameraMask;
