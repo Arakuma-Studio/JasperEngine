@@ -551,7 +551,18 @@ namespace {
             next();
             const std::string_view nameText = valueOf(nameToken);
             const bool custom = nameText.size() >= 2 && nameText[0] == '-' && nameText[1] == '-';
-            declaration.name = custom ? std::string(nameText) : toLowerAscii(std::string(nameText));
+            {
+                // the name as written when it is lower case already (a view of the copies the
+                // tokens' texts are views of), a lowered copy otherwise
+                bool upper = false;
+                for (const char c : nameText)
+                    upper = upper || (c >= 'A' && c <= 'Z');
+                const char* const copy = (nameToken.value.decoded ? textCopy : sourceCopy) + nameToken.value.begin;
+                if (custom || !upper)
+                    declaration.name = Text::view(std::string_view(copy, nameText.size()));
+                else
+                    declaration.name = Text(toLowerAscii(std::string(nameText)));
+            }
             declaration.nameRef = ref(nameToken.offset, nameToken.offset + nameToken.length);
 
             discardWhitespace();
