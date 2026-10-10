@@ -14,14 +14,57 @@ namespace {
 
     // the index of BaseRules::index: the rules' origin, selectors and `dropped` are final once
     // the selectors are rewritten, so building it at the first lookup gives the same index
+    constexpr uint32_t kNoEntry = 0xFFFFFFFFu;
+
+    // the entry of a selector text (nullptr when no rule has it and `add` is false)
+    Session::BaseEntry* entryOf(Session& session, std::string_view key, bool add){
+        const uint64_t hash = StringIndex::hash(key);
+        if (!session.baseSlots.empty()){
+            const size_t mask = session.baseSlots.size() - 1;
+            for (size_t i = (size_t)hash & mask; session.baseSlots[i] != kNoEntry; i = (i + 1) & mask){
+                Session::BaseEntry& entry = session.baseEntries[session.baseSlots[i]];
+                if (entry.hash == hash && entry.key == key)
+                    return &entry;
+            }
+        }
+        if (!add)
+            return nullptr;
+        if ((session.baseEntries.size() + 1) * 2 > session.baseSlots.size()){
+            session.baseSlots.assign(session.baseSlots.empty() ? 256 : session.baseSlots.size() * 2, kNoEntry);
+            const size_t mask = session.baseSlots.size() - 1;
+            for (uint32_t index = 0; index < (uint32_t)session.baseEntries.size(); index++){
+                size_t i = (size_t)session.baseEntries[index].hash & mask;
+                while (session.baseSlots[i] != kNoEntry)
+                    i = (i + 1) & mask;
+                session.baseSlots[i] = index;
+            }
+        }
+        const size_t mask = session.baseSlots.size() - 1;
+        size_t i = (size_t)hash & mask;
+        while (session.baseSlots[i] != kNoEntry)
+            i = (i + 1) & mask;
+        session.baseSlots[i] = (uint32_t)session.baseEntries.size();
+        Session::BaseEntry& entry = session.baseEntries.emplace_back();
+        entry.hash = hash;
+        entry.key = Text(key);
+        return &entry;
+    }
+
+    // the index of BaseRules::index: the rules' origin, selectors and `dropped` are final once
+    // the selectors are rewritten, so building it at the first lookup gives the same index
     void build(Session& session){
         session.baseIndexBuilt = true;
-        session.baseIndex.clear();
+        session.baseEntries.clear();
+        session.baseSlots.clear();
+        session.baseEntries.reserve(session.rules.size());
+        std::string key;
         for (const FlatRule& rule : session.rules){
             if (rule.origin != RuleOrigin::Author || rule.dropped)
                 continue;
             for (const ComplexSelector& selector : rule.selectors){
-                std::vector<uint32_t>& list = session.baseIndex[SelectorRewriter::serialize(selector)];
+                key.clear();
+                SelectorRewriter::appendSerialized(key, selector);
+                ArenaList<uint32_t>& list = entryOf(session, key, true)->rules;
                 if (list.empty() || list.back() != rule.index)
                     list.push_back(rule.index);
             }
@@ -31,7 +74,8 @@ namespace {
 }
 
 void BaseRules::index(Session& session){
-    session.baseIndex.clear();
+    session.baseEntries.clear();
+    session.baseSlots.clear();
     session.baseIndexBuilt = false;
 }
 
@@ -42,12 +86,14 @@ const FlatRule* BaseRules::find(Session& session, const FlatRule& rule, const st
     uint32_t ruleSpecificity = 0;
     for (const RewrittenSelector& s : rule.rewritten)
         ruleSpecificity = std::max(ruleSpecificity, s.specificity);
+    std::string& key = session.baseKeyText;
     for (const ComplexSelector& selector : rule.selectors){
-        const std::string key = SelectorRewriter::baseKey(selector);
-        const auto it = session.baseIndex.find(key);
-        if (it == session.baseIndex.end())
+        key.clear();
+        SelectorRewriter::appendBaseKey(key, selector);
+        const Session::BaseEntry* entry = entryOf(session, key, false);
+        if (!entry)
             continue;
-        for (uint32_t index : it->second){
+        for (uint32_t index : entry->rules){
             const FlatRule& candidate = session.rules[index];
             if (candidate.index == rule.index || candidate.dropped)
                 continue;

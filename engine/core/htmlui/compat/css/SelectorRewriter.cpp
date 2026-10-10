@@ -1489,23 +1489,49 @@ bool SelectorRewriter::subjectsOverlap(const ComplexSelector& a, const ComplexSe
 }
 
 std::string SelectorRewriter::baseKey(const ComplexSelector& selector){
-    ComplexSelector copy = selector;
-    if (!copy.compounds.empty()){
-        Compound& last = copy.compounds.back();
-        ArenaList<SimpleSelector> kept;
-        for (const SimpleSelector& s : last.simples){
-            if (s.kind == Kind::PseudoClass || s.kind == Kind::Attribute || s.kind == Kind::PseudoElement)
-                continue;
-            kept.push_back(s);
+    std::string text;
+    appendBaseKey(text, selector);
+    return text;
+}
+
+void SelectorRewriter::appendSerialized(std::string& out, const ComplexSelector& selector){
+    appendComplex(out, selector);
+}
+
+// the selector with the pseudo-classes, attributes and pseudo-elements of its last compound
+// removed (a universal selector when nothing else is left), as serialize() writes it
+void SelectorRewriter::appendBaseKey(std::string& out, const ComplexSelector& selector){
+    for (size_t i = 0; i < selector.compounds.size(); i++){
+        const Compound& compound = selector.compounds[i];
+        if (i > 0 || (selector.relative && compound.combinator))
+            appendCombinator(out, compound.combinator, i == 0);
+        if (i + 1 < selector.compounds.size()){
+            appendCompound(out, compound);
+            continue;
         }
-        if (kept.empty()){
+        auto kept = [](const SimpleSelector& s){
+            return !(s.kind == Kind::PseudoClass || s.kind == Kind::Attribute || s.kind == Kind::PseudoElement);
+        };
+        bool any = false, onlyUniversal = true;
+        for (const SimpleSelector& s : compound.simples){
+            if (!kept(s))
+                continue;
+            any = true;
+            if (s.kind != Kind::Universal)
+                onlyUniversal = false;
+        }
+        if (!any){
             SimpleSelector universal;
             universal.kind = Kind::Universal;
-            kept.push_back(universal);
+            appendSimple(out, universal);
+            continue;
         }
-        last.simples = std::move(kept);
+        for (const SimpleSelector& s : compound.simples){
+            if (!kept(s) || (s.kind == Kind::Universal && !onlyUniversal))
+                continue;
+            appendSimple(out, s);
+        }
     }
-    return serialize(copy);
 }
 
 std::string SelectorRewriter::subjectTag(const ComplexSelector& selector){

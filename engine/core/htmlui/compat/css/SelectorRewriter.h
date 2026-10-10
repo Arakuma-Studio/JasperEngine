@@ -109,6 +109,9 @@ namespace jasperengine::htmlui::compat {
         // The base-rule key (§3.9.8): the CSS text with pseudo-classes, attribute and
         // structural selectors removed from the subject compound
         static std::string baseKey(const ComplexSelector& selector);
+        // serialize() and baseKey() appended to a buffer
+        static void appendSerialized(std::string& out, const ComplexSelector& selector);
+        static void appendBaseKey(std::string& out, const ComplexSelector& selector);
         // the subject compound's type selector ("" when none)
         static std::string subjectTag(const ComplexSelector& selector);
         // does the selector's subject chain start at the root (html, :root, the root id)?
