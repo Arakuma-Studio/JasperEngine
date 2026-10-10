@@ -318,6 +318,9 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & (1 << 25)) defs.push_back({"ALPHA_OPAQUE", "1"});               // 'Aop'
     if (prop & (1 << 26)) defs.push_back({"USE_INSTANCE_FADE", "1"});          // 'Ifd'
     if (prop & (1 << 27)) defs.push_back({"HAS_TERRAIN_PBR", "1"});            // 'Tpb'
+    if (prop & (1 << 28)) defs.push_back({"USE_VERTEX_LIGHTS", "1"});          // 'Vtl'
+    // bits 29-30: capacity tier of the per-object lights blocks ('Lc4', 'L16', neither = 8)
+    defs.push_back({"LIGHT_CAPACITY", (prop & (1 << 29)) ? "4" : ((prop & (1 << 30)) ? "16" : "8")});
 }
 
 void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
@@ -429,7 +432,8 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
         args.defines.push_back({"MAX_TERRAIN_LAYERS", std::to_string(MAX_TERRAIN_LAYERS)});
     }
     if (shaderType == ShaderType::MESH){
-        args.defines.push_back({"MAX_LIGHTS", "6"});
+        args.defines.push_back({"MAX_LIGHTS", std::to_string(MAX_LIGHTS)}); // legacy u_fs_lighting
+        args.defines.push_back({"SPOT_MASK_TILES", std::to_string(SPOT_MASK_ATLAS_TILES)});
         args.defines.push_back({"MAX_LIGHTS_2D", std::to_string(MAX_LIGHTS_2D)});
         args.defines.push_back({"MAX_SHADOW_ATLAS_SLOTS", std::to_string(MAX_SHADOW_ATLAS_SLOTS)});
         args.defines.push_back({"MAX_POINT_SHADOW_ATLAS_SLOTS", std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS)});
@@ -513,7 +517,8 @@ uint64_t ShaderVariantCompiler::getLibraryHash(){
         appendSignaturePart(input, "limits",
             std::to_string(MAX_TERRAIN_LAYERS) + "," + std::to_string(MAX_LIGHTS_2D) + "," +
             std::to_string(MAX_SHADOW_ATLAS_SLOTS) + "," + std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS) + "," +
-            std::to_string(MAX_SHADOWCASCADES));
+            std::to_string(MAX_SHADOWCASCADES) + "," + std::to_string(MAX_LIGHTS) + "," +
+            std::to_string(SPOT_MASK_ATLAS_TILES));
 
         const auto& sources = getLibrarySources();
         std::vector<std::string> names;

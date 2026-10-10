@@ -56,6 +56,23 @@ namespace jasperengine{
                                    SubmeshOverride_FoliageTransmission
     };
 
+    // The lights reaching a mesh (an instanced batch counts as one mesh), picked by
+    // RenderSystem under the scene's maxLightsPerObject: the ones it is lit by, and the rest
+    // folded into an L1 spherical-harmonics ambient. Picked again only when the mesh or a
+    // light reaching it changes.
+    struct MeshLights{
+        uint16_t lights[MAX_LIGHTS_PER_OBJECT] = {}; // scene light indices, ascending
+        unsigned int count = 0;
+        // per channel, rgb_c(n) = dot(sh[c].xyz, n) + sh[c].w: the scene ambient plus the
+        // reaching lights over the cap, evaluated at the bounds' center
+        Vector4 sh[3];
+        // what they were picked for
+        AABB bounds;
+        uint32_t layerBit = 0;
+        uint64_t reachMask = 0; // bit (index % 64) of each scene light that reached the mesh
+        uint64_t epoch = 0;     // RenderSystem's light list epoch, 0 = not picked yet
+    };
+
     struct JASPERENGINE_API Submesh{
         Material material;
         std::map<AttributeType, Attribute> attributes;
@@ -81,7 +98,11 @@ namespace jasperengine{
         int slotFSParams = -1;
         int slotFSTexCoordSets = -1;
         int slotVSFade = -1;
-        int slotFSLighting = -1;
+        int slotFSLighting = -1;        // legacy u_fs_lighting of an older fork
+        int slotVSObjectLights = -1;    // includes/lights.glsl
+        int slotFSObjectLights = -1;
+        int slotVSFrame = -1;           // includes/frame.glsl
+        int slotFSFrame = -1;
         int slotFSReflectionProbe = -1;
         int slotFSLighting2D = -1;
         int slotFSFog = -1;
@@ -129,6 +150,9 @@ namespace jasperengine{
         unsigned int vertexCount = 0;
 
         uint32_t overrideFields = 0; // SubmeshOverrideFlags edited after import, kept across loads
+
+        // material.lighting the shader variant was picked for
+        MaterialLighting loadedLighting = MaterialLighting::AUTO;
 
         bool faceCulling = true;
         bool textureShadow = false;
@@ -214,6 +238,9 @@ namespace jasperengine{
 
         std::vector<AABB> bonesAABB; // bind-pose bounds per bone index, empty when not skinned
         AABB skinnedAABB; // local bounds of the posed mesh, null when not skinned
+
+        // the lights it is drawn with, see MeshLights
+        MeshLights lights;
 
         bool receiveLights = true;
         bool receiveIBL = false; // image-based lighting from a sky environment or a reflection probe

@@ -487,7 +487,7 @@ Entities are plain integers (`0` = none).
 | `backgroundColor` (Vector4, rw); `setBackgroundColor(r,g,b[,a])` | |
 | `gravity2D` (Vector2, rw); `setGravity2D(x, y)` | |
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
-| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `shadowQuality`, `lightState`, `shadow2DQuality`, `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
+| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `shadowQuality`, `lightState`, `shadow2DQuality`, `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
 
 `PhysicsSystem` (from `self.scene:getPhysicsSystem()`): `gravity` / `gravity2D` /
@@ -674,7 +674,9 @@ sprites) sorted by their distance to the camera position, not by Z.
 
 `Material` (rw): `baseColorFactor`, `metallicFactor`, `roughnessFactor`, `alphaMode`,
 `alphaCutoff`, `emissiveFactor`, `baseColorTexture`, `emissiveTexture`,
-`metallicRoughnessTexture`, `occlusionTexture`, `normalTexture`.
+`metallicRoughnessTexture`, `occlusionTexture`, `normalTexture`, `lighting`
+(`MaterialLighting.*`: the stages evaluating the object's lights; set it on the copy
+`getMaterial(i)` returns, then `setMaterial(i, m)`).
 
 ### 4.4 Primitive (Mesh)
 
@@ -738,7 +740,8 @@ far)`, `setType(t)`, `setTarget(x, y, z)`, `disableTarget()`, `isUsingTarget()`,
 
 Light rw: `type` (`LightType.*`), `enabled`, `direction` (Vector3), `color` (Vector3),
 `range`, `intensity`, `innerConeAngle`, `outerConeAngle`, `shadows`, `cameraNear`,
-`cameraFar`, `automaticShadowCamera`, `numCascades`, `cullingMask`; methods
+`cameraFar`, `automaticShadowCamera`, `numCascades`, `cullingMask`, `shading`
+(`LightShading.*`, the stage evaluating it on MIXED-lighting materials); methods
 `setDirection(x,y,z)`, `setColor(r,g,b)`, `setConeAngle(a)`, `setRange(r)`,
 `setIntensity(i)`, `setShadows(b)`, `setShadowCameraNearFar(n, f)`.
 
@@ -943,6 +946,8 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
 | `TextureWrap` | `REPEAT`, `MIRRORED_REPEAT`, `CLAMP_TO_EDGE`, `CLAMP_TO_BORDER` |
 | `PrimitiveType` | `TRIANGLES`, `TRIANGLE_STRIP`, `POINTS`, `LINES` |
 | `MaterialAlphaMode` | `AUTO`, `ALPHA_OPAQUE`, `MASK`, `BLEND` |
+| `MaterialLighting` | `AUTO`, `PIXEL`, `VERTEX`, `MIXED` |
+| `LightShading` | `BOTH`, `PIXEL`, `VERTEX` |
 | `LightState` | `OFF`, `ON`, `AUTO` |
 | `ShadowQuality` | `NONE`, `LOW`, `MEDIUM`, `HIGH` |
 | `ShadowCaster2DShape` | `AUTO_QUAD`, `POLYGON` |

@@ -156,7 +156,8 @@ namespace jasperengine{
                         bool terrain, bool instanced, bool ibl, bool mirror, bool ssao = false,
                         bool light2d = false, bool shadows2d = false,
                         bool alphaMask = false, bool alphaOpaque = false, bool instanceFade = false,
-                        bool terrainPBR = false);
+                        bool terrainPBR = false,
+                        bool vertexLights = false, int lightCapacity = 8);
         // normals, vertexColorVec3/4 and uv1: the inputs a library depth program requires
         static uint32_t getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask = false, bool instanceFade = false,
                                                bool normals = false, bool vertexColorVec3 = false, bool vertexColorVec4 = false, bool uv1 = false);

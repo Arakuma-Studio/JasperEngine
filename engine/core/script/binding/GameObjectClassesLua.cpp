@@ -268,6 +268,13 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addVariable("SPOT", LightType::SPOT)
         .endNamespace();
 
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LightShading")
+        .addVariable("BOTH", LightShading::BOTH)
+        .addVariable("PIXEL", LightShading::PIXEL)
+        .addVariable("VERTEX", LightShading::VERTEX)
+        .endNamespace();
+
 #ifdef JASPERENGINE_PHYSICS_2D
     luabridge::getGlobalNamespace(L)
         .beginNamespace("Collider2DType")
@@ -521,6 +528,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("enabled", &Light::isEnabled, &Light::setEnabled)
         .addProperty("cullingMask", &getLuaCullingMask<Light>, &setLuaCullingMask<Light>)
+        .addProperty("shading", &Light::getShading, &Light::setShading)
         .addProperty("type", &Light::getType, &Light::setType)
         .addFunction("setType", &Light::setType)
         .addProperty("direction", &Light::getDirection, (void(Light::*)(Vector3))&Light::setDirection)

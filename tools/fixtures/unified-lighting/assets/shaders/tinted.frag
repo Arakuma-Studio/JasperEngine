@@ -1,0 +1,464 @@
+#version 450
+
+// A fork may declare a u_fs_customParams block: its members are filled by name from the
+// component's shader uniforms (Properties window, setShaderUniform). Two names are
+// written by the engine instead: "time" (seconds since startup) and "resolution"
+// (xy = render target size, zw = 1 / size). Do not mix int and float members: GL
+// uploads the block typed after its first member.
+//
+// The fork drives the color pass only: to keep shadows (and SSAO, when SSR is off) in
+// step with a discard here, fork the depth shader too (Depth Shader in Properties).
+//
+//   uniform u_fs_customParams {
+//       float time;
+//       vec4 tint;
+//   } customParams;
+
+#if !defined(MATERIAL_UNLIT) || defined(USE_MIRROR) || defined(USE_LIGHT2D)
+    in vec3 v_position;
+#endif
+
+// declared only when actually sampled (USE_MIRROR + a base texture to sample);
+// otherwise the GL driver strips the unused block and its bind slot mismatches
+#if defined(USE_MIRROR) && defined(HAS_UV_SET1)
+    uniform u_fs_mirror {
+        mat4 mirrorVP; // logical view-projection of the reflection camera
+    } mirrorParams;
+#endif
+
+#ifdef HAS_NORMALS
+#ifdef HAS_TANGENTS
+    in mat3 v_tbn;
+#else
+    in vec3 v_normal;
+#endif
+#endif
+
+#ifdef HAS_UV_SET1
+    #ifdef HAS_TEXTURERECT
+        centroid in vec2 v_uv1;
+    #else
+        in vec2 v_uv1;
+    #endif
+#endif
+
+#ifdef HAS_UV_SET2
+    #ifdef HAS_TEXTURERECT
+        centroid in vec2 v_uv2;
+    #else
+        in vec2 v_uv2;
+    #endif
+#endif
+
+#if defined(HAS_VERTEX_COLOR_VEC3) && !defined(HAS_INSTANCING)
+    in vec3 v_color;
+#endif
+#if defined(HAS_VERTEX_COLOR_VEC4) || defined(HAS_INSTANCING)
+    in vec4 v_color;
+#endif
+
+out vec4 g_finalColor;
+
+#if defined(HAS_UV_SET1) || defined(HAS_UV_SET2)
+    uniform texture2D u_baseColorTexture;
+    uniform sampler u_baseColor_smp;
+    #ifndef MATERIAL_UNLIT
+        uniform texture2D u_metallicRoughnessTexture;
+        uniform texture2D u_occlusionTexture;
+        uniform texture2D u_emissiveTexture;
+        uniform sampler u_metallicRoughness_smp;
+        uniform sampler u_occlusion_smp;
+        uniform sampler u_emissive_smp;
+    #endif
+    // the normal map is sampled by the lit path and by the 2D light path (which
+    // otherwise keeps the unlit fast path)
+    #if defined(HAS_NORMAL_MAP) && (!defined(MATERIAL_UNLIT) || defined(USE_LIGHT2D))
+        uniform texture2D u_normalTexture;
+        uniform sampler u_normal_smp;
+    #endif
+#endif
+
+uniform u_fs_pbrParams {
+    //Metallic material
+    vec4 baseColorFactor;
+    #ifndef MATERIAL_UNLIT
+        float metallicFactor;
+        float roughnessFactor;
+    #elif defined(ALPHA_MASK)
+        // Preserve the CPU Material prefix offsets used by the lit block.
+        float alphaMaskMetallicPadding;
+        float alphaMaskRoughnessPadding;
+    #endif
+    #ifdef ALPHA_MASK
+        float alphaCutoff;
+    #endif
+    #ifndef MATERIAL_UNLIT
+        vec3 emissiveFactor;
+        float foliageTransmission;
+    #endif
+} pbrParams;
+
+#if defined(USE_PUNCTUAL) || defined(USE_IBL)
+    uniform u_fs_lighting {
+        vec4 direction_range[MAX_LIGHTS]; //direction.xyz and range.w
+        vec4 color_intensity[MAX_LIGHTS]; //color.xyz and intensity.w
+        vec4 position_type[MAX_LIGHTS]; //position.xyz and type.w
+        vec4 inCone_ouCone_shadows_cascades[MAX_LIGHTS]; //innerConeCos.x, outerConeCos.y, shadowMapIndex.z (-1.0 if no shadow), numCascades.w
+        vec4 spotUp_maskAspect[MAX_LIGHTS]; //spot projection up.xyz; mask width/height in .w (0 = default circle)
+        vec4 eyePos; //eyePos.xyz
+        vec4 cameraDir; //camera backward axis.xyz
+        vec4 globalIllum; //globalColor.xyz and globalIntensity.w
+        vec4 envColor; //environment color.rgb (linear) and environment rotation.w (radians)
+        vec4 viewportInfo; //1.0/viewportSize.xy in .xy
+    } lighting;
+#endif
+
+#ifdef USE_LIGHT2D
+    uniform u_fs_lighting2d {
+        vec4 position_range[MAX_LIGHTS_2D];  //position.xy, height.z, range.w
+        vec4 color_intensity[MAX_LIGHTS_2D]; //color.rgb (linear) and intensity.w
+        vec4 falloff_shadow[MAX_LIGHTS_2D];  //falloff.x, shadowRow.y (-1.0 if no shadow), softness.z, bias.w
+        vec4 ambient;                        //ambient2D.rgb (linear, pre-multiplied by intensity) and numLights2D.w
+        vec4 atlasInfo;                      //1/atlasWidth.x, 1/MAX_LIGHTS_2D.y, atlasWidth.z
+    } lighting2d;
+    #ifdef USE_SHADOWS_2D
+        uniform texture2D u_shadow2DAtlas;
+        uniform sampler u_shadow2DAtlas_smp;
+    #endif
+#endif
+
+#ifdef USE_PUNCTUAL
+    uniform texture2D u_spotMaskAtlas;
+    uniform sampler u_spotMaskAtlas_smp;
+#endif
+
+#ifdef USE_SSAO
+    uniform texture2D u_ssaoTexture;
+    uniform sampler u_ssao_smp;
+#endif
+
+#ifdef USE_IBL
+    uniform textureCube u_lambertianEnvTexture;
+    uniform textureCube u_GGXEnvTexture;
+    uniform textureCube u_reflectionProbeTexture;
+    uniform sampler u_lambertianEnv_smp;
+    uniform sampler u_GGXEnv_smp;
+    uniform sampler u_reflectionProbe_smp;
+
+    uniform u_fs_reflectionProbe {
+        vec4 position_weight;
+        vec4 boxMin_intensity;
+        vec4 boxMax_lod;
+    } reflectionProbe;
+#endif
+
+#ifdef USE_SHADOWS
+
+    uniform u_fs_shadows {
+        vec4 bias_texSize_nearFar[MAX_SHADOW_ATLAS_SLOTS];
+        vec4 atlasRect[MAX_SHADOW_ATLAS_SLOTS];
+    } uShadows;
+
+    uniform u_fs_point_shadows {
+        vec4 bias_texSize_nearFar[MAX_POINT_SHADOW_ATLAS_SLOTS];
+        vec4 atlasRect[MAX_POINT_SHADOW_ATLAS_SLOTS];
+    } uPointShadows;
+
+    in vec4 v_lightProjPos[MAX_SHADOW_ATLAS_SLOTS];
+
+    uniform texture2D u_shadowAtlas;
+    uniform samplerShadow u_shadowAtlas_smp;
+    uniform texture2D u_shadowPointAtlas;
+    uniform sampler u_shadowPointAtlas_smp;
+#endif
+
+struct MaterialInfo{
+    float perceptualRoughness;      // roughness value, as authored by the model creator (input to shader)
+    vec3 f0;                        // full reflectance color (n incidence angle)
+
+    float alphaRoughness;           // roughness mapped to a more linear change in the roughness (proposed by [2])
+    vec3 albedoColor;
+
+    vec3 f90;                       // reflectance color at grazing angle
+    float metallic;
+
+    vec3 n;
+    vec3 baseColor; // getBaseColor()
+
+    //float sheenRoughnessFactor;
+    //vec3 sheenColorFactor;
+
+    //vec3 clearcoatF0;
+    //vec3 clearcoatF90;
+    //float clearcoatFactor;
+    //vec3 clearcoatNormal;
+    //float clearcoatRoughness;
+
+    //float transmissionFactor;
+};
+
+struct NormalInfo {
+    vec3 ng;   // Geometric normal
+    vec3 n;    // Pertubed normal
+    vec3 t;    // Pertubed tangent
+    vec3 b;    // Pertubed bitangent
+};
+
+const float normalScale = 1.0;
+const float occlusionStrength = 1.0;
+
+const float M_PI = 3.141592653589793;
+
+#include "includes/pbr.glsl"
+#include "includes/brdf.glsl"
+#ifndef MATERIAL_UNLIT
+    #include "includes/ibl.glsl"
+#endif
+#ifdef USE_PUNCTUAL
+    #include "includes/punctual.glsl"
+#endif
+#if defined(USE_SHADOWS) || defined(USE_SHADOWS_2D)
+    #include "includes/depth_util.glsl"
+#endif
+#ifdef USE_SHADOWS
+    #include "includes/shadows.glsl"
+#endif
+#ifdef USE_LIGHT2D
+    #include "includes/lighting2d.glsl"
+#endif
+#ifdef HAS_TERRAIN
+    // lets the include adapt the MaterialInfo declared above
+    #define TERRAIN_MATERIAL_INFO
+    #include "includes/terrain_fs.glsl"
+#endif
+#ifdef HAS_FOG
+    #include "includes/fog.glsl"
+#endif
+
+void main() {
+    vec4 baseColor = getBaseColor();
+
+    #if defined(USE_MIRROR) && defined(HAS_UV_SET1)
+        // planar reflection: sample the reflection texture by this fragment's
+        // screen position (projected through the reflection camera), not mesh UVs.
+        // Y is flipped for the top-left framebuffer origin (all backends).
+        vec4 mirrorClip = mirrorParams.mirrorVP * vec4(v_position, 1.0);
+        vec2 mirrorUV = vec2(mirrorClip.x / mirrorClip.w * 0.5 + 0.5,
+                             0.5 - mirrorClip.y / mirrorClip.w * 0.5);
+        baseColor = pbrParams.baseColorFactor * sRGBToLinear(texture(sampler2D(u_baseColorTexture, u_baseColor_smp), mirrorUV)) * getVertexColor();
+    #endif
+
+    #if defined(HAS_TERRAIN) && !defined(HAS_TERRAIN_PBR)
+        baseColor = getTerrainColor(baseColor);
+    #elif defined(HAS_TERRAIN_PBR) && defined(MATERIAL_UNLIT)
+        // unlit shows the one thing a painted layer still means here
+        baseColor = getTerrainSurface(baseColor, vec3(0.0, 1.0, 0.0), 1.0, 0.0).color;
+    #endif
+
+    #ifdef ALPHA_MASK
+        if (baseColor.a < pbrParams.alphaCutoff) {
+            discard;
+        }
+    #endif
+    #if defined(ALPHA_MASK) || defined(ALPHA_OPAQUE)
+        // glTF MASK and OPAQUE both render surviving fragments fully opaque.
+        baseColor.a = 1.0;
+    #endif
+
+    #ifdef MATERIAL_UNLIT
+        #ifdef USE_LIGHT2D
+            baseColor.rgb *= getLight2DIntensity(v_position, getNormal2D(), true);
+        #endif
+        #ifdef HAS_FOG
+            baseColor.rgb = getFogColor(baseColor.rgb);
+        #endif
+        g_finalColor = (vec4(linearTosRGB(baseColor.rgb), baseColor.a));
+        return;
+    #endif
+
+    #ifndef MATERIAL_UNLIT
+        NormalInfo normalInfo = getNormalInfo();
+        vec3 n = normalInfo.n;
+        vec3 t = normalInfo.t;
+        vec3 b = normalInfo.b;
+
+        MaterialInfo materialInfo = {0.0, vec3(0.0), 0.0, vec3(0.0), vec3(0.0), 0.0, vec3(0.0), vec3(0.0)};
+        materialInfo.baseColor = baseColor.rgb;
+
+        // The default index of refraction of 1.5 yields a dielectric normal incidence reflectance of 0.04.
+        float ior = 1.5;
+        float f0_ior = 0.04;
+
+        materialInfo = getMetallicRoughnessInfo(materialInfo, f0_ior);
+
+        #ifdef HAS_TERRAIN_PBR
+            // painted layers own the whole surface, so it is evaluated once and applied here
+            TerrainSurface terrainSurface = getTerrainSurface(baseColor, n, materialInfo.perceptualRoughness, materialInfo.metallic);
+            baseColor = terrainSurface.color;
+            materialInfo.baseColor = baseColor.rgb;
+            materialInfo = applyTerrainSurface(materialInfo, terrainSurface, f0_ior);
+            n = terrainSurface.normal;
+        #endif
+
+        materialInfo.perceptualRoughness = clamp(materialInfo.perceptualRoughness, 0.0, 1.0);
+        materialInfo.metallic = clamp(materialInfo.metallic, 0.0, 1.0);
+
+        // Roughness is authored as perceptual roughness; as is convention,
+        // convert to material roughness by squaring the perceptual roughness.
+        materialInfo.alphaRoughness = materialInfo.perceptualRoughness * materialInfo.perceptualRoughness;
+
+        // Compute reflectance.
+        float reflectance = max(max(materialInfo.f0.r, materialInfo.f0.g), materialInfo.f0.b);
+
+        // Anything less than 2% is physically impossible and is instead considered to be shadowing. Compare to "Real-Time-Rendering" 4th editon on page 325.
+        materialInfo.f90 = vec3(clamp(reflectance * 50.0, 0.0, 1.0));
+
+        materialInfo.n = n;
+
+        // LIGHTING
+        vec3 f_specular = vec3(0.0);
+        vec3 f_diffuse = vec3(0.0);
+        vec3 f_emissive = vec3(0.0);
+
+        #if defined(USE_PUNCTUAL) || defined(USE_IBL)
+            vec3 toEye = lighting.eyePos.xyz - v_position;
+            vec3 v = normalize(toEye);
+        #endif
+
+        #ifdef USE_IBL
+            // image based lighting from the environment (sky) cubemaps
+            f_specular += getIBLRadianceGGX(n, v, v_position, materialInfo.perceptualRoughness, materialInfo.f0);
+            f_diffuse += getIBLRadianceLambertian(n, v, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
+        #else
+            #ifdef USE_PUNCTUAL
+                // environment light from a constant color (scene global illumination)
+                vec3 ambientLight = lighting.globalIllum.xyz * lighting.globalIllum.w;
+                float ambNdotV = clampedDot(n, v);
+                f_specular += envRadianceGGX(ambientLight, ambNdotV, materialInfo.perceptualRoughness, materialInfo.f0);
+                f_diffuse += envRadianceLambertian(ambientLight, ambNdotV, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
+            #endif
+        #endif
+
+        #if defined(HAS_UV_SET1) || defined(HAS_UV_SET2)
+            float ao = getOcclusionTexture().r;
+            f_diffuse = mix(f_diffuse, f_diffuse * ao, occlusionStrength);
+            // apply ambient occlusion too all lighting that is not punctual
+            f_specular = mix(f_specular, f_specular * ao, occlusionStrength);
+        #endif
+
+        #ifdef HAS_TERRAIN_PBR
+            f_diffuse *= terrainSurface.occlusion;
+            f_specular *= terrainSurface.occlusion;
+        #endif
+
+        #ifdef USE_SSAO
+            // Screen-space AO modulates only the ambient/indirect term (computed
+            // above); the direct punctual lighting added below is unaffected.
+            // The AO buffer is in depth orientation, so flip Y when that differs
+            // from the color target (viewportInfo.w=1).
+            vec2 ssaoUV = gl_FragCoord.xy * lighting.viewportInfo.xy;
+            if (lighting.viewportInfo.w > 0.5) ssaoUV.y = 1.0 - ssaoUV.y;
+            float screenAO = texture(sampler2D(u_ssaoTexture, u_ssao_smp), ssaoUV).r;
+            // debug: visualize the raw AO buffer (viewportInfo.z = 1)
+            if (lighting.viewportInfo.z > 0.5){
+                g_finalColor = vec4(vec3(screenAO), 1.0);
+                return;
+            }
+            f_diffuse *= screenAO;
+            f_specular *= screenAO;
+        #endif
+
+        // Apply light sources
+        #ifdef USE_PUNCTUAL
+            for (int i = 0; i < MAX_LIGHTS; ++i){
+
+                //Cannot be in function to avoid GLES2 index errors
+                //TODO: check this again, removed GLES2 support
+                Light light = Light(
+                    int(lighting.position_type[i].w),
+                    lighting.direction_range[i].xyz,
+                    lighting.color_intensity[i].xyz,
+                    lighting.position_type[i].xyz,
+                    lighting.direction_range[i].w,
+                    lighting.color_intensity[i].w,
+                    lighting.inCone_ouCone_shadows_cascades[i].x,
+                    lighting.inCone_ouCone_shadows_cascades[i].y,
+                    lighting.spotUp_maskAspect[i].xyz,
+                    lighting.spotUp_maskAspect[i].w,
+                    (lighting.inCone_ouCone_shadows_cascades[i].z < 0.0)?false:true,
+                    int(lighting.inCone_ouCone_shadows_cascades[i].z),
+                    int(lighting.inCone_ouCone_shadows_cascades[i].w)
+                ); 
+
+                if (light.intensity > 0.0){
+
+                    vec3 pointToLight;
+                    if(light.type != LightType_Directional) {
+                        pointToLight = light.position - v_position;
+                    } else {
+                        pointToLight = -light.direction;
+                    }
+
+                    vec3 l = normalize(pointToLight);   // Direction from surface point to light
+                    vec3 h = normalize(l + v);          // Direction of the vector between l and v, called halfway vector
+                    float NdotL = clampedDot(n, l);
+                    float NdotV = clampedDot(n, v);
+                    float NdotH = clampedDot(n, h);
+                    float LdotH = clampedDot(l, h);
+                    float VdotH = clampedDot(v, h);
+
+                    float shadow = 1.0;
+                    #ifdef USE_SHADOWS
+                        if (light.shadows){
+                            if(light.type == LightType_Spot){ 
+                                shadow = 1.0 - shadowCalculationPCF(light.shadowMapIndex, NdotL);
+                            }else if(light.type == LightType_Directional){
+                                float viewDepth = dot(lighting.cameraDir.xyz, toEye);
+                                shadow = 1.0 - shadowCascadedCalculationPCF(light.shadowMapIndex, light.numShadowCascades, viewDepth, NdotL);
+                            }else if(light.type == LightType_Point){
+                                shadow = 1.0 - shadowCubeCalculationPCF(light.shadowMapIndex, -pointToLight, NdotL);
+                            }
+                        }
+                    #endif
+
+                    if (pbrParams.foliageTransmission > 0.0) {
+                        // Thin-leaf approximation. Use the same shadow visibility as
+                        // direct lighting, so closed canopy does not glow in the dark.
+                        float backlight = max(dot(-n, l), 0.0);
+                        float forwardScatter = 0.35 + 0.65 * pow(max(dot(-l, v), 0.0), 3.0);
+                        f_diffuse += shadow * getLighIntensity(light, pointToLight, i)
+                            * materialInfo.albedoColor * clamp(pbrParams.foliageTransmission, 0.0, 1.0)
+                            * backlight * forwardScatter;
+                    }
+                    if (NdotL > 0.0 || NdotV > 0.0){
+                        // Calculation of analytical light
+                        // https://github.com/KhronosGroup/glTF/tree/master/specification/2.0#acknowledgments AppendixB
+                        vec3 intensity = getLighIntensity(light, pointToLight, i);
+                        f_diffuse += shadow * intensity * NdotL *  BRDF_lambertian(materialInfo.f0, materialInfo.f90, materialInfo.albedoColor, VdotH);
+                        f_specular += shadow * intensity * NdotL * BRDF_specularGGX(materialInfo.f0, materialInfo.f90, materialInfo.alphaRoughness, VdotH, NdotL, NdotV, NdotH);
+                    }
+                }
+            }
+        #endif
+
+        f_emissive = pbrParams.emissiveFactor;
+        #if defined(HAS_UV_SET1) || defined(HAS_UV_SET2)
+            f_emissive *= sRGBToLinear(getEmissiveTexture().rgb);
+        #endif
+
+        vec3 color = f_emissive + f_diffuse + f_specular;
+
+        #ifdef USE_LIGHT2D
+            // mixed scene: 2D lights add on top of the PBR result (scene ambient is
+            // already applied above, so skip the 2D ambient here)
+            color.rgb += baseColor.rgb * getLight2DIntensity(v_position, n, false);
+        #endif
+
+        #ifdef HAS_FOG
+            color.rgb = getFogColor(color.rgb);
+        #endif
+
+        // the fork: a green tint over the lit result
+        g_finalColor = vec4(linearTosRGB(color.rgb) * vec3(0.45, 1.0, 0.55), baseColor.a);
+    #endif
+}

@@ -175,6 +175,11 @@ namespace jasperengine{
         Vector3 getGlobalIlluminationColor() const;
         Vector3 getGlobalIlluminationColorLinear() const;
 
+        // lights each object is lit by (1..16); the other lights reaching it are folded into
+        // its spherical-harmonics ambient
+        void setMaxLightsPerObject(int maxLightsPerObject);
+        int getMaxLightsPerObject() const;
+
         void setAmbientLight2D(float intensity, Vector3 color);
         void setAmbientLight2D(float intensity);
         void setAmbientLight2D(Vector3 color);

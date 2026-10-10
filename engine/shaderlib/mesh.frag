@@ -98,19 +98,24 @@ uniform u_fs_pbrParams {
     #endif
 } pbrParams;
 
-#if defined(USE_PUNCTUAL) || defined(USE_IBL)
-    uniform u_fs_lighting {
-        vec4 direction_range[MAX_LIGHTS]; //direction.xyz and range.w
-        vec4 color_intensity[MAX_LIGHTS]; //color.xyz and intensity.w
-        vec4 position_type[MAX_LIGHTS]; //position.xyz and type.w
-        vec4 inCone_ouCone_shadows_cascades[MAX_LIGHTS]; //innerConeCos.x, outerConeCos.y, shadowMapIndex.z (-1.0 if no shadow), numCascades.w
-        vec4 spotUp_maskAspect[MAX_LIGHTS]; //spot projection up.xyz; mask width/height in .w (0 = default circle)
-        vec4 eyePos; //eyePos.xyz
-        vec4 cameraDir; //camera backward axis.xyz
-        vec4 globalIllum; //globalColor.xyz and globalIntensity.w
-        vec4 envColor; //environment color.rgb (linear) and environment rotation.w (radians)
-        vec4 viewportInfo; //1.0/viewportSize.xy in .xy
-    } lighting;
+// Lit reads the camera (eye, ambient, environment, viewport) from the engine frame block,
+// and its lights from the object's list (includes/lights.glsl): the pixel lights here
+// (USE_PUNCTUAL), the vertex lights through v_vertexLight (USE_VERTEX_LIGHTS). A fork
+// written before them may declare the legacy u_fs_lighting block instead: the engine still
+// fills it, with the object's first MAX_LIGHTS pixel lights.
+#ifndef MATERIAL_UNLIT
+    #define FRAME_FS
+    #include "includes/frame.glsl"
+#endif
+
+#ifdef USE_PUNCTUAL
+    #define LIGHTS_FS
+    #include "includes/lights.glsl"
+#endif
+
+#ifdef USE_VERTEX_LIGHTS
+    // MIXED (with USE_PUNCTUAL): the vertex lights' diffuse; VERTEX: plus the SH ambient
+    in vec3 v_vertexLight;
 #endif
 
 #ifdef USE_LIGHT2D
@@ -125,11 +130,6 @@ uniform u_fs_pbrParams {
         uniform texture2D u_shadow2DAtlas;
         uniform sampler u_shadow2DAtlas_smp;
     #endif
-#endif
-
-#ifdef USE_PUNCTUAL
-    uniform texture2D u_spotMaskAtlas;
-    uniform sampler u_spotMaskAtlas_smp;
 #endif
 
 #ifdef USE_SSAO
@@ -150,26 +150,6 @@ uniform u_fs_pbrParams {
         vec4 boxMin_intensity;
         vec4 boxMax_lod;
     } reflectionProbe;
-#endif
-
-#ifdef USE_SHADOWS
-
-    uniform u_fs_shadows {
-        vec4 bias_texSize_nearFar[MAX_SHADOW_ATLAS_SLOTS];
-        vec4 atlasRect[MAX_SHADOW_ATLAS_SLOTS];
-    } uShadows;
-
-    uniform u_fs_point_shadows {
-        vec4 bias_texSize_nearFar[MAX_POINT_SHADOW_ATLAS_SLOTS];
-        vec4 atlasRect[MAX_POINT_SHADOW_ATLAS_SLOTS];
-    } uPointShadows;
-
-    in vec4 v_lightProjPos[MAX_SHADOW_ATLAS_SLOTS];
-
-    uniform texture2D u_shadowAtlas;
-    uniform samplerShadow u_shadowAtlas_smp;
-    uniform texture2D u_shadowPointAtlas;
-    uniform sampler u_shadowPointAtlas_smp;
 #endif
 
 struct MaterialInfo{
@@ -204,14 +184,8 @@ const float M_PI = 3.141592653589793;
 #ifndef MATERIAL_UNLIT
     #include "includes/ibl.glsl"
 #endif
-#ifdef USE_PUNCTUAL
-    #include "includes/punctual.glsl"
-#endif
-#if defined(USE_SHADOWS) || defined(USE_SHADOWS_2D)
+#ifdef USE_SHADOWS_2D
     #include "includes/depth_util.glsl"
-#endif
-#ifdef USE_SHADOWS
-    #include "includes/shadows.glsl"
 #endif
 #ifdef USE_LIGHT2D
     #include "includes/lighting2d.glsl"
@@ -307,23 +281,32 @@ void main() {
         vec3 f_diffuse = vec3(0.0);
         vec3 f_emissive = vec3(0.0);
 
-        #if defined(USE_PUNCTUAL) || defined(USE_IBL)
-            vec3 toEye = lighting.eyePos.xyz - v_position;
-            vec3 v = normalize(toEye);
-        #endif
+        vec3 toEye = frame.cameraPosition.xyz - v_position;
+        vec3 v = normalize(toEye);
 
         #ifdef USE_IBL
             // image based lighting from the environment (sky) cubemaps
             f_specular += getIBLRadianceGGX(n, v, v_position, materialInfo.perceptualRoughness, materialInfo.f0);
             f_diffuse += getIBLRadianceLambertian(n, v, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
-        #else
             #ifdef USE_PUNCTUAL
-                // environment light from a constant color (scene global illumination)
-                vec3 ambientLight = lighting.globalIllum.xyz * lighting.globalIllum.w;
-                float ambNdotV = clampedDot(n, v);
-                f_specular += envRadianceGGX(ambientLight, ambNdotV, materialInfo.perceptualRoughness, materialInfo.f0);
-                f_diffuse += envRadianceLambertian(ambientLight, ambNdotV, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
+                // the lights over the object's cap, folded into its SH ambient (zero without any)
+                vec3 overflowLight = max(ambientLight(n) - frame.ambient.rgb, vec3(0.0)) / M_PI;
+                float overflowNdotV = clampedDot(n, v);
+                f_specular += envRadianceGGX(overflowLight, overflowNdotV, materialInfo.perceptualRoughness, materialInfo.f0);
+                f_diffuse += envRadianceLambertian(overflowLight, overflowNdotV, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
             #endif
+        #else
+            // environment light from the scene ambient (global illumination); with pixel
+            // lights, plus the lights over the object's cap from its SH ambient, which is the
+            // scene ambient alone when none is over the cap
+            #ifdef USE_PUNCTUAL
+                vec3 ambientLight = ambientLightScaled(n, frame.ambient.rgb, 1.0 / M_PI);
+            #else
+                vec3 ambientLight = frame.ambient.rgb;
+            #endif
+            float ambNdotV = clampedDot(n, v);
+            f_specular += envRadianceGGX(ambientLight, ambNdotV, materialInfo.perceptualRoughness, materialInfo.f0);
+            f_diffuse += envRadianceLambertian(ambientLight, ambNdotV, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
         #endif
 
         #if defined(HAS_UV_SET1) || defined(HAS_UV_SET2)
@@ -343,11 +326,11 @@ void main() {
             // above); the direct punctual lighting added below is unaffected.
             // The AO buffer is in depth orientation, so flip Y when that differs
             // from the color target (viewportInfo.w=1).
-            vec2 ssaoUV = gl_FragCoord.xy * lighting.viewportInfo.xy;
-            if (lighting.viewportInfo.w > 0.5) ssaoUV.y = 1.0 - ssaoUV.y;
+            vec2 ssaoUV = gl_FragCoord.xy * frame.viewportInfo.xy;
+            if (frame.viewportInfo.w > 0.5) ssaoUV.y = 1.0 - ssaoUV.y;
             float screenAO = texture(sampler2D(u_ssaoTexture, u_ssao_smp), ssaoUV).r;
             // debug: visualize the raw AO buffer (viewportInfo.z = 1)
-            if (lighting.viewportInfo.z > 0.5){
+            if (frame.viewportInfo.z > 0.5){
                 g_finalColor = vec4(vec3(screenAO), 1.0);
                 return;
             }
@@ -355,34 +338,16 @@ void main() {
             f_specular *= screenAO;
         #endif
 
-        // Apply light sources
+        // Apply light sources: the object's pixel lights
         #ifdef USE_PUNCTUAL
-            for (int i = 0; i < MAX_LIGHTS; ++i){
+            for (int i = 0; i < LIGHT_CAPACITY; ++i){
+                if (i >= pixelLightCount()) break;
 
-                Light light = Light(
-                    int(lighting.position_type[i].w),
-                    lighting.direction_range[i].xyz,
-                    lighting.color_intensity[i].xyz,
-                    lighting.position_type[i].xyz,
-                    lighting.direction_range[i].w,
-                    lighting.color_intensity[i].w,
-                    lighting.inCone_ouCone_shadows_cascades[i].x,
-                    lighting.inCone_ouCone_shadows_cascades[i].y,
-                    lighting.spotUp_maskAspect[i].xyz,
-                    lighting.spotUp_maskAspect[i].w,
-                    (lighting.inCone_ouCone_shadows_cascades[i].z < 0.0)?false:true,
-                    int(lighting.inCone_ouCone_shadows_cascades[i].z),
-                    int(lighting.inCone_ouCone_shadows_cascades[i].w)
-                ); 
+                Light light = getLightData(i);
 
                 if (light.intensity > 0.0){
 
-                    vec3 pointToLight;
-                    if(light.type != LightType_Directional) {
-                        pointToLight = light.position - v_position;
-                    } else {
-                        pointToLight = -light.direction;
-                    }
+                    vec3 pointToLight = getLightVector(light, v_position);
 
                     vec3 l = normalize(pointToLight);   // Direction from surface point to light
                     vec3 h = normalize(l + v);          // Direction of the vector between l and v, called halfway vector
@@ -393,16 +358,7 @@ void main() {
 
                     float shadow = 1.0;
                     #ifdef USE_SHADOWS
-                        if (light.shadows){
-                            if(light.type == LightType_Spot){ 
-                                shadow = 1.0 - shadowCalculationPCF(light.shadowMapIndex, NdotL);
-                            }else if(light.type == LightType_Directional){
-                                float viewDepth = dot(lighting.cameraDir.xyz, toEye);
-                                shadow = 1.0 - shadowCascadedCalculationPCF(light.shadowMapIndex, light.numShadowCascades, viewDepth, NdotL);
-                            }else if(light.type == LightType_Point){
-                                shadow = 1.0 - shadowCubeCalculationPCF(light.shadowMapIndex, -pointToLight, NdotL);
-                            }
-                        }
+                        shadow = lightShadow(i, v_position, n);
                     #endif
 
                     if (pbrParams.foliageTransmission > 0.0) {
@@ -423,6 +379,18 @@ void main() {
                     }
                 }
             }
+        #endif
+
+        #ifdef USE_VERTEX_LIGHTS
+            // the vertex lights: Lambert diffuse, as the pixel lights' (BRDF_lambertian)
+            #ifdef USE_PUNCTUAL
+                vec3 vertexLight = v_vertexLight;
+            #else
+                // VERTEX: v_vertexLight carries the SH ambient too (no lights block here),
+                // the scene ambient part of which is applied above
+                vec3 vertexLight = max(v_vertexLight - frame.ambient.rgb, vec3(0.0));
+            #endif
+            f_diffuse += vertexLight * materialInfo.albedoColor / M_PI;
         #endif
 
         f_emissive = pbrParams.emissiveFactor;

@@ -15,6 +15,8 @@
 #include "subsystem/PhysicsSystem.h"
 #include "util/Color.h"
 
+#include <algorithm>
+
 using namespace jasperengine;
 
 Scene::Scene() : EntityRegistry() {
@@ -386,6 +388,15 @@ Vector3 Scene::getGlobalIlluminationColor() const{
 
 Vector3 Scene::getGlobalIlluminationColorLinear() const{
     return settings.globalIllumColor;
+}
+
+void Scene::setMaxLightsPerObject(int maxLightsPerObject){
+    // a new capacity tier reloads the meshes (RenderSystem::update)
+    settings.maxLightsPerObject = std::clamp(maxLightsPerObject, 1, MAX_LIGHTS_PER_OBJECT);
+}
+
+int Scene::getMaxLightsPerObject() const{
+    return settings.maxLightsPerObject;
 }
 
 void Scene::setAmbientLight2D(float intensity, Vector3 color){

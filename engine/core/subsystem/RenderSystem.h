@@ -38,13 +38,15 @@
 #include <unordered_map>
 
 namespace jasperengine{
+	// Legacy u_fs_lighting, declared by forks written before per-object lights: filled per
+	// draw with the object's first MAX_LIGHTS pixel lights (the camera part per camera)
 	typedef struct fs_lighting_t {
 	    Vector4 direction_range[MAX_LIGHTS];
 	    Vector4 color_intensity[MAX_LIGHTS];
 	    Vector4 position_type[MAX_LIGHTS];
 	    Vector4 inCon_ouCon_shadows_cascades[MAX_LIGHTS];
 	    Vector4 spotUp_maskAspect[MAX_LIGHTS]; // world up.xyz; w > 0 means a ready mask and stores its width/height
-		Vector4 eyePos;
+		Vector4 eyePos; // w = spot mask atlas tile of each light, 3 bits per light
 		Vector4 cameraDir; // xyz = camera backward axis, w = 3D shadow PCF tap radius
 		Vector4 globalIllum; //global illumination
 		Vector4 envColor; //environment color.rgb (linear) and environment rotation.w (radians)
@@ -74,7 +76,22 @@ namespace jasperengine{
 		Vector4 mainLightDirection; // xyz towards the brightest directional light, w intensity (0 = none)
 		Vector4 mainLightColor;     // rgb linear
 		Vector4 ambient;            // rgb scene ambient (global illumination colour * intensity)
+		// engine-internal (RenderSystem::fillFrameLighting)
+		Vector4 lightingInfo;           // x 3D shadow PCF tap radius
+		Vector4 environment;            // rgb environment colour (linear), w environment rotation (radians)
+		Vector4 viewportInfo;           // xy 1 / viewport size, z SSAO debug view, w SSAO Y flip
+		Vector4 fogColor_type;          // rgb fog colour, w type (0 linear, 1 exponential, 2 exponential squared)
+		Vector4 fogDensity_start_end;   // x density, z linear start, w linear end
 	} frame_t;
+
+	// u_vs_objectLights / u_fs_objectLights (shaderlib/includes/lights.glsl) at the largest
+	// capacity. A variant of capacity C reads the first 4 + 5 * C vectors: the header, then
+	// position_type, direction_range, color_intensity, cone_shadow and spot_mask of C lights.
+	typedef struct object_lights_t {
+		Vector4 counts; // x pixel lights, y vertex lights, zw spot mask tiles (3 bits per pixel light)
+		Vector4 sh[3];  // L1 SH ambient per channel: rgb_c(n) = dot(sh[c].xyz, n) + sh[c].w
+		Vector4 lights[5 * MAX_LIGHTS_PER_OBJECT];
+	} object_lights_t;
 
 	typedef struct fs_terrain_layers_t {
 		Vector4 colorFactor[MAX_TERRAIN_LAYERS]; // rgb = linear tint, w = 1 on a PBR layer
@@ -183,6 +200,7 @@ namespace jasperengine{
 	// a build has to ship.
 	struct MeshShaderEnvironment {
 		bool lights = false;            // punctual lights (Light components, or lighting forced on)
+		int lightCapacity = 8;          // per-object lights tier (RenderSystem::getLightCapacity)
 		bool shadows = false;           // a light casts shadows
 		bool ibl = false;               // the skybox's environment maps are ready
 		bool reflectionProbes = false;
@@ -215,6 +233,9 @@ namespace jasperengine{
 		bool occlusionTexture = false;
 		bool emissiveTexture = false;
 		MaterialAlphaMode alphaMode = MaterialAlphaMode::AUTO;
+		MaterialLighting lighting = MaterialLighting::AUTO;
+		// the shader's lighting mode for AUTO (built-in Lit: PIXEL)
+		MaterialLighting defaultLighting = MaterialLighting::PIXEL;
 		bool textureShadow = false;
 		// mesh
 		bool receiveLights = true;
@@ -372,10 +393,11 @@ namespace jasperengine{
 		// pipelines the objects were loaded with, to catch a destination change
 		uint16_t loadedPipelines;
 
-		// Projected spotlight masks share one horizontal R8 atlas. Each punctual-light
-		// array index maps directly to one fixed-size atlas tile.
+		// Projected spotlight masks share one horizontal R8 atlas of SPOT_MASK_ATLAS_TILES
+		// fixed-size tiles, given to the masked spot lights in scene order
+		// (LightComponent::spotMaskTile).
 		TextureRender spotMaskAtlas;
-		std::array<SpotMaskAtlasEntry, MAX_LIGHTS> spotMaskAtlasEntries;
+		std::array<SpotMaskAtlasEntry, SPOT_MASK_ATLAS_TILES> spotMaskAtlasEntries;
 		std::vector<unsigned char> spotMaskAtlasPixels;
 		bool spotMaskAtlasCreated;
 
@@ -466,14 +488,19 @@ namespace jasperengine{
 		// camera samples another camera's maps drawn after the same update() when they hold
 		// the same depths, and draws its own otherwise.
 		struct CameraShadows{
+			// the camera part of the legacy u_fs_lighting (eyePos, cameraDir, globalIllum,
+			// envColor, viewportInfo); its lights come from each object's list
 			fs_lighting_t fs_lighting;
+			// the frame block (includes/frame.glsl) of the camera's passes
+			frame_t frame;
 			vs_shadows_t vs_shadows;
 			fs_shadows_t fs_shadows;
 			fs_point_shadows_t fs_point_shadows;
 
-			// the cascades below, else the lights' own (the scene camera)
+			// the cascades below, else the lights' own (the scene camera); by the directional
+			// light's base shadow slot
 			bool ownLightCameras = false;
-			std::array<LightCameraSet, MAX_LIGHTS> lightCameras;
+			std::array<LightCameraSet, MAX_SHADOW_ATLAS_SLOTS> lightCameras;
 
 			// layers the camera draws, so the layers that cast into its maps
 			uint32_t cameraMask = LAYER_MASK_EVERYTHING;
@@ -705,7 +732,7 @@ namespace jasperengine{
 		uint32_t cameraCasterLayers = 0;
 		// by light: layers holding casters that can reach its maps (all casters for a
 		// directional light, those inside its shadow frustums for a spot or point light)
-		uint32_t lightCasterLayers[MAX_LIGHTS] = {};
+		std::vector<uint32_t> lightCasterLayers;
 		uint64_t casterLayersEpoch = 0;
 		// what a camera being prepared wants its atlases to hold
 		ShadowAtlasKey wantedProjectiveKey;
@@ -833,13 +860,38 @@ namespace jasperengine{
 
 		bool needUpdateShadowBindings;
 
-		// Light culling masks per light slot (Everything past the scene's lights). When one
-		// leaves out a layer, drawMesh lights that layer's meshes from fs_lightingMasked:
-		// the view's fs_lighting with those lights at zero intensity. The masks belong to
-		// the lights, so every view shares them; the masked copy is scratch per draw.
-		uint32_t lightCullingMasks[MAX_LIGHTS];
-		bool hasLightCullingMasks;
-		fs_lighting_t fs_lightingMasked;
+		// Unified lighting: every light of the scene in the form the per-object lists copy
+		// (lights.glsl layout), rebuilt each update() by updateSceneLights. The lights whose
+		// data changed since the previous update are in changedLights; each mesh picks the
+		// lights reaching it in updateObjectLights (MeshComponent::lights), honouring the
+		// lights' culling masks, and drawMesh uploads them per draw.
+		struct SceneLight{
+			Vector4 position_type;    // xyz world position, w type (0 directional, 1 point, 2 spot)
+			Vector4 direction_range;  // xyz world direction, w range
+			Vector4 color_intensity;  // rgb linear colour, w intensity
+			Vector4 cone_shadow;      // inner, outer cone cos, shadow slot, cascades
+			Vector4 spot_mask;        // xyz projection up, w mask aspect (0 = none)
+			uint32_t cullingMask = LAYER_MASK_EVERYTHING;
+			int spotMaskTile = -1;
+			LightShading shading = LightShading::BOTH;
+			bool active = false;      // enabled, on an active entity, giving light
+
+			bool operator==(const SceneLight& other) const;
+		};
+		std::vector<SceneLight> sceneLights;
+		std::vector<SceneLight> previousSceneLights;
+		std::vector<Entity> sceneLightEntities;
+		std::vector<int> changedLights;
+		// bumped when every mesh has to pick its lights again: lights added, removed or
+		// reordered, the scene ambient or the cap changed
+		uint64_t lightListEpoch;
+		Vector3 lightListAmbient;
+		int lightListCap;
+		// capacity tier the meshes loaded their variants with
+		int lightCapacityTier;
+		// per-draw scratch of drawMesh
+		object_lights_t objectLightsBlock;
+		fs_lighting_t legacyLightingBlock;
 		fs_lighting2d_t fs_lighting2d;
 		fs_fog_t fs_fog;
 
@@ -943,9 +995,22 @@ namespace jasperengine{
 		void createEmptyTextures();
 		int checkLightsAndShadow();
 		bool loadLights(int numLights);
-		// the lighting block and shadow uniforms of target for camera
+		// the camera part of the lighting (frame block, legacy block) and the shadow uniforms of target for camera
 		void processLights(CameraShadows& target, int numLights, const CameraComponent& camera, const Transform& cameraTransform);
 		void updateSpotMaskAtlas(int numLights);
+		// unified lighting: the scene's lights, then the lights each mesh is lit by
+		void updateSceneLights();
+		void updateObjectLights();
+		void selectMeshLights(Entity entity, MeshComponent& mesh, const Transform& transform);
+		// the per-object lights block of a submesh variant (its lighting mode and capacity)
+		// for the camera pass being drawn; returns the bytes the variant's block holds
+		unsigned int buildObjectLights(const MeshComponent& mesh, uint32_t properties, object_lights_t& block) const;
+		// the legacy u_fs_lighting of an older fork: the object's first pixel lights
+		void buildLegacyLighting(const MeshComponent& mesh, uint32_t properties, fs_lighting_t& block) const;
+		// the engine-internal members of the frame block (lighting, environment, viewport, fog)
+		void fillFrameLighting(frame_t& frame, const CameraComponent& camera) const;
+		// stand-in for the frame block's contract members until the shader-system core fills them
+		void fillFrameContract(frame_t& frame, const CameraComponent& camera, const Transform& cameraTransform) const;
 		void loadSpotMaskTexture(ShaderData& shaderData, ObjectRender& render);
 		bool loadLights2D();
 		void processLights2D();
@@ -1256,6 +1321,9 @@ namespace jasperengine{
 		// Whether the lit or unlit shader samples the material's textures
 		static bool checkPBRTextures(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
 		MeshShaderEnvironment getMeshShaderEnvironment() const;
+		// capacity tier (4, 8 or 16 lights) of the per-object lights blocks for a scene's
+		// maxLightsPerObject: the light-capacity bits of every lit mesh variant
+		static int getLightCapacity(int maxLightsPerObject);
 
 		// ---- shader library (docs/superpowers/specs/2026-10-10-shader-library-phase1-design.md)
 		// The shader a submesh draws with: its material's, else the mesh's fork, else the

@@ -64,6 +64,7 @@ namespace jasperengine{
         Vector3 worldUp;
         float spotMaskAspect = 1.0f;
         bool spotMaskReady = false;
+        int spotMaskTile = -1; // spot mask atlas tile of the ready mask
 
         Vector3 getLocalSpotProjectionUp() const {
             Vector3 localDirection = direction.normalized();

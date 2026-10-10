@@ -49,6 +49,7 @@ namespace luabridge
     template<> struct Stack<CullingMode> : EnumWrapper<CullingMode>{};
     template<> struct Stack<WindingOrder> : EnumWrapper<WindingOrder>{};
     template<> struct Stack<MaterialAlphaMode> : EnumWrapper<MaterialAlphaMode>{};
+    template<> struct Stack<MaterialLighting> : EnumWrapper<MaterialLighting>{};
     template<> struct Stack<TextureFilter> : EnumWrapper<TextureFilter>{};
     template<> struct Stack<TextureWrap> : EnumWrapper<TextureWrap>{};
     template<> struct Stack<AdMobRating> : EnumWrapper<AdMobRating>{};
@@ -68,6 +69,7 @@ namespace luabridge
     template<> struct Stack<CameraType> : EnumWrapper<CameraType>{};
     template<> struct Stack<FrustumPlane> : EnumWrapper<FrustumPlane>{};
     template<> struct Stack<LightType> : EnumWrapper<LightType>{};
+    template<> struct Stack<LightShading> : EnumWrapper<LightShading>{};
     template<> struct Stack<ShadowCaster2DShape> : EnumWrapper<ShadowCaster2DShape>{};
     template<> struct Stack<ShadowQuality> : EnumWrapper<ShadowQuality>{};
     template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
