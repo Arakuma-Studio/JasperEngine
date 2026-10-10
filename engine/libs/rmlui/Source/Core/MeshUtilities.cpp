@@ -9,6 +9,7 @@
 namespace Rml {
 
 static bool geometry_feathering = true;
+static float geometry_pixel_size = 1.f;
 
 void SetGeometryFeathering(bool enable)
 {
@@ -18,6 +19,16 @@ void SetGeometryFeathering(bool enable)
 bool GetGeometryFeathering()
 {
 	return geometry_feathering;
+}
+
+void SetGeometryPixelSize(float pixel_size)
+{
+	geometry_pixel_size = (pixel_size > 0.f ? pixel_size : 1.f);
+}
+
+float GetGeometryPixelSize()
+{
+	return geometry_pixel_size;
 }
 
 void MeshUtilities::GenerateQuad(Mesh& mesh, Vector2f origin, Vector2f dimensions, ColourbPremultiplied colour)
@@ -70,7 +81,7 @@ void MeshUtilities::GenerateLine(Mesh& mesh, Vector2f position, Vector2f size, C
 void MeshUtilities::GenerateBackgroundBorder(Mesh& out_mesh, const RenderBox& render_box, ColourbPremultiplied background_color,
 	const ColourbPremultiplied border_colors[4])
 {
-	GenerateBackgroundBorder(out_mesh, render_box, background_color, border_colors, 1.f);
+	GenerateBackgroundBorder(out_mesh, render_box, background_color, border_colors, geometry_pixel_size);
 }
 
 void MeshUtilities::GenerateBackgroundBorder(Mesh& out_mesh, const RenderBox& render_box, ColourbPremultiplied background_color,

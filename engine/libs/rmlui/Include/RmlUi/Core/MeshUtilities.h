@@ -14,6 +14,11 @@ struct Mesh;
 /// straight ones. Set it before documents generate their geometry; GenerateBackground (clip masks) is never feathered.
 RMLUICORE_API void SetGeometryFeathering(bool enable);
 RMLUICORE_API bool GetGeometryFeathering();
+/// The size of a pixel of the render target in the context's units, for a context drawn scaled into its target (1 by
+/// default; 0.5 for a context drawn at twice its size): feathered edges are one target pixel wide. Elements generate their
+/// geometry again when it changes.
+RMLUICORE_API void SetGeometryPixelSize(float pixel_size);
+RMLUICORE_API float GetGeometryPixelSize();
 
 /**
     A class containing helper functions for generating meshes.
@@ -54,7 +59,7 @@ public:
 	static void GenerateBackgroundBorder(Mesh& mesh, const RenderBox& render_box, ColourbPremultiplied background_color,
 		const ColourbPremultiplied border_colors[4]);
 	/// As above, for geometry drawn scaled: 'feather_unit' is the size of a device pixel in the mesh's units (the inverse of
-	/// the scale), so that feathered edges stay one device pixel wide.
+	/// the scale; the version above takes GetGeometryPixelSize()), so that feathered edges stay one device pixel wide.
 	static void GenerateBackgroundBorder(Mesh& mesh, const RenderBox& render_box, ColourbPremultiplied background_color,
 		const ColourbPremultiplied border_colors[4], float feather_unit);
 

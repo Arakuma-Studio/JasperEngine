@@ -17,24 +17,26 @@ namespace Rml {
 
 ElementBackgroundBorder::ElementBackgroundBorder() {}
 
-// The size of a device pixel in the element's units: the inverse of the scale its transform draws it with, in steps of a
-// fourth of an octave so that an animated scale generates the geometry a few times only.
+// The size of a device pixel in the element's units: the context's pixel size (SetGeometryPixelSize) over the scale the
+// element's transform draws it with, in steps of a fourth of an octave so that an animated scale generates the geometry a
+// few times only.
 static float GetFeatherUnit(Element* element)
 {
+	const float pixel_size = GetGeometryPixelSize();
 	const TransformState* transform_state = element->GetTransformState();
 	const Matrix4f* transform = (transform_state ? transform_state->GetTransform() : nullptr);
 	if (!transform)
-		return 1.f;
+		return pixel_size;
 	const Matrix4f& m = *transform;
 	const float determinant = Math::Absolute(m[0][0] * m[1][1] - m[0][1] * m[1][0]);
 	const float w = Math::Absolute(m[3][3]);
 	if (determinant < 1e-8f || w < 1e-8f)
-		return 1.f;
+		return pixel_size;
 	const float scale = Math::SquareRoot(determinant) / w;
 	if (Math::Absolute(scale - 1.f) < 0.05f)
-		return 1.f;
+		return pixel_size;
 	const float step = Math::Round(4.f * std::log2(scale)) / 4.f;
-	return Math::Clamp(std::pow(2.f, -step), 1.f / 16.f, 16.f);
+	return pixel_size * Math::Clamp(std::pow(2.f, -step), 1.f / 16.f, 16.f);
 }
 
 void ElementBackgroundBorder::Render(Element* element)
