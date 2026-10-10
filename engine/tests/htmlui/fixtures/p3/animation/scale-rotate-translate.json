@@ -1,6 +1,6 @@
 {
- "comment": "translate, rotate and scale transition independently, and compose as translate rotate scale transform around the origin.",
- "viewport": [340, 170],
+ "comment": "translate, rotate and scale transition independently, and compose as translate rotate scale transform around the origin (a wrong order moves or turns the boxes).",
+ "viewport": [340, 200],
  "steps": [
   {"addClass": ["#card", "on"]},
   {"advance": 0.5},

@@ -629,25 +629,30 @@ std::vector<compat::LayoutBox> FixtureRunner::idBoxes() const{
     std::vector<compat::LayoutBox> boxes;
     if (!state->document)
         return boxes;
-    std::vector<Rml::Element*> stack = {state->document};
+    // (element, inside a 'display: none' subtree)
+    std::vector<std::pair<Rml::Element*, bool>> stack = {{state->document, false}};
     while (!stack.empty()){
-        Rml::Element* element = stack.back();
+        Rml::Element* element = stack.back().first;
+        // an element that is not displayed has no box: all zeros, as getBoundingClientRect() gives
+        const bool hidden = stack.back().second || element->GetDisplay() == Rml::Style::Display::None;
         stack.pop_back();
         const std::string id = element->GetId();
         if (!id.empty() && element != state->document){
             compat::LayoutBox box;
             box.id = id;
             box.tag = element->GetTagName();
-            const Rml::Vector2f offset = element->GetAbsoluteOffset(Rml::BoxArea::Border);
-            const Rml::Vector2f size = element->GetBox().GetSize(Rml::BoxArea::Border);
-            box.x = offset.x;
-            box.y = offset.y;
-            box.w = size.x;
-            box.h = size.y;
+            if (!hidden){
+                const Rml::Vector2f offset = element->GetAbsoluteOffset(Rml::BoxArea::Border);
+                const Rml::Vector2f size = element->GetBox().GetSize(Rml::BoxArea::Border);
+                box.x = offset.x;
+                box.y = offset.y;
+                box.w = size.x;
+                box.h = size.y;
+            }
             boxes.push_back(std::move(box));
         }
         for (int i = element->GetNumChildren() - 1; i >= 0; i--)
-            stack.push_back(element->GetChild(i));
+            stack.push_back({element->GetChild(i), hidden});
     }
     return boxes;
 }

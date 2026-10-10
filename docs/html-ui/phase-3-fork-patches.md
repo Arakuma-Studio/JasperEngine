@@ -1621,7 +1621,10 @@ FORK.md rows P3-A1…P3-A5 (package-prefixed ids, so that wave-1 packages cannot
   private pseudo-class `:-rmlui-starting-style` on their subject; the starting definition is the
   element's definition with that pseudo-class set, so the rules cascade with the others, at one
   pseudo-class more specificity (an approximation: CSS adds none). Only the element's own declared
-  starting values count (an inherited starting value is not looked up).
+  starting values count (an inherited starting value is not looked up). An element shown again
+  starts from its starting style whatever changed: when its own style change shows it, every
+  property its list covers is looked at (not only the changed ones), and when an ancestor shows it
+  its style is computed once more (`ElementStyle::RestartTransitionsFromStartingStyle`).
 - **Interpolation (P3-A4).** `box-shadow` pairwise with transparent padding; inset mismatch and
   calc() lengths in shadows are discrete. Colours in premultiplied sRGB everywhere RmlUi interpolates
   colours (also gradient stops, filters, decorators).
@@ -1639,7 +1642,12 @@ FORK.md rows P3-A1…P3-A5 (package-prefixed ids, so that wave-1 packages cannot
 - **Reference tool.** `render-reference.mjs` pauses every animation to seek it, which makes Chromium
   ignore `animation-play-state`; fixture mode now advances a CSS animation only while its computed
   play state is `running` (no change for existing references).
-- **Fixtures.** The fourteen of 3.13 in `fixtures/p3/animation/`.
+- **Fixtures.** The fourteen of 3.13 in `fixtures/p3/animation/`. `scale-rotate-translate` captures
+  quarter turns and whole-pixel sizes (rotated edges are not anti-aliased before p3-paint's
+  feathering), `transition-var` shows the inherited colour with Ahem text (`currentColor` in a
+  background is compat's companion until p3-values, which transitions do not follow).
+  `FixtureRunner::idBoxes` reports a `display: none` element (or one inside) as an all-zero box, as
+  `getBoundingClientRect()` does.
 
 ---
 

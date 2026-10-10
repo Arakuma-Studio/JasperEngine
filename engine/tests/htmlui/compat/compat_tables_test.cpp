@@ -77,8 +77,10 @@ TEST(CompatTables, PropertyTableSortedUniqueAndLinted){
         EXPECT_NE(row.output, nullptr);
         EXPECT_GT(std::strlen(row.spec), 0u) << row.name;
         EXPECT_LT((size_t)row.rewrite, (size_t)RewriteId::Count) << row.name;
-        // a dropped property is never dispatched to a rewrite
-        if (row.support == Support::Unsupported || row.support == Support::Ignored)
+        // a dropped property is never dispatched to a rewrite; one a fork feature makes native has the
+        // rewrite that writes it then (reached only with the feature: phase 3, e.g. transition-behavior)
+        const bool droppedWithFork = row.supportWithFork == Support::Unsupported || row.supportWithFork == Support::Ignored;
+        if ((row.support == Support::Unsupported || row.support == Support::Ignored) && (row.fork == ForkFeature::None || droppedWithFork))
             EXPECT_EQ(row.rewrite, RewriteId::None) << row.name;
         EXPECT_EQ(findProperty(row.name), &row) << row.name;
     }
