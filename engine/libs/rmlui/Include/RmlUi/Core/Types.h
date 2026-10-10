@@ -61,6 +61,8 @@ class Transform;
 class Calculation;
 using CalculationPtr = SharedPtr<const Calculation>;
 #endif
+class StyleValue;
+using StyleValuePtr = SharedPtr<const StyleValue>;
 class PropertyIdSet;
 class Decorator;
 class FontEffect;

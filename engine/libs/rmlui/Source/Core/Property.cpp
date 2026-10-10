@@ -1,5 +1,6 @@
 #include "../../Include/RmlUi/Core/Property.h"
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
+#include "../../Include/RmlUi/Core/StyleValue.h"
 #ifdef RMLUI_MATH_EXPRESSIONS
 	#include "Calculation.h"
 #endif
@@ -21,6 +22,11 @@ String Property::ToString() const
 		return calculation ? calculation->ToString() : String();
 	}
 #endif
+	if (unit == Unit::STYLE_VALUE)
+	{
+		const StyleValuePtr style_value = value.Get<StyleValuePtr>();
+		return style_value ? style_value->ToString() : String();
+	}
 	if (!definition)
 		return value.Get<String>() + Rml::ToString(unit);
 

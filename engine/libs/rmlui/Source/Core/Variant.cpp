@@ -1,5 +1,6 @@
 #include "../../Include/RmlUi/Core/Variant.h"
 #include "../../Include/RmlUi/Core/DecorationTypes.h"
+#include "../../Include/RmlUi/Core/StyleValue.h"
 #ifdef RMLUI_MATH_EXPRESSIONS
 	#include "Calculation.h"
 #endif
@@ -25,6 +26,7 @@ Variant::Variant()
 	static_assert(sizeof(FontEffectsPtr) <= LOCAL_DATA_SIZE, "Local data too small for FontEffectsPtr");
 	static_assert(sizeof(ColorStopList) <= LOCAL_DATA_SIZE, "Local data too small for ColorStopList");
 	static_assert(sizeof(BoxShadowList) <= LOCAL_DATA_SIZE, "Local data too small for BoxShadowList");
+	static_assert(sizeof(StyleValuePtr) <= LOCAL_DATA_SIZE, "Local data too small for StyleValuePtr");
 }
 
 Variant::Variant(const Variant& copy)
@@ -113,6 +115,12 @@ void Variant::Clear()
 		value->~BoxShadowList();
 	}
 	break;
+	case STYLEVALUEPTR:
+	{
+		StyleValuePtr* value = (StyleValuePtr*)data;
+		value->~StyleValuePtr();
+	}
+	break;
 	default: break;
 	}
 	type = NONE;
@@ -136,6 +144,7 @@ void Variant::Set(const Variant& copy)
 	case FONTEFFECTSPTR: Set(*reinterpret_cast<const FontEffectsPtr*>(copy.data)); break;
 	case COLORSTOPLIST: Set(*reinterpret_cast<const ColorStopList*>(copy.data)); break;
 	case BOXSHADOWLIST: Set(*reinterpret_cast<const BoxShadowList*>(copy.data)); break;
+	case STYLEVALUEPTR: Set(*reinterpret_cast<const StyleValuePtr*>(copy.data)); break;
 	default:
 		memcpy(data, copy.data, LOCAL_DATA_SIZE);
 		type = copy.type;
@@ -160,6 +169,7 @@ void Variant::Set(Variant&& other)
 	case FONTEFFECTSPTR: Set(std::move(*reinterpret_cast<FontEffectsPtr*>(other.data))); break;
 	case COLORSTOPLIST: Set(std::move(*reinterpret_cast<ColorStopList*>(other.data))); break;
 	case BOXSHADOWLIST: Set(std::move(*reinterpret_cast<BoxShadowList*>(other.data))); break;
+	case STYLEVALUEPTR: Set(std::move(*reinterpret_cast<StyleValuePtr*>(other.data))); break;
 	default:
 		memcpy(data, other.data, LOCAL_DATA_SIZE);
 		type = other.type;
@@ -512,6 +522,30 @@ void Variant::Set(BoxShadowList&& value)
 		new (data) BoxShadowList(std::move(value));
 	}
 }
+void Variant::Set(const StyleValuePtr& value)
+{
+	if (type == STYLEVALUEPTR)
+	{
+		*(StyleValuePtr*)data = value;
+	}
+	else
+	{
+		type = STYLEVALUEPTR;
+		new (data) StyleValuePtr(value);
+	}
+}
+void Variant::Set(StyleValuePtr&& value)
+{
+	if (type == STYLEVALUEPTR)
+	{
+		(*(StyleValuePtr*)data) = std::move(value);
+	}
+	else
+	{
+		type = STYLEVALUEPTR;
+		new (data) StyleValuePtr(std::move(value));
+	}
+}
 
 Variant& Variant::operator=(const Variant& copy)
 {
@@ -577,6 +611,17 @@ bool Variant::operator==(const Variant& other) const
 	case FONTEFFECTSPTR: return DEFAULT_VARIANT_COMPARE(FontEffectsPtr);
 	case COLORSTOPLIST: return DEFAULT_VARIANT_COMPARE(ColorStopList);
 	case BOXSHADOWLIST: return DEFAULT_VARIANT_COMPARE(BoxShadowList);
+	case STYLEVALUEPTR:
+	{
+		// The same object, or equal values (a property holds values of one StyleValue type).
+		const StyleValuePtr& lhs = *reinterpret_cast<const StyleValuePtr*>(data);
+		const StyleValuePtr& rhs = *reinterpret_cast<const StyleValuePtr*>(other.data);
+		if (lhs == rhs)
+			return true;
+		if (!lhs || !rhs)
+			return false;
+		return lhs->Equals(*rhs);
+	}
 	case NONE: return true;
 	}
 	RMLUI_ERRORMSG("Variant comparison not implemented for this type.");

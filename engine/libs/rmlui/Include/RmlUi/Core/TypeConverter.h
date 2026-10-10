@@ -160,6 +160,17 @@ public:
 	RMLUICORE_API static bool Convert(const BoxShadowList& src, String& dest);
 };
 
+template <>
+class TypeConverter<StyleValuePtr, StyleValuePtr> {
+public:
+	RMLUICORE_API static bool Convert(const StyleValuePtr& src, StyleValuePtr& dest);
+};
+template <>
+class TypeConverter<StyleValuePtr, String> {
+public:
+	RMLUICORE_API static bool Convert(const StyleValuePtr& src, String& dest);
+};
+
 } // namespace Rml
 
 #include "TypeConverter.inl"

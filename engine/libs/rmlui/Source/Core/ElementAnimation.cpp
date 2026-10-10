@@ -8,6 +8,7 @@
 #include "../../Include/RmlUi/Core/StyleSheet.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "../../Include/RmlUi/Core/StyleSheetTypes.h"
+#include "../../Include/RmlUi/Core/StyleValue.h"
 #include "../../Include/RmlUi/Core/Transform.h"
 #include "../../Include/RmlUi/Core/TransformPrimitive.h"
 #include "ComputeProperty.h"
@@ -635,6 +636,18 @@ static Property InterpolateProperties(const Property& p0, const Property& p1, fl
 		return Property{std::move(result), Unit::COLORSTOPLIST};
 	}
 
+	if (p0.unit == Unit::STYLE_VALUE && p1.unit == Unit::STYLE_VALUE)
+	{
+		const StyleValuePtr v0 = p0.value.Get<StyleValuePtr>();
+		const StyleValuePtr v1 = p1.value.Get<StyleValuePtr>();
+		if (v0 && v1)
+		{
+			if (StyleValuePtr result = v0->Interpolate(*v1, alpha, element))
+				return Property{std::move(result), Unit::STYLE_VALUE};
+		}
+		return p_discrete;
+	}
+
 	// Fall back to discrete interpolation for incompatible units.
 	return p_discrete;
 }
@@ -883,8 +896,8 @@ ElementAnimation::ElementAnimation(PropertyId property_id, ElementAnimationOrigi
 
 bool ElementAnimation::InternalAddKey(float time, const Property& in_property, Element& element, Tween tween)
 {
-	const Units valid_units =
-		(Unit::NUMBER_LENGTH_PERCENT | Unit::ANGLE | Unit::COLOUR | Unit::TRANSFORM | Unit::KEYWORD | Unit::DECORATOR | Unit::FILTER);
+	const Units valid_units = (Unit::NUMBER_LENGTH_PERCENT | Unit::ANGLE | Unit::COLOUR | Unit::TRANSFORM | Unit::KEYWORD | Unit::DECORATOR |
+		Unit::FILTER | Unit::STYLE_VALUE);
 
 	if (!Any(in_property.unit & valid_units)
 #ifdef RMLUI_MATH_EXPRESSIONS

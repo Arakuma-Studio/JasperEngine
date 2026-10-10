@@ -7,6 +7,7 @@
 #include "../../Include/RmlUi/Core/PropertySpecification.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "../../Include/RmlUi/Core/StyleSheetTypes.h"
+#include "../../Include/RmlUi/Core/StyleValue.h"
 #include "../../Include/RmlUi/Core/Transform.h"
 #include "../../Include/RmlUi/Core/TransformPrimitive.h"
 #include "PropertyParserColour.h"
@@ -247,6 +248,18 @@ bool TypeConverter<ColorStopList, String>::Convert(const ColorStopList& src, Str
 		if (i < src.size() - 1)
 			dest += ", ";
 	}
+	return true;
+}
+
+bool TypeConverter<StyleValuePtr, StyleValuePtr>::Convert(const StyleValuePtr& src, StyleValuePtr& dest)
+{
+	dest = src;
+	return true;
+}
+
+bool TypeConverter<StyleValuePtr, String>::Convert(const StyleValuePtr& src, String& dest)
+{
+	dest = (src ? src->ToString() : String());
 	return true;
 }
 

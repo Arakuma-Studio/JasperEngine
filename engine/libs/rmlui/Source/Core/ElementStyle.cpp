@@ -14,6 +14,7 @@
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
 #include "../../Include/RmlUi/Core/StyleSheet.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
+#include "../../Include/RmlUi/Core/StyleValue.h"
 #include "../../Include/RmlUi/Core/TransformPrimitive.h"
 #include "ComputeProperty.h"
 #include "ControlledLifetimeResource.h"
@@ -48,6 +49,13 @@ ElementStyle::ElementStyle(Element* _element)
 	element = _element;
 }
 
+// The context-relative units a StyleValue property depends on.
+static Units GetStyleValueUnitDependencies(const Property& property)
+{
+	const StyleValuePtr value = property.value.Get<StyleValuePtr>();
+	return value ? value->GetUnitDependencies() : Unit::UNKNOWN;
+}
+
 #ifdef RMLUI_MATH_EXPRESSIONS
 static const Units mutable_unit_mask = Unit::EM | Unit::REM | Unit::VW | Unit::VH | Unit::DP_SCALABLE_LENGTH;
 
@@ -58,6 +66,8 @@ Units ElementStyle::GetMutableUnitDependencies(const Property& property) const
 		const CalculationPtr calculation = property.value.Get<CalculationPtr>();
 		return calculation ? calculation->GetDependencyMask() & mutable_unit_mask : Unit::UNKNOWN;
 	}
+	if (property.unit == Unit::STYLE_VALUE)
+		return GetStyleValueUnitDependencies(property) & mutable_unit_mask;
 	return property.unit & mutable_unit_mask;
 }
 
@@ -880,6 +890,8 @@ void ElementStyle::DirtyPropertiesWithUnits(Units units)
 		PropertyId id = name_property_pair.first;
 		const Property& property = name_property_pair.second;
 		Units dependencies = property.unit;
+		if (property.unit == Unit::STYLE_VALUE)
+			dependencies = GetStyleValueUnitDependencies(property);
 #ifdef RMLUI_MATH_EXPRESSIONS
 		if (property.unit == Unit::CALCULATION)
 			dependencies = GetMutableUnitDependencies(property);

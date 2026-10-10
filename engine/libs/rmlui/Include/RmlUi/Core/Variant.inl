@@ -64,6 +64,7 @@ bool Variant::GetInto(T& value) const
 		case FONTEFFECTSPTR: return TypeConverter<FontEffectsPtr, T>::Convert(*reinterpret_cast<const FontEffectsPtr*>(data), value);
 		case COLORSTOPLIST: return TypeConverter<ColorStopList, T>::Convert(*(ColorStopList*)data, value); break;
 		case BOXSHADOWLIST: return TypeConverter<BoxShadowList, T>::Convert(*reinterpret_cast<const BoxShadowList*>(data), value);
+		case STYLEVALUEPTR: return TypeConverter<StyleValuePtr, T>::Convert(*reinterpret_cast<const StyleValuePtr*>(data), value);
 		case NONE: break;
 		}
 	}

@@ -58,6 +58,7 @@
 #include "Core/StyleSheetContainer.h"
 #include "Core/StyleSheetSpecification.h"
 #include "Core/StyleTypes.h"
+#include "Core/StyleValue.h"
 #include "Core/SystemInterface.h"
 #include "Core/TextShapingContext.h"
 #include "Core/Texture.h"
