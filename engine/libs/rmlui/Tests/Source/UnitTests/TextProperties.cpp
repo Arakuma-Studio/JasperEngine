@@ -6,6 +6,7 @@
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementText.h>
+#include <RmlUi/Core/ElementUtilities.h>
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>
 #include <RmlUi/Core/PropertyDictionary.h>
 #include <RmlUi/Core/StyleSheetSpecification.h>
@@ -215,6 +216,8 @@ TEST_CASE("TextProperties.spacing_layout")
 	CHECK(width("letters") == 36.f);
 	CHECK(width("words") == 60.f);
 	CHECK(width("both") == 43.f);
+	// the width of a string measured for an element (text inputs place their cursor with it) has the same spacing
+	CHECK(ElementUtilities::GetStringWidth(document->GetElementById("words"), "a b") == 35);
 
 	document->Close();
 }
