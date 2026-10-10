@@ -1,0 +1,48 @@
+#htmlui-root .n {
+white-space: normal;
+}
+#htmlui-root .p {
+white-space: pre;
+}
+#htmlui-root .nw {
+white-space: nowrap;
+}
+#htmlui-root .pw {
+white-space: pre-wrap;
+}
+#htmlui-root .pl {
+white-space: pre-line;
+}
+#htmlui-root .bs {
+white-space: break-spaces;
+}
+#htmlui-root .pair {
+white-space: preserve nowrap;
+}
+#htmlui-root .c1 {
+white-space-collapse: collapse;
+}
+#htmlui-root .c2 {
+white-space-collapse: preserve;
+}
+#htmlui-root .c3 {
+white-space-collapse: preserve-breaks;
+}
+#htmlui-root .c4 {
+white-space-collapse: break-spaces;
+}
+#htmlui-root .w1 {
+text-wrap: nowrap;
+}
+#htmlui-root .w2 {
+text-wrap: wrap;
+}
+#htmlui-root .w3 {
+text-wrap: balance;
+}
+#htmlui-root .w4 {
+text-wrap: pretty;
+}
+#htmlui-root .w5 {
+text-wrap-mode: nowrap;
+}
