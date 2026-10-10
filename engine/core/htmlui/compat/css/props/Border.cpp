@@ -469,6 +469,9 @@ void jasperengine::htmlui::compat::rewriteBorder(DeclContext& context){
     }
     reportStyle(context, style);
     emitStyle(context, sides, style, color, width, widthGiven);
+    // the fork's 'border' also resets border-image (to none, the only value the fork's property takes)
+    if (n == "border" && context.fork(ForkFeature::BorderStyle))
+        context.emit("border-image", "none");
 }
 
 void jasperengine::htmlui::compat::rewriteBorderStyle(DeclContext& context){

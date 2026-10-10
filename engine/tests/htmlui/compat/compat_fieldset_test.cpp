@@ -53,7 +53,7 @@ namespace {
     protected:
         // what the user-agent sheet gives a fieldset and its legend, on white
         const std::string style =
-            "fieldset { display: block; margin: 0 2px; padding: 6px 12px 10px; border: 2px #c5c5c5; }"
+            "fieldset { display: block; margin: 0 2px; padding: 6px 12px 10px; border: 2px solid #c5c5c5; }"
             "legend { display: block; padding: 0 2px; }"
             "#after { display: block; }";
         const Rml::ColourbPremultiplied grey{0xc5, 0xc5, 0xc5, 0xff};
@@ -126,7 +126,7 @@ TEST_F(CompatFieldsetTest, LegendSitsOnTheTopBorder){
 
 TEST_F(CompatFieldsetTest, AuthorBorderPaddingAndRadius){
     ASSERT_NE(show("<fieldset id=\"f\" class=\"htmlui-legend\"><legend id=\"l\">Legend</legend><div id=\"content\">Content</div></fieldset>",
-                   style + "#f { border: 4px #cc3333; border-radius: 10px; padding: 20px; background-color: #eeeeff; }"
+                   style + "#f { border: 4px solid #cc3333; border-radius: 10px; padding: 20px; background-color: #eeeeff; }"
                            "#l { margin-left: 40px; }"), nullptr);
     frame();
     Rml::Element* fieldset = byId("f");

@@ -5,7 +5,7 @@
     <link type="text/css" href="golden.css"/>
     <style>
         #button { left: 240px; top: 156px; width: 160px; height: 48px; font-size: 24px; line-height: 48px; text-align: center;
-                  color: #000000; background-color: #808080; border: 2px #ffffff; }
+                  color: #000000; background-color: #808080; border: 2px solid #ffffff; }
         #button:hover { background-color: #00ff00; }
         #button:active { background-color: #0000ff; color: #ffffff; }
     </style>

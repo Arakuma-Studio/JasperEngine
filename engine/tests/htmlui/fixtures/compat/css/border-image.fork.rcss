@@ -11,6 +11,7 @@ border-bottom-color: #00000000;
 border-left-width: 10px;
 border-left-style: solid;
 border-left-color: #00000000;
+border-image: none;
 --html-border-image: html-border-image("asset://compat/css/img/a.png" 30 30 30 30 nofill 1 1 1 1 0 0 0 0 round round);
 decorator: var(--html-border-image, linear-gradient(#0000, #0000)), var(--html-bg-layers, linear-gradient(#0000, #0000));
 }

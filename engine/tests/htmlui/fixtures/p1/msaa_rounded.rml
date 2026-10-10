@@ -5,8 +5,8 @@
     <style>
         /* G16: large radii and thin rotated borders, where MSAA smooths the edges */
         #disc { left: 30px; top: 30px; width: 200px; height: 200px; border-radius: 100px; background-color: #e0e0e0; }
-        #ring { left: 270px; top: 30px; width: 200px; height: 200px; border-radius: 100px; border: 2px #ffcc00; }
-        #thin { left: 60px; top: 270px; width: 380px; height: 60px; border: 1px #ffffff; transform: rotate(4deg); }
+        #ring { left: 270px; top: 30px; width: 200px; height: 200px; border-radius: 100px; border: 2px solid #ffcc00; }
+        #thin { left: 60px; top: 270px; width: 380px; height: 60px; border: 1px solid #ffffff; transform: rotate(4deg); }
     </style>
 </head>
 <body>

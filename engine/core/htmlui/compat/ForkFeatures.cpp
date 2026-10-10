@@ -20,7 +20,7 @@ namespace {
     constexpr bool kPresent[(size_t)ForkFeature::Count] = {
         false,   // None (never present)
         true,    // Calc (phase 3, p3-base: upstream PR #983; docs/html-ui/FORK.md)
-        false,   // BorderStyle
+        true,    // BorderStyle (phase 3, p3-paint: docs/html-ui/FORK.md)
         false,   // PercentRadius
         false,   // PseudoElements
         false,   // RootIsWhere

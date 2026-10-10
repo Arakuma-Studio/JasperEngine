@@ -10,7 +10,7 @@
         #translate { left: 20px; top: 200px; background-color: #4040e0; transform: translate(30px, 20px); }
         #stage { left: 200px; top: 180px; width: 200px; height: 150px; perspective: 300px; background-color: #303030; }
         #persp { position: absolute; left: 50px; top: 40px; width: 100px; height: 70px; background-color: #e0c040; transform: rotateY(40deg); }
-        #origin { left: 480px; top: 200px; background-color: #40c0e0; transform-origin: 0 0; transform: rotate(-20deg) scale(0.8); border: 4px #ffffff; border-radius: 10px; }
+        #origin { left: 480px; top: 200px; background-color: #40c0e0; transform-origin: 0 0; transform: rotate(-20deg) scale(0.8); border: 4px solid #ffffff; border-radius: 10px; }
     </style>
 </head>
 <body>

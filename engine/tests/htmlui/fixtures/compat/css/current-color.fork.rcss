@@ -13,6 +13,7 @@ border-bottom-color: #336699ff;
 border-left-width: 2px;
 border-left-style: solid;
 border-left-color: #336699ff;
+border-image: none;
 --html-box-shadow: 0px 0px 4px #336699ff;
 box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
 }
@@ -31,6 +32,7 @@ border-bottom-color: var(--html-current-color, #000000ff);
 border-left-width: 3px;
 border-left-style: solid;
 border-left-color: var(--html-current-color, #000000ff);
+border-image: none;
 border-top-width: 1px;
 border-top-style: dashed;
 border-top-color: var(--html-current-color, #000000ff);
