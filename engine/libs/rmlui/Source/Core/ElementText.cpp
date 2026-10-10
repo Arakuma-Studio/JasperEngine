@@ -14,13 +14,24 @@
 #include "ComputeProperty.h"
 #include "ElementDefinition.h"
 #include "ElementStyle.h"
+#include "TextUnicode.h"
 #include "TransformState.h"
 #include <limits>
 
 namespace Rml {
 
-static bool BuildToken(String& token, const char*& token_begin, const char* string_end, bool first_token, bool collapse_white_space,
-	bool break_at_endline, Style::TextTransform text_transformation, bool decode_escape_characters);
+// How the text of an element is cut into tokens: words, white space, and the pieces of words between line-break
+// opportunities (CSS Text 3 §5: after a zero-width space, a soft hyphen or a hyphen, around ideographs).
+struct TokenRules {
+	bool collapse_white_space;
+	bool break_at_endline;
+	Style::TextTransform text_transform;
+	Style::WordBreak word_break;
+	bool decode_escape_characters;
+	const char* text_begin; // the element's text, read back for 'capitalize'
+};
+
+static bool BuildToken(String& token, const char*& token_begin, const char* string_end, bool first_token, const TokenRules& rules);
 static bool LastToken(const char* token_begin, const char* string_end, bool collapse_white_space, bool break_at_endline);
 
 static int RoundDownToIntegerClamped(float value)
@@ -32,6 +43,16 @@ static int RoundDownToIntegerClamped(float value)
 	if (value <= -clamp_f)
 		return -clamp;
 	return static_cast<int>(value);
+}
+
+// A line that ends at a soft hyphen shows a hyphen (CSS Text 3 §5.4, 'hyphens: manual').
+static void AppendHyphenAfterSoftHyphen(String& line, float& line_width, FontFaceHandle font_face_handle, const TextShapingContext& context)
+{
+	// U+00AD in UTF-8
+	if (line.size() < 2 || (unsigned char)line[line.size() - 2] != 0xC2 || (unsigned char)line.back() != 0xAD)
+		return;
+	line += '-';
+	line_width += (float)GetFontEngineInterface()->GetStringWidth(font_face_handle, "-", context);
 }
 
 struct TextOverflowResolved {
@@ -246,8 +267,8 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 		(white_space_property == WhiteSpace::Pre || white_space_property == WhiteSpace::Prewrap || white_space_property == WhiteSpace::Preline);
 
 	const TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing()};
-	TextTransform text_transform_property = computed.text_transform();
 	WordBreak word_break = computed.word_break();
+	const TokenRules token_rules{collapse_white_space, break_at_endline, computed.text_transform(), word_break, decode_escape_characters, text.c_str()};
 
 	FontEngineInterface* font_engine_interface = GetFontEngineInterface();
 
@@ -272,8 +293,7 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 				StringUtilities::ToCharacter(StringUtilities::SeekBackwardUTF8(&line.back(), line.data()), line.data() + line.size());
 
 		// Generate the next token and determine its pixel-length.
-		bool break_line = BuildToken(token, next_token_begin, string_end, line.empty() && trim_whitespace_prefix, collapse_white_space,
-			break_at_endline, text_transform_property, decode_escape_characters);
+		bool break_line = BuildToken(token, next_token_begin, string_end, line.empty() && trim_whitespace_prefix, token_rules);
 		if (white_space_only && token.empty() && !(line.empty() && trim_whitespace_prefix))
 			token = " ";
 		int token_width = font_engine_interface->GetStringWidth(font_face_handle, token, text_shaping_context, previous_codepoint);
@@ -312,8 +332,7 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 
 						token.clear();
 						next_token_begin = token_begin;
-						BuildToken(token, next_token_begin, partial_string_end, line.empty() && trim_whitespace_prefix, collapse_white_space,
-							break_at_endline, text_transform_property, decode_escape_characters);
+						BuildToken(token, next_token_begin, partial_string_end, line.empty() && trim_whitespace_prefix, token_rules);
 						token_width = font_engine_interface->GetStringWidth(font_face_handle, token, text_shaping_context, previous_codepoint);
 
 						if (force_loop_break_at_end || token_width <= max_token_width)
@@ -324,7 +343,8 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 				}
 				else if (allow_empty || !line.empty())
 				{
-					// Let the token overflow into the next line.
+					// Let the token overflow into the next line; a line that ends at a soft hyphen shows a hyphen.
+					AppendHyphenAfterSoftHyphen(line, line_width, font_face_handle, text_shaping_context);
 					return false;
 				}
 			}
@@ -579,12 +599,105 @@ void ElementText::GenerateDecoration(Mesh& mesh, const FontFaceHandle font_face_
 	}
 }
 
-static bool BuildToken(String& token, const char*& token_begin, const char* string_end, bool first_token, bool collapse_white_space,
-	bool break_at_endline, Style::TextTransform text_transformation, bool decode_escape_characters)
+// Reads the character at 'p': an escape code when decoding them ("&amp;", "&nbsp;", ...), else one UTF-8 code point.
+// 'next' is set past it; 'non_breaking' for "&nbsp;", a space that is not white space.
+static Character ReadCharacter(const char* p, const char* string_end, bool decode_escape_characters, const char*& next, bool& non_breaking)
+{
+	non_breaking = false;
+	if (decode_escape_characters && *p == '&')
+	{
+		const char* semicolon = p;
+		while (semicolon != string_end && *semicolon != ';')
+			++semicolon;
+		if (semicolon != string_end)
+		{
+			const StringView escape_code(p + 1, semicolon);
+			Character character = Character::Null;
+			if (escape_code == "lt")
+				character = Character('<');
+			else if (escape_code == "gt")
+				character = Character('>');
+			else if (escape_code == "amp")
+				character = Character('&');
+			else if (escape_code == "quot")
+				character = Character('"');
+			else if (escape_code == "nbsp")
+			{
+				character = Character(' ');
+				non_breaking = true;
+			}
+			if (character != Character::Null)
+			{
+				next = semicolon + 1;
+				return character;
+			}
+		}
+		// Not a recognised escape code: print it like normal text.
+	}
+	next = p;
+	return TextUnicode::DecodeUTF8(next, string_end);
+}
+
+static bool IsWhiteSpaceCharacter(Character c)
+{
+	return (char32_t)c < 128 && StringUtilities::IsWhitespace(static_cast<char>(c));
+}
+
+// The character before 'p' in the element's text (Null at its start).
+static Character PreviousCharacter(const char* p, const char* text_begin)
+{
+	if (p <= text_begin)
+		return Character::Null;
+	const char* previous = StringUtilities::SeekBackwardUTF8(p - 1, text_begin);
+	return StringUtilities::ToCharacter(previous, p);
+}
+
+// Appends 'character' to the token with the element's text-transform (CSS Text 3 §2.1: full case mappings,
+// 'capitalize' titlecases the first letter of each word).
+static void AppendTransformed(String& token, Character character, Character before_previous, Character previous, Character next,
+	Style::TextTransform text_transform)
+{
+	switch (text_transform)
+	{
+	case Style::TextTransform::Uppercase: TextUnicode::AppendUppercase(token, character); return;
+	case Style::TextTransform::Lowercase:
+		// Greek capital sigma at the end of a word: final sigma (Unicode Final_Sigma context)
+		if ((char32_t)character == 0x03A3 && TextUnicode::IsWordCharacter(previous) && !TextUnicode::IsWordCharacter(next))
+			token += "\xCF\x82";
+		else
+			TextUnicode::AppendLowercase(token, character);
+		return;
+	case Style::TextTransform::Capitalize:
+		if (TextUnicode::IsWordStart(before_previous, previous, character))
+		{
+			TextUnicode::AppendTitlecase(token, character);
+			return;
+		}
+		break;
+	case Style::TextTransform::None: break;
+	}
+	if ((char32_t)character < 0x80)
+		token += static_cast<char>(character);
+	else
+		token += StringUtilities::ToUTF8(character);
+}
+
+static bool BuildToken(String& token, const char*& token_begin, const char* string_end, bool first_token, const TokenRules& rules)
 {
 	RMLUI_ASSERT(token_begin != string_end);
 
 	token.reserve(string_end - token_begin + token.size());
+
+	const bool collapse_white_space = rules.collapse_white_space;
+
+	// The characters before the token, for capitalize.
+	Character previous = Character::Null, before_previous = Character::Null;
+	if (rules.text_transform != Style::TextTransform::None)
+	{
+		previous = PreviousCharacter(token_begin, rules.text_begin);
+		if (previous != Character::Null)
+			before_previous = PreviousCharacter(StringUtilities::SeekBackwardUTF8(token_begin - 1, rules.text_begin), rules.text_begin);
+	}
 
 	// Check what the first character of the token is; all we need to know is if it is white-space or not.
 	bool parsing_white_space = StringUtilities::IsWhitespace(*token_begin);
@@ -593,72 +706,31 @@ static bool BuildToken(String& token, const char*& token_begin, const char* stri
 	// places, depending on the white-space processing;
 	//  - at the end of a section of non-white-space characters,
 	//  - at the end of a section of white-space characters, if we're not collapsing white-space,
-	//  - at an endline token, if we're breaking on endlines.
+	//  - at an endline token, if we're breaking on endlines,
+	//  - at a line-break opportunity inside a section of non-white-space characters.
 	while (token_begin != string_end)
 	{
-		bool force_non_whitespace = false;
-		char character = *token_begin;
-
-		const char* escape_begin = token_begin;
-
-		// Check for an ampersand; if we find one, we've got an HTML escaped character.
-		if (decode_escape_characters && character == '&')
-		{
-			// Find the terminating ';'.
-			while (token_begin != string_end && *token_begin != ';')
-				++token_begin;
-
-			// If we couldn't find the ';', print the token like normal text.
-			if (token_begin == string_end)
-			{
-				token_begin = escape_begin;
-			}
-			// We could find a ';', parse the escape code. If the escape code is recognised, set the parsed character
-			// to the appropriate one. If it is a non-breaking space, prevent it being picked up as whitespace. If it
-			// is not recognised, print the token like normal text.
-			else
-			{
-				String escape_code(escape_begin + 1, token_begin);
-
-				if (escape_code == "lt")
-					character = '<';
-				else if (escape_code == "gt")
-					character = '>';
-				else if (escape_code == "amp")
-					character = '&';
-				else if (escape_code == "quot")
-					character = '"';
-				else if (escape_code == "nbsp")
-				{
-					character = ' ';
-					force_non_whitespace = true;
-				}
-				else
-					token_begin = escape_begin;
-			}
-		}
+		const char* next = nullptr;
+		bool non_breaking = false;
+		const Character character = ReadCharacter(token_begin, string_end, rules.decode_escape_characters, next, non_breaking);
 
 		// Check for an endline token; if we're breaking on endlines and we find one, then return true to indicate a
 		// forced break.
-		if (break_at_endline && character == '\n')
+		if (rules.break_at_endline && character == Character('\n'))
 		{
 			token += '\n';
-			token_begin++;
+			token_begin = next;
 			return true;
 		}
 
 		// If we've transitioned from white-space characters to non-white-space characters, or vice-versa, then check
 		// if should terminate the token; if we're not collapsing white-space, then yes (as sections of white-space are
 		// non-breaking), otherwise only if we've transitioned from characters to white-space.
-		bool white_space = !force_non_whitespace && StringUtilities::IsWhitespace(character);
+		const bool white_space = !non_breaking && IsWhiteSpaceCharacter(character);
 		if (white_space != parsing_white_space)
 		{
 			if (!collapse_white_space)
-			{
-				// Restore pointer to the beginning of the escaped token, if we processed an escape code.
-				token_begin = escape_begin;
 				return false;
-			}
 
 			// We're collapsing white-space; we only tokenise words, not white-space, so we're only done tokenising
 			// once we've begun parsing non-white-space and then found white-space.
@@ -667,7 +739,7 @@ static bool BuildToken(String& token, const char*& token_begin, const char* stri
 				// However, if we are the last non-whitespace character in the string, and there are trailing
 				// whitespace characters after this token, then we need to append a single space to the end of this
 				// token.
-				if (token_begin != string_end && LastToken(token_begin, string_end, collapse_white_space, break_at_endline))
+				if (LastToken(token_begin, string_end, collapse_white_space, rules.break_at_endline))
 					token += ' ';
 
 				return false;
@@ -686,24 +758,28 @@ static bool BuildToken(String& token, const char*& token_begin, const char* stri
 		{
 			if (!collapse_white_space)
 				token += ' ';
+			token_begin = next;
 		}
 		else
 		{
-			if (text_transformation == Style::TextTransform::Uppercase)
-			{
-				if (character >= 'a' && character <= 'z')
-					character += ('A' - 'a');
-			}
-			else if (text_transformation == Style::TextTransform::Lowercase)
-			{
-				if (character >= 'A' && character <= 'Z')
-					character -= ('A' - 'a');
-			}
+			// The character after this one, for line breaking and the final sigma.
+			Character following = Character::Null;
+			bool following_non_breaking = false;
+			const char* after_following = nullptr;
+			if (next != string_end)
+				following = ReadCharacter(next, string_end, rules.decode_escape_characters, after_following, following_non_breaking);
 
-			token += character;
+			AppendTransformed(token, character, before_previous, previous, following, rules.text_transform);
+			token_begin = next;
+
+			// A line-break opportunity between this character and the next ends the token.
+			if (following != Character::Null && !IsWhiteSpaceCharacter(following) && !non_breaking && !following_non_breaking &&
+				TextUnicode::IsLineBreakOpportunity(character, following, rules.word_break))
+				return false;
 		}
 
-		++token_begin;
+		before_previous = previous;
+		previous = character;
 	}
 
 	return false;

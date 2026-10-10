@@ -143,7 +143,7 @@ namespace Style {
 	enum class TextDecoration : uint8_t { None, Underline, Overline, LineThrough };
 	enum class TextTransform : uint8_t { None, Capitalize, Uppercase, Lowercase };
 	enum class WhiteSpace : uint8_t { Normal, Pre, Nowrap, Prewrap, Preline };
-	enum class WordBreak : uint8_t { Normal, BreakAll, BreakWord };
+	enum class WordBreak : uint8_t { Normal, BreakAll, BreakWord, KeepAll };
 
 	enum class Drag : uint8_t { None, Drag, DragDrop, Block, Clone };
 	enum class TabIndex : uint8_t { None, Auto };
