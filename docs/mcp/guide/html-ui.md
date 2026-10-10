@@ -1123,8 +1123,8 @@ use in your files. Later phases:
 - Phase 3, the layout engine itself: CSS Grid, `::before`/`::after`, `calc()` at layout time
   in every property, border styles, `%` radii, `:has()`, `order`, `aspect-ratio`,
   `fit-content`, real `position: fixed`/`sticky`, group `opacity`, `line-height: normal`,
-  `cubic-bezier()`/`steps()` easings, parent/child margin collapsing, a legend as wide as its
-  text.
+  parent/child margin collapsing, a legend as wide as its text. (Transitions and animations
+  are already native: easings, longhands, fill modes, transitions on any change.)
 - Phase 4, tools for agents: `check --ui`, the MCP tools `inspect_ui`/`assert_ui`/
   `create_ui_document`, `import_files` for remote fonts and images, rewriting references
   inside HTML/CSS when an asset is renamed, the generated support matrix (every property,
