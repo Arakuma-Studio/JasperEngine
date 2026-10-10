@@ -11,6 +11,20 @@
 // writes v_uv1 (SURFACE_UV1) and v_color (SURFACE_COLOR) for a fragment stage that alpha
 // clips (includes/surface_depth_fs.glsl with SURFACE_DEPTH_DISCARD).
 
+// Inputs only the hooks read: without them they are not declared at all, since a GL
+// driver drops an unread attribute and the bind then misses it
+#if defined(SURFACE_DISPLACE) || defined(SURFACE_DEPTH_VARYINGS)
+    #define SURFACE_DEPTH_INPUTS
+#endif
+#ifndef SURFACE_DISPLACE
+    #undef HAS_NORMALS
+#endif
+#ifndef SURFACE_DEPTH_INPUTS
+    #undef HAS_UV_SET1
+    #undef HAS_VERTEX_COLOR_VEC3
+    #undef HAS_VERTEX_COLOR_VEC4
+#endif
+
 uniform u_vs_depthParams {
     mat4 modelMatrix;
     mat4 lightVPMatrix;
@@ -47,7 +61,7 @@ out vec2 v_projZW;
     in vec4 i_matrix_col2;
     in vec4 i_matrix_col3;
     in vec4 i_matrix_col4;
-    #ifdef SURFACE_COLOR
+    #if defined(SURFACE_COLOR) && defined(SURFACE_DEPTH_INPUTS)
         in vec4 i_color;
     #endif
     #ifdef HAS_UV_SET1
@@ -108,7 +122,7 @@ void main() {
     #elif defined(HAS_VERTEX_COLOR_VEC4) && !defined(SURFACE_NO_VERTEX_COLOR)
         color = a_color;
     #endif
-    #if defined(HAS_INSTANCING) && defined(SURFACE_COLOR)
+    #if defined(HAS_INSTANCING) && defined(SURFACE_COLOR) && defined(SURFACE_DEPTH_INPUTS)
         color *= i_color;
     #endif
 
