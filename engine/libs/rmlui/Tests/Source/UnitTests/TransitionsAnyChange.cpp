@@ -289,6 +289,25 @@ TEST_CASE("TransitionsAnyChange.discrete")
 	CHECK(f.b->GetComputedValues().display() == Style::Display::None);
 }
 
+TEST_CASE("TransitionsAnyChange.lists_that_do_not_match_are_discrete")
+{
+	Fixture f(R"(
+		#a, #b { width: 10px; decorator: horizontal-gradient(#ff0000 #0000ff); transition: decorator 1s linear; }
+		#a.on { decorator: horizontal-gradient(#00ff00 #0000ff); }
+		#b.on { decorator: vertical-gradient(#00ff00 #0000ff); }
+	)");
+
+	f.a->SetClass("on", true);
+	f.b->SetClass("on", true);
+	f.Update();
+	f.clock.AdvanceTo(0.1);
+	// The same decorator interpolates; another one cannot, and changes at once (it does not wait for half the duration).
+	CHECK(f.a->GetProperty<String>("decorator") != "horizontal-gradient(#00ff00 #0000ff)");
+	CHECK(f.b->GetProperty<String>("decorator") == "vertical-gradient(#00ff00 #0000ff)");
+	f.clock.AdvanceTo(1.1);
+	CHECK(f.a->GetProperty<String>("decorator") == "horizontal-gradient(#00ff00 #0000ff)");
+}
+
 TEST_CASE("TransitionsAnyChange.relative_units")
 {
 	Fixture f(R"(

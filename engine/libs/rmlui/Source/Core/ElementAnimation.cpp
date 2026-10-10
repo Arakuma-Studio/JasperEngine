@@ -13,6 +13,7 @@
 #include "../../Include/RmlUi/Core/TransformPrimitive.h"
 #include "ComputeProperty.h"
 #include "ElementStyle.h"
+#include "ElementTransitions.h"
 #include "TransformUtilities.h"
 #include <cmath>
 #include <limits>
@@ -933,6 +934,70 @@ static void PrepareFilter(AnimationKey& key)
 
 	if (!property.value.GetReference<FiltersPtr>())
 		property.value = MakeShared<FilterDeclarationList>();
+}
+
+static bool IsNumericProperty(const Property& property)
+{
+	return Any(property.unit & Unit::NUMERIC)
+#ifdef RMLUI_MATH_EXPRESSIONS
+		|| property.unit == Unit::CALCULATION
+#endif
+		;
+}
+
+bool IsInterpolable(const Property& from, const Property& to, Element& element, const PropertyDefinition* definition)
+{
+	if (IsNumericProperty(from) && IsNumericProperty(to))
+	{
+		if (from.unit == to.unit)
+			return true;
+#ifdef RMLUI_MATH_EXPRESSIONS
+		if (from.unit == Unit::CALCULATION || to.unit == Unit::CALCULATION)
+			return true;
+#endif
+		if (Any(from.unit & Unit::NUMBER_LENGTH_PERCENT) && Any(to.unit & Unit::NUMBER_LENGTH_PERCENT) && definition)
+			return true;
+		if (Any(from.unit & Unit::LENGTH) && Any(to.unit & Unit::LENGTH))
+			return true;
+		return Any(from.unit & Unit::ANGLE) && Any(to.unit & Unit::ANGLE);
+	}
+
+	if (from.unit != to.unit)
+		return false;
+
+	switch (from.unit)
+	{
+	case Unit::KEYWORD:
+		// 'visibility' interpolates when one of the values is 'visible' (CSS Transitions 1); other keywords are discrete.
+		if (definition && definition->GetId() == PropertyId::Visibility)
+			return from.Get<int>() == (int)Style::Visibility::Visible || to.Get<int>() == (int)Style::Visibility::Visible;
+		return false;
+	case Unit::COLOUR:
+	case Unit::TRANSFORM: return true;
+	case Unit::DECORATOR:
+		// A list from or to 'none' fades in or out; two lists interpolate when their decorators match.
+		if (!from.value.GetReference<DecoratorsPtr>() || !to.value.GetReference<DecoratorsPtr>())
+			return true;
+		break;
+	case Unit::FILTER:
+		if (!from.value.GetReference<FiltersPtr>() || !to.value.GetReference<FiltersPtr>())
+			return true;
+		break;
+	case Unit::COLORSTOPLIST:
+	case Unit::BOXSHADOWLIST: break;
+	case Unit::STYLE_VALUE:
+	{
+		const StyleValuePtr v0 = from.value.Get<StyleValuePtr>();
+		const StyleValuePtr v1 = to.value.Get<StyleValuePtr>();
+		return v0 && v1 && v0->Interpolate(*v1, 0.5f, element) != nullptr;
+	}
+	default: return false;
+	}
+
+	// Lists: interpolable unless the interpolation falls back to one of the ends (mismatched decorators or filters,
+	// colour stop lists of different lengths, an inset against an outset shadow).
+	const Property half = InterpolateProperties(from, to, 0.5f, element, definition);
+	return !(half == to) && !(half == from);
 }
 
 bool AnimationTrack::AddKey(float offset, const Property& in_property, Element& element, Tween tween, bool has_tween)

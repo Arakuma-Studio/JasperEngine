@@ -60,60 +60,7 @@ namespace {
 		return GetTransitionLonghandIds().Contains(id) || GetAnimationLonghandIds().Contains(id);
 	}
 
-	bool IsNumeric(const Property& property)
-	{
-		return Any(property.unit & Unit::NUMERIC)
-#ifdef RMLUI_MATH_EXPRESSIONS
-			|| property.unit == Unit::CALCULATION
-#endif
-			;
-	}
-
 } // namespace
-
-bool IsInterpolable(const Property& from, const Property& to, Element& element, const PropertyDefinition* definition)
-{
-	if (IsNumeric(from) && IsNumeric(to))
-	{
-		if (from.unit == to.unit)
-			return true;
-#ifdef RMLUI_MATH_EXPRESSIONS
-		if (from.unit == Unit::CALCULATION || to.unit == Unit::CALCULATION)
-			return true;
-#endif
-		if (Any(from.unit & Unit::NUMBER_LENGTH_PERCENT) && Any(to.unit & Unit::NUMBER_LENGTH_PERCENT) && definition)
-			return true;
-		if (Any(from.unit & Unit::LENGTH) && Any(to.unit & Unit::LENGTH))
-			return true;
-		return Any(from.unit & Unit::ANGLE) && Any(to.unit & Unit::ANGLE);
-	}
-
-	if (from.unit != to.unit)
-		return false;
-
-	switch (from.unit)
-	{
-	case Unit::KEYWORD:
-		// 'visibility' interpolates when one of the values is 'visible' (CSS Transitions 1); other keywords are discrete.
-		if (definition && definition->GetId() == PropertyId::Visibility)
-			return from.Get<int>() == (int)Style::Visibility::Visible || to.Get<int>() == (int)Style::Visibility::Visible;
-		return false;
-	case Unit::COLOUR:
-	case Unit::TRANSFORM:
-	case Unit::DECORATOR:
-	case Unit::FILTER:
-	case Unit::COLORSTOPLIST:
-	case Unit::BOXSHADOWLIST: return true;
-	case Unit::STYLE_VALUE:
-	{
-		const StyleValuePtr v0 = from.value.Get<StyleValuePtr>();
-		const StyleValuePtr v1 = to.value.Get<StyleValuePtr>();
-		return v0 && v1 && v0->Interpolate(*v1, 0.5f, element) != nullptr;
-	}
-	default: break;
-	}
-	return false;
-}
 
 const Property* ElementStyle::GetDeclaredValue(PropertyId id, Property& storage) const
 {
