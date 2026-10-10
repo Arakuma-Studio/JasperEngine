@@ -34,6 +34,9 @@ target_compile_definitions(
     PUBLIC
 
     RMLUI_STATIC_LIB
+    # calc()/min()/max()/clamp() (upstream PR #983, docs/html-ui/FORK.md): PUBLIC, it changes the
+    # layout of ComputedValues and the Unit enum every user of the headers sees
+    RMLUI_MATH_EXPRESSIONS
 
     PRIVATE
 
