@@ -100,7 +100,8 @@ float bandCount(){
 // how much of a light with lambert term x in [0, 1] the surface takes
 vec3 toonBand(float x){
     #ifdef RAMP
-        return sRGBToLinear(texture(sampler2D(u_rampTexture, u_ramp_smp), vec2(clamp(x, 0.01, 0.99), 0.5)).rgb);
+        // level 0: no derivatives inside the light loop (HLSL unrolls it otherwise)
+        return sRGBToLinear(textureLod(sampler2D(u_rampTexture, u_ramp_smp), vec2(clamp(x, 0.01, 0.99), 0.5), 0.0).rgb);
     #else
         float count = bandCount();
         float t = clamp(x, 0.0, 1.0) * count;
