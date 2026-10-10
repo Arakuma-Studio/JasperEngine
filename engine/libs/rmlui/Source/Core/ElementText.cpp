@@ -977,11 +977,17 @@ static bool BuildToken(String& token, const char*& token_begin, const char* stri
 	//  - at the end of a section of white-space characters, if we're not collapsing white-space,
 	//  - at an endline token, if we're breaking on endlines,
 	//  - at a line-break opportunity inside a section of non-white-space characters.
+	const char* peeked_at = nullptr;
+	const char* peeked_next = nullptr;
+	Character peeked = Character::Null;
+	bool peeked_non_breaking = false;
 	while (token_begin != string_end)
 	{
-		const char* next = nullptr;
-		bool non_breaking = false;
-		const Character character = ReadCharacter(token_begin, string_end, rules.decode_escape_characters, next, non_breaking);
+		// (the character read ahead by the previous iteration, if any)
+		const char* next = peeked_next;
+		bool non_breaking = peeked_non_breaking;
+		const Character character =
+			(peeked_at == token_begin ? peeked : ReadCharacter(token_begin, string_end, rules.decode_escape_characters, next, non_breaking));
 
 		// Check for an endline token; if we're breaking on endlines and we find one, then return true to indicate a
 		// forced break.
@@ -1041,7 +1047,13 @@ static bool BuildToken(String& token, const char*& token_begin, const char* stri
 			bool following_non_breaking = false;
 			const char* after_following = nullptr;
 			if (next != string_end)
+			{
 				following = ReadCharacter(next, string_end, rules.decode_escape_characters, after_following, following_non_breaking);
+				peeked_at = next;
+				peeked = following;
+				peeked_next = after_following;
+				peeked_non_breaking = following_non_breaking;
+			}
 
 			AppendTransformed(token, character, before_previous, previous, following, rules.text_transform);
 			token_begin = next;
