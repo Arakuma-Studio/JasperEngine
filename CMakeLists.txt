@@ -549,6 +549,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/McpTransportHttp.cpp
     ${EDITOR_DIR}/mcp/McpTransportStdio.cpp
     ${EDITOR_DIR}/mcp/McpValues.cpp
+    ${EDITOR_DIR}/mcp/McpShaderValues.cpp
     ${EDITOR_DIR}/mcp/McpLaunch.cpp
     ${EDITOR_DIR}/mcp/EngineApiContext.cpp
     ${EDITOR_DIR}/mcp/TerrainMaps.cpp
@@ -595,6 +596,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/shader/ShaderLibraryMatrix.cpp
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
+    ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp

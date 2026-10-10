@@ -373,6 +373,31 @@ namespace jasperengine::editor{
         // drag field; true with newValue when it changed
         bool drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue);
         void drawShaderUniformWarnings(const std::vector<std::string>& warnings);
+        // ---- shader library (InspectorShaderLibrary.cpp) ----
+        // The Shader picker: the built-in shader, the library shaders of `type` grouped by
+        // @category (with @description tooltips) and "Custom file..." (the Edit Shader Files
+        // popup named popupName, which the caller draws)
+        void drawLibraryShaderCombo(const std::string& currentShader, ShaderType type,
+                                    const std::function<void(const std::string&)>& setShader, const std::string& popupName);
+        // The manifest rows of `shader` for one GameObject, into the current table: feature
+        // checkboxes, keyword combos, parameters (colour pickers editing sRGB, sliders for
+        // ranges, checkboxes for toggles, drag fields) and texture slots, hiding the ones
+        // behind a feature that is off; each resets to the manifest default. They edit the
+        // collection properties given. False when the shader has no manifest.
+        bool drawShaderManifestRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::string& shader,
+                                    const std::string& paramsProperty, const std::string& texturesProperty,
+                                    const std::string& featuresProperty, const std::function<void()>& onValueChanged);
+        // A submesh material's Shader row and manifest rows; true when the built-in PBR rows
+        // apply (built-in Lit or a fork)
+        bool drawMaterialShaderRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                    unsigned int submesh, const RowSettings& settingsMaterial);
+        // A submesh material's Surface (blend, cull, depth write and test, depth offset, sort
+        // priority) and Lighting rows; Auto shows what it resolves to
+        void drawMaterialSurfaceRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                     unsigned int submesh, const RowSettings& settingsMaterial);
+        // UI/Points/LineRenderer blend mode and depth write rows, into the current table
+        void drawComponentStateRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+
         // Scene-level variant: edits a scene default shader property (e.g. "default_mesh_shader"),
         // used by every component of that type whose customShader is empty.
         void drawSceneShaderRow(SceneProject* sceneProject, ShaderType shaderType, const char* scenePropertyName, const char* label);

@@ -1533,8 +1533,11 @@ void editor::Project::refreshLinkedMaterials(bool force) {
 
         const Material& updatedMaterial = changedIt->second.updatedMaterial;
         if (mesh->submeshes[keySubmeshIndex].material != updatedMaterial) {
+            // a new shader, features or render state reload the mesh, parameters its uniforms
+            const uint64_t updateFlags = Catalog::getMaterialUpdateFlags(mesh->submeshes[keySubmeshIndex].material, updatedMaterial);
             mesh->submeshes[keySubmeshIndex].material = updatedMaterial;
             mesh->submeshes[keySubmeshIndex].needUpdateTexture = true;
+            Catalog::updateEntity(sceneProject->scene, keyEntity, updateFlags);
             sceneProject->needUpdateRender = true;
             sceneProject->isModified = true;
         }
@@ -3271,8 +3274,10 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
                         materialFileLinks[MaterialLinkKey{targetScene->id, entity, submeshIndex}].lastWriteTime = fs::last_write_time(materialPath, ec);
 
                         if (material != fileMaterial) {
+                            const uint64_t updateFlags = Catalog::getMaterialUpdateFlags(material, fileMaterial);
                             material = fileMaterial;
                             mesh->submeshes[submeshIndex].needUpdateTexture = true;
+                            Catalog::updateEntity(targetScene->scene, entity, updateFlags);
                             targetScene->needUpdateRender = true;
                         }
                     } catch (const std::exception& e) {

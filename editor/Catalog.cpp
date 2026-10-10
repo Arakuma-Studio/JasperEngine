@@ -10,6 +10,7 @@
 #include "external/IconsFontAwesome6.h"
 
 #include <cctype>
+#include <cstring>
 
 namespace {
 
@@ -102,6 +103,11 @@ namespace {
         return registry->findComponent<Component>(entity);
     }
 
+    bool endsWith(const std::string& text, const char* suffix) {
+        const size_t length = std::strlen(suffix);
+        return text.size() >= length && text.compare(text.size() - length, length, suffix) == 0;
+    }
+
     bool parseIndex(const std::string& text, size_t& pos, size_t& value) {
         if (pos >= text.size() || !std::isdigit(static_cast<unsigned char>(text[pos]))) {
             return false;
@@ -139,6 +145,18 @@ namespace {
         {"material.metallicRoughnessTexture", SubmeshOverride_MetallicRoughnessTexture},
         {"material.occlusionTexture", SubmeshOverride_OcclusionTexture},
         {"material.normalTexture", SubmeshOverride_NormalTexture},
+        {"material.shader", SubmeshOverride_Shader},
+        {"material.shaderParams", SubmeshOverride_ShaderParams},
+        {"material.shaderTextures", SubmeshOverride_ShaderTextures},
+        {"material.shaderFeatures", SubmeshOverride_ShaderFeatures},
+        {"material.blendMode", SubmeshOverride_BlendMode},
+        {"material.cullMode", SubmeshOverride_CullMode},
+        {"material.depthWrite", SubmeshOverride_DepthWrite},
+        {"material.depthTest", SubmeshOverride_DepthTest},
+        {"material.depthOffsetFactor", SubmeshOverride_DepthOffset},
+        {"material.depthOffsetUnits", SubmeshOverride_DepthOffset},
+        {"material.sortPriority", SubmeshOverride_SortPriority},
+        {"material.lighting", SubmeshOverride_Lighting},
         {"faceCulling", SubmeshOverride_FaceCulling},
         {"textureShadow", SubmeshOverride_TextureShadow},
         {"primitiveType", SubmeshOverride_PrimitiveType}
@@ -167,6 +185,33 @@ namespace {
         return false;
     }
 
+    // The shader library fields of a submesh material ("submeshes[N].material.<field>"). The
+    // shader, its features, textures and render state are resolved when the mesh loads, so a
+    // change reloads it; parameters only rewrite the uniform blocks.
+    const char* const kMaterialLibraryFields[] = {
+        "shader", "shaderParams", "shaderTextures", "shaderFeatures", "blendMode", "cullMode", "depthWrite",
+        "depthTest", "depthOffsetFactor", "depthOffsetUnits", "sortPriority", "lighting"
+    };
+
+    PropertyData getMaterialLibraryProperty(Material& material, Material* def, const std::string& field, bool hasRef) {
+        auto data = [&](PropertyType type, uint64_t flags, auto member) -> PropertyData {
+            return {type, flags, def ? (void*)&(def->*member) : nullptr, hasRef ? (void*)&(material.*member) : nullptr};
+        };
+        if (field == "shader") return data(PropertyType::String, UpdateFlags_Shader_Reload | UpdateFlags_Shader_Uniforms, &Material::shader);
+        if (field == "shaderParams") return data(PropertyType::Custom, UpdateFlags_Shader_Uniforms, &Material::shaderParams);
+        if (field == "shaderTextures") return data(PropertyType::Custom, UpdateFlags_Mesh_Reload | UpdateFlags_Mesh_Texture, &Material::shaderTextures);
+        if (field == "shaderFeatures") return data(PropertyType::Custom, UpdateFlags_Mesh_Reload, &Material::shaderFeatures);
+        if (field == "blendMode") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::blendMode);
+        if (field == "cullMode") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::cullMode);
+        if (field == "depthWrite") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::depthWrite);
+        if (field == "depthTest") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::depthTest);
+        if (field == "depthOffsetFactor") return data(PropertyType::Float, UpdateFlags_Mesh_Reload, &Material::depthOffsetFactor);
+        if (field == "depthOffsetUnits") return data(PropertyType::Float, UpdateFlags_Mesh_Reload, &Material::depthOffsetUnits);
+        if (field == "sortPriority") return data(PropertyType::Int, UpdateFlags_Mesh_Reload, &Material::sortPriority);
+        if (field == "lighting") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::lighting);
+        return PropertyData();
+    }
+
     void* getLightShadowNearRef(void* comp) {
         return &static_cast<LightComponent*>(comp)->shadowCameraNearFar.x;
     }
@@ -191,6 +236,11 @@ namespace {
         makeFastProperty<UIComponent, Texture, &UIComponent::texture>("texture", PropertyType::Texture, UpdateFlags_UI_Texture),
         makeFastProperty<UIComponent, std::string, &UIComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
         makeFastProperty<UIComponent, ShaderUniformValues, &UIComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
+        // shader library: resolved when the UI loads its shader
+        makeFastProperty<UIComponent, std::vector<std::pair<std::string, Texture>>, &UIComponent::shaderTextures>("shaderTextures", PropertyType::Custom, UpdateFlags_Shader_Reload),
+        makeFastProperty<UIComponent, std::vector<std::string>, &UIComponent::shaderFeatures>("shaderFeatures", PropertyType::Custom, UpdateFlags_Shader_Reload),
+        makeFastProperty<UIComponent, MaterialBlendMode, &UIComponent::blendMode>("blendMode", PropertyType::Enum, UpdateFlags_Shader_Reload),
+        makeFastProperty<UIComponent, MaterialDepthWrite, &UIComponent::depthWrite>("depthWrite", PropertyType::Enum, UpdateFlags_Shader_Reload),
     };
 
     static const FastPropertyDescriptor kRectTransformProperties[] = {
@@ -417,6 +467,8 @@ namespace {
         {"shadowCameraNear", PropertyType::Float, UpdateFlags_LightShadowCamera, nullptr, &getLightShadowNearRef},
         {"shadowCameraFar", PropertyType::Float, UpdateFlags_LightShadowCamera, nullptr, &getLightShadowFarRef},
         makeFastProperty<LightComponent, unsigned int, &LightComponent::numShadowCascades>("numShadowCascades", PropertyType::UInt, UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Reload),
+        // read by RenderSystem when it picks each mesh's lights
+        makeFastProperty<LightComponent, LightShading, &LightComponent::shading>("shading", PropertyType::Enum, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kLight2DProperties[] = {
@@ -520,6 +572,8 @@ namespace {
         makeFastProperty<SkyboxComponent, bool, &SkyboxComponent::visible>("visible", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<SkyboxComponent, std::string, &SkyboxComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
         makeFastProperty<SkyboxComponent, ShaderUniformValues, &SkyboxComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
+        makeFastProperty<SkyboxComponent, std::vector<std::pair<std::string, Texture>>, &SkyboxComponent::shaderTextures>("shaderTextures", PropertyType::Custom, UpdateFlags_Shader_Reload),
+        makeFastProperty<SkyboxComponent, std::vector<std::string>, &SkyboxComponent::shaderFeatures>("shaderFeatures", PropertyType::Custom, UpdateFlags_Shader_Reload),
     };
 
     static const FastPropertyDescriptor kTextProperties[] = {
@@ -633,7 +687,7 @@ namespace {
 
         pos++;
         if (pos == propertyName.size()) {
-            return {PropertyType::Custom, UpdateFlags_Mesh_Texture, (void*)&defSub, (void*)&sub};
+            return {PropertyType::Custom, UpdateFlags_Mesh_Texture | UpdateFlags_Mesh_Reload | UpdateFlags_Shader_Uniforms, (void*)&defSub, (void*)&sub};
         }
         if (propertyName[pos] != '.') {
             return PropertyData();
@@ -644,7 +698,8 @@ namespace {
         // submeshes[N].material
         if (propertyName.compare(fieldPos, 8, "material") == 0) {
             if (fieldPos + 8 == propertyName.size()) {
-                return {PropertyType::Material, UpdateFlags_Mesh_Texture, (void*)&defSub.material, (void*)&sub.material};
+                // a whole material may bring another shader, features or render state
+                return {PropertyType::Material, UpdateFlags_Mesh_Texture | UpdateFlags_Mesh_Reload | UpdateFlags_Shader_Uniforms, (void*)&defSub.material, (void*)&sub.material};
             }
             if (propertyName[fieldPos + 8] != '.') {
                 return PropertyData();
@@ -689,7 +744,7 @@ namespace {
             if (propertyName.compare(matFieldPos, 13, "normalTexture") == 0 && matFieldPos + 13 == propertyName.size()) {
                 return {PropertyType::Texture, UpdateFlags_Mesh_Texture, (void*)&defSub.material.normalTexture, (void*)&sub.material.normalTexture};
             }
-            return PropertyData();
+            return getMaterialLibraryProperty(sub.material, &defSub.material, propertyName.substr(matFieldPos), true);
         }
 
         // submeshes[N].primitiveType, faceCulling, textureShadow, textureRect
@@ -2547,7 +2602,10 @@ namespace {
             Submesh& sub = compRef ? comp->submeshes[s] : def.submeshes[0];
             Submesh& defSub = def.submeshes[0];
 
-            ps["submeshes[" + idx + "].material"] = {PropertyType::Material, UpdateFlags_Mesh_Texture, (void*)&defSub.material, compRef ? (void*)&sub.material : nullptr};
+            ps["submeshes[" + idx + "].material"] = {PropertyType::Material, UpdateFlags_Mesh_Texture | UpdateFlags_Mesh_Reload | UpdateFlags_Shader_Uniforms, (void*)&defSub.material, compRef ? (void*)&sub.material : nullptr};
+            for (const char* field : kMaterialLibraryFields) {
+                ps["submeshes[" + idx + "].material." + field] = getMaterialLibraryProperty(sub.material, &defSub.material, field, compRef != nullptr);
+            }
             ps["submeshes[" + idx + "].material.name"] = {PropertyType::String, UpdateFlags_None, (void*)&defSub.material.name, compRef ? (void*)&sub.material.name : nullptr};
             ps["submeshes[" + idx + "].material.baseColorFactor"] = {PropertyType::Vector4, UpdateFlags_None, (void*)&defSub.material.baseColorFactor, compRef ? (void*)&sub.material.baseColorFactor : nullptr};
             ps["submeshes[" + idx + "].material.metallicFactor"] = {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.metallicFactor, compRef ? (void*)&sub.material.metallicFactor : nullptr};
@@ -2776,6 +2834,10 @@ namespace {
         if (propertyName == "texture") return {PropertyType::Texture, UpdateFlags_Points_Texture, &def.texture, &comp->texture};
         if (propertyName == "customShader") return {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, &comp->customShader};
         if (propertyName == "shaderUniforms") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, &comp->shaderUniforms};
+        if (propertyName == "shaderTextures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, &comp->shaderTextures};
+        if (propertyName == "shaderFeatures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, &comp->shaderFeatures};
+        if (propertyName == "blendMode") return {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, &comp->blendMode};
+        if (propertyName == "depthWrite") return {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.depthWrite, &comp->depthWrite};
 
         if (propertyName == "numFramesRect") {
             return {PropertyType::UInt, UpdateFlags_None, (void*)&def.numFramesRect, (void*)&comp->numFramesRect};
@@ -2859,6 +2921,10 @@ namespace {
         ps["texture"] = {PropertyType::Texture, UpdateFlags_Points_Texture, &def.texture, comp ? &comp->texture : nullptr};
         ps["customShader"] = {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, comp ? &comp->customShader : nullptr};
         ps["shaderUniforms"] = {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, comp ? &comp->shaderUniforms : nullptr};
+        ps["shaderTextures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, comp ? &comp->shaderTextures : nullptr};
+        ps["shaderFeatures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, comp ? &comp->shaderFeatures : nullptr};
+        ps["blendMode"] = {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, comp ? &comp->blendMode : nullptr};
+        ps["depthWrite"] = {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.depthWrite, comp ? &comp->depthWrite : nullptr};
 
         static std::vector<PointData> defPoints;
         ps["points"] = {PropertyType::Custom, UpdateFlags_Points, (void*)&defPoints, comp ? (void*)&comp->points : nullptr};
@@ -2895,6 +2961,10 @@ namespace {
         if (propertyName == "maxLines") return {PropertyType::UInt, UpdateFlags_Lines_Reload, &def.maxLines, &comp->maxLines};
         if (propertyName == "customShader") return {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, &comp->customShader};
         if (propertyName == "shaderUniforms") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, &comp->shaderUniforms};
+        if (propertyName == "shaderTextures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, &comp->shaderTextures};
+        if (propertyName == "shaderFeatures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, &comp->shaderFeatures};
+        if (propertyName == "blendMode") return {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, &comp->blendMode};
+        if (propertyName == "depthWrite") return {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.depthWrite, &comp->depthWrite};
 
         if (propertyName == "lines") {
             static std::vector<LineData> defLines;
@@ -2941,6 +3011,10 @@ namespace {
         ps["maxLines"] = {PropertyType::UInt, UpdateFlags_Lines_Reload, &def.maxLines, comp ? &comp->maxLines : nullptr};
         ps["customShader"] = {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, comp ? &comp->customShader : nullptr};
         ps["shaderUniforms"] = {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, comp ? &comp->shaderUniforms : nullptr};
+        ps["shaderTextures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, comp ? &comp->shaderTextures : nullptr};
+        ps["shaderFeatures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, comp ? &comp->shaderFeatures : nullptr};
+        ps["blendMode"] = {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, comp ? &comp->blendMode : nullptr};
+        ps["depthWrite"] = {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.depthWrite, comp ? &comp->depthWrite : nullptr};
 
         static std::vector<LineData> defLines;
         ps["lines"] = {PropertyType::Custom, UpdateFlags_Lines, (void*)&defLines, comp ? (void*)&comp->lines : nullptr};
@@ -4208,6 +4282,102 @@ bool editor::Catalog::isCustomDepthShaderBuildFailed(Scene* scene, Entity entity
            mesh->numSubmeshes > 0 && mesh->submeshes[0].customDepthShaderId == 0;
 }
 
+bool editor::Catalog::splitShaderEntryProperty(const std::string& propertyName, std::string& collection, std::string& key) {
+    for (const char* name : {"shaderParams.", "shaderTextures.", "shaderUniforms."}) {
+        const size_t at = propertyName.find(name);
+        if (at == std::string::npos) continue;
+        const std::string prefix = propertyName.substr(0, at);
+        const bool material = prefix.compare(0, 10, "submeshes[") == 0 && endsWith(prefix, "].material.");
+        const bool component = prefix.empty();
+        // a material has shaderParams, a component shaderUniforms; both have shaderTextures
+        const std::string field(name, std::strlen(name) - 1);
+        if ((material && field == "shaderUniforms") || (component && field == "shaderParams") || (!material && !component)) {
+            return false;
+        }
+        key = propertyName.substr(at + std::strlen(name));
+        if (key.empty()) return false;
+        collection = prefix + field;
+        return true;
+    }
+    return false;
+}
+
+std::string editor::Catalog::getShaderReferenceForProperty(Scene* scene, Entity entity, ComponentType component, const std::string& propertyName) {
+    if (!scene) return std::string();
+    switch (component) {
+        case ComponentType::MeshComponent: {
+            MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+            if (!mesh) return std::string();
+            size_t submesh = 0;
+            size_t pos = 10;
+            if (propertyName.compare(0, 10, "submeshes[") == 0 && parseIndex(propertyName, pos, submesh) && submesh < mesh->numSubmeshes) {
+                return RenderSystem::getSubmeshShader(*mesh, mesh->submeshes[submesh], scene->getDefaultCustomShader(ShaderType::MESH));
+            }
+            return mesh->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::MESH) : mesh->customShader;
+        }
+        case ComponentType::UIComponent:
+            if (UIComponent* ui = scene->findComponent<UIComponent>(entity))
+                return ui->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui->customShader;
+            break;
+        case ComponentType::PointsComponent:
+            if (PointsComponent* points = scene->findComponent<PointsComponent>(entity))
+                return points->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points->customShader;
+            break;
+        case ComponentType::LineRendererComponent:
+            if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity))
+                return lines->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines->customShader;
+            break;
+        case ComponentType::SkyboxComponent:
+            if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity))
+                return sky->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky->customShader;
+            break;
+        default:
+            break;
+    }
+    return std::string();
+}
+
+std::vector<MaterialLighting> editor::Catalog::getShaderLightingModes(const ShaderManifest* manifest) {
+    if (!manifest || !manifest->present) {
+        return {MaterialLighting::PIXEL, MaterialLighting::VERTEX, MaterialLighting::MIXED};
+    }
+    if (manifest->lighting.empty()) {
+        return {MaterialLighting::NONE};
+    }
+    std::vector<MaterialLighting> modes;
+    for (ShaderLightingMode mode : manifest->lighting) {
+        switch (mode) {
+            case ShaderLightingMode::NONE: modes.push_back(MaterialLighting::NONE); break;
+            case ShaderLightingMode::PIXEL: modes.push_back(MaterialLighting::PIXEL); break;
+            case ShaderLightingMode::VERTEX: modes.push_back(MaterialLighting::VERTEX); break;
+            case ShaderLightingMode::MIXED: modes.push_back(MaterialLighting::MIXED); break;
+        }
+    }
+    return modes;
+}
+
+bool editor::Catalog::supportsLighting(MaterialLighting mode, const ShaderManifest* manifest) {
+    if (mode == MaterialLighting::AUTO) return true;
+    const std::vector<MaterialLighting> modes = getShaderLightingModes(manifest);
+    return std::find(modes.begin(), modes.end(), mode) != modes.end();
+}
+
+uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Material& to) {
+    uint64_t flags = UpdateFlags_Mesh_Texture;
+    // resolved when the mesh loads: the shader, its variant and its pipelines
+    if (from.shader != to.shader || from.shaderFeatures != to.shaderFeatures || from.shaderTextures != to.shaderTextures ||
+            from.blendMode != to.blendMode || from.cullMode != to.cullMode || from.depthWrite != to.depthWrite ||
+            from.depthTest != to.depthTest || from.depthOffsetFactor != to.depthOffsetFactor ||
+            from.depthOffsetUnits != to.depthOffsetUnits || from.sortPriority != to.sortPriority ||
+            from.lighting != to.lighting || from.alphaMode != to.alphaMode) {
+        flags |= UpdateFlags_Mesh_Reload;
+    }
+    if (from.shader != to.shader || from.shaderParams != to.shaderParams) {
+        flags |= UpdateFlags_Shader_Uniforms;
+    }
+    return flags;
+}
+
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
     if (updateFlags & UpdateFlags_Transform){
         if (Transform* transform = registry->findComponent<Transform>(entity)){
@@ -4831,9 +5001,17 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
                 auto* source = Catalog::getPropertyRef<std::vector<Texture>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<Texture>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
-            } else if (property == "shaderUniforms") {
+            } else if (property == "shaderUniforms" || endsWith(property, "material.shaderParams")) {
                 auto* source = Catalog::getPropertyRef<ShaderUniformValues>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<ShaderUniformValues>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (property == "shaderTextures" || endsWith(property, "material.shaderTextures")) {
+                auto* source = Catalog::getPropertyRef<std::vector<std::pair<std::string, Texture>>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<std::pair<std::string, Texture>>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (property == "shaderFeatures" || endsWith(property, "material.shaderFeatures")) {
+                auto* source = Catalog::getPropertyRef<std::vector<std::string>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<std::string>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             }
             break;

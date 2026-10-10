@@ -46,6 +46,26 @@ namespace jasperengine{
         SubmeshOverride_TextureShadow            = 1 << 13,
         SubmeshOverride_PrimitiveType            = 1 << 14,
         SubmeshOverride_FoliageTransmission      = 1 << 15,
+        // shader library fields of the material: a model file never sets them, so a load
+        // only keeps them through these bits
+        SubmeshOverride_Shader                   = 1 << 16,
+        SubmeshOverride_ShaderParams             = 1 << 17,
+        SubmeshOverride_ShaderTextures           = 1 << 18,
+        SubmeshOverride_ShaderFeatures           = 1 << 19,
+        SubmeshOverride_BlendMode                = 1 << 20,
+        SubmeshOverride_CullMode                 = 1 << 21,
+        SubmeshOverride_DepthWrite               = 1 << 22,
+        SubmeshOverride_DepthTest                = 1 << 23,
+        SubmeshOverride_DepthOffset              = 1 << 24,
+        SubmeshOverride_SortPriority             = 1 << 25,
+        SubmeshOverride_Lighting                 = 1 << 26,
+
+        SubmeshOverride_ShaderLibrary = SubmeshOverride_Shader | SubmeshOverride_ShaderParams |
+                                        SubmeshOverride_ShaderTextures | SubmeshOverride_ShaderFeatures |
+                                        SubmeshOverride_BlendMode | SubmeshOverride_CullMode |
+                                        SubmeshOverride_DepthWrite | SubmeshOverride_DepthTest |
+                                        SubmeshOverride_DepthOffset | SubmeshOverride_SortPriority |
+                                        SubmeshOverride_Lighting,
 
         SubmeshOverride_Material = SubmeshOverride_BaseColorFactor | SubmeshOverride_MetallicFactor |
                                    SubmeshOverride_RoughnessFactor | SubmeshOverride_AlphaCutoff |
@@ -53,7 +73,7 @@ namespace jasperengine{
                                    SubmeshOverride_MaterialName | SubmeshOverride_BaseColorTexture |
                                    SubmeshOverride_EmissiveTexture | SubmeshOverride_MetallicRoughnessTexture |
                                    SubmeshOverride_OcclusionTexture | SubmeshOverride_NormalTexture |
-                                   SubmeshOverride_FoliageTransmission
+                                   SubmeshOverride_FoliageTransmission | SubmeshOverride_ShaderLibrary
     };
 
     // The lights reaching a mesh (an instanced batch counts as one mesh), picked by

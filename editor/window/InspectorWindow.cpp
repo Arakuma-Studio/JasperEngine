@@ -165,6 +165,12 @@ static std::vector<editor::EnumEntry> entriesShadowCaster2DShape = {
     { (int)ShadowCaster2DShape::POLYGON, "Polygon" }
 };
 
+static std::vector<editor::EnumEntry> entriesLightShading = {
+    { (int)LightShading::BOTH, "Both" },
+    { (int)LightShading::PIXEL, "Per Pixel" },
+    { (int)LightShading::VERTEX, "Per Vertex" }
+};
+
 static std::vector<editor::EnumEntry> entriesCullingMode = {
     { (int)CullingMode::BACK, "Back" },
     { (int)CullingMode::FRONT, "Front" }
@@ -5612,7 +5618,22 @@ void editor::InspectorWindow::drawCustomShaderRow(ComponentType cpType, ShaderTy
         }
     }
 
-    drawShaderUniformRows(cpType, sceneProject, shaderEntity, uniformRows);
+    // a shader with a manifest (a library shader) gets its labelled rows: parameters in
+    // shaderUniforms, textures, features. A mesh keeps those on its materials.
+    bool manifestRows = false;
+    if (cpType != ComponentType::MeshComponent) {
+        const std::string shader = Catalog::getShaderReferenceForProperty(sceneProject->scene, shaderEntity, cpType, "customShader");
+        manifestRows = drawShaderManifestRows(cpType, sceneProject, shaderEntity, shader, "shaderUniforms", "shaderTextures", "shaderFeatures", nullptr);
+        if (manifestRows && uniformRows.buildFailed) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextDisabled("Shader failed to build");
+        }
+    }
+    if (!manifestRows)
+        drawShaderUniformRows(cpType, sceneProject, shaderEntity, uniformRows);
+
+    drawComponentStateRows(cpType, sceneProject, entities);
 
     endTable();
 }
@@ -5650,6 +5671,11 @@ void editor::InspectorWindow::drawComponentShaderRow(ComponentType cpType, Shade
             });
     };
 
+    // the library shaders of this type, or the built-in one (a depth program comes from the
+    // library shader's @depth, so the depth row has no picker)
+    if (shaderType != ShaderType::DEPTH)
+        drawLibraryShaderCombo(currentShader, shaderType, setShader, "Edit Shader Files##" + idSuffix);
+
     drawShaderRowContents(currentShader, setShader, onFork, idSuffix);
 }
 
@@ -5658,6 +5684,21 @@ editor::InspectorWindow::ShaderUniformRows editor::InspectorWindow::resolveShade
     Scene* scene = sceneProject->scene;
 
     std::vector<const CustomUniformBlock*> blocks = Catalog::getShaderUniformBlocks(scene, entity, cpType);
+    if (cpType == ComponentType::MeshComponent) {
+        // a submesh whose material names its own shader takes its values from the material
+        // (its rows are in the material section), not from the mesh's shaderUniforms
+        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)) {
+            blocks.erase(std::remove_if(blocks.begin(), blocks.end(), [mesh](const CustomUniformBlock* block) {
+                for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+                    const Submesh& sub = mesh->submeshes[s];
+                    if (!sub.material.shader.empty() && (block == &sub.customVSParams || block == &sub.customFSParams ||
+                            block == &sub.customVSDepthParams || block == &sub.customFSDepthParams))
+                        return true;
+                }
+                return false;
+            }), blocks.end());
+        }
+    }
     for (const CustomUniformBlock* block : blocks) {
         for (const ShaderUniform& uniform : block->members) {
             bool listed = false;
@@ -5817,6 +5858,7 @@ void editor::InspectorWindow::drawSceneShaderRow(SceneProject* sceneProject, Sha
     ImGui::Text("%s", label);
     ImGui::TableSetColumnIndex(1);
 
+    drawLibraryShaderCombo(currentShader, shaderType, setShader, std::string("Edit Shader Files##") + scenePropertyName);
     drawShaderRowContents(currentShader, setShader, onFork, scenePropertyName);
 }
 
@@ -6631,6 +6673,12 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             RowSettings settingsAlphaMode = settingsMaterial;
             settingsAlphaMode.enumEntries = &entriesMaterialAlphaMode;
 
+            // the shader (built-in Lit, a library shader or a custom file) and its own rows
+            beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_shader");
+            const bool pbrRows = drawMaterialShaderRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
+            endTable();
+
+            if (pbrRows){
             beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_options");
             propertyRow(RowPropertyType::Color4L, cpType, "submeshes["+std::to_string(s)+"].material.baseColorFactor", "Base Color", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.baseColorTexture", "Base Texture", sceneProject, entities,settingsMaterial);
@@ -6645,6 +6693,10 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.occlusionTexture", "Occlusion Texture", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsMaterial);
             endTable();
+            }
+
+            ImGui::SeparatorText("Surface");
+            drawMaterialSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
         }
 
         beginTable(cpType, getLabelSize("Texture Shadow"), "submeshes_settings");
@@ -8652,6 +8704,12 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
     RowSettings settingsCulling;
     settingsCulling.help = "Layers this light lights. GameObjects on other layers get no light and cast no shadow from it.";
     propertyRow(RowPropertyType::LayerMask, cpType, "cullingMask", "Culling Mask", sceneProject, entities, settingsCulling);
+    RowSettings settingsShading;
+    settingsShading.enumEntries = &entriesLightShading;
+    settingsShading.help = "Where this light is evaluated on materials whose Lighting is Mixed: Per Pixel (specular, shadows, spot masks) "
+                           "or Per Vertex (diffuse only, cheapest). Both leaves it to the material (per pixel under Mixed). "
+                           "Materials lit Per Pixel or Per Vertex evaluate every light their own way.";
+    propertyRow(RowPropertyType::Enum, cpType, "shading", "Shading", sceneProject, entities, settingsShading);
     endTable();
 
     ImGui::SeparatorText("Shadow settings");
@@ -14059,6 +14117,21 @@ void editor::InspectorWindow::show(){
 
                     drawScenePropertyRow<Vector3>(sceneProject, "global_illumination_color", "Color", ScenePropertyInputType::ColorRGB);
                     drawScenePropertyRow<float>(sceneProject, "global_illumination_intensity", "Intensity", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 1.0f);
+
+                    ImGui::EndTable();
+                }
+
+                ImGui::SeparatorText("Lights");
+
+                if (ImGui::BeginTable("scene_lights_table", 2, tableFlags)) {
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Max Lights Per Object"));
+                    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+                    drawScenePropertyRow<int>(sceneProject, "max_lights_per_object", "Max Lights Per Object", ScenePropertyInputType::DragInt, -1.0f, 1.0f, 16.0f,
+                        "How many lights each object is lit by (1-16). The scene can have any number of lights: each object "
+                        "takes the ones that reach it and give it the most light, and the others reaching it are folded into "
+                        "its ambient light (spherical harmonics), so they still brighten it without popping. More costs more "
+                        "per lit pixel; 4, 8 and 16 are the shader tiers.");
 
                     ImGui::EndTable();
                 }

@@ -591,6 +591,7 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"light_state", SettingKind::LightState, "scene lighting: off, on, auto (on when a light exists)"},
         {"global_illumination_color", SettingKind::Vector3, "ambient light color [r,g,b] (sRGB)"},
         {"global_illumination_intensity", SettingKind::Float, "ambient light intensity"},
+        {"max_lights_per_object", SettingKind::Int, "lights each object is lit by, 1-16 (the rest reaching it fold into its ambient)"},
         {"shadows_quality", SettingKind::ShadowQuality, "3D shadow edge filtering: none, low, medium, high"},
         {"ambient_light_2d_color", SettingKind::Vector3, "2D ambient light color [r,g,b] (sRGB)"},
         {"ambient_light_2d_intensity", SettingKind::Float, "2D ambient light intensity"},
@@ -616,11 +617,11 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"fixed_resolution_width", SettingKind::Int, "fixed resolution width (>= 1)"},
         {"fixed_resolution_height", SettingKind::Int, "fixed resolution height (>= 1)"},
         {"fixed_resolution_filter", SettingKind::Filter, "fixed resolution upscale filter: nearest, linear"},
-        {"default_mesh_shader", SettingKind::String, "forked shader base path for meshes (\"\" built-in)"},
-        {"default_ui_shader", SettingKind::String, "forked shader base path for UI (\"\" built-in)"},
-        {"default_sky_shader", SettingKind::String, "forked shader base path for the sky (\"\" built-in)"},
-        {"default_points_shader", SettingKind::String, "forked shader base path for points (\"\" built-in)"},
-        {"default_lines_shader", SettingKind::String, "forked shader base path for lines (\"\" built-in)"},
+        {"default_mesh_shader", SettingKind::String, "library:<name> or forked shader base path for meshes (\"\" built-in)"},
+        {"default_ui_shader", SettingKind::String, "library:<name> or forked shader base path for UI (\"\" built-in)"},
+        {"default_sky_shader", SettingKind::String, "library:<name> or forked shader base path for the sky (\"\" built-in)"},
+        {"default_points_shader", SettingKind::String, "library:<name> or forked shader base path for points (\"\" built-in)"},
+        {"default_lines_shader", SettingKind::String, "library:<name> or forked shader base path for lines (\"\" built-in)"},
         {"post_process", SettingKind::PostProcess,
          "post-process passes in order: [{shader: fork base path, enabled: bool, uniforms: {name: [x,y,z,w]}}]"}
     };
@@ -739,6 +740,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
         case SettingKind::Int:
             if (!value.is_number_integer()) return expect("an integer");
             if (name.rfind("fixed_resolution_", 0) == 0 && value.get<int>() < 1) return expect("at least 1");
+            if (name == "max_lights_per_object" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
             return new ScenePropertyCmd<int>(project, id, name, value.get<int>());
         case SettingKind::Float:
             if (!value.is_number()) return expect("a number");
@@ -746,8 +748,19 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
         case SettingKind::String: {
             if (!value.is_string()) return expect("a string (\"\" for the built-in shader)");
             const std::string base = value.get<std::string>();
-            if (!shaderBaseExists(project, base)) {
-                return expect("the base path of a forked shader whose .vert/.frag exist (fork the shader first), or \"\"");
+            if (ShaderReference::isLibrary(base)) {
+                // a library shader of the type this default is for
+                const ShaderType type = name == "default_ui_shader" ? ShaderType::UI : name == "default_sky_shader" ? ShaderType::SKYBOX
+                                      : name == "default_points_shader" ? ShaderType::POINTS
+                                      : name == "default_lines_shader" ? ShaderType::LINES : ShaderType::MESH;
+                std::string why;
+                if (!McpValues::checkShaderReference(project, base, type, why)) {
+                    error = name + ": " + why;
+                    return nullptr;
+                }
+            } else if (!shaderBaseExists(project, base)) {
+                return expect("\"library:<name>\" (list_shaders), the base path of a forked shader whose .vert/.frag exist "
+                              "(fork the shader first), or \"\"");
             }
             return new ScenePropertyCmd<std::string>(project, id, name, base);
         }
