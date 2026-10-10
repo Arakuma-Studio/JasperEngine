@@ -13,6 +13,8 @@
 #include "command/type/ComponentValuesCmd.h"
 #include "command/type/LinkMaterialCmd.h"
 #include "command/type/ModelClearCmd.h"
+#include "shader/ShaderManifest.h"
+#include "shader/ShaderVariantCompiler.h"
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -1726,7 +1728,17 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 return new ModelLoadCmd(project, sceneId, entity, stored);
             }
             if (isAssetPathProperty(propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
-            if (isShaderPathProperty(propertyName) && !text.empty()) {
+            if (isShaderPathProperty(propertyName) && ShaderReference::isLibrary(text)) {
+                // an engine library shader: it has to exist in this engine
+                std::string vert, frag, libraryError;
+                const ShaderType type = propertyName == "customDepthShader" ? ShaderType::DEPTH : ShaderType::MESH;
+                if (!ShaderVariantCompiler::getLibraryShaderPaths(text, type, vert, frag, &libraryError)) {
+                    std::string names;
+                    for (const std::string& name : ShaderManifests::getLibraryShaderNames()) names += (names.empty() ? "library:" : ", library:") + name;
+                    error = propertyName + ": " + libraryError + ". The library shaders: " + names + ".";
+                    return nullptr;
+                }
+            } else if (isShaderPathProperty(propertyName) && !text.empty()) {
                 Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(text);
                 if (!fs::exists(project->getProjectPath() / paths.vert) || !fs::exists(project->getProjectPath() / paths.frag)) {
                     error = propertyName + " references missing files (" + paths.vert + ", " + paths.frag +
