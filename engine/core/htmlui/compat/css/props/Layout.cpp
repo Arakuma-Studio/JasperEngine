@@ -339,7 +339,7 @@ void jasperengine::htmlui::compat::rewriteSizing(DeclContext& context){
         }
     }
     const std::string text = context.valueText();
-    if (!RcssGrammar::accepts(n, text)){
+    if (!RcssGrammar::accepts(n, text, context.session.options.fork)){
         unsupportedValue(context, n.compare(0, 4, "min-") == 0 ? "use a length or percentage" : "use auto, a length or a percentage");
         return;
     }

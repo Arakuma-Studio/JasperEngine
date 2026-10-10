@@ -51,12 +51,14 @@ TEST(ForkFeatures, ProbesNeedRmlUi){
     EXPECT_EQ(ForkFeatures::probe(), ForkFeatures::present());
 }
 
-TEST(ForkFeatures, PhaseTwoHasNoFeature){
-    // polarity: true = the fork has it; phase 2 ships every entry false
+TEST(ForkFeatures, PresentFeatures){
+    // polarity: true = the fork has it; phase 2 shipped every entry false, phase 3 flips them
+    // with the fork patches (docs/html-ui/FORK.md): Calc with upstream PR #983 (p3-base)
     const ForkFeatures present = ForkFeatures::present();
+    const ForkFeatures expected = ForkFeatures::none().with(ForkFeature::Calc, true);
     for (size_t i = 0; i < (size_t)ForkFeature::Count; i++)
-        EXPECT_FALSE(present.has((ForkFeature)i)) << forkFeatureName((ForkFeature)i);
-    EXPECT_EQ(present, ForkFeatures::none());
+        EXPECT_EQ(present.has((ForkFeature)i), expected.has((ForkFeature)i)) << forkFeatureName((ForkFeature)i);
+    EXPECT_EQ(present, expected);
 }
 
 TEST(ForkFeatures, WithBitsAndNames){

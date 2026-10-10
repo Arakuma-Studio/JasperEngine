@@ -320,14 +320,36 @@ namespace {
         void math(const ComponentValue& v, ValueList& out){
             const std::string name = lowerAscii(v.name());
             const bool calcFamily = StaticCalc::isCalcFamily(name) || name == "-webkit-calc" || name == "-moz-calc";
-            if (calcFamily && context.compat().fork.has(ForkFeature::Calc)){
-                ComponentValue copy = shell(v);
-                if (name != "calc" && name != "min" && name != "max" && name != "clamp")
-                    copy.token.value = "calc";
-                copy.children = list(v.children);
-                out.push_back(std::move(copy));
-                return;
+            if (calcFamily && context.calcNative && context.compat().fork.has(ForkFeature::Calc)){
+                // the fork evaluates the expression at layout time: it is kept when it is valid
+                // (its types checked with any context; a var() without one static value is the
+                // fork's to substitute) and holds no other math function, which the fork lacks
+                CalcContext check;
+                check.resolveVar = context.resolveVar;
+                check.pxPerUnit = [](std::string_view){ return std::optional<double>(1.0); };
+                std::string error;
+                const bool valid = StaticCalc::evaluate(v, check, &error).has_value() || check.varUnresolved;
+                if (!valid){
+                    fail(codes::UnsupportedValue, "'" + serialize(v) + "' cannot be evaluated (" + error + "); declaration dropped",
+                         "write the value without calc()");
+                    return;
+                }
+                bool otherMath = false;
+                for (const std::string& f : check.functions){
+                    if (!StaticCalc::isCalcFamily(f))
+                        otherMath = true;
+                }
+                if (!otherMath){
+                    ComponentValue copy = shell(v);
+                    if (name != "calc" && name != "min" && name != "max" && name != "clamp")
+                        copy.token.value = "calc";
+                    copy.children = list(v.children);
+                    out.push_back(std::move(copy));
+                    return;
+                }
+                // round(), sin(), ... inside: folded statically, as in every fork state
             }
+            const bool calcPresent = calcFamily && context.compat().fork.has(ForkFeature::Calc);
             CalcContext calc;
             calc.resolveVar = context.resolveVar;
             calc.pxPerUnit = [this](std::string_view unit){ return pxPerUnit(unit); };
@@ -352,7 +374,11 @@ namespace {
             }
             if (calc.usedContext && percentEstimated){
                 result.dependsOnViewport = true;
-                report(codes::ForkFallback, Severity::Warning, "'" + written + "' compares a percentage with a length; it is decided for the current viewport",
+                // (with the fork's Calc, only values a rewrite reads token by token get here: not a
+                // fallback that a fork feature removes, an approximation of that rewrite)
+                report(calcPresent ? codes::ApproximatedVisible : codes::ForkFallback, Severity::Warning,
+                       "'" + written + "' compares a percentage with a length; it is decided for the current viewport" +
+                           std::string(calcPresent ? " (the engine evaluates calc() where it reads a value as written, not in this rewritten one)" : ""),
                        "set the size with max-width / min-width, or flex");
             }else if (calc.usedContext){
                 if (calc.usedViewport)
@@ -376,8 +402,11 @@ namespace {
                         folded = converted;
                     }else{
                         const double percent = folded.get("%");
-                        report(codes::ForkFallback, Severity::Warning, "'" + written + "' is reduced to '" + formatNumber(percent) +
-                               "%' until the fork has calc()", "size the element with box-sizing, padding or flex instead");
+                        report(calcPresent ? codes::ApproximatedVisible : codes::ForkFallback, Severity::Warning,
+                               "'" + written + "' is reduced to '" + formatNumber(percent) + "%'" +
+                                   (calcPresent ? std::string(" (the engine evaluates calc() where it reads a value as written, not in this rewritten one)")
+                                                : std::string(" until the fork has calc()")),
+                               "size the element with box-sizing, padding or flex instead");
                         folded = CalcValue::of(percent, "%");
                     }
                 }

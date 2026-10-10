@@ -42,6 +42,11 @@ namespace jasperengine::htmlui::compat {
         mutable bool colorAsked = false;
         mutable std::string colorValue;
         bool inlineStyle = false;             // vmin/vmax evaluated with the viewport
+        // the value is written where the fork evaluates calc(), min(), max() and clamp() itself
+        // (an RmlUi property whose parser takes them, a custom property RmlUi substitutes): with
+        // ForkFeature::Calc they are checked and kept; otherwise (compat decorator arguments,
+        // values a rewrite reads token by token) they are folded as without the feature
+        bool calcNative = false;
         PercentBasis percentBasis = PercentBasis::ContainingBlock;
         bool vertical = false;                // the percentage basis is a height (top, bottom, height, ...)
         // the session's options (the defaults when not given)

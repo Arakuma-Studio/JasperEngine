@@ -435,16 +435,104 @@ namespace {
         return anySegment(list, ',', [&](std::string_view k){ return v == k; });
     }
 
-    bool checkSimple(std::string_view value, std::string_view grammar);
+    // calc(), min(), max(), clamp() (ForkFeature::Calc): the classes of the units in it
+    enum CalcUnits : unsigned { CalcLength = 1, CalcPercent = 2, CalcNumber = 4, CalcAngle = 8, CalcTime = 16, CalcOther = 32 };
 
-    bool checkAlternatives(std::string_view value, std::string_view grammar){
-        // "kw:a,b|length_percent"
-        return anySegment(grammar, '|', [&](std::string_view alternative){ return checkSimple(value, alternative); });
+    bool isCalcFunction(std::string_view v){
+        if (v.empty() || v.back() != ')')
+            return false;
+        return startsWithNoCase(v, "calc(") || startsWithNoCase(v, "min(") || startsWithNoCase(v, "max(") ||
+               startsWithNoCase(v, "clamp(");
     }
 
-    bool checkSimple(std::string_view value, std::string_view grammar){
+    unsigned calcUnits(std::string_view v){
+        unsigned units = 0;
+        size_t i = 0;
+        auto identChar = [](char c){ return std::isalnum((unsigned char)c) || c == '-' || c == '_'; };
+        while (i < v.size()){
+            const char c = v[i];
+            const bool startsNumber = (c >= '0' && c <= '9') || (c == '.' && i + 1 < v.size() && v[i + 1] >= '0' && v[i + 1] <= '9');
+            if (!startsNumber){
+                if (std::isalpha((unsigned char)c) || c == '-' || c == '_'){
+                    // an identifier (a function name, e, pi): skipped whole
+                    while (i < v.size() && identChar(v[i]))
+                        i++;
+                }else{
+                    i++;
+                }
+                continue;
+            }
+            while (i < v.size() && ((v[i] >= '0' && v[i] <= '9') || v[i] == '.'))
+                i++;
+            if (i + 1 < v.size() && (v[i] == 'e' || v[i] == 'E') && ((v[i + 1] >= '0' && v[i + 1] <= '9') || v[i + 1] == '+' || v[i + 1] == '-')){
+                i += 2;
+                while (i < v.size() && v[i] >= '0' && v[i] <= '9')
+                    i++;
+            }
+            const size_t start = i;
+            if (i < v.size() && v[i] == '%'){
+                units |= CalcPercent;
+                i++;
+                continue;
+            }
+            while (i < v.size() && std::isalpha((unsigned char)v[i]))
+                i++;
+            const Unit unit(v.substr(start, i - start));
+            static constexpr std::string_view lengths[] = {"px", "dp", "vw", "vh", "em", "rem", "in", "cm", "mm", "pt", "pc", "vmin", "vmax"};
+            static constexpr std::string_view angles[] = {"deg", "rad"};
+            static constexpr std::string_view times[] = {"s", "ms"};
+            auto in = [&](const auto& list){
+                for (std::string_view u : list){
+                    if (unit.view == u)
+                        return true;
+                }
+                return false;
+            };
+            if (unit.view.empty())
+                units |= CalcNumber;
+            else if (in(lengths))
+                units |= CalcLength;
+            else if (in(angles))
+                units |= CalcAngle;
+            else if (in(times))
+                units |= CalcTime;
+            else
+                units |= CalcOther;
+        }
+        return units;
+    }
+
+    // a math function standing for one value: `allowed` units only, at least one of `required`
+    bool calcFits(std::string_view v, unsigned allowed, unsigned required){
+        if (!isCalcFunction(v))
+            return false;
+        const unsigned units = calcUnits(v);
+        return (units & ~allowed) == 0 && (required == 0 || (units & required) != 0);
+    }
+
+    bool checkSimple(std::string_view value, std::string_view grammar, bool calc = false);
+
+    bool checkAlternatives(std::string_view value, std::string_view grammar, bool calc = false){
+        // "kw:a,b|length_percent"
+        return anySegment(grammar, '|', [&](std::string_view alternative){ return checkSimple(value, alternative, calc); });
+    }
+
+    bool checkSimple(std::string_view value, std::string_view grammar, bool calc){
         if (grammar.compare(0, 3, "kw:") == 0)
             return keywordIn(value, grammar.substr(3));
+        if (calc && isCalcFunction(value)){
+            if (grammar == "length")
+                return calcFits(value, CalcLength | CalcNumber, CalcLength);
+            if (grammar == "length_percent")
+                return calcFits(value, CalcLength | CalcPercent | CalcNumber, CalcLength | CalcPercent);
+            if (grammar == "number_length_percent")
+                return calcFits(value, CalcLength | CalcPercent | CalcNumber, 0);
+            if (grammar == "number")
+                return calcFits(value, CalcNumber, 0);
+            if (grammar == "angle")
+                return calcFits(value, CalcAngle | CalcNumber, CalcAngle);
+            return false;
+        }
         if (grammar == "length")
             return isLength(value);
         if (grammar == "length_percent")
@@ -496,7 +584,9 @@ namespace {
         return readsAsNumber(word.substr(0, word.size() - 1), ignored);
     }
 
-    bool checkComplex(std::string_view value, std::string_view kind){
+    bool checkComplex(std::string_view value, std::string_view kind, bool calc = false){
+        auto lengthWord = [&](std::string_view word){ return isLength(word) || (calc && calcFits(word, CalcLength | CalcNumber, CalcLength)); };
+        auto timeWord = [&](std::string_view word){ return seconds(word) || (calc && calcFits(word, CalcTime | CalcNumber, CalcTime)); };
         if (kind == "decorator"){
             if (value == "none")
                 return true;
@@ -541,7 +631,7 @@ namespace {
             for (std::string_view shadow : split(value, ',')){
                 int lengths = 0;
                 for (std::string_view word : split(shadow, ' ')){
-                    if (isLength(word))
+                    if (lengthWord(word))
                         lengths++;
                     else if (word != "inset" && !isColor(word))
                         return false;
@@ -560,7 +650,7 @@ namespace {
                 int times = 0;
                 bool property = false;
                 for (std::string_view word : split(entry, ' ')){
-                    if (seconds(word)){
+                    if (timeWord(word)){
                         times++;
                     }else if (tweenOrKeyword(word)){
                     }else if (word == "all"){
@@ -584,7 +674,7 @@ namespace {
                 int times = 0;
                 bool name = false;
                 for (std::string_view word : split(entry, ' ')){
-                    if (seconds(word))
+                    if (timeWord(word))
                         times++;
                     else if (tweenOrKeyword(word) || word == "alternate" || word == "infinite" || word == "paused" || isNumber(word)){
                     }else
@@ -600,9 +690,9 @@ namespace {
             if (words.size() == 1)
                 return value == "none" || value == "auto" || value == "initial" || isNumber(value);
             if (words.size() == 3)
-                return isNumber(words[0]) && isNumber(words[1]) && checkAlternatives(words[2], "kw:auto|length_percent");
+                return isNumber(words[0]) && isNumber(words[1]) && checkAlternatives(words[2], "kw:auto|length_percent", calc);
             if (words.size() == 2)
-                return isNumber(words[0]) && (isNumber(words[1]) || checkAlternatives(words[1], "kw:auto|length_percent"));
+                return isNumber(words[0]) && (isNumber(words[1]) || checkAlternatives(words[1], "kw:auto|length_percent", calc));
             return false;
         }
         if (kind == "flexflow"){
@@ -614,13 +704,13 @@ namespace {
         }
         if (kind == "borderside"){
             for (std::string_view word : split(value, ' ')){
-                if (!isLength(word) && !isColor(word))
+                if (!lengthWord(word) && !isColor(word))
                     return false;
             }
             return true;
         }
         if (kind == "border"){
-            return checkComplex(value, "borderside");
+            return checkComplex(value, "borderside", calc);
         }
         if (kind == "font")
             return !value.empty();
@@ -629,7 +719,7 @@ namespace {
             if (words.empty() || words.size() > 2)
                 return false;
             for (std::string_view word : words){
-                if (!checkAlternatives(word, "kw:left,center,right,top,bottom|length_percent"))
+                if (!checkAlternatives(word, "kw:left,center,right,top,bottom|length_percent", calc))
                     return false;
             }
             return true;
@@ -640,7 +730,7 @@ namespace {
                 return false;
             for (size_t i = 0; i < words.size(); i++){
                 const char* grammar = i == 2 ? "length" : "kw:left,center,right,top,bottom|length_percent";
-                if (!checkAlternatives(words[i], grammar))
+                if (!checkAlternatives(words[i], grammar, calc))
                     return false;
             }
             return true;
@@ -656,7 +746,9 @@ bool RcssGrammar::known(std::string_view property){
     return find(property) != nullptr;
 }
 
-bool RcssGrammar::accepts(std::string_view property, std::string_view rawValue){
+namespace {
+
+    bool acceptsWith(std::string_view property, std::string_view rawValue, bool calc){
     if (property.size() > 2 && property[0] == '-' && property[1] == '-')
         return true;
     const PropertyGrammar* row = find(property);
@@ -671,13 +763,13 @@ bool RcssGrammar::accepts(std::string_view property, std::string_view rawValue){
     }
     const std::string_view grammar = row->grammar;
     if (grammar[0] == '@')
-        return checkComplex(value, grammar.substr(1));
+        return checkComplex(value, grammar.substr(1), calc);
     if (grammar.compare(0, 4, "box:") == 0){
         const Pieces words = split(value, ' ');
         if (words.empty() || words.size() > 4)
             return false;
         for (std::string_view word : words){
-            if (!checkAlternatives(word, grammar.substr(4)))
+            if (!checkAlternatives(word, grammar.substr(4), calc))
                 return false;
         }
         return true;
@@ -687,14 +779,24 @@ bool RcssGrammar::accepts(std::string_view property, std::string_view rawValue){
         if (words.empty() || words.size() > 2)
             return false;
         for (std::string_view word : words){
-            if (!checkAlternatives(word, grammar.substr(10)))
+            if (!checkAlternatives(word, grammar.substr(10), calc))
                 return false;
         }
         return true;
     }
     if (grammar == "string")
         return true;
-    return checkAlternatives(value, grammar);
+    return checkAlternatives(value, grammar, calc);
+}
+
+}
+
+bool RcssGrammar::accepts(std::string_view property, std::string_view value){
+    return acceptsWith(property, value, false);
+}
+
+bool RcssGrammar::accepts(std::string_view property, std::string_view value, const ForkFeatures& fork){
+    return acceptsWith(property, value, fork.has(ForkFeature::Calc));
 }
 
 std::string RcssGrammar::keywords(std::string_view property){

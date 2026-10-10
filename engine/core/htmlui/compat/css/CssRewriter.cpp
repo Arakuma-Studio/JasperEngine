@@ -1335,6 +1335,25 @@ namespace {
         return note && std::strstr(note, "(Info)") != nullptr;
     }
 
+    // The rewrites that write the declared value as it is (keywords mapped, the value checked
+    // against RmlUi's grammar), so a calc()/min()/max()/clamp() the fork evaluates can stay in
+    // it (ForkFeature::Calc). The others read their value token by token or write it into
+    // compat decorator arguments: math functions are folded for them in every fork state.
+    bool writesCalcNatively(RewriteId rewrite){
+        switch (rewrite){
+            case RewriteId::None:
+            case RewriteId::Sizing:
+            case RewriteId::Gap:
+            case RewriteId::FontSize:
+            case RewriteId::LineHeight:
+            case RewriteId::ZIndex:
+            case RewriteId::Opacity:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     // what the normalizer may read of the rule for a value (see processOne)
     struct ValueNeeds {
         bool staticColor = false;   // a currentcolor ident or a var()
@@ -1440,6 +1459,9 @@ namespace {
             normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint;
             // a style attribute or a keyframe cannot be duplicated per orientation: vmin/vmax evaluated
             normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
+            // math functions the fork evaluates stay in the properties written as they are read
+            // (not in the families a rewrite reads token by token or into decorator arguments)
+            normalize.calcNative = writesCalcNatively(row->rewrite);
             normalize.percentBasis = facts.percentBasis;
             normalize.vertical = facts.vertical;
             normalize.options = &session.options;
@@ -1531,7 +1553,7 @@ namespace {
                     context.reportAs(Severity::Warning, codes::UnsupportedProperty, "'" + name + "' is not supported by the engine; dropped", row->suggestion);
                     return done;
                 }
-                if (!RcssGrammar::accepts(name, text)){
+                if (!RcssGrammar::accepts(name, text, session.options.fork)){
                     std::string suggestion;
                     const std::string keywords = RcssGrammar::keywords(name);
                     if (!keywords.empty())
@@ -1664,6 +1686,8 @@ namespace {
             NormalizeContext context;
             context.customProperty = true;
             context.options = &session.options;
+            // RmlUi substitutes the written value where it is used (the index keeps a folded copy)
+            context.calcNative = true;
             context.inlineStyle = origin == RuleOrigin::StyleAttribute;
             context.report = [&](DiagCode code, Severity severity, const std::string& message, const std::string& suggestion){
                 session.sink->reportAs(severity, code, d.ref, message, suggestion, std::string(), d.name);

@@ -178,7 +178,7 @@ void jasperengine::htmlui::compat::rewriteFontSize(DeclContext& context){
         context.emit("font-size", "0px");
         return;
     }
-    if (!RcssGrammar::accepts("font-size", text(v))){
+    if (!RcssGrammar::accepts("font-size", text(v), context.session.options.fork)){
         unsupportedValue(context, "use a length or a percentage");
         return;
     }
@@ -240,7 +240,7 @@ void jasperengine::htmlui::compat::rewriteLineHeight(DeclContext& context){
         context.emit("line-height", text(w[0]));
         return;
     }
-    if (!RcssGrammar::accepts("line-height", context.valueText())){
+    if (!RcssGrammar::accepts("line-height", context.valueText(), context.session.options.fork)){
         unsupportedValue(context, "use a number, a length or a percentage");
         return;
     }

@@ -318,9 +318,17 @@ TEST(CompatTables, EffectiveSupportFollowsForkFeatures){
     EXPECT_EQ(effectiveSupport(*grid, ForkFeatures::all().with(ForkFeature::Grid, false)), Support::Fallback);
     EXPECT_EQ(effectiveSupport(Support::Unsupported, ForkFeature::None, Support::Unsupported, ForkFeatures::all()), Support::Unsupported);
 
-    // every row: present() gives the table's own support (phase 2: nothing present)
+    // every row: present() gives the table's own support, or the one with the fork when the
+    // row's feature is present
     for (const PropertySupport& row : propertyTable())
-        EXPECT_EQ(effectiveSupport(row, ForkFeatures::present()), row.support) << row.name;
+        EXPECT_EQ(effectiveSupport(row, ForkFeatures::present()), ForkFeatures::present().has(row.fork) ? row.supportWithFork : row.support) << row.name;
+    // calc(), min(), max(), clamp(): native with the fork's Calc (p3-base), folded without it
+    for (const char* name : {"calc", "min", "max", "clamp"}){
+        const FunctionSupport* function = findFunction(name);
+        ASSERT_NE(function, nullptr) << name;
+        EXPECT_EQ(effectiveSupport(*function, ForkFeatures::present()), Support::Native) << name;
+        EXPECT_EQ(effectiveSupport(*function, ForkFeatures::present().with(ForkFeature::Calc, false)), Support::Fallback) << name;
+    }
 }
 
 TEST(CompatTables, Names){

@@ -33,6 +33,8 @@ engine/libs/rmlui/
   Source/Debugger/*.{cpp,h}      (+ Source/Debugger/LICENSE.txt: the embedded Courier Prime font, OFL)
   Include/RmlUi/SVG/ElementSVG.h  (phase 1, p1-vector)
   Source/SVG/*.{cpp,h}           (phase 1, p1-vector: the SVG plugin, unchanged, on LunaSVG)
+  Tests/Source/UnitTests/*.cpp   (phase 3: the fork's own unit tests, P3 rows below; RmlUi's
+  Tests/Source/Benchmarks/*.cpp   test infrastructure and 6.3 test sources are p3-testkit's)
 ```
 
 The SVG plugin is compiled into the `rmlui` target with `RMLUI_SVG_PLUGIN` defined, so
@@ -78,6 +80,27 @@ commit prefixed `rmlui:` and listed here.
 | P2-12 | `937dad03` `rmlui: type-less selectors do not match widget parts; select height` | `Source/Core/StyleSheetNode.cpp`, `Source/Core/Elements/ElementFormControlSelect.cpp` | A selector without a type (`*`, `:hover`, `[attr]`) does not match the elements widgets build (`selectvalue`, `selectarrow`, `selectbox`, `slidertrack`, `sliderbar`, `sliderprogress`, `sliderarrowdec/inc`, `scrollbar*`, `fill`, `selection`), as CSS selectors do not reach a control's internal parts: an author `* { margin: 0; padding: 0 }` reset stripped the range track and select value of their UA edges. A select is one line plus its value's vertical edges tall (Chromium's internal menulist padding, which author padding adds to). | `engine/tests/htmlui/compat/compat_golden_pages_test.cpp` (`CompatGolden/CompatGoldenPages.*`) (`settings`) |
 | P2-13 | `6f7db097` `rmlui: the Debugger menu writes no white space between its buttons` | `Source/Debugger/MenuSource.h` | With P2-8 the white space between the menu's inline-block buttons became a space and the menu wrapped. | `FullPathGoldenTest.Debugger` |
 | P2-14 | `683a251a` `rmlui: an element can lower and interrupt its top border` | `Include/RmlUi/Core/Element.h`, `Include/RmlUi/Core/RenderBox.h`, `Source/Core/Element.cpp`, `Source/Core/ElementBackgroundBorder.cpp`, `Source/Core/ElementUtilities.cpp`, `Source/Core/GeometryBackgroundBorder.{h,cpp}`, `Source/Core/MeshUtilities.cpp` | An HTML fieldset draws its top border through the middle of its legend and leaves a gap for it. `Element::GetBorderTopCut(BorderTopCut{inset, gap_begin, gap_end})` (virtual, false by default): `Element::GetRenderBox` (what backgrounds, borders, box shadows and decorators are generated from) starts `inset` px lower and carries the gap (`RenderBox::GetBorderTopGap`), which `GeometryBackgroundBorder::DrawBorder` leaves open in the top edge, within its straight part; `GetRenderBox(area, index, false)` is the box as laid out (the two clipping callers use it); `Element::DirtyBorderTopCut()` regenerates the background, border and decorators when an element's cut changed. The cut itself is compat code (`htmlui::compat::HtmlFieldsetElement`). Without an element that overrides it, nothing changes. | `engine/tests/htmlui/compat/compat_fieldset_test.cpp` (`CompatBorderTopGap.*`, `CompatFieldsetTest.*`); golden page `ua-defaults` |
+
+## Phase 3 patches
+
+Phase 3 (`docs/html-ui/phase-3-fork-patches.md`) patches the fork so standard CSS works natively.
+Every row is a commit series prefixed `rmlui:` touching only `engine/libs/rmlui/**`; engine,
+compat and test changes follow in separate commits. Upstream status: `upstream PR <url>`,
+`upstreamable` or `fork-only` (with the reason). The unit tests are doctest files in
+`engine/libs/rmlui/Tests/Source/UnitTests/`, run standalone on the host (phase-3 spec §5.1).
+
+| ID | Commits | Files | Reason | Upstream status | Tests |
+|---|---|---|---|---|---|
+| P3-1 | `6d2e63b4` `rmlui: calc()/min()/max()/clamp() (upstream PR #983, commits 109df5ad, bea7264e, c6744d15)` (author Thomas Edvalson) | `Include/RmlUi/Core/{ComputedValues,DecorationTypes,StyleTypes,Transform,TypeConverter,Types,Unit,Variant}.h`, `Variant.inl`; `Source/Core/Calculation{,Parser,Resolver}.{h,cpp}` (new), `ComputeProperty.{h,cpp}`, `ComputedValues.cpp`, `DecoratorGradient.{h,cpp}`, `DecoratorNinePatch.cpp`, `DecoratorText.cpp`, `DecoratorTiled.cpp`, `Element.cpp`, `ElementAnimation.cpp`, `ElementHandle.cpp`, `ElementStyle.{h,cpp}`, `Filter{Basic,Blur,DropShadow}.*`, `FontEffect{Blur,Glow,Outline,Shadow}.cpp`, `GeometryBoxShadow.cpp`, `Layout/BlockContainer.cpp`, `Layout/TableFormattingContext.cpp`, `Property.cpp`, `PropertyDefinition.cpp`, `PropertyParser{Animation,BoxShadow,ColorStopList,Number,Transform}.*`, `PropertySpecification.cpp`, `StyleSheetContainer.cpp`, `StyleSheetParser.cpp`, `StyleSheetSpecification.cpp`, `Transform.cpp`, `TypeConverter.cpp`, `Variant.cpp`; `CMakeLists.txt` (`RMLUI_MATH_EXPRESSIONS` PUBLIC); `Tests/Source/UnitTests/Calculation{,Types}.cpp`, `Tests/Source/Benchmarks/Calculation.cpp` | CSS math functions: `calc()`, `min()`, `max()`, `clamp()` in every length, percentage, number, angle and time value (sizes, margins, paddings, insets, gaps, origins, flex-basis, line-height, transforms, box shadows, filters, gradients, font effects, transitions and animations), resolved at layout time; percentage-dependent min/max widths are ignored while measuring shrink-to-fit widths; shorthands reject trailing tokens. Applied onto 6.3 + P1-1, P2-1..P2-14 without a conflict; the `RMLUI_MATH_EXPRESSIONS` guards are kept (the engine defines it PUBLIC, and the Xcode targets define it next to `RMLUI_STATIC_LIB`: `tools/htmlui/xcode_sync_rmlui.py`). The CI workflow hunk of `bea7264e` is dropped. Not in the vendored subset: the PR's one-line change of `Tests/Source/UnitTests/CustomProperties.cpp` (a `BoxShadow` aggregate initialisation becomes member assignments; p3-testkit vendors the 6.3 test sources) and the CMake option of its root `CMakeLists.txt`. Compat: `ForkFeature::Calc` present (below). | upstream PR https://github.com/mikke89/RmlUi/pull/983 (open; source commits `109df5ad`, `bea7264e`, `c6744d15`, base `9cbb5440`) | `Tests/Source/UnitTests/Calculation.cpp`, `CalculationTypes.cpp` (36 + 1 cases, WPT-derived); `engine/tests/htmlui/compat/compat_calc_test.cpp`; `CompatCssRmlUiAccepts.EveryGoldenCaseWithThePresentFeatures` |
+
+### Fork features made present
+
+`compat::ForkFeature` entries set in `engine/core/htmlui/compat/ForkFeatures.cpp` (`kPresent`), each
+with the patch that implements it; `ForkFeatures.TableMatchesProbes` checks them against the fork.
+
+| Feature | Patch | What compat does with it present |
+|---|---|---|
+| `Calc` | P3-1 | `calc()`, `min()`, `max()`, `clamp()` are type-checked and kept where RmlUi reads the value as written: properties without a rewrite, the `Sizing`, `Gap`, `FontSize`, `LineHeight`, `ZIndex` and `Opacity` rewrites, and custom properties (RmlUi substitutes them); `RcssGrammar::accepts(..., fork)` takes them for one numeric value of the right units. They stay folded statically, as without the feature, in the families a rewrite reads token by token or writes into compat decorator arguments (`border`, `background`, `box-shadow`, `clip-path`, logical properties, ...), in the custom property index the static rewrites read, and when other math functions (`round()`, `sin()`, ...) are inside; a percentage reduced there is reported as `HTMLUI-CSS-0006` (an approximation of that rewrite), not as a fork fallback. p3-values extends the fork's calc to the units and properties phase 3 adds. |
 
 ## Updating upstream
 
