@@ -44,6 +44,7 @@ static const String pseudo_rml = R"RML(
 		#e::before { content: attr(data-label) " (" attr(data-n) ")"; }
 		#f { color: #0f0; }
 		#f::after { content: "x"; }
+		#t::after { content: attr(title); }
 		#g:hover::after { content: "hover"; }
 		#h::before { content: "\201C" "\A" "end"; white-space: pre; }
 		#i::before { content: "a" url(missing.png) "b"; }
@@ -65,6 +66,7 @@ static const String pseudo_rml = R"RML(
 	<div id="i"/>
 	<div id="list"><p id="p1"/><p id="p2"/><p id="p3"/></div>
 	<div id="hit"/>
+	<div id="t" title="TTT">x</div>
 </body>
 </rml>
 )RML";
@@ -141,6 +143,33 @@ TEST_CASE("PseudoElements")
 		e->RemoveAttribute("data-n");
 		context->Update();
 		CHECK(TextOf(before) == "Bye ()");
+
+		// A text that becomes empty draws nothing anymore.
+		Element* h = document->GetElementById("t");
+		Element* h_after = h->GetPseudoElement(PseudoElementType::After);
+		REQUIRE(h_after);
+		REQUIRE(h_after->GetNumChildren() == 1);
+		auto* h_text = rmlui_dynamic_cast<ElementText*>(h_after->GetChild(0));
+		REQUIRE(h_text);
+		REQUIRE(h_text->GetLines().size() == 1);
+		CHECK(h_text->GetLines().front().text == "TTT");
+		h->RemoveAttribute("title");
+		context->Update();
+		CHECK(h_text->GetText() == "");
+		for (const ElementText::Line& line : h_text->GetLines())
+			CHECK(line.text == "");
+
+		// The same for a text node of the document that ends its block.
+		auto* dom_text = rmlui_dynamic_cast<ElementText*>(h->GetChild(0));
+		REQUIRE(dom_text);
+		REQUIRE(dom_text->GetLines().size() == 1);
+		dom_text->SetText("");
+		context->Update();
+		CHECK(dom_text->GetLines().empty());
+		dom_text->SetText("y");
+		context->Update();
+		REQUIRE(dom_text->GetLines().size() == 1);
+		CHECK(dom_text->GetLines().front().text == "y");
 	}
 
 	SUBCASE("generated and removed with the originating element's state")
