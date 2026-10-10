@@ -22,6 +22,26 @@ struct PropertyParserNumberData {
 		{"pc", Unit::PC},
 		{"deg", Unit::DEG},
 		{"rad", Unit::RAD},
+		// CSS Values 4 (phase 3): the small, large and dynamic viewport units alias the viewport units, as the
+		// viewport never changes with browser chrome here; 'Q' is not supported.
+		{"vmin", Unit::VMIN},
+		{"vmax", Unit::VMAX},
+		{"svw", Unit::VW},
+		{"svh", Unit::VH},
+		{"lvw", Unit::VW},
+		{"lvh", Unit::VH},
+		{"dvw", Unit::VW},
+		{"dvh", Unit::VH},
+		{"svmin", Unit::VMIN},
+		{"svmax", Unit::VMAX},
+		{"lvmin", Unit::VMIN},
+		{"lvmax", Unit::VMAX},
+		{"dvmin", Unit::VMIN},
+		{"dvmax", Unit::VMAX},
+		{"ch", Unit::CH},
+		{"ex", Unit::EX},
+		{"turn", Unit::TURN},
+		{"grad", Unit::GRAD},
 	};
 };
 

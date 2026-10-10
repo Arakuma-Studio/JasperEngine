@@ -43,6 +43,13 @@ bool TypeConverter<Unit, String>::Convert(const Unit& src, String& dest)
 
 	case Unit::DEG:     dest = "deg"; return true;
 	case Unit::RAD:     dest = "rad"; return true;
+
+	case Unit::VMIN:    dest = "vmin"; return true;
+	case Unit::VMAX:    dest = "vmax"; return true;
+	case Unit::CH:      dest = "ch";   return true;
+	case Unit::EX:      dest = "ex";   return true;
+	case Unit::TURN:    dest = "turn"; return true;
+	case Unit::GRAD:    dest = "grad"; return true;
 	// clang-format on
 	default: break;
 	}

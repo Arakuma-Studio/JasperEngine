@@ -1346,7 +1346,28 @@ TEST_CASE("Calculation.parser.non_finite_and_unsupported")
 	CHECK_FALSE(Parses(CalculationCorpusTarget::Number, "round(1, 1)"));
 	CHECK_FALSE(Parses(CalculationCorpusTarget::Number, "calc(pow(2, 3))"));
 	CHECK_FALSE(Parses(CalculationCorpusTarget::Length, "calc(1Q)"));
-	CHECK_FALSE(Parses(CalculationCorpusTarget::Angle, "calc(1turn)"));
+	// 'turn' and 'grad' are angles since phase 3 (p3-values); 'Q' is still not supported.
+	CHECK(Parses(CalculationCorpusTarget::Angle, "calc(1turn)"));
+}
+
+TEST_CASE("Calculation.parser.phase3_units")
+{
+	// docs/html-ui/phase-3-fork-patches.md 3.2: vmin, vmax, ch, ex, turn, grad and the s/l/d viewport aliases.
+	for (const char* value : {"calc(1vmin + 1vmax)", "calc(2ch - 1ex)", "min(10svw, 10lvh)", "clamp(1dvw, 2dvh, 3vmin)", "calc(1svmin + 1dvmax)"})
+	{
+		INFO(value);
+		CHECK(Parses(CalculationCorpusTarget::Length, value));
+	}
+	CHECK(Parses(CalculationCorpusTarget::Angle, "calc(0.5turn - 100grad)"));
+	CHECK_FALSE(Parses(CalculationCorpusTarget::Length, "calc(1turn)"));
+	CHECK_FALSE(Parses(CalculationCorpusTarget::Angle, "calc(1ch)"));
+
+	CalculationPtr calculation;
+	REQUIRE(Parses(CalculationCorpusTarget::Angle, "calc(0.25turn + 100grad)", &calculation));
+	CalculationConstantValue constant;
+	REQUIRE(EvaluateCalculation(*calculation, constant));
+	CHECK(constant.unit == Unit::DEG);
+	CHECK(constant.value == doctest::Approx(180.f));
 }
 
 TEST_CASE("Calculation.serialization.round_trip")

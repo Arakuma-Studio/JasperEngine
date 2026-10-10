@@ -72,6 +72,22 @@ namespace {
 				value *= context.document_font_size;
 				unit = Unit::PX;
 				break;
+			case Unit::VMIN:
+				value *= Math::Min(context.viewport_dimensions.x, context.viewport_dimensions.y) * .01f;
+				unit = Unit::PX;
+				break;
+			case Unit::VMAX:
+				value *= Math::Max(context.viewport_dimensions.x, context.viewport_dimensions.y) * .01f;
+				unit = Unit::PX;
+				break;
+			case Unit::CH:
+			case Unit::EX:
+			{
+				const float font_size = (context.relative_target == RelativeTarget::ParentFontSize ? context.parent_font_size : context.font_size);
+				value *= (node->unit == Unit::CH ? ComputeChSize(context.font_face, font_size) : ComputeExSize(context.font_face, font_size));
+				unit = Unit::PX;
+				break;
+			}
 			case Unit::INCH:
 			case Unit::CM:
 			case Unit::MM:
@@ -85,6 +101,14 @@ namespace {
 				unit = Unit::RAD;
 				break;
 			case Unit::RAD: break;
+			case Unit::TURN:
+				value *= 2.f * Math::RMLUI_PI;
+				unit = Unit::RAD;
+				break;
+			case Unit::GRAD:
+				value *= Math::RMLUI_PI / 200.f;
+				unit = Unit::RAD;
+				break;
 			case Unit::PERCENT:
 			{
 				float basis = 0.f;
@@ -492,6 +516,7 @@ bool ResolveElementCalculation(const Calculation& calculation, Element& element,
 		context.document_font_size = DefaultComputedValues().font_size();
 	context.line_height = element.GetLineHeight();
 	context.relative_target = relative_target;
+	context.font_face = element.GetFontFaceHandle();
 	if (Context* element_context = element.GetContext())
 	{
 		context.viewport_dimensions = Vector2f(element_context->GetDimensions());

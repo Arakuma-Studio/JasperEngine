@@ -47,6 +47,7 @@ add_executable(${TARGET_NAME}
 	StyleValue.cpp
 	Template.cpp
 	URL.cpp
+	Values.cpp
 	Variant.cpp
 	XMLParser.cpp
 	PluginDataModel.cpp

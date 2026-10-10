@@ -1,6 +1,10 @@
 #include "ComputeProperty.h"
 #include "../../Include/RmlUi/Core/ComputedValues.h"
+#include "../../Include/RmlUi/Core/Core.h"
+#include "../../Include/RmlUi/Core/FontEngineInterface.h"
+#include "../../Include/RmlUi/Core/FontMetrics.h"
 #include "../../Include/RmlUi/Core/Property.h"
+#include "../../Include/RmlUi/Core/TextShapingContext.h"
 #include "../../Include/RmlUi/Core/StringUtilities.h"
 #include "ControlledLifetimeResource.h"
 #ifdef RMLUI_MATH_EXPRESSIONS
@@ -52,24 +56,84 @@ static float ComputePPILength(NumericValue value, float dp_ratio)
 	return 0.f;
 }
 
-float ComputeLength(NumericValue value, float font_size, float document_font_size, float dp_ratio, Vector2f vp_dimensions)
+static FontFaceHandle current_font_unit_face = 0;
+
+FontUnitScope::FontUnitScope(FontFaceHandle font_face) : previous(current_font_unit_face)
+{
+	current_font_unit_face = font_face;
+}
+
+FontUnitScope::~FontUnitScope()
+{
+	current_font_unit_face = previous;
+}
+
+void FontUnitScope::SetFontFace(FontFaceHandle font_face)
+{
+	current_font_unit_face = font_face;
+}
+
+FontFaceHandle FontUnitScope::GetFontFace()
+{
+	return current_font_unit_face;
+}
+
+float ComputeChSize(FontFaceHandle font_face, float font_size)
+{
+	if (font_face)
+	{
+		if (FontEngineInterface* font_engine = GetFontEngineInterface())
+		{
+			static const String no_language;
+			const int advance = font_engine->GetStringWidth(font_face, "0", TextShapingContext{no_language});
+			if (advance > 0)
+				return float(advance);
+		}
+	}
+	return 0.5f * font_size;
+}
+
+float ComputeExSize(FontFaceHandle font_face, float font_size)
+{
+	if (font_face)
+	{
+		if (FontEngineInterface* font_engine = GetFontEngineInterface())
+		{
+			const float x_height = font_engine->GetFontMetrics(font_face).x_height;
+			if (x_height > 0.f)
+				return x_height;
+		}
+	}
+	return 0.5f * font_size;
+}
+
+float ComputeLength(NumericValue value, const LengthContext& context)
 {
 	if (Any(value.unit & Unit::PPI_UNIT))
-		return ComputePPILength(value, dp_ratio);
+		return ComputePPILength(value, context.dp_ratio);
 
 	switch (value.unit)
 	{
 	case Unit::PX: return value.number;
-	case Unit::EM: return value.number * font_size;
-	case Unit::REM: return value.number * document_font_size;
-	case Unit::DP: return value.number * dp_ratio;
-	case Unit::VW: return value.number * vp_dimensions.x * 0.01f;
-	case Unit::VH: return value.number * vp_dimensions.y * 0.01f;
+	case Unit::EM: return value.number * context.font_size;
+	case Unit::REM: return value.number * context.root_font_size;
+	case Unit::DP: return value.number * context.dp_ratio;
+	case Unit::VW: return value.number * context.vp_dimensions.x * 0.01f;
+	case Unit::VH: return value.number * context.vp_dimensions.y * 0.01f;
+	case Unit::VMIN: return value.number * Math::Min(context.vp_dimensions.x, context.vp_dimensions.y) * 0.01f;
+	case Unit::VMAX: return value.number * Math::Max(context.vp_dimensions.x, context.vp_dimensions.y) * 0.01f;
+	case Unit::CH: return value.number * ComputeChSize(context.font_face, context.font_size);
+	case Unit::EX: return value.number * ComputeExSize(context.font_face, context.font_size);
 	default: break;
 	}
 
 	RMLUI_ERROR;
 	return 0.0f;
+}
+
+float ComputeLength(NumericValue value, float font_size, float document_font_size, float dp_ratio, Vector2f vp_dimensions)
+{
+	return ComputeLength(value, LengthContext{font_size, document_font_size, dp_ratio, vp_dimensions, current_font_unit_face});
 }
 
 float ComputeAngle(NumericValue value)
@@ -80,6 +144,8 @@ float ComputeAngle(NumericValue value)
 	case Unit::RAD: return value.number;
 
 	case Unit::DEG: return Math::DegreesToRadians(value.number);
+	case Unit::TURN: return value.number * 2.f * Math::RMLUI_PI;
+	case Unit::GRAD: return value.number * (Math::RMLUI_PI / 200.f);
 	default: break;
 	}
 
@@ -100,7 +166,7 @@ float ComputeFontsize(const Property* property, const Style::ComputedValues& val
 		const float root_font_size =
 			(!document_values || &values == document_values) ? DefaultComputedValues().font_size() : document_values->font_size();
 		CalculationResolverContext context{values.font_size(), parent_font_size, root_font_size, values.line_height().value, vp_dimensions, dp_ratio,
-			property->definition ? property->definition->GetRelativeTarget() : RelativeTarget::ParentFontSize};
+			property->definition ? property->definition->GetRelativeTarget() : RelativeTarget::ParentFontSize, current_font_unit_face};
 		ResolvedCalculation resolved;
 		const CalculationPtr calculation = property->value.Get<CalculationPtr>();
 		if (calculation && ResolveCalculation(*calculation, context, resolved) && resolved.is_constant && resolved.unit == Unit::PX)
@@ -133,6 +199,12 @@ float ComputeFontsize(const Property* property, const Style::ComputedValues& val
 		}
 	}
 
+	// 'ch' and 'ex' are the parent's: the inherited font face is current while the font size is computed.
+	if (value.unit == Unit::CH)
+		return value.number * ComputeChSize(current_font_unit_face, parent_font_size);
+	if (value.unit == Unit::EX)
+		return value.number * ComputeExSize(current_font_unit_face, parent_font_size);
+
 	// Font-relative lengths handled above, other lengths should be handled as normal.
 	return ComputeLength(value, 0.f, 0.f, dp_ratio, vp_dimensions);
 }
@@ -143,7 +215,7 @@ bool ComputeDefiniteLength(const Property* property, float font_size, float docu
 	if (property->unit == Unit::CALCULATION)
 	{
 		CalculationResolverContext context{font_size, font_size, document_font_size, 0.f, vp_dimensions, dp_ratio,
-			property->definition ? property->definition->GetRelativeTarget() : RelativeTarget::None};
+			property->definition ? property->definition->GetRelativeTarget() : RelativeTarget::None, current_font_unit_face};
 		ResolvedCalculation resolved;
 		const CalculationPtr calculation = property->value.Get<CalculationPtr>();
 		if (!calculation || !ResolveCalculation(*calculation, context, resolved) || !resolved.is_constant || resolved.unit != Unit::PX)
@@ -162,7 +234,7 @@ bool ComputeDefiniteNumber(const Property* property, float font_size, float docu
 	if (property->unit == Unit::CALCULATION)
 	{
 		CalculationResolverContext context{font_size, font_size, document_font_size, 0.f, vp_dimensions, dp_ratio,
-			property->definition ? property->definition->GetRelativeTarget() : RelativeTarget::None};
+			property->definition ? property->definition->GetRelativeTarget() : RelativeTarget::None, current_font_unit_face};
 		ResolvedCalculation resolved;
 		const CalculationPtr calculation = property->value.Get<CalculationPtr>();
 		if (!calculation || !ResolveCalculation(*calculation, context, resolved) || !resolved.is_constant || resolved.unit != Unit::NUMBER)
@@ -211,7 +283,7 @@ Style::LineHeight ComputeLineHeight(const Property* property, float font_size, f
 	if (property->unit == Unit::CALCULATION)
 	{
 		CalculationResolverContext context{font_size, font_size, document_font_size, 0.f, vp_dimensions, dp_ratio,
-			property->definition ? property->definition->GetRelativeTarget() : RelativeTarget::FontSize};
+			property->definition ? property->definition->GetRelativeTarget() : RelativeTarget::FontSize, current_font_unit_face};
 		ResolvedCalculation resolved;
 		const CalculationPtr calculation = property->value.Get<CalculationPtr>();
 		if (calculation && ResolveCalculation(*calculation, context, resolved) && resolved.is_constant)
@@ -250,7 +322,7 @@ Style::VerticalAlign ComputeVerticalAlign(const Property* property, float line_h
 	if (property->unit == Unit::CALCULATION)
 	{
 		CalculationResolverContext context{font_size, font_size, document_font_size, line_height, vp_dimensions, dp_ratio,
-			property->definition ? property->definition->GetRelativeTarget() : RelativeTarget::LineHeight};
+			property->definition ? property->definition->GetRelativeTarget() : RelativeTarget::LineHeight, current_font_unit_face};
 		ResolvedCalculation resolved;
 		const CalculationPtr calculation = property->value.Get<CalculationPtr>();
 		if (calculation && ResolveCalculation(*calculation, context, resolved) && resolved.is_constant && resolved.unit == Unit::PX)
@@ -280,7 +352,7 @@ Style::LengthPercentage ComputeLengthPercentage(const Property* property, float 
 	if (property->unit == Unit::CALCULATION)
 	{
 		CalculationResolverContext context{font_size, font_size, document_font_size, 0.f, vp_dimensions, dp_ratio,
-			property->definition ? property->definition->GetRelativeTarget() : RelativeTarget::None};
+			property->definition ? property->definition->GetRelativeTarget() : RelativeTarget::None, current_font_unit_face};
 		ResolvedCalculation resolved;
 		const CalculationPtr calculation = property->value.Get<CalculationPtr>();
 		if (calculation && ResolveCalculation(*calculation, context, resolved))
