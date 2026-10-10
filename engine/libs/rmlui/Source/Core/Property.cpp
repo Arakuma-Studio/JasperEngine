@@ -15,6 +15,12 @@ Property::Property() : unit(Unit::UNKNOWN), specificity(-1)
 
 String Property::ToString() const
 {
+	if (important)
+	{
+		Property normal = *this;
+		normal.important = false;
+		return normal.ToString() + " !important";
+	}
 #ifdef RMLUI_MATH_EXPRESSIONS
 	if (unit == Unit::CALCULATION)
 	{

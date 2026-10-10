@@ -252,6 +252,9 @@ private:
 	SharedPtr<const ElementDefinition> definition;
 	// Any properties that have been overridden in this element.
 	PropertyDictionary inline_properties;
+	// An important declaration was set inline (not cleared when it is removed): the cascade then compares the inline
+	// style with the definition by importance (Cascade.h).
+	bool inline_important = false;
 	// Properties computed from shorthands with variables, here resolved.
 	PropertyDictionary expanded_shorthands;
 	// Values of running transitions and animations (most elements have none).

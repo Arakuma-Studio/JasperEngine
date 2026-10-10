@@ -4,6 +4,7 @@
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "../../Include/RmlUi/Core/PropertyDictionary.h"
+#include "Cascade.h"
 #include "IdNameMap.h"
 #include "PropertyShorthandDefinition.h"
 #include <algorithm>
@@ -286,6 +287,11 @@ bool PropertySpecification::SetShorthandParser(ShorthandId id, ShorthandParserFu
 bool PropertySpecification::ParsePropertyDeclaration(PropertyDictionary& dictionary, const String& property_name, const String& property_value) const
 {
 	RMLUI_ZoneScoped;
+
+	// Cascade (p3-cascade): '!important'.
+	bool important_result = false;
+	if (Cascade::ParseImportantDeclaration(*this, dictionary, property_name, property_value, important_result))
+		return important_result;
 
 	// Try as a property first
 	PropertyId property_id = property_map->GetId(property_name);

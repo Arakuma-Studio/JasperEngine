@@ -1,5 +1,6 @@
 #include "../../Include/RmlUi/Core/PropertyDictionary.h"
 #include "../../Include/RmlUi/Core/ID.h"
+#include "Cascade.h"
 
 namespace Rml {
 
@@ -92,14 +93,21 @@ const UnorderedMap<String, Property>& PropertyDictionary::GetCustomProperties() 
 
 void PropertyDictionary::Import(const PropertyDictionary& other, int property_specificity)
 {
+	// A forced specificity is the selector's: important declarations rank above every normal one (Cascade.h).
+	auto Specificity = [property_specificity](const Property& property) {
+		if (property_specificity <= 0)
+			return property.specificity;
+		return property_specificity + (property.important ? Cascade::ImportantOffset : 0);
+	};
+
 	for (const auto& [id, property] : other.properties)
-		SetProperty(id, property, property_specificity > 0 ? property_specificity : property.specificity);
+		SetProperty(id, property, Specificity(property));
 
 	for (const auto& [name, property] : other.custom_properties)
-		SetCustomProperty(name, property, property_specificity > 0 ? property_specificity : property.specificity);
+		SetCustomProperty(name, property, Specificity(property));
 
 	for (const auto& [id, property] : other.var_shorthands)
-		SetVarShorthand(id, property, property_specificity > 0 ? property_specificity : property.specificity);
+		SetVarShorthand(id, property, Specificity(property));
 }
 
 void PropertyDictionary::Merge(const PropertyDictionary& other, int specificity_offset)

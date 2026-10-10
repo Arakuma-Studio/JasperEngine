@@ -10,6 +10,7 @@
 #include "../../Include/RmlUi/Core/StyleSheet.h"
 #include "../../Include/RmlUi/Core/StyleSheetContainer.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
+#include "Cascade.h"
 #include "ComputeProperty.h"
 #include "ControlledLifetimeResource.h"
 #include "StyleSheetFactory.h"
@@ -953,6 +954,8 @@ bool StyleSheetParser::Parse(MediaBlockList& style_sheets, Stream* _stream, int 
 					PropertyDictionary properties;
 					PropertySpecificationParser parser(properties, StyleSheetSpecification::GetPropertySpecification());
 					ReadProperties(parser);
+					// CSS ignores the important declarations of a keyframe.
+					Cascade::RemoveImportantDeclarations(properties);
 
 					if (!ParseKeyframeBlock(current_block.stylesheet->keyframes, at_rule_name, pre_token_str, properties))
 						continue;

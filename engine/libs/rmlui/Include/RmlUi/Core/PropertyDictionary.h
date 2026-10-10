@@ -52,7 +52,7 @@ public:
 	/// are at least equal.
 	/// @param[in] property_dictionary The properties to import.
 	/// @param[in] specificity The specificity for all incoming properties. If this is not specified, the properties will keep their original
-	/// specificity.
+	/// specificity. When it is, important properties get it plus the importance offset (they rank above every normal declaration).
 	void Import(const PropertyDictionary& property_dictionary, int specificity = -1);
 
 	/// Merges the contents of another fully-specified property dictionary with this one.

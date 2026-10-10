@@ -1,5 +1,6 @@
 #include "ElementDefinition.h"
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
+#include "Cascade.h"
 #include "StyleSheetNode.h"
 
 namespace Rml {
@@ -12,6 +13,8 @@ ElementDefinition::ElementDefinition(const Vector<const StyleSheetNode*>& style_
 
 	for (auto& property : properties.GetProperties())
 		property_ids.Insert(property.first);
+
+	has_important = Cascade::HasImportantDeclarations(properties);
 }
 
 const Property* ElementDefinition::GetProperty(PropertyId id) const

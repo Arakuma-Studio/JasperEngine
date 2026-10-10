@@ -28,9 +28,14 @@ public:
 
 	const PropertyDictionary& GetProperties() const { return properties; }
 
+	/// True when any of the declarations is important (the cascade then compares them with the inline style and the
+	/// animation layers by importance).
+	bool HasImportantProperties() const { return has_important; }
+
 private:
 	PropertyDictionary properties;
 	PropertyIdSet property_ids;
+	bool has_important = false;
 };
 
 } // namespace Rml

@@ -2,14 +2,17 @@
 
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
 #include "../../Include/RmlUi/Core/Types.h"
+#include "Cascade.h"
 #include "ElementStyle.h"
 #include "PropertyShorthandDefinition.h"
 #include <variant>
 
 namespace Rml {
 
-// An iterator for local properties defined on an element: the values of its transitions and animations (the animation
-// layers, phase 3), its inline style and its definition, each property once, from the first source in that order that has it.
+// An iterator for local properties defined on an element, each property once, with the value the cascade gives it
+// (ElementStyle::GetLocalProperty): its running transition, else an important declaration (inline, then the
+// definition's), else its running animation, else the inline declaration, else the definition's (phase 3, Cascade.h).
+// Without important declarations the two importance ranges are left out.
 // Note: Modifying the underlying style invalidates the iterator.
 class PlainPropertiesIterator {
 public:
@@ -17,13 +20,17 @@ public:
 	using PropertyIt = PropertyMap::const_iterator;
 
 	PlainPropertiesIterator(const PropertyMap& inline_properties, const PropertyMap* definition_properties,
-		const PropertyMap* transition_properties = nullptr, const PropertyMap* animated_properties = nullptr)
+		const PropertyMap* transition_properties = nullptr, const PropertyMap* animated_properties = nullptr, bool any_important = false)
 	{
-		for (const PropertyMap* properties : {transition_properties, animated_properties, &inline_properties, definition_properties})
+		AddRange(transition_properties, false);
+		if (any_important)
 		{
-			if (properties && !properties->empty())
-				ranges[num_ranges++] = Range{properties->begin(), properties->end()};
+			AddRange(&inline_properties, true);
+			AddRange(definition_properties, true);
 		}
+		AddRange(animated_properties, false);
+		AddRange(&inline_properties, false);
+		AddRange(definition_properties, false);
 		ProceedToNextValid();
 	}
 
@@ -41,11 +48,18 @@ public:
 private:
 	struct Range {
 		PropertyIt it, end;
+		bool only_important;
 	};
-	Range ranges[4];
+	Range ranges[6];
 	int num_ranges = 0;
 	int current = 0;
 	PropertyIdSet visited_properties;
+
+	void AddRange(const PropertyMap* properties, bool only_important)
+	{
+		if (properties && !properties->empty())
+			ranges[num_ranges++] = Range{properties->begin(), properties->end(), only_important};
+	}
 
 	bool IsFirstVisit(PropertyId id)
 	{
@@ -63,6 +77,8 @@ private:
 		{
 			for (Range& range = ranges[current]; range.it != range.end; ++range.it)
 			{
+				if (range.only_important && !range.it->second.important)
+					continue;
 				if (IsFirstVisit(range.it->first))
 					return;
 			}
@@ -176,18 +192,41 @@ private:
 		}
 	}
 
+	// Skips the declaration of the current phase that the other source overrides (Cascade.h): in the inline phase an
+	// inline declaration that an important definition declaration beats, in the definition phase one the inline style
+	// beats.
 	bool HasVisitedCurrent() const
 	{
-		if (phase != Phase::DefinitionProperties)
+		if (phase == Phase::End)
+			return false;
+		const PropertyDictionary* other = (phase == Phase::InlineProperties ? definition_properties : &inline_properties);
+		if (!other)
 			return false;
 
+		const Property* current_property = nullptr;
+		const Property* other_property = nullptr;
 		if (it_plain != it_plain_end)
-			return inline_properties.GetProperties().count(it_plain->first);
-		if (it_custom != it_custom_end)
-			return inline_properties.GetCustomProperties().count(it_custom->first);
+		{
+			current_property = &it_plain->second;
+			other_property = other->GetProperty(it_plain->first);
+		}
+		else if (it_custom != it_custom_end)
+		{
+			current_property = &it_custom->second;
+			other_property = other->GetCustomProperty(it_custom->first);
+		}
+		else
+		{
+			RMLUI_ASSERT(it_shorthand != it_shorthand_end);
+			current_property = &it_shorthand->second;
+			other_property = other->GetVarShorthand(it_shorthand->first);
+		}
+		if (!other_property)
+			return false;
 
-		RMLUI_ASSERT(it_shorthand != it_shorthand_end);
-		return inline_properties.GetVarShorthands().count(it_shorthand->first);
+		if (phase == Phase::InlineProperties)
+			return !Cascade::InlineWins(*current_property, *other_property);
+		return Cascade::InlineWins(*other_property, *current_property);
 	}
 
 	void SetIterators(const PropertyDictionary& dictionary)

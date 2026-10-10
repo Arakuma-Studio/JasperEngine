@@ -16,6 +16,7 @@
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "../../Include/RmlUi/Core/StyleValue.h"
 #include "../../Include/RmlUi/Core/TransformPrimitive.h"
+#include "Cascade.h"
 #include "ComputeProperty.h"
 #include "ControlledLifetimeResource.h"
 #include "ElementDefinition.h"
@@ -108,50 +109,43 @@ void ElementStyle::EraseResolvedUnitDependencies(PropertyId id)
 const Property* ElementStyle::GetLocalProperty(PropertyId id, const PropertyDictionary& inline_properties, const ElementDefinition* definition,
 	const AnimationLayers* animation_layers)
 {
-	// Transitions, then animations, override the declared values.
+	// CSS Cascade 4, strongest first: transitions, important declarations, animations, normal declarations (Cascade.h).
 	if (animation_layers)
 	{
 		if (const Property* property = animation_layers->transition_properties.GetProperty(id))
 			return property;
+	}
+
+	// An inline declaration beats every normal declaration of the definition, so the definition is only consulted for
+	// the property when the inline style has none, or when the definition has important declarations.
+	const Property* declared = inline_properties.GetProperty(id);
+	if (definition && (!declared || definition->HasImportantProperties()))
+		declared = Cascade::Choose(declared, definition->GetProperty(id));
+
+	if (animation_layers && !(declared && declared->important))
+	{
 		if (const Property* property = animation_layers->animated_properties.GetProperty(id))
 			return property;
 	}
 
-	// Check for overriding local properties.
-	const Property* property = inline_properties.GetProperty(id);
-	if (property)
-		return property;
-
-	// Check for a property defined in an RCSS rule.
-	if (definition)
-		return definition->GetProperty(id);
-
-	return nullptr;
+	return declared;
 }
 
 const Property* ElementStyle::GetLocalCustomProperty(const String& name, const PropertyDictionary& inline_properties,
 	const ElementDefinition* definition)
 {
-	const Property* property = inline_properties.GetCustomProperty(name);
-	if (property)
-		return property;
-
-	if (definition)
-		return definition->GetCustomProperty(name);
-
-	return nullptr;
+	const Property* declared = inline_properties.GetCustomProperty(name);
+	if (definition && (!declared || definition->HasImportantProperties()))
+		declared = Cascade::Choose(declared, definition->GetCustomProperty(name));
+	return declared;
 }
 
 const Property* ElementStyle::GetLocalShorthand(ShorthandId id, const PropertyDictionary& inline_properties, const ElementDefinition* definition)
 {
-	const Property* property = inline_properties.GetVarShorthand(id);
-	if (property)
-		return property;
-
-	if (definition)
-		return definition->GetProperties().GetVarShorthand(id);
-
-	return nullptr;
+	const Property* declared = inline_properties.GetVarShorthand(id);
+	if (definition && (!declared || definition->HasImportantProperties()))
+		declared = Cascade::Choose(declared, definition->GetProperties().GetVarShorthand(id));
+	return declared;
 }
 
 ElementStyle::PropertyElementPair ElementStyle::GetSpecifiedProperty(const PropertySources& sources, PropertyId id)
@@ -417,6 +411,10 @@ void ElementStyle::ExpandVarShorthands(PropertyDictionary& out_substituted_short
 		for (const auto& [shorthand_id, property] : properties->GetVarShorthands())
 		{
 			RMLUI_ASSERT(property.unit == Unit::VAR_EXPRESSION);
+			// The shorthand the cascade picks of the definition's and the inline one (an important declaration of the
+			// definition beats a normal inline one) is expanded last, so its longhands are the ones kept.
+			if (GetLocalShorthand(shorthand_id, sources.inline_properties, sources.definition) != &property)
+				continue;
 			variable_dependencies.clear();
 			cycle_chain.clear();
 
@@ -682,6 +680,7 @@ bool ElementStyle::SetProperty(PropertyId id, const Property& property)
 		return false;
 
 	inline_properties.SetProperty(id, new_property);
+	inline_important |= new_property.important;
 	DirtyProperty(id);
 
 	return true;
@@ -690,12 +689,14 @@ bool ElementStyle::SetProperty(PropertyId id, const Property& property)
 void ElementStyle::SetCustomProperty(const String& name, const Property& property)
 {
 	inline_properties.SetCustomProperty(name, property);
+	inline_important |= property.important;
 	dirty_variables.insert(name);
 }
 
 void ElementStyle::SetVarShorthand(ShorthandId id, const Property& property)
 {
 	inline_properties.SetVarShorthand(id, property);
+	inline_important |= property.important;
 	dirty_var_shorthands.insert(id);
 }
 
@@ -943,6 +944,7 @@ PlainPropertiesIterator ElementStyle::Iterate() const
 		definition ? &definition->GetProperties().GetProperties() : nullptr,
 		animation_layers ? &animation_layers->transition_properties.GetProperties() : nullptr,
 		animation_layers ? &animation_layers->animated_properties.GetProperties() : nullptr,
+		inline_important || (definition && definition->HasImportantProperties()),
 	};
 }
 
