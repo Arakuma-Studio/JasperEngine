@@ -24,6 +24,10 @@ namespace jasperengine::htmlui::compat {
 
     class DiagnosticSink;
     struct ComplexSelector;
+    struct Compound;
+    struct SimpleSelector;
+    // a selector list (in the current Arena, as the component values it was parsed from)
+    using SelectorList = ArenaList<ComplexSelector>;
 
     struct SimpleSelector {
         enum class Kind : uint8_t { Type, Universal, Id, Class, Attribute, PseudoClass, PseudoElement, Nesting, RootMarker };
@@ -34,20 +38,20 @@ namespace jasperengine::htmlui::compat {
         bool function = false;         // :name(...)
         bool legacyColon = false;      // :before / :after written with one colon
         SourceRef ref;
-        std::string name;              // type (lowercase), id, class, attribute name, pseudo name (lowercase, no colons)
-        std::string op;                // attribute: "", "=", "~=", "|=", "^=", "$=", "*="
-        std::string value;             // attribute value (unescaped)
-        std::vector<ComponentValue> arguments;      // raw arguments of a functional pseudo
-        std::vector<ComplexSelector> selectors;     // parsed selector-list arguments (:is, :where, :not, :has, ...)
+        Text name;                     // type (lowercase), id, class, attribute name, pseudo name (lowercase, no colons)
+        Text op;                       // attribute: "", "=", "~=", "|=", "^=", "$=", "*="
+        Text value;                    // attribute value (unescaped)
+        ValueList arguments;      // raw arguments of a functional pseudo
+        SelectorList selectors;        // parsed selector-list arguments (:is, :where, :not, :has, ...)
     };
 
     struct Compound {
         char combinator = 0;           // to the previous compound: ' ', '>', '+', '~', '|' (column ||); 0 for the first
-        std::vector<SimpleSelector> simples;
+        ArenaList<SimpleSelector> simples;
     };
 
     struct ComplexSelector {
-        std::vector<Compound> compounds;
+        ArenaList<Compound> compounds;
         SourceRef ref;
         bool relative = false;         // starts with a combinator (nested rules: "> .x")
     };
@@ -63,7 +67,7 @@ namespace jasperengine::htmlui::compat {
     };
 
     struct RewrittenSelector {
-        std::string text;              // RCSS
+        Text text;                     // RCSS
         uint32_t source = 0;           // the CSS selector it came from: its index in the list given to rewrite()
         uint32_t specificity = 0;      // RmlUi weights (id 1 000 000, class/attribute/pseudo-class 100 000, tag 10 000)
         bool placeholder = false;      // from ::placeholder: only color, opacity and font-* apply
@@ -71,7 +75,7 @@ namespace jasperengine::htmlui::compat {
     };
 
     struct SelectorRewriteResult {
-        std::vector<RewrittenSelector> selectors;
+        ArenaList<RewrittenSelector> selectors;
         bool invalid = false;          // a syntax error: the whole rule is dropped (as browsers do)
     };
 
@@ -79,12 +83,12 @@ namespace jasperengine::htmlui::compat {
     public:
         // Parses a selector list (a style rule prelude); nested-rule forms (&, leading
         // combinators) are accepted. nullopt on a syntax error; errorRef/error say where/why.
-        static std::optional<std::vector<ComplexSelector>> parseList(const std::vector<ComponentValue>& prelude, uint32_t file,
+        static std::optional<SelectorList> parseList(const ValueList& prelude, uint32_t file,
                                                                      std::string* error = nullptr, SourceRef* errorRef = nullptr);
-        static std::optional<std::vector<ComplexSelector>> parseList(std::string_view text, std::string* error = nullptr);
+        static std::optional<SelectorList> parseList(std::string_view text, std::string* error = nullptr);
 
         // Rewrites a parsed list; diagnostics at ruleRef (sink may be null).
-        static SelectorRewriteResult rewrite(const std::vector<ComplexSelector>& list, const SelectorOptions& options,
+        static SelectorRewriteResult rewrite(const SelectorList& list, const SelectorOptions& options,
                                              DiagnosticSink* sink, SourceRef ruleRef);
 
         // CSS / RCSS text of a selector
@@ -95,7 +99,7 @@ namespace jasperengine::htmlui::compat {
         static uint32_t specificity(const ComplexSelector& selector);
 
         // Would the rewriter keep (part of) the selector? @supports selector() asks this.
-        static bool supported(const std::vector<ComplexSelector>& list, const SelectorOptions& options);
+        static bool supported(const SelectorList& list, const SelectorOptions& options);
 
         // The subject compound of a selector (its last compound)
         static const Compound* subject(const ComplexSelector& selector);

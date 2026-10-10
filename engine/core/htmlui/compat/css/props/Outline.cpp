@@ -56,8 +56,8 @@ namespace {
         return std::nullopt;
     }
 
-    void applyOutline(Session& session, const std::string& property, const std::vector<ComponentValue>& value, Outline& outline){
-        std::vector<ComponentValue> w = words(value);
+    void applyOutline(Session& session, const std::string& property, const ValueList& value, Outline& outline){
+        ValueList w = words(value);
         if (property == "outline"){
             outline = Outline();
             for (const ComponentValue& v : w){
@@ -126,7 +126,7 @@ namespace {
         return std::nullopt;
     }
 
-    bool isOutlineProperty(const std::string& name){
+    bool isOutlineProperty(std::string_view name){
         return name == "outline" || name == "outline-width" || name == "outline-style" || name == "outline-color" || name == "outline-offset";
     }
 
@@ -200,7 +200,7 @@ void jasperengine::htmlui::compat::rewriteOutline(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteBoxShadow(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1 && isIdent(w[0], "none")){
         companions::emitBoxShadow(context, "none");
         return;
@@ -211,7 +211,7 @@ void jasperengine::htmlui::compat::rewriteBoxShadow(DeclContext& context){
     }
     // each shadow: 2-4 lengths, optional color (currentColor when missing), optional inset
     std::vector<std::string> shadows;
-    for (const std::vector<ComponentValue>& group : commaGroups(context.value)){
+    for (const ValueList& group : commaGroups(context.value)){
         int lengths = 0;
         bool color = false;
         bool hasVar = false;

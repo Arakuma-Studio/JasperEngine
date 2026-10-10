@@ -26,7 +26,7 @@ namespace jasperengine::htmlui::compat {
         MediaResult media = MediaResult::unconditional();
         bool layered = false;              // layer or layer(name)
         std::string layer;                 // "" for an anonymous layer
-        std::vector<ComponentValue> supports;   // the supports() condition, empty when none
+        ValueList supports;   // the supports() condition, empty when none
     };
 
     class Import {

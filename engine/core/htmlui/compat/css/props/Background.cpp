@@ -85,8 +85,8 @@ namespace {
     }
 
     // CSS <position> (1-4 values) into x and y
-    bool parsePosition(Session& session, const std::vector<ComponentValue>& values, Axis& x, Axis& y){
-        std::vector<ComponentValue> w = words(values);
+    bool parsePosition(Session& session, const ValueList& values, Axis& x, Axis& y){
+        ValueList w = words(values);
         if (w.empty() || w.size() > 4)
             return false;
         auto keyword = [](const ComponentValue& v){ return identOf(v); };
@@ -219,13 +219,13 @@ namespace {
     }
 
     // color stops: drop hints, normalize positions; nullopt on a malformed stop
-    std::optional<std::string> colorStops(LayerScope& scope, const std::vector<std::vector<ComponentValue>>& groups, size_t first,
+    std::optional<std::string> colorStops(LayerScope& scope, const std::vector<ValueList>& groups, size_t first,
                                           bool angular, std::string* middleColor){
         std::vector<std::string> stops;
         std::vector<std::string> colors;
         bool reportedHint = false;
         for (size_t i = first; i < groups.size(); i++){
-            std::vector<ComponentValue> w = words(groups[i]);
+            ValueList w = words(groups[i]);
             if (w.empty())
                 return std::nullopt;
             if (w.size() == 1 && (w[0].isToken(TokenType::Percentage) || isLength(scope.session, w[0]) ||
@@ -279,7 +279,7 @@ namespace {
             return std::nullopt;
         if (legacy)
             say(scope, Severity::Info, codes::VendorPrefix, "'" + lowerAscii(function.name()) + "()' is read as '" + name + "()'");
-        std::vector<std::vector<ComponentValue>> groups = commaGroups(function.children);
+        std::vector<ValueList> groups = commaGroups(function.children);
         if (groups.empty())
             return std::nullopt;
         const bool linear = name.find("linear") != std::string::npos;
@@ -287,7 +287,7 @@ namespace {
         const bool conic = name.find("conic") != std::string::npos;
 
         // a color-interpolation method ("in oklch") anywhere in the first group is dropped
-        std::vector<ComponentValue> head = words(groups[0]);
+        ValueList head = words(groups[0]);
         bool interpolation = false;
         for (size_t i = 0; i + 1 < head.size(); i++){
             if (isIdent(head[i], "in")){
@@ -340,14 +340,14 @@ namespace {
             }else if (radial){
                 // [shape] [size] [at position] in RmlUi's order; legacy: <position>, <shape> <size>
                 std::string shape, sizeX, sizeY;
-                std::vector<ComponentValue> position;
-                std::vector<ComponentValue> shapeWords = head;
+                ValueList position;
+                ValueList shapeWords = head;
                 if (legacy && groups.size() > 2){
                     // -webkit-radial-gradient(center, circle cover, ...)
-                    std::vector<ComponentValue> second = words(groups[1]);
+                    ValueList second = words(groups[1]);
                     bool secondIsShape = !second.empty() && !isColor(scope.session, second[0]) && !isVar(second[0]);
                     position = head;
-                    shapeWords = secondIsShape ? second : std::vector<ComponentValue>();
+                    shapeWords = secondIsShape ? second : ValueList();
                     if (secondIsShape)
                         groups.erase(groups.begin() + 1);
                 }
@@ -392,7 +392,7 @@ namespace {
                 prefix = join(parts);
             }else if (conic){
                 std::vector<std::string> parts;
-                std::vector<ComponentValue> position;
+                ValueList position;
                 bool at = false;
                 for (size_t i = 0; i < head.size(); i++){
                     const ComponentValue& v = head[i];
@@ -461,8 +461,8 @@ namespace {
     std::optional<ComponentValue> imageSetCandidate(Session& session, const ComponentValue& function){
         struct Candidate { ComponentValue image; double resolution; };
         std::vector<Candidate> candidates;
-        for (const std::vector<ComponentValue>& group : commaGroups(function.children)){
-            std::vector<ComponentValue> w = words(group);
+        for (const ValueList& group : commaGroups(function.children)){
+            ValueList w = words(group);
             if (w.empty())
                 continue;
             Candidate c{w[0], 1.0};
@@ -529,9 +529,9 @@ namespace {
         }
         if (name == "var"){
             // a static variable is read as what it holds; a dynamic one is written as is
-            std::vector<ComponentValue> replacement;
+            ValueList replacement;
             if (scope.session.staticVar(v, replacement)){
-                std::vector<ComponentValue> w = words(replacement);
+                ValueList w = words(replacement);
                 if (w.size() == 1 && layerImage(scope, w[0], layer, dropped))
                     return true;
                 // a variable holding a color is the final layer's color, not its image
@@ -598,7 +598,7 @@ namespace {
         }
     }
 
-    bool setSize(Session& session, Layer& layer, const std::vector<ComponentValue>& w){
+    bool setSize(Session& session, Layer& layer, const ValueList& w){
         if (w.size() == 1 && (isIdent(w[0], "cover") || isIdent(w[0], "contain"))){
             layer.sizeX = layer.sizeY = identOf(w[0]);
             layer.sizeSet = true;
@@ -622,10 +622,10 @@ namespace {
     }
 
     // one layer of the background / mask shorthand
-    bool parseLayer(LayerScope& scope, const std::vector<ComponentValue>& group, bool last, Layer& layer, Layers& out, bool& dropped){
+    bool parseLayer(LayerScope& scope, const ValueList& group, bool last, Layer& layer, Layers& out, bool& dropped){
         dropped = false;
-        std::vector<ComponentValue> w = words(group);
-        std::vector<ComponentValue> position;
+        ValueList w = words(group);
+        ValueList position;
         std::vector<std::string> repeat;
         std::vector<std::string> boxes;
         bool imageSet = false;
@@ -634,7 +634,7 @@ namespace {
             const std::string k = identOf(v);
             if (v.isToken(TokenType::Delim) && v.token.isDelim('/')){
                 // position / size
-                std::vector<ComponentValue> size;
+                ValueList size;
                 size_t j = i + 1;
                 while (j < w.size() && (isLength(scope.session, w[j], true) || isIdent(w[j], "auto") || isIdent(w[j], "cover") ||
                                         isIdent(w[j], "contain")) && size.size() < 2){
@@ -766,13 +766,13 @@ namespace {
     }
 
     // applies one declaration of the family to the layers; false when the value cannot be read
-    bool applyDeclaration(LayerScope& scope, const std::string& rawName, const std::vector<ComponentValue>& value, Layers& state){
+    bool applyDeclaration(LayerScope& scope, const std::string& rawName, const ValueList& value, Layers& state){
         std::string name = plainName(rawName);
         if (scope.mask && name.compare(0, 5, "mask-") == 0)
             name = "background-" + name.substr(5);
         else if (scope.mask && name == "mask")
             name = "background";
-        std::vector<std::vector<ComponentValue>> groups = commaGroups(value);
+        std::vector<ValueList> groups = commaGroups(value);
         if (name == "background"){
             Layers fresh;
             for (size_t i = 0; i < groups.size(); i++){
@@ -800,7 +800,7 @@ namespace {
             state.layers.clear();
             for (size_t i = 0; i < groups.size(); i++){
                 Layer layer = i < previous.size() ? previous[i] : (previous.empty() ? Layer() : previous[i % previous.size()]);
-                std::vector<ComponentValue> w = words(groups[i]);
+                ValueList w = words(groups[i]);
                 bool dropped = false;
                 if (w.size() != 1 || !layerImage(scope, w[0], layer, dropped))
                     return false;
@@ -813,7 +813,7 @@ namespace {
         if (state.layers.empty())
             state.layers.push_back(Layer());
         for (size_t i = 0; i < state.layers.size(); i++){
-            const std::vector<ComponentValue> w = words(groups[i % groups.size()]);
+            const ValueList w = words(groups[i % groups.size()]);
             Layer& layer = state.layers[i];
             if (name == "background-position"){
                 if (!parsePosition(scope.session, w, layer.x, layer.y))
@@ -822,7 +822,7 @@ namespace {
             }else if (name == "background-position-x" || name == "background-position-y"){
                 // one axis: read as a position with the other axis centered
                 const bool horizontal = name == "background-position-x";
-                std::vector<ComponentValue> position;
+                ValueList position;
                 if (!horizontal){
                     position.push_back(ValueNormalizer::ident("center"));
                     position.push_back(ValueNormalizer::whitespace());
@@ -884,20 +884,20 @@ namespace {
     }
 
     // the normalized value of a declaration of another rule (base rules)
-    std::vector<ComponentValue> normalized(Session& session, const Declaration& d){
+    ValueList normalized(Session& session, const Declaration& d){
         NormalizeContext context;
         context.property = d.name;
         context.options = session.options;
-        context.resolveVar = [&session](const ComponentValue& var, std::vector<ComponentValue>& out){ return session.staticVar(var, out); };
+        context.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
         NormalizeResult result = ValueNormalizer::normalize(d.value, context);
-        return result.ok ? trimWhitespace(result.value) : std::vector<ComponentValue>();
+        return result.ok ? trimWhitespace(result.value) : ValueList();
     }
 
     // ---- gradient text
 
     bool transparentFill(Session& session, const FlatRule& rule){
         for (const char* property : {"-webkit-text-fill-color", "color"}){
-            std::optional<std::vector<ComponentValue>> value = ruleValue(session, rule, property);
+            std::optional<ValueList> value = ruleValue(session, rule, property);
             if (value && value->size() == 1 && (*value)[0].isToken(TokenType::Hash)){
                 const std::string& hex = (*value)[0].token.value;
                 if (hex.size() == 8 && hex.compare(6, 2, "00") == 0)
@@ -962,7 +962,7 @@ namespace {
             for (const Declaration& d : context.rule->declarations){
                 if (!isBackgroundFamily(d.name, mask) || d.name == "clip-path" || !reachesRewrite(context.session, d, context.rule->declarations))
                     continue;
-                std::vector<ComponentValue> value = d.ref == context.declaration.ref ? context.value : normalized(context.session, d);
+                ValueList value = d.ref == context.declaration.ref ? context.value : normalized(context.session, d);
                 if (value.size() == 1 && isVar(value[0])){
                     applied = true;
                     continue;   // a whole-value var() is handled below for its own declaration
@@ -1065,8 +1065,8 @@ namespace {
 
     // ---- var() families
 
-    std::string classifyLayers(Session& session, const std::vector<ComponentValue>& value, bool mask){
-        std::vector<ComponentValue> w = words(value);
+    std::string classifyLayers(Session& session, const ValueList& value, bool mask){
+        ValueList w = words(value);
         if (w.size() == 1 && isColor(session, w[0]))
             return mask ? std::string() : "color";
         LayerScope scope{session, 0, SourceRef(), mask, {}};
@@ -1078,7 +1078,7 @@ namespace {
         return "layers";
     }
 
-    std::optional<std::string> transformLayers(Session& session, const std::vector<ComponentValue>& value, const std::string& kind,
+    std::optional<std::string> transformLayers(Session& session, const ValueList& value, const std::string& kind,
                                                SourceRef ref, bool mask){
         if (kind == "color")
             return text(value);
@@ -1093,12 +1093,12 @@ namespace {
         return decorators.empty() ? std::string(companions::kNoLayer) : decorators;
     }
 
-    std::string classifyDecorator(Session& session, const std::vector<ComponentValue>& value){ return classifyLayers(session, value, false); }
-    std::string classifyMask(Session& session, const std::vector<ComponentValue>& value){ return classifyLayers(session, value, true); }
-    std::optional<std::string> transformDecorator(Session& session, const std::vector<ComponentValue>& value, const std::string& kind, SourceRef ref){
+    std::string classifyDecorator(Session& session, const ValueList& value){ return classifyLayers(session, value, false); }
+    std::string classifyMask(Session& session, const ValueList& value){ return classifyLayers(session, value, true); }
+    std::optional<std::string> transformDecorator(Session& session, const ValueList& value, const std::string& kind, SourceRef ref){
         return transformLayers(session, value, kind, ref, false);
     }
-    std::optional<std::string> transformMask(Session& session, const std::vector<ComponentValue>& value, const std::string& kind, SourceRef ref){
+    std::optional<std::string> transformMask(Session& session, const ValueList& value, const std::string& kind, SourceRef ref){
         return transformLayers(session, value, kind, ref, true);
     }
 
@@ -1120,7 +1120,7 @@ void jasperengine::htmlui::compat::rewriteMaskImage(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteClipPath(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1 && isIdent(w[0], "none")){
         if (!context.rule)
             context.emit("mask-image", "none");

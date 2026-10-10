@@ -96,6 +96,18 @@ namespace jasperengine::htmlui::compat {
         static std::string rewriteDeclarations(std::string_view css, DiagnosticSink* sink,
                                                const CompatOptions& options = CompatOptions());
 
+        // The declaration memo (phase-2 §4 "p2-perf as implemented"): a rewrite keeps the
+        // output of a declaration that depends on its text alone and writes it again for the
+        // same text. Process-wide; the default is On, or JASPER_HTMLUI_CSS_MEMO=off|check.
+        // Check runs the pipeline for every memo hit as well and counts the hits whose
+        // output differs (declarationMemoMismatches: always 0 unless a rewrite reads its
+        // rule, its block or the custom properties without counting in Session::memoTaint).
+        enum class DeclarationMemo : uint8_t { On, Off, Check };
+        static void setDeclarationMemo(DeclarationMemo mode);
+        static DeclarationMemo declarationMemo();
+        static uint64_t declarationMemoMismatches();
+        static uint64_t declarationMemoHits();
+
     private:
         struct Impl;
         std::unique_ptr<Impl> impl;

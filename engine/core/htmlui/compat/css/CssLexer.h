@@ -59,8 +59,9 @@ namespace jasperengine::htmlui::compat {
             return std::string_view((t.decoded ? text.data() : source.data()) + t.begin, t.length);
         }
         std::string_view value(const LexToken& token) const { return view(token.value); }
-        // the Token tokenize() returns for it
-        void toToken(const LexToken& lex, Token& out) const {
+        // the Token tokenize() returns for it; its texts are views into `sourceCopy` and
+        // `textCopy`, copies of source and text that live as long as the token (in an Arena)
+        void toToken(const LexToken& lex, Token& out, const char* sourceCopy, const char* textCopy) const {
             out.type = lex.type;
             out.isInteger = lex.isInteger;
             out.hashIsId = lex.hashIsId;
@@ -72,18 +73,10 @@ namespace jasperengine::htmlui::compat {
             out.rangeEnd = range ? lex.range[1] : 0;
             out.number = numeric ? lex.number : 0;
             // (most tokens have neither: whitespace, punctuation, numbers)
-            if (lex.value.length > 0){
-                const std::string_view v = view(lex.value);
-                out.value.assign(v.data(), v.size());
-            }else{
-                out.value.clear();
-            }
-            if (lex.unit.length > 0){
-                const std::string_view u = view(lex.unit);
-                out.unit.assign(u.data(), u.size());
-            }else{
-                out.unit.clear();
-            }
+            out.value = lex.value.length > 0 ? Text::view(std::string_view((lex.value.decoded ? textCopy : sourceCopy) + lex.value.begin, lex.value.length))
+                                             : Text();
+            out.unit = lex.unit.length > 0 ? Text::view(std::string_view((lex.unit.decoded ? textCopy : sourceCopy) + lex.unit.begin, lex.unit.length))
+                                           : Text();
         }
     };
 

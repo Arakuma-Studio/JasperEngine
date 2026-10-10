@@ -63,7 +63,7 @@ namespace jasperengine::htmlui::compat {
         // condition). Diagnostics at ref: HTMLUI-AT-0004 (cannot be expressed / unknown
         // feature: never matches), HTMLUI-AT-0005 (rewritten, once per query), HTMLUI-AT-0006
         // (static feature with its value). sink may be null.
-        static MediaResult normalize(const std::vector<ComponentValue>& prelude, SourceRef ref, const CompatOptions& options,
+        static MediaResult normalize(const ValueList& prelude, SourceRef ref, const CompatOptions& options,
                                      DiagnosticSink* sink);
         static MediaResult normalize(std::string_view text, const CompatOptions& options, DiagnosticSink* sink = nullptr,
                                      SourceRef ref = SourceRef());

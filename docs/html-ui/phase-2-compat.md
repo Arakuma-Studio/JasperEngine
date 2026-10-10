@@ -971,11 +971,16 @@ enum class TokenType : uint8_t { Ident, Function, AtKeyword, Hash, String, BadSt
     BadUrl, Delim, Number, Percentage, Dimension, UnicodeRange, Whitespace, CDO, CDC, Colon,
     Semicolon, Comma, LeftBracket, RightBracket, LeftParen, RightParen, LeftBrace, RightBrace,
     Comment, EndOfFile };
+class Text;        // a token's text: a view (16 bytes) of the parser's copy of the source or of
+                   // the current Arena; reads as a std::string_view, made from a string it
+                   // copies the string into the arena
+template<typename T> class ArenaList;   // the std::vector operations over an Arena array: a copy
+                                        // copies the elements, nothing is freed one by one
 struct Token {
     TokenType type;
     uint32_t offset, length;          // source bytes
-    std::string value;                // unescaped ident/string/url/function name; Delim char
-    double number = 0; bool isInteger = false; std::string unit;   // Number/Percentage/Dimension
+    Text value;                       // unescaped ident/string/url/function name; Delim char
+    double number = 0; bool isInteger = false; Text unit;   // Number/Percentage/Dimension
     bool hashIsId = false;
 };
 std::vector<Token> tokenize(std::string_view css, uint32_t baseOffset = 0);   // keeps comments as tokens
@@ -983,29 +988,40 @@ std::vector<Token> tokenize(std::string_view css, uint32_t baseOffset = 0);   //
 struct ComponentValue {               // token, simple block or function
     enum class Kind : uint8_t { Token, Block, Function } kind;
     Token token;                      // Token, or the function/opening token
-    std::vector<ComponentValue> children;
+    ValueList children;               // ArenaList<ComponentValue>
     uint32_t offset, length;          // whole extent in the source
 };
 struct Declaration {
-    std::string name;                 // lowercase unless custom property (--x keeps case)
-    std::vector<ComponentValue> value;   // trimmed, without !important
+    Text name;                        // lowercase unless custom property (--x keeps case)
+    ValueList value;                  // trimmed, without !important
     bool important = false;
     SourceRef ref, nameRef, valueRef;
+    Text text;                        // the declaration as written (the bytes of ref)
 };
 struct Rule {
     enum class Kind : uint8_t { Style, At } kind;
-    std::string atName;               // lowercase, without '@'
-    std::vector<ComponentValue> prelude;   // selector list or at-rule prelude
+    Text atName;                      // lowercase, without '@'
+    ValueList prelude;                // selector list or at-rule prelude
     SourceRef preludeRef, ref;
+    Text preludeText;                 // an at-rule's prelude as written
     bool hasBlock = false;
-    std::vector<Declaration> declarations;    // style rules, @font-face, @page, keyframe blocks
-    std::vector<Rule> rules;                  // nested style rules, @media/@supports/@layer bodies
+    DeclarationList declarations;     // ArenaList<Declaration>: style rules, @font-face, @page, keyframe blocks
+    RuleList rules;                   // ArenaList<Rule>: nested style rules, @media/@supports/@layer bodies
 };
-struct Stylesheet { std::vector<Rule> rules; uint32_t file; };
+struct Stylesheet { RuleList rules; uint32_t file; };
 
 Stylesheet parseStylesheet(uint32_t file, std::string_view css, DiagnosticSink&, uint32_t baseOffset = 0);
-std::vector<Declaration> parseDeclarationList(uint32_t file, std::string_view css, uint32_t baseOffset, DiagnosticSink&);
+DeclarationList parseDeclarationList(uint32_t file, std::string_view css, uint32_t baseOffset, DiagnosticSink&);
 ```
+
+The tree lives in an arena (p2-perf, `compat/Arena.h`): everything a parse makes (the copy of
+the source the token texts view, value lists, declarations, rules, and the selectors parsed
+from them) is allocated from the `Arena` that is current on the thread and released with it,
+all at once; no node has a destructor. A `CssRewriter` session holds an arena for its lifetime
+(`ArenaScope`); code that parses outside a rewriter opens an `ArenaScope` around the use of
+what it parsed (without one the thread's own arena is used, which lives until the thread
+ends). A thread keeps the blocks its arenas release (256 KB each, up to 4 MB) for its next
+arenas.
 
 As implemented (p2-core): `tokenize(css, baseOffset, TokenizeOptions{unicodeRanges},
 std::vector<TokenizeError>*)` (unicode-range tokens only on request, since `u+a` is also a
@@ -2472,11 +2488,14 @@ Debug builds are not measured. lexbor adds about 0.9 MB to the engine binary (mo
 entity and interface tables) and the Lucide pack 140 KB; the Web build size is reported in
 the p2-html report.
 
-Measured after p2-perf (§4, "p2-perf as implemented"; the shared build host under load, CPU
-time, median of 7 runs of the tests): HTML stage 2.5 ms, cache hit 0.025 ms, `fragmentToRml`
-0.11 ms (met); CSS 50 KB / 1 200 rules 6.9 ms and the UA sheet (19.5 KB as calibrated by p2-ua,
-not the ~600 lines of the estimate) 1.1 ms: **not met**, from 20.7 ms and 2.8 ms. The cold
-`compile()` of both 50 KB inputs (no test) takes 10.9 ms, from 24.3 ms.
+Measured after p2-perf (§4, "p2-perf as implemented", second round; the shared build host
+under load, CPU time, median of 9 runs of the tests): CSS 55 KB / 1 200 rules 3.1 ms, UA sheet
+(19.5 KB as calibrated by p2-ua) 0.67 ms, HTML stage 2.3 ms, cache hit 0.025 ms,
+`fragmentToRml` 0.10 ms: all met. The CSS number depends on the declaration memo and on how
+much the test's sheet repeats its declarations (98%; the repository's real sheets 3 to 35%):
+without the memo the same sheet takes 4.6 ms, which is what a 55 KB sheet of 1 200 rules
+that repeats nothing costs. The cold `compile()` of both 50 KB inputs (no test) executes 40 M
+instructions, from 62 M (65% of the time it took: about 7 ms).
 
 ### 3.15 Platform notes
 
@@ -3173,6 +3192,9 @@ vectors and `inheritCompanions` with a transparent comparator. `Token`, `Compone
 `SimpleSelector` keep their members in a different order (no aggregate initialization relied on
 it).
 
+(The table and the list above are the first round, merged as 823061ff; the second round
+below starts from it.)
+
 What the two missed targets would need. After these changes the cost is flat: no function
 holds more than 5% (profile of the 55 KB sheet: declaration pipeline 43% of the time, parser
 17%, flattening with selector parsing 10%, selector rewriting and the pre-pass 7%, destruction
@@ -3192,6 +3214,107 @@ produces them: `LexToken`), and rewrites that read spans of the declared value: 
 `CssAst.h`, `SelectorRewriter.h` and every function of `css/props/` that takes
 `std::vector<ComponentValue>`, which this package did not attempt under the byte-identical
 rule.
+
+#### p2-perf, second round: the arena tree and the declaration memo
+
+The rework the paragraph above describes, under the same rule (the output is byte-identical:
+RCSS, RML, line and source maps, diagnostics with their positions and order; no golden
+regenerated, no target or slack factor changed). Internal types and signatures changed.
+
+Measured as before (CPU time of the perf tests, median of 9 interleaved runs of the binary of
+823061ff and the final one on the shared host at load 13 to 23; instructions by
+`perf stat -e instructions:u`). "No memo" is the final code with
+`JASPER_HTMLUI_CSS_MEMO=off`:
+
+| Step (3.14) | Target | Before (823061ff) | After, no memo | After |
+|---|---|---|---|---|
+| CSS, 55 KB / 1 200 rules | 4 ms | 7.0 ms, 37.3 M | 4.6 ms, 23.3 M | 3.1 ms, 17.7 M |
+| UA sheet, 19.5 KB | 1 ms | 1.07 ms, 5.55 M | 0.69 ms, 3.66 M | 0.67 ms, 3.51 M |
+| HTML stage, 51 KB | 3 ms | 2.44 ms, 16.5 M | | 2.30 ms, 14.7 M |
+| `fragmentToRml`, 2 KB | 0.2 ms | 0.114 ms, 0.72 M | | 0.103 ms, 0.65 M |
+| `compile()` cache hit | 0.1 ms | 0.025 ms | | 0.025 ms |
+| cold `compile()`, 50 KB + 50 KB (no test) | 8 ms | 61.8 M | 45.8 M | 40.1 M |
+
+Every `CompatPerf`/`CompatCssPerf` test passes without `JASPER_HTMLUI_PERF_SLACK` at these
+medians, but not with the margin asked for (a median at 75% of the target): the CSS test is
+at 77%, the HTML stage at 77%, the UA sheet at 67%. On the shared host at load 19 to 23 one
+unpinned run of the CSS test in five measured 4.0 ms or more (4.5 ms in one run of the whole
+suite), and the HTML stage 3.1 ms once in nine. Read the
+CSS row with its two columns: of the 19.6 M instructions saved on the test's sheet, 14.0 M
+(71%) are the arena tree and the other structural changes, which every sheet gets, and 5.6 M
+(29%) are the declaration memo, which a sheet gets in proportion to the declarations it
+repeats. The test's sheet is generated from 12 rule templates, so 98% of its 1 611
+declarations repeat an earlier one; the user-agent sheet repeats 34% (and gains 4% from the
+memo), the golden pages' sheets 3 to 35% (41% taken together), the CSS fixture cases 10%. A
+55 KB sheet of 1 200 rules that repeats nothing costs what the "no memo" column says: 4.6 ms,
+above the 4 ms of the target. The floor of that column is the per-rule work that is left:
+about 3 600 instructions to tokenize and parse a one-declaration rule, 2 600 to parse and
+rewrite its selector, 1 700 to write it, and 4 000 to 20 000 per declaration that the memo
+cannot keep (the shorthand families that merge the rule's other declarations and its base
+rules: background, transition, animation, outline; values with `var()`; declarations that
+report a diagnostic).
+
+What changed:
+
+- **The syntax tree lives in an arena** (3.9.1; `compat/Arena.h`). `Token::value/unit`,
+  `Declaration::name`, `Rule::atName` and the selector names are `Text` (a view into the
+  parser's copy of the source or into the arena); `ValueList`, `DeclarationList`, `RuleList`,
+  `SelectorList` and the lists inside selectors are `ArenaList<T>`; so are the output
+  declarations (`OutDecl` with `Text` name and value), the generated rules and the rewritten
+  selectors. A `ComponentValue` is 96 bytes (from 136) and is copied as its bytes; nothing in
+  the tree has a destructor, so a session ends by releasing its arena (session destruction
+  was 7% of a rewrite, malloc and free 12%). A thread keeps the blocks its arenas release, so
+  a rewrite maps no memory (the page faults of fresh blocks cost a quarter of a rewrite when
+  they were returned to the heap).
+- **The declaration memo.** `processOne` keeps, per session, the output of a declaration
+  whose pipeline read nothing but the declaration: keyed by `Declaration::text` (the
+  declaration as written), its file, `!important`, the origin, whether it is in a keyframe
+  and in a rule. A declaration is kept only when nothing it could depend on was read while it
+  was processed, which the session counts in `Session::memoTaint`: `DeclContext::rule` is a
+  `RuleRef` that counts every read of the rule (not the null test), and so do URL
+  resolution, `reachesRewrite`, the vendor-prefix lookup in the block,
+  `DeclContext::generate` and `sourceText`; reads of the custom property index (`staticVar`,
+  `typedVar`, `varKind`) do not exclude a declaration, since the index is the session's and
+  not the rule's: the entry holds for the index revision it read (`Session::memoVarReads`); any diagnostic (`DiagnosticSink::reports`)
+  or an output declaration with another source reference also excludes it. A hit appends the
+  kept declarations with the declaration's own reference and reports the font families the
+  first run reported. A hit therefore never carries a diagnostic: a declaration that reports
+  is processed every time. `CssRewriter::setDeclarationMemo(On|Off|Check)` (default from
+  `JASPER_HTMLUI_CSS_MEMO=off|check`): Check runs the pipeline for every hit as well and
+  counts the hits whose output differs. `CompatCssMemo.*` (in the normal suite) rewrites
+  every CSS fixture case in the three fork states, the user-agent sheet, a sheet that repeats
+  declarations of every kind and every HTML fixture and golden page without the memo, with it
+  and in Check mode, and compares the sheets, the line maps, every field of every diagnostic
+  in order and the font, dependency and keyframe lists: a rewrite that reads its rule without
+  counting fails there (removing the count from `RuleRef` fails two of the three tests).
+- **Reads moved to where they are needed**, so that more declarations depend on their text
+  alone: the rule's font size is asked when a value resolves a font-relative unit
+  (`NormalizeContext::ruleFontSize`), not for every value with a function, and its static
+  color at the first `currentColor` (`NormalizeContext::ruleStaticColor`), not for every
+  value with a `var()`; `font-size` reads
+  its rule's selectors only for a relative size; `wholeVar` reads the variables only for a
+  `var()` value.
+- **`@media` preludes** are normalized once per text when the normalization reports nothing
+  (`Session::mediaMemo`; the same query heads many rules).
+- **Smaller things**: white space and plain names are tokenized in the lexer's loop; `Text`
+  compares with a literal inline; hot predicates take views (a `const std::string&` parameter
+  made a string of every `Text` it was given); RCSS declarations and rule heads are written
+  in one growth of the output; banded selector texts go through one buffer. HTML stage: nodes
+  come from a per-thread list of freed nodes, child lists are allocated once, the ASCII check
+  of the source reads eight bytes at a time.
+
+Interfaces: 3.9.1 as rewritten above (`Text`, `ArenaList`, `ValueList`, `DeclarationList`,
+`RuleList`, `SelectorList`, `Arena`/`ArenaScope`: every signature that took or returned
+`std::vector<ComponentValue|Declaration|Rule|ComplexSelector|OutDecl|RewrittenSelector>`
+takes the list type, in `css/*`, `css/props/*`, the tests and the editor's style sheet
+importer, which opens an `ArenaScope`); `Declaration::text`, `Rule::preludeText`;
+`DeclContext::rule` (`RuleRef`), `DeclContext::emit(Text, Text)`;
+`NormalizeContext::ruleFontSize/em()`; `DiagnosticSink::reports()`;
+`CssRewriter::setDeclarationMemo/declarationMemo/declarationMemoMismatches/declarationMemoHits`;
+`HtmlNode::operator new/delete`. A rewrite (phase 3 gated branches, phase 5 handlers) that
+reads the rule other than through `DeclContext::rule`, or reads custom properties or other
+session state that differs between two declarations with the same text, counts in
+`Session::memoTaint`.
 
 ### Merge order and integration
 

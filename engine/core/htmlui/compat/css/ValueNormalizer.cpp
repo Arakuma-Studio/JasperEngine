@@ -81,7 +81,7 @@ ComponentValue ValueNormalizer::delim(char c){
     return v;
 }
 
-ComponentValue ValueNormalizer::function(const std::string& name, std::vector<ComponentValue> children){
+ComponentValue ValueNormalizer::function(const std::string& name, ValueList children){
     ComponentValue v;
     v.kind = ComponentValue::Kind::Function;
     v.token.type = TokenType::Function;
@@ -132,13 +132,13 @@ namespace {
 
         NormalizeResult result;
 
-        std::vector<ComponentValue> list(const std::vector<ComponentValue>& values){
-            return list(values, std::vector<ComponentValue>());
+        ValueList list(const ValueList& values){
+            return list(values, ValueList());
         }
 
         // (out: storage to build the list in)
-        std::vector<ComponentValue> list(const std::vector<ComponentValue>& values, std::vector<ComponentValue>&& storage){
-            std::vector<ComponentValue> out = std::move(storage);
+        ValueList list(const ValueList& values, ValueList&& storage){
+            ValueList out = std::move(storage);
             out.clear();
             out.reserve(values.size());
             for (const ComponentValue& v : values){
@@ -168,15 +168,15 @@ namespace {
             return c;
         }
 
-        void color(const ComponentValue& v, std::vector<ComponentValue>& out){
+        void color(const ComponentValue& v, ValueList& out){
             ColorParseInfo info;
             bool clipped = false;
             std::optional<CssColor> parsed = ColorValue::parse(v, info, colorContext());
             if (info.currentColor){
                 if (context.keepCurrentColorKeyword){
                     out.push_back(ValueNormalizer::ident("currentcolor"));
-                }else if (!context.staticColor.empty()){
-                    out.push_back(ValueNormalizer::hash(context.staticColor.substr(1)));
+                }else if (!context.color().empty()){
+                    out.push_back(ValueNormalizer::hash(context.color().substr(1)));
                 }else{
                     out.push_back(ValueNormalizer::currentColorCompanion());
                     result.currentColor = true;
@@ -202,7 +202,7 @@ namespace {
             out.push_back(ValueNormalizer::hash(ColorValue::hex(rgba).substr(1)));
         }
 
-        void dimension(const ComponentValue& v, std::vector<ComponentValue>& out){
+        void dimension(const ComponentValue& v, ValueList& out){
             const Token& t = v.token;
             const RcssUnit unit = rcssUnit(t.unit);
             if (unit.unsupported){
@@ -241,24 +241,24 @@ namespace {
             const std::string u = lowerAscii(unit);
             const double vw = context.options.viewport.x / 100.0;
             const double vh = context.options.viewport.y / 100.0;
-            if (u == "em") return context.emPx;
+            if (u == "em") return context.em();
             if (u == "rem") return context.remPx;
             if (u == "vw" || u == "vi" || u == "dvw" || u == "svw" || u == "lvw") return vw;
             if (u == "vh" || u == "vb" || u == "dvh" || u == "svh" || u == "lvh") return vh;
             if (u == "vmin") return std::min(vw, vh);
             if (u == "vmax") return std::max(vw, vh);
-            if (u == "ch" || u == "ex") return context.emPx * 0.5;
-            if (u == "cap") return context.emPx * 0.7;
-            if (u == "ic") return context.emPx;
-            if (u == "lh") return context.emPx * 1.2;
+            if (u == "ch" || u == "ex") return context.em() * 0.5;
+            if (u == "cap") return context.em() * 0.7;
+            if (u == "ic") return context.em();
+            if (u == "lh") return context.em() * 1.2;
             if (u == "rlh") return context.remPx * 1.2;
             if (u == "dp") return context.options.dpRatio;
             if (u == "%"){
                 // a percentage compared with lengths: its basis estimated with the viewport
                 if (context.percentBasis == PercentBasis::FontSize)
-                    return context.emPx / 100.0;
+                    return context.em() / 100.0;
                 if (context.percentBasis == PercentBasis::LineHeight)
-                    return context.emPx / 100.0;
+                    return context.em() / 100.0;
                 if (context.percentBasis == PercentBasis::ContainingBlock){
                     percentEstimated = true;
                     return context.vertical ? vh : vw;
@@ -269,8 +269,8 @@ namespace {
         }
 
         // the folded value as component values (relative units mapped like any dimension)
-        void emitCalc(const CalcValue& value, std::vector<ComponentValue>& out){
-            std::vector<ComponentValue> raw;
+        void emitCalc(const CalcValue& value, ValueList& out){
+            ValueList raw;
             if (value.terms.empty()){
                 raw.push_back(ValueNormalizer::number(0));
             }else{
@@ -290,7 +290,7 @@ namespace {
             }
         }
 
-        void math(const ComponentValue& v, std::vector<ComponentValue>& out){
+        void math(const ComponentValue& v, ValueList& out){
             const std::string name = lowerAscii(v.name());
             const bool calcFamily = StaticCalc::isCalcFamily(name) || name == "-webkit-calc" || name == "-moz-calc";
             if (calcFamily && context.options.fork.has(ForkFeature::Calc)){
@@ -373,15 +373,15 @@ namespace {
             emitCalc(folded, out);
         }
 
-        void env(const ComponentValue& v, std::vector<ComponentValue>& out){
-            std::vector<std::vector<ComponentValue>> args = splitAtCommas(v.children);
+        void env(const ComponentValue& v, ValueList& out){
+            std::vector<ValueList> args = splitAtCommas(v.children);
             std::string name;
             if (!args.empty()){
-                std::vector<ComponentValue> first = trimWhitespace(args[0]);
+                ValueList first = trimWhitespace(args[0]);
                 if (!first.empty() && first[0].isToken(TokenType::Ident))
                     name = lowerAscii(first[0].token.value);
             }
-            std::vector<ComponentValue> fallback;
+            ValueList fallback;
             if (args.size() > 1){
                 for (size_t i = 1; i < args.size(); i++){
                     if (i > 1)
@@ -398,7 +398,7 @@ namespace {
             }
             if (!fallback.empty()){
                 report(codes::ApproximatedMinor, Severity::Info, "'" + serialize(v) + "' uses its fallback (the variable is not defined here)");
-                std::vector<ComponentValue> normalized = list(fallback);
+                ValueList normalized = list(fallback);
                 out.insert(out.end(), normalized.begin(), normalized.end());
                 return;
             }
@@ -406,10 +406,10 @@ namespace {
                  "give env() a fallback");
         }
 
-        void var(const ComponentValue& v, std::vector<ComponentValue>& out){
+        void var(const ComponentValue& v, ValueList& out){
             ComponentValue copy = shell(v);
             bool afterComma = false;
-            std::vector<ComponentValue> fallback;
+            ValueList fallback;
             for (const ComponentValue& child : v.children){
                 if (afterComma){
                     fallback.push_back(child);
@@ -420,13 +420,13 @@ namespace {
                     afterComma = true;
             }
             if (afterComma){
-                std::vector<ComponentValue> normalized = list(fallback);
+                ValueList normalized = list(fallback);
                 copy.children.insert(copy.children.end(), normalized.begin(), normalized.end());
             }
             out.push_back(std::move(copy));
         }
 
-        void one(const ComponentValue& v, std::vector<ComponentValue>& out){
+        void one(const ComponentValue& v, ValueList& out){
             if (v.kind == ComponentValue::Kind::Token){
                 const Token& t = v.token;
                 if (context.colors && (t.type == TokenType::Hash || (t.type == TokenType::Ident && ColorValue::isColorSyntax(v)))){
@@ -494,7 +494,7 @@ namespace {
 
 }
 
-const ComponentValue* jasperengine::htmlui::compat::soleValue(const std::vector<ComponentValue>& values){
+const ComponentValue* jasperengine::htmlui::compat::soleValue(const ValueList& values){
     const ComponentValue* sole = nullptr;
     for (const ComponentValue& v : values){
         if (v.isWhitespace())
@@ -506,7 +506,7 @@ const ComponentValue* jasperengine::htmlui::compat::soleValue(const std::vector<
     return sole;
 }
 
-void jasperengine::htmlui::compat::trimInPlace(std::vector<ComponentValue>& values){
+void jasperengine::htmlui::compat::trimInPlace(ValueList& values){
     while (!values.empty() && values.back().isWhitespace())
         values.pop_back();
     size_t leading = 0;
@@ -516,14 +516,14 @@ void jasperengine::htmlui::compat::trimInPlace(std::vector<ComponentValue>& valu
         values.erase(values.begin(), values.begin() + (std::ptrdiff_t)leading);
 }
 
-NormalizeResult ValueNormalizer::normalize(const std::vector<ComponentValue>& value, const NormalizeContext& context){
-    return normalize(value, context, std::vector<ComponentValue>());
+NormalizeResult ValueNormalizer::normalize(const ValueList& value, const NormalizeContext& context){
+    return normalize(value, context, ValueList());
 }
 
-NormalizeResult ValueNormalizer::normalize(const std::vector<ComponentValue>& value, const NormalizeContext& context,
-                                           std::vector<ComponentValue>&& storage){
+NormalizeResult ValueNormalizer::normalize(const ValueList& value, const NormalizeContext& context,
+                                           ValueList&& storage){
     Walker walker(context);
-    std::vector<ComponentValue> out = walker.list(value, std::move(storage));
+    ValueList out = walker.list(value, std::move(storage));
     NormalizeResult result = walker.result;
     result.value = std::move(out);
     return result;

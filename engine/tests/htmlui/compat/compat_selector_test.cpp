@@ -22,7 +22,7 @@ namespace {
         const uint32_t file = files.add("t.css", css);
         DiagnosticSink sink(files);
         std::string error;
-        std::optional<std::vector<ComplexSelector>> list = SelectorRewriter::parseList(parseComponentValueList(files.text(file)), file, &error);
+        std::optional<SelectorList> list = SelectorRewriter::parseList(parseComponentValueList(files.text(file)), file, &error);
         if (!list)
             return "parse error";
         options.fork = options.fork == ForkFeatures::present() ? ForkFeatures::none() : options.fork;
@@ -142,7 +142,7 @@ TEST(CompatSelector, ForkFeatures){
 }
 
 TEST(CompatSelector, Specificity){
-    std::optional<std::vector<ComplexSelector>> list = SelectorRewriter::parseList("#a .b c:hover [d] :not(#e, .f)");
+    std::optional<SelectorList> list = SelectorRewriter::parseList("#a .b c:hover [d] :not(#e, .f)");
     ASSERT_TRUE(list);
     // id 1 000 000, class/attribute/pseudo 100 000 each, tag 10 000, :not() the max of its arguments
     EXPECT_EQ(SelectorRewriter::specificity((*list)[0]), 1000000u + 100000u + 10000u + 100000u + 100000u + 1000000u);
@@ -170,9 +170,9 @@ TEST(CompatSelector, Diagnostics){
 
 TEST(CompatSelector, Nesting){
     auto combine = [](const char* parents, const char* children, ForkFeatures fork = ForkFeatures::none()){
-        std::optional<std::vector<ComplexSelector>> p = SelectorRewriter::parseList(parents);
-        std::optional<std::vector<ComplexSelector>> c = SelectorRewriter::parseList(children);
-        std::optional<std::vector<ComplexSelector>> r = Nesting::combine(*p, *c, fork);
+        std::optional<SelectorList> p = SelectorRewriter::parseList(parents);
+        std::optional<SelectorList> c = SelectorRewriter::parseList(children);
+        std::optional<SelectorList> r = Nesting::combine(*p, *c, fork);
         if (!r)
             return std::string("limit");
         std::string text;

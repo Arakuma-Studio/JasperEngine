@@ -105,7 +105,7 @@ namespace {
         Normalizer(const CompatOptions& options, DiagnosticSink* sink, SourceRef ref): options(options), sink(sink), ref(ref) {}
 
         // one <media-query>; false when invalid (never matches)
-        bool query(const std::vector<ComponentValue>& values, Dnf& out){
+        bool query(const ValueList& values, Dnf& out){
             std::vector<const ComponentValue*> items;
             for (const ComponentValue& v : values){
                 if (!v.isWhitespace() && !v.isToken(TokenType::Comment))
@@ -684,7 +684,7 @@ namespace {
         bool emConverted = false;
     };
 
-    std::string canonicalInput(const std::vector<ComponentValue>& query){
+    std::string canonicalInput(const ValueList& query){
         return serialize(trimWhitespace(query));
     }
 
@@ -803,13 +803,13 @@ MediaResult MediaResult::conjoin(const MediaResult& a, const MediaResult& b){
     return result;
 }
 
-MediaResult MediaQuery::normalize(const std::vector<ComponentValue>& prelude, SourceRef ref, const CompatOptions& options,
+MediaResult MediaQuery::normalize(const ValueList& prelude, SourceRef ref, const CompatOptions& options,
                                   DiagnosticSink* sink){
     MediaResult result;
-    std::vector<std::vector<ComponentValue>> queries = splitAtCommas(prelude);
+    std::vector<ValueList> queries = splitAtCommas(prelude);
     bool anyAlways = false;
     std::vector<std::string> seen;
-    for (const std::vector<ComponentValue>& query : queries){
+    for (const ValueList& query : queries){
         Normalizer normalizer(options, sink, ref);
         Dnf dnf;
         normalizer.query(query, dnf);
@@ -870,7 +870,10 @@ MediaResult MediaQuery::normalize(const std::vector<ComponentValue>& prelude, So
 }
 
 MediaResult MediaQuery::normalize(std::string_view text, const CompatOptions& options, DiagnosticSink* sink, SourceRef ref){
-    std::vector<ComponentValue> values = parseComponentValueList(text, ref.offset);
+    // (the parsed query is only read here)
+    Arena arena;
+    ArenaScope scope(arena);
+    ValueList values = parseComponentValueList(text, ref.offset);
     return normalize(values, ref, options, sink);
 }
 

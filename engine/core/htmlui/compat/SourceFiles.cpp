@@ -195,13 +195,19 @@ bool jasperengine::htmlui::compat::stripUtf8Bom(std::string& text){
 std::vector<uint32_t> jasperengine::htmlui::compat::sanitizeUtf8(std::string& text){
     {
         // plain ASCII without NUL (the common case) is valid as it is
+        // (eight bytes at a time: no byte with the high bit, none zero)
         bool ascii = true;
-        for (const char c : text){
-            const unsigned char b = (unsigned char)c;
-            if (b == 0 || b >= 0x80){
-                ascii = false;
-                break;
-            }
+        const char* p = text.data();
+        const char* const end = p + text.size();
+        for (; ascii && end - p >= 8; p += 8){
+            uint64_t word;
+            std::memcpy(&word, p, 8);
+            const uint64_t zero = (word - 0x0101010101010101ull) & ~word & 0x8080808080808080ull;
+            ascii = ((word & 0x8080808080808080ull) | zero) == 0;
+        }
+        for (; ascii && p < end; p++){
+            const unsigned char b = (unsigned char)*p;
+            ascii = b != 0 && b < 0x80;
         }
         if (ascii)
             return {};

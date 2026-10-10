@@ -10,6 +10,39 @@ using namespace jasperengine::htmlui::compat;
 
 namespace {
 
+    // the freed nodes a thread keeps for its next ones (up to about 1 MB)
+    struct NodePool {
+        static constexpr size_t kKept = 4096;
+        void* nodes[kKept];
+        size_t count = 0;
+
+        ~NodePool(){
+            while (count > 0)
+                ::operator delete(nodes[--count]);
+        }
+    };
+    thread_local NodePool tNodes;
+
+}
+
+void* HtmlNode::operator new(size_t size){
+    NodePool& pool = tNodes;
+    if (size == sizeof(HtmlNode) && pool.count > 0)
+        return pool.nodes[--pool.count];
+    return ::operator new(size);
+}
+
+void HtmlNode::operator delete(void* node, size_t size) noexcept{
+    NodePool& pool = tNodes;
+    if (node && size == sizeof(HtmlNode) && pool.count < NodePool::kKept){
+        pool.nodes[pool.count++] = node;
+        return;
+    }
+    ::operator delete(node);
+}
+
+namespace {
+
     const std::string emptyValue;
 
 }

@@ -28,7 +28,7 @@ namespace {
         return v.isWhitespace() || v.isToken(TokenType::Comment);
     }
 
-    std::vector<const ComponentValue*> significant(const std::vector<ComponentValue>& values){
+    std::vector<const ComponentValue*> significant(const ValueList& values){
         std::vector<const ComponentValue*> out;
         for (const ComponentValue& v : values){
             if (!isWs(v))
@@ -79,7 +79,7 @@ namespace {
             if (value.kind == ComponentValue::Kind::Function){
                 const std::string name = lowerAscii(value.name());
                 if (name == "selector"){
-                    std::optional<std::vector<ComplexSelector>> list = SelectorRewriter::parseList(value.children, file);
+                    std::optional<SelectorList> list = SelectorRewriter::parseList(value.children, file);
                     if (!list)
                         return false;
                     return SelectorRewriter::supported(*list, session.selectorOptions);
@@ -187,9 +187,9 @@ namespace {
         return lowerAscii(path.substr(dot + 1));
     }
 
-    std::vector<FontSource> fontSources(const std::vector<ComponentValue>& value, uint32_t file){
+    std::vector<FontSource> fontSources(const ValueList& value, uint32_t file){
         std::vector<FontSource> sources;
-        for (const std::vector<ComponentValue>& group : splitAtCommas(value)){
+        for (const ValueList& group : splitAtCommas(value)){
             FontSource source;
             source.ref = extentOf(file, group);
             for (const ComponentValue& v : group){
@@ -218,7 +218,7 @@ namespace {
         return sources;
     }
 
-    std::string unquotedFamily(const std::vector<ComponentValue>& value){
+    std::string unquotedFamily(const ValueList& value){
         std::string name;
         for (const ComponentValue& v : trimWhitespace(value)){
             if (v.isToken(TokenType::String))
@@ -342,7 +342,7 @@ namespace {
 
     struct KeyframeBlock {
         std::vector<double> offsets;   // percentages
-        std::vector<OutDecl> declarations;
+        ArenaList<OutDecl> declarations;
         SourceRef ref;
     };
 
@@ -375,7 +375,7 @@ namespace {
             KeyframeBlock block;
             block.ref = frame.ref;
             bool valid = true;
-            for (const std::vector<ComponentValue>& selector : splitAtCommas(frame.prelude)){
+            for (const ValueList& selector : splitAtCommas(frame.prelude)){
                 std::vector<const ComponentValue*> words = significant(selector);
                 if (words.size() != 1){
                     valid = false;
@@ -398,7 +398,7 @@ namespace {
                                      "'; the keyframe is dropped", "use from, to or a percentage between 0% and 100%");
                 continue;
             }
-            std::vector<Declaration> declarations;
+            DeclarationList declarations;
             for (const Declaration& d : frame.declarations){
                 if (d.name == "animation-timing-function" || d.name == "-webkit-animation-timing-function"){
                     session.sink->reportAs(Severity::Warning, codes::AnimationApproximated, d.ref,
@@ -468,7 +468,7 @@ namespace {
 
 }
 
-bool AtRules::evaluateCondition(Session& session, const std::vector<ComponentValue>& condition, uint32_t file){
+bool AtRules::evaluateCondition(Session& session, const ValueList& condition, uint32_t file){
     std::vector<const ComponentValue*> items = significant(condition);
     Supports supports(session, file);
     bool valid = true;

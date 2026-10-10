@@ -91,6 +91,7 @@ void DiagnosticSink::report(Diagnostic diagnostic, SourceRef ref){
 }
 
 void DiagnosticSink::add(Diagnostic diagnostic, SourceRef ref, bool keyByRef){
+    reportCount++;
     diagnostic.severity = effectiveSeverity(diagnostic.code, diagnostic.severity);
     if (keyByRef)
         locate(diagnostic, ref);

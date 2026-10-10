@@ -62,7 +62,7 @@ TEST(CompatTokenizer, ComponentValueList){
         std::vector<ParseError> errors;
         TokenizeOptions options;
         options.unicodeRanges = true;   // the 2021 draft makes them everywhere
-        const std::vector<ComponentValue> values = parseComponentValueList(input, 0, options, &errors);
+        const ValueList values = parseComponentValueList(input, 0, options, &errors);
         ParsingTestsJson json(input, 0, errors);
         const nlohmann::json actual = json.list(values);
         EXPECT_TRUE(jsonNear(actual, tests[i + 1])) << "input: " << nlohmann::json(input).dump()
@@ -103,7 +103,7 @@ TEST(CompatTokenizer, StylesheetBytesUtf8){
         std::string bytes = fromJsonBytes(tests[i]["css_bytes"].get<std::string>());
         stripUtf8Bom(bytes);
         std::vector<ParseError> errors;
-        const std::vector<Rule> rules = parseRuleList(1, bytes, 0, true, nullptr, &errors);
+        const RuleList rules = parseRuleList(1, bytes, 0, true, nullptr, &errors);
         ParsingTestsJson json(bytes, 0, errors);
         const nlohmann::json actual = itemsWithErrors(json, {}, rules, errors);
         // at-rule names are lowercased by the parser (phase-2 §3.9.1)

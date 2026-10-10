@@ -332,7 +332,7 @@ namespace {
                 return std::nullopt;
             const std::string name = lowerAscii(value.name());
             if (name == "var"){
-                std::vector<ComponentValue> replacement;
+                ValueList replacement;
                 if (!context.resolveVar || !context.resolveVar(value, replacement)){
                     info.dynamic = true;
                     info.error = "var() without a static value";
@@ -353,7 +353,7 @@ namespace {
                 return parseValue(*single, depth + 1);
             }
 
-            std::vector<ComponentValue> args;
+            ValueList args;
             args.reserve(value.children.size());
             if (!substituteVars(value.children, args, 0))
                 return std::nullopt;
@@ -428,10 +428,10 @@ namespace {
         }
 
         // top-level var() replaced by their static values (whitespace kept)
-        bool substituteVars(const std::vector<ComponentValue>& in, std::vector<ComponentValue>& out, int depth){
+        bool substituteVars(const ValueList& in, ValueList& out, int depth){
             for (const ComponentValue& v : in){
                 if (v.kind == ComponentValue::Kind::Function && equalsNoCase(v.name(), "var")){
-                    std::vector<ComponentValue> replacement;
+                    ValueList replacement;
                     if (depth > 8 || !context.resolveVar || !context.resolveVar(v, replacement)){
                         info.dynamic = true;
                         info.error = "var() without a static value";
@@ -447,7 +447,7 @@ namespace {
         }
 
         // splits modern syntax "a b c / d" (no commas); false when the shape is wrong
-        bool splitModern(const std::vector<ComponentValue>& args, std::vector<ComponentValue>& channels,
+        bool splitModern(const ValueList& args, ValueList& channels,
                          std::optional<ComponentValue>& alpha, bool& sawSlash){
             sawSlash = false;
             for (const ComponentValue& v : args){
@@ -473,7 +473,7 @@ namespace {
         }
 
         // comma-separated legacy syntax: groups of exactly one component
-        bool splitLegacy(const std::vector<ComponentValue>& args, std::vector<ComponentValue>& items){
+        bool splitLegacy(const ValueList& args, ValueList& items){
             std::optional<ComponentValue> current;
             bool expectItem = true;
             for (const ComponentValue& v : args){
@@ -498,7 +498,7 @@ namespace {
             return true;
         }
 
-        static bool hasComma(const std::vector<ComponentValue>& args){
+        static bool hasComma(const ValueList& args){
             for (const ComponentValue& v : args){
                 if (v.isToken(TokenType::Comma))
                     return true;
@@ -591,7 +591,7 @@ namespace {
             std::vector<std::pair<std::string, double>> keywords;
         };
 
-        bool readOrigin(std::vector<ComponentValue>& args, ColorSpace space, bool legacyRgb, int depth, Origin& origin,
+        bool readOrigin(ValueList& args, ColorSpace space, bool legacyRgb, int depth, Origin& origin,
                         std::optional<ColorSpace>* colorFunctionSpace = nullptr){
             size_t i = 0;
             while (i < args.size() && isWs(args[i]))
@@ -668,7 +668,7 @@ namespace {
             };
         }
 
-        std::optional<CssColor> parseRgb(std::vector<ComponentValue> args, int depth){
+        std::optional<CssColor> parseRgb(ValueList args, int depth){
             Origin origin;
             if (!readOrigin(args, ColorSpace::Srgb, true, depth, origin))
                 return fail("invalid relative rgb()");
@@ -680,7 +680,7 @@ namespace {
             spec.percent = 255.0;
 
             if (!origin.active && hasComma(args)){
-                std::vector<ComponentValue> items;
+                ValueList items;
                 if (!splitLegacy(args, items) || (items.size() != 3 && items.size() != 4))
                     return fail("rgb() takes three channels and an optional alpha");
                 bool percent = false;
@@ -704,7 +704,7 @@ namespace {
                 return color;
             }
 
-            std::vector<ComponentValue> channels;
+            ValueList channels;
             std::optional<ComponentValue> alpha;
             bool slash = false;
             if (!splitModern(args, channels, alpha, slash) || channels.size() != 3)
@@ -728,7 +728,7 @@ namespace {
             return color;
         }
 
-        std::optional<CssColor> parseHslHwb(std::vector<ComponentValue> args, ColorSpace space, int depth){
+        std::optional<CssColor> parseHslHwb(ValueList args, ColorSpace space, int depth){
             Origin origin;
             if (!readOrigin(args, space, false, depth, origin))
                 return fail("invalid relative color");
@@ -745,7 +745,7 @@ namespace {
             double alphaResult = origin.active ? origin.color.alpha : 1.0;
 
             if (hsl && !origin.active && hasComma(args)){
-                std::vector<ComponentValue> items;
+                ValueList items;
                 if (!splitLegacy(args, items) || (items.size() != 3 && items.size() != 4))
                     return fail("hsl() takes three channels and an optional alpha");
                 std::optional<Channel> h = channel(items[0], hueSpec, false, {});
@@ -762,7 +762,7 @@ namespace {
                     alphaResult = *a;
                 }
             }else{
-                std::vector<ComponentValue> channels;
+                ValueList channels;
                 std::optional<ComponentValue> alpha;
                 bool slash = false;
                 if (!splitModern(args, channels, alpha, slash) || channels.size() != 3)
@@ -795,12 +795,12 @@ namespace {
             return color;
         }
 
-        std::optional<CssColor> parseLabLike(std::vector<ComponentValue> args, ColorSpace space, int depth){
+        std::optional<CssColor> parseLabLike(ValueList args, ColorSpace space, int depth){
             Origin origin;
             if (!readOrigin(args, space, false, depth, origin))
                 return fail("invalid relative color");
             const auto keywords = keywordsOf(origin);
-            std::vector<ComponentValue> channels;
+            ValueList channels;
             std::optional<ComponentValue> alpha;
             bool slash = false;
             if (!splitModern(args, channels, alpha, slash) || channels.size() != 3)
@@ -839,14 +839,14 @@ namespace {
             return color;
         }
 
-        std::optional<CssColor> parseColorFunction(std::vector<ComponentValue> args, int depth){
+        std::optional<CssColor> parseColorFunction(ValueList args, int depth){
             Origin origin;
             std::optional<ColorSpace> relativeSpace;
             if (!readOrigin(args, ColorSpace::Srgb, false, depth, origin, &relativeSpace))
                 return fail("invalid relative color()");
             const auto keywords = keywordsOf(origin);
             std::optional<ColorSpace> space = relativeSpace;
-            std::vector<ComponentValue> rest;
+            ValueList rest;
             for (const ComponentValue& v : args){
                 if (!space && !isWs(v)){
                     if (!v.isToken(TokenType::Ident))
@@ -860,7 +860,7 @@ namespace {
             }
             if (!space)
                 return fail("color() needs a color space");
-            std::vector<ComponentValue> channels;
+            ValueList channels;
             std::optional<ComponentValue> alpha;
             bool slash = false;
             if (!splitModern(rest, channels, alpha, slash) || channels.size() != 3)
@@ -888,12 +888,12 @@ namespace {
             return color;
         }
 
-        std::optional<CssColor> parseLightDark(const std::vector<ComponentValue>& args, int depth){
-            std::vector<std::vector<ComponentValue>> parts = splitAtCommas(args);
+        std::optional<CssColor> parseLightDark(const ValueList& args, int depth){
+            std::vector<ValueList> parts = splitAtCommas(args);
             if (parts.size() != 2)
                 return fail("light-dark() takes two colors");
             std::vector<const ComponentValue*> values;
-            for (const std::vector<ComponentValue>& part : parts){
+            for (const ValueList& part : parts){
                 const ComponentValue* single = nullptr;
                 for (const ComponentValue& v : part){
                     if (isWs(v))
@@ -918,9 +918,9 @@ namespace {
             return parseValue(*values[0], depth + 1);
         }
 
-        std::optional<CssColor> parseColorMix(const std::vector<ComponentValue>& args, int depth){
+        std::optional<CssColor> parseColorMix(const ValueList& args, int depth){
             info.colorMix = true;
-            std::vector<std::vector<ComponentValue>> parts = splitAtCommas(args);
+            std::vector<ValueList> parts = splitAtCommas(args);
             if (parts.size() != 3)
                 return fail("color-mix() takes an interpolation method and two colors");
             // "in <space> [<hue> hue]"
@@ -1084,7 +1084,10 @@ std::optional<CssColor> ColorValue::parse(const ComponentValue& value, ColorPars
 std::optional<CssColor> ColorValue::parse(std::string_view css, ColorParseInfo* info){
     ColorParseInfo local;
     ColorParseInfo& target = info ? *info : local;
-    std::vector<ComponentValue> values = trimWhitespace(parseComponentValueList(css));
+    // (the parsed value is only read here)
+    Arena arena;
+    ArenaScope scope(arena);
+    ValueList values = trimWhitespace(parseComponentValueList(css));
     if (values.size() != 1){
         target.error = "not one color";
         return std::nullopt;

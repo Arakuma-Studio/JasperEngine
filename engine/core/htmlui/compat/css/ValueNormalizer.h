@@ -31,20 +31,46 @@ namespace jasperengine::htmlui::compat {
         bool colors = true;                   // color keywords are colors here (not in font-family, animation names, ...)
         bool keepCurrentColorKeyword = false; // SVG paint: `currentcolor` stays a keyword
         std::string staticColor;              // the rule's own static color (#rrggbbaa): currentColor uses it
+        // when set: the rule's static color, asked at the first currentColor the value holds
+        std::function<std::string()> ruleStaticColor;
+        const std::string& color() const {
+            if (ruleStaticColor && !colorAsked){
+                colorAsked = true;
+                colorValue = ruleStaticColor();
+            }
+            return ruleStaticColor ? colorValue : staticColor;
+        }
+        mutable bool colorAsked = false;
+        mutable std::string colorValue;
         bool inlineStyle = false;             // vmin/vmax evaluated with the viewport
         PercentBasis percentBasis = PercentBasis::ContainingBlock;
         bool vertical = false;                // the percentage basis is a height (top, bottom, height, ...)
         CompatOptions options;
         double emPx = 16.0;                   // the rule's static font-size
+        // when set: the rule's static font-size (emPx when it has none), asked at the first
+        // font-relative unit the value resolves: most values resolve none
+        std::function<std::optional<double>()> ruleFontSize;
+        double em() const {
+            if (!ruleFontSize)
+                return emPx;
+            if (!emAsked){
+                emAsked = true;
+                const std::optional<double> px = ruleFontSize();
+                emValue = px ? *px : emPx;
+            }
+            return emValue;
+        }
+        mutable bool emAsked = false;
+        mutable double emValue = 16.0;
         double remPx = 16.0;                  // the root font-size
         // a var()'s static value (custom property index)
-        std::function<bool(const ComponentValue& var, std::vector<ComponentValue>& out)> resolveVar;
+        std::function<bool(const ComponentValue& var, ValueList& out)> resolveVar;
         // diagnostics: severity is the code's unless the code is "by case"
         std::function<void(DiagCode code, Severity severity, const std::string& message, const std::string& suggestion)> report;
     };
 
     struct NormalizeResult {
-        std::vector<ComponentValue> value;
+        ValueList value;
         bool ok = true;                       // false: drop the declaration (already reported)
         bool vmin = false;                    // vmin/vmax left for the orientation duplication
         bool dependsOnViewport = false;
@@ -52,16 +78,16 @@ namespace jasperengine::htmlui::compat {
     };
 
     // the only non-whitespace component of a value (null when there are none or several)
-    JASPERENGINE_API const ComponentValue* soleValue(const std::vector<ComponentValue>& values);
+    JASPERENGINE_API const ComponentValue* soleValue(const ValueList& values);
     // trimWhitespace without the copy
-    JASPERENGINE_API void trimInPlace(std::vector<ComponentValue>& values);
+    JASPERENGINE_API void trimInPlace(ValueList& values);
 
     class JASPERENGINE_API ValueNormalizer {
     public:
-        static NormalizeResult normalize(const std::vector<ComponentValue>& value, const NormalizeContext& context);
+        static NormalizeResult normalize(const ValueList& value, const NormalizeContext& context);
         // the same; the result's value is built in `storage` (its contents are dropped, its memory reused)
-        static NormalizeResult normalize(const std::vector<ComponentValue>& value, const NormalizeContext& context,
-                                         std::vector<ComponentValue>&& storage);
+        static NormalizeResult normalize(const ValueList& value, const NormalizeContext& context,
+                                         ValueList&& storage);
 
         // the percentage basis and orientation of a property
         static PercentBasis percentBasisOf(const std::string& property, bool* vertical = nullptr);
@@ -78,7 +104,7 @@ namespace jasperengine::htmlui::compat {
         static ComponentValue whitespace();
         static ComponentValue comma();
         static ComponentValue delim(char c);
-        static ComponentValue function(const std::string& name, std::vector<ComponentValue> children);
+        static ComponentValue function(const std::string& name, ValueList children);
         // "var(--html-current-color, #000000ff)"
         static ComponentValue currentColorCompanion();
     };

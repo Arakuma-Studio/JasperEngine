@@ -26,7 +26,7 @@ namespace jasperengine::htmlui::compat {
     // escaped where needed, strings double-quoted, numbers in their shortest decimal form
     // without exponent, independent of the C locale.
     JASPERENGINE_API std::string serialize(const ComponentValue& value, const SerializeOptions& options = {});
-    JASPERENGINE_API std::string serialize(const std::vector<ComponentValue>& values, const SerializeOptions& options = {});
+    JASPERENGINE_API std::string serialize(const ValueList& values, const SerializeOptions& options = {});
     JASPERENGINE_API std::string serializeToken(const Token& token);
 
     JASPERENGINE_API std::string serializeIdent(std::string_view ident);     // CSSOM "serialize an identifier"
@@ -37,7 +37,7 @@ namespace jasperengine::htmlui::compat {
 
     // The same, appended to `out` (one output buffer instead of a string per token)
     JASPERENGINE_API void appendSerialized(std::string& out, const ComponentValue& value, const SerializeOptions& options = {});
-    JASPERENGINE_API void appendSerialized(std::string& out, const std::vector<ComponentValue>& values, const SerializeOptions& options = {});
+    JASPERENGINE_API void appendSerialized(std::string& out, const ValueList& values, const SerializeOptions& options = {});
     JASPERENGINE_API void appendToken(std::string& out, const Token& token);
     JASPERENGINE_API void appendIdent(std::string& out, std::string_view ident);
     JASPERENGINE_API void appendString(std::string& out, std::string_view text);

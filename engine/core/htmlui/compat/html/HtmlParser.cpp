@@ -244,6 +244,11 @@ namespace {
                     }
                     stack.push_back(Frame{node->first_child, parent, frame.depth});
                 }else{
+                    // (the children's list is allocated once)
+                    size_t count = 0;
+                    for (const lxb_dom_node_t* child = node->first_child; child; child = child->next)
+                        count++;
+                    added->children.reserve(count);
                     stack.push_back(Frame{node->first_child, added, nodeDepth});
                 }
             }

@@ -34,9 +34,9 @@ namespace jasperengine::htmlui::compat {
     struct VarFamily {
         const char* name;   // "decorator", "font-effect", ...
         // the kind of one declared value ("" = not a value of this family)
-        std::string (*classify)(Session& session, const std::vector<ComponentValue>& value);
+        std::string (*classify)(Session& session, const ValueList& value);
         // the RCSS text of a declared value of that kind (nullopt: cannot be written)
-        std::optional<std::string> (*transform)(Session& session, const std::vector<ComponentValue>& value, const std::string& kind,
+        std::optional<std::string> (*transform)(Session& session, const ValueList& value, const std::string& kind,
                                                 SourceRef ref);
     };
     const VarFamily* findVarFamily(const std::string& name);
@@ -118,10 +118,10 @@ namespace jasperengine::htmlui::compat {
 
         bool isWs(const ComponentValue& value);
         // top-level groups split at whitespace / commas (whitespace trimmed)
-        std::vector<ComponentValue> words(const std::vector<ComponentValue>& value);
-        std::vector<std::vector<ComponentValue>> commaGroups(const std::vector<ComponentValue>& value);
+        ValueList words(const ValueList& value);
+        std::vector<ValueList> commaGroups(const ValueList& value);
         std::string text(const ComponentValue& value);
-        std::string text(const std::vector<ComponentValue>& value);
+        std::string text(const ValueList& value);
         // "a b c" from words
         std::string join(const std::vector<std::string>& parts, const char* separator = " ");
 
@@ -153,7 +153,7 @@ namespace jasperengine::htmlui::compat {
         std::optional<TypedVar> wholeVar(DeclContext& context, const std::string& family);
 
         // the static value a rule declares for a property (normalized), last one wins
-        std::optional<std::vector<ComponentValue>> ruleValue(Session& session, const FlatRule& rule, const std::string& property);
+        std::optional<ValueList> ruleValue(Session& session, const FlatRule& rule, const std::string& property);
         // the rule's static color (#rrggbbaa) or ""
         const std::string& ruleStaticColor(Session& session, const FlatRule& rule);
         // the rule's static font-size in px (absolute lengths only)
@@ -185,7 +185,7 @@ namespace jasperengine::htmlui::compat {
     // does a declaration of the rule reach its property rewrite (known or vendor-prefixed
     // property, not Unsupported / Ignored, not a CSS-wide keyword)? The families merged at
     // their last declaration (backgrounds, masks, transitions, animations) only count these.
-    bool reachesRewrite(Session& session, const Declaration& declaration, const std::vector<Declaration>& block);
+    bool reachesRewrite(Session& session, const Declaration& declaration, const DeclarationList& block);
 
 }
 

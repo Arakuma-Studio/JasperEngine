@@ -60,6 +60,9 @@ namespace jasperengine::htmlui::compat {
         size_t count(Severity severity) const;
         size_t size() const;
         bool truncated() const;           // the limit was reached (one GEN-0002 was added)
+        // the number of reports made so far, the dropped ones included (unchanged: nothing
+        // was reported in between)
+        uint64_t reports() const { return reportCount; }
         const SourceFiles& sourceFiles() const { return files; }
 
         // file/line/column/length of a ref (Diagnostic location fields), origin too when the
@@ -72,6 +75,7 @@ namespace jasperengine::htmlui::compat {
         const SourceFiles& files;
         size_t limit;
         bool limitReached = false;
+        uint64_t reportCount = 0;
         mutable bool sorted = true;
         mutable std::vector<Diagnostic> list;
         std::unordered_set<std::string> seen;

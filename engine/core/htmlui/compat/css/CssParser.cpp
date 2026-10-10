@@ -44,6 +44,11 @@ namespace {
             std::vector<TokenizeError> tokenizeErrors;
             // (without comments)
             lexCss(css, base, options, &tokenizeErrors, lexed, false);
+            // the tokens' texts are views into copies of the source and of the decoded text
+            // that live with the parsed values (the caller's text may not)
+            Arena& arena = Arena::current();
+            sourceCopy = arena.copy(css.data(), css.size());
+            textCopy = arena.copy(lexed.text.data(), lexed.text.size());
             for (uint32_t i : lexed.bad){
                 errors_.push_back(ParseError{tokens[i].type == TokenType::BadString ? ParseError::Kind::BadString : ParseError::Kind::BadUrl,
                                              tokens[i].offset, tokens[i].length});
@@ -83,7 +88,7 @@ namespace {
             const LexToken& token = tokens[index];
             if (token.type != TokenType::EndOfFile)
                 index++;
-            lexed.toToken(token, into);
+            lexed.toToken(token, into, sourceCopy, textCopy);
         }
 
         std::string_view valueOf(const LexToken& token) const { return lexed.value(token); }
@@ -294,8 +299,8 @@ namespace {
         }
 
         // §5.5.7; stop not consumed
-        std::vector<ComponentValue> consumeComponentValues(bool stopAtSemicolon, bool nested){
-            std::vector<ComponentValue> values;
+        ValueList consumeComponentValues(bool stopAtSemicolon, bool nested){
+            ValueList values;
             values.reserve(componentValuesCount(stopAtSemicolon, nested));
             while (true){
                 const LexToken& token = peek();
@@ -320,7 +325,7 @@ namespace {
             return SourceRef{file, begin, end > begin ? end - begin : 0};
         }
 
-        SourceRef preludeExtent(const std::vector<ComponentValue>& prelude) const {
+        SourceRef preludeExtent(const ValueList& prelude) const {
             size_t begin = 0, end = prelude.size();
             while (begin < end && prelude[begin].isWhitespace())
                 begin++;
@@ -418,11 +423,13 @@ namespace {
             rule.preludeRef = preludeExtent(rule.prelude);
             if (!rule.preludeRef.valid())
                 rule.preludeRef = ref(keyword.offset + keyword.length, keyword.offset + keyword.length);
+            else
+                rule.preludeText = Text::view(std::string_view(sourceCopy + (rule.preludeRef.offset - base), rule.preludeRef.length));
             rule.ref = ref(begin, end);
             return true;
         }
 
-        static bool looksLikeCustomProperty(const std::vector<ComponentValue>& prelude){
+        static bool looksLikeCustomProperty(const ValueList& prelude){
             size_t seen = 0;
             const ComponentValue* first = nullptr;
             for (const ComponentValue& value : prelude){
@@ -556,7 +563,7 @@ namespace {
             discardWhitespace();
             const uint32_t valueBegin = position() < colon.offset + colon.length ? colon.offset + colon.length : position();
 
-            std::vector<ComponentValue> values = consumeComponentValues(true, nested);
+            ValueList values = consumeComponentValues(true, nested);
 
             // trailing whitespace, then "! important"
             while (!values.empty() && values.back().isWhitespace())
@@ -596,7 +603,7 @@ namespace {
                 const uint32_t to = endOf(values.back());
                 TokenizeOptions options;
                 options.unicodeRanges = true;
-                std::vector<ComponentValue> ranges = parseComponentValueList(css.substr(from - base, to - from), from, options, nullptr);
+                ValueList ranges = parseComponentValueList(css.substr(from - base, to - from), from, options, nullptr);
                 values = std::move(ranges);
             }
 
@@ -604,11 +611,12 @@ namespace {
             declaration.valueRef = declaration.value.empty() ? ref(valueBegin, valueBegin)
                                                              : ref(declaration.value.front().offset, endOf(declaration.value.back()));
             declaration.ref = ref(nameToken.offset, declarationEnd);
+            declaration.text = Text::view(std::string_view(sourceCopy + (nameToken.offset - base), declarationEnd - nameToken.offset));
             return true;
         }
 
         // §5.5.5, stops at '}' (not consumed) or EOF
-        void consumeBlockContents(std::vector<Declaration>& declarations, std::vector<Rule>& rules){
+        void consumeBlockContents(DeclarationList& declarations, RuleList& rules){
             while (true){
                 const LexToken& token = peek();
                 if (token.type == TokenType::Whitespace || token.type == TokenType::Semicolon){
@@ -653,8 +661,8 @@ namespace {
         }
 
         // §5.5.1 (topLevel) or the 2021 draft's "consume a list of rules"
-        std::vector<Rule> consumeRuleList(bool topLevel){
-            std::vector<Rule> rules;
+        RuleList consumeRuleList(bool topLevel){
+            RuleList rules;
             while (true){
                 const LexToken& token = peek();
                 if (token.type == TokenType::Whitespace){
@@ -760,6 +768,8 @@ namespace {
         std::string_view css;
         uint32_t base;
         LexResult lexed;
+        const char* sourceCopy = "";
+        const char* textCopy = "";
         std::vector<LexToken>& tokens = lexed.tokens;
         size_t index = 0;
         // Rule::block (the raw block) is kept for the CSS Syntax entry points; the
@@ -771,7 +781,7 @@ namespace {
 
 }
 
-SourceRef jasperengine::htmlui::compat::extentOf(uint32_t file, const std::vector<ComponentValue>& values){
+SourceRef jasperengine::htmlui::compat::extentOf(uint32_t file, const ValueList& values){
     if (values.empty())
         return SourceRef{};
     const uint32_t begin = values.front().offset;
@@ -779,19 +789,19 @@ SourceRef jasperengine::htmlui::compat::extentOf(uint32_t file, const std::vecto
     return SourceRef{file, begin, end > begin ? end - begin : 0};
 }
 
-std::vector<ComponentValue> jasperengine::htmlui::compat::trimWhitespace(const std::vector<ComponentValue>& values){
+ValueList jasperengine::htmlui::compat::trimWhitespace(const ValueList& values){
     size_t begin = 0;
     size_t end = values.size();
     while (begin < end && values[begin].isWhitespace())
         begin++;
     while (end > begin && values[end - 1].isWhitespace())
         end--;
-    return std::vector<ComponentValue>(values.begin() + (std::ptrdiff_t)begin, values.begin() + (std::ptrdiff_t)end);
+    return ValueList(values.begin() + (std::ptrdiff_t)begin, values.begin() + (std::ptrdiff_t)end);
 }
 
-std::vector<std::vector<ComponentValue>> jasperengine::htmlui::compat::splitAtCommas(const std::vector<ComponentValue>& values){
+std::vector<ValueList> jasperengine::htmlui::compat::splitAtCommas(const ValueList& values){
     // each group copied once, from its range
-    std::vector<std::vector<ComponentValue>> groups;
+    std::vector<ValueList> groups;
     size_t commas = 0;
     for (const ComponentValue& value : values)
         commas += value.isToken(TokenType::Comma) ? 1 : 0;
@@ -816,12 +826,12 @@ Stylesheet jasperengine::htmlui::compat::parseStylesheet(uint32_t file, std::str
     return sheet;
 }
 
-std::vector<Declaration> jasperengine::htmlui::compat::parseDeclarationList(uint32_t file, std::string_view css, uint32_t baseOffset,
+DeclarationList jasperengine::htmlui::compat::parseDeclarationList(uint32_t file, std::string_view css, uint32_t baseOffset,
                                                                             DiagnosticSink& sink){
     Parser parser(file, css, baseOffset, TokenizeOptions(), nullptr);
     parser.keepRawBlocks = false;
-    std::vector<Declaration> declarations;
-    std::vector<Rule> rules;
+    DeclarationList declarations;
+    RuleList rules;
     while (true){
         parser.consumeBlockContents(declarations, rules);
         if (parser.atEnd())
@@ -853,10 +863,10 @@ Rule jasperengine::htmlui::compat::parseBlockContents(uint32_t file, std::string
     return result;
 }
 
-std::vector<Rule> jasperengine::htmlui::compat::parseRuleList(uint32_t file, std::string_view css, uint32_t baseOffset, bool topLevel,
+RuleList jasperengine::htmlui::compat::parseRuleList(uint32_t file, std::string_view css, uint32_t baseOffset, bool topLevel,
                                                               DiagnosticSink* sink, std::vector<ParseError>* errors){
     Parser parser(file, css, baseOffset, TokenizeOptions(), errors);
-    std::vector<Rule> rules = parser.consumeRuleList(topLevel);
+    RuleList rules = parser.consumeRuleList(topLevel);
     parser.report(sink);
     return rules;
 }
@@ -902,7 +912,7 @@ std::optional<Declaration> jasperengine::htmlui::compat::parseDeclaration(uint32
     return declaration;
 }
 
-std::vector<ComponentValue> jasperengine::htmlui::compat::parseComponentValueList(std::string_view css, uint32_t baseOffset,
+ValueList jasperengine::htmlui::compat::parseComponentValueList(std::string_view css, uint32_t baseOffset,
                                                                                   const TokenizeOptions& options,
                                                                                   std::vector<ParseError>* errors){
     Parser parser(0, css, baseOffset, options, errors);

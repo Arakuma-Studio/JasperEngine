@@ -53,7 +53,7 @@ namespace {
         return false;
     }
 
-    void collectValues(const std::vector<ComponentValue>& values, CssUrl::Context context, int fontFace, bool stringIsUrl,
+    void collectValues(const ValueList& values, CssUrl::Context context, int fontFace, bool stringIsUrl,
                        std::vector<CssUrl>& out){
         for (const ComponentValue& value : values){
             std::string url;
@@ -74,7 +74,7 @@ namespace {
         }
     }
 
-    void collectRules(const std::vector<Rule>& rules, int& fontFaces, std::vector<CssUrl>& out){
+    void collectRules(const RuleList& rules, int& fontFaces, std::vector<CssUrl>& out){
         for (const Rule& rule : rules){
             if (rule.isAt("import")){
                 for (const ComponentValue& value : rule.prelude){
@@ -99,7 +99,7 @@ namespace {
         }
     }
 
-    void collectFontFaces(const std::vector<Rule>& rules, const std::string& css, std::vector<CssFontFace>& out){
+    void collectFontFaces(const RuleList& rules, const std::string& css, std::vector<CssFontFace>& out){
         for (const Rule& rule : rules){
             if (!rule.isAt("font-face")){
                 collectFontFaces(rule.rules, css, out);
@@ -144,8 +144,8 @@ namespace {
                     face.hasSrc = true;
                     face.srcOffset = declaration.valueRef.offset;
                     face.srcLength = declaration.valueRef.length;
-                    for (const std::vector<ComponentValue>& group : splitAtCommas(declaration.value)){
-                        const std::vector<ComponentValue> trimmed = trimWhitespace(group);
+                    for (const ValueList& group : splitAtCommas(declaration.value)){
+                        const ValueList trimmed = trimWhitespace(group);
                         if (trimmed.empty())
                             continue;
                         CssFontSource source;
@@ -206,6 +206,9 @@ bool CssFontSource::woff() const{
 }
 
 std::vector<CssUrl> jasperengine::editor::htmlui::findCssUrls(const std::string& css){
+    // the parsed sheet lives in this arena
+    Arena arena;
+    ArenaScope scope(arena);
     SourceFiles files;
     const Stylesheet sheet = parse(css, files);
     std::vector<CssUrl> urls;
@@ -215,6 +218,9 @@ std::vector<CssUrl> jasperengine::editor::htmlui::findCssUrls(const std::string&
 }
 
 std::vector<CssFontFace> jasperengine::editor::htmlui::findFontFaces(const std::string& css){
+    // the parsed sheet lives in this arena
+    Arena arena;
+    ArenaScope scope(arena);
     SourceFiles files;
     const Stylesheet sheet = parse(css, files);
     std::vector<CssFontFace> faces;

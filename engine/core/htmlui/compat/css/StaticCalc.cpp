@@ -104,9 +104,9 @@ namespace {
         }
     };
 
-    std::vector<std::vector<ComponentValue>> arguments(const ComponentValue& function){
-        std::vector<std::vector<ComponentValue>> result;
-        std::vector<ComponentValue> current;
+    std::vector<ValueList> arguments(const ComponentValue& function){
+        std::vector<ValueList> result;
+        ValueList current;
         for (const ComponentValue& child : function.children){
             if (child.isToken(TokenType::Comma)){
                 result.push_back(std::move(current));
@@ -117,7 +117,7 @@ namespace {
         }
         result.push_back(std::move(current));
         // trim
-        for (std::vector<ComponentValue>& argument : result){
+        for (ValueList& argument : result){
             while (!argument.empty() && (argument.front().isWhitespace() || argument.front().isToken(TokenType::Comment)))
                 argument.erase(argument.begin());
             while (!argument.empty() && (argument.back().isWhitespace() || argument.back().isToken(TokenType::Comment)))
@@ -165,9 +165,9 @@ namespace {
     public:
         Evaluator(CalcContext& context, std::string* error): context(context), fail{error} {}
 
-        std::optional<CalcValue> sum(const std::vector<ComponentValue>& values){
+        std::optional<CalcValue> sum(const ValueList& values){
             // split into products at whitespace-surrounded + and -
-            std::vector<ComponentValue> items;
+            ValueList items;
             for (const ComponentValue& value : values){
                 if (value.isToken(TokenType::Comment))
                     continue;
@@ -200,7 +200,7 @@ namespace {
                 }
                 if (!atEnd && !split)
                     continue;
-                std::vector<ComponentValue> part(items.begin() + (std::ptrdiff_t)start, items.begin() + (std::ptrdiff_t)i);
+                ValueList part(items.begin() + (std::ptrdiff_t)start, items.begin() + (std::ptrdiff_t)i);
                 while (!part.empty() && part.back().isWhitespace())
                     part.pop_back();
                 while (!part.empty() && part.front().isWhitespace())
@@ -223,7 +223,7 @@ namespace {
             return total;
         }
 
-        std::optional<CalcValue> product(const std::vector<ComponentValue>& items){
+        std::optional<CalcValue> product(const ValueList& items){
             if (items.empty())
                 return fail("missing operand in calc()");
             std::optional<CalcValue> result;
@@ -316,7 +316,7 @@ namespace {
                     context.varUnresolved = true;
                     return fail("var() in a math function");
                 }
-                std::vector<ComponentValue> replacement;
+                ValueList replacement;
                 if (!context.resolveVar(item, replacement)){
                     context.varUnresolved = true;
                     return fail("var() without a static value in a math function");
@@ -330,7 +330,7 @@ namespace {
             if (!StaticCalc::isMathFunction(name))
                 return fail("unsupported function '" + item.name() + "()' in calc()");
             context.functions.push_back(name);
-            std::vector<std::vector<ComponentValue>> args = arguments(item);
+            std::vector<ValueList> args = arguments(item);
 
             auto evalArgs = [&](size_t minCount, size_t maxCount) -> std::optional<std::vector<CalcValue>> {
                 if (args.size() < minCount || args.size() > maxCount){
@@ -338,7 +338,7 @@ namespace {
                     return std::nullopt;
                 }
                 std::vector<CalcValue> values;
-                for (const std::vector<ComponentValue>& arg : args){
+                for (const ValueList& arg : args){
                     std::optional<CalcValue> v = sum(arg);
                     if (!v)
                         return std::nullopt;
@@ -665,7 +665,7 @@ std::optional<CalcValue> StaticCalc::evaluate(const ComponentValue& value, CalcC
     return evaluator.operand(value);
 }
 
-std::optional<CalcValue> StaticCalc::evaluateSum(const std::vector<ComponentValue>& values, CalcContext& context, std::string* error){
+std::optional<CalcValue> StaticCalc::evaluateSum(const ValueList& values, CalcContext& context, std::string* error){
     Evaluator evaluator(context, error);
     return evaluator.sum(values);
 }

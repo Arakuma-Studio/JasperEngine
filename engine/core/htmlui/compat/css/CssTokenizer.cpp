@@ -238,6 +238,45 @@ namespace {
                         }
                         continue;
                     }
+                    // white space and plain ASCII names (consumeToken reads them the same way)
+                    const unsigned char b = (unsigned char)source[at];
+                    if (b == ' ' || b == '\n' || b == '\t'){
+                        size_t i = at + 1;
+                        while (i < source.size()){
+                            const char w = source[i];
+                            if (w != ' ' && w != '\n' && w != '\t' && w != '\r' && w != '\f')
+                                break;
+                            i++;
+                        }
+                        in.skip(i - at);
+                        token.type = TokenType::Whitespace;
+                        token.offset = base + (uint32_t)at;
+                        token.length = (uint32_t)(i - at);
+                        continue;
+                    }
+                    const unsigned char lower = (unsigned char)(b | 0x20);
+                    if (((lower >= 'a' && lower <= 'z') && !(options.unicodeRanges && lower == 'u')) || b == '_'){
+                        const size_t run = identRun();
+                        const size_t after = at + run;
+                        const unsigned char next = after < source.size() ? (unsigned char)source[after] : 0;
+                        const bool ended = after == source.size() || (next < 0x80 && next != 0 && next != '\\');
+                        const bool url = run == 3 && lower == 'u' && (source[at + 1] | 0x20) == 'r' && (source[at + 2] | 0x20) == 'l';
+                        if (ended && !(url && next == '(')){
+                            token.value = LexText{(uint32_t)at, (uint32_t)run, false};
+                            token.offset = base + (uint32_t)at;
+                            if (next == '('){
+                                in.skip(run + 1);
+                                token.type = TokenType::Function;
+                                token.length = (uint32_t)run + 1;
+                                open.push_back(index);
+                            }else{
+                                in.skip(run);
+                                token.type = TokenType::Ident;
+                                token.length = (uint32_t)run;
+                            }
+                            continue;
+                        }
+                    }
                 }
                 consumeToken();
                 // (a closing token is one character: the branch above read it)
@@ -891,7 +930,7 @@ bool ComponentValue::isFunction(const char* lowercaseName) const{
     if (kind != Kind::Function)
         return false;
     // (Token::isIdent's comparison, on the function's name)
-    const std::string& value = token.value;
+    const Text& value = token.value;
     size_t i = 0;
     for (; lowercaseName[i] != 0; i++){
         if (i >= value.size())
@@ -974,8 +1013,12 @@ std::vector<Token> jasperengine::htmlui::compat::tokenize(std::string_view css, 
                                                           const TokenizeOptions& options, std::vector<TokenizeError>* errors){
     LexResult lexed;
     lexCss(css, baseOffset, options, errors, lexed);
+    // the tokens' texts are views into copies of the source and of the decoded text
+    Arena& arena = Arena::current();
+    const char* sourceCopy = arena.copy(lexed.source.data(), lexed.source.size());
+    const char* textCopy = arena.copy(lexed.text.data(), lexed.text.size());
     std::vector<Token> tokens(lexed.tokens.size());
     for (size_t i = 0; i < tokens.size(); i++)
-        lexed.toToken(lexed.tokens[i], tokens[i]);
+        lexed.toToken(lexed.tokens[i], tokens[i], sourceCopy, textCopy);
     return tokens;
 }

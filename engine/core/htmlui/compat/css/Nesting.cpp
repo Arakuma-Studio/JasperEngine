@@ -19,13 +19,13 @@ namespace {
     }
 
     // the parent's compounds with `others` merged into its subject compound
-    std::vector<Compound> parentWith(const ComplexSelector& parent, const std::vector<SimpleSelector>& others, char combinator){
-        std::vector<Compound> result = parent.compounds;
+    ArenaList<Compound> parentWith(const ComplexSelector& parent, const ArenaList<SimpleSelector>& others, char combinator){
+        ArenaList<Compound> result = parent.compounds;
         if (result.empty())
             return result;
         result.front().combinator = combinator;
         Compound& last = result.back();
-        std::vector<SimpleSelector> types, rest;
+        ArenaList<SimpleSelector> types, rest;
         for (const SimpleSelector& s : last.simples)
             (s.kind == Kind::Type || s.kind == Kind::Universal ? types : rest).push_back(s);
         for (const SimpleSelector& s : others){
@@ -75,22 +75,22 @@ ComplexSelector Nesting::substitute(const ComplexSelector& parent, const Complex
             result.compounds.push_back(std::move(copy));
             continue;
         }
-        std::vector<SimpleSelector> others;
+        ArenaList<SimpleSelector> others;
         for (const SimpleSelector& s : compound.simples){
             if (s.kind != Kind::Nesting)
                 others.push_back(s);
         }
         const char combinator = result.compounds.empty() ? 0 : (compound.combinator ? compound.combinator : ' ');
-        std::vector<Compound> merged = parentWith(parent, others, combinator);
+        ArenaList<Compound> merged = parentWith(parent, others, combinator);
         for (Compound& c : merged)
             result.compounds.push_back(std::move(c));
     }
     return result;
 }
 
-std::optional<std::vector<ComplexSelector>> Nesting::combine(const std::vector<ComplexSelector>& parents,
-                                                             const std::vector<ComplexSelector>& children, const ForkFeatures& fork){
-    std::vector<ComplexSelector> result;
+std::optional<SelectorList> Nesting::combine(const SelectorList& parents,
+                                                             const SelectorList& children, const ForkFeatures& fork){
+    SelectorList result;
     if (parents.size() > 1 && fork.has(ForkFeature::RootIsWhere)){
         // & = :is(parent list)
         ComplexSelector is;

@@ -51,7 +51,7 @@ namespace jasperengine::htmlui::compat {
 
     struct ColorContext {
         // the static replacement of a var() function (false: no static value)
-        std::function<bool(const ComponentValue& var, std::vector<ComponentValue>& replacement)> resolveVar;
+        std::function<bool(const ComponentValue& var, ValueList& replacement)> resolveVar;
     };
 
     class JASPERENGINE_API ColorValue {

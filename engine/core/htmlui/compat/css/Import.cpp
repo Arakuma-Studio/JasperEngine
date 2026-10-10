@@ -18,7 +18,7 @@ using namespace jasperengine::htmlui::compat;
 std::optional<ImportedSheet> Import::load(Session& session, const Rule& rule, uint32_t fromFile, const std::vector<uint32_t>& chain){
     ImportedSheet imported;
     const SourceRef at = rule.ref;
-    std::vector<ComponentValue> prelude = trimWhitespace(rule.prelude);
+    ValueList prelude = trimWhitespace(rule.prelude);
     if (prelude.empty()){
         session.sink->reportAs(Severity::Warning, codes::ImportProblem, at, "@import without a URL is ignored", "write @import url(\"file.css\");");
         return std::nullopt;
@@ -41,7 +41,7 @@ std::optional<ImportedSheet> Import::load(Session& session, const Rule& rule, ui
     }
 
     // conditions: layer, supports(), media list
-    std::vector<ComponentValue> media;
+    ValueList media;
     for (size_t i = 1; i < prelude.size(); i++){
         const ComponentValue& v = prelude[i];
         if (v.isWhitespace() || v.isToken(TokenType::Comment)){

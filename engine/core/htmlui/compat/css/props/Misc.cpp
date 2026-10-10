@@ -111,7 +111,7 @@ namespace {
 }
 
 void jasperengine::htmlui::compat::rewriteColorValue(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (context.name == "caret-color" && w.size() == 1 && isIdent(w[0], "auto")){
         context.emit("caret-color", "auto");
         return;
@@ -124,13 +124,13 @@ void jasperengine::htmlui::compat::rewriteColorValue(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteCursor(DeclContext& context){
-    std::vector<std::vector<ComponentValue>> groups = commaGroups(context.value);
+    std::vector<ValueList> groups = commaGroups(context.value);
     if (groups.empty())
         return;
     if (groups.size() > 1)
         context.reportAs(Severity::Info, codes::ApproximatedMinor, "url() cursors are not supported; the fallback keyword '" +
                          text(groups.back()) + "' is used");
-    const std::vector<ComponentValue> last = words(groups.back());
+    const ValueList last = words(groups.back());
     if (last.size() != 1 || !last[0].isToken(TokenType::Ident)){
         if (last.size() == 1 && isVar(last[0])){
             context.emit("cursor", text(last[0]));
@@ -148,7 +148,7 @@ void jasperengine::htmlui::compat::rewriteCursor(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewritePointerEvents(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1 && w[0].isToken(TokenType::Ident)){
         const std::string k = identOf(w[0]);
         if (k == "auto" || k == "none"){
@@ -172,7 +172,7 @@ void jasperengine::htmlui::compat::rewriteTabIndexLike(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteVisibility(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1 && isIdent(w[0], "collapse")){
         context.emit("visibility", "hidden");
         return;
@@ -181,7 +181,7 @@ void jasperengine::htmlui::compat::rewriteVisibility(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteZIndex(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1 && w[0].isToken(TokenType::Number) && !w[0].token.isInteger && std::floor(w[0].token.number) != w[0].token.number){
         unsupportedValue(context, "z-index takes an integer");
         return;
@@ -190,7 +190,7 @@ void jasperengine::htmlui::compat::rewriteZIndex(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteOpacity(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1 && w[0].isToken(TokenType::Percentage)){
         context.emit(context.name, formatNumber(w[0].token.number / 100.0));
         return;
@@ -199,7 +199,7 @@ void jasperengine::htmlui::compat::rewriteOpacity(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteAccentColor(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1 && isIdent(w[0], "auto")){
         context.emit(companions::kAccent, "#0075ffff");
         return;
@@ -212,9 +212,9 @@ void jasperengine::htmlui::compat::rewriteAccentColor(DeclContext& context){
 
     // Chromium draws the check mark and the checked radio's gap dark (#3b3b3b) on a light accent
     // (relative luminance above ~0.32, measured on Chromium 153), white otherwise
-    std::vector<ComponentValue> color = w;
+    ValueList color = w;
     if (isVar(w[0])){
-        std::vector<ComponentValue> replacement;
+        ValueList replacement;
         if (!context.session.staticVar(w[0], replacement))
             return;   // set at runtime: the user-agent's white mark
         color = words(replacement);
@@ -234,7 +234,7 @@ void jasperengine::htmlui::compat::rewriteAccentColor(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     const std::string keyword = w.size() == 1 ? identOf(w[0]) : std::string();
     if (keyword == "none"){
         context.emit("--html-check", "none");
@@ -266,7 +266,7 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteImageRendering(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1 && w[0].isToken(TokenType::Ident)){
         std::string k = identOf(w[0]);
         if (k == "optimizespeed" || k == "-webkit-optimize-contrast" || k == "-moz-crisp-edges")
@@ -285,7 +285,7 @@ void jasperengine::htmlui::compat::rewriteObjectFit(DeclContext& context){
         return;
     }
     // object-position: up to two values (keywords, lengths, percentages)
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     std::vector<std::string> parts;
     for (const ComponentValue& v : w)
         parts.push_back(v.isToken(TokenType::Number) ? lengthText(v) : text(v));
@@ -293,7 +293,7 @@ void jasperengine::htmlui::compat::rewriteObjectFit(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteSvgPaint(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     std::string value = context.valueText();
     if (context.name == "stroke-dasharray"){
         // registered as a string: the list as written
@@ -312,7 +312,7 @@ void jasperengine::htmlui::compat::rewriteSvgPaint(DeclContext& context){
 void jasperengine::htmlui::compat::rewriteScrollbarStyle(DeclContext& context){
     if (context.keyframe)
         return;
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (context.name == "scrollbar-width"){
         const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
         if (k == "auto")
@@ -363,7 +363,7 @@ void jasperengine::htmlui::compat::rewriteContent(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteAll(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     const std::string keyword = w.size() == 1 ? identOf(w[0]) : std::string();
     if (keyword != "unset" && keyword != "initial" && keyword != "inherit" && keyword != "revert" && keyword != "revert-layer"){
         unsupportedValue(context, "use all: unset");
@@ -395,7 +395,7 @@ void jasperengine::htmlui::compat::rewriteAll(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteDirection(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
     if (k == "ltr" || k == "rtl"){
         context.emit("-rmlui-direction", k);

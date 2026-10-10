@@ -61,13 +61,13 @@ namespace {
         if (k == "auto" || k == "min-content" || k == "max-content")
             return track;
         if (v.isFunction("minmax")){
-            std::vector<std::vector<ComponentValue>> args = commaGroups(v.children);
+            std::vector<ValueList> args = commaGroups(v.children);
             if (args.size() == 2 && args[1].size() == 1)
                 return trackOf(session, args[1][0]);
             return std::nullopt;
         }
         if (v.isFunction("fit-content")){
-            std::vector<ComponentValue> w = words(v.children);
+            ValueList w = words(v.children);
             if (w.size() == 1 && isLength(session, w[0], true)){
                 track.kind = Track::Kind::Fixed;
                 track.length = lengthText(w[0]);
@@ -78,17 +78,17 @@ namespace {
     }
 
     // the explicit columns of grid-template-columns; autoTrack set for repeat(auto-fill|auto-fit, ...)
-    bool tracksOf(Session& session, const std::vector<ComponentValue>& value, std::vector<Track>& tracks, std::optional<Track>& autoTrack,
+    bool tracksOf(Session& session, const ValueList& value, std::vector<Track>& tracks, std::optional<Track>& autoTrack,
                   std::string& autoMin){
         for (const ComponentValue& v : words(value)){
             if (v.isBlock(TokenType::LeftBracket))
                 continue;   // line names
             if (v.isFunction("repeat")){
-                std::vector<std::vector<ComponentValue>> args = splitAtCommas(v.children);
+                std::vector<ValueList> args = splitAtCommas(v.children);
                 if (args.size() != 2)
                     return false;
-                std::vector<ComponentValue> count = words(args[0]);
-                std::vector<ComponentValue> list = words(args[1]);
+                ValueList count = words(args[0]);
+                ValueList list = words(args[1]);
                 if (count.size() != 1)
                     return false;
                 if (isIdent(count[0], "auto-fill") || isIdent(count[0], "auto-fit")){
@@ -99,7 +99,7 @@ namespace {
                         return false;
                     autoTrack = t;
                     if (list[0].isFunction("minmax")){
-                        std::vector<std::vector<ComponentValue>> mm = commaGroups(list[0].children);
+                        std::vector<ValueList> mm = commaGroups(list[0].children);
                         if (mm.size() == 2 && mm[0].size() == 1)
                             autoMin = lengthText(mm[0][0]);
                     }else if (t->kind == Track::Kind::Fixed){
@@ -135,7 +135,7 @@ namespace {
     }
 
     // the generated "> *" flex rules of a column template
-    void gridColumns(DeclContext& context, const std::vector<ComponentValue>& value){
+    void gridColumns(DeclContext& context, const ValueList& value){
         std::vector<Track> tracks;
         std::optional<Track> autoTrack;
         std::string autoMin;
@@ -183,7 +183,7 @@ namespace {
 }
 
 void jasperengine::htmlui::compat::rewriteDisplay(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     std::string keyword;
     for (const ComponentValue& v : w){
         if (!v.isToken(TokenType::Ident)){
@@ -235,7 +235,7 @@ void jasperengine::htmlui::compat::rewriteDisplay(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewritePosition(DeclContext& context){
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
     if (k == "static" || k == "relative" || k == "absolute"){
         context.emit("position", k);
@@ -263,7 +263,7 @@ void jasperengine::htmlui::compat::rewritePosition(DeclContext& context){
 
 void jasperengine::htmlui::compat::rewriteLogicalBox(DeclContext& context){
     const std::string& n = context.name;
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     const bool rtl = context.session.rootDirection == "rtl";
     auto two = [&](const std::string& first, const std::string& second){
         if (w.empty() || w.size() > 2){
@@ -313,7 +313,7 @@ void jasperengine::htmlui::compat::rewriteLogicalBox(DeclContext& context){
 
 void jasperengine::htmlui::compat::rewriteSizing(DeclContext& context){
     const std::string& n = context.name;
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (w.size() == 1){
         std::string keyword = identOf(w[0]);
         if (w[0].isFunction("fit-content"))
@@ -347,7 +347,7 @@ void jasperengine::htmlui::compat::rewriteSizing(DeclContext& context){
 
 void jasperengine::htmlui::compat::rewriteOverflow(DeclContext& context){
     const std::string& n = context.name;
-    std::vector<ComponentValue> w = words(context.value);
+    ValueList w = words(context.value);
     if (n.compare(0, 19, "overscroll-behavior") == 0){
         std::string k = w.empty() ? std::string() : identOf(w[0]);
         if (k == "none")
@@ -395,7 +395,7 @@ void jasperengine::htmlui::compat::rewriteGrid(DeclContext& context){
     }
     if (n == "grid-template" || n == "grid"){
         // the columns after '/'
-        std::vector<ComponentValue> columns;
+        ValueList columns;
         bool afterSlash = false;
         for (const ComponentValue& v : context.value){
             if (v.isToken(TokenType::Delim) && v.token.isDelim('/')){
@@ -406,7 +406,7 @@ void jasperengine::htmlui::compat::rewriteGrid(DeclContext& context){
                 columns.push_back(v);
         }
         if (afterSlash && !columns.empty()){
-            std::vector<ComponentValue> trimmed = trimWhitespace(columns);
+            ValueList trimmed = trimWhitespace(columns);
             if (!trimmed.empty() && isIdent(trimmed[0], "auto-flow"))
                 trimmed.erase(trimmed.begin());
             gridColumns(context, trimmed);
