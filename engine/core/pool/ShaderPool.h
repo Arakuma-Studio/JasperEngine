@@ -156,7 +156,8 @@ namespace jasperengine{
                         bool terrain, bool instanced, bool ibl, bool mirror, bool ssao = false,
                         bool light2d = false, bool shadows2d = false,
                         bool alphaMask = false, bool alphaOpaque = false, bool instanceFade = false,
-                        bool terrainPBR = false);
+                        bool terrainPBR = false,
+                        bool vertexLights = false, int lightCapacity = 8);
         static uint32_t getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask = false, bool instanceFade = false);
         static uint32_t getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR = false);
         static uint32_t getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4);

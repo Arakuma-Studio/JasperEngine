@@ -94,6 +94,7 @@ namespace {
         // RenderSystem::checkLightsAndShadow
         const LightState lightState = scene->getLightState();
         environment.lights = lightState == LightState::ON || (lightState == LightState::AUTO && (facts & FACT_LIGHTS));
+        environment.lightCapacity = RenderSystem::getLightCapacity(scene->getMaxLightsPerObject());
         environment.shadows = (facts & FACT_SHADOW_LIGHTS) != 0;
         environment.ibl = (facts & FACT_SKY_IBL) != 0;
         environment.reflectionProbes = (facts & FACT_PROBES) != 0;
@@ -110,7 +111,7 @@ namespace {
     uint32_t environmentBits(const MeshShaderEnvironment& e){
         return (e.lights ? 1u : 0u) | (e.shadows ? 2u : 0u) | (e.ibl ? 4u : 0u) | (e.reflectionProbes ? 8u : 0u) |
             (e.fog ? 16u : 0u) | (e.lights2D ? 32u : 0u) | (e.shadows2D ? 64u : 0u) | (e.ssao ? 128u : 0u) |
-            (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u);
+            (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u) | ((uint32_t)e.lightCapacity << 10);
     }
 
     // The lighting setups a scene can be in: its own content, with any of the build's prefabs

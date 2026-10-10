@@ -322,3 +322,11 @@ void Light::setCullingMask(uint32_t cullingMask){
 uint32_t Light::getCullingMask() const{
     return getComponent<LightComponent>().cullingMask;
 }
+
+void Light::setShading(LightShading shading){
+    getComponent<LightComponent>().shading = shading;
+}
+
+LightShading Light::getShading() const{
+    return getComponent<LightComponent>().shading;
+}

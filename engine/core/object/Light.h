@@ -19,6 +19,11 @@ namespace jasperengine{
         void setCullingMask(uint32_t cullingMask);
         uint32_t getCullingMask() const;
 
+        // stage evaluating the light on MIXED-lighting materials (PIXEL and VERTEX
+        // materials evaluate every light their own way); BOTH goes per pixel there
+        void setShading(LightShading shading);
+        LightShading getShading() const;
+
         Light(Scene* scene);
         Light(Scene* scene, Entity entity);
         virtual ~Light();

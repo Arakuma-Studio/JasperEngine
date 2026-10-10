@@ -295,10 +295,9 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
     hasReflectionProbes = false;
     capturingReflectionProbe = false;
 
-    for (uint32_t& mask : lightCullingMasks){
-        mask = LAYER_MASK_EVERYTHING;
-    }
-    hasLightCullingMasks = false;
+    lightListEpoch = 1;
+    lightListCap = 0;
+    lightCapacityTier = 8;
 }
 
 RenderSystem::~RenderSystem(){
@@ -534,9 +533,8 @@ int RenderSystem::checkLightsAndShadow(){
 
     auto lights = scene->getComponentArray<LightComponent>();
 
+    // any number: each mesh picks the ones it is lit by (updateObjectLights)
     int numLights = lights->size();
-    if (numLights > MAX_LIGHTS)
-        numLights = MAX_LIGHTS;
 
     if (scene->getLightState() == LightState::AUTO){
         if (numLights > 0)
@@ -677,95 +675,95 @@ bool RenderSystem::loadLights(int numLights){
 
 void RenderSystem::updateSpotMaskAtlas(int numLights){
     auto lights = scene->getComponentArray<LightComponent>();
-    std::array<SpotMaskAtlasEntry, MAX_LIGHTS> newEntries;
-    std::array<TextureData*, MAX_LIGHTS> sources{};
-    std::array<std::shared_ptr<std::array<TextureData, 6>>, MAX_LIGHTS> sourceOwners;
-    std::array<bool, MAX_LIGHTS> previousReady{};
-    std::array<float, MAX_LIGHTS> previousAspects{};
+    std::array<SpotMaskAtlasEntry, SPOT_MASK_ATLAS_TILES> newEntries;
+    std::array<TextureData*, SPOT_MASK_ATLAS_TILES> sources{};
+    std::array<std::shared_ptr<std::array<TextureData, 6>>, SPOT_MASK_ATLAS_TILES> sourceOwners;
+    // scene light index each tile goes to, -1 for none
+    std::array<int, SPOT_MASK_ATLAS_TILES> tileLights;
+    tileLights.fill(-1);
 
-    for (int i = 0; i < MAX_LIGHTS; i++){
-        if (i >= numLights){
+    // the tiles go to the spot lights with a loaded mask, in scene order, while they last
+    int tile = 0;
+    for (int i = 0; i < numLights && tile < SPOT_MASK_ATLAS_TILES; i++){
+        LightComponent& light = lights->getComponentFromIndex(i);
+        if (light.type != LightType::SPOT || light.spotMask.empty() || light.spotMask.isFramebuffer()){
             continue;
         }
 
-        LightComponent& light = lights->getComponentFromIndex(i);
-        previousReady[i] = light.spotMaskReady;
-        previousAspects[i] = light.spotMaskAspect;
+        const std::string sourceId = light.spotMask.getId();
 
-        if (light.type == LightType::SPOT && !light.spotMask.empty() && !light.spotMask.isFramebuffer()){
-            const std::string sourceId = light.spotMask.getId();
+        auto acceptSource = [&](const std::shared_ptr<std::array<TextureData, 6>>& owner){
+            if (!owner){
+                return false;
+            }
 
-            auto acceptSource = [&](const std::shared_ptr<std::array<TextureData, 6>>& owner){
-                if (!owner){
-                    return false;
-                }
+            TextureData& source = owner->at(0);
+            if (!source.getData() || source.getWidth() <= 0 || source.getHeight() <= 0 || source.getChannels() <= 0){
+                return false;
+            }
 
-                TextureData& source = owner->at(0);
-                if (!source.getData() || source.getWidth() <= 0 || source.getHeight() <= 0 || source.getChannels() <= 0){
-                    return false;
-                }
+            sourceOwners[tile] = owner;
+            sources[tile] = &sourceOwners[tile]->at(0);
+            newEntries[tile].sourceId = sourceId;
+            newEntries[tile].sourceOwner = owner.get();
+            newEntries[tile].sourcePixels = source.getData();
+            newEntries[tile].width = source.getWidth();
+            newEntries[tile].height = source.getHeight();
+            newEntries[tile].aspect = std::clamp(
+                static_cast<float>(source.getWidth()) / static_cast<float>(source.getHeight()),
+                0.1f, 10.0f);
+            return true;
+        };
 
-                sourceOwners[i] = owner;
-                sources[i] = &sourceOwners[i]->at(0);
-                newEntries[i].sourceId = sourceId;
-                newEntries[i].sourceOwner = owner.get();
-                newEntries[i].sourcePixels = source.getData();
-                newEntries[i].width = source.getWidth();
-                newEntries[i].height = source.getHeight();
-                newEntries[i].aspect = std::clamp(
-                    static_cast<float>(source.getWidth()) / static_cast<float>(source.getHeight()),
-                    0.1f, 10.0f);
-                return true;
-            };
+        std::shared_ptr<std::array<TextureData, 6>> pooledSource = TextureDataPool::get(sourceId);
+        bool hasSource = acceptSource(pooledSource);
 
-            std::shared_ptr<std::array<TextureData, 6>> pooledSource = TextureDataPool::get(sourceId);
-            bool hasSource = acceptSource(pooledSource);
+        if (!hasSource){
+            const SpotMaskAtlasEntry& committedEntry = spotMaskAtlasEntries[tile];
+            const bool canReuseCommittedTile =
+                spotMaskAtlasCreated &&
+                pooledSource &&
+                pooledSource.get() == committedEntry.sourceOwner &&
+                sourceId == committedEntry.sourceId &&
+                !committedEntry.empty();
 
-            if (!hasSource){
-                const SpotMaskAtlasEntry& committedEntry = spotMaskAtlasEntries[i];
-                const bool canReuseCommittedTile =
-                    spotMaskAtlasCreated &&
-                    pooledSource &&
-                    pooledSource.get() == committedEntry.sourceOwner &&
-                    sourceId == committedEntry.sourceId &&
-                    !committedEntry.empty();
-
-                if (canReuseCommittedTile){
-                    newEntries[i] = committedEntry;
-                }else{
-                    TextureLoadResult result = light.spotMask.load();
-                    if (result.state == ResourceLoadState::Finished){
-                        acceptSource(result.data);
-                    }
+            if (canReuseCommittedTile){
+                newEntries[tile] = committedEntry;
+            }else{
+                TextureLoadResult result = light.spotMask.load();
+                if (result.state == ResourceLoadState::Finished){
+                    acceptSource(result.data);
                 }
             }
+        }
+
+        if (!newEntries[tile].empty()){
+            tileLights[tile] = i;
+            tile++;
         }
     }
 
     auto applyCommittedReadiness = [&](){
-        for (int i = 0; i < numLights; i++){
+        for (int i = 0; i < static_cast<int>(lights->size()); i++){
             LightComponent& light = lights->getComponentFromIndex(i);
+            int lightTile = -1;
+            for (int t = 0; t < SPOT_MASK_ATLAS_TILES; t++){
+                if (tileLights[t] == i){
+                    lightTile = t;
+                }
+            }
             const bool ready =
+                lightTile >= 0 &&
                 spotMaskAtlasCreated &&
-                !newEntries[i].empty() &&
-                newEntries[i] == spotMaskAtlasEntries[i];
+                newEntries[lightTile] == spotMaskAtlasEntries[lightTile];
+            const float aspect = ready ? spotMaskAtlasEntries[lightTile].aspect : 1.0f;
 
+            if (light.spotMaskReady != ready || std::abs(light.spotMaskAspect - aspect) > 0.0001f){
+                light.needUpdateShadowCamera = true;
+            }
             light.spotMaskReady = ready;
-            light.spotMaskAspect = ready ? spotMaskAtlasEntries[i].aspect : 1.0f;
-
-            if (previousReady[i] != light.spotMaskReady ||
-                std::abs(previousAspects[i] - light.spotMaskAspect) > 0.0001f){
-                light.needUpdateShadowCamera = true;
-            }
-        }
-
-        for (int i = numLights; i < static_cast<int>(lights->size()); i++){
-            LightComponent& light = lights->getComponentFromIndex(i);
-            if (light.spotMaskReady || std::abs(light.spotMaskAspect - 1.0f) > 0.0001f){
-                light.spotMaskReady = false;
-                light.spotMaskAspect = 1.0f;
-                light.needUpdateShadowCamera = true;
-            }
+            light.spotMaskAspect = aspect;
+            light.spotMaskTile = ready ? lightTile : -1;
         }
     };
 
@@ -793,7 +791,7 @@ void RenderSystem::updateSpotMaskAtlas(int numLights){
         return;
     }
 
-    const int atlasWidth = SPOT_MASK_TILE_SIZE * MAX_LIGHTS;
+    const int atlasWidth = SPOT_MASK_TILE_SIZE * SPOT_MASK_ATLAS_TILES;
     const size_t atlasSize =
         static_cast<size_t>(atlasWidth) * static_cast<size_t>(SPOT_MASK_TILE_SIZE);
     std::vector<unsigned char> newPixels = spotMaskAtlasPixels;
@@ -802,13 +800,13 @@ void RenderSystem::updateSpotMaskAtlas(int numLights){
         newPixels.assign(atlasSize, 255);
     }
 
-    for (int i = 0; i < MAX_LIGHTS; i++){
-        if (sources[i] &&
-            (rebuildAllTiles || !spotMaskAtlasCreated || !(newEntries[i] == spotMaskAtlasEntries[i]))){
-            rasterizeSpotMaskTile(*sources[i], i, atlasWidth, newPixels);
-        }else if (newEntries[i].empty() &&
-                  (rebuildAllTiles || !spotMaskAtlasEntries[i].empty())){
-            const int tileStart = i * SPOT_MASK_TILE_SIZE;
+    for (int t = 0; t < SPOT_MASK_ATLAS_TILES; t++){
+        if (sources[t] &&
+            (rebuildAllTiles || !spotMaskAtlasCreated || !(newEntries[t] == spotMaskAtlasEntries[t]))){
+            rasterizeSpotMaskTile(*sources[t], t, atlasWidth, newPixels);
+        }else if (newEntries[t].empty() &&
+                  (rebuildAllTiles || !spotMaskAtlasEntries[t].empty())){
+            const int tileStart = t * SPOT_MASK_TILE_SIZE;
             for (int y = 0; y < SPOT_MASK_TILE_SIZE; y++){
                 auto row = newPixels.begin() +
                     static_cast<size_t>(y) * static_cast<size_t>(atlasWidth) +
@@ -855,11 +853,14 @@ void RenderSystem::updateSpotMaskAtlas(int numLights){
 
     // The atlas owns its resampled copy, so honor the source Texture's normal
     // release-after-upload policy instead of retaining full-resolution pixels.
-    for (int i = 0; i < numLights; i++){
-        LightComponent& light = lights->getComponentFromIndex(i);
-        if (sourceOwners[i] && light.spotMask.isReleaseDataAfterLoad()){
-            sourceOwners[i]->at(0).releaseImageData();
-            spotMaskAtlasEntries[i].sourcePixels = nullptr;
+    for (int t = 0; t < SPOT_MASK_ATLAS_TILES; t++){
+        if (tileLights[t] < 0 || !sourceOwners[t]){
+            continue;
+        }
+        LightComponent& light = lights->getComponentFromIndex(tileLights[t]);
+        if (light.spotMask.isReleaseDataAfterLoad()){
+            sourceOwners[t]->at(0).releaseImageData();
+            spotMaskAtlasEntries[t].sourcePixels = nullptr;
         }
     }
 }
@@ -892,83 +893,64 @@ Vector4 RenderSystem::lightingViewportInfo(const CameraComponent& camera) const{
 void RenderSystem::processLights(CameraShadows& view, int numLights, const CameraComponent& camera, const Transform& cameraTransform){
     auto lights = scene->getComponentArray<LightComponent>();
 
-    hasLightCullingMasks = false;
-    for (int i = 0; i < MAX_LIGHTS; i++){
-        const uint32_t mask = (i < numLights) ? lights->getComponentFromIndex(i).cullingMask : LAYER_MASK_EVERYTHING;
-        lightCullingMasks[i] = mask;
-        hasLightCullingMasks = hasLightCullingMasks || mask != LAYER_MASK_EVERYTHING;
-    }
-
+    // the shadow cameras of the lights holding atlas slots
     for (int i = 0; i < numLights; i++){
         LightComponent& light = lights->getComponentFromIndex(i);
-        Entity entity = lights->getEntity(i);
-        Transform* transform = scene->findComponent<Transform>(entity);
 
-        Vector3 worldPosition;
-        if (transform){
-            worldPosition = Vector3(transform->worldPosition);
+        // shadowMapIndex < 0 means the atlas had no free slot for this light this frame:
+        // the per-object lists pass it on (cone_shadow.z), which the shader treats as "no
+        // shadow". The light keeps its shadow intent and reclaims a slot automatically once
+        // one frees up.
+        if (!light.shadows || light.shadowMapIndex < 0)
+            continue;
+
+        size_t numMaps = 1;
+        if (light.type == LightType::DIRECTIONAL){
+            numMaps = lightCascades(view, i, light);
+        }else if (light.type == LightType::POINT){
+            numMaps = SHADOW_CUBE_FACES;
         }
 
-        int type = 0;
-        if (light.type == LightType::POINT)
-            type = 1;
-        if (light.type == LightType::SPOT)
-            type = 2;
+        for (int c = 0; c < (int)numMaps; c++){
+            const LightCamera& shadowCamera = lightCamera(view, i, light, c);
+            if (light.type == LightType::POINT){
+                view.fs_point_shadows.bias_texSize_nearFar[light.shadowMapIndex+c] = Vector4(
+                    light.shadowBias,
+                    (float)shadowPointAtlasSlotResolution,
+                    shadowCamera.nearFar.x,
+                    shadowCamera.nearFar.y);
+            }else{
+                view.vs_shadows.lightViewProjectionMatrix[light.shadowMapIndex+c] = shadowCamera.lightViewProjectionMatrix;
 
-        if (light.shadows){
-            if (light.shadowMapIndex >= 0){
-                size_t numMaps = 1;
-                if (light.type == LightType::DIRECTIONAL){
-                    numMaps = lightCascades(view, i, light);
-                }else if (light.type == LightType::POINT){
-                    numMaps = SHADOW_CUBE_FACES;
-                }
+                float projScale = std::max(std::abs(shadowCamera.lightProjectionMatrix[0][0]),
+                                           std::abs(shadowCamera.lightProjectionMatrix[1][1]));
+                float texelSizeWorld = (projScale > 0.0f) ? 2.0f / (projScale * (float)shadowAtlasSlotResolution) : 0.0f;
+                view.vs_shadows.shadowParams[light.shadowMapIndex+c] = Vector4(light.shadowNormalBias * texelSizeWorld, 0.0, 0.0, 0.0);
 
-                for (int c = 0; c < (int)numMaps; c++){
-                    const LightCamera& shadowCamera = lightCamera(view, i, light, c);
-                    if (light.type == LightType::POINT){
-                        view.fs_point_shadows.bias_texSize_nearFar[light.shadowMapIndex+c] = Vector4(
-                            light.shadowBias,
-                            (float)shadowPointAtlasSlotResolution,
-                            shadowCamera.nearFar.x,
-                            shadowCamera.nearFar.y);
-                    }else{
-                        view.vs_shadows.lightViewProjectionMatrix[light.shadowMapIndex+c] = shadowCamera.lightViewProjectionMatrix;
-
-                        float projScale = std::max(std::abs(shadowCamera.lightProjectionMatrix[0][0]),
-                                                   std::abs(shadowCamera.lightProjectionMatrix[1][1]));
-                        float texelSizeWorld = (projScale > 0.0f) ? 2.0f / (projScale * (float)shadowAtlasSlotResolution) : 0.0f;
-                        view.vs_shadows.shadowParams[light.shadowMapIndex+c] = Vector4(light.shadowNormalBias * texelSizeWorld, 0.0, 0.0, 0.0);
-
-                        view.fs_shadows.bias_texSize_nearFar[light.shadowMapIndex+c] = Vector4(
-                            light.shadowBias,
-                            (float)shadowAtlasSlotResolution,
-                            shadowCamera.nearFar.x,
-                            shadowCamera.nearFar.y);
-                    }
-                }
+                view.fs_shadows.bias_texSize_nearFar[light.shadowMapIndex+c] = Vector4(
+                    light.shadowBias,
+                    (float)shadowAtlasSlotResolution,
+                    shadowCamera.nearFar.x,
+                    shadowCamera.nearFar.y);
             }
-            // shadowMapIndex < 0 means the atlas had no free slot for this light this
-            // frame: it is passed to the shader (inCon_ouCon_shadows_cascades.z) which
-            // treats a negative index as "no shadow". The light keeps its shadow intent
-            // and reclaims a slot automatically once one frees up.
         }
-
-        view.fs_lighting.direction_range[i] = Vector4(light.worldDirection.x, light.worldDirection.y, light.worldDirection.z, light.range);
-        // a disabled light keeps its slot (the shader variant stays) but adds nothing
-        const float intensity = isLightActive(entity, light) ? light.intensity : 0.0f;
-        view.fs_lighting.color_intensity[i] = Vector4(light.color.x, light.color.y, light.color.z, intensity);
-        view.fs_lighting.position_type[i] = Vector4(worldPosition.x, worldPosition.y, worldPosition.z, (float)type);
-        view.fs_lighting.inCon_ouCon_shadows_cascades[i] = Vector4(light.innerConeCos, light.outerConeCos, light.shadowMapIndex, lightCascades(view, i, light));
-        view.fs_lighting.spotUp_maskAspect[i] = Vector4(
-            light.worldUp.x,
-            light.worldUp.y,
-            light.worldUp.z,
-            (light.type == LightType::SPOT && light.spotMaskReady) ? light.spotMaskAspect : 0.0f);
     }
 
-    // PCF tap radius of the 3D shadow filter, packed into cameraDir.w
-    // (kernel = (2*radius+1)^2 taps; uniform-driven, no shader variant)
+    // the frame block of the camera's passes
+    fillFrameContract(view.frame, camera, cameraTransform);
+    fillFrameLighting(view.frame, camera);
+
+    // the camera part of the legacy u_fs_lighting (lights and eyePos.w are per draw)
+    view.fs_lighting.eyePos = Vector4(cameraTransform.worldPosition.x, cameraTransform.worldPosition.y, cameraTransform.worldPosition.z, 0.0);
+    view.fs_lighting.cameraDir = Vector4(camera.worldDirection.x, camera.worldDirection.y, camera.worldDirection.z, view.frame.lightingInfo.x);
+    view.fs_lighting.globalIllum = Vector4(scene->getGlobalIlluminationColorLinear(), scene->getGlobalIlluminationIntensity());
+    view.fs_lighting.envColor = view.frame.environment;
+    view.fs_lighting.viewportInfo = view.frame.viewportInfo;
+}
+
+void RenderSystem::fillFrameLighting(frame_t& frame, const CameraComponent& camera) const{
+    // PCF tap radius of the 3D shadow filter (kernel = (2*radius+1)^2 taps; uniform-driven,
+    // no shader variant)
     float pcfRadius = 1.0f;
     switch (scene->getShadowQuality()){
         case ShadowQuality::NONE:   pcfRadius = 0.0f; break;
@@ -976,27 +958,494 @@ void RenderSystem::processLights(CameraShadows& view, int numLights, const Camer
         case ShadowQuality::MEDIUM: pcfRadius = 2.0f; break;
         case ShadowQuality::HIGH:   pcfRadius = 3.0f; break;
     }
+    frame.lightingInfo = Vector4(pcfRadius, 0.0f, 0.0f, 0.0f);
 
-    view.fs_lighting.eyePos = Vector4(cameraTransform.worldPosition.x, cameraTransform.worldPosition.y, cameraTransform.worldPosition.z, 0.0);
-    view.fs_lighting.cameraDir = Vector4(camera.worldDirection.x, camera.worldDirection.y, camera.worldDirection.z, pcfRadius);
-    view.fs_lighting.globalIllum = Vector4(scene->getGlobalIlluminationColorLinear(), scene->getGlobalIlluminationIntensity());
-
-    view.fs_lighting.envColor = Vector4(1.0, 1.0, 1.0, 0.0);
+    frame.environment = Vector4(1.0, 1.0, 1.0, 0.0);
     if (hasIBL){
         auto skys = scene->getComponentArray<SkyboxComponent>();
         if (skys->size() > 0){
             SkyboxComponent& sky = skys->getComponentFromIndex(0);
             Vector3 linColor = Color::sRGBToLinear(Vector3(sky.color.x, sky.color.y, sky.color.z));
-            view.fs_lighting.envColor = Vector4(linColor.x, linColor.y, linColor.z, Angle::defaultToRad(sky.rotation));
+            frame.environment = Vector4(linColor.x, linColor.y, linColor.z, Angle::defaultToRad(sky.rotation));
         }
     }
 
-    view.fs_lighting.viewportInfo = lightingViewportInfo(camera);
+    frame.viewportInfo = lightingViewportInfo(camera);
 
-    // Setting intensity of other lights to zero
-    for (int i = numLights; i < MAX_LIGHTS; i++){
-        view.fs_lighting.color_intensity[i].w = 0.0;
-        view.fs_lighting.spotUp_maskAspect[i].w = 0.0;
+    // the variant decides whether fog applies: a fogless scene leaves these unread
+    frame.fogColor_type = fs_fog.color_type;
+    frame.fogDensity_start_end = fs_fog.density_start_end;
+}
+
+void RenderSystem::fillFrameContract(frame_t& frame, const CameraComponent& camera, const Transform& cameraTransform) const{
+    frame.viewMatrix = camera.viewMatrix;
+    frame.projectionMatrix = camera.projectionMatrix;
+    frame.viewProjectionMatrix = camera.viewProjectionMatrix;
+    frame.cameraPosition = Vector4(cameraTransform.worldPosition.x, cameraTransform.worldPosition.y, cameraTransform.worldPosition.z,
+        (camera.type == CameraType::CAMERA_PERSPECTIVE) ? 0.0f : 1.0f);
+    // worldDirection is the camera's backward axis
+    frame.cameraDirection = Vector4(-camera.worldDirection.x, -camera.worldDirection.y, -camera.worldDirection.z, 0.0f);
+    frame.time = Vector4(frameTime, std::sin(frameTime), std::cos(frameTime), Engine::getDeltatime());
+    const Vector4 viewport = lightingViewportInfo(camera);
+    frame.resolution = Vector4(
+        (viewport.x > 0.0f) ? 1.0f / viewport.x : 0.0f,
+        (viewport.y > 0.0f) ? 1.0f / viewport.y : 0.0f,
+        viewport.x, viewport.y);
+
+    // the brightest active directional light
+    frame.mainLightDirection = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    frame.mainLightColor = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    float brightest = 0.0f;
+    for (const SceneLight& light : sceneLights){
+        if (!light.active || light.position_type.w != 0.0f)
+            continue;
+        const float luminance = (0.2126f * light.color_intensity.x + 0.7152f * light.color_intensity.y + 0.0722f * light.color_intensity.z) * light.color_intensity.w;
+        if (luminance > brightest){
+            brightest = luminance;
+            Vector3 towards = -Vector3(light.direction_range.x, light.direction_range.y, light.direction_range.z).normalized();
+            frame.mainLightDirection = Vector4(towards.x, towards.y, towards.z, light.color_intensity.w);
+            frame.mainLightColor = Vector4(light.color_intensity.x, light.color_intensity.y, light.color_intensity.z, 1.0f);
+        }
+    }
+
+    const Vector3 ambient = scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity();
+    frame.ambient = Vector4(ambient.x, ambient.y, ambient.z, 1.0f);
+}
+
+//-----Unified lighting: per-object light lists-----
+
+namespace {
+    float lightLuminance(const Vector4& colorIntensity){
+        return (0.2126f * colorIntensity.x + 0.7152f * colorIntensity.y + 0.0722f * colorIntensity.z) * std::max(colorIntensity.w, 0.0f);
+    }
+
+    // punctual.glsl getSpotAttenuation, towardsLight normalised
+    float lightSpotAttenuation(const Vector3& towardsLight, const Vector4& direction, float outerConeCos, float innerConeCos){
+        const float actualCos = Vector3(direction.x, direction.y, direction.z).normalized().dotProduct(-towardsLight);
+        if (actualCos <= outerConeCos){
+            return 0.0f;
+        }
+        if (actualCos >= innerConeCos){
+            return 1.0f;
+        }
+        const float t = std::clamp((actualCos - outerConeCos) / (innerConeCos - outerConeCos), 0.0f, 1.0f);
+        return t * t * (3.0f - 2.0f * t);
+    }
+
+    // Where a mesh is for its lights: the center and radius of its world bounds (an
+    // instanced batch's, all instances), or its position when it has none yet
+    struct LightBounds{
+        AABB box;
+        Vector3 center;
+        float radius = 0.0f;
+        bool hasBox = false;
+
+        LightBounds(const AABB& worldAABB, const Vector3& position){
+            hasBox = worldAABB.isFinite() && !worldAABB.isNull() && worldAABB != AABB::ZERO;
+            if (hasBox){
+                box = worldAABB;
+                center = worldAABB.getCenter();
+                radius = worldAABB.getHalfSize().length();
+            }else{
+                center = position;
+            }
+        }
+
+        float distanceTo(const Vector3& point) const{
+            return hasBox ? std::sqrt(box.squaredDistance(point)) : (point - center).length();
+        }
+    };
+
+    // What a light gives a mesh, estimated at its bounds' center: the direction towards the
+    // light and its attenuation there. The range window is measured to the bounds (a light
+    // touching them counts), the falloff from the center, never closer than half the mesh's
+    // size; withCone adds a spot's cone at the center.
+    float estimateLightAttenuation(const Vector4& positionType, const Vector4& directionRange, const Vector4& coneShadow,
+            const LightBounds& bounds, bool withCone, Vector3& towardsLight){
+        if (positionType.w == 0.0f){
+            towardsLight = -Vector3(directionRange.x, directionRange.y, directionRange.z).normalized();
+            return 1.0f;
+        }
+        const Vector3 position(positionType.x, positionType.y, positionType.z);
+        const Vector3 toLight = position - bounds.center;
+        const float distance = toLight.length();
+        towardsLight = (distance > 1e-5f) ? toLight / distance : Vector3(0.0f, 1.0f, 0.0f);
+
+        const float falloffDistance = std::max(distance, std::max(0.5f * bounds.radius, 0.05f));
+        float attenuation = 1.0f / (falloffDistance * falloffDistance);
+        const float range = directionRange.w;
+        if (range > 0.0f){
+            const float ratio = bounds.distanceTo(position) / range;
+            attenuation *= std::clamp(1.0f - ratio * ratio * ratio * ratio, 0.0f, 1.0f);
+        }
+        if (withCone && positionType.w == 2.0f){
+            attenuation *= lightSpotAttenuation(towardsLight, directionRange, coneShadow.y, coneShadow.x);
+        }
+        return attenuation;
+    }
+
+    // a light over the cap into an L1 SH ambient: its Lambert diffuse, kept non-negative as
+    // radiance * (1 + n.l) / 4 (the energy of max(n.l, 0) over the sphere)
+    void foldLight(const Vector4& colorIntensity, const Vector3& towardsLight, float attenuation, Vector4 sh[3]){
+        const float scale = 0.25f * colorIntensity.w * attenuation;
+        for (int c = 0; c < 3; c++){
+            const float radiance = scale * colorIntensity[c];
+            sh[c] += Vector4(radiance * towardsLight.x, radiance * towardsLight.y, radiance * towardsLight.z, radiance);
+        }
+    }
+}
+
+bool RenderSystem::SceneLight::operator==(const SceneLight& other) const{
+    return position_type == other.position_type &&
+        direction_range == other.direction_range &&
+        color_intensity == other.color_intensity &&
+        cone_shadow == other.cone_shadow &&
+        spot_mask == other.spot_mask &&
+        cullingMask == other.cullingMask &&
+        spotMaskTile == other.spotMaskTile &&
+        shading == other.shading &&
+        active == other.active;
+}
+
+int RenderSystem::getLightCapacity(int maxLightsPerObject){
+    if (maxLightsPerObject <= 4)
+        return 4;
+    if (maxLightsPerObject <= 8)
+        return 8;
+    return 16;
+}
+
+// Snapshot of every light as the object lists copy it, after the lights' transforms, shadow
+// slots and spot mask tiles are settled for this update. Lights whose data changed since the
+// previous update go to changedLights; a change every mesh depends on bumps lightListEpoch.
+void RenderSystem::updateSceneLights(){
+    auto lights = scene->getComponentArray<LightComponent>();
+    const size_t count = lights->size();
+
+    // the arrays keep their capacity: nothing is allocated once the light count is reached
+    std::swap(sceneLights, previousSceneLights);
+    sceneLights.resize(count);
+    changedLights.clear();
+
+    bool restructured = previousSceneLights.size() != count || sceneLightEntities.size() != count;
+    sceneLightEntities.resize(count);
+
+    for (size_t i = 0; i < count; i++){
+        const Entity entity = lights->getEntity(i);
+        if (sceneLightEntities[i] != entity){
+            sceneLightEntities[i] = entity;
+            restructured = true;
+        }
+
+        const LightComponent& light = lights->getComponentFromIndex(i);
+        const Transform* transform = scene->findComponent<Transform>(entity);
+        const Vector3 position = transform ? transform->worldPosition : Vector3(0, 0, 0);
+
+        float type = 0.0f;
+        if (light.type == LightType::POINT)
+            type = 1.0f;
+        if (light.type == LightType::SPOT)
+            type = 2.0f;
+
+        const bool spotMask = light.type == LightType::SPOT && light.spotMaskReady && light.spotMaskTile >= 0;
+
+        SceneLight& sceneLight = sceneLights[i];
+        sceneLight.position_type = Vector4(position.x, position.y, position.z, type);
+        sceneLight.direction_range = Vector4(light.worldDirection.x, light.worldDirection.y, light.worldDirection.z, light.range);
+        sceneLight.color_intensity = Vector4(light.color.x, light.color.y, light.color.z, light.intensity);
+        sceneLight.cone_shadow = Vector4(light.innerConeCos, light.outerConeCos, (float)light.shadowMapIndex, (float)light.numShadowCascades);
+        sceneLight.spot_mask = Vector4(light.worldUp.x, light.worldUp.y, light.worldUp.z, spotMask ? light.spotMaskAspect : 0.0f);
+        sceneLight.cullingMask = light.cullingMask;
+        sceneLight.spotMaskTile = spotMask ? light.spotMaskTile : -1;
+        sceneLight.shading = light.shading;
+        sceneLight.active = light.intensity > 0.0f && isLightActive(entity, light);
+
+        if (!restructured && !(sceneLight == previousSceneLights[i])){
+            changedLights.push_back((int)i);
+        }
+    }
+
+    // what every mesh's pick depends on
+    const Vector3 ambient = scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity();
+    const int cap = std::clamp(scene->getMaxLightsPerObject(), 1, MAX_LIGHTS_PER_OBJECT);
+    if (restructured || ambient != lightListAmbient || cap != lightListCap){
+        lightListEpoch++;
+        lightListAmbient = ambient;
+        lightListCap = cap;
+        changedLights.clear();
+    }
+}
+
+void RenderSystem::updateObjectLights(){
+    auto meshes = scene->getComponentArray<MeshComponent>();
+    for (int i = 0; i < meshes->size(); i++){
+        MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        const Entity entity = meshes->getEntity(i);
+        MeshLights& picked = mesh.lights;
+
+        // a mesh drawn unlit or not at all picks nothing, and picks again from scratch
+        // when it shows: it did not follow the light changes in between
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!hasLights || !mesh.loaded || !mesh.receiveLights || !transform || !isRenderActive(entity)){
+            picked.epoch = 0;
+            continue;
+        }
+
+        const uint32_t layerBit = 1u << scene->getEntityLayer(entity);
+        bool repick = picked.epoch != lightListEpoch || picked.layerBit != layerBit || picked.bounds != mesh.worldAABB;
+
+        if (!repick && !changedLights.empty()){
+            // a light that reached it changed, or a changed light reaches it now
+            const LightBounds bounds(mesh.worldAABB, transform->worldPosition);
+            for (int index : changedLights){
+                if (picked.reachMask & (1ull << (index & 63))){
+                    repick = true;
+                    break;
+                }
+                const SceneLight& light = sceneLights[index];
+                if (!light.active || !(light.cullingMask & layerBit))
+                    continue;
+                const float range = light.direction_range.w;
+                if (light.position_type.w == 0.0f || range <= 0.0f ||
+                        bounds.distanceTo(Vector3(light.position_type.x, light.position_type.y, light.position_type.z)) < range){
+                    repick = true;
+                    break;
+                }
+            }
+        }
+
+        if (repick){
+            selectMeshLights(entity, mesh, *transform);
+        }
+    }
+}
+
+// The lights reaching a mesh: directional ones always; point and spot ones whose range
+// sphere touches its bounds; none whose culling mask leaves out its layer. Ranked by what
+// they give at the bounds' center (directional first, then luminance * attenuation; a light
+// already picked keeps a margin, so near-ties do not flip every frame), the top
+// maxLightsPerObject are its list and the others go into its SH ambient, evaluated at the
+// center, so a light never just vanishes.
+void RenderSystem::selectMeshLights(Entity entity, MeshComponent& mesh, const Transform& transform){
+    MeshLights& picked = mesh.lights;
+    const LightBounds bounds(mesh.worldAABB, transform.worldPosition);
+    const uint32_t layerBit = 1u << scene->getEntityLayer(entity);
+    const int cap = std::min(lightListCap, MAX_LIGHTS_PER_OBJECT);
+
+    // the previous pick earns a margin while the light list holds the same lights
+    uint16_t previous[MAX_LIGHTS_PER_OBJECT];
+    unsigned int previousCount = 0;
+    if (picked.epoch == lightListEpoch){
+        previousCount = picked.count;
+        std::copy(picked.lights, picked.lights + previousCount, previous);
+    }
+
+    for (int c = 0; c < 3; c++){
+        picked.sh[c] = Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
+    }
+
+    // a light over the cap goes into the SH, with its spot cone at the center
+    auto fold = [&](int index){
+        const SceneLight& light = sceneLights[index];
+        Vector3 towardsLight;
+        const float attenuation = estimateLightAttenuation(light.position_type, light.direction_range, light.cone_shadow, bounds, true, towardsLight);
+        foldLight(light.color_intensity, towardsLight, attenuation, picked.sh);
+    };
+
+    struct Candidate{
+        int index;
+        float score;
+        bool directional;
+    };
+    auto better = [](const Candidate& a, const Candidate& b){
+        if (a.directional != b.directional)
+            return a.directional;
+        if (a.score != b.score)
+            return a.score > b.score;
+        return a.index < b.index;
+    };
+    Candidate top[MAX_LIGHTS_PER_OBJECT];
+    int topCount = 0;
+    uint64_t reachMask = 0;
+
+    for (int i = 0; i < (int)sceneLights.size(); i++){
+        const SceneLight& light = sceneLights[i];
+        if (!light.active || !(light.cullingMask & layerBit))
+            continue;
+
+        Candidate candidate{i, 0.0f, light.position_type.w == 0.0f};
+        if (!candidate.directional){
+            const float range = light.direction_range.w;
+            if (range > 0.0f && bounds.distanceTo(Vector3(light.position_type.x, light.position_type.y, light.position_type.z)) >= range)
+                continue;
+        }
+        reachMask |= 1ull << (i & 63);
+
+        // ranked without the spot cone: a spot may light part of the mesh away from its center
+        Vector3 towardsLight;
+        candidate.score = lightLuminance(light.color_intensity) *
+            estimateLightAttenuation(light.position_type, light.direction_range, light.cone_shadow, bounds, false, towardsLight);
+        for (unsigned int p = 0; p < previousCount; p++){
+            if (previous[p] == i){
+                candidate.score *= 1.25f;
+                break;
+            }
+        }
+
+        // keep top sorted best first; what does not fit goes into the SH
+        if (topCount == cap){
+            if (!better(candidate, top[cap - 1])){
+                fold(i);
+                continue;
+            }
+            fold(top[cap - 1].index);
+            topCount--;
+        }
+        int slot = topCount;
+        while (slot > 0 && better(candidate, top[slot - 1])){
+            top[slot] = top[slot - 1];
+            slot--;
+        }
+        top[slot] = candidate;
+        topCount++;
+    }
+
+    // scene order, as the lights add up in the shader (and as they did before the lists)
+    std::sort(top, top + topCount, [](const Candidate& a, const Candidate& b){ return a.index < b.index; });
+    for (int k = 0; k < topCount; k++){
+        picked.lights[k] = (uint16_t)top[k].index;
+    }
+    picked.count = (unsigned int)topCount;
+    picked.bounds = mesh.worldAABB;
+    picked.layerBit = layerBit;
+    picked.reachMask = reachMask;
+    picked.epoch = lightListEpoch;
+}
+
+// The object's lights for a submesh variant: pixel lights first (USE_PUNCTUAL), then
+// vertex lights (USE_VERTEX_LIGHTS); MIXED sends the lights shaded VERTEX per vertex and
+// the others per pixel. Arrays packed at the variant's capacity.
+unsigned int RenderSystem::buildObjectLights(const MeshComponent& mesh, uint32_t properties, object_lights_t& block) const{
+    const int capacity = (properties & (1u << 29)) ? 4 : ((properties & (1u << 30)) ? 16 : 8);
+    const bool pixel = (properties & (1u << 3)) != 0;
+    const bool vertex = (properties & (1u << 28)) != 0;
+    const MeshLights& picked = mesh.lights;
+    const CameraShadows& camera = ps();
+
+    int order[MAX_LIGHTS_PER_OBJECT];
+    int pixelCount = 0;
+    int vertexCount = 0;
+    if (picked.epoch != 0){
+        // pixel lights, then vertex lights, each in scene order
+        for (int pass = 0; pass < 2; pass++){
+            for (unsigned int k = 0; k < picked.count; k++){
+                const int index = picked.lights[k];
+                if (index >= (int)sceneLights.size())
+                    continue;
+                const bool perPixel = pixel && (!vertex || sceneLights[index].shading != LightShading::VERTEX);
+                if (pass == 0 && perPixel && pixelCount < capacity){
+                    order[pixelCount++] = index;
+                }else if (pass == 1 && !perPixel && vertex && pixelCount + vertexCount < capacity){
+                    order[pixelCount + vertexCount++] = index;
+                }
+            }
+        }
+    }
+
+    for (int c = 0; c < 3; c++){
+        block.sh[c] = (picked.epoch != 0) ? picked.sh[c] : Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
+    }
+
+    uint32_t tiles[2] = {0, 0};
+    Vector4* position_type = block.lights;
+    Vector4* direction_range = block.lights + capacity;
+    Vector4* color_intensity = block.lights + 2 * capacity;
+    Vector4* cone_shadow = block.lights + 3 * capacity;
+    Vector4* spot_mask = block.lights + 4 * capacity;
+    for (int n = 0; n < pixelCount + vertexCount; n++){
+        const SceneLight& light = sceneLights[order[n]];
+        position_type[n] = light.position_type;
+        direction_range[n] = light.direction_range;
+        color_intensity[n] = light.color_intensity;
+        cone_shadow[n] = light.cone_shadow;
+        // directional cascades are fitted to the camera of the pass being drawn
+        const int slot = (int)light.cone_shadow.z;
+        if (light.position_type.w == 0.0f && camera.ownLightCameras && slot >= 0 && slot < MAX_SHADOW_ATLAS_SLOTS){
+            cone_shadow[n].w = (float)camera.lightCameras[slot].numCascades;
+        }
+        spot_mask[n] = light.spot_mask;
+        const int tile = (n < pixelCount && light.spotMaskTile >= 0) ? light.spotMaskTile : 7;
+        if (tile == 7){
+            spot_mask[n].w = 0.0f; // vertex lights take the cone
+        }
+        tiles[n / 8] |= (uint32_t)tile << (3 * (n % 8));
+    }
+    for (int n = pixelCount + vertexCount; n < 16; n++){
+        tiles[n / 8] |= 7u << (3 * (n % 8));
+    }
+
+    block.counts = Vector4((float)pixelCount, (float)vertexCount, (float)tiles[0], (float)tiles[1]);
+
+    return (unsigned int)((4 + 5 * capacity) * sizeof(Vector4));
+}
+
+// An older fork's u_fs_lighting: the camera's part, then the object's first MAX_LIGHTS
+// lights, all per pixel. What the block cannot hold (lights over the cap, past MAX_LIGHTS)
+// is added to its flat ambient as the SH would, which changes nothing when none is left out.
+void RenderSystem::buildLegacyLighting(const MeshComponent& mesh, uint32_t properties, fs_lighting_t& block) const{
+    block = ps().fs_lighting;
+
+    // every picked light per pixel, at the largest capacity
+    const uint32_t legacyProperties = (properties | (1u << 3) | (1u << 30)) & ~((1u << 28) | (1u << 29));
+    object_lights_t lists;
+    buildObjectLights(mesh, legacyProperties, lists);
+    const int capacity = MAX_LIGHTS_PER_OBJECT;
+    const int pixelCount = (int)lists.counts.x;
+    const int count = std::min(pixelCount, MAX_LIGHTS);
+
+    uint32_t tiles = 0;
+    for (int n = 0; n < MAX_LIGHTS; n++){
+        if (n < count){
+            block.position_type[n] = lists.lights[n];
+            block.direction_range[n] = lists.lights[capacity + n];
+            block.color_intensity[n] = lists.lights[2 * capacity + n];
+            block.inCon_ouCon_shadows_cascades[n] = lists.lights[3 * capacity + n];
+            block.spotUp_maskAspect[n] = lists.lights[4 * capacity + n];
+            tiles |= (((uint32_t)lists.counts.z >> (3 * n)) & 7u) << (3 * n);
+        }else{
+            // adds nothing
+            block.position_type[n] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+            block.direction_range[n] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+            block.color_intensity[n] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+            block.inCon_ouCon_shadows_cascades[n] = Vector4(0.0f, 0.0f, -1.0f, 0.0f);
+            block.spotUp_maskAspect[n] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+            tiles |= 7u << (3 * n);
+        }
+    }
+    block.eyePos.w = (float)tiles;
+
+    Vector4 sh[3] = {lists.sh[0], lists.sh[1], lists.sh[2]};
+    bool leftOut = false;
+    for (int c = 0; c < 3; c++){
+        leftOut = leftOut || sh[c].w != lightListAmbient[c];
+    }
+    if (pixelCount > count){
+        const LightBounds bounds(mesh.lights.bounds, Vector3(0.0f, 0.0f, 0.0f));
+        for (int n = count; n < pixelCount; n++){
+            Vector3 towardsLight;
+            const float attenuation = estimateLightAttenuation(lists.lights[n], lists.lights[capacity + n], lists.lights[3 * capacity + n], bounds, true, towardsLight);
+            foldLight(lists.lights[2 * capacity + n], towardsLight, attenuation, sh);
+        }
+        leftOut = true;
+    }
+    if (leftOut){
+        // the SH at no particular normal (its constant term), its light part divided by PI
+        // as Lit-like forks divide their direct light
+        Vector3 flat;
+        for (int c = 0; c < 3; c++){
+            flat[c] = lightListAmbient[c] + std::max(sh[c].w - lightListAmbient[c], 0.0f) / 3.14159265f;
+        }
+        block.globalIllum = Vector4(flat.x, flat.y, flat.z, 1.0f);
     }
 }
 
@@ -1846,6 +2295,7 @@ bool RenderSystem::checkPBRTextures(const MeshShaderEnvironment& environment, co
 MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     MeshShaderEnvironment environment;
     environment.lights = hasLights;
+    environment.lightCapacity = getLightCapacity(scene->getMaxLightsPerObject());
     environment.shadows = hasShadows;
     environment.ibl = hasIBL;
     environment.reflectionProbes = hasReflectionProbes;
@@ -2032,6 +2482,7 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     inputs.occlusionTexture = !material.occlusionTexture.empty();
     inputs.emissiveTexture = !material.emissiveTexture.empty();
     inputs.alphaMode = material.alphaMode;
+    inputs.lighting = material.lighting;
     inputs.textureShadow = submesh.textureShadow;
 
     inputs.receiveLights = mesh.receiveLights;
@@ -2061,6 +2512,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
 
     bool p_unlit = false;
     bool p_punctual = false;
+    bool p_vertexLights = false;
     bool p_ibl = false;
     bool p_hasTexture1 = false;
     bool p_hasTexture2 = false;
@@ -2083,7 +2535,11 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     const bool p_terrainSurface = inputs.terrain && inputs.terrainSurface;
     const bool useIBL = (environment.ibl || environment.reflectionProbes) && inputs.receiveIBL;
     if ((environment.lights || useIBL) && inputs.receiveLights){
-        p_punctual = environment.lights;
+        // the stages evaluating the object's lights: pixel (USE_PUNCTUAL), vertex
+        // (USE_VERTEX_LIGHTS) or both, which the lights' own shading then splits (MIXED)
+        const MaterialLighting lighting = (inputs.lighting == MaterialLighting::AUTO) ? inputs.defaultLighting : inputs.lighting;
+        p_punctual = environment.lights && lighting != MaterialLighting::VERTEX;
+        p_vertexLights = environment.lights && (lighting == MaterialLighting::VERTEX || lighting == MaterialLighting::MIXED);
         p_ibl = useIBL;
 
         p_hasNormal = true;
@@ -2093,12 +2549,15 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         if (inputs.normalTexture){
             p_hasNormalMap = true;
         }
-        if (environment.shadows && inputs.receiveShadows){
+        // only pixel lights take shadows
+        if (environment.shadows && inputs.receiveShadows && p_punctual){
             p_receiveShadows = true;
         }
     }else{
         p_unlit = true;
     }
+    // light counts are uniforms: only the block capacity is part of the variant
+    const int lightCapacity = (p_punctual || p_vertexLights) ? environment.lightCapacity : 8;
 
     // dedicated 2D light path: composes with MATERIAL_UNLIT (sprites keep the
     // cheap unlit shader; accumulated 2D light multiplies the base color) and
@@ -2117,7 +2576,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     }
 
     // screen-space AO modulates ambient/indirect light on lit submeshes.
-    const bool p_ssao = environment.ssao && !p_unlit && (p_punctual || p_ibl);
+    const bool p_ssao = environment.ssao && !p_unlit && (p_punctual || p_vertexLights || p_ibl);
     const bool p_alphaMask = inputs.alphaMode == MaterialAlphaMode::MASK;
     const bool p_alphaOpaque = inputs.alphaMode == MaterialAlphaMode::ALPHA_OPAQUE;
     // AUTO + textureShadow preserves the legacy opt-in for editor-created
@@ -2134,7 +2593,8 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
                     p_hasTangent, inputs.vertexColor3, inputs.vertexColor4, inputs.textureRect,
                     environment.fog, inputs.skinning, inputs.morphTarget, inputs.morphNormal, inputs.morphTangent,
                     inputs.terrain, inputs.instanced, p_ibl, inputs.mirror, p_ssao, p_light2d, p_shadows2d,
-                    p_alphaMask, p_alphaOpaque, p_instanceFade, p_terrainSurface);
+                    p_alphaMask, p_alphaOpaque, p_instanceFade, p_terrainSurface,
+                    p_vertexLights, lightCapacity);
 
     // the depth shader feeds shadow maps (casters) and the SSAO depth pre-pass
     // (SSR uses its own G-buffer shader). A depth fork is built even without a
@@ -3058,6 +3518,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         mesh.submeshes[i].hasIBL = p_ibl;
 
         mesh.submeshes[i].shaderProperties = meshProperties;
+        mesh.submeshes[i].loadedLighting = mesh.submeshes[i].material.lighting;
         // a user-forked main shader overrides the built-in Mesh shader; the variant
         // (#define) system, depth/gbuffer passes and bind-slots are unchanged.
         // Priority: component customShader > scene default shader > built-in (empty)
@@ -3136,7 +3597,13 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (p_mirror){
             mesh.submeshes[i].slotFSMirror = shaderData.getUniformBlockIndex(UniformBlockType::FS_MIRROR);
         }
+        // the frame block, in the stages that declare it (stand-in for the shader-system core)
+        mesh.submeshes[i].slotVSFrame = shaderData.getUniformBlockIndexByName("u_vs_frame");
+        mesh.submeshes[i].slotFSFrame = shaderData.getUniformBlockIndexByName("u_fs_frame");
         if (p_lit){
+            // the object's lights (includes/lights.glsl), or the legacy block of an older fork
+            mesh.submeshes[i].slotVSObjectLights = shaderData.getUniformBlockIndexByName("u_vs_objectLights");
+            mesh.submeshes[i].slotFSObjectLights = shaderData.getUniformBlockIndexByName("u_fs_objectLights");
             mesh.submeshes[i].slotFSLighting = shaderData.getUniformBlockIndex(UniformBlockType::FS_LIGHTING);
             if (p_ibl){
                 mesh.submeshes[i].slotFSReflectionProbe = shaderData.getUniformBlockIndex(UniformBlockType::FS_REFLECTION_PROBE);
@@ -3833,7 +4300,7 @@ const std::vector<RenderSystem::ShadowSlot>& RenderSystem::collectShadowSlots(){
         return slots;
 
     auto lights = scene->getComponentArray<LightComponent>();
-    int shadowLightCount = std::min((int)lights->size(), MAX_LIGHTS);
+    int shadowLightCount = (int)lights->size();
     for (int l = 0; l < shadowLightCount; l++){
         LightComponent& light = lights->getComponentFromIndex(l);
         if (light.type == LightType::POINT || light.intensity <= 0 || !light.shadows || light.shadowMapIndex < 0 ||
@@ -4162,20 +4629,23 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         // the lighting and shadow maps of the camera this pass draws for
         CameraShadows& passLighting = ps();
 
-        // a light whose culling mask leaves out this layer adds nothing here
-        fs_lighting_t* lighting = &passLighting.fs_lighting;
-        if (hasLightCullingMasks){
-            const uint32_t layerBit = 1u << scene->getEntityLayer(entity);
-            for (int l = 0; l < MAX_LIGHTS; l++){
-                if (!(lightCullingMasks[l] & layerBit)){
-                    if (lighting == &passLighting.fs_lighting){
-                        fs_lightingMasked = passLighting.fs_lighting;
-                        lighting = &fs_lightingMasked;
-                    }
-                    fs_lightingMasked.color_intensity[l].w = 0.0f;
-                }
-            }
+        // the frame block of the pass (stand-in until the shader-system core binds it)
+        const frame_t* frameBlock = &passLighting.frame;
+#ifdef JASPERENGINE_EDITOR
+        // exponential fog of density 0: a factor of 1 everywhere, no fog
+        frame_t noFogFrame;
+        if (hasFog && rv().secondary && rv().disableFog){
+            noFogFrame = passLighting.frame;
+            noFogFrame.fogColor_type = Vector4(0.0f, 0.0f, 0.0f, 1.0f);
+            noFogFrame.fogDensity_start_end = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+            frameBlock = &noFogFrame;
         }
+#endif
+
+        // the object's lights (MeshComponent::lights) as the last submesh built them: its
+        // lighting and capacity bits, and the bytes of that block
+        uint32_t builtLightBits = UINT32_MAX;
+        unsigned int objectLightsSize = 0;
 
         for (int i = 0; i < mesh.numSubmeshes; i++){
             // an indexed submesh without indices has nothing to draw (a tilemap rect
@@ -4256,10 +4726,30 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             bool submeshLit = !(mesh.submeshes[i].shaderProperties & (1u << 0));
             bool viewShadowMapsBound = false;
 
+            if (mesh.submeshes[i].slotVSFrame != -1){
+                render.applyUniformBlock(mesh.submeshes[i].slotVSFrame, sizeof(frame_t), (void*)frameBlock);
+            }
+            if (mesh.submeshes[i].slotFSFrame != -1){
+                render.applyUniformBlock(mesh.submeshes[i].slotFSFrame, sizeof(frame_t), (void*)frameBlock);
+            }
+
             if (submeshLit){
                 ShaderData& lightingShaderData = mesh.submeshes[i].shader.get()->shaderData;
                 loadSpotMaskTexture(lightingShaderData, render);
-                render.applyUniformBlock(mesh.submeshes[i].slotFSLighting, sizeof(fs_lighting_t), lighting);
+                // the object's lights, split for this submesh's lighting mode
+                if (mesh.submeshes[i].slotVSObjectLights != -1 || mesh.submeshes[i].slotFSObjectLights != -1){
+                    const uint32_t lightBits = mesh.submeshes[i].shaderProperties & ((1u << 3) | (1u << 28) | (1u << 29) | (1u << 30));
+                    if (lightBits != builtLightBits){
+                        objectLightsSize = buildObjectLights(mesh, mesh.submeshes[i].shaderProperties, objectLightsBlock);
+                        builtLightBits = lightBits;
+                    }
+                    render.applyUniformBlock(mesh.submeshes[i].slotVSObjectLights, objectLightsSize, &objectLightsBlock);
+                    render.applyUniformBlock(mesh.submeshes[i].slotFSObjectLights, objectLightsSize, &objectLightsBlock);
+                }
+                if (mesh.submeshes[i].slotFSLighting != -1){
+                    buildLegacyLighting(mesh, mesh.submeshes[i].shaderProperties, legacyLightingBlock);
+                    render.applyUniformBlock(mesh.submeshes[i].slotFSLighting, sizeof(fs_lighting_t), &legacyLightingBlock);
+                }
                 if (hasShadows && (mesh.submeshes[i].shaderProperties & (1u << 4))){
                     render.applyUniformBlock(mesh.submeshes[i].slotVSShadows, sizeof(float) * (20 * MAX_SHADOW_ATLAS_SLOTS), &passLighting.vs_shadows);
                     render.applyUniformBlock(mesh.submeshes[i].slotFSShadows, sizeof(fs_shadows_t), &passLighting.fs_shadows);
@@ -5480,6 +5970,10 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotFSTexCoordSets = -1;
         submesh.slotVSFade = -1;
         submesh.slotFSLighting = -1;
+        submesh.slotVSObjectLights = -1;
+        submesh.slotFSObjectLights = -1;
+        submesh.slotVSFrame = -1;
+        submesh.slotFSFrame = -1;
         submesh.slotFSReflectionProbe = -1;
         submesh.slotVSSprite = -1;
         submesh.slotVSShadows = -1;
@@ -7584,16 +8078,17 @@ unsigned int RenderSystem::lightCascades(int lightIndex, const LightComponent& l
     return lightCascades(ps(), lightIndex, light);
 }
 
-// only directional cascades follow the camera: spot and point lights keep their own cameras
+// only directional cascades follow the camera: spot and point lights keep their own cameras.
+// A camera's own cascades are kept by the light's base shadow slot.
 const LightCamera& RenderSystem::lightCamera(const CameraShadows& shadows, int lightIndex, const LightComponent& light, int cameraIndex) const{
-    if (shadows.ownLightCameras && light.type == LightType::DIRECTIONAL && lightIndex >= 0 && lightIndex < MAX_LIGHTS)
-        return shadows.lightCameras[lightIndex].cameras[cameraIndex];
+    if (shadows.ownLightCameras && light.type == LightType::DIRECTIONAL && light.shadowMapIndex >= 0 && light.shadowMapIndex < MAX_SHADOW_ATLAS_SLOTS)
+        return shadows.lightCameras[light.shadowMapIndex].cameras[cameraIndex];
     return light.cameras[cameraIndex];
 }
 
 unsigned int RenderSystem::lightCascades(const CameraShadows& shadows, int lightIndex, const LightComponent& light) const{
-    if (shadows.ownLightCameras && light.type == LightType::DIRECTIONAL && lightIndex >= 0 && lightIndex < MAX_LIGHTS)
-        return shadows.lightCameras[lightIndex].numCascades;
+    if (shadows.ownLightCameras && light.type == LightType::DIRECTIONAL && light.shadowMapIndex >= 0 && light.shadowMapIndex < MAX_SHADOW_ATLAS_SLOTS)
+        return shadows.lightCameras[light.shadowMapIndex].numCascades;
     return light.numShadowCascades;
 }
 
@@ -8144,6 +8639,13 @@ void RenderSystem::update(double dt){
 
     // the destination is baked into the pipelines at load, so a scene entering or
     // leaving a stack (or fixed resolution switching) has to reload with the new set
+    // the per-object lights blocks' capacity is part of every lit mesh variant
+    const int lightCapacity = getLightCapacity(scene->getMaxLightsPerObject());
+    if (lightCapacity != lightCapacityTier){
+        lightCapacityTier = lightCapacity;
+        needReloadMeshes();
+    }
+
     if (pipelines != loadedPipelines){
         loadedPipelines = pipelines;
 
@@ -8302,6 +8804,11 @@ void RenderSystem::update(double dt){
                 const bool shaderAlphaOpaque = (mesh.submeshes[s].shaderProperties & (1u << 25)) != 0;
                 if (shaderAlphaMask != (alphaMode == MaterialAlphaMode::MASK) ||
                     shaderAlphaOpaque != (alphaMode == MaterialAlphaMode::ALPHA_OPAQUE)) {
+                    mesh.needReload = true;
+                }
+
+                // so can the lighting mode, which picks the stages evaluating the lights
+                if (mesh.loaded && mesh.submeshes[s].loadedLighting != mesh.submeshes[s].material.lighting){
                     mesh.needReload = true;
                 }
 
@@ -8566,6 +9073,10 @@ void RenderSystem::update(double dt){
         }
     }
 
+    // every light as the objects' lists copy it, then the lights each mesh is lit by
+    updateSceneLights();
+    updateObjectLights();
+
     processLights(primaryView.shadows, numLights, mainCamera, mainCameraTransform);
     if (hasLights2D){
         processLights2D();
@@ -8670,20 +9181,20 @@ void RenderSystem::ensureCasterLayers(){
     casterLayersEpoch = shadowEpoch;
     shadowCasterLayers = 0;
     cameraCasterLayers = 0;
-    for (uint32_t& layers : lightCasterLayers){
-        layers = 0;
-    }
 
     // the spot and point lights the shadow passes draw: their shadow cameras are the
-    // lights' own, so what reaches their maps is the same for every camera
+    // lights' own, so what reaches their maps is the same for every camera. Only lights
+    // holding a shadow slot, so at most one per slot.
     auto lights = scene->getComponentArray<LightComponent>();
-    const int numLights = std::min((int)lights->size(), MAX_LIGHTS);
-    int localLights[MAX_LIGHTS];
+    const int numLights = (int)lights->size();
+    lightCasterLayers.assign(numLights, 0u);
+    int localLights[MAX_SHADOW_ATLAS_SLOTS + MAX_POINT_SHADOW_LIGHTS];
     int numLocalLights = 0;
     for (int l = 0; l < numLights; l++){
         const LightComponent& light = lights->getComponentFromIndex(l);
         if (light.type != LightType::DIRECTIONAL && light.shadows && light.intensity > 0 && light.shadowMapIndex >= 0 &&
-                isLightActive(lights->getEntity(l), light)){
+                isLightActive(lights->getEntity(l), light) &&
+                numLocalLights < MAX_SHADOW_ATLAS_SLOTS + MAX_POINT_SHADOW_LIGHTS){
             localLights[numLocalLights++] = l;
         }
     }
@@ -8770,7 +9281,7 @@ void RenderSystem::computeShadowKeys(const CameraShadows& target, ShadowAtlasKey
     ensureCasterLayers();
 
     auto lights = scene->getComponentArray<LightComponent>();
-    const int numLights = std::min((int)lights->size(), MAX_LIGHTS);
+    const int numLights = std::min((int)lights->size(), (int)lightCasterLayers.size());
     for (int l = 0; l < numLights; l++){
         LightComponent& light = lights->getComponentFromIndex(l);
         // the lights renderShadowMaps draws
@@ -8862,7 +9373,7 @@ FramebufferRender* RenderSystem::findShadowSource(CameraShadows& target, const S
 
 int RenderSystem::ownPointAtlasRows() const{
     auto lights = scene->getComponentArray<LightComponent>();
-    const int numLights = std::min((int)lights->size(), MAX_LIGHTS);
+    const int numLights = (int)lights->size();
     int usedSlots = 0;
     for (int l = 0; l < numLights; l++){
         const LightComponent& light = lights->getComponentFromIndex(l);
@@ -8918,15 +9429,17 @@ void RenderSystem::prepareCameraShadows(CameraShadows& target, const CameraCompo
     target.ownShadowInstances = ownInstances;
 
     auto lights = scene->getComponentArray<LightComponent>();
-    const int numLights = std::min((int)lights->size(), MAX_LIGHTS);
+    const int numLights = (int)lights->size();
 
-    // directional cascades fitted to this camera's frustum
+    // directional cascades fitted to this camera's frustum, by the light's base shadow slot
     for (int i = 0; i < numLights; i++){
         LightComponent& light = lights->getComponentFromIndex(i);
-        LightCameraSet& cameras = target.lightCameras[i];
+        if (light.type != LightType::DIRECTIONAL || light.shadowMapIndex < 0 || light.shadowMapIndex >= MAX_SHADOW_ATLAS_SLOTS)
+            continue;
+        LightCameraSet& cameras = target.lightCameras[light.shadowMapIndex];
         cameras.numCascades = light.numShadowCascades;
 
-        if (light.type != LightType::DIRECTIONAL || !hasShadows || !light.shadows || light.intensity <= 0)
+        if (!hasShadows || !light.shadows || light.intensity <= 0)
             continue;
 
         Transform* transform = scene->findComponent<Transform>(lights->getEntity(i));
@@ -8948,6 +9461,7 @@ void RenderSystem::prepareCameraShadows(CameraShadows& target, const CameraCompo
     // the atlas layout and every camera-independent value are the frame's
     const CameraShadows& frame = primaryView.shadows;
     target.fs_lighting = frame.fs_lighting;
+    target.frame = frame.frame;
     target.vs_shadows = frame.vs_shadows;
     target.fs_shadows = frame.fs_shadows;
     target.fs_point_shadows = frame.fs_point_shadows;
@@ -9190,7 +9704,7 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
 
     auto lights = scene->getComponentArray<LightComponent>();
     auto meshes = scene->getComponentArray<MeshComponent>();
-    int shadowLightCount = std::min((int)lights->size(), MAX_LIGHTS);
+    int shadowLightCount = (int)lights->size();
 
     // as in Unity, a layer the rendering camera or the light culls casts no shadow
     const uint32_t shadowCameraMask = ps().cameraMask;
@@ -10799,10 +11313,12 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
         // the frame's lighting and maps, with this view's viewport
         const CameraShadows& frameShadows = primaryView.shadows;
         viewShadows.fs_lighting = frameShadows.fs_lighting;
+        viewShadows.frame = frameShadows.frame;
         viewShadows.vs_shadows = frameShadows.vs_shadows;
         viewShadows.fs_shadows = frameShadows.fs_shadows;
         viewShadows.fs_point_shadows = frameShadows.fs_point_shadows;
         viewShadows.fs_lighting.viewportInfo = lightingViewportInfo(camera);
+        viewShadows.frame.viewportInfo = viewShadows.fs_lighting.viewportInfo;
         viewShadows.ownLightCameras = false;
         viewShadows.ownShadowInstances = false;
         viewShadows.cameraMask = frameShadows.cameraMask;

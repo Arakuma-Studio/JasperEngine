@@ -17,6 +17,12 @@ uniform u_vs_frame {
     vec4 mainLightDirection; // xyz towards the brightest directional light, w intensity (0 = none)
     vec4 mainLightColor;     // rgb linear
     vec4 ambient;            // rgb scene ambient (global illumination colour * intensity)
+    // engine-internal, not part of the library contract
+    vec4 lightingInfo;           // x 3D shadow PCF tap radius (Scene shadowQuality)
+    vec4 environment;            // rgb environment colour (linear), w environment rotation (radians)
+    vec4 viewportInfo;           // xy 1 / viewport size, z SSAO debug view, w SSAO Y flip
+    vec4 fogColor_type;          // rgb fog colour, w type: 0 linear, 1 exponential, 2 exponential squared
+    vec4 fogDensity_start_end;   // x density, z linear start, w linear end
 } frame;
 #endif
 
@@ -33,5 +39,11 @@ uniform u_fs_frame {
     vec4 mainLightDirection; // xyz towards the brightest directional light, w intensity (0 = none)
     vec4 mainLightColor;     // rgb linear
     vec4 ambient;            // rgb scene ambient (global illumination colour * intensity)
+    // engine-internal, not part of the library contract
+    vec4 lightingInfo;           // x 3D shadow PCF tap radius (Scene shadowQuality)
+    vec4 environment;            // rgb environment colour (linear), w environment rotation (radians)
+    vec4 viewportInfo;           // xy 1 / viewport size, z SSAO debug view, w SSAO Y flip
+    vec4 fogColor_type;          // rgb fog colour, w type: 0 linear, 1 exponential, 2 exponential squared
+    vec4 fogDensity_start_end;   // x density, z linear start, w linear end
 } frame;
 #endif

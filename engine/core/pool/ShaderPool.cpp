@@ -409,7 +409,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
 
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 28;
+        case ShaderType::MESH:   return 31;
         case ShaderType::DEPTH:  return 9;
         case ShaderType::GBUFFER: return 10;
         case ShaderType::UI:     return 4;
@@ -458,6 +458,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 25: return shortName ? "Aop" : "Alpha Opaque";
             case 26: return shortName ? "Ifd" : "Instance Fade";
             case 27: return shortName ? "Tpb" : "Terrain PBR";
+            case 28: return shortName ? "Vtl" : "Vertex Lights";
+            // 29-30: light capacity tier, neither = 8 lights
+            case 29: return shortName ? "Lc4" : "Light Capacity 4";
+            case 30: return shortName ? "L16" : "Light Capacity 16";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -522,7 +526,7 @@ std::string ShaderPool::getShaderStr(ShaderType shaderType, uint32_t properties,
 
     int propCount = getShaderPropertyCount(shaderType);
     for (int i = 0; i < propCount; i++) {
-        if (properties & (1 << i))
+        if (properties & (1u << i))
             propOut += getShaderPropertyName(shaderType, i, true);
     }
 
@@ -928,7 +932,8 @@ uint32_t ShaderPool::getMeshProperties(
     bool tangents, bool vertexColorVec3, bool vertexColorVec4, bool textureRect,
     bool fog, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent,
     bool terrain, bool instanced, bool ibl, bool mirror, bool ssao, bool light2d, bool shadows2d,
-    bool alphaMask, bool alphaOpaque, bool instanceFade, bool terrainPBR){
+    bool alphaMask, bool alphaOpaque, bool instanceFade, bool terrainPBR,
+    bool vertexLights, int lightCapacity){
     uint32_t prop = 0;
 
     prop |= unlit            ? (1 <<  0) : 0;
@@ -960,6 +965,10 @@ uint32_t ShaderPool::getMeshProperties(
     prop |= alphaOpaque      ? (1 << 25) : 0;
     prop |= instanceFade     ? (1 << 26) : 0;
     prop |= terrainPBR       ? (1 << 27) : 0;
+    prop |= vertexLights     ? (1 << 28) : 0;
+    // the default capacity (8) sets neither bit, so it keeps the keys it had before tiers
+    prop |= (lightCapacity == 4)  ? (1 << 29) : 0;
+    prop |= (lightCapacity == 16) ? (1 << 30) : 0;
 
     return prop;
 }

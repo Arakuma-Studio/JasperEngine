@@ -3507,7 +3507,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      transmission adds foliageTransmission to u_fs_pbrParams.
     // v29: sprite and tilemap UVs (HAS_TEXTURERECT) use centroid interpolation, so MSAA
     //      edge pixels no longer sample outside their atlas rect.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v29";
+    // v30: unified lighting — per-object lights blocks (u_vs/u_fs_objectLights, includes/
+    //      lights.glsl) with vertex-light ('Vtl') and capacity-tier ('Lc4', 'L16') bits; Lit
+    //      reads the camera and fog from the frame block (u_fs_fog and u_fs_lighting are gone
+    //      from the built-in shader; forks declaring u_fs_lighting are still filled).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v30";
 }
 
 void editor::App::pushTabNotificationStyle(){
