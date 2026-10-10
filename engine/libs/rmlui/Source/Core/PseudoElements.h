@@ -41,6 +41,8 @@ protected:
 
 	/// Makes the children again when the content changed.
 	virtual void BuildContent();
+	/// Called when a generated text of the content changed (a counter, an attribute, quotes).
+	virtual void OnGeneratedTextChange() {}
 
 	// The children for a list of segments: a text element per run of text segments, an image per url(); their texts are
 	// set by SetText.

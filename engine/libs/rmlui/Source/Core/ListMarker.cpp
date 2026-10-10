@@ -10,6 +10,7 @@
 #include "../../Include/RmlUi/Core/RenderManager.h"
 #include "../../Include/RmlUi/Core/SystemInterface.h"
 #include "ContentValue.h"
+#include "ElementCascade.h"
 #include "ElementDefinition.h"
 #include <math.h>
 
@@ -71,6 +72,7 @@ void ElementListMarker::OnCountersResolved(const CssCounterSet& counters, int& q
 	if (custom_content)
 	{
 		ElementPseudo::OnCountersResolved(counters, quote_depth);
+		RefreshBoxBeforeLayout();
 		return;
 	}
 	last_counters = counters;
@@ -80,6 +82,30 @@ void ElementListMarker::OnCountersResolved(const CssCounterSet& counters, int& q
 		ordinal = new_ordinal;
 		UpdateGeneratedText();
 	}
+	RefreshBoxBeforeLayout();
+}
+
+void ElementListMarker::RefreshBoxBeforeLayout()
+{
+	// The counters are resolved right before the layout: the box of the new text is computed now, not in the next
+	// update.
+	if (!box_dirty)
+		return;
+	UpdateBox();
+	ElementCascade::UpdateProperties(*this);
+}
+
+void ElementListMarker::OnGeneratedTextChange()
+{
+	box_dirty = true;
+}
+
+void ElementListMarker::OnUpdate()
+{
+	ElementPseudo::OnUpdate();
+	// A text changed since the last update (an attribute of the item in a ::marker content).
+	if (box_dirty && box_applied)
+		UpdateBox();
 }
 
 void ElementListMarker::OnPropertyChange(const PropertyIdSet& changed_properties)
@@ -233,6 +259,7 @@ void ElementListMarker::UpdateBox()
 	float margin_left = 0.f;
 	float margin_right = 0.f;
 	bool fixed_width = false;
+	bool align_right = false;
 	// An inline-block keeps the marker's own width (a symbol's) or lets its margins cancel its advance (outside).
 	bool inline_block = outside;
 
@@ -243,7 +270,7 @@ void ElementListMarker::UpdateBox()
 		const int ascent_i = (int)roundf(ascent);
 		const int offset = ascent_i * 2 / 3;
 		const bool disclosure = (style == "disclosure-open" || style == "disclosure-closed");
-		width = disclosure ? floorf(GetComputedValues().font_size() * 0.66f) : float((offset + 1) / 2 + 2);
+		width = disclosure ? GetComputedValues().font_size() * 0.66f : float((offset + 1) / 2 + 2);
 		fixed_width = true;
 		inline_block = true;
 		// Chromium's ListMarker::InlineMarginsForOutside and InlineMarginsForInside.
@@ -279,12 +306,35 @@ void ElementListMarker::UpdateBox()
 	}
 	else if (outside)
 	{
-		// The marker ends at the item's start edge.
-		float text_width = 0.f;
-		if (text_element)
-			text_width = (float)ElementUtilities::GetStringWidth(text_element, text_element->GetText());
-		margin_left = -text_width;
+		// The marker ends at the item's start edge: as wide as its content measured as one string (the layout of a
+		// font engine that rounds each word may be narrower: the text is aligned to the end edge).
+		width = 0.f;
+		for (int i = 0; i < GetNumChildren(); i++)
+		{
+			Element* child = GetChild(i);
+			if (auto* text = rmlui_dynamic_cast<ElementText*>(child))
+			{
+				width += (float)ElementUtilities::GetStringWidth(this, text->GetText());
+			}
+			else
+			{
+				Vector2f dimensions;
+				float ratio = 0.f;
+				if (child->GetIntrinsicDimensions(dimensions, ratio))
+					width += dimensions.x;
+			}
+		}
+		fixed_width = true;
+		align_right = !custom_content;
+		margin_left = -width;
 	}
+
+	geometry_dirty = true;
+	const BoxProperties box{inline_block, fixed_width, align_right, width, margin_left, margin_right};
+	if (box_applied && box == applied_box)
+		return;
+	applied_box = box;
+	box_applied = true;
 
 	SetProperty(PropertyId::Display, Property(inline_block ? Style::Display::InlineBlock : Style::Display::Inline));
 	if (fixed_width)
@@ -293,7 +343,10 @@ void ElementListMarker::UpdateBox()
 		RemoveProperty(PropertyId::Width);
 	SetProperty(PropertyId::MarginLeft, Property(margin_left, Unit::PX));
 	SetProperty(PropertyId::MarginRight, Property(margin_right, Unit::PX));
-	geometry_dirty = true;
+	if (align_right)
+		SetProperty(PropertyId::TextAlign, Property(Style::TextAlign::Right));
+	else
+		RemoveProperty(PropertyId::TextAlign);
 }
 
 void ElementListMarker::OnResize()

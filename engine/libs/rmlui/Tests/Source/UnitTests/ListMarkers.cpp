@@ -168,6 +168,31 @@ TEST_CASE("ListMarkers")
 		CHECK(marker->GetChild(0)->GetTagName() == "#text");
 	}
 
+	SUBCASE("an outside marker ends at the item when its text changes")
+	{
+		// The ordinal changes while the counters are resolved, right before the layout: the box follows in that update.
+		Element* item = ById("o2");
+		ElementListMarker* marker = MarkerOf(item);
+		REQUIRE(marker);
+		const float width_before = marker->GetBox().GetSize(BoxArea::Border).x;
+		ById("ol")->SetAttribute("start", "1998");
+		context->Update();
+		CHECK(marker->GetMarkerText() == "1999. ");
+		const float width = marker->GetBox().GetSize(BoxArea::Border).x;
+		CHECK(width > width_before + 10.f);
+		CHECK(marker->GetAbsoluteLeft() + width == doctest::Approx(item->GetAbsoluteLeft()));
+		CHECK(item->GetChild(0)->GetAbsoluteLeft() == doctest::Approx(item->GetAbsoluteLeft()).epsilon(0.01));
+
+		// A ::marker content: as wide as its text.
+		Element* custom_item = ById("c1");
+		ElementListMarker* custom = MarkerOf(custom_item);
+		REQUIRE(custom);
+		const float custom_width = custom->GetBox().GetSize(BoxArea::Border).x;
+		CHECK(custom_width > 10.f);
+		CHECK(custom->GetAbsoluteLeft() + custom_width == doctest::Approx(custom_item->GetAbsoluteLeft()));
+		CHECK(custom_item->GetChild(0)->GetAbsoluteLeft() == doctest::Approx(custom_item->GetAbsoluteLeft()).epsilon(0.01));
+	}
+
 	SUBCASE("changes")
 	{
 		ById("ol")->SetProperty("list-style-type", "lower-alpha");

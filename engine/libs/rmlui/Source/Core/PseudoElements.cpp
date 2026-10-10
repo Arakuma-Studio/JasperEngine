@@ -180,7 +180,10 @@ void ElementPseudo::UpdateTexts(const CssCounterSet* counters, int* quote_depth)
 			if (auto* text_element = rmlui_dynamic_cast<ElementText*>(text_runs[run]))
 			{
 				if (text_element->GetText() != text)
+				{
 					text_element->SetText(text);
+					OnGeneratedTextChange();
+				}
 			}
 		}
 		run++;

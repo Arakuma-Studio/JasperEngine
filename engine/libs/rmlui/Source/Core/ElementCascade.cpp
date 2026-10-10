@@ -1,5 +1,6 @@
 #include "ElementCascade.h"
 #include "../../Include/RmlUi/Core/ComputedValues.h"
+#include "../../Include/RmlUi/Core/Context.h"
 #include "../../Include/RmlUi/Core/ElementDocument.h"
 #include "../../Include/RmlUi/Core/StyleSheet.h"
 #include "CounterResolver.h"
@@ -77,6 +78,14 @@ void ElementCascade::DirtyCountersIfUsed(Element& element)
 		if (document->counters_used)
 			document->counters_dirty = true;
 	}
+}
+
+void ElementCascade::UpdateProperties(Element& element)
+{
+	Context* context = element.GetContext();
+	if (!context)
+		return;
+	element.UpdateProperties(context->GetDensityIndependentPixelRatio(), Vector2f(context->GetDimensions()));
 }
 
 void ElementCascade::ResolveCounters(ElementDocument& document)

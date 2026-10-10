@@ -36,6 +36,10 @@ public:
 	/// Dirties the layout of the element's document.
 	static void DirtyLayout(Element& element) { element.DirtyLayout(); }
 
+	/// Computes the element's dirty properties now (outside of the update loop: a list marker whose text changed while
+	/// the counters were resolved, right before the layout that reads its box).
+	static void UpdateProperties(Element& element);
+
 	/// The slot of the element's pseudo-element of a type (ElementMeta).
 	static Element*& PseudoElementSlot(Element& element, PseudoElementType type);
 	/// Marks the element to generate its pseudo-elements again (PseudoElements::Update).
