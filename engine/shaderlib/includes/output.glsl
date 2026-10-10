@@ -1,0 +1,24 @@
+// Final colour of library shaders: every library shader writes its output through
+// finalizeColor, which applies the scene fog (HAS_FOG) and the linear -> display encoding
+// the engine uses (the colour targets are RGBA8 holding sRGB-encoded colour). Later
+// phases extend this function (tonemap, grade, vignette, dither) without touching the
+// shaders that call it.
+
+#ifndef OUTPUT_GLSL
+#define OUTPUT_GLSL
+
+#include "includes/srgb.glsl"
+
+#ifdef HAS_FOG
+    #include "includes/fog.glsl"
+#endif
+
+vec4 finalizeColor(vec4 linearColor){
+    vec3 color = linearColor.rgb;
+    #ifdef HAS_FOG
+        color = getFogColor(color);
+    #endif
+    return vec4(linearTosRGB(max(color, vec3(0.0))), linearColor.a);
+}
+
+#endif

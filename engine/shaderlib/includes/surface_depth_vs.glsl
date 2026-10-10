@@ -1,0 +1,143 @@
+// Vertex stage of the library depth programs (shadow maps, depth pre-passes), the
+// counterpart of includes/surface_vs.glsl: the same position, bit for bit, including a
+// SURFACE_DISPLACE hook that must match the colour pass's:
+//
+//   #define SURFACE_DISPLACE
+//   #include "includes/surface_depth_vs.glsl"
+//   vec3 surfaceDisplace(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv){ ... }
+//
+// The inputs a manifest @require asks for come in as the colour pass's do (a missing one
+// gets the same fallback, SURFACE_NO_VERTEX_COLOR works the same). With SURFACE_DEPTH_VARYINGS defined before including, it also
+// writes v_uv1 (SURFACE_UV1) and v_color (SURFACE_COLOR) for a fragment stage that alpha
+// clips (includes/surface_depth_fs.glsl with SURFACE_DEPTH_DISCARD).
+
+uniform u_vs_depthParams {
+    mat4 modelMatrix;
+    mat4 lightVPMatrix;
+    mat4 mvpMatrix;
+} depthParams;
+
+invariant gl_Position;
+
+#ifdef USE_INSTANCE_FADE
+    uniform u_vs_fade {
+        vec4 fadeRange; //start.x, end.y
+        vec4 fadeEye;   //camera in model space.xyz
+    } fadeParams;
+#endif
+
+in vec3 a_position;
+out vec2 v_projZW;
+
+#ifdef HAS_NORMALS
+    in vec3 a_normal;
+#endif
+#ifdef HAS_UV_SET1
+    in vec2 a_texcoord1;
+#endif
+#if defined(HAS_VERTEX_COLOR_VEC3) && !defined(SURFACE_NO_VERTEX_COLOR)
+    in vec3 a_color;
+#endif
+#if defined(HAS_VERTEX_COLOR_VEC4) && !defined(SURFACE_NO_VERTEX_COLOR)
+    in vec4 a_color;
+#endif
+
+#ifdef HAS_INSTANCING
+    in vec4 i_matrix_col1;
+    in vec4 i_matrix_col2;
+    in vec4 i_matrix_col3;
+    in vec4 i_matrix_col4;
+    #ifdef SURFACE_COLOR
+        in vec4 i_color;
+    #endif
+    #ifdef HAS_UV_SET1
+        in vec4 i_textureRect;
+    #endif
+#endif
+
+#ifdef SURFACE_DEPTH_VARYINGS
+    #ifdef SURFACE_UV1
+        out vec2 v_uv1;
+    #endif
+    #ifdef SURFACE_COLOR
+        out vec4 v_color;
+    #endif
+#endif
+
+#include "includes/skinning.glsl"
+#include "includes/instance_normal.glsl"
+#include "includes/morphtarget.glsl"
+
+#ifdef SURFACE_DISPLACE
+    vec3 surfaceDisplace(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv);
+#endif
+
+void main() {
+    mat4 boneTransform = getBoneTransform();
+
+    vec3 position = getMorphPosition(a_position);
+    position = getSkinPosition(position, boneTransform);
+
+    vec3 objectNormal = vec3(0.0, 1.0, 0.0);
+    #ifdef HAS_NORMALS
+        objectNormal = normalize(getSkinNormal(getMorphNormal(a_normal), boneTransform));
+    #endif
+
+    #ifdef HAS_INSTANCING
+        mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+        vec4 pos = instanceMatrix * vec4(position, 1.0);
+        objectNormal = normalize(instanceNormal(mat3(instanceMatrix), objectNormal));
+    #else
+        vec4 pos = vec4(position, 1.0);
+    #endif
+
+    #ifdef USE_INSTANCE_FADE
+        vec3 fadeOrigin = i_matrix_col4.xyz;
+        float fadeVisible = 1.0;
+        if (fadeParams.fadeRange.y > fadeParams.fadeRange.x){
+            float fadeDistance = length(fadeParams.fadeEye.xz - fadeOrigin.xz);
+            fadeVisible = clamp((fadeParams.fadeRange.y - fadeDistance) /
+                (fadeParams.fadeRange.y - fadeParams.fadeRange.x), 0.0, 1.0);
+        }
+        pos.xyz = mix(fadeOrigin, pos.xyz, fadeVisible);
+    #endif
+
+    vec4 color = vec4(1.0);
+    #if defined(HAS_VERTEX_COLOR_VEC3) && !defined(SURFACE_NO_VERTEX_COLOR)
+        color = vec4(a_color, 1.0);
+    #elif defined(HAS_VERTEX_COLOR_VEC4) && !defined(SURFACE_NO_VERTEX_COLOR)
+        color = a_color;
+    #endif
+    #if defined(HAS_INSTANCING) && defined(SURFACE_COLOR)
+        color *= i_color;
+    #endif
+
+    vec2 uv1 = vec2(0.0);
+    #ifdef HAS_UV_SET1
+        uv1 = a_texcoord1;
+        #ifdef HAS_INSTANCING
+            uv1 = uv1 * i_textureRect.zw + i_textureRect.xy;
+        #endif
+    #endif
+
+    #ifdef SURFACE_DISPLACE
+        pos.xyz = surfaceDisplace(pos.xyz, objectNormal, color, uv1);
+    #endif
+
+    #ifdef SURFACE_DEPTH_VARYINGS
+        #ifdef SURFACE_UV1
+            v_uv1 = uv1;
+        #endif
+        #ifdef SURFACE_COLOR
+            v_color = color;
+        #endif
+    #endif
+
+    gl_Position = depthParams.mvpMatrix * pos;
+
+    v_projZW = gl_Position.zw;
+    #ifdef IS_VULKAN
+        // GL [-1,1] to Vulkan [0,1] depth range (spirv-cross fixup_clipspace equivalent)
+        gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;
+    #endif
+}
