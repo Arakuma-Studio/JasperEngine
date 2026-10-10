@@ -3,6 +3,7 @@
 
 #include "htmlui/compat/css/CssTokenizer.h"
 #include "htmlui/compat/css/CssLexer.h"
+#include "htmlui/compat/css/CssSerialize.h"
 #include "htmlui/compat/LiteralCompare.h"
 
 #include <cmath>
@@ -384,7 +385,7 @@ namespace {
 
         // ASCII name characters: a-z A-Z 0-9 - _
         static bool asciiIdentByte(unsigned char c){
-            return (unsigned char)((c | 0x20) - 'a') < 26 || (unsigned char)(c - '0') < 10 || c == '-' || c == '_';
+            return kNameBytes.is[c];
         }
 
         // the length of the run of ASCII name characters at the position

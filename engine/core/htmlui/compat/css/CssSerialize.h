@@ -13,6 +13,16 @@
 
 namespace jasperengine::htmlui::compat {
 
+    // ASCII name characters (a-z A-Z 0-9 - _): one load a byte where names are scanned
+    struct NameBytes {
+        bool is[256];
+        constexpr NameBytes(): is() {
+            for (int c = 0; c < 256; c++)
+                is[c] = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+        }
+    };
+    inline constexpr NameBytes kNameBytes{};
+
     struct SerializeOptions {
         // Between two tokens that would merge when read again (an ident followed by an ident,
         // a number followed by a dimension, ...): true writes "/**/" as CSSOM does, false a
