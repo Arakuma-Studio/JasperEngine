@@ -29,6 +29,13 @@
 // Its depth program (<name>_depth.vert, see includes/surface_depth_vs.glsl) must displace
 // identically, or shadows and the depth pre-pass do not match.
 //
+// A displacement that turns the surface (a rotation, waves) also gives the moved normal,
+// from the same inputs (the position before surfaceDisplace moved it); the lighting and
+// v_normal use it. The depth programs have no normals to move, so they need no such hook:
+//
+//   #define SURFACE_DISPLACE_NORMAL
+//   vec3 surfaceDisplaceNormal(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv){ ... }
+//
 // Lighting (includes/lights.glsl, which documents the units):
 //   - USE_PUNCTUAL (pixel, mixed): the compiler adds SURFACE_POSITION and SURFACE_NORMALS,
 //     so v_position and v_normal are written whatever @require says; the fragment stage
@@ -155,6 +162,10 @@ in vec3 a_position;
     // normal, the vertex colour and the first UV set; returns the moved position
     vec3 surfaceDisplace(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv);
 #endif
+#ifdef SURFACE_DISPLACE_NORMAL
+    // the same inputs as surfaceDisplace; returns the moved object-space normal
+    vec3 surfaceDisplaceNormal(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv);
+#endif
 
 vec4 surfaceVertexColor(){
     vec4 color = vec4(1.0);
@@ -232,8 +243,15 @@ void main() {
     vec4 color = surfaceVertexColor();
     vec2 uv1 = surfaceUV1();
 
+    #ifdef SURFACE_DISPLACE_NORMAL
+        // from the undisplaced inputs, as the depth programs' surfaceDisplace sees them
+        vec3 displacedNormal = normalize(surfaceDisplaceNormal(pos.xyz, objectNormal, color, uv1));
+    #endif
     #ifdef SURFACE_DISPLACE
         pos.xyz = surfaceDisplace(pos.xyz, objectNormal, color, uv1);
+    #endif
+    #ifdef SURFACE_DISPLACE_NORMAL
+        objectNormal = displacedNormal;
     #endif
 
     vec4 worldPos = pbrParams.modelMatrix * pos;
