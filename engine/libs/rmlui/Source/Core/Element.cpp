@@ -1217,9 +1217,8 @@ void Element::SetInnerRML(const String& rml)
 
 bool Element::Focus(bool focus_visible)
 {
-	// Are we allowed focus?
-	Style::Focus focus_property = meta->computed_values.focus();
-	if (focus_property == Style::Focus::None)
+	// Are we allowed focus? (Not 'focus: none', not a disabled form control.)
+	if (ElementCascade::IsUnfocusable(this))
 		return false;
 
 	// Ask our context if we can switch focus.
@@ -2126,15 +2125,7 @@ void Element::ProcessDefaultAction(Event& event)
 		{
 		case EventId::Mouseover: SetPseudoClass("hover", true); break;
 		case EventId::Mouseout: SetPseudoClass("hover", false); break;
-		case EventId::Focus:
-			SetPseudoClass("focus", true);
-			if (event.GetParameter("focus_visible", false))
-				SetPseudoClass("focus-visible", true);
-			break;
-		case EventId::Blur:
-			SetPseudoClass("focus", false);
-			SetPseudoClass("focus-visible", false);
-			break;
+		// The focus pseudo-classes are set by Context::OnFocusChange (phase 3: ':focus' on the focused element only).
 		default: break;
 		}
 	}

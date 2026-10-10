@@ -29,6 +29,10 @@ public:
 	/// name: hover changes do not re-match documents.
 	static void OnHasDependencyChange(Element* element, Change change, const String& name);
 
+	/// True when the element cannot take the focus: 'focus: none', or a disabled form control (phase 3: disabled controls
+	/// no longer get an inline 'focus: none').
+	static bool IsUnfocusable(const Element* element);
+
 private:
 	static void MarkHasSubject(Element* element, bool in_non_subject);
 };

@@ -26,6 +26,7 @@ add_executable(${TARGET_NAME}
 	EventListener.cpp
 	Filter.cpp
 	FlexFormatting.cpp
+	FocusPseudoClasses.cpp
 	Important.cpp
 	InlineStyle.cpp
 	InitialValues.cpp

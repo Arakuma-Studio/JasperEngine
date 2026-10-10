@@ -43,6 +43,11 @@ void ElementCascade::MarkHasSubject(Element* element, bool in_non_subject)
 		element->dirty_definition_self = true;
 }
 
+bool ElementCascade::IsUnfocusable(const Element* element)
+{
+	return element->GetComputedValues().focus() == Style::Focus::None || IsElementDisabled(element);
+}
+
 void ElementCascade::OnHasDependencyChange(Element* element, Change change, const String& name)
 {
 	const StyleSheet* style_sheet = element->GetStyleSheet();

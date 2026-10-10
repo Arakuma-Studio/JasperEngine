@@ -35,7 +35,7 @@ namespace {
 
 		const ComputedValues& computed = element->GetComputedValues();
 
-		if (computed.focus() == Style::Focus::None)
+		if (ElementCascade::IsUnfocusable(element))
 			return CanFocus::NoAndNoChildren;
 
 		if (computed.tab_index() == Style::TabIndex::Auto)

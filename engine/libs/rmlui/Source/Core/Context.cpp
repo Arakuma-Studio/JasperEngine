@@ -12,6 +12,7 @@
 #include "../../Include/RmlUi/Core/StreamMemory.h"
 #include "../../Include/RmlUi/Core/SystemInterface.h"
 #include "DataModel.h"
+#include "ElementCascade.h"
 #include "EventDispatcher.h"
 #include "PluginRegistry.h"
 #include "ScrollController.h"
@@ -619,7 +620,7 @@ static Element* FindFocusElement(Element* element)
 	if (!owner_document || owner_document->GetComputedValues().focus() == Style::Focus::None)
 		return nullptr;
 
-	while (element && element->GetComputedValues().focus() == Style::Focus::None)
+	while (element && ElementCascade::IsUnfocusable(element))
 	{
 		element = element->GetParentNode();
 	}
@@ -1234,9 +1235,29 @@ bool Context::OnFocusChange(Element* new_focus, bool focus_visible)
 		element = element->GetParentNode();
 	}
 
+	// The focus pseudo-classes (CSS Selectors 4, phase 3): ':focus' on the focused element alone, ':focus-within' on it
+	// and its ancestors, ':focus-visible' on the focused element when the focus came from the keyboard or navigation
+	// (text fields set it themselves when focused). The old element loses them before the blur events, the new one gets
+	// them before the focus events. The events still go to the whole chains.
+	if (old_focus)
+	{
+		old_focus->SetPseudoClass("focus", false);
+		old_focus->SetPseudoClass("focus-visible", false);
+	}
+	for (Element* old_element : old_chain)
+	{
+		if (new_chain.count(old_element) == 0)
+			old_element->SetPseudoClass("focus-within", false);
+	}
+
 	// Send out blur/focus events.
 	Dictionary parameters;
 	SendEvents(old_chain, new_chain, EventId::Blur, parameters);
+
+	for (Element* new_element : new_chain)
+		new_element->SetPseudoClass("focus-within", true);
+	new_focus->SetPseudoClass("focus", true);
+	new_focus->SetPseudoClass("focus-visible", focus_visible);
 
 	if (focus_visible)
 		parameters["focus_visible"] = true;
