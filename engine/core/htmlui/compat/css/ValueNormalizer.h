@@ -26,7 +26,6 @@ namespace jasperengine::htmlui::compat {
     enum class PercentBasis : uint8_t { ContainingBlock, FontSize, LineHeight, Number, None };
 
     struct NormalizeContext {
-        std::string property;                 // lowercase CSS property; custom properties keep their name
         bool customProperty = false;
         bool colors = true;                   // color keywords are colors here (not in font-family, animation names, ...)
         bool keepCurrentColorKeyword = false; // SVG paint: `currentcolor` stays a keyword
@@ -45,7 +44,12 @@ namespace jasperengine::htmlui::compat {
         bool inlineStyle = false;             // vmin/vmax evaluated with the viewport
         PercentBasis percentBasis = PercentBasis::ContainingBlock;
         bool vertical = false;                // the percentage basis is a height (top, bottom, height, ...)
-        CompatOptions options;
+        // the session's options (the defaults when not given)
+        const CompatOptions* options = nullptr;
+        const CompatOptions& compat() const {
+            static const CompatOptions defaults;
+            return options ? *options : defaults;
+        }
         double emPx = 16.0;                   // the rule's static font-size
         // when set: the rule's static font-size (emPx when it has none), asked at the first
         // font-relative unit the value resolves: most values resolve none

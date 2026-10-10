@@ -7,6 +7,8 @@
 #include "Export.h"
 #include "htmlui/compat/CompatTypes.h"
 
+#include <cstring>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -60,8 +62,41 @@ namespace jasperengine::htmlui::compat {
     private:
         void line(std::string_view text, SourceRef ref);
 
+        // the output: grown without being filled first (each byte is written once), handed
+        // over as a string by take()
+        class Output {
+        public:
+            Output() = default;
+            ~Output();
+            Output(const Output&) = delete;
+            Output& operator=(const Output&) = delete;
+            char* extend(size_t count){
+                if (size_ + count > capacity_)
+                    grow(size_ + count);
+                char* const at = data_.get() + size_;
+                size_ += count;
+                return at;
+            }
+            void append(std::string_view text){ std::memcpy(extend(text.size()), text.data(), text.size()); }
+            void push(char c){ *extend(1) = c; }
+            bool empty() const { return size_ == 0; }
+            char back() const { return data_[size_ - 1]; }
+            std::string take(){
+                std::string text(data_.get(), size_);
+                size_ = 0;
+                return text;
+            }
+
+        private:
+            void grow(size_t needed);
+
+            std::unique_ptr<char[]> data_;
+            size_t size_ = 0;
+            size_t capacity_ = 0;
+        };
+
         Mode mode;
-        std::string output;
+        Output output;
         RcssLineMap map;
         bool mediaOpen = false;
         bool ruleOpen = false;

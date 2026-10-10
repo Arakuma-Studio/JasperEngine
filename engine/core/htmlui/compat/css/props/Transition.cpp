@@ -5,7 +5,8 @@
 // property names it knows, and `all` alone. CSS transitions are rewritten entry by entry:
 // property names mapped to the RCSS properties compat writes, ms to s, CSS easing to the
 // nearest tween until the fork has TimingFunctions; longhands merge with the rule's shorthand
-// or a base rule.
+// or a base rule. Each declaration of the family is read once into entries (texts as views of
+// the values written), merged on them, and the value is written once into one buffer.
 
 #include "htmlui/compat/css/props/Rewriters.h"
 #include "htmlui/compat/LiteralCompare.h"
@@ -18,7 +19,6 @@
 #include "htmlui/compat/css/Units.h"
 #include "htmlui/compat/css/ValueNormalizer.h"
 
-#include <set>
 
 using namespace jasperengine::htmlui::compat;
 using namespace jasperengine::htmlui::compat::props;
@@ -29,27 +29,29 @@ namespace jasperengine::htmlui::compat::props {
         EasingResult result;
         const bool fork = session.options.fork.has(ForkFeature::TimingFunctions);
         if (v.isToken(TokenType::Ident)){
-            const std::string k = lowerAscii(v.token.value);
+            const std::string_view k = identView(v);
             if (fork && (k == "linear" || k == "ease" || k == "ease-in" || k == "ease-out" || k == "ease-in-out" || k == "step-start" ||
                          k == "step-end")){
-                result.text = k;
+                result.text = Text::view(k);
                 return result;
             }
-            if (std::optional<std::string> tween = Easing::keywordTween(k)){
-                result.text = *tween;
-                return result;
-            }
+            // (Easing::keywordTween)
+            if (k == "linear"){ result.text = Text::view("linear-in-out"); return result; }
+            if (k == "ease"){ result.text = Text::view("quadratic-out"); return result; }
+            if (k == "ease-in"){ result.text = Text::view("sine-in"); return result; }
+            if (k == "ease-out"){ result.text = Text::view("sine-out"); return result; }
+            if (k == "ease-in-out"){ result.text = Text::view("quadratic-in-out"); return result; }
             if (k == "step-start" || k == "step-end"){
-                result.text = "linear-in-out";
+                result.text = Text::view("linear-in-out");
                 result.code = codes::StepsApproximated;
                 result.severity = Severity::Warning;
-                result.note = "'" + k + "' is drawn as a linear easing until the fork has TimingFunctions";
+                result.note = Text("'" + std::string(k) + "' is drawn as a linear easing until the fork has TimingFunctions");
                 return result;
             }
             // RmlUi's own tween names are accepted as an engine extension
             for (const char* name : Easing::tweenNames()){
                 if (k == name){
-                    result.text = k;
+                    result.text = Text::view(k);
                     return result;
                 }
             }
@@ -61,49 +63,49 @@ namespace jasperengine::htmlui::compat::props {
         if (name != "cubic-bezier" && name != "steps" && name != "linear")
             return std::nullopt;
         if (fork){
-            result.text = serialize(v);
+            result.text = Text(serialize(v));
             return result;
         }
         if (name == "steps"){
-            result.text = "linear-in-out";
+            result.text = Text::view("linear-in-out");
             result.code = codes::StepsApproximated;
             result.severity = Severity::Warning;
-            result.note = "'" + serialize(v) + "' is drawn as a linear easing until the fork has TimingFunctions";
+            result.note = Text("'" + serialize(v) + "' is drawn as a linear easing until the fork has TimingFunctions");
             return result;
         }
-        std::vector<ValueList> args = commaGroups(v.children);
+        const ArenaList<ValueRange> args = commaRanges(v.children);
         if (name == "cubic-bezier"){
             if (args.size() != 4)
                 return std::nullopt;
             double p[4];
             for (int i = 0; i < 4; i++){
-                if (args[(size_t)i].size() != 1 || !args[(size_t)i][0].isToken(TokenType::Number))
+                if (args[(size_t)i].size() != 1 || !args[(size_t)i].first->isToken(TokenType::Number))
                     return std::nullopt;
-                p[i] = args[(size_t)i][0].token.number;
+                p[i] = args[(size_t)i].first->token.number;
             }
             if (p[0] < 0 || p[0] > 1 || p[2] < 0 || p[2] > 1)
                 return std::nullopt;
             const TweenChoice choice = Easing::nearestTween([&](double t){ return Easing::cubicBezier(p[0], p[1], p[2], p[3], t); });
-            result.text = choice.name;
+            result.text = Text(choice.name);
             result.code = codes::EasingApproximated;
-            result.note = "'" + serialize(v) + "' is drawn with the nearest tween '" + choice.name + "' (maximum error " +
-                          formatNumber(choice.error, 3) + ") until the fork has TimingFunctions";
+            result.note = Text("'" + serialize(v) + "' is drawn with the nearest tween '" + choice.name + "' (maximum error " +
+                               formatNumber(choice.error, 3) + ") until the fork has TimingFunctions");
             return result;
         }
         // linear(): stops "<output> [<input>%]{0,2}"
         std::vector<std::pair<double, double>> points;
         std::vector<std::pair<double, std::optional<double>>> raw;
-        for (const ValueList& arg : args){
-            ValueList w = words(arg);
-            if (w.empty() || !w[0].isToken(TokenType::Number))
+        for (const ValueRange& arg : args){
+            const Words w = wordsOf(arg);
+            if (w.empty() || !w[0]->isToken(TokenType::Number))
                 return std::nullopt;
-            const double output = w[0].token.number;
+            const double output = w[0]->token.number;
             if (w.size() == 1)
                 raw.emplace_back(output, std::nullopt);
             for (size_t i = 1; i < w.size(); i++){
-                if (!w[i].isToken(TokenType::Percentage))
+                if (!w[i]->isToken(TokenType::Percentage))
                     return std::nullopt;
-                raw.emplace_back(output, w[i].token.number / 100.0);
+                raw.emplace_back(output, w[i]->token.number / 100.0);
             }
         }
         if (raw.size() < 2)
@@ -125,10 +127,10 @@ namespace jasperengine::htmlui::compat::props {
         for (const auto& r : raw)
             points.emplace_back(*r.second, r.first);
         const TweenChoice choice = Easing::nearestTween([&](double t){ return Easing::linearFunction(points, t); });
-        result.text = choice.name;
+        result.text = Text(choice.name);
         result.code = codes::EasingApproximated;
-        result.note = "'linear(...)' is drawn with the nearest tween '" + choice.name + "' (maximum error " + formatNumber(choice.error, 3) +
-                      ") until the fork has TimingFunctions";
+        result.note = Text("'linear(...)' is drawn with the nearest tween '" + choice.name + "' (maximum error " + formatNumber(choice.error, 3) +
+                           ") until the fork has TimingFunctions");
         return result;
     }
 
@@ -142,57 +144,67 @@ namespace {
         context.dropped = true;
     }
 
-    // RmlUi shorthands a transition may name
-    bool rcssShorthand(const std::string& name){
-        static const std::set<std::string> names = {"margin", "padding", "border-width", "border-color", "border-top", "border-right",
-                                                    "border-bottom", "border-left", "border", "border-radius", "inset", "gap", "flex",
-                                                    "flex-flow", "overflow", "perspective-origin", "transform-origin", "font", "background",
-                                                    "nav"};
-        return names.count(name) > 0;
+    bool startsWith(std::string_view text, std::string_view prefix){
+        return text.size() >= prefix.size() && text.compare(0, prefix.size(), prefix) == 0;
     }
 
-    // the RCSS properties a CSS property name transitions; empty when none
-    std::vector<std::string> transitionTargets(const std::string& css){
-        std::string name = css;
-        for (const char* prefix : {"-webkit-", "-moz-"}){
-            const std::string p(prefix);
-            if (name.compare(0, p.size(), p) == 0 && (findProperty(name.substr(p.size())) || RcssGrammar::known(name.substr(p.size()))))
-                name = name.substr(p.size());
+    // RmlUi shorthands a transition may name
+    bool rcssShorthand(std::string_view name){
+        return name == "margin" || name == "padding" || name == "border-width" || name == "border-color" || name == "border-top" ||
+               name == "border-right" || name == "border-bottom" || name == "border-left" || name == "border" || name == "border-radius" ||
+               name == "inset" || name == "gap" || name == "flex" || name == "flex-flow" || name == "overflow" || name == "perspective-origin" ||
+               name == "transform-origin" || name == "font" || name == "background" || name == "nav";
+    }
+
+    // the RCSS properties a CSS property name (lower case) transitions, into `targets`; their count (0: none)
+    size_t transitionTargets(std::string_view name, std::string_view (&targets)[2]){
+        for (std::string_view prefix : {std::string_view("-webkit-"), std::string_view("-moz-")}){
+            if (startsWith(name, prefix) && (findProperty(name.substr(prefix.size())) || RcssGrammar::known(name.substr(prefix.size()))))
+                name = name.substr(prefix.size());
         }
-        if (name == "background")
-            return {"background-color", "decorator"};
-        if (name.compare(0, 11, "background-") == 0 && name != "background-color")
-            return {"decorator"};
-        if (name.compare(0, 7, "outline") == 0 || name == "box-shadow")
-            return {"box-shadow"};
-        if (name == "text-shadow" || name.compare(0, 19, "-webkit-text-stroke") == 0)
-            return {"font-effect"};
+        auto one = [&](std::string_view target){
+            targets[0] = target;
+            return (size_t)1;
+        };
+        if (name == "background"){
+            targets[0] = "background-color";
+            targets[1] = "decorator";
+            return 2;
+        }
+        if (startsWith(name, "background-") && name != "background-color")
+            return one("decorator");
+        if (startsWith(name, "outline") || name == "box-shadow")
+            return one("box-shadow");
+        if (name == "text-shadow" || startsWith(name, "-webkit-text-stroke"))
+            return one("font-effect");
         if (name == "translate" || name == "rotate" || name == "scale")
-            return {"transform"};
+            return one("transform");
         if (name == "clip-path" || name == "mask" || name == "mask-image")
-            return {"mask-image"};
+            return one("mask-image");
         if (name == "direction")
-            return {"-rmlui-direction"};
+            return one("-rmlui-direction");
         if (name == "grid-gap" || name == "grid-row-gap" || name == "grid-column-gap")
-            return {name.substr(5)};
+            return one(name.substr(5));
         if (name == "inset-inline" || name == "inset-block" || name == "margin-inline" || name == "margin-block" || name == "padding-inline" ||
             name == "padding-block")
-            return {};
+            return 0;
         if (name.size() > 2 && name[0] == '-' && name[1] == '-')
-            return {};
+            return 0;
         if (rcssShorthand(name) || RcssGrammar::known(name))
-            return {name};
-        return {};
+            return one(name);
+        return 0;
     }
 
+    // (trivially copied: the entries of a declaration are copied from one to the next)
     struct Entry {
-        std::string property = "all";      // CSS name ("all", "none")
-        std::string duration;              // RCSS seconds text ("" = 0s)
+        Text property = Text::view("all");    // CSS name as written ("all" and "none" in lower case)
+        Timing duration;
         double durationSeconds = 0;
-        std::string delay;
-        std::optional<props::EasingResult> easing;
-        bool varTiming = false;            // a var() in the timing
-        std::string raw;                   // the entry as written (messages)
+        Timing delay;
+        bool hasEasing = false;
+        EasingResult easing;
+        bool varTiming = false;               // a var() in the timing
+        ValueRange raw;                        // the entry as written (messages)
     };
 
     bool seconds(const ComponentValue& v, double& value){
@@ -207,20 +219,35 @@ namespace {
         return false;
     }
 
+    Timing secondsTiming(double s){
+        Timing timing;
+        timing.kind = Timing::Kind::Seconds;
+        timing.seconds = s;
+        return timing;
+    }
+
+    Timing varTiming(const ComponentValue& v){
+        Timing timing;
+        timing.kind = Timing::Kind::Var;
+        timing.var = &v;
+        return timing;
+    }
+
     // one shorthand entry; false when malformed
-    bool parseEntry(Session& session, const ValueList& group, Entry& entry){
-        entry.raw = text(group);
+    bool parseEntry(Session& session, const ValueRange& group, Entry& entry){
+        entry.raw = group;
         bool propertySet = false, durationSet = false, delaySet = false;
-        for (const ComponentValue& v : words(group)){
+        for (const ComponentValue* value : wordsOf(group)){
+            const ComponentValue& v = *value;
             double s = 0;
             if (seconds(v, s)){
                 if (!durationSet){
                     durationSet = true;
                     entry.durationSeconds = s;
-                    entry.duration = formatNumber(s) + "s";
+                    entry.duration = secondsTiming(s);
                 }else if (!delaySet){
                     delaySet = true;
-                    entry.delay = formatNumber(s) + "s";
+                    entry.delay = secondsTiming(s);
                 }else{
                     return false;
                 }
@@ -232,31 +259,32 @@ namespace {
                     entry.varTiming = true;
                     if (!durationSet){
                         durationSet = true;
-                        entry.duration = text(v);
+                        entry.duration = varTiming(v);
                         entry.durationSeconds = 1;
                     }else{
                         delaySet = true;
-                        entry.delay = text(v);
+                        entry.delay = varTiming(v);
                     }
                     continue;
                 }
                 std::optional<TypedVar> typed = session.typedVar(v, "easing");
                 if (typed){
-                    props::EasingResult e;
-                    e.text = typed->reference;
-                    entry.easing = e;
+                    entry.hasEasing = true;
+                    entry.easing = EasingResult();
+                    entry.easing.text = Text(typed->reference);
                     continue;
                 }
                 return false;
             }
-            if (std::optional<props::EasingResult> e = props::easingOf(session, v)){
-                if (entry.easing)
+            if (std::optional<EasingResult> e = easingOf(session, v)){
+                if (entry.hasEasing)
                     return false;
-                entry.easing = e;
+                entry.hasEasing = true;
+                entry.easing = *e;
                 continue;
             }
             if (v.isToken(TokenType::Ident)){
-                const std::string k = lowerAscii(v.token.value);
+                const std::string_view k = identView(v);
                 if (k == "allow-discrete" || k == "normal")
                     continue;
                 if (propertySet)
@@ -264,7 +292,7 @@ namespace {
                 propertySet = true;
                 entry.property = v.token.value;
                 if (k == "all" || k == "none")
-                    entry.property = k;
+                    entry.property = Text::view(k);
                 continue;
             }
             return false;
@@ -272,9 +300,8 @@ namespace {
         return true;
     }
 
-    // entries -> the RCSS value; "" when nothing remains
-    std::string writeEntries(DeclContext* context, Session& session, std::vector<Entry>& entries, bool fork, bool report){
-        std::vector<std::string> out;
+    // entries -> the RCSS value, appended to `out` (nothing when nothing remains)
+    void writeEntries(DeclContext* context, ArenaList<Entry>& entries, bool fork, bool report, std::string& out){
         // `all` cannot be combined with other entries in RmlUi
         const Entry* all = nullptr;
         for (const Entry& e : entries){
@@ -284,44 +311,66 @@ namespace {
         if (all && entries.size() > 1 && !fork){
             if (report && context)
                 context->reportAs(Severity::Info, codes::ApproximatedMinor, "'transition: all' with other entries becomes one 'all' entry with the timing of '" +
-                                  all->raw + "' (RmlUi limitation)");
-            Entry only = *all;
-            entries = {only};
+                                  text(all->raw) + "' (RmlUi limitation)");
+            const Entry only = *all;
+            entries.clear();
+            entries.push_back(only);
         }
-        for (Entry& e : entries){
+        const size_t start = out.size();
+        for (const Entry& e : entries){
             if (e.property == "none"){
-                if (entries.size() == 1)
-                    return "none";
+                if (entries.size() == 1){
+                    out.resize(start);
+                    out += "none";
+                    return;
+                }
                 continue;
             }
             if (!e.varTiming && e.durationSeconds <= 0)
                 continue;   // a 0s transition does nothing
-            std::vector<std::string> targets;
+            std::string_view targets[2];
+            size_t count = 0;
             if (e.property == "all"){
-                targets.push_back("all");
+                targets[0] = "all";
+                count = 1;
             }else if (fork){
-                targets.push_back(e.property);
+                targets[0] = e.property.view();
+                count = 1;
             }else{
-                targets = transitionTargets(lowerAscii(e.property));
-                if (targets.empty()){
-                    if (report && context)
-                        context->reportAs(Severity::Info, codes::ApproximatedMinor, "transition entry '" + e.raw +
-                                          "' names a property the engine does not transition; entry dropped", std::string(), e.raw);
+                count = transitionTargets(Arena::current().copy(lowerAscii(e.property)), targets);
+                if (count == 0){
+                    if (report && context){
+                        const std::string raw = text(e.raw);
+                        context->reportAs(Severity::Info, codes::ApproximatedMinor, "transition entry '" + raw +
+                                          "' names a property the engine does not transition; entry dropped", std::string(), raw);
+                    }
                     continue;
                 }
             }
-            std::string easing = e.easing ? e.easing->text : (fork ? std::string() : std::string("quadratic-out"));
-            if (e.easing && report && context && !e.easing->note.empty())
-                context->reportAs(e.easing->severity, e.easing->code, e.easing->note, std::string(), e.raw);
-            std::string entry = join(targets) + " " + e.duration;
-            if (!easing.empty())
-                entry += " " + easing;
-            if (!e.delay.empty() && e.delay != "0s")
-                entry += " " + e.delay;
-            out.push_back(entry);
+            if (e.hasEasing && report && context && !e.easing.note.empty())
+                context->reportAs(e.easing.severity, e.easing.code, e.easing.note, std::string(), text(e.raw));
+            if (out.size() > start)
+                out += ", ";
+            for (size_t i = 0; i < count; i++){
+                if (i > 0)
+                    out += ' ';
+                out += targets[i];
+            }
+            out += ' ';
+            appendTiming(out, e.duration);
+            if (e.hasEasing){
+                if (!e.easing.text.empty()){
+                    out += ' ';
+                    out += e.easing.text.view();
+                }
+            }else if (!fork){
+                out += " quadratic-out";
+            }
+            if (e.delay.given() && !writtenAsZero(e.delay)){
+                out += ' ';
+                appendTiming(out, e.delay);
+            }
         }
-        (void)session;
-        return join(out, ", ");
     }
 
     // the declarations merged into one transition (transition-behavior is Ignored in the table:
@@ -333,17 +382,17 @@ namespace {
                name == "-webkit-transition-timing-function" || name == "-webkit-transition-delay";
     }
 
-    std::string plain(const std::string& name){
-        return name.compare(0, 8, "-webkit-") == 0 ? name.substr(8) : name;
+    std::string_view plain(std::string_view name){
+        return startsWith(name, "-webkit-") ? name.substr(8) : name;
     }
 
     // applies one declaration of the family to the entries; false when malformed
-    bool applyTransition(Session& session, const std::string& rawName, const ValueList& value, std::vector<Entry>& entries){
-        const std::string name = plain(rawName);
-        std::vector<ValueList> groups = commaGroups(value);
+    bool applyTransition(Session& session, std::string_view rawName, const ValueList& value, ArenaList<Entry>& entries){
+        const std::string_view name = plain(rawName);
+        const ArenaList<ValueRange> groups = commaRanges(value);
         if (name == "transition"){
             entries.clear();
-            for (const ValueList& group : groups){
+            for (const ValueRange& group : groups){
                 Entry e;
                 if (!parseEntry(session, group, e))
                     return false;
@@ -354,18 +403,18 @@ namespace {
         if (name == "transition-behavior")
             return true;
         if (name == "transition-property"){
-            std::vector<Entry> previous = entries;
+            const ArenaList<Entry> previous = entries;
             entries.clear();
             for (size_t i = 0; i < groups.size(); i++){
                 Entry e = previous.empty() ? Entry() : previous[i % previous.size()];
-                ValueList w = words(groups[i]);
-                if (w.size() != 1 || !w[0].isToken(TokenType::Ident))
+                const Words w = wordsOf(groups[i]);
+                if (w.size() != 1 || !w[0]->isToken(TokenType::Ident))
                     return false;
-                e.property = w[0].token.value;
-                const std::string k = lowerAscii(e.property);
+                e.property = w[0]->token.value;
+                const std::string_view k = identView(*w[0]);
                 if (k == "all" || k == "none")
-                    e.property = k;
-                e.raw = text(groups[i]);
+                    e.property = Text::view(k);
+                e.raw = groups[i];
                 entries.push_back(e);
             }
             return true;
@@ -373,17 +422,17 @@ namespace {
         if (entries.empty())
             entries.push_back(Entry());
         for (size_t i = 0; i < entries.size(); i++){
-            ValueList w = words(groups[i % groups.size()]);
+            const Words w = wordsOf(groups[i % groups.size()]);
             if (w.size() != 1)
                 return false;
             Entry& e = entries[i];
             double s = 0;
             if (name == "transition-duration" || name == "transition-delay"){
-                std::string written;
-                if (seconds(w[0], s)){
-                    written = formatNumber(s) + "s";
-                }else if (isVar(w[0]) && varKind(session, w[0]) == "time"){
-                    written = text(w[0]);
+                Timing written;
+                if (seconds(*w[0], s)){
+                    written = secondsTiming(s);
+                }else if (isVar(*w[0]) && varKind(session, *w[0]) == "time"){
+                    written = varTiming(*w[0]);
                     s = 1;
                     e.varTiming = true;
                 }else{
@@ -396,19 +445,20 @@ namespace {
                     e.delay = written;
                 }
             }else if (name == "transition-timing-function"){
-                if (isVar(w[0])){
-                    std::optional<TypedVar> typed = session.typedVar(w[0], "easing");
+                if (isVar(*w[0])){
+                    std::optional<TypedVar> typed = session.typedVar(*w[0], "easing");
                     if (!typed)
                         return false;
-                    props::EasingResult r;
-                    r.text = typed->reference;
-                    e.easing = r;
+                    e.hasEasing = true;
+                    e.easing = EasingResult();
+                    e.easing.text = Text(typed->reference);
                     continue;
                 }
-                std::optional<props::EasingResult> easing = props::easingOf(session, w[0]);
+                std::optional<EasingResult> easing = easingOf(session, *w[0]);
                 if (!easing)
                     return false;
-                e.easing = easing;
+                e.hasEasing = true;
+                e.easing = *easing;
             }
         }
         return true;
@@ -416,40 +466,46 @@ namespace {
 
     ValueList normalizedValue(Session& session, const Declaration& d){
         NormalizeContext context;
-        context.property = plain(d.name);
         context.colors = false;
-        context.options = session.options;
+        context.options = &session.options;
         context.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
         NormalizeResult result = ValueNormalizer::normalize(d.value, context);
         return result.ok ? trimWhitespace(result.value) : ValueList();
     }
 
     std::string classifyTransition(Session& session, const ValueList& value){
-        std::vector<Entry> entries;
+        ArenaList<Entry> entries;
         return applyTransition(session, "transition", value, entries) ? "transitions" : std::string();
     }
 
     std::optional<std::string> transformTransition(Session& session, const ValueList& value, const std::string&, SourceRef){
-        std::vector<Entry> entries;
+        ArenaList<Entry> entries;
         if (!applyTransition(session, "transition", value, entries))
             return std::nullopt;
-        std::string text = writeEntries(nullptr, session, entries, session.options.fork.has(ForkFeature::TimingFunctions), false);
+        std::string text;
+        writeEntries(nullptr, entries, session.options.fork.has(ForkFeature::TimingFunctions), false, text);
         return text.empty() ? std::string("none") : text;
     }
 
     std::string classifyEasing(Session& session, const ValueList& value){
-        ValueList w = words(value);
-        return w.size() == 1 && props::easingOf(session, w[0]) ? "easing" : std::string();
+        const Words w = wordsOf(value);
+        return w.size() == 1 && easingOf(session, *w[0]) ? "easing" : std::string();
     }
 
     std::optional<std::string> transformEasing(Session& session, const ValueList& value, const std::string&, SourceRef){
-        ValueList w = words(value);
+        const Words w = wordsOf(value);
         if (w.size() != 1)
             return std::nullopt;
-        std::optional<props::EasingResult> e = props::easingOf(session, w[0]);
+        std::optional<EasingResult> e = easingOf(session, *w[0]);
         if (!e)
             return std::nullopt;
-        return e->text;
+        return e->text.str();
+    }
+
+    // (one buffer for the transitions of the thread: the emitted value is a copy)
+    std::string& transitionBuffer(){
+        static thread_local std::string buffer;
+        return buffer;
     }
 
 }
@@ -467,7 +523,7 @@ void jasperengine::htmlui::compat::rewriteTransitionLonghand(DeclContext& contex
         context.dropped = true;
         return;
     }
-    std::vector<Entry> entries;
+    ArenaList<Entry> entries;
     if (context.value.size() == 1 && isVar(context.value[0]) && plain(context.name) == "transition"){
         std::optional<TypedVar> typed = wholeVar(context, "transition");
         context.emit("transition", typed ? typed->reference : context.valueText());
@@ -509,7 +565,8 @@ void jasperengine::htmlui::compat::rewriteTransitionLonghand(DeclContext& contex
         for (const Declaration& d : context.rule->declarations){
             if (!isTransitionFamily(d.name) || !reachesRewrite(context.session, d, context.rule->declarations))
                 continue;
-            const ValueList value = d.ref == context.declaration.ref ? context.value : normalizedValue(context.session, d);
+            ValueList storage;
+            const ValueList& value = d.ref == context.declaration.ref ? context.value : (storage = normalizedValue(context.session, d));
             if (!applyTransition(context.session, d.name, value, entries)){
                 context.reportAt(d.ref, Severity::Warning, codes::UnsupportedValue, "'" + d.name + ": " + text(value) + "' is not supported; dropped",
                                  "write transition: <property> <duration> <easing> <delay>");
@@ -519,6 +576,8 @@ void jasperengine::htmlui::compat::rewriteTransitionLonghand(DeclContext& contex
         unsupportedValue(context, "write transition: <property> <duration> <easing> <delay>");
         return;
     }
-    const std::string value = writeEntries(&context, context.session, entries, fork, true);
-    context.emit("transition", value.empty() ? "none" : value);
+    std::string& value = transitionBuffer();
+    value.clear();
+    writeEntries(&context, entries, fork, true, value);
+    context.emit("transition", value.empty() ? Text::view("none") : Text(std::string_view(value)));
 }

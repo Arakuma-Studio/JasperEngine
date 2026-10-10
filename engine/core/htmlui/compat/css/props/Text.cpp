@@ -28,85 +28,123 @@ namespace {
         context.dropped = true;
     }
 
-    // half of a length, unit kept ("8px" -> "4px")
-    std::string half(const ComponentValue& v){
-        if (v.isToken(TokenType::Number))
-            return "0px";
-        ComponentValue copy = v;
-        copy.token.number = v.token.number / 2.0;
-        return text(copy);
-    }
-
+    // one shadow "x y [blur] [color]" (color first or last); false when malformed
     struct Shadow {
-        ValueList lengths;
-        std::string color;
+        const ComponentValue* lengths[3] = {nullptr, nullptr, nullptr};
+        size_t lengthCount = 0;
+        const ComponentValue* color = nullptr;
     };
 
-    // one shadow "x y [blur] [color]" (color first or last); false when malformed
-    bool parseShadow(Session& session, const ValueList& group, Shadow& shadow){
-        for (const ComponentValue& v : words(group)){
-            if (isLength(session, v)){
-                shadow.lengths.push_back(v);
-            }else if (isColor(session, v) || isVar(v)){
-                if (!shadow.color.empty())
+    bool parseShadow(Session& session, const ValueRange& group, Shadow& shadow){
+        for (const ComponentValue* v : wordsOf(group)){
+            if (isLength(session, *v)){
+                if (shadow.lengthCount < 3)
+                    shadow.lengths[shadow.lengthCount] = v;
+                shadow.lengthCount++;
+            }else if (isColor(session, *v) || isVar(*v)){
+                if (shadow.color)
                     return false;
-                shadow.color = text(v);
+                shadow.color = v;
             }else{
                 return false;
             }
         }
-        return shadow.lengths.size() >= 2 && shadow.lengths.size() <= 3;
+        return shadow.lengthCount >= 2 && shadow.lengthCount <= 3;
     }
 
-    // text-shadow -> font-effect list; nullopt when malformed
-    std::optional<std::string> fontEffects(Session& session, const ValueList& value, const std::string& fallbackColor,
-                                           bool* usedWhite){
-        std::vector<std::string> effects;
-        for (const ValueList& group : commaGroups(value)){
+    // lengthText() appended
+    void appendLength(std::string& out, const ComponentValue& value){
+        if (value.isToken(TokenType::Number) && value.token.number == 0)
+            out += "0px";
+        else
+            appendSerialized(out, value);
+    }
+
+    // text-shadow -> font-effect list appended to `out`; false when malformed. A shadow without
+    // a color takes the rule's static color (`context`'s rule, read only then), else white.
+    bool fontEffects(Session& session, const ValueList& value, DeclContext* context, bool* usedWhite, std::string& out){
+        bool fallbackRead = false;
+        std::string fallbackColor;
+        bool any = false;
+        for (const ValueRange& group : commaRanges(value)){
             Shadow shadow;
             if (!parseShadow(session, group, shadow))
-                return std::nullopt;
-            std::string color = shadow.color;
-            if (color.empty()){
-                color = fallbackColor.empty() ? "#ffffffff" : fallbackColor;
-                if (fallbackColor.empty() && usedWhite)
-                    *usedWhite = true;
-            }
-            const std::string x = lengthText(shadow.lengths[0]);
-            const std::string y = lengthText(shadow.lengths[1]);
-            const bool blurred = shadow.lengths.size() == 3 && !(shadow.lengths[2].isToken(TokenType::Number) && shadow.lengths[2].token.number == 0) &&
-                                 !(shadow.lengths[2].isToken(TokenType::Dimension) && shadow.lengths[2].token.number == 0);
+                return false;
+            const ComponentValue& blur = *shadow.lengths[2 < shadow.lengthCount ? 2 : 0];
+            const bool blurred = shadow.lengthCount == 3 && !(blur.isToken(TokenType::Number) && blur.token.number == 0) &&
+                                 !(blur.isToken(TokenType::Dimension) && blur.token.number == 0);
+            if (blurred && blur.token.number < 0)
+                return false;
+            if (any)
+                out += ", ";
+            any = true;
             if (blurred){
-                if (shadow.lengths[2].token.number < 0)
-                    return std::nullopt;
-                effects.push_back("glow(0px " + half(shadow.lengths[2]) + " " + x + " " + y + " " + color + ")");
+                out += "glow(0px ";
+                if (blur.isToken(TokenType::Number)){
+                    out += "0px";
+                }else{
+                    // half of the blur, unit kept ("8px" -> "4px")
+                    ComponentValue half = blur;
+                    half.token.number = blur.token.number / 2.0;
+                    appendSerialized(out, half);
+                }
+                out += ' ';
             }else{
-                effects.push_back("shadow(" + x + " " + y + " " + color + ")");
+                out += "shadow(";
             }
+            appendLength(out, *shadow.lengths[0]);
+            out += ' ';
+            appendLength(out, *shadow.lengths[1]);
+            out += ' ';
+            if (shadow.color){
+                appendSerialized(out, *shadow.color);
+            }else{
+                if (!fallbackRead){
+                    fallbackRead = true;
+                    if (context && context->rule)
+                        fallbackColor = ruleStaticColor(context->session, *context->rule);
+                }
+                if (fallbackColor.empty()){
+                    out += "#ffffffff";
+                    if (usedWhite)
+                        *usedWhite = true;
+                }else{
+                    out += fallbackColor;
+                }
+            }
+            out += ')';
         }
-        if (effects.empty())
-            return std::nullopt;
-        return join(effects, ", ");
-    }
-
-    std::string classifyShadows(Session& session, const ValueList& value){
-        ValueList w = words(value);
-        if (w.size() == 1 && isIdent(w[0], "none"))
-            return "effects";
-        return fontEffects(session, value, std::string(), nullptr) ? "effects" : std::string();
-    }
-
-    std::optional<std::string> transformShadows(Session& session, const ValueList& value, const std::string&, SourceRef){
-        ValueList w = words(value);
-        if (w.size() == 1 && isIdent(w[0], "none"))
-            return std::string(companions::kNoEffect);
-        return fontEffects(session, value, std::string(), nullptr);
+        return any;
     }
 
     std::string fallbackColorOf(DeclContext& context){
         if (context.rule)
             return ruleStaticColor(context.session, *context.rule);
         return std::string();
+    }
+
+    // (one buffer for the font effects of the thread: the emitted value is a copy)
+    std::string& effectBuffer(){
+        static thread_local std::string buffer;
+        return buffer;
+    }
+
+    std::string classifyShadows(Session& session, const ValueList& value){
+        const Words w = wordsOf(value);
+        if (w.size() == 1 && isIdent(*w[0], "none"))
+            return "effects";
+        std::string effects;
+        return fontEffects(session, value, nullptr, nullptr, effects) ? "effects" : std::string();
+    }
+
+    std::optional<std::string> transformShadows(Session& session, const ValueList& value, const std::string&, SourceRef){
+        const Words w = wordsOf(value);
+        if (w.size() == 1 && isIdent(*w[0], "none"))
+            return std::string(companions::kNoEffect);
+        std::string effects;
+        if (!fontEffects(session, value, nullptr, nullptr, effects))
+            return std::nullopt;
+        return effects;
     }
 
     std::optional<std::string> borderLikeWidth(Session& session, const ComponentValue& v){
@@ -134,26 +172,27 @@ namespace {
 const VarFamily jasperengine::htmlui::compat::kFontEffectFamily = {"font-effect", classifyShadows, transformShadows};
 
 void jasperengine::htmlui::compat::rewriteTextShadow(DeclContext& context){
-    ValueList w = words(context.value);
-    if (w.size() == 1 && isIdent(w[0], "none")){
-        companions::emitTextShadow(context, std::string());
+    const Words w = wordsOf(context.value);
+    if (w.size() == 1 && isIdent(*w[0], "none")){
+        companions::emitTextShadow(context, std::string_view());
         return;
     }
-    if (w.size() == 1 && isVar(w[0])){
+    if (w.size() == 1 && isVar(*w[0])){
         std::optional<TypedVar> typed = wholeVar(context, "font-effect");
         companions::emitTextShadow(context, typed ? typed->reference : context.valueText());
         return;
     }
     bool usedWhite = false;
-    std::optional<std::string> effects = fontEffects(context.session, context.value, fallbackColorOf(context), &usedWhite);
-    if (!effects){
+    std::string& effects = effectBuffer();
+    effects.clear();
+    if (!fontEffects(context.session, context.value, &context, &usedWhite, effects)){
         unsupportedValue(context, "write text-shadow: <x> <y> [<blur>] [<color>], ...");
         return;
     }
     if (usedWhite)
         context.reportAs(Severity::Info, codes::ApproximatedMinor, "text-shadow without a color uses white (font effects cannot follow currentColor)",
                          "give the shadow a color");
-    companions::emitTextShadow(context, *effects);
+    companions::emitTextShadow(context, effects);
 }
 
 void jasperengine::htmlui::compat::rewriteTextStroke(DeclContext& context){

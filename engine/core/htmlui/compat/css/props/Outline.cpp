@@ -4,7 +4,9 @@
 // Outline and box-shadow (phase-2 §3.9.7 "Outline", "Box shadow"): RmlUi has no outline, so it
 // is drawn as the first entry of the box-shadow list. Both go through companions
 // (--html-outline-shadow, --html-box-shadow) so an outline never overwrites the element's own
-// shadows and vice versa.
+// shadows and vice versa. The outline declarations of a rule are read into one structure (the
+// values as written, keywords as views), the ring and the shadow list are written once into one
+// buffer.
 
 #include "htmlui/compat/css/props/Rewriters.h"
 #include "htmlui/compat/LiteralCompare.h"
@@ -30,46 +32,63 @@ namespace {
     // the UA focus ring (Chromium's two-tone auto outline)
     constexpr const char* kAutoRing = "0 0 0 1px #ffffffff, 0 0 0 3px #101010ff";
 
-    bool isOutlineStyle(const std::string& k){
+    bool isOutlineStyle(std::string_view k){
         return k == "none" || k == "auto" || k == "solid" || k == "dotted" || k == "dashed" || k == "double" || k == "groove" ||
                k == "ridge" || k == "inset" || k == "outset" || k == "hidden";
     }
 
+    // a length in px (the widths of thin, medium and thick)
+    ComponentValue pixels(double value){
+        ComponentValue v;
+        v.token.type = TokenType::Dimension;
+        v.token.number = value;
+        v.token.unit = Text::view("px");
+        return v;
+    }
+
+    const ComponentValue& thin(){ static const ComponentValue v = pixels(1); return v; }
+    const ComponentValue& medium(){ static const ComponentValue v = pixels(3); return v; }
+    const ComponentValue& thick(){ static const ComponentValue v = pixels(5); return v; }
+
     struct Outline {
-        std::optional<ComponentValue> width;   // default medium
-        std::string style = "none";
-        std::string color;                     // "" = currentColor
-        std::optional<ComponentValue> offset;
+        const ComponentValue* width = nullptr;     // null: medium
+        std::string_view style = "none";
+        // the color: currentColor (null, not invert), invert (#000000ff) or the value written
+        const ComponentValue* color = nullptr;
+        bool invert = false;
+        const ComponentValue* offset = nullptr;
         bool invalid = false;
     };
 
-    std::optional<ComponentValue> widthToken(Session& session, const ComponentValue& v){
-        const std::string k = identOf(v);
+    const ComponentValue* widthOf(Session& session, const ComponentValue& v){
+        const std::string_view k = identView(v);
         if (k == "thin")
-            return ValueNormalizer::dimension(1, "px");
+            return &thin();
         if (k == "medium")
-            return ValueNormalizer::dimension(3, "px");
+            return &medium();
         if (k == "thick")
-            return ValueNormalizer::dimension(5, "px");
+            return &thick();
         if (isLength(session, v))
-            return v;
-        return std::nullopt;
+            return &v;
+        return nullptr;
     }
 
-    void applyOutline(Session& session, const std::string& property, const ValueList& value, Outline& outline){
-        ValueList w = words(value);
+    void applyOutline(Session& session, std::string_view property, const ValueList& value, Outline& outline){
+        const Words w = wordsOf(value);
         if (property == "outline"){
             outline = Outline();
-            for (const ComponentValue& v : w){
-                const std::string k = identOf(v);
+            for (const ComponentValue* v : w){
+                const std::string_view k = identView(*v);
                 if (isOutlineStyle(k)){
                     outline.style = k;
-                }else if (std::optional<ComponentValue> width = widthToken(session, v)){
+                }else if (const ComponentValue* width = widthOf(session, *v)){
                     outline.width = width;
                 }else if (k == "invert"){
-                    outline.color = "#000000ff";
-                }else if (isColor(session, v) || isVar(v)){
-                    outline.color = text(v);
+                    outline.color = nullptr;
+                    outline.invert = true;
+                }else if (isColor(session, *v) || isVar(*v)){
+                    outline.color = v;
+                    outline.invert = false;
                 }else{
                     outline.invalid = true;
                 }
@@ -80,54 +99,93 @@ namespace {
             outline.invalid = true;
             return;
         }
-        const ComponentValue& v = w[0];
+        const ComponentValue& v = *w[0];
         if (property == "outline-width"){
-            if (std::optional<ComponentValue> width = widthToken(session, v))
+            if (const ComponentValue* width = widthOf(session, v))
                 outline.width = width;
             else
                 outline.invalid = true;
         }else if (property == "outline-style"){
-            if (isOutlineStyle(identOf(v)))
-                outline.style = identOf(v);
+            if (isOutlineStyle(identView(v)))
+                outline.style = identView(v);
             else
                 outline.invalid = true;
         }else if (property == "outline-color"){
-            if (isIdent(v, "invert"))
-                outline.color = "#000000ff";
-            else if (isIdent(v, "auto"))
-                outline.color.clear();
-            else if (isColor(session, v) || isVar(v))
-                outline.color = text(v);
-            else
+            if (isIdent(v, "invert")){
+                outline.color = nullptr;
+                outline.invert = true;
+            }else if (isIdent(v, "auto")){
+                outline.color = nullptr;
+                outline.invert = false;
+            }else if (isColor(session, v) || isVar(v)){
+                outline.color = &v;
+                outline.invert = false;
+            }else{
                 outline.invalid = true;
+            }
         }else if (property == "outline-offset"){
             if (isLength(session, v))
-                outline.offset = v;
+                outline.offset = &v;
             else
                 outline.invalid = true;
         }
     }
 
-    // width + offset when they add up statically
-    std::optional<std::string> spread(const ComponentValue& width, const std::optional<ComponentValue>& offset){
-        if (!offset)
-            return lengthText(width);
+    // lengthText() appended
+    void appendLength(std::string& out, const ComponentValue& value){
+        if (value.isToken(TokenType::Number) && value.token.number == 0)
+            out += "0px";
+        else
+            appendSerialized(out, value);
+    }
+
+    // width + offset when they add up statically, appended to `out`; false when they do not
+    bool appendSpread(std::string& out, const ComponentValue& width, const ComponentValue* offset){
+        if (!offset){
+            appendLength(out, width);
+            return true;
+        }
         const bool widthZero = width.isToken(TokenType::Number) || width.token.number == 0;
         const bool offsetZero = offset->isToken(TokenType::Number) || offset->token.number == 0;
-        if (offsetZero)
-            return lengthText(width);
-        if (widthZero)
-            return lengthText(*offset);
-        if (width.isToken(TokenType::Dimension) && offset->isToken(TokenType::Dimension) && equalsNoCase(width.token.unit, offset->token.unit))
-            return formatNumber(width.token.number + offset->token.number) + lowerAscii(width.token.unit);
+        if (offsetZero){
+            appendLength(out, width);
+            return true;
+        }
+        if (widthZero){
+            appendLength(out, *offset);
+            return true;
+        }
+        if (width.isToken(TokenType::Dimension) && offset->isToken(TokenType::Dimension) && equalsNoCase(width.token.unit, offset->token.unit)){
+            appendNumber(out, width.token.number + offset->token.number);
+            out += lowerAscii(width.token.unit);
+            return true;
+        }
         std::optional<double> a = lengthPx(width), b = lengthPx(*offset);
-        if (a && b)
-            return formatNumber(*a + *b) + "px";
-        return std::nullopt;
+        if (a && b){
+            appendNumber(out, *a + *b);
+            out += "px";
+            return true;
+        }
+        return false;
     }
 
     bool isOutlineProperty(std::string_view name){
         return name == "outline" || name == "outline-width" || name == "outline-style" || name == "outline-color" || name == "outline-offset";
+    }
+
+    // the color of a ring or shadow without one: the rule's static color, else the current-color companion
+    void appendCurrentColor(std::string& out, DeclContext& context){
+        const std::string& ruleColor = context.rule ? ruleStaticColor(context.session, *context.rule) : std::string();
+        if (ruleColor.empty())
+            appendSerialized(out, ValueNormalizer::currentColorCompanion());
+        else
+            out += ruleColor;
+    }
+
+    // (one buffer for the rings and shadow lists of the thread: the emitted value is a copy)
+    std::string& shadowBuffer(){
+        static thread_local std::string buffer;
+        return buffer;
     }
 
 }
@@ -151,12 +209,14 @@ void jasperengine::htmlui::compat::rewriteOutline(DeclContext& context){
                 continue;
             }
             NormalizeContext normalize;
-            normalize.property = d.name;
-            normalize.options = context.session.options;
+            normalize.options = &context.session.options;
             normalize.staticColor = ruleStaticColor(context.session, *context.rule);
             NormalizeResult normalized = ValueNormalizer::normalize(d.value, normalize);
-            if (normalized.ok)
-                applyOutline(context.session, d.name, trimWhitespace(normalized.value), outline);
+            if (normalized.ok){
+                // (the normalized values live in the session's arena, as the outline's views of them)
+                const ValueList trimmed = trimWhitespace(normalized.value);
+                applyOutline(context.session, d.name, trimmed, outline);
+            }
         }
         // a rule that sets only outline-offset / -color / -width keeps the style none of CSS's
         // initial value: nothing is drawn, as in CSS
@@ -167,67 +227,85 @@ void jasperengine::htmlui::compat::rewriteOutline(DeclContext& context){
         unsupportedValue(context, "write outline: <width> <style> <color>");
         return;
     }
-    const ComponentValue width = outline.width ? *outline.width : ValueNormalizer::dimension(3, "px");
-    std::string ring;
+    const ComponentValue& width = outline.width ? *outline.width : medium();
+    std::string& ring = shadowBuffer();
+    ring.clear();
     if (outline.style == "none" || outline.style == "hidden" || (width.token.number == 0)){
         ring = companions::kNoShadow;
     }else if (outline.style == "auto"){
         ring = kAutoRing;
     }else{
         if (outline.style != "solid")
-            context.reportAs(Severity::Info, codes::ApproximatedMinor, "'outline-style: " + outline.style + "' is drawn solid");
-        std::string color = outline.color;
-        if (color.empty()){
-            const std::string ruleColor = context.rule ? ruleStaticColor(context.session, *context.rule) : std::string();
-            color = ruleColor.empty() ? serialize(ValueNormalizer::currentColorCompanion()) : ruleColor;
-        }
+            context.reportAs(Severity::Info, codes::ApproximatedMinor, "'outline-style: " + std::string(outline.style) + "' is drawn solid");
+        // the color after the ring, written into the same buffer first
+        std::string color;
+        if (outline.invert)
+            color = "#000000ff";
+        else if (outline.color)
+            appendSerialized(color, *outline.color);
+        else
+            appendCurrentColor(color, context);
         const bool negative = outline.offset && outline.offset->token.number < 0;
         if (negative){
-            ring = "inset 0 0 0 " + lengthText(width) + " " + color;
+            ring += "inset 0 0 0 ";
+            appendLength(ring, width);
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "a negative outline-offset is drawn as an inset ring of the outline width");
         }else{
-            std::optional<std::string> s = spread(width, outline.offset);
-            if (!s){
-                s = lengthText(width);
+            ring += "0 0 0 ";
+            if (!appendSpread(ring, width, outline.offset)){
+                ring.resize(6);
+                appendLength(ring, width);
                 context.reportAs(Severity::Info, codes::ApproximatedMinor, "outline width and offset in different units: the offset is dropped");
             }else if (outline.offset && outline.offset->token.number > 0){
                 context.reportAs(Severity::Info, codes::ApproximatedMinor, "the gap of outline-offset is filled with the outline color");
             }
-            ring = "0 0 0 " + *s + " " + color;
         }
+        ring += ' ';
+        ring += color;
     }
     companions::emitOutline(context, ring);
 }
 
 void jasperengine::htmlui::compat::rewriteBoxShadow(DeclContext& context){
-    ValueList w = words(context.value);
-    if (w.size() == 1 && isIdent(w[0], "none")){
+    const Words w = wordsOf(context.value);
+    if (w.size() == 1 && isIdent(*w[0], "none")){
         companions::emitBoxShadow(context, "none");
         return;
     }
-    if (w.size() == 1 && isVar(w[0])){
-        companions::emitBoxShadow(context, text(w[0]));
+    if (w.size() == 1 && isVar(*w[0])){
+        companions::emitBoxShadow(context, text(*w[0]));
         return;
     }
     // each shadow: 2-4 lengths, optional color (currentColor when missing), optional inset
-    std::vector<std::string> shadows;
-    for (const ValueList& group : commaGroups(context.value)){
+    std::string& shadows = shadowBuffer();
+    shadows.clear();
+    for (const ValueRange& group : commaRanges(context.value)){
         int lengths = 0;
         bool color = false;
         bool hasVar = false;
-        std::vector<std::string> parts;
-        for (const ComponentValue& v : words(group)){
-            if (isIdent(v, "inset")){
-                parts.push_back("inset");
-            }else if (isLength(context.session, v)){
+        if (!shadows.empty())
+            shadows += ", ";
+        const size_t shadowStart = shadows.size();
+        auto separate = [&](){
+            if (shadows.size() > shadowStart)
+                shadows += ' ';
+        };
+        for (const ComponentValue* v : wordsOf(group)){
+            if (isIdent(*v, "inset")){
+                separate();
+                shadows += "inset";
+            }else if (isLength(context.session, *v)){
                 lengths++;
-                parts.push_back(lengthText(v));
-            }else if (isColor(context.session, v)){
+                separate();
+                appendLength(shadows, *v);
+            }else if (isColor(context.session, *v)){
                 color = true;
-                parts.push_back(text(v));
-            }else if (isVar(v)){
+                separate();
+                appendSerialized(shadows, *v);
+            }else if (isVar(*v)){
                 hasVar = true;
-                parts.push_back(text(v));
+                separate();
+                appendSerialized(shadows, *v);
             }else{
                 unsupportedValue(context, "write box-shadow: [inset] <x> <y> [<blur> [<spread>]] [<color>]");
                 return;
@@ -238,10 +316,9 @@ void jasperengine::htmlui::compat::rewriteBoxShadow(DeclContext& context){
             return;
         }
         if (!color && !hasVar){
-            const std::string ruleColor = context.rule ? ruleStaticColor(context.session, *context.rule) : std::string();
-            parts.push_back(ruleColor.empty() ? serialize(ValueNormalizer::currentColorCompanion()) : ruleColor);
+            separate();
+            appendCurrentColor(shadows, context);
         }
-        shadows.push_back(join(parts));
     }
-    companions::emitBoxShadow(context, join(shadows, ", "));
+    companions::emitBoxShadow(context, shadows);
 }

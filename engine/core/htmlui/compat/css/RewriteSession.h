@@ -43,7 +43,10 @@ namespace jasperengine::htmlui::compat {
         uint32_t sheet = 0;            // the input (output sheet) it is written to
         uint32_t file = 0;
         RuleOrigin origin = RuleOrigin::Author;
-        SelectorList selectors;    // CSS selectors, nesting resolved
+        // The CSS selectors, nesting resolved. A rule whose selector list was scanned
+        // (SelectorRewriter::scanList: `scanned`, its rewritten selectors and their CSS texts set
+        // when it was flattened) has them parsed from its prelude at their first use.
+        const SelectorList& selectors() const;
         SourceRef ref, preludeRef;
         MediaResult media = MediaResult::unconditional();
         DeclarationList declarations;
@@ -52,6 +55,19 @@ namespace jasperengine::htmlui::compat {
         // the selector stage
         ArenaList<RewrittenSelector> rewritten;
         bool dropped = false;
+
+        // what selectors() reads: the list parsed, or the parsed rule whose prelude it is
+        // parsed from (preludeOf; the parsed sheet lives in the session's arena)
+        mutable SelectorList parsedSelectors;
+        mutable bool selectorsParsed = false;
+        const Rule* source = nullptr;
+        // a scanned list: serialize() of each selector (never a root or `body` rule: scanList
+        // reads no html/body type, :root or root id)
+        bool scanned = false;
+        ArenaList<Text> selectorTexts;
+        // the CSS text of selector `i` (written into `buffer` unless the list was scanned)
+        std::string_view selectorText(size_t i, std::string& buffer) const;
+        size_t selectorCount() const { return scanned ? selectorTexts.size() : selectors().size(); }
     };
 
     // An at-rule written as a block (@font-face, @keyframes, @decorator, @spritesheet).
@@ -155,8 +171,23 @@ namespace jasperengine::htmlui::compat {
         bool rcssKnown = false;                                  // RcssGrammar::known
     };
 
+    // The storage of a session's big lists, which a thread keeps from one session to the next
+    // (emptied, its pages already mapped): as the arena's blocks, the memory of a rewrite is not
+    // mapped again for every style sheet (the page faults of fresh memory are a part of a
+    // rewrite's time that no instruction count shows). `Slot` tells lists of one type apart.
+    // What a thread keeps of them and of RcssWriter's output is within kSpareKeptBytes
+    // together (Arena.h, SpareStorage): a list that would exceed it is freed with its session.
+    template<typename T, int Slot>
+    std::vector<T>& sessionSpare(){
+        static thread_local std::vector<T> spare;
+        return spare;
+    }
+
     struct Session {
         Session(const CompatOptions& options, SourceFiles& files, DiagnosticSink& sink, const RewriteContext& context);
+        ~Session();
+        Session(const Session&) = delete;
+        Session& operator=(const Session&) = delete;
 
         // everything the session parses and builds (token texts, value lists, selectors) lives
         // in its arena, current for the session's lifetime and released with it; declared
@@ -192,12 +223,22 @@ namespace jasperengine::htmlui::compat {
         // §3.10 item 1: no root rule sets a background and a `body` rule does: the body's
         // background is written on the root (it covers the canvas, as CSS propagates it)
         bool propagateBodyBackground = false;
-        SelectorOptions selectorOptions;
+        SelectorOptions selectorOptions;            // author rules
+        SelectorOptions userAgentSelectorOptions;   // the same for user-agent rules
         uint32_t nextOrder = 0;
         bool nestingReported = false;
 
         // base rules: selector text -> rules (cascade order)
-        std::unordered_map<std::string, std::vector<uint32_t>> baseIndex;
+        // BaseRules: the author rules by the hash of the CSS text of each of their selectors
+        // (open addressing; lists in the session's arena). A lookup compares the texts of the
+        // rules it finds.
+        struct BaseEntry {
+            uint64_t hash = 0;
+            ArenaList<uint32_t> rules;
+        };
+        std::vector<BaseEntry> baseEntries;
+        std::vector<uint32_t> baseSlots;
+        std::string baseKeyText, baseCandidateText;   // BaseRules::find
         bool baseIndexBuilt = false;    // built by the first BaseRules::find (most sheets never need it)
 
         // CSS property -> the rules declaring it (!important and @layer conflict checks)

@@ -70,8 +70,9 @@ TEST(CompatLogTranslator, FindsTheLocationsRmlUiWrites){
 TEST(CompatLogTranslator, TranslateUsesTheNarrowestMapping){
     SourceFiles files;
     const uint32_t html = files.add("ui/page.html", "<html>\n<style>\n  a { colr: red }\n</style>\n<div>");
-    std::vector<SourceRef> rmlLines(10, SourceRef{html, 0, 6});
-    std::vector<SourceRef> styleLines = {SourceRef{html, 21, 9}};
+    const std::vector<SourceRef> tenLines(10, SourceRef{html, 0, 6});
+    SourceRefList rmlLines(tenLines.begin(), tenLines.end());
+    SourceRefList styleLines = {SourceRef{html, 21, 9}};
     const RmlLogTranslator::LineMapping mappings[] = {
         {"ui/page.html", 1, &rmlLines},
         {"ui/page.html", 4, &styleLines},
@@ -162,9 +163,10 @@ TEST(CompatLogTranslator, RealRmlUiMessagesMapToTheSource){
     // RML: line 1 <rml>, 2 <head>, 3 <link>, 4 <style>, inline rcss from line 5, then a stray close tag
     const std::string rml = "<rml>\n<head>\n<link type=\"text/rcss\" href=\"/" + virtualPath + "\"/>\n<style>\n" + inlineRcss +
                             "</style>\n</head>\n<body>\n</div>\n</body>\n</rml>\n";
-    auto rmlLines = std::make_shared<std::vector<SourceRef>>(20, SourceRef{htmlFile, 0, 6});
+    std::vector<SourceRef> rmlRefs(20, SourceRef{htmlFile, 0, 6});
     const size_t strayLine = 5 + inlineLines->lines.size() + 3;   // the "</div>" line
-    (*rmlLines)[strayLine - 1] = SourceRef{htmlFile, (uint32_t)html.find("</div>"), 6};
+    rmlRefs[strayLine - 1] = SourceRef{htmlFile, (uint32_t)html.find("</div>"), 6};
+    auto rmlLines = std::make_shared<SourceRefList>(rmlRefs.begin(), rmlRefs.end());
 
     std::vector<Diagnostic> runtime;
     RmlLogTranslator::Registration registration;

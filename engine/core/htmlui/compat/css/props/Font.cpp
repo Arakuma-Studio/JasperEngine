@@ -95,9 +95,10 @@ namespace {
     }
 
     bool isRootRule(const DeclContext& context){
-        if (!context.rule)
+        // (a scanned selector list is never a root rule)
+        if (!context.rule || context.rule->scanned)
             return false;
-        for (const ComplexSelector& s : context.rule->selectors){
+        for (const ComplexSelector& s : context.rule->selectors()){
             if (SelectorRewriter::isRootRule(s, context.session.selectorOptions))
                 return true;
         }

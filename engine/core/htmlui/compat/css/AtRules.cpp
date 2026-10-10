@@ -375,7 +375,8 @@ namespace {
             KeyframeBlock block;
             block.ref = frame.ref;
             bool valid = true;
-            for (const ValueList& selector : splitAtCommas(frame.prelude)){
+            const ValueList prelude = preludeOf(frame);
+            for (const ValueList& selector : splitAtCommas(prelude)){
                 std::vector<const ComponentValue*> words = significant(selector);
                 if (words.size() != 1){
                     valid = false;
@@ -394,7 +395,7 @@ namespace {
                 }
             }
             if (!valid || block.offsets.empty()){
-                session.sink->report(codes::KeyframesInvalid, frame.preludeRef, "invalid keyframe selector '" + serialize(trimWhitespace(frame.prelude)) +
+                session.sink->report(codes::KeyframesInvalid, frame.preludeRef, "invalid keyframe selector '" + serialize(trimWhitespace(prelude)) +
                                      "'; the keyframe is dropped", "use from, to or a percentage between 0% and 100%");
                 continue;
             }
@@ -458,7 +459,7 @@ namespace {
         for (const Declaration& d : rule.declarations)
             writer.atRule(d.name + ": " + serialize(d.value) + ";", d.ref);
         for (const Rule& child : rule.rules){
-            std::string line = serialize(trimWhitespace(child.prelude)) + " {";
+            std::string line = serialize(trimWhitespace(preludeOf(child))) + " {";
             for (const Declaration& d : child.declarations)
                 line += " " + d.name + ": " + serialize(d.value) + ";";
             writer.atRule(line + " }", child.ref);

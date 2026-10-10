@@ -10,6 +10,7 @@
 // text-stroke font effects, `inherit` on non-inherited properties, accent and control looks).
 
 #include <string>
+#include <string_view>
 
 namespace jasperengine::htmlui::compat {
 
@@ -30,22 +31,22 @@ namespace jasperengine::htmlui::compat {
         constexpr const char* kNoEffect = "shadow(0px 0px #0000)";
 
         // "var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000)"
-        std::string boxShadowList();
+        const std::string& boxShadowList();
         // the decorator list of documents that use border-image
-        std::string decoratorList();
+        const std::string& decoratorList();
         // the font-effect list of documents that use text-shadow and -webkit-text-stroke
-        std::string fontEffectList();
+        const std::string& fontEffectList();
         // "--html-inh-<property>"
         std::string inheritName(const std::string& rcssProperty);
 
         // writes a shadow ring / layers / effect value through its companion (or directly in
         // keyframe mode and where the document does not need the companion)
-        void emitBoxShadow(DeclContext& context, const std::string& value);
-        void emitOutline(DeclContext& context, const std::string& ring);
-        void emitBackgroundLayers(DeclContext& context, const std::string& layers);   // "" = none
-        void emitBorderImage(DeclContext& context, const std::string& decorator);
-        void emitTextShadow(DeclContext& context, const std::string& effects);         // "" = none
-        void emitTextStroke(DeclContext& context, const std::string& effect);          // "" = none
+        void emitBoxShadow(DeclContext& context, std::string_view value);
+        void emitOutline(DeclContext& context, std::string_view ring);
+        void emitBackgroundLayers(DeclContext& context, std::string_view layers);      // "" = none
+        void emitBorderImage(DeclContext& context, std::string_view decorator);
+        void emitTextShadow(DeclContext& context, std::string_view effects);           // "" = none
+        void emitTextStroke(DeclContext& context, std::string_view effect);            // "" = none
     }
 
 }

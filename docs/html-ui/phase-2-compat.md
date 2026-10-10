@@ -915,8 +915,8 @@ when the element loads them (hook H8), and on SVG used by CSS layers:
 
 ```cpp
 struct RmlSourceMap {
-    std::vector<SourceRef> elementRefs;   // index = data-htmlui-loc
-    std::vector<SourceRef> lineRefs;      // RML line (1-based) -> source
+    SourceRefList elementRefs;            // index = data-htmlui-loc
+    SourceRefList lineRefs;               // RML line (1-based) -> source
 };
 ```
 
@@ -1003,15 +1003,18 @@ struct Rule {
     Text atName;                      // lowercase, without '@'
     ValueList prelude;                // selector list or at-rule prelude
     SourceRef preludeRef, ref;
-    Text preludeText;                 // an at-rule's prelude as written
+    Text preludeText;                 // the prelude as written, trimmed
+    bool preludeDeferred = false;     // a plain style-rule prelude read as text alone (p2-perf2)
     bool hasBlock = false;
     DeclarationList declarations;     // ArenaList<Declaration>: style rules, @font-face, @page, keyframe blocks
     RuleList rules;                   // ArenaList<Rule>: nested style rules, @media/@supports/@layer bodies
 };
 struct Stylesheet { RuleList rules; uint32_t file; };
 
-Stylesheet parseStylesheet(uint32_t file, std::string_view css, DiagnosticSink&, uint32_t baseOffset = 0);
+Stylesheet parseStylesheet(uint32_t file, std::string_view css, DiagnosticSink&, uint32_t baseOffset = 0,
+                           bool deferPlainPreludes = false);
 DeclarationList parseDeclarationList(uint32_t file, std::string_view css, uint32_t baseOffset, DiagnosticSink&);
+ValueList preludeOf(const Rule&);     // the prelude's values (read from its text when deferred)
 ```
 
 The tree lives in an arena (p2-perf, `compat/Arena.h`): everything a parse makes (the copy of
@@ -1040,17 +1043,25 @@ follow the 2021 draft; `compat_parser_test.cpp` lists the three inputs where the
 algorithms differ (`declaration_list.json` "@ media …", `one_declaration.json` "foo:;" and
 "foo:;bar:;") and checks their 2024 result instead.
 
-As implemented (p2-perf): the tokenizer's own output is compact (`css/CssLexer.h`, internal:
-`LexToken`, 40 bytes, holds no string, its value and unit are views into the source, or into
-a side buffer when an escape or a non-ASCII character had to be decoded); `tokenize()` converts it to
-`Token`s and the parser builds the `Token` of each component value straight from it, so every
-token is read once: "consume a declaration, else a rule from the same position" is decided
-before consuming (`declarationParses`), the closing token of every block is matched while
-tokenizing (`LexToken::closer`) and the children of a block, a value and a prelude are
-allocated to their count. Rules, declarations and component values are built in place. `Token` and
-`ComponentValue` keep their members (reordered by size: 96 and 136 bytes); `CssSerialize.h`
-also appends into a caller's buffer (`appendSerialized`, `appendToken`, `appendIdent`,
-`appendString`, `appendNumber`: the `serialize*`/`formatNumber` forms are wrappers).
+As implemented (p2-perf, p2-perf2): the tokenizer is a stream (`css/CssLexer.h`, internal:
+`CssLexer::next(Token&)` reads one token straight into a `Token`; plain ASCII tokens (names,
+numbers with ASCII units, hashes, strings without escapes, punctuation, white space, delims)
+are read inline, everything else by the general reading in `CssTokenizer.cpp`). There is no
+token list: the parser keeps one token of lookahead and builds each component value from it,
+on per-thread stacks (the children of the blocks still open, the values of a declaration or a
+prelude, the declarations and rules of a block), each list closed into the arena at its exact
+size (`ArenaList::movedFrom`). A token's texts are views of the parser's copy of the source,
+or arena copies of what had to be decoded. Where the 2024 algorithms decide by what follows
+("consume a declaration, else a rule from the same position") the parser reads on and, when
+it was a rule, sets the lexer back (`CssLexer::reset`) and reads the same tokens again; a
+position's errors are recorded once. `tokenize()` reads the same stream into a vector.
+`parseStylesheet(..., deferPlainPreludes = true)` (the rewriter's): a style rule whose prelude
+holds only ASCII name characters, `.`, `#`, `:`, `>`, `+`, `~`, `*`, `,` and white space up to
+its `{` is read as text (`Rule::preludeText`, `preludeDeferred`), without tokens; `preludeOf()`
+reads it into the values the token path builds. `Rule::preludeText` is set for style rules as
+well as at-rules. `CssSerialize.h` also appends into a caller's buffer (`appendSerialized`,
+`appendToken`, `appendIdent`, `appendString`, `appendNumber`: the `serialize*`/`formatNumber`
+forms are wrappers).
 
 - Parsing follows the CSS Syntax 3 algorithms ("consume a list of rules", "consume a
   qualified rule", "consume a block's contents" from the 2024 draft with nested rules).
@@ -1187,6 +1198,18 @@ with operators and `i`/`s` flags, escapes, namespaces) and rewrites per Appendix
   too).
 - Output is checked against what RmlUi's `ImportProperties` accepts (no commas outside
   parentheses, identifiers escaped where needed).
+- As implemented (p2-perf2): a style rule's selector list that maps to itself (types other
+  than `html`/`body`/`template`, classes, ids other than the reserved and the root's,
+  attributes without a flag, the pseudo-classes RmlUi matches as written, the universal
+  selector, the descendant, child and sibling combinators; an author selector's first compound
+  cannot match the root) is read from its source text by `SelectorRewriter::scanList` and
+  written from it as `serialize()` writes it, with the `#htmlui-root` band, without being
+  parsed (`ScannedSelectors`: the rewritten selectors and the CSS text of each selector). Its
+  selectors are parsed at their first use (`FlatRule::selectors()`: `!important` and `@layer`
+  conflicts, `aspect-ratio`, relative font sizes); base rules are indexed by the hash of their
+  selectors' CSS text. Every other list goes through `parseList` and `rewrite`. A change of how
+  any of those selectors is written (a phase-3 gated branch) must make `scanList` leave it to
+  `rewrite()`.
 
 #### 3.9.6 Declarations
 
@@ -1296,6 +1319,17 @@ the suggestion names a supported value from the value table).
 
 Exact behavior of each rewrite family. "Base rule" means `BaseRules` (3.9.8). Every lossy
 case names its diagnostic.
+
+As implemented (p2-perf2): the families that merge their rule's other declarations
+(background and mask, transition, animation, outline) and the shadow lists (box-shadow,
+text-shadow) read each declaration once into a structure in the session's arena (background
+`Layer`s, transition and animation entries, the outline, the shadows: keywords as enums,
+times as `props::Timing`, lengths, colors and names as the component values written or views
+of them), merge the family on that structure and write the RCSS value once, into one buffer;
+no value is built as a string to be split or read again. The helpers read the declared value
+in place: `props::wordsOf` and `commaRanges` (pointers to the values and ranges of the list),
+`identView` (a keyword in lower case without a copy); `props::EasingResult` holds arena texts;
+the companion emitters take string views.
 
 **Background** (`background`, `background-*`, `-webkit-background-clip`):
 
@@ -1701,7 +1735,12 @@ public:
     void atRule(std::string_view text, SourceRef);   // @font-face, @keyframes blocks
     std::string take(RcssLineMap& lines);            // output + output line -> SourceRef
 };
-struct RcssLineMap { std::vector<SourceRef> lines; };
+struct RcssLineMap { SourceRefList lines; };   // SourceRefList (p2-perf): the entries of a
+                                              // std::vector<SourceRef> in 2 to 4 bytes each (an
+                                              // entry is written as its difference from the one
+                                              // before; every 32nd is kept whole): size(),
+                                              // operator[] and iteration give SourceRefs by value,
+                                              // push_back appends; entries are not changed in place
 ```
 
 Output is plain, one construct per line, no comments, `\n` line ends. RmlUi's warnings
@@ -2511,14 +2550,56 @@ Debug builds are not measured. lexbor adds about 0.9 MB to the engine binary (mo
 entity and interface tables) and the Lucide pack 140 KB; the Web build size is reported in
 the p2-html report.
 
-Measured after p2-perf (§4, "p2-perf as implemented", second round; the shared build host
-under load, CPU time, median of 9 runs of the tests): CSS 55 KB / 1 200 rules 3.1 ms, UA sheet
-(19.5 KB as calibrated by p2-ua) 0.67 ms, HTML stage 2.3 ms, cache hit 0.025 ms,
-`fragmentToRml` 0.10 ms: all met. The CSS number depends on the declaration memo and on how
-much the test's sheet repeats its declarations (98%; the repository's real sheets 3 to 35%):
-without the memo the same sheet takes 4.6 ms, which is what a 55 KB sheet of 1 200 rules
-that repeats nothing costs. The cold `compile()` of both 50 KB inputs (no test) executes 40 M
-instructions, from 62 M (65% of the time it took: about 7 ms).
+The tests of the rows (p2-perf; `engine/tests/htmlui/compat`): HTML stage
+`CompatPerf.HtmlStage`, CSS `CompatCssPerf.FiftyKilobyteSheet` (the row's 1 200 rules) and
+`CompatCssPerf.FiftyKilobyteSheetOfPageRules` (the same size with the rules of a real sheet),
+cold compile `CompatPerf.ColdCompile`, cache hit `CompatPerf.CacheHit`, UA sheet
+`CompatCssPerf.UserAgentSheet`, fragment `CompatPerf.Fragment`, FocusTracker
+`CompatFocusTest.PerFrameCost`, memory `CompatPerf.MemoryKeptPerDocument`.
+
+- **What a time gate measures** (`PerfFixtures.h`, `gatedCpuMs`): one measurement is the median
+  CPU time of 20 runs after 3 warm-ups, as it always was; the gate takes the least of up to 15
+  such measurements, stopping at the first one within the target. Other processes on the
+  host only add CPU time to a measurement (their cache and memory traffic, the frequency of a
+  shared core), they never remove any: on a quiet host every measurement is the code's own
+  cost and the least is the one measurement the gate used to take, so the gate is no easier
+  there; on a loaded host it is the measurement taken in the quietest moment. A step whose
+  own cost is above its target has no measurement within it. Counting instructions instead
+  (`perf_event_open`) is not possible where the tests run: the build host has
+  `kernel.perf_event_paranoid = 4` and the test container is unprivileged.
+- **The CSS sheet** (`PerfFixtures.h`, `representativeSheet`): 55 KB and 1 200 rules as the
+  row says, shaped like the author sheets of the golden pages (`fixtures/compat/pages`, 866
+  declarations): their property mix, 41% of the declarations repeat an earlier one (the
+  pages' figure taken together; the UA sheet has 34%, the CSS fixture cases 10%), 15% belong
+  to the shorthand families that merge their rule's other declarations (background,
+  transition, animation, outline, text-shadow; 14% in the pages), 8% of the values read a
+  custom property, selectors with descendants, pseudo-classes, attributes, pseudo-elements,
+  type selectors, a few `:is()`/`:not()` and selector lists, 39 rules in `@media` blocks.
+  Generated from a fixed seed. Size and rule count leave 1.5 declarations a rule; the pages
+  have 3.9 (124 bytes a rule), so a real 55 KB sheet has about 450 rules and fewer selectors
+  to parse and rewrite than this one. (The first sheet of this test was 1 200 rules from 12
+  templates: 98% of its declarations repeated, which the declaration memo answered.)
+- **Measured** (p2-perf2, gates run alone 10 times per backend at load 12 to 19, medians):
+  CSS 2.9 ms, page rules 2.7 ms, cold compile 5.9 ms, HTML stage 2.4 ms, UA sheet 0.52 ms,
+  fragment 0.11 ms, cache hit 0.025 ms, FocusTracker 0.03 µs a frame; instructions in §4
+  "p2-perf2".
+- **Measured** (third round; the shared host at load 27 to 30 of 12 cores, pinned, median of 7
+  runs of each gate): CSS 3.9 ms (4.1 ms with the declaration memo off), cold compile 7.6 ms,
+  HTML stage 2.3 ms, UA sheet 0.63 ms, fragment 0.11 ms, cache hit 0.025 ms, FocusTracker
+  0.03 µs a frame. The margins asked of this package (75% of a target) are met by the UA
+  sheet, the fragment, the cache hit and the focus tracker; the HTML stage is at 76%, the
+  CSS sheet at 98% and the cold compile at 95% at that load (unpinned, three runs of the CSS
+  gate measured 4.06 to 4.32 ms at load 30 to 35: it fails there).
+- **The sheet of page rules** (`representativeSheet(shape, true)`): the same generator with
+  the pages' declarations a rule (3.7; 525 rules, 1 960 declarations in 56 KB), written a
+  declaration a line as the pages are. It has fewer selectors and more declarations than
+  the row's sheet and costs about the same.
+- **Memory kept per document** (`CompatPerf.MemoryKeptPerDocument`: the heap in use while the
+  document of the cold compile is held): 3.72 × its HTML and CSS (396 KB for 106 KB). It was
+  5.56 × before the document trimmed its buffers and 4.56 × before the line maps and the
+  source map became `SourceRefList`s: RML 0.94 ×, RCSS 0.98 ×, the copies of both sources
+  1.0 ×, 119 diagnostics 0.42 ×, the RCSS line map 0.12 × (was 0.56 ×), the RML source map
+  0.11 × (was 0.46 ×).
 
 ### 3.15 Platform notes
 
@@ -3342,6 +3423,117 @@ importer, which opens an `ArenaScope`); `Declaration::text`, `Rule::preludeText`
 reads the rule other than through `DeclContext::rule`, or reads custom properties or other
 session state that differs between two declarations with the same text, counts in
 `Session::memoTaint`.
+
+#### p2-perf, third round: a representative sheet, the missing gates
+
+The CSS test of the second round passed on a sheet that repeated 98% of its declarations.
+This round replaces the sheet (3.14 above), adds the gates the rows did not have, changes what
+a gate takes from several measurements, and continues the structural work on the new sheet.
+Output is byte-identical; the new sheet is the one new input.
+
+| Step (3.14) | Target | Before (77854967) | After | After, memo off |
+|---|---|---|---|---|
+| CSS, representative 55 KB / 1 200 rules | 4 ms | 4.38 ms, 21.9 M | 3.91 ms, 19.6 M | 4.09 ms, 21.0 M (before: 4.65 ms, 23.4 M) |
+| UA sheet | 1 ms | 0.66 ms, 3.47 M | 0.63 ms, 3.37 M | 0.68 ms, 3.56 M |
+| HTML stage | 3 ms | 2.31 ms, 14.7 M | 2.28 ms, 14.7 M | |
+| cold `compile()` | 8 ms | 8.05 ms (one run) | 7.59 ms | 7.90 ms |
+| `fragmentToRml` | 0.2 ms | 0.110 ms | 0.110 ms | |
+| cache hit | 0.1 ms | 0.025 ms | 0.025 ms | |
+| FocusTracker per frame | 1 µs | no test | 0.03 µs | |
+| memory kept per document | 4 × | no test (5.56 ×) | 4.56 × (not met) | |
+
+(Times: the gates, pinned, median of 7 at load 27 to 30. Instructions per run.) On the
+representative sheet the memo is worth 7% (it was 24% on the first sheet).
+
+What changed: the base-rule index (3.9.8) is keyed by a hash of what a selector's text is
+made of (`SelectorRewriter::textHash`; a lookup compares the texts of the rules it finds), so
+no text, map node and list is made per rule and no selector is copied for a lookup (5% of
+the sheet); names are scanned through a table (`kNameBytes`); hex colors are normalized
+directly; declaration names are views of the source; a compiled document trims its buffers.
+
+The floor, and what it is made of (19.6 M instructions for the representative sheet, memo on;
+callgrind): tokenizing 11% and parsing 14% (about 130 instructions a token each: the tokens
+are read into a list, then into component values); selectors 19% (parsing 5.5%, mapping and
+banding 8%, of which writing their text 5%, the base index 1%); the declaration pipeline 38%
+(background 10%: every background declaration parses its layers and merges its family;
+value normalization 4.5%; the RCSS grammar check 2%; the other rewrites, diagnostics 1.7%);
+writing the sheet 5%; malloc and free 8% and memcpy 6% spread over all of it. Reaching 3 ms
+(75%) needs another quarter off: a tokenizer that hands tokens to the parser without the
+list, selectors written from their source text when they map to themselves, and a background
+rewrite that does not go through strings. None of it was done in this round.
+
+#### p2-perf2: tokens straight to the parser, selectors from their text, families without strings
+
+The three structural changes the third round named, then what they left in malloc, free and
+memcpy. Output is byte-identical (every CSS fixture case in the three fork states, the UA
+sheet, both perf sheets and the golden pages and HTML fixtures, RCSS, RML, line and source
+maps and every field of every diagnostic, compared after each commit); no golden, target,
+slack factor, fixture or gate measurement changed.
+
+Instructions per run (`perf stat -e instructions:u`, the workload of each gate, Release; memo
+off: `JASPER_HTMLUI_CSS_MEMO=off`):
+
+| Gate | Target | Before (de3e4f7b), memo on / off | After, memo on / off |
+|---|---|---|---|
+| CSS, 55 KB / 1 200 rules | 15.0 M | 19.72 M / 21.11 M | 14.01 M / 15.22 M |
+| CSS, page rules (525 rules) | 14.0 M | 17.92 M / 19.38 M | 13.19 M / 14.44 M |
+| cold `compile()` | 36.0 M | 43.87 M / 45.27 M | 29.86 M / 31.06 M |
+| UA sheet | | 3.29 M / 3.48 M | 2.61 M / 2.77 M |
+| HTML stage | | 14.98 M | 14.98 M |
+| `fragmentToRml` (10 calls) | | 6.64 M | 6.61 M |
+| cache hit (100 calls) | | 14.37 M | 14.37 M |
+
+Page faults of a CSS rewrite of the 55 KB sheet: 60 before, 32 after.
+
+The gates, run alone (`CompatPerf.*:CompatCssPerf.*:CompatFocusTest.PerFrameCost`, unpinned,
+no slack), 10 times on glcore and 10 on Vulkan at load 12 to 19 of 12 cores: no failure;
+the measurement each gate reported, median (min to max): CSS 2.9 ms (2.7 to 3.8), page rules
+2.7 ms (2.6 to 3.7), cold compile 5.9 ms (5.3 to 8.0), HTML stage 2.4 ms (2.2 to 2.9), UA
+sheet 0.52 ms, fragment 0.11 ms, cache hit 0.025 ms, FocusTracker 0.03 µs, memory 3.71 ×.
+
+What changed:
+
+- **Tokens straight to the parser** (3.9.1): `CssLexer` reads one token at a time into the
+  parser's lookahead; no token list, no counting passes; component values, declarations and
+  rules are built on per-thread stacks and closed into the arena at their exact size; plain
+  ASCII tokens are read inline. A plain style-rule prelude is read as text only
+  (`parseStylesheet(..., deferPlainPreludes)`, `Rule::preludeDeferred`, `preludeOf()`).
+- **Selectors from their source text** (3.9.5): `SelectorRewriter::scanList` reads a selector
+  list that maps to itself from the prelude's text and writes it with the band; its selectors
+  are parsed at their first use (`FlatRule::selectors()`); base rules are indexed by the hash
+  of the selectors' CSS text (`textHash` removed).
+- **Shorthand families without strings** (3.9.7): background and mask, transition, animation,
+  outline, box-shadow and text-shadow read each declaration once into structures in the arena,
+  merge on them and write once into one buffer; `props::wordsOf/commaRanges/identView`,
+  `props::Timing`, `props::EasingResult` with arena texts; companions emit views.
+- **Malloc, free, memcpy and page faults**: `NormalizeContext` holds a pointer to the options
+  and no property name; the RCSS writer grows its output without zero-filling it; constant
+  names and companion lists are emitted as views; a thread keeps the storage of a session's
+  big lists and of the writer's output for its next session, as it keeps the arena's blocks:
+  at most `kSpareKeptBytes` (4 MB) for all of them together, next to the arena's
+  `kArenaKeptBytes` (4 MB) in `Arena.h`; a list that would exceed the cap is freed with its
+  session (`SpareStorage::kept()` for tests; `CompatCssSpares.KeptStorageStaysWithinTheCap`).
+- **Cold compile**: a diagnostic of a linked style sheet counted the columns of the `<link>`'s
+  line for its origin ("linked by page.html:1"), on a one-line 50 KB page a fifth of the
+  compile: `SourceFiles::line` gives the line alone, and columns are counted eight bytes at a
+  time.
+
+The split of the 1 200-rule sheet (callgrind, memo on, per run; callgrind counts a little more
+than `perf stat`):
+
+| Part | Before | After |
+|---|---|---|
+| total | 21.0 M | 15.1 M |
+| tokenize and parse | 5.39 M (25.7%), lexer 2.40 M | 3.74 M (24.8%), lexer 1.35 M |
+| flatten, with selector parsing / scanning | 1.87 M (8.9%), parsing 1.21 M | 1.50 M (10.0%), scanning 0.70 M, parsing 0.13 M |
+| pre-pass, of which selector rewriting | 2.83 M (13.5%), 1.70 M | 1.50 M (9.9%), 0.48 M |
+| declaration pipeline | 8.61 M (41.0%) | 6.28 M (41.6%) |
+| of which background | 2.23 M (10.6%) | 0.79 M (5.2%) |
+| of which value normalization | 0.98 M (4.6%) | 0.97 M (6.4%) |
+| of which the RCSS grammar check | 0.43 M (2.1%) | 0.43 M (2.9%) |
+| writing the sheet | 1.29 M (6.1%) | 0.88 M (5.8%) |
+| malloc and free (own) | 0.86 M | 0.41 M |
+| memcpy (own) | 1.24 M | 1.04 M |
 
 ### Merge order and integration
 

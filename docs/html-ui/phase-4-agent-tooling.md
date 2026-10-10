@@ -175,7 +175,7 @@ struct CheckReport { std::vector<Diagnostic> diagnostics; std::vector<std::strin
 CheckReport checkDocument(const std::string& htmlPath, const CheckOptions&);     // htmlPath asset-relative
 CheckReport checkStylesheet(const std::string& cssPath, const CheckOptions&);
 std::string cssPropertyName(std::string_view rcssProperty);                     // "decorator" -> "background-image"
-struct RmlSourceMap { std::vector<SourceRef> elementRefs; std::vector<SourceRef> lineRefs; };
+struct RmlSourceMap { SourceRefList elementRefs; SourceRefList lineRefs; };   // SourceRefList: size(), [i], iteration (SourceRef by value)
 // CompatDocument (sourcePath, rml, sourceMap, stylesheets with RcssLineMap, dependencies, diagnostics, files)
 // and std::optional<Diagnostic> locateElement(const CompatDocument&, const Rml::Element*)  (engine-internal)
 

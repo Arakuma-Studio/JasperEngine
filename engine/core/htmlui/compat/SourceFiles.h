@@ -38,6 +38,7 @@ namespace jasperengine::htmlui::compat {
         const std::string& path(uint32_t file) const;                 // "" for 0 or unknown ids
         std::string_view text(uint32_t file) const;                   // "" for 0 or unknown ids
         SourcePos position(uint32_t file, uint32_t offset) const;     // {0, 0} when unknown
+        uint32_t line(uint32_t file, uint32_t offset) const;          // position().line, without the column
         SourceRef includedFrom(uint32_t file) const;                  // @import / <link> chain
 
         // the code points of [offset, offset + length) of a file (Diagnostic::length)

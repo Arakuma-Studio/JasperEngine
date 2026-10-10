@@ -181,6 +181,73 @@ std::vector<ValueList> props::commaGroups(const ValueList& value){
     return groups;
 }
 
+props::Words props::wordsOf(const ComponentValue* first, const ComponentValue* last){
+    size_t count = 0;
+    for (const ComponentValue* v = first; v != last; ++v)
+        count += isWs(*v) ? 0 : 1;
+    Words out;
+    out.reserve(count);
+    for (const ComponentValue* v = first; v != last; ++v){
+        if (!isWs(*v))
+            out.push_back(v);
+    }
+    return out;
+}
+
+ArenaList<props::ValueRange> props::commaRanges(const ValueList& value){
+    size_t commas = 0;
+    for (const ComponentValue& v : value)
+        commas += v.isToken(TokenType::Comma) ? 1 : 0;
+    ArenaList<ValueRange> groups;
+    groups.reserve(commas + 1);
+    const ComponentValue* const data = value.data();
+    size_t begin = 0;
+    for (size_t i = 0; i <= value.size(); i++){
+        if (i < value.size() && !value[i].isToken(TokenType::Comma))
+            continue;
+        size_t a = begin, b = i;
+        while (a < b && value[a].isWhitespace())
+            a++;
+        while (b > a && value[b - 1].isWhitespace())
+            b--;
+        groups.push_back(ValueRange{data + a, data + b});
+        begin = i + 1;
+    }
+    return groups;
+}
+
+std::string_view props::identView(const ComponentValue& value){
+    if (!value.isToken(TokenType::Ident))
+        return std::string_view();
+    const Text& name = value.token.value;
+    for (const char c : name){
+        if (c >= 'A' && c <= 'Z')
+            return Arena::current().copy(lowerAscii(name));
+    }
+    return name.view();
+}
+
+void props::appendTiming(std::string& out, const Timing& timing){
+    if (timing.kind == Timing::Kind::Seconds){
+        appendNumber(out, timing.seconds);
+        out += 's';
+    }else if (timing.kind == Timing::Kind::Var){
+        appendSerialized(out, *timing.var);
+    }
+}
+
+bool props::writtenAsZero(const Timing& timing){
+    if (timing.kind != Timing::Kind::Seconds)
+        return false;
+    std::string written;
+    appendNumber(written, timing.seconds);
+    return written == "0";
+}
+
+std::string props::text(const ValueRange& range){
+    return text(ValueList(range.first, range.last));
+}
+
 std::string props::text(const ComponentValue& value){
     return serialize(value);
 }
@@ -424,9 +491,8 @@ std::optional<ValueList> props::ruleValue(Session& session, const FlatRule& rule
         if (d.name != property)
             continue;
         NormalizeContext context;
-        context.property = property;
         context.colors = ValueNormalizer::colorKeywordsApply(property);
-        context.options = session.options;
+        context.options = &session.options;
         context.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
         NormalizeResult normalized = ValueNormalizer::normalize(d.value, context);
         if (normalized.ok)

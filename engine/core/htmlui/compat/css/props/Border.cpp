@@ -168,9 +168,9 @@ namespace {
         for (int side : sides){
             if (fork){
                 if (widthGiven || style != "none")
-                    context.emit(std::string(kSideWidth[side]), width);
-                context.emit(std::string(kSideStyle[side]), style);
-                context.emit(std::string(kSideColor[side]), color);
+                    context.emit(Text::view(kSideWidth[side]), width);
+                context.emit(Text::view(kSideStyle[side]), style);
+                context.emit(Text::view(kSideColor[side]), color);
                 continue;
             }
             std::string sideWidth = width;
@@ -184,8 +184,8 @@ namespace {
                     sideColor = hexText(shade(*rgba, darken));
                 }
             }
-            context.emit(std::string(kSideWidth[side]), std::move(sideWidth));
-            context.emit(std::string(kSideColor[side]), std::move(sideColor));
+            context.emit(Text::view(kSideWidth[side]), std::move(sideWidth));
+            context.emit(Text::view(kSideColor[side]), std::move(sideColor));
         }
     }
 
@@ -427,7 +427,7 @@ void jasperengine::htmlui::compat::rewriteBorder(DeclContext& context){
         }
         std::vector<std::string> box = boxValues(colors);
         for (int i = 0; i < 4; i++)
-            context.emit(std::string(kSideColor[i]), std::move(box[(size_t)i]));
+            context.emit(Text::view(kSideColor[i]), std::move(box[(size_t)i]));
         return;
     }
 
@@ -500,7 +500,7 @@ void jasperengine::htmlui::compat::rewriteBorderStyle(DeclContext& context){
     }
     if (context.fork(ForkFeature::BorderStyle)){
         for (int side : sides)
-            context.emit(std::string(kSideStyle[side]), perSide[(size_t)side]);
+            context.emit(Text::view(kSideStyle[side]), perSide[(size_t)side]);
         return;
     }
     bool reportedMedium = false;
@@ -704,8 +704,7 @@ void jasperengine::htmlui::compat::rewriteBorderImage(DeclContext& context){
                 continue;
             fromRule = true;
             NormalizeContext normalize;
-            normalize.property = d.name;
-            normalize.options = context.session.options;
+            normalize.options = &context.session.options;
             NormalizeResult normalized = ValueNormalizer::normalize(d.value, normalize);
             if (!normalized.ok || !apply(d.name, trimWhitespace(normalized.value), d.ref)){
                 context.reportAt(d.ref, Severity::Warning, codes::UnsupportedValue, "'" + d.name + ": " + text(d.value) + "' is not supported; dropped");

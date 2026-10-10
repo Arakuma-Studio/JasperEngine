@@ -338,11 +338,12 @@ void jasperengine::htmlui::compat::rewriteSizing(DeclContext& context){
             return;
         }
     }
-    if (!RcssGrammar::accepts(n, context.valueText())){
+    const std::string text = context.valueText();
+    if (!RcssGrammar::accepts(n, text)){
         unsupportedValue(context, n.compare(0, 4, "min-") == 0 ? "use a length or percentage" : "use auto, a length or a percentage");
         return;
     }
-    context.emit(n, context.valueText());
+    context.emit(n, text);
 }
 
 void jasperengine::htmlui::compat::rewriteOverflow(DeclContext& context){

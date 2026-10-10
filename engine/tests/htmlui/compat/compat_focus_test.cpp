@@ -6,6 +6,7 @@
 // (keyboard navigation, text fields, focus(true)), across Tab and click sequences, blur,
 // removal of the focused element.
 
+#include "PerfFixtures.h"
 #include "RuntimeTestCommon.h"
 
 #include "htmlui/compat/runtime/FocusTracker.h"
@@ -162,4 +163,24 @@ TEST_F(CompatFocusTest, PerContext){
     other->UnloadAllDocuments();
     other->Update();
     Rml::RemoveContext(name + "-other");
+}
+
+// phase-2 §3.14: "FocusTracker per frame <= 1 us": the update of a frame in which the focus
+// did not move (every frame but a few), with an element focused
+TEST_F(CompatFocusTest, PerFrameCost){
+    ASSERT_NE(load(), nullptr);
+    click(byId("one"));
+    ASSERT_TRUE(focus("one"));
+#ifdef NDEBUG
+    using jasperengine::test::compat::gatedCpuMs;
+    using jasperengine::test::compat::perfSlack;
+    const double target = 0.001 * perfSlack();
+    const double ms = gatedCpuMs([&](){ FocusTracker::update(context); }, 20000, target);
+    std::printf("[perf] FocusTracker::update per frame: %.4f us (target 1 us)\n", ms * 1000.0);
+    EXPECT_LE(ms, target);
+    EXPECT_TRUE(focus("one"));
+#else
+    FocusTracker::update(context);
+    GTEST_SKIP() << "performance targets are measured in Release builds";
+#endif
 }

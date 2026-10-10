@@ -196,3 +196,76 @@ TEST(CompatSelector, QuerySelector){
     EXPECT_EQ(CssRewriter::rewriteSelector("input:focus", nullptr), "input:html-focus");
     EXPECT_EQ(CssRewriter::rewriteSelector(".a,  .b", nullptr), ".a, .b");
 }
+
+// SelectorRewriter::scanList (p2-perf2): a list it reads is written exactly as parseList and
+// rewrite write it (texts, specificities, sources, the CSS text of each selector, the base key),
+// and every list it leaves to them is one they parse, map or report differently.
+TEST(CompatSelector, ScannedListsAreWrittenAsParsedOnes){
+    // scanned: 0 never, 1 always, 2 for the user-agent origin only (an author selector whose
+    // first compound could match the root element has a root variant)
+    struct Case {
+        const char* css;
+        int scanned;
+    };
+    const Case cases[] = {
+        {"div", true}, {".a", true}, {"#x", true}, {"DIV.Panel-1", true}, {".a .b", true}, {".a>.b", true}, {".a  >  .b", true},
+        {".a\n+\t.b ~ .c", true}, {"li.item:hover", true}, {"a:HOVER", true}, {".a:first-child", true}, {"[disabled]", true},
+        {"input[disabled]", true}, {".x[data-state=\"open\"]", true}, {".x[data-state='open']", true}, {".x[data-state=open]", true},
+        {".x[lang|=en]", true}, {".x[a^=\"b\"][c$=d][e*=f][g~=h]", true}, {".x[a=\"\"]", true}, {"*.a", true}, {"* .a", 2},
+        {".a *", true}, {".a, .b", true}, {".a ,.b , .a", true}, {"_x", true}, {"-x", true}, {".-x", true}, {"#-x", true},
+        {"html", false}, {"body .a", false}, {"template", false}, {"#htmlui-root .a", false}, {".a:focus", false}, {".a::before", false},
+        {".a:before", false}, {".a:not(.b)", false}, {".a:is(.b)", false}, {".a:nth-child(2)", false}, {":hover", 2}, {"*", 2},
+        {".a[x i]", false}, {".a[ x ]", false}, {".a[x=\"a b\"]", false}, {".a[x=\"a\\\"b\"]", false}, {".a[x=\"a\\\"]", false},
+        {".a /* c */ .b", false}, {".a\\:b", false}, {".\xc3\xa9", false}, {"ns|a", false}, {"*|a", false}, {".a || .b", false},
+        {"> .a", false}, {".a >", false}, {".a,", false}, {",.a", false}, {".a,,.b", false}, {".1a", false}, {"#1a", false},
+        {".--x", false}, {"a.", false}, {"a(", false}, {".a:-moz-focusring", false}, {"a&", false}, {".a:scope", true},
+        {".a:html-focus-visible", true}, {".a.b#c.d:hover[e]", true}, {"a b c d e", true}, {".a:hover:active", true},
+    };
+    SelectorOptions withRoot;
+    withRoot.rootId = "main";
+    withRoot.rootClasses = {"theme"};
+    withRoot.rootAttributes = {"class", "id", "data-x"};
+    const SelectorOptions optionSets[] = {SelectorOptions(), ua(), withFork(), withRoot};
+    for (const SelectorOptions& options : optionSets){
+        for (const Case& c : cases){
+            SCOPED_TRACE(c.css);
+            ScannedSelectors scanned;
+            const bool read = SelectorRewriter::scanList(c.css, options, scanned);
+            const bool userAgent = options.origin == SelectorOptions::Origin::UserAgent;
+            EXPECT_EQ(read, c.scanned == 1 || (c.scanned == 2 && userAgent));
+            if (!read)
+                continue;
+            std::optional<SelectorList> list = SelectorRewriter::parseList(c.css);
+            ASSERT_TRUE(list.has_value());
+            SourceFiles files;
+            DiagnosticSink sink(files);
+            const SelectorRewriteResult result = SelectorRewriter::rewrite(*list, options, &sink, SourceRef());
+            EXPECT_TRUE(sink.diagnostics().empty());
+            ASSERT_FALSE(result.invalid);
+            ASSERT_EQ(scanned.rewritten.size(), result.selectors.size());
+            for (size_t i = 0; i < result.selectors.size(); i++){
+                EXPECT_EQ(scanned.rewritten[i].text, result.selectors[i].text);
+                EXPECT_EQ(scanned.rewritten[i].specificity, result.selectors[i].specificity);
+                EXPECT_EQ(scanned.rewritten[i].source, result.selectors[i].source);
+                EXPECT_FALSE(scanned.rewritten[i].placeholder);
+                EXPECT_FALSE(scanned.rewritten[i].pseudoElement);
+            }
+            ASSERT_EQ(scanned.texts.size(), list->size());
+            for (size_t i = 0; i < list->size(); i++){
+                EXPECT_EQ(scanned.texts[i], SelectorRewriter::serialize((*list)[i]));
+                std::string fromText, fromSelector;
+                SelectorRewriter::appendBaseKey(fromText, scanned.texts[i].view());
+                SelectorRewriter::appendBaseKey(fromSelector, (*list)[i]);
+                EXPECT_EQ(fromText, fromSelector);
+            }
+        }
+    }
+    // the root's id, classes and attributes: a first compound that could match the root is
+    // left to rewrite() (its root variant)
+    ScannedSelectors scanned;
+    EXPECT_FALSE(SelectorRewriter::scanList("#main .a", withRoot, scanned));
+    EXPECT_FALSE(SelectorRewriter::scanList(".theme .a", withRoot, scanned));
+    EXPECT_FALSE(SelectorRewriter::scanList("[data-x] .a", withRoot, scanned));
+    EXPECT_TRUE(SelectorRewriter::scanList(".theme.b .a", withRoot, scanned));
+    EXPECT_TRUE(SelectorRewriter::scanList(".a .theme", withRoot, scanned));
+}
