@@ -955,14 +955,14 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
 | `TextureWrap` | `REPEAT`, `MIRRORED_REPEAT`, `CLAMP_TO_EDGE`, `CLAMP_TO_BORDER` |
 | `PrimitiveType` | `TRIANGLES`, `TRIANGLE_STRIP`, `POINTS`, `LINES` |
 | `MaterialAlphaMode` | `AUTO`, `ALPHA_OPAQUE`, `MASK`, `BLEND` |
-| `MaterialLighting` | `AUTO`, `PIXEL`, `VERTEX`, `MIXED` |
+| `MaterialLighting` | `AUTO`, `PIXEL`, `VERTEX`, `MIXED`, `NONE` |
+| `LightShading` | `BOTH`, `PIXEL`, `VERTEX` |
+| `LightState` | `OFF`, `ON`, `AUTO` |
+| `ShadowQuality` | `NONE`, `LOW`, `MEDIUM`, `HIGH` |
 | `MaterialBlendMode` | `AUTO`, `NONE` (opaque), `ALPHA`, `PREMULTIPLIED`, `ADDITIVE`, `MULTIPLY` |
 | `MaterialCullMode` | `AUTO`, `BACK`, `FRONT`, `OFF` |
 | `MaterialDepthWrite` | `AUTO`, `ENABLED`, `DISABLED` |
 | `MaterialDepthTest` | `AUTO`, `LESS`, `LESS_EQUAL`, `EQUAL`, `GREATER_EQUAL`, `GREATER`, `NOT_EQUAL`, `ALWAYS` |
-| `LightShading` | `BOTH`, `PIXEL`, `VERTEX` |
-| `LightState` | `OFF`, `ON`, `AUTO` |
-| `ShadowQuality` | `NONE`, `LOW`, `MEDIUM`, `HIGH` |
 | `ShadowCaster2DShape` | `AUTO_QUAD`, `POLYGON` |
 | `ReflectionProbeMode` | `STATIC`, `DYNAMIC` |
 | `ReflectionProbeUpdateMode` | `ON_LOAD`, `ON_MOVE`, `INTERVAL`, `MANUAL` |
