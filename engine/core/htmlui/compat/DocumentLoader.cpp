@@ -461,6 +461,21 @@ namespace {
         document->diagnostics = sink.take();
         document->compiled = true;
 
+        // the document is kept (the cache, every loaded document): its buffers at their size,
+        // not at the capacity they grew to (3.14: at most 4 x the HTML and CSS it was made of)
+        document->rml.shrink_to_fit();
+        document->sourceMap.elementRefs.shrink_to_fit();
+        document->sourceMap.lineRefs.shrink_to_fit();
+        document->diagnostics.shrink_to_fit();
+        for (StylesheetOutput* sheet : {&document->hints, &document->important}){
+            sheet->rcss.shrink_to_fit();
+            sheet->lines.lines.shrink_to_fit();
+        }
+        for (StylesheetOutput& sheet : document->stylesheets){
+            sheet.rcss.shrink_to_fit();
+            sheet.lines.lines.shrink_to_fit();
+        }
+
         uint64_t key = baseKey(path, options);
         for (const CompatDocument::DependencyStamp& stamp : document->dependencyStamps){
             key = hashString(key, stamp.path);
