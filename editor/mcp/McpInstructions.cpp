@@ -227,14 +227,21 @@ R"JE(
   referenced, must be marked standalone or the build will not contain it.
 
 ## Shaders and materials
-Custom shaders are per component (Mesh, UI, Points, Lines, Sky) via customShader. Use
-fork_shader (copies the built-in .vert/.frag into the project and sets customShader in one
-undoable step); never point customShader at files that do not exist. Edit a fork minimally
-after reading it: keep #version, every #include, the engine uniform blocks, ALL texture and
-sampler declarations, the in/out varyings and the code that reads them, and the output
-variable; change the shading math near the end of main(). Your parameters go in your own
-block (uniform u_fs_customParams { float amount; vec4 tint; } customParams; one scalar kind,
-no arrays or matrices), set with set_shader_uniform; the engine fills `time` and `resolution`.
+Use the shader library first: list_shaders gives the engine's shaders ("library:<name>"),
+their type, lighting modes and, with name or detail, parameters, textures and features. A
+mesh shader goes on a submesh material (set_properties mesh submeshes[0].material.shader =
+"library:<name>", or a .material file through create_material / update_material), with
+.shaderParams.<member> (colours linear, "#RRGGBB" is sRGB), .shaderTextures.<uniform> (image
+path), .shaderFeatures ([defines] or {DEFINE: true}), .blendMode/.cullMode/.depthWrite/
+.lighting; UI, Points, Lines and Sky take customShader plus shaderUniforms, shaderTextures,
+shaderFeatures. Details: jasper://docs/shaders. Fork only when no library shader fits:
+fork_shader copies the built-in .vert/.frag into the project and sets customShader in one
+undoable step; never point a shader at files that do not exist. Edit a fork minimally after
+reading it: keep #version, every #include, the engine uniform blocks, ALL texture and sampler
+declarations, the in/out varyings and the code that reads them, and the output variable;
+change the shading math near the end of main(). Your parameters go in your own block
+(uniform u_fs_customParams { float amount; vec4 tint; } customParams; one scalar kind, no
+arrays or matrices), set with set_shader_uniform; the engine fills `time` and `resolution`.
 A Mesh fork that displaces or discards also needs a forked depth shader. On a compile error
 the GameObject falls back to the built-in shader and the Console has the error.
 

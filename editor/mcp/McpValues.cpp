@@ -109,8 +109,25 @@ bool isAssetPathProperty(const std::string& propertyName) {
     return propertyName == "filename";
 }
 
+bool endsWith(const std::string& text, const std::string& suffix) {
+    return text.size() >= suffix.size() && text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
 bool isShaderPathProperty(const std::string& propertyName) {
-    return propertyName == "customShader" || propertyName == "customDepthShader";
+    return propertyName == "customShader" || propertyName == "customDepthShader" ||
+           (propertyName.compare(0, 10, "submeshes[") == 0 && endsWith(propertyName, "].material.shader"));
+}
+
+// The shader type a shader-path property takes
+ShaderType shaderPathType(ComponentType component, const std::string& propertyName) {
+    if (propertyName == "customDepthShader") return ShaderType::DEPTH;
+    switch (component) {
+        case ComponentType::UIComponent: return ShaderType::UI;
+        case ComponentType::PointsComponent: return ShaderType::POINTS;
+        case ComponentType::LineRendererComponent: return ShaderType::LINES;
+        case ComponentType::SkyboxComponent: return ShaderType::SKYBOX;
+        default: return ShaderType::MESH;
+    }
 }
 
 bool isSafeRelative(const fs::path& path) {
@@ -388,6 +405,73 @@ const EnumOptions& alphaModeOptions() {
         {(int)MaterialAlphaMode::ALPHA_OPAQUE, "opaque", "Opaque"},
         {(int)MaterialAlphaMode::MASK, "mask", "Mask"},
         {(int)MaterialAlphaMode::BLEND, "blend", "Blend"}
+    };
+    return options;
+}
+
+// Shader library render state (Material, UI/Points/LineRenderer) and lighting. NONE blends
+// nothing: it reads "opaque" (the "None" label still parses)
+const EnumOptions& blendModeOptions() {
+    static const EnumOptions options = {
+        {(int)MaterialBlendMode::AUTO, "auto", "Auto"},
+        {(int)MaterialBlendMode::NONE, "opaque", "None"},
+        {(int)MaterialBlendMode::ALPHA, "alpha", "Alpha"},
+        {(int)MaterialBlendMode::PREMULTIPLIED, "premultiplied", "Premultiplied"},
+        {(int)MaterialBlendMode::ADDITIVE, "additive", "Additive"},
+        {(int)MaterialBlendMode::MULTIPLY, "multiply", "Multiply"}
+    };
+    return options;
+}
+
+const EnumOptions& materialCullModeOptions() {
+    static const EnumOptions options = {
+        {(int)MaterialCullMode::AUTO, "auto", "Auto"},
+        {(int)MaterialCullMode::BACK, "back", "Back"},
+        {(int)MaterialCullMode::FRONT, "front", "Front"},
+        {(int)MaterialCullMode::OFF, "off", "Off"}
+    };
+    return options;
+}
+
+const EnumOptions& depthWriteOptions() {
+    static const EnumOptions options = {
+        {(int)MaterialDepthWrite::AUTO, "auto", "Auto"},
+        {(int)MaterialDepthWrite::ENABLED, "on", "Enabled"},
+        {(int)MaterialDepthWrite::DISABLED, "off", "Disabled"}
+    };
+    return options;
+}
+
+const EnumOptions& depthTestOptions() {
+    static const EnumOptions options = {
+        {(int)MaterialDepthTest::AUTO, "auto", "Auto"},
+        {(int)MaterialDepthTest::LESS, "less", "Less"},
+        {(int)MaterialDepthTest::LESS_EQUAL, "less_equal", "Less Equal"},
+        {(int)MaterialDepthTest::EQUAL, "equal", "Equal"},
+        {(int)MaterialDepthTest::GREATER_EQUAL, "greater_equal", "Greater Equal"},
+        {(int)MaterialDepthTest::GREATER, "greater", "Greater"},
+        {(int)MaterialDepthTest::NOT_EQUAL, "not_equal", "Not Equal"},
+        {(int)MaterialDepthTest::ALWAYS, "always", "Always"}
+    };
+    return options;
+}
+
+const EnumOptions& materialLightingOptions() {
+    static const EnumOptions options = {
+        {(int)MaterialLighting::AUTO, "auto", "Auto"},
+        {(int)MaterialLighting::PIXEL, "pixel", "Per Pixel"},
+        {(int)MaterialLighting::VERTEX, "vertex", "Per Vertex"},
+        {(int)MaterialLighting::MIXED, "mixed", "Mixed"},
+        {(int)MaterialLighting::NONE, "none", "None"}
+    };
+    return options;
+}
+
+const EnumOptions& lightShadingOptions() {
+    static const EnumOptions options = {
+        {(int)LightShading::BOTH, "both", "Both"},
+        {(int)LightShading::PIXEL, "pixel", "Per Pixel"},
+        {(int)LightShading::VERTEX, "vertex", "Per Vertex"}
     };
     return options;
 }
@@ -699,6 +783,12 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"texture_wrap", &textureWrapOptions()},
         {"texture_alpha_border", &textureAlphaBorderOptions()},
         {"material_alpha_mode", &alphaModeOptions()},
+        {"material_blend_mode", &blendModeOptions()},
+        {"material_cull_mode", &materialCullModeOptions()},
+        {"material_depth_write", &depthWriteOptions()},
+        {"material_depth_test", &depthTestOptions()},
+        {"material_lighting", &materialLightingOptions()},
+        {"light_shading", &lightShadingOptions()},
         {"primitive_type", &primitiveTypeOptions()},
         {"body_type", &bodyTypeOptions()},
         {"collider2d_type", &collider2DTypeOptions()},
@@ -733,6 +823,13 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             break;
         case ComponentType::LightComponent:
             if (name == "type") return &lightTypeOptions();
+            if (name == "shading") return &lightShadingOptions();
+            break;
+        case ComponentType::UIComponent:
+        case ComponentType::PointsComponent:
+        case ComponentType::LineRendererComponent:
+            if (name == "blendMode") return &blendModeOptions();
+            if (name == "depthWrite") return &depthWriteOptions();
             break;
         case ComponentType::ShadowCaster2DComponent:
             if (name == "shape") return &shadowCasterShapeOptions();
@@ -763,6 +860,11 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             break;
         case ComponentType::MeshComponent:
             if (name == "submeshes[].material.alphaMode") return &alphaModeOptions();
+            if (name == "submeshes[].material.blendMode") return &blendModeOptions();
+            if (name == "submeshes[].material.cullMode") return &materialCullModeOptions();
+            if (name == "submeshes[].material.depthWrite") return &depthWriteOptions();
+            if (name == "submeshes[].material.depthTest") return &depthTestOptions();
+            if (name == "submeshes[].material.lighting") return &materialLightingOptions();
             if (name == "submeshes[].primitiveType") return &primitiveTypeOptions();
             if (name == "cullingMode") return &cullingModeOptions();
             break;
@@ -1233,6 +1335,9 @@ Json McpValues::materialToJson(Project* project, SceneProject* scene, const Mate
         if (!json.is_null()) out[field.name] = json;
         if (material.*field.texCoord != 0) out[field.texCoordName] = material.*field.texCoord;
     }
+    // shader library: the shader and the render state always (they say how it draws), its
+    // values when set
+    materialShaderLibraryToJson(project, scene, material, out, false);
     if (!linkedFile.empty()) {
         out["file"] = project ? project->normalizeToProjectRelative(project->getProjectPath() / linkedFile).generic_string()
                               : linkedFile;
@@ -1262,10 +1367,13 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
         for (const MaterialTextureField& field : MATERIAL_TEXTURES) {
             if (key == field.name || key == field.texCoordName) known = true;
         }
+        known = known || isMaterialShaderLibraryKey(key);
         if (!known) {
             error = "unknown material key \"" + key + "\"; valid: name, baseColorFactor, metallicFactor, roughnessFactor, "
                     "alphaCutoff, foliageTransmission, alphaMode, emissiveFactor, baseColorTexture, emissiveTexture, "
-                    "metallicRoughnessTexture, occlusionTexture, normalTexture, <texture>TexCoord, file.";
+                    "metallicRoughnessTexture, occlusionTexture, normalTexture, <texture>TexCoord, shader, shaderParams, "
+                    "shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, "
+                    "depthOffsetUnits, sortPriority, lighting, file.";
             return false;
         }
     }
@@ -1314,7 +1422,7 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
             out.*field.texCoord = static_cast<int>(integralValue(value[field.texCoordName]));
         }
     }
-    return true;
+    return materialShaderLibraryFromJson(project, scene, value, out, error);
 }
 
 Json McpValues::shaderUniformsToJson(const ShaderUniformValues& values) {
@@ -1531,6 +1639,22 @@ void syncListCount(YAML::Node root, const std::string& property) {
 Json McpValues::readYamlProperty(ReadContext& ctx, const std::string& name, bool& found) {
     found = false;
     if (!ctx.scene || !ctx.scene->scene || !ctx.hasComponent) return nullptr;
+    std::string collection, key;
+    if (Catalog::splitShaderEntryProperty(name, collection, key)) {
+        // one shader-library value: as set, else the manifest default (textures: null)
+        const PropertyData property = Catalog::findProperty(ctx.scene->scene, ctx.entity, ctx.component, collection);
+        if (!property.ref) return nullptr;
+        found = true;
+        if (endsWith(collection, "shaderTextures")) {
+            for (const auto& [uniform, texture] : *static_cast<std::vector<std::pair<std::string, Texture>>*>(property.ref)) {
+                if (uniform == key) return textureToJson(ctx.project, ctx.scene, texture);
+            }
+            return nullptr;
+        }
+        const ShaderUniformValues& values = *static_cast<ShaderUniformValues*>(property.ref);
+        const std::string shader = Catalog::getShaderReferenceForProperty(ctx.scene->scene, ctx.entity, ctx.component, collection);
+        return toJson(ShaderLibraryValues::getParam(values, shader, key));
+    }
     if (!ctx.yamlLoaded) {
         ctx.componentYaml = EntityClipboard::encodeComponent(ctx.scene->scene, ctx.entity, ctx.component);
         ctx.yamlLoaded = true;
@@ -1547,6 +1671,16 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         if (readDefault) return nullptr;
         if (ref && name == "shaderUniforms") {
             return shaderUniformsToJson(*static_cast<ShaderUniformValues*>(ref));
+        }
+        // shader library collections (a submesh material's, or a component's)
+        if (ref && endsWith(name, "shaderParams")) {
+            return shaderParamsToJson(*static_cast<ShaderUniformValues*>(ref));
+        }
+        if (ref && endsWith(name, "shaderTextures")) {
+            return shaderTexturesToJson(ctx.project, ctx.scene, *static_cast<std::vector<std::pair<std::string, Texture>>*>(ref));
+        }
+        if (ref && endsWith(name, "shaderFeatures")) {
+            return shaderFeaturesToJson(*static_cast<std::vector<std::string>*>(ref));
         }
         bool found = false;
         return readYamlProperty(ctx, name, found);
@@ -1686,7 +1820,8 @@ bool prefabAssetFromJson(Project* project, const Json& value, PrefabAsset& out, 
 
 Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Entity entity, ComponentType component,
                                          const std::string& propertyName, const PropertyData& property,
-                                         const Json& value, std::string& error, std::function<void()> onChanged) {
+                                         const Json& value, std::string& error, std::function<void()> onChanged,
+                                         const std::string* shaderReference) {
     SceneProject* scene = project ? project->getScene(sceneId) : nullptr;
     if (!scene || !scene->scene) {
         error = "The scene is not loaded.";
@@ -1728,21 +1863,11 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 return new ModelLoadCmd(project, sceneId, entity, stored);
             }
             if (isAssetPathProperty(propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
-            if (isShaderPathProperty(propertyName) && ShaderReference::isLibrary(text)) {
-                // an engine library shader: it has to exist in this engine
-                std::string vert, frag, libraryError;
-                const ShaderType type = propertyName == "customDepthShader" ? ShaderType::DEPTH : ShaderType::MESH;
-                if (!ShaderVariantCompiler::getLibraryShaderPaths(text, type, vert, frag, &libraryError)) {
-                    std::string names;
-                    for (const std::string& name : ShaderManifests::getLibraryShaderNames()) names += (names.empty() ? "library:" : ", library:") + name;
-                    error = propertyName + ": " + libraryError + ". The library shaders: " + names + ".";
-                    return nullptr;
-                }
-            } else if (isShaderPathProperty(propertyName) && !text.empty()) {
-                Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(text);
-                if (!fs::exists(project->getProjectPath() / paths.vert) || !fs::exists(project->getProjectPath() / paths.frag)) {
-                    error = propertyName + " references missing files (" + paths.vert + ", " + paths.frag +
-                            "): fork the built-in shader first.";
+            if (isShaderPathProperty(propertyName)) {
+                // an engine library shader of the component's type, or a fork whose files exist
+                std::string why;
+                if (!checkShaderReference(project, text, shaderPathType(component, propertyName), why)) {
+                    error = propertyName + ": " + why;
                     return nullptr;
                 }
             }
@@ -1791,6 +1916,21 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 parsed = static_cast<int>(integralValue(value));
             } else {
                 return expect("an integer");
+            }
+            if (endsWith(propertyName, "].material.lighting")) {
+                // only the lighting modes the submesh's shader has
+                const std::string shader = shaderReference ? *shaderReference
+                                         : Catalog::getShaderReferenceForProperty(scene->scene, entity, component, propertyName);
+                const std::shared_ptr<const ShaderManifest> manifest = findManifest(shader);
+                if (!Catalog::supportsLighting(static_cast<MaterialLighting>(parsed), manifest.get())) {
+                    std::string modes = "auto";
+                    for (MaterialLighting mode : Catalog::getShaderLightingModes(manifest.get())) {
+                        modes += ", " + enumToJson((int)mode, materialLightingOptions()).get<std::string>();
+                    }
+                    error = "Property " + propertyName + ": " + (shader.empty() ? std::string("the built-in Lit shader") : shader) +
+                            " takes " + modes + ".";
+                    return nullptr;
+                }
             }
             return new PropertyCmd<int>(project, sceneId, entity, component, propertyName, parsed, onChanged);
         }
@@ -1961,14 +2101,34 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 }
                 return new PropertyCmd<PrefabAsset>(project, sceneId, entity, component, propertyName, prefab, onChanged);
             }
-            if (propertyName == "shaderUniforms") {
-                ShaderUniformValues uniforms;
+            if (propertyName == "shaderUniforms" || endsWith(propertyName, "shaderParams") ||
+                endsWith(propertyName, "shaderTextures") || endsWith(propertyName, "shaderFeatures")) {
+                // shader library values, checked against the manifest of the shader they feed
+                const std::string shader = shaderReference ? *shaderReference
+                                         : Catalog::getShaderReferenceForProperty(scene->scene, entity, component, propertyName);
+                const std::shared_ptr<const ShaderManifest> manifest = findManifest(shader);
+                const bool library = ShaderReference::isLibrary(shader);
                 std::string why;
-                if (!shaderUniformsFromJson(value, uniforms, why)) {
-                    error = "Property " + propertyName + ": " + why;
-                    return nullptr;
+                Command* cmd = nullptr;
+                if (endsWith(propertyName, "shaderTextures")) {
+                    std::vector<std::pair<std::string, Texture>> textures;
+                    if (shaderTexturesFromJson(project, scene, manifest.get(), library, value, textures, why)) {
+                        cmd = new PropertyCmd<std::vector<std::pair<std::string, Texture>>>(project, sceneId, entity, component, propertyName, textures, onChanged);
+                    }
+                } else if (endsWith(propertyName, "shaderFeatures")) {
+                    std::vector<std::string> features;
+                    if (property.ref) features = *static_cast<std::vector<std::string>*>(property.ref);
+                    if (shaderFeaturesFromJson(shader, manifest.get(), library, value, features, why)) {
+                        cmd = new PropertyCmd<std::vector<std::string>>(project, sceneId, entity, component, propertyName, features, onChanged);
+                    }
+                } else {
+                    ShaderUniformValues uniforms;
+                    if (shaderParamsFromJson(manifest.get(), library, value, uniforms, why)) {
+                        cmd = new PropertyCmd<ShaderUniformValues>(project, sceneId, entity, component, propertyName, uniforms, onChanged);
+                    }
                 }
-                return new PropertyCmd<ShaderUniformValues>(project, sceneId, entity, component, propertyName, uniforms, onChanged);
+                if (!cmd) error = "Property " + propertyName + ": " + why;
+                return cmd;
             }
             error = "Property " + propertyName + " is custom: set it with set_properties (component encoding).";
             return nullptr;
@@ -2092,15 +2252,65 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
             }
             std::vector<YamlEdit> yamlEdits;
             std::vector<std::unique_ptr<Command>> typed;
+            // shader-library entry edits by collection property, in order of appearance
+            std::vector<std::pair<std::string, Json>> entryEdits;
+            ReadContext readCtx;
+            readCtx.project = project;
+            readCtx.scene = scene;
+            readCtx.entity = entity;
+            readCtx.component = component;
+            // a shader set by this call: the values after it follow its manifest
+            std::map<std::string, std::string> pendingShaders; // property prefix -> shader
+            for (const Change& change : changes) {
+                if (change.component != component || change.op != "set" || !change.value.is_string()) continue;
+                if (change.property == "customShader") pendingShaders[""] = change.value.get<std::string>();
+                else if (change.property.compare(0, 10, "submeshes[") == 0 && endsWith(change.property, "].material.shader")) {
+                    pendingShaders[change.property.substr(0, change.property.size() - 6)] = change.value.get<std::string>();
+                }
+            }
+            auto pendingShaderFor = [&](const std::string& property) -> const std::string* {
+                for (const auto& [prefix, shader] : pendingShaders) {
+                    if (prefix.empty() ? property.find('.') == std::string::npos || property.compare(0, 15, "shaderUniforms.") == 0 ||
+                                             property.compare(0, 15, "shaderTextures.") == 0
+                                       : property.compare(0, prefix.size(), prefix) == 0) {
+                        // a mesh's customShader is not what its materials' values follow
+                        if (prefix.empty() && component == ComponentType::MeshComponent) continue;
+                        return &shader;
+                    }
+                }
+                return nullptr;
+            };
             for (const Change& change : changes) {
                 if (change.component != component) continue;
+                std::string entryCollection, entryKey;
+                if (change.op == "set" && Catalog::splitShaderEntryProperty(change.property, entryCollection, entryKey)) {
+                    // one entry of a shader-library collection: gathered, then set as one value
+                    const PropertyData collection = Catalog::findProperty(scene->scene, entity, component, entryCollection);
+                    if (!collection.ref) {
+                        error = "Unknown property \"" + change.property + "\" of " + componentLabel + " on " + label + ".";
+                        return false;
+                    }
+                    auto found = std::find_if(entryEdits.begin(), entryEdits.end(), [&](const auto& e) { return e.first == entryCollection; });
+                    if (found == entryEdits.end()) {
+                        entryEdits.push_back({entryCollection, readProperty(readCtx, entryCollection, collection)});
+                        found = std::prev(entryEdits.end());
+                    }
+                    Json& edited = found->second;
+                    if (!edited.is_object()) edited = Json::object();
+                    if (change.value.is_null()) edited.erase(entryKey);
+                    else edited[entryKey] = change.value;
+                    continue;
+                }
                 const PropertyData property = Catalog::findProperty(scene->scene, entity, component, change.property);
                 const bool typedProperty = property.ref && change.op == "set" &&
                     (property.type != PropertyType::Custom || change.property == "shaderUniforms" ||
+                     endsWith(change.property, "shaderParams") || endsWith(change.property, "shaderTextures") ||
+                     endsWith(change.property, "shaderFeatures") ||
                      isScriptPrefabProperty(scene->scene, entity, component, change.property));
                 if (typedProperty) {
                     std::string why;
-                    Command* cmd = buildPropertyCommand(project, scene->id, entity, component, change.property, property, change.value, why);
+                    Command* cmd = buildPropertyCommand(project, scene->id, entity, component, change.property, property, change.value, why,
+                                                        nullptr, pendingShaderFor(change.property));
                     if (!cmd) {
                         error = componentLabel + "." + change.property + " on " + label + ": " + why;
                         return false;
@@ -2110,6 +2320,17 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 }
                 const bool known = property.ref && property.type == PropertyType::Custom;
                 yamlEdits.push_back({change.property, change.op, change.value, change.index, known});
+            }
+            for (const auto& [collectionName, value] : entryEdits) {
+                const PropertyData collection = Catalog::findProperty(scene->scene, entity, component, collectionName);
+                std::string why;
+                Command* cmd = buildPropertyCommand(project, scene->id, entity, component, collectionName, collection, value, why,
+                                                    nullptr, pendingShaderFor(collectionName));
+                if (!cmd) {
+                    error = componentLabel + "." + collectionName + " on " + label + ": " + why;
+                    return false;
+                }
+                typed.emplace_back(cmd);
             }
             if (!yamlEdits.empty()) {
                 YAML::Node value = YAML::Clone(EntityClipboard::encodeComponent(scene->scene, entity, component));

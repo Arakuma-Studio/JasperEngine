@@ -1,11 +1,50 @@
-# Custom shaders
+# Shaders
 
 Served as `jasper://docs/shaders`.
 
+## Library shaders (use these first)
+
+The engine ships ready-made shaders, referenced as `"library:<name>"`. `list_shaders` lists
+them (name, type, category, description, lighting modes); `list_shaders name="toon"` (or
+`detail: true`) adds each one's parameters (member, kind, default, range, label, `feature`
+gating), textures (uniform, default), features, keyword groups and default render state.
+
+- **Mesh shaders go on a material**, per submesh: `set_properties` on the mesh with
+  `submeshes[0].material.shader = "library:toon"` (`""` is the built-in Lit shader). A
+  `.material` file takes the same keys (`create_material` / `update_material` `values`), and
+  linked submeshes follow it.
+- **UI, Points, Lines and Sky shaders** go in the component's `customShader`; their
+  parameters are its `shaderUniforms`.
+- Values (paths of the submesh's material, `submeshes[N].material.<key>`):
+  - `shaderParams`: `{member: value}`, or one entry `shaderParams.<member>`. Numbers or
+    `[x,y,z,w]` as stored: colours are **linear**; a `"#RRGGBB[AA]"` string is sRGB and is
+    converted. A member left out uses the manifest default; `null` removes one.
+    `set_shader_uniform` (entity + `submesh`) sets one and `get_shader_uniforms` lists them
+    with labels and defaults.
+  - `shaderTextures`: `{uniform: "assets/path.png" | null}`, or `shaderTextures.<uniform>`.
+    Unset ones bind the declared default (white, black, gray or flat normal).
+  - `shaderFeatures`: the enabled `@feature` defines and chosen `@keywords` values
+    (`"<GROUP>_<VALUE>"`), e.g. `["RIM", "SPEC_MODE_HARD"]`; `"!RIM"` turns off a feature that
+    is on by default. Writes also take `{"RIM": true}`, applied to the current list. A feature
+    is a compile-time variant: changing one builds a new variant (no cost per pixel).
+  - Render state: `blendMode` (auto, opaque, alpha, premultiplied, additive, multiply),
+    `cullMode` (auto, back, front, off), `depthWrite` (auto, on, off), `depthTest` (auto,
+    less, less_equal, equal, greater_equal, greater, not_equal, always), `depthOffsetFactor` /
+    `depthOffsetUnits` (polygon offset; negative pulls towards the camera), `sortPriority`
+    (transparent order, lower first). `auto` takes the shader's default state, else the
+    engine's. UI, Points and Lines have `blendMode` and `depthWrite`.
+  - `lighting`: auto, pixel, vertex or mixed, only the modes the shader lists. `mixed`
+    follows each light's `shading` (both, pixel, vertex). The scene setting
+    `max_lights_per_object` (1-16, default 8) caps the lights per object; the rest reaching
+    it fold into its ambient.
+- `check_shader shader="library:toon#RIM"` compiles a library shader with features.
+
+Fork only when no library shader does what you need.
+
 ## Forking
 
-Custom shaders are per component on Mesh, UI, Points, Lines (Line Renderer) and Sky
-(Skybox), through the `customShader` property. To customize, call `fork_shader`: it copies the
+Custom (forked) shaders are set per component on Mesh, UI, Points, Lines (Line Renderer) and
+Sky (Skybox), through the `customShader` property (a mesh material's `shader` also takes a fork). To customize, call `fork_shader`: it copies the
 built-in `<type>.vert` / `<type>.frag` into a project directory (default `shaders`) and sets
 `customShader` in one undoable step; `fork_includes` also copies the engine includes into an
 editable `includes/` folder beside the fork.
@@ -79,3 +118,7 @@ uniform u_fs_customParams {
 - One scalar kind per block (do not mix int and float members: GL flattens the block after
   its first member). No matrix or array members (they stay zero): one scalar/vector member per
   value. An unset member reads zero: set it or give the effect a sensible fallback.
+- A fork may declare the manifest lines library shaders use (`// @property`, `@texture`,
+  `@feature`, `@state`, ...; read `engine/shaderlib/library/unlit.frag` with
+  `read_engine_source`): its parameters then get labels and defaults, and it takes
+  `shaderTextures` and `shaderFeatures` like a library shader.

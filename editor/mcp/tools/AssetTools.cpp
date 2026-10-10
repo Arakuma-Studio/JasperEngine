@@ -40,7 +40,7 @@
 #include "util/ProjectChecks.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
-#include "shader/ShaderVariantCompiler.h"
+#include "subsystem/RenderSystem.h"
 #include "window/CodeEditor.h"
 #include "window/ProjectWindow.h"
 
@@ -490,6 +490,8 @@ Json materialToJson(Project* project, const Material& material) {
         data[name] = texture.empty() ? Json(nullptr) : Json(McpValues::assetPathToJson(project, texture.getPath(0)));
     }
     for (const auto& [name, member] : materialTexCoords()) data[name] = material.*member;
+    // shader library: the shader, its values and the render state
+    McpValues::materialShaderLibraryToJson(project, nullptr, material, data, true);
     return data;
 }
 
@@ -537,6 +539,8 @@ bool applyMaterialJson(Project* project, Material& material, const Json& values,
                 return false;
             }
             material.alphaMode = found->second;
+        } else if (McpValues::isMaterialShaderLibraryKey(key)) {
+            // applied together below, the shader first
         } else {
             handled = false;
         }
@@ -574,11 +578,13 @@ bool applyMaterialJson(Project* project, Material& material, const Json& values,
         if (!handled) {
             error = "Unknown material field \"" + key + "\". Fields: baseColorFactor, metallicFactor, roughnessFactor, alphaCutoff, "
                     "alphaMode, emissiveFactor, foliageTransmission, baseColorTexture, emissiveTexture, metallicRoughnessTexture, "
-                    "occlusionTexture, normalTexture and the *TexCoord indices.";
+                    "occlusionTexture, normalTexture, the *TexCoord indices, and the shader library's shader, shaderParams, "
+                    "shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, "
+                    "depthOffsetUnits, sortPriority, lighting.";
             return false;
         }
     }
-    return true;
+    return McpValues::materialShaderLibraryFromJson(project, nullptr, values, material, error);
 }
 
 bool loadMaterialFile(const fs::path& file, Material& material, std::string& error) {
@@ -1625,6 +1631,48 @@ bool passIndexArg(const CallPtr& call, const std::vector<PostProcessPass>& passe
     return true;
 }
 
+// The manifest parameters of a shader with what is stored for each (else its default)
+Json manifestParameters(const ShaderManifest* manifest, const ShaderUniformValues& values) {
+    Json list = Json::array();
+    if (!manifest) return list;
+    const Json described = McpValues::manifestToJson("", *manifest)["properties"];
+    for (const ShaderManifestProperty& property : manifest->properties) {
+        Json entry = described[list.size()];
+        entry["value"] = vec4Array(ShaderUniforms::has(values, property.member) ? ShaderUniforms::get(values, property.member) : property.defaultValue);
+        entry["has_value"] = ShaderUniforms::has(values, property.member);
+        list.push_back(entry);
+    }
+    return list;
+}
+
+// A submesh material's shader parameters (submeshes[N].material.shaderParams) instead of the
+// component's shaderUniforms: asked for with submesh, or the first submesh's material names
+// a shader of its own and the mesh none
+bool materialParamsTarget(const CallPtr& call, Scene* scene, Entity entity, ComponentType component, int& submesh) {
+    submesh = -1;
+    if (component != ComponentType::MeshComponent) {
+        if (call->args().contains("submesh")) {
+            call->fail("submesh is for a mesh's materials; this component keeps its parameters in shaderUniforms.");
+            return false;
+        }
+        return true;
+    }
+    MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+    if (!mesh) return true;
+    if (call->args().contains("submesh")) {
+        const Json& value = call->args()["submesh"];
+        const int index = value.is_number_integer() ? value.get<int>() : -1;
+        if (index < 0 || index >= (int)mesh->numSubmeshes) {
+            call->fail("submesh must be 0.." + std::to_string((int)mesh->numSubmeshes - 1) + ".");
+            return false;
+        }
+        submesh = index;
+    } else if (mesh->numSubmeshes > 0 && !mesh->submeshes[0].material.shader.empty() && mesh->customShader.empty()) {
+        submesh = 0;
+    }
+    return true;
+}
+
 void getShaderUniformsTool(const CallPtr& call) {
     const Json& args = call->args();
     const bool pass = args.contains("pass_index");
@@ -1647,6 +1695,32 @@ void getShaderUniformsTool(const CallPtr& call) {
     }
     ShaderType shaderType;
     if (!resolveShaderComponent(call, where, shaderType)) return;
+    int submesh = -1;
+    if (!materialParamsTarget(call, scene, where.entity, where.component, submesh)) return;
+    if (submesh >= 0) {
+        // a submesh material's shader (its own, else the mesh's or the scene's) and its values
+        MeshComponent& mesh = scene->getComponent<MeshComponent>(where.entity);
+        Submesh& sub = mesh.submeshes[submesh];
+        const std::string property = "submeshes[" + std::to_string(submesh) + "].material.shaderParams";
+        const std::string shader = RenderSystem::getSubmeshShader(mesh, sub, scene->getDefaultCustomShader(ShaderType::MESH));
+        const std::shared_ptr<const ShaderManifest> manifest = McpValues::findManifest(shader);
+        std::vector<const CustomUniformBlock*> blocks = {&sub.customVSParams, &sub.customFSParams, &sub.customVSDepthParams, &sub.customFSDepthParams};
+        for (const CustomUniformBlock* block : blocks) appendUniformMembers(members, *block, sub.material.shaderParams);
+        Json data = {{"entity", McpRefs::entityJson(where.scene, where.entity)},
+                     {"component", McpRefs::componentName(where.component)},
+                     {"submesh", submesh},
+                     {"property", property},
+                     {"material_shader", sub.material.shader},
+                     {"effective_shader", shader},
+                     {"build_failed", Catalog::isCustomShaderBuildFailed(scene, where.entity, where.component)},
+                     {"members", members},
+                     {"warnings", Catalog::getShaderUniformWarnings(blocks)},
+                     {"values", uniformValuesJson(sub.material.shaderParams)}};
+        if (manifest) data["parameters"] = manifestParameters(manifest.get(), sub.material.shaderParams);
+        call->ok(std::to_string(members.size()) + " uniform member(s) of submesh " + std::to_string(submesh) + " on " +
+                 McpRefs::entityPath(where.scene, where.entity) + (shader.empty() ? "." : " (" + shader + ")."), data);
+        return;
+    }
     ShaderUniformValues* values = Catalog::getPropertyRef<ShaderUniformValues>(scene, where.entity, where.component, "shaderUniforms");
     std::string* custom = Catalog::getPropertyRef<std::string>(scene, where.entity, where.component, "customShader");
     if (!values || !custom) {
@@ -1667,6 +1741,10 @@ void getShaderUniformsTool(const CallPtr& call) {
         data["custom_depth_shader"] = *depth;
         data["depth_build_failed"] = Catalog::isCustomDepthShaderBuildFailed(scene, where.entity);
     }
+    // a shader with a manifest (a library shader) lists its parameters with labels and defaults
+    if (const std::shared_ptr<const ShaderManifest> manifest = McpValues::findManifest(data["effective_shader"].get<std::string>())) {
+        data["parameters"] = manifestParameters(manifest.get(), *values);
+    }
     call->ok(std::to_string(members.size()) + " uniform member(s) on " + McpRefs::entityPath(where.scene, where.entity) + ".", data);
 }
 
@@ -1686,16 +1764,19 @@ void setShaderUniformTool(const CallPtr& call) {
     }
     const bool remove = args.value("remove", false);
     Vector4 value(0, 0, 0, 0);
+    const Json rawValue = args.contains("value") ? args["value"] : Json();
     if (!remove) {
-        const Json& v = args.contains("value") ? args["value"] : Json();
+        const Json& v = rawValue;
         if (v.is_number()) {
             value.x = v.get<float>();
         } else if (v.is_array() && v.size() >= 2 && v.size() <= 4 &&
                    std::all_of(v.begin(), v.end(), [](const Json& c) { return c.is_number(); })) {
             float* out[] = {&value.x, &value.y, &value.z, &value.w};
             for (size_t i = 0; i < v.size(); i++) *out[i] = v[i].get<float>();
-        } else {
-            call->fail("value must be a number or [x,y], [x,y,z], [x,y,z,w]; or pass remove: true.");
+        } else if (!v.is_string()) {
+            // a "#RRGGBB" colour is read below, once the shader's manifest is known
+            call->fail("value must be a number or [x,y], [x,y,z], [x,y,z,w] (a colour parameter also takes \"#RRGGBB[AA]\", sRGB); "
+                       "or pass remove: true.");
             return;
         }
     }
@@ -1730,10 +1811,30 @@ void setShaderUniformTool(const CallPtr& call) {
     }
     ShaderType shaderType;
     if (!resolveShaderComponent(call, where, shaderType)) return;
-    ShaderUniformValues* current = Catalog::getPropertyRef<ShaderUniformValues>(scene, where.entity, where.component, "shaderUniforms");
+    int submesh = -1;
+    if (!materialParamsTarget(call, scene, where.entity, where.component, submesh)) return;
+    // a submesh material's parameters, or the component's shaderUniforms
+    const std::string property = submesh >= 0 ? "submeshes[" + std::to_string(submesh) + "].material.shaderParams" : "shaderUniforms";
+    ShaderUniformValues* current = Catalog::getPropertyRef<ShaderUniformValues>(scene, where.entity, where.component, property);
     if (!current) {
         call->fail("The component has no shader uniforms.");
         return;
+    }
+    const std::string shader = Catalog::getShaderReferenceForProperty(scene, where.entity, where.component, property);
+    const std::shared_ptr<const ShaderManifest> manifest = McpValues::findManifest(shader);
+    const ShaderManifestProperty* declaredProperty = manifest ? manifest->findProperty(name) : nullptr;
+    if (!remove && ShaderReference::isLibrary(shader) && manifest && !declaredProperty) {
+        std::string names;
+        for (const ShaderManifestProperty& p : manifest->properties) names += (names.empty() ? "" : ", ") + p.member;
+        call->fail(shader + " has no parameter '" + name + "'; its parameters: " + (names.empty() ? "(none)" : names) + ".");
+        return;
+    }
+    if (!remove) {
+        std::string why;
+        if (!McpValues::shaderParamFromJson(declaredProperty, name, rawValue, value, why)) {
+            call->fail(why);
+            return;
+        }
     }
     ShaderUniformValues values = *current;
     if (remove) {
@@ -1745,15 +1846,52 @@ void setShaderUniformTool(const CallPtr& call) {
         ShaderUniforms::set(values, name, value);
     }
     if (!addSceneCommand(sceneId, new PropertyCmd<ShaderUniformValues>(project, sceneId, where.entity, where.component,
-                                                                       "shaderUniforms", values))) {
+                                                                       property, values))) {
         call->fail("Could not change the uniform.");
         return;
     }
-    componentUniformMembers(declaredMembers, warnings, scene, where.entity, where.component, values);
-    const std::string note = remove ? "" : uniformSetNote(declaredMembers, name, declared);
-    call->ok((remove ? "Removed " : "Set ") + name + " on " + McpRefs::entityPath(where.scene, where.entity) + "." + note,
-             Json{{"entity", McpRefs::entityJson(where.scene, where.entity)}, {"component", McpRefs::componentName(where.component)},
-                  {"name", name}, {"declared", declared}});
+    if (submesh >= 0) {
+        const Submesh& sub = scene->getComponent<MeshComponent>(where.entity).submeshes[submesh];
+        for (const CustomUniformBlock* block : {&sub.customVSParams, &sub.customFSParams, &sub.customVSDepthParams, &sub.customFSDepthParams}) {
+            appendUniformMembers(declaredMembers, *block, values);
+        }
+    } else {
+        componentUniformMembers(declaredMembers, warnings, scene, where.entity, where.component, values);
+    }
+    // a manifest parameter is declared even while its variant still builds
+    const std::string note = remove || declaredProperty ? "" : uniformSetNote(declaredMembers, name, declared);
+    declared = declared || declaredProperty != nullptr;
+    Json result = {{"entity", McpRefs::entityJson(where.scene, where.entity)}, {"component", McpRefs::componentName(where.component)},
+                   {"property", property}, {"name", name}, {"declared", declared}};
+    if (!remove) result["value"] = vec4Array(value);
+    call->ok((remove ? "Removed " : "Set ") + name + " on " + McpRefs::entityPath(where.scene, where.entity) +
+             (submesh >= 0 ? " (submesh " + std::to_string(submesh) + " material)" : std::string()) + "." + note, result);
+}
+
+void listShadersTool(const CallPtr& call) {
+    const Json& args = call->args();
+    const std::string type = args.value("type", std::string());
+    std::string name = args.value("name", std::string());
+    if (!name.empty() && !ShaderReference::isLibrary(name)) name = ShaderReference::LIBRARY_PREFIX + name;
+    const bool detail = args.value("detail", !name.empty());
+    Json shaders = Json::array();
+    std::string text;
+    for (const std::string& libraryName : ShaderManifests::getLibraryShaderNames()) {
+        const std::string reference = ShaderReference::LIBRARY_PREFIX + libraryName;
+        if (!name.empty() && ShaderReference::getBase(name) != reference) continue;
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(reference);
+        if (!manifest) continue;
+        if (!type.empty() && ShaderManifest::getShaderTypeToken(manifest->type) != type) continue;
+        shaders.push_back(McpValues::manifestToJson(reference, *manifest, detail));
+        text += "\n" + reference + " (" + ShaderManifest::getShaderTypeToken(manifest->type) +
+                (manifest->category.empty() ? "" : ", " + manifest->category) + "): " + manifest->description;
+    }
+    if (!name.empty() && shaders.empty()) {
+        call->fail("No library shader " + name + ". The library shaders: " + McpValues::libraryShaderNamesText() + ".");
+        return;
+    }
+    call->ok(std::to_string(shaders.size()) + " library shader(s)" + (detail ? "" : " (detail: true or name for parameters)") + ":" + text,
+             Json{{"shaders", shaders}});
 }
 
 void checkShaderTool(const CallPtr& call) {
@@ -2374,7 +2512,9 @@ void registerAssetTools(McpRegistry& registry) {
 
     const Json materialValues = anyObject(
         "baseColorFactor [r,g,b,a], metallicFactor, roughnessFactor, alphaMode, alphaCutoff, emissiveFactor, "
-        "foliageTransmission, *Texture (path|null), *TexCoord.");
+        "foliageTransmission, *Texture (path|null), *TexCoord; shader (\"library:<name>\", list_shaders), shaderParams "
+        "{member: value}, shaderTextures {uniform: path|null}, shaderFeatures [defines] or {define: bool}, blendMode, "
+        "cullMode, depthWrite, depthTest, depthOffsetFactor/Units, sortPriority, lighting.");
 
     {
         ToolDef tool;
@@ -2460,13 +2600,15 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "get_shader_uniforms";
         tool.title = "Get Shader Uniforms";
         tool.description =
-            "A forked shader's custom parameters (members of u_vs/u_fs_customParams, u_fs_postParams for a pass): GLSL "
-            "type, engine-written flag (time, resolution), stored value. entity (+ component) or pass_index. Members "
-            "appear once the fork compiled.";
+            "A custom or library shader's parameters (members of u_vs/u_fs_customParams, u_fs_postParams for a pass): GLSL "
+            "type, engine-written flag (time, resolution), stored value; a library shader adds parameters (label, kind, "
+            "default, value). entity (+ component, + submesh for a material's shader) or pass_index. Members appear once "
+            "the shader compiled.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
+            {"submesh", integer("A mesh submesh's material (default: submesh 0 when its material has a shader).")},
             {"pass_index", integer("Post-process pass instead of entity.")}
         });
         tool.annotations.readOnly = true;
@@ -2480,15 +2622,17 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "set_shader_uniform";
         tool.title = "Set Shader Uniform";
         tool.description =
-            "Set or remove one custom uniform of a forked shader by member name (entity (+ component) or pass_index). "
-            "Undeclared names are stored but unused (the result says so).";
+            "Set or remove one parameter of a custom or library shader by member name (entity (+ component, + submesh "
+            "for a material's shader) or pass_index). Undeclared names are stored but unused (the result says so).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
+            {"submesh", integer("A mesh submesh's material (default: submesh 0 when its material has a shader).")},
             {"pass_index", integer("Post-process pass instead of entity.")},
             {"name", string("")},
-            {"value", {{"type", {"number", "array"}}, {"items", {{"type", "number"}}}, {"description", "Number or [x,y(,z(,w))]."}}},
+            {"value", {{"type", {"number", "array", "string"}}, {"items", {{"type", "number"}}},
+                       {"description", "Number or [x,y(,z(,w))] (colours linear), or \"#RRGGBB[AA]\" (sRGB) for a colour."}}},
             {"remove", withDefault(boolean(""), false)}
         }, {"name"});
         tool.handler = setShaderUniformTool;
@@ -2497,12 +2641,33 @@ void registerAssetTools(McpRegistry& registry) {
 
     {
         ToolDef tool;
+        tool.name = "list_shaders";
+        tool.title = "List Shaders";
+        tool.description =
+            "The engine's library shaders (\"library:<name>\"): pick one before forking. Each has a type (mesh shaders go "
+            "on a material: set_properties submeshes[i].material.shader; ui/points/lines/sky ones in the component's "
+            "customShader), lighting modes, and with detail its parameters (shaderParams, colours linear), textures "
+            "(shaderTextures), features/keywords (shaderFeatures) and default render state.";
+        tool.inputSchema = object({
+            {"type", stringEnum("", {"mesh", "ui", "points", "lines", "sky"})},
+            {"name", string("One shader (\"toon\" or \"library:toon\"); implies detail.")},
+            {"detail", withDefault(boolean("Parameters, textures, features, keywords, state."), false)}
+        });
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = listShadersTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
         tool.name = "check_shader";
         tool.title = "Check Shader";
         tool.description =
-            "Compile shader forks now; returns errors (line, message, log). shader: a customShader base (\"shaders/Water\") "
-            "or its .vert/.frag; shader_type if no component uses it yet. Omit shader for every fork in use. A failing "
-            "fork renders with the built-in shader.";
+            "Compile shader forks or library shaders now; returns errors (line, message, log). shader: a customShader base "
+            "(\"shaders/Water\") or its .vert/.frag, or \"library:<name>[#FEATURES]\"; shader_type if no component uses it "
+            "yet. Omit shader for every custom and library shader in use (materials included). A failing shader renders "
+            "with the built-in one.";
         tool.inputSchema = object({
             {"shader", string("")},
             {"shader_type", stringEnum("", {"mesh", "ui", "sky", "points", "lines", "depth", "post_process"})}

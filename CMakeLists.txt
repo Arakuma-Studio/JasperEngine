@@ -549,6 +549,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/McpTransportHttp.cpp
     ${EDITOR_DIR}/mcp/McpTransportStdio.cpp
     ${EDITOR_DIR}/mcp/McpValues.cpp
+    ${EDITOR_DIR}/mcp/McpShaderValues.cpp
     ${EDITOR_DIR}/mcp/McpLaunch.cpp
     ${EDITOR_DIR}/mcp/EngineApiContext.cpp
     ${EDITOR_DIR}/mcp/TerrainMaps.cpp

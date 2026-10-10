@@ -676,7 +676,16 @@ sprites) sorted by their distance to the camera position, not by Z.
 `alphaCutoff`, `emissiveFactor`, `baseColorTexture`, `emissiveTexture`,
 `metallicRoughnessTexture`, `occlusionTexture`, `normalTexture`, `lighting`
 (`MaterialLighting.*`: the stages evaluating the object's lights; set it on the copy
-`getMaterial(i)` returns, then `setMaterial(i, m)`).
+`getMaterial(i)` returns, then `setMaterial(i, m)`). Shader library (same copy-then-set rule):
+`shader` (`""` built-in Lit, `"library:<name>"`, or a fork), `blendMode`
+(`MaterialBlendMode.*`), `cullMode`, `depthWrite`, `depthTest`, `depthOffsetFactor`,
+`depthOffsetUnits`, `sortPriority`; methods `setShaderParam(name, value)` (colours linear),
+`getShaderParam(name)` (unset: the manifest default), `removeShaderParam(name)`,
+`setShaderTexture(uniform, path)` (`""` back to the default), `getShaderTexture(uniform)`,
+`setShaderFeature(define, on)` (a `@keywords` value is `"GROUP_VALUE"`),
+`isShaderFeatureEnabled(define)`. UI (Image, Text, Polygon), Points, LineRenderer and Skybox
+objects have the same parameter/texture/feature methods for their `customShader`, and (but
+Skybox) `blendMode` and `depthWrite`.
 
 ### 4.4 Primitive (Mesh)
 
@@ -947,6 +956,10 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
 | `PrimitiveType` | `TRIANGLES`, `TRIANGLE_STRIP`, `POINTS`, `LINES` |
 | `MaterialAlphaMode` | `AUTO`, `ALPHA_OPAQUE`, `MASK`, `BLEND` |
 | `MaterialLighting` | `AUTO`, `PIXEL`, `VERTEX`, `MIXED` |
+| `MaterialBlendMode` | `AUTO`, `NONE` (opaque), `ALPHA`, `PREMULTIPLIED`, `ADDITIVE`, `MULTIPLY` |
+| `MaterialCullMode` | `AUTO`, `BACK`, `FRONT`, `OFF` |
+| `MaterialDepthWrite` | `AUTO`, `ENABLED`, `DISABLED` |
+| `MaterialDepthTest` | `AUTO`, `LESS`, `LESS_EQUAL`, `EQUAL`, `GREATER_EQUAL`, `GREATER`, `NOT_EQUAL`, `ALWAYS` |
 | `LightShading` | `BOTH`, `PIXEL`, `VERTEX` |
 | `LightState` | `OFF`, `ON`, `AUTO` |
 | `ShadowQuality` | `NONE`, `LOW`, `MEDIUM`, `HIGH` |
