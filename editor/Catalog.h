@@ -11,6 +11,7 @@
 #include "Scene.h"
 #include "SceneSettings.h"
 #include "util/Color.h"
+#include "shader/ShaderManifest.h"
 
 namespace jasperengine::editor{
     enum UpdateFlags : uint64_t {
@@ -210,6 +211,27 @@ namespace jasperengine::editor{
         // same for a mesh's depth fork
         static bool isCustomDepthShaderBuildFailed(Scene* scene, Entity entity);
 
+        // ---- shader library values (docs/superpowers/specs/2026-10-10-shader-library-phase1-design.md)
+        // One entry of a shader-library collection property, addressed by its key:
+        // "submeshes[N].material.shaderParams.<member>", "submeshes[N].material.shaderTextures.<uniform>",
+        // and a component's "shaderUniforms.<member>" / "shaderTextures.<uniform>". Gives the
+        // collection property and the key; edits go through the collection property, so undo,
+        // prefab overrides and model reloads see one value.
+        static bool splitShaderEntryProperty(const std::string& propertyName, std::string& collection, std::string& key);
+        // The shader whose manifest describes a property's shader-library values: for a submesh
+        // material property ("submeshes[N].material...") the shader that submesh draws with (its
+        // material's, the mesh's, the scene's), else the component's own or the scene's default
+        static std::string getShaderReferenceForProperty(Scene* scene, Entity entity, ComponentType component, const std::string& propertyName);
+        // The lighting modes a material may ask of a shader, its default first: a manifest's
+        // @lighting list (none without the directive), else the built-in Lit's (and a fork's
+        // without a manifest) pixel, vertex, mixed. AUTO is always allowed and draws the
+        // default. Mirrors RenderSystem::supportsLighting / resolveLighting.
+        static std::vector<MaterialLighting> getShaderLightingModes(const ShaderManifest* manifest);
+        static bool supportsLighting(MaterialLighting mode, const ShaderManifest* manifest);
+        // The update flags a change from one material value to another needs (a whole-material
+        // assignment outside a property command: linked material files)
+        static uint64_t getMaterialUpdateFlags(const Material& from, const Material& to);
+
         template<typename T>
         static T* getPropertyRef(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){
             PropertyData property = Catalog::getProperty(registry, entity, component, propertyName);
@@ -255,6 +277,11 @@ namespace jasperengine::editor{
             else if (propertyName == "global_illumination_intensity") {
                 if constexpr (std::is_same_v<T, float>) {
                     return scene->getGlobalIlluminationIntensity();
+                }
+            }
+            else if (propertyName == "max_lights_per_object") {
+                if constexpr (std::is_same_v<T, int>) {
+                    return scene->getMaxLightsPerObject();
                 }
             }
             else if (propertyName == "ambient_light_2d_color") {
@@ -450,6 +477,9 @@ namespace jasperengine::editor{
             else if (propertyName == "global_illumination_intensity") {
                 if constexpr (std::is_same_v<T, float>) return d.globalIllumIntensity;
             }
+            else if (propertyName == "max_lights_per_object") {
+                if constexpr (std::is_same_v<T, int>) return d.maxLightsPerObject;
+            }
             else if (propertyName == "ambient_light_2d_color") {
                 if constexpr (std::is_same_v<T, Vector3>) return Color::linearTosRGB(d.ambientLight2DColor);
             }
@@ -570,6 +600,11 @@ namespace jasperengine::editor{
             else if (propertyName == "global_illumination_intensity") {
                 if constexpr (std::is_same_v<T, float>) {
                     scene->setGlobalIllumination(value);
+                }
+            }
+            else if (propertyName == "max_lights_per_object") {
+                if constexpr (std::is_same_v<T, int>) {
+                    scene->setMaxLightsPerObject(value);
                 }
             }
             else if (propertyName == "ambient_light_2d_color") {

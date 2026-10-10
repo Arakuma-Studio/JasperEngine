@@ -79,6 +79,32 @@ namespace jasperengine::editor {
         static std::string materialAlphaModeToString(MaterialAlphaMode mode);
         static MaterialAlphaMode stringToMaterialAlphaMode(const std::string& str);
 
+        // shader library render state and lighting (Material, UI/Points/LineRenderer, Light)
+        static std::string materialBlendModeToString(MaterialBlendMode mode);
+        static MaterialBlendMode stringToMaterialBlendMode(const std::string& str);
+        static std::string materialCullModeToString(MaterialCullMode mode);
+        static MaterialCullMode stringToMaterialCullMode(const std::string& str);
+        static std::string materialDepthWriteToString(MaterialDepthWrite mode);
+        static MaterialDepthWrite stringToMaterialDepthWrite(const std::string& str);
+        static std::string materialDepthTestToString(MaterialDepthTest mode);
+        static MaterialDepthTest stringToMaterialDepthTest(const std::string& str);
+        static std::string materialLightingToString(MaterialLighting mode);
+        static MaterialLighting stringToMaterialLighting(const std::string& str);
+        static std::string lightShadingToString(LightShading shading);
+        static LightShading stringToLightShading(const std::string& str);
+
+        // shader library textures (by @texture uniform) and features of a material or component
+        static YAML::Node encodeShaderTextures(const std::vector<std::pair<std::string, Texture>>& textures, bool embedData);
+        static std::vector<std::pair<std::string, Texture>> decodeShaderTextures(const YAML::Node& node);
+        static YAML::Node encodeShaderFeatures(const std::vector<std::string>& features);
+        static std::vector<std::string> decodeShaderFeatures(const YAML::Node& node);
+        // the shaderTextures, shaderFeatures and (when given) blendMode/depthWrite keys of a
+        // UI, Points, LineRenderer or Skybox component
+        static void encodeComponentShaderLibrary(YAML::Node& node, const std::vector<std::pair<std::string, Texture>>& textures,
+                const std::vector<std::string>& features, const MaterialBlendMode* blendMode, const MaterialDepthWrite* depthWrite, bool embedData);
+        static void decodeComponentShaderLibrary(const YAML::Node& node, std::vector<std::pair<std::string, Texture>>& textures,
+                std::vector<std::string>& features, MaterialBlendMode* blendMode, MaterialDepthWrite* depthWrite);
+
         static std::string scriptPropertyTypeToString(ScriptPropertyType type);
         static ScriptPropertyType stringToScriptPropertyType(const std::string& str);
 
