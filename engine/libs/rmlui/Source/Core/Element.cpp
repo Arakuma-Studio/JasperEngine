@@ -481,7 +481,7 @@ const Box& Element::GetBox(int index, Vector2f& offset)
 	return additional_boxes[additional_box_index].box;
 }
 
-RenderBox Element::GetRenderBox(BoxArea fill_area, int index)
+RenderBox Element::GetRenderBox(BoxArea fill_area, int index, bool with_border_top_cut)
 {
 	RMLUI_ASSERTMSG(fill_area >= BoxArea::Border && fill_area <= BoxArea::Content,
 		"Render box can only be generated with fill area of border, padding or content.");
@@ -521,7 +521,19 @@ RenderBox Element::GetRenderBox(BoxArea fill_area, int index)
 	case BoxArea::Auto: RMLUI_ERROR;
 	}
 
-	return RenderBox{inner_size, box.offset, edge_sizes, meta->computed_values.border_radius()};
+	RenderBox render_box{inner_size, box.offset, edge_sizes, meta->computed_values.border_radius()};
+
+	// A lowered and interrupted top border (a fieldset's legend): the painted main box starts `inset` px lower.
+	BorderTopCut cut;
+	if (with_border_top_cut && index < 1 && GetBorderTopCut(cut))
+	{
+		const float inset = Math::Clamp(Math::Round(cut.inset), 0.f, Math::Max(inner_size.y, 0.f));
+		render_box.SetBorderOffset(box.offset + Vector2f(0.f, inset));
+		render_box.SetFillSize(inner_size - Vector2f(0.f, inset));
+		render_box.SetBorderTopGap(Vector2f(cut.gap_begin, cut.gap_end));
+	}
+
+	return render_box;
 }
 
 int Element::GetNumBoxes()
@@ -1705,6 +1717,18 @@ void Element::OnRender() {}
 void Element::OnResize() {}
 
 void Element::OnLayout() {}
+
+bool Element::GetBorderTopCut(BorderTopCut& /*cut*/)
+{
+	return false;
+}
+
+void Element::DirtyBorderTopCut()
+{
+	meta->background_border.DirtyBackground();
+	meta->background_border.DirtyBorder();
+	meta->effects.DirtyEffectsData();
+}
 
 void Element::OnDpRatioChange() {}
 

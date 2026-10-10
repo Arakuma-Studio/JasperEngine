@@ -29,7 +29,7 @@
 #include "Points.h"
 #include "LineRenderer.h"
 #include "Sprite.h"
-#include "Text.h"
+#include "object/ui/Text.h"   // by path: lexbor has a dom/interfaces/text.h (Xcode header maps ignore case)
 #include "Image.h"
 #include "Button.h"
 #include "Panel.h"

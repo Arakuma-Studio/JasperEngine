@@ -41,16 +41,23 @@ public:
 	/// Sets the border radius of the box.
 	void SetBorderRadius(CornerSizes value) { border_radius = value; }
 
+	/// Returns the part of the top border that is not drawn: its begin (x) and end (y) in px from the left border edge
+	/// (Element::GetBorderTopCut). Empty when the end is not after the begin.
+	Vector2f GetBorderTopGap() const { return border_top_gap; }
+	/// Sets the part of the top border that is not drawn.
+	void SetBorderTopGap(Vector2f value) { border_top_gap = value; }
+
 private:
 	Vector2f fill_size;
 	Vector2f border_offset;
 	EdgeSizes border_widths;
 	CornerSizes border_radius;
+	Vector2f border_top_gap;
 };
 inline bool operator==(const RenderBox& a, const RenderBox& b)
 {
 	return a.GetFillSize() == b.GetFillSize() && a.GetBorderOffset() == b.GetBorderOffset() && a.GetBorderWidths() == b.GetBorderWidths() &&
-		a.GetBorderRadius() == b.GetBorderRadius();
+		a.GetBorderRadius() == b.GetBorderRadius() && a.GetBorderTopGap() == b.GetBorderTopGap();
 }
 inline bool operator!=(const RenderBox& a, const RenderBox& b)
 {

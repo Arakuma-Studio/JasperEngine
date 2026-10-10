@@ -535,7 +535,14 @@ void UIDocumentSystem::reloadTexture(const std::string& path){
     // database of every context (the other scenes too) drops the image
     if (!HtmlUI::isInitialized())
         return;
-    Rml::ReleaseTexture(normalizeHtmlUIPath(path));
+    // RmlUi knows a texture by the source it was asked for, as written: the path of an .rml
+    // document's image, an asset:// URL from the compat layer, either with a query (the
+    // sampling filter of image-rendering, an SVG scale). Every spelling of the file goes.
+    const std::string file = normalizeHtmlUIPath(path);
+    for (const Rml::String& source : Rml::GetTextureSourceList()){
+        if (normalizeHtmlUIPath(source.substr(0, source.find('?'))) == file)
+            Rml::ReleaseTexture(source);
+    }
 }
 
 const std::vector<HtmlUIMessage>& UIDocumentSystem::getDocumentMessages(Entity entity) const{

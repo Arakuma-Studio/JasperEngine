@@ -877,8 +877,8 @@ namespace {
             return true;
         }
         if (tag == "fieldset"){
-            // its first legend child straddles the top border (the user-agent sheet's
-            // fieldset.htmlui-legend draws that layout; no selector can tell a fieldset has one)
+            // a legend child sits on the top border: the runtime's HtmlFieldsetElement acts on
+            // this class (a fieldset of an .rml document is a plain element)
             for (const std::unique_ptr<HtmlNode>& child : element.children){
                 if (child->kind == HtmlNode::Kind::Element && child->is("legend")){
                     addClass(element, "htmlui-legend");

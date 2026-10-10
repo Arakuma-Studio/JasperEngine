@@ -38,7 +38,10 @@ buffer handed to `lxb_html_document_parse` when the whole document is parsed in 
 - `lexbor/html/tree.c`, `lxb_html_tree_create_element_for_token`: when the token is the
   tokenizer's own current token (`token == tree->tkz_ref->token`) and not an adoption-agency
   re-creation (`token->base_element == NULL`), stores `token->begin` (the byte after `<`)
-  and `token->end` (the end of the tag name). Elements the tree builder creates from fake
+  and `token->end` (the end of the tag name). An element the parser makes from an end tag
+  (`</br>`, `</p>` without an open `p`) comes from the tokenizer's token too and gets its
+  range, which starts after `</`: the compat layer steps back over the `/` to find the `<`.
+  Elements the tree builder creates from fake
   tokens (implied `html`, `head`, `body`, `tbody`, `tr`, `colgroup`, `p`, ...) and
   reconstructed formatting elements keep NULL: the compat layer marks them implied.
 - `lexbor/html/tree.c`, `lxb_html_tree_append_attributes`: for attributes of that token,

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "Diagnostics.h"
+#include "DiagnosticsJson.h"
 
 #include "SourceFiles.h"
 

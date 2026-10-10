@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cmath>
 
 using namespace jasperengine::htmlui::compat;
 

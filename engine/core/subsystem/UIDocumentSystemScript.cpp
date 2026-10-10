@@ -292,6 +292,12 @@ void HtmlUIScriptState::onDocumentReloaded(Entity entity, const std::unordered_m
 
     size_t dropped = 0;
     for (HtmlUIEventListener* listener : HtmlUIEventListener::listenersIn(oldDocument)){
+        // what the document's own <script type="text/lua"> attached goes with the old document:
+        // the script runs again for the new one
+        if (listener->getScriptDocument() == oldDocument){
+            listener->remove();
+            continue;
+        }
         auto it = oldToNew.find(listener->getElement());
         if (it != oldToNew.end() && it->second){
             listener->moveTo(it->second);

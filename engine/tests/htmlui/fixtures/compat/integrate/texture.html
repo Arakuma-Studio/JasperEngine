@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { margin: 0; background: #102030; color: white; font-family: sans-serif; }
+    input { border: 1px solid #888; }
+  </style>
+</head>
+<body>
+  <form><label>Name <input id="name" type="text" value="x"></label> <button id="ok">OK</button></form>
+  <script type="text/lua">
+    document:getElementById("ok"):addEventListener("click", function(event) _G.textureClicks = (_G.textureClicks or 0) + 1 end)
+  </script>
+</body>
+</html>
