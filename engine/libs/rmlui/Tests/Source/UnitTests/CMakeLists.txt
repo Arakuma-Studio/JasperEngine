@@ -52,6 +52,7 @@ add_executable(${TARGET_NAME}
 	Variant.cpp
 	XMLParser.cpp
 	PluginDataModel.cpp
+	Position.cpp
 )
 
 set_common_target_options(${TARGET_NAME})

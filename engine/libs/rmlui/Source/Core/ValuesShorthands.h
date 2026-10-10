@@ -16,3 +16,14 @@ bool ParseFontShorthand(PropertyDictionary& dictionary, const ShorthandDefinitio
 	const PropertySpecification& specification);
 
 } // namespace Rml
+
+namespace Rml {
+
+// transform-origin: a one- or two-value <position> (keywords in either order, 'top left') and an optional z length;
+// perspective-origin: a <position> of one to four values (edge offsets 'right 10px bottom 20%'). In ShorthandOrigin.cpp.
+bool ParseTransformOriginShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
+	const PropertySpecification& specification);
+bool ParsePerspectiveOriginShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
+	const PropertySpecification& specification);
+
+} // namespace Rml
