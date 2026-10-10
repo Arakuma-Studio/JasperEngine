@@ -1,0 +1,21 @@
+{
+ "suite": "blockgrid",
+ "viewport": [1024, 768],
+ "browser": "Chromium 153.0.8010.12",
+ "fixtures": {
+  "blockgrid_block_in_grid_auto": [["","div",0,0,40,10],["0","div",0,0,40,10],["1","div",0,10,40,0]],
+  "blockgrid_block_in_grid_fixed_fit_content_larger": [["","div",0,0,40,10],["0","div",0,0,40,10],["1","div",0,10,40,0]],
+  "blockgrid_block_in_grid_fixed_fit_content_middle": [["","div",0,0,30,20],["0","div",0,0,30,20],["1","div",0,20,30,0]],
+  "blockgrid_block_in_grid_fixed_fit_content_smaller": [["","div",0,0,20,20],["0","div",0,0,20,20],["1","div",0,20,20,0]],
+  "blockgrid_block_in_grid_fixed_larger": [["","div",0,0,50,10],["0","div",0,0,50,10],["1","div",0,10,50,0]],
+  "blockgrid_block_in_grid_fixed_middle": [["","div",0,0,30,20],["0","div",0,0,30,20],["1","div",0,20,30,0]],
+  "blockgrid_block_in_grid_fixed_smaller": [["","div",0,0,10,20],["0","div",0,0,10,20],["1","div",0,20,10,0]],
+  "blockgrid_block_in_grid_fr": [["","div",0,0,40,10],["0","div",0,0,40,10],["1","div",0,10,40,0]],
+  "blockgrid_block_in_grid_max_content": [["","div",0,0,20,20],["0","div",0,0,20,20],["1","div",0,20,20,0]],
+  "blockgrid_block_in_grid_min_content": [["","div",0,0,20,20],["0","div",0,0,20,20],["1","div",0,20,20,0]],
+  "blockgrid_grid_in_block": [["","div",0,0,200,70],["0","div",0,0,200,50],["0.0","div",0,0,50,50],["1","div",0,50,50,20]],
+  "blockgrid_margin_y_collapse_through_blocked_by_grid": [["","div",0,0,50,40],["0","div",0,0,50,10],["1","div",0,20,50,0],["2","div",0,30,50,10]],
+  "blockgrid_margin_y_first_child_collapse_blocked_by_grid": [["","div",0,0,50,30],["0","div",0,10,50,20],["0.0","div",0,20,50,10],["0.0.0","div",0,20,50,10]],
+  "blockgrid_margin_y_last_child_collapse_blocked_by_grid": [["","div",0,0,50,30],["0","div",0,0,50,20],["0.0","div",0,0,50,10],["0.0.0","div",0,0,50,10]]
+ }
+}

@@ -11,7 +11,7 @@ The build files are ours: `engine/libs/rmlui/CMakeLists.txt` (desktop, Web, Andr
 export through `engine/CMakeLists.txt`), `engine/libs/rmlui/hidden-symbols.map` (the version
 script that keeps every `Rml::`, `tvg::` and `lunasvg::` symbol out of the editor's shared engine, GNU ld/lld) and the
 `rmlui-ios` / `rmlui-macos` targets of `engine/workspaces/xcode/JasperEngine.xcodeproj`. The
-CMake and Xcode targets compile every `.cpp` of the vendored subset (CMake: `Source/Debugger`
+CMake and Xcode targets compile every `.cpp` of the vendored subset but `Tests/` (CMake: `Source/Debugger`
 only with `JASPERENGINE_HTMLUI_DEBUGGER`; Xcode always, and the Debug configurations define it),
 so adding or removing upstream files only needs the Xcode file list updated.
 
@@ -33,9 +33,23 @@ engine/libs/rmlui/
   Source/Debugger/*.{cpp,h}      (+ Source/Debugger/LICENSE.txt: the embedded Courier Prime font, OFL)
   Include/RmlUi/SVG/ElementSVG.h  (phase 1, p1-vector)
   Source/SVG/*.{cpp,h}           (phase 1, p1-vector: the SVG plugin, unchanged, on LunaSVG)
-  Tests/Source/UnitTests/*.cpp   (phase 3: the fork's own unit tests, P3 rows below; RmlUi's
-  Tests/Source/Benchmarks/*.cpp   test infrastructure and 6.3 test sources are p3-testkit's)
+  Tests/CMakeLists.txt           (phase 3, p3-testkit: RmlUi's own test suites, not part of the engine build)
+  Tests/Dependencies/**          (doctest, trompeloeil, nanobench, lodepng; Tests/Dependencies/LICENSE.txt)
+  Tests/Source/**                (Common, UnitTests, Benchmarks, VisualTests: the sources and upstream's CMake files;
+                                  phase-3 patches add their own unit tests and benchmarks, rows below)
+  Tests/Data/UnitTests/**, Tests/Data/style.rcss   (documents the unit tests load)
 ```
+
+`Tests/` is built and run standalone, never by the engine build (whose source globs are not
+recursive): `tools/htmlui/run-rmlui-tests.sh` (phase-3 spec 5.1) assembles the fork with the
+upstream 6.3 parts the engine does not vendor (the FreeType font engine
+`Source/Core/FontEngineDefault`, `CMake/`, `Samples/shell`, `Samples/assets`,
+`Samples/basic/{demo,benchmark}/data`, `Backends/RmlUi_Backend.h`, from a pinned clone of the tag)
+and builds it with `tools/htmlui/rmlui-tests/CMakeLists.txt` (globs the fork's sources) and a
+window-less backend (`tools/htmlui/rmlui-tests/RmlUi_Backend_Null.cpp`). FreeType comes from the
+host (`pkg-config freetype2`) or is built from source (`--docker`, the engine's Linux image has
+none); the engine library stays without FreeType. Baseline on the fork: 146 test cases, 8306
+assertions, all passing (P3-T2 adapts 6.3's tests to P2-8).
 
 The SVG plugin is compiled into the `rmlui` target with `RMLUI_SVG_PLUGIN` defined, so
 `Rml::Initialise` registers it as upstream does (`Source/Core/Core.cpp`); it links
@@ -51,7 +65,8 @@ built without system-font discovery and without file access (`<image href>` take
 | `Source/Lottie/`, `Include/RmlUi/Lottie/` | Lottie plugin on rlottie (last release 2020, a new texture per frame). The engine's own `<lottie>` element (`engine/core/htmlui/vector/`) runs on ThorVG. |
 | `Source/Lua/`, `Include/RmlUi/Lua/`, `Include/RmlUi/Lua.h` | RmlUi's Lua bindings. The engine has its own browser-shaped Lua API (`UIDocument`, `UIElement`, `UIEvent`). |
 | `Backends/` | Sample platform and renderer backends (GL, Vulkan, SDL, GLFW ...). The engine implements the interfaces on its own render abstraction (`engine/core/htmlui/`). |
-| `Samples/`, `Tests/`, `Utilities/` | Demos, upstream test suites and tooling, not part of the library. |
+| `Samples/`, `Utilities/` | Demos and tooling, not part of the library (the test build takes the sample shell and fonts from a pinned upstream clone). |
+| `Tests/Data/VisualTests/`, `Tests/Data/*.rml`, `Tests/Output/`, `Tests/Tools/`, `Tests/readme.md` | RmlUi's visual tests (a window and stored captures); the browser references of phase 3 replace them. Their sources are vendored only so upstream's CMake files configure unchanged. |
 | `CMake/`, every `CMakeLists.txt`, `CMakePresets.json` | Upstream build system; ours is `engine/libs/rmlui/CMakeLists.txt`. |
 | `Dependencies/` | Third-party dependency scripts of the upstream build. |
 | `Source/Debugger/.clang-format`, `readme.md`, `changelog.md`, `contributing.md`, `.appveyor.yml`, `.clang-format`, `.editorconfig`, `.gitignore`, `.github/` | Not source. |
@@ -87,10 +102,13 @@ Phase 3 (`docs/html-ui/phase-3-fork-patches.md`) patches the fork so standard CS
 Every row is a commit series prefixed `rmlui:` touching only `engine/libs/rmlui/**`; engine,
 compat and test changes follow in separate commits. Upstream status: `upstream PR <url>`,
 `upstreamable` or `fork-only` (with the reason). The unit tests are doctest files in
-`engine/libs/rmlui/Tests/Source/UnitTests/`, run standalone on the host (phase-3 spec §5.1).
+`engine/libs/rmlui/Tests/Source/UnitTests/`, run by `tools/htmlui/run-rmlui-tests.sh` (phase-3 spec §5.1).
+P3-T* are p3-testkit's (the vendored tests), P3-N the patches of the other packages.
 
 | ID | Commits | Files | Reason | Upstream status | Tests |
 |---|---|---|---|---|---|
+| P3-T1 | `260e661e` `rmlui: white-space-only text without a font face logs no missing-font warning` | `Source/Core/ElementText.cpp` | Follow-up to P2-8 (phase 3, p3-testkit): white-space-only text kept between elements made every indented RML document without a `font-family` warn "No font face defined" for its indentation; such text places no glyphs, text with glyphs still warns. Fork-only (with P2-8). | fork-only (with P2-8) | RmlUi unit tests (`tools/htmlui/run-rmlui-tests.sh`): `custom_properties.*`, `Element.ScrollIntoView`, `elementimage.preserve_ratio`, `Localization` count warnings |
+| P3-T2 | `ee8db52e` `rmlui: RmlUi 6.3 unit tests follow the kept white-space text (P2-8)` | `Tests/Source/Common/TestsShell.{h,cpp}`, `Tests/Source/UnitTests/{Animation, Core, CustomProperties, DataBinding, Decorator, Element, ElementFormControlSelect, ElementImage, FlexFormatting, Layout, Selectors, XMLParser}.cpp` | 6.3's tests assumed white-space-only text is dropped: they walk element children (`TestsShell::GetElementChild`, `GetNumElementChildren`, `GetNextElementSibling`, the DOM's `children`), compare a document's inner RML without its surrounding white space, and `span:empty` no longer matches a span holding white space (as in browsers). Expectations only; no behaviour change. | fork-only (test expectations for P2-8) | the suite itself: 146 cases, 8306 assertions |
 | P3-1 | `6d2e63b4` `rmlui: calc()/min()/max()/clamp() (upstream PR #983, commits 109df5ad, bea7264e, c6744d15)` (author Thomas Edvalson) | `Include/RmlUi/Core/{ComputedValues,DecorationTypes,StyleTypes,Transform,TypeConverter,Types,Unit,Variant}.h`, `Variant.inl`; `Source/Core/Calculation{,Parser,Resolver}.{h,cpp}` (new), `ComputeProperty.{h,cpp}`, `ComputedValues.cpp`, `DecoratorGradient.{h,cpp}`, `DecoratorNinePatch.cpp`, `DecoratorText.cpp`, `DecoratorTiled.cpp`, `Element.cpp`, `ElementAnimation.cpp`, `ElementHandle.cpp`, `ElementStyle.{h,cpp}`, `Filter{Basic,Blur,DropShadow}.*`, `FontEffect{Blur,Glow,Outline,Shadow}.cpp`, `GeometryBoxShadow.cpp`, `Layout/BlockContainer.cpp`, `Layout/TableFormattingContext.cpp`, `Property.cpp`, `PropertyDefinition.cpp`, `PropertyParser{Animation,BoxShadow,ColorStopList,Number,Transform}.*`, `PropertySpecification.cpp`, `StyleSheetContainer.cpp`, `StyleSheetParser.cpp`, `StyleSheetSpecification.cpp`, `Transform.cpp`, `TypeConverter.cpp`, `Variant.cpp`; `CMakeLists.txt` (`RMLUI_MATH_EXPRESSIONS` PUBLIC); `Tests/Source/UnitTests/Calculation{,Types}.cpp`, `Tests/Source/Benchmarks/Calculation.cpp` | CSS math functions: `calc()`, `min()`, `max()`, `clamp()` in every length, percentage, number, angle and time value (sizes, margins, paddings, insets, gaps, origins, flex-basis, line-height, transforms, box shadows, filters, gradients, font effects, transitions and animations), resolved at layout time; percentage-dependent min/max widths are ignored while measuring shrink-to-fit widths; shorthands reject trailing tokens. Applied onto 6.3 + P1-1, P2-1..P2-14 without a conflict; the `RMLUI_MATH_EXPRESSIONS` guards are kept (the engine defines it PUBLIC, and the Xcode targets define it next to `RMLUI_STATIC_LIB`: `tools/htmlui/xcode_sync_rmlui.py`). The CI workflow hunk of `bea7264e` is dropped. Not in the vendored subset: the PR's one-line change of `Tests/Source/UnitTests/CustomProperties.cpp` (a `BoxShadow` aggregate initialisation becomes member assignments; p3-testkit vendors the 6.3 test sources) and the CMake option of its root `CMakeLists.txt`. Compat: `ForkFeature::Calc` present (below). | upstream PR https://github.com/mikke89/RmlUi/pull/983 (open; source commits `109df5ad`, `bea7264e`, `c6744d15`, base `9cbb5440`) | `Tests/Source/UnitTests/Calculation.cpp`, `CalculationTypes.cpp` (36 + 1 cases, WPT-derived); `engine/tests/htmlui/compat/compat_calc_test.cpp`; `CompatCssRmlUiAccepts.EveryGoldenCaseWithThePresentFeatures` |
 | P3-2 | `1b249600` `rmlui: widen PropertyId and Unit` | `Include/RmlUi/Core/{ID,Unit,PropertyIdSet,Types,TypeConverter,StyleTypes,ComputedValues}.h`, `Source/Core/{IdNameMap.h,StyleSheetSpecification.cpp,ElementStyle.cpp,Element.cpp}` | Room for phase 3: `PropertyId` is `uint16_t` (`MaxNumIds` 256; 6.3 used 101 of 128, phase 3 adds 86 longhands) and `PropertyIdSet` a bit set of 64-bit words whose iteration skips empty words; `Unit` is `uint64_t` with `VMIN VMAX CH EX TURN GRAD` (bits 31-36, in `LENGTH`/`ANGLE`; parsed and computed by p3-values), `STYLE_VALUE` (37) and `CSS_WIDE_KEYWORD` (38). Every longhand and shorthand of the phase-3 packages (spec Appendix B) is declared in `ID.h` at once, one group per package; an id not registered yet is reserved (`IdNameMap::ReserveUnnamed`: no name, nothing parses into it; custom ids still follow). `will-change` is registered (no computed value). The hot-spot files have one section per package (`StyleSheetSpecification::RegisterDefaultParsers/RegisterDefaultProperties`, `ElementStyle::ComputeValue` with a `case` per new id, `Element::OnPropertyChange`, `ComputedValues`' rare values and accessors, `StyleTypes.h`). | fork-only (capacity and the phase-3 id layout) | the RmlUi suite (unchanged results); `InitialValues.cpp` (every registered property); `engine/tests/htmlui/compat/compat_tables_test.cpp` (`CompatTables.EveryRmlUiPropertyAndShorthandHasARow` skips reserved ids) |
 | P3-3 | `c9542f77` `rmlui: root font-size resolution` | `Source/Core/ComputeProperty.cpp`; `Tests/Source/UnitTests/RootFontSize.cpp` | An element without a parent resolves `%` and `em` font sizes (and `calc()` of them) against the initial font size, as CSS does for the root element; 6.3 gave 0 (`rem` on the document element already used the initial size). The document element is a child of the context's root element, so with compat's root mapping `html { font-size: 62.5% } body { font-size: 1.6rem }` gives 16px on the body in stylesheets (compat converts root `%`/`em` to px), inline styles and scripts alike. | upstreamable | `Tests/Source/UnitTests/RootFontSize.cpp`; `engine/tests/htmlui/compat/compat_root_font_size_test.cpp` |
@@ -111,6 +129,8 @@ with the patch that implements it; `ForkFeatures.TableMatchesProbes` checks them
 2. Re-apply each patch above in order; drop those merged upstream.
 3. Update the file list of the `rmlui-ios` / `rmlui-macos` Xcode targets if upstream added
    or removed sources.
-4. Rebuild, run `jasperengine-htmlui-tests` on glcore and vulkan
+4. Run RmlUi's own tests on the fork (`tools/htmlui/run-rmlui-tests.sh`; it pins the upstream
+   tag it takes the font engine and sample shell from: update `UPSTREAM_TAG`/`UPSTREAM_COMMIT`).
+5. Rebuild, run `jasperengine-htmlui-tests` on glcore and vulkan
    (`tools/build.sh htmlui-tests`, `HTMLUI_BACKEND=vulkan tools/build.sh htmlui-tests`),
    update this file.

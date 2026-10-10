@@ -1,0 +1,5 @@
+{
+ "comment": "Seeded by p3-testkit: about 190 Taffy fixtures size their text with zero-width spaces (known-failures reason text-zwsp). The engine shapes U+200B with a fallback face and keeps that face for the letters after it, and RmlUi does not break lines at it.",
+ "viewport": [120, 100],
+ "boxes": true
+}

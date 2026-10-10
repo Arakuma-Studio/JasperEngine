@@ -1,0 +1,22 @@
+{
+ "suite": "leaf",
+ "viewport": [1024, 768],
+ "browser": "Chromium 153.0.8010.12",
+ "fixtures": {
+  "leaf_overflow_scrollbars_affect_available_space_x_axis": [["","div",0,0,45,45]],
+  "leaf_overflow_scrollbars_affect_available_space_y_axis": [["","div",0,0,45,45]],
+  "leaf_overflow_scrollbars_overridden_by_available_space": [["","div",0,0,2,4],["0","div",0,0,2,4]],
+  "leaf_overflow_scrollbars_overridden_by_max_size": [["","div",0,0,2,4]],
+  "leaf_overflow_scrollbars_overridden_by_size": [["","div",0,0,2,4]],
+  "leaf_overflow_scrollbars_take_up_space_both_axis": [["","div",0,0,35,25]],
+  "leaf_overflow_scrollbars_take_up_space_x_axis": [["","div",0,0,20,25]],
+  "leaf_overflow_scrollbars_take_up_space_y_axis": [["","div",0,0,35,10]],
+  "leaf_padding_border_overrides_max_size": [["","div",0,0,22,14]],
+  "leaf_padding_border_overrides_min_size": [["","div",0,0,22,14]],
+  "leaf_padding_border_overrides_size": [["","div",0,0,22,14]],
+  "leaf_root_shrink_to_fit_excludes_margin": [["","div",20,0,80,30]],
+  "leaf_with_content_and_border": [["","div",0,0,52,18]],
+  "leaf_with_content_and_padding": [["","div",0,0,52,18]],
+  "leaf_with_content_and_padding_border": [["","div",0,0,62,24]]
+ }
+}

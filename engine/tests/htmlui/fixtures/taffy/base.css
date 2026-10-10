@@ -1,0 +1,109 @@
+/* Taffy 8409f3f8 scripts/gentest/test_base_style.css (MIT, LICENSE-taffy.txt),
+   written by tools/htmlui/import-taffy-fixtures.py: the embedded Ahem WOFF2 is replaced by
+   engine/tests/htmlui/fonts/Ahem.ttf (the same font, Kozea/Ahem). The 15px
+   ::-webkit-scrollbar rule stays: Chromium draws space-taking scrollbars of that width
+   (the reference tool keeps scrollbars), and the engine's user-agent sheet sizes its
+   scrollbars like Chromium's (15px). Do not edit; re-import. */
+
+
+/* The Ahem font. See: https://github.com/Kozea/Ahem
+   The "X" glyph in this font happens to be exactly 10 pixels wide by 10 high
+
+   By combining X's with zero-width space characters (&#8203;) we can reliably set an elements
+   min-content and max-content sizes.
+*/
+@font-face {
+    font-family: 'ahem';
+    src: url("../../fonts/Ahem.ttf") format("truetype");
+    font-weight: normal;
+    font-style: normal;
+}
+
+/* Force Chrome to use space-taking scrollbars.
+   The exact width (15px) must match the width assumed in the test runner */
+::-webkit-scrollbar {
+  width: 15px;
+  height: 15px;
+}
+
+body {
+  padding: 0;
+  margin: 0;
+}
+
+div, span, img {
+  box-sizing: border-box;
+  position: relative;
+  border: 0 solid red;
+  margin: 0;
+  padding: 0;
+}
+
+div {
+  display: flex;
+}
+
+body > * {
+  position: absolute;
+  border-color: red;
+}
+
+.viewport {
+  display: flex;
+  align-items: start;
+  justify-content: start;
+  /* Defaults: can be overridden in individual tests */
+  width: max-content;
+  height: max-content;
+}
+
+#test-root {
+  font-family: ahem;
+  line-height: 1;
+  font-size: 10px;
+  color: green;
+}
+
+.border-box, .border-box * {
+  box-sizing: border-box;
+}
+
+.content-box, .content-box * {
+  box-sizing: content-box;
+}
+
+.ltr * {
+  direction: ltr;
+}
+
+.rtl * {
+  direction: rtl;
+}
+
+div {
+  background-color: #222;
+}
+
+div > div {
+  background-color: #444;
+}
+
+div > div > div {
+  background-color: #666;
+}
+
+div > div > div > div {
+  background-color: #888;
+}
+
+div > div > div > div > div {
+  background-color: #aaa;
+}
+
+div > div > div > div > div > div {
+  background-color: #ccc;
+}
+
+div > div > div > div > div > div > div {
+  background-color: #eee;
+}

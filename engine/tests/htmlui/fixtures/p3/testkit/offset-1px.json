@@ -1,0 +1,5 @@
+{
+ "comment": "Self-test: the reference moves #b 1px to the right; boxes within 1px and the strict image metric (3x3 neighbourhood) accept it.",
+ "viewport": [300, 200],
+ "selfTest": {"expect": "match", "referenceCss": "#b { left: 161px !important; }"}
+}

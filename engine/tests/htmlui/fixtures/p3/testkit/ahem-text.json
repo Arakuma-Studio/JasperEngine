@@ -1,0 +1,4 @@
+{
+ "comment": "Self-test: fonts load from the fonts directory and Ahem text matches Chromium (squares and spaces of exactly 1em, line breaks at spaces).",
+ "viewport": [240, 100]
+}

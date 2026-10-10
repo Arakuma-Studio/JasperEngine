@@ -1,0 +1,19 @@
+{
+ "suite": "blockflex",
+ "viewport": [1024, 768],
+ "browser": "Chromium 153.0.8010.12",
+ "fixtures": {
+  "blockflex_baseline_overflow_hidden_clamp": [["","div",0,0,200,120],["0","div",0,50,40,50],["0.0","div",0,50,30,30],["0.0.0","div",0,50,30,40],["0.0.0.0","div",0,50,10,40],["1","div",40,0,40,80]],
+  "blockflex_block_in_flex_column": [["","div",0,0,200,50],["0","div",0,0,200,0],["1","div",0,0,50,0]],
+  "blockflex_block_in_flex_row": [["","div",0,0,200,50],["0","div",0,0,0,50],["1","div",0,0,50,50]],
+  "blockflex_flex_in_block": [["","div",0,0,200,70],["0","div",0,0,200,50],["0.0","div",0,0,50,50],["1","div",0,50,50,20]],
+  "blockflex_margin_y_collapse_through_blocked_by_flex": [["","div",0,0,50,40],["0","div",0,0,50,10],["1","div",0,20,50,0],["2","div",0,30,50,10]],
+  "blockflex_margin_y_first_child_collapse_blocked_by_flex": [["","div",0,0,50,30],["0","div",0,10,50,20],["0.0","div",0,20,0,10],["0.0.0","div",0,20,0,10]],
+  "blockflex_margin_y_last_child_collapse_blocked_by_flex": [["","div",0,0,50,30],["0","div",0,0,50,20],["0.0","div",0,0,0,10],["0.0.0","div",0,0,0,10]],
+  "blockflex_min_content_ignores_own_height_as_percentage_basis": [["","div",0,0,100,100],["0","div",0,0,100,100],["0.0","div",0,0,100,100]],
+  "blockflex_overflow_hidden": [["","div",0,0,20,50],["0","div",0,0,0,50],["1","div",0,0,40,50]],
+  "blockflex_percentage_height_in_auto_height_flex_item": [["","div",0,0,100,50],["0","div",0,0,50,50],["0.0","div",0,0,50,25],["0.0.0","div",0,0,50,50]],
+  "blockflex_percentage_height_in_stretched_flex_item": [["","div",0,0,100,100],["0","div",0,0,50,100],["0.0","div",0,0,50,50]],
+  "blockflex_percentage_height_in_unstretched_flex_item": [["","div",0,0,100,100],["0","div",0,0,50,20],["0.0","div",0,0,50,20],["0.0.0","div",0,0,20,20]]
+ }
+}
