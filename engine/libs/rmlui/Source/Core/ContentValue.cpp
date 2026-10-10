@@ -519,21 +519,37 @@ bool PropertyParserListStyleType::ParseValue(Property& property, const String& v
 
 bool PropertyParserUrl::ParseValue(Property& property, const String& value, const ParameterMap& /*parameters*/) const
 {
+	// url(...), or as RCSS writes its other sources: a string or a bare path.
+	const String stripped = StringUtilities::StripWhitespace(value);
+	if (stripped.empty())
+		return false;
+	String url = stripped;
 	String name;
 	StringList arguments;
-	if (!ReadFunction(StringUtilities::StripWhitespace(value), name, arguments) || name != "url" || arguments.size() != 1 || arguments[0].empty())
+	if (ReadFunction(stripped, name, arguments))
+	{
+		if (name != "url" || arguments.size() != 1 || arguments[0].empty())
+			return false;
+		url = arguments[0];
+	}
+	else if (stripped.find_first_of(" \t\n()") != String::npos && stripped[0] != '"' && stripped[0] != '\'')
 		return false;
-	String url = arguments[0];
 	if (url[0] == '"' || url[0] == '\'')
 	{
 		String unquoted;
-		if (!ReadStringToken(arguments[0], unquoted))
+		if (!ReadStringToken(url, unquoted) || unquoted.empty())
 			return false;
 		url = std::move(unquoted);
 	}
 	property.value = Variant(url);
 	property.unit = Unit::STRING;
 	return true;
+}
+
+// The shorthand takes its image as url() only: a bare word there is a counter style.
+static bool IsUrlFunction(const String& token)
+{
+	return token.size() > 4 && StringUtilities::ToLower(token.substr(0, 4)) == "url(";
 }
 
 bool ParseListStyleShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
@@ -567,7 +583,7 @@ bool ParseListStyleShorthand(PropertyDictionary& dictionary, const ShorthandDefi
 			dictionary.SetProperty(PropertyId::ListStylePosition, property);
 			has_position = true;
 		}
-		else if (!has_image && image->ParseValue(property, token))
+		else if (!has_image && IsUrlFunction(token) && image->ParseValue(property, token))
 		{
 			dictionary.SetProperty(PropertyId::ListStyleImage, property);
 			has_image = true;

@@ -148,3 +148,50 @@ TEST_CASE("SelectorsHas.Invalidation")
 	document->Close();
 	TestsShell::ShutdownShell();
 }
+
+TEST_CASE("SelectorsHas.SelectOptions")
+{
+	// A <select> keeps its options in its 'selectbox' part: :has() looks at them as the select's descendants.
+	const String rml = R"RML(
+<rml>
+<head>
+	<style>
+		body { font-family: LatoLatin; font-size: 16px; }
+		select { display: block; width: 100px; height: 20px; }
+		.ind { display: block; height: 1px; }
+		#wrap:has(option[value="b"]:checked) > #ind1 { height: 10px; }
+		#wrap:has(option[value="a"]:checked) > #ind2 { height: 10px; }
+		#wrap:has(selectbox) > #ind3 { height: 10px; }
+	</style>
+</head>
+<body>
+	<div id="wrap">
+		<select id="sel"><option value="a">A</option><option value="b" selected>B</option></select>
+		<div id="ind1" class="ind"/><div id="ind2" class="ind"/><div id="ind3" class="ind"/>
+	</div>
+</body>
+</rml>
+)RML";
+
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = context->LoadDocumentFromMemory(rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	context->Update();
+
+	auto height = [&](const char* id) { return document->GetElementById(id)->GetComputedValues().height().value; };
+	CHECK(height("ind1") == 10.f);
+	CHECK(height("ind2") == 1.f);
+	// the part itself is not a descendant
+	CHECK(height("ind3") == 1.f);
+
+	document->GetElementById("sel")->SetAttribute("value", "a");
+	context->Update();
+	context->Update();
+	CHECK(height("ind1") == 1.f);
+	CHECK(height("ind2") == 10.f);
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}

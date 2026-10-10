@@ -31,6 +31,9 @@ static const String markers_rml = R"RML(
 		#string { list-style-type: "-> "; }
 		#short { list-style: square inside; }
 		.block { display: block; }
+		#image { list-style-image: url("/assets/high_scores_alien_1.tga"); }
+		#image-inside { list-style-image: "/assets/high_scores_alien_1.tga"; list-style-position: inside; width: 800px; }
+		#sym-inside { list-style: disc inside; }
 	</style>
 </head>
 <body>
@@ -43,6 +46,9 @@ static const String markers_rml = R"RML(
 	<ul id="string"><li id="s1">x</li></ul>
 	<ul id="short"><li id="q1">x</li></ul>
 	<ul><li id="b1" class="block">x</li></ul>
+	<ul id="image"><li id="m1">x</li></ul>
+	<ul id="image-inside"><li id="m2">x</li></ul>
+	<ul id="sym-inside"><li id="y1">x</li></ul>
 </body>
 </rml>
 )RML";
@@ -116,6 +122,52 @@ TEST_CASE("ListMarkers")
 		CHECK(text->GetAbsoluteLeft() > item->GetAbsoluteLeft() + 10.f);
 	}
 
+	SUBCASE("inside symbols keep their own width")
+	{
+		// Chromium: the symbol's box ((ascent * 2 / 3 + 1) / 2 + 2 px wide) starts 1px before the content edge and is
+		// followed by 1em.
+		Element* item = ById("y1");
+		ElementListMarker* marker = MarkerOf(item);
+		REQUIRE(marker);
+		CHECK(marker->GetComputedValues().display() == Style::Display::InlineBlock);
+		const float width = marker->GetBox().GetSize(BoxArea::Border).x;
+		CHECK(marker->GetAbsoluteLeft() == doctest::Approx(item->GetAbsoluteLeft() - 1.f));
+		Element* text = item->GetChild(0);
+		CHECK(text->GetAbsoluteLeft() == doctest::Approx(item->GetAbsoluteLeft() - 1.f + width + 20.f));
+	}
+
+	SUBCASE("image markers")
+	{
+		// The image alone: outside it ends 7px before the item's start edge, inside it is followed by 7px.
+		Element* item = ById("m1");
+		ElementListMarker* marker = MarkerOf(item);
+		REQUIRE(marker);
+		REQUIRE(marker->GetNumChildren() == 1);
+		Element* image = marker->GetChild(0);
+		CHECK(image->GetTagName() == "img");
+		const float image_width = image->GetBox().GetSize(BoxArea::Border).x;
+		CHECK(image_width > 0.f);
+		CHECK(image->GetAbsoluteLeft() + image_width == doctest::Approx(item->GetAbsoluteLeft() - 7.f));
+		CHECK(item->GetChild(0)->GetAbsoluteLeft() == doctest::Approx(item->GetAbsoluteLeft()));
+		CHECK(marker->GetMarkerText() == "");
+
+		Element* inside_item = ById("m2");
+		ElementListMarker* inside = MarkerOf(inside_item);
+		REQUIRE(inside);
+		REQUIRE(inside->GetNumChildren() == 1);
+		CHECK(inside->GetChild(0)->GetAbsoluteLeft() == doctest::Approx(inside_item->GetAbsoluteLeft()));
+		CHECK(inside_item->GetChild(0)->GetAbsoluteLeft() == doctest::Approx(inside_item->GetAbsoluteLeft() + image_width + 7.f));
+
+		// Without an image again: the marker of the list-style-type.
+		ById("image")->SetProperty("list-style-image", "none");
+		context->Update();
+		marker = MarkerOf(item);
+		REQUIRE(marker);
+		CHECK(marker->GetMarkerStyle() == "disc");
+		REQUIRE(marker->GetNumChildren() == 1);
+		CHECK(marker->GetChild(0)->GetTagName() == "#text");
+	}
+
 	SUBCASE("changes")
 	{
 		ById("ol")->SetProperty("list-style-type", "lower-alpha");
@@ -155,6 +207,18 @@ TEST_CASE("ListMarkers.Properties")
 	CHECK(dictionary.GetProperty(PropertyId::ListStyleType)->Get<String>() == "*");
 	CHECK(dictionary.GetProperty(PropertyId::ListStylePosition)->ToString() == "inside");
 	CHECK_FALSE(parse("list-style", "none none none"));
+	// The longhand takes its image as url(), as a string or as a bare path; the shorthand as url() only.
+	CHECK(parse("list-style-image", "url(a.png)"));
+	CHECK(dictionary.GetProperty(PropertyId::ListStyleImage)->Get<String>() == "a.png");
+	CHECK(parse("list-style-image", "\"/ui/a b.png\""));
+	CHECK(dictionary.GetProperty(PropertyId::ListStyleImage)->Get<String>() == "/ui/a b.png");
+	CHECK(parse("list-style-image", "asset://ui/a.png"));
+	CHECK(dictionary.GetProperty(PropertyId::ListStyleImage)->Get<String>() == "asset://ui/a.png");
+	CHECK(parse("list-style-image", "none"));
+	CHECK(dictionary.GetProperty(PropertyId::ListStyleImage)->ToString() == "none");
+	CHECK_FALSE(parse("list-style-image", "a.png b.png"));
+	CHECK_FALSE(parse("list-style-image", "image(a.png)"));
+	CHECK_FALSE(parse("list-style", "a.png inside"));
 	CHECK(parse("counter-reset", "a 2 b reversed(c)"));
 	CHECK(dictionary.GetProperty(PropertyId::CounterReset)->ToString() == "a 2 b reversed(c)");
 	CHECK_FALSE(parse("counter-increment", "reversed(c)"));

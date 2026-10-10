@@ -140,11 +140,14 @@ void ElementListMarker::BuildContent()
 	}
 
 	const bool counted_before = UsesCounters();
-	const bool rebuild = (new_style != style || new_image != image_source || (!text_element && !image_element));
+	const bool rebuild = (new_style != style || new_image != image_requested || (!text_element && !image_element));
 	style = new_style;
-	image_source = new_image;
+	image_requested = new_image;
 	if (rebuild)
+	{
+		image_source = new_image;
 		BuildGenerated();
+	}
 	UpdateGeneratedText();
 	if (counted_before != UsesCounters())
 		PseudoElements::DirtyCounters(*this);
@@ -169,11 +172,26 @@ void ElementListMarker::BuildGenerated()
 		ElementPtr image = Factory::InstanceElement(this, "img", "img", attributes);
 		if (image)
 			image_element = AppendChild(std::move(image));
+		// An image that cannot be shown: the marker of the list-style-type (CSS Lists 3 §3.2). (Its size is known once
+		// it is in the document, where its texture loads.)
+		Vector2f dimensions;
+		float ratio = 0.f;
+		if (!image_element || !image_element->GetIntrinsicDimensions(dimensions, ratio) || dimensions.x <= 0.f || dimensions.y <= 0.f)
+		{
+			if (image_element)
+				RemoveChild(image_element);
+			image_element = nullptr;
+			image_source.clear();
+		}
 	}
 
-	ElementPtr text = Factory::InstanceElement(this, "#text", "#text", XMLAttributes());
-	if (text)
-		text_element = rmlui_dynamic_cast<ElementText*>(AppendChild(std::move(text)));
+	// An image marker is the image alone; the others are a text (for a symbol, the space that gives its box a line).
+	if (!image_element)
+	{
+		ElementPtr text = Factory::InstanceElement(this, "#text", "#text", XMLAttributes());
+		if (text)
+			text_element = rmlui_dynamic_cast<ElementText*>(AppendChild(std::move(text)));
+	}
 	geometry_dirty = true;
 }
 
@@ -183,12 +201,12 @@ void ElementListMarker::UpdateGeneratedText()
 		return;
 	String text;
 	if (!image_source.empty())
-		text = " ";
+		text.clear();
 	else if (CounterResolver::IsSymbolStyle(style))
 		text = " "; // the line of the symbol's box (the symbol is drawn)
 	else if (!style.empty() && style[0] == '"')
 		text = style.substr(1);
-	else
+	else if (style != "none")
 		text = CounterResolver::FormatCounter(ordinal, style) + ". ";
 
 	marker_text = (CounterResolver::IsSymbolStyle(style) || !image_source.empty() ? String() : text);
@@ -215,6 +233,8 @@ void ElementListMarker::UpdateBox()
 	float margin_left = 0.f;
 	float margin_right = 0.f;
 	bool fixed_width = false;
+	// An inline-block keeps the marker's own width (a symbol's) or lets its margins cancel its advance (outside).
+	bool inline_block = outside;
 
 	if (symbol)
 	{
@@ -225,14 +245,36 @@ void ElementListMarker::UpdateBox()
 		const bool disclosure = (style == "disclosure-open" || style == "disclosure-closed");
 		width = disclosure ? floorf(GetComputedValues().font_size() * 0.66f) : float((offset + 1) / 2 + 2);
 		fixed_width = true;
-		if (outside)
+		inline_block = true;
+		// Chromium's ListMarker::InlineMarginsForOutside and InlineMarginsForInside.
+		const float font_size = GetComputedValues().font_size();
+		if (disclosure)
+		{
+			const float gap = 0.4f * font_size;
+			margin_left = (outside ? -(width + gap) : 0.f);
+			margin_right = gap;
+		}
+		else if (outside)
 		{
 			margin_left = -float(offset + marker_padding + 1);
 			margin_right = float(offset + marker_padding + 1) - width;
 		}
 		else
 		{
-			margin_right = float(marker_padding);
+			margin_left = -1.f;
+			margin_right = font_size;
+		}
+	}
+	else if (image_element && !custom_content)
+	{
+		// Chromium: the image, then 7px to the content; outside, it ends that far from the item's start edge.
+		margin_right = float(marker_padding);
+		if (outside)
+		{
+			Vector2f dimensions;
+			float ratio = 0.f;
+			if (image_element->GetIntrinsicDimensions(dimensions, ratio))
+				margin_left = -(dimensions.x + float(marker_padding));
 		}
 	}
 	else if (outside)
@@ -241,17 +283,10 @@ void ElementListMarker::UpdateBox()
 		float text_width = 0.f;
 		if (text_element)
 			text_width = (float)ElementUtilities::GetStringWidth(text_element, text_element->GetText());
-		if (image_element)
-		{
-			Vector2f dimensions;
-			float ratio = 0.f;
-			if (image_element->GetIntrinsicDimensions(dimensions, ratio))
-				text_width += dimensions.x;
-		}
 		margin_left = -text_width;
 	}
 
-	SetProperty(PropertyId::Display, Property(outside ? Style::Display::InlineBlock : Style::Display::Inline));
+	SetProperty(PropertyId::Display, Property(inline_block ? Style::Display::InlineBlock : Style::Display::Inline));
 	if (fixed_width)
 		SetProperty(PropertyId::Width, Property(width, Unit::PX));
 	else

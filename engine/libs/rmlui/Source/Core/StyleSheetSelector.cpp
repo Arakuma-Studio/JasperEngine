@@ -78,7 +78,8 @@ static bool MatchesSelectorTree(const Element* element, const SelectorTree& tree
 }
 
 // Calls 'callback' for every element of the subtree below 'element' (DOM children only: pseudo-elements and widget
-// parts are not part of the tree :has() looks at) until it returns true.
+// parts are not part of the tree :has() looks at) until it returns true. The options of a <select> are looked at:
+// the element keeps them in its 'selectbox' part.
 template <typename Callback>
 static bool AnyDescendant(const Element* element, Callback&& callback)
 {
@@ -90,6 +91,16 @@ static bool AnyDescendant(const Element* element, Callback&& callback)
 			continue;
 		if (callback(child) || AnyDescendant(child, callback))
 			return true;
+	}
+	if (element->GetTagName() == "select")
+	{
+		const int num_all_children = element->GetNumChildren(true);
+		for (int i = num_children; i < num_all_children; i++)
+		{
+			const Element* part = element->GetChild(i);
+			if (part->GetTagName() == "selectbox" && AnyDescendant(part, callback))
+				return true;
+		}
 	}
 	return false;
 }

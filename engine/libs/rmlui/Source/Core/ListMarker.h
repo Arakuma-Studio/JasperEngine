@@ -14,10 +14,12 @@ class ElementDefinition;
     Chromium draws them), or the item's 'list-item' counter in the counter style followed by ". " (a string style is
     used as written).
 
-    'list-style-position: inside': an inline box, the first of the item's first line. 'outside': an inline-block on
-    the first line whose margins cancel its advance and put it outside the item's start edge, where Chromium places
-    it (the end of an ordinal marker at the item's content start; a symbol 'ascent * 2 / 3 + 8' px before it); it is
-    aligned on the line's baseline and does not change the item's size or the position of its content.
+    'list-style-position: inside': the first box of the item's first line (an inline box; a symbol is an inline-block
+    of its own width, with Chromium's margins: -1px and 1em; an image is followed by 7px). 'outside': an inline-block
+    on the first line whose margins cancel its advance and put it outside the item's start edge, where Chromium
+    places it (the end of an ordinal marker at the item's content start; a symbol 'ascent * 2 / 3 + 8' px before it;
+    an image 7px before it); it is aligned on the line's baseline and does not move the item's content along the
+    line. An image that cannot be loaded gives the marker of the list-style-type.
  */
 class ElementListMarker final : public ElementPseudo {
 public:
@@ -55,7 +57,8 @@ private:
 
 	bool custom_content = false; // A ::marker rule sets 'content'.
 	String style;                // The list-style-type (or the string, quoted with '"' first).
-	String image_source;         // The list-style-image URL, if any.
+	String image_source;         // The list-style-image URL of the image shown, if any.
+	String image_requested;      // The list-style-image URL of the item ('image_source' is empty when it cannot be shown).
 	int ordinal = 1;
 	String marker_text;
 	ElementText* text_element = nullptr;
