@@ -316,6 +316,14 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialLighting")
+        .addVariable("AUTO", MaterialLighting::AUTO)
+        .addVariable("PIXEL", MaterialLighting::PIXEL)
+        .addVariable("VERTEX", MaterialLighting::VERTEX)
+        .addVariable("MIXED", MaterialLighting::MIXED)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("TextureFilter")
         .addVariable("NEAREST", TextureFilter::NEAREST)
         .addVariable("LINEAR", TextureFilter::LINEAR)
@@ -962,6 +970,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("metallicFactor", &Material::metallicFactor)
         .addProperty("roughnessFactor", &Material::roughnessFactor)
         .addProperty("alphaMode", &Material::alphaMode)
+        // writable for the copy getMaterial returns: m.lighting = ...; mesh:setMaterial(m)
+        .addProperty("lighting", &Material::lighting, &Material::lighting)
         .addProperty("alphaCutoff", &Material::alphaCutoff)
         .addProperty("foliageTransmission", &Material::foliageTransmission)
         .addProperty("emissiveFactor", &Material::emissiveFactor)
@@ -1073,6 +1083,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("globalIlluminationIntensity", &Scene::getGlobalIlluminationIntensity, (void (Scene::*)(float))&Scene::setGlobalIllumination)
         .addFunction("getGlobalIlluminationColorLinear", &Scene::getGlobalIlluminationColorLinear)
         .addFunction("setGlobalIllumination", (void (Scene::*)(float, Vector3))&Scene::setGlobalIllumination)
+        .addProperty("maxLightsPerObject", &Scene::getMaxLightsPerObject, &Scene::setMaxLightsPerObject)
         .addProperty("ambientLight2DColor", &Scene::getAmbientLight2DColor, (void (Scene::*)(Vector3))&Scene::setAmbientLight2D)
         .addProperty("ambientLight2DIntensity", &Scene::getAmbientLight2DIntensity, (void (Scene::*)(float))&Scene::setAmbientLight2D)
         .addFunction("getAmbientLight2DColorLinear", &Scene::getAmbientLight2DColorLinear)
