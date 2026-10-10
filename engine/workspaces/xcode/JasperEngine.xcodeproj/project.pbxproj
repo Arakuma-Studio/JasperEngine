@@ -1625,6 +1625,10 @@
 		48544D4C00000000000001D3 /* URL.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D1 /* URL.cpp */; };
 		48544D4C00000000000001D5 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
 		48544D4C00000000000001D6 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
+		524D4C55F980B3B6D95D36CE /* ShorthandFont.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55879CBFB6B5AE6A46 /* ShorthandFont.cpp */; };
+		524D4C55A7B337346785F567 /* ShorthandFont.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55879CBFB6B5AE6A46 /* ShorthandFont.cpp */; };
+		524D4C558DD162F75DEFF4A5 /* PropertyParserFontFamily.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C557BD8AC98A5F3744D /* PropertyParserFontFamily.cpp */; };
+		524D4C55206BAEDFDCAA773F /* PropertyParserFontFamily.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C557BD8AC98A5F3744D /* PropertyParserFontFamily.cpp */; };
 		524D4C559EC340C6AEABE2AA /* ColorSpaces.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55E76504387640A69E /* ColorSpaces.cpp */; };
 		524D4C55DCBC7A23D237FC3B /* ColorSpaces.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55E76504387640A69E /* ColorSpaces.cpp */; };
 		524D4C55D960EBD2547F649F /* ElementStyleValues.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5566A1481009ECCE54 /* ElementStyleValues.cpp */; };
@@ -4684,6 +4688,8 @@
 		48544D4C00000000000001CE /* TypeConverter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TypeConverter.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D1 /* URL.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = URL.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D4 /* Variant.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Variant.cpp; sourceTree = "<group>"; };
+		524D4C55879CBFB6B5AE6A46 /* ShorthandFont.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShorthandFont.cpp; sourceTree = "<group>"; };
+		524D4C557BD8AC98A5F3744D /* PropertyParserFontFamily.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserFontFamily.cpp; sourceTree = "<group>"; };
 		524D4C55E76504387640A69E /* ColorSpaces.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ColorSpaces.cpp; sourceTree = "<group>"; };
 		524D4C5566A1481009ECCE54 /* ElementStyleValues.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementStyleValues.cpp; sourceTree = "<group>"; };
 		524D4C55C0A526E3E5E2A661 /* PropertyParserAlignment.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserAlignment.cpp; sourceTree = "<group>"; };
@@ -8786,6 +8792,8 @@
 				524D4C55C0A526E3E5E2A661 /* PropertyParserAlignment.cpp */,
 				524D4C5566A1481009ECCE54 /* ElementStyleValues.cpp */,
 				524D4C55E76504387640A69E /* ColorSpaces.cpp */,
+				524D4C557BD8AC98A5F3744D /* PropertyParserFontFamily.cpp */,
+				524D4C55879CBFB6B5AE6A46 /* ShorthandFont.cpp */,
 			);
 			name = Core;
 			path = Source/Core;
@@ -12728,6 +12736,8 @@
 				48544D4C00000000000001CF /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D2 /* URL.cpp in Sources */,
 				48544D4C00000000000001D5 /* Variant.cpp in Sources */,
+				524D4C55F980B3B6D95D36CE /* ShorthandFont.cpp in Sources */,
+				524D4C558DD162F75DEFF4A5 /* PropertyParserFontFamily.cpp in Sources */,
 				524D4C559EC340C6AEABE2AA /* ColorSpaces.cpp in Sources */,
 				524D4C55D960EBD2547F649F /* ElementStyleValues.cpp in Sources */,
 				524D4C55A8F24B08E71520C8 /* PropertyParserAlignment.cpp in Sources */,
@@ -12940,6 +12950,8 @@
 				48544D4C00000000000001D0 /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D3 /* URL.cpp in Sources */,
 				48544D4C00000000000001D6 /* Variant.cpp in Sources */,
+				524D4C55A7B337346785F567 /* ShorthandFont.cpp in Sources */,
+				524D4C55206BAEDFDCAA773F /* PropertyParserFontFamily.cpp in Sources */,
 				524D4C55DCBC7A23D237FC3B /* ColorSpaces.cpp in Sources */,
 				524D4C55058C30DA5BAF1E1C /* ElementStyleValues.cpp in Sources */,
 				524D4C557F56782963237492 /* PropertyParserAlignment.cpp in Sources */,
