@@ -203,6 +203,17 @@ private:
 	static Vector2f CalculateSizeForReplacedElement(Vector2f specified_content_size, Vector2f min_size, Vector2f max_size, Vector2f intrinsic_size,
 		float intrinsic_ratio);
 
+	/// Resolves the sizing keywords of an element's width, height and min/max sizes (CSS Sizing 3, 4): min-content,
+	/// max-content, fit-content and fit-content() widths from its content, 'stretch' from the containing block; in the block
+	/// axis the content-based keywords are 'auto'. Values in the units of the element's box-sizing box; -1 for 'auto'.
+	static void ResolveSizingKeywords(const Box& box, const ComputedValues& computed, Element* element, Vector2f containing_block,
+		Vector2f& content_area, Vector2f& min_size, Vector2f& max_size);
+	/// 'aspect-ratio' of a non-replaced block-level box (CSS Sizing 4): a definite height gives an automatic width; with both
+	/// automatic the min and max heights constrain the width through the ratio (its height follows it once resolved).
+	static void ApplyAspectRatio(const Box& box, const ComputedValues& computed, Vector2f& content_area, Vector2f& min_size, Vector2f& max_size);
+	/// The automatic height of a box with an aspect ratio, from its resolved width.
+	static void ApplyAspectRatioToHeight(Box& box, const ComputedValues& computed, float min_height, float max_height, bool replaced_element);
+
 	/// Builds the block-specific width and horizontal margins of a Box.
 	/// @param[in,out] box The box to generate. The padding and borders must be set on the box already. The content area is used instead of the width
 	/// property, and -1 means auto width.

@@ -83,6 +83,11 @@ void LayoutDetails::GetLayoutChildren(Element* parent, LayoutChildList& children
 	}
 }
 
+namespace {
+	// The element whose sizing keywords are being resolved: measuring it builds its box again, where they count as 'auto'.
+	const Element* resolving_sizing_keywords_of = nullptr;
+} // namespace
+
 // Convert width or height of a border box to the width or height of its corresponding content box.
 static inline float BorderSizeToContentSize(float border_size, float border_padding_edges_size)
 {
@@ -141,6 +146,13 @@ void LayoutDetails::BuildBox(Box& box, Vector2f containing_block, Element* eleme
 			ResolveValueOr(computed.max_height(), containing_block.y, FLT_MAX),
 		};
 
+		// The sizing keywords (CSS Sizing 3, 4), in the units of the box-sizing box like the values above.
+		if (!replaced_element && element != resolving_sizing_keywords_of &&
+			(computed.width_keyword() != Style::SizingKeyword::None || computed.height_keyword() != Style::SizingKeyword::None ||
+				computed.min_width_keyword() != Style::SizingKeyword::None || computed.max_width_keyword() != Style::SizingKeyword::None ||
+				computed.min_height_keyword() != Style::SizingKeyword::None || computed.max_height_keyword() != Style::SizingKeyword::None))
+			ResolveSizingKeywords(box, computed, element, containing_block, content_area, min_size, max_size);
+
 		// Adjust sizes for the given box sizing model.
 		if (computed.box_sizing() == Style::BoxSizing::BorderBox)
 		{
@@ -163,8 +175,26 @@ void LayoutDetails::BuildBox(Box& box, Vector2f containing_block, Element* eleme
 		if (content_area.y >= 0)
 			content_area.y = Math::Clamp(content_area.y, min_size.y, max_size.y);
 
+		// 'aspect-ratio' other than 'auto' replaces the natural ratio of a replaced element ('auto && <ratio>': without one).
+		if (replaced_element && computed.aspect_ratio() > 0.f && (!computed.aspect_ratio_auto() || intrinsic_ratio <= 0.f))
+		{
+			intrinsic_ratio = computed.aspect_ratio();
+			if (computed.box_sizing() == Style::BoxSizing::BorderBox)
+			{
+				// (the ratio holds between the border-box sizes)
+				const Vector2f edges = {box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding),
+					box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border, BoxArea::Padding)};
+				if (content_area.x >= 0.f && content_area.y < 0.f)
+					content_area.y = Math::Max((content_area.x + edges.x) / intrinsic_ratio - edges.y, 0.f);
+				else if (content_area.y >= 0.f && content_area.x < 0.f)
+					content_area.x = Math::Max((content_area.y + edges.y) * intrinsic_ratio - edges.x, 0.f);
+			}
+		}
+
 		if (replaced_element)
 			content_area = CalculateSizeForReplacedElement(content_area, min_size, max_size, intrinsic_size, intrinsic_ratio);
+		else if (box_context == BuildBoxMode::Block && computed.aspect_ratio() > 0.f)
+			ApplyAspectRatio(box, computed, content_area, min_size, max_size);
 	}
 
 	box.SetContent(content_area);
@@ -296,9 +326,124 @@ void LayoutDetails::BuildBoxSizeAndMargins(Box& box, Vector2f min_size, Vector2f
 		else
 		{
 			BuildBoxWidth(box, computed, min_size.x, max_size.x, containing_block, element, replaced_element);
+			ApplyAspectRatioToHeight(box, computed, min_size.y, max_size.y, replaced_element);
 			BuildBoxHeight(box, computed, min_size.y, max_size.y, containing_block);
 		}
 	}
+}
+
+void LayoutDetails::ApplyAspectRatio(const Box& box, const ComputedValues& computed, Vector2f& content_area, Vector2f& min_size, Vector2f& max_size)
+{
+	// The ratio holds between the sizes of the box-sizing box; here sizes are content sizes.
+	const float ratio = computed.aspect_ratio();
+	const bool border_box = (computed.box_sizing() == Style::BoxSizing::BorderBox);
+	const Vector2f edges = border_box ? Vector2f{box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding),
+											box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border, BoxArea::Padding)}
+									  : Vector2f(0.f);
+	auto width_from_height = [&](float height) { return Math::Max((height + edges.y) * ratio - edges.x, 0.f); };
+
+	if (content_area.y >= 0.f && content_area.x < 0.f)
+	{
+		// A definite height and an automatic width: the width follows the height.
+		content_area.x = Math::Clamp(width_from_height(content_area.y), min_size.x, max_size.x);
+	}
+	else if (content_area.x < 0.f && content_area.y < 0.f)
+	{
+		// Both automatic: the width is resolved as usual (its height follows it, ApplyAspectRatioToHeight), within the min
+		// and max heights transferred through the ratio (CSS Sizing 4 §5.1).
+		if (max_size.y < FLT_MAX)
+			max_size.x = Math::Min(max_size.x, Math::Max(width_from_height(max_size.y), min_size.x));
+		if (min_size.y > 0.f)
+			min_size.x = Math::Min(Math::Max(min_size.x, width_from_height(min_size.y)), max_size.x);
+	}
+}
+
+void LayoutDetails::ApplyAspectRatioToHeight(Box& box, const ComputedValues& computed, float min_height, float max_height, bool replaced_element)
+{
+	const float ratio = computed.aspect_ratio();
+	Vector2f content_area = box.GetSize();
+	if (replaced_element || ratio <= 0.f || content_area.x < 0.f || content_area.y >= 0.f)
+		return;
+	const bool border_box = (computed.box_sizing() == Style::BoxSizing::BorderBox);
+	const Vector2f edges = border_box ? Vector2f{box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding),
+											box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border, BoxArea::Padding)}
+									  : Vector2f(0.f);
+	content_area.y = Math::Clamp(Math::Max((content_area.x + edges.x) / ratio - edges.y, 0.f), min_height, max_height);
+	box.SetContent(content_area);
+}
+
+void LayoutDetails::ResolveSizingKeywords(const Box& box, const ComputedValues& computed, Element* element, Vector2f containing_block,
+	Vector2f& content_area, Vector2f& min_size, Vector2f& max_size)
+{
+	using Style::SizingKeyword;
+	const Element* previous = resolving_sizing_keywords_of;
+	resolving_sizing_keywords_of = element;
+
+	const bool border_box = (computed.box_sizing() == Style::BoxSizing::BorderBox);
+	const Vector2f edges = {box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding),
+		box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border, BoxArea::Padding)};
+	// The space beside the margins (the 'stretch' size and the fit-content available space), border-box.
+	const float margins_x = ResolveValue(computed.margin_left(), containing_block.x) + ResolveValue(computed.margin_right(), containing_block.x);
+	const float margins_y = ResolveValue(computed.margin_top(), containing_block.x) + ResolveValue(computed.margin_bottom(), containing_block.x);
+	const float available_x = (containing_block.x >= 0.f ? Math::Max(containing_block.x - margins_x, 0.f) : -1.f);
+	const float available_y = (containing_block.y >= 0.f ? Math::Max(containing_block.y - margins_y, 0.f) : -1.f);
+	const bool absolutely_positioned = (computed.position() == Style::Position::Absolute || computed.position() == Style::Position::Fixed);
+
+	// A border-box width to the units of the values (the box-sizing box).
+	auto to_box_x = [&](float border_width) { return border_box ? border_width : Math::Max(border_width - edges.x, 0.f); };
+	auto to_box_y = [&](float border_height) { return border_box ? border_height : Math::Max(border_height - edges.y, 0.f); };
+
+	// A width keyword's value, or -1 for 'auto' (the fit-content and stretch widths of absolutely positioned boxes take
+	// their insets: BuildAbsoluteBoxWidth).
+	auto width_of = [&](SizingKeyword keyword, Style::LengthPercentage argument) -> float {
+		switch (keyword)
+		{
+		case SizingKeyword::MinContent: return to_box_x(GetContentWidth(element, AvailableSpace::MakeMinContent(), containing_block));
+		case SizingKeyword::MaxContent: return to_box_x(GetContentWidth(element, AvailableSpace::MakeMaxContent(), containing_block));
+		case SizingKeyword::FitContent:
+			if (absolutely_positioned || available_x < 0.f)
+				return -1.f;
+			return to_box_x(GetContentWidth(element, AvailableSpace::MakeDefinite(available_x), containing_block));
+		case SizingKeyword::FitContentLength:
+		{
+			// fit-content(<length-percentage>): the argument as the available space of the box-sizing box.
+			if (argument.type == Style::LengthPercentage::Percentage && containing_block.x < 0.f)
+				return -1.f;
+			const float limit = ResolveValue(argument, containing_block.x) + (border_box ? 0.f : edges.x);
+			return to_box_x(GetContentWidth(element, AvailableSpace::MakeDefinite(Math::Max(limit, 0.f)), containing_block));
+		}
+		case SizingKeyword::Stretch: return (absolutely_positioned || available_x < 0.f) ? -1.f : to_box_x(available_x);
+		default: break;
+		}
+		return -1.f;
+	};
+	// A height keyword's value: the content-based ones are the automatic height in the block axis.
+	auto height_of = [&](SizingKeyword keyword) -> float {
+		if (keyword == SizingKeyword::Stretch && !absolutely_positioned && available_y >= 0.f)
+			return to_box_y(available_y);
+		return -1.f;
+	};
+
+	if (computed.width_keyword() != SizingKeyword::None)
+		content_area.x = width_of(computed.width_keyword(), computed.fit_content_width());
+	if (computed.height_keyword() != SizingKeyword::None)
+		content_area.y = height_of(computed.height_keyword());
+	if (computed.min_width_keyword() != SizingKeyword::None)
+		min_size.x = Math::Max(width_of(computed.min_width_keyword(), {}), 0.f);
+	if (computed.max_width_keyword() != SizingKeyword::None)
+	{
+		const float width = width_of(computed.max_width_keyword(), {});
+		max_size.x = (width >= 0.f ? width : FLT_MAX);
+	}
+	if (computed.min_height_keyword() != SizingKeyword::None)
+		min_size.y = Math::Max(height_of(computed.min_height_keyword()), 0.f);
+	if (computed.max_height_keyword() != SizingKeyword::None)
+	{
+		const float height = height_of(computed.max_height_keyword());
+		max_size.y = (height >= 0.f ? height : FLT_MAX);
+	}
+
+	resolving_sizing_keywords_of = previous;
 }
 
 namespace {
@@ -1020,10 +1165,22 @@ void LayoutDetails::BuildAbsoluteBoxWidth(Box& box, const ComputedValues& comput
 	const bool table = (computed.display() == Style::Display::Table || computed.display() == Style::Display::InlineTable);
 
 	Vector2f content_area = box.GetSize();
+	const float ratio = (replaced_element ? 0.f : computed.aspect_ratio());
+	if (content_area.x < 0.f && content_area.y >= 0.f && ratio > 0.f)
+	{
+		// A definite height transfers through the aspect ratio (of the box-sizing box).
+		const float edges_y = box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border, BoxArea::Padding);
+		if (computed.box_sizing() == Style::BoxSizing::BorderBox)
+			content_area.x = Math::Max((content_area.y + edges_y) * ratio - edges, 0.f);
+		else
+			content_area.x = content_area.y * ratio;
+	}
 	if (content_area.x < 0.f)
 	{
 		const float available = Math::Max(axis.GetStretchFitSize() - edges, 0.f);
-		if (axis.has_inset_start && axis.has_inset_end && !replaced_element && !table)
+		const bool keyword = (computed.width_keyword() != Style::SizingKeyword::None);
+		if ((axis.has_inset_start && axis.has_inset_end && !replaced_element && !table && !keyword) ||
+			computed.width_keyword() == Style::SizingKeyword::Stretch)
 			content_area.x = available;                                                 // stretch-fit
 		else
 			content_area.x = GetShrinkToFitWidth(element, containing_block, available); // fit-content
@@ -1048,7 +1205,20 @@ void LayoutDetails::BuildAbsoluteBoxHeight(Box& box, const ComputedValues& compu
 	const bool table = (computed.display() == Style::Display::Table || computed.display() == Style::Display::InlineTable);
 
 	Vector2f content_area = box.GetSize();
-	if (content_area.y < 0.f && axis.has_inset_start && axis.has_inset_end && !replaced_element && !table && containing_block.y >= 0.f)
+	const float ratio = (replaced_element ? 0.f : computed.aspect_ratio());
+	if (content_area.y < 0.f && ratio > 0.f && content_area.x >= 0.f)
+	{
+		// The width (stretch-fit, fit-content or definite) transfers through the aspect ratio: the block axis depends on it.
+		const float edges_x = box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
+		if (computed.box_sizing() == Style::BoxSizing::BorderBox)
+			content_area.y = Math::Max((content_area.x + edges_x) / ratio - edges, 0.f);
+		else
+			content_area.y = content_area.x / ratio;
+	}
+	const bool keyword = (computed.height_keyword() != Style::SizingKeyword::None);
+	if (content_area.y < 0.f && containing_block.y >= 0.f &&
+		((axis.has_inset_start && axis.has_inset_end && !replaced_element && !table && !keyword) ||
+			computed.height_keyword() == Style::SizingKeyword::Stretch))
 		content_area.y = Math::Max(axis.GetStretchFitSize() - edges, 0.f); // stretch-fit
 	if (content_area.y >= 0.f)
 		content_area.y = Math::Max(Math::Clamp(content_area.y, min_height, max_height), 0.f);
