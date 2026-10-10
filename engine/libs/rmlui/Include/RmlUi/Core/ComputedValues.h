@@ -319,12 +319,12 @@ namespace Style {
 		float             transform_origin_z()         const { return rare.transform_origin_z; }
 		bool              has_local_transform()        const { return rare.has_local_transform; }
 		bool              has_local_perspective()      const { return rare.has_local_perspective; }
-		AlignContent      align_content()              const { return GetLocalPropertyKeyword(PropertyId::AlignContent, AlignContent::Stretch); }
-		AlignItems        align_items()                const { return GetLocalPropertyKeyword(PropertyId::AlignItems, AlignItems::Stretch); }
-		AlignSelf         align_self()                 const { return GetLocalPropertyKeyword(PropertyId::AlignSelf, AlignSelf::Auto); }
+		AlignContent      align_content()              const { return GetLocalPropertyAlignment(PropertyId::AlignContent, AlignContent::Normal); }
+		AlignItems        align_items()                const { return GetLocalPropertyAlignment(PropertyId::AlignItems, AlignItems::Normal); }
+		AlignSelf         align_self()                 const { return GetLocalPropertyAlignment(PropertyId::AlignSelf, AlignSelf::Auto); }
 		FlexDirection     flex_direction()             const { return GetLocalPropertyKeyword(PropertyId::FlexDirection, FlexDirection::Row); }
 		FlexWrap          flex_wrap()                  const { return GetLocalPropertyKeyword(PropertyId::FlexWrap, FlexWrap::Nowrap); }
-		JustifyContent    justify_content()            const { return GetLocalPropertyKeyword(PropertyId::JustifyContent, JustifyContent::FlexStart); }
+		JustifyContent    justify_content()            const { return GetLocalPropertyAlignment(PropertyId::JustifyContent, JustifyContent::Normal); }
 		float             flex_grow()                  const { return GetLocalNumericProperty(PropertyId::FlexGrow, 0.f); }
 		float             flex_shrink()                const { return GetLocalNumericProperty(PropertyId::FlexShrink, 1.f); }
 		FlexBasis         flex_basis()                 const { return GetLengthPercentageAuto(rare.flex_basis_type, rare.flex_basis, ComputedCalculationSlot::FlexBasis); }
@@ -352,6 +352,14 @@ namespace Style {
 		// -- Phase 3: one section per package (see RareValues) --
 		// Groundwork (p3-base)
 		int               order()                      const { return rare.order; }
+		JustifyItems      justify_items()              const { return GetLocalPropertyAlignment(PropertyId::JustifyItems, JustifyItems::Legacy); }
+		JustifySelf       justify_self()               const { return GetLocalPropertyAlignment(PropertyId::JustifySelf, JustifySelf::Auto); }
+		OverflowAlignment align_content_overflow()     const { return GetLocalPropertyOverflowAlignment(PropertyId::AlignContent); }
+		OverflowAlignment align_items_overflow()       const { return GetLocalPropertyOverflowAlignment(PropertyId::AlignItems); }
+		OverflowAlignment align_self_overflow()        const { return GetLocalPropertyOverflowAlignment(PropertyId::AlignSelf); }
+		OverflowAlignment justify_content_overflow()   const { return GetLocalPropertyOverflowAlignment(PropertyId::JustifyContent); }
+		OverflowAlignment justify_items_overflow()     const { return GetLocalPropertyOverflowAlignment(PropertyId::JustifyItems); }
+		OverflowAlignment justify_self_overflow()      const { return GetLocalPropertyOverflowAlignment(PropertyId::JustifySelf); }
 
 		// Values (p3-values)
 
@@ -571,6 +579,20 @@ namespace Style {
 			if (auto p = GetLocalPropertyWithResolvedVariables(id))
 				return static_cast<T>(p->Get<int>());
 			return default_value;
+		}
+		// Alignment keywords carry their 'safe'/'unsafe' prefix above the low byte (PropertyParserAlignment).
+		template <typename T>
+		inline T GetLocalPropertyAlignment(PropertyId id, T default_value) const
+		{
+			if (auto p = GetLocalPropertyWithResolvedVariables(id))
+				return static_cast<T>(p->Get<int>() & 0xff);
+			return default_value;
+		}
+		inline OverflowAlignment GetLocalPropertyOverflowAlignment(PropertyId id) const
+		{
+			if (auto p = GetLocalPropertyWithResolvedVariables(id))
+				return static_cast<OverflowAlignment>((p->Get<int>() >> 8) & 0x3);
+			return OverflowAlignment::Default;
 		}
 		template <typename T>
 		inline T GetLocalProperty(PropertyId id, T default_value) const

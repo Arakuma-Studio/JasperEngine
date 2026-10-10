@@ -2,6 +2,7 @@
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
 #include "IdNameMap.h"
+#include "PropertyParserAlignment.h"
 #include "PropertyParserAnimation.h"
 #include "PropertyParserBoxShadow.h"
 #include "PropertyParserColorStopList.h"
@@ -41,6 +42,7 @@ struct DefaultStyleSheetParsers : NonCopyMoveable {
 	PropertyParserNumber angle = PropertyParserNumber(Unit::ANGLE, Unit::RAD);
 #endif
 	PropertyParserKeyword keyword = PropertyParserKeyword();
+	PropertyParserAlignment alignment = PropertyParserAlignment();
 	PropertyParserString string = PropertyParserString();
 	PropertyParserAnimation animation = PropertyParserAnimation(PropertyParserAnimation::ANIMATION_PARSER);
 	PropertyParserAnimation transition = PropertyParserAnimation(PropertyParserAnimation::TRANSITION_PARSER);
@@ -275,6 +277,7 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	*/
 
 	// -- Groundwork (p3-base) --
+	RegisterParser("alignment", &default_parsers->alignment);
 
 	// -- Values (p3-values) --
 
@@ -468,9 +471,13 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::FillImage, "fill-image", "", false, false).AddParser("string");
 
 	// Flexbox
-	RegisterProperty(PropertyId::AlignContent, "align-content", "stretch", false, true).AddParser("keyword", "flex-start, flex-end, center, space-between, space-around, space-evenly, stretch");
-	RegisterProperty(PropertyId::AlignItems, "align-items", "stretch", false, true).AddParser("keyword", "flex-start, flex-end, center, baseline, stretch");
-	RegisterProperty(PropertyId::AlignSelf, "align-self", "auto", false, true).AddParser("keyword", "auto, flex-start, flex-end, center, baseline, stretch");
+	// The alignment keywords of CSS Box Alignment 3 (phase 3 groundwork), in the order of the enums in StyleTypes.h.
+	RegisterProperty(PropertyId::AlignContent, "align-content", "normal", false, true)
+		.AddParser("alignment", MakeAlignmentKeywords("flex-start, flex-end, center, space-between, space-around, space-evenly, stretch, normal, start, end"));
+	RegisterProperty(PropertyId::AlignItems, "align-items", "normal", false, true)
+		.AddParser("alignment", MakeAlignmentKeywords("flex-start, flex-end, center, baseline, stretch, normal, start, end, self-start, self-end, last baseline"));
+	RegisterProperty(PropertyId::AlignSelf, "align-self", "auto", false, true)
+		.AddParser("alignment", MakeAlignmentKeywords("auto, flex-start, flex-end, center, baseline, stretch, normal, start, end, self-start, self-end, last baseline"));
 
 	RegisterProperty(PropertyId::FlexBasis, "flex-basis", "auto", false, true).AddParser("keyword", "auto").AddParser("length_percent");
 	RegisterProperty(PropertyId::FlexDirection, "flex-direction", "row", false, true).AddParser("keyword", "row, row-reverse, column, column-reverse");
@@ -478,7 +485,8 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::FlexGrow, "flex-grow", "0", false, true).AddParser("number");
 	RegisterProperty(PropertyId::FlexShrink, "flex-shrink", "1", false, true).AddParser("number");
 	RegisterProperty(PropertyId::FlexWrap, "flex-wrap", "nowrap", false, true).AddParser("keyword", "nowrap, wrap, wrap-reverse");
-	RegisterProperty(PropertyId::JustifyContent, "justify-content", "flex-start", false, true).AddParser("keyword", "flex-start, flex-end, center, space-between, space-around, space-evenly");
+	RegisterProperty(PropertyId::JustifyContent, "justify-content", "normal", false, true)
+		.AddParser("alignment", MakeAlignmentKeywords("flex-start, flex-end, center, space-between, space-around, space-evenly, stretch, normal, start, end, left, right"));
 
 	RegisterShorthand(ShorthandId::Flex, "flex", "flex-grow, flex-shrink, flex-basis", ShorthandType::Flex);
 	RegisterShorthand(ShorthandId::FlexFlow, "flex-flow", "flex-direction, flex-wrap", ShorthandType::FallThrough);
@@ -495,6 +503,16 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 
 	// -- Groundwork (p3-base) --
 	RegisterProperty(PropertyId::Order, "order", "0", false, true).AddParser("number");
+	// 'legacy' behaves as 'normal'; justify-items and justify-self have no effect in flex layout (grid: p3-grid).
+	RegisterProperty(PropertyId::JustifyItems, "justify-items", "legacy", false, true)
+		.AddParser("alignment", MakeAlignmentKeywords("flex-start, flex-end, center, baseline, stretch, normal, start, end, self-start, self-end, last baseline, left, right, legacy"));
+	RegisterProperty(PropertyId::JustifySelf, "justify-self", "auto", false, true)
+		.AddParser("alignment", MakeAlignmentKeywords("auto, flex-start, flex-end, center, baseline, stretch, normal, start, end, self-start, self-end, last baseline, left, right"));
+	RegisterShorthand(ShorthandId::PlaceContent, "place-content", "align-content, justify-content", ShorthandType::Custom);
+	RegisterShorthand(ShorthandId::PlaceItems, "place-items", "align-items, justify-items", ShorthandType::Custom);
+	RegisterShorthand(ShorthandId::PlaceSelf, "place-self", "align-self, justify-self", ShorthandType::Custom);
+	for (ShorthandId id : {ShorthandId::PlaceContent, ShorthandId::PlaceItems, ShorthandId::PlaceSelf})
+		properties.SetShorthandParser(id, &ParsePlaceShorthand);
 	// A browser optimization hint with no visual effect: accepted, so it neither fails nor needs a rewrite.
 	RegisterProperty(PropertyId::WillChange, "will-change", "auto", false, false).AddParser("keyword", "auto").AddParser("string");
 

@@ -13,6 +13,49 @@
 
 namespace Rml {
 
+// The CSS Box Alignment 3 keywords (phase 3 groundwork) laid out as their nearest 6.3 flex value: 'normal' as the 6.3
+// default ('stretch', 'flex-start'), 'start'/'end' as 'flex-start'/'flex-end'. Exact flex alignment ('start' not following
+// '*-reverse', 'safe' fallback, 'last baseline') is the flex parity package's (p3-layout).
+static Style::AlignSelf FlexAlignSelf(Style::AlignSelf value)
+{
+	using Style::AlignSelf;
+	switch (value)
+	{
+	case AlignSelf::Normal: return AlignSelf::Stretch;
+	case AlignSelf::Start:
+	case AlignSelf::SelfStart: return AlignSelf::FlexStart;
+	case AlignSelf::End:
+	case AlignSelf::SelfEnd: return AlignSelf::FlexEnd;
+	case AlignSelf::LastBaseline: return AlignSelf::Baseline;
+	default: return value;
+	}
+}
+static Style::AlignContent FlexAlignContent(Style::AlignContent value)
+{
+	using Style::AlignContent;
+	switch (value)
+	{
+	case AlignContent::Normal: return AlignContent::Stretch;
+	case AlignContent::Start: return AlignContent::FlexStart;
+	case AlignContent::End: return AlignContent::FlexEnd;
+	default: return value;
+	}
+}
+static Style::JustifyContent FlexJustifyContent(Style::JustifyContent value)
+{
+	using Style::JustifyContent;
+	switch (value)
+	{
+	case JustifyContent::Normal:
+	case JustifyContent::Stretch:
+	case JustifyContent::Start:
+	case JustifyContent::Left: return JustifyContent::FlexStart;
+	case JustifyContent::End:
+	case JustifyContent::Right: return JustifyContent::FlexEnd;
+	default: return value;
+	}
+}
+
 UniquePtr<LayoutBox> FlexFormattingContext::Format(ContainerBox* parent_container, Element* element, const Box* override_initial_box)
 {
 	RMLUI_ZoneScopedC(0xAFAF4F);
@@ -331,15 +374,16 @@ void FlexFormattingContext::Format(Vector2f& flex_resulting_content_size, Vector
 
 		item.flex_shrink_factor = computed.flex_shrink();
 		item.flex_grow_factor = computed.flex_grow();
-		item.align_self = computed.align_self();
+		item.align_self = FlexAlignSelf(computed.align_self());
 
 		static_assert(int(Style::AlignSelf::FlexStart) == int(Style::AlignItems::FlexStart) + 1 &&
-				int(Style::AlignSelf::Stretch) == int(Style::AlignItems::Stretch) + 1,
+				int(Style::AlignSelf::Stretch) == int(Style::AlignItems::Stretch) + 1 &&
+				int(Style::AlignSelf::LastBaseline) == int(Style::AlignItems::LastBaseline) + 1,
 			"It is assumed below that align items is a shifted version (no auto value) of align self.");
 
 		// Use the container's align-items property if align-self is auto.
 		if (item.align_self == Style::AlignSelf::Auto)
-			item.align_self = static_cast<Style::AlignSelf>(static_cast<int>(computed_flex.align_items()) + 1);
+			item.align_self = FlexAlignSelf(static_cast<Style::AlignSelf>(static_cast<int>(computed_flex.align_items()) + 1));
 
 		auto GetMainSize = [&](const Box& box) { return box.GetSize()[main_axis_horizontal ? 0 : 1]; };
 
@@ -615,7 +659,7 @@ void FlexFormattingContext::Format(Vector2f& flex_resulting_content_size, Vector
 				using Style::JustifyContent;
 				const int num_items = int(line.items.size());
 
-				switch (computed_flex.justify_content())
+				switch (FlexJustifyContent(computed_flex.justify_content()))
 				{
 				case JustifyContent::SpaceBetween:
 					if (num_items > 1)
@@ -663,6 +707,15 @@ void FlexFormattingContext::Format(Vector2f& flex_resulting_content_size, Vector
 					}
 				}
 				break;
+				case JustifyContent::Stretch:
+				case JustifyContent::Normal:
+				case JustifyContent::Start:
+				case JustifyContent::End:
+				case JustifyContent::Left:
+				case JustifyContent::Right:
+					// Never encountered here: mapped by FlexJustifyContent.
+					RMLUI_ERROR;
+					break;
 				}
 			}
 		}
@@ -769,7 +822,7 @@ void FlexFormattingContext::Format(Vector2f& flex_resulting_content_size, Vector
 	}
 
 	// Stretch out the lines if we have extra space.
-	if (cross_available_size >= 0.f && computed_flex.align_content() == Style::AlignContent::Stretch)
+	if (cross_available_size >= 0.f && FlexAlignContent(computed_flex.align_content()) == Style::AlignContent::Stretch)
 	{
 		int remaining_space = static_cast<int>(cross_available_size -
 			std::accumulate(container.lines.begin(), container.lines.end(), 0.f,
@@ -864,6 +917,15 @@ void FlexFormattingContext::Format(Vector2f& flex_resulting_content_size, Vector
 				case AlignSelf::Stretch:
 					// Handled above
 					break;
+				case AlignSelf::Normal:
+				case AlignSelf::Start:
+				case AlignSelf::End:
+				case AlignSelf::SelfStart:
+				case AlignSelf::SelfEnd:
+				case AlignSelf::LastBaseline:
+					// Never encountered here: mapped by FlexAlignSelf.
+					RMLUI_ERROR;
+					break;
 				}
 			}
 
@@ -909,7 +971,7 @@ void FlexFormattingContext::Format(Vector2f& flex_resulting_content_size, Vector
 		{
 			using Style::AlignContent;
 
-			switch (computed_flex.align_content())
+			switch (FlexAlignContent(computed_flex.align_content()))
 			{
 			case AlignContent::SpaceBetween:
 				if (num_lines > 1)
@@ -958,6 +1020,12 @@ void FlexFormattingContext::Format(Vector2f& flex_resulting_content_size, Vector
 			break;
 			case AlignContent::Stretch:
 				// Handled above.
+				break;
+			case AlignContent::Normal:
+			case AlignContent::Start:
+			case AlignContent::End:
+				// Never encountered here: mapped by FlexAlignContent.
+				RMLUI_ERROR;
 				break;
 			}
 		}
