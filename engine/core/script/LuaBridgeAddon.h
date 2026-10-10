@@ -90,6 +90,12 @@ namespace luabridge
     template<> struct Stack<BodyType> : EnumWrapper<BodyType>{};
     template<> struct Stack<Joint2DType> : EnumWrapper<Joint2DType>{};
 
+    // shader library render state (Material, UI/points/lines)
+    template<> struct Stack<MaterialBlendMode> : EnumWrapper<MaterialBlendMode>{};
+    template<> struct Stack<MaterialCullMode> : EnumWrapper<MaterialCullMode>{};
+    template<> struct Stack<MaterialDepthWrite> : EnumWrapper<MaterialDepthWrite>{};
+    template<> struct Stack<MaterialDepthTest> : EnumWrapper<MaterialDepthTest>{};
+
     template <>
     struct Stack <Touch>
     {

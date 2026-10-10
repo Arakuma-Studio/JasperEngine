@@ -1010,15 +1010,16 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("metallicRoughnessTexture", &Material::metallicRoughnessTexture)
         .addProperty("occlusionTexture", &Material::occlusionTexture)
         .addProperty("normalTexture", &Material::normalTexture)
-        // shader library: "" built-in Lit, "library:<name>", or a project fork
-        .addProperty("shader", &Material::shader)
-        .addProperty("blendMode", &Material::blendMode)
-        .addProperty("cullMode", &Material::cullMode)
-        .addProperty("depthWrite", &Material::depthWrite)
-        .addProperty("depthTest", &Material::depthTest)
-        .addProperty("depthOffsetFactor", &Material::depthOffsetFactor)
-        .addProperty("depthOffsetUnits", &Material::depthOffsetUnits)
-        .addProperty("sortPriority", &Material::sortPriority)
+        // shader library, writable on the copy getMaterial gives (then setMaterial it):
+        // shader is "" (built-in Lit), "library:<name>" or a project fork
+        .addProperty("shader", &Material::shader, &Material::shader)
+        .addProperty("blendMode", &Material::blendMode, &Material::blendMode)
+        .addProperty("cullMode", &Material::cullMode, &Material::cullMode)
+        .addProperty("depthWrite", &Material::depthWrite, &Material::depthWrite)
+        .addProperty("depthTest", &Material::depthTest, &Material::depthTest)
+        .addProperty("depthOffsetFactor", &Material::depthOffsetFactor, &Material::depthOffsetFactor)
+        .addProperty("depthOffsetUnits", &Material::depthOffsetUnits, &Material::depthOffsetUnits)
+        .addProperty("sortPriority", &Material::sortPriority, &Material::sortPriority)
         // a @property value of the shader (colours linear); unset reads the manifest default
         .addFunction("setShaderParam",
             luabridge::overload<Material*, const std::string&, const Vector4&>(+[](Material* self, const std::string& name, const Vector4& value) {
