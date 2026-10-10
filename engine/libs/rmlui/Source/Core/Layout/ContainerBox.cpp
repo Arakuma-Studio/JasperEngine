@@ -27,10 +27,10 @@ void ContainerBox::ResetScrollbars(const Box& box)
 }
 
 void ContainerBox::AddAbsoluteElement(Element* element, Vector2f static_position, Element* static_relative_offset_parent,
-	std::optional<Rectanglef> containing_block)
+	std::optional<Rectanglef> containing_block, std::optional<StaticPositionArea> static_position_area)
 {
 	// We may possibly be adding the same element from a previous layout iteration. If so, this ensures it is updated with the latest static position.
-	absolute_elements[element] = AbsoluteElement{static_position, static_relative_offset_parent, containing_block};
+	absolute_elements[element] = AbsoluteElement{static_position, static_relative_offset_parent, containing_block, static_position_area};
 }
 
 void ContainerBox::AddRelativeElement(Element* element)
@@ -96,8 +96,27 @@ void ContainerBox::ClosePositionedElements()
 			// Now that the element's box has been built, we can offset the position we determined was appropriate for
 			// it by the element's margin. This is necessary because the coordinate system for the box begins at the
 			// border, not the margin.
-			offset.x += absolute_element->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Left);
-			offset.y += absolute_element->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Top);
+			const Box& absolute_box = absolute_element->GetBox();
+			offset.x += absolute_box.GetEdge(BoxArea::Margin, BoxEdge::Left);
+			offset.y += absolute_box.GetEdge(BoxArea::Margin, BoxEdge::Top);
+
+			// Aligned in the area of its static position, now that its size is known.
+			if (const auto& area = absolute_element_pair.second.static_position_area)
+			{
+				const Vector2f margin_size = absolute_box.GetSize(BoxArea::Margin);
+				const Vector2f free_space = area->rectangle.Size() - margin_size;
+				for (int axis = 0; axis < 2; axis++)
+				{
+					float shift = 0.f;
+					if (area->alignment[axis] == StaticAlignment::Center)
+						shift = 0.5f * free_space[axis];
+					else if (area->alignment[axis] == StaticAlignment::End)
+						shift = free_space[axis];
+					if (area->safe[axis] && free_space[axis] < 0.f)
+						shift = 0.f;
+					offset[axis] += shift;
+				}
+			}
 
 			// Set the offset of the element; the element itself will take care of any RCSS-defined positional offsets.
 			absolute_element->SetOffset(offset, element);
@@ -285,10 +304,17 @@ bool FlexContainer::Close(const Vector2f visible_overflow_size, const Vector2f s
 	return true;
 }
 
+bool FlexContainer::GetBaselineOfFirstLine(float& out_baseline) const
+{
+	if (has_first_baseline)
+		out_baseline = first_baseline;
+	return has_first_baseline;
+}
+
 float FlexContainer::GetShrinkToFitWidth() const
 {
 	// For the trivial case of a fixed width, we simply return that.
-	if (element->GetComputedValues().width().type == Style::Width::Type::Length)
+	if (element->GetComputedValues().width().type == Style::Width::Type::Length && !LayoutDetails::IsMeasuringContentOf(element))
 		return box.GetSize().x;
 
 	// Infer shrink-to-fit width from the intrinsic width of the element.
@@ -298,7 +324,7 @@ float FlexContainer::GetShrinkToFitWidth() const
 float FlexContainer::GetMinContentWidth() const
 {
 	// For the trivial case of a fixed width, we simply return that.
-	if (element->GetComputedValues().width().type == Style::Width::Type::Length)
+	if (element->GetComputedValues().width().type == Style::Width::Type::Length && !LayoutDetails::IsMeasuringContentOf(element))
 		return box.GetSize().x;
 
 	return FlexFormattingContext::GetMinContentSize(element).x;

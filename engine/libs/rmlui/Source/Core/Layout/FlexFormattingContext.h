@@ -11,37 +11,26 @@ class FlexContainer;
 
 /*
     Formats a flex container element and its flex items according to flexible box (flexbox) layout rules.
+
+    The algorithm is a port of Taffy's flexbox algorithm (https://github.com/DioxusLabs/taffy, MIT, commit 8409f3f8,
+    src/compute/flexbox.rs; LICENSE-taffy.txt), itself CSS Flexible Box Layout 1 §9 with the corrections that make it
+    match browsers, measuring items with RmlUi's formatting contexts (LayoutDetails::GetContentWidth, GetContentHeight).
+    It adds the automatic minimum size of flex items, the CSS Box Alignment 3 keywords with 'safe', baseline alignment,
+    'flex-basis: content' and the sizing keywords, aspect ratios, and 'flex-wrap: balance' with 'flex-line-count'
+    (CSS Flexbox 2).
 */
 class FlexFormattingContext final : public FormattingContext {
 public:
 	/// Formats a flex container element and its flex items according to flexbox layout rules.
 	static UniquePtr<LayoutBox> Format(ContainerBox* parent_container, Element* element, const Box* override_initial_box);
 
-	/// Computes max-content size for a flex container.
+	/// Computes the max-content size of a flex container's content box.
 	static Vector2f GetMaxContentSize(Element* element);
-	/// Computes the min-content width of a flex container (the height is not computed, 0): a single-line row container is
-	/// as wide as the sum of its items' min-content contributions, a column or multi-line one as its widest item's.
+	/// Computes the min-content width of a flex container's content box (the height is not computed, 0).
 	static Vector2f GetMinContentSize(Element* element);
 
 private:
 	FlexFormattingContext() = default;
-
-	/// Format the flexbox and its children.
-	/// @param[out] flex_resulting_content_size The final content size of the flex container.
-	/// @param[out] flex_visible_overflow_size Border-box overflow in case flex items or their contents overflow the container.
-	/// @param[out] flex_scrollable_content_size Margin-box overflow of the flex items, contributing only to the container's scrollable overflow.
-	/// @param[out] flex_baseline The baseline of the flex container, in terms of the vertical distance from its top-left border corner.
-	void Format(Vector2f& flex_resulting_content_size, Vector2f& flex_visible_overflow_size, Vector2f& flex_scrollable_content_size,
-		float& flex_baseline) const;
-
-	Vector2f flex_available_content_size;
-	Vector2f flex_content_containing_block;
-	Vector2f flex_content_offset;
-	Vector2f flex_min_size;
-	Vector2f flex_max_size;
-
-	Element* element_flex = nullptr;
-	FlexContainer* flex_container_box = nullptr;
 };
 
 } // namespace Rml

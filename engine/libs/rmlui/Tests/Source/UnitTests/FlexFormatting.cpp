@@ -55,10 +55,12 @@ TEST_CASE("FlexFormatting")
 		String align_items;
 		Vector2f expected_size;
 	};
+	// The checkbox is a replaced element with a natural aspect ratio (1): stretched to a definite cross size, its main size
+	// follows through the ratio (CSS Flexbox 9.2 step 3B, as images in browsers; phase 3, p3-layout's flex layout).
 	TestCase test_cases[] = {
-		{"column", "stretch", Vector2f(248, 16)},
+		{"column", "stretch", Vector2f(248, 248)},
 		{"column", "center", Vector2f(16, 16)},
-		{"row", "stretch", Vector2f(16, 88)},
+		{"row", "stretch", Vector2f(88, 88)},
 		{"row", "center", Vector2f(16, 16)},
 	};
 

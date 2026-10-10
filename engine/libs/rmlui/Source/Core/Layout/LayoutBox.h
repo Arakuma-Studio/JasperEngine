@@ -21,6 +21,9 @@ public:
 	virtual const Box* GetIfBox() const;
 	// Returns the baseline of the last line of this box, if any. Returns true if a baseline was found, otherwise false.
 	virtual bool GetBaselineOfLastLine(float& out_baseline) const;
+	// Returns the baseline of the first line of this box, if any (CSS: the first baseline set, used by flex baseline
+	// alignment), from the top of the box's formatting coordinates as GetBaselineOfLastLine. Returns true if found.
+	virtual bool GetBaselineOfFirstLine(float& out_baseline) const;
 	// Calculates the box's inner content width, i.e. the size used to calculate the shrink-to-fit width.
 	virtual float GetShrinkToFitWidth() const;
 	// Calculates the box's inner content width when it was formatted under a min-content constraint (an available width

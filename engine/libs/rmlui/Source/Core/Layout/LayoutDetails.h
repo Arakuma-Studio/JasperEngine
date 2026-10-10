@@ -47,6 +47,19 @@ private:
 	LayoutChildList* list;
 };
 
+/// The space available to a box along one axis while it is sized by its content (CSS Sizing 3): a definite size, or a
+/// min-content or max-content constraint.
+struct AvailableSpace {
+	enum Type : uint8_t { Definite, MinContent, MaxContent };
+	Type type = MaxContent;
+	float value = 0.f;
+
+	static AvailableSpace MakeDefinite(float value) { return AvailableSpace{Definite, value}; }
+	static AvailableSpace MakeMinContent() { return AvailableSpace{MinContent, 0.f}; }
+	static AvailableSpace MakeMaxContent() { return AvailableSpace{MaxContent, 0.f}; }
+	bool IsDefinite() const { return type == Definite; }
+};
+
 enum class BuildBoxMode {
 	Block,          // Sets edges and size if available, auto width can result in shrink-to-fit width, auto margins are used for alignment.
 	Inline,         // Sets edges, ignores width, height, and auto margins.
@@ -128,6 +141,21 @@ public:
 	static float GetMaxContentWidth(Element* element, Vector2f containing_block);
 	/// Formats the element with a definite border-box width and returns the height of its border box.
 	static float GetContentHeightForWidth(Element* element, float border_box_width, Vector2f containing_block);
+
+	/// Content-based sizes (CSS Sizing 3), for a box whose size its formatting context determines (flex items, absolutely
+	/// positioned boxes, sizing keywords): the element's own 'width', 'height' and min-/max- sizes are ignored (the caller
+	/// clamps where CSS does).
+	/// The border-box width under an available width: its min-content or max-content width, or its fit-content width
+	/// min(max-content, max(min-content, available)) for a definite one.
+	/// @param[in] containing_block The containing block's size, negative where indefinite.
+	/// @param[in] known_height A border-box height to transfer through the element's aspect ratio, if any (negative: none).
+	static float GetContentWidth(Element* element, AvailableSpace available_width, Vector2f containing_block, float known_height = -1.f);
+	/// The border-box height of the element laid out at a border-box width, from its aspect ratio if it has one, otherwise
+	/// from its content.
+	static float GetContentHeight(Element* element, float border_box_width, Vector2f containing_block);
+	/// True while the content size of this element is measured (GetContentWidth, GetContentHeight): its layout box then
+	/// reports its content width even when its 'width' is definite, and its min-/max- sizes do not apply.
+	static bool IsMeasuringContentOf(const Element* element);
 
 	/// Build computed axis size along the horizontal direction (width and friends).
 	static ComputedAxisSize BuildComputedHorizontalSize(const ComputedValues& computed);

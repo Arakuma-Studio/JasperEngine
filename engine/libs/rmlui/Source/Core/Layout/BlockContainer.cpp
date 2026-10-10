@@ -358,7 +358,7 @@ float BlockContainer::GetIntrinsicContentWidth(ChildWidth child_width, FloatsWid
 	auto& computed = element->GetComputedValues();
 
 	float content_width = 0.0f;
-	if (computed.width().type == Style::Width::Length)
+	if (computed.width().type == Style::Width::Length && !LayoutDetails::IsMeasuringContentOf(element))
 	{
 		// We have a definite width, so use that size.
 		content_width = box.GetSize().x;
@@ -380,6 +380,10 @@ float BlockContainer::GetIntrinsicContentWidth(ChildWidth child_width, FloatsWid
 
 	if (root_space)
 		content_width = floats_width(content_width);
+
+	// The size of its content alone while it is measured (LayoutDetails::GetContentWidth).
+	if (LayoutDetails::IsMeasuringContentOf(element))
+		return content_width;
 
 	float min_width, max_width;
 	LayoutDetails::GetMinMaxWidth(min_width, max_width, computed, box, 0.f);
@@ -553,6 +557,17 @@ void BlockContainer::PlaceFloat(Element* element, float vertical_position, Vecto
 
 	// Shift the offset into this container's space, which acts as the float element's containing block.
 	element->SetOffset(border_position - position, GetElement());
+}
+
+bool BlockContainer::GetBaselineOfFirstLine(float& out_baseline) const
+{
+	// The baseline of our first child that itself has a baseline.
+	for (const auto& child_box : child_boxes)
+	{
+		if (child_box->GetBaselineOfFirstLine(out_baseline))
+			return true;
+	}
+	return false;
 }
 
 bool BlockContainer::GetBaselineOfLastLine(float& out_baseline) const

@@ -105,6 +105,7 @@ public:
 	float GetShrinkToFitWidth() const override;
 	float GetMinContentWidth() const override;
 	bool GetBaselineOfLastLine(float& out_baseline) const override;
+	bool GetBaselineOfFirstLine(float& out_baseline) const override;
 
 private:
 	// Shared by GetShrinkToFitWidth and GetMinContentWidth: the widest child (by 'child_width') and the floats, clamped.

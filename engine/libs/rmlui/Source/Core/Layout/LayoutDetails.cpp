@@ -453,6 +453,147 @@ float LayoutDetails::GetShrinkToFitWidth(Element* element, Vector2f containing_b
 	return shrink_to_fit_width;
 }
 
+namespace {
+	// The element whose content width GetContentWidth measures (its definite 'width' is then ignored by its layout box).
+	const Element* measuring_content_of = nullptr;
+
+	class MeasuringContentScope {
+	public:
+		explicit MeasuringContentScope(const Element* element) : previous(measuring_content_of) { measuring_content_of = element; }
+		~MeasuringContentScope() { measuring_content_of = previous; }
+		MeasuringContentScope(const MeasuringContentScope&) = delete;
+		MeasuringContentScope& operator=(const MeasuringContentScope&) = delete;
+
+	private:
+		const Element* previous;
+	};
+} // namespace
+
+bool LayoutDetails::IsMeasuringContentOf(const Element* element)
+{
+	return element == measuring_content_of;
+}
+
+float LayoutDetails::GetContentWidth(Element* element, AvailableSpace available_width, Vector2f containing_block, float known_height)
+{
+	RMLUI_ASSERT(element);
+	if (available_width.IsDefinite())
+	{
+		// fit-content: min(max-content, max(min-content, available)), both already within the min/max-width.
+		const float max_content = GetContentWidth(element, AvailableSpace::MakeMaxContent(), containing_block, known_height);
+		if (max_content <= available_width.value)
+			return max_content;
+		const float min_content = GetContentWidth(element, AvailableSpace::MakeMinContent(), containing_block, known_height);
+		return Math::Max(min_content, available_width.value);
+	}
+
+	const bool min_content = (available_width.type == AvailableSpace::MinContent);
+	const LayoutMeasureCache::Kind kind = (min_content ? LayoutMeasureCache::Kind::ContentMinWidth : LayoutMeasureCache::Kind::ContentMaxWidth);
+	LayoutMeasureCache* cache = LayoutMeasureCache::Get();
+	float result = 0.f;
+	if (cache && cache->Find(element, kind, containing_block, known_height, result))
+		return result;
+
+	MinContentScope scope(min_content);
+	Box box;
+	LayoutDetails::BuildBox(box, containing_block, element, BuildBoxMode::UnalignedBlock);
+	const float edges_x = box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
+	const float edges_y = box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border, BoxArea::Padding);
+	const ComputedValues& computed = element->GetComputedValues();
+
+	Vector2f intrinsic_size(-1.f);
+	float intrinsic_ratio = -1.f;
+	float content_width = 0.f;
+	if (element->GetIntrinsicDimensions(intrinsic_size, intrinsic_ratio))
+	{
+		// A replaced element: its natural width, or its known height through its natural ratio.
+		const float content_height = (known_height >= 0.f ? Math::Max(known_height - edges_y, 0.f) : intrinsic_size.y);
+		if (intrinsic_ratio > 0.f && known_height >= 0.f)
+			content_width = content_height * intrinsic_ratio;
+		else if (intrinsic_size.x >= 0.f)
+			content_width = intrinsic_size.x;
+		else if (intrinsic_ratio > 0.f && content_height >= 0.f)
+			content_width = content_height * intrinsic_ratio;
+		else
+			content_width = 300.f;
+	}
+	else if (known_height >= 0.f && computed.aspect_ratio() > 0.f)
+	{
+		// The preferred aspect ratio (of the box given by box-sizing) transfers the height.
+		if (computed.box_sizing() == Style::BoxSizing::BorderBox)
+			content_width = Math::Max(known_height * computed.aspect_ratio() - edges_x, 0.f);
+		else
+			content_width = Math::Max(known_height - edges_y, 0.f) * computed.aspect_ratio();
+	}
+	else if (computed.display() != Style::Display::Table && computed.display() != Style::Display::InlineTable)
+	{
+		box.SetContent({min_content ? 0.f : Math::Max(containing_block.x, 0.f) + 10000.f, box.GetSize().y});
+		MeasuringContentScope content_scope(element);
+		RootBox root(Math::Max(containing_block, Vector2f(0.f)));
+		if (UniquePtr<LayoutBox> layout_box = FormattingContext::FormatIndependent(&root, element, &box, FormattingContextType::Block))
+			content_width = (min_content ? layout_box->GetMinContentWidth() : layout_box->GetShrinkToFitWidth());
+	}
+
+	// The size of the content: the element's own min-width and max-width do not apply (CSS Flexbox 9.2: the flex base size
+	// is not clamped; callers clamp where CSS does).
+	result = content_width + edges_x;
+
+	if (cache)
+		cache->Insert(element, kind, containing_block, known_height, result);
+	return result;
+}
+
+float LayoutDetails::GetContentHeight(Element* element, float border_box_width, Vector2f containing_block)
+{
+	RMLUI_ASSERT(element);
+	LayoutMeasureCache* cache = LayoutMeasureCache::Get();
+	float result = 0.f;
+	if (cache && cache->Find(element, LayoutMeasureCache::Kind::ContentHeight, containing_block, border_box_width, result))
+		return result;
+
+	MinContentScope scope(false);
+	Box box;
+	LayoutDetails::BuildBox(box, containing_block, element, BuildBoxMode::UnalignedBlock);
+	const float edges_x = box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
+	const float edges_y = box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border, BoxArea::Padding);
+	const float content_width = Math::Max(0.f, border_box_width - edges_x);
+	const ComputedValues& computed = element->GetComputedValues();
+
+	Vector2f intrinsic_size(-1.f);
+	float intrinsic_ratio = -1.f;
+	if (element->GetIntrinsicDimensions(intrinsic_size, intrinsic_ratio))
+	{
+		float content_height = 150.f;
+		if (intrinsic_ratio > 0.f)
+			content_height = content_width / intrinsic_ratio;
+		else if (intrinsic_size.y >= 0.f)
+			content_height = intrinsic_size.y;
+		result = content_height + edges_y;
+	}
+	else if (computed.aspect_ratio() > 0.f)
+	{
+		float content_height;
+		if (computed.box_sizing() == Style::BoxSizing::BorderBox)
+			content_height = Math::Max(border_box_width / computed.aspect_ratio() - edges_y, 0.f);
+		else
+			content_height = content_width / computed.aspect_ratio();
+		result = content_height + edges_y;
+	}
+	else
+	{
+		// Formatted without its own min-height and max-height (see BlockFormattingContext::Format).
+		box.SetContent({content_width, -1.f});
+		MeasuringContentScope content_scope(element);
+		RootBox root(Math::Max(containing_block, Vector2f(0.f)));
+		if (FormattingContext::FormatIndependent(&root, element, &box, FormattingContextType::Block))
+			result = element->GetBox().GetSize(BoxArea::Border).y;
+	}
+
+	if (cache)
+		cache->Insert(element, LayoutMeasureCache::Kind::ContentHeight, containing_block, border_box_width, result);
+	return result;
+}
+
 ComputedAxisSize LayoutDetails::BuildComputedHorizontalSize(const ComputedValues& computed)
 {
 	return ComputedAxisSize{computed.width(), computed.min_width(), computed.max_width(), computed.padding_left(), computed.padding_right(),

@@ -25,7 +25,15 @@ public:
  */
 class LayoutMeasureCache {
 public:
-	enum class Kind : uint8_t { MinContentWidth, MaxContentWidth, HeightForWidth };
+	enum class Kind : uint8_t {
+		MinContentWidth,
+		MaxContentWidth,
+		HeightForWidth,
+		// Content-based sizes (LayoutDetails::GetContentWidth, GetContentHeight; p3-layout).
+		ContentMinWidth,
+		ContentMaxWidth,
+		ContentHeight,
+	};
 
 	/// The cache of the FormatElement call in progress, or nullptr.
 	static LayoutMeasureCache* Get();

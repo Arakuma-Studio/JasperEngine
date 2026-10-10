@@ -27,11 +27,22 @@ public:
 	/// @returns True if no overflow occurred, false if it did.
 	bool CatchOverflow(Vector2f visible_overflow_size, Vector2f scrollable_content_size, const Box& box, float max_height) const;
 
+	// How an absolutely positioned box is placed in the area of its static position, per axis (flex containers: CSS
+	// Flexbox §4.1, the box placed as a sole flex item).
+	enum class StaticAlignment : uint8_t { Start, Center, End };
+	struct StaticPositionArea {
+		Rectanglef rectangle;                                                            // Relative to the static position's offset parent.
+		StaticAlignment alignment[2] = {StaticAlignment::Start, StaticAlignment::Start}; // Horizontal, vertical.
+		bool safe[2] = {false, false};                                                   // 'safe': an overflowing box falls back to the start.
+	};
+
 	// Adds an absolutely positioned element, to be formatted and positioned when closing this container, see 'ClosePositionedElements'.
 	// @param[in] containing_block Its containing block when it is not our padding box (a grid area, the viewport), relative to our
 	// border box: its size and insets resolve against it.
+	// @param[in] static_position_area With an area, the static position is the box's position aligned in it (its size known once
+	// formatted); 'static_position' is then the area's origin.
 	void AddAbsoluteElement(Element* element, Vector2f static_position, Element* static_relative_offset_parent,
-		std::optional<Rectanglef> containing_block = std::nullopt);
+		std::optional<Rectanglef> containing_block = std::nullopt, std::optional<StaticPositionArea> static_position_area = std::nullopt);
 	// Adds a relatively positioned element which we act as a containing block for.
 	void AddRelativeElement(Element* element);
 
@@ -70,6 +81,7 @@ private:
 		Vector2f static_position;                   // The hypothetical position of the element as if it was placed in normal flow.
 		Element* static_position_offset_parent;     // The element for which the static position is offset from.
 		std::optional<Rectanglef> containing_block; // Set: the containing block, relative to our border box, instead of our padding box.
+		std::optional<StaticPositionArea> static_position_area; // Set: the static position is aligned in this area.
 	};
 	using AbsoluteElementMap = SmallUnorderedMap<Element*, AbsoluteElement>;
 
@@ -115,14 +127,24 @@ public:
 
 	float GetShrinkToFitWidth() const override;
 	float GetMinContentWidth() const override;
+	bool GetBaselineOfFirstLine(float& out_baseline) const override;
 
 	const Box* GetIfBox() const override { return &box; }
 	String DebugDumpTree(int depth) const override;
 
 	Box& GetBox() { return box; }
 
+	// The first baseline of the container (CSS Flexbox §8.5), from its border-box top.
+	void SetFirstBaseline(bool has_baseline, float baseline)
+	{
+		has_first_baseline = has_baseline;
+		first_baseline = baseline;
+	}
+
 private:
 	Box box;
+	bool has_first_baseline = false;
+	float first_baseline = 0.f;
 };
 
 /**

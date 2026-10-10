@@ -9,6 +9,7 @@
 #include "BlockContainer.h"
 #include "FloatedBoxSpace.h"
 #include "LayoutDetails.h"
+#include <float.h>
 
 namespace Rml {
 
@@ -109,6 +110,12 @@ UniquePtr<LayoutBox> BlockFormattingContext::Format(ContainerBox* parent_contain
 
 	float min_height, max_height;
 	LayoutDetails::GetDefiniteMinMaxHeight(min_height, max_height, element->GetComputedValues(), box, containing_block.y);
+	// Its content height alone while it is measured (LayoutDetails::GetContentHeight).
+	if (box.GetSize().y < 0.f && LayoutDetails::IsMeasuringContentOf(element))
+	{
+		min_height = 0.f;
+		max_height = FLT_MAX;
+	}
 
 	UniquePtr<BlockContainer> container = MakeUnique<BlockContainer>(parent_container, nullptr, element, box, min_height, max_height);
 
