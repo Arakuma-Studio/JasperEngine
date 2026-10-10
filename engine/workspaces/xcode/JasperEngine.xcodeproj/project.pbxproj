@@ -1625,6 +1625,8 @@
 		48544D4C00000000000001D3 /* URL.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D1 /* URL.cpp */; };
 		48544D4C00000000000001D5 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
 		48544D4C00000000000001D6 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
+		524D4C55256864F7CEE14598 /* TextUnicode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556DF9645915A0E99B /* TextUnicode.cpp */; };
+		524D4C55138D97365E2F6C3A /* TextUnicode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556DF9645915A0E99B /* TextUnicode.cpp */; };
 		524D4C55A8F24B08E71520C8 /* PropertyParserAlignment.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55C0A526E3E5E2A661 /* PropertyParserAlignment.cpp */; };
 		524D4C557F56782963237492 /* PropertyParserAlignment.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55C0A526E3E5E2A661 /* PropertyParserAlignment.cpp */; };
 		524D4C554F258E5F315812A8 /* StyleValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C558E983D012991D5CE /* StyleValue.cpp */; };
@@ -4680,6 +4682,7 @@
 		48544D4C00000000000001CE /* TypeConverter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TypeConverter.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D1 /* URL.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = URL.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D4 /* Variant.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Variant.cpp; sourceTree = "<group>"; };
+		524D4C556DF9645915A0E99B /* TextUnicode.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextUnicode.cpp; sourceTree = "<group>"; };
 		524D4C55C0A526E3E5E2A661 /* PropertyParserAlignment.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserAlignment.cpp; sourceTree = "<group>"; };
 		524D4C558E983D012991D5CE /* StyleValue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StyleValue.cpp; sourceTree = "<group>"; };
 		524D4C5597475D670B4FAC65 /* CalculationResolver.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CalculationResolver.cpp; sourceTree = "<group>"; };
@@ -8778,6 +8781,7 @@
 				524D4C5597475D670B4FAC65 /* CalculationResolver.cpp */,
 				524D4C558E983D012991D5CE /* StyleValue.cpp */,
 				524D4C55C0A526E3E5E2A661 /* PropertyParserAlignment.cpp */,
+				524D4C556DF9645915A0E99B /* TextUnicode.cpp */,
 			);
 			name = Core;
 			path = Source/Core;
@@ -12720,6 +12724,7 @@
 				48544D4C00000000000001CF /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D2 /* URL.cpp in Sources */,
 				48544D4C00000000000001D5 /* Variant.cpp in Sources */,
+				524D4C55256864F7CEE14598 /* TextUnicode.cpp in Sources */,
 				524D4C55A8F24B08E71520C8 /* PropertyParserAlignment.cpp in Sources */,
 				524D4C554F258E5F315812A8 /* StyleValue.cpp in Sources */,
 				524D4C55EF9E59639250D13A /* CalculationResolver.cpp in Sources */,
@@ -12930,6 +12935,7 @@
 				48544D4C00000000000001D0 /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D3 /* URL.cpp in Sources */,
 				48544D4C00000000000001D6 /* Variant.cpp in Sources */,
+				524D4C55138D97365E2F6C3A /* TextUnicode.cpp in Sources */,
 				524D4C557F56782963237492 /* PropertyParserAlignment.cpp in Sources */,
 				524D4C55049A9C363FCB9CA5 /* StyleValue.cpp in Sources */,
 				524D4C55B253A4F9148216D9 /* CalculationResolver.cpp in Sources */,
