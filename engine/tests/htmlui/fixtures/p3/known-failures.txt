@@ -1,0 +1,6 @@
+# Browser-parity fixtures (fixtures/p3/<area>/<name>) the fork does not pass yet: BrowserParityTest
+# expects them to fail and fails when one passes, so the package that fixes a fixture removes its line.
+# A wave-1 package adds a line here only for a fixture of its area that needs another package's
+# feature (owner = that package).
+# <area>/<name> owner=<package> reason=<class> # <why>
+text/zero-width-space owner=p3-text reason=text-zwsp # U+200B switches the text after it to a fallback face (TextShaper::selectFace keeps the current face) and is no line-break opportunity

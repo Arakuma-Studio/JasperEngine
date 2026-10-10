@@ -1,0 +1,4 @@
+{
+ "comment": "Self-test: the harness reports no difference for boxes the engine draws like Chromium.",
+ "viewport": [300, 200]
+}

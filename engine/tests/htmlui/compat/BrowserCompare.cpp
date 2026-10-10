@@ -222,6 +222,172 @@ Image jasperengine::test::compat::heatMap(const Image& actual, const Image& expe
     return out;
 }
 
+// ---- the strict metric (phase 3) ----------------------------------------------------------------
+
+namespace {
+
+    // the strict bad pixels of `a` against `b`: off by more than the threshold at the same place
+    // and with no pixel of the 3x3 neighbourhood in `b` within it
+    void markStrictBad(const Image& a, const Image& b, int threshold, std::vector<uint8_t>& bad){
+        const int w = a.width, h = a.height;
+        auto within = [threshold](const uint8_t* p, const uint8_t* q){
+            return std::abs(p[0] - q[0]) <= threshold && std::abs(p[1] - q[1]) <= threshold &&
+                   std::abs(p[2] - q[2]) <= threshold && std::abs(p[3] - q[3]) <= threshold;
+        };
+        for (int y = 0; y < h; y++){
+            for (int x = 0; x < w; x++){
+                const size_t index = size_t(y) * w + x;
+                const uint8_t* p = &a.rgba[index * 4];
+                if (within(p, &b.rgba[index * 4]))
+                    continue;
+                bool matched = false;
+                for (int dy = -1; dy <= 1 && !matched; dy++){
+                    const int yy = y + dy;
+                    if (yy < 0 || yy >= h)
+                        continue;
+                    for (int dx = -1; dx <= 1 && !matched; dx++){
+                        const int xx = x + dx;
+                        if (xx >= 0 && xx < w)
+                            matched = within(p, &b.rgba[(size_t(yy) * w + xx) * 4]);
+                    }
+                }
+                if (!matched)
+                    bad[index] = 1;
+            }
+        }
+    }
+
+    std::vector<uint8_t> strictBadPixels(const Image& actual, const Image& expected, int threshold){
+        std::vector<uint8_t> bad(size_t(actual.width) * actual.height, 0);
+        markStrictBad(actual, expected, threshold, bad);
+        markStrictBad(expected, actual, threshold, bad);
+        return bad;
+    }
+
+}
+
+bool StrictMetrics::passes() const{
+    return comparable && badPercent <= gate.maxBadPercent && largestCluster <= gate.maxCluster;
+}
+
+std::string StrictMetrics::text() const{
+    if (!comparable)
+        return error;
+    char buffer[320];
+    std::snprintf(buffer, sizeof(buffer),
+                  "bad %.3f %% (%zu pixels, threshold %d; limit %.3f %%), largest cluster %zu pixels (limit %zu) at (%d, %d) in [%d,%d]-[%d,%d]",
+                  badPercent, badPixels, gate.channelThreshold, gate.maxBadPercent, largestCluster, gate.maxCluster, clusterX, clusterY,
+                  clusterMinX, clusterMinY, clusterMaxX, clusterMaxY);
+    return buffer;
+}
+
+StrictMetrics jasperengine::test::compat::compareStrict(const Image& actual, const Image& expected, const StrictGate& gate){
+    StrictMetrics metrics;
+    metrics.gate = gate;
+    if (actual.empty() || expected.empty()){
+        metrics.error = actual.empty() ? "no engine image" : "no reference image";
+        return metrics;
+    }
+    if (actual.width != expected.width || actual.height != expected.height){
+        metrics.error = "size " + std::to_string(actual.width) + "x" + std::to_string(actual.height) + " differs from the reference " +
+                        std::to_string(expected.width) + "x" + std::to_string(expected.height);
+        return metrics;
+    }
+    metrics.comparable = true;
+    std::vector<uint8_t> bad = strictBadPixels(actual, expected, gate.channelThreshold);
+    for (uint8_t flag : bad)
+        metrics.badPixels += flag;
+    metrics.badPercent = 100.0 * double(metrics.badPixels) / double(bad.size());
+
+    // 4-connected clusters (flood fill; a visited pixel is cleared)
+    const int w = actual.width, h = actual.height;
+    std::vector<size_t> stack;
+    for (size_t start = 0; start < bad.size(); start++){
+        if (!bad[start])
+            continue;
+        size_t size = 0;
+        int minX = w, minY = h, maxX = -1, maxY = -1;
+        bad[start] = 0;
+        stack.push_back(start);
+        while (!stack.empty()){
+            const size_t index = stack.back();
+            stack.pop_back();
+            size++;
+            const int x = int(index % w), y = int(index / w);
+            minX = std::min(minX, x);
+            minY = std::min(minY, y);
+            maxX = std::max(maxX, x);
+            maxY = std::max(maxY, y);
+            const int neighbours[4][2] = {{x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1}};
+            for (const auto& n : neighbours){
+                if (n[0] < 0 || n[1] < 0 || n[0] >= w || n[1] >= h)
+                    continue;
+                const size_t next = size_t(n[1]) * w + n[0];
+                if (bad[next]){
+                    bad[next] = 0;
+                    stack.push_back(next);
+                }
+            }
+        }
+        if (size > metrics.largestCluster){
+            metrics.largestCluster = size;
+            metrics.clusterX = int(start % w);
+            metrics.clusterY = int(start / w);
+            metrics.clusterMinX = minX;
+            metrics.clusterMinY = minY;
+            metrics.clusterMaxX = maxX;
+            metrics.clusterMaxY = maxY;
+        }
+    }
+    return metrics;
+}
+
+Image jasperengine::test::compat::strictHeatMap(const Image& actual, const Image& expected, const StrictGate& gate){
+    Image out;
+    if (actual.empty() || expected.empty() || actual.width != expected.width || actual.height != expected.height)
+        return out;
+    out.width = actual.width;
+    out.height = actual.height;
+    out.rgba.assign(actual.rgba.size(), 255);
+    const std::vector<uint8_t> bad = strictBadPixels(actual, expected, gate.channelThreshold);
+    for (size_t i = 0; i < bad.size(); i++){
+        const uint8_t* e = &expected.rgba[i * 4];
+        const uint8_t* a = &actual.rgba[i * 4];
+        uint8_t* o = &out.rgba[i * 4];
+        const int gray = int((0.299 * e[0] + 0.587 * e[1] + 0.114 * e[2]) * 0.3);
+        if (bad[i]){
+            int d = 0;
+            for (int c = 0; c < 4; c++)
+                d = std::max(d, std::abs(a[c] - e[c]));
+            o[0] = uint8_t(std::min(255, 96 + d * 159 / 255));
+            o[1] = uint8_t(gray / 2);
+            o[2] = uint8_t(gray / 2);
+        }else{
+            o[0] = o[1] = o[2] = uint8_t(gray);
+        }
+    }
+    const StrictMetrics metrics = compareStrict(actual, expected, gate);
+    if (metrics.largestCluster > 0){
+        auto mark = [&](int x, int y){
+            if (x < 0 || y < 0 || x >= out.width || y >= out.height)
+                return;
+            uint8_t* o = &out.rgba[(size_t(y) * out.width + x) * 4];
+            o[0] = 255;
+            o[1] = 230;
+            o[2] = 0;
+        };
+        for (int x = metrics.clusterMinX - 1; x <= metrics.clusterMaxX + 1; x++){
+            mark(x, metrics.clusterMinY - 1);
+            mark(x, metrics.clusterMaxY + 1);
+        }
+        for (int y = metrics.clusterMinY - 1; y <= metrics.clusterMaxY + 1; y++){
+            mark(metrics.clusterMinX - 1, y);
+            mark(metrics.clusterMaxX + 1, y);
+        }
+    }
+    return out;
+}
+
 // ---- layout -------------------------------------------------------------------------------------
 
 bool jasperengine::test::compat::loadReferenceLayout(const std::string& path, ReferenceLayout& layout, std::string* error){

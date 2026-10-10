@@ -1,0 +1,22 @@
+{
+ "comment": "Self-test of every step kind on both sides: a class change starts a linear width transition, seeked by advance; hover, press and keyboard focus through input; attributes, inline styles, classes and scrolling through the element API.",
+ "viewport": [340, 200],
+ "steps": [
+  {"hover": "#hover"},
+  {"addClass": ["#box", "wide"]},
+  {"advance": 0.5},
+  {"capture": "mid"},
+  {"press": "#pressed"},
+  {"setAttr": ["#attr", "data-state", "on"]},
+  {"setStyle": ["#styled", "width", "40px"]},
+  {"removeClass": ["#klass", "red"]},
+  {"scroll": ["#scroller", 0, 50]},
+  {"advance": 0.5},
+  {"capture": "end"},
+  {"release": true},
+  {"focus": "#focus", "keyboard": true},
+  {"setAttr": ["#attr", "data-state", null]},
+  {"setStyle": ["#styled", "width", ""]},
+  {"capture": "focus"}
+ ]
+}

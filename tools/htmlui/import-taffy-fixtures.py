@@ -19,14 +19,16 @@
         fixtures already listed. Run it for the baseline only; afterwards each package removes the
         lines of the fixtures it fixed (the test fails while a listed fixture passes).
 
-    tools/htmlui/import-taffy-fixtures.py classify SUITE/NAME
-        Prints the owner and reason class the known-failures command would give a fixture.
+    tools/htmlui/import-taffy-fixtures.py classify SUITE/NAME [DIFFERENCE]
+        Prints the owner and reason class the known-failures command would give a fixture (whose
+        first difference, as BoxParityTest reports it, is DIFFERENCE).
 
 References: node tools/htmlui/render-reference.mjs --fixtures taffy --boxes-only (README.md).
 """
 
 import argparse
 import html
+from html.parser import HTMLParser
 import os
 import re
 import subprocess
@@ -174,43 +176,107 @@ def has(declarations, pattern):
     return any(regex.search(d) for d in declarations)
 
 
-def classify(suite, source):
-    """(owner package, reason class) for a failing fixture, from the features it uses; the first
-    matching rule wins, so a fixture is owned by the package whose feature is its likely cause."""
+class FixtureTree(HTMLParser):
+    """The elements of #test-root's subtree by child-index path ("" = the root), with their
+    declarations (lower case), as the reference script and BoxParityTest number them."""
+
+    VOID = {'br', 'img', 'input', 'hr', 'meta', 'link', 'wbr'}
+
+    def __init__(self, source):
+        super().__init__()
+        self.elements = {}
+        self.stack = []        # (path, child count) of the open elements under #test-root
+        self.feed(source)
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if self.stack:
+            parent_path, count = self.stack[-1]
+            path = str(count) if parent_path == '' else f'{parent_path}.{count}'
+            self.stack[-1] = (parent_path, count + 1)
+        elif attrs.get('id') == 'test-root':
+            path = ''
+        else:
+            return
+        style = attrs.get('style') or ''
+        self.elements[path] = [d.strip().lower() for d in style.split(';') if d.strip()]
+        if tag not in self.VOID:
+            self.stack.append((path, 0))
+
+    def handle_endtag(self, tag):
+        if self.stack and tag not in self.VOID:
+            self.stack.pop()
+
+
+def failing_path(detail):
+    """The element path of a BoxParityTest difference ("#test-root > 0.1 w: ..." -> "0.1")."""
+    match = re.match(r'#test-root(?: > ([\d.]+))?', detail or '')
+    return (match.group(1) or '') if match else None
+
+
+def classify(suite, source, detail=''):
+    """(owner package, reason class) for a failing fixture, from the features it uses: first the
+    whole fixture's (grid, zero-width spaces), then those of the element the first difference names
+    and its container, then the whole fixture's again; the owner is the package of that feature."""
     d = styles_of(source)
     grid = has(d, r'^display:\s*(inline-)?grid') or suite in ('grid', 'blockgrid', 'gridflex')
     if grid:
         return 'p3-grid', 'grid-unsupported'
+    if 'ZeroWidthSpace' in source or '&#8203;' in source or '\u200b' in source:
+        # the engine shapes U+200B with a fallback face, and RmlUi does not break lines at it:
+        # every size built from text is off (fixtures/p3/text/zero-width-space)
+        return 'p3-text', 'text-zwsp'
     if has(d, r'calc\(|min\(|max\(|clamp\('):
         return 'p3-values', 'calc'
+    path = failing_path(detail)
+    if path is not None:
+        tree = FixtureTree(source).elements
+        element = tree.get(path, [])
+        parent = tree.get(path.rsplit('.', 1)[0] if '.' in path else '', []) if path else []
+        both = element + parent
+        if has(element, r'^aspect-ratio'):
+            return 'p3-layout', 'aspect-ratio'
+        if has(element, r'^position:\s*absolute'):
+            return 'p3-layout', 'absolute-position'
+        if suite == 'float' or has(element, r'^float\s*:|^clear\s*:'):
+            return 'p3-layout', 'float'
+        if has(element, r'(min-|max-|fit-)content|stretch'):
+            return 'p3-layout', 'intrinsic-sizing'
+        if has(element, r'^order\s*:'):
+            return 'p3-layout', 'flex-order'
+        if has(both, r'^overflow(-x|-y)?\s*:\s*(scroll|auto|hidden|clip)'):
+            return 'p3-layout', 'overflow'
+        if has(parent if path else element, r'^display:\s*(inline-)?flex') or (suite in ('flex', 'blockflex') and not has(parent, r'^display:\s*block')):
+            if has(both, r'^align-content|^align-items|^align-self|^justify-content|^justify-items|^justify-self'):
+                return 'p3-layout', 'flex-alignment'
+            if has(both, r'^flex-wrap'):
+                return 'p3-layout', 'flex-wrap'
+            if has(element, r'^(min|max)-(width|height)|^flex-basis|^flex\s*:'):
+                return 'p3-layout', 'flex-min-max'
+            return 'p3-layout', 'flex-algorithm'
+        if suite in ('block', 'blockflex') and has(element, r'^margin'):
+            return 'p3-layout', 'margin-collapse'
+        if has(both, r'^text-align|^justify-items|^justify-self|^align-content'):
+            return 'p3-layout', 'block-alignment'
+        if has(element, r'^(min|max)-(width|height)|^padding|^border'):
+            return 'p3-layout', 'box-sizing'
+    # the whole fixture
     if has(d, r'^display:\s*contents'):
         return 'p3-layout', 'display-contents'
     if has(d, r'^aspect-ratio'):
         return 'p3-layout', 'aspect-ratio'
     if has(d, r'(min-|max-|fit-)content|stretch'):
         return 'p3-layout', 'intrinsic-sizing'
-    if has(d, r'^order\s*:'):
-        return 'p3-layout', 'flex-order'
     if suite == 'float' or has(d, r'^float\s*:|^clear\s*:'):
         return 'p3-layout', 'float'
     if has(d, r'^position:\s*absolute'):
         return 'p3-layout', 'absolute-position'
     if has(d, r'^overflow(-x|-y)?\s*:\s*(scroll|auto|hidden|clip)'):
         return 'p3-layout', 'overflow'
-    if has(d, r'^flex-basis|^flex\s*:') and has(d, r'^min-(width|height)\s*:\s*auto|^(min|max)-(width|height)'):
-        return 'p3-layout', 'flex-min-max'
     if suite in ('flex', 'blockflex') or has(d, r'^display:\s*(inline-)?flex'):
-        if has(d, r'^align-content|^align-items|^align-self|^justify-content|^justify-items|^justify-self'):
-            return 'p3-layout', 'flex-alignment'
-        if has(d, r'^flex-wrap'):
-            return 'p3-layout', 'flex-wrap'
-        if has(d, r'^(min|max)-(width|height)'):
-            return 'p3-layout', 'flex-min-max'
         return 'p3-layout', 'flex-algorithm'
     if suite == 'block' and has(d, r'^margin'):
         return 'p3-layout', 'margin-collapse'
-    if suite == 'leaf' or 'ZeroWidthSpace' in source or re.search(r'>[^<>\s]+<', source):
-        return 'p3-layout', 'text-measure'
     return 'p3-layout', 'block-layout'
 
 
@@ -247,7 +313,7 @@ def do_known_failures(args):
         if fixture in previous and 'owner' in previous[fixture] and 'reason' in previous[fixture]:
             owner, reason = previous[fixture]['owner'], previous[fixture]['reason']
         else:
-            owner, reason = classify(suite, read(os.path.join(OUT, suite, name + '.html')))
+            owner, reason = classify(suite, read(os.path.join(OUT, suite, name + '.html')), detail)
         by_owner.setdefault(owner, {}).setdefault(reason, 0)
         by_owner[owner][reason] += 1
         lines.append(f'{fixture} owner={owner} reason={reason}' + (f' # {detail}' if detail else ''))
@@ -269,7 +335,7 @@ def do_known_failures(args):
 
 def do_classify(args):
     suite, name = args.fixture.split('/', 1)
-    owner, reason = classify(suite, read(os.path.join(OUT, suite, name + '.html')))
+    owner, reason = classify(suite, read(os.path.join(OUT, suite, name + '.html')), args.difference)
     print(f'{args.fixture} owner={owner} reason={reason}')
 
 
@@ -285,6 +351,7 @@ def main():
     p.set_defaults(run=do_known_failures)
     p = commands.add_parser('classify', help='owner and reason class of one fixture')
     p.add_argument('fixture', help='<suite>/<name>')
+    p.add_argument('difference', nargs='?', default='', help='"#test-root > 0.1 w: ..." (BoxParityTest\'s first difference)')
     p.set_defaults(run=do_classify)
     args = parser.parse_args()
     args.run(args)
