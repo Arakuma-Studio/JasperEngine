@@ -13,6 +13,10 @@
 # the build fails, if the game or the editor exits before its screenshot, or if
 # either logs an error (missing shaders, Lua errors, failed assertions, crashes);
 # the audio device Docker lacks is not an error.
+#
+# SMOKE_GAME_ENV="NAME=value ..." is passed to the game's environment.
+# SMOKE_GAME_SECONDS="8" is when the game is screenshot, in whole seconds after
+# it starts; several ("8 14 20") give game-<seconds>.png each, game.png the last.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,7 +25,7 @@ IMAGE=jasperengine/linux-build
 # The main checkout's compiler cache, even when running from a git worktree.
 MAIN="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 
-[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 [[ -x "$ROOT/$EDITOR" ]] || { echo "No editor at $EDITOR; run tools/build.sh linux" >&2; exit 1; }
 
@@ -40,6 +44,8 @@ docker run --rm \
     -e HOME=/src/build/smoke/home \
     -e CCACHE_DIR=/ccache \
     -e EDITOR="/src/$EDITOR" \
+    -e SMOKE_GAME_ENV="${SMOKE_GAME_ENV:-}" \
+    -e SMOKE_GAME_SECONDS="${SMOKE_GAME_SECONDS:-8}" \
     "$IMAGE" bash -euo pipefail -c '
         mkdir -p "$HOME"
 
@@ -79,28 +85,37 @@ docker run --rm \
         export DISPLAY=:99
         sleep 1
 
-        # run <name> <log> <seconds> <command...>: start, wait, require it still runs,
-        # screenshot the whole screen to <name>.png, stop it. stdout is line buffered,
-        # so what it printed is in <log> when it is stopped.
+        # run <name> <log> <seconds...> <command...>: start, wait, require it still runs,
+        # screenshot the whole screen to <name>.png, stop it. Several seconds (one
+        # argument, space separated) screenshot at each to <name>-<seconds>.png, the last
+        # copied to <name>.png. stdout is line buffered, so what it printed is in <log>
+        # when it is stopped.
         run() {
             local name="$1" log="$2" secs="$3"; shift 3
             stdbuf -oL -eL "$@" > "$log" 2>&1 &
-            local pid=$!
-            sleep "$secs"
-            if ! kill -0 "$pid" 2>/dev/null; then
-                local status=0
-                wait "$pid" || status=$?
-                echo "FAIL: ${name##*/} exited early (status $status)"; tail -20 "$log"; exit 1
-            fi
+            local pid=$! elapsed=0 shot out
+            for shot in $secs; do
+                sleep "$((shot - elapsed))"
+                elapsed="$shot"
+                if ! kill -0 "$pid" 2>/dev/null; then
+                    local status=0
+                    wait "$pid" || status=$?
+                    echo "FAIL: ${name##*/} exited early (status $status)"; tail -20 "$log"; exit 1
+                fi
+                [[ "$secs" == "$shot" ]] && out="$name" || out="$name-$shot"
+                import -window root "$out.png"
+            done
+            [[ "$out" == "$name" ]] || cp "$out.png" "$name.png"
             xwininfo -root -tree | grep -E "^ +0x[0-9a-f]+ \"" | sed "s/^ */  window: /" | head -3
-            import -window root "$name.png"
             kill "$pid"
             wait "$pid" 2>/dev/null || true
             echo "ok: ${name##*/} ran (screenshot build/smoke/${name##*/}.png)"
         }
 
         echo "== run game"
-        (cd "$(dirname "$GAME")" && run ../game ../game.log 8 "./$(basename "$GAME")")
+        # word splitting of SMOKE_GAME_ENV is wanted: one NAME=value per word
+        # shellcheck disable=SC2086
+        (cd "$(dirname "$GAME")" && run ../game ../game.log "$SMOKE_GAME_SECONDS" env $SMOKE_GAME_ENV "./$(basename "$GAME")")
         check_log game game.log
 
         # The export left this project as the most recent one in settings.yaml
