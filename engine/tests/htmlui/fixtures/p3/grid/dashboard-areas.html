@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>grid: named template areas</title>
+<style>
+  html, body { margin: 0; }
+  #g { position: absolute; left: 10px; top: 10px; width: 280px; height: 180px; display: grid; gap: 4px;
+       grid-template-columns: 80px 1fr; grid-template-rows: 30px 1fr 20px;
+       grid-template-areas: "header header" "nav main" "footer footer"; background-color: #dddddd; }
+  #header { grid-area: header; background-color: #3366cc; }
+  #nav { grid-area: nav; background-color: #cc6633; }
+  #main { grid-area: main; background-color: #33aa55; }
+  #footer { grid-area: footer; background-color: #884499; }
+</style>
+</head>
+<body>
+<div id="g"><div id="main"></div><div id="footer"></div><div id="nav"></div><div id="header"></div></div>
+</body>
+</html>

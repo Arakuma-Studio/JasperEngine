@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>grid: named lines and repeat() names</title>
+<style>
+  html, body { margin: 0; }
+  #g { position: absolute; left: 0; top: 0; width: 300px; display: grid; grid-auto-rows: 20px; row-gap: 5px;
+       grid-template-columns: [full-start] 20px [content-start] repeat(2, [col] 1fr) [content-end] 20px [full-end]; background-color: #dddddd; }
+  #full { grid-column: full; background-color: #555555; }
+  #content { grid-column: content; background-color: #2266aa; }
+  #col2 { grid-column: col 2 / span 1; background-color: #aa6622; }
+  #col1 { grid-column: col / content-end; background-color: #22aa66; }
+  #missing { grid-column: nothing / span 1; background-color: #aa2266; }
+</style>
+</head>
+<body>
+<div id="g"><div id="full"></div><div id="content"></div><div id="col2"></div><div id="col1"></div><div id="missing"></div></div>
+</body>
+</html>

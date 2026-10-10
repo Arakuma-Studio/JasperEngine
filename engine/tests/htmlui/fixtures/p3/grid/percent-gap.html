@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>grid: percentage gaps and tracks</title>
+<style>
+  html, body { margin: 0; }
+  #g { position: absolute; left: 0; top: 0; width: 200px; height: 100px; display: grid;
+       grid-template-columns: 20% calc(30% + 10px) 1fr; grid-template-rows: 25% 1fr; column-gap: 5%; row-gap: 10%; background-color: #dddddd; }
+  #g > div { background-color: #2277aa; }
+</style>
+</head>
+<body>
+<div id="g"><div id="p1"></div><div id="p2"></div><div id="p3"></div><div id="p4"></div><div id="p5"></div><div id="p6"></div></div>
+</body>
+</html>

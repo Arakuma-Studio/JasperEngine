@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>grid: place-items, place-self, place-content</title>
+<style>
+  html, body { margin: 0; }
+  #a { position: absolute; left: 0; top: 0; width: 150px; height: 100px; display: grid; grid-template-columns: 50px 50px; grid-template-rows: 30px 30px;
+       place-content: center end; place-items: end center; background-color: #dddddd; }
+  #a > div { width: 20px; height: 10px; background-color: #aa3300; }
+  #a > #self { place-self: start; background-color: #0033aa; }
+  #b { position: absolute; left: 0; top: 110px; width: 150px; height: 80px; display: grid; grid-template-columns: 30px 30px; grid-template-rows: 20px 20px;
+       place-content: space-between space-evenly; background-color: #dddddd; }
+  #b > div { background-color: #339900; }
+</style>
+</head>
+<body>
+<div id="a"><div id="i1"></div><div id="self"></div><div id="i3"></div></div>
+<div id="b"><div id="j1"></div><div id="j2"></div><div id="j3"></div><div id="j4"></div></div>
+</body>
+</html>

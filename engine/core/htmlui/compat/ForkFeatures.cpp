@@ -29,7 +29,7 @@ namespace {
         false,   // TimingFunctions
         false,   // Important
         false,   // CssWideKeywords
-        false,   // Grid
+        true,    // Grid (phase 3, p3-grid: CSS Grid, a port of Taffy; docs/html-ui/FORK.md P3-G1..P3-G3)
         true,    // CurrentColor (phase 3, p3-values: rmlui: currentcolor; docs/html-ui/FORK.md)
         true,    // ExtraUnits (phase 3, p3-values: rmlui: CSS units vmin, vmax, ch, ex, turn, grad)
         true,    // LineHeightNormal (phase 3, p3-values: rmlui: line-height: normal)

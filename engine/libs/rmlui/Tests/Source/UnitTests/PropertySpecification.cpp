@@ -63,7 +63,7 @@ TEST_CASE("PropertySpecification.ParsePropertyValues")
 					 ParsePropertyResult expected_result = ParsePropertyResult::Success) {
 		StringList parsed_values;
 		ParsePropertyResult result = specification.ParsePropertyValues(parsed_values, test_value, split);
-		const String split_str[] = {"none", "whitespace", "comma", "raw"};
+		const String split_str[] = {"none", "whitespace", "comma"};
 
 		INFO("\n\tSplit:     ", split_str[(int)split], "\n\tInput:     ", test_value, "\n\tExpected: ", Stringify(expected.values),
 			"\n\tParsed:   ", Stringify(parsed_values));
@@ -212,17 +212,6 @@ TEST_CASE("PropertySpecification.ParsePropertyValues")
 	Parse("(unbalanced", {}, SplitOption::None, ParsePropertyResult::Error);
 	Parse(R"("unterminated)", {}, SplitOption::None, ParsePropertyResult::Error);
 	Parse(R"("a"b)", {}, SplitOption::None, ParsePropertyResult::Error);
-
-	// Raw (phase 3, values): the value as written, quotes included; var() outside quotes, ';' ends it.
-	Parse(R"("Inter", 'Segoe UI' , sans-serif)", R"("Inter", 'Segoe UI' , sans-serif)", SplitOption::Raw);
-	Parse(R"(  "a"b ;)", R"("a"b)", SplitOption::Raw);
-	Parse(R"(italic 16px "a;b")", R"(italic 16px "a;b")", SplitOption::Raw);
-	Parse(R"V(var(--x) "a")V", {}, SplitOption::Raw, ParsePropertyResult::ContainsVariable);
-	Parse(R"V("var(--x)" b)V", R"V("var(--x)" b)V", SplitOption::Raw);
-	Parse(R"("unterminated)", {}, SplitOption::Raw, ParsePropertyResult::Error);
-	Parse("(unbalanced", {}, SplitOption::Raw, ParsePropertyResult::Error);
-	Parse("a; b", {}, SplitOption::Raw, ParsePropertyResult::Error);
-	Parse("", {}, SplitOption::Raw, ParsePropertyResult::Error);
 
 	Rml::Shutdown();
 }

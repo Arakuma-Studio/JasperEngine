@@ -7,7 +7,6 @@
 #include "IdNameMap.h"
 #include "PropertyShorthandDefinition.h"
 #include <algorithm>
-#include <cctype>
 #include <limits.h>
 #include <stdint.h>
 
@@ -305,11 +304,12 @@ bool PropertySpecification::ParsePropertyDeclaration(PropertyDictionary& diction
 		// Allow empty strings for custom properties, otherwise one has to specify an extra pair of quotes for an empty string with the API.
 		ParsePropertyResult parse_result =
 			(property_value.empty() ? ParsePropertyResult::Success : ParsePropertyValues(property_values, property_value, SplitOption::None));
-		// A value of several quoted parts is kept as written (phase 3: font-family lists in variables).
+		// A value of several quoted parts is kept as written (phase 3, values: font-family lists in variables); the comma
+		// split only finds var() and unbalanced quotes in it.
 		if (parse_result == ParsePropertyResult::Error)
 		{
 			property_values.clear();
-			parse_result = ParsePropertyValues(property_values, property_value, SplitOption::Raw);
+			parse_result = ParsePropertyValues(property_values, property_value, SplitOption::Comma);
 		}
 		switch (parse_result)
 		{
@@ -331,8 +331,10 @@ bool PropertySpecification::ParsePropertyDeclaration(PropertyDictionary& diction
 	if (!property_definition)
 		return false;
 
+	// A value taken as written is split at commas only to find var() and unbalanced quotes: its parsers read the strings.
+	const bool value_as_written = property_definition->IsValueAsWritten();
 	StringList property_values;
-	switch (ParsePropertyValues(property_values, property_value, property_ids_raw_value.Contains(property_id) ? SplitOption::Raw : SplitOption::None))
+	switch (ParsePropertyValues(property_values, property_value, value_as_written ? SplitOption::Comma : SplitOption::None))
 	{
 	case ParsePropertyResult::Success: break;
 	case ParsePropertyResult::ContainsVariable:
@@ -348,7 +350,7 @@ bool PropertySpecification::ParsePropertyDeclaration(PropertyDictionary& diction
 	RMLUI_ASSERT(!property_values.empty());
 
 	Property new_property;
-	if (!property_definition->ParseValue(new_property, property_values[0]))
+	if (!property_definition->ParseValue(new_property, value_as_written ? StringUtilities::StripWhitespace(property_value) : property_values[0]))
 		return false;
 
 	dictionary.SetProperty(property_id, new_property);
@@ -365,7 +367,7 @@ bool PropertySpecification::ParseShorthandDeclaration(PropertyDictionary& dictio
 	if (shorthand_definition->type == ShorthandType::RecursiveCommaSeparated)
 		split_option = SplitOption::Comma;
 	else if (shorthand_definition->type == ShorthandType::Custom)
-		split_option = SplitOption::Raw; // The custom parser splits the value itself, quotes included.
+		split_option = SplitOption::Comma; // The custom parser splits the value itself: this only finds var() and keeps quotes.
 
 	StringList property_values;
 	switch (ParsePropertyValues(property_values, property_value, split_option))
@@ -689,71 +691,10 @@ String PropertySpecification::PropertiesToString(const PropertyDictionary& dicti
 	return result;
 }
 
-// SplitOption::Raw (phase 3): the value as written, quotes and parentheses included, for a parser that reads it itself
-// (font-family lists, the Custom shorthands). A 'var(' outside quotes makes it a variable expression; ';' ends it.
-enum class PropertySpecification_RawResult { Success, ContainsVariable, Error };
-
-static PropertySpecification_RawResult ParseRawValue(const String& values, String& raw)
-{
-	char quote = 0;
-	int depth = 0;
-	bool contains_variable = false;
-	size_t end = values.size();
-	for (size_t i = 0; i < values.size(); i++)
-	{
-		const char c = values[i];
-		if (quote)
-		{
-			if (c == '\\')
-				i++;
-			else if (c == quote)
-				quote = 0;
-			continue;
-		}
-		if (c == '"' || c == '\'')
-			quote = c;
-		else if (c == ')')
-			depth--;
-		else if (c == '(')
-		{
-			depth++;
-			if (i >= 3 && values.compare(i - 3, 3, "var") == 0 &&
-				(i == 3 || !(std::isalnum((unsigned char)values[i - 4]) || values[i - 4] == '-' || values[i - 4] == '_')))
-				contains_variable = true;
-		}
-		else if (c == ';' && depth == 0)
-		{
-			end = i;
-			for (size_t j = i + 1; j < values.size(); j++)
-				if (!StringUtilities::IsWhitespace(values[j]))
-					return PropertySpecification_RawResult::Error;
-			break;
-		}
-	}
-	if (quote || depth != 0)
-		return PropertySpecification_RawResult::Error;
-	if (contains_variable)
-		return PropertySpecification_RawResult::ContainsVariable;
-	raw = StringUtilities::StripWhitespace(values.substr(0, end));
-	return raw.empty() ? PropertySpecification_RawResult::Error : PropertySpecification_RawResult::Success;
-}
-
 PropertySpecification::ParsePropertyResult PropertySpecification::ParsePropertyValues(StringList& values_list, const String& values,
 	const SplitOption split_option) const
 {
 	RMLUI_ASSERT(values_list.empty());
-
-	if (split_option == SplitOption::Raw)
-	{
-		String raw;
-		switch (ParseRawValue(values, raw))
-		{
-		case PropertySpecification_RawResult::Success: values_list.push_back(std::move(raw)); return ParsePropertyResult::Success;
-		case PropertySpecification_RawResult::ContainsVariable: return ParsePropertyResult::ContainsVariable;
-		case PropertySpecification_RawResult::Error: break;
-		}
-		return ParsePropertyResult::Error;
-	}
 
 	const bool split_values = (split_option != SplitOption::None);
 	const bool split_by_comma = (split_option == SplitOption::Comma);

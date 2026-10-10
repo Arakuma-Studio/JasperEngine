@@ -1,0 +1,7 @@
+{
+ "comment": "names from the template and from repeat(), the implicit -start/-end names; a missing name is the first line after the explicit grid",
+ "viewport": [
+  340,
+  140
+ ]
+}
