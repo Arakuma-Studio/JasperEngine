@@ -341,8 +341,9 @@ void ElementStyle::TransitionChangedProperties(const ComputeContext& context, co
 		candidates = dirty;
 	else
 	{
+		// (a property the list covers since this change has no value yet: it gets its first one)
 		for (const Transition& transition : list->transitions)
-			if (dirty.Contains(transition.id))
+			if (dirty.Contains(transition.id) || !snapshot.values.GetProperty(transition.id))
 				candidates.Insert(transition.id);
 	}
 	// An element without a before-change style transitions from its starting style, whatever changed: every property
