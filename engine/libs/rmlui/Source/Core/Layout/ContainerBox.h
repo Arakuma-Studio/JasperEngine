@@ -65,6 +65,9 @@ public:
 
 	// Returns true if this box acts as a containing block for absolutely positioned descendants.
 	bool IsAbsolutePositioningContainingBlock() const { return is_absolute_positioning_containing_block; }
+	// Returns true if this box acts as a containing block for descendants with 'position: fixed', instead of the viewport
+	// (CSS Transforms 1 §2, Filter Effects 1 §5, CSS Masking 1: a transform, perspective, filter, backdrop filter or mask).
+	bool IsFixedPositioningContainingBlock() const { return is_fixed_positioning_containing_block; }
 
 protected:
 	ContainerBox(Type type, Element* element, ContainerBox* parent_container);
@@ -93,6 +96,7 @@ private:
 		Vector2f static_position;                   // The hypothetical position of the element as if it was placed in normal flow.
 		Element* static_position_offset_parent;     // The element for which the static position is offset from.
 		std::optional<Rectanglef> containing_block; // Set: the containing block, relative to our border box, instead of our padding box.
+		bool viewport_fixed = false;                // 'position: fixed' against the viewport: no ancestor scroll moves it.
 		std::optional<StaticPositionArea> static_position_area; // Set: the static position is aligned in this area.
 	};
 	using AbsoluteElementMap = SmallUnorderedMap<Element*, AbsoluteElement>;
@@ -107,6 +111,7 @@ private:
 	Style::Overflow overflow_x = Style::Overflow::Visible;
 	Style::Overflow overflow_y = Style::Overflow::Visible;
 	bool is_absolute_positioning_containing_block = false;
+	bool is_fixed_positioning_containing_block = false;
 	bool height_indefinite = false;
 	float flow_position_top = 0.f;
 

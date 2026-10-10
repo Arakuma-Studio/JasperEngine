@@ -1,5 +1,6 @@
 #include "ContainerBox.h"
 #include "../../../Include/RmlUi/Core/ComputedValues.h"
+#include "../../../Include/RmlUi/Core/Context.h"
 #include "../../../Include/RmlUi/Core/Element.h"
 #include "../../../Include/RmlUi/Core/ElementScroll.h"
 #include "../../../Include/RmlUi/Core/Profiling.h"
@@ -29,8 +30,22 @@ void ContainerBox::ResetScrollbars(const Box& box)
 void ContainerBox::AddAbsoluteElement(Element* element, Vector2f static_position, Element* static_relative_offset_parent,
 	std::optional<Rectanglef> containing_block, std::optional<StaticPositionArea> static_position_area)
 {
+	// 'position: fixed' with no ancestor that is a containing block for fixed boxes (LayoutDetails::GetContainingBlock then
+	// gives the outermost box, the document): its containing block is the viewport, the context's dimensions at the origin
+	// of the document's border box (the canvas origin for a document that fills the context).
+	bool viewport_fixed = false;
+	if (!containing_block && !is_fixed_positioning_containing_block && element->GetPosition() == Style::Position::Fixed)
+	{
+		if (Context* context = element->GetContext())
+		{
+			containing_block = Rectanglef::FromPositionSize(Vector2f(0.f), Vector2f(context->GetDimensions()));
+			viewport_fixed = true;
+		}
+	}
+
 	// We may possibly be adding the same element from a previous layout iteration. If so, this ensures it is updated with the latest static position.
-	absolute_elements[element] = AbsoluteElement{static_position, static_relative_offset_parent, containing_block, static_position_area};
+	absolute_elements[element] =
+		AbsoluteElement{static_position, static_relative_offset_parent, containing_block, viewport_fixed, static_position_area};
 }
 
 void ContainerBox::AddRelativeElement(Element* element)
@@ -128,7 +143,7 @@ void ContainerBox::ClosePositionedElements()
 			}
 
 			// Set the offset of the element; the element itself will take care of any RCSS-defined positional offsets.
-			absolute_element->SetOffset(offset, element);
+			absolute_element->SetOffset(offset, element, absolute_element_pair.second.viewport_fixed);
 		}
 	}
 }
@@ -151,8 +166,9 @@ ContainerBox::ContainerBox(Type type, Element* element, ContainerBox* parent_con
 		const auto& computed = element->GetComputedValues();
 		overflow_x = computed.overflow_x();
 		overflow_y = computed.overflow_y();
-		is_absolute_positioning_containing_block = (computed.position() != Style::Position::Static || computed.has_local_transform() ||
-			computed.has_local_perspective() || computed.has_filter() || computed.has_backdrop_filter() || computed.has_mask_image());
+		is_fixed_positioning_containing_block = (computed.has_local_transform() || computed.has_local_perspective() || computed.has_filter() ||
+			computed.has_backdrop_filter() || computed.has_mask_image());
+		is_absolute_positioning_containing_block = (computed.position() != Style::Position::Static || is_fixed_positioning_containing_block);
 	}
 }
 

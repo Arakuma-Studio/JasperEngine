@@ -253,15 +253,23 @@ ContainingBlock LayoutDetails::GetContainingBlock(ContainerBox* parent_container
 	ContainerBox* container = parent_container;
 	BoxArea area = BoxArea::Content;
 
-	// For absolutely positioned boxes we look for the first positioned ancestor. We deviate from the CSS specs by using
-	// the same rules for fixed boxes, as that is particularly helpful on handles and other widgets that should not
-	// scroll with the window. This is a common design pattern in target applications for this library, although this
-	// behavior may be reconsidered in the future.
-	if (position == Position::Absolute || position == Position::Fixed)
+	// For absolutely positioned boxes we look for the first positioned ancestor.
+	if (position == Position::Absolute)
 	{
 		area = BoxArea::Padding;
 
 		while (container->GetParent() && !container->IsAbsolutePositioningContainingBlock())
+			container = container->GetParent();
+	}
+	// For fixed boxes, the first ancestor that is a containing block for them (a transform, filter, ...). Without one the
+	// outermost box (the document) holds them, with the viewport as their containing block (ContainerBox::AddAbsoluteElement,
+	// read back from the element by the overload below).
+	else if (position == Position::Fixed)
+	{
+		area = BoxArea::Padding;
+
+		while (
+			container->GetParent() && container->GetParent()->GetType() != LayoutBox::Type::Root && !container->IsFixedPositioningContainingBlock())
 			container = container->GetParent();
 	}
 

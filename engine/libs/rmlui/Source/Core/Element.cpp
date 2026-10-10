@@ -328,8 +328,6 @@ String Element::GetAddress(bool include_pseudo_classes, bool include_parents) co
 
 void Element::SetOffset(Vector2f offset, Element* _offset_parent, bool _offset_fixed)
 {
-	_offset_fixed |= GetPosition() == Style::Position::Fixed;
-
 	// If our offset has definitely changed, or any of our parenting has, then these are set and
 	// updated based on our left / right / top / bottom properties.
 	if (relative_offset_base != offset || offset_parent != _offset_parent || offset_fixed != _offset_fixed)
@@ -366,6 +364,78 @@ Vector2f Element::GetAbsoluteOffset(BoxArea area)
 	return area == BoxArea::Border ? absolute_offset : absolute_offset + GetBox().GetPosition(area);
 }
 
+// The shift of a sticky box whose border box, unshifted, is at 'border_position' (absolute coordinates).
+static Vector2f ComputeStickyShift(Element* element, Vector2f border_position)
+{
+	Element* containing_element = element->GetOffsetParent();
+	if (!containing_element)
+		return Vector2f(0.f);
+
+	// The nearest ancestor scroll container, or the document.
+	Element* scroller = element->GetParentNode();
+	while (scroller && scroller->GetParentNode())
+	{
+		const ComputedValues& scroller_computed = scroller->GetComputedValues();
+		if (LayoutDetails::IsScrollContainer(scroller_computed.overflow_x(), scroller_computed.overflow_y()))
+			break;
+		scroller = scroller->GetParentNode();
+	}
+	if (!scroller)
+		return Vector2f(0.f);
+
+	const ComputedValues& computed = element->GetComputedValues();
+	const Box& box = element->GetBox();
+	const Vector2f border_size = box.GetSize(BoxArea::Border);
+
+	// The scrollport, and in it the sticky view rectangle: inset by the insets that are not 'auto'.
+	const Vector2f scrollport_position = scroller->GetAbsoluteOffset(BoxArea::Padding);
+	const Vector2f scrollport_size = {scroller->GetClientWidth(), scroller->GetClientHeight()};
+
+	// The box stays inside its containing block: the content box of its offset parent as its content is scrolled, all
+	// of its scrollable content if it is a scroll container. The margins of the box stay inside too.
+	const Box& containing_box = containing_element->GetBox();
+	const Vector2f containing_scroll = {containing_element->GetScrollLeft(), containing_element->GetScrollTop()};
+	const Vector2f containing_position = containing_element->GetAbsoluteOffset(BoxArea::Content) - containing_scroll;
+	Vector2f containing_size = containing_box.GetSize();
+	const ComputedValues& containing_computed = containing_element->GetComputedValues();
+	if (LayoutDetails::IsScrollContainer(containing_computed.overflow_x(), containing_computed.overflow_y()))
+	{
+		const Vector2f padding = {containing_box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Padding, BoxArea::Padding),
+			containing_box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Padding, BoxArea::Padding)};
+		containing_size = Math::Max(containing_size, Vector2f(containing_element->GetScrollWidth(), containing_element->GetScrollHeight()) - padding);
+	}
+
+	using Inset = Style::LengthPercentageAuto;
+	auto shift_axis = [&](int axis, Inset start_inset, Inset end_inset, BoxEdge start_edge, BoxEdge end_edge) {
+		const bool has_start = (start_inset.type != Inset::Auto), has_end = (end_inset.type != Inset::Auto);
+		if (!has_start && !has_end)
+			return 0.f;
+
+		const float size = border_size[axis];
+		const float position = border_position[axis];
+		float view_start = scrollport_position[axis] + (has_start ? ResolveValue(start_inset, scrollport_size[axis]) : 0.f);
+		float view_end = scrollport_position[axis] + scrollport_size[axis] - (has_end ? ResolveValue(end_inset, scrollport_size[axis]) : 0.f);
+		// A view rectangle smaller than the box gives way at its end.
+		if (has_start && has_end && view_end - view_start < size)
+			view_end = view_start + size;
+
+		const float limit_start = containing_position[axis] + box.GetEdge(BoxArea::Margin, start_edge);
+		const float limit_end = containing_position[axis] + containing_size[axis] - box.GetEdge(BoxArea::Margin, end_edge);
+
+		float shifted = position;
+		// Moved towards the end until its start is at the view's start, or its end margin edge at the containing block's end.
+		if (has_start && shifted < view_start)
+			shifted = Math::Max(Math::Min(view_start, limit_end - size), position);
+		// Moved towards the start until its end is at the view's end, or its start margin edge at the containing block's start.
+		if (has_end && shifted + size > view_end)
+			shifted = Math::Min(Math::Max(view_end - size, limit_start), shifted);
+		return shifted - position;
+	};
+
+	return Vector2f(shift_axis(0, computed.left(), computed.right(), BoxEdge::Left, BoxEdge::Right),
+		shift_axis(1, computed.top(), computed.bottom(), BoxEdge::Top, BoxEdge::Bottom));
+}
+
 void Element::UpdateAbsoluteOffsetAndRenderBoxData()
 {
 	if (absolute_offset_dirty || rounded_main_padding_size_dirty)
@@ -385,8 +455,18 @@ void Element::UpdateAbsoluteOffsetAndRenderBoxData()
 
 			// Finally, there may be relatively positioned elements between ourself and our containing block, add their relative offsets as well.
 			for (Element* ancestor = parent; ancestor && ancestor != offset_parent; ancestor = ancestor->parent)
+			{
+				// (the shift of a sticky one is found with its absolute offset)
+				if (ancestor->absolute_offset_dirty && ancestor->GetPosition() == Style::Position::Sticky)
+					ancestor->UpdateAbsoluteOffsetAndRenderBoxData();
 				offset_from_ancestors += ancestor->relative_offset_position;
+			}
 		}
+
+		// 'position: sticky': the shift that keeps the box in the sticky view rectangle of its scroll container, for the
+		// current scroll offsets (scrolling dirties the absolute offsets below the scroll container).
+		if (meta->computed_values.position() == Style::Position::Sticky)
+			relative_offset_position = ComputeStickyShift(this, relative_offset_base + offset_from_ancestors);
 
 		const Vector2f relative_offset = relative_offset_base + relative_offset_position;
 		absolute_offset = relative_offset + offset_from_ancestors;
@@ -2395,7 +2475,14 @@ void Element::UpdateOffset()
 			}
 		}
 	}
-	else if (position_property == Position::Relative || position_property == Position::Sticky)
+	else if (position_property == Position::Sticky)
+	{
+		// Laid out as a relatively positioned box without a shift; its insets constrain it against the scrollport of its
+		// scroll container instead (CSS Positioned Layout 3 §3.4). The shift depends on the scroll offsets: it is found with
+		// the absolute offset (UpdateAbsoluteOffsetAndRenderBoxData).
+		DirtyAbsoluteOffset();
+	}
+	else if (position_property == Position::Relative)
 	{
 		if (offset_parent != nullptr)
 		{
