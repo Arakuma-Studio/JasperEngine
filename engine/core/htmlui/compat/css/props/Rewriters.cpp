@@ -491,9 +491,8 @@ std::optional<ValueList> props::ruleValue(Session& session, const FlatRule& rule
         if (d.name != property)
             continue;
         NormalizeContext context;
-        context.property = property;
         context.colors = ValueNormalizer::colorKeywordsApply(property);
-        context.options = session.options;
+        context.options = &session.options;
         context.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
         NormalizeResult normalized = ValueNormalizer::normalize(d.value, context);
         if (normalized.ok)

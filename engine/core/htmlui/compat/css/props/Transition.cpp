@@ -466,9 +466,8 @@ namespace {
 
     ValueList normalizedValue(Session& session, const Declaration& d){
         NormalizeContext context;
-        context.property = std::string(plain(d.name));
         context.colors = false;
-        context.options = session.options;
+        context.options = &session.options;
         context.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
         NormalizeResult result = ValueNormalizer::normalize(d.value, context);
         return result.ok ? trimWhitespace(result.value) : ValueList();

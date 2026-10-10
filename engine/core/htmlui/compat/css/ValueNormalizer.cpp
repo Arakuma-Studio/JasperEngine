@@ -243,13 +243,13 @@ namespace {
             }
             if (unit.viewportOrientation){
                 if (context.inlineStyle){
-                    const double vw = context.options.viewport.x / 100.0;
-                    const double vh = context.options.viewport.y / 100.0;
+                    const double vw = context.compat().viewport.x / 100.0;
+                    const double vh = context.compat().viewport.y / 100.0;
                     const double perUnit = unit.unit == "vmin" ? std::min(vw, vh) : std::max(vw, vh);
                     out.push_back(ValueNormalizer::dimension(t.number * perUnit, "px"));
                     result.dependsOnViewport = true;
                     report(codes::ViewportDependent, Severity::Info, "'" + serialize(v) + "' (in a style attribute or keyframe, which has no per-orientation copy) is evaluated for the current viewport (" +
-                           std::to_string(context.options.viewport.x) + "x" + std::to_string(context.options.viewport.y) + ")");
+                           std::to_string(context.compat().viewport.x) + "x" + std::to_string(context.compat().viewport.y) + ")");
                     return;
                 }
                 result.vmin = true;
@@ -266,8 +266,8 @@ namespace {
 
         std::optional<double> pxPerUnit(std::string_view unit){
             const std::string u = lowerAscii(unit);
-            const double vw = context.options.viewport.x / 100.0;
-            const double vh = context.options.viewport.y / 100.0;
+            const double vw = context.compat().viewport.x / 100.0;
+            const double vh = context.compat().viewport.y / 100.0;
             if (u == "em") return context.em();
             if (u == "rem") return context.remPx;
             if (u == "vw" || u == "vi" || u == "dvw" || u == "svw" || u == "lvw") return vw;
@@ -279,7 +279,7 @@ namespace {
             if (u == "ic") return context.em();
             if (u == "lh") return context.em() * 1.2;
             if (u == "rlh") return context.remPx * 1.2;
-            if (u == "dp") return context.options.dpRatio;
+            if (u == "dp") return context.compat().dpRatio;
             if (u == "%"){
                 // a percentage compared with lengths: its basis estimated with the viewport
                 if (context.percentBasis == PercentBasis::FontSize)
@@ -320,7 +320,7 @@ namespace {
         void math(const ComponentValue& v, ValueList& out){
             const std::string name = lowerAscii(v.name());
             const bool calcFamily = StaticCalc::isCalcFamily(name) || name == "-webkit-calc" || name == "-moz-calc";
-            if (calcFamily && context.options.fork.has(ForkFeature::Calc)){
+            if (calcFamily && context.compat().fork.has(ForkFeature::Calc)){
                 ComponentValue copy = shell(v);
                 if (name != "calc" && name != "min" && name != "max" && name != "clamp")
                     copy.token.value = "calc";

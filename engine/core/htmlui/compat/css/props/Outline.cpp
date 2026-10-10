@@ -209,8 +209,7 @@ void jasperengine::htmlui::compat::rewriteOutline(DeclContext& context){
                 continue;
             }
             NormalizeContext normalize;
-            normalize.property = d.name;
-            normalize.options = context.session.options;
+            normalize.options = &context.session.options;
             normalize.staticColor = ruleStaticColor(context.session, *context.rule);
             NormalizeResult normalized = ValueNormalizer::normalize(d.value, normalize);
             if (normalized.ok){

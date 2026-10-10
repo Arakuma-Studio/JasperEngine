@@ -704,8 +704,7 @@ void jasperengine::htmlui::compat::rewriteBorderImage(DeclContext& context){
                 continue;
             fromRule = true;
             NormalizeContext normalize;
-            normalize.property = d.name;
-            normalize.options = context.session.options;
+            normalize.options = &context.session.options;
             NormalizeResult normalized = ValueNormalizer::normalize(d.value, normalize);
             if (!normalized.ok || !apply(d.name, trimWhitespace(normalized.value), d.ref)){
                 context.reportAt(d.ref, Severity::Warning, codes::UnsupportedValue, "'" + d.name + ": " + text(d.value) + "' is not supported; dropped");

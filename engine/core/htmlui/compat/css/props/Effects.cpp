@@ -152,8 +152,7 @@ void jasperengine::htmlui::compat::rewriteFilter(DeclContext& context){
 
 std::optional<std::string> jasperengine::htmlui::compat::clipPathShape(DeclContext& context, const Declaration& declaration){
     NormalizeContext normalize;
-    normalize.property = "clip-path";
-    normalize.options = context.session.options;
+    normalize.options = &context.session.options;
     normalize.resolveVar = [&context](const ComponentValue& var, ValueList& out){ return context.session.staticVar(var, out); };
     NormalizeResult normalized = ValueNormalizer::normalize(declaration.value, normalize);
     if (!normalized.ok)

@@ -1162,8 +1162,7 @@ namespace {
     // the normalized value of a declaration of another rule (base rules)
     ValueList normalized(Session& session, const Declaration& d){
         NormalizeContext context;
-        context.property = d.name;
-        context.options = session.options;
+        context.options = &session.options;
         context.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
         NormalizeResult result = ValueNormalizer::normalize(d.value, context);
         return result.ok ? trimWhitespace(result.value) : ValueList();

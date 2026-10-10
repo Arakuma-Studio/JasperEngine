@@ -765,9 +765,8 @@ namespace {
         // the custom property index (values normalized quietly; phase B reports)
         auto normalizeQuietly = [&](const ValueList& value, const std::string& name){
             NormalizeContext context;
-            context.property = name;
             context.customProperty = true;
-            context.options = session.options;
+            context.options = &session.options;
             NormalizeResult result = ValueNormalizer::normalize(value, context);
             if (!result.ok)
                 return trimWhitespace(value);
@@ -1394,14 +1393,13 @@ namespace {
         }else{
             // 4. value normalization
             NormalizeContext normalize;
-            normalize.property = name;
             normalize.colors = facts.colorKeywords;
             normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint;
             // a style attribute or a keyframe cannot be duplicated per orientation: vmin/vmax evaluated
             normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
             normalize.percentBasis = facts.percentBasis;
             normalize.vertical = facts.vertical;
-            normalize.options = session.options;
+            normalize.options = &session.options;
             if (rule && !keyframe){
                 // the rule's static color is read for currentColor (written, or behind a var())
                 // and its font size by the math functions: looked up only for such values
@@ -1621,9 +1619,8 @@ namespace {
         // 1. custom properties
         if (d.isCustomProperty()){
             NormalizeContext context;
-            context.property = d.name;
             context.customProperty = true;
-            context.options = session.options;
+            context.options = &session.options;
             context.inlineStyle = origin == RuleOrigin::StyleAttribute;
             context.report = [&](DiagCode code, Severity severity, const std::string& message, const std::string& suggestion){
                 session.sink->reportAs(severity, code, d.ref, message, suggestion, std::string(), d.name);
