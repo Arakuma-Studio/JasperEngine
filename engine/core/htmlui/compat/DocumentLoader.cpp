@@ -146,6 +146,8 @@ namespace {
         return true;
     }
 
+    // an entry leaves the cache: its sheets are not served any more (a document loaded from it
+    // has read them; the compile itself goes with its last holder)
     void dropEntry(const std::shared_ptr<const CompatDocument>& document){
         if (document && document->owner)
             VirtualFiles::removeOwner(document->owner);
@@ -704,6 +706,11 @@ size_t DocumentLoader::cacheSize(){
     Cache& store = cache();
     std::lock_guard<std::mutex> lock(store.mutex);
     return store.size;
+}
+
+CompatDocument::~CompatDocument(){
+    if (owner)
+        VirtualFiles::removeOwner(owner);
 }
 
 // ---- load ----
