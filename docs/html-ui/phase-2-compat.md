@@ -1003,15 +1003,18 @@ struct Rule {
     Text atName;                      // lowercase, without '@'
     ValueList prelude;                // selector list or at-rule prelude
     SourceRef preludeRef, ref;
-    Text preludeText;                 // an at-rule's prelude as written
+    Text preludeText;                 // the prelude as written, trimmed
+    bool preludeDeferred = false;     // a plain style-rule prelude read as text alone (p2-perf2)
     bool hasBlock = false;
     DeclarationList declarations;     // ArenaList<Declaration>: style rules, @font-face, @page, keyframe blocks
     RuleList rules;                   // ArenaList<Rule>: nested style rules, @media/@supports/@layer bodies
 };
 struct Stylesheet { RuleList rules; uint32_t file; };
 
-Stylesheet parseStylesheet(uint32_t file, std::string_view css, DiagnosticSink&, uint32_t baseOffset = 0);
+Stylesheet parseStylesheet(uint32_t file, std::string_view css, DiagnosticSink&, uint32_t baseOffset = 0,
+                           bool deferPlainPreludes = false);
 DeclarationList parseDeclarationList(uint32_t file, std::string_view css, uint32_t baseOffset, DiagnosticSink&);
+ValueList preludeOf(const Rule&);     // the prelude's values (read from its text when deferred)
 ```
 
 The tree lives in an arena (p2-perf, `compat/Arena.h`): everything a parse makes (the copy of
@@ -1040,17 +1043,25 @@ follow the 2021 draft; `compat_parser_test.cpp` lists the three inputs where the
 algorithms differ (`declaration_list.json` "@ media …", `one_declaration.json` "foo:;" and
 "foo:;bar:;") and checks their 2024 result instead.
 
-As implemented (p2-perf): the tokenizer's own output is compact (`css/CssLexer.h`, internal:
-`LexToken`, 40 bytes, holds no string, its value and unit are views into the source, or into
-a side buffer when an escape or a non-ASCII character had to be decoded); `tokenize()` converts it to
-`Token`s and the parser builds the `Token` of each component value straight from it, so every
-token is read once: "consume a declaration, else a rule from the same position" is decided
-before consuming (`declarationParses`), the closing token of every block is matched while
-tokenizing (`LexToken::closer`) and the children of a block, a value and a prelude are
-allocated to their count. Rules, declarations and component values are built in place. `Token` and
-`ComponentValue` keep their members (reordered by size: 96 and 136 bytes); `CssSerialize.h`
-also appends into a caller's buffer (`appendSerialized`, `appendToken`, `appendIdent`,
-`appendString`, `appendNumber`: the `serialize*`/`formatNumber` forms are wrappers).
+As implemented (p2-perf, p2-perf2): the tokenizer is a stream (`css/CssLexer.h`, internal:
+`CssLexer::next(Token&)` reads one token straight into a `Token`; plain ASCII tokens (names,
+numbers with ASCII units, hashes, strings without escapes, punctuation, white space, delims)
+are read inline, everything else by the general reading in `CssTokenizer.cpp`). There is no
+token list: the parser keeps one token of lookahead and builds each component value from it,
+on per-thread stacks (the children of the blocks still open, the values of a declaration or a
+prelude, the declarations and rules of a block), each list closed into the arena at its exact
+size (`ArenaList::movedFrom`). A token's texts are views of the parser's copy of the source,
+or arena copies of what had to be decoded. Where the 2024 algorithms decide by what follows
+("consume a declaration, else a rule from the same position") the parser reads on and, when
+it was a rule, sets the lexer back (`CssLexer::reset`) and reads the same tokens again; a
+position's errors are recorded once. `tokenize()` reads the same stream into a vector.
+`parseStylesheet(..., deferPlainPreludes = true)` (the rewriter's): a style rule whose prelude
+holds only ASCII name characters, `.`, `#`, `:`, `>`, `+`, `~`, `*`, `,` and white space up to
+its `{` is read as text (`Rule::preludeText`, `preludeDeferred`), without tokens; `preludeOf()`
+reads it into the values the token path builds. `Rule::preludeText` is set for style rules as
+well as at-rules. `CssSerialize.h` also appends into a caller's buffer (`appendSerialized`,
+`appendToken`, `appendIdent`, `appendString`, `appendNumber`: the `serialize*`/`formatNumber`
+forms are wrappers).
 
 - Parsing follows the CSS Syntax 3 algorithms ("consume a list of rules", "consume a
   qualified rule", "consume a block's contents" from the 2024 draft with nested rules).
@@ -1187,6 +1198,18 @@ with operators and `i`/`s` flags, escapes, namespaces) and rewrites per Appendix
   too).
 - Output is checked against what RmlUi's `ImportProperties` accepts (no commas outside
   parentheses, identifiers escaped where needed).
+- As implemented (p2-perf2): a style rule's selector list that maps to itself (types other
+  than `html`/`body`/`template`, classes, ids other than the reserved and the root's,
+  attributes without a flag, the pseudo-classes RmlUi matches as written, the universal
+  selector, the descendant, child and sibling combinators; an author selector's first compound
+  cannot match the root) is read from its source text by `SelectorRewriter::scanList` and
+  written from it as `serialize()` writes it, with the `#htmlui-root` band, without being
+  parsed (`ScannedSelectors`: the rewritten selectors and the CSS text of each selector). Its
+  selectors are parsed at their first use (`FlatRule::selectors()`: `!important` and `@layer`
+  conflicts, `aspect-ratio`, relative font sizes); base rules are indexed by the hash of their
+  selectors' CSS text. Every other list goes through `parseList` and `rewrite`. A change of how
+  any of those selectors is written (a phase-3 gated branch) must make `scanList` leave it to
+  `rewrite()`.
 
 #### 3.9.6 Declarations
 
@@ -1296,6 +1319,17 @@ the suggestion names a supported value from the value table).
 
 Exact behavior of each rewrite family. "Base rule" means `BaseRules` (3.9.8). Every lossy
 case names its diagnostic.
+
+As implemented (p2-perf2): the families that merge their rule's other declarations
+(background and mask, transition, animation, outline) and the shadow lists (box-shadow,
+text-shadow) read each declaration once into a structure in the session's arena (background
+`Layer`s, transition and animation entries, the outline, the shadows: keywords as enums,
+times as `props::Timing`, lengths, colors and names as the component values written or views
+of them), merge the family on that structure and write the RCSS value once, into one buffer;
+no value is built as a string to be split or read again. The helpers read the declared value
+in place: `props::wordsOf` and `commaRanges` (pointers to the values and ranges of the list),
+`identView` (a keyword in lower case without a copy); `props::EasingResult` holds arena texts;
+the companion emitters take string views.
 
 **Background** (`background`, `background-*`, `-webkit-background-clip`):
 

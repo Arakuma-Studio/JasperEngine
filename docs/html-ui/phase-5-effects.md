@@ -285,7 +285,10 @@ The contexts carry:
 P5 registers the `effect` image and filter handlers and the `@effect` at-rule handler in
 `EffectRegistry::initialise`. P5-property replaces phase 2's `@property` branch in
 `css/AtRules.cpp` (3.11). The other phase 2 mechanisms P5 relies on:
-- `Background.cpp`'s layer list, mask layers through the same rewrite.
+- `Background.cpp`'s layer list, mask layers through the same rewrite (as phase 2 implements
+  it since p2-perf2: each declaration is read into `Layer` structures in the session's arena,
+  the decorator list written once by `appendDecorators`; an effect layer is a `Layer` whose
+  `image` text is the handler's RCSS item, dispatched from `layerImage`).
 - `Effects.cpp` filter lists.
 - `CustomPropertyIndex`: when `--bg: effect(aurora)` is used in `background: var(--bg)`, the
   declarations of `--bg` are rewritten through the same handler into the typed form.
