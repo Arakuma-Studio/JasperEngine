@@ -448,7 +448,14 @@ float LayoutDetails::GetShrinkToFitWidth(Element* element, Vector2f containing_b
 	{
 		const float available_width =
 			Math::Max(0.f, containing_block.x - box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Margin, BoxArea::Padding));
-		shrink_to_fit_width = Math::Min(shrink_to_fit_width, available_width);
+		// CSS 2.1 §10.3.5: min(max-content, max(min-content, available)); the min-content width is measured only when
+		// the content does not fit.
+		if (shrink_to_fit_width > available_width)
+		{
+			const float min_content_width =
+				GetMinContentWidth(element, containing_block) - box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
+			shrink_to_fit_width = Math::Min(shrink_to_fit_width, Math::Max(available_width, min_content_width));
+		}
 	}
 	return shrink_to_fit_width;
 }

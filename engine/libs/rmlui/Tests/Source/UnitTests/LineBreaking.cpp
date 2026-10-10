@@ -166,3 +166,18 @@ TEST_CASE("LineBreaking.flex_column_item_wraps_at_its_min_width")
 	CHECK(LinesOf(document, "item") == StringList{"HHHHHHHH" + zwsp + "HHHHHHHH"});
 	document->Close();
 }
+
+TEST_CASE("LineBreaking.shrink_to_fit_is_at_least_the_min_content_width")
+{
+	// CSS 2.1 §10.3.5: an inline-block in a box narrower than its longest word is as wide as that word (min(max-content,
+	// max(min-content, available))), not as narrow as the box.
+	FixedAdvanceFontScope scope;
+	ElementDocument* document = scope.Load(".measure { display: inline-block; }",
+		"<div style='width: 0'><span class='measure' id='zero'>HH" + zwsp + "HHH</span></div>"
+		"<div style='width: 40px'><span class='measure' id='narrow'>HH" + zwsp + "HHH</span></div>"
+		"<div style='width: 100px'><span class='measure' id='wide'>HH" + zwsp + "HHH</span></div>");
+	CHECK(WidthOf(document, "zero") == 30.f);
+	CHECK(WidthOf(document, "narrow") == 40.f);
+	CHECK(WidthOf(document, "wide") == 50.f);
+	document->Close();
+}
