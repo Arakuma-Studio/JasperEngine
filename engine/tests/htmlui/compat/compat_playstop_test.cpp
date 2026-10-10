@@ -310,3 +310,24 @@ TEST(CompatVirtualFiles, UncachedCompilesReleaseTheirSheets){
     EXPECT_EQ(hc::VirtualFiles::list("@htmlui/doc/").size(), before);
     EXPECT_EQ(hc::DocumentLoader::cacheSize(), 0u);
 }
+
+// The process ends with compiles still in the cache (a game or the editor quitting with
+// documents loaded): they are destroyed with the statics, in the reverse order those were
+// first used, and release their virtual files then. The registry of virtual files must
+// outlive them: destroyed first, it made the process spin at exit (this suite did not end).
+// Leaving an entry behind at the end of every run keeps that path exercised.
+namespace {
+
+    class CompileLeftCachedAtExit : public ::testing::Environment {
+    public:
+        void TearDown() override{
+            const std::shared_ptr<const hc::CompatDocument> compiled =
+                hc::DocumentLoader::compile("compat/integrate/texture.html", hc::CompatOptions());
+            if (!compiled->compiled || hc::DocumentLoader::cacheSize() == 0)
+                ADD_FAILURE() << "no compile left in the cache for the exit of the process";
+        }
+    };
+
+    ::testing::Environment* const compileLeftCachedAtExit = ::testing::AddGlobalTestEnvironment(new CompileLeftCachedAtExit());
+
+}

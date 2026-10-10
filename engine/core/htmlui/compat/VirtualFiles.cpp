@@ -28,9 +28,12 @@ namespace {
         std::map<std::string, Entry, std::less<>> files;
     };
 
+    // Never destroyed: the registry is the process's, and what releases files at exit (a
+    // CompatDocument of the loader's cache, destroyed with the statics in whatever order they
+    // were made) must still find it. A destroyed store made the process spin at exit.
     Store& store(){
-        static Store instance;
-        return instance;
+        static Store* instance = new Store();
+        return *instance;
     }
 
 }
