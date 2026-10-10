@@ -2872,8 +2872,12 @@ interfaces other packages rely on and the deviations.
   `DocumentLoader` fills it with the `<html>` attributes except the reserved `id` and
   `data-html-id`): `html`/`:root` map to `body#htmlui-root` in author sheets (`body` in the UA
   sheet), `body` to `htmlbody`; selectors on root attributes are resolved at rewrite time
-  (a variant per selector that could match the root; `:is()`/`:where()` compounds get no
-  root variant).
+  (a variant per selector that could match the root; a compound that still holds `:is()` or
+  `:where()` gets no root variant. In phase 2 none does: both are always expanded into plain
+  selectors first, and those get their variants (verified by p2-integrate: `:is(.dark, .light)
+  .b` and `:where(html.dark) .a` match with the class on `<html>`). It applies once
+  `RootIsWhere` keeps them native: phase 3 resolves the root there, `phase-3-fork-patches.md`
+  §3.4).
 - **Decorator arguments** as written (the forms §"p2-runtime as implemented" documents):
   `html-layer("<path>" <size-x> <size-y> <pos-x> <pos-y> <repeat-x> <repeat-y> <origin>
   <clip> <attachment>)` with `cover`/`contain` in both size slots and edge offsets as
@@ -4170,3 +4174,58 @@ in section 3.
 | HTMLUI-SVG-0001 | Info | svg-recolor | mixed-color SVG re-rasterized for `currentColor` |
 | HTMLUI-SVG-0002 | Warning | svg-unsupported-content | SVG content the renderer cannot draw (foreignObject, …) |
 | HTMLUI-SVG-0003 | Info | svg-internal-css | CSS rules targeting elements inside an SVG are not applied |
+
+## Appendix G. Phase-2 integration (p2-integrate)
+
+What the integration of the merged phase found and changed, beyond the sections it edited in
+place (§3.10 fieldset and the `ua-defaults` pins, §4 "p2-css as implemented").
+
+**Bugs fixed** (each with a regression test, one commit each):
+
+| Area | What was wrong | Fix | Test |
+|---|---|---|---|
+| Engine API | `UIDocument.h` includes `htmlui/compat/Diagnostics.h`, which included nlohmann's `json.hpp`: not part of the engine API a project's C++ scripts compile against, so every project with a C++ script failed to build and play did not start | `toJson` moved to `DiagnosticsJson.h`; `Diagnostics.h` needs the standard library only | `test_checks.py::test_cpp_cli_and_compile_scripts`, `test_trial_fixes.py::test_runtime_cpp_script_state`, `test_script.py::test_cpp_compile` (it had skipped on the error) |
+| Font engine | RmlUi keeps the line feed that ends a `white-space: pre` line in the string it hands to the font engine: it was shaped as the missing-glyph box (a box after every `<pre>` line, 11px of width) | `RmlFontEngine` drops control characters (U+0000..U+001F), as RmlUi's own font engine | `RmlFontEngineTest.ControlCharactersTakeNoSpaceAndDrawNothing`; the `ua-defaults` engine golden |
+| Fieldset | the legend's border was `html-layer` strips from the user-agent sheet: a line under the legend (the page's no-text gate at 63.8 of 64), doubled by an author `border`, removed by an author `background` | `HtmlFieldsetElement` + fork P2-14 (§3.10) | `compat_fieldset_test.cpp` |
+| Loader | a compile that is not cached (`checkDocument`/`collectRemoteReferences` with a `FileAccess`: the editor's import discovery at every document load; `compileString`) left the virtual files of its sheets for the life of the process | `CompatDocument` releases its owner's virtual files in its destructor; the registry of virtual files is never destroyed (the cached compiles are released at exit, in static destruction order) | `CompatVirtualFiles.UncachedCompilesReleaseTheirSheets`, the exit guard in `compat_playstop_test.cpp` |
+| Hot reload | phase 1's reload names a changed file by its asset path, compat hands RmlUi `asset://` URLs: a replaced image kept its old pixels (`Rml::ReleaseTexture` of another spelling), a replaced font reloaded the document with the old face (`FontRegistry` keyed by spelling) | `UIDocumentSystem::reloadTexture` releases every texture source naming the file; `RmlFontEngine` keys font files by their normalized path | `compat_hot_reload_test.cpp`, `test_html_ui_phase2.py` |
+| Document scripts | a document's `<script type="text/lua">` runs again after a reload and re-attaches its listeners, and the state-keeping reload also moved the old ones over: one more copy per reload (a click counted 2, 3, ... times) | listeners attached while a document script runs are tagged (`HtmlUIEventListener::ScriptScope`) and removed with the old document | `CompatHotReloadTest.DocumentScriptListenersAreAttachedOncePerReload`, `test_html_ui_phase2.py::test_hot_reload_play_mode` |
+| Diagnostics | `HTMLUI-IMP-0001/-0009` suggested the MCP tool `import_files`, which copies local files only until phase 4 | the suggestion names what imports a URL in phase 2 (phase-4 spec §3.6.5 adds the tool back) | the `.diag.txt` goldens, `compat_url_test.cpp` |
+| MCP | the agent instructions still said documents are XML-well-formed HTML styled with RCSS; the export error of an `.rml` document said "phase 2 adds importers" | both say what phase 2 does | `test_protocol.py`, `test_docs.py` |
+| Tests | `test_html_ui_lua.py::test_lottie_control_and_events` counted frames on the measured UI clock (a loaded host's frames last up to `Engine::maxDeltatime` = 0.25 s, the animation 2 s) | the Lottie tests play with `fixed_fps=60` and `auto_pause` | reproduced with `fixed_fps=4`: `[False, False, True]` |
+| Xcode | a bare `#include "Text.h"` resolves through the project header map, which ignores case, and lexbor added `dom/interfaces/text.h` | `GameObjectClassesLua.cpp` includes `object/ui/Text.h` | review of `project.pbxproj` (not buildable here) |
+
+**Verified, unchanged:**
+- The four simplifications p2-css kept, each with its diagnostic: `round()` of a length
+  without a step is not folded (`HTMLUI-CSS-0004` Warning, the declaration is dropped;
+  `round(a, b)` and the other math functions are, `HTMLUI-CSS-0005` Info); a `var()` whose
+  variable has more than one declaration is not resolved inside `calc()` (`HTMLUI-CSS-0012`
+  Warning, dropped); `:is()`/`:where()` and the root (above: no effect in phase 2);
+  `animation-delay: inherit` and the other longhands copy the ancestor's whole shorthand
+  (`HTMLUI-CSS-0011` Info). The guide lists all four.
+- `appearance: auto`: the copies p2-css keeps for a build without an embedded sheet equal the
+  fallbacks of p2-ua's calibrated sheet, with one exception that was a bug: the range track
+  read `--html-control-bg`/`--html-control-border` with its own grays (`#efefef`, `#b2b2b2`)
+  while checkboxes and selects read them with `#ffffff`/`#767676`, and `auto` writes one value
+  per companion, so `input[type=range] { appearance: auto }` drew a white track with a dark
+  border. The track has its own companions now (`--html-slider-track-bg`,
+  `--html-slider-track-border-color`, written by `appearance: none`/`auto`), and
+  `CompatUaSheet.AppearanceAutoWritesTheSheetsFallbacks` holds every companion to one fallback
+  that equals what `auto` writes.
+- Play stop on the compat path (`compat_playstop_test.cpp`): no Lua reference, the documents
+  of every context unloaded with their log registrations, GPU objects, cache entries and
+  virtual files constant over twelve cycles. The compiled-document cache itself is the
+  process's (§3.12.2: 64 entries, least recently used go) and is not emptied by a stop:
+  the documents load again from it.
+- Windows `curl ... || (call )` (`editor/htmlui/HttpClient.cpp`): reviewed, not run. `(call )`
+  with the space is cmd.exe's idiom that sets ERRORLEVEL 0; the command goes through
+  `cmd.exe /s /c "<command>"`, which strips only the outer quotes, so the quoted config path
+  survives; the URL and the `%{...}` write-out are in the config file, never on the command
+  line; stderr is merged and a trailing CR stripped by `CommandRunner`. `fail-with-body` needs
+  curl 7.76 (March 2021): older system curls answer `curl: option fail-with-body: is unknown`,
+  which is reported as the download error.
+- Unverifiable on the build host (Linux): Windows, macOS and iOS builds; the Xcode project was
+  reviewed against CMake (lexbor targets: 163 sources each, `LEXBOR_STATIC`, search paths; 87
+  compat sources per engine target, `xcode_sync_compat.py --check`; the embedded
+  `htmlui_ua.h`/`htmlui_lucide.h` stand-ins and the export that writes the real ones; no
+  dangling ids).

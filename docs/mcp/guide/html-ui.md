@@ -7,14 +7,19 @@ an HTML file over the scene, or on a mesh, laid out and drawn by the engine (Rml
 drawn on the engine's own renderer on every backend: no browser, no JavaScript). It coexists
 with the component UI (Text, Image, Button, ...).
 
-This page describes **phase 1**: the complete renderer (rounded clipping, filters, backdrop
-filters, gradients, shadows, masks, transforms, MSAA), complete input (mouse, wheel, touch,
-keyboard, text and IME, clipboard, cursor), the editor integration with hot reload, the Lua and
-C++ element API with data binding, SVG and Lottie, an Anime.js-style animation API, documents
-rendered into textures for meshes, and text effects. Documents are still XML-well-formed HTML
-styled with **RCSS**, RmlUi's dialect of CSS: standard HTML5 parsing and CSS rewriting come with
-phase 2, so for now write the subset below exactly as shown. What is missing is listed under
-"Not yet, and limits".
+Documents are **standard HTML5 and CSS**, written as for a browser: the engine parses the HTML
+like a browser, applies a user-agent stylesheet equal to Chromium's defaults and translates the
+CSS for its layout engine ("Writing HTML/CSS for the engine"). Whatever it cannot draw like
+Chrome is reported in the Console with the file, line and column of your source and a stable
+code: **read the Console after every change** ("Reading the diagnostics"). There is no
+JavaScript: documents are scripted in Lua (`<script type="text/lua">`, or the scene's scripts)
+and in C++. Around that: the complete renderer (rounded clipping, filters, backdrop filters,
+gradients, shadows, masks, transforms, MSAA), complete input (mouse, wheel, touch, keyboard,
+text and IME, clipboard, cursor), hot reload in the editor, the element API with data binding,
+SVG and Lottie, built-in Lucide icons, an Anime.js-style animation API, documents rendered
+into textures for meshes, and imports of remote fonts and images into the project. What is
+not supported yet is listed under "Not yet, and limits". Files named `.rml` are read by RmlUi's
+own loader instead, in its own dialect ("`.rml` documents").
 
 ## Quick start (MCP)
 
@@ -27,39 +32,46 @@ screenshot  view=game
 ```
 
 ```html
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-    <title>menu</title>
-    <link type="text/css" href="menu.css"/>
+  <meta charset="UTF-8">
+  <title>Menu</title>
+  <link rel="stylesheet" href="menu.css">
 </head>
 <body>
-    <div id="panel">
-        <div id="title">My Game</div>
-        <div id="play" class="button">Play</div>
-    </div>
+  <div class="panel">
+    <h1>My Game</h1>
+    <button id="play">Play</button>
+    <button id="quit">Quit</button>
+  </div>
+  <script type="text/lua">
+    document:getElementById("play"):addEventListener("click", function() print("play") end)
+  </script>
 </body>
 </html>
 ```
 
 ```css
-/* RCSS: no default stylesheet, so block elements say so */
-body { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0;
-       font-family: sans-serif; font-size: 16px; color: #ffffff; }
-div { display: block; }
-#panel { position: absolute; left: 40px; top: 40px; width: 300px; padding: 20px;
-         display: flex; flex-direction: column; gap: 12px;
-         background-color: #20202ce0; border: 2px #5060a0; border-radius: 12px; }
-#title { font-size: 32px; }
-.button { height: 48px; line-height: 48px; text-align: center; color: #000000; background-color: #808080; }
-.button:hover { background-color: #00ff00; }
-.button:active { background-color: #008000; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { min-height: 100vh; display: flex; align-items: center; justify-content: center;
+       font-family: sans-serif; color: #fff; background: linear-gradient(135deg, #0f0c29, #302b63); }
+.panel { width: 320px; padding: 24px; display: flex; flex-direction: column; gap: 12px;
+         background: rgba(32, 32, 44, 0.88); border: 1px solid #5060a0; border-radius: 12px; }
+button { padding: 12px; border: 1px solid #5060a0; border-radius: 8px; background: #2a2a3c;
+         color: #fff; font: inherit; transition: background 200ms ease; }
+button:hover { background: #4f46e5; }
 ```
+
+Then read the Console (`read_console`): the load ends with `[HTML UI] ui/menu.html: 0 errors,
+0 warnings, N notes`. Every line above it that says `error:` or `warning:` names something the
+engine does not draw like a browser, with a fix.
 
 ## The component
 
 | Property | Type | Meaning |
 |---|---|---|
-| `filename` | string | The `.html` document. MCP takes and returns project-relative paths under the assets directory (`assets/ui/menu.html`); the scene stores the asset-relative path (`ui/menu.html`). Empty = no document. Inspector label "Source". |
+| `filename` | string | The `.html` document (or `.rml`, RmlUi's own dialect). MCP takes and returns project-relative paths under the assets directory (`assets/ui/menu.html`); the scene stores the asset-relative path (`ui/menu.html`). Empty = no document. Inspector label "Source". |
 | `sortOrder` | int | Order of the scene's documents: higher draws on top (default 0). |
 | `enabled` | bool | Shown and receiving pointer input (the Inspector's checkbox). |
 | `interactive` | bool | Receives pointer, keyboard and text input (default true). Off: every event goes to the game. |
@@ -97,7 +109,8 @@ component (the Hierarchy's *Create > UI > UI Document*).
 
 - Keep documents, stylesheets, images and fonts under the assets directory (`assets/ui/...`).
 - References inside a document are relative to the document (`href="menu.css"`,
-  `src="../images/logo.png"`); `asset://ui/logo.png` is relative to the assets directory.
+  `src="../images/logo.png"`, a `url()` in a stylesheet relative to that stylesheet); a leading
+  `/` (`/ui/logo.png`) or `asset://ui/logo.png` starts at the assets directory.
   The game never uses the network: an `http(s)://` resource (Google Fonts, a CDN stylesheet,
   a remote image or Lottie animation) is imported into the project by the editor first (see
   "Remote resources (imports)").
@@ -106,7 +119,7 @@ component (the Hierarchy's *Create > UI > UI Document*).
 
 ## Writing HTML/CSS for the engine
 
-Documents are **standard HTML5 and CSS**, written as for a browser (phase 2). The engine parses
+Documents are **standard HTML5 and CSS**, written as for a browser. The engine parses
 the HTML like a browser does (no XML strictness: unclosed `<p>`, `<br>`, unquoted attributes,
 `&nbsp;` and every named entity are fine), applies a **user-agent stylesheet** equivalent to
 Chromium's defaults, and rewrites the CSS for its layout engine. A page written for Chrome at
@@ -188,8 +201,9 @@ h1 { font-family: 'Orbitron', sans-serif; text-shadow: 0 0 20px rgba(124, 58, 23
   runtime. The editor imports them into `assets/htmlui-imports/` (fonts as static TTF, with
   their license files) and writes `assets/htmlui-imports/manifest.json`, which the runtime
   reads to serve each URL from the project: keep the `https://` URLs in your HTML/CSS as they
-  are. Imports run automatically when a document loads in the editor; MCP `import_files` and
-  `jasperengine-editor import-ui --project <dir> <html>` run them on demand. A remote URL that
+  are. Imports run automatically when a document loads in the editor, and
+  `jasperengine-editor import-ui --project <dir> <html>` runs them from the command line (MCP
+  `import_files` copies local files only until phase 4). A remote URL that
   was not imported is an `HTMLUI-IMP-0001` error and falls back (fonts: the next family;
   images: not drawn).
 - Fonts: `@font-face` with TTF/OTF `url()`s (WOFF/WOFF2 sources are skipped; an imported
@@ -215,24 +229,43 @@ diagnostic (below) says what changed.
 | `font: 600 14px/1.5 'Inter', sans-serif`, quoted family names | exact |
 | `:root` variables, `var()` | exact, also inside shorthands and gradients |
 | `@media (width >= 600px)`, `prefers-color-scheme`, `prefers-reduced-motion`, `@supports`, `@layer`, `@import`, CSS nesting (`&`), vendor prefixes | evaluated or flattened (`UIDocument:setColorScheme("dark")`, `setReducedMotion(true)` switch the two preferences) |
-| `inherit`, `initial`, `unset`, `!important` | exact for inherited properties and `!important` against equal or lower specificity (a warning names a more specific rule that still wins) |
-| `calc()`, `min()`, `max()`, `clamp()` | computed when the units allow (`calc(40px + 2rem)`); a `%` mixed with `px` keeps the `%` part (warning) until phase 3 |
-| `vmin`/`vmax`, `dvh`/`svh`, `ch`/`ex` | exact / `vh` / em multiples |
+| `inherit`, `initial`, `unset`, `!important` | exact for inherited properties and `!important` against equal or lower specificity (a warning names a more specific rule that still wins); `inherit` on a property that does not inherit copies the nearest ancestor's declared value (note), and on one longhand of `animation`/`transition` (`animation-delay: inherit`) the ancestor's whole `animation`/`transition` |
+| `calc()`, `min()`, `max()`, `clamp()`, `round()`, `mod()`, `abs()`, `sin()`, ... | computed when the document loads, and again when the canvas is resized for viewport units (`calc(40px + 2rem)`, `calc(100vh - 64px)`); a `%` mixed with `px` keeps the `%` part (`calc(100% - 32px)` is `100%`, warning) until phase 3. Dropped with a warning: a `var()` inside when the variable is declared more than once (`:root` and `.dark`: no single value to compute with, `HTMLUI-CSS-0012`), and `round()` of a length without a step (`round(17.4px)`; write `round(17.4px, 1px)`) |
+| `vmin`/`vmax`, `dvh`/`svh`/`lvh`, `ch`/`ex` | exact / `vh` / `0.5em` (note) |
 | `clip-path` shapes, `mask-image`, `object-fit`, `image-rendering: pixelated` | exact |
 | `::-webkit-scrollbar(-thumb/-track)`, `scrollbar-width`, `scrollbar-color`, `::placeholder`, `::-webkit-slider-thumb` | the engine's scrollbar, placeholder and slider parts |
 | `position: fixed` | positioned like `absolute` against the page (no scrolling page in a game UI) until phase 3; `sticky` acts as `relative` |
 
-Not yet (phase 3 adds them; until then a warning names each use): `display: grid` (laid out as
-a wrapping flex row: fixed column counts work, placement does not), `::before`/`::after`
-(the rule is dropped: use a real element), `:has()`, `order`, `aspect-ratio`, `opacity` as a
-group (each child fades separately), `line-height: normal` (1.2: set `line-height` where text
-must line up exactly). Not planned: `<video>`, `<canvas>`, `<iframe>` (a placeholder box:
-render a scene into a texture instead), JavaScript. Other differences to know: a
-`<legend>` is as wide as its fieldset and the fieldset's top border runs under it (no gap is
-cut); a table without a `width` fills its container (Chrome shrinks it to its content: give
-tables a width); `border-collapse: collapse` removes the spacing but keeps each cell's own
-borders (a warning says so); font sizes are whole pixels (`13.333px` draws at 13px), so text
-can be up to a pixel or two narrower than in Chrome.
+**Not yet** (phase 3 adds them; until then a warning names each use): `display: grid` and
+`inline-grid` (laid out as a wrapping flex row: fixed column counts work, placement does not),
+`::before`/`::after` (the rule is dropped: use a real element), `:has()`, `order`,
+`aspect-ratio`, `width: fit-content`/`min-content`/`max-content` (written as `auto`),
+`position: sticky`, `%` radii other than 50%, `@container`, `steps()` easings (linear),
+dashed/dotted/double borders (solid). Dropped with a warning and not planned: multi-column
+layout (`columns`), `writing-mode`, `font-variant-*`. `<video>`, `<canvas>`, `<iframe>` are a
+placeholder box (render a scene into a texture instead); JavaScript never runs.
+
+**Differences without a diagnostic** (the engine cannot tell where they matter):
+- `opacity` is not a group until phase 3: each element of the subtree fades on its own, so
+  overlapping children show through each other (`filter: opacity()` is a group).
+- `line-height: normal` is `1.2` until phase 3 (Chrome uses the font's own spacing, about 1.17
+  for Roboto and 1.21 for Inter): set `line-height` where text must line up to the pixel.
+- Font sizes are whole pixels (`13.333px`, Chrome's size for buttons and inputs, draws at
+  13px) and every run of text is a whole number of pixels wide: text can be a pixel or two
+  narrower or wider than in Chrome.
+- Tables: one without a `width` fills its container (Chrome shrinks it to its content), and
+  columns without a width share the table's width equally (Chrome sizes them by content): give
+  tables and columns a width. `border-collapse: collapse` removes the spacing but keeps each
+  cell's own borders (this one warns).
+- A `<legend>` sits on its fieldset's top border with a gap, as in Chrome, but its box is as
+  wide as the fieldset until phase 3 (a legend's own background or border spans the fieldset:
+  give the legend a `width`).
+- `pre`, `code`, `kbd` and `samp` use the inherited font size, where Chrome draws them at 13px
+  when no font size is set anywhere (its monospace default); there is no monospace face built
+  in (`monospace` is Roboto), and a tab in `<pre>` is one space (`tab-size` has no effect).
+- A password field shows `*` for each character, not a bullet.
+- Margins of a parent and its first or last child do not collapse (sibling margins do) until
+  phase 3: a heading at the top of a box keeps its top margin inside the box.
 
 ### Reading the diagnostics
 
@@ -250,23 +283,40 @@ Every problem, loss or approximation is reported with the place in **your** file
   **warnings** mean it draws differently from Chrome; **notes** (info) record exact rewrites
   and are counted in the per-document summary line, listed one by one with the editor
   setting *HTML UI > Verbose Diagnostics* (Editor Settings).
-- Where to read them: the Console (each document logs its lines and a summary when it loads),
-  `UIDocument:getDiagnostics()` from Lua or C++ (each with `code`, `severity`, `message`,
-  `suggestion`, `file`, `line`, `column`), and the Inspector of the UI Document. Anything
-  RmlUi itself rejects in the translated CSS comes back as `HTMLUI-GEN-0006` at your line.
+- Where to read them: the Console (each document logs its errors and warnings and one summary
+  line every time it loads or its stylesheets reload; MCP `read_console`),
+  `UIDocument:getDiagnostics()` from Lua or C++ (every finding, notes included, each with
+  `code`, `severity`, `message`, `suggestion`, `file`, `line`, `column`; MCP `eval_lua` with
+  `allow_edit_mode` reads it without playing), and the Inspector of the UI Document (the
+  counts, and *Show in Console* lists them all). Anything RmlUi itself rejects in the
+  translated CSS comes back as `HTMLUI-GEN-0006` at your line.
+- A typical first load of a page written for a browser:
 
-## Writing documents (RCSS)
+```text
+[HTML UI] ui/menu.html:7:3: warning: Tailwind Play CDN script not run: ... (fix: run the Tailwind CLI and <link rel="stylesheet"> its output) [HTMLUI-HTML-0007]
+[HTML UI] ui/menu.html:14:28: error: remote image 'https://.../logo.png' is not imported; the image is not drawn; the element keeps its CSS size (fix: import it: load the document in the editor (it imports remote resources), or run jasperengine-editor import-ui) [HTMLUI-IMP-0001]
+[HTML UI] ui/menu.html:16:27: error: 'onclick' (JavaScript) is not run (fix: use element:addEventListener('click', fn) in Lua, or data-event-click with a data model) [HTMLUI-HTML-0005]
+[HTML UI] ui/menu.html:20:3: error: JavaScript is not run (the engine has no JavaScript engine) (fix: use <script type="text/lua"> with the element API (document:querySelector, addEventListener, ...)) [HTMLUI-HTML-0006]
+[HTML UI] ui/menu.css:13:3: warning: 'position: sticky' is drawn as 'relative' (it does not stick) (fix: pin the element with position: absolute in a non-scrolling container) [HTMLUI-CSS-0006]
+[HTML UI] ui/menu.css:17:3: warning: 'backgroud-color' is not a CSS property; dropped (fix: did you mean 'background-color'?) [HTMLUI-CSS-0001]
+[HTML UI] ui/menu.css:22:3: warning: 'display: grid' is drawn as a wrapping flex container until the fork has Grid (fix: lay the items out with flex) [HTMLUI-CSS-0007]
+[HTML UI] ui/menu.html: 4 errors, 4 warnings, 2 notes
+```
 
-> **Phase 2:** `.html`/`.htm` files are now read by an HTML5 parser (lexbor) and compiled to
-> RmlUi's dialect by the compatibility layer: `<div/>` no longer closes a `<div>` (as in a
-> browser; `HTMLUI-HTML-0026` warns), `<link rel="stylesheet">` is the standard form (the old
-> `<link type="text/css">` still loads, with a note), entities and unquoted attributes work.
-> Diagnostics name `file:line:column` with a stable code (`UIDocument:getDiagnostics()`, the
-> Console). Files in RmlUi's own dialect described below keep working as **`.rml`** documents.
+## `.rml` documents: RmlUi's own dialect
 
-The parser is XML: close every tag (`<div/>`, `<img src="a.png"/>`, `<br/>`), quote every
-attribute, escape `&` and `<`. There is **no user-agent stylesheet**: every element is
-inline until you give it `display: block` (or `flex`). Rules that differ from browser CSS:
+A document named `.rml` is not compiled: RmlUi's own loader reads it, as it did before the
+engine understood standard HTML/CSS (phases 0 and 1). Use it for documents written for RmlUi,
+or to bypass the translation; everything else in this guide (rendering, input, scripting,
+animation, hot reload) applies to both kinds. A `.html` file is always standard HTML: a
+document written in this dialect and named `.html` still loads, but as HTML (`<div/>` does
+not close a `<div>` there, as in a browser: `HTMLUI-HTML-0026` warns; the old
+`<link type="text/css">` loads with a note), so rename it `.rml`.
+
+In an `.rml` document the parser is XML: close every tag (`<div/>`, `<img src="a.png"/>`,
+`<br/>`), quote every attribute, escape `&` and `<`. There is **no user-agent stylesheet**:
+every element is inline until you give it `display: block` (or `flex`), and the style
+language is **RCSS**. Rules that differ from browser CSS:
 
 | Write | Not (rejected or misread today) |
 |---|---|
@@ -278,7 +328,7 @@ inline until you give it `display: block` (or `flex`). Rules that differ from br
 | `border-radius: 12px;` | `border-radius: 50%;` |
 | `transition: background-color 0.2s cubic-in-out;` on class / pseudo-class changes | `transition: opacity 200ms ease;` |
 
-What works:
+What works in RCSS (standard CSS has all of it, and more through the rewrites above):
 - Box model: `width`/`height` (px, %, em), `min-*`/`max-*`, `margin`, `padding`, `border`
   widths and colors per side, `border-radius`, `box-sizing`, `background-color`,
   `position: absolute/relative` with `left/top/right/bottom/inset`, `z-index`, `overflow:
@@ -298,12 +348,13 @@ What works:
 - Selectors: type, `#id`, `.class`, descendant/child/sibling combinators, attribute
   selectors, `:hover`, `:active`, `:first-child`, `:nth-child()`, `:not()`.
 - `var()` custom properties, `@media` (width/height of the canvas, orientation),
-  `@keyframes` + `animation`, transitions as above. They run on the **UI clock**: the
-  engine's frame time before the time scale, so a pause menu animates while
-  `Engine.timeScale = 0` freezes the game; a fixed frame delta (`play` with `fixed_fps`)
-  makes them deterministic, and they stand still while the simulation is held
-  (`auto_pause`).
+  `@keyframes` + `animation`, transitions as above.
 - Input: see "Input" below.
+
+**The UI clock** (both kinds of document): CSS transitions and animations, Lottie and `anime`
+run on the engine's frame time before the time scale, so a pause menu animates while
+`Engine.timeScale = 0` freezes the game; a fixed frame delta (`play` with `fixed_fps`) makes
+them deterministic, and they stand still while the simulation is held (`auto_pause`).
 
 ## Rendering features and limits
 
@@ -313,17 +364,19 @@ UI). Under a UI or 2D camera the target covers the canvas rectangle in world spa
 editor's Scene view of a UI or 2D scene shows documents in place while you pan and zoom;
 under a 3D camera it fills the Game view (3D Scene views do not show it).
 
-What draws (RCSS syntax, phase 1):
+What draws (standard CSS in `.html` documents; the RCSS spelling of an `.rml` document
+where it differs):
 
 | Feature | Write | Notes |
 |---|---|---|
 | Rounded clipping | `overflow: hidden; border-radius: 16px;` | children are clipped to the rounded box (stencil); nested clips intersect |
 | Clipping inside transforms | `overflow: hidden; transform: rotate(10deg);` | children in normal flow that overflow are clipped to the transformed box |
-| Gradients | `decorator: linear-gradient(90deg, #f00, #00f 60%, #0f0);` | also `radial-gradient(circle 40px at center, ...)`, `conic-gradient(from 30deg at 50% 50%, ...)` and the `repeating-` forms; at most **16 color stops** (the rest are dropped with a warning) |
-| Filters | `filter: blur(4px) grayscale(1) opacity(0.5);` | `opacity`, `blur`, `drop-shadow(#000 4px 4px 6px)`, `brightness`, `contrast`, `invert`, `grayscale`, `sepia`, `hue-rotate`, `saturate`, applied left to right; `filter: opacity()` is a group (the subtree fades as one image), unlike the `opacity` property |
+| Gradients | `background: linear-gradient(90deg, #f00, #00f 60%, #0f0);` | also `radial-gradient(circle 40px at center, ...)`, `conic-gradient(from 30deg at 50% 50%, ...)`, the `repeating-` forms and several layers; at most **16 color stops** (the rest are dropped with a warning). RCSS: `decorator: linear-gradient(...)` |
+| Background images | `background: url(bg.png) center / cover no-repeat;` | every `background-size`, `-position`, `-repeat` (`space`, `round`), `-origin`, `-clip`, `fixed`. RCSS: `decorator: image(bg.png)` |
+| Filters | `filter: blur(4px) grayscale(1) drop-shadow(0 2px 4px #000);` | `opacity`, `blur`, `drop-shadow`, `brightness`, `contrast`, `invert`, `grayscale`, `sepia`, `hue-rotate`, `saturate`, applied left to right; `filter: opacity()` is a group (the subtree fades as one image), unlike the `opacity` property. RCSS: the color first, `drop-shadow(#000 0 2px 4px)` |
 | Backdrop filters | `backdrop-filter: blur(10px);` | the same filters, applied to what is behind the element's border box |
-| Box shadows | `box-shadow: #00000080 4px 6px 12px 2px, #ff0 0 0 0 3px inset;` | color first, then offset x/y, blur, spread, `inset`; an outer shadow is blurred and then clipped to outside the box, as in CSS (a zero-offset blurred shadow is a glow) |
-| Masks | `mask-image: linear-gradient(90deg, #000f, #0000);` or `mask-image: image(mask.png);` | the content's alpha is multiplied by the mask's |
+| Box shadows | `box-shadow: 4px 6px 12px 2px rgba(0, 0, 0, 0.5), inset 0 0 0 3px #ff0;` | an outer shadow is blurred and then clipped to outside the box, as in CSS (a zero-offset blurred shadow is a glow). RCSS: the color first, `inset` last |
+| Masks and shapes | `mask-image: linear-gradient(90deg, #000, transparent);`, `clip-path: circle(50%);` | the content's alpha is multiplied by the mask's; `clip-path` takes `inset()`, `circle()`, `ellipse()`, `polygon()`, `path()` |
 
 Anti-aliasing: the target is multisampled (4x by default). The project setting *HTML UI MSAA*
 (`graphics.html_ui_msaa_samples`: 1, 2, 4 or 8; `UIDocumentSystem::setPreferredSampleCount`
@@ -336,19 +389,25 @@ keep them to the elements that need them. The Game view statistics overlay shows
 document passes, draws and pipeline switches of the last frame (`UIDocumentSystem::getRenderStats()`
 from C++: the scene's screen and texture documents together).
 
-Unsupported names are reported, not ignored: an unknown filter or `decorator: shader(...)`
-logs an `[HTML UI]` warning naming it and draws nothing for it.
+Unsupported names are reported, not ignored: an unknown filter logs an `[HTML UI]` warning
+naming it and draws nothing for it.
 
 ## Fonts and text
 
 - Built in: Roboto (Latin, Cyrillic, Greek) and Noto Sans Arabic (Arabic with shaping and
-  bidirectional text, right-to-left with `-rmlui-direction: rtl`). Generic families
-  (`sans-serif`, `serif`, `monospace`, `system-ui`) map to Roboto; there is no built-in serif
-  or monospace face yet.
-- `font-family` lists fall back in order; an unknown family logs one
-  `[HTML UI] font-family '<name>' is not loaded` warning and the next one is used. A
-  character no loaded font covers draws a missing-glyph box.
-- More fonts (TTF/OTF) are loaded from C++ before or after documents load:
+  bidirectional text, right-to-left with `direction: rtl`; RCSS: `-rmlui-direction: rtl`).
+  Generic families (`sans-serif`, `serif`, `monospace`, `system-ui`) map to Roboto; there is
+  no built-in serif or monospace face yet.
+- `font-family` lists fall back in order. A family that is not loaded is skipped: an `.html`
+  document records one note per family (`HTMLUI-CSS-0023`, in `getDiagnostics()` and counted
+  in the summary), an `.rml` document logs one `[HTML UI] font-family '<name>' is not loaded`
+  warning. A character no loaded font covers draws a missing-glyph box; control characters
+  draw nothing.
+- More fonts in a document: a Google Fonts `<link>` (imported by the editor, see "Remote
+  resources (imports)"), or `@font-face { font-family: "Title"; src: url("fonts/Title.ttf"); }`
+  with TTF/OTF files of the project (relative to the stylesheet; `font-weight` and
+  `font-style` descriptors pick the face; WOFF/WOFF2 sources are skipped with a warning).
+- Fonts (TTF/OTF) are also loaded from C++, before or after documents load:
   `HtmlUI::loadFontFace("fonts/Roboto-Bold.ttf")` (`#include "htmlui/HtmlUI.h"`; family,
   weight and style come from the file, or pass them: `loadFontFace(path, fallback, family,
   weight, italic)`). `font-weight: bold` / `font-style: italic` pick the matching face
@@ -357,16 +416,21 @@ logs an `[HTML UI]` warning naming it and draws nothing for it.
   `bold`) is emboldened (strokes and advance grow by `max(1, font-size / 24)` px, so bold text
   is a little wider), and an upright face asked for `italic` is slanted by 12 degrees (same
   advance). A real Bold/Italic file looks better: load it when the design depends on it.
-- RCSS `@font-face { font-family: Title; src: fonts/Title.ttf; }` (in a stylesheet or a
-  `<style>` block; `font-weight`/`font-style` optional) loads a face too. RmlUi opens `src` as
-  written, from the assets directory (not relative to the stylesheet), without `url()`;
-  standard CSS `@font-face` with `url()` and `format()` comes with phase 2.
+- In an `.rml` document, RCSS `@font-face { font-family: Title; src: fonts/Title.ttf; }`
+  (`font-weight`/`font-style` optional) loads a face: RmlUi opens `src` as written, from the
+  assets directory (not relative to the stylesheet), without `url()`.
 - The text of each context is rasterized at its own pixel ratio (the screen's for screen
   documents, `pixelRatio` for documents on meshes), so text stays sharp in both.
 
 ## Text effects
 
-`font-effect` (RmlUi property, inherited) draws effects with the text, comma-separated:
+Standard CSS `text-shadow` and `-webkit-text-stroke` are translated to these effects in
+`.html` documents: `text-shadow: 2px 2px #000` is a shadow, one with a blur radius
+(`0 0 8px #7c3aed`) a glow, several shadows several effects, `-webkit-text-stroke: 1px #000`
+an outline (drawn outside the glyphs, where Chrome centres the stroke on their edge). In an
+`.rml` document write RmlUi's own property:
+
+`font-effect` (inherited) draws effects with the text, comma-separated:
 
 | Effect | Syntax | Drawn |
 |---|---|---|
@@ -386,8 +450,6 @@ h1   { font-size: 32px; color: #ffffff; font-effect: shadow(2px 2px #000000), ou
 - Effect bitmaps are made at document resolution: on a high-DPI screen outline, glow and
   blur edges are slightly softer than the text itself; shadows are as sharp as the text.
 - Synthetic italic slants the effects with the text.
-- Standard CSS `text-shadow` and `-webkit-text-stroke` are not read yet (later phases map
-  them): write `font-effect`.
 
 ## SVG and Lottie
 
@@ -399,11 +461,12 @@ transforms, clipping and filters apply to them as to `<img>`.
 
 | Write | Result |
 |---|---|
-| `<svg src="icons/play.svg" style="width: 24px; height: 24px;"/>` | the file, rasterised at the element's size (crisp at any size; one texture per size and colour, cached) |
+| `<img src="icons/play.svg" width="24" height="24">` | the file as a vector image, rasterised at the element's size (crisp at any size); `currentColor` in it follows the CSS `color` |
+| `<svg src="icons/play.svg" style="width: 24px; height: 24px;"/>` | the same with RmlUi's own element (one texture per size and colour, cached) |
 | `<svg src="logo.svg"/>` | the file's own size (`width`/`height`, else the `viewBox`) |
 | `<svg src="logo.svg" crop-to-content="crop-to-content"/>` | trimmed to the drawing's bounding box (intrinsic size and rendering) |
 | `<svg width="48" height="48" viewBox="0 0 24 24"> <path .../> </svg>` | inline SVG, the markup between the tags |
-| `decorator: svg(icons/bg.svg);` / `decorator: svg(icons/bg.svg crop-to-content);` | an SVG background stretched over the element |
+| `background: url(icons/bg.svg) center / contain no-repeat;` | an SVG background, rasterised at the size it is drawn (RCSS: `decorator: svg(icons/bg.svg)`, stretched over the element) |
 | `image-color: #ff8000;` | tints the SVG: every pixel is multiplied by the colour (draw icons white, tint them per state) |
 
 - Supported well: paths, shapes, strokes (dashes, caps, joins), linear and radial gradients,
@@ -454,6 +517,11 @@ transforms, clipping and filters apply to them as to `<img>`.
 
 - Attributes override a `.lottie` manifest's `autoplay`, `loop`, `speed`, `direction` and
   `playMode`. Changing an attribute at run time applies it (`src`/`animation` reload).
+- In an `.html` document the LottieFiles web components are the same element:
+  `<lottie-player>`, `<dotlottie-player>` and `<dotlottie-wc>` with their attributes
+  (`src`, `autoplay`, `loop`, `speed`, `direction`, `mode`, `hover` = `playonhover`); their
+  `<script>` is not needed. A remote `src` (lottie.host, LottieFiles) is imported by the
+  editor like every remote file.
 - Size: without `width`/`height` the element takes the animation's size. Otherwise the
   animation is scaled to fit inside the content box, aspect ratio kept, centred.
 - `image-color` and `opacity` tint it like an SVG.
@@ -521,6 +589,7 @@ documents: `img`, `input` and `label` replace RmlUi's, compatible with RmlUi's a
 | `<dialog>` | `open` shows it; Lua `dialog:showModal()`, `show()`, `close(value)`; Escape closes a modal dialog (`cancel`, then `close`). No backdrop, no focus trap |
 | `<img>` | `object-fit`, `object-position`, `image-rendering: pixelated` (nearest sampling), SVG sources drawn at their size |
 | `<label>` | clicking it activates its control (`for="id"`, or the control inside it) |
+| `<fieldset>`/`<legend>` | a legend that is the fieldset's first child sits on its top border, which is centred on it and leaves a gap for it, with any `border`, `border-radius`, `padding` and `background` you give the fieldset (`.html` documents only); `fieldset disabled` disables its controls |
 | `<lottie playonhover>` | plays while the pointer is over it, stops (first frame) when it leaves |
 
 `:focus` and `:focus-visible` match the focused element only (not its ancestors; those match
@@ -663,6 +732,15 @@ document:getElementById("play"):addEventListener("click", function()
 end)
 </script>
 ```
+
+- Globals: a script reads them (`anime`, `Engine`, a table a scene script made) and its own
+  top-level names stay in its environment; to share a value write `_G.score = 0`.
+- A reload of the document (hot reload, `document:reload()`) runs its scripts again for the new
+  elements. The listeners the previous run attached to the document and its elements go with
+  the old elements, so a handler runs once per event however often the file was saved. What a
+  script started that is not tied to its elements (an `anime.createTimer`, globals) is not
+  undone: guard it (`if not _G.menuTimer then ... end`).
+- Play stop ends them: listeners, animations and Lua references are released.
 
 Errors are reported at the line of the HTML file (`ui/menu.html:45: ... [HTMLUI-HTML-0022]`) and
 in `getDiagnostics()`. JavaScript `<script>`s are not run (`HTMLUI-HTML-0006`; known libraries
@@ -922,18 +1000,21 @@ end
 ## Editor workflow
 
 - **Create**: *Assets > Create > HTML Document* writes `NewDocument.html` and
-  `NewDocument.css` (a `<link>` to the stylesheet, a heading and a button) in the Project
-  window's folder; *Create > UI > UI Document* in the Hierarchy adds the GameObject. Drag the
+  `NewDocument.css` (standard HTML and CSS: a `<link>` to the stylesheet, a heading and a
+  button) in the Project window's folder; *Create > UI > UI Document* in the Hierarchy adds the GameObject. Drag the
   `.html` onto the Inspector's **Source** field (or use its folder button: `.html`, `.htm`,
   `.rml` inside the assets directory).
 - **Inspector**: Source with **Open** (in the code editor) and **Reload** (keeps scroll, focus
   and form values), Sort Order, Interactive, Render Mode, Texture Width/Height and Input
-  Surface (texture mode), Pixel Ratio ("Auto" = 0), the **Messages** RmlUi logged for this
-  document (warnings and errors, with `file:line` in the tooltip when RmlUi gives one) and a
-  **Show HTML UI Debugger** button.
+  Surface (texture mode), Pixel Ratio ("Auto" = 0), a **Show HTML UI Debugger** button,
+  **Remote resources** (what the document links from the network: imported or missing, with
+  *Import*, *Re-import all* and *Remove unused*), **Diagnostics** (the counts of the last
+  load; *Show in Console* lists every finding, notes included) and the **Messages** RmlUi
+  logged for this document (warnings and errors, with `file:line` in the tooltip when RmlUi
+  gives one).
 - **Project window**: `.html`/`.htm`/`.rml` and `.css`/`.rcss` files have their own icons and
   open in the code editor with HTML and CSS highlighting (`<style>` blocks and `style=""`
-  attributes highlighted as CSS) and RCSS property suggestions. `list_assets` /
+  attributes highlighted as CSS) and property suggestions. `list_assets` /
   `get_asset_info` report them as types `html` and `css`.
 - **Rename/move**: renaming or moving the `.html` updates the components that use it.
   References *inside* HTML/CSS files are not rewritten (phase 4).
@@ -944,12 +1025,15 @@ end
 - **MSAA**: *Project Settings > Graphics > HTML UI MSAA* (`graphics.html_ui_msaa_samples`:
   1, 2, 4 or 8, default 4) sets the multisampling of every document target, in the editor at
   once and in exports.
-- **Export check**: an export lists every reference of every UI Document of its scenes
-  (`<link>`, `<img>`, `<svg src>`, `<lottie src>`, templates, `@import`, `url(...)`,
-  `@font-face`, `decorator: image()/svg()`, recursively through stylesheets) and **fails**
-  with `assets/ui/menu.html:12:18: ...` for a missing file, a path that leaves the assets
-  directory or a remote `http(s)://` URL; an absolute path is a warning. RCSS's bare
-  `@font-face { src: fonts/a.ttf; }` is opened from the assets directory, as RmlUi does.
+- **Export check**: an export checks every UI Document of its scenes and **fails** with the
+  findings in the diagnostics format (`assets/ui/menu.html:12:18: error: ... [HTMLUI-GEN-0001]`).
+  An `.html` document is compiled like at load: every error of the compatibility layer fails
+  the export, typically a missing file (`HTMLUI-GEN-0001`), a remote URL that was not imported
+  (`HTMLUI-IMP-0001`; an imported one is fine: the manifest and its files ship with the
+  assets) or JavaScript. An `.rml` document has its references listed (`<link>`, `<img>`,
+  `<svg src>`, `<lottie src>`, templates, `@import`, `url(...)`, `@font-face`,
+  `decorator: image()/svg()`, recursively through stylesheets): a missing file, a path that
+  leaves the assets directory or a remote `http(s)://` URL fails, an absolute path warns.
 
 ## Remote resources (imports)
 
@@ -1003,10 +1087,11 @@ the files ship with the assets).
 
 | Changed | Effect |
 |---|---|
-| a `.css`/`.rcss` | the document's stylesheets reload in place: the DOM, element handles, listeners, scroll and focus stay |
-| an image | the image loads again the next time it draws |
-| the document, a template, an SVG, a Lottie file | the document reloads, keeping, for every element with an `id`, its scroll position, form value (text, checkbox/radio, `<select>`), and the focused element with its selection; listeners on elements with an `id` (and on the document) move to the new elements, others are dropped with one warning; `onUnload` then `onLoad` fire |
-| a font | the font is parsed again and the document reloads as above |
+| a `.css`/`.rcss`, linked or reached through `@import` | the document's stylesheets reload in place: the DOM, element handles, listeners, scroll and focus stay; the Console shows the new summary line |
+| an image (an `<img>`, a CSS background) | the image loads again the next time it draws; the document stays |
+| the document, a template, an SVG, a Lottie file, a Lua file a `<script src>` names | the document reloads, keeping, for every element with an `id`, its scroll position, form value (text, checkbox/radio, `<select>`), and the focused element with its selection; listeners that scene scripts put on elements with an `id` (and on the document) move to the new elements, others are dropped with one warning; the document's own `<script type="text/lua">` runs again while playing (its previous listeners go with the old elements); `onUnload` then `onLoad` fire |
+| a font (an `@font-face` file, an imported font) | the font is parsed again and the document reloads as above |
+| `assets/htmlui-imports/manifest.json` (an import finished) | the documents that reference the imported URL restyle, or reload when the import changes their content |
 
 - Edit mode reloads too (no Lua runs there); a reload is not an edit: the scene stays saved.
 - Engine entry point: `UIDocumentSystem::reloadChangedFiles(files)` with per-document file
@@ -1021,20 +1106,27 @@ the files ship with the assets).
 
 ## Not yet, and limits
 
-Later phases:
-- Phase 2, standard HTML and CSS: HTML5 parsing (no XML strictness), a user-agent stylesheet,
-  CSS rewritten to RCSS (`border: 1px solid red`, `rgba(..., 0.5)`, `background-image: url()`,
-  quoted font names, `200ms ease` transitions), standard `@font-face` and `text-shadow`,
-  diagnostics with `file:line:column` and stable codes, `<script type="text/lua">` in
-  documents, built-in Lucide icons.
-- Phase 3, RmlUi patches: `calc()`/`min()`/`max()`/`clamp()`, grid, `::before`/`::after`,
-  border styles, `%` radii, `!important`, CSS-wide keywords, `:root`/`:is`/`:where`/`:has`,
-  real `position: fixed`/`sticky`, group `opacity`, `cubic-bezier()`/`steps()` in transitions.
-- Phase 4: `check --ui`, the MCP tools `inspect_ui`/`assert_ui`/`create_ui_document`,
-  rewriting references inside HTML/CSS when an asset is renamed, the generated support matrix.
+What standard HTML/CSS does not do yet is listed under "Writing HTML/CSS for the engine" (the
+rewrites table, "Not yet" and "Differences without a diagnostic"); the Console names every
+use in your files. Later phases:
+- Phase 3, the layout engine itself: CSS Grid, `::before`/`::after`, `calc()` with mixed
+  units at layout time, border styles, `%` radii, `:has()`, `order`, `aspect-ratio`,
+  `fit-content`, real `position: fixed`/`sticky`, group `opacity`, `line-height: normal`,
+  `cubic-bezier()`/`steps()` easings, parent/child margin collapsing, a legend as wide as its
+  text.
+- Phase 4, tools for agents: `check --ui`, the MCP tools `inspect_ui`/`assert_ui`/
+  `create_ui_document`, `import_files` for remote fonts and images, rewriting references
+  inside HTML/CSS when an asset is renamed, the generated support matrix (every property,
+  value, selector and diagnostic code).
 - Phase 5: the effects library (`effect()` in CSS) and `@property`.
 
-Limits of phase 1, by design:
+Limits by design:
+- No JavaScript, no network at run time (remote files are imported by the editor), no
+  `<video>`, `<canvas>` or `<iframe>`.
+- Fonts: TTF/OTF only (no WOFF/WOFF2); whole-pixel font sizes and advances; no built-in serif
+  or monospace face.
+- Tables use RmlUi's table model (full-width auto tables, equal columns, no collapsed
+  borders).
 - Linux has no multi-touch (core X11 input). The IME composition shows inside the field on
   Windows, macOS, iOS, Android and Web; on Linux the input method draws it, and in the editor's
   Game view composed text arrives committed.
@@ -1049,5 +1141,4 @@ Limits of phase 1, by design:
   `composition*` are not dispatched (`addEventListener` warns).
 - A full reload keeps scroll, form values, focus and the listeners of elements with an id, not
   what scripts changed in the document.
-- No built-in serif or monospace face; a character no loaded font covers draws a missing-glyph
-  box.
+- A character no loaded font covers draws a missing-glyph box.
