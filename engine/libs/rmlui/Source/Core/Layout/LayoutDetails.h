@@ -139,9 +139,12 @@ public:
 
 	static String GetDebugElementName(Element* element);
 
+	/// True for a scroll container: 'overflow' other than 'visible' and 'clip' (after the value fix-up, either both axes
+	/// scroll or neither does). A box with 'overflow: clip' clips its content but is not a scroll container.
 	static bool IsScrollContainer(Style::Overflow overflow_x, Style::Overflow overflow_y)
 	{
-		return overflow_x != Style::Overflow::Visible || overflow_y != Style::Overflow::Visible;
+		return (overflow_x != Style::Overflow::Visible && overflow_x != Style::Overflow::Clip) ||
+			(overflow_y != Style::Overflow::Visible && overflow_y != Style::Overflow::Clip);
 	}
 
 private:

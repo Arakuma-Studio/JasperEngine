@@ -244,6 +244,17 @@ bool ContainerBox::SubmitBox(const Vector2f visible_overflow_size, const Vector2
 		{
 			const Vector2f border_top_left = {box.GetEdge(BoxArea::Border, BoxEdge::Left), box.GetEdge(BoxArea::Border, BoxEdge::Top)};
 			propagate_visible_overflow_size = Math::Max(border_size, visible_overflow_size + border_top_left + padding_top_left);
+
+			// An axis with 'overflow: clip' shows nothing beyond its overflow clip edge: the padding box extended by
+			// 'overflow-clip-margin'.
+			if (overflow_x == Style::Overflow::Clip || overflow_y == Style::Overflow::Clip)
+			{
+				const Vector2f clip_edge = border_top_left + padding_size + Vector2f(element->GetComputedValues().overflow_clip_margin());
+				if (overflow_x == Style::Overflow::Clip)
+					propagate_visible_overflow_size.x = Math::Max(border_size.x, Math::Min(propagate_visible_overflow_size.x, clip_edge.x));
+				if (overflow_y == Style::Overflow::Clip)
+					propagate_visible_overflow_size.y = Math::Max(border_size.y, Math::Min(propagate_visible_overflow_size.y, clip_edge.y));
+			}
 		}
 	}
 

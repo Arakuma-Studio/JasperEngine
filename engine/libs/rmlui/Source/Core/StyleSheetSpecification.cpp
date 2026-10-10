@@ -2,6 +2,7 @@
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
 #include "IdNameMap.h"
+#include "LayoutProperties.h"
 #include "PropertyParserAlignment.h"
 #include "PropertyParserAnimation.h"
 #include "PropertyParserBoxShadow.h"
@@ -288,6 +289,7 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	// -- Text (p3-text) --
 
 	// -- Layout (p3-layout) --
+	RegisterLayoutParsers();
 
 	// -- Animation (p3-animation) --
 
@@ -373,13 +375,13 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 
 	RegisterProperty(PropertyId::ZIndex, "z-index", "auto", false, false).AddParser("keyword", "auto").AddParser("number");
 
-	RegisterProperty(PropertyId::Width, "width", "auto", false, true).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
-	RegisterProperty(PropertyId::MinWidth, "min-width", "auto", false, true).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
-	RegisterProperty(PropertyId::MaxWidth, "max-width", "none", false, true).AddParser("keyword", "none").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
+	RegisterProperty(PropertyId::Width, "width", "auto", false, true).AddParser("keyword", "auto, min-content, max-content, fit-content, stretch, -webkit-fill-available=4").AddParser("length_percent").AddParser("fit_content").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
+	RegisterProperty(PropertyId::MinWidth, "min-width", "auto", false, true).AddParser("keyword", "auto, min-content, max-content, fit-content, stretch, -webkit-fill-available=4").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
+	RegisterProperty(PropertyId::MaxWidth, "max-width", "none", false, true).AddParser("keyword", "none, min-content, max-content, fit-content, stretch, -webkit-fill-available=4").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
 
-	RegisterProperty(PropertyId::Height, "height", "auto", false, true).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
-	RegisterProperty(PropertyId::MinHeight, "min-height", "auto", false, true).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
-	RegisterProperty(PropertyId::MaxHeight, "max-height", "none", false, true).AddParser("keyword", "none").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
+	RegisterProperty(PropertyId::Height, "height", "auto", false, true).AddParser("keyword", "auto, min-content, max-content, fit-content, stretch, -webkit-fill-available=4").AddParser("length_percent").AddParser("fit_content").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
+	RegisterProperty(PropertyId::MinHeight, "min-height", "auto", false, true).AddParser("keyword", "auto, min-content, max-content, fit-content, stretch, -webkit-fill-available=4").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
+	RegisterProperty(PropertyId::MaxHeight, "max-height", "none", false, true).AddParser("keyword", "none, min-content, max-content, fit-content, stretch, -webkit-fill-available=4").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
 
 #ifdef RMLUI_MATH_EXPRESSIONS
 	RegisterProperty(PropertyId::LineHeight, "line-height", "1.2", true, true).AddParser("line_height").SetRelativeTarget(RelativeTarget::FontSize);
@@ -390,8 +392,8 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 		.AddParser("keyword", "baseline, middle, sub, super, text-top, text-bottom, top, center, bottom")
 		.AddParser("length_percent").SetRelativeTarget(RelativeTarget::LineHeight);
 
-	RegisterProperty(PropertyId::OverflowX, "overflow-x", "visible", false, true).AddParser("keyword", "visible, hidden, auto, scroll");
-	RegisterProperty(PropertyId::OverflowY, "overflow-y", "visible", false, true).AddParser("keyword", "visible, hidden, auto, scroll");
+	RegisterProperty(PropertyId::OverflowX, "overflow-x", "visible", false, true).AddParser("keyword", "visible, hidden, auto, scroll, clip");
+	RegisterProperty(PropertyId::OverflowY, "overflow-y", "visible", false, true).AddParser("keyword", "visible, hidden, auto, scroll, clip");
 	RegisterShorthand(ShorthandId::Overflow, "overflow", "overflow-x, overflow-y", ShorthandType::Replicate);
 	RegisterProperty(PropertyId::Clip, "clip", "auto", false, false).AddParser("keyword", "auto, none, always").AddParser("number");
 	RegisterProperty(PropertyId::Visibility, "visibility", "visible", true, false).AddParser("keyword", "visible, hidden");
@@ -479,12 +481,12 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::AlignSelf, "align-self", "auto", false, true)
 		.AddParser("alignment", MakeAlignmentKeywords("auto, flex-start, flex-end, center, baseline, stretch, normal, start, end, self-start, self-end, last baseline"));
 
-	RegisterProperty(PropertyId::FlexBasis, "flex-basis", "auto", false, true).AddParser("keyword", "auto").AddParser("length_percent");
+	RegisterProperty(PropertyId::FlexBasis, "flex-basis", "auto", false, true).AddParser("keyword", "auto, min-content, max-content, fit-content, stretch, -webkit-fill-available=4, content").AddParser("length_percent");
 	RegisterProperty(PropertyId::FlexDirection, "flex-direction", "row", false, true).AddParser("keyword", "row, row-reverse, column, column-reverse");
 
 	RegisterProperty(PropertyId::FlexGrow, "flex-grow", "0", false, true).AddParser("number");
 	RegisterProperty(PropertyId::FlexShrink, "flex-shrink", "1", false, true).AddParser("number");
-	RegisterProperty(PropertyId::FlexWrap, "flex-wrap", "nowrap", false, true).AddParser("keyword", "nowrap, wrap, wrap-reverse");
+	RegisterProperty(PropertyId::FlexWrap, "flex-wrap", "nowrap", false, true).AddParser("keyword", "nowrap, wrap, wrap-reverse, balance, wrap balance=3, balance wrap=3, wrap-reverse balance=4, balance wrap-reverse=4");
 	RegisterProperty(PropertyId::JustifyContent, "justify-content", "normal", false, true)
 		.AddParser("alignment", MakeAlignmentKeywords("flex-start, flex-end, center, space-between, space-around, space-evenly, stretch, normal, start, end, left, right"));
 
@@ -525,6 +527,13 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	// -- Text (p3-text) --
 
 	// -- Layout (p3-layout) --
+	// The sizing keywords of width, height, min-*, max-* and flex-basis, 'overflow: clip' and 'flex-wrap: balance' are in
+	// the keyword lists of those properties above.
+	RegisterProperty(PropertyId::OverflowClipMargin, "overflow-clip-margin", "0px", false, false).AddParser("length");
+	RegisterProperty(PropertyId::AspectRatio, "aspect-ratio", "auto", false, true).AddParser("aspect_ratio");
+	RegisterProperty(PropertyId::ScrollbarGutter, "scrollbar-gutter", "auto", false, true)
+		.AddParser("keyword", "auto, stable, stable both-edges, both-edges stable=2");
+	RegisterProperty(PropertyId::FlexLineCount, "flex-line-count", "1", false, true).AddParser("number");
 
 	// -- Animation (p3-animation) --
 

@@ -116,7 +116,8 @@ namespace Style {
 		VerticalAlign(Type type, float value) : type(type), value(value) {}
 	};
 
-	enum class Overflow : uint8_t { Visible, Hidden, Auto, Scroll };
+	// 'clip' (phase 3, p3-layout) clips like 'hidden' without being a scroll container.
+	enum class Overflow : uint8_t { Visible, Hidden, Auto, Scroll, Clip };
 	struct Clip {
 	private:
 		// Here, 'value' is encoded with Auto <=> 0, None <=> -1, Always <=> -2. A value > 0 means the given number.
@@ -199,7 +200,8 @@ namespace Style {
 	enum class OverflowAlignment : uint8_t { Default, Safe, Unsafe };
 	using FlexBasis = LengthPercentageAuto;
 	enum class FlexDirection : uint8_t { Row, RowReverse, Column, ColumnReverse };
-	enum class FlexWrap : uint8_t { Nowrap, Wrap, WrapReverse };
+	// 'balance' and 'wrap-reverse balance' (CSS Flexbox 2, phase 3, p3-layout) wrap with lines balanced.
+	enum class FlexWrap : uint8_t { Nowrap, Wrap, WrapReverse, Balance, BalanceReverse };
 	enum class JustifyContent : uint8_t {
 		FlexStart,
 		FlexEnd,
@@ -235,6 +237,13 @@ namespace Style {
 	// -- Text (p3-text) --
 
 	// -- Layout (p3-layout) --
+
+	// The CSS Sizing keywords of 'width', 'height', 'min-*', 'max-*' and 'flex-basis' ('content' is flex-basis only;
+	// 'fit-content(<length-percentage>)' is width and height only). These properties compute to 'auto' ('none' for max-*)
+	// when a keyword is set, so code that does not know them sees an automatic size; the layout reads the keyword apart
+	// (ComputedValues::width_keyword() ...). The values follow the properties' keyword lists ('auto' = None).
+	enum class SizingKeyword : uint8_t { None, MinContent, MaxContent, FitContent, Stretch, Content, FitContentLength };
+	enum class ScrollbarGutter : uint8_t { Auto, Stable, StableBothEdges };
 
 	// -- Animation (p3-animation) --
 

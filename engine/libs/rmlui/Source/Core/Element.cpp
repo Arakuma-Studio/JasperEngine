@@ -1027,6 +1027,9 @@ float Element::GetScrollLeft()
 
 void Element::SetScrollLeft(float scroll_left)
 {
+	// 'overflow: clip' is not a scroll container: it cannot be scrolled, not even by script.
+	if (meta->computed_values.overflow_x() == Style::Overflow::Clip)
+		scroll_left = 0.f;
 	const float new_offset = Math::Round(Math::Clamp(scroll_left, 0.0f, GetScrollWidth() - GetClientWidth()));
 	if (new_offset != scroll_offset.x)
 	{
@@ -1045,6 +1048,8 @@ float Element::GetScrollTop()
 
 void Element::SetScrollTop(float scroll_top)
 {
+	if (meta->computed_values.overflow_y() == Style::Overflow::Clip)
+		scroll_top = 0.f;
 	const float new_offset = Math::Round(Math::Clamp(Math::Round(scroll_top), 0.0f, GetScrollHeight() - GetClientHeight()));
 	if (new_offset != scroll_offset.y)
 	{
@@ -1325,8 +1330,8 @@ void Element::ScrollIntoView(const ScrollIntoViewOptions options)
 	{
 		using Style::Overflow;
 		const ComputedValues& computed = scroll_parent->GetComputedValues();
-		const bool scrollable_box_x = (computed.overflow_x() != Overflow::Visible && computed.overflow_x() != Overflow::Hidden);
-		const bool scrollable_box_y = (computed.overflow_y() != Overflow::Visible && computed.overflow_y() != Overflow::Hidden);
+		const bool scrollable_box_x = (computed.overflow_x() == Overflow::Auto || computed.overflow_x() == Overflow::Scroll);
+		const bool scrollable_box_y = (computed.overflow_y() == Overflow::Auto || computed.overflow_y() == Overflow::Scroll);
 
 		const Vector2f parent_scroll_size = {scroll_parent->GetScrollWidth(), scroll_parent->GetScrollHeight()};
 		const Vector2f parent_client_size = {scroll_parent->GetClientWidth(), scroll_parent->GetClientHeight()};

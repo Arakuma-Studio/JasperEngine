@@ -2,7 +2,9 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/Element.h>
+#include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/ElementUtilities.h>
 #include <doctest.h>
 
 using namespace Rml;
@@ -269,6 +271,107 @@ TEST_CASE("Layout.ScrollableOverflow.ChildMarginTriggersScrollbar")
 		REQUIRE(e);
 		CHECK(e->GetScrollHeight() == doctest::Approx(95.f + 20.f)); // Child height (w/margin) + container padding
 		CHECK(e->GetClientWidth() == doctest::Approx(100.f - 15.f)); // Container width - Scrollbar width
+	}
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+// Phase 3 (p3-layout, docs/html-ui/phase-3-fork-patches.md 3.11.3): 'overflow: clip' clips like 'hidden' but is not a
+// scroll container, and the overflow values are fixed up across the two axes (CSS Overflow 3).
+static const String document_overflow_clip_rml = R"(
+<rml>
+<head>
+	<style>
+		body { width: 400px; height: 300px; margin: 0; padding: 0; }
+		div { display: block; }
+		#scroller { overflow: auto; width: 200px; height: 100px; }
+		#clip { overflow: clip; width: 100px; height: 50px; padding: 5px; }
+		#clip-x { overflow-x: clip; width: 100px; height: 50px; }
+		#clip-margin { overflow: clip; overflow-clip-margin: 8px; width: 100px; height: 50px; }
+		.tall { width: 300px; height: 400px; }
+		#fix1 { overflow-x: visible; overflow-y: hidden; }
+		#fix2 { overflow-x: clip; overflow-y: scroll; }
+		#fix3 { overflow-x: clip; overflow-y: visible; }
+	</style>
+</head>
+<body>
+	<div id="scroller"><div id="clip"><div id="clip-content" class="tall"/></div></div>
+	<div id="clip-x"><div id="clip-x-content" class="tall"/></div>
+	<div id="clip-margin"><div id="clip-margin-content" class="tall"/></div>
+	<div id="fix1"/><div id="fix2"/><div id="fix3"/>
+</body>
+</rml>
+)";
+
+TEST_CASE("Layout.Overflow.Clip")
+{
+	using Style::Overflow;
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+
+	ElementDocument* document = context->LoadDocumentFromMemory(document_overflow_clip_rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	context->Render();
+
+	Element* scroller = document->GetElementById("scroller");
+	Element* clip = document->GetElementById("clip");
+
+	SUBCASE("Computed values and the fix-up")
+	{
+		CHECK(clip->GetComputedValues().overflow_x() == Overflow::Clip);
+		CHECK(clip->GetComputedValues().overflow_y() == Overflow::Clip);
+		// One axis scrolls: 'visible' computes to 'auto', 'clip' to 'hidden'.
+		CHECK(document->GetElementById("fix1")->GetComputedValues().overflow_x() == Overflow::Auto);
+		CHECK(document->GetElementById("fix1")->GetComputedValues().overflow_y() == Overflow::Hidden);
+		CHECK(document->GetElementById("fix2")->GetComputedValues().overflow_x() == Overflow::Hidden);
+		CHECK(document->GetElementById("fix2")->GetComputedValues().overflow_y() == Overflow::Scroll);
+		// Neither axis scrolls: kept as is.
+		CHECK(document->GetElementById("fix3")->GetComputedValues().overflow_x() == Overflow::Clip);
+		CHECK(document->GetElementById("fix3")->GetComputedValues().overflow_y() == Overflow::Visible);
+		CHECK(clip->GetProperty(PropertyId::OverflowX)->ToString() == "clip");
+	}
+
+	SUBCASE("Not scrollable, not even by script")
+	{
+		CHECK(clip->GetScrollHeight() > clip->GetClientHeight());
+		clip->SetScrollTop(50.f);
+		clip->SetScrollLeft(50.f);
+		CHECK(clip->GetScrollTop() == 0.f);
+		CHECK(clip->GetScrollLeft() == 0.f);
+	}
+
+	SUBCASE("Clipped content does not overflow the ancestor scroll container")
+	{
+		// #clip's border box is 110 x 60: its 300 x 400 child is clipped, so the scroller has nothing to scroll.
+		CHECK(scroller->GetScrollHeight() == doctest::Approx(100.f));
+		CHECK(scroller->GetScrollWidth() == doctest::Approx(200.f));
+	}
+
+	SUBCASE("Clipping region")
+	{
+		Rectanglei region;
+		REQUIRE(ElementUtilities::GetClippingRegion(document->GetElementById("clip-content"), region));
+		// The padding box of #clip (its default clip area), inside the scroller's own region.
+		const Vector2f clip_offset = clip->GetAbsoluteOffset(BoxArea::Padding);
+		CHECK(region.Left() == int(clip_offset.x));
+		CHECK(region.Top() == int(clip_offset.y));
+		CHECK(region.Width() == 110);
+		CHECK(region.Height() == 60);
+
+		// Only the x axis: unbounded vertically.
+		REQUIRE(ElementUtilities::GetClippingRegion(document->GetElementById("clip-x-content"), region));
+		CHECK(region.Width() == 100);
+		CHECK(region.Height() > 10000);
+
+		// Extended by the clip margin.
+		Element* clip_margin = document->GetElementById("clip-margin");
+		REQUIRE(ElementUtilities::GetClippingRegion(document->GetElementById("clip-margin-content"), region));
+		CHECK(region.Left() == int(clip_margin->GetAbsoluteOffset(BoxArea::Padding).x) - 8);
+		CHECK(region.Width() == 116);
+		CHECK(region.Height() == 66);
 	}
 
 	document->Close();

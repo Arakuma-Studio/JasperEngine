@@ -5,6 +5,7 @@
 #include "BlockFormattingContext.h"
 #include "FlexFormattingContext.h"
 #include "LayoutBox.h"
+#include "LayoutDetails.h"
 #include "ReplacedFormattingContext.h"
 #include "TableFormattingContext.h"
 
@@ -32,8 +33,9 @@ UniquePtr<LayoutBox> FormattingContext::FormatIndependent(ContainerBox* parent_c
 		type = FormattingContextType::Table;
 	}
 	else if (display == Display::InlineBlock || display == Display::FlowRoot || display == Display::TableCell || computed.float_() != Float::None ||
-		computed.position() == Position::Absolute || computed.position() == Position::Fixed || computed.overflow_x() != Overflow::Visible ||
-		computed.overflow_y() != Overflow::Visible || !element->GetParentNode() || element->GetParentNode()->GetDisplay() == Display::Flex)
+		computed.position() == Position::Absolute || computed.position() == Position::Fixed ||
+		LayoutDetails::IsScrollContainer(computed.overflow_x(), computed.overflow_y()) || !element->GetParentNode() ||
+		element->GetParentNode()->GetDisplay() == Display::Flex)
 	{
 		type = FormattingContextType::Block;
 	}

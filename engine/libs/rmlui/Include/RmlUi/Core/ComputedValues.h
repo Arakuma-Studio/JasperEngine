@@ -45,7 +45,7 @@ namespace Style {
 		Float float_ : 2;
 		Clear clear : 2;
 
-		Overflow overflow_x : 2, overflow_y : 2;
+		Overflow overflow_x : 3, overflow_y : 3;
 
 		bool has_decorator : 1;
 		BoxSizing box_sizing : 1;
@@ -227,6 +227,17 @@ namespace Style {
 		// -- Text (p3-text) --
 
 		// -- Layout (p3-layout) --
+		// Sizing keywords (the property itself computes to 'auto' or 'none'), and the argument of fit-content(<length-percentage>).
+		SizingKeyword width_keyword = SizingKeyword::None, height_keyword = SizingKeyword::None;
+		SizingKeyword min_width_keyword = SizingKeyword::None, min_height_keyword = SizingKeyword::None;
+		SizingKeyword max_width_keyword = SizingKeyword::None, max_height_keyword = SizingKeyword::None;
+		SizingKeyword flex_basis_keyword = SizingKeyword::None;
+		LengthPercentage::Type fit_content_width_type = LengthPercentage::Length, fit_content_height_type = LengthPercentage::Length;
+		ScrollbarGutter scrollbar_gutter = ScrollbarGutter::Auto;
+		bool aspect_ratio_auto = true;   // 'auto' (alone, or with a ratio: 'auto && <ratio>')
+		float aspect_ratio = 0.f;        // width / height; 0 without a ratio
+		float fit_content_width = 0.f, fit_content_height = 0.f;
+		float overflow_clip_margin = 0.f;
 
 		// -- Animation (p3-animation) --
 
@@ -370,6 +381,22 @@ namespace Style {
 		// Text (p3-text)
 
 		// Layout (p3-layout)
+		SizingKeyword     width_keyword()              const { return rare.width_keyword; }
+		SizingKeyword     height_keyword()             const { return rare.height_keyword; }
+		SizingKeyword     min_width_keyword()          const { return rare.min_width_keyword; }
+		SizingKeyword     min_height_keyword()         const { return rare.min_height_keyword; }
+		SizingKeyword     max_width_keyword()          const { return rare.max_width_keyword; }
+		SizingKeyword     max_height_keyword()         const { return rare.max_height_keyword; }
+		SizingKeyword     flex_basis_keyword()         const { return rare.flex_basis_keyword; }
+		LengthPercentage  fit_content_width()          const { return LengthPercentage(rare.fit_content_width_type, rare.fit_content_width); }
+		LengthPercentage  fit_content_height()         const { return LengthPercentage(rare.fit_content_height_type, rare.fit_content_height); }
+		// The preferred aspect ratio (width / height), 0 for none ('aspect-ratio: auto' of a non-replaced element).
+		float             aspect_ratio()               const { return rare.aspect_ratio; }
+		// True for 'auto' and 'auto && <ratio>': a replaced element then uses its natural ratio when it has one.
+		bool              aspect_ratio_auto()          const { return rare.aspect_ratio_auto; }
+		float             overflow_clip_margin()       const { return rare.overflow_clip_margin; }
+		ScrollbarGutter   scrollbar_gutter()           const { return rare.scrollbar_gutter; }
+		int               flex_line_count()            const { return (int)GetLocalNumericProperty(PropertyId::FlexLineCount, 1.f); }
 
 		// Animation (p3-animation)
 
@@ -476,6 +503,18 @@ namespace Style {
 		// Text (p3-text)
 
 		// Layout (p3-layout)
+		void width_keyword             (SizingKeyword value)     { rare.width_keyword              = value; }
+		void height_keyword            (SizingKeyword value)     { rare.height_keyword             = value; }
+		void min_width_keyword         (SizingKeyword value)     { rare.min_width_keyword          = value; }
+		void min_height_keyword        (SizingKeyword value)     { rare.min_height_keyword         = value; }
+		void max_width_keyword         (SizingKeyword value)     { rare.max_width_keyword          = value; }
+		void max_height_keyword        (SizingKeyword value)     { rare.max_height_keyword         = value; }
+		void flex_basis_keyword        (SizingKeyword value)     { rare.flex_basis_keyword         = value; }
+		void fit_content_width         (LengthPercentage value)  { rare.fit_content_width_type = value.type; rare.fit_content_width = value.value; }
+		void fit_content_height        (LengthPercentage value)  { rare.fit_content_height_type = value.type; rare.fit_content_height = value.value; }
+		void aspect_ratio              (float value, bool is_auto) { rare.aspect_ratio = value; rare.aspect_ratio_auto = is_auto; }
+		void overflow_clip_margin      (float value)             { rare.overflow_clip_margin       = value; }
+		void scrollbar_gutter          (ScrollbarGutter value)   { rare.scrollbar_gutter           = value; }
 
 		// Animation (p3-animation)
 

@@ -333,6 +333,7 @@ enum class PropertyId : uint16_t {
 	OverflowClipMargin,
 	AspectRatio,
 	ScrollbarGutter,
+	FlexLineCount,
 
 	// Animation (p3-animation)
 	TransitionProperty,
