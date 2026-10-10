@@ -127,6 +127,5 @@ const FlatRule* BaseRules::find(Session& session, const FlatRule& rule, const st
 }
 
 std::string BaseRules::location(Session& session, const FlatRule& rule){
-    const SourcePos pos = session.files.position(rule.ref.file, rule.ref.offset);
-    return session.files.path(rule.ref.file) + ":" + std::to_string(pos.line);
+    return session.files.path(rule.ref.file) + ":" + std::to_string(session.files.line(rule.ref.file, rule.ref.offset));
 }

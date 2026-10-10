@@ -231,7 +231,7 @@ namespace {
     std::string lineOf(const TransformContext& context, SourceRef ref){
         if (!ref.valid())
             return "0";
-        return std::to_string(context.files.position(ref.file, ref.offset).line);
+        return std::to_string(context.files.line(ref.file, ref.offset));
     }
 
     void handleScript(TransformContext& context, HtmlNode& script, bool inert){

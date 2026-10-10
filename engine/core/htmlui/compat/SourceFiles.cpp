@@ -141,13 +141,34 @@ SourcePos SourceFiles::position(uint32_t file, uint32_t offset) const{
     const size_t lineIndex = (size_t)(it - source.lineStarts.begin()) - 1;
     const uint32_t lineStart = source.lineStarts[lineIndex];
 
+    // the column: the code points from the line start, counted as the bytes that are not UTF-8
+    // continuation bytes (10xxxxxx), eight bytes at a time
     uint32_t column = 1;
-    for (uint32_t i = lineStart; i < offset; i++){
-        if (isLeadByte((unsigned char)source.text[i]))
+    const char* p = source.text.data() + lineStart;
+    const char* const end = source.text.data() + offset;
+    for (; end - p >= 8; p += 8){
+        uint64_t word;
+        std::memcpy(&word, p, 8);
+        const uint64_t continuation = word & ~(word << 1) & 0x8080808080808080ull;
+        column += 8 - (uint32_t)(((continuation >> 7) * 0x0101010101010101ull) >> 56);
+    }
+    for (; p < end; p++){
+        if (isLeadByte((unsigned char)*p))
             column++;
     }
 
     return SourcePos{(uint32_t)lineIndex + 1, column};
+}
+
+uint32_t SourceFiles::line(uint32_t file, uint32_t offset) const{
+    if (file == 0 || file > files.size())
+        return 0;
+    const File& source = *files[file - 1];
+    if (offset > source.text.size())
+        offset = (uint32_t)source.text.size();
+    // (the column is not counted: on a long line it is most of position()'s work)
+    const auto it = std::upper_bound(source.lineStarts.begin(), source.lineStarts.end(), offset);
+    return (uint32_t)(it - source.lineStarts.begin());
 }
 
 SourceRef SourceFiles::includedFrom(uint32_t file) const{
@@ -179,9 +200,8 @@ std::string SourceFiles::originText(uint32_t file) const{
         return std::string();
 
     const std::string& parent = path(from.file);
-    const SourcePos pos = position(from.file, from.offset);
     const bool linked = endsWith(parent, ".html") || endsWith(parent, ".htm");
-    return std::string(linked ? "linked by " : "imported by ") + parent + ":" + std::to_string(pos.line);
+    return std::string(linked ? "linked by " : "imported by ") + parent + ":" + std::to_string(line(from.file, from.offset));
 }
 
 bool jasperengine::htmlui::compat::stripUtf8Bom(std::string& text){
