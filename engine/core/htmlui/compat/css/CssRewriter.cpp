@@ -1471,7 +1471,8 @@ namespace {
             normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
             // math functions the fork evaluates stay in the properties written as they are read
             // (not in the families a rewrite reads token by token or into decorator arguments)
-            normalize.calcNative = writesCalcNatively(row->rewrite);
+            normalize.calcNative = writesCalcNatively(row->rewrite) ||
+                (row->rewrite == RewriteId::Grid && session.options.fork.has(ForkFeature::Grid));
             normalize.attrNative = row->rewrite == RewriteId::Content && session.options.fork.has(ForkFeature::PseudoElements);
             normalize.percentBasis = facts.percentBasis;
             normalize.vertical = facts.vertical;

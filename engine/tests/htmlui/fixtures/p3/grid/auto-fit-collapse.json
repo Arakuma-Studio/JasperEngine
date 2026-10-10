@@ -1,0 +1,7 @@
+{
+ "comment": "auto-fit: the empty tracks collapse, so two 1fr items fill the width and two fixed ones center without the empty tracks' gaps",
+ "viewport": [
+  300,
+  80
+ ]
+}

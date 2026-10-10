@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>grid: grid containers as flex items</title>
+<style>
+  html, body { margin: 0; }
+  #f { position: absolute; left: 0; top: 0; width: 300px; height: 100px; display: flex; align-items: flex-start; background-color: #eeeeee; }
+  #g1 { display: grid; grid-template-columns: 30px 30px; grid-auto-rows: 20px; gap: 4px; background-color: #ccccee; }
+  #g2 { flex: 1; display: grid; grid-template-columns: 1fr 2fr; grid-template-rows: 30px; background-color: #cceecc; }
+  #g3 { display: grid; grid-template-columns: auto; align-self: stretch; background-color: #eecccc; }
+  #g1 > div, #g2 > div, #g3 > div { background-color: #555599; }
+  #g2 > div + div { background-color: #559955; }
+</style>
+</head>
+<body>
+<div id="f"><div id="g1"><div id="a1"></div><div id="a2"></div><div id="a3"></div></div><div id="g2"><div id="b1"></div><div id="b2"></div></div><div id="g3"><div id="c1" style="width: 25px; height: 10px;"></div></div></div>
+</body>
+</html>

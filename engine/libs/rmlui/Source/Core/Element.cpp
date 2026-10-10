@@ -2103,6 +2103,10 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	// -- Animation (p3-animation) --
 
 	// -- Grid (p3-grid) --
+	// The items of a grid container are painted as flex items are (AddChildrenToStackingContext): a change of 'display' can
+	// change how this element's children are painted.
+	if (changed_properties.Contains(PropertyId::Display))
+		DirtyStackingContext();
 }
 
 void Element::OnPseudoClassChange(const String& /*pseudo_class*/, bool /*activate*/) {}
@@ -2513,10 +2517,12 @@ void Element::BuildLocalStackingContext()
 
 void Element::AddChildrenToStackingContext(Vector<StackingContextChild>& stacking_children)
 {
-	bool is_flex_container = (GetDisplay() == Style::Display::Flex);
+	// Grid items paint like flex items (p3-grid): atomically, in 'order' order.
+	const Style::Display display = GetDisplay();
+	bool is_flex_container = (display == Style::Display::Flex || display == Style::Display::Grid || display == Style::Display::InlineGrid);
 
 	// The children in the order they are laid out, which is CSS paint order: ::marker, ::before, the DOM children, ::after;
-	// the children of a 'display: contents' child in its place; the items of a flex container in 'order' order.
+	// the children of a 'display: contents' child in its place; the items of a flex or grid container in 'order' order.
 	ScopedLayoutChildList layout_children;
 	LayoutDetails::GetLayoutChildren(this, *layout_children, is_flex_container);
 	for (Element* child : *layout_children)

@@ -30,6 +30,8 @@ add_executable(${TARGET_NAME}
 	FocusPseudoClasses.cpp
 	Important.cpp
 	InlineStyle.cpp
+	GridLayout.cpp
+	GridParsing.cpp
 	InitialValues.cpp
 	IntrinsicSizing.cpp
 	Layout.cpp

@@ -238,9 +238,9 @@ diagnostic (below) says what changed.
 | `clip-path` shapes, `mask-image`, `object-fit`, `image-rendering: pixelated` | exact |
 | `::-webkit-scrollbar(-thumb/-track)`, `scrollbar-width`, `scrollbar-color`, `::placeholder`, `::-webkit-slider-thumb` | the engine's scrollbar, placeholder and slider parts |
 | `position: fixed` | positioned like `absolute` against the page (no scrolling page in a game UI) until phase 3; `sticky` acts as `relative` |
+| CSS Grid: `display: grid`/`inline-grid`, `grid-template-columns`/`-rows` (`px`, `%`, `fr`, `auto`, `min-content`, `max-content`, `minmax()`, `fit-content()`, `repeat()` with `auto-fill`/`auto-fit`, `calc()`, line names), `grid-template-areas`, `grid-area`/`grid-row`/`grid-column` (line numbers, negative lines, `span`, names), `grid-auto-rows`/`-columns`/`-flow` (`dense`), `grid-template`, `grid`, `gap` (and `grid-gap`), `justify-items`/`-self`, `align-items`/`-self`, `place-*`, `justify-content`/`align-content`, `order` of grid items | exact: the layout engine lays the grid out (a port of the Taffy engine's CSS Grid, checked against Chromium); absolutely positioned children of a positioned grid use their grid area as containing block; `subgrid` and `masonry` are dropped with a warning (use nested grids with explicit track sizes); a grid follows `direction: rtl` text but its columns are not mirrored |
 
-**Not yet** (phase 3 adds them; until then a warning names each use): `display: grid` and
-`inline-grid` (laid out as a wrapping flex row: fixed column counts work, placement does not),
+**Not yet** (phase 3 adds them; until then a warning names each use):
 `order`,
 `aspect-ratio`, `width: fit-content`/`min-content`/`max-content` (written as `auto`),
 `position: sticky`, `%` radii other than 50%, `@container`, `steps()` easings (linear),
@@ -303,8 +303,7 @@ Every problem, loss or approximation is reported with the place in **your** file
 [HTML UI] ui/menu.html:20:3: error: JavaScript is not run (the engine has no JavaScript engine) (fix: use <script type="text/lua"> with the element API (document:querySelector, addEventListener, ...)) [HTMLUI-HTML-0006]
 [HTML UI] ui/menu.css:13:3: warning: 'position: sticky' is drawn as 'relative' (it does not stick) (fix: pin the element with position: absolute in a non-scrolling container) [HTMLUI-CSS-0006]
 [HTML UI] ui/menu.css:17:3: warning: 'backgroud-color' is not a CSS property; dropped (fix: did you mean 'background-color'?) [HTMLUI-CSS-0001]
-[HTML UI] ui/menu.css:22:3: warning: 'display: grid' is drawn as a wrapping flex container until the fork has Grid (fix: lay the items out with flex) [HTMLUI-CSS-0007]
-[HTML UI] ui/menu.html: 4 errors, 4 warnings, 2 notes
+[HTML UI] ui/menu.html: 4 errors, 3 warnings, 1 note
 ```
 
 ## `.rml` documents: RmlUi's own dialect
@@ -1115,7 +1114,7 @@ the files ship with the assets).
 What standard HTML/CSS does not do yet is listed under "Writing HTML/CSS for the engine" (the
 rewrites table, "Not yet" and "Differences without a diagnostic"); the Console names every
 use in your files. Later phases:
-- Phase 3, the layout engine itself: CSS Grid, `calc()` at layout time
+- Phase 3, the layout engine itself: `calc()` at layout time
   in every property, border styles, `%` radii, `order`, `aspect-ratio`,
   `fit-content`, real `position: fixed`/`sticky`, group `opacity`, `line-height: normal`,
   `cubic-bezier()`/`steps()` easings, parent/child margin collapsing, a legend as wide as its

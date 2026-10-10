@@ -330,8 +330,10 @@ bool PropertySpecification::ParsePropertyDeclaration(PropertyDictionary& diction
 	if (!property_definition)
 		return false;
 
+	// A value taken as written is split at commas only to find var() and unbalanced quotes: its parsers read the strings.
+	const bool value_as_written = property_definition->IsValueAsWritten();
 	StringList property_values;
-	switch (ParsePropertyValues(property_values, property_value, SplitOption::None))
+	switch (ParsePropertyValues(property_values, property_value, value_as_written ? SplitOption::Comma : SplitOption::None))
 	{
 	case ParsePropertyResult::Success: break;
 	case ParsePropertyResult::ContainsVariable:
@@ -347,7 +349,7 @@ bool PropertySpecification::ParsePropertyDeclaration(PropertyDictionary& diction
 	RMLUI_ASSERT(!property_values.empty());
 
 	Property new_property;
-	if (!property_definition->ParseValue(new_property, property_values[0]))
+	if (!property_definition->ParseValue(new_property, value_as_written ? StringUtilities::StripWhitespace(property_value) : property_values[0]))
 		return false;
 
 	dictionary.SetProperty(property_id, new_property);
@@ -364,7 +366,7 @@ bool PropertySpecification::ParseShorthandDeclaration(PropertyDictionary& dictio
 	if (shorthand_definition->type == ShorthandType::RecursiveCommaSeparated)
 		split_option = SplitOption::Comma;
 	else if (shorthand_definition->type == ShorthandType::Custom)
-		split_option = SplitOption::None; // The custom parser splits the value itself.
+		split_option = SplitOption::Comma; // The custom parser splits the value itself: this only finds var() and keeps quotes.
 
 	StringList property_values;
 	switch (ParsePropertyValues(property_values, property_value, split_option))

@@ -1,0 +1,7 @@
+{
+ "comment": "an absolutely positioned child of a positioned grid takes its grid area as containing block; an auto line is the padding edge; auto insets align it in the area",
+ "viewport": [
+  260,
+  180
+ ]
+}

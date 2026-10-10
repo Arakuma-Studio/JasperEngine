@@ -1,0 +1,7 @@
+{
+ "comment": "fit-content(limit) is the content's size up to the limit (a percentage of the grid's width), never below the min-content size",
+ "viewport": [
+  300,
+  40
+ ]
+}

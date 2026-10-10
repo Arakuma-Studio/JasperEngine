@@ -21,7 +21,7 @@ struct LayoutChunk {
 
 static constexpr size_t ChunkSizeBig = std::max({sizeof(BlockContainer)});
 static constexpr size_t ChunkSizeMedium =
-	std::max({sizeof(InlineContainer), sizeof(InlineBox), sizeof(RootBox), sizeof(FlexContainer), sizeof(TableWrapper)});
+	std::max({sizeof(InlineContainer), sizeof(InlineBox), sizeof(RootBox), sizeof(FlexContainer), sizeof(TableWrapper), sizeof(GridContainer)});
 static constexpr size_t ChunkSizeSmall =
 	std::max({sizeof(ReplacedBox), sizeof(InlineLevelBox_Text), sizeof(InlineLevelBox_Atomic), sizeof(LineBox), sizeof(FloatedBoxSpace)});
 

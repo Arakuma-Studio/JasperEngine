@@ -386,6 +386,17 @@ void jasperengine::htmlui::compat::rewriteOverflow(DeclContext& context){
 
 void jasperengine::htmlui::compat::rewriteGrid(DeclContext& context){
     const std::string& n = context.name;
+    // subgrid and masonry are not implemented (phase-3 spec 2.2): diagnosed in every fork state
+    if (n == "grid-template-columns" || n == "grid-template-rows" || n == "grid-template" || n == "grid"){
+        for (const ComponentValue& v : words(context.value)){
+            const std::string k = identOf(v);
+            if (k != "subgrid" && k != "masonry")
+                continue;
+            const ValueSupport* row = findValue("grid-template-columns", k);
+            unsupportedValue(context, row ? row->suggestion : "");
+            return;
+        }
+    }
     if (context.fork(ForkFeature::Grid)){
         context.emit(n, context.valueText());
         return;

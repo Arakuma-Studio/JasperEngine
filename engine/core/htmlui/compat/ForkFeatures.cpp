@@ -29,7 +29,7 @@ namespace {
         false,   // TimingFunctions
         true,    // Important (phase 3, p3-cascade: docs/html-ui/FORK.md)
         true,    // CssWideKeywords (phase 3, p3-cascade: docs/html-ui/FORK.md)
-        false,   // Grid
+        true,    // Grid (phase 3, p3-grid: CSS Grid, a port of Taffy; docs/html-ui/FORK.md P3-G1..P3-G3)
         true,    // Has (phase 3, p3-cascade)
         true,    // FocusPseudoClasses (phase 3, p3-cascade)
         true,    // SelectorsLevel4 (phase 3, p3-cascade)

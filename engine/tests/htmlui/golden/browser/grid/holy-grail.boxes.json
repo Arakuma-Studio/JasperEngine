@@ -1,0 +1,60 @@
+{
+ "fixture": "grid/holy-grail.html",
+ "viewport": [
+  300,
+  200
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "g",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 300,
+    "h": 200
+   },
+   {
+    "id": "header",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 300,
+    "h": 24
+   },
+   {
+    "id": "left",
+    "tag": "div",
+    "x": 0,
+    "y": 24,
+    "w": 60,
+    "h": 160
+   },
+   {
+    "id": "content",
+    "tag": "div",
+    "x": 60,
+    "y": 24,
+    "w": 190,
+    "h": 160
+   },
+   {
+    "id": "right",
+    "tag": "div",
+    "x": 250,
+    "y": 24,
+    "w": 50,
+    "h": 160
+   },
+   {
+    "id": "footer",
+    "tag": "div",
+    "x": 0,
+    "y": 184,
+    "w": 300,
+    "h": 16
+   }
+  ]
+ }
+}
