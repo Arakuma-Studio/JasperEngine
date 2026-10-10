@@ -345,6 +345,29 @@ TEST_F(RmlFontEngineTest, GenerateStringQuads){
     EXPECT_EQ(generate(0, "abc").width, 0);
 }
 
+// RmlUi hands the font engine the line feed that ends a `white-space: pre` line (ElementText's
+// BuildToken keeps it in the token): control characters take no space and draw nothing, as in
+// RmlUi's own font engine. They drew the missing-glyph box at the end of every <pre> line.
+TEST_F(RmlFontEngineTest, ControlCharactersTakeNoSpaceAndDrawNothing){
+    Rml::FontFaceHandle face = handle("sans-serif", 24);
+
+    EXPECT_EQ(width(face, "text\n"), width(face, "text"));
+    EXPECT_EQ(width(face, "\n"), 0);
+    EXPECT_EQ(width(face, "a\x01" "b\x1f" "c\r\n"), width(face, "abc"));
+    // a kerning pair is looked up across a control character's place, not with it
+    EXPECT_EQ(width(face, "\n", 0.0f, Rml::Character('A')), 0);
+
+    Generated plain = generate(face, "text");
+    Generated withFeed = generate(face, "text\n");
+    EXPECT_EQ(withFeed.quads(), plain.quads());
+    EXPECT_EQ(withFeed.width, plain.width);
+    EXPECT_EQ(generate(face, "\n").quads(), 0u);
+    EXPECT_EQ(generate(face, "\n").width, 0);
+    // letter spacing is not added for them either
+    EXPECT_EQ(generate(face, "text\n", Rml::Vector2f(10, 50), Rml::ColourbPremultiplied(255, 255, 255, 255), 1.0f, 4.0f).width,
+              generate(face, "text", Rml::Vector2f(10, 50), Rml::ColourbPremultiplied(255, 255, 255, 255), 1.0f, 4.0f).width);
+}
+
 TEST_F(RmlFontEngineTest, VersionBumpsOnlyOnNewGlyphs){
     Rml::FontFaceHandle face = handle("sans-serif", 24);
     const int start = engine.GetVersion(face);

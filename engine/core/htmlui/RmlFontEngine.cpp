@@ -293,6 +293,15 @@ ShapeOptions RmlFontEngine::toShapeOptions(const Rml::TextShapingContext& contex
     return options;
 }
 
+// RmlUi hands over the line feed that ends a `white-space: pre` line (ElementText's BuildToken
+// keeps it in the token) and whatever control characters a document holds: they take no space and
+// draw nothing, as in RmlUi's own font engine (shaped, they were the missing-glyph box)
+void RmlFontEngine::decodeText(Rml::StringView string, std::vector<uint32_t>& codepoints){
+    TextShaper::decodeUtf8(string.begin(), string.size(), codepoints);
+    codepoints.erase(std::remove_if(codepoints.begin(), codepoints.end(), [](uint32_t codepoint){ return codepoint < 0x20; }),
+                     codepoints.end());
+}
+
 float RmlFontEngine::measure(const FaceHandle& handle, const std::vector<uint32_t>& codepoints, const ShapeOptions& options) const{
     if (!handle.synthesizesBold)
         return TextShaper::measure(handle.faces, handle.emScales, codepoints, 0, codepoints.size(), options);
@@ -331,7 +340,8 @@ int RmlFontEngine::GetStringWidth(Rml::FontFaceHandle handle, Rml::StringView st
         return 0;
 
     const ShapeOptions options = toShapeOptions(context);
-    const bool withPrior = prior_character != Rml::Character::Null && options.kerning;
+    // (a control character before the string kerns with nothing)
+    const bool withPrior = (char32_t)prior_character >= 0x20 && options.kerning;
 
     if (widthsVersion != version || widths.size() > maxWidthCacheEntries){
         widths.clear();
@@ -355,7 +365,7 @@ int RmlFontEngine::GetStringWidth(Rml::FontFaceHandle handle, Rml::StringView st
         return it->second;
 
     std::vector<uint32_t> codepoints;
-    TextShaper::decodeUtf8(string.begin(), string.size(), codepoints);
+    decodeText(string, codepoints);
 
     float width;
     if (withPrior){
@@ -515,7 +525,7 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
     const float scale = scaleFor(render_manager);
 
     std::vector<uint32_t> codepoints;
-    TextShaper::decodeUtf8(string.begin(), string.size(), codepoints);
+    decodeText(string, codepoints);
 
     std::vector<ShapedGlyph> shaped;
     shape(*handle, codepoints, toShapeOptions(text_shaping_context), shaped);

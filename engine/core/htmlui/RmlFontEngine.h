@@ -153,6 +153,8 @@ namespace jasperengine {
         using PageList = std::vector<std::unique_ptr<Page>>;
 
         static ShapeOptions toShapeOptions(const Rml::TextShapingContext& context);
+        // UTF-8 to code points without the control characters (U+0000..U+001F)
+        static void decodeText(Rml::StringView string, std::vector<uint32_t>& codepoints);
         FaceHandle* toHandle(Rml::FontFaceHandle handle) const;
         bool registerLoaded(const std::shared_ptr<FontFace>& face, const std::string& error, const std::string& family,
                             int weight, int italic, bool fallback);
