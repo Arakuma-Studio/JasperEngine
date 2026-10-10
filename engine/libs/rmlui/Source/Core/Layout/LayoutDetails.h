@@ -160,6 +160,22 @@ public:
 	/// reports its content width even when its 'width' is definite, and its min-/max- sizes do not apply.
 	static bool IsMeasuringContentOf(const Element* element);
 
+	/// A flex container gives its items heights that are not always definite (CSS Flexbox §9.8: the flexed main size in a
+	/// container without a definite main size, a cross size that is not stretched). While such an item is formatted at that
+	/// height, the percentage heights of its children behave as 'auto'. The flex formatting context holds the scope around
+	/// the formatting of the item, whose own formatting context reads it.
+	class IndefiniteHeightScope {
+	public:
+		IndefiniteHeightScope(const Element* element, bool indefinite);
+		~IndefiniteHeightScope();
+		IndefiniteHeightScope(const IndefiniteHeightScope&) = delete;
+		IndefiniteHeightScope& operator=(const IndefiniteHeightScope&) = delete;
+
+	private:
+		const Element* previous;
+	};
+	static bool IsHeightIndefinite(const Element* element);
+
 	/// The horizontal offset of an in-flow block-level box in its containing block by its 'justify-self' (CSS Box Alignment 3
 	/// §6.1, the parent's 'justify-items' for 'auto'), given the free space beside its margin box. Zero for 'normal' and
 	/// 'stretch', and for boxes with an 'auto' horizontal margin (the margins take the space).

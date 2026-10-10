@@ -274,6 +274,10 @@ ContainingBlock LayoutDetails::GetContainingBlock(ContainerBox* parent_container
 
 	Vector2f containing_block = box->GetSize(area);
 
+	// A height given by a flex container that is not definite: percentages of it behave as 'auto'.
+	if (area == BoxArea::Content && container->IsHeightIndefinite())
+		containing_block.y = -1.f;
+
 	{
 		// The scrollbars take their space from the box: in-flow boxes do not overlap their parent's scrollbars, and the
 		// containing block of absolutely positioned boxes is the padding box without them (CSS Overflow 3 §3.2).
@@ -630,6 +634,23 @@ namespace {
 bool LayoutDetails::IsMeasuringContentOf(const Element* element)
 {
 	return element == measuring_content_of;
+}
+
+static const Element* indefinite_height_of = nullptr;
+
+LayoutDetails::IndefiniteHeightScope::IndefiniteHeightScope(const Element* element, bool indefinite) : previous(indefinite_height_of)
+{
+	indefinite_height_of = (indefinite ? element : nullptr);
+}
+
+LayoutDetails::IndefiniteHeightScope::~IndefiniteHeightScope()
+{
+	indefinite_height_of = previous;
+}
+
+bool LayoutDetails::IsHeightIndefinite(const Element* element)
+{
+	return element == indefinite_height_of;
 }
 
 namespace {
@@ -1170,6 +1191,20 @@ void LayoutDetails::BuildAbsoluteBoxWidth(Box& box, const ComputedValues& comput
 
 	Vector2f content_area = box.GetSize();
 	const float ratio = (replaced_element ? 0.f : computed.aspect_ratio());
+	if (content_area.x < 0.f && content_area.y < 0.f && ratio > 0.f && containing_block.y >= 0.f && !(axis.has_inset_start && axis.has_inset_end) &&
+		computed.width_keyword() == Style::SizingKeyword::None && computed.height_keyword() == Style::SizingKeyword::None && !table)
+	{
+		// An automatic height that 'top' and 'bottom' make stretch-fit is definite, and transfers as a definite height does.
+		const AbsoluteAxis block_axis = MakeAbsoluteAxis(computed.top(), computed.bottom(), computed.margin_top(), computed.margin_bottom(),
+			containing_block.y, containing_block.x);
+		if (block_axis.has_inset_start && block_axis.has_inset_end)
+		{
+			float min_height = 0.f, max_height = FLT_MAX;
+			GetMinMaxHeight(min_height, max_height, computed, box, containing_block.y);
+			const float edges_y = box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border, BoxArea::Padding);
+			content_area.y = Math::Clamp(Math::Max(block_axis.GetStretchFitSize() - edges_y, 0.f), min_height, max_height);
+		}
+	}
 	if (content_area.x < 0.f && content_area.y >= 0.f && ratio > 0.f)
 	{
 		// A definite height transfers through the aspect ratio (of the box-sizing box).

@@ -160,6 +160,9 @@ namespace {
 			Vector2f scrollable_overflow; // Margin-box extent of the items.
 		};
 
+		// The known height was given by a flex container and is not definite (LayoutDetails::IndefiniteHeightScope).
+		void SetKnownHeightIndefinite(bool indefinite) { known_height_definite = !indefinite; }
+
 		// Known border-box size of the container (from its box), available space, and the scrollbar gutter.
 		Output Run(OptSize known, AvailableSpace available_width, AvailableSpace available_height, Vector2f scrollbar_gutter, RunMode run_mode);
 
@@ -179,6 +182,7 @@ namespace {
 		bool align_content_safe = false, justify_content_safe = false;
 
 		OptSize node_outer_size, node_inner_size;
+		bool known_height_definite = true;
 		bool known_main_size_is_definite = true, has_definite_main_size = false, has_definite_cross_size = false;
 		bool cross_axis_available_space_is_definite = false;
 		Vector2f container_size, inner_container_size;
@@ -225,6 +229,19 @@ namespace {
 			if (is_wrap && line_count > 1)
 				return (cross_available_space - float(line_count - 1) * Cross(gap)) / float(line_count);
 			return cross_available_space;
+		}
+
+		// Whether the height the item is given is definite, for the percentage heights of its children (Taffy's
+		// item_known_dimension_definiteness; widths are always definite here). The flexed main size is definite if the
+		// container has a definite main size or the flex basis is definite; the cross size if it is stretched or specified.
+		bool ItemHeightIsDefinite(const FlexItem& item) const
+		{
+			if (!row)
+				return has_definite_main_size || item.flex_basis_is_definite;
+			const bool stretched = !CrossStartAuto(item) && !CrossEndAuto(item) &&
+				(item.size_keyword[1] == Style::SizingKeyword::Stretch ||
+					(item.align_self == ItemAlign::Stretch && item.size_keyword[1] == Style::SizingKeyword::None));
+			return stretched || item.size[1].has_value();
 		}
 
 		// -- Measuring (Taffy's measure_child_size, in content-size mode) --
@@ -669,9 +686,10 @@ namespace {
 		node_outer_size = known;
 		node_inner_size[0] = Sub(known[0], content_box_inset.Horizontal());
 		node_inner_size[1] = Sub(known[1], content_box_inset.Vertical());
-		known_main_size_is_definite = true;
-		has_definite_main_size = Main(known).has_value();
-		has_definite_cross_size = Cross(known).has_value();
+		// A known height that is not definite: Taffy's known_dimensions_are_definite.
+		known_main_size_is_definite = (row || known_height_definite || !Main(known));
+		has_definite_main_size = known_main_size_is_definite && Main(known).has_value();
+		has_definite_cross_size = (!row || known_height_definite) && Cross(known).has_value();
 		const AvailableSpace cross_available = (row ? available_height : available_width);
 		cross_axis_available_space_is_definite = has_definite_cross_size || cross_available.IsDefinite();
 
@@ -1519,6 +1537,7 @@ namespace {
 				if (!ParticipatesInBaselineAlignment(child))
 					continue;
 				const Vector2f size = {child.target_size.x, child.hypothetical_inner_size.y};
+				const LayoutDetails::IndefiniteHeightScope height_scope(child.element, !ItemHeightIsDefinite(child));
 				float baseline =
 					FormatForBaseline(child.element, child.box, size, ItemContainingBlock(), child.align_self == ItemAlign::LastBaseline);
 				if (child.is_scroll_container)
@@ -1793,6 +1812,7 @@ namespace {
 				item_box.SetEdge(BoxArea::Margin, BoxEdge::Top, item.margin.v[Top]);
 				item_box.SetEdge(BoxArea::Margin, BoxEdge::Bottom, item.margin.v[Bottom]);
 
+				const LayoutDetails::IndefiniteHeightScope height_scope(item.element, !ItemHeightIsDefinite(item));
 				UniquePtr<LayoutBox> layout_box =
 					FormattingContext::FormatIndependent(container_box, item.element, &item_box, FormattingContextType::Block);
 
@@ -2068,6 +2088,7 @@ UniquePtr<LayoutBox> FlexFormattingContext::Format(ContainerBox* parent_containe
 
 	const Vector2f box_content_size = box.GetSize();
 	const bool auto_height = (box_content_size.y < 0.0f);
+	const bool height_indefinite = (override_initial_box && !auto_height && LayoutDetails::IsHeightIndefinite(element));
 	const Vector2f edges = {box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding),
 		box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border, BoxArea::Padding)};
 
@@ -2087,6 +2108,7 @@ UniquePtr<LayoutBox> FlexFormattingContext::Format(ContainerBox* parent_containe
 			known[1] = box_content_size.y + edges.y;
 
 		FlexAlgorithm algorithm(element, flex_container_box.get(), box, containing_block);
+		algorithm.SetKnownHeightIndefinite(height_indefinite);
 		const FlexAlgorithm::Output output = algorithm.Run(known, AvailableSpace::MakeDefinite(*known[0]),
 			auto_height ? AvailableSpace::MakeMaxContent() : AvailableSpace::MakeDefinite(*known[1]), scrollbar_size, RunMode::PerformLayout);
 

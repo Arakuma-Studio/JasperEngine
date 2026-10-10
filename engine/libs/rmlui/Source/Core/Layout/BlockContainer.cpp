@@ -256,6 +256,8 @@ LayoutBox* BlockContainer::AddBlockLevelBox(UniquePtr<LayoutBox> block_level_box
 		AddRelativeElement(child_element);
 
 	LayoutBox* block_level_box = block_level_box_ptr.get();
+	if (block_level_box->GetType() != Type::Replaced)
+		static_cast<ContainerBox*>(block_level_box)->SetFlowPositionTop(child_position.y);
 	child_boxes.push_back(std::move(block_level_box_ptr));
 
 	// A box establishing an independent formatting context does not collapse margins with its content, and is never
@@ -826,13 +828,33 @@ void BlockContainer::PlaceFloat(Element* element, float vertical_position, Vecto
 	element->SetOffset(border_position - position, GetElement());
 }
 
+bool BlockContainer::GetChildBaseline(const LayoutBox& child_box, bool last, float& out_baseline) const
+{
+	if (!(last ? child_box.GetBaselineOfLastLine(out_baseline) : child_box.GetBaselineOfFirstLine(out_baseline)))
+		return false;
+
+	// Lines and block boxes of our formatting context report it in our coordinates; a box with its own formatting context
+	// from the top of its border box.
+	const Type type = child_box.GetType();
+	const bool same_formatting_context =
+		(type == Type::InlineContainer || (type == Type::BlockContainer && !static_cast<const BlockContainer&>(child_box).root_space));
+	if (!same_formatting_context && type != Type::Replaced)
+		out_baseline += static_cast<const ContainerBox&>(child_box).GetFlowPositionTop();
+	return true;
+}
+
 bool BlockContainer::GetBaselineOfFirstLine(float& out_baseline) const
 {
 	// The baseline of our first child that itself has a baseline.
 	for (const auto& child_box : child_boxes)
 	{
-		if (child_box->GetBaselineOfFirstLine(out_baseline))
+		if (GetChildBaseline(*child_box, false, out_baseline))
+		{
+			// The baseline of a scroll container stays within its border box (CSS Box Alignment 3 §9.1).
+			if (IsScrollContainer())
+				out_baseline = Math::Clamp(out_baseline, position.y, position.y + box.GetSize(BoxArea::Border).y);
 			return true;
+		}
 	}
 	return false;
 }
@@ -842,7 +864,7 @@ bool BlockContainer::GetBaselineOfLastLine(float& out_baseline) const
 	// Return the baseline of our last child that itself has a baseline.
 	for (int i = (int)child_boxes.size() - 1; i >= 0; i--)
 	{
-		if (child_boxes[i]->GetBaselineOfLastLine(out_baseline))
+		if (GetChildBaseline(*child_boxes[i], true, out_baseline))
 			return true;
 	}
 

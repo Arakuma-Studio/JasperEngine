@@ -53,6 +53,16 @@ public:
 
 	bool IsScrollContainer() const;
 
+	// Our height was given by a flex container and is not definite (LayoutDetails::IndefiniteHeightScope): percentage heights
+	// of our children behave as 'auto'.
+	void SetHeightIndefinite(bool indefinite) { height_indefinite = indefinite; }
+	bool IsHeightIndefinite() const { return height_indefinite; }
+
+	// The top of our border box in the block formatting context that holds us as a block-level box with its own formatting
+	// context (BlockContainer::AddBlockLevelBox): our baselines are relative to our border box.
+	void SetFlowPositionTop(float top) { flow_position_top = top; }
+	float GetFlowPositionTop() const { return flow_position_top; }
+
 	// Returns true if this box acts as a containing block for absolutely positioned descendants.
 	bool IsAbsolutePositioningContainingBlock() const { return is_absolute_positioning_containing_block; }
 
@@ -97,6 +107,8 @@ private:
 	Style::Overflow overflow_x = Style::Overflow::Visible;
 	Style::Overflow overflow_y = Style::Overflow::Visible;
 	bool is_absolute_positioning_containing_block = false;
+	bool height_indefinite = false;
+	float flow_position_top = 0.f;
 
 	ContainerBox* parent_container = nullptr;
 };

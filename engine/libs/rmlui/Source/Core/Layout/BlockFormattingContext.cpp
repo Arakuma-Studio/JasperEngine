@@ -118,6 +118,7 @@ UniquePtr<LayoutBox> BlockFormattingContext::Format(ContainerBox* parent_contain
 	}
 
 	UniquePtr<BlockContainer> container = MakeUnique<BlockContainer>(parent_container, nullptr, element, box, min_height, max_height);
+	container->SetHeightIndefinite(override_initial_box && LayoutDetails::IsHeightIndefinite(element));
 
 	DebugDumpLayoutTree debug_dump_tree(element, container.get());
 

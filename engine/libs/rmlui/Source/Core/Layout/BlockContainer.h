@@ -140,6 +140,8 @@ public:
 	float GetMinContentWidth() const override;
 	bool GetBaselineOfLastLine(float& out_baseline) const override;
 	bool GetBaselineOfFirstLine(float& out_baseline) const override;
+	// The baseline of a child box in the coordinates of our block formatting context.
+	bool GetChildBaseline(const LayoutBox& child_box, bool last, float& out_baseline) const;
 
 private:
 	// Shared by GetShrinkToFitWidth and GetMinContentWidth: the widest child (by 'child_width') and the floats, clamped.
