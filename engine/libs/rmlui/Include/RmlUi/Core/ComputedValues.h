@@ -36,7 +36,8 @@ namespace Style {
 			padding_left_type(LengthPercentage::Length),
 
 			top_type(LengthPercentageAuto::Auto), right_type(LengthPercentageAuto::Auto), bottom_type(LengthPercentageAuto::Auto),
-			left_type(LengthPercentageAuto::Auto), z_index_type(NumberAuto::Auto)
+			left_type(LengthPercentageAuto::Auto), z_index_type(NumberAuto::Auto), border_top_style(BorderStyle::None),
+			border_right_style(BorderStyle::None), border_bottom_style(BorderStyle::None), border_left_style(BorderStyle::None)
 		{}
 
 		Display display : 5;
@@ -62,6 +63,8 @@ namespace Style {
 
 		NumberAuto::Type z_index_type : 1;
 
+		BorderStyle border_top_style : 4, border_right_style : 4, border_bottom_style : 4, border_left_style : 4;
+
 		float width_value = 0;
 		float height_value = 0;
 
@@ -82,7 +85,9 @@ namespace Style {
 
 		float z_index_value = 0;
 
-		uint16_t border_top_width = 0, border_right_width = 0, border_bottom_width = 0, border_left_width = 0;
+		// The declared widths ('medium' initially, snapped to whole pixels); a side whose style is none or hidden computes
+		// its width to 0 (the accessors).
+		float border_top_width = 3.f, border_right_width = 3.f, border_bottom_width = 3.f, border_left_width = 3.f;
 
 		// The initial value is 'currentcolor': an element's border colors not declared follow its color (ElementStyle::ComputeValues).
 		Colourb border_top_color{0, 0, 0}, border_right_color{0, 0, 0}, border_bottom_color{0, 0, 0}, border_left_color{0, 0, 0};
@@ -260,10 +265,14 @@ namespace Style {
 		LengthPercentageAuto bottom()              const { return GetLengthPercentageAuto(common.bottom_type, common.bottom_value, ComputedCalculationSlot::Bottom); }
 		LengthPercentageAuto left()                const { return GetLengthPercentageAuto(common.left_type, common.left_value, ComputedCalculationSlot::Left); }
 		NumberAuto           z_index()             const { return NumberAuto(common.z_index_type, common.z_index_value); }
-		float                border_top_width()    const { return (float)common.border_top_width; }
-		float                border_right_width()  const { return (float)common.border_right_width; }
-		float                border_bottom_width() const { return (float)common.border_bottom_width; }
-		float                border_left_width()   const { return (float)common.border_left_width; }
+		float                border_top_width()    const { return IsBorderStylePainted(common.border_top_style) ? common.border_top_width : 0.f; }
+		float                border_right_width()  const { return IsBorderStylePainted(common.border_right_style) ? common.border_right_width : 0.f; }
+		float                border_bottom_width() const { return IsBorderStylePainted(common.border_bottom_style) ? common.border_bottom_width : 0.f; }
+		float                border_left_width()   const { return IsBorderStylePainted(common.border_left_style) ? common.border_left_width : 0.f; }
+		BorderStyle          border_top_style()    const { return common.border_top_style; }
+		BorderStyle          border_right_style()  const { return common.border_right_style; }
+		BorderStyle          border_bottom_style() const { return common.border_bottom_style; }
+		BorderStyle          border_left_style()   const { return common.border_left_style; }
 		BoxSizing            box_sizing()          const { return common.box_sizing; }
 		Display              display()             const { return common.display; }
 		Position             position()            const { return common.position; }
@@ -392,10 +401,14 @@ namespace Style {
 		void bottom             (LengthPercentageAuto value) { StoreLengthPercentageAuto(ComputedCalculationSlot::Bottom, value); common.bottom_type = value.type; common.bottom_value = value.value; }
 		void left               (LengthPercentageAuto value) { StoreLengthPercentageAuto(ComputedCalculationSlot::Left, value); common.left_type = value.type; common.left_value = value.value; }
 		void z_index            (NumberAuto value)           { common.z_index_type        = value.type; common.z_index_value        = value.value; }
-		void border_top_width   (int16_t value)              { common.border_top_width    = value; }
-		void border_right_width (int16_t value)              { common.border_right_width  = value; }
-		void border_bottom_width(int16_t value)              { common.border_bottom_width = value; }
-		void border_left_width  (int16_t value)              { common.border_left_width   = value; }
+		void border_top_width   (float value)                { common.border_top_width    = value; }
+		void border_right_width (float value)                { common.border_right_width  = value; }
+		void border_bottom_width(float value)                { common.border_bottom_width = value; }
+		void border_left_width  (float value)                { common.border_left_width   = value; }
+		void border_top_style   (BorderStyle value)          { common.border_top_style    = value; }
+		void border_right_style (BorderStyle value)          { common.border_right_style  = value; }
+		void border_bottom_style(BorderStyle value)          { common.border_bottom_style = value; }
+		void border_left_style  (BorderStyle value)          { common.border_left_style   = value; }
 		void box_sizing         (BoxSizing value)            { common.box_sizing          = value; }
 		void display            (Display value)              { common.display             = value; }
 		void position           (Position value)             { common.position            = value; }

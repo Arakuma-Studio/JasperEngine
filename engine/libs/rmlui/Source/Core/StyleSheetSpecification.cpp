@@ -2,6 +2,7 @@
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
 #include "IdNameMap.h"
+#include "PaintProperties.h"
 #include "PropertyParserAlignment.h"
 #include "PropertyParserAnimation.h"
 #include "PropertyParserBoxShadow.h"
@@ -332,23 +333,12 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::PaddingLeft, "padding-left", "0px", false, true).AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
 	RegisterShorthand(ShorthandId::Padding, "padding", "padding-top, padding-right, padding-bottom, padding-left", ShorthandType::Box);
 
-	RegisterProperty(PropertyId::BorderTopWidth, "border-top-width", "0px", false, true).AddParser("length");
-	RegisterProperty(PropertyId::BorderRightWidth, "border-right-width", "0px", false, true).AddParser("length");
-	RegisterProperty(PropertyId::BorderBottomWidth, "border-bottom-width", "0px", false, true).AddParser("length");
-	RegisterProperty(PropertyId::BorderLeftWidth, "border-left-width", "0px", false, true).AddParser("length");
-	RegisterShorthand(ShorthandId::BorderWidth, "border-width", "border-top-width, border-right-width, border-bottom-width, border-left-width", ShorthandType::Box);
 
 	RegisterProperty(PropertyId::BorderTopColor, "border-top-color", "black", false, false).AddParser("color");
 	RegisterProperty(PropertyId::BorderRightColor, "border-right-color", "black", false, false).AddParser("color");
 	RegisterProperty(PropertyId::BorderBottomColor, "border-bottom-color", "black", false, false).AddParser("color");
 	RegisterProperty(PropertyId::BorderLeftColor, "border-left-color", "black", false, false).AddParser("color");
 	RegisterShorthand(ShorthandId::BorderColor, "border-color", "border-top-color, border-right-color, border-bottom-color, border-left-color", ShorthandType::Box);
-
-	RegisterShorthand(ShorthandId::BorderTop, "border-top", "border-top-width, border-top-color", ShorthandType::FallThrough);
-	RegisterShorthand(ShorthandId::BorderRight, "border-right", "border-right-width, border-right-color", ShorthandType::FallThrough);
-	RegisterShorthand(ShorthandId::BorderBottom, "border-bottom", "border-bottom-width, border-bottom-color", ShorthandType::FallThrough);
-	RegisterShorthand(ShorthandId::BorderLeft, "border-left", "border-left-width, border-left-color", ShorthandType::FallThrough);
-	RegisterShorthand(ShorthandId::Border, "border", "border-top, border-right, border-bottom, border-left", ShorthandType::RecursiveRepeat);
 
 	RegisterProperty(PropertyId::BorderTopLeftRadius, "border-top-left-radius", "0px", false, false).AddParser("length");
 	RegisterProperty(PropertyId::BorderTopRightRadius, "border-top-right-radius", "0px", false, false).AddParser("length");
@@ -521,6 +511,30 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	// -- Cascade (p3-cascade) --
 
 	// -- Paint (p3-paint) --
+	// Borders (phase 3, 3.7): per-side styles, widths with the CSS keywords and initial 'medium' (a side whose style is
+	// none or hidden computes its width to 0), and the CSS shorthands in any order. Parsers and computed values:
+	// ShorthandBorder.cpp.
+	for (PropertyId id : {PropertyId::BorderTopWidth, PropertyId::BorderRightWidth, PropertyId::BorderBottomWidth, PropertyId::BorderLeftWidth})
+	{
+		static const char* const names[] = {"border-top-width", "border-right-width", "border-bottom-width", "border-left-width"};
+		RegisterProperty(id, names[int(id) - int(PropertyId::BorderTopWidth)], "medium", false, true)
+			.AddParser("keyword", "thin, medium, thick")
+			.AddParser("length");
+	}
+	RegisterShorthand(ShorthandId::BorderWidth, "border-width", "border-top-width, border-right-width, border-bottom-width, border-left-width", ShorthandType::Box);
+	RegisterProperty(PropertyId::BorderTopStyle, "border-top-style", "none", false, true).AddParser("keyword", "none, hidden, dotted, dashed, solid, double, groove, ridge, inset, outset");
+	RegisterProperty(PropertyId::BorderRightStyle, "border-right-style", "none", false, true).AddParser("keyword", "none, hidden, dotted, dashed, solid, double, groove, ridge, inset, outset");
+	RegisterProperty(PropertyId::BorderBottomStyle, "border-bottom-style", "none", false, true).AddParser("keyword", "none, hidden, dotted, dashed, solid, double, groove, ridge, inset, outset");
+	RegisterProperty(PropertyId::BorderLeftStyle, "border-left-style", "none", false, true).AddParser("keyword", "none, hidden, dotted, dashed, solid, double, groove, ridge, inset, outset");
+	RegisterShorthand(ShorthandId::BorderStyle, "border-style", "border-top-style, border-right-style, border-bottom-style, border-left-style", ShorthandType::Box);
+	RegisterShorthand(ShorthandId::BorderTop, "border-top", "border-top-width, border-top-style, border-top-color", ShorthandType::AnyOrder);
+	RegisterShorthand(ShorthandId::BorderRight, "border-right", "border-right-width, border-right-style, border-right-color", ShorthandType::AnyOrder);
+	RegisterShorthand(ShorthandId::BorderBottom, "border-bottom", "border-bottom-width, border-bottom-style, border-bottom-color", ShorthandType::AnyOrder);
+	RegisterShorthand(ShorthandId::BorderLeft, "border-left", "border-left-width, border-left-style, border-left-color", ShorthandType::AnyOrder);
+	// 'border-image' is accepted as 'none' only, so that 'border' can reset it (compat emulates its other values).
+	RegisterProperty(PropertyId::BorderImage, "border-image", "none", false, false).AddParser("keyword", "none");
+	RegisterShorthand(ShorthandId::Border, "border", "border-width, border-style, border-color, border-image", ShorthandType::Custom);
+	properties.SetShorthandParser(ShorthandId::Border, &ParseBorderShorthand);
 
 	// -- Text (p3-text) --
 

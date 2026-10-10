@@ -17,6 +17,7 @@ static const String rml_table_document = R"(
 	<style>
 		table {
 			border-width: 20px 5px 0;
+			border-style: solid;
 			color: #333;
 			text-align: center;
 		}
@@ -34,6 +35,7 @@ static const String rml_table_document = R"(
 			width: 150px;
 			background: #6df;
 			border-right-width: 3px;
+			border-right-style: solid;
 		}
 		col:last-of-type {
 			background: #dd3;
@@ -41,10 +43,10 @@ static const String rml_table_document = R"(
 		thead {
 			color: black;
 			background: #fff5;
-			border-bottom: 3px #666;
+			border-bottom: 3px solid #666;
 		}
 		tbody tr {
-			border-bottom: 1px #666a;
+			border-bottom: 1px solid #666a;
 		}
 		tbody tr:last-child {
 			border-bottom: 0;
@@ -112,6 +114,7 @@ static const String rml_inlineblock_document = R"(
 		table {
 			display: block;
 			border-width: 20px 5px 0;
+			border-style: solid;
 			color: #333;
 			text-align: center;
 		}
@@ -134,6 +137,7 @@ static const String rml_inlineblock_document = R"(
 		td:first-child {
 			background: #6df;
 			border-right-width: 3px;
+			border-right-style: solid;
 		}
 		td:last-of-type {
 			background: #dd3;
@@ -142,13 +146,13 @@ static const String rml_inlineblock_document = R"(
 			display: block;
 			color: black;
 			background: #fff5;
-			border-bottom: 3px #666;
+			border-bottom: 3px solid #666;
 		}
 		tbody {
 			display: block;
 		}
 		tbody tr {
-			border-bottom: 1px #666a;
+			border-bottom: 1px solid #666a;
 		}
 		tbody tr:last-child {
 			border-bottom: 0;

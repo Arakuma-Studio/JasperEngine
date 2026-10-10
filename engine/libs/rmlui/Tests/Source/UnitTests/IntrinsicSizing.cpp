@@ -29,7 +29,7 @@ static const String intrinsic_rml = R"(
 	<span class="measure" id="w-aa">aa</span><span class="measure" id="w-long">longestword</span><span class="measure" id="w-all">aa longestword b</span>
 	<div id="text">aa longestword b</div>
 	<div id="nowrap" style="white-space: nowrap">aa longestword b</div>
-	<div id="padded" style="padding: 0 3px; border: 2px #000">aa longestword b</div>
+	<div id="padded" style="padding: 0 3px; border: 2px solid #000">aa longestword b</div>
 	<div id="fixed" style="width: 33px; padding-left: 2px">aa longestword b</div>
 	<div id="floats"><div style="float: left; width: 50px; height: 5px"/><div style="float: left; width: 70px; height: 5px"/></div>
 	<div id="nested"><div><p>aa longestword b</p></div></div>

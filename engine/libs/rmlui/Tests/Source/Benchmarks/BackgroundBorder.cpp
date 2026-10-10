@@ -28,13 +28,16 @@ TEST_CASE("background_border")
 		}
 		#no-radius > div {
 			border-width: 8px 10px;
+			border-style: solid;
 		}
 		#small-radius > div {
 			border-width: 40px 20px;
+			border-style: solid;
 			border-radius: 5px;
 		}
 		#large-radius > div {
 			border-width: 10px 5px 25px 20px;
+			border-style: solid;
 			border-radius: 80px 30px;
 		}
 	</style>
@@ -135,6 +138,7 @@ TEST_CASE("background_border.empty_vs_bordered_divs")
 		}
 		#container.bordered > div {
 			border-width: 2px;
+			border-style: solid;
 			border-color: #ccc;
 		}
 	</style>
@@ -184,7 +188,7 @@ TEST_CASE("box_shadow")
 		#boxshadow > div {
 			width: 280dp;
 			height: 70dp;
-			border: 2dp #def6f7;
+			border: 2dp solid #def6f7;
 			margin: 10dp auto;
 			padding: 15dp;
 			border-radius: 30dp 8dp;

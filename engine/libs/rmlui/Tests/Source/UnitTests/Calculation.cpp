@@ -2162,11 +2162,11 @@ TEST_CASE("Calculation.properties.direct_scalar_and_shorthand_coverage")
 	CHECK(document->SetProperty("margin", "calc(10px + min(5px, 10px)) calc(20px + max(1px, 2px))"));
 	CHECK(document->SetProperty("padding", "calc(1px + min(2px, 3px)) calc(4px + max(5px, 6px))"));
 	CHECK(document->SetProperty("border-width", "calc(1px + min(2px, 3px)) calc(4px + max(5px, 6px))"));
-	CHECK(document->SetProperty("border-top", "calc(1px + min(2px, 3px)) #fff"));
-	CHECK(document->SetProperty("border-right", "calc(1px + min(2px, 3px)) #fff"));
-	CHECK(document->SetProperty("border-bottom", "calc(1px + min(2px, 3px)) #fff"));
-	CHECK(document->SetProperty("border-left", "calc(1px + min(2px, 3px)) #fff"));
-	CHECK(document->SetProperty("border", "calc(1px + min(2px, 3px)) #fff"));
+	CHECK(document->SetProperty("border-top", "calc(1px + min(2px, 3px)) solid #fff"));
+	CHECK(document->SetProperty("border-right", "calc(1px + min(2px, 3px)) solid #fff"));
+	CHECK(document->SetProperty("border-bottom", "calc(1px + min(2px, 3px)) solid #fff"));
+	CHECK(document->SetProperty("border-left", "calc(1px + min(2px, 3px)) solid #fff"));
+	CHECK(document->SetProperty("border", "calc(1px + min(2px, 3px)) solid #fff"));
 	CHECK(document->SetProperty("border-radius", "calc(1px + min(2px, 3px)) calc(4px + max(5px, 6px))"));
 	CHECK(document->SetProperty("inset", "calc(1px + min(2px, 3px)) calc(4px + max(5px, 6px))"));
 	CHECK(document->SetProperty("font", "normal calc(300 + 100) calc(10px + min(10px, 20px)) LatoLatin"));

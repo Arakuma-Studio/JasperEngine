@@ -17,7 +17,7 @@ static const String document_layout_rml = R"(
 			height: 300px;
 			top: 100px;
 			left: 100px;
-			border: 10px #fff;
+			border: 10px solid #fff;
 			background-color: #ccc;
 		}
 		#relative {
@@ -46,7 +46,7 @@ static const String document_layout_rml_nested = R"(
 			height: 300px;
 			top: 100px;
 			left: 100px;
-			border: 10px #fff;
+			border: 10px solid #fff;
 			background-color: #ccc;
 		}
 		#parent {
@@ -183,7 +183,7 @@ TEST_CASE("Layout.ScrollableOverflow.AutoHeightHorizontalScrollbar")
 	<style>
 		scrollbarvertical { width: 15px; }
 		scrollbarhorizontal { height: 15px; }
-		.scroller { width: 120px; border: 2px #000; overflow: auto; background: #3a3; }
+		.scroller { width: 120px; border: 2px solid #000; overflow: auto; background: #3a3; }
 		.scroller div { background: #33a; }
 		.flex { display: flex; flex-direction: row; }
 		.item { flex-shrink: 0; width: 240px; height: 60px; }

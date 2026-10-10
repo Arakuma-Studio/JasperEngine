@@ -138,7 +138,7 @@ static const String aliasing_rml = R"(
 			background: #ccc;
 			color: #333;
 		}
-		.title-wrapper { border: 1dp red; }
+		.title-wrapper { border: 1dp solid red; }
 		.icon { width: 64dp; height: 64dp; display: inline-block; }
 		.icon[icon="a"] { decorator: image("/assets/high_scores_alien_1.tga"); }
 		.icon[icon="b"] { decorator: image("/assets/high_scores_alien_2.tga"); }

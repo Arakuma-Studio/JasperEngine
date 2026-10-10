@@ -25,7 +25,7 @@ static const String document_flex_rml = R"(
 		}
 		input.checkbox {
 			background: #fff;
-			border: 1px #000;
+			border: 1px solid #000;
 		}
 	</style>
 </head>

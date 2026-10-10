@@ -522,7 +522,9 @@ RenderBox Element::GetRenderBox(BoxArea fill_area, int index, bool with_border_t
 	case BoxArea::Auto: RMLUI_ERROR;
 	}
 
-	RenderBox render_box{inner_size, box.offset, edge_sizes, meta->computed_values.border_radius()};
+	const ComputedValues& computed = meta->computed_values;
+	RenderBox render_box{inner_size, box.offset, edge_sizes, computed.border_radius()};
+	render_box.SetBorderStyles({computed.border_top_style(), computed.border_right_style(), computed.border_bottom_style(), computed.border_left_style()});
 
 	// A lowered and interrupted top border (a fieldset's legend): the painted main box starts `inset` px lower.
 	BorderTopCut cut;
@@ -2054,6 +2056,12 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	// -- Cascade (p3-cascade) --
 
 	// -- Paint (p3-paint) --
+	if (changed_properties.Contains(PropertyId::BorderTopStyle) || changed_properties.Contains(PropertyId::BorderRightStyle) ||
+		changed_properties.Contains(PropertyId::BorderBottomStyle) || changed_properties.Contains(PropertyId::BorderLeftStyle))
+	{
+		meta->background_border.DirtyBackground();
+		meta->background_border.DirtyBorder();
+	}
 
 	// -- Text (p3-text) --
 

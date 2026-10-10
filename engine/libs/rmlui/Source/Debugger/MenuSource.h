@@ -21,6 +21,7 @@ div#button-group
 button
 {
 	border-width: 1px;
+	border-style: solid;
 	border-color: #666;
 	background: #ddd;
 	margin-left: 6dp;

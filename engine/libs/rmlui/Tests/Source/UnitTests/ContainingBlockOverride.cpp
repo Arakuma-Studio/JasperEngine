@@ -33,7 +33,7 @@ const String containing_block_rml = R"(
 <head>
 	<style>
 		body { width: 800px; height: 600px; }
-		#cb { display: block; position: relative; width: 200px; height: 100px; padding: 10px; border: 5px #000; }
+		#cb { display: block; position: relative; width: 200px; height: 100px; padding: 10px; border: 5px solid #000; }
 		#abs { position: absolute; left: 10%; top: 4px; width: 50%; height: 20%; }
 		#abs-far { position: absolute; right: 10px; bottom: 10%; width: 20px; height: 10px; }
 	</style>

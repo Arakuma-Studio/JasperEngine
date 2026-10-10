@@ -47,7 +47,7 @@ h3.strong
 {
 	padding: 0 8dp 0 3dp;
 	background-color: #ddd;
-	border: 2px #aaa;
+	border: 2px solid #aaa;
 	display: inline-block;
 }
 #pseudo pseudo.active
@@ -65,6 +65,7 @@ div.header_button
 	color: #999;
 	background-color: #666;
 	border-width: 1px;
+	border-style: solid;
 	border-color: #666;
 	text-align: center;
 }

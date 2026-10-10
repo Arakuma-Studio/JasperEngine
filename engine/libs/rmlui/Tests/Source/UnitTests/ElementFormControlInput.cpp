@@ -19,7 +19,7 @@ TEST_CASE("form.input.text.no_font")
 				height: 225dp;
 			}
 			input.text {
-				border: 1px #000000;
+				border: 1px solid #000000;
 				padding: 5dp 36dp 5dp 12dp;
 				background: #fff;
 				border-radius: 8dp;

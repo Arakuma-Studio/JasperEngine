@@ -19,6 +19,7 @@
 #include "ComputeProperty.h"
 #include "ControlledLifetimeResource.h"
 #include "ElementDefinition.h"
+#include "PaintProperties.h"
 #include "PropertiesIterator.h"
 #include "PropertyShorthandDefinition.h"
 #ifdef RMLUI_MATH_EXPRESSIONS
@@ -1286,16 +1287,16 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		break;
 
 	case PropertyId::BorderTopWidth:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_top_width(ComputeBorderWidth(value)); }
+		values.border_top_width(ComputeLineWidth(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::BorderRightWidth:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_right_width(ComputeBorderWidth(value)); }
+		values.border_right_width(ComputeLineWidth(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::BorderBottomWidth:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_bottom_width(ComputeBorderWidth(value)); }
+		values.border_bottom_width(ComputeLineWidth(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::BorderLeftWidth:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_left_width(ComputeBorderWidth(value)); }
+		values.border_left_width(ComputeLineWidth(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 
 	case PropertyId::BorderTopColor:
@@ -1600,9 +1601,17 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 
 	// -- Paint (p3-paint) --
 	case PropertyId::BorderTopStyle:
+		values.border_top_style((BorderStyle)p->Get<int>());
+		break;
 	case PropertyId::BorderRightStyle:
+		values.border_right_style((BorderStyle)p->Get<int>());
+		break;
 	case PropertyId::BorderBottomStyle:
+		values.border_bottom_style((BorderStyle)p->Get<int>());
+		break;
 	case PropertyId::BorderLeftStyle:
+		values.border_left_style((BorderStyle)p->Get<int>());
+		break;
 	case PropertyId::RmlUi_BorderTopLeftRadiusX:
 	case PropertyId::RmlUi_BorderTopLeftRadiusY:
 	case PropertyId::RmlUi_BorderTopRightRadiusX:

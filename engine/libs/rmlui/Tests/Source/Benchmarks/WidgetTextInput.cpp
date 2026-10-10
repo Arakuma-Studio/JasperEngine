@@ -26,7 +26,7 @@ TEST_CASE("WidgetTextInput")
 		textarea {
 			width: 500px;
 			height: 300px;
-			border: 1px #000;
+			border: 1px solid #000;
 			background: #fff;
 		}
 	</style>

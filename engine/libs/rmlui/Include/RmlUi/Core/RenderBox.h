@@ -1,5 +1,6 @@
 #pragma once
 
+#include "StyleTypes.h"
 #include "Types.h"
 
 namespace Rml {
@@ -8,6 +9,8 @@ namespace Rml {
 using EdgeSizes = Array<float, 4>;
 // Ordered by top-left, top-right, bottom-right, bottom-left.
 using CornerSizes = Array<float, 4>;
+// The border style of each side, ordered by top, right, bottom, left.
+using BorderStyles = Array<Style::BorderStyle, 4>;
 
 /**
     Provides the data needed to generate a mesh for a given element's box.
@@ -41,6 +44,11 @@ public:
 	/// Sets the border radius of the box.
 	void SetBorderRadius(CornerSizes value) { border_radius = value; }
 
+	/// Returns the border style of each side (solid unless set: the styles of Element::GetRenderBox are the element's).
+	BorderStyles GetBorderStyles() const { return border_styles; }
+	/// Sets the border style of each side.
+	void SetBorderStyles(BorderStyles value) { border_styles = value; }
+
 	/// Returns the part of the top border that is not drawn: its begin (x) and end (y) in px from the left border edge
 	/// (Element::GetBorderTopCut). Empty when the end is not after the begin.
 	Vector2f GetBorderTopGap() const { return border_top_gap; }
@@ -53,11 +61,12 @@ private:
 	EdgeSizes border_widths;
 	CornerSizes border_radius;
 	Vector2f border_top_gap;
+	BorderStyles border_styles = {Style::BorderStyle::Solid, Style::BorderStyle::Solid, Style::BorderStyle::Solid, Style::BorderStyle::Solid};
 };
 inline bool operator==(const RenderBox& a, const RenderBox& b)
 {
 	return a.GetFillSize() == b.GetFillSize() && a.GetBorderOffset() == b.GetBorderOffset() && a.GetBorderWidths() == b.GetBorderWidths() &&
-		a.GetBorderRadius() == b.GetBorderRadius() && a.GetBorderTopGap() == b.GetBorderTopGap();
+		a.GetBorderRadius() == b.GetBorderRadius() && a.GetBorderTopGap() == b.GetBorderTopGap() && a.GetBorderStyles() == b.GetBorderStyles();
 }
 inline bool operator!=(const RenderBox& a, const RenderBox& b)
 {

@@ -90,7 +90,7 @@ static const String document_decorator_rml = R"(
 		}
 
 		div {
-			border: 20px transparent;
+			border: 20px solid transparent;
 			padding: 30px;
 			width: 50px;
 			height: 50px;
@@ -222,7 +222,7 @@ TEST_CASE("decorator.gradients_and_shader")
 
 				div {
 					margin: auto;
-					border: 10px transparent;
+					border: 10px solid transparent;
 					padding: 50px;
 					width: 100px;
 					height: 100px;

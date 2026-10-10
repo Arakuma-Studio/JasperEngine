@@ -79,7 +79,7 @@ static const String document_scroll_rml = R"(
 			height: 50px;
 			padding: 0;
 			margin: 0;
-			border: 1px #000;
+			border: 1px solid #000;
 		}
 		span:nth-child(2) { border-color: #fff; }
 		span:nth-child(3) { border-color: #f00; }

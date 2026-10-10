@@ -4,6 +4,7 @@
 #include "../../Include/RmlUi/Core/FontEngineInterface.h"
 #include "../../Include/RmlUi/Core/Types.h"
 #include "GeometryBackgroundBorder.h"
+#include "GeometryBorderStyles.h"
 
 namespace Rml {
 
@@ -90,7 +91,14 @@ void MeshUtilities::GenerateBackgroundBorder(Mesh& out_mesh, const RenderBox& re
 		geometry.DrawBackground(metrics, background_color);
 
 	if (has_border)
-		geometry.DrawBorder(metrics, border_widths, border_colors, render_box.GetBorderTopGap());
+	{
+		// Styles other than solid, and sides of different colours meeting at a rounded corner, need the styled generator.
+		const BorderStyles border_styles = render_box.GetBorderStyles();
+		if (GeometryBorderStyles::IsNeeded(metrics, border_widths, border_colors, border_styles))
+			GeometryBorderStyles::DrawBorder(vertices, indices, metrics, border_widths, border_colors, border_styles, render_box.GetBorderTopGap());
+		else
+			geometry.DrawBorder(metrics, border_widths, border_colors, render_box.GetBorderTopGap());
+	}
 
 #if 0
 	// Debug draw vertices

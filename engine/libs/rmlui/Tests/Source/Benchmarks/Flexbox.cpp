@@ -22,7 +22,7 @@ static const String rml_flexbox_basic_document = R"(
 		
 		header {
 			background-color: #9777d9;
-			border: 5dp #666;
+			border: 5dp solid #666;
 		}
 		h1 {
 			text-align: center;
@@ -32,7 +32,7 @@ static const String rml_flexbox_basic_document = R"(
 		section {
 			display: flex;
 			background: #666;
-			border: 5dp #666;
+			border: 5dp solid #666;
 		}
 		article {
 			padding: 10dp;
@@ -64,7 +64,7 @@ static const String rml_flexbox_basic_document_fast = R"(
 		
 		header {
 			background-color: #9777d9;
-			border: 5dp #666;
+			border: 5dp solid #666;
 		}
 		h1 {
 			text-align: center;
@@ -74,7 +74,7 @@ static const String rml_flexbox_basic_document_fast = R"(
 		section {
 			display: flex;
 			background: #666;
-			border: 5dp #666;
+			border: 5dp solid #666;
 			height: 650px;
 		}
 		article {
@@ -110,7 +110,7 @@ static const String rml_flexbox_basic_document_float_reference = R"(
 		
 		header {
 			background-color: #9777d9;
-			border: 5dp #666;
+			border: 5dp solid #666;
 		}
 		h1 {
 			text-align: center;
@@ -120,7 +120,7 @@ static const String rml_flexbox_basic_document_float_reference = R"(
 		section {
 			display: block;
 			background: #666;
-			border: 5dp #666;
+			border: 5dp solid #666;
 		}
 		article {
 			padding: 10dp;
@@ -246,7 +246,7 @@ static const String rml_flexbox_scroll_document = R"(
 			display: flex;
 			background-color: #555;
 			margin: 5dp 20dp 15dp;
-			border: 2dp #333;
+			border: 2dp solid #333;
 			justify-content: space-between;
 			color: #d44fff;
 		}
@@ -269,7 +269,7 @@ static const String rml_flexbox_scroll_document = R"(
 			height: 80dp;
 			width: 15dp;
 			margin: 0;
-			border: 2dp #d44fff;
+			border: 2dp solid #d44fff;
 		}
 	</style>
 </head>
@@ -480,11 +480,11 @@ static const String rml_flexbox_chatbox = R"(
 		#chat {
 			display: flex;
 			flex-direction: column;
-			border: 2px #caa;
+			border: 2px solid #caa;
 		}
 		#chat > div {
 			word-break: break-word;
-			border: 2px #aac;
+			border: 2px solid #aac;
 		}
 	</style>
 </head>
@@ -555,10 +555,10 @@ static const String rml_flexbox_shrink_to_fit = R"(
 			float: left;
 			clear: both;
 			margin: 10px 0;
-			border: 2px #e8e8e8;
+			border: 2px solid #e8e8e8;
 		}
 		.outer {
-			border: 1px red;
+			border: 1px solid red;
 			padding: 30px;
 		}
 		#basic .outer {
@@ -568,7 +568,7 @@ static const String rml_flexbox_shrink_to_fit = R"(
 			display: inline-flex;
 		}
 		.inner {
-			border: 1px blue;
+			border: 1px solid blue;
 			padding: 30px;
 		}
 	</style>

@@ -18,6 +18,7 @@ button
 	height: 18dp;
 	text-align: center;
 	border-width: 1px;
+	border-style: solid;
 	font-weight: bold;
 }
 )RCSS";
