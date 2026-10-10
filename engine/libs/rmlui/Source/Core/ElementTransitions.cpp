@@ -200,38 +200,59 @@ Property ElementStyle::ComputedForm(PropertyId id, const Property& property, con
 	return result;
 }
 
-const Property* ElementStyle::GetStartingStyleValue(PropertyId id, SharedPtr<const ElementDefinition>& starting_definition, bool& looked_up,
-	Property& storage)
+const ElementDefinition* ElementStyle::GetStartingStyleDefinition()
 {
-	if (!HasStartingStyleRules())
+	if (!HasStartingStyleRules() || !transition_snapshot)
 		return nullptr;
-	if (!looked_up)
+	TransitionSnapshot& snapshot = *transition_snapshot;
+	if (!snapshot.starting_looked_up)
 	{
-		looked_up = true;
-		const StyleSheet* style_sheet = element->GetStyleSheet();
-		if (!style_sheet)
-			return nullptr;
-		// The definition with the starting-style pseudo-class set: the element's rules and its @starting-style rules.
-		const String& pseudo_class = GetStartingStylePseudoClass();
-		pseudo_classes[pseudo_class] = PseudoClassState::Set;
-		starting_definition = style_sheet->GetElementDefinition(element);
-		pseudo_classes.erase(pseudo_class);
-		if (starting_definition == definition)
-			starting_definition.reset();
+		snapshot.starting_looked_up = true;
+		snapshot.starting_definition.reset();
+		if (const StyleSheet* style_sheet = element->GetStyleSheet())
+		{
+			// The definition with the starting-style pseudo-class set: the element's rules and its @starting-style rules.
+			const String& pseudo_class = GetStartingStylePseudoClass();
+			pseudo_classes[pseudo_class] = PseudoClassState::Set;
+			snapshot.starting_definition = style_sheet->GetElementDefinition(element);
+			pseudo_classes.erase(pseudo_class);
+			if (snapshot.starting_definition == definition)
+				snapshot.starting_definition.reset();
+		}
 	}
+	return snapshot.starting_definition.get();
+}
+
+const Property* ElementStyle::GetStartingStyleValue(PropertyId id, Property& storage)
+{
+	const ElementDefinition* starting_definition = GetStartingStyleDefinition();
 	if (!starting_definition)
 		return nullptr;
 
-	const Property* property = GetLocalProperty(id, inline_properties, starting_definition.get());
+	const Property* property = GetLocalProperty(id, inline_properties, starting_definition);
 	if (!property || property == GetLocalProperty(id, inline_properties, definition.get()))
 		return nullptr;
 
 	SmallUnorderedSet<String> variable_dependencies;
-	const PropertySources sources{element, starting_definition.get(), inline_properties, nullptr};
+	const PropertySources sources{element, starting_definition, inline_properties, nullptr};
 	const Property* resolved = ResolveVariables(sources, expanded_shorthands, id, property, variable_dependencies, storage);
 	if (resolved && resolved != &storage)
 		storage = *resolved;
 	return resolved ? &storage : nullptr;
+}
+
+bool ElementStyle::RestartTransitionsFromStartingStyle()
+{
+	if (!HasStartingStyleRules() || !GetTransitionList())
+		return false;
+	// (When the element's own style change showed it, that computation already started from the starting style; the
+	// transitions it started end at the same values, so this one starts nothing new.)
+	if (!transition_snapshot)
+		transition_snapshot = MakeUnique<TransitionSnapshot>();
+	transition_snapshot->restart = true;
+	// Any dirty property computes the style again; a transition longhand changes nothing else.
+	DirtyProperty(PropertyId::TransitionBehavior);
+	return true;
 }
 
 void ElementStyle::CaptureBeforeChangeValues(const PropertyIdSet& changed_properties, const ElementDefinition* new_definition)
@@ -270,9 +291,9 @@ const Property* ElementStyle::TransitionPrePass(PropertyId id, const ComputeCont
 	const TransitionList* list = GetTransitionList();
 	if (!list || !list->Find(id))
 		return nullptr;
-	const bool first_style = (!transition_snapshot || !transition_snapshot->initialized || !element->animation_displayed);
 	if (!transition_snapshot)
 		transition_snapshot = MakeUnique<TransitionSnapshot>();
+	const bool first_style = (!transition_snapshot->initialized || !element->animation_displayed || transition_snapshot->restart);
 	const bool displayed = (context.values.display() != Style::Display::None) && (!element->parent || element->parent->animation_displayed);
 	Property applied;
 	if (!TransitionProperty(id, first_style, displayed, context, applied))
@@ -292,10 +313,10 @@ void ElementStyle::TransitionChangedProperties(const ComputeContext& context, co
 		return;
 	}
 
-	const bool first_style = (!transition_snapshot || !transition_snapshot->initialized || !element->animation_displayed);
 	if (!transition_snapshot)
 		transition_snapshot = MakeUnique<TransitionSnapshot>();
 	TransitionSnapshot& snapshot = *transition_snapshot;
+	const bool first_style = (!snapshot.initialized || !element->animation_displayed || snapshot.restart);
 
 	// The properties to look at: the changed ones the list covers; at the first style, every one the list covers.
 	PropertyIdSet candidates;
@@ -324,6 +345,18 @@ void ElementStyle::TransitionChangedProperties(const ComputeContext& context, co
 			if (dirty.Contains(transition.id))
 				candidates.Insert(transition.id);
 	}
+	// An element without a before-change style transitions from its starting style, whatever changed: every property
+	// its transition list covers that the @starting-style rules set.
+	const ElementDefinition* starting_definition = (first_style ? GetStartingStyleDefinition() : nullptr);
+	if (starting_definition)
+	{
+		if (list->all)
+			candidates |= starting_definition->GetPropertyIds();
+		else
+			for (const Transition& transition : list->transitions)
+				candidates.Insert(transition.id);
+	}
+
 	// 'font-size' and 'line-height' transition in their pre-passes; here they only get their first values.
 	for (PropertyId id : {PropertyId::FontSize, PropertyId::LineHeight})
 	{
@@ -363,6 +396,9 @@ void ElementStyle::TransitionChangedProperties(const ComputeContext& context, co
 	snapshot.initialized = true;
 	if (make_complete)
 		snapshot.complete = true;
+	snapshot.starting_definition.reset();
+	snapshot.starting_looked_up = false;
+	snapshot.restart = false;
 }
 
 bool ElementStyle::TransitionProperty(PropertyId id, bool first_style, bool displayed, const ComputeContext& context, Property& applied)
@@ -381,10 +417,8 @@ bool ElementStyle::TransitionProperty(PropertyId id, bool first_style, bool disp
 	bool has_before = false;
 	if (first_style)
 	{
-		SharedPtr<const ElementDefinition> starting_definition;
-		bool looked_up = false;
 		Property starting_storage;
-		if (const Property* starting = GetStartingStyleValue(id, starting_definition, looked_up, starting_storage))
+		if (const Property* starting = GetStartingStyleValue(id, starting_storage))
 		{
 			before = ComputedForm(id, *starting, context);
 			has_before = true;

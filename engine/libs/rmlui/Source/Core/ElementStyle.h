@@ -131,6 +131,11 @@ public:
 	const TransitionList* GetTransitionList() const;
 	const AnimationList* GetAnimationList() const;
 
+	/// Called when the element is displayed again after it or an ancestor was 'display: none' (p3-animation): if it has
+	/// transitions and @starting-style rules exist, its style is computed again so that it transitions from its starting
+	/// style. Returns true if properties were dirtied for that.
+	bool RestartTransitionsFromStartingStyle();
+
 	/// Resolves a numeric value with units of number, percentage, length, or angle to their canonical unit (unit-less, 'px', or 'rad').
 	/// @param[in] value The value to be resolved.
 	/// @param[in] base_value The value that is scaled by the number or percentage value, if applicable.
@@ -280,8 +285,9 @@ private:
 	// A property in computed form: relative lengths resolved to px, so that a change of font size or viewport is a change.
 	Property ComputedForm(PropertyId id, const Property& property, const ComputeContext& context) const;
 	// The value of a property in the element's starting style (@starting-style), or nullptr if it gives none.
-	const Property* GetStartingStyleValue(PropertyId id, SharedPtr<const ElementDefinition>& starting_definition, bool& looked_up,
-		Property& storage);
+	const Property* GetStartingStyleValue(PropertyId id, Property& storage);
+	// The element's definition with its @starting-style rules (nullptr if they change nothing), kept in the snapshot.
+	const ElementDefinition* GetStartingStyleDefinition();
 
 	// Element these properties belong to
 	Element* element;

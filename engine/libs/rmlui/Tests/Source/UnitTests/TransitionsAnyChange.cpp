@@ -235,6 +235,41 @@ TEST_CASE("TransitionsAnyChange.starting_style")
 	CHECK(pop->GetComputedValues().opacity() == doctest::Approx(0.5f));
 }
 
+TEST_CASE("TransitionsAnyChange.starting_style_when_shown")
+{
+	Fixture f(R"(
+		#parent.closed { display: none; }
+		#a { width: 40px; opacity: 1; transition: opacity 1s linear; }
+		#b { width: 40px; opacity: 1; display: none; transition: opacity 1s linear, width 1s linear; }
+		#b.open { display: block; }
+		@starting-style {
+			#a { opacity: 0; }
+			#b.open { opacity: 0; width: 10px; }
+		}
+	)");
+	f.clock.AdvanceTo(1.5);
+	CHECK(f.a->GetComputedValues().opacity() == doctest::Approx(1.f));
+
+	// Shown by a class that changes only 'display': every transitioned property starts from the starting style.
+	f.b->SetClass("open", true);
+	f.Update();
+	CHECK(f.b->GetComputedValues().opacity() == doctest::Approx(0.f));
+	CHECK(Width(f.b) == doctest::Approx(10.f));
+	f.clock.AdvanceTo(2.0);
+	CHECK(f.b->GetComputedValues().opacity() == doctest::Approx(0.5f));
+	CHECK(Width(f.b) == doctest::Approx(25.f));
+
+	// Shown through an ancestor, with no change of its own style.
+	f.parent->SetClass("closed", true);
+	f.Update();
+	f.clock.AdvanceTo(2.2);
+	f.parent->SetClass("closed", false);
+	f.Update();
+	CHECK(f.a->GetComputedValues().opacity() == doctest::Approx(0.f));
+	f.clock.AdvanceTo(2.7);
+	CHECK(f.a->GetComputedValues().opacity() == doctest::Approx(0.5f));
+}
+
 TEST_CASE("TransitionsAnyChange.discrete")
 {
 	Fixture f(R"(

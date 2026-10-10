@@ -6,6 +6,7 @@
 namespace Rml {
 
 class Element;
+class ElementDefinition;
 class PropertyDefinition;
 
 /**
@@ -27,6 +28,12 @@ struct TransitionSnapshot {
 	bool complete = false;
 	// The value the pre-passes of ComputeValues apply (a transition's start value).
 	Property applied;
+	// The element's definition with its @starting-style rules, looked up once per style computation that needs it.
+	SharedPtr<const ElementDefinition> starting_definition;
+	bool starting_looked_up = false;
+	// The element is shown again (it or an ancestor was 'display: none') without a change of its own style: its next
+	// style computation transitions from its starting style.
+	bool restart = false;
 };
 
 /// The pseudo-class the style sheet parser gives the rules of @starting-style blocks, as a selector suffix.

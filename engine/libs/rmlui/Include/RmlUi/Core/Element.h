@@ -741,7 +741,8 @@ private:
 	void AdvanceAnimations();
 
 	/// Follows the element's display (and its ancestors'): CSS animations and transitions stop while it is 'none', and restart after.
-	void UpdateAnimationDisplay();
+	/// @return True if the element's style must be computed again (shown again: transitions from its @starting-style).
+	bool UpdateAnimationDisplay();
 
 	// State flags are packed together for compact data layout.
 	bool local_stacking_context;

@@ -137,7 +137,7 @@ void Element::Update(float dp_ratio, Vector2f vp_dimensions)
 	meta->scroll.Update();
 
 	UpdateProperties(dp_ratio, vp_dimensions);
-	UpdateAnimationDisplay();
+	const bool restyle = UpdateAnimationDisplay();
 
 	// Do en extra pass over the animations and properties if the 'animation' property was just changed.
 	if (dirty_animation)
@@ -146,6 +146,8 @@ void Element::Update(float dp_ratio, Vector2f vp_dimensions)
 		AdvanceAnimations();
 		UpdateProperties(dp_ratio, vp_dimensions);
 	}
+	else if (restyle)
+		UpdateProperties(dp_ratio, vp_dimensions);
 
 	meta->effects.InstanceEffects();
 
@@ -3115,19 +3117,20 @@ void Element::AdvanceAnimations()
 		DispatchEvent(event.id, event.parameters);
 }
 
-void Element::UpdateAnimationDisplay()
+bool Element::UpdateAnimationDisplay()
 {
 	const bool displayed = (meta->computed_values.display() != Style::Display::None) && (!parent || parent->animation_displayed);
 	if (displayed == animation_displayed)
-		return;
+		return false;
 	animation_displayed = displayed;
 
 	// CSS: an element (or an ancestor) set to 'display: none' cancels its animations and transitions; shown again, its animations start
-	// from their beginning.
+	// from their beginning, and its transitions from its @starting-style.
 	if (meta->computed_values.animation() || !animations.empty())
 		dirty_animation = true;
 	if (!animations.empty())
 		dirty_transition = true;
+	return displayed && meta->style.RestartTransitionsFromStartingStyle();
 }
 
 void Element::DirtyTransformState(bool perspective_dirty, bool transform_dirty)
