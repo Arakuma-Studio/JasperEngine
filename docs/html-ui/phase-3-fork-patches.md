@@ -248,7 +248,8 @@ different things and neither depends on the other:
 
 - `PropertyId` (`ID.h:43`) becomes `enum class PropertyId : uint16_t` with `MaxNumIds = 256`
   (6.3 uses 101 of 128; phase 3 adds ~70 longhands, Appendix B). `PropertyIdSet`
-  (`PropertyIdSet.h:21`) follows automatically (`std::bitset<256>`). Check every
+  (`PropertyIdSet.h:21`) follows (as implemented: four 64-bit words iterated by trailing-zero
+  count, as 6.3's two were, rather than `std::bitset<256>`). Check every
   `static_cast<uint8_t>`/`uint8_t` storage of a `PropertyId` (grep `uint8_t` near `PropertyId`).
 - `ShorthandId` stays `uint8_t` (max `0xff`; ~30 used + ~30 added).
 - `Unit` (`Unit.h:8`) becomes `enum class Unit : uint64_t`. PR #983 takes bit 30
@@ -409,6 +410,84 @@ PR #983 (§3.2) is applied by `p3-base` as its first commit series, because it r
 hottest files (`ComputedValues.h`, `StyleTypes.h`, `ElementStyle.cpp`, `ElementAnimation.cpp`,
 `PropertyParserAnimation.cpp`, `PropertyParserTransform.cpp`); everything else in groundwork is
 applied on top of it.
+
+#### 3.1.12 `p3-base` as implemented
+
+Where the implementation differs from or makes precise §3.1.1–3.1.11 and §3.2 (FORK.md rows
+P3-1…P3-11 list the commits):
+
+- **Order.** PR #983 (P3-1) is the first commit; P3-2…P3-11 follow in the order of §3.1.3–3.1.10.
+  Its tests and our own run in the vendored suite (`tools/htmlui/run-rmlui-tests.sh`), which
+  defines `RMLUI_MATH_EXPRESSIONS` as the engine does. The media-query cases of
+  `Calculation.cpp` expect the WPT results at the 16px initial font size.
+- **Initial values (§3.1.2).** Done: `font-size: 16px`, `color: black`, `min-width`/`min-height:
+  auto` (computed `LengthPercentageAuto`; layout reads `auto` as 0 until p3-layout's automatic
+  minimum size), alignment `normal` (`justify-items: legacy`), `opacity` not inherited,
+  `visibility` inherited. Deferred: `line-height` stays `1.2` (19.2px at 16px) until p3-values
+  adds `normal` (§3.3.6); `border-*-color` stays registered as `black` because `currentcolor`
+  cannot be declared before p3-values (§3.3.2), but an element that declares no border colour
+  computes it to its own `color` (a post-pass in `ComputeValues`, recomputed when `color`
+  changes), which is the CSS initial value's effect. `opacity`: the property is not inherited and
+  `ComputedValues::opacity()` stays what rendering multiplies by: the element's opacity times its
+  parent's computed `opacity()` (the "draw opacity"); p3-paint's group opacity (§3.8) replaces
+  the product and moves the field. A change of the inherited `visibility` alone (showing a
+  document) takes the parent's value without recomputing the element's other values (`df6da7d8`;
+  without it, `custom_properties.data_model` warned twice and loading a document cost 10 % more).
+  Phase-2 table data: `rmluiDefaultDiffers` is now false for `color`, `font-size`,
+  `border-*-color` (physical, logical, shorthand), `min-width`, `min-height`.
+  `InitialValues.cpp` asserts, for every registered property, that its registered default
+  computes to the default-constructed value.
+- **Capacity (§3.1.3).** Appendix B ids are in `ID.h`, grouped per package, and reserved without
+  a name (`IdNameMap::ReserveUnnamed`): a package registers its own with the usual
+  `RegisterProperty`/`RegisterShorthand`; an unregistered id has no name and parses nothing.
+  `will-change` is registered (`auto` or a string).
+- **Shorthands (§3.1.4).** `PropertySpecification::SetShorthandDefaults`, `SplitCommaList`,
+  `SplitWhitespaceList` (both parenthesis- and quote-aware) and `ParseAnyOrderShorthand` (for
+  Custom parsers that delegate) are public. `border-top` etc. keep `FallThrough` until p3-paint
+  re-registers them with `AnyOrder` (their longhands change there).
+- **Style values (§3.1.5).** `ResolveLengthPercentage` takes `Element&` (calc resolution reads
+  the element's font and the context's viewport); the value type is `LengthPercentageValue`
+  (`NumericValue` or `CalculationPtr`) with `ParseLengthPercentage(String, LengthPercentageValue&)`
+  and `ParsePosition(const StringList& tokens, LengthPercentageValue& x, LengthPercentageValue& y)`
+  for p3-values' `<position>` (§3.3.3) and p3-paint's backgrounds.
+- **Layout children (§3.1.6).** `grid`/`inline-grid` are in the enum and laid out as block /
+  inline-block, but the `display` keyword list gains only `list-item` and `contents` now: the
+  grid keywords are parsed once p3-grid lands (otherwise `ForkFeature::Grid`'s probe would turn
+  true early). `list-item` lays out as `block` until p3-cascade's markers. Lists come from a
+  reused stack (`ScopedLayoutChildList`) so block layout does not allocate per container. A change
+  of `order` or `display` dirties the parent's stacking context, so paint follows `order`.
+- **Alignment (§3.1.7).** `baseline` stays the existing `Baseline` value (= first baseline;
+  `first baseline` parses to it) and `LastBaseline` is appended; `Left`/`Right` and `Legacy`
+  only in the justify enums. `safe`/`unsafe` are stored in the keyword property's value above the
+  keyword (`1 << 8` safe, `2 << 8` unsafe); `ComputedValues` returns the keyword from the
+  usual accessor and the flag from `align_items_overflow()` etc. `legacy left/right/center`
+  computes to `legacy`. Flex layout reads `normal` as 6.3's defaults (`stretch` items,
+  `flex-start` content), `start`/`self-start`/`left` as `flex-start` and `end`/`self-end`/`right`
+  as `flex-end`; p3-layout owns the exact mapping (§3.12.7).
+- **Intrinsic sizing (§3.1.8).** The min-content measurement formats at available width 0 as
+  planned; while it runs, nested shrink-to-fit boxes (floats, inline-blocks) take their own
+  min-content width instead of their shrink-to-fit width (`LayoutDetails::GetShrinkToFitWidth`
+  checks a measuring flag). Tables are not measured: without a definite width their
+  min-content and max-content widths are their edges until p3-layout adds table measurement. `LayoutMeasureCache` keys are element,
+  kind (`MinContentWidth`, `MaxContentWidth`, `HeightForWidth`), containing block and width;
+  `LayoutMeasureCache::Scope` makes one current for a `FormatElement` call (nested calls get
+  their own) and `LayoutMeasureCache::Get()` returns it.
+- **Containing-block override (§3.1.9).** `std::optional<Rectanglef>` (RmlUi has no `Optional`);
+  layout code asks `LayoutDetails::GetContainingBlock(container, element)`, which honours it.
+- **Animation layers (§3.1.10).** `ElementStyle::SetTransitionProperty/RemoveTransitionProperty/
+  SetAnimatedProperty/RemoveAnimatedProperty/GetTransitionProperties/GetAnimatedProperties`; the
+  dictionaries are allocated on first use. The animation code still writes inline properties until
+  p3-animation moves it onto the layers.
+- **`Calc` (§3.2, Appendix A).** `kPresent[Calc]` is true. Compat keeps a valid `calc()`,
+  `min()`, `max()`, `clamp()` only where the declaration reaches RCSS as written: properties
+  without a rewrite and the `Sizing`, `Gap`, `FontSize`, `LineHeight`, `ZIndex`, `Opacity`
+  rewrites (`NormalizeContext::calcNative`) and custom properties; `RcssGrammar::accepts(property,
+  value, fork)` checks the result (a calc() must have the property's unit class: lengths for
+  `box-shadow`, times for `transition`/`animation`). Every other rewrite (shapes, gradients,
+  transforms, …) still folds as in phase 2, and a reduction with `Calc` present reports
+  `HTMLUI-CSS-0006` instead of the fork-fallback code. An invalid calc() is
+  `HTMLUI-CSS-0004` as in the browser. p3-values widens `calcNative` as its value types learn
+  calc().
 
 ---
 
@@ -2028,7 +2107,7 @@ is needed.
 | Phase-3 feature | `ForkFeature` | Phase-2 behaviour while absent (kept, testable by forcing absent) | Package |
 |---|---|---|---|
 | root model | none | phase 2's mapping is final (§3.1.1); root `%`/`em` font sizes converted to px in stylesheets | p3-base |
-| `calc()`, `min()`, `max()`, `clamp()` | `Calc` | static folding with load-time viewport values; other math functions stay folded in every state | p3-values (p3-base lands PR #983) |
+| `calc()`, `min()`, `max()`, `clamp()` | `Calc` | static folding with load-time viewport values; other math functions stay folded in every state | p3-base lands PR #983 and makes `Calc` present for the rewrites that write a value as is (§3.1.12); p3-values widens the set |
 | `rgba()` alpha 0–1, space syntax, named colours, `hwb()`, `color-mix()` | none | every colour normalized to `#rrggbbaa` (valid for the fork too) | p3-values |
 | `currentcolor` | **`CurrentColor`** | `--html-current-color` companion written on `color`, read through `var()` | p3-values |
 | `font-family` lists | none | unquoted comma list; the fork's `font_family` parser canonicalizes it, the engine font engine resolves it (contract test `FontFamilyListTest`) | p3-values |
