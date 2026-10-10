@@ -166,7 +166,8 @@ void jasperengine::htmlui::compat::rewriteFontSize(DeclContext& context){
         unsupportedValue(context, "use a length, a percentage or a size keyword");
         return;
     }
-    if (isRootRule(context) && (v.isToken(TokenType::Percentage) || (v.isToken(TokenType::Dimension) && equalsNoCase(v.token.unit, "em")))){
+    // (the rule is read only for a relative size)
+    if ((v.isToken(TokenType::Percentage) || (v.isToken(TokenType::Dimension) && equalsNoCase(v.token.unit, "em"))) && isRootRule(context)){
         // the RML root has no parent font size: CSS resolves it against the initial 16px
         const double px = v.isToken(TokenType::Percentage) ? 16.0 * v.token.number / 100.0 : 16.0 * v.token.number;
         context.emit("font-size", formatNumber(px, 4) + "px");

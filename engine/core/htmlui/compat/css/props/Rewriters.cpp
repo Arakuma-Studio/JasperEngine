@@ -406,7 +406,7 @@ std::string props::resolveUrl(DeclContext& context, const ComponentValue& value,
 }
 
 std::optional<TypedVar> props::wholeVar(DeclContext& context, const std::string& family){
-    context.session.memoTaint++;
+    // (a value that is not one var() reads nothing but itself; typedVar counts in memoTaint)
     if (context.value.size() != 1 || !isVar(context.value[0]))
         return std::nullopt;
     std::optional<TypedVar> typed = context.session.typedVar(context.value[0], family);
