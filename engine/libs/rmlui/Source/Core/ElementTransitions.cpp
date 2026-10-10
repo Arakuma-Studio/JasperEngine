@@ -130,14 +130,14 @@ Property ElementStyle::ComputedForm(PropertyId id, const Property& property, con
 		if (parent && (property.unit == Unit::EM || property.unit == Unit::PERCENT))
 			size = property.Get<float>() * (property.unit == Unit::PERCENT ? 0.01f : 1.f) * parent->GetStyle()->GetDeclaredFontSize(context);
 		else
-			size = ComputeFontsize(&property, context.values, context.parent_values, context.document_values, context.dp_ratio, context.vp_dimensions);
+			size =
+				ComputeFontsize(&property, context.values, context.parent_values, context.document_values, context.dp_ratio, context.vp_dimensions);
 		result.value = size;
 		result.unit = Unit::PX;
 	}
 	else if (Any(property.unit & Unit::LENGTH) && property.unit != Unit::PX)
 	{
-		const float document_font_size =
-			(context.document_values ? context.document_values->font_size() : DefaultComputedValues().font_size());
+		const float document_font_size = (context.document_values ? context.document_values->font_size() : DefaultComputedValues().font_size());
 		const float font_size = (property.unit == Unit::EM ? GetDeclaredFontSize(context) : context.values.font_size());
 		result.value = ComputeLength(property.GetNumericValue(), font_size, document_font_size, context.dp_ratio, context.vp_dimensions);
 		result.unit = Unit::PX;
@@ -249,8 +249,8 @@ const Property* ElementStyle::TransitionPrePass(PropertyId id, const ComputeCont
 	return &transition_snapshot->applied;
 }
 
-void ElementStyle::TransitionChangedProperties(const ComputeContext& context, const PropertyIdSet& dirty, float font_size,
-	float document_font_size, bool& dirty_font_face_handle)
+void ElementStyle::TransitionChangedProperties(const ComputeContext& context, const PropertyIdSet& dirty, float font_size, float document_font_size,
+	bool& dirty_font_face_handle)
 {
 	const TransitionList* list = GetTransitionList();
 	if (!list)

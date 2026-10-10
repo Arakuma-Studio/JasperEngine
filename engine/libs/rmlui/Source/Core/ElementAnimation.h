@@ -11,7 +11,7 @@ struct AnimationKey {
 	AnimationKey(float time, const Property& property, Tween tween, bool has_tween = true) :
 		time(time), property(property), tween(tween), has_tween(has_tween)
 	{}
-	float time; // The key's offset in the iteration, in [0, 1].
+	float time;     // The key's offset in the iteration, in [0, 1].
 	Property property;
 	Tween tween;    // The easing of the segment that starts at this key (the last key's is unused).
 	bool has_tween; // False: the segment takes the animation's timing function (a keyframe without its own).
@@ -75,11 +75,11 @@ public:
 	/// The phase and directed progress at a time.
 	struct Sample {
 		AnimationPhase phase = AnimationPhase::Before;
-		bool has_value = false;      // The animation applies a value (active, or filling).
-		float progress = 0.f;        // Directed iteration progress, in [0, 1].
-		double iteration = 0;        // The current iteration.
-		bool before_flag = false;    // For steps(): before the active interval in the playback direction.
-		float elapsed_time = 0.f;    // Active time (seconds, without the delay), for events.
+		bool has_value = false;   // The animation applies a value (active, or filling).
+		float progress = 0.f;     // Directed iteration progress, in [0, 1].
+		double iteration = 0;     // The current iteration.
+		bool before_flag = false; // For steps(): before the active interval in the playback direction.
+		float elapsed_time = 0.f; // Active time (seconds, without the delay), for events.
 	};
 	Sample GetSample(double world_time) const;
 
@@ -143,15 +143,15 @@ private:
 	Vector<AnimationTrack> tracks;
 
 	// Timing.
-	double start_time = 0;   // World time of local time 0 (the start of the delay).
+	double start_time = 0; // World time of local time 0 (the start of the delay).
 	float delay = 0;
-	float duration = 0;      // Of one iteration.
+	float duration = 0;    // Of one iteration.
 	float iteration_count = 1;
 	AnimationDirection direction = AnimationDirection::Normal;
 	AnimationFillMode fill_mode = AnimationFillMode::None;
 	bool paused = false;
-	double hold_time = 0;    // The local time while paused.
-	Tween timing_function;   // CSS animations: the easing of keys without their own; transitions: their easing.
+	double hold_time = 0;  // The local time while paused.
+	Tween timing_function; // CSS animations: the easing of keys without their own; transitions: their easing.
 
 	// CSS animations.
 	String name;

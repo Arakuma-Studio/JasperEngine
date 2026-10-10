@@ -260,8 +260,8 @@ String Tween::to_string() const
 		for (const Keyword& keyword : keywords)
 			if (std::equal(bezier, bezier + 4, keyword.p))
 				return keyword.name;
-		return "cubic-bezier(" + FormatEasingNumber(bezier[0]) + ", " + FormatEasingNumber(bezier[1]) + ", " + FormatEasingNumber(bezier[2]) +
-			", " + FormatEasingNumber(bezier[3]) + ")";
+		return "cubic-bezier(" + FormatEasingNumber(bezier[0]) + ", " + FormatEasingNumber(bezier[1]) + ", " + FormatEasingNumber(bezier[2]) + ", " +
+			FormatEasingNumber(bezier[3]) + ")";
 	}
 	case Kind::Steps:
 	{

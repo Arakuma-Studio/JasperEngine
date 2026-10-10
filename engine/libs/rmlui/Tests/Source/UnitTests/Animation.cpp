@@ -1157,8 +1157,8 @@ TEST_CASE("animation.computed_lists")
 		if (const AnimationList* list = element->GetComputedValues().animation())
 			for (const Animation& a : *list)
 				result += a.name +
-					CreateString(" %g %g %g %d %d %d %s; ", a.duration, a.delay, a.iteration_count, (int)a.direction, (int)a.fill_mode,
-						(int)a.paused, a.tween.to_string().c_str());
+					CreateString(" %g %g %g %d %d %d %s; ", a.duration, a.delay, a.iteration_count, (int)a.direction, (int)a.fill_mode, (int)a.paused,
+						a.tween.to_string().c_str());
 		return result;
 	};
 

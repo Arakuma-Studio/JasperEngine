@@ -19,8 +19,8 @@
 #include "ComputeProperty.h"
 #include "ControlledLifetimeResource.h"
 #include "ElementDefinition.h"
-#include "PropertiesIterator.h"
 #include "ElementTransitions.h"
+#include "PropertiesIterator.h"
 #include "PropertyParserAnimation.h"
 #include "PropertyShorthandDefinition.h"
 #ifdef RMLUI_MATH_EXPRESSIONS
@@ -499,7 +499,6 @@ void ElementStyle::UpdateDefinition()
 				if (p0 && p1 && *p0 == *p1 && p0->unit != Unit::VAR_EXPRESSION && p1->unit != Unit::SHORTHAND_PLACEHOLDER)
 					changed_properties.Erase(id);
 			}
-
 		}
 
 		// Transitions (p3-animation): the before-change values of properties whose transition comes with the new definition.

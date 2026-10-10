@@ -54,7 +54,8 @@ class EventLog : public EventListener {
 public:
 	void ProcessEvent(Event& event) override
 	{
-		log.push_back(event.GetType() + " " + event.GetParameter<String>("propertyName", "") + CreateString(" %g", event.GetParameter<float>("elapsedTime", -1.f)));
+		log.push_back(event.GetType() + " " + event.GetParameter<String>("propertyName", "") +
+			CreateString(" %g", event.GetParameter<float>("elapsedTime", -1.f)));
 	}
 	StringList log;
 };

@@ -1219,8 +1219,7 @@ ElementAnimation::Sample ElementAnimation::GetSample(double world_time) const
 	}
 
 	sample.progress = (float)(forwards ? simple_progress : 1.0 - simple_progress);
-	sample.before_flag =
-		((sample.phase == AnimationPhase::Before && forwards) || (sample.phase == AnimationPhase::After && !forwards));
+	sample.before_flag = ((sample.phase == AnimationPhase::Before && forwards) || (sample.phase == AnimationPhase::After && !forwards));
 	return sample;
 }
 
