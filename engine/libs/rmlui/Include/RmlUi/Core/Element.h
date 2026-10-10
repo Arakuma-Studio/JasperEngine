@@ -755,6 +755,8 @@ private:
 	bool dirty_transform : 1;
 	bool dirty_perspective : 1;
 
+	bool display_contents : 1; // The computed 'display' is 'contents' (its children are laid out and painted in its place).
+
 	OwnedElementList children;
 	int num_non_dom_children;
 

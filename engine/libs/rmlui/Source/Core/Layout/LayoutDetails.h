@@ -145,6 +145,9 @@ public:
 	}
 
 private:
+	/// Appends the layout children of an element to a list (GetLayoutChildren without the ordering).
+	static void AppendLayoutChildren(Element* parent, LayoutChildList& children);
+
 	/// Calculates and returns the content size for replaced elements.
 	static Vector2f CalculateSizeForReplacedElement(Vector2f specified_content_size, Vector2f min_size, Vector2f max_size, Vector2f intrinsic_size,
 		float intrinsic_ratio);

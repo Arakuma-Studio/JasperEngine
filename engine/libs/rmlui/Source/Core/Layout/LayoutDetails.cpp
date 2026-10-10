@@ -45,10 +45,11 @@ ScopedLayoutChildList::~ScopedLayoutChildList()
 	layout_child_lists_borrowed--;
 }
 
-static void AppendLayoutChildren(Element* parent, LayoutChildList& children)
+void LayoutDetails::AppendLayoutChildren(Element* parent, LayoutChildList& children)
 {
+	// Reads the children and their 'display: contents' flag directly: this runs for every box of every layout.
 	auto Append = [&children](Element* child) {
-		if (child->GetComputedValues().display() == Style::Display::Contents)
+		if (child->display_contents)
 			AppendLayoutChildren(child, children);
 		else
 			children.push_back(child);
@@ -58,9 +59,9 @@ static void AppendLayoutChildren(Element* parent, LayoutChildList& children)
 		Append(marker);
 	if (Element* before = parent->GetPseudoElement(PseudoElementType::Before))
 		Append(before);
-	const int num_children = parent->GetNumChildren();
-	for (int i = 0; i < num_children; i++)
-		Append(parent->GetChild(i));
+	const size_t num_dom_children = parent->children.size() - (size_t)parent->num_non_dom_children;
+	for (size_t i = 0; i < num_dom_children; i++)
+		Append(parent->children[i].get());
 	if (Element* after = parent->GetPseudoElement(PseudoElementType::After))
 		Append(after);
 }

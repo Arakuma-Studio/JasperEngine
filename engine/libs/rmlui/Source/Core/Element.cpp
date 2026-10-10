@@ -73,8 +73,8 @@ RMLUI_RTTI_Define(Element)
 Element::Element(const String& tag) :
 	local_stacking_context(false), local_stacking_context_forced(false), stacking_context_dirty(false), computed_values_are_default_initialized(true),
 	visible(true), offset_fixed(false), absolute_offset_dirty(true), rounded_main_padding_size_dirty(true), dirty_definition(false),
-	dirty_child_definitions(false), dirty_animation(false), dirty_transition(false), dirty_transform(false), dirty_perspective(false), tag(tag),
-	relative_offset_base(0, 0), relative_offset_position(0, 0), absolute_offset(0, 0), scroll_offset(0, 0)
+	dirty_child_definitions(false), dirty_animation(false), dirty_transition(false), dirty_transform(false), dirty_perspective(false),
+	display_contents(false), tag(tag), relative_offset_base(0, 0), relative_offset_position(0, 0), absolute_offset(0, 0), scroll_offset(0, 0)
 {
 	RMLUI_ASSERT(tag == StringUtilities::ToLower(tag));
 	parent = nullptr;
@@ -2034,8 +2034,20 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	// -- Groundwork (p3-base) --
 	// Children are painted in layout order: flex items by 'order', the children of a 'display: contents' element in its
 	// parent's place (Element::AddChildrenToStackingContext).
-	if (parent && (changed_properties.Contains(PropertyId::Order) || changed_properties.Contains(PropertyId::Display)))
-		parent->DirtyStackingContext();
+	{
+		bool paint_order_changed = changed_properties.Contains(PropertyId::Order);
+		if (changed_properties.Contains(PropertyId::Display))
+		{
+			const bool new_display_contents = (meta->computed_values.display() == Style::Display::Contents);
+			if (new_display_contents != display_contents)
+			{
+				display_contents = new_display_contents;
+				paint_order_changed = true;
+			}
+		}
+		if (paint_order_changed && parent)
+			parent->DirtyStackingContext();
+	}
 
 	// -- Values (p3-values) --
 
