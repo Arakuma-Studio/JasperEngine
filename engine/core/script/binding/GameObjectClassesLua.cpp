@@ -395,6 +395,18 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, float>(&Skybox::setShaderUniform))
         .addFunction("getShaderUniform", &Skybox::getShaderUniform)
         .addFunction("removeShaderUniform", &Skybox::removeShaderUniform)
+        // shader library: setShaderParam sets a @property (as setShaderUniform), getShaderParam
+        // falls back to the manifest default
+        .addFunction("setShaderParam",
+            luabridge::overload<const std::string&, const Vector4&>(&Skybox::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector3&>(&Skybox::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector2&>(&Skybox::setShaderUniform),
+            luabridge::overload<const std::string&, float>(&Skybox::setShaderUniform))
+        .addFunction("getShaderParam", &Skybox::getShaderParam)
+        .addFunction("setShaderTexture", &Skybox::setShaderTexture)
+        .addFunction("getShaderTexture", &Skybox::getShaderTexture)
+        .addFunction("setShaderFeature", &Skybox::setShaderFeature)
+        .addFunction("isShaderFeatureEnabled", &Skybox::isShaderFeatureEnabled)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -939,6 +951,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, float>(&Points::setShaderUniform))
         .addFunction("getShaderUniform", &Points::getShaderUniform)
         .addFunction("removeShaderUniform", &Points::removeShaderUniform)
+        // shader library: setShaderParam sets a @property (as setShaderUniform), getShaderParam
+        // falls back to the manifest default
+        .addFunction("setShaderParam",
+            luabridge::overload<const std::string&, const Vector4&>(&Points::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector3&>(&Points::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector2&>(&Points::setShaderUniform),
+            luabridge::overload<const std::string&, float>(&Points::setShaderUniform))
+        .addFunction("getShaderParam", &Points::getShaderParam)
+        .addFunction("setShaderTexture", &Points::setShaderTexture)
+        .addFunction("getShaderTexture", &Points::getShaderTexture)
+        .addFunction("setShaderFeature", &Points::setShaderFeature)
+        .addFunction("isShaderFeatureEnabled", &Points::isShaderFeatureEnabled)
+        .addProperty("blendMode", &Points::getBlendMode, &Points::setBlendMode)
+        .addProperty("depthWrite", &Points::getDepthWrite, &Points::setDepthWrite)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -972,6 +998,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, float>(&LineRenderer::setShaderUniform))
         .addFunction("getShaderUniform", &LineRenderer::getShaderUniform)
         .addFunction("removeShaderUniform", &LineRenderer::removeShaderUniform)
+        // shader library: setShaderParam sets a @property (as setShaderUniform), getShaderParam
+        // falls back to the manifest default
+        .addFunction("setShaderParam",
+            luabridge::overload<const std::string&, const Vector4&>(&LineRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector3&>(&LineRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector2&>(&LineRenderer::setShaderUniform),
+            luabridge::overload<const std::string&, float>(&LineRenderer::setShaderUniform))
+        .addFunction("getShaderParam", &LineRenderer::getShaderParam)
+        .addFunction("setShaderTexture", &LineRenderer::setShaderTexture)
+        .addFunction("getShaderTexture", &LineRenderer::getShaderTexture)
+        .addFunction("setShaderFeature", &LineRenderer::setShaderFeature)
+        .addFunction("isShaderFeatureEnabled", &LineRenderer::isShaderFeatureEnabled)
+        .addProperty("blendMode", &LineRenderer::getBlendMode, &LineRenderer::setBlendMode)
+        .addProperty("depthWrite", &LineRenderer::getDepthWrite, &LineRenderer::setDepthWrite)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1077,6 +1117,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, float>(&Polygon::setShaderUniform))
         .addFunction("getShaderUniform", &Polygon::getShaderUniform)
         .addFunction("removeShaderUniform", &Polygon::removeShaderUniform)
+        // shader library: setShaderParam sets a @property (as setShaderUniform), getShaderParam
+        // falls back to the manifest default
+        .addFunction("setShaderParam",
+            luabridge::overload<const std::string&, const Vector4&>(&Polygon::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector3&>(&Polygon::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector2&>(&Polygon::setShaderUniform),
+            luabridge::overload<const std::string&, float>(&Polygon::setShaderUniform))
+        .addFunction("getShaderParam", &Polygon::getShaderParam)
+        .addFunction("setShaderTexture", &Polygon::setShaderTexture)
+        .addFunction("getShaderTexture", &Polygon::getShaderTexture)
+        .addFunction("setShaderFeature", &Polygon::setShaderFeature)
+        .addFunction("isShaderFeatureEnabled", &Polygon::isShaderFeatureEnabled)
+        .addProperty("blendMode", &Polygon::getBlendMode, &Polygon::setBlendMode)
+        .addProperty("depthWrite", &Polygon::getDepthWrite, &Polygon::setDepthWrite)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1117,6 +1171,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, float>(&Text::setShaderUniform))
         .addFunction("getShaderUniform", &Text::getShaderUniform)
         .addFunction("removeShaderUniform", &Text::removeShaderUniform)
+        // shader library: setShaderParam sets a @property (as setShaderUniform), getShaderParam
+        // falls back to the manifest default
+        .addFunction("setShaderParam",
+            luabridge::overload<const std::string&, const Vector4&>(&Text::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector3&>(&Text::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector2&>(&Text::setShaderUniform),
+            luabridge::overload<const std::string&, float>(&Text::setShaderUniform))
+        .addFunction("getShaderParam", &Text::getShaderParam)
+        .addFunction("setShaderTexture", &Text::setShaderTexture)
+        .addFunction("getShaderTexture", &Text::getShaderTexture)
+        .addFunction("setShaderFeature", &Text::setShaderFeature)
+        .addFunction("isShaderFeatureEnabled", &Text::isShaderFeatureEnabled)
+        .addProperty("blendMode", &Text::getBlendMode, &Text::setBlendMode)
+        .addProperty("depthWrite", &Text::getDepthWrite, &Text::setDepthWrite)
         .addProperty("pivotBaseline", &Text::isPivotBaseline, &Text::setPivotBaseline)
         .addProperty("pivotCentered", &Text::isPivotCentered, &Text::setPivotCentered)
         .addFunction("getAABB", &Text::getAABB)
@@ -1155,6 +1223,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, float>(&Image::setShaderUniform))
         .addFunction("getShaderUniform", &Image::getShaderUniform)
         .addFunction("removeShaderUniform", &Image::removeShaderUniform)
+        // shader library: setShaderParam sets a @property (as setShaderUniform), getShaderParam
+        // falls back to the manifest default
+        .addFunction("setShaderParam",
+            luabridge::overload<const std::string&, const Vector4&>(&Image::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector3&>(&Image::setShaderUniform),
+            luabridge::overload<const std::string&, const Vector2&>(&Image::setShaderUniform),
+            luabridge::overload<const std::string&, float>(&Image::setShaderUniform))
+        .addFunction("getShaderParam", &Image::getShaderParam)
+        .addFunction("setShaderTexture", &Image::setShaderTexture)
+        .addFunction("getShaderTexture", &Image::getShaderTexture)
+        .addFunction("setShaderFeature", &Image::setShaderFeature)
+        .addFunction("isShaderFeatureEnabled", &Image::isShaderFeatureEnabled)
+        .addProperty("blendMode", &Image::getBlendMode, &Image::setBlendMode)
+        .addProperty("depthWrite", &Image::getDepthWrite, &Image::setDepthWrite)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

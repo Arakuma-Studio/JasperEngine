@@ -30,6 +30,7 @@
 #include "command/type/ComponentValuesCmd.h"
 #include "util/EntityClipboard.h"
 #include "command/type/ForkShaderCmd.h"
+#include "shader/ShaderManifest.h"
 #include "command/type/ScenePropertyCmd.h"
 #include "render/SceneRender2D.h"
 #include "window/ProjectWindow.h"
@@ -162,6 +163,11 @@ static std::vector<editor::EnumEntry> entriesLightType = {
 static std::vector<editor::EnumEntry> entriesShadowCaster2DShape = {
     { (int)ShadowCaster2DShape::AUTO_QUAD, "Auto Quad" },
     { (int)ShadowCaster2DShape::POLYGON, "Polygon" }
+};
+
+static std::vector<editor::EnumEntry> entriesCullingMode = {
+    { (int)CullingMode::BACK, "Back" },
+    { (int)CullingMode::FRONT, "Front" }
 };
 
 static std::vector<editor::EnumEntry> entriesFogType = {
@@ -6008,11 +6014,13 @@ void editor::InspectorWindow::drawShaderRowContents(const std::string& currentSh
 
     // The .vert/.frag entry points either share a base name (stored as "shaders/mesh")
     // or live in separate files (stored as "shaders/mesh.vert|shaders/other.frag").
-    const Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(currentShader);
+    // a library shader ("library:<name>") lives in the engine: no project file to open
+    const bool library = ShaderReference::isLibrary(currentShader);
+    const Util::CustomShaderPaths paths = library ? Util::CustomShaderPaths() : Util::resolveCustomShaderPaths(currentShader);
     const bool hasCustom = !currentShader.empty();
-    const bool separate = Util::isSeparateCustomShader(currentShader);
-    const bool vertExists = hasCustom && std::filesystem::exists(projectPath / paths.vert);
-    const bool fragExists = hasCustom && std::filesystem::exists(projectPath / paths.frag);
+    const bool separate = !library && Util::isSeparateCustomShader(currentShader);
+    const bool vertExists = hasCustom && !library && std::filesystem::exists(projectPath / paths.vert);
+    const bool fragExists = hasCustom && !library && std::filesystem::exists(projectPath / paths.frag);
     const std::string popupName = "Edit Shader Files##" + idSuffix;
 
     auto openRelative = [&](const std::string& rel) {
@@ -6032,7 +6040,15 @@ void editor::InspectorWindow::drawShaderRowContents(const std::string& currentSh
 
     if (!hasCustom)
         ImGui::TextDisabled("Built-in");
-    else if (separate)
+    else if (library){
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(currentShader);
+        if (manifest && !manifest->name.empty())
+            ImGui::TextWrapped("%s (%s)", manifest->name.c_str(), currentShader.c_str());
+        else
+            ImGui::TextWrapped("%s", currentShader.c_str());
+        if (manifest && !manifest->description.empty() && ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", manifest->description.c_str());
+    }else if (separate)
         ImGui::TextWrapped("%s, %s", paths.vert.c_str(), paths.frag.c_str());
     else
         ImGui::TextWrapped("%s", currentShader.c_str());
@@ -6061,6 +6077,8 @@ void editor::InspectorWindow::drawShaderRowContents(const std::string& currentSh
     if (ImGui::IsItemHovered()) {
         if (vertExists)
             ImGui::SetTooltip("Open %s", paths.vert.c_str());
+        else if (library)
+            ImGui::SetTooltip("A library shader is part of the engine");
         else if (hasCustom)
             ImGui::SetTooltip("Vertex shader file not found");
         else
@@ -6075,6 +6093,8 @@ void editor::InspectorWindow::drawShaderRowContents(const std::string& currentSh
     if (ImGui::IsItemHovered()) {
         if (fragExists)
             ImGui::SetTooltip("Open %s", paths.frag.c_str());
+        else if (library)
+            ImGui::SetTooltip("A library shader is part of the engine");
         else if (hasCustom)
             ImGui::SetTooltip("Fragment shader file not found");
         else
@@ -6444,6 +6464,11 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
 
     propertyRow(RowPropertyType::Bool, cpType, "castShadows", "Cast Shadows", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "receiveShadows", "Receive Shadows", sceneProject, entities);
+
+    RowSettings cullingSettings;
+    cullingSettings.enumEntries = &entriesCullingMode;
+    cullingSettings.help = "Which faces the submeshes with Face Culling on leave out: the back faces (the default) or the front ones (inverted-hull outlines, insides). A material's cull mode overrides it.";
+    propertyRow(RowPropertyType::Enum, cpType, "cullingMode", "Culling Mode", sceneProject, entities, cullingSettings);
 
     RowSettings lodSettings;
     lodSettings.help = "Let this mesh use simplified detail levels while the scene's Mesh Detail (LOD) is on. Turn off to always keep it at full detail.";

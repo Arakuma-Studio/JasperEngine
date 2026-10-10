@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Points.h"
+#include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
 
 using namespace jasperengine;
@@ -382,6 +383,70 @@ bool Points::removeShaderUniform(const std::string& name){
 
     points.needUpdateShaderUniforms = true;
     return true;
+}
+
+Vector4 Points::getShaderParam(const std::string& name) const{
+    PointsComponent& points = getComponent<PointsComponent>();
+
+    return ShaderLibraryValues::getParam(points.shaderUniforms, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader, name);
+}
+
+void Points::setShaderTexture(const std::string& name, const std::string& path){
+    PointsComponent& points = getComponent<PointsComponent>();
+
+    // which textures it has is resolved at load
+    if (ShaderLibraryValues::setTexture(points.shaderTextures, name, path))
+        points.needReload = true;
+}
+
+std::string Points::getShaderTexture(const std::string& name) const{
+    PointsComponent& points = getComponent<PointsComponent>();
+
+    return ShaderLibraryValues::getTexture(points.shaderTextures, name);
+}
+
+void Points::setShaderFeature(const std::string& define, bool enabled){
+    PointsComponent& points = getComponent<PointsComponent>();
+
+    // features are compiled in: another shader variant
+    if (ShaderLibraryValues::setFeature(points.shaderFeatures, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader, define, enabled))
+        points.needReload = true;
+}
+
+bool Points::isShaderFeatureEnabled(const std::string& define) const{
+    PointsComponent& points = getComponent<PointsComponent>();
+
+    return ShaderLibraryValues::isFeatureEnabled(points.shaderFeatures, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader, define);
+}
+
+void Points::setBlendMode(MaterialBlendMode blendMode){
+    PointsComponent& points = getComponent<PointsComponent>();
+
+    if (points.blendMode != blendMode){
+        points.blendMode = blendMode;
+        points.needReload = true;
+    }
+}
+
+MaterialBlendMode Points::getBlendMode() const{
+    PointsComponent& points = getComponent<PointsComponent>();
+
+    return points.blendMode;
+}
+
+void Points::setDepthWrite(MaterialDepthWrite depthWrite){
+    PointsComponent& points = getComponent<PointsComponent>();
+
+    if (points.depthWrite != depthWrite){
+        points.depthWrite = depthWrite;
+        points.needReload = true;
+    }
+}
+
+MaterialDepthWrite Points::getDepthWrite() const{
+    PointsComponent& points = getComponent<PointsComponent>();
+
+    return points.depthWrite;
 }
 
 void Points::setEnabled(bool enabled){

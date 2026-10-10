@@ -3,6 +3,7 @@
 
 
 #include "Polygon.h"
+#include "shader/ShaderManifest.h"
 
 #include "util/Color.h"
 #include "subsystem/RenderSystem.h"
@@ -188,4 +189,68 @@ bool Polygon::removeShaderUniform(const std::string& name){
 
     ui.needUpdateShaderUniforms = true;
     return true;
+}
+
+Vector4 Polygon::getShaderParam(const std::string& name) const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ShaderLibraryValues::getParam(ui.shaderUniforms, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, name);
+}
+
+void Polygon::setShaderTexture(const std::string& name, const std::string& path){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    // which textures it has is resolved at load
+    if (ShaderLibraryValues::setTexture(ui.shaderTextures, name, path))
+        ui.needReload = true;
+}
+
+std::string Polygon::getShaderTexture(const std::string& name) const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ShaderLibraryValues::getTexture(ui.shaderTextures, name);
+}
+
+void Polygon::setShaderFeature(const std::string& define, bool enabled){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    // features are compiled in: another shader variant
+    if (ShaderLibraryValues::setFeature(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, define, enabled))
+        ui.needReload = true;
+}
+
+bool Polygon::isShaderFeatureEnabled(const std::string& define) const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ShaderLibraryValues::isFeatureEnabled(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, define);
+}
+
+void Polygon::setBlendMode(MaterialBlendMode blendMode){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    if (ui.blendMode != blendMode){
+        ui.blendMode = blendMode;
+        ui.needReload = true;
+    }
+}
+
+MaterialBlendMode Polygon::getBlendMode() const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ui.blendMode;
+}
+
+void Polygon::setDepthWrite(MaterialDepthWrite depthWrite){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    if (ui.depthWrite != depthWrite){
+        ui.depthWrite = depthWrite;
+        ui.needReload = true;
+    }
+}
+
+MaterialDepthWrite Polygon::getDepthWrite() const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ui.depthWrite;
 }

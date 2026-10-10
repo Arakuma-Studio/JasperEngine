@@ -28,6 +28,7 @@
 #include "render/FramebufferRender.h"
 #include "buffer/ExternalBuffer.h"
 #include "shader/ShaderBuildTypes.h"
+#include "shader/ShaderManifest.h"
 #include "Engine.h"
 #include <map>
 #include <array>
@@ -228,6 +229,11 @@ namespace jasperengine{
 		bool instanced = false;
 		bool instanceFade = false;
 		bool mirror = false;
+		// shader library: the manifest of the shader the submesh draws with (null for the
+		// built-in shader and forks without one) and whether its depth pass draws with the
+		// library shader's own depth program (@depth)
+		std::shared_ptr<const ShaderManifest> manifest;
+		bool depthProgram = false;
 	};
 
 	// The shaders one submesh draws with
@@ -258,6 +264,8 @@ namespace jasperengine{
 			TilemapComponent* tilemap;
 			Transform* transform;
 			float distanceToCamera;
+			// transparent queue order (MeshComponent::transparentSortPriority), lower first
+			int sortPriority;
 		};
 
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
@@ -278,8 +286,11 @@ namespace jasperengine{
 			unsigned int count;
 		};
 
+		// the top of the queue draws first: the lowest sort priority, then the farthest
 		struct TransparentRenderComparison{
 			bool operator()(const TransparentRenderData& lhs, const TransparentRenderData& rhs) const{
+				if (lhs.sortPriority != rhs.sortPriority)
+					return lhs.sortPriority > rhs.sortPriority;
 				return lhs.distanceToCamera < rhs.distanceToCamera;
 			}
 		};
@@ -336,6 +347,12 @@ namespace jasperengine{
 		static TextureRender emptyCubeWhite;
 		static TextureRender emptyNormal;
 		static TextureRender emptyShadowDepth;
+		// shader library @texture defaults besides white and black
+		static uint32_t pixelsGray[64];
+		static uint32_t pixelsFlatNormal[64];
+		static TextureRender emptyGray;
+		static TextureRender emptyFlatNormal;
+		static TextureRender emptyCubeGray;
 
 		static bool emptyTexturesCreated;
 		
@@ -846,6 +863,10 @@ namespace jasperengine{
 		float frameTime;
 		Vector2 passResolution;
 
+		// the engine frame block (u_vs_frame / u_fs_frame) of the camera pass being drawn,
+		// filled once per pass and uploaded to every draw whose shader declares it
+		frame_t passFrame;
+
 		// SSR: per-frame fullscreen passes for the main camera. The opaque color pass
 		// renders into sceneColorFramebuffer, the ssr pass marches the depth pre-pass
 		// and samples that color, then the composite pass blends reflections into the
@@ -950,6 +971,21 @@ namespace jasperengine{
 		Rect getShadowPointAtlasSlotRect(int slotIndex) const;
 		void configureLightShadowNearFar(LightComponent& light, const CameraComponent& camera);
 		Matrix4 getDirLightProjection(const Matrix4& viewMatrix, const Matrix4& sceneCameraInv, float shadowMaxDistance, const Vector3& lightDirection, const Vector3& cameraPosition);
+		// shader library: the frame block of a camera pass (fillFrameBlock fills the members
+		// library shaders read; engine-internal members appended after them get their own
+		// fill functions, called after it), uploaded by applyFrameBlock
+		void fillFrameBlock(frame_t& frame, const CameraComponent& camera, const Transform& cameraTransform, const Vector2& resolution);
+		void updatePassFrame(const CameraComponent& camera, const Transform& cameraTransform, const Vector2& resolution);
+		void applyFrameBlock(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// resolves the frame block slots and the custom textures of a loaded shader, then
+		// binds the textures (false while one is still loading)
+		bool loadShaderLibraryBindings(ShaderLibraryBindings& bindings, ShaderData& shaderData, ObjectRender& render,
+		                               std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest);
+		// binds the resolved custom textures again (they changed or a render target was redrawn)
+		bool bindShaderTextures(const ShaderLibraryBindings& bindings, ObjectRender& render, std::vector<std::pair<std::string, Texture>>& textures);
+		static bool shaderTexturesOutdated(const ShaderLibraryBindings& bindings, const std::vector<std::pair<std::string, Texture>>& textures);
+		TextureRender* getDefaultShaderTexture(int fallback, bool cube);
+
 		bool checkPBRFrabebufferUpdate(Material& material);
 		bool checkPBRTextures(Material& material, bool receiveLights);
 		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights);
@@ -1213,11 +1249,32 @@ namespace jasperengine{
 		// Sets the submesh's vertex attribute flags (hasTexCoord1, hasNormal, ...) from the
 		// buffers it draws from and its own attributes, and hasNormalMap from its material.
 		static void scanSubmeshAttributes(Submesh& submesh, const std::vector<const Buffer*>& buffers);
-		static SubmeshShaderInputs getSubmeshShaderInputs(const MeshComponent& mesh, const Submesh& submesh, const TerrainComponent* terrain, const InstancedMeshComponent* instmesh, bool mirror);
+		// sceneMeshShader: the scene's default mesh shader (Scene::getDefaultMeshShader)
+		static SubmeshShaderInputs getSubmeshShaderInputs(const MeshComponent& mesh, const Submesh& submesh, const TerrainComponent* terrain, const InstancedMeshComponent* instmesh, bool mirror,
+		                                                  const std::string& sceneMeshShader = std::string());
 		static SubmeshShaderVariant getSubmeshShaderVariant(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
 		// Whether the lit or unlit shader samples the material's textures
 		static bool checkPBRTextures(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
 		MeshShaderEnvironment getMeshShaderEnvironment() const;
+
+		// ---- shader library (docs/superpowers/specs/2026-10-10-shader-library-phase1-design.md)
+		// The shader a submesh draws with: its material's, else the mesh's fork, else the
+		// scene's default mesh shader; "" is the built-in Lit shader
+		static const std::string& getSubmeshShader(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
+		// The custom shader strings (with the "#FEATURES" suffix the material's features
+		// resolve to) its color and depth variants are keyed by; "" for built-in. The depth
+		// pass draws with the library shader's @depth program, else the mesh's depth fork.
+		static std::string getSubmeshShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
+		static std::string getSubmeshDepthShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
+		// The color pipeline state of a submesh: the material's value, else the manifest's
+		// @state, else the legacy behaviour. blended: not opaque; transparentQueue: drawn
+		// sorted after the opaque objects
+		static RenderState resolveSubmeshRenderState(const MeshComponent& mesh, const Submesh& submesh, const ShaderManifest* manifest,
+		                                             bool& blended, bool& transparentQueue);
+		// The same for UI, points, lines and sky (AUTO: alpha blend and depth write, legacyCulling)
+		static RenderState resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite, const ShaderManifest* manifest, bool legacyCulling);
+		// the shader-library custom shader string of a UI/points/lines/sky shader with its features
+		static std::string getComponentShaderReference(const std::string& customShader, const std::vector<std::string>& shaderFeatures);
 
 		// The shader variants an entity draws with as it is now, in this scene: its mesh
 		// (with the shadow/depth and SSR G-buffer passes), UI, points, lines or sky. A

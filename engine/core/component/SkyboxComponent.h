@@ -9,6 +9,7 @@
 #include "shader/ShaderUniforms.h"
 #include "texture/Material.h"
 #include <string>
+#include <memory>
 
 namespace jasperengine{
 
@@ -37,6 +38,10 @@ namespace jasperengine{
         // defines of the shader above (library reference or fork)
         std::vector<std::pair<std::string, Texture>> shaderTextures;
         std::vector<std::string> shaderFeatures;
+        // resolved at load: the shader's manifest (null without one) and what it reads of
+        // the frame block and custom textures
+        std::shared_ptr<const ShaderManifest> shaderManifest;
+        ShaderLibraryBindings libraryBindings;
 
         Texture texture;
         Vector4 color = Vector4(1.0, 1.0, 1.0, 1.0); //sRGB

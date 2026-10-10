@@ -12,6 +12,7 @@
 #include "texture/Material.h"
 #include "math/AABB.h"
 #include <string>
+#include <memory>
 
 namespace jasperengine{
 
@@ -50,6 +51,10 @@ namespace jasperengine{
         // AUTO keeps the built-in state (alpha blend, depth write on)
         MaterialBlendMode blendMode = MaterialBlendMode::AUTO;
         MaterialDepthWrite depthWrite = MaterialDepthWrite::AUTO;
+        // resolved at load: the shader's manifest (null without one) and what it reads of
+        // the frame block and custom textures
+        std::shared_ptr<const ShaderManifest> shaderManifest;
+        ShaderLibraryBindings libraryBindings;
 
         PrimitiveType primitiveType = PrimitiveType::TRIANGLES;
         unsigned int vertexCount = 0;

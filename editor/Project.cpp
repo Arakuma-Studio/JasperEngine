@@ -15,6 +15,7 @@
 #include <cctype>
 #include <cmath>
 #include <fstream>
+#include <sstream>
 #include <system_error>
 #include <chrono>
 #include <unordered_set>
@@ -51,6 +52,8 @@
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 #include "shader/ShaderVariantCollector.h"
+#include "shader/ShaderManifest.h"
+#include "shader/ShaderVariantCompiler.h"
 #include "SceneManager.h"
 #include "PrefabManager.h"
 #include "ObjectManager.h"
@@ -499,6 +502,9 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
             submeshChanged |= visitTexturePaths(material.metallicRoughnessTexture, transform);
             submeshChanged |= visitTexturePaths(material.occlusionTexture, transform);
             submeshChanged |= visitTexturePaths(material.normalTexture, transform);
+            for (auto& shaderTexture : material.shaderTextures) {
+                submeshChanged |= visitTexturePaths(shaderTexture.second, transform);
+            }
 
             if (submeshChanged) {
                 mesh.submeshes[s].needUpdateTexture = true;
@@ -506,6 +512,22 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
             }
         }
     });
+
+    // shader library textures of the components without a material
+    auto visitShaderTextures = [&](std::vector<std::pair<std::string, Texture>>& textures, bool& needReload) {
+        bool texturesChanged = false;
+        for (auto& shaderTexture : textures) {
+            texturesChanged |= visitTexturePaths(shaderTexture.second, transform);
+        }
+        if (texturesChanged) {
+            needReload = true;
+            changed = true;
+        }
+    };
+    visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) { visitShaderTextures(ui.shaderTextures, ui.needReload); });
+    visitComponents(registry->getComponentArray<PointsComponent>(), [&](PointsComponent& points) { visitShaderTextures(points.shaderTextures, points.needReload); });
+    visitComponents(registry->getComponentArray<LineRendererComponent>(), [&](LineRendererComponent& lines) { visitShaderTextures(lines.shaderTextures, lines.needReload); });
+    visitComponents(registry->getComponentArray<SkyboxComponent>(), [&](SkyboxComponent& sky) { visitShaderTextures(sky.shaderTextures, sky.needReload); });
 
     visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) {
         if (visitTexturePaths(ui.texture, transform)) {
@@ -665,8 +687,25 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
             addTexture(material.metallicRoughnessTexture, false);
             addTexture(material.occlusionTexture, false);
             addTexture(material.normalTexture, false);
+            for (const auto& shaderTexture : material.shaderTextures) {
+                addTexture(shaderTexture.second, false);
+            }
         }
     }
+
+    // shader library textures of the components without a material
+    visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) {
+        for (const auto& shaderTexture : ui.shaderTextures) addTexture(shaderTexture.second, false);
+    });
+    visitComponents(registry->getComponentArray<PointsComponent>(), [&](PointsComponent& points) {
+        for (const auto& shaderTexture : points.shaderTextures) addTexture(shaderTexture.second, false);
+    });
+    visitComponents(registry->getComponentArray<LineRendererComponent>(), [&](LineRendererComponent& lines) {
+        for (const auto& shaderTexture : lines.shaderTextures) addTexture(shaderTexture.second, false);
+    });
+    visitComponents(registry->getComponentArray<SkyboxComponent>(), [&](SkyboxComponent& sky) {
+        for (const auto& shaderTexture : sky.shaderTextures) addTexture(shaderTexture.second, false);
+    });
 
     visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) {
         addTexture(ui.texture, true);
@@ -2754,8 +2793,9 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     // resolve the effective custom shader (component > scene default > built-in) from the
     // strings rather than the cached customShaderId, which lags a reload frame after a
     // scene-default change and is zeroed by the build-fail fallback
-    auto effectiveShaderId = [&](const std::string& customShader, ShaderType type) -> uint16_t {
-        return ShaderPool::registerCustomShader(customShader.empty() ? scene->getDefaultCustomShader(type) : customShader);
+    auto effectiveShaderId = [&](const std::string& customShader, ShaderType type, const std::vector<std::string>& features) -> uint16_t {
+        return ShaderPool::registerCustomShader(RenderSystem::getComponentShaderReference(
+            customShader.empty() ? scene->getDefaultCustomShader(type) : customShader, features));
     };
 
     // the runtime falls back to the built-in variant when a custom shader fails to build,
@@ -2783,9 +2823,13 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
         if (signature.test(scene->getComponentId<MeshComponent>())) {
             const MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
             if (mesh.loaded) {
-                uint16_t customShaderId = effectiveShaderId(mesh.customShader, ShaderType::MESH);
-                uint16_t customDepthShaderId = ShaderPool::registerCustomShader(mesh.customDepthShader);
+                const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
                 for (unsigned int s = 0; s < mesh.numSubmeshes; ++s) {
+                    // each submesh's shader (its material's, the mesh's, the scene's) and features
+                    uint16_t customShaderId = ShaderPool::registerCustomShader(
+                        RenderSystem::getSubmeshShaderReference(mesh, mesh.submeshes[s], sceneMeshShader));
+                    uint16_t customDepthShaderId = ShaderPool::registerCustomShader(
+                        RenderSystem::getSubmeshDepthShaderReference(mesh, mesh.submeshes[s], sceneMeshShader));
                     uint32_t meshProperties = mesh.submeshes[s].shaderProperties;
                     // Saving/exporting can happen before RenderSystem has reloaded
                     // meshes after a probe was added. Derive the required IBL
@@ -2838,28 +2882,28 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
         if (signature.test(scene->getComponentId<UIComponent>())) {
             const UIComponent& ui = scene->getComponent<UIComponent>(entity);
             if (ui.loaded) {
-                insertKeys(ShaderType::UI, ui.shaderProperties, effectiveShaderId(ui.customShader, ShaderType::UI));
+                insertKeys(ShaderType::UI, ui.shaderProperties, effectiveShaderId(ui.customShader, ShaderType::UI, ui.shaderFeatures));
             }
         }
 
         if (signature.test(scene->getComponentId<PointsComponent>())) {
             const PointsComponent& pts = scene->getComponent<PointsComponent>(entity);
             if (pts.loaded) {
-                insertKeys(ShaderType::POINTS, pts.shaderProperties, effectiveShaderId(pts.customShader, ShaderType::POINTS));
+                insertKeys(ShaderType::POINTS, pts.shaderProperties, effectiveShaderId(pts.customShader, ShaderType::POINTS, pts.shaderFeatures));
             }
         }
 
         if (signature.test(scene->getComponentId<LineRendererComponent>())) {
             const LineRendererComponent& ln = scene->getComponent<LineRendererComponent>(entity);
             if (ln.loaded) {
-                insertKeys(ShaderType::LINES, ln.shaderProperties, effectiveShaderId(ln.customShader, ShaderType::LINES));
+                insertKeys(ShaderType::LINES, ln.shaderProperties, effectiveShaderId(ln.customShader, ShaderType::LINES, ln.shaderFeatures));
             }
         }
 
         if (signature.test(scene->getComponentId<SkyboxComponent>())) {
             const SkyboxComponent& sky = scene->getComponent<SkyboxComponent>(entity);
             if (sky.loaded) {
-                insertKeys(ShaderType::SKYBOX, 0, effectiveShaderId(sky.customShader, ShaderType::SKYBOX));
+                insertKeys(ShaderType::SKYBOX, 0, effectiveShaderId(sky.customShader, ShaderType::SKYBOX, sky.shaderFeatures));
             }
         }
     }
@@ -2978,6 +3022,8 @@ void editor::Project::invalidateCustomShaders() {
     // flag every renderable that uses one so RenderSystem recompiles it on the next draw.
     editor::ShaderBuilder::invalidateCustomShaders();
     ShaderPool::destroyCustomShaders();
+    // fork manifests are read again from the edited files
+    ShaderManifests::clearForks();
 
     for (auto& sceneProject : getScenes()) {
         if (!sceneProject.scene)
@@ -3001,8 +3047,15 @@ void editor::Project::invalidateCustomShaders() {
         };
 
         for (Entity entity : sceneProject.entities) {
-            if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity))
-                flagReload(mesh->needReload, sceneMesh || !mesh->customShader.empty() || !mesh->customDepthShader.empty());
+            if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+                // a material can name a fork too (library shaders do not change)
+                bool materialFork = false;
+                for (unsigned int s = 0; s < mesh->numSubmeshes; s++){
+                    const std::string& shader = mesh->submeshes[s].material.shader;
+                    materialFork = materialFork || (!shader.empty() && !ShaderReference::isLibrary(shader));
+                }
+                flagReload(mesh->needReload, sceneMesh || materialFork || !mesh->customShader.empty() || !mesh->customDepthShader.empty());
+            }
             if (UIComponent* ui = scene->findComponent<UIComponent>(entity))
                 flagReload(ui->needReload, sceneUI || !ui->customShader.empty());
             if (PointsComponent* pts = scene->findComponent<PointsComponent>(entity))
@@ -5084,6 +5137,21 @@ bool editor::Project::loadProject(const std::filesystem::path path, bool updateL
 
         resetConfigs();
         projectPath = path;
+
+        // shader manifests of forks are read from this project's files
+        ShaderManifests::setForkReader([root = projectPath](const std::string& relativePath, std::string& content) {
+            std::error_code ec;
+            const fs::path file = root / relativePath;
+            if (!ShaderVariantCompiler::isSafeRelativePath(relativePath) || !fs::is_regular_file(file, ec))
+                return false;
+            std::ifstream stream(file, std::ios::binary);
+            if (!stream)
+                return false;
+            std::ostringstream buffer;
+            buffer << stream.rdbuf();
+            content = buffer.str();
+            return true;
+        });
 
         // Before any scene or prefab loads: every prefab file gets its GUID (the one-shot
         // upgrade of files written before them) and references resolve through it

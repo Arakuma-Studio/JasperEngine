@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Image.h"
+#include "shader/ShaderManifest.h"
 
 #include "util/Color.h"
 #include "subsystem/RenderSystem.h"
@@ -260,4 +261,68 @@ bool Image::removeShaderUniform(const std::string& name){
 
     ui.needUpdateShaderUniforms = true;
     return true;
+}
+
+Vector4 Image::getShaderParam(const std::string& name) const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ShaderLibraryValues::getParam(ui.shaderUniforms, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, name);
+}
+
+void Image::setShaderTexture(const std::string& name, const std::string& path){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    // which textures it has is resolved at load
+    if (ShaderLibraryValues::setTexture(ui.shaderTextures, name, path))
+        ui.needReload = true;
+}
+
+std::string Image::getShaderTexture(const std::string& name) const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ShaderLibraryValues::getTexture(ui.shaderTextures, name);
+}
+
+void Image::setShaderFeature(const std::string& define, bool enabled){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    // features are compiled in: another shader variant
+    if (ShaderLibraryValues::setFeature(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, define, enabled))
+        ui.needReload = true;
+}
+
+bool Image::isShaderFeatureEnabled(const std::string& define) const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ShaderLibraryValues::isFeatureEnabled(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, define);
+}
+
+void Image::setBlendMode(MaterialBlendMode blendMode){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    if (ui.blendMode != blendMode){
+        ui.blendMode = blendMode;
+        ui.needReload = true;
+    }
+}
+
+MaterialBlendMode Image::getBlendMode() const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ui.blendMode;
+}
+
+void Image::setDepthWrite(MaterialDepthWrite depthWrite){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    if (ui.depthWrite != depthWrite){
+        ui.depthWrite = depthWrite;
+        ui.needReload = true;
+    }
+}
+
+MaterialDepthWrite Image::getDepthWrite() const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ui.depthWrite;
 }

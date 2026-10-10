@@ -313,10 +313,10 @@ namespace {
                     collectPoints(points);
                 }
                 if (const LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)){
-                    insertKeys(ShaderType::LINES, ShaderPool::getLinesProperties(false, true), shaderId(lines->customShader, ShaderType::LINES));
+                    insertKeys(ShaderType::LINES, ShaderPool::getLinesProperties(false, true), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures));
                 }
                 if (const SkyboxComponent* sky = registry->findComponent<SkyboxComponent>(entity)){
-                    insertKeys(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX));
+                    insertKeys(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX, sky->shaderFeatures));
                 }
             }
         }
@@ -326,9 +326,11 @@ namespace {
         const std::vector<MeshShaderEnvironment>& environments;
         std::set<ShaderKey>& keys;
 
-        // The effective custom shader: the component's, the scene default, or built-in
-        uint16_t shaderId(const std::string& customShader, ShaderType type){
-            return ShaderPool::registerCustomShader(customShader.empty() ? scene->getDefaultCustomShader(type) : customShader);
+        // The effective custom shader: the component's, the scene default, or built-in, with
+        // the features the component enables (RenderSystem::getComponentShaderReference)
+        uint16_t shaderId(const std::string& customShader, ShaderType type, const std::vector<std::string>& features){
+            return ShaderPool::registerCustomShader(RenderSystem::getComponentShaderReference(
+                customShader.empty() ? scene->getDefaultCustomShader(type) : customShader, features));
         }
 
         // A custom shader that fails to build falls back to the built-in variant at runtime
@@ -348,10 +350,13 @@ namespace {
             if (buffers){
                 RenderSystem::scanSubmeshAttributes(submesh, *buffers);
             }
-            const SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror);
+            // the submesh's shader as RenderSystem::loadMesh picks it: its material's, the
+            // mesh's or the scene's, with its features; the depth pass's library program
+            const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+            const SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
 
-            const uint16_t meshShaderId = shaderId(mesh.customShader, ShaderType::MESH);
-            const uint16_t depthShaderId = ShaderPool::registerCustomShader(mesh.customDepthShader);
+            const uint16_t meshShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshShaderReference(mesh, submesh, sceneMeshShader));
+            const uint16_t depthShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader));
             for (const MeshShaderEnvironment& environment : environments){
                 const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
                 insertKeys(ShaderType::MESH, variant.properties, meshShaderId);
@@ -491,7 +496,7 @@ namespace {
         // its texture comes and goes with what the UI shows (a button's state, a script, a
         // font atlas), see RenderSystem::loadUI
         void collectUI(const UIComponent& ui){
-            const uint16_t id = shaderId(ui.customShader, ShaderType::UI);
+            const uint16_t id = shaderId(ui.customShader, ShaderType::UI, ui.shaderFeatures);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, false, false, true), id);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(true, false, false, true), id);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, true, false, false), id);
@@ -499,7 +504,8 @@ namespace {
 
         // Likewise for points, with or without a texture and texture rects (RenderSystem::loadPoints)
         void collectPoints(const PointsComponent* points){
-            const uint16_t id = shaderId(points ? points->customShader : std::string(), ShaderType::POINTS);
+            const uint16_t id = shaderId(points ? points->customShader : std::string(), ShaderType::POINTS,
+                                         points ? points->shaderFeatures : std::vector<std::string>());
             insertKeys(ShaderType::POINTS, ShaderPool::getPointsProperties(false, false, true, false), id);
             insertKeys(ShaderType::POINTS, ShaderPool::getPointsProperties(true, false, true, false), id);
             insertKeys(ShaderType::POINTS, ShaderPool::getPointsProperties(true, false, true, true), id);

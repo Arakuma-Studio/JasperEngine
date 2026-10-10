@@ -96,8 +96,26 @@ void Mesh::setMaterial(unsigned int submesh, const Material& material){
     MeshComponent& mesh = getComponent<MeshComponent>();
 
     if (mesh.submeshes[submesh].material != material){
+        const Material& current = mesh.submeshes[submesh].material;
+        // the shader, its features, its render state and which custom textures it has
+        // are baked when the mesh loads; parameters only rewrite the uniform blocks
+        bool reload = current.shader != material.shader || current.shaderFeatures != material.shaderFeatures ||
+            current.blendMode != material.blendMode || current.cullMode != material.cullMode ||
+            current.depthWrite != material.depthWrite || current.depthTest != material.depthTest ||
+            current.depthOffsetFactor != material.depthOffsetFactor || current.depthOffsetUnits != material.depthOffsetUnits ||
+            current.sortPriority != material.sortPriority || current.lighting != material.lighting ||
+            current.shaderTextures.size() != material.shaderTextures.size();
+        for (size_t t = 0; !reload && t < material.shaderTextures.size(); t++){
+            reload = current.shaderTextures[t].first != material.shaderTextures[t].first;
+        }
+        const bool paramsChanged = current.shaderParams != material.shaderParams;
+
         mesh.submeshes[submesh].material = material;
         mesh.submeshes[submesh].needUpdateTexture = true;
+        if (reload)
+            mesh.needReload = true;
+        if (paramsChanged)
+            mesh.needUpdateShaderUniforms = true;
     }
 }
 

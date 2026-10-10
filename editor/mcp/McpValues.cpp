@@ -237,6 +237,14 @@ const EnumOptions& shadowCasterShapeOptions() {
     return options;
 }
 
+const EnumOptions& cullingModeOptions() {
+    static const EnumOptions options = {
+        {(int)CullingMode::BACK, "back", "Back"},
+        {(int)CullingMode::FRONT, "front", "Front"}
+    };
+    return options;
+}
+
 const EnumOptions& fogTypeOptions() {
     static const EnumOptions options = {
         {(int)FogType::LINEAR, "linear", "Linear"},
@@ -754,6 +762,7 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
         case ComponentType::MeshComponent:
             if (name == "submeshes[].material.alphaMode") return &alphaModeOptions();
             if (name == "submeshes[].primitiveType") return &primitiveTypeOptions();
+            if (name == "cullingMode") return &cullingModeOptions();
             break;
         case ComponentType::Rigidbody2DComponent:
             if (name == "type") return &bodyTypeOptions();

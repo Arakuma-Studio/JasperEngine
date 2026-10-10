@@ -37,6 +37,8 @@
 #include "subsystem/UISystem.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCollection.h"
+#include "shader/ShaderManifest.h"
+#include "shader/ShaderUniforms.h"
 #include "object/EntityHandle.h"
 
 using namespace jasperengine;
@@ -313,6 +315,44 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("ALPHA_OPAQUE", MaterialAlphaMode::ALPHA_OPAQUE)
         .addVariable("MASK", MaterialAlphaMode::MASK)
         .addVariable("BLEND", MaterialAlphaMode::BLEND)
+        .endNamespace();
+
+    // shader library render state of a Material (and UI/points/lines blendMode, depthWrite)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialBlendMode")
+        .addVariable("AUTO", MaterialBlendMode::AUTO)
+        .addVariable("NONE", MaterialBlendMode::NONE)
+        .addVariable("ALPHA", MaterialBlendMode::ALPHA)
+        .addVariable("PREMULTIPLIED", MaterialBlendMode::PREMULTIPLIED)
+        .addVariable("ADDITIVE", MaterialBlendMode::ADDITIVE)
+        .addVariable("MULTIPLY", MaterialBlendMode::MULTIPLY)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialCullMode")
+        .addVariable("AUTO", MaterialCullMode::AUTO)
+        .addVariable("BACK", MaterialCullMode::BACK)
+        .addVariable("FRONT", MaterialCullMode::FRONT)
+        .addVariable("OFF", MaterialCullMode::OFF)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialDepthWrite")
+        .addVariable("AUTO", MaterialDepthWrite::AUTO)
+        .addVariable("ENABLED", MaterialDepthWrite::ENABLED)
+        .addVariable("DISABLED", MaterialDepthWrite::DISABLED)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialDepthTest")
+        .addVariable("AUTO", MaterialDepthTest::AUTO)
+        .addVariable("LESS", MaterialDepthTest::LESS)
+        .addVariable("LESS_EQUAL", MaterialDepthTest::LESS_EQUAL)
+        .addVariable("EQUAL", MaterialDepthTest::EQUAL)
+        .addVariable("GREATER_EQUAL", MaterialDepthTest::GREATER_EQUAL)
+        .addVariable("GREATER", MaterialDepthTest::GREATER)
+        .addVariable("NOT_EQUAL", MaterialDepthTest::NOT_EQUAL)
+        .addVariable("ALWAYS", MaterialDepthTest::ALWAYS)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -970,6 +1010,49 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("metallicRoughnessTexture", &Material::metallicRoughnessTexture)
         .addProperty("occlusionTexture", &Material::occlusionTexture)
         .addProperty("normalTexture", &Material::normalTexture)
+        // shader library: "" built-in Lit, "library:<name>", or a project fork
+        .addProperty("shader", &Material::shader)
+        .addProperty("blendMode", &Material::blendMode)
+        .addProperty("cullMode", &Material::cullMode)
+        .addProperty("depthWrite", &Material::depthWrite)
+        .addProperty("depthTest", &Material::depthTest)
+        .addProperty("depthOffsetFactor", &Material::depthOffsetFactor)
+        .addProperty("depthOffsetUnits", &Material::depthOffsetUnits)
+        .addProperty("sortPriority", &Material::sortPriority)
+        // a @property value of the shader (colours linear); unset reads the manifest default
+        .addFunction("setShaderParam",
+            luabridge::overload<Material*, const std::string&, const Vector4&>(+[](Material* self, const std::string& name, const Vector4& value) {
+                ShaderUniforms::set(self->shaderParams, name, value);
+            }),
+            luabridge::overload<Material*, const std::string&, const Vector3&>(+[](Material* self, const std::string& name, const Vector3& value) {
+                ShaderUniforms::set(self->shaderParams, name, Vector4(value.x, value.y, value.z, 0.0f));
+            }),
+            luabridge::overload<Material*, const std::string&, const Vector2&>(+[](Material* self, const std::string& name, const Vector2& value) {
+                ShaderUniforms::set(self->shaderParams, name, Vector4(value.x, value.y, 0.0f, 0.0f));
+            }),
+            luabridge::overload<Material*, const std::string&, float>(+[](Material* self, const std::string& name, float value) {
+                ShaderUniforms::set(self->shaderParams, name, Vector4(value, 0.0f, 0.0f, 0.0f));
+            }))
+        .addFunction("getShaderParam", +[](const Material* self, const std::string& name) -> Vector4 {
+            return ShaderLibraryValues::getParam(self->shaderParams, self->shader, name);
+        })
+        .addFunction("removeShaderParam", +[](Material* self, const std::string& name) -> bool {
+            return ShaderUniforms::remove(self->shaderParams, name);
+        })
+        // the texture of a @texture uniform by path ("" removes it: the manifest default binds)
+        .addFunction("setShaderTexture", +[](Material* self, const std::string& name, const std::string& path) {
+            ShaderLibraryValues::setTexture(self->shaderTextures, name, path);
+        })
+        .addFunction("getShaderTexture", +[](const Material* self, const std::string& name) -> std::string {
+            return ShaderLibraryValues::getTexture(self->shaderTextures, name);
+        })
+        // a @feature on or off, or a @keywords value ("GROUP_VALUE") chosen
+        .addFunction("setShaderFeature", +[](Material* self, const std::string& define, bool enabled) {
+            ShaderLibraryValues::setFeature(self->shaderFeatures, self->shader, define, enabled);
+        })
+        .addFunction("isShaderFeatureEnabled", +[](const Material* self, const std::string& define) -> bool {
+            return ShaderLibraryValues::isFeatureEnabled(self->shaderFeatures, self->shader, define);
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

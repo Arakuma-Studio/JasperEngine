@@ -6,6 +6,7 @@
 #include "Stream.h"
 #include "util/EntityClipboard.h"
 #include "util/CameraTextureLink.h"
+#include "subsystem/RenderSystem.h"
 #include "external/IconsFontAwesome6.h"
 
 #include <cctype>
@@ -590,6 +591,7 @@ namespace {
         makeFastProperty<MeshComponent, bool, &MeshComponent::renderInReflectionProbes>("renderInReflectionProbes", PropertyType::Bool, UpdateFlags_Reflection_Probe_Recapture_All),
         makeFastProperty<MeshComponent, bool, &MeshComponent::transparent>("transparent", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, bool, &MeshComponent::autoTransparency>("autoTransparency", PropertyType::Bool, UpdateFlags_Mesh_Reload),
+        makeFastProperty<MeshComponent, CullingMode, &MeshComponent::cullingMode>("cullingMode", PropertyType::Enum, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, std::string, &MeshComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
         makeFastProperty<MeshComponent, std::string, &MeshComponent::customDepthShader>("customDepthShader", PropertyType::String, UpdateFlags_Shader_Reload),
         makeFastProperty<MeshComponent, ShaderUniformValues, &MeshComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
@@ -4166,9 +4168,15 @@ bool editor::Catalog::isCustomShaderBuildFailed(Scene* scene, Entity entity, Com
 
     switch (component) {
         case ComponentType::MeshComponent:
-            if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity))
-                return failed(mesh->customShader, ShaderType::MESH, mesh->loaded, mesh->needReload,
-                              mesh->numSubmeshes > 0 ? mesh->submeshes[0].customShaderId : 0);
+            if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+                // a submesh drawing with its material's, the mesh's or the scene's shader
+                const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+                for (unsigned int s = 0; s < mesh->numSubmeshes; s++){
+                    const std::string& shader = RenderSystem::getSubmeshShader(*mesh, mesh->submeshes[s], sceneMeshShader);
+                    if (failed(shader, ShaderType::MESH, mesh->loaded, mesh->needReload, mesh->submeshes[s].customShaderId))
+                        return true;
+                }
+            }
             break;
         case ComponentType::UIComponent:
             if (UIComponent* ui = scene->findComponent<UIComponent>(entity))

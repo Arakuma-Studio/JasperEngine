@@ -116,6 +116,13 @@ namespace jasperengine{
         CustomUniformBlock customVSDepthParams;
         CustomUniformBlock customFSDepthParams;
 
+        // shader library, resolved at load: the manifest of the shader it draws with (null
+        // for the built-in shader or a fork without one), and what its color and depth
+        // shaders read of the frame block and custom textures
+        std::shared_ptr<const ShaderManifest> manifest;
+        ShaderLibraryBindings libraryBindings;
+        ShaderLibraryBindings depthLibraryBindings;
+
         Rect textureRect = Rect(0.0, 0.0, 1.0, 1.0);
 
         PrimitiveType primitiveType = PrimitiveType::TRIANGLES;
@@ -217,6 +224,11 @@ namespace jasperengine{
 
         bool transparent = false;
         bool autoTransparency = true;
+        // set at load: transparent-queue order (the lowest sortPriority of its blended
+        // submeshes) and whether the camera depth pre-pass leaves it out (a forked color
+        // shader without a depth program, or a submesh that does not write depth)
+        int transparentSortPriority = 0;
+        bool skipsDepthPrepass = false;
 
         // opt-out of the scene's detail levels (Scene::setMeshLodEnabled); bias above 1 keeps detail longer
         bool lodEnabled = true;
