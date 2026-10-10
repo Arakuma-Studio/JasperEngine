@@ -1625,6 +1625,12 @@
 		48544D4C00000000000001D3 /* URL.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D1 /* URL.cpp */; };
 		48544D4C00000000000001D5 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
 		48544D4C00000000000001D6 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
+		524D4C55EF9E59639250D13A /* CalculationResolver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5597475D670B4FAC65 /* CalculationResolver.cpp */; };
+		524D4C55B253A4F9148216D9 /* CalculationResolver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5597475D670B4FAC65 /* CalculationResolver.cpp */; };
+		524D4C55929CBCDC992A47C4 /* CalculationParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55E7E8FEA59DBF35DA /* CalculationParser.cpp */; };
+		524D4C55DA4D9807DF107256 /* CalculationParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55E7E8FEA59DBF35DA /* CalculationParser.cpp */; };
+		524D4C558526843D1A1FDDB1 /* Calculation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55C2FE44372D011EFB /* Calculation.cpp */; };
+		524D4C554DD5437831AFF9CE /* Calculation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55C2FE44372D011EFB /* Calculation.cpp */; };
 		48544D4C00000000000001D8 /* WidgetScroll.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D7 /* WidgetScroll.cpp */; };
 		48544D4C00000000000001D9 /* WidgetScroll.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D7 /* WidgetScroll.cpp */; };
 		48544D4C00000000000001DB /* XMLNodeHandler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001DA /* XMLNodeHandler.cpp */; };
@@ -4670,6 +4676,9 @@
 		48544D4C00000000000001CE /* TypeConverter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TypeConverter.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D1 /* URL.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = URL.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D4 /* Variant.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Variant.cpp; sourceTree = "<group>"; };
+		524D4C5597475D670B4FAC65 /* CalculationResolver.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CalculationResolver.cpp; sourceTree = "<group>"; };
+		524D4C55E7E8FEA59DBF35DA /* CalculationParser.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CalculationParser.cpp; sourceTree = "<group>"; };
+		524D4C55C2FE44372D011EFB /* Calculation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Calculation.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D7 /* WidgetScroll.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WidgetScroll.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001DA /* XMLNodeHandler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = XMLNodeHandler.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001DD /* XMLNodeHandlerBody.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = XMLNodeHandlerBody.cpp; sourceTree = "<group>"; };
@@ -8758,6 +8767,9 @@
 				48544D4C00000000000001E6 /* XMLNodeHandlerTemplate.cpp */,
 				48544D4C00000000000001E9 /* XMLParseTools.cpp */,
 				48544D4C00000000000001EC /* XMLParser.cpp */,
+				524D4C55C2FE44372D011EFB /* Calculation.cpp */,
+				524D4C55E7E8FEA59DBF35DA /* CalculationParser.cpp */,
+				524D4C5597475D670B4FAC65 /* CalculationResolver.cpp */,
 			);
 			name = Core;
 			path = Source/Core;
@@ -12700,6 +12712,9 @@
 				48544D4C00000000000001CF /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D2 /* URL.cpp in Sources */,
 				48544D4C00000000000001D5 /* Variant.cpp in Sources */,
+				524D4C55EF9E59639250D13A /* CalculationResolver.cpp in Sources */,
+				524D4C55929CBCDC992A47C4 /* CalculationParser.cpp in Sources */,
+				524D4C558526843D1A1FDDB1 /* Calculation.cpp in Sources */,
 				48544D4C00000000000001D8 /* WidgetScroll.cpp in Sources */,
 				48544D4C00000000000001DB /* XMLNodeHandler.cpp in Sources */,
 				48544D4C00000000000001DE /* XMLNodeHandlerBody.cpp in Sources */,
@@ -12905,6 +12920,9 @@
 				48544D4C00000000000001D0 /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D3 /* URL.cpp in Sources */,
 				48544D4C00000000000001D6 /* Variant.cpp in Sources */,
+				524D4C55B253A4F9148216D9 /* CalculationResolver.cpp in Sources */,
+				524D4C55DA4D9807DF107256 /* CalculationParser.cpp in Sources */,
+				524D4C554DD5437831AFF9CE /* Calculation.cpp in Sources */,
 				48544D4C00000000000001D9 /* WidgetScroll.cpp in Sources */,
 				48544D4C00000000000001DC /* XMLNodeHandler.cpp in Sources */,
 				48544D4C00000000000001DF /* XMLNodeHandlerBody.cpp in Sources */,
@@ -13894,6 +13912,7 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
 					LUNASVG_BUILD_STATIC,
 					LEXBOR_STATIC,
@@ -13939,6 +13958,7 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
 					LUNASVG_BUILD_STATIC,
 					LEXBOR_STATIC,
@@ -14139,6 +14159,7 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
 					LUNASVG_BUILD_STATIC,
 					LEXBOR_STATIC,
@@ -14191,6 +14212,7 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
 					LUNASVG_BUILD_STATIC,
 					LEXBOR_STATIC,
@@ -14248,6 +14270,7 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
 					LUNASVG_BUILD_STATIC,
 					LEXBOR_STATIC,
@@ -14303,6 +14326,7 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
 					LUNASVG_BUILD_STATIC,
 					LEXBOR_STATIC,
@@ -14355,6 +14379,7 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
 					LUNASVG_BUILD_STATIC,
 					LEXBOR_STATIC,
@@ -14403,6 +14428,7 @@
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
 					RMLUI_STATIC_LIB,
+					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
 					LUNASVG_BUILD_STATIC,
 					LEXBOR_STATIC,
@@ -15216,6 +15242,7 @@
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
 					RMLUI_STATIC_LIB,
+					RMLUI_MATH_EXPRESSIONS,
 					"RMLUI_VERSION=\\\"6.3\\\"",
 					RMLUI_NO_FILE_INTERFACE_DEFAULT,
 					RMLUI_SVG_PLUGIN,
@@ -15246,6 +15273,7 @@
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
 					RMLUI_STATIC_LIB,
+					RMLUI_MATH_EXPRESSIONS,
 					"RMLUI_VERSION=\\\"6.3\\\"",
 					RMLUI_NO_FILE_INTERFACE_DEFAULT,
 					RMLUI_SVG_PLUGIN,
@@ -15280,6 +15308,7 @@
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
 					RMLUI_STATIC_LIB,
+					RMLUI_MATH_EXPRESSIONS,
 					"RMLUI_VERSION=\\\"6.3\\\"",
 					RMLUI_NO_FILE_INTERFACE_DEFAULT,
 					RMLUI_SVG_PLUGIN,
@@ -15312,6 +15341,7 @@
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
 					RMLUI_STATIC_LIB,
+					RMLUI_MATH_EXPRESSIONS,
 					"RMLUI_VERSION=\\\"6.3\\\"",
 					RMLUI_NO_FILE_INTERFACE_DEFAULT,
 					RMLUI_SVG_PLUGIN,
