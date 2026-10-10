@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="stylesheet" type="text/css" href="../base.css">
+  <title>
+    A fixed-width BFC root that is too wide to fit beside the float moves below it
+  </title>
+</head>
+<body>
+
+<div id="test-root" style="display: block; width: 300px;">
+  <div style="float: left; width: 150px; height: 150px;"></div>
+  <div style="display: block; overflow: hidden; width: 200px; height: 150px;"></div>
+</div>
+
+</body>
+</html>
