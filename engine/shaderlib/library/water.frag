@@ -99,7 +99,7 @@ void main() {
         vec3 wave = waterWaves(xz, frame.time.x, customParams.waveDirection, customParams.waveHeight,
                                customParams.waveLength, customParams.waveSpeed);
         n = normalize(n - vec3(wave.y, 0.0, wave.z));
-        crest = clamp(wave.x / max(customParams.waveHeight, 1e-4), 0.0, 1.0) * 0.3;
+        crest = clamp(wave.x / max(customParams.waveHeight, 1e-4), 0.0, 1.0) * 0.15;
     #endif
 
     vec2 uv1 = waterLayerUV(xz, customParams.layerScale, customParams.layerSpeed);
