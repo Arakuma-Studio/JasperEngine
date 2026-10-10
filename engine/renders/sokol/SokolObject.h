@@ -51,12 +51,8 @@ namespace jasperengine{
 
         sg_pipeline_desc pipeline_desc;
 
-        // the face state endLoad built the pipelines with, so a variant can be rebuilt from pipeline_desc
-        bool loadFaceCulling;
-        bool loadDepthWrite;
-        CullingMode loadCullingMode;
-        WindingOrder loadWindingOrder;
-        bool loadPrepassFaceCulling;
+        // the render state endLoad built the pipelines with, so a variant can be rebuilt from pipeline_desc
+        RenderState loadState;
 
 #ifdef JASPERENGINE_EDITOR
         // Editor-only variants of the pipelines that cull no face, one per pipeline type,
@@ -76,6 +72,9 @@ namespace jasperengine{
         sg_primitive_type getPrimitiveType(PrimitiveType primitiveType);
         sg_cull_mode getCullMode(CullingMode cullingMode);
         sg_face_winding getFaceWinding(WindingOrder windingOrder);
+        sg_compare_func getCompareFunc(DepthCompare compare);
+        // the colour blending of the load state into a colour target
+        void applyBlend(sg_color_target_state& target, bool offscreen);
         // the description endLoad creates the pipeline of one type from
         sg_pipeline_desc makePipelineDesc(PipelineType pipType);
         sg_pipeline& pipelineOf(PipelineType pipType);
@@ -99,8 +98,7 @@ namespace jasperengine{
         void resetIndexBuffer();
         void addStorageBuffer(int slot, ShaderStageType stage, BufferRender* buffer);
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
-        // prepassFaceCulling applies to the PIP_ZPREPASS pipelines, which must cull like the color pass
-        bool endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling = true);
+        bool endLoad(uint16_t pipelines, const RenderState& state);
 
         // disableFaceCulling draws with a variant of the pipeline that culls no face
         // (editor-only debug views; ignored elsewhere)

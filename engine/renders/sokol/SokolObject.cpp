@@ -45,11 +45,7 @@ SokolObject::SokolObject(){
     loadIndexBuffer.id = SG_INVALID_ID;
     loadIndexOffset = 0;
     pipeline_desc = {};
-    loadFaceCulling = false;
-    loadDepthWrite = true;
-    loadCullingMode = CullingMode::BACK;
-    loadWindingOrder = WindingOrder::CCW;
-    loadPrepassFaceCulling = true;
+    loadState = RenderState();
     bindSlotIndex = 0;
     resetPipelines();
 }
@@ -134,6 +130,49 @@ sg_face_winding SokolObject::getFaceWinding(WindingOrder windingOrder){
     }
 
     return _SG_FACEWINDING_DEFAULT;
+}
+
+sg_compare_func SokolObject::getCompareFunc(DepthCompare compare){
+    switch (compare){
+        case DepthCompare::LESS:          return SG_COMPAREFUNC_LESS;
+        case DepthCompare::EQUAL:         return SG_COMPAREFUNC_EQUAL;
+        case DepthCompare::GREATER_EQUAL: return SG_COMPAREFUNC_GREATER_EQUAL;
+        case DepthCompare::GREATER:       return SG_COMPAREFUNC_GREATER;
+        case DepthCompare::NOT_EQUAL:     return SG_COMPAREFUNC_NOT_EQUAL;
+        case DepthCompare::ALWAYS:        return SG_COMPAREFUNC_ALWAYS;
+        default:                          return SG_COMPAREFUNC_LESS_EQUAL;
+    }
+}
+
+void SokolObject::applyBlend(sg_color_target_state& target, bool offscreen){
+    if (loadState.blend == BlendMode::NONE){
+        target.blend.enabled = false;
+        return;
+    }
+    target.blend.enabled = true;
+    switch (loadState.blend){
+        case BlendMode::PREMULTIPLIED:
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            break;
+        case BlendMode::ADDITIVE:
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+            break;
+        case BlendMode::MULTIPLY:
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_DST_COLOR;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ZERO;
+            break;
+        default:
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            break;
+    }
+    // an offscreen target keeps its coverage in alpha, whatever the colour blend
+    if (offscreen){
+        target.blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+        target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    }
 }
 
 void SokolObject::beginLoad(PrimitiveType primitiveType){
@@ -262,16 +301,17 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
 
     // offscreen passes render with a Y-flipped projection on GL (top-left
     // origin), which reverses the triangle winding
-    WindingOrder rttWinding = loadWindingOrder;
+    const WindingOrder loadWinding = loadState.windingOrder;
+    WindingOrder rttWinding = loadWinding;
     if (Engine::isOpenGL()){
-        rttWinding = (loadWindingOrder == WindingOrder::CCW) ? WindingOrder::CW : WindingOrder::CCW;
+        rttWinding = (loadWinding == WindingOrder::CCW) ? WindingOrder::CW : WindingOrder::CCW;
     }
 
     switch (pipType){
     case PipelineType::PIP_DEPTH:
-        if (loadFaceCulling){
-            desc.cull_mode = getCullMode(loadCullingMode);
-            desc.face_winding = getFaceWinding(loadWindingOrder);
+        if (loadState.faceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
+            desc.face_winding = getFaceWinding(loadWinding);
         }
         desc.sample_count = 1;
         desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
@@ -285,22 +325,27 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
     case PipelineType::PIP_ZPREPASS:
         desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
         desc.depth.write_enabled = true;
+        // the depth the color pass tests, offset like it
+        desc.depth.bias = loadState.depthBias;
+        desc.depth.bias_slope_scale = loadState.depthBiasSlope;
         desc.colors[0].write_mask = SG_COLORMASK_NONE;
-        if (loadPrepassFaceCulling){
-            desc.cull_mode = getCullMode(loadCullingMode);
-            desc.face_winding = getFaceWinding(loadWindingOrder);
+        if (loadState.prepassFaceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
+            desc.face_winding = getFaceWinding(loadWinding);
         }
         break;
 
     case PipelineType::PIP_ZPREPASS_RTT:
         desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
         desc.depth.write_enabled = true;
+        desc.depth.bias = loadState.depthBias;
+        desc.depth.bias_slope_scale = loadState.depthBiasSlope;
         desc.colors[0].write_mask = SG_COLORMASK_NONE;
         desc.sample_count = 1;
         desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
         desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-        if (loadPrepassFaceCulling){
-            desc.cull_mode = getCullMode(loadCullingMode);
+        if (loadState.prepassFaceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
             desc.face_winding = getFaceWinding(rttWinding);
         }
         break;
@@ -308,9 +353,9 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
     case PipelineType::PIP_SHADOW_DEPTH:
         // Depth-only pipeline (no color target); keeps the fragment stage for
         // alpha-mask discard. SG_PIXELFORMAT_NONE marks it depth-only in Sokol.
-        if (loadFaceCulling){
-            desc.cull_mode = getCullMode(loadCullingMode);
-            desc.face_winding = getFaceWinding(loadWindingOrder);
+        if (loadState.faceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
+            desc.face_winding = getFaceWinding(loadWinding);
         }
         desc.sample_count = 1;
         desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
@@ -325,9 +370,9 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
         //   color[0] = packed depth (same as PIP_DEPTH, so SSAO/SSR depth is unchanged)
         //   color[1] = view-space normal (octahedral .rg) + roughness (.b) + metallic (.a)
         //   color[2] = linear base color (.rgb) + hasIBL flag (.a)
-        if (loadFaceCulling){
-            desc.cull_mode = getCullMode(loadCullingMode);
-            desc.face_winding = getFaceWinding(loadWindingOrder);
+        if (loadState.faceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
+            desc.face_winding = getFaceWinding(loadWinding);
         }
         desc.sample_count = 1;
         desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
@@ -341,17 +386,17 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
 
     case PipelineType::PIP_DEFAULT:
     case PipelineType::PIP_DEFAULT_NODEPTH:
-        if (loadFaceCulling){
-            desc.cull_mode = getCullMode(loadCullingMode);
-            desc.face_winding = getFaceWinding(loadWindingOrder);
+        if (loadState.faceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
+            desc.face_winding = getFaceWinding(loadWinding);
         }
         desc.colors[0].write_mask = SG_COLORMASK_RGB;
-        desc.colors[0].blend.enabled = true;
-        desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
-        desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        applyBlend(desc.colors[0], false);
         if (pipType == PipelineType::PIP_DEFAULT){
-            desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
-            desc.depth.write_enabled = loadDepthWrite;
+            desc.depth.compare = getCompareFunc(loadState.depthCompare);
+            desc.depth.write_enabled = loadState.depthWrite;
+            desc.depth.bias = loadState.depthBias;
+            desc.depth.bias_slope_scale = loadState.depthBiasSlope;
         }else{
             desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
             desc.depth.write_enabled = false;
@@ -364,18 +409,16 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
     case PipelineType::PIP_RTT_NODEPTH:
     case PipelineType::PIP_RTT_INVERT:
         desc.sample_count = 1;
-        desc.depth.write_enabled = loadDepthWrite;
-        desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+        desc.depth.write_enabled = loadState.depthWrite;
+        desc.depth.compare = getCompareFunc(loadState.depthCompare);
+        desc.depth.bias = loadState.depthBias;
+        desc.depth.bias_slope_scale = loadState.depthBiasSlope;
         desc.colors[0].write_mask = SG_COLORMASK_RGBA;
-        desc.colors[0].blend.enabled = true;
-        desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
-        desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-        desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
-        desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        applyBlend(desc.colors[0], true);
         desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
         desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-        if (loadFaceCulling){
-            desc.cull_mode = getCullMode(loadCullingMode);
+        if (loadState.faceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
             // planar reflection mirrors handedness, reversing winding once more
             WindingOrder winding = rttWinding;
             if (pipType == PipelineType::PIP_RTT_INVERT){
@@ -408,12 +451,8 @@ sg_pipeline& SokolObject::pipelineOf(PipelineType pipType){
     }
 }
 
-bool SokolObject::endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling){
-    loadFaceCulling = enableFaceCulling;
-    loadDepthWrite = enableDepthWrite;
-    loadCullingMode = cullingMode;
-    loadWindingOrder = windingOrder;
-    loadPrepassFaceCulling = prepassFaceCulling;
+bool SokolObject::endLoad(uint16_t pipelines, const RenderState& state){
+    loadState = state;
 
     // creation order of the pipeline types
     static const PipelineType types[] = {

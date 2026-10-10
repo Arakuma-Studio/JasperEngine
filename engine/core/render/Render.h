@@ -26,6 +26,48 @@ namespace jasperengine{
         CW
     };
 
+    // Colour blending of a pipeline. ALPHA is what every pipeline used before render state
+    // was configurable (opaque objects included); NONE disables blending.
+    enum class BlendMode{
+        NONE,
+        ALPHA,          // SRC_ALPHA, ONE_MINUS_SRC_ALPHA
+        PREMULTIPLIED,  // ONE, ONE_MINUS_SRC_ALPHA
+        ADDITIVE,       // SRC_ALPHA, ONE
+        MULTIPLY        // DST_COLOR, ZERO
+    };
+
+    enum class DepthCompare{
+        LESS,
+        LESS_EQUAL,
+        EQUAL,
+        GREATER_EQUAL,
+        GREATER,
+        NOT_EQUAL,
+        ALWAYS
+    };
+
+    // What ObjectRender::endLoad builds every pipeline of an object with. The defaults are
+    // the state objects had before it was configurable. Each pipeline type keeps its own
+    // fixed parts (colour mask, offscreen alpha, depth-only passes): blend, depth compare
+    // and depth bias apply to the colour pipelines, depth bias also to the z-prepass.
+    struct RenderState{
+        bool faceCulling = false;
+        CullingMode cullingMode = CullingMode::BACK;
+        WindingOrder windingOrder = WindingOrder::CCW;
+        // the PIP_ZPREPASS pipelines, which must cull like the color pass
+        bool prepassFaceCulling = true;
+        bool depthWrite = true;
+        DepthCompare depthCompare = DepthCompare::LESS_EQUAL; // camera depth test off forces always
+        BlendMode blend = BlendMode::ALPHA;
+        float depthBiasSlope = 0.0f; // polygon offset factor
+        float depthBias = 0.0f;      // polygon offset units
+
+        RenderState() = default;
+        RenderState(bool faceCulling, bool depthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling = true):
+            faceCulling(faceCulling), cullingMode(cullingMode), windingOrder(windingOrder),
+            prepassFaceCulling(prepassFaceCulling), depthWrite(depthWrite) {}
+    };
+
     enum class BufferType{
         VERTEX_BUFFER,
         INDEX_BUFFER,
