@@ -21,7 +21,7 @@ UniquePtr<LayoutBox> FlexFormattingContext::Format(ContainerBox* parent_containe
 	ElementScroll* element_scroll = element->GetElementScroll();
 	const ComputedValues& computed = element->GetComputedValues();
 
-	const Vector2f containing_block = LayoutDetails::GetContainingBlock(parent_container, element->GetPosition()).size;
+	const Vector2f containing_block = LayoutDetails::GetContainingBlock(parent_container, element).size;
 	RMLUI_ASSERT(containing_block.x >= 0.f);
 
 	// Build the initial box as specified by the flex's style, as if it was a normal block element.

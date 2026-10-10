@@ -79,6 +79,9 @@ public:
 	/// @param[in] position The position property of the current box.
 	/// @return The containing block box and size, possibly indefinite (represented by negative size) along one or both axes.
 	static ContainingBlock GetContainingBlock(ContainerBox* parent_container, Style::Position position);
+	/// Returns the containing block of an element's box: as above, or its overriding containing block, if the box formatting it
+	/// gave one (ContainerBox::AddAbsoluteElement).
+	static ContainingBlock GetContainingBlock(ContainerBox* parent_container, Element* element);
 
 	/// Builds margins of a Box, and resolves any auto width or height for non-inline elements. The height may be left unresolved if it depends on the
 	/// element's children.

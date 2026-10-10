@@ -721,11 +721,23 @@ float Element::ResolveNumericValue(NumericValue value, float base_value)
 	return result;
 }
 
+const Rectanglef* Element::GetContainingBlockOverride() const
+{
+	const Style::Position position = meta->computed_values.position();
+	if ((position == Style::Position::Absolute || position == Style::Position::Fixed) && meta->containing_block_override)
+		return &*meta->containing_block_override;
+	return nullptr;
+}
+
 Vector2f Element::GetContainingBlock()
 {
 	Vector2f containing_block;
 
-	if (offset_parent)
+	if (const Rectanglef* containing_block_override = GetContainingBlockOverride())
+	{
+		containing_block = containing_block_override->Size();
+	}
+	else if (offset_parent)
 	{
 		using namespace Style;
 		Position position_property = GetPosition();
@@ -2316,12 +2328,21 @@ void Element::UpdateOffset()
 	{
 		if (offset_parent != nullptr)
 		{
+			// The containing block: the offset parent's padding box, or the override (a grid area, the viewport), its
+			// origin relative to the offset parent's border box.
 			const Box& parent_box = offset_parent->GetBox();
 			Vector2f containing_block = parent_box.GetSize(BoxArea::Padding);
+			Vector2f containing_block_origin = {parent_box.GetEdge(BoxArea::Border, BoxEdge::Left),
+				parent_box.GetEdge(BoxArea::Border, BoxEdge::Top)};
+			if (const Rectanglef* containing_block_override = GetContainingBlockOverride())
+			{
+				containing_block = containing_block_override->Size();
+				containing_block_origin = containing_block_override->Position();
+			}
 
 			// If the element is anchored left, then the position is offset by that resolved value.
 			if (computed.left().type != Left::Auto)
-				relative_offset_base.x = parent_box.GetEdge(BoxArea::Border, BoxEdge::Left) +
+				relative_offset_base.x = containing_block_origin.x +
 					(ResolveValue(computed.left(), containing_block.x) + GetBox().GetEdge(BoxArea::Margin, BoxEdge::Left));
 
 			// If the element is anchored right, then the position is set first so the element's right-most edge
@@ -2329,7 +2350,7 @@ void Element::UpdateOffset()
 			// offset by the resolved value.
 			else if (computed.right().type != Right::Auto)
 			{
-				relative_offset_base.x = containing_block.x + parent_box.GetEdge(BoxArea::Border, BoxEdge::Left) -
+				relative_offset_base.x = containing_block.x + containing_block_origin.x -
 					(ResolveValue(computed.right(), containing_block.x) + GetBox().GetSize(BoxArea::Border).x +
 						GetBox().GetEdge(BoxArea::Margin, BoxEdge::Right));
 			}
@@ -2337,8 +2358,8 @@ void Element::UpdateOffset()
 			// If the element is anchored top, then the position is offset by that resolved value.
 			if (computed.top().type != Top::Auto)
 			{
-				relative_offset_base.y = parent_box.GetEdge(BoxArea::Border, BoxEdge::Top) +
-					(ResolveValue(computed.top(), containing_block.y) + GetBox().GetEdge(BoxArea::Margin, BoxEdge::Top));
+				relative_offset_base.y =
+					containing_block_origin.y + (ResolveValue(computed.top(), containing_block.y) + GetBox().GetEdge(BoxArea::Margin, BoxEdge::Top));
 			}
 
 			// If the element is anchored bottom, then the position is set first so the element's right-most edge
@@ -2346,7 +2367,7 @@ void Element::UpdateOffset()
 			// offset by the resolved value.
 			else if (computed.bottom().type != Bottom::Auto)
 			{
-				relative_offset_base.y = containing_block.y + parent_box.GetEdge(BoxArea::Border, BoxEdge::Top) -
+				relative_offset_base.y = containing_block.y + containing_block_origin.y -
 					(ResolveValue(computed.bottom(), containing_block.y) + GetBox().GetSize(BoxArea::Border).y +
 						GetBox().GetEdge(BoxArea::Margin, BoxEdge::Bottom));
 			}

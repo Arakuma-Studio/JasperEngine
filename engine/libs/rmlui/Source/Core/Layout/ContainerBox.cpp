@@ -3,6 +3,7 @@
 #include "../../../Include/RmlUi/Core/Element.h"
 #include "../../../Include/RmlUi/Core/ElementScroll.h"
 #include "../../../Include/RmlUi/Core/Profiling.h"
+#include "../ElementMeta.h"
 #include "FlexFormattingContext.h"
 #include "FormattingContext.h"
 #include "LayoutDetails.h"
@@ -25,10 +26,11 @@ void ContainerBox::ResetScrollbars(const Box& box)
 		element->GetElementScroll()->DisableScrollbar(ElementScroll::VERTICAL);
 }
 
-void ContainerBox::AddAbsoluteElement(Element* element, Vector2f static_position, Element* static_relative_offset_parent)
+void ContainerBox::AddAbsoluteElement(Element* element, Vector2f static_position, Element* static_relative_offset_parent,
+	std::optional<Rectanglef> containing_block)
 {
 	// We may possibly be adding the same element from a previous layout iteration. If so, this ensures it is updated with the latest static position.
-	absolute_elements[element] = AbsoluteElement{static_position, static_relative_offset_parent};
+	absolute_elements[element] = AbsoluteElement{static_position, static_relative_offset_parent, containing_block};
 }
 
 void ContainerBox::AddRelativeElement(Element* element)
@@ -76,8 +78,20 @@ void ContainerBox::ClosePositionedElements()
 			// Now simply add the result to the stored static position to get the static position in our local space.
 			Vector2f offset = relative_position + static_position;
 
-			// Lay out the element.
-			FormattingContext::FormatIndependent(this, absolute_element, nullptr, FormattingContextType::Block);
+			// Lay out the element, against its overriding containing block if it has one (also for Element::UpdateOffset and
+			// Element::GetContainingBlock).
+			const std::optional<Rectanglef>& containing_block = absolute_element_pair.second.containing_block;
+			absolute_element->meta->containing_block_override = containing_block;
+			if (containing_block)
+			{
+				Box box;
+				LayoutDetails::BuildBox(box, containing_block->Size(), absolute_element);
+				FormattingContext::FormatIndependent(this, absolute_element, &box, FormattingContextType::Block);
+			}
+			else
+			{
+				FormattingContext::FormatIndependent(this, absolute_element, nullptr, FormattingContextType::Block);
+			}
 
 			// Now that the element's box has been built, we can offset the position we determined was appropriate for
 			// it by the element's margin. This is necessary because the coordinate system for the box begins at the

@@ -18,7 +18,7 @@ UniquePtr<LayoutBox> ReplacedFormattingContext::Format(ContainerBox* parent_cont
 		box = *override_initial_box;
 	else
 	{
-		const Vector2f containing_block = LayoutDetails::GetContainingBlock(parent_container, element->GetPosition()).size;
+		const Vector2f containing_block = LayoutDetails::GetContainingBlock(parent_container, element).size;
 		LayoutDetails::BuildBox(box, containing_block, element);
 	}
 

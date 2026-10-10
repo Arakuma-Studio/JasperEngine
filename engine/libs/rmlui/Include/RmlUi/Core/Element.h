@@ -37,6 +37,7 @@ class RenderManager;
 class StyleSheet;
 class StyleSheetContainer;
 class TransformState;
+class LayoutDetails;
 struct ElementMeta;
 struct StackingContextChild;
 
@@ -692,6 +693,9 @@ private:
 	void UpdateAbsoluteOffsetAndRenderBoxData();
 	void UpdateOffset();
 	void SetBaseline(float baseline);
+	// The containing block that replaces the offset parent's padding box for this absolutely positioned element, relative
+	// to the offset parent's border box (a grid area, the viewport); nullptr if there is none.
+	const Rectanglef* GetContainingBlockOverride() const;
 
 	void BuildLocalStackingContext();
 	void AddChildrenToStackingContext(Vector<StackingContextChild>& stacking_children);
@@ -815,6 +819,7 @@ private:
 	friend class Rml::Context;
 	friend class Rml::ElementStyle;
 	friend class Rml::ContainerBox;
+	friend class Rml::LayoutDetails;
 	friend class Rml::InlineLevelBox;
 	friend class Rml::ReplacedBox;
 	friend class Rml::LayoutEngine;

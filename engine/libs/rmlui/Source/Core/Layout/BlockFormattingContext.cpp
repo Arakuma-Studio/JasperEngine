@@ -99,7 +99,7 @@ UniquePtr<LayoutBox> BlockFormattingContext::Format(ContainerBox* parent_contain
 	RMLUI_ZoneName(name.c_str(), name.size());
 #endif
 
-	const Vector2f containing_block = LayoutDetails::GetContainingBlock(parent_container, element->GetPosition()).size;
+	const Vector2f containing_block = LayoutDetails::GetContainingBlock(parent_container, element).size;
 
 	Box box;
 	if (override_initial_box)

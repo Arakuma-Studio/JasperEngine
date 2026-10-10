@@ -244,6 +244,14 @@ ContainingBlock LayoutDetails::GetContainingBlock(ContainerBox* parent_container
 	return {container, containing_block};
 }
 
+ContainingBlock LayoutDetails::GetContainingBlock(ContainerBox* parent_container, Element* element)
+{
+	ContainingBlock containing_block = GetContainingBlock(parent_container, element->GetPosition());
+	if (const Rectanglef* containing_block_override = element->GetContainingBlockOverride())
+		containing_block.size = containing_block_override->Size();
+	return containing_block;
+}
+
 void LayoutDetails::BuildBoxSizeAndMargins(Box& box, Vector2f min_size, Vector2f max_size, Vector2f containing_block, Element* element,
 	BuildBoxMode box_context, bool replaced_element)
 {
