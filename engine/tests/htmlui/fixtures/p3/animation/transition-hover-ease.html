@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>animation: a hover transition with the CSS easing keywords</title>
+<style>
+  html, body { margin: 0; }
+  div { position: absolute; left: 20px; height: 30px; background-color: #3060c0; }
+  #ease { top: 20px; width: 100px; transition: width 1s ease, background-color 1s ease; }
+  #ease-in { top: 60px; width: 100px; transition: width 1s ease-in; }
+  #ease-out { top: 100px; width: 100px; transition: width 1s ease-out; }
+  #ease-in-out { top: 140px; width: 100px; transition: width 1s ease-in-out; }
+  #linear { top: 180px; width: 100px; transition: width 1s linear; }
+  #area { left: 0; top: 0; width: 400px; height: 230px; background-color: transparent; }
+  #area:hover #ease { width: 300px; background-color: #e04040; }
+  #area:hover #ease-in, #area:hover #ease-out, #area:hover #ease-in-out, #area:hover #linear { width: 300px; }
+</style>
+</head>
+<body>
+<div id="area"><div id="ease"></div><div id="ease-in"></div><div id="ease-out"></div><div id="ease-in-out"></div><div id="linear"></div></div>
+</body>
+</html>

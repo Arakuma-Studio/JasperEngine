@@ -1,0 +1,62 @@
+{
+ "fixture": "animation/transition-var.html",
+ "viewport": [
+  400,
+  140
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "half": [
+   {
+    "id": "parent",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 400,
+    "h": 140
+   },
+   {
+    "id": "box",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 200,
+    "h": 40
+   },
+   {
+    "id": "inherits",
+    "tag": "div",
+    "x": 20,
+    "y": 80,
+    "w": 200,
+    "h": 40
+   }
+  ],
+  "end": [
+   {
+    "id": "parent",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 400,
+    "h": 140
+   },
+   {
+    "id": "box",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 300,
+    "h": 40
+   },
+   {
+    "id": "inherits",
+    "tag": "div",
+    "x": 20,
+    "y": 80,
+    "w": 200,
+    "h": 40
+   }
+  ]
+ }
+}

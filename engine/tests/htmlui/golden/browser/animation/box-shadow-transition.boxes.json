@@ -1,0 +1,46 @@
+{
+ "fixture": "animation/box-shadow-transition.html",
+ "viewport": [
+  320,
+  140
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "half": [
+   {
+    "id": "grow",
+    "tag": "div",
+    "x": 30,
+    "y": 30,
+    "w": 80,
+    "h": 50
+   },
+   {
+    "id": "added",
+    "tag": "div",
+    "x": 180,
+    "y": 30,
+    "w": 80,
+    "h": 50
+   }
+  ],
+  "end": [
+   {
+    "id": "grow",
+    "tag": "div",
+    "x": 30,
+    "y": 30,
+    "w": 80,
+    "h": 50
+   },
+   {
+    "id": "added",
+    "tag": "div",
+    "x": 180,
+    "y": 30,
+    "w": 80,
+    "h": 50
+   }
+  ]
+ }
+}

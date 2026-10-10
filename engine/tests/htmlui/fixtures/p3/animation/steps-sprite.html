@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>animation: steps() timing functions</title>
+<style>
+  html, body { margin: 0; }
+  @keyframes walk { from { left: 20px; } to { left: 340px; } }
+  div { position: absolute; width: 40px; height: 30px; background-color: #c06020; }
+  #end { top: 10px; animation: walk 1s steps(4) infinite; }
+  #start { top: 50px; animation: walk 1s steps(4, jump-start) infinite; }
+  #none { top: 90px; animation: walk 1s steps(5, jump-none) infinite; }
+  #both { top: 130px; animation: walk 1s steps(3, jump-both) infinite; }
+  #step-end { top: 170px; animation: walk 1s step-end infinite; }
+</style>
+</head>
+<body>
+<div id="end"></div><div id="start"></div><div id="none"></div><div id="both"></div><div id="step-end"></div>
+</body>
+</html>
