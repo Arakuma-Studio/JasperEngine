@@ -25,9 +25,21 @@ std::string RcssMediaCondition::text() const{
 RcssWriter::RcssWriter(Mode mode): mode(mode) {
 }
 
+void RcssWriter::Output::grow(size_t needed){
+    size_t capacity = capacity_ ? capacity_ * 2 : 4096;
+    while (capacity < needed)
+        capacity *= 2;
+    std::unique_ptr<char[]> data(new char[capacity]);
+    if (size_ > 0)
+        std::memcpy(data.get(), data_.get(), size_);
+    data_ = std::move(data);
+    capacity_ = capacity;
+}
+
 void RcssWriter::line(std::string_view text, SourceRef ref){
-    output.append(text.data(), text.size());
-    output += '\n';
+    char* to = output.extend(text.size() + 1);
+    std::memcpy(to, text.data(), text.size());
+    to[text.size()] = '\n';
     map.lines.push_back(ref);
 }
 
@@ -57,9 +69,7 @@ void RcssWriter::beginRule(std::string_view selectors, SourceRef ref){
         return;
     if (ruleOpen)
         endRule();
-    const size_t at = output.size();
-    output.resize(at + selectors.size() + 3);
-    char* to = &output[at];
+    char* to = output.extend(selectors.size() + 3);
     std::memcpy(to, selectors.data(), selectors.size());
     std::memcpy(to + selectors.size(), " {\n", 3);
     map.lines.push_back(ref);
@@ -77,13 +87,11 @@ void RcssWriter::endRule(){
 void RcssWriter::declaration(std::string_view name, std::string_view value, SourceRef ref){
     if (mode == Mode::DeclarationList){
         if (!output.empty())
-            output += ' ';
+            output.push(' ');
     }
     // "name: value;" and the line end written in one growth of the output
     const bool sheet = mode != Mode::DeclarationList;
-    const size_t at = output.size();
-    output.resize(at + name.size() + value.size() + (sheet ? 4 : 3));
-    char* to = &output[at];
+    char* to = output.extend(name.size() + value.size() + (sheet ? 4 : 3));
     std::memcpy(to, name.data(), name.size());
     to += name.size();
     *to++ = ':';
@@ -126,9 +134,8 @@ uint32_t RcssWriter::lineCount() const{
 std::string RcssWriter::take(RcssLineMap& lines){
     endRule();
     endMedia();
-    std::string result = std::move(output);
+    std::string result = output.take();
     lines = std::move(map);
-    output.clear();
     map.lines.clear();
     return result;
 }

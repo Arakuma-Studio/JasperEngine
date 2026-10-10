@@ -977,9 +977,22 @@ namespace {
         if (value.size() < 4)
             return false;
         const size_t last = value.size() - 3;   // an 'm' at 1 .. last
-        // ((c | 0x20) == 'm' holds for 'm' and 'M' alone, and 'v' likewise)
+        // ((c | 0x20) == 'm' holds for 'm' and 'M' alone, and 'v' likewise); eight bytes are
+        // tested for an 'm' at once, a word that holds one byte by byte
         const unsigned char* const p = (const unsigned char*)value.data();
-        for (size_t i = 1; i <= last; i++){
+        size_t i = 1;
+        for (; i + 8 <= last + 1; i += 8){
+            uint64_t word;
+            std::memcpy(&word, p + i, 8);
+            const uint64_t m = (word | 0x2020202020202020ull) ^ 0x6D6D6D6D6D6D6D6Dull;
+            if (((m - 0x0101010101010101ull) & ~m & 0x8080808080808080ull) == 0)
+                continue;
+            for (size_t j = i; j < i + 8; j++){
+                if ((p[j] | 0x20) == 'm' && (p[j - 1] | 0x20) == 'v')
+                    return true;
+            }
+        }
+        for (; i <= last; i++){
             if ((p[i] | 0x20) == 'm' && (p[i - 1] | 0x20) == 'v')
                 return true;
         }
