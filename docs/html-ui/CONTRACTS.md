@@ -193,7 +193,10 @@ Conventions that apply everywhere:
 | `<link origin="user-agent">` → `StyleSheet::SetOrigin(StyleOrigin::UserAgent)`, `revert` | fork | P3 p3-cascade | P2 serializer | P3 §3.4.3 |
 | Native `background-*`/`mask-*` accepting registered decorator functions as layers | fork | P3 p3-paint | P2 (`html-layer`, `html-shape`), P5 (`jfx-*` layers) | P3 §3.9.1 |
 | `ComputeObjectFitRect` | fork API | P3 p3-paint | P1 SVG/Lottie elements, P2 `HtmlImageElement` | P3 §3.9.3 |
-| `TextShapingContext::word_spacing` (engine font engine applies it) | fork API | P3 p3-text | P0/P1 `RmlFontEngine` | P3 §3.10 |
+| `TextShapingContext::word_spacing` (px after each U+0020/U+00A0/U+1361; the engine applies it as `ShapeOptions::wordSpacing` in `TextShaper`, `RmlFontEngine::toShapeOptions` sets it) | fork API | P3 p3-text | P0/P1 `RmlFontEngine` | P3 §3.10 |
+| `TextShaper::isDefaultIgnorable(codepoint)`; `selectFace` keeps the current face for a default-ignorable code point (U+200B, joiners, soft hyphen, variation selectors: invisible, zero advance) | C++ | P3 p3-text | `STBText`, `RmlFontEngine` | P3 §3.10 |
+| Text values: `ComputedValues::white_space_collapse()/text_wrap_mode()` (`white_space()` = nearest CSS 2.1 keyword; `PropertyId::WhiteSpace` not registered, `white-space` is a shorthand), `text_align()` resolved to left/right/center/justify (`specified_text_align()`: with `Start`/`End`), `text_decoration()` flags (`Style::HasTextDecoration`), `overflow_wrap()`, `letter_spacing()`/`word_spacing()` px, `has_text_shadow()`; `TextUnicode` (`IsLineBreakOpportunity`, case mapping); `ResolveTextShadows(Element&)` (`TextShadow.h`); `LayoutDetails::IsMeasuringMinContent()` | fork API | P3 p3-text | P3 wave 1/2, P5 (`TextFillFilter`) | P3 §3.10 |
+| `fonts/Roboto-Regular-subset-post.ttf` (the engine's Roboto with a `post` table: Chromium's sanitizer rejects the subset without one); `FixtureRunner::idBoxes` = union of an element's boxes; `RewriteId::UserSelect` (appended) | test data / test API / C++ | P3 p3-text | P3 fixtures that draw Roboto | P3 §3.10 "as implemented" |
 | `Rml::SetGeometryFeathering(bool)` (engine sets it from the target's MSAA) | fork API | P3 p3-paint | P1 `HtmlUIContext` | P3 §3.7.3 |
 | `SetMouseCursor` receives the first supported CSS cursor keyword | fork | P3 p3-values | P1 `System::setMouseCursor` | P3 §3.3.8 |
 
