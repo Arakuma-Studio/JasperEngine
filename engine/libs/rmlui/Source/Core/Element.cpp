@@ -752,6 +752,8 @@ Vector2f Element::GetContainingBlock()
 		else if (position_property == Position::Absolute || position_property == Position::Fixed)
 		{
 			containing_block = parent_box.GetSize(BoxArea::Padding);
+			containing_block.x = Math::Max(containing_block.x - offset_parent->meta->scroll.GetScrollbarSize(ElementScroll::VERTICAL), 0.f);
+			containing_block.y = Math::Max(containing_block.y - offset_parent->meta->scroll.GetScrollbarSize(ElementScroll::HORIZONTAL), 0.f);
 		}
 	}
 	else if (Context* context = GetContext())
@@ -2349,6 +2351,9 @@ void Element::UpdateOffset()
 			// origin relative to the offset parent's border box.
 			const Box& parent_box = offset_parent->GetBox();
 			Vector2f containing_block = parent_box.GetSize(BoxArea::Padding);
+			// (without the offset parent's scrollbars, as the layout sized this box: LayoutDetails::GetContainingBlock)
+			containing_block.x = Math::Max(containing_block.x - offset_parent->meta->scroll.GetScrollbarSize(ElementScroll::VERTICAL), 0.f);
+			containing_block.y = Math::Max(containing_block.y - offset_parent->meta->scroll.GetScrollbarSize(ElementScroll::HORIZONTAL), 0.f);
 			Vector2f containing_block_origin = {parent_box.GetEdge(BoxArea::Border, BoxEdge::Left),
 				parent_box.GetEdge(BoxArea::Border, BoxEdge::Top)};
 			if (const Rectanglef* containing_block_override = GetContainingBlockOverride())

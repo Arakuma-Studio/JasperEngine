@@ -274,12 +274,9 @@ ContainingBlock LayoutDetails::GetContainingBlock(ContainerBox* parent_container
 
 	Vector2f containing_block = box->GetSize(area);
 
-	if (position == Position::Static || position == Position::Relative || position == Position::Sticky)
 	{
-		// For static elements we subtract the scrollbar size so that elements normally don't overlap their parent's
-		// scrollbars. In CSS, this would also be done for absolutely positioned elements, we might want to copy that
-		// behavior in the future. If so, we would also need to change the element offset behavior, and ideally also
-		// make positioned boxes contribute to the scrollable area.
+		// The scrollbars take their space from the box: in-flow boxes do not overlap their parent's scrollbars, and the
+		// containing block of absolutely positioned boxes is the padding box without them (CSS Overflow 3 §3.2).
 		if (Element* element = container->GetElement())
 		{
 			ElementScroll* element_scroll = element->GetElementScroll();
@@ -600,6 +597,10 @@ float LayoutDetails::GetShrinkToFitWidth(Element* element, Vector2f containing_b
 	float shrink_to_fit_width = layout_box->GetShrinkToFitWidth();
 	if (available_width < 0.f && containing_block.x >= 0)
 		available_width = Math::Max(0.f, containing_block.x - box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Margin, BoxArea::Padding));
+	// The space of a vertical scrollbar that is always there is part of the width.
+	if (element->GetComputedValues().overflow_y() == Style::Overflow::Scroll)
+		shrink_to_fit_width += element->GetElementScroll()->GetScrollbarSize(ElementScroll::VERTICAL);
+
 	if (available_width >= 0.f && shrink_to_fit_width > available_width)
 	{
 		// fit-content: not narrower than the min-content width (CSS 2.1 §10.3.5).
@@ -815,6 +816,9 @@ float LayoutDetails::GetContentWidth(Element* element, AvailableSpace available_
 		RootBox root(Math::Max(containing_block, Vector2f(0.f)));
 		if (UniquePtr<LayoutBox> layout_box = FormattingContext::FormatIndependent(&root, element, &box, FormattingContextType::Block))
 			content_width = (min_content ? layout_box->GetMinContentWidth() : layout_box->GetShrinkToFitWidth());
+		// The space of a vertical scrollbar that is always there is part of the width.
+		if (computed.overflow_y() == Style::Overflow::Scroll)
+			content_width += element->GetElementScroll()->GetScrollbarSize(ElementScroll::VERTICAL);
 	}
 
 	// The size of the content: the element's own min-width and max-width do not apply (CSS Flexbox 9.2: the flex base size
