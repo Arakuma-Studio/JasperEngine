@@ -1,0 +1,7 @@
+{
+ "comment": "flex items in grid areas: a wrapping flex item sets its row's height, a column flex item fills its stretched area",
+ "viewport": [
+  300,
+  120
+ ]
+}

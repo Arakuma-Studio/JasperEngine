@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>grid: spans and negative line numbers</title>
+<style>
+  html, body { margin: 0; }
+  #g { position: absolute; left: 10px; top: 10px; width: 200px; display: grid;
+       grid-template-columns: repeat(4, 50px); grid-template-rows: repeat(3, 30px); background-color: #dddddd; }
+  #full { grid-column: 1 / -1; grid-row: 1; background-color: #882222; }
+  #end { grid-column: -2 / -1; grid-row: 2 / span 2; background-color: #228822; }
+  #span { grid-column: span 2 / -2; grid-row: -2; background-color: #222288; }
+  #before { grid-column: 1; grid-row: -1 / -3; background-color: #888822; }
+  #implicit { grid-column: 3; grid-row: 4; height: 15px; background-color: #882288; }
+</style>
+</head>
+<body>
+<div id="g"><div id="full"></div><div id="end"></div><div id="span"></div><div id="before"></div><div id="implicit"></div></div>
+</body>
+</html>

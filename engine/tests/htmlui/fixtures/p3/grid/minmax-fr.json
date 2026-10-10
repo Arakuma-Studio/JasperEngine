@@ -1,0 +1,7 @@
+{
+ "comment": "a 1fr track below its minimum becomes inflexible and the others share the rest; minmax(0, 1fr) does not grow with content, 1fr (auto minimum) does",
+ "viewport": [
+  300,
+  60
+ ]
+}

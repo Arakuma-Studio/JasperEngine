@@ -1,0 +1,7 @@
+{
+ "comment": "place-content sets align-content then justify-content, place-items and place-self the item alignment",
+ "viewport": [
+  160,
+  200
+ ]
+}

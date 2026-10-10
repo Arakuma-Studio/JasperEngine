@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>grid: minmax() and fr distribution</title>
+<style>
+  html, body { margin: 0; }
+  #g { position: absolute; left: 0; top: 0; width: 300px; display: grid; grid-auto-rows: 20px;
+       grid-template-columns: minmax(100px, 1fr) 2fr minmax(0, 60px); background-color: #dddddd; }
+  #h { position: absolute; left: 0; top: 30px; width: 300px; display: grid; grid-auto-rows: 20px;
+       grid-template-columns: 1fr minmax(0, 1fr) 30px; column-gap: 15px; }
+  #g > div, #h > div { background-color: #6644aa; }
+  #g > div + div, #h > div + div { background-color: #aa6644; }
+  #g > div + div + div, #h > div + div + div { background-color: #44aa66; }
+</style>
+</head>
+<body>
+<div id="g"><div id="g1"></div><div id="g2"></div><div id="g3"></div></div>
+<div id="h"><div id="h1"><div style="width: 150px; height: 10px;"></div></div><div id="h2"></div><div id="h3"></div></div>
+</body>
+</html>

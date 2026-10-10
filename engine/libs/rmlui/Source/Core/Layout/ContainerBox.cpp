@@ -6,6 +6,7 @@
 #include "../ElementMeta.h"
 #include "FlexFormattingContext.h"
 #include "FormattingContext.h"
+#include "GridFormattingContext.h"
 #include "LayoutDetails.h"
 #include <algorithm>
 #include <cmath>
@@ -80,7 +81,9 @@ void ContainerBox::ClosePositionedElements()
 
 			// Lay out the element, against its overriding containing block if it has one (also for Element::UpdateOffset and
 			// Element::GetContainingBlock).
-			const std::optional<Rectanglef>& containing_block = absolute_element_pair.second.containing_block;
+			std::optional<Rectanglef> containing_block = absolute_element_pair.second.containing_block;
+			if (!containing_block)
+				containing_block = GetAbsoluteContainingBlock(absolute_element);
 			absolute_element->meta->containing_block_override = containing_block;
 			if (containing_block)
 			{
@@ -103,6 +106,11 @@ void ContainerBox::ClosePositionedElements()
 			absolute_element->SetOffset(offset, element);
 		}
 	}
+}
+
+std::optional<Rectanglef> ContainerBox::GetAbsoluteContainingBlock(Element* /*element*/) const
+{
+	return std::nullopt;
 }
 
 void ContainerBox::SetElementBaseline(float element_baseline)
@@ -296,6 +304,62 @@ float FlexContainer::GetMinContentWidth() const
 String FlexContainer::DebugDumpTree(int depth) const
 {
 	return String(depth * 2, ' ') + "FlexContainer" + " | " + LayoutDetails::GetDebugElementName(element);
+}
+
+GridContainer::GridContainer(Element* element, ContainerBox* parent_container) : ContainerBox(Type::GridContainer, element, parent_container)
+{
+	RMLUI_ASSERT(element);
+	containing_block = LayoutDetails::GetContainingBlock(parent_container, element).size;
+}
+
+GridContainer::~GridContainer() {}
+
+bool GridContainer::Close(const Vector2f visible_overflow_size, const Vector2f scrollable_content_size, const Box& box, float element_baseline)
+{
+	if (!SubmitBox(visible_overflow_size, scrollable_content_size, box, -1.f))
+		return false;
+
+	ClosePositionedElements();
+	absolute_area_resolver.reset();
+
+	SubmitElementLayout();
+	SetElementBaseline(element_baseline);
+	return true;
+}
+
+float GridContainer::GetShrinkToFitWidth() const
+{
+	// For the trivial case of a fixed width, we simply return that.
+	if (element->GetComputedValues().width().type == Style::Width::Type::Length)
+		return box.GetSize().x;
+
+	return GridFormattingContext::GetMaxContentWidth(element, containing_block);
+}
+
+float GridContainer::GetMinContentWidth() const
+{
+	if (element->GetComputedValues().width().type == Style::Width::Type::Length)
+		return box.GetSize().x;
+
+	return GridFormattingContext::GetMinContentWidth(element, containing_block);
+}
+
+String GridContainer::DebugDumpTree(int depth) const
+{
+	return String(depth * 2, ' ') + "GridContainer" + " | " + LayoutDetails::GetDebugElementName(element);
+}
+
+void GridContainer::SetAbsoluteAreaResolver(UniquePtr<GridLayout::AbsoluteAreaResolver> resolver)
+{
+	absolute_area_resolver = std::move(resolver);
+}
+
+std::optional<Rectanglef> GridContainer::GetAbsoluteContainingBlock(Element* absolute_element) const
+{
+	// CSS Grid 2, 10.1: the grid area from the box's grid-placement properties ('auto' lines at our padding edges).
+	if (!absolute_area_resolver)
+		return std::nullopt;
+	return absolute_area_resolver->Resolve(absolute_element);
 }
 
 TableWrapper::TableWrapper(Element* element, ContainerBox* parent_container) : ContainerBox(Type::TableWrapper, element, parent_container)
