@@ -11,7 +11,7 @@ The build files are ours: `engine/libs/rmlui/CMakeLists.txt` (desktop, Web, Andr
 export through `engine/CMakeLists.txt`), `engine/libs/rmlui/hidden-symbols.map` (the version
 script that keeps every `Rml::`, `tvg::` and `lunasvg::` symbol out of the editor's shared engine, GNU ld/lld) and the
 `rmlui-ios` / `rmlui-macos` targets of `engine/workspaces/xcode/JasperEngine.xcodeproj`. The
-CMake and Xcode targets compile every `.cpp` of the vendored subset (CMake: `Source/Debugger`
+CMake and Xcode targets compile every `.cpp` of the vendored subset but `Tests/` (CMake: `Source/Debugger`
 only with `JASPERENGINE_HTMLUI_DEBUGGER`; Xcode always, and the Debug configurations define it),
 so adding or removing upstream files only needs the Xcode file list updated.
 
