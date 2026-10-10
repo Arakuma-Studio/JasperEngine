@@ -3244,7 +3244,7 @@ declarations repeat an earlier one; the user-agent sheet repeats 34% (and gains 
 memo), the golden pages' sheets 3 to 35% (41% taken together), the CSS fixture cases 10%. A
 55 KB sheet of 1 200 rules that repeats nothing costs what the "no memo" column says: 4.6 ms,
 above the 4 ms of the target. The floor of that column is the per-rule work that is left:
-about 3 600 instructions to tokenize and parse a one-declaration rule, 3 300 to parse and
+about 3 600 instructions to tokenize and parse a one-declaration rule, 2 600 to parse and
 rewrite its selector, 1 700 to write it, and 4 000 to 20 000 per declaration that the memo
 cannot keep (the shorthand families that merge the rule's other declarations and its base
 rules: background, transition, animation, outline; values with `var()`; declarations that
