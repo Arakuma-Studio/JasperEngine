@@ -32,8 +32,10 @@
 //
 // Fixture mode (phase-3 spec 5.2, 5.3), the references of the browser-parity tests:
 //
-//   node render-reference.mjs --fixtures <spec> [--fixtures <spec> ...] [--boxes-only] [--verify] [--check]
+//   node render-reference.mjs --fixtures <spec> [--fixtures <spec> ...] [--boxes-only] [--verify] [--check] [--jobs <n>]
 //     <spec>: all | p3 | <area> | <area>/<name> | taffy | taffy/<suite> | taffy/<suite>/<name>
+//   node render-reference.mjs --self-test     the testkit fixtures twice: byte-identical to each other
+//                                             and to the committed references (reproducibility)
 //
 // - p3 fixtures: engine/tests/htmlui/fixtures/p3/<area>/<name>.html with a <name>.json sidecar
 //   {viewport: [w, h], steps: [...], boxes, tolerance, comment}; the steps (hover, focus, press,
@@ -102,12 +104,14 @@ function usage(message){
     if (message)
         console.error(`render-reference: ${message}`);
     console.error('usage: node render-reference.mjs (--all | --page <name> ...) [--verify] [--check] [--out <dir>] [--lucide-dir <lucide checkout>]\n' +
-                  '       node render-reference.mjs --fixtures <all|p3|area|area/name|taffy|taffy/suite|taffy/suite/name> ... [--boxes-only] [--verify] [--check] [--out <dir>] [--jobs <n>]');
+                  '       node render-reference.mjs --fixtures <all|p3|area|area/name|taffy|taffy/suite|taffy/suite/name> ... [--boxes-only] [--verify] [--check] [--out <dir>] [--jobs <n>]\n' +
+                  '       node render-reference.mjs --self-test');
     process.exit(2);
 }
 
 function parseArgs(argv){
-    const options = { pages: [], all: false, verify: false, check: false, out: null, lucideDir: null, fixtures: [], boxesOnly: false, jobs: 4 };
+    const options = { pages: [], all: false, verify: false, check: false, out: null, lucideDir: null, fixtures: [], boxesOnly: false, jobs: 4,
+                      selfTest: false, identical: false };
     for (let i = 0; i < argv.length; i++){
         const arg = argv[i];
         const value = () => { if (i + 1 >= argv.length) usage(`${arg} needs a value`); return argv[++i]; };
@@ -119,9 +123,20 @@ function parseArgs(argv){
         else if (arg === '--lucide-dir') options.lucideDir = path.resolve(value());
         else if (arg === '--fixtures') options.fixtures.push(value().replace(/\.(html|json)$/, '').replace(/\/+$/, ''));
         else if (arg === '--boxes-only') options.boxesOnly = true;
+        else if (arg === '--self-test') options.selfTest = true;
         else if (arg === '--jobs') options.jobs = Math.max(1, parseInt(value(), 10) || 1);
         else if (arg === '--help' || arg === '-h') usage();
         else usage(`unknown argument ${arg}`);
+    }
+    if (options.selfTest){
+        // the harness's reproducibility check (spec 4, p3-testkit): the testkit fixtures twice, and
+        // against the committed references, byte for byte
+        if (options.fixtures.length || options.all || options.pages.length || options.boxesOnly)
+            usage('--self-test takes no other fixture or page option');
+        options.fixtures = ['testkit'];
+        options.verify = true;
+        options.check = true;
+        options.identical = true;
     }
     if (options.fixtures.length && (options.all || options.pages.length))
         usage('--fixtures and the page options (--all, --page) are separate modes');
@@ -1032,7 +1047,8 @@ async function fixturesMain(options){
                 for (const [file, data] of Object.entries(first.files)){
                     const result = compareRenders(file, data, second.files[file]);
                     // box JSON must be exact; images may carry Chromium's cross-process raster noise
-                    const same = file.endsWith('.json') ? result.identical : result.same;
+                    // (--self-test: not even that)
+                    const same = file.endsWith('.json') || options.identical ? result.identical : result.same;
                     if (!result.identical)
                         console.log(`  ${file}: two runs ${same ? 'agree within the raster noise' : 'DIFFER'}: ${result.text}`);
                     failed ||= !same;
@@ -1042,7 +1058,7 @@ async function fixturesMain(options){
                 const target = path.join(options.out, file);
                 if (options.check){
                     const result = fs.existsSync(target) ? compareRenders(file, fs.readFileSync(target), data) : { same: false, identical: false, text: 'missing' };
-                    const same = file.endsWith('.json') ? result.identical : result.same;
+                    const same = file.endsWith('.json') || options.identical ? result.identical : result.same;
                     console.log(`${same ? 'same   ' : 'CHANGED'} ${file}${result.identical ? '' : ` (${result.text})`}`);
                     failed ||= !same;
                 }else{
@@ -1092,6 +1108,9 @@ async function fixturesMain(options){
         }
         if (!options.check)
             writeVersion(options.out);
+        if (options.selfTest)
+            console.log(failed ? 'self-test FAILED: two renders, or a render and the committed reference, differ'
+                               : `self-test passed: ${p3.length} testkit fixtures rendered twice, byte-identical to each other and to the committed references`);
         if (failed)
             process.exitCode = 1;
     } finally {
