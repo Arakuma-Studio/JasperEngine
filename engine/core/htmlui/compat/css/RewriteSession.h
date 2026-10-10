@@ -95,6 +95,7 @@ namespace jasperengine::htmlui::compat {
         bool important = false;
         bool vmin = false;             // holds vmin/vmax: written in orientation copies of the rule
         bool final = false;            // already through the pipeline's last step (synthetic declarations)
+        bool nativeUnits = false;      // its vmin/vmax are the fork's (ForkFeature::ExtraUnits): no orientation copies
     };
 
     // a rule generated next to an author rule: <rule selector><suffix> { decls }

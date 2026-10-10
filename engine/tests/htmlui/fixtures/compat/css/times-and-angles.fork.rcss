@@ -8,7 +8,7 @@ animation: 1.5s infinite linear spin;
 -html-animation-fill: none;
 }
 #htmlui-root .a {
-transform: rotate(180deg) skewX(90deg);
+transform: rotate(0.5turn) skewX(100grad);
 filter: hue-rotate(3.14159rad);
 }
 #htmlui-root .b {
@@ -17,6 +17,6 @@ decorator: linear-gradient(45deg, #ff0000ff, #0000ffff) border-box;
 }
 @keyframes spin {
 100% {
-transform: rotate(360deg);
+transform: rotate(1turn);
 }
 }

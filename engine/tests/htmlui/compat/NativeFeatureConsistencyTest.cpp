@@ -72,6 +72,17 @@ namespace {
         {ForkFeature::Important, SampleKind::Rule, "color: red !important", ".sample{color:#ff0000ff;", ""},
         {ForkFeature::CssWideKeywords, SampleKind::Declaration, "color: inherit", "var(", ""},
         {ForkFeature::Grid, SampleKind::Declaration, "display: grid", "display:flex", ""},
+        {ForkFeature::CurrentColor, SampleKind::Declaration, "border-top-color: currentcolor", "var(--html-current-color", ""},
+        {ForkFeature::CurrentColor, SampleKind::Declaration, "background-color: currentColor", "var(--html-current-color", ""},
+        {ForkFeature::CurrentColor, SampleKind::Declaration, "color: currentcolor", "var(--html-unset)", ""},
+        {ForkFeature::CurrentColor, SampleKind::Declaration, "border-color: currentcolor", "var(--html-current-color", ""},
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "width: 10vmin", "", "HTMLUI-CSS-0013"},
+        {ForkFeature::ExtraUnits, SampleKind::Rule, "height: 5vmax", "@media", ""},
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "margin-left: 2ch", "margin-left:1em", "HTMLUI-CSS-0005"},
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "padding-top: 1.5ex", "padding-top:0.75em", "HTMLUI-CSS-0005"},
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "transform: rotate(0.25turn)", "rotate(90deg)", ""},
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "width: 50dvw", "width:50vw", ""},
+        {ForkFeature::LineHeightNormal, SampleKind::Declaration, "line-height: normal", "line-height:1.2", ""},
     };
 
     // lower case, no white space, no trailing ';'

@@ -1144,10 +1144,10 @@ namespace {
         processDeclarations(session, &rule, rule.origin, false, rule.declarations, output);
 
         // !important and vmin/vmax declarations are written apart: without any (the usual
-        // case) the output is the rule's block as it is
+        // case) the output is the rule's block as it is (vmin/vmax the fork computes stay)
         bool apart = false;
         for (const OutDecl& d : output.declarations)
-            apart = apart || d.important || (rule.origin != RuleOrigin::StyleAttribute && hasViewportOrientation(d.value));
+            apart = apart || d.important || (rule.origin != RuleOrigin::StyleAttribute && !d.nativeUnits && hasViewportOrientation(d.value));
         ArenaList<OutDecl> rest, vmin;
         if (apart){
             Session::ImportantRule important;
@@ -1158,7 +1158,7 @@ namespace {
                     important.declarations.push_back(std::move(d));
                     continue;
                 }
-                if (rule.origin != RuleOrigin::StyleAttribute && hasViewportOrientation(d.value))
+                if (rule.origin != RuleOrigin::StyleAttribute && !d.nativeUnits && hasViewportOrientation(d.value))
                     vmin.push_back(std::move(d));
                 else
                     rest.push_back(std::move(d));
@@ -1339,6 +1339,14 @@ namespace {
     // against RmlUi's grammar), so a calc()/min()/max()/clamp() the fork evaluates can stay in
     // it (ForkFeature::Calc). The others read their value token by token or write it into
     // compat decorator arguments: math functions are folded for them in every fork state.
+    // The rewrites that write a color value as it is into an RmlUi property whose colour parser
+    // takes 'currentcolor' (ForkFeature::CurrentColor): the keyword stays for the fork to resolve.
+    // The others write colors into compat decorator arguments, font effects, filters or
+    // companions read elsewhere: the current-color companion stays there in every fork state.
+    bool writesCurrentColorNatively(RewriteId rewrite){
+        return rewrite == RewriteId::ColorValue || rewrite == RewriteId::Border;
+    }
+
     bool writesCalcNatively(RewriteId rewrite){
         switch (rewrite){
             case RewriteId::None:
@@ -1444,11 +1452,17 @@ namespace {
             }
         } valueStorage{context};
 
+        // the value kept the units the fork computes (ForkFeature::ExtraUnits)
+        bool nativeUnits = false;
         // the color property's own currentColor is `inherit`
         const ComponentValue* sole = soleValue(d.value);
         const std::string keyword = name != "all" ? CascadeKeywords::keywordOf(d.value) : std::string();
         if (name == "color" && sole && sole->isToken(TokenType::Ident) && equalsNoCase(sole->token.value, "currentcolor")){
-            context.emit("color", std::string("var(") + companions::kUnset + ")");
+            // the parent's color: the fork's own meaning of it (ForkFeature::CurrentColor), else `inherit`
+            if (session.options.fork.has(ForkFeature::CurrentColor))
+                context.emit("color", "currentcolor");
+            else
+                context.emit("color", std::string("var(") + companions::kUnset + ")");
         }else if (!keyword.empty()){
             // 5. CSS-wide keywords
             CascadeKeywords::apply(context, keyword);
@@ -1456,12 +1470,15 @@ namespace {
             // 4. value normalization
             NormalizeContext normalize;
             normalize.colors = facts.colorKeywords;
-            normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint;
+            normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint ||
+                                                (session.options.fork.has(ForkFeature::CurrentColor) && writesCurrentColorNatively(row->rewrite));
             // a style attribute or a keyframe cannot be duplicated per orientation: vmin/vmax evaluated
             normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
             // math functions the fork evaluates stay in the properties written as they are read
             // (not in the families a rewrite reads token by token or into decorator arguments)
             normalize.calcNative = writesCalcNatively(row->rewrite);
+            normalize.unitsNative = normalize.calcNative;
+            nativeUnits = normalize.unitsNative && session.options.fork.has(ForkFeature::ExtraUnits);
             normalize.percentBasis = facts.percentBasis;
             normalize.vertical = facts.vertical;
             normalize.options = &session.options;
@@ -1575,6 +1592,7 @@ namespace {
             if (out.final)
                 continue;
             out.final = true;
+            out.nativeUnits = nativeUnits;
             if (d.important){
                 if (keyframe){
                     out.important = false;
@@ -1590,7 +1608,8 @@ namespace {
             if (keyframe)
                 continue;
             const bool keyword = CascadeKeywords::isKeywordText(out.value);
-            if (out.name == "color" && !startsWith(out.value, "var(") && !keyword)
+            // (a `color: currentcolor` the fork resolves is the parent's: the inherited companion stays right)
+            if (out.name == "color" && !startsWith(out.value, "var(") && !keyword && out.value.view() != "currentcolor")
                 extra.push_back(OutDecl{companions::kCurrentColor, out.value, out.ref, out.important, false, true});
             // (nothing to add when no rule reads a property with `inherit`)
             if (!session.inheritCompanions.empty() && !keyword && out.value.find("--html-inh-") == std::string::npos){
@@ -1663,6 +1682,7 @@ namespace {
             const OutDecl& a = check.declarations[i];
             const OutDecl& b = session.memoOutput[entry.first + i];
             same = a.name == b.name && a.value == b.value && a.important == b.important && a.vmin == b.vmin && a.final == b.final &&
+                   a.nativeUnits == b.nativeUnits &&
                    sameRef(a.ref, d.ref);
         }
         for (size_t i = 0; same && i < entry.fontCount; i++)

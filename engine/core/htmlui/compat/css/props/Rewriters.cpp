@@ -378,6 +378,9 @@ namespace {
 bool props::isColor(Session& session, const ComponentValue& value){
     if (value.isToken(TokenType::Hash))
         return true;
+    // kept by the normalizer where the fork resolves it (ForkFeature::CurrentColor)
+    if (value.isToken(TokenType::Ident) && equalsNoCase(value.token.value, "currentcolor"))
+        return session.options.fork.has(ForkFeature::CurrentColor);
     if (isVar(value))
         return varKind(session, value) == "color";
     return false;

@@ -233,7 +233,8 @@ void jasperengine::htmlui::compat::rewriteFontStyle(DeclContext& context){
 void jasperengine::htmlui::compat::rewriteLineHeight(DeclContext& context){
     ValueList w = words(context.value);
     if (w.size() == 1 && isIdent(w[0], "normal")){
-        context.emit("line-height", "1.2");
+        // the fork computes 'normal' from the font's metrics (ForkFeature::LineHeightNormal)
+        context.emit("line-height", context.fork(ForkFeature::LineHeightNormal) ? "normal" : "1.2");
         return;
     }
     if (w.size() == 1 && isVar(w[0])){
@@ -265,7 +266,7 @@ void jasperengine::htmlui::compat::rewriteFont(DeclContext& context){
             context.emit("font-style", "normal");
             context.emit("font-weight", "400");
             context.emit("font-size", "13.333px");
-            context.emit("line-height", "1.2");
+            context.emit("line-height", context.fork(ForkFeature::LineHeightNormal) ? "normal" : "1.2");
             context.emit("font-family", "system-ui");
             context.session.result->fontFamilies.push_back("system-ui");
             return;

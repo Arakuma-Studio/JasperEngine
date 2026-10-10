@@ -231,6 +231,13 @@ namespace {
 
         void dimension(const ComponentValue& v, ValueList& out){
             const Token& t = v.token;
+            // the units the fork computes itself (ForkFeature::ExtraUnits) stay where the value reaches
+            // RmlUi as it is written; elsewhere (decorator arguments, values read token by token) they
+            // are converted as without the feature
+            if (context.unitsNative && context.compat().fork.has(ForkFeature::ExtraUnits) && isForkUnit(t.unit)){
+                out.push_back(v);
+                return;
+            }
             const RcssUnit unit = rcssUnit(t.unit);
             if (unit.unsupported){
                 fail(codes::UnsupportedUnit, "container query unit '" + t.unit + "' is not supported; declaration dropped",
