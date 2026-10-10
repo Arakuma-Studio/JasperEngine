@@ -578,6 +578,18 @@ static bool validate_inputs_and_outputs(const std::vector<spirvcross_t>& spirvcr
         }
     }
 
+    // the stages pair up by location (GLSL layouts, HLSL TEXCOORD<n>, MSL user(locn)),
+    // which each stage assigns in declaration order: the same varyings in another order
+    // pass the checks above and then mix up at link (GL) or silently (others)
+    for (const s_attr_t& output : outputs){
+        for (const s_attr_t& input : fragment_inputs){
+            if (output.name == input.name && output.location != input.location){
+                fprintf(stderr, "%s, %s: vertex shader output '%s' is at location %u but the fragment shader input at %u: declare the varyings in the same order in both stages\n", inputs[vsIndex].filename.c_str(), inputs[fsIndex].filename.c_str(), output.name.c_str(), output.location, input.location);
+                return false;
+            }
+        }
+    }
+
     return true;
 }
 
