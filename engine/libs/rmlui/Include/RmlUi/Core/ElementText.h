@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CompiledFilterShader.h"
 #include "Element.h"
 #include "Geometry.h"
 #include "Header.h"
@@ -69,11 +70,13 @@ private:
 	// Prepares the font effects this element uses for its font.
 	bool UpdateFontEffects();
 
-	// Clears and regenerates all of the text's geometry: the text and its decoration lines.
+	// Clears and regenerates all of the text's geometry: the text, its decoration lines and its shadows.
 	void GenerateGeometry(RenderManager& render_manager, FontFaceHandle font_face_handle);
 	// Generates the decoration lines of 'text-decoration' (phase 3: underline and overline into 'under', drawn below the
 	// text, line-through into 'over', drawn above it), in the given colour and offset from the lines.
 	void GenerateDecoration(Mesh& under, Mesh& over, FontFaceHandle font_face_handle, ColourbPremultiplied decoration_colour, Vector2f offset);
+	// Draws the text shadows behind the text, the last one first; a blurred shadow through a layer and the blur filter.
+	void RenderShadows(RenderManager& render_manager, Vector2f translation);
 
 	String text;
 
@@ -88,6 +91,16 @@ private:
 	// The decoration lines: underline and overline are drawn under the text, line-through over it (CSS Text Decoration 3).
 	Geometry decoration_under;
 	Geometry decoration_over;
+
+	// The shadows of 'text-shadow' (phase 3), in their declared order.
+	struct Shadow {
+		Vector<TexturedGeometry> geometry; // the text in the shadow's colour, offset
+		Geometry decoration;               // and its decoration lines
+		float blur = 0.f;                  // CSS blur radius
+		Rectanglef ink;                    // what it covers before blurring, in the element's space
+		CompiledFilter filter;             // the blur, compiled for the render manager when first drawn
+	};
+	Vector<Shadow> shadows;
 
 	ColourbPremultiplied colour;
 	float opacity;

@@ -138,6 +138,7 @@ namespace Style {
 
 		// -- Text (p3-text) --
 		OverflowWrap overflow_wrap = OverflowWrap::Normal;
+		bool has_text_shadow = false;
 		float letter_spacing = 0.f; // px
 		float word_spacing = 0.f;   // px
 	};
@@ -380,6 +381,7 @@ namespace Style {
 		TextWrapMode       text_wrap_mode()            const { return inherited.text_wrap_mode; }
 		OverflowWrap       overflow_wrap()             const { return inherited.overflow_wrap; }
 		float              word_spacing()              const { return inherited.word_spacing; }
+		bool               has_text_shadow()           const { return inherited.has_text_shadow; }
 
 		// Layout (p3-layout)
 
@@ -490,6 +492,7 @@ namespace Style {
 		void overflow_wrap             (OverflowWrap value)       { inherited.overflow_wrap        = value; }
 		void letter_spacing            (float value)              { inherited.letter_spacing       = value; }
 		void word_spacing              (float value)              { inherited.word_spacing         = value; }
+		void has_text_shadow           (bool value)               { inherited.has_text_shadow      = value; }
 
 		// Layout (p3-layout)
 

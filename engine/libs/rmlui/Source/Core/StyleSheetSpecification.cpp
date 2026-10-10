@@ -17,6 +17,7 @@
 #include "PropertyParserTransform.h"
 #include "PropertyShorthandDefinition.h"
 #include "TextProperties.h"
+#include "TextShadow.h"
 
 namespace Rml {
 
@@ -289,6 +290,7 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	// -- Text (p3-text) --
 	static PropertyParserTextDecorationLine text_decoration_line;
 	RegisterParser("text_decoration_line", &text_decoration_line);
+	RegisterParser("text_shadow", &GetTextShadowParser());
 
 	// -- Layout (p3-layout) --
 
@@ -546,6 +548,7 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::TextUnderlineOffset, "text-underline-offset", "auto", true, false).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::FontSize);
 	RegisterShorthand(ShorthandId::TextDecoration, "text-decoration", "text-decoration-line, text-decoration-style, text-decoration-color, text-decoration-thickness", ShorthandType::Custom);
 	properties.SetShorthandParser(ShorthandId::TextDecoration, &ParseTextDecorationShorthand);
+	RegisterProperty(PropertyId::TextShadow, "text-shadow", "none", true, false).AddParser("keyword", "none").AddParser("text_shadow");
 	RegisterProperty(PropertyId::UserSelect, "user-select", "auto", false, false).AddParser("keyword", "auto, text, none, contain, all");
 	RegisterProperty(PropertyId::AccentColor, "accent-color", "auto", true, false).AddParser("keyword", "auto").AddParser("color");
 

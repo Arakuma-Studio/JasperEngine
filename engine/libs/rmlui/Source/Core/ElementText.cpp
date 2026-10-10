@@ -16,6 +16,7 @@
 #include "ElementDefinition.h"
 #include "ElementStyle.h"
 #include "Layout/LayoutDetails.h"
+#include "TextShadow.h"
 #include "TextUnicode.h"
 #include "TransformState.h"
 #include <limits>
@@ -124,6 +125,15 @@ static LengthPercentageValue LengthPercentageValueOf(const Property& property)
 	}
 #endif
 	return LengthPercentageValue(property.GetNumericValue());
+}
+
+static void AppendMesh(Mesh& to, const Mesh& from)
+{
+	const int first = (int)to.vertices.size();
+	to.vertices.insert(to.vertices.end(), from.vertices.begin(), from.vertices.end());
+	to.indices.reserve(to.indices.size() + from.indices.size());
+	for (int index : from.indices)
+		to.indices.push_back(first + index);
 }
 
 // The element whose 'text-decoration-line' the text draws (its decorating box): the nearest one that declares it.
@@ -249,10 +259,16 @@ void ElementText::OnRender()
 				break;
 			}
 		}
+		// Shadows draw outside the lines.
+		if (!shadows.empty())
+			render = true;
 	}
 
 	if (!render)
 		return;
+
+	if (!shadows.empty())
+		RenderShadows(render_manager, translation);
 
 	// Underline and overline under the text, line-through over it.
 	if (decoration_under)
@@ -263,6 +279,56 @@ void ElementText::OnRender()
 
 	if (decoration_over)
 		decoration_over.Render(translation);
+}
+
+void ElementText::RenderShadows(RenderManager& render_manager, Vector2f translation)
+{
+	const Rectanglei initial_scissor_region = render_manager.GetScissorRegion();
+	const bool transformed = (GetTransformState() && GetTransformState()->GetTransform());
+
+	// The first shadow is painted on top (CSS Text Decoration 3 §4): draw them from the last.
+	for (auto it = shadows.rbegin(); it != shadows.rend(); ++it)
+	{
+		Shadow& shadow = *it;
+		if (shadow.blur <= 0.f)
+		{
+			for (const TexturedGeometry& part : shadow.geometry)
+				part.geometry.Render(translation, part.texture);
+			if (shadow.decoration)
+				shadow.decoration.Render(translation);
+			continue;
+		}
+
+		// A blurred shadow: drawn into a layer, composited through a Gaussian blur of half the blur radius (CSS). The
+		// scissor covers the shadow's ink and the blur's reach, three standard deviations.
+		const float sigma = 0.5f * shadow.blur;
+		if (!shadow.filter)
+			shadow.filter = render_manager.CompileFilter("blur", Dictionary{{"sigma", Variant(sigma)}});
+		if (!shadow.filter)
+			continue;
+
+		if (!transformed)
+		{
+			Rectanglef region = shadow.ink.Translate(translation).Extend(3.f * sigma + 1.f);
+			Math::ExpandToPixelGrid(region);
+			const Rectanglei scissor = Rectanglei(region).IntersectIfValid(initial_scissor_region);
+			if (!scissor.Valid())
+				continue;
+			render_manager.SetScissorRegion(scissor);
+		}
+
+		render_manager.PushLayer();
+		for (const TexturedGeometry& part : shadow.geometry)
+			part.geometry.Render(translation, part.texture);
+		if (shadow.decoration)
+			shadow.decoration.Render(translation);
+
+		FilterHandleList filter_handles;
+		shadow.filter.AddHandleTo(filter_handles);
+		render_manager.CompositeLayers(render_manager.GetTopLayer(), render_manager.GetNextLayer(), BlendMode::Blend, filter_handles);
+		render_manager.PopLayer();
+		render_manager.SetScissorRegion(initial_scissor_region);
+	}
 }
 
 bool ElementText::GenerateLine(String& line, int& line_length, float& line_width, int line_begin, float maximum_line_width, float right_spacing_width,
@@ -500,12 +566,13 @@ void ElementText::OnPropertyChange(const PropertyIdSet& changed_properties)
 		font_effects_dirty = true;
 	}
 
-	// The decoration lines are generated with the text.
+	// The decoration lines and the shadows are generated with the text.
 	if (changed_properties.Contains(PropertyId::TextDecoration) ||          //
 		changed_properties.Contains(PropertyId::TextDecorationColor) ||     //
 		changed_properties.Contains(PropertyId::TextDecorationStyle) ||     //
 		changed_properties.Contains(PropertyId::TextDecorationThickness) || //
-		changed_properties.Contains(PropertyId::TextUnderlineOffset))
+		changed_properties.Contains(PropertyId::TextUnderlineOffset) ||     //
+		changed_properties.Contains(PropertyId::TextShadow))
 	{
 		geometry_dirty = true;
 	}
@@ -518,7 +585,7 @@ void ElementText::OnPropertyChange(const PropertyIdSet& changed_properties)
 	}
 	else if (colour_changed)
 	{
-		// Force the geometry to be regenerated (decoration lines in 'currentcolor' follow).
+		// Force the geometry to be regenerated (decoration lines and shadows in 'currentcolor' follow).
 		geometry_dirty = true;
 	}
 }
@@ -650,6 +717,50 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 			GenerateDecoration(under, over, font_face_handle, decoration_colour, Vector2f(0.f));
 		decoration_under = (under.indices.empty() ? Geometry() : render_manager.MakeGeometry(std::move(under)));
 		decoration_over = (over.indices.empty() ? Geometry() : render_manager.MakeGeometry(std::move(over)));
+	}
+
+	// The shadows: the same strings in each shadow's colour, offset, with the decoration lines.
+	shadows.clear();
+	if (computed.has_text_shadow())
+	{
+		const FontMetrics& metrics = font_engine_interface->GetFontMetrics(font_face_handle);
+		const Colourb text_colour = computed.color();
+		for (const ResolvedTextShadow& resolved : ResolveTextShadows(*this))
+		{
+			Shadow shadow;
+			shadow.blur = resolved.blur;
+			// 'currentcolor' shadows follow the text's colour; the decoration's shadow takes the shadow's colour too
+			const ColourbPremultiplied shadow_colour = resolved.colour.ToPremultiplied(opacity);
+			if (shadow_colour.alpha == 0)
+				continue;
+			(void)text_colour;
+
+			TexturedMeshList shadow_meshes;
+			Rectanglef ink = Rectanglef::MakeInvalid();
+			for (size_t i = 0; i < lines.size(); i++)
+			{
+				const Line& line = lines[i];
+				const Vector2f position = line.position + resolved.offset;
+				font_engine_interface->GenerateString(render_manager, font_face_handle, 0, line_strings[i], position, shadow_colour, opacity,
+					text_shaping_context, shadow_meshes);
+				const Rectanglef line_ink =
+					Rectanglef::FromCorners(position - Vector2f(0.f, metrics.ascent), position + Vector2f((float)line.width, metrics.descent));
+				ink = (ink.Valid() ? ink.Join(line_ink) : line_ink);
+			}
+			for (TexturedMesh& mesh : shadow_meshes)
+				shadow.geometry.push_back(TexturedGeometry{render_manager.MakeGeometry(std::move(mesh.mesh)), mesh.texture});
+
+			if (decoration_lines != Style::TextDecoration::None)
+			{
+				Mesh under, over;
+				GenerateDecoration(under, over, font_face_handle, shadow_colour, resolved.offset);
+				AppendMesh(under, over);
+				if (!under.indices.empty())
+					shadow.decoration = render_manager.MakeGeometry(std::move(under));
+			}
+			shadow.ink = (ink.Valid() ? ink : Rectanglef::FromPosition(resolved.offset));
+			shadows.push_back(std::move(shadow));
+		}
 	}
 
 	geometry_dirty = false;

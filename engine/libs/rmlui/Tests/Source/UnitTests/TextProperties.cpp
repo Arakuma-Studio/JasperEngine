@@ -1,4 +1,5 @@
 #include "../../../Source/Core/Layout/LayoutDetails.h"
+#include "../../../Source/Core/TextShadow.h"
 #include "../Common/TestsInterface.h"
 #include "FixedAdvanceFontEngine.h"
 #include <RmlUi/Core/ComputedValues.h>
@@ -126,6 +127,20 @@ TEST_CASE("TextProperties.parsing")
 	CHECK(Parse("text-decoration-thickness", "10%") == Parsed{{"text-decoration-thickness", "10%"}});
 	CHECK(Parse("text-underline-offset", "0.2em") == Parsed{{"text-underline-offset", "0.2em"}});
 
+	// shadows
+	CHECK(Parse("text-shadow", "none") == Parsed{{"text-shadow", "none"}});
+	CHECK(Parse("text-shadow", "1px 2px") == Parsed{{"text-shadow", "1px 2px 0px"}});
+	CHECK(Parse("text-shadow", "1px 2px 3px red").at("text-shadow").find("1px 2px 3px") == 0);
+	CHECK(Parse("text-shadow", "red 1px 2px").size() == 1);
+	CHECK(Parse("text-shadow", "1px 2px currentcolor") == Parsed{{"text-shadow", "1px 2px 0px"}});
+	CHECK(Parse("text-shadow", "1px 2px 3px #000, 0 0 0.5em blue").size() == 1);
+	CHECK(Parse("text-shadow", "1px").empty());
+	CHECK(Parse("text-shadow", "1px 2px -3px").empty());
+	CHECK(Parse("text-shadow", "1px 2px 3px 4px").empty());
+	CHECK(Parse("text-shadow", "1px red 2px").empty());
+	CHECK(Parse("text-shadow", "10% 2px").empty());
+	CHECK(Parse("text-shadow", "1px 2px,").empty());
+
 	// interaction
 	CHECK(Parse("user-select", "none") == Parsed{{"user-select", "none"}});
 	CHECK(Parse("user-select", "all") == Parsed{{"user-select", "all"}});
@@ -146,7 +161,8 @@ TEST_CASE("TextProperties.computed_values")
 		"<div id='initial'>x</div><div id='center' style='text-align: -webkit-center'>x</div>"
 		"<div id='ws' style='white-space: pre-line'>x</div><div id='ws-pre' style='white-space: pre'>x</div>"
 		"<div id='wrap' style='overflow-wrap: break-word; word-break: keep-all'>x</div>"
-		"<div id='decoration' style='text-decoration: underline overline'>x</div>");
+		"<div id='decoration' style='text-decoration: underline overline'>x</div>"
+		"<div id='shadow' style='text-shadow: 1px 2px'><span id='shadow-child'>x</span></div>");
 
 	// letter-spacing and word-spacing compute to lengths where declared and inherit as such
 	CHECK(Computed(document, "parent").letter_spacing() == 10.f);
@@ -177,6 +193,11 @@ TEST_CASE("TextProperties.computed_values")
 	CHECK(Computed(document, "wrap").overflow_wrap() == Style::OverflowWrap::BreakWord);
 	CHECK(Computed(document, "wrap").word_break() == Style::WordBreak::KeepAll);
 	CHECK(Computed(document, "decoration").text_decoration() == (Style::TextDecoration::Underline | Style::TextDecoration::Overline));
+
+	// text-shadow is inherited
+	CHECK(Computed(document, "shadow").has_text_shadow());
+	CHECK(Computed(document, "shadow-child").has_text_shadow());
+	CHECK_FALSE(Computed(document, "initial").has_text_shadow());
 
 	document->Close();
 }
@@ -249,6 +270,75 @@ TEST_CASE("TextProperties.overflow_wrap_layout")
 	CHECK(LayoutDetails::GetMinContentWidth(document->GetElementById("min-legacy"), containing_block) == 10.f);
 	CHECK(LayoutDetails::GetMinContentWidth(document->GetElementById("min-break-word"), containing_block) == 70.f);
 
+	document->Close();
+}
+
+TEST_CASE("TextProperties.text_shadow_value")
+{
+	TestsShell::GetContext();
+	PropertyDictionary dictionary;
+	REQUIRE(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "text-shadow", "1px 2px 4px #ff0000, 0 0 6px"));
+	const Property* property = dictionary.GetProperty(PropertyId::TextShadow);
+	REQUIRE(property);
+	REQUIRE(property->unit == Unit::STYLE_VALUE);
+	const auto* list = static_cast<const TextShadowListValue*>(property->value.Get<StyleValuePtr>().get());
+	REQUIRE(list);
+	REQUIRE(list->shadows.size() == 2);
+	CHECK(list->shadows[0].offset_x.value.number == 1.f);
+	CHECK(list->shadows[0].offset_y.value.number == 2.f);
+	CHECK(list->shadows[0].blur.value.number == 4.f);
+	CHECK_FALSE(list->shadows[0].current_colour);
+	CHECK(list->shadows[0].colour == Colourb(255, 0, 0));
+	CHECK(list->shadows[1].current_colour);
+	CHECK(list->shadows[1].blur.value.number == 6.f);
+
+	// interpolation: the shorter list is padded with transparent shadows
+	PropertyDictionary other;
+	REQUIRE(StyleSheetSpecification::ParsePropertyDeclaration(other, "text-shadow", "3px 4px 8px #0000ff"));
+	const auto* to = static_cast<const TextShadowListValue*>(other.GetProperty(PropertyId::TextShadow)->value.Get<StyleValuePtr>().get());
+	ElementDocument* document = TestsShell::GetContext()->LoadDocumentFromMemory("<rml><body style='color: #00ff00'/></rml>");
+	REQUIRE(document);
+	TestsShell::GetContext()->Update();
+	const StyleValuePtr mid = list->Interpolate(*to, 0.5f, *document);
+	REQUIRE(bool(mid));
+	const auto* half = static_cast<const TextShadowListValue*>(mid.get());
+	REQUIRE(half->shadows.size() == 2);
+	CHECK(half->shadows[0].offset_x.value.number == 2.f);
+	CHECK(half->shadows[0].blur.value.number == 6.f);
+	CHECK(half->shadows[0].colour.alpha == 255);
+	CHECK(half->shadows[0].colour.red == 128);
+	CHECK(half->shadows[0].colour.blue == 128);
+	// currentcolor (green) towards transparent: half of green
+	CHECK_FALSE(half->shadows[1].current_colour);
+	CHECK(half->shadows[1].colour.alpha == 128);
+	CHECK(half->shadows[1].colour.green == 255);
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("TextProperties.text_shadow_render")
+{
+	FixedAdvanceFontScope scope;
+	ElementDocument* document = scope.Load("", "<div id='hard' style='text-shadow: 1px 1px #000'>ab</div><div id='none'>ab</div>");
+	scope.render_interface.ResetCounters();
+	scope.context->Render();
+	const auto hard = scope.render_interface.GetCounters();
+	// two strings for the shadowed text: the shadow, then the text; no layer or filter
+	CHECK(hard.compile_filter == 0);
+
+	document->GetElementById("hard")->SetProperty("text-shadow", "1px 1px 4px #000");
+	scope.context->Update();
+	scope.render_interface.ResetCounters();
+	scope.context->Render();
+	// a blurred shadow goes through the blur filter
+	CHECK(scope.render_interface.GetCounters().compile_filter == 1);
+
+	scope.font_engine.generated.clear();
+	document->GetElementById("hard")->SetProperty("text-shadow", "1px 1px red, 2px 2px blue");
+	scope.context->Update();
+	scope.context->Render();
+	// the text and two shadows of it
+	CHECK(std::count(scope.font_engine.generated.begin(), scope.font_engine.generated.end(), "ab") == 3);
 	document->Close();
 }
 

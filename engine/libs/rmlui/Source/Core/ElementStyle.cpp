@@ -1649,12 +1649,14 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	case PropertyId::TextWrapMode:
 		values.text_wrap_mode((TextWrapMode)p->Get<int>());
 		break;
+	case PropertyId::TextShadow:
+		values.has_text_shadow(p->unit == Unit::STYLE_VALUE);
+		break;
 	// Fetched from the element's properties (ElementText, WidgetTextInput).
 	case PropertyId::TextDecorationColor:
 	case PropertyId::TextDecorationStyle:
 	case PropertyId::TextDecorationThickness:
 	case PropertyId::TextUnderlineOffset:
-	case PropertyId::TextShadow:
 	case PropertyId::UserSelect:
 	case PropertyId::AccentColor:
 		break;
