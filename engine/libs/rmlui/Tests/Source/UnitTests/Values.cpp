@@ -594,3 +594,81 @@ TEST_CASE("Values.numbers")
 		CHECK_FALSE(ratio(invalid, property));
 	}
 }
+
+// The units and calc() in grid track lists and gaps (the grid package's values hold lengths the same parsers read).
+TEST_CASE("Values.units.grid_tracks_and_gaps")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	const Vector2i dimensions = context->GetDimensions();
+
+	const String rml = R"(
+<rml>
+<head>
+	<style>
+		body { font-family: LatoLatin; font-size: 20px; }
+		div { display: block; }
+		#g { display: grid; position: absolute; left: 0; top: 0; width: 600px; font-size: 10px;
+			grid-template-columns: 10vmin 4ch calc(2ex + 1vmax) min(50%, 30dvw);
+			grid-auto-rows: 2ch; gap: 1ch 2vmin; }
+	</style>
+</head>
+<body><div id="g"><div id="c1"/><div id="c2"/><div id="c3"/><div id="c4"/><div id="c5"/></div></body>
+</rml>
+)";
+	PropertyDictionary dictionary;
+	if (!StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "grid-template-columns", "10vmin 1fr"))
+	{
+		MESSAGE("grid properties are not registered: skipped");
+		return;
+	}
+
+	ElementDocument* document = context->LoadDocumentFromMemory(rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+
+	Element* grid = document->GetElementById("g");
+	auto x = [&](const char* id) { return document->GetElementById(id)->GetAbsoluteOffset(BoxArea::Border).x; };
+	auto y = [&](const char* id) { return document->GetElementById(id)->GetAbsoluteOffset(BoxArea::Border).y; };
+	auto width = [&](const char* id) { return document->GetElementById(id)->GetBox().GetSize(BoxArea::Border).x; };
+	auto height = [&](const char* id) { return document->GetElementById(id)->GetBox().GetSize(BoxArea::Border).y; };
+
+	auto check = [&]() {
+		const Vector2f viewport(context->GetDimensions());
+		const float vmin = Math::Min(viewport.x, viewport.y) * 0.01f;
+		const float vmax = Math::Max(viewport.x, viewport.y) * 0.01f;
+		const float ch = ZeroAdvance(grid);
+		const float ex = GetFontEngineInterface()->GetFontMetrics(grid->GetFontFaceHandle()).x_height;
+		const float column_gap = 2.f * vmin, row_gap = ch;
+		const float columns[4] = {10.f * vmin, 4.f * ch, 2.f * ex + vmax, Math::Min(300.f, 0.3f * viewport.x)};
+
+		CHECK(x("c1") == doctest::Approx(0.f));
+		CHECK(width("c1") == doctest::Approx(columns[0]));
+		CHECK(x("c2") == doctest::Approx(columns[0] + column_gap));
+		CHECK(width("c2") == doctest::Approx(columns[1]));
+		CHECK(x("c3") == doctest::Approx(columns[0] + columns[1] + 2.f * column_gap));
+		CHECK(width("c3") == doctest::Approx(columns[2]));
+		CHECK(width("c4") == doctest::Approx(columns[3]));
+		CHECK(height("c1") == doctest::Approx(2.f * ch));
+		// The second row, after the row gap.
+		CHECK(x("c5") == doctest::Approx(0.f));
+		CHECK(y("c5") == doctest::Approx(2.f * ch + row_gap));
+	};
+	check();
+
+	// The tracks follow the font and the viewport.
+	const float ch_before = ZeroAdvance(grid);
+	grid->SetProperty("font-size", "24px");
+	context->Update();
+	CHECK(ZeroAdvance(grid) > 1.5f * ch_before);
+	check();
+
+	context->SetDimensions(Vector2i(500, 900));
+	context->Update();
+	check();
+
+	context->SetDimensions(dimensions);
+	document->Close();
+	context->Update();
+}

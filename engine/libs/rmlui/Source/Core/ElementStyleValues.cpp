@@ -1,6 +1,7 @@
 #include "../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../Include/RmlUi/Core/Property.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
+#include "../../Include/RmlUi/Core/StyleValue.h"
 #include "../../Include/RmlUi/Core/DecorationTypes.h"
 #include "../../Include/RmlUi/Core/Decorator.h"
 #include "../../Include/RmlUi/Core/StyleSheetTypes.h"
@@ -26,6 +27,12 @@ static bool UsesFontFaceUnits(const Property& property)
 		return calculation && Any(calculation->GetDependencyMask() & font_face_units);
 	}
 #endif
+	// A complex value (grid track lists, ...) names the units its lengths depend on.
+	if (property.unit == Unit::STYLE_VALUE)
+	{
+		const StyleValuePtr value = property.value.Get<StyleValuePtr>();
+		return value && Any(value->GetUnitDependencies() & font_face_units);
+	}
 	return Any(property.unit & font_face_units);
 }
 
@@ -161,7 +168,7 @@ void ElementStyle::ComputeFontRelativeValues(Style::ComputedValues& values, Font
 	if (font_face != loop_font_face || font_face != previous_font_face)
 	{
 		// The units a specified value that may hold 'ch' or 'ex' has.
-		const Units candidate_units = Unit::CH | Unit::EX | Unit::VAR_EXPRESSION | Unit::SHORTHAND_PLACEHOLDER
+		const Units candidate_units = Unit::CH | Unit::EX | Unit::VAR_EXPRESSION | Unit::SHORTHAND_PLACEHOLDER | Unit::STYLE_VALUE
 #ifdef RMLUI_MATH_EXPRESSIONS
 			| Unit::CALCULATION
 #endif

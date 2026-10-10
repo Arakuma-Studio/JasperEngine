@@ -340,12 +340,23 @@ namespace {
 				result *= (context.relative_target == RelativeTarget::ParentFontSize ? context.parent_font_size : context.font_size);
 				break;
 			case Unit::REM: result *= context.document_font_size; break;
+			case Unit::VMIN: result *= Math::Min(context.viewport_dimensions.x, context.viewport_dimensions.y) * .01f; break;
+			case Unit::VMAX: result *= Math::Max(context.viewport_dimensions.x, context.viewport_dimensions.y) * .01f; break;
+			case Unit::CH:
+			case Unit::EX:
+			{
+				const float font_size = (context.relative_target == RelativeTarget::ParentFontSize ? context.parent_font_size : context.font_size);
+				result *= (node.unit == Unit::CH ? ComputeChSize(context.font_face, font_size) : ComputeExSize(context.font_face, font_size));
+				break;
+			}
 			case Unit::INCH:
 			case Unit::CM:
 			case Unit::MM:
 			case Unit::PT:
 			case Unit::PC: result = PhysicalToPx(result, node.unit, context.dp_ratio); break;
 			case Unit::DEG: result = Math::DegreesToRadians(result); break;
+			case Unit::TURN: result *= 2.f * Math::RMLUI_PI; break;
+			case Unit::GRAD: result *= Math::RMLUI_PI / 200.f; break;
 			case Unit::PERCENT:
 			{
 				float basis = percentage_basis;
