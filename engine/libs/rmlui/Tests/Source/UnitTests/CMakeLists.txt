@@ -5,6 +5,7 @@ add_executable(${TARGET_NAME}
 	Animation.cpp
 	AnimationLayers.cpp
 	Calculation.cpp
+	CascadeKeywords.cpp
 	CalculationTypes.cpp
 	ContainingBlockOverride.cpp
 	Core.cpp

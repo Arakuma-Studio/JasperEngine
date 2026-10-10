@@ -1,6 +1,7 @@
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
+#include "Cascade.h"
 #include "IdNameMap.h"
 #include "PropertyParserAlignment.h"
 #include "PropertyParserAnimation.h"
@@ -519,6 +520,23 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	// -- Values (p3-values) --
 
 	// -- Cascade (p3-cascade) --
+	{
+		// 'all' takes CSS-wide keywords only (Cascade::ParseAllShorthand), which set every registered property but the
+		// '-rmlui-*' ones, whenever they are registered. Its items are the properties registered up to here: what a
+		// var() value of 'all' and GetShorthandUnderlyingProperties reach.
+		String all_properties;
+		for (const PropertyId id : properties.GetRegisteredProperties())
+		{
+			const String& name = GetPropertyName(id);
+			if (StringUtilities::StartsWith(name, "-rmlui-"))
+				continue;
+			if (!all_properties.empty())
+				all_properties += ", ";
+			all_properties += name;
+		}
+		RegisterShorthand(ShorthandId::All, "all", all_properties, ShorthandType::Custom);
+		properties.SetShorthandParser(ShorthandId::All, &Cascade::ParseAllShorthand);
+	}
 
 	// -- Paint (p3-paint) --
 

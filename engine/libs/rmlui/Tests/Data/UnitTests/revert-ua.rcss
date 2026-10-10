@@ -1,0 +1,3 @@
+/* A user-agent sheet for the 'revert' tests (CascadeKeywords.cpp): linked with origin="user-agent". */
+ul { display: block; padding-left: 40px; margin-top: 16px; --ua: 3px; }
+p { display: block; margin-top: 10px; }

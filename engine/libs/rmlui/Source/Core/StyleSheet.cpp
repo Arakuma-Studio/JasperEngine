@@ -69,6 +69,11 @@ void StyleSheet::BuildNodeIndex()
 	root->BuildIndex(styled_node_index);
 }
 
+void StyleSheet::SetOrigin(StyleOrigin origin)
+{
+	root->SetOrigin(origin);
+}
+
 const NamedDecorator* StyleSheet::GetNamedDecorator(const String& name) const
 {
 	auto it = named_decorator_map.find(name);

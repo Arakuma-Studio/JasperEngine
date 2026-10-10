@@ -7,6 +7,7 @@ namespace Rml {
 
 class PropertyDictionary;
 class PropertySpecification;
+struct ShorthandDefinition;
 
 /**
     The CSS cascade of declarations (phase 3, CSS Cascade 4): importance and the inline style.
@@ -52,6 +53,24 @@ namespace Cascade {
 	/// to the outcome of the parse.
 	bool ParseImportantDeclaration(const PropertySpecification& specification, PropertyDictionary& dictionary, const String& name,
 		const String& value, bool& result);
+
+	/// Parses a CSS-wide keyword declaration ('inherit', 'initial', 'unset', 'revert', 'revert-layer'; ASCII
+	/// case-insensitive): the property, every longhand of the shorthand ('all': every registered property but the
+	/// internal '-rmlui-*' ones), or the custom property is set to the keyword (unit Unit::CSS_WIDE_KEYWORD).
+	/// @return False when the value is not a CSS-wide keyword or the name is unknown (nothing is set then).
+	bool ParseKeywordDeclaration(const PropertySpecification& specification, PropertyDictionary& dictionary, const String& name,
+		const String& value);
+
+	/// The CSS-wide keyword a value is, if any.
+	bool ParseKeyword(const String& value, CssWideKeyword& keyword);
+
+	/// Sets every property the 'all' shorthand covers to the keyword: every registered property except the internal
+	/// '-rmlui-*' ones (CSS excludes 'direction' and 'unicode-bidi', which RmlUi has as '-rmlui-direction').
+	void SetAllProperties(const PropertySpecification& specification, PropertyDictionary& dictionary, CssWideKeyword keyword);
+
+	/// The parser of the 'all' shorthand (ShorthandType::Custom): only CSS-wide keywords are valid.
+	bool ParseAllShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
+		const PropertySpecification& specification);
 
 	/// Removes the important declarations of a dictionary: CSS ignores them in keyframes.
 	void RemoveImportantDeclarations(PropertyDictionary& dictionary);

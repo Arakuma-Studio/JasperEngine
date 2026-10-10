@@ -200,7 +200,17 @@ void ElementDocument::ProcessHeader(const DocumentHeader* document_header)
 		else
 		{
 			const StyleSheetContainer* sub_sheet = StyleSheetFactory::GetStyleSheetContainer(rcss.path);
-			if (sub_sheet)
+			if (sub_sheet && rcss.user_agent)
+			{
+				// A user-agent sheet (origin="user-agent"): its declarations are tagged for 'revert'.
+				SharedPtr<StyleSheetContainer> user_agent_sheet = sub_sheet->CombineStyleSheetContainer(StyleSheetContainer());
+				user_agent_sheet->SetOrigin(StyleOrigin::UserAgent);
+				if (new_style_sheet)
+					new_style_sheet->MergeStyleSheetContainer(*user_agent_sheet);
+				else
+					new_style_sheet = std::move(user_agent_sheet);
+			}
+			else if (sub_sheet)
 			{
 				if (new_style_sheet)
 					new_style_sheet->MergeStyleSheetContainer(*sub_sheet);

@@ -233,6 +233,15 @@ SharedPtr<StyleSheetContainer> StyleSheetContainer::CombineStyleSheetContainer(c
 	return new_sheet;
 }
 
+void StyleSheetContainer::SetOrigin(StyleOrigin origin)
+{
+	for (MediaBlock& media_block : media_blocks)
+	{
+		if (media_block.stylesheet)
+			media_block.stylesheet->SetOrigin(origin);
+	}
+}
+
 void StyleSheetContainer::MergeStyleSheetContainer(const StyleSheetContainer& other)
 {
 	RMLUI_ZoneScoped;

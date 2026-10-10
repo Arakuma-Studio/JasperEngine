@@ -67,6 +67,8 @@ public:
 
 	/// Set the source of all properties in the dictionary to the given one.
 	void SetSourceOfAllProperties(const SharedPtr<const PropertySource>& property_source);
+	/// Set the cascade origin of all properties in the dictionary.
+	void SetOriginOfAllProperties(StyleOrigin origin);
 
 private:
 	// Sets a property on the dictionary and its specificity if there is no name conflict, or its

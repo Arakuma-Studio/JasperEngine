@@ -37,6 +37,10 @@ public:
 	/// Builds the node index for a combined style sheet.
 	void BuildNodeIndex();
 
+	/// Sets the cascade origin of every declaration of the sheet (phase 3): a user-agent sheet's declarations are what the
+	/// 'revert' keyword restores. Set before the sheet is combined with others.
+	void SetOrigin(StyleOrigin origin);
+
 	/// Returns the named @decorator, or null if it does not exist.
 	const NamedDecorator* GetNamedDecorator(const String& name) const;
 

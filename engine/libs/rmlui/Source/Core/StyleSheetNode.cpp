@@ -80,6 +80,12 @@ void StyleSheetNode::MergeHierarchy(StyleSheetNode* node, int specificity_offset
 
 	// Merge the other node's properties into ours.
 	properties.Merge(node->properties, specificity_offset);
+	if (node->user_agent_properties)
+	{
+		if (!user_agent_properties)
+			user_agent_properties = MakeUnique<PropertyDictionary>();
+		user_agent_properties->Merge(*node->user_agent_properties, specificity_offset);
+	}
 
 	for (const auto& other_child : node->children)
 	{
@@ -95,6 +101,8 @@ UniquePtr<StyleSheetNode> StyleSheetNode::DeepCopy(StyleSheetNode* in_parent) co
 	auto node = MakeUnique<StyleSheetNode>(in_parent, selector);
 
 	node->properties = properties;
+	if (user_agent_properties)
+		node->user_agent_properties = MakeUnique<PropertyDictionary>(*user_agent_properties);
 	node->children.resize(children.size());
 
 	for (size_t i = 0; i < children.size(); i++)
@@ -156,6 +164,17 @@ void StyleSheetNode::ImportProperties(const PropertyDictionary& _properties, int
 const PropertyDictionary& StyleSheetNode::GetProperties() const
 {
 	return properties;
+}
+
+void StyleSheetNode::SetOrigin(StyleOrigin origin)
+{
+	properties.SetOriginOfAllProperties(origin);
+	if (origin == StyleOrigin::UserAgent && !properties.Empty())
+		user_agent_properties = MakeUnique<PropertyDictionary>(properties);
+	else
+		user_agent_properties.reset();
+	for (auto& child : children)
+		child->SetOrigin(origin);
 }
 
 bool StyleSheetNode::Match(const Element* element, const Element* scope) const

@@ -139,6 +139,16 @@ void PropertyDictionary::SetSourceOfAllProperties(const SharedPtr<const Property
 		p.second.source = property_source;
 }
 
+void PropertyDictionary::SetOriginOfAllProperties(StyleOrigin origin)
+{
+	for (auto& p : properties)
+		p.second.origin = origin;
+	for (auto& p : custom_properties)
+		p.second.origin = origin;
+	for (auto& p : var_shorthands)
+		p.second.origin = origin;
+}
+
 void PropertyDictionary::SetProperty(PropertyId id, const Property& property, int specificity)
 {
 	PropertyMap::iterator iterator = properties.find(id);

@@ -14,6 +14,10 @@ class PropertyDefinition;
 /// origin="user-agent"; they are what the 'revert' keyword restores.
 enum class StyleOrigin : uint8_t { Author, UserAgent };
 
+/// The CSS-wide keywords (CSS Cascade 4), valid for every property: a declaration of one is stored as a property of unit
+/// Unit::CSS_WIDE_KEYWORD with the keyword as its <int> value. 'revert-layer' is 'revert' (there are no cascade layers).
+enum class CssWideKeyword : uint8_t { Inherit, Initial, Unset, Revert };
+
 struct RMLUICORE_API PropertySource {
 	PropertySource(String path, int line_number, String rule_name) : path(std::move(path)), line_number(line_number), rule_name(std::move(rule_name))
 	{}

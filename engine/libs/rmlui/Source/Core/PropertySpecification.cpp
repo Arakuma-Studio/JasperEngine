@@ -292,6 +292,9 @@ bool PropertySpecification::ParsePropertyDeclaration(PropertyDictionary& diction
 	bool important_result = false;
 	if (Cascade::ParseImportantDeclaration(*this, dictionary, property_name, property_value, important_result))
 		return important_result;
+	// Cascade (p3-cascade): CSS-wide keywords, valid for every property.
+	if (Cascade::ParseKeywordDeclaration(*this, dictionary, property_name, property_value))
+		return true;
 
 	// Try as a property first
 	PropertyId property_id = property_map->GetId(property_name);

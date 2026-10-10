@@ -1,7 +1,10 @@
 #include "Cascade.h"
 #include "../../Include/RmlUi/Core/PropertyDictionary.h"
 #include "../../Include/RmlUi/Core/PropertySpecification.h"
+#include "../../Include/RmlUi/Core/PropertyDefinition.h"
+#include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "../../Include/RmlUi/Core/StringUtilities.h"
+#include "PropertyShorthandDefinition.h"
 
 namespace Rml {
 namespace Cascade {
@@ -55,6 +58,10 @@ namespace Cascade {
 	bool ParseImportantDeclaration(const PropertySpecification& specification, PropertyDictionary& dictionary, const String& name,
 		const String& value, bool& result)
 	{
+		// Only the declarations of style rules and inline styles; at-rules with their own specification (decorators,
+		// font effects, media queries) know no importance.
+		if (&specification != &StyleSheetSpecification::GetPropertySpecification())
+			return false;
 		String stripped;
 		if (!StripImportant(value, stripped))
 			return false;
@@ -92,6 +99,92 @@ namespace Cascade {
 
 		result = true;
 		return true;
+	}
+
+	bool ParseKeyword(const String& value, CssWideKeyword& keyword)
+	{
+		const String word = StringUtilities::ToLower(StringUtilities::StripWhitespace(value));
+		if (word == "inherit")
+			keyword = CssWideKeyword::Inherit;
+		else if (word == "initial")
+			keyword = CssWideKeyword::Initial;
+		else if (word == "unset")
+			keyword = CssWideKeyword::Unset;
+		else if (word == "revert" || word == "revert-layer")
+			keyword = CssWideKeyword::Revert;
+		else
+			return false;
+		return true;
+	}
+
+	static Property KeywordProperty(CssWideKeyword keyword)
+	{
+		return Property(int(keyword), Unit::CSS_WIDE_KEYWORD);
+	}
+
+	static void SetShorthandKeyword(PropertyDictionary& dictionary, const ShorthandDefinition& definition, CssWideKeyword keyword)
+	{
+		for (const ShorthandItem& item : definition.items)
+		{
+			if (item.type == ShorthandItemType::Property)
+				dictionary.SetProperty(item.property_id, KeywordProperty(keyword));
+			else if (item.type == ShorthandItemType::Shorthand && item.shorthand_definition)
+				SetShorthandKeyword(dictionary, *item.shorthand_definition, keyword);
+		}
+	}
+
+	void SetAllProperties(const PropertySpecification& specification, PropertyDictionary& dictionary, CssWideKeyword keyword)
+	{
+		for (const PropertyId id : specification.GetRegisteredProperties())
+		{
+			const PropertyDefinition* definition = specification.GetProperty(id);
+			if (!definition)
+				continue;
+			const String& name = StyleSheetSpecification::GetPropertyName(id);
+			if (StringUtilities::StartsWith(name, "-rmlui-"))
+				continue;
+			dictionary.SetProperty(id, KeywordProperty(keyword));
+		}
+	}
+
+	bool ParseAllShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& /*definition*/, const String& value,
+		const PropertySpecification& specification)
+	{
+		CssWideKeyword keyword;
+		if (!ParseKeyword(value, keyword))
+			return false;
+		SetAllProperties(specification, dictionary, keyword);
+		return true;
+	}
+
+	bool ParseKeywordDeclaration(const PropertySpecification& specification, PropertyDictionary& dictionary, const String& name,
+		const String& value)
+	{
+		if (&specification != &StyleSheetSpecification::GetPropertySpecification())
+			return false;
+		CssWideKeyword keyword;
+		if (!ParseKeyword(value, keyword))
+			return false;
+
+		if (const PropertyDefinition* definition = specification.GetProperty(name))
+		{
+			dictionary.SetProperty(definition->GetId(), KeywordProperty(keyword));
+			return true;
+		}
+		if (const ShorthandDefinition* shorthand = specification.GetShorthand(name))
+		{
+			if (shorthand->id == ShorthandId::All)
+				SetAllProperties(specification, dictionary, keyword);
+			else
+				SetShorthandKeyword(dictionary, *shorthand, keyword);
+			return true;
+		}
+		if (StringUtilities::StartsWith(name, "--"))
+		{
+			dictionary.SetCustomProperty(name, KeywordProperty(keyword));
+			return true;
+		}
+		return false;
 	}
 
 	void RemoveImportantDeclarations(PropertyDictionary& dictionary)

@@ -39,6 +39,11 @@ public:
 	void ImportProperties(const PropertyDictionary& properties, int rule_specificity);
 	/// Returns the node's default properties.
 	const PropertyDictionary& GetProperties() const;
+	/// Sets the cascade origin of the properties of this node and its descendants.
+	void SetOrigin(StyleOrigin origin);
+	/// The declarations of the user-agent origin merged into this node, kept even where an author declaration of the same
+	/// selector overrides them (they are what 'revert' restores), or nullptr when there are none.
+	const PropertyDictionary* GetUserAgentProperties() const { return user_agent_properties.get(); }
 
 	/// Returns true if this node is applicable to the given element, given its IDs, classes and heritage.
 	/// @note For performance reasons this call does not check whether 'element' is a text element. The caller must manually check this condition and
@@ -69,6 +74,7 @@ private:
 	int specificity = 0;
 
 	PropertyDictionary properties;
+	UniquePtr<PropertyDictionary> user_agent_properties;
 
 	StyleSheetNodeList children;
 };

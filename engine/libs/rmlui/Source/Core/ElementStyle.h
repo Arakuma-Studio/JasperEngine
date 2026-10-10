@@ -221,6 +221,22 @@ private:
 
 	// Specified property: The property value before being computed. Includes the cascade, excludes variable substitution.
 	static PropertyElementPair GetSpecifiedProperty(const PropertySources& sources, PropertyId id);
+	// The declaration a CSS-wide keyword of the element's property stands for (phase 3, cascade): the parent's
+	// specified property for 'inherit', the user-agent declaration for 'revert', the property's initial value (with no
+	// element) for 'initial'; 'unset' is one of 'inherit' and 'initial'.
+	static PropertyElementPair ResolveSpecifiedKeyword(const PropertySources& sources, PropertyId id, const Property& keyword_property);
+	// The same for computing values: a null property when the element computes the value as if nothing were declared
+	// (the initial value of a non-inherited property, the parent's value of an inherited one); else the declaration to
+	// compute and the element whose font size and variables it is computed with (null: this element).
+	struct ComputedKeyword {
+		const Property* property = nullptr;
+		Element* element = nullptr;
+		bool explicit_inherit = false; // a non-inherited property set to 'inherit' (directly or through 'unset')
+	};
+	ComputedKeyword ResolveComputedKeyword(PropertyId id, const Property& keyword_property) const;
+	// The local property of an inherited property for the computed-value pre-passes, with its CSS-wide keyword resolved
+	// (null: the parent's value).
+	const Property* GetLocalPropertyForCompute(PropertyId id) const;
 	static PropertyElementPair GetSpecifiedCustomProperty(const PropertySources& sources, const String& name);
 	static PropertyElementPair GetSpecifiedShorthand(const PropertySources& sources, ShorthandId id);
 
@@ -259,6 +275,10 @@ private:
 	PropertyDictionary expanded_shorthands;
 	// Values of running transitions and animations (most elements have none).
 	UniquePtr<AnimationLayers> animation_layers;
+
+	// The non-inherited properties this element declares as 'inherit' (allocated when there are any): they follow the
+	// parent's values when those change (phase 3, cascade).
+	UniquePtr<PropertyIdSet> explicit_inherit;
 
 	PropertyIdSet dirty_properties;
 	UnorderedSet<String> dirty_variables;

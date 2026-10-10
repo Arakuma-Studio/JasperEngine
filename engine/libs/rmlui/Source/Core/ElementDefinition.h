@@ -32,10 +32,17 @@ public:
 	/// animation layers by importance).
 	bool HasImportantProperties() const { return has_important; }
 
+	/// The declaration of the user-agent origin for a property (what 'revert' restores), or nullptr.
+	const Property* GetUserAgentProperty(PropertyId id) const;
+	/// The same for a custom property.
+	const Property* GetUserAgentCustomProperty(const String& name) const;
+
 private:
 	PropertyDictionary properties;
 	PropertyIdSet property_ids;
 	bool has_important = false;
+	// The declarations of the user-agent origin alone (StyleSheet::SetOrigin), when any applies.
+	UniquePtr<PropertyDictionary> user_agent_properties;
 };
 
 } // namespace Rml
