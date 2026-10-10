@@ -514,6 +514,10 @@ namespace {
                 env(v, out);
                 return;
             }
+            if (name == "attr" && context.attrNative){
+                out.push_back(v);
+                return;
+            }
             if (name == "attr"){
                 fail(codes::UnsupportedFunction, "'" + serialize(v) + "' is not supported; declaration dropped",
                      "write the value in the CSS, or set it from Lua");

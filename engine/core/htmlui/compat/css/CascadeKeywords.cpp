@@ -145,6 +145,12 @@ void CascadeKeywords::apply(DeclContext& context, const std::string& keywordIn){
     const std::string& property = context.name;
     std::vector<std::string> outputs = outputProperties(property);
     if (context.fork(ForkFeature::CssWideKeywords)){
+        // the fork's own keywords, on the properties the declaration is written to: the
+        // background color is a property of its own, the other background-* are the decorator's
+        if (property == "background-color")
+            outputs = {"background-color"};
+        else if (property == "background")
+            outputs = {"background-color", "decorator"};
         if (outputs.empty())
             outputs.push_back(property);
         for (const std::string& p : outputs)

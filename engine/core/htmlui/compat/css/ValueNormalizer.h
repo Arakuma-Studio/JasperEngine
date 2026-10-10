@@ -47,6 +47,8 @@ namespace jasperengine::htmlui::compat {
         // ForkFeature::Calc they are checked and kept; otherwise (compat decorator arguments,
         // values a rewrite reads token by token) they are folded as without the feature
         bool calcNative = false;
+        // attr() is kept: 'content' with the fork's PseudoElements (the originating element's attribute)
+        bool attrNative = false;
         PercentBasis percentBasis = PercentBasis::ContainingBlock;
         bool vertical = false;                // the percentage basis is a height (top, bottom, height, ...)
         // the session's options (the defaults when not given)

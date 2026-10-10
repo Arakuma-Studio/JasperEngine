@@ -1064,28 +1064,34 @@ namespace {
         return walk(values);
     }
 
+    // a declaration written with the fork's own !important (ForkFeature::Important: the flag is
+    // part of the value text)
+    inline bool writtenImportant(const OutDecl& declaration){
+        constexpr std::string_view suffix = " !important";
+        const std::string_view value = declaration.value.view();
+        return value.size() > suffix.size() && value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+    }
+
+    // does `later` (after `earlier` in the same rule) replace it? The last declaration of a
+    // property wins, but a normal one never replaces an important one
+    inline bool replaces(const OutDecl& later, const OutDecl& earlier){
+        return later.name == earlier.name && (!writtenImportant(earlier) || writtenImportant(later));
+    }
+
     // the declarations that take effect: in one rule the last declaration of a property wins,
-    // so earlier ones are not written
+    // so earlier ones are not written (an important one stays before a later normal one; the
+    // fork keeps it)
     std::vector<const OutDecl*> effective(const ArenaList<OutDecl>& declarations){
         std::vector<const OutDecl*> out;
         out.reserve(declarations.size());
-        if (declarations.size() <= 32){
-            // a rule's few declarations: a later one of the same name is found by a scan
-            for (size_t i = 0; i < declarations.size(); i++){
-                bool later = false;
-                for (size_t j = i + 1; j < declarations.size() && !later; j++)
-                    later = declarations[j].name == declarations[i].name;
-                if (!later)
-                    out.push_back(&declarations[i]);
-            }
-            return out;
-        }
-        std::set<std::string> seen;
-        for (size_t i = declarations.size(); i-- > 0;){
-            if (seen.insert(declarations[i].name).second)
+        // a rule's declarations: a later one of the same name is found by a scan
+        for (size_t i = 0; i < declarations.size(); i++){
+            bool later = false;
+            for (size_t j = i + 1; j < declarations.size() && !later; j++)
+                later = replaces(declarations[j], declarations[i]);
+            if (!later)
                 out.push_back(&declarations[i]);
         }
-        std::reverse(out.begin(), out.end());
         return out;
     }
 
@@ -1098,7 +1104,7 @@ namespace {
             for (size_t i = 0; i < declarations.size(); i++){
                 bool later = false;
                 for (size_t j = i + 1; j < declarations.size() && !later; j++)
-                    later = declarations[j].name == declarations[i].name;
+                    later = replaces(declarations[j], declarations[i]);
                 if (!later)
                     writer.declaration(declarations[i].name, declarations[i].value, declarations[i].ref);
             }
@@ -1466,6 +1472,7 @@ namespace {
             // math functions the fork evaluates stay in the properties written as they are read
             // (not in the families a rewrite reads token by token or into decorator arguments)
             normalize.calcNative = writesCalcNatively(row->rewrite);
+            normalize.attrNative = row->rewrite == RewriteId::Content && session.options.fork.has(ForkFeature::PseudoElements);
             normalize.percentBasis = facts.percentBasis;
             normalize.vertical = facts.vertical;
             normalize.options = &session.options;
@@ -1834,7 +1841,8 @@ namespace {
         if (d.important && rule && !keyframe && origin == RuleOrigin::Author && !session.options.fork.has(ForkFeature::Important) &&
             output.declarations.size() > first)
             importantConflicts(session, *rule, output.declarations[first], name, d.ref);
-        if (d.important && origin == RuleOrigin::StyleAttribute){
+        // (with the fork's Important the cascade is CSS's: nothing to report)
+        if (d.important && origin == RuleOrigin::StyleAttribute && !session.options.fork.has(ForkFeature::Important)){
             const auto it = session.propertyRulesIndex().find(name);
             if (it != session.propertyRules.end()){
                 for (const Session::PropertyUse& use : it->second){
