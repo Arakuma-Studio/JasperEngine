@@ -205,7 +205,7 @@ void jasperengine::htmlui::compat::rewriteFontWeight(DeclContext& context){
         context.emit("font-weight", text(w[0]));
         return;
     }
-    if (!RcssGrammar::accepts("font-weight", context.valueText())){
+    if (!RcssGrammar::accepts("font-weight", context.valueText(), context.session.options.fork)){
         unsupportedValue(context, "use normal, bold or a number");
         return;
     }

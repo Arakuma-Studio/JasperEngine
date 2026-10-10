@@ -4,7 +4,8 @@
 // ForkFeature::Calc (phase 3 p3-base: upstream PR #983 in the fork, docs/html-ui/FORK.md P3-1).
 // With the feature, compat keeps calc(), min(), max() and clamp() where RmlUi reads the value as
 // written (a property without a rewrite, the sizing, gap, font-size, line-height, z-index and
-// opacity rewrites, custom properties), checks their types, and folds them as phase 2 did where
+// opacity rewrites, custom properties; p3-values: logical properties and font-weight), checks
+// their types, and folds them as phase 2 did where
 // a rewrite reads the value token by token or writes it into compat decorator arguments. Every
 // test runs with the feature present and forced absent.
 
@@ -101,6 +102,8 @@ namespace {
                                "  z-index: calc(2 + 1);\n"
                                "  transform: translateX(calc(100% - 10px));\n"
                                "  max-height: -webkit-calc(100vh - 20px);\n"
+                               "  padding-inline: calc(2px + 3px) calc(10% - 1px);\n"
+                               "  font-weight: calc(300 + 100);\n"
                                "}\n";
 
 }
@@ -121,6 +124,10 @@ TEST(CompatCalc, KeptWhereRmlUiReadsTheValue){
     EXPECT_EQ(out.value("z-index"), "calc(2 + 1)");
     EXPECT_EQ(out.value("transform"), "translateX(calc(100% - 10px))");
     EXPECT_EQ(out.value("max-height"), "calc(100vh - 20px)");   // -webkit-calc
+    // (p3-values) a logical property's physical properties, font-weight
+    EXPECT_EQ(out.value("padding-left"), "calc(2px + 3px)");
+    EXPECT_EQ(out.value("padding-right"), "calc(10% - 1px)");
+    EXPECT_EQ(out.value("font-weight"), "calc(300 + 100)");
     EXPECT_EQ(out.warnings(), 0u) << out.rcss;
 }
 
@@ -132,6 +139,8 @@ TEST(CompatCalc, FoldedWithoutTheFeature){
     EXPECT_EQ(out.value("gap"), "8px");
     EXPECT_EQ(out.value("opacity"), "0.5");
     EXPECT_EQ(out.value("z-index"), "3");
+    EXPECT_EQ(out.value("padding-left"), "5px");
+    EXPECT_EQ(out.value("font-weight"), "400");
     EXPECT_EQ(out.rcss.find("calc("), std::string::npos) << out.rcss;
 }
 
@@ -175,18 +184,17 @@ TEST(CompatCalc, CustomPropertiesKeepItForRmlUi){
 
 TEST(CompatCalc, RewrittenFamiliesFoldItInBothStates){
     // border and box-shadow are rewritten token by token: no calc() reaches RmlUi through them
-    const char* css = ".a { border-width: calc(1px + 1px); box-shadow: 0 calc(2px * 2) 4px #000; padding-inline: calc(2px + 3px); }\n";
+    const char* css = ".a { border-width: calc(1px + 1px); box-shadow: 0 calc(2px * 2) 4px #000; }\n";
     for (const ForkFeatures& fork : {withCalc(), withoutCalc()}){
         const Rewritten out = rewrite(css, fork);
         EXPECT_EQ(out.value("border-width"), "2px") << out.rcss;
         EXPECT_EQ(out.value("--html-box-shadow"), "0px 4px 4px #000000ff") << out.rcss;
-        EXPECT_EQ(out.value("padding-left"), "5px") << out.rcss;
         EXPECT_EQ(out.rcss.find("calc("), std::string::npos) << out.rcss;
         EXPECT_FALSE(out.reported(codes::ForkFallback));
     }
     // a percentage reduced in a rewritten value is an approximation of that rewrite, not a
     // fallback the feature removes
-    const Rewritten mixed = rewrite(".a { padding-inline: calc(10% + 2px); }\n", withCalc());
+    const Rewritten mixed = rewrite(".a { background-image: linear-gradient(red, blue); background-position: calc(10% + 2px) 0; }\n", withCalc());
     EXPECT_TRUE(mixed.reported(codes::ApproximatedVisible)) << mixed.rcss;
     EXPECT_FALSE(mixed.reported(codes::ForkFallback));
 }
@@ -204,7 +212,7 @@ TEST(CompatCalc, TheForkParsesWhatIsKept){
     }
     // each kept value parses for its property; a length with a percentage stays a calculation
     for (const char* property : {"width", "min-width", "height", "margin", "left", "font-size", "gap", "line-height", "flex-basis", "opacity",
-                                 "z-index", "transform", "max-height"}){
+                                 "z-index", "transform", "max-height", "padding-left", "padding-right", "font-weight"}){
         Rml::PropertyDictionary dictionary;
         EXPECT_TRUE(Rml::StyleSheetSpecification::ParsePropertyDeclaration(dictionary, property, out.value(property))) << property;
     }

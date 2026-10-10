@@ -1356,6 +1356,10 @@ namespace {
             case RewriteId::LineHeight:
             case RewriteId::ZIndex:
             case RewriteId::Opacity:
+            // (p3-values: the fork's parsers take them there too; a logical property's value goes to
+            // its physical properties as written)
+            case RewriteId::LogicalBox:
+            case RewriteId::FontWeight:
                 return true;
             default:
                 return false;
