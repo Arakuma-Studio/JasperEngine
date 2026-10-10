@@ -54,13 +54,17 @@ vec4 pointVertexColor(){
 }
 
 // the texture at a point coordinate, inside the point's rect (linear, straight alpha);
-// white without a texture
+// white without a texture. A rotated point's corners fall outside 0..1, which would read
+// the next sprite-sheet frame (or wrap): they are transparent.
 vec4 pointTextureColor(vec2 coord){
     #ifdef HAS_TEXTURE
+        vec2 inside = step(vec2(0.0), coord) * step(coord, vec2(1.0));
         #ifdef HAS_TEXTURERECT
             coord = coord * v_texturerect.zw + v_texturerect.xy;
         #endif
-        return sRGBToLinear(texture(sampler2D(u_pointsTexture, u_points_smp), coord));
+        vec4 color = sRGBToLinear(texture(sampler2D(u_pointsTexture, u_points_smp), coord));
+        color.a *= inside.x * inside.y;
+        return color;
     #else
         return vec4(1.0);
     #endif

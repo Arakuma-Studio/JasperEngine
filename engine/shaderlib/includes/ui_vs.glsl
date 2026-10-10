@@ -7,6 +7,9 @@
 //   v_localPosition  UI_LOCAL_POSITION (defined by the shader): the vertex position in
 //                    the element's own space, in UI pixels (an Image spans 0..width,
 //                    0..height); for effects laid over the element whatever its texture
+//
+// Varyings pair up by location, in declaration order: a fragment shader declares
+// v_localPosition after including includes/ui_fs.glsl (which declares the others).
 
 uniform u_vs_uiParams {
     mat4 mvpMatrix;

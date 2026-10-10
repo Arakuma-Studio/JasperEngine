@@ -36,7 +36,8 @@
 // Sprites keep the engine's own material: the texture and colour of the Sprite (or Tilemap,
 // MeshPolygon), its texture rect (atlas frame), the vertex and instance colours. The
 // effects run on straight-alpha linear colour in this order: colour replace, hue shift,
-// grayscale, overlay, flash, outline (behind the sprite), 2D lights, glow.
+// grayscale, overlay, flash, outline (behind the sprite), the material's alpha mode, 2D
+// lights, glow. With OUTLINE or OVERLAY the texture is read inside the current frame only.
 
 #if (defined(OUTLINE) || defined(OVERLAY)) && defined(HAS_UV_SET1)
     #define SPRITE_FRAME_RECT
@@ -133,19 +134,23 @@ vec4 spriteTexel(vec2 uv){
         vec2 b = v_frameRect.xy + v_frameRect.zw;
         return vec4(min(a, b), max(a, b));
     }
+
+    // the frame shrunk by half a texel: the UVs whose filtering stays inside the frame
+    vec4 frameInset(vec2 texelSize){
+        vec4 bounds = frameBounds();
+        vec2 lo = bounds.xy + texelSize * 0.5;
+        return vec4(lo, max(bounds.zw - texelSize * 0.5, lo));
+    }
 #endif
 
 #if defined(OUTLINE) && defined(SPRITE_FRAME_RECT)
     // Alpha of the 8 neighbours at outlineWidth texels (diagonals on the circle), each
-    // inside the current frame only: a tap outside the frame (shrunk by half a texel so
-    // filtering cannot reach a neighbour frame) reads 0 and samples a clamped, in-frame
-    // position, so an atlas neighbour never bleeds in.
-    float outlineAlpha(vec2 uv){
-        vec2 texel = 1.0 / baseColorTextureSize();
-        vec4 bounds = frameBounds();
-        vec2 lo = bounds.xy + texel * 0.5;
-        vec2 hi = max(bounds.zw - texel * 0.5, lo);
-        vec2 step1 = texel * customParams.outlineWidth;
+    // inside the current frame only: a tap outside the frame inset reads 0 and samples a
+    // clamped, in-frame position, so an atlas neighbour never bleeds in.
+    float outlineAlpha(vec2 uv, vec2 texelSize, vec4 inset){
+        vec2 lo = inset.xy;
+        vec2 hi = inset.zw;
+        vec2 step1 = texelSize * customParams.outlineWidth;
         vec2 stepD = step1 * 0.70710678;
         vec2 offsets[8] = vec2[8](
             vec2(step1.x, 0.0), vec2(-step1.x, 0.0), vec2(0.0, step1.y), vec2(0.0, -step1.y),
@@ -162,14 +167,21 @@ vec4 spriteTexel(vec2 uv){
 #endif
 
 void main() {
-    vec4 texel = spriteTexel(v_uv1);
+    vec2 uv = v_uv1;
+    #ifdef SPRITE_FRAME_RECT
+        // filtering at the frame's edge would blend in the neighbouring atlas frame
+        vec2 texelSize = 1.0 / baseColorTextureSize();
+        vec4 inset = frameInset(texelSize);
+        uv = clamp(uv, inset.xy, inset.zw);
+    #endif
+
+    vec4 texel = spriteTexel(uv);
     vec4 tint = pbrParams.baseColorFactor * v_color;
     vec4 color = vec4(sRGBToLinear(texel.rgb), texel.a) * tint;
-    color = applyMaterialAlphaMode(color);
 
     #ifdef COLOR_REPLACE
         // the masked texels' brightness times the replacement colours
-        vec3 mask = texture(sampler2D(u_replaceMaskTexture, u_replaceMask_smp), v_uv1).rgb;
+        vec3 mask = texture(sampler2D(u_replaceMaskTexture, u_replaceMask_smp), uv).rgb;
         float shade = colorLuminance(color.rgb);
         color.rgb = mix(color.rgb, customParams.replaceColorR.rgb * shade, mask.r * customParams.replaceColorR.a);
         color.rgb = mix(color.rgb, customParams.replaceColorG.rgb * shade, mask.g * customParams.replaceColorG.a);
@@ -207,11 +219,14 @@ void main() {
 
     #if defined(OUTLINE) && defined(SPRITE_FRAME_RECT)
         // the outline sits behind the sprite: sprite over outline
-        float outline = outlineAlpha(v_uv1) * customParams.outlineColor.a * tint.a;
+        float outline = outlineAlpha(uv, texelSize, inset) * customParams.outlineColor.a * tint.a;
         float alpha = color.a + outline * (1.0 - color.a);
         color.rgb = (color.rgb * color.a + customParams.outlineColor.rgb * outline * (1.0 - color.a)) / max(alpha, 1e-5);
         color.a = alpha;
     #endif
+
+    // the material's alpha mask cuts what is left, the outline included
+    color = applyMaterialAlphaMode(color);
 
     #ifdef USE_LIGHT2D
         color.rgb *= getLight2DIntensity(v_position, getNormal2D(), true);

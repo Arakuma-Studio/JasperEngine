@@ -89,9 +89,9 @@ void main(){
     float disc = smoothstep(cos(outer), cos(inner), cosAngle) * above;
 
     #ifdef CLOUDS
-        // two noise layers on a plane above the camera, scrolling apart; thinned towards
-        // the horizon where the plane's texture compresses
-        vec2 plane = direction.xz / max(height, 0.08) * customParams.cloudScale;
+        // two noise layers on a plane above the camera, scrolling apart; the offset in the
+        // divisor bounds the plane's distance at the horizon, where they fade out
+        vec2 plane = direction.xz / (max(height, 0.0) + 0.2) * customParams.cloudScale;
         vec2 offset1 = customParams.cloudSpeed.xy * customParams.time;
         vec2 offset2 = customParams.cloudSpeed.zw * customParams.time;
         float layer1 = texture(sampler2D(u_cloudTexture, u_cloud_smp), plane + offset1).r;
@@ -99,7 +99,7 @@ void main(){
         float density = layer1 * 0.65 + layer2 * 0.35;
         float threshold = 1.0 - customParams.cloudCoverage;
         float cloud = smoothstep(threshold, threshold + customParams.cloudSoftness, density);
-        cloud *= smoothstep(0.0, 0.12, height) * customParams.cloudColor.a;
+        cloud *= smoothstep(0.02, 0.25, height) * customParams.cloudColor.a;
         // lit by the sun, brighter around it; the clouds also cover the disc
         vec3 cloudLit = customParams.cloudColor.rgb * (mix(customParams.horizonColor.rgb, vec3(1.0), 0.6) + sunColor * halo * 2.0);
         color = mix(color, cloudLit, cloud);

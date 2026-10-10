@@ -6,6 +6,9 @@
 //   v_pointrotation  HAS_TEXTURE: the point's rotation in radians
 //   v_color          HAS_VERTEX_COLOR_VEC3 / VEC4: the point's colour
 //   v_texturerect    HAS_TEXTURERECT: the point's sprite-sheet rect (xy origin, zw size)
+//
+// Varyings pair up by location, in declaration order: includes/points_fs.glsl declares
+// them in this order; a shader adding its own declares them after both.
 
 uniform u_vs_pointsParams {
     mat4 mvpMatrix;

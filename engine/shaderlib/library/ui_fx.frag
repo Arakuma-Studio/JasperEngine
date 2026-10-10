@@ -50,13 +50,14 @@ uniform u_fs_customParams {
 } customParams;
 #endif
 
-#ifdef SHINE
-    in vec2 v_localPosition;
-#endif
-
 out vec4 g_finalColor;
 
 #include "includes/ui_fs.glsl"
+
+// after ui_fs.glsl's inputs, in ui_vs.glsl's order
+#ifdef SHINE
+    in vec2 v_localPosition;
+#endif
 #include "includes/color_fx.glsl"
 #include "includes/output.glsl"
 
