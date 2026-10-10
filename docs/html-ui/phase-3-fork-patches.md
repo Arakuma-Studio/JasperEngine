@@ -1899,6 +1899,12 @@ or makes precise §3.2 and §3.3):
   own face once it is known and reports them changed when the face changed. `ch` is the advance of
   '0' (`GetStringWidth`, whole pixels), `ex` the font's `x_height`; half the font size without a
   face. The `s/l/d` forms of `vmin`/`vmax` alias them too. `CalculationResolverContext::font_face`.
+  `calc()` has two evaluation paths, both extended: the compute-time canonicalization
+  (`ResolveCalculation`) and the use-time evaluation against an element
+  (`ResolveElementCalculation`: grid tracks, transforms, shadows, gradient stops); the second was
+  found missing on the merge with p3-grid (`calc(2ex + 1vmax)` as a track was 0). Grid track lists
+  and gaps take the units through the shared `length_percent` parser (fixture
+  `p3/values/grid-units`).
 - **Colors (§3.3.2).** `lab()`/`lch()` are CIE Lab D50 (6.3 converted with a D65 white, so 6.3's
   test expectations change); `color()` takes srgb, srgb-linear and xyz; out-of-gamut colours clip
   per channel, as Chromium 153 does (no CSS gamut mapping); channels round. `currentcolor` is
