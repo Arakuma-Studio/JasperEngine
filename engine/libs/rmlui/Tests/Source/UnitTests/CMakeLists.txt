@@ -3,6 +3,7 @@ set(TARGET_NAME "rmlui_unit_tests")
 add_executable(${TARGET_NAME}
 	Alignment.cpp
 	Animation.cpp
+	AnimationLayers.cpp
 	Calculation.cpp
 	CalculationTypes.cpp
 	ContainingBlockOverride.cpp

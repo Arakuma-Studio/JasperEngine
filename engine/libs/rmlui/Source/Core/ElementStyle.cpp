@@ -105,8 +105,18 @@ void ElementStyle::EraseResolvedUnitDependencies(PropertyId id)
 }
 #endif
 
-const Property* ElementStyle::GetLocalProperty(PropertyId id, const PropertyDictionary& inline_properties, const ElementDefinition* definition)
+const Property* ElementStyle::GetLocalProperty(PropertyId id, const PropertyDictionary& inline_properties, const ElementDefinition* definition,
+	const AnimationLayers* animation_layers)
 {
+	// Transitions, then animations, override the declared values.
+	if (animation_layers)
+	{
+		if (const Property* property = animation_layers->transition_properties.GetProperty(id))
+			return property;
+		if (const Property* property = animation_layers->animated_properties.GetProperty(id))
+			return property;
+	}
+
 	// Check for overriding local properties.
 	const Property* property = inline_properties.GetProperty(id);
 	if (property)
@@ -146,7 +156,7 @@ const Property* ElementStyle::GetLocalShorthand(ShorthandId id, const PropertyDi
 
 ElementStyle::PropertyElementPair ElementStyle::GetSpecifiedProperty(const PropertySources& sources, PropertyId id)
 {
-	const Property* local_property = GetLocalProperty(id, sources.inline_properties, sources.definition);
+	const Property* local_property = GetLocalProperty(id, sources.inline_properties, sources.definition, sources.animation_layers);
 	if (local_property)
 		return {local_property, sources.element};
 
@@ -754,12 +764,12 @@ const Property* ElementStyle::GetCustomProperty(const String& name) const
 
 const Property* ElementStyle::GetLocalProperty(PropertyId id) const
 {
-	return GetLocalProperty(id, inline_properties, definition.get());
+	return GetLocalProperty(id, inline_properties, definition.get(), animation_layers.get());
 }
 
 const Property* ElementStyle::GetLocalPropertyWithResolvedVariables(PropertyId id) const
 {
-	const Property* property = GetLocalProperty(id, inline_properties, definition.get());
+	const Property* property = GetLocalProperty(id, inline_properties, definition.get(), animation_layers.get());
 	if (!property)
 		return nullptr;
 
@@ -931,6 +941,8 @@ PlainPropertiesIterator ElementStyle::Iterate() const
 	return PlainPropertiesIterator{
 		inline_properties.GetProperties(),
 		definition ? &definition->GetProperties().GetProperties() : nullptr,
+		animation_layers ? &animation_layers->transition_properties.GetProperties() : nullptr,
+		animation_layers ? &animation_layers->animated_properties.GetProperties() : nullptr,
 	};
 }
 
@@ -1165,7 +1177,49 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 
 ElementStyle::PropertySources ElementStyle::GetPropertySources() const
 {
-	return {element, definition.get(), inline_properties};
+	return {element, definition.get(), inline_properties, animation_layers.get()};
+}
+
+void ElementStyle::SetTransitionProperty(PropertyId id, const Property& property)
+{
+	if (!animation_layers)
+		animation_layers = MakeUnique<AnimationLayers>();
+	animation_layers->transition_properties.SetProperty(id, property);
+	DirtyProperty(id);
+}
+
+void ElementStyle::RemoveTransitionProperty(PropertyId id)
+{
+	if (!animation_layers || !animation_layers->transition_properties.GetProperty(id))
+		return;
+	animation_layers->transition_properties.RemoveProperty(id);
+	DirtyProperty(id);
+}
+
+void ElementStyle::SetAnimatedProperty(PropertyId id, const Property& property)
+{
+	if (!animation_layers)
+		animation_layers = MakeUnique<AnimationLayers>();
+	animation_layers->animated_properties.SetProperty(id, property);
+	DirtyProperty(id);
+}
+
+void ElementStyle::RemoveAnimatedProperty(PropertyId id)
+{
+	if (!animation_layers || !animation_layers->animated_properties.GetProperty(id))
+		return;
+	animation_layers->animated_properties.RemoveProperty(id);
+	DirtyProperty(id);
+}
+
+const PropertyDictionary* ElementStyle::GetTransitionProperties() const
+{
+	return animation_layers ? &animation_layers->transition_properties : nullptr;
+}
+
+const PropertyDictionary* ElementStyle::GetAnimatedProperties() const
+{
+	return animation_layers ? &animation_layers->animated_properties : nullptr;
 }
 
 ElementStyle::DirtyPropertiesRef ElementStyle::GetDirtyPropertiesRef()
