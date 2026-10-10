@@ -176,6 +176,11 @@ public:
 	};
 	static bool IsHeightIndefinite(const Element* element);
 
+	/// True if the height BuildBox gave the box comes from its aspect ratio and is only its minimum: with 'min-height: auto'
+	/// a box that is not a scroll container is as tall as its content at least (the automatic minimum size, CSS Sizing 4
+	/// §5.1). Gives the maximum height of its content area then.
+	static bool IsAspectRatioHeightMinimum(Element* element, const Box& box, float containing_block_height, float& out_max_height);
+
 	/// The horizontal offset of an in-flow block-level box in its containing block by its 'justify-self' (CSS Box Alignment 3
 	/// §6.1, the parent's 'justify-items' for 'auto'), given the free space beside its margin box. Zero for 'normal' and
 	/// 'stretch', and for boxes with an 'auto' horizontal margin (the margins take the space).

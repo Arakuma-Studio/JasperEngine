@@ -381,6 +381,20 @@ void LayoutDetails::ApplyAspectRatioToHeight(Box& box, const ComputedValues& com
 	box.SetContent(content_area);
 }
 
+bool LayoutDetails::IsAspectRatioHeightMinimum(Element* element, const Box& box, float containing_block_height, float& out_max_height)
+{
+	const ComputedValues& computed = element->GetComputedValues();
+	if (computed.aspect_ratio() <= 0.f || box.GetSize().y < 0.f || computed.height().type != Style::Height::Auto ||
+		computed.height_keyword() != Style::SizingKeyword::None || computed.min_height().type != Style::MinHeight::Auto ||
+		computed.min_height_keyword() != Style::SizingKeyword::None || computed.overflow_x() != Style::Overflow::Visible ||
+		computed.overflow_y() != Style::Overflow::Visible || computed.position() == Style::Position::Absolute ||
+		computed.position() == Style::Position::Fixed || element->IsReplaced())
+		return false;
+	float min_height = 0.f;
+	GetMinMaxHeight(min_height, out_max_height, computed, box, containing_block_height);
+	return true;
+}
+
 void LayoutDetails::ResolveSizingKeywords(const Box& box, const ComputedValues& computed, Element* element, Vector2f containing_block,
 	Vector2f& content_area, Vector2f& min_size, Vector2f& max_size)
 {

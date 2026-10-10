@@ -2130,6 +2130,9 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 			{
 				display_contents = new_display_contents;
 				paint_order_changed = true;
+				// It generates no box from now on: the one of its last layout is not kept.
+				if (display_contents)
+					SetBox(Box(Vector2f(0.f)));
 			}
 		}
 		if (paint_order_changed && parent)

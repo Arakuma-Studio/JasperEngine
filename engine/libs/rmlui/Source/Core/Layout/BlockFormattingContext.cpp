@@ -119,6 +119,10 @@ UniquePtr<LayoutBox> BlockFormattingContext::Format(ContainerBox* parent_contain
 
 	UniquePtr<BlockContainer> container = MakeUnique<BlockContainer>(parent_container, nullptr, element, box, min_height, max_height);
 	container->SetHeightIndefinite(override_initial_box && LayoutDetails::IsHeightIndefinite(element));
+	float content_max_height = 0.f;
+	if (!override_initial_box && element->GetComputedValues().aspect_ratio() > 0.f &&
+		LayoutDetails::IsAspectRatioHeightMinimum(element, box, containing_block.y, content_max_height))
+		container->SetHeightGrowsWithContent(content_max_height);
 
 	DebugDumpLayoutTree debug_dump_tree(element, container.get());
 
@@ -163,6 +167,10 @@ bool BlockFormattingContext::FormatBlockBox(BlockContainer* parent_container, El
 	BlockContainer* container = parent_container->OpenBlockBox(element, box, min_height, max_height);
 	if (!container)
 		return false;
+	float content_max_height = 0.f;
+	if (element->GetComputedValues().aspect_ratio() > 0.f &&
+		LayoutDetails::IsAspectRatioHeightMinimum(element, box, containing_block.y, content_max_height))
+		container->SetHeightGrowsWithContent(content_max_height);
 
 	// Format our children. This may result in scrollbars being added to our formatting context root, then we need to
 	// bail out and restart formatting for the current block formatting context.

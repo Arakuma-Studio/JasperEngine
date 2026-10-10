@@ -64,6 +64,16 @@ bool BlockContainer::Close(BlockContainer* parent_block_container)
 		box.SetContent({box.GetSize().x, clamped_height});
 	}
 
+	else if (content_max_height >= 0.f)
+	{
+		// A height from an aspect ratio is the automatic minimum height: taller content extends us.
+		float content_height = box_cursor + (top_margin_open ? 0.f : trailing_margin_set.Resolve());
+		if (!parent_block_container)
+			content_height = Math::Max(content_height, space->GetDimensions(FloatedBoxEdge::Margin).y - (position.y + box.GetPosition().y));
+		if (content_height > box.GetSize().y)
+			box.SetContent({box.GetSize().x, Math::Max(Math::Min(content_height, content_max_height), box.GetSize().y)});
+	}
+
 	// 'align-content' (CSS Box Alignment 3 §5.1, block containers; it makes us the root of a block formatting context): the
 	// content moves as one in the free space.
 	if (root_space && element->GetComputedValues().align_content() != Style::AlignContent::Normal)

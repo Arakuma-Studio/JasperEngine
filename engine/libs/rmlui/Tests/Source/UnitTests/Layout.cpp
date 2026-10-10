@@ -1,9 +1,10 @@
 #include "../Common/TestsShell.h"
+#include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/Element.h>
-#include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/ElementScroll.h>
 #include <RmlUi/Core/ElementUtilities.h>
 #include <doctest.h>
 
@@ -373,6 +374,83 @@ TEST_CASE("Layout.Overflow.Clip")
 		CHECK(region.Width() == 116);
 		CHECK(region.Height() == 66);
 	}
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+// Phase 3 (p3-layout, docs/html-ui/phase-3-fork-patches.md 3.11.3): 'scrollbar-gutter: stable' keeps the space of the
+// vertical scrollbar of a scroll container, which is only shown while the content overflows.
+TEST_CASE("Layout.ScrollbarGutter")
+{
+	const String document_rml = R"(
+<rml>
+<head>
+	<style>
+		body { width: 400px; height: 600px; margin: 0; padding: 0; }
+		div { display: block; }
+		scrollbarvertical { width: 12px; }
+		.scroller { overflow: auto; width: 100px; height: 50px; }
+		.stable { scrollbar-gutter: stable; }
+		.short { height: 20px; }
+		.tall { height: 200px; }
+	</style>
+</head>
+<body>
+	<div id="auto" class="scroller"><div class="short"/></div>
+	<div id="stable" class="scroller stable"><div id="stable-child" class="short"/></div>
+	<div id="stable-overflow" class="scroller stable"><div class="tall"/></div>
+	<div id="stable-hidden" class="scroller stable" style="overflow: hidden"><div class="tall"/></div>
+	<div id="stable-visible" class="stable" style="width: 100px"><div class="short"/></div>
+	<div id="both-edges" class="scroller" style="scrollbar-gutter: stable both-edges"><div class="short"/></div>
+</body>
+</rml>
+)";
+
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	context->Render();
+
+	auto client_width = [&](const char* id) { return document->GetElementById(id)->GetClientWidth(); };
+	auto scrollbar_visible = [&](const char* id) {
+		Element* scrollbar = document->GetElementById(id)->GetElementScroll()->GetScrollbar(ElementScroll::VERTICAL);
+		return scrollbar && scrollbar->IsVisible();
+	};
+
+	CHECK(document->GetElementById("stable")->GetComputedValues().scrollbar_gutter() == Style::ScrollbarGutter::Stable);
+
+	// Without a gutter the content takes the whole width until it overflows.
+	CHECK(client_width("auto") == doctest::Approx(100.f));
+	CHECK_FALSE(scrollbar_visible("auto"));
+
+	// The gutter is there without overflow, and the scrollbar is not shown.
+	CHECK(client_width("stable") == doctest::Approx(88.f));
+	CHECK(document->GetElementById("stable-child")->GetBox().GetSize(BoxArea::Border).x == doctest::Approx(88.f));
+	CHECK_FALSE(scrollbar_visible("stable"));
+
+	// With overflow the scrollbar takes it.
+	CHECK(client_width("stable-overflow") == doctest::Approx(88.f));
+	CHECK(scrollbar_visible("stable-overflow"));
+
+	// 'overflow: hidden' keeps the gutter, and never shows a scrollbar.
+	CHECK(client_width("stable-hidden") == doctest::Approx(88.f));
+	CHECK_FALSE(scrollbar_visible("stable-hidden"));
+
+	// Not a scroll container: no gutter.
+	CHECK(client_width("stable-visible") == doctest::Approx(100.f));
+
+	// 'both-edges' is taken as 'stable'.
+	CHECK(client_width("both-edges") == doctest::Approx(88.f));
+
+	// Content that starts to overflow shows the scrollbar without changing the width of the content.
+	document->GetElementById("stable-child")->SetProperty("height", "300px");
+	context->Update();
+	CHECK(client_width("stable") == doctest::Approx(88.f));
+	CHECK(scrollbar_visible("stable"));
 
 	document->Close();
 	TestsShell::ShutdownShell();

@@ -21,8 +21,13 @@ void ContainerBox::ResetScrollbars(const Box& box)
 	else
 		element->GetElementScroll()->DisableScrollbar(ElementScroll::HORIZONTAL);
 
-	if (overflow_y == Style::Overflow::Scroll)
-		element->GetElementScroll()->EnableScrollbar(ElementScroll::VERTICAL, box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Padding));
+	// 'scrollbar-gutter: stable' keeps the space of the vertical scrollbar of a scroll container whether or not it overflows
+	// (CSS Overflow 3 §4; 'both-edges' is not mirrored). The scrollbar is shown when the content overflows (CatchOverflow).
+	const bool stable_gutter = (element->GetComputedValues().scrollbar_gutter() != Style::ScrollbarGutter::Auto &&
+		(overflow_y == Style::Overflow::Auto || overflow_y == Style::Overflow::Hidden));
+	if (overflow_y == Style::Overflow::Scroll || stable_gutter)
+		element->GetElementScroll()->EnableScrollbar(ElementScroll::VERTICAL, box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Padding),
+			stable_gutter);
 	else
 		element->GetElementScroll()->DisableScrollbar(ElementScroll::VERTICAL);
 }
@@ -227,6 +232,11 @@ bool ContainerBox::CatchOverflow(const Vector2f visible_overflow_size, const Vec
 			element_scroll->EnableScrollbar(ElementScroll::VERTICAL, padding_width);
 			const float new_size = element_scroll->GetScrollbarSize(ElementScroll::VERTICAL);
 			scrollbar_size_changed |= (new_size != 0.f);
+		}
+		else if (element_scroll->IsScrollbarGutterOnly(ElementScroll::VERTICAL))
+		{
+			// Its space is already there ('scrollbar-gutter: stable'): show it.
+			element_scroll->EnableScrollbar(ElementScroll::VERTICAL, padding_width);
 		}
 	}
 

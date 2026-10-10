@@ -76,6 +76,8 @@ public:
 	/// @param[in] max_height The maximum height of the content box.
 	/// @return The block box representing the element. Once the element's children have been positioned, Close() must be called on it.
 	BlockContainer* OpenBlockBox(Element* element, const Box& box, float min_height, float max_height);
+	/// Our height is a minimum (given by an aspect ratio): content taller than it makes us taller, up to 'max_height'.
+	void SetHeightGrowsWithContent(float max_height) { content_max_height = max_height; }
 
 	/// Adds a block-level box whose contents have already been formatted in an independent formatting context.
 	/// @param[in] block_level_box The box to add as a new child of this.
@@ -208,6 +210,8 @@ private:
 	Box box;
 	float min_height = 0.f;
 	float max_height = -1.f;
+	// Set: our definite height is a minimum, our content can make us taller, up to this height (SetHeightGrowsWithContent).
+	float content_max_height = -1.f;
 
 	// The vertical position of the next block box to be added to this box, relative to our box's top content edge.
 	float box_cursor = 0.f;
