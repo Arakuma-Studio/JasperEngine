@@ -32,6 +32,8 @@
 #include "component/MeshComponent.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
+#include "shader/ShaderManifest.h"
+#include "shader/ShaderVariantCompiler.h"
 #include "texture/Material.h"
 #include "texture/TextureData.h"
 #include "util/Base64.h"
@@ -1760,14 +1762,28 @@ void checkShaderTool(const CallPtr& call) {
     std::vector<ProjectChecks::ShaderUse> forks;
     if (args.contains("shader") && args["shader"].is_string()) {
         std::string base = args["shader"].get<std::string>();
+        const bool library = ShaderReference::isLibrary(base);
         for (const char* ext : {".vert", ".frag"}) {
-            if (base.size() > 5 && base.compare(base.size() - 5, 5, ext) == 0 && base.find('|') == std::string::npos) base = base.substr(0, base.size() - 5);
+            if (!library && base.size() > 5 && base.compare(base.size() - 5, 5, ext) == 0 && base.find('|') == std::string::npos) base = base.substr(0, base.size() - 5);
         }
-        Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(base);
-        std::error_code ec;
-        if (!fs::exists(project->getProjectPath() / paths.vert, ec) || !fs::exists(project->getProjectPath() / paths.frag, ec)) {
-            call->fail("Shader files not found: " + paths.vert + ", " + paths.frag + ".");
-            return;
+        if (library) {
+            // a library shader ("library:<name>", optionally "#FEATURES") is in the engine
+            std::string vert, frag, error;
+            if (!ShaderVariantCompiler::getLibraryShaderPaths(base, ShaderType::MESH, vert, frag, &error)) {
+                call->fail(error + ". The library shaders: " + [] {
+                    std::string names;
+                    for (const std::string& name : ShaderManifests::getLibraryShaderNames()) names += (names.empty() ? "library:" : ", library:") + name;
+                    return names;
+                }() + ".");
+                return;
+            }
+        } else {
+            Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(base);
+            std::error_code ec;
+            if (!fs::exists(project->getProjectPath() / paths.vert, ec) || !fs::exists(project->getProjectPath() / paths.frag, ec)) {
+                call->fail("Shader files not found: " + paths.vert + ", " + paths.frag + ".");
+                return;
+            }
         }
         int type = -1;
         static const std::map<std::string, ShaderType> types = {
@@ -1780,8 +1796,8 @@ void checkShaderTool(const CallPtr& call) {
                 return;
             }
             type = static_cast<int>(it->second);
-        } else {
-            for (const ProjectChecks::ShaderUse& use : ProjectChecks::shaderForksUsingFiles(project, {paths.vert})) {
+        } else if (!library) {
+            for (const ProjectChecks::ShaderUse& use : ProjectChecks::shaderForksUsingFiles(project, {Util::resolveCustomShaderPaths(base).vert})) {
                 if (use.base == base) type = use.shaderType;
             }
         }

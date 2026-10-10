@@ -592,6 +592,7 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/shader/ShaderBuilder.cpp
     ${EDITOR_DIR}/shader/ShaderVariantCollector.cpp
+    ${EDITOR_DIR}/shader/ShaderLibraryMatrix.cpp
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp

@@ -52,6 +52,9 @@
 #include <thread>
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
+#include "shader/ShaderLibraryMatrix.h"
+#include "shader/ShaderManifest.h"
+#include "shader/ShaderVariantCompiler.h"
 
 #include <algorithm>
 #include <cctype>
@@ -106,6 +109,8 @@ struct ShaderCliOptions {
     std::set<ShaderBackend> backends;
     std::set<ShaderKey> shaderKeys;
     ShaderOutputFormat outputFormat = ShaderOutputFormat::Binary;
+    // the library shaders whose compile matrix runs instead ("all" or names)
+    std::vector<std::string> libraryShaders;
     bool help = false;
 };
 
@@ -280,12 +285,16 @@ static void printBenchmarkUsage(const std::string& commandName) {
 static void printShadersUsage(const std::string& commandName) {
     std::cout
         << "Usage:\n"
-        << "  " << commandName << " shaders --out <dir> --shader <spec> [options]\n\n"
+        << "  " << commandName << " shaders --out <dir> --shader <spec> [options]\n"
+        << "  " << commandName << " shaders --library <name|all> [--backend <list>]\n\n"
         << "Options:\n"
         << "  -o, --out <path>            Destination directory for generated shader files.\n"
         << "      --format <format>       binary, header, or json. Default: binary.\n"
         << "      --backend <list>        opengl, opengles, d3d11, metal-macos, metal-ios, vulkan, all. Can repeat.\n"
         << "      --shader <spec>         Shader type and optional properties, e.g. mesh:Uv1,Nor. Can repeat.\n"
+        << "      --library <name|all>    Compile the compile matrix of engine library shaders (library:<name>)\n"
+        << "                              for each backend and validate their manifests; nothing is written.\n"
+        << "                              Can repeat. Errors are printed compiler style; exit code 1 on any.\n"
         << "  -h, --help                  Show this help.\n\n"
         << "If no --backend is provided, all supported backends are used.\n"
         << "Shader output is written directly to <out>.\n";
@@ -384,6 +393,10 @@ static bool parseShadersArgs(int argc, char** argv, ShaderCliOptions& options, s
                 return false;
             }
             options.shaderKeys.insert(key);
+        } else if (arg == "--library") {
+            if (!requireValue(argc, argv, i, value, error)) return false;
+            if (value.compare(0, 8, "library:") == 0) value = value.substr(8);
+            options.libraryShaders.push_back(value);
         } else {
             error = "Unknown argument: " + arg;
             return false;
@@ -391,6 +404,12 @@ static bool parseShadersArgs(int argc, char** argv, ShaderCliOptions& options, s
     }
 
     if (options.help) {
+        return true;
+    }
+    if (!options.libraryShaders.empty()) {
+        if (options.backends.empty()) {
+            addAllSupportedBackends(options.backends);
+        }
         return true;
     }
     if (options.targetDir.empty()) {
@@ -542,6 +561,47 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     return 0;
 }
 
+// The compile matrix of library shaders (ShaderLibraryMatrix): compiler-style problems on
+// stderr, a summary per shader on stdout, 1 when anything failed
+static int runLibraryShaderMatrix(const ShaderCliOptions& options, const std::string& commandName) {
+    std::vector<std::string> names;
+    for (const std::string& requested : options.libraryShaders) {
+        if (requested == "all") {
+            for (const std::string& name : ShaderManifests::getLibraryShaderNames()) names.push_back(name);
+        } else {
+            names.push_back(requested);
+        }
+    }
+    std::sort(names.begin(), names.end());
+    names.erase(std::unique(names.begin(), names.end()), names.end());
+    if (names.empty()) {
+        std::cerr << commandName << " shaders: this build has no library shader\n";
+        return 1;
+    }
+    if (!ShaderVariantCompiler::isAvailable()) {
+        std::cerr << commandName << " shaders: this build has no shader compiler\n";
+        return 1;
+    }
+
+    const std::vector<ShaderBackend> backends(options.backends.begin(), options.backends.end());
+    bool failed = false;
+    size_t totalCompiled = 0;
+    for (const std::string& name : names) {
+        const ShaderLibraryMatrix::Result result = ShaderLibraryMatrix::run(name, backends);
+        bool errors = result.failed > 0;
+        for (const ShaderLibraryMatrix::Problem& problem : result.problems) {
+            std::cerr << problem.file << ":" << problem.line << ": " << (problem.error ? "error" : "warning") << ": " << problem.message << "\n";
+            errors = errors || problem.error;
+        }
+        totalCompiled += result.compiled;
+        std::cout << result.shader << ": " << result.variants << " variants x " << backends.size() << " backends, "
+                  << result.compiled << " compiled, " << result.failed << " failed" << (errors ? " FAILED" : " OK") << "\n";
+        failed = failed || errors;
+    }
+    std::cout << names.size() << " library shader(s), " << totalCompiled << " compiles: " << (failed ? "FAILED" : "OK") << "\n";
+    return failed ? 1 : 0;
+}
+
 int CommandLine::runShadersCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
 
@@ -570,6 +630,10 @@ int CommandLine::runShadersCommand(int argc, char** argv, const char* executable
     EngineRuntimeGuard engineRuntime;
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(true);
+
+    if (!options.libraryShaders.empty()) {
+        return runLibraryShaderMatrix(options, commandName);
+    }
 
     ExportConfig config;
     config.targetDir = options.targetDir;

@@ -6,6 +6,8 @@
 #include "Generator.h"
 #include "component/ScriptComponent.h"
 #include "script/ScriptProperty.h"
+#include "shader/ShaderManifest.h"
+#include "shader/ShaderData.h"
 
 #include "json.hpp"
 
@@ -182,6 +184,13 @@ namespace jasperengine::editor {
         static ShaderCheck runShaderCheck(Project* project, const ShaderUse& use, uint64_t shaderKey);
         // {shader, type, ok, errors, log} (log and errors only on failure)
         static nlohmann::json toJson(const ShaderCheck& check);
+        // The problems of a shader's manifest (a library reference or a fork with one): its
+        // syntax, and its @property members and @texture uniforms checked against what the
+        // compiled variants declare (onlyEnabledFeatures: skip the rows behind features the
+        // reference's suffix does not enable). Empty for a shader without a manifest.
+        static std::vector<ShaderManifestDiagnostic> validateShaderManifest(const std::string& reference,
+                                                                           const std::vector<const ShaderData*>& variants,
+                                                                           bool onlyEnabledFeatures);
         // The project file a compiler message source (an entry point or include key) of a fork is
         // ("engine/shaderlib/<key>" for an engine library include)
         static std::string shaderSourcePath(Project* project, const std::string& base, const std::string& source);
