@@ -1,4 +1,4 @@
 {
- "comment": "CSS-wide keywords (spec 3.4.2) on inherited and non-inherited properties: color inherit/unset/initial (#k1: blue, blue, black text), font-size inherit after an em parent (#k2b 10px squares) and initial (#k2c 16px), width: inherit of a percentage (#k3b 40px), padding and background-color inherit, margin: unset, --x: initial making var() use its fallback, --y: inherit, width/background-color initial and unset, height and display inherit. No #e02020 anywhere.",
+ "comment": "CSS-wide keywords (spec 3.4.2) on inherited and non-inherited properties: color inherit/unset/initial (#k1: blue, blue, black text), font-size inherit after an em parent (#k2b 10px squares) and initial (#k2c: a 2em x 1em box, 32x16), width: inherit of a percentage (#k3b 40px), padding and background-color inherit, margin: unset, --x: initial making var() use its fallback, --y: inherit, width/background-color initial and unset, height and display inherit. No #e02020 anywhere.",
  "viewport": [320, 200]
 }

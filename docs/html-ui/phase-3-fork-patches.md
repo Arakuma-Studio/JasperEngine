@@ -713,10 +713,13 @@ Bug: changing the `style` attribute only calls `SetProperty` for the new declara
     `GetProperty :653-661`): `initial` → `PropertyDefinition::GetDefaultValue()`; `inherit` → the
     parent's specified/computed property; `unset` → `inherit` for inherited properties, else
     `initial`; `revert` → the value from the user-agent origin (below), else `unset`.
-  - Computed level (`ComputeValues :873-1027`): `inherit` copies the parent's **computed** field
-    (new `ComputedValues::CopyFrom(PropertyId, const ComputedValues&)` generated per id), so `em`
-    and `%` are not re-resolved; `initial` computes the default property. The font-size and
-    line-height pre-passes (`:917-970`) handle the keywords too.
+  - Computed level (`ComputeValues`): `inherit` on a non-inherited property computes the
+    declaration the nearest ancestor resolves to, with **that ancestor's** font size, so `em` is
+    not re-resolved against the element (`ElementStyle::ResolveComputedKeyword`; no per-id
+    `ComputedValues::CopyFrom`: the one generic path serves the 187 ids and stays correct as
+    packages add properties); inherited properties take the parent's computed field as they
+    always did; `initial` computes the default property. The font-size and line-height
+    pre-passes handle the keywords too.
   - Inherited-dirty propagation: an element whose property is `inherit` on a non-inherited property
     must be dirtied when the parent's value changes: `ComputeValues` propagates dirty ids for
     which any child has an explicit `inherit` (child style keeps a small `explicit_inherit`
@@ -729,9 +732,11 @@ The compat layer (phase 2) links the user-agent stylesheet first, as
 Fork addition: `XMLNodeHandlerHead` reads the `origin` attribute of a `<link>` and calls
 `StyleSheet::SetOrigin(StyleOrigin::UserAgent)` on that sheet before it is merged; when sheets
 are merged (`StyleSheet.cpp:43-44`), UA properties are tagged `origin = UserAgent` in `Property`
-(2 bits, next to `important`). `ElementDefinition` keeps, in addition to the merged dictionary, a
-`PropertyDictionary ua_properties` filled only from UA-origin nodes (small: the UA sheet matches
-few rules per element). `revert` returns the UA value for that id, else behaves as `unset`.
+(next to `important`). A style sheet node keeps its UA-origin declarations apart
+(`StyleSheetNode::user_agent_properties`: an author rule with the same selector merges into the
+same node and would otherwise overwrite them), and `ElementDefinition::GetUserAgentProperty`
+(`GetUserAgentCustomProperty`) merges them from the matched nodes on demand (the UA sheet
+matches few rules per element). `revert` returns the UA value for that id, else behaves as `unset`.
 Compat's `DocumentLoader::restyle`/`restyleForViewport` (phase 2 §3.12.1) rebuild the
 container from the cached UA sheet and call `SetOrigin` on it (additive one-line change in
 phase-2 code). The presentational-hints `<style>` is author origin, as in CSS. The root band
@@ -780,8 +785,8 @@ Unknown or invalid selectors must not silently create never-matching rules: the 
 Structural selector type `Root`: `element == element->GetOwnerDocument()` (a document is its own
 owner, `Element.cpp:2137-2143`). With phase 2's root mapping (§3.1.1) this is the HTML
 `<html>` (RML `body#htmlui-root`); compat keeps rewriting `:root` to `body#htmlui-root` for the
-root band, which matches the same element. Specificity:
-pseudo-class.
+root band and, with `RootIsWhere`, keeps the pseudo-class next to it (`body#htmlui-root:root`),
+so `:root` outweighs `html` as in CSS. Specificity: pseudo-class.
 
 #### 3.5.2 `:is()`, `:where()`
 `StructuralSelectorType::Is`, `Where` (`StyleSheetSelector.h:69`), registered in the factory map
@@ -800,7 +805,8 @@ it only gains the forgiving-list behavior.
   `x` → `:scope x`, `+ x` → `:scope + x`, `~ x` → `:scope ~ x`), then `ConstructNodes`. Nested
   `:has()` is rejected (CSS).
 - Matching: for `>`/descendant forms walk the subject's descendants (DOM children only, pseudo-
-  elements excluded), for `+`/`~` the following siblings, calling `leaf->IsApplicable(candidate,
+  elements excluded; the options a `<select>` keeps in its `selectbox` part are walked as its
+  descendants), for `+`/`~` the following siblings, calling `leaf->IsApplicable(candidate,
   /*scope=*/subject)` (`:scope` already compares `element == scope`, `StyleSheetSelector.cpp:352`).
 - Invalidation: `StyleSheet::BuildIndex` records `uses_has` and the set of tag/class/id/attribute
   names appearing inside `:has()` arguments. When a sheet uses `:has`, `Element::DirtyDefinition`,
@@ -813,8 +819,9 @@ it only gains the forgiving-list behavior.
   re-matches fewer than 50 elements (counter in `RMLUI_TESTS_ENABLED` builds).
 
 #### 3.5.4 `:focus`, `:focus-within`, `:focus-visible`
-- `Context::OnFocusChange` (`Context.cpp:1190-1237`) sets pseudo-classes itself after dispatching
-  events: `focus` only on the new focus element (removed from the old), `focus-within` on
+- `Context::OnFocusChange` (`Context.cpp:1190-1237`) sets pseudo-classes itself, between the Blur
+  and the Focus events (a Focus listener sees the new state, as in browsers): `focus` only on the
+  new focus element (removed from the old), `focus-within` on
   `new_chain` (removed from `old_chain \ new_chain`), `focus-visible` only on the new focus element
   when the focus was keyboard/gamepad-initiated (the existing `focus_visible` parameter).
 - Remove the Target-phase handling at `Element.cpp:2034-2042`. The Focus/Blur events are still
@@ -869,7 +876,7 @@ attr-flags}.html` (states driven by fixture steps, §5.2).
 
 **Storage decision.** Pseudo-elements are real `Element` objects owned by the originating element
 as **non-DOM children** (`AppendChild(…, dom_element=false)`, `Element.cpp:1344-1371`), pointers in
-`ElementMeta` (`pseudo_before`, `pseudo_after`, `pseudo_marker`). Consequences:
+`ElementMeta` (`pseudo_elements[3]`, indexed by type). Consequences:
 - DOM APIs (`GetChild`, `GetNumChildren()`, siblings, `QuerySelector*`, `GetElementById`,
   structural selectors, `GetInnerRML`, data-binding `data-for`, the Lua element API) already skip
   non-DOM children — no change needed and no risk of `:nth-child` counting them.
@@ -931,32 +938,45 @@ call sites, Lua proxies and data binding.)
 - `CounterResolver` in `ElementDocument`: when a counter property, `display`, the DOM order or a
   pseudo-element's existence changes, the document is marked `counters_dirty`; before layout
   (`ElementDocument::UpdateLayout`) a pre-order walk over the layout tree (elements +
-  pseudo-elements, `display:none` excluded) applies reset/set/increment with CSS scoping
-  (counters are inherited by descendants and following siblings' subtrees) and updates the text of
-  every pseudo-element whose content uses `counter()`/`counters()`. Implicit `list-item` counter:
-  incremented by every `display: list-item` element, reset by `ol`/`ul`/`menu` via the UA
-  stylesheet (`ol { counter-reset: list-item }`), `<ol start>`/`reversed` and `<li value>` handled
-  by UA attribute rules + the resolver.
+  pseudo-elements, `display:none` excluded) applies reset/set/increment with CSS Lists 3 §4.4.1
+  inheritance (an element takes its parent's counters, those of its preceding sibling it does not
+  have yet, and the values of the previous element in tree order) and updates the text of
+  every pseudo-element whose content uses `counter()`/`counters()`; `quotes` depth is counted in
+  the same walk. Implicit `list-item` counter: incremented by every `display: list-item` element,
+  reset by `ol`/`ul`/`menu` via the UA stylesheet (`ol { counter-reset: list-item }`); the
+  resolver reads `<ol start>`, `<ol reversed>` and `<li value>` when the list's `counter-reset`
+  names `list-item` without a value (no UA attribute rules: `attr()` cannot give an integer).
+  `counter-reset: reversed(name)` is parsed.
 - Styles: `decimal`, `decimal-leading-zero`, `lower-alpha/latin`, `upper-alpha/latin`,
   `lower-roman`, `upper-roman`, `lower-greek`, `disc`, `circle`, `square`, `none`, `<string>`
   (others diagnosed, §2.2).
 
 #### 3.6.4 `display: list-item` and `::marker`
 - Properties: `list-style-type` (inherited, initial `disc`), `list-style-position` (inherited,
-  `outside` | `inside`), `list-style-image` (`none` | `url()`: the marker is that image at its
-  intrinsic size, as phase 2's emulation already supports), `list-style` (`AnyOrder`
-  shorthand). Phase 2 registers the three longhands itself today; its `registerAll()` skips
-  names the fork registers (phase 2 §3.11.1).
+  `outside` | `inside`), `list-style-image` (`none` | `url()`, or as RCSS writes its other
+  sources a string or a bare path: the marker is that image at its intrinsic size, as phase 2's
+  emulation already supports; an image that cannot be loaded gives the type's marker),
+  `list-style` (`Custom` shorthand: `none` fills the type, then the image; the image as `url()`
+  only). The three longhands force a layout. Phase 2 registered them itself; its `registerAll()`
+  skips names the fork registers (phase 2 §3.11.1).
 - A `display: list-item` element gets a `::marker` pseudo-element when `list-style-type` is not
-  `none` or a `::marker` rule sets `content`. Default content: counter text + `". "` for ordinal
-  styles; the bullet glyph (U+2022 disc, U+25E6 circle, U+25AA square) + space for symbol styles.
-  `::marker` accepts only the CSS-allowed properties (color, font-*, content, white-space,
-  animation/transition, direction); others are ignored at definition time.
-- Layout: `inside` → the marker is the first inline box of the element's first line. `outside` →
-  the marker is laid out as an inline-block (shrink-to-fit) positioned so that its end edge touches
-  the list item's border-box start edge and its baseline aligns with the first line box's baseline;
-  it does not affect the list item's size and is painted with the list item. Implemented in
-  `BlockContainer`/`InlineContainer` when the first line box closes (`LineBox` gives the baseline).
+  `none`, it has a `list-style-image`, or a `::marker` rule sets `content`. Default content:
+  counter text + `". "` for ordinal styles; symbol styles (disc, circle, square, and the
+  disclosure triangles of `summary`) are **drawn as shapes** sized from the font's ascent, as
+  Chromium paints them (the built-in fonts have no glyphs for most of them, and a glyph would
+  not match the reference's size or position). `::marker` takes any property: the CSS
+  restriction to color, font-*, content, white-space, animation/transition and direction is not
+  enforced (a rule that sets others styles the marker's box; reported by nothing).
+- Layout (`ElementListMarker`, `Source/Core/ListMarker.cpp`): the marker is the first layout
+  child (§3.1.6). `inside` → the first box of the element's first line (ordinal text: an inline
+  box; a symbol: an inline-block of Chromium's symbol width with margins -1px and 1em; an image
+  followed by 7px). `outside` → an inline-block on the first line whose negative margin puts it
+  before the item's start edge and whose margins cancel its advance, with Chromium's offsets
+  (`ListMarker::InlineMarginsForOutside`: an ordinal ends at the item's content start, a symbol
+  sits `ascent * 2 / 3 + 8` px before it, an image 7px before it). It is aligned on the line's
+  baseline and does not move the item's content along the line; a marker taller than the line
+  (a bigger `::marker` font, an image) grows the first line box, as in Chromium. No change to
+  `BlockContainer`/`InlineContainer` was needed.
 - Compat: phase 2 emulates markers (`HtmlListItemElement`/`HtmlSummaryElement` `marker`
   child, `ListMarkers`, `::marker` → `marker`, `display: list-item` → `block`, UA
   `li { display: block }`). p3-cascade appends `ForkFeature::ListMarkers`; with it present the
@@ -971,6 +991,60 @@ returns originating element, inheritance from originating element, transitions o
 `:hover::after`, destruction with the parent, data-for siblings), `Counters.cpp`, `ListMarkers.cpp`.
 Goldens: `p3/pseudo/{before-after-basic,content-attr,content-url,hover-transition,
 counters-nested,list-markers-outside,list-markers-inside,ordered-start-reversed}.html`.
+
+#### 3.6.5 `p3-cascade` as implemented
+
+Where the implementation differs from or makes precise §3.4–3.6 (FORK.md rows P3-C1…P3-C7 list
+the commits):
+
+- **One hook (§3.4.1, §3.4.2).** `PropertySpecification::ParsePropertyDeclaration` (a file other
+  packages edit) only calls `Cascade::ParseDeclaration` (`Source/Core/Cascade.{h,cpp}`), which
+  handles `!important`, the CSS-wide keywords and the raw-value properties below, for the main
+  specification only (decorator and font-effect specifications are untouched). A dictionary that
+  holds important declarations parses a later normal declaration apart and keeps the important
+  longhands (`a: x !important; a: y` stays `x`, also through shorthands).
+- **Cascade order (§3.4.1).** Normal sheet < normal inline < important sheet < important inline
+  (`Cascade::ImportantOffset = 1 << 29`, `InlineSpecificity = 1 << 28`); transitions above all,
+  animations between normal and important declarations (p3-base's layers). `@keyframes` drop
+  important declarations.
+- **Keywords (§3.4.2).** Resolved at the specified level (`ElementStyle::ResolveSpecifiedKeyword`)
+  and at the computed level (`ResolveComputedKeyword`, see §3.4.2 as corrected: no `CopyFrom`).
+  `revert-layer` is `revert`. `all` skips `direction`, custom properties and `-rmlui-*`.
+  `UpdateDefinition` treats a keyword declaration, or one whose importance changed, as changed
+  even when it compares equal (the value it resolves to may differ).
+- **Origin (§3.4.3).** UA declarations are kept per style sheet node (§3.4.3 as corrected).
+  `<link origin="user-agent">` and `StyleSheetContainer::SetOrigin`; compat's
+  `DocumentLoader::restyle` sets it on the rebuilt container.
+- **Raw values.** `ParsePropertyValues` unquotes a single string and rejects several, so `content`,
+  `quotes`, `counter-*`, `list-style-type`, `list-style-image` and `list-style` are parsed from
+  the raw declaration text (`Cascade::ParseDeclaration`), not through the value splitter.
+- **Invalid selectors (§3.5).** An unknown pseudo-class or pseudo-element makes its selector
+  invalid: dropped with a warning (the rule's other selectors stay; inside `:is()`/`:where()`/
+  `:not()` only that argument is dropped). An application that sets pseudo-classes of its own
+  declares them: `Factory::RegisterPseudoClass(name)` (compat registers `html-focus` and
+  `html-focus-visible` for the fork state without `FocusPseudoClasses`).
+- **Form states (§3.5.5).** `:enabled`/`:disabled` follow the `disabled` attribute and a disabled
+  `fieldset` ancestor (`IsElementDisabled`); `ElementCascade::IsUnfocusable` makes them
+  unfocusable in `Element::Focus`, `Context::FindFocusElement` and the document's tab order.
+  `:target`: `ElementDocument::SetTarget(id)`, initialized from the URL fragment.
+- **`ElementCascade` (`Source/Core/ElementCascade.{h,cpp}`).** The package's hooks into `Element`
+  and `ElementDocument` (a friend of both): `:has()` invalidation, focusability, pseudo-element
+  slots, counter dirtying. `Element` gains `GetPseudoElement`, `GetPseudoElementType` and the
+  `dirty_definition_self` flag.
+- **Pseudo-elements (§3.6.2).** `ElementPseudo` (`Source/Core/PseudoElements.{h,cpp}`), created
+  and removed by `PseudoElements::Update` from `Element::Update` (after the element's
+  properties), their content built in `OnPropertyChange`. `ElementStyle::UpdateDefinition` of a
+  pseudo-element asks `StyleSheet::GetElementDefinition(originating, type)`.
+- **Areas.** The fixtures of §3.5 and §3.6 are the manifest areas `selectors` and `pseudo`
+  (owner p3-cascade), next to `cascade`.
+- **Fork features.** `ForkFeature` gains `Has`, `FocusPseudoClasses`, `SelectorsLevel4` and
+  `ListMarkers` (appended after `Grid`); present with this package: `Important`,
+  `CssWideKeywords`, `RootIsWhere`, `Has`, `FocusPseudoClasses`, `SelectorsLevel4`,
+  `PseudoElements`, `ListMarkers`.
+- **Fixtures and other packages.** RmlUi sizes an inline box 1.2 × its font size tall where
+  Chromium uses the font's ascent + descent (`Layout/InlineBox.cpp`, p3-text's), and
+  interpolates colours in linear light (`ElementAnimation.cpp`, p3-animation's): the fixtures of
+  this package compare no boxes or backgrounds of inline boxes and transition a length.
 
 ---
 

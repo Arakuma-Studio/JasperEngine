@@ -1765,10 +1765,15 @@ namespace {
             }
             if (text.empty())
                 text = " ";
+            // the fork's own !important (ForkFeature::Important) also weighs custom properties;
+            // without it an important custom property is a normal one, as in phase 2
+            const bool important = d.important && !keyframe && session.options.fork.has(ForkFeature::Important);
+            if (important)
+                text += " !important";
             OutDecl out{d.name, text, d.ref, false, false};
             output.declarations.push_back(out);
             for (const auto& copy : copies)
-                output.declarations.push_back(OutDecl{copy.first, copy.second, d.ref, false, false});
+                output.declarations.push_back(OutDecl{copy.first, important ? copy.second + " !important" : copy.second, d.ref, false, false});
             return;
         }
 

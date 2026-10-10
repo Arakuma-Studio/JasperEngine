@@ -230,7 +230,9 @@ diagnostic (below) says what changed.
 | `font: 600 14px/1.5 'Inter', sans-serif`, quoted family names | exact |
 | `:root` variables, `var()` | exact, also inside shorthands and gradients |
 | `@media (width >= 600px)`, `prefers-color-scheme`, `prefers-reduced-motion`, `@supports`, `@layer`, `@import`, CSS nesting (`&`), vendor prefixes | evaluated or flattened (`UIDocument:setColorScheme("dark")`, `setReducedMotion(true)` switch the two preferences) |
-| `inherit`, `initial`, `unset`, `!important` | exact for inherited properties and `!important` against equal or lower specificity (a warning names a more specific rule that still wins); `inherit` on a property that does not inherit copies the nearest ancestor's declared value (note), and on one longhand of `animation`/`transition` (`animation-delay: inherit`) the ancestor's whole `animation`/`transition` |
+| `inherit`, `initial`, `unset`, `revert`, `all`, `!important` | exact: the CSS cascade (an `!important` declaration beats more specific rules and the `style` attribute, an inline `!important` beats everything; `all: unset` strips a button's or input's built-in look; `revert` goes back to the built-in style of the element). On one longhand of `animation`/`transition` (`animation-delay: inherit`) `inherit` takes the ancestor's whole `animation`/`transition` |
+| `:is()`, `:where()`, `:has()`, `:not()` with lists, `:root`, `:focus-within`, `:enabled`/`:disabled`, `:checked`, `:required`/`:optional`, `:read-only`/`:read-write`, `:indeterminate`, `:default`, `:link`/`:any-link`, `:target`, `[type="a" i]`, `:nth-child(2n+1 of .x)` | exact, with their CSS weights (`:where()` weighs nothing). `li:has(> input:checked)`, `.card:has(.badge)`, `.a:has(+ .b)` restyle when the inner state changes. `:visited` never matches. A selector the engine does not know (a misspelt pseudo-class) drops that selector with a warning, as in a browser |
+| `::before`, `::after`, `content` (strings, `attr()`, `url()`, `counter()`, `counters()`, `open-quote`/`close-quote`), `quotes`, `counter-reset`/`counter-increment`/`counter-set`, `::marker`, `list-style` | exact: generated boxes take any property (`position: absolute` badges, `display: block` rules, transitions on `:hover::after`), inherit from their element, and clicks on them go to that element. Counter styles: `decimal`, `decimal-leading-zero`, `lower/upper-alpha` (`-latin`), `lower/upper-roman`, `lower-greek`, `disc`, `circle`, `square`, `none`, or a string; any other style counts in decimal (note) |
 | `calc()`, `min()`, `max()`, `clamp()`, `round()`, `mod()`, `abs()`, `sin()`, ... | `calc()`, `min()`, `max()` and `clamp()` are exact, computed by the layout engine (`width: calc(100% - 32px)`, `min(100%, 600px)`, `calc(100vh - 64px)`), in sizes, margins, paddings, insets, `flex-basis`, `gap`, `font-size`, `line-height`, `opacity`, `z-index`, transforms and custom properties. Elsewhere (borders, shadows, gradients, shapes, logical properties) and for the other functions (`round()`, `abs()`, `sin()`, ...) they are computed when the document loads, and again when the canvas is resized for viewport units; there a `%` mixed with `px` keeps the `%` part (warning). Dropped with a warning: a `var()` inside when the variable is declared more than once (`:root` and `.dark`: no single value to compute with, `HTMLUI-CSS-0012`), and `round()` of a length without a step (`round(17.4px)`; write `round(17.4px, 1px)`) |
 | `vmin`/`vmax`, `dvh`/`svh`/`lvh`, `ch`/`ex` | exact / `vh` / `0.5em` (note) |
 | `clip-path` shapes, `mask-image`, `object-fit`, `image-rendering: pixelated` | exact |
@@ -239,11 +241,12 @@ diagnostic (below) says what changed.
 
 **Not yet** (phase 3 adds them; until then a warning names each use): `display: grid` and
 `inline-grid` (laid out as a wrapping flex row: fixed column counts work, placement does not),
-`::before`/`::after` (the rule is dropped: use a real element), `:has()`, `order`,
+`order`,
 `aspect-ratio`, `width: fit-content`/`min-content`/`max-content` (written as `auto`),
 `position: sticky`, `%` radii other than 50%, `@container`, `steps()` easings (linear),
 dashed/dotted/double borders (solid). Dropped with a warning and not planned: multi-column
-layout (`columns`), `writing-mode`, `font-variant-*`. `<video>`, `<canvas>`, `<iframe>` are a
+layout (`columns`), `writing-mode`, `font-variant-*`, `::first-line`, `::first-letter`,
+`@counter-style` (use one of the built-in counter styles). `<video>`, `<canvas>`, `<iframe>` are a
 placeholder box (render a scene into a texture instead); JavaScript never runs.
 
 **Differences without a diagnostic** (the engine cannot tell where they matter):
@@ -587,7 +590,7 @@ documents: `img`, `input` and `label` replace RmlUi's, compatible with RmlUi's a
 | `<button>` | `type="submit"` (the default) submits its `<form>` (the `submit` event carries the button's `name`/`value` and every named control), `reset` resets the form, `button` does nothing; `form="id"` works; `disabled` gets `:disabled` and no click; Enter and Space activate it |
 | `<a href>` | Enter activates; `#id` scrolls to the element; any other link dispatches `htmlnavigate` on the document (`href`, `url`, `fragment`, `document`, `external`): a `.html` link loads that document in the same component, external links only notify (there is no browser) |
 | `<input>` | the `type` attribute stays as written; `number` filters typing, steps with Up/Down by `step` within `min`/`max` and clamps on blur/Enter; `date`, `time`, `datetime-local`, `month`, `week` are text fields showing the format; `color` a text field; `reset` resets the form; `image` submits and shows `src`; `file` is a disabled "Choose File" button; Enter in a text field submits its form; Space toggles checkboxes; `autofocus` |
-| `<ol>`/`<ul>`/`<li>` | markers from `list-style-type` (disc, circle, square, decimal, decimal-leading-zero, lower/upper-alpha and -latin, lower/upper-roman, lower-greek, strings), `list-style-image`, `list-style-position`; `ol start`, `reversed`, `li value`; style them with `li::marker` |
+| `<ol>`/`<ul>`/`<li>` | markers from `list-style-type` (disc, circle, square, decimal, decimal-leading-zero, lower/upper-alpha and -latin, lower/upper-roman, lower-greek, strings), `list-style-image` (the image, 7px before the text), `list-style-position` (`inside` puts the marker in the first line); `ol start`, `reversed`, `li value`; nested numbering with `counter-reset`/`counters()`; style them with `li::marker` (`color`, `font-size`, `content`); any `display: list-item` element gets a marker |
 | `<details>`/`<summary>` | clicking (or Enter/Space on) the summary toggles `open`; a `toggle` event follows; details with the same `name` form an accordion |
 | `<dialog>` | `open` shows it; Lua `dialog:showModal()`, `show()`, `close(value)`; Escape closes a modal dialog (`cancel`, then `close`). No backdrop, no focus trap |
 | `<img>` | `object-fit`, `object-position`, `image-rendering: pixelated` (nearest sampling), SVG sources drawn at their size |
@@ -1112,8 +1115,8 @@ the files ship with the assets).
 What standard HTML/CSS does not do yet is listed under "Writing HTML/CSS for the engine" (the
 rewrites table, "Not yet" and "Differences without a diagnostic"); the Console names every
 use in your files. Later phases:
-- Phase 3, the layout engine itself: CSS Grid, `::before`/`::after`, `calc()` at layout time
-  in every property, border styles, `%` radii, `:has()`, `order`, `aspect-ratio`,
+- Phase 3, the layout engine itself: CSS Grid, `calc()` at layout time
+  in every property, border styles, `%` radii, `order`, `aspect-ratio`,
   `fit-content`, real `position: fixed`/`sticky`, group `opacity`, `line-height: normal`,
   `cubic-bezier()`/`steps()` easings, parent/child margin collapsing, a legend as wide as its
   text.
