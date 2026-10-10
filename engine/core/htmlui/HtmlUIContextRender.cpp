@@ -113,6 +113,7 @@ bool HtmlUIContext::render(const Rect& viewRect){
     // the fork feathers every edge of backgrounds and borders on a single-sampled target, only
     // their curves on a multisampled one (phase-3 spec 3.7.3)
     Rml::SetGeometryFeathering(samples <= 1);
+    Rml::SetGeometryPixelSize(1.0f / pixelRatio);
     auto matches = [&](const std::unique_ptr<RmlRenderTarget>& t){
         return t && t->isCreated() && t->getWidth() == size.x && t->getHeight() == size.y && t->getSampleCount() == samples;
     };
