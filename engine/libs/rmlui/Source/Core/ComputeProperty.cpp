@@ -90,10 +90,13 @@ float ComputeAngle(NumericValue value)
 float ComputeFontsize(const Property* property, const Style::ComputedValues& values, const Style::ComputedValues* parent_values,
 	const Style::ComputedValues* document_values, float dp_ratio, Vector2f vp_dimensions)
 {
+	// An element without a parent resolves its relative font sizes against the initial font size, as CSS does for the
+	// root element ('rem' on the document element already did).
+	const float parent_font_size = parent_values ? parent_values->font_size() : DefaultComputedValues().font_size();
+
 #ifdef RMLUI_MATH_EXPRESSIONS
 	if (property->unit == Unit::CALCULATION)
 	{
-		const float parent_font_size = parent_values ? parent_values->font_size() : 0.f;
 		const float root_font_size =
 			(!document_values || &values == document_values) ? DefaultComputedValues().font_size() : document_values->font_size();
 		CalculationResolverContext context{values.font_size(), parent_font_size, root_font_size, values.line_height().value, vp_dimensions, dp_ratio,
@@ -117,10 +120,7 @@ float ComputeFontsize(const Property* property, const Style::ComputedValues& val
 		case Unit::PERCENT:
 			multiplier = 0.01f;
 			//-fallthrough
-		case Unit::EM:
-			if (!parent_values)
-				return 0;
-			return value.number * multiplier * parent_values->font_size();
+		case Unit::EM: return value.number * multiplier * parent_font_size;
 
 		case Unit::REM:
 			// If the current element is a document, the rem unit is relative to the default size.
