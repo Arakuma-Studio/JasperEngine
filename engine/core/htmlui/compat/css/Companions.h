@@ -31,11 +31,11 @@ namespace jasperengine::htmlui::compat {
         constexpr const char* kNoEffect = "shadow(0px 0px #0000)";
 
         // "var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000)"
-        std::string boxShadowList();
+        const std::string& boxShadowList();
         // the decorator list of documents that use border-image
-        std::string decoratorList();
+        const std::string& decoratorList();
         // the font-effect list of documents that use text-shadow and -webkit-text-stroke
-        std::string fontEffectList();
+        const std::string& fontEffectList();
         // "--html-inh-<property>"
         std::string inheritName(const std::string& rcssProperty);
 

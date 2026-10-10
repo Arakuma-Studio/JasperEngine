@@ -977,16 +977,11 @@ namespace {
         if (value.size() < 4)
             return false;
         const size_t last = value.size() - 3;   // an 'm' at 1 .. last
-        // (the 'm's found by memchr, the lower case ones first: an upper case 'M' is rare)
-        for (const char m : {'m', 'M'}){
-            const char* const begin = value.data();
-            const char* p = begin + 1;
-            const char* const end = begin + last + 1;
-            while (p < end && (p = (const char*)std::memchr(p, m, (size_t)(end - p))) != nullptr){
-                if (p[-1] == 'v' || p[-1] == 'V')
-                    return true;
-                p++;
-            }
+        // ((c | 0x20) == 'm' holds for 'm' and 'M' alone, and 'v' likewise)
+        const unsigned char* const p = (const unsigned char*)value.data();
+        for (size_t i = 1; i <= last; i++){
+            if ((p[i] | 0x20) == 'm' && (p[i - 1] | 0x20) == 'v')
+                return true;
         }
         return false;
     }
