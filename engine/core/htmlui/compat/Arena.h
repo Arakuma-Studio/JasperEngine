@@ -170,11 +170,15 @@ namespace jasperengine::htmlui::compat {
             std::memcpy((void*)(data_ + size_++), slot.bytes, sizeof(T));
         }
         void push_back(T&& value){
-            Slot slot;
-            new ((void*)slot.bytes) T(std::move(value));
-            if (size_ == capacity_)
+            if (size_ == capacity_){
+                // (the value may be one of the list's own: moved out before the list grows)
+                Slot slot;
+                new ((void*)slot.bytes) T(std::move(value));
                 grow(capacity_ ? (size_t)capacity_ * 2 : 4);
-            std::memcpy((void*)(data_ + size_++), slot.bytes, sizeof(T));
+                std::memcpy((void*)(data_ + size_++), slot.bytes, sizeof(T));
+                return;
+            }
+            new ((void*)(data_ + size_++)) T(std::move(value));
         }
         T& emplace_back(const T& value){
             push_back(value);

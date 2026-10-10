@@ -289,9 +289,9 @@ namespace {
                     }
                     const ComponentValue* n = tokens[j];
                     if (n->isToken(TokenType::Ident)){
-                        simple.name = lowerAscii(n->token.value);
+                        assignLower(simple.name, n->token.value);
                     }else if (n->kind == ComponentValue::Kind::Function){
-                        simple.name = lowerAscii(n->name());
+                        assignLower(simple.name, n->name());
                         simple.function = true;
                         simple.arguments = n->children;
                         if (isSelectorListPseudo(simple.name)){

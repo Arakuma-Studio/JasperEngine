@@ -25,6 +25,15 @@ namespace jasperengine::htmlui::compat {
         Semicolon, Comma, LeftBracket, RightBracket, LeftParen, RightParen, LeftBrace, RightBrace,
         Comment, EndOfFile };
 
+// (a comparison with a literal is inlined: the literal's length is then known where it is written)
+#if defined(_MSC_VER)
+    #define COMPAT_TEXT_INLINE __forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+    #define COMPAT_TEXT_INLINE inline __attribute__((always_inline))
+#else
+    #define COMPAT_TEXT_INLINE inline
+#endif
+
     // The text of a token: bytes of the source or of the current Arena, never freed one by one
     // (16 bytes, copied as a pointer and a length). Made from a string it copies the string
     // into the current arena; Text::view() refers to bytes that outlive it (the parser's copy
@@ -62,17 +71,20 @@ namespace jasperengine::htmlui::compat {
         friend bool operator==(const Text& a, const Text& b) noexcept { return a.view() == b.view(); }
         friend bool operator==(const Text& a, std::string_view b) noexcept { return a.view() == b; }
         friend bool operator==(const Text& a, const std::string& b) noexcept { return a.view() == std::string_view(b); }
-        friend bool operator==(const Text& a, const char* b) noexcept { return a.view() == std::string_view(b); }
+        friend COMPAT_TEXT_INLINE bool operator==(const Text& a, const char* b) noexcept {
+            const size_t length = std::char_traits<char>::length(b);
+            return a.size_ == length && std::memcmp(a.data_, b, length) == 0;
+        }
         friend bool operator==(std::string_view a, const Text& b) noexcept { return a == b.view(); }
         friend bool operator==(const std::string& a, const Text& b) noexcept { return std::string_view(a) == b.view(); }
-        friend bool operator==(const char* a, const Text& b) noexcept { return std::string_view(a) == b.view(); }
+        friend COMPAT_TEXT_INLINE bool operator==(const char* a, const Text& b) noexcept { return b == a; }
         friend bool operator!=(const Text& a, const Text& b) noexcept { return !(a == b); }
         friend bool operator!=(const Text& a, std::string_view b) noexcept { return !(a == b); }
         friend bool operator!=(const Text& a, const std::string& b) noexcept { return !(a == b); }
-        friend bool operator!=(const Text& a, const char* b) noexcept { return !(a == b); }
+        friend COMPAT_TEXT_INLINE bool operator!=(const Text& a, const char* b) noexcept { return !(a == b); }
         friend bool operator!=(std::string_view a, const Text& b) noexcept { return !(a == b); }
         friend bool operator!=(const std::string& a, const Text& b) noexcept { return !(a == b); }
-        friend bool operator!=(const char* a, const Text& b) noexcept { return !(a == b); }
+        friend COMPAT_TEXT_INLINE bool operator!=(const char* a, const Text& b) noexcept { return !(b == a); }
         friend bool operator<(const Text& a, const Text& b) noexcept { return a.view() < b.view(); }
 
         friend std::string operator+(const std::string& a, const Text& b){ std::string out(a); out.append(b.data_, b.size_); return out; }
