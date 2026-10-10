@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../Include/RmlUi/Core/ID.h"
+#include "../../Include/RmlUi/Core/PropertySpecification.h"
 
 namespace Rml {
 
@@ -41,6 +42,8 @@ struct ShorthandDefinition {
 	ShorthandItemList items;
 	ShorthandType type;
 	bool inherited;
+	// The parser of a 'Custom' shorthand (StyleSheetSpecification::RegisterShorthandParser).
+	ShorthandParserFunction parser = nullptr;
 };
 
 } // namespace Rml

@@ -177,6 +177,11 @@ ShorthandId StyleSheetSpecification::RegisterShorthand(const String& shorthand_n
 	return instance->properties.RegisterShorthand(shorthand_name, property_names, type);
 }
 
+bool StyleSheetSpecification::RegisterShorthandParser(ShorthandId id, ShorthandParserFunction parser)
+{
+	return instance->properties.SetShorthandParser(id, parser);
+}
+
 const ShorthandDefinition* StyleSheetSpecification::GetShorthand(const String& shorthand_name)
 {
 	return instance->properties.GetShorthand(shorthand_name);
