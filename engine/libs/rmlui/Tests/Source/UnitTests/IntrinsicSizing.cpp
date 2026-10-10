@@ -177,3 +177,30 @@ TEST_CASE("IntrinsicSizing.measure_cache")
 	document->Close();
 	TestsShell::ShutdownShell();
 }
+
+TEST_CASE("IntrinsicSizing.percentage_max_width_while_shrinking")
+{
+	// Upstream PR #983 (FORK.md P3-1): a percentage max-width is indefinite while the shrink-to-fit width of its
+	// container is measured (6.3 resolved it against 0 and the container collapsed); it then applies to the final width.
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	ElementDocument* document = context->LoadDocumentFromMemory(R"(
+<rml>
+<head><style>body { font-family: LatoLatin; font-size: 20px; width: 800px; } div { display: block; }</style></head>
+<body>
+	<span id="measure" style="display: inline-block; white-space: nowrap">aa longestword b</span>
+	<div id="shrink" style="display: inline-block"><div id="limited" style="max-width: 50%; white-space: nowrap">aa longestword b</div></div>
+</body>
+</rml>)");
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+
+	const float all = document->GetElementById("measure")->GetBox().GetSize(BoxArea::Border).x;
+	REQUIRE(all > 0.f);
+	CHECK(document->GetElementById("shrink")->GetBox().GetSize(BoxArea::Border).x == doctest::Approx(all));
+	CHECK(document->GetElementById("limited")->GetBox().GetSize(BoxArea::Border).x == doctest::Approx(all * 0.5f));
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
