@@ -100,6 +100,10 @@ namespace {
         {ForkFeature::ExtraUnits, SampleKind::Declaration, "padding-top: 1.5ex", "padding-top:0.75em", "HTMLUI-CSS-0005"},
         {ForkFeature::ExtraUnits, SampleKind::Declaration, "transform: rotate(0.25turn)", "rotate(90deg)", ""},
         {ForkFeature::ExtraUnits, SampleKind::Declaration, "width: 50dvw", "width:50vw", ""},
+        // (in grid values, which the fork reads as written with Grid: track lists and gaps)
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "grid-template-columns: 4ch minmax(2ex, 1fr) calc(1ch + 10px)", "grid-template-columns:2em minmax(1em,1fr)", "HTMLUI-CSS-0005"},
+        {ForkFeature::ExtraUnits, SampleKind::Rule, "grid-auto-rows: 10vmin", "@media", ""},
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "gap: 1ch 2ex", "gap:0.5em 1em", "HTMLUI-CSS-0005"},
         {ForkFeature::LineHeightNormal, SampleKind::Declaration, "line-height: normal", "line-height:1.2", ""},
     };
 
