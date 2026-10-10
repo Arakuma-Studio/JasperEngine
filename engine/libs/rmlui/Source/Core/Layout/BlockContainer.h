@@ -103,9 +103,14 @@ public:
 
 	const Box* GetIfBox() const override;
 	float GetShrinkToFitWidth() const override;
+	float GetMinContentWidth() const override;
 	bool GetBaselineOfLastLine(float& out_baseline) const override;
 
 private:
+	// Shared by GetShrinkToFitWidth and GetMinContentWidth: the widest child (by 'child_width') and the floats, clamped.
+	template <typename ChildWidth, typename FloatsWidth>
+	float GetIntrinsicContentWidth(ChildWidth child_width, FloatsWidth floats_width) const;
+
 	InlineContainer* EnsureOpenInlineContainer();
 	InlineContainer* GetOpenInlineContainer();
 	const InlineContainer* GetOpenInlineContainer() const;

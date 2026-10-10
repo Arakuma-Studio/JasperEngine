@@ -14,12 +14,16 @@
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
 #include "../../Include/RmlUi/Core/StyleSheet.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
+#include "../../Include/RmlUi/Core/StyleValue.h"
 #include "../../Include/RmlUi/Core/TransformPrimitive.h"
 #include "ComputeProperty.h"
 #include "ControlledLifetimeResource.h"
 #include "ElementDefinition.h"
 #include "PropertiesIterator.h"
 #include "PropertyShorthandDefinition.h"
+#ifdef RMLUI_MATH_EXPRESSIONS
+	#include "Calculation.h"
+#endif
 #include <algorithm>
 #include <optional>
 
@@ -45,8 +49,74 @@ ElementStyle::ElementStyle(Element* _element)
 	element = _element;
 }
 
-const Property* ElementStyle::GetLocalProperty(PropertyId id, const PropertyDictionary& inline_properties, const ElementDefinition* definition)
+// The context-relative units a StyleValue property depends on.
+static Units GetStyleValueUnitDependencies(const Property& property)
 {
+	const StyleValuePtr value = property.value.Get<StyleValuePtr>();
+	return value ? value->GetUnitDependencies() : Unit::UNKNOWN;
+}
+
+#ifdef RMLUI_MATH_EXPRESSIONS
+static const Units mutable_unit_mask = Unit::EM | Unit::REM | Unit::VW | Unit::VH | Unit::DP_SCALABLE_LENGTH;
+
+Units ElementStyle::GetMutableUnitDependencies(const Property& property) const
+{
+	if (property.unit == Unit::CALCULATION)
+	{
+		const CalculationPtr calculation = property.value.Get<CalculationPtr>();
+		return calculation ? calculation->GetDependencyMask() & mutable_unit_mask : Unit::UNKNOWN;
+	}
+	if (property.unit == Unit::STYLE_VALUE)
+		return GetStyleValueUnitDependencies(property) & mutable_unit_mask;
+	return property.unit & mutable_unit_mask;
+}
+
+Units ElementStyle::GetResolvedUnitDependencies(PropertyId id) const
+{
+	if (!resolved_unit_dependencies)
+		return Unit::UNKNOWN;
+	const auto it = resolved_unit_dependencies->find(id);
+	return it != resolved_unit_dependencies->end() ? it->second : Unit::UNKNOWN;
+}
+
+void ElementStyle::UpdateResolvedUnitDependencies(PropertyId id, const Property& specified_property, const Property* resolved_property)
+{
+	const bool requires_cache = specified_property.unit == Unit::VAR_EXPRESSION || specified_property.unit == Unit::SHORTHAND_PLACEHOLDER;
+	const Units dependencies = resolved_property ? GetMutableUnitDependencies(*resolved_property) : Unit::UNKNOWN;
+	if (requires_cache && Any(dependencies))
+	{
+		if (!resolved_unit_dependencies)
+			resolved_unit_dependencies = MakeUnique<UnorderedMap<PropertyId, Units>>();
+		(*resolved_unit_dependencies)[id] = dependencies;
+	}
+	else
+	{
+		EraseResolvedUnitDependencies(id);
+	}
+}
+
+void ElementStyle::EraseResolvedUnitDependencies(PropertyId id)
+{
+	if (!resolved_unit_dependencies)
+		return;
+	resolved_unit_dependencies->erase(id);
+	if (resolved_unit_dependencies->empty())
+		resolved_unit_dependencies.reset();
+}
+#endif
+
+const Property* ElementStyle::GetLocalProperty(PropertyId id, const PropertyDictionary& inline_properties, const ElementDefinition* definition,
+	const AnimationLayers* animation_layers)
+{
+	// Transitions, then animations, override the declared values.
+	if (animation_layers)
+	{
+		if (const Property* property = animation_layers->transition_properties.GetProperty(id))
+			return property;
+		if (const Property* property = animation_layers->animated_properties.GetProperty(id))
+			return property;
+	}
+
 	// Check for overriding local properties.
 	const Property* property = inline_properties.GetProperty(id);
 	if (property)
@@ -86,7 +156,7 @@ const Property* ElementStyle::GetLocalShorthand(ShorthandId id, const PropertyDi
 
 ElementStyle::PropertyElementPair ElementStyle::GetSpecifiedProperty(const PropertySources& sources, PropertyId id)
 {
-	const Property* local_property = GetLocalProperty(id, sources.inline_properties, sources.definition);
+	const Property* local_property = GetLocalProperty(id, sources.inline_properties, sources.definition, sources.animation_layers);
 	if (local_property)
 		return {local_property, sources.element};
 
@@ -694,12 +764,12 @@ const Property* ElementStyle::GetCustomProperty(const String& name) const
 
 const Property* ElementStyle::GetLocalProperty(PropertyId id) const
 {
-	return GetLocalProperty(id, inline_properties, definition.get());
+	return GetLocalProperty(id, inline_properties, definition.get(), animation_layers.get());
 }
 
 const Property* ElementStyle::GetLocalPropertyWithResolvedVariables(PropertyId id) const
 {
-	const Property* property = GetLocalProperty(id, inline_properties, definition.get());
+	const Property* property = GetLocalProperty(id, inline_properties, definition.get(), animation_layers.get());
 	if (!property)
 		return nullptr;
 
@@ -829,7 +899,16 @@ void ElementStyle::DirtyPropertiesWithUnits(Units units)
 		auto name_property_pair = *it;
 		PropertyId id = name_property_pair.first;
 		const Property& property = name_property_pair.second;
-		if (Any(property.unit & units))
+		Units dependencies = property.unit;
+		if (property.unit == Unit::STYLE_VALUE)
+			dependencies = GetStyleValueUnitDependencies(property);
+#ifdef RMLUI_MATH_EXPRESSIONS
+		if (property.unit == Unit::CALCULATION)
+			dependencies = GetMutableUnitDependencies(property);
+		else if (property.unit == Unit::VAR_EXPRESSION || property.unit == Unit::SHORTHAND_PLACEHOLDER)
+			dependencies = GetResolvedUnitDependencies(id);
+#endif
+		if (Any(dependencies & units))
 			DirtyProperty(id);
 	}
 }
@@ -862,6 +941,8 @@ PlainPropertiesIterator ElementStyle::Iterate() const
 	return PlainPropertiesIterator{
 		inline_properties.GetProperties(),
 		definition ? &definition->GetProperties().GetProperties() : nullptr,
+		animation_layers ? &animation_layers->transition_properties.GetProperties() : nullptr,
+		animation_layers ? &animation_layers->animated_properties.GetProperties() : nullptr,
 	};
 }
 
@@ -892,6 +973,19 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		return PropertyIdSet();
 
 	RMLUI_ZoneScopedC(0xFF7F50);
+
+	// Fast path: only the inherited visibility changed (a document or a subtree is shown or hidden) and this element does
+	// not declare its own, so it takes its parent's without every other value being computed again.
+	if (parent_values && !values_are_default_initialized && dirty_variables.empty() && dirty_var_shorthands.empty() && dirty_properties.Size() == 1 &&
+		dirty_properties.Contains(PropertyId::Visibility) && !GetLocalProperty(PropertyId::Visibility))
+	{
+		values.visibility(parent_values->visibility());
+		for (int i = 0; i < element->GetNumChildren(true); i++)
+			element->GetChild(i)->GetStyle()->dirty_properties.Insert(PropertyId::Visibility);
+		PropertyIdSet result(std::move(dirty_properties));
+		dirty_properties.Clear();
+		return result;
+	}
 
 	// We're a bit conservative here and recompute shorthand substitutions also if any variables have been dirtied at
 	// all. @performance We could be more strict and only recompute shorthands if any variables they *use* have been dirtied.
@@ -928,6 +1022,14 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	SmallUnorderedSet<String> variable_dependencies;
 	bool dirty_em_properties = false;
 
+#ifdef RMLUI_MATH_EXPRESSIONS
+	// ComputeValues already visits every specified longhand below, so rebuild the sparse cache from
+	// those resolved values. This also drops entries for removed properties without adding any
+	// substitution work to unit-dirty scans.
+	if (resolved_unit_dependencies)
+		resolved_unit_dependencies.reset();
+#endif
+
 	// Always do font-size first if dirty, because of em-relative values
 	if (dirty_properties.Contains(PropertyId::FontSize))
 	{
@@ -936,7 +1038,7 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 			variable_dependencies.clear();
 			property = ResolveVariables(PropertyId::FontSize, property, variable_dependencies, property_storage);
 			if (property)
-				values.font_size(ComputeFontsize(property->GetNumericValue(), values, parent_values, document_values, dp_ratio, vp_dimensions));
+				values.font_size(ComputeFontsize(property, values, parent_values, document_values, dp_ratio, vp_dimensions));
 		}
 		else if (parent_values)
 			values.font_size(parent_values->font_size());
@@ -986,12 +1088,22 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 
 	bool dirty_font_face_handle = false;
 
+	// The border colors this element declares; the others are 'currentcolor', their initial value.
+	int declared_border_colors = 0;
+
 	for (auto it = Iterate(); !it.AtEnd(); ++it)
 	{
 		variable_dependencies.clear();
 		auto id_property_pair = *it;
 		const PropertyId id = id_property_pair.first;
 		const Property* property = ResolveVariables(id, &id_property_pair.second, variable_dependencies, property_storage);
+#ifdef RMLUI_MATH_EXPRESSIONS
+		// The cache is rebuilt from scratch above and only exists to retain dependencies hidden behind
+		// variable/shorthand substitution. Ordinary specified values expose their units directly and
+		// need no cache entry or per-property maintenance on this hot path.
+		if (id_property_pair.second.unit == Unit::VAR_EXPRESSION || id_property_pair.second.unit == Unit::SHORTHAND_PLACEHOLDER)
+			UpdateResolvedUnitDependencies(id, id_property_pair.second, property);
+#endif
 		if (!property)
 			continue;
 
@@ -1001,10 +1113,42 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 				dirty_properties.Insert(id);
 		}
 
-		if (dirty_em_properties && property->unit == Unit::EM)
+		if (dirty_em_properties
+#ifdef RMLUI_MATH_EXPRESSIONS
+			&& Any(GetMutableUnitDependencies(*property) & Unit::EM)
+#else
+			&& property->unit == Unit::EM
+#endif
+		)
 			dirty_properties.Insert(id);
 
+		if (id >= PropertyId::BorderTopColor && id <= PropertyId::BorderLeftColor)
+			declared_border_colors |= 1 << (int(id) - int(PropertyId::BorderTopColor));
+
 		ComputeValue(values, dp_ratio, vp_dimensions, font_size, document_font_size, dirty_font_face_handle, id, property);
+	}
+
+	// 'currentcolor' border colors follow the color, also when only the color changed.
+	static_assert(int(PropertyId::BorderLeftColor) - int(PropertyId::BorderTopColor) == 3, "The border colors must be consecutive ids.");
+	if (declared_border_colors != 0xf)
+	{
+		const bool color_changed = dirty_properties.Contains(PropertyId::Color);
+		const Colourb color = values.color();
+		for (int side = 0; side < 4; side++)
+		{
+			if (declared_border_colors & (1 << side))
+				continue;
+			const PropertyId id = PropertyId(int(PropertyId::BorderTopColor) + side);
+			switch (id)
+			{
+			case PropertyId::BorderTopColor: values.border_top_color(color); break;
+			case PropertyId::BorderRightColor: values.border_right_color(color); break;
+			case PropertyId::BorderBottomColor: values.border_bottom_color(color); break;
+			default: values.border_left_color(color); break;
+			}
+			if (color_changed)
+				dirty_properties.Insert(id);
+		}
 	}
 
 	// The font-face handle is nulled when local font properties are set. In that case we need to retrieve a new handle.
@@ -1022,6 +1166,9 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	// it here so they are notified of a change.
 	if (dirty_properties.Contains(PropertyId::TextOverflow))
 		dirty_inherited_properties.Insert(PropertyId::TextOverflow);
+	// The same for opacity: not inherited, but children draw with their parent's opacity multiplied in.
+	if (dirty_properties.Contains(PropertyId::Opacity))
+		dirty_inherited_properties.Insert(PropertyId::Opacity);
 
 	// Propagate dirty inherited properties to children. Var shorthands are local to the element and never inherited.
 	if (!dirty_inherited_properties.Empty() || !dirty_variables.empty())
@@ -1043,7 +1190,49 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 
 ElementStyle::PropertySources ElementStyle::GetPropertySources() const
 {
-	return {element, definition.get(), inline_properties};
+	return {element, definition.get(), inline_properties, animation_layers.get()};
+}
+
+void ElementStyle::SetTransitionProperty(PropertyId id, const Property& property)
+{
+	if (!animation_layers)
+		animation_layers = MakeUnique<AnimationLayers>();
+	animation_layers->transition_properties.SetProperty(id, property);
+	DirtyProperty(id);
+}
+
+void ElementStyle::RemoveTransitionProperty(PropertyId id)
+{
+	if (!animation_layers || !animation_layers->transition_properties.GetProperty(id))
+		return;
+	animation_layers->transition_properties.RemoveProperty(id);
+	DirtyProperty(id);
+}
+
+void ElementStyle::SetAnimatedProperty(PropertyId id, const Property& property)
+{
+	if (!animation_layers)
+		animation_layers = MakeUnique<AnimationLayers>();
+	animation_layers->animated_properties.SetProperty(id, property);
+	DirtyProperty(id);
+}
+
+void ElementStyle::RemoveAnimatedProperty(PropertyId id)
+{
+	if (!animation_layers || !animation_layers->animated_properties.GetProperty(id))
+		return;
+	animation_layers->animated_properties.RemoveProperty(id);
+	DirtyProperty(id);
+}
+
+const PropertyDictionary* ElementStyle::GetTransitionProperties() const
+{
+	return animation_layers ? &animation_layers->transition_properties : nullptr;
+}
+
+const PropertyDictionary* ElementStyle::GetAnimatedProperties() const
+{
+	return animation_layers ? &animation_layers->animated_properties : nullptr;
 }
 
 ElementStyle::DirtyPropertiesRef ElementStyle::GetDirtyPropertiesRef()
@@ -1097,18 +1286,16 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		break;
 
 	case PropertyId::BorderTopWidth:
-		values.border_top_width(ComputeBorderWidth(ComputeLength(p->GetNumericValue(), font_size, document_font_size, dp_ratio, vp_dimensions)));
+		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_top_width(ComputeBorderWidth(value)); }
 		break;
 	case PropertyId::BorderRightWidth:
-		values.border_right_width(
-			ComputeBorderWidth(ComputeLength(p->GetNumericValue(), font_size, document_font_size, dp_ratio, vp_dimensions)));
+		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_right_width(ComputeBorderWidth(value)); }
 		break;
 	case PropertyId::BorderBottomWidth:
-		values.border_bottom_width(
-			ComputeBorderWidth(ComputeLength(p->GetNumericValue(), font_size, document_font_size, dp_ratio, vp_dimensions)));
+		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_bottom_width(ComputeBorderWidth(value)); }
 		break;
 	case PropertyId::BorderLeftWidth:
-		values.border_left_width(ComputeBorderWidth(ComputeLength(p->GetNumericValue(), font_size, document_font_size, dp_ratio, vp_dimensions)));
+		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_left_width(ComputeBorderWidth(value)); }
 		break;
 
 	case PropertyId::BorderTopColor:
@@ -1125,16 +1312,16 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		break;
 
 	case PropertyId::BorderTopLeftRadius:
-		values.border_top_left_radius(ComputeLength(p->GetNumericValue(), font_size, document_font_size, dp_ratio, vp_dimensions));
+		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_top_left_radius(value); }
 		break;
 	case PropertyId::BorderTopRightRadius:
-		values.border_top_right_radius(ComputeLength(p->GetNumericValue(), font_size, document_font_size, dp_ratio, vp_dimensions));
+		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_top_right_radius(value); }
 		break;
 	case PropertyId::BorderBottomRightRadius:
-		values.border_bottom_right_radius(ComputeLength(p->GetNumericValue(), font_size, document_font_size, dp_ratio, vp_dimensions));
+		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_bottom_right_radius(value); }
 		break;
 	case PropertyId::BorderBottomLeftRadius:
-		values.border_bottom_left_radius(ComputeLength(p->GetNumericValue(), font_size, document_font_size, dp_ratio, vp_dimensions));
+		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_bottom_left_radius(value); }
 		break;
 
 	case PropertyId::Display:
@@ -1168,14 +1355,15 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		break;
 
 	case PropertyId::ZIndex:
-		values.z_index((p->unit == Unit::KEYWORD ? ZIndex(ZIndex::Auto) : ZIndex(ZIndex::Number, p->Get<float>())));
+		if (p->unit == Unit::KEYWORD) values.z_index(ZIndex(ZIndex::Auto));
+		else { float value; if (ComputeDefiniteNumber(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.z_index(ZIndex(ZIndex::Number, value)); }
 		break;
 
 	case PropertyId::Width:
 		values.width(ComputeLengthPercentageAuto(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::MinWidth:
-		values.min_width(ComputeLengthPercentage(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		values.min_width(ComputeLengthPercentageAuto(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::MaxWidth:
 		values.max_width(ComputeMaxSize(p, font_size, document_font_size, dp_ratio, vp_dimensions));
@@ -1185,7 +1373,7 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		values.height(ComputeLengthPercentageAuto(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::MinHeight:
-		values.min_height(ComputeLengthPercentage(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		values.min_height(ComputeLengthPercentageAuto(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::MaxHeight:
 		values.max_height(ComputeMaxSize(p, font_size, document_font_size, dp_ratio, vp_dimensions));
@@ -1224,7 +1412,9 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		values.image_color(p->Get<Colourb>());
 		break;
 	case PropertyId::Opacity:
-		values.opacity(p->Get<float>());
+		// Not inherited: the element draws with its own opacity times the one its parent draws with (copied with the
+		// inherited values), until opacity groups composite whole subtrees (phase 3, paint).
+		{ float value; if (ComputeDefiniteNumber(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.opacity(Math::Clamp(value, 0.f, 1.f) * values.opacity()); }
 		break;
 
 	case PropertyId::FontFamily:
@@ -1236,7 +1426,14 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		dirty_font_face_handle = true;
 		break;
 	case PropertyId::FontWeight:
-		values.font_weight((FontWeight)p->Get< int >());
+		if (p->unit == Unit::KEYWORD)
+			values.font_weight((FontWeight)p->Get<int>());
+		else
+		{
+			float value;
+			if (ComputeDefiniteNumber(p, font_size, document_font_size, dp_ratio, vp_dimensions, value))
+				values.font_weight((FontWeight)static_cast<int>(value));
+		}
 		dirty_font_face_handle = true;
 		break;
 	case PropertyId::FontSize:
@@ -1285,7 +1482,7 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		values.focus((Focus)p->Get<int>());
 		break;
 	case PropertyId::ScrollbarMargin:
-		values.scrollbar_margin(ComputeLength(p->GetNumericValue(), font_size, document_font_size, dp_ratio, vp_dimensions));
+		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.scrollbar_margin(value); }
 		break;
 	case PropertyId::OverscrollBehavior:
 		values.overscroll_behavior((OverscrollBehavior)p->Get<int>());
@@ -1295,7 +1492,8 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		break;
 
 	case PropertyId::Perspective:
-		values.perspective(p->unit == Unit::KEYWORD ? 0.f : ComputeLength(p->GetNumericValue(), font_size, document_font_size, dp_ratio, vp_dimensions));
+		if (p->unit == Unit::KEYWORD) values.perspective(0.f);
+		else { float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.perspective(value); }
 		values.has_local_perspective(values.perspective() > 0.f);
 		break;
 	case PropertyId::PerspectiveOriginX:
@@ -1315,7 +1513,7 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		values.transform_origin_y(ComputeOrigin(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::TransformOriginZ:
-		values.transform_origin_z(ComputeLength(p->GetNumericValue(), font_size, document_font_size, dp_ratio, vp_dimensions));
+		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.transform_origin_z(value); }
 		break;
 
 	case PropertyId::Decorator:
@@ -1371,6 +1569,124 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	case PropertyId::FillImage:
 	case PropertyId::CaretColor:
 		break;
+
+	/*
+	  Phase 3 sections (docs/html-ui/phase-3-fork-patches.md 3.0, 3.1.3). Every id of ID.h has its case in the section
+	  of the package that implements it, so -Wswitch stays clean; a package edits its own section only. Ids that are
+	  not registered yet never reach this function.
+	*/
+
+	// -- Groundwork (p3-base) --
+	case PropertyId::Order:
+		values.order(p->Get<int>());
+		break;
+	case PropertyId::JustifyItems:
+	case PropertyId::JustifySelf:
+	case PropertyId::WillChange:
+		break;
+
+	// -- Values (p3-values) --
+
+	// -- Cascade (p3-cascade) --
+	case PropertyId::Content:
+	case PropertyId::Quotes:
+	case PropertyId::CounterReset:
+	case PropertyId::CounterIncrement:
+	case PropertyId::CounterSet:
+	case PropertyId::ListStyleType:
+	case PropertyId::ListStylePosition:
+	case PropertyId::ListStyleImage:
+		break;
+
+	// -- Paint (p3-paint) --
+	case PropertyId::BorderTopStyle:
+	case PropertyId::BorderRightStyle:
+	case PropertyId::BorderBottomStyle:
+	case PropertyId::BorderLeftStyle:
+	case PropertyId::RmlUi_BorderTopLeftRadiusX:
+	case PropertyId::RmlUi_BorderTopLeftRadiusY:
+	case PropertyId::RmlUi_BorderTopRightRadiusX:
+	case PropertyId::RmlUi_BorderTopRightRadiusY:
+	case PropertyId::RmlUi_BorderBottomRightRadiusX:
+	case PropertyId::RmlUi_BorderBottomRightRadiusY:
+	case PropertyId::RmlUi_BorderBottomLeftRadiusX:
+	case PropertyId::RmlUi_BorderBottomLeftRadiusY:
+	case PropertyId::OutlineWidth:
+	case PropertyId::OutlineStyle:
+	case PropertyId::OutlineColor:
+	case PropertyId::OutlineOffset:
+	case PropertyId::Isolation:
+	case PropertyId::BackgroundImage:
+	case PropertyId::BackgroundPositionX:
+	case PropertyId::BackgroundPositionY:
+	case PropertyId::BackgroundSize:
+	case PropertyId::BackgroundRepeat:
+	case PropertyId::BackgroundOrigin:
+	case PropertyId::BackgroundClip:
+	case PropertyId::BackgroundAttachment:
+	case PropertyId::MaskSize:
+	case PropertyId::MaskPositionX:
+	case PropertyId::MaskPositionY:
+	case PropertyId::MaskRepeat:
+	case PropertyId::ObjectFit:
+	case PropertyId::ObjectPositionX:
+	case PropertyId::ObjectPositionY:
+	case PropertyId::BorderImage:
+		break;
+
+	// -- Text (p3-text) --
+	case PropertyId::WordSpacing:
+	case PropertyId::OverflowWrap:
+	case PropertyId::WhiteSpaceCollapse:
+	case PropertyId::TextWrapMode:
+	case PropertyId::TextDecorationColor:
+	case PropertyId::TextDecorationStyle:
+	case PropertyId::TextDecorationThickness:
+	case PropertyId::TextUnderlineOffset:
+	case PropertyId::TextShadow:
+	case PropertyId::UserSelect:
+	case PropertyId::AccentColor:
+		break;
+
+	// -- Layout (p3-layout) --
+	case PropertyId::OverflowClipMargin:
+	case PropertyId::AspectRatio:
+	case PropertyId::ScrollbarGutter:
+		break;
+
+	// -- Animation (p3-animation) --
+	case PropertyId::TransitionProperty:
+	case PropertyId::TransitionDuration:
+	case PropertyId::TransitionTimingFunction:
+	case PropertyId::TransitionDelay:
+	case PropertyId::TransitionBehavior:
+	case PropertyId::AnimationName:
+	case PropertyId::AnimationDuration:
+	case PropertyId::AnimationTimingFunction:
+	case PropertyId::AnimationDelay:
+	case PropertyId::AnimationIterationCount:
+	case PropertyId::AnimationDirection:
+	case PropertyId::AnimationFillMode:
+	case PropertyId::AnimationPlayState:
+	case PropertyId::AnimationComposition:
+	case PropertyId::Translate:
+	case PropertyId::Rotate:
+	case PropertyId::Scale:
+		break;
+
+	// -- Grid (p3-grid) --
+	case PropertyId::GridTemplateColumns:
+	case PropertyId::GridTemplateRows:
+	case PropertyId::GridTemplateAreas:
+	case PropertyId::GridAutoColumns:
+	case PropertyId::GridAutoRows:
+	case PropertyId::GridAutoFlow:
+	case PropertyId::GridRowStart:
+	case PropertyId::GridRowEnd:
+	case PropertyId::GridColumnStart:
+	case PropertyId::GridColumnEnd:
+		break;
+
 	// Invalid properties
 	case PropertyId::Invalid:
 	case PropertyId::NumDefinedIds:

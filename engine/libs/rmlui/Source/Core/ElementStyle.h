@@ -108,6 +108,18 @@ public:
 	/// Returns the local style properties, excluding any properties from local classes.
 	const PropertyDictionary& GetLocalStyleProperties() const;
 
+	/// The animation layers (phase 3): the values that running transitions and animations apply over the declared ones
+	/// (inline style included), consulted in CSS cascade order: transitions, then animations, then the declarations
+	/// (p3-cascade puts !important declarations between transitions and animations). They are set and removed by the
+	/// element's animation code, so that it never writes the inline style.
+	void SetTransitionProperty(PropertyId id, const Property& property);
+	void RemoveTransitionProperty(PropertyId id);
+	void SetAnimatedProperty(PropertyId id, const Property& property);
+	void RemoveAnimatedProperty(PropertyId id);
+	/// The values of the layers, or nullptr when the element has none.
+	const PropertyDictionary* GetTransitionProperties() const;
+	const PropertyDictionary* GetAnimatedProperties() const;
+
 	/// Resolves a numeric value with units of number, percentage, length, or angle to their canonical unit (unit-less, 'px', or 'rad').
 	/// @param[in] value The value to be resolved.
 	/// @param[in] base_value The value that is scaled by the number or percentage value, if applicable.
@@ -163,10 +175,15 @@ public:
 	static void Shutdown();
 
 private:
+	struct AnimationLayers {
+		PropertyDictionary transition_properties;
+		PropertyDictionary animated_properties;
+	};
 	struct PropertySources {
 		Element* element;
 		const ElementDefinition* definition;
 		const PropertyDictionary& inline_properties;
+		const AnimationLayers* animation_layers = nullptr;
 	};
 	struct DirtyPropertiesRef {
 		PropertyIdSet& properties;
@@ -189,7 +206,15 @@ private:
 	void ComputeValue(Style::ComputedValues& values, float dp_ratio, Vector2f vp_dimensions, float font_size, float document_font_size,
 		bool& dirty_font_face_handle, PropertyId id, const Property* p);
 
-	static const Property* GetLocalProperty(PropertyId id, const PropertyDictionary& inline_properties, const ElementDefinition* definition);
+#ifdef RMLUI_MATH_EXPRESSIONS
+	Units GetMutableUnitDependencies(const Property& property) const;
+	Units GetResolvedUnitDependencies(PropertyId id) const;
+	void UpdateResolvedUnitDependencies(PropertyId id, const Property& specified_property, const Property* resolved_property);
+	void EraseResolvedUnitDependencies(PropertyId id);
+#endif
+
+	static const Property* GetLocalProperty(PropertyId id, const PropertyDictionary& inline_properties, const ElementDefinition* definition,
+		const AnimationLayers* animation_layers = nullptr);
 	static const Property* GetLocalCustomProperty(const String& name, const PropertyDictionary& inline_properties,
 		const ElementDefinition* definition);
 	static const Property* GetLocalShorthand(ShorthandId id, const PropertyDictionary& inline_properties, const ElementDefinition* definition);
@@ -229,10 +254,15 @@ private:
 	PropertyDictionary inline_properties;
 	// Properties computed from shorthands with variables, here resolved.
 	PropertyDictionary expanded_shorthands;
+	// Values of running transitions and animations (most elements have none).
+	UniquePtr<AnimationLayers> animation_layers;
 
 	PropertyIdSet dirty_properties;
 	UnorderedSet<String> dirty_variables;
 	UnorderedSet<ShorthandId> dirty_var_shorthands;
+#ifdef RMLUI_MATH_EXPRESSIONS
+	UniquePtr<UnorderedMap<PropertyId, Units>> resolved_unit_dependencies;
+#endif
 };
 
 } // namespace Rml

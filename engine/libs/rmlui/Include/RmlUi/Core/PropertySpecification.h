@@ -8,6 +8,7 @@
 namespace Rml {
 
 class StyleSheetSpecification;
+class PropertySpecification;
 class PropertyDefinition;
 class PropertyDictionary;
 class PropertyIdNameMap;
@@ -27,8 +28,31 @@ enum class ShorthandType {
 	// Comma-separated list of properties or shorthands, the number of declared values must match the specified.
 	RecursiveCommaSeparated,
 	// The 'flex' shorthand has some special behavior but otherwise acts like 'FallThrough'.
-	Flex
+	Flex,
+	// CSS-style shorthand with its items in any order ('border', 'outline', 'list-style', ...): the value is split at
+	// whitespace, each value is assigned to the first item (in declaration order) not assigned yet that parses it, and a
+	// value no item takes fails the declaration. Items not given a value are set to their initial value. Items may be
+	// properties or shorthands; each takes one value.
+	AnyOrder,
+	// A shorthand whose grammar needs code of its own: the parser registered for it with
+	// StyleSheetSpecification::RegisterShorthandParser receives the raw value and sets every longhand (omitted ones to
+	// their initial value). Items may be properties or shorthands.
+	Custom
 };
+
+/// Parses the value of a 'Custom' shorthand into the dictionary: every longhand of the shorthand is set, those the value
+/// omits to their initial value. Called with the declared value as written, after var() detection (a value with var()
+/// is substituted at computed-value time and parsed then). Returns false when the value is invalid; the dictionary is
+/// then left unchanged by the caller.
+using ShorthandParserFunction = bool (*)(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
+	const PropertySpecification& specification);
+
+/// Splits a comma-separated list value at its top-level commas: commas inside parentheses and quotes do not split.
+/// Every item is stripped of surrounding whitespace; empty items are kept, so that 'a,,b' can be rejected by the caller.
+RMLUICORE_API void SplitCommaList(const String& value, StringList& items);
+/// Splits a value at its top-level whitespace: whitespace inside parentheses and quotes does not split. Empty items are
+/// skipped.
+RMLUICORE_API void SplitWhitespaceList(const String& value, StringList& items);
 
 /**
     A property specification stores a group of property definitions.
@@ -70,6 +94,9 @@ public:
 	/// @return An ID for the new shorthand, or 'Invalid' if the shorthand declaration is invalid.
 	ShorthandId RegisterShorthand(const String& shorthand_name, const String& property_names, ShorthandType type,
 		ShorthandId id = ShorthandId::Invalid);
+	/// Sets the parser of a registered shorthand of type 'Custom'.
+	/// @return True on success, false if the shorthand does not exist or is not of type 'Custom'.
+	bool SetShorthandParser(ShorthandId id, ShorthandParserFunction parser);
 	/// Returns a shorthand definition.
 	/// @param[in] id The id of the desired shorthand.
 	/// @return The appropriate shorthand definition if it could be found, nullptr otherwise.
@@ -87,6 +114,9 @@ public:
 	/// Sets all undefined properties in the dictionary to their defaults.
 	/// @param dictionary[in-out] The dictionary to set the default values on.
 	void SetPropertyDefaults(PropertyDictionary& dictionary) const;
+	/// Sets every longhand of a shorthand, recursively, to its initial (default) value: what CSS shorthands do with the
+	/// items their value omits.
+	void SetShorthandDefaults(PropertyDictionary& dictionary, const ShorthandDefinition& definition) const;
 
 	/// Returns the properties of dictionary converted to a string.
 	String PropertiesToString(const PropertyDictionary& dictionary, bool include_name, char delimiter) const;
@@ -108,6 +138,7 @@ private:
 	enum class ParsePropertyResult { Success, ContainsVariable, Error };
 	enum class SplitOption { None, Whitespace, Comma };
 	ParsePropertyResult ParsePropertyValues(StringList& values_list, const String& values, SplitOption split_option) const;
+	bool ParseAnyOrderShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const StringList& values) const;
 
 	friend class Rml::StyleSheetSpecification;
 	friend class TestPropertySpecification;

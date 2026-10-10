@@ -231,7 +231,7 @@ diagnostic (below) says what changed.
 | `:root` variables, `var()` | exact, also inside shorthands and gradients |
 | `@media (width >= 600px)`, `prefers-color-scheme`, `prefers-reduced-motion`, `@supports`, `@layer`, `@import`, CSS nesting (`&`), vendor prefixes | evaluated or flattened (`UIDocument:setColorScheme("dark")`, `setReducedMotion(true)` switch the two preferences) |
 | `inherit`, `initial`, `unset`, `!important` | exact for inherited properties and `!important` against equal or lower specificity (a warning names a more specific rule that still wins); `inherit` on a property that does not inherit copies the nearest ancestor's declared value (note), and on one longhand of `animation`/`transition` (`animation-delay: inherit`) the ancestor's whole `animation`/`transition` |
-| `calc()`, `min()`, `max()`, `clamp()`, `round()`, `mod()`, `abs()`, `sin()`, ... | computed when the document loads, and again when the canvas is resized for viewport units (`calc(40px + 2rem)`, `calc(100vh - 64px)`); a `%` mixed with `px` keeps the `%` part (`calc(100% - 32px)` is `100%`, warning) until phase 3. Dropped with a warning: a `var()` inside when the variable is declared more than once (`:root` and `.dark`: no single value to compute with, `HTMLUI-CSS-0012`), and `round()` of a length without a step (`round(17.4px)`; write `round(17.4px, 1px)`) |
+| `calc()`, `min()`, `max()`, `clamp()`, `round()`, `mod()`, `abs()`, `sin()`, ... | `calc()`, `min()`, `max()` and `clamp()` are exact, computed by the layout engine (`width: calc(100% - 32px)`, `min(100%, 600px)`, `calc(100vh - 64px)`), in sizes, margins, paddings, insets, `flex-basis`, `gap`, `font-size`, `line-height`, `opacity`, `z-index`, transforms and custom properties. Elsewhere (borders, shadows, gradients, shapes, logical properties) and for the other functions (`round()`, `abs()`, `sin()`, ...) they are computed when the document loads, and again when the canvas is resized for viewport units; there a `%` mixed with `px` keeps the `%` part (warning). Dropped with a warning: a `var()` inside when the variable is declared more than once (`:root` and `.dark`: no single value to compute with, `HTMLUI-CSS-0012`), and `round()` of a length without a step (`round(17.4px)`; write `round(17.4px, 1px)`) |
 | `vmin`/`vmax`, `dvh`/`svh`/`lvh`, `ch`/`ex` | exact / `vh` / `0.5em` (note) |
 | `clip-path` shapes, `mask-image`, `object-fit`, `image-rendering: pixelated` | exact |
 | `::-webkit-scrollbar(-thumb/-track)`, `scrollbar-width`, `scrollbar-color`, `::placeholder`, `::-webkit-slider-thumb` | the engine's scrollbar, placeholder and slider parts |
@@ -317,7 +317,9 @@ not close a `<div>` there, as in a browser: `HTMLUI-HTML-0026` warns; the old
 In an `.rml` document the parser is XML: close every tag (`<div/>`, `<img src="a.png"/>`,
 `<br/>`), quote every attribute, escape `&` and `<`. There is **no user-agent stylesheet**:
 every element is inline until you give it `display: block` (or `flex`), and the style
-language is **RCSS**. Rules that differ from browser CSS:
+language is **RCSS**. Text without a declaration is black and 16px, as in a browser (before
+phase 3 it was white and 12px: give the root `color` and `font-size` when a document relied on
+that), and a border without a color takes the text color. Rules that differ from browser CSS:
 
 | Write | Not (rejected or misread today) |
 |---|---|
@@ -1110,8 +1112,8 @@ the files ship with the assets).
 What standard HTML/CSS does not do yet is listed under "Writing HTML/CSS for the engine" (the
 rewrites table, "Not yet" and "Differences without a diagnostic"); the Console names every
 use in your files. Later phases:
-- Phase 3, the layout engine itself: CSS Grid, `::before`/`::after`, `calc()` with mixed
-  units at layout time, border styles, `%` radii, `:has()`, `order`, `aspect-ratio`,
+- Phase 3, the layout engine itself: CSS Grid, `::before`/`::after`, `calc()` at layout time
+  in every property, border styles, `%` radii, `:has()`, `order`, `aspect-ratio`,
   `fit-content`, real `position: fixed`/`sticky`, group `opacity`, `line-height: normal`,
   `cubic-bezier()`/`steps()` easings, parent/child margin collapsing, a legend as wide as its
   text.

@@ -8,51 +8,44 @@
 
 namespace Rml {
 
-// An iterator for local properties defined on an element.
+// An iterator for local properties defined on an element: the values of its transitions and animations (the animation
+// layers, phase 3), its inline style and its definition, each property once, from the first source in that order that has it.
 // Note: Modifying the underlying style invalidates the iterator.
 class PlainPropertiesIterator {
 public:
 	using ValueType = Pair<PropertyId, const Property&>;
 	using PropertyIt = PropertyMap::const_iterator;
 
-	PlainPropertiesIterator(const PropertyMap& inline_properties, const PropertyMap* definition_properties) :
-		it_style(inline_properties.begin()), it_style_end(inline_properties.end()), it_definition{}, it_definition_end{}
+	PlainPropertiesIterator(const PropertyMap& inline_properties, const PropertyMap* definition_properties,
+		const PropertyMap* transition_properties = nullptr, const PropertyMap* animated_properties = nullptr)
 	{
-		if (definition_properties)
+		for (const PropertyMap* properties : {transition_properties, animated_properties, &inline_properties, definition_properties})
 		{
-			it_definition = definition_properties->begin();
-			it_definition_end = definition_properties->end();
+			if (properties && !properties->empty())
+				ranges[num_ranges++] = Range{properties->begin(), properties->end()};
 		}
 		ProceedToNextValid();
 	}
 
 	PlainPropertiesIterator& operator++()
 	{
-		if (it_style != it_style_end)
-			// We iterate over the local style properties first
-			++it_style;
-		else
-			// .. and then over the properties given by the element's definition
-			++it_definition;
-		// If we reached the end of one of the iterator pairs, we need to continue iteration on the next pair.
+		++ranges[current].it;
 		ProceedToNextValid();
 		return *this;
 	}
 
-	ValueType operator*() const
-	{
-		if (it_style != it_style_end)
-			return {it_style->first, it_style->second};
-		return {it_definition->first, it_definition->second};
-	}
+	ValueType operator*() const { return {ranges[current].it->first, ranges[current].it->second}; }
 
-	bool AtEnd() const { return at_end; }
+	bool AtEnd() const { return current >= num_ranges; }
 
 private:
+	struct Range {
+		PropertyIt it, end;
+	};
+	Range ranges[4];
+	int num_ranges = 0;
+	int current = 0;
 	PropertyIdSet visited_properties;
-	PropertyIt it_style, it_style_end;
-	PropertyIt it_definition, it_definition_end;
-	bool at_end = false;
 
 	bool IsFirstVisit(PropertyId id)
 	{
@@ -66,20 +59,14 @@ private:
 
 	void ProceedToNextValid()
 	{
-		for (; it_style != it_style_end; ++it_style)
+		for (; current < num_ranges; current++)
 		{
-			if (IsFirstVisit(it_style->first))
-				return;
+			for (Range& range = ranges[current]; range.it != range.end; ++range.it)
+			{
+				if (IsFirstVisit(range.it->first))
+					return;
+			}
 		}
-
-		for (; it_definition != it_definition_end; ++it_definition)
-		{
-			if (IsFirstVisit(it_definition->first))
-				return;
-		}
-
-		// All iterators are now at the end
-		at_end = true;
 	}
 };
 

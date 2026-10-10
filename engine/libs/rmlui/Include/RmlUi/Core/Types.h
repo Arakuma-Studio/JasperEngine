@@ -57,6 +57,12 @@ class Event;
 class Property;
 class Variant;
 class Transform;
+#ifdef RMLUI_MATH_EXPRESSIONS
+class Calculation;
+using CalculationPtr = SharedPtr<const Calculation>;
+#endif
+class StyleValue;
+using StyleValuePtr = SharedPtr<const StyleValue>;
 class PropertyIdSet;
 class Decorator;
 class FontEffect;
@@ -69,7 +75,7 @@ struct FilterDeclarationList;
 struct ColorStop;
 struct BoxShadow;
 enum class EventId : uint16_t;
-enum class PropertyId : uint8_t;
+enum class PropertyId : uint16_t;
 enum class MediaQueryId : uint8_t;
 enum class FamilyId : int;
 using TouchId = uintptr_t;

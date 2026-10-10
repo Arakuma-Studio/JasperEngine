@@ -15,7 +15,8 @@ class ContainerBox;
 */
 struct ComputedAxisSize {
 	Style::LengthPercentageAuto size;
-	Style::LengthPercentage min_size, max_size;
+	Style::LengthPercentageAuto min_size; // 'auto' resolves to 0 here; flex items get their automatic minimum where they are sized
+	Style::LengthPercentage max_size;
 	Style::Padding padding_a, padding_b;
 	Style::Margin margin_a, margin_b;
 	float border_a, border_b;
@@ -25,6 +26,25 @@ struct ComputedAxisSize {
 struct ContainingBlock {
 	ContainerBox* container;
 	Vector2f size;
+};
+
+/// The boxes a container lays out, in layout order (see LayoutDetails::GetLayoutChildren).
+using LayoutChildList = Vector<Element*>;
+
+/// A LayoutChildList borrowed from a stack of lists kept for reuse, so that listing the layout children of every box
+/// allocates nothing once warm. Lists are returned in reverse order of borrowing (scoped, as layout recursion is).
+class ScopedLayoutChildList {
+public:
+	ScopedLayoutChildList();
+	~ScopedLayoutChildList();
+	ScopedLayoutChildList(const ScopedLayoutChildList&) = delete;
+	ScopedLayoutChildList& operator=(const ScopedLayoutChildList&) = delete;
+
+	LayoutChildList& operator*() { return *list; }
+	LayoutChildList* operator->() { return list; }
+
+private:
+	LayoutChildList* list;
 };
 
 enum class BuildBoxMode {
@@ -42,6 +62,15 @@ class LayoutDetails {
 public:
 	/// A text element of white space only that CSS collapses away (white-space other than pre, pre-wrap, break-spaces).
 	static bool IsCollapsibleWhiteSpaceText(Element* element);
+
+	/// Returns the boxes to lay out inside an element, in order: its ::marker, its ::before, its DOM children, its ::after
+	/// (pseudo-elements once they are generated, Element::GetPseudoElement). A 'display: contents' child is replaced by its
+	/// own layout children, recursively. With 'apply_order' (flex and grid containers) the list is stable-sorted by the
+	/// 'order' property, so that the boxes are placed, and painted, in order-modified document order.
+	/// @param[in] parent The element whose boxes to list.
+	/// @param[out] children Cleared, then filled.
+	/// @param[in] apply_order True to sort by 'order'.
+	static void GetLayoutChildren(Element* parent, LayoutChildList& children, bool apply_order);
 
 	/// Generates the box dimensions for an element.
 	/// @param[out] box The box to be built.
@@ -66,6 +95,9 @@ public:
 	/// @param[in] position The position property of the current box.
 	/// @return The containing block box and size, possibly indefinite (represented by negative size) along one or both axes.
 	static ContainingBlock GetContainingBlock(ContainerBox* parent_container, Style::Position position);
+	/// Returns the containing block of an element's box: as above, or its overriding containing block, if the box formatting it
+	/// gave one (ContainerBox::AddAbsoluteElement).
+	static ContainingBlock GetContainingBlock(ContainerBox* parent_container, Element* element);
 
 	/// Builds margins of a Box, and resolves any auto width or height for non-inline elements. The height may be left unresolved if it depends on the
 	/// element's children.
@@ -83,6 +115,20 @@ public:
 	/// Formats the element and returns the width of its contents.
 	static float GetShrinkToFitWidth(Element* element, Vector2f containing_block);
 
+	/// Intrinsic sizing (CSS Sizing 3): the element's min-content width, the width of its border box formatted under a
+	/// min-content constraint (no width to give: its widest unbreakable content, every soft wrap opportunity taken). A
+	/// definite 'width' is its own min-content width.
+	/// @param[in] element The element to measure.
+	/// @param[in] containing_block The containing block's size (negative: indefinite; percentages then resolve as 0).
+	/// @return The width of the border box.
+	static float GetMinContentWidth(Element* element, Vector2f containing_block);
+	/// The element's max-content width: the width of its border box formatted without a width constraint (shrink-to-fit
+	/// without the clamp to the available width). A definite 'width' is its own max-content width.
+	/// @return The width of the border box.
+	static float GetMaxContentWidth(Element* element, Vector2f containing_block);
+	/// Formats the element with a definite border-box width and returns the height of its border box.
+	static float GetContentHeightForWidth(Element* element, float border_box_width, Vector2f containing_block);
+
 	/// Build computed axis size along the horizontal direction (width and friends).
 	static ComputedAxisSize BuildComputedHorizontalSize(const ComputedValues& computed);
 	/// Build computed axis size along the vertical direction (height and friends).
@@ -99,6 +145,9 @@ public:
 	}
 
 private:
+	/// Appends the layout children of an element to a list (GetLayoutChildren without the ordering).
+	static void AppendLayoutChildren(Element* parent, LayoutChildList& children);
+
 	/// Calculates and returns the content size for replaced elements.
 	static Vector2f CalculateSizeForReplacedElement(Vector2f specified_content_size, Vector2f min_size, Vector2f max_size, Vector2f intrinsic_size,
 		float intrinsic_ratio);

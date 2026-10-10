@@ -105,14 +105,20 @@ TEST(CompatTables, EveryRmlUiPropertyAndShorthandHasARow){
     RmlUiSession rml;
     ASSERT_TRUE(rml.ok);
 
+    // (phase 3 declares the ids of every feature in the fork's ID.h at once; an id whose package has not
+    // registered it yet has no name and nothing parses into it)
     size_t checked = 0;
     for (size_t id = 1; id < (size_t)Rml::PropertyId::NumDefinedIds; id++){
+        if (!Rml::StyleSheetSpecification::GetProperty((Rml::PropertyId)id))
+            continue;
         const std::string& name = Rml::StyleSheetSpecification::GetPropertyName((Rml::PropertyId)id);
         ASSERT_FALSE(name.empty()) << id;
         EXPECT_NE(findProperty(name), nullptr) << "RmlUi property '" << name << "' has no row";
         checked++;
     }
     for (size_t id = 1; id < (size_t)Rml::ShorthandId::NumDefinedIds; id++){
+        if (!Rml::StyleSheetSpecification::GetShorthand((Rml::ShorthandId)id))
+            continue;
         const std::string& name = Rml::StyleSheetSpecification::GetShorthandName((Rml::ShorthandId)id);
         ASSERT_FALSE(name.empty()) << id;
         EXPECT_NE(findProperty(name), nullptr) << "RmlUi shorthand '" << name << "' has no row";
@@ -318,9 +324,17 @@ TEST(CompatTables, EffectiveSupportFollowsForkFeatures){
     EXPECT_EQ(effectiveSupport(*grid, ForkFeatures::all().with(ForkFeature::Grid, false)), Support::Fallback);
     EXPECT_EQ(effectiveSupport(Support::Unsupported, ForkFeature::None, Support::Unsupported, ForkFeatures::all()), Support::Unsupported);
 
-    // every row: present() gives the table's own support (phase 2: nothing present)
+    // every row: present() gives the table's own support, or the one with the fork when the
+    // row's feature is present
     for (const PropertySupport& row : propertyTable())
-        EXPECT_EQ(effectiveSupport(row, ForkFeatures::present()), row.support) << row.name;
+        EXPECT_EQ(effectiveSupport(row, ForkFeatures::present()), ForkFeatures::present().has(row.fork) ? row.supportWithFork : row.support) << row.name;
+    // calc(), min(), max(), clamp(): native with the fork's Calc (p3-base), folded without it
+    for (const char* name : {"calc", "min", "max", "clamp"}){
+        const FunctionSupport* function = findFunction(name);
+        ASSERT_NE(function, nullptr) << name;
+        EXPECT_EQ(effectiveSupport(*function, ForkFeatures::present()), Support::Native) << name;
+        EXPECT_EQ(effectiveSupport(*function, ForkFeatures::present().with(ForkFeature::Calc, false)), Support::Fallback) << name;
+    }
 }
 
 TEST(CompatTables, Names){

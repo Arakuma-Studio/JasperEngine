@@ -254,7 +254,7 @@ void jasperengine::htmlui::compat::rewriteGap(DeclContext& context){
             values.push_back(text(v));
     }
     const std::string value = join(values);
-    if (!RcssGrammar::accepts(n, value)){
+    if (!RcssGrammar::accepts(n, value, context.session.options.fork)){
         unsupportedValue(context, "use a length or percentage");
         return;
     }

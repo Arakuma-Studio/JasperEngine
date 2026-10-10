@@ -17,6 +17,11 @@ float LayoutBox::GetShrinkToFitWidth() const
 {
 	return 0.f;
 }
+
+float LayoutBox::GetMinContentWidth() const
+{
+	return GetShrinkToFitWidth();
+}
 void* LayoutBox::operator new(size_t size)
 {
 	void* memory = LayoutPools::AllocateLayoutChunk(size);

@@ -137,7 +137,7 @@ private:
 	{
 		if (value.type != Style::LengthPercentageAuto::Auto)
 			return ResolveValue(value, containing_block);
-		if (position == Style::Position::Relative)
+		if (position == Style::Position::Relative || position == Style::Position::Sticky)
 			return 0.0f;
 		return fallback_func();
 	}
@@ -218,7 +218,13 @@ public:
 		for (int i = 0; i < 4; i++)
 		{
 			if (const Property* p = properties.GetProperty(ids[i]))
+			{
+#ifdef RMLUI_MATH_EXPRESSIONS
+				if (p->unit == Unit::CALCULATION)
+					return false;
+#endif
 				out_constraints[i] = p->GetNumericValue();
+			}
 		}
 		return true;
 	}

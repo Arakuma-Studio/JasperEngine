@@ -11,6 +11,7 @@
 #include "ElementStyle.h"
 #include "EventDispatcher.h"
 #include "Pool.h"
+#include <optional>
 
 namespace Rml {
 
@@ -24,6 +25,10 @@ struct ElementMeta {
 	ElementEffects effects;
 	ElementScroll scroll;
 	Style::ComputedValues computed_values;
+	// The containing block of an absolutely positioned element when it is not its offset parent's padding box (a grid
+	// area, the viewport), relative to the offset parent's border box; set by the box that formats it
+	// (ContainerBox::ClosePositionedElements).
+	std::optional<Rectanglef> containing_block_override;
 };
 
 struct ElementMetaPool {

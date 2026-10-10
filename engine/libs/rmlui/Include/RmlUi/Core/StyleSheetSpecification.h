@@ -54,6 +54,11 @@ public:
 	/// @param[in] type The type of shorthand to declare.
 	/// @return The new shorthand ID if successfully parsed, Invalid otherwise.
 	static ShorthandId RegisterShorthand(const String& shorthand_name, const String& property_names, ShorthandType type);
+	/// Registers the parser of a shorthand of type 'Custom' (see ShorthandParserFunction).
+	/// @param[in] id The shorthand, registered with ShorthandType::Custom.
+	/// @param[in] parser The function that parses its value and sets every longhand.
+	/// @return True on success, false if the shorthand is not a registered custom shorthand.
+	static bool RegisterShorthandParser(ShorthandId id, ShorthandParserFunction parser);
 	/// Returns a shorthand definition.
 	/// @param[in] shorthand_name The name of the desired shorthand.
 	/// @return The appropriate shorthand definition if it could be found, nullptr otherwise.

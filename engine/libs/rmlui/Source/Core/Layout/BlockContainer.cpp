@@ -133,7 +133,7 @@ BlockContainer* BlockContainer::OpenBlockBox(Element* child_element, const Box& 
 
 	// Store relatively positioned elements with their containing block so that their offset can be updated after
 	// their containing block has been sized.
-	if (child_element->GetPosition() == Style::Position::Relative)
+	if (child_element->GetPosition() == Style::Position::Relative || child_element->GetPosition() == Style::Position::Sticky)
 		AddRelativeElement(child_element);
 
 	child_boxes.push_back(std::move(child_container_ptr));
@@ -154,7 +154,7 @@ LayoutBox* BlockContainer::AddBlockLevelBox(UniquePtr<LayoutBox> block_level_box
 
 	child_element->SetOffset(child_position - position, element);
 
-	if (child_element->GetPosition() == Style::Position::Relative)
+	if (child_element->GetPosition() == Style::Position::Relative || child_element->GetPosition() == Style::Position::Sticky)
 		AddRelativeElement(child_element);
 
 	LayoutBox* block_level_box = block_level_box_ptr.get();
@@ -176,7 +176,7 @@ InlineBoxHandle BlockContainer::AddInlineElement(Element* element, const Box& ch
 
 	InlineBox* inline_box = inline_container->AddInlineElement(element, child_box);
 
-	if (element->GetPosition() == Style::Position::Relative)
+	if (element->GetPosition() == Style::Position::Relative || element->GetPosition() == Style::Position::Sticky)
 		AddRelativeElement(element);
 
 	return {inline_box};
@@ -250,7 +250,7 @@ void BlockContainer::AddFloatElement(Element* element, Vector2f visible_overflow
 		PlaceFloat(element, box_position.y, visible_overflow_size);
 	}
 
-	if (element->GetPosition() == Style::Position::Relative)
+	if (element->GetPosition() == Style::Position::Relative || element->GetPosition() == Style::Position::Sticky)
 		AddRelativeElement(element);
 }
 
@@ -334,6 +334,27 @@ void BlockContainer::PlaceQueuedFloats(float vertical_position)
 
 float BlockContainer::GetShrinkToFitWidth() const
 {
+	return GetIntrinsicContentWidth([](const LayoutBox& child) { return child.GetShrinkToFitWidth(); },
+		[this](float content_width) {
+			// Since we are the root of the block formatting context, add the width contributions of the floated boxes in
+		    // our context. The basic algorithm used can produce overestimates, since floats may not be located next to
+		    // the rest of the content.
+			const float edge_left = box.GetPosition().x;
+			const float edge_right = edge_left + box.GetSize().x;
+			return content_width + space->GetShrinkToFitWidth(edge_left, edge_right);
+		});
+}
+
+float BlockContainer::GetMinContentWidth() const
+{
+	// Formatted under a min-content constraint each float sits on its own line: the widest float or child.
+	return GetIntrinsicContentWidth([](const LayoutBox& child) { return child.GetMinContentWidth(); },
+		[this](float content_width) { return Math::Max(content_width, space->GetMinContentWidth()); });
+}
+
+template <typename ChildWidth, typename FloatsWidth>
+float BlockContainer::GetIntrinsicContentWidth(ChildWidth child_width, FloatsWidth floats_width) const
+{
 	auto& computed = element->GetComputedValues();
 
 	float content_width = 0.0f;
@@ -344,11 +365,11 @@ float BlockContainer::GetShrinkToFitWidth() const
 	}
 	else
 	{
-		// Nope, then use the largest outer shrink-to-fit width of our children. Percentage sizing would be relative to
-		// our containing block width and is treated just like 'auto' in this context.
+		// Nope, then use the largest outer width of our children. Percentage sizing would be relative to our containing
+		// block width and is treated just like 'auto' in this context.
 		for (const auto& block_box : child_boxes)
 		{
-			const float child_inner_width = block_box->GetShrinkToFitWidth();
+			const float child_inner_width = child_width(*block_box);
 			float child_edges_width = 0.f;
 			if (const Box* child_box = block_box->GetIfBox())
 				child_edges_width = child_box->GetSizeAcross(BoxDirection::Horizontal, BoxArea::Margin, BoxArea::Padding);
@@ -358,17 +379,24 @@ float BlockContainer::GetShrinkToFitWidth() const
 	}
 
 	if (root_space)
-	{
-		// Since we are the root of the block formatting context, add the width contributions of the floated boxes in
-		// our context. The basic algorithm used can produce overestimates, since floats may not be located next to the
-		// rest of the content.
-		const float edge_left = box.GetPosition().x;
-		const float edge_right = edge_left + box.GetSize().x;
-		content_width += space->GetShrinkToFitWidth(edge_left, edge_right);
-	}
+		content_width = floats_width(content_width);
 
 	float min_width, max_width;
 	LayoutDetails::GetMinMaxWidth(min_width, max_width, computed, box, 0.f);
+	const auto percentage_dependent = [](auto value) {
+		using Type = decltype(value.type);
+		return value.type == Type::Percentage
+#ifdef RMLUI_MATH_EXPRESSIONS
+			|| value.type == Type::Calculation
+#endif
+			;
+	};
+	// Percentage-dependent min/max widths are indefinite while measuring intrinsic width. Treat them
+	// as their unconstrained defaults here, and resolve them later against the real containing block.
+	if (percentage_dependent(computed.min_width()))
+		min_width = 0.f;
+	if (percentage_dependent(computed.max_width()))
+		max_width = FLT_MAX;
 	content_width = Math::Clamp(content_width, min_width, max_width);
 
 	return content_width;

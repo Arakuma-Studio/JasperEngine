@@ -2,6 +2,7 @@
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
 #include "IdNameMap.h"
+#include "PropertyParserAlignment.h"
 #include "PropertyParserAnimation.h"
 #include "PropertyParserBoxShadow.h"
 #include "PropertyParserColorStopList.h"
@@ -21,13 +22,27 @@ namespace Rml {
 static StyleSheetSpecification* instance = nullptr;
 
 struct DefaultStyleSheetParsers : NonCopyMoveable {
+#ifdef RMLUI_MATH_EXPRESSIONS
+	PropertyParserNumber number = PropertyParserNumber(Unit::NUMBER, Unit::UNKNOWN, MakeCalculationParseTarget(CalculationFinalType::Number));
+	PropertyParserNumber length = PropertyParserNumber(Unit::LENGTH, Unit::PX, MakeCalculationParseTarget(CalculationFinalType::Length));
+	PropertyParserNumber length_percent = PropertyParserNumber(Unit::LENGTH_PERCENT, Unit::PX,
+		MakeCalculationParseTarget(CalculationFinalType::Length, CalculationPercentageHint::Length));
+	PropertyParserNumber number_percent = PropertyParserNumber(Unit::NUMBER_PERCENT, Unit::UNKNOWN,
+		{CalculationFinalType::Number | CalculationFinalType::Percent, CalculationPercentageHint::None});
+	PropertyParserNumber number_length_percent = PropertyParserNumber(Unit::NUMBER_LENGTH_PERCENT, Unit::PX);
+	PropertyParserNumber line_height = PropertyParserNumber(Unit::NUMBER_LENGTH_PERCENT, Unit::PX,
+		{CalculationFinalType::Number | CalculationFinalType::Length, CalculationPercentageHint::Length});
+	PropertyParserNumber angle = PropertyParserNumber(Unit::ANGLE, Unit::RAD, MakeCalculationParseTarget(CalculationFinalType::Angle));
+#else
 	PropertyParserNumber number = PropertyParserNumber(Unit::NUMBER);
 	PropertyParserNumber length = PropertyParserNumber(Unit::LENGTH, Unit::PX);
 	PropertyParserNumber length_percent = PropertyParserNumber(Unit::LENGTH_PERCENT, Unit::PX);
 	PropertyParserNumber number_percent = PropertyParserNumber(Unit::NUMBER_PERCENT);
 	PropertyParserNumber number_length_percent = PropertyParserNumber(Unit::NUMBER_LENGTH_PERCENT, Unit::PX);
 	PropertyParserNumber angle = PropertyParserNumber(Unit::ANGLE, Unit::RAD);
+#endif
 	PropertyParserKeyword keyword = PropertyParserKeyword();
+	PropertyParserAlignment alignment = PropertyParserAlignment();
 	PropertyParserString string = PropertyParserString();
 	PropertyParserAnimation animation = PropertyParserAnimation(PropertyParserAnimation::ANIMATION_PARSER);
 	PropertyParserAnimation transition = PropertyParserAnimation(PropertyParserAnimation::TRANSITION_PARSER);
@@ -38,7 +53,11 @@ struct DefaultStyleSheetParsers : NonCopyMoveable {
 	PropertyParserFontEffect font_effect = PropertyParserFontEffect();
 	PropertyParserTransform transform = PropertyParserTransform();
 	PropertyParserRatio ratio = PropertyParserRatio();
+#ifdef RMLUI_MATH_EXPRESSIONS
+	PropertyParserNumber resolution = PropertyParserNumber(Unit::X, Unit::UNKNOWN, MakeCalculationParseTarget(CalculationFinalType::Resolution));
+#else
 	PropertyParserNumber resolution = PropertyParserNumber(Unit::X);
+#endif
 	PropertyParserBoxShadow box_shadow = PropertyParserBoxShadow(&color, &length);
 };
 
@@ -160,6 +179,11 @@ ShorthandId StyleSheetSpecification::RegisterShorthand(const String& shorthand_n
 	return instance->properties.RegisterShorthand(shorthand_name, property_names, type);
 }
 
+bool StyleSheetSpecification::RegisterShorthandParser(ShorthandId id, ShorthandParserFunction parser)
+{
+	return instance->properties.SetShorthandParser(id, parser);
+}
+
 const ShorthandDefinition* StyleSheetSpecification::GetShorthand(const String& shorthand_name)
 {
 	return instance->properties.GetShorthand(shorthand_name);
@@ -229,6 +253,9 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	RegisterParser("length_percent", &default_parsers->length_percent);
 	RegisterParser("number_percent", &default_parsers->number_percent);
 	RegisterParser("number_length_percent", &default_parsers->number_length_percent);
+#ifdef RMLUI_MATH_EXPRESSIONS
+	RegisterParser("line_height", &default_parsers->line_height);
+#endif
 	RegisterParser("angle", &default_parsers->angle);
 	RegisterParser("keyword", &default_parsers->keyword);
 	RegisterParser("string", &default_parsers->string);
@@ -243,6 +270,28 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	RegisterParser("ratio", &default_parsers->ratio);
 	RegisterParser("resolution", &default_parsers->resolution);
 	RegisterParser("box_shadow", &default_parsers->box_shadow);
+
+	/*
+	  Phase 3 sections (docs/html-ui/phase-3-fork-patches.md 3.0, 3.1.3): each package registers its parsers in its own
+	  section below, and only there.
+	*/
+
+	// -- Groundwork (p3-base) --
+	RegisterParser("alignment", &default_parsers->alignment);
+
+	// -- Values (p3-values) --
+
+	// -- Cascade (p3-cascade) --
+
+	// -- Paint (p3-paint) --
+
+	// -- Text (p3-text) --
+
+	// -- Layout (p3-layout) --
+
+	// -- Animation (p3-animation) --
+
+	// -- Grid (p3-grid) --
 }
 
 void StyleSheetSpecification::RegisterDefaultProperties()
@@ -252,6 +301,10 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 
 	    Note: Whenever keywords or default values are changed, make sure its computed value is
 	    changed correspondingly, see `ComputedValues.h`.
+
+	    The defaults are the CSS initial values (phase 3, docs/html-ui/FORK.md P3-4): font-size 16px,
+	    color black, border colors 'currentcolor' (registered as black, computed as the element's color
+	    when not declared), min-width/min-height auto, opacity not inherited, visibility inherited.
 
 	    When adding new properties, it may be desirable to add it to the computed values as well.
 	    Then, make sure to resolve it as appropriate in `ElementStyle.cpp`.
@@ -303,9 +356,10 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::BorderBottomLeftRadius, "border-bottom-left-radius", "0px", false, false).AddParser("length");
 	RegisterShorthand(ShorthandId::BorderRadius, "border-radius", "border-top-left-radius, border-top-right-radius, border-bottom-right-radius, border-bottom-left-radius", ShorthandType::Box);
 
+	// 'grid=14, inline-grid=15' join the display keywords with grid layout (p3-grid): ForkFeature::Grid's probe parses them.
 	RegisterProperty(PropertyId::Display, "display", "inline", false, true)
-		.AddParser("keyword", "none, block, inline, inline-block, flow-root, flex, inline-flex, table, inline-table, table-row, table-row-group, table-column, table-column-group, table-cell");
-	RegisterProperty(PropertyId::Position, "position", "static", false, true).AddParser("keyword", "static, relative, absolute, fixed");
+		.AddParser("keyword", "none, block, inline, inline-block, flow-root, flex, inline-flex, table, inline-table, table-row, table-row-group, table-column, table-column-group, table-cell, list-item=16, contents=17");
+	RegisterProperty(PropertyId::Position, "position", "static", false, true).AddParser("keyword", "static, relative, absolute, fixed, sticky");
 	RegisterProperty(PropertyId::Top, "top", "auto", false, false).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
 	RegisterProperty(PropertyId::Right, "right", "auto", false, false).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
 	RegisterProperty(PropertyId::Bottom, "bottom", "auto", false, false).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
@@ -320,14 +374,18 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::ZIndex, "z-index", "auto", false, false).AddParser("keyword", "auto").AddParser("number");
 
 	RegisterProperty(PropertyId::Width, "width", "auto", false, true).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
-	RegisterProperty(PropertyId::MinWidth, "min-width", "0px", false, true).AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
+	RegisterProperty(PropertyId::MinWidth, "min-width", "auto", false, true).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
 	RegisterProperty(PropertyId::MaxWidth, "max-width", "none", false, true).AddParser("keyword", "none").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
 
 	RegisterProperty(PropertyId::Height, "height", "auto", false, true).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
-	RegisterProperty(PropertyId::MinHeight, "min-height", "0px", false, true).AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
+	RegisterProperty(PropertyId::MinHeight, "min-height", "auto", false, true).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
 	RegisterProperty(PropertyId::MaxHeight, "max-height", "none", false, true).AddParser("keyword", "none").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
 
+#ifdef RMLUI_MATH_EXPRESSIONS
+	RegisterProperty(PropertyId::LineHeight, "line-height", "1.2", true, true).AddParser("line_height").SetRelativeTarget(RelativeTarget::FontSize);
+#else
 	RegisterProperty(PropertyId::LineHeight, "line-height", "1.2", true, true).AddParser("number_length_percent").SetRelativeTarget(RelativeTarget::FontSize);
+#endif
 	RegisterProperty(PropertyId::VerticalAlign, "vertical-align", "baseline", false, true)
 		.AddParser("keyword", "baseline, middle, sub, super, text-top, text-bottom, top, center, bottom")
 		.AddParser("length_percent").SetRelativeTarget(RelativeTarget::LineHeight);
@@ -336,24 +394,24 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::OverflowY, "overflow-y", "visible", false, true).AddParser("keyword", "visible, hidden, auto, scroll");
 	RegisterShorthand(ShorthandId::Overflow, "overflow", "overflow-x, overflow-y", ShorthandType::Replicate);
 	RegisterProperty(PropertyId::Clip, "clip", "auto", false, false).AddParser("keyword", "auto, none, always").AddParser("number");
-	RegisterProperty(PropertyId::Visibility, "visibility", "visible", false, false).AddParser("keyword", "visible, hidden");
+	RegisterProperty(PropertyId::Visibility, "visibility", "visible", true, false).AddParser("keyword", "visible, hidden");
 	RegisterProperty(PropertyId::TextOverflow, "text-overflow", "clip", false, false).AddParser("keyword", "clip, ellipsis").AddParser("string");
 
 	// Need some work on this if we are to include images.
 	RegisterProperty(PropertyId::BackgroundColor, "background-color", "transparent", false, false).AddParser("color");
 	RegisterShorthand(ShorthandId::Background, "background", "background-color", ShorthandType::FallThrough);
 
-	RegisterProperty(PropertyId::Color, "color", "white", true, false).AddParser("color");
+	RegisterProperty(PropertyId::Color, "color", "black", true, false).AddParser("color");
 
 	RegisterProperty(PropertyId::CaretColor, "caret-color", "auto", true, false).AddParser("keyword", "auto").AddParser("color");
 
 	RegisterProperty(PropertyId::ImageColor, "image-color", "white", false, false).AddParser("color");
-	RegisterProperty(PropertyId::Opacity, "opacity", "1", true, false).AddParser("number");
+	RegisterProperty(PropertyId::Opacity, "opacity", "1", false, false).AddParser("number");
 
 	RegisterProperty(PropertyId::FontFamily, "font-family", "", true, true).AddParser("string");
 	RegisterProperty(PropertyId::FontStyle, "font-style", "normal", true, true).AddParser("keyword", "normal, italic");
 	RegisterProperty(PropertyId::FontWeight, "font-weight", "normal", true, true).AddParser("keyword", "normal=400, bold=700").AddParser("number");
-	RegisterProperty(PropertyId::FontSize, "font-size", "12px", true, true).AddParser("length").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ParentFontSize);
+	RegisterProperty(PropertyId::FontSize, "font-size", "16px", true, true).AddParser("length").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ParentFontSize);
 	RegisterProperty(PropertyId::FontKerning, "font-kerning", "auto", true, true).AddParser("keyword", "auto, normal, none");
 	RegisterProperty(PropertyId::LetterSpacing, "letter-spacing", "normal", true, true).AddParser("keyword", "normal").AddParser("length");
 	RegisterShorthand(ShorthandId::Font, "font", "font-style, font-weight, font-size, font-family", ShorthandType::FallThrough);
@@ -413,9 +471,13 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::FillImage, "fill-image", "", false, false).AddParser("string");
 
 	// Flexbox
-	RegisterProperty(PropertyId::AlignContent, "align-content", "stretch", false, true).AddParser("keyword", "flex-start, flex-end, center, space-between, space-around, space-evenly, stretch");
-	RegisterProperty(PropertyId::AlignItems, "align-items", "stretch", false, true).AddParser("keyword", "flex-start, flex-end, center, baseline, stretch");
-	RegisterProperty(PropertyId::AlignSelf, "align-self", "auto", false, true).AddParser("keyword", "auto, flex-start, flex-end, center, baseline, stretch");
+	// The alignment keywords of CSS Box Alignment 3 (phase 3 groundwork), in the order of the enums in StyleTypes.h.
+	RegisterProperty(PropertyId::AlignContent, "align-content", "normal", false, true)
+		.AddParser("alignment", MakeAlignmentKeywords("flex-start, flex-end, center, space-between, space-around, space-evenly, stretch, normal, start, end"));
+	RegisterProperty(PropertyId::AlignItems, "align-items", "normal", false, true)
+		.AddParser("alignment", MakeAlignmentKeywords("flex-start, flex-end, center, baseline, stretch, normal, start, end, self-start, self-end, last baseline"));
+	RegisterProperty(PropertyId::AlignSelf, "align-self", "auto", false, true)
+		.AddParser("alignment", MakeAlignmentKeywords("auto, flex-start, flex-end, center, baseline, stretch, normal, start, end, self-start, self-end, last baseline"));
 
 	RegisterProperty(PropertyId::FlexBasis, "flex-basis", "auto", false, true).AddParser("keyword", "auto").AddParser("length_percent");
 	RegisterProperty(PropertyId::FlexDirection, "flex-direction", "row", false, true).AddParser("keyword", "row, row-reverse, column, column-reverse");
@@ -423,7 +485,8 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::FlexGrow, "flex-grow", "0", false, true).AddParser("number");
 	RegisterProperty(PropertyId::FlexShrink, "flex-shrink", "1", false, true).AddParser("number");
 	RegisterProperty(PropertyId::FlexWrap, "flex-wrap", "nowrap", false, true).AddParser("keyword", "nowrap, wrap, wrap-reverse");
-	RegisterProperty(PropertyId::JustifyContent, "justify-content", "flex-start", false, true).AddParser("keyword", "flex-start, flex-end, center, space-between, space-around, space-evenly");
+	RegisterProperty(PropertyId::JustifyContent, "justify-content", "normal", false, true)
+		.AddParser("alignment", MakeAlignmentKeywords("flex-start, flex-end, center, space-between, space-around, space-evenly, stretch, normal, start, end, left, right"));
 
 	RegisterShorthand(ShorthandId::Flex, "flex", "flex-grow, flex-shrink, flex-basis", ShorthandType::Flex);
 	RegisterShorthand(ShorthandId::FlexFlow, "flex-flow", "flex-direction, flex-wrap", ShorthandType::FallThrough);
@@ -431,6 +494,44 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	// Internationalization properties (internal)
 	RegisterProperty(PropertyId::RmlUi_Language, "-rmlui-language", "", true, true).AddParser("string");
 	RegisterProperty(PropertyId::RmlUi_Direction, "-rmlui-direction", "auto", true, true).AddParser("keyword", "auto, ltr, rtl");
+
+	/*
+	  Phase 3 sections (docs/html-ui/phase-3-fork-patches.md 3.0, 3.1.3, Appendix B). Every new id is declared in ID.h by
+	  groundwork; each package registers its properties and shorthands in its own section below, and only there. Ids
+	  not registered yet are reserved at the end of this function: they have no name, and nothing parses into them.
+	*/
+
+	// -- Groundwork (p3-base) --
+	RegisterProperty(PropertyId::Order, "order", "0", false, true).AddParser("number");
+	// 'legacy' behaves as 'normal'; justify-items and justify-self have no effect in flex layout (grid: p3-grid).
+	RegisterProperty(PropertyId::JustifyItems, "justify-items", "legacy", false, true)
+		.AddParser("alignment", MakeAlignmentKeywords("flex-start, flex-end, center, baseline, stretch, normal, start, end, self-start, self-end, last baseline, left, right, legacy"));
+	RegisterProperty(PropertyId::JustifySelf, "justify-self", "auto", false, true)
+		.AddParser("alignment", MakeAlignmentKeywords("auto, flex-start, flex-end, center, baseline, stretch, normal, start, end, self-start, self-end, last baseline, left, right"));
+	RegisterShorthand(ShorthandId::PlaceContent, "place-content", "align-content, justify-content", ShorthandType::Custom);
+	RegisterShorthand(ShorthandId::PlaceItems, "place-items", "align-items, justify-items", ShorthandType::Custom);
+	RegisterShorthand(ShorthandId::PlaceSelf, "place-self", "align-self, justify-self", ShorthandType::Custom);
+	for (ShorthandId id : {ShorthandId::PlaceContent, ShorthandId::PlaceItems, ShorthandId::PlaceSelf})
+		properties.SetShorthandParser(id, &ParsePlaceShorthand);
+	// A browser optimization hint with no visual effect: accepted, so it neither fails nor needs a rewrite.
+	RegisterProperty(PropertyId::WillChange, "will-change", "auto", false, false).AddParser("keyword", "auto").AddParser("string");
+
+	// -- Values (p3-values) --
+
+	// -- Cascade (p3-cascade) --
+
+	// -- Paint (p3-paint) --
+
+	// -- Text (p3-text) --
+
+	// -- Layout (p3-layout) --
+
+	// -- Animation (p3-animation) --
+
+	// -- Grid (p3-grid) --
+
+	instance->properties.property_map->ReserveUnnamed(PropertyId::NumDefinedIds);
+	instance->properties.shorthand_map->ReserveUnnamed(ShorthandId::NumDefinedIds);
 
 	RMLUI_ASSERTMSG(instance->properties.shorthand_map->AssertAllInserted(ShorthandId::NumDefinedIds), "Missing specification for one or more Shorthand IDs.");
 	RMLUI_ASSERTMSG(instance->properties.property_map->AssertAllInserted(PropertyId::NumDefinedIds), "Missing specification for one or more Property IDs.");

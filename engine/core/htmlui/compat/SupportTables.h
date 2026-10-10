@@ -67,7 +67,8 @@ namespace jasperengine::htmlui::compat {
         Support supportWithFork;
         bool inherited;              // CSS inheritance
         const char* initial;         // CSS initial value as CSS text ("0", "currentColor", "normal")
-        bool rmluiDefaultDiffers;    // RmlUi's default is not the CSS initial value (initial/unset write `initial` literally)
+        bool rmluiDefaultDiffers;    // the fork's default is not the CSS initial value (initial/unset write `initial` literally);
+                                     // phase 3 made most of them equal (docs/html-ui/FORK.md P3-4)
         RewriteId rewrite;
         const char* output;          // RCSS it produces: "decorator; background-color"
         const char* note;            // one line for the matrix

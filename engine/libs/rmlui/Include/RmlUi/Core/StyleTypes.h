@@ -6,16 +6,41 @@ namespace Rml {
 namespace Style {
 
 	struct LengthPercentageAuto {
-		enum Type : uint8_t { Auto, Length, Percentage } type = Length;
+		enum Type : uint8_t {
+			Auto,
+			Length,
+			Percentage,
+#ifdef RMLUI_MATH_EXPRESSIONS
+			Calculation,
+#endif
+		} type = Length;
 		float value = 0;
+#ifdef RMLUI_MATH_EXPRESSIONS
+		CalculationPtr calculation;
+#endif
 		LengthPercentageAuto() {}
 		LengthPercentageAuto(Type type, float value = 0) : type(type), value(value) {}
+#ifdef RMLUI_MATH_EXPRESSIONS
+		explicit LengthPercentageAuto(CalculationPtr calculation) : type(Calculation), calculation(std::move(calculation)) {}
+#endif
 	};
 	struct LengthPercentage {
-		enum Type : uint8_t { Length, Percentage } type = Length;
+		enum Type : uint8_t {
+			Length,
+			Percentage,
+#ifdef RMLUI_MATH_EXPRESSIONS
+			Calculation,
+#endif
+		} type = Length;
 		float value = 0;
+#ifdef RMLUI_MATH_EXPRESSIONS
+		CalculationPtr calculation;
+#endif
 		LengthPercentage() {}
 		LengthPercentage(Type type, float value = 0) : type(type), value(value) {}
+#ifdef RMLUI_MATH_EXPRESSIONS
+		explicit LengthPercentage(CalculationPtr calculation) : type(Calculation), calculation(std::move(calculation)) {}
+#endif
 	};
 
 	struct NumberAuto {
@@ -42,9 +67,17 @@ namespace Style {
 		TableRowGroup,
 		TableColumn,
 		TableColumnGroup,
-		TableCell
+		TableCell,
+		// Phase 3 (groundwork): 'grid' and 'inline-grid' are parsed once grid layout exists (p3-grid); until its formatting
+		// context, 'list-item' is laid out as a block (its ::marker: p3-cascade); 'contents' generates no box, its children
+		// are laid out in its place (LayoutDetails::GetLayoutChildren).
+		Grid,
+		InlineGrid,
+		ListItem,
+		Contents,
 	};
-	enum class Position : uint8_t { Static, Relative, Absolute, Fixed };
+	// 'sticky' is laid out as 'relative' until sticky offsets (p3-layout).
+	enum class Position : uint8_t { Static, Relative, Absolute, Fixed, Sticky };
 
 	using Top = LengthPercentageAuto;
 	using Right = LengthPercentageAuto;
@@ -59,15 +92,15 @@ namespace Style {
 	using ZIndex = NumberAuto;
 
 	using Width = LengthPercentageAuto;
-	using MinWidth = LengthPercentage;
+	using MinWidth = LengthPercentageAuto; // 'auto' (the initial value) is 0 outside flex and grid items.
 	using MaxWidth = LengthPercentage; // 'none' keyword converted to FLT_MAX length.
 
 	using Height = LengthPercentageAuto;
-	using MinHeight = LengthPercentage;
+	using MinHeight = LengthPercentageAuto; // 'auto' (the initial value) is 0 outside flex and grid items.
 	using MaxHeight = LengthPercentage; // 'none' keyword converted to FLT_MAX length.
 
 	struct LineHeight {
-		float value = 12.f * 1.2f; // The computed value (length)
+		float value = 16.f * 1.2f; // The computed value (length)
 		enum InheritType : uint8_t { Number, Length } inherit_type = Number;
 		float inherit_value = 1.2f;
 		LineHeight() {}
@@ -124,17 +157,88 @@ namespace Style {
 	enum class OriginX : uint8_t { Left, Center, Right };
 	enum class OriginY : uint8_t { Top, Center, Bottom };
 
-	enum class AlignContent : uint8_t { FlexStart, FlexEnd, Center, SpaceBetween, SpaceAround, SpaceEvenly, Stretch };
-	enum class AlignItems : uint8_t { FlexStart, FlexEnd, Center, Baseline, Stretch };
-	enum class AlignSelf : uint8_t { Auto, FlexStart, FlexEnd, Center, Baseline, Stretch };
+	// CSS Box Alignment 3 (phase 3 groundwork): the values after the 6.3 ones are appended, so that 'AlignSelf' stays 'AlignItems'
+	// shifted by one ('auto' first), as 'JustifySelf' is 'JustifyItems'. 'Baseline' is 'first baseline'. How flex and grid
+	// lay them out is theirs (p3-layout, p3-grid); until then flex reads them as their nearest 6.3 value.
+	enum class AlignContent : uint8_t { FlexStart, FlexEnd, Center, SpaceBetween, SpaceAround, SpaceEvenly, Stretch, Normal, Start, End };
+	enum class AlignItems : uint8_t { FlexStart, FlexEnd, Center, Baseline, Stretch, Normal, Start, End, SelfStart, SelfEnd, LastBaseline };
+	enum class AlignSelf : uint8_t { Auto, FlexStart, FlexEnd, Center, Baseline, Stretch, Normal, Start, End, SelfStart, SelfEnd, LastBaseline };
+	enum class JustifyItems : uint8_t {
+		FlexStart,
+		FlexEnd,
+		Center,
+		Baseline,
+		Stretch,
+		Normal,
+		Start,
+		End,
+		SelfStart,
+		SelfEnd,
+		LastBaseline,
+		Left,
+		Right,
+		Legacy, // The initial value; behaves as 'normal'.
+	};
+	enum class JustifySelf : uint8_t {
+		Auto,
+		FlexStart,
+		FlexEnd,
+		Center,
+		Baseline,
+		Stretch,
+		Normal,
+		Start,
+		End,
+		SelfStart,
+		SelfEnd,
+		LastBaseline,
+		Left,
+		Right,
+	};
+	// The 'safe' and 'unsafe' prefixes of a positional alignment value.
+	enum class OverflowAlignment : uint8_t { Default, Safe, Unsafe };
 	using FlexBasis = LengthPercentageAuto;
 	enum class FlexDirection : uint8_t { Row, RowReverse, Column, ColumnReverse };
 	enum class FlexWrap : uint8_t { Nowrap, Wrap, WrapReverse };
-	enum class JustifyContent : uint8_t { FlexStart, FlexEnd, Center, SpaceBetween, SpaceAround, SpaceEvenly };
+	enum class JustifyContent : uint8_t {
+		FlexStart,
+		FlexEnd,
+		Center,
+		SpaceBetween,
+		SpaceAround,
+		SpaceEvenly,
+		Stretch,
+		Normal,
+		Start,
+		End,
+		Left,
+		Right
+	};
 
 	enum class Nav : uint8_t { None, Auto, Horizontal, Vertical, TreeOrder };
 
 	enum class Direction : uint8_t { Auto, Ltr, Rtl };
+
+	/*
+	  Phase 3 sections (docs/html-ui/phase-3-fork-patches.md 3.0, 3.1.3): each package adds its style types in its own
+	  section below, and only there.
+	*/
+
+	// -- Groundwork (p3-base) --
+
+	// -- Values (p3-values) --
+
+	// -- Cascade (p3-cascade) --
+
+	// -- Paint (p3-paint) --
+
+	// -- Text (p3-text) --
+
+	// -- Layout (p3-layout) --
+
+	// -- Animation (p3-animation) --
+
+	// -- Grid (p3-grid) --
 
 	class ComputedValues;
 

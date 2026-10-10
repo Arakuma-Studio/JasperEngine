@@ -29,6 +29,58 @@ static void SetShorthandPropertiesToPendingSubstitution(PropertyDictionary& dict
 	}
 }
 
+// Splits at the separator outside parentheses and quotes (whitespace separates when 'separator' is a space).
+static void SplitTopLevel(const String& value, char separator, StringList& items, bool keep_empty)
+{
+	items.clear();
+	String item;
+	int depth = 0;
+	char quote = 0;
+	auto Submit = [&]() {
+		String stripped = StringUtilities::StripWhitespace(item);
+		if (keep_empty || !stripped.empty())
+			items.push_back(std::move(stripped));
+		item.clear();
+	};
+	for (size_t i = 0; i < value.size(); i++)
+	{
+		const char c = value[i];
+		if (quote)
+		{
+			item += c;
+			if (c == '\\' && i + 1 < value.size())
+				item += value[++i];
+			else if (c == quote)
+				quote = 0;
+			continue;
+		}
+		const bool separates = (separator == ' ' ? StringUtilities::IsWhitespace(c) : c == separator);
+		if (separates && depth == 0)
+		{
+			Submit();
+			continue;
+		}
+		if (c == '"' || c == '\'')
+			quote = c;
+		else if (c == '(')
+			depth++;
+		else if (c == ')' && depth > 0)
+			depth--;
+		item += c;
+	}
+	Submit();
+}
+
+void SplitCommaList(const String& value, StringList& items)
+{
+	SplitTopLevel(value, ',', items, true);
+}
+
+void SplitWhitespaceList(const String& value, StringList& items)
+{
+	SplitTopLevel(value, ' ', items, false);
+}
+
 PropertySpecification::PropertySpecification(size_t reserve_num_properties, size_t reserve_num_shorthands) :
 	// Increment reserve numbers by one because the 'invalid' property occupies the first element
 	properties(reserve_num_properties + 1), shorthands(reserve_num_shorthands + 1),
@@ -153,8 +205,10 @@ ShorthandId PropertySpecification::RegisterShorthand(const String& shorthand_nam
 			// Otherwise, we must be a shorthand
 			ShorthandId shorthand_id = shorthand_map->GetId(name);
 
-			// Test for valid shorthand id. The recursive types (and only those) can hold other shorthands.
-			if (shorthand_id != ShorthandId::Invalid && (type == ShorthandType::RecursiveRepeat || type == ShorthandType::RecursiveCommaSeparated))
+			// Test for valid shorthand id. The recursive, any-order and custom types (and only those) can hold other shorthands.
+			if (shorthand_id != ShorthandId::Invalid &&
+				(type == ShorthandType::RecursiveRepeat || type == ShorthandType::RecursiveCommaSeparated || type == ShorthandType::AnyOrder ||
+					type == ShorthandType::Custom))
 			{
 				if (const ShorthandDefinition* shorthand = GetShorthand(shorthand_id))
 					item = ShorthandItem(shorthand_id, shorthand, optional, repeats);
@@ -214,6 +268,19 @@ const ShorthandDefinition* PropertySpecification::GetShorthand(ShorthandId id) c
 const ShorthandDefinition* PropertySpecification::GetShorthand(const String& shorthand_name) const
 {
 	return GetShorthand(shorthand_map->GetId(shorthand_name));
+}
+
+bool PropertySpecification::SetShorthandParser(ShorthandId id, ShorthandParserFunction parser)
+{
+	if (id == ShorthandId::Invalid || (size_t)id >= shorthands.size() || !shorthands[(size_t)id] ||
+		shorthands[(size_t)id]->type != ShorthandType::Custom)
+	{
+		Log::Message(Log::LT_ERROR, "Cannot set the parser of shorthand '%s': it is not a registered custom shorthand.",
+			shorthand_map->GetName(id).c_str());
+		return false;
+	}
+	shorthands[(size_t)id]->parser = parser;
+	return true;
 }
 
 bool PropertySpecification::ParsePropertyDeclaration(PropertyDictionary& dictionary, const String& property_name, const String& property_value) const
@@ -287,8 +354,11 @@ bool PropertySpecification::ParseShorthandDeclaration(PropertyDictionary& dictio
 	if (!shorthand_definition)
 		return false;
 
-	const SplitOption split_option =
-		(shorthand_definition->type == ShorthandType::RecursiveCommaSeparated ? SplitOption::Comma : SplitOption::Whitespace);
+	SplitOption split_option = SplitOption::Whitespace;
+	if (shorthand_definition->type == ShorthandType::RecursiveCommaSeparated)
+		split_option = SplitOption::Comma;
+	else if (shorthand_definition->type == ShorthandType::Custom)
+		split_option = SplitOption::None; // The custom parser splits the value itself.
 
 	StringList property_values;
 	switch (ParsePropertyValues(property_values, property_value, split_option))
@@ -306,6 +376,21 @@ bool PropertySpecification::ParseShorthandDeclaration(PropertyDictionary& dictio
 	}
 	}
 	RMLUI_ASSERT(!property_values.empty());
+
+	if (shorthand_definition->type == ShorthandType::Custom)
+	{
+		if (!shorthand_definition->parser)
+			return false;
+		// The longhands are only set when the whole value parses.
+		PropertyDictionary parsed;
+		if (!shorthand_definition->parser(parsed, *shorthand_definition, property_value, *this))
+			return false;
+		for (const auto& id_property : parsed.GetProperties())
+			dictionary.SetProperty(id_property.first, id_property.second);
+		return true;
+	}
+	if (shorthand_definition->type == ShorthandType::AnyOrder)
+		return ParseAnyOrderShorthand(dictionary, *shorthand_definition, property_values);
 
 	// Handle the special behavior of the flex shorthand first, otherwise it acts like 'FallThrough'.
 	if (shorthand_definition->type == ShorthandType::Flex && !property_values.empty())
@@ -401,6 +486,7 @@ bool PropertySpecification::ParseShorthandDeclaration(PropertyDictionary& dictio
 
 		size_t subvalue_i = 0;
 		String temp_subvalue;
+		bool repeated_item_consumed_remainder = false;
 		for (size_t i = 0; i < shorthand_definition->items.size() && subvalue_i < property_values.size(); i++)
 		{
 			bool result = false;
@@ -422,13 +508,23 @@ bool PropertySpecification::ParseShorthandDeclaration(PropertyDictionary& dictio
 				result = ParseShorthandDeclaration(dictionary, item.shorthand_id, *subvalue);
 
 			if (result)
+			{
 				subvalue_i += 1;
+				if (item.repeats)
+					repeated_item_consumed_remainder = true;
+			}
 			else if (item.repeats || !item.optional)
 				return false;
 
 			if (item.repeats)
 				break;
 		}
+
+		// Optional items may decline a subvalue, but an unconsumed trailing subvalue must not make the
+		// whole shorthand succeed. This is particularly important for optional numeric extension slots:
+		// an invalid calculated value must be rejected rather than silently ignored.
+		if (!repeated_item_consumed_remainder && subvalue_i != property_values.size())
+			return false;
 	}
 	else
 	{
@@ -481,6 +577,82 @@ void PropertySpecification::SetPropertyDefaults(PropertyDictionary& dictionary) 
 		if (property && dictionary.GetProperty(property->GetId()) == nullptr)
 			dictionary.SetProperty(property->GetId(), *property->GetDefaultValue());
 	}
+}
+
+void PropertySpecification::SetShorthandDefaults(PropertyDictionary& dictionary, const ShorthandDefinition& definition) const
+{
+	for (const ShorthandItem& item : definition.items)
+	{
+		if (item.type == ShorthandItemType::Property)
+			dictionary.SetProperty(item.property_id, *item.property_definition->GetDefaultValue());
+		else if (item.type == ShorthandItemType::Shorthand)
+			SetShorthandDefaults(dictionary, *item.shorthand_definition);
+	}
+}
+
+bool PropertySpecification::ParseAnyOrderShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition,
+	const StringList& values) const
+{
+	const size_t num_items = definition.items.size();
+	if (values.empty() || values.size() > num_items)
+		return false;
+
+	// Parse into a separate dictionary, so that a value no item takes leaves the destination untouched.
+	PropertyDictionary parsed;
+	Vector<bool> assigned(num_items, false);
+
+	for (const String& value : values)
+	{
+		bool taken = false;
+		for (size_t i = 0; i < num_items && !taken; i++)
+		{
+			if (assigned[i])
+				continue;
+
+			const ShorthandItem& item = definition.items[i];
+			if (item.type == ShorthandItemType::Property)
+			{
+				Property property;
+				if (item.property_definition->ParseValue(property, value))
+				{
+					parsed.SetProperty(item.property_id, property);
+					taken = true;
+				}
+			}
+			else if (item.type == ShorthandItemType::Shorthand)
+			{
+				PropertyDictionary item_parsed;
+				if (ParseShorthandDeclaration(item_parsed, item.shorthand_id, value))
+				{
+					for (const auto& id_property : item_parsed.GetProperties())
+						parsed.SetProperty(id_property.first, id_property.second);
+					taken = true;
+				}
+			}
+
+			if (taken)
+				assigned[i] = true;
+		}
+
+		if (!taken)
+			return false;
+	}
+
+	// Omitted items take their initial value, as in CSS.
+	for (size_t i = 0; i < num_items; i++)
+	{
+		if (assigned[i])
+			continue;
+		const ShorthandItem& item = definition.items[i];
+		if (item.type == ShorthandItemType::Property)
+			parsed.SetProperty(item.property_id, *item.property_definition->GetDefaultValue());
+		else if (item.type == ShorthandItemType::Shorthand)
+			SetShorthandDefaults(parsed, *item.shorthand_definition);
+	}
+
+	for (const auto& id_property : parsed.GetProperties())
+		dictionary.SetProperty(id_property.first, id_property.second);
+	return true;
 }
 
 String PropertySpecification::PropertiesToString(const PropertyDictionary& dictionary, bool include_name, char delimiter) const

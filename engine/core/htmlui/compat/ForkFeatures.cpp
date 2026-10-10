@@ -19,7 +19,7 @@ namespace {
     // and records the flip in docs/html-ui/FORK.md.
     constexpr bool kPresent[(size_t)ForkFeature::Count] = {
         false,   // None (never present)
-        false,   // Calc
+        true,    // Calc (phase 3, p3-base: upstream PR #983; docs/html-ui/FORK.md)
         false,   // BorderStyle
         false,   // PercentRadius
         false,   // PseudoElements

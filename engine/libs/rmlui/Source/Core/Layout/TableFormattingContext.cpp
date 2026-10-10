@@ -21,7 +21,7 @@ UniquePtr<LayoutBox> TableFormattingContext::Format(ContainerBox* parent_contain
 		return table_wrapper_box;
 	}
 
-	const Vector2f containing_block = LayoutDetails::GetContainingBlock(parent_container, element_table->GetPosition()).size;
+	const Vector2f containing_block = LayoutDetails::GetContainingBlock(parent_container, element_table).size;
 	RMLUI_ASSERT(containing_block.x >= 0.f);
 	const ComputedValues& computed_table = element_table->GetComputedValues();
 
@@ -235,7 +235,11 @@ void TableFormattingContext::DetermineRowHeights(TrackBoxList& rows, BoxList& ce
 			// The padding/border/margin and widths of columns are used.
 			const ComputedAxisSize computed = LayoutDetails::BuildComputedVerticalSize(element_row->GetComputedValues());
 
-			if (computed.size.type == Style::LengthPercentageAuto::Percentage)
+			if (computed.size.type == Style::LengthPercentageAuto::Percentage
+#ifdef RMLUI_MATH_EXPRESSIONS
+				|| computed.size.type == Style::LengthPercentageAuto::Calculation
+#endif
+			)
 				percentage_size_used = true;
 
 			sizing.ApplyTrackElement(i, 1, computed);

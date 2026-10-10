@@ -1,7 +1,12 @@
 set(TARGET_NAME "rmlui_unit_tests")
 
 add_executable(${TARGET_NAME}
+	Alignment.cpp
 	Animation.cpp
+	AnimationLayers.cpp
+	Calculation.cpp
+	CalculationTypes.cpp
+	ContainingBlockOverride.cpp
 	Core.cpp
 	CustomProperties.cpp
 	DataBinding.cpp
@@ -20,20 +25,26 @@ add_executable(${TARGET_NAME}
 	EventListener.cpp
 	Filter.cpp
 	FlexFormatting.cpp
+	InitialValues.cpp
+	IntrinsicSizing.cpp
 	Layout.cpp
+	LayoutChildren.cpp
 	Localization.cpp
 	main.cpp
 	Math.cpp
 	MediaQuery.cpp
 	Navigation.cpp
 	Properties.cpp
+	RootFontSize.cpp
 	PropertySpecification.cpp
 	Selectors.cpp
+	ShorthandTypes.cpp
 	Specificity_Basic.cpp
 	Specificity_MediaQuery.cpp
 	StableVector.cpp
 	StringUtilities.cpp
 	StyleSheetParser.cpp
+	StyleValue.cpp
 	Template.cpp
 	URL.cpp
 	Variant.cpp

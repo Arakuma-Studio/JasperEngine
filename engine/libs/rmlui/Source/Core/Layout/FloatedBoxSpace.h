@@ -57,6 +57,9 @@ public:
 
 	/// Get the width of the floated boxes for calculating the shrink-to-fit width.
 	float GetShrinkToFitWidth(float edge_left, float edge_right) const;
+	/// Returns the margin-box width of the widest floated box: its contribution to the min-content width of the formatting
+	/// context root.
+	float GetMinContentWidth() const;
 
 	/// Clear all floating boxes placed in this space.
 	void Reset()

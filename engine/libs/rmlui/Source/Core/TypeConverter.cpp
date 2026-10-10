@@ -7,11 +7,15 @@
 #include "../../Include/RmlUi/Core/PropertySpecification.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "../../Include/RmlUi/Core/StyleSheetTypes.h"
+#include "../../Include/RmlUi/Core/StyleValue.h"
 #include "../../Include/RmlUi/Core/Transform.h"
 #include "../../Include/RmlUi/Core/TransformPrimitive.h"
 #include "PropertyParserColour.h"
 #include "PropertyParserDecorator.h"
 #include "TransformUtilities.h"
+#ifdef RMLUI_MATH_EXPRESSIONS
+	#include "Calculation.h"
+#endif
 
 namespace Rml {
 
@@ -71,6 +75,22 @@ bool TypeConverter<TransformPtr, String>::Convert(const TransformPtr& src, Strin
 	}
 	return true;
 }
+
+#ifdef RMLUI_MATH_EXPRESSIONS
+bool TypeConverter<CalculationPtr, CalculationPtr>::Convert(const CalculationPtr& src, CalculationPtr& dest)
+{
+	dest = src;
+	return true;
+}
+
+bool TypeConverter<CalculationPtr, String>::Convert(const CalculationPtr& src, String& dest)
+{
+	if (!src)
+		return false;
+	dest = src->ToString();
+	return true;
+}
+#endif
 
 bool TypeConverter<TransitionList, TransitionList>::Convert(const TransitionList& src, TransitionList& dest)
 {
@@ -228,6 +248,18 @@ bool TypeConverter<ColorStopList, String>::Convert(const ColorStopList& src, Str
 		if (i < src.size() - 1)
 			dest += ", ";
 	}
+	return true;
+}
+
+bool TypeConverter<StyleValuePtr, StyleValuePtr>::Convert(const StyleValuePtr& src, StyleValuePtr& dest)
+{
+	dest = src;
+	return true;
+}
+
+bool TypeConverter<StyleValuePtr, String>::Convert(const StyleValuePtr& src, String& dest)
+{
+	dest = (src ? src->ToString() : String());
 	return true;
 }
 

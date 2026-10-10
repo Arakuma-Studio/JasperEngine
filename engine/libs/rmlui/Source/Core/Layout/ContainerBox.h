@@ -4,6 +4,7 @@
 #include "../../../Include/RmlUi/Core/StyleTypes.h"
 #include "../../../Include/RmlUi/Core/Types.h"
 #include "LayoutBox.h"
+#include <optional>
 
 namespace Rml {
 
@@ -27,7 +28,10 @@ public:
 	bool CatchOverflow(Vector2f visible_overflow_size, Vector2f scrollable_content_size, const Box& box, float max_height) const;
 
 	// Adds an absolutely positioned element, to be formatted and positioned when closing this container, see 'ClosePositionedElements'.
-	void AddAbsoluteElement(Element* element, Vector2f static_position, Element* static_relative_offset_parent);
+	// @param[in] containing_block Its containing block when it is not our padding box (a grid area, the viewport), relative to our
+	// border box: its size and insets resolve against it.
+	void AddAbsoluteElement(Element* element, Vector2f static_position, Element* static_relative_offset_parent,
+		std::optional<Rectanglef> containing_block = std::nullopt);
 	// Adds a relatively positioned element which we act as a containing block for.
 	void AddRelativeElement(Element* element);
 
@@ -63,8 +67,9 @@ protected:
 
 private:
 	struct AbsoluteElement {
-		Vector2f static_position;               // The hypothetical position of the element as if it was placed in normal flow.
-		Element* static_position_offset_parent; // The element for which the static position is offset from.
+		Vector2f static_position;                   // The hypothetical position of the element as if it was placed in normal flow.
+		Element* static_position_offset_parent;     // The element for which the static position is offset from.
+		std::optional<Rectanglef> containing_block; // Set: the containing block, relative to our border box, instead of our padding box.
 	};
 	using AbsoluteElementMap = SmallUnorderedMap<Element*, AbsoluteElement>;
 
@@ -109,6 +114,7 @@ public:
 	bool Close(const Vector2f visible_overflow_size, Vector2f scrollable_content_size, const Box& box, float element_baseline);
 
 	float GetShrinkToFitWidth() const override;
+	float GetMinContentWidth() const override;
 
 	const Box* GetIfBox() const override { return &box; }
 	String DebugDumpTree(int depth) const override;

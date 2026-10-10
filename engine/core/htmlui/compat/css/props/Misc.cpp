@@ -33,7 +33,7 @@ namespace {
 
     // emits name: value when RCSS accepts it, else reports
     void emitChecked(DeclContext& context, const std::string& property, const std::string& value, const std::string& suggestion = std::string()){
-        if (!RcssGrammar::accepts(property, value)){
+        if (!RcssGrammar::accepts(property, value, context.session.options.fork)){
             unsupportedValue(context, suggestion);
             return;
         }
