@@ -499,11 +499,14 @@ namespace {
                 }
                 return false;
             };
+            // (the fork's units with ExtraUnits)
+            const bool forkUnit = acceptsWithFork(ForkFeature::ExtraUnits) && isForkUnit(unit.view);
+            const bool forkAngle = forkUnit && (unit.view == "turn" || unit.view == "grad");
             if (unit.view.empty())
                 units |= CalcNumber;
-            else if (in(lengths))
+            else if (in(lengths) || (forkUnit && !forkAngle))
                 units |= CalcLength;
-            else if (in(angles))
+            else if (in(angles) || forkAngle)
                 units |= CalcAngle;
             else if (in(times))
                 units |= CalcTime;
