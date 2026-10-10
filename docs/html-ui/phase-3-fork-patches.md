@@ -1780,6 +1780,51 @@ holy-grail,auto-fill-cards,auto-fit-collapse,minmax-fr,fit-content,dense-gallery
 lines,named-lines,align-justify-matrix,place-shorthands,abs-pos-area,scroll-grid,inline-grid,
 grid-in-flex,flex-in-grid,percent-gap}.html`.
 
+#### 3.14.7 `p3-grid` as implemented
+
+FORK.md rows P3-G1 (properties), P3-G2 (layout), P3-G3 (benchmark). Where the implementation differs from or makes
+precise §3.14.1-3.14.6:
+
+- **Values.** `GridTrackBreadth` is `{Kind {Length, Auto, MinContent, MaxContent, Fr}, LengthPercentageValue length,
+  float fr}`: one `Length` kind holds px, the relative units, `%` and `calc()` (groundwork's `LengthPercentageValue`);
+  `GridTrackSize` keeps its written form (`Breadth`, `MinMax`, `FitContent`) for serialization;
+  `GridTemplateAreasValue` keeps its rows as written; `GridLineValue::index` is the line number (`Line`), the nth line of
+  the name (`NamedLine`, 0: the first) or the count (`Span`, `NamedSpan`). Invalid templates (two auto repeats, an auto
+  repeat beside a track without a fixed size, `fr` minimums, nested `repeat()`, `subgrid`, `masonry`) are parse
+  errors, so the declaration is dropped as in browsers.
+- **Quoted values.** 6.3 removes the quotes of a value and rejects a second string, so `grid-template-areas` could not
+  parse: a property may now take its value as written (`PropertyDefinition::SetValueAsWritten`; quotes kept, the value
+  split at commas only to detect `var()` and unbalanced quotes), and `Custom` shorthands get theirs with the quotes kept
+  (`grid-template`, `grid`). p3-cascade's `content` and `quotes` can use the same mechanism.
+- **Gaps.** `normal` parses (the `gap` parser) to 0; `column-gap` percentages are of the width.
+- **Layout files.** As §3.14.2, in namespace `Rml::GridLayout`, plus `GridTypes.cpp` (value resolution). Item lengths
+  are read from `ComputedValues` once per run; track lengths are resolved with the container's context (em, vw, dp) and
+  `calc()` at layout time.
+- **Measuring (§3.14.3).** As planned; a definite available width measures the fit-content width. Every measurement goes
+  through `LayoutMeasureCache` and the per-item caches of a run.
+- **Intrinsic size (§3.14.4).** `GridContainer::GetShrinkToFitWidth`/`GetMinContentWidth` run placement and column
+  sizing under a max-content/min-content constraint and stop there (Taffy's `ComputeSize` early exit). As for flex
+  containers, `LayoutDetails` formats the element before asking: that formatting is not reused.
+- **Absolutely positioned children (§3.14.5).** A child whose containing block is the grid gets its grid area through
+  the containing-block override; a descendant whose containing block is the grid (its parent a static item) through
+  `ContainerBox::GetAbsoluteContainingBlock`, a virtual hook `ClosePositionedElements` asks when no override was given
+  (`GridContainer` keeps the final tracks and line names until it closes). With both insets of an axis `auto`, the box is
+  aligned in its grid area (or in the grid's content box when the grid is not its containing block) by its self
+  alignment: the grid measures its margin box first. Alignment within the inset-modified containing block with insets
+  set (CSS Position 3) is not done (RmlUi's absolute layout, p3-layout).
+- **Differences from Taffy.** Relative offsets of items are RmlUi's (percentages of the container's content box, not
+  the grid area). Item baselines are the last line's (RmlUi has no first-line baseline); a flex or grid item without one
+  gives its first item's bottom border edge, an item without any its own; `last baseline` aligns as its fallback
+  `safe end`. `aspect-ratio` and sizing keywords of items wait for p3-layout.
+- **Compat.** `ForkFeature::Grid` present: grid declarations pass through, `calc()` in them is kept
+  (`calcNative` for `RewriteId::Grid`); `subgrid` and `masonry` are dropped with `HTMLUI-CSS-0004` in every state.
+- **Taffy fixtures.** Of the 530 `grid-unsupported` known failures, 387 pass; the other 143 are re-owned to the cause
+  they still have: p3-text `text-zwsp` 119, p3-layout `aspect-ratio` 12, `absolute-position` 2, `flex-alignment` 5
+  (compat drops `safe` until `BoxParity`), p3-paint `border-style` 5 (compat writes `border-style: solid` as medium
+  widths over the declared `border-width` until `BorderStyle`).
+- **Found on the way.** The engine draws scrolled content one pixel above the top clip edge of an `overflow: hidden`
+  box (any layout; `scroll-grid` scrolls to a gutter there). Owner: p3-layout (overflow).
+
 ## 4. Work packages
 
 Waves: **wave 0** (2 packages in parallel) lands first; **wave 1** (7 packages in parallel) branches

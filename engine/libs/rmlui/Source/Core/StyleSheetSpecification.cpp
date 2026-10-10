@@ -1,6 +1,7 @@
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
+#include "GridStyleValues.h"
 #include "IdNameMap.h"
 #include "PropertyParserAlignment.h"
 #include "PropertyParserAnimation.h"
@@ -297,6 +298,7 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	// -- Animation (p3-animation) --
 
 	// -- Grid (p3-grid) --
+	RegisterGridParsers();
 }
 
 void StyleSheetSpecification::RegisterDefaultProperties()
@@ -361,9 +363,8 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::BorderBottomLeftRadius, "border-bottom-left-radius", "0px", false, false).AddParser("length");
 	RegisterShorthand(ShorthandId::BorderRadius, "border-radius", "border-top-left-radius, border-top-right-radius, border-bottom-right-radius, border-bottom-left-radius", ShorthandType::Box);
 
-	// 'grid=14, inline-grid=15' join the display keywords with grid layout (p3-grid): ForkFeature::Grid's probe parses them.
 	RegisterProperty(PropertyId::Display, "display", "inline", false, true)
-		.AddParser("keyword", "none, block, inline, inline-block, flow-root, flex, inline-flex, table, inline-table, table-row, table-row-group, table-column, table-column-group, table-cell, list-item=16, contents=17");
+		.AddParser("keyword", "none, block, inline, inline-block, flow-root, flex, inline-flex, table, inline-table, table-row, table-row-group, table-column, table-column-group, table-cell, grid, inline-grid, list-item, contents");
 	RegisterProperty(PropertyId::Position, "position", "static", false, true).AddParser("keyword", "static, relative, absolute, fixed, sticky");
 	RegisterProperty(PropertyId::Top, "top", "auto", false, false).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
 	RegisterProperty(PropertyId::Right, "right", "auto", false, false).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
@@ -430,8 +431,9 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	// not registered.
 	RegisterProperty(PropertyId::WordBreak, "word-break", "normal", true, true).AddParser("keyword", "normal, break-all, break-word, keep-all");
 
-	RegisterProperty(PropertyId::RowGap, "row-gap", "0px", false, true).AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
-	RegisterProperty(PropertyId::ColumnGap, "column-gap", "0px", false, true).AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
+	// 'normal' is 0 in flex and grid layout (the 'gap' parser, p3-grid); a column gap is a fraction of the width.
+	RegisterProperty(PropertyId::RowGap, "row-gap", "0px", false, true).AddParser("gap").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
+	RegisterProperty(PropertyId::ColumnGap, "column-gap", "0px", false, true).AddParser("gap").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
 	RegisterShorthand(ShorthandId::Gap, "gap", "row-gap, column-gap", ShorthandType::Replicate);
 
 	RegisterProperty(PropertyId::Cursor, "cursor", "", true, false).AddParser("string");
@@ -557,6 +559,7 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	// -- Animation (p3-animation) --
 
 	// -- Grid (p3-grid) --
+	RegisterGridProperties(properties);
 
 	instance->properties.property_map->ReserveUnnamed(PropertyId::NumDefinedIds);
 	instance->properties.shorthand_map->ReserveUnnamed(ShorthandId::NumDefinedIds);

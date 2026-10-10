@@ -1,0 +1,22 @@
+{
+ "comment": "rows overflow a clipping grid; the grid scrolls by its scrollable overflow (the rows and its end padding); scrolled to a gutter at the top edge",
+ "viewport": [
+  240,
+  140
+ ],
+ "steps": [
+  {
+   "capture": "top"
+  },
+  {
+   "scroll": [
+    "#g",
+    0,
+    50
+   ]
+  },
+  {
+   "capture": "scrolled"
+  }
+ ]
+}

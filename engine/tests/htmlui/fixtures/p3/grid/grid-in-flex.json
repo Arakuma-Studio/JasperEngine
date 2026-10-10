@@ -1,0 +1,7 @@
+{
+ "comment": "a grid flex item is as wide as its columns (64px), a flexible one takes the rest, a stretched one the line's height",
+ "viewport": [
+  300,
+  100
+ ]
+}

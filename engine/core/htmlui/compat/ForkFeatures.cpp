@@ -29,7 +29,7 @@ namespace {
         false,   // TimingFunctions
         false,   // Important
         false,   // CssWideKeywords
-        false,   // Grid
+        true,    // Grid (phase 3, p3-grid: CSS Grid, a port of Taffy; docs/html-ui/FORK.md P3-G1..P3-G3)
         true,    // TextShadow (phase 3, p3-text: native text-shadow; docs/html-ui/FORK.md)
         true,    // TextProperties (phase 3, p3-text: word-spacing, white-space longhands, overflow-wrap, text-decoration-*, ...)
     };
