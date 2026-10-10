@@ -19,17 +19,7 @@ namespace {
 
     // the entry of a selector hash (nullptr when no rule has it and `add` is false)
     Session::BaseEntry* entryOf(Session& session, uint64_t hash, bool add){
-        if (!session.baseSlots.empty()){
-            const size_t mask = session.baseSlots.size() - 1;
-            for (size_t i = (size_t)hash & mask; session.baseSlots[i] != kNoEntry; i = (i + 1) & mask){
-                Session::BaseEntry& entry = session.baseEntries[session.baseSlots[i]];
-                if (entry.hash == hash)
-                    return &entry;
-            }
-        }
-        if (!add)
-            return nullptr;
-        if ((session.baseEntries.size() + 1) * 2 > session.baseSlots.size()){
+        if (add && (session.baseEntries.size() + 1) * 2 > session.baseSlots.size()){
             session.baseSlots.assign(session.baseSlots.empty() ? 256 : session.baseSlots.size() * 2, kNoEntry);
             const size_t mask = session.baseSlots.size() - 1;
             for (uint32_t index = 0; index < (uint32_t)session.baseEntries.size(); index++){
@@ -39,10 +29,18 @@ namespace {
                 session.baseSlots[i] = index;
             }
         }
+        if (session.baseSlots.empty())
+            return nullptr;
+        // one probe: the entry, or the free slot it goes to
         const size_t mask = session.baseSlots.size() - 1;
         size_t i = (size_t)hash & mask;
-        while (session.baseSlots[i] != kNoEntry)
-            i = (i + 1) & mask;
+        for (; session.baseSlots[i] != kNoEntry; i = (i + 1) & mask){
+            Session::BaseEntry& entry = session.baseEntries[session.baseSlots[i]];
+            if (entry.hash == hash)
+                return &entry;
+        }
+        if (!add)
+            return nullptr;
         session.baseSlots[i] = (uint32_t)session.baseEntries.size();
         Session::BaseEntry& entry = session.baseEntries.emplace_back();
         entry.hash = hash;

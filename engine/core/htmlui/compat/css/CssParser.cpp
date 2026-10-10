@@ -34,6 +34,26 @@ namespace {
         }
     }
 
+    // how Parser::deferPrelude reads a byte of a prelude
+    enum class PreludeByte : uint8_t { Other, Plain, Space, Open };
+    struct PreludeBytes {
+        PreludeByte kind[256];
+        constexpr PreludeBytes(): kind() {
+            for (int c = 0; c < 256; c++){
+                PreludeByte k = PreludeByte::Other;
+                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '#' ||
+                    c == ':' || c == '>' || c == '+' || c == '~' || c == '*' || c == ',')
+                    k = PreludeByte::Plain;
+                else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f')
+                    k = PreludeByte::Space;
+                else if (c == '{')
+                    k = PreludeByte::Open;
+                kind[c] = k;
+            }
+        }
+    };
+    inline constexpr PreludeBytes kPreludeBytes{};
+
     // What the parsers of a thread are building: the items of the lists still open (a block's
     // children, a value, a prelude, a block's declarations and rules), above the mark each list
     // took when it opened; a list closes into the arena at its exact size (ArenaList::movedFrom)
@@ -437,18 +457,19 @@ namespace {
                 return false;
             size_t lastNonSpace = start;
             while (i < size){
-                const char c = css[i];
-                if (c == '{')
-                    break;
-                if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'){
+                const PreludeByte kind = kPreludeBytes.kind[(unsigned char)css[i]];
+                if (kind == PreludeByte::Plain){
+                    i++;
+                    lastNonSpace = i;
+                    continue;
+                }
+                if (kind == PreludeByte::Space){
                     i++;
                     continue;
                 }
-                if (!kNameBytes.is[(unsigned char)c] && c != '.' && c != '#' && c != ':' && c != '>' && c != '+' && c != '~' &&
-                    c != '*' && c != ',')
-                    return false;
-                i++;
-                lastNonSpace = i;
+                if (kind == PreludeByte::Open)
+                    break;
+                return false;
             }
             if (i >= size || lastNonSpace == start)
                 return false;
@@ -520,7 +541,7 @@ namespace {
                 // token's value is a view of), a lowered copy otherwise
                 bool upper = false;
                 for (const char c : nameText)
-                    upper = upper || (c >= 'A' && c <= 'Z');
+                    upper |= (unsigned char)(c - 'A') < 26u;
                 if (custom || !upper)
                     declaration.name = nameValue;
                 else
