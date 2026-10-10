@@ -33,6 +33,7 @@
 #include "htmlui/compat/css/props/Rewriters.h"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <map>
 #include <cstdio>
@@ -41,6 +42,41 @@
 #include <set>
 
 using namespace jasperengine::htmlui::compat;
+
+namespace {
+
+    // the declaration memo's mode (-1: not read from the environment yet) and what Check found
+    std::atomic<int> gMemoMode{-1};
+    std::atomic<uint64_t> gMemoMismatches{0};
+    std::atomic<uint64_t> gMemoHits{0};
+
+}
+
+void CssRewriter::setDeclarationMemo(DeclarationMemo mode){
+    gMemoMode.store((int)mode, std::memory_order_relaxed);
+}
+
+CssRewriter::DeclarationMemo CssRewriter::declarationMemo(){
+    int mode = gMemoMode.load(std::memory_order_relaxed);
+    if (mode < 0){
+        const char* value = std::getenv("JASPER_HTMLUI_CSS_MEMO");
+        mode = (int)DeclarationMemo::On;
+        if (value && std::strcmp(value, "off") == 0)
+            mode = (int)DeclarationMemo::Off;
+        else if (value && std::strcmp(value, "check") == 0)
+            mode = (int)DeclarationMemo::Check;
+        gMemoMode.store(mode, std::memory_order_relaxed);
+    }
+    return (DeclarationMemo)mode;
+}
+
+uint64_t CssRewriter::declarationMemoMismatches(){
+    return gMemoMismatches.load(std::memory_order_relaxed);
+}
+
+uint64_t CssRewriter::declarationMemoHits(){
+    return gMemoHits.load(std::memory_order_relaxed);
+}
 
 namespace {
     void boxShorthandCompanions(Session& session, const OutDecl& out, ArenaList<OutDecl>& extra);
@@ -111,15 +147,9 @@ bool DeclContext::fork(ForkFeature feature) const{
 Session::Session(const CompatOptions& options, SourceFiles& files, DiagnosticSink& sink, const RewriteContext& context):
     options(options), files(files), sink(&sink), context(context), urls(context.files, context.manifest) {
     mainSink = &sink;
-    // JASPER_HTMLUI_CSS_MEMO: "off" (no declaration memo), "check" (every hit compared)
-    static const int memoMode = [](){
-        const char* value = std::getenv("JASPER_HTMLUI_CSS_MEMO");
-        if (!value)
-            return 0;
-        return std::strcmp(value, "off") == 0 ? 1 : (std::strcmp(value, "check") == 0 ? 2 : 0);
-    }();
-    memoDisabled = memoMode == 1;
-    memoCheck = memoMode == 2;
+    const CssRewriter::DeclarationMemo memoMode = CssRewriter::declarationMemo();
+    memoDisabled = memoMode == CssRewriter::DeclarationMemo::Off;
+    memoCheck = memoMode == CssRewriter::DeclarationMemo::Check;
     selectorOptions.fork = options.fork;
     for (const auto& attribute : context.rootAttributes){
         const std::string name = lowerAscii(attribute.first);
@@ -1513,7 +1543,7 @@ namespace {
             same = session.result->fontFamilies[fonts + i] == session.memoFonts[entry.fontFirst + i];
         if (!same){
             std::fprintf(stderr, "[HTML UI] declaration memo mismatch for '%s'\n", std::string(d.text).c_str());
-            std::abort();
+            gMemoMismatches.fetch_add(1, std::memory_order_relaxed);
         }
         session.result->fontFamilies.resize(fonts);
     }
@@ -1615,8 +1645,10 @@ namespace {
             const uint64_t hash = StringIndex::hash(d.text) ^ ((uint64_t)bits * 0x9E3779B97F4A7C15ull) ^ ((uint64_t)d.ref.file << 40);
             const uint32_t found = memoFind(session, hash, d, bits);
             if (found != kNoMemo && session.memoEntries[found].pure){
-                if (session.memoCheck)
+                if (session.memoCheck){
+                    gMemoHits.fetch_add(1, std::memory_order_relaxed);
                     memoVerify(session, rule, origin, keyframe, d, block, found);
+                }
                 const Session::MemoEntry& entry = session.memoEntries[found];
                 for (uint32_t i = 0; i < entry.count; i++){
                     OutDecl& out = output.declarations.emplace_back();
