@@ -41,12 +41,12 @@ namespace jasperengine::htmlui::compat {
 
         // writes a shadow ring / layers / effect value through its companion (or directly in
         // keyframe mode and where the document does not need the companion)
-        void emitBoxShadow(DeclContext& context, const std::string& value);
-        void emitOutline(DeclContext& context, const std::string& ring);
+        void emitBoxShadow(DeclContext& context, std::string_view value);
+        void emitOutline(DeclContext& context, std::string_view ring);
         void emitBackgroundLayers(DeclContext& context, std::string_view layers);      // "" = none
-        void emitBorderImage(DeclContext& context, const std::string& decorator);
-        void emitTextShadow(DeclContext& context, const std::string& effects);         // "" = none
-        void emitTextStroke(DeclContext& context, const std::string& effect);          // "" = none
+        void emitBorderImage(DeclContext& context, std::string_view decorator);
+        void emitTextShadow(DeclContext& context, std::string_view effects);           // "" = none
+        void emitTextStroke(DeclContext& context, std::string_view effect);            // "" = none
     }
 
 }

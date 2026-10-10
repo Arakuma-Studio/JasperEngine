@@ -187,13 +187,29 @@ namespace jasperengine::htmlui::compat {
         // A CSS easing (keyword or function) as written for RmlUi: the nearest tween until the
         // fork has TimingFunctions (Transition.cpp). note/code/severity: what to report ("" =
         // exact). nullopt when the value is not an easing.
+        // (trivially copied: texts in the session's arena or literals)
         struct EasingResult {
-            std::string text;
+            Text text;
             DiagCode code{};
             Severity severity = Severity::Info;
-            std::string note;
+            Text note;
         };
         std::optional<EasingResult> easingOf(Session& session, const ComponentValue& value);
+
+        // a time of the transition and animation families: seconds (written formatNumber(s) +
+        // "s"), a var() of times written as it is, or none (written "")
+        struct Timing {
+            enum class Kind : uint8_t { None, Seconds, Var };
+            Kind kind = Kind::None;
+            double seconds = 0;
+            const ComponentValue* var = nullptr;
+            bool given() const { return kind != Kind::None; }
+        };
+        void appendTiming(std::string& out, const Timing& timing);
+        // is it written "0s"?
+        bool writtenAsZero(const Timing& timing);
+        // the text of a range of values as props::text writes a list (messages)
+        std::string text(const ValueRange& range);
     }
 
     // the html-shape mask decorator of a clip-path declaration (Effects.cpp); nullopt when none

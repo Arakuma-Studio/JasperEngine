@@ -227,6 +227,27 @@ std::string_view props::identView(const ComponentValue& value){
     return name.view();
 }
 
+void props::appendTiming(std::string& out, const Timing& timing){
+    if (timing.kind == Timing::Kind::Seconds){
+        appendNumber(out, timing.seconds);
+        out += 's';
+    }else if (timing.kind == Timing::Kind::Var){
+        appendSerialized(out, *timing.var);
+    }
+}
+
+bool props::writtenAsZero(const Timing& timing){
+    if (timing.kind != Timing::Kind::Seconds)
+        return false;
+    std::string written;
+    appendNumber(written, timing.seconds);
+    return written == "0";
+}
+
+std::string props::text(const ValueRange& range){
+    return text(ValueList(range.first, range.last));
+}
+
 std::string props::text(const ComponentValue& value){
     return serialize(value);
 }
