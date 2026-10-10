@@ -614,7 +614,7 @@ value CSS grammar with keyword order freedom and edge offsets `right 10px bottom
   compat rewrite, only the separator contract is checked (unit test in
   `engine/tests/htmlui/FontFamilyListTest.cpp`).
 - `font-size` keywords `xx-small … xxx-large` (CSS table relative to 16px), `smaller`/`larger`
-  (×1/1.2 of parent), `math` → `medium`.
+  (×1/1.2 of parent), `math` → the parent's size (Chromium; was planned as `medium`).
 - `font-weight`: `bolder`/`lighter` (CSS relative-weight table, computed against parent), numbers
   1–1000.
 - `font` shorthand (`StyleSheetSpecification.cpp:359`, FallThrough) → `Custom`:
@@ -622,6 +622,8 @@ value CSS grammar with keyword order freedom and edge offsets `right 10px bottom
   and system font keywords (`caption`, `menu`, … → diagnosed). Omitted longhands reset.
 - Font size passed to the font engine is rounded, not truncated (`ElementStyle.cpp:1000`
   `(int)values.font_size()` → `Math::RoundToInteger`); `FontEngineInterface` keeps `int size`.
+  (As implemented: `math` is the parent's size, as Chromium; quoted lists go through
+  `SplitOption::Raw`; see "p3-values as implemented" in §4.)
 
 #### 3.3.5 Numbers
 - `opacity`, `flex-grow`, `flex-shrink` accept `%` where CSS does (opacity), clamp negative
@@ -1841,6 +1843,57 @@ golden fixtures listed in its §3 section, removal of its entries from `known-fa
 flag flips with updated compat tests and consistency tests (§5.4), diagnostics for its §2.2 items,
 and the user-facing support notes in `docs/mcp/guide/html-ui.md` for its features.
 
+**p3-values as implemented** (wave 1; FORK.md P3-V1…P3-V10, where the implementation differs from
+or makes precise §3.2 and §3.3):
+- **Lengths (§3.3.1).** `LengthContext {font_size, root_font_size, dp_ratio, vp_dimensions,
+  font_face}` and `ComputeLength(value, context)` exist, but the five-scalar compute functions keep
+  their signatures, so the `ElementStyle::ComputeValue` switch (every package's section) is
+  untouched: while an element's values are computed its font face is current (`FontUnitScope`,
+  the inherited face first), and a post-pass of `ComputeValues` (`ElementStyleValues.cpp`, the
+  hook the line-height post-pass shares) computes the `ch`/`ex` values again against the element's
+  own face once it is known and reports them changed when the face changed. `ch` is the advance of
+  '0' (`GetStringWidth`, whole pixels), `ex` the font's `x_height`; half the font size without a
+  face. The `s/l/d` forms of `vmin`/`vmax` alias them too. `CalculationResolverContext::font_face`.
+- **Colors (§3.3.2).** `lab()`/`lch()` are CIE Lab D50 (6.3 converted with a D65 white, so 6.3's
+  test expectations change); `color()` takes srgb, srgb-linear and xyz; out-of-gamut colours clip
+  per channel, as Chromium 153 does (no CSS gamut mapping); channels round. `currentcolor` is
+  `Property{Unit::KEYWORD, PropertyParserColour::CurrentColor}` in plain colour properties and a
+  `current_color` flag of `BoxShadow` and `ColorStop`; no per-element id set is kept: the
+  `ComputeValues` loop replaces the keyword (every local property is visited there anyway) and
+  reports the properties holding one changed when `color` is dirty. A shadow without a colour is
+  `currentcolor` (CSS; 6.3 drew it black). Font effects and filters are instanced without an
+  element: there `currentcolor` is black, and compat keeps its companion for them.
+  `color-mix()` with a `currentcolor` operand does not parse.
+- **Fonts (§3.3.4).** A list with several quoted parts reaches the `font_family` parser as written
+  through `PropertySpecification::SplitOption::Raw` (also used for the Custom shorthands, whose
+  "raw value" 6.3's single-value split rejected when it held quotes, and for custom properties whose
+  6.3 split fails); quoted names collapse their white space as unquoted ones. `font-size: math` is
+  the parent's size (as Chromium outside MathML), not `medium`. `cursor` keeps fallback keywords
+  (`help, pointer`, below).
+- **`line-height: normal` (§3.3.6).** The used value rounds the ascent, the descent and the line
+  gap each to whole pixels, as Chromium (`round(A) + round(D) + round(G)`; Roboto 16px is 19px, not
+  18.75). Chromium's content area of an inline box is `round(A) + round(D)`, which RmlUi sized as
+  1.2 times the font size: P3-V10 changes that one expression of `InlineBox` (p3-text's file) so
+  inline backgrounds line up with `normal` lines (the `ua-defaults` gates). The phase-0/1 RML
+  goldens keep 1.2 through `fixtures/common/base.css`.
+- **Logical properties (§3.3.7).** The `border-*-style` logical shorthands cannot list the paint
+  package's style longhands (registered after the values section): they have no items and name
+  the longhands by id when they parse, so they parse once those exist and a `var()` in them is not
+  substituted. Compat keeps mapping logical properties itself (RTL swap); `calc()` and the new
+  units stay in them now (`writesCalcNatively` gains `LogicalBox` and `FontWeight`).
+- **Cursor (§3.3.8).** Application cursor names (identifiers such as `arrow`, which RmlUi
+  documents use) are kept as written; several keywords are kept as fallbacks, the system
+  interface takes the first it knows (phase 1's `RmlSystem::cursorFromCss`): the value
+  `SetMouseCursor` receives is the keyword list without the image entries.
+- **Numbers (§3.3.5).** `PropertyParserNumber::Restriction` (`AlphaValue`, `NonNegative`,
+  `Integer`); the `aspect_ratio` parser's values for p3-layout: KEYWORD 0 (`auto`), RATIO
+  `(w, h)`, RATIO `(-w, -h)` for `auto <ratio>`.
+- **Compat (Appendix A).** `CurrentColor`: kept in the colour and border rewrites only (colour,
+  background, border and caret colours); the companion stays everywhere else. `ExtraUnits`: kept
+  where `calc()` is (`NormalizeContext::unitsNative`, not custom properties), without orientation
+  copies (`OutDecl::nativeUnits`) or style-attribute evaluation. Fixtures use the built-in Roboto
+  through `sans-serif` (Chromium rejects the subset file as a web font).
+
 ### Wave 2
 
 #### `p3-integration` — cross-feature verification and closing
@@ -2045,8 +2098,9 @@ Phase 3 is accepted when all boxes are checked on the merged `html-ui` branch:
 - [ ] Every phase-3 fork change is in `rmlui:` commits; FORK.md lists each patch (commits, files,
       reason, upstream status, tests), PR #983 provenance and the Taffy commit + license.
 - [ ] `tools/htmlui/run-rmlui-tests.sh` passes: all 6.3 cases (expectations changed only where FORK.md
-      documents an initial-value change, or P2-8's white-space text: P3-T2), all PR #983 cases, all
-      phase-3 cases.
+      documents an initial-value change, a CSS value fix (P3-V*: the `rgba()` alpha scale, D50 Lab,
+      rounded channels, shadows without a colour, `transform-origin` keyword order, `cursor` keywords),
+      or P2-8's white-space text: P3-T2), all PR #983 cases, all phase-3 cases.
 - [ ] Benchmarks recorded before/after for style computation, `:has`-free documents and layout;
       no unexplained regression > 10 %.
 - [ ] Zero new compiler warnings in the fork and engine on Linux GCC; Web and Android builds pass.
