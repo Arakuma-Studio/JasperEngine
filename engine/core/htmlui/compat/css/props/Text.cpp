@@ -566,7 +566,7 @@ void jasperengine::htmlui::compat::rewriteLineClamp(DeclContext& context){
         maxHeight = formatNumber(lines * 1.2, 4) + "em";
     context.reportAs(Severity::Warning, codes::ApproximatedVisible, "'" + context.sourceText() + "' cuts the text at " +
                      formatNumber(lines) + " lines (max-height " + maxHeight + ") without an ellipsis",
-                     "set a line-height on the rule so the cut is exact");
+                     "for an ellipsis use one line with text-overflow: ellipsis; set a line-height on the rule so the cut is exact");
     context.emit("max-height", maxHeight);
     context.emit("overflow", "hidden");
 }
