@@ -17,6 +17,7 @@
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/EventListener.h>
 #include <RmlUi/Core/Property.h>
 #include <RmlUi/Core/Transform.h>
 #include <RmlUi/Core/TransformPrimitive.h>
@@ -379,4 +380,39 @@ TEST_F(AnimeElementTest, TickIsIdempotentPerTime){
     AnimEngine::instance().tick(HtmlUIClock::now());
     EXPECT_EQ(updates, 1);
     EXPECT_NEAR(t->getNumber("v"), 10, 1e-9);
+}
+
+// Phase 3 (p3-animation; phase-3 spec 3.13.4, reconciliation decision 3): transitions start on
+// any change of a computed value, so a property anime writes every frame that also has a CSS
+// transition starts that transition again at each write, as Anime.js does in a browser: the
+// computed value follows the written one with the transition's lag, and settles on the last one.
+TEST_F(AnimeElementTest, CssTransitionRestartsOnEveryWrite){
+    Rml::Element* box = element("box");
+    box->SetProperty("transition", "opacity 0.5s linear");
+    updateDocuments(scene());
+
+    struct Counter : Rml::EventListener {
+        int count = 0;
+        void ProcessEvent(Rml::Event&) override{ count++; }
+    } runs;
+    box->AddEventListener(Rml::EventId::Transitionrun, &runs);
+
+    auto animation = Anime::animate(target("box"), AnimParam::object({{"opacity", 0}, {"duration", 1000}, {"ease", "linear"}}));
+    for (int i = 0; i < 10; i++){
+        advance(50);
+        updateDocuments(scene());
+    }
+    const Rml::Property* written = inlineProperty(box, Rml::PropertyId::Opacity);
+    ASSERT_NE(written, nullptr);
+    EXPECT_NEAR(written->Get<float>(), 0.5f, 0.01f);
+    EXPECT_GT(box->GetComputedValues().opacity(), written->Get<float>() + 0.05f);
+    EXPECT_GE(runs.count, 9);
+
+    for (int i = 0; i < 30; i++){
+        advance(50);
+        updateDocuments(scene());
+    }
+    EXPECT_TRUE(animation->isCompleted());
+    EXPECT_NEAR(box->GetComputedValues().opacity(), 0.0f, 1e-4f);
+    box->RemoveEventListener(Rml::EventId::Transitionrun, &runs);
 }
