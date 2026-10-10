@@ -18,19 +18,32 @@ using namespace jasperengine;
 
 namespace {
 
-    // Applies a lighting mode to the inputs and scene of a mesh variant; false when this
-    // build cannot express the mode (reported and skipped). The one place a lighting mode
-    // is added to the matrix: set the material's lighting and the scene lights it needs.
+    // Applies a lighting mode to the inputs and scene of a mesh variant: the material's
+    // lighting, and for a lit mode a scene with lights (the variant otherwise draws unlit).
+    // False when this build cannot express the mode (reported and skipped).
     bool applyLightingMode(ShaderLightingMode mode, SubmeshShaderInputs& inputs, MeshShaderEnvironment& environment){
-        (void)inputs;
-        (void)environment;
         switch (mode){
             case ShaderLightingMode::NONE:
+                inputs.lighting = MaterialLighting::NONE;
                 return true;
-            default:
-                return false;
+            case ShaderLightingMode::PIXEL:
+                inputs.lighting = MaterialLighting::PIXEL;
+                environment.lights = true;
+                return true;
+            case ShaderLightingMode::VERTEX:
+                inputs.lighting = MaterialLighting::VERTEX;
+                environment.lights = true;
+                return true;
+            case ShaderLightingMode::MIXED:
+                inputs.lighting = MaterialLighting::MIXED;
+                environment.lights = true;
+                return true;
         }
+        return false;
     }
+
+    // the per-object light capacity tiers a lit variant compiles at (RenderSystem::getLightCapacity)
+    const int lightCapacities[] = {8, 4, 16};
 
     // a mesh with normals, tangents and one UV set, in a scene without lights
     SubmeshShaderInputs baseMeshInputs(const std::shared_ptr<const ShaderManifest>& manifest){
@@ -133,7 +146,9 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
             }
         };
 
-        // the lighting modes it supports, the first (default) with every feature set
+        // the lighting modes it supports, the first (default) with every feature set; a lit
+        // mode at each light capacity tier, with and without shadows (only pixel lights
+        // take them), and also without scene lights (its unlit fallback)
         std::vector<ShaderLightingMode> modes = manifest.lighting;
         if (modes.empty())
             modes.push_back(ShaderLightingMode::NONE);
@@ -143,13 +158,31 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
             if (!applyLightingMode(mode, inputs, environment))
                 continue; // reported by run()
             const std::string modeLabel = "lighting " + ShaderManifest::getLightingModeName(mode);
-            if (mode == modes.front()){
-                for (const auto& features : featureSets)
-                    addMesh(modeLabel + ", " + features.first, referenceOf(features.second), inputs, environment);
-            }else{
-                addMesh(modeLabel, referenceOf({}), inputs, environment);
-                addMesh(modeLabel + ", all features", referenceOf(allOn), inputs, environment);
+            const bool lit = mode != ShaderLightingMode::NONE;
+
+            for (int capacity : lightCapacities){
+                for (int shadows = 0; shadows < 2; shadows++){
+                    if (!lit && (capacity != 8 || shadows))
+                        continue;
+                    MeshShaderEnvironment lightingEnvironment = environment;
+                    lightingEnvironment.lightCapacity = capacity;
+                    lightingEnvironment.shadows = shadows != 0;
+                    const std::string label = modeLabel + (lit ? ", " + std::to_string(capacity) + " lights" + (shadows ? ", shadows" : "") : "");
+                    if (mode == modes.front() && capacity == 8 && !shadows){
+                        for (const auto& features : featureSets)
+                            addMesh(label + ", " + features.first, referenceOf(features.second), inputs, lightingEnvironment);
+                    }else{
+                        addMesh(label, referenceOf({}), inputs, lightingEnvironment);
+                        addMesh(label + ", all features", referenceOf(allOn), inputs, lightingEnvironment);
+                    }
+                }
             }
+            if (lit){
+                MeshShaderEnvironment unlitEnvironment;
+                addMesh(modeLabel + ", no scene lights", referenceOf({}), inputs, unlitEnvironment);
+                addMesh(modeLabel + ", no scene lights, all features", referenceOf(allOn), inputs, unlitEnvironment);
+            }
+
             // the mesh variants, with the default features and with all of them
             for (const MeshCase& meshCase : meshCases()){
                 SubmeshShaderInputs caseInputs = inputs;
