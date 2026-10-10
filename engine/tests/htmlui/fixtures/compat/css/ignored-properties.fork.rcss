@@ -1,0 +1,3 @@
+#htmlui-root .ignored {
+transition-behavior: normal;
+}

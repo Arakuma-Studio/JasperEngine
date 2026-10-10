@@ -637,7 +637,8 @@ namespace {
                 unsupportedValue(context, "'none' is a transition list of its own");
                 return;
             }
-            writeNativeEntries(context, entries, value);
+            if (!none)
+                writeNativeEntries(context, entries, value);
             context.emit("transition", value.empty() ? Text::view("none") : Text(std::string_view(value)));
             return;
         }

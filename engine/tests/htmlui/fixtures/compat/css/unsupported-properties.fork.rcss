@@ -1,0 +1,3 @@
+#htmlui-root .unsupported {
+animation-composition: replace;
+}
