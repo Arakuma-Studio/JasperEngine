@@ -101,8 +101,6 @@ namespace jasperengine{
         int slotFSLighting = -1;        // legacy u_fs_lighting of an older fork
         int slotVSObjectLights = -1;    // includes/lights.glsl
         int slotFSObjectLights = -1;
-        int slotVSFrame = -1;           // includes/frame.glsl
-        int slotFSFrame = -1;
         int slotFSReflectionProbe = -1;
         int slotFSLighting2D = -1;
         int slotFSFog = -1;

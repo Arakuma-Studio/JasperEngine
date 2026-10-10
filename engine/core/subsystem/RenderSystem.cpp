@@ -1100,80 +1100,54 @@ void RenderSystem::processLights(CameraShadows& view, int numLights, const Camer
         }
     }
 
-    // the frame block of the camera's passes
-    fillFrameContract(view.frame, camera, cameraTransform);
-    fillFrameLighting(view.frame, camera);
-
-    // the camera part of the legacy u_fs_lighting (lights and eyePos.w are per draw)
+    // the camera part of the legacy u_fs_lighting (lights and eyePos.w are per draw); the
+    // frame block of the camera's passes is filled by updatePassFrame
     view.fs_lighting.eyePos = Vector4(cameraTransform.worldPosition.x, cameraTransform.worldPosition.y, cameraTransform.worldPosition.z, 0.0);
-    view.fs_lighting.cameraDir = Vector4(camera.worldDirection.x, camera.worldDirection.y, camera.worldDirection.z, view.frame.lightingInfo.x);
+    view.fs_lighting.cameraDir = Vector4(camera.worldDirection.x, camera.worldDirection.y, camera.worldDirection.z, shadowPCFRadius());
     view.fs_lighting.globalIllum = Vector4(scene->getGlobalIlluminationColorLinear(), scene->getGlobalIlluminationIntensity());
-    view.fs_lighting.envColor = view.frame.environment;
-    view.fs_lighting.viewportInfo = view.frame.viewportInfo;
+    view.fs_lighting.envColor = environmentInfo();
+    view.fs_lighting.viewportInfo = lightingViewportInfo(camera);
 }
 
-void RenderSystem::fillFrameLighting(frame_t& frame, const CameraComponent& camera) const{
+float RenderSystem::shadowPCFRadius() const{
     // PCF tap radius of the 3D shadow filter (kernel = (2*radius+1)^2 taps; uniform-driven,
     // no shader variant)
-    float pcfRadius = 1.0f;
     switch (scene->getShadowQuality()){
-        case ShadowQuality::NONE:   pcfRadius = 0.0f; break;
-        case ShadowQuality::LOW:    pcfRadius = 1.0f; break;
-        case ShadowQuality::MEDIUM: pcfRadius = 2.0f; break;
-        case ShadowQuality::HIGH:   pcfRadius = 3.0f; break;
+        case ShadowQuality::NONE:   return 0.0f;
+        case ShadowQuality::LOW:    return 1.0f;
+        case ShadowQuality::MEDIUM: return 2.0f;
+        case ShadowQuality::HIGH:   return 3.0f;
     }
-    frame.lightingInfo = Vector4(pcfRadius, 0.0f, 0.0f, 0.0f);
+    return 1.0f;
+}
 
-    frame.environment = Vector4(1.0, 1.0, 1.0, 0.0);
+Vector4 RenderSystem::environmentInfo() const{
     if (hasIBL){
         auto skys = scene->getComponentArray<SkyboxComponent>();
         if (skys->size() > 0){
             SkyboxComponent& sky = skys->getComponentFromIndex(0);
             Vector3 linColor = Color::sRGBToLinear(Vector3(sky.color.x, sky.color.y, sky.color.z));
-            frame.environment = Vector4(linColor.x, linColor.y, linColor.z, Angle::defaultToRad(sky.rotation));
+            return Vector4(linColor.x, linColor.y, linColor.z, Angle::defaultToRad(sky.rotation));
         }
     }
+    return Vector4(1.0, 1.0, 1.0, 0.0);
+}
 
+void RenderSystem::fillFrameLighting(frame_t& frame, const CameraComponent& camera) const{
+    frame.lightingInfo = Vector4(shadowPCFRadius(), 0.0f, 0.0f, 0.0f);
+    frame.environment = environmentInfo();
     frame.viewportInfo = lightingViewportInfo(camera);
 
     // the variant decides whether fog applies: a fogless scene leaves these unread
     frame.fogColor_type = fs_fog.color_type;
     frame.fogDensity_start_end = fs_fog.density_start_end;
-}
-
-void RenderSystem::fillFrameContract(frame_t& frame, const CameraComponent& camera, const Transform& cameraTransform) const{
-    frame.viewMatrix = camera.viewMatrix;
-    frame.projectionMatrix = camera.projectionMatrix;
-    frame.viewProjectionMatrix = camera.viewProjectionMatrix;
-    frame.cameraPosition = Vector4(cameraTransform.worldPosition.x, cameraTransform.worldPosition.y, cameraTransform.worldPosition.z,
-        (camera.type == CameraType::CAMERA_PERSPECTIVE) ? 0.0f : 1.0f);
-    // worldDirection is the camera's backward axis
-    frame.cameraDirection = Vector4(-camera.worldDirection.x, -camera.worldDirection.y, -camera.worldDirection.z, 0.0f);
-    frame.time = Vector4(frameTime, std::sin(frameTime), std::cos(frameTime), Engine::getDeltatime());
-    const Vector4 viewport = lightingViewportInfo(camera);
-    frame.resolution = Vector4(
-        (viewport.x > 0.0f) ? 1.0f / viewport.x : 0.0f,
-        (viewport.y > 0.0f) ? 1.0f / viewport.y : 0.0f,
-        viewport.x, viewport.y);
-
-    // the brightest active directional light
-    frame.mainLightDirection = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
-    frame.mainLightColor = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
-    float brightest = 0.0f;
-    for (const SceneLight& light : sceneLights){
-        if (!light.active || light.position_type.w != 0.0f)
-            continue;
-        const float luminance = (0.2126f * light.color_intensity.x + 0.7152f * light.color_intensity.y + 0.0722f * light.color_intensity.z) * light.color_intensity.w;
-        if (luminance > brightest){
-            brightest = luminance;
-            Vector3 towards = -Vector3(light.direction_range.x, light.direction_range.y, light.direction_range.z).normalized();
-            frame.mainLightDirection = Vector4(towards.x, towards.y, towards.z, light.color_intensity.w);
-            frame.mainLightColor = Vector4(light.color_intensity.x, light.color_intensity.y, light.color_intensity.z, 1.0f);
-        }
+#ifdef JASPERENGINE_EDITOR
+    if (rv().secondary && rv().disableFog){
+        // exponential fog of density 0: a factor of 1 everywhere, no fog
+        frame.fogColor_type = Vector4(0.0f, 0.0f, 0.0f, 1.0f);
+        frame.fogDensity_start_end = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
     }
-
-    const Vector3 ambient = scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity();
-    frame.ambient = Vector4(ambient.x, ambient.y, ambient.z, 1.0f);
+#endif
 }
 
 //-----Unified lighting: per-object light lists-----
@@ -2230,6 +2204,8 @@ void RenderSystem::renderReflectionProbeCapture(){
     CameraShadows& captureShadows = getCameraShadows(activeReflectionProbe);
     prepareCameraShadows(captureShadows, captureCamera, captureTransform, mainTerrainView(), true);
     buildCameraShadowInstances(captureShadows);
+    // the face's frame block, for its shadow passes and its draws below
+    updatePassFrame(captureCamera, captureTransform, Vector2((float)resolution, (float)resolution));
     renderCameraShadows(captureShadows);
     CameraShadows* previousShadows = passShadows;
     passShadows = &captureShadows;
@@ -3076,9 +3052,22 @@ void RenderSystem::fillFrameBlock(frame_t& frame, const CameraComponent& camera,
     frame.ambient = Vector4(scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity(), 1.0f);
 }
 
+Vector2 RenderSystem::passFrameResolution(const CameraComponent& camera) const{
+    if (camera.renderToTexture && camera.framebuffer)
+        return Vector2((float)camera.framebuffer->getWidth(), (float)camera.framebuffer->getHeight());
+    if (isFixedResolutionActive())
+        return Vector2((float)scene->getFixedResolutionWidth(), (float)scene->getFixedResolutionHeight());
+    return Vector2(targetViewRect().getWidth(), targetViewRect().getHeight());
+}
+
+void RenderSystem::updatePassFrame(const CameraComponent& camera, const Transform& cameraTransform){
+    updatePassFrame(camera, cameraTransform, passFrameResolution(camera));
+}
+
 void RenderSystem::updatePassFrame(const CameraComponent& camera, const Transform& cameraTransform, const Vector2& resolution){
     fillFrameBlock(passFrame, camera, cameraTransform, resolution);
-    // engine-internal members appended after ambient are filled here, after it
+    // the engine-internal members appended after ambient
+    fillFrameLighting(passFrame, camera);
 }
 
 void RenderSystem::applyFrameBlock(ObjectRender& render, const ShaderLibraryBindings& bindings){
@@ -4072,9 +4061,6 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (p_mirror){
             mesh.submeshes[i].slotFSMirror = shaderData.getUniformBlockIndex(UniformBlockType::FS_MIRROR);
         }
-        // the frame block, in the stages that declare it (stand-in for the shader-system core)
-        mesh.submeshes[i].slotVSFrame = shaderData.getUniformBlockIndexByName("u_vs_frame");
-        mesh.submeshes[i].slotFSFrame = shaderData.getUniformBlockIndexByName("u_fs_frame");
         if (p_lit){
             // the object's lights (includes/lights.glsl), or the legacy block of an older fork
             mesh.submeshes[i].slotVSObjectLights = shaderData.getUniformBlockIndexByName("u_vs_objectLights");
@@ -5145,19 +5131,6 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         // the lighting and shadow maps of the camera this pass draws for
         CameraShadows& passLighting = ps();
 
-        // the frame block of the pass (stand-in until the shader-system core binds it)
-        const frame_t* frameBlock = &passLighting.frame;
-#ifdef JASPERENGINE_EDITOR
-        // exponential fog of density 0: a factor of 1 everywhere, no fog
-        frame_t noFogFrame;
-        if (hasFog && rv().secondary && rv().disableFog){
-            noFogFrame = passLighting.frame;
-            noFogFrame.fogColor_type = Vector4(0.0f, 0.0f, 0.0f, 1.0f);
-            noFogFrame.fogDensity_start_end = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
-            frameBlock = &noFogFrame;
-        }
-#endif
-
         // the object's lights (MeshComponent::lights) as the last submesh built them: its
         // lighting and capacity bits, and the bytes of that block
         uint32_t builtLightBits = UINT32_MAX;
@@ -5246,13 +5219,6 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             // was compiled as MATERIAL_UNLIT (property bit 0)
             bool submeshLit = !(mesh.submeshes[i].shaderProperties & (1u << 0));
             bool viewShadowMapsBound = false;
-
-            if (mesh.submeshes[i].slotVSFrame != -1){
-                render.applyUniformBlock(mesh.submeshes[i].slotVSFrame, sizeof(frame_t), (void*)frameBlock);
-            }
-            if (mesh.submeshes[i].slotFSFrame != -1){
-                render.applyUniformBlock(mesh.submeshes[i].slotFSFrame, sizeof(frame_t), (void*)frameBlock);
-            }
 
             if (submeshLit){
                 ShaderData& lightingShaderData = mesh.submeshes[i].shader.get()->shaderData;
@@ -6504,8 +6470,6 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotFSLighting = -1;
         submesh.slotVSObjectLights = -1;
         submesh.slotFSObjectLights = -1;
-        submesh.slotVSFrame = -1;
-        submesh.slotFSFrame = -1;
         submesh.slotFSReflectionProbe = -1;
         submesh.slotVSSprite = -1;
         submesh.slotVSShadows = -1;
@@ -10058,7 +10022,6 @@ void RenderSystem::prepareCameraShadows(CameraShadows& target, const CameraCompo
     // the atlas layout and every camera-independent value are the frame's
     const CameraShadows& frame = primaryView.shadows;
     target.fs_lighting = frame.fs_lighting;
-    target.frame = frame.frame;
     target.vs_shadows = frame.vs_shadows;
     target.fs_shadows = frame.fs_shadows;
     target.fs_point_shadows = frame.fs_point_shadows;
@@ -10277,7 +10240,7 @@ void RenderSystem::drawFramePasses(){
     // the frame block the shadow passes' depth programs read: the scene camera's
     if (CameraComponent* mainCamera = scene->findComponent<CameraComponent>(scene->getCamera())){
         if (Transform* mainCameraTransform = scene->findComponent<Transform>(scene->getCamera())){
-            updatePassFrame(*mainCamera, *mainCameraTransform, Vector2(targetViewRect().getWidth(), targetViewRect().getHeight()));
+            updatePassFrame(*mainCamera, *mainCameraTransform);
         }
     }
 
@@ -10620,7 +10583,7 @@ void RenderSystem::drawCameras(bool includeMain){
             cameraLighting = &getCameraShadows(cameraEntity);
             prepareCameraShadows(*cameraLighting, camera, *cameraTransformPtr, terrainView, true);
             buildCameraShadowInstances(*cameraLighting);
-            updatePassFrame(camera, *cameraTransformPtr, passResolution);
+            updatePassFrame(camera, *cameraTransformPtr);
             renderCameraShadows(*cameraLighting);
         }
 
@@ -10667,14 +10630,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 #endif
     const bool perCameraMVP = primaryPass && (hasMultipleCameras || hasReflectionProbes);
 
-    // the frame block of this camera (its depth passes below read it too); the resolution
-    // is the color pass's, set once its target is known
-    {
-        Vector2 frameResolution(targetViewRect().getWidth(), targetViewRect().getHeight());
-        if (pass.renderToTexture && camera.framebuffer)
-            frameResolution = Vector2((float)camera.framebuffer->getWidth(), (float)camera.framebuffer->getHeight());
-        updatePassFrame(camera, cameraTransform, frameResolution);
-    }
+    // the frame block of this camera (its depth, G-buffer and colour passes below read it)
+    updatePassFrame(camera, cameraTransform);
 
     // Screen-space reflections (main camera only). The G-buffer geometry pass runs
     // FIRST so SSAO can share its depth (a single geometry pre-pass feeds both
@@ -11828,6 +11785,7 @@ void RenderSystem::renderViewMirrors(RenderView& view, CameraComponent& camera){
         // the reflection camera's lighting and shadow maps (the mirror itself still casts)
         prepareCameraShadows(mirrorView.shadows, refCam, refCamTransform, TERRAIN_PASS_VIEW, true);
         buildCameraShadowInstances(mirrorView.shadows);
+        updatePassFrame(refCam, refCamTransform);
         renderCameraShadows(mirrorView.shadows);
 
         passExcludedEntity = entity;
@@ -11930,16 +11888,10 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
         // the frame's lighting and maps, with this view's viewport
         const CameraShadows& frameShadows = primaryView.shadows;
         viewShadows.fs_lighting = frameShadows.fs_lighting;
-        viewShadows.frame = frameShadows.frame;
         viewShadows.vs_shadows = frameShadows.vs_shadows;
         viewShadows.fs_shadows = frameShadows.fs_shadows;
         viewShadows.fs_point_shadows = frameShadows.fs_point_shadows;
         viewShadows.fs_lighting.viewportInfo = lightingViewportInfo(camera);
-        viewShadows.frame.viewportInfo = viewShadows.fs_lighting.viewportInfo;
-        viewShadows.frame.resolution = Vector4(
-            (viewShadows.frame.viewportInfo.x > 0.0f) ? 1.0f / viewShadows.frame.viewportInfo.x : 0.0f,
-            (viewShadows.frame.viewportInfo.y > 0.0f) ? 1.0f / viewShadows.frame.viewportInfo.y : 0.0f,
-            viewShadows.frame.viewportInfo.x, viewShadows.frame.viewportInfo.y);
         viewShadows.ownLightCameras = false;
         viewShadows.ownShadowInstances = false;
         viewShadows.cameraMask = frameShadows.cameraMask;
@@ -11960,6 +11912,7 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
         prepareCameraShadows(viewShadows, camera, cameraTransform, TERRAIN_PASS_VIEW, false);
         buildViewInstances(view, camera, cameraTransform);
         selectPassTerrain(view.objects, camera, cameraTransform);
+        updatePassFrame(camera, cameraTransform);
         renderCameraShadows(viewShadows);
         renderViewMirrors(view, camera);
     }

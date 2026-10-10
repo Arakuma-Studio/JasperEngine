@@ -489,10 +489,9 @@ namespace jasperengine{
 		// the same depths, and draws its own otherwise.
 		struct CameraShadows{
 			// the camera part of the legacy u_fs_lighting (eyePos, cameraDir, globalIllum,
-			// envColor, viewportInfo); its lights come from each object's list
+			// envColor, viewportInfo); its lights come from each object's list. The frame block
+			// (includes/frame.glsl) of the camera's passes is RenderSystem::passFrame.
 			fs_lighting_t fs_lighting;
-			// the frame block (includes/frame.glsl) of the camera's passes
-			frame_t frame;
 			vs_shadows_t vs_shadows;
 			fs_shadows_t fs_shadows;
 			fs_point_shadows_t fs_point_shadows;
@@ -1007,10 +1006,15 @@ namespace jasperengine{
 		unsigned int buildObjectLights(const MeshComponent& mesh, uint32_t properties, object_lights_t& block) const;
 		// the legacy u_fs_lighting of an older fork: the object's first pixel lights
 		void buildLegacyLighting(const MeshComponent& mesh, uint32_t properties, fs_lighting_t& block) const;
-		// the engine-internal members of the frame block (lighting, environment, viewport, fog)
+		// the engine-internal members of the frame block (lighting, environment, viewport, fog),
+		// filled by updatePassFrame after the contract members (fillFrameBlock)
 		void fillFrameLighting(frame_t& frame, const CameraComponent& camera) const;
-		// stand-in for the frame block's contract members until the shader-system core fills them
-		void fillFrameContract(frame_t& frame, const CameraComponent& camera, const Transform& cameraTransform) const;
+		// a material asks for a lighting mode its shader does not list (logged once per pair)
+		static void warnUnsupportedLighting(const Material& material, const std::string& shader, const ShaderManifest* manifest, const std::string& entityName);
+		// PCF tap radius of the 3D shadow filter (Scene shadowQuality)
+		float shadowPCFRadius() const;
+		// rgb environment colour (linear), w environment rotation (radians)
+		Vector4 environmentInfo() const;
 		void loadSpotMaskTexture(ShaderData& shaderData, ObjectRender& render);
 		bool loadLights2D();
 		void processLights2D();
@@ -1038,9 +1042,13 @@ namespace jasperengine{
 		Matrix4 getDirLightProjection(const Matrix4& viewMatrix, const Matrix4& sceneCameraInv, float shadowMaxDistance, const Vector3& lightDirection, const Vector3& cameraPosition);
 		// shader library: the frame block of a camera pass (fillFrameBlock fills the members
 		// library shaders read; engine-internal members appended after them get their own
-		// fill functions, called after it), uploaded by applyFrameBlock
+		// fill functions, called after it), uploaded by applyFrameBlock. updatePassFrame
+		// fills passFrame once per camera pass, before its shadow, depth and colour draws.
 		void fillFrameBlock(frame_t& frame, const CameraComponent& camera, const Transform& cameraTransform, const Vector2& resolution);
+		void updatePassFrame(const CameraComponent& camera, const Transform& cameraTransform);
 		void updatePassFrame(const CameraComponent& camera, const Transform& cameraTransform, const Vector2& resolution);
+		// the size of the target a camera's colour pass renders into
+		Vector2 passFrameResolution(const CameraComponent& camera) const;
 		void applyFrameBlock(ObjectRender& render, const ShaderLibraryBindings& bindings);
 		// resolves the frame block slots and the custom textures of a loaded shader, then
 		// binds the textures (false while one is still loading)
