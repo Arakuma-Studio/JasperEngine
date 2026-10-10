@@ -187,6 +187,47 @@ namespace Cascade {
 		return false;
 	}
 
+	bool ParseDeclaration(const PropertySpecification& specification, PropertyDictionary& dictionary, const String& name, const String& value,
+		bool& result)
+	{
+		if (&specification != &StyleSheetSpecification::GetPropertySpecification())
+			return false;
+		if (ParseImportantDeclaration(specification, dictionary, name, value, result))
+			return true;
+		if (!dictionary.HasImportantProperties())
+		{
+			if (!ParseKeywordDeclaration(specification, dictionary, name, value))
+				return false;
+			result = true;
+			return true;
+		}
+
+		// A normal declaration does not override an important one of the same block.
+		PropertyDictionary parsed;
+		result = specification.ParsePropertyDeclaration(parsed, name, value);
+		if (!result)
+			return true;
+		for (const auto& [id, property] : parsed.GetProperties())
+		{
+			const Property* existing = dictionary.GetProperty(id);
+			if (!existing || !existing->important)
+				dictionary.SetProperty(id, property);
+		}
+		for (const auto& [custom_name, property] : parsed.GetCustomProperties())
+		{
+			const Property* existing = dictionary.GetCustomProperty(custom_name);
+			if (!existing || !existing->important)
+				dictionary.SetCustomProperty(custom_name, property);
+		}
+		for (const auto& [shorthand_id, property] : parsed.GetVarShorthands())
+		{
+			const Property* existing = dictionary.GetVarShorthand(shorthand_id);
+			if (!existing || !existing->important)
+				dictionary.SetVarShorthand(shorthand_id, property);
+		}
+		return true;
+	}
+
 	void RemoveImportantDeclarations(PropertyDictionary& dictionary)
 	{
 		if (!HasImportantDeclarations(dictionary))

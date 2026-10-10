@@ -46,6 +46,13 @@ namespace Cascade {
 		return InlineWins(*inline_property, *definition_property) ? inline_property : definition_property;
 	}
 
+	/// The cascade's part of PropertySpecification::ParsePropertyDeclaration (the main specification only): an
+	/// '!important' suffix, a CSS-wide keyword, or a normal declaration into a dictionary that holds important ones (a
+	/// later normal declaration of a block does not override an important one).
+	/// @return False when the declaration is none of these (the caller parses it); otherwise true with 'result' set.
+	bool ParseDeclaration(const PropertySpecification& specification, PropertyDictionary& dictionary, const String& name, const String& value,
+		bool& result);
+
 	/// Parses a declaration whose value ends in '!important' (ASCII case-insensitive, white space allowed after '!'):
 	/// the value before it is parsed by the specification, and every declaration it produces (the longhands of a
 	/// shorthand, a custom property, a shorthand pending var() substitution) is marked important.

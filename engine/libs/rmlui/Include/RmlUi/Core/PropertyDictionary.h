@@ -37,6 +37,9 @@ public:
 
 	/// Returns true if the dictionary contains no properties, custom properties, or var shorthands.
 	bool Empty() const;
+	/// Returns true if an important declaration has been set on the dictionary since it was created or cleared (it may
+	/// have been removed since).
+	bool HasImportantProperties() const { return has_important; }
 	/// Returns the number of plain properties in the dictionary, excludes custom properties and shorthands.
 	int GetNumProperties() const;
 	/// Returns the map of plain properties in the dictionary.
@@ -86,6 +89,7 @@ private:
 
 	UnorderedMap<String, Property> custom_properties;
 	UnorderedMap<ShorthandId, Property> var_shorthands;
+	bool has_important = false;
 };
 
 } // namespace Rml

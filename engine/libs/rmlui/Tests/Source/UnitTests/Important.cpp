@@ -30,6 +30,7 @@ static const String important_rml = R"(
 		#d { --w: 12px; width: var(--w) !important; }
 		#e { color: #00f !important; }
 		#f { padding: var(--p) !important; --p: 6px; }
+		#h { width: 21px !important; width: 22px; height: 3px !important; height: 4px !important; }
 		@keyframes grow { from { width: 1px !important; height: 1px; } to { width: 2px; height: 2px; } }
 	</style>
 </head>
@@ -41,6 +42,7 @@ static const String important_rml = R"(
 	<div id="e" style="color: #0f0 !important"/>
 	<div id="f" style="padding: 2px"/>
 	<div id="g" style="width: 8px !important; height: 9px"/>
+	<div id="h"/>
 </body>
 </rml>
 )";
@@ -102,6 +104,12 @@ TEST_CASE("Important")
 		Element* f = document->GetElementById("f");
 		CHECK(f->GetComputedValues().padding_top().value == 6.f);
 		CHECK(f->GetComputedValues().padding_left().value == 6.f);
+	}
+
+	SUBCASE("in one block a later normal declaration does not override an important one")
+	{
+		CHECK(width("h") == 21.f);
+		CHECK(document->GetElementById("h")->GetComputedValues().height().value == 4.f);
 	}
 
 	SUBCASE("inline important and normal in one attribute")
