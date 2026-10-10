@@ -15,6 +15,7 @@
 #include "htmlui/compat/SourceFiles.h"
 #include "htmlui/compat/SupportTables.h"
 #include "htmlui/compat/VirtualFiles.h"
+#include "htmlui/compat/css/CssRewriter.h"
 #include "htmlui/compat/css/CssSerialize.h"
 #include "htmlui/compat/css/CssTokenizer.h"
 #include "htmlui/compat/ua/UserAgentStyle.h"
@@ -346,4 +347,78 @@ TEST(CompatUaSheet, InternalImagesAreEmbeddedAndServed){
         EXPECT_GT(ink, 0u) << "draws nothing";
     }
     UserAgentStyle::clearCache();
+}
+
+// `appearance: auto` (p2-css) gives a control the user-agent look back: for every companion
+// `appearance: none` cleared it writes the fallback the sheet (p2-ua) reads the companion
+// with. It writes one value per companion, whatever element the rule selects, so every
+// var() read of such a companion in the sheet must have the same fallback, and that is the
+// value written. (The range track read --html-control-bg/-border with its own gray fallbacks:
+// `input[type=range] { appearance: auto }` drew the checkbox's white box and dark border.)
+TEST(CompatUaSheet, AppearanceAutoWritesTheSheetsFallbacks){
+    const auto declarations = [](const std::string& css){
+        std::map<std::string, std::string> out;
+        const std::string rcss = CssRewriter::rewriteDeclarations(css, nullptr);
+        size_t at = 0;
+        while (at < rcss.size()){
+            const size_t colon = rcss.find(": ", at);
+            const size_t end = rcss.find(';', at);
+            if (colon == std::string::npos || end == std::string::npos || colon > end)
+                break;
+            out[rcss.substr(at, colon - at)] = rcss.substr(colon + 2, end - colon - 2);
+            at = end + 1;
+            while (at < rcss.size() && rcss[at] == ' ')
+                at++;
+        }
+        return out;
+    };
+    const std::map<std::string, std::string> written = declarations("appearance: auto");
+    const std::map<std::string, std::string> cleared = declarations("appearance: none");
+    ASSERT_GE(written.size(), 11u);
+    // what none clears, auto restores
+    for (const auto& pair : cleared)
+        EXPECT_TRUE(written.count(pair.first)) << pair.first << " is cleared by none and not restored by auto";
+    for (const auto& pair : written)
+        EXPECT_TRUE(cleared.count(pair.first)) << pair.first << " is written by auto and not cleared by none";
+
+    // colours as the rewriter writes them
+    const auto normalized = [](std::string value){
+        if (value.size() == 7 && value[0] == '#')
+            value += "ff";
+        return value;
+    };
+    const std::string source(UserAgentStyle::source());
+    std::map<std::string, std::set<std::string>> fallbacks;
+    for (size_t at = source.find("var(--html-"); at != std::string::npos; at = source.find("var(--html-", at + 1)){
+        const size_t comma = source.find(',', at);
+        const size_t close = source.find(')', at);
+        if (comma == std::string::npos || close < comma)
+            continue;   // no fallback
+        const std::string name = source.substr(at + 4, comma - at - 4);
+        // the fallback runs to the var()'s own closing parenthesis
+        int depth = 1;
+        bool quote = false;
+        size_t i = comma + 1;
+        for (; i < source.size(); i++){
+            const char c = source[i];
+            if (c == '"')
+                quote = !quote;
+            else if (!quote && c == '(')
+                depth++;
+            else if (!quote && c == ')' && --depth == 0)
+                break;
+        }
+        std::string fallback = source.substr(comma + 1, i - comma - 1);
+        fallback.erase(0, fallback.find_first_not_of(" \n"));
+        fallback.erase(fallback.find_last_not_of(" \n") + 1);
+        fallbacks[name].insert(normalized(fallback));
+    }
+    for (const auto& pair : written){
+        SCOPED_TRACE(pair.first);
+        const auto read = fallbacks.find(pair.first);
+        ASSERT_NE(read, fallbacks.end()) << "the user-agent sheet never reads it with a fallback";
+        ASSERT_EQ(read->second.size(), 1u) << "read with different fallbacks: " << *read->second.begin() << " and "
+                                           << *read->second.rbegin() << " (auto can write one)";
+        EXPECT_EQ(pair.second, *read->second.begin());
+    }
 }

@@ -57,6 +57,9 @@ namespace {
                 {"--html-slider-track-margin", "5px"},
                 {"--html-slider-track-height", "6px"},
                 {"--html-slider-track-border", "1px"},
+                // the track's own colors (not the checkbox's and select's --html-control-*)
+                {"--html-slider-track-bg", "#efefef"},
+                {"--html-slider-track-border-color", "#b2b2b2"},
             };
             const std::string_view ua = UserAgentStyle::source();
             for (auto& entry : out){
@@ -249,6 +252,8 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         context.emit("--html-slider-track-margin", "0px");
         context.emit("--html-slider-track-height", "auto");
         context.emit("--html-slider-track-border", "0px");
+        context.emit("--html-slider-track-bg", "transparent");
+        context.emit("--html-slider-track-border-color", "transparent");
         return;
     }
     if (keyword == "auto" || keyword == "menulist" || keyword == "button" || keyword == "textfield" || keyword == "checkbox" ||
@@ -258,7 +263,8 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "'appearance: " + keyword + "' is treated as 'auto'");
         for (const char* companion : {"--html-check", "--html-check-baseline", "--html-control-bg", "--html-control-border",
                                       "--html-select-arrow", "--html-thumb", "--html-slider-fill", "--html-slider-height",
-                                      "--html-slider-track-margin", "--html-slider-track-height", "--html-slider-track-border"})
+                                      "--html-slider-track-margin", "--html-slider-track-height", "--html-slider-track-border",
+                                      "--html-slider-track-bg", "--html-slider-track-border-color"})
             context.emit(companion, uaCompanionDefault(companion));
         return;
     }

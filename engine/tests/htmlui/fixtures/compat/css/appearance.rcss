@@ -10,6 +10,8 @@
 --html-slider-track-margin: 0px;
 --html-slider-track-height: auto;
 --html-slider-track-border: 0px;
+--html-slider-track-bg: transparent;
+--html-slider-track-border-color: transparent;
 }
 #htmlui-root select {
 --html-check: none;
@@ -23,6 +25,8 @@
 --html-slider-track-margin: 0px;
 --html-slider-track-height: auto;
 --html-slider-track-border: 0px;
+--html-slider-track-bg: transparent;
+--html-slider-track-border-color: transparent;
 }
 #htmlui-root .restore {
 --html-check: html-layer("/@htmlui/ua/check.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll);
@@ -36,6 +40,8 @@
 --html-slider-track-margin: 5px;
 --html-slider-track-height: 6px;
 --html-slider-track-border: 1px;
+--html-slider-track-bg: #efefefff;
+--html-slider-track-border-color: #b2b2b2ff;
 }
 #htmlui-root .button {
 --html-check: html-layer("/@htmlui/ua/check.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll);
@@ -49,4 +55,6 @@
 --html-slider-track-margin: 5px;
 --html-slider-track-height: 6px;
 --html-slider-track-border: 1px;
+--html-slider-track-bg: #efefefff;
+--html-slider-track-border-color: #b2b2b2ff;
 }

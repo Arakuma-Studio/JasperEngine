@@ -468,9 +468,9 @@ input[type="range"] slidertrack {
     height: var(--html-slider-track-height, 6px);
     border-width: var(--html-slider-track-border, 1px);
     border-style: solid;
-    border-color: var(--html-control-border, #b2b2b2);
+    border-color: var(--html-slider-track-border-color, #b2b2b2);
     border-radius: 3px;
-    background-color: var(--html-control-bg, #efefef);
+    background-color: var(--html-slider-track-bg, #efefef);
 }
 
 /* the fill covers the track's border box (the widget places it at the track's offset) */
