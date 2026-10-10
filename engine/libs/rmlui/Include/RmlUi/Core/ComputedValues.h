@@ -23,7 +23,7 @@ namespace Style {
 	struct CommonValues {
 		CommonValues() :
 			display(Display::Inline), position(Position::Static), float_(Float::None), clear(Clear::None), overflow_x(Overflow::Visible),
-			overflow_y(Overflow::Visible), visibility(Visibility::Visible),
+			overflow_y(Overflow::Visible),
 
 			has_decorator(false), box_sizing(BoxSizing::ContentBox),
 
@@ -46,7 +46,6 @@ namespace Style {
 		Clear clear : 2;
 
 		Overflow overflow_x : 2, overflow_y : 2;
-		Visibility visibility : 1;
 
 		bool has_decorator : 1;
 		BoxSizing box_sizing : 1;
@@ -85,8 +84,8 @@ namespace Style {
 
 		uint16_t border_top_width = 0, border_right_width = 0, border_bottom_width = 0, border_left_width = 0;
 
-		Colourb border_top_color{255, 255, 255}, border_right_color{255, 255, 255}, border_bottom_color{255, 255, 255},
-			border_left_color{255, 255, 255};
+		// The initial value is 'currentcolor': an element's border colors not declared follow its color (ElementStyle::ComputeValues).
+		Colourb border_top_color{0, 0, 0}, border_right_color{0, 0, 0}, border_bottom_color{0, 0, 0}, border_left_color{0, 0, 0};
 
 		Colourb background_color = Colourb(0, 0, 0, 0);
 	};
@@ -96,17 +95,19 @@ namespace Style {
 			font_weight(FontWeight::Normal), font_kerning(FontKerning::Auto), has_letter_spacing(0), font_style(FontStyle::Normal),
 			has_font_effect(false), pointer_events(PointerEvents::Auto), focus(Focus::Auto), text_align(TextAlign::Left),
 			text_decoration(TextDecoration::None), text_transform(TextTransform::None), white_space(WhiteSpace::Normal),
-			word_break(WordBreak::Normal), direction(Direction::Auto), line_height_inherit_type(LineHeight::Number)
+			word_break(WordBreak::Normal), direction(Direction::Auto), visibility(Visibility::Visible), line_height_inherit_type(LineHeight::Number)
 		{}
 
 		// Font face used to render text and resolve ex properties. Does not represent a true property
 		// like most computed values, but placed here as it is used and inherited in a similar manner.
 		FontFaceHandle font_face_handle = 0;
 
-		float font_size = 12.f;
+		float font_size = 16.f;
 
+		// The opacity the element draws with: its own (CSS: not inherited) times its parent's, until opacity groups
+		// composite whole subtrees (phase 3, paint).
 		float opacity = 1;
-		Colourb color = Colourb(255, 255, 255);
+		Colourb color = Colourb(0, 0, 0);
 
 		FontWeight font_weight : 10;
 		FontKerning font_kerning : 2;
@@ -125,8 +126,10 @@ namespace Style {
 
 		Direction direction : 2;
 
+		Visibility visibility : 1;
+
 		LineHeight::InheritType line_height_inherit_type : 1;
-		float line_height = 12.f * 1.2f;
+		float line_height = 16.f * 1.2f;
 		float line_height_inherit = 1.2f;
 
 		String language = "";
@@ -134,7 +137,7 @@ namespace Style {
 
 	struct RareValues {
 		RareValues() :
-			min_width_type(LengthPercentage::Length), max_width_type(LengthPercentage::Length), min_height_type(LengthPercentage::Length),
+			min_width_type(LengthPercentageAuto::Auto), max_width_type(LengthPercentage::Length), min_height_type(LengthPercentageAuto::Auto),
 			max_height_type(LengthPercentage::Length),
 
 			perspective_origin_x_type(LengthPercentage::Percentage), perspective_origin_y_type(LengthPercentage::Percentage),
@@ -149,14 +152,18 @@ namespace Style {
 		{}
 
 #ifdef RMLUI_MATH_EXPRESSIONS
-		LengthPercentage::Type min_width_type : 2, max_width_type : 2;
-		LengthPercentage::Type min_height_type : 2, max_height_type : 2;
+		LengthPercentageAuto::Type min_width_type : 2;
+		LengthPercentage::Type max_width_type : 2;
+		LengthPercentageAuto::Type min_height_type : 2;
+		LengthPercentage::Type max_height_type : 2;
 
 		LengthPercentage::Type perspective_origin_x_type : 2, perspective_origin_y_type : 2;
 		LengthPercentage::Type transform_origin_x_type : 2, transform_origin_y_type : 2;
 #else
-		LengthPercentage::Type min_width_type : 1, max_width_type : 1;
-		LengthPercentage::Type min_height_type : 1, max_height_type : 1;
+		LengthPercentageAuto::Type min_width_type : 2;
+		LengthPercentage::Type max_width_type : 1;
+		LengthPercentageAuto::Type min_height_type : 2;
+		LengthPercentage::Type max_height_type : 1;
 
 		LengthPercentage::Type perspective_origin_x_type : 1, perspective_origin_y_type : 1;
 		LengthPercentage::Type transform_origin_x_type : 1, transform_origin_y_type : 1;
@@ -263,7 +270,7 @@ namespace Style {
 		Clear                clear()               const { return common.clear; }
 		Overflow             overflow_x()          const { return common.overflow_x; }
 		Overflow             overflow_y()          const { return common.overflow_y; }
-		Visibility           visibility()          const { return common.visibility; }
+		Visibility           visibility()          const { return inherited.visibility; }
 		Colourb              background_color()    const { return common.background_color; }
 		Colourb              border_top_color()    const { return common.border_top_color; }
 		Colourb              border_right_color()  const { return common.border_right_color; }
@@ -295,9 +302,9 @@ namespace Style {
 		Direction      direction()        const { return inherited.direction; }
 
 		// -- Rare --
-		MinWidth          min_width()                  const { return GetLengthPercentage(rare.min_width_type, rare.min_width, ComputedCalculationSlot::MinWidth); }
+		MinWidth          min_width()                  const { return GetLengthPercentageAuto(rare.min_width_type, rare.min_width, ComputedCalculationSlot::MinWidth); }
 		MaxWidth          max_width()                  const { return GetLengthPercentage(rare.max_width_type, rare.max_width, ComputedCalculationSlot::MaxWidth); }
-		MinHeight         min_height()                 const { return GetLengthPercentage(rare.min_height_type, rare.min_height, ComputedCalculationSlot::MinHeight); }
+		MinHeight         min_height()                 const { return GetLengthPercentageAuto(rare.min_height_type, rare.min_height, ComputedCalculationSlot::MinHeight); }
 		MaxHeight         max_height()                 const { return GetLengthPercentage(rare.max_height_type, rare.max_height, ComputedCalculationSlot::MaxHeight); }
 		VerticalAlign     vertical_align()             const { return VerticalAlign(rare.vertical_align_type, rare.vertical_align_length); }
 		const             AnimationList* animation()   const;
@@ -386,7 +393,7 @@ namespace Style {
 		void clear              (Clear value)                { common.clear               = value; }
 		void overflow_x         (Overflow value)             { common.overflow_x          = value; }
 		void overflow_y         (Overflow value)             { common.overflow_y          = value; }
-		void visibility         (Visibility value)           { common.visibility          = value; }
+		void visibility         (Visibility value)           { inherited.visibility       = value; }
 		void background_color   (Colourb value)              { common.background_color    = value; }
 		void border_top_color   (Colourb value)              { common.border_top_color    = value; }
 		void border_right_color (Colourb value)              { common.border_right_color  = value; }
@@ -414,9 +421,9 @@ namespace Style {
 		void language          (const String& value)  { inherited.language           = value; }
 		void direction         (Direction value)      { inherited.direction          = value; }
 		// Rare
-		void min_width                 (MinWidth value)          { StoreLengthPercentage(ComputedCalculationSlot::MinWidth, value); rare.min_width_type = value.type; rare.min_width = value.value; }
+		void min_width                 (MinWidth value)          { StoreLengthPercentageAuto(ComputedCalculationSlot::MinWidth, value); rare.min_width_type = value.type; rare.min_width = value.value; }
 		void max_width                 (MaxWidth value)          { StoreLengthPercentage(ComputedCalculationSlot::MaxWidth, value); rare.max_width_type = value.type; rare.max_width = value.value; }
-		void min_height                (MinHeight value)         { StoreLengthPercentage(ComputedCalculationSlot::MinHeight, value); rare.min_height_type = value.type; rare.min_height = value.value; }
+		void min_height                (MinHeight value)         { StoreLengthPercentageAuto(ComputedCalculationSlot::MinHeight, value); rare.min_height_type = value.type; rare.min_height = value.value; }
 		void max_height                (MaxHeight value)         { StoreLengthPercentage(ComputedCalculationSlot::MaxHeight, value); rare.max_height_type = value.type; rare.max_height = value.value; }
 		void vertical_align            (VerticalAlign value)     { rare.vertical_align_type        = value.type; rare.vertical_align_length      = value.value; }
 		void perspective_origin_x      (PerspectiveOrigin value) { StoreLengthPercentage(ComputedCalculationSlot::PerspectiveOriginX, value); rare.perspective_origin_x_type = value.type; rare.perspective_origin_x = value.value; }

@@ -1051,6 +1051,9 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 
 	bool dirty_font_face_handle = false;
 
+	// The border colors this element declares; the others are 'currentcolor', their initial value.
+	int declared_border_colors = 0;
+
 	for (auto it = Iterate(); !it.AtEnd(); ++it)
 	{
 		variable_dependencies.clear();
@@ -1082,7 +1085,33 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		)
 			dirty_properties.Insert(id);
 
+		if (id >= PropertyId::BorderTopColor && id <= PropertyId::BorderLeftColor)
+			declared_border_colors |= 1 << (int(id) - int(PropertyId::BorderTopColor));
+
 		ComputeValue(values, dp_ratio, vp_dimensions, font_size, document_font_size, dirty_font_face_handle, id, property);
+	}
+
+	// 'currentcolor' border colors follow the color, also when only the color changed.
+	static_assert(int(PropertyId::BorderLeftColor) - int(PropertyId::BorderTopColor) == 3, "The border colors must be consecutive ids.");
+	if (declared_border_colors != 0xf)
+	{
+		const bool color_changed = dirty_properties.Contains(PropertyId::Color);
+		const Colourb color = values.color();
+		for (int side = 0; side < 4; side++)
+		{
+			if (declared_border_colors & (1 << side))
+				continue;
+			const PropertyId id = PropertyId(int(PropertyId::BorderTopColor) + side);
+			switch (id)
+			{
+			case PropertyId::BorderTopColor: values.border_top_color(color); break;
+			case PropertyId::BorderRightColor: values.border_right_color(color); break;
+			case PropertyId::BorderBottomColor: values.border_bottom_color(color); break;
+			default: values.border_left_color(color); break;
+			}
+			if (color_changed)
+				dirty_properties.Insert(id);
+		}
 	}
 
 	// The font-face handle is nulled when local font properties are set. In that case we need to retrieve a new handle.
@@ -1100,6 +1129,9 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	// it here so they are notified of a change.
 	if (dirty_properties.Contains(PropertyId::TextOverflow))
 		dirty_inherited_properties.Insert(PropertyId::TextOverflow);
+	// The same for opacity: not inherited, but children draw with their parent's opacity multiplied in.
+	if (dirty_properties.Contains(PropertyId::Opacity))
+		dirty_inherited_properties.Insert(PropertyId::Opacity);
 
 	// Propagate dirty inherited properties to children. Var shorthands are local to the element and never inherited.
 	if (!dirty_inherited_properties.Empty() || !dirty_variables.empty())
@@ -1252,7 +1284,7 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		values.width(ComputeLengthPercentageAuto(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::MinWidth:
-		values.min_width(ComputeLengthPercentage(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		values.min_width(ComputeLengthPercentageAuto(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::MaxWidth:
 		values.max_width(ComputeMaxSize(p, font_size, document_font_size, dp_ratio, vp_dimensions));
@@ -1262,7 +1294,7 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		values.height(ComputeLengthPercentageAuto(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::MinHeight:
-		values.min_height(ComputeLengthPercentage(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		values.min_height(ComputeLengthPercentageAuto(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::MaxHeight:
 		values.max_height(ComputeMaxSize(p, font_size, document_font_size, dp_ratio, vp_dimensions));
@@ -1301,7 +1333,9 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		values.image_color(p->Get<Colourb>());
 		break;
 	case PropertyId::Opacity:
-		{ float value; if (ComputeDefiniteNumber(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.opacity(value); }
+		// Not inherited: the element draws with its own opacity times the one its parent draws with (copied with the
+		// inherited values), until opacity groups composite whole subtrees (phase 3, paint).
+		{ float value; if (ComputeDefiniteNumber(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.opacity(Math::Clamp(value, 0.f, 1.f) * values.opacity()); }
 		break;
 
 	case PropertyId::FontFamily:

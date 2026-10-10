@@ -369,10 +369,11 @@ float BlockContainer::GetShrinkToFitWidth() const
 
 	float min_width, max_width;
 	LayoutDetails::GetMinMaxWidth(min_width, max_width, computed, box, 0.f);
-	const auto percentage_dependent = [](Style::LengthPercentage value) {
-		return value.type == Style::LengthPercentage::Percentage
+	const auto percentage_dependent = [](auto value) {
+		using Type = decltype(value.type);
+		return value.type == Type::Percentage
 #ifdef RMLUI_MATH_EXPRESSIONS
-			|| value.type == Style::LengthPercentage::Calculation
+			|| value.type == Type::Calculation
 #endif
 			;
 	};

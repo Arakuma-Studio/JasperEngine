@@ -84,15 +84,15 @@ namespace Style {
 	using ZIndex = NumberAuto;
 
 	using Width = LengthPercentageAuto;
-	using MinWidth = LengthPercentage;
+	using MinWidth = LengthPercentageAuto; // 'auto' (the initial value) is 0 outside flex and grid items.
 	using MaxWidth = LengthPercentage; // 'none' keyword converted to FLT_MAX length.
 
 	using Height = LengthPercentageAuto;
-	using MinHeight = LengthPercentage;
+	using MinHeight = LengthPercentageAuto; // 'auto' (the initial value) is 0 outside flex and grid items.
 	using MaxHeight = LengthPercentage; // 'none' keyword converted to FLT_MAX length.
 
 	struct LineHeight {
-		float value = 12.f * 1.2f; // The computed value (length)
+		float value = 16.f * 1.2f; // The computed value (length)
 		enum InheritType : uint8_t { Number, Length } inherit_type = Number;
 		float inherit_value = 1.2f;
 		LineHeight() {}

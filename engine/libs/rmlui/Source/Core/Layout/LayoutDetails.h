@@ -15,7 +15,8 @@ class ContainerBox;
 */
 struct ComputedAxisSize {
 	Style::LengthPercentageAuto size;
-	Style::LengthPercentage min_size, max_size;
+	Style::LengthPercentageAuto min_size; // 'auto' resolves to 0 here; flex items get their automatic minimum where they are sized
+	Style::LengthPercentage max_size;
 	Style::Padding padding_a, padding_b;
 	Style::Margin margin_a, margin_b;
 	float border_a, border_b;

@@ -2661,24 +2661,25 @@ TEST_CASE("Calculation.compound.media_wpt")
 		"width: calc(8000vh * 1vw / 1em * 8px / 40vh)",
 		"width: calc(100vw * 10vh * 1px * 0.0625em / 1px / 1px / 1px)",
 	};
-	// The WPT support documents use the browser's 16px initial font size, while RmlUi media queries
-	// deliberately use DefaultComputedValues() (12px). Preserve every pinned expression and assert
-	// its exact RmlUi match result under that existing media-query context instead of merely parsing it.
+	// The WPT support documents use the browser's 16px initial font size, and RmlUi media queries use
+	// DefaultComputedValues(), which the fork's CSS initial values (docs/html-ui/FORK.md P3-4) made 16px too
+	// (upstream PR #983 pinned these against 6.3's 12px). Preserve every pinned expression and assert its
+	// exact RmlUi match result under that media-query context instead of merely parsing it.
 	constexpr bool expected_initial_matches[] = {
 		true,  // calc-in-media-queries-001.html
 		true,  // calc-in-media-queries-002.html
-		false, // mixed-units-01.html: 116px - 1em = 104px
-		false, // mixed-units-02.html: 200vh + 5em = 80px
-		false, // mixed-units-03.html: 100vw - 5.625em = 32.5px
+		true,  // mixed-units-01.html: 116px - 1em = 100px
+		true,  // mixed-units-02.html: 200vh + 5em = 100px
+		true,  // mixed-units-03.html: 100vw - 5.625em = 10px
 		true,  // mixed-units-04.html
 		true,  // mixed-units-05.html
 		true,  // mixed-units-06.html
 		true,  // mixed-units-07.html
-		false, // mixed-units-08.html: (50vh * 5em) / 4px = 75px
-		false, // mixed-units-09.html: 50vw / 0.3125em * 10px = 133.333...px
+		false, // mixed-units-08.html: (50vh * 5em) / 4px, with RmlUi's media-query lengths
+		false, // mixed-units-09.html: 50vw / 0.3125em * 10px, with RmlUi's media-query lengths
 		true,  // mixed-units-10.html
-		false, // mixed-units-11.html: evaluates to 133.333...px
-		false, // mixed-units-12.html: evaluates to 75px
+		true,  // mixed-units-11.html: 8000vh * 1vw / 1em * 8px / 40vh = 100px
+		true,  // mixed-units-12.html: 100vw * 10vh * 1px * 0.0625em / 1px / 1px / 1px = 100px
 	};
 	static_assert(Count(expected_initial_matches) == Count(media_conditions));
 	String styles = "div { width: 1px; height: 1px; }";
@@ -2699,7 +2700,7 @@ TEST_CASE("Calculation.compound.media_wpt")
 	TestsShell::RenderLoop();
 
 	// Assert every WPT-owned condition, not just representative parsing. The first two source cases
-	// match; the mixed-unit expectations above reflect RmlUi's explicitly preserved 12px media font.
+	// match; the mixed-unit expectations above reflect RmlUi's media font, the 16px initial size.
 	for (int i = 0; i < int(Count(media_conditions)); ++i)
 	{
 		CAPTURE(i);
