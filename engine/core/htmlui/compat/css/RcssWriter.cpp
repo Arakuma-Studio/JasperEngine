@@ -25,7 +25,32 @@ std::string RcssMediaCondition::text() const{
 RcssWriter::RcssWriter(Mode mode): mode(mode) {
 }
 
+namespace {
+
+    // the largest output buffer a writer of the thread left (its pages mapped already): the
+    // next writer starts in it
+    struct SpareOutput {
+        std::unique_ptr<char[]> data;
+        size_t capacity = 0;
+    };
+    thread_local SpareOutput tSpareOutput;
+
+}
+
+RcssWriter::Output::~Output(){
+    if (capacity_ > tSpareOutput.capacity){
+        tSpareOutput.data = std::move(data_);
+        tSpareOutput.capacity = capacity_;
+    }
+}
+
 void RcssWriter::Output::grow(size_t needed){
+    if (capacity_ == 0 && tSpareOutput.capacity >= needed){
+        data_ = std::move(tSpareOutput.data);
+        capacity_ = tSpareOutput.capacity;
+        tSpareOutput.capacity = 0;
+        return;
+    }
     size_t capacity = capacity_ ? capacity_ * 2 : 4096;
     while (capacity < needed)
         capacity *= 2;

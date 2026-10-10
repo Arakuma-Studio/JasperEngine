@@ -66,6 +66,10 @@ namespace jasperengine::htmlui::compat {
         // over as a string by take()
         class Output {
         public:
+            Output() = default;
+            ~Output();
+            Output(const Output&) = delete;
+            Output& operator=(const Output&) = delete;
             char* extend(size_t count){
                 if (size_ + count > capacity_)
                     grow(size_ + count);

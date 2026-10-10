@@ -45,7 +45,7 @@ namespace jasperengine::htmlui::compat {
         RuleOrigin origin = RuleOrigin::Author;
         // The CSS selectors, nesting resolved. A rule whose selector list was scanned
         // (SelectorRewriter::scanList: `scanned`, its rewritten selectors and their CSS texts set
-        // when it was flattened) has them parsed from `prelude` at their first use.
+        // when it was flattened) has them parsed from its prelude at their first use.
         const SelectorList& selectors() const;
         SourceRef ref, preludeRef;
         MediaResult media = MediaResult::unconditional();
@@ -56,12 +56,11 @@ namespace jasperengine::htmlui::compat {
         ArenaList<RewrittenSelector> rewritten;
         bool dropped = false;
 
-        // what selectors() reads: the list parsed, or the prelude it is parsed from
+        // what selectors() reads: the list parsed, or the parsed rule whose prelude it is
+        // parsed from (preludeOf; the parsed sheet lives in the session's arena)
         mutable SelectorList parsedSelectors;
         mutable bool selectorsParsed = false;
-        ValueList prelude;
-        Text preludeText;               // (Rule::preludeDeferred: the prelude is read from its text)
-        bool preludeDeferred = false;
+        const Rule* source = nullptr;
         // a scanned list: serialize() of each selector (never a root or `body` rule: scanList
         // reads no html/body type, :root or root id)
         bool scanned = false;
@@ -172,8 +171,21 @@ namespace jasperengine::htmlui::compat {
         bool rcssKnown = false;                                  // RcssGrammar::known
     };
 
+    // The storage of a session's big lists, which a thread keeps from one session to the next
+    // (emptied, its pages already mapped): as the arena's blocks, the memory of a rewrite is not
+    // mapped again for every style sheet (the page faults of fresh memory are a part of a
+    // rewrite's time that no instruction count shows). `Slot` tells lists of one type apart.
+    template<typename T, int Slot>
+    std::vector<T>& sessionSpare(){
+        static thread_local std::vector<T> spare;
+        return spare;
+    }
+
     struct Session {
         Session(const CompatOptions& options, SourceFiles& files, DiagnosticSink& sink, const RewriteContext& context);
+        ~Session();
+        Session(const Session&) = delete;
+        Session& operator=(const Session&) = delete;
 
         // everything the session parses and builds (token texts, value lists, selectors) lives
         // in its arena, current for the session's lifetime and released with it; declared

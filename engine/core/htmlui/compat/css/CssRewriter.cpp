@@ -147,8 +147,7 @@ bool DeclContext::fork(ForkFeature feature) const{
 const SelectorList& FlatRule::selectors() const{
     if (!selectorsParsed){
         // (a scanned list: valid, so it parses; a deferred prelude is read from its text)
-        std::optional<SelectorList> parsed = SelectorRewriter::parseList(
-            preludeDeferred ? parseComponentValueList(preludeText, preludeRef.offset) : prelude, file);
+        std::optional<SelectorList> parsed = source ? SelectorRewriter::parseList(preludeOf(*source), file) : std::nullopt;
         if (parsed)
             parsedSelectors = std::move(*parsed);
         selectorsParsed = true;
@@ -168,6 +167,13 @@ std::string_view FlatRule::selectorText(size_t i, std::string& buffer) const{
 
 Session::Session(const CompatOptions& options, SourceFiles& files, DiagnosticSink& sink, const RewriteContext& context):
     options(options), files(files), sink(&sink), context(context), urls(context.files, context.manifest) {
+    // (the storage the thread's previous session left, if any)
+    rules.swap(sessionSpare<FlatRule, 0>());
+    baseEntries.swap(sessionSpare<BaseEntry, 0>());
+    baseSlots.swap(sessionSpare<uint32_t, 0>());
+    propertyUses.swap(sessionSpare<PendingUse, 0>());
+    memoEntries.swap(sessionSpare<MemoEntry, 0>());
+    memoSlots.swap(sessionSpare<uint32_t, 1>());
     mainSink = &sink;
     const CssRewriter::DeclarationMemo memoMode = CssRewriter::declarationMemo();
     memoDisabled = memoMode == CssRewriter::DeclarationMemo::Off;
@@ -206,6 +212,21 @@ Session::Session(const CompatOptions& options, SourceFiles& files, DiagnosticSin
     }
     userAgentSelectorOptions = selectorOptions;
     userAgentSelectorOptions.origin = SelectorOptions::Origin::UserAgent;
+}
+
+Session::~Session(){
+    // the lists' storage is left to the thread's next session
+    auto keep = [](auto& list, auto& spare){
+        list.clear();
+        if (list.capacity() > spare.capacity())
+            spare.swap(list);
+    };
+    keep(rules, sessionSpare<FlatRule, 0>());
+    keep(baseEntries, sessionSpare<BaseEntry, 0>());
+    keep(baseSlots, sessionSpare<uint32_t, 0>());
+    keep(propertyUses, sessionSpare<PendingUse, 0>());
+    keep(memoEntries, sessionSpare<MemoEntry, 0>());
+    keep(memoSlots, sessionSpare<uint32_t, 1>());
 }
 
 const PropertyFacts& Session::facts(std::string_view property){
@@ -421,9 +442,7 @@ namespace {
         rule.sheet = scope.sheet;
         rule.file = scope.file;
         rule.origin = scope.origin;
-        rule.prelude = std::move(source.prelude);
-        rule.preludeText = source.preludeText;
-        rule.preludeDeferred = source.preludeDeferred;
+        rule.source = &source;
         rule.scanned = true;
         rule.selectorTexts = std::move(scanned.texts);
         rule.rewritten = std::move(scanned.rewritten);
@@ -1931,8 +1950,15 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
                 result.dependencies.push_back(path);
         }
         Stylesheet sheet = parseStylesheet(input.file, input.text, impl->sink, input.baseOffset, true);
-        // about one flat rule per top-level rule
-        session.rules.reserve(session.rules.size() + sheet.rules.size());
+        // the flat rules: about one a style rule (one more for the declarations after each
+        // nested rule), allocated once
+        std::function<size_t(const RuleList&, bool)> count = [&](const RuleList& rules, bool nested){
+            size_t n = 0;
+            for (const Rule& r : rules)
+                n += (r.kind == Rule::Kind::Style ? (nested ? 2 : 1) : 0) + count(r.rules, r.kind == Rule::Kind::Style || nested);
+            return n;
+        };
+        session.rules.reserve(session.rules.size() + count(sheet.rules, false));
         FlattenScope scope;
         scope.sheet = (uint32_t)i;
         scope.file = input.file;
