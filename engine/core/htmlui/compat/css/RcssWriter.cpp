@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/RcssWriter.h"
+
+#include <cstring>
 #include "htmlui/compat/LiteralCompare.h"
 
 using namespace jasperengine::htmlui::compat;
@@ -55,8 +57,11 @@ void RcssWriter::beginRule(std::string_view selectors, SourceRef ref){
         return;
     if (ruleOpen)
         endRule();
-    output.append(selectors.data(), selectors.size());
-    output += " {\n";
+    const size_t at = output.size();
+    output.resize(at + selectors.size() + 3);
+    char* to = &output[at];
+    std::memcpy(to, selectors.data(), selectors.size());
+    std::memcpy(to + selectors.size(), " {\n", 3);
     map.lines.push_back(ref);
     ruleOpen = true;
     ruleRef = ref;
@@ -74,16 +79,24 @@ void RcssWriter::declaration(std::string_view name, std::string_view value, Sour
         if (!output.empty())
             output += ' ';
     }
-    output.append(name.data(), name.size());
-    output += ": ";
-    output.append(value.data(), value.size());
-    output += ';';
-    if (mode == Mode::DeclarationList){
+    // "name: value;" and the line end written in one growth of the output
+    const bool sheet = mode != Mode::DeclarationList;
+    const size_t at = output.size();
+    output.resize(at + name.size() + value.size() + (sheet ? 4 : 3));
+    char* to = &output[at];
+    std::memcpy(to, name.data(), name.size());
+    to += name.size();
+    *to++ = ':';
+    *to++ = ' ';
+    std::memcpy(to, value.data(), value.size());
+    to += value.size();
+    *to++ = ';';
+    if (!sheet){
         if (map.lines.empty())
             map.lines.push_back(ref);
         return;
     }
-    output += '\n';
+    *to = '\n';
     map.lines.push_back(ref);
 }
 
