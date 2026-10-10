@@ -48,7 +48,7 @@ namespace {
 
 	Vector2f OuterRadius(const BorderMetrics& metrics, int corner)
 	{
-		return Vector2f(metrics.outer_radii[corner]);
+		return metrics.outer_radii[corner];
 	}
 	bool IsRounded(Vector2f radius)
 	{
@@ -1009,8 +1009,8 @@ void GeometryBorderStyles::DrawBorder(Vector<Vertex>& vertices, Vector<int>& ind
 		if (side == TOP && top_gap.y > top_gap.x)
 		{
 			const float x_left = metrics.positions_outer[0].x;
-			const float x_min = Math::Max(metrics.positions_inner[0].x, x_left + metrics.outer_radii[0]);
-			const float x_max = Math::Min(metrics.positions_inner[1].x, metrics.positions_outer[1].x - metrics.outer_radii[1]);
+			const float x_min = Math::Max(metrics.positions_inner[0].x, x_left + metrics.outer_radii[0].x);
+			const float x_max = Math::Min(metrics.positions_inner[1].x, metrics.positions_outer[1].x - metrics.outer_radii[1].x);
 			const float x0 = Math::Clamp(x_left + top_gap.x, x_min, x_max);
 			const float x1 = Math::Clamp(x_left + top_gap.y, x_min, x_max);
 			const RailPair& a = rail.pairs[rail.straight_begin];

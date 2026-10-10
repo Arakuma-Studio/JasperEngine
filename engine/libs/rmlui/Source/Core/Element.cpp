@@ -523,7 +523,40 @@ RenderBox Element::GetRenderBox(BoxArea fill_area, int index, bool with_border_t
 	}
 
 	const ComputedValues& computed = meta->computed_values;
-	RenderBox render_box{inner_size, box.offset, edge_sizes, computed.border_radius()};
+
+	// The radii of the border box (CSS Backgrounds 3, 5.3 and 5.5): percentages of its width (horizontal radii) and height
+	// (vertical ones), then all scaled down together if the curves of two adjacent corners would overlap. The inner radii
+	// of the padding and content boxes follow from them (GeometryBackgroundBorder::ComputeBorderMetrics).
+	CornerSizes2 border_radius = {};
+	if (computed.has_border_radius())
+	{
+		const Vector2f border_size = box.padding_size + box.box.GetFrameSize(BoxArea::Border);
+		for (int i = 0; i < 8; i++)
+		{
+			const int corner = i / 2, axis = i % 2;
+			const float basis = (axis == 0 ? border_size.x : border_size.y);
+			const Style::LengthPercentage radius = computed.border_radius(corner, axis);
+			float value = 0.f;
+#ifdef RMLUI_MATH_EXPRESSIONS
+			if (radius.type == Style::LengthPercentage::Calculation)
+			{
+				const Property* property =
+					meta->style.GetLocalPropertyWithResolvedVariables(PropertyId(int(PropertyId::RmlUi_BorderTopLeftRadiusX) + i));
+				if (property && property->unit == Unit::CALCULATION)
+				{
+					if (CalculationPtr calculation = property->value.Get<CalculationPtr>())
+						ResolveElementCalculation(*calculation, *this, basis, value);
+				}
+			}
+			else
+#endif
+				value = ResolveValue(radius, basis);
+			border_radius[corner][axis] = Math::Max(value, 0.f);
+		}
+		GeometryBackgroundBorder::ScaleRadiiToFit(border_radius, border_size);
+	}
+
+	RenderBox render_box{inner_size, box.offset, edge_sizes, border_radius};
 	render_box.SetBorderStyles({computed.border_top_style(), computed.border_right_style(), computed.border_bottom_style(), computed.border_left_style()});
 
 	// A lowered and interrupted top border (a fieldset's legend): the painted main box starts `inset` px lower.
@@ -1923,12 +1956,10 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 		}
 	}
 
-	const bool border_radius_changed = (                                    //
-		changed_properties.Contains(PropertyId::BorderTopLeftRadius) ||     //
-		changed_properties.Contains(PropertyId::BorderTopRightRadius) ||    //
-		changed_properties.Contains(PropertyId::BorderBottomRightRadius) || //
-		changed_properties.Contains(PropertyId::BorderBottomLeftRadius)     //
-	);
+	// Each corner has a horizontal and a vertical radius (phase 3, p3-paint).
+	bool border_radius_changed = false;
+	for (int i = 0; i < 8; i++)
+		border_radius_changed |= changed_properties.Contains(PropertyId(int(PropertyId::RmlUi_BorderTopLeftRadiusX) + i));
 	const bool filter_or_mask_changed = (changed_properties.Contains(PropertyId::Filter) || changed_properties.Contains(PropertyId::BackdropFilter) ||
 		changed_properties.Contains(PropertyId::MaskImage));
 	const bool perspective_changed = changed_properties.Contains(PropertyId::Perspective) ||

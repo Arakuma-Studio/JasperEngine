@@ -211,7 +211,6 @@ namespace Style {
 		float flex_basis = 0;
 		float row_gap = 0, column_gap = 0;
 
-		int16_t border_top_left_radius = 0, border_top_right_radius = 0, border_bottom_right_radius = 0, border_bottom_left_radius = 0;
 		Colourb image_color = Colourb(255, 255, 255);
 		float scrollbar_margin = 0.f;
 
@@ -228,6 +227,11 @@ namespace Style {
 		// -- Cascade (p3-cascade) --
 
 		// -- Paint (p3-paint) --
+		// Border radii: the horizontal and the vertical radius of the corners top-left, top-right, bottom-right and
+		// bottom-left (index 2 * corner + axis). A length in px or a percentage (of the border box's width or height);
+		// a calc() expression is resolved from the property (Element::GetRenderBox resolves and scales them all).
+		float border_radius_values[8] = {};
+		uint16_t border_radius_types = 0; // LengthPercentage::Type of each, two bits a value.
 
 		// -- Text (p3-text) --
 
@@ -337,12 +341,6 @@ namespace Style {
 		float             flex_grow()                  const { return GetLocalNumericProperty(PropertyId::FlexGrow, 0.f); }
 		float             flex_shrink()                const { return GetLocalNumericProperty(PropertyId::FlexShrink, 1.f); }
 		FlexBasis         flex_basis()                 const { return GetLengthPercentageAuto(rare.flex_basis_type, rare.flex_basis, ComputedCalculationSlot::FlexBasis); }
-		float             border_top_left_radius()     const { return (float)rare.border_top_left_radius; }
-		float             border_top_right_radius()    const { return (float)rare.border_top_right_radius; }
-		float             border_bottom_right_radius() const { return (float)rare.border_bottom_right_radius; }
-		float             border_bottom_left_radius()  const { return (float)rare.border_bottom_left_radius; }
-		CornerSizes       border_radius()              const { return {(float)rare.border_top_left_radius,     (float)rare.border_top_right_radius,
-		                                                               (float)rare.border_bottom_right_radius, (float)rare.border_bottom_left_radius}; }
 		TextOverflow      text_overflow()              const { return rare.text_overflow; }
 		String            text_overflow_string()       const { return GetLocalProperty(PropertyId::TextOverflow, String());; }
 		Clip              clip()                       const { return rare.clip; }
@@ -375,6 +373,10 @@ namespace Style {
 		// Cascade (p3-cascade)
 
 		// Paint (p3-paint)
+		// A border radius as declared: corner 0-3 (top-left, top-right, bottom-right, bottom-left), axis 0 (horizontal)
+		// or 1 (vertical). A calc() value has the type Calculation and no expression: Element::GetRenderBox reads it.
+		LengthPercentage  border_radius(int corner, int axis) const { const int i = 2 * corner + axis; return LengthPercentage(LengthPercentage::Type((rare.border_radius_types >> (2 * i)) & 3), rare.border_radius_values[i]); }
+		bool              has_border_radius()          const { if (rare.border_radius_types != 0) return true; for (float value : rare.border_radius_values) { if (value != 0.f) return true; } return false; }
 
 		// Text (p3-text)
 
@@ -460,10 +462,6 @@ namespace Style {
 		void perspective               (float value)             { rare.perspective                = value; }
 		void has_local_perspective     (bool value)              { rare.has_local_perspective      = value; }
 		void has_local_transform       (bool value)              { rare.has_local_transform        = value; }
-		void border_top_left_radius    (float value)             { rare.border_top_left_radius     = (int16_t)value; }
-		void border_top_right_radius   (float value)             { rare.border_top_right_radius    = (int16_t)value; }
-		void border_bottom_right_radius(float value)             { rare.border_bottom_right_radius = (int16_t)value; }
-		void border_bottom_left_radius (float value)             { rare.border_bottom_left_radius  = (int16_t)value; }
 		void text_overflow             (TextOverflow value)      { rare.text_overflow              = value; }
 		void clip                      (Clip value)              { rare.clip                       = value; }
 		void drag                      (Drag value)              { rare.drag                       = value; }
@@ -485,6 +483,7 @@ namespace Style {
 		// Cascade (p3-cascade)
 
 		// Paint (p3-paint)
+		void border_radius             (int corner, int axis, LengthPercentage value) { const int i = 2 * corner + axis; rare.border_radius_values[i] = value.value; rare.border_radius_types = uint16_t((rare.border_radius_types & ~(3 << (2 * i))) | (int(value.type) << (2 * i))); }
 
 		// Text (p3-text)
 

@@ -1313,16 +1313,10 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		break;
 
 	case PropertyId::BorderTopLeftRadius:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_top_left_radius(value); }
-		break;
 	case PropertyId::BorderTopRightRadius:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_top_right_radius(value); }
-		break;
 	case PropertyId::BorderBottomRightRadius:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_bottom_right_radius(value); }
-		break;
 	case PropertyId::BorderBottomLeftRadius:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_bottom_left_radius(value); }
+		// Not registered: each corner is a shorthand of its horizontal and vertical radius (p3-paint section below).
 		break;
 
 	case PropertyId::Display:
@@ -1620,6 +1614,11 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	case PropertyId::RmlUi_BorderBottomRightRadiusY:
 	case PropertyId::RmlUi_BorderBottomLeftRadiusX:
 	case PropertyId::RmlUi_BorderBottomLeftRadiusY:
+		{
+			const int index = int(id) - int(PropertyId::RmlUi_BorderTopLeftRadiusX);
+			values.border_radius(index / 2, index % 2, ComputeLengthPercentage(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		}
+		break;
 	case PropertyId::OutlineWidth:
 	case PropertyId::OutlineStyle:
 	case PropertyId::OutlineColor:

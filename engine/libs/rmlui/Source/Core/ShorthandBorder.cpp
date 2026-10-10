@@ -66,6 +66,92 @@ bool ParseBorderShorthand(PropertyDictionary& dictionary, const ShorthandDefinit
 	return true;
 }
 
+bool ParseCornerRadiusShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
+	const PropertySpecification& specification)
+{
+	if (definition.items.size() != 2 || definition.items[0].type != ShorthandItemType::Property ||
+		definition.items[1].type != ShorthandItemType::Property)
+		return false;
+	StringList words;
+	SplitWhitespaceList(value, words);
+	if (words.empty() || words.size() > 2)
+		return false;
+	PropertyDictionary parsed;
+	if (!specification.ParsePropertyDeclaration(parsed, definition.items[0].property_id, words[0]) ||
+		!specification.ParsePropertyDeclaration(parsed, definition.items[1].property_id, words.back()))
+		return false;
+	for (const auto& id_property : parsed.GetProperties())
+		dictionary.SetProperty(id_property.first, id_property.second);
+	return true;
+}
+
+bool ParseBorderRadiusShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
+	const PropertySpecification& specification)
+{
+	if (definition.items.size() != 4)
+		return false;
+
+	// The horizontal radii, and after a '/' outside of parentheses (calc() divides with it too) the vertical ones.
+	String horizontal, vertical;
+	bool has_vertical = false;
+	int depth = 0;
+	for (char c : value)
+	{
+		if (c == '(')
+			depth++;
+		else if (c == ')')
+			depth--;
+		if (c == '/' && depth == 0)
+		{
+			if (has_vertical)
+				return false;
+			has_vertical = true;
+			continue;
+		}
+		(has_vertical ? vertical : horizontal) += c;
+	}
+
+	// One to four values: top-left, top-right, bottom-right, bottom-left; omitted ones as in a box shorthand.
+	auto expand = [](const String& list, String corners[4]) {
+		StringList words;
+		SplitWhitespaceList(list, words);
+		if (words.empty() || words.size() > 4)
+			return false;
+		corners[0] = words[0];
+		corners[1] = (words.size() > 1 ? words[1] : words[0]);
+		corners[2] = (words.size() > 2 ? words[2] : words[0]);
+		corners[3] = (words.size() > 3 ? words[3] : corners[1]);
+		return true;
+	};
+	String x[4], y[4];
+	if (!expand(horizontal, x))
+		return false;
+	if (has_vertical)
+	{
+		if (!expand(vertical, y))
+			return false;
+	}
+	else
+	{
+		for (int i = 0; i < 4; i++)
+			y[i] = x[i];
+	}
+
+	PropertyDictionary parsed;
+	for (int corner = 0; corner < 4; corner++)
+	{
+		const ShorthandItem& item = definition.items[corner];
+		if (item.type != ShorthandItemType::Shorthand || !item.shorthand_definition || item.shorthand_definition->items.size() != 2)
+			return false;
+		if (!specification.ParsePropertyDeclaration(parsed, item.shorthand_definition->items[0].property_id, x[corner]) ||
+			!specification.ParsePropertyDeclaration(parsed, item.shorthand_definition->items[1].property_id, y[corner]))
+			return false;
+	}
+	for (const auto& id_property : parsed.GetProperties())
+		dictionary.SetProperty(id_property.first, id_property.second);
+	return true;
+}
+
 float ComputeLineWidth(const Property* property, float font_size, float document_font_size, float dp_ratio, Vector2f vp_dimensions)
 {
 	if (property->unit == Unit::KEYWORD)

@@ -340,12 +340,6 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::BorderLeftColor, "border-left-color", "black", false, false).AddParser("color");
 	RegisterShorthand(ShorthandId::BorderColor, "border-color", "border-top-color, border-right-color, border-bottom-color, border-left-color", ShorthandType::Box);
 
-	RegisterProperty(PropertyId::BorderTopLeftRadius, "border-top-left-radius", "0px", false, false).AddParser("length");
-	RegisterProperty(PropertyId::BorderTopRightRadius, "border-top-right-radius", "0px", false, false).AddParser("length");
-	RegisterProperty(PropertyId::BorderBottomRightRadius, "border-bottom-right-radius", "0px", false, false).AddParser("length");
-	RegisterProperty(PropertyId::BorderBottomLeftRadius, "border-bottom-left-radius", "0px", false, false).AddParser("length");
-	RegisterShorthand(ShorthandId::BorderRadius, "border-radius", "border-top-left-radius, border-top-right-radius, border-bottom-right-radius, border-bottom-left-radius", ShorthandType::Box);
-
 	// 'grid=14, inline-grid=15' join the display keywords with grid layout (p3-grid): ForkFeature::Grid's probe parses them.
 	RegisterProperty(PropertyId::Display, "display", "inline", false, true)
 		.AddParser("keyword", "none, block, inline, inline-block, flow-root, flex, inline-flex, table, inline-table, table-row, table-row-group, table-column, table-column-group, table-cell, list-item=16, contents=17");
@@ -535,6 +529,27 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::BorderImage, "border-image", "none", false, false).AddParser("keyword", "none");
 	RegisterShorthand(ShorthandId::Border, "border", "border-width, border-style, border-color, border-image", ShorthandType::Custom);
 	properties.SetShorthandParser(ShorthandId::Border, &ParseBorderShorthand);
+
+	// Radii (phase 3, 3.7.1): every corner has a horizontal and a vertical radius, a length or a percentage of the border
+	// box's width or height; 'border-<corner>-radius: <x> <y>?' and 'border-radius: <1-4 values> [ / <1-4 values> ]?' are
+	// Custom shorthands of them (the 6.3 ids of the four corners are not registered any more).
+	{
+		static const char* const corners[] = {"top-left", "top-right", "bottom-right", "bottom-left"};
+		static const ShorthandId corner_ids[] = {ShorthandId::BorderTopLeftRadius, ShorthandId::BorderTopRightRadius,
+			ShorthandId::BorderBottomRightRadius, ShorthandId::BorderBottomLeftRadius};
+		for (int corner = 0; corner < 4; corner++)
+		{
+			const String name = CreateString("border-%s-radius", corners[corner]);
+			const PropertyId x_id = PropertyId(int(PropertyId::RmlUi_BorderTopLeftRadiusX) + 2 * corner);
+			RegisterProperty(x_id, "-rmlui-" + name + "-x", "0px", false, false).AddParser("length_percent");
+			RegisterProperty(PropertyId(int(x_id) + 1), "-rmlui-" + name + "-y", "0px", false, false).AddParser("length_percent");
+			RegisterShorthand(corner_ids[corner], name, "-rmlui-" + name + "-x, -rmlui-" + name + "-y", ShorthandType::Custom);
+			properties.SetShorthandParser(corner_ids[corner], &ParseCornerRadiusShorthand);
+		}
+		RegisterShorthand(ShorthandId::BorderRadius, "border-radius",
+			"border-top-left-radius, border-top-right-radius, border-bottom-right-radius, border-bottom-left-radius", ShorthandType::Custom);
+		properties.SetShorthandParser(ShorthandId::BorderRadius, &ParseBorderRadiusShorthand);
+	}
 
 	// -- Text (p3-text) --
 

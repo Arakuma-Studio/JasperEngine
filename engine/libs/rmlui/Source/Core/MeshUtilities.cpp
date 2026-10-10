@@ -121,8 +121,8 @@ void MeshUtilities::GenerateBackgroundBorder(Mesh& out_mesh, const RenderBox& re
 	// it (a multisampled target) only curved edges are, multisampling resolving the straight ones. Square, solid borders
 	// without feathering keep the fast path.
 	bool rounded = false;
-	for (float radius : metrics.outer_radii)
-		rounded |= (radius > 0.f);
+	for (const Vector2f& radius : metrics.outer_radii)
+		rounded |= (radius.x > 0.f && radius.y > 0.f);
 	const FeatherEdges edges = (geometry_feathering ? FeatherEdges::All : FeatherEdges::Curves);
 
 	if (has_background)

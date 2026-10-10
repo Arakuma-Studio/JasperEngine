@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../../Include/RmlUi/Core/RenderBox.h"
 #include "../../Include/RmlUi/Core/Types.h"
 #include "../../Include/RmlUi/Core/Vertex.h"
 
@@ -7,12 +8,6 @@ namespace Rml {
 
 class Box;
 
-// Ordered by top, right, bottom, left.
-using EdgeSizes = Array<float, 4>;
-
-// Ordered by top-left, top-right, bottom-right, bottom-left.
-using CornerSizes = Array<float, 4>;
-using CornerSizes2 = Array<Vector2f, 4>;
 using CornerPositions = Array<Vector2f, 4>;
 
 // The background-border metrics specify an inner and an outer rectangular area, whose corners can be rounded.
@@ -21,11 +16,11 @@ struct BorderMetrics {
 	CornerPositions positions_outer;
 	// Inner corner positions (e.g. at padding edge)
 	CornerPositions positions_inner;
-	// Curved borders are drawn as circles (outer border) and ellipses (inner border) around the centers.
+	// Curved borders are drawn as ellipses (outer and inner border) around the centers.
 	CornerPositions positions_circle_center;
 
-	// Radii of the outer edges, always circles.
-	CornerSizes outer_radii;
+	// Radii of the outer edges, horizontal and vertical (CSS: elliptical corners). Zero for a square corner.
+	CornerSizes2 outer_radii;
 	// Radii of the inner edges, 2-dimensional as these can be elliptic.
 	// The inner radii is effectively the (signed) distance from the circle center to the inner edge.
 	// They can also be zero or negative, in which case a sharp corner should be drawn instead of an arc.
@@ -41,9 +36,18 @@ public:
 	/// @param outer_position Top-left position of the outer edge.
 	/// @param edge_sizes Widths of the border.
 	/// @param inner_size Size of the inner area.
-	/// @param outer_radii The radius of the outer edge at each corner.
+	/// @param outer_radii The radii of the outer edge at each corner, resolved and scaled so that they do not overlap
+	/// (Element::GetRenderBox; scaled here again if they do).
 	/// @return The computed metrics.
-	static BorderMetrics ComputeBorderMetrics(Vector2f outer_position, EdgeSizes edge_sizes, Vector2f inner_size, CornerSizes outer_radii);
+	static BorderMetrics ComputeBorderMetrics(Vector2f outer_position, EdgeSizes edge_sizes, Vector2f inner_size, CornerSizes2 outer_radii);
+
+	/// Scales the radii of a box so that adjacent curves do not overlap (CSS Backgrounds 3, 5.5): every radius by the
+	/// smallest ratio of a side's length to the sum of the two radii along it.
+	static void ScaleRadiiToFit(CornerSizes2& radii, Vector2f box_size);
+
+	/// The number of points of a quarter arc of the given radius: enough for the curve to stay within a tenth of a pixel
+	/// of its chords.
+	static int GetNumPoints(Vector2f radius);
 
 	// Generate geometry for the background, defined by the inner area of the border metrics.
 	void DrawBackground(const BorderMetrics& metrics, ColourbPremultiplied color);
@@ -60,7 +64,7 @@ private:
 	// All draw operations place vertices in clockwise order.
 
 	// Draw the corner, delegate to the specific corner shape drawing function.
-	void DrawBackgroundCorner(Corner corner, Vector2f pos_inner, Vector2f pos_circle_center, float R, Vector2f r, ColourbPremultiplied color);
+	void DrawBackgroundCorner(Corner corner, Vector2f pos_inner, Vector2f pos_circle_center, Vector2f R, Vector2f r, ColourbPremultiplied color);
 
 	// Add a single point.
 	void DrawPoint(Vector2f pos, ColourbPremultiplied color);
@@ -82,7 +86,7 @@ private:
 	// Where 'next' corner means along the clockwise direction. This way we can easily fill the triangles of the edges in FillEdge().
 
 	// Draw the corner, delegate to the specific corner shape drawing function.
-	void DrawBorderCorner(Corner corner, Vector2f pos_outer, Vector2f pos_inner, Vector2f pos_circle_center, float R, Vector2f r,
+	void DrawBorderCorner(Corner corner, Vector2f pos_outer, Vector2f pos_inner, Vector2f pos_circle_center, Vector2f R, Vector2f r,
 		ColourbPremultiplied color0, ColourbPremultiplied color1);
 
 	// Draw a sharp border corner, ie. no border-radius. Does not produce any triangles.
@@ -90,18 +94,15 @@ private:
 
 	// Draw an arc along the outer edge (radius R), and an arc along the inner edge (two-axis radius r),
 	// spaced evenly between angles a0,a1 (inclusive). Connect them by triangles. Colors are interpolated.
-	void DrawArcArc(Vector2f pos_center, float R, Vector2f r, float a0, float a1, ColourbPremultiplied color0, ColourbPremultiplied color1,
+	void DrawArcArc(Vector2f pos_center, Vector2f R, Vector2f r, float a0, float a1, ColourbPremultiplied color0, ColourbPremultiplied color1,
 		int num_points);
 
 	// Draw an arc along the outer edge, and connect them by triangles to a point on the inner edge.
-	void DrawArcPoint(Vector2f pos_center, Vector2f pos_inner, float R, float a0, float a1, ColourbPremultiplied color0, ColourbPremultiplied color1,
-		int num_points);
+	void DrawArcPoint(Vector2f pos_center, Vector2f pos_inner, Vector2f R, float a0, float a1, ColourbPremultiplied color0,
+		ColourbPremultiplied color1, int num_points);
 
 	// Add triangles between the previous corner to another one specified by the index (possibly yet-to-be-drawn).
 	void FillEdge(int index_next_corner);
-
-	// -- Tools --
-	int GetNumPoints(float R) const;
 
 	Vector<Vertex>& vertices;
 	Vector<int>& indices;
