@@ -1,0 +1,10 @@
+{
+ "comment": "double borders of 2 (solid), 3, 6, 9 and 12px, rounded and a circle. Tolerance: the curved edges of the bands are anti-aliased by the engine's feathering over 4x multisampling and by Skia's analytic coverage; edge pixels differ by up to 40 levels (scattered).",
+ "viewport": [
+  330,
+  160
+ ],
+ "tolerance": {
+  "badPercent": 0.4
+ }
+}

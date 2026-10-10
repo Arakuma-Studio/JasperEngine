@@ -17,6 +17,7 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/MeshUtilities.h>
 
 #include <algorithm>
 #include <cmath>
@@ -109,6 +110,9 @@ bool HtmlUIContext::render(const Rect& viewRect){
     // recreated when the view size or the sample count changes; a second size (another view)
     // keeps its own target
     const int samples = getSampleCount();
+    // the fork feathers every edge of backgrounds and borders on a single-sampled target, only
+    // their curves on a multisampled one (phase-3 spec 3.7.3)
+    Rml::SetGeometryFeathering(samples <= 1);
     auto matches = [&](const std::unique_ptr<RmlRenderTarget>& t){
         return t && t->isCreated() && t->getWidth() == size.x && t->getHeight() == size.y && t->getSampleCount() == samples;
     };

@@ -59,6 +59,8 @@ namespace jasperengine { namespace test {
             context = Rml::CreateContext(name, contextSize, &renderer);
 
             target.ensure(targetSize.x, targetSize.y, sampleCount);
+            // as HtmlUIContext: every edge feathered without multisampling, curves only with it
+            Rml::SetGeometryFeathering(sampleCount <= 1);
             screen.createFramebuffer(TextureType::TEXTURE_2D, targetSize.x, targetSize.y, TextureFilter::LINEAR, TextureFilter::LINEAR,
                                      TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE, false);
         }

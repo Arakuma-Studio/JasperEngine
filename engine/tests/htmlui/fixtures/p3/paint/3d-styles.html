@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: groove, ridge, inset, outset colours</title>
+<style>
+  /* Chromium's dark and light colours for rgb(200,100,50), black, white and red */
+  html, body { margin: 0; background: #e0e0e0; }
+  div { position: absolute; width: 40px; height: 30px; border-width: 6px; }
+  .c1 { border-color: rgb(200, 100, 50); }
+  .c2 { border-color: #000000; }
+  .c3 { border-color: #ffffff; }
+  .c4 { border-color: #ff0000; }
+  .groove { border-style: groove; } .ridge { border-style: ridge; } .inset { border-style: inset; } .outset { border-style: outset; }
+</style>
+</head>
+<body>
+<div class="c1 groove" style="left: 10px; top: 10px"></div><div class="c1 ridge" style="left: 70px; top: 10px"></div><div class="c1 inset" style="left: 130px; top: 10px"></div><div class="c1 outset" style="left: 190px; top: 10px"></div>
+<div class="c2 groove" style="left: 10px; top: 60px"></div><div class="c2 ridge" style="left: 70px; top: 60px"></div><div class="c2 inset" style="left: 130px; top: 60px"></div><div class="c2 outset" style="left: 190px; top: 60px"></div>
+<div class="c3 groove" style="left: 10px; top: 110px"></div><div class="c3 ridge" style="left: 70px; top: 110px"></div><div class="c3 inset" style="left: 130px; top: 110px"></div><div class="c3 outset" style="left: 190px; top: 110px"></div>
+<div class="c4 groove" style="left: 10px; top: 160px"></div><div class="c4 ridge" style="left: 70px; top: 160px"></div><div class="c4 inset" style="left: 130px; top: 160px"></div><div class="c4 outset" style="left: 190px; top: 160px"></div>
+</body>
+</html>

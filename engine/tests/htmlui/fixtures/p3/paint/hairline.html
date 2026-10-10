@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: hairline and fractional border widths</title>
+<style>
+  /* Chromium snaps border widths to whole device pixels: (0, 1) -> 1, otherwise rounded down */
+  html, body { margin: 0; background: #ffffff; }
+  div { position: absolute; top: 10px; width: 30px; height: 30px; border: 0 solid #222222; }
+  #a { left: 10px; border-width: 0.25px; }
+  #b { left: 60px; border-width: 0.5px; }
+  #c { left: 110px; border-width: 1.5px; }
+  #d { left: 160px; border-width: 2.5px; }
+  #e { left: 210px; border-width: 0.5px 1px 1.7px 3.9px; }
+</style>
+</head>
+<body><div id="a"></div><div id="b"></div><div id="c"></div><div id="d"></div><div id="e"></div></body>
+</html>
