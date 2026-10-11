@@ -1513,7 +1513,9 @@ namespace {
             // math functions the fork evaluates stay in the properties written as they are read
             // (not in the families a rewrite reads token by token or into decorator arguments)
             normalize.calcNative = writesCalcNatively(row->rewrite) ||
-                (row->rewrite == RewriteId::Grid && session.options.fork.has(ForkFeature::Grid));
+                (row->rewrite == RewriteId::Grid && session.options.fork.has(ForkFeature::Grid)) ||
+                // translate / rotate / scale written as they are: the fork reads them with its transform parser
+                (row->rewrite == RewriteId::IndividualTransform && session.options.fork.has(ForkFeature::IndividualTransforms));
             normalize.unitsNative = normalize.calcNative;
             nativeUnits = normalize.unitsNative && session.options.fork.has(ForkFeature::ExtraUnits);
             normalize.percentBasis = facts.percentBasis;

@@ -11,6 +11,7 @@
 #include "htmlui/compat/css/BaseRules.h"
 #include "htmlui/compat/css/CssParser.h"
 #include "htmlui/compat/css/CssSerialize.h"
+#include "htmlui/compat/css/StaticCalc.h"
 #include "htmlui/compat/css/Units.h"
 #include "htmlui/compat/css/ValueNormalizer.h"
 
@@ -29,6 +30,11 @@ namespace {
         return text(v);
     }
 
+    // calc(), min(), max(), clamp() kept for the fork (its Calc and IndividualTransforms; checked by the normalizer)
+    bool isCalc(const ComponentValue& v){
+        return v.kind == ComponentValue::Kind::Function && StaticCalc::isCalcFamily(lowerAscii(v.name().view()));
+    }
+
     // the transform function of an individual property; "" for none, nullopt when invalid
     std::optional<std::string> functionOf(Session& session, const std::string& property, const ValueList& value){
         ValueList w = words(value);
@@ -36,7 +42,7 @@ namespace {
             return std::string();
         if (property == "translate"){
             for (const ComponentValue& v : w){
-                if (!isLength(session, v, true) && !isVar(v))
+                if (!isLength(session, v, true) && !isVar(v) && !isCalc(v))
                     return std::nullopt;
             }
             if (w.size() == 1)
@@ -49,7 +55,7 @@ namespace {
         }
         if (property == "rotate"){
             auto angle = [](const ComponentValue& v){
-                return (v.isToken(TokenType::Dimension) && unitCategory(v.token.unit) == UnitCategory::Angle) ||
+                return (v.isToken(TokenType::Dimension) && unitCategory(v.token.unit) == UnitCategory::Angle) || isCalc(v) ||
                        (v.isToken(TokenType::Number) && v.token.number == 0);
             };
             auto angleText = [](const ComponentValue& v){ return v.isToken(TokenType::Number) ? std::string("0deg") : text(v); };
@@ -71,7 +77,7 @@ namespace {
         }
         // scale
         for (const ComponentValue& v : w){
-            if (!v.isToken(TokenType::Number) && !v.isToken(TokenType::Percentage) && !isVar(v))
+            if (!v.isToken(TokenType::Number) && !v.isToken(TokenType::Percentage) && !isVar(v) && !isCalc(v))
                 return std::nullopt;
         }
         if (w.size() == 1)
