@@ -225,10 +225,12 @@ static const String pseudo_transition_rml = R"RML(
 		div { display: block; }
 		#t { width: 50px; height: 20px; }
 		#t::after { content: ""; display: block; width: 10px; height: 10px; transition: width 1s linear-in-out; }
+		#c::after { content: ""; display: block; height: 10px; background-color: #0000ff; color: #0000ff; transition: background-color 1s linear, color 1s linear; }
+		#c:hover::after { background-color: #ff0000; color: #ff0000; }
 		#t:hover::after { width: 30px; }
 	</style>
 </head>
-<body><div id="t"/></body>
+<body><div id="t"/><div id="c"/></body>
 </rml>
 )RML";
 
@@ -268,6 +270,18 @@ TEST_CASE("PseudoElements.Transition")
 	CHECK(width < 25.f);
 	AdvanceTo(1.5);
 	CHECK(after->GetComputedValues().width().value == 30.f);
+
+	// Colours interpolate in sRGB (premultiplied), as Chromium: a quarter of the way from blue to red is #4000bf.
+	Element* c = document->GetElementById("c");
+	Element* c_after = c->GetPseudoElement(PseudoElementType::After);
+	REQUIRE(c_after);
+	c->SetPseudoClass("hover", true);
+	context->Update();
+	AdvanceTo(1.75);
+	CHECK(c_after->GetComputedValues().background_color() == Colourb(64, 0, 191));
+	CHECK(c_after->GetComputedValues().color() == Colourb(64, 0, 191));
+	AdvanceTo(3.0);
+	CHECK(c_after->GetComputedValues().background_color() == Colourb(255, 0, 0));
 
 	document->Close();
 	TestsShell::ShutdownShell();
