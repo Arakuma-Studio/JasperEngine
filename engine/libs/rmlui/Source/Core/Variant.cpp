@@ -39,11 +39,6 @@ Variant::Variant(Variant&& other) noexcept
 	Set(std::move(other));
 }
 
-Variant::~Variant()
-{
-	Clear();
-}
-
 void Variant::Clear()
 {
 	// Free any allocated types.

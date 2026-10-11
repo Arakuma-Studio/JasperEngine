@@ -1159,8 +1159,8 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 
 	// Fast path: only the inherited visibility changed (a document or a subtree is shown or hidden) and this element does
 	// not declare its own, so it takes its parent's without every other value being computed again.
-	if (parent_values && !values_are_default_initialized && dirty_variables.empty() && dirty_var_shorthands.empty() && dirty_properties.Size() == 1 &&
-		dirty_properties.Contains(PropertyId::Visibility) && !GetLocalProperty(PropertyId::Visibility))
+	if (parent_values && !values_are_default_initialized && dirty_variables.empty() && dirty_var_shorthands.empty() &&
+		dirty_properties.Contains(PropertyId::Visibility) && dirty_properties.Size() == 1 && !GetLocalProperty(PropertyId::Visibility))
 	{
 		values.visibility(parent_values->visibility());
 		for (int i = 0; i < element->GetNumChildren(true); i++)
@@ -1295,11 +1295,16 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	// The border colors this element declares; the others are 'currentcolor', their initial value.
 	int declared_border_colors = 0;
 
+	// A specified value that may hold 'ch' or 'ex' (ComputeFontRelativeValues).
+	const Units font_face_candidate_units = FontFaceCandidateUnits();
+	bool any_font_face_candidates = false;
+
 	for (auto it = Iterate(); !it.AtEnd(); ++it)
 	{
 		variable_dependencies.clear();
 		auto id_property_pair = *it;
 		const PropertyId id = id_property_pair.first;
+		any_font_face_candidates |= Any(id_property_pair.second.unit & font_face_candidate_units);
 		const Property* property = ResolveVariables(id, &id_property_pair.second, variable_dependencies, property_storage);
 #ifdef RMLUI_MATH_EXPRESSIONS
 		// The cache is rebuilt from scratch above and only exists to retain dependencies hidden behind
@@ -1352,8 +1357,11 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		if (id >= PropertyId::BorderTopColor && id <= PropertyId::BorderLeftColor)
 			declared_border_colors |= 1 << (int(id) - int(PropertyId::BorderTopColor));
 
-		// Values (p3-values): 'currentcolor', relative font weights.
-		property = ResolveValueKeywords(id, property, values, parent_values, color_computed, current_color_storage);
+		// Values (p3-values): 'currentcolor', relative font weights. (Only these units can hold them: the call is skipped for
+		// the others.)
+		if (property->unit == Unit::KEYWORD || property->unit == Unit::STYLE_VALUE || property->unit == Unit::BOXSHADOWLIST ||
+			property->unit == Unit::DECORATOR)
+			property = ResolveValueKeywords(id, property, values, parent_values, color_computed, current_color_storage);
 
 		ComputeValue(values, dp_ratio, vp_dimensions, property_font_size, document_font_size, dirty_font_face_handle, id, property);
 	}
@@ -1396,7 +1404,7 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 
 	// Values (p3-values): the values that depend on the font face.
 	ComputeFontRelativeValues(values, font_unit_scope, values_are_default_initialized ? FontFaceHandle(0) : font_face_before, loop_font_face, dp_ratio,
-		vp_dimensions, font_size, document_font_size, property_storage);
+		vp_dimensions, font_size, document_font_size, property_storage, any_font_face_candidates);
 
 	// Next, pass inheritable dirty properties onto our children
 	PropertyIdSet dirty_inherited_properties = (dirty_properties & StyleSheetSpecification::GetRegisteredInheritedProperties());

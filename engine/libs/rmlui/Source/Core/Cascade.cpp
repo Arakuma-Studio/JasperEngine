@@ -218,18 +218,40 @@ namespace Cascade {
 		return false;
 	}
 
+	// The names of the properties ParseRawDeclaration reads.
+	static bool IsRawName(const String& name)
+	{
+		// (Their first letters first: the common case is none of them.)
+		if (name.empty() || (name[0] != 'c' && name[0] != 'q' && name[0] != 'l'))
+			return false;
+		static const char* const raw_names[] = {"content", "quotes", "counter-reset", "counter-increment", "counter-set", "list-style-type",
+			"list-style-image", "list-style"};
+		for (const char* raw : raw_names)
+			if (name == raw)
+				return true;
+		return false;
+	}
+
+	// Whether the value may be a CSS-wide keyword: its first letter is one of theirs (ParseKeyword's first test).
+	static bool MayBeKeyword(const String& value)
+	{
+		for (const char c : value)
+		{
+			if (StringUtilities::IsWhitespace(c))
+				continue;
+			const char first = char(c | 0x20);
+			return first == 'i' || first == 'u' || first == 'r';
+		}
+		return false;
+	}
+
 	// The generated-content properties read their value as written: strings keep their quotes (the generic value split
 	// unquotes a single string and rejects several). A value with var() takes the usual path.
 	static bool ParseRawDeclaration(const PropertySpecification& specification, PropertyDictionary& dictionary, const String& name,
 		const String& value, bool& result)
 	{
 		// Only these names (the common case is none of them: no lookup, no copy).
-		static const char* const raw_names[] = {"content", "quotes", "counter-reset", "counter-increment", "counter-set", "list-style-type",
-			"list-style-image", "list-style"};
-		bool raw_name = false;
-		for (const char* raw : raw_names)
-			raw_name = raw_name || name == raw;
-		if (!raw_name)
+		if (!IsRawName(name))
 			return false;
 
 		const String stripped = StringUtilities::StripWhitespace(value);
@@ -273,6 +295,10 @@ namespace Cascade {
 		bool& result)
 	{
 		if (&specification != &StyleSheetSpecification::GetPropertySpecification())
+			return false;
+		// The common case in one pass, without copies: no '!' (no '!important'), no important declaration in the block, a
+		// value that cannot be a CSS-wide keyword, a property not read raw. The usual parse follows.
+		if (value.find('!') == String::npos && !dictionary.HasImportantProperties() && !MayBeKeyword(value) && !IsRawName(name))
 			return false;
 		if (ParseImportantDeclaration(specification, dictionary, name, value, result))
 			return true;

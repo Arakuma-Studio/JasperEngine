@@ -1,5 +1,27 @@
 namespace Rml {
 
+inline Variant::~Variant()
+{
+	// Only the types Clear destroys call it: the others (numbers, vectors, colours, pointers) are left without a call.
+	switch (type)
+	{
+	case STRING:
+	case TRANSFORMPTR:
+#ifdef RMLUI_MATH_EXPRESSIONS
+	case CALCULATIONPTR:
+#endif
+	case TRANSITIONLIST:
+	case ANIMATIONLIST:
+	case DECORATORSPTR:
+	case FILTERSPTR:
+	case FONTEFFECTSPTR:
+	case COLORSTOPLIST:
+	case BOXSHADOWLIST:
+	case STYLEVALUEPTR: Clear(); break;
+	default: break;
+	}
+}
+
 inline Variant::Type Variant::GetType() const
 {
 	return type;
