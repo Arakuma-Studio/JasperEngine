@@ -78,9 +78,13 @@ namespace {
         return false;
     }
 
-    uint32_t collectFacts(const editor::ShaderVariantContent& content){
+    uint32_t collectFacts(const editor::ShaderVariantContent& content, Scene* scene){
         EntityRegistry* registry = content.registry;
         uint32_t facts = 0;
+        // what draws without a shader of its own draws the scene's default (a prefab spawned
+        // in this scene too), with its own features: RenderSystem resolves them so
+        const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+        const std::string& scenePointsShader = scene->getDefaultCustomShader(ShaderType::POINTS);
         for (Entity entity : content.entities){
             if (!registry->isEntityCreated(entity)){
                 continue;
@@ -113,12 +117,10 @@ namespace {
                 facts |= FACT_OCCLUDERS_2D;
             }
             // RenderSystem::update: a loaded mesh or points component reading the scene depth
-            // (the scene's default shaders: toEnvironment)
             if (const MeshComponent* mesh = registry->findComponent<MeshComponent>(entity)){
-                static const std::string noSceneShader;
                 for (unsigned int s = 0; s < mesh->numSubmeshes && !(facts & FACT_SCENE_DEPTH); s++){
                     const Material& material = mesh->submeshes[s].material;
-                    const std::string& shader = RenderSystem::getSubmeshShader(*mesh, mesh->submeshes[s], noSceneShader);
+                    const std::string& shader = RenderSystem::getSubmeshShader(*mesh, mesh->submeshes[s], sceneMeshShader);
                     if (readsSceneDepth(shader, material.shaderFeatures) ||
                             readsSceneDepth(material.extraPass->shader, material.extraPass->shaderFeatures)){
                         facts |= FACT_SCENE_DEPTH;
@@ -126,7 +128,7 @@ namespace {
                 }
             }
             if (const PointsComponent* points = registry->findComponent<PointsComponent>(entity)){
-                if (readsSceneDepth(points->customShader, points->shaderFeatures)){
+                if (readsSceneDepth(points->customShader.empty() ? scenePointsShader : points->customShader, points->shaderFeatures)){
                     facts |= FACT_SCENE_DEPTH;
                 }
             }
@@ -150,8 +152,10 @@ namespace {
         environment.ssao = scene->isSSAOEnabled();
         environment.ssr = scene->isSSREnabled();
         environment.depthPrepass = scene->isDepthPrepassEnabled();
-        // a scene default shader reading the scene depth is drawn by what has no shader of its
-        // own; a post pass sampling the depth needs the depth pre-pass too
+        // a scene default shader reading the scene depth with its default features is drawn by
+        // what a script makes without a shader of its own (the content's own objects resolve it
+        // with their features: collectFacts); a post pass sampling the depth needs the depth
+        // pre-pass too
         environment.sceneDepth = (facts & FACT_SCENE_DEPTH) ||
             readsSceneDepth(scene->getDefaultCustomShader(ShaderType::MESH), {}) ||
             readsSceneDepth(scene->getDefaultCustomShader(ShaderType::POINTS), {}) ||
@@ -595,14 +599,14 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         return;
     }
 
-    const uint32_t sceneFacts = collectFacts(sceneContent);
+    const uint32_t sceneFacts = collectFacts(sceneContent, scene);
     std::vector<uint32_t> prefabFacts;
     uint32_t allFacts = sceneFacts;
     for (const ShaderVariantContent& prefab : prefabContents){
         if (!prefab.registry){
             continue;
         }
-        const uint32_t facts = collectFacts(prefab);
+        const uint32_t facts = collectFacts(prefab, scene);
         allFacts |= facts;
         if (facts != 0){
             prefabFacts.push_back(facts);
