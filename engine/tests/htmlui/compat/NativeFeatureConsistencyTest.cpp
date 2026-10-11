@@ -124,6 +124,9 @@ namespace {
         {ForkFeature::ExtraUnits, SampleKind::Declaration, "grid-template-columns: 4ch minmax(2ex, 1fr) calc(1ch + 10px)", "grid-template-columns:2em minmax(1em,1fr)", "HTMLUI-CSS-0005"},
         {ForkFeature::ExtraUnits, SampleKind::Rule, "grid-auto-rows: 10vmin", "@media", ""},
         {ForkFeature::ExtraUnits, SampleKind::Declaration, "gap: 1ch 2ex", "gap:0.5em 1em", "HTMLUI-CSS-0005"},
+        // (in p3-text's spacing properties)
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "letter-spacing: 0.1ch", "letter-spacing:0.05em", "HTMLUI-CSS-0005"},
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "word-spacing: 1ex", "word-spacing:0.5em", "HTMLUI-CSS-0005"},
         {ForkFeature::LineHeightNormal, SampleKind::Declaration, "line-height: normal", "line-height:1.2", ""},
     };
 
