@@ -1448,7 +1448,10 @@ void RmlRenderer::blurInto(Framebuffer& source, Framebuffer& destination, Frameb
     PostDraw blur;
     blur.variant = (int)HtmlUIPostVariant::BLUR;
     blur.viewport = full;
-    blur.scissor = scissor;
+    // the taps are mirrored at the data's edges (Chromium's backdrop blur); the two passes also write one texel
+    // around the data, mirrored too, so the linear upscale below blends the edge texels with them, not with the
+    // transparent clear (the downscaled data sits in the top-left of full-size targets: the texel beyond it is free)
+    blur.scissor = Rml::Rectanglei::FromCorners(scissor.p0 - Rml::Vector2i(1), scissor.p1 + Rml::Vector2i(1)).Intersect(full);
     blurWeights(sigma, blur.params.weights);
     blur.params.texCoordMinMax[0] = ((float)scissor.Left() + 0.5f) / (float)width;
     blur.params.texCoordMinMax[1] = ((float)scissor.Top() + 0.5f) / (float)height;
@@ -1461,8 +1464,8 @@ void RmlRenderer::blurInto(Framebuffer& source, Framebuffer& destination, Frameb
     blur.params.params[2] = 1.0f / (float)height;
     drawPost(destination, LoadAction::CLEAR, blur, postTargetState(BlendMode::NONE));
 
-    // horizontal: destination -> temp; the clear leaves the region a transparent border, so
-    // the linear upscale below blends nothing from outside it (GL3's padded clear)
+    // horizontal: destination -> temp; the clear leaves the region beyond the extended edge a
+    // transparent border (GL3's padded clear)
     blur.source = &destination.getRender().getColorTexture();
     blur.params.params[1] = 1.0f / (float)width;
     blur.params.params[2] = 0.0f;
@@ -1539,6 +1542,67 @@ Rml::TextureHandle RmlRenderer::SaveLayerAsTexture(){
     HtmlUITexture* result = texture.release();
     liveTextures.insert(result);
     return reinterpret_cast<Rml::TextureHandle>(result);
+}
+
+Rml::TextureHandle RmlRenderer::SaveLayerIntoTexture(Rml::TextureHandle textureHandle, Rml::Vector2i textureDimensions,
+                                                     Rml::Vector2i destinationOffset){
+    if (frameState != FrameState::ACTIVE || !target || !scissorEnabled)
+        return 0;
+    const Rml::Rectanglei bounds = currentScissorTarget();
+    if (isEmpty(bounds) || textureDimensions.x <= 0 || textureDimensions.y <= 0)
+        return 0;
+
+    const int top = layersSize - 1;
+    ensureLayerCleared(top);
+    Framebuffer* layer = target->getLayer(top);
+    if (!layer)
+        return 0;
+    if (activeFramebuffer == layer)
+        endPass();
+
+    HtmlUITexture* texture = reinterpret_cast<HtmlUITexture*>(textureHandle);
+    LoadAction load = LoadAction::LOAD;
+    if (!texture){
+        std::unique_ptr<HtmlUITexture> created = std::make_unique<HtmlUITexture>();
+        created->kind = HtmlUITexture::Kind::RENDER_TARGET;
+        created->ownedTarget = std::make_unique<Framebuffer>();
+        FramebufferDesc desc;
+        desc.width = textureDimensions.x;
+        desc.height = textureDimensions.y;
+        desc.color = ColorFormat::RGBA;
+        desc.depth = DepthStencilFormat::NONE;
+        desc.sampleCount = 1;
+        desc.label = "htmlui-layer-texture";
+        gpuCreateCount++;
+        if (!created->ownedTarget->create(desc)){
+            Log::error("[HTML UI] could not create a %d x %d layer texture", desc.width, desc.height);
+            return 0;
+        }
+        created->render = &created->ownedTarget->getRender().getColorTexture();
+        created->width = desc.width;
+        created->height = desc.height;
+        texture = created.release();
+        liveTextures.insert(texture);
+        // the first tile clears the whole texture
+        load = LoadAction::CLEAR;
+    }else if (texture->kind != HtmlUITexture::Kind::RENDER_TARGET || !texture->ownedTarget ||
+               texture->width != textureDimensions.x || texture->height != textureDimensions.y){
+        return 0;
+    }
+
+    // the scissor region of the top layer at the offset (no flip: every image is top-left origin)
+    PostDraw copy;
+    copy.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
+    copy.source = &layer->getRender().getColorTexture();
+    copy.uvTransform[0] = (float)bounds.Width() / (float)targetSize.x;
+    copy.uvTransform[1] = (float)bounds.Height() / (float)targetSize.y;
+    copy.uvTransform[2] = (float)bounds.Left() / (float)targetSize.x;
+    copy.uvTransform[3] = (float)bounds.Top() / (float)targetSize.y;
+    copy.viewport = Rml::Rectanglei::FromPositionSize(destinationOffset, bounds.Size());
+    copy.scissor = copy.viewport;
+    drawPost(*texture->ownedTarget, load, copy, postTargetState(BlendMode::NONE));
+    endPass();
+    return reinterpret_cast<Rml::TextureHandle>(texture);
 }
 
 Rml::CompiledFilterHandle RmlRenderer::SaveLayerAsMaskImage(){

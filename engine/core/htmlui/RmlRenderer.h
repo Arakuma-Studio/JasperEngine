@@ -153,6 +153,10 @@ namespace jasperengine {
                              Rml::Span<const Rml::CompiledFilterHandle> filters) override;
         void PopLayer() override;
         Rml::TextureHandle SaveLayerAsTexture() override;
+        // the scissor region of the top layer into a texture of any size (fork: a box shadow larger than the window,
+        // rendered in tiles); a zero texture makes a cleared one of textureDimensions first
+        Rml::TextureHandle SaveLayerIntoTexture(Rml::TextureHandle texture, Rml::Vector2i textureDimensions,
+                                                Rml::Vector2i destinationOffset) override;
         Rml::CompiledFilterHandle SaveLayerAsMaskImage() override;
         Rml::CompiledFilterHandle CompileFilter(const Rml::String& name, const Rml::Dictionary& parameters) override;
         void ReleaseFilter(Rml::CompiledFilterHandle filter) override;
