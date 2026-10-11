@@ -1407,6 +1407,16 @@ void ShaderManifests::setForkReader(SourceReader reader){
     }
 }
 
+bool ShaderManifests::readForkFile(const std::string& path, std::string& content){
+    SourceReader reader;
+    {
+        ManifestCache& c = cache();
+        std::lock_guard<std::mutex> lock(c.mutex);
+        reader = c.forkReader;
+    }
+    return reader && reader(path, content);
+}
+
 void ShaderManifests::clearForks(){
     ManifestCache& c = cache();
     std::lock_guard<std::mutex> lock(c.mutex);

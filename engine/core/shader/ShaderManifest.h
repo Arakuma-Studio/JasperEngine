@@ -331,6 +331,8 @@ namespace jasperengine{
 
         // How fork files are read: project-relative paths. Default: the game's assets.
         static void setForkReader(SourceReader reader);
+        // Reads a fork file (source or include) with that reader: the runtime compiler's too
+        static bool readForkFile(const std::string& path, std::string& content);
         // Forgets the fork manifests (their sources changed); library ones stay
         static void clearForks();
 
