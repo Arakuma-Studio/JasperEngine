@@ -247,8 +247,10 @@ void WidgetDropDown::OnLayout()
 		button_element->SetPseudoClass("disabled", true);
 	}
 
-	// Layout the button box. The selection element layout is deferred until it is opened.
-	ElementUtilities::PositionElement(button_element, Vector2f(0, 0), ElementUtilities::TOP_RIGHT);
+	// Layout the button box. The selection element layout is deferred until it is opened. The button sits at the right
+	// of the padding box: the select's right padding does not move it (as browsers paint the menu list arrow).
+	const float padding_right = parent_element->GetBox().GetEdge(BoxArea::Padding, BoxEdge::Right);
+	ElementUtilities::PositionElement(button_element, Vector2f(-padding_right, 0), ElementUtilities::TOP_RIGHT);
 
 	box_layout_dirty = true;
 	value_layout_dirty = true;

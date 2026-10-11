@@ -543,3 +543,44 @@ TEST_CASE("form.select.event.change")
 
 	TestsShell::ShutdownShell();
 }
+
+TEST_CASE("form.select.arrow_position")
+{
+	// The arrow sits at the right of the padding box: the select's right padding does not move it (browsers paint the menu
+	// list arrow inside the border, the author padding adds to the text's).
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	ElementDocument* document = context->LoadDocumentFromMemory(R"(
+<rml>
+<head>
+	<style>
+		body { width: 400px; height: 300px; }
+		select { display: block; width: 200px; height: 30px; padding: 6px 10px; border: 1px solid #000; box-sizing: border-box; font-family: LatoLatin; }
+		select selectarrow { width: 16px; }
+	</style>
+</head>
+<body>
+	<select id="s"><option value="a">A</option></select>
+</body>
+</rml>
+)");
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	context->Render();
+
+	Element* select = document->GetElementById("s");
+	REQUIRE(select);
+	Element* arrow = nullptr;
+	for (int i = 0; i < select->GetNumChildren(true); i++)
+		if (select->GetChild(i)->GetTagName() == "selectarrow")
+			arrow = select->GetChild(i);
+	REQUIRE(arrow);
+	const float select_right = select->GetAbsoluteOffset(BoxArea::Border).x + 200.f;
+	CHECK(arrow->GetAbsoluteOffset(BoxArea::Border).x + arrow->GetBox().GetSize(BoxArea::Border).x == doctest::Approx(select_right - 1.f));
+	// the content height (no vertical padding taken)
+	CHECK(arrow->GetBox().GetSize(BoxArea::Border).y == doctest::Approx(30.f - 2.f - 12.f));
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
