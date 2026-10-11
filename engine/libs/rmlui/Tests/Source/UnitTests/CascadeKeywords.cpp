@@ -259,3 +259,74 @@ TEST_CASE("CascadeKeywords.SetOrigin")
 	document->Close();
 	TestsShell::ShutdownShell();
 }
+
+// The keywords with p3-values' value types: 'currentcolor' (and color-mix() of it) stays a keyword through 'inherit',
+// so it is resolved against the element's own color; logical properties take keywords and importance as their
+// physical longhands do.
+TEST_CASE("CascadeKeywords.ValueTypes")
+{
+	const String rml = R"RML(
+<rml>
+<head>
+	<style>
+		body { font-family: LatoLatin; font-size: 16px; }
+		div { display: block; }
+		#p { color: #ff0000; border-top-color: currentcolor; border-right-color: color-mix(in srgb, currentcolor 50%, #0000ff);
+			text-decoration-color: currentcolor; margin-left: 7px; padding-top: 3px; padding-bottom: 4px; }
+		#c1 { color: #0000ff; border-top-color: inherit; border-right-color: inherit; }
+		#c2 { color: #00ff00; border-top-color: #123456; }
+		#c2 { border-top-color: initial; }
+		#c3 { color: #0000ff; text-decoration-color: inherit; }
+		#c4 { color: #0000ff; border-top-color: unset; border-top-color: revert; }
+		#l1 { margin-inline-start: inherit; padding-block: inherit; }
+		#l2 { margin-inline: 5px; margin-inline: initial; padding-block-end: unset; }
+		#l3 { margin-inline-start: 9px !important; margin-left: 1px; }
+		#l4 { margin-left: 2px !important; margin-inline-start: 11px; }
+	</style>
+</head>
+<body>
+	<div id="p"><div id="c1"/><div id="c2"/><div id="c3"/><div id="c4"/><div id="l1"/><div id="l2"/><div id="l3"/><div id="l4"/></div>
+</body>
+</rml>
+)RML";
+
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = context->LoadDocumentFromMemory(rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+
+	auto ById = [&](const char* id) { return document->GetElementById(id); };
+
+	// currentcolor inherited as a keyword: the child's own color.
+	CHECK(ById("p")->GetComputedValues().border_top_color() == Colourb(255, 0, 0));
+	CHECK(ById("c1")->GetComputedValues().border_top_color() == Colourb(0, 0, 255));
+	// color-mix(currentcolor) too: half the child's blue, half blue.
+	CHECK(ById("c1")->GetComputedValues().border_right_color() == Colourb(0, 0, 255));
+	CHECK(ById("p")->GetComputedValues().border_right_color() == Colourb(128, 0, 128));
+	// initial and unset (the initial value is currentcolor), revert without a user-agent rule.
+	CHECK(ById("c2")->GetComputedValues().border_top_color() == Colourb(0, 255, 0));
+	CHECK(ById("c4")->GetComputedValues().border_top_color() == Colourb(0, 0, 255));
+	// An inherited property set to currentcolor: 'inherit' gives the keyword, resolved with the child's color.
+	const Property* decoration = ById("c3")->GetProperty(PropertyId::TextDecorationColor);
+	REQUIRE(decoration);
+	CHECK(decoration->ToString() == "currentcolor");
+
+	// A color change of the child follows.
+	ById("c1")->SetProperty("color", "#00ff00");
+	context->Update();
+	CHECK(ById("c1")->GetComputedValues().border_top_color() == Colourb(0, 255, 0));
+
+	// Logical properties.
+	CHECK(ById("l1")->GetComputedValues().margin_left().value == 7.f);
+	CHECK(ById("l1")->GetComputedValues().padding_top().value == 3.f);
+	CHECK(ById("l1")->GetComputedValues().padding_bottom().value == 4.f);
+	CHECK(ById("l2")->GetComputedValues().margin_left().value == 0.f);
+	CHECK(ById("l2")->GetComputedValues().margin_right().value == 0.f);
+	CHECK(ById("l2")->GetComputedValues().padding_bottom().value == 0.f);
+	CHECK(ById("l3")->GetComputedValues().margin_left().value == 9.f);
+	CHECK(ById("l4")->GetComputedValues().margin_left().value == 2.f);
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
