@@ -227,6 +227,38 @@ formatting context, a flag check when a property is parsed and a stacking-contex
 the loaded host. The grid of 100 fixed-size slots lays out faster than the same slots as a wrapping flexbox; with
 content-sized auto-fill tracks it costs about as much as the flexbox.
 
+### Benchmarks (p3-cascade)
+
+`RUN_BENCHMARKS=1 tools/htmlui/run-rmlui-tests.sh` (static Release), minimum of 3 interleaved runs of the fork at
+`html-ui` df85734d (before, `RMLUI_FORK_DIR`) and with P3-C1..C10 (after), the same benchmark sources except that the
+after tree's selector benchmark registers its made-up pseudo-classes (P3-C10; the before fork matches unknown ones
+without it). The build host ran at load 30-110 (six packages building): single runs of one case varied by 2-9x (nested
+shrink-to-fit 3.1-28 ms, interleaved alone, in both trees), so only consistent differences mean anything. ns per
+operation:
+
+| Benchmark | Before | After | After vs before |
+|---|---|---|---|
+| `element` Update (unmodified) | 80620 | 80630 | +0.0 % |
+| `element` Update (hover child) | 477450 | 421020 | -11.8 % |
+| `element` Update (hover) | 457490 | 428510 | -6.3 % |
+| `element` SetInnerRML + Update + Render | 43377120 | 30257600 | -30.2 % |
+| `elementdocument` LoadDocument + Show + Update + Render | 707850 | 751840 | +6.2 % |
+| `flexbox` basic SetInnerRML + Update + Render | 712005 | 782206 | +9.9 % |
+| `flexbox.shrink-to-fit` Basic | 34404 | 34403 | -0.0 % |
+| `table_basic` SetInnerRML + Update + Render | 146242 | 155891 | +6.6 % |
+| `Selectors` Reference (update unmodified) | 83850 | 82420 | -1.7 % |
+| `Selectors` `.a` / `*` / `div div` (rule lookup after a hover) | 375670 / 382950 / 367250 | 466530 / 462590 / 447790 | +24.2 % / +20.8 % / +21.9 % |
+
+Above 10 %: the selector lookups (+17-25 % on every simple-selector variant, `:a` and `a` excepted) are the cost of
+P3-C4's per-node work in `StyleSheetNode::IsApplicable` (the `:has()` and pseudo-element index split, attribute flags)
+on a 2 000-element re-match; `:has()` invalidation keeps such full re-matches rare (a checkbox toggle under
+`li:has(> input:checked)` re-matches fewer than 50 elements of 2 000, `SelectorsHas.Invalidation`). Measured on the
+way and fixed: `Element::Update` cleared a meta flag on every element every frame (`element` Update (unmodified) +29 %,
+P3-C10), and pseudo-element generation ran for every element after a re-match (now an early return when the
+element has no pseudo-element, the sheet no `::before`/`::after` rule and it is not a list item). Cases listed by
+`elementdocument`'s `Clear + LoadDocument + Show + Update + Render` (+83.8 %: runs of 1.7, 1.7, 6.6 ms before, 3.1,
+15.5, 8.4 ms after) and nested shrink-to-fit (+90 %) move by the host's noise.
+
 ## Updating upstream
 
 1. Copy the new tag over the vendored subset (same include/exclude lists).
