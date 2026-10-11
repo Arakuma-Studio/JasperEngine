@@ -1,4 +1,5 @@
 #include "InlineBox.h"
+#include "LayoutDetails.h"
 #include "../../../Include/RmlUi/Core/Box.h"
 #include "../../../Include/RmlUi/Core/Element.h"
 #include "../../../Include/RmlUi/Core/FontMetrics.h"
@@ -21,11 +22,14 @@ InlineLevelBox* InlineBoxBase::AddChild(UniquePtr<InlineLevelBox> child)
 
 void InlineBoxBase::GetStrut(float& out_total_height_above, float& out_total_depth_below) const
 {
-	const FontMetrics& font_metrics = GetFontMetrics();
 	const float line_height = GetElement()->GetLineHeight();
 
-	const float half_leading = 0.5f * (line_height - (font_metrics.ascent + font_metrics.descent));
-	out_total_height_above = font_metrics.ascent + half_leading;
+	// As Chromium (NGLineHeightMetrics::AddLeading): the whole-pixel ascent and descent, and the half-leading added to
+	// the ascent rounded down; the baseline is then on a whole pixel of the line.
+	float ascent, descent;
+	LayoutDetails::GetIntegerAscentDescent(GetFontMetrics(), ascent, descent);
+	const float half_leading = Math::RoundDown(0.5f * (line_height - (ascent + descent)));
+	out_total_height_above = ascent + half_leading;
 	out_total_depth_below = line_height - out_total_height_above;
 }
 
@@ -65,10 +69,12 @@ InlineBox::InlineBox(const InlineLevelBox* parent, Element* element, const Box& 
 	const FontMetrics& font_metrics = GetFontMetrics();
 
 	// The inline box content height does not depend on the 'line-height' property, only on the font, and is not exactly
-	// specified by CSS (CSS 2.1 §10.6.1). As browsers do, it is the font's ascent plus descent, each rounded to whole
-	// pixels: the content area of a span is as tall as Chromium's (getBoundingClientRect, backgrounds).
-	const float rounded_ascent = Math::Round(font_metrics.ascent);
-	const float inner_height = rounded_ascent + Math::Round(font_metrics.descent);
+	// specified by CSS (CSS 2.1 §10.6.1). As browsers do, it is the font's ascent plus descent in whole pixels
+	// (LayoutDetails::GetIntegerAscentDescent): the content area of a span is as tall as Chromium's
+	// (getBoundingClientRect, backgrounds).
+	float rounded_ascent, rounded_descent;
+	LayoutDetails::GetIntegerAscentDescent(font_metrics, rounded_ascent, rounded_descent);
+	const float inner_height = rounded_ascent + rounded_descent;
 	box.SetContent(Vector2f(-1.f, inner_height));
 
 	float height_above_baseline, depth_below_baseline;

@@ -810,7 +810,8 @@ void ElementText::GenerateDecoration(Mesh& under, Mesh& over, const FontFaceHand
 		if (property->unit != Unit::KEYWORD)
 			underline_top = Math::Round(ResolveLengthPercentage(LengthPercentageValueOf(*property), *this, font_size));
 	}
-	const float ascent = Math::Round(metrics.ascent);
+	float ascent, descent;
+	LayoutDetails::GetIntegerAscentDescent(metrics, ascent, descent);
 	// overline: on top of the ascent; line-through: centred a third of the ascent above the baseline
 	const float overline_top = -ascent - thickness;
 	const float line_through_top = -ascent / 3.f - 0.5f * thickness;

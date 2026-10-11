@@ -12,6 +12,7 @@
 #include "ContentValue.h"
 #include "ElementCascade.h"
 #include "ElementDefinition.h"
+#include "Layout/LayoutDetails.h"
 #include <math.h>
 
 namespace Rml {
@@ -267,8 +268,10 @@ void ElementListMarker::UpdateBox()
 	if (symbol)
 	{
 		const FontFaceHandle font = GetFontFaceHandle();
-		const float ascent = (font ? GetFontEngineInterface()->GetFontMetrics(font).ascent : 0.f);
-		const int ascent_i = (int)roundf(ascent);
+		float ascent = 0.f, descent = 0.f;
+		if (font)
+			LayoutDetails::GetIntegerAscentDescent(GetFontEngineInterface()->GetFontMetrics(font), ascent, descent);
+		const int ascent_i = (int)ascent;
 		const int offset = ascent_i * 2 / 3;
 		const bool disclosure = (style == "disclosure-open" || style == "disclosure-closed");
 		width = disclosure ? GetComputedValues().font_size() * 0.66f : float((offset + 1) / 2 + 2);
@@ -421,7 +424,9 @@ void ElementListMarker::GenerateSymbolGeometry()
 	// The symbol's box in Chromium (ListMarker::RelativeSymbolMarkerRect): from the marker's text box, whose top is
 	// the baseline minus the ascent.
 	const FontMetrics& metrics = GetFontEngineInterface()->GetFontMetrics(font);
-	const int ascent = (int)roundf(metrics.ascent);
+	float ascent_f = 0.f, descent_f = 0.f;
+	LayoutDetails::GetIntegerAscentDescent(metrics, ascent_f, descent_f);
+	const int ascent = (int)ascent_f;
 	float baseline = (float)ascent;
 	const ElementText::LineList& lines = text_element->GetLines();
 	const Vector2f text_offset = text_element->GetAbsoluteOffset(BoxArea::Border) - GetAbsoluteOffset(BoxArea::Border);

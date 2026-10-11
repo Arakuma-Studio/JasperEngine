@@ -254,3 +254,30 @@ TEST_CASE("ListMarkers.Properties")
 	CHECK_FALSE(parse("quotes", "\"a\""));
 	TestsShell::ShutdownShell();
 }
+
+#include "../../../Source/Core/Layout/LayoutDetails.h"
+#include <RmlUi/Core/FontMetrics.h>
+
+TEST_CASE("ListMarkers.IntegerFontMetrics")
+{
+	// Chromium's whole-pixel ascent and descent (markers, inline boxes and line baselines use them): rounded, and a pixel
+	// moves from the ascent to the descent when the descent was rounded down. Ahem: ascent 0.8em, descent 0.2em.
+	auto Check = [](float size, float ascent, float descent) {
+		FontMetrics metrics = {};
+		metrics.ascent = 0.8f * size;
+		metrics.descent = 0.2f * size;
+		float a = 0.f, d = 0.f;
+		LayoutDetails::GetIntegerAscentDescent(metrics, a, d);
+		INFO(size);
+		CHECK(a == ascent);
+		CHECK(d == descent);
+	};
+	Check(10.f, 8.f, 2.f);
+	Check(12.f, 9.f, 3.f);
+	Check(13.f, 10.f, 3.f);
+	Check(16.f, 12.f, 4.f);
+	Check(17.f, 13.f, 4.f);
+	Check(18.f, 14.f, 4.f);
+	Check(23.f, 18.f, 5.f);
+	Check(26.f, 20.f, 6.f);
+}

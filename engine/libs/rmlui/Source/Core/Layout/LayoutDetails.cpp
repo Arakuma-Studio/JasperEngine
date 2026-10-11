@@ -1,4 +1,5 @@
 #include "LayoutDetails.h"
+#include "../../../Include/RmlUi/Core/FontMetrics.h"
 #include "../../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../../Include/RmlUi/Core/Element.h"
 #include "../../../Include/RmlUi/Core/ElementText.h"
@@ -26,6 +27,17 @@ bool LayoutDetails::IsCollapsibleWhiteSpaceText(Element* element)
 		return false;
 	const String& value = text->GetText();
 	return std::all_of(value.begin(), value.end(), &StringUtilities::IsWhitespace);
+}
+
+void LayoutDetails::GetIntegerAscentDescent(const FontMetrics& metrics, float& out_ascent, float& out_descent)
+{
+	out_ascent = Math::Round(metrics.ascent);
+	out_descent = Math::Round(metrics.descent);
+	if (out_descent < metrics.descent && out_ascent >= 1.f)
+	{
+		out_descent += 1.f;
+		out_ascent -= 1.f;
+	}
 }
 
 static Vector<UniquePtr<LayoutChildList>> layout_child_list_pool;
