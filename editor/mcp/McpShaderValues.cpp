@@ -7,7 +7,9 @@
 
 #include "McpValues.h"
 
+#include "McpRefs.h"
 #include "Project.h"
+#include "subsystem/RenderSystem.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "util/CameraTextureLink.h"
 #include "util/Color.h"
@@ -165,6 +167,47 @@ bool McpValues::checkShaderReference(Project* project, const std::string& refere
     return true;
 }
 
+Json McpValues::sceneInputsToJson(uint32_t inputs) {
+    Json names = Json::array();
+    for (const std::string& name : ShaderManifest::getRequireNames(inputs & ShaderRequire_SceneInputs)) names.push_back(name);
+    return names;
+}
+
+Json McpValues::entitySceneInputsToJson(Scene* scene, Entity entity) {
+    Json list = Json::array();
+    if (!scene) return list;
+    // a mesh's submeshes as the checks see them (ProjectChecks::sceneInputFindings: not terrains)
+    const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+    if (mesh && !scene->findComponent<TerrainComponent>(entity)) {
+        for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+            const uint32_t reads = Catalog::getMaterialSceneInputs(scene, entity, s, false);
+            const uint32_t passReads = Catalog::getMaterialSceneInputs(scene, entity, s, true);
+            if (!reads && !passReads) continue;
+            bool opaqueQueue = false;
+            RenderSystem::getSubmeshSceneInputs(*mesh, mesh->submeshes[s], scene->getDefaultCustomShader(ShaderType::MESH), opaqueQueue);
+            Json entry = {{"component", McpRefs::componentName(ComponentType::MeshComponent)}, {"submesh", s},
+                          {"reads", sceneInputsToJson(reads)}};
+            if (passReads) entry["extra_pass_reads"] = sceneInputsToJson(passReads);
+            entry["queue"] = opaqueQueue ? "opaque" : "transparent";
+            if (opaqueQueue) {
+                entry["error"] = "reads the scene " + Catalog::getSceneInputsLabel(reads | passReads) +
+                                 " but draws in the opaque queue: it would read its own depth and a black colour";
+                MaterialBlendMode blend = MaterialBlendMode::ALPHA;
+                if (Catalog::getSceneInputQueueFix(scene, entity, s, blend)) {
+                    entry["fix"] = {{"submeshes[" + std::to_string(s) + "].material.blendMode", enumToJson((int)blend, *enumTable("material_blend_mode"))}};
+                }
+            }
+            list.push_back(entry);
+        }
+    }
+    if (scene->findComponent<PointsComponent>(entity)) {
+        if (const uint32_t reads = Catalog::getComponentSceneInputs(scene, entity, ComponentType::PointsComponent)) {
+            list.push_back({{"component", McpRefs::componentName(ComponentType::PointsComponent)}, {"reads", sceneInputsToJson(reads)}});
+        }
+    }
+    return list;
+}
+
 Json McpValues::manifestToJson(const std::string& reference, const ShaderManifest& manifest, bool detail) {
     Json out = {
         {"shader", reference},
@@ -179,9 +222,15 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
     out["lighting"] = lighting;
     // what some variant reads of the scene (phase 3): "scenedepth" adds a depth pre-pass and
     // "scenecolor" a copy of the opaque scene to the camera passes that draw it
-    Json sceneInputs = Json::array();
-    for (const std::string& name : ShaderManifest::getRequireNames(manifest.getPossibleSceneInputs())) sceneInputs.push_back(name);
-    out["scene_inputs"] = sceneInputs;
+    // "scenecolor" a copy of the opaque scene to the camera passes that draw it; cost_note says
+    // when (which features) and what that costs (Catalog: what the inspector's marks say)
+    const uint32_t possibleSceneInputs = manifest.getPossibleSceneInputs();
+    out["scene_inputs"] = sceneInputsToJson(possibleSceneInputs);
+    if (possibleSceneInputs) {
+        // the summary keeps it to one line; the detail adds the whole cost
+        out["cost_note"] = Catalog::getShaderSceneInputsSummary(manifest) + ": " + Catalog::getSceneInputsCost(possibleSceneInputs, true) +
+                           (detail ? ". " + Catalog::getSceneInputsCost(possibleSceneInputs) : std::string("."));
+    }
     if (!detail) {
         Json features = Json::array();
         for (const ShaderManifestFeature& feature : manifest.features) features.push_back(feature.define);
@@ -266,15 +315,25 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
 
     Json features = Json::array();
     for (const ShaderManifestFeature& feature : manifest.features) {
-        features.push_back({{"define", feature.define}, {"label", feature.label}, {"default_on", feature.defaultOn}});
+        Json entry = {{"define", feature.define}, {"label", feature.label}, {"default_on", feature.defaultOn}};
+        // the scene inputs it turns on (scene_inputs_when_off: a "feature=!X" rule's)
+        if (const uint32_t inputs = Catalog::getFeatureSceneInputs(manifest, feature.define)) entry["scene_inputs"] = sceneInputsToJson(inputs);
+        if (const uint32_t inputs = Catalog::getFeatureSceneInputs(manifest, feature.define, true)) entry["scene_inputs_when_off"] = sceneInputsToJson(inputs);
+        features.push_back(entry);
     }
     out["features"] = features;
 
     Json keywords = Json::array();
     for (const ShaderManifestKeywords& group : manifest.keywords) {
         Json defines = Json::array();
-        for (const std::string& value : group.values) defines.push_back(group.group + "_" + value);
-        keywords.push_back({{"group", group.group}, {"label", group.label}, {"values", group.values}, {"defines", defines}});
+        Json valueInputs = Json::object();
+        for (const std::string& value : group.values) {
+            defines.push_back(group.group + "_" + value);
+            if (const uint32_t inputs = Catalog::getFeatureSceneInputs(manifest, group.group + "_" + value)) valueInputs[value] = sceneInputsToJson(inputs);
+        }
+        Json entry = {{"group", group.group}, {"label", group.label}, {"values", group.values}, {"defines", defines}};
+        if (!valueInputs.empty()) entry["scene_inputs"] = valueInputs;
+        keywords.push_back(entry);
     }
     out["keywords"] = keywords;
     out["depth_program"] = manifest.depth;

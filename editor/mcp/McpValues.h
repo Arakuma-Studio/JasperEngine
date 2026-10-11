@@ -205,6 +205,12 @@ namespace jasperengine::editor::mcp {
         static std::string libraryShaderNamesText();
         // A manifest as list_shaders gives it
         static Json manifestToJson(const std::string& reference, const ShaderManifest& manifest, bool detail = true);
+        // ShaderRequire_SceneDepth / _SceneColor bits as names: [], ["scenedepth"], ["scenecolor"] or both
+        static Json sceneInputsToJson(uint32_t inputs);
+        // What an entity's mesh submeshes (their shaders and extra passes) and points read of
+        // the scene in their current variants (get_entity, get_shader_uniforms): one entry per
+        // reader, {component, submesh, reads, extra_pass_reads, error, fix}; empty when none
+        static Json entitySceneInputsToJson(Scene* scene, Entity entity);
 
         static Json shaderParamsToJson(const ShaderUniformValues& values);
         // `out` replaced by `value` (null clears); `manifest` (may be null) types colour hex

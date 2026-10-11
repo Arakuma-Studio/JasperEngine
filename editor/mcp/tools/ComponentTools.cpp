@@ -299,6 +299,23 @@ void getEntityTool(const CallPtr& call) {
         components[name] = props;
     }
     data["components"] = components;
+    // what its draws read of the scene (phase 3) in their current variants, and the cost
+    const Json sceneInputs = McpValues::entitySceneInputsToJson(registry, entity);
+    if (!sceneInputs.empty()) {
+        uint32_t reads = 0;
+        bool error = false;
+        for (const Json& entry : sceneInputs) {
+            for (const char* key : {"reads", "extra_pass_reads"}) {
+                if (!entry.contains(key)) continue;
+                for (const Json& name : entry[key]) reads |= name == "scenedepth" ? ShaderRequire_SceneDepth : ShaderRequire_SceneColor;
+            }
+            error = error || entry.contains("error");
+        }
+        data["scene_inputs"] = sceneInputs;
+        data["scene_inputs_cost"] = Catalog::getSceneInputsCost(reads);
+        text += ". Reads the scene " + Catalog::getSceneInputsLabel(reads) + " (" + Catalog::getSceneInputsCost(reads, true) + ")" +
+                (error ? "; ERROR: a reader draws in the opaque queue (scene_inputs[].fix)" : "");
+    }
     if (elided) data["note"] = std::to_string(elided) + " large custom value(s) elided; name them in properties to read them.";
     call->ok(text, data);
 }

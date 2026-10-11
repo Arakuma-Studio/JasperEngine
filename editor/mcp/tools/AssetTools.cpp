@@ -1877,6 +1877,11 @@ void getShaderUniformsTool(const CallPtr& call) {
                      {"warnings", Catalog::getShaderUniformWarnings(blocks)},
                      {"values", uniformValuesJson(sub.material.shaderParams)}};
         if (manifest) data["parameters"] = manifestParameters(manifest.get(), sub.material.shaderParams);
+        // what this variant reads of the scene (phase 3) and the cost
+        if (const uint32_t reads = Catalog::getMaterialSceneInputs(scene, where.entity, submesh, false)) {
+            data["scene_inputs"] = McpValues::sceneInputsToJson(reads);
+            data["cost_note"] = Catalog::getSceneInputsCost(reads);
+        }
         call->ok(std::to_string(members.size()) + " uniform member(s) of submesh " + std::to_string(submesh) + " on " +
                  McpRefs::entityPath(where.scene, where.entity) + (shader.empty() ? "." : " (" + shader + ")."), data);
         return;
@@ -1904,6 +1909,10 @@ void getShaderUniformsTool(const CallPtr& call) {
     // a shader with a manifest (a library shader) lists its parameters with labels and defaults
     if (const std::shared_ptr<const ShaderManifest> manifest = McpValues::findManifest(data["effective_shader"].get<std::string>())) {
         data["parameters"] = manifestParameters(manifest.get(), *values);
+    }
+    if (const uint32_t reads = Catalog::getComponentSceneInputs(scene, where.entity, where.component)) {
+        data["scene_inputs"] = McpValues::sceneInputsToJson(reads);
+        data["cost_note"] = Catalog::getSceneInputsCost(reads);
     }
     call->ok(std::to_string(members.size()) + " uniform member(s) on " + McpRefs::entityPath(where.scene, where.entity) + ".", data);
 }
@@ -2053,9 +2062,13 @@ void listShadersTool(const CallPtr& call) {
         std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(reference);
         if (!manifest) continue;
         if (!type.empty() && ShaderManifest::getShaderTypeToken(manifest->type) != type) continue;
-        shaders.push_back(McpValues::manifestToJson(reference, *manifest, detail));
+        Json entry = McpValues::manifestToJson(reference, *manifest, detail);
         text += "\n" + reference + " (" + ShaderManifest::getShaderTypeToken(manifest->type) +
                 (manifest->category.empty() ? "" : ", " + manifest->category) + "): " + manifest->description;
+        // a shader reading the scene (phase 3) costs passes per camera: said on its line
+        if (entry.contains("cost_note"))
+            text += " [" + Catalog::getShaderSceneInputsSummary(*manifest) + ": " + Catalog::getSceneInputsCost(manifest->getPossibleSceneInputs(), true) + "]";
+        shaders.push_back(std::move(entry));
     }
     if (!name.empty() && shaders.empty()) {
         call->fail("No library shader " + name + ". The library shaders: " + McpValues::libraryShaderNamesText() + ".");
@@ -2882,7 +2895,8 @@ void registerAssetTools(McpRegistry& registry) {
             "on a material: set_properties submeshes[i].material.shader; ui/points/lines/sky ones in the component's "
             "customShader), lighting modes, and with detail its parameters (shaderParams, colours linear), textures "
             "(shaderTextures), features/keywords (shaderFeatures), required inputs and default render state (state, "
-            "shadows), with the require_rules/state_rules a feature or keyword turns on.";
+            "shadows), with the require_rules/state_rules a feature or keyword turns on. scene_inputs/cost_note: reads the "
+            "scene depth/colour, an extra pass per camera.";
         tool.inputSchema = object({
             {"type", stringEnum("", {"mesh", "ui", "points", "lines", "sky"})},
             {"name", string("One shader (\"toon\" or \"library:toon\"); implies detail.")},
