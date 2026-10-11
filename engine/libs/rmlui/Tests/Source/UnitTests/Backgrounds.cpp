@@ -1,3 +1,4 @@
+#include "../../../Source/Core/BackgroundLayerValues.h"
 #include "../../../Source/Core/ElementBackgroundLayers.h"
 #include "../Common/TestsInterface.h"
 #include "../Common/TestsShell.h"
@@ -122,6 +123,25 @@ TEST_CASE("Backgrounds.shorthand")
 	CHECK(Parsed(d, "mask-repeat") == "no-repeat");
 	REQUIRE(Parse(d, "mask-image", "url(m.png), none"));
 	CHECK(Parsed(d, "mask-image") == "url(m.png), none");
+
+	// CSS image() and image-set() take their first url or string; RCSS's image() decorator (an unquoted source) stays a
+	// decorator layer, as 6.3's decorator-syntax mask-image read it.
+	REQUIRE(Parse(d, "background-image", "image(\"a.png\"), image-set(url(b.png) 1x, url(c.png) 2x)"));
+	CHECK(Parsed(d, "background-image") == "image(\"a.png\"), image-set(url(b.png) 1x, url(c.png) 2x)");
+	auto kinds = [&](const char* name) {
+		String result;
+		const Property* property = d.GetProperty(StyleSheetSpecification::GetPropertyId(name));
+		if (!property || property->unit != Unit::STYLE_VALUE)
+			return result;
+		const auto& list = static_cast<const ImageLayerList&>(*property->value.GetReference<StyleValuePtr>());
+		for (const ImageLayer& layer : list.layers)
+			result += (layer.kind == ImageLayer::Kind::Url ? "url:" + layer.url : String(layer.kind == ImageLayer::Kind::Decorator ? "decorator" : "none")) + ";";
+		return result;
+	};
+	CHECK(kinds("background-image") == "url:a.png;url:b.png;");
+	REQUIRE(Parse(d, "mask-image", "image(../common/alpha50.png)"));
+	CHECK(Parsed(d, "mask-image") == "image(../common/alpha50.png)");
+	CHECK(kinds("mask-image") == "decorator;");
 }
 
 TEST_CASE("Backgrounds.tiles")

@@ -388,11 +388,11 @@ namespace {
 					if (layer.url.empty())
 						return false;
 				}
-				else if (name == "image" || name == "image-set" || name == "-webkit-image-set")
+				else if ((name == "image" || name == "image-set" || name == "-webkit-image-set") && FirstUrl(FunctionArguments(item), layer.url))
 				{
+					// CSS image() and image-set(): the first url() or string. (RCSS's image() decorator, with an unquoted
+					// source and its fit and alignment, is a decorator below.)
 					layer.kind = ImageLayer::Kind::Url;
-					if (!FirstUrl(FunctionArguments(item), layer.url))
-						return false;
 				}
 				else if (decorator_parser && (item.find('(') != String::npos || item.find(' ') == String::npos) &&
 					FunctionLikeName(item) != "cross-fade" &&
