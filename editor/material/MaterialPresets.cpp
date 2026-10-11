@@ -261,7 +261,7 @@ namespace {
     }
 
     // A mask reader masks its extra pass too, so an outline or silhouette of a masked object
-    // shows only where the object may (D5 of the phase 2 review). Run after every preset: a
+    // shows only where the object may. Run after every preset: a
     // material that reads no mask (any more) puts the mask test it gave its pass back to Auto.
     // - A pass with no stencil test of its own (Outline (hull), most passes): the reader's test.
     // - Silhouette (not equal 2 on bit 0x02, replace: blends once): inside a mask, equal to the

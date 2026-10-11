@@ -2397,16 +2397,16 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                         continue;
                     }
                     // the inner path as keys of the whole value's object
-                    Json nested = inner.op == "set" ? inner.value : Json("...");
+                    std::vector<std::string> keys;
                     const std::string rest = inner.property.substr(whole.property.size() + 1);
-                    size_t end = rest.size();
-                    while (true) {
-                        const size_t dot = rest.rfind('.', end - 1);
-                        const size_t start = dot == std::string::npos ? 0 : dot + 1;
-                        nested = Json{{rest.substr(start, end - start), nested}};
+                    for (size_t start = 0;;) {
+                        const size_t dot = rest.find('.', start);
+                        keys.push_back(rest.substr(start, dot == std::string::npos ? std::string::npos : dot - start));
                         if (dot == std::string::npos) break;
-                        end = dot;
+                        start = dot + 1;
                     }
+                    Json nested = inner.op == "set" ? inner.value : Json("...");
+                    for (auto key = keys.rbegin(); key != keys.rend(); ++key) nested = Json{{*key, nested}};
                     error = componentLabel + "." + whole.property + " and " + inner.property + " on " + label + " in one call: set "
                             "the whole value with the inner one in its object (" + whole.property + ": " + nested.dump() +
                             " merges), or use two set_properties calls.";
