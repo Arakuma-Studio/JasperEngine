@@ -169,7 +169,7 @@ P3-T* are p3-testkit's (the vendored tests), P3-N the patches of the other packa
 | P3-C7 | `11aa2a9e` `rmlui: a text that becomes empty or white space draws nothing anymore` | `Source/Core/ElementText.cpp`; `Tests/Source/UnitTests/PseudoElements.cpp` | Follow-up to P2-8, found by `p3/pseudo/content-attr` (an `attr()` text whose attribute is removed stayed drawn): white space that collapses away gets no box from the layout, which then places no line for it, so a text node set to an empty or white-space-only string kept the lines of its previous text. `ElementText::SetText` clears the lines when the new text is all white space (a text the layout does format gets its lines again). | fork-only (with P2-8) | `PseudoElements.cpp` ("attr() follows the attribute") |
 | P3-C8 | `68b88284` `rmlui: 'initial' on a grid line is the CSS-wide keyword (GridParsing test follows p3-cascade's keywords)` | `Tests/Source/UnitTests/GridParsing.cpp` | p3-grid's test listed `grid-row-start: initial` among the invalid values (a line cannot be named `initial`); with P3-C2 it is the CSS-wide keyword, valid on every property. Expectation only. | fork-only (test expectation) | `GridParsing.line` |
 | P3-C9 | `c974c5e7` `rmlui: @starting-style rules cascade at their own specificity (:where() around the starting-style pseudo-class)`; `1105d180` `rmlui: 'initial' as an animation name is the CSS-wide keyword (the Animation test follows p3-cascade's keywords)` | `Source/Core/{ElementTransitions.cpp,StyleSheetFactory.cpp}`; `Tests/Source/UnitTests/{TransitionsAnyChange,Animation}.cpp` | Follow-up to p3-animation's `@starting-style` (merged with p3-cascade): its rules were stored with `:-rmlui-starting-style` on their subject, one pseudo-class more specific than written; written `:where(:-rmlui-starting-style)` they weigh what CSS gives them (P3-C4's `:where()`), and the pseudo-class is a built-in one (P3-C4 drops selectors with an unknown pseudo-class). The Animation test listed `animation-name: initial` as invalid; it is the CSS-wide keyword (P3-C2). | fork-only (with p3-animation's `@starting-style`) | `TransitionsAnyChange.starting_style_specificity`, `Animation` (longhand parsing) |
-| P3-C10 | `ab49744c` `rmlui: the pseudo-element update flag is an Element bit, read without a write on unmodified updates`; `1061d16b` `rmlui: the selector benchmark declares its dummy pseudo-classes (an unknown pseudo-class invalidates its selector since P3-C4)`; `82e412cf` `rmlui: PseudoElements::Update returns at once for an element without pseudo-elements, rules for them or display: list-item`; `d04f4fb3` `rmlui: re-matching an element costs what it did before p3-cascade, but for :disabled's fieldset walk` | `Include/RmlUi/Core/Element.h`, `Source/Core/{Element.cpp,ElementCascade.{h,cpp},ElementMeta.h,PseudoElements.{h,cpp}}`; `Tests/Source/Benchmarks/Selectors.cpp` | Performance follow-up to P3-C6 (found by the benchmarks): `Element::Update` cleared a flag in `ElementMeta` on every element every frame; the flag is now `Element::dirty_pseudo_elements`, tested inline (`element` benchmark "Update (unmodified)" 88 → 66 us, before p3-cascade 68 us). `d04f4fb3`, measured with callgrind instruction counts (20 hover toggles re-matching the selector benchmark's 2 000 elements: 41.7 M instructions at html-ui `2b69223d`, 48.8 M with P3-C1..C9, 43.4 M after): pseudo-elements are generated again after a re-match only when the element has one or the sheet has rules for them (`Element::has_pseudo_elements`, decided in `ElementStyle::UpdateDefinition`), `GetPseudoElementType` is a 2-bit field set at construction, and the document resolves counters only when a counter property is not `none`, a `::marker` or counting content exists or `<ol start|reversed>`/`<li value>` changes. The remaining +4.1 %: `:disabled`/`:enabled` walking a form control's ancestors for a disabled `fieldset` (HTML), the keyword and importance checks of `UpdateDefinition`, the update flag. The selector benchmark's rules use made-up pseudo-classes (`:a`, `:bb`, ...): it registers them (`Factory::RegisterPseudoClass`), so they are matched as before instead of dropped. | fork-only | the benchmarks |
+| P3-C10 | `ab49744c` `rmlui: the pseudo-element update flag is an Element bit, read without a write on unmodified updates`; `1061d16b` `rmlui: the selector benchmark declares its dummy pseudo-classes (an unknown pseudo-class invalidates its selector since P3-C4)`; `82e412cf` `rmlui: PseudoElements::Update returns at once for an element without pseudo-elements, rules for them or display: list-item`; `d04f4fb3` `rmlui: re-matching an element costs what it did before p3-cascade, but for :disabled's fieldset walk`; `16800072` `rmlui: the cascade hook and the selector parser do less for the common declaration and selector`; `cb40ea3a` `rmlui: attribute changes skip the pseudo-element loop without pseudo-elements, and SetText looks for white space only when it has lines to clear` | `Include/RmlUi/Core/Element.h`, `Source/Core/{Element.cpp,ElementCascade.{h,cpp},ElementMeta.h,PseudoElements.{h,cpp}}`; `Tests/Source/Benchmarks/Selectors.cpp` | Performance follow-up to P3-C6 (found by the benchmarks): `Element::Update` cleared a flag in `ElementMeta` on every element every frame; the flag is now `Element::dirty_pseudo_elements`, tested inline (`element` benchmark "Update (unmodified)" 88 → 66 us, before p3-cascade 68 us). `d04f4fb3`, measured with callgrind instruction counts (20 hover toggles re-matching the selector benchmark's 2 000 elements: 41.7 M instructions at html-ui `2b69223d`, 48.8 M with P3-C1..C9, 43.4 M after): pseudo-elements are generated again after a re-match only when the element has one or the sheet has rules for them (`Element::has_pseudo_elements`, decided in `ElementStyle::UpdateDefinition`), `GetPseudoElementType` is a 2-bit field set at construction, and the document resolves counters only when a counter property is not `none`, a `::marker` or counting content exists or `<ol start|reversed>`/`<li value>` changes. The remaining +4.1 %: `:disabled`/`:enabled` walking a form control's ancestors for a disabled `fieldset` (HTML), the keyword and importance checks of `UpdateDefinition`, the update flag. The selector benchmark's rules use made-up pseudo-classes (`:a`, `:bb`, ...): it registers them (`Factory::RegisterPseudoClass`), so they are matched as before instead of dropped. | fork-only | the benchmarks |
 | P3-C11 | `df8d4779` `rmlui: Chromium's whole-pixel ascent and descent for line baselines, inline boxes and list markers` | `Source/Core/Layout/{LayoutDetails.{h,cpp},InlineBox.cpp,InlineLevelBox.cpp}`, `Source/Core/{ListMarker.cpp,ElementText.cpp}`; `Tests/Source/UnitTests/ListMarkers.cpp` | Found by `p3/cascade/keywords` (`font-size: initial`, Ahem at 16px) and `p3/pseudo/list-markers-outside` (a 16px `::marker` on 20px lines), in p3-text's area (merged): Chromium lays text out with the font's ascent and descent each rounded, a pixel moved from the ascent to the descent when the descent was rounded down (`SimpleFontData::PlatformInit`), and adds the half-leading to the ascent rounded down (`NGLineHeightMetrics::AddLeading`). Ahem at 16px on a 16px line: baseline at 12, where RmlUi put it at 12.8. `LayoutDetails::GetIntegerAscentDescent` feeds the line strut, the inline box content area and baseline (P3-TX2 rounded each), `text-top`/`text-bottom`, overlines and the marker metrics; measured against the reference renderer at 12, 13, 16, 17, 18, 19, 23 and 26px on lines of their size and of 30px. Every golden page's full image is closer to Chromium. | upstreamable | `ListMarkers.IntegerFontMetrics`; `p3/cascade/keywords`, `p3/pseudo/list-markers-outside` |
 | P3-C12 | `860395f1` `rmlui: an empty inline box on a zero-height line has no height` | `Source/Core/Layout/{InlineTypes.h,LineBox.cpp,InlineBox.cpp}`; `Tests/Source/UnitTests/InlineStyle.cpp` | Found by `p3/selectors/has-checked` (`<span id="nb"></span>` alone in a box), in inline layout (p3-text's, merged): CSS 2.1 §9.4.2 makes a line of nothing but empty inline boxes a zero-height line box, which RmlUi collapsed, but the span kept its font's content area (19px); Chromium gives it a 0px box at the line's top. | upstreamable | `InlineStyle.EmptyInlineOnZeroHeightLine`; `p3/selectors/has-checked` |
 | P3-C13 | `b6c6f5b6` `rmlui: test that colour transitions interpolate in sRGB (premultiplied), as Chromium` | `Tests/Source/UnitTests/PseudoElements.cpp` | The colour transition of `p3/pseudo/hover-transition` is back (it had been replaced by a width): p3-animation's merge interpolates every colour in premultiplied sRGB (`ElementAnimation.cpp`, `TextShadow.cpp`; gradient stops and borders use `Math::RoundedLerp` in sRGB), and the fixture matches Chromium mid-way (`#4000bf`). Test only. | n/a | `PseudoElements.Transition` |
@@ -306,36 +306,59 @@ with the sidecar option `"samples": 1` at the default tolerances (phase-3 spec �
 
 ### Benchmarks (p3-cascade)
 
-`RUN_BENCHMARKS=1 tools/htmlui/run-rmlui-tests.sh` (static Release), minimum of 3 interleaved runs of the fork at
-`html-ui` df85734d (before, `RMLUI_FORK_DIR`) and with P3-C1..C10 (after), the same benchmark sources except that the
-after tree's selector benchmark registers its made-up pseudo-classes (P3-C10; the before fork matches unknown ones
-without it). The build host ran at load 30-110 (six packages building): single runs of one case varied by 2-9x (nested
-shrink-to-fit 3.1-28 ms, interleaved alone, in both trees), so only consistent differences mean anything. ns per
-operation:
+Two measures against the fork at `html-ui` 2b69223d (all of wave 1 but p3-cascade and p3-paint merged; before,
+`RMLUI_FORK_DIR`), static Release builds of the same benchmark sources (the after tree's selector benchmark registers
+its made-up pseudo-classes, P3-C10; the before fork matches unknown ones without them).
 
-| Benchmark | Before | After | After vs before |
+**Instruction counts** (callgrind, deterministic; what the conclusions rest on). Per call of the API a benchmark
+iteration runs, or for the hover re-match the whole loop of a fixed driver (20 hover toggles re-matching the selector
+benchmark's 2 000 elements, its rule sets `.a`, `*` and `div div`):
+
+| Measure | Before | After | Change |
 |---|---|---|---|
-| `element` Update (unmodified) | 80620 | 80630 | +0.0 % |
-| `element` Update (hover child) | 477450 | 421020 | -11.8 % |
-| `element` Update (hover) | 457490 | 428510 | -6.3 % |
-| `element` SetInnerRML + Update + Render | 43377120 | 30257600 | -30.2 % |
-| `elementdocument` LoadDocument + Show + Update + Render | 707850 | 751840 | +6.2 % |
-| `flexbox` basic SetInnerRML + Update + Render | 712005 | 782206 | +9.9 % |
-| `flexbox.shrink-to-fit` Basic | 34404 | 34403 | -0.0 % |
-| `table_basic` SetInnerRML + Update + Render | 146242 | 155891 | +6.6 % |
-| `Selectors` Reference (update unmodified) | 83850 | 82420 | -1.7 % |
-| `Selectors` `.a` / `*` / `div div` (rule lookup after a hover) | 375670 / 382950 / 367250 | 466530 / 462590 / 447790 | +24.2 % / +20.8 % / +21.9 % |
+| Hover re-match, `.a` rules | 41.71 M | 43.46 M | +4.2 % (+17 % before the fixes below) |
+| Hover re-match, `*` rules | 41.73 M | 43.39 M | +4.0 % |
+| Hover re-match, `div div` rules | 39.81 M | 41.42 M | +4.0 % |
+| `ElementStyle::ComputeValues` | 3834 | 3833 | -0.0 % |
+| `ElementStyle::UpdateDefinition` | 727 | 762 | +4.9 % |
+| `StyleSheet::GetElementDefinition` | 635 | 647 | +1.9 % |
+| `LayoutEngine::FormatElement` (`element`) | 498779 | 503746 | +1.0 % |
+| `LayoutEngine::FormatElement` (`flexbox.shrink-to-fit`) | 901438 | 910721 | +1.0 % |
+| `Context::Render` (`element`) | 7600215 | 7612459 | +0.2 % |
+| `Element::SetInnerRML` (`element`) | 446590 | 468009 | +4.8 % |
+| `Context::LoadDocumentFromMemory` (`elementdocument-baseline`) | 5392131 | 5599981 | +3.9 % |
+| `Element::SetInnerRML` (`custom_properties`, inline styles) | 3685024 | 3938047 | +6.9 % |
+| `ElementDocument::Show` (`element`) | 39250 | 46967 | +19.7 % |
 
-Above 10 %: the selector lookups (+17-25 % on most simple-selector variants, `:a` and `a` excepted), a 2 000-element
-re-match after a hover; the cause is not isolated on this host (P3-C4 adds the attribute-flag fold, the `:has()`
-dependency check per class/pseudo-class change and pseudo-element definition dirtying to that path; the matching loop
-itself is unchanged). `:has()` invalidation keeps full re-matches rare (a checkbox toggle under
-`li:has(> input:checked)` re-matches fewer than 50 elements of 2 000, `SelectorsHas.Invalidation`). Measured on the
-way and fixed: `Element::Update` cleared a meta flag on every element every frame (`element` Update (unmodified) +29 %,
-P3-C10), and pseudo-element generation ran for every element after a re-match (now an early return when the
-element has no pseudo-element, the sheet no `::before`/`::after` rule and it is not a list item). Cases listed by
-`elementdocument`'s `Clear + LoadDocument + Show + Update + Render` (+83.8 %: runs of 1.7, 1.7, 6.6 ms before, 3.1,
-15.5, 8.4 ms after) and nested shrink-to-fit (+90 %) move by the host's noise.
+Found and fixed with these counts (P3-C10, `d04f4fb3`, `16800072`): pseudo-elements generated again for every
+re-matched element (2.3 M of the 7 M the hover loop had gained), the tag comparison of `GetPseudoElementType`, counter
+walks after unrelated changes (every element's first `counter-*: none` and any element's `value` attribute marked the
+document as using counters), a character-by-character `!important` scan and a lowered copy of every declared value for
+the keyword test, the growth of the compound-selector vector of each parsed selector. What remains is what the package
+adds on purpose: `:disabled`/`:enabled` walk a form control's ancestors for a disabled `fieldset` (HTML), the keyword and
+importance checks of `UpdateDefinition`, the `!important`, keyword and pseudo-class validation of every declaration and
+selector parsed (unknown pseudo-classes make a selector invalid), the replacement semantics of `style` attributes, and
+`Show` setting `:focus-within` on the focused element's ancestors.
+
+**Wall time**, minimum of 3 interleaved runs at load 14-16 (single runs of a case still varied by up to 70 %, e.g.
+`flexbox.shrink-to-fit` Basic 38-54 us before and 53-64 us after, where the instruction count of its layout moved by
+1.0 %), ns per operation:
+
+| Benchmark | Before | After | Change |
+|---|---|---|---|
+| `element` Update (unmodified) | 82840 | 86670 | +4.6 % |
+| `element` Update (hover) | 314190 | 329300 | +4.8 % |
+| `element` SetInnerRML + Update + Render | 29867670 | 29435800 | -1.4 % |
+| `elementdocument` LoadDocument + Show + Update + Render | 711490 | 779370 | +9.5 % |
+| `elementdocument` Clear + LoadDocument + Show + Update + Render | 1788750 | 1810610 | +1.2 % |
+| `flexbox` basic SetInnerRML + Update + Render | 699193 | 713970 | +2.1 % |
+| `table_basic` SetInnerRML + Update + Render | 153506 | 166470 | +8.4 % |
+| `Selectors` Reference (update unmodified) | 81270 | 83070 | +2.2 % |
+| `Selectors` `.a` / `*` / `div div` | 369330 / 364910 / 341710 | 374810 / 401210 / 395030 | +1.5 % / +9.9 % / +15.6 % |
+| `custom_properties` with-vars: SetInnerRML + Update | 971740 | 1096500 | +12.8 % |
+
+The wall-time cases above 10 % (`div div`, `custom_properties`) are within the run-to-run spread of this host; their
+instruction counts moved by +4.0 % and +6.9 %.
 
 ## Updating upstream
 
