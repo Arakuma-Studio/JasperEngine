@@ -244,7 +244,12 @@ particle on low-end mobile, a tinted alpha surface instead of refraction).
   Points have no queue: they always draw after the copy.
 - **The copy holds the opaque scene and the sky only.** Transparent objects are not in it, so
   two glass panes do not see each other through it (as Unity URP's opaque texture), and UI,
-  lines and gizmos are not either. Reflection probe faces draw the opaque queue only: such
+  lines and gizmos are not either. A shader drawing the copy in place of what is behind it
+  (library `glass`, `water` with REFRACTION, `heat_haze` where its mask is whole) hides every
+  transparent object behind it (particles, alpha meshes, other water): keep those in front
+  of it or opaque. `water` REFRACTION at strength 0 draws exactly the water without it.
+  Compositing over the copy in a shader: mix display-encoded values (`encodeColor`,
+  `finalizeStraightColorOverScene` in `includes/output.glsl`), as the hardware blend does. Reflection probe faces draw the opaque queue only: such
   shaders are not in them. A camera drawing in hierarchy order (2D, `transparentSort` off)
   copies right before the first draw reading the colour, so the copy holds everything drawn
   before it.

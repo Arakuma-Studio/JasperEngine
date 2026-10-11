@@ -39,6 +39,15 @@
 // edgeFade fades it towards the box's top and bottom faces, so a slope leaving the box does
 // not end in a hard line.
 //
+// The fog is the surface's: the decal's colour is fogged at the fog distance the surface
+// under it got (sceneFogDistance, includes/output.glsl), not at the box's back face; the
+// multiply blend fades to white by it. The texture's mip level comes from the screen
+// derivatives of its UV, which jump where the surface under neighbouring pixels jumps in
+// depth (a stair nosing, an object's outline): each derivative is held to 4 times the
+// smaller one, so those pixels do not take a tiny mip (a blurred outline) while a surface
+// seen at a grazing angle keeps up to 4:1 of its stretch. A box scaled to zero along an axis
+// (no inverse) draws nothing.
+//
 // The blend follows the variant (finalizeColor; colour as the texture stores it): alpha
 // blends texture * tint * instance colour by its alpha times opacity and the fades; the
 // Multiply default blend (DECAL_BLEND_MULTIPLY, @state[...]) darkens what is under it by that
@@ -76,19 +85,33 @@ out vec4 g_finalColor;
 #include "includes/output.glsl"
 
 void main() {
-    vec3 world = sceneWorldPosition(screenUV());
+    // the opaque surface under the pixel (sceneWorldPosition, keeping its stored depth for
+    // the fog)
+    vec2 screen = screenUV();
+    float depth01 = sceneRawDepth(screen);
+    vec4 world4 = sceneInputs.inverseViewProjection * vec4(screen * 2.0 - 1.0, depth01 * 2.0 - 1.0, 1.0);
+    vec3 world = world4.xyz / world4.w;
     vec4 p = vec4(world, 1.0);
     vec3 local = vec3(dot(v_decalRow0, p), dot(v_decalRow1, p), dot(v_decalRow2, p));
 
+    // before any discard: derivatives need the whole 2x2 quad
     #ifdef ANGLE_FADE
-        // before any discard: derivatives need the whole 2x2 quad
         vec3 normal = cross(dFdx(world), dFdy(world));
     #endif
     vec2 uv = (local.xz + 0.5) * customParams.tiling.xy + customParams.tiling.zw;
-    vec4 color = sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv));
+    // the UV's derivatives, each held to 4 times the smaller (a depth step under the quad
+    // makes one jump)
+    vec2 uvdx = dFdx(uv);
+    vec2 uvdy = dFdy(uv);
+    float limit = 16.0 * min(dot(uvdx, uvdx), dot(uvdy, uvdy));
+    uvdx *= sqrt(min(limit / max(dot(uvdx, uvdx), 1e-20), 1.0));
+    uvdy *= sqrt(min(limit / max(dot(uvdy, uvdy), 1e-20), 1.0));
+    vec4 color = sRGBToLinear(textureGrad(sampler2D(u_baseTexture, u_base_smp), uv, uvdx, uvdy));
 
+    // outside the unit box, or not a number (a box scaled to zero: the vertex stage sends it
+    // outside too)
     vec3 outside = abs(local);
-    if (max(outside.x, max(outside.y, outside.z)) > 0.5){
+    if (!(max(outside.x, max(outside.y, outside.z)) <= 0.5)){
         discard;
     }
 
@@ -111,5 +134,6 @@ void main() {
         color.a *= fade;
     #endif
 
-    g_finalColor = finalizeColor(color);
+    // fogged as the surface under it was
+    g_finalColor = finalizeColorAtFogDistance(color, sceneFogDistance(screen, depth01));
 }

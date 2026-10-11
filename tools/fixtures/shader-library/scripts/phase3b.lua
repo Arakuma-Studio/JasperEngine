@@ -8,7 +8,9 @@
 --     2. DEPTH_FOAM: a white band hugging the shore, the rocks and the dividers
 --     3. ABSORPTION: clear at the shore, darker with depth, the rock's submerged part fading
 --     4. REFRACTION: the checker bed bent by the ripples; the rocks and dividers above the
---        surface are not bent into the water
+--        surface are not bent into the water; a transparent red box under the surface
+--        (drawn before the water) is hidden where the refraction bends the view (the scene
+--        colour holds opaque objects only); P3B_REFRACTION=zero shows it
 --   back left, glass before a wall of sharp vertical stripes (z: the wall at -9 from the
 --   group's first row):
 --     1. a clear pane 0.4 in front of the wall, turned 35 degrees (the stripes shift)
@@ -26,8 +28,12 @@
 --
 -- SL_GROUPS=phase3b frames the group; P3B_VIEW=<view> a close-up: water (the four pools),
 -- water_low (a grazing view of pools 1 and 2), water_edge (pool 4 across the screen's left
--- and bottom borders: no smeared edge), glass, haze. P3B_ORTHO=1 makes the main camera
--- orthographic.
+-- and bottom borders: no smeared edge), glass, glass_grazing (the normal-mapped pane seen
+-- almost edge-on: no speckle along it), haze. P3B_ORTHO=1 makes the main camera
+-- orthographic. P3B_REFRACTION=zero sets refractionStrength 0 on pools 1 and 4,
+-- P3B_REFRACTION=off turns their REFRACTION off; both stop every scroll, so the two
+-- screenshots must be identical (REFRACTION at strength 0 draws the water without it; the
+-- red box shows in both).
 --   SMOKE_GAME_ENV="SL_GROUPS=phase3b" SMOKE_GAME_RUNS="water P3B_VIEW=water; water_low P3B_VIEW=water_low;
 --       water_edge P3B_VIEW=water_edge; glass P3B_VIEW=glass; haze P3B_VIEW=haze" tools/smoke-test.sh tools/fixtures/shader-library
 local Phase3b = {}
@@ -42,6 +48,10 @@ local POOL_WIDTH = 3.6
 local POOL_LENGTH = 4.4
 -- the bed rises from y 0 at the front to 1 at the back: the shore line is 0.7 of the way
 local BED_SLOPE = math.deg(math.atan(1.0 / POOL_LENGTH))
+
+-- P3B_REFRACTION: zero or off (pools 1 and 4), and every scroll stopped
+local REFRACTION_MODE = os.getenv("P3B_REFRACTION") or ""
+local STILL = REFRACTION_MODE ~= ""
 
 local function add(ctx, object, position)
     object.position = position
@@ -100,9 +110,24 @@ local function pool(ctx, x, z, configure)
         material:setShaderParam("layerScale", 2.0)
         material:setShaderParam("secondLayerScale", 1.3)
         material:setShaderParam("foamAmount", 0.08)
+        if STILL then
+            material:setShaderParam("layerSpeed", Vector2(0, 0))
+            material:setShaderParam("secondLayerSpeed", Vector2(0, 0))
+        end
         configure(material)
     end)
     return water
+end
+
+
+local function refraction(material, strength)
+    if REFRACTION_MODE == "off" then
+        material:setShaderFeature("REFRACTION", false)
+    elseif REFRACTION_MODE == "zero" then
+        material:setShaderParam("refractionStrength", 0.0)
+    elseif strength then
+        material:setShaderParam("refractionStrength", strength)
+    end
 end
 
 local function buildWater(ctx, z0)
@@ -113,6 +138,7 @@ local function buildWater(ctx, z0)
         material:setShaderFeature("DEPTH_FOAM", true)
         material:setShaderFeature("ABSORPTION", true)
         material:setShaderFeature("REFRACTION", true)
+        refraction(material)
     end)
     pool(ctx, xs[2], z, function(material)
         material:setShaderFeature("DEPTH_FOAM", true)
@@ -123,7 +149,14 @@ local function buildWater(ctx, z0)
     end)
     pool(ctx, xs[4], z, function(material)
         material:setShaderFeature("REFRACTION", true)
-        material:setShaderParam("refractionStrength", 0.06)
+        refraction(material, 0.06)
+    end)
+    -- a transparent box under pool 4's surface, drawn before the water
+    local under = box(ctx, 0.6, 0.22, 0.5, Vector3(xs[4] + 0.2, 0.5, z + 0.5), { 1, 1, 1 })
+    ctx:setShader(under, UNLIT, function(material)
+        material:setShaderParam("baseColor", Vector4(0.95, 0.2, 0.15, 0.6))
+        material.blendMode = MaterialBlendMode.ALPHA
+        material.sortPriority = -1
     end)
     -- the last divider, on the right
     box(ctx, 0.12, 1.0, POOL_LENGTH, Vector3(xs[4] + POOL_WIDTH / 2, 0.5, z), { 0.6, 0.6, 0.62 })
@@ -194,6 +227,10 @@ local function haze(ctx, mesh, configure)
         if configure then
             configure(material)
         end
+        if STILL then
+            material:setShaderParam("scrollSpeed", Vector2(0, 0))
+            material:setShaderParam("secondScrollSpeed", Vector2(0, 0))
+        end
     end)
     return mesh
 end
@@ -257,6 +294,7 @@ local VIEWS = {
     water_low = { Vector3(-3.6, 1.1, 0.2), Vector3(-3.6, 0.6, -3.0) },
     water_edge = { Vector3(4.4, 2.0, 0.4), Vector3(6.0, 0.6, -2.4) },
     glass = { Vector3(-3.7, 1.9, -2.6), Vector3(-3.7, 0.8, -9.0) },
+    glass_grazing = { Vector3(-7.5, 1.0, -6.6), Vector3(-3.8, 0.8, -7.4) },
     haze = { Vector3(4.0, 1.8, -2.6), Vector3(4.0, 0.9, -9.0) },
 }
 

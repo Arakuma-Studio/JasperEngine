@@ -23,18 +23,20 @@
     #define FOG_DENSITY_START_END engineFog.density_start_end
 #endif
 
-vec3 getFogColor(vec3 color){
+// The fog factor at a fog distance (1 no fog .. 0 all fog colour). The fog distance of a
+// fragment is gl_FragCoord.z / gl_FragCoord.w: its window depth times its clip w (about the
+// view distance in perspective, the 0..1 depth in orthographic cameras), what every built-in
+// and library shader fogs by.
+float getFogFactor(float fogDist){
     vec4 fogColorType = FOG_COLOR_TYPE;
     vec4 fogDensityStartEnd = FOG_DENSITY_START_END;
     int fogType = int(fogColorType.w);
-    vec3 fogColor = fogColorType.xyz;
     float fogDensity = fogDensityStartEnd.x;
     float fogLinearStart = fogDensityStartEnd.z;
     float fogLinearEnd = fogDensityStartEnd.w;
 
     float fogFactor = 0.0;
     const float LOG2 = 1.442695;
-    float fogDist = (gl_FragCoord.z / gl_FragCoord.w);
     if (fogType == 0){
         fogFactor = (fogLinearEnd - fogDist)/(fogLinearEnd - fogLinearStart);
     }else if (fogType == 1){
@@ -42,9 +44,18 @@ vec3 getFogColor(vec3 color){
     }else if (fogType == 2){
         fogFactor = exp2( -fogDensity * fogDensity * fogDist * fogDist * LOG2);
     }
-    fogFactor = clamp(fogFactor, 0.0, 1.0);
+    return clamp(fogFactor, 0.0, 1.0);
+}
 
-    return mix(fogColor, color, fogFactor);
+// The fog on a colour at a fog distance: a shader drawing onto another surface (a projected
+// decal) passes that surface's, so both get the same fog
+vec3 getFogColorAtDistance(vec3 color, float fogDist){
+    return mix(FOG_COLOR_TYPE.xyz, color, getFogFactor(fogDist));
+}
+
+// The fog on a colour drawn at this fragment
+vec3 getFogColor(vec3 color){
+    return getFogColorAtDistance(color, gl_FragCoord.z / gl_FragCoord.w);
 }
 
 #endif

@@ -3,7 +3,7 @@
 // @shader mesh
 // @name "Glass"
 // @category "Effects"
-// @description "Glass and clear plastic: the scene behind it bent by its normals (index of refraction and thickness, optional normal map), tinted and absorbed along the path through it, a fresnel reflection of a cubemap or a colour, a glint of the per-pixel lights; BLUR frosts it. Reads the scene colour and depth: on mobile a copy of the screen (half resolution by default), a split of the render pass and an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one). Alpha blended (transparent queue), no depth write, casts no shadows; other transparent objects are not seen through it."
+// @description "Glass and clear plastic: the scene behind it bent by its normals (index of refraction and thickness, optional normal map), tinted and absorbed along the path through it, a fresnel reflection of a cubemap or a colour, a glint of the per-pixel lights; BLUR frosts it. Reads the scene colour and depth: on mobile a copy of the screen (half resolution by default), a split of the render pass and an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one). Alpha blended (transparent queue), no depth write, casts no shadows. Transparent objects behind the glass are not seen through it (it shows the scene colour, which holds only opaque objects and the sky): keep them in front of it or make them opaque."
 // @lighting none pixel
 // @require normals position scenecolor scenedepth
 // @require uv1 feature=NORMAL_MAP
@@ -42,11 +42,21 @@
 // IBL and reflection probes are the built-in Lit's and are not bound to library shaders:
 // give REFLECTION_MAP the sky's or a probe-like cubemap, or match reflectionColor to the
 // sky. Pixel lights add a Blinn-Phong glint (shadowed). The result is written with alpha 1:
-// the glass is mixed with what is behind in the shader, the fog applied to its own light
-// only (the scene colour has its fog). BLUR: four bilinear taps of the scene colour copy
+// the glass composes what is behind in the shader, as the engine's blends would draw three
+// layers over it (display-encoded values, includes/output.glsl encodeColor): the
+// transmission filter multiplied, the reflection mixed by the fresnel, the glint added. The
+// fog: the reflection takes it; the filter fades to white and the glint to black with it
+// (the scene colour has its fog), as a multiply and an additive layer do. The scene colour
+// holds the opaque scene and the sky only, so transparent objects behind the glass are not
+// seen through it (a tinted, bent view cannot be blended over the target instead). With the
+// Additive blend the glass draws its reflection and glint only, with Multiply its
+// transmission filter only (neither can replace what is behind). BLUR: four bilinear taps of the scene colour copy
 // around the sample, blurRadius copy texels out (at the default half-resolution copy each
 // tap already averages 2 x 2 pixels). NORMAL_MAP: a tangent-space normal map at uv1
-// (tiling), its frame from screen-space derivatives (no tangents needed).
+// (tiling), its frame from screen-space derivatives (no tangents needed). Which side is seen
+// (a back face, with cull off, is seen from inside) is decided by the mesh's normal before
+// the map perturbs it, and a mapped normal tilting past the silhouette is pulled back to
+// face the camera, so grazing views do not flip it pixel by pixel.
 
 uniform u_fs_customParams {
     vec4 tint;
@@ -120,16 +130,19 @@ vec3 perturbNormal(vec3 normal, vec2 uv){
 
 void main() {
     vec3 n = normalize(v_normal);
-    #ifdef NORMAL_MAP
-        n = perturbNormal(n, v_uv1 * customParams.tiling.xy + customParams.tiling.zw);
-    #endif
-
     bool orthographic = frame.cameraPosition.w > 0.5;
     vec3 v = orthographic ? -frame.cameraDirection.xyz : normalize(frame.cameraPosition.xyz - v_position);
-    // a back face (a material with cull off) is seen from inside
-    if (dot(n, v) < 0.0){
-        n = -n;
-    }
+    // a back face (a material with cull off) is seen from inside: decided by the mesh's
+    // normal, not the mapped one (which tilts past the silhouette at grazing views)
+    float side = dot(n, v) < 0.0 ? -1.0 : 1.0;
+    #ifdef NORMAL_MAP
+        n = side * perturbNormal(n, v_uv1 * customParams.tiling.xy + customParams.tiling.zw);
+        // a mapped normal tilting away from the camera is pulled back just past the
+        // silhouette (continuous, no flip)
+        n = normalize(n + v * max(0.01 - dot(n, v), 0.0));
+    #else
+        n *= side;
+    #endif
     float nv = clamp(dot(n, v), 0.0, 1.0);
 
     vec2 screen = screenUV();
@@ -162,10 +175,12 @@ void main() {
         vec3 behind = sceneColor(refracted);
     #endif
 
-    // transmission: tint, then absorption along the path through the glass
+    // transmission filter: tint, then absorption along the path through the glass; it
+    // filters the fogged scene colour, so the fog in front of the glass fades it to white
     float path = customParams.thickness / max(nv, 0.2);
-    vec3 transmitted = behind * customParams.tint.rgb *
-                       mix(vec3(1.0), customParams.absorptionColor.rgb, 1.0 - exp(-customParams.absorption * path));
+    vec3 transmission = fadeByFog(customParams.tint.rgb *
+                                  mix(vec3(1.0), customParams.absorptionColor.rgb, 1.0 - exp(-customParams.absorption * path)),
+                                  vec3(1.0));
 
     // reflection, Schlick's fresnel with the index of refraction's f0
     float f0 = (customParams.ior - 1.0) / (customParams.ior + 1.0);
@@ -176,9 +191,7 @@ void main() {
         reflection *= sRGBToLinear(texture(samplerCube(u_reflectionTexture, u_reflection_smp), reflect(-v, n)).rgb);
     #endif
 
-    // what the glass reflects replaces what it lets through
-    vec3 color = mix(transmitted, applyFog(reflection), fresnel);
-
+    vec3 glint = vec3(0.0);
     #ifdef USE_PUNCTUAL
         vec3 specular = vec3(0.0);
         float shininess = exp2(10.0 * customParams.gloss + 1.0);
@@ -191,9 +204,22 @@ void main() {
             #endif
             specular += blinnPhong(lightSample, n, v, shininess) * shadow;
         }
-        // the fog fades the glint (it adds light, so only its own share)
-        color += applyFog(specular * customParams.specularColor.rgb) - applyFog(vec3(0.0));
+        // the fog fades the glint to black (it adds light)
+        glint = fadeByFog(specular * customParams.specularColor.rgb, vec3(0.0));
     #endif
 
-    g_finalColor = finalizeFoggedColor(vec4(color, 1.0));
+    // as the blends would draw them, in display values: the scene times the transmission
+    // filter, the reflection over it by the fresnel (it replaces what the glass lets
+    // through), the glint added
+    vec3 reflected = encodeColor(applyFog(reflection));
+    #if defined(BLEND_ADDITIVE)
+        // what the glass adds: its reflection and glint
+        g_finalColor = vec4(reflected * fresnel + encodeColor(glint), 1.0);
+    #elif defined(BLEND_MULTIPLY)
+        // what the glass multiplies by: its transmission filter
+        g_finalColor = vec4(encodeColor(transmission), 1.0);
+    #else
+        vec3 color = mix(encodeColor(behind) * encodeColor(transmission), reflected, fresnel) + encodeColor(glint);
+        g_finalColor = vec4(color, 1.0);
+    #endif
 }
