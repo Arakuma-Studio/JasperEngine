@@ -62,6 +62,12 @@ public:
 	SharedPtr<const ElementDefinition> GetElementDefinition(const Element* originating_element, PseudoElementType type) const;
 	/// True when some rule of the sheet ends in the pseudo-element.
 	bool HasPseudoElementRules(PseudoElementType type) const;
+	/// True when some rule of the sheet ends in a pseudo-element.
+	bool HasAnyPseudoElementRules() const
+	{
+		return !styled_node_index.pseudo_element_nodes[0].empty() || !styled_node_index.pseudo_element_nodes[1].empty() ||
+			!styled_node_index.pseudo_element_nodes[2].empty();
+	}
 	/// What the :has() selectors of the sheet depend on (invalidation).
 	const StyleSheetIndex::HasDependencies& GetHasDependencies() const { return styled_node_index.has; }
 

@@ -276,8 +276,7 @@ void PseudoElements::Update(Element& element)
 
 	// The common case first: no pseudo-element yet, no rule that could make one, not a list item.
 	const StyleSheet* style_sheet = element.GetStyleSheet();
-	if (!ElementCascade::PseudoElementSlot(element, PseudoElementType::Before) && !ElementCascade::PseudoElementSlot(element, PseudoElementType::After) &&
-		!ElementCascade::PseudoElementSlot(element, PseudoElementType::Marker) && element.GetComputedValues().display() != Style::Display::ListItem &&
+	if (!ElementCascade::HasPseudoElements(element) && element.GetComputedValues().display() != Style::Display::ListItem &&
 		(!style_sheet ||
 			(!style_sheet->HasPseudoElementRules(PseudoElementType::Before) && !style_sheet->HasPseudoElementRules(PseudoElementType::After))))
 		return;
@@ -326,10 +325,17 @@ void PseudoElements::Update(Element& element)
 		ElementCascade::DirtyDefinition(slot, false);
 	}
 
+	ElementCascade::SetHasPseudoElements(element);
+
 	if (changed)
 	{
 		ElementCascade::DirtyLayout(element);
-		DirtyCounters(element);
+		// A ::marker numbers its item, generated content may show counters or quotes (ElementPseudo::BuildContent dirties
+		// them when its content does); otherwise only a document that resolves counters walks again.
+		if (ElementCascade::PseudoElementSlot(element, PseudoElementType::Marker))
+			DirtyCounters(element);
+		else
+			ElementCascade::DirtyCountersIfUsed(element);
 	}
 }
 
@@ -340,8 +346,10 @@ void PseudoElements::OnAttributeChange(Element& element, const ElementAttributes
 		if (Element* pseudo_element = element.GetPseudoElement(type))
 			static_cast<ElementPseudo*>(pseudo_element)->OnOriginatingAttributeChange(changed_attributes);
 	}
-	// <ol start>, <ol reversed>, <li value> number the list items.
-	if (changed_attributes.count("start") || changed_attributes.count("reversed") || changed_attributes.count("value"))
+	// <ol start>, <ol reversed>, <li value> number the list items (other elements' 'value', an input's, does not).
+	const String& tag = element.GetTagName();
+	if ((tag == "ol" && (changed_attributes.count("start") || changed_attributes.count("reversed"))) ||
+		(tag == "li" && changed_attributes.count("value")))
 		DirtyCounters(element);
 }
 

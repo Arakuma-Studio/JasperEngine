@@ -422,7 +422,7 @@ public:
 	Element* GetPseudoElement(PseudoElementType type) const;
 	/// Returns the pseudo-element type of this element: None for an ordinary element, else the ::before, ::after or
 	/// ::marker it is (phase 3).
-	PseudoElementType GetPseudoElementType() const;
+	PseudoElementType GetPseudoElementType() const { return pseudo_element_type; }
 	/// Recursively search for the first ancestor of this node matching the given selector.
 	/// @param[in] selectors The selector or comma-separated selectors to match against.
 	/// @return The ancestor if found, or nullptr if no ancestor could be matched.
@@ -764,6 +764,8 @@ private:
 	bool dirty_child_definitions : 1;
 	bool dirty_definition_self : 1; // Re-match this element alone (its :has() selectors, phase 3).
 	bool dirty_pseudo_elements : 1; // PseudoElements::Update runs in the next update (phase 3).
+	PseudoElementType pseudo_element_type : 2; // From the tag: '::before', '::after', '::marker' (phase 3).
+	bool has_pseudo_elements : 1;              // It generates a ::before, ::after or ::marker (phase 3).
 
 	bool dirty_animation : 1;
 	bool dirty_transition : 1;

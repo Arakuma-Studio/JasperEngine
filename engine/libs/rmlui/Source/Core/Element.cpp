@@ -73,10 +73,24 @@ static float GetScrollOffsetDelta(ScrollAlignment alignment, float begin_offset,
 
 RMLUI_RTTI_Define(Element)
 
+// The pseudo-element type of a tag: pseudo-elements are the only elements whose tag starts with "::".
+static PseudoElementType PseudoElementTypeOfTag(const String& tag)
+{
+	if (tag.size() < 3 || tag[0] != ':' || tag[1] != ':')
+		return PseudoElementType::None;
+	if (tag == "::before")
+		return PseudoElementType::Before;
+	if (tag == "::after")
+		return PseudoElementType::After;
+	if (tag == "::marker")
+		return PseudoElementType::Marker;
+	return PseudoElementType::None;
+}
+
 Element::Element(const String& tag) :
 	local_stacking_context(false), local_stacking_context_forced(false), stacking_context_dirty(false), computed_values_are_default_initialized(true),
 	visible(true), offset_fixed(false), absolute_offset_dirty(true), rounded_main_padding_size_dirty(true), dirty_definition(false),
-	dirty_child_definitions(false), dirty_definition_self(false), dirty_pseudo_elements(false), dirty_animation(false), dirty_transition(false),
+	dirty_child_definitions(false), dirty_definition_self(false), dirty_pseudo_elements(false), pseudo_element_type(PseudoElementTypeOfTag(tag)), has_pseudo_elements(false), dirty_animation(false), dirty_transition(false),
 	dirty_transform(false), dirty_perspective(false), animation_displayed(true), animations_running(false), display_contents(false), tag(tag),
 	relative_offset_base(0, 0), relative_offset_position(0, 0), absolute_offset(0, 0), scroll_offset(0, 0)
 {
@@ -1199,19 +1213,6 @@ Element* Element::GetPseudoElement(PseudoElementType type) const
 	return meta->pseudo_elements[int(type) - 1];
 }
 
-PseudoElementType Element::GetPseudoElementType() const
-{
-	// Pseudo-elements are the only elements whose tag starts with "::".
-	if (tag.size() < 3 || tag[0] != ':' || tag[1] != ':')
-		return PseudoElementType::None;
-	if (tag == "::before")
-		return PseudoElementType::Before;
-	if (tag == "::after")
-		return PseudoElementType::After;
-	if (tag == "::marker")
-		return PseudoElementType::Marker;
-	return PseudoElementType::None;
-}
 
 Element* Element::GetParentNode() const
 {
@@ -2182,7 +2183,18 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	}
 	if (changed_properties.Contains(PropertyId::CounterReset) || changed_properties.Contains(PropertyId::CounterIncrement) ||
 		changed_properties.Contains(PropertyId::CounterSet))
-		PseudoElements::DirtyCounters(*this);
+	{
+		// A counter property set to something else than 'none' makes the document resolve counters; one back to 'none'
+		// dirties them only when the document already does.
+		auto declares = [this](PropertyId id) {
+			const Property* property = GetProperty(id);
+			return property && property->unit == Unit::STYLE_VALUE;
+		};
+		if (declares(PropertyId::CounterReset) || declares(PropertyId::CounterIncrement) || declares(PropertyId::CounterSet))
+			PseudoElements::DirtyCounters(*this);
+		else
+			ElementCascade::DirtyCountersIfUsed(*this);
+	}
 
 	// -- Paint (p3-paint) --
 
@@ -2796,15 +2808,12 @@ void Element::UpdateDefinition()
 		dirty_child_definitions = true;
 
 		GetStyle()->UpdateDefinition();
-		// Its pseudo-elements' rules match through it (phase 3).
-		ElementCascade::DirtyPseudoElements(*this);
 	}
 	else if (dirty_definition_self)
 	{
 		// The element alone may match differently (:has(), phase 3); its descendants are not affected.
 		dirty_definition_self = false;
 		GetStyle()->UpdateDefinition();
-		ElementCascade::DirtyPseudoElements(*this);
 	}
 
 	if (dirty_child_definitions)

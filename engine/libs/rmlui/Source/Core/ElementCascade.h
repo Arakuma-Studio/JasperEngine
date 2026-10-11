@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../Include/RmlUi/Core/Element.h"
+#include "../../Include/RmlUi/Core/StyleSheet.h"
 
 namespace Rml {
 
@@ -44,6 +45,16 @@ public:
 	static Element*& PseudoElementSlot(Element& element, PseudoElementType type);
 	/// Marks the element to generate its pseudo-elements again (PseudoElements::Update).
 	static void DirtyPseudoElements(Element& element);
+	/// The same after the element was matched again, when that can change its pseudo-elements: it has one, or the
+	/// sheet has rules for them (the other causes, display and list styles, mark it from Element::OnPropertyChange).
+	static void DirtyPseudoElementsAfterMatch(Element& element, const StyleSheet* style_sheet)
+	{
+		if (element.has_pseudo_elements || (style_sheet && style_sheet->HasAnyPseudoElementRules()))
+			element.dirty_pseudo_elements = true;
+	}
+	/// Whether the element generates a pseudo-element; SetHasPseudoElements updates it from its slots.
+	static bool HasPseudoElements(const Element& element) { return element.has_pseudo_elements; }
+	static void SetHasPseudoElements(Element& element);
 
 	/// Marks the document to resolve its counters before its next layout (CounterResolver), and remembers that it uses
 	/// counters (its structure changes then dirty them too).

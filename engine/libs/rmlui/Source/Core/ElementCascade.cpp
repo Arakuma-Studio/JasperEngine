@@ -58,6 +58,12 @@ void ElementCascade::DirtyPseudoElements(Element& element)
 	element.dirty_pseudo_elements = true;
 }
 
+void ElementCascade::SetHasPseudoElements(Element& element)
+{
+	const ElementMeta& meta = *element.meta;
+	element.has_pseudo_elements = (meta.pseudo_elements[0] || meta.pseudo_elements[1] || meta.pseudo_elements[2]);
+}
+
 void ElementCascade::DirtyCounters(ElementDocument& document)
 {
 	document.counters_used = true;

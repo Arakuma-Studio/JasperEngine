@@ -1,4 +1,5 @@
 #include "ElementStyle.h"
+#include "ElementCascade.h"
 #include "../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../Include/RmlUi/Core/Context.h"
 #include "../../Include/RmlUi/Core/Core.h"
@@ -578,7 +579,8 @@ void ElementStyle::UpdateDefinition()
 
 	SharedPtr<const ElementDefinition> new_definition;
 
-	if (const StyleSheet* style_sheet = element->GetStyleSheet())
+	const StyleSheet* style_sheet = element->GetStyleSheet();
+	if (style_sheet)
 	{
 		// A pseudo-element's rules match through its originating element (phase 3).
 		const PseudoElementType pseudo_element_type = element->GetPseudoElementType();
@@ -587,6 +589,10 @@ void ElementStyle::UpdateDefinition()
 		else if (Element* originating_element = element->GetParentNode())
 			new_definition = style_sheet->GetElementDefinition(originating_element, pseudo_element_type);
 	}
+	// The element's pseudo-elements match through it: generate them again when it has some or the sheet has rules for
+	// them (the other causes, display and list styles, are property changes: Element::OnPropertyChange).
+	if (element->GetPseudoElementType() == PseudoElementType::None)
+		ElementCascade::DirtyPseudoElementsAfterMatch(*element, style_sheet);
 
 	// Switch the property definitions if the definition has changed.
 	if (new_definition != definition)
