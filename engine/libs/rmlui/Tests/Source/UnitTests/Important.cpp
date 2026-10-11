@@ -31,6 +31,8 @@ static const String important_rml = R"(
 		#e { color: #00f !important; }
 		#f { padding: var(--p) !important; --p: 6px; }
 		#h { width: 21px !important; width: 22px; height: 3px !important; height: 4px !important; }
+		#i { color: #f00; width: 31px; }
+		.imp { color: #00f !important; width: 32px !important; }
 		@keyframes grow { from { width: 1px !important; height: 1px; } to { width: 2px; height: 2px; } }
 	</style>
 </head>
@@ -43,6 +45,7 @@ static const String important_rml = R"(
 	<div id="f" style="padding: 2px"/>
 	<div id="g" style="width: 8px !important; height: 9px"/>
 	<div id="h"/>
+	<div id="i" class="imp"/>
 </body>
 </rml>
 )";
@@ -110,6 +113,13 @@ TEST_CASE("Important")
 	{
 		CHECK(width("h") == 21.f);
 		CHECK(document->GetElementById("h")->GetComputedValues().height().value == 4.f);
+	}
+
+	SUBCASE("an important class declaration beats a normal id declaration")
+	{
+		Element* i = document->GetElementById("i");
+		CHECK(width("i") == 32.f);
+		CHECK(i->GetComputedValues().color() == Colourb(0, 0, 255));
 	}
 
 	SUBCASE("inline important and normal in one attribute")
