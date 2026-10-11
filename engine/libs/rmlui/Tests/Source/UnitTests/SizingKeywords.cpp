@@ -42,7 +42,7 @@ const String sizing_keywords_rml = R"RML(
 	</div>
 	<div class="wide">
 		<div id="fit-wide" style="width: fit-content"><span/><span/></div>
-		<div id="fit-padding" style="width: fit-content; padding: 0 5px; border: 2px #000"><span/></div>
+		<div id="fit-padding" style="width: fit-content; padding: 0 5px; border: 2px solid #000"><span/></div>
 	</div>
 	<div class="wide" style="position: relative; height: 50px">
 		<div id="absolute-fit" style="position: absolute; left: 0; right: 0; width: fit-content"><span/></div>

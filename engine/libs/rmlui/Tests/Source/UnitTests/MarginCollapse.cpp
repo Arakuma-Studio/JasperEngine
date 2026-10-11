@@ -23,7 +23,7 @@ const String margin_collapse_rml = R"(
 </head>
 <body>
 	<div class="root" style="left: 0"><div id="parent" style="margin-top: 10px"><div id="first" style="margin-top: 20px; height: 5px"/></div></div>
-	<div class="root" style="left: 100px"><div id="bordered" style="margin-top: 10px; border-top: 1px #000"><div id="inside" style="margin-top: 20px; height: 5px"/></div></div>
+	<div class="root" style="left: 100px"><div id="bordered" style="margin-top: 10px; border-top: 1px solid #000"><div id="inside" style="margin-top: 20px; height: 5px"/></div></div>
 	<div class="root" style="left: 200px"><div id="last-parent" style="margin-bottom: 10px"><div style="margin-bottom: 30px; height: 5px"/></div><div id="after" style="height: 5px"/></div>
 	<div class="root" style="left: 300px"><div style="height: 5px; margin-bottom: 10px"/><div id="empty" style="margin-top: 15px; margin-bottom: 25px"/><div id="next" style="height: 5px; margin-top: 5px"/></div>
 	<div class="root" style="left: 0; top: 200px"><div style="height: 5px; margin-bottom: 20px"/><div id="negative" style="height: 5px; margin-top: -5px"/></div>
