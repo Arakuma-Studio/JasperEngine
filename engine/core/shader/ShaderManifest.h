@@ -70,7 +70,15 @@ namespace jasperengine{
         ShaderRequire_RawColor = 1 << 6, // the vertex colour without the instance colour (v_rawColor)
         // a_smoothNormal: the normal averaged over the vertices sharing a position, which the
         // renderer generates for the mesh (shader library phase 2, inverted-hull outlines)
-        ShaderRequire_SmoothNormals = 1 << 7
+        ShaderRequire_SmoothNormals = 1 << 7,
+        // scene inputs (shader library phase 3, includes/scene.glsl): not vertex inputs but
+        // what the engine produces for the camera pass a requiring draw is in: the opaque
+        // scene's depth (SURFACE_SCENE_DEPTH, u_sceneDepthTexture) and a copy of its colour
+        // (SURFACE_SCENE_COLOR, u_sceneColorTexture). Mesh and points shaders only; the draw
+        // must be in the transparent queue (it reads what the opaque queue drew).
+        ShaderRequire_SceneDepth = 1 << 8,
+        ShaderRequire_SceneColor = 1 << 9,
+        ShaderRequire_SceneInputs = ShaderRequire_SceneDepth | ShaderRequire_SceneColor
     };
 
     struct JASPERENGINE_API ShaderManifestProperty{
@@ -236,10 +244,19 @@ namespace jasperengine{
         // holds for the enabled defines
         uint32_t resolveRequire(const std::vector<std::string>& enabled) const;
 
+        // The scene inputs (ShaderRequire_SceneDepth / _SceneColor) some variant of the shader
+        // may require: @require plus every feature= rule, whatever the features (the shader
+        // picker's cost mark, list_shaders)
+        uint32_t getPossibleSceneInputs() const;
+
         // the SURFACE_* defines a variant compiles with (one per required input, see
         // includes/surface_vs.glsl), for its enabled defines
         std::vector<std::string> getRequireDefines(const std::vector<std::string>& enabled) const;
         static std::vector<std::string> getRequireDefines(uint32_t require);
+
+        // the @require input names of a mask: position, normals, tangents, uv1, uv2, color,
+        // rawcolor, smoothnormals, scenedepth, scenecolor (in that order)
+        static std::vector<std::string> getRequireNames(uint32_t require);
 
         // the source declares manifest lines (a fork the runtime needs the file of)
         static bool hasManifestLines(const std::string& source);

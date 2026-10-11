@@ -82,7 +82,14 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
   `uv2`, `color` = vertex colour times instance colour, `rawcolor` = the vertex colour
   alone, `smoothnormals` = the normal averaged over the vertices sharing a position, made by
   the engine); "with X" inputs only while feature X is on ("without X": while off). A mesh
-  that lacks one still draws (normal +Y, UV 0, white).
+  that lacks one still draws (normal +Y, UV 0, white). `scenedepth` and `scenecolor` are
+  the scene inputs (`includes/scene.glsl`), listed again under **Reads the scene**.
+- **Reads the scene**: the shader samples the opaque scene's depth or a copy of its colour.
+  The engine makes them only in camera passes that draw such a shader: a depth pre-pass
+  (shared with SSAO, SSR or a depth-reading post pass when one runs) and one copy of the
+  opaque scene and sky (Scene Color Scale: half resolution by default). Extra GPU work on
+  mobile; the shader draws in the transparent queue and does not see other transparent
+  objects.
 - **Default state**: what Auto resolves to; `shadows off` means the object casts no shadow
   even when its mesh casts shadows. "With X" lines apply while feature or keyword value X is
   on.
@@ -194,15 +201,9 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
     }
 
     std::string requireList(uint32_t require){
-        const std::pair<uint32_t, const char*> inputs[] = {
-            {ShaderRequire_Position, "position"}, {ShaderRequire_Normals, "normals"}, {ShaderRequire_Tangents, "tangents"},
-            {ShaderRequire_UV1, "uv1"}, {ShaderRequire_UV2, "uv2"}, {ShaderRequire_Color, "color"},
-            {ShaderRequire_RawColor, "rawcolor"}, {ShaderRequire_SmoothNormals, "smoothnormals"}};
         std::string text;
-        for (const auto& [flag, name] : inputs){
-            if (require & flag)
-                text += (text.empty() ? "" : ", ") + std::string("`") + name + "`";
-        }
+        for (const std::string& name : ShaderManifest::getRequireNames(require))
+            text += (text.empty() ? "" : ", ") + std::string("`") + name + "`";
         return text;
     }
 
@@ -308,6 +309,15 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
                 inputs += (inputs.empty() ? "" : "; ") + requireList(rule.require) + " " + condition(rule.define, rule.negate);
             }
             out << "- **Inputs**: " << (inputs.empty() ? "none" : inputs) << ".\n";
+        }
+        // the mobile cost of reading the scene (phase 3): the passes the engine adds for it
+        if (const uint32_t sceneInputs = manifest.getPossibleSceneInputs()){
+            std::string cost;
+            if (sceneInputs & ShaderRequire_SceneDepth)
+                cost += "the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one)";
+            if (sceneInputs & ShaderRequire_SceneColor)
+                cost += std::string(cost.empty() ? "" : " and ") + "the scene colour (a copy of the opaque scene, at the scene's Scene Color Scale)";
+            out << "- **Reads the scene**: " << cost << ", in the camera passes that draw it.\n";
         }
 
         const std::string state = stateText(manifest.state);

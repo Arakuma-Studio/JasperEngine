@@ -177,6 +177,11 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
     if (manifest.lighting.empty()) lighting.push_back("none");
     for (ShaderLightingMode mode : manifest.lighting) lighting.push_back(ShaderManifest::getLightingModeName(mode));
     out["lighting"] = lighting;
+    // what some variant reads of the scene (phase 3): "scenedepth" adds a depth pre-pass and
+    // "scenecolor" a copy of the opaque scene to the camera passes that draw it
+    Json sceneInputs = Json::array();
+    for (const std::string& name : ShaderManifest::getRequireNames(manifest.getPossibleSceneInputs())) sceneInputs.push_back(name);
+    out["scene_inputs"] = sceneInputs;
     if (!detail) {
         Json features = Json::array();
         for (const ShaderManifestFeature& feature : manifest.features) features.push_back(feature.define);
@@ -187,13 +192,7 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
     // @require: the inputs, then the feature= ones ("!<DEFINE>": while it is off)
     auto requireJson = [](uint32_t flags) {
         Json list = Json::array();
-        const std::pair<uint32_t, const char*> inputs[] = {
-            {ShaderRequire_Position, "position"}, {ShaderRequire_Normals, "normals"}, {ShaderRequire_Tangents, "tangents"},
-            {ShaderRequire_UV1, "uv1"}, {ShaderRequire_UV2, "uv2"}, {ShaderRequire_Color, "color"},
-            {ShaderRequire_RawColor, "rawcolor"}, {ShaderRequire_SmoothNormals, "smoothnormals"}};
-        for (const auto& [flag, name] : inputs) {
-            if (flags & flag) list.push_back(name);
-        }
+        for (const std::string& name : ShaderManifest::getRequireNames(flags)) list.push_back(name);
         return list;
     };
     out["require"] = requireJson(manifest.require);

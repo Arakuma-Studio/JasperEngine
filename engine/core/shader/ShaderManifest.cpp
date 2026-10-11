@@ -23,6 +23,11 @@
 using namespace jasperengine;
 
 namespace {
+    // a feature= condition ("<DEFINE>", or "!<DEFINE>" with negate) against enabled defines
+    bool conditionHolds(const std::string& define, bool negate, const std::vector<std::string>& enabled){
+        const bool on = std::find(enabled.begin(), enabled.end(), define) != enabled.end();
+        return on != negate;
+    }
 
     struct Token{
         std::string text;
@@ -404,7 +409,9 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 else if (input == "position") rule.require |= ShaderRequire_Position;
                 else if (input == "rawcolor") rule.require |= ShaderRequire_RawColor;
                 else if (input == "smoothnormals") rule.require |= ShaderRequire_SmoothNormals;
-                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position, smoothnormals)");
+                else if (input == "scenedepth") rule.require |= ShaderRequire_SceneDepth;
+                else if (input == "scenecolor") rule.require |= ShaderRequire_SceneColor;
+                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position, smoothnormals, scenedepth, scenecolor)");
             }
             if (!valid)
                 continue;
@@ -796,6 +803,48 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
     }
     if (depth && hasType && type != ShaderType::MESH)
         report(1, "@depth needs @shader mesh");
+
+    // scene inputs (phase 3): the engine binds them to mesh and points draws only, by these
+    // names, and produces them for what draws after the opaque queue
+    const uint32_t sceneInputs = getPossibleSceneInputs();
+    if (sceneInputs){
+        int line = 1;
+        for (const ShaderManifestRequireRule& rule : requireRules){
+            if (rule.require & ShaderRequire_SceneInputs){
+                line = rule.line;
+                break;
+            }
+        }
+        if (hasType && type != ShaderType::MESH && type != ShaderType::POINTS)
+            report(line, "@require scenedepth / scenecolor needs @shader mesh or points");
+    }
+    for (const ShaderManifestTexture& texture : textures){
+        if (texture.uniform == "u_sceneDepthTexture" || texture.uniform == "u_sceneColorTexture")
+            report(texture.line, "@texture '" + texture.uniform + "' is reserved: the engine binds it for @require scenedepth / scenecolor");
+    }
+    // a mesh variant reading the scene must draw after the opaque queue: its state has to put
+    // it in the transparent queue (a material can still override it; the inspector and the
+    // checks report that). Checked for the default features and for each feature= rule's
+    // condition that adds a scene input.
+    if (sceneInputs && (!hasType || type == ShaderType::MESH)){
+        auto transparent = [](const ShaderManifestState& resolved){
+            if (resolved.queue == ShaderQueue::TRANSPARENT)
+                return true;
+            if (resolved.queue != ShaderQueue::AUTO)
+                return false;
+            return resolved.blend != MaterialBlendMode::AUTO && resolved.blend != MaterialBlendMode::NONE;
+        };
+        const char* const fix = "needs the transparent queue: add @state queue=transparent or a blend (alpha, premultiplied, additive, multiply)";
+        if ((require & ShaderRequire_SceneInputs) && !transparent(resolveState(resolveFeatures({}))))
+            report(1, std::string("a shader requiring scenedepth / scenecolor ") + fix);
+        for (const ShaderManifestRequireRule& rule : requireRules){
+            if (!(rule.require & ShaderRequire_SceneInputs))
+                continue;
+            const std::vector<std::string> enabled = resolveFeatures({rule.negate ? "!" + rule.define : rule.define});
+            if (conditionHolds(rule.define, rule.negate, enabled) && !transparent(resolveState(enabled)))
+                report(rule.line, "@require scenedepth / scenecolor feature=" + std::string(rule.negate ? "!" : "") + rule.define + ": the variant " + fix);
+        }
+    }
 }
 
 bool ShaderManifest::hasErrors() const{
@@ -993,12 +1042,6 @@ bool ShaderManifestState::hasStencil() const{
     return stencil.compare != MaterialStencilCompare::AUTO && stencil.compare != MaterialStencilCompare::DISABLED;
 }
 
-namespace {
-    bool conditionHolds(const std::string& define, bool negate, const std::vector<std::string>& enabled){
-        const bool on = std::find(enabled.begin(), enabled.end(), define) != enabled.end();
-        return on != negate;
-    }
-}
 
 ShaderManifestState ShaderManifest::resolveState(const std::vector<std::string>& enabled) const{
     ShaderManifestState resolved = state;
@@ -1032,7 +1075,30 @@ std::vector<std::string> ShaderManifest::getRequireDefines(uint32_t require){
     if (require & ShaderRequire_Color)    defines.push_back("SURFACE_COLOR");
     if (require & ShaderRequire_RawColor) defines.push_back("SURFACE_RAW_COLOR");
     if (require & ShaderRequire_SmoothNormals) defines.push_back("SURFACE_SMOOTH_NORMALS");
+    if (require & ShaderRequire_SceneDepth) defines.push_back("SURFACE_SCENE_DEPTH");
+    if (require & ShaderRequire_SceneColor) defines.push_back("SURFACE_SCENE_COLOR");
     return defines;
+}
+
+uint32_t ShaderManifest::getPossibleSceneInputs() const{
+    uint32_t inputs = require;
+    for (const ShaderManifestRequireRule& rule : requireRules)
+        inputs |= rule.require;
+    return inputs & ShaderRequire_SceneInputs;
+}
+
+std::vector<std::string> ShaderManifest::getRequireNames(uint32_t require){
+    static const std::pair<uint32_t, const char*> names[] = {
+        {ShaderRequire_Position, "position"}, {ShaderRequire_Normals, "normals"}, {ShaderRequire_Tangents, "tangents"},
+        {ShaderRequire_UV1, "uv1"}, {ShaderRequire_UV2, "uv2"}, {ShaderRequire_Color, "color"},
+        {ShaderRequire_RawColor, "rawcolor"}, {ShaderRequire_SmoothNormals, "smoothnormals"},
+        {ShaderRequire_SceneDepth, "scenedepth"}, {ShaderRequire_SceneColor, "scenecolor"}};
+    std::vector<std::string> result;
+    for (const auto& name : names){
+        if (require & name.first)
+            result.push_back(name.second);
+    }
+    return result;
 }
 
 bool ShaderManifest::hasManifestLines(const std::string& source){
