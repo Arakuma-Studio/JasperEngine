@@ -98,7 +98,10 @@ TEST_CASE("StackingContext.creators")
 	CHECK(context->GetElementAtPoint(at) == first);
 
 	const std::pair<const char*, const char*> declarations[] = {{"opacity", "0.5"}, {"position", "fixed"}, {"position", "sticky"},
-		{"isolation", "isolate"}, {"will-change", "transform"}, {"will-change", "opacity"}};
+		{"isolation", "isolate"}, {"will-change", "transform"}, {"will-change", "opacity"}, {"will-change", "TRANSFORM"},
+		{"will-change", "left, opacity"}, {"will-change", "rotate"}, {"will-change", "mask-image"}, {"will-change", "-webkit-mask"},
+		{"will-change", "isolation"}, {"will-change", "position"}, {"will-change", "clip-path"}, {"will-change", "contain"},
+		{"will-change", "backdrop-filter"}};
 	for (const auto& declaration : declarations)
 	{
 		INFO(declaration.first << ": " << declaration.second);
@@ -108,6 +111,18 @@ TEST_CASE("StackingContext.creators")
 		first->RemoveProperty(declaration.first);
 		TestsShell::RenderLoop();
 		CHECK(context->GetElementAtPoint(at) == first);
+	}
+
+	// Names whose values create no stacking context (Chromium: also not a custom property named like one).
+	const char* no_stacking_context[] = {"auto", "left", "transform-origin", "z-index", "--opacity", "scroll-position", "contents",
+		"opacity-x"};
+	for (const char* value : no_stacking_context)
+	{
+		INFO("will-change: " << value);
+		first->SetProperty("will-change", value);
+		TestsShell::RenderLoop();
+		CHECK(context->GetElementAtPoint(at) == first);
+		first->RemoveProperty("will-change");
 	}
 	(void)second;
 

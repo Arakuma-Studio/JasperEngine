@@ -5,6 +5,7 @@
 #include "../../../Include/RmlUi/Core/ElementScroll.h"
 #include "../../../Include/RmlUi/Core/Profiling.h"
 #include "../ElementMeta.h"
+#include "../WillChange.h"
 #include "FlexFormattingContext.h"
 #include "FormattingContext.h"
 #include "GridFormattingContext.h"
@@ -269,9 +270,8 @@ ContainerBox::ContainerBox(Type type, Element* element, ContainerBox* parent_con
 		const auto& computed = element->GetComputedValues();
 		overflow_x = computed.overflow_x();
 		overflow_y = computed.overflow_y();
-		is_fixed_positioning_containing_block = (computed.has_local_transform() || computed.has_local_perspective() || computed.has_filter() ||
-			computed.has_backdrop_filter() || computed.has_mask_image());
-		is_absolute_positioning_containing_block = (computed.position() != Style::Position::Static || is_fixed_positioning_containing_block);
+		is_fixed_positioning_containing_block = WillChange::IsFixedPositioningContainingBlock(computed);
+		is_absolute_positioning_containing_block = WillChange::IsAbsolutePositioningContainingBlock(computed);
 	}
 }
 

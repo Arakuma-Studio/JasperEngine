@@ -70,7 +70,8 @@ public:
 	// Returns true if this box acts as a containing block for absolutely positioned descendants.
 	bool IsAbsolutePositioningContainingBlock() const { return is_absolute_positioning_containing_block; }
 	// Returns true if this box acts as a containing block for descendants with 'position: fixed', instead of the viewport
-	// (CSS Transforms 1 §2, Filter Effects 1 §5, CSS Masking 1: a transform, perspective, filter, backdrop filter or mask).
+	// (CSS Transforms 1 §2, Filter Effects 1 §5, CSS Will Change 1: a transform, perspective, filter, backdrop filter, or
+	// 'will-change' naming one: WillChange::IsFixedPositioningContainingBlock).
 	bool IsFixedPositioningContainingBlock() const { return is_fixed_positioning_containing_block; }
 
 protected:

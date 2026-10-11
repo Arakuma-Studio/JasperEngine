@@ -1,4 +1,5 @@
 #include "ElementStyle.h"
+#include "WillChange.h"
 #include "ElementCascade.h"
 #include "../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../Include/RmlUi/Core/Context.h"
@@ -1847,7 +1848,9 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		break;
 	case PropertyId::JustifyItems:
 	case PropertyId::JustifySelf:
+		break;
 	case PropertyId::WillChange:
+		values.will_change(p->unit == Unit::STRING ? WillChange::ParseHints(p->Get<String>()) : uint8_t(0));
 		break;
 
 	// -- Values (p3-values) --

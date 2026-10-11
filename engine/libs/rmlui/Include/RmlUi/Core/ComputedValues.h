@@ -227,6 +227,7 @@ namespace Style {
 
 		// -- Groundwork (p3-base) --
 		int order = 0;
+		uint8_t will_change = 0; // the hints of 'will-change' (WillChange::Hint bits, Source/Core/WillChange.h)
 
 		// -- Values (p3-values) --
 
@@ -395,6 +396,7 @@ namespace Style {
 		// -- Phase 3: one section per package (see RareValues) --
 		// Groundwork (p3-base)
 		int               order()                      const { return rare.order; }
+		uint8_t           will_change()                const { return rare.will_change; }
 		JustifyItems      justify_items()              const { return GetLocalPropertyAlignment(PropertyId::JustifyItems, JustifyItems::Legacy); }
 		JustifySelf       justify_self()               const { return GetLocalPropertyAlignment(PropertyId::JustifySelf, JustifySelf::Auto); }
 		OverflowAlignment align_content_overflow()     const { return GetLocalPropertyOverflowAlignment(PropertyId::AlignContent); }
@@ -560,6 +562,7 @@ namespace Style {
 		// Phase 3: one section per package (see RareValues)
 		// Groundwork (p3-base)
 		void order                     (int value)               { rare.order                      = value; }
+		void will_change               (uint8_t value)           { rare.will_change                = value; }
 
 		// Values (p3-values)
 

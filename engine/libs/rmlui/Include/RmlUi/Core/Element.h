@@ -791,6 +791,10 @@ private:
 	bool animations_running : 1;  // An animation needs further updates (not paused or finished).
 
 	bool display_contents : 1; // The computed 'display' is 'contents' (its children are laid out and painted in its place).
+	// It is the containing block of fixed / of absolutely positioned descendants (a transform, a filter, 'will-change', ...:
+	// WillChange.h), as of the last change of those properties: the layout is dirtied when it changes.
+	bool fixed_containing_block : 1;
+	bool absolute_containing_block : 1;
 
 	OwnedElementList children;
 	int num_non_dom_children;

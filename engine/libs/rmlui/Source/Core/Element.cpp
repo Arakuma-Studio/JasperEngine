@@ -26,6 +26,7 @@
 #include "ElementEffects.h"
 #include "ElementMeta.h"
 #include "ElementStyle.h"
+#include "WillChange.h"
 #include "PseudoElements.h"
 #include "EventDispatcher.h"
 #include "EventSpecification.h"
@@ -93,7 +94,7 @@ Element::Element(const String& tag) :
 	local_stacking_context(false), local_stacking_context_forced(false), stacking_context_dirty(false), computed_values_are_default_initialized(true),
 	visible(true), offset_fixed(false), absolute_offset_dirty(true), rounded_main_padding_size_dirty(true), dirty_definition(false),
 	dirty_child_definitions(false), dirty_definition_self(false), dirty_pseudo_elements(false), pseudo_element_type(PseudoElementTypeOfTag(tag)), has_pseudo_elements(false), dirty_animation(false), dirty_transition(false),
-	dirty_transform(false), dirty_perspective(false), animation_displayed(true), animations_running(false), display_contents(false), tag(tag),
+	dirty_transform(false), dirty_perspective(false), animation_displayed(true), animations_running(false), display_contents(false), fixed_containing_block(false), absolute_containing_block(false), tag(tag),
 	relative_offset_base(0, 0), relative_offset_position(0, 0), absolute_offset(0, 0), scroll_offset(0, 0)
 {
 	RMLUI_ASSERT(tag == StringUtilities::ToLower(tag));
@@ -834,16 +835,8 @@ void Element::UpdateLocalStackingContext()
 	const bool z_index_applies =
 		(z_index_property.type != ZIndex::Auto && (position != Position::Static || is_item || local_stacking_context_forced || !parent));
 
-	bool will_change = false;
-	if (const Property* property = GetLocalProperty(PropertyId::WillChange))
-	{
-		if (property->unit == Unit::STRING)
-		{
-			const String value = StringUtilities::ToLower(property->Get<String>());
-			will_change = (value.find("transform") != String::npos || value.find("opacity") != String::npos ||
-				value.find("filter") != String::npos || value.find("perspective") != String::npos);
-		}
-	}
+	// 'will-change' naming a property that creates a stacking context (CSS Will Change 1 §3.1, WillChange::ParseHints).
+	const bool will_change = (computed.will_change() & WillChange::StackingContext) != 0;
 
 	const float new_z_index = (z_index_applies ? z_index_property.value : 0.f);
 	const bool enable_local_stacking_context = (z_index_applies || local_stacking_context_forced || computed.has_filter() ||
@@ -2297,6 +2290,21 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 		changed_properties.Contains(PropertyId::TransformOriginY) || changed_properties.Contains(PropertyId::TransformOriginZ) ||
 		changed_properties.Contains(PropertyId::Translate) || changed_properties.Contains(PropertyId::Rotate) ||
 		changed_properties.Contains(PropertyId::Scale);
+
+	// A transform, a filter, ... make the element the containing block of its fixed and absolutely positioned descendants:
+	// their layout changes when that starts or stops (not when only their values change, as in a transition).
+	if (transform_changed || perspective_changed || filter_or_mask_changed || changed_properties.Contains(PropertyId::WillChange) ||
+		changed_properties.Contains(PropertyId::Position))
+	{
+		const bool new_fixed_containing_block = WillChange::IsFixedPositioningContainingBlock(meta->computed_values);
+		const bool new_absolute_containing_block = WillChange::IsAbsolutePositioningContainingBlock(meta->computed_values);
+		if (new_fixed_containing_block != fixed_containing_block || new_absolute_containing_block != absolute_containing_block)
+		{
+			fixed_containing_block = new_fixed_containing_block;
+			absolute_containing_block = new_absolute_containing_block;
+			DirtyLayout();
+		}
+	}
 
 	// Update the z-index and stacking context.
 	if (changed_properties.Contains(PropertyId::ZIndex) || filter_or_mask_changed || perspective_changed || transform_changed ||

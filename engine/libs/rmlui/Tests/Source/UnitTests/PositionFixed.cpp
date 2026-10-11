@@ -126,6 +126,50 @@ TEST_CASE("PositionFixed")
 		CHECK(offset(inside) == before - Vector2f(0.f, 30.f));
 	}
 
+	SUBCASE("will-change, filters and masks")
+	{
+		// 'will-change' naming a property that makes a containing block (Chromium's list: WillChange::ParseHints) does; a mask
+		// does not (CSS Masking: a stacking context only); a change of the property moves the fixed box at once.
+		const std::pair<const char*, const char*> containing[] = {{"will-change", "transform"}, {"will-change", "top, filter"},
+			{"will-change", "Perspective"}, {"will-change", "backdrop-filter"}, {"will-change", "contain"}, {"filter", "blur(0px)"},
+			{"backdrop-filter", "blur(1px)"}, {"perspective", "100px"}, {"rotate", "0deg"}};
+		const std::pair<const char*, const char*> not_containing[] = {{"will-change", "opacity"}, {"will-change", "position"},
+			{"will-change", "transform-origin"}, {"will-change", "mask-image"}, {"mask-image", "linear-gradient(red, red)"}};
+		Element* scroller_child = document->GetElementById("fixed");
+		auto check = [&](const char* name, const char* value, bool contains) {
+			INFO(name << ": " << value);
+			scroller->SetProperty(name, value);
+			context->Update();
+			CHECK((scroller_child->GetOffsetParent() == scroller) == contains);
+			if (contains)
+				CHECK(offset(scroller_child).y == doctest::Approx(offset(scroller).y + 10.f));
+			scroller->RemoveProperty(name);
+			context->Update();
+			CHECK(scroller_child->GetOffsetParent() == document);
+			CHECK(offset(scroller_child).y == doctest::Approx(10.f));
+		};
+		for (const auto& declaration : containing)
+			check(declaration.first, declaration.second, true);
+		for (const auto& declaration : not_containing)
+			check(declaration.first, declaration.second, false);
+
+		// 'will-change: position' makes a containing block for absolutely positioned boxes only.
+		ElementPtr box = document->CreateElement("div");
+		box->SetProperty("height", "10px");
+		box->SetProperty("margin-top", "50px");
+		Element* static_box = document->AppendChild(std::move(box));
+		Element* absolute = static_box->AppendChild(document->CreateElement("div"));
+		absolute->SetProperty("position", "absolute");
+		absolute->SetProperty("top", "7px");
+		absolute->SetProperty("height", "5px");
+		context->Update();
+		CHECK(absolute->GetOffsetParent() != static_box);
+		static_box->SetProperty("will-change", "position");
+		context->Update();
+		CHECK(absolute->GetOffsetParent() == static_box);
+		CHECK(offset(absolute).y == doctest::Approx(offset(static_box).y + 7.f));
+	}
+
 	document->Close();
 	TestsShell::ShutdownShell();
 }
