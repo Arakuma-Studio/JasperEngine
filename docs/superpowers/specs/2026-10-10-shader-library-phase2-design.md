@@ -314,6 +314,70 @@ override the sections they refer to; later agents follow them.
   loaded or once released), so it can load opaque and write depth over its transparent
   texels; the fixture sets `MaterialAlphaMode.BLEND` on its sprites and tilemap.
 
+### 5.4 Editor (sl/p2-editor)
+
+- Serialization (`Stream`): a material (scene YAML submeshes, prefabs, `.material` files), an
+  extra pass and the UI/Points/LineRenderer components write `stencil` only when it differs
+  from `MaterialStencil()` (a map: `compare` always, the other fields away from their
+  defaults; enum names upper case like the other material enums: `NOT_EQUAL`, `INCR_CLAMP`),
+  `colorWrite` only when not AUTO (the manifest's names: `rgb`, `none`), and `extraPass` only
+  when it differs from `MaterialPass()` (its keys as the material's, plus `order: BEFORE`).
+  Absent keys read as the defaults (not merged). Re-saving every fixture project of
+  ac833620 (`scene-dump --save`, 16 scene/prefab/material files) with this editor and with
+  ac833620's gives byte-identical files.
+- Model reloads: `SubmeshOverrideFlags` gained `Stencil` (27), `ColorWrite` (28) and
+  `ExtraPass` (29, the whole pass under one bit), part of `SubmeshOverride_ShaderLibrary`;
+  `MeshSystem::applySubmeshOverride` restores them. A Catalog path inside the stencil
+  (`material.stencil.<field>`) or the pass (`material.extraPass.<anything>`) sets its bit.
+- Catalog paths: `submeshes[N].material.stencil` (Custom, `MaterialStencil`),
+  `.stencil.compare|ref|readMask|writeMask|pass|fail|depthFail` (Enum/Int), `.colorWrite`
+  (Int), `.extraPass` (Custom, `MaterialPass`) and `.extraPass.<field>` for every field
+  (including `.extraPass.stencil.*`); the components' `stencil`, `stencil.<field>` and
+  `colorWrite`. `.extraPass.shaderParams.<member>` / `.shaderTextures.<uniform>` are entry
+  paths (`splitShaderEntryProperty`); `getShaderReferenceForProperty` gives the pass's own
+  shader for any `...material.extraPass.` path (no fallback to the mesh's or the scene's
+  shader). Update flags follow `Mesh::setMaterial`: the pass's parameters rewrite its
+  blocks, its texture files rebind, anything else reloads the mesh;
+  `getMaterialUpdateFlags` (linked material files) does the same.
+- Export (`Factory`): `formatStencilAndColorWrite` / `formatMaterialPass` write the fields
+  away from their defaults (`.stencil.ref = 16;`, `.colorWrite = 7;`,
+  `.extraPass.shaderTextures.push_back(...)`); the pass's variants come from the existing
+  collector. Asset moves, model clears, the exported texture list and the material preview's
+  readiness include the pass's textures. An export with `--backend all` of a scene set up
+  only through MCP (stencil mask preset with an explicit reader, an outside-mask preset,
+  colour write `r`, an outline preset tuned through `extraPass.shaderParams`, draw-once)
+  compiles 42 shaders on six backends without failure and its smoke run draws them as
+  configured.
+- Inspector: a Stencil row at the end of a material's Surface rows (Auto names the rule it
+  resolves to, e.g. "Auto (Not Equal 1, pass Replace)"; ref, masks and ops only while the
+  test is explicit; picking a test from Auto starts from the resolved rule), a Color Write
+  row (Auto checkbox, R/G/B/A toggles), an "Extra pass" section (shader picker whose empty
+  entry is "None", the pass shader's manifest rows, order, blend, cull, depth write/test,
+  depth offset, its own stencil and colour write; Auto labels resolved against the pass
+  shader's manifest and the submesh's legacy state), a Preset row (menu of
+  `getMaterialPresets()`; one applies to every selected submesh as one undo step), and the
+  same stencil/colour write rows on UI, Points and LineRenderer. A preset becomes one
+  property command per changed field (`editor/material/MaterialChange`), so model overrides
+  and prefab overrides name only those fields. Material previews and thumbnails draw the
+  pass (the sphere takes the whole material). Known: a material whose colour write leaves
+  out alpha previews transparent (the preview target keeps its cleared alpha).
+- MCP: set_properties takes every path above. Stencil names are snake_case like the depth
+  test's (`not_equal`, `incr_clamp`; the manifest's `lequal`, `incr`... accepted); ref and
+  masks 0..255; `colorWrite` takes `"auto"`, `"none"`, channels of `"rgba"` or -1..15 and
+  reads back as the channel name; a `stencil` or `extraPass` object merges into the current
+  value and `null` resets / removes it. The pass's values are checked against its own
+  shader with phase 1's validators (unknown library reference refuses value edits with the
+  library list, leftovers kept and only edited entries checked, a pass shader set in the
+  same call is what its values follow); its shader must be a mesh shader. `list_shaders`
+  reports the stencil keys a `@state` sets and `colorWrite` in `state` / `state_rules`.
+  New tools `list_material_presets` (id, name, description, the fields each sets on a
+  default material) and `apply_material_preset` (`preset`, `entity`/`entities`, `submesh`:
+  default every submesh; or `path` for a `.material` file, undo scope project). A preset
+  applied to a submesh linked to a `.material` file unlinks it in the same undo step (as an
+  inline material edit does) and says so. Tests: `test_shader_library_phase2_editor.py`.
+- `tools/fixtures/shader-library-export/Stencil.scene` was generated with this branch
+  (`generate.py`); `check.sh` passes for all five scenes (Stencil: mean difference 0.57).
+
 ### 5.5 Shaders and presets (sl/p2-shaders)
 
 - Library shaders (category "Outline and stencil", sprite_mask in "2D"); every one says
