@@ -150,6 +150,29 @@ std::vector<std::string> CascadeKeywords::outputProperties(const std::string& cs
             return out;
         }
     }
+    // the fork's background and mask layers (phase 3, p3-paint)
+    if (fork.has(ForkFeature::BackgroundLayers)){
+        if (cssProperty == "background")
+            return {"background-color", "background-image", "background-position-x", "background-position-y", "background-size",
+                    "background-repeat", "background-origin", "background-clip", "background-attachment"};
+        if (cssProperty == "background-position")
+            return {"background-position-x", "background-position-y"};
+        if (cssProperty == "-webkit-background-clip")
+            return {"background-clip"};
+        if (cssProperty == "mask" || cssProperty == "-webkit-mask")
+            return {"mask-image", "mask-position-x", "mask-position-y", "mask-size", "mask-repeat"};
+        if (cssProperty == "mask-position" || cssProperty == "-webkit-mask-position")
+            return {"mask-position-x", "mask-position-y"};
+        const std::string plain = cssProperty.compare(0, 8, "-webkit-") == 0 ? cssProperty.substr(8) : cssProperty;
+        static const char* const layerLonghands[] = {"background-image", "background-position-x", "background-position-y",
+                                                     "background-size", "background-repeat", "background-origin", "background-clip",
+                                                     "background-attachment", "mask-image", "mask-position-x", "mask-position-y",
+                                                     "mask-size", "mask-repeat"};
+        for (const char* longhand : layerLonghands){
+            if (plain == longhand)
+                return {plain};
+        }
+    }
     const auto it = shorthands().find(cssProperty);
     if (it != shorthands().end())
         return it->second;
@@ -189,7 +212,7 @@ void CascadeKeywords::apply(DeclContext& context, const std::string& keywordIn){
         // background color is a property of its own, the other background-* are the decorator's
         if (property == "background-color")
             outputs = {"background-color"};
-        else if (property == "background")
+        else if (property == "background" && !context.fork(ForkFeature::BackgroundLayers))
             outputs = {"background-color", "decorator"};
         if (outputs.empty())
             outputs.push_back(property);

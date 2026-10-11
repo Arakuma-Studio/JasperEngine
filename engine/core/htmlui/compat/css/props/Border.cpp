@@ -482,6 +482,19 @@ void jasperengine::htmlui::compat::rewriteBorder(DeclContext& context){
 void jasperengine::htmlui::compat::rewriteBorderStyle(DeclContext& context){
     const std::string& n = context.name;
     ValueList w = words(context.value);
+    // a whole-value var(): the fork's to resolve (BorderStyle); without it the styles are not
+    // known here and the widths stay as declared (the user-agent sheet's text fields read one)
+    if (w.size() == 1 && isVar(w[0])){
+        if (context.fork(ForkFeature::BorderStyle)){
+            context.emit(n, context.valueText());
+            return;
+        }
+        if (context.origin != RuleOrigin::UserAgent)
+            context.reportAs(Severity::Info, codes::ApproximatedMinor, "'" + context.sourceText() +
+                             "': a border style from a variable is drawn solid until the fork has BorderStyle");
+        context.dropped = true;
+        return;
+    }
     std::vector<std::string> styles;
     for (const ComponentValue& v : w){
         const std::string k = identOf(v);

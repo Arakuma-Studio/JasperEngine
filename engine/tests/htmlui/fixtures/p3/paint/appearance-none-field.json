@@ -1,0 +1,7 @@
+{
+ "comment": "text fields: the theme's 1px frame with appearance: auto; with appearance: none html.css's padding: 1px 2px and border: 2px inset #767676 (the dark and light inset colours), also with an author border colour, background and width; a textarea keeps its 1px solid border.",
+ "viewport": [
+  310,
+  140
+ ]
+}

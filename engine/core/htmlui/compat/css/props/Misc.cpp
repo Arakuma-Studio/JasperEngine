@@ -18,6 +18,7 @@
 #include "htmlui/compat/ua/UserAgentStyle.h"
 
 #include <cmath>
+#include <iterator>
 #include <map>
 
 using namespace jasperengine::htmlui::compat;
@@ -51,6 +52,9 @@ namespace {
                 {"--html-control-bg", "#ffffff"},
                 {"--html-control-border", "#767676"},
                 {"--html-control-border-width", "1px"},
+                {"--html-field-padding", "2px 3px"},
+                {"--html-field-border-width", "1px"},
+                {"--html-field-border-style", "solid"},
                 {"--html-control-radius", "2px"},
                 {"--html-check-radius", "2px"},
                 {"--html-radio-radius", "9999px"},
@@ -256,6 +260,10 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         context.emit("--html-control-border-width", "0px");
         // text fields, buttons, selects: the theme's 2px rounding (Chromium's html.css has none)
         context.emit("--html-control-radius", "0px");
+        // text fields: html.css's `padding: 1px 2px; border: 2px inset` (the fork draws inset: BorderStyle, p3-paint)
+        context.emit("--html-field-padding", "1px 2px");
+        context.emit("--html-field-border-width", "2px");
+        context.emit("--html-field-border-style", context.fork(ForkFeature::BorderStyle) ? "inset" : "solid");
         context.emit("--html-check-radius", "0px");
         context.emit("--html-radio-radius", "0px");
         context.emit("--html-check-fill", "transparent");
@@ -280,7 +288,8 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         if (keyword != "auto")
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "'appearance: " + keyword + "' is treated as 'auto'");
         for (const char* companion : {"--html-check", "--html-check-baseline", "--html-control-bg", "--html-control-border",
-                                      "--html-control-border-width", "--html-control-radius", "--html-check-radius", "--html-radio-radius", "--html-check-fill",
+                                      "--html-control-border-width", "--html-field-padding", "--html-field-border-width",
+                                      "--html-field-border-style", "--html-control-radius", "--html-check-radius", "--html-radio-radius", "--html-check-fill",
                                       "--html-radio-ring", "--html-control-disabled-border", "--html-check-disabled-fill",
                                       "--html-select-arrow", "--html-thumb", "--html-slider-fill", "--html-slider-height",
                                       "--html-slider-track-margin", "--html-slider-track-height", "--html-slider-track-border",
@@ -483,7 +492,21 @@ void jasperengine::htmlui::compat::rewriteAll(DeclContext& context){
         "align-items", "align-self", "flex-basis", "flex-direction", "flex-grow", "flex-shrink", "flex-wrap",
         "justify-content",
     };
-    for (const char* property : properties){
+    // ... and the paint properties the fork has (phase 3, p3-paint)
+    std::vector<const char*> list(std::begin(properties), std::end(properties));
+    if (context.fork(ForkFeature::BorderStyle))
+        list.insert(list.end(), {"border-top-style", "border-right-style", "border-bottom-style", "border-left-style"});
+    if (context.fork(ForkFeature::Outline))
+        list.insert(list.end(), {"outline-width", "outline-style", "outline-color", "outline-offset"});
+    if (context.fork(ForkFeature::BackgroundLayers))
+        list.insert(list.end(), {"background-position-x", "background-position-y", "background-size", "background-repeat",
+                                 "background-origin", "background-clip", "background-attachment", "mask-position-x",
+                                 "mask-position-y", "mask-size", "mask-repeat"});
+    if (context.fork(ForkFeature::ObjectFit))
+        list.insert(list.end(), {"object-fit", "object-position"});
+    if (context.fork(ForkFeature::GroupOpacity))
+        list.push_back("isolation");
+    for (const char* property : list){
         const PropertySupport* row = findProperty(property);
         if (keyword == "inherit" && !(row && row->inherited))
             continue;

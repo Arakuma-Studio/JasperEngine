@@ -18,7 +18,16 @@ using namespace jasperengine::htmlui::compat;
 
 namespace {
 
-    std::string run(const char* css, SelectorOptions options = SelectorOptions(), std::vector<Diagnostic>* diagnostics = nullptr){
+    // the options of a case: the phase-2 rewrite (no fork feature) unless the case asks for the fork's
+    // (every feature is present since phase 3, so the default options cannot tell them apart)
+    struct Options {
+        SelectorOptions options;
+        bool fork = false;
+        Options(SelectorOptions o = SelectorOptions(), bool f = false) : options(std::move(o)), fork(f) {}
+    };
+
+    std::string run(const char* css, Options caseOptions = Options(), std::vector<Diagnostic>* diagnostics = nullptr){
+        SelectorOptions options = caseOptions.options;
         SourceFiles files;
         const uint32_t file = files.add("t.css", css);
         DiagnosticSink sink(files);
@@ -26,7 +35,8 @@ namespace {
         std::optional<SelectorList> list = SelectorRewriter::parseList(parseComponentValueList(files.text(file)), file, &error);
         if (!list)
             return "parse error";
-        options.fork = options.fork == ForkFeatures::present() ? ForkFeatures::none() : options.fork;
+        if (!caseOptions.fork)
+            options.fork = ForkFeatures::none();
         const SelectorRewriteResult result = SelectorRewriter::rewrite(*list, options, &sink, SourceRef{file, 0, 1});
         if (diagnostics)
             *diagnostics = sink.take();
@@ -44,10 +54,10 @@ namespace {
         return o;
     }
 
-    SelectorOptions withFork(){
+    Options withFork(){
         SelectorOptions o;
         o.fork = ForkFeatures::all();
-        return o;
+        return Options(o, true);
     }
 
 }
@@ -263,7 +273,7 @@ TEST(CompatSelector, ScannedListsAreWrittenAsParsedOnes){
     withRoot.rootId = "main";
     withRoot.rootClasses = {"theme"};
     withRoot.rootAttributes = {"class", "id", "data-x"};
-    const SelectorOptions optionSets[] = {SelectorOptions(), ua(), withFork(), withRoot};
+    const SelectorOptions optionSets[] = {SelectorOptions(), ua(), withFork().options, withRoot};
     for (const SelectorOptions& options : optionSets){
         for (const Case& c : cases){
             SCOPED_TRACE(c.css);

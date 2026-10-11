@@ -336,10 +336,11 @@ TEST(CompatUserAgent, EmbeddedRewrittenAndRegistered){
     ASSERT_NE(VirtualFiles::find("/@htmlui/ua.rcss"), nullptr);
     EXPECT_EQ(*VirtualFiles::find("@htmlui/ua.rcss"), sheet->rcss);
 
-    const ForkFeatures all = ForkFeatures::all();
-    const std::shared_ptr<const UserAgentStyle::Sheet> forked = UserAgentStyle::get(all);
+    // another fork set has its own sheet (every feature is present since phase 3: the phase-2 set)
+    const ForkFeatures other = ForkFeatures::present() == ForkFeatures::all() ? ForkFeatures::none() : ForkFeatures::all();
+    const std::shared_ptr<const UserAgentStyle::Sheet> forked = UserAgentStyle::get(other);
     EXPECT_NE(forked, sheet);
-    EXPECT_EQ(forked->virtualPath, UserAgentStyle::virtualPath(all));
+    EXPECT_EQ(forked->virtualPath, UserAgentStyle::virtualPath(other));
     EXPECT_NE(forked->virtualPath, sheet->virtualPath);
 
     // RmlUi accepts it without a warning

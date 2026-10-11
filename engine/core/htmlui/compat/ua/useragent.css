@@ -316,10 +316,14 @@ input, textarea, select, button {
 }
 
 /* text-like inputs: Chromium lays out `padding: 1px 2px; border: 2px inset` and paints a 1px
-   #767676 frame with 2px corners; 177px is the content width of size=20 at 13.333px */
+   #767676 frame with 2px corners; 177px is the content width of size=20 at 13.333px. Without
+   its look (`appearance: none`, the companions) the field is html.css's: `padding: 1px 2px;
+   border: 2px inset #767676`. */
 input {
-    padding: 2px 3px;
-    border: 1px solid #767676;
+    padding: var(--html-field-padding, 2px 3px);
+    border-width: var(--html-field-border-width, 1px);
+    border-style: var(--html-field-border-style, solid);
+    border-color: #767676;
     border-radius: var(--html-control-radius, 2px);
     background-color: Field;
     width: 177px;

@@ -5,6 +5,9 @@
 --html-control-border: transparent;
 --html-control-border-width: 0px;
 --html-control-radius: 0px;
+--html-field-padding: 1px 2px;
+--html-field-border-width: 2px;
+--html-field-border-style: solid;
 --html-check-radius: 0px;
 --html-radio-radius: 0px;
 --html-check-fill: transparent;
@@ -28,6 +31,9 @@
 --html-control-border: transparent;
 --html-control-border-width: 0px;
 --html-control-radius: 0px;
+--html-field-padding: 1px 2px;
+--html-field-border-width: 2px;
+--html-field-border-style: solid;
 --html-check-radius: 0px;
 --html-radio-radius: 0px;
 --html-check-fill: transparent;
@@ -50,6 +56,9 @@
 --html-control-bg: #ffffffff;
 --html-control-border: #767676ff;
 --html-control-border-width: 1px;
+--html-field-padding: 2px 3px;
+--html-field-border-width: 1px;
+--html-field-border-style: solid;
 --html-control-radius: 2px;
 --html-check-radius: 2px;
 --html-radio-radius: 9999px;
@@ -73,6 +82,9 @@
 --html-control-bg: #ffffffff;
 --html-control-border: #767676ff;
 --html-control-border-width: 1px;
+--html-field-padding: 2px 3px;
+--html-field-border-width: 1px;
+--html-field-border-style: solid;
 --html-control-radius: 2px;
 --html-check-radius: 2px;
 --html-radio-radius: 9999px;
