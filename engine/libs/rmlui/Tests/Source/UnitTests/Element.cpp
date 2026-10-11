@@ -570,7 +570,10 @@ TEST_CASE("Element.TransformStateAfterVisibilityChange")
 	}
 
 	Element* pane = document->GetElementById(pane_id);
-	CHECK(ElementTransform(pane) == Matrix4f::Identity());
+	// A hidden element (CSS visibility) stays in its stacking context, its visible descendants paint (phase 3, p3-paint):
+	// its transform is kept up to date; one without a box is not rendered.
+	if (set_property == "display")
+		CHECK(ElementTransform(pane) == Matrix4f::Identity());
 
 	pane->SetProperty(set_property, set_value);
 	context->Update();

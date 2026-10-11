@@ -162,3 +162,25 @@ TEST_CASE("GroupOpacity")
 	document->Close();
 	TestsShell::ShutdownShell();
 }
+
+TEST_CASE("FilterParity.defaults")
+{
+	// The arguments CSS lets out (phase 3, 3.8.5): blur() is 0, the amounts are 1 (0 for grayscale, invert, sepia), the
+	// shadow's colour is the element's colour.
+	Context* context = TestsShell::GetContext();
+	TestsRenderInterface* render_interface = TestsShell::GetTestsRenderInterface();
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+	Element* leaf = document->GetElementById("leaf");
+	for (const char* value : {"blur()", "brightness()", "contrast()", "grayscale()", "invert()", "opacity()", "saturate()", "sepia()",
+			 "opacity(50%)", "drop-shadow(2px 3px)", "drop-shadow(2px 3px 4px)", "drop-shadow(#f00 2px 3px)"})
+	{
+		INFO(value);
+		CHECK(leaf->SetProperty("filter", value));
+		TestsShell::RenderLoop();
+	}
+	CHECK(render_interface->GetCounters().compile_filter > 0);
+	document->Close();
+	TestsShell::ShutdownShell();
+}

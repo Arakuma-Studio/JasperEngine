@@ -1485,8 +1485,10 @@ Element* Context::GetElementAtPoint(Vector2f point, const Element* ignore_elemen
 		}
 	}
 
-	// Ignore elements whose pointer events are disabled.
-	if (element->GetComputedValues().pointer_events() == Style::PointerEvents::None)
+	// Ignore elements whose pointer events are disabled, and hidden elements (their visible descendants were tested above,
+	// in the stacking context they are part of).
+	if (element->GetComputedValues().pointer_events() == Style::PointerEvents::None ||
+		element->GetComputedValues().visibility() != Style::Visibility::Visible)
 		return nullptr;
 
 	// Projection may fail if we have a singular transformation matrix.

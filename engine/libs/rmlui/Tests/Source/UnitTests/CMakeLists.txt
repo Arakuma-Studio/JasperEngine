@@ -58,6 +58,7 @@ add_executable(${TARGET_NAME}
 	TextTransform.cpp
 	URL.cpp
 	Variant.cpp
+	Visibility.cpp
 	XMLParser.cpp
 	PluginDataModel.cpp
 )

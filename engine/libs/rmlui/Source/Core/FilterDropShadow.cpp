@@ -1,5 +1,6 @@
 #include "FilterDropShadow.h"
 #include "../../Include/RmlUi/Core/CompiledFilterShader.h"
+#include "../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../Include/RmlUi/Core/Element.h"
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "../../Include/RmlUi/Core/PropertyDictionary.h"
@@ -52,8 +53,9 @@ CompiledFilter FilterDropShadow::CompileFilter(Element* element) const
 		offset_y,
 	};
 
+	const Colourb shadow_color = (current_color ? element->GetComputedValues().color() : color);
 	CompiledFilter filter = element->GetRenderManager()->CompileFilter("drop-shadow",
-		Dictionary{{"color", Variant(color)}, {"offset", Variant(offset)}, {"sigma", Variant(sigma)}});
+		Dictionary{{"color", Variant(shadow_color)}, {"offset", Variant(offset)}, {"sigma", Variant(sigma)}});
 
 	return filter;
 }
@@ -84,7 +86,8 @@ void FilterDropShadow::ExtendInkOverflow(Element* element, Rectanglef& scissor_r
 
 FilterDropShadowInstancer::FilterDropShadowInstancer()
 {
-	ids.color = RegisterProperty("color", "transparent").AddParser("color").GetId();
+	// CSS: the colour defaults to 'currentcolor' (phase 3, p3-paint; 6.3: transparent).
+	ids.color = RegisterProperty("color", "currentcolor").AddParser("keyword", "currentcolor").AddParser("color").GetId();
 	ids.offset_x = RegisterProperty("offset-x", "0px").AddParser("length").GetId();
 	ids.offset_y = RegisterProperty("offset-y", "0px").AddParser("length").GetId();
 	ids.sigma = RegisterProperty("sigma", "0px").AddParser("length").GetId();
@@ -101,6 +104,10 @@ SharedPtr<Filter> FilterDropShadowInstancer::InstanceFilter(const String& /*name
 		return nullptr;
 
 	auto decorator = MakeShared<FilterDropShadow>();
+	const bool current_color = (p_color->unit == Unit::KEYWORD);
+	if (current_color)
+		decorator->SetCurrentColor();
+	const Colourb color = (current_color ? Colourb() : p_color->Get<Colourb>());
 	NumericValue offset_x(0.f, Unit::PX), offset_y(0.f, Unit::PX), sigma(0.f, Unit::PX);
 #ifdef RMLUI_MATH_EXPRESSIONS
 	CalculationPtr offset_x_calculation, offset_y_calculation, sigma_calculation;
@@ -116,14 +123,14 @@ SharedPtr<Filter> FilterDropShadowInstancer::InstanceFilter(const String& /*name
 	if (!extract(p_offset_x, offset_x, offset_x_calculation) || !extract(p_offset_y, offset_y, offset_y_calculation) ||
 		!extract(p_sigma, sigma, sigma_calculation))
 		return nullptr;
-	if (decorator->Initialise(p_color->Get<Colourb>(), offset_x, offset_y, sigma, std::move(offset_x_calculation), std::move(offset_y_calculation),
+	if (decorator->Initialise(color, offset_x, offset_y, sigma, std::move(offset_x_calculation), std::move(offset_y_calculation),
 			std::move(sigma_calculation)))
 		return decorator;
 #else
 	offset_x = p_offset_x->GetNumericValue();
 	offset_y = p_offset_y->GetNumericValue();
 	sigma = p_sigma->GetNumericValue();
-	if (decorator->Initialise(p_color->Get<Colourb>(), offset_x, offset_y, sigma))
+	if (decorator->Initialise(color, offset_x, offset_y, sigma))
 		return decorator;
 #endif
 

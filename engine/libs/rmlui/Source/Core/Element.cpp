@@ -203,7 +203,8 @@ void Element::Render()
 
 	meta->effects.RenderEffects(RenderStage::Enter);
 
-	if (ElementUtilities::SetClippingRegion(this))
+	// A hidden element (CSS visibility) paints nothing of its own; its visible descendants paint (phase 3, p3-paint).
+	if (meta->computed_values.visibility() == Style::Visibility::Visible && ElementUtilities::SetClippingRegion(this))
 	{
 		meta->background_border.Render(this);
 		meta->effects.RenderEffects(RenderStage::Decoration);
@@ -226,7 +227,8 @@ void Element::Render()
 void Element::RenderStackingContextChildren()
 {
 	const auto has_outline = [](const Element* element) {
-		return element->meta->computed_values.outline_style() != Style::BorderStyle::None;
+		return element->meta->computed_values.outline_style() != Style::BorderStyle::None &&
+			element->meta->computed_values.visibility() == Style::Visibility::Visible;
 	};
 
 	// An element that is not a stacking context has no children here, and its outline is painted by its stacking context.
@@ -812,10 +814,17 @@ void Element::UpdateOpacityLeaf()
 	if (leaf != opacity_leaf)
 	{
 		opacity_leaf = leaf;
-		meta->background_border.DirtyBackground();
 		meta->background_border.DirtyBorder();
-		meta->background_border.DirtyOutline();
-		meta->effects.DirtyEffectsData();
+		// Everything drawn with the opacity is generated again: as for a change of the property (elements that draw
+		// content of their own, decorators, text children).
+		PropertyIdSet changed;
+		changed.Insert(PropertyId::Opacity);
+		OnPropertyChange(changed);
+		for (const ElementPtr& child : children)
+		{
+			if (child->GetTagName() == "#text")
+				child->OnPropertyChange(changed);
+		}
 	}
 }
 
@@ -2745,7 +2754,12 @@ void Element::AddToStackingContext(Vector<StackingContextChild>& stacking_childr
 {
 	using Style::Display;
 
-	if (!IsVisible())
+	// 'display: none' removes the subtree. A hidden element (CSS visibility) is skipped when painting it, but its
+	// descendants that are visible paint: it stays in the list. Documents and the parts of widgets hide their whole subtree
+	// with it (ElementDocument::Hide, scrollbars, select boxes), as in 6.3.
+	if (meta->computed_values.display() == Display::None)
+		return;
+	if (meta->computed_values.visibility() != Style::Visibility::Visible && (local_stacking_context_forced || is_non_dom_element || !parent))
 		return;
 
 	const Display display = GetDisplay();

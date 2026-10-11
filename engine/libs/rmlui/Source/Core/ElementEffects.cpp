@@ -191,7 +191,7 @@ static void ExtendBySubtreeInkOverflow(Element* element, Rectanglef& region, int
 	for (int i = 0; i < num_children; i++)
 	{
 		Element* child = element->GetChild(i);
-		if (!child->IsVisible())
+		if (child->GetComputedValues().display() == Style::Display::None)
 			continue;
 		Rectanglef child_region;
 		if (ElementUtilities::GetBoundingBox(child_region, child, BoxArea::Auto))
