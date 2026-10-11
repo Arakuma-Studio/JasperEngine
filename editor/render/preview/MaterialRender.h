@@ -22,6 +22,8 @@ namespace jasperengine::editor{
 
         Primitive* sphere;
         bool receiveIBL = true;
+        // what applyMaterial was given (the sphere draws an adjusted copy)
+        Material material;
     public:
         MaterialRender();
         ~MaterialRender();
@@ -30,9 +32,13 @@ namespace jasperengine::editor{
         MaterialRender& operator=(const MaterialRender&) = delete;
 
         // meshShader: the shader the material draws with when it names none (the owning
-        // mesh's customShader or the scene default; "" for the built-in Lit)
+        // mesh's customShader or the scene default; "" for the built-in Lit). A colour write
+        // without alpha (the material's or its extra pass's, explicit or the shader's @state)
+        // draws alpha too: the preview composes with its alpha, cleared to 0, so it would show
+        // transparent instead of the colour the game shows on its opaque target.
         void applyMaterial(const Material& material, const std::string& meshShader = std::string());
-        const Material getMaterial();
+        // the material last given to applyMaterial
+        const Material& getMaterial() const;
         std::string getMeshShader() const;
 
         // the sphere still waits for its shader variant (a library shader or fork builds off the

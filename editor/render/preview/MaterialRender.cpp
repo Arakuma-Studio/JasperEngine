@@ -6,9 +6,28 @@
 #include "Configs.h"
 #include "PreviewEnvironment.h"
 #include "pool/TexturePool.h"
+#include "shader/ShaderManifest.h"
 #include "util/CameraTextureLink.h"
 
 using namespace jasperengine;
+
+namespace {
+
+    // the colour write a preview draws with: alpha added to a mask that writes colour but not
+    // alpha (explicit, else the shader's @state colorwrite with these features)
+    int previewColorWrite(int colorWrite, const std::string& shader, const std::vector<std::string>& features){
+        int mask = colorWrite;
+        if (mask < 0 && !shader.empty()){
+            std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+            if (manifest && manifest->present)
+                mask = manifest->resolveState(manifest->resolveFeatures(features)).colorWrite;
+        }
+        if (mask < 0 || (mask & MATERIAL_COLOR_WRITE_RGB) == 0 || (mask & MATERIAL_COLOR_WRITE_A) != 0)
+            return colorWrite;
+        return mask | MATERIAL_COLOR_WRITE_A;
+    }
+
+}
 
 editor::MaterialRender::MaterialRender(){
     scene = new Scene(EntityPool::System);
@@ -55,14 +74,21 @@ editor::MaterialRender::~MaterialRender(){
 }
 
 void editor::MaterialRender::applyMaterial(const Material& material, const std::string& meshShader){
+    this->material = material;
     // the material's shader, its parameters, textures, features and render state are the
     // sphere's (Mesh::setMaterial reloads what the variant depends on)
+    Material drawn = material;
+    drawn.colorWrite = previewColorWrite(material.colorWrite, material.shader.empty() ? meshShader : material.shader,
+                                         material.shaderFeatures);
+    MaterialPass& pass = drawn.extraPass;
+    if (!pass.shader.empty())
+        pass.colorWrite = previewColorWrite(pass.colorWrite, pass.shader, pass.shaderFeatures);
     sphere->setCustomShader(meshShader);
-    sphere->setMaterial(material);
+    sphere->setMaterial(drawn);
 }
 
-const Material editor::MaterialRender::getMaterial(){
-    return sphere->getMaterial();
+const Material& editor::MaterialRender::getMaterial() const{
+    return material;
 }
 
 std::string editor::MaterialRender::getMeshShader() const{
