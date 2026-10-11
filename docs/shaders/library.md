@@ -70,8 +70,9 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
   mobile; the shader draws in the transparent queue and does not see other transparent
   objects.
 - **Default state**: what Auto resolves to; `shadows off` means the object casts no shadow
-  even when its mesh casts shadows. "With X" lines apply while feature or keyword value X is
-  on.
+  even when its mesh casts shadows; `priority -1` is added to the material's Sort Priority
+  (it draws before what has the same Sort Priority in its queue). "With X" lines apply while
+  feature or keyword value X is on.
 - **Depth program**: the shader moves vertices or discards fragments, and its shadows and
   depth pre-pass do the same.
 - **Properties**: colours are given in sRGB as edited (stored linear); "with X" rows show
@@ -700,13 +701,13 @@ A texture scrolling across the surface, with an optional second layer (multiplie
 <a id="libraryprojected_decal"></a>
 ### Projected decal (`library:projected_decal`)
 
-Box projector: put it on a unit cube (1 x 1 x 1) and scale, turn and move the cube over uneven ground, stairs or a wall; the texture projects down the box's Y axis onto whatever opaque surface is inside the box, fading on steep faces and towards the box's top and bottom. Alpha blended (the Multiply default blend darkens instead), unlit, no shadows; works with the camera inside the box. Give its material a sort priority below the transparent objects it may cover (-1). Reads the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees it (none when SSAO or SSR already made one).
+Box projector: put it on a unit cube (1 x 1 x 1) and scale, turn and move the cube over uneven ground, stairs or a wall; the texture projects down the box's Y axis onto whatever opaque surface is inside the box, fading on steep faces and towards the box's top and bottom. Alpha blended (the Multiply default blend darkens instead), unlit, no shadows; works with the camera inside the box. It draws before the transparent objects of the same sort priority (its state has priority -1), so it does not paint over them. Reads the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees it (none when SSAO or SSR already made one).
 
 - **Type**: mesh (a material's shader); category Effects.
 - **Lighting**: none.
 - **Inputs**: `color`, `scenedepth`.
 - **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one), in the camera passes that draw it.
-- **Default state**: blend alpha, cull front, depth write off, depth test always, shadows off; with `DECAL_BLEND_MULTIPLY`: blend multiply.
+- **Default state**: blend alpha, cull front, depth write off, depth test always, shadows off, priority -1; with `DECAL_BLEND_MULTIPLY`: blend multiply.
 - **Depth program**: no (the built-in one).
 
 | Property | Kind | Default | Description |
