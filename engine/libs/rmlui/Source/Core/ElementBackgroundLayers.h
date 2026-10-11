@@ -53,6 +53,9 @@ public:
 	static bool HasLayers(Element* element, Kind kind);
 	// The box the background colour is clipped to: the background-clip of the bottom layer.
 	static BoxArea GetColourClip(Element* element);
+	// The number of layers the element paints of an image list: its length, but for an interpolated (cross-faded) list no
+	// more than the element's own value has (Chromium paints the layers of the element's style).
+	static size_t GetLayerCount(Element* element, PropertyId image_id, const ImageLayerList& images);
 
 	void Dirty() { dirty = true; }
 	void Release();
@@ -63,6 +66,12 @@ public:
 	void Render(Element* element, const Rectanglef* canvas = nullptr, Element* area_element = nullptr);
 
 private:
+	// One image of a cross-fade: its tiles, their colour weighted.
+	struct FadeImage {
+		Geometry geometry;
+		Texture texture;
+		SharedPtr<void> image_owner;
+	};
 	struct Draw {
 		Geometry geometry;
 		Texture texture;
@@ -71,6 +80,9 @@ private:
 		uintptr_t decorator_data = 0;
 		Geometry clip_mask; // rounded clip box: the anti-aliased shape the layer is masked with
 		SharedPtr<void> image_owner; // the application's image (ImageSourceHandler)
+		// A cross-fade (an interpolated background-image): the images added in a layer (BlendMode::Plus), as Chromium's
+		// CrossfadeGeneratedImage draws them.
+		Vector<FadeImage> fade;
 	};
 
 	void Generate(Element* element, const Rectanglef* canvas, Element* area_element);

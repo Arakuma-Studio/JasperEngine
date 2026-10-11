@@ -184,10 +184,12 @@ Rml::LayerHandle TestsRenderInterface::PushLayer()
 	return Rml::LayerHandle(++layer_depth);
 }
 
-void TestsRenderInterface::CompositeLayers(Rml::LayerHandle /*source*/, Rml::LayerHandle /*destination*/, Rml::BlendMode /*blend_mode*/,
+void TestsRenderInterface::CompositeLayers(Rml::LayerHandle /*source*/, Rml::LayerHandle /*destination*/, Rml::BlendMode blend_mode,
 	Rml::Span<const Rml::CompiledFilterHandle> /*filters*/)
 {
 	counters.composite_layers += 1;
+	if (blend_mode == Rml::BlendMode::Plus)
+		counters.composite_layers_plus += 1;
 }
 
 void TestsRenderInterface::PopLayer()

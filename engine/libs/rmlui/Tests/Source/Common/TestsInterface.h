@@ -54,6 +54,7 @@ public:
 		size_t push_layer;
 		size_t composite_layers;
 		size_t pop_layer;
+		size_t composite_layers_plus; // with BlendMode::Plus (cross-faded background images)
 	};
 
 	Rml::CompiledGeometryHandle CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) override;

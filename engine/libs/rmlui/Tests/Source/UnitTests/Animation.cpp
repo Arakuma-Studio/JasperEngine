@@ -278,7 +278,12 @@ TEST_CASE("animation.decorator")
 			CAPTURE(property_str);
 			CAPTURE(test.from);
 			CAPTURE(test.to);
-			CHECK(element->GetProperty<String>(property_str) == test.expected_25p);
+			// Phase 3 (fork): mask-image is a CSS image list, not interpolated (as in Chromium): the keyframe 'from' holds
+			// until half way. The 'decorator' property interpolates as in 6.3.
+			if (property_str == "mask-image")
+				CHECK(element->GetProperty<String>(property_str) == test.from);
+			else
+				CHECK(element->GetProperty<String>(property_str) == test.expected_25p);
 
 			document->Close();
 		}

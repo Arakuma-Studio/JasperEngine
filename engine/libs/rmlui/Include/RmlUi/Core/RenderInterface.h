@@ -15,6 +15,7 @@ enum class ClipMaskOperation {
 enum class BlendMode {
 	Blend,   // Normal alpha blending.
 	Replace, // Replace the destination colors from the source.
+	Plus,    // Add the source to the destination (premultiplied, CSS 'plus-lighter'): cross-fade().
 };
 
 /**

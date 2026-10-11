@@ -636,7 +636,7 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 		ShorthandType::Custom);
 	properties.SetShorthandParser(ShorthandId::Background, &ParseBackgroundShorthand);
 	// (RCSS decorator syntax in mask-image keeps working: decorator functions are images.)
-	RegisterProperty(PropertyId::MaskImage, "mask-image", "none", false, false).AddParser("image_layers");
+	RegisterProperty(PropertyId::MaskImage, "mask-image", "none", false, false).AddParser("image_layers", "mask");
 	RegisterProperty(PropertyId::MaskPositionX, "mask-position-x", "0%", false, false).AddParser("layer_position_x");
 	RegisterProperty(PropertyId::MaskPositionY, "mask-position-y", "0%", false, false).AddParser("layer_position_y");
 	RegisterShorthand(ShorthandId::MaskPosition, "mask-position", "mask-position-x, mask-position-y", ShorthandType::Custom);
