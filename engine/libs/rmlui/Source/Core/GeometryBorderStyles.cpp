@@ -65,16 +65,26 @@ namespace {
 		return float(corner + 3) * 0.5f * Math::RMLUI_PI;
 	}
 
-	Vector2f ArcPoint(Vector2f center, Vector2f radius, float angle)
+	// The cosine and the sine of an angle: computed once for the points and normals of the same angle.
+	Vector2f CosSin(float angle)
 	{
-		return center + Vector2f(Math::Cos(angle) * radius.x, Math::Sin(angle) * radius.y);
+		return Vector2f(Math::Cos(angle), Math::Sin(angle));
 	}
 
-	Vector2f InnerPoint(const BorderMetrics& metrics, int corner, float angle)
+	Vector2f ArcPoint(Vector2f center, Vector2f radius, Vector2f cos_sin)
+	{
+		return center + Vector2f(cos_sin.x * radius.x, cos_sin.y * radius.y);
+	}
+	Vector2f ArcPoint(Vector2f center, Vector2f radius, float angle)
+	{
+		return ArcPoint(center, radius, CosSin(angle));
+	}
+
+	Vector2f InnerPoint(const BorderMetrics& metrics, int corner, Vector2f cos_sin)
 	{
 		const Vector2f r = metrics.inner_radii[corner];
 		if (r.x > 0.f && r.y > 0.f)
-			return ArcPoint(metrics.positions_circle_center[corner], r, angle);
+			return ArcPoint(metrics.positions_circle_center[corner], r, cos_sin);
 		return metrics.positions_inner[corner];
 	}
 
@@ -123,10 +133,10 @@ namespace {
 		return 0.5f * (lo + hi);
 	}
 
-	// The unit normal of an ellipse at a parametric angle, pointing to its centre.
-	Vector2f EllipseInwardNormal(Vector2f radius, float angle)
+	// The unit normal of an ellipse at a parametric angle (its cosine and sine), pointing to its centre.
+	Vector2f EllipseInwardNormal(Vector2f radius, Vector2f cos_sin)
 	{
-		const Vector2f gradient(Math::Cos(angle) / Math::Max(radius.x, 1e-4f), Math::Sin(angle) / Math::Max(radius.y, 1e-4f));
+		const Vector2f gradient(cos_sin.x / Math::Max(radius.x, 1e-4f), cos_sin.y / Math::Max(radius.y, 1e-4f));
 		const float length = Length(gradient);
 		return length > 1e-6f ? -gradient / length : Vector2f(0.f);
 	}
@@ -139,14 +149,15 @@ namespace {
 		for (int i = 0; i <= num_segments; i++)
 		{
 			const float angle = Math::Lerp(float(i) / float(num_segments), a_begin, a_end);
+			const Vector2f cos_sin = CosSin(angle);
 			RailPair pair;
-			pair.inner = InnerPoint(metrics, corner, angle);
-			pair.outer = ArcPoint(metrics.positions_circle_center[corner], radius, angle);
+			pair.inner = InnerPoint(metrics, corner, cos_sin);
+			pair.outer = ArcPoint(metrics.positions_circle_center[corner], radius, cos_sin);
 			pair.centre = 0.5f * (pair.inner + pair.outer);
-			pair.axis_outer = EllipseInwardNormal(radius, angle);
+			pair.axis_outer = EllipseInwardNormal(radius, cos_sin);
 			const Vector2f inner_radius = metrics.inner_radii[corner];
 			if (inner_radius.x > 0.f && inner_radius.y > 0.f)
-				pair.axis_inner = EllipseInwardNormal(inner_radius, angle);
+				pair.axis_inner = EllipseInwardNormal(inner_radius, cos_sin);
 			else
 				pair.axis_inner = side_normal[corner] + side_normal[(corner + 3) % 4];
 			pair.thickness = Math::Max(Dot(pair.inner - pair.outer, pair.axis_outer), 0.f);
@@ -273,7 +284,8 @@ namespace {
 		// 'unit' is the size of a device pixel in the geometry's units (1 unless the geometry is drawn scaled).
 		BorderWriter(Vector<Vertex>& vertices, Vector<int>& indices, FeatherEdges edges, float unit) :
 			vertices(vertices), indices(indices), feather(edges == FeatherEdges::All), feather_curves(edges != FeatherEdges::None), unit(unit),
-			curve_half(CurveHalf(edges) * unit)
+			curve_half(CurveHalf(edges) * unit), polygon(GetBuffers().polygon), clipped(GetBuffers().clipped), outline(GetBuffers().outline),
+			normals(GetBuffers().normals)
 		{}
 
 		// The band between the fractions t_outer and t_inner of the side's width (0 = outer edge, 1 = inner edge), over
@@ -325,6 +337,19 @@ namespace {
 				}
 			}
 
+			// The levels of the segments' pairs: a pair ends a segment and starts the next one, whose levels are the same
+			// when the layout of levels is (BandLevels depends on the pair and the layout only).
+			Level level_buffers[2][8];
+			int previous_num_levels = 0;
+			bool previous_feather_band = false, previous_core = false;
+
+			// The common case, one piece over the whole side, neither cut nor faded: the bands' quads are the levels at the
+			// segment's two pairs, whose vertices the bands share (and a segment shares the vertices of its second pair with
+			// the next segment when its levels are the same). Its triangles are those of the quads made one by one below.
+			const bool shared_vertices = (num_pieces == 1 && pieces[0].alpha_begin == 1.f && pieces[0].alpha_end == 1.f &&
+				!(pieces[0].begin > side_begin + 0.002f) && !(pieces[0].end < side_end - 0.002f));
+			int previous_first_b = -1; // the vertices of the previous segment's levels_b
+
 			for (size_t k = 0; k + 1 < pairs.size(); k++)
 			{
 				const RailPair& a = pairs[k];
@@ -342,9 +367,16 @@ namespace {
 					(HalfOf(a) > 0.f || HalfOf(b) > 0.f);
 				const float needed = (feather_outer ? curve_half : 0.f) + (feather_inner ? curve_half : 0.f);
 				const bool core = !feather_band || Math::Min(a.thickness, b.thickness) * (t_inner - t_outer) >= needed;
-				Level levels_a[8], levels_b[8];
-				const int num_levels = BandLevels(a, t_outer, t_inner, feather_band, feather_outer, feather_inner, core, levels_a);
-				BandLevels(b, t_outer, t_inner, feather_band, feather_outer, feather_inner, core, levels_b);
+				// (levels_a is the buffer the previous segment's levels_b was written to.)
+				Level* levels_a = level_buffers[(k + 1) % 2];
+				Level* levels_b = level_buffers[k % 2];
+				int num_levels = previous_num_levels;
+				const bool reuse_levels_a = !(k == 0 || feather_band != previous_feather_band || core != previous_core);
+				if (!reuse_levels_a)
+					num_levels = BandLevels(a, t_outer, t_inner, feather_band, feather_outer, feather_inner, core, levels_a);
+				previous_num_levels = BandLevels(b, t_outer, t_inner, feather_band, feather_outer, feather_inner, core, levels_b);
+				previous_feather_band = feather_band;
+				previous_core = core;
 
 				// Square corners of sides of different widths: the fades of the two sides leave a sliver between the corner
 				// of the moved edges and the corner's split; it is this side's when that corner is on its side of the split.
@@ -362,11 +394,39 @@ namespace {
 					}
 				}
 
+				if (shared_vertices)
+				{
+					int first_a = previous_first_b;
+					if (!reuse_levels_a || first_a < 0)
+					{
+						first_a = (int)vertices.size();
+						for (int i = 0; i < num_levels; i++)
+							AddVertex(levels_a[i].position, Scale(color, levels_a[i].alpha));
+					}
+					const int first_b = (int)vertices.size();
+					for (int i = 0; i < num_levels; i++)
+						AddVertex(levels_b[i].position, Scale(color, levels_b[i].alpha));
+					for (int i = 0; i + 1 < num_levels; i++)
+					{
+						AddTriangle(first_a + i, first_b + i, first_b + i + 1);
+						AddTriangle(first_a + i, first_b + i + 1, first_a + i + 1);
+					}
+					previous_first_b = first_b;
+					continue;
+				}
+
 				for (int i = 0; i + 1 < num_levels; i++)
 				{
+					// A band of no width at both pairs (two levels at the same place: the opaque core's two sides when they
+					// coincide) gives triangles of no area only, which AddTriangle skips: its vertices would be unused.
+					const bool empty_band =
+						(levels_a[i].position == levels_a[i + 1].position && levels_b[i].position == levels_b[i + 1].position);
 					for (int piece_index = 0; piece_index < num_pieces; piece_index++)
 					{
 						const Piece& piece = pieces[piece_index];
+						// (Unless the piece is clipped, which may move the points off the line between the pairs.)
+						if (empty_band && !(piece.begin > side_begin + 0.002f) && !(piece.end < side_end - 0.002f))
+							continue;
 						polygon.clear();
 						polygon.push_back({levels_a[i].position, levels_a[i].alpha});
 						polygon.push_back({levels_b[i].position, levels_b[i].alpha});
@@ -473,7 +533,14 @@ namespace {
 				return;
 			}
 			// Each vertex moved along the bisector of its edges' normals (the corner of the edges moved), inwards for the
-			// opaque fill, outwards for the end of the fade and the transparent margin.
+			// opaque fill, outwards for the end of the fade and the transparent margin. (The directions are found once for
+			// the three passes.)
+			normals.resize(count);
+			for (int i = 0; i < count; i++)
+			{
+				const Vector2f previous = outline[(i + count - 1) % count].position, next = outline[(i + 1) % count].position;
+				normals[i] = OffsetDirection(previous, outline[i].position, next);
+			}
 			for (int pass = 0; pass < 3; pass++)
 			{
 				for (int i = 0; i < count; i++)
@@ -481,9 +548,7 @@ namespace {
 					const OutlinePoint& point = outline[i];
 					const float margin = (point.half > 0.f ? (feather_margin * unit) : 0.f);
 					const float offset = (pass == 0 ? -point.half : pass == 1 ? point.half : point.half + margin);
-					const Vector2f previous = outline[(i + count - 1) % count].position, next = outline[(i + 1) % count].position;
-					const Vector2f normal = OffsetDirection(previous, point.position, next);
-					AddVertex(point.position + normal * offset, pass == 0 ? color : ColourbPremultiplied(0, 0));
+					AddVertex(point.position + normals[i] * offset, pass == 0 ? color : ColourbPremultiplied(0, 0));
 				}
 			}
 			for (int i = 1; i + 1 < count; i++)
@@ -705,8 +770,22 @@ namespace {
 		bool feather_curves; // Curves (rounded corners, round dots) are feathered.
 		float unit;
 		float curve_half; // Half of the width of a curve's fade.
-		Vector<PolygonPoint> polygon, clipped;
-		Vector<OutlinePoint> outline;
+		// The working polygons, buffers of the thread kept from one writer to the next (their capacity: no allocations per
+		// box). One writer at a time uses them.
+		struct Buffers {
+			Vector<PolygonPoint> polygon, clipped;
+			Vector<OutlinePoint> outline;
+			Vector<Vector2f> normals;
+		};
+		static Buffers& GetBuffers()
+		{
+			static thread_local Buffers buffers;
+			return buffers;
+		}
+		Vector<PolygonPoint>& polygon;
+		Vector<PolygonPoint>& clipped;
+		Vector<OutlinePoint>& outline;
+		Vector<Vector2f>& normals;
 		struct DotClip {
 			bool enabled = false;
 			Vector2f point, inside;
@@ -942,7 +1021,9 @@ void GeometryBorderStyles::DrawBackground(Vector<Vertex>& vertices, Vector<int>&
 	// The inner area of the metrics, its corners rounded by the inner radii. Under a border it reaches half a pixel
 	// below the border's inner edge (where that side has a border), so that no gap opens between the two.
 	using OutlinePoint = BorderWriter::OutlinePoint;
-	Vector<OutlinePoint> outline;
+	// (A buffer of the thread, kept from one call to the next.)
+	static thread_local Vector<OutlinePoint> outline;
+	outline.clear();
 	for (int corner = 0; corner < 4; corner++)
 	{
 		Vector2f under(0.f);
@@ -960,8 +1041,9 @@ void GeometryBorderStyles::DrawBackground(Vector<Vertex>& vertices, Vector<int>&
 			{
 				const float angle = Math::Lerp(float(i) / float(num_segments), StartAngle(corner), EndAngle(corner));
 				const bool arc_end = (i == 0 || i == num_segments);
-				const Vector2f outwards = -EllipseInwardNormal(r, angle);
-				outline.push_back({ArcPoint(metrics.positions_circle_center[corner], r, angle) + outwards * under, arc_end ? straight_half : curve_half});
+				const Vector2f cos_sin = CosSin(angle);
+				const Vector2f outwards = -EllipseInwardNormal(r, cos_sin);
+				outline.push_back({ArcPoint(metrics.positions_circle_center[corner], r, cos_sin) + outwards * under, arc_end ? straight_half : curve_half});
 			}
 		}
 		else
@@ -982,7 +1064,8 @@ void GeometryBorderStyles::DrawBorder(Vector<Vertex>& vertices, Vector<int>& ind
 		split[corner] = SplitAngle(metrics, edge_sizes, corner);
 
 	BorderWriter writer(vertices, indices, edges, feather_unit);
-	SideRail rails[4];
+	// (Buffers of the thread, kept from one call to the next: BuildRail sets every member of a rail.)
+	static thread_local SideRail rails[4];
 	for (int side = 0; side < 4; side++)
 		BuildRail(rails[side], metrics, side, split, feather_unit);
 
@@ -1056,7 +1139,7 @@ void GeometryBorderStyles::DrawBorder(Vector<Vertex>& vertices, Vector<int>& ind
 		}
 	};
 
-	Vector<Interval> intervals, dashes;
+	static thread_local Vector<Interval> intervals, dashes;
 
 	for (int side = 0; side < 4; side++)
 	{
