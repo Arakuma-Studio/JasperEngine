@@ -1131,7 +1131,8 @@ void Engine::systemViewChanged(){
 // script creating objects in its first updates leaves the scenes loaded for a frame.
 // With JASPERENGINE_FRAME_STATS=1 too, it then logs the GPU work of frames 2, 30 and 90 after
 // it (SystemRender::logFrameStats): passes, draws and live resources, to
-// compare builds and to see that nothing is made per frame.
+// compare builds and to see that nothing is made per frame; JASPERENGINE_FRAME_STATS=all logs
+// every frame from the first (loading, and a frame that skips draws or remakes pipelines).
 void Engine::signalReadyOnce(){
     static const bool enabled = [](){
         const char* value = std::getenv("JASPERENGINE_READY_SIGNAL");
@@ -1140,6 +1141,11 @@ void Engine::signalReadyOnce(){
     static const bool frameStats = [](){
         const char* value = std::getenv("JASPERENGINE_FRAME_STATS");
         return value && value[0] != '\0' && value[0] != '0';
+    }();
+    // "all": every frame from the first, loading included (what a frame makes or skips)
+    static const bool frameStatsAll = [](){
+        const char* value = std::getenv("JASPERENGINE_FRAME_STATS");
+        return value && std::string(value) == "all";
     }();
     static bool signalled = false;
     static int readyFrames = 0;
@@ -1151,13 +1157,15 @@ void Engine::signalReadyOnce(){
         if (frameStats){
             frames++;
             const uint64_t after = frames - signalledFrame;
-            if (after == 2 || after == 30 || after == 90)
+            if (frameStatsAll || after == 2 || after == 30 || after == 90)
                 SystemRender::logFrameStats(frames);
         }
         return;
     }
 
     frames++;
+    if (frameStatsAll && frames > 1)
+        SystemRender::logFrameStats(frames - 1);
     bool ready = ShaderPool::getPendingShaderCount() == 0 && !scenes.empty();
     for (size_t i = 0; ready && i < scenes.size(); i++){
         ready = scenes[i]->getSystem<RenderSystem>()->isAllLoaded();
