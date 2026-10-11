@@ -5595,6 +5595,11 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                 continue;
             }
 
+            // a shader whose @state says shadows=off casts none (its depth program may
+            // not even be loaded when no other depth pass needs it)
+            if (!forSSAO && mesh.submeshes[i].manifest && mesh.submeshes[i].manifestState.shadows == ShaderShadowCasting::OFF)
+                continue;
+
             if (tilemap && !selectTilemapChunks(*tilemap, i, cameraFar, frustumPlanes))
                 continue;
 

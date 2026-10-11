@@ -312,5 +312,6 @@ async def test_export_library_scene(ed: Editor):
     ed.check((out / "project" / "assets" / "sprites" / "rock.png").exists(), "the shader texture ships")
     # the library variant with its features, and its depth program, are precompiled
     header = (out / "shaders" / "glsl410.h").read_text(errors="replace")
-    ed.check(re.search(r"mesh_library_unlit_ALPHA_CLIP_VERTEX_COLOR_\w+_glsl410", header), "the mesh variant with its features")
+    # (a colour variant also carries the BLEND_* define of its blend mode, here the material's alpha)
+    ed.check(re.search(r"mesh_library_unlit_ALPHA_CLIP_BLEND_ALPHA_VERTEX_COLOR_\w+_glsl410", header), "the mesh variant with its features")
     ed.check(re.search(r"depth_library_unlit_ALPHA_CLIP_VERTEX_COLOR_\w+_glsl410", header), "its @depth program")
