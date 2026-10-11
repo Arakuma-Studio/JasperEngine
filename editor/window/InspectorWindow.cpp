@@ -6674,6 +6674,8 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
 
             // the shader (built-in Lit, a library shader or a custom file) and its own rows
             beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_shader");
+            // one-click setups of the shader, extra pass and state (shader library phase 2)
+            drawMaterialPresetRow(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
             const bool pbrRows = drawMaterialShaderRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
             endTable();
 
@@ -6696,6 +6698,9 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
 
             ImGui::SeparatorText("Surface");
             drawMaterialSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
+
+            ImGui::SeparatorText("Extra pass");
+            drawMaterialExtraPassRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
         }
 
         beginTable(cpType, getLabelSize("Texture Shadow"), "submeshes_settings");

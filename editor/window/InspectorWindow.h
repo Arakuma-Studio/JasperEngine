@@ -379,8 +379,10 @@ namespace jasperengine::editor{
         // The Shader picker: the built-in shader, the library shaders of `type` grouped by
         // @category (with @description tooltips) and "Custom file..." (the Edit Shader Files
         // popup named popupName, which the caller draws)
+        // builtInLabel names the empty entry instead ("None" for an extra pass)
         void drawLibraryShaderCombo(const std::string& currentShader, ShaderType type,
-                                    const std::function<void(const std::string&)>& setShader, const std::string& popupName);
+                                    const std::function<void(const std::string&)>& setShader, const std::string& popupName,
+                                    const char* builtInLabel = nullptr);
         // The manifest rows of `shader` for one GameObject, into the current table: feature
         // checkboxes, keyword combos, parameters (colour pickers editing sRGB, sliders for
         // ranges, checkboxes for toggles, drag fields) and texture slots, hiding the ones
@@ -397,8 +399,23 @@ namespace jasperengine::editor{
         // priority) and Lighting rows; Auto shows what it resolves to
         void drawMaterialSurfaceRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
                                      unsigned int submesh, const RowSettings& settingsMaterial);
-        // UI/Points/LineRenderer blend mode and depth write rows, into the current table
+        // UI/Points/LineRenderer blend mode, depth write, stencil and colour write rows, into the current table
         void drawComponentStateRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // ---- shader library phase 2 (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
+        // The Stencil rows (the test, with Auto naming the rule it resolves to; ref, masks and
+        // ops while it is explicit) and the Color Write row (Auto, or RGBA checkboxes) of a
+        // material (prefix "submeshes[N].material."), its extra pass ("...extraPass.") or a
+        // component (""), into the current table. resolvedAuto: the state with both on Auto.
+        void drawStencilColorWriteRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                       const std::string& prefix, const RenderState& resolvedAuto, const RowSettings& settings);
+        // A submesh material's Extra pass section: its shader picker ("None" = no pass), its
+        // manifest rows, order, render state, stencil and colour write
+        void drawMaterialExtraPassRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                       unsigned int submesh, const RowSettings& settingsMaterial);
+        // The Preset row of a submesh material: a menu of getMaterialPresets(), one applied to
+        // every selected submesh as one undo step
+        void drawMaterialPresetRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                   unsigned int submesh, const RowSettings& settingsMaterial);
 
         // Scene-level variant: edits a scene default shader property (e.g. "default_mesh_shader"),
         // used by every component of that type whose customShader is empty.
