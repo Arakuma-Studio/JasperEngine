@@ -21,6 +21,10 @@
 # (300; past it the screenshot is taken anyway, with a warning). Whole seconds after
 # it starts instead ("8"), or several ("8 14 20", "ready 30"), give
 # game-<seconds>.png each, game.png the last.
+# SMOKE_GAME_RUNS="<name> NAME=value ...; <name> ..." runs the exported game again
+# once per entry, with SMOKE_GAME_ENV plus the entry's variables, on the same
+# schedule: game-<name>.png and game-<name>.log, checked like the first run (a
+# project that picks its scene from the environment shows each scene from one build).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,7 +33,7 @@ IMAGE=jasperengine/linux-build
 # The main checkout's compiler cache, even when running from a git worktree.
 MAIN="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 
-[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 [[ -x "$ROOT/$EDITOR" ]] || { echo "No editor at $EDITOR; run tools/build.sh linux" >&2; exit 1; }
 
@@ -49,6 +53,7 @@ docker run --rm \
     -e CCACHE_DIR=/ccache \
     -e EDITOR="/src/$EDITOR" \
     -e SMOKE_GAME_ENV="${SMOKE_GAME_ENV:-}" \
+    -e SMOKE_GAME_RUNS="${SMOKE_GAME_RUNS:-}" \
     -e SMOKE_GAME_SECONDS="${SMOKE_GAME_SECONDS:-ready}" \
     -e SMOKE_READY_TIMEOUT="${SMOKE_READY_TIMEOUT:-300}" \
     -e SMOKE_READY_SETTLE="${SMOKE_READY_SETTLE:-2}" \
@@ -139,6 +144,19 @@ docker run --rm \
         # shellcheck disable=SC2086
         (cd "$(dirname "$GAME")" && run ../game ../game.log "$SMOKE_GAME_SECONDS" env JASPERENGINE_READY_SIGNAL=1 $SMOKE_GAME_ENV "./$(basename "$GAME")")
         check_log game game.log
+
+        # the extra runs: "<name> NAME=value ..." entries separated by ";"
+        IFS=";" read -ra runs <<< "$SMOKE_GAME_RUNS"
+        for entry in "${runs[@]}"; do
+            read -ra words <<< "$entry"
+            (( ${#words[@]} )) || continue
+            label="${words[0]}"
+            [[ "$label" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "FAIL: SMOKE_GAME_RUNS name \"$label\""; exit 1; }
+            echo "== run game ($label)"
+            # shellcheck disable=SC2086
+            (cd "$(dirname "$GAME")" && run "../game-$label" "../game-$label.log" "$SMOKE_GAME_SECONDS" env JASPERENGINE_READY_SIGNAL=1 $SMOKE_GAME_ENV "${words[@]:1}" "./$(basename "$GAME")")
+            check_log "game ($label)" "game-$label.log"
+        done
 
         # The export left this project as the most recent one in settings.yaml
         # here, so the editor reopens it. Its own log (editor.log) is written
