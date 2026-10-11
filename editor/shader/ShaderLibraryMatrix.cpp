@@ -120,6 +120,9 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
                 list.push_back("!" + other.define);
         }
         featureSets.push_back({"feature " + feature.define, list});
+        // a default-on feature turned off (with a single feature no other set does it)
+        if (feature.defaultOn)
+            featureSets.push_back({"feature " + feature.define + " off", {"!" + feature.define}});
     }
     if (manifest.features.size() > 1){
         std::vector<std::string> all;

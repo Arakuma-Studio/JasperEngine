@@ -63,7 +63,7 @@ async def test_list_shaders(ed: Editor):
     ed.check_eq(props["alphaCutoff"]["feature"], "ALPHA_CLIP")
     ed.check_eq([t["uniform"] for t in detail["textures"]], ["u_baseTexture"])
     ed.check_eq(detail["textures"][0]["default"], "white")
-    ed.check_eq(sorted(f["define"] for f in detail["features"]), ["ALPHA_CLIP", "VERTEX_COLOR"])
+    ed.check_eq(sorted(f["define"] for f in detail["features"]), ["ALPHA_CLIP", "NEAR_FADE", "SOFT", "VERTEX_COLOR"])
     ed.check_eq(detail["state"].get("blendMode"), "opaque", "@state blend=opaque")
     ed.check(detail["depth_program"], "unlit has @depth")
 
@@ -81,7 +81,8 @@ async def test_list_shaders_rules(ed: Editor):
     ed.require_tools("list_shaders")
     rim = (await ed.call("list_shaders", name="rim"))["shaders"][0]
     ed.check_eq(rim["require"], ["position", "normals"])
-    ed.check_eq(rim["require_rules"], [{"require": ["uv1"], "feature": "TEXTURE"}])
+    ed.check_eq(rim["require_rules"], [{"require": ["uv1"], "feature": "TEXTURE"},
+                                       {"require": ["scenedepth"], "feature": "INTERSECTION"}])
     ed.check_eq(rim["state"].get("shadows"), "off", "rim casts no shadows")
     ed.check_eq(rim["state"].get("blendMode"), "additive")
 

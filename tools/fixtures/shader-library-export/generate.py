@@ -18,6 +18,11 @@ Scenes (one camera each):
                  width; a blended object, which the hull preset gives the visible-only stencil
                  outline), a through-walls stencil outline, a see-through
                  silhouette, draw-once transparency, inside/outside stencil masks and sprite masks
+  Phase3A.scene  phase 3, the scene-depth readers: soft particle Points and a soft unlit card (with
+                 hard twins) crossing the ground and a wall, a rim force field half sunk with its
+                 intersection band, projected decals (alpha, multiply, no angle fade) on flat
+                 ground and over a step, depth_fade fog cards (soft, hard, masked, edge-faded,
+                 additive) crossing the ground and a block
 
     uv run --no-project --with mcp --with pyyaml python tools/fixtures/shader-library-export/generate.py [out dir]
 
@@ -611,6 +616,92 @@ async def build_stencil(ed, scene):
     await camera(ed, scene, [0, 2.0, 13.0], [0, 2.0, 0])
 
 
+async def build_phase3a(ed, scene):
+    """phase 3 (shaders A): soft particles, rim INTERSECTION, projected_decal, depth_fade"""
+    await lights(ed, scene, sun_shadows=False)
+    unlit = lambda r, g, b, a=1.0: {M + "shader": "library:unlit",  # noqa: E731
+                                    M + "shaderParams.baseColor": [r, g, b, a]}
+    ground = {**unlit(0.3, 0.32, 0.36), M + "shaderTextures.u_baseTexture": T + "checker.png",
+              M + "shaderParams.tiling": [10, 5, 0, 0]}
+    await mesh(ed, scene, "Ground", "plane", ground, [0, 0, -2.0],
+               geometry={"shape": "plane", "width": 20, "depth": 10})
+    await mesh(ed, scene, "Wall", "cube", unlit(0.45, 0.38, 0.32), [-4.5, 0.9, -2.6], scale=[3.6, 1.8, 0.2],
+               rotation={"euler": [0, 20, 0]})
+    await mesh(ed, scene, "Step", "cube", unlit(0.5, 0.45, 0.4), [2.2, 0.2, -0.6], scale=[1.0, 0.4, 0.8])
+    await mesh(ed, scene, "Block", "cube", unlit(0.35, 0.33, 0.3), [6.0, 0.5, -2.5], scale=[0.8, 1.0, 0.8],
+               rotation={"euler": [0, 30, 0]})
+
+    # soft particle Points (SOFT, NEAR_FADE) beside hard ones, crossing the ground and the wall
+    for i, soft in enumerate((False, True)):
+        pts = []
+        for k in range(5):
+            on_wall = k < 3
+            x = -0.9 + k * 0.6 if on_wall else -0.5 + (k - 3) * 1.0
+            pos = [x * 0.94, 0.5 + 0.35 * (k % 2), x * -0.34] if on_wall else [x, 0.1, 0.9]
+            pts.append({"position": pos, "color": [[1, 0.6, 0.2, 1], [0.4, 0.8, 1, 1], [1, 0.9, 0.3, 1]][k % 3],
+                        "size": 1.0, "rotation": 0.0, "textureRect": [0, 0, 1, 1], "visible": True})
+        r = await ed.call("create_entity", scene=scene, type="points", name=f"particle-{'soft' if soft else 'hard'}",
+                          position=[-5.6 + i * 2.2, 0, -2.2 + i * 0.8], select=False)
+        eid = r["entity_id"]
+        values = {"customShader": "library:particle", "texture": T + "soft.png", "points": pts,
+                  "shaderFeatures": ["SOFT", "NEAR_FADE"] if soft else []}
+        if soft:
+            values["shaderUniforms.softness"] = 0.6
+        await ed.call("set_properties", scene=scene, entity=eid, values={"points": {"customShader": "library:particle"}})
+        await ed.call("set_properties", scene=scene, entity=eid, values={"points": values})
+
+    # a glow card (unlit, additive) crossing the ground: hard, then SOFT
+    for i, soft in enumerate((False, True)):
+        card = {**unlit(0.3, 0.8, 1.0), M + "shaderTextures.u_baseTexture": T + "soft.png",
+                M + "blendMode": "additive", M + "cullMode": "off"}
+        if soft:
+            card.update({M + "shaderFeatures": ["SOFT"], M + "shaderParams.softness": 0.4})
+        else:
+            card[M + "depthWrite"] = "off"
+        await mesh(ed, scene, f"unlit-{'soft' if soft else 'hard'}", "plane", card, [-1.6 + i * 1.3, 0.2, 0.4],
+                   rotation={"euler": [90, 0, 0]}, geometry={"shape": "plane", "width": 1.1, "depth": 1.1})
+
+    # a force field half sunk in the ground, a box poking through it
+    await mesh(ed, scene, "Crate", "cube", unlit(0.6, 0.45, 0.3), [0.8, 0.3, -2.4], scale=[0.7, 0.7, 0.7],
+               rotation={"euler": [0, 30, 0]})
+    await mesh(ed, scene, "Field", "sphere",
+               mesh_values(mat("library:rim", {"fill": 0.03, "intensity": 1.2, "intersectionWidth": 0.35,
+                                               "intersectionColor": [0.5, 1.5, 2.2, 1], "intersectionPower": 1.5},
+                               {}, ["INTERSECTION"], )) | {M + "cullMode": "off"},
+               [0.2, 0, -2.6], scale=[2.6, 2.6, 2.6])
+
+    # projected decals: an arrow on flat ground, one over the step (angle fade), one there without it,
+    # a multiply dirt decal
+    decal = lambda params=None, textures=None, features=None: {  # noqa: E731
+        **mesh_values(mat("library:projected_decal", params or {}, textures or {"u_baseTexture": T + "fx_decal.png"},
+                          features or [])), M + "sortPriority": -1}
+    await mesh(ed, scene, "decal-flat", "cube", decal({"tint": [1.0, 0.9, 0.8, 1]}), [3.4, 0, 0.6], scale=[1.2, 1.0, 1.2])
+    await mesh(ed, scene, "decal-step", "cube", decal({"angleFadeStart": 40.0, "angleFadeEnd": 60.0}),
+               [2.2, 0.2, -0.6], scale=[1.4, 1.2, 1.4], rotation={"euler": [0, 15, 0]})
+    await mesh(ed, scene, "decal-no-angle-fade", "cube", decal({"tiling": [1, 1, 0, 0]}, None, ["!ANGLE_FADE"]),
+               [6.0, 0.5, -2.5], scale=[1.4, 1.4, 1.4])
+    await mesh(ed, scene, "decal-multiply", "cube",
+               decal({"tint": [0.6, 0.45, 0.3, 1], "edgeFade": 0.2}, {"u_baseTexture": T + "fx_dirt.png"},
+                     ["DECAL_BLEND_MULTIPLY"]), [4.6, 0, -1.2], scale=[1.6, 1.0, 1.6])
+
+    # depth_fade cards: soft fog (masked) crossing the ground and the block, the same hard, an additive
+    # edge-faded shaft
+    fog = lambda features, tint=None: mesh_values(mat("library:depth_fade",  # noqa: E731
+        {"tint": tint or [0.85, 0.9, 1.0, 0.9], "tiling": [1.5, 1, 0, 0], "scrollSpeed": [0, 0], "softness": 0.8,
+         "nearFadeStart": 0.5, "nearFadeEnd": 2.0, "farFadeStart": 40, "farFadeEnd": 60, "edgeFadePower": 1.0},
+        {"u_baseTexture": T + "noise.png", "u_maskTexture": T + "soft.png"}, features))
+    await mesh(ed, scene, "fog-soft", "plane", fog(["SCROLL", "MASK"]), [6.6, 0.5, -2.2],
+               rotation={"euler": [90, 0, 0]}, geometry={"shape": "plane", "width": 2.4, "depth": 1.6})
+    await mesh(ed, scene, "fog-hard", "plane", fog(["MASK", "!SOFT"]), [7.6, 0.4, -0.2],
+               rotation={"euler": [90, 0, 0]}, geometry={"shape": "plane", "width": 1.6, "depth": 1.2})
+    await mesh(ed, scene, "shaft", "plane",
+               fog(["MASK", "EDGE_FADE", "FADE_BLEND_ADDITIVE"], [1.0, 0.85, 0.5, 0.8])
+               | {M + "shaderTextures.u_baseTexture": T + "fx_streaks.png"},
+               [8.4, 1.0, -2.8], rotation={"euler": [75, -20, 10]}, geometry={"shape": "plane", "width": 0.8, "depth": 2.6})
+
+    await camera(ed, scene, [1.3, 6.0, 9.0], [1.3, 0.0, -1.6])
+
+
 def scene_id(made):
     return made["scene"]["id"] if isinstance(made["scene"], dict) else made["scene"]
 
@@ -667,6 +758,10 @@ async def main(out: Path) -> None:
         await build_stencil(ed, stencil)
         await ed.call("save_scene", scene=stencil)
 
+        phase3a = scene_id(await ed.call("create_scene", name="Phase3A", path="Phase3A.scene"))
+        await build_phase3a(ed, phase3a)
+        await ed.call("save_scene", scene=phase3a)
+
         await ed.call("save_project")
         problems = await ed.call("check_shader")
         failed = [r for r in problems["results"] if not r["ok"]]
@@ -675,7 +770,7 @@ async def main(out: Path) -> None:
 
         out.mkdir(parents=True, exist_ok=True)
         for name in ("project.yaml", "Lit.scene", "Blend.scene", "2D.scene", "UI.scene", "Stencil.scene",
-                     "SceneSelect.lua"):
+                     "Phase3A.scene", "SceneSelect.lua"):
             shutil.copy(ed.project / name, out / name)
         if (out / "assets").exists():
             shutil.rmtree(out / "assets")

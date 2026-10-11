@@ -84,6 +84,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | Shader | Type | Category | Lighting | Default blend |
 |---|---|---|---|---|
 | [Decal](#librarydecal) `library:decal` | mesh | Effects | none | alpha |
+| [Depth fade](#librarydepth_fade) `library:depth_fade` | mesh | Effects | none | alpha |
 | [Directional Tint](#librarydirectional_tint) `library:directional_tint` | mesh | Stylized | none | opaque |
 | [Dissolve](#librarydissolve) `library:dissolve` | mesh | Effects | none, pixel | opaque |
 | [Fake Lit](#libraryfake_lit) `library:fake_lit` | mesh | Stylized | none, vertex | opaque |
@@ -98,6 +99,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Panoramic Sky](#librarypanoramic_sky) `library:panoramic_sky` | sky | Sky | none | - |
 | [Particle](#libraryparticle) `library:particle` | points | Particles | none | alpha (Auto) |
 | [Procedural Sky](#libraryprocedural_sky) `library:procedural_sky` | sky | Sky | none | - |
+| [Projected decal](#libraryprojected_decal) `library:projected_decal` | mesh | Effects | none | alpha |
 | [Rim](#libraryrim) `library:rim` | mesh | Effects | none | additive |
 | [Silhouette](#librarysilhouette) `library:silhouette` | mesh | Outline and stencil | none | alpha |
 | [Simple Lit](#librarysimple_lit) `library:simple_lit` | mesh | Lit | pixel, vertex, mixed | opaque |
@@ -118,12 +120,13 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 <a id="libraryunlit"></a>
 ### Unlit (`library:unlit`)
 
-Base colour times base map, optionally times vertex colour, without lighting; optional alpha clip, whose shadows are cut out too.
+Base colour times base map, optionally times vertex colour, without lighting; optional alpha clip, whose shadows are cut out too. Soft intersections and a camera near fade for particles on meshes (instanced quads of a particle system): either one makes it alpha blended without depth writes or shadows. Soft reads the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees it (none when SSAO or SSR already made one).
 
 - **Type**: mesh (a material's shader); category Basic.
 - **Lighting**: none.
-- **Inputs**: `uv1`, `color`.
-- **Default state**: blend opaque.
+- **Inputs**: `uv1`, `color`; `scenedepth` with `SOFT`.
+- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one), in the camera passes that draw it.
+- **Default state**: blend opaque; with `SOFT`: blend alpha, depth write off, shadows off; with `NEAR_FADE`: blend alpha, depth write off, shadows off.
 - **Depth program**: yes (shadows and depth follow its vertices and clipping).
 
 | Property | Kind | Default | Description |
@@ -131,6 +134,9 @@ Base colour times base map, optionally times vertex colour, without lighting; op
 | `baseColor` | colour | (1, 1, 1, 1) | Base colour |
 | `tiling` | vector4 | (1, 1, 0, 0) | Tiling (xy) and offset (zw) |
 | `alphaCutoff` | range 0 to 1 | 0.5 | Alpha cutoff (with `ALPHA_CLIP`) |
+| `softness` | float | 0.5 | Softness (world units) (with `SOFT`) |
+| `nearFadeStart` | float | 0.3 | Near fade: invisible at (world units from the camera) (with `NEAR_FADE`) |
+| `nearFadeEnd` | float | 1.5 | Near fade: whole from (world units from the camera) (with `NEAR_FADE`) |
 
 | Texture | Default | Description |
 |---|---|---|
@@ -140,6 +146,8 @@ Base colour times base map, optionally times vertex colour, without lighting; op
 |---|---|---|
 | `VERTEX_COLOR` | off | Vertex colour |
 | `ALPHA_CLIP` | off | Alpha clip |
+| `SOFT` | off | Soft intersections (fade where it meets geometry; reads the scene depth) |
+| `NEAR_FADE` | off | Camera near fade |
 
 ## Lit
 
@@ -434,6 +442,46 @@ Mesh decal: texture times tint on a quad laid on a surface, alpha blended, pulle
 |---|---|---|
 | `DECAL_BLEND` | `DECAL_BLEND_ALPHA`, `DECAL_BLEND_MULTIPLY` | Default blend |
 
+<a id="librarydepth_fade"></a>
+### Depth fade (`library:depth_fade`)
+
+Fog cards, light shafts and soft volumes: texture times tint and vertex colour, fading where it meets geometry (no hard line where a card crosses the ground or a wall), close to the camera and far away, optionally scrolling, masked and faded when seen edge-on. Alpha blended (the Additive default blend for light shafts), both faces, no depth write or shadows. The soft intersections read the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees it (none when SSAO or SSR already made one); turn Soft off for camera fades alone.
+
+- **Type**: mesh (a material's shader); category Effects.
+- **Lighting**: none.
+- **Inputs**: `uv1`, `color`; `scenedepth` with `SOFT`; `position`, `normals` with `EDGE_FADE`.
+- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one), in the camera passes that draw it.
+- **Default state**: blend alpha, cull off (both faces), depth write off, shadows off; with `FADE_BLEND_ADDITIVE`: blend additive.
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `tint` | HDR colour | (1, 1, 1, 0.6) | Tint |
+| `tiling` | vector4 | (1, 1, 0, 0) | Tiling (xy) and offset (zw) |
+| `softness` | float | 1 | Softness (world units) (with `SOFT`) |
+| `nearFadeStart` | float | 0.5 | Near fade: invisible at (world units from the camera) |
+| `nearFadeEnd` | float | 3 | Near fade: whole from (world units from the camera) |
+| `farFadeStart` | float | 60 | Far fade: starts at (world units from the camera) |
+| `farFadeEnd` | float | 80 | Far fade: invisible from (world units from the camera) |
+| `scrollSpeed` | vector2 | (0.03, 0.01) | Scroll (UV per second) (with `SCROLL`) |
+| `edgeFadePower` | range 0.25 to 8 | 1.5 | Edge-on fade power (with `EDGE_FADE`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_baseTexture` | white | Base map (fog, beam) |
+| `u_maskTexture` | white | Shape mask (red times alpha, not tiled or scrolled) (with `MASK`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `SOFT` | on | Soft intersections (reads the scene depth) |
+| `SCROLL` | off | Scrolling base map |
+| `MASK` | off | Shape mask |
+| `EDGE_FADE` | off | Fade when seen edge-on |
+
+| Keyword group | Values (first is the default) | Description |
+|---|---|---|
+| `FADE_BLEND` | `FADE_BLEND_ALPHA`, `FADE_BLEND_ADDITIVE` | Default blend |
+
 <a id="librarydissolve"></a>
 ### Dissolve (`library:dissolve`)
 
@@ -572,14 +620,48 @@ A texture scrolling across the surface, with an optional second layer (multiplie
 |---|---|---|
 | `COMBINE` | `COMBINE_MULTIPLY`, `COMBINE_ADD` | Combine layers |
 
-<a id="libraryrim"></a>
-### Rim (`library:rim`)
+<a id="libraryprojected_decal"></a>
+### Projected decal (`library:projected_decal`)
 
-Force field and fresnel glow: bright where the surface turns away from the view, optionally with a scrolling pattern. Additive, no depth write, no shadows; draw both faces (cull off) for a fuller shield.
+Box projector: put it on a unit cube (1 x 1 x 1) and scale, turn and move the cube over uneven ground, stairs or a wall; the texture projects down the box's Y axis onto whatever opaque surface is inside the box, fading on steep faces and towards the box's top and bottom. Alpha blended (the Multiply default blend darkens instead), unlit, no shadows; works with the camera inside the box. Give its material a sort priority below the transparent objects it may cover (-1). Reads the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees it (none when SSAO or SSR already made one).
 
 - **Type**: mesh (a material's shader); category Effects.
 - **Lighting**: none.
-- **Inputs**: `position`, `normals`; `uv1` with `TEXTURE`.
+- **Inputs**: `color`, `scenedepth`.
+- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one), in the camera passes that draw it.
+- **Default state**: blend alpha, cull front, depth write off, depth test always, shadows off; with `DECAL_BLEND_MULTIPLY`: blend multiply.
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `tint` | colour | (1, 1, 1, 1) | Tint |
+| `tiling` | vector4 | (1, 1, 0, 0) | Tiling (xy) and offset (zw) |
+| `opacity` | range 0 to 1 | 1 | Opacity |
+| `edgeFade` | range 0.001 to 0.5 | 0.1 | Fade towards the box's top and bottom (fraction of its height) |
+| `angleFadeStart` | range 0 to 90 | 50 | Angle fade start (degrees from the box's up axis) (with `ANGLE_FADE`) |
+| `angleFadeEnd` | range 0 to 90 | 70 | Angle fade end (degrees: gone from here) (with `ANGLE_FADE`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_baseTexture` | white | Decal |
+
+| Feature | Default | Description |
+|---|---|---|
+| `ANGLE_FADE` | on | Fade on steep surfaces |
+
+| Keyword group | Values (first is the default) | Description |
+|---|---|---|
+| `DECAL_BLEND` | `DECAL_BLEND_ALPHA`, `DECAL_BLEND_MULTIPLY` | Default blend |
+
+<a id="libraryrim"></a>
+### Rim (`library:rim`)
+
+Force field and fresnel glow: bright where the surface turns away from the view, optionally with a scrolling pattern and a highlight where it cuts through geometry. Additive, no depth write, no shadows; draw both faces (cull off) for a fuller shield. The intersection highlight reads the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees it (none when SSAO or SSR already made one).
+
+- **Type**: mesh (a material's shader); category Effects.
+- **Lighting**: none.
+- **Inputs**: `position`, `normals`; `uv1` with `TEXTURE`; `scenedepth` with `INTERSECTION`.
+- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one), in the camera passes that draw it.
 - **Default state**: blend additive, cull back, depth write off, shadows off.
 - **Depth program**: no (the built-in one).
 
@@ -592,6 +674,9 @@ Force field and fresnel glow: bright where the surface turns away from the view,
 | `textureIntensity` | float | 0.6 | Pattern intensity (with `TEXTURE`) |
 | `textureTiling` | vector4 | (4, 2, 0, 0) | Pattern tiling (xy) and offset (zw) (with `TEXTURE`) |
 | `textureSpeed` | vector2 | (0.05, 0.1) | Pattern scroll (UV per second) (with `TEXTURE`) |
+| `intersectionColor` | HDR colour | (0.6, 1.4, 2, 1) | Intersection colour (with `INTERSECTION`) |
+| `intersectionWidth` | float | 0.3 | Intersection width (world units) (with `INTERSECTION`) |
+| `intersectionPower` | range 0.25 to 8 | 2 | Intersection falloff power (with `INTERSECTION`) |
 
 | Texture | Default | Description |
 |---|---|---|
@@ -600,6 +685,7 @@ Force field and fresnel glow: bright where the surface turns away from the view,
 | Feature | Default | Description |
 |---|---|---|
 | `TEXTURE` | off | Scrolling pattern |
+| `INTERSECTION` | off | Intersection highlight (reads the scene depth) |
 
 ## Nature
 
@@ -809,9 +895,10 @@ Image and Text effects: grayscale, hue shift, tint overlay and a moving diagonal
 <a id="libraryparticle"></a>
 ### Particle (`library:particle`)
 
-Point-sprite particles: texture (sprite-sheet rect per point) times the particle colour, with alpha-as-light glow and noise erosion over the particle's life. Draws in the Points component's blend mode (alpha by default; additive, premultiplied and multiply need no other setting); no depth write.
+Point-sprite particles: texture (sprite-sheet rect per point) times the particle colour, with alpha-as-light glow, noise erosion over the particle's life, soft intersections and a camera near fade. Draws in the Points component's blend mode (alpha by default; additive, premultiplied and multiply need no other setting); no depth write. Soft particles read the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees them (none when SSAO or SSR already made one).
 
 - **Type**: points (a Points component's custom shader); category Particles.
+- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one), in the camera passes that draw it.
 - **Default state**: depth write off.
 
 | Property | Kind | Default | Description |
@@ -822,6 +909,9 @@ Point-sprite particles: texture (sprite-sheet rect per point) times the particle
 | `glowPower` | range 0.1 to 8 | 3 | Glow falloff power (with `GLOW`) |
 | `erosionSoftness` | range 0.01 to 0.5 | 0.08 | Erosion edge softness (with `EROSION`) |
 | `erosionTiling` | float | 1 | Erosion noise tiling (per particle) (with `EROSION`) |
+| `softness` | float | 0.5 | Softness (world units) (with `SOFT`) |
+| `nearFadeStart` | float | 0.3 | Near fade: invisible at (world units from the camera) (with `NEAR_FADE`) |
+| `nearFadeEnd` | float | 1.5 | Near fade: whole from (world units from the camera) (with `NEAR_FADE`) |
 
 | Texture | Default | Description |
 |---|---|---|
@@ -831,6 +921,8 @@ Point-sprite particles: texture (sprite-sheet rect per point) times the particle
 |---|---|---|
 | `GLOW` | off | Glow (alpha as light) |
 | `EROSION` | off | Erosion (the particle's alpha dissolves it through a noise texture) |
+| `SOFT` | off | Soft particles (fade where they meet geometry; reads the scene depth) |
+| `NEAR_FADE` | off | Camera near fade |
 
 ## Sky
 

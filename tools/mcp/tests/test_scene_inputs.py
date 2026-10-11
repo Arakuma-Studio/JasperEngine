@@ -123,6 +123,10 @@ async def test_opaque_material_is_a_check_error(ed: Editor):
 async def test_list_shaders_scene_inputs(ed: Editor):
     listing = await ed.call("list_shaders")
     ed.check(listing["shaders"] and all("scene_inputs" in s for s in listing["shaders"]), f"scene_inputs on every entry: {listing!r}")
-    detail = await ed.call("list_shaders", name="unlit")
+    detail = await ed.call("list_shaders", name="toon")
     entry = detail["shaders"][0] if "shaders" in detail else detail
-    ed.check_eq(entry.get("scene_inputs"), [], "unlit reads nothing of the scene")
+    ed.check_eq(entry.get("scene_inputs"), [], "toon reads nothing of the scene")
+    # a feature= rule counts (the picker's cost mark): unlit SOFT, projected_decal always
+    for name in ("unlit", "projected_decal"):
+        entry = (await ed.call("list_shaders", name=name))["shaders"][0]
+        ed.check_eq(entry.get("scene_inputs"), ["scenedepth"], f"{name} may read the scene depth")

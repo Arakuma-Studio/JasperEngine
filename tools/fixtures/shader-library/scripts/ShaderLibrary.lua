@@ -24,6 +24,7 @@ local GROUPS = {
     "2d",
     "checks",
     "phase2",
+    "phase3a",
 }
 
 -- each group fills rows of COLUMNS cells, starting on the row after the previous group's
