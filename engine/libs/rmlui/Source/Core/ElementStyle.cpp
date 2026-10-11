@@ -1305,6 +1305,14 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		auto id_property_pair = *it;
 		const PropertyId id = id_property_pair.first;
 		any_font_face_candidates |= Any(id_property_pair.second.unit & font_face_candidate_units);
+		// The alignment properties looked up from the declarations (ComputedValues::justify_items(), ...) are declared.
+		switch (id)
+		{
+		case PropertyId::JustifyItems: values.has_justify_items(true); break;
+		case PropertyId::JustifySelf: values.has_justify_self(true); break;
+		case PropertyId::AlignContent: values.has_align_content(true); break;
+		default: break;
+		}
 		const Property* property = ResolveVariables(id, &id_property_pair.second, variable_dependencies, property_storage);
 #ifdef RMLUI_MATH_EXPRESSIONS
 		// The cache is rebuilt from scratch above and only exists to retain dependencies hidden behind
