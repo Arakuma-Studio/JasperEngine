@@ -668,6 +668,9 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible {
 }
 
 /* 7. Scrollbars (Chromium 153's classic 15px scrollbar) ------------------------------------- */
+/* The thumb is 3px off the track on every side: its length is (track - 6px) x visible / total, at least 17px
+   (Chromium's Fluent scrollbar minimum), and it moves between 3px from the arrows (measured on Chromium 153's
+   references, p3-integration). */
 
 scrollbarvertical {
     width: 15px;
@@ -680,15 +683,15 @@ scrollbarhorizontal {
 }
 
 scrollbarvertical sliderbar {
-    margin: 0 3px;
-    min-height: 20px;
+    margin: 3px;
+    min-height: 17px;
     border-radius: 4.5px;
     background-color: #8b8b8b;
 }
 
 scrollbarhorizontal sliderbar {
-    margin: 3px 0;
-    min-width: 20px;
+    margin: 3px;
+    min-width: 17px;
     border-radius: 4.5px;
     background-color: #8b8b8b;
 }
