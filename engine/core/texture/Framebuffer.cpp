@@ -19,6 +19,7 @@ Framebuffer::Framebuffer(){
     for (int i = 0; i < SokolFramebuffer::MAX_COLOR_ATTACHMENTS; i++){
         this->colorFormats[i] = ColorFormat::RGBA;
     }
+    this->depthStencil = true;
     this->version = 0;
 }
 
@@ -32,9 +33,9 @@ Framebuffer& Framebuffer::operator=(const Framebuffer& rhs) = default;
 
 void Framebuffer::create(){
     if (numColorAttachments > 1){
-        render.createFramebufferMRT(width, height, minFilter, magFilter, wrapU, wrapV, numColorAttachments, colorFormats);
+        render.createFramebufferMRT(width, height, minFilter, magFilter, wrapU, wrapV, numColorAttachments, colorFormats, depthStencil);
     }else{
-        render.createFramebuffer(TextureType::TEXTURE_2D, width, height, minFilter, magFilter, wrapU, wrapV, false);
+        render.createFramebuffer(TextureType::TEXTURE_2D, width, height, minFilter, magFilter, wrapU, wrapV, false, depthStencil);
     }
     version++;
 }
@@ -50,6 +51,14 @@ void Framebuffer::setColorAttachments(int count, const ColorFormat* formats){
 
 int Framebuffer::getNumColorAttachments() const{
     return this->numColorAttachments;
+}
+
+void Framebuffer::setDepthStencil(bool depthStencil){
+    this->depthStencil = depthStencil;
+}
+
+bool Framebuffer::isDepthStencil() const{
+    return this->depthStencil;
 }
 
 void Framebuffer::destroy(){

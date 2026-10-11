@@ -22,7 +22,7 @@ SokolFramebuffer::SokolFramebuffer(const SokolFramebuffer& rhs) = default;
 
 SokolFramebuffer& SokolFramebuffer::operator=(const SokolFramebuffer& rhs) = default;
 
-bool SokolFramebuffer::createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap){
+bool SokolFramebuffer::createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap, bool stencil){
     if ((textureType != TextureType::TEXTURE_2D) && (textureType != TextureType::TEXTURE_CUBE)){
         Log::error("Framebuffer texture type must be 2D or CUBE");
         return false;
@@ -33,7 +33,7 @@ bool SokolFramebuffer::createFramebuffer(TextureType textureType, int width, int
     numColorAttachments = 1;
 
     bool colorCreated = colorTexture[0].createFramebufferTexture(textureType, false, shadowMap, width, height, minFilter, magFilter, wrapU, wrapV);
-    bool depthCreated = depthTexture.createFramebufferTexture(TextureType::TEXTURE_2D, true, shadowMap, width, height, minFilter, magFilter, wrapU, wrapV);
+    bool depthCreated = depthTexture.createFramebufferTexture(TextureType::TEXTURE_2D, true, shadowMap, width, height, minFilter, magFilter, wrapU, wrapV, ColorFormat::RGBA, stencil);
 
     if (!colorCreated || !depthCreated) {
         destroyFramebuffer();
@@ -108,7 +108,7 @@ bool SokolFramebuffer::createDepthOnlyFramebuffer(int width, int height, Texture
     return created;
 }
 
-bool SokolFramebuffer::createFramebufferMRT(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, int numColor, const ColorFormat* formats){
+bool SokolFramebuffer::createFramebufferMRT(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, int numColor, const ColorFormat* formats, bool stencil){
     if (numColor < 1 || numColor > MAX_COLOR_ATTACHMENTS){
         Log::error("Framebuffer MRT color attachment count must be 1..%d", MAX_COLOR_ATTACHMENTS);
         return false;
@@ -118,7 +118,7 @@ bool SokolFramebuffer::createFramebufferMRT(int width, int height, TextureFilter
 
     numColorAttachments = numColor;
 
-    bool depthCreated = depthTexture.createFramebufferTexture(TextureType::TEXTURE_2D, true, false, width, height, minFilter, magFilter, wrapU, wrapV);
+    bool depthCreated = depthTexture.createFramebufferTexture(TextureType::TEXTURE_2D, true, false, width, height, minFilter, magFilter, wrapU, wrapV, ColorFormat::RGBA, stencil);
     if (!depthCreated){
         destroyFramebuffer();
         return false;

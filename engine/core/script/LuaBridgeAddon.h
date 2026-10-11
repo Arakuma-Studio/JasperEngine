@@ -97,6 +97,9 @@ namespace luabridge
     template<> struct Stack<MaterialCullMode> : EnumWrapper<MaterialCullMode>{};
     template<> struct Stack<MaterialDepthWrite> : EnumWrapper<MaterialDepthWrite>{};
     template<> struct Stack<MaterialDepthTest> : EnumWrapper<MaterialDepthTest>{};
+    template<> struct Stack<MaterialStencilCompare> : EnumWrapper<MaterialStencilCompare>{};
+    template<> struct Stack<MaterialStencilOp> : EnumWrapper<MaterialStencilOp>{};
+    template<> struct Stack<MaterialColorWriteBits> : EnumWrapper<MaterialColorWriteBits>{};
 
     template <>
     struct Stack <Touch>

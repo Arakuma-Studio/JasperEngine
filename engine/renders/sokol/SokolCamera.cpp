@@ -13,6 +13,11 @@ using namespace jasperengine;
 SokolCamera::SokolCamera(){
     pass = {0};
     pass.action.colors[0].load_action = SG_LOADACTION_LOAD;
+    // depth and stencil start every pass cleared (stencil masks never outlive their pass)
+    pass.action.depth.load_action = SG_LOADACTION_CLEAR;
+    pass.action.depth.clear_value = 1.0f;
+    pass.action.stencil.load_action = SG_LOADACTION_CLEAR;
+    pass.action.stencil.clear_value = 0;
 }
 
 SokolCamera::SokolCamera(const SokolCamera& rhs) = default;

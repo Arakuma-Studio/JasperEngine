@@ -355,6 +355,47 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("ALWAYS", MaterialDepthTest::ALWAYS)
         .endNamespace();
 
+    // stencil test of a Material (and UI/points/lines): AUTO takes the shader's @state,
+    // DISABLED turns it off, any other compare makes the whole MaterialStencil explicit
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialStencilCompare")
+        .addVariable("AUTO", MaterialStencilCompare::AUTO)
+        .addVariable("DISABLED", MaterialStencilCompare::DISABLED)
+        .addVariable("NEVER", MaterialStencilCompare::NEVER)
+        .addVariable("LESS", MaterialStencilCompare::LESS)
+        .addVariable("EQUAL", MaterialStencilCompare::EQUAL)
+        .addVariable("LESS_EQUAL", MaterialStencilCompare::LESS_EQUAL)
+        .addVariable("GREATER", MaterialStencilCompare::GREATER)
+        .addVariable("NOT_EQUAL", MaterialStencilCompare::NOT_EQUAL)
+        .addVariable("GREATER_EQUAL", MaterialStencilCompare::GREATER_EQUAL)
+        .addVariable("ALWAYS", MaterialStencilCompare::ALWAYS)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialStencilOp")
+        .addVariable("KEEP", MaterialStencilOp::KEEP)
+        .addVariable("ZERO", MaterialStencilOp::ZERO)
+        .addVariable("REPLACE", MaterialStencilOp::REPLACE)
+        .addVariable("INCR_CLAMP", MaterialStencilOp::INCR_CLAMP)
+        .addVariable("DECR_CLAMP", MaterialStencilOp::DECR_CLAMP)
+        .addVariable("INVERT", MaterialStencilOp::INVERT)
+        .addVariable("INCR_WRAP", MaterialStencilOp::INCR_WRAP)
+        .addVariable("DECR_WRAP", MaterialStencilOp::DECR_WRAP)
+        .endNamespace();
+
+    // colorWrite values: AUTO (-1), NONE (0) or a sum of R, G, B, A
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialColorWrite")
+        .addVariable("AUTO", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_AUTO)
+        .addVariable("NONE", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_NONE)
+        .addVariable("R", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_R)
+        .addVariable("G", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_G)
+        .addVariable("B", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_B)
+        .addVariable("A", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_A)
+        .addVariable("RGB", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_RGB)
+        .addVariable("ALL", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_ALL)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("MaterialLighting")
         .addVariable("AUTO", MaterialLighting::AUTO)
@@ -1004,6 +1045,20 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
+        // the stencil state of a Material (material.stencil.compare = ... edits the material's
+        // own) or of a UI/points/lines object (a copy: set it back)
+        .beginClass<MaterialStencil>("MaterialStencil")
+        .addConstructor<void()>()
+        .addProperty("compare", &MaterialStencil::compare, &MaterialStencil::compare)
+        .addProperty("ref", &MaterialStencil::ref, &MaterialStencil::ref)
+        .addProperty("readMask", &MaterialStencil::readMask, &MaterialStencil::readMask)
+        .addProperty("writeMask", &MaterialStencil::writeMask, &MaterialStencil::writeMask)
+        .addProperty("pass", &MaterialStencil::pass, &MaterialStencil::pass)
+        .addProperty("fail", &MaterialStencil::fail, &MaterialStencil::fail)
+        .addProperty("depthFail", &MaterialStencil::depthFail, &MaterialStencil::depthFail)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
         // Mesh::getMaterial hands back a copy: the values are written on it, then the copy is
         // set back (m.roughnessFactor = 0.2; mesh:setMaterial(m)). Textures stay read-only.
         .beginClass<Material>("Material")
@@ -1030,6 +1085,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("depthOffsetFactor", &Material::depthOffsetFactor, &Material::depthOffsetFactor)
         .addProperty("depthOffsetUnits", &Material::depthOffsetUnits, &Material::depthOffsetUnits)
         .addProperty("sortPriority", &Material::sortPriority, &Material::sortPriority)
+        .addProperty("stencil", &Material::stencil, &Material::stencil)
+        .addProperty("colorWrite", &Material::colorWrite, &Material::colorWrite)
         // a @property value of the shader (colours linear); unset reads the manifest default.
         // The shader is the material's, else the one its submesh draws with (a copy from
         // Mesh:getMaterial remembers it: the mesh's customShader or the scene default).
@@ -1096,7 +1153,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<FramebufferRender>("FramebufferRender")
         .addConstructor <void (*) (void)> ()
-        .addFunction("createFramebuffer", &FramebufferRender::createFramebuffer)
+        .addFunction("createFramebuffer", static_cast<bool (FramebufferRender::*)(TextureType, int, int, TextureFilter, TextureFilter, TextureWrap, TextureWrap, bool)>(&FramebufferRender::createFramebuffer))
         .addFunction("destroyFramebuffer", &FramebufferRender::destroyFramebuffer)
         .addFunction("isCreated", &FramebufferRender::isCreated)
         .addFunction("getColorTexture", &FramebufferRender::getColorTexture)

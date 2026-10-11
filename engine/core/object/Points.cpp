@@ -449,6 +449,36 @@ MaterialDepthWrite Points::getDepthWrite() const{
     return points.depthWrite;
 }
 
+void Points::setStencil(const MaterialStencil& stencil){
+    PointsComponent& points = getComponent<PointsComponent>();
+
+    if (points.stencil != stencil){
+        points.stencil = stencil;
+        points.needReload = true;
+    }
+}
+
+MaterialStencil Points::getStencil() const{
+    PointsComponent& points = getComponent<PointsComponent>();
+
+    return points.stencil;
+}
+
+void Points::setColorWrite(int colorWrite){
+    PointsComponent& points = getComponent<PointsComponent>();
+
+    if (points.colorWrite != colorWrite){
+        points.colorWrite = colorWrite;
+        points.needReload = true;
+    }
+}
+
+int Points::getColorWrite() const{
+    PointsComponent& points = getComponent<PointsComponent>();
+
+    return points.colorWrite;
+}
+
 void Points::setEnabled(bool enabled){
     getComponent<PointsComponent>().enabled = enabled;
 }

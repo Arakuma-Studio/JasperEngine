@@ -4369,6 +4369,10 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
             from.lighting != to.lighting || from.alphaMode != to.alphaMode) {
         flags |= UpdateFlags_Mesh_Reload;
     }
+    // stencil and colour write are pipeline state too
+    if (from.stencil != to.stencil || from.colorWrite != to.colorWrite) {
+        flags |= UpdateFlags_Mesh_Reload;
+    }
     if (from.shader != to.shader || from.shaderParams != to.shaderParams) {
         flags |= UpdateFlags_Shader_Uniforms;
     }

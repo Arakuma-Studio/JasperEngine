@@ -6,6 +6,8 @@
 
 #include "Export.h"
 
+#include <cstdint>
+
 
 namespace jasperengine{
 
@@ -46,10 +48,43 @@ namespace jasperengine{
         ALWAYS
     };
 
+    enum class StencilCompare{
+        NEVER,
+        LESS,
+        EQUAL,
+        LESS_EQUAL,
+        GREATER,
+        NOT_EQUAL,
+        GREATER_EQUAL,
+        ALWAYS
+    };
+
+    enum class StencilOp{
+        KEEP,
+        ZERO,
+        REPLACE,
+        INCR_CLAMP,
+        DECR_CLAMP,
+        INVERT,
+        INCR_WRAP,
+        DECR_WRAP
+    };
+
+    // colour channels a pipeline writes (the same bits as MaterialColorWriteBits)
+    enum ColorWriteBits{
+        COLOR_WRITE_R = 1,
+        COLOR_WRITE_G = 2,
+        COLOR_WRITE_B = 4,
+        COLOR_WRITE_A = 8,
+        COLOR_WRITE_ALL = 15
+    };
+
     // What ObjectRender::endLoad builds every pipeline of an object with. The defaults are
     // the state objects had before it was configurable. Each pipeline type keeps its own
     // fixed parts (colour mask, offscreen alpha, depth-only passes): blend, depth compare
     // and depth bias apply to the colour pipelines, depth bias also to the z-prepass.
+    // Stencil and the colour write mask apply to the colour pipelines only (the swapchain
+    // ones never write alpha); the depth-only, shadow and G-buffer pipelines ignore them.
     struct RenderState{
         bool faceCulling = false;
         CullingMode cullingMode = CullingMode::BACK;
@@ -61,6 +96,16 @@ namespace jasperengine{
         BlendMode blend = BlendMode::ALPHA;
         float depthBiasSlope = 0.0f; // polygon offset factor
         float depthBias = 0.0f;      // polygon offset units
+        // stencil test and write, the same for front and back faces (off: no test, no write)
+        bool stencilEnabled = false;
+        StencilCompare stencilCompare = StencilCompare::ALWAYS;
+        uint8_t stencilRef = 0;
+        uint8_t stencilReadMask = 0xFF;
+        uint8_t stencilWriteMask = 0xFF;
+        StencilOp stencilPass = StencilOp::KEEP;
+        StencilOp stencilFail = StencilOp::KEEP;
+        StencilOp stencilDepthFail = StencilOp::KEEP;
+        uint8_t colorWriteMask = COLOR_WRITE_ALL; // ColorWriteBits, 0 = none
 
         RenderState() = default;
         RenderState(bool faceCulling, bool depthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling = true):

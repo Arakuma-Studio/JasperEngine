@@ -125,6 +125,32 @@ namespace {
         return true;
     }
 
+    // a stencil reference or mask: 0..255, decimal or 0x hexadecimal
+    bool parseStencilByte(const std::string& text, int& value){
+        if (text.empty() || text.size() > 4)
+            return false;
+        int base = 10;
+        size_t start = 0;
+        if (text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X')){
+            base = 16;
+            start = 2;
+        }
+        int result = 0;
+        for (size_t i = start; i < text.size(); i++){
+            const char c = (char)std::tolower((unsigned char)text[i]);
+            int digit = -1;
+            if (c >= '0' && c <= '9') digit = c - '0';
+            else if (base == 16 && c >= 'a' && c <= 'f') digit = 10 + (c - 'a');
+            if (digit < 0)
+                return false;
+            result = result * base + digit;
+        }
+        if (result > 255)
+            return false;
+        value = result;
+        return true;
+    }
+
     // "key=value" tokens after the positional ones
     bool splitOption(const Token& token, std::string& key, std::string& value){
         if (token.quoted)
@@ -410,6 +436,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 target = &rule.state;
             }
             ShaderManifestState& state = *target;
+            uint8_t lineStencil = 0; // the stencil keys of this line
             for (const Token& arg : args){
                 std::string key, value;
                 if (!splitOption(arg, key, value)){
@@ -458,12 +485,68 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                     if (v == "on") state.shadows = ShaderShadowCasting::ON;
                     else if (v == "off") state.shadows = ShaderShadowCasting::OFF;
                     else valid = false;
+                }else if (key == "stencil"){
+                    valid = parseStencilCompare(v, state.stencil.compare);
+                    if (valid) lineStencil |= ShaderStencil_Compare;
+                }else if (key == "ref" || key == "readmask" || key == "writemask"){
+                    int number = 0;
+                    valid = parseStencilByte(v, number);
+                    if (!valid){
+                        report(lineNumber, true, "@state " + key + "= takes an integer 0..255 (or 0x00..0xFF), got '" + value + "'");
+                        continue;
+                    }
+                    if (key == "ref"){
+                        state.stencil.ref = number;
+                        lineStencil |= ShaderStencil_Ref;
+                    }else if (key == "readmask"){
+                        state.stencil.readMask = number;
+                        lineStencil |= ShaderStencil_ReadMask;
+                    }else{
+                        state.stencil.writeMask = number;
+                        lineStencil |= ShaderStencil_WriteMask;
+                    }
+                }else if (key == "pass" || key == "fail" || key == "zfail"){
+                    MaterialStencilOp op;
+                    valid = parseStencilOp(v, op);
+                    if (!valid){
+                        report(lineNumber, true, "@state " + key + "= takes keep, zero, replace, incr, decr, invert, incrwrap or decrwrap, got '" + value + "'");
+                        continue;
+                    }
+                    if (key == "pass"){
+                        state.stencil.pass = op;
+                        lineStencil |= ShaderStencil_Pass;
+                    }else if (key == "fail"){
+                        state.stencil.fail = op;
+                        lineStencil |= ShaderStencil_Fail;
+                    }else{
+                        state.stencil.depthFail = op;
+                        lineStencil |= ShaderStencil_DepthFail;
+                    }
+                }else if (key == "colorwrite"){
+                    const int mask = parseColorWrite(v);
+                    valid = mask >= 0;
+                    if (!valid){
+                        report(lineNumber, true, "@state colorwrite= takes none or channels of rgba (rgba, rgb, a...), got '" + value + "'");
+                        continue;
+                    }
+                    state.colorWrite = mask;
                 }else{
-                    report(lineNumber, true, "unknown @state key '" + key + "' (blend, cull, zwrite, ztest, offset, queue, shadows)");
+                    report(lineNumber, true, "unknown @state key '" + key + "' (blend, cull, zwrite, ztest, offset, queue, shadows, "
+                                             "stencil, ref, readmask, writemask, pass, fail, zfail, colorwrite)");
                     continue;
                 }
-                if (!valid)
-                    report(lineNumber, true, "invalid @state value '" + arg.text + "'");
+                if (!valid){
+                    if (key == "stencil")
+                        report(lineNumber, true, "@state stencil= takes off, never, less, equal, lequal, greater, notequal, gequal or always, got '" + value + "'");
+                    else
+                        report(lineNumber, true, "invalid @state value '" + arg.text + "'");
+                }
+            }
+            // stencil values without a test: the line or the base @state before it names one
+            state.stencilSet |= lineStencil;
+            if ((lineStencil & ~ShaderStencil_Compare) && !(lineStencil & ShaderStencil_Compare) &&
+                    !(this->state.stencilSet & ShaderStencil_Compare)){
+                report(lineNumber, true, "@state ref/readmask/writemask/pass/fail/zfail need stencil=<compare> on the line or in the base @state before it");
             }
             if (target != &this->state)
                 stateRules.push_back(rule);
@@ -894,6 +977,19 @@ void ShaderManifestState::apply(const ShaderManifestState& other){
     }
     if (other.queue != ShaderQueue::AUTO) queue = other.queue;
     if (other.shadows != ShaderShadowCasting::AUTO) shadows = other.shadows;
+    if (other.stencilSet & ShaderStencil_Compare) stencil.compare = other.stencil.compare;
+    if (other.stencilSet & ShaderStencil_Ref) stencil.ref = other.stencil.ref;
+    if (other.stencilSet & ShaderStencil_ReadMask) stencil.readMask = other.stencil.readMask;
+    if (other.stencilSet & ShaderStencil_WriteMask) stencil.writeMask = other.stencil.writeMask;
+    if (other.stencilSet & ShaderStencil_Pass) stencil.pass = other.stencil.pass;
+    if (other.stencilSet & ShaderStencil_Fail) stencil.fail = other.stencil.fail;
+    if (other.stencilSet & ShaderStencil_DepthFail) stencil.depthFail = other.stencil.depthFail;
+    stencilSet |= other.stencilSet;
+    if (other.colorWrite >= 0) colorWrite = other.colorWrite;
+}
+
+bool ShaderManifestState::hasStencil() const{
+    return stencil.compare != MaterialStencilCompare::AUTO && stencil.compare != MaterialStencilCompare::DISABLED;
 }
 
 namespace {
@@ -950,6 +1046,98 @@ std::string ShaderManifest::getLightingModeName(ShaderLightingMode mode){
         case ShaderLightingMode::MIXED:  return "mixed";
         default:                         return "none";
     }
+}
+
+const char* ShaderManifest::getStencilCompareName(MaterialStencilCompare compare){
+    switch (compare){
+        case MaterialStencilCompare::DISABLED:      return "off";
+        case MaterialStencilCompare::NEVER:         return "never";
+        case MaterialStencilCompare::LESS:          return "less";
+        case MaterialStencilCompare::EQUAL:         return "equal";
+        case MaterialStencilCompare::LESS_EQUAL:    return "lequal";
+        case MaterialStencilCompare::GREATER:       return "greater";
+        case MaterialStencilCompare::NOT_EQUAL:     return "notequal";
+        case MaterialStencilCompare::GREATER_EQUAL: return "gequal";
+        case MaterialStencilCompare::ALWAYS:        return "always";
+        default:                                    return "auto";
+    }
+}
+
+bool ShaderManifest::parseStencilCompare(const std::string& name, MaterialStencilCompare& compare){
+    static const MaterialStencilCompare values[] = {
+        MaterialStencilCompare::DISABLED, MaterialStencilCompare::NEVER, MaterialStencilCompare::LESS,
+        MaterialStencilCompare::EQUAL, MaterialStencilCompare::LESS_EQUAL, MaterialStencilCompare::GREATER,
+        MaterialStencilCompare::NOT_EQUAL, MaterialStencilCompare::GREATER_EQUAL, MaterialStencilCompare::ALWAYS
+    };
+    for (MaterialStencilCompare value : values){
+        if (name == getStencilCompareName(value)){
+            compare = value;
+            return true;
+        }
+    }
+    return false;
+}
+
+const char* ShaderManifest::getStencilOpName(MaterialStencilOp op){
+    switch (op){
+        case MaterialStencilOp::ZERO:       return "zero";
+        case MaterialStencilOp::REPLACE:    return "replace";
+        case MaterialStencilOp::INCR_CLAMP: return "incr";
+        case MaterialStencilOp::DECR_CLAMP: return "decr";
+        case MaterialStencilOp::INVERT:     return "invert";
+        case MaterialStencilOp::INCR_WRAP:  return "incrwrap";
+        case MaterialStencilOp::DECR_WRAP:  return "decrwrap";
+        default:                            return "keep";
+    }
+}
+
+bool ShaderManifest::parseStencilOp(const std::string& name, MaterialStencilOp& op){
+    static const MaterialStencilOp values[] = {
+        MaterialStencilOp::KEEP, MaterialStencilOp::ZERO, MaterialStencilOp::REPLACE, MaterialStencilOp::INCR_CLAMP,
+        MaterialStencilOp::DECR_CLAMP, MaterialStencilOp::INVERT, MaterialStencilOp::INCR_WRAP, MaterialStencilOp::DECR_WRAP
+    };
+    for (MaterialStencilOp value : values){
+        if (name == getStencilOpName(value)){
+            op = value;
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string ShaderManifest::getColorWriteName(int colorWrite){
+    if (colorWrite < 0)
+        return "auto";
+    if ((colorWrite & MATERIAL_COLOR_WRITE_ALL) == 0)
+        return "none";
+    std::string name;
+    if (colorWrite & MATERIAL_COLOR_WRITE_R) name += 'r';
+    if (colorWrite & MATERIAL_COLOR_WRITE_G) name += 'g';
+    if (colorWrite & MATERIAL_COLOR_WRITE_B) name += 'b';
+    if (colorWrite & MATERIAL_COLOR_WRITE_A) name += 'a';
+    return name;
+}
+
+int ShaderManifest::parseColorWrite(const std::string& name){
+    if (name == "none")
+        return 0;
+    if (name.empty())
+        return -1;
+    int mask = 0;
+    for (char c : name){
+        int bit = 0;
+        switch (c){
+            case 'r': bit = MATERIAL_COLOR_WRITE_R; break;
+            case 'g': bit = MATERIAL_COLOR_WRITE_G; break;
+            case 'b': bit = MATERIAL_COLOR_WRITE_B; break;
+            case 'a': bit = MATERIAL_COLOR_WRITE_A; break;
+            default: return -1;
+        }
+        if (mask & bit)
+            return -1; // a channel twice
+        mask |= bit;
+    }
+    return mask;
 }
 
 std::string ShaderManifest::getShaderTypeToken(ShaderType type){

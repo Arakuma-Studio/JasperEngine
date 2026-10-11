@@ -75,6 +75,9 @@ namespace jasperengine{
         sg_compare_func getCompareFunc(DepthCompare compare);
         // the colour blending of the load state into a colour target
         void applyBlend(sg_color_target_state& target, bool offscreen);
+        // the stencil state and colour write mask of the load state, for a colour pipeline
+        // (a swapchain target never takes alpha writes)
+        void applyStencilAndColorMask(sg_pipeline_desc& desc, bool offscreen);
         // the description endLoad creates the pipeline of one type from
         sg_pipeline_desc makePipelineDesc(PipelineType pipType);
         sg_pipeline& pipelineOf(PipelineType pipType);

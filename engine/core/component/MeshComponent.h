@@ -280,9 +280,11 @@ namespace jasperengine{
         bool transparent = false;
         bool autoTransparency = true;
         // set at load: transparent-queue order (the lowest sortPriority of its blended
-        // submeshes) and whether the camera depth pre-pass leaves it out (a forked color
-        // shader without a depth program, or a submesh that does not write depth)
+        // submeshes), opaque-queue order (the lowest of the others; before the distance)
+        // and whether the camera depth pre-pass leaves it out (a forked color shader without
+        // a depth program, a submesh that does not write depth or that tests stencil)
         int transparentSortPriority = 0;
+        int opaqueSortPriority = 0;
         bool skipsDepthPrepass = false;
 
         // opt-out of the scene's detail levels (Scene::setMeshLodEnabled); bias above 1 keeps detail longer
