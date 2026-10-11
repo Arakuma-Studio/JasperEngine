@@ -131,8 +131,9 @@ namespace {
         submesh.customFSParams.writeValues(values, &mesh.shaderUniforms, manifest);
         submesh.customVSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest);
         submesh.customFSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest);
-        // the extra pass: its own parameters, else its manifest's defaults
-        if (submesh.extraPass){
+        // the extra pass: its own parameters, else its manifest's defaults (not while a component
+        // copy still shares the original's: its load makes its own and writes that one)
+        if (submesh.extraPass && submesh.extraPass.use_count() == 1){
             const ShaderUniformValues& passValues = submesh.material.extraPass.shaderParams;
             submesh.extraPass->customVSParams.writeValues(passValues, nullptr, submesh.extraPass->manifest.get());
             submesh.extraPass->customFSParams.writeValues(passValues, nullptr, submesh.extraPass->manifest.get());
@@ -5630,8 +5631,9 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     ShaderData& shaderData = extra.shader->shaderData;
     const uint32_t properties = extra.shaderProperties;
 
-    // textures changed, or one is a render target that was redrawn
-    if (extra.needUpdateTexture || checkPBRFrabebufferUpdate(submesh.material) ||
+    // textures changed (drawMesh also sets it when a material texture is a render target that was
+    // redrawn), or one of its own is a redrawn render target
+    if (extra.needUpdateTexture ||
             (!extra.libraryBindings.textures.empty() && shaderTexturesOutdated(extra.libraryBindings, pass.shaderTextures))){
         if (loadPBRTextures(submesh.material, shaderData, render, mesh.receiveLights) &&
                 bindShaderTextures(extra.libraryBindings, render, pass.shaderTextures)){
@@ -5639,7 +5641,9 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
         }
     }
 
-    if (!render.beginDraw(pipType, passNoFaceCulling())){
+    // the editor's "no face culling" view keeps the pass's culling: it is part of the technique
+    // (an inverted hull drawn unculled covers its object)
+    if (!render.beginDraw(pipType, false)){
         mesh.needReload = true;
         return;
     }
@@ -6198,16 +6202,19 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             // the material's extra pass, drawn right before or after the submesh
+            // checked once for both draws: rebinding a redrawn render target texture takes its
+            // new version, so the draw that rebinds first would hide the change from the other
+            const bool pbrFramebufferOutdated = checkPBRFrabebufferUpdate(mesh.submeshes[i].material);
             SubmeshExtraPass* extraPass = (mesh.submeshes[i].extraPass && mesh.submeshes[i].extraPass->loaded) ? mesh.submeshes[i].extraPass.get() : nullptr;
             if (extraPass){
-                if (mesh.submeshes[i].needUpdateTexture)
+                if (mesh.submeshes[i].needUpdateTexture || pbrFramebufferOutdated)
                     extraPass->needUpdateTexture = true;
                 if (extraPass->order == MaterialPassOrder::BEFORE)
                     drawSubmeshExtraPass(entity, mesh, i, transform, pipType, instmesh, instanceView, draw, instanceCount, objectBlock, tilemap, builtLightBits);
             }
 
             const ShaderLibraryBindings& libraryBindings = mesh.submeshes[i].libraryBindings;
-            bool needUpdateFramebuffer = checkPBRFrabebufferUpdate(mesh.submeshes[i].material) ||
+            bool needUpdateFramebuffer = pbrFramebufferOutdated ||
                 (!libraryBindings.textures.empty() && shaderTexturesOutdated(libraryBindings, mesh.submeshes[i].material.shaderTextures));
 
             if (mesh.submeshes[i].needUpdateTexture || needUpdateFramebuffer){

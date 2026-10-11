@@ -205,7 +205,10 @@ MeshSystem::SubmeshOverrides MeshSystem::collectSubmeshOverrides(Entity entity, 
     for (auto const& [mesh, base] : getSubmeshRuns(entity, model)) {
         for (unsigned int i = 0; i < mesh->numSubmeshes; i++) {
             if (mesh->submeshes[i].overrideFields != 0) {
-                overrides.emplace(base + i, mesh->submeshes[i]);
+                // the saved copy must not hold the render's extra pass: a second owner makes
+                // the load's destroyMesh take the pass for a component copy's and keep its
+                // pipelines alive (only the material is restored from it)
+                overrides.emplace(base + i, mesh->submeshes[i]).first->second.extraPass.reset();
             }
         }
     }
