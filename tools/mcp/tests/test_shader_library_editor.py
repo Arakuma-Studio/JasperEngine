@@ -75,6 +75,39 @@ async def test_list_shaders(ed: Editor):
     ed.check_in("library:unlit", msg, "lists the library shaders")
 
 
+async def test_list_shaders_rules(ed: Editor):
+    """detail names every input (position, rawcolor), the feature= requires, the shadows state
+    and the @state[...] rules a feature or keyword turns on"""
+    ed.require_tools("list_shaders")
+    rim = (await ed.call("list_shaders", name="rim"))["shaders"][0]
+    ed.check_eq(rim["require"], ["position", "normals"])
+    ed.check_eq(rim["require_rules"], [{"require": ["uv1"], "feature": "TEXTURE"}])
+    ed.check_eq(rim["state"].get("shadows"), "off", "rim casts no shadows")
+    ed.check_eq(rim["state"].get("blendMode"), "additive")
+
+    fake = (await ed.call("list_shaders", name="fake_lit"))["shaders"][0]
+    rules = {r["feature"]: r["require"] for r in fake["require_rules"]}
+    ed.check_eq(rules.get("VERTEX_AO"), ["rawcolor"], "VERTEX_AO reads the raw vertex colour")
+    ed.check_eq(rules.get("SHADOW_TEXTURE"), ["uv2"])
+
+    matcap = (await ed.call("list_shaders", name="matcap"))["shaders"][0]
+    ed.check_eq(matcap["require_rules"], [{"require": ["uv1"], "feature": "!MATCAP_MODE_REPLACE"}])
+
+    hologram = (await ed.call("list_shaders", name="hologram"))["shaders"][0]
+    ed.check_eq(hologram["state_rules"], [{"feature": "BLEND_MODE_ALPHA", "state": {"blendMode": "alpha"}}])
+    decal = (await ed.call("list_shaders", name="decal"))["shaders"][0]
+    ed.check_eq(decal["state_rules"], [{"feature": "DECAL_BLEND_MULTIPLY", "state": {"blendMode": "multiply"}}])
+    flipbook = (await ed.call("list_shaders", name="flipbook"))["shaders"][0]
+    ed.check_eq(flipbook["state_rules"], [{"feature": "!ALPHA_CLIP", "state": {"shadows": "off"}}])
+
+    # the blend modes are the engine's BLEND_* define now: no blend keyword of their own
+    particle = (await ed.call("list_shaders", name="particle"))["shaders"][0]
+    ed.check_eq(particle["keywords"], [], "particle has no OUTPUT keyword")
+    sprite = (await ed.call("list_shaders", name="sprite"))["shaders"][0]
+    ed.check_eq(sprite["keywords"], [], "sprite has no ALPHA keyword")
+    ed.check_eq(sprite["state"].get("shadows"), "off")
+
+
 # ---------------------------------------------------------------------------- material values
 
 async def test_material_library_shader(ed: Editor):

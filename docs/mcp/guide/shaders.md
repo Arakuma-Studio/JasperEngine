@@ -7,7 +7,11 @@ Served as `jasper://docs/shaders`.
 The engine ships ready-made shaders, referenced as `"library:<name>"`. `list_shaders` lists
 them (name, type, category, description, lighting modes); `list_shaders name="toon"` (or
 `detail: true`) adds each one's parameters (member, kind, default, range, label, `feature`
-gating), textures (uniform, default), features, keyword groups and default render state.
+gating), textures (uniform, default), features, keyword groups, the inputs it requires
+(`require`, plus `require_rules`: inputs only while a feature is on, `"!X"` while off) and its
+default render state (`state`, including `shadows: "off"` for shaders that cast none, plus
+`state_rules`: state a feature or keyword value turns on, e.g. hologram's
+`BLEND_MODE_ALPHA` makes it alpha blended).
 `type` filters by shader type: `mesh`, `ui`, `points`, `lines` or `sky` (sprites, tilemaps and
 models draw with mesh shaders).
 
@@ -150,8 +154,10 @@ Manifest lines (library shaders and forks that declare them) beyond the basic on
   (`v_color` is their product).
 - The engine defines the blend mode a variant draws with: `BLEND_NONE`, `BLEND_ALPHA`,
   `BLEND_PREMULTIPLIED`, `BLEND_ADDITIVE` or `BLEND_MULTIPLY` (`#ifdef BLEND_ADDITIVE`).
-  `finalizeColor` fogs by it (additive fades to black, multiply to white), so a shader
-  needs no keyword of its own for the blend. Feature and keyword names `BLEND_*` are
-  reserved.
+  `finalizeColor` fogs by it (additive fades to black, multiply to white);
+  `finalizeStraightColor` (what library shaders call) also shapes a straight-alpha colour for
+  it (premultiplied: times alpha; multiply: faded to white by alpha), so a shader needs no
+  keyword of its own for the blend and draws right in every blend mode. Feature and keyword
+  names `BLEND_*` are reserved.
 - Library mesh shaders draw on a Terrain too (its height-mapped patches; `uv1` is the
   terrain's tiled UV, painted layers stay Lit's).

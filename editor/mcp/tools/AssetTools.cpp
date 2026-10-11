@@ -2658,11 +2658,12 @@ void registerAssetTools(McpRegistry& registry) {
             "The engine's library shaders (\"library:<name>\"): pick one before forking. Each has a type (mesh shaders go "
             "on a material: set_properties submeshes[i].material.shader; ui/points/lines/sky ones in the component's "
             "customShader), lighting modes, and with detail its parameters (shaderParams, colours linear), textures "
-            "(shaderTextures), features/keywords (shaderFeatures) and default render state.";
+            "(shaderTextures), features/keywords (shaderFeatures), required inputs and default render state (state, "
+            "shadows), with the require_rules/state_rules a feature or keyword turns on.";
         tool.inputSchema = object({
             {"type", stringEnum("", {"mesh", "ui", "points", "lines", "sky"})},
             {"name", string("One shader (\"toon\" or \"library:toon\"); implies detail.")},
-            {"detail", withDefault(boolean("Parameters, textures, features, keywords, state."), false)}
+            {"detail", withDefault(boolean("Parameters, textures, features, keywords, inputs, state and their rules."), false)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

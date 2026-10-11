@@ -183,30 +183,50 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
         return out;
     }
 
-    Json require = Json::array();
-    const std::pair<uint32_t, const char*> requires[] = {
-        {ShaderRequire_Normals, "normals"}, {ShaderRequire_Tangents, "tangents"}, {ShaderRequire_UV1, "uv1"},
-        {ShaderRequire_UV2, "uv2"}, {ShaderRequire_Color, "color"}};
-    for (const auto& [flag, name] : requires) {
-        if (manifest.require & flag) require.push_back(name);
+    // @require: the inputs, then the feature= ones ("!<DEFINE>": while it is off)
+    auto requireJson = [](uint32_t flags) {
+        Json list = Json::array();
+        const std::pair<uint32_t, const char*> inputs[] = {
+            {ShaderRequire_Position, "position"}, {ShaderRequire_Normals, "normals"}, {ShaderRequire_Tangents, "tangents"},
+            {ShaderRequire_UV1, "uv1"}, {ShaderRequire_UV2, "uv2"}, {ShaderRequire_Color, "color"},
+            {ShaderRequire_RawColor, "rawcolor"}};
+        for (const auto& [flag, name] : inputs) {
+            if (flags & flag) list.push_back(name);
+        }
+        return list;
+    };
+    out["require"] = requireJson(manifest.require);
+    Json requireRules = Json::array();
+    for (const ShaderManifestRequireRule& rule : manifest.requireRules) {
+        requireRules.push_back({{"require", requireJson(rule.require)}, {"feature", (rule.negate ? "!" : "") + rule.define}});
     }
-    out["require"] = require;
+    out["require_rules"] = requireRules;
 
-    // @state defaults, as the material properties name them
-    Json state = Json::object();
-    const ShaderManifestState& s = manifest.state;
-    if (s.blend != MaterialBlendMode::AUTO) state["blendMode"] = enumToJson((int)s.blend, *enumTable("material_blend_mode"));
-    if (s.cull != MaterialCullMode::AUTO) state["cullMode"] = enumToJson((int)s.cull, *enumTable("material_cull_mode"));
-    if (s.depthWrite != MaterialDepthWrite::AUTO) state["depthWrite"] = enumToJson((int)s.depthWrite, *enumTable("material_depth_write"));
-    if (s.depthTest != MaterialDepthTest::AUTO) state["depthTest"] = enumToJson((int)s.depthTest, *enumTable("material_depth_test"));
-    if (s.hasDepthOffset) {
-        state["depthOffsetFactor"] = number(s.depthOffsetFactor);
-        state["depthOffsetUnits"] = number(s.depthOffsetUnits);
+    // @state defaults, as the material properties name them, then the @state[<DEFINE>] rules
+    // that apply over them while a feature or keyword is on ("!<DEFINE>": off), in order
+    auto stateJson = [](const ShaderManifestState& s) {
+        Json state = Json::object();
+        if (s.blend != MaterialBlendMode::AUTO) state["blendMode"] = enumToJson((int)s.blend, *enumTable("material_blend_mode"));
+        if (s.cull != MaterialCullMode::AUTO) state["cullMode"] = enumToJson((int)s.cull, *enumTable("material_cull_mode"));
+        if (s.depthWrite != MaterialDepthWrite::AUTO) state["depthWrite"] = enumToJson((int)s.depthWrite, *enumTable("material_depth_write"));
+        if (s.depthTest != MaterialDepthTest::AUTO) state["depthTest"] = enumToJson((int)s.depthTest, *enumTable("material_depth_test"));
+        if (s.hasDepthOffset) {
+            state["depthOffsetFactor"] = number(s.depthOffsetFactor);
+            state["depthOffsetUnits"] = number(s.depthOffsetUnits);
+        }
+        if (s.queue == ShaderQueue::GEOMETRY) state["queue"] = "geometry";
+        else if (s.queue == ShaderQueue::ALPHATEST) state["queue"] = "alphatest";
+        else if (s.queue == ShaderQueue::TRANSPARENT) state["queue"] = "transparent";
+        if (s.shadows == ShaderShadowCasting::ON) state["shadows"] = "on";
+        else if (s.shadows == ShaderShadowCasting::OFF) state["shadows"] = "off";
+        return state;
+    };
+    out["state"] = stateJson(manifest.state);
+    Json stateRules = Json::array();
+    for (const ShaderManifestStateRule& rule : manifest.stateRules) {
+        stateRules.push_back({{"feature", (rule.negate ? "!" : "") + rule.define}, {"state", stateJson(rule.state)}});
     }
-    if (s.queue == ShaderQueue::GEOMETRY) state["queue"] = "geometry";
-    else if (s.queue == ShaderQueue::ALPHATEST) state["queue"] = "alphatest";
-    else if (s.queue == ShaderQueue::TRANSPARENT) state["queue"] = "transparent";
-    out["state"] = state;
+    out["state_rules"] = stateRules;
 
     Json properties = Json::array();
     for (const ShaderManifestProperty& property : manifest.properties) {
