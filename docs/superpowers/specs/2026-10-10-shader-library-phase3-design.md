@@ -83,7 +83,108 @@ decals, intersection highlights), while scenes that use none of them pay nothing
   before (verified through a pass-count debug log or counter).
 - Phase 1 and 2 regression checks still pass.
 
-## 4. Definition of done
+## 4. Implementation notes
+
+Decisions taken while implementing phase 3, and deviations from the text above. They
+override the sections they refer to; later agents follow them. The contract for library
+shaders and the editor is also written out in `/tmp/shader-research/p3-api.md`.
+
+### 4.1 Engine (sl/p3-engine)
+
+- Manifest (§2.0, §2.1): `@require scenedepth` / `@require scenecolor` (lower case; §2.1's
+  `sceneDepth` spelling is not accepted), with `feature=` gating like every input:
+  `ShaderRequire_SceneDepth` (1<<8), `ShaderRequire_SceneColor` (1<<9), mask
+  `ShaderRequire_SceneInputs`, defines `SURFACE_SCENE_DEPTH` / `SURFACE_SCENE_COLOR`. Manifest
+  errors: a shader type other than mesh or points; a `@texture` named `u_sceneDepthTexture` /
+  `u_sceneColorTexture`; a mesh variant reading the scene whose state does not put it in the
+  transparent queue (`queue=transparent` or a blend other than opaque), checked for the default
+  features and each `feature=` rule adding a scene input. Accessors
+  `ShaderManifest::getPossibleSceneInputs()` (what some variant may read: the picker's cost mark)
+  and `getRequireNames(flags)`. MCP `list_shaders` gives `scene_inputs` on every entry;
+  `docs/shaders/library.md` a "Reads the scene" line.
+- `includes/scene.glsl` (fragment stage): `screenUV()`, `sceneLinearDepth(uv)`,
+  `fragmentLinearDepth()`, `sceneWorldPosition(uv)`, `sceneColor(uv)`, plus the helpers
+  `sceneRawDepth(uv)` and `sceneDistanceFromDepth(uv, depth01)`. Screen UV is y up (NDC-like) on
+  every backend; distances are view-space distances in world units from the camera plane
+  (computed from rows of the inverse projection, so perspective, orthographic and oblique mirror
+  projections agree), the far clip distance where nothing opaque was drawn; the colour is linear
+  (fog included), decoded from the copy. Without either define the include declares nothing.
+  Engine block `u_fs_sceneInputs` (`scene_inputs_t`: inverse view-projection, inverse projection
+  rows z and w, screen UV, copy UV and depth UV transforms), textures `u_sceneDepthTexture` (packed
+  RGBA8, nearest) and `u_sceneColorTexture` (linear), bound by name per draw
+  (`RenderSystem::applySceneInputs`; far depth and black where the pass has none). The Y
+  orientation is a per-pass uniform (backend row order, the pass's flip, the viewport), not a
+  compile-time switch.
+- Producing them (§2.1): the loaded meshes (main draws and extra passes, instanced, sprites) and
+  points whose variant reads the scene are recorded by entity
+  (`sceneInputMeshes` / `sceneInputPoints`); each camera pass checks only those, with its draws'
+  visibility. Depth: the SSR G-buffer, else the SSAO depth pre-pass, else the depth-reading post
+  pass's pre-pass, else its own pre-pass of the opaque meshes (`renderOpaqueDepth`, which
+  `renderDepthPrePass` now calls) at the colour viewport's size. The depth pre-pass *setting*
+  (`depthPrepassEnabled`) draws into the colour pass's own depth attachment, which cannot be
+  sampled while bound: it is not reused, the scene depth is a separate pre-pass (deviation from
+  the brief's wording). While any loaded object reads the scene depth every mesh keeps a depth
+  program (`MeshShaderEnvironment::sceneDepth`; the export collector adds it from the scene and
+  prefab content). Colour: the colour pass is split (depth and stencil stored, resumed with
+  everything loaded: `CameraRender::startSplitRenderPass` / `resumeRenderPass`); a 3D pass copies
+  after its opaque queue and the sky (so UI, lines and the editor's gizmos are not in it), a
+  hierarchy-order pass right before its first draw reading the colour. The copy is the blit
+  shader (its parameter is now a UV scale/offset; the fixed-resolution blit draws the same) into
+  a linear target at `sceneColorScale`.
+- `SceneSettings::sceneColorScale` (`SceneColorScale::FULL` / `HALF`, default HALF): Lua
+  `scene.sceneColorScale`, YAML `sceneColorScale: full` (written only when not the default, so
+  older scenes re-save unchanged; export codegen likewise), Catalog / MCP `scene_color_scale`
+  (`full`, `half`), inspector Scene settings "Scene Color > Scale".
+- Exported scene camera drawing straight to the swapchain (no SSR, post-process, fixed
+  resolution): while a scene-colour reader is in its view (or was, in the last 30 frames) it draws
+  into an offscreen target blitted to the screen (`updateSceneColorRedirect`; the scene keeps
+  RTT pipelines for the switch, the matrices are remade with the other Y flip on a switch; the
+  target freed after 180 frames unused). The swapchain's MSAA does not apply in those frames
+  (as with SSR and post-process). A layer scene drawn straight to the screen gets no colour copy.
+- Mirrors: a mirror camera's depth pre-pass draws mirrored in x, so it culls as its
+  reversed-winding colour pass does; the depth UV transform mirrors it back.
+- Reflection probes: their faces draw the opaque queue only, so readers (transparent) are not in
+  them; an opaque reader would get the fallbacks there. Documented rule, no probe support.
+- Targets: per view (`RenderView::sceneInputTargets`), one per size and kind, reused across
+  passes and frames, freed 180 draws after their last use.
+- Opaque-queue reader (§2.1): `RenderSystem::getSubmeshSceneInputs` (main shader and extra pass,
+  with the submesh's queue); an error under the material's Surface rows in the inspector, and in
+  `check --shaders` / `check_shader` without arguments
+  (`ProjectChecks::sceneInputFindings`, per GameObject and submesh). The picker mark and the rest
+  of the editor are the editor wave's.
+- Diagnostics: with `JASPERENGINE_READY_SIGNAL` a "Scene inputs: ..." line follows "Render
+  objects" (readers, last frame's reading passes, depth pre-passes, shared depths, copies,
+  targets alive and made). `JASPERENGINE_FRAME_STATS=1` logs sokol's frame statistics 2, 30 and 90
+  frames after "Engine ready" (passes, draws, pipelines, live and made images, pipelines, views).
+- Pre-existing, fixed: a post-process pass sampling the depth (no SSAO, no SSR) drew the depth
+  pre-pass over meshes without a depth program (only casters and the SSAO / pre-pass settings
+  had one); their draw failed and flagged a reload every frame (phase 2 tag: 72, 128, 248
+  pipelines made at frames 12, 40, 100), and they were missing from its depth. Such a pass now
+  gives every mesh a depth program like a scene-depth reader (collector: the chain's forks
+  declaring `u_depthTexture`).
+- Fixture `tools/fixtures/scene-inputs`: fixture-only forks (`si_world_grid`, `si_depth_grid`,
+  `si_intersection`, `si_refraction`, `si_haze`, `si_soft_points`, `si_post_depth`), a
+  render-to-texture camera, switches `SI_ORTHO`, `SI_FIXED`, `SI_PREPASS`, `SI_SSAO`, `SI_SSR`,
+  `SI_FULL`, `SI_2D`, `SI_INVISIBLE`, `SI_MIRROR`, `SI_POST`, `SI_SCENE=identity|hidden|saved`;
+  `Saved.scene` from `generate.py`. MCP tests `test_scene_inputs.py`,
+  `test_scene_color_scale.py`.
+- Checks run: full `tools/build.sh linux`; `shaders --library all --backend all` (29 shaders, 8700
+  compiles, 0 failures) and 44 built-in variants on six backends (Lit tiers and modes with
+  shadows, IBL, SSAO, fog, normal map, skinning, morph, instancing and fade, 2D lights, terrain,
+  mirror, alpha modes; depth incl. `Txr`; G-buffer; UI; points; lines; sky; SSAO; SSR; composite;
+  shadow2d; blit; postprocess), 0 failures; an export `--backend all` of the scene-inputs fixture
+  (24 variants x 6 backends, 0 failures); smoke tests with screenshots of scene-inputs (every
+  switch above) and of shader-library, stencil, extra-pass, shader-regressions, unified-lighting
+  and runtime-shaders; the editor's Scene and Game views of `Saved.scene` (MCP screenshots);
+  `tools/fixtures/shader-library-export/check.sh` (all five scenes pass); the MCP suite (262
+  passed, 3 slow ones skipped); `SI_SCENE=identity` (6 lights, directional and spot shadows,
+  fog) pixel for pixel and frame-stats identical to the phase 2 tag build with SSAO and SSR off,
+  on, each alone, and with the depth pre-pass setting (2 / 5 / 5 / 7 / 2 passes, same draws,
+  images and pipelines); `SI_SCENE=hidden` (a reader out of view) runs the identity scene's 2
+  passes and 11 images; every run's images and views made stay constant between frames 40 and
+  100 (targets reused). Only the GL backend was run; the other backends were compiled, not run.
+
+## 5. Definition of done
 
 All requirements implemented, all checks pass, merged into `shader-library`, review pass
 found no open correctness bugs.
