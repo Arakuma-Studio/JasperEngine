@@ -256,7 +256,8 @@ namespace jasperengine::editor{
         // What submesh `submesh`'s material reads in its current variant: its shader (its own,
         // else the mesh's or the scene's), or with extraPass its extra pass's shader
         static uint32_t getMaterialSceneInputs(Scene* scene, Entity entity, unsigned int submesh, bool extraPass);
-        // What a UI/Points/Lines/Sky component's shader (own or the scene's) reads in its current variant
+        // What a UI/Points/Lines/Sky component's shader (own or the scene's) reads in its current variant;
+        // for a mesh, what its shader reads in the variants of the submeshes drawing with it
         static uint32_t getComponentSceneInputs(Scene* scene, Entity entity, ComponentType component);
         // A submesh whose shader or extra pass reads the scene while it draws in the opaque queue
         // (an error: RenderSystem::getSubmeshSceneInputs): the blend mode that moves it to the
