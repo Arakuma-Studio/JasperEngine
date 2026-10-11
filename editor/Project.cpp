@@ -2971,10 +2971,13 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
                     if (mesh.submeshes[s].gbufferShader) {
                         keys.insert(ShaderPool::getShaderKey(ShaderType::GBUFFER, mesh.submeshes[s].gbufferShaderProperties));
                     }
-                    // the extra pass as loaded (from its reference: the build-fail state does not matter)
-                    if (mesh.submeshes[s].extraPass && RenderSystem::hasExtraPass(mesh.submeshes[s], false)) {
+                    // the extra pass as loaded: its variant and the reference it was loaded with (the
+                    // build-fail state does not matter; the material may name another pass by now
+                    // if the mesh has not reloaded yet)
+                    if (mesh.submeshes[s].extraPass && mesh.submeshes[s].extraPass->customShaderId != 0 &&
+                            RenderSystem::hasExtraPass(mesh.submeshes[s], false)) {
                         keys.insert(ShaderPool::getShaderKey(ShaderType::MESH, mesh.submeshes[s].extraPass->shaderProperties,
-                            ShaderPool::registerCustomShader(RenderSystem::getSubmeshExtraPassReference(mesh.submeshes[s]))));
+                            mesh.submeshes[s].extraPass->customShaderId));
                     }
                 }
             }
@@ -3165,11 +3168,13 @@ void editor::Project::invalidateCustomShaders() {
 
         for (Entity entity : sceneProject.entities) {
             if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
-                // a material can name a fork too (library shaders do not change)
+                // a material or its extra pass can name a fork too (library shaders do not change)
                 bool materialFork = false;
                 for (unsigned int s = 0; s < mesh->numSubmeshes; s++){
                     const std::string& shader = mesh->submeshes[s].material.shader;
+                    const std::string& pass = mesh->submeshes[s].material.extraPass.shader;
                     materialFork = materialFork || (!shader.empty() && !ShaderReference::isLibrary(shader));
+                    materialFork = materialFork || (!pass.empty() && !ShaderReference::isLibrary(pass));
                 }
                 flagReload(mesh->needReload, sceneMesh || materialFork || !mesh->customShader.empty() || !mesh->customDepthShader.empty());
             }

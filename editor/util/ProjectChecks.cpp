@@ -751,11 +751,13 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
         // the manifest: its syntax, and its @property/@texture rows against what compiled
         if (use.shaderType != static_cast<int>(ShaderType::DEPTH)) {
             for (const ShaderManifestDiagnostic& d : validateShaderManifest(use.base, {&data}, true)) {
-                check.findings.push_back({"shader", d.file, d.line, 0, d.error ? "error" : "warning", "manifest: " + d.message});
+                // a fork's manifest names its files as referenced: report them where they are
+                const std::string file = shaderSourcePath(project, use.base, d.file);
+                check.findings.push_back({"shader", file, d.line, 0, d.error ? "error" : "warning", "manifest: " + d.message});
                 if (!d.error) continue;
                 check.ok = false;
-                check.errors.push_back({{"severity", "error"}, {"source", d.file}, {"line", d.line}, {"message", "manifest: " + d.message}});
-                check.log += d.file + ":" + std::to_string(d.line) + ": error: manifest: " + d.message + "\n";
+                check.errors.push_back({{"severity", "error"}, {"source", file}, {"line", d.line}, {"message", "manifest: " + d.message}});
+                check.log += file + ":" + std::to_string(d.line) + ": error: manifest: " + d.message + "\n";
             }
         }
         return check;
