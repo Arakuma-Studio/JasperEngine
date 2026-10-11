@@ -3,7 +3,7 @@
 // @shader mesh
 // @name "Water"
 // @category "Nature"
-// @description "Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint. Optional scene-reading features: DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness) read the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth. Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass. Alpha blended; casts no shadows."
+// @description "Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint. Optional scene-reading features: DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness) read the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth. Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass. REFRACTION hides other transparent objects behind the water where it bends the view (the scene colour holds only opaque objects and the sky), and needs the Alpha or Premultiplied blend (Additive and Multiply draw it unrefracted). Alpha blended; casts no shadows."
 // @lighting none pixel
 // @require position normals
 // @require scenedepth feature=DEPTH_FOAM
@@ -67,9 +67,16 @@
 //     unit; the shift grows over the first refractionDepth units of thickness (none at the
 //     shore line), never reaches past the screen's border (no smeared edge), and a shifted
 //     sample landing on something in front of the water falls back to the straight one. The
-//     water is drawn over that colour (its alpha used to mix) and written with alpha 1, the
-//     fog applied to the water's own colour only (the scene colour has its fog already).
-//     With ABSORPTION the thickness of the shifted sample sets the colour.
+//     water is drawn over that colour as the blend draws it (finalizeStraightColorOverScene:
+//     display-encoded values mixed by its alpha; the fog on the water's own colour only, the
+//     scene colour has its fog) and written with alpha 1 where the refraction is whole. The
+//     scene colour holds the opaque scene and the sky only, so transparent objects behind
+//     the water are hidden there; where the shift is still under a couple of pixels (the
+//     first bit of thickness at the shore line, refractionStrength 0) the water blends over
+//     what the target holds instead, partly then fully, as without REFRACTION (at strength 0
+//     it draws exactly the water without it, transparent objects behind included). With
+//     ABSORPTION the thickness of the shifted sample sets the colour. The Additive and
+//     Multiply blends cannot replace what is behind: they draw the water unrefracted.
 
 uniform u_fs_customParams {
     vec4 shallowColor;
@@ -178,7 +185,8 @@ void main() {
         vec2 shift = (frame.viewMatrix * vec4(n - surfaceNormal, 0.0)).xy * customParams.refractionStrength;
         shift.x *= frame.resolution.y * frame.resolution.z;
         // none at the shore line, full from refractionDepth of water
-        shift *= clamp(thickness / max(customParams.refractionDepth, 1e-3), 0.0, 1.0);
+        float reach = clamp(thickness / max(customParams.refractionDepth, 1e-3), 0.0, 1.0);
+        shift *= reach;
         // never past the screen's border, where the copy would repeat its edge
         vec2 room = min(screen, vec2(1.0) - screen);
         shift *= clamp(min(room.x, room.y) / max(2.0 * length(shift), 1e-5), 0.0, 1.0);
@@ -191,6 +199,10 @@ void main() {
             seenThickness = (refractedDepth - surfaceDepth) * rayScale;
         }
         vec3 behind = sceneColor(refracted);
+        // the refracted sample replaces what the target holds once a unit of ripple shifts
+        // it by 2 pixels; before (strength 0, the shore line) the water blends over the
+        // target as without REFRACTION (transparent objects behind it stay visible)
+        float refractionWeight = clamp(customParams.refractionStrength * reach * frame.resolution.y * 0.5, 0.0, 1.0);
     #endif
 
     #ifdef ABSORPTION
@@ -199,10 +211,6 @@ void main() {
         water.a *= smoothstep(0.0, max(customParams.shoreFade, 1e-4), seenThickness);
     #else
         vec4 water = mix(customParams.shallowColor, customParams.deepColor, fresnel);
-        #ifdef REFRACTION
-            // the tint grows in with the refraction, so the shore line is soft
-            water.a *= clamp(thickness / max(customParams.refractionDepth, 1e-3), 0.0, 1.0);
-        #endif
     #endif
 
     float foamNoise = 0.5 * (texture(sampler2D(u_noiseTexture, u_noise_smp), uv1).r +
@@ -248,8 +256,9 @@ void main() {
     #endif
 
     #ifdef REFRACTION
-        // the water over what is under it; only the water's own colour takes the fog
-        g_finalColor = finalizeFoggedColor(vec4(mix(behind, applyFog(color), alpha), 1.0));
+        // the water over what is under it, as the blend draws it; only the water's own
+        // colour takes the fog
+        g_finalColor = finalizeStraightColorOverScene(vec4(color, alpha), behind, refractionWeight);
     #else
         g_finalColor = finalizeStraightColor(vec4(color, alpha));
     #endif

@@ -3,7 +3,7 @@
 // @shader mesh
 // @name "Heat Haze"
 // @category "Effects"
-// @description "Shimmer over fire, exhausts and portals: the scene behind the mesh wobbled by two layers of a scrolling noise texture, as strong as the mask texture, the vertex and instance alpha and the soft edge (UV border for quads and sprites, fresnel for volumes) allow. Reads the scene colour: on mobile a copy of the screen (half resolution by default) and a split of the render pass; SOFT also reads the scene depth (an extra depth-only pass of the opaque meshes, none when SSAO or SSR already made one). Alpha blended, no depth write, both faces (give a closed volume cull back), casts no shadows; other transparent objects are not seen through it."
+// @description "Shimmer over fire, exhausts and portals: the scene behind the mesh wobbled by two layers of a scrolling noise texture, as strong as the mask texture, the vertex and instance alpha and the soft edge (UV border for quads and sprites, fresnel for volumes) allow. Reads the scene colour: on mobile a copy of the screen (half resolution by default) and a split of the render pass; SOFT also reads the scene depth (an extra depth-only pass of the opaque meshes, none when SSAO or SSR already made one). Without SOFT, a shift that lands on an object in front of the haze pulls that object's colour into it (a smear along its outline): turn SOFT on where objects pass in front. Transparent objects behind the haze are hidden where it is at full strength (it shows the scene colour, which holds only opaque objects and the sky), faintly seen where it fades. Alpha blended, no depth write, both faces (give a closed volume cull back), casts no shadows."
 // @require uv1 color scenecolor
 // @require normals position feature=EDGE_FADE_FRESNEL
 // @require scenedepth feature=SOFT
@@ -34,8 +34,14 @@
 // scene. SOFT also fades where the mesh comes within `softness` world units of the opaque
 // scene behind it (no hard line where a quad meets the ground) and keeps the straight sample
 // where the shifted one lands on something in front of the haze. The shift never reaches
-// past the screen's border. tint multiplies the colour (a portal's glow); the scene colour
-// has its fog already, so no fog is added. The default noise scroll moves the pattern up a
+// past the screen's border. Without SOFT nothing rejects a shifted sample landing on an
+// object in front of the haze, which then smears that object's colour into it along its
+// outline. tint multiplies the colour (a portal's glow); the scene colour has its fog
+// already, so no fog is added, and the tint fades to white with the fog at the haze, as a
+// multiply layer would. The output's alpha blends the shifted scene colour over what the
+// target holds: where the mask is whole, transparent objects drawn before the haze are
+// hidden (the scene colour holds the opaque scene and the sky only); where it fades they
+// show through in proportion. The default noise scroll moves the pattern up a
 // wall or a camera-facing quad (UV v down), as heat rises. Both faces are drawn so a quad
 // shows from behind; a closed volume (a sphere portal) should cull its back faces, or its
 // far side's UV seam shows through.
@@ -115,6 +121,7 @@ void main() {
         }
     #endif
 
-    vec3 color = sceneColor(distorted) * customParams.tint.rgb;
+    // the tint filters the fogged scene colour: the fog at the haze fades it to white
+    vec3 color = sceneColor(distorted) * fadeByFog(customParams.tint.rgb, vec3(1.0));
     g_finalColor = finalizeFoggedColor(vec4(color, clamp(mask * customParams.tint.a, 0.0, 1.0)));
 }
