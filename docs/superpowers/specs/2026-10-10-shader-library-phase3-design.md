@@ -392,7 +392,7 @@ shaders and the editor is also written out in `/tmp/shader-research/p3-api.md`.
   `scene_inputs` and `cost_note` added to the guide test's non-tool words); `TOOLS.md` regenerated.
 - Tests: `tools/mcp/tests/test_scene_inputs_editor.py` (forks: depth always, colour with a
   feature; points): list_shaders `cost_note` and that features plus requires make up
-  `scene_inputs` (vacuous until library shaders read the scene: none did on this branch),
+  `scene_inputs`,
   get_entity / get_shader_uniforms per variant, the opaque-queue error and fix, applying the fix
   through `set_properties`, undo restoring the error, an extra pass reader, a points reader.
 - Checks run: full `tools/build.sh linux`; the MCP suite (268 passed, 3 slow ones skipped);
@@ -402,6 +402,52 @@ shaders and the editor is also written out in `/tmp/shader-research/p3-api.md`.
   the opaque-queue error with its button; the button set Alpha (error gone) and undo restored
   Opaque (read back through `get_entity`); the 17 scene and prefab files of the fixture projects
   re-saved with this editor and with a build of c46fa1d6: all byte-identical.
+
+### 4.7 Review fixes: editor (sl/p3-fix-editor)
+
+Fixes of the phase 3 review of the editor, MCP and fixtures (each reproduced first, each with a
+regression test in `tools/mcp/tests/test_scene_inputs_editor.py`):
+
+- `test_list_shaders_cost` already used toon as the shader reading nothing and asserted unlit's
+  `SOFT` reading `scenedepth` (fixed by 8e04a5d4); the "(vacuous until ...)" wording of §4.4 is gone.
+- Guide: `screenUV` and `fragmentLinearDepth` are declared with either input (`scene.glsl`
+  declares them under `SURFACE_SCENE_DEPTH || SURFACE_SCENE_COLOR`); only `sceneLinearDepth` /
+  `sceneWorldPosition` need `scenedepth` and `sceneColor` needs `scenecolor`.
+  `test_guide_scene_inputs` derives what each function needs from the include's `#if` nesting and
+  compares it with the guide's sentence.
+- `Catalog::getComponentSceneInputs` of a MeshComponent was 0: `get_shader_uniforms` on a mesh
+  whose own `customShader` reads the scene said nothing. It is now the OR over the submeshes
+  drawing with the mesh's shader (no shader of their own) of that shader's variant with their
+  material's features (the mesh's shader has no features of its own).
+- `check --files <shader file>` listed the opaque-queue errors of every material.
+  `ProjectChecks::sceneInputFindings(project, forks)` keeps, with a fork list, the materials whose
+  colour reference (`getSubmeshShaderReference`) or extra pass reference is one of the forks
+  checked (the same strings `shaderForksInUse` collects); `check --shaders` (every shader) passes
+  none and reports all. MCP `check_shader` keeps its rule (state findings only without `shader`).
+- `tools/fixtures/scene-inputs/generate.py` deletes the previous `Saved.scene` (`delete_scene`
+  with its file, in the editor's project copy) before `create_scene`: re-runs work (run twice in
+  a row; the regenerated scene differs only in its random id and the camera aspect, not committed).
+- Guide additions: an exported game drawing straight to the screen draws offscreen and blits
+  while a colour reader is visible and 30 frames after (no swapchain MSAA those frames); a layer
+  scene (child scene, `Engine.addSceneLayer`) drawn straight to the screen has no copy, its colour
+  readers read black (its depth readers see its own opaque meshes); render-to-texture cameras and
+  editor views always have one. Also `@state priority=N` (one sentence, the engine-fix branch's
+  manifest key). `list_shaders` does not show it: no accessor for it existed on this base.
+- Duplicated comment line in `McpValues::manifestToJson` removed.
+- Scene inputs in use (supersedes "No ... indicator" of §4.4): `Catalog::getSceneInputsInUse
+  (scene)` maps `RenderSystem::getSceneInputUsage()` (bit 0 depth, bit 1 colour, the scene's last
+  frame) to `ShaderRequire_` bits. Inspector: Scene Color gets an "In Use" row (amber gauge and
+  "Depth and colour" / "Depth" / "Colour", or a disabled "None"; tooltip: the brief cost).
+  `get_scene_settings` without `names` adds `scene_inputs_in_use` (not a setting; a name filter
+  returns settings only); `TOOLS.md` regenerated. The accessor did not exist on this base: commit
+  24bbcd41 adds a placeholder (from `lastSceneInputStats`: depth when a pre-pass ran or a depth was
+  shared, colour when a copy was taken) for the engine-fix branch's real one to replace at merge.
+  Checked in the editor (harness Xvfb, a 3D scene with a reader of both in the Scene view): the
+  row reads "Depth and colour" in amber.
+- Checks run: full `tools/build.sh linux`; the MCP suite (271 passed, 3 skipped; the timing test
+  `test_cli_lua_isolated_state` failed under the parallel load and passed alone);
+  `tools/fixtures/shader-library-export/check.sh` (all 7 scenes ok); `generate.py` of the
+  scene-inputs fixture twice in a row (both 9 variants, 0 failed, 0 findings).
 
 ## 5. Definition of done
 
