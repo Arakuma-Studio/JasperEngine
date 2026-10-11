@@ -244,6 +244,7 @@ namespace Style {
 		return style != BorderStyle::None && style != BorderStyle::Hidden;
 	}
 	enum class Isolation : uint8_t { Auto, Isolate };
+	enum class ObjectFit : uint8_t { Fill, Contain, Cover, None, ScaleDown };
 
 	// -- Text (p3-text) --
 	enum class WhiteSpaceCollapse : uint8_t { Collapse, Preserve, PreserveBreaks, PreserveSpaces, BreakSpaces };

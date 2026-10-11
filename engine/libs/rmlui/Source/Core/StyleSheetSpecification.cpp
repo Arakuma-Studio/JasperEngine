@@ -540,6 +540,14 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterShorthand(ShorthandId::Border, "border", "border-width, border-style, border-color, border-image", ShorthandType::Custom);
 	properties.SetShorthandParser(ShorthandId::Border, &ParseBorderShorthand);
 
+	// object-fit and object-position (phase 3, 3.9.3), read by replaced elements. The position's axes are lengths or
+	// percentages of the free space; the shorthand takes the CSS <position> (keywords, edge offsets).
+	RegisterProperty(PropertyId::ObjectFit, "object-fit", "fill", false, false).AddParser("keyword", "fill, contain, cover, none, scale-down");
+	RegisterProperty(PropertyId::ObjectPositionX, "object-position-x", "50%", false, false).AddParser("length_percent");
+	RegisterProperty(PropertyId::ObjectPositionY, "object-position-y", "50%", false, false).AddParser("length_percent");
+	RegisterShorthand(ShorthandId::ObjectPosition, "object-position", "object-position-x, object-position-y", ShorthandType::Custom);
+	properties.SetShorthandParser(ShorthandId::ObjectPosition, &ParsePositionShorthand);
+
 	// Stacking contexts (phase 3, 3.8.2).
 	RegisterProperty(PropertyId::Isolation, "isolation", "auto", false, false).AddParser("keyword", "auto, isolate");
 

@@ -36,6 +36,7 @@ add_executable(${TARGET_NAME}
 	LayoutChildren.cpp
 	LineBreaking.cpp
 	Localization.cpp
+	ObjectFit.cpp
 	Outline.cpp
 	main.cpp
 	Math.cpp

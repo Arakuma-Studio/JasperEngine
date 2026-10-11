@@ -27,7 +27,7 @@ public:
 	/// @param feather_unit The size of a device pixel in the geometry's units (1 unless the geometry is drawn scaled).
 	static void DrawBorder(Vector<Vertex>& vertices, Vector<int>& indices, const BorderMetrics& metrics, EdgeSizes edge_sizes,
 		const ColourbPremultiplied colors[4], const BorderStyles& styles, Vector2f top_gap = {}, FeatherEdges edges = FeatherEdges::None,
-		bool feather_inner_edge = true, float feather_unit = 1.f);
+		bool feather_inner_edge = true, float feather_unit = 1.f, bool square_dots = false);
 
 	/// Fills the inner area of the metrics (its corners rounded by the inner radii), the edges feathered as asked.
 	/// @param under_border The widths of a border drawn over it: the fill then reaches half a pixel under the border.

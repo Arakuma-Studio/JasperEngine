@@ -177,6 +177,8 @@ void ElementBackgroundBorder::GenerateOutline(Element* element)
 		GeometryBackgroundBorder::ScaleRadiiToFit(radii, ring.GetFillSize() + Vector2f(2.f * ring_width));
 		ring.SetBorderRadius(radii);
 		ring.SetBorderStyles({ring_style, ring_style, ring_style, ring_style});
+		// Chromium's outlines are dotted with square dots at every width.
+		ring.SetSquareDots(true);
 		const ColourbPremultiplied colors[4] = {ring_color, ring_color, ring_color, ring_color};
 		MeshUtilities::GenerateBackgroundBorder(mesh, ring, transparent, colors, feather_unit);
 	};

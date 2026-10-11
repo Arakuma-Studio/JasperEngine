@@ -68,6 +68,10 @@ public:
 	/// Sets the border style of each side.
 	void SetBorderStyles(BorderStyles value) { border_styles = value; }
 
+	/// Dotted sides drawn with square dots whatever their width (Chromium's outlines); else round from 3px on.
+	bool GetSquareDots() const { return square_dots; }
+	void SetSquareDots(bool value) { square_dots = value; }
+
 	/// Returns the part of the top border that is not drawn: its begin (x) and end (y) in px from the left border edge
 	/// (Element::GetBorderTopCut). Empty when the end is not after the begin.
 	Vector2f GetBorderTopGap() const { return border_top_gap; }
@@ -80,12 +84,14 @@ private:
 	EdgeSizes border_widths;
 	CornerSizes2 border_radius;
 	Vector2f border_top_gap;
+	bool square_dots = false;
 	BorderStyles border_styles = {Style::BorderStyle::Solid, Style::BorderStyle::Solid, Style::BorderStyle::Solid, Style::BorderStyle::Solid};
 };
 inline bool operator==(const RenderBox& a, const RenderBox& b)
 {
 	return a.GetFillSize() == b.GetFillSize() && a.GetBorderOffset() == b.GetBorderOffset() && a.GetBorderWidths() == b.GetBorderWidths() &&
-		a.GetBorderRadius() == b.GetBorderRadius() && a.GetBorderTopGap() == b.GetBorderTopGap() && a.GetBorderStyles() == b.GetBorderStyles();
+		a.GetBorderRadius() == b.GetBorderRadius() && a.GetBorderTopGap() == b.GetBorderTopGap() && a.GetBorderStyles() == b.GetBorderStyles() &&
+		a.GetSquareDots() == b.GetSquareDots();
 }
 inline bool operator!=(const RenderBox& a, const RenderBox& b)
 {

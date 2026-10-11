@@ -1648,8 +1648,14 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	case PropertyId::MaskPositionY:
 	case PropertyId::MaskRepeat:
 	case PropertyId::ObjectFit:
+		values.object_fit((ObjectFit)p->Get<int>());
+		break;
 	case PropertyId::ObjectPositionX:
+		values.object_position_x(ComputeLengthPercentage(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		break;
 	case PropertyId::ObjectPositionY:
+		values.object_position_y(ComputeLengthPercentage(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		break;
 	case PropertyId::BorderImage:
 		break;
 

@@ -243,6 +243,11 @@ namespace Style {
 		float opacity = 1.f;
 		Isolation isolation = Isolation::Auto;
 
+		// object-fit and object-position (replaced elements: ComputeObjectFitRect in ObjectFit.h).
+		ObjectFit object_fit = ObjectFit::Fill;
+		LengthPercentage object_position_x = LengthPercentage(LengthPercentage::Percentage, 50.f);
+		LengthPercentage object_position_y = LengthPercentage(LengthPercentage::Percentage, 50.f);
+
 		// Outline: the width as declared (the computed width is 0 when the style is none), the colour unless it is
 		// 'currentcolor' (the initial value, and 'invert').
 		BorderStyle outline_style = BorderStyle::None;
@@ -396,6 +401,9 @@ namespace Style {
 		bool              has_border_radius()          const { if (rare.border_radius_types != 0) return true; for (float value : rare.border_radius_values) { if (value != 0.f) return true; } return false; }
 		float             opacity()                    const { return rare.opacity; }
 		Isolation         isolation()                  const { return rare.isolation; }
+		ObjectFit         object_fit()                 const { return rare.object_fit; }
+		LengthPercentage  object_position_x()          const { return rare.object_position_x; }
+		LengthPercentage  object_position_y()          const { return rare.object_position_y; }
 		BorderStyle       outline_style()              const { return rare.outline_style; }
 		float             outline_width()              const { return rare.outline_style == BorderStyle::None ? 0.f : rare.outline_width; }
 		float             outline_offset()             const { return rare.outline_offset; }
@@ -524,6 +532,9 @@ namespace Style {
 		// Paint (p3-paint)
 		void opacity                   (float value)                { rare.opacity = value; }
 		void isolation                 (Isolation value)            { rare.isolation = value; }
+		void object_fit                (ObjectFit value)            { rare.object_fit = value; }
+		void object_position_x         (LengthPercentage value)     { rare.object_position_x = std::move(value); }
+		void object_position_y         (LengthPercentage value)     { rare.object_position_y = std::move(value); }
 		void outline_style             (BorderStyle value)          { rare.outline_style = value; }
 		void outline_width             (float value)                { rare.outline_width = value; }
 		void outline_offset            (float value)                { rare.outline_offset = value; }

@@ -149,7 +149,7 @@ void MeshUtilities::GenerateBackgroundBorder(Mesh& out_mesh, const RenderBox& re
 		// Styles other than solid, and sides of different colours meeting at a rounded corner, need the styled generator.
 		if (geometry_feathering || rounded || GeometryBorderStyles::IsNeeded(metrics, border_widths, border_colors, border_styles))
 			GeometryBorderStyles::DrawBorder(vertices, indices, metrics, border_widths, border_colors, border_styles, render_box.GetBorderTopGap(),
-				edges, !has_background, feather_unit);
+				edges, !has_background, feather_unit, render_box.GetSquareDots());
 		else
 			geometry.DrawBorder(metrics, border_widths, border_colors, render_box.GetBorderTopGap());
 	}

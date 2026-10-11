@@ -951,7 +951,7 @@ void GeometryBorderStyles::DrawBackground(Vector<Vertex>& vertices, Vector<int>&
 }
 
 void GeometryBorderStyles::DrawBorder(Vector<Vertex>& vertices, Vector<int>& indices, const BorderMetrics& metrics, EdgeSizes edge_sizes,
-	const ColourbPremultiplied colors[4], const BorderStyles& styles, Vector2f top_gap, FeatherEdges edges, bool feather_inner_edge, float feather_unit)
+	const ColourbPremultiplied colors[4], const BorderStyles& styles, Vector2f top_gap, FeatherEdges edges, bool feather_inner_edge, float feather_unit, bool square_dots)
 {
 	float split[4];
 	for (int corner = 0; corner < 4; corner++)
@@ -1114,7 +1114,7 @@ void GeometryBorderStyles::DrawBorder(Vector<Vertex>& vertices, Vector<int>& ind
 						writer.AddDot(centre, width, color);
 				}
 			}
-			else if (width < 3.f)
+			else if (width < 3.f || square_dots)
 			{
 				// Thin dots are squares (Chromium's straight dotted line): a square at each end of the side, and squares
 				// one width apart between them, the pattern centred and aligned to whole pixels.

@@ -3,6 +3,7 @@
 #include "../../../Include/RmlUi/Core/ElementDocument.h"
 #include "../../../Include/RmlUi/Core/ElementUtilities.h"
 #include "../../../Include/RmlUi/Core/MeshUtilities.h"
+#include "../../../Include/RmlUi/Core/ObjectFit.h"
 #include "../../../Include/RmlUi/Core/PropertyIdSet.h"
 #include "../../../Include/RmlUi/Core/StyleSheet.h"
 #include "../../../Include/RmlUi/Core/Texture.h"
@@ -124,7 +125,9 @@ void ElementImage::OnPropertyChange(const PropertyIdSet& changed_properties)
 {
 	Element::OnPropertyChange(changed_properties);
 
-	if (changed_properties.Contains(PropertyId::ImageColor) || changed_properties.Contains(PropertyId::Opacity))
+	if (changed_properties.Contains(PropertyId::ImageColor) || changed_properties.Contains(PropertyId::Opacity) ||
+		changed_properties.Contains(PropertyId::ObjectFit) || changed_properties.Contains(PropertyId::ObjectPositionX) ||
+		changed_properties.Contains(PropertyId::ObjectPositionY))
 		geometry_dirty = true;
 }
 
@@ -180,7 +183,15 @@ void ElementImage::GenerateGeometry()
 	const ColourbPremultiplied quad_colour = computed.image_color().ToPremultiplied(GetDrawOpacity());
 	const RenderBox render_box = GetRenderBox(BoxArea::Content);
 
-	MeshUtilities::GenerateQuad(mesh, render_box.GetFillOffset(), render_box.GetFillSize(), quad_colour, texcoords[0], texcoords[1]);
+	// object-fit and object-position (phase 3, p3-paint): the part of the content box drawn and the part of the image shown.
+	const Vector2f natural = (rect_source != RectSource::None ? rect.Size() : Vector2f(texture.GetDimensions())) * dimensions_scale;
+	ObjectFitRect fit;
+	if (ComputeObjectFitRect(render_box.GetFillSize(), natural, computed.object_fit(), computed.object_position_x(), computed.object_position_y(), fit))
+	{
+		const Vector2f uv_size = texcoords[1] - texcoords[0];
+		MeshUtilities::GenerateQuad(mesh, render_box.GetFillOffset() + fit.rect.TopLeft(), fit.rect.Size(), quad_colour,
+			texcoords[0] + fit.uv.TopLeft() * uv_size, texcoords[0] + fit.uv.BottomRight() * uv_size);
+	}
 
 	if (RenderManager* render_manager = GetRenderManager())
 		geometry = render_manager->MakeGeometry(std::move(mesh));
