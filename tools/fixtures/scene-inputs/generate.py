@@ -61,6 +61,25 @@ async def build(ed, scene):
     await shape(ed, scene, "sphere", "Glass sphere", [2.2, 1.6, -2.0], {"shape": "sphere", "radius": 1.0},
                 {M + "shader": "shaders/si_refraction"})
 
+    # a heat-haze sprite over the left blocks
+    eid = (await ed.call("create_entity", scene=scene, type="sprite", name="Haze sprite", position=[-0.2, 2.0, -2.8],
+                         select=False))["entity_id"]
+    await ed.call("set_properties", scene=scene, entity=eid, values={
+        "sprite": {"width": 64, "height": 64, "pivotPreset": "center"},
+        "mesh": {M + "baseColorTexture": "assets/textures/checker.png", "receiveLights": False, "castShadows": False}})
+    await ed.call("set_transform", scene=scene, entity=eid, scale=2.2 / 64)
+    await ed.call("set_properties", scene=scene, entity=eid, values={"mesh": {M + "shader": "shaders/si_haze"}})
+
+    # soft points crossing the ground at the right
+    pts = []
+    for k in range(9):
+        pts.append({"position": [(k % 3 - 1) * 0.9, -0.1 + (k % 3) * 0.25, (k // 3 - 1) * 0.9], "color": [1, 1, 1, 1],
+                    "size": 0.9, "rotation": 0.0, "textureRect": [0, 0, 1, 1], "visible": True})
+    eid = (await ed.call("create_entity", scene=scene, type="points", name="Soft points", position=[5.0, 0.0, 1.5],
+                         select=False))["entity_id"]
+    await ed.call("set_properties", scene=scene, entity=eid, values={"points": {"customShader": "shaders/si_soft_points"}})
+    await ed.call("set_properties", scene=scene, entity=eid, values={"points": {"points": pts}})
+
 
 async def main() -> None:
     async with Editor(project=str(HERE)) as ed:

@@ -1,4 +1,4 @@
-id: 201533390
+id: 367179023
 name: Saved
 scene:
   backgroundColor: [0.08, 0.1, 0.16, 1]
@@ -44,14 +44,24 @@ maxValues:
   maxColliderVertices3D: 0
   maxColliderIndices3D: 0
 shaderKeys:
+  - type: points
+    properties: 4
+  - type: points
+    properties: 5
+  - type: points
+    properties: 13
   - type: mesh
     properties: 1
   - type: mesh
     properties: 65
   - type: mesh
     properties: 1027
+  - type: mesh
+    properties: 2051
   - type: sky
   - type: depth
+  - type: depth
+    properties: 129
   - type: depth
     properties: 6144
   - type: blit
@@ -75,6 +85,18 @@ shaderKeys:
   - type: mesh
     properties: 65
     customShader: shaders/si_refraction#BLEND_ALPHA
+  - type: mesh
+    properties: 2051
+    customShader: shaders/si_haze#BLEND_ALPHA
+  - type: points
+    properties: 4
+    customShader: shaders/si_soft_points#BLEND_ALPHA
+  - type: points
+    properties: 5
+    customShader: shaders/si_soft_points#BLEND_ALPHA
+  - type: points
+    properties: 13
+    customShader: shaders/si_soft_points#BLEND_ALPHA
 entities:
   - type: Entity
     entity: 1001
@@ -1605,3 +1627,179 @@ entities:
         autoTransparency: true
         cullingMode: back
         windingOrder: ccw
+  - type: Entity
+    entity: 1014
+    name: Haze sprite
+    components:
+      transform:
+        position: [-0.2, 2, -2.8]
+        rotation: [1, 0, 0, 0]
+        scale: [0.034375, 0.034375, 0.034375]
+        worldPosition: [-0.2, 2, -2.8]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [0.034375, 0.034375, 0.034375]
+        localMatrix: [[0.034375, 0, 0, 0], [0, 0.034375, 0, 0], [0, 0, 0.034375, 0], [-0.2, 2, -2.8, 1]]
+        modelMatrix: [[0.034375, 0, 0, 0], [0, 0.034375, 0, 0], [0, 0, 0.034375, 0], [-0.2, 2, -2.8, 1]]
+        normalMatrix: [[29.090908, 0, 0, 5.818182], [0, 29.090908, 0, -58.181816], [0, 0, 29.090908, 81.454544], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: textures/checker.png
+                minFilter: linear
+                magFilter: linear
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: shaders/si_haze
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: true
+            overrideFields: 65664
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        verticesAABB:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        worldAABB:
+          min: [-1.3000001, 0.9, -2.8]
+          max: [0.90000004, 3.1, -2.8]
+        receiveLights: false
+        receiveIBL: false
+        castShadows: false
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 64
+        height: 64
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: center
+  - type: Entity
+    entity: 1015
+    name: Soft points
+    components:
+      transform:
+        position: [5, 0, 1.5]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [5, 0, 1.5]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [5, 0, 1.5, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [5, 0, 1.5, 1]]
+        normalMatrix: [[1, 0, 0, -5], [0, 1, 0, 0], [0, 0, 1, -1.5], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      points:
+        enabled: true
+        maxPoints: 100
+        transparent: false
+        autoTransparency: true
+        texture: ~
+        points:
+          - position: [-0.9, -0.1, -0.9]
+            color: [1, 1, 1, 1]
+            size: 0.9
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0, 0.15, -0.9]
+            color: [1, 1, 1, 1]
+            size: 0.9
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.9, 0.4, -0.9]
+            color: [1, 1, 1, 1]
+            size: 0.9
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [-0.9, -0.1, 0]
+            color: [1, 1, 1, 1]
+            size: 0.9
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0, 0.15, 0]
+            color: [1, 1, 1, 1]
+            size: 0.9
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.9, 0.4, 0]
+            color: [1, 1, 1, 1]
+            size: 0.9
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [-0.9, -0.1, 0.9]
+            color: [1, 1, 1, 1]
+            size: 0.9
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0, 0.15, 0.9]
+            color: [1, 1, 1, 1]
+            size: 0.9
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.9, 0.4, 0.9]
+            color: [1, 1, 1, 1]
+            size: 0.9
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+        customShader: shaders/si_soft_points
