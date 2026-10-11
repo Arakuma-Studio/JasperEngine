@@ -3,7 +3,7 @@
 // @shader mesh
 // @name "Directional Tint"
 // @category "Stylized"
-// @description "Kenney's directional tint: one colour per world axis, blended by the world normal, times the base map. Unlit; set all three colours to white for no tint."
+// @description "Kenney's directional tint: one colour per world axis, blended by the world normal, times the base map. Unlit. White in all three colours is neutral, Kenney's original defaults; the defaults here are a sample tint (warm tops, purple and red sides)."
 // @require normals uv1
 // @state blend=opaque
 // @property color color (1, 1, 1, 1) "Colour (multiplies all three)"
@@ -17,7 +17,8 @@
 // components of the normalised world normal, the tint is
 //     mix(mix(mix(A, B, w.x), A, w.y), C, w.z)
 // where A = color * colorA, B = color * colorB and C = color * colorC; the output is the
-// base map times the tint, alpha 1. White in every colour leaves the base map unchanged.
+// base map times the tint, alpha 1. White in every colour leaves the base map unchanged:
+// that is the original's default; the tinted defaults here only show the effect.
 
 uniform u_fs_customParams {
     vec4 color;
