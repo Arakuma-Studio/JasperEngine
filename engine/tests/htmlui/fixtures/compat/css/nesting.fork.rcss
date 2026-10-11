@@ -31,6 +31,7 @@ border-bottom-color: currentcolor;
 border-left-width: 1px;
 border-left-style: solid;
 border-left-color: currentcolor;
+border-image: none;
 }
 #htmlui-root .parent .card {
 color: #808080ff;

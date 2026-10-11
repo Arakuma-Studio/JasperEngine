@@ -1506,10 +1506,13 @@ namespace {
             // 4. value normalization
             NormalizeContext normalize;
             normalize.colors = facts.colorKeywords;
+            // (the fork's outline-color takes currentcolor too: ForkFeature::Outline, p3-paint)
+            const bool nativeColorRewrite = writesCurrentColorNatively(row->rewrite) ||
+                                            (row->rewrite == RewriteId::Outline && session.options.fork.has(ForkFeature::Outline));
             normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint || keepsCurrentColorKeyword(session, *row) ||
-                                                (session.options.fork.has(ForkFeature::CurrentColor) && writesCurrentColorNatively(row->rewrite));
+                                                (session.options.fork.has(ForkFeature::CurrentColor) && nativeColorRewrite);
             normalize.currentColorMixNative = session.options.fork.has(ForkFeature::CurrentColor) &&
-                                              (writesCurrentColorNatively(row->rewrite) || keepsCurrentColorKeyword(session, *row));
+                                              (nativeColorRewrite || keepsCurrentColorKeyword(session, *row));
             // a style attribute or a keyframe cannot be duplicated per orientation: vmin/vmax evaluated
             normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
             // math functions the fork evaluates stay in the properties written as they are read
