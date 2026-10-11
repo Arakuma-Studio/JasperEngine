@@ -531,22 +531,39 @@ namespace {
 		const AxisPair<float> padding_border = PaddingBorderSize(item, area_width);
 		const AxisPair<float> box_sizing_adjustment =
 			(item.box_sizing == Style::BoxSizing::ContentBox ? padding_border : AxisPair<float>{0.f, 0.f});
-		const OptionalFloat inherent_width = MaybeAdd(MaybeResolve(item.size_width, area_width), box_sizing_adjustment.width);
-		const OptionalFloat inherent_height = MaybeAdd(MaybeResolve(item.size_height, area_height), box_sizing_adjustment.height);
-		OptionalFloat min_width = MaybeAdd(MaybeResolve(item.min_width, area_width), box_sizing_adjustment.width);
-		OptionalFloat min_height = MaybeAdd(MaybeResolve(item.min_height, area_height), box_sizing_adjustment.height);
+		// The preferred aspect ratio (p3-layout) is that of the box-sizing box: applied before the padding and border are
+		// added, to the preferred, minimum and maximum sizes (as Taffy does).
+		const float aspect_ratio = item.aspect_ratio;
+		OptionalFloat inherent_width = MaybeResolve(item.size_width, area_width);
+		OptionalFloat inherent_height = MaybeResolve(item.size_height, area_height);
+		MaybeApplyAspectRatio(inherent_width, inherent_height, aspect_ratio);
+		inherent_width = MaybeAdd(inherent_width, box_sizing_adjustment.width);
+		inherent_height = MaybeAdd(inherent_height, box_sizing_adjustment.height);
+		OptionalFloat min_width = MaybeResolve(item.min_width, area_width);
+		OptionalFloat min_height = MaybeResolve(item.min_height, area_height);
+		MaybeApplyAspectRatio(min_width, min_height, aspect_ratio);
+		min_width = MaybeAdd(min_width, box_sizing_adjustment.width);
+		min_height = MaybeAdd(min_height, box_sizing_adjustment.height);
 		min_width = min_width ? std::max(*min_width, padding_border.width) : padding_border.width;
 		min_height = min_height ? std::max(*min_height, padding_border.height) : padding_border.height;
-		const OptionalFloat max_width = MaybeAdd(MaybeResolveMax(item.max_width, area_width), box_sizing_adjustment.width);
-		const OptionalFloat max_height = MaybeAdd(MaybeResolveMax(item.max_height, area_height), box_sizing_adjustment.height);
+		OptionalFloat max_width = MaybeResolveMax(item.max_width, area_width);
+		OptionalFloat max_height = MaybeResolveMax(item.max_height, area_height);
+		MaybeApplyAspectRatio(max_width, max_height, aspect_ratio);
+		max_width = MaybeAdd(max_width, box_sizing_adjustment.width);
+		max_height = MaybeAdd(max_height, box_sizing_adjustment.height);
 
-		// 'normal' self alignment: 'stretch' without a preferred size, else 'start' (CSS Grid 2, 6.2).
+		// 'normal' self alignment: 'stretch' without a preferred size, else 'start' (CSS Grid 2, 6.2). With an aspect ratio
+		// and no preferred size the width is stretched and the height follows it. A content sizing keyword (min-content,
+		// max-content, fit-content) is a preferred size, 'stretch' fills the area.
+		using Style::SizingKeyword;
+		const bool content_width = (item.width_keyword != SizingKeyword::None && item.width_keyword != SizingKeyword::Stretch);
+		const bool content_height = (item.height_keyword != SizingKeyword::None && item.height_keyword != SizingKeyword::Stretch);
 		SelfAlignment horizontal = item.justify_self;
 		if (horizontal.keyword == SelfAlign::Normal)
-			horizontal.keyword = (inherent_width ? SelfAlign::Start : SelfAlign::Stretch);
+			horizontal.keyword = (inherent_width || content_width ? SelfAlign::Start : SelfAlign::Stretch);
 		SelfAlignment vertical = item.align_self;
 		if (vertical.keyword == SelfAlign::Normal)
-			vertical.keyword = (inherent_height ? SelfAlign::Start : SelfAlign::Stretch);
+			vertical.keyword = (inherent_height || content_height || aspect_ratio > 0.f ? SelfAlign::Start : SelfAlign::Stretch);
 
 		// Both margins resolve against the width of the grid area; 'auto' ones are absent.
 		const Line<OptionalFloat> margin_h = {MaybeResolve(item.margin[3], area_width), MaybeResolve(item.margin[1], area_width)};
@@ -556,11 +573,16 @@ namespace {
 			std::max(area_height - margin_v.start.value_or(0.f) - margin_v.end.value_or(0.f) - item.baseline_shim, 0.f);
 
 		OptionalFloat width = inherent_width;
-		if (!width && margin_h.start && margin_h.end && horizontal.keyword == SelfAlign::Stretch)
+		if (!width && margin_h.start && margin_h.end && !content_width &&
+			(horizontal.keyword == SelfAlign::Stretch || item.width_keyword == SizingKeyword::Stretch))
 			width = area_minus_margins_width;
+		// The aspect ratio again after each stretch.
 		OptionalFloat height = inherent_height;
-		if (!height && margin_v.start && margin_v.end && vertical.keyword == SelfAlign::Stretch)
+		MaybeApplyAspectRatio(width, height, aspect_ratio);
+		if (!height && margin_v.start && margin_v.end && !content_height &&
+			(vertical.keyword == SelfAlign::Stretch || item.height_keyword == SizingKeyword::Stretch))
 			height = area_minus_margins_height;
+		MaybeApplyAspectRatio(width, height, aspect_ratio);
 		width = MaybeClamp(width, min_width, max_width);
 		height = MaybeClamp(height, min_height, max_height);
 
