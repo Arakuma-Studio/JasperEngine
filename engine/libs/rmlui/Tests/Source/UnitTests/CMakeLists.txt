@@ -57,6 +57,7 @@ add_executable(${TARGET_NAME}
 	TransitionsAnyChange.cpp
 	URL.cpp
 	Values.cpp
+	ValuesInterpolation.cpp
 	Variant.cpp
 	XMLParser.cpp
 	PluginDataModel.cpp
