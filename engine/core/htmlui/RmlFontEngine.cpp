@@ -296,6 +296,7 @@ ShapeOptions RmlFontEngine::toShapeOptions(const Rml::TextShapingContext& contex
     ShapeOptions options;
     options.kerning = context.font_kerning != Rml::Style::FontKerning::None;
     options.letterSpacing = context.letter_spacing;
+    options.wordSpacing = context.word_spacing;
     switch (context.text_direction){
         case Rml::Style::Direction::Ltr: options.baseDirection = 1; break;
         case Rml::Style::Direction::Rtl: options.baseDirection = 2; break;
@@ -365,6 +366,7 @@ int RmlFontEngine::GetStringWidth(Rml::FontFaceHandle handle, Rml::StringView st
     key.append(reinterpret_cast<const char*>(&face), sizeof(face));
     key += options.kerning ? 'k' : '-';
     key.append(reinterpret_cast<const char*>(&options.letterSpacing), sizeof(float));
+    key.append(reinterpret_cast<const char*>(&options.wordSpacing), sizeof(float));
     key += (char)('0' + options.baseDirection);
     char32_t prior = withPrior ? (char32_t)prior_character : 0;
     key.append(reinterpret_cast<const char*>(&prior), sizeof(prior));

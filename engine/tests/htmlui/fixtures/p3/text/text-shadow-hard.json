@@ -1,0 +1,7 @@
+{
+ "comment": "Shadows without blur: offsets in any direction, currentcolor when no color is given, a shadow of the decoration line too; painted behind the text.",
+ "viewport": [
+  200,
+  130
+ ]
+}

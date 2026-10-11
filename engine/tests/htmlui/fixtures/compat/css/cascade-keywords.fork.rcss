@@ -116,7 +116,7 @@ transition: unset;
 animation: unset;
 decorator: unset;
 mask-image: unset;
-font-effect: unset;
+text-shadow: unset;
 filter: unset;
 backdrop-filter: unset;
 box-shadow: unset;
@@ -196,7 +196,7 @@ transition: initial;
 animation: initial;
 decorator: initial;
 mask-image: initial;
-font-effect: initial;
+text-shadow: initial;
 filter: initial;
 backdrop-filter: initial;
 box-shadow: initial;
@@ -226,7 +226,7 @@ white-space: inherit;
 word-break: inherit;
 cursor: inherit;
 pointer-events: inherit;
-font-effect: inherit;
+text-shadow: inherit;
 }
 @keyframes spin {
 100% {

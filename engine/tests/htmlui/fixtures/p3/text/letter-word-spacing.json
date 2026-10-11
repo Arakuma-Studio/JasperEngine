@@ -1,0 +1,7 @@
+{
+ "comment": "letter-spacing as a length and a percentage of the font size (after every letter), word-spacing after spaces and no-break spaces; Ahem: every advance is exact.",
+ "viewport": [
+  200,
+  200
+ ]
+}

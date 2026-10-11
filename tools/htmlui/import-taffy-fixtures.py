@@ -216,16 +216,14 @@ def failing_path(detail):
 
 def classify(suite, source, detail=''):
     """(owner package, reason class) for a failing fixture, from the features it uses: first the
-    whole fixture's (grid, zero-width spaces), then those of the element the first difference names
+    whole fixture's (grid), then those of the element the first difference names
     and its container, then the whole fixture's again; the owner is the package of that feature."""
     d = styles_of(source)
     grid = has(d, r'^display:\s*(inline-)?grid') or suite in ('grid', 'blockgrid', 'gridflex')
     if grid:
         return 'p3-grid', 'grid-unsupported'
-    if 'ZeroWidthSpace' in source or '&#8203;' in source or '\u200b' in source:
-        # the engine shapes U+200B with a fallback face, and RmlUi does not break lines at it:
-        # every size built from text is off (fixtures/p3/text/zero-width-space)
-        return 'p3-text', 'text-zwsp'
+    # (zero-width spaces were 'p3-text text-zwsp' in the baseline: fixed by p3-text, U+200B keeps its
+    # face and is a line-break opportunity; fixtures/p3/text/zero-width-space)
     if has(d, r'calc\(|min\(|max\(|clamp\('):
         return 'p3-values', 'calc'
     path = failing_path(detail)

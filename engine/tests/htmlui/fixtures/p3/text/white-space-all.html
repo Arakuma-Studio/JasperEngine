@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: white-space values</title>
+<style>
+  /* white-space normal, pre, nowrap, pre-wrap (spaces at a line end hang), pre-line, break-spaces (spaces take room and wrap), and the longhands; the heights show the line counts. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  @font-face { font-family: "Roboto Text"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  div { position: absolute; width: 60px; background: #e0e8f0; }
+</style>
+</head>
+<body>
+<div id="normal" style="left: 10px; top: 10px; white-space: normal">XX  XX
+XX   XXX X</div>
+<div id="pre" style="left: 80px; top: 10px; white-space: pre">XX  XX
+XX</div>
+<div id="nowrap" style="left: 150px; top: 10px; white-space: nowrap">XX XX XX XX</div>
+<div id="pre-wrap" style="left: 10px; top: 60px; white-space: pre-wrap">XX      XX
+XXX</div>
+<div id="pre-line" style="left: 80px; top: 60px; white-space: pre-line">XX    XX
+XXXX XX</div>
+<div id="break-spaces" style="left: 150px; top: 60px; white-space: break-spaces">XX      XX</div>
+<div id="longhands" style="left: 10px; top: 110px; white-space-collapse: preserve; text-wrap-mode: nowrap">XX  XX  XX</div>
+<div id="text-wrap" style="left: 150px; top: 110px; text-wrap: nowrap">XX XX XX</div>
+</body>
+</html>

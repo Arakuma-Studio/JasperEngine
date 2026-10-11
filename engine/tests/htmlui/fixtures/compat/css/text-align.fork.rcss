@@ -1,0 +1,30 @@
+#htmlui-root .l {
+text-align: left;
+}
+#htmlui-root .r {
+text-align: right;
+}
+#htmlui-root .c {
+text-align: center;
+}
+#htmlui-root .j {
+text-align: justify;
+}
+#htmlui-root .start {
+text-align: start;
+}
+#htmlui-root .end {
+text-align: end;
+}
+#htmlui-root .wc {
+text-align: -webkit-center;
+}
+#htmlui-root .mc {
+text-align: center;
+}
+#htmlui-root .mp {
+text-align: match-parent;
+}
+#htmlui-root .ja {
+text-align: justify;
+}

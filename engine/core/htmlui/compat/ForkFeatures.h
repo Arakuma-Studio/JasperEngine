@@ -21,6 +21,8 @@ namespace jasperengine::htmlui::compat {
     enum class ForkFeature : uint8_t {
         None, Calc, BorderStyle, PercentRadius, PseudoElements, RootIsWhere, Fixed,
         GroupOpacity, TimingFunctions, Important, CssWideKeywords, Grid,
+        // appended by phase 3 (phase-3 spec Appendix A)
+        TextShadow, TextProperties,
         CurrentColor, ExtraUnits, LineHeightNormal,
         Count
     };

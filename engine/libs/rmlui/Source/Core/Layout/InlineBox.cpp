@@ -65,10 +65,10 @@ InlineBox::InlineBox(const InlineLevelBox* parent, Element* element, const Box& 
 	const FontMetrics& font_metrics = GetFontMetrics();
 
 	// The inline box content height does not depend on the 'line-height' property, only on the font, and is not exactly
-	// specified by CSS. Here we choose to size it as browsers do: the font's ascent and descent, each rounded to whole
-	// pixels, the content of 'line-height: normal' without the line gap (phase 3, values; 6.3 took 1.2 times the size).
-	const float font_height = Math::Round(font_metrics.ascent) + Math::Round(font_metrics.descent);
-	const float inner_height = (font_height > 0.f ? font_height : 1.2f * (float)font_metrics.size);
+	// specified by CSS (CSS 2.1 §10.6.1). As browsers do, it is the font's ascent plus descent, each rounded to whole
+	// pixels: the content area of a span is as tall as Chromium's (getBoundingClientRect, backgrounds).
+	const float rounded_ascent = Math::Round(font_metrics.ascent);
+	const float inner_height = rounded_ascent + Math::Round(font_metrics.descent);
 	box.SetContent(Vector2f(-1.f, inner_height));
 
 	float height_above_baseline, depth_below_baseline;
@@ -79,10 +79,8 @@ InlineBox::InlineBox(const InlineLevelBox* parent, Element* element, const Box& 
 	const float edge_right = box.GetCumulativeEdge(BoxArea::Padding, BoxEdge::Right);
 	SetInlineBoxSpacing(edge_left, edge_right);
 
-	// Vertically position the box so that its content box is equally spaced around its font ascent and descent metrics.
-	const float half_leading = 0.5f * (inner_height - (font_metrics.ascent + font_metrics.descent));
-	baseline_to_border_height =
-		font_metrics.ascent + half_leading + box.GetEdge(BoxArea::Border, BoxEdge::Top) + box.GetEdge(BoxArea::Padding, BoxEdge::Top);
+	// Vertically position the box so that its content box spans the font's (rounded) ascent above the baseline.
+	baseline_to_border_height = rounded_ascent + box.GetEdge(BoxArea::Border, BoxEdge::Top) + box.GetEdge(BoxArea::Padding, BoxEdge::Top);
 }
 
 FragmentConstructor InlineBox::CreateFragment(InlineLayoutMode mode, float available_width, float right_spacing_width, bool /*first_box*/,

@@ -1,0 +1,76 @@
+{
+ "fixture": "text/white-space-all.html",
+ "viewport": [
+  240,
+  140
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "normal",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 60,
+    "h": 30
+   },
+   {
+    "id": "pre",
+    "tag": "div",
+    "x": 80,
+    "y": 10,
+    "w": 60,
+    "h": 20
+   },
+   {
+    "id": "nowrap",
+    "tag": "div",
+    "x": 150,
+    "y": 10,
+    "w": 60,
+    "h": 10
+   },
+   {
+    "id": "pre-wrap",
+    "tag": "div",
+    "x": 10,
+    "y": 60,
+    "w": 60,
+    "h": 30
+   },
+   {
+    "id": "pre-line",
+    "tag": "div",
+    "x": 80,
+    "y": 60,
+    "w": 60,
+    "h": 30
+   },
+   {
+    "id": "break-spaces",
+    "tag": "div",
+    "x": 150,
+    "y": 60,
+    "w": 60,
+    "h": 20
+   },
+   {
+    "id": "longhands",
+    "tag": "div",
+    "x": 10,
+    "y": 110,
+    "w": 60,
+    "h": 10
+   },
+   {
+    "id": "text-wrap",
+    "tag": "div",
+    "x": 150,
+    "y": 110,
+    "w": 60,
+    "h": 10
+   }
+  ]
+ }
+}

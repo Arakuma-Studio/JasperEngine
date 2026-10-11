@@ -336,6 +336,10 @@ namespace {
             }else if (fork){
                 targets[0] = e.property.view();
                 count = 1;
+            }else if (context && context->session.fork(ForkFeature::TextShadow) && equalsNoCase(e.property.view(), "text-shadow")){
+                // the fork transitions text-shadow itself (phase 3, p3-text)
+                targets[0] = "text-shadow";
+                count = 1;
             }else{
                 count = transitionTargets(Arena::current().copy(lowerAscii(e.property)), targets);
                 if (count == 0){

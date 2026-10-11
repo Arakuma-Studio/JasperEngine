@@ -80,6 +80,7 @@ namespace {
         {RewriteId::Content, rewriteContent},
         {RewriteId::All, rewriteAll},
         {RewriteId::LineClamp, rewriteLineClamp},
+        {RewriteId::UserSelect, rewriteUserSelect},
     };
 
     const VarFamily* const kFamilies[] = {

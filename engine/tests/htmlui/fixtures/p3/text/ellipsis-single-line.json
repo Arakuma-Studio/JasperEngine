@@ -1,0 +1,7 @@
+{
+ "comment": "text-overflow applies to a block container that clips its overflow, also to the text of its inline descendants; the ellipsis replaces the letters that do not fit.",
+ "viewport": [
+  100,
+  120
+ ]
+}
