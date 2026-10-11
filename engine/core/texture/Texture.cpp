@@ -515,10 +515,15 @@ unsigned int Texture::getHeight() const{
 }
 
 bool Texture::isTransparent() const{
-    if (!data){
-        return false;
+    if (data){
+        return getData().isTransparent();
     }
-    return getData().isTransparent();
+    // the GPU texture came from the pool (another Texture of the same image loaded it), so
+    // this one has no image data: the pooled texture keeps what the image's alpha said
+    if (render && render->isCreated()){
+        return render->isTransparent();
+    }
+    return false;
 }
 
 void Texture::setReleaseDataAfterLoad(bool releaseDataAfterLoad){

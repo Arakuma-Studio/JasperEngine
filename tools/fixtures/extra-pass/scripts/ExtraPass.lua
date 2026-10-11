@@ -161,10 +161,8 @@ end
 
 local function silhouette(order, colour)
     return function(pass, material)
-        -- blended: a sprite whose texture's transparency is not known when it loads (the
-        -- engine reads it from the image data) would otherwise write depth over its
-        -- transparent texels
-        material.alphaMode = MaterialAlphaMode.BLEND
+        -- (alpha mode AUTO: blended, from the image's alpha, also for the sprites and the
+        -- tilemap that share it)
         pass.shader = SILHOUETTE
         -- behind the image before it, in front of it after it
         local z = (order == MaterialPassOrder.BEFORE) and -0.5 or 0.5

@@ -7838,12 +7838,6 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
 
     render.beginLoad(PrimitiveType::POINTS);
 
-    if (points.autoTransparency && !points.transparent){
-        if (points.texture.isTransparent()){ // Particle color is not tested here
-            points.transparent = true;
-        }
-    }
-
     bool hasPointsTexture = !points.texture.empty();
 
     bool p_hasTexture = false;
@@ -7909,6 +7903,12 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
             return false;
         }
         render.addTexture(shaderData.getTextureIndex(TextureShaderType::POINTS), ShaderStageType::FRAGMENT, textureRender);
+    }
+    // once the texture is loaded (or found in the pool): its alpha is known only then
+    if (points.autoTransparency && !points.transparent){
+        if (points.texture.isTransparent()){ // Particle color is not tested here
+            points.transparent = true;
+        }
     }
     if (!loadShaderLibraryBindings(points.libraryBindings, shaderData, render, points.shaderTextures, points.shaderManifest.get())){
         return false;

@@ -58,6 +58,15 @@ void TextureRender::updateTexture(const void* data, size_t size){
 
 void TextureRender::destroyTexture(){
     backend.destroyTexture();
+    transparent = false;
+}
+
+void TextureRender::setTransparent(bool transparent){
+    this->transparent = transparent;
+}
+
+bool TextureRender::isTransparent() const{
+    return transparent;
 }
 
 uint32_t TextureRender::getGLHandler() const{
