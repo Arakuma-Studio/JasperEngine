@@ -1,0 +1,14 @@
+{
+ "comment": "An easing outside [0, 1]: lengths and transforms go below the start and beyond the end.",
+ "viewport": [400, 120],
+ "steps": [
+  {"addClass": ["#width", "on"]},
+  {"addClass": ["#move", "on"]},
+  {"advance": 0.2},
+  {"capture": "under"},
+  {"advance": 0.6},
+  {"capture": "over"},
+  {"advance": 0.3},
+  {"capture": "end"}
+ ]
+}

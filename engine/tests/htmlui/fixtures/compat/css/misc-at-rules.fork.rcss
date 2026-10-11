@@ -1,0 +1,15 @@
+@starting-style {
+#htmlui-root .c {
+opacity: 0;
+}
+}
+@decorator tiles : tiled-box {
+top-left-image: a;
+}
+@spritesheet sheet {
+src: img/a.png;
+s1: 0px 0px 10px 10px;
+}
+#htmlui-root .kept {
+width: 6px;
+}

@@ -1,0 +1,12 @@
+{
+ "comment": "box-shadow interpolates pairwise (offsets, spread, colour); a shorter list is padded with transparent zero shadows.",
+ "viewport": [320, 140],
+ "steps": [
+  {"addClass": ["#grow", "on"]},
+  {"addClass": ["#added", "on"]},
+  {"advance": 0.5},
+  {"capture": "half"},
+  {"advance": 0.6},
+  {"capture": "end"}
+ ]
+}

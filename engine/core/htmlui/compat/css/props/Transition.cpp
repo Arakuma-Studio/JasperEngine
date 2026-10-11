@@ -204,6 +204,7 @@ namespace {
         bool hasEasing = false;
         EasingResult easing;
         bool varTiming = false;               // a var() in the timing
+        bool allowDiscrete = false;           // transition-behavior: allow-discrete (AnimationLonghands)
         ValueRange raw;                        // the entry as written (messages)
     };
 
@@ -285,8 +286,10 @@ namespace {
             }
             if (v.isToken(TokenType::Ident)){
                 const std::string_view k = identView(v);
-                if (k == "allow-discrete" || k == "normal")
+                if (k == "allow-discrete" || k == "normal"){
+                    entry.allowDiscrete = k == "allow-discrete";
                     continue;
+                }
                 if (propertySet)
                     return false;
                 propertySet = true;
@@ -510,6 +513,151 @@ namespace {
         return e->text.str();
     }
 
+    std::string& transitionBuffer();
+
+    // ---- the fork's own transitions (ForkFeature::AnimationLonghands, phase 3)
+
+    // The name a transition entry gives the fork: the property compat writes for it when that is
+    // another one (background images as the decorator, outline and box-shadow as box-shadow,
+    // text-shadow as font-effect without TextShadow, translate / rotate / scale as transform without
+    // IndividualTransforms, ...); unknown names as written (CSS keeps them in the lists).
+    size_t nativeTransitionNames(Session& session, std::string_view written, std::string_view (&names)[2], bool firstOnly){
+        const std::string lower = lowerAscii(written);
+        std::string_view name = Arena::current().copy(lower);
+        for (std::string_view prefix : {std::string_view("-webkit-"), std::string_view("-moz-")}){
+            if (startsWith(name, prefix) && (findProperty(name.substr(prefix.size())) || RcssGrammar::known(name.substr(prefix.size()))))
+                name = name.substr(prefix.size());
+        }
+        if (name == "all" || name == "none" || ((name == "translate" || name == "rotate" || name == "scale") &&
+                                                  session.options.fork.has(ForkFeature::IndividualTransforms)) ||
+            (name == "text-shadow" && session.options.fork.has(ForkFeature::TextShadow))){
+            names[0] = name;
+            return 1;
+        }
+        const size_t count = transitionTargets(name, names);
+        if (count == 0){
+            names[0] = name;
+            return 1;
+        }
+        return firstOnly ? 1 : count;
+    }
+
+    void writeNativeEntries(DeclContext& context, const ArenaList<Entry>& entries, std::string& out){
+        Session& session = context.session;
+        for (const Entry& e : entries){
+            std::string_view names[2];
+            const size_t count = nativeTransitionNames(session, e.property.view(), names, false);
+            if (e.hasEasing && !e.easing.note.empty())
+                context.reportAs(e.easing.severity, e.easing.code, e.easing.note, std::string(), text(e.raw));
+            for (size_t i = 0; i < count; i++){
+                if (!out.empty())
+                    out += ", ";
+                out += names[i];
+                out += ' ';
+                if (e.duration.given())
+                    appendTiming(out, e.duration);
+                else
+                    out += "0s";
+                if (e.hasEasing && !e.easing.text.empty()){
+                    out += ' ';
+                    out += e.easing.text.view();
+                }
+                if (e.delay.given() && !writtenAsZero(e.delay)){
+                    out += ' ';
+                    appendTiming(out, e.delay);
+                }
+                if (e.allowDiscrete)
+                    out += " allow-discrete";
+            }
+        }
+    }
+
+    // one longhand of the family as the fork reads it; false when malformed
+    bool writeNativeLonghand(DeclContext& context, std::string_view name, std::string& out){
+        Session& session = context.session;
+        for (const ValueRange& group : commaRanges(context.value)){
+            const Words w = wordsOf(group);
+            if (w.size() != 1)
+                return false;
+            const ComponentValue& v = *w[0];
+            if (!out.empty())
+                out += ", ";
+            if (isVar(v)){
+                out += text(v);
+                continue;
+            }
+            if (name == "transition-property"){
+                if (!v.isToken(TokenType::Ident))
+                    return false;
+                std::string_view names[2];
+                nativeTransitionNames(session, v.token.value.view(), names, true);
+                out += names[0];
+            }else if (name == "transition-duration" || name == "transition-delay"){
+                double s = 0;
+                if (!seconds(v, s) || (name == "transition-duration" && s < 0))
+                    return false;
+                appendTiming(out, secondsTiming(s));
+            }else if (name == "transition-timing-function"){
+                std::optional<EasingResult> easing = easingOf(session, v);
+                if (!easing)
+                    return false;
+                if (!easing->note.empty())
+                    context.reportAs(easing->severity, easing->code, easing->note, std::string(), text(v));
+                out += easing->text.view();
+            }else if (name == "transition-behavior"){
+                const std::string_view k = identView(v);
+                if (k != "normal" && k != "allow-discrete")
+                    return false;
+                out += k;
+            }else{
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // The fork has the CSS transition properties: each declaration is written as it is, normalized
+    // (times in s, easing as the fork reads it, property names compat writes elsewhere mapped).
+    void rewriteNativeTransition(DeclContext& context){
+        const std::string_view name = plain(context.name);
+        if (context.keyframe){
+            context.dropped = true;
+            return;
+        }
+        for (const ComponentValue& v : context.value){
+            if (isVar(v)){
+                // resolved per element by the fork
+                context.emit(std::string(name), context.valueText());
+                return;
+            }
+        }
+        std::string& value = transitionBuffer();
+        value.clear();
+        if (name == "transition"){
+            ArenaList<Entry> entries;
+            if (!applyTransition(context.session, "transition", context.value, entries)){
+                unsupportedValue(context, "write transition: <property> <duration> <easing> <delay>");
+                return;
+            }
+            bool none = false;
+            for (const Entry& e : entries)
+                none = none || e.property == "none";
+            if (none && entries.size() > 1){
+                unsupportedValue(context, "'none' is a transition list of its own");
+                return;
+            }
+            if (!none)
+                writeNativeEntries(context, entries, value);
+            context.emit("transition", value.empty() ? Text::view("none") : Text(std::string_view(value)));
+            return;
+        }
+        if (!writeNativeLonghand(context, name, value)){
+            unsupportedValue(context, "write " + std::string(name) + " as CSS defines it");
+            return;
+        }
+        context.emit(std::string(name), Text(std::string_view(value)));
+    }
+
     // (one buffer for the transitions of the thread: the emitted value is a copy)
     std::string& transitionBuffer(){
         static thread_local std::string buffer;
@@ -526,6 +674,10 @@ void jasperengine::htmlui::compat::rewriteTransition(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteTransitionLonghand(DeclContext& context){
+    if (context.fork(ForkFeature::AnimationLonghands)){
+        rewriteNativeTransition(context);
+        return;
+    }
     const bool fork = context.fork(ForkFeature::TimingFunctions);
     if (context.keyframe){
         context.dropped = true;

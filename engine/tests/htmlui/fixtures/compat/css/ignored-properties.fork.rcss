@@ -1,4 +1,5 @@
 #htmlui-root .ignored {
 isolation: auto;
+transition-behavior: normal;
 user-select: auto;
 }

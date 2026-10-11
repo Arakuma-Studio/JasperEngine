@@ -1,0 +1,64 @@
+{
+ "fixture": "animation/transition-inline-style.html",
+ "viewport": [
+  400,
+  140
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "half": [
+   {
+    "id": "box",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 200,
+    "h": 40
+   },
+   {
+    "id": "attr",
+    "tag": "div",
+    "x": 20,
+    "y": 80,
+    "w": 160,
+    "h": 40
+   }
+  ],
+  "mixed": [
+   {
+    "id": "box",
+    "tag": "div",
+    "x": 40,
+    "y": 20,
+    "w": 300,
+    "h": 40
+   },
+   {
+    "id": "attr",
+    "tag": "div",
+    "x": 20,
+    "y": 80,
+    "w": 260,
+    "h": 40
+   }
+  ],
+  "end": [
+   {
+    "id": "box",
+    "tag": "div",
+    "x": 60,
+    "y": 20,
+    "w": 300,
+    "h": 40
+   },
+   {
+    "id": "attr",
+    "tag": "div",
+    "x": 20,
+    "y": 80,
+    "w": 260,
+    "h": 40
+   }
+  ]
+ }
+}

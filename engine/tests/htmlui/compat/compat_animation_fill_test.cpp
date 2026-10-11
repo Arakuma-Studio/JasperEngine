@@ -38,15 +38,21 @@ namespace {
             HtmlUIClock::reset();
         }
 
-        // frames up to `time`, 50 ms apart (RmlUi advances an animation by at most 0.1 s per update)
+        // frames up to `time`, 50 ms apart; the emulation runs in each (updateRuntime skips it
+        // when the fork has AnimationLonghands: these tests keep it working for a fork without)
         void at(double time){
             double now = HtmlUIClock::now();
             while (now + 0.05 < time - 1e-9){
                 now += 0.05;
                 HtmlUIClock::setFixedTime(now);
-                frame();
+                emulatedFrame();
             }
             HtmlUIClock::setFixedTime(time);
+            emulatedFrame();
+        }
+
+        void emulatedFrame(){
+            AnimationFill::update(context);
             frame();
         }
 

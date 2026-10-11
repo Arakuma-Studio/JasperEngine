@@ -26,12 +26,14 @@ namespace {
         false,   // RootIsWhere
         false,   // Fixed
         true,    // GroupOpacity (phase 3, p3-paint: opacity groups, not inherited; docs/html-ui/FORK.md)
-        false,   // TimingFunctions
+        true,    // TimingFunctions (phase 3, p3-animation: CSS easing functions; docs/html-ui/FORK.md P3-A1)
         false,   // Important
         false,   // CssWideKeywords
         true,    // Grid (phase 3, p3-grid: CSS Grid, a port of Taffy; docs/html-ui/FORK.md P3-G1..P3-G3)
         true,    // TextShadow (phase 3, p3-text: native text-shadow; docs/html-ui/FORK.md)
         true,    // TextProperties (phase 3, p3-text: word-spacing, white-space longhands, overflow-wrap, text-decoration-*, ...)
+        true,    // AnimationLonghands (phase 3, p3-animation: FORK.md P3-A1..P3-A4)
+        true,    // IndividualTransforms (phase 3, p3-animation: FORK.md P3-A5)
         true,    // Outline (phase 3, p3-paint: outline-* drawn by the fork, the focus ring; docs/html-ui/FORK.md)
         true,    // ObjectFit (phase 3, p3-paint: object-fit, object-position with <position>; docs/html-ui/FORK.md)
     };
@@ -39,7 +41,9 @@ namespace {
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {
         "None", "Calc", "BorderStyle", "PercentRadius", "PseudoElements", "RootIsWhere", "Fixed",
         "GroupOpacity", "TimingFunctions", "Important", "CssWideKeywords", "Grid",
-        "TextShadow", "TextProperties", "Outline", "ObjectFit",
+        "TextShadow", "TextProperties",
+        "AnimationLonghands", "IndividualTransforms",
+        "Outline", "ObjectFit",
     };
 
     constexpr uint64_t bitOf(ForkFeature feature){
@@ -187,6 +191,11 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
             return parses("transition", "opacity 1s cubic-bezier(0.1, 0.2, 0.3, 0.4)");
         case ForkFeature::Grid:
             return parses("display", "grid");
+        case ForkFeature::AnimationLonghands:
+            return parses("animation-fill-mode", "both") && parses("transition-behavior", "allow-discrete") &&
+                   parses("animation", "spin 1s 2.5 alternate-reverse backwards paused");
+        case ForkFeature::IndividualTransforms:
+            return parses("rotate", "45deg") && parses("scale", "1.5") && parses("translate", "10px 20%");
         case ForkFeature::CssWideKeywords:
             return parses("color", "inherit");
         case ForkFeature::Important: {

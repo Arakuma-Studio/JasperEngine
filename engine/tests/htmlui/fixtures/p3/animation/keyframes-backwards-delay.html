@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>animation: animation-fill-mode backwards during the delay</title>
+<style>
+  html, body { margin: 0; }
+  @keyframes slide { from { left: 200px; background-color: #d03030; } to { left: 20px; background-color: #3030d0; } }
+  div { position: absolute; left: 20px; width: 80px; height: 30px; background-color: #999999; }
+  #backwards { top: 20px; animation: slide 1s linear 1s backwards; }
+  #none { top: 60px; animation: slide 1s linear 1s; }
+  #both { top: 100px; animation: slide 1s linear 1s both; }
+  #negative { top: 140px; animation: slide 1s linear -0.5s; }
+</style>
+</head>
+<body>
+<div id="backwards"></div><div id="none"></div><div id="both"></div><div id="negative"></div>
+</body>
+</html>

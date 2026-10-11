@@ -8,6 +8,7 @@
 
 #include "htmlui/compat/runtime/RuntimeRegistry.h"
 
+#include "htmlui/compat/ForkFeatures.h"
 #include "htmlui/compat/runtime/AnimationFill.h"
 #include "htmlui/compat/runtime/CompatProperties.h"
 #include "htmlui/compat/runtime/FocusTracker.h"
@@ -105,5 +106,8 @@ void jasperengine::htmlui::compat::updateRuntime(Rml::Context* context){
     // phase 3's FocusPseudoClasses and AnimationLonghands turn these off (§3.6): the gates
     // go here when the features exist
     FocusTracker::update(context);
-    AnimationFill::update(context);
+    // the fork keeps an animation's end values itself (animation-fill-mode, phase 3)
+    static const bool fillEmulated = !ForkFeatures::present().has(ForkFeature::AnimationLonghands);
+    if (fillEmulated)
+        AnimationFill::update(context);
 }

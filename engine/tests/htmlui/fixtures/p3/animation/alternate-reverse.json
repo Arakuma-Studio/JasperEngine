@@ -1,0 +1,12 @@
+{
+ "comment": "Each direction in its first and second iteration, and after the end (alternate-reverse with an even count ends at the start).",
+ "viewport": [380, 210],
+ "steps": [
+  {"advance": 0.25},
+  {"capture": "first"},
+  {"advance": 1.0},
+  {"capture": "second"},
+  {"advance": 1.0},
+  {"capture": "after"}
+ ]
+}

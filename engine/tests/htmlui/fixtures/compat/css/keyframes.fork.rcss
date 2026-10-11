@@ -20,6 +20,7 @@ color: #008000ff;
 @keyframes easing {
 0% {
 opacity: 0;
+animation-timing-function: ease-in;
 }
 100% {
 opacity: 1;
@@ -84,6 +85,5 @@ width: 10px;
 }
 }
 #htmlui-root .use {
-animation: 1s kf-43079b1c, 2s kf-48dc5779;
--html-animation-fill: none;
+animation: 1s ease 0s 1 normal none running kf-43079b1c, 2s ease 0s 1 normal none running kf-48dc5779;
 }

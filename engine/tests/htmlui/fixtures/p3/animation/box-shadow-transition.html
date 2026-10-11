@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>animation: box-shadow transitions</title>
+<style>
+  html, body { margin: 0; }
+  div { position: absolute; width: 80px; height: 50px; background-color: #e0e0e0; transition: box-shadow 1s linear; }
+  #grow { left: 30px; top: 30px; box-shadow: 0px 0px 0px 0px #c03030; }
+  #grow.on { box-shadow: 12px 12px 0px 4px #3030c0; }
+  #added { left: 180px; top: 30px; box-shadow: none; }
+  #added.on { box-shadow: 10px 10px 0px 0px #208020, -6px -6px 0px 2px #c0a020; }
+</style>
+</head>
+<body>
+<div id="grow"></div><div id="added"></div>
+</body>
+</html>
