@@ -156,6 +156,77 @@ namespace {
         return label;
     }
 
+    std::shared_ptr<const ShaderManifest> presentManifest(const std::string& shader) {
+        std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
+        return (manifest && manifest->present) ? manifest : nullptr;
+    }
+
+    // What submesh `submesh` of `entity` resolves to with its stencil and colour write on Auto
+    // (its other values as set): the @state of the shader it draws with, else no stencil and
+    // every channel
+    RenderState resolveMaterialStencilAuto(Scene* scene, Entity entity, unsigned int submesh) {
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        if (!mesh || submesh >= mesh->numSubmeshes)
+            return RenderState();
+        const Submesh& sub = mesh->submeshes[submesh];
+        std::shared_ptr<const ShaderManifest> manifest =
+            presentManifest(RenderSystem::getSubmeshShader(*mesh, sub, scene->getDefaultCustomShader(ShaderType::MESH)));
+        Submesh autoSubmesh;
+        autoSubmesh.material = sub.material;
+        autoSubmesh.faceCulling = sub.faceCulling;
+        autoSubmesh.material.stencil = MaterialStencil();
+        autoSubmesh.material.colorWrite = -1;
+        bool blended = false;
+        bool transparentQueue = false;
+        return RenderSystem::resolveSubmeshRenderState(*mesh, autoSubmesh, manifest.get(), blended, transparentQueue);
+    }
+
+    // What the extra pass of submesh `submesh` of `entity` resolves to with its render state on
+    // Auto: the pass shader's @state (with its features' rules), else the submesh's legacy
+    // behaviour (resolveExtraPassRenderState resolves the pass's values like a submesh's: the
+    // same resolver with the submesh's legacy inputs, which also says whether Auto blends)
+    RenderState resolveExtraPassAuto(Scene* scene, Entity entity, unsigned int submesh, bool* blendedOut = nullptr) {
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        if (!mesh || submesh >= mesh->numSubmeshes)
+            return RenderState();
+        const Submesh& sub = mesh->submeshes[submesh];
+        const MaterialPass& pass = sub.material.extraPass;
+        std::shared_ptr<const ShaderManifest> manifest = presentManifest(pass.shader);
+        Submesh autoSubmesh;
+        autoSubmesh.material = sub.material;
+        autoSubmesh.faceCulling = sub.faceCulling;
+        Material& autoMaterial = autoSubmesh.material;
+        autoMaterial.blendMode = MaterialBlendMode::AUTO;
+        autoMaterial.cullMode = MaterialCullMode::AUTO;
+        autoMaterial.depthWrite = MaterialDepthWrite::AUTO;
+        autoMaterial.depthTest = MaterialDepthTest::AUTO;
+        autoMaterial.depthOffsetFactor = pass.depthOffsetFactor;
+        autoMaterial.depthOffsetUnits = pass.depthOffsetUnits;
+        autoMaterial.stencil = MaterialStencil();
+        autoMaterial.colorWrite = -1;
+        ShaderManifestState manifestState;
+        if (manifest)
+            manifestState = manifest->resolveState(manifest->resolveFeatures(pass.shaderFeatures));
+        bool blended = false;
+        bool transparentQueue = false;
+        const RenderState resolved = RenderSystem::resolveSubmeshRenderState(*mesh, autoSubmesh, manifest ? &manifestState : nullptr,
+                                                                             blended, transparentQueue);
+        if (blendedOut)
+            *blendedOut = blended;
+        return resolved;
+    }
+
+    // What a UI, Points or LineRenderer component of `entity` resolves to with its render state
+    // on Auto: its shader's @state (with its features' rules), else its legacy state
+    RenderState resolveComponentAuto(Scene* scene, Entity entity, editor::ComponentType cpType) {
+        static const std::vector<std::string> noFeatures;
+        std::shared_ptr<const ShaderManifest> manifest =
+            presentManifest(editor::Catalog::getShaderReferenceForProperty(scene, entity, cpType, "customShader"));
+        const std::vector<std::string>* features = editor::Catalog::getPropertyRef<std::vector<std::string>>(scene, entity, cpType, "shaderFeatures");
+        return RenderSystem::resolveComponentRenderState(MaterialBlendMode::AUTO, MaterialDepthWrite::AUTO, manifest.get(),
+                                                         features ? *features : noFeatures, false);
+    }
+
 }
 
 void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentShader, ShaderType type,
@@ -613,17 +684,9 @@ void editor::InspectorWindow::drawMaterialSurfaceRows(ComponentType cpType, Scen
     propertyRow(RowPropertyType::Enum, cpType, prefix + "lighting", "Lighting", sceneProject, entities, settingsEnum);
 
     // stencil and colour write (phase 2): Auto names the shader's rule
-    Submesh stencilSubmesh = autoSubmesh;
-    stencilSubmesh.material.blendMode = sub.material.blendMode;
-    stencilSubmesh.material.cullMode = sub.material.cullMode;
-    stencilSubmesh.material.depthWrite = sub.material.depthWrite;
-    stencilSubmesh.material.depthTest = sub.material.depthTest;
-    stencilSubmesh.material.stencil = MaterialStencil();
-    stencilSubmesh.material.colorWrite = -1;
-    bool stencilBlended = false;
-    bool stencilQueue = false;
-    const RenderState resolvedStencil = RenderSystem::resolveSubmeshRenderState(*mesh, stencilSubmesh, stateManifest, stencilBlended, stencilQueue);
-    drawStencilColorWriteRows(cpType, sceneProject, entities, prefix, resolvedStencil, settingsMaterial);
+    drawStencilColorWriteRows(cpType, sceneProject, entities, prefix, [scene, submesh](Entity entity) {
+        return resolveMaterialStencilAuto(scene, entity, submesh);
+    }, settingsMaterial);
 
     // @state shadows=off (or a @state[...] rule of its features): the mesh's Cast Shadows does
     // not bring this submesh into the shadow maps
@@ -639,15 +702,11 @@ void editor::InspectorWindow::drawComponentStateRows(ComponentType cpType, Scene
     if (!Catalog::findProperty(sceneProject->scene, entities[0], cpType, "blendMode").ref)
         return;
 
-    // what Auto resolves to with the shader the component draws with (its @state, else the
-    // component's legacy state: alpha blending, depth write on), as RenderSystem loads it
-    const std::string shader = Catalog::getShaderReferenceForProperty(sceneProject->scene, entities[0], cpType, "customShader");
-    std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
-    // the component's features select the manifest's @state[<DEFINE>] rules
-    static const std::vector<std::string> noFeatures;
-    const std::vector<std::string>* features = Catalog::getPropertyRef<std::vector<std::string>>(sceneProject->scene, entities[0], cpType, "shaderFeatures");
-    const RenderState resolved = RenderSystem::resolveComponentRenderState(MaterialBlendMode::AUTO, MaterialDepthWrite::AUTO,
-        (manifest && manifest->present) ? manifest.get() : nullptr, features ? *features : noFeatures, false);
+    // what Auto resolves to with the shader the component draws with (its @state, with its
+    // features' @state[<DEFINE>] rules, else the component's legacy state: alpha blending,
+    // depth write on), as RenderSystem loads it
+    Scene* scene = sceneProject->scene;
+    const RenderState resolved = resolveComponentAuto(scene, entities[0], cpType);
 
     AutoEnumEntries blendEntries, depthWriteEntries;
     blendEntries.autoLabel = std::string("Auto (") + blendLabel(resolved.blend) + ")";
@@ -670,11 +729,14 @@ void editor::InspectorWindow::drawComponentStateRows(ComponentType cpType, Scene
 
     // stencil and colour write (phase 2): Auto names the shader's rule
     RowSettings stateSettings;
-    drawStencilColorWriteRows(cpType, sceneProject, entities, "", resolved, stateSettings);
+    drawStencilColorWriteRows(cpType, sceneProject, entities, "", [scene, cpType](Entity entity) {
+        return resolveComponentAuto(scene, entity, cpType);
+    }, stateSettings);
 }
 
 void editor::InspectorWindow::drawStencilColorWriteRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
-                                                        const std::string& prefix, const RenderState& resolvedAuto, const RowSettings& settings){
+                                                        const std::string& prefix, const std::function<RenderState(Entity)>& resolveAuto,
+                                                        const RowSettings& settings){
     Scene* scene = sceneProject->scene;
     const uint32_t sceneId = sceneProject->id;
     const std::string stencilProperty = prefix + "stencil";
@@ -683,21 +745,54 @@ void editor::InspectorWindow::drawStencilColorWriteRows(ComponentType cpType, Sc
     const int* colorWriteRef = Catalog::getPropertyRef<int>(scene, entities[0], cpType, colorWriteProperty);
     if (!stencilRef || !colorWriteRef)
         return;
+    // the rows show the first selected GameObject's values
     const MaterialStencil stencil = *stencilRef;
     const int colorWrite = *colorWriteRef;
+    const RenderState resolvedAuto = resolveAuto(entities[0]);
 
-    // one undo step for every selected GameObject
-    auto setStencil = [&](const MaterialStencil& value) {
+    // An edit changes each selected GameObject's own value (one undo step): a multi-selection
+    // keeps what the edit does not name (another ref or mask, the other channels), and one on
+    // Auto starts from the rule its own shader resolves to
+    auto editStencil = [&](const std::function<void(MaterialStencil&, Entity)>& edit) {
         auto* multi = new MultiPropertyCmd();
-        for (Entity entity : entities)
+        bool changed = false;
+        for (Entity entity : entities) {
+            const MaterialStencil* current = Catalog::getPropertyRef<MaterialStencil>(scene, entity, cpType, stencilProperty);
+            if (!current)
+                continue;
+            MaterialStencil value = *current;
+            edit(value, entity);
+            if (value == *current)
+                continue;
             multi->addPropertyCmd<MaterialStencil>(project, sceneId, entity, cpType, stencilProperty, value, settings.onValueChanged);
-        CommandHandle::get(sceneId)->addCommandNoMerge(multi);
+            changed = true;
+        }
+        if (changed)
+            CommandHandle::get(sceneId)->addCommandNoMerge(multi);
+        else
+            delete multi;
     };
-    auto setColorWrite = [&](int value) {
+    auto editColorWrite = [&](const std::function<int(int, Entity)>& edit) {
         auto* multi = new MultiPropertyCmd();
-        for (Entity entity : entities)
+        bool changed = false;
+        for (Entity entity : entities) {
+            const int* current = Catalog::getPropertyRef<int>(scene, entity, cpType, colorWriteProperty);
+            if (!current)
+                continue;
+            const int value = edit(*current, entity);
+            if (value == *current)
+                continue;
             multi->addPropertyCmd<int>(project, sceneId, entity, cpType, colorWriteProperty, value, settings.onValueChanged);
-        CommandHandle::get(sceneId)->addCommandNoMerge(multi);
+            changed = true;
+        }
+        if (changed)
+            CommandHandle::get(sceneId)->addCommandNoMerge(multi);
+        else
+            delete multi;
+    };
+    // an entity's channels: its own, else what Auto writes for it
+    auto channelsOf = [&](int value, Entity entity) {
+        return value >= 0 ? value : (int)resolveAuto(entity).colorWriteMask;
     };
 
     // ---- the test: Auto names the manifest's rule; picking a test from Auto starts from it
@@ -715,22 +810,22 @@ void editor::InspectorWindow::drawStencilColorWriteRows(ComponentType cpType, Sc
     ImGui::PushID(stencilProperty.c_str());
     prefabRowProperty = stencilProperty;
     if (propertyHeader("Stencil", -1, stencil != MaterialStencil(), settings.child))
-        setStencil(MaterialStencil());
+        editStencil([](MaterialStencil& value, Entity) { value = MaterialStencil(); });
     ImGui::SetNextItemWidth(-1);
     if (ImGui::BeginCombo("##stencil_compare", current.c_str())) {
-        if (ImGui::Selectable(autoLabel.c_str(), stencil.compare == MaterialStencilCompare::AUTO) && stencil.compare != MaterialStencilCompare::AUTO) {
-            MaterialStencil changed = stencil;
-            changed.compare = MaterialStencilCompare::AUTO;
-            setStencil(changed);
-        }
+        if (ImGui::Selectable(autoLabel.c_str(), stencil.compare == MaterialStencilCompare::AUTO))
+            editStencil([](MaterialStencil& value, Entity) { value.compare = MaterialStencilCompare::AUTO; });
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("The shader's @state stencil rule, else no stencil test");
-        for (const auto& [value, label] : compares) {
-            if (ImGui::Selectable(label, stencil.compare == value) && stencil.compare != value) {
-                const bool wasExplicit = stencil.compare != MaterialStencilCompare::AUTO && stencil.compare != MaterialStencilCompare::DISABLED;
-                MaterialStencil changed = wasExplicit ? stencil : stencilFromState(resolvedAuto, value);
-                changed.compare = value;
-                setStencil(changed);
+        for (const auto& [compare, label] : compares) {
+            if (ImGui::Selectable(label, stencil.compare == compare)) {
+                const MaterialStencilCompare picked = compare;
+                editStencil([&](MaterialStencil& value, Entity entity) {
+                    // an explicit test (Off included) keeps its ref, masks and ops
+                    if (value.compare == MaterialStencilCompare::AUTO)
+                        value = stencilFromState(resolveAuto(entity), picked);
+                    value.compare = picked;
+                });
             }
         }
         ImGui::EndCombo();
@@ -771,11 +866,13 @@ void editor::InspectorWindow::drawStencilColorWriteRows(ComponentType cpType, Sc
     ImGui::PushID(colorWriteProperty.c_str());
     prefabRowProperty = colorWriteProperty;
     if (propertyHeader("Color Write", -1, colorWrite != -1, settings.child))
-        setColorWrite(-1);
+        editColorWrite([](int, Entity) { return -1; });
     bool automatic = colorWrite < 0;
     const int shown = automatic ? (int)resolvedAuto.colorWriteMask : colorWrite;
-    if (ImGui::Checkbox("Auto##color_write_auto", &automatic))
-        setColorWrite(automatic ? -1 : shown);
+    if (ImGui::Checkbox("Auto##color_write_auto", &automatic)) {
+        // off Auto: each one keeps the channels its Auto wrote
+        editColorWrite([&](int value, Entity entity) { return automatic ? -1 : channelsOf(value, entity); });
+    }
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Auto: the shader's @state colorwrite, else every channel (now %s)", colorWriteLabel(resolvedAuto.colorWriteMask).c_str());
     ImGui::BeginDisabled(colorWrite < 0);
@@ -787,8 +884,14 @@ void editor::InspectorWindow::drawStencilColorWriteRows(ComponentType cpType, Sc
         const bool on = (shown & bit) != 0;
         ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[on ? ImGuiCol_ButtonActive : ImGuiCol_FrameBg]);
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[on ? ImGuiCol_Text : ImGuiCol_TextDisabled]);
-        if (ImGui::Button((std::string(label) + "##color_write_" + label).c_str(), ImVec2(ImGui::GetFrameHeight(), 0)))
-            setColorWrite(on ? (shown & ~bit) : (shown | bit));
+        if (ImGui::Button((std::string(label) + "##color_write_" + label).c_str(), ImVec2(ImGui::GetFrameHeight(), 0))) {
+            // this channel on or off for each one, its other channels kept
+            const int channel = bit;
+            editColorWrite([&](int value, Entity entity) {
+                const int channels = channelsOf(value, entity);
+                return on ? (channels & ~channel) : (channels | channel);
+            });
+        }
         ImGui::PopStyleColor(2);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
             ImGui::SetTooltip("%s channel: %s", label, on ? "written" : "not written");
@@ -886,8 +989,6 @@ void editor::InspectorWindow::drawMaterialExtraPassRows(ComponentType cpType, Sc
         return;
     }
 
-    const Submesh& sub = mesh->submeshes[submesh];
-    const MaterialPass& pass = sub.material.extraPass;
     std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(currentShader);
     const ShaderManifest* stateManifest = (manifest && manifest->present) ? manifest.get() : nullptr;
     if (stateManifest) {
@@ -905,29 +1006,9 @@ void editor::InspectorWindow::drawMaterialExtraPassRows(ComponentType cpType, Sc
         ImGui::TextDisabled("%s is not a library shader of this engine", currentShader.c_str());
     }
 
-    // what Auto resolves to now: the pass shader's @state (with its features' rules), else
-    // the submesh's legacy behaviour (resolveExtraPassRenderState resolves the pass's values
-    // like a submesh's: the same resolver with the submesh's legacy inputs, which also says
-    // whether Auto blends)
-    Submesh autoSubmesh;
-    autoSubmesh.material = sub.material;
-    autoSubmesh.faceCulling = sub.faceCulling;
-    Material& autoMaterial = autoSubmesh.material;
-    autoMaterial.blendMode = MaterialBlendMode::AUTO;
-    autoMaterial.cullMode = MaterialCullMode::AUTO;
-    autoMaterial.depthWrite = MaterialDepthWrite::AUTO;
-    autoMaterial.depthTest = MaterialDepthTest::AUTO;
-    autoMaterial.depthOffsetFactor = pass.depthOffsetFactor;
-    autoMaterial.depthOffsetUnits = pass.depthOffsetUnits;
-    autoMaterial.stencil = MaterialStencil();
-    autoMaterial.colorWrite = -1;
-    ShaderManifestState manifestState;
-    if (stateManifest)
-        manifestState = stateManifest->resolveState(stateManifest->resolveFeatures(pass.shaderFeatures));
+    // what Auto resolves to now (resolveExtraPassAuto)
     bool blended = false;
-    bool transparentQueue = false;
-    const RenderState resolved = RenderSystem::resolveSubmeshRenderState(*mesh, autoSubmesh, stateManifest ? &manifestState : nullptr,
-                                                                         blended, transparentQueue);
+    const RenderState resolved = resolveExtraPassAuto(scene, entities[0], submesh, &blended);
 
     auto withAuto = [](AutoEnumEntries& entries, const std::string& resolvedLabel, std::initializer_list<EnumEntry> others) {
         entries.autoLabel = "Auto (" + resolvedLabel + ")";
@@ -978,6 +1059,8 @@ void editor::InspectorWindow::drawMaterialExtraPassRows(ComponentType cpType, Sc
 
     RowSettings settingsState = settingsMaterial;
     settingsState.child = true;
-    drawStencilColorWriteRows(cpType, sceneProject, entities, prefix, resolved, settingsState);
+    drawStencilColorWriteRows(cpType, sceneProject, entities, prefix, [scene, submesh](Entity entity) {
+        return resolveExtraPassAuto(scene, entity, submesh);
+    }, settingsState);
     endTable();
 }

@@ -405,9 +405,11 @@ namespace jasperengine::editor{
         // The Stencil rows (the test, with Auto naming the rule it resolves to; ref, masks and
         // ops while it is explicit) and the Color Write row (Auto, or RGBA checkboxes) of a
         // material (prefix "submeshes[N].material."), its extra pass ("...extraPass.") or a
-        // component (""), into the current table. resolvedAuto: the state with both on Auto.
+        // component (""), into the current table. resolveAuto: an entity's state with both on
+        // Auto. An edit changes only what it names on each selected GameObject.
         void drawStencilColorWriteRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
-                                       const std::string& prefix, const RenderState& resolvedAuto, const RowSettings& settings);
+                                       const std::string& prefix, const std::function<RenderState(Entity)>& resolveAuto,
+                                       const RowSettings& settings);
         // A submesh material's Extra pass section: its shader picker ("None" = no pass), its
         // manifest rows, order, render state, stencil and colour write
         void drawMaterialExtraPassRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
