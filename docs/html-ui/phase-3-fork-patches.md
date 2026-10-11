@@ -1702,7 +1702,13 @@ FORK.md rows P3-A1…P3-A5 (package-prefixed ids, so that wave-1 packages cannot
   its style is computed once more (`ElementStyle::RestartTransitionsFromStartingStyle`).
 - **Interpolation (P3-A4).** `box-shadow` pairwise with transparent padding; inset mismatch and
   calc() lengths in shadows are discrete. Colours in premultiplied sRGB everywhere RmlUi interpolates
-  colours (also gradient stops, filters, decorators).
+  colours (also gradient stops, filters, decorators). `StyleValue` types interpolate through their own
+  `Interpolate` (a list value is interpolable only when that succeeds for the pair): `text-shadow`
+  (p3-text) pads the shorter list like `box-shadow`, `none` counting as the empty list. Every other
+  resolved value (grid track lists and lines, strings, the keyword properties p3-text added, ...)
+  animates and transitions discretely (flip at 50%; for transitions only with `allow-discrete`), so
+  no property kind warns or asserts (`TransitionsAnyChange.cpp` `grid_and_other_discrete_properties`,
+  `text_properties`).
 - **Individual transforms (P3-A5).** Held as the equivalent one-function `transform` value, parsed by
   the `transform` parser (calc() included); `Element::OnPropertyChange`'s `transform_changed` gains
   the three ids (an additive condition in p3-paint's block).
