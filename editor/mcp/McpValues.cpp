@@ -115,7 +115,8 @@ bool endsWith(const std::string& text, const std::string& suffix) {
 
 bool isShaderPathProperty(const std::string& propertyName) {
     return propertyName == "customShader" || propertyName == "customDepthShader" ||
-           (propertyName.compare(0, 10, "submeshes[") == 0 && endsWith(propertyName, "].material.shader"));
+           (propertyName.compare(0, 10, "submeshes[") == 0 &&
+            (endsWith(propertyName, "].material.shader") || endsWith(propertyName, "].material.extraPass.shader")));
 }
 
 // The shader type a shader-path property takes
@@ -467,6 +468,45 @@ const EnumOptions& materialLightingOptions() {
     return options;
 }
 
+// phase 2: stencil test, stencil ops and the extra pass order
+const EnumOptions& stencilCompareOptions() {
+    static const EnumOptions options = {
+        {(int)MaterialStencilCompare::AUTO, "auto", "Auto"},
+        {(int)MaterialStencilCompare::DISABLED, "disabled", "Off"},
+        {(int)MaterialStencilCompare::NEVER, "never", "Never"},
+        {(int)MaterialStencilCompare::LESS, "less", "Less"},
+        {(int)MaterialStencilCompare::EQUAL, "equal", "Equal"},
+        {(int)MaterialStencilCompare::LESS_EQUAL, "less_equal", "Less Equal"},
+        {(int)MaterialStencilCompare::GREATER, "greater", "Greater"},
+        {(int)MaterialStencilCompare::NOT_EQUAL, "not_equal", "Not Equal"},
+        {(int)MaterialStencilCompare::GREATER_EQUAL, "greater_equal", "Greater Equal"},
+        {(int)MaterialStencilCompare::ALWAYS, "always", "Always"}
+    };
+    return options;
+}
+
+const EnumOptions& stencilOpOptions() {
+    static const EnumOptions options = {
+        {(int)MaterialStencilOp::KEEP, "keep", "Keep"},
+        {(int)MaterialStencilOp::ZERO, "zero", "Zero"},
+        {(int)MaterialStencilOp::REPLACE, "replace", "Replace"},
+        {(int)MaterialStencilOp::INCR_CLAMP, "incr_clamp", "Increment"},
+        {(int)MaterialStencilOp::DECR_CLAMP, "decr_clamp", "Decrement"},
+        {(int)MaterialStencilOp::INVERT, "invert", "Invert"},
+        {(int)MaterialStencilOp::INCR_WRAP, "incr_wrap", "Increment Wrap"},
+        {(int)MaterialStencilOp::DECR_WRAP, "decr_wrap", "Decrement Wrap"}
+    };
+    return options;
+}
+
+const EnumOptions& passOrderOptions() {
+    static const EnumOptions options = {
+        {(int)MaterialPassOrder::AFTER, "after", "After"},
+        {(int)MaterialPassOrder::BEFORE, "before", "Before"}
+    };
+    return options;
+}
+
 const EnumOptions& lightShadingOptions() {
     static const EnumOptions options = {
         {(int)LightShading::BOTH, "both", "Both"},
@@ -788,6 +828,9 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"material_depth_write", &depthWriteOptions()},
         {"material_depth_test", &depthTestOptions()},
         {"material_lighting", &materialLightingOptions()},
+        {"material_stencil_compare", &stencilCompareOptions()},
+        {"material_stencil_op", &stencilOpOptions()},
+        {"material_pass_order", &passOrderOptions()},
         {"light_shading", &lightShadingOptions()},
         {"primitive_type", &primitiveTypeOptions()},
         {"body_type", &bodyTypeOptions()},
@@ -830,6 +873,8 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
         case ComponentType::LineRendererComponent:
             if (name == "blendMode") return &blendModeOptions();
             if (name == "depthWrite") return &depthWriteOptions();
+            if (name == "stencil.compare") return &stencilCompareOptions();
+            if (name == "stencil.pass" || name == "stencil.fail" || name == "stencil.depthFail") return &stencilOpOptions();
             break;
         case ComponentType::ShadowCaster2DComponent:
             if (name == "shape") return &shadowCasterShapeOptions();
@@ -865,6 +910,21 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             if (name == "submeshes[].material.depthWrite") return &depthWriteOptions();
             if (name == "submeshes[].material.depthTest") return &depthTestOptions();
             if (name == "submeshes[].material.lighting") return &materialLightingOptions();
+            // phase 2: the material's stencil, and its extra pass's state (the same names)
+            for (const char* base : {"submeshes[].material.", "submeshes[].material.extraPass."}) {
+                const size_t length = std::strlen(base);
+                if (name.compare(0, length, base) != 0) continue;
+                const std::string field = name.substr(length);
+                if (field == "stencil.compare") return &stencilCompareOptions();
+                if (field == "stencil.pass" || field == "stencil.fail" || field == "stencil.depthFail") return &stencilOpOptions();
+                if (length > 21) {
+                    if (field == "blendMode") return &blendModeOptions();
+                    if (field == "cullMode") return &materialCullModeOptions();
+                    if (field == "depthWrite") return &depthWriteOptions();
+                    if (field == "depthTest") return &depthTestOptions();
+                    if (field == "order") return &passOrderOptions();
+                }
+            }
             if (name == "submeshes[].primitiveType") return &primitiveTypeOptions();
             if (name == "cullingMode") return &cullingModeOptions();
             break;
@@ -935,6 +995,8 @@ bool McpValues::enumFromJson(const Json& value, const EnumOptions& options, int&
     static const std::map<std::string, std::string> aliases = {
         {"ortho", "orthographic"}, {"perspec", "perspective"},
         {"alphaopaque", "opaque"}, {"none", "noattenuation"}, {"gameobjectmesh", "entitymesh"},
+        // the manifest's @state stencil names (lequal, gequal, incr, decr)
+        {"lequal", "lessequal"}, {"gequal", "greaterequal"}, {"incr", "incrclamp"}, {"decr", "decrclamp"},
         {"gameobjectheightfield", "entityheightfield"}, {"rackandpinon", "rackandpinion"}
     };
     auto alias = aliases.find(key);
@@ -1373,7 +1435,7 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
                     "alphaCutoff, foliageTransmission, alphaMode, emissiveFactor, baseColorTexture, emissiveTexture, "
                     "metallicRoughnessTexture, occlusionTexture, normalTexture, <texture>TexCoord, shader, shaderParams, "
                     "shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, "
-                    "depthOffsetUnits, sortPriority, lighting, file.";
+                    "depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass, file.";
             return false;
         }
     }
@@ -1682,6 +1744,14 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         if (ref && endsWith(name, "shaderFeatures")) {
             return shaderFeaturesToJson(*static_cast<std::vector<std::string>*>(ref));
         }
+        // phase 2: a stencil block (material, extra pass, component) and a material's extra pass
+        if (ref && (name == "stencil" || endsWith(name, ".stencil"))) {
+            return stencilToJson(*static_cast<MaterialStencil*>(ref));
+        }
+        if (ref && endsWith(name, "material.extraPass")) {
+            const MaterialPass& pass = *static_cast<MaterialPass*>(ref);
+            return pass == MaterialPass() ? Json(nullptr) : materialPassToJson(ctx.project, ctx.scene, pass, true);
+        }
         bool found = false;
         return readYamlProperty(ctx, name, found);
     }
@@ -1706,6 +1776,8 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         case PropertyType::Quat:
             return toJson(*static_cast<Quaternion*>(ref));
         case PropertyType::Int:
+            // a colour write mask by its channels ("rgba", "none", "auto")
+            if (name == "colorWrite" || endsWith(name, ".colorWrite")) return colorWriteToJson(*static_cast<int*>(ref));
             return *static_cast<int*>(ref);
         case PropertyType::Enum: {
             const int value = *static_cast<int*>(ref);
@@ -1916,10 +1988,23 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
             if (!parseQuaternion(value, q)) return expect("[x,y,z,w], {\"euler\":[x,y,z]} in degrees or {\"quat\":[x,y,z,w]}");
             return new PropertyCmd<Quaternion>(project, sceneId, entity, component, propertyName, q, onChanged);
         }
-        case PropertyType::Int:
+        case PropertyType::Int: {
+            if (propertyName == "colorWrite" || endsWith(propertyName, ".colorWrite")) {
+                int mask = -1;
+                std::string why;
+                if (!colorWriteFromJson(value, mask, why)) {
+                    error = "Property " + propertyName + ": " + why;
+                    return nullptr;
+                }
+                return new PropertyCmd<int>(project, sceneId, entity, component, propertyName, mask, onChanged);
+            }
             if (!isIntegral(value)) return expect("an integer");
+            const bool stencilByte = endsWith(propertyName, "stencil.ref") || endsWith(propertyName, "stencil.readMask") ||
+                                     endsWith(propertyName, "stencil.writeMask");
+            if (stencilByte && (integralValue(value) < 0 || integralValue(value) > 255)) return expect("an integer 0..255");
             return new PropertyCmd<int>(project, sceneId, entity, component, propertyName,
                                         static_cast<int>(integralValue(value)), onChanged);
+        }
         case PropertyType::Enum: {
             const EnumOptions* options = enumOptions(component, propertyName);
             int parsed = 0;
@@ -2118,6 +2203,26 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 }
                 return new PropertyCmd<PrefabAsset>(project, sceneId, entity, component, propertyName, prefab, onChanged);
             }
+            if (propertyName == "stencil" || endsWith(propertyName, ".stencil")) {
+                // the keys given change, null resets it
+                MaterialStencil stencil = property.ref ? *static_cast<MaterialStencil*>(property.ref) : MaterialStencil();
+                std::string why;
+                if (!stencilFromJson(value, stencil, why)) {
+                    error = "Property " + propertyName + ": " + why;
+                    return nullptr;
+                }
+                return new PropertyCmd<MaterialStencil>(project, sceneId, entity, component, propertyName, stencil, onChanged);
+            }
+            if (endsWith(propertyName, "material.extraPass")) {
+                // merged like a material: its values follow its own shader's manifest; null removes it
+                MaterialPass pass = property.ref ? *static_cast<MaterialPass*>(property.ref) : MaterialPass();
+                std::string why;
+                if (!materialPassFromJson(project, scene, value, pass, why)) {
+                    error = "Property " + propertyName + ": " + why;
+                    return nullptr;
+                }
+                return new PropertyCmd<MaterialPass>(project, sceneId, entity, component, propertyName, pass, onChanged);
+            }
             if (propertyName == "shaderUniforms" || endsWith(propertyName, "shaderParams") ||
                 endsWith(propertyName, "shaderTextures") || endsWith(propertyName, "shaderFeatures")) {
                 // shader library values, checked against the manifest of the shader they feed
@@ -2283,7 +2388,8 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
             for (const Change& change : changes) {
                 if (change.component != component || change.op != "set" || !change.value.is_string()) continue;
                 if (change.property == "customShader") pendingShaders[""] = change.value.get<std::string>();
-                else if (change.property.compare(0, 10, "submeshes[") == 0 && endsWith(change.property, "].material.shader")) {
+                else if (change.property.compare(0, 10, "submeshes[") == 0 && (endsWith(change.property, "].material.shader") ||
+                         endsWith(change.property, "].material.extraPass.shader"))) {
                     pendingShaders[change.property.substr(0, change.property.size() - 6)] = change.value.get<std::string>();
                 }
             }
@@ -2302,6 +2408,13 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 if (component == ComponentType::MeshComponent && property.compare(0, 10, "submeshes[") == 0) {
                     const size_t close = property.find("].material.");
                     if (close == std::string::npos) return nullptr;
+                    // the extra pass's values follow its own shader only
+                    if (property.compare(close, 21, "].material.extraPass.") == 0) {
+                        const auto pass = pendingShaders.find(property.substr(0, close + 21));
+                        if (pass == pendingShaders.end()) return nullptr;
+                        pendingShader = pass->second;
+                        return &pendingShader;
+                    }
                     const std::string prefix = property.substr(0, close + 11);
                     const auto own = pendingShaders.find(prefix);
                     if (own != pendingShaders.end() && !own->second.empty()) {
@@ -2355,7 +2468,8 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 const bool typedProperty = property.ref && change.op == "set" &&
                     (property.type != PropertyType::Custom || change.property == "shaderUniforms" ||
                      endsWith(change.property, "shaderParams") || endsWith(change.property, "shaderTextures") ||
-                     endsWith(change.property, "shaderFeatures") ||
+                     endsWith(change.property, "shaderFeatures") || change.property == "stencil" ||
+                     endsWith(change.property, ".stencil") || endsWith(change.property, "material.extraPass") ||
                      isScriptPrefabProperty(scene->scene, entity, component, change.property));
                 if (typedProperty) {
                     std::string why;

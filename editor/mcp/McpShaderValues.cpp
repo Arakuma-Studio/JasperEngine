@@ -17,6 +17,7 @@
 
 #include <cctype>
 #include <filesystem>
+#include <type_traits>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -219,6 +220,20 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
         else if (s.queue == ShaderQueue::TRANSPARENT) state["queue"] = "transparent";
         if (s.shadows == ShaderShadowCasting::ON) state["shadows"] = "on";
         else if (s.shadows == ShaderShadowCasting::OFF) state["shadows"] = "off";
+        // phase 2: the stencil keys this @state sets (a rule replaces only those) and colorwrite=
+        if (s.stencilSet != 0) {
+            Json stencil = Json::object();
+            const Json full = stencilToJson(s.stencil);
+            const std::pair<uint8_t, const char*> fields[] = {
+                {ShaderStencil_Compare, "compare"}, {ShaderStencil_Ref, "ref"}, {ShaderStencil_ReadMask, "readMask"},
+                {ShaderStencil_WriteMask, "writeMask"}, {ShaderStencil_Pass, "pass"}, {ShaderStencil_Fail, "fail"},
+                {ShaderStencil_DepthFail, "depthFail"}};
+            for (const auto& [bit, name] : fields) {
+                if (s.stencilSet & bit) stencil[name] = full[name];
+            }
+            state["stencil"] = stencil;
+        }
+        if (s.colorWrite >= 0) state["colorWrite"] = colorWriteToJson(s.colorWrite);
         return state;
     };
     out["state"] = stateJson(manifest.state);
@@ -457,54 +472,152 @@ bool McpValues::shaderFeaturesFromJson(const std::string& shader, const ShaderMa
     return false;
 }
 
+// ------------------------------------------------------------------ stencil, colour write
+
+Json McpValues::stencilToJson(const MaterialStencil& stencil) {
+    return {
+        {"compare", enumToJson((int)stencil.compare, *enumTable("material_stencil_compare"))},
+        {"ref", stencil.ref},
+        {"readMask", stencil.readMask},
+        {"writeMask", stencil.writeMask},
+        {"pass", enumToJson((int)stencil.pass, *enumTable("material_stencil_op"))},
+        {"fail", enumToJson((int)stencil.fail, *enumTable("material_stencil_op"))},
+        {"depthFail", enumToJson((int)stencil.depthFail, *enumTable("material_stencil_op"))}
+    };
+}
+
+bool McpValues::stencilFromJson(const Json& value, MaterialStencil& inout, std::string& error) {
+    if (value.is_null()) {
+        inout = MaterialStencil();
+        return true;
+    }
+    if (!value.is_object()) {
+        error = "stencil is an object {compare, ref, readMask, writeMask, pass, fail, depthFail} (the keys given change; "
+                "null resets it to auto).";
+        return false;
+    }
+    for (auto it = value.begin(); it != value.end(); ++it) {
+        const std::string& key = it.key();
+        const Json& item = it.value();
+        std::string why;
+        int parsed = 0;
+        if (key == "compare") {
+            if (!enumFromJson(item, *enumTable("material_stencil_compare"), parsed, why)) {
+                error = "stencil.compare: " + why;
+                return false;
+            }
+            inout.compare = static_cast<MaterialStencilCompare>(parsed);
+        } else if (key == "pass" || key == "fail" || key == "depthFail" || key == "zfail") {
+            if (!enumFromJson(item, *enumTable("material_stencil_op"), parsed, why)) {
+                error = "stencil." + key + ": " + why;
+                return false;
+            }
+            (key == "pass" ? inout.pass : key == "fail" ? inout.fail : inout.depthFail) = static_cast<MaterialStencilOp>(parsed);
+        } else if (key == "ref" || key == "readMask" || key == "writeMask") {
+            if (!item.is_number_integer() || item.get<long long>() < 0 || item.get<long long>() > 255) {
+                error = "stencil." + key + " must be an integer 0..255.";
+                return false;
+            }
+            (key == "ref" ? inout.ref : key == "readMask" ? inout.readMask : inout.writeMask) = item.get<int>();
+        } else {
+            error = "unknown stencil key \"" + key + "\"; valid: compare, ref, readMask, writeMask, pass, fail, depthFail.";
+            return false;
+        }
+    }
+    return true;
+}
+
+Json McpValues::colorWriteToJson(int colorWrite) {
+    return ShaderManifest::getColorWriteName(colorWrite);
+}
+
+bool McpValues::colorWriteFromJson(const Json& value, int& out, std::string& error) {
+    if (value.is_null()) {
+        out = -1;
+        return true;
+    }
+    if (value.is_number_integer()) {
+        const long long mask = value.get<long long>();
+        if (mask < -1 || mask > MATERIAL_COLOR_WRITE_ALL) {
+            error = "colorWrite takes \"auto\" (-1), \"none\" (0), channels of \"rgba\" (\"rgb\", \"a\"...) or a mask 0..15 (r 1, g 2, b 4, a 8).";
+            return false;
+        }
+        out = static_cast<int>(mask);
+        return true;
+    }
+    if (value.is_string()) {
+        std::string name = value.get<std::string>();
+        std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        const int mask = name == "auto" ? -1 : name == "all" ? (int)MATERIAL_COLOR_WRITE_ALL : ShaderManifest::parseColorWrite(name);
+        if (name == "auto" || mask >= 0) {
+            out = mask;
+            return true;
+        }
+    }
+    error = "colorWrite takes \"auto\", \"none\", channels of \"rgba\" (\"rgb\", \"a\"...) or a mask 0..15 (r 1, g 2, b 4, a 8).";
+    return false;
+}
+
 // ------------------------------------------------------------------ material keys
 
 bool McpValues::isMaterialShaderLibraryKey(const std::string& key) {
     static const char* const keys[] = {"shader", "shaderParams", "shaderTextures", "shaderFeatures", "blendMode", "cullMode",
-                                       "depthWrite", "depthTest", "depthOffsetFactor", "depthOffsetUnits", "sortPriority", "lighting"};
+                                       "depthWrite", "depthTest", "depthOffsetFactor", "depthOffsetUnits", "sortPriority", "lighting",
+                                       "stencil", "colorWrite", "extraPass"};
     for (const char* known : keys) {
         if (key == known) return true;
     }
     return false;
 }
 
-void McpValues::materialShaderLibraryToJson(Project* project, SceneProject* scene, const Material& material, Json& out, bool all) {
-    out["shader"] = material.shader;
-    if (all || !material.shaderParams.empty()) out["shaderParams"] = shaderParamsToJson(material.shaderParams);
-    if (all || !material.shaderTextures.empty()) out["shaderTextures"] = shaderTexturesToJson(project, scene, material.shaderTextures);
-    if (all || !material.shaderFeatures.empty()) out["shaderFeatures"] = shaderFeaturesToJson(material.shaderFeatures);
-    out["blendMode"] = enumToJson((int)material.blendMode, *enumTable("material_blend_mode"));
-    out["cullMode"] = enumToJson((int)material.cullMode, *enumTable("material_cull_mode"));
-    out["depthWrite"] = enumToJson((int)material.depthWrite, *enumTable("material_depth_write"));
-    out["depthTest"] = enumToJson((int)material.depthTest, *enumTable("material_depth_test"));
-    if (all || material.depthOffsetFactor != 0.0f || material.depthOffsetUnits != 0.0f) {
-        out["depthOffsetFactor"] = number(material.depthOffsetFactor);
-        out["depthOffsetUnits"] = number(material.depthOffsetUnits);
+namespace {
+
+// The shader, its values and the render state shared by a material and its extra pass
+template<typename T>
+void shaderStateToJson(Project* project, SceneProject* scene, const T& value, Json& out, bool all) {
+    out["shader"] = value.shader;
+    if (all || !value.shaderParams.empty()) out["shaderParams"] = McpValues::shaderParamsToJson(value.shaderParams);
+    if (all || !value.shaderTextures.empty()) out["shaderTextures"] = McpValues::shaderTexturesToJson(project, scene, value.shaderTextures);
+    if (all || !value.shaderFeatures.empty()) out["shaderFeatures"] = McpValues::shaderFeaturesToJson(value.shaderFeatures);
+    out["blendMode"] = McpValues::enumToJson((int)value.blendMode, *McpValues::enumTable("material_blend_mode"));
+    out["cullMode"] = McpValues::enumToJson((int)value.cullMode, *McpValues::enumTable("material_cull_mode"));
+    out["depthWrite"] = McpValues::enumToJson((int)value.depthWrite, *McpValues::enumTable("material_depth_write"));
+    out["depthTest"] = McpValues::enumToJson((int)value.depthTest, *McpValues::enumTable("material_depth_test"));
+    if (all || value.depthOffsetFactor != 0.0f || value.depthOffsetUnits != 0.0f) {
+        out["depthOffsetFactor"] = McpValues::number(value.depthOffsetFactor);
+        out["depthOffsetUnits"] = McpValues::number(value.depthOffsetUnits);
     }
-    if (all || material.sortPriority != 0) out["sortPriority"] = material.sortPriority;
-    out["lighting"] = enumToJson((int)material.lighting, *enumTable("material_lighting"));
+    if (all || value.stencil != MaterialStencil()) out["stencil"] = McpValues::stencilToJson(value.stencil);
+    out["colorWrite"] = McpValues::colorWriteToJson(value.colorWrite);
 }
 
-bool McpValues::materialShaderLibraryFromJson(Project* project, SceneProject* scene, const Json& value, Material& out, std::string& error) {
+// Applies the keys a material and its extra pass share ("shader" first: the others follow its
+// manifest). `where` prefixes the errors ("" or "extraPass.").
+template<typename T>
+bool shaderStateFromJson(Project* project, SceneProject* scene, const Json& value, T& out, const std::string& where, std::string& error) {
+    constexpr bool isMaterial = std::is_same_v<T, Material>;
     if (value.contains("shader")) {
         if (!value["shader"].is_string()) {
-            error = "shader must be a string: \"\" (built-in Lit), \"library:<name>\" or a fork base path.";
+            error = where + (isMaterial ? "shader must be a string: \"\" (built-in Lit), \"library:<name>\" or a fork base path."
+                                        : "shader must be a string: \"\" (no extra pass), \"library:<name>\" or a fork base path.");
             return false;
         }
         const std::string shader = value["shader"].get<std::string>();
         std::string why;
-        if (!checkShaderReference(project, shader, ShaderType::MESH, why)) {
-            error = "shader: " + why;
+        if (!McpValues::checkShaderReference(project, shader, ShaderType::MESH, why)) {
+            error = where + "shader: " + why;
             return false;
         }
         const bool changed = out.shader != shader;
         out.shader = shader;
-        // a lighting mode the new shader does not list would draw its default anyway: auto
-        if (changed && !value.contains("lighting") && !Catalog::supportsLighting(out.lighting, findManifest(shader).get())) {
-            out.lighting = MaterialLighting::AUTO;
+        if constexpr (isMaterial) {
+            // a lighting mode the new shader does not list would draw its default anyway: auto
+            if (changed && !value.contains("lighting") && !Catalog::supportsLighting(out.lighting, McpValues::findManifest(shader).get())) {
+                out.lighting = MaterialLighting::AUTO;
+            }
         }
     }
-    const std::shared_ptr<const ShaderManifest> manifest = findManifest(out.shader);
+    const std::shared_ptr<const ShaderManifest> manifest = McpValues::findManifest(out.shader);
     const bool library = ShaderReference::isLibrary(out.shader);
     if (value.contains("shaderParams")) {
         // an object merges into the values set (null removes one), null clears them all
@@ -512,7 +625,7 @@ bool McpValues::materialShaderLibraryFromJson(Project* project, SceneProject* sc
         if (params.is_null()) {
             out.shaderParams.clear();
         } else if (!params.is_object()) {
-            error = "shaderParams must be an object {member: value} (null removes a member).";
+            error = where + "shaderParams must be an object {member: value} (null removes a member).";
             return false;
         } else {
             for (auto it = params.begin(); it != params.end(); ++it) {
@@ -522,8 +635,8 @@ bool McpValues::materialShaderLibraryFromJson(Project* project, SceneProject* sc
                 }
                 ShaderUniformValues one;
                 std::string why;
-                if (!shaderParamsFromJson(manifest.get(), library, Json{{it.key(), it.value()}}, one, why)) {
-                    error = "shaderParams: " + why;
+                if (!McpValues::shaderParamsFromJson(manifest.get(), library, Json{{it.key(), it.value()}}, one, why)) {
+                    error = where + "shaderParams: " + why;
                     return false;
                 }
                 ShaderUniforms::set(out.shaderParams, one[0].first, one[0].second);
@@ -536,14 +649,14 @@ bool McpValues::materialShaderLibraryFromJson(Project* project, SceneProject* sc
         if (textures.is_null()) {
             out.shaderTextures.clear();
         } else if (!textures.is_object()) {
-            error = "shaderTextures must be an object {uniform: \"image path\" | null}.";
+            error = where + "shaderTextures must be an object {uniform: \"image path\" | null}.";
             return false;
         } else {
             for (auto it = textures.begin(); it != textures.end(); ++it) {
                 std::vector<std::pair<std::string, Texture>> one;
                 std::string why;
-                if (!shaderTexturesFromJson(project, scene, manifest.get(), library, Json{{it.key(), it.value()}}, one, why)) {
-                    error = "shaderTextures: " + why;
+                if (!McpValues::shaderTexturesFromJson(project, scene, manifest.get(), library, Json{{it.key(), it.value()}}, one, why)) {
+                    error = where + "shaderTextures: " + why;
                     return false;
                 }
                 auto found = std::find_if(out.shaderTextures.begin(), out.shaderTextures.end(),
@@ -560,8 +673,8 @@ bool McpValues::materialShaderLibraryFromJson(Project* project, SceneProject* sc
     }
     if (value.contains("shaderFeatures")) {
         std::string why;
-        if (!shaderFeaturesFromJson(out.shader, manifest.get(), library, value["shaderFeatures"], out.shaderFeatures, why)) {
-            error = "shaderFeatures: " + why;
+        if (!McpValues::shaderFeaturesFromJson(out.shader, manifest.get(), library, value["shaderFeatures"], out.shaderFeatures, why)) {
+            error = where + "shaderFeatures: " + why;
             return false;
         }
     }
@@ -569,8 +682,8 @@ bool McpValues::materialShaderLibraryFromJson(Project* project, SceneProject* sc
         if (!value.contains(key)) return true;
         int parsed = 0;
         std::string why;
-        if (!enumFromJson(value[key], *enumTable(table), parsed, why)) {
-            error = std::string(key) + ": " + why;
+        if (!McpValues::enumFromJson(value[key], *McpValues::enumTable(table), parsed, why)) {
+            error = where + key + ": " + why;
             return false;
         }
         target = static_cast<std::remove_reference_t<decltype(target)>>(parsed);
@@ -579,33 +692,100 @@ bool McpValues::materialShaderLibraryFromJson(Project* project, SceneProject* sc
     if (!enumKey("blendMode", "material_blend_mode", out.blendMode) ||
         !enumKey("cullMode", "material_cull_mode", out.cullMode) ||
         !enumKey("depthWrite", "material_depth_write", out.depthWrite) ||
-        !enumKey("depthTest", "material_depth_test", out.depthTest) ||
-        !enumKey("lighting", "material_lighting", out.lighting)) {
+        !enumKey("depthTest", "material_depth_test", out.depthTest)) {
         return false;
     }
-    // a lighting mode the shader does not list draws with its default instead
-    if (value.contains("lighting") && !Catalog::supportsLighting(out.lighting, manifest.get())) {
-        std::string modes = "auto";
-        for (MaterialLighting mode : Catalog::getShaderLightingModes(manifest.get())) {
-            modes += ", " + enumToJson((int)mode, *enumTable("material_lighting")).get<std::string>();
+    if constexpr (isMaterial) {
+        if (!enumKey("lighting", "material_lighting", out.lighting)) return false;
+        // a lighting mode the shader does not list draws with its default instead
+        if (value.contains("lighting") && !Catalog::supportsLighting(out.lighting, manifest.get())) {
+            std::string modes = "auto";
+            for (MaterialLighting mode : Catalog::getShaderLightingModes(manifest.get())) {
+                modes += ", " + McpValues::enumToJson((int)mode, *McpValues::enumTable("material_lighting")).template get<std::string>();
+            }
+            error = "lighting: " + (out.shader.empty() ? std::string("the built-in Lit shader") : out.shader) + " takes " + modes + ".";
+            return false;
         }
-        error = "lighting: " + (out.shader.empty() ? std::string("the built-in Lit shader") : out.shader) + " takes " + modes + ".";
-        return false;
+    } else {
+        if (!enumKey("order", "material_pass_order", out.order)) return false;
     }
     for (const char* key : {"depthOffsetFactor", "depthOffsetUnits"}) {
         if (!value.contains(key)) continue;
         if (!value[key].is_number()) {
-            error = std::string(key) + " must be a number.";
+            error = where + key + " must be a number.";
             return false;
         }
-        (std::string(key) == "depthOffsetFactor" ? out.depthOffsetFactor : out.depthOffsetUnits) = value[key].get<float>();
+        (std::string(key) == "depthOffsetFactor" ? out.depthOffsetFactor : out.depthOffsetUnits) = value[key].template get<float>();
     }
+    if (value.contains("stencil")) {
+        std::string why;
+        if (!McpValues::stencilFromJson(value["stencil"], out.stencil, why)) {
+            error = where + why;
+            return false;
+        }
+    }
+    if (value.contains("colorWrite")) {
+        std::string why;
+        if (!McpValues::colorWriteFromJson(value["colorWrite"], out.colorWrite, why)) {
+            error = where + why;
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+Json McpValues::materialPassToJson(Project* project, SceneProject* scene, const MaterialPass& pass, bool all) {
+    Json out = Json::object();
+    shaderStateToJson(project, scene, pass, out, all);
+    out["order"] = enumToJson((int)pass.order, *enumTable("material_pass_order"));
+    return out;
+}
+
+bool McpValues::materialPassFromJson(Project* project, SceneProject* scene, const Json& value, MaterialPass& inout, std::string& error) {
+    if (value.is_null()) {
+        inout = MaterialPass();
+        return true;
+    }
+    if (!value.is_object()) {
+        error = "extraPass is an object {shader, shaderParams, shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, "
+                "depthTest, depthOffsetFactor, depthOffsetUnits, stencil, colorWrite, order} (the keys given change; null removes "
+                "the pass).";
+        return false;
+    }
+    static const char* const keys[] = {"shader", "shaderParams", "shaderTextures", "shaderFeatures", "blendMode", "cullMode",
+                                       "depthWrite", "depthTest", "depthOffsetFactor", "depthOffsetUnits", "stencil", "colorWrite", "order"};
+    for (auto it = value.begin(); it != value.end(); ++it) {
+        if (std::find_if(std::begin(keys), std::end(keys), [&](const char* key) { return it.key() == key; }) == std::end(keys)) {
+            error = "unknown extraPass key \"" + it.key() + "\"; valid: shader, shaderParams, shaderTextures, shaderFeatures, "
+                    "blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, depthOffsetUnits, stencil, colorWrite, order.";
+            return false;
+        }
+    }
+    return shaderStateFromJson(project, scene, value, inout, "extraPass.", error);
+}
+
+void McpValues::materialShaderLibraryToJson(Project* project, SceneProject* scene, const Material& material, Json& out, bool all) {
+    shaderStateToJson(project, scene, material, out, all);
+    if (all || material.sortPriority != 0) out["sortPriority"] = material.sortPriority;
+    out["lighting"] = enumToJson((int)material.lighting, *enumTable("material_lighting"));
+    // the extra pass: null without one
+    if (material.extraPass != MaterialPass()) out["extraPass"] = materialPassToJson(project, scene, material.extraPass, all);
+    else if (all) out["extraPass"] = nullptr;
+}
+
+bool McpValues::materialShaderLibraryFromJson(Project* project, SceneProject* scene, const Json& value, Material& out, std::string& error) {
+    if (!shaderStateFromJson(project, scene, value, out, "", error)) return false;
     if (value.contains("sortPriority")) {
         if (!value["sortPriority"].is_number_integer()) {
             error = "sortPriority must be an integer (lower draws first among transparent objects).";
             return false;
         }
         out.sortPriority = value["sortPriority"].get<int>();
+    }
+    if (value.contains("extraPass") && !materialPassFromJson(project, scene, value["extraPass"], out.extraPass, error)) {
+        return false;
     }
     return true;
 }

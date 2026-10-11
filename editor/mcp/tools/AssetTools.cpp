@@ -30,6 +30,8 @@
 #include "command/type/ScenePropertyCmd.h"
 #include "command/type/UnlinkMaterialCmd.h"
 #include "component/MeshComponent.h"
+#include "material/MaterialChange.h"
+#include "material/MaterialPresets.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 #include "shader/ShaderManifest.h"
@@ -580,7 +582,7 @@ bool applyMaterialJson(Project* project, Material& material, const Json& values,
                     "alphaMode, emissiveFactor, foliageTransmission, baseColorTexture, emissiveTexture, metallicRoughnessTexture, "
                     "occlusionTexture, normalTexture, the *TexCoord indices, and the shader library's shader, shaderParams, "
                     "shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, "
-                    "depthOffsetUnits, sortPriority, lighting.";
+                    "depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass.";
             return false;
         }
     }
@@ -1404,6 +1406,139 @@ void linkMaterialTool(const CallPtr& call) {
     }
     call->ok("Linked " + rel + " to submesh " + std::to_string(submesh) + " of " + McpRefs::entityPath(sceneProject, entity) + ".",
              Json{{"entity", McpRefs::entityJson(sceneProject, entity)}, {"submesh", submesh}, {"material", rel}});
+}
+
+// ------------------------------------------------------------------ material presets
+
+// The fields a preset sets on a default material, as get_asset_info / update_material name them
+Json presetFieldsJson(Project* project, const MaterialPreset& preset) {
+    const Json before = materialToJson(project, Material());
+    const Json after = materialToJson(project, applyMaterialPreset(preset, Material()));
+    Json sets = Json::object();
+    for (auto it = after.begin(); it != after.end(); ++it) {
+        if (!before.contains(it.key()) || before[it.key()] != it.value()) sets[it.key()] = it.value();
+    }
+    return sets;
+}
+
+std::string presetIdsText() {
+    std::string ids;
+    for (const MaterialPreset& preset : getMaterialPresets()) ids += (ids.empty() ? "" : ", ") + preset.id;
+    return ids.empty() ? "(none)" : ids;
+}
+
+void listMaterialPresetsTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    Json presets = Json::array();
+    std::string text;
+    for (const MaterialPreset& preset : getMaterialPresets()) {
+        presets.push_back({{"id", preset.id}, {"name", preset.name}, {"description", preset.description},
+                           {"sets", presetFieldsJson(project, preset)}});
+        text += "\n" + preset.id + " (" + preset.name + "): " + preset.description;
+    }
+    call->ok(std::to_string(presets.size()) + " material preset(s); apply_material_preset applies one:" + text,
+             Json{{"presets", presets}});
+}
+
+void applyMaterialPresetTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    const std::string id = args.value("preset", std::string());
+    const MaterialPreset* preset = findMaterialPreset(id);
+    if (!preset) {
+        call->fail("No material preset \"" + id + "\". The presets: " + presetIdsText() + " (list_material_presets).");
+        return;
+    }
+    std::string error;
+
+    // a .material file: like update_material (linked submeshes follow; undo with scope project)
+    if (args.contains("path") && !args["path"].is_null()) {
+        if (args.contains("entity") || args.contains("entities")) {
+            call->fail("Pass either path (a .material file) or entity/entities (submesh materials), not both.");
+            return;
+        }
+        fs::path file;
+        if (!resolveExisting(call, "path", file)) return;
+        const std::string rel = projectRelative(project, file);
+        if (extensionOf(file) != ".material") {
+            call->fail(rel + " is not a .material file.");
+            return;
+        }
+        Material material;
+        if (!loadMaterialFile(file, material, error)) {
+            call->fail(error);
+            return;
+        }
+        material = applyMaterialPreset(*preset, material);
+        material.name = rel;
+        if (!writeFilesUndoable(call->ctx(), {{file, materialFileContent(material)}}, error)) {
+            call->fail(error);
+            return;
+        }
+        Json users = materialUsers(project, rel);
+        call->ok("Applied preset " + preset->id + " to " + rel + "; " + std::to_string(users.size()) +
+                 " linked submesh(es) follow it. Undo with scope project.",
+                 Json{{"preset", preset->id}, {"path", rel}, {"material", materialToJson(project, material)}, {"linked_by", users}});
+        return;
+    }
+
+    SceneProject* sceneProject = McpRefs::resolveScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+    if (!sceneProject) {
+        call->fail(error);
+        return;
+    }
+    std::vector<Entity> entities;
+    if (!McpRefs::resolveEntityArgs(sceneProject, args, entities, error)) {
+        call->fail(error);
+        return;
+    }
+    const bool oneSubmesh = args.contains("submesh") && !args["submesh"].is_null();
+    const int onlySubmesh = oneSubmesh ? args["submesh"].get<int>() : -1;
+
+    auto* multi = new MultiPropertyCmd();
+    Json applied = Json::array();
+    std::vector<std::string> unlinked;
+    for (Entity entity : entities) {
+        MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
+        if (!mesh || mesh->numSubmeshes == 0) {
+            delete multi;
+            call->fail(McpRefs::entityPath(sceneProject, entity) + " has no Mesh component with submeshes (presets set a "
+                       "mesh material: meshes, models, sprites, tilemaps).");
+            return;
+        }
+        if (oneSubmesh && (onlySubmesh < 0 || (unsigned int)onlySubmesh >= mesh->numSubmeshes)) {
+            delete multi;
+            call->fail("submesh must be 0.." + std::to_string(mesh->numSubmeshes - 1) + " for " + McpRefs::entityPath(sceneProject, entity) + ".");
+            return;
+        }
+        for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+            if (oneSubmesh && (int)s != onlySubmesh) continue;
+            Material from = mesh->submeshes[s].material;
+            const std::string property = "submeshes[" + std::to_string(s) + "].material";
+            const std::string linked = project->getMaterialFilePath(sceneProject->id, entity, s);
+            if (!linked.empty()) {
+                // the preset makes it the GameObject's own material, as an inline material edit does
+                multi->addCommand(std::make_unique<UnlinkMaterialCmd>(project, sceneProject->id, ComponentType::MeshComponent, property, s,
+                                                                      std::vector<Entity>{entity}));
+                from.name.clear();
+                unlinked.push_back(McpRefs::entityPath(sceneProject, entity) + " submesh " + std::to_string(s) + " (" + linked + ")");
+            }
+            const Material to = applyMaterialPreset(*preset, from);
+            addMaterialChangeCommands(*multi, project, sceneProject->id, entity, s, from, to);
+            applied.push_back({{"entity", McpRefs::entityJson(sceneProject, entity)}, {"submesh", s}, {"unlinked", !linked.empty()}});
+        }
+    }
+    const uint32_t sceneId = sceneProject->id;
+    if (!runSceneCommand(sceneId, multi, error, "Applying the preset changed nothing.")) {
+        call->fail(error);
+        return;
+    }
+    std::string text = "Applied preset " + preset->id + " to " + std::to_string(applied.size()) + " submesh(es) (one undo step).";
+    if (!unlinked.empty()) {
+        text += " Unlinked from their .material file (now their own material; apply_material_preset path= changes a shared file):";
+        for (const std::string& entry : unlinked) text += " " + entry + ";";
+    }
+    call->ok(text, Json{{"preset", preset->id}, {"applied", applied}, {"sets", presetFieldsJson(project, *preset)}});
 }
 
 // ------------------------------------------------------------------ shaders
@@ -2543,7 +2678,9 @@ void registerAssetTools(McpRegistry& registry) {
         "baseColorFactor [r,g,b,a], metallicFactor, roughnessFactor, alphaMode, alphaCutoff, emissiveFactor, "
         "foliageTransmission, *Texture (path|null), *TexCoord; shader (\"library:<name>\", list_shaders), shaderParams "
         "{member: value}, shaderTextures {uniform: path|null}, shaderFeatures [defines] or {define: bool}, blendMode, "
-        "cullMode, depthWrite, depthTest, depthOffsetFactor/Units, sortPriority, lighting.");
+        "cullMode, depthWrite, depthTest, depthOffsetFactor/Units, sortPriority, lighting, stencil {compare, ref, "
+        "readMask, writeMask, pass, fail, depthFail}, colorWrite (\"auto\", \"none\", \"rgb\"...), extraPass {shader, "
+        "its shaderParams/Textures/Features, render state, stencil, colorWrite, order} (null removes).");
 
     {
         ToolDef tool;
@@ -2595,6 +2732,43 @@ void registerAssetTools(McpRegistry& registry) {
         }, {"entity"});
         tool.allowedWhilePlaying = false;
         tool.handler = linkMaterialTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "list_material_presets";
+        tool.title = "List Material Presets";
+        tool.description =
+            "One-click material setups (outlines, see-through silhouette, stencil masks, draw-once transparency...): id, "
+            "name, description and the material fields each sets (shader, extraPass, stencil, colorWrite, render state). "
+            "Apply one with apply_material_preset.";
+        tool.inputSchema = object({});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = listMaterialPresetsTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "apply_material_preset";
+        tool.title = "Apply Material Preset";
+        tool.description =
+            "Apply a material preset (list_material_presets) to mesh submesh materials (entity/entities; every submesh "
+            "unless submesh) as one undo step, or to a .material file (path; linked submeshes follow, undo scope project). "
+            "Only the fields the preset sets change; a submesh linked to a .material file becomes its own material. "
+            "Fine-tune after with set_properties submeshes[i].material.* (extraPass.*, stencil.*).";
+        tool.inputSchema = object({
+            {"preset", string("Preset id, e.g. \"outline_hull\".")},
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"entities", entities()},
+            {"submesh", integer("One submesh (default: every submesh).", 0, 1024)},
+            {"path", assetPath("A .material file instead of entities.")}
+        }, {"preset"});
+        tool.allowedWhilePlaying = false;
+        tool.handler = applyMaterialPresetTool;
         registry.addTool(std::move(tool));
     }
 

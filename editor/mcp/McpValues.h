@@ -226,13 +226,34 @@ namespace jasperengine::editor::mcp {
                                            std::vector<std::string>& inout, std::string& error);
         // The shader-library keys of a material (shader, shaderParams, shaderTextures,
         // shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor,
-        // depthOffsetUnits, sortPriority, lighting) added to `out`; all = false leaves out the
-        // ones at their defaults
+        // depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass) added to
+        // `out`; all = false leaves out the ones at their defaults
         static void materialShaderLibraryToJson(Project* project, SceneProject* scene, const Material& material, Json& out, bool all);
         // Applies those keys of `value` to `out` ("shader" first: the others follow its
         // manifest). False with `error`.
         static bool materialShaderLibraryFromJson(Project* project, SceneProject* scene, const Json& value, Material& out, std::string& error);
         static bool isMaterialShaderLibraryKey(const std::string& key);
+
+        // ---- shader library phase 2 (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
+        //   stencil     {compare, ref, readMask, writeMask, pass, fail, depthFail}: compare
+        //               "auto" takes the shader's @state stencil rule, "disabled" turns stencil
+        //               off, any other test makes the whole block explicit; ref and masks
+        //               0..255; ops keep, zero, replace, incr_clamp, decr_clamp, invert,
+        //               incr_wrap, decr_wrap (the manifest's names are accepted too). Writes
+        //               merge the keys given; null resets it (auto).
+        //   colorWrite  "auto" (-1), "none" (0) or channels of "rgba" ("rgb", "a"...); writes
+        //               also take a mask -1..15 (r 1, g 2, b 4, a 8)
+        //   extraPass   {shader, shaderParams, shaderTextures, shaderFeatures, blendMode,
+        //               cullMode, depthWrite, depthTest, depthOffsetFactor, depthOffsetUnits,
+        //               stencil, colorWrite, order ("after" | "before")}: one more draw of the
+        //               submesh with its own (mesh) shader, values checked against that
+        //               shader's manifest like the material's; writes merge, null removes it
+        static Json stencilToJson(const MaterialStencil& stencil);
+        static bool stencilFromJson(const Json& value, MaterialStencil& inout, std::string& error);
+        static Json colorWriteToJson(int colorWrite);
+        static bool colorWriteFromJson(const Json& value, int& out, std::string& error);
+        static Json materialPassToJson(Project* project, SceneProject* scene, const MaterialPass& pass, bool all);
+        static bool materialPassFromJson(Project* project, SceneProject* scene, const Json& value, MaterialPass& inout, std::string& error);
 
         // Asset references: stored (assets-relative) <-> project-relative
         static std::string assetPathToJson(Project* project, const std::string& stored);
