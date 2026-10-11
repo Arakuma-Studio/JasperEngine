@@ -67,19 +67,33 @@ namespace jasperengine{
     };
 
     // What a loaded shader reads of the shader library's engine data: the frame block
-    // (u_vs_frame / u_fs_frame, includes/frame.glsl) and its custom textures. Slots are
-    // resolved once at load, so a draw does no name lookup; -1 when not declared.
+    // (u_vs_frame / u_fs_frame, includes/frame.glsl), its custom textures and the scene
+    // inputs (includes/scene.glsl: u_fs_sceneInputs, u_sceneDepthTexture,
+    // u_sceneColorTexture). Slots are resolved once at load, so a draw does no name lookup;
+    // -1 when not declared.
     struct JASPERENGINE_API ShaderLibraryBindings{
         int slotVSFrame = -1;
         int slotFSFrame = -1;
         unsigned int frameSize = 0; // bytes of the block the shader declares
         std::vector<ShaderTextureSlot> textures;
+        int slotFSSceneInputs = -1;
+        unsigned int sceneInputsSize = 0;
+        std::pair<int, int> slotSceneDepth = {-1, -1};
+        std::pair<int, int> slotSceneColor = {-1, -1};
 
         void clear(){
             slotVSFrame = -1;
             slotFSFrame = -1;
             frameSize = 0;
             textures.clear();
+            slotFSSceneInputs = -1;
+            sceneInputsSize = 0;
+            slotSceneDepth = {-1, -1};
+            slotSceneColor = {-1, -1};
+        }
+        // the shader declares a scene input (its draws get the pass's, RenderSystem::applySceneInputs)
+        bool readsScene() const{
+            return slotFSSceneInputs != -1 || slotSceneDepth.first != -1 || slotSceneColor.first != -1;
         }
     };
 

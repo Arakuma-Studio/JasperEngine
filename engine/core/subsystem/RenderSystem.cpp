@@ -440,12 +440,17 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
     frameTime = 0.0f;
     passResolution = Vector2(0.0f, 0.0f);
     passFrame = {};
+    passSceneBlock = {};
 
     ssrLoaded = false;
     ssrSlotParams = -1;
     ssrBlurSlotParams = -1;
     compositeSlotParams = -1;
     swapchainRedirect = false;
+    sceneColorRedirectAllowed = false;
+    sceneColorRedirect = false;
+    sceneColorRedirectHold = 0;
+    sceneColorRedirectIdle = 0;
 
     blitLoaded = false;
     blitSlotParams = -1;
@@ -535,6 +540,22 @@ void RenderSystem::destroy(){
     destroySSR();
     destroyBlit();
     destroyPostProcess();
+    // scene inputs: the targets, the copy, and who reads them (loaded again with the scene)
+    releaseSceneInputTargets(primaryView, true);
+    primaryView.sceneColorRedirect.destroy();
+    if (sceneColorCopyLoaded){
+        sceneColorCopyRender.destroy();
+        sceneColorCopyLoaded = false;
+    }
+    if (sceneColorCopyShader){
+        sceneColorCopyShader.reset();
+        ShaderPool::remove(ShaderType::BLIT, 0);
+    }
+    sceneInputMeshes.clear();
+    sceneInputPoints.clear();
+    sceneInputUsage = 0;
+    passSceneDepth = nullptr;
+    passSceneColor = nullptr;
     for (InstanceView& view : rv().instanceViews){
         view.buffer.getRender()->destroyBuffer();
         view.data.clear();
@@ -2685,6 +2706,7 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.ssao = scene->isSSAOEnabled();
     environment.ssr = scene->isSSREnabled();
     environment.depthPrepass = scene->isDepthPrepassEnabled();
+    environment.sceneDepth = sceneDepthPrograms;
     return environment;
 }
 
@@ -2773,6 +2795,28 @@ RenderState RenderSystem::resolveSubmeshRenderState(const MeshComponent& mesh, c
                               material.depthOffsetFactor, material.depthOffsetUnits, material.stencil, material.colorWrite, manifestState,
                               usesAlphaBlend(material), submesh.faceCulling, mesh.cullingMode, mesh.windingOrder,
                               blended, transparentQueue);
+}
+
+uint32_t RenderSystem::getSubmeshSceneInputs(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader,
+                                             bool& opaqueQueue){
+    opaqueQueue = false;
+    uint32_t inputs = 0;
+    const std::string& shader = getSubmeshShader(mesh, submesh, sceneMeshShader);
+    std::shared_ptr<const ShaderManifest> manifest = findManifest(shader);
+    if (manifest)
+        inputs |= manifest->resolveRequire(ShaderReference::getEnabledFeatures(shader, submesh.material.shaderFeatures));
+    const MaterialPass& pass = submesh.material.extraPass;
+    if (std::shared_ptr<const ShaderManifest> passManifest = findManifest(pass.shader))
+        inputs |= passManifest->resolveRequire(ShaderReference::getEnabledFeatures(pass.shader, pass.shaderFeatures));
+    inputs &= ShaderRequire_SceneInputs;
+    if (inputs){
+        // the extra pass draws in the submesh's queue position
+        bool blended = false;
+        bool transparentQueue = false;
+        resolveSubmeshRenderState(mesh, submesh, manifest.get(), blended, transparentQueue);
+        opaqueQueue = !transparentQueue;
+    }
+    return inputs;
 }
 
 RenderState RenderSystem::resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite, const ShaderManifest* manifest,
@@ -2916,6 +2960,13 @@ void RenderSystem::logRenderObjects(){
     }
     Log::print("Render objects: %zu meshes, %zu submeshes, %zu extra passes drawn (%zu allocated), %zu smoothed-normal buffers, %d object pipelines",
                meshes, submeshes, extraPasses, extraPassObjects, smoothNormalBuffers, ObjectRender::getLivePipelineCount());
+    // shader library phase 3: what reads the scene and what the last frame made for it
+    size_t sceneInputTargets = primaryView.sceneInputTargets.size() + (primaryView.sceneColorRedirect.isCreated() ? 1 : 0);
+    Log::print("Scene inputs: %zu objects read the scene (depth %s, colour %s); last frame: %u camera passes with a reading draw, "
+               "%u depth pre-passes, %u shared depths, %u colour copies; %zu targets alive, %u made",
+               sceneInputMeshes.size() + sceneInputPoints.size(), (sceneInputUsage & ShaderRequire_SceneDepth) ? "yes" : "no",
+               (sceneInputUsage & ShaderRequire_SceneColor) ? "yes" : "no", lastSceneInputStats.passes, lastSceneInputStats.depthPrePasses,
+               lastSceneInputStats.sharedDepth, lastSceneInputStats.colorCopies, sceneInputTargets, sceneInputStats.targetsCreated);
 }
 
 void RenderSystem::scanSubmeshAttributes(Submesh& submesh, const std::vector<const Buffer*>& buffers){
@@ -3241,7 +3292,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // the depth shader feeds shadow maps (casters) and the SSAO depth pre-pass
     // (SSR uses its own G-buffer shader). A depth fork is built even without a
     // pass, so its uniforms and build errors show up in the editor.
-    variant.depthPass = (environment.shadows && inputs.castShadows) || environment.ssao || environment.depthPrepass;
+    variant.depthPass = (environment.shadows && inputs.castShadows) || environment.ssao || environment.depthPrepass || environment.sceneDepth;
     variant.depth = variant.depthPass || inputs.customDepthShader;
     if (variant.depth){
         // a library depth program gets the inputs its manifest requires, as the color pass
@@ -3297,6 +3348,22 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
             sizeBytes = 0;
         bindings.frameSize = std::min((unsigned int)sizeof(frame_t), sizeBytes);
     }
+
+    // the scene inputs (includes/scene.glsl), bound to the neutral fallbacks until a draw
+    // binds its pass's (applySceneInputs)
+    bindings.slotFSSceneInputs = shaderData.getUniformBlockIndexByName("u_fs_sceneInputs");
+    if (bindings.slotFSSceneInputs != -1){
+        unsigned int sizeBytes = 0;
+        if (!shaderData.getUniformBlockMembers("u_fs_sceneInputs", sizeBytes))
+            sizeBytes = 0;
+        bindings.sceneInputsSize = std::min((unsigned int)sizeof(scene_inputs_t), sizeBytes);
+    }
+    bindings.slotSceneDepth = shaderData.getTextureIndexByName("u_sceneDepthTexture");
+    if (bindings.slotSceneDepth.first != -1)
+        render.addTexture(bindings.slotSceneDepth, ShaderStageType::FRAGMENT, &emptyWhite);
+    bindings.slotSceneColor = shaderData.getTextureIndexByName("u_sceneColorTexture");
+    if (bindings.slotSceneColor.first != -1)
+        render.addTexture(bindings.slotSceneColor, ShaderStageType::FRAGMENT, &emptyBlack);
 
     // the textures the manifest declares, else (a shader without one) the ones set by name
     auto addTexture = [&](const std::string& uniform, int fallback){
@@ -3430,6 +3497,16 @@ void RenderSystem::applyFrameBlock(ObjectRender& render, const ShaderLibraryBind
         render.applyUniformBlock(bindings.slotVSFrame, bindings.frameSize, &passFrame);
     if (bindings.slotFSFrame != -1)
         render.applyUniformBlock(bindings.slotFSFrame, bindings.frameSize, &passFrame);
+}
+
+void RenderSystem::applySceneInputs(ObjectRender& render, const ShaderLibraryBindings& bindings){
+    if (bindings.slotFSSceneInputs != -1)
+        render.applyUniformBlock(bindings.slotFSSceneInputs, bindings.sceneInputsSize, &passSceneBlock);
+    // the decoded white is past the far plane (scene.glsl clamps it to it): no occluder
+    if (bindings.slotSceneDepth.first != -1)
+        render.addTexture(bindings.slotSceneDepth, ShaderStageType::FRAGMENT, passSceneDepth ? passSceneDepth : &emptyWhite);
+    if (bindings.slotSceneColor.first != -1)
+        render.addTexture(bindings.slotSceneColor, ShaderStageType::FRAGMENT, passSceneColor ? passSceneColor : &emptyBlack);
 }
 
 bool RenderSystem::loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights){
@@ -4986,6 +5063,19 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
     }
     attempt.succeeded = true;
 
+    // what its shaders read of the scene (phase 3): the camera passes drawing it make them
+    uint32_t sceneInputs = 0;
+    for (int i = 0; i < mesh.numSubmeshes; i++){
+        const SubmeshShaderInputs& inputs = submeshLoads[i].shaderInputs;
+        // (a failed shader drawn by the built-in one reads nothing)
+        if (inputs.manifest && mesh.submeshes[i].customShaderId != 0)
+            sceneInputs |= inputs.manifest->resolveRequire(inputs.features);
+        if (mesh.submeshes[i].extraPass && mesh.submeshes[i].extraPass->loaded)
+            sceneInputs |= mesh.submeshes[i].extraPass->sceneInputs;
+    }
+    mesh.sceneInputs = sceneInputs & ShaderRequire_SceneInputs;
+    setSceneInputUser(entity, false, mesh.sceneInputs);
+
     trimSmoothNormals(mesh);
 
     mesh.needReload = false;
@@ -5687,6 +5777,7 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
 
     extra.manifest = inputs.manifest;
     extra.manifestState = inputs.manifest ? inputs.manifest->resolveState(inputs.features) : ShaderManifestState();
+    extra.sceneInputs = inputs.manifest ? (inputs.manifest->resolveRequire(inputs.features) & ShaderRequire_SceneInputs) : 0;
 
     ObjectRender& render = extra.render;
     render.beginLoad(submesh.primitiveType);
@@ -5782,6 +5873,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     }
 
     applyFrameBlock(render, extra.libraryBindings);
+    applySceneInputs(render, extra.libraryBindings);
 
     if (extra.slotFSFog != -1){
 #ifdef JASPERENGINE_EDITOR
@@ -6418,6 +6510,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             applyFrameBlock(render, libraryBindings);
+            applySceneInputs(render, libraryBindings);
 
             if (mesh.submeshes[i].hasIBL){
                 TextureRender* probeTexture = &emptyCubeBlack;
@@ -6849,10 +6942,10 @@ bool RenderSystem::ensureSSAOFramebuffers(unsigned int width, unsigned int heigh
     return rv().ssaoDepthFramebuffer.isCreated() && rv().ssaoFramebuffer.isCreated() && rv().ssaoBlurFramebuffer.isCreated();
 }
 
-void RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResolution, TextureRender* sharedDepth){
+TextureRender* RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResolution, TextureRender* sharedDepth){
     loadSSAO();
     if (!ssaoLoaded)
-        return;
+        return nullptr;
 
     unsigned int w = (unsigned int)targetViewRect().getWidth();
     unsigned int h = (unsigned int)targetViewRect().getHeight();
@@ -6863,7 +6956,7 @@ void RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResolution, Tex
         h = scene->getFixedResolutionHeight();
     }
     if (!ensureSSAOFramebuffers(w, h))
-        return;
+        return nullptr;
 
     Matrix4 renderProj = camera.projectionMatrix;
 
@@ -6914,17 +7007,23 @@ void RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResolution, Tex
     ssaoPassRender.endRenderPass();
 
     rv().currentSSAOTexture = &rv().ssaoBlurFramebuffer.getRender().getColorTexture();
+    return depthTexture;
 }
 
 void RenderSystem::renderDepthPrePass(CameraComponent& camera){
+    renderOpaqueDepth(camera, rv().ssaoDepthFramebuffer, rv().ssaoWidth, rv().ssaoHeight, 0, &rv().lodView, nullptr);
+}
+
+void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& target, unsigned int width, unsigned int height,
+                                     int instanceView, const LodView* lodView, Transform* perCameraTransform){
     // Logical (un-flipped) matrices: flipY reverses winding but PIP_DEPTH does not
     // compensate (only PIP_RTT reverses winding on GL). The depth buffer therefore
     // stays in logical orientation; SSAO/SSR consumers flip Y on GL when sampling.
     Matrix4 renderVP = camera.viewProjectionMatrix;
 
     ssaoPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0)); // background -> depth ~1.0
-    ssaoPassRender.startRenderPass(&rv().ssaoDepthFramebuffer.getRender());
-    passResolution = Vector2((float)rv().ssaoWidth, (float)rv().ssaoHeight);
+    ssaoPassRender.startRenderPass(&target.getRender());
+    passResolution = Vector2((float)width, (float)height);
 
     auto transforms = scene->getComponentArray<Transform>();
     for (int i = 0; i < transforms->size(); i++){
@@ -6938,6 +7037,15 @@ void RenderSystem::renderDepthPrePass(CameraComponent& camera){
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         if (!transform.visible || mesh.transparent || !isRenderActive(entity, signature) || !isLayerVisible(entity, camera.cullingMask))
             continue;
+        // what the colour pass leaves out (a render-to-texture camera does not draw the
+        // objects showing its own image)
+        if (samplesCameraTarget(camera, mesh))
+            continue;
+
+        // a camera drawn after another makes its own billboard matrices (as renderCameraPass)
+        if (perCameraTransform){
+            updateMVP(i, transform, camera, *perCameraTransform);
+        }
 
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
         TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
@@ -6945,9 +7053,209 @@ void RenderSystem::renderDepthPrePass(CameraComponent& camera){
 
         const Matrix4& model = objectModel(transform);
         vs_depth_t params = {model, renderVP, renderVP * model};
-        drawMeshDepth(entity, mesh, transform, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true, PIP_DEPTH, 0, &rv().lodView);
+        drawMeshDepth(entity, mesh, transform, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true, PIP_DEPTH, instanceView, lodView);
     }
     ssaoPassRender.endRenderPass();
+}
+
+void RenderSystem::setSceneInputUser(Entity entity, bool points, uint32_t inputs){
+    std::unordered_map<Entity, uint32_t>& users = points ? sceneInputPoints : sceneInputMeshes;
+    inputs &= ShaderRequire_SceneInputs;
+    if (inputs){
+        auto found = users.find(entity);
+        if (found != users.end() && found->second == inputs)
+            return;
+        users[entity] = inputs;
+    }else if (users.empty() || users.erase(entity) == 0){
+        return;
+    }
+    uint32_t usage = 0;
+    for (const auto& user : sceneInputMeshes)
+        usage |= user.second;
+    for (const auto& user : sceneInputPoints)
+        usage |= user.second;
+    sceneInputUsage = usage;
+}
+
+uint32_t RenderSystem::findPassSceneInputs(CameraComponent& camera, int instanceView){
+    // the same visibility the draws below test (drawMesh, drawPoints)
+    uint32_t inputs = 0;
+    for (const auto& user : sceneInputMeshes){
+        if ((inputs | user.second) == inputs || !scene->isEntityCreated(user.first))
+            continue;
+        const Entity entity = user.first;
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!mesh || !transform || !mesh->loaded || mesh->needReload || !transform->visible)
+            continue;
+        if (!isRenderActive(entity, scene->getSignature(entity)) || !isLayerVisible(entity, camera.cullingMask) || samplesCameraTarget(camera, *mesh))
+            continue;
+        if (!isBatchVisible(entity, *mesh, *transform, scene->findComponent<InstancedMeshComponent>(entity), instanceView, camera.farClip, camera.frustumPlanes))
+            continue;
+        inputs |= user.second;
+    }
+    for (const auto& user : sceneInputPoints){
+        if ((inputs | user.second) == inputs || !scene->isEntityCreated(user.first))
+            continue;
+        const Entity entity = user.first;
+        PointsComponent* points = scene->findComponent<PointsComponent>(entity);
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!points || !transform || !points->loaded || points->numVisible == 0 || !transform->visible)
+            continue;
+        if (!isRenderActive(entity, scene->getSignature(entity)) || !isLayerVisible(entity, camera.cullingMask) || samplesCameraTarget(camera, points->texture))
+            continue;
+        inputs |= user.second;
+    }
+    return inputs;
+}
+
+bool RenderSystem::readsSceneColor(Entity entity, Signature signature) const{
+    if (signature.test(scene->getComponentId<MeshComponent>()))
+        return (scene->getComponent<MeshComponent>(entity).sceneInputs & ShaderRequire_SceneColor) != 0;
+    if (signature.test(scene->getComponentId<PointsComponent>()))
+        return (scene->getComponent<PointsComponent>(entity).sceneInputs & ShaderRequire_SceneColor) != 0;
+    return false;
+}
+
+RenderSystem::SceneInputTarget* RenderSystem::ensureSceneInputTarget(bool color, unsigned int width, unsigned int height){
+    if (width == 0 || height == 0)
+        return nullptr;
+    RenderView& view = rv();
+    // one target per size and kind: cameras of different sizes keep theirs from frame to
+    // frame instead of resizing a shared one
+    for (std::unique_ptr<SceneInputTarget>& target : view.sceneInputTargets){
+        if (target->color == color && target->width == width && target->height == height && target->framebuffer.isCreated()){
+            target->lastUsed = drawCount;
+            return target.get();
+        }
+    }
+    std::unique_ptr<SceneInputTarget> target = std::make_unique<SceneInputTarget>();
+    target->color = color;
+    target->width = width;
+    target->height = height;
+    target->lastUsed = drawCount;
+    Framebuffer& framebuffer = target->framebuffer;
+    framebuffer.setWidth(width);
+    framebuffer.setHeight(height);
+    // packed depth is read texel-exact; the colour copy is filtered (refraction offsets)
+    const TextureFilter filter = color ? TextureFilter::LINEAR : TextureFilter::NEAREST;
+    framebuffer.setMinFilter(filter);
+    framebuffer.setMagFilter(filter);
+    framebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    framebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    // drawn by PIP_DEPTH (the depth pre-pass) or PIP_EFFECT (the copy): depth only, no stencil
+    framebuffer.setDepthAttachment(FramebufferDepth::DEPTH);
+    framebuffer.create();
+    if (!framebuffer.isCreated())
+        return nullptr;
+    sceneInputStats.targetsCreated++;
+    view.sceneInputTargets.push_back(std::move(target));
+    return view.sceneInputTargets.back().get();
+}
+
+void RenderSystem::releaseSceneInputTargets(RenderView& view, bool all){
+    // kept while a camera keeps drawing a requiring object, freed some seconds after the
+    // last such pass (an object out of view for a moment keeps them)
+    static const uint64_t KEEP_DRAWS = 180;
+    view.sceneInputTargets.erase(std::remove_if(view.sceneInputTargets.begin(), view.sceneInputTargets.end(),
+        [&](const std::unique_ptr<SceneInputTarget>& target){
+            return all || drawCount > target->lastUsed + KEEP_DRAWS;
+        }), view.sceneInputTargets.end());
+}
+
+bool RenderSystem::ensureSceneColorRedirect(unsigned int width, unsigned int height){
+    if (width == 0 || height == 0)
+        return false;
+    Framebuffer& framebuffer = rv().sceneColorRedirect;
+    if (framebuffer.isCreated() && framebuffer.getWidth() == width && framebuffer.getHeight() == height)
+        return true;
+    framebuffer.destroy();
+    framebuffer.setWidth(width);
+    framebuffer.setHeight(height);
+    // blitted 1:1 to the swapchain, and the source of the (half-resolution) colour copy
+    framebuffer.setMinFilter(TextureFilter::LINEAR);
+    framebuffer.setMagFilter(TextureFilter::LINEAR);
+    framebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    framebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    framebuffer.create();
+    if (framebuffer.isCreated())
+        sceneInputStats.targetsCreated++;
+    return framebuffer.isCreated();
+}
+
+void RenderSystem::loadSceneColorCopy(){
+    if (sceneColorCopyLoaded)
+        return;
+    // the blit shader, into a copy target (depth-only attachment, never tested)
+    if (!sceneColorCopyShader)
+        sceneColorCopyShader = ShaderPool::get(ShaderType::BLIT, 0);
+    if (!sceneColorCopyShader || !sceneColorCopyShader->isCreated())
+        return;
+    sceneColorCopyRender.beginLoad(PrimitiveType::TRIANGLES);
+    sceneColorCopyRender.setShader(sceneColorCopyShader.get());
+    sceneColorCopySlotParams = sceneColorCopyShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::BLIT_FS_PARAMS);
+    if (!sceneColorCopyRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
+        return;
+    sceneColorCopyLoaded = true;
+}
+
+TextureRender* RenderSystem::copySceneColor(TextureRender* source, const Rect& viewport, unsigned int targetWidth, unsigned int targetHeight){
+    loadSceneColorCopy();
+    if (!sceneColorCopyLoaded || !source || targetWidth == 0 || targetHeight == 0)
+        return nullptr;
+
+    const unsigned int width = (unsigned int)viewport.getWidth();
+    const unsigned int height = (unsigned int)viewport.getHeight();
+    const bool full = scene->getSceneColorScale() == SceneColorScale::FULL;
+    SceneInputTarget* target = ensureSceneInputTarget(true, full ? width : std::max(1u, width / 2), full ? height : std::max(1u, height / 2));
+    if (!target)
+        return nullptr;
+
+    // the viewport's part of the source, rows as stored: GL counts them from the bottom (the
+    // viewport's own origin), the other backends from the top. The copy keeps that order.
+    const float rowStart = Engine::isOpenGL() ? viewport.getY() : (float)targetHeight - viewport.getY() - viewport.getHeight();
+    fs_blit_t copyParams;
+    copyParams.params = Vector4(viewport.getWidth() / (float)targetWidth, viewport.getX() / (float)targetWidth,
+                                viewport.getHeight() / (float)targetHeight, rowStart / (float)targetHeight);
+
+    sceneInputPassRender.setClearColor(Vector4(0.0f, 0.0f, 0.0f, 1.0f));
+    sceneInputPassRender.startRenderPass(&target->framebuffer.getRender());
+    if (sceneColorCopyRender.beginDraw(PIP_EFFECT)){
+        ShaderData& shaderData = sceneColorCopyShader.get()->shaderData;
+        sceneColorCopyRender.addTexture(shaderData.getTextureIndex(TextureShaderType::SCENECOLORTEXTURE), ShaderStageType::FRAGMENT, source);
+        sceneColorCopyRender.applyUniformBlock(sceneColorCopySlotParams, sizeof(fs_blit_t), &copyParams);
+        sceneColorCopyRender.draw(0, 3, 1);
+    }
+    sceneInputPassRender.endRenderPass();
+    sceneInputStats.colorCopies++;
+    return &target->framebuffer.getRender().getColorTexture();
+}
+
+void RenderSystem::fillSceneInputs(const CameraComponent& camera, const Rect& viewport, unsigned int targetHeight, bool flipped,
+                                   unsigned int copyWidth, unsigned int copyHeight){
+    // the clip space the depth pre-pass draws (the camera's, without the GL target flip);
+    // the projection out of the view-projection, so a mirror's oblique near plane is in it
+    const Matrix4 inverseView = camera.viewMatrix.inverse();
+    const Matrix4 inverseProjection = (camera.viewProjectionMatrix * inverseView).inverse();
+    passSceneBlock.inverseViewProjection = inverseView * inverseProjection;
+    // distance along the view axis = -view.z / view.w, view = inverse projection * ndc
+    const Vector4 rowZ = inverseProjection.row(2);
+    passSceneBlock.inverseProjectionZ = Vector4(-rowZ.x, -rowZ.y, -rowZ.z, -rowZ.w);
+    passSceneBlock.inverseProjectionW = inverseProjection.row(3);
+
+    // gl_FragCoord.y counts rows from the first one stored: the bottom on GL, the top
+    // elsewhere. Whether the camera's top (ndc +1) is at that first row depends on the
+    // flip of the pass (offscreen GL passes and non-GL probe faces draw upside down).
+    const bool gl = Engine::isOpenGL();
+    const float width = std::max(viewport.getWidth(), 1.0f);
+    const float height = std::max(viewport.getHeight(), 1.0f);
+    const float rowStart = gl ? viewport.getY() : (float)targetHeight - viewport.getY() - viewport.getHeight();
+    const bool topFirst = gl ? flipped : !flipped;
+    passSceneBlock.screenParams = Vector4(1.0f / width, topFirst ? -1.0f / height : 1.0f / height,
+                                          -viewport.getX() / width, topFirst ? 1.0f + rowStart / height : -rowStart / height);
+    // the copy keeps the rows of its source
+    passSceneBlock.colorParams = Vector4(topFirst ? -1.0f : 1.0f, topFirst ? 1.0f : 0.0f,
+                                         copyWidth ? 1.0f / (float)copyWidth : 0.0f, copyHeight ? 1.0f / (float)copyHeight : 0.0f);
 }
 
 bool RenderSystem::ensureGBufferFramebuffer(unsigned int width, unsigned int height){
@@ -7424,7 +7732,7 @@ void RenderSystem::renderBlit(TextureRender* source, Rect viewport){
     fixedResPassRender.setClearColor(scene->getBackgroundColor());
 
     PipelineType blitPip;
-    float flipGL = 0.0f;
+    bool flipGL = false;
     if (Framebuffer* target = targetFramebuffer()){
         if (!target->isCreated()){
             target->create();
@@ -7436,14 +7744,14 @@ void RenderSystem::renderBlit(TextureRender* source, Rect viewport){
         fixedResPassRender.startRenderPass();
         blitPip = PIP_DEFAULT;
         // the source was rendered flipped (PIP_RTT) but the GL swapchain is not
-        flipGL = Engine::isOpenGL() ? 1.0f : 0.0f;
+        flipGL = Engine::isOpenGL();
     }
     fixedResPassRender.applyViewport(viewport);
 
     if (blitRender.beginDraw(blitPip)){
         ShaderData& bd = blitShader.get()->shaderData;
         blitRender.addTexture(bd.getTextureIndex(TextureShaderType::SCENECOLORTEXTURE), ShaderStageType::FRAGMENT, source);
-        fs_blit.params = Vector4(flipGL, 0.0f, 0.0f, 0.0f);
+        fs_blit.params = flipGL ? Vector4(1.0f, 0.0f, -1.0f, 1.0f) : Vector4(1.0f, 0.0f, 1.0f, 0.0f);
         blitRender.applyUniformBlock(blitSlotParams, sizeof(fs_blit_t), &fs_blit);
         blitRender.draw(0, 3, 1);
     }
@@ -8084,6 +8392,10 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
 
     points.slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::POINTS_VS_PARAMS);
     points.shaderManifest = (points.customShaderId != 0) ? findManifest(pointsShaderBase) : nullptr;
+    // what it reads of the scene (phase 3), with the features it enables
+    points.sceneInputs = points.shaderManifest ? (points.shaderManifest->resolveRequire(
+        ShaderReference::getEnabledFeatures(pointsShaderBase, points.shaderFeatures)) & ShaderRequire_SceneInputs) : 0;
+    setSceneInputUser(entity, true, points.sceneInputs);
     points.customVSParams.resolve(shaderData, "u_vs_customParams");
     points.customFSParams.resolve(shaderData, "u_fs_customParams");
     points.customVSParams.writeValues(points.shaderUniforms, nullptr, points.shaderManifest.get());
@@ -8300,6 +8612,7 @@ bool RenderSystem::drawPoints(Entity entity, PointsComponent& points, Transform&
         render.applyUniformBlock(points.slotVSParams, sizeof(vs_points_params_t), &vsParams);
         applyComponentUniforms(render, points.customVSParams, points.customFSParams, points.shaderUniforms, points.shaderManifest.get(), points.needUpdateShaderUniforms, frameTime, passResolution);
         applyFrameBlock(render, points.libraryBindings);
+        applySceneInputs(render, points.libraryBindings);
 #ifdef JASPERENGINE_EDITOR
         const bool viewOrder = bindViewPointsOrder(entity, points, transform, camera, camTransform);
 #endif
@@ -10160,12 +10473,82 @@ void RenderSystem::updateSwapchainRedirect(){
             redirect = postProcessLoaded && blitLoaded && !postProcessPasses.empty()
                     && ensurePostProcessFramebuffers(w, h);
         }
+        // the scene colour (phase 3) is copied out of an offscreen colour target: in a scene
+        // with an object reading it, the camera may draw into one blitted to the screen,
+        // decided each frame by what it sees (updateSceneColorRedirect)
+        sceneColorRedirectAllowed = !redirect && (sceneInputUsage & ShaderRequire_SceneColor) != 0;
+    }else{
+        sceneColorRedirectAllowed = false;
     }
+    if (!sceneColorRedirectAllowed){
+        sceneColorRedirect = false;
+        sceneColorRedirectHold = 0;
+        if (rv().sceneColorRedirect.isCreated())
+            rv().sceneColorRedirect.destroy();
+    }
+    redirect = redirect || sceneColorRedirect;
 
     if (redirect != swapchainRedirect){
         swapchainRedirect = redirect;
         // the flip is baked in the MVP matrices
         scene->getComponent<CameraComponent>(scene->getCamera()).needUpdate = true;
+    }
+}
+
+void RenderSystem::updateSceneColorRedirect(CameraComponent& mainCamera){
+    if (!sceneColorRedirectAllowed)
+        return;
+
+    // a reader of the scene colour the camera may see this frame: in its view, or moved (its
+    // bounds are made again later in the update), or points (no bounds)
+    bool seen = false;
+    for (const auto& user : sceneInputMeshes){
+        if (!(user.second & ShaderRequire_SceneColor) || !scene->isEntityCreated(user.first))
+            continue;
+        const Entity entity = user.first;
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!mesh || !transform || !mesh->loaded || !transform->visible || !isRenderActive(entity) || !isLayerVisible(entity, mainCamera.cullingMask))
+            continue;
+        if (transform->needUpdate || mesh->needUpdateAABB ||
+                isBatchVisible(entity, *mesh, *transform, scene->findComponent<InstancedMeshComponent>(entity), 0, mainCamera.farClip, mainCamera.frustumPlanes)){
+            seen = true;
+            break;
+        }
+    }
+    for (const auto& user : sceneInputPoints){
+        if (seen)
+            break;
+        if (!(user.second & ShaderRequire_SceneColor) || !scene->isEntityCreated(user.first))
+            continue;
+        PointsComponent* points = scene->findComponent<PointsComponent>(user.first);
+        Transform* transform = scene->findComponent<Transform>(user.first);
+        seen = points && transform && points->loaded && transform->visible && isRenderActive(user.first) && isLayerVisible(user.first, mainCamera.cullingMask);
+    }
+
+    // kept some frames after the last one seen: an object at the edge of the view does not
+    // switch it every frame (each switch remakes the matrices with the other Y flip)
+    static const int HOLD_FRAMES = 30;
+    if (seen){
+        sceneColorRedirectHold = HOLD_FRAMES;
+    }else if (sceneColorRedirectHold > 0){
+        sceneColorRedirectHold--;
+    }
+    bool redirect = sceneColorRedirectHold > 0;
+    if (redirect){
+        loadBlit();
+        redirect = blitLoaded && ensureSceneColorRedirect((unsigned int)Engine::getViewRect().getWidth(), (unsigned int)Engine::getViewRect().getHeight());
+        sceneColorRedirectIdle = 0;
+    }else if (rv().sceneColorRedirect.isCreated() && ++sceneColorRedirectIdle > 180){
+        // unused for a while: its memory goes (made again when a reader comes into view)
+        rv().sceneColorRedirect.destroy();
+    }
+    if (redirect != sceneColorRedirect){
+        sceneColorRedirect = redirect;
+        swapchainRedirect = redirect;
+        // the flip is baked in the MVP matrices (made again below, the camera needing an update)
+        mainCamera.needUpdate = true;
+        mvpFlipped = isRenderingFlipped(mainCamera);
     }
 }
 
@@ -10278,7 +10661,10 @@ uint16_t RenderSystem::getScenePipelines() const{
             pipelines |= camera.depthTest ? PIP_DEFAULT : PIP_DEFAULT_NODEPTH;
         }
 
-        if (camera.renderToTexture || Engine::getFramebuffer() || isFixedResolutionActive() || swapchainRedirect){
+        // (a scene-colour reader: the scene camera switches between the swapchain and an
+        // offscreen target without reloading)
+        if (camera.renderToTexture || Engine::getFramebuffer() || isFixedResolutionActive() || swapchainRedirect ||
+                (sceneColorRedirectAllowed && cameraEntity == mainCameraEntity)){
             pipelines |= camera.depthTest ? PIP_RTT : PIP_RTT_NODEPTH;
         }
     }
@@ -10467,6 +10853,9 @@ void RenderSystem::update(double dt){
     Transform& mainCameraTransform = *mainCameraTransformPtr;
     fadeEyePosition = mainCameraTransform.worldPosition;
 
+    // with its view up to date, whether it draws offscreen for a scene-colour reader
+    updateSceneColorRedirect(mainCamera);
+
     updateMainLodView(mainCamera, mainCameraTransform);
     if (mainCamera.needUpdate){
         instanceViewsDirty = true;
@@ -10497,6 +10886,14 @@ void RenderSystem::update(double dt){
     const int lightCapacity = getLightCapacity(scene->getMaxLightsPerObject());
     if (lightCapacity != lightCapacityTier){
         lightCapacityTier = lightCapacity;
+        needReloadMeshes();
+    }
+
+    // a scene reading the scene depth (phase 3) gives every mesh a depth program for the
+    // depth pre-pass; the last such object gone, they drop them again
+    const bool sceneDepth = (sceneInputUsage & ShaderRequire_SceneDepth) != 0;
+    if (sceneDepth != sceneDepthPrograms){
+        sceneDepthPrograms = sceneDepth;
         needReloadMeshes();
     }
 
@@ -11924,6 +12321,22 @@ void RenderSystem::drawCameras(bool includeMain){
 
     drawCount++;
     releaseUnusedCameraShadows();
+
+    // scene inputs (phase 3): what this frame's passes did, and the targets no pass used
+    // for a while (nothing to do in a scene that never read the scene)
+    lastSceneInputStats = sceneInputStats;
+    sceneInputStats.passes = 0;
+    sceneInputStats.depthPrePasses = 0;
+    sceneInputStats.sharedDepth = 0;
+    sceneInputStats.colorCopies = 0;
+    if (!primaryView.sceneInputTargets.empty())
+        releaseSceneInputTargets(primaryView, false);
+#ifdef JASPERENGINE_EDITOR
+    for (auto& entry : secondaryViews){
+        if (!entry.second->sceneInputTargets.empty())
+            releaseSceneInputTargets(*entry.second, false);
+    }
+#endif
 }
 
 // One camera's color pass, with the effects its destination asks for: SSR, SSAO, the
@@ -11959,6 +12372,12 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
     // the frame block of this camera (its depth, G-buffer and colour passes below read it)
     updatePassFrame(camera, cameraTransform);
+
+    // Scene inputs (shader library phase 3): what the visible draws of this pass read of the
+    // scene (nothing to look at in a scene without such a shader)
+    passSceneDepth = nullptr;
+    passSceneColor = nullptr;
+    const uint32_t sceneInputs = sceneInputUsage ? findPassSceneInputs(camera, isMainCamera ? 0 : -1) : 0;
 
     // Screen-space reflections (main camera only). The G-buffer geometry pass runs
     // FIRST so SSAO can share its depth (a single geometry pre-pass feeds both
@@ -11999,6 +12418,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
 
+    // the packed opaque depth of this pass another effect draws (the G-buffer, the SSAO or
+    // post-process depth pre-pass), which the scene inputs then reuse
+    TextureRender* sharedSceneDepth = useSSR ? &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(0) : nullptr;
+
     // User post-process chain: like SSR it needs the scene color offscreen, so it
     // follows the same destination-capture rule. Main scene only: its last pass
     // writes every pixel, so a layer scene would erase the scene below it.
@@ -12030,6 +12453,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             if (postProcessNeedsDepth && !useSSR && !scene->isSSAOEnabled()
                     && ensureSSAOFramebuffers(pw, ph)){
                 renderDepthPrePass(camera);
+                sharedSceneDepth = &rv().ssaoDepthFramebuffer.getRender().getColorTexture();
             }
         }
     }
@@ -12041,12 +12465,71 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     rv().currentSSAOTexture = &emptyWhite;
     if (isMainCamera && scene->isSSAOEnabled()){
         TextureRender* sharedDepth = useSSR ? &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(0) : nullptr;
-        renderSSAO(camera, useFixedRes, sharedDepth);
+        TextureRender* ssaoDepth = renderSSAO(camera, useFixedRes, sharedDepth);
+        if (ssaoDepth)
+            sharedSceneDepth = ssaoDepth;
     }
+
+    // Exported builds whose scene reads the scene colour draw the scene camera offscreen
+    // (updateSwapchainRedirect), then blit it to the swapchain, when nothing else does
+    const bool useSceneColorRedirect = isMainCamera && !pass.renderToTexture && !target && !useFixedRes && !useSSR && !usePostProcess
+            && sceneColorRedirect && rv().sceneColorRedirect.isCreated();
 
     // whether this camera's color pass targets an offscreen framebuffer
     // (selects PIP_RTT pipelines and flipped rendering on GL)
-    bool offscreenTarget = pass.renderToTexture || target || useFixedRes || useSSR || usePostProcess;
+    bool offscreenTarget = pass.renderToTexture || target || useFixedRes || useSSR || usePostProcess || useSceneColorRedirect;
+
+    // The colour target of the pass (null: the swapchain), its size and viewport, as the
+    // branches below pick them: the scene inputs are made to match it
+    Rect sceneInputViewport;
+    unsigned int sceneInputTargetWidth = 0;
+    unsigned int sceneInputTargetHeight = 0;
+    if (sceneInputs){
+        if (useSSR){
+            sceneInputTargetWidth = rv().ssrWidth;
+            sceneInputTargetHeight = rv().ssrHeight;
+        }else if (usePostProcess){
+            sceneInputTargetWidth = rv().postProcessWidth;
+            sceneInputTargetHeight = rv().postProcessHeight;
+        }else if (useFixedRes){
+            sceneInputTargetWidth = rv().fixedResWidth;
+            sceneInputTargetHeight = rv().fixedResHeight;
+        }else if (pass.renderToTexture){
+            sceneInputTargetWidth = (unsigned int)camera.framebuffer->getWidth();
+            sceneInputTargetHeight = (unsigned int)camera.framebuffer->getHeight();
+        }else if (useSceneColorRedirect){
+            sceneInputTargetWidth = rv().sceneColorRedirect.getWidth();
+            sceneInputTargetHeight = rv().sceneColorRedirect.getHeight();
+        }
+        if (sceneInputTargetWidth){
+            sceneInputViewport = Rect(0, 0, (float)sceneInputTargetWidth, (float)sceneInputTargetHeight);
+        }else{
+            sceneInputViewport = viewRect;
+            sceneInputTargetWidth = target ? (unsigned int)target->getWidth() : (unsigned int)System::instance().getScreenWidth();
+            sceneInputTargetHeight = target ? (unsigned int)target->getHeight() : (unsigned int)System::instance().getScreenHeight();
+        }
+        sceneInputStats.passes++;
+    }
+    // the scene colour is copied out of an offscreen colour target (the swapchain cannot be read)
+    const bool copySceneColorPending = (sceneInputs & ShaderRequire_SceneColor) && offscreenTarget;
+
+    // the scene depth: the opaque meshes' depth pre-pass of this camera, drawn here unless an
+    // effect above drew it already
+    if (sceneInputs & ShaderRequire_SceneDepth){
+        if (sharedSceneDepth){
+            passSceneDepth = sharedSceneDepth;
+            sceneInputStats.sharedDepth++;
+        }else{
+            const unsigned int depthWidth = (unsigned int)sceneInputViewport.getWidth();
+            const unsigned int depthHeight = (unsigned int)sceneInputViewport.getHeight();
+            if (SceneInputTarget* depthTarget = ensureSceneInputTarget(false, depthWidth, depthHeight)){
+                renderOpaqueDepth(camera, depthTarget->framebuffer, depthWidth, depthHeight, isMainCamera ? 0 : -1,
+                                  isMainCamera ? &rv().lodView : nullptr, perCameraMVP ? &cameraTransform : nullptr);
+                passSceneDepth = &depthTarget->framebuffer.getRender().getColorTexture();
+                sceneInputStats.depthPrePasses++;
+            }
+        }
+    }
     PipelineType colorPip = colorPipeline(camera, offscreenTarget);
     bool distanceSort = sortsByDistance(camera);
 
@@ -12061,6 +12544,18 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
     // the space the UI scissor lives in
     Rect colorPassViewport;
+    // the offscreen target the colour pass draws into, and whether it set a viewport (both
+    // for a pass split by the scene-colour copy)
+    FramebufferRender* colorTarget = nullptr;
+    bool colorPassViewportApplied = false;
+    auto startColorPass = [&](FramebufferRender* framebuffer){
+        colorTarget = framebuffer;
+        if (copySceneColorPending){
+            camera.render.startSplitRenderPass(framebuffer);
+        }else{
+            camera.render.startRenderPass(framebuffer);
+        }
+    };
 
     if (useSSR || usePostProcess){
         // capture the real destination for the composite / post-process chain, then
@@ -12091,40 +12586,66 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
         if (useSSR){
             colorPassViewport = Rect(0, 0, (float)rv().ssrWidth, (float)rv().ssrHeight);
-            camera.render.startRenderPass(&rv().sceneColorFramebuffer.getRender());
+            startColorPass(&rv().sceneColorFramebuffer.getRender());
             camera.render.applyViewport(colorPassViewport);
         }else{
             colorPassViewport = Rect(0, 0, (float)rv().postProcessWidth, (float)rv().postProcessHeight);
-            camera.render.startRenderPass(&rv().postProcessFramebuffer[0].getRender());
+            startColorPass(&rv().postProcessFramebuffer[0].getRender());
             camera.render.applyViewport(colorPassViewport);
         }
+        colorPassViewportApplied = true;
     }else if (useFixedRes){
         // full offscreen target; letterbox/upscale happens in the blit pass
         colorPassViewport = Rect(0, 0, (float)rv().fixedResWidth, (float)rv().fixedResHeight);
-        camera.render.startRenderPass(&rv().fixedResFramebuffer.getRender());
+        startColorPass(&rv().fixedResFramebuffer.getRender());
+    }else if (useSceneColorRedirect){
+        // the whole redirect target; renderBlit draws it at the view rect afterwards
+        colorPassViewport = Rect(0, 0, (float)rv().sceneColorRedirect.getWidth(), (float)rv().sceneColorRedirect.getHeight());
+        startColorPass(&rv().sceneColorRedirect.getRender());
     }else if (!pass.renderToTexture){
         if (target){
             if (!target->isCreated()){
                 target->create();
             }
-            camera.render.startRenderPass(&target->getRender());
+            startColorPass(&target->getRender());
         }else{
             camera.render.startRenderPass();
         }
         colorPassViewport = viewRect;
         camera.render.applyViewport(colorPassViewport);
+        colorPassViewportApplied = true;
     }else{
         if (!camera.framebuffer->isCreated()){
             camera.framebuffer->create();
         }
         colorPassViewport = Rect(0, 0, (float)camera.framebuffer->getWidth(), (float)camera.framebuffer->getHeight());
-        camera.render.startRenderPass(&camera.framebuffer->getRender());
+        startColorPass(&camera.framebuffer->getRender());
     }
 
     passResolution = Vector2(colorPassViewport.getWidth(), colorPassViewport.getHeight());
     passFrame.resolution = Vector4(passResolution.x, passResolution.y,
                                    passResolution.x > 0.0f ? 1.0f / passResolution.x : 0.0f,
                                    passResolution.y > 0.0f ? 1.0f / passResolution.y : 0.0f);
+
+    // the scene inputs' block of this pass, and the copy of the opaque queue and the sky the
+    // draws requiring the scene colour sample (a 3D pass copies after its opaque queue, a 2D
+    // pass, drawn in hierarchy order, right before the first such draw)
+    bool sceneColorPending = copySceneColorPending && colorTarget;
+    if (sceneInputs){
+        const bool fullCopy = scene->getSceneColorScale() == SceneColorScale::FULL;
+        const unsigned int copyWidth = fullCopy ? (unsigned int)colorPassViewport.getWidth() : std::max(1u, (unsigned int)colorPassViewport.getWidth() / 2);
+        const unsigned int copyHeight = fullCopy ? (unsigned int)colorPassViewport.getHeight() : std::max(1u, (unsigned int)colorPassViewport.getHeight() / 2);
+        fillSceneInputs(camera, colorPassViewport, sceneInputTargetHeight, isRenderingFlipped(camera), copyWidth, copyHeight);
+    }
+    auto takeSceneColor = [&](){
+        sceneColorPending = false;
+        camera.render.endRenderPass();
+        passSceneColor = copySceneColor(&colorTarget->getColorTexture(), colorPassViewport, sceneInputTargetWidth, sceneInputTargetHeight);
+        camera.render.resumeRenderPass(colorTarget);
+        if (colorPassViewportApplied){
+            camera.render.applyViewport(colorPassViewport);
+        }
+    };
 
     //---------Draw opaque meshes and UI----------
     bool hasActiveScissor = false;
@@ -12214,6 +12735,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         for (const OpaqueRenderData& opaque : opaqueRenders){
             drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, camera, cameraTransform, colorPip, opaque.instmesh, opaque.terrain, opaque.tilemap, terrainView, instanceView, lodView);
         }
+        // the opaque queue and the sky are drawn
+        if (sceneColorPending){
+            takeSceneColor();
+        }
     }
 
     for (int i = 0; i < transforms->size(); i++){
@@ -12223,6 +12748,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
         if (signature.test(scene->getComponentId<CameraComponent>())){
             continue;
+        }
+
+        // a 2D pass: what was drawn before the first draw requiring the scene colour
+        if (sceneColorPending && readsSceneColor(entity, signature)){
+            takeSceneColor();
         }
 
         if (distanceSort && signature.test(scene->getComponentId<MeshComponent>())){
@@ -12370,6 +12900,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     }
 
     camera.render.endRenderPass();
+    passSceneDepth = nullptr;
+    passSceneColor = nullptr;
 
 #ifdef JASPERENGINE_EDITOR
     passDisablesFaceCulling = false;
@@ -12391,6 +12923,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // action), so overlaid UI scenes stay at native resolution.
     if (useFixedRes){
         renderFixedResolutionBlit();
+    }
+
+    // the scene drawn offscreen for its scene-colour copy, onto the swapchain
+    if (useSceneColorRedirect){
+        renderBlit(&rv().sceneColorRedirect.getRender().getColorTexture(), targetViewRect());
     }
 }
 
@@ -12423,12 +12960,15 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     } else if (componentId == scene->getComponentId<MeshComponent>()) {
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         destroyMesh(entity, mesh);
+        // (kept over reloads, which load it again)
+        setSceneInputUser(entity, false, 0);
     } else if (componentId == scene->getComponentId<UIComponent>()) {
         UIComponent& ui = scene->getComponent<UIComponent>(entity);
         destroyUI(entity, ui);
     } else if (componentId == scene->getComponentId<PointsComponent>()) {
         PointsComponent& points = scene->getComponent<PointsComponent>(entity);
         destroyPoints(entity, points);
+        setSceneInputUser(entity, true, 0);
     } else if (componentId == scene->getComponentId<LineRendererComponent>()) {
         LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
         destroyLines(entity, lines);
@@ -12587,6 +13127,9 @@ void RenderSystem::destroyRenderView(RenderView& view){
     view.postProcessFramebuffer[1].destroy();
     view.postProcessWidth = 0;
     view.postProcessHeight = 0;
+
+    releaseSceneInputTargets(view, true);
+    view.sceneColorRedirect.destroy();
 
     for (InstanceView& instanceView : view.instanceViews){
         instanceView.buffer.getRender()->destroyBuffer();

@@ -80,6 +80,8 @@ namespace jasperengine{
         // the frame block and custom textures
         std::shared_ptr<const ShaderManifest> shaderManifest;
         ShaderLibraryBindings libraryBindings;
+        // what its shader reads of the scene (ShaderRequire_SceneDepth / _SceneColor)
+        uint32_t sceneInputs = 0;
 
         Texture texture;
 

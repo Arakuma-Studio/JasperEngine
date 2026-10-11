@@ -49,7 +49,19 @@ namespace {
         FACT_LIGHTS_2D       = 1u << 5,
         FACT_SHADOW_LIGHTS_2D= 1u << 6, // a 2D light casting shadows
         FACT_OCCLUDERS_2D    = 1u << 7, // Shadow Caster 2D components
+        FACT_SCENE_DEPTH     = 1u << 8, // a shader requiring the scene depth (every mesh gets a depth program)
     };
+
+    // whether a shader reference reads the scene depth with these features (manifest @require
+    // scenedepth, shader library phase 3)
+    bool readsSceneDepth(const std::string& shader, const std::vector<std::string>& features){
+        if (shader.empty())
+            return false;
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+        if (!manifest || !manifest->present)
+            return false;
+        return (manifest->resolveRequire(ShaderReference::getEnabledFeatures(shader, features)) & ShaderRequire_SceneDepth) != 0;
+    }
 
     uint32_t collectFacts(const editor::ShaderVariantContent& content){
         EntityRegistry* registry = content.registry;
@@ -85,6 +97,24 @@ namespace {
             if (registry->findComponent<ShadowCaster2DComponent>(entity)){
                 facts |= FACT_OCCLUDERS_2D;
             }
+            // RenderSystem::update: a loaded mesh or points component reading the scene depth
+            // (the scene's default shaders: toEnvironment)
+            if (const MeshComponent* mesh = registry->findComponent<MeshComponent>(entity)){
+                static const std::string noSceneShader;
+                for (unsigned int s = 0; s < mesh->numSubmeshes && !(facts & FACT_SCENE_DEPTH); s++){
+                    const Material& material = mesh->submeshes[s].material;
+                    const std::string& shader = RenderSystem::getSubmeshShader(*mesh, mesh->submeshes[s], noSceneShader);
+                    if (readsSceneDepth(shader, material.shaderFeatures) ||
+                            readsSceneDepth(material.extraPass->shader, material.extraPass->shaderFeatures)){
+                        facts |= FACT_SCENE_DEPTH;
+                    }
+                }
+            }
+            if (const PointsComponent* points = registry->findComponent<PointsComponent>(entity)){
+                if (readsSceneDepth(points->customShader, points->shaderFeatures)){
+                    facts |= FACT_SCENE_DEPTH;
+                }
+            }
         }
         return facts;
     }
@@ -105,13 +135,17 @@ namespace {
         environment.ssao = scene->isSSAOEnabled();
         environment.ssr = scene->isSSREnabled();
         environment.depthPrepass = scene->isDepthPrepassEnabled();
+        // a scene default shader reading the scene depth is drawn by what has no shader of its own
+        environment.sceneDepth = (facts & FACT_SCENE_DEPTH) ||
+            readsSceneDepth(scene->getDefaultCustomShader(ShaderType::MESH), {}) ||
+            readsSceneDepth(scene->getDefaultCustomShader(ShaderType::POINTS), {});
         return environment;
     }
 
     uint32_t environmentBits(const MeshShaderEnvironment& e){
         return (e.lights ? 1u : 0u) | (e.shadows ? 2u : 0u) | (e.ibl ? 4u : 0u) | (e.reflectionProbes ? 8u : 0u) |
             (e.fog ? 16u : 0u) | (e.lights2D ? 32u : 0u) | (e.shadows2D ? 64u : 0u) | (e.ssao ? 128u : 0u) |
-            (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u) | ((uint32_t)e.lightCapacity << 10);
+            (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u) | ((uint32_t)e.lightCapacity << 10) | (e.sceneDepth ? (1u << 20) : 0u);
     }
 
     // The lighting setups a scene can be in: its own content, with any of the build's prefabs

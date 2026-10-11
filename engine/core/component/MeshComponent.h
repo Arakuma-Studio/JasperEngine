@@ -117,6 +117,8 @@ namespace jasperengine{
         // the manifest of its shader (null for a fork without one) and its resolved @state
         std::shared_ptr<const ShaderManifest> manifest;
         ShaderManifestState manifestState;
+        // what its variant reads of the scene (ShaderRequire_SceneDepth / _SceneColor)
+        uint32_t sceneInputs = 0;
         ShaderLibraryBindings libraryBindings;
         // filled from MaterialPass::shaderParams, else the manifest defaults
         CustomUniformBlock customVSParams;
@@ -363,6 +365,9 @@ namespace jasperengine{
         int transparentSortPriority = 0;
         int opaqueSortPriority = 0;
         bool skipsDepthPrepass = false;
+        // set at load: what its shaders (main draws and extra passes) read of the scene,
+        // ShaderRequire_SceneDepth / _SceneColor (manifest @require scenedepth / scenecolor)
+        uint32_t sceneInputs = 0;
 
         // opt-out of the scene's detail levels (Scene::setMeshLodEnabled); bias above 1 keeps detail longer
         bool lodEnabled = true;

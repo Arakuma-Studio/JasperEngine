@@ -39,6 +39,14 @@ void CameraRender::startRenderPass(){
     backend.startRenderPass();
 }
 
+void CameraRender::startSplitRenderPass(FramebufferRender* framebuffer){
+    backend.startSplitRenderPass(framebuffer);
+}
+
+void CameraRender::resumeRenderPass(FramebufferRender* framebuffer){
+    backend.resumeRenderPass(framebuffer);
+}
+
 void CameraRender::applyViewport(Rect rect){
     backend.applyViewport(rect);
 }
