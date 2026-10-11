@@ -305,14 +305,18 @@ local function foliage(ctx)
     plant(MaterialLighting.NONE, function(material)
         material:setShaderParam("baseColor", Vector4(0.9, 0.7, 0.3, 1.0))
     end)
-    -- an instanced clump: each instance sways in its own phase
+    -- an instanced clump: each instance sways in its own phase, as far as the others (its
+    -- wind mask is the raw vertex colour, which the instance colour does not scale) and
+    -- tinted by its instance colour (a dark red one included)
     local clump = model(ctx, "models/fx_plant.gltf")
     ctx:place(clump, 0.0)
     clump:createInstancedMesh()
+    local tints = { Vector4(1, 0.45, 0.3, 1), Vector4(0.2, 1, 0.35, 1), Vector4(0.45, 0.6, 1, 1), Vector4(0.2, 0.05, 0.05, 1) }
     for i = 0, 3 do
         local angle = i * 1.7
-        clump:addInstance(Vector3(math.cos(angle) * 0.45, 0, math.sin(angle) * 0.45), Quaternion(), Vector3(0.6, 0.6, 0.6))
+        clump:addInstance(Vector3(math.cos(angle) * 0.45, 0, math.sin(angle) * 0.45), Quaternion(), Vector3(0.6, 0.6, 0.6), tints[i + 1])
     end
+    ctx:log("instanced tinted foliage at x %.2f z %.2f", clump.position.x, clump.position.z)
     ctx:setShader(clump, FOLIAGE, function(material)
         material:setShaderTexture("u_baseTexture", "textures/fx_leaves.png")
         material:setShaderParam("windStrength", 0.2)

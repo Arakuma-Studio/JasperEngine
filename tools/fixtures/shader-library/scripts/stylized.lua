@@ -190,6 +190,21 @@ function Stylized.build(ctx)
         material:setShaderParam("baseColor", srgb(0.95, 0.9, 0.8))
     end)
 
+    -- VERTEX_AO on instances tinted by their instance colours (a dark red one included): the
+    -- occlusion is the raw vertex colour, so every instance is shaded alike, each in its tint
+    local occludedBatch = model(ctx, "models/occluded_blob.gltf", 0.3)
+    occludedBatch:createInstancedMesh()
+    local batchTints = { srgb(1.0, 0.35, 0.3), srgb(0.35, 1.0, 0.45), srgb(0.4, 0.55, 1.0), srgb(0.25, 0.1, 0.1) }
+    for i = 1, 4 do
+        local x = ((i - 1) % 2 - 0.5) * 0.55
+        local z = (math.floor((i - 1) / 2) - 0.5) * 0.55
+        occludedBatch:addInstance(Vector3(x, 0, z), Quaternion(), Vector3(0.45, 0.45, 0.45), batchTints[i])
+    end
+    shader(ctx, occludedBatch, FAKE, nil, function(material)
+        material:setShaderFeature("VERTEX_AO", true)
+    end)
+    ctx:log("instanced VERTEX_AO batch at x %.2f z %.2f", occludedBatch.position.x, occludedBatch.position.z)
+
     -- EMISSION: a dark tint with a glowing checker
     local glowing = box(ctx, 1.0, 1.0, 1.0)
     glowing:setRotation(0, -30, 0)

@@ -14,6 +14,9 @@
 -- is an error, so a typo never passes as an empty run). A group built alone has
 -- ctx.solo set and may frame a close-up of itself with ctx.camera, ctx.light, ctx.ground:
 --   SMOKE_GAME_ENV="SL_GROUPS=2d" tools/smoke-test.sh tools/fixtures/shader-library
+-- SL_CAMERA="x,y,z,tx,ty,tz" places the camera at x,y,z looking at tx,ty,tz (after the
+-- groups are built), for a close-up of any part:
+--   SMOKE_GAME_ENV="SL_GROUPS=effects SL_CAMERA=0,3,6,0,0.5,0" tools/smoke-test.sh tools/fixtures/shader-library
 local ShaderLibrary = { properties = {} }
 
 local GROUPS = {
@@ -153,6 +156,20 @@ function ShaderLibrary:init()
     end
     if #self.groups == 0 then
         fail("no group script found")
+    end
+
+    local view = os.getenv("SL_CAMERA")
+    if view and view ~= "" then
+        local v = {}
+        for number in view:gmatch("[^,%s]+") do
+            table.insert(v, tonumber(number))
+        end
+        if #v == 6 then
+            camera.position = Vector3(v[1], v[2], v[3])
+            camera.target = Vector3(v[4], v[5], v[6])
+        else
+            fail("SL_CAMERA wants x,y,z,tx,ty,tz, got %s", view)
+        end
     end
 
     self.time = 0
