@@ -517,6 +517,10 @@ void jasperengine::htmlui::compat::rewriteAll(DeclContext& context){
 void jasperengine::htmlui::compat::rewriteDirection(DeclContext& context){
     ValueList w = words(context.value);
     const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
+    // phase-3 spec 2.2: the text runs right to left, the layout is not mirrored
+    if (k == "rtl")
+        context.reportAs(Severity::Info, codes::ApproximatedMinor, "'direction: rtl' sets the text direction; block, flex and grid layouts are not mirrored",
+                         hints::kMirroredLayout);
     if (k == "ltr" || k == "rtl"){
         context.emit("-rmlui-direction", k);
         return;

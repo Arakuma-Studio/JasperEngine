@@ -331,6 +331,10 @@ void jasperengine::htmlui::compat::rewriteTextAlign(DeclContext& context){
     ValueList w = words(context.value);
     const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
     const bool rtl = context.session.rootDirection == "rtl";
+    // phase-3 spec 2.2: no justification in the fork (written as is: the fork aligns it left)
+    if (k == "justify" || k == "justify-all")
+        context.reportAs(Severity::Info, codes::ApproximatedMinor, "'text-align: " + k + "' does not justify the lines",
+                         "Justified text is aligned left.");
     if (context.session.fork(ForkFeature::TextProperties)){
         // native: start, end and match-parent follow the element's direction
         if (k == "left" || k == "right" || k == "center" || k == "justify" || k == "start" || k == "end" || k == "match-parent" ||

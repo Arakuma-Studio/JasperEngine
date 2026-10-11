@@ -656,7 +656,7 @@ namespace {
         {"running", I, FF::None, I, false, "none", false, RW::None, "", "paged media; no pages in a game UI", "", "css-gcpm-3"},
         {"scale", R, FF::IndividualTransforms, N, false, "none", false, RW::IndividualTransform, "transform", "until the fork has IndividualTransforms: combined into transform (translate rotate scale <transform>), base rule merge (Info)", "", "css-transforms-2"},
         {"scroll-axis-lock", U, FF::None, U, false, "none", false, RW::None, "", "not supported (draft)", "restrict scrolling with overflow-x / overflow-y", "css-overflow-5"},
-        {"scroll-behavior", I, FF::None, I, false, "auto", false, RW::None, "", "smooth scrolling hint; ignored", "", "css-overflow-3"},
+        {"scroll-behavior", I, FF::None, I, false, "auto", false, RW::None, "", "smooth scrolling hint; ignored", "Use focus navigation or Lua scrolling (element:scrollIntoView{behavior = \"smooth\"}).", "css-overflow-3"},
         {"scroll-initial-target", U, FF::None, U, false, "none", false, RW::None, "", "not supported", "set the scroll position from Lua after load", "css-scroll-snap-2"},
         {"scroll-margin", I, FF::None, I, false, "0", false, RW::None, "", "scroll snapping offset; ignored", "", "css-scroll-snap-1"},
         {"scroll-margin-block", I, FF::None, I, false, "0", false, RW::None, "", "scroll snapping offset; ignored", "", "css-scroll-snap-1"},
