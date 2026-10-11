@@ -11,6 +11,7 @@
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "ComputeProperty.h"
 #include "DecoratorShader.h"
+#include "PropertyParserColour.h"
 
 namespace Rml {
 
@@ -52,7 +53,7 @@ static ColorStopList ResolveColorStops(Element* element, const float gradient_li
 	{
 		if (stop.current_color)
 		{
-			stop.color = element->GetComputedValues().color().ToPremultiplied();
+			stop.color = PropertyParserColour::ResolveCurrentColor(stop.color_mix, element->GetComputedValues().color()).ToPremultiplied();
 			stop.current_color = false;
 		}
 	}

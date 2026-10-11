@@ -9,6 +9,7 @@
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
 #include "ElementStyle.h"
+#include "PropertyParserColour.h"
 #ifdef RMLUI_MATH_EXPRESSIONS
 	#include "CalculationResolver.h"
 #endif
@@ -33,7 +34,7 @@ BoxShadowGeometryInfo GeometryBoxShadow::Resolve(Element* element, const CornerS
 	{
 		if (shadow.current_color)
 		{
-			shadow.color = element->GetComputedValues().color().ToPremultiplied();
+			shadow.color = PropertyParserColour::ResolveCurrentColor(shadow.color_mix, element->GetComputedValues().color()).ToPremultiplied();
 			shadow.current_color = false;
 		}
 #ifdef RMLUI_MATH_EXPRESSIONS

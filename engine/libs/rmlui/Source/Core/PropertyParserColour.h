@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../Include/RmlUi/Core/PropertyParser.h"
+#include "../../Include/RmlUi/Core/StyleValue.h"
 #include "../../Include/RmlUi/Core/Types.h"
 #include "ControlledLifetimeResource.h"
 
@@ -38,6 +39,17 @@ public:
 	static constexpr int CurrentColor = 0x43430000;
 	static bool IsCurrentColor(const Property& property);
 
+	/// A color-mix() with a 'currentcolor' operand (CSS Color 5) has no value without an element either: it parses to a
+	/// CurrentColorMixValue (Unit::STYLE_VALUE) and is resolved where 'currentcolor' is; a box shadow, a color stop or a
+	/// text shadow keeps its text with the currentcolor flag.
+	static bool IsCurrentColorMix(const Property& property);
+	/// 'currentcolor' or a color-mix() of it.
+	static bool DependsOnCurrentColor(const Property& property);
+	/// The colour of a colour property for an element whose 'color' is 'current_color'.
+	static Colourb Resolve(const Property& property, Colourb current_color);
+	/// The colour of a 'currentcolor' or of the text of a color-mix() of it ('mix' empty: 'currentcolor' itself).
+	static Colourb ResolveCurrentColor(const String& mix, Colourb current_color);
+
 	static void Initialize();
 	static void Shutdown();
 
@@ -49,6 +61,18 @@ private:
 	static bool ParseHexColour(Colourb& colour, const String& value);
 	static bool ParseColorFunction(ColorSpaces::Color& color, const String& name, const String& arguments, int depth);
 	static bool ParseColorMix(ColorSpaces::Color& color, const String& arguments, int depth);
+};
+
+/// The value of a colour property that is a color-mix() with a 'currentcolor' operand.
+class CurrentColorMixValue final : public StyleValue {
+public:
+	RMLUI_RTTI_DeclareWithParent(CurrentColorMixValue, StyleValue)
+
+	explicit CurrentColorMixValue(String text) : text(std::move(text)) {}
+	String text; // the color-mix() as written (lower case)
+
+	String ToString() const override { return text; }
+	bool Equals(const StyleValue& other) const override { return text == static_cast<const CurrentColorMixValue&>(other).text; }
 };
 
 } // namespace Rml

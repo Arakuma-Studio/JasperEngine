@@ -79,7 +79,10 @@ static Colourb CurrentColorOf(Element& element, const PropertyDefinition* defini
 static bool InterpolateBoxShadows(const BoxShadowList& list0, const BoxShadowList& list1, float alpha, Element& element, BoxShadowList& result)
 {
 	const size_t count = Math::Max(list0.size(), list1.size());
-	const ColourbPremultiplied element_colour = element.GetComputedValues().color().ToPremultiplied();
+	const Colourb element_colour = element.GetComputedValues().color();
+	auto colour_of = [&](const BoxShadow& s) {
+		return s.current_color ? PropertyParserColour::ResolveCurrentColor(s.color_mix, element_colour).ToPremultiplied() : s.color;
+	};
 	result.clear();
 	result.reserve(count);
 	for (size_t i = 0; i < count; i++)
@@ -126,11 +129,13 @@ static bool InterpolateBoxShadows(const BoxShadowList& list0, const BoxShadowLis
 		};
 		BoxShadow shadow;
 		shadow.inset = s0.inset;
-		if (s0.current_color && s1.current_color)
+		if (s0.current_color && s1.current_color && s0.color_mix == s1.color_mix)
+		{
 			shadow.current_color = true;
+			shadow.color_mix = s0.color_mix;
+		}
 		else
-			shadow.color = InterpolatePremultipliedColour(s0.current_color ? element_colour : s0.color,
-				s1.current_color ? element_colour : s1.color, alpha);
+			shadow.color = InterpolatePremultipliedColour(colour_of(s0), colour_of(s1), alpha);
 		shadow.offset_x = length(s0.offset_x, s1.offset_x);
 		shadow.offset_y = length(s0.offset_y, s1.offset_y);
 		shadow.blur_radius = length(s0.blur_radius, s1.blur_radius);
@@ -487,14 +492,12 @@ static Property InterpolateProperties(const Property& p0, const Property& p1, fl
 	}
 #endif
 
-	// 'currentcolor' against a colour.
-	const bool current0 = PropertyParserColour::IsCurrentColor(p0), current1 = PropertyParserColour::IsCurrentColor(p1);
-	if (current0 != current1 && (current0 || p0.unit == Unit::COLOUR) && (current1 || p1.unit == Unit::COLOUR))
+	// 'currentcolor' or a color-mix() of it against a colour or another one.
+	const bool current0 = PropertyParserColour::DependsOnCurrentColor(p0), current1 = PropertyParserColour::DependsOnCurrentColor(p1);
+	if ((current0 || current1) && (current0 || p0.unit == Unit::COLOUR) && (current1 || p1.unit == Unit::COLOUR) && !(p0 == p1))
 	{
 		const Colourb current = CurrentColorOf(element, definition);
-		const Colourb c0 = (current0 ? current : p0.value.Get<Colourb>());
-		const Colourb c1 = (current1 ? current : p1.value.Get<Colourb>());
-		const Colourb c = InterpolateColour(c0, c1, alpha);
+		const Colourb c = InterpolateColour(PropertyParserColour::Resolve(p0, current), PropertyParserColour::Resolve(p1, current), alpha);
 		return Property{c, Unit::COLOUR};
 	}
 
@@ -698,16 +701,20 @@ static Property InterpolateProperties(const Property& p0, const Property& p1, fl
 
 		const size_t N = c0.size();
 		ColorStopList result(N);
-		const ColourbPremultiplied element_colour = element.GetComputedValues().color().ToPremultiplied();
+		const Colourb element_colour = element.GetComputedValues().color();
+		auto colour_of = [&](const ColorStop& stop) {
+			return stop.current_color ? PropertyParserColour::ResolveCurrentColor(stop.color_mix, element_colour) : stop.color.ToNonPremultiplied();
+		};
 
 		for (size_t i = 0; i < N; i++)
 		{
-			if (c0[i].current_color && c1[i].current_color)
+			if (c0[i].current_color && c1[i].current_color && c0[i].color_mix == c1[i].color_mix)
+			{
 				result[i].current_color = true;
+				result[i].color_mix = c0[i].color_mix;
+			}
 			else
-				result[i].color = InterpolateColour((c0[i].current_color ? element_colour : c0[i].color).ToNonPremultiplied(),
-					(c1[i].current_color ? element_colour : c1[i].color).ToNonPremultiplied(), alpha)
-									  .ToPremultiplied();
+				result[i].color = InterpolateColour(colour_of(c0[i]), colour_of(c1[i]), alpha).ToPremultiplied();
 
 #ifdef RMLUI_MATH_EXPRESSIONS
 			if (c0[i].position_calculation || c1[i].position_calculation)
@@ -1026,10 +1033,10 @@ bool IsInterpolable(const Property& from, const Property& to, Element& element, 
 		return Any(from.unit & Unit::ANGLE) && Any(to.unit & Unit::ANGLE);
 	}
 
-	// 'currentcolor' against a colour (the element's colour at each frame).
-	const bool current_from = PropertyParserColour::IsCurrentColor(from), current_to = PropertyParserColour::IsCurrentColor(to);
-	if (current_from != current_to && (current_from || from.unit == Unit::COLOUR) && (current_to || to.unit == Unit::COLOUR))
-		return true;
+	// 'currentcolor' or a color-mix() of it against a colour or another one (the element's colour at each frame).
+	const bool current_from = PropertyParserColour::DependsOnCurrentColor(from), current_to = PropertyParserColour::DependsOnCurrentColor(to);
+	if ((current_from || current_to) && (current_from || from.unit == Unit::COLOUR) && (current_to || to.unit == Unit::COLOUR))
+		return !(from == to);
 
 	if (from.unit != to.unit)
 		return false;

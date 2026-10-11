@@ -524,12 +524,77 @@ bool PropertyParserColour::IsCurrentColor(const Property& property)
 	return property.unit == Unit::KEYWORD && property.value.GetType() == Variant::INT && property.value.Get<int>() == CurrentColor;
 }
 
+RMLUI_RTTI_Define(CurrentColorMixValue)
+
+bool PropertyParserColour::IsCurrentColorMix(const Property& property)
+{
+	return property.unit == Unit::STYLE_VALUE && property.value.GetType() == Variant::STYLEVALUEPTR &&
+		rmlui_dynamic_cast<const CurrentColorMixValue*>(property.value.GetReference<StyleValuePtr>().get()) != nullptr;
+}
+
+bool PropertyParserColour::DependsOnCurrentColor(const Property& property)
+{
+	return IsCurrentColor(property) || IsCurrentColorMix(property);
+}
+
+// The text with each 'currentcolor' replaced by the colour (as #rrggbbaa).
+static String SubstituteCurrentColor(const String& text, Colourb colour)
+{
+	static const char* digits = "0123456789abcdef";
+	String hex = "#";
+	for (int i = 0; i < 4; i++)
+	{
+		hex += digits[colour[i] >> 4];
+		hex += digits[colour[i] & 15];
+	}
+	const String lower = StringUtilities::ToLower(text);
+	String result;
+	size_t from = 0;
+	for (size_t at = lower.find("currentcolor"); at != String::npos; at = lower.find("currentcolor", from))
+	{
+		result += text.substr(from, at - from) + hex;
+		from = at + 12;
+	}
+	result += text.substr(from);
+	return result;
+}
+
+Colourb PropertyParserColour::ResolveCurrentColor(const String& mix, Colourb current_color)
+{
+	if (mix.empty())
+		return current_color;
+	Colourb colour = current_color;
+	ParseColour(colour, SubstituteCurrentColor(mix, current_color));
+	return colour;
+}
+
+Colourb PropertyParserColour::Resolve(const Property& property, Colourb current_color)
+{
+	if (IsCurrentColor(property))
+		return current_color;
+	if (IsCurrentColorMix(property))
+		return ResolveCurrentColor(static_cast<const CurrentColorMixValue&>(*property.value.GetReference<StyleValuePtr>()).text, current_color);
+	return property.value.Get<Colourb>();
+}
+
 bool PropertyParserColour::ParseValue(Property& property, const String& value, const ParameterMap& /*parameters*/) const
 {
 	if (value.size() >= 12 && EqualsNoCase(Trim(value), "currentcolor"))
 	{
 		property.value = Variant(CurrentColor);
 		property.unit = Unit::KEYWORD;
+		return true;
+	}
+
+	// A color-mix() with a currentcolor operand: kept as written, resolved with the element's colour (it parses with any).
+	const String lower = StringUtilities::ToLower(Trim(value));
+	if (lower.compare(0, 10, "color-mix(") == 0 && lower.find("currentcolor") != String::npos)
+	{
+		Colourb probe;
+		if (!ParseColour(probe, SubstituteCurrentColor(lower, Colourb(0, 0, 0, 255))))
+			return false;
+		property.value = Variant(StyleValuePtr(MakeShared<CurrentColorMixValue>(lower)));
+		property.unit = Unit::STYLE_VALUE;
 		return true;
 	}
 

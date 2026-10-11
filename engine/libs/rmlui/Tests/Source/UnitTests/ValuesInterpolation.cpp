@@ -287,3 +287,30 @@ TEST_CASE("ValuesInterpolation.shadow_calc")
 	CHECK(list[0].spread_distance.unit == Unit::PX);
 	CHECK(list[0].spread_distance.number == doctest::Approx(8.f));
 }
+
+TEST_CASE("ValuesInterpolation.color_mix_currentcolor")
+{
+	Fixture f(R"(
+		#a { color: #ff0000; border-width: 2px; border-color: color-mix(in srgb, currentcolor 50%, #0000ff); transition: border-color 1s linear; }
+		#b { color: #ff0000; border-width: 2px; border-color: color-mix(in srgb, currentcolor 50%, #0000ff); transition: border-color 1s linear; }
+		@keyframes mix { from { background-color: color-mix(in srgb, currentcolor, #ffffff); } to { background-color: #000000; } }
+		#ref { color: #ff0000; animation: mix 1s linear; }
+	)");
+	CHECK(Near(f.a->GetComputedValues().border_top_color(), Colourb(128, 0, 128)));
+
+	// A transition from it to a colour: interpolated with the mix resolved at each frame.
+	f.a->SetProperty("border-color", "#000000");
+	// A change of 'color' does not start a transition of a value that stays the same mix: it follows.
+	f.b->SetProperty("color", "#00ff00");
+	f.Update();
+	CHECK(Near(f.b->GetComputedValues().border_top_color(), Colourb(0, 128, 128)));
+	f.AdvanceTo(0.5);
+	CHECK(Near(f.a->GetComputedValues().border_top_color(), Colourb(64, 0, 64)));
+	CHECK(Near(f.b->GetComputedValues().border_top_color(), Colourb(0, 128, 128)));
+	CHECK(Near(f.ref->GetComputedValues().background_color(), Colourb(128, 64, 64)));
+	f.ref->SetProperty("color", "#0000ff");
+	f.AdvanceTo(0.75);
+	CHECK(Near(f.ref->GetComputedValues().background_color(), Colourb(32, 32, 64)));
+	f.AdvanceTo(1.5);
+	CHECK(f.a->GetComputedValues().border_top_color() == Colourb(0, 0, 0));
+}

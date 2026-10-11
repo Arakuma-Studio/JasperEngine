@@ -66,7 +66,7 @@ static bool HoldsCurrentColor(const Property& property)
 				for (const DecoratorDeclaration& declaration : decorators->list)
 				{
 					for (const auto& id_property : declaration.properties.GetProperties())
-						if (PropertyParserColour::IsCurrentColor(id_property.second) || HoldsCurrentColor(id_property.second))
+						if (PropertyParserColour::DependsOnCurrentColor(id_property.second) || HoldsCurrentColor(id_property.second))
 							return true;
 				}
 			}
@@ -87,8 +87,8 @@ void ElementStyle::ComputeColor(Style::ComputedValues& values, const Style::Comp
 		property = ResolveVariables(PropertyId::Color, property, variable_dependencies, property_storage);
 		if (property)
 		{
-			if (PropertyParserColour::IsCurrentColor(*property))
-				values.color(parent_values ? parent_values->color() : DefaultComputedValues().color());
+			if (PropertyParserColour::DependsOnCurrentColor(*property))
+				values.color(PropertyParserColour::Resolve(*property, parent_values ? parent_values->color() : DefaultComputedValues().color()));
 			else if (property->unit == Unit::COLOUR)
 				values.color(property->Get<Colourb>());
 		}
@@ -98,9 +98,9 @@ void ElementStyle::ComputeColor(Style::ComputedValues& values, const Style::Comp
 const Property* ElementStyle::ResolveValueKeywords(PropertyId id, const Property* property, Style::ComputedValues& values,
 	const Style::ComputedValues* parent_values, bool& color_computed, Property& current_color_storage)
 {
-	if (property->unit == Unit::KEYWORD)
+	if (property->unit == Unit::KEYWORD || PropertyParserColour::IsCurrentColorMix(*property))
 	{
-		if (id == PropertyId::FontWeight)
+		if (id == PropertyId::FontWeight && property->unit == Unit::KEYWORD)
 		{
 			const int keyword = property->Get<int>();
 			if (keyword != FontWeightBolder && keyword != FontWeightLighter)
@@ -111,7 +111,7 @@ const Property* ElementStyle::ResolveValueKeywords(PropertyId id, const Property
 			current_color_storage.source = property->source;
 			return &current_color_storage;
 		}
-		if (!PropertyParserColour::IsCurrentColor(*property))
+		if (!PropertyParserColour::DependsOnCurrentColor(*property))
 			return property;
 		// In 'color' it is the parent's color, as 'inherit'.
 		const bool own_color = (id == PropertyId::Color);
@@ -123,7 +123,7 @@ const Property* ElementStyle::ResolveValueKeywords(PropertyId id, const Property
 		const Colourb color = own_color ? (parent_values ? parent_values->color() : DefaultComputedValues().color()) : values.color();
 		if (!own_color && GetDirtyPropertiesRef().properties.Contains(PropertyId::Color))
 			DirtyProperty(id);
-		current_color_storage = Property(color, Unit::COLOUR);
+		current_color_storage = Property(PropertyParserColour::Resolve(*property, color), Unit::COLOUR);
 		current_color_storage.definition = property->definition;
 		current_color_storage.source = property->source;
 		return &current_color_storage;

@@ -55,8 +55,12 @@ bool PropertyParserColorStopList::ParseValue(Property& property, const String& v
 			return false;
 
 		ColorStop color_stop = {};
-		if (PropertyParserColour::IsCurrentColor(p_color))
+		if (PropertyParserColour::DependsOnCurrentColor(p_color))
+		{
 			color_stop.current_color = true;
+			if (PropertyParserColour::IsCurrentColorMix(p_color))
+				color_stop.color_mix = p_color.value.Get<StyleValuePtr>()->ToString();
+		}
 		else
 			color_stop.color = p_color.Get<Colourb>().ToPremultiplied();
 

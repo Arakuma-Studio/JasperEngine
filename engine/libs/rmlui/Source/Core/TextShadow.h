@@ -18,11 +18,12 @@ struct TextShadow {
 	LengthPercentageValue offset_x, offset_y, blur;
 	Colourb colour;
 	bool current_colour = true; // no colour given, or 'currentcolor': the text's colour
+	String colour_mix;          // with current_colour: a color-mix() of 'currentcolor' (phase 3, values)
 
 	bool operator==(const TextShadow& other) const
 	{
 		return offset_x == other.offset_x && offset_y == other.offset_y && blur == other.blur && current_colour == other.current_colour &&
-			(current_colour || colour == other.colour);
+			colour_mix == other.colour_mix && (current_colour || colour == other.colour);
 	}
 };
 

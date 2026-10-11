@@ -19,6 +19,10 @@ class RMLUICORE_API StyleValue {
 public:
 	virtual ~StyleValue();
 
+	// (phase 3, values: a type is told apart with rmlui_dynamic_cast where one property holds values of several types:
+	// a colour property's color-mix() of 'currentcolor')
+	RMLUI_RTTI_Declare(StyleValue)
+
 	/// The value serialized as CSS.
 	virtual String ToString() const = 0;
 	/// True if the other value is the same. Only called with values of the same property, which holds values of one

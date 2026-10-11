@@ -100,7 +100,9 @@ bool PropertyParserBoxShadow::ParseValue(Property& property, const String& value
 			}
 			else if (parser_color->ParseValue(prop, argument, empty_parameter_map))
 			{
-				shadow.current_color = PropertyParserColour::IsCurrentColor(prop);
+				shadow.current_color = PropertyParserColour::DependsOnCurrentColor(prop);
+				if (PropertyParserColour::IsCurrentColorMix(prop))
+					shadow.color_mix = prop.value.Get<StyleValuePtr>()->ToString();
 				shadow.color = shadow.current_color ? ColourbPremultiplied() : prop.Get<Colourb>().ToPremultiplied();
 				has_color = true;
 			}
