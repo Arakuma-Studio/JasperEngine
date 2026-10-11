@@ -75,4 +75,30 @@ vec4 finalizeStraightColor(vec4 linearColor){
     #endif
 }
 
+// The scene fog on a linear colour drawn at this fragment (unchanged without HAS_FOG), for
+// a shader that composites its own colour with one that already has the fog in it (the
+// scene colour of includes/scene.glsl) and writes the result with finalizeFoggedColor.
+// The fog is affine in the colour, so mix(scene, applyFog(own), a) is what the alpha blend
+// of the fogged own colour over the scene draws.
+vec3 applyFog(vec3 linearColor){
+    #ifdef HAS_FOG
+        return getFogColor(linearColor);
+    #else
+        return linearColor;
+    #endif
+}
+
+// finalizeStraightColor for a straight-alpha colour whose fog is already in it (applyFog,
+// the scene colour): the same shaping for the blend and the same encoding, no fog added
+vec4 finalizeFoggedColor(vec4 linearColor){
+    #if defined(BLEND_MULTIPLY)
+        vec3 color = mix(vec3(1.0), linearColor.rgb, linearColor.a);
+        return vec4(linearTosRGB(max(color, vec3(0.0))), 1.0);
+    #elif defined(BLEND_PREMULTIPLIED)
+        return vec4(linearTosRGB(max(linearColor.rgb, vec3(0.0))) * linearColor.a, linearColor.a);
+    #else
+        return vec4(linearTosRGB(max(linearColor.rgb, vec3(0.0))), linearColor.a);
+    #endif
+}
+
 #endif
