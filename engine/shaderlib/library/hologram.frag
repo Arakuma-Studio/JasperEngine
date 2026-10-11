@@ -68,7 +68,7 @@ void main() {
     #ifdef SCANLINE_TEXTURE
         float lines = texture(sampler2D(u_scanlineTexture, u_scanline_smp), vec2(0.5, coordinate)).r;
     #else
-        float lines = pow(0.5 + 0.5 * sin(coordinate * 6.28318530718), customParams.scanlineSharpness);
+        float lines = pow(max(0.5 + 0.5 * sin(coordinate * 6.28318530718), 0.0), customParams.scanlineSharpness);
         // finer than about two pixels a line: towards the average, against moire
         // the mean of pow(0.5 + 0.5 sin, k), within half a percent
         float lineAverage = inversesqrt(3.14159265 * customParams.scanlineSharpness + 0.86);
@@ -77,7 +77,8 @@ void main() {
 
     vec3 n = normalize(v_normal);
     vec3 v = frame.cameraPosition.w > 0.5 ? -frame.cameraDirection.xyz : normalize(frame.cameraPosition.xyz - v_position);
-    float rim = pow(1.0 - abs(dot(n, v)), customParams.rimPower);
+    // max: |n.v| of two unit vectors can round above 1, and pow of a negative is NaN
+    float rim = pow(max(1.0 - abs(dot(n, v)), 0.0), customParams.rimPower);
 
     // a new random dip every 1/flickerSpeed seconds (the step number kept small for the hash)
     float flicker = 1.0 - customParams.flickerAmount * hologramHash(mod(floor(time * customParams.flickerSpeed), 257.0));

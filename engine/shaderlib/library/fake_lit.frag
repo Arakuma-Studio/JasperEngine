@@ -14,8 +14,8 @@
 // @property shadowStrength range(0, 2) 0.6 "Downward shadow strength"
 // @property rimScale range(0, 2) 0.5 "Edge shadow scale"
 // @property rimPower range(0.1, 8) 2.5 "Edge shadow power"
-// @property matcapGain float 1 "Matcap gain" feature=MATCAP
-// @property matcapPower float 1 "Matcap power" feature=MATCAP
+// @property matcapGain range(0, 4) 1 "Matcap gain" feature=MATCAP
+// @property matcapPower range(0.1, 8) 1 "Matcap power" feature=MATCAP
 // @property shadowTextureStrength range(0, 2) 1 "Shadow texture strength" feature=SHADOW_TEXTURE
 // @property aoStrength range(0, 2) 1 "Vertex AO strength" feature=VERTEX_AO
 // @property emissionColor hdrcolor (1, 1, 1, 1) "Emission colour" feature=EMISSION
@@ -117,11 +117,12 @@ void main() {
     vec3 color = base.rgb;
     #ifdef MATCAP
         vec3 matcap = sRGBToLinear(texture(sampler2D(u_matcapTexture, u_matcap_smp), matcapUV(n, v_position)).rgb);
-        color += pow(matcap * customParams.matcapGain, vec3(customParams.matcapPower));
+        // gain and power held in range: pow of a negative base or to a zero power is NaN or undefined
+        color += pow(matcap * max(customParams.matcapGain, 0.0), vec3(max(customParams.matcapPower, 1e-3)));
     #endif
 
-    float shadow = clamp(pow(max(1.0 - n.y, 0.0), customParams.shadowPower) * customParams.shadowStrength, 0.0, 1.0);
-    shadow += clamp(customParams.rimScale * pow(max(1.0 - dot(n, toCamera), 0.0), customParams.rimPower), 0.0, 1.0);
+    float shadow = clamp(pow(max(1.0 - n.y, 0.0), max(customParams.shadowPower, 1e-3)) * customParams.shadowStrength, 0.0, 1.0);
+    shadow += clamp(customParams.rimScale * pow(max(1.0 - dot(n, toCamera), 0.0), max(customParams.rimPower, 1e-3)), 0.0, 1.0);
     #ifdef SHADOW_TEXTURE
         #ifdef HAS_UV_SET2
             vec2 shadowUV = v_uv2;

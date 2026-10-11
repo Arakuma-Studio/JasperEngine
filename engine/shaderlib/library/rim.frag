@@ -52,7 +52,8 @@ void main() {
     vec3 n = normalize(v_normal);
     // towards the camera (an orthographic camera looks along one direction)
     vec3 v = frame.cameraPosition.w > 0.5 ? -frame.cameraDirection.xyz : normalize(frame.cameraPosition.xyz - v_position);
-    float rim = pow(1.0 - abs(dot(n, v)), customParams.power);
+    // max: |n.v| of two unit vectors can round above 1, and pow of a negative is NaN
+    float rim = pow(max(1.0 - abs(dot(n, v)), 0.0), customParams.power);
     float glow = rim * customParams.intensity + customParams.fill;
 
     #ifdef TEXTURE

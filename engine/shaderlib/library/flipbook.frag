@@ -9,7 +9,7 @@
 // @property tint hdrcolor (1, 1, 1, 1) "Tint"
 // @property columns int 4 "Columns"
 // @property rows int 4 "Rows"
-// @property fps float 12 "Frames per second"
+// @property fps float 12 "Frames per second (negative: backwards)"
 // @property startFrame int 0 "First frame"
 // @property frameCount int 0 "Frame count (0: to the end of the sheet)"
 // @property loop toggle 1 "Loop (off: hold the last frame)"
@@ -23,7 +23,8 @@
 
 // The frame is computed per vertex (library/flipbook.glsl) from the engine clock: frame
 // startFrame + (time - startTime) * fps, wrapped over frameCount frames or held on the
-// last one. Frames run left to right, then top to bottom, and fill the mesh's UV square.
+// last one (a negative fps plays them backwards: a one-shot then holds the first). Frames
+// run left to right, then top to bottom, and fill the mesh's UV square.
 // To restart a one-shot animation, a script sets startTime to Engine.systemTime.
 
 uniform u_fs_customParams {

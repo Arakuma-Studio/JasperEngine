@@ -90,10 +90,11 @@ void main(){
 
     #ifdef CLOUDS
         // two noise layers on a plane above the camera, scrolling apart; the offset in the
-        // divisor bounds the plane's distance at the horizon, where they fade out
+        // divisor bounds the plane's distance at the horizon, where they fade out. The
+        // scroll wraps every texture repeat, so a long run keeps the UVs' precision.
         vec2 plane = direction.xz / (max(height, 0.0) + 0.2) * customParams.cloudScale;
-        vec2 offset1 = customParams.cloudSpeed.xy * customParams.time;
-        vec2 offset2 = customParams.cloudSpeed.zw * customParams.time;
+        vec2 offset1 = fract(customParams.cloudSpeed.xy * customParams.time);
+        vec2 offset2 = fract(customParams.cloudSpeed.zw * customParams.time);
         float layer1 = texture(sampler2D(u_cloudTexture, u_cloud_smp), plane + offset1).r;
         float layer2 = texture(sampler2D(u_cloudTexture, u_cloud_smp), plane * 2.3 + vec2(0.37, 0.71) + offset2).r;
         float density = layer1 * 0.65 + layer2 * 0.35;

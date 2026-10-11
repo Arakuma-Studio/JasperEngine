@@ -39,14 +39,15 @@ void flipbookVaryings(vec2 uv){
         count = min(floor(customParams.frameCount + 0.5), count);
     }
 
+    // a negative fps plays backwards
     float elapsed = max(frame.time.x - customParams.startTime, 0.0) * customParams.fps;
     float position;
     if (customParams.loop > 0.5){
         // wrapped in cycles first, so a long run keeps the crossfade's precision
         position = fract(elapsed / count) * count;
     }else{
-        // holds the last frame
-        position = min(elapsed, count - 1.0);
+        // holds the last frame (backwards: from the last frame, holding the first)
+        position = clamp((customParams.fps < 0.0) ? count - 1.0 + elapsed : elapsed, 0.0, count - 1.0);
     }
     float index = min(floor(position), count - 1.0);
     float next = (customParams.loop > 0.5) ? mod(index + 1.0, count) : min(index + 1.0, count - 1.0);

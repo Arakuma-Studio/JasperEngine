@@ -69,7 +69,8 @@ void main() {
     #endif
 
     #ifdef HUE_SHIFT
-        color.rgb = hueRotate(color.rgb, radians(customParams.hueShift + customParams.hueSpeed * customParams.time));
+        // wrapped to a turn, so the rotation's sine and cosine stay precise in a long run
+        color.rgb = hueRotate(color.rgb, radians(mod(customParams.hueShift + customParams.hueSpeed * customParams.time, 360.0)));
     #endif
 
     #ifdef TINT_OVERLAY

@@ -3,13 +3,13 @@
 // @shader mesh
 // @name "Matcap"
 // @category "Stylized"
-// @description "Material capture: the colour comes from a matcap image looked up by the view-space normal, replacing, multiplying or adding to the base map. Assign a matcap image; unlit."
+// @description "Material capture: the colour comes from a matcap image looked up by the view-space normal, replacing, multiplying or adding to the base map. Assign a matcap image (ADD wants a shine matcap, mostly black: the default white one adds full white); unlit."
 // @require position normals uv1 color
 // @state blend=opaque
 // @property baseColor color (1, 1, 1, 1) "Tint"
 // @property tiling vector4 (1, 1, 0, 0) "Tiling (xy) and offset (zw)"
-// @property matcapGain float 1 "Matcap gain"
-// @property matcapPower float 1 "Matcap power"
+// @property matcapGain range(0, 4) 1 "Matcap gain"
+// @property matcapPower range(0.1, 8) 1 "Matcap power"
 // @property rimColor hdrcolor (1, 1, 1, 1) "Rim colour" feature=RIM
 // @property rimPower range(0.5, 16) 4 "Rim power" feature=RIM
 // @texture u_matcapTexture white "Matcap"
@@ -24,7 +24,10 @@
 //     ADD       tint * base map + m           the matcap adds shine (a black matcap adds nothing)
 // RIM adds rimColor * pow(1 - n.v, rimPower). The lookup corrects the perspective
 // stretch at the screen's edges (includes/matcap.glsl). With no matcap assigned the
-// default is white: REPLACE then draws the flat tint.
+// default is white: REPLACE then draws the flat tint, MULTIPLY the base map, and ADD
+// washes out to white, since it is made for a shine matcap (black with highlights).
+// Gain below 0 or power at or below 0 (out of their ranges, from a script) are held at 0
+// and 0.001, so pow never sees a negative base or a zero exponent (NaN or undefined).
 
 uniform u_fs_customParams {
     vec4 baseColor;
@@ -61,7 +64,7 @@ void main() {
     }
 
     vec3 matcap = sRGBToLinear(texture(sampler2D(u_matcapTexture, u_matcap_smp), matcapUV(n, v_position)).rgb);
-    matcap = pow(matcap * customParams.matcapGain, vec3(customParams.matcapPower));
+    matcap = pow(matcap * max(customParams.matcapGain, 0.0), vec3(max(customParams.matcapPower, 1e-3)));
 
     vec4 tint = customParams.baseColor * v_color;
     #ifdef MATCAP_MODE_REPLACE
