@@ -204,6 +204,15 @@ bool Scene::isDepthPrepassEnabled() const{
     return settings.depthPrepassEnabled;
 }
 
+void Scene::setSceneColorScale(SceneColorScale scale){
+    // read by RenderSystem each frame, so no reload is needed
+    settings.sceneColorScale = scale;
+}
+
+SceneColorScale Scene::getSceneColorScale() const{
+    return settings.sceneColorScale;
+}
+
 void Scene::setSSAOEnabled(bool ssaoEnabled){
     if (settings.ssaoEnabled != ssaoEnabled){
         settings.ssaoEnabled = ssaoEnabled;

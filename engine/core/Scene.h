@@ -19,7 +19,7 @@ namespace jasperengine{
 
     class Camera;
 
-    // LightState and ShadowQuality live in SceneSettings.h (they are scene-setting types).
+    // LightState, ShadowQuality and SceneColorScale live in SceneSettings.h (they are scene-setting types).
 
     enum class UIEventState {
         NOT_SET,
@@ -113,6 +113,9 @@ namespace jasperengine{
 
         void setDepthPrepassEnabled(bool enabled);
         bool isDepthPrepassEnabled() const;
+
+        void setSceneColorScale(SceneColorScale scale);
+        SceneColorScale getSceneColorScale() const;
 
         void setSSAOEnabled(bool ssaoEnabled);
         bool isSSAOEnabled() const;

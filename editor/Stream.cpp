@@ -1349,6 +1349,19 @@ static ShadowQuality stringToShadowQuality(const std::string& str) {
     return ShadowQuality::LOW; // Default
 }
 
+static std::string sceneColorScaleToString(SceneColorScale scale) {
+    switch (scale) {
+        case SceneColorScale::FULL: return "full";
+        case SceneColorScale::HALF: return "half";
+    }
+    return "half";
+}
+
+static SceneColorScale stringToSceneColorScale(const std::string& str) {
+    if (str == "full") return SceneColorScale::FULL;
+    return SceneColorScale::HALF; // Default
+}
+
 std::string editor::Stream::lightStateToString(LightState state) {
     switch (state) {
         case LightState::OFF: return "off";
@@ -3287,6 +3300,9 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["meshLodEnabled"] = scene->isMeshLodEnabled();
     sceneNode["meshLodThreshold"] = scene->getMeshLodThreshold();
     sceneNode["depthPrepassEnabled"] = scene->isDepthPrepassEnabled();
+    // written only when not the default (half), so scenes saved before it existed re-save unchanged
+    if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
+        sceneNode["sceneColorScale"] = sceneColorScaleToString(scene->getSceneColorScale());
     sceneNode["lightState"] = lightStateToString(scene->getLightState());
     sceneNode["globalIlluminationIntensity"] = scene->getGlobalIlluminationIntensity();
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
@@ -3357,6 +3373,8 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     if (node["depthPrepassEnabled"]) {
         scene->setDepthPrepassEnabled(YamlNumbers::as<bool>(node["depthPrepassEnabled"]));
     }
+    // absent = the default (half): it is only written when it differs
+    scene->setSceneColorScale(node["sceneColorScale"] ? stringToSceneColorScale(node["sceneColorScale"].as<std::string>()) : SceneSettings().sceneColorScale);
 
     if (node["lightState"]) {
         scene->setLightState(stringToLightState(node["lightState"].as<std::string>()));

@@ -609,6 +609,14 @@ const EnumOptions& shadowQualityOptions() {
     return options;
 }
 
+const EnumOptions& sceneColorScaleOptions() {
+    static const EnumOptions options = {
+        {(int)SceneColorScale::FULL, "full", "Full"},
+        {(int)SceneColorScale::HALF, "half", "Half"}
+    };
+    return options;
+}
+
 // ------------------------------------------------------------------ YAML paths
 
 struct PathSegment {
@@ -818,6 +826,7 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
     static const std::map<std::string, const EnumOptions*> tables = {
         {"light_state", &lightStateOptions()},
         {"shadow_quality", &shadowQualityOptions()},
+        {"scene_color_scale", &sceneColorScaleOptions()},
         {"texture_filter", &textureFilterOptions()},
         {"framebuffer_filter", &framebufferFilterOptions()},
         {"texture_wrap", &textureWrapOptions()},

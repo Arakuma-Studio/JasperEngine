@@ -256,6 +256,7 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, int>) return 0;
                 if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
                 if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
+                if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
                 if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
                 if constexpr (std::is_same_v<T, std::string>) return std::string();
                 // Add other types as needed
@@ -329,6 +330,11 @@ namespace jasperengine::editor{
             else if (propertyName == "depth_prepass_enabled") {
                 if constexpr (std::is_same_v<T, bool>) {
                     return scene->isDepthPrepassEnabled();
+                }
+            }
+            else if (propertyName == "scene_color_scale") {
+                if constexpr (std::is_same_v<T, SceneColorScale>) {
+                    return scene->getSceneColorScale();
                 }
             }
             else if (propertyName == "ssao_enabled") {
@@ -451,6 +457,7 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, int>) return 0;
             if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
                 if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
+            if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
             if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
             if constexpr (std::is_same_v<T, std::string>) return std::string();
             if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) return std::vector<PostProcessPass>();
@@ -508,6 +515,9 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "depth_prepass_enabled") {
                 if constexpr (std::is_same_v<T, bool>) return d.depthPrepassEnabled;
+            }
+            else if (propertyName == "scene_color_scale") {
+                if constexpr (std::is_same_v<T, SceneColorScale>) return d.sceneColorScale;
             }
             else if (propertyName == "ssao_enabled") {
                 if constexpr (std::is_same_v<T, bool>) return d.ssaoEnabled;
@@ -652,6 +662,11 @@ namespace jasperengine::editor{
             else if (propertyName == "depth_prepass_enabled") {
                 if constexpr (std::is_same_v<T, bool>) {
                     scene->setDepthPrepassEnabled(value);
+                }
+            }
+            else if (propertyName == "scene_color_scale") {
+                if constexpr (std::is_same_v<T, SceneColorScale>) {
+                    scene->setSceneColorScale(value);
                 }
             }
             else if (propertyName == "ssao_enabled") {

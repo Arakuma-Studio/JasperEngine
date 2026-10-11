@@ -577,7 +577,7 @@ void setMainCameraTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ scene settings
 
-enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, LightState, Filter, PostProcess };
+enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, Filter, PostProcess };
 
 struct SceneSetting {
     const char* name;
@@ -601,6 +601,8 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"mesh_lod_enabled", SettingKind::Bool, "build and use mesh detail levels"},
         {"mesh_lod_threshold", SettingKind::Float, "pixels of error a detail level may show"},
         {"depth_prepass_enabled", SettingKind::Bool, "depth-only pass before opaque draws"},
+        {"scene_color_scale", SettingKind::SceneColorScale,
+         "resolution of the scene-colour copy shaders requiring scenecolor sample: full, half (default)"},
         {"ssao_enabled", SettingKind::Bool, "screen-space ambient occlusion"},
         {"ssao_radius", SettingKind::Float, "SSAO radius"},
         {"ssao_intensity", SettingKind::Float, "SSAO intensity"},
@@ -654,6 +656,7 @@ const char* kindName(SettingKind kind) {
         case SettingKind::Vector4: return "vector4";
         case SettingKind::String: return "string";
         case SettingKind::ShadowQuality:
+        case SettingKind::SceneColorScale:
         case SettingKind::LightState:
         case SettingKind::Filter: return "enum";
         case SettingKind::PostProcess: return "post_process";
@@ -664,6 +667,7 @@ const char* kindName(SettingKind kind) {
 const McpValues::EnumOptions* settingOptions(SettingKind kind) {
     switch (kind) {
         case SettingKind::ShadowQuality: return McpValues::enumTable("shadow_quality");
+        case SettingKind::SceneColorScale: return McpValues::enumTable("scene_color_scale");
         case SettingKind::LightState: return McpValues::enumTable("light_state");
         case SettingKind::Filter: return McpValues::enumTable("framebuffer_filter");
         default: return nullptr;
@@ -703,6 +707,10 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
         case SettingKind::ShadowQuality:
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<ShadowQuality>(setting.name)
                                                         : Catalog::getSceneProperty<ShadowQuality>(scene, setting.name)),
+                                         *settingOptions(setting.kind));
+        case SettingKind::SceneColorScale:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<SceneColorScale>(setting.name)
+                                                        : Catalog::getSceneProperty<SceneColorScale>(scene, setting.name)),
                                          *settingOptions(setting.kind));
         case SettingKind::LightState:
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<LightState>(setting.name)
@@ -780,6 +788,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             return new ScenePropertyCmd<Vector4>(project, id, name, v);
         }
         case SettingKind::ShadowQuality:
+        case SettingKind::SceneColorScale:
         case SettingKind::LightState:
         case SettingKind::Filter: {
             int parsed = 0;
@@ -789,6 +798,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                 return nullptr;
             }
             if (setting.kind == SettingKind::ShadowQuality) return new ScenePropertyCmd<ShadowQuality>(project, id, name, (ShadowQuality)parsed);
+            if (setting.kind == SettingKind::SceneColorScale) return new ScenePropertyCmd<SceneColorScale>(project, id, name, (SceneColorScale)parsed);
             if (setting.kind == SettingKind::LightState) return new ScenePropertyCmd<LightState>(project, id, name, (LightState)parsed);
             return new ScenePropertyCmd<TextureFilter>(project, id, name, (TextureFilter)parsed);
         }

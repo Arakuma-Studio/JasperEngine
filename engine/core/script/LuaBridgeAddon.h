@@ -72,6 +72,7 @@ namespace luabridge
     template<> struct Stack<LightShading> : EnumWrapper<LightShading>{};
     template<> struct Stack<ShadowCaster2DShape> : EnumWrapper<ShadowCaster2DShape>{};
     template<> struct Stack<ShadowQuality> : EnumWrapper<ShadowQuality>{};
+    template<> struct Stack<SceneColorScale> : EnumWrapper<SceneColorScale>{};
     template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
     template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};
 

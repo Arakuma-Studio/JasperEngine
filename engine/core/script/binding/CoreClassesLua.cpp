@@ -492,6 +492,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("SceneColorScale")
+        .addVariable("FULL", SceneColorScale::FULL)
+        .addVariable("HALF", SceneColorScale::HALF)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("UIEventState")
         .addVariable("NOT_SET", UIEventState::NOT_SET)
         .addVariable("ENABLED", UIEventState::ENABLED)
@@ -1326,6 +1332,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("meshLodEnabled", &Scene::isMeshLodEnabled, &Scene::setMeshLodEnabled)
         .addProperty("meshLodThreshold", &Scene::getMeshLodThreshold, &Scene::setMeshLodThreshold)
         .addProperty("depthPrepassEnabled", &Scene::isDepthPrepassEnabled, &Scene::setDepthPrepassEnabled)
+        .addProperty("sceneColorScale", &Scene::getSceneColorScale, &Scene::setSceneColorScale)
         .addProperty("ssaoDebug", &Scene::isSSAODebug, &Scene::setSSAODebug)
         .addProperty("ssrEnabled", &Scene::isSSREnabled, &Scene::setSSREnabled)
         .addProperty("ssrMaxDistance", &Scene::getSSRMaxDistance, &Scene::setSSRMaxDistance)

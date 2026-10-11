@@ -570,6 +570,14 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                     value = static_cast<ShadowQuality>(currentItem);
                 }
             }
+            if constexpr (std::is_same_v<T, SceneColorScale>) {
+                const char* scaleNames[] = { "Full", "Half" };
+                int currentItem = static_cast<int>(value);
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, scaleNames, IM_ARRAYSIZE(scaleNames));
+                if (changed) {
+                    value = static_cast<SceneColorScale>(currentItem);
+                }
+            }
             if constexpr (std::is_same_v<T, TextureFilter>) {
                 const char* filterNames[] = { "Nearest", "Linear" };
                 int currentItem = (value == TextureFilter::LINEAR) ? 1 : 0;
@@ -14182,6 +14190,19 @@ void editor::InspectorWindow::show(){
 
                     drawScenePropertyRow<bool>(sceneProject, "depth_prepass_enabled", "Enabled", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
                         "Write depth before the opaque color pass so each pixel is shaded once. Pays off with heavy overdraw (dense foliage); costs an extra geometry pass.");
+
+                    ImGui::EndTable();
+                }
+
+                ImGui::SeparatorText("Scene Color");
+
+                if (ImGui::BeginTable("scene_color_settings_table", 2, tableFlags)) {
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Scale"));
+                    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+                    const float sceneColorScaleComboWidth = ImGui::CalcTextSize("Half").x + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f;
+                    drawScenePropertyRow<SceneColorScale>(sceneProject, "scene_color_scale", "Scale", ScenePropertyInputType::Combo, sceneColorScaleComboWidth, 0.0f, 1.0f,
+                        "Resolution of the copy of the opaque scene that shaders reading the scene colour (glass, heat haze, refraction) sample. Taken only in camera passes that draw such a shader. Half is cheaper (mobile).");
 
                     ImGui::EndTable();
                 }

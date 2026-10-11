@@ -487,7 +487,7 @@ Entities are plain integers (`0` = none).
 | `backgroundColor` (Vector4, rw); `setBackgroundColor(r,g,b[,a])` | |
 | `gravity2D` (Vector2, rw); `setGravity2D(x, y)` | |
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
-| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `shadowQuality`, `lightState`, `shadow2DQuality`, `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
+| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `shadowQuality`, `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
 
 `PhysicsSystem` (from `self.scene:getPhysicsSystem()`): `gravity` / `gravity2D` /
@@ -978,6 +978,7 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
 | `LightShading` | `BOTH`, `PIXEL`, `VERTEX` |
 | `LightState` | `OFF`, `ON`, `AUTO` |
 | `ShadowQuality` | `NONE`, `LOW`, `MEDIUM`, `HIGH` |
+| `SceneColorScale` | `FULL`, `HALF` |
 | `MaterialBlendMode` | `AUTO`, `NONE` (opaque), `ALPHA`, `PREMULTIPLIED`, `ADDITIVE`, `MULTIPLY` |
 | `MaterialCullMode` | `AUTO`, `BACK`, `FRONT`, `OFF` |
 | `MaterialDepthWrite` | `AUTO`, `ENABLED`, `DISABLED` |

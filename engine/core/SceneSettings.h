@@ -31,6 +31,12 @@ namespace jasperengine{
         HIGH
     };
 
+    // Resolution of the scene-colour copy sampled by shaders requiring scenecolor.
+    enum class SceneColorScale {
+        FULL,   // the camera pass's resolution
+        HALF    // half of it (cheaper; mobile)
+    };
+
     // One user post-process pass: a forked fullscreen shader run after the scene color.
     // Uniforms are keyed by the name reflected from the shader's u_fs_postParams block,
     // so a renamed or removed member just drops and an unset one stays zero.
@@ -63,6 +69,10 @@ namespace jasperengine{
 
         // depth-only pass before the opaque draws; pays off with heavy overdraw
         bool depthPrepassEnabled = false;
+
+        // resolution of the scene-colour copy that shaders requiring scenecolor sample (shader
+        // library phase 3): FULL = the camera pass's resolution, HALF = half of it (default; mobile)
+        SceneColorScale sceneColorScale = SceneColorScale::HALF;
 
         LightState lightState = LightState::AUTO;
         Vector3 globalIllumColor = Vector3(1.0, 1.0, 1.0);    // stored linear

@@ -604,6 +604,14 @@ std::string editor::Factory::formatShadowQuality(ShadowQuality quality) {
     }
 }
 
+std::string editor::Factory::formatSceneColorScale(SceneColorScale scale) {
+    switch (scale) {
+        case SceneColorScale::FULL: return "SceneColorScale::FULL";
+        case SceneColorScale::HALF: return "SceneColorScale::HALF";
+        default: return "SceneColorScale::HALF";
+    }
+}
+
 std::string editor::Factory::formatAudioSourceState(AudioSourceState state) {
     switch (state) {
         case AudioSourceState::Playing: return "AudioSourceState::Playing";
@@ -3006,6 +3014,8 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
     out << ind2 << "scene->setMeshLodEnabled(" << formatBool(scene->isMeshLodEnabled()) << ");\n";
     out << ind2 << "scene->setMeshLodThreshold(" << formatFloat(scene->getMeshLodThreshold()) << ");\n";
     out << ind2 << "scene->setDepthPrepassEnabled(" << formatBool(scene->isDepthPrepassEnabled()) << ");\n";
+    if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
+        out << ind2 << "scene->setSceneColorScale(" << formatSceneColorScale(scene->getSceneColorScale()) << ");\n";
     out << ind2 << "scene->setGlobalIllumination(" << formatFloat(scene->getGlobalIlluminationIntensity()) << ");\n";
     out << ind2 << "scene->setGlobalIllumination(" << formatVector3(scene->getGlobalIlluminationColor()) << ");\n";
     if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)
