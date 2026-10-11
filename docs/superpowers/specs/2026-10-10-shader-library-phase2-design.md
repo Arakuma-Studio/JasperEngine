@@ -367,8 +367,7 @@ override the sections they refer to; later agents follow them.
   same stencil/colour write rows on UI, Points and LineRenderer. A preset becomes one
   property command per changed field (`editor/material/MaterialChange`), so model overrides
   and prefab overrides name only those fields. Material previews and thumbnails draw the
-  pass (the sphere takes the whole material). Known: a material whose colour write leaves
-  out alpha previews transparent (the preview target keeps its cleared alpha).
+  pass (the sphere takes the whole material) and wait for its textures.
 - MCP: set_properties takes every path above. Stencil names are snake_case like the depth
   test's (`not_equal`, `incr_clamp`; the manifest's `lequal`, `incr`... accepted); ref and
   masks 0..255; `colorWrite` takes `"auto"`, `"none"`, channels of `"rgba"` or -1..15 and
