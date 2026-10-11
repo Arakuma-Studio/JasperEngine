@@ -1101,6 +1101,21 @@ inside a 1 px `#ffffff` halo) — `p3/paint/outline-auto.html` fixes the exact g
 never affect layout or clipping of other content and are included in the ink overflow used for
 layer bounds (§3.8.1).
 
+*As built by p3-paint (measured on Chromium 153, `p3/paint/outline-offset.html`,
+`outline-auto.html`; this replaces the paragraphs above where they differ):*
+- **Order**: Chromium does not paint outlines in one final pass of the stacking context: it paints
+  them per paint layer (the stacking context and every positioned element), after the layer's
+  in-flow content and before its positioned descendants — a positioned child covers its parent's
+  outline. The fork does the same (`Element::RenderStackingContextChildren`); a stacking context
+  paints its own outline inside its effects (opacity, filters).
+- **`auto`**: whatever `outline-width`, a 2 px ring in the outline colour (`currentcolor`, which is
+  `#101010`-like only because the text colour is; there is no fixed dark colour) centred one pixel
+  outside the border box moved out by `outline-offset` (one pixel further in when the element
+  has a border), inside a 1 px white ring; square corners are rounded (3 px for the coloured
+  ring, 4 px for the white one).
+- **Dotted** outlines use square dots at every width (dotted borders switch to round dots at
+  3 px).
+
 **Tests:** `Tests/Source/UnitTests/BorderStyle.cpp` (shorthand matrix in any order, resets,
 computed width 0 for none/hidden, `thin/medium/thick`), `BorderRadius.cpp` (`%`, `/`, overlap
 scaling numbers, calc), extend `ElementBackgroundBorder.cpp` (vertex counts for dashed/dotted,
@@ -1145,6 +1160,10 @@ narrowed to the element's ink box (`:214-235`). An `opacity` filter exists
 - **Leaf fast path** (no layer; vertex alpha): α < 1 and E has no element children other than text
   nodes, no pseudo-elements, and paints at most one of {background/border/box-shadow/decorator,
   text}. This is exact (no overlap within E) and covers the common "fade a label/icon" case.
+  *(As built: each of background colour, border, box shadow, decorators, outline, text and a
+  replaced element's content (`GetIntrinsicDimensions`) counts as one thing — a background under a
+  border overlaps it; an element with a filter, backdrop filter or mask is never a leaf, its opacity
+  joins their composite. A change of leaf state re-runs the element's opacity change.)*
 - α == 0: skip rendering E's stacking context entirely; E stays hit-testable (CSS).
 - Layer scissor: the union of the subtree's ink overflow (E's border box + shadows/outlines +
   visible overflow of descendants, `LayoutBox::visible_overflow_size`) intersected with the current
@@ -1171,7 +1190,9 @@ narrowed to the element's ink box (`:214-235`). An `opacity` filter exists
 laid out, not painted, not hit-testable, but its descendants with `visibility: visible` paint and
 receive events. 6.3 skips the whole subtree (`AddToStackingContext`, `Element.cpp:2395-2399`):
 change to "skip own painting" (background/border/decoration/`OnRender`/text) and keep adding
-children. Interpolation (`ElementAnimation.cpp:215-228`) keeps its CSS special case.
+children. *(As built: documents (`ElementDocument::Hide` sets `visibility: hidden`) and the parts of
+widgets (scrollbars, select boxes) keep 6.3's whole-subtree hiding, else an author's `visibility:
+visible` would show through a hidden document; `Element::IsVisible()` keeps its meaning.)* Interpolation (`ElementAnimation.cpp:215-228`) keeps its CSS special case.
 
 #### 3.8.4 Canvas background
 CSS: the root element's background (or `<body>`'s when the root has none) paints the whole
@@ -1183,6 +1204,15 @@ whole canvas area, the context's dimensions (the document's containing block), n
 the document's border box, so a root background still covers the viewport when the document is
 scrolled or shorter than the canvas. A game that wants the scene visible simply leaves both
 transparent (the default).
+
+*Not built by p3-paint:* the fork cannot tell an HTML root from an RML window document (the
+Debugger's windows are documents with backgrounds: they must not paint the whole context), and
+marking the HTML root changes every compat RML output. Compat's root rule (`position: absolute;
+width: 100%; min-height: 100%`) already makes the root cover the viewport and grow with its
+content, so `p3/paint/canvas-background-body.html` matches Chromium without a fork change. Left
+open: a root with an explicit size or margins, and compat's propagation condition (it skips the
+body's background when any root rule sets a background, even a transparent one; CSS propagates
+whenever the root's background is transparent).
 
 #### 3.8.5 Filter parity
 - `filter`/`backdrop-filter` function defaults: `blur()` = 0, `drop-shadow(x y)` colour =
@@ -1246,6 +1276,16 @@ at render time, cheap given the canvas rect), and `background` (`Custom`, full C
   rendering into the mask layer (`ElementEffects.cpp:296-309`).
 - The RmlUi `decorator` property keeps working (fork-internal and used by phase-5 effects);
   `decorator` paints above `background-image` layers.
+
+*Status after p3-paint:* 3.9.1 and 3.9.2 are not built (`ForkFeature::BackgroundLayers` stays
+absent, `background-*` and `mask-*` other than `background-color` stay unregistered in the fork).
+Compat's emulation keeps drawing them: `url()` layers with every `background-size`, `-position`,
+`-repeat` (space, round), `-origin`, `-clip`, `-attachment` value through its `html-layer`
+decorator, gradients as RmlUi's gradient decorators over the clip box (a gradient layer with a
+size or position is drawn once over the whole box, `HTMLUI-CSS-0006`), registered decorator
+functions as layers, `mask-image` through the fork's decorator-syntax property. Native layers are
+left for a later package; the background colour already follows `background-clip: border-box`
+(3.7, P3-P1).
 
 #### 3.9.3 `object-fit`, `object-position`
 Registered for all elements, used by replaced elements: `ElementImage::GenerateGeometry`

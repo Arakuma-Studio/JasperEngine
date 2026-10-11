@@ -221,10 +221,12 @@ diagnostic (below) says what changed.
 | You write | The engine |
 |---|---|
 | any CSS color: `rgba(0,0,0,.5)`, `rgb(0 0 0 / 50%)`, `hsl()`, `oklch()`, `color-mix()`, 148 names, `#rgba` | exact (hex) |
-| `border: 1px solid #fff`, per-side borders, `border-color: red green` | exact; `dashed`/`dotted`/`double` draw solid (warning), `inset`/`outset`/`groove`/`ridge` with Chromium's shades |
+| `border: 1px solid #fff`, per-side borders, `border-color: red green`, every `border-style` | exact: `dashed`, `dotted`, `double`, `groove`, `ridge`, `inset`, `outset` drawn as Chrome draws them (dash lengths, round or square dots, Chrome's 3D shades); widths snap as in Chrome (`0.5px` is 1px, `2.5px` is 2px); edges anti-aliased |
 | `background:` shorthands, several layers, `url()` with `cover`/`contain`/`repeat`/`space`/`round`/positions, gradients incl. `repeating-*` and `-webkit-` forms | exact |
-| `border-radius: 50%` | exact on squares and pills (a stadium on other rectangles); other `%` radii dropped until phase 3 |
-| `outline`, `outline-offset` | a ring around the box (the offset gap is filled with the outline color) |
+| `border-radius` with `%` and elliptical radii (`50%`, `20px / 10px`, `border-top-left-radius: 30px 10px`) | exact, scaled down when the curves would overlap; children clip to the curve, box shadows and hit testing follow it |
+| `outline`, `outline-offset`, `outline-style` (every style and `auto`, the focus ring) | exact; painted above the element's content but below its positioned children, as Chrome paints them |
+| `opacity` | exact: the element and its children fade as one image (a group), `opacity: 0` still receives the mouse |
+| `isolation: isolate`, `visibility: hidden` with a `visible` child | exact (a stacking context; the child shows) |
 | `text-shadow` | exact: offsets, blur, several shadows, `currentcolor` (drawn by the layout engine, blurred like Chrome) |
 | `-webkit-text-stroke` | an outline text effect (drawn outside the glyphs) |
 | `letter-spacing`, `word-spacing` (lengths, `%` of the font size), `text-transform` (Unicode: `ß` → `SS`, `capitalize` per word), `white-space` (all six values, `white-space-collapse`, `text-wrap-mode`), `overflow-wrap`/`word-wrap`, `word-break` (`break-all`, `keep-all`), `text-align` (`start`, `end`, `match-parent`), `text-overflow: ellipsis` | exact |
@@ -238,7 +240,7 @@ diagnostic (below) says what changed.
 | `inherit`, `initial`, `unset`, `!important` | exact for inherited properties and `!important` against equal or lower specificity (a warning names a more specific rule that still wins); `inherit` on a property that does not inherit copies the nearest ancestor's declared value (note), and on one longhand of `animation`/`transition` (`animation-delay: inherit`) the ancestor's whole `animation`/`transition` |
 | `calc()`, `min()`, `max()`, `clamp()`, `round()`, `mod()`, `abs()`, `sin()`, ... | `calc()`, `min()`, `max()` and `clamp()` are exact, computed by the layout engine (`width: calc(100% - 32px)`, `min(100%, 600px)`, `calc(100vh - 64px)`), in sizes, margins, paddings, insets, `flex-basis`, `gap`, `font-size`, `line-height`, `opacity`, `z-index`, transforms and custom properties. Elsewhere (borders, shadows, gradients, shapes, logical properties) and for the other functions (`round()`, `abs()`, `sin()`, ...) they are computed when the document loads, and again when the canvas is resized for viewport units; there a `%` mixed with `px` keeps the `%` part (warning). Dropped with a warning: a `var()` inside when the variable is declared more than once (`:root` and `.dark`: no single value to compute with, `HTMLUI-CSS-0012`), and `round()` of a length without a step (`round(17.4px)`; write `round(17.4px, 1px)`) |
 | `vmin`/`vmax`, `dvh`/`svh`/`lvh`, `ch`/`ex` | exact / `vh` / `0.5em` (note) |
-| `clip-path` shapes, `mask-image`, `object-fit`, `image-rendering: pixelated` | exact |
+| `clip-path` shapes, `mask-image`, `object-fit`, `object-position` (also `right 10px bottom 20%`), `image-rendering: pixelated` | exact |
 | `::-webkit-scrollbar(-thumb/-track)`, `scrollbar-width`, `scrollbar-color`, `::placeholder`, `::-webkit-slider-thumb` | the engine's scrollbar, placeholder and slider parts |
 | `position: fixed` | positioned like `absolute` against the page (no scrolling page in a game UI) until phase 3; `sticky` acts as `relative` |
 | CSS Grid: `display: grid`/`inline-grid`, `grid-template-columns`/`-rows` (`px`, `%`, `fr`, `auto`, `min-content`, `max-content`, `minmax()`, `fit-content()`, `repeat()` with `auto-fill`/`auto-fit`, `calc()`, line names), `grid-template-areas`, `grid-area`/`grid-row`/`grid-column` (line numbers, negative lines, `span`, names), `grid-auto-rows`/`-columns`/`-flow` (`dense`), `grid-template`, `grid`, `gap` (and `grid-gap`), `justify-items`/`-self`, `align-items`/`-self`, `place-*`, `justify-content`/`align-content`, `order` of grid items | exact: the layout engine lays the grid out (a port of the Taffy engine's CSS Grid, checked against Chromium); absolutely positioned children of a positioned grid use their grid area as containing block; `subgrid` and `masonry` are dropped with a warning (use nested grids with explicit track sizes); a grid follows `direction: rtl` text but its columns are not mirrored |
@@ -246,14 +248,13 @@ diagnostic (below) says what changed.
 **Not yet** (phase 3 adds them; until then a warning names each use):
 `::before`/`::after` (the rule is dropped: use a real element), `:has()`, `order`,
 `aspect-ratio`, `width: fit-content`/`min-content`/`max-content` (written as `auto`),
-`position: sticky`, `%` radii other than 50%, `@container`, `steps()` easings (linear),
-dashed/dotted/double borders (solid). Dropped with a warning and not planned: multi-column
+`position: sticky`, `@container`, `steps()` easings (linear). Dropped with a warning and not planned: multi-column
 layout (`columns`), `writing-mode`, `font-variant-*`. `<video>`, `<canvas>`, `<iframe>` are a
 placeholder box (render a scene into a texture instead); JavaScript never runs.
 
 **Differences without a diagnostic** (the engine cannot tell where they matter):
-- `opacity` is not a group until phase 3: each element of the subtree fades on its own, so
-  overlapping children show through each other (`filter: opacity()` is a group).
+- `z-index` on an element that is neither positioned nor a flex or grid item does nothing (as
+  in CSS; before phase 3 the engine applied it to any element).
 - `line-height: normal` is `1.2` until phase 3 (Chrome uses the font's own spacing, about 1.17
   for Roboto and 1.21 for Inter): set `line-height` where text must line up to the pixel.
 - Font sizes are whole pixels (`13.333px`, Chrome's size for buttons and inputs, draws at
@@ -334,12 +335,11 @@ that), and a border without a color takes the text color. Rules that differ from
 
 | Write | Not (rejected or misread today) |
 |---|---|
-| `border: 2px #ff0000;` (width and color, always solid) | `border: 2px solid red;` |
+| `border: 2px solid #ff0000;` (a style is needed, as in CSS: `border: 2px #ff0000;` draws nothing since phase 3) | `border: 2px #ff0000;` |
 | `#rrggbb`, `#rrggbbaa`, `rgba(255, 0, 0, 128)` (alpha 0-255) | `rgba(255, 0, 0, 0.5)` (reads as almost transparent), `rgb(0 0 0 / 50%)` |
 | `font-family: Roboto, sans-serif;` (unquoted list) | `font-family: "Roboto", sans-serif;` (quoted names are a syntax error) |
 | `decorator: image(bg.png);` for a background image | `background-image: url(bg.png);` |
 | `-rmlui-direction: rtl;` (right-to-left base direction) | `direction: rtl;` |
-| `border-radius: 12px;` | `border-radius: 50%;` |
 | `transition: background-color 0.2s cubic-in-out;` on class / pseudo-class changes | `transition: opacity 200ms ease;` |
 
 What works in RCSS (standard CSS has all of it, and more through the rewrites above):
@@ -347,8 +347,10 @@ What works in RCSS (standard CSS has all of it, and more through the rewrites ab
   widths and colors per side, `border-radius`, `box-sizing`, `background-color`,
   `position: absolute/relative` with `left/top/right/bottom/inset`, `z-index`, `overflow:
   hidden/auto/scroll` (clipping, rounded and transformed too: see "Rendering features and
-  limits"), `visibility`, `opacity` (multiplies each element's colors; not a group:
-  `filter: opacity()` is).
+  limits"), `visibility` (a hidden element's `visible` children show), `opacity` (a group:
+  the subtree fades as one image), `outline`, `isolation`, `object-fit`/`object-position`.
+- **Borders need a style** (CSS): `border: 1px #fff` or `border-width: 2px` alone draws no
+  border, as in a browser; write `border: 1px solid #fff`.
 - Flexbox: `display: flex`, `flex-direction`, `flex-wrap`, `justify-content`, `align-items`,
   `align-content`, `align-self`, `flex` and `flex-grow/shrink/basis`, `gap` (no `order`).
 - Transforms: `transform` (`translate`, `rotate`, `scale`, `skew`, `perspective`,
@@ -389,7 +391,8 @@ where it differs):
 | Clipping inside transforms | `overflow: hidden; transform: rotate(10deg);` | children in normal flow that overflow are clipped to the transformed box |
 | Gradients | `background: linear-gradient(90deg, #f00, #00f 60%, #0f0);` | also `radial-gradient(circle 40px at center, ...)`, `conic-gradient(from 30deg at 50% 50%, ...)`, the `repeating-` forms and several layers; at most **16 color stops** (the rest are dropped with a warning). RCSS: `decorator: linear-gradient(...)` |
 | Background images | `background: url(bg.png) center / cover no-repeat;` | every `background-size`, `-position`, `-repeat` (`space`, `round`), `-origin`, `-clip`, `fixed`. RCSS: `decorator: image(bg.png)` |
-| Filters | `filter: blur(4px) grayscale(1) drop-shadow(0 2px 4px #000);` | `opacity`, `blur`, `drop-shadow`, `brightness`, `contrast`, `invert`, `grayscale`, `sepia`, `hue-rotate`, `saturate`, applied left to right; `filter: opacity()` is a group (the subtree fades as one image), unlike the `opacity` property. RCSS: the color first, `drop-shadow(#000 0 2px 4px)` |
+| Filters | `filter: blur(4px) grayscale(1) drop-shadow(0 2px 4px #000);` | `opacity`, `blur`, `drop-shadow`, `brightness`, `contrast`, `invert`, `grayscale`, `sepia`, `hue-rotate`, `saturate`, applied left to right, to the element and everything it contains (also children that overflow it); `drop-shadow` without a color uses the text color. RCSS: the color first, `drop-shadow(#000 0 2px 4px)` |
+| Opacity | `opacity: 0.5;` | a group: the element and its children are drawn into a layer that fades as one image (an element that draws one thing, such as a lone background or an icon, fades without a layer). Animating it changes one value per frame, no geometry |
 | Backdrop filters | `backdrop-filter: blur(10px);` | the same filters, applied to what is behind the element's border box |
 | Box shadows | `box-shadow: 4px 6px 12px 2px rgba(0, 0, 0, 0.5), inset 0 0 0 3px #ff0;` | an outer shadow is blurred and then clipped to outside the box, as in CSS (a zero-offset blurred shadow is a glow). RCSS: the color first, `inset` last |
 | Masks and shapes | `mask-image: linear-gradient(90deg, #000, transparent);`, `clip-path: circle(50%);` | the content's alpha is multiplied by the mask's; `clip-path` takes `inset()`, `circle()`, `ellipse()`, `polygon()`, `path()` |
