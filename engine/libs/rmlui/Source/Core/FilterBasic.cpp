@@ -4,6 +4,7 @@
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "../../Include/RmlUi/Core/PropertyDictionary.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
+#include "ComputeProperty.h"
 #ifdef RMLUI_MATH_EXPRESSIONS
 	#include "CalculationResolver.h"
 #endif
@@ -59,8 +60,8 @@ SharedPtr<Filter> FilterBasicInstancer::InstanceFilter(const String& name, const
 		value = p_value->Get<float>();
 		if (p_value->unit == Unit::PERCENT)
 			value *= 0.01f;
-		else if (p_value->unit == Unit::DEG)
-			value = Rml::Math::DegreesToRadians(value);
+		else if (Any(p_value->unit & Unit::ANGLE))
+			value = ComputeAngle(p_value->GetNumericValue());
 	}
 
 	auto filter = MakeShared<FilterBasic>();

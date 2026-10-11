@@ -7,6 +7,7 @@ add_executable(${TARGET_NAME}
 	Calculation.cpp
 	CascadeKeywords.cpp
 	CalculationTypes.cpp
+	Colors.cpp
 	ContainingBlockOverride.cpp
 	Core.cpp
 	Counters.cpp
@@ -63,9 +64,12 @@ add_executable(${TARGET_NAME}
 	TextTransform.cpp
 	TransitionsAnyChange.cpp
 	URL.cpp
+	Values.cpp
+	ValuesInterpolation.cpp
 	Variant.cpp
 	XMLParser.cpp
 	PluginDataModel.cpp
+	Position.cpp
 )
 
 set_common_target_options(${TARGET_NAME})

@@ -43,6 +43,13 @@ bool TypeConverter<Unit, String>::Convert(const Unit& src, String& dest)
 
 	case Unit::DEG:     dest = "deg"; return true;
 	case Unit::RAD:     dest = "rad"; return true;
+
+	case Unit::VMIN:    dest = "vmin"; return true;
+	case Unit::VMAX:    dest = "vmax"; return true;
+	case Unit::CH:      dest = "ch";   return true;
+	case Unit::EX:      dest = "ex";   return true;
+	case Unit::TURN:    dest = "turn"; return true;
+	case Unit::GRAD:    dest = "grad"; return true;
 	// clang-format on
 	default: break;
 	}
@@ -244,7 +251,7 @@ bool TypeConverter<ColorStopList, String>::Convert(const ColorStopList& src, Str
 	for (size_t i = 0; i < src.size(); i++)
 	{
 		const ColorStop& stop = src[i];
-		dest += ToString(stop.color.ToNonPremultiplied());
+		dest += (stop.current_color ? (stop.color_mix.empty() ? String("currentcolor") : stop.color_mix) : ToString(stop.color.ToNonPremultiplied()));
 
 		if (Any(stop.position.unit & Unit::NUMBER_LENGTH_PERCENT))
 			dest += " " + ToString(stop.position.number) + ToString(stop.position.unit);
@@ -289,7 +296,8 @@ bool TypeConverter<BoxShadowList, String>::Convert(const BoxShadowList& src, Str
 		if (shadow.inset)
 			temp += " inset";
 
-		dest += ToString(shadow.color.ToNonPremultiplied()) + temp;
+		dest += (shadow.current_color ? (shadow.color_mix.empty() ? String("currentcolor") : shadow.color_mix) : ToString(shadow.color.ToNonPremultiplied())) +
+			temp;
 
 		if (i < src.size() - 1)
 		{

@@ -7,7 +7,7 @@ namespace Transforms {
 
 	/// Returns the numeric value converted to 'base_unit'. Only accepts base units of 'Number' or 'Rad':
 	///   'Number' will pass-through the provided value.
-	///   'Rad' will convert {Rad, Deg, %} -> Rad.
+	///   'Rad' will convert {Rad, Deg, Turn, Grad, %} -> Rad.
 	static float ResolvePrimitiveAbsoluteValue(NumericValue value, Unit base_unit) noexcept
 	{
 		RMLUI_ASSERT(base_unit == Unit::RAD || base_unit == Unit::NUMBER);
@@ -18,6 +18,8 @@ namespace Transforms {
 			{
 			case Unit::RAD: return value.number;
 			case Unit::DEG: return Math::DegreesToRadians(value.number);
+			case Unit::TURN: return value.number * 2.f * Math::RMLUI_PI;
+			case Unit::GRAD: return value.number * (Math::RMLUI_PI / 200.f);
 			case Unit::PERCENT: return value.number * 0.01f * 2.0f * Math::RMLUI_PI;
 			default: Log::Message(Log::LT_WARNING, "Trying to pass a non-angle unit to a property expecting an angle.");
 			}

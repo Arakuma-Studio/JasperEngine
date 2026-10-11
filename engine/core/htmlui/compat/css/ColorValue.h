@@ -42,6 +42,8 @@ namespace jasperengine::htmlui::compat {
     struct ColorParseInfo {
         bool currentColor = false;   // the value is currentColor itself
         bool dynamic = false;        // var() without a static value, or currentColor, inside a color function
+        bool dynamicVar = false;     // ... a var() without a static value
+        bool currentColorMix = false; // a valid color-mix() whose only dynamic operand is currentColor
         bool system = false;         // a system color keyword
         bool lightDark = false;      // light-dark(): the light color was taken
         bool colorMix = false;
@@ -52,6 +54,8 @@ namespace jasperengine::htmlui::compat {
     struct ColorContext {
         // the static replacement of a var() function (false: no static value)
         std::function<bool(const ComponentValue& var, ValueList& replacement)> resolveVar;
+        // set: currentColor inside a color function is this color ("#rrggbbaa"; the rule's static color)
+        std::string currentColor;
     };
 
     class JASPERENGINE_API ColorValue {

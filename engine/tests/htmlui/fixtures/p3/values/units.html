@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>values: units</title>
+<style>
+  /* vmin, vmax, the small/large/dynamic viewport units, ch and ex of the element's font (Ahem: '0' is 1em wide),
+     turn and grad angles. The viewport is 400x300: 1vmin = 3px, 1vmax = 4px. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; }
+  div { position: absolute; background: #3060a0; }
+  #vmin { left: 10px; top: 10px; width: 20vmin; height: 5vmin; }
+  #vmax { left: 10px; top: 30px; width: 20vmax; height: 3vmax; }
+  #dvw { left: 10px; top: 50px; width: 10dvw; height: 5svh; background: #a06030; }
+  #lvh { left: 60px; top: 50px; width: 5svw; height: 10lvh; background: #60a030; }
+  #ch { left: 10px; top: 90px; width: 6ch; height: 2ch; font-size: 15px; }
+  #ex { left: 120px; top: 90px; width: 10ex; height: 3ex; font-size: 20px; background: #a03060; }
+  #calc { left: 10px; top: 130px; width: calc(10vmin + 5ch); height: calc(2ex + 4px); background: #306060; }
+  /* quarter turns keep the edges on whole pixels; the dark left border shows the direction */
+  #turn { left: 220px; top: 20px; width: 50px; height: 30px; border-left: 10px solid #202020; transform: rotate(0.25turn); background: #604090; }
+  #grad { left: 300px; top: 20px; width: 50px; height: 30px; border-left: 10px solid #202020; transform: rotate(-100grad); background: #906040; }
+  #inline { left: 220px; top: 130px; height: 10px; background: #406020; }
+</style>
+</head>
+<body>
+<div id="vmin"></div>
+<div id="vmax"></div>
+<div id="dvw"></div>
+<div id="lvh"></div>
+<div id="ch"></div>
+<div id="ex"></div>
+<div id="calc"></div>
+<div id="turn"></div>
+<div id="grad"></div>
+<div id="inline" style="width: 25vmin"></div>
+</body>
+</html>

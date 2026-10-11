@@ -589,7 +589,7 @@ bool ElementDocument::IsLayoutDirty()
 
 void ElementDocument::DirtyVwAndVhProperties()
 {
-	GetStyle()->DirtyPropertiesWithUnitsRecursive(Unit::VW | Unit::VH);
+	GetStyle()->DirtyPropertiesWithUnitsRecursive(Unit::VW | Unit::VH | Unit::VMIN | Unit::VMAX);
 }
 
 void ElementDocument::OnPropertyChange(const PropertyIdSet& changed_properties)

@@ -1,0 +1,5 @@
+{
+ "comment": "currentcolor in border colors (declared, from a border shorthand without a color, one side of border-color), background-color, a box-shadow and a gradient; color: currentcolor takes the parent's; a hovered color change is followed.",
+ "viewport": [360, 140],
+ "steps": [{"capture": "base"}, {"hover": "#h"}, {"capture": "hover"}]
+}

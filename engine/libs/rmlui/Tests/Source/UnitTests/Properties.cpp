@@ -141,57 +141,60 @@ TEST_CASE("Properties")
 				},
 			},
 			{
+				// CSS alpha (phase 3, values): 0 to 1, larger values are clamped (6.3 read 0-255).
 				"red, #00f 50%, rgba(0, 255,0, 150) 10dp",
-				"#ff0000, #0000ff 50%, #00ff0096 10dp",
+				"#ff0000, #0000ff 50%, #00ff00 10dp",
 				{
 					ColorStop{ColourbPremultiplied(255, 0, 0), NumericValue{}},
 					ColorStop{ColourbPremultiplied(0, 0, 255), NumericValue{50.f, Unit::PERCENT}},
-					ColorStop{ColourbPremultiplied(0, 150, 0, 150), NumericValue{10.f, Unit::DP}},
+					ColorStop{ColourbPremultiplied(0, 255, 0, 255), NumericValue{10.f, Unit::DP}},
 				},
 			},
 			{
 				"hsl(10000, 0%, 50%), hsl(240, 100%, 50%) 50%, hsla(-240, 100%, 50%, 0.5) 10dp",
-				"#7f7f7f, #0000ff 50%, #00ff007f 10dp",
+				// Channels are rounded (phase 3, values; 6.3 truncated).
+				"#808080, #0000ff 50%, #00ff0080 10dp",
 				{
-					ColorStop{ColourbPremultiplied(127, 127, 127), NumericValue{}},
+					ColorStop{ColourbPremultiplied(128, 128, 128), NumericValue{}},
 					ColorStop{ColourbPremultiplied(0, 0, 255), NumericValue{50.f, Unit::PERCENT}},
-					ColorStop{ColourbPremultiplied(0, 127, 0, 127), NumericValue{10.f, Unit::DP}},
+					ColorStop{ColourbPremultiplied(0, 128, 0, 128), NumericValue{10.f, Unit::DP}},
 				},
 			},
 			{
 				"lab(55% none none), lab(30% 67% -110) 50%, lab(90% -90 80 / 0.5) 10dp",
-				"#838383, #0000fb 50%, #00ff267f 10dp",
+				// CSS Color 4 Lab (D50, phase 3, values; 6.3 converted with a D65 white), as Chromium.
+				"#848484, #5800fd 50%, #00ff1780 10dp",
 				{
-					ColorStop{ColourbPremultiplied(131, 131, 131), NumericValue{}},
-					ColorStop{ColourbPremultiplied(0, 0, 251), NumericValue{50.f, Unit::PERCENT}},
-					ColorStop{ColourbPremultiplied(0, 127, 19, 127), NumericValue{10.f, Unit::DP}},
+					ColorStop{ColourbPremultiplied(132, 132, 132), NumericValue{}},
+					ColorStop{ColourbPremultiplied(88, 0, 253), NumericValue{50.f, Unit::PERCENT}},
+					ColorStop{ColourbPremultiplied(0, 128, 12, 128), NumericValue{10.f, Unit::DP}},
 				},
 			},
 			{
 				"lch(55% none 300.0), lch(30% 85% 180.0) 50%, lch(90% 90 100.0 / 50%) 10dp",
-				"#838383, #006044 50%, #f0e6007f 10dp",
+				"#848484, #006144 50%, #e5e70080 10dp",
 				{
-					ColorStop{ColourbPremultiplied(131, 131, 131), NumericValue{}},
-					ColorStop{ColourbPremultiplied(0, 96, 68), NumericValue{50.f, Unit::PERCENT}},
-					ColorStop{ColourbPremultiplied(120, 115, 0, 127), NumericValue{10.f, Unit::DP}},
+					ColorStop{ColourbPremultiplied(132, 132, 132), NumericValue{}},
+					ColorStop{ColourbPremultiplied(0, 97, 68), NumericValue{50.f, Unit::PERCENT}},
+					ColorStop{ColourbPremultiplied(115, 116, 0, 128), NumericValue{10.f, Unit::DP}},
 				},
 			},
 			{
 				"oklab(85% -50% 70%), oklab(0.2 0.4 -0.4) 50%, oklab(100% none 0.4 / 0.25) 10dp",
-				"#98ed00, #6600c1 50%, #ffde003f 10dp",
+				"#98ed00, #6700c1 50%, #ffdf0040 10dp",
 				{
 					ColorStop{ColourbPremultiplied(152, 237, 0), NumericValue{}},
-					ColorStop{ColourbPremultiplied(102, 0, 193), NumericValue{50.f, Unit::PERCENT}},
-					ColorStop{ColourbPremultiplied(63, 55, 0, 63), NumericValue{10.f, Unit::DP}},
+					ColorStop{ColourbPremultiplied(103, 0, 193), NumericValue{50.f, Unit::PERCENT}},
+					ColorStop{ColourbPremultiplied(64, 56, 0, 64), NumericValue{10.f, Unit::DP}},
 				},
 			},
 			{
 				"oklch(75% 100% 30.0), oklch(0.5 0.2 270) 50%, oklch(1.0 0.1 none / 0.5) 10dp",
-				"#ff0000, #3a50d2 50%, #ffe2fa7f 10dp",
+				"#ff0000, #3b51d3 50%, #ffe1fb80 10dp",
 				{
 					ColorStop{ColourbPremultiplied(255, 0, 0), NumericValue{}},
-					ColorStop{ColourbPremultiplied(58, 80, 210), NumericValue{50.f, Unit::PERCENT}},
-					ColorStop{ColourbPremultiplied(127, 113, 125, 127), NumericValue{10.f, Unit::DP}},
+					ColorStop{ColourbPremultiplied(59, 81, 211), NumericValue{50.f, Unit::PERCENT}},
+					ColorStop{ColourbPremultiplied(128, 113, 126, 128), NumericValue{10.f, Unit::DP}},
 				},
 			},
 			{
@@ -246,8 +249,9 @@ TEST_CASE("Property.ToString")
 	CHECK(ParsedValue("transform", "translateX(10px)") == "translateX(10px)");
 	CHECK(ParsedValue("transform", "translate(20in, 50em)") == "translate(20in, 50em)");
 
-	CHECK(ParsedValue("box-shadow", "2px 2px 0px, rgba(0, 0, 255, 255) 4px 4px 2em") == "#000000 2px 2px 0px, #0000ff 4px 4px 2em");
-	CHECK(ParsedValue("box-shadow", "2px 2px 0px, #00ff 4px 4px 2em") == "#000000 2px 2px 0px, #0000ff 4px 4px 2em");
+	// A shadow without a color is 'currentcolor' (CSS; phase 3, values).
+	CHECK(ParsedValue("box-shadow", "2px 2px 0px, rgba(0, 0, 255, 255) 4px 4px 2em") == "currentcolor 2px 2px 0px, #0000ff 4px 4px 2em");
+	CHECK(ParsedValue("box-shadow", "2px 2px 0px, #00ff 4px 4px 2em") == "currentcolor 2px 2px 0px, #0000ff 4px 4px 2em");
 
 	// Due to conversion to and from premultiplied alpha, some color information is lost.
 	CHECK(ParsedValue("box-shadow", "#fff0 2px 2px 0px") == "#00000000 2px 2px 0px");

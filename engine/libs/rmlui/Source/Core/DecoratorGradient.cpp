@@ -11,6 +11,7 @@
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "ComputeProperty.h"
 #include "DecoratorShader.h"
+#include "PropertyParserColour.h"
 
 namespace Rml {
 
@@ -46,6 +47,16 @@ static ColorStopList ResolveColorStops(Element* element, const float gradient_li
 	(void)angle_positions;
 #endif
 	ColorStopList stops = unresolved_stops;
+
+	// 'currentcolor' stops take the element's color (phase 3, values).
+	for (ColorStop& stop : stops)
+	{
+		if (stop.current_color)
+		{
+			stop.color = PropertyParserColour::ResolveCurrentColor(stop.color_mix, element->GetComputedValues().color()).ToPremultiplied();
+			stop.current_color = false;
+		}
+	}
 	const int num_stops = (int)stops.size();
 
 	// Resolve all lengths, percentages, and angles to numbers. After this step all stops with a unit other than Number are considered as Auto.

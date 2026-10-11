@@ -3,5 +3,5 @@ htmlui-imports/fonts/inter-orbitron-438965.css:12:3: info: @font-face descriptor
 htmlui-imports/fonts/inter-orbitron-438965.css:19:3: info: @font-face descriptor 'font-display' is dropped [HTMLUI-AT-0011]
 htmlui-imports/fonts/inter-orbitron-438965.css:26:3: info: @font-face descriptor 'font-display' is dropped [HTMLUI-AT-0011]
 htmlui-imports/fonts/inter-orbitron-438965.css:33:3: info: @font-face descriptor 'font-display' is dropped [HTMLUI-AT-0011]
-ua-defaults.html:30:7: info: title tooltips are not shown (fix: show a tooltip element from Lua on hover) [HTMLUI-HTML-0015]
-ua-defaults.html:37:14: info: input type 'number': text with numeric filtering, step keys and clamping; no spinner [HTMLUI-HTML-0008]
+ua-defaults.html:27:7: info: title tooltips are not shown (fix: show a tooltip element from Lua on hover) [HTMLUI-HTML-0015]
+ua-defaults.html:34:14: info: input type 'number': text with numeric filtering, step keys and clamping; no spinner [HTMLUI-HTML-0008]

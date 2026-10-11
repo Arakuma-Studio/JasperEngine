@@ -221,6 +221,7 @@ diagnostic (below) says what changed.
 | You write | The engine |
 |---|---|
 | any CSS color: `rgba(0,0,0,.5)`, `rgb(0 0 0 / 50%)`, `hsl()`, `oklch()`, `color-mix()`, 148 names, `#rgba` | exact (hex) |
+| `currentColor` | exact: the layout engine resolves it in `color`, `background-color`, border and caret colors (it follows a change of `color`, `:hover` included); in shadows, outlines, gradients, filters and text effects it is the color through a variable every `color` declaration sets |
 | `border: 1px solid #fff`, per-side borders, `border-color: red green` | exact; `dashed`/`dotted`/`double` draw solid (warning), `inset`/`outset`/`groove`/`ridge` with Chromium's shades |
 | `background:` shorthands, several layers, `url()` with `cover`/`contain`/`repeat`/`space`/`round`/positions, gradients incl. `repeating-*` and `-webkit-` forms | exact |
 | `border-radius: 50%` | exact on squares and pills (a stadium on other rectangles); other `%` radii dropped until phase 3 |
@@ -238,8 +239,9 @@ diagnostic (below) says what changed.
 | `inherit`, `initial`, `unset`, `revert`, `all`, `!important` | exact: the CSS cascade (an `!important` declaration beats more specific rules and the `style` attribute, an inline `!important` beats everything; `all: unset` strips a button's or input's built-in look; `revert` goes back to the built-in style of the element). On one longhand of `animation`/`transition` (`animation-delay: inherit`) `inherit` takes the ancestor's whole `animation`/`transition` |
 | `:is()`, `:where()`, `:has()`, `:not()` with lists, `:root`, `:focus-within`, `:enabled`/`:disabled`, `:checked`, `:required`/`:optional`, `:read-only`/`:read-write`, `:indeterminate`, `:default`, `:link`/`:any-link`, `:target`, `[type="a" i]`, `:nth-child(2n+1 of .x)` | exact, with their CSS weights (`:where()` weighs nothing). `li:has(> input:checked)`, `.card:has(.badge)`, `.a:has(+ .b)` restyle when the inner state changes. `:visited` never matches. A selector the engine does not know (a misspelt pseudo-class) drops that selector with a warning, as in a browser |
 | `::before`, `::after`, `content` (strings, `attr()`, `url()`, `counter()`, `counters()`, `open-quote`/`close-quote`), `quotes`, `counter-reset`/`counter-increment`/`counter-set`, `::marker`, `list-style` | exact: generated boxes take any property (`position: absolute` badges, `display: block` rules, transitions on `:hover::after`), inherit from their element, and clicks on them go to that element. Counter styles: `decimal`, `decimal-leading-zero`, `lower/upper-alpha` (`-latin`), `lower/upper-roman`, `lower-greek`, `disc`, `circle`, `square`, `none`, or a string; any other style counts in decimal (note) |
-| `calc()`, `min()`, `max()`, `clamp()`, `round()`, `mod()`, `abs()`, `sin()`, ... | `calc()`, `min()`, `max()` and `clamp()` are exact, computed by the layout engine (`width: calc(100% - 32px)`, `min(100%, 600px)`, `calc(100vh - 64px)`), in sizes, margins, paddings, insets, `flex-basis`, `gap`, `font-size`, `line-height`, `opacity`, `z-index`, transforms and custom properties. Elsewhere (borders, shadows, gradients, shapes, logical properties) and for the other functions (`round()`, `abs()`, `sin()`, ...) they are computed when the document loads, and again when the canvas is resized for viewport units; there a `%` mixed with `px` keeps the `%` part (warning). Dropped with a warning: a `var()` inside when the variable is declared more than once (`:root` and `.dark`: no single value to compute with, `HTMLUI-CSS-0012`), and `round()` of a length without a step (`round(17.4px)`; write `round(17.4px, 1px)`) |
-| `vmin`/`vmax`, `dvh`/`svh`/`lvh`, `ch`/`ex` | exact / `vh` / `0.5em` (note) |
+| `calc()`, `min()`, `max()`, `clamp()`, `round()`, `mod()`, `abs()`, `sin()`, ... | `calc()`, `min()`, `max()` and `clamp()` are exact, computed by the layout engine (`width: calc(100% - 32px)`, `min(100%, 600px)`, `calc(100vh - 64px)`), in sizes, margins, paddings, insets, logical properties (`margin-inline`, `inset-block`, ...), `flex-basis`, `gap`, `font-size`, `font-weight`, `line-height`, `opacity`, `z-index`, transforms and custom properties. Elsewhere (borders, shadows, gradients, shapes) and for the other functions (`round()`, `abs()`, `sin()`, ...) they are computed when the document loads, and again when the canvas is resized for viewport units; there a `%` mixed with `px` keeps the `%` part (warning). Dropped with a warning: a `var()` inside when the variable is declared more than once (`:root` and `.dark`: no single value to compute with, `HTMLUI-CSS-0012`), and `round()` of a length without a step (`round(17.4px)`; write `round(17.4px, 1px)`) |
+| `vmin`/`vmax`, `dvh`/`svh`/`lvh`/`dvw`/..., `ch`/`ex`, `turn`/`grad` | exact, computed by the layout engine where the value reaches it as written (the properties `calc()` stays in, above; `ch` and `ex` from the element's own font, `vmin`/`vmax` follow a canvas resize); elsewhere `vmin`/`vmax` are exact through orientation copies, `ch`/`ex` are `0.5em` (note), `turn`/`grad` are converted to `deg` |
+| `line-height: normal` (also the initial value) | exact: the font's own line spacing (ascent + descent + line gap, rounded as in Chrome), per font and size |
 | `clip-path` shapes, `mask-image`, `object-fit`, `image-rendering: pixelated` | exact |
 | `::-webkit-scrollbar(-thumb/-track)`, `scrollbar-width`, `scrollbar-color`, `::placeholder`, `::-webkit-slider-thumb` | the engine's scrollbar, placeholder and slider parts |
 | `position: fixed` | positioned like `absolute` against the page (no scrolling page in a game UI) until phase 3; `sticky` acts as `relative` |
@@ -257,8 +259,6 @@ placeholder box (render a scene into a texture instead); JavaScript never runs.
 **Differences without a diagnostic** (the engine cannot tell where they matter):
 - `opacity` is not a group until phase 3: each element of the subtree fades on its own, so
   overlapping children show through each other (`filter: opacity()` is a group).
-- `line-height: normal` is `1.2` until phase 3 (Chrome uses the font's own spacing, about 1.17
-  for Roboto and 1.21 for Inter): set `line-height` where text must line up to the pixel.
 - Font sizes are whole pixels (`13.333px`, Chrome's size for buttons and inputs, draws at
   13px) and every run of text is a whole number of pixels wide: text can be a pixel or two
   narrower or wider than in Chrome.
@@ -371,6 +371,17 @@ What works in RCSS (standard CSS has all of it, and more through the rewrites ab
   `@keyframes` + `animation`, `@starting-style`, transitions (CSS syntax and easings, and
   RmlUi's tween names such as `cubic-in-out`; the CSS default easing is `ease`).
 - Input: see "Input" below.
+- CSS values (the layout engine's own, phase 3): every CSS Color 4 color (`rgb(0 0 0 / 50%)` with
+  the alpha from 0 to 1, `hsl()`, `hwb()`, `lab()`, `oklch()`, `color-mix()`, the 148 names) and
+  `currentcolor`, also mixed (`color-mix(in srgb, currentcolor 40%, white)` follows the color); the units `vmin`, `vmax`, `ch`, `ex`, `turn`, `grad`, `dvh`/`svw`/...; `calc()`,
+  `min()`, `max()`, `clamp()`; `font-family` lists with quoted names (`"Open Sans", sans-serif`),
+  the `font` shorthand, `font-size` keywords (`small`, `larger`), `font-weight: bolder/lighter`,
+  `line-height: normal` (the initial value: the font's line spacing); `transform-origin: top left`
+  and `perspective-origin: right 10px bottom 20%`; the logical properties (`margin-inline`,
+  `padding-block`, `inset-inline-start`, `inline-size`, ..., left-to-right only); `cursor` lists
+  (`url(x.png), pointer`: the keyword is used); `opacity: 50%`. Initial values are CSS's: black
+  16px text, `currentcolor` borders. A `cursor` may still name the application's own cursors
+  (`cursor: arrow`).
 
 **The UI clock** (both kinds of document): CSS transitions and animations, Lottie and `anime`
 run on the engine's frame time before the time scale, so a pause menu animates while
@@ -417,8 +428,8 @@ naming it and draws nothing for it.
 
 - Built in: Roboto (Latin, Cyrillic, Greek) and Noto Sans Arabic (Arabic with shaping and
   bidirectional text, right-to-left with `direction: rtl`; RCSS: `-rmlui-direction: rtl`).
-  Generic families (`sans-serif`, `serif`, `monospace`, `system-ui`) map to Roboto; there is
-  no built-in serif or monospace face yet.
+  Generic families (`sans-serif`, `serif`, `monospace`, `system-ui`, `ui-*`, `cursive`, `fantasy`,
+  `emoji`, `math`) map to Roboto; there is no built-in serif, monospace or emoji face yet.
 - `font-family` lists fall back in order. A family that is not loaded is skipped: an `.html`
   document records one note per family (`HTMLUI-CSS-0023`, in `getDiagnostics()` and counted
   in the summary), an `.rml` document logs one `[HTML UI] font-family '<name>' is not loaded`
@@ -1143,7 +1154,7 @@ rewrites table, "Not yet" and "Differences without a diagnostic"); the Console n
 use in your files. Later phases:
 - Phase 3, the layout engine itself: `calc()` at layout time
   in every property, border styles, `%` radii, `order`, `aspect-ratio`,
-  `fit-content`, real `position: fixed`/`sticky`, group `opacity`, `line-height: normal`,
+  `fit-content`, real `position: fixed`/`sticky`, group `opacity`,
   parent/child margin collapsing, a legend as wide as its text. (Transitions and animations
   are already native: easings, longhands, fill modes, transitions on any change.)
 - Phase 4, tools for agents: `check --ui`, the MCP tools `inspect_ui`/`assert_ui`/

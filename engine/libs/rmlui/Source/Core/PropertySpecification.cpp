@@ -310,6 +310,13 @@ bool PropertySpecification::ParsePropertyDeclaration(PropertyDictionary& diction
 		// Allow empty strings for custom properties, otherwise one has to specify an extra pair of quotes for an empty string with the API.
 		ParsePropertyResult parse_result =
 			(property_value.empty() ? ParsePropertyResult::Success : ParsePropertyValues(property_values, property_value, SplitOption::None));
+		// A value of several quoted parts is kept as written (phase 3, values: font-family lists in variables); the comma
+		// split only finds var() and unbalanced quotes in it.
+		if (parse_result == ParsePropertyResult::Error)
+		{
+			property_values.clear();
+			parse_result = ParsePropertyValues(property_values, property_value, SplitOption::Comma);
+		}
 		switch (parse_result)
 		{
 		case ParsePropertyResult::Success: unit = Unit::STRING; break;
