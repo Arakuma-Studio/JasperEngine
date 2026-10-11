@@ -1320,6 +1320,19 @@ void editor::Project::applyCustomShaderPathChange(const std::function<bool(std::
         applyToArray(registry->getComponentArray<PointsComponent>(), &PointsComponent::customShader);
         applyToArray(registry->getComponentArray<LineRendererComponent>(), &LineRendererComponent::customShader);
         applyToArray(registry->getComponentArray<SkyboxComponent>(), &SkyboxComponent::customShader);
+        // a submesh material's own shader and its extra pass's (mesh reload)
+        auto meshes = registry->getComponentArray<MeshComponent>();
+        for (size_t i = 0; i < meshes->size(); ++i) {
+            MeshComponent& mesh = meshes->getComponentFromIndex(i);
+            bool meshChanged = false;
+            for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
+                meshChanged |= applyToMaterialShaders(mesh.submeshes[s].material, transform);
+            }
+            if (meshChanged) {
+                Catalog::updateEntity(registry, meshes->getEntity(i), UpdateFlags_Mesh_Reload);
+                changed = true;
+            }
+        }
         return changed;
     };
 
@@ -1358,6 +1371,24 @@ void editor::Project::applyCustomShaderPathChange(const std::function<bool(std::
             savePrefabToDisk(prefabPath);
         }
     }
+
+    // .material files (their linked submeshes were remapped above as well)
+    visitMaterialFiles([&](Material& material) {
+        return applyToMaterialShaders(material, transform);
+    });
+}
+
+// The fork references of a material (its shader and its extra pass's); library references
+// and empty ones name no file
+bool editor::Project::applyToMaterialShaders(Material& material, const std::function<bool(std::string&)>& transform) {
+    bool changed = false;
+    for (std::string* shader : {&material.shader, &material.extraPass.shader}) {
+        if (shader->empty() || ShaderReference::isLibrary(*shader)) {
+            continue;
+        }
+        changed |= transform(*shader);
+    }
+    return changed;
 }
 
 // The project-relative files a fork path can name (findShaderFile): itself, and under the
@@ -2044,6 +2075,23 @@ static bool holdsOnlyAssets(const std::filesystem::path& directory){
 }
 
 bool editor::Project::visitAssetPathsInMaterialFiles(const std::function<bool(std::string&)>& transform){
+    return visitMaterialFiles([&](Material& material) {
+        bool materialChanged = visitTexturePaths(material.baseColorTexture, transform);
+        materialChanged |= visitTexturePaths(material.emissiveTexture, transform);
+        materialChanged |= visitTexturePaths(material.metallicRoughnessTexture, transform);
+        materialChanged |= visitTexturePaths(material.occlusionTexture, transform);
+        materialChanged |= visitTexturePaths(material.normalTexture, transform);
+        for (auto& shaderTexture : material.shaderTextures){
+            materialChanged |= visitTexturePaths(shaderTexture.second, transform);
+        }
+        for (auto& shaderTexture : material.extraPass.shaderTextures){
+            materialChanged |= visitTexturePaths(shaderTexture.second, transform);
+        }
+        return materialChanged;
+    });
+}
+
+bool editor::Project::visitMaterialFiles(const std::function<bool(Material&)>& visit){
     if (projectPath.empty()){
         return false;
     }
@@ -2073,19 +2121,7 @@ bool editor::Project::visitAssetPathsInMaterialFiles(const std::function<bool(st
             continue;
         }
 
-        bool materialChanged = visitTexturePaths(material.baseColorTexture, transform);
-        materialChanged |= visitTexturePaths(material.emissiveTexture, transform);
-        materialChanged |= visitTexturePaths(material.metallicRoughnessTexture, transform);
-        materialChanged |= visitTexturePaths(material.occlusionTexture, transform);
-        materialChanged |= visitTexturePaths(material.normalTexture, transform);
-        for (auto& shaderTexture : material.shaderTextures){
-            materialChanged |= visitTexturePaths(shaderTexture.second, transform);
-        }
-        for (auto& shaderTexture : material.extraPass.shaderTextures){
-            materialChanged |= visitTexturePaths(shaderTexture.second, transform);
-        }
-
-        if (!materialChanged){
+        if (!visit(material)){
             continue;
         }
 

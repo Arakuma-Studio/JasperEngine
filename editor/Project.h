@@ -865,13 +865,19 @@ namespace jasperengine::editor{
         // Same for Lua script entries; C++ ones are build inputs kept project-relative.
         static bool visitLuaPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
         bool visitAssetPathsInMaterialFiles(const std::function<bool(std::string&)>& transform);
+        // Reads every .material file of the project, calls visit on it and writes back the
+        // ones visit changed (returns true for)
+        bool visitMaterialFiles(const std::function<bool(Material&)>& visit);
+        // A transform of fork references over a material's shader and its extra pass's
+        static bool applyToMaterialShaders(Material& material, const std::function<bool(std::string&)>& transform);
         // Runs an asset transform over every scene, prefab and material file,
         // marking what changed.
         void applyAssetPathChange(const std::function<bool(std::string&)>& transform);
         // Applies a transform to the customShader of every renderable component (Mesh/UI/
-        // Points/Lines/Sky) across all scenes and prefabs, flagging shader reloads
-        // and marking affected scenes/prefabs modified. The transform mutates the value in
-        // place and returns whether it changed.
+        // Points/Lines/Sky) and the scene defaults across all scenes and prefabs, and to the
+        // fork shader of every submesh material and extra pass there and in .material files,
+        // flagging shader or mesh reloads and marking affected scenes/prefabs modified. The
+        // transform mutates the value in place and returns whether it changed.
         void applyCustomShaderPathChange(const std::function<bool(std::string&)>& transform);
         bool removeMissingChildSceneReferences(SceneProject& sceneProject);
         bool detachChildSceneFromParents(uint32_t childSceneId, const std::set<uint32_t>& skippedSceneIds);
