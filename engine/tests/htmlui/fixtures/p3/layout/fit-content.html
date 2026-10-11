@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: width: fit-content, stretch and fit-content()</title>
+<style>
+  html, body { margin: 0; }
+  .container { position: absolute; left: 15px; width: 150px; background-color: #eeeeee; }
+  .container > div { margin-bottom: 5px; background-color: #c8d4e8; }
+  span { display: inline-block; width: 50px; height: 12px; background-color: #334466; vertical-align: top; }
+  span + span { background-color: #aa3333; }
+  #narrow { top: 15px; } #wide { top: 15px; left: 180px; width: 80px; }
+  .fit { width: fit-content; } .limit { width: fit-content(70px); } .stretch { float: left; width: stretch; margin: 0 10px 5px; }
+  .pad { width: fit-content; padding: 4px 8px; border: 2px solid #336644; }
+  #abs { position: absolute; left: 15px; top: 150px; width: 245px; height: 30px; background-color: #eeeeee; }
+  #abs-fit { position: absolute; left: 10px; right: 10px; width: fit-content; background-color: #c8d4e8; }
+</style>
+</head>
+<body>
+<div id="narrow" class="container"><div id="n-auto"><span></span><span></span></div><div id="n-fit" class="fit"><span></span><span></span></div><div id="n-limit" class="limit"><span></span><span></span></div><div id="n-pad" class="pad"><span></span></div><div id="n-stretch" class="stretch"><span></span></div></div>
+<div id="wide" class="container"><div id="w-fit" class="fit"><span></span><span></span></div><div id="w-limit" class="limit"><span></span><span></span></div><div id="w-stretch" class="stretch"><span></span></div></div>
+<div id="abs"><div id="abs-fit"><span></span></div></div>
+</body>
+</html>

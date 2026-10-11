@@ -1,0 +1,46 @@
+{
+ "comment": "a footer stuck above the bottom of the scrollport before it is reached and in flow afterwards; a box stuck below the top by its inset; in a horizontal scroller, boxes stuck by left and right",
+ "viewport": [
+  200,
+  185
+ ],
+ "steps": [
+  {
+   "capture": "top"
+  },
+  {
+   "scroll": [
+    "#scroller",
+    0,
+    90
+   ]
+  },
+  {
+   "scroll": [
+    "#wide",
+    150,
+    0
+   ]
+  },
+  {
+   "capture": "middle"
+  },
+  {
+   "scroll": [
+    "#scroller",
+    0,
+    172
+   ]
+  },
+  {
+   "scroll": [
+    "#wide",
+    320,
+    0
+   ]
+  },
+  {
+   "capture": "end"
+  }
+ ]
+}

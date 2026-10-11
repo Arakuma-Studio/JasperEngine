@@ -1,0 +1,42 @@
+{
+ "comment": "each header sticks to the top of the scrollport while its section is in view and leaves with its section (the containing block); captured in flow, stuck, being pushed out by the end of its section, and with the next header stuck",
+ "viewport": [
+  200,
+  150
+ ],
+ "steps": [
+  {
+   "capture": "top"
+  },
+  {
+   "scroll": [
+    "#list",
+    0,
+    60
+   ]
+  },
+  {
+   "capture": "stuck"
+  },
+  {
+   "scroll": [
+    "#list",
+    0,
+    130
+   ]
+  },
+  {
+   "capture": "leaving"
+  },
+  {
+   "scroll": [
+    "#list",
+    0,
+    200
+   ]
+  },
+  {
+   "capture": "next"
+  }
+ ]
+}

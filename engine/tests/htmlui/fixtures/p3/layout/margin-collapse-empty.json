@@ -1,0 +1,7 @@
+{
+ "comment": "adjoining sibling margins collapse to the largest (a negative one is subtracted); the margins of an empty block collapse through it, unless a border separates them; an empty block with clearance; a box with its own formatting context beside a float (narrowed) and one that does not fit moved below it",
+ "viewport": [
+  550,
+  130
+ ]
+}

@@ -1,0 +1,7 @@
+{
+ "comment": "scrollbar-gutter: stable reserves the width of the vertical scrollbar (15px) in auto and hidden scroll containers that do not overflow: the content is narrower, no scrollbar is drawn",
+ "viewport": [
+  475,
+  100
+ ]
+}

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: display: contents</title>
+<style>
+  html, body { margin: 0; }
+  #flex { position: absolute; left: 15px; top: 15px; width: 300px; height: 50px; display: flex; gap: 6px; background-color: #eeeeee; }
+  #flex div { width: 40px; background-color: #334466; }
+  #wrapper { display: contents; padding: 20px; border: 5px solid #aa3333; margin: 30px; background-color: #aa3333; color: #33aa55; }
+  #wrapper > div { background-color: currentColor; }
+  #block { position: absolute; left: 15px; top: 80px; width: 120px; background-color: #eeeeee; }
+  #block div { height: 15px; margin: 4px; background-color: #aa8833; }
+  #inner { display: contents; }
+  #nested { display: contents; }
+</style>
+</head>
+<body>
+<div id="flex"><div id="first"></div><section id="wrapper"><div id="a"></div><section id="nested"><div id="b"></div></section><div id="c"></div></section><div id="last"></div></div>
+<div id="block"><div id="d"></div><section id="inner"><div id="e"></div><div id="f"></div></section><div id="g"></div></div>
+</body>
+</html>

@@ -1,0 +1,84 @@
+{
+ "fixture": "layout/overflow-clip.html",
+ "viewport": [
+  440,
+  200
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "clip",
+    "tag": "div",
+    "x": 15,
+    "y": 15,
+    "w": 70,
+    "h": 50
+   },
+   {
+    "id": "clip-content",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 90,
+    "h": 70
+   },
+   {
+    "id": "clip-x",
+    "tag": "div",
+    "x": 125,
+    "y": 15,
+    "w": 70,
+    "h": 50
+   },
+   {
+    "id": "clip-y",
+    "tag": "div",
+    "x": 235,
+    "y": 15,
+    "w": 70,
+    "h": 50
+   },
+   {
+    "id": "margin",
+    "tag": "div",
+    "x": 15,
+    "y": 110,
+    "w": 70,
+    "h": 50
+   },
+   {
+    "id": "hidden",
+    "tag": "div",
+    "x": 125,
+    "y": 110,
+    "w": 70,
+    "h": 50
+   },
+   {
+    "id": "fixup",
+    "tag": "div",
+    "x": 235,
+    "y": 110,
+    "w": 70,
+    "h": 50
+   },
+   {
+    "id": "scroller",
+    "tag": "div",
+    "x": 345,
+    "y": 15,
+    "w": 80,
+    "h": 60
+   },
+   {
+    "id": "inner-clip",
+    "tag": "div",
+    "x": 345,
+    "y": 15,
+    "w": 60,
+    "h": 40
+   }
+  ]
+ }
+}

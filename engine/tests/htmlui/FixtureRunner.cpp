@@ -520,6 +520,9 @@ bool FixtureRunner::load(const std::string& assetPath, std::string* error){
 
 Rml::Element* FixtureRunner::element(const std::string& id, std::string* error) const{
     Rml::Element* found = state->document ? state->document->GetElementById(id) : nullptr;
+    // the id of <html> is kept as data-html-id on the document root (its id is reserved): "#id" names the root, as in Chromium
+    if (!found && state->document && state->document->GetAttribute<Rml::String>("data-html-id", "") == id)
+        found = state->document;
     if (!found && error)
         *error = "no element #" + id;
     return found;

@@ -1,0 +1,22 @@
+{
+ "comment": "fixed boxes inside an overflow: hidden scroller (and a positioned, clipping parent): the viewport is their containing block, the scroller neither clips them nor moves them when it scrolls",
+ "viewport": [
+  240,
+  150
+ ],
+ "steps": [
+  {
+   "capture": "top"
+  },
+  {
+   "scroll": [
+    "#scroller",
+    0,
+    70
+   ]
+  },
+  {
+   "capture": "scrolled"
+  }
+ ]
+}

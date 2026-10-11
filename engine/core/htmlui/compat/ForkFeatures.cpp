@@ -24,14 +24,14 @@ namespace {
         false,   // PercentRadius
         false,   // PseudoElements
         false,   // RootIsWhere
-        false,   // Fixed
+        true,    // Fixed (phase 3, p3-layout: position: fixed against the viewport; docs/html-ui/FORK.md P3-L8)
         false,   // GroupOpacity
         false,   // TimingFunctions
         false,   // Important
         false,   // CssWideKeywords
         true,    // Grid (phase 3, p3-grid: CSS Grid, a port of Taffy; docs/html-ui/FORK.md P3-G1..P3-G3)
-        false,   // Sticky (phase 3, p3-layout: position: sticky, overflow: clip; docs/html-ui/FORK.md)
-        true,    // BoxParity (phase 3, p3-layout: flex/block/sizing parity; docs/html-ui/FORK.md)
+        true,    // Sticky (phase 3, p3-layout: position: sticky, overflow: clip; docs/html-ui/FORK.md P3-L1, P3-L8)
+        true,    // BoxParity (phase 3, p3-layout: flex, block and sizing parity; docs/html-ui/FORK.md P3-L2..P3-L10)
     };
 
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {

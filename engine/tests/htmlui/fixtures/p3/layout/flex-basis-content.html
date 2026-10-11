@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: flex-basis: content and sizing keywords</title>
+<style>
+  html, body { margin: 0; }
+  .flex { display: flex; position: absolute; left: 15px; width: 240px; height: 30px; background-color: #eeeeee; }
+  .flex > div { background-color: #c8d4e8; }
+  .flex > div + div { background-color: #e8dcc8; }
+  .flex span { display: inline-block; width: 30px; height: 10px; background-color: #334466; vertical-align: top; }
+  #content { top: 15px; } #auto { top: 55px; } #keywords { top: 95px; } #column { top: 135px; flex-direction: column; height: 70px; width: 100px; }
+</style>
+</head>
+<body>
+<div id="content" class="flex"><div id="c1" style="width: 120px; flex: 0 0 content"><span></span></div><div id="c2" style="flex: 1 1 content"><span></span><span></span></div></div>
+<div id="auto" class="flex"><div id="a1" style="width: 120px; flex: 0 0 auto"><span></span></div><div id="a2" style="flex: 1 1 auto"><span></span><span></span></div></div>
+<div id="keywords" class="flex"><div id="k1" style="flex: 0 0 min-content"><span></span><span></span></div><div id="k2" style="flex: 0 0 max-content"><span></span><span></span></div><div id="k3" style="flex: 0 0 fit-content"><span></span></div></div>
+<div id="column" class="flex"><div id="v1" style="height: 50px; flex: 0 0 content"><span></span></div><div id="v2" style="flex: 1 1 content"></div></div>
+</body>
+</html>

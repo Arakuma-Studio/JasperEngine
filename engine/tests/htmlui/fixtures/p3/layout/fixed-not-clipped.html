@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: position: fixed is not clipped or moved by the scroll container it is in</title>
+<style>
+  html, body { margin: 0; }
+  .s0 { background-color: #c8d4e8; } .s1 { background-color: #e8dcc8; } .s2 { background-color: #cfe8c8; } .s3 { background-color: #e8c8dc; }
+  #scroller { position: absolute; left: 20px; top: 20px; width: 100px; height: 90px; overflow: hidden; background-color: #dddddd; }
+  #scroller > div { height: 50px; }
+  #inside { position: fixed; left: 150px; top: 40px; width: 60px; height: 40px; background-color: #aa3333; }
+  #over { position: fixed; left: 90px; top: 100px; width: 50px; height: 30px; background-color: #334466; }
+  #relative { position: relative; overflow: hidden; }
+</style>
+</head>
+<body>
+<div id="scroller"><div class="s0"></div><div id="relative" class="s1"><div id="inside"></div><div id="over"></div></div><div class="s2"></div><div class="s3"></div><div class="s0"></div></div>
+</body>
+</html>

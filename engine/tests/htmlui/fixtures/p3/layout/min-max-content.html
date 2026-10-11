@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: min-content and max-content</title>
+<style>
+  html, body { margin: 0; }
+  .container { position: absolute; left: 15px; top: 15px; width: 110px; background-color: #eeeeee; }
+  .container > div { margin-bottom: 5px; background-color: #c8d4e8; }
+  span { display: inline-block; width: 50px; height: 12px; background-color: #334466; vertical-align: top; }
+  span + span { background-color: #aa3333; } span + span + span { background-color: #33aa55; }
+  #second { left: 200px; }
+</style>
+</head>
+<body>
+<div id="first" class="container"><div id="max" style="width: max-content"><span></span><span></span><span></span></div><div id="min" style="width: min-content"><span></span><span></span><span></span></div><div id="min-max" style="width: 20px; min-width: max-content"><span></span><span></span></div><div id="max-min" style="max-width: min-content"><span></span><span></span></div></div>
+<div id="second" class="container"><div id="h-max" style="height: max-content"><span></span><span></span><span></span></div><div id="h-min" style="height: min-content"><span></span></div><div id="nested" style="width: min-content"><div style="width: 70px; height: 10px; background-color: #336644"></div><span></span><span></span></div></div>
+</body>
+</html>

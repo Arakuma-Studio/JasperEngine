@@ -1,0 +1,60 @@
+{
+ "comment": "regression (found by p3-grid): scrolled content was drawn one pixel above the top clip edge of an overflow: hidden box. The boxes are scrolled so that a transparent gap, then a coloured stripe, crosses the top edge of the padding box",
+ "viewport": [
+  390,
+  120
+ ],
+ "steps": [
+  {
+   "capture": "top"
+  },
+  {
+   "scroll": [
+    "#plain",
+    0,
+    30
+   ]
+  },
+  {
+   "scroll": [
+    "#padded",
+    0,
+    30
+   ]
+  },
+  {
+   "scroll": [
+    "#bordered",
+    0,
+    30
+   ]
+  },
+  {
+   "capture": "gap"
+  },
+  {
+   "scroll": [
+    "#plain",
+    0,
+    55
+   ]
+  },
+  {
+   "scroll": [
+    "#padded",
+    0,
+    55
+   ]
+  },
+  {
+   "scroll": [
+    "#bordered",
+    0,
+    55
+   ]
+  },
+  {
+   "capture": "stripe"
+  }
+ ]
+}

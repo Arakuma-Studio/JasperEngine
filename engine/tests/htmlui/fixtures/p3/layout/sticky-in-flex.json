@@ -1,0 +1,42 @@
+{
+ "comment": "a sticky sidebar item of a row flex container stays in view while the taller main column scrolls, until its container ends; a sticky item of a column flex container sticks at the top",
+ "viewport": [
+  220,
+  140
+ ],
+ "steps": [
+  {
+   "capture": "top"
+  },
+  {
+   "scroll": [
+    "#scroller",
+    0,
+    80
+   ]
+  },
+  {
+   "capture": "sidebar"
+  },
+  {
+   "scroll": [
+    "#scroller",
+    0,
+    190
+   ]
+  },
+  {
+   "capture": "container-end"
+  },
+  {
+   "scroll": [
+    "#scroller",
+    0,
+    300
+   ]
+  },
+  {
+   "capture": "column"
+  }
+ ]
+}
