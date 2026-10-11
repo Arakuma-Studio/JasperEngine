@@ -1544,8 +1544,7 @@ FORK.md rows P3-L1..P3-L12. Where the implementation differs from or makes preci
   automatic height is as tall as the viewport, so the root's (or the body's propagated) overflow scrolls the page.
 - **Grid items** (handed over by p3-grid): aspect ratio and sizing keywords in `GridItemMeasure`/`GridFormattingContext`;
   a width-only request of a grid re-runs column sizing when an item's width can follow its height.
-- **Not done**: RTL mirroring of flex/sticky/fixed (spec 2.2), `contain`, `will-change`, `display: contents` on replaced
-  elements and form controls (they keep their box).
+- **Not done**: RTL mirroring of flex/sticky/fixed (spec 2.2), `contain`, `will-change`.
 - **Found on the way**: with 4x MSAA, Mesa's llvmpipe and lavapipe (the test image's drivers) let the samples of the
   pixel row above and the column left of a scissor rectangle through (half coverage): scrolled content shows a 1 px line
   above the top clip edge of `overflow: hidden` boxes (p3-grid's report). RmlUi's clip regions and the engine's target
