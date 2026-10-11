@@ -842,7 +842,9 @@ namespace {
                             name = name.substr(p.size());
                     }
                 }
-                const std::string_view family = varFamilyOf(name);
+                // (a native text-shadow reads the variable as it is: no font-effect copy)
+                const std::string_view family =
+                    (name == "text-shadow" && session.options.fork.has(ForkFeature::TextShadow)) ? std::string_view() : varFamilyOf(name);
                 const ComponentValue* sole = soleValue(d.value);
                 const bool whole = sole && sole->isFunction("var");
                 const bool timing = name == "transition" || name == "animation" || name == "transition-timing-function" ||
@@ -867,14 +869,15 @@ namespace {
                 }
                 if (startsWith(name, "border-image") && !hasIdent(d.value, "none"))
                     session.usesBorderImage = true;
-                if (name == "text-shadow" && !hasIdent(d.value, "none"))
+                // (a native text-shadow and a text stroke's font effect do not share the font-effect list)
+                if (name == "text-shadow" && !hasIdent(d.value, "none") && !session.options.fork.has(ForkFeature::TextShadow))
                     session.usesTextShadow = true;
                 if (startsWith(name, "-webkit-text-stroke"))
                     session.usesTextStroke = true;
                 // (keywordOf(d.value) == "inherit")
                 if (sole && sole->isToken(TokenType::Ident) && equalsNoCase(sole->token.value, "inherit") &&
                     !session.options.fork.has(ForkFeature::CssWideKeywords)){
-                    for (const std::string& p : CascadeKeywords::outputProperties(name)){
+                    for (const std::string& p : CascadeKeywords::outputProperties(name, session.options.fork)){
                         const PropertySupport* row = session.facts(name).row;
                         const bool inherited = row ? row->inherited : CascadeKeywords::inherited(p);
                         if (!inherited && !CascadeKeywords::inherited(p))
@@ -1389,6 +1392,16 @@ namespace {
         }
     }
 
+    // The fork reads currentcolor itself in these values (p3-text: text-shadow, text-decoration-color):
+    // the keyword is kept instead of the rule's static color.
+    bool keepsCurrentColorKeyword(const Session& session, const PropertySupport& row){
+        if (row.rewrite == RewriteId::TextShadow)
+            return session.options.fork.has(ForkFeature::TextShadow);
+        if (row.rewrite == RewriteId::TextDecoration)
+            return session.options.fork.has(ForkFeature::TextProperties);
+        return false;
+    }
+
     // what the normalizer may read of the rule for a value (see processOne)
     struct ValueNeeds {
         bool staticColor = false;   // a currentcolor ident or a var()
@@ -1491,7 +1504,7 @@ namespace {
             // 4. value normalization
             NormalizeContext normalize;
             normalize.colors = facts.colorKeywords;
-            normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint;
+            normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint || keepsCurrentColorKeyword(session, *row);
             // a style attribute or a keyframe cannot be duplicated per orientation: vmin/vmax evaluated
             normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
             // math functions the fork evaluates stay in the properties written as they are read

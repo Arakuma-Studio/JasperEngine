@@ -68,6 +68,7 @@ namespace jasperengine::htmlui::compat {
     void rewriteWhiteSpace(DeclContext&);
     void rewriteOverflowWrap(DeclContext&);
     void rewriteLineClamp(DeclContext&);
+    void rewriteUserSelect(DeclContext&);
     void rewriteDirection(DeclContext&);
     void rewriteTransition(DeclContext&);
     void rewriteTransitionLonghand(DeclContext&);

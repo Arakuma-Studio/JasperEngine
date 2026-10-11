@@ -1,0 +1,32 @@
+#htmlui-root .blur0 {
+text-shadow: 1px 1px #000000ff;
+}
+#htmlui-root .blur {
+text-shadow: 0 0 10px #00ffffcc;
+}
+#htmlui-root .multiple {
+text-shadow: 0 0 5px #ffffffff, 0 0 10px #00ffffff, 2px 2px 0 #000000ff;
+}
+#htmlui-root .no-color {
+text-shadow: 2px 2px 4px;
+}
+#htmlui-root .static-color {
+color: #ffff00ff;
+--html-current-color: #ffff00ff;
+text-shadow: 0 0 6px;
+}
+#htmlui-root .color-first {
+text-shadow: #ff0000ff 1px 1px 2px;
+}
+#htmlui-root .none {
+text-shadow: none;
+}
+#htmlui-root .em {
+text-shadow: 0.1em 0.1em 0.2em #000000ff;
+}
+#htmlui-root .var {
+text-shadow: var(--glow);
+}
+body#htmlui-root {
+--glow: 0 0 8px #ff00ffff;
+}

@@ -18,6 +18,8 @@
 #include "PropertyParserString.h"
 #include "PropertyParserTransform.h"
 #include "PropertyShorthandDefinition.h"
+#include "TextProperties.h"
+#include "TextShadow.h"
 
 namespace Rml {
 
@@ -288,6 +290,9 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	// -- Paint (p3-paint) --
 
 	// -- Text (p3-text) --
+	static PropertyParserTextDecorationLine text_decoration_line;
+	RegisterParser("text_decoration_line", &text_decoration_line);
+	RegisterParser("text_shadow", &GetTextShadowParser());
 
 	// -- Layout (p3-layout) --
 	RegisterLayoutParsers();
@@ -416,14 +421,17 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::FontWeight, "font-weight", "normal", true, true).AddParser("keyword", "normal=400, bold=700").AddParser("number");
 	RegisterProperty(PropertyId::FontSize, "font-size", "16px", true, true).AddParser("length").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ParentFontSize);
 	RegisterProperty(PropertyId::FontKerning, "font-kerning", "auto", true, true).AddParser("keyword", "auto, normal, none");
-	RegisterProperty(PropertyId::LetterSpacing, "letter-spacing", "normal", true, true).AddParser("keyword", "normal").AddParser("length");
+	RegisterProperty(PropertyId::LetterSpacing, "letter-spacing", "normal", true, true).AddParser("keyword", "normal").AddParser("length_percent").SetRelativeTarget(RelativeTarget::FontSize);
 	RegisterShorthand(ShorthandId::Font, "font", "font-style, font-weight, font-size, font-family", ShorthandType::FallThrough);
 
-	RegisterProperty(PropertyId::TextAlign, "text-align", "left", true, true).AddParser("keyword", "left, right, center, justify");
-	RegisterProperty(PropertyId::TextDecoration, "text-decoration", "none", true, false).AddParser("keyword", "none, underline, overline, line-through");
+	// 'start' and 'end' resolve against the direction, 'match-parent' to the parent's value (ComputeTextAlign, p3-text).
+	RegisterProperty(PropertyId::TextAlign, "text-align", "start", true, true).AddParser("keyword", "left, right, center, justify, start, end, match-parent, -webkit-center");
+	// The lines of the 'text-decoration' shorthand (p3-text); inherited, so that the decoration reaches the text inside.
+	RegisterProperty(PropertyId::TextDecoration, "text-decoration-line", "none", true, false).AddParser("text_decoration_line");
 	RegisterProperty(PropertyId::TextTransform, "text-transform", "none", true, true).AddParser("keyword", "none, capitalize, uppercase, lowercase");
-	RegisterProperty(PropertyId::WhiteSpace, "white-space", "normal", true, true).AddParser("keyword", "normal, pre, nowrap, pre-wrap, pre-line");
-	RegisterProperty(PropertyId::WordBreak, "word-break", "normal", true, true).AddParser("keyword", "normal, break-all, break-word");
+	// 'white-space' is the shorthand of 'white-space-collapse' and 'text-wrap-mode' (p3-text): PropertyId::WhiteSpace is
+	// not registered.
+	RegisterProperty(PropertyId::WordBreak, "word-break", "normal", true, true).AddParser("keyword", "normal, break-all, break-word, keep-all");
 
 	// 'normal' is 0 in flex and grid layout (the 'gap' parser, p3-grid); a column gap is a fraction of the width.
 	RegisterProperty(PropertyId::RowGap, "row-gap", "0px", false, true).AddParser("gap").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
@@ -527,6 +535,26 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	// -- Paint (p3-paint) --
 
 	// -- Text (p3-text) --
+	RegisterProperty(PropertyId::WordSpacing, "word-spacing", "normal", true, true).AddParser("keyword", "normal").AddParser("length_percent").SetRelativeTarget(RelativeTarget::FontSize);
+	RegisterProperty(PropertyId::OverflowWrap, "overflow-wrap", "normal", true, true).AddParser("keyword", "normal, anywhere, break-word");
+	RegisterShorthand(ShorthandId::WordWrap, "word-wrap", "overflow-wrap", ShorthandType::FallThrough);
+	RegisterProperty(PropertyId::WhiteSpaceCollapse, "white-space-collapse", "collapse", true, true).AddParser("keyword", "collapse, preserve, preserve-breaks, preserve-spaces, break-spaces");
+	RegisterProperty(PropertyId::TextWrapMode, "text-wrap-mode", "wrap", true, true).AddParser("keyword", "wrap, nowrap");
+	RegisterShorthand(ShorthandId::WhiteSpace, "white-space", "white-space-collapse, text-wrap-mode", ShorthandType::Custom);
+	properties.SetShorthandParser(ShorthandId::WhiteSpace, &ParseWhiteSpaceShorthand);
+	RegisterShorthand(ShorthandId::TextWrap, "text-wrap", "text-wrap-mode", ShorthandType::Custom);
+	properties.SetShorthandParser(ShorthandId::TextWrap, &ParseTextWrapShorthand);
+	// The decoration longhands are inherited, as text-decoration-line is (a fork-only choice: RmlUi draws decorations per text
+	// element, so they reach the text inside the decorating box through inheritance).
+	RegisterProperty(PropertyId::TextDecorationColor, "text-decoration-color", "currentcolor", true, false).AddParser("keyword", "currentcolor").AddParser("color");
+	RegisterProperty(PropertyId::TextDecorationStyle, "text-decoration-style", "solid", true, false).AddParser("keyword", "solid, double, dotted, dashed, wavy");
+	RegisterProperty(PropertyId::TextDecorationThickness, "text-decoration-thickness", "auto", true, false).AddParser("keyword", "auto, from-font").AddParser("length_percent").SetRelativeTarget(RelativeTarget::FontSize);
+	RegisterProperty(PropertyId::TextUnderlineOffset, "text-underline-offset", "auto", true, false).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::FontSize);
+	RegisterShorthand(ShorthandId::TextDecoration, "text-decoration", "text-decoration-line, text-decoration-style, text-decoration-color, text-decoration-thickness", ShorthandType::Custom);
+	properties.SetShorthandParser(ShorthandId::TextDecoration, &ParseTextDecorationShorthand);
+	RegisterProperty(PropertyId::TextShadow, "text-shadow", "none", true, false).AddParser("keyword", "none").AddParser("text_shadow");
+	RegisterProperty(PropertyId::UserSelect, "user-select", "auto", false, false).AddParser("keyword", "auto, text, none, contain, all");
+	RegisterProperty(PropertyId::AccentColor, "accent-color", "auto", true, false).AddParser("keyword", "auto").AddParser("color");
 
 	// -- Layout (p3-layout) --
 	// The sizing keywords of width, height, min-*, max-* and flex-basis, 'overflow: clip' and 'flex-wrap: balance' are in

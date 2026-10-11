@@ -487,6 +487,11 @@ namespace {
 	};
 } // namespace
 
+bool LayoutDetails::IsMeasuringMinContent()
+{
+	return measuring_min_content;
+}
+
 float LayoutDetails::GetMinContentWidth(Element* element, Vector2f containing_block)
 {
 	RMLUI_ASSERT(element);

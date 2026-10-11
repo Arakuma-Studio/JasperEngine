@@ -1,0 +1,7 @@
+{
+ "comment": "text-decoration-line (several lines), -color, -style (double, dotted, dashed), -thickness, text-underline-offset and the shorthand; underline and overline under the text, line-through over it; a span inherits its decorating box’s color. Ahem: the accented capitals are ascent-only, so the underline shows.",
+ "viewport": [
+  300,
+  170
+ ]
+}

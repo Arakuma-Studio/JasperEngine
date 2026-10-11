@@ -138,6 +138,9 @@ public:
 	/// @param[in] containing_block The containing block's size (negative: indefinite; percentages then resolve as 0).
 	/// @return The width of the border box.
 	static float GetMinContentWidth(Element* element, Vector2f containing_block);
+	/// True while a min-content width is measured (GetMinContentWidth): text that breaks words to fit
+	/// ('overflow-wrap: break-word') keeps them whole then (p3-text).
+	static bool IsMeasuringMinContent();
 	/// The element's max-content width: the width of its border box formatted without a width constraint (shrink-to-fit
 	/// without the clamp to the available width). A definite 'width' is its own max-content width.
 	/// @return The width of the border box.

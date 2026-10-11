@@ -1,0 +1,7 @@
+{
+ "comment": "A flex item that may shrink below its content (min-width: 0) clips its text with an ellipsis next to a fixed-width sibling.",
+ "viewport": [
+  150,
+  60
+ ]
+}

@@ -93,9 +93,10 @@ namespace Style {
 	struct InheritedValues {
 		InheritedValues() :
 			font_weight(FontWeight::Normal), font_kerning(FontKerning::Auto), has_letter_spacing(0), font_style(FontStyle::Normal),
-			has_font_effect(false), pointer_events(PointerEvents::Auto), focus(Focus::Auto), text_align(TextAlign::Left),
-			text_decoration(TextDecoration::None), text_transform(TextTransform::None), white_space(WhiteSpace::Normal),
-			word_break(WordBreak::Normal), direction(Direction::Auto), visibility(Visibility::Visible), line_height_inherit_type(LineHeight::Number)
+			has_font_effect(false), pointer_events(PointerEvents::Auto), focus(Focus::Auto), text_align(TextAlign::Start),
+			text_decoration(TextDecoration::None), text_transform(TextTransform::None), white_space_collapse(WhiteSpaceCollapse::Collapse),
+			text_wrap_mode(TextWrapMode::Wrap), word_break(WordBreak::Normal), direction(Direction::Auto), visibility(Visibility::Visible),
+			line_height_inherit_type(LineHeight::Number)
 		{}
 
 		// Font face used to render text and resolve ex properties. Does not represent a true property
@@ -118,10 +119,11 @@ namespace Style {
 		PointerEvents pointer_events : 1;
 		Focus focus : 1;
 
-		TextAlign text_align : 2;
-		TextDecoration text_decoration : 2;
+		TextAlign text_align : 3;
+		TextDecoration text_decoration : 3;
 		TextTransform text_transform : 2;
-		WhiteSpace white_space : 3;
+		WhiteSpaceCollapse white_space_collapse : 3;
+		TextWrapMode text_wrap_mode : 1;
 		WordBreak word_break : 2;
 
 		Direction direction : 2;
@@ -133,6 +135,12 @@ namespace Style {
 		float line_height_inherit = 1.2f;
 
 		String language = "";
+
+		// -- Text (p3-text) --
+		OverflowWrap overflow_wrap = OverflowWrap::Normal;
+		bool has_text_shadow = false;
+		float letter_spacing = 0.f; // px
+		float word_spacing = 0.f;   // px
 	};
 
 	struct RareValues {
@@ -295,17 +303,17 @@ namespace Style {
 		String         cursor()           const;
 		FontFaceHandle font_face_handle() const { return inherited.font_face_handle; }
 		float          font_size()        const { return inherited.font_size; }
-		float          letter_spacing()   const;
+		float          letter_spacing()   const { return inherited.letter_spacing; }
 		bool           has_font_effect()  const { return inherited.has_font_effect; }
 		FontStyle      font_style()       const { return inherited.font_style; }
 		FontWeight     font_weight()      const { return inherited.font_weight; }
 		FontKerning    font_kerning()     const { return inherited.font_kerning; }
 		PointerEvents  pointer_events()   const { return inherited.pointer_events; }
 		Focus          focus()            const { return inherited.focus; }
-		TextAlign      text_align()       const { return inherited.text_align; }
+		TextAlign      text_align()       const { return ResolveTextAlign(inherited.text_align, inherited.direction); }
 		TextDecoration text_decoration()  const { return inherited.text_decoration; }
 		TextTransform  text_transform()   const { return inherited.text_transform; }
-		WhiteSpace     white_space()      const { return inherited.white_space; }
+		WhiteSpace     white_space()      const { return ToWhiteSpace(inherited.white_space_collapse, inherited.text_wrap_mode); }
 		WordBreak      word_break()       const { return inherited.word_break; }
 		Colourb        color()            const { return inherited.color; }
 		float          opacity()          const { return inherited.opacity; }
@@ -379,6 +387,12 @@ namespace Style {
 		// Paint (p3-paint)
 
 		// Text (p3-text)
+		TextAlign          specified_text_align()      const { return inherited.text_align; }
+		WhiteSpaceCollapse white_space_collapse()      const { return inherited.white_space_collapse; }
+		TextWrapMode       text_wrap_mode()            const { return inherited.text_wrap_mode; }
+		OverflowWrap       overflow_wrap()             const { return inherited.overflow_wrap; }
+		float              word_spacing()              const { return inherited.word_spacing; }
+		bool               has_text_shadow()           const { return inherited.has_text_shadow; }
 
 		// Layout (p3-layout)
 		SizingKeyword     width_keyword()              const { return rare.width_keyword; }
@@ -461,7 +475,6 @@ namespace Style {
 		void text_align        (TextAlign value)      { inherited.text_align         = value; }
 		void text_decoration   (TextDecoration value) { inherited.text_decoration    = value; }
 		void text_transform    (TextTransform value)  { inherited.text_transform     = value; }
-		void white_space       (WhiteSpace value)     { inherited.white_space        = value; }
 		void word_break        (WordBreak value)      { inherited.word_break         = value; }
 		void color             (Colourb value)        { inherited.color              = value; }
 		void opacity           (float value)          { inherited.opacity            = value; }
@@ -512,6 +525,12 @@ namespace Style {
 		// Paint (p3-paint)
 
 		// Text (p3-text)
+		void white_space_collapse      (WhiteSpaceCollapse value) { inherited.white_space_collapse = value; }
+		void text_wrap_mode            (TextWrapMode value)       { inherited.text_wrap_mode       = value; }
+		void overflow_wrap             (OverflowWrap value)       { inherited.overflow_wrap        = value; }
+		void letter_spacing            (float value)              { inherited.letter_spacing       = value; }
+		void word_spacing              (float value)              { inherited.word_spacing         = value; }
+		void has_text_shadow           (bool value)               { inherited.has_text_shadow      = value; }
 
 		// Layout (p3-layout)
 		void width_keyword             (SizingKeyword value)     { rare.width_keyword              = value; }

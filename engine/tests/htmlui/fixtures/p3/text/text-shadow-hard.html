@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-shadow without blur</title>
+<style>
+  /* Shadows without blur: offsets in any direction, currentcolor when no color is given, a shadow of the decoration line too; painted behind the text. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  @font-face { font-family: "Roboto Text"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  div { position: absolute; left: 10px; font-size: 20px; color: #305080; }
+</style>
+</head>
+<body>
+<div id="down" style="top: 10px; text-shadow: 3px 3px #e04040">XÉX</div>
+<div id="up" style="top: 50px; text-shadow: -2px -4px #20a040">XÉX</div>
+<div id="current" style="top: 90px; color: #a06020; text-shadow: 4px 2px">XÉX</div>
+<div id="decorated" style="left: 110px; top: 10px; text-decoration: underline; text-shadow: 2px 3px #e04040">ÉÉÉ</div>
+<div id="inherited" style="left: 110px; top: 50px; text-shadow: 3px 3px #8040c0"><span style="color: #20a040">XÉ</span>X</div>
+</body>
+</html>

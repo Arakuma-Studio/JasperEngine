@@ -254,6 +254,37 @@ TEST(BrowserFixtures, FontsAreTheEnginesFaces){
     std::string ahem;
     ASSERT_TRUE(readText(htmluiTestSourceDirectory() + "/fonts/Ahem.ttf", ahem));
     EXPECT_EQ(ahem.size(), 12480u);
+
+    // the copy Chromium loads: the same tables, plus 'post' (and the head checksum adjustment)
+    std::string post;
+    ASSERT_TRUE(readText(htmluiTestSourceDirectory() + "/fonts/Roboto-Regular-subset-post.ttf", post));
+    auto tables = [](const std::string& font){
+        std::map<std::string, std::string> result;
+        auto u16 = [&](size_t at){ return (uint32_t(uint8_t(font[at])) << 8) | uint8_t(font[at + 1]); };
+        auto u32 = [&](size_t at){ return (u16(at) << 16) | u16(at + 2); };
+        const uint32_t count = u16(4);
+        for (uint32_t i = 0; i < count && 12 + 16 * (i + 1) <= font.size(); i++){
+            const size_t record = 12 + 16 * i;
+            const uint32_t offset = u32(record + 8), length = u32(record + 12);
+            if (offset + length <= font.size())
+                result[font.substr(record, 4)] = font.substr(offset, length);
+        }
+        return result;
+    };
+    std::map<std::string, std::string> original = tables(roboto), copy = tables(post);
+    ASSERT_EQ(copy.count("post"), 1u);
+    EXPECT_EQ(original.count("post"), 0u);
+    copy.erase("post");
+    ASSERT_EQ(original.size(), copy.size());
+    for (auto& entry : original){
+        ASSERT_EQ(copy.count(entry.first), 1u) << entry.first;
+        if (entry.first == "head"){
+            // (checkSumAdjustment, bytes 8-11, differs)
+            entry.second.replace(8, 4, 4, '\0');
+            copy[entry.first].replace(8, 4, 4, '\0');
+        }
+        EXPECT_EQ(entry.second, copy[entry.first]) << entry.first;
+    }
 }
 
 // manifest.json names every area and its owner; every fixture's sidecar loads, overrides its gate only

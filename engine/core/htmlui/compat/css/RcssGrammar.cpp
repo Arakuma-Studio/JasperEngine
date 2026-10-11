@@ -742,14 +742,35 @@ namespace {
 
 namespace {
 
-    // What the fork parses beyond RmlUi 6.3 with a phase-3 fork feature (p3-layout: Sticky, BoxParity), per property:
-    // accepted in addition to kGrammar when the feature is present.
+    // Properties the fork registers or extends with a phase-3 feature: with the feature present a value is accepted by
+    // this grammar or by the 6.3 row above, if any (p3-text: TextShadow, TextProperties; p3-layout: Sticky, BoxParity).
     struct ForkGrammar {
         std::string_view name;
         ForkFeature feature;
         std::string_view grammar;
     };
+
     const ForkGrammar kForkGrammar[] = {
+        // p3-text (TextShadow, TextProperties)
+        {"accent-color", ForkFeature::TextProperties, "kw:auto|color"},
+        {"letter-spacing", ForkFeature::TextProperties, "kw:normal|length_percent"},
+        {"overflow-wrap", ForkFeature::TextProperties, "kw:normal,anywhere,break-word"},
+        {"text-align", ForkFeature::TextProperties, "kw:left,right,center,justify,start,end,match-parent,-webkit-center"},
+        {"text-decoration", ForkFeature::TextProperties, "@text_decoration"},
+        {"text-decoration-color", ForkFeature::TextProperties, "kw:currentcolor|color"},
+        {"text-decoration-line", ForkFeature::TextProperties, "@text_decoration_line"},
+        {"text-decoration-style", ForkFeature::TextProperties, "kw:solid,double,dotted,dashed,wavy"},
+        {"text-decoration-thickness", ForkFeature::TextProperties, "kw:auto,from-font|length_percent"},
+        {"text-shadow", ForkFeature::TextShadow, "@text_shadow"},
+        {"text-underline-offset", ForkFeature::TextProperties, "kw:auto|length_percent"},
+        {"text-wrap", ForkFeature::TextProperties, "@text_wrap"},
+        {"text-wrap-mode", ForkFeature::TextProperties, "kw:wrap,nowrap"},
+        {"user-select", ForkFeature::TextProperties, "kw:auto,text,none,contain,all"},
+        {"white-space", ForkFeature::TextProperties, "@white_space"},
+        {"white-space-collapse", ForkFeature::TextProperties, "kw:collapse,preserve,preserve-breaks,preserve-spaces,break-spaces"},
+        {"word-break", ForkFeature::TextProperties, "kw:normal,break-all,break-word,keep-all"},
+        {"word-spacing", ForkFeature::TextProperties, "kw:normal|length_percent"},
+        // p3-layout (Sticky, BoxParity)
         {"align-content", ForkFeature::BoxParity, "@align:flex-start,flex-end,center,space-between,space-around,space-evenly,stretch,normal,start,end"},
         {"align-items", ForkFeature::BoxParity, "@align:flex-start,flex-end,center,baseline,stretch,normal,start,end,self-start,self-end,first baseline,last baseline"},
         {"align-self", ForkFeature::BoxParity, "@align:auto,flex-start,flex-end,center,baseline,stretch,normal,start,end,self-start,self-end,first baseline,last baseline"},
@@ -776,12 +797,101 @@ namespace {
         {"width", ForkFeature::BoxParity, "kw:min-content,max-content,fit-content,stretch,-webkit-fill-available|@fit_content"},
     };
 
-    const ForkGrammar* findFork(std::string_view name){
+    const ForkGrammar* findForkGrammar(std::string_view name){
         for (const ForkGrammar& row : kForkGrammar){
             if (row.name == name)
                 return &row;
         }
         return nullptr;
+    }
+
+    // a length, or a math function of lengths
+    bool lengthOrCalc(std::string_view word, bool calc){
+        return isLength(word) || (calc && calcFits(word, CalcLength | CalcNumber, CalcLength));
+    }
+
+    bool lengthPercentOrCalc(std::string_view word, bool calc){
+        return isLength(word) || isPercent(word) || (calc && calcFits(word, CalcLength | CalcPercent | CalcNumber, CalcLength | CalcPercent));
+    }
+
+    // the line keywords of text-decoration-line, each once; `none` alone
+    bool decorationLines(const std::vector<std::string_view>& words){
+        if (words.size() == 1 && words[0] == "none")
+            return true;
+        std::vector<std::string_view> seen;
+        for (std::string_view word : words){
+            if (!keywordIn(word, "underline,overline,line-through,blink") || std::find(seen.begin(), seen.end(), word) != seen.end())
+                return false;
+            seen.push_back(word);
+        }
+        return !seen.empty();
+    }
+
+    // The fork's text grammars (p3-text): text-shadow, text-decoration(-line), white-space, text-wrap.
+    bool checkText(std::string_view value, std::string_view kind, bool calc){
+        const Pieces words = split(value, ' ');
+        std::vector<std::string_view> list(words.begin(), words.end());
+        if (kind == "text_shadow"){
+            if (value == "none")
+                return true;
+            for (std::string_view shadow : split(value, ',')){
+                size_t lengths = 0;
+                bool colour = false, lengthsDone = false;
+                for (std::string_view word : split(trim(shadow), ' ')){
+                    if (lengthOrCalc(word, calc)){
+                        if (lengthsDone || ++lengths > 3)
+                            return false;
+                        if (lengths == 3 && word[0] == '-')
+                            return false;
+                    }else if (!colour && (isColor(word) || word == "currentcolor")){
+                        colour = true;
+                        lengthsDone = lengths > 0;
+                    }else{
+                        return false;
+                    }
+                }
+                if (lengths < 2)
+                    return false;
+            }
+            return true;
+        }
+        if (kind == "text_decoration_line")
+            return decorationLines(list);
+        if (kind == "text_decoration"){
+            std::vector<std::string_view> lines;
+            bool style = false, colour = false, thickness = false;
+            for (std::string_view word : list){
+                if (keywordIn(word, "none,underline,overline,line-through,blink"))
+                    lines.push_back(word);
+                else if (!style && keywordIn(word, "solid,double,dotted,dashed,wavy"))
+                    style = true;
+                else if (!thickness && (keywordIn(word, "auto,from-font") || lengthPercentOrCalc(word, calc)))
+                    thickness = true;
+                else if (!colour && (isColor(word) || word == "currentcolor"))
+                    colour = true;
+                else
+                    return false;
+            }
+            return lines.empty() || decorationLines(lines);
+        }
+        if (kind == "white_space"){
+            if (list.size() == 1)
+                return keywordIn(list[0], "normal,pre,nowrap,pre-wrap,pre-line,break-spaces,collapse,preserve,preserve-breaks,preserve-spaces,wrap");
+            if (list.size() != 2)
+                return false;
+            const bool firstMode = keywordIn(list[0], "wrap,nowrap"), secondMode = keywordIn(list[1], "wrap,nowrap");
+            const char* collapse = "collapse,preserve,preserve-breaks,preserve-spaces,break-spaces";
+            return (firstMode && keywordIn(list[1], collapse)) || (secondMode && keywordIn(list[0], collapse));
+        }
+        if (kind == "text_wrap"){
+            if (list.size() == 1)
+                return keywordIn(list[0], "wrap,nowrap,auto,balance,pretty,stable");
+            if (list.size() != 2)
+                return false;
+            const char* style = "auto,balance,pretty,stable";
+            return (keywordIn(list[0], "wrap,nowrap") && keywordIn(list[1], style)) || (keywordIn(list[1], "wrap,nowrap") && keywordIn(list[0], style));
+        }
+        return false;
     }
 
     // CSS Box Alignment 3 values as the fork parses them: a keyword of the list, 'safe'/'unsafe' before a positional
@@ -859,33 +969,12 @@ namespace {
         return false;
     }
 
-    bool checkForkGrammar(std::string_view property, std::string_view value, const ForkFeatures& fork, bool calc){
-        const ForkGrammar* row = findFork(property);
-        if (!row || !fork.has(row->feature))
-            return false;
-        return anySegment(row->grammar, '|', [&](std::string_view alternative){
-            if (alternative[0] == '@')
-                return checkForkComplex(value, alternative.substr(1), calc);
-            if (alternative.compare(0, 10, "replicate:") == 0){
-                const Pieces words = split(value, ' ');
-                if (words.empty() || words.size() > 2)
-                    return false;
-                for (std::string_view word : words){
-                    if (!checkAlternatives(word, alternative.substr(10), calc))
-                        return false;
-                }
-                return true;
-            }
-            return checkAlternatives(value, alternative, calc);
-        });
-    }
-
 }
 
 bool RcssGrammar::known(std::string_view property){
     if (property.size() > 2 && property[0] == '-' && property[1] == '-')
         return true;
-    return find(property) != nullptr || findFork(property) != nullptr;
+    return find(property) != nullptr || findForkGrammar(property) != nullptr;
 }
 
 namespace {
@@ -938,10 +1027,38 @@ bool RcssGrammar::accepts(std::string_view property, std::string_view value){
 }
 
 bool RcssGrammar::accepts(std::string_view property, std::string_view value, const ForkFeatures& fork){
-    if (acceptsWith(property, value, fork.has(ForkFeature::Calc)))
-        return true;
-    const std::string_view trimmed = trim(value);
-    return !trimmed.empty() && checkForkGrammar(property, trimmed, fork, fork.has(ForkFeature::Calc));
+    const bool calc = fork.has(ForkFeature::Calc);
+    if (const ForkGrammar* row = findForkGrammar(property); row && fork.has(row->feature)){
+        const std::string_view trimmed = trim(value);
+        if (trimmed.empty())
+            return false;
+        for (size_t i = 0; i + 4 <= trimmed.size(); i++){
+            if (equalsNoCase(trimmed.substr(i, 4), "var("))
+                return true;
+        }
+        if (acceptsWith(property, value, calc))
+            return true;
+        return anySegment(row->grammar, '|', [&](std::string_view alternative){
+            if (alternative[0] == '@'){
+                const std::string_view kind = alternative.substr(1);
+                if (kind.compare(0, 5, "text_") == 0 || kind == "white_space")
+                    return checkText(trimmed, kind, calc);
+                return checkForkComplex(trimmed, kind, calc);
+            }
+            if (alternative.compare(0, 10, "replicate:") == 0){
+                const Pieces words = split(trimmed, ' ');
+                if (words.empty() || words.size() > 2)
+                    return false;
+                for (std::string_view word : words){
+                    if (!checkAlternatives(word, alternative.substr(10), calc))
+                        return false;
+                }
+                return true;
+            }
+            return checkAlternatives(trimmed, alternative, calc);
+        });
+    }
+    return acceptsWith(property, value, calc);
 }
 
 std::string RcssGrammar::keywords(std::string_view property){
