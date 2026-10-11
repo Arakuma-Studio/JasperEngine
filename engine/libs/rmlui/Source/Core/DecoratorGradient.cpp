@@ -281,8 +281,8 @@ CompiledShader DecoratorLinearGradient::CompileImageShader(Element* element, Vec
 		return CompiledShader();
 	LinearGradientShape gradient_shape = CalculateShape(dimensions);
 
-	// One-pixel minimum color stop spacing to avoid aliasing.
-	const float soft_spacing = 1.f / gradient_shape.length;
+	// Fork (phase 3, p3-paint): hard stops stay hard, as Chromium draws them (upstream spaced stops one pixel apart).
+	const float soft_spacing = 0.f;
 
 	ColorStopList resolved_stops = ResolveColorStops(element, gradient_shape.length, soft_spacing, color_stops);
 
@@ -479,8 +479,8 @@ CompiledShader DecoratorRadialGradient::CompileImageShader(Element* element, Vec
 
 	RadialGradientShape gradient_shape = CalculateRadialGradientShape(element, dimensions);
 
-	// One-pixel minimum color stop spacing to avoid aliasing.
-	const float soft_spacing = 1.f / Math::Min(gradient_shape.radius.x, gradient_shape.radius.y);
+	// Fork (phase 3, p3-paint): hard stops stay hard, as Chromium draws them (upstream spaced stops one pixel apart).
+	const float soft_spacing = 0.f;
 
 	ColorStopList resolved_stops = ResolveColorStops(element, gradient_shape.radius.x, soft_spacing, color_stops);
 
