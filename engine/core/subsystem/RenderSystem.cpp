@@ -2404,6 +2404,10 @@ void RenderSystem::renderReflectionProbeCapture(){
         }
     }
 
+    // the opaque meshes in the order a camera pass draws them: sortPriority (stencil masks
+    // before their readers, occluders before through-walls outlines), then nearest first
+    std::vector<OpaqueRenderData>& opaqueRenders = opaqueQueue;
+    opaqueRenders.clear();
     auto transforms = scene->getComponentArray<Transform>();
     for (int i = 0; i < transforms->size(); i++){
         Entity entity = transforms->getEntity(i);
@@ -2419,7 +2423,12 @@ void RenderSystem::renderReflectionProbeCapture(){
         InstancedMeshComponent* instanced = scene->findComponent<InstancedMeshComponent>(entity);
         TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
         TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
-        drawMesh(entity, *mesh, transform, captureCamera, captureTransform, PIP_RTT_INVERT, instanced, terrain, tilemap, mainTerrainView());
+        const float distance = mesh->worldAABB.isNull() ? 0.0f : mesh->worldAABB.squaredDistance(capturePosition);
+        opaqueRenders.push_back({entity, mesh, instanced, terrain, tilemap, &transform, distance, mesh->opaqueSortPriority, (uint32_t)opaqueRenders.size()});
+    }
+    std::sort(opaqueRenders.begin(), opaqueRenders.end(), OpaqueRenderComparison());
+    for (const OpaqueRenderData& opaque : opaqueRenders){
+        drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, captureCamera, captureTransform, PIP_RTT_INVERT, opaque.instmesh, opaque.terrain, opaque.tilemap, mainTerrainView());
     }
 
     runtime.capturePass.endRenderPass();
@@ -11741,7 +11750,8 @@ void RenderSystem::drawCameras(bool includeMain){
 // One camera's color pass, with the effects its destination asks for: SSR, SSAO, the
 // post-process chain and the fixed resolution run for the view camera only.
 void RenderSystem::renderCameraPass(const CameraPass& pass){
-    std::priority_queue<TransparentRenderData, std::vector<TransparentRenderData>, TransparentRenderComparison> transparentRenders;
+    std::vector<TransparentRenderData>& transparentRenders = transparentQueue;
+    transparentRenders.clear();
     // submission order of transparentRenders, the last tie-break of their sort
     uint32_t transparentOrder = 0;
 
@@ -11949,7 +11959,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // a 3D pass draws opaque meshes nearest first so early depth rejects what nearer
     // surfaces cover; a 2D pass keeps the transform order, which is its layering, and
     // only lists them for the depth prepass
-    std::vector<OpaqueRenderData> opaqueRenders;
+    std::vector<OpaqueRenderData>& opaqueRenders = opaqueQueue;
+    opaqueRenders.clear();
     if (distanceSort || depthPrepass){
         for (int i = 0; i < transforms->size(); i++){
             Transform& transform = transforms->getComponentFromIndex(i);
@@ -11976,20 +11987,17 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
             if (!mesh.transparent){
                 const float distance = mesh.worldAABB.isNull() ? 0.0f : mesh.worldAABB.squaredDistance(cameraTransform.worldPosition);
-                opaqueRenders.push_back({entity, &mesh, instmesh, terrain, tilemap, &transform, distance, mesh.opaqueSortPriority});
+                opaqueRenders.push_back({entity, &mesh, instmesh, terrain, tilemap, &transform, distance, mesh.opaqueSortPriority, (uint32_t)opaqueRenders.size()});
             }else if (distanceSort){
-                transparentRenders.push({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, objectDistance(transform), mesh.transparentSortPriority, transparentOrder++});
+                transparentRenders.push_back({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, objectDistance(transform), mesh.transparentSortPriority, transparentOrder++});
             }
         }
 
         if (distanceSort){
             // sortPriority first (lower draws first, so stencil writers go before their
-            // readers), then nearest first; stable, so ties keep the transform order
-            std::stable_sort(opaqueRenders.begin(), opaqueRenders.end(), [](const OpaqueRenderData& a, const OpaqueRenderData& b){
-                if (a.sortPriority != b.sortPriority)
-                    return a.sortPriority < b.sortPriority;
-                return a.distanceToCamera < b.distanceToCamera;
-            });
+            // readers), then nearest first; ties keep the transform order (no allocation,
+            // unlike std::stable_sort)
+            std::sort(opaqueRenders.begin(), opaqueRenders.end(), OpaqueRenderComparison());
         }
     }
 
@@ -12152,7 +12160,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 if (!points.transparent || !distanceSort){
                     drawPoints(entity, points, transform, camera, cameraTransform, colorPip);
                 }else{
-                    transparentRenders.push({TransparentRenderType::POINTS, entity, nullptr, &points, nullptr, nullptr, nullptr, &transform, objectDistance(transform), 0, transparentOrder++});
+                    transparentRenders.push_back({TransparentRenderType::POINTS, entity, nullptr, &points, nullptr, nullptr, nullptr, &transform, objectDistance(transform), 0, transparentOrder++});
                 }
             }
 
@@ -12172,16 +12180,14 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     }
 
     //---------Draw transparent renderers----------
-    while (!transparentRenders.empty()){
-        TransparentRenderData renderData = transparentRenders.top();
+    std::sort(transparentRenders.begin(), transparentRenders.end(), TransparentRenderComparison());
+    for (const TransparentRenderData& renderData : transparentRenders){
 
         if (renderData.type == TransparentRenderType::MESH){
             drawMesh(renderData.entity, *renderData.mesh, *renderData.transform, camera, cameraTransform, colorPip, renderData.instmesh, renderData.terrain, renderData.tilemap, terrainView, instanceView, lodView);
         }else if (renderData.type == TransparentRenderType::POINTS){
             drawPoints(renderData.entity, *renderData.points, *renderData.transform, camera, cameraTransform, colorPip);
         }
-
-        transparentRenders.pop();
     }
 
     camera.render.endRenderPass();
