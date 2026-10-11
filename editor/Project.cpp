@@ -1993,6 +1993,9 @@ bool editor::Project::visitAssetPathsInMaterialFiles(const std::function<bool(st
         materialChanged |= visitTexturePaths(material.metallicRoughnessTexture, transform);
         materialChanged |= visitTexturePaths(material.occlusionTexture, transform);
         materialChanged |= visitTexturePaths(material.normalTexture, transform);
+        for (auto& shaderTexture : material.shaderTextures){
+            materialChanged |= visitTexturePaths(shaderTexture.second, transform);
+        }
 
         if (!materialChanged){
             continue;

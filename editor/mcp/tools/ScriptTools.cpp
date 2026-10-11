@@ -339,6 +339,21 @@ int reloadTextures(Project* project, const std::set<std::string>& images) {
                                 touched = true;
                             }
                         }
+                    } else if (property.type == PropertyType::Custom && name.size() >= 14 &&
+                               name.compare(name.size() - 14, 14, "shaderTextures") == 0) {
+                        // shader library textures, of a submesh material or a component; which
+                        // textures it binds is resolved when it loads
+                        bool reloaded = false;
+                        for (auto& shaderTexture : *static_cast<std::vector<std::pair<std::string, Texture>>*>(property.ref)) {
+                            if (matches(shaderTexture.second)) {
+                                reload(shaderTexture.second);
+                                reloaded = true;
+                            }
+                        }
+                        if (reloaded) {
+                            Catalog::updateEntity(sceneProject->scene, entity, property.updateFlags);
+                            touched = true;
+                        }
                     }
                 }
             }
