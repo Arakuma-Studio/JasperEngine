@@ -1,0 +1,9 @@
+{
+ "comment": "A theme kept in custom properties and read by color functions (hsl(var(--x)), hsl(var(--x) / 0.6), rgba(var(--rgb), 0.25), rgb(var(--rgb)), color-mix() with a var() operand) in backgrounds, borders, box-shadow, outline and a gradient; switching the app to the dark theme with a class (on a wrapper: the <html> element takes classes from Lua only as the document was loaded, see the guide) changes every color at runtime.",
+ "viewport": [300, 180],
+ "steps": [
+  {"capture": "light"},
+  {"addClass": ["#app", "dark"]},
+  {"capture": "dark"}
+ ]
+}

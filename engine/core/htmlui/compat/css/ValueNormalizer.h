@@ -60,6 +60,9 @@ namespace jasperengine::htmlui::compat {
         // the value is written where the fork resolves currentcolor itself (ForkFeature::CurrentColor):
         // a color-mix() with a currentcolor operand stays, as the fork resolves it like currentcolor
         bool currentColorMixNative = false;
+        // the value is written where the fork parses CSS Color 4 functions (ForkFeature::ColorFunctions):
+        // a color function with a var() that has no static value stays, the fork substitutes and parses it
+        bool colorFunctionsNative = false;
         PercentBasis percentBasis = PercentBasis::ContainingBlock;
         bool vertical = false;                // the percentage basis is a height (top, bottom, height, ...)
         // the session's options (the defaults when not given)
@@ -115,6 +118,9 @@ namespace jasperengine::htmlui::compat {
         static PercentBasis percentBasisOf(const std::string& property, bool* vertical = nullptr);
         // properties whose idents are not colors (font-family, animation-name, ...)
         static bool colorKeywordsApply(const std::string& property);
+        // a color function the fork parses once the var() in it is substituted (CSS Color 4 and color-mix(); not
+        // relative colors, light-dark() or system colors): kept for it with ForkFeature::ColorFunctions
+        static bool isRuntimeColorFunction(const ComponentValue& value);
 
         // the terms of a calc(a + b) that NormalizeContext::lengthSums kept (each a dimension,
         // percentage or 0); empty for any other value

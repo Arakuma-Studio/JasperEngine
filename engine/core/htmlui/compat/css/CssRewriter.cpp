@@ -1567,6 +1567,10 @@ namespace {
                                                 (session.options.fork.has(ForkFeature::CurrentColor) && nativeColorRewrite);
             normalize.currentColorMixNative = session.options.fork.has(ForkFeature::CurrentColor) &&
                                               (nativeColorRewrite || keepsCurrentColorKeyword(session, *row));
+            // (box-shadow reaches the fork through compat's companions, which it substitutes; filter as written)
+            normalize.colorFunctionsNative = session.options.fork.has(ForkFeature::ColorFunctions) &&
+                                             (nativeColorRewrite || keepsCurrentColorKeyword(session, *row) ||
+                                              row->rewrite == RewriteId::BoxShadow || row->rewrite == RewriteId::Filter);
             // a style attribute or a keyframe cannot be duplicated per orientation: vmin/vmax evaluated
             normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
             // math functions the fork evaluates stay in the properties written as they are read

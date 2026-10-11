@@ -57,7 +57,7 @@ TEST(ForkFeatures, PresentFeatures){
     // BorderStyle, PercentRadius, Outline, GroupOpacity, ObjectFit and BackgroundLayers (p3-paint), TextShadow and TextProperties (p3-text), TimingFunctions, AnimationLonghands, IndividualTransforms (p3-animation);
     // CurrentColor, ExtraUnits, LineHeightNormal (p3-values); Fixed, Sticky and BoxParity (p3-layout);
     // Important, CssWideKeywords, RootIsWhere, PseudoElements, Has, FocusPseudoClasses, SelectorsLevel4, ListMarkers (p3-cascade);
-    // RelativeFontWeight (p3-values' bolder/lighter, appended by p3-integration)
+    // RelativeFontWeight and ColorFunctions (p3-values' bolder/lighter and runtime color functions, appended by p3-integration)
     const ForkFeatures present = ForkFeatures::present();
     const ForkFeatures expected = ForkFeatures::none()
                                       .with(ForkFeature::Calc, true)
@@ -87,7 +87,8 @@ TEST(ForkFeatures, PresentFeatures){
                                       .with(ForkFeature::GroupOpacity, true)
                                       .with(ForkFeature::ObjectFit, true)
                                       .with(ForkFeature::BackgroundLayers, true)
-                                      .with(ForkFeature::RelativeFontWeight, true);
+                                      .with(ForkFeature::RelativeFontWeight, true)
+                                      .with(ForkFeature::ColorFunctions, true);
     for (size_t i = 0; i < (size_t)ForkFeature::Count; i++)
         EXPECT_EQ(present.has((ForkFeature)i), expected.has((ForkFeature)i)) << forkFeatureName((ForkFeature)i);
     EXPECT_EQ(present, expected);

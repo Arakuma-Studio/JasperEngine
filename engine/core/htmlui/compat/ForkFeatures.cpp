@@ -47,6 +47,7 @@ namespace {
         true,    // ObjectFit (phase 3, p3-paint: object-fit, object-position with <position>; docs/html-ui/FORK.md)
         true,    // BackgroundLayers (phase 3, p3-paint: background-* and mask-* layers, the canvas background; docs/html-ui/FORK.md)
         true,    // RelativeFontWeight (phase 3, p3-values: bolder/lighter computed against the parent's weight, FORK.md P3-V4)
+        true,    // ColorFunctions (phase 3, p3-values: CSS Color 4 functions parsed at runtime, a var() inside them too, FORK.md P3-V2)
     };
 
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {
@@ -58,7 +59,7 @@ namespace {
         "Sticky", "BoxParity",
         "Has", "FocusPseudoClasses", "SelectorsLevel4", "ListMarkers",
         "Outline", "ObjectFit", "BackgroundLayers",
-        "RelativeFontWeight",
+        "RelativeFontWeight", "ColorFunctions",
     };
 
     constexpr uint64_t bitOf(ForkFeature feature){
@@ -263,6 +264,11 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
             return parses("line-height", "normal");
         case ForkFeature::RelativeFontWeight:
             return parses("font-weight", "bolder") && parses("font-weight", "lighter");
+        case ForkFeature::ColorFunctions:
+            // the space syntax, a percentage alpha, hwb() and color-mix(), as a var() substitution gives them
+            return parses("color", "hsl(120 50% 50% / 0.5)") && parses("color", "rgb(255 0 0 / 50%)") &&
+                   parses("color", "rgba(255, 0, 0, 0.2)") && parses("color", "hwb(120 10% 20%)") &&
+                   parses("color", "color-mix(in srgb, #ff0000 40%, #0000ff)");
         case ForkFeature::Important: {
             Rml::SharedPtr<Rml::StyleSheetContainer> sheet = Rml::Factory::InstanceStyleSheetString("div { color: #f00 !important; }");
             return sheet != nullptr && capture.problems() == 0;

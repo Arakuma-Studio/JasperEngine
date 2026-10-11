@@ -332,9 +332,13 @@ TEST(CompatCurrentColorMix, KeptForTheForkOrMixedStatically){
     const Rewritten unknown = rewrite(".a { border-top-color: color-mix(in srgb, currentcolor, blue); }", absent);
     EXPECT_EQ(unknown.value("border-top-color"), "");
     EXPECT_TRUE(unknown.reported(codes::ColorUnresolvable)) << unknown.rcss;
-    // a var() without a static value stays unresolvable in every state
+    // a var() without a static value: written for the fork, which substitutes it (ColorFunctions); unresolvable without it
     const Rewritten var = rewrite(".a { border-top-color: color-mix(in srgb, currentcolor, var(--x)); }", ForkFeatures::present());
-    EXPECT_TRUE(var.reported(codes::ColorUnresolvable)) << var.rcss;
+    EXPECT_EQ(var.value("border-top-color"), "color-mix(in srgb, currentcolor, var(--x))") << var.rcss;
+    EXPECT_TRUE(var.diagnostics.empty()) << var.rcss;
+    const Rewritten noFunctions =
+        rewrite(".a { border-top-color: color-mix(in srgb, currentcolor, var(--x)); }", ForkFeatures::present().with(ForkFeature::ColorFunctions, false));
+    EXPECT_TRUE(noFunctions.reported(codes::ColorUnresolvable)) << noFunctions.rcss;
     // invalid operands are still found
     const Rewritten invalid = rewrite(".a { border-top-color: color-mix(in srgb, currentcolor, nocolor); }", ForkFeatures::present());
     EXPECT_EQ(invalid.value("border-top-color"), "");
