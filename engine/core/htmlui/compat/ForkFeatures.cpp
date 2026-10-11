@@ -46,6 +46,7 @@ namespace {
         true,    // Outline (phase 3, p3-paint: outline-* drawn by the fork, the focus ring; docs/html-ui/FORK.md)
         true,    // ObjectFit (phase 3, p3-paint: object-fit, object-position with <position>; docs/html-ui/FORK.md)
         true,    // BackgroundLayers (phase 3, p3-paint: background-* and mask-* layers, the canvas background; docs/html-ui/FORK.md)
+        true,    // RelativeFontWeight (phase 3, p3-values: bolder/lighter computed against the parent's weight, FORK.md P3-V4)
     };
 
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {
@@ -57,6 +58,7 @@ namespace {
         "Sticky", "BoxParity",
         "Has", "FocusPseudoClasses", "SelectorsLevel4", "ListMarkers",
         "Outline", "ObjectFit", "BackgroundLayers",
+        "RelativeFontWeight",
     };
 
     constexpr uint64_t bitOf(ForkFeature feature){
@@ -259,6 +261,8 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
                    parses("transform", "rotate(1turn)") && parses("transform", "rotate(1grad)") && parses("width", "1svw");
         case ForkFeature::LineHeightNormal:
             return parses("line-height", "normal");
+        case ForkFeature::RelativeFontWeight:
+            return parses("font-weight", "bolder") && parses("font-weight", "lighter");
         case ForkFeature::Important: {
             Rml::SharedPtr<Rml::StyleSheetContainer> sheet = Rml::Factory::InstanceStyleSheetString("div { color: #f00 !important; }");
             return sheet != nullptr && capture.problems() == 0;

@@ -16,7 +16,8 @@ namespace jasperengine::htmlui::compat {
     // Append only, before Count: phase 3 appends CurrentColor ExtraUnits LineHeightNormal Has
     // FocusPseudoClasses SelectorsLevel4 ListMarkers Outline BackgroundLayers ObjectFit
     // TextShadow TextProperties Sticky BoxParity AnimationLonghands IndividualTransforms
-    // (phase-3 Appendix A), phase 5 RegisteredProperties TextFillFilter. Each new value gets
+    // (phase-3 Appendix A) and RelativeFontWeight (found by p3-integration's audit), phase 5
+    // RegisteredProperties TextFillFilter. Each new value gets
     // a kPresent entry, a name and a probe in ForkFeatures.cpp.
     enum class ForkFeature : uint8_t {
         None, Calc, BorderStyle, PercentRadius, PseudoElements, RootIsWhere, Fixed,
@@ -30,6 +31,7 @@ namespace jasperengine::htmlui::compat {
         // phase 3, p3-cascade
         Has, FocusPseudoClasses, SelectorsLevel4, ListMarkers,
         Outline, ObjectFit, BackgroundLayers,       // p3-paint
+        RelativeFontWeight,                         // p3-values (appended by p3-integration)
         Count
     };
 

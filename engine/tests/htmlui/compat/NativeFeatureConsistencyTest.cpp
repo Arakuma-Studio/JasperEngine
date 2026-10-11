@@ -111,6 +111,8 @@ namespace {
         {ForkFeature::GroupOpacity, SampleKind::Declaration, "isolation: isolate", "", "HTMLUI-CSS-0003"},
         {ForkFeature::GroupOpacity, SampleKind::Declaration, "will-change: transform, opacity", "", "HTMLUI-CSS-0003"},
         {ForkFeature::CssWideKeywords, SampleKind::Declaration, "all: unset", "margin-top:var(--html-unset)", ""},
+        {ForkFeature::RelativeFontWeight, SampleKind::Declaration, "font-weight: bolder", "font-weight:700", "HTMLUI-CSS-0005"},
+        {ForkFeature::RelativeFontWeight, SampleKind::Declaration, "font-weight: lighter", "font-weight:100", "HTMLUI-CSS-0005"},
         {ForkFeature::CssWideKeywords, SampleKind::Declaration, "all: revert", "margin-top:var(--html-unset)", ""},
         {ForkFeature::TimingFunctions, SampleKind::Declaration, "transition: opacity 0.2s ease-in-out", "quadratic-in-out", ""},
         {ForkFeature::Important, SampleKind::Rule, "color: red !important", ".sample{color:#ff0000ff;", ""},
