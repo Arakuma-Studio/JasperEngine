@@ -1,4 +1,4 @@
-id: 3718791734
+id: 2971396629
 name: Stencil
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
@@ -92,10 +92,10 @@ shaderKeys:
     customShader: library:unlit#BLEND_ALPHA
   - type: mesh
     properties: 33554433
-    customShader: library:outline_stencil#BLEND_NONE,VISIBILITY_ALWAYS,WIDTH_MODE_SCREEN
+    customShader: library:outline_stencil#BLEND_NONE,VISIBILITY_VISIBLE_ONLY,WIDTH_MODE_SCREEN
   - type: mesh
     properties: 33554433
-    customShader: library:outline_stencil#BLEND_NONE,VISIBILITY_VISIBLE_ONLY,WIDTH_MODE_SCREEN
+    customShader: library:outline_stencil#BLEND_NONE,VISIBILITY_ALWAYS,WIDTH_MODE_SCREEN
   - type: mesh
     properties: 33554433
     customShader: library:silhouette#BLEND_ALPHA,SILHOUETTE_MODE_FLAT
@@ -765,17 +765,25 @@ entities:
               shaderParams:
                 baseColor: [0.2, 0.45, 1, 0.45]
               blendMode: ALPHA
+              stencil:
+                compare: ALWAYS
+                ref: 1
+                writeMask: 1
+                pass: REPLACE
+                depthFail: REPLACE
               extraPass:
-                shader: library:outline
+                shader: library:outline_stencil
                 shaderParams:
                   outlineColor: [0, 0.05, 0.3, 1]
-                order: BEFORE
+                  screenWidth: [3, 0, 0, 0]
+                  worldWidth: [0.03, 0, 0, 0]
+                shaderFeatures: [VISIBILITY_VISIBLE_ONLY]
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
             vertexCount: 36
             faceCulling: true
             textureShadow: false
-            overrideFields: 538116096
+            overrideFields: 672333824
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
