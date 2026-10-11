@@ -19,10 +19,11 @@ namespace {
     std::atomic<int> livePipelines(0);
 
     sg_pipeline makePipeline(const sg_pipeline_desc& desc){
-        livePipelines++;
-        if (Engine::isAsyncThread())
-            return SokolCmdQueue::add_command_make_pipeline(desc);
-        return sg_make_pipeline(desc);
+        const sg_pipeline pipeline = Engine::isAsyncThread() ? SokolCmdQueue::add_command_make_pipeline(desc) : sg_make_pipeline(desc);
+        // an invalid handle (pool full) is never destroyed, so it is not counted
+        if (pipeline.id != SG_INVALID_ID)
+            livePipelines++;
+        return pipeline;
     }
 
     void destroyPipeline(sg_pipeline pipeline){
@@ -247,6 +248,8 @@ void SokolObject::applyStencilAndColorMask(sg_pipeline_desc& desc, bool offscree
 }
 
 void SokolObject::beginLoad(PrimitiveType primitiveType){
+    // forgets every pipeline without destroying it (a copy may share them; destroy() releases
+    // a load's own), so what endLoad does not make again is never drawn or destroyed stale
     bind = {0};
     pip = {0};
     depth_pip = {0};
@@ -254,6 +257,10 @@ void SokolObject::beginLoad(PrimitiveType primitiveType){
     rtt_pip = {0};
     rtt_invert_pip = {0};
     gbuffer_pip = {0};
+    nodepth_pip = {0};
+    rtt_nodepth_pip = {0};
+    zprepass_pip = {0};
+    zprepass_rtt_pip = {0};
     pipeline_desc = {0};
     resetPipelines();
 

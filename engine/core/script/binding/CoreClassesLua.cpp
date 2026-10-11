@@ -36,6 +36,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "pool/ShaderPool.h"
+#include "render/ObjectRender.h"
 #include "shader/ShaderVariantCollection.h"
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderUniforms.h"
@@ -600,6 +601,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("isRuntimeCompilationSupported", &ShaderPool::isRuntimeCompilationSupported)
         .addStaticProperty("runtimeCompilation", &ShaderPool::isRuntimeCompilationEnabled, &ShaderPool::setRuntimeCompilationEnabled)
         .addStaticProperty("asyncCompilation", &ShaderPool::isAsyncCompilation, &ShaderPool::setAsyncCompilation)
+        .endClass();
+
+    // diagnostics: the pipelines renderable objects made and did not destroy yet
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ObjectRender>("ObjectRender")
+        .addStaticFunction("getLivePipelineCount", &ObjectRender::getLivePipelineCount)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
