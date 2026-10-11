@@ -60,6 +60,11 @@ namespace jasperengine::test {
         compat::StrictGate gate;             // kStrictGate unless "tolerance" overrides it
         float boxTolerance = 1.0f;           // px, |delta| of x, y, w, h
         bool toleranceOverridden = false;
+        // "samples": 1 renders without MSAA (default: the engine's 4x), with a comment saying why. For
+        // fixtures that scroll content past a clip edge: llvmpipe and lavapipe (the test image's GL and
+        // Vulkan drivers, Mesa 23.2.1) let half the samples of the row above and the column left of a
+        // scissor rectangle through under MSAA (MsaaScissor.FourSamples documents it)
+        int sampleCount = 4;
         std::string comment;
         // the harness's own fixtures (area testkit): the reference had `referenceCss` injected, so
         // the comparison must report the engine as different
@@ -128,7 +133,8 @@ namespace jasperengine::test {
                                                    float tolerance = 1.0f);
 
     // The engine side: one context of the given size on its own render target (the engine's
-    // default 4x MSAA), the compat layer with the fork's present features, the UI clock fixed.
+    // default 4x MSAA, or the sidecar's "samples"), the compat layer with the fork's present
+    // features, the UI clock fixed.
     class JASPERENGINE_INTERNAL FixtureRunner {
     public:
         struct Capture {
@@ -137,7 +143,7 @@ namespace jasperengine::test {
             std::vector<compat::LayoutBox> boxes;   // every element with an id, document order
         };
 
-        FixtureRunner(int width, int height);
+        FixtureRunner(int width, int height, int sampleCount = 4);
         ~FixtureRunner();
         FixtureRunner(const FixtureRunner&) = delete;
         FixtureRunner& operator=(const FixtureRunner&) = delete;

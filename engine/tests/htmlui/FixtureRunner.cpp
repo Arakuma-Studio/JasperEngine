@@ -107,6 +107,11 @@ bool jasperengine::test::loadSidecar(const std::string& path, FixtureSidecar& si
             sidecar.gate.maxCluster = tolerance.value("cluster", sidecar.gate.maxCluster);
             sidecar.boxTolerance = tolerance.value("box", sidecar.boxTolerance);
         }
+        if (json.contains("samples")){
+            sidecar.sampleCount = json["samples"].get<int>();
+            if (sidecar.sampleCount != 1 && sidecar.sampleCount != 4)
+                return fail(error, path + ": \"samples\" is 1 or 4");
+        }
         if (json.contains("selfTest")){
             const nlohmann::json& self = json["selfTest"];
             sidecar.expectMismatch = self.value("expect", "") == "mismatch";
@@ -408,7 +413,8 @@ struct FixtureRunner::State {
     bool pointerDown = false;
 };
 
-FixtureRunner::FixtureRunner(int width, int height): state(std::make_unique<State>()){
+FixtureRunner::FixtureRunner(int width, int height, int sampleCount): state(std::make_unique<State>()){
+    state->sampleCount = sampleCount;
     state->width = width;
     state->height = height;
     state->gpu = GpuEnvironment::ensure();
@@ -520,6 +526,9 @@ bool FixtureRunner::load(const std::string& assetPath, std::string* error){
 
 Rml::Element* FixtureRunner::element(const std::string& id, std::string* error) const{
     Rml::Element* found = state->document ? state->document->GetElementById(id) : nullptr;
+    // the id of <html> is kept as data-html-id on the document root (its id is reserved): "#id" names the root, as in Chromium
+    if (!found && state->document && state->document->GetAttribute<Rml::String>("data-html-id", "") == id)
+        found = state->document;
     if (!found && error)
         *error = "no element #" + id;
     return found;

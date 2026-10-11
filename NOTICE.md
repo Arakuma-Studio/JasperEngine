@@ -27,7 +27,7 @@ Layout of the HTML/CSS UI:
 
 | Code | Version | Location | License | Used for |
 |---|---|---|---|---|
-| [Taffy](https://github.com/DioxusLabs/taffy) (`src/compute/grid`, ported to C++) | `master` at `8409f3f8c6de` | `engine/libs/rmlui/Source/Core/Layout/Grid*` (`engine/libs/rmlui/LICENSE-taffy.txt`) | MIT | CSS Grid layout in the RmlUi fork |
+| [Taffy](https://github.com/DioxusLabs/taffy) (`src/compute/grid` and `src/compute/flexbox.rs`, ported to C++) | `master` at `8409f3f8c6de` | `engine/libs/rmlui/Source/Core/Layout/Grid*`, `engine/libs/rmlui/Source/Core/Layout/FlexFormattingContext.*` (`engine/libs/rmlui/LICENSE-taffy.txt`) | MIT | CSS Grid and flexbox layout in the RmlUi fork |
 
 Test data: the html5lib tree-construction tests (MIT, `engine/tests/htmlui/fixtures/compat/html5lib/LICENSE`). Taffy's layout test fixtures (MIT, `engine/tests/htmlui/fixtures/taffy/LICENSE-taffy.txt`).
 

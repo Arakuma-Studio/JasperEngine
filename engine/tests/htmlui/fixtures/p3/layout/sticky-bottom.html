@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: position: sticky with bottom, left, right and offsets</title>
+<style>
+  html, body { margin: 0; }
+  .s0 { background-color: #c8d4e8; } .s1 { background-color: #e8dcc8; } .s2 { background-color: #cfe8c8; } .s3 { background-color: #e8c8dc; }
+  #scroller { position: absolute; left: 20px; top: 15px; width: 160px; height: 100px; overflow: hidden; background-color: #eeeeee; }
+  #scroller > div { height: 60px; }
+  #scroller > #footer { position: sticky; bottom: 6px; height: 16px; margin: 0 10px; background-color: #aa3333; }
+  #scroller > #top { position: sticky; top: 8px; height: 12px; width: 50px; background-color: #334466; }
+  #wide { position: absolute; left: 20px; top: 130px; width: 160px; height: 40px; overflow: hidden; background-color: #eeeeee; }
+  #row { width: 480px; height: 40px; }
+  #row > div { float: left; width: 60px; height: 40px; }
+  #row > #left { position: sticky; left: 4px; width: 20px; background-color: #336644; }
+  #row > #right { position: sticky; right: 4px; width: 20px; background-color: #664433; }
+</style>
+</head>
+<body>
+<div id="scroller"><div class="s0"></div><div id="top"></div><div class="s1"></div><div class="s2"></div><div id="footer"></div><div class="s3"></div><div class="s0"></div></div>
+<div id="wide"><div id="row"><div class="s0"></div><div id="left"></div><div class="s1"></div><div class="s2"></div><div class="s3"></div><div class="s0"></div><div id="right"></div><div class="s1"></div></div></div>
+</body>
+</html>

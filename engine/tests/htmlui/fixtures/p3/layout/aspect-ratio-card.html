@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: aspect-ratio in block, flex and absolute layout</title>
+<style>
+  html, body { margin: 0; }
+  .card { background-color: #c8d4e8; }
+  #blocks { position: absolute; left: 15px; top: 15px; width: 200px; }
+  #blocks > div { margin-bottom: 6px; }
+  #row { position: absolute; left: 235px; top: 15px; width: 200px; height: 90px; display: flex; align-items: flex-start; background-color: #eeeeee; }
+  #row > div { margin-right: 6px; }
+  #column { position: absolute; left: 235px; top: 120px; width: 120px; display: flex; flex-direction: column; background-color: #eeeeee; }
+  #column > div { margin-bottom: 6px; }
+  #positioned { position: absolute; left: 15px; top: 310px; width: 200px; height: 80px; background-color: #eeeeee; }
+</style>
+</head>
+<body>
+<div id="blocks">
+<div id="wide" class="card" style="width: 120px; aspect-ratio: 16 / 9"></div>
+<div id="from-height" class="card" style="height: 40px; aspect-ratio: 2"></div>
+<div id="min" class="card" style="width: 60px; aspect-ratio: 2; min-height: 45px"></div>
+<div id="content" class="card" style="width: 80px; aspect-ratio: 2"><div style="width: 20px; height: 55px; background-color: #334466"></div></div>
+<div id="border-box" class="card" style="width: 100px; aspect-ratio: 2; padding: 5px; border: 3px solid #336644; box-sizing: border-box"></div>
+</div>
+<div id="row"><div id="item-width" class="card" style="width: 50px; aspect-ratio: 1"></div><div id="item-height" class="card" style="height: 30px; aspect-ratio: 2"></div><div id="item-grow" class="card" style="flex: 1; aspect-ratio: 2 / 1"></div></div>
+<div id="column"><div id="stretched" class="card" style="aspect-ratio: 3"></div><div id="column-height" class="card" style="height: 30px; aspect-ratio: 2; align-self: flex-start"></div></div>
+<div id="positioned"><div id="abs-width" class="card" style="position: absolute; left: 10px; top: 10px; width: 80px; aspect-ratio: 4"></div><div id="abs-inset" class="card" style="position: absolute; right: 10px; top: 10px; bottom: 10px; aspect-ratio: 0.5"></div></div>
+</body>
+</html>

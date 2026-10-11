@@ -19,6 +19,7 @@
 #include "ComputeProperty.h"
 #include "ControlledLifetimeResource.h"
 #include "ElementDefinition.h"
+#include "LayoutProperties.h"
 #include "ElementTransitions.h"
 #include "PropertiesIterator.h"
 #include "PropertyParserAnimation.h"
@@ -1115,6 +1116,8 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		ComputeValue(values, dp_ratio, vp_dimensions, font_size, document_font_size, dirty_font_face_handle, id, property);
 	}
 
+	// 'overflow' computes from both axes (p3-layout).
+	ApplyOverflowFixUp(values);
 	// Transitions start on any change of a computed value (p3-animation).
 	TransitionChangedProperties(transition_context, dirty_properties, font_size, document_font_size, dirty_font_face_handle);
 
@@ -1381,23 +1384,23 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		break;
 
 	case PropertyId::Width:
-		values.width(ComputeLengthPercentageAuto(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		values.width(ComputeSizingProperty(id, p, values, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::MinWidth:
-		values.min_width(ComputeLengthPercentageAuto(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		values.min_width(ComputeSizingProperty(id, p, values, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::MaxWidth:
-		values.max_width(ComputeMaxSize(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		values.max_width(ComputeMaxSizingProperty(id, p, values, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 
 	case PropertyId::Height:
-		values.height(ComputeLengthPercentageAuto(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		values.height(ComputeSizingProperty(id, p, values, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::MinHeight:
-		values.min_height(ComputeLengthPercentageAuto(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		values.min_height(ComputeSizingProperty(id, p, values, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::MaxHeight:
-		values.max_height(ComputeMaxSize(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		values.max_height(ComputeMaxSizingProperty(id, p, values, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 
 	case PropertyId::LineHeight:
@@ -1473,6 +1476,7 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 
 	case PropertyId::TextAlign:
 		values.text_align(ComputeTextAlign(p, element));
+		values.text_align_legacy(ComputeTextAlignLegacy(p, element));
 		break;
 	case PropertyId::TextDecoration:
 		values.text_decoration((TextDecoration)p->Get<int>());
@@ -1558,7 +1562,7 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		break;
 
 	case PropertyId::FlexBasis:
-		values.flex_basis(ComputeLengthPercentageAuto(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		values.flex_basis(ComputeSizingProperty(id, p, values, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 
 	case PropertyId::RmlUi_Language:
@@ -1685,6 +1689,9 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	case PropertyId::OverflowClipMargin:
 	case PropertyId::AspectRatio:
 	case PropertyId::ScrollbarGutter:
+		ComputeLayoutProperty(id, p, values, font_size, document_font_size, dp_ratio, vp_dimensions);
+		break;
+	case PropertyId::FlexLineCount:
 		break;
 
 	// -- Animation (p3-animation) --

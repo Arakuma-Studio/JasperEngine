@@ -8,7 +8,7 @@ namespace Rml {
 
 // The keyword values of 'text-align' as registered (StyleSheetSpecification, text section): the first six are the
 // Style::TextAlign values.
-enum class TextAlignKeyword { Left, Right, Center, Justify, Start, End, MatchParent, WebkitCenter };
+enum class TextAlignKeyword { Left, Right, Center, Justify, Start, End, MatchParent, WebkitCenter, WebkitLeft, WebkitRight };
 
 Style::TextAlign ComputeTextAlign(const Property* property, Element* element)
 {
@@ -23,6 +23,8 @@ Style::TextAlign ComputeTextAlign(const Property* property, Element* element)
 		return parent ? parent->GetComputedValues().specified_text_align() : Style::TextAlign::Start;
 	}
 	case TextAlignKeyword::WebkitCenter: return Style::TextAlign::Center;
+	case TextAlignKeyword::WebkitLeft: return Style::TextAlign::Left;
+	case TextAlignKeyword::WebkitRight: return Style::TextAlign::Right;
 	case TextAlignKeyword::Left:
 	case TextAlignKeyword::Right:
 	case TextAlignKeyword::Center:
@@ -31,6 +33,23 @@ Style::TextAlign ComputeTextAlign(const Property* property, Element* element)
 	case TextAlignKeyword::End: break;
 	}
 	return (Style::TextAlign)keyword;
+}
+
+Style::TextAlignLegacy ComputeTextAlignLegacy(const Property* property, Element* element)
+{
+	switch ((TextAlignKeyword)property->Get<int>())
+	{
+	case TextAlignKeyword::WebkitLeft: return Style::TextAlignLegacy::Left;
+	case TextAlignKeyword::WebkitRight: return Style::TextAlignLegacy::Right;
+	case TextAlignKeyword::WebkitCenter: return Style::TextAlignLegacy::Center;
+	case TextAlignKeyword::MatchParent:
+	{
+		Element* parent = element ? element->GetParentNode() : nullptr;
+		return parent ? parent->GetComputedValues().text_align_legacy() : Style::TextAlignLegacy::None;
+	}
+	default: break;
+	}
+	return Style::TextAlignLegacy::None;
 }
 
 float ComputeTextSpacing(const Property* property, float font_size, float document_font_size, float dp_ratio, Vector2f vp_dimensions)

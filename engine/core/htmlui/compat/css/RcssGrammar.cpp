@@ -759,8 +759,8 @@ namespace {
 
 namespace {
 
-    // Properties the fork registers or extends with a phase-3 feature (grammar with the feature
-    // present; without it the 6.3 row above, if any)
+    // Properties the fork registers or extends with a phase-3 feature: with the feature present a value is accepted by
+    // this grammar or by the 6.3 row above, if any (p3-text: TextShadow, TextProperties; p3-layout: Sticky, BoxParity).
     struct ForkGrammar {
         std::string_view name;
         ForkFeature feature;
@@ -772,7 +772,7 @@ namespace {
         {"accent-color", ForkFeature::TextProperties, "kw:auto|color"},
         {"letter-spacing", ForkFeature::TextProperties, "kw:normal|length_percent"},
         {"overflow-wrap", ForkFeature::TextProperties, "kw:normal,anywhere,break-word"},
-        {"text-align", ForkFeature::TextProperties, "kw:left,right,center,justify,start,end,match-parent,-webkit-center"},
+        {"text-align", ForkFeature::TextProperties, "kw:left,right,center,justify,start,end,match-parent,-webkit-center,-webkit-left,-webkit-right"},
         {"text-decoration", ForkFeature::TextProperties, "@text_decoration"},
         {"text-decoration-color", ForkFeature::TextProperties, "kw:currentcolor|color"},
         {"text-decoration-line", ForkFeature::TextProperties, "@text_decoration_line"},
@@ -787,6 +787,32 @@ namespace {
         {"white-space-collapse", ForkFeature::TextProperties, "kw:collapse,preserve,preserve-breaks,preserve-spaces,break-spaces"},
         {"word-break", ForkFeature::TextProperties, "kw:normal,break-all,break-word,keep-all"},
         {"word-spacing", ForkFeature::TextProperties, "kw:normal|length_percent"},
+        // p3-layout (Sticky, BoxParity)
+        {"align-content", ForkFeature::BoxParity, "@align:flex-start,flex-end,center,space-between,space-around,space-evenly,stretch,normal,start,end"},
+        {"align-items", ForkFeature::BoxParity, "@align:flex-start,flex-end,center,baseline,stretch,normal,start,end,self-start,self-end,first baseline,last baseline"},
+        {"align-self", ForkFeature::BoxParity, "@align:auto,flex-start,flex-end,center,baseline,stretch,normal,start,end,self-start,self-end,first baseline,last baseline"},
+        {"aspect-ratio", ForkFeature::BoxParity, "@aspect_ratio"},
+        {"display", ForkFeature::BoxParity, "kw:contents"},
+        {"flex", ForkFeature::BoxParity, "@flex_content"},
+        {"flex-basis", ForkFeature::BoxParity, "kw:content,min-content,max-content,fit-content,stretch,-webkit-fill-available"},
+        {"flex-line-count", ForkFeature::BoxParity, "number"},
+        {"flex-wrap", ForkFeature::BoxParity, "kw:balance,wrap balance,balance wrap,wrap-reverse balance,balance wrap-reverse"},
+        {"height", ForkFeature::BoxParity, "kw:min-content,max-content,fit-content,stretch,-webkit-fill-available|@fit_content"},
+        {"justify-content", ForkFeature::BoxParity, "@align:flex-start,flex-end,center,space-between,space-around,space-evenly,stretch,normal,start,end,left,right"},
+        {"justify-items", ForkFeature::Grid, "@align:flex-start,flex-end,center,baseline,stretch,normal,start,end,self-start,self-end,first baseline,last baseline,left,right,legacy"},
+        {"justify-self", ForkFeature::Grid, "@align:auto,flex-start,flex-end,center,baseline,stretch,normal,start,end,self-start,self-end,first baseline,last baseline,left,right"},
+        {"max-height", ForkFeature::BoxParity, "kw:min-content,max-content,fit-content,stretch,-webkit-fill-available"},
+        {"max-width", ForkFeature::BoxParity, "kw:min-content,max-content,fit-content,stretch,-webkit-fill-available"},
+        {"min-height", ForkFeature::BoxParity, "kw:auto,min-content,max-content,fit-content,stretch,-webkit-fill-available"},
+        {"min-width", ForkFeature::BoxParity, "kw:auto,min-content,max-content,fit-content,stretch,-webkit-fill-available"},
+        {"order", ForkFeature::BoxParity, "number"},
+        {"overflow", ForkFeature::Sticky, "replicate:kw:visible,hidden,auto,scroll,clip"},
+        {"overflow-clip-margin", ForkFeature::Sticky, "length"},
+        {"overflow-x", ForkFeature::Sticky, "kw:clip"},
+        {"overflow-y", ForkFeature::Sticky, "kw:clip"},
+        {"position", ForkFeature::Sticky, "kw:sticky"},
+        {"scrollbar-gutter", ForkFeature::Sticky, "kw:auto,stable,stable both-edges,both-edges stable"},
+        {"width", ForkFeature::BoxParity, "kw:min-content,max-content,fit-content,stretch,-webkit-fill-available|@fit_content"},
     };
 
     const ForkGrammar* findForkGrammar(std::string_view name){
@@ -886,6 +912,82 @@ namespace {
         return false;
     }
 
+    // CSS Box Alignment 3 values as the fork parses them: a keyword of the list, 'safe'/'unsafe' before a positional
+    // keyword, 'legacy' with left/right/center (justify-items).
+    bool checkAlignment(std::string_view value, std::string_view keywords){
+        if (keywordIn(value, keywords))
+            return true;
+        const Pieces words = split(value, ' ');
+        if (words.size() != 2)
+            return false;
+        static constexpr std::string_view positional = "center,start,end,self-start,self-end,flex-start,flex-end,left,right";
+        if ((words[0] == "safe" || words[0] == "unsafe") && keywordIn(words[1], positional) && keywordIn(words[1], keywords))
+            return true;
+        if (keywordIn("legacy", keywords) && ((words[0] == "legacy" && keywordIn(words[1], "left,right,center")) ||
+                                                 (words[1] == "legacy" && keywordIn(words[0], "left,right,center"))))
+            return true;
+        return false;
+    }
+
+    // 'aspect-ratio': auto || <number [0,inf]> [ / <number [0,inf]> ]?
+    bool checkAspectRatio(std::string_view value){
+        std::string spaced;
+        for (char c : value){
+            if (c == '/')
+                spaced += " / ";
+            else
+                spaced += c;
+        }
+        const Pieces words = split(spaced, ' ');
+        size_t first = 0, last = words.size();
+        bool hasAuto = false;
+        if (last > first && words[first] == "auto"){
+            hasAuto = true;
+            first++;
+        }else if (last > first && words[last - 1] == "auto"){
+            hasAuto = true;
+            last--;
+        }
+        auto nonNegative = [](std::string_view word){
+            double number = 0;
+            return isNumber(word) && readsAsNumber(word, number) && number >= 0;
+        };
+        const size_t count = last - first;
+        if (count == 0)
+            return hasAuto;
+        if (count == 1)
+            return nonNegative(words[first]);
+        return count == 3 && nonNegative(words[first]) && words[first + 1] == "/" && nonNegative(words[first + 2]);
+    }
+
+    bool checkForkComplex(std::string_view value, std::string_view kind, bool calc){
+        if (kind.compare(0, 6, "align:") == 0)
+            return checkAlignment(value, kind.substr(6));
+        if (kind == "aspect_ratio")
+            return checkAspectRatio(value);
+        if (kind == "fit_content"){
+            // fit-content(<length-percentage>), non-negative
+            if (!startsWithNoCase(value, "fit-content(") || value.back() != ')')
+                return false;
+            const std::string_view argument = trim(value.substr(12, value.size() - 13));
+            return (isLength(argument) || isPercent(argument)) && argument.front() != '-';
+        }
+        if (kind == "flex_content"){
+            // the flex shorthand with a 'content' or sizing keyword basis
+            const Pieces words = split(value, ' ');
+            auto basis = [](std::string_view word){ return keywordIn(word, "content,min-content,max-content,fit-content"); };
+            if (words.size() == 1)
+                return basis(words[0]);
+            if (words.size() == 2)
+                return isNumber(words[0]) && basis(words[1]);
+            if (words.size() == 3)
+                return isNumber(words[0]) && isNumber(words[1]) && basis(words[2]);
+            return false;
+        }
+        (void)calc;
+        return false;
+    }
+
 }
 
 bool RcssGrammar::known(std::string_view property){
@@ -961,9 +1063,27 @@ bool RcssGrammar::accepts(std::string_view property, std::string_view value, con
             if (equalsNoCase(trimmed.substr(i, 4), "var("))
                 return true;
         }
-        if (row->grammar[0] == '@')
-            return checkText(trimmed, row->grammar.substr(1), calc);
-        return checkAlternatives(trimmed, row->grammar, calc);
+        if (acceptsWith(property, value, calc))
+            return true;
+        return anySegment(row->grammar, '|', [&](std::string_view alternative){
+            if (alternative[0] == '@'){
+                const std::string_view kind = alternative.substr(1);
+                if (kind.compare(0, 5, "text_") == 0 || kind == "white_space")
+                    return checkText(trimmed, kind, calc);
+                return checkForkComplex(trimmed, kind, calc);
+            }
+            if (alternative.compare(0, 10, "replicate:") == 0){
+                const Pieces words = split(trimmed, ' ');
+                if (words.empty() || words.size() > 2)
+                    return false;
+                for (std::string_view word : words){
+                    if (!checkAlternatives(word, alternative.substr(10), calc))
+                        return false;
+                }
+                return true;
+            }
+            return checkAlternatives(trimmed, alternative, calc);
+        });
     }
     return acceptsWith(property, value, calc);
 }

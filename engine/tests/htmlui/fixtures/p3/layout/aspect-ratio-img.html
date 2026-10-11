@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: aspect-ratio and images</title>
+<style>
+  html, body { margin: 0; }
+  #row { position: absolute; left: 15px; top: 15px; }
+  img { vertical-align: top; margin-right: 6px; background-color: #c8d4e8; }
+  #flex { position: absolute; left: 15px; top: 110px; width: 260px; height: 70px; display: flex; align-items: flex-start; background-color: #eeeeee; }
+  #flex > img { margin-right: 6px; }
+</style>
+</head>
+<body>
+<div id="row"><img id="natural" src="../../compat/runtime/wide4x2.png" alt=""><img id="width" src="../../compat/runtime/wide4x2.png" style="width: 80px" alt=""><img id="height" src="../../compat/runtime/wide4x2.png" style="height: 30px" alt=""><img id="ratio" src="../../compat/runtime/wide4x2.png" style="width: 60px; aspect-ratio: 1" alt=""><img id="both" src="../../compat/runtime/wide4x2.png" style="width: 50px; height: 50px; aspect-ratio: 3" alt=""></div>
+<div id="flex"><img id="f-width" src="../../compat/runtime/wide4x2.png" style="width: 80px" alt=""><img id="f-height" src="../../compat/runtime/wide4x2.png" style="height: 50px" alt=""><img id="f-ratio" src="../../compat/runtime/wide4x2.png" style="width: 40px; aspect-ratio: 1 / 1" alt=""></div>
+</body>
+</html>

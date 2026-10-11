@@ -1,6 +1,6 @@
-The CSS Grid layout of this fork (Source/Core/Layout/Grid*.{h,cpp}) is ported from Taffy
-(https://github.com/DioxusLabs/taffy), commit 8409f3f8c6de1244cb4cf7fc6c485be2481876cd, src/compute/grid,
-under the following license.
+The flexbox layout (Source/Core/Layout/FlexFormattingContext.{h,cpp}) and the CSS Grid layout
+(Source/Core/Layout/Grid*.{h,cpp}) of this fork are ported from Taffy (https://github.com/DioxusLabs/taffy), commit
+8409f3f8c6de1244cb4cf7fc6c485be2481876cd, src/compute/flexbox.rs and src/compute/grid, under the following license.
 
 MIT License
 

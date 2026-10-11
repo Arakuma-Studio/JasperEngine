@@ -1,0 +1,76 @@
+{
+ "fixture": "layout/scrollbar-gutter.html",
+ "viewport": [
+  475,
+  100
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "auto",
+    "tag": "div",
+    "x": 15,
+    "y": 15,
+    "w": 100,
+    "h": 70
+   },
+   {
+    "id": "auto-content",
+    "tag": "div",
+    "x": 15,
+    "y": 15,
+    "w": 100,
+    "h": 30
+   },
+   {
+    "id": "stable",
+    "tag": "div",
+    "x": 130,
+    "y": 15,
+    "w": 100,
+    "h": 70
+   },
+   {
+    "id": "stable-content",
+    "tag": "div",
+    "x": 130,
+    "y": 15,
+    "w": 85,
+    "h": 30
+   },
+   {
+    "id": "hidden",
+    "tag": "div",
+    "x": 245,
+    "y": 15,
+    "w": 100,
+    "h": 70
+   },
+   {
+    "id": "hidden-content",
+    "tag": "div",
+    "x": 245,
+    "y": 15,
+    "w": 85,
+    "h": 30
+   },
+   {
+    "id": "flex",
+    "tag": "div",
+    "x": 360,
+    "y": 15,
+    "w": 100,
+    "h": 70
+   },
+   {
+    "id": "flex-content",
+    "tag": "div",
+    "x": 360,
+    "y": 15,
+    "w": 85,
+    "h": 30
+   }
+  ]
+ }
+}

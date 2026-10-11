@@ -124,7 +124,7 @@ namespace {
 		RunMode run_mode = RunMode::PerformLayout;
 		Box box;                                         // the container's edges, and its content size when definite
 		Vector2f containing_block;                       // negative: indefinite
-		AvailableSpace measure_width;                    // ComputeWidth: a min-content or max-content constraint
+		GridLayout::AvailableSpace measure_width;        // ComputeWidth: a min-content or max-content constraint
 		Vector2f scrollbar_size;                         // the vertical scrollbar's width and the horizontal one's height
 
 		// Output.
@@ -177,11 +177,13 @@ namespace {
 		outer_node_size.width = MaybeMax(MaybeClamp(outer_node_size.width, min_size.width, max_size.width), padding_border_size.width);
 		outer_node_size.height = MaybeMax(MaybeClamp(outer_node_size.height, min_size.height, max_size.height), padding_border_size.height);
 
-		AxisPair<AvailableSpace> available_grid_space;
-		available_grid_space.width = outer_node_size.width ? AvailableSpace::Definite(*outer_node_size.width - content_box_inset.width) : measure_width;
+		AxisPair<GridLayout::AvailableSpace> available_grid_space;
+		available_grid_space.width =
+			outer_node_size.width ? GridLayout::AvailableSpace::Definite(*outer_node_size.width - content_box_inset.width) : measure_width;
 		// The block size of a box in normal flow is indefinite: a max-content constraint.
-		available_grid_space.height =
-			outer_node_size.height ? AvailableSpace::Definite(*outer_node_size.height - content_box_inset.height) : AvailableSpace::MaxContent();
+		available_grid_space.height = outer_node_size.height
+			? GridLayout::AvailableSpace::Definite(*outer_node_size.height - content_box_inset.height)
+			: GridLayout::AvailableSpace::MaxContent();
 
 		const SizeOptional inner_min_size = {MaybeSub(min_size.width, content_box_inset.width), MaybeSub(min_size.height, content_box_inset.height)};
 		const SizeOptional inner_max_size = {MaybeSub(max_size.width, content_box_inset.width), MaybeSub(max_size.height, content_box_inset.height)};
@@ -315,8 +317,19 @@ namespace {
 		if (!inner_node_size.width)
 			inner_node_size.width = initial_column_sum;
 
-		// Only the width requested: the rows need no sizing (column sizing is not re-run for a size-only request).
-		if (run_mode == RunMode::ComputeWidth)
+		// Only the width requested: the rows need no sizing (column sizing is not re-run for a size-only request), unless the
+		// width of an item in an intrinsic column can follow the row sizes: through its aspect ratio, or through its
+		// percentage height (its content's aspect ratios, percentages). RmlUi asks for the width alone where Taffy and
+		// browsers size both axes: the fit-content width of absolutely positioned, floated and flex-item grids (p3-layout).
+		const bool width_follows_rows = std::any_of(items.begin(), items.end(), [](const GridItem& item) {
+			return item.crosses_intrinsic_column &&
+				(item.aspect_ratio > 0.f || item.size_height.type == Style::LengthPercentageAuto::Percentage
+#ifdef RMLUI_MATH_EXPRESSIONS
+					|| item.size_height.type == Style::LengthPercentageAuto::Calculation
+#endif
+				);
+		});
+		if (run_mode == RunMode::ComputeWidth && !width_follows_rows)
 		{
 			const float width = std::max(MaybeClamp(initial_column_sum + content_box_inset.width, min_size.width, max_size.width),
 				padding_border_size.width);
@@ -451,6 +464,11 @@ namespace {
 		}
 
 		border_box_size = Vector2f(container_border_box.width, container_border_box.height);
+		if (run_mode == RunMode::ComputeWidth)
+		{
+			content_width = container_border_box.width - padding_border_size.width;
+			return;
+		}
 
 		// 8. Track alignment. The vertical scrollbar takes its space at the end of the columns.
 		const float inline_size_without_scrollbar = std::max(container_border_box.width - padding_border_size.width, 0.f);
@@ -529,22 +547,39 @@ namespace {
 		const AxisPair<float> padding_border = PaddingBorderSize(item, area_width);
 		const AxisPair<float> box_sizing_adjustment =
 			(item.box_sizing == Style::BoxSizing::ContentBox ? padding_border : AxisPair<float>{0.f, 0.f});
-		const OptionalFloat inherent_width = MaybeAdd(MaybeResolve(item.size_width, area_width), box_sizing_adjustment.width);
-		const OptionalFloat inherent_height = MaybeAdd(MaybeResolve(item.size_height, area_height), box_sizing_adjustment.height);
-		OptionalFloat min_width = MaybeAdd(MaybeResolve(item.min_width, area_width), box_sizing_adjustment.width);
-		OptionalFloat min_height = MaybeAdd(MaybeResolve(item.min_height, area_height), box_sizing_adjustment.height);
+		// The preferred aspect ratio (p3-layout) is that of the box-sizing box: applied before the padding and border are
+		// added, to the preferred, minimum and maximum sizes (as Taffy does).
+		const float aspect_ratio = item.aspect_ratio;
+		OptionalFloat inherent_width = MaybeResolve(item.size_width, area_width);
+		OptionalFloat inherent_height = MaybeResolve(item.size_height, area_height);
+		MaybeApplyAspectRatio(inherent_width, inherent_height, aspect_ratio);
+		inherent_width = MaybeAdd(inherent_width, box_sizing_adjustment.width);
+		inherent_height = MaybeAdd(inherent_height, box_sizing_adjustment.height);
+		OptionalFloat min_width = MaybeResolve(item.min_width, area_width);
+		OptionalFloat min_height = MaybeResolve(item.min_height, area_height);
+		MaybeApplyAspectRatio(min_width, min_height, aspect_ratio);
+		min_width = MaybeAdd(min_width, box_sizing_adjustment.width);
+		min_height = MaybeAdd(min_height, box_sizing_adjustment.height);
 		min_width = min_width ? std::max(*min_width, padding_border.width) : padding_border.width;
 		min_height = min_height ? std::max(*min_height, padding_border.height) : padding_border.height;
-		const OptionalFloat max_width = MaybeAdd(MaybeResolveMax(item.max_width, area_width), box_sizing_adjustment.width);
-		const OptionalFloat max_height = MaybeAdd(MaybeResolveMax(item.max_height, area_height), box_sizing_adjustment.height);
+		OptionalFloat max_width = MaybeResolveMax(item.max_width, area_width);
+		OptionalFloat max_height = MaybeResolveMax(item.max_height, area_height);
+		MaybeApplyAspectRatio(max_width, max_height, aspect_ratio);
+		max_width = MaybeAdd(max_width, box_sizing_adjustment.width);
+		max_height = MaybeAdd(max_height, box_sizing_adjustment.height);
 
-		// 'normal' self alignment: 'stretch' without a preferred size, else 'start' (CSS Grid 2, 6.2).
+		// 'normal' self alignment: 'stretch' without a preferred size, else 'start' (CSS Grid 2, 6.2). With an aspect ratio
+		// and no preferred size the width is stretched and the height follows it. A content sizing keyword (min-content,
+		// max-content, fit-content) is a preferred size, 'stretch' fills the area.
+		using Style::SizingKeyword;
+		const bool content_width = (item.width_keyword != SizingKeyword::None && item.width_keyword != SizingKeyword::Stretch);
+		const bool content_height = (item.height_keyword != SizingKeyword::None && item.height_keyword != SizingKeyword::Stretch);
 		SelfAlignment horizontal = item.justify_self;
 		if (horizontal.keyword == SelfAlign::Normal)
-			horizontal.keyword = (inherent_width ? SelfAlign::Start : SelfAlign::Stretch);
+			horizontal.keyword = (inherent_width || content_width ? SelfAlign::Start : SelfAlign::Stretch);
 		SelfAlignment vertical = item.align_self;
 		if (vertical.keyword == SelfAlign::Normal)
-			vertical.keyword = (inherent_height ? SelfAlign::Start : SelfAlign::Stretch);
+			vertical.keyword = (inherent_height || content_height || aspect_ratio > 0.f ? SelfAlign::Start : SelfAlign::Stretch);
 
 		// Both margins resolve against the width of the grid area; 'auto' ones are absent.
 		const Line<OptionalFloat> margin_h = {MaybeResolve(item.margin[3], area_width), MaybeResolve(item.margin[1], area_width)};
@@ -554,19 +589,26 @@ namespace {
 			std::max(area_height - margin_v.start.value_or(0.f) - margin_v.end.value_or(0.f) - item.baseline_shim, 0.f);
 
 		OptionalFloat width = inherent_width;
-		if (!width && margin_h.start && margin_h.end && horizontal.keyword == SelfAlign::Stretch)
+		if (!width && margin_h.start && margin_h.end && !content_width &&
+			(horizontal.keyword == SelfAlign::Stretch || item.width_keyword == SizingKeyword::Stretch))
 			width = area_minus_margins_width;
+		// The aspect ratio again after each stretch.
 		OptionalFloat height = inherent_height;
-		if (!height && margin_v.start && margin_v.end && vertical.keyword == SelfAlign::Stretch)
+		MaybeApplyAspectRatio(width, height, aspect_ratio);
+		if (!height && margin_v.start && margin_v.end && !content_height &&
+			(vertical.keyword == SelfAlign::Stretch || item.height_keyword == SizingKeyword::Stretch))
 			height = area_minus_margins_height;
+		MaybeApplyAspectRatio(width, height, aspect_ratio);
 		width = MaybeClamp(width, min_width, max_width);
 		height = MaybeClamp(height, min_height, max_height);
 
 		// An auto width fits the content in the grid area.
 		const SizeOptional area_size = {area_width, area_height};
 		if (!width)
-			width = MaybeClamp(MeasureChildSize(item, SizeOptional{std::nullopt, height}, area_size,
-								   {AvailableSpace::Definite(area_minus_margins_width), AvailableSpace::Definite(area_minus_margins_height)}, Axis::Horizontal),
+			width = MaybeClamp(
+				MeasureChildSize(item, SizeOptional{std::nullopt, height}, area_size,
+					{GridLayout::AvailableSpace::Definite(area_minus_margins_width), GridLayout::AvailableSpace::Definite(area_minus_margins_height)},
+					Axis::Horizontal),
 				min_width, max_width);
 
 		// Format the item in its box: the definite sizes as content sizes, an indefinite height from its content.
@@ -801,7 +843,7 @@ UniquePtr<LayoutBox> GridFormattingContext::Format(ContainerBox* parent_containe
 	return grid_container_box;
 }
 
-static float ComputeIntrinsicWidth(Element* element, Vector2f containing_block, AvailableSpace constraint)
+static float ComputeIntrinsicWidth(Element* element, Vector2f containing_block, GridLayout::AvailableSpace constraint)
 {
 	GridRun run;
 	run.element = element;
@@ -809,8 +851,11 @@ static float ComputeIntrinsicWidth(Element* element, Vector2f containing_block, 
 	run.measure_width = constraint;
 	run.containing_block = containing_block;
 	LayoutDetails::BuildBox(run.box, containing_block, element, BuildBoxMode::UnalignedBlock);
-	// A definite width is its own intrinsic width.
-	if (run.box.GetSize().x >= 0.f)
+	// A definite width is its own intrinsic width, unless the content is measured (LayoutDetails::GetContentWidth: the width
+	// of the element, a percentage of a containing block it does not have yet, does not count).
+	if (LayoutDetails::IsMeasuringContentOf(element))
+		run.box.SetContent(Vector2f(-1.f, run.box.GetSize().y));
+	else if (run.box.GetSize().x >= 0.f)
 		return run.box.GetSize().x;
 	// 'overflow: scroll' reserves its scrollbar's space whether it scrolls or not.
 	const ComputedValues& computed = element->GetComputedValues();
@@ -825,12 +870,12 @@ static float ComputeIntrinsicWidth(Element* element, Vector2f containing_block, 
 
 float GridFormattingContext::GetMaxContentWidth(Element* element, Vector2f containing_block)
 {
-	return ComputeIntrinsicWidth(element, containing_block, AvailableSpace::MaxContent());
+	return ComputeIntrinsicWidth(element, containing_block, GridLayout::AvailableSpace::MaxContent());
 }
 
 float GridFormattingContext::GetMinContentWidth(Element* element, Vector2f containing_block)
 {
-	return ComputeIntrinsicWidth(element, containing_block, AvailableSpace::MinContent());
+	return ComputeIntrinsicWidth(element, containing_block, GridLayout::AvailableSpace::MinContent());
 }
 
 } // namespace Rml

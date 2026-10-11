@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: alignment keywords: start, end, left, right, safe</title>
+<style>
+  html, body { margin: 0; }
+  .flex { display: flex; position: absolute; left: 30px; width: 200px; height: 34px; background-color: #eeeeee; }
+  .flex > div { width: 40px; height: 14px; background-color: #334466; }
+  .flex > div + div { background-color: #aa3333; }
+  .over > div { width: 130px; }
+</style>
+</head>
+<body>
+<div id="start" class="flex" style="top: 10px; justify-content: start"><div id="start-1"></div><div id="start-2"></div></div>
+<div id="end" class="flex" style="top: 52px; justify-content: end; align-items: end"><div id="end-1"></div><div id="end-2"></div></div>
+<div id="right" class="flex" style="top: 94px; justify-content: right; align-items: start"><div id="right-1"></div><div id="right-2"></div></div>
+<div id="rev-start" class="flex" style="top: 136px; flex-direction: row-reverse; justify-content: start"><div id="rev-start-1"></div><div id="rev-start-2"></div></div>
+<div id="rev-flex-start" class="flex" style="top: 178px; flex-direction: row-reverse; justify-content: flex-start"><div id="rev-flex-start-1"></div><div id="rev-flex-start-2"></div></div>
+<div id="rev-left" class="flex" style="top: 220px; flex-direction: row-reverse; justify-content: left"><div id="rev-left-1"></div><div id="rev-left-2"></div></div>
+<div id="center" class="flex over" style="top: 262px; justify-content: center"><div id="center-1"></div><div id="center-2"></div></div>
+<div id="safe-center" class="flex over" style="top: 304px; justify-content: safe center"><div id="safe-center-1"></div><div id="safe-center-2"></div></div>
+<div id="safe-end" class="flex over" style="top: 346px; justify-content: safe end"><div id="safe-end-1"></div><div id="safe-end-2"></div></div>
+<div id="self" class="flex" style="top: 388px; align-items: center"><div id="self-1" style="align-self: start"></div><div id="self-2" style="align-self: end"></div></div>
+<div id="self-safe" class="flex" style="top: 430px; height: 10px; align-items: safe center"><div id="self-safe-1"></div><div id="self-safe-2" style="align-self: center"></div></div>
+<div id="evenly" class="flex" style="top: 472px; justify-content: space-evenly; align-items: self-end"><div id="evenly-1"></div><div id="evenly-2"></div></div>
+</body>
+</html>

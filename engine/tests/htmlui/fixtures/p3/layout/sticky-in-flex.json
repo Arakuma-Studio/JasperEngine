@@ -1,0 +1,43 @@
+{
+ "comment": "a sticky sidebar item of a row flex container stays in view while the taller main column scrolls, until its container ends; a sticky item of a column flex container sticks at the top. Rendered without MSAA (\"samples\": 1), at the default tolerances: with 4x MSAA, Mesa's llvmpipe and lavapipe (the test image's GL and Vulkan drivers, Mesa 23.2.1) let half the samples of the row above and the column left of a scissor rectangle through, so content scrolled past a clip edge would show a half-covered 1 px line there (MsaaScissor.FourSamples reproduces it with raw sokol calls; the scissor reaches glScissor/vkCmdSetScissor as exact integers, the max edges are exact)",
+ "viewport": [
+  220,
+  140
+ ],
+ "samples": 1,
+ "steps": [
+  {
+   "capture": "top"
+  },
+  {
+   "scroll": [
+    "#scroller",
+    0,
+    80
+   ]
+  },
+  {
+   "capture": "sidebar"
+  },
+  {
+   "scroll": [
+    "#scroller",
+    0,
+    190
+   ]
+  },
+  {
+   "capture": "container-end"
+  },
+  {
+   "scroll": [
+    "#scroller",
+    0,
+    300
+   ]
+  },
+  {
+   "capture": "column"
+  }
+ ]
+}

@@ -117,7 +117,8 @@ namespace Style {
 		VerticalAlign(Type type, float value) : type(type), value(value) {}
 	};
 
-	enum class Overflow : uint8_t { Visible, Hidden, Auto, Scroll };
+	// 'clip' (phase 3, p3-layout) clips like 'hidden' without being a scroll container.
+	enum class Overflow : uint8_t { Visible, Hidden, Auto, Scroll, Clip };
 	struct Clip {
 	private:
 		// Here, 'value' is encoded with Auto <=> 0, None <=> -1, Always <=> -2. A value > 0 means the given number.
@@ -143,6 +144,9 @@ namespace Style {
 	// 'start' and 'end' are computed as such and resolve against 'direction' (ComputedValues::text_align() returns the
 	// resolved value; phase 3, p3-text).
 	enum class TextAlign : uint8_t { Left, Right, Center, Justify, Start, End };
+	// The block alignment of the legacy 'text-align' values -webkit-left, -webkit-right, -webkit-center: the block-level
+	// children of the element are aligned as by 'justify-self' (phase 3, p3-layout).
+	enum class TextAlignLegacy : uint8_t { None, Left, Right, Center };
 	// The lines of 'text-decoration-line': a combination of flags (phase 3, p3-text).
 	enum class TextDecoration : uint8_t { None = 0, Underline = 1, Overline = 2, LineThrough = 4 };
 	enum class TextTransform : uint8_t { None, Capitalize, Uppercase, Lowercase };
@@ -205,7 +209,8 @@ namespace Style {
 	enum class OverflowAlignment : uint8_t { Default, Safe, Unsafe };
 	using FlexBasis = LengthPercentageAuto;
 	enum class FlexDirection : uint8_t { Row, RowReverse, Column, ColumnReverse };
-	enum class FlexWrap : uint8_t { Nowrap, Wrap, WrapReverse };
+	// 'balance' and 'wrap-reverse balance' (CSS Flexbox 2, phase 3, p3-layout) wrap with lines balanced.
+	enum class FlexWrap : uint8_t { Nowrap, Wrap, WrapReverse, Balance, BalanceReverse };
 	enum class JustifyContent : uint8_t {
 		FlexStart,
 		FlexEnd,
@@ -276,6 +281,13 @@ namespace Style {
 	}
 
 	// -- Layout (p3-layout) --
+
+	// The CSS Sizing keywords of 'width', 'height', 'min-*', 'max-*' and 'flex-basis' ('content' is flex-basis only;
+	// 'fit-content(<length-percentage>)' is width and height only). These properties compute to 'auto' ('none' for max-*)
+	// when a keyword is set, so code that does not know them sees an automatic size; the layout reads the keyword apart
+	// (ComputedValues::width_keyword() ...). The values follow the properties' keyword lists ('auto' = None).
+	enum class SizingKeyword : uint8_t { None, MinContent, MaxContent, FitContent, Stretch, Content, FitContentLength };
+	enum class ScrollbarGutter : uint8_t { Auto, Stable, StableBothEdges };
 
 	// -- Animation (p3-animation) --
 

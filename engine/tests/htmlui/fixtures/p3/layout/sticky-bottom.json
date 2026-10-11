@@ -1,0 +1,47 @@
+{
+ "comment": "a footer stuck above the bottom of the scrollport before it is reached and in flow afterwards; a box stuck below the top by its inset; in a horizontal scroller, boxes stuck by left and right. Rendered without MSAA (\"samples\": 1), at the default tolerances: with 4x MSAA, Mesa's llvmpipe and lavapipe (the test image's GL and Vulkan drivers, Mesa 23.2.1) let half the samples of the row above and the column left of a scissor rectangle through, so content scrolled past a clip edge would show a half-covered 1 px line there (MsaaScissor.FourSamples reproduces it with raw sokol calls; the scissor reaches glScissor/vkCmdSetScissor as exact integers, the max edges are exact)",
+ "viewport": [
+  200,
+  185
+ ],
+ "samples": 1,
+ "steps": [
+  {
+   "capture": "top"
+  },
+  {
+   "scroll": [
+    "#scroller",
+    0,
+    90
+   ]
+  },
+  {
+   "scroll": [
+    "#wide",
+    150,
+    0
+   ]
+  },
+  {
+   "capture": "middle"
+  },
+  {
+   "scroll": [
+    "#scroller",
+    0,
+    172
+   ]
+  },
+  {
+   "scroll": [
+    "#wide",
+    320,
+    0
+   ]
+  },
+  {
+   "capture": "end"
+  }
+ ]
+}

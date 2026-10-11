@@ -25,7 +25,10 @@ public:
 	/// Enables and sizes one of the scrollbars.
 	/// @param[in] orientation Which scrollbar (vertical or horizontal) to enable.
 	/// @param[in] element_width The current computed width of the element, used only to resolve percentage properties.
-	void EnableScrollbar(Orientation orientation, float element_width);
+	/// @param[in] gutter_only Reserve its space without showing it ('scrollbar-gutter: stable' while nothing overflows).
+	void EnableScrollbar(Orientation orientation, float element_width, bool gutter_only = false);
+	/// True if the space of the scrollbar is reserved and the scrollbar is not shown.
+	bool IsScrollbarGutterOnly(Orientation orientation) const;
 	/// Disables and hides one of the scrollbars.
 	/// @param[in] orientation Which scrollbar (vertical or horizontal) to disable.
 	void DisableScrollbar(Orientation orientation);
@@ -57,6 +60,7 @@ private:
 		Element* element = nullptr;
 		UniquePtr<WidgetScroll> widget;
 		bool enabled = false;
+		bool gutter_only = false;
 		float size = 0;
 	};
 

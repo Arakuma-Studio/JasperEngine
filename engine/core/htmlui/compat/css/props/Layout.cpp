@@ -214,7 +214,7 @@ void jasperengine::htmlui::compat::rewriteDisplay(DeclContext& context){
         return;
     }
     const ValueSupport* row = findValue("display", keyword);
-    if (row && row->support == Support::Native){
+    if (row && effectiveSupport(*row, context.session.options.fork) == Support::Native){
         context.emit("display", keyword);
         return;
     }
@@ -249,6 +249,12 @@ void jasperengine::htmlui::compat::rewritePosition(DeclContext& context){
         return;
     }
     if (k == "sticky" || k == "-webkit-sticky"){
+        if (context.fork(ForkFeature::Sticky)){
+            if (k[0] == '-')
+                context.reportAs(Severity::Info, codes::VendorPrefix, "'position: " + k + "' is read as 'sticky'");
+            context.emit("position", "sticky");
+            return;
+        }
         context.reportAs(Severity::Warning, codes::ApproximatedVisible, "'position: " + k + "' is drawn as 'relative' (it does not stick)",
                          "pin the element with position: absolute in a non-scrolling container");
         context.emit("position", "relative");
@@ -320,6 +326,12 @@ void jasperengine::htmlui::compat::rewriteSizing(DeclContext& context){
             keyword = "fit-content()";
         if (!keyword.empty()){
             if (const ValueSupport* row = findValue(n, keyword)){
+                // the fork has the sizing keywords and min-width/min-height: auto (BoxParity): written as they are
+                if (effectiveSupport(*row, context.session.options.fork) == Support::Native &&
+                    RcssGrammar::accepts(n, context.valueText(), context.session.options.fork)){
+                    context.emit(n, context.valueText());
+                    return;
+                }
                 const std::string output = row->output;
                 if (row->support == Support::Approximated){
                     const bool info = keyword == "-webkit-fill-available" && output == "100%";
@@ -361,9 +373,10 @@ void jasperengine::htmlui::compat::rewriteOverflow(DeclContext& context){
         return;
     }
     std::vector<std::string> values;
+    const bool clipNative = context.fork(ForkFeature::Sticky);
     for (const ComponentValue& v : w){
         std::string k = identOf(v);
-        if (k == "clip")
+        if (k == "clip" && !clipNative)
             k = "hidden";
         else if (k == "overlay" || k == "-webkit-paged-x" || k == "-webkit-paged-y")
             k = "auto";
@@ -377,8 +390,8 @@ void jasperengine::htmlui::compat::rewriteOverflow(DeclContext& context){
         }
         values.push_back(k);
     }
-    if (!RcssGrammar::accepts(n, join(values))){
-        unsupportedValue(context, "use visible, hidden, auto or scroll");
+    if (!RcssGrammar::accepts(n, join(values), context.session.options.fork)){
+        unsupportedValue(context, clipNative ? "use visible, hidden, clip, auto or scroll" : "use visible, hidden, auto or scroll");
         return;
     }
     context.emit(n, join(values));
