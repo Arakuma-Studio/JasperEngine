@@ -1117,7 +1117,9 @@ TEST_CASE("animation.parse")
 	CHECK(ParsedLonghands("animation-iteration-count", "infinite, 0, 2.5") == "animation-iteration-count: infinite, 0, 2.5\n");
 	CHECK(ParsedLonghands("animation-iteration-count", "-1") == "<invalid>");
 	CHECK(ParsedLonghands("animation-name", "fade, none, Other") == "animation-name: fade, none, Other\n");
-	CHECK(ParsedLonghands("animation-name", "initial") == "<invalid>");
+	// 'initial' is not an animation name: it is the CSS-wide keyword (p3-cascade), valid on every property.
+	CHECK(ParsedLonghands("animation-name", "initial") == "animation-name: initial\n");
+	CHECK(ParsedLonghands("animation-name", "fade, initial") == "<invalid>");
 	CHECK(ParsedLonghands("animation-direction", "alternate, REVERSE") == "animation-direction: alternate, reverse\n");
 	CHECK(ParsedLonghands("animation-fill-mode", "both, forwards, backwards, none") == "animation-fill-mode: both, forwards, backwards, none\n");
 	CHECK(ParsedLonghands("animation-play-state", "paused, running") == "animation-play-state: paused, running\n");
