@@ -32,6 +32,17 @@
 --   ..." once loaded: the submeshes without a pass allocate nothing (extra passes allocated
 --   = extra passes drawn), and the pipelines differ by those of the ten passes only.
 --
+--   EP_SCENE=figure: models/figure.gltf, three submeshes over one vertex buffer (torso,
+--   a backpack hidden behind it, head), each with library shaders on every submesh. Left: the
+--   See-through silhouette preset behind a low wall: blue where the wall hides the figure,
+--   nothing over the visible torso (the backpack behind it is the figure's own: a pass
+--   interleaved with the submesh draws showed it through the torso). Middle: the Outline
+--   (stencil) preset behind a wall up to the neck: one orange outline around the whole
+--   figure, over the wall too, no line across it where the torso meets the head (the torso's
+--   pass drew there before the head had marked the stencil). Right: the Outline (hull) preset,
+--   closed; the three submeshes share one smoothed-normal buffer ("Render objects": 2
+--   smoothed-normal buffers, one per outlined figure). EP_FOCUS=silhouette|stencil|hull.
+--
 --   tools/smoke-test.sh tools/fixtures/extra-pass
 --   SMOKE_GAME_RUNS="overhead EP_SCENE=overhead; overhead_pass EP_SCENE=overhead_pass" tools/smoke-test.sh tools/fixtures/extra-pass
 local ExtraPass = { properties = {} }
@@ -254,6 +265,66 @@ local function buildStencil(self, scene)
     self.stencilSphere = sphere
 end
 
+-- EP_SCENE=figure: library presets on every submesh of a three-submesh model (one vertex
+-- buffer), as the editor's presets set them (editor/material/MaterialPresets.cpp)
+local function buildFigures(self, scene)
+    local function figure(x, preset)
+        local model = Model(scene)
+        if not model:loadModel("models/figure.gltf") then
+            fail("models/figure.gltf did not load")
+            return nil
+        end
+        model.position = Vector3(x, 0.0, 0.0)
+        local count = model:getNumSubmeshes()
+        if count ~= 3 then
+            fail("the figure has %d submeshes, not 3", count)
+        end
+        for i = 0, count - 1 do
+            local material = model:getMaterial(i)
+            preset(material)
+            model:setMaterial(i, material)
+        end
+        return model
+    end
+    local function wall(x, height)
+        local w = Primitive(scene)
+        w:createBox(1.6, height, 0.08)
+        w.position = Vector3(x, height * 0.5, 0.7)
+        w:setColor(0.32, 0.34, 0.38)
+        return w
+    end
+    local function pass(material, shader, order)
+        material.extraPass = MaterialPass()
+        material.extraPass.shader = shader
+        material.extraPass.order = order
+        -- occluders (priority 0) draw first, so the pass sees them
+        material.sortPriority = math.max(material.sortPriority, 1)
+    end
+
+    self.silhouetteFigure = figure(-2.2, function(material)
+        pass(material, "library:silhouette", MaterialPassOrder.BEFORE)
+    end)
+    self.lowWall = wall(-2.2, 0.6)
+
+    self.stencilFigure = figure(0.0, function(material)
+        local s = MaterialStencil()
+        s.compare = MaterialStencilCompare.ALWAYS
+        s.ref = 1
+        s.writeMask = 1
+        s.pass = MaterialStencilOp.REPLACE
+        s.depthFail = MaterialStencilOp.REPLACE
+        material.stencil = s
+        pass(material, "library:outline_stencil", MaterialPassOrder.AFTER)
+    end)
+    self.tallWall = wall(0.0, 1.45)
+
+    self.hullFigure = figure(2.2, function(material)
+        material.extraPass = MaterialPass()
+        material.extraPass.shader = "library:outline"
+        material.extraPass.order = MaterialPassOrder.AFTER
+    end)
+end
+
 local function buildOverhead(self, scene, withPasses)
     local count = 0
     for row = 0, 3 do
@@ -294,6 +365,10 @@ function ExtraPass:init()
     local mode = os.getenv("EP_SCENE") or "main"
     if mode == "overhead" or mode == "overhead_pass" then
         buildOverhead(self, scene, mode == "overhead_pass")
+    elseif mode == "figure" then
+        buildFigures(self, scene)
+        camera.position = Vector3(0.0, 2.0, 6.5)
+        camera.target = Vector3(0.0, 0.9, 0.0)
     else
         for _, case in ipairs({ {"back", buildBack}, {"front", buildFront}, {"rtt", buildRtt}, {"stencil", buildStencil} }) do
             local ok, err = pcall(case[2], self, scene)
@@ -309,10 +384,13 @@ function ExtraPass:init()
     local targets = { cubes = Vector3(-6.35, 1.0, 0.0), column = Vector3(-2.9, 1.0, 0.0), batch = Vector3(-0.7, 1.0, 0.0),
                       halo = Vector3(2.7, 1.0, 0.0), glass = Vector3(6.2, 1.0, 0.0), sprites = Vector3(-3.9, 0.8, 5.0),
                       rtt = Vector3(1.6, 0.75, 5.0), stencil = Vector3(3.6, 0.75, 5.0) }
+    if mode == "figure" then
+        targets = { silhouette = Vector3(-2.2, 0.9, 0.0), stencil = Vector3(0.0, 0.9, 0.0), hull = Vector3(2.2, 0.9, 0.0) }
+    end
     if focus and targets[focus] then
         local target = targets[focus]
         camera.target = target
-        camera.position = target + Vector3(0.0, 1.2, 4.5)
+        camera.position = target + ((mode == "figure") and Vector3(0.0, 0.6, 3.2) or Vector3(0.0, 1.2, 4.5))
         log("focus on %s", focus)
     end
     log("scene %s", mode)
