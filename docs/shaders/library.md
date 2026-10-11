@@ -974,7 +974,7 @@ QuickOutline-style outline that never covers its object: an extra pass After a m
 <a id="librarysilhouette"></a>
 ### Silhouette (`library:silhouette`)
 
-See-through silhouette: draws only the parts of the object hidden behind other objects (depth test greater, no depth write), in a flat colour or a fresnel glow, alpha blended. Use it as a material's extra pass, order Before (See-through silhouette preset), and draw the object after its occluders (the preset gives it sort priority 1). Each pixel blends once: stencil bit 0x02 is set where it draws (overlapping hidden parts do not stack). No shadows.
+See-through silhouette: draws only the parts of the object hidden behind other objects (depth test greater, no depth write), in a flat colour or a fresnel glow, alpha blended. Use it as a material's extra pass, order Before (See-through silhouette preset), and draw the object after its occluders (the preset gives it sort priority 1). Each pixel blends once: stencil bit 0x02 is set where it draws (overlapping hidden parts do not stack). With the camera depth pre-pass on, the object's own depth is already in the buffer, so its self-hidden parts (the far side of a concave object) show too. No shadows.
 
 - **Type**: mesh (a material's shader); category Outline and stencil.
 - **Lighting**: none.

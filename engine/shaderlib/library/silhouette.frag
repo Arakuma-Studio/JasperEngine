@@ -3,7 +3,7 @@
 // @shader mesh
 // @name "Silhouette"
 // @category "Outline and stencil"
-// @description "See-through silhouette: draws only the parts of the object hidden behind other objects (depth test greater, no depth write), in a flat colour or a fresnel glow, alpha blended. Use it as a material's extra pass, order Before (See-through silhouette preset), and draw the object after its occluders (the preset gives it sort priority 1). Each pixel blends once: stencil bit 0x02 is set where it draws (overlapping hidden parts do not stack). No shadows."
+// @description "See-through silhouette: draws only the parts of the object hidden behind other objects (depth test greater, no depth write), in a flat colour or a fresnel glow, alpha blended. Use it as a material's extra pass, order Before (See-through silhouette preset), and draw the object after its occluders (the preset gives it sort priority 1). Each pixel blends once: stencil bit 0x02 is set where it draws (overlapping hidden parts do not stack). With the camera depth pre-pass on, the object's own depth is already in the buffer, so its self-hidden parts (the far side of a concave object) show too. No shadows."
 // @require normals position feature=SILHOUETTE_MODE_FRESNEL
 // @state blend=alpha ztest=greater zwrite=off cull=back shadows=off
 // @state stencil=notequal ref=2 readmask=2 writemask=2 pass=replace
