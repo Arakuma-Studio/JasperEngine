@@ -249,9 +249,10 @@ operation:
 | `Selectors` Reference (update unmodified) | 83850 | 82420 | -1.7 % |
 | `Selectors` `.a` / `*` / `div div` (rule lookup after a hover) | 375670 / 382950 / 367250 | 466530 / 462590 / 447790 | +24.2 % / +20.8 % / +21.9 % |
 
-Above 10 %: the selector lookups (+17-25 % on every simple-selector variant, `:a` and `a` excepted) are the cost of
-P3-C4's per-node work in `StyleSheetNode::IsApplicable` (the `:has()` and pseudo-element index split, attribute flags)
-on a 2 000-element re-match; `:has()` invalidation keeps such full re-matches rare (a checkbox toggle under
+Above 10 %: the selector lookups (+17-25 % on most simple-selector variants, `:a` and `a` excepted), a 2 000-element
+re-match after a hover; the cause is not isolated on this host (P3-C4 adds the attribute-flag fold, the `:has()`
+dependency check per class/pseudo-class change and pseudo-element definition dirtying to that path; the matching loop
+itself is unchanged). `:has()` invalidation keeps full re-matches rare (a checkbox toggle under
 `li:has(> input:checked)` re-matches fewer than 50 elements of 2 000, `SelectorsHas.Invalidation`). Measured on the
 way and fixed: `Element::Update` cleared a meta flag on every element every frame (`element` Update (unmodified) +29 %,
 P3-C10), and pseudo-element generation ran for every element after a re-match (now an early return when the
