@@ -91,8 +91,13 @@ std::shared_ptr<const UserAgentStyle::Sheet> UserAgentStyle::get(const ForkFeatu
         Log::warn("[HTML UI] the user-agent stylesheet is not embedded in this build; documents get no default styles");
     }
 
+    // rules that need a fork feature (the sheet rewrites without a diagnostic in every fork state)
+    std::string source(text);
+    if (fork.has(ForkFeature::BoxParity))
+        source += "\n/* fork BoxParity (phase-3 spec 3.12.4): the legend is as wide as its content */\nlegend { width: fit-content; }\n";
+
     auto files = std::make_shared<SourceFiles>();
-    const uint32_t file = files->add(kSourcePath, std::string(text));
+    const uint32_t file = files->add(kSourcePath, source);
 
     auto sheet = std::make_shared<Sheet>();
     sheet->fork = fork;

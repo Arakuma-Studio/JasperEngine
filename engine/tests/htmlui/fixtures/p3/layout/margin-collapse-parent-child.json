@@ -1,0 +1,7 @@
+{
+ "comment": "the top margin of the first child and the bottom margin of the last collapse with the parent's (the largest wins); padding, a border, a new formatting context (overflow: hidden, a flex container) and a min-height that makes the parent taller keep them inside; nested first children with a negative margin",
+ "viewport": [
+  550,
+  130
+ ]
+}

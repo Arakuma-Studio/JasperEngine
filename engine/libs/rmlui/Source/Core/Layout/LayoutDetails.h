@@ -9,6 +9,7 @@ class Box;
 struct FontMetrics;
 class BlockContainer;
 class ContainerBox;
+class LayoutBox;
 
 /**
     ComputedAxisSize is an abstraction of an element's computed size properties along a single axis, either horizontally or vertically,
@@ -46,6 +47,19 @@ public:
 
 private:
 	LayoutChildList* list;
+};
+
+/// The space available to a box along one axis while it is sized by its content (CSS Sizing 3): a definite size, or a
+/// min-content or max-content constraint.
+struct AvailableSpace {
+	enum Type : uint8_t { Definite, MinContent, MaxContent };
+	Type type = MaxContent;
+	float value = 0.f;
+
+	static AvailableSpace MakeDefinite(float value) { return AvailableSpace{Definite, value}; }
+	static AvailableSpace MakeMinContent() { return AvailableSpace{MinContent, 0.f}; }
+	static AvailableSpace MakeMaxContent() { return AvailableSpace{MaxContent, 0.f}; }
+	bool IsDefinite() const { return type == Definite; }
 };
 
 enum class BuildBoxMode {
@@ -118,8 +132,10 @@ public:
 	static void BuildBoxSizeAndMargins(Box& box, Vector2f min_size, Vector2f max_size, Vector2f containing_block, Element* element,
 		BuildBoxMode box_context, bool replaced_element);
 
-	/// Formats the element and returns the width of its contents.
-	static float GetShrinkToFitWidth(Element* element, Vector2f containing_block);
+	/// Formats the element and returns the width of its contents: its shrink-to-fit (fit-content) width
+	/// min(max-content, max(min-content, available)), the available width being the containing block's less the element's
+	/// margins, borders and paddings, or 'available_width' (content-box) when given (>= 0).
+	static float GetShrinkToFitWidth(Element* element, Vector2f containing_block, float available_width = -1.f);
 
 	/// Intrinsic sizing (CSS Sizing 3): the element's min-content width, the width of its border box formatted under a
 	/// min-content constraint (no width to give: its widest unbreakable content, every soft wrap opportunity taken). A
@@ -138,6 +154,59 @@ public:
 	/// Formats the element with a definite border-box width and returns the height of its border box.
 	static float GetContentHeightForWidth(Element* element, float border_box_width, Vector2f containing_block);
 
+	/// Content-based sizes (CSS Sizing 3), for a box whose size its formatting context determines (flex items, absolutely
+	/// positioned boxes, sizing keywords): the element's own 'width', 'height' and min-/max- sizes are ignored (the caller
+	/// clamps where CSS does).
+	/// The border-box width under an available width: its min-content or max-content width, or its fit-content width
+	/// min(max-content, max(min-content, available)) for a definite one.
+	/// @param[in] containing_block The containing block's size, negative where indefinite.
+	/// @param[in] known_height A border-box height to transfer through the element's aspect ratio, if any (negative: none).
+	static float GetContentWidth(Element* element, AvailableSpace available_width, Vector2f containing_block, float known_height = -1.f);
+	/// The border-box height of the element laid out at a border-box width, from its aspect ratio if it has one, otherwise
+	/// from its content.
+	static float GetContentHeight(Element* element, float border_box_width, Vector2f containing_block);
+	/// True while the content size of this element is measured (GetContentWidth, GetContentHeight): its layout box then
+	/// reports its content width even when its 'width' is definite, and its min-/max- sizes do not apply.
+	static bool IsMeasuringContentOf(const Element* element);
+
+	/// A flex container gives its items heights that are not always definite (CSS Flexbox §9.8: the flexed main size in a
+	/// container without a definite main size, a cross size that is not stretched). While such an item is formatted at that
+	/// height, the percentage heights of its children behave as 'auto'. The flex formatting context holds the scope around
+	/// the formatting of the item, whose own formatting context reads it.
+	class IndefiniteHeightScope {
+	public:
+		IndefiniteHeightScope(const Element* element, bool indefinite);
+		~IndefiniteHeightScope();
+		IndefiniteHeightScope(const IndefiniteHeightScope&) = delete;
+		IndefiniteHeightScope& operator=(const IndefiniteHeightScope&) = delete;
+
+	private:
+		const Element* previous;
+	};
+	static bool IsHeightIndefinite(const Element* element);
+
+	/// True if the height BuildBox gave the box comes from its aspect ratio and is only its minimum: with 'min-height: auto'
+	/// a box that is not a scroll container is as tall as its content at least (the automatic minimum size, CSS Sizing 4
+	/// §5.1). Gives the maximum height of its content area then.
+	static bool IsAspectRatioHeightMinimum(Element* element, const Box& box, float containing_block_height, float& out_max_height);
+
+	/// The horizontal offset of an in-flow block-level box in its containing block by its 'justify-self' (CSS Box Alignment 3
+	/// §6.1, the parent's 'justify-items' for 'auto'), given the free space beside its margin box. Zero for 'normal' and
+	/// 'stretch', and for boxes with an 'auto' horizontal margin (the margins take the space).
+	static float GetJustifySelfOffset(Element* element, float free_space);
+	/// True if an in-flow block-level box with an 'auto' width is sized as 'fit-content' by its 'justify-self' (any value but
+	/// 'normal', 'stretch', 'auto' resolving to them, and the baseline values).
+	static bool IsJustifiedFitContent(Element* element);
+	/// Moves the content of a block container (the elements positioned against it, through inline elements) down by 'delta',
+	/// for its 'align-content'.
+	static void ShiftContentOffsets(Element* container, float delta);
+	/// True if the height of an element's box does not depend on its content (CSS Sizing 3 'definite'), as percentages of
+	/// it need: a definite 'height', an absolutely positioned box with 'top' and 'bottom', a flex or grid item, the root.
+	static bool HasDefiniteHeight(Element* element);
+	/// The horizontal margins, borders and paddings of a box as they contribute to an intrinsic width (percentages of the
+	/// indefinite width being measured count as 0).
+	static float GetIntrinsicEdgesWidth(const LayoutBox& layout_box);
+
 	/// Build computed axis size along the horizontal direction (width and friends).
 	static ComputedAxisSize BuildComputedHorizontalSize(const ComputedValues& computed);
 	/// Build computed axis size along the vertical direction (height and friends).
@@ -148,9 +217,12 @@ public:
 
 	static String GetDebugElementName(Element* element);
 
+	/// True for a scroll container: 'overflow' other than 'visible' and 'clip' (after the value fix-up, either both axes
+	/// scroll or neither does). A box with 'overflow: clip' clips its content but is not a scroll container.
 	static bool IsScrollContainer(Style::Overflow overflow_x, Style::Overflow overflow_y)
 	{
-		return overflow_x != Style::Overflow::Visible || overflow_y != Style::Overflow::Visible;
+		return (overflow_x != Style::Overflow::Visible && overflow_x != Style::Overflow::Clip) ||
+			(overflow_y != Style::Overflow::Visible && overflow_y != Style::Overflow::Clip);
 	}
 
 private:
@@ -160,6 +232,17 @@ private:
 	/// Calculates and returns the content size for replaced elements.
 	static Vector2f CalculateSizeForReplacedElement(Vector2f specified_content_size, Vector2f min_size, Vector2f max_size, Vector2f intrinsic_size,
 		float intrinsic_ratio);
+
+	/// Resolves the sizing keywords of an element's width, height and min/max sizes (CSS Sizing 3, 4): min-content,
+	/// max-content, fit-content and fit-content() widths from its content, 'stretch' from the containing block; in the block
+	/// axis the content-based keywords are 'auto'. Values in the units of the element's box-sizing box; -1 for 'auto'.
+	static void ResolveSizingKeywords(const Box& box, const ComputedValues& computed, Element* element, Vector2f containing_block,
+		Vector2f& content_area, Vector2f& min_size, Vector2f& max_size);
+	/// 'aspect-ratio' of a non-replaced block-level box (CSS Sizing 4): a definite height gives an automatic width; with both
+	/// automatic the min and max heights constrain the width through the ratio (its height follows it once resolved).
+	static void ApplyAspectRatio(const Box& box, const ComputedValues& computed, Vector2f& content_area, Vector2f& min_size, Vector2f& max_size);
+	/// The automatic height of a box with an aspect ratio, from its resolved width.
+	static void ApplyAspectRatioToHeight(Box& box, const ComputedValues& computed, float min_height, float max_height, bool replaced_element);
 
 	/// Builds the block-specific width and horizontal margins of a Box.
 	/// @param[in,out] box The box to generate. The padding and borders must be set on the box already. The content area is used instead of the width
@@ -180,8 +263,18 @@ private:
 	/// @param[in] computed The computed values of the element the box is being generated for.
 	/// @param[in] min_height The minimum content height of the element.
 	/// @param[in] max_height The maximum content height of the element.
-	/// @param[in] containing_block_height The height of the containing block.
-	static void BuildBoxHeight(Box& box, const ComputedValues& computed, float min_height, float max_height, float containing_block_height);
+	/// @param[in] containing_block The size of the containing block (percentage margins resolve against its width).
+	static void BuildBoxHeight(Box& box, const ComputedValues& computed, float min_height, float max_height, Vector2f containing_block);
+
+	/// The width and horizontal margins of an absolutely positioned box (CSS Position 3 §4.1, §4.4): resolved against its
+	/// inset-modified containing block, an 'auto' width being stretch-fit between two insets or fit-content otherwise, 'auto'
+	/// margins taking the free space only between two insets.
+	static void BuildAbsoluteBoxWidth(Box& box, const ComputedValues& computed, float min_width, float max_width, Vector2f containing_block,
+		Element* element, bool replaced_element);
+	/// The height and vertical margins of an absolutely positioned box, as BuildAbsoluteBoxWidth ('auto' between two insets
+	/// is stretch-fit, otherwise the content decides).
+	static void BuildAbsoluteBoxHeight(Box& box, const ComputedValues& computed, float min_height, float max_height, Vector2f containing_block,
+		Element* element, bool replaced_element);
 };
 
 } // namespace Rml

@@ -23,6 +23,7 @@ public:
 
 	void Close();
 	Box& GetBox() { return box; }
+	Element* GetElement() const { return element; }
 
 	const Box* GetIfBox() const override { return &box; }
 	float GetMinContentWidth() const override { return box.GetSize().x; }

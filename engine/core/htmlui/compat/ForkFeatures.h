@@ -25,6 +25,8 @@ namespace jasperengine::htmlui::compat {
         TextShadow, TextProperties,
         AnimationLonghands, IndividualTransforms,   // p3-animation
         CurrentColor, ExtraUnits, LineHeightNormal,         // p3-values
+        // phase 3, p3-layout
+        Sticky, BoxParity,
         // phase 3, p3-cascade
         Has, FocusPseudoClasses, SelectorsLevel4, ListMarkers,
         Count

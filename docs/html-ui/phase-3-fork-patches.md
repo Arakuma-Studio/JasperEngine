@@ -1594,6 +1594,56 @@ content, alignment keywords), new `IntrinsicSizing.cpp`, `AspectRatio.cpp`, `Mar
 fit-content,min-max-content,aspect-ratio-card,aspect-ratio-img,margin-collapse-parent-child,
 margin-collapse-empty,display-contents,justify-start-end-safe}.html` plus the Taffy suites.
 
+#### 3.12.10 `p3-layout` as implemented
+
+FORK.md rows P3-L1..P3-L12. Where the implementation differs from or makes precise §3.11-3.12:
+
+- **Sizing keywords** are not `Type::Keyword` values: `width`/`height`/`min-*`/`max-*`/`flex-basis` compute to
+  `auto`/`none` and keep the keyword apart (`ComputedValues::*_keyword()`, `Style::SizingKeyword`, `fit_content_*()`
+  for `fit-content(<length-percentage>)`), so code that does not know them sees `auto`. `-webkit-fill-available` is
+  `stretch`. `min-width/min-height: auto` is the initial value (0 outside flex and grid items).
+- **Flex** (§3.12.9): the algorithm was replaced by a port of Taffy's `flexbox.rs` (8409f3f8) behind the same interface;
+  besides §3.12.1-3.12.7 it brings Taffy's `flex-wrap: balance` and `flex-line-count` (new `PropertyId::FlexLineCount`,
+  compat: native with `BoxParity`, not in Appendix B before). Before/after Taffy pass counts are in FORK.md P3-L2.
+  The automatic minimum size is measured lazily (only when it can clamp the item). A flex item's height is definite as
+  §9.8 says (percentage heights of its children are `auto` otherwise).
+- **Absolutely positioned boxes** follow CSS Position 3 (inset-modified containing block, `auto` margins only between two
+  insets). Exception: an `ElementDocument` with `auto` margins and no insets is centered as in 6.3 (documents and the
+  debugger rely on it). Vertical percentage margins are of the width, over-constrained `auto` margins are 0.
+- **Margin collapsing** is done after the fact (positions corrected up the chain of open top margins) rather than by
+  deferring placement; clearance, forced clearance after adjoining floats and empty boxes with clearance included.
+  Boxes with a new formatting context sit beside floats (CSS 2.1 §9.5), 6.3 always cleared them.
+- **`justify-items`/`justify-self`** align block-level boxes in block layout (fit-content width when not
+  `normal`/`stretch`); their compat rows stay on `ForkFeature::Grid` (BoxParity comes with it). The legacy values
+  `text-align: -webkit-left/-right/-center` align block children too (`text_align_legacy`, two keywords added to p3-text's
+  `text-align`).
+- **`position: fixed`**: the viewport is given as a containing-block override by `ContainerBox::AddAbsoluteElement` when no
+  ancestor has a transform, perspective, filter, backdrop filter or mask (`will-change` and `contain` are not registered);
+  the layout tells `Element::SetOffset` that the box is viewport-fixed (6.3 inferred it from the property). Clipping and
+  hit testing needed no change: they follow the offset parents, which skip the scroll containers left.
+- **`position: sticky`**: the shift is computed with the absolute offset (`ComputeStickyShift` in `Element.cpp`), not in
+  `UpdateOffset`, so scrolling (which dirties absolute offsets) moves it without listeners.
+- **Overflow**: `scrollbar-gutter: stable` reserves the vertical scrollbar of `auto`/`hidden` scroll containers
+  (`both-edges` as `stable`); compat: native with `Sticky`. A document that scrolls (`overflow-y` not `visible`) with an
+  automatic height is as tall as the viewport, so the root's (or the body's propagated) overflow scrolls the page.
+- **Grid items** (handed over by p3-grid): aspect ratio and sizing keywords in `GridItemMeasure`/`GridFormattingContext`;
+  a width-only request of a grid re-runs column sizing when an item's width can follow its height.
+- **Not done**: RTL mirroring of flex/sticky/fixed (spec 2.2), `contain`, `will-change`.
+- **Found on the way (decision)**: the 1 px line p3-grid saw above the top clip edge of scrolled `overflow: hidden`
+  content is a Mesa rasterizer bug, not ours. `MsaaScissor.*` (`engine/tests/htmlui/TestRenderMsaaScissor.cpp`)
+  reproduces it with raw sokol calls (a 4x MSAA attachment of an engine framebuffer, an integer scissor rectangle, one
+  fullscreen triangle, the pass resolve): on llvmpipe (GL) and lavapipe (Vulkan), Mesa 23.2.1 / LLVM 15 in the test
+  image, 2 of the 4 samples of every pixel in the row above and in the column left of the rectangle pass the scissor
+  test (alpha 128, the corner 64); the right and bottom edges, every pixel inside and the 1-sample run are exact. The
+  rectangle reaches `glScissor` / `vkCmdSetScissor` as the exact integers given (sokol passes them through; on GL the
+  y-flip is `height - (y + h)` only with `origin_top_left`, which the engine sets per backend), so the off-by-half is
+  the drivers' (a scissor test must keep or drop a pixel whole). The same pattern shows through `RmlRenderer`
+  (`MsaaScissor.HtmlUIClipEdge`). Decision: the renderer is unchanged (exact on real drivers); the test documents the
+  bug (it accepts an exact result or exactly that pattern, and fails on anything else), and the browser-parity
+  fixtures that scroll content past a clip edge (`layout/{fixed-not-clipped,overflow-hidden-scrolled,
+  sticky-header-list,sticky-bottom,sticky-in-flex}`) render without MSAA through the new sidecar option
+  `"samples": 1` (with a comment), at the default tolerances.
+
 ---
 
 ### 3.13 Transitions and animations (package `p3-animation`)
@@ -2313,7 +2363,8 @@ The agent-browser MCP tool is not used for goldens (shared browser, non-determin
   `"keyboard": true` presses Tab until the element has the focus, without it clicks the element
   (the pointer stays there); pointer positions are the rounded centre of the border box on both
   sides; without a capture step one capture is taken at the end (`<name>.png`); `"comment"` is
-  required with `"tolerance"` (`channel`, `badPercent`, `cluster`, `box`); `"boxes": true` makes
+  required with `"tolerance"` (`channel`, `badPercent`, `cluster`, `box`) and with `"samples": 1` (the engine renders the
+  fixture without MSAA instead of its default 4x; for content scrolled past clip edges, §3.12.10); `"boxes": true` makes
   the boxes the oracle and the image comparison reported only (glyph rasterization differs);
   `"selfTest": {"expect": "match" | "mismatch", "referenceCss"}` is for `fixtures/p3/testkit`
   only (the CSS is injected into the reference alone). Areas and owners are listed in

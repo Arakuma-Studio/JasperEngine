@@ -1,0 +1,26 @@
+{
+ "comment": "overflow: clip clips at the padding box on both axes or on one (the other axis overflows visibly), extended by overflow-clip-margin; with hidden on the other axis clip computes to hidden; clipped content does not make an outer scroller scrollable (its scroll is a no-op)",
+ "viewport": [
+  440,
+  200
+ ],
+ "steps": [
+  {
+   "scroll": [
+    "#scroller",
+    30,
+    30
+   ]
+  },
+  {
+   "scroll": [
+    "#clip",
+    20,
+    20
+   ]
+  },
+  {
+   "capture": ""
+  }
+ ]
+}

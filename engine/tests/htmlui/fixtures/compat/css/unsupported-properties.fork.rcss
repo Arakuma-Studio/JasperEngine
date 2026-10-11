@@ -1,5 +1,7 @@
 #htmlui-root .unsupported {
 animation-composition: replace;
+aspect-ratio: auto;
+order: 0;
 counter-increment: none;
 counter-reset: none;
 counter-set: none;

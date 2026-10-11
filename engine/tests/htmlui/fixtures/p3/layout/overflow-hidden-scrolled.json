@@ -1,0 +1,61 @@
+{
+ "comment": "scrolled content at the clip edges of overflow: hidden (the one-pixel line above the top edge that p3-grid found is the drivers' MSAA scissor, see below). The boxes are scrolled so that a transparent gap, then a coloured stripe, crosses the top edge of the padding box. Rendered without MSAA (\"samples\": 1), at the default tolerances: with 4x MSAA, Mesa's llvmpipe and lavapipe (the test image's GL and Vulkan drivers, Mesa 23.2.1) let half the samples of the row above and the column left of a scissor rectangle through, so content scrolled past a clip edge would show a half-covered 1 px line there (MsaaScissor.FourSamples reproduces it with raw sokol calls; the scissor reaches glScissor/vkCmdSetScissor as exact integers, the max edges are exact)",
+ "viewport": [
+  390,
+  120
+ ],
+ "samples": 1,
+ "steps": [
+  {
+   "capture": "top"
+  },
+  {
+   "scroll": [
+    "#plain",
+    0,
+    30
+   ]
+  },
+  {
+   "scroll": [
+    "#padded",
+    0,
+    30
+   ]
+  },
+  {
+   "scroll": [
+    "#bordered",
+    0,
+    30
+   ]
+  },
+  {
+   "capture": "gap"
+  },
+  {
+   "scroll": [
+    "#plain",
+    0,
+    55
+   ]
+  },
+  {
+   "scroll": [
+    "#padded",
+    0,
+    55
+   ]
+  },
+  {
+   "scroll": [
+    "#bordered",
+    0,
+    55
+   ]
+  },
+  {
+   "capture": "stripe"
+  }
+ ]
+}

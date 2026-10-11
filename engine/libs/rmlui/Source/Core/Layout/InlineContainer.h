@@ -59,6 +59,7 @@ public:
 
 	float GetShrinkToFitWidth() const override;
 	bool GetBaselineOfLastLine(float& out_baseline) const override;
+	bool GetBaselineOfFirstLine(float& out_baseline) const override; // (p3-layout: flex baseline alignment)
 	String DebugDumpTree(int depth) const override;
 
 private:

@@ -1,0 +1,23 @@
+{
+ "comment": "fixed boxes inside an overflow: hidden scroller (and a positioned, clipping parent): the viewport is their containing block, the scroller neither clips them nor moves them when it scrolls. Rendered without MSAA (\"samples\": 1), at the default tolerances: with 4x MSAA, Mesa's llvmpipe and lavapipe (the test image's GL and Vulkan drivers, Mesa 23.2.1) let half the samples of the row above and the column left of a scissor rectangle through, so content scrolled past a clip edge would show a half-covered 1 px line there (MsaaScissor.FourSamples reproduces it with raw sokol calls; the scissor reaches glScissor/vkCmdSetScissor as exact integers, the max edges are exact)",
+ "viewport": [
+  240,
+  150
+ ],
+ "samples": 1,
+ "steps": [
+  {
+   "capture": "top"
+  },
+  {
+   "scroll": [
+    "#scroller",
+    0,
+    70
+   ]
+  },
+  {
+   "capture": "scrolled"
+  }
+ ]
+}

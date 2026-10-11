@@ -1,0 +1,7 @@
+{
+ "comment": "an element with display: contents generates no box (its padding, border, margin and background do not show); its children are flex items or block children of its parent, and inherit from it; nested",
+ "viewport": [
+  330,
+  180
+ ]
+}

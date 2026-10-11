@@ -117,11 +117,12 @@ TEST_CASE("LayoutChildren.layout")
 		CHECK(item->GetComputedValues().display() == Style::Display::ListItem);
 		CHECK(item->GetBox().GetSize().x == 400.f); // a block box
 		CHECK(item->GetBox().GetSize().y == 7.f);
-		// sticky is laid out as relative for now
+		// sticky is laid out in flow: its insets only keep it in the scrollport (p3-layout, PositionSticky.cpp). Here it is
+		// in view, and as wide as its containing block.
 		Element* sticky = document->GetElementById("sticky");
 		CHECK(sticky->GetComputedValues().position() == Style::Position::Sticky);
-		CHECK(sticky->GetRelativeOffset(BoxArea::Border).y == doctest::Approx(item->GetRelativeOffset(BoxArea::Border).y + 7.f + 5.f));
-		CHECK(sticky->GetRelativeOffset(BoxArea::Border).x == doctest::Approx(3.f));
+		CHECK(sticky->GetRelativeOffset(BoxArea::Border).y == doctest::Approx(item->GetRelativeOffset(BoxArea::Border).y + 7.f));
+		CHECK(sticky->GetRelativeOffset(BoxArea::Border).x == doctest::Approx(0.f));
 	}
 
 	document->Close();

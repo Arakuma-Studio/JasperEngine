@@ -1637,6 +1637,8 @@
 		524D4C5572FF4A1C74C32DF8 /* ContentValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5521C788CE3DCA1844 /* ContentValue.cpp */; };
 		524D4C55943CE355FCCC912F /* Cascade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C550718B218AB78A43D /* Cascade.cpp */; };
 		524D4C55CDEC91C3E4A06878 /* Cascade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C550718B218AB78A43D /* Cascade.cpp */; };
+		524D4C554284DC5821E2199D /* LayoutProperties.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55D4B6A5AF3E097BDF /* LayoutProperties.cpp */; };
+		524D4C557ECF139566AA9FCC /* LayoutProperties.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55D4B6A5AF3E097BDF /* LayoutProperties.cpp */; };
 		524D4C55B82C8E8E23E956B5 /* ShorthandOrigin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556B00709877FF3A6D /* ShorthandOrigin.cpp */; };
 		524D4C55A7C54E0F3C860DC4 /* ShorthandOrigin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556B00709877FF3A6D /* ShorthandOrigin.cpp */; };
 		524D4C55F980B3B6D95D36CE /* ShorthandFont.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55879CBFB6B5AE6A46 /* ShorthandFont.cpp */; };
@@ -4752,6 +4754,7 @@
 		524D4C558B231A2A813F3358 /* CounterResolver.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CounterResolver.cpp; sourceTree = "<group>"; };
 		524D4C5521C788CE3DCA1844 /* ContentValue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContentValue.cpp; sourceTree = "<group>"; };
 		524D4C550718B218AB78A43D /* Cascade.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Cascade.cpp; sourceTree = "<group>"; };
+		524D4C55D4B6A5AF3E097BDF /* LayoutProperties.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LayoutProperties.cpp; sourceTree = "<group>"; };
 		524D4C556B00709877FF3A6D /* ShorthandOrigin.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShorthandOrigin.cpp; sourceTree = "<group>"; };
 		524D4C55879CBFB6B5AE6A46 /* ShorthandFont.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShorthandFont.cpp; sourceTree = "<group>"; };
 		524D4C557BD8AC98A5F3744D /* PropertyParserFontFamily.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserFontFamily.cpp; sourceTree = "<group>"; };
@@ -8895,6 +8898,7 @@
 				524D4C557BD8AC98A5F3744D /* PropertyParserFontFamily.cpp */,
 				524D4C55879CBFB6B5AE6A46 /* ShorthandFont.cpp */,
 				524D4C556B00709877FF3A6D /* ShorthandOrigin.cpp */,
+				524D4C55D4B6A5AF3E097BDF /* LayoutProperties.cpp */,
 				524D4C550718B218AB78A43D /* Cascade.cpp */,
 				524D4C5521C788CE3DCA1844 /* ContentValue.cpp */,
 				524D4C558B231A2A813F3358 /* CounterResolver.cpp */,
@@ -12858,6 +12862,7 @@
 				524D4C55E8B8216E9475ADD3 /* CounterResolver.cpp in Sources */,
 				524D4C55BE06ADB4B3545726 /* ContentValue.cpp in Sources */,
 				524D4C55943CE355FCCC912F /* Cascade.cpp in Sources */,
+				524D4C554284DC5821E2199D /* LayoutProperties.cpp in Sources */,
 				524D4C55B82C8E8E23E956B5 /* ShorthandOrigin.cpp in Sources */,
 				524D4C55F980B3B6D95D36CE /* ShorthandFont.cpp in Sources */,
 				524D4C558DD162F75DEFF4A5 /* PropertyParserFontFamily.cpp in Sources */,
@@ -13101,6 +13106,7 @@
 				524D4C5527BC25CB46A177B7 /* CounterResolver.cpp in Sources */,
 				524D4C5572FF4A1C74C32DF8 /* ContentValue.cpp in Sources */,
 				524D4C55CDEC91C3E4A06878 /* Cascade.cpp in Sources */,
+				524D4C557ECF139566AA9FCC /* LayoutProperties.cpp in Sources */,
 				524D4C55A7C54E0F3C860DC4 /* ShorthandOrigin.cpp in Sources */,
 				524D4C55A7B337346785F567 /* ShorthandFont.cpp in Sources */,
 				524D4C55206BAEDFDCAA773F /* PropertyParserFontFamily.cpp in Sources */,

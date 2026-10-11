@@ -244,13 +244,21 @@ diagnostic (below) says what changed.
 | `line-height: normal` (also the initial value) | exact: the font's own line spacing (ascent + descent + line gap, rounded as in Chrome), per font and size |
 | `clip-path` shapes, `mask-image`, `object-fit`, `image-rendering: pixelated` | exact |
 | `::-webkit-scrollbar(-thumb/-track)`, `scrollbar-width`, `scrollbar-color`, `::placeholder`, `::-webkit-slider-thumb` | the engine's scrollbar, placeholder and slider parts |
-| `position: fixed` | positioned like `absolute` against the page (no scrolling page in a game UI) until phase 3; `sticky` acts as `relative` |
+| `position: fixed` | exact: placed against the screen (the viewport), not moved by any scrolling, not clipped by the scroll boxes it is in; an ancestor with a `transform` or `filter` is its containing block instead, as in browsers |
+| `position: sticky` (`top`/`bottom`/`left`/`right`) | exact: laid out in flow, it sticks inside the scrollport of its nearest scrolling ancestor while its parent box is in view (headers of a scrolling list, a sidebar) |
+| `overflow: clip`, `overflow-x/-y: clip`, `overflow-clip-margin`; `overflow` on `body` | exact: clips without scrolling (scripts cannot scroll it); `overflow` on `body` applies to the page, as in browsers. A page whose root scrolls (`overflow: auto`/`hidden` on `html` or `body`) is as tall as the screen and its content scrolls in it |
+| `scrollbar-gutter: stable` | the vertical scrollbar's space is kept in `auto`/`hidden` scroll boxes (`both-edges` reserves one side) |
+| flexbox: `order`, `flex-basis: content`/`min-content`/`max-content`/`fit-content`, `min-width/min-height: auto` (an item does not shrink below its content), `flex-wrap: wrap`/`wrap-reverse`, `align-*`/`justify-content` with `start`, `end`, `left`, `right`, `self-start`, `self-end`, `safe`/`unsafe`, `first`/`last baseline`, `inline-flex` | exact (the layout engine's flexbox is a port of Taffy's, checked against Chromium on Taffy's fixtures) |
+| `width`/`height`/`min-*`/`max-*`: `fit-content`, `min-content`, `max-content`, `stretch` (`-webkit-fill-available`), `fit-content(200px)` | exact (`fit-content(<length>)` on a width is Firefox's; Chrome ignores it) |
+| `aspect-ratio` (`16 / 9`, `auto 4 / 3`) | exact on blocks, flex and grid items and absolutely positioned boxes; taller content makes a block taller than its ratio, as in browsers |
+| margins | collapse as in browsers: siblings, a parent and its first or last child, through empty boxes (not across padding, borders, `overflow` other than `visible`, flex/grid containers) |
+| floats | as in browsers; a box with its own formatting context (`overflow: hidden`, `display: flow-root`, flex, grid) sits beside floats and narrows, or moves below them when it does not fit |
+| `display: contents`, `display: flow-root` | exact: `contents` boxes nothing (its children take its place in the layout), events and inheritance still go through it |
+| `justify-self`/`justify-items` on block children, `text-align: -webkit-center`/`-webkit-left`/`-webkit-right` | align block children narrower than their parent, as in Chrome |
 | CSS Grid: `display: grid`/`inline-grid`, `grid-template-columns`/`-rows` (`px`, `%`, `fr`, `auto`, `min-content`, `max-content`, `minmax()`, `fit-content()`, `repeat()` with `auto-fill`/`auto-fit`, `calc()`, line names), `grid-template-areas`, `grid-area`/`grid-row`/`grid-column` (line numbers, negative lines, `span`, names), `grid-auto-rows`/`-columns`/`-flow` (`dense`), `grid-template`, `grid`, `gap` (and `grid-gap`), `justify-items`/`-self`, `align-items`/`-self`, `place-*`, `justify-content`/`align-content`, `order` of grid items | exact: the layout engine lays the grid out (a port of the Taffy engine's CSS Grid, checked against Chromium); absolutely positioned children of a positioned grid use their grid area as containing block; `subgrid` and `masonry` are dropped with a warning (use nested grids with explicit track sizes); a grid follows `direction: rtl` text but its columns are not mirrored |
 
 **Not yet** (phase 3 adds them; until then a warning names each use):
-`order`,
-`aspect-ratio`, `width: fit-content`/`min-content`/`max-content` (written as `auto`),
-`position: sticky`, `%` radii other than 50%, `@container`,
+`%` radii other than 50%, `@container`,
 dashed/dotted/double borders (solid). Dropped with a warning and not planned: multi-column
 layout (`columns`), `writing-mode`, `font-variant-*`, `::first-line`, `::first-letter`,
 `@counter-style` (use one of the built-in counter styles). `<video>`, `<canvas>`, `<iframe>` are a
@@ -273,15 +281,14 @@ placeholder box (render a scene into a texture instead); JavaScript never runs.
   columns without a width share the table's width equally (Chrome sizes them by content): give
   tables and columns a width. `border-collapse: collapse` removes the spacing but keeps each
   cell's own borders (this one warns).
-- A `<legend>` sits on its fieldset's top border with a gap, as in Chrome, but its box is as
-  wide as the fieldset until phase 3 (a legend's own background or border spans the fieldset:
-  give the legend a `width`).
+- A `<legend>` sits on its fieldset's top border with a gap and is as wide as its text, as in
+  Chrome.
 - `pre`, `code`, `kbd` and `samp` use the inherited font size, where Chrome draws them at 13px
   when no font size is set anywhere (its monospace default); there is no monospace face built
   in (`monospace` is Roboto), and a tab in `<pre>` is one space (`tab-size` has no effect).
 - A password field shows `*` for each character, not a bullet.
-- Margins of a parent and its first or last child do not collapse (sibling margins do) until
-  phase 3: a heading at the top of a box keeps its top margin inside the box.
+- Right-to-left documents: flex rows, `start`/`end` alignment and sticky/fixed insets are not
+  mirrored (`direction: rtl` affects the text only).
 
 ### Reading the diagnostics
 
@@ -1153,10 +1160,10 @@ What standard HTML/CSS does not do yet is listed under "Writing HTML/CSS for the
 rewrites table, "Not yet" and "Differences without a diagnostic"); the Console names every
 use in your files. Later phases:
 - Phase 3, the layout engine itself: `calc()` at layout time
-  in every property, border styles, `%` radii, `order`, `aspect-ratio`,
-  `fit-content`, real `position: fixed`/`sticky`, group `opacity`,
-  parent/child margin collapsing, a legend as wide as its text. (Transitions and animations
-  are already native: easings, longhands, fill modes, transitions on any change.)
+  in every property, border styles, `%` radii, group `opacity` (`::before`/`::after`, `:has()`, `order`,
+  `aspect-ratio`, sizing keywords, `position: fixed`/`sticky`, margin collapsing, the legend's width and
+  `line-height: normal` are done; transitions and animations are already native: easings, longhands, fill modes,
+  transitions on any change).
 - Phase 4, tools for agents: `check --ui`, the MCP tools `inspect_ui`/`assert_ui`/
   `create_ui_document`, `import_files` for remote fonts and images, rewriting references
   inside HTML/CSS when an asset is renamed, the generated support matrix (every property,

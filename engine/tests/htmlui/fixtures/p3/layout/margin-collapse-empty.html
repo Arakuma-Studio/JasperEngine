@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: margins of siblings and through empty blocks</title>
+<style>
+  html, body { margin: 0; }
+  .col { position: absolute; top: 10px; width: 80px; background-color: #eeeeee; }
+  .box { height: 20px; background-color: #334466; }
+  .box + .box, .last { background-color: #aa3333; }
+  .float { float: left; width: 30px; height: 40px; background-color: #33aa55; }
+</style>
+</head>
+<body>
+<div class="col" style="left: 10px"><div id="s1" class="box" style="margin-bottom: 20px"></div><div id="s2" class="box" style="margin-top: 12px"></div></div>
+<div class="col" style="left: 100px"><div id="n1" class="box" style="margin-bottom: 20px"></div><div id="n2" class="box" style="margin-top: -8px"></div></div>
+<div class="col" style="left: 190px"><div id="e1" class="box" style="margin-bottom: 10px"></div><div id="e-empty" style="margin-top: 30px; margin-bottom: 18px"></div><div id="e2" class="box last" style="margin-top: 6px"></div></div>
+<div class="col" style="left: 280px"><div id="b1" class="box" style="margin-bottom: 10px"></div><div id="b-empty" style="margin-top: 30px; margin-bottom: 18px; border-top: 2px solid #336644"></div><div id="b2" class="box last" style="margin-top: 6px"></div></div>
+<div class="col" style="left: 370px"><div id="f-float" class="float"></div><div id="f-clear" style="clear: left; margin-top: 25px; margin-bottom: 30px"></div><div id="f2" class="box last"></div></div>
+<div class="col" style="left: 460px"><div id="t-float" class="float"></div><div id="t-bfc" class="box" style="overflow: hidden; margin-top: 10px"></div><div id="t2" class="box last" style="overflow: hidden; width: 60px; margin-top: 4px"></div></div>
+</body>
+</html>

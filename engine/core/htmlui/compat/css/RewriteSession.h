@@ -225,6 +225,7 @@ namespace jasperengine::htmlui::compat {
         // §3.10 item 1: no root rule sets a background and a `body` rule does: the body's
         // background is written on the root (it covers the canvas, as CSS propagates it)
         bool propagateBodyBackground = false;
+        bool propagateBodyOverflow = false;   // body overflow -> root (phase 3 §3.11.3)
         SelectorOptions selectorOptions;            // author rules
         SelectorOptions userAgentSelectorOptions;   // the same for user-agent rules
         uint32_t nextOrder = 0;

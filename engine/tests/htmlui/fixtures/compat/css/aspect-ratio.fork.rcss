@@ -1,0 +1,12 @@
+#htmlui-root .card {
+aspect-ratio: 16 / 9;
+}
+#htmlui-root img.thumb {
+aspect-ratio: 1;
+}
+#htmlui-root .video video {
+aspect-ratio: auto 4 / 3;
+}
+#htmlui-root svg {
+aspect-ratio: 1 / 1;
+}

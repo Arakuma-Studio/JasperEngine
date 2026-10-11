@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: a transformed ancestor is the containing block of position: fixed</title>
+<style>
+  html, body { margin: 0; }
+  #transformed { position: absolute; left: 20px; top: 20px; width: 160px; height: 90px; padding: 5px; transform: translate(10px, 5px); background-color: #c8d4e8; }
+  #fixed { position: fixed; right: 10px; bottom: 10px; width: 50px; height: 30px; background-color: #aa3333; }
+  #stretch { position: fixed; left: 10px; top: 10px; width: 50%; height: 20%; background-color: #334466; }
+  #filtered { position: absolute; left: 20px; top: 130px; width: 160px; height: 40px; filter: opacity(1); background-color: #cfe8c8; }
+  #in-filter { position: fixed; left: 0; bottom: 0; width: 25%; height: 50%; background-color: #33aa55; }
+</style>
+</head>
+<body>
+<div id="transformed"><div id="fixed"></div><div id="stretch"></div></div>
+<div id="filtered"><div id="in-filter"></div></div>
+</body>
+</html>

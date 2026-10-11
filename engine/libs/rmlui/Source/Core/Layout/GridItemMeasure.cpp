@@ -158,6 +158,9 @@ namespace GridLayout {
 		item.box_sizing = computed.box_sizing();
 		item.size_width = computed.width();
 		item.size_height = computed.height();
+		item.width_keyword = computed.width_keyword();
+		item.height_keyword = computed.height_keyword();
+		item.aspect_ratio = (item.element->IsReplaced() ? 0.f : computed.aspect_ratio());
 		item.min_width = computed.min_width();
 		item.min_height = computed.min_height();
 		item.max_width = computed.max_width();
@@ -178,6 +181,8 @@ namespace GridLayout {
 		{
 			// An anonymous item: its box has the initial values, the computed values of a text node are its parent's.
 			item.size_width = item.size_height = Style::LengthPercentageAuto(Style::LengthPercentageAuto::Auto);
+			item.width_keyword = item.height_keyword = Style::SizingKeyword::None;
+			item.aspect_ratio = 0.f;
 			item.min_width = item.min_height = Style::LengthPercentageAuto(Style::LengthPercentageAuto::Auto);
 			item.max_width = item.max_height = Style::LengthPercentage(Style::LengthPercentage::Length, FLT_MAX);
 			for (int i = 0; i < 4; i++)
@@ -296,15 +301,25 @@ namespace GridLayout {
 		const AxisPair<float> box_sizing_adjustment =
 			(item.box_sizing == Style::BoxSizing::ContentBox ? padding_border : AxisPair<float>{0.f, 0.f});
 
-		const OptionalFloat inherent_width = MaybeAdd(MaybeResolve(item.size_width, grid_area_size.width), box_sizing_adjustment.width);
-		const OptionalFloat inherent_height = MaybeAdd(MaybeResolve(item.size_height, grid_area_size.height), box_sizing_adjustment.height);
+		// The preferred aspect ratio is that of the box-sizing box: applied before the padding and border are added.
+		OptionalFloat inherent_width = MaybeResolve(item.size_width, grid_area_size.width);
+		OptionalFloat inherent_height = MaybeResolve(item.size_height, grid_area_size.height);
+		MaybeApplyAspectRatio(inherent_width, inherent_height, item.aspect_ratio);
+		inherent_width = MaybeAdd(inherent_width, box_sizing_adjustment.width);
+		inherent_height = MaybeAdd(inherent_height, box_sizing_adjustment.height);
 		// The size is floored by the padding and border.
-		OptionalFloat min_width = MaybeAdd(MaybeResolve(item.min_width, grid_area_size.width), box_sizing_adjustment.width);
-		OptionalFloat min_height = MaybeAdd(MaybeResolve(item.min_height, grid_area_size.height), box_sizing_adjustment.height);
+		OptionalFloat min_width = MaybeResolve(item.min_width, grid_area_size.width);
+		OptionalFloat min_height = MaybeResolve(item.min_height, grid_area_size.height);
+		MaybeApplyAspectRatio(min_width, min_height, item.aspect_ratio);
+		min_width = MaybeAdd(min_width, box_sizing_adjustment.width);
+		min_height = MaybeAdd(min_height, box_sizing_adjustment.height);
 		min_width = min_width ? std::max(*min_width, padding_border.width) : padding_border.width;
 		min_height = min_height ? std::max(*min_height, padding_border.height) : padding_border.height;
-		const OptionalFloat max_width = MaybeAdd(MaybeResolveMax(item.max_width, grid_area_size.width), box_sizing_adjustment.width);
-		const OptionalFloat max_height = MaybeAdd(MaybeResolveMax(item.max_height, grid_area_size.height), box_sizing_adjustment.height);
+		OptionalFloat max_width = MaybeResolveMax(item.max_width, grid_area_size.width);
+		OptionalFloat max_height = MaybeResolveMax(item.max_height, grid_area_size.height);
+		MaybeApplyAspectRatio(max_width, max_height, item.aspect_ratio);
+		max_width = MaybeAdd(max_width, box_sizing_adjustment.width);
+		max_height = MaybeAdd(max_height, box_sizing_adjustment.height);
 
 		auto AreaMinusMargins = [&](Axis axis) -> OptionalFloat {
 			const OptionalFloat area = grid_area_size.Get(axis);
@@ -315,16 +330,26 @@ namespace GridLayout {
 
 		// An auto size is stretched by 'stretch' or 'normal' self alignment without auto margins (always 'normal' here, unlike
 		// at the final alignment).
-		const bool stretch_width = (item.justify_self.keyword == SelfAlign::Stretch || item.justify_self.keyword == SelfAlign::Normal);
-		const bool stretch_height = (item.align_self.keyword == SelfAlign::Stretch || item.align_self.keyword == SelfAlign::Normal);
+		// A content sizing keyword (min-content, max-content, fit-content) is not stretched: the size is measured. 'stretch'
+		// fills the area whatever the alignment.
+		using Style::SizingKeyword;
+		const bool stretch_width = (item.width_keyword == SizingKeyword::Stretch ||
+			(item.width_keyword == SizingKeyword::None &&
+				(item.justify_self.keyword == SelfAlign::Stretch || item.justify_self.keyword == SelfAlign::Normal)));
+		const bool stretch_height = (item.height_keyword == SizingKeyword::Stretch ||
+			(item.height_keyword == SizingKeyword::None &&
+				(item.align_self.keyword == SelfAlign::Stretch || item.align_self.keyword == SelfAlign::Normal)));
 		OptionalFloat width = inherent_width;
 		if (!width && item.margin[3].type != Style::LengthPercentageAuto::Auto && item.margin[1].type != Style::LengthPercentageAuto::Auto &&
 			stretch_width)
 			width = AreaMinusMargins(Axis::Horizontal);
+		// The aspect ratio again after each stretch (as Taffy does).
 		OptionalFloat height = inherent_height;
+		MaybeApplyAspectRatio(width, height, item.aspect_ratio);
 		if (!height && item.margin[0].type != Style::LengthPercentageAuto::Auto && item.margin[2].type != Style::LengthPercentageAuto::Auto &&
 			stretch_height)
 			height = AreaMinusMargins(Axis::Vertical);
+		MaybeApplyAspectRatio(width, height, item.aspect_ratio);
 
 		return SizeOptional{MaybeClamp(width, min_width, max_width), MaybeClamp(height, min_height, max_height)};
 	}
@@ -343,6 +368,20 @@ namespace GridLayout {
 	static float MeasureWidth(GridItem& item, Vector2f containing_block, AvailableSpace available_width)
 	{
 		Element* element = item.element;
+		// A content sizing keyword of 'width' is the constraint the item is measured under.
+		switch (item.width_keyword)
+		{
+		case Style::SizingKeyword::MinContent: available_width = AvailableSpace::MinContent(); break;
+		case Style::SizingKeyword::MaxContent: available_width = AvailableSpace::MaxContent(); break;
+		case Style::SizingKeyword::FitContentLength:
+		{
+			const Style::LengthPercentage limit = element->GetComputedValues().fit_content_width();
+			if (limit.type == Style::LengthPercentage::Length || containing_block.x >= 0.f)
+				available_width = AvailableSpace::Definite(ResolveValue(limit, Math::Max(containing_block.x, 0.f)));
+		}
+		break;
+		default: break;
+		}
 		float width = 0.f;
 		switch (available_width.type)
 		{
@@ -371,15 +410,23 @@ namespace GridLayout {
 		Axis axis)
 	{
 		const Vector2f containing_block(parent_size.width ? *parent_size.width : -1.f, parent_size.height ? *parent_size.height : -1.f);
+		// A size from the other one through the preferred aspect ratio (of the box-sizing box).
+		const OptionalFloat basis = (containing_block.x >= 0.f ? OptionalFloat(containing_block.x) : std::nullopt);
+		const AxisPair<float> padding_border = PaddingBorderSize(item, basis);
+		const AxisPair<float> ratio_edges = (item.box_sizing == Style::BoxSizing::ContentBox ? padding_border : AxisPair<float>{0.f, 0.f});
 		if (axis == Axis::Horizontal)
 		{
 			if (known_dimensions.width)
 				return *known_dimensions.width;
+			if (known_dimensions.height && item.aspect_ratio > 0.f)
+				return std::max(*known_dimensions.height - ratio_edges.height, 0.f) * item.aspect_ratio + ratio_edges.width;
 			return MeasureWidth(item, containing_block, available_space.width);
 		}
 		if (known_dimensions.height)
 			return *known_dimensions.height;
 		const float width = known_dimensions.width ? *known_dimensions.width : MeasureWidth(item, containing_block, available_space.width);
+		if (item.aspect_ratio > 0.f)
+			return std::max(width - ratio_edges.width, 0.f) / item.aspect_ratio + ratio_edges.height;
 		return LayoutDetails::GetContentHeightForWidth(item.element, width, containing_block);
 	}
 
