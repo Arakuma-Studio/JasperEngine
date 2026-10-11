@@ -1,4 +1,5 @@
 #include "ElementAnimation.h"
+#include "../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../Include/RmlUi/Core/DecorationTypes.h"
 #include "../../Include/RmlUi/Core/Decorator.h"
 #include "../../Include/RmlUi/Core/Element.h"
@@ -14,6 +15,7 @@
 #include "ComputeProperty.h"
 #include "ElementStyle.h"
 #include "ElementTransitions.h"
+#include "PropertyParserColour.h"
 #include "TextShadow.h"
 #include "TransformUtilities.h"
 #include <cmath>
@@ -60,11 +62,27 @@ static Colourb InterpolateColour(Colourb c0, Colourb c1, float alpha)
 	return InterpolatePremultipliedColour(c0.ToPremultiplied(), c1.ToPremultiplied(), alpha).ToNonPremultiplied();
 }
 
+// 'currentcolor' in an interpolation is the element's colour at this frame, in 'color' itself its parent's (CSS Color 4:
+// the interpolated value is a mix with currentcolor, which follows the colour while the transition or animation runs).
+static Colourb CurrentColorOf(Element& element, const PropertyDefinition* definition)
+{
+	if (definition && definition->GetId() == PropertyId::Color)
+	{
+		Element* parent = element.GetParentNode();
+		return parent ? parent->GetComputedValues().color() : DefaultComputedValues().color();
+	}
+	return element.GetComputedValues().color();
+}
+
 // Box shadows interpolate pairwise, the shorter list padded with transparent zero shadows (CSS Backgrounds 3 §7.2); a
 // pair with one shadow inset and the other not makes the lists discrete.
 static bool InterpolateBoxShadows(const BoxShadowList& list0, const BoxShadowList& list1, float alpha, Element& element, BoxShadowList& result)
 {
 	const size_t count = Math::Max(list0.size(), list1.size());
+	const Colourb element_colour = element.GetComputedValues().color();
+	auto colour_of = [&](const BoxShadow& s) {
+		return s.current_color ? PropertyParserColour::ResolveCurrentColor(s.color_mix, element_colour).ToPremultiplied() : s.color;
+	};
 	result.clear();
 	result.reserve(count);
 	for (size_t i = 0; i < count; i++)
@@ -80,9 +98,23 @@ static bool InterpolateBoxShadows(const BoxShadowList& list0, const BoxShadowLis
 		if (s0.inset != s1.inset)
 			return false;
 #ifdef RMLUI_MATH_EXPRESSIONS
-		if (s0.offset_x_calculation || s0.offset_y_calculation || s0.blur_radius_calculation || s0.spread_distance_calculation ||
-			s1.offset_x_calculation || s1.offset_y_calculation || s1.blur_radius_calculation || s1.spread_distance_calculation)
-			return false;
+		// Shadow lengths take no percentage: a calc() is a length in pixels at this frame, as its computed value.
+		auto resolve = [&](NumericValue& value, CalculationPtr& calculation) {
+			if (!calculation)
+				return true;
+			float pixels = 0.f;
+			if (!ResolveElementCalculation(*calculation, element, 0.f, pixels))
+				return false;
+			value = NumericValue(pixels, Unit::PX);
+			calculation = nullptr;
+			return true;
+		};
+		for (BoxShadow* s : {&s0, &s1})
+		{
+			if (!resolve(s->offset_x, s->offset_x_calculation) || !resolve(s->offset_y, s->offset_y_calculation) ||
+				!resolve(s->blur_radius, s->blur_radius_calculation) || !resolve(s->spread_distance, s->spread_distance_calculation))
+				return false;
+		}
 #endif
 		auto length = [&](NumericValue v0, NumericValue v1) {
 			if (v0.unit == Unit::UNKNOWN)
@@ -97,7 +129,13 @@ static bool InterpolateBoxShadows(const BoxShadowList& list0, const BoxShadowLis
 		};
 		BoxShadow shadow;
 		shadow.inset = s0.inset;
-		shadow.color = InterpolatePremultipliedColour(s0.color, s1.color, alpha);
+		if (s0.current_color && s1.current_color && s0.color_mix == s1.color_mix)
+		{
+			shadow.current_color = true;
+			shadow.color_mix = s0.color_mix;
+		}
+		else
+			shadow.color = InterpolatePremultipliedColour(colour_of(s0), colour_of(s1), alpha);
 		shadow.offset_x = length(s0.offset_x, s1.offset_x);
 		shadow.offset_y = length(s0.offset_y, s1.offset_y);
 		shadow.blur_radius = length(s0.blur_radius, s1.blur_radius);
@@ -467,6 +505,15 @@ static Property InterpolateProperties(const Property& p0, const Property& p1, fl
 	}
 #endif
 
+	// 'currentcolor' or a color-mix() of it against a colour or another one.
+	const bool current0 = PropertyParserColour::DependsOnCurrentColor(p0), current1 = PropertyParserColour::DependsOnCurrentColor(p1);
+	if ((current0 || current1) && (current0 || p0.unit == Unit::COLOUR) && (current1 || p1.unit == Unit::COLOUR) && !(p0 == p1))
+	{
+		const Colourb current = CurrentColorOf(element, definition);
+		const Colourb c = InterpolateColour(PropertyParserColour::Resolve(p0, current), PropertyParserColour::Resolve(p1, current), alpha);
+		return Property{c, Unit::COLOUR};
+	}
+
 	if (p0.unit == Unit::KEYWORD && p1.unit == Unit::KEYWORD)
 	{
 		// Discrete interpolation, swap at alpha = 0.5.
@@ -667,10 +714,20 @@ static Property InterpolateProperties(const Property& p0, const Property& p1, fl
 
 		const size_t N = c0.size();
 		ColorStopList result(N);
+		const Colourb element_colour = element.GetComputedValues().color();
+		auto colour_of = [&](const ColorStop& stop) {
+			return stop.current_color ? PropertyParserColour::ResolveCurrentColor(stop.color_mix, element_colour) : stop.color.ToNonPremultiplied();
+		};
 
 		for (size_t i = 0; i < N; i++)
 		{
-			result[i].color = InterpolateColour(c0[i].color.ToNonPremultiplied(), c1[i].color.ToNonPremultiplied(), alpha).ToPremultiplied();
+			if (c0[i].current_color && c1[i].current_color && c0[i].color_mix == c1[i].color_mix)
+			{
+				result[i].current_color = true;
+				result[i].color_mix = c0[i].color_mix;
+			}
+			else
+				result[i].color = InterpolateColour(colour_of(c0[i]), colour_of(c1[i]), alpha).ToPremultiplied();
 
 #ifdef RMLUI_MATH_EXPRESSIONS
 			if (c0[i].position_calculation || c1[i].position_calculation)
@@ -988,6 +1045,11 @@ bool IsInterpolable(const Property& from, const Property& to, Element& element, 
 			return true;
 		return Any(from.unit & Unit::ANGLE) && Any(to.unit & Unit::ANGLE);
 	}
+
+	// 'currentcolor' or a color-mix() of it against a colour or another one (the element's colour at each frame).
+	const bool current_from = PropertyParserColour::DependsOnCurrentColor(from), current_to = PropertyParserColour::DependsOnCurrentColor(to);
+	if ((current_from || current_to) && (current_from || from.unit == Unit::COLOUR) && (current_to || to.unit == Unit::COLOUR))
+		return !(from == to);
 
 	if (from.unit != to.unit)
 		return false;

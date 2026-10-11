@@ -1,0 +1,4 @@
+{
+ "comment": "A grid whose track lists and gaps use vmin, vmax, ch, ex, dvw and calc()/min() of them (the values package's units inside the grid package's values).",
+ "viewport": [400, 300]
+}

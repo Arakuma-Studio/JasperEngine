@@ -464,8 +464,13 @@ void jasperengine::htmlui::compat::rewriteBorder(DeclContext& context){
     if (style.empty())
         style = "none";
     if (color.empty()){
-        const std::string ruleColor = context.rule ? ruleStaticColor(context.session, *context.rule) : std::string();
-        color = ruleColor.empty() ? serialize(ValueNormalizer::currentColorCompanion()) : ruleColor;
+        if (context.fork(ForkFeature::CurrentColor)){
+            // the fork resolves it to the element's color
+            color = "currentcolor";
+        }else{
+            const std::string ruleColor = context.rule ? ruleStaticColor(context.session, *context.rule) : std::string();
+            color = ruleColor.empty() ? serialize(ValueNormalizer::currentColorCompanion()) : ruleColor;
+        }
     }
     reportStyle(context, style);
     emitStyle(context, sides, style, color, width, widthGiven);

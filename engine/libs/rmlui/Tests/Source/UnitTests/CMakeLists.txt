@@ -8,6 +8,7 @@ add_executable(${TARGET_NAME}
 	BorderStyle.cpp
 	Calculation.cpp
 	CalculationTypes.cpp
+	Colors.cpp
 	ContainingBlockOverride.cpp
 	Core.cpp
 	CustomProperties.cpp
@@ -62,10 +63,13 @@ add_executable(${TARGET_NAME}
 	TextTransform.cpp
 	TransitionsAnyChange.cpp
 	URL.cpp
+	Values.cpp
+	ValuesInterpolation.cpp
 	Variant.cpp
 	Visibility.cpp
 	XMLParser.cpp
 	PluginDataModel.cpp
+	Position.cpp
 )
 
 set_common_target_options(${TARGET_NAME})

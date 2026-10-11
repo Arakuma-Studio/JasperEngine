@@ -121,6 +121,19 @@ const char* jasperengine::htmlui::compat::canonicalUnit(UnitCategory category){
     }
 }
 
+bool jasperengine::htmlui::compat::isForkUnit(std::string_view unit){
+    if (unit.size() > 6)
+        return false;
+    const LowerUnit lower(unit);
+    static constexpr std::string_view units[] = {"vmin", "vmax", "ch", "ex", "turn", "grad", "svw", "svh", "lvw", "lvh", "dvw", "dvh",
+                                                 "svmin", "svmax", "lvmin", "lvmax", "dvmin", "dvmax"};
+    for (std::string_view u : units){
+        if (lower.view == u)
+            return true;
+    }
+    return false;
+}
+
 RcssUnit jasperengine::htmlui::compat::rcssUnit(std::string_view unit){
     RcssUnit out;
     if (unit.size() > 16){

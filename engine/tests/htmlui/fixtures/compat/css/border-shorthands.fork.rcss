@@ -11,7 +11,6 @@ border-bottom-color: #333333ff;
 border-left-width: 2px;
 border-left-style: solid;
 border-left-color: #333333ff;
-border-image: none;
 }
 #htmlui-root .order {
 border-top-width: 1px;
@@ -26,63 +25,58 @@ border-bottom-color: #ff0000ff;
 border-left-width: 1px;
 border-left-style: dashed;
 border-left-color: #ff0000ff;
-border-image: none;
 }
 #htmlui-root .width-only {
 border-top-width: 4px;
 border-top-style: none;
-border-top-color: var(--html-current-color, #000000ff);
+border-top-color: currentcolor;
 border-right-width: 4px;
 border-right-style: none;
-border-right-color: var(--html-current-color, #000000ff);
+border-right-color: currentcolor;
 border-bottom-width: 4px;
 border-bottom-style: none;
-border-bottom-color: var(--html-current-color, #000000ff);
+border-bottom-color: currentcolor;
 border-left-width: 4px;
 border-left-style: none;
-border-left-color: var(--html-current-color, #000000ff);
-border-image: none;
+border-left-color: currentcolor;
 }
 #htmlui-root .style-only {
 border-top-width: 3px;
 border-top-style: solid;
-border-top-color: var(--html-current-color, #000000ff);
+border-top-color: currentcolor;
 border-right-width: 3px;
 border-right-style: solid;
-border-right-color: var(--html-current-color, #000000ff);
+border-right-color: currentcolor;
 border-bottom-width: 3px;
 border-bottom-style: solid;
-border-bottom-color: var(--html-current-color, #000000ff);
+border-bottom-color: currentcolor;
 border-left-width: 3px;
 border-left-style: solid;
-border-left-color: var(--html-current-color, #000000ff);
-border-image: none;
+border-left-color: currentcolor;
 }
 #htmlui-root .none {
 border-top-style: none;
-border-top-color: var(--html-current-color, #000000ff);
+border-top-color: currentcolor;
 border-right-style: none;
-border-right-color: var(--html-current-color, #000000ff);
+border-right-color: currentcolor;
 border-bottom-style: none;
-border-bottom-color: var(--html-current-color, #000000ff);
+border-bottom-color: currentcolor;
 border-left-style: none;
-border-left-color: var(--html-current-color, #000000ff);
-border-image: none;
+border-left-color: currentcolor;
 }
 #htmlui-root .zero {
 border-top-width: 0px;
 border-top-style: none;
-border-top-color: var(--html-current-color, #000000ff);
+border-top-color: currentcolor;
 border-right-width: 0px;
 border-right-style: none;
-border-right-color: var(--html-current-color, #000000ff);
+border-right-color: currentcolor;
 border-bottom-width: 0px;
 border-bottom-style: none;
-border-bottom-color: var(--html-current-color, #000000ff);
+border-bottom-color: currentcolor;
 border-left-width: 0px;
 border-left-style: none;
-border-left-color: var(--html-current-color, #000000ff);
-border-image: none;
+border-left-color: currentcolor;
 }
 #htmlui-root .side {
 border-top-width: 1px;
@@ -123,7 +117,6 @@ border-bottom-color: var(--line);
 border-left-width: 1px;
 border-left-style: solid;
 border-left-color: var(--line);
-border-image: none;
 }
 #htmlui-root .var-width {
 border-top-width: var(--w);
@@ -144,7 +137,6 @@ border-bottom-color: #ff0000ff;
 border-left-width: 1px;
 border-left-style: solid;
 border-left-color: #ff0000ff;
-border-image: none;
 }
 body#htmlui-root {
 --line: #444444ff;

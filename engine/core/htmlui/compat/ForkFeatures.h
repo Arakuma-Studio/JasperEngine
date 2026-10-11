@@ -24,6 +24,7 @@ namespace jasperengine::htmlui::compat {
         // appended by phase 3 (phase-3 spec Appendix A)
         TextShadow, TextProperties,
         AnimationLonghands, IndividualTransforms,   // p3-animation
+        CurrentColor, ExtraUnits, LineHeightNormal,         // p3-values
         Outline, ObjectFit,                         // p3-paint
         Count
     };

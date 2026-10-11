@@ -280,13 +280,14 @@ TEST_CASE("Element")
 		inner_rml = StringUtilities::StripWhitespace(document->GetInnerRML());
 		CHECK(inner_rml == R"(<div>This is a <span>sample</span>.</div>)");
 
-		div->SetProperty("cursor", "x<y");
+		// A string property ('cursor' takes CSS keywords only since phase 3, values).
+		div->SetProperty("nav-up", "x<y");
 		inner_rml = StringUtilities::StripWhitespace(document->GetInnerRML());
-		CHECK(inner_rml == R"(<div style="cursor: x&lt;y;">This is a <span>sample</span>.</div>)");
+		CHECK(inner_rml == R"(<div style="nav-up: x&lt;y;">This is a <span>sample</span>.</div>)");
 
 		span->SetProperty("font-weight", "bold");
 		inner_rml = StringUtilities::StripWhitespace(document->GetInnerRML());
-		CHECK(inner_rml == R"(<div style="cursor: x&lt;y;">This is a <span style="font-weight: bold;">sample</span>.</div>)");
+		CHECK(inner_rml == R"(<div style="nav-up: x&lt;y;">This is a <span style="font-weight: bold;">sample</span>.</div>)");
 	}
 
 	SUBCASE("InsertBefore")

@@ -4,6 +4,7 @@
 #endif
 #include "../../Include/RmlUi/Core/Log.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
+#include "PropertyParserColour.h"
 
 namespace Rml {
 
@@ -107,6 +108,13 @@ bool PropertyDefinition::GetValue(String& value, const Property& property) const
 	{
 	case Unit::KEYWORD:
 	{
+		// 'currentcolor' of a colour property (phase 3, values).
+		if (PropertyParserColour::IsCurrentColor(property))
+		{
+			value = "currentcolor";
+			return true;
+		}
+
 		int parser_index = property.parser_index;
 		if (parser_index < 0 || parser_index >= (int)parsers.size())
 		{

@@ -228,4 +228,17 @@ TEST(CompatColor, HexOutput){
     ColorParseInfo dynamic;
     EXPECT_FALSE(ColorValue::parse("color-mix(in srgb, var(--x), red)", &dynamic).has_value());
     EXPECT_TRUE(dynamic.dynamic);
+    EXPECT_TRUE(dynamic.dynamicVar);
+    EXPECT_FALSE(dynamic.currentColorMix);
+    // a color-mix() of currentColor is valid, with a value known for an element only (p3-values)
+    ColorParseInfo mix;
+    EXPECT_FALSE(ColorValue::parse("color-mix(in srgb, currentColor 30%, red)", &mix).has_value());
+    EXPECT_TRUE(mix.currentColorMix);
+    EXPECT_FALSE(mix.dynamicVar);
+    ColorParseInfo nested;
+    EXPECT_FALSE(ColorValue::parse("color-mix(in oklch, color-mix(in srgb, currentcolor, red), blue 10%)", &nested).has_value());
+    EXPECT_TRUE(nested.currentColorMix);
+    ColorParseInfo bad;
+    EXPECT_FALSE(ColorValue::parse("color-mix(in srgb, currentcolor 150%, red)", &bad).has_value());
+    EXPECT_FALSE(bad.currentColorMix);
 }

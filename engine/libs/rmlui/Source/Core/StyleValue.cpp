@@ -13,6 +13,8 @@ namespace Rml {
 
 StyleValue::~StyleValue() {}
 
+RMLUI_RTTI_Define(StyleValue)
+
 SharedPtr<const StyleValue> StyleValue::Interpolate(const StyleValue& /*to*/, float /*alpha*/, Element& /*element*/) const
 {
 	return nullptr;

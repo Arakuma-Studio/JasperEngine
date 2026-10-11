@@ -432,7 +432,7 @@ TEST_CASE("PropertyParser.InvalidShorthands")
 		{false, "perspective-origin", "center center center"},      // Too many values
 		{false, "perspective-origin", "left top 50px"},             // Too many values
 		{false, "perspective-origin", "50px 50px left"},            // Too many values
-		{false, "perspective-origin", "top left"},                  // Wrong order
+		{true, "perspective-origin", "top left"},                   // Keywords in either order (CSS <position>; phase 3, values)
 		{false, "perspective-origin", "50px left"},                 // Wrong order
 
 		{true, "font", "20px arial"},                               //
