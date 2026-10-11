@@ -804,7 +804,7 @@ std::vector<ShaderManifestDiagnostic> editor::ProjectChecks::validateShaderManif
         // a row behind a feature the compiled variant does not enable is not in it
         const std::vector<std::string> enabled = manifest.resolveFeatures(ShaderReference::getFeatures(reference));
         auto off = [&enabled](const std::string& feature) {
-            return !feature.empty() && std::find(enabled.begin(), enabled.end(), feature) == enabled.end();
+            return !ShaderManifest::isRowShown(feature, enabled);
         };
         manifest.properties.erase(std::remove_if(manifest.properties.begin(), manifest.properties.end(),
             [&](const ShaderManifestProperty& p) { return off(p.feature); }), manifest.properties.end());

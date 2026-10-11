@@ -273,7 +273,7 @@ Material capture: the colour comes from a matcap image looked up by the view-spa
 | Property | Kind | Default | Description |
 |---|---|---|---|
 | `baseColor` | colour | (1, 1, 1, 1) | Tint |
-| `tiling` | vector4 | (1, 1, 0, 0) | Tiling (xy) and offset (zw) |
+| `tiling` | vector4 | (1, 1, 0, 0) | Tiling (xy) and offset (zw) (without `MATCAP_MODE_REPLACE`) |
 | `matcapGain` | range 0 to 4 | 1 | Matcap gain |
 | `matcapPower` | range 0.1 to 8 | 1 | Matcap power |
 | `rimColor` | HDR colour | (1, 1, 1, 1) | Rim colour (with `RIM`) |
@@ -282,7 +282,7 @@ Material capture: the colour comes from a matcap image looked up by the view-spa
 | Texture | Default | Description |
 |---|---|---|
 | `u_matcapTexture` | white | Matcap |
-| `u_baseTexture` | white | Base map |
+| `u_baseTexture` | white | Base map (without `MATCAP_MODE_REPLACE`) |
 
 | Feature | Default | Description |
 |---|---|---|

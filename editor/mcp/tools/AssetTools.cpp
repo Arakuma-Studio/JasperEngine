@@ -1950,6 +1950,24 @@ void checkShaderTool(const CallPtr& call) {
                 if (use.base == base) type = use.shaderType;
             }
         }
+        if (library) {
+            // the variant the engine would draw: the manifest's default features and keyword
+            // values added to the ones named, and (a colour program) the blend define of its
+            // default state, or of a BLEND_* the reference names
+            std::vector<std::string> requested = ShaderReference::getFeatures(base);
+            MaterialBlendMode blend = MaterialBlendMode::AUTO;
+            static const std::pair<const char*, MaterialBlendMode> blends[] = {
+                {"BLEND_NONE", MaterialBlendMode::NONE}, {"BLEND_ALPHA", MaterialBlendMode::ALPHA},
+                {"BLEND_PREMULTIPLIED", MaterialBlendMode::PREMULTIPLIED}, {"BLEND_ADDITIVE", MaterialBlendMode::ADDITIVE},
+                {"BLEND_MULTIPLY", MaterialBlendMode::MULTIPLY}};
+            for (const auto& [define, mode] : blends) {
+                if (std::find(requested.begin(), requested.end(), define) != requested.end()) blend = mode;
+            }
+            const std::string shaderBase = ShaderReference::getBase(base);
+            base = (type == static_cast<int>(ShaderType::DEPTH))
+                ? ShaderReference::getVariantReference(shaderBase, requested)
+                : ShaderReference::getColorVariantReference(shaderBase, requested, blend);
+        }
         forks.push_back({base, type});
     } else {
         // every fork in use

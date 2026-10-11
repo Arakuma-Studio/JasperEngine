@@ -113,6 +113,15 @@ async def test_check_shader_library_reference(ed: Editor):
     ed.check_eq(ok["results"][0]["type"], "mesh", "the type comes from the manifest")
     ok = await ed.call("check_shader", shader="library:unlit#ALPHA_CLIP,VERTEX_COLOR", timeout=300)
     ed.check_eq(ok["failed"], 0, f"with its features: {ok!r}")
+    # the reference resolves to the variant the engine draws: triplanar needs its default
+    # SPACE keyword, matcap's default REPLACE has no base map (feature=!MATCAP_MODE_REPLACE)
+    for ref in ("library:triplanar", "library:matcap", "library:hologram#BLEND_MODE_ALPHA"):
+        ok = await ed.call("check_shader", shader=ref, timeout=300)
+        ed.check_eq((ok["failed"], ok["findings"]), (0, []), f"{ref}: {ok!r}")
+    ok = await ed.call("check_shader", shader="library:triplanar", timeout=300)
+    ed.check_eq(ok["results"][0]["shader"], "library:triplanar#BLEND_NONE,SPACE_WORLD", "defaults and the blend define")
+    ok = await ed.call("check_shader", shader="library:hologram#BLEND_MODE_ALPHA", timeout=300)
+    ed.check_eq(ok["results"][0]["shader"], "library:hologram#BLEND_ALPHA,BLEND_MODE_ALPHA", "the keyword's @state[...] blend")
     msg = await ed.call("check_shader", shader="library:no_such_shader", expect_error=True)
     ed.check_in("library:unlit", msg, "lists the library shaders")
 

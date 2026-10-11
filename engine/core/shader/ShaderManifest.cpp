@@ -671,7 +671,8 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
     }
 
     // feature= on rows must name a declared feature (or a keyword define)
-    auto knownFeature = [this](const std::string& define){
+    auto knownFeature = [this](const std::string& condition){
+        const std::string define = (!condition.empty() && condition[0] == '!') ? condition.substr(1) : condition;
         return findFeature(define) || findKeywordGroup(define);
     };
     for (const ShaderManifestProperty& property : properties){
@@ -765,6 +766,15 @@ const ShaderManifestKeywords* ShaderManifest::findKeywordGroup(const std::string
         }
     }
     return nullptr;
+}
+
+bool ShaderManifest::isRowShown(const std::string& feature, const std::vector<std::string>& enabled){
+    if (feature.empty())
+        return true;
+    const bool negate = feature[0] == '!';
+    const std::string define = negate ? feature.substr(1) : feature;
+    const bool on = std::find(enabled.begin(), enabled.end(), define) != enabled.end();
+    return negate ? !on : on;
 }
 
 std::vector<std::string> ShaderManifest::resolveFeatures(const std::vector<std::string>& list) const{

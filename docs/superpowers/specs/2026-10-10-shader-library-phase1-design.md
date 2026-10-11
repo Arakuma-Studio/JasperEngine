@@ -826,6 +826,14 @@ override the sections they refer to; later agents follow them.
   (instance colour) tints the albedo with or without `VERTEX_AO`, whose occlusion is
   `v_rawColor.r`.
 - toon's `toonReach` uses `getLightData`; no library shader reads `objectLights.*`.
+- `@property` / `@texture` rows take `feature=!<DEFINE>` too (shown, and checked against a
+  variant's reflection, while the define is off; `ShaderManifest::isRowShown`): matcap's
+  base map and tiling are `feature=!MATCAP_MODE_REPLACE`, so `check_shader` on its default
+  REPLACE variant no longer reports the base map as undeclared.
+- `check_shader shader="library:<name>[#...]"` checks the variant the engine would draw: the
+  named features plus the manifest's defaults (a keyword group's first value, default-on
+  features) and the blend define of the resolved state (or a `BLEND_*` the reference
+  names); `library:triplanar` alone used to compile with no `SPACE_*` define and fail.
 - MCP `list_shaders` detail: `require` lists every input (`position`, `rawcolor` were
   missing), `require_rules` (`{require, feature}`, `"!X"` while off), `state.shadows` and
   `state_rules` (`{feature, state}`).

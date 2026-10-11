@@ -187,6 +187,11 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
         return (negate ? "without `" : "with `") + define + "`";
     }
 
+    // a row's feature= condition: "with `X`", or "without `X`" for "!X"
+    std::string rowCondition(const std::string& feature){
+        return (!feature.empty() && feature[0] == '!') ? condition(feature.substr(1), true) : condition(feature, false);
+    }
+
     std::string requireList(uint32_t require){
         const std::pair<uint32_t, const char*> inputs[] = {
             {ShaderRequire_Position, "position"}, {ShaderRequire_Normals, "normals"}, {ShaderRequire_Tangents, "tangents"},
@@ -301,7 +306,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
             for (const ShaderManifestProperty& property : manifest.properties){
                 std::string label = property.label;
                 if (!property.feature.empty())
-                    label += " (with `" + property.feature + "`)";
+                    label += " (" + rowCondition(property.feature) + ")";
                 out << "| `" << property.member << "` | " << kindName(property) << " | " << defaultValue(property) << " | " << escapeCell(label) << " |\n";
             }
         }
@@ -312,7 +317,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
                 if (texture.cube)
                     label += " (cube map)";
                 if (!texture.feature.empty())
-                    label += " (with `" + texture.feature + "`)";
+                    label += " (" + rowCondition(texture.feature) + ")";
                 out << "| `" << texture.uniform << "` | " << textureDefault(texture.defaultTexture) << " | " << escapeCell(label) << " |\n";
             }
         }

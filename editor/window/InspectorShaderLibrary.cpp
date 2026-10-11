@@ -232,8 +232,13 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
         ImGui::PopID();
     }
 
+    // a row's feature= ("!<DEFINE>": shown while that define is off)
     auto featureOn = [&](const std::string& feature) {
-        return feature.empty() || ShaderLibraryValues::isFeatureEnabled(features, shader, feature);
+        if (feature.empty())
+            return true;
+        if (feature[0] == '!')
+            return !ShaderLibraryValues::isFeatureEnabled(features, shader, feature.substr(1));
+        return ShaderLibraryValues::isFeatureEnabled(features, shader, feature);
     };
 
     // ---- parameters

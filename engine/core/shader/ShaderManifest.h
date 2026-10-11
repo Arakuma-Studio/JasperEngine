@@ -77,7 +77,7 @@ namespace jasperengine{
         float min = 0.0f; // range only
         float max = 1.0f;
         std::string label;
-        std::string feature; // shown only while this feature is on
+        std::string feature; // shown only while this feature is on ("!<DEFINE>": while it is off)
         int line = 0;
     };
 
@@ -86,7 +86,7 @@ namespace jasperengine{
         ShaderTextureDefault defaultTexture = ShaderTextureDefault::WHITE;
         bool cube = false;
         std::string label;
-        std::string feature;
+        std::string feature; // as ShaderManifestProperty::feature
         int line = 0;
     };
 
@@ -196,6 +196,9 @@ namespace jasperengine{
         // @keywords group (the first of the list in that group, else the group's first
         // value). Entries the manifest does not declare are ignored.
         std::vector<std::string> resolveFeatures(const std::vector<std::string>& list) const;
+        // whether a row with feature= (a property's or texture's: "<DEFINE>", "!<DEFINE>" or
+        // empty) applies to a variant with these enabled defines (resolveFeatures)
+        static bool isRowShown(const std::string& feature, const std::vector<std::string>& enabled);
         // the default value of a member (manifest default), false when not declared
         bool getDefault(const std::string& member, Vector4& value) const;
 

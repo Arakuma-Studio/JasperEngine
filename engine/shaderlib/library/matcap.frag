@@ -8,13 +8,13 @@
 // @require uv1 feature=!MATCAP_MODE_REPLACE
 // @state blend=opaque
 // @property baseColor color (1, 1, 1, 1) "Tint"
-// @property tiling vector4 (1, 1, 0, 0) "Tiling (xy) and offset (zw)"
+// @property tiling vector4 (1, 1, 0, 0) "Tiling (xy) and offset (zw)" feature=!MATCAP_MODE_REPLACE
 // @property matcapGain range(0, 4) 1 "Matcap gain"
 // @property matcapPower range(0.1, 8) 1 "Matcap power"
 // @property rimColor hdrcolor (1, 1, 1, 1) "Rim colour" feature=RIM
 // @property rimPower range(0.5, 16) 4 "Rim power" feature=RIM
 // @texture u_matcapTexture white "Matcap"
-// @texture u_baseTexture white "Base map"
+// @texture u_baseTexture white "Base map" feature=!MATCAP_MODE_REPLACE
 // @keywords MATCAP_MODE "Mode" REPLACE MULTIPLY ADD
 // @feature RIM "Rim light"
 
