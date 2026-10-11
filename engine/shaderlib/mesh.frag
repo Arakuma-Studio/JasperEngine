@@ -98,14 +98,14 @@ uniform u_fs_pbrParams {
     #endif
 } pbrParams;
 
-// Lit reads the camera (eye, ambient, environment, viewport) from the engine frame block,
-// and its lights from the object's list (includes/lights.glsl): the pixel lights here
-// (USE_PUNCTUAL), the vertex lights through v_vertexLight (USE_VERTEX_LIGHTS). A fork
-// written before them may declare the legacy u_fs_lighting block instead: the engine still
-// fills it, with the object's first MAX_LIGHTS pixel lights.
+// Lit reads the camera (eye, ambient, environment, viewport, fog) from its own camera block
+// (includes/lit_frame.glsl, the part of the engine frame block it needs), and its lights
+// from the object's list (includes/lights.glsl): the pixel lights here (USE_PUNCTUAL), the
+// vertex lights through v_vertexLight (USE_VERTEX_LIGHTS). A fork written before them may
+// declare the legacy u_fs_lighting block instead: the engine still fills it, with the
+// object's first MAX_LIGHTS pixel lights.
 #ifndef MATERIAL_UNLIT
-    #define FRAME_FS
-    #include "includes/frame.glsl"
+    #include "includes/lit_frame.glsl"
 #endif
 
 #ifdef USE_PUNCTUAL
@@ -265,7 +265,7 @@ void main() {
         vec3 f_diffuse = vec3(0.0);
         vec3 f_emissive = vec3(0.0);
 
-        vec3 toEye = frame.cameraPosition.xyz - v_position;
+        vec3 toEye = litFrame.cameraPosition_fogEnd.xyz - v_position;
         vec3 v = normalize(toEye);
 
         #ifdef USE_IBL
@@ -275,7 +275,7 @@ void main() {
             #ifdef USE_PUNCTUAL
                 // the lights over the object's cap, folded into its SH ambient (zero without any;
                 // already divided by PI, see includes/lights.glsl)
-                vec3 overflowLight = max(ambientLight(n) - frame.ambient.rgb, vec3(0.0));
+                vec3 overflowLight = max(ambientLight(n) - litFrame.ambient_fogType.rgb, vec3(0.0));
                 float overflowNdotV = clampedDot(n, v);
                 f_specular += envRadianceGGX(overflowLight, overflowNdotV, materialInfo.perceptualRoughness, materialInfo.f0);
                 f_diffuse += envRadianceLambertian(overflowLight, overflowNdotV, materialInfo.perceptualRoughness, materialInfo.albedoColor, materialInfo.f0);
@@ -285,9 +285,9 @@ void main() {
             // lights, plus the lights over the object's cap from its SH ambient, which is the
             // scene ambient alone when none is over the cap
             #ifdef USE_PUNCTUAL
-                vec3 envLight = frame.ambient.rgb + max(ambientLight(n) - frame.ambient.rgb, vec3(0.0));
+                vec3 envLight = litFrame.ambient_fogType.rgb + max(ambientLight(n) - litFrame.ambient_fogType.rgb, vec3(0.0));
             #else
-                vec3 envLight = frame.ambient.rgb;
+                vec3 envLight = litFrame.ambient_fogType.rgb;
             #endif
             float ambNdotV = clampedDot(n, v);
             f_specular += envRadianceGGX(envLight, ambNdotV, materialInfo.perceptualRoughness, materialInfo.f0);
@@ -310,12 +310,13 @@ void main() {
             // Screen-space AO modulates only the ambient/indirect term (computed
             // above); the direct punctual lighting added below is unaffected.
             // The AO buffer is in depth orientation, so flip Y when that differs
-            // from the color target (viewportInfo.w=1).
-            vec2 ssaoUV = gl_FragCoord.xy * frame.viewportInfo.xy;
-            if (frame.viewportInfo.w > 0.5) ssaoUV.y = 1.0 - ssaoUV.y;
+            // from the color target (SSAO flags 2 set).
+            vec2 ssaoUV = gl_FragCoord.xy * litFrame.viewport_ssao_envRotation.xy;
+            float ssaoFlags = litFrame.viewport_ssao_envRotation.z;
+            if (ssaoFlags > 1.5) ssaoUV.y = 1.0 - ssaoUV.y;
             float screenAO = texture(sampler2D(u_ssaoTexture, u_ssao_smp), ssaoUV).r;
-            // debug: visualize the raw AO buffer (viewportInfo.z = 1)
-            if (frame.viewportInfo.z > 0.5){
+            // debug: visualize the raw AO buffer (SSAO flags 1 set)
+            if (fract(ssaoFlags * 0.5) > 0.25){
                 g_finalColor = vec4(vec3(screenAO), 1.0);
                 return;
             }
@@ -374,7 +375,7 @@ void main() {
             #else
                 // VERTEX: v_vertexLight carries the SH ambient too (no lights block here),
                 // the scene ambient part of which is applied above
-                vec3 vertexLight = max(v_vertexLight - frame.ambient.rgb, vec3(0.0));
+                vec3 vertexLight = max(v_vertexLight - litFrame.ambient_fogType.rgb, vec3(0.0));
             #endif
             f_diffuse += vertexLight * materialInfo.albedoColor;
         #endif

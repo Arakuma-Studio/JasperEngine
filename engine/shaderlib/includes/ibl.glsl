@@ -16,10 +16,10 @@ vec2 envBRDFApprox(float NdotV, float roughness){
 }
 
 #ifdef USE_IBL
-    // environment colour (rgb) and rotation (w): from the frame block, or from the legacy
-    // u_fs_lighting block of a fork that declares it instead
-    #ifdef FRAME_FS_DECLARED
-        #define IBL_ENVIRONMENT frame.environment
+    // environment colour (rgb) and rotation (w): from Lit's camera block, or from the
+    // legacy u_fs_lighting block of a fork that declares it instead
+    #ifdef LIT_FRAME_DECLARED
+        #define IBL_ENVIRONMENT vec4(litFrame.environmentColor.rgb, litFrame.viewport_ssao_envRotation.w)
     #else
         #define IBL_ENVIRONMENT lighting.envColor
     #endif

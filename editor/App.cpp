@@ -3513,7 +3513,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      from the built-in shader; forks declaring u_fs_lighting are still filled).
     // v31: one light unit for every shader (includes/lights.glsl): vertexDiffuse and the
     //      folded SH lights carry Lambert's 1/PI, so Lit no longer divides them itself.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v31";
+    // v32: the lights block packs 4 vectors per light (the vertex stage declares a prefix),
+    //      Lit reads its own camera block (u_fs_litFrame), unlit fog is u_fs_fog again, the
+    //      depth programs take the sprite texture rect ('Txr'), library variants a blend define.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v32";
 }
 
 void editor::App::pushTabNotificationStyle(){

@@ -2,7 +2,10 @@
 // Supports every mesh property bit that applies to a plain mesh: skinning (GL texture and
 // storage-buffer paths), morph targets, instancing (matrix, colour, texture rect, fade),
 // the sprite texture rect, UV sets 1-2, vertex colour (vec3/vec4), normals, tangents and
-// the lighting varyings, with the same invariant position as the depth pass.
+// the lighting varyings, with the same invariant position as the depth pass; and a
+// Terrain (HAS_TERRAIN): its height-mapped, morphed patches, their normals, and as uv1 the
+// terrain's tiled UV (Lit's v_uv1). Painted layers and blend maps are Lit's: on a terrain
+// a library shader draws its own surface.
 //
 // Which varyings it writes is decided by defines both stages see, so the fragment shader
 // reads exactly what is written (an output the fragment shader does not read fails the
@@ -14,13 +17,19 @@
 //   SURFACE_UV1       @require uv1       out vec2 v_uv1
 //   SURFACE_UV2       @require uv2       out vec2 v_uv2
 //   SURFACE_COLOR     @require color     out vec4 v_color      vertex x instance colour
+//   SURFACE_RAW_COLOR @require rawcolor  out vec4 v_rawColor   the vertex colour alone
 //
 // A required input the mesh lacks gets a fallback: the normal is the model's +Y, a UV is
 // 0 and the colour white. SURFACE_NO_VERTEX_COLOR (defined before including) keeps the
 // vertex colour attribute out of v_color (the instance colour still applies).
 //
+// v_color is a tint (the instance colour multiplies it); v_rawColor is the vertex colour
+// attribute alone, for data painted into it (a wind or AO mask) that an instance tint must
+// not scale. Both can be required; with @require ... feature=<F> only while F is on.
+//
 // A shader's own .vert can move vertices before projection, in object space (after
-// skinning, morphing and the instance matrix):
+// skinning, morphing and the instance matrix; color is the raw vertex colour, without the
+// instance colour, as the depth programs see it):
 //
 //   #define SURFACE_DISPLACE
 //   #include "includes/surface_vs.glsl"
@@ -86,6 +95,11 @@ in vec3 a_position;
 #if defined(HAS_UV_SET1) && !defined(HAS_TERRAIN)
     in vec2 a_texcoord1;
 #endif
+#ifdef HAS_TERRAIN
+    // the patch position, height and morph (its own surface varyings left out)
+    #define TERRAIN_NO_SURFACE_VARYINGS
+    #include "includes/terrain_vs.glsl"
+#endif
 #ifdef HAS_UV_SET2
     in vec2 a_texcoord2;
 #endif
@@ -138,6 +152,9 @@ in vec3 a_position;
 #ifdef SURFACE_COLOR
     out vec4 v_color;
 #endif
+#ifdef SURFACE_RAW_COLOR
+    out vec4 v_rawColor;
+#endif
 
 #ifdef USE_VERTEX_LIGHTS
     #ifndef LIGHTS_VS
@@ -165,7 +182,7 @@ in vec3 a_position;
 
 #ifdef SURFACE_DISPLACE
     // object-space position (after skinning, morph targets and the instance matrix), its
-    // normal, the vertex colour and the first UV set; returns the moved position
+    // normal, the raw vertex colour and the first UV set; returns the moved position
     vec3 surfaceDisplace(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv);
 #endif
 #ifdef SURFACE_DISPLACE_NORMAL
@@ -173,22 +190,31 @@ in vec3 a_position;
     vec3 surfaceDisplaceNormal(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv);
 #endif
 
-vec4 surfaceVertexColor(){
+// the vertex colour attribute, white without one
+vec4 surfaceRawVertexColor(){
     vec4 color = vec4(1.0);
     #if defined(HAS_VERTEX_COLOR_VEC3) && !defined(SURFACE_NO_VERTEX_COLOR)
         color = vec4(a_color, 1.0);
     #elif defined(HAS_VERTEX_COLOR_VEC4) && !defined(SURFACE_NO_VERTEX_COLOR)
         color = a_color;
     #endif
+    return color;
+}
+
+// v_color: the vertex colour times the instance colour
+vec4 surfaceVertexColor(vec4 rawColor){
+    vec4 color = rawColor;
     #if defined(HAS_INSTANCING) && defined(SURFACE_COLOR)
         color *= i_color;
     #endif
     return color;
 }
 
-vec2 surfaceUV1(){
+vec2 surfaceUV1(vec3 objectPosition){
     vec2 uv = vec2(0.0);
-    #if defined(HAS_UV_SET1) && !defined(HAS_TERRAIN)
+    #if defined(HAS_UV_SET1) && defined(HAS_TERRAIN)
+        uv = getTerrainUV(objectPosition);
+    #elif defined(HAS_UV_SET1)
         uv = a_texcoord1;
         #ifdef HAS_TEXTURERECT
             uv = uv * spriteParams.textureRect.zw + spriteParams.textureRect.xy;
@@ -219,11 +245,18 @@ void main() {
 
     vec3 position = getMorphPosition(a_position);
     position = getSkinPosition(position, boneTransform);
+    #ifdef HAS_TERRAIN
+        position = getTerrainPosition(position, pbrParams.modelMatrix);
+    #endif
 
     // the model's +Y when the mesh has no normals
     vec3 objectNormal = vec3(0.0, 1.0, 0.0);
     #ifdef HAS_NORMALS
-        objectNormal = normalize(getSkinNormal(getMorphNormal(a_normal), boneTransform));
+        objectNormal = getSkinNormal(getMorphNormal(a_normal), boneTransform);
+        #ifdef HAS_TERRAIN
+            objectNormal = getTerrainNormal(objectNormal, position);
+        #endif
+        objectNormal = normalize(objectNormal);
     #endif
 
     #ifdef HAS_INSTANCING
@@ -246,15 +279,16 @@ void main() {
         pos.xyz = mix(fadeOrigin, pos.xyz, fadeVisible);
     #endif
 
-    vec4 color = surfaceVertexColor();
-    vec2 uv1 = surfaceUV1();
+    vec4 rawColor = surfaceRawVertexColor();
+    vec4 color = surfaceVertexColor(rawColor);
+    vec2 uv1 = surfaceUV1(position);
 
     #ifdef SURFACE_DISPLACE_NORMAL
         // from the undisplaced inputs, as the depth programs' surfaceDisplace sees them
-        vec3 displacedNormal = normalize(surfaceDisplaceNormal(pos.xyz, objectNormal, color, uv1));
+        vec3 displacedNormal = normalize(surfaceDisplaceNormal(pos.xyz, objectNormal, rawColor, uv1));
     #endif
     #ifdef SURFACE_DISPLACE
-        pos.xyz = surfaceDisplace(pos.xyz, objectNormal, color, uv1);
+        pos.xyz = surfaceDisplace(pos.xyz, objectNormal, rawColor, uv1);
     #endif
     #ifdef SURFACE_DISPLACE_NORMAL
         objectNormal = displacedNormal;
@@ -295,6 +329,9 @@ void main() {
     #endif
     #ifdef SURFACE_COLOR
         v_color = color;
+    #endif
+    #ifdef SURFACE_RAW_COLOR
+        v_rawColor = rawColor;
     #endif
 
     #ifdef USE_VERTEX_LIGHTS

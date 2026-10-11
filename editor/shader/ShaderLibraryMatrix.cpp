@@ -74,6 +74,10 @@ namespace {
             {"shadows", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.lights = true; e.shadows = true; }},
             {"2d lights + shadows, sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ i.textureRect = true; e.lights2D = true; e.shadows2D = true; }},
             {"instanced sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.textureRect = true; i.instanced = true; }},
+            // a Terrain's patches (no UV or tangent attributes: uv1 is the terrain's own)
+            {"terrain", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.terrain = true; i.texCoord1 = false; i.tangent = false; }},
+            {"terrain, fog, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; }},
         };
         return cases;
     }
@@ -147,23 +151,39 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
         }
     }
 
-    auto referenceOf = [&](const std::vector<std::string>& list){
-        return ShaderReference::withFeatures(base, manifest.resolveFeatures(list));
+    // a feature list as a colour variant is keyed (with the BLEND_* define of the blend its
+    // @state resolves to for those features, or of an explicit blend) and as the depth
+    // program is (features only)
+    auto referenceOf = [&](const std::vector<std::string>& list, MaterialBlendMode blend = MaterialBlendMode::AUTO){
+        return ShaderReference::getColorVariantReference(base, list, blend);
+    };
+    auto depthReferenceOf = [&](const std::string& colorReference){
+        std::vector<std::string> defines = ShaderReference::getFeatures(colorReference);
+        defines.erase(std::remove_if(defines.begin(), defines.end(), ShaderReference::isBlendDefine), defines.end());
+        return ShaderReference::withFeatures(base, defines);
     };
     std::vector<std::string> allOn;
     for (const ShaderManifestFeature& feature : manifest.features)
         allOn.push_back(feature.define);
+    const MaterialBlendMode blendModes[] = {MaterialBlendMode::NONE, MaterialBlendMode::ALPHA, MaterialBlendMode::PREMULTIPLIED,
+                                            MaterialBlendMode::ADDITIVE, MaterialBlendMode::MULTIPLY};
+    auto blendLabel = [](MaterialBlendMode blend){
+        return std::string(ShaderReference::getBlendDefine(blend));
+    };
 
     const ShaderType type = manifest.hasType ? manifest.type : ShaderType::MESH;
     if (type == ShaderType::MESH){
-        auto addMesh = [&](const std::string& label, const std::string& reference, const SubmeshShaderInputs& inputs, MeshShaderEnvironment environment){
+        auto addMesh = [&](const std::string& label, const std::string& reference, SubmeshShaderInputs inputs, MeshShaderEnvironment environment){
+            const std::string depthReference = depthReferenceOf(reference);
+            // the features decide the feature= @require inputs
+            inputs.features = ShaderReference::getFeatures(depthReference);
             const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
             add(label + " [" + featureLabel(ShaderReference::getFeatures(reference)) + "]", reference, ShaderType::MESH, variant.properties);
             if (manifest.depth){
                 // the depth program, as the shadow and depth pre-passes draw it
                 environment.depthPrepass = true;
                 const SubmeshShaderVariant depth = RenderSystem::getSubmeshShaderVariant(environment, inputs);
-                add(label + " depth [" + featureLabel(ShaderReference::getFeatures(reference)) + "]", reference, ShaderType::DEPTH, depth.depthProperties);
+                add(label + " depth [" + featureLabel(inputs.features) + "]", depthReference, ShaderType::DEPTH, depth.depthProperties);
             }
         };
 
@@ -192,6 +212,15 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
                     if (mode == modes.front() && capacity == 8 && !shadows){
                         for (const auto& features : featureSets)
                             addMesh(label + ", " + features.first, referenceOf(features.second), inputs, lightingEnvironment);
+                        // each blend mode (the BLEND_* define output.glsl routes the fog by),
+                        // with fog, with the default features and with all of them
+                        MeshShaderEnvironment fogEnvironment = lightingEnvironment;
+                        fogEnvironment.fog = true;
+                        for (MaterialBlendMode blend : blendModes){
+                            addMesh(label + ", fog, " + blendLabel(blend), referenceOf({}, blend), inputs, fogEnvironment);
+                            if (!allOn.empty())
+                                addMesh(label + ", fog, " + blendLabel(blend) + ", all features", referenceOf(allOn, blend), inputs, fogEnvironment);
+                        }
                     }else{
                         addMesh(label, referenceOf({}), inputs, lightingEnvironment);
                         addMesh(label + ", all features", referenceOf(allOn), inputs, lightingEnvironment);
@@ -243,6 +272,12 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
         for (const auto& features : featureSets){
             for (const auto& variant : properties)
                 add(variant.first + " [" + features.first + "]", referenceOf(features.second), type, variant.second);
+        }
+        // each blend mode a component can set (the BLEND_* define)
+        for (MaterialBlendMode blend : blendModes){
+            add(properties.front().first + " [" + blendLabel(blend) + "]", referenceOf({}, blend), type, properties.front().second);
+            if (!allOn.empty())
+                add(properties.front().first + " [" + blendLabel(blend) + ", all features]", referenceOf(allOn, blend), type, properties.front().second);
         }
     }
 

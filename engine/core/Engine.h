@@ -298,6 +298,9 @@ namespace jasperengine {
 
         static bool transformCoordPos(float& x, float& y);
         static void calculateCanvas();
+        // logs once that every scene is loaded and no shader build is pending
+        // (JASPERENGINE_READY_SIGNAL set: tools/smoke-test.sh waits for it)
+        static void signalReadyOnce();
         static void includeScene(Scene* scene);
         // Copy for iteration outside sceneListMutex: callbacks invoked while iterating are
         // free to add or remove scenes without invalidating the caller's traversal.

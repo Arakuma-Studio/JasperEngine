@@ -347,15 +347,44 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
             }
 
         }else if (directive == "require"){
+            // "feature=<DEFINE>" (or "feature=!<DEFINE>") makes the line's inputs conditional
+            ShaderManifestRequireRule rule;
+            rule.line = lineNumber;
+            bool conditional = false;
+            bool valid = true;
             for (const Token& arg : args){
+                std::string key, value;
+                if (splitOption(arg, key, value)){
+                    if (key != "feature" || conditional){
+                        report(lineNumber, true, "@require takes <inputs...> [feature=<DEFINE>], got '" + arg.text + "'");
+                        valid = false;
+                        continue;
+                    }
+                    conditional = true;
+                    rule.negate = !value.empty() && value[0] == '!';
+                    rule.define = rule.negate ? value.substr(1) : value;
+                    if (!ShaderReference::isValidDefine(rule.define)){
+                        report(lineNumber, true, "@require feature= needs a feature or keyword define, got '" + value + "'");
+                        valid = false;
+                    }
+                    continue;
+                }
                 const std::string input = lower(arg.text);
-                if (input == "normals") require |= ShaderRequire_Normals;
-                else if (input == "tangents") require |= ShaderRequire_Tangents;
-                else if (input == "uv1") require |= ShaderRequire_UV1;
-                else if (input == "uv2") require |= ShaderRequire_UV2;
-                else if (input == "color") require |= ShaderRequire_Color;
-                else if (input == "position") require |= ShaderRequire_Position;
-                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, position)");
+                if (input == "normals") rule.require |= ShaderRequire_Normals;
+                else if (input == "tangents") rule.require |= ShaderRequire_Tangents;
+                else if (input == "uv1") rule.require |= ShaderRequire_UV1;
+                else if (input == "uv2") rule.require |= ShaderRequire_UV2;
+                else if (input == "color") rule.require |= ShaderRequire_Color;
+                else if (input == "position") rule.require |= ShaderRequire_Position;
+                else if (input == "rawcolor") rule.require |= ShaderRequire_RawColor;
+                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position)");
+            }
+            if (!valid)
+                continue;
+            if (conditional){
+                requireRules.push_back(rule);
+            }else{
+                require |= rule.require;
             }
 
         }else if (directive == "state" || directive == "queue"){
@@ -364,6 +393,23 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                     report(lineNumber, true, "@queue takes geometry, alphatest or transparent");
                 continue;
             }
+            // "@state[<DEFINE>] ...": a rule over the base state while the define is on
+            ShaderManifestState* target = &state;
+            ShaderManifestStateRule rule;
+            if (!args.empty() && !args[0].quoted && !args[0].text.empty() && args[0].text[0] == '['){
+                const std::string& condition = args[0].text;
+                const std::string define = (condition.size() > 2 && condition.back() == ']') ? condition.substr(1, condition.size() - 2) : "";
+                rule.negate = !define.empty() && define[0] == '!';
+                rule.define = rule.negate ? define.substr(1) : define;
+                rule.line = lineNumber;
+                if (!ShaderReference::isValidDefine(rule.define)){
+                    report(lineNumber, true, "@state[<DEFINE>] needs a feature or keyword define, got '" + condition + "'");
+                    continue;
+                }
+                args.erase(args.begin());
+                target = &rule.state;
+            }
+            ShaderManifestState& state = *target;
             for (const Token& arg : args){
                 std::string key, value;
                 if (!splitOption(arg, key, value)){
@@ -408,13 +454,19 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                     }
                 }else if (key == "queue"){
                     valid = parseQueue(value, state.queue);
+                }else if (key == "shadows"){
+                    if (v == "on") state.shadows = ShaderShadowCasting::ON;
+                    else if (v == "off") state.shadows = ShaderShadowCasting::OFF;
+                    else valid = false;
                 }else{
-                    report(lineNumber, true, "unknown @state key '" + key + "' (blend, cull, zwrite, ztest, offset, queue)");
+                    report(lineNumber, true, "unknown @state key '" + key + "' (blend, cull, zwrite, ztest, offset, queue, shadows)");
                     continue;
                 }
                 if (!valid)
                     report(lineNumber, true, "invalid @state value '" + arg.text + "'");
             }
+            if (target != &this->state)
+                stateRules.push_back(rule);
 
         }else if (directive == "property"){
             if (args.size() < 3){
@@ -630,6 +682,25 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
         if (!texture.feature.empty() && !knownFeature(texture.feature))
             report(texture.line, "@texture '" + texture.uniform + "' names undeclared feature '" + texture.feature + "'");
     }
+    for (const ShaderManifestStateRule& rule : stateRules){
+        if (!knownFeature(rule.define))
+            report(rule.line, "@state[" + rule.define + "] names undeclared feature '" + rule.define + "'");
+    }
+    for (const ShaderManifestRequireRule& rule : requireRules){
+        if (!knownFeature(rule.define))
+            report(rule.line, "@require feature=" + rule.define + " names undeclared feature '" + rule.define + "'");
+    }
+    // BLEND_* defines are the engine's (the variant's resolved blend mode)
+    for (const ShaderManifestFeature& feature : features){
+        if (ShaderReference::isBlendDefine(feature.define))
+            report(feature.line, "feature '" + feature.define + "' is reserved: the engine defines it from the blend mode");
+    }
+    for (const ShaderManifestKeywords& group : keywords){
+        for (const std::string& value : group.values){
+            if (ShaderReference::isBlendDefine(group.group + "_" + value))
+                report(group.line, "keyword '" + group.group + "_" + value + "' is reserved: the engine defines it from the blend mode");
+        }
+    }
     if (!lighting.empty() && hasType && type != ShaderType::MESH){
         for (ShaderLightingMode mode : lighting){
             if (mode != ShaderLightingMode::NONE){
@@ -801,7 +872,50 @@ void ShaderManifest::validateReflection(const std::vector<const ShaderData*>& va
     }
 }
 
-std::vector<std::string> ShaderManifest::getRequireDefines() const{
+void ShaderManifestState::apply(const ShaderManifestState& other){
+    if (other.blend != MaterialBlendMode::AUTO) blend = other.blend;
+    if (other.cull != MaterialCullMode::AUTO) cull = other.cull;
+    if (other.depthWrite != MaterialDepthWrite::AUTO) depthWrite = other.depthWrite;
+    if (other.depthTest != MaterialDepthTest::AUTO) depthTest = other.depthTest;
+    if (other.hasDepthOffset){
+        hasDepthOffset = true;
+        depthOffsetFactor = other.depthOffsetFactor;
+        depthOffsetUnits = other.depthOffsetUnits;
+    }
+    if (other.queue != ShaderQueue::AUTO) queue = other.queue;
+    if (other.shadows != ShaderShadowCasting::AUTO) shadows = other.shadows;
+}
+
+namespace {
+    bool conditionHolds(const std::string& define, bool negate, const std::vector<std::string>& enabled){
+        const bool on = std::find(enabled.begin(), enabled.end(), define) != enabled.end();
+        return on != negate;
+    }
+}
+
+ShaderManifestState ShaderManifest::resolveState(const std::vector<std::string>& enabled) const{
+    ShaderManifestState resolved = state;
+    for (const ShaderManifestStateRule& rule : stateRules){
+        if (conditionHolds(rule.define, rule.negate, enabled))
+            resolved.apply(rule.state);
+    }
+    return resolved;
+}
+
+uint32_t ShaderManifest::resolveRequire(const std::vector<std::string>& enabled) const{
+    uint32_t resolved = require;
+    for (const ShaderManifestRequireRule& rule : requireRules){
+        if (conditionHolds(rule.define, rule.negate, enabled))
+            resolved |= rule.require;
+    }
+    return resolved;
+}
+
+std::vector<std::string> ShaderManifest::getRequireDefines(const std::vector<std::string>& enabled) const{
+    return getRequireDefines(resolveRequire(enabled));
+}
+
+std::vector<std::string> ShaderManifest::getRequireDefines(uint32_t require){
     std::vector<std::string> defines;
     if (require & ShaderRequire_Position) defines.push_back("SURFACE_POSITION");
     if (require & ShaderRequire_Normals)  defines.push_back("SURFACE_NORMALS");
@@ -809,6 +923,7 @@ std::vector<std::string> ShaderManifest::getRequireDefines() const{
     if (require & ShaderRequire_UV1)      defines.push_back("SURFACE_UV1");
     if (require & ShaderRequire_UV2)      defines.push_back("SURFACE_UV2");
     if (require & ShaderRequire_Color)    defines.push_back("SURFACE_COLOR");
+    if (require & ShaderRequire_RawColor) defines.push_back("SURFACE_RAW_COLOR");
     return defines;
 }
 
@@ -907,18 +1022,53 @@ std::string ShaderReference::withFeatures(const std::string& base, const std::ve
     return reference;
 }
 
-std::string ShaderReference::getVariantReference(const std::string& reference, const std::vector<std::string>& shaderFeatures){
+std::vector<std::string> ShaderReference::getEnabledFeatures(const std::string& reference, const std::vector<std::string>& shaderFeatures){
     const std::string base = getBase(reference);
     if (base.empty())
-        return base;
+        return {};
     std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(base);
     if (!manifest || (manifest->features.empty() && manifest->keywords.empty()))
-        return base;
+        return {};
 
     // a suffix written in the reference itself counts as listed first
     std::vector<std::string> list = getFeatures(reference);
     list.insert(list.end(), shaderFeatures.begin(), shaderFeatures.end());
-    return withFeatures(base, manifest->resolveFeatures(list));
+    return manifest->resolveFeatures(list);
+}
+
+std::string ShaderReference::getVariantReference(const std::string& reference, const std::vector<std::string>& shaderFeatures){
+    return withFeatures(getBase(reference), getEnabledFeatures(reference, shaderFeatures));
+}
+
+std::string ShaderReference::getColorVariantReference(const std::string& reference, const std::vector<std::string>& shaderFeatures, MaterialBlendMode blendMode){
+    const std::string base = getBase(reference);
+    if (base.empty())
+        return base;
+    std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(base);
+    std::vector<std::string> defines = getEnabledFeatures(reference, shaderFeatures);
+    if (!manifest || !manifest->present)
+        return withFeatures(base, defines);
+
+    if (blendMode == MaterialBlendMode::AUTO)
+        blendMode = manifest->resolveState(defines).blend;
+    defines.push_back(getBlendDefine(blendMode));
+    std::sort(defines.begin(), defines.end());
+    return withFeatures(base, defines);
+}
+
+const char* ShaderReference::getBlendDefine(MaterialBlendMode blendMode){
+    switch (blendMode){
+        case MaterialBlendMode::NONE:          return "BLEND_NONE";
+        case MaterialBlendMode::PREMULTIPLIED: return "BLEND_PREMULTIPLIED";
+        case MaterialBlendMode::ADDITIVE:      return "BLEND_ADDITIVE";
+        case MaterialBlendMode::MULTIPLY:      return "BLEND_MULTIPLY";
+        default:                               return "BLEND_ALPHA"; // AUTO: the legacy alpha blend
+    }
+}
+
+bool ShaderReference::isBlendDefine(const std::string& define){
+    return define == "BLEND_NONE" || define == "BLEND_ALPHA" || define == "BLEND_PREMULTIPLIED" ||
+        define == "BLEND_ADDITIVE" || define == "BLEND_MULTIPLY";
 }
 
 // ---------------------------------------------------------------- ShaderLibraryValues

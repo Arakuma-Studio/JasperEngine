@@ -15,6 +15,7 @@
 #include "texture/TextureData.h"
 #include "texture/Material.h"
 #include "shader/ShaderUniforms.h"
+#include "shader/ShaderManifest.h"
 #include "buffer/InterleavedBuffer.h"
 #include "buffer/IndexBuffer.h"
 #include "buffer/ExternalBuffer.h"
@@ -91,6 +92,8 @@ namespace jasperengine{
         uint32_t layerBit = 0;
         uint64_t reachMask = 0; // bit (index % 64) of each scene light that reached the mesh
         uint64_t epoch = 0;     // RenderSystem's light list epoch, 0 = not picked yet
+        // a directional light went into the SH (more directional lights than the cap)
+        bool foldedDirectional = false;
     };
 
     struct JASPERENGINE_API Submesh{
@@ -121,6 +124,10 @@ namespace jasperengine{
         int slotFSLighting = -1;        // legacy u_fs_lighting of an older fork
         int slotVSObjectLights = -1;    // includes/lights.glsl
         int slotFSObjectLights = -1;
+        unsigned int sizeVSObjectLights = 0; // reflected: the vertex stage's is a prefix of the fragment stage's
+        unsigned int sizeFSObjectLights = 0;
+        int slotFSLitFrame = -1;        // includes/lit_frame.glsl (built-in Lit)
+        unsigned int sizeFSLitFrame = 0; // reflected: the prefix the variant declares
         int slotFSReflectionProbe = -1;
         int slotFSLighting2D = -1;
         int slotFSFog = -1;
@@ -141,6 +148,7 @@ namespace jasperengine{
         int slotVSDepthSkinning = -1;
         int slotVSDepthMorphTarget = -1;
         int slotVSDepthTerrain = -1;
+        int slotVSDepthSprite = -1;
 
         int slotVSGBufferParams = -1;
         int slotFSGBufferMaterial = -1;
@@ -159,6 +167,8 @@ namespace jasperengine{
         // for the built-in shader or a fork without one), and what its color and depth
         // shaders read of the frame block and custom textures
         std::shared_ptr<const ShaderManifest> manifest;
+        // its @state with the @state[...] rules of the material's features (manifest only)
+        ShaderManifestState manifestState;
         ShaderLibraryBindings libraryBindings;
         ShaderLibraryBindings depthLibraryBindings;
 

@@ -324,10 +324,10 @@ namespace {
                     collectPoints(points);
                 }
                 if (const LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)){
-                    insertKeys(ShaderType::LINES, ShaderPool::getLinesProperties(false, true), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures));
+                    insertKeys(ShaderType::LINES, ShaderPool::getLinesProperties(false, true), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
                 }
                 if (const SkyboxComponent* sky = registry->findComponent<SkyboxComponent>(entity)){
-                    insertKeys(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX, sky->shaderFeatures));
+                    insertKeys(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX, sky->shaderFeatures, MaterialBlendMode::AUTO));
                 }
             }
         }
@@ -338,10 +338,11 @@ namespace {
         std::set<ShaderKey>& keys;
 
         // The effective custom shader: the component's, the scene default, or built-in, with
-        // the features the component enables (RenderSystem::getComponentShaderReference)
-        uint16_t shaderId(const std::string& customShader, ShaderType type, const std::vector<std::string>& features){
+        // the features the component enables and the define of its blend mode
+        // (RenderSystem::getComponentShaderReference)
+        uint16_t shaderId(const std::string& customShader, ShaderType type, const std::vector<std::string>& features, MaterialBlendMode blendMode){
             return ShaderPool::registerCustomShader(RenderSystem::getComponentShaderReference(
-                customShader.empty() ? scene->getDefaultCustomShader(type) : customShader, features));
+                customShader.empty() ? scene->getDefaultCustomShader(type) : customShader, features, blendMode));
         }
 
         // A custom shader that fails to build falls back to the built-in variant at runtime
@@ -507,7 +508,7 @@ namespace {
         // its texture comes and goes with what the UI shows (a button's state, a script, a
         // font atlas), see RenderSystem::loadUI
         void collectUI(const UIComponent& ui){
-            const uint16_t id = shaderId(ui.customShader, ShaderType::UI, ui.shaderFeatures);
+            const uint16_t id = shaderId(ui.customShader, ShaderType::UI, ui.shaderFeatures, ui.blendMode);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, false, false, true), id);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(true, false, false, true), id);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, true, false, false), id);
@@ -516,7 +517,8 @@ namespace {
         // Likewise for points, with or without a texture and texture rects (RenderSystem::loadPoints)
         void collectPoints(const PointsComponent* points){
             const uint16_t id = shaderId(points ? points->customShader : std::string(), ShaderType::POINTS,
-                                         points ? points->shaderFeatures : std::vector<std::string>());
+                                         points ? points->shaderFeatures : std::vector<std::string>(),
+                                         points ? points->blendMode : MaterialBlendMode::AUTO);
             insertKeys(ShaderType::POINTS, ShaderPool::getPointsProperties(false, false, true, false), id);
             insertKeys(ShaderType::POINTS, ShaderPool::getPointsProperties(true, false, true, false), id);
             insertKeys(ShaderType::POINTS, ShaderPool::getPointsProperties(true, false, true, true), id);

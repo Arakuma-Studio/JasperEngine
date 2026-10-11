@@ -108,8 +108,9 @@ NormalInfo getNormalInfo(){
         #endif
     #endif
 
-    // Compute pertubed normals:
-    #ifdef HAS_NORMAL_MAP
+    // Compute pertubed normals (a normal map needs a UV set to sample it by: a terrain
+    // without blend maps or textures has none)
+    #if defined(HAS_NORMAL_MAP) && (defined(HAS_UV_SET1) || defined(HAS_UV_SET2))
         n = texture(sampler2D(u_normalTexture, u_normal_smp), getNormalUV()).rgb * 2.0 - vec3(1.0);
         n *= vec3(normalScale, normalScale, 1.0);
         n = mat3(t, b, ng) * normalize(n);

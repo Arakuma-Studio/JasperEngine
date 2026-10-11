@@ -78,20 +78,30 @@ namespace jasperengine{
 		Vector4 ambient;            // rgb scene ambient (global illumination colour * intensity)
 		// engine-internal (RenderSystem::fillFrameLighting)
 		Vector4 lightingInfo;           // x 3D shadow PCF tap radius
-		Vector4 environment;            // rgb environment colour (linear), w environment rotation (radians)
-		Vector4 viewportInfo;           // xy 1 / viewport size, z SSAO debug view, w SSAO Y flip
 		Vector4 fogColor_type;          // rgb fog colour, w type (0 linear, 1 exponential, 2 exponential squared)
 		Vector4 fogDensity_start_end;   // x density, z linear start, w linear end
 	} frame_t;
 
 	// u_vs_objectLights / u_fs_objectLights (shaderlib/includes/lights.glsl) at the largest
-	// capacity. A variant of capacity C reads the first 4 + 5 * C vectors: the header, then
-	// position_type, direction_range, color_intensity, cone_shadow and spot_mask of C lights.
+	// capacity. A variant of capacity C reads, in order: counts, position_type[C],
+	// direction_inner[C], color_outer[C] (the vertex stage stops here, in mixed mode), the
+	// L1 SH ambient (3, the vertex stage stops here in vertex mode), spot_shadow[C]: 4 + 4 C
+	// vectors in the fragment stage (RenderSystem::buildObjectLights).
 	typedef struct object_lights_t {
-		Vector4 counts; // x pixel lights, y vertex lights, zw spot mask tiles (3 bits per pixel light)
-		Vector4 sh[3];  // L1 SH ambient per channel: rgb_c(n) = dot(sh[c].xyz, n) + sh[c].w
-		Vector4 lights[5 * MAX_LIGHTS_PER_OBJECT];
+		Vector4 data[4 + 4 * MAX_LIGHTS_PER_OBJECT];
 	} object_lights_t;
+
+	// u_fs_litFrame (shaderlib/includes/lit_frame.glsl): what the built-in Lit's lit variants
+	// read of the camera pass, filled with the frame block (RenderSystem::updatePassFrame). A
+	// variant declares a prefix of it (2 to 6 vectors, by fog, shadows, SSAO and IBL).
+	typedef struct lit_frame_t {
+		Vector4 cameraPosition_fogEnd;     // xyz camera world position, w fog linear end
+		Vector4 ambient_fogType;           // rgb scene ambient, w fog type
+		Vector4 fogColor_param;            // rgb fog colour, w fog linear start (linear) or density
+		Vector4 cameraForward_pcf;         // xyz camera world forward, w 3D shadow PCF tap radius
+		Vector4 viewport_ssao_envRotation; // xy 1 / viewport size, z SSAO flags (1 debug, 2 Y flip), w environment rotation
+		Vector4 environmentColor;          // rgb environment colour (linear)
+	} lit_frame_t;
 
 	typedef struct fs_terrain_layers_t {
 		Vector4 colorFactor[MAX_TERRAIN_LAYERS]; // rgb = linear tint, w = 1 on a PBR layer
@@ -254,6 +264,9 @@ namespace jasperengine{
 		// library shader's own depth program (@depth)
 		std::shared_ptr<const ShaderManifest> manifest;
 		bool depthProgram = false;
+		// the manifest's defines the material enables (ShaderReference::getEnabledFeatures),
+		// which decide its feature= @require inputs; empty: the unconditional ones only
+		std::vector<std::string> features;
 	};
 
 	// The shaders one submesh draws with
@@ -869,6 +882,9 @@ namespace jasperengine{
 			Vector4 color_intensity;  // rgb linear colour, w intensity
 			Vector4 cone_shadow;      // inner, outer cone cos, shadow slot, cascades
 			Vector4 spot_mask;        // xyz projection up, w mask aspect (0 = none)
+			// as the per-object lights block holds it: position_type, direction_inner,
+			// color_outer, spot_shadow (its w filled per draw)
+			Vector4 packed[4];
 			uint32_t cullingMask = LAYER_MASK_EVERYTHING;
 			int spotMaskTile = -1;
 			LightShading shading = LightShading::BOTH;
@@ -914,8 +930,10 @@ namespace jasperengine{
 		Vector2 passResolution;
 
 		// the engine frame block (u_vs_frame / u_fs_frame) of the camera pass being drawn,
-		// filled once per pass and uploaded to every draw whose shader declares it
+		// filled once per pass and uploaded to every draw whose shader declares it, and the
+		// built-in Lit's part of it (u_fs_litFrame)
 		frame_t passFrame;
+		lit_frame_t passLitFrame;
 
 		// SSR: per-frame fullscreen passes for the main camera. The opaque color pass
 		// renders into sceneColorFramebuffer, the ssr pass marches the depth pre-pass
@@ -1000,16 +1018,20 @@ namespace jasperengine{
 		void updateSceneLights();
 		void updateObjectLights();
 		void selectMeshLights(Entity entity, MeshComponent& mesh, const Transform& transform);
-		// the per-object lights block of a submesh variant (its lighting mode and capacity)
-		// for the camera pass being drawn; returns the bytes the variant's block holds
-		unsigned int buildObjectLights(const MeshComponent& mesh, uint32_t properties, object_lights_t& block) const;
+		// the object's lights a submesh variant (its lighting mode and capacity) takes, pixel
+		// lights then vertex lights, as scene light indices
+		void orderObjectLights(const MeshComponent& mesh, uint32_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const;
+		// the per-object lights block of a submesh variant for the camera pass being drawn
+		void buildObjectLights(const MeshComponent& mesh, uint32_t properties, object_lights_t& block) const;
+		int passLightCascades(const SceneLight& light) const;
 		// the legacy u_fs_lighting of an older fork: the object's first pixel lights
 		void buildLegacyLighting(const MeshComponent& mesh, uint32_t properties, fs_lighting_t& block) const;
 		// the engine-internal members of the frame block (lighting, environment, viewport, fog),
 		// filled by updatePassFrame after the contract members (fillFrameBlock)
-		void fillFrameLighting(frame_t& frame, const CameraComponent& camera) const;
+		void fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, const CameraComponent& camera) const;
 		// a material asks for a lighting mode its shader does not list (logged once per pair)
-		static void warnUnsupportedLighting(const Material& material, const std::string& shader, const ShaderManifest* manifest, const std::string& entityName);
+		static void warnUnsupportedLighting(const Material& material, const std::string& shader, const ShaderManifest* manifest,
+		                                    const std::string& entityName, Entity entity, unsigned int submesh);
 		// PCF tap radius of the 3D shadow filter (Scene shadowQuality)
 		float shadowPCFRadius() const;
 		// rgb environment colour (linear), w environment rotation (radians)
@@ -1346,17 +1368,25 @@ namespace jasperengine{
 		// The custom shader strings (with the "#FEATURES" suffix the material's features
 		// resolve to) its color and depth variants are keyed by; "" for built-in. The depth
 		// pass draws with the library shader's @depth program, else the mesh's depth fork.
+		// A colour variant of a shader with a manifest also carries its resolved blend
+		// mode's BLEND_* define (ShaderReference::getColorVariantReference).
 		static std::string getSubmeshShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
 		static std::string getSubmeshDepthShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
 		// The color pipeline state of a submesh: the material's value, else the manifest's
-		// @state, else the legacy behaviour. blended: not opaque; transparentQueue: drawn
-		// sorted after the opaque objects
+		// @state with the @state[...] rules of the material's features, else the legacy
+		// behaviour. blended: not opaque; transparentQueue: drawn sorted after the opaque objects
 		static RenderState resolveSubmeshRenderState(const MeshComponent& mesh, const Submesh& submesh, const ShaderManifest* manifest,
 		                                             bool& blended, bool& transparentQueue);
+		// The same with a manifest state already resolved (Submesh::manifestState; null: none)
+		static RenderState resolveSubmeshRenderState(const MeshComponent& mesh, const Submesh& submesh, const ShaderManifestState* manifestState,
+		                                             bool& blended, bool& transparentQueue);
 		// The same for UI, points, lines and sky (AUTO: alpha blend and depth write, legacyCulling)
-		static RenderState resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite, const ShaderManifest* manifest, bool legacyCulling);
-		// the shader-library custom shader string of a UI/points/lines/sky shader with its features
-		static std::string getComponentShaderReference(const std::string& customShader, const std::vector<std::string>& shaderFeatures);
+		static RenderState resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite, const ShaderManifest* manifest,
+		                                               const std::vector<std::string>& shaderFeatures, bool legacyCulling);
+		// the shader-library custom shader string of a UI/points/lines/sky shader with its
+		// features and the BLEND_* define of its blend mode (Skybox: AUTO)
+		static std::string getComponentShaderReference(const std::string& customShader, const std::vector<std::string>& shaderFeatures,
+		                                               MaterialBlendMode blendMode);
 
 		// The shader variants an entity draws with as it is now, in this scene: its mesh
 		// (with the shadow/depth and SSR G-buffer passes), UI, points, lines or sky. A

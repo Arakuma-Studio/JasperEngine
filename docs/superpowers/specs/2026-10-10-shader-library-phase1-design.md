@@ -392,7 +392,27 @@ including mesh, depth, UI, points, lines and sky.
 - No per-draw string comparisons or map lookups; resolve names to slots at load.
 - Manifests are parsed once per source and cached.
 - Default-state objects (empty `shader`, AUTO everywhere) take exactly today's code path
-  and upload no more data per draw than today, with at most 8 lights reaching them.
+  and upload, per light slot of their capacity tier, no more data per draw than the
+  pre-library layout (0c59f0a0) did for the same number of slots: 64 B per light slot
+  (was 80), plus a 64 B lights header (counts, SH), a 32-96 B Lit camera block (2-6
+  vectors by fog, shadows, SSAO, IBL) and no separate fog block. Measured (lights, camera
+  and fog blocks; GL bytes, 256-byte aligned on Metal/WebGPU in brackets):
+
+  | Draw | 0c59f0a0 | before fix (a1107ddb) | now |
+  |---|---|---|---|
+  | Lit pixel, tier 8 | 560 (6 slots) [768] | 1088 [1280] | 608 [1024] |
+  | Lit pixel, tier 8, fog | 592 [1024] | 1088 | 624 [1024] |
+  | Lit pixel, tier 8, shadows + fog | 592 | 1088 | 640 [1024] |
+  | Lit pixel, tier 4 | - | 704 | 352 [768] |
+  | Lit mixed, tier 8 | - | 1792 (704 VS + 704 FS + 384) | 1008 (400 VS + 576 FS + 32) |
+  | Lit vertex, tier 8 | - | 1088 (704 VS + 384) | 480 (448 VS + 32) |
+  | fogged unlit sprite / tilemap (MATERIAL_UNLIT) | 32 | 384 | 32 |
+  | library pixel shader reading the frame block (toon), tier 8 | - | 1088 | 928 (576 + 352) |
+  | library unlit shader with fog, no frame block (unlit) | - | 384 | 32 |
+
+  The 6-slot baseline would be 512 B (+32 fog) in the new layout; tier 8's two extra
+  slots are the difference to 0c59f0a0. The frame block (352 B) is the library contract
+  and is uploaded only by shaders that declare it.
 
 ## 8. Unified lighting
 
@@ -693,3 +713,64 @@ override the sections they refer to; later agents follow them.
   with that list. The agent guide (`McpInstructions.cpp`) is at most 16 KB (16,384 bytes,
   checked by `test_instructions_name_real_tools`); shader detail lives in
   `docs/mcp/guide/shaders.md`.
+
+### 13.5 Review fixes: engine (sl/p1-fix-engine)
+
+- Lights block (`lights.glsl`): the layout is engine-internal (section 6.4's arrays are
+  replaced), the functions are the contract and unchanged; library shaders never read
+  `objectLights.*`. Four vectors per light: `position_type` (xyz position; w 0 for a
+  directional light, else 1 + range, range 0 unlimited), `direction_inner` (xyz direction,
+  w spot inner cos, -2 for a point light), `color_outer` (rgb colour * intensity, w spot
+  outer cos, -2 for a point light), `spot_shadow` (xy octahedral spot up, z mask aspect,
+  w = (shadow index + 1) | cascades << 6 | mask tile << 9, exact in a float). `Light.color`
+  is premultiplied and `Light.intensity` 1. Order in the block: `counts`, the three
+  vertex arrays, the SH, `spot_shadow`: the vertex stage declares a prefix (no SH in mixed
+  mode, where `ambientLight` is fragment-only) and the engine uploads the reflected size
+  of each stage's block.
+- The built-in Lit reads `u_fs_litFrame` (`includes/lit_frame.glsl`, `lit_frame_t`), a
+  2-6 vector prefix of the camera data it needs, not the frame block. The frame block's
+  engine-internal members are now `lightingInfo`, `fogColor_type`, `fogDensity_start_end`
+  (`environment` and `viewportInfo` were Lit's only). `fog.glsl` reads Lit's block, else
+  the frame block when the fragment stage declared it first, else its own 32-byte
+  `u_fs_fog` (MATERIAL_UNLIT variants, library shaders that do not read the frame block).
+  Render identity with 0c59f0a0 for a 6-light scene (directional with shadows, 3 point,
+  2 spot) holds pixel for pixel.
+- Blend define: every colour variant of a shader with a manifest compiles with one of
+  `BLEND_NONE`, `BLEND_ALPHA`, `BLEND_PREMULTIPLIED`, `BLEND_ADDITIVE`, `BLEND_MULTIPLY`,
+  the blend its pipeline resolves to (AUTO: legacy alpha), folded into the variant
+  reference (`ShaderReference::getColorVariantReference`, `library:x#BLEND_ALPHA,F`);
+  depth programs do not get it. `finalizeColor` fogs by it (additive fades to black,
+  multiply to white, premultiplied to fog * alpha). `BLEND_*` feature/keyword names are a
+  manifest error. `RenderSystem::getComponentShaderReference` takes the component's blend.
+- Manifest syntax: `@state[<DEFINE>] key=value...` / `@state[!<DEFINE>]` (rules over the
+  base `@state`, in order, while a feature or keyword define is on/off; resolution:
+  material, rules, `@state`, legacy; resolved once at load into `Submesh::manifestState`,
+  so the per-frame queue check does not allocate); `@state shadows=on|off` (`off` keeps
+  the submesh out of shadow maps: `SubmeshShaderInputs::castShadows` for its variant, and
+  `drawMeshDepth` skips it in shadow passes; the mesh's
+  `castShadows` still applies, there is no material override); `@require <inputs>
+  feature=<DEFINE>` (or `feature=!<DEFINE>`), resolved per variant from its features in
+  the variant, the compiler's `SURFACE_*` defines and the depth program
+  (`SubmeshShaderInputs::features`); `@require rawcolor` (`SURFACE_RAW_COLOR`,
+  `v_rawColor`: the vertex colour without the instance colour). The displacement hooks
+  get the raw vertex colour in both stages.
+- Library shaders on a Terrain: `surface_vs.glsl` / `surface_depth_vs.glsl` include
+  `terrain_vs.glsl` (with `TERRAIN_NO_SURFACE_VARYINGS`), uv1 is the terrain's tiled UV
+  (`getTerrainUV`); painted layers (`HAS_TERRAIN_PBR`) stay Lit's.
+- Depth programs: depth bit 13 `Txr` (`HAS_TEXTURERECT`) applies the sprite texture
+  rect, and the instance rect in the built-in one, to the alpha-clip UV. A shader with a
+  manifest never gets the built-in depth alpha test from its material's alpha mode.
+- A colour pass whose depth test is less, greater or not-equal leaves the camera depth
+  pre-pass. Offscreen opaque pipelines composite alpha (ONE, ONE_MINUS_SRC_ALPHA). The
+  reflection probe face refills the frame block after `capturingReflectionProbe` is set.
+- Light picking: a spot whose outer cone misses the bounds sphere is left out; a picked
+  directional light changing only colour/intensity does not repick (unless a directional
+  light was folded into the SH).
+- A Sprite or MeshPolygon made in Lua has one submesh from its construction.
+- `JASPERENGINE_READY_SIGNAL=1` logs "Engine ready: ..." once every scene has been loaded
+  with no shader build pending for 10 frames; `tools/smoke-test.sh` waits for it by
+  default (`SMOKE_GAME_SECONDS=ready`, `SMOKE_READY_TIMEOUT`, `SMOKE_READY_SETTLE`).
+- `tools/fixtures/shader-regressions` shows the fixed bugs in one scene
+  (`SR_FOCUS=probe|prepass|rtt|terrain|front` for a close-up; the front row shows
+  `shadows=off`, `@state[...]` and a Sprite's shader set right after creation).
+- Editor shader cache `v32`.

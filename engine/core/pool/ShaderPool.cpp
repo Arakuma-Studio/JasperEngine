@@ -418,7 +418,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return 31;
-        case ShaderType::DEPTH:  return 13;
+        case ShaderType::DEPTH:  return 14;
         case ShaderType::GBUFFER: return 10;
         case ShaderType::UI:     return 4;
         case ShaderType::POINTS: return 4;
@@ -487,6 +487,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 10: return shortName ? "Vc3" : "Vertex Color 3";
             case 11: return shortName ? "Vc4" : "Vertex Color 4";
             case 12: return shortName ? "Uv1" : "UV1";
+            // the sprite texture rect the alpha-clip UV goes through
+            case 13: return shortName ? "Txr" : "Texture Rect";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -992,7 +994,7 @@ uint32_t ShaderPool::getMeshProperties(
 }
 
 uint32_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask, bool instanceFade,
-                                            bool normals, bool vertexColorVec3, bool vertexColorVec4, bool uv1){
+                                            bool normals, bool vertexColorVec3, bool vertexColorVec4, bool uv1, bool textureRect){
     uint32_t prop = 0;
 
     prop |= texture          ? (1 <<  0) : 0;
@@ -1008,6 +1010,7 @@ uint32_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool mo
     prop |= vertexColorVec3  ? (1 << 10) : 0;
     prop |= vertexColorVec4  ? (1 << 11) : 0;
     prop |= uv1              ? (1 << 12) : 0;
+    prop |= textureRect      ? (1 << 13) : 0;
 
     return prop;
 }
