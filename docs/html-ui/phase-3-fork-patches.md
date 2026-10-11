@@ -998,7 +998,7 @@ counters-nested,list-markers-outside,list-markers-inside,ordered-start-reversed}
 
 #### 3.6.5 `p3-cascade` as implemented
 
-Where the implementation differs from or makes precise §3.4–3.6 (FORK.md rows P3-C1…P3-C10 list
+Where the implementation differs from or makes precise §3.4–3.6 (FORK.md rows P3-C1…P3-C13 list
 the commits):
 
 - **One hook (§3.4.1, §3.4.2).** `PropertySpecification::ParsePropertyDeclaration` (a file other
@@ -1051,11 +1051,13 @@ the commits):
   `ListMarkers` (appended after p3-text's `TextShadow`, `TextProperties`: the values merged earlier keep their indices); present with this package: `Important`,
   `CssWideKeywords`, `RootIsWhere`, `Has`, `FocusPseudoClasses`, `SelectorsLevel4`,
   `PseudoElements`, `ListMarkers`.
-- **Fixtures and other packages.** While this package was written, RmlUi sized an inline box
-  1.2 × its font size tall where Chromium uses the font's ascent + descent (fixed by p3-text,
-  P3-TX2), and it interpolates colours in linear light (`ElementAnimation.cpp`, p3-animation's):
-  the fixtures of this package compare no boxes or backgrounds of inline boxes and transition a
-  length. The fixtures use Ahem only.
+- **Fixtures and other packages.** The fixtures use Ahem only, compare the boxes of inline
+  spans and transition colours as first written. Their failures that were not this package's
+  were fixed where they were found: whole-pixel ascent/descent and floored half-leading as in
+  Chromium (P3-C11, inline layout), an empty span on a zero-height line has no height (P3-C12),
+  and the user-agent sheet's control theme (border, radius, fill, ring of checkboxes and radios,
+  rounding of fields, buttons and selects) follows `appearance: none` through companions, as
+  Chromium's html.css gives those controls none of it.
 
 ---
 
