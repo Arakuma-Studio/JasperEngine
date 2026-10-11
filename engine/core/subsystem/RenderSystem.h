@@ -1561,6 +1561,8 @@ namespace jasperengine{
 		// they read black and its own depth (a material error the inspector and checks report)
 		static uint32_t getSubmeshSceneInputs(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader,
 		                                      bool& opaqueQueue);
+		// The scene inputs this scene's last frame produced: bit 0 the scene depth, bit 1 the colour
+		uint32_t getSceneInputUsage() const;
 		// The same for UI, points, lines and sky (AUTO: alpha blend and depth write, legacyCulling)
 		static RenderState resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite, const ShaderManifest* manifest,
 		                                               const std::vector<std::string>& shaderFeatures, bool legacyCulling);
