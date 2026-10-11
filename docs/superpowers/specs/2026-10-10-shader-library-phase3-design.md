@@ -1,7 +1,7 @@
 # Shader library, phase 3: scene depth and scene colour
 
-Status: approved scope; implementation details are refined against the merged phase 1 and
-phase 2 code before work starts.
+Status: approved scope, refined against the merged phase 1 and 2 code (tag
+`shader-library-phase2`).
 Depends on: phases 1 and 2. Extends their contracts; does not redefine them.
 
 ## 1. Goal
@@ -11,6 +11,20 @@ effects that need them (soft particles, depth-fade foam water, glass, heat haze,
 decals, intersection highlights), while scenes that use none of them pay nothing.
 
 ## 2. Requirements
+
+### 2.0 Conventions inherited from phases 1-2 (binding)
+
+- Manifest inputs are lowercase like `smoothnormals` / `rawcolor`: the new ones are
+  `@require scenedepth` and `@require scenecolor` (with optional `feature=<F>` gating, so a
+  shader pays only when the feature is on, e.g. particle `SOFT`).
+- Blend modes reach shaders as `BLEND_*` defines; outputs go through `finalizeColor` /
+  `finalizeStraightColor`; fragment UVs use `SURFACE_UV_IN` (`includes/surface_uv.glsl`).
+- Scene inputs must work for main draws AND extra passes (`MaterialExtraPass`), for
+  instanced meshes, sprites and points.
+- Phase 1 §13 and phase 2 §5 implementation notes apply.
+- New scene setting (serialized, editor, Lua, MCP like other scene settings):
+  `SceneSettings::sceneColorScale` — `FULL` or `HALF` (default `HALF`), the resolution of the
+  scene-colour copy.
 
 ### 2.1 Scene inputs
 
@@ -37,6 +51,11 @@ decals, intersection highlights), while scenes that use none of them pay nothing
     default), linear filtering.
 - Requiring materials are drawn in the transparent queue; an opaque material that requires
   a scene input is reported as a manifest/state error in the inspector and check tooling.
+- The copy contains opaque geometry and the sky only; transparent objects requiring scene
+  colour do not see each other (documented, as in URP's opaque texture).
+- No new per-frame work, targets or passes for camera passes in which no visible draw
+  requires a scene input; GPU memory for the targets is released when no longer needed
+  for a while (or kept and reused; justify).
 - Works with fixed-resolution and render-to-texture cameras; the editor Scene view shows
   the effects too.
 - Mobile cost is visible to the user: the shader picker marks shaders that require scene
