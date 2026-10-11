@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-decoration longhands</title>
+<style>
+  /* text-decoration-line (several lines), -color, -style (double, dotted, dashed), -thickness, text-underline-offset and the shorthand; underline and overline under the text, line-through over it; a span inherits its decorating box’s color. Ahem: the accented capitals are ascent-only, so the underline shows. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  @font-face { font-family: "Roboto Text"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  div { position: absolute; left: 10px; font-size: 20px; color: #305080; }
+</style>
+</head>
+<body>
+<div id="under" style="top: 10px; text-decoration-line: underline">ÉÉÉÉ</div>
+<div id="over" style="top: 40px; text-decoration-line: overline">ÉÉÉÉ</div>
+<div id="through" style="top: 70px; text-decoration-line: line-through; text-decoration-color: #e04040">ÉÉÉÉ</div>
+<div id="all" style="top: 100px; text-decoration: underline overline line-through #20a040">ÉÉÉÉ</div>
+<div id="thick" style="top: 130px; text-decoration: underline 4px; text-underline-offset: 3px">ÉÉÉÉ</div>
+<div id="double" style="left: 140px; top: 10px; text-decoration: underline double">ÉÉÉÉ</div>
+<div id="dashed" style="left: 140px; top: 40px; text-decoration: underline dashed 2px">ÉÉÉÉÉÉ</div>
+<div id="dotted" style="left: 140px; top: 70px; text-decoration: underline dotted 2px">ÉÉÉÉÉÉ</div>
+<div id="inherit" style="left: 140px; top: 100px; text-decoration: underline">ÉÉ<span style="color: #c03030">ÉÉ</span></div>
+</body>
+</html>

@@ -109,7 +109,17 @@ bool CascadeKeywords::isKeywordText(std::string_view value){
            equalsNoCase(value, "revert") || equalsNoCase(value, "revert-layer");
 }
 
-std::vector<std::string> CascadeKeywords::outputProperties(const std::string& cssProperty){
+std::vector<std::string> CascadeKeywords::outputProperties(const std::string& cssProperty, const ForkFeatures& fork){
+    // the fork's own text properties (phase 3, p3-text) are written as themselves
+    if (cssProperty == "text-shadow" && fork.has(ForkFeature::TextShadow))
+        return {cssProperty};
+    if (fork.has(ForkFeature::TextProperties)){
+        if (cssProperty == "word-wrap")
+            return {"overflow-wrap"};
+        if (cssProperty == "overflow-wrap" || cssProperty == "white-space-collapse" || cssProperty == "text-wrap" ||
+            cssProperty == "text-wrap-mode" || cssProperty == "text-decoration-line")
+            return {cssProperty};
+    }
     const auto it = shorthands().find(cssProperty);
     if (it != shorthands().end())
         return it->second;
@@ -143,7 +153,7 @@ bool CascadeKeywords::inherited(const std::string& rcssProperty){
 void CascadeKeywords::apply(DeclContext& context, const std::string& keywordIn){
     std::string keyword = keywordIn;
     const std::string& property = context.name;
-    std::vector<std::string> outputs = outputProperties(property);
+    std::vector<std::string> outputs = outputProperties(property, context.session.options.fork);
     if (context.fork(ForkFeature::CssWideKeywords)){
         // the fork's own keywords, on the properties the declaration is written to: the
         // background color is a property of its own, the other background-* are the decorator's

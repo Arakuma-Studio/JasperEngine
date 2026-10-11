@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-align: start and end</title>
+<style>
+  /* start and end follow the direction of the block (ltr, rtl); match-parent takes the parent’s resolved alignment; -webkit-center centers. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  @font-face { font-family: "Roboto Text"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  div > div { width: 100px; background: #e0e8f0; margin-bottom: 4px; }
+  .group { position: absolute; left: 10px; }
+</style>
+</head>
+<body>
+<div class="group" style="top: 10px">
+<div id="ltr-start" style="text-align: start">XXX</div>
+<div id="ltr-end" style="text-align: end">XXX</div>
+<div id="rtl-start" dir="rtl" style="text-align: start">XXX</div>
+<div id="rtl-end" dir="rtl" style="text-align: end">XXX</div>
+</div>
+<div class="group" style="left: 130px; top: 10px; text-align: end; direction: rtl">
+<div id="inherit-end" style="direction: ltr">XXX</div>
+<div id="match" style="direction: ltr; text-align: match-parent">XXX</div>
+<div id="webkit-center" style="direction: ltr; text-align: -webkit-center">XXX</div>
+</div>
+</body>
+</html>

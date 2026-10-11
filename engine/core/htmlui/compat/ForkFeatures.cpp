@@ -30,6 +30,8 @@ namespace {
         true,    // Important (phase 3, p3-cascade: docs/html-ui/FORK.md)
         true,    // CssWideKeywords (phase 3, p3-cascade: docs/html-ui/FORK.md)
         true,    // Grid (phase 3, p3-grid: CSS Grid, a port of Taffy; docs/html-ui/FORK.md P3-G1..P3-G3)
+        true,    // TextShadow (phase 3, p3-text: native text-shadow; docs/html-ui/FORK.md)
+        true,    // TextProperties (phase 3, p3-text: word-spacing, white-space longhands, overflow-wrap, text-decoration-*, ...)
         true,    // Has (phase 3, p3-cascade)
         true,    // FocusPseudoClasses (phase 3, p3-cascade)
         true,    // SelectorsLevel4 (phase 3, p3-cascade)
@@ -39,6 +41,7 @@ namespace {
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {
         "None", "Calc", "BorderStyle", "PercentRadius", "PseudoElements", "RootIsWhere", "Fixed",
         "GroupOpacity", "TimingFunctions", "Important", "CssWideKeywords", "Grid",
+        "TextShadow", "TextProperties",
         "Has", "FocusPseudoClasses", "SelectorsLevel4", "ListMarkers",
     };
 
@@ -232,6 +235,12 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
                 return std::nullopt;
             return result.fixed;
         }
+        case ForkFeature::TextShadow:
+            return parses("text-shadow", "1px 2px 3px #000000ff, 0 0 2px");
+        case ForkFeature::TextProperties:
+            // a sample of the family: the word-spacing property, the white-space and text-decoration shorthands
+            return parses("word-spacing", "0.25em") && parses("white-space", "break-spaces") &&
+                   parses("text-decoration", "underline dotted #ff0000ff 2px") && parses("overflow-wrap", "anywhere");
         case ForkFeature::GroupOpacity:
             // not observable without rendering: the table is authoritative
             return std::nullopt;

@@ -1,0 +1,24 @@
+#htmlui-root .a {
+word-break: break-all;
+}
+#htmlui-root .b {
+word-break: break-word;
+}
+#htmlui-root .c {
+word-break: keep-all;
+}
+#htmlui-root .d {
+word-break: normal;
+}
+#htmlui-root .e {
+overflow-wrap: break-word;
+}
+#htmlui-root .f {
+overflow-wrap: anywhere;
+}
+#htmlui-root .g {
+overflow-wrap: normal;
+}
+#htmlui-root .h {
+overflow-wrap: break-word;
+}

@@ -1,0 +1,7 @@
+{
+ "comment": "white-space normal, pre, nowrap, pre-wrap (spaces at a line end hang), pre-line, break-spaces (spaces take room and wrap), and the longhands; the heights show the line counts.",
+ "viewport": [
+  240,
+  140
+ ]
+}

@@ -1637,6 +1637,16 @@
 		524D4C5572FF4A1C74C32DF8 /* ContentValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5521C788CE3DCA1844 /* ContentValue.cpp */; };
 		524D4C55943CE355FCCC912F /* Cascade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C550718B218AB78A43D /* Cascade.cpp */; };
 		524D4C55CDEC91C3E4A06878 /* Cascade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C550718B218AB78A43D /* Cascade.cpp */; };
+		524D4C55256864F7CEE14598 /* TextUnicode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556DF9645915A0E99B /* TextUnicode.cpp */; };
+		524D4C55138D97365E2F6C3A /* TextUnicode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556DF9645915A0E99B /* TextUnicode.cpp */; };
+		524D4C555C1E0AEF6BBE41CA /* TextShadow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C553DCE338654F47B58 /* TextShadow.cpp */; };
+		524D4C55F8C32E9BEFF581D0 /* TextShadow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C553DCE338654F47B58 /* TextShadow.cpp */; };
+		524D4C55402FB21DD019CAD1 /* TextProperties.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C558AC26B918A5CDD71 /* TextProperties.cpp */; };
+		524D4C550A23F57B56916973 /* TextProperties.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C558AC26B918A5CDD71 /* TextProperties.cpp */; };
+		524D4C5532795426CACADAA4 /* ShorthandWhiteSpace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C553DD5634C093AA857 /* ShorthandWhiteSpace.cpp */; };
+		524D4C55EE3CD6C3E150D8B0 /* ShorthandWhiteSpace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C553DD5634C093AA857 /* ShorthandWhiteSpace.cpp */; };
+		524D4C55B5E15B639A4F71A0 /* ShorthandTextDecoration.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5549BEE80E8A7198B5 /* ShorthandTextDecoration.cpp */; };
+		524D4C55BA829CEA6F4141A5 /* ShorthandTextDecoration.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5549BEE80E8A7198B5 /* ShorthandTextDecoration.cpp */; };
 		524D4C55DB1768B4D480AD70 /* GridTypes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C558631FF96FEC156CD /* GridTypes.cpp */; };
 		524D4C552A908AFC9AAA42A9 /* GridTypes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C558631FF96FEC156CD /* GridTypes.cpp */; };
 		524D4C555871BFC1B6BA95D9 /* GridTrackSizing.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BE7B5F79F6527CA5 /* GridTrackSizing.cpp */; };
@@ -4718,6 +4728,11 @@
 		524D4C558B231A2A813F3358 /* CounterResolver.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CounterResolver.cpp; sourceTree = "<group>"; };
 		524D4C5521C788CE3DCA1844 /* ContentValue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContentValue.cpp; sourceTree = "<group>"; };
 		524D4C550718B218AB78A43D /* Cascade.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Cascade.cpp; sourceTree = "<group>"; };
+		524D4C556DF9645915A0E99B /* TextUnicode.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextUnicode.cpp; sourceTree = "<group>"; };
+		524D4C553DCE338654F47B58 /* TextShadow.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextShadow.cpp; sourceTree = "<group>"; };
+		524D4C558AC26B918A5CDD71 /* TextProperties.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextProperties.cpp; sourceTree = "<group>"; };
+		524D4C553DD5634C093AA857 /* ShorthandWhiteSpace.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShorthandWhiteSpace.cpp; sourceTree = "<group>"; };
+		524D4C5549BEE80E8A7198B5 /* ShorthandTextDecoration.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShorthandTextDecoration.cpp; sourceTree = "<group>"; };
 		524D4C558631FF96FEC156CD /* GridTypes.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GridTypes.cpp; sourceTree = "<group>"; };
 		524D4C55BE7B5F79F6527CA5 /* GridTrackSizing.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GridTrackSizing.cpp; sourceTree = "<group>"; };
 		524D4C5593F94FB26BA6B149 /* GridPlacement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GridPlacement.cpp; sourceTree = "<group>"; };
@@ -8827,6 +8842,11 @@
 				524D4C558E983D012991D5CE /* StyleValue.cpp */,
 				524D4C55C0A526E3E5E2A661 /* PropertyParserAlignment.cpp */,
 				524D4C5586FD47C4160E8971 /* GridStyleValues.cpp */,
+				524D4C5549BEE80E8A7198B5 /* ShorthandTextDecoration.cpp */,
+				524D4C553DD5634C093AA857 /* ShorthandWhiteSpace.cpp */,
+				524D4C558AC26B918A5CDD71 /* TextProperties.cpp */,
+				524D4C553DCE338654F47B58 /* TextShadow.cpp */,
+				524D4C556DF9645915A0E99B /* TextUnicode.cpp */,
 				524D4C550718B218AB78A43D /* Cascade.cpp */,
 				524D4C5521C788CE3DCA1844 /* ContentValue.cpp */,
 				524D4C558B231A2A813F3358 /* CounterResolver.cpp */,
@@ -12790,6 +12810,11 @@
 				524D4C55E8B8216E9475ADD3 /* CounterResolver.cpp in Sources */,
 				524D4C55BE06ADB4B3545726 /* ContentValue.cpp in Sources */,
 				524D4C55943CE355FCCC912F /* Cascade.cpp in Sources */,
+				524D4C55256864F7CEE14598 /* TextUnicode.cpp in Sources */,
+				524D4C555C1E0AEF6BBE41CA /* TextShadow.cpp in Sources */,
+				524D4C55402FB21DD019CAD1 /* TextProperties.cpp in Sources */,
+				524D4C5532795426CACADAA4 /* ShorthandWhiteSpace.cpp in Sources */,
+				524D4C55B5E15B639A4F71A0 /* ShorthandTextDecoration.cpp in Sources */,
 				524D4C55DB1768B4D480AD70 /* GridTypes.cpp in Sources */,
 				524D4C555871BFC1B6BA95D9 /* GridTrackSizing.cpp in Sources */,
 				524D4C558010A7413CAFAC8E /* GridPlacement.cpp in Sources */,
@@ -13016,6 +13041,11 @@
 				524D4C5527BC25CB46A177B7 /* CounterResolver.cpp in Sources */,
 				524D4C5572FF4A1C74C32DF8 /* ContentValue.cpp in Sources */,
 				524D4C55CDEC91C3E4A06878 /* Cascade.cpp in Sources */,
+				524D4C55138D97365E2F6C3A /* TextUnicode.cpp in Sources */,
+				524D4C55F8C32E9BEFF581D0 /* TextShadow.cpp in Sources */,
+				524D4C550A23F57B56916973 /* TextProperties.cpp in Sources */,
+				524D4C55EE3CD6C3E150D8B0 /* ShorthandWhiteSpace.cpp in Sources */,
+				524D4C55BA829CEA6F4141A5 /* ShorthandTextDecoration.cpp in Sources */,
 				524D4C552A908AFC9AAA42A9 /* GridTypes.cpp in Sources */,
 				524D4C555C92277D70325F12 /* GridTrackSizing.cpp in Sources */,
 				524D4C55DD7B4F20A2B70E31 /* GridPlacement.cpp in Sources */,

@@ -5,7 +5,6 @@ body#htmlui-root {
 --shared--decorator: linear-gradient(#ff0000ff, #0000ffff) border-box;
 --shared--mask: linear-gradient(#ff0000ff, #0000ffff) border-box;
 --shadow: 0 0 8px #00ffffff;
---shadow--font-effect: glow(0px 4px 0px 0px #00ffffff);
 --theme-color: #333333ff;
 --space: 1.5rem;
 --dur: 0.2s;
@@ -30,7 +29,7 @@ decorator: var(--shared--decorator);
 mask-image: var(--shared--mask);
 }
 #htmlui-root .shadow-text {
-font-effect: var(--shadow--font-effect);
+text-shadow: var(--shadow);
 }
 #htmlui-root .shadow-box {
 --html-box-shadow: var(--shadow);
@@ -57,7 +56,7 @@ decorator: var(--mixed);
 }
 #htmlui-root .undeclared {
 decorator: var(--from-lua);
-font-effect: var(--nope);
+text-shadow: var(--nope);
 }
 #htmlui-root .fallback {
 background-color: transparent;

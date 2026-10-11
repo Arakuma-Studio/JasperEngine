@@ -10,17 +10,33 @@
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/Property.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
+#include "../../Include/RmlUi/Core/StyleValue.h"
 #include "../../Include/RmlUi/Core/TextShapingContext.h"
 #include "ComputeProperty.h"
 #include "ElementDefinition.h"
 #include "ElementStyle.h"
+#include "Layout/LayoutDetails.h"
+#include "TextShadow.h"
+#include "TextUnicode.h"
 #include "TransformState.h"
 #include <limits>
 
 namespace Rml {
 
-static bool BuildToken(String& token, const char*& token_begin, const char* string_end, bool first_token, bool collapse_white_space,
-	bool break_at_endline, Style::TextTransform text_transformation, bool decode_escape_characters);
+// How the text of an element is cut into tokens: words, white space, and the pieces of words between line-break
+// opportunities (CSS Text 3 §5: after a zero-width space, a soft hyphen or a hyphen, around ideographs).
+struct TokenRules {
+	bool collapse_white_space;
+	bool break_at_endline;
+	bool break_spaces; // 'white-space-collapse: break-spaces': a line-break opportunity after every preserved space
+	Style::TextTransform text_transform;
+	Style::WordBreak word_break;
+	bool decode_escape_characters;
+	const char* text_begin; // the element's text, read back for 'capitalize'
+};
+
+static bool BuildToken(String& token, const char*& token_begin, const char* string_end, bool first_token, const TokenRules& rules);
+static bool IsWhiteSpaceToken(const String& token);
 static bool LastToken(const char* token_begin, const char* string_end, bool collapse_white_space, bool break_at_endline);
 
 static int RoundDownToIntegerClamped(float value)
@@ -34,27 +50,43 @@ static int RoundDownToIntegerClamped(float value)
 	return static_cast<int>(value);
 }
 
+// A line that ends at a soft hyphen shows a hyphen (CSS Text 3 §5.4, 'hyphens: manual').
+static void AppendHyphenAfterSoftHyphen(String& line, float& line_width, FontFaceHandle font_face_handle, const TextShapingContext& context)
+{
+	// U+00AD in UTF-8
+	if (line.size() < 2 || (unsigned char)line[line.size() - 2] != 0xC2 || (unsigned char)line.back() != 0xAD)
+		return;
+	line += '-';
+	line_width += (float)GetFontEngineInterface()->GetStringWidth(font_face_handle, "-", context);
+}
+
 struct TextOverflowResolved {
 	bool enabled = false;
-	float overflow_width = 0.f;
+	float overflow_edge = 0.f; // where the text is clipped, in the text element's space
 	String overflow_text;
+	Colourb colour; // the overflow text takes the block container's colour
 };
 
-static TextOverflowResolved ResolveTextOverflow(Element* parent, FontFaceHandle font_face_handle)
+// 'text-overflow' of the block container the text is laid out in (CSS Overflow 4 §3: it applies to block containers and
+// affects the text of their inline descendants too), when it clips its overflow.
+static TextOverflowResolved ResolveTextOverflow(ElementText* text_element, FontFaceHandle font_face_handle)
 {
-	if (!parent)
+	Element* container = text_element->GetParentNode();
+	while (container && container->GetDisplay() == Style::Display::Inline)
+		container = container->GetParentNode();
+	if (!container)
 		return {};
 
-	const auto& parent_computed = parent->GetComputedValues();
-	if (parent_computed.overflow_x() == Style::Overflow::Visible && parent_computed.overflow_y() == Style::Overflow::Visible)
+	const auto& container_computed = container->GetComputedValues();
+	if (container_computed.overflow_x() == Style::Overflow::Visible && container_computed.overflow_y() == Style::Overflow::Visible)
 		return {};
 
-	const Style::TextOverflow text_overflow = parent_computed.text_overflow();
+	const Style::TextOverflow text_overflow = container_computed.text_overflow();
 	if (text_overflow == Style::TextOverflow::Clip)
 		return {};
 
-	const Box& box = parent->GetBox();
-	const BoxArea clip_area = parent->GetClipArea();
+	const Box& box = container->GetBox();
+	const BoxArea clip_area = container->GetClipArea();
 
 	auto AccumulateRightSideEdgesUpTo = [](const Box& box, BoxArea up_to_area) -> float {
 		float result = 0;
@@ -63,20 +95,70 @@ static TextOverflowResolved ResolveTextOverflow(Element* parent, FontFaceHandle 
 		return result;
 	};
 
-	const float overflow_width = parent->GetScrollLeft() + box.GetSize().x + AccumulateRightSideEdgesUpTo(box, clip_area);
+	// The right edge of the clipping area, from the text element's position.
+	const float clip_edge = container->GetAbsoluteOffset(BoxArea::Content).x + box.GetSize().x + AccumulateRightSideEdgesUpTo(box, clip_area);
+	const float overflow_edge = clip_edge - text_element->GetAbsoluteOffset(BoxArea::Border).x;
 
 	constexpr char ellipsis_chars[] = "\xE2\x80\xA6"; // U+2026
 	constexpr char dots_chars[] = "...";
 
 	String overflow_text = (text_overflow == Style::TextOverflow::String
-			? parent->GetComputedValues().text_overflow_string()
+			? container_computed.text_overflow_string()
 			: (GetFontEngineInterface()->GetFontMetrics(font_face_handle).has_ellipsis ? ellipsis_chars : dots_chars));
 
 	return TextOverflowResolved{
 		true,
-		overflow_width,
+		overflow_edge,
 		std::move(overflow_text),
+		container_computed.color(),
 	};
+}
+
+static LengthPercentageValue LengthPercentageValueOf(const Property& property)
+{
+#ifdef RMLUI_MATH_EXPRESSIONS
+	if (property.unit == Unit::CALCULATION)
+	{
+		LengthPercentageValue value;
+		value.calculation = property.value.Get<CalculationPtr>();
+		return value;
+	}
+#endif
+	return LengthPercentageValue(property.GetNumericValue());
+}
+
+static void AppendMesh(Mesh& to, const Mesh& from)
+{
+	const int first = (int)to.vertices.size();
+	to.vertices.insert(to.vertices.end(), from.vertices.begin(), from.vertices.end());
+	to.indices.reserve(to.indices.size() + from.indices.size());
+	for (int index : from.indices)
+		to.indices.push_back(first + index);
+}
+
+// The element whose 'text-decoration-line' the text draws (its decorating box): the nearest one that declares it.
+static Element* GetDecoratingElement(ElementText* text_element)
+{
+	for (Element* element = text_element->GetParentNode(); element; element = element->GetParentNode())
+	{
+		if (element->GetLocalProperty(PropertyId::TextDecoration))
+			return element;
+	}
+	return text_element->GetParentNode();
+}
+
+// The colour of the decoration lines: 'text-decoration-color' of the decorating box, 'currentcolor' its colour.
+static Colourb GetDecorationColour(ElementText* text_element)
+{
+	Element* decorating = GetDecoratingElement(text_element);
+	if (!decorating)
+		return text_element->GetComputedValues().color();
+	const Property* property = decorating->GetLocalProperty(PropertyId::TextDecorationColor);
+	if (!property)
+		property = decorating->GetProperty(PropertyId::TextDecorationColor);
+	if (property && property->unit == Unit::COLOUR)
+		return property->Get<Colourb>();
+	return decorating->GetComputedValues().color();
 }
 
 void LogMissingFontFace(Element* element)
@@ -101,8 +183,7 @@ void LogMissingFontFace(Element* element)
 RMLUI_RTTI_Define(ElementText)
 
 ElementText::ElementText(const String& tag) :
-	Element(tag), colour(255, 255, 255), opacity(1), font_handle_version(0), geometry_dirty(true), dirty_layout_on_change(true),
-	generated_decoration(Style::TextDecoration::None), decoration_property(Style::TextDecoration::None), font_effects_dirty(true),
+	Element(tag), colour(255, 255, 255), opacity(1), font_handle_version(0), geometry_dirty(true), dirty_layout_on_change(true), font_effects_dirty(true),
 	font_effects_handle(0)
 {}
 
@@ -156,28 +237,6 @@ void ElementText::OnRender()
 	if (geometry_dirty)
 		GenerateGeometry(render_manager, font_face_handle);
 
-	// Regenerate text decoration if necessary.
-	if (decoration_property != generated_decoration)
-	{
-		if (decoration_property == Style::TextDecoration::None)
-		{
-			decoration.reset();
-		}
-		else
-		{
-			Mesh mesh;
-			if (decoration)
-				mesh = decoration->Release(Geometry::ReleaseMode::ClearMesh);
-			else
-				decoration = MakeUnique<Geometry>();
-
-			GenerateDecoration(mesh, font_face_handle);
-			*decoration = GetRenderManager()->MakeGeometry(std::move(mesh));
-		}
-
-		generated_decoration = decoration_property;
-	}
-
 	const Vector2f translation = GetAbsoluteOffset();
 
 	bool render = true;
@@ -206,16 +265,76 @@ void ElementText::OnRender()
 				break;
 			}
 		}
+		// Shadows draw outside the lines.
+		if (!shadows.empty())
+			render = true;
 	}
 
-	if (render)
+	if (!render)
+		return;
+
+	if (!shadows.empty())
+		RenderShadows(render_manager, translation);
+
+	// Underline and overline under the text, line-through over it.
+	if (decoration_under)
+		decoration_under.Render(translation);
+
+	for (size_t i = 0; i < geometry.size(); ++i)
+		geometry[i].geometry.Render(translation, geometry[i].texture);
+
+	if (decoration_over)
+		decoration_over.Render(translation);
+}
+
+void ElementText::RenderShadows(RenderManager& render_manager, Vector2f translation)
+{
+	const Rectanglei initial_scissor_region = render_manager.GetScissorRegion();
+	const bool transformed = (GetTransformState() && GetTransformState()->GetTransform());
+
+	// The first shadow is painted on top (CSS Text Decoration 3 §4): draw them from the last.
+	for (auto it = shadows.rbegin(); it != shadows.rend(); ++it)
 	{
-		for (size_t i = 0; i < geometry.size(); ++i)
-			geometry[i].geometry.Render(translation, geometry[i].texture);
-	}
+		Shadow& shadow = *it;
+		if (shadow.blur <= 0.f)
+		{
+			for (const TexturedGeometry& part : shadow.geometry)
+				part.geometry.Render(translation, part.texture);
+			if (shadow.decoration)
+				shadow.decoration.Render(translation);
+			continue;
+		}
 
-	if (decoration)
-		decoration->Render(translation);
+		// A blurred shadow: drawn into a layer, composited through a Gaussian blur of half the blur radius (CSS). The
+		// scissor covers the shadow's ink and the blur's reach, three standard deviations.
+		const float sigma = 0.5f * shadow.blur;
+		if (!shadow.filter)
+			shadow.filter = render_manager.CompileFilter("blur", Dictionary{{"sigma", Variant(sigma)}});
+		if (!shadow.filter)
+			continue;
+
+		if (!transformed)
+		{
+			Rectanglef region = shadow.ink.Translate(translation).Extend(3.f * sigma + 1.f);
+			Math::ExpandToPixelGrid(region);
+			const Rectanglei scissor = Rectanglei(region).IntersectIfValid(initial_scissor_region);
+			if (!scissor.Valid())
+				continue;
+			render_manager.SetScissorRegion(scissor);
+		}
+
+		render_manager.PushLayer();
+		for (const TexturedGeometry& part : shadow.geometry)
+			part.geometry.Render(translation, part.texture);
+		if (shadow.decoration)
+			shadow.decoration.Render(translation);
+
+		FilterHandleList filter_handles;
+		shadow.filter.AddHandleTo(filter_handles);
+		render_manager.CompositeLayers(render_manager.GetTopLayer(), render_manager.GetNextLayer(), BlendMode::Blend, filter_handles);
+		render_manager.PopLayer();
+		render_manager.SetScissorRegion(initial_scissor_region);
+	}
 }
 
 bool ElementText::GenerateLine(String& line, int& line_length, float& line_width, int line_begin, float maximum_line_width, float right_spacing_width,
@@ -240,20 +359,31 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 		return true;
 	}
 
-	// Determine how we are processing white-space while formatting the text.
+	// Determine how we are processing white-space while formatting the text (CSS Text 4 §3, §4: 'white-space-collapse' and
+	// 'text-wrap-mode', of which 'white-space' is the shorthand).
 	using namespace Style;
 	const auto& computed = GetComputedValues();
-	const WhiteSpace white_space_property = computed.white_space();
-	const bool collapse_white_space =
-		(white_space_property == WhiteSpace::Normal || white_space_property == WhiteSpace::Nowrap || white_space_property == WhiteSpace::Preline);
-	const bool break_at_line =
-		(white_space_property == WhiteSpace::Normal || white_space_property == WhiteSpace::Prewrap || white_space_property == WhiteSpace::Preline);
-	const bool break_at_endline =
-		(white_space_property == WhiteSpace::Pre || white_space_property == WhiteSpace::Prewrap || white_space_property == WhiteSpace::Preline);
+	const WhiteSpaceCollapse white_space_collapse = computed.white_space_collapse();
+	const bool collapse_white_space = (white_space_collapse == WhiteSpaceCollapse::Collapse || white_space_collapse == WhiteSpaceCollapse::PreserveBreaks);
+	const bool break_at_line = (computed.text_wrap_mode() == TextWrapMode::Wrap);
+	const bool break_at_endline = (white_space_collapse == WhiteSpaceCollapse::Preserve || white_space_collapse == WhiteSpaceCollapse::PreserveBreaks ||
+		white_space_collapse == WhiteSpaceCollapse::BreakSpaces);
+	const bool break_spaces = (white_space_collapse == WhiteSpaceCollapse::BreakSpaces);
+	// Preserved spaces at the end of a line hang ('pre-wrap'): they neither wrap nor take room (CSS Text 3 §4.1.3).
+	const bool hang_spaces = !collapse_white_space && !break_spaces;
 
-	const TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing()};
-	TextTransform text_transform_property = computed.text_transform();
+	const TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing(),
+		computed.word_spacing()};
 	WordBreak word_break = computed.word_break();
+	const TokenRules token_rules{collapse_white_space, break_at_endline, break_spaces, computed.text_transform(), word_break, decode_escape_characters,
+		text.c_str()};
+
+	// A word that does not fit on a line of its own is broken anywhere: 'word-break: break-all' at any width, 'overflow-wrap'
+	// ('anywhere', 'break-word', and the legacy 'word-break: break-word') when the word starts the line. The min-content
+	// width counts these breaks except for 'overflow-wrap: break-word' (CSS Text 3 §5.2, §5.5).
+	const OverflowWrap overflow_wrap = computed.overflow_wrap();
+	const bool overflow_wrap_breaks = (word_break == WordBreak::BreakWord || overflow_wrap == OverflowWrap::Anywhere ||
+		(overflow_wrap == OverflowWrap::BreakWord && !LayoutDetails::IsMeasuringMinContent()));
 
 	FontEngineInterface* font_engine_interface = GetFontEngineInterface();
 
@@ -278,8 +408,7 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 				StringUtilities::ToCharacter(StringUtilities::SeekBackwardUTF8(&line.back(), line.data()), line.data() + line.size());
 
 		// Generate the next token and determine its pixel-length.
-		bool break_line = BuildToken(token, next_token_begin, string_end, line.empty() && trim_whitespace_prefix, collapse_white_space,
-			break_at_endline, text_transform_property, decode_escape_characters);
+		bool break_line = BuildToken(token, next_token_begin, string_end, line.empty() && trim_whitespace_prefix, token_rules);
 		if (white_space_only && token.empty() && !(line.empty() && trim_whitespace_prefix))
 			token = " ";
 		int token_width = font_engine_interface->GetStringWidth(font_face_handle, token, text_shaping_context, previous_codepoint);
@@ -290,9 +419,19 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 			const bool is_last_token = LastToken(next_token_begin, string_end, collapse_white_space, break_at_endline);
 			int max_token_width = RoundDownToIntegerClamped(maximum_line_width - (is_last_token ? line_width + right_spacing_width : line_width));
 
+			if (token_width > max_token_width && hang_spaces && IsWhiteSpaceToken(token))
+			{
+				// Hanging spaces: consumed on this line, without width; the line ends after them.
+				line_length += (int)(next_token_begin - token_begin);
+				token_begin = next_token_begin;
+				if (token_begin == string_end)
+					return true;
+				return false;
+			}
+
 			if (token_width > max_token_width)
 			{
-				if (word_break == WordBreak::BreakAll || (word_break == WordBreak::BreakWord && line.empty()))
+				if (word_break == WordBreak::BreakAll || (overflow_wrap_breaks && line.empty() && !allow_empty))
 				{
 					// Try to break up the word
 					max_token_width = RoundDownToIntegerClamped(maximum_line_width - line_width);
@@ -318,8 +457,7 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 
 						token.clear();
 						next_token_begin = token_begin;
-						BuildToken(token, next_token_begin, partial_string_end, line.empty() && trim_whitespace_prefix, collapse_white_space,
-							break_at_endline, text_transform_property, decode_escape_characters);
+						BuildToken(token, next_token_begin, partial_string_end, line.empty() && trim_whitespace_prefix, token_rules);
 						token_width = font_engine_interface->GetStringWidth(font_face_handle, token, text_shaping_context, previous_codepoint);
 
 						if (force_loop_break_at_end || token_width <= max_token_width)
@@ -330,7 +468,8 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 				}
 				else if (allow_empty || !line.empty())
 				{
-					// Let the token overflow into the next line.
+					// Let the token overflow into the next line; a line that ends at a soft hyphen shows a hyphen.
+					AppendHyphenAfterSoftHyphen(line, line_width, font_face_handle, text_shaping_context);
 					return false;
 				}
 			}
@@ -356,7 +495,6 @@ void ElementText::ClearLines()
 {
 	RMLUI_ZoneScoped;
 	lines.clear();
-	generated_decoration = Style::TextDecoration::None;
 	geometry_dirty = true;
 }
 
@@ -405,14 +543,20 @@ void ElementText::OnPropertyChange(const PropertyIdSet& changed_properties)
 		}
 	}
 
-	if (changed_properties.Contains(PropertyId::FontFamily) ||      //
-		changed_properties.Contains(PropertyId::FontWeight) ||      //
-		changed_properties.Contains(PropertyId::FontStyle) ||       //
-		changed_properties.Contains(PropertyId::FontSize) ||        //
-		changed_properties.Contains(PropertyId::FontKerning) ||     //
-		changed_properties.Contains(PropertyId::LetterSpacing) ||   //
-		changed_properties.Contains(PropertyId::RmlUi_Language) ||  //
-		changed_properties.Contains(PropertyId::RmlUi_Direction) || //
+	if (changed_properties.Contains(PropertyId::FontFamily) ||         //
+		changed_properties.Contains(PropertyId::FontWeight) ||         //
+		changed_properties.Contains(PropertyId::FontStyle) ||          //
+		changed_properties.Contains(PropertyId::FontSize) ||           //
+		changed_properties.Contains(PropertyId::FontKerning) ||        //
+		changed_properties.Contains(PropertyId::LetterSpacing) ||      //
+		changed_properties.Contains(PropertyId::WordSpacing) ||        //
+		changed_properties.Contains(PropertyId::RmlUi_Language) ||     //
+		changed_properties.Contains(PropertyId::RmlUi_Direction) ||    //
+		changed_properties.Contains(PropertyId::TextTransform) ||      //
+		changed_properties.Contains(PropertyId::WhiteSpaceCollapse) || //
+		changed_properties.Contains(PropertyId::TextWrapMode) ||       //
+		changed_properties.Contains(PropertyId::WordBreak) ||          //
+		changed_properties.Contains(PropertyId::OverflowWrap) ||       //
 		changed_properties.Contains(PropertyId::TextOverflow))
 	{
 		font_face_changed = true;
@@ -428,11 +572,15 @@ void ElementText::OnPropertyChange(const PropertyIdSet& changed_properties)
 		font_effects_dirty = true;
 	}
 
-	if (changed_properties.Contains(PropertyId::TextDecoration))
+	// The decoration lines and the shadows are generated with the text.
+	if (changed_properties.Contains(PropertyId::TextDecoration) ||          //
+		changed_properties.Contains(PropertyId::TextDecorationColor) ||     //
+		changed_properties.Contains(PropertyId::TextDecorationStyle) ||     //
+		changed_properties.Contains(PropertyId::TextDecorationThickness) || //
+		changed_properties.Contains(PropertyId::TextUnderlineOffset) ||     //
+		changed_properties.Contains(PropertyId::TextShadow))
 	{
-		decoration_property = computed.text_decoration();
-		if (decoration && decoration_property == Style::TextDecoration::None)
-			decoration.reset();
+		geometry_dirty = true;
 	}
 
 	if (font_face_changed)
@@ -443,19 +591,8 @@ void ElementText::OnPropertyChange(const PropertyIdSet& changed_properties)
 	}
 	else if (colour_changed)
 	{
-		// Force the geometry to be regenerated.
+		// Force the geometry to be regenerated (decoration lines and shadows in 'currentcolor' follow).
 		geometry_dirty = true;
-
-		// Re-colour the decoration geometry.
-		if (decoration)
-		{
-			Mesh mesh = decoration->Release();
-			for (Vertex& vertex : mesh.vertices)
-				vertex.colour = colour;
-
-			if (RenderManager* render_manager = GetRenderManager())
-				*decoration = render_manager->MakeGeometry(std::move(mesh));
-		}
 	}
 }
 
@@ -500,32 +637,40 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 {
 	RMLUI_ZoneScopedC(0xD2691E);
 
-	const TextOverflowResolved text_overflow = ResolveTextOverflow(GetParentNode(), font_face_handle);
+	const TextOverflowResolved text_overflow = ResolveTextOverflow(this, font_face_handle);
 
 	const auto& computed = GetComputedValues();
-	const TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing()};
+	const TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing(),
+		computed.word_spacing()};
+	FontEngineInterface* font_engine_interface = GetFontEngineInterface();
+
+	// The strings to draw: the lines, cut at the clipping edge with the overflow text when the text overflows.
+	StringList line_strings(lines.size());
+	for (size_t i = 0; i < lines.size(); i++)
+		line_strings[i] = lines[i].text;
 
 	TexturedMeshList mesh_list;
 	mesh_list.reserve(geometry.size());
 
 	for (Line& line : lines)
 	{
-		line.width = GetFontEngineInterface()->GenerateString(render_manager, font_face_handle, font_effects_handle, line.text, line.position, colour,
+		line.width = font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, line.text, line.position, colour,
 			opacity, text_shaping_context, mesh_list);
 	}
 
-	const auto text_overflows_on_line = [&](const Line& line) { return line.position.x + line.width > text_overflow.overflow_width; };
+	const auto text_overflows_on_line = [&](const Line& line) { return line.position.x + line.width > text_overflow.overflow_edge; };
 	if (text_overflow.enabled && std::any_of(lines.begin(), lines.end(), text_overflows_on_line))
 	{
 		mesh_list.clear();
 
-		for (Line& line : lines)
+		for (size_t i = 0; i < lines.size(); i++)
 		{
+			Line& line = lines[i];
 			if (line.text.empty())
 				continue;
 
 			String abbreviated_text;
-			StringView text_submit_view = line.text;
+			String kept_text; // the line's text before the overflow text
 			StringIteratorU8 view(line.text, line.text.size());
 			--view;
 
@@ -535,14 +680,25 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 			for (; text_overflows_on_line(line) && view && view.get() != line.text.c_str(); --view)
 			{
 				abbreviated_text.reserve(line.text.size() + text_overflow.overflow_text.size());
-				abbreviated_text.assign(line.text.c_str(), view.get());
+				kept_text.assign(line.text.c_str(), view.get());
+				abbreviated_text = kept_text;
 				abbreviated_text.append(text_overflow.overflow_text);
-				line.width = GetFontEngineInterface()->GetStringWidth(font_face_handle, abbreviated_text, text_shaping_context);
-				text_submit_view = abbreviated_text;
+				line.width = font_engine_interface->GetStringWidth(font_face_handle, abbreviated_text, text_shaping_context);
+				line_strings[i] = abbreviated_text;
 			}
 
-			line.width = GetFontEngineInterface()->GenerateString(render_manager, font_face_handle, font_effects_handle, text_submit_view,
+			if (abbreviated_text.empty())
+			{
+				line.width = font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, line_strings[i],
+					line.position, colour, opacity, text_shaping_context, mesh_list);
+				continue;
+			}
+			// the kept text in the text's colour, the overflow text after it in the block container's (CSS Overflow 4 §3.2)
+			const float kept_width = (float)font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, kept_text,
 				line.position, colour, opacity, text_shaping_context, mesh_list);
+			line.width = (int)kept_width +
+				font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, text_overflow.overflow_text,
+					line.position + Vector2f(kept_width, 0.f), text_overflow.colour.ToPremultiplied(opacity), opacity, text_shaping_context, mesh_list);
 		}
 	}
 
@@ -557,40 +713,266 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 		geometry[i].texture = mesh_list[i].texture;
 	}
 
-	generated_decoration = Style::TextDecoration::None;
+	// The decoration lines.
+	const Style::TextDecoration decoration_lines = computed.text_decoration();
+	const ColourbPremultiplied decoration_colour =
+		(decoration_lines != Style::TextDecoration::None ? GetDecorationColour(this).ToPremultiplied(opacity) : ColourbPremultiplied());
+	{
+		Mesh under, over;
+		if (decoration_lines != Style::TextDecoration::None)
+			GenerateDecoration(under, over, font_face_handle, decoration_colour, Vector2f(0.f));
+		decoration_under = (under.indices.empty() ? Geometry() : render_manager.MakeGeometry(std::move(under)));
+		decoration_over = (over.indices.empty() ? Geometry() : render_manager.MakeGeometry(std::move(over)));
+	}
+
+	// The shadows: the same strings in each shadow's colour, offset, with the decoration lines.
+	shadows.clear();
+	if (computed.has_text_shadow())
+	{
+		const FontMetrics& metrics = font_engine_interface->GetFontMetrics(font_face_handle);
+		const Colourb text_colour = computed.color();
+		for (const ResolvedTextShadow& resolved : ResolveTextShadows(*this))
+		{
+			Shadow shadow;
+			shadow.blur = resolved.blur;
+			// 'currentcolor' shadows follow the text's colour; the decoration's shadow takes the shadow's colour too
+			const ColourbPremultiplied shadow_colour = resolved.colour.ToPremultiplied(opacity);
+			if (shadow_colour.alpha == 0)
+				continue;
+			(void)text_colour;
+
+			TexturedMeshList shadow_meshes;
+			Rectanglef ink = Rectanglef::MakeInvalid();
+			for (size_t i = 0; i < lines.size(); i++)
+			{
+				const Line& line = lines[i];
+				const Vector2f position = line.position + resolved.offset;
+				font_engine_interface->GenerateString(render_manager, font_face_handle, 0, line_strings[i], position, shadow_colour, opacity,
+					text_shaping_context, shadow_meshes);
+				const Rectanglef line_ink =
+					Rectanglef::FromCorners(position - Vector2f(0.f, metrics.ascent), position + Vector2f((float)line.width, metrics.descent));
+				ink = (ink.Valid() ? ink.Join(line_ink) : line_ink);
+			}
+			for (TexturedMesh& mesh : shadow_meshes)
+				shadow.geometry.push_back(TexturedGeometry{render_manager.MakeGeometry(std::move(mesh.mesh)), mesh.texture});
+
+			if (decoration_lines != Style::TextDecoration::None)
+			{
+				Mesh under, over;
+				GenerateDecoration(under, over, font_face_handle, shadow_colour, resolved.offset);
+				AppendMesh(under, over);
+				if (!under.indices.empty())
+					shadow.decoration = render_manager.MakeGeometry(std::move(under));
+			}
+			shadow.ink = (ink.Valid() ? ink : Rectanglef::FromPosition(resolved.offset));
+			shadows.push_back(std::move(shadow));
+		}
+	}
+
 	geometry_dirty = false;
 }
 
-void ElementText::GenerateDecoration(Mesh& mesh, const FontFaceHandle font_face_handle)
+void ElementText::GenerateDecoration(Mesh& under, Mesh& over, const FontFaceHandle font_face_handle, ColourbPremultiplied decoration_colour,
+	Vector2f offset)
 {
 	RMLUI_ZoneScopedC(0xA52A2A);
-	RMLUI_ASSERT(decoration);
 
+	// The geometry of the decoration lines follows Chromium's (CSS Text Decoration 4 leaves it to the UA): measured on
+	// fonts with and without underline metrics, sizes 13-40px.
 	const FontMetrics& metrics = GetFontEngineInterface()->GetFontMetrics(font_face_handle);
+	// (the no-text test variant of the font engine reports no thickness: nothing is drawn then)
+	if (metrics.underline_thickness <= 0.f)
+		return;
 
-	float offset = 0.f;
-	switch (decoration_property)
-	{
-	case Style::TextDecoration::Underline: offset = metrics.underline_position; break;
-	case Style::TextDecoration::Overline: offset = -1.1f * metrics.ascent; break;
-	case Style::TextDecoration::LineThrough: offset = -0.65f * metrics.x_height; break;
-	case Style::TextDecoration::None: return;
-	}
+	const Style::TextDecoration decoration_lines = GetComputedValues().text_decoration();
+	const float font_size = GetComputedValues().font_size();
 
-	for (const Line& line : lines)
+	// 'text-decoration-thickness': 'auto' is a tenth of the font size, 'from-font' the font's underline thickness, a
+	// length rounded; at least one pixel, whole pixels.
+	float thickness_value = font_size / 10.f;
+	if (const Property* property = GetProperty(PropertyId::TextDecorationThickness))
 	{
-		const Vector2f position = {line.position.x, line.position.y + offset};
-		const Vector2f size = {(float)line.width, metrics.underline_thickness};
-		MeshUtilities::GenerateLine(mesh, position, size, colour);
+		if (property->unit == Unit::KEYWORD)
+		{
+			if (property->Get<int>() == 1) // from-font
+				thickness_value = Math::Round(metrics.underline_thickness);
+		}
+		else
+			thickness_value = Math::Round(ResolveLengthPercentage(LengthPercentageValueOf(*property), *this, font_size));
 	}
+	const float thickness = Math::Max(1.f, Math::RoundDown(thickness_value));
+
+	// 'text-underline-offset': 'auto' leaves a gap of half the thickness (at least a pixel) under the baseline; a length
+	// places the line's top that far under the baseline.
+	float underline_top = Math::Max(1.f, Math::RoundUp(0.5f * thickness_value));
+	if (const Property* property = GetProperty(PropertyId::TextUnderlineOffset))
+	{
+		if (property->unit != Unit::KEYWORD)
+			underline_top = Math::Round(ResolveLengthPercentage(LengthPercentageValueOf(*property), *this, font_size));
+	}
+	const float ascent = Math::Round(metrics.ascent);
+	// overline: on top of the ascent; line-through: centred a third of the ascent above the baseline
+	const float overline_top = -ascent - thickness;
+	const float line_through_top = -ascent / 3.f - 0.5f * thickness;
+
+	Style::TextDecorationStyle style = Style::TextDecorationStyle::Solid;
+	if (const Property* property = GetProperty(PropertyId::TextDecorationStyle))
+		style = (Style::TextDecorationStyle)property->Get<int>();
+
+	auto GenerateDecorationLine = [&](Mesh& mesh, float top) {
+		for (const Line& line : lines)
+		{
+			// whole pixels from the baseline, as the glyphs are placed
+			const Vector2f position = Vector2f(line.position.x, Math::Round(line.position.y + top)) + offset;
+			const float width = (float)line.width;
+			switch (style)
+			{
+			case Style::TextDecorationStyle::Double:
+				// two lines of the thickness, a third of it apart (at least a pixel)
+				MeshUtilities::GenerateLine(mesh, position, Vector2f(width, thickness), decoration_colour);
+				MeshUtilities::GenerateLine(mesh, position + Vector2f(0.f, thickness + Math::Max(1.f, Math::RoundDown(thickness / 3.f))),
+					Vector2f(width, thickness), decoration_colour);
+				break;
+			case Style::TextDecorationStyle::Dotted:
+			case Style::TextDecorationStyle::Dashed:
+			{
+				// Chromium's pattern: dots and their gaps as long as the line is thick; dashes three times that with gaps of
+				// two (twice and once from three pixels thick); the gaps then stretched so that the line starts and ends
+				// with a dash
+				const bool dotted = (style == Style::TextDecorationStyle::Dotted);
+				const float segment = thickness * (dotted ? 1.f : (thickness >= 3.f ? 2.f : 3.f));
+				float gap = thickness * (dotted ? 1.f : (thickness >= 3.f ? 1.f : 2.f));
+				if (width > segment)
+				{
+					const float min_dashes = Math::RoundDown((width + gap) / (segment + gap));
+					const float min_gap = (min_dashes > 1.f ? (width - min_dashes * segment) / (min_dashes - 1.f) : width);
+					const float max_gap = (width - (min_dashes + 1.f) * segment) / min_dashes;
+					gap = (max_gap <= 0.f || Math::Absolute(min_gap - gap) < Math::Absolute(max_gap - gap)) ? min_gap : max_gap;
+				}
+				for (float x = 0.f; x < width; x += segment + gap)
+					MeshUtilities::GenerateLine(mesh, position + Vector2f(x, 0.f), Vector2f(Math::Min(segment, width - x), thickness), decoration_colour);
+				break;
+			}
+			case Style::TextDecorationStyle::Solid:
+			case Style::TextDecorationStyle::Wavy: // drawn as solid (phase-3 spec 2.2)
+				MeshUtilities::GenerateLine(mesh, position, Vector2f(width, thickness), decoration_colour);
+				break;
+			}
+		}
+	};
+
+	// Underline and overline are painted under the text, line-through over it.
+	if (Style::HasTextDecoration(decoration_lines, Style::TextDecoration::Underline))
+		GenerateDecorationLine(under, underline_top);
+	if (Style::HasTextDecoration(decoration_lines, Style::TextDecoration::Overline))
+		GenerateDecorationLine(under, overline_top);
+	if (Style::HasTextDecoration(decoration_lines, Style::TextDecoration::LineThrough))
+		GenerateDecorationLine(over, line_through_top);
 }
 
-static bool BuildToken(String& token, const char*& token_begin, const char* string_end, bool first_token, bool collapse_white_space,
-	bool break_at_endline, Style::TextTransform text_transformation, bool decode_escape_characters)
+static Character ReadCharacter(const char* p, const char* string_end, bool decode_escape_characters, const char*& next, bool& non_breaking)
+{
+	non_breaking = false;
+	if (decode_escape_characters && *p == '&')
+	{
+		const char* semicolon = p;
+		while (semicolon != string_end && *semicolon != ';')
+			++semicolon;
+		if (semicolon != string_end)
+		{
+			const StringView escape_code(p + 1, semicolon);
+			Character character = Character::Null;
+			if (escape_code == "lt")
+				character = Character('<');
+			else if (escape_code == "gt")
+				character = Character('>');
+			else if (escape_code == "amp")
+				character = Character('&');
+			else if (escape_code == "quot")
+				character = Character('"');
+			else if (escape_code == "nbsp")
+			{
+				character = Character(' ');
+				non_breaking = true;
+			}
+			if (character != Character::Null)
+			{
+				next = semicolon + 1;
+				return character;
+			}
+		}
+		// Not a recognised escape code: print it like normal text.
+	}
+	next = p;
+	return TextUnicode::DecodeUTF8(next, string_end);
+}
+
+static bool IsWhiteSpaceCharacter(Character c)
+{
+	return (char32_t)c < 128 && StringUtilities::IsWhitespace(static_cast<char>(c));
+}
+
+// A token of preserved spaces.
+static bool IsWhiteSpaceToken(const String& token)
+{
+	return !token.empty() && std::all_of(token.begin(), token.end(), [](char c) { return c == ' '; });
+}
+
+// The character before 'p' in the element's text (Null at its start).
+static Character PreviousCharacter(const char* p, const char* text_begin)
+{
+	if (p <= text_begin)
+		return Character::Null;
+	const char* previous = StringUtilities::SeekBackwardUTF8(p - 1, text_begin);
+	return StringUtilities::ToCharacter(previous, p);
+}
+
+// Appends 'character' to the token with the element's text-transform (CSS Text 3 §2.1: full case mappings,
+// 'capitalize' titlecases the first letter of each word).
+static void AppendTransformed(String& token, Character character, Character before_previous, Character previous, Character next,
+	Style::TextTransform text_transform)
+{
+	switch (text_transform)
+	{
+	case Style::TextTransform::Uppercase: TextUnicode::AppendUppercase(token, character); return;
+	case Style::TextTransform::Lowercase:
+		// Greek capital sigma at the end of a word: final sigma (Unicode Final_Sigma context)
+		if ((char32_t)character == 0x03A3 && TextUnicode::IsWordCharacter(previous) && !TextUnicode::IsWordCharacter(next))
+			token += "\xCF\x82";
+		else
+			TextUnicode::AppendLowercase(token, character);
+		return;
+	case Style::TextTransform::Capitalize:
+		if (TextUnicode::IsWordStart(before_previous, previous, character))
+		{
+			TextUnicode::AppendTitlecase(token, character);
+			return;
+		}
+		break;
+	case Style::TextTransform::None: break;
+	}
+	if ((char32_t)character < 0x80)
+		token += static_cast<char>(character);
+	else
+		token += StringUtilities::ToUTF8(character);
+}
+
+static bool BuildToken(String& token, const char*& token_begin, const char* string_end, bool first_token, const TokenRules& rules)
 {
 	RMLUI_ASSERT(token_begin != string_end);
 
 	token.reserve(string_end - token_begin + token.size());
+
+	const bool collapse_white_space = rules.collapse_white_space;
+
+	// The characters before the token, for capitalize.
+	Character previous = Character::Null, before_previous = Character::Null;
+	if (rules.text_transform != Style::TextTransform::None)
+	{
+		previous = PreviousCharacter(token_begin, rules.text_begin);
+		if (previous != Character::Null)
+			before_previous = PreviousCharacter(StringUtilities::SeekBackwardUTF8(token_begin - 1, rules.text_begin), rules.text_begin);
+	}
 
 	// Check what the first character of the token is; all we need to know is if it is white-space or not.
 	bool parsing_white_space = StringUtilities::IsWhitespace(*token_begin);
@@ -599,72 +981,37 @@ static bool BuildToken(String& token, const char*& token_begin, const char* stri
 	// places, depending on the white-space processing;
 	//  - at the end of a section of non-white-space characters,
 	//  - at the end of a section of white-space characters, if we're not collapsing white-space,
-	//  - at an endline token, if we're breaking on endlines.
+	//  - at an endline token, if we're breaking on endlines,
+	//  - at a line-break opportunity inside a section of non-white-space characters.
+	const char* peeked_at = nullptr;
+	const char* peeked_next = nullptr;
+	Character peeked = Character::Null;
+	bool peeked_non_breaking = false;
 	while (token_begin != string_end)
 	{
-		bool force_non_whitespace = false;
-		char character = *token_begin;
-
-		const char* escape_begin = token_begin;
-
-		// Check for an ampersand; if we find one, we've got an HTML escaped character.
-		if (decode_escape_characters && character == '&')
-		{
-			// Find the terminating ';'.
-			while (token_begin != string_end && *token_begin != ';')
-				++token_begin;
-
-			// If we couldn't find the ';', print the token like normal text.
-			if (token_begin == string_end)
-			{
-				token_begin = escape_begin;
-			}
-			// We could find a ';', parse the escape code. If the escape code is recognised, set the parsed character
-			// to the appropriate one. If it is a non-breaking space, prevent it being picked up as whitespace. If it
-			// is not recognised, print the token like normal text.
-			else
-			{
-				String escape_code(escape_begin + 1, token_begin);
-
-				if (escape_code == "lt")
-					character = '<';
-				else if (escape_code == "gt")
-					character = '>';
-				else if (escape_code == "amp")
-					character = '&';
-				else if (escape_code == "quot")
-					character = '"';
-				else if (escape_code == "nbsp")
-				{
-					character = ' ';
-					force_non_whitespace = true;
-				}
-				else
-					token_begin = escape_begin;
-			}
-		}
+		// (the character read ahead by the previous iteration, if any)
+		const char* next = peeked_next;
+		bool non_breaking = peeked_non_breaking;
+		const Character character =
+			(peeked_at == token_begin ? peeked : ReadCharacter(token_begin, string_end, rules.decode_escape_characters, next, non_breaking));
 
 		// Check for an endline token; if we're breaking on endlines and we find one, then return true to indicate a
 		// forced break.
-		if (break_at_endline && character == '\n')
+		if (rules.break_at_endline && character == Character('\n'))
 		{
 			token += '\n';
-			token_begin++;
+			token_begin = next;
 			return true;
 		}
 
 		// If we've transitioned from white-space characters to non-white-space characters, or vice-versa, then check
 		// if should terminate the token; if we're not collapsing white-space, then yes (as sections of white-space are
 		// non-breaking), otherwise only if we've transitioned from characters to white-space.
-		bool white_space = !force_non_whitespace && StringUtilities::IsWhitespace(character);
+		const bool white_space = !non_breaking && IsWhiteSpaceCharacter(character);
 		if (white_space != parsing_white_space)
 		{
 			if (!collapse_white_space)
-			{
-				// Restore pointer to the beginning of the escaped token, if we processed an escape code.
-				token_begin = escape_begin;
 				return false;
-			}
 
 			// We're collapsing white-space; we only tokenise words, not white-space, so we're only done tokenising
 			// once we've begun parsing non-white-space and then found white-space.
@@ -673,7 +1020,7 @@ static bool BuildToken(String& token, const char*& token_begin, const char* stri
 				// However, if we are the last non-whitespace character in the string, and there are trailing
 				// whitespace characters after this token, then we need to append a single space to the end of this
 				// token.
-				if (token_begin != string_end && LastToken(token_begin, string_end, collapse_white_space, break_at_endline))
+				if (LastToken(token_begin, string_end, collapse_white_space, rules.break_at_endline))
 					token += ' ';
 
 				return false;
@@ -690,26 +1037,41 @@ static bool BuildToken(String& token, const char*& token_begin, const char* stri
 		// sections of white-space.
 		if (white_space)
 		{
+			token_begin = next;
 			if (!collapse_white_space)
+			{
 				token += ' ';
+				// 'break-spaces': each preserved space is a token of its own, a line may break after any of them.
+				if (rules.break_spaces)
+					return false;
+			}
 		}
 		else
 		{
-			if (text_transformation == Style::TextTransform::Uppercase)
+			// The character after this one, for line breaking and the final sigma.
+			Character following = Character::Null;
+			bool following_non_breaking = false;
+			const char* after_following = nullptr;
+			if (next != string_end)
 			{
-				if (character >= 'a' && character <= 'z')
-					character += ('A' - 'a');
-			}
-			else if (text_transformation == Style::TextTransform::Lowercase)
-			{
-				if (character >= 'A' && character <= 'Z')
-					character -= ('A' - 'a');
+				following = ReadCharacter(next, string_end, rules.decode_escape_characters, after_following, following_non_breaking);
+				peeked_at = next;
+				peeked = following;
+				peeked_next = after_following;
+				peeked_non_breaking = following_non_breaking;
 			}
 
-			token += character;
+			AppendTransformed(token, character, before_previous, previous, following, rules.text_transform);
+			token_begin = next;
+
+			// A line-break opportunity between this character and the next ends the token.
+			if (following != Character::Null && !IsWhiteSpaceCharacter(following) && !non_breaking && !following_non_breaking &&
+				TextUnicode::IsLineBreakOpportunity(character, following, rules.word_break))
+				return false;
 		}
 
-		++token_begin;
+		before_previous = previous;
+		previous = character;
 	}
 
 	return false;
