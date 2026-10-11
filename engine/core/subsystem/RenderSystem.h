@@ -36,6 +36,7 @@
 #include <queue>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace jasperengine{
 	// Legacy u_fs_lighting, declared by forks written before per-object lights: filled per
@@ -109,6 +110,12 @@ namespace jasperengine{
 		Vector4 surface[MAX_TERRAIN_LAYERS];     // roughness, metallic, normal strength, occlusion strength
 		Vector4 slices[MAX_TERRAIN_LAYERS];      // color, normal and packed surface slice (-1 = none)
 	} fs_terrain_layers_t;
+
+	// includes/environment.glsl (u_fs_environment)
+	typedef struct fs_environment_t {
+		Vector4 colorRotation; // rgb linear tint, w rotation about +Y (radians)
+		Vector4 params;        // x highest mip level, y 1 with an environment
+	} fs_environment_t;
 
 	typedef struct fs_reflection_probe_t {
 		Vector4 position_weight; // xyz = capture position, w = local probe blend weight
@@ -619,6 +626,7 @@ namespace jasperengine{
 			unsigned int width = 0;
 			unsigned int height = 0;
 			uint64_t lastUsed = 0; // drawCount
+			uint64_t lastViewDraw = 0; // RenderView::sceneInputDraws
 		};
 
 		// one camera's color pass (see renderCameraPass)
@@ -735,6 +743,7 @@ namespace jasperengine{
 			// packed depth and colour copies by size, reused across passes and frames, freed
 			// once unused for a while (releaseSceneInputTargets)
 			std::vector<std::unique_ptr<SceneInputTarget>> sceneInputTargets;
+			uint64_t sceneInputDraws = 0;   // the drawCameras() of this view, the current one included
 			// the scene camera's colour pass when only the scene colour needs it offscreen
 			// (exported builds drawing to the swapchain): blitted to the swapchain after
 			Framebuffer sceneColorRedirect;
@@ -1071,6 +1080,22 @@ namespace jasperengine{
 		std::unordered_map<Entity, uint32_t> sceneInputPoints;
 		uint32_t sceneInputUsage = 0;          // the bits of both maps
 		bool sceneDepthPrograms = false;       // MeshShaderEnvironment::sceneDepth the meshes load with
+		// updates since the last reader of the depth / colour went: the depth programs and the
+		// exported scene camera's offscreen pipelines stay a while (a reader spawned again soon
+		// reloads nothing)
+		uint32_t sceneDepthIdleUpdates = 0;
+		uint32_t sceneColorIdleUpdates = 0;
+		bool sceneColorReaders = false;        // the colour readers kept (sceneColorRedirectAllowed's)
+		// the loaded opaque meshes whose depth the SSR G-buffer does not hold as the depth
+		// pre-pass draws it (a library @depth program or depth fork moving or clipping them,
+		// the opaque submeshes of a split mesh): a pass reading the scene depth with one of
+		// them visible makes its own pre-pass instead of taking the G-buffer's
+		std::unordered_set<Entity> gbufferDepthMismatch;
+		// which submeshes a drawMesh / drawMeshDepth call draws: a split mesh
+		// (MeshComponent::splitQueues) draws its opaque ones in the opaque queue and the
+		// depth pre-passes, its blended ones in the transparent queue
+		enum class SubmeshQueue { ALL, OPAQUE, TRANSPARENT };
+		SubmeshQueue passSubmeshQueue = SubmeshQueue::ALL;
 		// the camera pass being drawn: its block and textures (null: the neutral fallbacks)
 		scene_inputs_t passSceneBlock;
 		TextureRender* passSceneDepth = nullptr;
@@ -1177,6 +1202,9 @@ namespace jasperengine{
 		// the scene inputs of the pass being drawn, to a colour draw whose shader declares them
 		// (the far-plane depth and black where the pass has none)
 		void applySceneInputs(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// the reflection environment around a mesh, to a draw whose shader declares it
+		// (includes/environment.glsl): its reflection probe, else the sky's prefiltered map
+		void applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, const MeshComponent& mesh, const Transform& transform);
 		// resolves the frame block slots and the custom textures of a loaded shader, then
 		// binds the textures (false while one is still loading)
 		bool loadShaderLibraryBindings(ShaderLibraryBindings& bindings, ShaderData& shaderData, ObjectRender& render,
@@ -1391,13 +1419,15 @@ namespace jasperengine{
 		// skipping the SSAO depth pre-pass; null runs the pre-pass
 		// fixedResolution: the color pass it feeds renders at the scene's fixed size
 		// returns the packed depth it read (null when it did not run)
-		TextureRender* renderSSAO(CameraComponent& camera, bool fixedResolution, TextureRender* sharedDepth = nullptr);
+		// perCameraTransform: as renderOpaqueDepth's
+		TextureRender* renderSSAO(CameraComponent& camera, bool fixedResolution, TextureRender* sharedDepth = nullptr,
+		                          Transform* perCameraTransform = nullptr);
 
 		// SSR
 		void loadSSR();
 		void destroySSR();
 		bool ensureSSRFramebuffers(unsigned int width, unsigned int height);
-		void renderDepthPrePass(CameraComponent& camera); // shared depth for SSAO/SSR
+		void renderDepthPrePass(CameraComponent& camera, Transform* perCameraTransform); // shared depth for SSAO/SSR
 		// the opaque meshes' packed depth (PIP_DEPTH) of a camera into target: the SSAO,
 		// post-process and scene depth pre-passes. perCameraTransform: the camera's, when the
 		// pass makes its own per-object matrices (renderCameraPass's perCameraMVP), else null
@@ -1407,10 +1437,19 @@ namespace jasperengine{
 		// scene inputs (phase 3)
 		// records what a loaded mesh or points component reads of the scene (0: nothing)
 		void setSceneInputUser(Entity entity, bool points, uint32_t inputs);
+		// registers what the meshes and points about to load will read, before update() decides
+		// from the readers what every mesh loads with (depth programs, offscreen pipelines)
+		void predictSceneInputUsers();
+		// whether the scene depth keeps depth programs on every mesh, and the exported scene
+		// camera its offscreen pipelines for a colour reader (with their hold after the last)
+		void updateSceneInputPrograms();
+		void setGBufferDepthMismatch(Entity entity, bool mismatch);
+		// whether a visible opaque mesh of this camera is drawn differently by the G-buffer
+		bool hasVisibleGBufferDepthMismatch(CameraComponent& camera, int instanceView);
+		// whether the entity has a draw requiring the scene colour this pass draws now
+		bool drawsSceneColorReader(Entity entity, Signature signature, Transform& transform, CameraComponent& camera, int instanceView);
 		// the scene inputs the visible draws of a camera pass require
 		uint32_t findPassSceneInputs(CameraComponent& camera, int instanceView);
-		// whether the entity has a draw requiring the scene colour (the 2D pass copies before it)
-		bool readsSceneColor(Entity entity, Signature signature) const;
 		// a depth or colour target of the view being drawn, made or reused
 		SceneInputTarget* ensureSceneInputTarget(bool color, unsigned int width, unsigned int height);
 		// frees the targets of a view unused for a while (all: every one)
@@ -1561,6 +1600,8 @@ namespace jasperengine{
 		// they read black and its own depth (a material error the inspector and checks report)
 		static uint32_t getSubmeshSceneInputs(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader,
 		                                      bool& opaqueQueue);
+		// The scene inputs this scene's last frame produced: bit 0 the scene depth, bit 1 the colour
+		uint32_t getSceneInputUsage() const;
 		// The same for UI, points, lines and sky (AUTO: alpha blend and depth write, legacyCulling)
 		static RenderState resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite, const ShaderManifest* manifest,
 		                                               const std::vector<std::string>& shaderFeatures, bool legacyCulling);
@@ -1626,6 +1667,22 @@ namespace jasperengine{
 
 		bool isAllLoaded() const;
 		void getLoadCount(size_t& loaded, size_t& total) const;
+
+		// Scene inputs (shader library phase 3) in detail: what the loaded objects read, and
+		// what the last frame's camera passes made for them (getSceneInputUsage: the short
+		// form). For the editor and diagnostics; no per-frame work.
+		struct SceneInputDetails{
+			uint32_t reads = 0;            // ShaderRequire_SceneDepth | _SceneColor of the loaded readers
+			uint32_t readers = 0;          // loaded meshes and points components reading the scene
+			uint32_t passes = 0;           // last frame: camera passes with a visible reader
+			uint32_t depthPrePasses = 0;   // last frame: scene depth pre-passes run for them
+			uint32_t sharedDepth = 0;      // last frame: passes that reused the SSAO / SSR / post depth
+			uint32_t colorCopies = 0;      // last frame: colour copies
+			uint32_t targets = 0;          // depth and copy targets alive (the editor's views included)
+			bool depthPrograms = false;    // every mesh keeps a depth program for the scene depth
+			bool colorRedirect = false;    // the exported scene camera draws offscreen for the copy now
+		};
+		SceneInputDetails getSceneInputDetails();
 		bool hasPendingMeshLods() const;
 	
 #ifdef JASPERENGINE_EDITOR

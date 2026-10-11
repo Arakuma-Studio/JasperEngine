@@ -242,6 +242,9 @@ namespace jasperengine{
         // stays out of the SSAO depth pre-pass and the G-buffer, where it would be an invisible
         // surface darkening and reflecting what is behind it
         bool skipsScreenEffects = false;
+        // set at load: a colour pass testing the stencil (other than always), drawn only where
+        // a mask marked it, so it stays out of the SSAO and scene depth pre-passes too
+        bool stencilTested = false;
 
         Rect textureRect = Rect(0.0, 0.0, 1.0, 1.0);
 
@@ -368,6 +371,13 @@ namespace jasperengine{
         // set at load: what its shaders (main draws and extra passes) read of the scene,
         // ShaderRequire_SceneDepth / _SceneColor (manifest @require scenedepth / scenecolor)
         uint32_t sceneInputs = 0;
+        // set at load: a mesh of opaque and blended submeshes (autoTransparency) whose blended
+        // ones read the scene: its opaque submeshes draw in the opaque queue (so they are in the
+        // scene depth and colour it reads), the blended ones in the transparent queue
+        bool splitQueues = false;
+        // what it was registered to read before it loaded (RenderSystem::predictSceneInputUsers),
+        // done once per load
+        bool sceneInputsPredicted = false;
 
         // opt-out of the scene's detail levels (Scene::setMeshLodEnabled); bias above 1 keeps detail longer
         bool lodEnabled = true;

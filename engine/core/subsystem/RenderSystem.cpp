@@ -554,6 +554,11 @@ void RenderSystem::destroy(){
     sceneInputMeshes.clear();
     sceneInputPoints.clear();
     sceneInputUsage = 0;
+    sceneDepthPrograms = false;
+    sceneDepthIdleUpdates = 0;
+    sceneColorIdleUpdates = 0;
+    sceneColorReaders = false;
+    gbufferDepthMismatch.clear();
     passSceneDepth = nullptr;
     passSceneColor = nullptr;
     for (InstanceView& view : rv().instanceViews){
@@ -2810,11 +2815,17 @@ uint32_t RenderSystem::getSubmeshSceneInputs(const MeshComponent& mesh, const Su
         inputs |= passManifest->resolveRequire(ShaderReference::getEnabledFeatures(pass.shader, pass.shaderFeatures));
     inputs &= ShaderRequire_SceneInputs;
     if (inputs){
-        // the extra pass draws in the submesh's queue position
+        // the extra pass draws in the submesh's queue position, which is the mesh's: with
+        // autoTransparency a blended submesh makes the whole mesh transparent (but the opaque
+        // submeshes of a split mesh, MeshComponent::splitQueues), without it the mesh's own
+        // setting decides (setTransparent(false) keeps a blended reader in the opaque queue)
         bool blended = false;
         bool transparentQueue = false;
         resolveSubmeshRenderState(mesh, submesh, manifest.get(), blended, transparentQueue);
-        opaqueQueue = !transparentQueue;
+        if (mesh.autoTransparency)
+            opaqueQueue = !transparentQueue && (!mesh.transparent || mesh.splitQueues);
+        else
+            opaqueQueue = !mesh.transparent;
     }
     return inputs;
 }
@@ -2963,10 +2974,15 @@ void RenderSystem::logRenderObjects(){
     // shader library phase 3: what reads the scene and what the last frame made for it
     size_t sceneInputTargets = primaryView.sceneInputTargets.size() + (primaryView.sceneColorRedirect.isCreated() ? 1 : 0);
     Log::print("Scene inputs: %zu objects read the scene (depth %s, colour %s); last frame: %u camera passes with a reading draw, "
-               "%u depth pre-passes, %u shared depths, %u colour copies; %zu targets alive, %u made",
+               "%u depth pre-passes, %u shared depths, %u colour copies; %zu targets alive, %u made; scene camera offscreen for the copy: %s",
                sceneInputMeshes.size() + sceneInputPoints.size(), (sceneInputUsage & ShaderRequire_SceneDepth) ? "yes" : "no",
                (sceneInputUsage & ShaderRequire_SceneColor) ? "yes" : "no", lastSceneInputStats.passes, lastSceneInputStats.depthPrePasses,
-               lastSceneInputStats.sharedDepth, lastSceneInputStats.colorCopies, sceneInputTargets, sceneInputStats.targetsCreated);
+               lastSceneInputStats.sharedDepth, lastSceneInputStats.colorCopies, sceneInputTargets, sceneInputStats.targetsCreated,
+               sceneColorRedirect ? "yes" : "no");
+}
+
+uint32_t RenderSystem::getSceneInputUsage() const{
+    return ((lastSceneInputStats.depthPrePasses + lastSceneInputStats.sharedDepth) ? 1u : 0u) | (lastSceneInputStats.colorCopies ? 2u : 0u);
 }
 
 void RenderSystem::scanSubmeshAttributes(Submesh& submesh, const std::vector<const Buffer*>& buffers){
@@ -3364,6 +3380,11 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
     bindings.slotSceneColor = shaderData.getTextureIndexByName("u_sceneColorTexture");
     if (bindings.slotSceneColor.first != -1)
         render.addTexture(bindings.slotSceneColor, ShaderStageType::FRAGMENT, &emptyBlack);
+    // the reflection environment (includes/environment.glsl), black until a draw binds its own
+    bindings.slotFSEnvironment = shaderData.getUniformBlockIndexByName("u_fs_environment");
+    bindings.slotEnvironment = shaderData.getTextureIndexByName("u_environmentTexture");
+    if (bindings.slotEnvironment.first != -1)
+        render.addTexture(bindings.slotEnvironment, ShaderStageType::FRAGMENT, &emptyCubeBlack);
 
     // the textures the manifest declares, else (a shader without one) the ones set by name
     auto addTexture = [&](const std::string& uniform, int fallback){
@@ -3507,6 +3528,40 @@ void RenderSystem::applySceneInputs(ObjectRender& render, const ShaderLibraryBin
         render.addTexture(bindings.slotSceneDepth, ShaderStageType::FRAGMENT, passSceneDepth ? passSceneDepth : &emptyWhite);
     if (bindings.slotSceneColor.first != -1)
         render.addTexture(bindings.slotSceneColor, ShaderStageType::FRAGMENT, passSceneColor ? passSceneColor : &emptyBlack);
+}
+
+void RenderSystem::applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, const MeshComponent& mesh, const Transform& transform){
+    if (bindings.slotFSEnvironment == -1 && bindings.slotEnvironment.first == -1)
+        return;
+    fs_environment_t block;
+    block.colorRotation = Vector4(1.0f, 1.0f, 1.0f, 0.0f);
+    block.params = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    TextureRender* texture = &emptyCubeBlack;
+
+    // the probe whose box holds the mesh (as Lit picks it, without its blend and box projection)
+    fs_reflection_probe_t probe;
+    TextureRender* probeTexture = nullptr;
+    if (hasReflectionProbes && selectReflectionProbe(meshProbeSamplePosition(mesh, transform), probe, probeTexture) && probeTexture){
+        texture = probeTexture;
+        const float intensity = probe.boxMin_intensity.w;
+        block.colorRotation = Vector4(intensity, intensity, intensity, 0.0f);
+        block.params = Vector4(probe.boxMax_lod.w, 1.0f, 0.0f, 0.0f);
+    }else if (hasIBL){
+        // the scene sky's prefiltered map, turned and tinted as it lights Lit (environmentInfo)
+        auto skys = scene->getComponentArray<SkyboxComponent>();
+        if (skys->size() > 0){
+            SkyboxComponent& sky = skys->getComponentFromIndex(0);
+            if (sky.envMapsLoaded && sky.prefilteredMap && sky.prefilteredMap->isCreated()){
+                texture = sky.prefilteredMap.get();
+                block.colorRotation = environmentInfo();
+                block.params = Vector4((float)(IBLEnvironment::SPECULAR_MIPS - 1), 1.0f, 0.0f, 0.0f);
+            }
+        }
+    }
+    if (bindings.slotFSEnvironment != -1)
+        render.applyUniformBlock(bindings.slotFSEnvironment, sizeof(fs_environment_t), &block);
+    if (bindings.slotEnvironment.first != -1)
+        render.addTexture(bindings.slotEnvironment, ShaderStageType::FRAGMENT, texture);
 }
 
 bool RenderSystem::loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights){
@@ -4688,12 +4743,12 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (mesh.autoTransparency && !mesh.transparent && transparentQueue){
             mesh.transparent = true;
         }
+        // the material's sort priority plus the shader's @state priority= offset
+        const int priority = mesh.submeshes[i].material.sortPriority + (manifestState ? manifestState->priority : 0);
         if (transparentQueue){
-            const int priority = mesh.submeshes[i].material.sortPriority;
             mesh.transparentSortPriority = hasTransparentSubmesh ? std::min(mesh.transparentSortPriority, priority) : priority;
             hasTransparentSubmesh = true;
         }else{
-            const int priority = mesh.submeshes[i].material.sortPriority;
             mesh.opaqueSortPriority = hasOpaqueSubmesh ? std::min(mesh.opaqueSortPriority, priority) : priority;
             hasOpaqueSubmesh = true;
         }
@@ -4714,7 +4769,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         // and a stencil test: the pre-pass would write depth where the stencil hides the
         // colour (a writer that always passes keeps its depth; it writes stencil when its
         // colour pass draws, at the depth the pre-pass left)
-        if (colorState.stencilEnabled && colorState.stencilCompare != StencilCompare::ALWAYS){
+        mesh.submeshes[i].stencilTested = colorState.stencilEnabled && colorState.stencilCompare != StencilCompare::ALWAYS;
+        if (mesh.submeshes[i].stencilTested){
             mesh.skipsDepthPrepass = true;
         }
     
@@ -5065,16 +5121,34 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
     // what its shaders read of the scene (phase 3): the camera passes drawing it make them
     uint32_t sceneInputs = 0;
+    uint32_t blendedSceneInputs = 0;
+    bool customDepthOpaque = false;
     for (int i = 0; i < mesh.numSubmeshes; i++){
         const SubmeshShaderInputs& inputs = submeshLoads[i].shaderInputs;
+        uint32_t submeshInputs = 0;
         // (a failed shader drawn by the built-in one reads nothing)
         if (inputs.manifest && mesh.submeshes[i].customShaderId != 0)
-            sceneInputs |= inputs.manifest->resolveRequire(inputs.features);
+            submeshInputs |= inputs.manifest->resolveRequire(inputs.features);
         if (mesh.submeshes[i].extraPass && mesh.submeshes[i].extraPass->loaded)
-            sceneInputs |= mesh.submeshes[i].extraPass->sceneInputs;
+            submeshInputs |= mesh.submeshes[i].extraPass->sceneInputs;
+        sceneInputs |= submeshInputs;
+        if (mesh.submeshes[i].alphaBlend)
+            blendedSceneInputs |= submeshInputs;
+        // an opaque surface whose depth program moves or clips it (a library @depth program
+        // or a depth fork): the SSR G-buffer draws it with the built-in one
+        if (!mesh.submeshes[i].alphaBlend && mesh.submeshes[i].customDepthShaderId != 0 && mesh.submeshes[i].depthShader)
+            customDepthOpaque = true;
     }
     mesh.sceneInputs = sceneInputs & ShaderRequire_SceneInputs;
+    // a mixed mesh whose blended submeshes read the scene keeps its opaque ones in the opaque
+    // queue: the basin under a water surface is in the depth and colour the water reads
+    mesh.splitQueues = mesh.autoTransparency && mesh.transparent && hasOpaqueSubmesh && hasTransparentSubmesh &&
+        (blendedSceneInputs & ShaderRequire_SceneInputs) != 0;
     setSceneInputUser(entity, false, mesh.sceneInputs);
+    mesh.sceneInputsPredicted = false;
+    // what the G-buffer's depth would leave out or draw elsewhere, so a pass reading the
+    // scene depth does not take it from there
+    setGBufferDepthMismatch(entity, (customDepthOpaque && !mesh.transparent) || mesh.splitQueues);
 
     trimSmoothNormals(mesh);
 
@@ -5874,6 +5948,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
 
     applyFrameBlock(render, extra.libraryBindings);
     applySceneInputs(render, extra.libraryBindings);
+    applyEnvironment(render, extra.libraryBindings, mesh, transform);
 
     if (extra.slotFSFog != -1){
 #ifdef JASPERENGINE_EDITOR
@@ -6428,11 +6503,17 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         // submeshes of its own object half drawn: a silhouette (Before, depth test greater)
         // shows through the submeshes drawn before it, and a stencil outline (After, outside
         // the stencil its object marks) covers the submeshes that have not marked it yet.
+        // a split mesh drawn in one queue: the submeshes of that queue (passSubmeshQueue)
+        const SubmeshQueue submeshQueue = passSubmeshQueue;
+        auto inQueue = [&](int i){
+            return submeshQueue == SubmeshQueue::ALL ||
+                (submeshQueue == SubmeshQueue::TRANSPARENT) == mesh.submeshes[i].alphaBlend;
+        };
         bool hasBeforePasses = false;
         bool hasAfterPasses = false;
         for (int i = 0; i < mesh.numSubmeshes; i++){
             const SubmeshExtraPass* extra = mesh.submeshes[i].extraPass.get();
-            if (extra && extra->loaded){
+            if (extra && extra->loaded && inQueue(i)){
                 if (extra->order == MaterialPassOrder::BEFORE)
                     hasBeforePasses = true;
                 else
@@ -6442,7 +6523,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         auto drawExtraPasses = [&](MaterialPassOrder order){
             for (int i = 0; i < mesh.numSubmeshes; i++){
                 SubmeshExtraPass* extra = mesh.submeshes[i].extraPass.get();
-                if (!extra || !extra->loaded || extra->order != order || mesh.submeshes[i].vertexCount == 0)
+                if (!extra || !extra->loaded || extra->order != order || mesh.submeshes[i].vertexCount == 0 || !inQueue(i))
                     continue;
                 if (tilemap && !selectTilemapChunks(*tilemap, i, camera.farClip, camera.frustumPlanes))
                     continue;
@@ -6471,6 +6552,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 mesh.submeshes[i].needUpdateTexture = false;
                 continue;
             }
+            if (!inQueue(i))
+                continue;
 
             // per-chunk culling: skip the submesh entirely when no chunk is visible
             if (tilemap && !selectTilemapChunks(*tilemap, i, camera.farClip, camera.frustumPlanes))
@@ -6511,6 +6594,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 
             applyFrameBlock(render, libraryBindings);
             applySceneInputs(render, libraryBindings);
+            applyEnvironment(render, libraryBindings, mesh, transform);
 
             if (mesh.submeshes[i].hasIBL){
                 TextureRender* probeTexture = &emptyCubeBlack;
@@ -6719,8 +6803,12 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             // not even be loaded when no other depth pass needs it)
             if (!forSSAO && mesh.submeshes[i].manifest && mesh.submeshes[i].manifestState.shadows == ShaderShadowCasting::OFF)
                 continue;
-            // and what draws nothing visible (a stencil mask) is no surface for the pre-passes
-            if (forSSAO && mesh.submeshes[i].skipsScreenEffects)
+            // and what draws nothing visible (a stencil mask) is no surface for the pre-passes,
+            // nor what draws only where a mask marked the stencil (its depth would be everywhere)
+            if (forSSAO && (mesh.submeshes[i].skipsScreenEffects || mesh.submeshes[i].stencilTested))
+                continue;
+            // a split mesh's opaque submeshes only (renderOpaqueDepth, the camera pre-pass)
+            if (passSubmeshQueue == SubmeshQueue::OPAQUE && mesh.submeshes[i].alphaBlend)
                 continue;
 
             if (tilemap && !selectTilemapChunks(*tilemap, i, cameraFar, frustumPlanes))
@@ -6745,6 +6833,12 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             }
 
             if (!depthRender.beginDraw(pipelineType, passNoFaceCulling())){
+                // a submesh without this depth program is left out of a pre-pass (its scene
+                // gives every mesh one when a pass needs them all: updateSceneInputPrograms);
+                // reloading would not give it one and would leave the mesh out of its colour
+                // pass this frame
+                if (forSSAO)
+                    continue;
                 mesh.needReload = true;
                 return false;
             }
@@ -6942,7 +7036,7 @@ bool RenderSystem::ensureSSAOFramebuffers(unsigned int width, unsigned int heigh
     return rv().ssaoDepthFramebuffer.isCreated() && rv().ssaoFramebuffer.isCreated() && rv().ssaoBlurFramebuffer.isCreated();
 }
 
-TextureRender* RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResolution, TextureRender* sharedDepth){
+TextureRender* RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResolution, TextureRender* sharedDepth, Transform* perCameraTransform){
     loadSSAO();
     if (!ssaoLoaded)
         return nullptr;
@@ -6967,7 +7061,7 @@ TextureRender* RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResol
     TextureRender* depthTexture = sharedDepth;
     TextureRender* normalTexture; // G-buffer normal when shared, else an unused placeholder
     if (!depthTexture){
-        renderDepthPrePass(camera);
+        renderDepthPrePass(camera, perCameraTransform);
         depthTexture = &rv().ssaoDepthFramebuffer.getRender().getColorTexture();
         normalTexture = depthTexture; // placeholder binding; not sampled (params.w = 0)
     }else{
@@ -7010,8 +7104,8 @@ TextureRender* RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResol
     return depthTexture;
 }
 
-void RenderSystem::renderDepthPrePass(CameraComponent& camera){
-    renderOpaqueDepth(camera, rv().ssaoDepthFramebuffer, rv().ssaoWidth, rv().ssaoHeight, 0, &rv().lodView, nullptr);
+void RenderSystem::renderDepthPrePass(CameraComponent& camera, Transform* perCameraTransform){
+    renderOpaqueDepth(camera, rv().ssaoDepthFramebuffer, rv().ssaoWidth, rv().ssaoHeight, 0, &rv().lodView, perCameraTransform);
 }
 
 void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& target, unsigned int width, unsigned int height,
@@ -7042,7 +7136,8 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
             continue;
 
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
-        if (!transform.visible || mesh.transparent || !isRenderActive(entity, signature) || !isLayerVisible(entity, camera.cullingMask))
+        // (a split mesh: its opaque submeshes, as the opaque queue draws them)
+        if (!transform.visible || (mesh.transparent && !mesh.splitQueues) || !isRenderActive(entity, signature) || !isLayerVisible(entity, camera.cullingMask))
             continue;
         // what the colour pass leaves out (a render-to-texture camera does not draw the
         // objects showing its own image)
@@ -7060,8 +7155,10 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
 
         const Matrix4& model = objectModel(transform);
         vs_depth_t params = {model, renderVP, renderVP * model};
+        passSubmeshQueue = mesh.transparent ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
         drawMeshDepth(entity, mesh, transform, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true, PIP_DEPTH, instanceView, lodView);
     }
+    passSubmeshQueue = SubmeshQueue::ALL;
     ssaoPassRender.endRenderPass();
 }
 
@@ -7082,6 +7179,125 @@ void RenderSystem::setSceneInputUser(Entity entity, bool points, uint32_t inputs
     for (const auto& user : sceneInputPoints)
         usage |= user.second;
     sceneInputUsage = usage;
+}
+
+void RenderSystem::predictSceneInputUsers(){
+    // Registered at load only, the first reader of the scene depth would load after the other
+    // meshes, which then lack a depth program for its pre-pass: one frame without them, and
+    // the next frame every mesh reloads with one. So the meshes and points about to load are
+    // registered first (once per load, nothing while everything is loaded); their load sets
+    // the final value (a shader that fails reads nothing).
+    auto meshes = scene->getComponentArray<MeshComponent>();
+    const std::string* sceneMeshShader = nullptr;
+    for (int i = 0; i < meshes->size(); i++){
+        MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        if ((mesh.loadCalled && !mesh.needReload) || mesh.sceneInputsPredicted)
+            continue;
+        mesh.sceneInputsPredicted = true;
+        if (!sceneMeshShader)
+            sceneMeshShader = &scene->getDefaultCustomShader(ShaderType::MESH);
+        uint32_t inputs = 0;
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            bool opaqueQueue = false;
+            inputs |= getSubmeshSceneInputs(mesh, mesh.submeshes[s], *sceneMeshShader, opaqueQueue);
+        }
+        if (inputs){
+            const Entity entity = meshes->getEntity(i);
+            auto found = sceneInputMeshes.find(entity);
+            setSceneInputUser(entity, false, inputs | (found != sceneInputMeshes.end() ? found->second : 0));
+        }
+    }
+    auto pointsArray = scene->getComponentArray<PointsComponent>();
+    for (int i = 0; i < pointsArray->size(); i++){
+        PointsComponent& points = pointsArray->getComponentFromIndex(i);
+        if ((points.loadCalled && !points.needReload) || points.sceneInputsPredicted)
+            continue;
+        points.sceneInputsPredicted = true;
+        const std::string& shader = points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader;
+        std::shared_ptr<const ShaderManifest> manifest = findManifest(shader);
+        if (!manifest)
+            continue;
+        const uint32_t inputs = manifest->resolveRequire(ShaderReference::getEnabledFeatures(shader, points.shaderFeatures)) & ShaderRequire_SceneInputs;
+        if (inputs){
+            const Entity entity = pointsArray->getEntity(i);
+            auto found = sceneInputPoints.find(entity);
+            setSceneInputUser(entity, true, inputs | (found != sceneInputPoints.end() ? found->second : 0));
+        }
+    }
+}
+
+void RenderSystem::updateSceneInputPrograms(){
+    // kept this many updates (about 10 s at 60 fps) after the last reader went: a game making
+    // and destroying readers (an effect, a pickup) reloads every mesh once, not at each
+    static const uint32_t HOLD_UPDATES = 600;
+
+    // a scene reading the scene depth (phase 3), or a post pass sampling the depth, gives every
+    // mesh a depth program for the depth pre-pass (a mesh without one is left out of it)
+    const bool depthReaders = (sceneInputUsage & ShaderRequire_SceneDepth) != 0 ||
+        (postProcessLoaded && postProcessNeedsDepth && !scene->getPostProcessPasses().empty());
+    bool depthPrograms = sceneDepthPrograms;
+    if (depthReaders){
+        depthPrograms = true;
+        sceneDepthIdleUpdates = 0;
+    }else if (sceneDepthPrograms && ++sceneDepthIdleUpdates > HOLD_UPDATES){
+        depthPrograms = false;
+    }
+    if (depthPrograms != sceneDepthPrograms){
+        sceneDepthPrograms = depthPrograms;
+        sceneDepthIdleUpdates = 0;
+        needReloadMeshes();
+    }
+
+    // the same for the scene camera's offscreen pipelines of an exported build (a colour reader:
+    // updateSwapchainRedirect), which reload every object when they change
+    if (sceneInputUsage & ShaderRequire_SceneColor){
+        sceneColorReaders = true;
+        sceneColorIdleUpdates = 0;
+    }else if (sceneColorReaders && ++sceneColorIdleUpdates > HOLD_UPDATES){
+        sceneColorReaders = false;
+        sceneColorIdleUpdates = 0;
+    }
+}
+
+void RenderSystem::setGBufferDepthMismatch(Entity entity, bool mismatch){
+    if (mismatch)
+        gbufferDepthMismatch.insert(entity);
+    else if (!gbufferDepthMismatch.empty())
+        gbufferDepthMismatch.erase(entity);
+}
+
+bool RenderSystem::hasVisibleGBufferDepthMismatch(CameraComponent& camera, int instanceView){
+    for (Entity entity : gbufferDepthMismatch){
+        if (!scene->isEntityCreated(entity))
+            continue;
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!mesh || !transform || !mesh->loaded || mesh->needReload || !transform->visible)
+            continue;
+        if (!isRenderActive(entity, scene->getSignature(entity)) || !isLayerVisible(entity, camera.cullingMask) || samplesCameraTarget(camera, *mesh))
+            continue;
+        if (isBatchVisible(entity, *mesh, *transform, scene->findComponent<InstancedMeshComponent>(entity), instanceView, camera.farClip, camera.frustumPlanes))
+            return true;
+    }
+    return false;
+}
+
+RenderSystem::SceneInputDetails RenderSystem::getSceneInputDetails(){
+    SceneInputDetails usage;
+    usage.reads = sceneInputUsage;
+    usage.readers = (uint32_t)(sceneInputMeshes.size() + sceneInputPoints.size());
+    usage.passes = lastSceneInputStats.passes;
+    usage.depthPrePasses = lastSceneInputStats.depthPrePasses;
+    usage.sharedDepth = lastSceneInputStats.sharedDepth;
+    usage.colorCopies = lastSceneInputStats.colorCopies;
+    usage.targets = (uint32_t)primaryView.sceneInputTargets.size() + (primaryView.sceneColorRedirect.isCreated() ? 1u : 0u);
+#ifdef JASPERENGINE_EDITOR
+    for (const auto& entry : secondaryViews)
+        usage.targets += (uint32_t)entry.second->sceneInputTargets.size();
+#endif
+    usage.depthPrograms = sceneDepthPrograms;
+    usage.colorRedirect = sceneColorRedirect;
+    return usage;
 }
 
 uint32_t RenderSystem::findPassSceneInputs(CameraComponent& camera, int instanceView){
@@ -7116,11 +7332,22 @@ uint32_t RenderSystem::findPassSceneInputs(CameraComponent& camera, int instance
     return inputs;
 }
 
-bool RenderSystem::readsSceneColor(Entity entity, Signature signature) const{
-    if (signature.test(scene->getComponentId<MeshComponent>()))
-        return (scene->getComponent<MeshComponent>(entity).sceneInputs & ShaderRequire_SceneColor) != 0;
-    if (signature.test(scene->getComponentId<PointsComponent>()))
-        return (scene->getComponent<PointsComponent>(entity).sceneInputs & ShaderRequire_SceneColor) != 0;
+bool RenderSystem::drawsSceneColorReader(Entity entity, Signature signature, Transform& transform, CameraComponent& camera, int instanceView){
+    // the visibility its draw below tests (renderCameraPass, drawMesh, drawPoints)
+    if (signature.test(scene->getComponentId<MeshComponent>())){
+        MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+        if (!(mesh.sceneInputs & ShaderRequire_SceneColor) || !mesh.loaded || mesh.needReload || !transform.visible)
+            return false;
+        if (!isRenderActive(entity, signature) || !isLayerVisible(entity, camera.cullingMask) || samplesCameraTarget(camera, mesh))
+            return false;
+        return isBatchVisible(entity, mesh, transform, scene->findComponent<InstancedMeshComponent>(entity), instanceView, camera.farClip, camera.frustumPlanes);
+    }
+    if (signature.test(scene->getComponentId<PointsComponent>())){
+        PointsComponent& points = scene->getComponent<PointsComponent>(entity);
+        if (!(points.sceneInputs & ShaderRequire_SceneColor) || !points.loaded || points.numVisible == 0 || !transform.visible)
+            return false;
+        return isRenderActive(entity, signature) && isLayerVisible(entity, camera.cullingMask) && !samplesCameraTarget(camera, points.texture);
+    }
     return false;
 }
 
@@ -7128,19 +7355,31 @@ RenderSystem::SceneInputTarget* RenderSystem::ensureSceneInputTarget(bool color,
     if (width == 0 || height == 0)
         return nullptr;
     RenderView& view = rv();
+    // the view's draw this is (counted from 1: a target made in it is never unused in it)
+    const uint64_t viewDraw = view.sceneInputDraws + 1;
     // one target per size and kind: cameras of different sizes keep theirs from frame to
     // frame instead of resizing a shared one
     for (std::unique_ptr<SceneInputTarget>& target : view.sceneInputTargets){
         if (target->color == color && target->width == width && target->height == height && target->framebuffer.isCreated()){
             target->lastUsed = drawCount;
+            target->lastViewDraw = viewDraw;
             return target.get();
         }
     }
+    // A size no target has: one of this kind used neither in this draw of the view nor in the
+    // one before is of a size it no longer draws at (a window or camera target resized), so it
+    // goes now rather than some seconds later: a window dragged for a while would otherwise
+    // pile up a pair of targets per frame. Sizes in use every frame (several cameras) stay.
+    view.sceneInputTargets.erase(std::remove_if(view.sceneInputTargets.begin(), view.sceneInputTargets.end(),
+        [&](const std::unique_ptr<SceneInputTarget>& target){
+            return target->color == color && target->lastViewDraw + 1 < viewDraw;
+        }), view.sceneInputTargets.end());
     std::unique_ptr<SceneInputTarget> target = std::make_unique<SceneInputTarget>();
     target->color = color;
     target->width = width;
     target->height = height;
     target->lastUsed = drawCount;
+    target->lastViewDraw = viewDraw;
     Framebuffer& framebuffer = target->framebuffer;
     framebuffer.setWidth(width);
     framebuffer.setHeight(height);
@@ -8403,10 +8642,16 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
 
     points.slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::POINTS_VS_PARAMS);
     points.shaderManifest = (points.customShaderId != 0) ? findManifest(pointsShaderBase) : nullptr;
-    // what it reads of the scene (phase 3), with the features it enables
-    points.sceneInputs = points.shaderManifest ? (points.shaderManifest->resolveRequire(
-        ShaderReference::getEnabledFeatures(pointsShaderBase, points.shaderFeatures)) & ShaderRequire_SceneInputs) : 0;
+    // what it reads of the scene (phase 3) and its @state priority=, with the features it enables
+    points.sceneInputs = 0;
+    points.sortPriority = 0;
+    if (points.shaderManifest){
+        const std::vector<std::string> features = ShaderReference::getEnabledFeatures(pointsShaderBase, points.shaderFeatures);
+        points.sceneInputs = points.shaderManifest->resolveRequire(features) & ShaderRequire_SceneInputs;
+        points.sortPriority = points.shaderManifest->resolveState(features).priority;
+    }
     setSceneInputUser(entity, true, points.sceneInputs);
+    points.sceneInputsPredicted = false;
     points.customVSParams.resolve(shaderData, "u_vs_customParams");
     points.customFSParams.resolve(shaderData, "u_fs_customParams");
     points.customVSParams.writeValues(points.shaderUniforms, nullptr, points.shaderManifest.get());
@@ -10485,9 +10730,9 @@ void RenderSystem::updateSwapchainRedirect(){
                     && ensurePostProcessFramebuffers(w, h);
         }
         // the scene colour (phase 3) is copied out of an offscreen colour target: in a scene
-        // with an object reading it, the camera may draw into one blitted to the screen,
-        // decided each frame by what it sees (updateSceneColorRedirect)
-        sceneColorRedirectAllowed = !redirect && (sceneInputUsage & ShaderRequire_SceneColor) != 0;
+        // with an object reading it (or one gone a short while ago), the camera may draw into
+        // one blitted to the screen, decided each frame by what it sees (updateSceneColorRedirect)
+        sceneColorRedirectAllowed = !redirect && sceneColorReaders;
     }else{
         sceneColorRedirectAllowed = false;
     }
@@ -10510,8 +10755,8 @@ void RenderSystem::updateSceneColorRedirect(CameraComponent& mainCamera){
     if (!sceneColorRedirectAllowed)
         return;
 
-    // a reader of the scene colour the camera may see this frame: in its view, or moved (its
-    // bounds are made again later in the update), or points (no bounds)
+    // a reader of the scene colour the camera may see this frame: in its view, loaded but not
+    // drawn yet (its first draw reads a copy too), or points (no bounds)
     bool seen = false;
     for (const auto& user : sceneInputMeshes){
         if (!(user.second & ShaderRequire_SceneColor) || !scene->isEntityCreated(user.first))
@@ -10519,13 +10764,31 @@ void RenderSystem::updateSceneColorRedirect(CameraComponent& mainCamera){
         const Entity entity = user.first;
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
         Transform* transform = scene->findComponent<Transform>(entity);
-        if (!mesh || !transform || !mesh->loaded || !transform->visible || !isRenderActive(entity) || !isLayerVisible(entity, mainCamera.cullingMask))
+        if (!mesh || !transform || !transform->visible || !isRenderActive(entity) || !isLayerVisible(entity, mainCamera.cullingMask))
             continue;
-        if (transform->needUpdate || mesh->needUpdateAABB ||
-                isBatchVisible(entity, *mesh, *transform, scene->findComponent<InstancedMeshComponent>(entity), 0, mainCamera.farClip, mainCamera.frustumPlanes)){
+        // (loaded last update: the loaded flag comes with the render queue; one that never
+        // loads keeps nothing on)
+        if (mesh->loadCalled && !mesh->loaded){
             seen = true;
             break;
         }
+        if (!mesh->loaded)
+            continue;
+        InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+        if (transform->needUpdate || mesh->needUpdateAABB){
+            // moved (a billboard turns every frame): its bounds are made again later in the
+            // update, from the model matrix updateTransform made already
+            if (!cullsBatch(*mesh, instmesh)){
+                seen = true;
+            }else{
+                const AABB& local = mesh->skinnedAABB.isNull() ? mesh->aabb : mesh->skinnedAABB;
+                seen = isInsideCamera(mainCamera.farClip, mainCamera.frustumPlanes, transform->modelMatrix * local);
+            }
+        }else{
+            seen = isBatchVisible(entity, *mesh, *transform, instmesh, 0, mainCamera.farClip, mainCamera.frustumPlanes);
+        }
+        if (seen)
+            break;
     }
     for (const auto& user : sceneInputPoints){
         if (seen)
@@ -10534,7 +10797,7 @@ void RenderSystem::updateSceneColorRedirect(CameraComponent& mainCamera){
             continue;
         PointsComponent* points = scene->findComponent<PointsComponent>(user.first);
         Transform* transform = scene->findComponent<Transform>(user.first);
-        seen = points && transform && points->loaded && transform->visible && isRenderActive(user.first) && isLayerVisible(user.first, mainCamera.cullingMask);
+        seen = points && transform && (points->loaded || points->loadCalled) && transform->visible && isRenderActive(user.first) && isLayerVisible(user.first, mainCamera.cullingMask);
     }
 
     // kept some frames after the last one seen: an object at the edge of the view does not
@@ -10770,6 +11033,12 @@ void RenderSystem::update(double dt){
 
     updateReflectionProbes(dt);
 
+    // the readers loading this frame count from now: what every mesh loads with below (a depth
+    // program for the scene depth) and the scene camera's pipelines (offscreen for a colour
+    // reader) are decided from them
+    predictSceneInputUsers();
+    updateSceneInputPrograms();
+
     // the pipeline mask below depends on the redirect
     updateSwapchainRedirect();
 
@@ -10897,16 +11166,6 @@ void RenderSystem::update(double dt){
     const int lightCapacity = getLightCapacity(scene->getMaxLightsPerObject());
     if (lightCapacity != lightCapacityTier){
         lightCapacityTier = lightCapacity;
-        needReloadMeshes();
-    }
-
-    // a scene reading the scene depth (phase 3), or a post pass sampling the depth, gives every
-    // mesh a depth program for the depth pre-pass (a mesh without one stopped that pass and
-    // reloaded every frame); the last such reader gone, they drop them again
-    const bool sceneDepth = (sceneInputUsage & ShaderRequire_SceneDepth) != 0 ||
-        (postProcessLoaded && postProcessNeedsDepth && !scene->getPostProcessPasses().empty());
-    if (sceneDepth != sceneDepthPrograms){
-        sceneDepthPrograms = sceneDepth;
         needReloadMeshes();
     }
 
@@ -12333,6 +12592,7 @@ void RenderSystem::drawCameras(bool includeMain){
     }
 
     drawCount++;
+    rv().sceneInputDraws++;
     releaseUnusedCameraShadows();
 
     // scene inputs (phase 3): what this frame's passes did, and the targets no pass used
@@ -12432,8 +12692,13 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     }
 
     // the packed opaque depth of this pass another effect draws (the G-buffer, the SSAO or
-    // post-process depth pre-pass), which the scene inputs then reuse
-    TextureRender* sharedSceneDepth = useSSR ? &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(0) : nullptr;
+    // post-process depth pre-pass), which the scene inputs then reuse. Not the G-buffer's when
+    // it draws a visible opaque mesh differently (built-in programs: no library displacement or
+    // clipping; no split mesh's opaque submeshes): then the pass makes its own.
+    TextureRender* gbufferDepth = useSSR ? &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(0) : nullptr;
+    const bool gbufferSceneDepth = gbufferDepth && (sceneInputs & ShaderRequire_SceneDepth) &&
+        (gbufferDepthMismatch.empty() || !hasVisibleGBufferDepthMismatch(camera, isMainCamera ? 0 : -1));
+    TextureRender* sharedSceneDepth = gbufferSceneDepth ? gbufferDepth : nullptr;
 
     // User post-process chain: like SSR it needs the scene color offscreen, so it
     // follows the same destination-capture rule. Main scene only: its last pass
@@ -12465,7 +12730,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             // a pass sampling depth needs the pre-pass when neither SSR nor SSAO ran
             if (postProcessNeedsDepth && !useSSR && !scene->isSSAOEnabled()
                     && ensureSSAOFramebuffers(pw, ph)){
-                renderDepthPrePass(camera);
+                renderDepthPrePass(camera, perCameraMVP ? &cameraTransform : nullptr);
                 sharedSceneDepth = &rv().ssaoDepthFramebuffer.getRender().getColorTexture();
             }
         }
@@ -12477,9 +12742,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // sample empty white (AO = 1) so their USE_SSAO meshes are unaffected.
     rv().currentSSAOTexture = &emptyWhite;
     if (isMainCamera && scene->isSSAOEnabled()){
-        TextureRender* sharedDepth = useSSR ? &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(0) : nullptr;
-        TextureRender* ssaoDepth = renderSSAO(camera, useFixedRes, sharedDepth);
-        if (ssaoDepth)
+        TextureRender* ssaoDepth = renderSSAO(camera, useFixedRes, gbufferDepth, perCameraMVP ? &cameraTransform : nullptr);
+        if (ssaoDepth && (ssaoDepth != gbufferDepth || gbufferSceneDepth))
             sharedSceneDepth = ssaoDepth;
     }
 
@@ -12532,7 +12796,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         if (sharedSceneDepth){
             passSceneDepth = sharedSceneDepth;
             sceneInputStats.sharedDepth++;
-        }else{
+        }else if (sceneDepthPrograms){
+            // (without depth programs yet, a reader that came after this update's switch, the
+            // meshes could not draw it: the far-depth fallback this once)
             const unsigned int depthWidth = (unsigned int)sceneInputViewport.getWidth();
             const unsigned int depthHeight = (unsigned int)sceneInputViewport.getHeight();
             if (SceneInputTarget* depthTarget = ensureSceneInputTarget(false, depthWidth, depthHeight)){
@@ -12698,10 +12964,12 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
             TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
 
-            if (!mesh.transparent){
+            // a split mesh (MeshComponent::splitQueues) is in both: its opaque submeshes here
+            if (!mesh.transparent || mesh.splitQueues){
                 const float distance = mesh.worldAABB.isNull() ? 0.0f : mesh.worldAABB.squaredDistance(cameraTransform.worldPosition);
                 opaqueRenders.push_back({entity, &mesh, instmesh, terrain, tilemap, &transform, distance, mesh.opaqueSortPriority, (uint32_t)opaqueRenders.size()});
-            }else if (distanceSort){
+            }
+            if (mesh.transparent && distanceSort){
                 transparentRenders.push_back({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, objectDistance(transform), mesh.transparentSortPriority, transparentOrder++});
             }
         }
@@ -12727,8 +12995,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             if (opaque.mesh->skipsDepthPrepass)
                 continue;
             vs_depth_t params = {objectModel(*opaque.transform), renderVP, objectMVP(*opaque.transform)};
+            passSubmeshQueue = opaque.mesh->transparent ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
             drawMeshDepth(opaque.entity, *opaque.mesh, *opaque.transform, camera.farClip, camera.frustumPlanes, params, opaque.instmesh, opaque.terrain, opaque.tilemap, true, prepassPip, instanceView, lodView);
         }
+        passSubmeshQueue = SubmeshQueue::ALL;
     }
 
     //---------Draw sky----------
@@ -12746,8 +13016,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
     if (distanceSort){
         for (const OpaqueRenderData& opaque : opaqueRenders){
+            // (a transparent mesh here is split: its opaque submeshes)
+            passSubmeshQueue = opaque.mesh->transparent ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
             drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, camera, cameraTransform, colorPip, opaque.instmesh, opaque.terrain, opaque.tilemap, terrainView, instanceView, lodView);
         }
+        passSubmeshQueue = SubmeshQueue::ALL;
         // the opaque queue and the sky are drawn
         if (sceneColorPending){
             takeSceneColor();
@@ -12763,8 +13036,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             continue;
         }
 
-        // a 2D pass: what was drawn before the first draw requiring the scene colour
-        if (sceneColorPending && readsSceneColor(entity, signature)){
+        // a 2D pass: what was drawn before the first draw requiring the scene colour (one this
+        // pass draws: an object hidden, culled or out of view takes no copy)
+        if (sceneColorPending && drawsSceneColorReader(entity, signature, transform, camera, instanceView)){
             takeSceneColor();
         }
 
@@ -12882,7 +13156,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 if (!points.transparent || !distanceSort){
                     drawPoints(entity, points, transform, camera, cameraTransform, colorPip);
                 }else{
-                    transparentRenders.push_back({TransparentRenderType::POINTS, entity, nullptr, &points, nullptr, nullptr, nullptr, &transform, objectDistance(transform), 0, transparentOrder++});
+                    transparentRenders.push_back({TransparentRenderType::POINTS, entity, nullptr, &points, nullptr, nullptr, nullptr, &transform, objectDistance(transform), points.sortPriority, transparentOrder++});
                 }
             }
 
@@ -12906,7 +13180,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     for (const TransparentRenderData& renderData : transparentRenders){
 
         if (renderData.type == TransparentRenderType::MESH){
+            // a split mesh: its blended submeshes (the opaque ones were drawn in the opaque queue)
+            passSubmeshQueue = renderData.mesh->splitQueues ? SubmeshQueue::TRANSPARENT : SubmeshQueue::ALL;
             drawMesh(renderData.entity, *renderData.mesh, *renderData.transform, camera, cameraTransform, colorPip, renderData.instmesh, renderData.terrain, renderData.tilemap, terrainView, instanceView, lodView);
+            passSubmeshQueue = SubmeshQueue::ALL;
         }else if (renderData.type == TransparentRenderType::POINTS){
             drawPoints(renderData.entity, *renderData.points, *renderData.transform, camera, cameraTransform, colorPip);
         }
@@ -12975,6 +13252,7 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
         destroyMesh(entity, mesh);
         // (kept over reloads, which load it again)
         setSceneInputUser(entity, false, 0);
+        setGBufferDepthMismatch(entity, false);
     } else if (componentId == scene->getComponentId<UIComponent>()) {
         UIComponent& ui = scene->getComponent<UIComponent>(entity);
         destroyUI(entity, ui);

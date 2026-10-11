@@ -82,6 +82,9 @@ namespace jasperengine{
         ShaderLibraryBindings libraryBindings;
         // what its shader reads of the scene (ShaderRequire_SceneDepth / _SceneColor)
         uint32_t sceneInputs = 0;
+        bool sceneInputsPredicted = false; // see MeshComponent::sceneInputsPredicted
+        // its shader's @state priority=, the transparent queue order (points have no sortPriority)
+        int sortPriority = 0;
 
         Texture texture;
 
