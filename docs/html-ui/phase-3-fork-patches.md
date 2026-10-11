@@ -2020,8 +2020,8 @@ or makes precise §3.2 and §3.3):
 - **Compat (Appendix A).** `CurrentColor`: kept in the colour and border rewrites only (colour,
   background, border and caret colours); the companion stays everywhere else. `ExtraUnits`: kept
   where `calc()` is (`NormalizeContext::unitsNative`, not custom properties), without orientation
-  copies (`OutDecl::nativeUnits`) or style-attribute evaluation. Fixtures use the built-in Roboto
-  through `sans-serif` (Chromium rejects the subset file as a web font).
+  copies (`OutDecl::nativeUnits`) or style-attribute evaluation. Text fixtures load Roboto from
+  `fonts/Roboto-Regular-subset-post.ttf` (Chromium rejects the subset without a post table).
 
 ### Wave 2
 
