@@ -311,7 +311,10 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
     sg_pipeline_desc desc = pipeline_desc;
 
     // offscreen passes render with a Y-flipped projection on GL (top-left
-    // origin), which reverses the triangle winding
+    // origin), which reverses the triangle winding.
+    // The winding is set even without culling: it also decides gl_FrontFacing, which a
+    // double-sided material shades its back with (sokol's default is CW, so a CCW mesh drawn
+    // to the screen would have its front faces lit as backs)
     const WindingOrder loadWinding = loadState.windingOrder;
     WindingOrder rttWinding = loadWinding;
     if (Engine::isOpenGL()){
@@ -322,8 +325,8 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
     case PipelineType::PIP_DEPTH:
         if (loadState.faceCulling){
             desc.cull_mode = getCullMode(loadState.cullingMode);
-            desc.face_winding = getFaceWinding(loadWinding);
         }
+        desc.face_winding = getFaceWinding(loadWinding);
         desc.sample_count = 1;
         desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
         desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
@@ -342,8 +345,8 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
         desc.colors[0].write_mask = SG_COLORMASK_NONE;
         if (loadState.prepassFaceCulling){
             desc.cull_mode = getCullMode(loadState.cullingMode);
-            desc.face_winding = getFaceWinding(loadWinding);
         }
+        desc.face_winding = getFaceWinding(loadWinding);
         break;
 
     case PipelineType::PIP_ZPREPASS_RTT:
@@ -357,8 +360,8 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
         desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
         if (loadState.prepassFaceCulling){
             desc.cull_mode = getCullMode(loadState.cullingMode);
-            desc.face_winding = getFaceWinding(rttWinding);
         }
+        desc.face_winding = getFaceWinding(rttWinding);
         break;
 
     case PipelineType::PIP_SHADOW_DEPTH:
@@ -366,8 +369,8 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
         // alpha-mask discard. SG_PIXELFORMAT_NONE marks it depth-only in Sokol.
         if (loadState.faceCulling){
             desc.cull_mode = getCullMode(loadState.cullingMode);
-            desc.face_winding = getFaceWinding(loadWinding);
         }
+        desc.face_winding = getFaceWinding(loadWinding);
         desc.sample_count = 1;
         desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
         desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
@@ -383,8 +386,8 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
         //   color[2] = linear base color (.rgb) + hasIBL flag (.a)
         if (loadState.faceCulling){
             desc.cull_mode = getCullMode(loadState.cullingMode);
-            desc.face_winding = getFaceWinding(loadWinding);
         }
+        desc.face_winding = getFaceWinding(loadWinding);
         desc.sample_count = 1;
         desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
         desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
@@ -399,8 +402,8 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
     case PipelineType::PIP_DEFAULT_NODEPTH:
         if (loadState.faceCulling){
             desc.cull_mode = getCullMode(loadState.cullingMode);
-            desc.face_winding = getFaceWinding(loadWinding);
         }
+        desc.face_winding = getFaceWinding(loadWinding);
         desc.colors[0].write_mask = SG_COLORMASK_RGB;
         applyBlend(desc.colors[0], false);
         if (pipType == PipelineType::PIP_DEFAULT){
@@ -430,6 +433,8 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
         desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
         if (loadState.faceCulling){
             desc.cull_mode = getCullMode(loadState.cullingMode);
+        }
+        {
             // planar reflection mirrors handedness, reversing winding once more
             WindingOrder winding = rttWinding;
             if (pipType == PipelineType::PIP_RTT_INVERT){
