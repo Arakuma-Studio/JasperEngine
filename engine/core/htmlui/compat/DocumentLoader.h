@@ -77,6 +77,7 @@ namespace jasperengine::htmlui::compat {
         SourceFiles files;
         bool dependsOnViewport = false;
         uint64_t key = 0;                             // cache key (path, contents of every dependency, options)
+        std::string rootSignature;                    // the <html> class and attribute names its selectors were banded for
 
         // --- as implemented ---
         bool compiled = false;                        // false: the HTML could not be read (diagnostics say why)
@@ -145,6 +146,13 @@ namespace jasperengine::htmlui::compat {
         static std::shared_ptr<const CompatDocument> restyleForViewport(Rml::ElementDocument* document,
                                                                        const std::shared_ptr<const CompatDocument>& compiled,
                                                                        const CompatOptions& options);
+        // The <html> element's class names or attribute names changed (a script): selectors whose
+        // first compound may match the root are banded for its attributes as they are now
+        // (`.dark .x` after documentElement.classList.add("dark")), so the document is compiled
+        // again with them (CompatOptions::rootAttributes) and restyled as for the viewport. Returns
+        // the compile now in use (the given one when nothing the selectors read changed).
+        static std::shared_ptr<const CompatDocument> restyleForRoot(Rml::ElementDocument* document,
+                                                                  const std::shared_ptr<const CompatDocument>& compiled);
         // The document's style sheet container rebuilt from a compile of the same RML (UA from
         // the cache, hints, author sheets, !important, in head order): DOM, element handles,
         // listeners, scroll and focus stay (stylesheet-only hot reload).
@@ -166,6 +174,11 @@ namespace jasperengine::htmlui::compat {
 
         static void clearCache();
         static size_t cacheSize();
+        // compiles the document's source again with `options` and restyles it (restyleForViewport,
+        // restyleForRoot)
+        static std::shared_ptr<const CompatDocument> restyleWith(Rml::ElementDocument* document,
+                                                                const std::shared_ptr<const CompatDocument>& compiled,
+                                                                const CompatOptions& options);
 
         // --- loaded documents (engine-internal) ---
 

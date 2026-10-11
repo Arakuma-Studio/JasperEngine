@@ -266,6 +266,64 @@ TEST(CompatLoader, RestylesKeepTheElements){
     VirtualFiles::remove("@htmlui/test/restyle/menu.css");
 }
 
+// A script changes the classes of <html>: the selectors whose first compound may match the root are banded for
+// them (`.dark .x`, `.dark`), as for the classes the file wrote; nothing is compiled again while they stay.
+TEST(CompatLoader, RootClassesChangedByAScript){
+    RmlUiSession rml;
+    ASSERT_TRUE(rml.context);
+    VirtualFiles::add("@htmlui/test/rootclass/page.html",
+                      "<!DOCTYPE html><html class=\"app\" lang=\"en\" data-x=\"1\"><head><style>"
+                      "#box { display: block; width: 10px; height: 10px; } .dark #box { width: 20px; } "
+                      "[data-theme=\"red\"] #box { height: 30px; } .app #box { margin-left: 5px; }"
+                      "</style></head><body><div id=\"box\"></div></body></html>");
+    std::shared_ptr<const CompatDocument> compiled;
+    Rml::ElementDocument* document = DocumentLoader::load(rml.context, "@htmlui/test/rootclass/page.html", options(), &compiled);
+    ASSERT_NE(document, nullptr);
+    document->Show(Rml::ModalFlag::None, Rml::FocusFlag::None);
+    rml.context->Update();
+    Rml::Element* box = document->GetElementById("box");
+    ASSERT_NE(box, nullptr);
+    EXPECT_FLOAT_EQ(box->GetBox().GetSize().x, 10.0f);
+    EXPECT_FLOAT_EQ(box->GetBox().GetEdge(Rml::BoxArea::Margin, Rml::BoxEdge::Left), 5.0f);
+
+    // as loaded: nothing to do
+    EXPECT_EQ(DocumentLoader::restyleForRoot(document, compiled), compiled);
+
+    document->SetClass("dark", true);
+    std::shared_ptr<const CompatDocument> dark = DocumentLoader::restyleForRoot(document, compiled);
+    EXPECT_NE(dark, compiled);
+    EXPECT_EQ(DocumentLoader::compiledOf(document), dark);
+    rml.context->Update();
+    EXPECT_EQ(document->GetElementById("box"), box);
+    EXPECT_FLOAT_EQ(box->GetBox().GetSize().x, 20.0f);
+    EXPECT_FLOAT_EQ(box->GetBox().GetEdge(Rml::BoxArea::Margin, Rml::BoxEdge::Left), 5.0f);
+    EXPECT_EQ(DocumentLoader::restyleForRoot(document, dark), dark);
+
+    // an attribute name the root did not have
+    document->SetAttribute("data-theme", "red");
+    std::shared_ptr<const CompatDocument> themed = DocumentLoader::restyleForRoot(document, dark);
+    EXPECT_NE(themed, dark);
+    rml.context->Update();
+    EXPECT_FLOAT_EQ(box->GetBox().GetSize().y, 30.0f);
+    // a value change of a known attribute is RmlUi's to match: no new compile
+    document->SetAttribute("data-theme", "blue");
+    EXPECT_EQ(DocumentLoader::restyleForRoot(document, themed), themed);
+    rml.context->Update();
+    EXPECT_FLOAT_EQ(box->GetBox().GetSize().y, 10.0f);
+
+    // back to the file's classes: the first compile again (cached)
+    document->SetClass("dark", false);
+    document->RemoveAttribute("data-theme");
+    std::shared_ptr<const CompatDocument> back = DocumentLoader::restyleForRoot(document, themed);
+    EXPECT_EQ(back->rootSignature, compiled->rootSignature);
+    rml.context->Update();
+    EXPECT_FLOAT_EQ(box->GetBox().GetSize().x, 10.0f);
+
+    rml.context->UnloadDocument(document);
+    rml.context->Update();
+    VirtualFiles::remove("@htmlui/test/rootclass/page.html");
+}
+
 class CompatLoaderSceneTest : public ::testing::Test {
 protected:
     void SetUp() override{

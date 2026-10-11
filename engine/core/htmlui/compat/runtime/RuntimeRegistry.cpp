@@ -7,6 +7,7 @@
 // again for each initialisation.
 
 #include "htmlui/compat/runtime/RuntimeRegistry.h"
+#include "htmlui/compat/DocumentLoader.h"
 
 #include "htmlui/compat/ForkFeatures.h"
 #include "htmlui/compat/runtime/AnimationFill.h"
@@ -29,6 +30,7 @@
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/runtime/DecoratorCommon.h"
 
+#include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementInstancer.h>
 #include <RmlUi/Core/Factory.h>
@@ -152,6 +154,16 @@ void jasperengine::htmlui::compat::releaseRuntime(){
 }
 
 void jasperengine::htmlui::compat::updateRuntime(Rml::Context* context){
+    // a script changed the class or attribute names of <html>: the selectors that may match the
+    // root follow (DocumentLoader::restyleForRoot)
+    if (context){
+        for (int i = 0; i < context->GetNumDocuments(); i++){
+            Rml::ElementDocument* document = context->GetDocument(i);
+            if (std::shared_ptr<const CompatDocument> compiled = DocumentLoader::compiledOf(document))
+                DocumentLoader::restyleForRoot(document, compiled);
+        }
+    }
+
     // phase 3's FocusPseudoClasses and AnimationLonghands turn these off (§3.6): with the fork's
     // leaf-only :focus, :focus-within and :focus-visible the selectors pass through and nothing
     // tracks the focus
