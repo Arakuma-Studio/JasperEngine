@@ -6184,6 +6184,23 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         // model, normal and mvp matrices of this pass (one uniform block)
         Matrix4 objectScratch[3];
         const Matrix4* objectBlock = objectMatrices(transform, objectScratch);
+        // Transform::normalMatrix is kept only while the scene has lights (and is saved with
+        // the scene), but library shaders read it whatever the lighting (outline widths,
+        // fresnel, matcap, rim): without lights theirs is made here
+        if (!hasLights){
+            bool libraryShader = false;
+            for (int s = 0; s < mesh.numSubmeshes && !libraryShader; s++){
+                libraryShader = mesh.submeshes[s].manifest || (mesh.submeshes[s].extraPass && mesh.submeshes[s].extraPass->loaded);
+            }
+            if (libraryShader){
+                if (objectBlock != objectScratch){
+                    objectScratch[0] = objectBlock[0];
+                    objectScratch[2] = objectBlock[2];
+                }
+                objectScratch[1] = objectScratch[0].inverse().transpose();
+                objectBlock = objectScratch;
+            }
+        }
 
         // the lighting and shadow maps of the camera this pass draws for
         CameraShadows& passLighting = ps();
@@ -8557,8 +8574,9 @@ void RenderSystem::updateTransform(Transform& transform, Entity entity){
         transform.worldRotation = transform.rotation;
     }
 
-    // library shaders read it in unlit scenes too (outlines, matcap, rim, fresnel)
-    transform.normalMatrix = transform.modelMatrix.inverse().transpose();
+    if (hasLights){
+        transform.normalMatrix = transform.modelMatrix.inverse().transpose();
+    }
 }
 
 void RenderSystem::updateCamera(CameraComponent& camera, Transform& transform){
