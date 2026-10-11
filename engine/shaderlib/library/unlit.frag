@@ -23,7 +23,8 @@ uniform u_fs_customParams {
 uniform texture2D u_baseTexture;
 uniform sampler u_base_smp;
 
-in vec2 v_uv1;
+#include "includes/surface_uv.glsl"
+SURFACE_UV_IN vec2 v_uv1;
 in vec4 v_color; // the instance colour, times the vertex colour with VERTEX_COLOR
 
 out vec4 g_finalColor;

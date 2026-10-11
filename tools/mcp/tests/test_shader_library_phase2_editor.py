@@ -520,12 +520,12 @@ async def test_export_phase2_scene(ed: Editor):
     for line in ('.stencil.compare = MaterialStencilCompare::ALWAYS;', '.stencil.ref = 16;', '.stencil.writeMask = 240;',
                  '.stencil.pass = MaterialStencilOp::REPLACE;', '.colorWrite = 0;', '.colorWrite = 7;',
                  '.stencil.compare = MaterialStencilCompare::EQUAL;', '.stencil.readMask = 240;',
-                 '.extraPass.shader = "library:unlit";', '.extraPass.cullMode = MaterialCullMode::FRONT;',
-                 '.extraPass.order = MaterialPassOrder::BEFORE;', '.extraPass.shaderTextures.push_back({"u_baseTexture", texture});',
-                 '.extraPass.shaderFeatures = {"ALPHA_CLIP"};', 'ui.stencil.compare = MaterialStencilCompare::EQUAL;',
-                 'ui.colorWrite = 15;', '.extraPass.stencil.compare = MaterialStencilCompare::NOT_EQUAL;'):
+                 '.extraPass.edit().shader = "library:unlit";', '.extraPass.edit().cullMode = MaterialCullMode::FRONT;',
+                 '.extraPass.edit().order = MaterialPassOrder::BEFORE;', '.extraPass.edit().shaderTextures.push_back({"u_baseTexture", texture});',
+                 '.extraPass.edit().shaderFeatures = {"ALPHA_CLIP"};', 'ui.stencil.compare = MaterialStencilCompare::EQUAL;',
+                 'ui.colorWrite = 15;', '.extraPass.edit().stencil.compare = MaterialStencilCompare::NOT_EQUAL;'):
         ed.check(line in generated, f"generated code has {line!r}")
-    ed.check(re.search(r'\.extraPass\.shaderParams = \{\{"baseColor"', generated), "generated code sets the pass parameters")
+    ed.check(re.search(r'\.extraPass\.edit\(\)\.shaderParams = \{\{"baseColor"', generated), "generated code sets the pass parameters")
     ed.check((out / "project" / "assets" / "sprites" / "rock.png").exists(), "the pass texture ships")
     # the pass variants are precompiled: unlit with its feature and the blend define of its state
     header = (out / "shaders" / "glsl410.h").read_text(errors="replace")

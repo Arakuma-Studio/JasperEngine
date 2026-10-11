@@ -1157,7 +1157,10 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("colorWrite", &Material::colorWrite, &Material::colorWrite)
         // one optional extra draw of the submesh (outlines, masks), edited in place:
         // m.extraPass.shader = "library:outline"; mesh:setMaterial(m)
-        .addProperty("extraPass", &Material::extraPass, &Material::extraPass)
+        .addProperty("extraPass",
+            // the material's own pass (made on first access): m.extraPass.order = ... edits it
+            +[](const Material* self) -> MaterialPass* { return &const_cast<Material*>(self)->extraPass.edit(); },
+            +[](Material* self, const MaterialPass& pass) { self->extraPass = pass; })
         // a @property value of the shader (colours linear); unset reads the manifest default.
         // The shader is the material's, else the one its submesh draws with (a copy from
         // Mesh:getMaterial remembers it: the mesh's customShader or the scene default).

@@ -22,7 +22,7 @@ SokolFramebuffer::SokolFramebuffer(const SokolFramebuffer& rhs) = default;
 
 SokolFramebuffer& SokolFramebuffer::operator=(const SokolFramebuffer& rhs) = default;
 
-bool SokolFramebuffer::createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap, bool stencil){
+bool SokolFramebuffer::createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap, FramebufferDepth depth){
     if ((textureType != TextureType::TEXTURE_2D) && (textureType != TextureType::TEXTURE_CUBE)){
         Log::error("Framebuffer texture type must be 2D or CUBE");
         return false;
@@ -33,7 +33,9 @@ bool SokolFramebuffer::createFramebuffer(TextureType textureType, int width, int
     numColorAttachments = 1;
 
     bool colorCreated = colorTexture[0].createFramebufferTexture(textureType, false, shadowMap, width, height, minFilter, magFilter, wrapU, wrapV);
-    bool depthCreated = depthTexture.createFramebufferTexture(TextureType::TEXTURE_2D, true, shadowMap, width, height, minFilter, magFilter, wrapU, wrapV, ColorFormat::RGBA, stencil);
+    const bool hasDepth = (depth != FramebufferDepth::NONE);
+    bool depthCreated = !hasDepth || depthTexture.createFramebufferTexture(TextureType::TEXTURE_2D, true, shadowMap, width, height, minFilter, magFilter, wrapU, wrapV,
+                                                                          ColorFormat::RGBA, depth == FramebufferDepth::DEPTH_STENCIL);
 
     if (!colorCreated || !depthCreated) {
         destroyFramebuffer();
@@ -55,14 +57,16 @@ bool SokolFramebuffer::createFramebuffer(TextureType textureType, int width, int
         }
     }
 
-    sg_view_desc depth_view_desc = {0};
-    depth_view_desc.depth_stencil_attachment.image = depthTexture.backend.get();
-    depth_view_desc.label = "framebuffer-depth-attachment-view";
+    if (hasDepth){
+        sg_view_desc depth_view_desc = {0};
+        depth_view_desc.depth_stencil_attachment.image = depthTexture.backend.get();
+        depth_view_desc.label = "framebuffer-depth-attachment-view";
 
-    if (Engine::isAsyncThread()){
-        depthAttachmentView = SokolCmdQueue::add_command_make_view(depth_view_desc);
-    }else{
-        depthAttachmentView = sg_make_view(depth_view_desc);
+        if (Engine::isAsyncThread()){
+            depthAttachmentView = SokolCmdQueue::add_command_make_view(depth_view_desc);
+        }else{
+            depthAttachmentView = sg_make_view(depth_view_desc);
+        }
     }
 
     bool created = isCreated();

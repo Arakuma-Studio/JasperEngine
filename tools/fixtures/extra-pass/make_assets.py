@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Generates the model of the extra-pass fixture: a hard-edged box column (every face has its
-own vertices and flat normals, as an exported low-poly model does) skinned to two bones
-(Root at the base, Tip half way up, which scripts/ExtraPass.lua bends) with one morph target
-that widens its top.
+"""Generates the models of the extra-pass fixture:
+
+- skinned_column.gltf: a hard-edged box column (every face has its own vertices and flat
+  normals, as an exported low-poly model does) skinned to two bones (Root at the base, Tip
+  half way up, which scripts/ExtraPass.lua bends) with one morph target that widens its top.
+- figure.gltf: a blocky figure of three hard-edged boxes, three primitives (submeshes) with
+  their own materials over ONE vertex buffer (shared POSITION/NORMAL accessors, an index
+  accessor each): 0 the torso, 1 a backpack behind it (hidden from the front), 2 the head.
 
     python3 tools/fixtures/extra-pass/make_assets.py
 
@@ -142,5 +146,86 @@ def main():
         f.write("\n")
 
 
+def build_figure():
+    positions, normals, parts = [], [], []
+
+    def box(center, size):
+        # 24 vertices (flat normals per face), 12 triangles, counter-clockwise from outside
+        cx, cy, cz = center
+        hx, hy, hz = size[0] / 2, size[1] / 2, size[2] / 2
+        faces = [
+            ((0, 0, 1), [(-hx, -hy, hz), (hx, -hy, hz), (hx, hy, hz), (-hx, hy, hz)]),
+            ((0, 0, -1), [(hx, -hy, -hz), (-hx, -hy, -hz), (-hx, hy, -hz), (hx, hy, -hz)]),
+            ((1, 0, 0), [(hx, -hy, hz), (hx, -hy, -hz), (hx, hy, -hz), (hx, hy, hz)]),
+            ((-1, 0, 0), [(-hx, -hy, -hz), (-hx, -hy, hz), (-hx, hy, hz), (-hx, hy, -hz)]),
+            ((0, 1, 0), [(-hx, hy, hz), (hx, hy, hz), (hx, hy, -hz), (-hx, hy, -hz)]),
+            ((0, -1, 0), [(-hx, -hy, -hz), (hx, -hy, -hz), (hx, -hy, hz), (-hx, -hy, hz)]),
+        ]
+        indices = []
+        for n, corners in faces:
+            base = len(positions)
+            for c in corners:
+                positions.append((cx + c[0], cy + c[1], cz + c[2]))
+                normals.append(n)
+            indices += [base, base + 1, base + 2, base, base + 2, base + 3]
+        parts.append(indices)
+
+    box((0.0, 0.75, 0.0), (0.8, 1.1, 0.4))     # 0 torso
+    box((0.0, 0.85, -0.35), (0.55, 0.7, 0.3))  # 1 backpack, behind the torso
+    box((0.0, 1.55, 0.0), (0.45, 0.45, 0.45))  # 2 head
+    return positions, normals, parts
+
+
+def write_figure():
+    positions, normals, parts = build_figure()
+    count = len(positions)
+    blobs, views, accessors = [], [], []
+
+    def add(data, target, component, kind, count_, minmax=None):
+        offset = sum(len(x) for x in blobs)
+        while offset % 4:
+            blobs.append(b"\0")
+            offset += 1
+        blobs.append(data)
+        views.append({"buffer": 0, "byteOffset": offset, "byteLength": len(data), "target": target})
+        accessor = {"bufferView": len(views) - 1, "componentType": component, "count": count_, "type": kind}
+        if minmax:
+            accessor["min"], accessor["max"] = minmax
+        accessors.append(accessor)
+        return len(accessors) - 1
+
+    def vec3(values):
+        return b"".join(struct.pack("<3f", *v) for v in values)
+
+    position = add(vec3(positions), 34962, 5126, "VEC3", count,
+                   ([min(v[i] for v in positions) for i in range(3)], [max(v[i] for v in positions) for i in range(3)]))
+    normal = add(vec3(normals), 34962, 5126, "VEC3", count)
+    primitives = []
+    for material, indices in enumerate(parts):
+        index = add(b"".join(struct.pack("<H", i) for i in indices), 34963, 5123, "SCALAR", len(indices))
+        primitives.append({"attributes": {"POSITION": position, "NORMAL": normal}, "indices": index, "material": material})
+
+    def material(name, colour):
+        return {"name": name, "pbrMetallicRoughness": {"baseColorFactor": colour, "metallicFactor": 0.0, "roughnessFactor": 0.7}}
+
+    data = b"".join(blobs)
+    gltf = {
+        "asset": {"version": "2.0", "generator": "extra-pass fixture make_assets.py"},
+        "scene": 0,
+        "scenes": [{"nodes": [0]}],
+        "nodes": [{"name": "Figure", "mesh": 0}],
+        "meshes": [{"name": "Figure", "primitives": primitives}],
+        "materials": [material("Torso", [0.85, 0.75, 0.2, 1.0]), material("Backpack", [0.3, 0.6, 0.25, 1.0]),
+                      material("Head", [0.9, 0.65, 0.5, 1.0])],
+        "accessors": accessors,
+        "bufferViews": views,
+        "buffers": [{"byteLength": len(data), "uri": "data:application/octet-stream;base64," + base64.b64encode(data).decode()}],
+    }
+    with open(os.path.join(MODELS, "figure.gltf"), "w") as f:
+        json.dump(gltf, f, indent=1)
+        f.write("\n")
+
+
 if __name__ == "__main__":
     main()
+    write_figure()

@@ -84,9 +84,10 @@ uniform sampler u_base_smp;
 
 in vec3 v_position;
 in vec3 v_normal;
-in vec2 v_uv1;
+#include "includes/surface_uv.glsl"
+SURFACE_UV_IN vec2 v_uv1;
 #if defined(SHADOW_TEXTURE) && defined(HAS_UV_SET2)
-    in vec2 v_uv2;
+    SURFACE_UV_IN vec2 v_uv2;
 #endif
 in vec4 v_color; // the instance colour
 #ifdef VERTEX_AO

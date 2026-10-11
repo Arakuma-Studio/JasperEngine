@@ -506,8 +506,10 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
             for (auto& shaderTexture : material.shaderTextures) {
                 submeshChanged |= visitTexturePaths(shaderTexture.second, transform);
             }
-            for (auto& shaderTexture : material.extraPass.shaderTextures) {
-                submeshChanged |= visitTexturePaths(shaderTexture.second, transform);
+            if (MaterialPass* pass = material.extraPass.editIfSet()) {
+                for (auto& shaderTexture : pass->shaderTextures) {
+                    submeshChanged |= visitTexturePaths(shaderTexture.second, transform);
+                }
             }
 
             if (submeshChanged) {
@@ -694,7 +696,7 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
             for (const auto& shaderTexture : material.shaderTextures) {
                 addTexture(shaderTexture.second, false);
             }
-            for (const auto& shaderTexture : material.extraPass.shaderTextures) {
+            for (const auto& shaderTexture : material.extraPass->shaderTextures) {
                 addTexture(shaderTexture.second, false);
             }
         }
@@ -1382,8 +1384,9 @@ void editor::Project::applyCustomShaderPathChange(const std::function<bool(std::
 // and empty ones name no file
 bool editor::Project::applyToMaterialShaders(Material& material, const std::function<bool(std::string&)>& transform) {
     bool changed = false;
-    for (std::string* shader : {&material.shader, &material.extraPass.shader}) {
-        if (shader->empty() || ShaderReference::isLibrary(*shader)) {
+    MaterialPass* pass = material.extraPass.editIfSet();
+    for (std::string* shader : {&material.shader, pass ? &pass->shader : nullptr}) {
+        if (!shader || shader->empty() || ShaderReference::isLibrary(*shader)) {
             continue;
         }
         changed |= transform(*shader);
@@ -2084,8 +2087,10 @@ bool editor::Project::visitAssetPathsInMaterialFiles(const std::function<bool(st
         for (auto& shaderTexture : material.shaderTextures){
             materialChanged |= visitTexturePaths(shaderTexture.second, transform);
         }
-        for (auto& shaderTexture : material.extraPass.shaderTextures){
-            materialChanged |= visitTexturePaths(shaderTexture.second, transform);
+        if (MaterialPass* pass = material.extraPass.editIfSet()){
+            for (auto& shaderTexture : pass->shaderTextures){
+                materialChanged |= visitTexturePaths(shaderTexture.second, transform);
+            }
         }
         return materialChanged;
     });
@@ -3208,7 +3213,7 @@ void editor::Project::invalidateCustomShaders() {
                 bool materialFork = false;
                 for (unsigned int s = 0; s < mesh->numSubmeshes; s++){
                     const std::string& shader = mesh->submeshes[s].material.shader;
-                    const std::string& pass = mesh->submeshes[s].material.extraPass.shader;
+                    const std::string& pass = mesh->submeshes[s].material.extraPass->shader;
                     materialFork = materialFork || (!shader.empty() && !ShaderReference::isLibrary(shader));
                     materialFork = materialFork || (!pass.empty() && !ShaderReference::isLibrary(pass));
                 }

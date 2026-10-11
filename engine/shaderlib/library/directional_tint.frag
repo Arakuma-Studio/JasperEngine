@@ -32,7 +32,8 @@ uniform texture2D u_baseTexture;
 uniform sampler u_base_smp;
 
 in vec3 v_normal;
-in vec2 v_uv1;
+#include "includes/surface_uv.glsl"
+SURFACE_UV_IN vec2 v_uv1;
 
 out vec4 g_finalColor;
 

@@ -314,6 +314,8 @@ namespace jasperengine{
 			float distanceToCamera;
 			// MeshComponent::opaqueSortPriority, honoured before the distance (lower first)
 			int sortPriority;
+			// submission (transform) order: equal priority and distance draw in it
+			uint32_t order;
 		};
 
 		// One merged run of tilemap indices to draw, in elements relative to the
@@ -323,16 +325,34 @@ namespace jasperengine{
 			unsigned int count;
 		};
 
-		// the top of the queue draws first: the lowest sort priority, then the farthest
+		// draw order of the transparent queue: the lowest sort priority, then the farthest, then
+		// the submission order (a total order, so std::sort is deterministic)
 		struct TransparentRenderComparison{
 			bool operator()(const TransparentRenderData& lhs, const TransparentRenderData& rhs) const{
 				if (lhs.sortPriority != rhs.sortPriority)
-					return lhs.sortPriority > rhs.sortPriority;
+					return lhs.sortPriority < rhs.sortPriority;
 				if (lhs.distanceToCamera != rhs.distanceToCamera)
-					return lhs.distanceToCamera < rhs.distanceToCamera;
-				return lhs.order > rhs.order;
+					return lhs.distanceToCamera > rhs.distanceToCamera;
+				return lhs.order < rhs.order;
 			}
 		};
+
+		// draw order of the opaque queue of a 3D pass: the lowest sort priority, then the
+		// nearest, then the submission order
+		struct OpaqueRenderComparison{
+			bool operator()(const OpaqueRenderData& lhs, const OpaqueRenderData& rhs) const{
+				if (lhs.sortPriority != rhs.sortPriority)
+					return lhs.sortPriority < rhs.sortPriority;
+				if (lhs.distanceToCamera != rhs.distanceToCamera)
+					return lhs.distanceToCamera < rhs.distanceToCamera;
+				return lhs.order < rhs.order;
+			}
+		};
+
+		// the queues of the camera pass being drawn (renderCameraPass, the reflection probe
+		// face), kept between passes so a pass allocates nothing once they have grown
+		std::vector<OpaqueRenderData> opaqueQueue;
+		std::vector<TransparentRenderData> transparentQueue;
 
 		struct SpotMaskAtlasEntry{
 			std::string sourceId;
@@ -827,6 +847,9 @@ namespace jasperengine{
 			unsigned int lod = 0;
 		};
 		Entity activeReflectionProbe = NULL_ENTITY;
+		// the scene's sky: its first SkyboxComponent, as last loaded (another one leads the
+		// array after a removal or a reorder, see update)
+		Entity activeSky = NULL_ENTITY;
 		fs_reflection_probe_t fs_reflection_probe;
 
 		// 2D light path (Light2DComponent). Deliberately independent of

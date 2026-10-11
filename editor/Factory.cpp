@@ -427,7 +427,7 @@ std::string editor::Factory::formatMaterialShaderLibrary(int indentSpaces, const
         code << ind << target << ".lighting = " << formatMaterialLighting(material.lighting) << ";\n";
     // phase 2: stencil, colour write and the extra pass
     code << formatStencilAndColorWrite(indentSpaces, material.stencil, material.colorWrite, target);
-    code << formatMaterialPass(indentSpaces, material.extraPass, target + ".extraPass", projectPath);
+    code << formatMaterialPass(indentSpaces, material.extraPass, target + ".extraPass.edit()", projectPath);
     return code.str();
 }
 

@@ -13,7 +13,8 @@ uniform u_fs_customParams {
     uniform texture2D u_outlineTexture;
     uniform sampler u_outline_smp;
 
-    in vec2 v_uv1;
+    #include "includes/surface_uv.glsl"
+    SURFACE_UV_IN vec2 v_uv1;
 #endif
 
 #ifdef VERTEX_COLOR_WIDTH

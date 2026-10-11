@@ -26,6 +26,8 @@ namespace jasperengine{
         // stencil chooses the attachment: depth-stencil, or depth only for targets drawn
         // only by depth-format pipelines (PIP_DEPTH, PIP_GBUFFER)
         bool createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap, bool stencil);
+        // any depth attachment, or none (FramebufferDepth::NONE: drawn only by PIP_EFFECT pipelines)
+        bool createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap, FramebufferDepth depth);
         bool createDepthOnlyFramebuffer(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap);
         bool createFramebufferMRT(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, int numColor, const ColorFormat* formats, bool stencil = true);
         void destroyFramebuffer();

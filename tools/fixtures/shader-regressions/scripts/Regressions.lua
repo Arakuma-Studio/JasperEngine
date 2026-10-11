@@ -34,6 +34,12 @@
 --      the green one project-relative ("assets/shaders/no_shadow"); project.yaml's
 --      shaderAdditions makes the export precompile a variant of each (it could not find the
 --      first), and the game compiles neither at runtime.
+--  10. probe order, seen only in 1's reflection (behind the cameras, facing the sphere): a red
+--      panel that shows only inside a stencil mask (library:stencil_mask, sortPriority -1)
+--      created after it. The probe capture drew its opaque meshes in transform order, so the
+--      panel tested the stencil before the mask wrote it and vanished from the reflection: a
+--      red square in the reflection, left of the pillars' (SR_FOCUS=probe; the main view and
+--      the close-up see the panel and the mask from behind, culled).
 --
 --   tools/smoke-test.sh tools/fixtures/shader-regressions
 --   SMOKE_GAME_SECONDS="ready 70" tools/smoke-test.sh tools/fixtures/shader-regressions  (7 done)
@@ -82,6 +88,36 @@ local function buildProbe(self, scene)
     probe.includeSky = true
     probe:setBoxSize(40, 40, 40)
     self.probe = probe
+end
+
+-- 10. a stencil reader created before its mask, reflected by the probe of 1 only
+local function buildProbeOrder(self, scene)
+    local function plane(z, size)
+        local p = Primitive(scene)
+        p:createPlane(size, size)
+        -- facing the sphere (-Z): the main and focus cameras see their back, culled
+        p:setRotation(-90, 0, 0)
+        p.position = Vector3(-6.0, 1.4, z)
+        p.castShadows = false
+        p.receiveLights = false
+        return p
+    end
+    local panel = plane(6.0, 4.0)
+    panel:setColor(0.9, 0.1, 0.1)
+    configure(panel, function(material)
+        local s = MaterialStencil()
+        s.compare = MaterialStencilCompare.EQUAL
+        s.ref = 16
+        s.readMask = 240
+        s.writeMask = 240
+        material.stencil = s
+    end)
+    local mask = plane(5.8, 1.6)
+    configure(mask, function(material)
+        material.shader = "library:stencil_mask"
+        material.sortPriority = -1
+    end)
+    self.probePanel, self.probeMask = panel, mask
 end
 
 local function buildPrepass(self, scene)
@@ -359,7 +395,7 @@ function Regressions:init()
     light.shadows = true
     self.camera, self.light = camera, light
 
-    for _, case in ipairs({ {"probe", buildProbe}, {"prepass", buildPrepass}, {"rtt", buildRtt}, {"terrain", buildTerrain}, {"front", buildFront}, {"alpha", buildAlpha} }) do
+    for _, case in ipairs({ {"probe", buildProbe}, {"prepass", buildPrepass}, {"rtt", buildRtt}, {"terrain", buildTerrain}, {"front", buildFront}, {"alpha", buildAlpha}, {"probe order", buildProbeOrder} }) do
         local ok, err = pcall(case[2], self, scene)
         if ok then
             log("built %s", case[1])

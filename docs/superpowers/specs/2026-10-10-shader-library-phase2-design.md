@@ -507,6 +507,80 @@ override the sections they refer to; later agents follow them.
   leak check passed", `SMOKE_GAME_SECONDS="ready 70"`), 8 (second skybox) and 9 (fork paths
   in `shaderAdditions`).
 
+### 5.7 Review fixes: engine (sl/p2-fix-engine)
+
+- Extra pass storage (E2). `Material::extraPass` is a `MaterialExtraPass`: the `MaterialPass`
+  out of line behind a pointer (8 bytes), null while it holds `MaterialPass()`. A value: copies
+  are deep (a copy of a default pass stays null), `==` compares by value, an unset pass reads as
+  `MaterialPass()`. C++ reads through `->`, `*`, `get()` or the implicit `const MaterialPass&`
+  conversion; writes through `edit()` (makes it), `editIfSet()` (null when unset) or by assigning
+  a `MaterialPass` (keeps an existing allocation, so a Lua reference to it stays valid). Lua is
+  unchanged (`m.extraPass` returns the copy's own pass, made on first access); the Catalog paths
+  `...material.extraPass[.*]` point into `edit()`; exported scene code writes
+  `material.extraPass.edit().<field> = ...`; `MaterialChange` takes the pass as a
+  `MaterialPass`. Game-build sizes (sizeof, Linux GCC, before -> after this branch):
+  `Material` 2088 -> 1928 bytes, `Submesh` 7112 -> 6976, `MeshComponent` 128256 -> 126080
+  (phase 1: 1888 / 6752 / 122480; what remains of phase 2's growth is the stencil state in
+  `Material`, `ShaderManifestState` and `RenderState`, and, from E4, one pipeline handle per
+  `ObjectRender`, 8 bytes with padding). The phase 1 `shader`/`shaderParams`/`shaderTextures`/
+  `shaderFeatures` (104 bytes) stay inline: about 130 call sites in the engine, editor, Lua and
+  MCP for 1.6 KB per mesh, not taken in this pass. Scenes, prefabs and `.material` files
+  serialize as before (Stream compares with `MaterialPass()` as it did).
+- Queues (E1, E3). The camera pass sorts its opaque queue with `std::sort` on (sortPriority,
+  distance, submission order) and its transparent queue on (sortPriority, farthest first,
+  submission order), both total orders, so the result is the old stable sort's / priority
+  queue's; both are `RenderSystem` members reused across passes (no allocation once grown).
+  A reflection probe face draws its opaque meshes in the same order, nearest the probe first
+  (it used transform order, so masks, their readers and through-walls outlines came out wrong
+  in probes: shader-regressions case 10).
+- Effect targets (E4). `FramebufferDepth` (`DEPTH_STENCIL`, `DEPTH`, `NONE`) and
+  `Framebuffer::setDepthAttachment` (`setDepthStencil` and the bool overloads stay). The SSAO
+  and SSR targets, their blurs and post-process buffer 1 are depth only (no stencil plane:
+  D32 instead of D32S8 on Metal and Vulkan, the same 4 bytes as D24S8 on GL and D3D11), drawn
+  by the new `PIP_EFFECT` pipeline type (PIP_RTT's colour state, depth never tested or
+  written). Post-process buffer 0 keeps depth-stencil (the colour pass draws meshes into it); a
+  chain pass picks `PIP_EFFECT` into buffer 1, `PIP_RTT` into buffer 0 or its destination.
+  `NONE` (no attachment at all) works too but changed llvmpipe's SSAO/SSR output by 1 on 12
+  pixels of the 6-light scene, where a depth plane the pipeline never tests renders pixel for
+  pixel as the phase 1 tag; the effects keep it.
+- Smoothed normals (E5, E8). One `a_smoothNormal` buffer per vertex buffer: the first submesh
+  that asks welds over the triangles of every submesh drawing the same position (and normal)
+  attribute and sets the entry on all of them. Only vertices some triangle uses take part
+  (with no triangle at all, every vertex with its own normal, as before). Positions and normals
+  are read in any component type (a quantized or 4-component attribute); a mesh whose positions
+  cannot be read (none, or fewer than 2 components) gets its vertex normal with a warning
+  instead of failing to load. Every position the engine can draw today is float (sokol has no
+  3-component integer vertex format, so a quantized glTF position fails at pipeline creation
+  anyway): the old error was not reachable by a mesh that would otherwise draw. Measured on the
+  extra-pass figure scene: 6 smoothed-normal buffers before, 2 after (one per outlined
+  figure of three submeshes).
+- Fade (E6). The vertex hooks read `float surfaceFadeVisible` (1 shown, 0 faded; 1 without
+  `USE_INSTANCE_FADE`), in `surface_vs.glsl` and `surface_depth_vs.glsl`; outline widths
+  scale by it (GLSL pass).
+- Extra-pass order (E7). `drawMesh` draws every Before pass of the mesh, then the submeshes,
+  then every After pass, each in submesh order (5.2's "right before or after the submesh" holds
+  for one submesh). A silhouette no longer shows a submesh through its own object's others,
+  and a stencil outline tests the stencil its whole object marked. A render-target texture
+  redrawn this frame is still rebound by both draws (a Before pass flags the submesh).
+- Centroid (E10). `includes/surface_uv.glsl`: `SURFACE_UV_OUT` / `SURFACE_UV_IN` (`centroid`
+  under `HAS_TEXTURERECT`); `surface_vs.glsl` and every library fragment stage reading `v_uv1` /
+  `v_uv2` use them, so the two stages always agree (GLSL ES 3.00 links only matching
+  qualifiers; a GLES export before this declared `centroid out` / `in` for unlit, stencil_mask
+  and outline_stencil on a sprite, both stages `centroid` now). A fork written like the
+  library ones uses the same include.
+- Skyboxes (E11). After a Hierarchy move the editor sorts the SkyboxComponent array by its
+  entity list (`EntityRegistry::sortComponentsByEntityOrder`, from `ProjectUtils`), the scene
+  file's order; `RenderSystem` remembers the sky it loaded and, when another becomes first
+  (a move, or a removal), unloads the old one and reloads the meshes' image-based lighting. The
+  sky in use is the same live, after a reload and in an export (5.6's remaining quirk is gone).
+- Fixtures and tests: `tools/fixtures/extra-pass` `EP_SCENE=figure` (`models/figure.gltf`,
+  three submeshes over one vertex buffer, with the silhouette, stencil outline and hull presets
+  on every submesh; `EP_FOCUS=silhouette|stencil|hull`), shader-regressions case 10 (probe
+  order), MCP `test_engine_fixes_p2.py` (skybox order; the build before fails it). The 6-light
+  scene (directional and spot with shadows, three points, a second spot, fog) renders pixel for
+  pixel as the phase 1 tag with SSAO and SSR off, on, each alone, and with a three-pass
+  post-process chain.
+
 ### 5.8 Review fixes: editor and presets (sl/p2-fix-editor)
 
 Overrides the outline_hull and draw-once notes of 5.5, the last notes of 5.3 about blended

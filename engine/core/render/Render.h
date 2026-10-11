@@ -332,7 +332,21 @@ namespace jasperengine{
         PIP_DEFAULT_NODEPTH = 1 << 6, // no depth test or write, submission order
         PIP_RTT_NODEPTH = 1 << 7,
         PIP_ZPREPASS    = 1 << 8, // depth only, into the swapchain color pass ahead of its opaque draws
-        PIP_ZPREPASS_RTT = 1 << 9 // same into an offscreen color pass
+        PIP_ZPREPASS_RTT = 1 << 9, // same into an offscreen color pass
+        // a fullscreen effect pass into an offscreen target with a depth-only attachment it
+        // never tests (FramebufferDepth::DEPTH: SSAO, SSR, their blurs, post-process buffer 1)
+        PIP_EFFECT      = 1 << 10
+    };
+
+    // the depth attachment of an offscreen framebuffer
+    enum class FramebufferDepth {
+        DEPTH_STENCIL, // colour passes that draw meshes (PIP_RTT pipelines): stencil masks work
+        // depth only: shadow maps, the SSAO depth pre-pass, the G-buffer, and the fullscreen
+        // effect targets (PIP_EFFECT), which never test it. No stencil plane: D32 instead of
+        // D32S8 on Metal and Vulkan; the same 4 bytes as D24S8 on GL and D3D11. (NONE there
+        // changed llvmpipe's output by 1 on a few pixels, so effects keep a depth plane.)
+        DEPTH,
+        NONE           // no depth attachment (only pipelines whose depth format is NONE)
     };
 
     //-------Start shader definition--------

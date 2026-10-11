@@ -110,8 +110,8 @@ void Mesh::setMaterial(unsigned int submesh, const Material& material){
             reload = current.shaderTextures[t].first != material.shaderTextures[t].first;
         }
         // so is all of the extra pass but its parameters and texture files
-        const MaterialPass& currentPass = current.extraPass;
-        const MaterialPass& pass = material.extraPass;
+        const MaterialPass& currentPass = *current.extraPass;
+        const MaterialPass& pass = *material.extraPass;
         reload = reload || currentPass.shader != pass.shader || currentPass.shaderFeatures != pass.shaderFeatures ||
             currentPass.blendMode != pass.blendMode || currentPass.cullMode != pass.cullMode ||
             currentPass.depthWrite != pass.depthWrite || currentPass.depthTest != pass.depthTest ||

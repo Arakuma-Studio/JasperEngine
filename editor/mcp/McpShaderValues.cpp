@@ -784,7 +784,7 @@ bool McpValues::materialShaderLibraryFromJson(Project* project, SceneProject* sc
         }
         out.sortPriority = value["sortPriority"].get<int>();
     }
-    if (value.contains("extraPass") && !materialPassFromJson(project, scene, value["extraPass"], out.extraPass, error)) {
+    if (value.contains("extraPass") && !materialPassFromJson(project, scene, value["extraPass"], out.extraPass.edit(), error)) {
         return false;
     }
     return true;

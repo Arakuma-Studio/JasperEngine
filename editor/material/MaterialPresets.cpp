@@ -23,11 +23,11 @@ namespace {
 
     // how a Material holds its extra pass, in one place
     MaterialPass& extraPassOf(Material& material){
-        return material.extraPass;
+        return material.extraPass.edit();
     }
 
     const MaterialPass& extraPassOf(const Material& material){
-        return material.extraPass;
+        return *material.extraPass;
     }
 
     void setExtraPassValue(Material& material, const MaterialPass& pass){
