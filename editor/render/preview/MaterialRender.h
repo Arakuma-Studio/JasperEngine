@@ -29,8 +29,15 @@ namespace jasperengine::editor{
         MaterialRender(const MaterialRender&) = delete;
         MaterialRender& operator=(const MaterialRender&) = delete;
 
-        void applyMaterial(const Material& material);
+        // meshShader: the shader the material draws with when it names none (the owning
+        // mesh's customShader or the scene default; "" for the built-in Lit)
+        void applyMaterial(const Material& material, const std::string& meshShader = std::string());
         const Material getMaterial();
+        std::string getMeshShader() const;
+
+        // the sphere still waits for its shader variant (a library shader or fork builds off the
+        // UI thread) or a texture: what was drawn is not the material yet
+        bool isPending() const;
 
         void setReceiveIBL(bool value);
         bool getReceiveIBL() const;

@@ -1030,13 +1030,17 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("depthOffsetFactor", &Material::depthOffsetFactor, &Material::depthOffsetFactor)
         .addProperty("depthOffsetUnits", &Material::depthOffsetUnits, &Material::depthOffsetUnits)
         .addProperty("sortPriority", &Material::sortPriority, &Material::sortPriority)
-        // a @property value of the shader (colours linear); unset reads the manifest default
+        // a @property value of the shader (colours linear); unset reads the manifest default.
+        // The shader is the material's, else the one its submesh draws with (a copy from
+        // Mesh:getMaterial remembers it: the mesh's customShader or the scene default).
         .addFunction("setShaderParam",
             luabridge::overload<Material*, const std::string&, const Vector4&>(+[](Material* self, const std::string& name, const Vector4& value) {
                 ShaderUniforms::set(self->shaderParams, name, value);
             }),
-            luabridge::overload<Material*, const std::string&, const Vector3&>(+[](Material* self, const std::string& name, const Vector3& value) {
-                ShaderUniforms::set(self->shaderParams, name, Vector4(value.x, value.y, value.z, 0.0f));
+            luabridge::overload<Material*, const std::string&, const Vector3&, lua_State*>(+[](Material* self, const std::string& name, const Vector3& value, lua_State* L) {
+                // a colour given as (r, g, b) is opaque
+                const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+                ShaderUniforms::set(self->shaderParams, name, LuaBinding::getShaderParamValue(shader, name, value));
             }),
             luabridge::overload<Material*, const std::string&, const Vector2&>(+[](Material* self, const std::string& name, const Vector2& value) {
                 ShaderUniforms::set(self->shaderParams, name, Vector4(value.x, value.y, 0.0f, 0.0f));
@@ -1044,8 +1048,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             luabridge::overload<Material*, const std::string&, float>(+[](Material* self, const std::string& name, float value) {
                 ShaderUniforms::set(self->shaderParams, name, Vector4(value, 0.0f, 0.0f, 0.0f));
             }))
-        .addFunction("getShaderParam", +[](const Material* self, const std::string& name) -> Vector4 {
-            return ShaderLibraryValues::getParam(self->shaderParams, self->shader, name);
+        .addFunction("getShaderParam", +[](const Material* self, const std::string& name, lua_State* L) -> Vector4 {
+            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+            return ShaderLibraryValues::getParam(self->shaderParams, shader, name);
         })
         .addFunction("removeShaderParam", +[](Material* self, const std::string& name) -> bool {
             return ShaderUniforms::remove(self->shaderParams, name);
@@ -1058,11 +1063,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             return ShaderLibraryValues::getTexture(self->shaderTextures, name);
         })
         // a @feature on or off, or a @keywords value ("GROUP_VALUE") chosen
-        .addFunction("setShaderFeature", +[](Material* self, const std::string& define, bool enabled) {
-            ShaderLibraryValues::setFeature(self->shaderFeatures, self->shader, define, enabled);
+        .addFunction("setShaderFeature", +[](Material* self, const std::string& define, bool enabled, lua_State* L) {
+            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+            ShaderLibraryValues::setFeature(self->shaderFeatures, shader, define, enabled);
         })
-        .addFunction("isShaderFeatureEnabled", +[](const Material* self, const std::string& define) -> bool {
-            return ShaderLibraryValues::isFeatureEnabled(self->shaderFeatures, self->shader, define);
+        .addFunction("isShaderFeatureEnabled", +[](const Material* self, const std::string& define, lua_State* L) -> bool {
+            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+            return ShaderLibraryValues::isFeatureEnabled(self->shaderFeatures, shader, define);
         })
         .endClass();
 

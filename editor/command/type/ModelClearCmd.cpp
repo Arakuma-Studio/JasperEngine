@@ -28,6 +28,8 @@ namespace {
             material.normalTexture.destroy();
             material.occlusionTexture.destroy();
             material.emissiveTexture.destroy();
+            for (auto& shaderTexture : material.shaderTextures)
+                shaderTexture.second.destroy();
         }
     }
 

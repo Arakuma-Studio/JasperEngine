@@ -1922,6 +1922,18 @@ OVERRIDES = {
     },
 }
 
+# Mesh:getMaterial and Mesh.material push the Material copy themselves (a LuaRef: the copy
+# remembers the shader its submesh draws with, LuaBinding::setMaterialDrawnShader)
+OVERRIDES[('Mesh', 'getMaterial')] = {
+    'doc': ['A copy of the submesh\'s material (submesh 0 by default): edit it, then `setMaterial` it back.'],
+    'overloads': [([], 'Material'), ([('submesh', 'integer')], 'Material')],
+}
+
+# Properties whose getter returns a LuaRef: (Lua type, a copy)
+PROPERTY_OVERRIDES = {
+    ('Mesh', 'material'): ('Material', True),
+}
+
 for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
     OVERRIDES[(_phys, 'ignoreLayerCollision')] = {
         'doc': ['Makes the two layers (0..31) collide or not (Layer Collision Matrix); `ignore` defaults to true.'],
@@ -2246,6 +2258,8 @@ class Builder:
             by_value = '&' not in cpp_type and stars == 0 and kind != 'data'
             m.copy = by_value and (lt in self.r.lua_classes or lt.endswith('[]') or lt.startswith('table')) \
                 and not m.is_event
+        if (c.name, m.name) in PROPERTY_OVERRIDES:
+            m.lua_type, m.copy = PROPERTY_OVERRIDES[(c.name, m.name)]
         m.writable = setter is not None
         m.assign_fn = None
         if setter is not None and getattr(m, 'is_event', False):

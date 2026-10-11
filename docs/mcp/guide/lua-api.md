@@ -679,13 +679,15 @@ sprites) sorted by their distance to the camera position, not by Z.
 `getMaterial(i)` returns, then `setMaterial(i, m)`). Shader library (same copy-then-set rule):
 `shader` (`""` built-in Lit, `"library:<name>"`, or a fork), `blendMode`
 (`MaterialBlendMode.*`), `cullMode`, `depthWrite`, `depthTest`, `depthOffsetFactor`,
-`depthOffsetUnits`, `sortPriority`; methods `setShaderParam(name, value)` (colours linear),
-`getShaderParam(name)` (unset: the manifest default), `removeShaderParam(name)`,
-`setShaderTexture(uniform, path)` (`""` back to the default), `getShaderTexture(uniform)`,
-`setShaderFeature(define, on)` (a `@keywords` value is `"GROUP_VALUE"`),
-`isShaderFeatureEnabled(define)`. UI (Image, Text, Polygon), Points, LineRenderer and Skybox
-objects have the same parameter/texture/feature methods for their `customShader`, and (but
-Skybox) `blendMode` and `depthWrite`.
+`depthOffsetUnits`, `sortPriority`; methods `setShaderParam(name, value)` (colours linear; a
+`Vector3` colour is opaque), `getShaderParam(name)` (unset: the manifest default),
+`removeShaderParam(name)`, `setShaderTexture(uniform, path)` (`""` back to the default),
+`getShaderTexture(uniform)`, `setShaderFeature(define, on)` (a `@keywords` value is
+`"GROUP_VALUE"`), `isShaderFeatureEnabled(define)`. A material with `shader = ""` feeds the
+shader its submesh draws with (the mesh's `customShader`, else the scene default): a copy from
+`getMaterial` / `material` resolves defaults and features against that one. UI (Image, Text,
+Polygon), Points, LineRenderer and Skybox objects have the same parameter/texture/feature
+methods for their `customShader`, and (but Skybox) `blendMode` and `depthWrite`.
 
 ### 4.4 Primitive (Mesh)
 

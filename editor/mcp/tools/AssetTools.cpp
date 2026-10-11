@@ -1823,6 +1823,10 @@ void setShaderUniformTool(const CallPtr& call) {
     const std::string shader = Catalog::getShaderReferenceForProperty(scene, where.entity, where.component, property);
     const std::shared_ptr<const ShaderManifest> manifest = McpValues::findManifest(shader);
     const ShaderManifestProperty* declaredProperty = manifest ? manifest->findProperty(name) : nullptr;
+    if (!remove && ShaderReference::isLibrary(shader) && !manifest) {
+        call->fail(shader + " is not a library shader the engine has; the library shaders: " + McpValues::libraryShaderNamesText() + ".");
+        return;
+    }
     if (!remove && ShaderReference::isLibrary(shader) && manifest && !declaredProperty) {
         std::string names;
         for (const ShaderManifestProperty& p : manifest->properties) names += (names.empty() ? "" : ", ") + p.member;
@@ -1871,6 +1875,13 @@ void setShaderUniformTool(const CallPtr& call) {
 void listShadersTool(const CallPtr& call) {
     const Json& args = call->args();
     const std::string type = args.value("type", std::string());
+    // the types a library shader may have (a filter outside them would silently list nothing)
+    static const char* const shaderTypes[] = {"mesh", "ui", "points", "lines", "sky"};
+    if (!type.empty() && std::none_of(std::begin(shaderTypes), std::end(shaderTypes), [&](const char* t) { return type == t; })) {
+        call->fail("Unknown shader type \"" + type + "\". Valid types: mesh, ui, points, lines, sky (sprites and tilemaps are "
+                   "meshes: their shader is a mesh shader).");
+        return;
+    }
     std::string name = args.value("name", std::string());
     if (!name.empty() && !ShaderReference::isLibrary(name)) name = ShaderReference::LIBRARY_PREFIX + name;
     const bool detail = args.value("detail", !name.empty());

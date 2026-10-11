@@ -1821,7 +1821,7 @@ bool prefabAssetFromJson(Project* project, const Json& value, PrefabAsset& out, 
 Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Entity entity, ComponentType component,
                                          const std::string& propertyName, const PropertyData& property,
                                          const Json& value, std::string& error, std::function<void()> onChanged,
-                                         const std::string* shaderReference) {
+                                         const std::string* shaderReference, const std::set<std::string>* editedKeys) {
     SceneProject* scene = project ? project->getScene(sceneId) : nullptr;
     if (!scene || !scene->scene) {
         error = "The scene is not loaded.";
@@ -1869,6 +1869,23 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 if (!checkShaderReference(project, text, shaderPathType(component, propertyName), why)) {
                     error = propertyName + ": " + why;
                     return nullptr;
+                }
+                // a material's lighting mode the shader it then draws with does not list goes
+                // back to auto in the same step (as the Inspector does)
+                const std::string prefix = propertyName.substr(0, propertyName.size() - 6);
+                const PropertyData lighting = propertyName != "customShader" && propertyName != "customDepthShader"
+                    ? Catalog::findProperty(scene->scene, entity, component, prefix + "lighting") : PropertyData();
+                if (lighting.ref) {
+                    const std::string drawn = !text.empty() ? text
+                        : Catalog::getShaderReferenceForProperty(scene->scene, entity, component, "shaderUniforms");
+                    const MaterialLighting current = static_cast<MaterialLighting>(*static_cast<int*>(lighting.ref));
+                    if (!Catalog::supportsLighting(current, findManifest(drawn).get())) {
+                        auto* multi = new MultiPropertyCmd();
+                        multi->addPropertyCmd<std::string>(project, sceneId, entity, component, propertyName, text, onChanged);
+                        multi->addPropertyCmd<int>(project, sceneId, entity, component, prefix + "lighting",
+                                                   (int)MaterialLighting::AUTO, onChanged);
+                        return multi;
+                    }
                 }
             }
             return new PropertyCmd<std::string>(project, sceneId, entity, component, propertyName, text, onChanged);
@@ -2112,7 +2129,7 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 Command* cmd = nullptr;
                 if (endsWith(propertyName, "shaderTextures")) {
                     std::vector<std::pair<std::string, Texture>> textures;
-                    if (shaderTexturesFromJson(project, scene, manifest.get(), library, value, textures, why)) {
+                    if (shaderTexturesFromJson(project, scene, manifest.get(), library, value, textures, why, editedKeys)) {
                         cmd = new PropertyCmd<std::vector<std::pair<std::string, Texture>>>(project, sceneId, entity, component, propertyName, textures, onChanged);
                     }
                 } else if (endsWith(propertyName, "shaderFeatures")) {
@@ -2123,7 +2140,7 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                     }
                 } else {
                     ShaderUniformValues uniforms;
-                    if (shaderParamsFromJson(manifest.get(), library, value, uniforms, why)) {
+                    if (shaderParamsFromJson(manifest.get(), library, value, uniforms, why, editedKeys)) {
                         cmd = new PropertyCmd<ShaderUniformValues>(project, sceneId, entity, component, propertyName, uniforms, onChanged);
                     }
                 }
@@ -2252,8 +2269,10 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
             }
             std::vector<YamlEdit> yamlEdits;
             std::vector<std::unique_ptr<Command>> typed;
-            // shader-library entry edits by collection property, in order of appearance
+            // shader-library entry edits by collection property, in order of appearance, with
+            // the entries each names (only those are checked against the shader)
             std::vector<std::pair<std::string, Json>> entryEdits;
+            std::map<std::string, std::set<std::string>> entryKeys;
             ReadContext readCtx;
             readCtx.project = project;
             readCtx.scene = scene;
@@ -2268,17 +2287,47 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                     pendingShaders[change.property.substr(0, change.property.size() - 6)] = change.value.get<std::string>();
                 }
             }
+            // The shader a property's values will feed once this call applies, when a change of
+            // the call sets it (else null: the current one). A submesh material without its own
+            // shader draws with the mesh's customShader, else the scene default (as
+            // RenderSystem::getSubmeshShader); a component's empty customShader is the scene's.
+            std::string pendingShader;
             auto pendingShaderFor = [&](const std::string& property) -> const std::string* {
-                for (const auto& [prefix, shader] : pendingShaders) {
-                    if (prefix.empty() ? property.find('.') == std::string::npos || property.compare(0, 15, "shaderUniforms.") == 0 ||
-                                             property.compare(0, 15, "shaderTextures.") == 0
-                                       : property.compare(0, prefix.size(), prefix) == 0) {
-                        // a mesh's customShader is not what its materials' values follow
-                        if (prefix.empty() && component == ComponentType::MeshComponent) continue;
-                        return &shader;
+                if (pendingShaders.empty()) return nullptr;
+                const auto custom = pendingShaders.find("");
+                const ShaderType type = shaderPathType(component, "customShader");
+                auto sceneDefault = [&](const std::string& shader) {
+                    return shader.empty() ? scene->scene->getDefaultCustomShader(type) : shader;
+                };
+                if (component == ComponentType::MeshComponent && property.compare(0, 10, "submeshes[") == 0) {
+                    const size_t close = property.find("].material.");
+                    if (close == std::string::npos) return nullptr;
+                    const std::string prefix = property.substr(0, close + 11);
+                    const auto own = pendingShaders.find(prefix);
+                    if (own != pendingShaders.end() && !own->second.empty()) {
+                        pendingShader = own->second;
+                        return &pendingShader;
                     }
+                    if (own == pendingShaders.end()) {
+                        // the material keeps its own shader: the mesh's does not matter
+                        const std::string* current = Catalog::getPropertyRef<std::string>(scene->scene, entity, component, prefix + "shader");
+                        if (!current || !current->empty() || custom == pendingShaders.end()) return nullptr;
+                    }
+                    if (custom != pendingShaders.end()) {
+                        pendingShader = sceneDefault(custom->second);
+                    } else {
+                        // the material's shader cleared: the mesh's current one
+                        pendingShader = Catalog::getShaderReferenceForProperty(scene->scene, entity, component, "shaderUniforms");
+                    }
+                    return &pendingShader;
                 }
-                return nullptr;
+                if (custom == pendingShaders.end()) return nullptr;
+                if (property.find('.') != std::string::npos && property.compare(0, 15, "shaderUniforms.") != 0 &&
+                    property.compare(0, 15, "shaderTextures.") != 0) {
+                    return nullptr;
+                }
+                pendingShader = sceneDefault(custom->second);
+                return &pendingShader;
             };
             for (const Change& change : changes) {
                 if (change.component != component) continue;
@@ -2299,6 +2348,7 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                     if (!edited.is_object()) edited = Json::object();
                     if (change.value.is_null()) edited.erase(entryKey);
                     else edited[entryKey] = change.value;
+                    entryKeys[entryCollection].insert(entryKey);
                     continue;
                 }
                 const PropertyData property = Catalog::findProperty(scene->scene, entity, component, change.property);
@@ -2325,7 +2375,7 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 const PropertyData collection = Catalog::findProperty(scene->scene, entity, component, collectionName);
                 std::string why;
                 Command* cmd = buildPropertyCommand(project, scene->id, entity, component, collectionName, collection, value, why,
-                                                    nullptr, pendingShaderFor(collectionName));
+                                                    nullptr, pendingShaderFor(collectionName), &entryKeys[collectionName]);
                 if (!cmd) {
                     error = componentLabel + "." + collectionName + " on " + label + ": " + why;
                     return false;

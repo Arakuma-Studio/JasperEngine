@@ -5,6 +5,8 @@
 
 #include "Configs.h"
 #include "PreviewEnvironment.h"
+#include "pool/TexturePool.h"
+#include "util/CameraTextureLink.h"
 
 using namespace jasperengine;
 
@@ -52,12 +54,43 @@ editor::MaterialRender::~MaterialRender(){
     delete scene;
 }
 
-void editor::MaterialRender::applyMaterial(const Material& material){
+void editor::MaterialRender::applyMaterial(const Material& material, const std::string& meshShader){
+    // the material's shader, its parameters, textures, features and render state are the
+    // sphere's (Mesh::setMaterial reloads what the variant depends on)
+    sphere->setCustomShader(meshShader);
     sphere->setMaterial(material);
 }
 
 const Material editor::MaterialRender::getMaterial(){
     return sphere->getMaterial();
+}
+
+std::string editor::MaterialRender::getMeshShader() const{
+    return sphere->getCustomShader();
+}
+
+bool editor::MaterialRender::isPending() const{
+    const MeshComponent& mesh = sphere->getComponent<MeshComponent>();
+    if (!mesh.loaded || mesh.needReload || !mesh.loadCalled)
+        return true;
+
+    auto texturePending = [](const Texture& texture) {
+        if (texture.isFramebuffer() || texture.empty() || CameraTextureLink::isCameraTexture(texture))
+            return false; // framebuffer textures never enter the pool
+        const std::string id = texture.getId();
+        return !id.empty() && !TexturePool::get(id);
+    };
+    const Material& material = mesh.submeshes[0].material;
+    for (const Texture* texture : {&material.baseColorTexture, &material.emissiveTexture, &material.metallicRoughnessTexture,
+                                   &material.occlusionTexture, &material.normalTexture}) {
+        if (texturePending(*texture))
+            return true;
+    }
+    for (const auto& shaderTexture : material.shaderTextures) {
+        if (texturePending(shaderTexture.second))
+            return true;
+    }
+    return false;
 }
 
 void editor::MaterialRender::setReceiveIBL(bool value){

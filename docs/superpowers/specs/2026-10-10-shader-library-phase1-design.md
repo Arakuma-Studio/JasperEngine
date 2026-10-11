@@ -659,3 +659,37 @@ override the sections they refer to; later agents follow them.
   moved to `v31`.
 - Lua cannot write `Material.baseColorFactor`, `metallicFactor` or `roughnessFactor` (read
   only on the copy `getMaterial` returns); fixtures use glTF materials or `setColor`.
+
+### 13.4 Fix pass: editor, MCP and Lua (sl/p1-fix-editor)
+
+- Shader-library values kept from a previous shader stay stored (switching back finds them; a
+  shader ignores members it does not declare). An edit checks only the entries it names
+  against the manifest (`set_properties` `shaderParams.<m>` / `shaderTextures.<u>` /
+  `shaderUniforms.<m>`, `update_material` merges); replacing a whole collection checks all of
+  it. A `library:` reference the engine does not have refuses value edits with the list of
+  library shaders (MCP); the inspector notes it and draws no rows.
+- The shader the values of a `set_properties` call follow is the one the call sets: a submesh
+  material's own `shader`, else, for a material without one, the mesh's `customShader` (else
+  the scene default), as `RenderSystem::getSubmeshShader`; a mesh's `shaderUniforms` follow
+  its `customShader`.
+- Changing a material's shader (inspector, `set_properties`, `update_material`) puts a
+  `lighting` mode the shader it then draws with does not list back to `auto`, in the same
+  undo step.
+- Shader textures are images: a camera render texture (or a cube map in a 2D slot) is refused
+  by MCP rather than linked, remapped and exported for these slots; a render texture goes in a
+  built-in material texture or a UI image.
+- Lua: `setShaderParam(name, Vector3)` stores alpha 1 for `color`/`hdrcolor` members (0 for the
+  others), on materials and components. `Mesh:getMaterial` / `Mesh.material` give a copy that
+  remembers (weak-keyed registry table beside the userdata) the shader its submesh draws with
+  when the material names none, so `getShaderParam`, `setShaderFeature` and
+  `isShaderFeatureEnabled` resolve defaults, default-on features and keyword groups as the
+  renderer does. Components gained `removeShaderParam`.
+- Inspector: the UI/Points/Lines "Auto" blend and depth-write entries name what
+  `RenderSystem::resolveComponentRenderState` resolves (a particle shader's `zwrite=off` shows
+  "Auto (Off)"); "Custom file..." opens its popup after the combo closes. Material previews
+  (inspector and Project window thumbnails) draw with the material's shader, or the mesh's /
+  scene's when it names none, and redraw until the variant and textures are ready.
+- `list_shaders type=` takes `mesh`, `ui`, `points`, `lines`, `sky` and refuses anything else
+  with that list. The agent guide (`McpInstructions.cpp`) is at most 16 KB (16,384 bytes,
+  checked by `test_instructions_name_real_tools`); shader detail lives in
+  `docs/mcp/guide/shaders.md`.

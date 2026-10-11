@@ -325,7 +325,9 @@ namespace jasperengine::editor{
 
         bool canAddComponent(SceneProject* sceneProject, Entity entity, ComponentType cpType);
 
-        Texture getMaterialPreview(const Material& material, const std::string id, bool receiveIBL = true);
+        // meshShader: what the material draws with when it names no shader (the mesh's or the scene's)
+        Texture getMaterialPreview(const Material& material, const std::string id, bool receiveIBL = true,
+                                   const std::string& meshShader = std::string());
         Texture getDirectionPreview(const Vector3& direction, const std::string id);
         bool drawSpriteFramePreview(Texture* texture, const Rect& rect, const ImVec2& size, const char* itemId);
 
