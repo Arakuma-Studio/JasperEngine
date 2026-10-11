@@ -193,16 +193,22 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 			{
 				// Shrink the scissor region to the element's client area.
 				Vector2f element_offset = clipping_element->GetAbsoluteOffset(clip_area).Round();
-				Vector2f element_size = clipping_element->GetRenderBox(clip_area, 0, false).GetFillSize();
+				Vector2f element_size = clipping_element->GetRenderBoxFillSize(clip_area);
 				// The content of a scroll container is clipped to its scrollport: the padding box without the scrollbars (and
 				// a 'scrollbar-gutter'), which sit between its border and its padding (CSS Overflow 3 §3); the scrollbars
 				// themselves are not clipped by it. 6.3 clipped to the whole padding box, so a positioned descendant (a sticky
 				// header, say) painted over the scrollbars.
-				if (clip_area == BoxArea::Padding && !force_clip_current_element && !IsScrollbarPart(child_on_chain, clipping_element))
+				if (clip_area == BoxArea::Padding && !force_clip_current_element)
 				{
 					ElementScroll* scroll = clipping_element->GetElementScroll();
-					element_size.x = Math::Max(element_size.x - scroll->GetScrollbarSize(ElementScroll::VERTICAL), 0.f);
-					element_size.y = Math::Max(element_size.y - scroll->GetScrollbarSize(ElementScroll::HORIZONTAL), 0.f);
+					const float scrollbar_width = scroll->GetScrollbarSize(ElementScroll::VERTICAL);
+					const float scrollbar_height = scroll->GetScrollbarSize(ElementScroll::HORIZONTAL);
+					// (Without scrollbars there is nothing to take off, whether the element is a scrollbar part or not.)
+					if ((scrollbar_width == 0.f && scrollbar_height == 0.f) || !IsScrollbarPart(child_on_chain, clipping_element))
+					{
+						element_size.x = Math::Max(element_size.x - scrollbar_width, 0.f);
+						element_size.y = Math::Max(element_size.y - scrollbar_height, 0.f);
+					}
 				}
 				Rectanglef element_region = Rectanglef::FromPositionSize(element_offset, element_size);
 

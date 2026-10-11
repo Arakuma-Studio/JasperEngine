@@ -241,12 +241,17 @@ void Element::Render()
 	RMLUI_ZoneText(name.c_str(), name.size());
 #endif
 
+	const ComputedValues& computed = meta->computed_values;
+	ElementEffects& effects = meta->effects;
+
 	// A transparent group draws nothing (it stays in the layout and can be hit).
-	if (meta->computed_values.opacity() <= 0.f)
+	if (computed.opacity() <= 0.f)
 		return;
 
 	UpdateAbsoluteOffsetAndRenderBoxData();
-	UpdateOpacityLeaf();
+	// (Only an opacity below 1 makes a leaf; the test is inline, as most elements are opaque.)
+	if (computed.opacity() < 1.f || opacity_leaf)
+		UpdateOpacityLeaf();
 
 	if (stacking_context_dirty)
 		BuildLocalStackingContext();
@@ -254,13 +259,16 @@ void Element::Render()
 	UpdateTransformState();
 	ElementUtilities::ApplyTransform(*this);
 
-	meta->effects.RenderEffects(RenderStage::Enter);
+	// The effects are asked at each stage (rendering may change them), and skipped when they have nothing to do.
+	if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+		effects.RenderEffects(RenderStage::Enter);
 
 	// A hidden element (CSS visibility) paints nothing of its own; its visible descendants paint (phase 3, p3-paint).
-	if (meta->computed_values.visibility() == Style::Visibility::Visible && ElementUtilities::SetClippingRegion(this))
+	if (computed.visibility() == Style::Visibility::Visible && ElementUtilities::SetClippingRegion(this))
 	{
 		meta->background_border.Render(this);
-		meta->effects.RenderEffects(RenderStage::Decoration);
+		if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+			effects.RenderEffects(RenderStage::Decoration);
 		meta->background_border.RenderBorder(this);
 
 		{
@@ -272,7 +280,8 @@ void Element::Render()
 	RenderStackingContextChildren();
 
 	ElementUtilities::ApplyTransform(*this);
-	meta->effects.RenderEffects(RenderStage::Exit);
+	if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+		effects.RenderEffects(RenderStage::Exit);
 }
 
 // Outlines are painted as Chromium paints them (CSS UI 4 leaves their place open): per paint layer (the stacking context,
@@ -587,56 +596,53 @@ static Vector2f ComputeStickyShift(Element* element, Vector2f border_position)
 		shift_axis(1, computed.top(), computed.bottom(), BoxEdge::Top, BoxEdge::Bottom));
 }
 
-void Element::UpdateAbsoluteOffsetAndRenderBoxData()
+void Element::UpdateDirtyAbsoluteOffsetAndRenderBoxData()
 {
-	if (absolute_offset_dirty || rounded_main_padding_size_dirty)
+	absolute_offset_dirty = false;
+	rounded_main_padding_size_dirty = false;
+
+	Vector2f offset_from_ancestors;
+	if (offset_parent)
+		offset_from_ancestors = offset_parent->GetAbsoluteOffset(BoxArea::Border);
+
+	if (!offset_fixed)
 	{
-		absolute_offset_dirty = false;
-		rounded_main_padding_size_dirty = false;
-
-		Vector2f offset_from_ancestors;
+		// Add any parent scrolling onto our position as well.
 		if (offset_parent)
-			offset_from_ancestors = offset_parent->GetAbsoluteOffset(BoxArea::Border);
+			offset_from_ancestors -= offset_parent->scroll_offset;
 
-		if (!offset_fixed)
+		// Finally, there may be relatively positioned elements between ourself and our containing block, add their relative offsets as well.
+		for (Element* ancestor = parent; ancestor && ancestor != offset_parent; ancestor = ancestor->parent)
 		{
-			// Add any parent scrolling onto our position as well.
-			if (offset_parent)
-				offset_from_ancestors -= offset_parent->scroll_offset;
-
-			// Finally, there may be relatively positioned elements between ourself and our containing block, add their relative offsets as well.
-			for (Element* ancestor = parent; ancestor && ancestor != offset_parent; ancestor = ancestor->parent)
-			{
-				// (the shift of a sticky one is found with its absolute offset)
-				if (ancestor->absolute_offset_dirty && ancestor->GetPosition() == Style::Position::Sticky)
-					ancestor->UpdateAbsoluteOffsetAndRenderBoxData();
-				offset_from_ancestors += ancestor->relative_offset_position;
-			}
+			// (the shift of a sticky one is found with its absolute offset)
+			if (ancestor->absolute_offset_dirty && ancestor->GetPosition() == Style::Position::Sticky)
+				ancestor->UpdateAbsoluteOffsetAndRenderBoxData();
+			offset_from_ancestors += ancestor->relative_offset_position;
 		}
+	}
 
-		// 'position: sticky': the shift that keeps the box in the sticky view rectangle of its scroll container, for the
-		// current scroll offsets (scrolling dirties the absolute offsets below the scroll container).
-		if (meta->computed_values.position() == Style::Position::Sticky)
-			relative_offset_position = ComputeStickyShift(this, relative_offset_base + offset_from_ancestors);
+	// 'position: sticky': the shift that keeps the box in the sticky view rectangle of its scroll container, for the
+	// current scroll offsets (scrolling dirties the absolute offsets below the scroll container).
+	if (meta->computed_values.position() == Style::Position::Sticky)
+		relative_offset_position = ComputeStickyShift(this, relative_offset_base + offset_from_ancestors);
 
-		const Vector2f relative_offset = relative_offset_base + relative_offset_position;
-		absolute_offset = relative_offset + offset_from_ancestors;
+	const Vector2f relative_offset = relative_offset_base + relative_offset_position;
+	absolute_offset = relative_offset + offset_from_ancestors;
 
-		// Next, we find the rounded size of the box so that elements can be placed border-to-border next to each other
-		// without any gaps. To achieve this, we have to adjust their rounded/rendered sizes based on their position, in
-		// such a way that the bottom-right of this element exactly matches the top-left of the next element. The order
-		// of floating-point operations matter here, we want to replicate the operations in the layout engine as close
-		// as possible to avoid any gaps.
-		const Vector2f main_padding_size = main_box.GetSize(BoxArea::Padding);
-		const Vector2f bottom_right_absolute_offset = (relative_offset + main_padding_size) + offset_from_ancestors;
-		const Vector2f new_rounded_main_padding_size = bottom_right_absolute_offset.Round() - absolute_offset.Round();
-		if (new_rounded_main_padding_size != rounded_main_padding_size)
-		{
-			rounded_main_padding_size = new_rounded_main_padding_size;
-			meta->background_border.DirtyBackground();
-			meta->background_border.DirtyBorder();
-			meta->effects.DirtyEffectsData();
-		}
+	// Next, we find the rounded size of the box so that elements can be placed border-to-border next to each other
+	// without any gaps. To achieve this, we have to adjust their rounded/rendered sizes based on their position, in
+	// such a way that the bottom-right of this element exactly matches the top-left of the next element. The order
+	// of floating-point operations matter here, we want to replicate the operations in the layout engine as close
+	// as possible to avoid any gaps.
+	const Vector2f main_padding_size = main_box.GetSize(BoxArea::Padding);
+	const Vector2f bottom_right_absolute_offset = (relative_offset + main_padding_size) + offset_from_ancestors;
+	const Vector2f new_rounded_main_padding_size = bottom_right_absolute_offset.Round() - absolute_offset.Round();
+	if (new_rounded_main_padding_size != rounded_main_padding_size)
+	{
+		rounded_main_padding_size = new_rounded_main_padding_size;
+		meta->background_border.DirtyBackground();
+		meta->background_border.DirtyBorder();
+		meta->effects.DirtyEffectsData();
 	}
 }
 
@@ -793,6 +799,24 @@ RenderBox Element::GetRenderBox(BoxArea fill_area, int index, bool with_border_t
 	}
 
 	return render_box;
+}
+
+Vector2f Element::GetRenderBoxFillSize(BoxArea fill_area)
+{
+	RMLUI_ASSERTMSG(fill_area >= BoxArea::Border && fill_area <= BoxArea::Content,
+		"Render box can only be generated with fill area of border, padding or content.");
+
+	// As GetRenderBox computes the inner size of the main box.
+	UpdateAbsoluteOffsetAndRenderBoxData();
+	switch (fill_area)
+	{
+	case BoxArea::Border: return rounded_main_padding_size + main_box.GetFrameSize(BoxArea::Border);
+	case BoxArea::Padding: return rounded_main_padding_size;
+	case BoxArea::Content: return rounded_main_padding_size - main_box.GetFrameSize(BoxArea::Padding);
+	case BoxArea::Margin:
+	case BoxArea::Auto: RMLUI_ERROR;
+	}
+	return Vector2f();
 }
 
 int Element::GetNumBoxes()
