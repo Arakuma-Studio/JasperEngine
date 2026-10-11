@@ -73,6 +73,94 @@ namespace jasperengine{
         NONE
     };
 
+    // Stencil test of a draw (shader library, phase 2). AUTO takes the shader manifest's
+    // @state stencil rule, DISABLED turns stencil off; any other value makes the whole
+    // MaterialStencil explicit.
+    enum class MaterialStencilCompare {
+        AUTO,
+        DISABLED,
+        NEVER,
+        LESS,
+        EQUAL,
+        LESS_EQUAL,
+        GREATER,
+        NOT_EQUAL,
+        GREATER_EQUAL,
+        ALWAYS
+    };
+
+    enum class MaterialStencilOp {
+        KEEP,
+        ZERO,
+        REPLACE,
+        INCR_CLAMP,
+        DECR_CLAMP,
+        INVERT,
+        INCR_WRAP,
+        DECR_WRAP
+    };
+
+    // same state for front and back faces
+    struct JASPERENGINE_API MaterialStencil {
+        MaterialStencilCompare compare = MaterialStencilCompare::AUTO;
+        int ref = 0;          // 0..255
+        int readMask = 255;   // 0..255
+        int writeMask = 255;  // 0..255
+        MaterialStencilOp pass = MaterialStencilOp::KEEP;
+        MaterialStencilOp fail = MaterialStencilOp::KEEP;
+        MaterialStencilOp depthFail = MaterialStencilOp::KEEP;
+
+        bool operator == (const MaterialStencil& other) const {
+            return compare == other.compare && ref == other.ref && readMask == other.readMask &&
+                   writeMask == other.writeMask && pass == other.pass && fail == other.fail &&
+                   depthFail == other.depthFail;
+        }
+        bool operator != (const MaterialStencil& other) const { return !(*this == other); }
+    };
+
+    // colour channels a draw writes: -1 = AUTO (manifest @state colorwrite, else all),
+    // otherwise a mask of these bits (0 = depth/stencil only)
+    enum MaterialColorWriteBits {
+        MATERIAL_COLOR_WRITE_R = 1,
+        MATERIAL_COLOR_WRITE_G = 2,
+        MATERIAL_COLOR_WRITE_B = 4,
+        MATERIAL_COLOR_WRITE_A = 8,
+        MATERIAL_COLOR_WRITE_ALL = 15
+    };
+
+    enum class MaterialPassOrder {
+        AFTER,  // drawn right after the submesh's main draw
+        BEFORE  // drawn right before it
+    };
+
+    // One optional extra draw of a submesh with its own shader and state (outlines,
+    // stencil masks). An empty shader means no extra pass and costs nothing.
+    struct JASPERENGINE_API MaterialPass {
+        std::string shader;
+        ShaderUniformValues shaderParams;
+        std::vector<std::pair<std::string, Texture>> shaderTextures;
+        std::vector<std::string> shaderFeatures;
+        MaterialBlendMode blendMode = MaterialBlendMode::AUTO;
+        MaterialCullMode cullMode = MaterialCullMode::AUTO;
+        MaterialDepthWrite depthWrite = MaterialDepthWrite::AUTO;
+        MaterialDepthTest depthTest = MaterialDepthTest::AUTO;
+        float depthOffsetFactor = 0.0f;
+        float depthOffsetUnits = 0.0f;
+        MaterialStencil stencil;
+        int colorWrite = -1;
+        MaterialPassOrder order = MaterialPassOrder::AFTER;
+
+        bool operator == (const MaterialPass& other) const {
+            return shader == other.shader && shaderParams == other.shaderParams &&
+                   shaderTextures == other.shaderTextures && shaderFeatures == other.shaderFeatures &&
+                   blendMode == other.blendMode && cullMode == other.cullMode &&
+                   depthWrite == other.depthWrite && depthTest == other.depthTest &&
+                   depthOffsetFactor == other.depthOffsetFactor && depthOffsetUnits == other.depthOffsetUnits &&
+                   stencil == other.stencil && colorWrite == other.colorWrite && order == other.order;
+        }
+        bool operator != (const MaterialPass& other) const { return !(*this == other); }
+    };
+
     struct JASPERENGINE_API Material{
         // --- start shader part
         Vector4 baseColorFactor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);  // linear color
@@ -123,6 +211,11 @@ namespace jasperengine{
         float depthOffsetUnits = 0.0f;  // polygon offset, constant
         int sortPriority = 0;           // transparent queue order, lower draws first
 
+        // --- shader library phase 2 (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
+        MaterialStencil stencil;
+        int colorWrite = -1;  // -1 AUTO, else MaterialColorWriteBits
+        MaterialPass extraPass;
+
         bool operator == (const Material& other) const {
             return baseColorFactor == other.baseColorFactor &&
                    metallicFactor == other.metallicFactor &&
@@ -153,7 +246,10 @@ namespace jasperengine{
                    depthTest == other.depthTest &&
                    depthOffsetFactor == other.depthOffsetFactor &&
                    depthOffsetUnits == other.depthOffsetUnits &&
-                   sortPriority == other.sortPriority;
+                   sortPriority == other.sortPriority &&
+                   stencil == other.stencil &&
+                   colorWrite == other.colorWrite &&
+                   extraPass == other.extraPass;
         }
 
         bool operator != (const Material& other) const {
