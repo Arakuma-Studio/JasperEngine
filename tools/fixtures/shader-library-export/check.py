@@ -15,7 +15,8 @@ Writes to build/shader-library-export/: editor-<scene>.png, game-<scene>.png and
     tools/fixtures/shader-library-export/check.sh                 # the whole check (~4 min)
     tools/fixtures/shader-library-export/check.sh --game-dir DIR  # compare with DIR/game*.png (no build)
 
-JASPER_EDITOR selects the editor (default: this checkout's build).
+JASPER_EDITOR selects the editor (default: this checkout's build). SMOKE_BACKEND=vulkan runs the
+game on Vulkan, SMOKE_DIR moves the smoke test's directory (see tools/smoke-test.sh).
 """
 import argparse
 import asyncio
@@ -70,7 +71,7 @@ def smoke(project: Path) -> Path:
     env = dict(os.environ)
     env["SMOKE_GAME_RUNS"] = "; ".join(f"{name} SLX_SCENE={name}" for name in SCENES[1:])
     r = subprocess.run([str(REPO / "tools" / "smoke-test.sh"), str(project)], env=env)
-    smoke_dir = REPO / "build" / "smoke"
+    smoke_dir = REPO / env.get("SMOKE_DIR", "build/smoke")
     if r.returncode != 0:
         sys.exit(f"tools/smoke-test.sh failed (logs in {smoke_dir})")
     return smoke_dir

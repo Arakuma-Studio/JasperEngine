@@ -25,11 +25,32 @@
 # once per entry, with SMOKE_GAME_ENV plus the entry's variables, on the same
 # schedule: game-<name>.png and game-<name>.log, checked like the first run (a
 # project that picks its scene from the environment shows each scene from one build).
+#
+# SMOKE_BACKEND selects the game's graphics backend: opengl (the default: GLSL 4.10,
+# desktop GL on Mesa llvmpipe), vulkan (SPIR-V, sokol's Vulkan backend on Mesa's
+# lavapipe) or gles3 (GLSL ES 3.00, sokol's GLES3 backend, the one Android and the web
+# use, in an OpenGL ES context on llvmpipe). The last two run in the image of
+# docker/linux-backends.Dockerfile; the editor run is the same for all. lavapipe makes a
+# driver shader per Vulkan pipeline and recompiles them every frame once a frame uses
+# more than its variant caches hold (~1000 pipelines: the whole shader-library fixture
+# takes minutes per frame there), so run such a project a few groups at a time.
+# SMOKE_DIR=build/<name> writes there instead of build/smoke, so several smoke tests
+# can run at once from one checkout.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EDITOR=build/linux/editor-install/bin/jasperengine-editor
 IMAGE=jasperengine/linux-build
+BACKEND="${SMOKE_BACKEND:-opengl}"
+OUT="${SMOKE_DIR:-build/smoke}"
+case "$BACKEND" in
+    opengl) GRAPHIC_BACKEND=glcore; EXPORT_BACKEND=opengl; GAME_FLAGS="" ;;
+    # lavapipe's descriptors (280 bytes) exceed sokol's default room for one (256)
+    vulkan) GRAPHIC_BACKEND=vulkan; EXPORT_BACKEND=vulkan; GAME_FLAGS="-D_SG_VK_MAX_DESCRIPTOR_DATA_SIZE=320" ;;
+    gles3) GRAPHIC_BACKEND=gles3; EXPORT_BACKEND=opengles; GAME_FLAGS="" ;;
+    *) echo "SMOKE_BACKEND must be opengl, vulkan or gles3 (got $BACKEND)" >&2; exit 1 ;;
+esac
+[[ "$OUT" =~ ^build/[A-Za-z0-9_.-]+$ ]] || { echo "SMOKE_DIR must be build/<name> (got $OUT)" >&2; exit 1; }
 # The main checkout's compiler cache, even when running from a git worktree.
 MAIN="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 
@@ -38,18 +59,26 @@ PROJECT="$(cd "$1" && pwd)"
 [[ -x "$ROOT/$EDITOR" ]] || { echo "No editor at $EDITOR; run tools/build.sh linux" >&2; exit 1; }
 
 docker build -q -t "$IMAGE" -f "$ROOT/docker/linux.Dockerfile" "$ROOT/docker" >/dev/null
-docker run --rm -v "$ROOT:/src" "$IMAGE" rm -rf /src/build/smoke
-mkdir -p "$ROOT/build/smoke" "$MAIN/build/.cache/ccache"
-cp -r "$PROJECT" "$ROOT/build/smoke/project"
+if [[ "$BACKEND" != opengl ]]; then
+    IMAGE=jasperengine/linux-backends
+    docker build -q -t "$IMAGE" -f "$ROOT/docker/linux-backends.Dockerfile" "$ROOT/docker" >/dev/null
+fi
+docker run --rm -v "$ROOT:/src" "$IMAGE" rm -rf "/src/$OUT"
+mkdir -p "$ROOT/$OUT" "$MAIN/build/.cache/ccache"
+cp -r "$PROJECT" "$ROOT/$OUT/project"
 
 # The host's passwd/group give the container user a name, which the D-Bus
 # session the editor's file dialogs need insists on.
 docker run --rm \
     --user "$(id -u):$(id -g)" \
     -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
-    -v "$ROOT:/src" -w /src/build/smoke \
+    -v "$ROOT:/src" -w "/src/$OUT" \
     -v "$MAIN/build/.cache/ccache:/ccache" \
-    -e HOME=/src/build/smoke/home \
+    -e HOME="/src/$OUT/home" \
+    -e OUT="$OUT" \
+    -e EXPORT_BACKEND="$EXPORT_BACKEND" \
+    -e GRAPHIC_BACKEND="$GRAPHIC_BACKEND" \
+    -e GAME_FLAGS="$GAME_FLAGS" \
     -e CCACHE_DIR=/ccache \
     -e EDITOR="/src/$EDITOR" \
     -e SMOKE_GAME_ENV="${SMOKE_GAME_ENV:-}" \
@@ -80,12 +109,13 @@ docker run --rm \
 
         echo "== export"
         # Absolute: the exporter resolves scene paths against a relative project twice.
-        "$EDITOR" export --project "$PWD/project" --out "$PWD/export" --backend opengl > export.log 2>&1 \
+        "$EDITOR" export --project "$PWD/project" --out "$PWD/export" --backend "$EXPORT_BACKEND" > export.log 2>&1 \
             || { echo "FAIL: export"; tail -30 export.log; exit 1; }
         check_log export export.log
 
         echo "== build exported project"
-        cmake -S export -B export-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        cmake -S export -B export-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGRAPHIC_BACKEND="$GRAPHIC_BACKEND" \
+            -DCMAKE_C_FLAGS="$GAME_FLAGS" -DCMAKE_CXX_FLAGS="$GAME_FLAGS" \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache > game-build.log 2>&1 \
             && cmake --build export-build >> game-build.log 2>&1 \
             || { echo "FAIL: build of the exported project"; tail -30 game-build.log; exit 1; }
@@ -136,7 +166,7 @@ docker run --rm \
             xwininfo -root -tree | grep -E "^ +0x[0-9a-f]+ \"" | sed "s/^ */  window: /" | head -3
             kill "$pid"
             wait "$pid" 2>/dev/null || true
-            echo "ok: ${name##*/} ran (screenshot build/smoke/${name##*/}.png)"
+            echo "ok: ${name##*/} ran (screenshot $OUT/${name##*/}.png)"
         }
 
         echo "== run game"
