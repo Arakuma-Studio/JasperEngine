@@ -696,6 +696,8 @@ uint64_t editor::ProjectChecks::prepareShaderCheck(Project* project, ShaderUse& 
             inputs.normal = true;
             inputs.vertexColor4 = true;
             inputs.manifest = manifest;
+            // the features of the reference decide its feature= @require inputs
+            inputs.features = ShaderReference::getFeatures(use.base);
             MeshShaderEnvironment environment;
             environment.lights = manifest->getDefaultLighting() != ShaderLightingMode::NONE;
             properties = RenderSystem::getSubmeshShaderVariant(environment, inputs).properties;

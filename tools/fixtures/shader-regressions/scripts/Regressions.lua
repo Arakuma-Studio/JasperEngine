@@ -13,6 +13,7 @@
 --      shaders drew flat, unscaled patches): a lit, height-mapped checkered hill.
 --
 --   tools/smoke-test.sh tools/fixtures/shader-regressions
+--   SMOKE_GAME_ENV="SR_FOCUS=probe" tools/smoke-test.sh tools/fixtures/shader-regressions
 local Regressions = { properties = {} }
 
 local function log(fmt, ...)
@@ -43,6 +44,7 @@ local function buildProbe(self, scene)
     sphere.position = Vector3(-6.0, 1.4, 0.0)
     sphere.scale = Vector3(1.4, 1.4, 1.4)
     sphere.renderInReflectionProbes = false
+    sphere.receiveIBL = true
     self.sphere = sphere
 
     local probe = ReflectionProbe(scene)
@@ -157,6 +159,16 @@ function Regressions:init()
         else
             fail("%s failed to build: %s", case[1], tostring(err))
         end
+    end
+    -- SR_FOCUS=probe|prepass|rtt|terrain: a close-up of one case
+    local focus = os.getenv("SR_FOCUS")
+    local targets = { probe = Vector3(-6.0, 1.4, 0.0), prepass = Vector3(-1.8, 0.8, 0.0),
+                      rtt = Vector3(2.4, 1.4, 0.0), terrain = Vector3(7.0, 0.5, -1.0) }
+    if focus and targets[focus] then
+        local target = targets[focus]
+        camera.target = target
+        camera.position = target + Vector3(0.0, 1.0, 5.0)
+        log("focus on %s", focus)
     end
     self.frames = 0
 end

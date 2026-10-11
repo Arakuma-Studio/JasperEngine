@@ -103,11 +103,11 @@ docker run --rm \
             local pid=$! elapsed=0 shot out
             for shot in $secs; do
                 if [[ "$shot" == ready ]]; then
-                    while ! grep -aq "Engine ready:" "$log" && (( elapsed < SMOKE_READY_TIMEOUT )) && kill -0 "$pid" 2>/dev/null; do
+                    while ! grep -aqs "Engine ready:" "$log" && (( elapsed < SMOKE_READY_TIMEOUT )) && kill -0 "$pid" 2>/dev/null; do
                         sleep 1
                         elapsed=$((elapsed + 1))
                     done
-                    if grep -aq "Engine ready:" "$log"; then
+                    if grep -aqs "Engine ready:" "$log"; then
                         echo "ready after ${elapsed}s"
                     else
                         echo "WARN: ${name##*/} not ready after ${elapsed}s, screenshot anyway"
