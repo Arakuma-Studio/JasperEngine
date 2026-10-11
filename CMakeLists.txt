@@ -590,11 +590,14 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/UIUtils.cpp
     ${EDITOR_DIR}/util/CommandRunner.cpp
     ${EDITOR_DIR}/util/ShellEnv.cpp
+    ${EDITOR_DIR}/material/MaterialChange.cpp
 
     ${EDITOR_DIR}/shader/ShaderBuilder.cpp
     ${EDITOR_DIR}/shader/ShaderVariantCollector.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryMatrix.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryDoc.cpp
+
+    ${EDITOR_DIR}/material/MaterialPresets.cpp
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
