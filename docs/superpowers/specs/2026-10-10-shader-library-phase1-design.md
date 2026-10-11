@@ -833,7 +833,10 @@ override the sections they refer to; later agents follow them.
 - `check_shader shader="library:<name>[#...]"` checks the variant the engine would draw: the
   named features plus the manifest's defaults (a keyword group's first value, default-on
   features) and the blend define of the resolved state (or a `BLEND_*` the reference
-  names); `library:triplanar` alone used to compile with no `SPACE_*` define and fail.
+  names); `library:triplanar` alone used to compile with no `SPACE_*` define and fail. The
+  same holds for the references `check_shader` (no arguments) and `check --shaders` find in
+  use: a bare `library:` customShader or scene default, and every UI/Points/Lines/Sky
+  component's shader (with or without features), are checked as resolved variants.
 - MCP `list_shaders` detail: `require` lists every input (`position`, `rawcolor` were
   missing), `require_rules` (`{require, feature}`, `"!X"` while off), `state.shadows` and
   `state_rules` (`{feature, state}`).

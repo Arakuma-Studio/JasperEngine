@@ -134,7 +134,10 @@ async def test_check_library_reference_in_scene(ed: Editor):
     await ed.call("save_scene")
     r = await ed.call("check_shader", timeout=300)
     shaders = [item.get("shader") for item in r["results"]]
-    ed.check("library:unlit" in shaders, f"check_shader without arguments checks library references in use: {r!r}")
+    ed.check(any(s.startswith("library:unlit#") for s in shaders),
+             f"check_shader without arguments checks library references in use, as drawn: {r!r}")
+    colour = [item.get("shader") for item in r["results"] if item.get("type") == "mesh"]
+    ed.check("library:unlit" not in colour, f"never the bare colour reference, which no variant draws: {r!r}")
     ed.check_eq(r["failed"], 0, f"{r!r}")
 
     with scratch_project(ed.project) as copy:

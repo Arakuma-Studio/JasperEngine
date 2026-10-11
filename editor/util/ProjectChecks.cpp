@@ -532,8 +532,15 @@ std::string forkKey(const editor::ProjectChecks::ShaderUse& use) {
 std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForksInUse(Project* project) {
     std::vector<ShaderUse> uses;
     std::set<std::pair<std::string, int>> seen;
-    auto add = [&](const std::string& base, ShaderType type) {
+    auto add = [&](std::string base, ShaderType type) {
         if (base.empty()) return;
+        // a bare library reference (a customShader, a scene default) is checked as the variant
+        // the engine draws from it: its default features and keyword values, and for a colour
+        // program the blend define of its default state
+        if (ShaderReference::isLibrary(base) && ShaderReference::getFeatures(base).empty()) {
+            base = (type == ShaderType::DEPTH) ? ShaderReference::getVariantReference(base, {})
+                                               : ShaderReference::getColorVariantReference(base, {}, MaterialBlendMode::AUTO);
+        }
         if (seen.insert({base, static_cast<int>(type)}).second) uses.push_back({base, static_cast<int>(type)});
     };
     for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
@@ -559,7 +566,8 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
             }
             auto addComponent = [&](const std::string& customShader, const std::vector<std::string>& features, ShaderType componentType,
                                     MaterialBlendMode blendMode) {
-                if (!features.empty()) add(RenderSystem::getComponentShaderReference(customShader, features, blendMode), componentType);
+                // as the component loads it: its features and blend mode (forks without a manifest: the path)
+                if (!customShader.empty()) add(RenderSystem::getComponentShaderReference(customShader, features, blendMode), componentType);
             };
             if (UIComponent* ui = scene->findComponent<UIComponent>(entity)) addComponent(ui->customShader, ui->shaderFeatures, ShaderType::UI, ui->blendMode);
             if (PointsComponent* points = scene->findComponent<PointsComponent>(entity)) addComponent(points->customShader, points->shaderFeatures, ShaderType::POINTS, points->blendMode);
