@@ -44,6 +44,12 @@
 --                     each spawn or destruction)
 --   SI_RESIZE=1       the render-to-texture camera's target changes size every frame (a window
 --                     drag): the scene-input targets of the old sizes go (images alive stay level)
+--   SI_SPLIT=1        the identity scene plus models/figure.gltf (one mesh, three submeshes) whose
+--                     torso shows the scene behind it tinted red (si_refraction, blended, no
+--                     offset) while its backpack and head stay opaque: they draw in the opaque
+--                     queue, so the green backpack behind the torso shows through it; and a library:spin_bob box (a @depth program moving it) in
+--                     front: with SI_SSR=1 the pass makes its own depth pre-pass instead of
+--                     taking the G-buffer's ("0 shared depths" in the Scene inputs line)
 --   SI_ENV=1          the identity scene under a sky with a cube map (textures/sky_cross.png:
 --                     blue above, brown below): mirror balls (shaders/si_environment, sharp and
 --                     rough) reflecting the engine's environment (@require environment; magenta
@@ -311,6 +317,42 @@ local function buildIdentity(self, scene, keep)
     pane.castShadows = false
     configure(pane, function(m) unlit(m, 0.4, 0.8, 1.0, 0.35); m.blendMode = MaterialBlendMode.ALPHA end)
 
+    if env("SI_SPLIT") then
+        local figure = keep(Model(scene))
+        if figure:loadModel("models/figure.gltf") then
+            figure.position = Vector3(-4.4, 0.0, 2.4)
+            figure.castShadows = false
+            local count = figure:getNumSubmeshes()
+            if count ~= 3 then
+                fail("the figure has %d submeshes, not 3", count)
+            end
+            local refracting = false
+            for i = 0, count - 1 do
+                local material = figure:getMaterial(i)
+                -- the torso's base colour (0.85, 0.75, 0.2): the model's material names are not kept
+                local c = material.baseColorFactor
+                if c.x > 0.8 and c.y > 0.7 and c.z < 0.3 then
+                    material.shader = "shaders/si_refraction"
+                    material:setShaderParam("strength", 0.0)
+                    material:setShaderParam("rim", 0.0)
+                    material:setShaderParam("tint", Vector4(1.0, 0.6, 0.6, 1.0))
+                    figure:setMaterial(i, material)
+                    refracting = true
+                end
+            end
+            if not refracting then
+                fail("the figure has no torso material (base colour 0.85, 0.75, 0.2)")
+            end
+        else
+            fail("models/figure.gltf did not load")
+        end
+        local bob = keep(Primitive(scene))
+        bob:createBox(0.6, 0.6, 0.6)
+        bob.position = Vector3(2.2, 0.6, 2.4)
+        configure(bob, function(m) m.shader = "library:spin_bob" end)
+        log("split figure and a spin_bob box")
+    end
+
     if env("SI_ENV") then
         local sky = keep(Skybox(scene))
         sky:setTexture("textures/sky_cross.png")
@@ -382,10 +424,10 @@ function SceneInputs:init()
         log("hierarchy-order camera")
     end
 
-    if os.getenv("SI_SPAWN") or env("SI_ENV") then
-        which = os.getenv("SI_SPAWN") and "spawn" or "environment"
+    if os.getenv("SI_SPAWN") or env("SI_ENV") or env("SI_SPLIT") then
+        which = os.getenv("SI_SPAWN") and "spawn" or (env("SI_ENV") and "environment" or "split")
     end
-    local build = (which == "identity" or which == "hidden" or which == "spawn" or which == "environment") and buildIdentity or buildInputs
+    local build = (which == "identity" or which == "hidden" or which == "spawn" or which == "environment" or which == "split") and buildIdentity or buildInputs
     local ok, err = pcall(build, self, scene, keep)
     if ok then
         log("built %s scene", which)
