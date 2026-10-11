@@ -12,7 +12,8 @@
 // With SURFACE_DEPTH_VARYINGS defined before including, it also writes v_uv1 (SURFACE_UV1)
 // and v_color (SURFACE_COLOR, the vertex colour times the instance colour) for a fragment
 // stage that alpha clips (includes/surface_depth_fs.glsl with SURFACE_DEPTH_DISCARD).
-// SURFACE_SMOOTH_NORMALS gives the hook surfaceSmoothNormal as includes/surface_vs.glsl does.
+// SURFACE_SMOOTH_NORMALS gives the hook surfaceSmoothNormal as includes/surface_vs.glsl does,
+// and surfaceFadeVisible (the instance distance fade's scale) is the same too.
 
 // Inputs only the hooks read: without them they are not declared at all, since a GL
 // driver drops an unread attribute and the bind then misses it
@@ -109,6 +110,9 @@ out vec2 v_projZW;
 
 // the object-space smoothed normal the hook may read (SURFACE_SMOOTH_NORMALS)
 vec3 surfaceSmoothNormal;
+// the instance distance fade's scale the hooks may read: 1 shown, 0 shrunk away (always 1
+// without USE_INSTANCE_FADE)
+float surfaceFadeVisible;
 
 #ifdef SURFACE_DISPLACE
     vec3 surfaceDisplace(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv);
@@ -153,6 +157,7 @@ void main() {
         surfaceSmoothNormal = objectNormal;
     #endif
 
+    surfaceFadeVisible = 1.0;
     #ifdef USE_INSTANCE_FADE
         vec3 fadeOrigin = i_matrix_col4.xyz;
         float fadeVisible = 1.0;
@@ -162,6 +167,7 @@ void main() {
                 (fadeParams.fadeRange.y - fadeParams.fadeRange.x), 0.0, 1.0);
         }
         pos.xyz = mix(fadeOrigin, pos.xyz, fadeVisible);
+        surfaceFadeVisible = fadeVisible;
     #endif
 
     // the raw vertex colour (the hook's), and times the instance colour (v_color)

@@ -28,6 +28,12 @@
 // the attribute is declared only with SURFACE_DISPLACE or SURFACE_DISPLACE_NORMAL; without
 // SURFACE_SMOOTH_NORMALS, and on a Terrain, it is the hook's objectNormal.
 //
+// surfaceFadeVisible is, for the hooks, how much of an instance its distance fade
+// (USE_INSTANCE_FADE, InstancedMesh distance fade) keeps: 1 fully shown, falling to 0 where
+// it has shrunk to its base; always 1 without the fade. objectPosition is already shrunk by
+// it, so a hook that pushes vertices out by a fixed amount (an outline width) scales that
+// amount by it, or a faded instance keeps a dot of that size.
+//
 // A required input the mesh lacks gets a fallback: the normal is the model's +Y, a UV is
 // 0 and the colour white. SURFACE_NO_VERTEX_COLOR (defined before including) keeps the
 // vertex colour attribute out of v_color (the instance colour still applies); the
@@ -204,6 +210,9 @@ in vec3 a_position;
 
 // the object-space smoothed normal the hooks may read (SURFACE_SMOOTH_NORMALS)
 vec3 surfaceSmoothNormal;
+// the instance distance fade's scale the hooks may read: 1 shown, 0 shrunk away (always 1
+// without USE_INSTANCE_FADE)
+float surfaceFadeVisible;
 
 #ifdef SURFACE_DISPLACE
     // object-space position (after skinning, morph targets and the instance matrix), its
@@ -310,6 +319,7 @@ void main() {
         surfaceSmoothNormal = objectNormal;
     #endif
 
+    surfaceFadeVisible = 1.0;
     #ifdef USE_INSTANCE_FADE
         // Shrink toward the instance base, as mesh.vert and the depth pass do
         vec3 fadeOrigin = i_matrix_col4.xyz;
@@ -320,6 +330,7 @@ void main() {
                 (fadeParams.fadeRange.y - fadeParams.fadeRange.x), 0.0, 1.0);
         }
         pos.xyz = mix(fadeOrigin, pos.xyz, fadeVisible);
+        surfaceFadeVisible = fadeVisible;
     #endif
 
     vec4 rawColor = surfaceRawVertexColor();
