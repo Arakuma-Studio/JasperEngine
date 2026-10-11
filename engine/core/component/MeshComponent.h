@@ -21,6 +21,7 @@
 #include "buffer/ExternalBuffer.h"
 #include "pool/MeshLodPool.h"
 #include "math/Rect.h"
+#include <deque>
 #include <map>
 #include <memory>
 #include <string>
@@ -151,9 +152,12 @@ namespace jasperengine{
             uint64_t key = 0;             // hash of the positions, normals and indices it is made of
             std::vector<int8_t> data;     // 4 signed normalized bytes per vertex (xyz, 0)
             BufferRender buffer;
+            bool created = false;         // buffer asked for (an async load creates it later)
             bool used = false;            // by a submesh of the load that is running
         };
-        std::vector<Entry> entries;
+        // a deque: adding an entry moves no other, whose data an async buffer creation may
+        // still be about to read
+        std::deque<Entry> entries;
     };
 
     struct JASPERENGINE_API Submesh{

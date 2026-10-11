@@ -5378,7 +5378,7 @@ bool RenderSystem::bindSmoothNormals(ObjectRender& render, ShaderData& shaderDat
 
         if (!mesh.smoothNormals)
             mesh.smoothNormals = std::make_shared<MeshSmoothNormals>();
-        std::vector<MeshSmoothNormals::Entry>& entries = mesh.smoothNormals->entries;
+        std::deque<MeshSmoothNormals::Entry>& entries = mesh.smoothNormals->entries;
         int found = -1;
         for (size_t e = 0; e < entries.size(); e++){
             if (entries[e].key == key && entries[e].data.size() == (size_t)count * 4){
@@ -5397,9 +5397,12 @@ bool RenderSystem::bindSmoothNormals(ObjectRender& render, ShaderData& shaderDat
 
     MeshSmoothNormals::Entry& entry = mesh.smoothNormals->entries[submesh.smoothNormals];
     entry.used = true;
-    if (!entry.buffer.isCreated()){
+    // once per entry: on the async thread the buffer is created later, isCreated() is false
+    // until then, and the other renders of the submesh bind the same buffer
+    if (!entry.created){
         if (entry.data.empty() || !entry.buffer.createBuffer((unsigned int)entry.data.size(), entry.data.data(), BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE))
             return false;
+        entry.created = true;
     }
     render.addAttribute(slot, &entry.buffer, 4, AttributeDataType::BYTE, 4, 0, true, false);
     return true;
@@ -5410,8 +5413,10 @@ void RenderSystem::releaseSmoothNormals(MeshComponent& mesh, bool keepData){
         return;
     // a copy of the component shares them until its own load: its buffers are not ours alone
     if (mesh.smoothNormals.use_count() == 1){
-        for (MeshSmoothNormals::Entry& entry : mesh.smoothNormals->entries)
+        for (MeshSmoothNormals::Entry& entry : mesh.smoothNormals->entries){
             entry.buffer.destroyBuffer();
+            entry.created = false;
+        }
     }
     if (!keepData)
         mesh.smoothNormals.reset();
@@ -5420,7 +5425,7 @@ void RenderSystem::releaseSmoothNormals(MeshComponent& mesh, bool keepData){
 void RenderSystem::trimSmoothNormals(MeshComponent& mesh){
     if (!mesh.smoothNormals)
         return;
-    std::vector<MeshSmoothNormals::Entry>& entries = mesh.smoothNormals->entries;
+    std::deque<MeshSmoothNormals::Entry>& entries = mesh.smoothNormals->entries;
     std::vector<int> remap(entries.size(), -1);
     size_t kept = 0;
     for (size_t e = 0; e < entries.size(); e++){
@@ -5429,8 +5434,14 @@ void RenderSystem::trimSmoothNormals(MeshComponent& mesh){
             continue;
         }
         remap[e] = (int)kept;
-        if (kept != e)
-            entries[kept] = entries[e];
+        if (kept != e){
+            // moved, not copied: the data keeps its address (an async buffer creation reads it)
+            entries[kept].key = entries[e].key;
+            entries[kept].data = std::move(entries[e].data);
+            entries[kept].buffer = entries[e].buffer;
+            entries[kept].created = entries[e].created;
+            entries[kept].used = entries[e].used;
+        }
         kept++;
     }
     entries.resize(kept);
