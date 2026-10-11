@@ -141,6 +141,25 @@ bool resolveExisting(const CallPtr& call, const std::string& key, fs::path& out,
     return true;
 }
 
+// The optional submesh index of the material tools: `fallback` when absent or null; false (and
+// a fix-it failure) for anything but a whole number from 0, rather than a raw JSON type error.
+// The caller checks the upper bound against the mesh.
+bool submeshArg(const CallPtr& call, int fallback, int& submesh) {
+    const Json& args = call->args();
+    submesh = fallback;
+    if (!args.contains("submesh") || args["submesh"].is_null()) return true;
+    const Json& value = args["submesh"];
+    double number = -1.0;
+    if (value.is_number()) number = value.get<double>();
+    if (number < 0.0 || number != std::floor(number) || number > 1.0e6) {
+        call->fail("submesh must be a submesh index, a whole number from 0 (got " + value.dump() + "); get_entity lists a "
+                   "mesh's submeshes.");
+        return false;
+    }
+    submesh = static_cast<int>(number);
+    return true;
+}
+
 bool addProjectCommand(McpContext& ctx, Command* cmd) {
     cmd->setNoMerge();
     const bool ok = ctx.project()->getProjectCommandHistory()->addCommand(cmd);
@@ -1270,7 +1289,9 @@ void createMaterialTool(const CallPtr& call) {
     Material material;
     SceneProject* sceneProject = nullptr;
     Entity entity = NULL_ENTITY;
-    unsigned int submesh = static_cast<unsigned int>(std::max(0, args.value("submesh", 0)));
+    int submeshIndex = 0;
+    if (!submeshArg(call, 0, submeshIndex)) return;
+    unsigned int submesh = static_cast<unsigned int>(submeshIndex);
     std::string error;
     if (args.contains("entity") && !args["entity"].is_null()) {
         sceneProject = McpRefs::resolveScene(project, args.contains("scene") ? args["scene"] : Json(), error);
@@ -1365,7 +1386,9 @@ void linkMaterialTool(const CallPtr& call) {
         call->fail("The GameObject has no Mesh component with submeshes (sprites and UI use their own texture properties).");
         return;
     }
-    const unsigned int submesh = static_cast<unsigned int>(std::max(0, args.value("submesh", 0)));
+    int submeshIndex = 0;
+    if (!submeshArg(call, 0, submeshIndex)) return;
+    const unsigned int submesh = static_cast<unsigned int>(submeshIndex);
     if (submesh >= mesh->numSubmeshes) {
         call->fail("submesh must be 0.." + std::to_string(mesh->numSubmeshes - 1) + ".");
         return;
@@ -1492,8 +1515,9 @@ void applyMaterialPresetTool(const CallPtr& call) {
         call->fail(error);
         return;
     }
-    const bool oneSubmesh = args.contains("submesh") && !args["submesh"].is_null();
-    const int onlySubmesh = oneSubmesh ? args["submesh"].get<int>() : -1;
+    int onlySubmesh = -1;
+    if (!submeshArg(call, -1, onlySubmesh)) return;
+    const bool oneSubmesh = onlySubmesh >= 0;
 
     auto* multi = new MultiPropertyCmd();
     Json applied = Json::array();

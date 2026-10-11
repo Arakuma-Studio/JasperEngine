@@ -2352,6 +2352,18 @@ std::string McpValues::propertyNamesText(SceneProject* scene, Entity entity, Com
     return text.empty() ? "(none)" : text;
 }
 
+// Whether set_properties sets `property` as one typed value from the call's JSON (merged into its
+// current value): a material, an extra pass, a stencil block, a shader library collection
+static bool isWholeValueProperty(Scene* scene, Entity entity, ComponentType component, const std::string& property) {
+    const PropertyData data = Catalog::findProperty(scene, entity, component, property);
+    if (!data.ref) return false;
+    if (data.type == PropertyType::Material) return true;
+    return data.type == PropertyType::Custom &&
+           (property == "stencil" || endsWith(property, ".stencil") || endsWith(property, "material.extraPass") ||
+            property == "shaderUniforms" || endsWith(property, "shaderParams") || endsWith(property, "shaderTextures") ||
+            endsWith(property, "shaderFeatures"));
+}
+
 bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, const std::vector<Entity>& entities,
                                      const std::vector<Change>& changes, MultiPropertyCmd& multi, std::string& error) {
     if (!scene || !scene->scene) {
@@ -2371,6 +2383,35 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 error = label + " has no " + componentLabel + " component; add it first (add_component, or create_entity's "
                         "components).";
                 return false;
+            }
+            // A whole value set as one command (a material, an extra pass, a stencil, a shader
+            // library collection) and a path inside it in the same call: each command is built from
+            // the values before the call (an entry also checked against the shader before it), so
+            // whichever applies last undoes the other. Refused with the one-value form.
+            for (const Change& whole : changes) {
+                if (whole.component != component || whole.op != "set" || !isWholeValueProperty(scene->scene, entity, component, whole.property))
+                    continue;
+                for (const Change& inner : changes) {
+                    if (inner.component != component || inner.property.size() <= whole.property.size() + 1 ||
+                        inner.property.compare(0, whole.property.size() + 1, whole.property + ".") != 0) {
+                        continue;
+                    }
+                    // the inner path as keys of the whole value's object
+                    Json nested = inner.op == "set" ? inner.value : Json("...");
+                    const std::string rest = inner.property.substr(whole.property.size() + 1);
+                    size_t end = rest.size();
+                    while (true) {
+                        const size_t dot = rest.rfind('.', end - 1);
+                        const size_t start = dot == std::string::npos ? 0 : dot + 1;
+                        nested = Json{{rest.substr(start, end - start), nested}};
+                        if (dot == std::string::npos) break;
+                        end = dot;
+                    }
+                    error = componentLabel + "." + whole.property + " and " + inner.property + " on " + label + " in one call: set "
+                            "the whole value with the inner one in its object (" + whole.property + ": " + nested.dump() +
+                            " merges), or use two set_properties calls.";
+                    return false;
+                }
             }
             std::vector<YamlEdit> yamlEdits;
             std::vector<std::unique_ptr<Command>> typed;
