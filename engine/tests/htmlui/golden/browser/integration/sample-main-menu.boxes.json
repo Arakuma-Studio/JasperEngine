@@ -1,0 +1,79 @@
+{
+ "fixture": "integration/sample-main-menu.html",
+ "viewport": [
+  640,
+  400
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "rest": [
+   {
+    "id": "play",
+    "tag": "a",
+    "x": 195,
+    "y": 122.5,
+    "w": 250,
+    "h": 43
+   },
+   {
+    "id": "continue",
+    "tag": "a",
+    "x": 195,
+    "y": 175.5,
+    "w": 250,
+    "h": 43
+   },
+   {
+    "id": "settings",
+    "tag": "a",
+    "x": 195,
+    "y": 228.5,
+    "w": 250,
+    "h": 43
+   },
+   {
+    "id": "quit",
+    "tag": "a",
+    "x": 195,
+    "y": 281.5,
+    "w": 250,
+    "h": 43
+   }
+  ],
+  "hover": [
+   {
+    "id": "play",
+    "tag": "a",
+    "x": 195,
+    "y": 122.5,
+    "w": 250,
+    "h": 43
+   },
+   {
+    "id": "continue",
+    "tag": "a",
+    "x": 195,
+    "y": 175.5,
+    "w": 250,
+    "h": 43
+   },
+   {
+    "id": "settings",
+    "tag": "a",
+    "x": 201,
+    "y": 228.5,
+    "w": 250,
+    "h": 43,
+    "transformed": true
+   },
+   {
+    "id": "quit",
+    "tag": "a",
+    "x": 195,
+    "y": 281.5,
+    "w": 250,
+    "h": 43
+   }
+  ]
+ }
+}

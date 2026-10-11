@@ -1,0 +1,9 @@
+{
+ "comment": "A modal of fixed boxes (an overlay with backdrop-filter: blur and a translucent panel centered with a translate, rounded, with a box shadow) over a page that scrolls: the overlay blurs what is under it at the scrolled position, the fixed boxes stay in the viewport.",
+ "viewport": [320, 260],
+ "steps": [
+  {"capture": "top"},
+  {"scroll": ["#doc", 0, 170]},
+  {"capture": "scrolled"}
+ ]
+}

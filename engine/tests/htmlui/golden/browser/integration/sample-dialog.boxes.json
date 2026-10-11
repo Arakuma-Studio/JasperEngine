@@ -1,0 +1,68 @@
+{
+ "fixture": "integration/sample-dialog.html",
+ "viewport": [
+  600,
+  360
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "rest": [
+   {
+    "id": "dialog",
+    "tag": "div",
+    "x": 106,
+    "y": 101.75,
+    "w": 388,
+    "h": 156.5,
+    "transformed": true
+   },
+   {
+    "id": "stay",
+    "tag": "button",
+    "x": 130,
+    "y": 200.25,
+    "w": 165,
+    "h": 40,
+    "transformed": true
+   },
+   {
+    "id": "leave",
+    "tag": "button",
+    "x": 305,
+    "y": 200.25,
+    "w": 165,
+    "h": 40,
+    "transformed": true
+   }
+  ],
+  "hover": [
+   {
+    "id": "dialog",
+    "tag": "div",
+    "x": 106,
+    "y": 101.75,
+    "w": 388,
+    "h": 156.5,
+    "transformed": true
+   },
+   {
+    "id": "stay",
+    "tag": "button",
+    "x": 130,
+    "y": 200.25,
+    "w": 165,
+    "h": 40,
+    "transformed": true
+   },
+   {
+    "id": "leave",
+    "tag": "button",
+    "x": 305,
+    "y": 200.25,
+    "w": 165,
+    "h": 40,
+    "transformed": true
+   }
+  ]
+ }
+}

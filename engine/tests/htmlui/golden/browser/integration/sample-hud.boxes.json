@@ -1,0 +1,163 @@
+{
+ "fixture": "integration/sample-hud.html",
+ "viewport": [
+  640,
+  360
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "rest": [
+   {
+    "id": "vitals",
+    "tag": "div",
+    "x": 12,
+    "y": 12,
+    "w": 188,
+    "h": 90
+   },
+   {
+    "id": "hp",
+    "tag": "div",
+    "x": 26,
+    "y": 47,
+    "w": 115.1875,
+    "h": 10
+   },
+   {
+    "id": "score-box",
+    "tag": "div",
+    "x": 538.171875,
+    "y": 12,
+    "w": 89.828125,
+    "h": 59
+   },
+   {
+    "id": "map",
+    "tag": "div",
+    "x": 12,
+    "y": 232,
+    "w": 124,
+    "h": 116
+   },
+   {
+    "id": "abilities",
+    "tag": "div",
+    "x": 468,
+    "y": 288,
+    "w": 160,
+    "h": 60
+   },
+   {
+    "id": "crosshair",
+    "tag": "div",
+    "x": 309,
+    "y": 169,
+    "w": 22,
+    "h": 22,
+    "transformed": true
+   }
+  ],
+  "half": [
+   {
+    "id": "vitals",
+    "tag": "div",
+    "x": 12,
+    "y": 12,
+    "w": 188,
+    "h": 90
+   },
+   {
+    "id": "hp",
+    "tag": "div",
+    "x": 26,
+    "y": 47,
+    "w": 69.1875,
+    "h": 10
+   },
+   {
+    "id": "score-box",
+    "tag": "div",
+    "x": 538.171875,
+    "y": 12,
+    "w": 89.828125,
+    "h": 59
+   },
+   {
+    "id": "map",
+    "tag": "div",
+    "x": 12,
+    "y": 232,
+    "w": 124,
+    "h": 116
+   },
+   {
+    "id": "abilities",
+    "tag": "div",
+    "x": 468,
+    "y": 288,
+    "w": 160,
+    "h": 60
+   },
+   {
+    "id": "crosshair",
+    "tag": "div",
+    "x": 309,
+    "y": 169,
+    "w": 22,
+    "h": 22,
+    "transformed": true
+   }
+  ],
+  "end": [
+   {
+    "id": "vitals",
+    "tag": "div",
+    "x": 12,
+    "y": 12,
+    "w": 188,
+    "h": 90
+   },
+   {
+    "id": "hp",
+    "tag": "div",
+    "x": 26,
+    "y": 47,
+    "w": 48,
+    "h": 10
+   },
+   {
+    "id": "score-box",
+    "tag": "div",
+    "x": 538.171875,
+    "y": 12,
+    "w": 89.828125,
+    "h": 59
+   },
+   {
+    "id": "map",
+    "tag": "div",
+    "x": 12,
+    "y": 232,
+    "w": 124,
+    "h": 116
+   },
+   {
+    "id": "abilities",
+    "tag": "div",
+    "x": 468,
+    "y": 288,
+    "w": 160,
+    "h": 60
+   },
+   {
+    "id": "crosshair",
+    "tag": "div",
+    "x": 309,
+    "y": 169,
+    "w": 22,
+    "h": 22,
+    "transformed": true
+   }
+  ]
+ }
+}

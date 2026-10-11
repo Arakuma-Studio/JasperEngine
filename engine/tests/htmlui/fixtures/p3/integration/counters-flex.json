@@ -1,0 +1,5 @@
+{
+ "comment": "CSS counters on flex items and their ::before (counter() in a centered inline-flex badge, a string replacing it), a decrementing counter with upper-roman in a flex column, nested counters and counters() inside flex columns. Text: the boxes are the oracle.",
+ "viewport": [360, 160],
+ "boxes": true
+}

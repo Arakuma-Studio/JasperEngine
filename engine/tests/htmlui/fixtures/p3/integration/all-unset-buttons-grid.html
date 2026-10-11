@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>integration: all: unset on buttons in a grid</title>
+<style>
+  @font-face { font-family: "Roboto Fixture"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf"); }
+  html, body { margin: 0; background: #0b132b; font-family: "Roboto Fixture"; }
+  .toolbar { display: grid; grid-template-columns: repeat(3, 90px); gap: 8px; padding: 12px; }
+  button { all: unset; box-sizing: border-box; display: grid; place-items: center; height: 36px; border-radius: 8px;
+           background: #1c2541; color: #e0e1dd; font-size: 14px; border: 1px solid #3a506b; cursor: pointer; }
+  button:hover { background: #3a506b; }
+  button:focus-visible { outline: 2px solid #5bc0be; outline-offset: 2px; }
+  button.primary { background: #5bc0be; color: #0b132b; grid-column: span 2; }
+  .plain { all: unset; }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <button id="b1">Play</button><button id="b2">Load</button><button id="b3">Quit</button>
+  <button class="primary" id="b4">Continue</button><button id="b5" class="plain">Raw</button>
+</div>
+</body>
+</html>
