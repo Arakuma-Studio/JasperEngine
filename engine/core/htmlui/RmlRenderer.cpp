@@ -1260,8 +1260,8 @@ void RmlRenderer::CompositeLayers(Rml::LayerHandle sourceHandle, Rml::LayerHandl
         return;
     }
 
-    // a layer nothing was drawn into is transparent: blending it changes nothing
-    if (blendMode == Rml::BlendMode::Blend && source < (int)layerClearPending.size() && layerClearPending[source])
+    // a layer nothing was drawn into is transparent: blending or adding it changes nothing
+    if (blendMode != Rml::BlendMode::Replace && source < (int)layerClearPending.size() && layerClearPending[source])
         return;
     ensureLayerCleared(source);
 
@@ -1298,7 +1298,10 @@ void RmlRenderer::CompositeLayers(Rml::LayerHandle sourceHandle, Rml::LayerHandl
     draw.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
     draw.source = &context.primary().getRender().getColorTexture();
     draw.scissor = currentScissorTarget();
-    const BlendMode blend = (blendMode == Rml::BlendMode::Replace) ? BlendMode::NONE : BlendMode::PREMULTIPLIED;
+    // Plus (the fork's cross-fade of background images): the premultiplied colours added
+    const BlendMode blend = (blendMode == Rml::BlendMode::Replace) ? BlendMode::NONE
+                            : (blendMode == Rml::BlendMode::Plus) ? BlendMode::ADDITIVE_PREMULTIPLIED
+                                                                    : BlendMode::PREMULTIPLIED;
     drawPost(*destinationLayer, LoadAction::LOAD, draw, getGeometryState(blend));
 }
 

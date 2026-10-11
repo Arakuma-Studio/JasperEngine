@@ -1,0 +1,208 @@
+{
+ "fixture": "integration/background-image-crossfade.html",
+ "viewport": [
+  370,
+  110
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "quarter": [
+   {
+    "id": "opaque",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "translucent",
+    "tag": "div",
+    "x": 100,
+    "y": 10,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "both",
+    "tag": "div",
+    "x": 190,
+    "y": 10,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "lists",
+    "tag": "div",
+    "x": 280,
+    "y": 10,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "tiles",
+    "tag": "div",
+    "x": 10,
+    "y": 60,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "gradient",
+    "tag": "div",
+    "x": 100,
+    "y": 60,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "none",
+    "tag": "div",
+    "x": 190,
+    "y": 60,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "button",
+    "tag": "div",
+    "x": 280,
+    "y": 60,
+    "w": 80,
+    "h": 40
+   }
+  ],
+  "half": [
+   {
+    "id": "opaque",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "translucent",
+    "tag": "div",
+    "x": 100,
+    "y": 10,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "both",
+    "tag": "div",
+    "x": 190,
+    "y": 10,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "lists",
+    "tag": "div",
+    "x": 280,
+    "y": 10,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "tiles",
+    "tag": "div",
+    "x": 10,
+    "y": 60,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "gradient",
+    "tag": "div",
+    "x": 100,
+    "y": 60,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "none",
+    "tag": "div",
+    "x": 190,
+    "y": 60,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "button",
+    "tag": "div",
+    "x": 280,
+    "y": 60,
+    "w": 80,
+    "h": 40
+   }
+  ],
+  "end": [
+   {
+    "id": "opaque",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "translucent",
+    "tag": "div",
+    "x": 100,
+    "y": 10,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "both",
+    "tag": "div",
+    "x": 190,
+    "y": 10,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "lists",
+    "tag": "div",
+    "x": 280,
+    "y": 10,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "tiles",
+    "tag": "div",
+    "x": 10,
+    "y": 60,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "gradient",
+    "tag": "div",
+    "x": 100,
+    "y": 60,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "none",
+    "tag": "div",
+    "x": 190,
+    "y": 60,
+    "w": 80,
+    "h": 40
+   },
+   {
+    "id": "button",
+    "tag": "div",
+    "x": 280,
+    "y": 60,
+    "w": 80,
+    "h": 40
+   }
+  ]
+ }
+}
