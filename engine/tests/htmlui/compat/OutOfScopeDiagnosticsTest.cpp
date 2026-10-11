@@ -99,6 +99,8 @@ TEST(OutOfScopeDiagnostics, EveryItemIsReportedWithItsHint){
         {".a {\n  font-variation-settings: \"wght\" 400;\n}", "HTMLUI-CSS-0002", "font"},
         // cursor: url()
         {".a {\n  cursor: url(x.png), pointer;\n}", "HTMLUI-CSS-0005", ""},
+        // background-clip: text (phase 2's gradient text: the text in a solid colour of the gradient)
+        {".a {\n  background: linear-gradient(red, blue);\n  background-clip: text;\n  color: transparent;\n}", "HTMLUI-CSS-0006", "solid"},
     };
     for (const Item& item : items){
         SCOPED_TRACE(item.sheet);
