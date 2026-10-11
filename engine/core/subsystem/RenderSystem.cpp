@@ -8310,6 +8310,13 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
     sky.loadCalled = true;
     SystemRender::addQueueCommand(&changeLoaded, new check_load_t{scene, entity});
 
+    // one sky per scene (see SkyboxComponent): say which, once per load
+    const size_t skies = scene->getComponentArray<SkyboxComponent>()->size();
+    if (skies > 1){
+        Log::warn("Scene has %zu skyboxes: only the first added (entity %u '%s') is drawn and lights the scene",
+                  skies, (unsigned int)entity, scene->getEntityName(entity).c_str());
+    }
+
     return true;
 }
 
@@ -10294,6 +10301,7 @@ void RenderSystem::update(double dt){
     loadLights2D();
     loadAndProcessFog();
 
+    // the scene's sky is its first SkyboxComponent (SkyboxComponent.h); the others are not loaded
     auto skys = scene->getComponentArray<SkyboxComponent>();
     bool newHasIBL = false;
     if (skys->size() > 0){
