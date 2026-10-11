@@ -389,3 +389,29 @@ TEST_CASE("GridLayout.static_position")
 	document->Close();
 	TestsShell::ShutdownShell();
 }
+
+TEST_CASE("GridLayout.replaced_items")
+{
+	// A replaced item not stretched by its area keeps its natural height (a text input: its line), with its padding and
+	// border, as the same input outside the grid; it is not formatted from content (which gave it no content height).
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = LoadGrid(context, R"(
+		<div class="grid" style="width: 300px; grid-template-columns: 100px 1fr; align-items: center;">
+			<div style="height: 50px;"/>
+			<input type="text" id="in_grid" style="font-family: LatoLatin; font-size: 14px; width: 100%; padding: 6px 10px; border: 1px solid #000; box-sizing: border-box;"/>
+		</div>
+		<input type="text" id="in_block" style="font-family: LatoLatin; font-size: 14px; display: block; width: 200px; padding: 6px 10px; border: 1px solid #000; box-sizing: border-box;"/>)");
+	Element* in_grid = document->GetElementById("in_grid");
+	Element* in_block = document->GetElementById("in_block");
+	REQUIRE(in_grid);
+	REQUIRE(in_block);
+	const float height = in_block->GetBox().GetSize(BoxArea::Border).y;
+	CHECK(height > 14.f);
+	CHECK(in_grid->GetBox().GetSize(BoxArea::Border).y == doctest::Approx(height));
+	CHECK(in_grid->GetBox().GetSize(BoxArea::Border).x == doctest::Approx(200.f));
+	// centered in the 50px row
+	CHECK(in_grid->GetAbsoluteOffset(BoxArea::Border).y == doctest::Approx(0.5f * (50.f - height)));
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}

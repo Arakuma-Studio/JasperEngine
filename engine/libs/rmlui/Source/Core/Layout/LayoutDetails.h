@@ -164,6 +164,12 @@ public:
 	/// Formats the element with a definite border-box width and returns the height of its border box.
 	static float GetContentHeightForWidth(Element* element, float border_box_width, Vector2f containing_block);
 
+	/// The content height of a replaced element for a content width the formatting context gave it: an 'auto' height
+	/// follows the width through the element's preferred aspect ratio (natural, or 'aspect-ratio'), clamped by
+	/// 'min-height' and 'max-height'; otherwise the height its box was built with.
+	/// @param[in] box The element's box, as built by BuildBox.
+	static float GetReplacedContentHeightForWidth(Element* element, const Box& box, float content_width, Vector2f containing_block);
+
 	/// Content-based sizes (CSS Sizing 3), for a box whose size its formatting context determines (flex items, absolutely
 	/// positioned boxes, sizing keywords): the element's own 'width', 'height' and min-/max- sizes are ignored (the caller
 	/// clamps where CSS does).
