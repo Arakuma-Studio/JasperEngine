@@ -38,7 +38,7 @@ models draw with mesh shaders).
     `cullMode` (auto, back, front, off), `depthWrite` (auto, on, off), `depthTest` (auto,
     less, less_equal, equal, greater_equal, greater, not_equal, always), `depthOffsetFactor` /
     `depthOffsetUnits` (polygon offset; negative pulls towards the camera), `sortPriority`
-    (transparent order, lower first). `auto` takes the shader's default state, else the
+    (draw order within the opaque or the transparent queue, lower first, before distance). `auto` takes the shader's default state, else the
     engine's. UI, Points and Lines have `blendMode` and `depthWrite`.
   - `lighting`: auto, pixel, vertex, mixed or none (unlit), only the modes the shader lists
     (`list_shaders` gives them, the default first; the built-in Lit takes pixel, vertex and

@@ -674,7 +674,7 @@ void editor::InspectorWindow::drawMaterialSurfaceRows(ComponentType cpType, Scen
     propertyRow(RowPropertyType::Float, cpType, prefix + "depthOffsetFactor", "Depth Offset Factor", sceneProject, entities, settingsFloat);
     settingsFloat.help = "Polygon offset constant, in depth units.";
     propertyRow(RowPropertyType::Float, cpType, prefix + "depthOffsetUnits", "Depth Offset Units", sceneProject, entities, settingsFloat);
-    settingsInt.help = "Order among transparent objects: lower draws first.";
+    settingsInt.help = "Draw order within its queue, lower first: opaque objects by it, then near to far; transparent ones by it, then far to near (masks before their readers, see-through effects after their occluders).";
     propertyRow(RowPropertyType::Int, cpType, prefix + "sortPriority", "Sort Priority", sceneProject, entities, settingsInt);
 
     settingsEnum.enumEntries = &lighting.entries;

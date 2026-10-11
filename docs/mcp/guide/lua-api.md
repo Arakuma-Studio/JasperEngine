@@ -679,7 +679,8 @@ sprites) sorted by their distance to the camera position, not by Z.
 `getMaterial(i)` returns, then `setMaterial(i, m)`). Shader library (same copy-then-set rule):
 `shader` (`""` built-in Lit, `"library:<name>"`, or a fork), `blendMode`
 (`MaterialBlendMode.*`), `cullMode`, `depthWrite`, `depthTest`, `depthOffsetFactor`,
-`depthOffsetUnits`, `sortPriority`; methods `setShaderParam(name, value)` (colours linear; a
+`depthOffsetUnits`, `sortPriority` (draw order within its queue, opaque or transparent, lower
+first, before distance); methods `setShaderParam(name, value)` (colours linear; a
 `Vector3` colour is opaque), `getShaderParam(name)` (unset: the manifest default),
 `removeShaderParam(name)`, `setShaderTexture(uniform, path)` (`""` back to the default),
 `getShaderTexture(uniform)`, `setShaderFeature(define, on)` (a `@keywords` value is
@@ -932,6 +933,9 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
 - `Fog`: rw `type` (`FogType.*`), `color`, `density`, `linearStart`, `linearEnd`.
 - `Skybox`: `setTextures(...)`, `setTexture(...)`, rw `color`, `alpha`, `rotation`.
 - `Terrain`, `ReflectionProbe`, `Mirror`, `Bone`: editor-configured; see bindings.
+- `ObjectRender.getLivePipelineCount()` (static, diagnostics): the render pipelines objects
+  made and did not destroy yet (a leak check: the count before creating objects and after
+  destroying them, once their loads settled).
 
 ---
 
@@ -977,6 +981,9 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
 | `MaterialDepthWrite` | `AUTO`, `ENABLED`, `DISABLED` |
 | `MaterialDepthTest` | `AUTO`, `LESS`, `LESS_EQUAL`, `EQUAL`, `GREATER_EQUAL`, `GREATER`, `NOT_EQUAL`, `ALWAYS` |
 | `MaterialPassOrder` | `AFTER`, `BEFORE` |
+| `MaterialStencilCompare` | `AUTO`, `DISABLED`, `NEVER`, `LESS`, `EQUAL`, `LESS_EQUAL`, `GREATER`, `NOT_EQUAL`, `GREATER_EQUAL`, `ALWAYS` |
+| `MaterialStencilOp` | `KEEP`, `ZERO`, `REPLACE`, `INCR_CLAMP`, `DECR_CLAMP`, `INVERT`, `INCR_WRAP`, `DECR_WRAP` |
+| `MaterialColorWrite` | `AUTO` (-1), `NONE` (0), `R` (1), `G` (2), `B` (4), `A` (8), `RGB` (7), `ALL` (15); any sum of `R`, `G`, `B`, `A` |
 | `ShadowCaster2DShape` | `AUTO_QUAD`, `POLYGON` |
 | `ReflectionProbeMode` | `STATIC`, `DYNAMIC` |
 | `ReflectionProbeUpdateMode` | `ON_LOAD`, `ON_MOVE`, `INTERVAL`, `MANUAL` |

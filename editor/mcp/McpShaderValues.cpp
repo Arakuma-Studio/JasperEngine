@@ -779,7 +779,7 @@ bool McpValues::materialShaderLibraryFromJson(Project* project, SceneProject* sc
     if (!shaderStateFromJson(project, scene, value, out, "", error)) return false;
     if (value.contains("sortPriority")) {
         if (!value["sortPriority"].is_number_integer()) {
-            error = "sortPriority must be an integer (lower draws first among transparent objects).";
+            error = "sortPriority must be an integer (draw order within its queue, opaque or transparent: lower draws first).";
             return false;
         }
         out.sortPriority = value["sortPriority"].get<int>();
