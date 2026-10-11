@@ -127,8 +127,6 @@ namespace {
         {ForkFeature::Grid, SampleKind::Declaration, "grid-row-end: span 3", "", "HTMLUI-CSS-0007"},
         {ForkFeature::Grid, SampleKind::Declaration, "grid-column-start: col 2", "", "HTMLUI-CSS-0007"},
         {ForkFeature::Grid, SampleKind::Declaration, "grid-column-end: -1", "", "HTMLUI-CSS-0007"},
-        {ForkFeature::Grid, SampleKind::Declaration, "justify-items: center", "", "HTMLUI-CSS-0007"},
-        {ForkFeature::Grid, SampleKind::Declaration, "justify-self: end", "", "HTMLUI-CSS-0007"},
         // p3-text
         {ForkFeature::TextShadow, SampleKind::Declaration, "text-shadow: 1px 2px 3px #000000, 0 0 2px", "font-effect:", ""},
         {ForkFeature::TextProperties, SampleKind::Declaration, "letter-spacing: 10%", "", "HTMLUI-CSS-0004"},
@@ -194,6 +192,24 @@ namespace {
         {ForkFeature::ExtraUnits, SampleKind::Declaration, "rotate: 0.25turn", "rotate:90deg", ""},
         {ForkFeature::Calc, SampleKind::Declaration, "translate: calc(50% + 1em) 0px", "translate:50%", "HTMLUI-CSS-0007"},
         {ForkFeature::LineHeightNormal, SampleKind::Declaration, "line-height: normal", "line-height:1.2", ""},
+        // p3-layout
+        {ForkFeature::Sticky, SampleKind::Declaration, "position: sticky", "position:relative", ""},
+        {ForkFeature::Sticky, SampleKind::Declaration, "overflow: clip", "overflow:hidden", ""},
+        {ForkFeature::Sticky, SampleKind::Declaration, "overflow-clip-margin: 4px", "", "HTMLUI-CSS-0003"},
+        {ForkFeature::Sticky, SampleKind::Declaration, "scrollbar-gutter: stable", "", "HTMLUI-CSS-0003"},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "aspect-ratio: 16 / 9", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "order: 2", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "flex-line-count: 2", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::Grid, SampleKind::Declaration, "justify-items: center", "", "HTMLUI-CSS-0007"},
+        {ForkFeature::Grid, SampleKind::Declaration, "justify-self: end", "", "HTMLUI-CSS-0007"},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "width: fit-content", "width:auto", ""},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "max-height: min-content", "max-height:none", ""},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "min-width: auto", "min-width:0px", ""},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "display: contents", "display:block", ""},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "align-items: safe center", "align-items:center", ""},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "justify-content: start", "justify-content:flex-start", ""},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "flex-basis: content", "", "HTMLUI-CSS-0004"},
+        {ForkFeature::BoxParity, SampleKind::Declaration, "flex-wrap: balance", "", "HTMLUI-CSS-0004"},
     };
 
     // lower case, no white space, no trailing ';'

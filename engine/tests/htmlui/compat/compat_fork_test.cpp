@@ -54,9 +54,9 @@ TEST(ForkFeatures, ProbesNeedRmlUi){
 TEST(ForkFeatures, PresentFeatures){
     // polarity: true = the fork has it; phase 2 shipped every entry false, phase 3 flips them
     // with the fork patches (docs/html-ui/FORK.md): Calc with upstream PR #983 (p3-base), Grid (p3-grid),
-    // BorderStyle, PercentRadius, Outline, GroupOpacity, ObjectFit and BackgroundLayers (p3-paint), TextShadow and TextProperties (p3-text),
-    // TimingFunctions, AnimationLonghands, IndividualTransforms (p3-animation); CurrentColor, ExtraUnits,
-    // LineHeightNormal (p3-values)
+    // BorderStyle, PercentRadius, Outline, GroupOpacity, ObjectFit and BackgroundLayers (p3-paint), TextShadow and TextProperties
+    // (p3-text), TimingFunctions, AnimationLonghands, IndividualTransforms (p3-animation); CurrentColor, ExtraUnits,
+    // LineHeightNormal (p3-values); Fixed, Sticky and BoxParity (p3-layout)
     const ForkFeatures present = ForkFeatures::present();
     const ForkFeatures expected = ForkFeatures::none()
         .with(ForkFeature::Calc, true)
@@ -71,6 +71,9 @@ TEST(ForkFeatures, PresentFeatures){
         .with(ForkFeature::CurrentColor, true)
         .with(ForkFeature::ExtraUnits, true)
         .with(ForkFeature::LineHeightNormal, true)
+        .with(ForkFeature::Fixed, true)
+        .with(ForkFeature::Sticky, true)
+        .with(ForkFeature::BoxParity, true)
         .with(ForkFeature::Outline, true)
         .with(ForkFeature::GroupOpacity, true)
         .with(ForkFeature::ObjectFit, true)

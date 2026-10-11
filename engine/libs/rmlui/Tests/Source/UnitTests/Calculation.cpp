@@ -1803,7 +1803,8 @@ body { margin: 0; }
 	CHECK(child->GetBox().GetSize().x == doctest::Approx(180.f));
 	CHECK(child->GetBox().GetSize().y == doctest::Approx(140.f));
 	CHECK(child->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Left) == doctest::Approx(42.f));
-	CHECK(child->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Top) == doctest::Approx(32.f));
+	// Percentage margins, vertical ones too, refer to the containing block's width (CSS 2.1 §8.3; phase 3, p3-layout).
+	CHECK(child->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Top) == doctest::Approx(42.f));
 	CHECK(child->GetBox().GetEdge(BoxArea::Padding, BoxEdge::Left) == doctest::Approx(21.f));
 	CHECK(child->GetBox().GetEdge(BoxArea::Padding, BoxEdge::Top) == doctest::Approx(21.f));
 	CHECK(absolute->GetOffsetLeft() == doctest::Approx(95.f));
@@ -1818,7 +1819,7 @@ body { margin: 0; }
 	CHECK(child->GetBox().GetSize().x == doctest::Approx(480.f));
 	CHECK(child->GetBox().GetSize().y == doctest::Approx(290.f));
 	CHECK(child->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Left) == doctest::Approx(102.f));
-	CHECK(child->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Top) == doctest::Approx(62.f));
+	CHECK(child->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Top) == doctest::Approx(102.f));
 	CHECK(child->GetBox().GetEdge(BoxArea::Padding, BoxEdge::Left) == doctest::Approx(51.f));
 	CHECK(child->GetBox().GetEdge(BoxArea::Padding, BoxEdge::Top) == doctest::Approx(51.f));
 	CHECK(absolute->GetOffsetLeft() == doctest::Approx(245.f));

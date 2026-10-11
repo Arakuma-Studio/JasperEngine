@@ -1,0 +1,7 @@
+{
+ "comment": "width: max-content (overflows the 110px container) and min-content (one inline block per line); as min-width and max-width; the keywords of height are the content height; min-content with a fixed-width block child",
+ "viewport": [
+  330,
+  175
+ ]
+}

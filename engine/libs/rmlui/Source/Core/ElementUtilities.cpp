@@ -182,6 +182,24 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 				Vector2f element_size = clipping_element->GetRenderBox(clip_area, 0, false).GetFillSize();
 				Rectanglef element_region = Rectanglef::FromPositionSize(element_offset, element_size);
 
+				// 'overflow: clip' clips its axis only, at the padding box extended by 'overflow-clip-margin' (CSS Overflow 3/4).
+				const Style::Overflow overflow_x = clip_computed.overflow_x(), overflow_y = clip_computed.overflow_y();
+				if (!force_clip_current_element && !clip_always && (overflow_x == Style::Overflow::Clip || overflow_y == Style::Overflow::Clip))
+				{
+					constexpr float unbounded = 1e9f;
+					const float margin = clip_computed.overflow_clip_margin();
+					Vector2f p0 = element_region.TopLeft(), p1 = element_region.BottomRight();
+					if (overflow_x == Style::Overflow::Clip)
+						p0.x -= margin, p1.x += margin;
+					else
+						p0.x = -unbounded, p1.x = unbounded;
+					if (overflow_y == Style::Overflow::Clip)
+						p0.y -= margin, p1.y += margin;
+					else
+						p0.y = -unbounded, p1.y = unbounded;
+					element_region = Rectanglef::FromCorners(p0, p1);
+				}
+
 				clip_region = element_region.IntersectIfValid(clip_region);
 			}
 		}

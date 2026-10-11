@@ -1,0 +1,7 @@
+{
+ "comment": "the automatic minimum size of a flex item is its min-content size: the 150px word keeps its item 150px wide; min-width: 0 and overflow: hidden remove it (the word overflows or is clipped); min-height: auto in a column",
+ "viewport": [
+  230,
+  185
+ ]
+}

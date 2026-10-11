@@ -1,0 +1,7 @@
+{
+ "comment": "the height from the width and the width from a definite height through aspect-ratio; min-height and taller content win over the ratio height; the ratio is that of the border box with box-sizing: border-box; flex items (width, height or flexed size known), stretched column items; absolutely positioned boxes with a width or with top and bottom",
+ "viewport": [
+  450,
+  405
+ ]
+}

@@ -790,6 +790,10 @@ namespace {
         return name == "background" || name.compare(0, 11, "background-") == 0;
     }
 
+    bool isOverflowProperty(std::string_view name){
+        return name == "overflow" || name == "overflow-x" || name == "overflow-y";
+    }
+
     void prePass(Session& session, const std::vector<DeclarationList>& styleAttributes){
         // selectors (a scanned list was rewritten when it was read)
         for (FlatRule& rule : session.rules){
@@ -950,6 +954,28 @@ namespace {
             }
             // (the fork propagates it itself, at run time: ElementDocument::SetCanvasBackground)
             session.propagateBodyBackground = bodyBackground && !rootBackground && !session.options.fork.has(ForkFeature::BackgroundLayers);
+        }
+
+        // overflow propagation (CSS Overflow 3 §3.3, phase 3 §3.11.3): with the root's overflow visible, the body's
+        // is the viewport's (our root's, the document being the viewport's scroll container) and the body's is visible
+        {
+            bool rootOverflow = false, bodyOverflow = false;
+            for (const FlatRule& rule : session.rules){
+                if (rule.dropped || rule.origin != RuleOrigin::Author || rule.scanned)
+                    continue;
+                bool overflow = false;
+                for (const Declaration& d : rule.declarations)
+                    overflow = overflow || isOverflowProperty(d.name);
+                if (!overflow)
+                    continue;
+                for (const ComplexSelector& s : rule.selectors()){
+                    if (SelectorRewriter::isRootRule(s, session.selectorOptions))
+                        rootOverflow = true;
+                }
+                if (isBodyRule(rule))
+                    bodyOverflow = true;
+            }
+            session.propagateBodyOverflow = bodyOverflow && !rootOverflow;
         }
 
         // the root font size (rem, root em) from static root rules
@@ -1232,6 +1258,15 @@ namespace {
                     continue;
                 rootBackground.push_back(d);
                 d.value = d.name == "background-color" ? "transparent" : d.name == "decorator" ? "none" : "linear-gradient(#0000, #0000)";
+            }
+        }
+        // the body's overflow on the root (the viewport), the body itself visible (phase 3 §3.11.3)
+        if (session.propagateBodyOverflow && rule.origin == RuleOrigin::Author && isBodyRule(rule)){
+            for (OutDecl& d : normal){
+                if (!isOverflowProperty(d.name))
+                    continue;
+                rootBackground.push_back(d);
+                d.value = "visible";
             }
         }
 

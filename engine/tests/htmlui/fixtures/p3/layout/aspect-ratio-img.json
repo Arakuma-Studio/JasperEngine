@@ -1,0 +1,7 @@
+{
+ "comment": "an image keeps its natural ratio (4:2) from one size; aspect-ratio replaces it; both sizes win over any ratio; as flex items (not stretched)",
+ "viewport": [
+  290,
+  195
+ ]
+}

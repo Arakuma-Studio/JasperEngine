@@ -43,7 +43,7 @@ background-color: transparent;
 decorator: none;
 }
 #htmlui-root .sticky {
-position: relative;
+position: sticky;
 }
 #htmlui-root .fill {
 color: #ff00ffff;

@@ -62,7 +62,9 @@ the engine's built-in face, or `Ahem.ttf`); avoid generic families. JavaScript d
   {"capture": "hover"}                    // golden/browser/<area>/<name>.hover.png; without a capture step, one at the end (<name>.png)
  ],
  "boxes": true,                           // text-heavy: the boxes are the oracle, the image is reported only
- "tolerance": {"channel": 24, "badPercent": 0.1, "cluster": 16, "box": 1}
+ "tolerance": {"channel": 24, "badPercent": 0.1, "cluster": 16, "box": 1},
+ "samples": 1                             // the engine renders without MSAA (default 4x); needs a comment. For content scrolled
+                                          // past a clip edge: Mesa's llvmpipe/lavapipe leak half the samples there (MsaaScissor.*)
 }
 ```
 

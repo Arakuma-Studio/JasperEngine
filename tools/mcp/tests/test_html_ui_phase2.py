@@ -127,10 +127,10 @@ EXPECTED = [
     ("ui/p2/menu.html", 14, 28, "error", "HTMLUI-IMP-0001", "remote image 'https://images.example.net/missing-logo.png' is not imported", "load the document in the editor"),
     ("ui/p2/menu.html", 16, 27, "error", "HTMLUI-HTML-0005", "'onclick' (JavaScript) is not run", "addEventListener('click', fn) in Lua"),
     ("ui/p2/menu.html", 20, 3, "error", "HTMLUI-HTML-0006", "JavaScript is not run", '<script type="text/lua">'),
-    ("ui/p2/menu.css", 13, 3, "warning", "HTMLUI-CSS-0006", "'position: sticky' is drawn as 'relative'", "position: absolute"),
     ("ui/p2/menu.css", 17, 3, "warning", "HTMLUI-CSS-0001", "'backgroud-color' is not a CSS property", "did you mean 'background-color'?"),
 ]
 # (the menu's 'display: grid' is no finding since phase 3: the layout engine has CSS Grid, ForkFeature::Grid)
+# (nor its 'position: sticky': the layout engine sticks it, ForkFeature::Sticky)
 
 GOOD_HTML = f"""<!DOCTYPE html>
 <html lang="en">
@@ -276,7 +276,7 @@ async def test_mistakes_are_reported(ed: Editor):
              "info lines listed without the verbose setting")
     summary = summaries(lines, "ui/p2/menu.html")
     ed.check(summary, "no summary line for ui/p2/menu.html")
-    ed.check("4 errors, 3 warnings" in summary[-1], f"the summary: {summary[-1]}")
+    ed.check("4 errors, 2 warnings" in summary[-1], f"the summary: {summary[-1]}")
 
     # the same findings through the document, with the notes (edit mode: no script has run)
     found = await lua(ed, """

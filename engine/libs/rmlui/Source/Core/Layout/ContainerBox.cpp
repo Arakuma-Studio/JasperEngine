@@ -1,5 +1,6 @@
 #include "ContainerBox.h"
 #include "../../../Include/RmlUi/Core/ComputedValues.h"
+#include "../../../Include/RmlUi/Core/Context.h"
 #include "../../../Include/RmlUi/Core/Element.h"
 #include "../../../Include/RmlUi/Core/ElementScroll.h"
 #include "../../../Include/RmlUi/Core/Profiling.h"
@@ -21,17 +22,36 @@ void ContainerBox::ResetScrollbars(const Box& box)
 	else
 		element->GetElementScroll()->DisableScrollbar(ElementScroll::HORIZONTAL);
 
-	if (overflow_y == Style::Overflow::Scroll)
-		element->GetElementScroll()->EnableScrollbar(ElementScroll::VERTICAL, box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Padding));
+	// 'scrollbar-gutter: stable' keeps the space of the vertical scrollbar of a scroll container whether or not it overflows
+	// (CSS Overflow 3 §4; 'both-edges' is not mirrored). The scrollbar is shown when the content overflows (CatchOverflow).
+	const bool stable_gutter = (element->GetComputedValues().scrollbar_gutter() != Style::ScrollbarGutter::Auto &&
+		(overflow_y == Style::Overflow::Auto || overflow_y == Style::Overflow::Hidden));
+	if (overflow_y == Style::Overflow::Scroll || stable_gutter)
+		element->GetElementScroll()->EnableScrollbar(ElementScroll::VERTICAL, box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Padding),
+			stable_gutter);
 	else
 		element->GetElementScroll()->DisableScrollbar(ElementScroll::VERTICAL);
 }
 
 void ContainerBox::AddAbsoluteElement(Element* element, Vector2f static_position, Element* static_relative_offset_parent,
-	std::optional<Rectanglef> containing_block)
+	std::optional<Rectanglef> containing_block, std::optional<StaticPositionArea> static_position_area)
 {
+	// 'position: fixed' with no ancestor that is a containing block for fixed boxes (LayoutDetails::GetContainingBlock then
+	// gives the outermost box, the document): its containing block is the viewport, the context's dimensions at the origin
+	// of the document's border box (the canvas origin for a document that fills the context).
+	bool viewport_fixed = false;
+	if (!containing_block && !is_fixed_positioning_containing_block && element->GetPosition() == Style::Position::Fixed)
+	{
+		if (Context* context = element->GetContext())
+		{
+			containing_block = Rectanglef::FromPositionSize(Vector2f(0.f), Vector2f(context->GetDimensions()));
+			viewport_fixed = true;
+		}
+	}
+
 	// We may possibly be adding the same element from a previous layout iteration. If so, this ensures it is updated with the latest static position.
-	absolute_elements[element] = AbsoluteElement{static_position, static_relative_offset_parent, containing_block};
+	absolute_elements[element] =
+		AbsoluteElement{static_position, static_relative_offset_parent, containing_block, viewport_fixed, static_position_area};
 }
 
 void ContainerBox::AddRelativeElement(Element* element)
@@ -39,6 +59,15 @@ void ContainerBox::AddRelativeElement(Element* element)
 	// The same relative element may be added multiple times during repeated layout iterations, avoid any duplicates.
 	if (std::find(relative_elements.begin(), relative_elements.end(), element) == relative_elements.end())
 		relative_elements.push_back(element);
+}
+
+void ContainerBox::ShiftStaticPositions(Element* static_relative_offset_parent, Vector2f delta)
+{
+	for (auto& absolute_element : absolute_elements)
+	{
+		if (absolute_element.second.static_position_offset_parent == static_relative_offset_parent)
+			absolute_element.second.static_position += delta;
+	}
 }
 
 bool ContainerBox::IsScrollContainer() const
@@ -99,11 +128,30 @@ void ContainerBox::ClosePositionedElements()
 			// Now that the element's box has been built, we can offset the position we determined was appropriate for
 			// it by the element's margin. This is necessary because the coordinate system for the box begins at the
 			// border, not the margin.
-			offset.x += absolute_element->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Left);
-			offset.y += absolute_element->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Top);
+			const Box& absolute_box = absolute_element->GetBox();
+			offset.x += absolute_box.GetEdge(BoxArea::Margin, BoxEdge::Left);
+			offset.y += absolute_box.GetEdge(BoxArea::Margin, BoxEdge::Top);
+
+			// Aligned in the area of its static position, now that its size is known.
+			if (const auto& area = absolute_element_pair.second.static_position_area)
+			{
+				const Vector2f margin_size = absolute_box.GetSize(BoxArea::Margin);
+				const Vector2f free_space = area->rectangle.Size() - margin_size;
+				for (int axis = 0; axis < 2; axis++)
+				{
+					float shift = 0.f;
+					if (area->alignment[axis] == StaticAlignment::Center)
+						shift = 0.5f * free_space[axis];
+					else if (area->alignment[axis] == StaticAlignment::End)
+						shift = free_space[axis];
+					if (area->safe[axis] && free_space[axis] < 0.f)
+						shift = 0.f;
+					offset[axis] += shift;
+				}
+			}
 
 			// Set the offset of the element; the element itself will take care of any RCSS-defined positional offsets.
-			absolute_element->SetOffset(offset, element);
+			absolute_element->SetOffset(offset, element, absolute_element_pair.second.viewport_fixed);
 		}
 	}
 }
@@ -131,8 +179,9 @@ ContainerBox::ContainerBox(Type type, Element* element, ContainerBox* parent_con
 		const auto& computed = element->GetComputedValues();
 		overflow_x = computed.overflow_x();
 		overflow_y = computed.overflow_y();
-		is_absolute_positioning_containing_block = (computed.position() != Style::Position::Static || computed.has_local_transform() ||
-			computed.has_local_perspective() || computed.has_filter() || computed.has_backdrop_filter() || computed.has_mask_image());
+		is_fixed_positioning_containing_block = (computed.has_local_transform() || computed.has_local_perspective() || computed.has_filter() ||
+			computed.has_backdrop_filter() || computed.has_mask_image());
+		is_absolute_positioning_containing_block = (computed.position() != Style::Position::Static || is_fixed_positioning_containing_block);
 	}
 }
 
@@ -191,6 +240,11 @@ bool ContainerBox::CatchOverflow(const Vector2f visible_overflow_size, const Vec
 			element_scroll->EnableScrollbar(ElementScroll::VERTICAL, padding_width);
 			const float new_size = element_scroll->GetScrollbarSize(ElementScroll::VERTICAL);
 			scrollbar_size_changed |= (new_size != 0.f);
+		}
+		else if (element_scroll->IsScrollbarGutterOnly(ElementScroll::VERTICAL))
+		{
+			// Its space is already there ('scrollbar-gutter: stable'): show it.
+			element_scroll->EnableScrollbar(ElementScroll::VERTICAL, padding_width);
 		}
 	}
 
@@ -252,6 +306,17 @@ bool ContainerBox::SubmitBox(const Vector2f visible_overflow_size, const Vector2
 		{
 			const Vector2f border_top_left = {box.GetEdge(BoxArea::Border, BoxEdge::Left), box.GetEdge(BoxArea::Border, BoxEdge::Top)};
 			propagate_visible_overflow_size = Math::Max(border_size, visible_overflow_size + border_top_left + padding_top_left);
+
+			// An axis with 'overflow: clip' shows nothing beyond its overflow clip edge: the padding box extended by
+			// 'overflow-clip-margin'.
+			if (overflow_x == Style::Overflow::Clip || overflow_y == Style::Overflow::Clip)
+			{
+				const Vector2f clip_edge = border_top_left + padding_size + Vector2f(element->GetComputedValues().overflow_clip_margin());
+				if (overflow_x == Style::Overflow::Clip)
+					propagate_visible_overflow_size.x = Math::Max(border_size.x, Math::Min(propagate_visible_overflow_size.x, clip_edge.x));
+				if (overflow_y == Style::Overflow::Clip)
+					propagate_visible_overflow_size.y = Math::Max(border_size.y, Math::Min(propagate_visible_overflow_size.y, clip_edge.y));
+			}
 		}
 	}
 
@@ -282,23 +347,30 @@ bool FlexContainer::Close(const Vector2f visible_overflow_size, const Vector2f s
 	return true;
 }
 
+bool FlexContainer::GetBaselineOfFirstLine(float& out_baseline) const
+{
+	if (has_first_baseline)
+		out_baseline = first_baseline;
+	return has_first_baseline;
+}
+
 float FlexContainer::GetShrinkToFitWidth() const
 {
 	// For the trivial case of a fixed width, we simply return that.
-	if (element->GetComputedValues().width().type == Style::Width::Type::Length)
+	if (element->GetComputedValues().width().type == Style::Width::Type::Length && !LayoutDetails::IsMeasuringContentOf(element))
 		return box.GetSize().x;
 
 	// Infer shrink-to-fit width from the intrinsic width of the element.
-	return FlexFormattingContext::GetMaxContentSize(element).x;
+	return FlexFormattingContext::GetMaxContentSize(element, definite_content_height).x;
 }
 
 float FlexContainer::GetMinContentWidth() const
 {
 	// For the trivial case of a fixed width, we simply return that.
-	if (element->GetComputedValues().width().type == Style::Width::Type::Length)
+	if (element->GetComputedValues().width().type == Style::Width::Type::Length && !LayoutDetails::IsMeasuringContentOf(element))
 		return box.GetSize().x;
 
-	return FlexFormattingContext::GetMinContentSize(element).x;
+	return FlexFormattingContext::GetMinContentSize(element, definite_content_height).x;
 }
 
 String FlexContainer::DebugDumpTree(int depth) const
@@ -329,8 +401,8 @@ bool GridContainer::Close(const Vector2f visible_overflow_size, const Vector2f s
 
 float GridContainer::GetShrinkToFitWidth() const
 {
-	// For the trivial case of a fixed width, we simply return that.
-	if (element->GetComputedValues().width().type == Style::Width::Type::Length)
+	// For the trivial case of a fixed width, we simply return that (unless the content is measured, LayoutDetails::GetContentWidth).
+	if (element->GetComputedValues().width().type == Style::Width::Type::Length && !LayoutDetails::IsMeasuringContentOf(element))
 		return box.GetSize().x;
 
 	return GridFormattingContext::GetMaxContentWidth(element, containing_block);
@@ -338,7 +410,7 @@ float GridContainer::GetShrinkToFitWidth() const
 
 float GridContainer::GetMinContentWidth() const
 {
-	if (element->GetComputedValues().width().type == Style::Width::Type::Length)
+	if (element->GetComputedValues().width().type == Style::Width::Type::Length && !LayoutDetails::IsMeasuringContentOf(element))
 		return box.GetSize().x;
 
 	return GridFormattingContext::GetMinContentWidth(element, containing_block);

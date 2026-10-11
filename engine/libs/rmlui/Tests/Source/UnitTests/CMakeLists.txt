@@ -68,6 +68,12 @@ add_executable(${TARGET_NAME}
 	Variant.cpp
 	Visibility.cpp
 	XMLParser.cpp
+	MarginCollapse.cpp
+	AspectRatio.cpp
+	DisplayContents.cpp
+	SizingKeywords.cpp
+	PositionFixed.cpp
+	PositionSticky.cpp
 	PluginDataModel.cpp
 	Position.cpp
 )

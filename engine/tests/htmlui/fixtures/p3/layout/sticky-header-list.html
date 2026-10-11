@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: position: sticky headers in a scrolling list</title>
+<style>
+  html, body { margin: 0; }
+  .s0 { background-color: #c8d4e8; } .s1 { background-color: #e8dcc8; } .s2 { background-color: #cfe8c8; } .s3 { background-color: #e8c8dc; }
+  #list { position: absolute; left: 20px; top: 15px; width: 160px; height: 120px; overflow: hidden; background-color: #eeeeee; }
+  .section > div { height: 40px; }
+  .section > .header { position: sticky; top: 0; height: 20px; background-color: #334466; }
+  #h2 { background-color: #664433; } #h3 { background-color: #336644; }
+</style>
+</head>
+<body>
+<div id="list">
+<div class="section" id="one"><div class="header" id="h1"></div><div class="s0"></div><div class="s1"></div><div class="s2"></div></div>
+<div class="section" id="two"><div class="header" id="h2"></div><div class="s3"></div><div class="s0"></div><div class="s1"></div></div>
+<div class="section" id="three"><div class="header" id="h3"></div><div class="s2"></div><div class="s3"></div><div class="s0"></div></div>
+</div>
+</body>
+</html>

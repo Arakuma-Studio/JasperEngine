@@ -247,6 +247,16 @@ bool InlineContainer::GetBaselineOfLastLine(float& out_baseline) const
 	return false;
 }
 
+bool InlineContainer::GetBaselineOfFirstLine(float& out_baseline) const
+{
+	if (!line_boxes.empty())
+	{
+		out_baseline = line_boxes.front()->GetPosition().y + line_boxes.front()->GetBaseline();
+		return true;
+	}
+	return false;
+}
+
 LineBox* InlineContainer::EnsureOpenLineBox()
 {
 	if (line_boxes.empty() || line_boxes.back()->IsClosed())

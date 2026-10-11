@@ -115,7 +115,7 @@ thead, tbody, tfoot {
 	display: table-row-group;
 }
 handle {
-	position: fixed;
+	position: absolute;
 	background: #555a;
 	width: 16dp;
 	height: 16dp;

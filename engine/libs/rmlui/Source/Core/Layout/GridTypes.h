@@ -66,6 +66,18 @@ namespace GridLayout {
 			result = std::max(result, *min);
 		return result;
 	}
+	/// Applies an aspect ratio (width / height, 0 for none) to a size of which one axis is known (Taffy:
+	/// maybe_apply_aspect_ratio).
+	inline void MaybeApplyAspectRatio(OptionalFloat& width, OptionalFloat& height, float aspect_ratio)
+	{
+		if (aspect_ratio <= 0.f)
+			return;
+		if (width && !height)
+			height = *width / aspect_ratio;
+		else if (!width && height)
+			width = *height * aspect_ratio;
+	}
+
 	inline float MaybeClamp(float value, OptionalFloat min, OptionalFloat max)
 	{
 		if (max)
@@ -347,6 +359,9 @@ namespace GridLayout {
 		AxisPair<bool> scroll_container = {false, false};
 		Style::BoxSizing box_sizing = Style::BoxSizing::ContentBox;
 		Style::LengthPercentageAuto size_width, size_height;
+		// The sizing keywords of 'width' and 'height' (min-content, max-content, fit-content, stretch), which compute to 'auto'.
+		Style::SizingKeyword width_keyword = Style::SizingKeyword::None, height_keyword = Style::SizingKeyword::None;
+		float aspect_ratio = 0.f; // The preferred aspect ratio (width / height) of the box-sizing box, 0 for none.
 		Style::LengthPercentageAuto min_width, min_height;
 		Style::LengthPercentage max_width, max_height;
 		Style::LengthPercentage padding[4]; // top, right, bottom, left

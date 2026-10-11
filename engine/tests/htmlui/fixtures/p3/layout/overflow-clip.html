@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: overflow: clip, per axis, with overflow-clip-margin</title>
+<style>
+  html, body { margin: 0; }
+  .box { position: absolute; width: 60px; height: 40px; padding: 5px; background-color: #c8d4e8; }
+  .box > div { width: 90px; height: 70px; background-color: #aa3333; }
+  #clip { left: 15px; top: 15px; overflow: clip; }
+  #clip-x { left: 125px; top: 15px; overflow-x: clip; }
+  #clip-y { left: 235px; top: 15px; overflow-y: clip; }
+  #margin { left: 15px; top: 110px; overflow: clip; overflow-clip-margin: 10px; }
+  #hidden { left: 125px; top: 110px; overflow: hidden; }
+  #fixup { left: 235px; top: 110px; overflow-x: clip; overflow-y: hidden; }
+  #scroller { position: absolute; left: 345px; top: 15px; width: 80px; height: 60px; overflow: hidden; background-color: #eeeeee; }
+  #inner-clip { width: 60px; height: 40px; overflow: clip; background-color: #cfe8c8; }
+  #inner-clip > div { width: 200px; height: 200px; background-color: #336644; }
+</style>
+</head>
+<body>
+<div id="clip" class="box"><div id="clip-content"></div></div>
+<div id="clip-x" class="box"><div></div></div>
+<div id="clip-y" class="box"><div></div></div>
+<div id="margin" class="box"><div></div></div>
+<div id="hidden" class="box"><div></div></div>
+<div id="fixup" class="box"><div></div></div>
+<div id="scroller"><div id="inner-clip"><div></div></div></div>
+</body>
+</html>

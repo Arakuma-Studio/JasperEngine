@@ -25,5 +25,5 @@ min-height: 0px;
 max-height: none;
 }
 #htmlui-root .fit {
-width: auto;
+width: fit-content;
 }

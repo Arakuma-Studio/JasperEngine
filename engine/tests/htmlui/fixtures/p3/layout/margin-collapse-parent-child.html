@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: margins of a block and its first and last children collapse</title>
+<style>
+  html, body { margin: 0; }
+  .col { position: absolute; top: 10px; width: 80px; background-color: #eeeeee; }
+  .parent { background-color: #c8d4e8; }
+  .child { height: 20px; background-color: #334466; }
+  .after { height: 10px; background-color: #aa3333; }
+</style>
+</head>
+<body>
+<div class="col" style="left: 10px"><div id="p1" class="parent" style="margin-top: 10px"><div id="c1" class="child" style="margin-top: 25px; margin-bottom: 15px"></div></div><div id="a1" class="after"></div></div>
+<div class="col" style="left: 100px"><div id="p2" class="parent" style="margin-top: 10px; padding-top: 1px"><div id="c2" class="child" style="margin-top: 25px; margin-bottom: 15px"></div></div><div id="a2" class="after"></div></div>
+<div class="col" style="left: 190px"><div id="p3" class="parent" style="margin: 10px 0; border-bottom: 2px solid #336644"><div id="c3" class="child" style="margin-top: 25px; margin-bottom: 15px"></div></div><div id="a3" class="after"></div></div>
+<div class="col" style="left: 280px"><div id="p4" class="parent" style="margin-top: 10px; overflow: hidden"><div id="c4" class="child" style="margin-top: 25px; margin-bottom: 15px"></div></div><div id="a4" class="after"></div></div>
+<div class="col" style="left: 370px"><div id="p5" class="parent" style="margin-top: 30px; min-height: 60px"><div id="g5" style="margin-top: 5px"><div id="c5" class="child" style="margin-top: -10px; margin-bottom: 15px"></div></div></div><div id="a5" class="after"></div></div>
+<div class="col" style="left: 460px"><div id="p6" class="parent" style="margin-top: 10px; display: flex; flex-direction: column"><div id="c6" class="child" style="margin-top: 25px; margin-bottom: 15px"></div></div><div id="a6" class="after"></div></div>
+</body>
+</html>

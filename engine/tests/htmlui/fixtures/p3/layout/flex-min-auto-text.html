@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: min-width: auto of flex items</title>
+<style>
+  html, body { margin: 0; }
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  .flex { display: flex; position: absolute; left: 15px; width: 200px; font-family: "Ahem"; font-size: 10px; line-height: 1; color: #223344; background-color: #eeeeee; }
+  .flex > div { flex: 1 1 0; background-color: #c8d4e8; }
+  .flex > div + div { background-color: #e8dcc8; }
+  #auto { top: 15px; } #zero { top: 50px; } #hidden { top: 85px; } #column { top: 120px; flex-direction: column; height: 50px; }
+  #zero > div { min-width: 0; }
+  #hidden > div { overflow: hidden; }
+  #c1 > div { height: 40px; background-color: #334466; }
+</style>
+</head>
+<body>
+<div id="auto" class="flex"><div id="a1">XXXXXXXXXXXXXXX XX</div><div id="a2">XX</div></div>
+<div id="zero" class="flex"><div id="z1">XXXXXXXXXXXXXXX XX</div><div id="z2">XX</div></div>
+<div id="hidden" class="flex"><div id="h1">XXXXXXXXXXXXXXX XX</div><div id="h2">XX</div></div>
+<div id="column" class="flex"><div id="c1"><div></div></div><div id="c2"></div></div>
+</body>
+</html>

@@ -1,0 +1,7 @@
+{
+ "comment": "start and end follow the writing mode and do not swap in a reversed row (flex-start does); left and right; an overflowing line is centered or end-aligned unless safe (then it starts at the start edge); align-self start, end; safe center on the cross axis",
+ "viewport": [
+  260,
+  520
+ ]
+}
