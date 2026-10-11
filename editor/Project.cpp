@@ -506,6 +506,9 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
             for (auto& shaderTexture : material.shaderTextures) {
                 submeshChanged |= visitTexturePaths(shaderTexture.second, transform);
             }
+            for (auto& shaderTexture : material.extraPass.shaderTextures) {
+                submeshChanged |= visitTexturePaths(shaderTexture.second, transform);
+            }
 
             if (submeshChanged) {
                 mesh.submeshes[s].needUpdateTexture = true;
@@ -689,6 +692,9 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
             addTexture(material.occlusionTexture, false);
             addTexture(material.normalTexture, false);
             for (const auto& shaderTexture : material.shaderTextures) {
+                addTexture(shaderTexture.second, false);
+            }
+            for (const auto& shaderTexture : material.extraPass.shaderTextures) {
                 addTexture(shaderTexture.second, false);
             }
         }
@@ -1994,6 +2000,9 @@ bool editor::Project::visitAssetPathsInMaterialFiles(const std::function<bool(st
         materialChanged |= visitTexturePaths(material.occlusionTexture, transform);
         materialChanged |= visitTexturePaths(material.normalTexture, transform);
         for (auto& shaderTexture : material.shaderTextures){
+            materialChanged |= visitTexturePaths(shaderTexture.second, transform);
+        }
+        for (auto& shaderTexture : material.extraPass.shaderTextures){
             materialChanged |= visitTexturePaths(shaderTexture.second, transform);
         }
 

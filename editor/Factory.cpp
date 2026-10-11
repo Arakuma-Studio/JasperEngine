@@ -320,6 +320,85 @@ static std::string formatMaterialLighting(MaterialLighting mode) {
     }
 }
 
+static std::string formatStencilCompare(MaterialStencilCompare compare) {
+    switch (compare) {
+        case MaterialStencilCompare::DISABLED: return "MaterialStencilCompare::DISABLED";
+        case MaterialStencilCompare::NEVER: return "MaterialStencilCompare::NEVER";
+        case MaterialStencilCompare::LESS: return "MaterialStencilCompare::LESS";
+        case MaterialStencilCompare::EQUAL: return "MaterialStencilCompare::EQUAL";
+        case MaterialStencilCompare::LESS_EQUAL: return "MaterialStencilCompare::LESS_EQUAL";
+        case MaterialStencilCompare::GREATER: return "MaterialStencilCompare::GREATER";
+        case MaterialStencilCompare::NOT_EQUAL: return "MaterialStencilCompare::NOT_EQUAL";
+        case MaterialStencilCompare::GREATER_EQUAL: return "MaterialStencilCompare::GREATER_EQUAL";
+        case MaterialStencilCompare::ALWAYS: return "MaterialStencilCompare::ALWAYS";
+        default: return "MaterialStencilCompare::AUTO";
+    }
+}
+
+static std::string formatStencilOp(MaterialStencilOp op) {
+    switch (op) {
+        case MaterialStencilOp::ZERO: return "MaterialStencilOp::ZERO";
+        case MaterialStencilOp::REPLACE: return "MaterialStencilOp::REPLACE";
+        case MaterialStencilOp::INCR_CLAMP: return "MaterialStencilOp::INCR_CLAMP";
+        case MaterialStencilOp::DECR_CLAMP: return "MaterialStencilOp::DECR_CLAMP";
+        case MaterialStencilOp::INVERT: return "MaterialStencilOp::INVERT";
+        case MaterialStencilOp::INCR_WRAP: return "MaterialStencilOp::INCR_WRAP";
+        case MaterialStencilOp::DECR_WRAP: return "MaterialStencilOp::DECR_WRAP";
+        default: return "MaterialStencilOp::KEEP";
+    }
+}
+
+std::string editor::Factory::formatStencilAndColorWrite(int indentSpaces, const MaterialStencil& stencil, int colorWrite, const std::string& target) {
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    const MaterialStencil defaults;
+    if (stencil.compare != defaults.compare)
+        code << ind << target << ".stencil.compare = " << formatStencilCompare(stencil.compare) << ";\n";
+    if (stencil.ref != defaults.ref)
+        code << ind << target << ".stencil.ref = " << formatInt(stencil.ref) << ";\n";
+    if (stencil.readMask != defaults.readMask)
+        code << ind << target << ".stencil.readMask = " << formatInt(stencil.readMask) << ";\n";
+    if (stencil.writeMask != defaults.writeMask)
+        code << ind << target << ".stencil.writeMask = " << formatInt(stencil.writeMask) << ";\n";
+    if (stencil.pass != defaults.pass)
+        code << ind << target << ".stencil.pass = " << formatStencilOp(stencil.pass) << ";\n";
+    if (stencil.fail != defaults.fail)
+        code << ind << target << ".stencil.fail = " << formatStencilOp(stencil.fail) << ";\n";
+    if (stencil.depthFail != defaults.depthFail)
+        code << ind << target << ".stencil.depthFail = " << formatStencilOp(stencil.depthFail) << ";\n";
+    if (colorWrite != -1)
+        code << ind << target << ".colorWrite = " << formatInt(colorWrite) << ";\n";
+    return code.str();
+}
+
+std::string editor::Factory::formatMaterialPass(int indentSpaces, const MaterialPass& pass, const std::string& target, const fs::path& projectPath) {
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    if (!pass.shader.empty())
+        code << ind << target << ".shader = " << formatString(pass.shader) << ";\n";
+    if (!pass.shaderParams.empty())
+        code << ind << target << ".shaderParams = " << formatShaderUniforms(pass.shaderParams) << ";\n";
+    code << formatShaderTextures(indentSpaces, pass.shaderTextures, target + ".shaderTextures", projectPath);
+    if (!pass.shaderFeatures.empty())
+        code << ind << target << ".shaderFeatures = " << formatShaderFeatures(pass.shaderFeatures) << ";\n";
+    if (pass.blendMode != MaterialBlendMode::AUTO)
+        code << ind << target << ".blendMode = " << formatBlendMode(pass.blendMode) << ";\n";
+    if (pass.cullMode != MaterialCullMode::AUTO)
+        code << ind << target << ".cullMode = " << formatCullMode(pass.cullMode) << ";\n";
+    if (pass.depthWrite != MaterialDepthWrite::AUTO)
+        code << ind << target << ".depthWrite = " << formatDepthWrite(pass.depthWrite) << ";\n";
+    if (pass.depthTest != MaterialDepthTest::AUTO)
+        code << ind << target << ".depthTest = " << formatDepthTest(pass.depthTest) << ";\n";
+    if (pass.depthOffsetFactor != 0.0f)
+        code << ind << target << ".depthOffsetFactor = " << formatFloat(pass.depthOffsetFactor) << ";\n";
+    if (pass.depthOffsetUnits != 0.0f)
+        code << ind << target << ".depthOffsetUnits = " << formatFloat(pass.depthOffsetUnits) << ";\n";
+    code << formatStencilAndColorWrite(indentSpaces, pass.stencil, pass.colorWrite, target);
+    if (pass.order != MaterialPassOrder::AFTER)
+        code << ind << target << ".order = MaterialPassOrder::BEFORE;\n";
+    return code.str();
+}
+
 std::string editor::Factory::formatMaterialShaderLibrary(int indentSpaces, const Material& material, const std::string& target, const fs::path& projectPath) {
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
@@ -346,6 +425,9 @@ std::string editor::Factory::formatMaterialShaderLibrary(int indentSpaces, const
         code << ind << target << ".sortPriority = " << formatInt(material.sortPriority) << ";\n";
     if (material.lighting != MaterialLighting::AUTO)
         code << ind << target << ".lighting = " << formatMaterialLighting(material.lighting) << ";\n";
+    // phase 2: stencil, colour write and the extra pass
+    code << formatStencilAndColorWrite(indentSpaces, material.stencil, material.colorWrite, target);
+    code << formatMaterialPass(indentSpaces, material.extraPass, target + ".extraPass", projectPath);
     return code.str();
 }
 
@@ -1225,6 +1307,7 @@ std::string editor::Factory::createUIComponent(int indentSpaces, EntityRegistry*
     if (!ui.shaderUniforms.empty())
         code << ind << "ui.shaderUniforms = " << formatShaderUniforms(ui.shaderUniforms) << ";\n";
     code << formatComponentShaderLibrary(indentSpaces, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite, "ui", projectPath);
+    code << formatStencilAndColorWrite(indentSpaces, ui.stencil, ui.colorWrite, "ui");
     code << formatTexture(indentSpaces, ui.texture, "ui.texture", projectPath);
     // flipY is worked out from the camera unless automaticFlipY is off
     code << ind << "ui.automaticFlipY = " << formatBool(ui.automaticFlipY) << ";\n";
@@ -3450,6 +3533,7 @@ std::string editor::Factory::createPointsComponent(int indentSpaces, EntityRegis
     if (!p.shaderUniforms.empty())
         code << ind << "pointscomp.shaderUniforms = " << formatShaderUniforms(p.shaderUniforms) << ";\n";
     code << formatComponentShaderLibrary(indentSpaces, p.shaderTextures, p.shaderFeatures, &p.blendMode, &p.depthWrite, "pointscomp", projectPath);
+    code << formatStencilAndColorWrite(indentSpaces, p.stencil, p.colorWrite, "pointscomp");
     code << formatTexture(indentSpaces, p.texture, "pointscomp.texture", projectPath);
 
     if (p.numFramesRect > 0) {
@@ -3501,6 +3585,7 @@ std::string editor::Factory::createLineRendererComponent(int indentSpaces, Entit
     if (!l.shaderUniforms.empty())
         code << ind << "linescomp.shaderUniforms = " << formatShaderUniforms(l.shaderUniforms) << ";\n";
     code << formatComponentShaderLibrary(indentSpaces, l.shaderTextures, l.shaderFeatures, &l.blendMode, &l.depthWrite, "linescomp", fs::path());
+    code << formatStencilAndColorWrite(indentSpaces, l.stencil, l.colorWrite, "linescomp");
 
     for (size_t i = 0; i < l.lines.size(); i++) {
         const LineData& line = l.lines[i];

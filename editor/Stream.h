@@ -105,6 +105,28 @@ namespace jasperengine::editor {
         static void decodeComponentShaderLibrary(const YAML::Node& node, std::vector<std::pair<std::string, Texture>>& textures,
                 std::vector<std::string>& features, MaterialBlendMode* blendMode, MaterialDepthWrite* depthWrite);
 
+        // shader library phase 2: stencil, colour write and the extra pass
+        // (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
+        static std::string materialStencilCompareToString(MaterialStencilCompare compare);
+        static MaterialStencilCompare stringToMaterialStencilCompare(const std::string& str);
+        static std::string materialStencilOpToString(MaterialStencilOp op);
+        static MaterialStencilOp stringToMaterialStencilOp(const std::string& str);
+        static std::string materialPassOrderToString(MaterialPassOrder order);
+        static MaterialPassOrder stringToMaterialPassOrder(const std::string& str);
+        // a colour write mask as the manifest writes it ("rgba", "rgb", "none"...; -1 "auto")
+        static std::string colorWriteToString(int colorWrite);
+        static int stringToColorWrite(const std::string& str);
+        // a stencil block: compare, then the fields away from their defaults
+        static YAML::Node encodeStencil(const MaterialStencil& stencil);
+        static MaterialStencil decodeStencil(const YAML::Node& node);
+        // the stencil and colorWrite keys of a material, pass or UI/Points/LineRenderer
+        // component, written only away from their defaults (AUTO)
+        static void encodeStencilAndColorWrite(YAML::Node& node, const MaterialStencil& stencil, int colorWrite);
+        static void decodeStencilAndColorWrite(const YAML::Node& node, MaterialStencil& stencil, int& colorWrite);
+        // a material's extra pass; only the fields away from their defaults
+        static YAML::Node encodeMaterialPass(const MaterialPass& pass, bool embedTextureData);
+        static MaterialPass decodeMaterialPass(const YAML::Node& node);
+
         static std::string scriptPropertyTypeToString(ScriptPropertyType type);
         static ScriptPropertyType stringToScriptPropertyType(const std::string& str);
 

@@ -60,13 +60,18 @@ namespace jasperengine{
         SubmeshOverride_DepthOffset              = 1 << 24,
         SubmeshOverride_SortPriority             = 1 << 25,
         SubmeshOverride_Lighting                 = 1 << 26,
+        // shader library phase 2: material.stencil, material.colorWrite and the whole extraPass
+        SubmeshOverride_Stencil                  = 1 << 27,
+        SubmeshOverride_ColorWrite               = 1 << 28,
+        SubmeshOverride_ExtraPass                = 1 << 29,
 
         SubmeshOverride_ShaderLibrary = SubmeshOverride_Shader | SubmeshOverride_ShaderParams |
                                         SubmeshOverride_ShaderTextures | SubmeshOverride_ShaderFeatures |
                                         SubmeshOverride_BlendMode | SubmeshOverride_CullMode |
                                         SubmeshOverride_DepthWrite | SubmeshOverride_DepthTest |
                                         SubmeshOverride_DepthOffset | SubmeshOverride_SortPriority |
-                                        SubmeshOverride_Lighting,
+                                        SubmeshOverride_Lighting | SubmeshOverride_Stencil |
+                                        SubmeshOverride_ColorWrite | SubmeshOverride_ExtraPass,
 
         SubmeshOverride_Material = SubmeshOverride_BaseColorFactor | SubmeshOverride_MetallicFactor |
                                    SubmeshOverride_RoughnessFactor | SubmeshOverride_AlphaCutoff |

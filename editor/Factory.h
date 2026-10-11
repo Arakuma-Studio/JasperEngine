@@ -130,6 +130,11 @@ namespace jasperengine::editor{
         static std::string formatShaderFeatures(const std::vector<std::string>& features);
         // the shader-library fields of a Material named `target` that differ from the defaults
         static std::string formatMaterialShaderLibrary(int indentSpaces, const Material& material, const std::string& target, const fs::path& projectPath);
+        // phase 2: the stencil fields and colour write away from their defaults, of a Material,
+        // a MaterialPass or a UI/Points/LineRenderer component named `target`
+        static std::string formatStencilAndColorWrite(int indentSpaces, const MaterialStencil& stencil, int colorWrite, const std::string& target);
+        // the fields of an extra pass (a MaterialPass named `target`) away from their defaults
+        static std::string formatMaterialPass(int indentSpaces, const MaterialPass& pass, const std::string& target, const fs::path& projectPath);
         // the same for a UI/Points/LineRenderer/Skybox component (blendMode, depthWrite when given)
         static std::string formatComponentShaderLibrary(int indentSpaces, const std::vector<std::pair<std::string, Texture>>& textures,
             const std::vector<std::string>& features, const MaterialBlendMode* blendMode, const MaterialDepthWrite* depthWrite,

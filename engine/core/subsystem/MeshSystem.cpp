@@ -279,6 +279,9 @@ void MeshSystem::applySubmeshOverride(const Submesh& saved, Submesh& submesh) {
     }
     if (fields & SubmeshOverride_SortPriority)   material.sortPriority   = savedMaterial.sortPriority;
     if (fields & SubmeshOverride_Lighting)       material.lighting       = savedMaterial.lighting;
+    if (fields & SubmeshOverride_Stencil)        material.stencil        = savedMaterial.stencil;
+    if (fields & SubmeshOverride_ColorWrite)     material.colorWrite     = savedMaterial.colorWrite;
+    if (fields & SubmeshOverride_ExtraPass)      material.extraPass      = savedMaterial.extraPass;
 
     if (fields & SubmeshOverride_FaceCulling)   submesh.faceCulling   = saved.faceCulling;
     if (fields & SubmeshOverride_TextureShadow) submesh.textureShadow = saved.textureShadow;

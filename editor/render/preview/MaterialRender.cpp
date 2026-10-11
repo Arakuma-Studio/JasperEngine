@@ -90,6 +90,11 @@ bool editor::MaterialRender::isPending() const{
         if (texturePending(shaderTexture.second))
             return true;
     }
+    // the extra pass draws on the sphere too (outlines, silhouettes): its own textures
+    for (const auto& shaderTexture : material.extraPass.shaderTextures) {
+        if (texturePending(shaderTexture.second))
+            return true;
+    }
     return false;
 }
 

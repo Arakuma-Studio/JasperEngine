@@ -883,6 +883,156 @@ void editor::Stream::decodeComponentShaderLibrary(const YAML::Node& node, std::v
     if (depthWrite) *depthWrite = node["depthWrite"] ? stringToMaterialDepthWrite(node["depthWrite"].as<std::string>()) : MaterialDepthWrite::AUTO;
 }
 
+std::string editor::Stream::materialStencilCompareToString(MaterialStencilCompare compare) {
+    switch (compare) {
+        case MaterialStencilCompare::AUTO: return "AUTO";
+        case MaterialStencilCompare::DISABLED: return "DISABLED";
+        case MaterialStencilCompare::NEVER: return "NEVER";
+        case MaterialStencilCompare::LESS: return "LESS";
+        case MaterialStencilCompare::EQUAL: return "EQUAL";
+        case MaterialStencilCompare::LESS_EQUAL: return "LESS_EQUAL";
+        case MaterialStencilCompare::GREATER: return "GREATER";
+        case MaterialStencilCompare::NOT_EQUAL: return "NOT_EQUAL";
+        case MaterialStencilCompare::GREATER_EQUAL: return "GREATER_EQUAL";
+        case MaterialStencilCompare::ALWAYS: return "ALWAYS";
+    }
+    return "AUTO";
+}
+
+MaterialStencilCompare editor::Stream::stringToMaterialStencilCompare(const std::string& str) {
+    if (str == "DISABLED") return MaterialStencilCompare::DISABLED;
+    if (str == "NEVER") return MaterialStencilCompare::NEVER;
+    if (str == "LESS") return MaterialStencilCompare::LESS;
+    if (str == "EQUAL") return MaterialStencilCompare::EQUAL;
+    if (str == "LESS_EQUAL") return MaterialStencilCompare::LESS_EQUAL;
+    if (str == "GREATER") return MaterialStencilCompare::GREATER;
+    if (str == "NOT_EQUAL") return MaterialStencilCompare::NOT_EQUAL;
+    if (str == "GREATER_EQUAL") return MaterialStencilCompare::GREATER_EQUAL;
+    if (str == "ALWAYS") return MaterialStencilCompare::ALWAYS;
+    return MaterialStencilCompare::AUTO;
+}
+
+std::string editor::Stream::materialStencilOpToString(MaterialStencilOp op) {
+    switch (op) {
+        case MaterialStencilOp::KEEP: return "KEEP";
+        case MaterialStencilOp::ZERO: return "ZERO";
+        case MaterialStencilOp::REPLACE: return "REPLACE";
+        case MaterialStencilOp::INCR_CLAMP: return "INCR_CLAMP";
+        case MaterialStencilOp::DECR_CLAMP: return "DECR_CLAMP";
+        case MaterialStencilOp::INVERT: return "INVERT";
+        case MaterialStencilOp::INCR_WRAP: return "INCR_WRAP";
+        case MaterialStencilOp::DECR_WRAP: return "DECR_WRAP";
+    }
+    return "KEEP";
+}
+
+MaterialStencilOp editor::Stream::stringToMaterialStencilOp(const std::string& str) {
+    if (str == "ZERO") return MaterialStencilOp::ZERO;
+    if (str == "REPLACE") return MaterialStencilOp::REPLACE;
+    if (str == "INCR_CLAMP") return MaterialStencilOp::INCR_CLAMP;
+    if (str == "DECR_CLAMP") return MaterialStencilOp::DECR_CLAMP;
+    if (str == "INVERT") return MaterialStencilOp::INVERT;
+    if (str == "INCR_WRAP") return MaterialStencilOp::INCR_WRAP;
+    if (str == "DECR_WRAP") return MaterialStencilOp::DECR_WRAP;
+    return MaterialStencilOp::KEEP;
+}
+
+std::string editor::Stream::materialPassOrderToString(MaterialPassOrder order) {
+    return order == MaterialPassOrder::BEFORE ? "BEFORE" : "AFTER";
+}
+
+MaterialPassOrder editor::Stream::stringToMaterialPassOrder(const std::string& str) {
+    return str == "BEFORE" ? MaterialPassOrder::BEFORE : MaterialPassOrder::AFTER;
+}
+
+std::string editor::Stream::colorWriteToString(int colorWrite) {
+    return ShaderManifest::getColorWriteName(colorWrite);
+}
+
+int editor::Stream::stringToColorWrite(const std::string& str) {
+    std::string lower = str;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    if (lower == "auto") return -1;
+    return ShaderManifest::parseColorWrite(lower); // -1 (AUTO) for anything unreadable
+}
+
+YAML::Node editor::Stream::encodeStencil(const MaterialStencil& stencil) {
+    const MaterialStencil defaults;
+    YAML::Node node(YAML::NodeType::Map);
+    node["compare"] = materialStencilCompareToString(stencil.compare);
+    if (stencil.ref != defaults.ref) node["ref"] = YamlNumbers::integerText(stencil.ref);
+    if (stencil.readMask != defaults.readMask) node["readMask"] = YamlNumbers::integerText(stencil.readMask);
+    if (stencil.writeMask != defaults.writeMask) node["writeMask"] = YamlNumbers::integerText(stencil.writeMask);
+    if (stencil.pass != defaults.pass) node["pass"] = materialStencilOpToString(stencil.pass);
+    if (stencil.fail != defaults.fail) node["fail"] = materialStencilOpToString(stencil.fail);
+    if (stencil.depthFail != defaults.depthFail) node["depthFail"] = materialStencilOpToString(stencil.depthFail);
+    return node;
+}
+
+MaterialStencil editor::Stream::decodeStencil(const YAML::Node& node) {
+    // not merged: encodeStencil omits the defaults
+    MaterialStencil stencil;
+    if (!node || !node.IsMap()) return stencil;
+    if (node["compare"]) stencil.compare = stringToMaterialStencilCompare(node["compare"].as<std::string>());
+    if (node["ref"]) stencil.ref = YamlNumbers::as<int>(node["ref"]);
+    if (node["readMask"]) stencil.readMask = YamlNumbers::as<int>(node["readMask"]);
+    if (node["writeMask"]) stencil.writeMask = YamlNumbers::as<int>(node["writeMask"]);
+    if (node["pass"]) stencil.pass = stringToMaterialStencilOp(node["pass"].as<std::string>());
+    if (node["fail"]) stencil.fail = stringToMaterialStencilOp(node["fail"].as<std::string>());
+    if (node["depthFail"]) stencil.depthFail = stringToMaterialStencilOp(node["depthFail"].as<std::string>());
+    return stencil;
+}
+
+void editor::Stream::encodeStencilAndColorWrite(YAML::Node& node, const MaterialStencil& stencil, int colorWrite) {
+    if (stencil != MaterialStencil()) node["stencil"] = encodeStencil(stencil);
+    if (colorWrite >= 0) node["colorWrite"] = colorWriteToString(colorWrite);
+}
+
+void editor::Stream::decodeStencilAndColorWrite(const YAML::Node& node, MaterialStencil& stencil, int& colorWrite) {
+    // an absent key is the default (AUTO)
+    stencil = decodeStencil(node["stencil"]);
+    colorWrite = node["colorWrite"] ? stringToColorWrite(node["colorWrite"].as<std::string>()) : -1;
+}
+
+YAML::Node editor::Stream::encodeMaterialPass(const MaterialPass& pass, bool embedTextureData) {
+    YAML::Node node(YAML::NodeType::Map);
+    if (!pass.shader.empty()) node["shader"] = pass.shader;
+    if (!pass.shaderParams.empty()) node["shaderParams"] = encodeShaderUniforms(pass.shaderParams);
+    if (!pass.shaderTextures.empty()) {
+        YAML::Node textures = encodeShaderTextures(pass.shaderTextures, embedTextureData);
+        if (textures.size() > 0) node["shaderTextures"] = textures;
+    }
+    if (!pass.shaderFeatures.empty()) node["shaderFeatures"] = encodeShaderFeatures(pass.shaderFeatures);
+    if (pass.blendMode != MaterialBlendMode::AUTO) node["blendMode"] = materialBlendModeToString(pass.blendMode);
+    if (pass.cullMode != MaterialCullMode::AUTO) node["cullMode"] = materialCullModeToString(pass.cullMode);
+    if (pass.depthWrite != MaterialDepthWrite::AUTO) node["depthWrite"] = materialDepthWriteToString(pass.depthWrite);
+    if (pass.depthTest != MaterialDepthTest::AUTO) node["depthTest"] = materialDepthTestToString(pass.depthTest);
+    if (pass.depthOffsetFactor != 0.0f) node["depthOffsetFactor"] = YamlNumbers::text(finiteOr(pass.depthOffsetFactor));
+    if (pass.depthOffsetUnits != 0.0f) node["depthOffsetUnits"] = YamlNumbers::text(finiteOr(pass.depthOffsetUnits));
+    encodeStencilAndColorWrite(node, pass.stencil, pass.colorWrite);
+    if (pass.order != MaterialPassOrder::AFTER) node["order"] = materialPassOrderToString(pass.order);
+    return node;
+}
+
+MaterialPass editor::Stream::decodeMaterialPass(const YAML::Node& node) {
+    // not merged: encodeMaterialPass omits the defaults
+    MaterialPass pass;
+    if (!node || !node.IsMap()) return pass;
+    pass.shader = node["shader"] ? node["shader"].as<std::string>() : std::string();
+    pass.shaderParams = decodeShaderUniforms(node["shaderParams"]);
+    pass.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
+    pass.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
+    if (node["blendMode"]) pass.blendMode = stringToMaterialBlendMode(node["blendMode"].as<std::string>());
+    if (node["cullMode"]) pass.cullMode = stringToMaterialCullMode(node["cullMode"].as<std::string>());
+    if (node["depthWrite"]) pass.depthWrite = stringToMaterialDepthWrite(node["depthWrite"].as<std::string>());
+    if (node["depthTest"]) pass.depthTest = stringToMaterialDepthTest(node["depthTest"].as<std::string>());
+    pass.depthOffsetFactor = decodeFinite(node["depthOffsetFactor"], 0.0f);
+    pass.depthOffsetUnits = decodeFinite(node["depthOffsetUnits"], 0.0f);
+    decodeStencilAndColorWrite(node, pass.stencil, pass.colorWrite);
+    if (node["order"]) pass.order = stringToMaterialPassOrder(node["order"].as<std::string>());
+    return pass;
+}
+
 YAML::Node editor::Stream::encodeShaderTextures(const std::vector<std::pair<std::string, Texture>>& textures, bool embedData) {
     YAML::Node node(YAML::NodeType::Map);
     for (const auto& [uniform, texture] : textures) {
@@ -3809,6 +3959,10 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     if (material.sortPriority != 0) node["sortPriority"] = YamlNumbers::integerText(material.sortPriority);
     if (material.lighting != MaterialLighting::AUTO) node["lighting"] = materialLightingToString(material.lighting);
 
+    // Phase 2, the same way: stencil, colour write and the extra pass when set
+    encodeStencilAndColorWrite(node, material.stencil, material.colorWrite);
+    if (material.extraPass != MaterialPass()) node["extraPass"] = encodeMaterialPass(material.extraPass, embedTextureData);
+
     return node;
 }
 
@@ -3860,6 +4014,8 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.depthOffsetUnits = decodeFinite(node["depthOffsetUnits"], 0.0f);
     material.sortPriority = node["sortPriority"] ? YamlNumbers::as<int>(node["sortPriority"]) : 0;
     material.lighting = node["lighting"] ? stringToMaterialLighting(node["lighting"].as<std::string>()) : MaterialLighting::AUTO;
+    decodeStencilAndColorWrite(node, material.stencil, material.colorWrite);
+    material.extraPass = decodeMaterialPass(node["extraPass"]);
 
     return material;
 }
@@ -5105,6 +5261,7 @@ YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeB
     if (!ui.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(ui.shaderUniforms);
     encodeComponentShaderLibrary(node, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite, embedTextureData);
+    encodeStencilAndColorWrite(node, ui.stencil, ui.colorWrite);
 
     return node;
 }
@@ -5141,6 +5298,7 @@ UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UICo
     ui.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     ui.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite);
+    decodeStencilAndColorWrite(node, ui.stencil, ui.colorWrite);
 
     if (node["enabled"]) ui.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
@@ -8074,6 +8232,7 @@ YAML::Node editor::Stream::encodePointsComponent(const PointsComponent& points) 
     if (!points.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(points.shaderUniforms);
     encodeComponentShaderLibrary(node, points.shaderTextures, points.shaderFeatures, &points.blendMode, &points.depthWrite, true);
+    encodeStencilAndColorWrite(node, points.stencil, points.colorWrite);
 
     return node;
 }
@@ -8115,6 +8274,7 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
     points.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     points.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, points.shaderTextures, points.shaderFeatures, &points.blendMode, &points.depthWrite);
+    decodeStencilAndColorWrite(node, points.stencil, points.colorWrite);
 
     // Reset runtime fields
     points.renderPoints.clear();
@@ -8153,6 +8313,7 @@ YAML::Node editor::Stream::encodeLineRendererComponent(const LineRendererCompone
     if (!lines.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(lines.shaderUniforms);
     encodeComponentShaderLibrary(node, lines.shaderTextures, lines.shaderFeatures, &lines.blendMode, &lines.depthWrite, true);
+    encodeStencilAndColorWrite(node, lines.stencil, lines.colorWrite);
 
     return node;
 }
@@ -8183,6 +8344,7 @@ LineRendererComponent editor::Stream::decodeLineRendererComponent(const YAML::No
     lines.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     lines.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, lines.shaderTextures, lines.shaderFeatures, &lines.blendMode, &lines.depthWrite);
+    decodeStencilAndColorWrite(node, lines.stencil, lines.colorWrite);
 
     lines.loaded = false;
     lines.loadCalled = false;

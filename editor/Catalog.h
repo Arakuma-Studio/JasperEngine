@@ -214,13 +214,15 @@ namespace jasperengine::editor{
         // ---- shader library values (docs/superpowers/specs/2026-10-10-shader-library-phase1-design.md)
         // One entry of a shader-library collection property, addressed by its key:
         // "submeshes[N].material.shaderParams.<member>", "submeshes[N].material.shaderTextures.<uniform>",
+        // the same under "submeshes[N].material.extraPass.",
         // and a component's "shaderUniforms.<member>" / "shaderTextures.<uniform>". Gives the
         // collection property and the key; edits go through the collection property, so undo,
         // prefab overrides and model reloads see one value.
         static bool splitShaderEntryProperty(const std::string& propertyName, std::string& collection, std::string& key);
         // The shader whose manifest describes a property's shader-library values: for a submesh
         // material property ("submeshes[N].material...") the shader that submesh draws with (its
-        // material's, the mesh's, the scene's), else the component's own or the scene's default
+        // material's, the mesh's, the scene's), for its extra pass ("...material.extraPass...")
+        // the pass's own shader, else the component's own or the scene's default
         static std::string getShaderReferenceForProperty(Scene* scene, Entity entity, ComponentType component, const std::string& propertyName);
         // The lighting modes a material may ask of a shader, its default first: a manifest's
         // @lighting list (none without the directive), else the built-in Lit's (and a fork's
