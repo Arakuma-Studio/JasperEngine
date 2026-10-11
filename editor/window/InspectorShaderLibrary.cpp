@@ -535,6 +535,14 @@ void editor::InspectorWindow::drawMaterialSurfaceRows(ComponentType cpType, Scen
                         "Per Vertex (diffuse only, cheapest), Mixed (each light's Shading decides), None (unlit). "
                         "Only the modes this shader supports are listed; Auto is its default.";
     propertyRow(RowPropertyType::Enum, cpType, prefix + "lighting", "Lighting", sceneProject, entities, settingsEnum);
+
+    // @state shadows=off (or a @state[...] rule of its features): the mesh's Cast Shadows does
+    // not bring this submesh into the shadow maps
+    if (stateManifest && stateManifest->resolveState(stateManifest->resolveFeatures(sub.material.shaderFeatures)).shadows == ShaderShadowCasting::OFF){
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextDisabled("Casts no shadows (the shader's @state)");
+    }
     endTable();
 }
 
@@ -546,8 +554,11 @@ void editor::InspectorWindow::drawComponentStateRows(ComponentType cpType, Scene
     // component's legacy state: alpha blending, depth write on), as RenderSystem loads it
     const std::string shader = Catalog::getShaderReferenceForProperty(sceneProject->scene, entities[0], cpType, "customShader");
     std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
+    // the component's features select the manifest's @state[<DEFINE>] rules
+    static const std::vector<std::string> noFeatures;
+    const std::vector<std::string>* features = Catalog::getPropertyRef<std::vector<std::string>>(sceneProject->scene, entities[0], cpType, "shaderFeatures");
     const RenderState resolved = RenderSystem::resolveComponentRenderState(MaterialBlendMode::AUTO, MaterialDepthWrite::AUTO,
-        (manifest && manifest->present) ? manifest.get() : nullptr, false);
+        (manifest && manifest->present) ? manifest.get() : nullptr, features ? *features : noFeatures, false);
 
     AutoEnumEntries blendEntries, depthWriteEntries;
     blendEntries.autoLabel = std::string("Auto (") + blendLabel(resolved.blend) + ")";
