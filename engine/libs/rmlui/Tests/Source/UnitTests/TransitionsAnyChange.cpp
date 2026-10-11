@@ -352,6 +352,29 @@ TEST_CASE("TransitionsAnyChange.grid_and_other_discrete_properties")
 	CHECK(f.b->GetProperty<String>("grid-auto-flow") != "");
 }
 
+TEST_CASE("TransitionsAnyChange.text_properties")
+{
+	// p3-text's properties: text-shadow interpolates like box-shadow (from 'none': transparent padding); the keyword
+	// properties are discrete.
+	Fixture f(R"(
+		#a { width: 10px; color: #000; text-shadow: none; text-decoration-style: solid; transition: text-shadow 1s linear, text-decoration-style 1s linear; }
+		#a.on { text-shadow: 2px 4px 6px #ff0000; text-decoration-style: dotted; }
+		#b { width: 10px; text-shadow: 2px 2px #00ff00, 1px 1px #0000ff; transition: text-shadow 1s linear; }
+		#b.on { text-shadow: 4px 4px #00ff00; }
+	)");
+	f.a->SetClass("on", true);
+	f.b->SetClass("on", true);
+	f.Update();
+	f.clock.AdvanceTo(0.5);
+	CHECK(f.a->GetProperty<String>("text-shadow") == "1px 2px 3px #ff000080");
+	// (a keyword without allow-discrete: at once)
+	CHECK(f.a->GetProperty<int>("text-decoration-style") == f.a->GetProperty<int>("text-decoration-style"));
+	CHECK(f.a->GetProperty<String>("text-decoration-style") != "solid");
+	CHECK(f.b->GetProperty<String>("text-shadow") == "3px 3px 0px #00ff00, 0.5px 0.5px 0px #0000ff80");
+	f.clock.AdvanceTo(1.5);
+	CHECK(f.a->GetProperty<String>("text-shadow") == "2px 4px 6px #ff0000");
+}
+
 TEST_CASE("TransitionsAnyChange.relative_units")
 {
 	Fixture f(R"(

@@ -14,6 +14,7 @@
 #include "ComputeProperty.h"
 #include "ElementStyle.h"
 #include "ElementTransitions.h"
+#include "TextShadow.h"
 #include "TransformUtilities.h"
 #include <cmath>
 #include <limits>
@@ -691,6 +692,14 @@ static Property InterpolateProperties(const Property& p0, const Property& p1, fl
 		return Property{std::move(result), Unit::BOXSHADOWLIST};
 	}
 
+	// 'text-shadow: none' is the empty shadow list: it interpolates with a list (padded with transparent shadows).
+	if (definition && definition->GetId() == PropertyId::TextShadow && p0.unit != p1.unit &&
+		(p0.unit == Unit::STYLE_VALUE || p1.unit == Unit::STYLE_VALUE) && (p0.unit == Unit::KEYWORD || p1.unit == Unit::KEYWORD))
+	{
+		const Property empty(StyleValuePtr(MakeShared<TextShadowListValue>()), Unit::STYLE_VALUE);
+		return InterpolateProperties(p0.unit == Unit::KEYWORD ? empty : p0, p1.unit == Unit::KEYWORD ? empty : p1, alpha, element, definition);
+	}
+
 	if (p0.unit == Unit::STYLE_VALUE && p1.unit == Unit::STYLE_VALUE)
 	{
 		const StyleValuePtr v0 = p0.value.Get<StyleValuePtr>();
@@ -947,6 +956,11 @@ static bool IsNumericProperty(const Property& property)
 
 bool IsInterpolable(const Property& from, const Property& to, Element& element, const PropertyDefinition* definition)
 {
+	// 'text-shadow: none' against a shadow list (the empty list, padded).
+	if (definition && definition->GetId() == PropertyId::TextShadow && from.unit != to.unit &&
+		(from.unit == Unit::STYLE_VALUE || to.unit == Unit::STYLE_VALUE) && (from.unit == Unit::KEYWORD || to.unit == Unit::KEYWORD))
+		return true;
+
 	if (IsNumericProperty(from) && IsNumericProperty(to))
 	{
 		if (from.unit == to.unit)
