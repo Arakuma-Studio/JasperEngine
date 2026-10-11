@@ -69,3 +69,28 @@ TEST_CASE("InlineStyle")
 	document->Close();
 	TestsShell::ShutdownShell();
 }
+
+TEST_CASE("InlineStyle.EmptyInlineOnZeroHeightLine")
+{
+	// CSS 2.1 §9.4.2: a line with nothing but an empty inline box is a zero-height line box; Chromium gives the span no
+	// height there, at the line's top. Next to text it keeps its content area.
+	const String rml = R"RML(
+<rml><head><style>
+	body { font-family: LatoLatin; font-size: 16px; line-height: 20px; }
+	div { display: block; width: 100px; }
+	#a { height: 30px; }
+</style></head>
+<body><div id="a"><span id="empty"/></div><div id="b">x<span id="next"/></div></body></rml>
+)RML";
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = context->LoadDocumentFromMemory(rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	Element* empty = document->GetElementById("empty");
+	CHECK(empty->GetBox().GetSize(BoxArea::Border).y == 0.f);
+	CHECK(empty->GetAbsoluteTop() == doctest::Approx(document->GetElementById("a")->GetAbsoluteTop()));
+	CHECK(document->GetElementById("next")->GetBox().GetSize(BoxArea::Border).y > 10.f);
+	document->Close();
+	TestsShell::ShutdownShell();
+}

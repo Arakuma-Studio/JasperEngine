@@ -104,7 +104,7 @@ void InlineBox::Submit(const PlacedFragment& placed_fragment)
 	RMLUI_ASSERT(element && element != placed_fragment.offset_parent);
 
 	Box element_box = box;
-	element_box.SetContent({placed_fragment.layout_width, element_box.GetSize().y});
+	element_box.SetContent({placed_fragment.layout_width, placed_fragment.collapsed_line ? 0.f : element_box.GetSize().y});
 
 	if (placed_fragment.split_left)
 		ZeroBoxEdge(element_box, BoxEdge::Left);
@@ -113,8 +113,10 @@ void InlineBox::Submit(const PlacedFragment& placed_fragment)
 
 	// In inline layout, fragments are positioned in terms of (x: margin edge, y: baseline), while element offsets are
 	// specified relative to their border box. Thus, find the offset from the fragment position to the border edge.
-	const Vector2f border_position =
+	Vector2f border_position =
 		placed_fragment.position + Vector2f{element_box.GetEdge(BoxArea::Margin, BoxEdge::Left), -baseline_to_border_height};
+	if (placed_fragment.collapsed_line)
+		border_position.y = placed_fragment.line_top;
 
 	// We can determine the principal fragment based on its left split: Only the principal one has its left side intact,
 	// subsequent fragments have their left side split.
