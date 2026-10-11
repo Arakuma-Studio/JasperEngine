@@ -712,7 +712,8 @@ override the sections they refer to; later agents follow them.
   base `@state`, in order, while a feature or keyword define is on/off; resolution:
   material, rules, `@state`, legacy; resolved once at load into `Submesh::manifestState`,
   so the per-frame queue check does not allocate); `@state shadows=on|off` (`off` keeps
-  the submesh out of shadow maps: `SubmeshShaderInputs::castShadows`; the mesh's
+  the submesh out of shadow maps: `SubmeshShaderInputs::castShadows` for its variant, and
+  `drawMeshDepth` skips it in shadow passes; the mesh's
   `castShadows` still applies, there is no material override); `@require <inputs>
   feature=<DEFINE>` (or `feature=!<DEFINE>`), resolved per variant from its features in
   the variant, the compiler's `SURFACE_*` defines and the depth program
@@ -736,5 +737,6 @@ override the sections they refer to; later agents follow them.
   with no shader build pending for 10 frames; `tools/smoke-test.sh` waits for it by
   default (`SMOKE_GAME_SECONDS=ready`, `SMOKE_READY_TIMEOUT`, `SMOKE_READY_SETTLE`).
 - `tools/fixtures/shader-regressions` shows the fixed bugs in one scene
-  (`SR_FOCUS=probe|prepass|rtt|terrain` for a close-up).
+  (`SR_FOCUS=probe|prepass|rtt|terrain|front` for a close-up; the front row shows
+  `shadows=off`, `@state[...]` and a Sprite's shader set right after creation).
 - Editor shader cache `v32`.
