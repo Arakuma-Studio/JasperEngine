@@ -313,3 +313,88 @@ override the sections they refer to; later agents follow them.
   transparency from its image data (`Texture::isTransparent`, false while the data is not
   loaded or once released), so it can load opaque and write depth over its transparent
   texels; the fixture sets `MaterialAlphaMode.BLEND` on its sprites and tilemap.
+
+### 5.5 Shaders and presets (sl/p2-shaders)
+
+- Library shaders (category "Outline and stencil", sprite_mask in "2D"); every one says
+  `shadows=off` and has no `@depth` (they are extra passes or masks: in no shadow pass, and
+  out of the depth pre-pass, which skips draws without depth write).
+  - `outline` / `outline_stencil` share `library/outline_vs.glsl` (vertex) and
+    `library/outline.glsl` (fragment): `@require smoothnormals`, the displacement hook pushes
+    the vertex out along `surfaceSmoothNormal`. `WIDTH_MODE_SCREEN` (`screenWidth`, pixels):
+    the screen direction of the normal is the derivative of `clip.xy / clip.w` along the world
+    normal (`frame.viewProjectionMatrix`), scaled to pixels by `frame.resolution` (aspect and
+    perspective correct); the offset of `screenWidth` pixels is applied in the view plane
+    (`clipOffset / (P00, P11)`, depth unchanged) and turned back into object space with the
+    view rotation's transpose and the normal matrix's transpose (the inverse model matrix),
+    because the hook returns an object-space position. It holds for orthographic cameras and
+    for flipped RTT projections (the signs cancel). Measured: 4 px at every distance in
+    perspective and orthographic views. `WIDTH_MODE_WORLD` (`worldWidth`): along the world
+    normal, so a scaled object keeps an even width; `DISTANCE_SCALE` multiplies it by
+    `mix(1, max(viewDepth / referenceDistance, 1), distanceScale)`, at most `maxWidth`
+    (orthographic: no growth). `TEXTURE` tints by `u_outlineTexture` at uv1 (tiling),
+    `VERTEX_COLOR_WIDTH` scales the width by the raw vertex colour's red. Never the vertex or
+    instance colour (`SURFACE_NO_VERTEX_COLOR`). The frame block is declared in the vertex
+    stage only when read (screen width or distance scale).
+  - `outline`: `blend=opaque cull=front zwrite=on`. Order After on opaque objects (the
+    object's depth rejects the hidden hull early), Before on blended ones (5.2). Sprites use
+    the sprite shader's `OUTLINE` feature (a flat quad has no hull).
+  - `outline_stencil`: `@state stencil=notequal ref=1 readmask=1 writemask=0`, `cull=off`
+    (open meshes outline from behind), `@keywords VISIBILITY ALWAYS VISIBLE_ONLY`: ALWAYS
+    `ztest=always zwrite=off`, `@state[VISIBILITY_VISIBLE_ONLY] ztest=lequal zwrite=on`. The
+    main material marks its whole silhouette, hidden parts included, with stencil always /
+    ref 1 / write mask 1 / pass replace / zfail replace (depth-fail replace is what keeps a
+    through-walls outline an outline instead of filling the hidden shape). The pass keeps
+    the submesh's queue position, so a through-walls outline needs its occluders drawn
+    before the object: the preset raises the material's `sortPriority` to at least 1 (the
+    opaque queue sorts by priority before distance).
+  - `silhouette`: `blend=alpha ztest=greater zwrite=off cull=back`, stencil not-equal 2 /
+    replace on bit 0x02 (blends once per pixel, across objects too, until the pass ends),
+    `@keywords SILHOUETTE_MODE FLAT FRESNEL` (FRESNEL: opacity `mix(fill, 1, pow(1 - |n.v|,
+    power))`, `@require normals position feature=SILHOUETTE_MODE_FRESNEL`, the frame block in
+    the fragment stage). Drawn Before the main draw, so the object's own depth is not in the
+    buffer and only earlier draws (its occluders: priority 1 again) make it pass; with the
+    depth pre-pass on, self-occluded concave parts show too.
+  - `stencil_mask`: `blend=opaque zwrite=off colorwrite=none`, `stencil=always ref=16
+    writemask=0xf0 pass=replace`, depth test on (a hidden mask masks nothing). `ALPHA_CLIP`
+    discards below `alphaCutoff` of `u_maskTexture` (tiling). Its `color` reaches the screen
+    only if colour writes are turned on (debugging a mask's placement).
+  - `sprite_mask`: the same state with `cull=off`, the shape from the material's base colour
+    texture at `v_uv1` (`includes/base_color_fs.glsl`; the shared vertex path already applies
+    the sprite and instance texture rects, so atlas frames mask with their current frame),
+    `alphaCutoff`. Opaque queue, so in a distance-sorted camera it draws before the blended
+    sprites it masks; a 2D camera draws in hierarchy order (place the mask first).
+- Presets: `editor/material/MaterialPresets.{h,cpp}` (`jasperengine::editor`,
+  `getMaterialPresets`, `findMaterialPreset`, plus `isMaterialBlended`). Stencil families:
+  0x01 outline_stencil, 0x02 silhouette, 0x0C draw-once (ref 4; 8, 12 for further objects
+  that overlap on screen), 0xF0 masks (ref 16; 32 ... 240 for further masks). A material has
+  one stencil state, so the material-stencil presets replace each other; the extra-pass
+  presets combine with them but not with each other.
+  - `outline_hull`: extra pass `library:outline`, After unless `isMaterialBlended` (explicit
+    blend, else the manifest's resolved `@state` blend with the material's features, else
+    the legacy rule), then Before. Inspecting the blend rather than always using Before:
+    Before is correct for both, but on an opaque object it shades the whole hull and then
+    overdraws it, while After lets the object's depth reject the hidden hull (mobile
+    overdraw). The order is fixed when applied: re-apply after changing the blend.
+  - `outline_stencil`: material stencil as above, pass `library:outline_stencil` After,
+    `sortPriority >= 1`. `see_through_silhouette`: pass `library:silhouette` Before,
+    `sortPriority >= 1`. `draw_once_transparency`: stencil not-equal 4, read/write mask 0x0C,
+    pass replace; an opaque material becomes alpha blended. `stencil_mask` / `sprite_mask`:
+    shader `library:stencil_mask` / `library:sprite_mask`, the old shader's features and
+    lighting cleared, blend/depth write/colour write/stencil back to Auto (the manifest's
+    state), `sortPriority <= -1`. `visible_inside_mask` / `visible_outside_mask`: stencil
+    equal / not-equal 16 on 0xF0, keeping a mask ref the material already tests. A pass
+    already using the preset's shader keeps its parameters (re-applying only fixes the
+    order); any other pass is replaced whole. Outline presets keep the main shader.
+- Fixture: group `phase2` of `tools/fixtures/shader-library` (`scripts/phase2.lua`, which
+  reproduces the presets field for field in Lua), with `PH2_VIEW` close-ups and
+  `PH2_ORTHO=1`. Models `skinned_column.gltf` and `overlap_quads.gltf` copied from the
+  extra-pass and stencil fixtures. The extra-pass and stencil fixtures keep their fork
+  shaders (they test the engine features, not the library).
+- `docs/shaders/library.md`: the generated "Default state" line also names `colorwrite` and
+  the stencil keys a `@state` line sets (`editor/shader/ShaderLibraryDoc.cpp`).
+- Export equivalence: `tools/fixtures/shader-library-export/generate.py` gained
+  `Stencil.scene` (every preset through the MCP tool `apply_material_preset`, pass values
+  through `submeshes[0].material.extraPass.*`); it needs the editor wave's serialization,
+  Catalog paths and MCP tool, so it was not generated on this branch: run `generate.py`
+  after the merge, then `check.sh` (which skips the scene, with a message, until it exists).
