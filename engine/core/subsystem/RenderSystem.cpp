@@ -134,7 +134,7 @@ namespace {
         // the extra pass: its own parameters, else its manifest's defaults (not while a component
         // copy still shares the original's: its load makes its own and writes that one)
         if (submesh.extraPass && submesh.extraPass.use_count() == 1){
-            const ShaderUniformValues& passValues = submesh.material.extraPass.shaderParams;
+            const ShaderUniformValues& passValues = submesh.material.extraPass->shaderParams;
             submesh.extraPass->customVSParams.writeValues(passValues, nullptr, submesh.extraPass->manifest.get());
             submesh.extraPass->customFSParams.writeValues(passValues, nullptr, submesh.extraPass->manifest.get());
         }
@@ -2711,7 +2711,7 @@ std::string RenderSystem::getComponentShaderReference(const std::string& customS
 
 bool RenderSystem::hasExtraPass(const Submesh& submesh, bool terrain){
     // a terrain's patches are per-view instance buffers and painted layers: no extra pass
-    return !terrain && !submesh.material.extraPass.shader.empty();
+    return !terrain && !submesh.material.extraPass->shader.empty();
 }
 
 std::string RenderSystem::getSubmeshExtraPassReference(const Submesh& submesh){
@@ -5526,7 +5526,8 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
         releaseSubmeshExtraPass(submesh, false);
         return true;
     }
-    MaterialPass& pass = submesh.material.extraPass;
+    // (set: its shader is not empty) the textures bind through non-const references
+    MaterialPass& pass = submesh.material.extraPass.edit();
 
     // the submesh's mesh variant bits with the pass's shader (getExtraPassShaderInputs)
     const SubmeshShaderInputs inputs = getExtraPassShaderInputs(submeshInputs, pass);
@@ -5638,7 +5639,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
                                         const Matrix4* objectBlock, TilemapComponent* tilemap, uint32_t& builtLightBits){
     Submesh& submesh = mesh.submeshes[submeshIndex];
     SubmeshExtraPass& extra = *submesh.extraPass;
-    MaterialPass& pass = submesh.material.extraPass;
+    MaterialPass& pass = submesh.material.extraPass.edit(); // set: it loaded
     ObjectRender& render = extra.render;
     ShaderData& shaderData = extra.shader->shaderData;
     const uint32_t properties = extra.shaderProperties;
@@ -7530,8 +7531,10 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
             for (auto& shaderTexture : submesh.material.shaderTextures){
                 shaderTexture.second.destroy();
             }
-            for (auto& shaderTexture : submesh.material.extraPass.shaderTextures){
-                shaderTexture.second.destroy();
+            if (MaterialPass* pass = submesh.material.extraPass.editIfSet()){
+                for (auto& shaderTexture : pass->shaderTextures){
+                    shaderTexture.second.destroy();
+                }
             }
         }
 

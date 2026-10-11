@@ -72,6 +72,6 @@ bool editor::addMaterialChangeCommands(MultiPropertyCmd& multi, Project* project
     field("lighting", from.lighting, to.lighting);
     field("stencil", from.stencil, to.stencil);
     field("colorWrite", from.colorWrite, to.colorWrite);
-    field("extraPass", from.extraPass, to.extraPass);
+    field("extraPass", *from.extraPass, *to.extraPass);
     return true;
 }

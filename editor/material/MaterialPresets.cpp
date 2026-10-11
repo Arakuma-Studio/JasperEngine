@@ -50,13 +50,13 @@ namespace {
     // an outline_stencil pass also drops the silhouette mark the material wrote for it, which
     // would otherwise hide other objects' stencil outlines wherever this one covers them.
     void setExtraPass(Material& material, const char* shader, MaterialPassOrder order){
-        if (material.extraPass.shader != shader){
-            if (material.extraPass.shader == OUTLINE_STENCIL_SHADER && isOutlineStencil(material.stencil))
+        if (material.extraPass->shader != shader){
+            if (material.extraPass->shader == OUTLINE_STENCIL_SHADER && isOutlineStencil(material.stencil))
                 material.stencil = MaterialStencil();
             material.extraPass = MaterialPass();
-            material.extraPass.shader = shader;
+            material.extraPass.edit().shader = shader;
         }
-        material.extraPass.order = order;
+        material.extraPass.edit().order = order;
     }
 
     // A preset replacing the material's own stencil: an outline_stencil pass draws outside the
@@ -64,7 +64,7 @@ namespace {
     // (through walls by default); it goes with the stencil it needs.
     void setMaterialStencil(Material& material, const MaterialStencil& stencil){
         material.stencil = stencil;
-        if (material.extraPass.shader == OUTLINE_STENCIL_SHADER)
+        if (material.extraPass->shader == OUTLINE_STENCIL_SHADER)
             material.extraPass = MaterialPass();
     }
 
@@ -147,8 +147,8 @@ namespace {
                 if (!isMaterialBlended(material))
                     material.blendMode = MaterialBlendMode::ALPHA;
                 // now blended, it writes no depth: a hull after it would cover it (outline_hull)
-                if (material.extraPass.shader == OUTLINE_SHADER)
-                    material.extraPass.order = MaterialPassOrder::BEFORE;
+                if (material.extraPass->shader == OUTLINE_SHADER)
+                    material.extraPass.edit().order = MaterialPassOrder::BEFORE;
             }});
 
         presets.push_back({"stencil_mask", "Stencil mask",

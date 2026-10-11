@@ -277,10 +277,12 @@ namespace {
         if (field == "sortPriority") return data(PropertyType::Int, UpdateFlags_Mesh_Reload, &Material::sortPriority);
         if (field == "lighting") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::lighting);
         // phase 2: stencil and colour write are pipeline state; the extra pass is its own draw
+        // (a MaterialPass: the material's own, made on access, see MaterialExtraPass)
         if (field == "extraPass")
-            return data(PropertyType::Custom, UpdateFlags_Mesh_Reload | UpdateFlags_Mesh_Texture | UpdateFlags_Shader_Uniforms, &Material::extraPass);
+            return {PropertyType::Custom, UpdateFlags_Mesh_Reload | UpdateFlags_Mesh_Texture | UpdateFlags_Shader_Uniforms,
+                    def ? (void*)&def->extraPass.edit() : nullptr, hasRef ? (void*)&material.extraPass.edit() : nullptr};
         if (field.compare(0, 10, "extraPass.") == 0)
-            return getMaterialPassProperty(hasRef ? &material.extraPass : nullptr, def ? &def->extraPass : nullptr, field.substr(10));
+            return getMaterialPassProperty(hasRef ? &material.extraPass.edit() : nullptr, def ? &def->extraPass.edit() : nullptr, field.substr(10));
         return getStencilColorWriteProperty(hasRef ? &material.stencil : nullptr, def ? &def->stencil : nullptr,
                                             hasRef ? &material.colorWrite : nullptr, def ? &def->colorWrite : nullptr, field, UpdateFlags_Mesh_Reload);
     }
@@ -4417,7 +4419,7 @@ std::string editor::Catalog::getShaderReferenceForProperty(Scene* scene, Entity 
             if (propertyName.compare(0, 10, "submeshes[") == 0 && parseIndex(propertyName, pos, submesh) && submesh < mesh->numSubmeshes) {
                 // the extra pass draws with its own shader only
                 if (propertyName.compare(pos, 21, "].material.extraPass.") == 0)
-                    return mesh->submeshes[submesh].material.extraPass.shader;
+                    return mesh->submeshes[submesh].material.extraPass->shader;
                 return RenderSystem::getSubmeshShader(*mesh, mesh->submeshes[submesh], scene->getDefaultCustomShader(ShaderType::MESH));
             }
             return mesh->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::MESH) : mesh->customShader;
@@ -4490,8 +4492,8 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
     if (fromPass != toPass) {
         flags |= UpdateFlags_Mesh_Reload;
     }
-    if (from.shader != to.shader || from.shaderParams != to.shaderParams || from.extraPass.shaderParams != to.extraPass.shaderParams ||
-            from.extraPass.shader != to.extraPass.shader) {
+    if (from.shader != to.shader || from.shaderParams != to.shaderParams || from.extraPass->shaderParams != to.extraPass->shaderParams ||
+            from.extraPass->shader != to.extraPass->shader) {
         flags |= UpdateFlags_Shader_Uniforms;
     }
     return flags;

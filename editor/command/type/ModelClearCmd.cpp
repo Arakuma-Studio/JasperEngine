@@ -30,8 +30,9 @@ namespace {
             material.emissiveTexture.destroy();
             for (auto& shaderTexture : material.shaderTextures)
                 shaderTexture.second.destroy();
-            for (auto& shaderTexture : material.extraPass.shaderTextures)
-                shaderTexture.second.destroy();
+            if (MaterialPass* pass = material.extraPass.editIfSet())
+                for (auto& shaderTexture : pass->shaderTextures)
+                    shaderTexture.second.destroy();
         }
     }
 
