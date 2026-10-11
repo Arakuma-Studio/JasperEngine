@@ -48,8 +48,6 @@ struct DefaultStyleSheetParsers : NonCopyMoveable {
 	PropertyParserKeyword keyword = PropertyParserKeyword();
 	PropertyParserAlignment alignment = PropertyParserAlignment();
 	PropertyParserString string = PropertyParserString();
-	PropertyParserAnimation animation = PropertyParserAnimation(PropertyParserAnimation::ANIMATION_PARSER);
-	PropertyParserAnimation transition = PropertyParserAnimation(PropertyParserAnimation::TRANSITION_PARSER);
 	PropertyParserColour color = PropertyParserColour();
 	PropertyParserColorStopList color_stop_list = PropertyParserColorStopList(&color);
 	PropertyParserDecorator decorator = PropertyParserDecorator();
@@ -263,8 +261,6 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	RegisterParser("angle", &default_parsers->angle);
 	RegisterParser("keyword", &default_parsers->keyword);
 	RegisterParser("string", &default_parsers->string);
-	RegisterParser("animation", &default_parsers->animation);
-	RegisterParser("transition", &default_parsers->transition);
 	RegisterParser("color", &default_parsers->color);
 	RegisterParser("color_stop_list", &default_parsers->color_stop_list);
 	RegisterParser("decorator", &default_parsers->decorator);
@@ -298,6 +294,7 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	RegisterLayoutParsers();
 
 	// -- Animation (p3-animation) --
+	PropertyParserAnimation::RegisterParsers();
 
 	// -- Grid (p3-grid) --
 	RegisterGridParsers();
@@ -466,9 +463,6 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::TransformOriginZ, "transform-origin-z", "0", false, false).AddParser("length");
 	RegisterShorthand(ShorthandId::TransformOrigin, "transform-origin", "transform-origin-x, transform-origin-y, transform-origin-z", ShorthandType::FallThrough);
 
-	RegisterProperty(PropertyId::Transition, "transition", "none", false, false).AddParser("transition");
-	RegisterProperty(PropertyId::Animation, "animation", "none", false, false).AddParser("animation");
-
 	// Decorators and effects
 	RegisterProperty(PropertyId::Decorator, "decorator", "", false, false).AddParser("decorator");
 	RegisterProperty(PropertyId::MaskImage, "mask-image", "", false, false).AddParser("decorator");
@@ -566,6 +560,43 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::FlexLineCount, "flex-line-count", "1", false, true).AddParser("number");
 
 	// -- Animation (p3-animation) --
+	// The transition and animation longhands are comma-separated lists (PropertyParserAnimation); the 'transition' and
+	// 'animation' shorthands set them all (ShorthandAnimation.cpp). 6.3's 'transition' and 'animation' properties
+	// (PropertyId::Transition, PropertyId::Animation) are not registered: their names belong to the shorthands.
+	RegisterProperty(PropertyId::TransitionProperty, "transition-property", "all", false, false).AddParser("transition_property");
+	RegisterProperty(PropertyId::TransitionDuration, "transition-duration", "0s", false, false).AddParser("animation_duration");
+	RegisterProperty(PropertyId::TransitionTimingFunction, "transition-timing-function", "ease", false, false).AddParser("animation_easing");
+	RegisterProperty(PropertyId::TransitionDelay, "transition-delay", "0s", false, false).AddParser("animation_time");
+	RegisterProperty(PropertyId::TransitionBehavior, "transition-behavior", "normal", false, false)
+		.AddParser("animation_keyword", GetAnimationKeywordList(PropertyId::TransitionBehavior));
+	RegisterShorthand(ShorthandId::Transition, "transition",
+		"transition-property, transition-duration, transition-timing-function, transition-delay, transition-behavior", ShorthandType::Custom);
+	properties.SetShorthandParser(ShorthandId::Transition, &ParseTransitionShorthand);
+
+	RegisterProperty(PropertyId::AnimationName, "animation-name", "none", false, false).AddParser("animation_name");
+	RegisterProperty(PropertyId::AnimationDuration, "animation-duration", "0s", false, false).AddParser("animation_duration");
+	RegisterProperty(PropertyId::AnimationTimingFunction, "animation-timing-function", "ease", false, false).AddParser("animation_easing");
+	RegisterProperty(PropertyId::AnimationDelay, "animation-delay", "0s", false, false).AddParser("animation_time");
+	RegisterProperty(PropertyId::AnimationIterationCount, "animation-iteration-count", "1", false, false).AddParser("animation_iteration_count");
+	RegisterProperty(PropertyId::AnimationDirection, "animation-direction", "normal", false, false)
+		.AddParser("animation_keyword", GetAnimationKeywordList(PropertyId::AnimationDirection));
+	RegisterProperty(PropertyId::AnimationFillMode, "animation-fill-mode", "none", false, false)
+		.AddParser("animation_keyword", GetAnimationKeywordList(PropertyId::AnimationFillMode));
+	RegisterProperty(PropertyId::AnimationPlayState, "animation-play-state", "running", false, false)
+		.AddParser("animation_keyword", GetAnimationKeywordList(PropertyId::AnimationPlayState));
+	// 'add' and 'accumulate' are accepted and composite as 'replace' (the compat layer reports them).
+	RegisterProperty(PropertyId::AnimationComposition, "animation-composition", "replace", false, false)
+		.AddParser("animation_keyword", GetAnimationKeywordList(PropertyId::AnimationComposition));
+	RegisterShorthand(ShorthandId::Animation, "animation",
+		"animation-name, animation-duration, animation-timing-function, animation-delay, animation-iteration-count, animation-direction, "
+		"animation-fill-mode, animation-play-state",
+		ShorthandType::Custom);
+	properties.SetShorthandParser(ShorthandId::Animation, &ParseAnimationShorthand);
+
+	// The individual transform properties (CSS Transforms 2), composed before 'transform'.
+	RegisterProperty(PropertyId::Translate, "translate", "none", false, false).AddParser("translate");
+	RegisterProperty(PropertyId::Rotate, "rotate", "none", false, false).AddParser("rotate");
+	RegisterProperty(PropertyId::Scale, "scale", "none", false, false).AddParser("scale");
 
 	// -- Grid (p3-grid) --
 	RegisterGridProperties(properties);

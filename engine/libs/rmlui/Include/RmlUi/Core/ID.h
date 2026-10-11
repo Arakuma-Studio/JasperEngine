@@ -449,6 +449,14 @@ enum class EventId : uint16_t {
 	Submit,
 	Tabchange,
 
+	// CSS animation and transition events (phase 3, p3-animation)
+	Animationstart,
+	Animationiteration,
+	Animationcancel,
+	Transitionrun,
+	Transitionstart,
+	Transitioncancel,
+
 	NumDefinedIds,
 
 	// Custom IDs start here

@@ -234,6 +234,5 @@ transform: rotate(360deg);
 }
 }
 #htmlui-root .ak {
--html-animation-fill: none;
 animation: inherit;
 }

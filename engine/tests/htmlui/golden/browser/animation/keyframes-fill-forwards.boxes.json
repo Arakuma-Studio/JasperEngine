@@ -1,0 +1,78 @@
+{
+ "fixture": "animation/keyframes-fill-forwards.html",
+ "viewport": [
+  400,
+  190
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "running": [
+   {
+    "id": "forwards",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 170,
+    "h": 30
+   },
+   {
+    "id": "none",
+    "tag": "div",
+    "x": 20,
+    "y": 60,
+    "w": 170,
+    "h": 30
+   },
+   {
+    "id": "both",
+    "tag": "div",
+    "x": 20,
+    "y": 100,
+    "w": 218,
+    "h": 30
+   },
+   {
+    "id": "count",
+    "tag": "div",
+    "x": 20,
+    "y": 140,
+    "w": 202.5,
+    "h": 30
+   }
+  ],
+  "after": [
+   {
+    "id": "forwards",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 300,
+    "h": 30
+   },
+   {
+    "id": "none",
+    "tag": "div",
+    "x": 20,
+    "y": 60,
+    "w": 100,
+    "h": 30
+   },
+   {
+    "id": "both",
+    "tag": "div",
+    "x": 20,
+    "y": 100,
+    "w": 300,
+    "h": 30
+   },
+   {
+    "id": "count",
+    "tag": "div",
+    "x": 20,
+    "y": 140,
+    "w": 170,
+    "h": 30
+   }
+  ]
+ }
+}

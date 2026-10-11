@@ -2318,68 +2318,69 @@ TEST_CASE("Calculation.time.animation_transition_integration")
 	REQUIRE(context);
 	ElementDocument* document = context->CreateDocument();
 	REQUIRE(document);
+	document->Show();
+
+	// Phase 3 (p3-animation): 'animation' and 'transition' are shorthands of comma-list longhands; the computed lists are
+	// built from them (FORK.md P3-A2).
+	auto animations = [&]() {
+		context->Update();
+		const AnimationList* list = document->GetComputedValues().animation();
+		return list ? *list : AnimationList();
+	};
+	auto transitions = [&]() {
+		context->Update();
+		const TransitionList* list = document->GetComputedValues().transition();
+		return list ? *list : TransitionList();
+	};
 
 	REQUIRE(document->SetProperty("animation", "spin calc(4s + 1ms) calc(500ms) linear-in calc(2)"));
-	const Property* animation_property = document->GetLocalProperty("animation");
-	REQUIRE(animation_property);
-	REQUIRE(animation_property->unit == Unit::ANIMATION);
-	const AnimationList animation_list = animation_property->value.GetReference<AnimationList>();
+	const AnimationList animation_list = animations();
 	REQUIRE(animation_list.size() == 1);
 	CHECK(animation_list[0].duration == doctest::Approx(4.001f));
 	CHECK(animation_list[0].delay == doctest::Approx(0.5f));
-	CHECK(animation_list[0].num_iterations == 2);
+	CHECK(animation_list[0].iteration_count == doctest::Approx(2.f));
 	CHECK(animation_list[0].name == "spin");
 
 	// Nested spaces/commas stay inside the math component, while a top-level comma still separates list items.
 	REQUIRE(document->SetProperty("animation", "spin min(1s, max(500ms, 2s)), other clamp(none, 1500ms, 2s)"));
-	animation_property = document->GetLocalProperty("animation");
-	REQUIRE(animation_property);
-	const AnimationList nested_animations = animation_property->value.GetReference<AnimationList>();
+	const AnimationList nested_animations = animations();
 	REQUIRE(nested_animations.size() == 2);
 	CHECK(nested_animations[0].duration == doctest::Approx(1.f));
 	CHECK(nested_animations[1].duration == doctest::Approx(1.5f));
 	CHECK(nested_animations[1].name == "other");
 
-	// The shared splitter is quote-aware even though the outer inline-declaration parser does not
-	// admit quoted animation names. Exercise the property parser directly so a comma/space inside a
-	// quoted component cannot be mistaken for either kind of top-level separator.
-	PropertyParserAnimation direct_animation_parser(PropertyParserAnimation::ANIMATION_PARSER);
-	Property quoted_animation_property;
-	REQUIRE(direct_animation_parser.ParseValue(quoted_animation_property, "\"quoted, name\" min(1s, max(500ms, 2s)), other 1s", ParameterMap{}));
-	const AnimationList quoted_animations = quoted_animation_property.value.GetReference<AnimationList>();
-	REQUIRE(quoted_animations.size() == 2);
-	CHECK(quoted_animations[0].name == "\"quoted, name\"");
-	CHECK(quoted_animations[0].duration == doctest::Approx(1.f));
+	// The list splitter is quote-aware: a comma or space inside a quoted animation name separates nothing. (The inline
+	// declaration parser admits a quoted value only as a whole, so the longhand parser is exercised directly.)
+	PropertyParserAnimation name_parser(AnimationListValue::Kind::Name);
+	Property quoted_names;
+	REQUIRE(name_parser.ParseValue(quoted_names, "\"quoted, name\", other", ParameterMap{}));
+	REQUIRE(quoted_names.unit == Unit::STYLE_VALUE);
+	const auto& quoted_items = static_cast<const AnimationListValue&>(*quoted_names.value.Get<StyleValuePtr>()).GetItems();
+	REQUIRE(quoted_items.size() == 2);
+	CHECK(quoted_items[0].name == "quoted, name");
+	CHECK(quoted_items[1].name == "other");
+	CHECK(quoted_names.value.Get<StyleValuePtr>()->ToString() == "\"quoted, name\", other");
 
-	REQUIRE(document->SetProperty("transition", "opacity calc(1s - 200ms) calc(-250ms) linear-in 0.5"));
-	const Property* transition_property = document->GetLocalProperty("transition");
-	REQUIRE(transition_property);
-	REQUIRE(transition_property->unit == Unit::TRANSITION);
-	const TransitionList transition_list = transition_property->value.GetReference<TransitionList>();
+	REQUIRE(document->SetProperty("transition", "opacity calc(1s - 200ms) calc(-250ms) linear-in"));
+	const TransitionList transition_list = transitions();
 	REQUIRE(transition_list.transitions.size() == 1);
 	CHECK(transition_list.transitions[0].duration == doctest::Approx(0.8f));
 	CHECK(transition_list.transitions[0].delay == doctest::Approx(-0.25f));
-	CHECK(transition_list.transitions[0].reverse_adjustment_factor == doctest::Approx(0.5f));
 
 	REQUIRE(document->SetProperty("transition", "opacity min(1s, max(500ms, 2s)), width clamp(none, 1500ms, 2s)"));
-	transition_property = document->GetLocalProperty("transition");
-	REQUIRE(transition_property);
-	const TransitionList nested_transitions = transition_property->value.GetReference<TransitionList>();
+	const TransitionList nested_transitions = transitions();
 	REQUIRE(nested_transitions.transitions.size() == 2);
 	CHECK(nested_transitions.transitions[0].duration == doctest::Approx(1.f));
 	CHECK(nested_transitions.transitions[1].duration == doctest::Approx(1.5f));
 
-	// Final Number math in animation uses exactly the ordinary iteration-count rounding and validity policy.
+	// Final Number math in animation gives the same (fractional) iteration count as the ordinary number.
 	REQUIRE(document->SetProperty("animation", "spin 1s 2.6"));
-	animation_property = document->GetLocalProperty("animation");
-	REQUIRE(animation_property);
-	const int ordinary_iterations = animation_property->value.GetReference<AnimationList>()[0].num_iterations;
+	const float ordinary_iterations = animations()[0].iteration_count;
+	CHECK(ordinary_iterations == doctest::Approx(2.6f));
 	REQUIRE(document->SetProperty("animation", "spin 1s calc(2.6)"));
-	animation_property = document->GetLocalProperty("animation");
-	REQUIRE(animation_property);
-	CHECK(animation_property->value.GetReference<AnimationList>()[0].num_iterations == ordinary_iterations);
+	CHECK(animations()[0].iteration_count == ordinary_iterations);
 
-	TestsShell::SetNumExpectedWarnings(12);
+	TestsShell::SetNumExpectedWarnings(7);
 	CHECK_FALSE(document->SetProperty("animation", "spin calc(50%)"));
 	CHECK_FALSE(document->SetProperty("animation", "spin calc(1px)"));
 	CHECK_FALSE(document->SetProperty("animation", "calc(1px) 1s"));
@@ -2387,13 +2388,15 @@ TEST_CASE("Calculation.time.animation_transition_integration")
 	CHECK_FALSE(document->SetProperty("transition", "opacity calc(50%)"));
 	CHECK_FALSE(document->SetProperty("transition", "opacity calc(1px)"));
 	CHECK_FALSE(document->SetProperty("transition", "opacity calc(2)"));
-	CHECK_FALSE(document->SetProperty("animation", "spin 0s"));
-	CHECK_FALSE(document->SetProperty("animation", "spin calc(0s)"));
-	CHECK_FALSE(document->SetProperty("transition", "opacity calc(0s)"));
-	CHECK_FALSE(document->SetProperty("animation", "spin 1s 0.4"));
-	CHECK_FALSE(document->SetProperty("animation", "spin 1s calc(0.4)"));
 
-	// Existing delay policy is unchanged: negative delays are accepted for both ordinary and calculated time values.
+	// CSS: zero durations and fractional iteration counts are valid (6.3 rejected them).
+	CHECK(document->SetProperty("animation", "spin 0s"));
+	CHECK(document->SetProperty("animation", "spin calc(0s)"));
+	CHECK(document->SetProperty("transition", "opacity calc(0s)"));
+	CHECK(document->SetProperty("animation", "spin 1s 0.4"));
+	CHECK(document->SetProperty("animation", "spin 1s calc(0.4)"));
+
+	// Negative delays are accepted for both ordinary and calculated time values.
 	CHECK(document->SetProperty("animation", "spin 1s -0.5s"));
 	CHECK(document->SetProperty("animation", "spin calc(1s) calc(-500ms)"));
 
@@ -3151,9 +3154,9 @@ TEST_CASE("Calculation.animation.calculated_time_drives_animation")
 	REQUIRE(target);
 
 	REQUIRE(target->SetProperty("animation", "fade calc(100ms + 100ms) linear"));
-	const Property* animation_property = target->GetLocalProperty("animation");
-	REQUIRE(animation_property);
-	const AnimationList animation_list = animation_property->value.Get<AnimationList>();
+	context->Update();
+	REQUIRE(target->GetComputedValues().animation());
+	const AnimationList animation_list = *target->GetComputedValues().animation();
 	REQUIRE(animation_list.size() == 1);
 	CHECK(animation_list[0].duration == doctest::Approx(0.2f));
 

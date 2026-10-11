@@ -1,0 +1,46 @@
+{
+ "fixture": "animation/transition-allow-discrete-display.html",
+ "viewport": [
+  340,
+  120
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "half": [
+   {
+    "id": "discrete",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 120,
+    "h": 80
+   },
+   {
+    "id": "immediate",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   }
+  ],
+  "end": [
+   {
+    "id": "discrete",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   {
+    "id": "immediate",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   }
+  ]
+ }
+}

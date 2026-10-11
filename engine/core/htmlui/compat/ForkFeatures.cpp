@@ -26,12 +26,14 @@ namespace {
         false,   // RootIsWhere
         true,    // Fixed (phase 3, p3-layout: position: fixed against the viewport; docs/html-ui/FORK.md P3-L8)
         false,   // GroupOpacity
-        false,   // TimingFunctions
+        true,    // TimingFunctions (phase 3, p3-animation: CSS easing functions; docs/html-ui/FORK.md P3-A1)
         false,   // Important
         false,   // CssWideKeywords
         true,    // Grid (phase 3, p3-grid: CSS Grid, a port of Taffy; docs/html-ui/FORK.md P3-G1..P3-G3)
         true,    // TextShadow (phase 3, p3-text: native text-shadow; docs/html-ui/FORK.md)
         true,    // TextProperties (phase 3, p3-text: word-spacing, white-space longhands, overflow-wrap, text-decoration-*, ...)
+        true,    // AnimationLonghands (phase 3, p3-animation: FORK.md P3-A1..P3-A4)
+        true,    // IndividualTransforms (phase 3, p3-animation: FORK.md P3-A5)
         true,    // Sticky (phase 3, p3-layout: position: sticky, overflow: clip; docs/html-ui/FORK.md P3-L1, P3-L8)
         true,    // BoxParity (phase 3, p3-layout: flex, block and sizing parity; docs/html-ui/FORK.md P3-L2..P3-L10)
     };
@@ -40,6 +42,7 @@ namespace {
         "None", "Calc", "BorderStyle", "PercentRadius", "PseudoElements", "RootIsWhere", "Fixed",
         "GroupOpacity", "TimingFunctions", "Important", "CssWideKeywords", "Grid",
         "TextShadow", "TextProperties",
+        "AnimationLonghands", "IndividualTransforms",
         "Sticky", "BoxParity",
     };
 
@@ -208,6 +211,11 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
             return parses("transition", "opacity 1s cubic-bezier(0.1, 0.2, 0.3, 0.4)");
         case ForkFeature::Grid:
             return parses("display", "grid");
+        case ForkFeature::AnimationLonghands:
+            return parses("animation-fill-mode", "both") && parses("transition-behavior", "allow-discrete") &&
+                   parses("animation", "spin 1s 2.5 alternate-reverse backwards paused");
+        case ForkFeature::IndividualTransforms:
+            return parses("rotate", "45deg") && parses("scale", "1.5") && parses("translate", "10px 20%");
         case ForkFeature::CssWideKeywords:
             return parses("color", "inherit");
         case ForkFeature::Important: {

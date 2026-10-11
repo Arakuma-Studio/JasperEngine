@@ -40,6 +40,10 @@ namespace jasperengine{
         std::string getData() const;                  // textinput / IME text
         UIValue getDetail() const;                    // custom events (dispatchEvent)
 
+        // CSS animation and transition events (animationstart, ..., transitionend): the keyframes
+        // name, the transitioned property, and the seconds the animation or transition had run
+        std::string getAnimationName() const; std::string getPropertyName() const; float getElapsedTime() const;
+
     private:
         friend struct HtmlUIScriptAccess;   // p1-lua internals (HtmlUIScriptInternal.h) create and read the state
         std::shared_ptr<HtmlUIEventState> state;

@@ -632,35 +632,40 @@ std::vector<compat::LayoutBox> FixtureRunner::idBoxes() const{
     std::vector<compat::LayoutBox> boxes;
     if (!state->document)
         return boxes;
-    std::vector<Rml::Element*> stack = {state->document};
+    // (element, inside a 'display: none' subtree)
+    std::vector<std::pair<Rml::Element*, bool>> stack = {{state->document, false}};
     while (!stack.empty()){
-        Rml::Element* element = stack.back();
+        Rml::Element* element = stack.back().first;
+        // an element that is not displayed has no box: all zeros, as getBoundingClientRect() gives
+        const bool hidden = stack.back().second || element->GetDisplay() == Rml::Style::Display::None;
         stack.pop_back();
         const std::string id = element->GetId();
         if (!id.empty() && element != state->document){
             compat::LayoutBox box;
             box.id = id;
             box.tag = element->GetTagName();
-            // the union of the element's boxes, as getBoundingClientRect: an inline element split over
-            // several lines has one box per line (Element::GetBox(index, offset))
-            const Rml::Vector2f origin = element->GetAbsoluteOffset(Rml::BoxArea::Border);
-            Rml::Vector2f low = origin, high = origin + element->GetBox().GetSize(Rml::BoxArea::Border);
-            for (int i = 1; i < element->GetNumBoxes(); i++){
-                Rml::Vector2f offset;
-                const Rml::Box& part = element->GetBox(i, offset);
-                const Rml::Vector2f partLow = origin + offset;
-                const Rml::Vector2f partHigh = partLow + part.GetSize(Rml::BoxArea::Border);
-                low = Rml::Vector2f(std::min(low.x, partLow.x), std::min(low.y, partLow.y));
-                high = Rml::Vector2f(std::max(high.x, partHigh.x), std::max(high.y, partHigh.y));
+            if (!hidden){
+                // the union of the element's boxes, as getBoundingClientRect: an inline element split over
+                // several lines has one box per line (Element::GetBox(index, offset))
+                const Rml::Vector2f origin = element->GetAbsoluteOffset(Rml::BoxArea::Border);
+                Rml::Vector2f low = origin, high = origin + element->GetBox().GetSize(Rml::BoxArea::Border);
+                for (int i = 1; i < element->GetNumBoxes(); i++){
+                    Rml::Vector2f offset;
+                    const Rml::Box& part = element->GetBox(i, offset);
+                    const Rml::Vector2f partLow = origin + offset;
+                    const Rml::Vector2f partHigh = partLow + part.GetSize(Rml::BoxArea::Border);
+                    low = Rml::Vector2f(std::min(low.x, partLow.x), std::min(low.y, partLow.y));
+                    high = Rml::Vector2f(std::max(high.x, partHigh.x), std::max(high.y, partHigh.y));
+                }
+                box.x = low.x;
+                box.y = low.y;
+                box.w = high.x - low.x;
+                box.h = high.y - low.y;
             }
-            box.x = low.x;
-            box.y = low.y;
-            box.w = high.x - low.x;
-            box.h = high.y - low.y;
             boxes.push_back(std::move(box));
         }
         for (int i = element->GetNumChildren() - 1; i >= 0; i--)
-            stack.push_back(element->GetChild(i));
+            stack.push_back({element->GetChild(i), hidden});
     }
     return boxes;
 }

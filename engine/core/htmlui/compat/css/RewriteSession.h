@@ -51,6 +51,7 @@ namespace jasperengine::htmlui::compat {
         MediaResult media = MediaResult::unconditional();
         DeclarationList declarations;
         int layer = -1;                // index in Session::layerOrder; -1 unlayered
+        bool startingStyle = false;    // a rule of @starting-style (written inside one: AnimationLonghands)
         uint32_t order = 0;            // source order within the document
         // the selector stage
         ArenaList<RewrittenSelector> rewritten;

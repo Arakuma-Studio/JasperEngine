@@ -1,0 +1,136 @@
+{
+ "fixture": "animation/alternate-reverse.html",
+ "viewport": [
+  380,
+  210
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "first": [
+   {
+    "id": "normal",
+    "tag": "div",
+    "x": 90,
+    "y": 10,
+    "w": 40,
+    "h": 30
+   },
+   {
+    "id": "reverse",
+    "tag": "div",
+    "x": 230,
+    "y": 50,
+    "w": 40,
+    "h": 30
+   },
+   {
+    "id": "alternate",
+    "tag": "div",
+    "x": 90,
+    "y": 90,
+    "w": 40,
+    "h": 30
+   },
+   {
+    "id": "alternate-reverse",
+    "tag": "div",
+    "x": 230,
+    "y": 130,
+    "w": 40,
+    "h": 30
+   },
+   {
+    "id": "forwards",
+    "tag": "div",
+    "x": 230,
+    "y": 170,
+    "w": 40,
+    "h": 30
+   }
+  ],
+  "second": [
+   {
+    "id": "normal",
+    "tag": "div",
+    "x": 90,
+    "y": 10,
+    "w": 40,
+    "h": 30
+   },
+   {
+    "id": "reverse",
+    "tag": "div",
+    "x": 230,
+    "y": 50,
+    "w": 40,
+    "h": 30
+   },
+   {
+    "id": "alternate",
+    "tag": "div",
+    "x": 230,
+    "y": 90,
+    "w": 40,
+    "h": 30
+   },
+   {
+    "id": "alternate-reverse",
+    "tag": "div",
+    "x": 90,
+    "y": 130,
+    "w": 40,
+    "h": 30
+   },
+   {
+    "id": "forwards",
+    "tag": "div",
+    "x": 90,
+    "y": 170,
+    "w": 40,
+    "h": 30
+   }
+  ],
+  "after": [
+   {
+    "id": "normal",
+    "tag": "div",
+    "x": 160,
+    "y": 10,
+    "w": 40,
+    "h": 30
+   },
+   {
+    "id": "reverse",
+    "tag": "div",
+    "x": 160,
+    "y": 50,
+    "w": 40,
+    "h": 30
+   },
+   {
+    "id": "alternate",
+    "tag": "div",
+    "x": 160,
+    "y": 90,
+    "w": 40,
+    "h": 30
+   },
+   {
+    "id": "alternate-reverse",
+    "tag": "div",
+    "x": 160,
+    "y": 130,
+    "w": 40,
+    "h": 30
+   },
+   {
+    "id": "forwards",
+    "tag": "div",
+    "x": 300,
+    "y": 170,
+    "w": 40,
+    "h": 30
+   }
+  ]
+ }
+}
