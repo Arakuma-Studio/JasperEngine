@@ -184,6 +184,85 @@ shaders and the editor is also written out in `/tmp/shader-research/p3-api.md`.
   passes and 11 images; every run's images and views made stay constant between frames 40 and
   100 (targets reused). Only the GL backend was run; the other backends were compiled, not run.
 
+### 4.3 Shaders B (sl/p3-shaders-b)
+
+- `includes/output.glsl` (small addition, no change to the existing functions): `applyFog(vec3)`
+  (the scene fog on a colour, identity without `HAS_FOG`) and `finalizeFoggedColor(vec4)`
+  (`finalizeStraightColor`'s blend shaping and encoding without the fog). The scene colour has its
+  fog already, so a shader that composites its own colour over it writes
+  `finalizeFoggedColor(mix(scene, applyFog(own), a))`; the fog is affine in the colour, so this is
+  what blending the fogged colour over the scene draws. Water (REFRACTION), glass and heat haze use
+  it; `finalizeColor(sceneColor(...))` (as the scene-inputs fixture forks do) fogs the scene twice.
+- `water` (§2.2): `DEPTH_FOAM`, `ABSORPTION` (`@require scenedepth feature=...`) and `REFRACTION`
+  (`@require scenecolor scenedepth feature=REFRACTION`); the base state already blends, so every
+  variant is in the transparent queue. Thickness = the view-ray length through the water
+  (`(sceneLinearDepth - fragmentLinearDepth) / dot(ray, camera forward)`, 1 for orthographic
+  cameras); depth below the surface = thickness * |n.v| with the normal without the ripples.
+  DEPTH_FOAM: a band dense at every contact line, thinning out to none at `shoreFoamWidth` (0.12)
+  of depth, holes cut by the foam noise (`shoreFoamBreakup`). ABSORPTION: shallow to deep by
+  `1 - exp(-thickness / absorptionDepth)` (at least the phase 1 fresnel term), alpha fading in over
+  `shoreFade`. REFRACTION: the scene colour at the screen UV shifted by the ripples' view-space
+  bend (`refractionStrength` screen UV per unit, x scaled by the aspect), growing over
+  `refractionDepth` of thickness (none at the shore line), scaled so it never leaves the screen
+  (no smeared border), the straight sample where the shifted one is in front of the surface; the
+  water is mixed over it and written with alpha 1 (with ABSORPTION the shifted sample's thickness
+  sets the colour). With the three off the variant compiles to the phase 1 code: the export
+  fixture's Lit and Blend scenes (water unlit and pixel lit with WAVES, and in all five blend
+  modes) are pixel for pixel identical to c46fa1d6, editor renders and game screenshots.
+  Limits (documented in the shader): vertical faces seen from straight above leave no depth gap,
+  so no foam there; the rejection of foreground samples leaves a faint line along silhouettes
+  crossing the water (as URP's opaque-texture refraction).
+- `glass` (new, category Effects, `@lighting none pixel`, `@require normals position scenecolor
+  scenedepth`, `uv1` with NORMAL_MAP, `blend=alpha zwrite=off shadows=off`): the view ray bent by
+  `refract(-v, n, 1 / ior)` over `thickness`, projected with `frame.projectionMatrix` (|P00|,
+  |P11|: a flipped render-to-texture projection keeps screen UV y up) at the fragment's view depth
+  (1 for orthographic), so the shift shrinks with distance; same screen clamp and foreground
+  rejection as water. Transmission: scene * tint * mix(1, absorptionColor, 1 - exp(-absorption *
+  thickness / |n.v|)). Reflection: Schlick with f0 from the ior, `reflectionColor` *
+  `reflectionStrength`, times a cubemap with `REFLECTION_MAP` (`@texture u_reflectionTexture black
+  cube`). Decision: library shaders have no IBL or reflection-probe binding (Lit's; 13.3), so the
+  probe/IBL is not used; wiring it would be an engine change (a probe/IBL block and textures for
+  manifest shaders). Pixel lights add a Blinn-Phong glint (shadowed). `NORMAL_MAP` (tiling,
+  strength) with simple_lit's derivative tangent frame; `BLUR`: four bilinear taps on a rotated
+  square `blurRadius` copy texels out (at the default half-resolution copy each tap averages 2 x 2
+  pixels). Lua cannot set a cube shader texture (`Material:setShaderTexture` takes a 2D path), so
+  the Lua fixture shows the reflection colour; MCP (`{"cube": path}`) and the inspector can, and
+  the export scene does.
+- `heat_haze` (new, Effects, `@require uv1 color scenecolor`, `normals position` with
+  `EDGE_FADE_FRESNEL`, `scenedepth` with `SOFT`; `blend=alpha zwrite=off cull=off shadows=off`):
+  two layers of a noise texture's red/green (`noiseTiling`, `scrollSpeed`, `secondScrollSpeed`, the
+  second 1.7 times smaller) shift the scene colour by up to `strength` screen UV; the mask (vertex
+  and instance alpha, `MASK_TEXTURE` red times alpha, `@keywords EDGE_FADE UV FRESNEL NONE`,
+  SOFT) scales the shift and is the alpha. SOFT fades within `softness` of the opaque scene and
+  rejects samples in front. The default noise (gray) shifts nothing: assign a smooth noise.
+  Closed volumes should cull back (the far side's UV seam shows through otherwise); EDGE_FADE_UV
+  assumes 0..1 UVs (an atlas sprite's rect UVs fade at the rect's place in the atlas).
+- `docs/shaders/library.md` regenerated. Its "Reads the scene" line (editor/shader/
+  ShaderLibraryDoc.cpp) names both inputs for every scene-reading shader, from
+  `getPossibleSceneInputs`, whatever feature adds them; the Inputs line says which feature does.
+- Fixture: `tools/fixtures/shader-library` group `phase3b` (`scripts/phase3b.lua`): four pools
+  over a checker bed sloping out of the water, rocks and tilted blocks crossing the surface,
+  divider walls (all features lit, then each alone); glass before vertical stripes (turned clear
+  pane, frosted, thick green normal-mapped, a lens sphere with a red post in front, a lit tinted
+  sphere); heat haze over opaque flames, a fresnel sphere portal and a soft-masked quad. Views
+  `P3B_VIEW=water|water_low|water_edge|glass|haze`, `P3B_ORTHO=1`. Export:
+  `shader-library-export/Phase3B.scene` (generate.py `build_phase3b`: a pool with the three water
+  features, a frosted and a normal-mapped pane, a lit glass sphere with REFLECTION_MAP on a
+  generated horizontal-cross cubemap, a SOFT haze quad and a fresnel haze sphere, every scroll
+  frozen); check.py compares it when present. Only Phase3B.scene, project.yaml's scene list and the
+  cubemap were taken from the generate run (the other scenes regenerate identical but for ids).
+- Checks run: full `tools/build.sh linux`; `shaders --library all --backend all` (31 shaders, 9378
+  compiles, 0 failures, no manifest diagnostic; water 84, glass 65, heat_haze 40 variants);
+  smoke tests of `SL_GROUPS=phase3b` (every view, and `P3B_ORTHO=1`; screenshots read: foam along
+  the shores, rocks, blocks and dividers; absorption from the clear shore to the deep front;
+  refraction of the bed with the rocks, blocks and lip above the surface not pulled into it and no
+  smear at the left and bottom borders; frosted pane blurred at the half-resolution copy; lens
+  sphere; the post in front of it not refracted), heat haze animated (screenshots 6 s apart: the
+  three haze areas changed, mean 25 to 46 of 255, the rest 0), the whole shader-library fixture,
+  scene-inputs (default, `SI_SCENE=saved`, `SI_ORTHO=1`); `check.sh` (six scenes pass, Phase3B
+  mean difference 0.46); the phase 1 water identity above; the MCP suite (262 passed, 3 skipped).
+  Only the GL backend was run.
+
 ## 5. Definition of done
 
 All requirements implemented, all checks pass, merged into `shader-library`, review pass
