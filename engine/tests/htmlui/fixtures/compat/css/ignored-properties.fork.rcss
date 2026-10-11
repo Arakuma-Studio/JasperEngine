@@ -1,3 +1,5 @@
 #htmlui-root .ignored {
+overflow-clip-margin: 0px;
+scrollbar-gutter: auto;
 user-select: auto;
 }

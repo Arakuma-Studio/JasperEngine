@@ -4,18 +4,18 @@ justify-content: center;
 }
 #htmlui-root .pc2 {
 align-content: space-between;
-justify-content: flex-start;
+justify-content: start;
 }
 #htmlui-root .pi {
 align-items: center;
 justify-items: center;
 }
 #htmlui-root .pi2 {
-align-items: flex-start;
+align-items: start;
 justify-items: end;
 }
 #htmlui-root .ps {
-align-self: flex-end;
+align-self: end;
 justify-self: end;
 }
 #htmlui-root .ps2 {
@@ -23,6 +23,6 @@ align-self: center;
 justify-self: stretch;
 }
 #htmlui-root .safe {
-align-content: center;
-justify-content: center;
+align-content: safe center;
+justify-content: safe center;
 }
