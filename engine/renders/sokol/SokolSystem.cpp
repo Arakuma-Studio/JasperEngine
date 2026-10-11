@@ -3,6 +3,9 @@
 
 #include "SokolSystem.h"
 
+#include <cstdio>
+#include <cstdlib>
+
 #include "System.h"
 #include "sokol_gfx.h"
 #include "SokolCmdQueue.h"
@@ -51,7 +54,30 @@ void SokolSystem::setup(){
 
     sg_setup(&desc);
 
+    // diagnostics: the passes, draws and resources of each frame (getFrameStatsLine)
+    const char* frameStats = std::getenv("JASPERENGINE_FRAME_STATS");
+    if (frameStats && frameStats[0] != '\0' && frameStats[0] != '0'){
+        sg_enable_stats();
+    }
+
     SokolCmdQueue::start();
+}
+
+std::string SokolSystem::getFrameStatsLine(){
+    if (!sg_stats_enabled())
+        return std::string();
+    const sg_stats stats = sg_query_stats();
+    const sg_frame_stats& frame = stats.prev_frame;
+    char line[512];
+    std::snprintf(line, sizeof(line),
+        "%u passes, %u draws, %u pipelines applied, %u bindings applied, %u uniform uploads (%u bytes); "
+        "images %u alive (%u made, %u made last frame), pipelines %u alive (%u made), views %u alive (%u made)",
+        frame.num_passes, frame.num_draw + frame.num_draw_ex, frame.num_apply_pipeline, frame.num_apply_bindings,
+        frame.num_apply_uniforms, frame.size_apply_uniforms,
+        stats.total.images.alive, stats.total.images.allocated, frame.images.allocated,
+        stats.total.pipelines.alive, stats.total.pipelines.allocated,
+        stats.total.views.alive, stats.total.views.allocated);
+    return std::string(line);
 }
 
 void SokolSystem::commitQueue(){

@@ -16,6 +16,11 @@ namespace jasperengine{
         static void commit();
         static void shutdown();
 
+        // logs "Frame stats (frame N): ..." with the GPU work of the last committed frame and
+        // the live GPU resources, in the render thread's order (JASPERENGINE_FRAME_STATS=1;
+        // nothing otherwise)
+        static void logFrameStats(uint64_t frame);
+
         static void scheduleCleanup(void (*cleanupFunc)(void* cleanupData), void* cleanupData, int32_t numFramesToDefer = 0);
         static void addQueueCommand(void (*custom_cb)(void* custom_data), void* custom_data);
     };

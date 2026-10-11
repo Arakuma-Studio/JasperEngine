@@ -5,6 +5,9 @@
 
 #include "sokol/SokolSystem.h"
 #include "Engine.h"
+#include "Log.h"
+
+#include <string>
 
 using namespace jasperengine;
 
@@ -26,6 +29,20 @@ void SystemRender::commit(){
 
 void SystemRender::shutdown(){
     SokolSystem::shutdown();
+}
+
+namespace{
+    void printFrameStats(void* data){
+        uint64_t* frame = static_cast<uint64_t*>(data);
+        const std::string line = SokolSystem::getFrameStatsLine();
+        if (!line.empty())
+            Log::print("Frame stats (frame %llu): %s", (unsigned long long)*frame, line.c_str());
+        delete frame;
+    }
+}
+
+void SystemRender::logFrameStats(uint64_t frame){
+    addQueueCommand(&printFrameStats, new uint64_t(frame));
 }
 
 void SystemRender::scheduleCleanup(void (*cleanupFunc)(void* cleanupData), void* cleanupData, int32_t numFramesToDefer){

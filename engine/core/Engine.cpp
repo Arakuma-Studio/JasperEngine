@@ -1129,16 +1129,33 @@ void Engine::systemViewChanged(){
 // every scene drawn is fully loaded and no shader variant is still compiling, so a test
 // can wait for that instead of a fixed time. A few frames in a row must be ready: a
 // script creating objects in its first updates leaves the scenes loaded for a frame.
+// With JASPERENGINE_FRAME_STATS=1 too, it then logs the GPU work of a frame soon after and
+// of frames well after (SystemRender::logFrameStats): passes, draws and live resources, to
+// compare builds and to see that nothing is made per frame.
 void Engine::signalReadyOnce(){
     static const bool enabled = [](){
         const char* value = std::getenv("JASPERENGINE_READY_SIGNAL");
         return value && value[0] != '\0' && value[0] != '0';
     }();
+    static const bool frameStats = [](){
+        const char* value = std::getenv("JASPERENGINE_FRAME_STATS");
+        return value && value[0] != '\0' && value[0] != '0';
+    }();
     static bool signalled = false;
     static int readyFrames = 0;
     static uint64_t frames = 0;
-    if (!enabled || signalled)
+    static uint64_t signalledFrame = 0;
+    if (!enabled)
         return;
+    if (signalled){
+        if (frameStats){
+            frames++;
+            const uint64_t after = frames - signalledFrame;
+            if (after == 2 || after == 120 || after == 240)
+                SystemRender::logFrameStats(frames);
+        }
+        return;
+    }
 
     frames++;
     bool ready = ShaderPool::getPendingShaderCount() == 0 && !scenes.empty();
@@ -1148,6 +1165,7 @@ void Engine::signalReadyOnce(){
     readyFrames = ready ? readyFrames + 1 : 0;
     if (readyFrames >= 10){
         signalled = true;
+        signalledFrame = frames;
         Log::print("Engine ready: every scene loaded and no shader build pending (frame %llu)", (unsigned long long)frames);
         for (Scene* scene : scenes){
             scene->getSystem<RenderSystem>()->logRenderObjects();
