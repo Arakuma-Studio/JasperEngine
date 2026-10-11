@@ -11,6 +11,7 @@
 // RmlUi's default is the CSS initial value, else that value; `inherit` -> the textual
 // companion var(--html-inh-P, <initial>).
 
+#include "htmlui/compat/ForkFeatures.h"
 #include "htmlui/compat/css/CssAst.h"
 #include <string>
 #include <string_view>
@@ -29,7 +30,7 @@ namespace jasperengine::htmlui::compat {
         // writes the declaration for a CSS-wide keyword
         static void apply(DeclContext& context, const std::string& keyword);
         // the RCSS properties a CSS property writes (shorthands expanded)
-        static std::vector<std::string> outputProperties(const std::string& cssProperty);
+        static std::vector<std::string> outputProperties(const std::string& cssProperty, const ForkFeatures& fork = ForkFeatures());
         // is an RCSS property inherited (CSS inheritance)?
         static bool inherited(const std::string& rcssProperty);
     };

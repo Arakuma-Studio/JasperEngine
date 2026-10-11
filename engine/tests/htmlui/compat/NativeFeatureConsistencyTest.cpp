@@ -105,6 +105,25 @@ namespace {
         {ForkFeature::Grid, SampleKind::Declaration, "grid-column-end: -1", "", "HTMLUI-CSS-0007"},
         {ForkFeature::Grid, SampleKind::Declaration, "justify-items: center", "", "HTMLUI-CSS-0007"},
         {ForkFeature::Grid, SampleKind::Declaration, "justify-self: end", "", "HTMLUI-CSS-0007"},
+        // p3-text
+        {ForkFeature::TextShadow, SampleKind::Declaration, "text-shadow: 1px 2px 3px #000000, 0 0 2px", "font-effect:", ""},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "letter-spacing: 10%", "", "HTMLUI-CSS-0004"},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "word-spacing: 0.25em", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "text-align: start", "text-align:left", ""},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "text-decoration: underline dotted", "text-decoration:underline", ""},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "text-decoration-line: underline overline", "text-decoration:underline", ""},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "text-decoration-color: #ff0000", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "text-decoration-style: double", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "text-decoration-thickness: 2px", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "text-underline-offset: 3px", "", "HTMLUI-CSS-0002"},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "white-space: break-spaces", "white-space:pre-wrap", ""},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "white-space-collapse: preserve", "white-space:pre", ""},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "text-wrap-mode: nowrap", "white-space:nowrap", ""},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "text-wrap: nowrap", "white-space:nowrap", ""},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "overflow-wrap: anywhere", "word-break:break-word", ""},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "word-wrap: break-word", "word-break:break-word", ""},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "word-break: keep-all", "word-break:normal", ""},
+        {ForkFeature::TextProperties, SampleKind::Declaration, "user-select: none", "", "HTMLUI-CSS-0003"},
     };
 
     // lower case, no white space, no trailing ';'

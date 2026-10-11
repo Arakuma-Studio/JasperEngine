@@ -1,0 +1,68 @@
+{
+ "fixture": "text/overflow-wrap.html",
+ "viewport": [
+  260,
+  140
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "normal",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 50,
+    "h": 10
+   },
+   {
+    "id": "anywhere",
+    "tag": "div",
+    "x": 70,
+    "y": 10,
+    "w": 50,
+    "h": 20
+   },
+   {
+    "id": "break-word",
+    "tag": "div",
+    "x": 130,
+    "y": 10,
+    "w": 50,
+    "h": 30
+   },
+   {
+    "id": "word-wrap",
+    "tag": "div",
+    "x": 190,
+    "y": 10,
+    "w": 50,
+    "h": 20
+   },
+   {
+    "id": "break-all",
+    "tag": "div",
+    "x": 10,
+    "y": 60,
+    "w": 50,
+    "h": 20
+   },
+   {
+    "id": "min-anywhere",
+    "tag": "span",
+    "x": 70,
+    "y": 60,
+    "w": 10,
+    "h": 60
+   },
+   {
+    "id": "min-break-word",
+    "tag": "span",
+    "x": 130,
+    "y": 60,
+    "w": 40,
+    "h": 20
+   }
+  ]
+ }
+}

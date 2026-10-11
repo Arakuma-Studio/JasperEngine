@@ -1,0 +1,8 @@
+{
+ "comment": "uppercase maps the sharp s to SS (one letter more: the boxes see it), lowercase and capitalize; Ahem squares make every width exact, Roboto shows the letters (boxes compared, the image reported).",
+ "viewport": [
+  320,
+  170
+ ],
+ "boxes": true
+}

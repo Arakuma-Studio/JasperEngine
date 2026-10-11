@@ -42,7 +42,7 @@ compat/css/ignored-properties.css:43:3: info: 'hyphenate-limit-chars' has no eff
 compat/css/ignored-properties.css:44:3: info: 'hyphenate-limit-last' has no effect in the engine; dropped [HTMLUI-CSS-0003]
 compat/css/ignored-properties.css:45:3: info: 'hyphenate-limit-lines' has no effect in the engine; dropped [HTMLUI-CSS-0003]
 compat/css/ignored-properties.css:46:3: info: 'hyphenate-limit-zone' has no effect in the engine; dropped [HTMLUI-CSS-0003]
-compat/css/ignored-properties.css:47:3: info: 'hyphens' has no effect in the engine; dropped [HTMLUI-CSS-0003]
+compat/css/ignored-properties.css:47:3: info: 'hyphens' has no effect in the engine; dropped (fix: insert soft hyphens (&shy;) where words may break) [HTMLUI-CSS-0003]
 compat/css/ignored-properties.css:48:3: info: 'image-orientation' has no effect in the engine; dropped [HTMLUI-CSS-0003]
 compat/css/ignored-properties.css:49:3: info: 'image-resolution' has no effect in the engine; dropped [HTMLUI-CSS-0003]
 compat/css/ignored-properties.css:50:3: info: 'interest-delay' has no effect in the engine; dropped [HTMLUI-CSS-0003]

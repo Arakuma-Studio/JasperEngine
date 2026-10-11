@@ -1,0 +1,3 @@
+#htmlui-root .ignored {
+user-select: auto;
+}
