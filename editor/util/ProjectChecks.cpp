@@ -845,8 +845,10 @@ std::vector<ShaderManifestDiagnostic> editor::ProjectChecks::validateShaderManif
         ? "engine/shaderlib/library/" + ShaderReference::getLibraryName(reference) + ".frag"
         : Util::resolveCustomShaderPaths(reference).frag;
     if (onlyEnabledFeatures) {
-        // a row behind a feature the compiled variant does not enable is not in it
-        const std::vector<std::string> enabled = manifest.resolveFeatures(ShaderReference::getFeatures(reference));
+        // a row behind a feature the compiled variant does not enable is not in it. The
+        // reference is the resolved variant, its defines exactly what was compiled: resolving
+        // it again would turn back on a default-on feature the variant has off
+        const std::vector<std::string> enabled = ShaderReference::getFeatures(reference);
         auto off = [&enabled](const std::string& feature) {
             return !ShaderManifest::isRowShown(feature, enabled);
         };
