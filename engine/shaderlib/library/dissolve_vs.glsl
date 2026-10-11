@@ -10,6 +10,9 @@
     // called from the stage's surfaceDisplace hook, which moves nothing
     void dissolveVaryings(vec3 objectPosition, vec3 objectNormal, mat4 modelMatrix){
         v_noisePosition = (modelMatrix * vec4(objectPosition, 1.0)).xyz;
-        v_noiseNormal = mat3(modelMatrix) * objectNormal;
+        // the inverse transpose (includes/instance_normal.glsl, from the surface include):
+        // under a non-uniform scale the model matrix itself would tilt the normal towards
+        // the stretched axis, and the projections would smear along it
+        v_noiseNormal = instanceNormal(mat3(modelMatrix), objectNormal);
     }
 #endif
