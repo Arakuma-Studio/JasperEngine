@@ -228,7 +228,8 @@ parameters, textures and features. A mesh shader goes on a submesh material
 (submeshes[0].material.shader with set_properties, or a .material file with create_material /
 update_material) with .shaderParams.<member> (colours linear, "#RRGGBB" is sRGB),
 .shaderTextures.<uniform> and .shaderFeatures; UI, Points, Lines and Sky take customShader plus
-shaderUniforms. Fork only when nothing fits: fork_shader copies the built-in shader into the
+shaderUniforms. Outlines and stencil effects: apply_material_preset (list_material_presets), then
+tune the material's extraPass and stencil. Fork only when nothing fits: fork_shader copies the built-in shader into the
 project and sets customShader. Read a fork before editing it: keep its declarations, includes,
 varyings and output, change the math near the end of main(), parameters in its own
 u_fs_customParams block (set_shader_uniform); rules and depth forks: jasper://docs/shaders. A

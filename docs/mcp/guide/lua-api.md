@@ -688,6 +688,12 @@ shader its submesh draws with (the mesh's `customShader`, else the scene default
 `getMaterial` / `material` resolves defaults and features against that one. UI (Image, Text,
 Polygon), Points, LineRenderer and Skybox objects have the same parameter/texture/feature
 methods for their `customShader`, and (but Skybox) `blendMode` and `depthWrite`.
+`stencil` (`MaterialStencil()`: `compare` (`MaterialStencilCompare.*`: `AUTO` takes the shader's
+rule, `DISABLED`, `NEVER` ... `ALWAYS`), `ref`, `readMask`, `writeMask` (0-255), `pass`, `fail`,
+`depthFail` (`MaterialStencilOp.*`)) and `colorWrite` (`MaterialColorWrite.*`: `AUTO`, `NONE`,
+`RGB`, `ALL`, or the bits `R`, `G`, `B`, `A` summed): on the material (`m.stencil.ref = 2`
+edits the copy's) and on UI, Points and LineRenderer objects (a copy there: set it back,
+`local s = image.stencil; s.compare = MaterialStencilCompare.EQUAL; image.stencil = s`).
 `extraPass` (`MaterialPass`, edited in place on the copy, then `setMaterial`): one more draw
 of the submesh right after it (`order = MaterialPassOrder.BEFORE`: before it) with its own
 `shader` (`""`: none), the same state fields as the material plus `stencil` and `colorWrite`,

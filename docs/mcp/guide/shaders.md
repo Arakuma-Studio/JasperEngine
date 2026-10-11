@@ -56,6 +56,40 @@ models draw with mesh shaders).
 
 Fork only when no library shader does what you need.
 
+## Presets, stencil and the extra pass
+
+Outlines, see-through silhouettes, stencil masks (portals, windows, sprite masks) and
+draw-once transparency are set up in one step by a **material preset**:
+`list_material_presets` lists them (id, name, description and the material fields each
+sets); `apply_material_preset preset="outline_hull" entity="Hero"` applies one to every
+submesh (or `submesh`) of the given GameObjects as one undo step, or to a `.material` file
+(`path`; linked submeshes follow). A preset changes only the fields it sets; a submesh
+linked to a `.material` file becomes its own material. Tune the result with the paths below.
+
+- `stencil` (material, extra pass, UI, Points and Lines): `{compare, ref, readMask,
+  writeMask, pass, fail, depthFail}`, or one field `stencil.<field>`. `compare`: `auto` (the
+  shader's `@state` stencil rule, else none), `disabled` (off), `never`, `less`, `equal`,
+  `less_equal`, `greater`, `not_equal`, `greater_equal`, `always`; any test but auto makes
+  the whole block explicit. `ref` and the masks are 0-255; ops `keep`, `zero`, `replace`,
+  `incr_clamp`, `decr_clamp`, `invert`, `incr_wrap`, `decr_wrap` (the manifest's `lequal`,
+  `incr`... work too). A block merges the keys given; `null` resets it. The stencil is
+  cleared at the start of each camera pass: a mask and its readers draw in the same camera,
+  the mask first (opaque queue before transparent; `sortPriority` orders within a queue).
+- `colorWrite`: `"auto"` (the shader's `colorwrite=`, else all), `"none"` (depth/stencil
+  only: invisible masks) or channels of `"rgba"` (`"rgb"`); a mask 0-15 works too.
+- `extraPass` (a material's): one more draw of the submesh right before or after it, with
+  its own mesh shader: `{shader, shaderParams, shaderTextures, shaderFeatures, blendMode,
+  cullMode, depthWrite, depthTest, depthOffsetFactor, depthOffsetUnits, stencil, colorWrite,
+  order}` (`order`: `after` or `before`), or one field `submeshes[0].material.extraPass.<key>`
+  (`.shaderParams.<member>`, `.shaderTextures.<uniform>`). Its values follow its own shader's
+  manifest (not the material's), with the same rules as the material's; its `auto` state is
+  its shader's `@state`. `shader: ""` draws no pass; a whole object merges, `null` removes
+  the pass. An inverted hull (`library:outline`) after a blended object covers it: put it
+  `before` (the preset does). The pass casts no shadows and skips the depth pre-pass.
+- A manifest declares stencil and colour state with `@state stencil=<test> ref= readmask=
+  writemask= pass= fail= zfail= colorwrite=` (also in `@state[...]` rules); `list_shaders`
+  reports them in `state.stencil` / `state.colorWrite`.
+
 ## Forking
 
 Custom (forked) shaders are set per component on Mesh, UI, Points, Lines (Line Renderer) and
