@@ -48,7 +48,16 @@ bool ComputeObjectFitRect(Vector2f box_size, Vector2f intrinsic_size, Style::Obj
 		}
 		return 0.f;
 	};
-	const Vector2f position = {resolve(position_x, box_size.x - size.x), resolve(position_y, box_size.y - size.y)};
+	Vector2f position = {resolve(position_x, box_size.x - size.x), resolve(position_y, box_size.y - size.y)};
+
+	// The object's edges on whole pixels (of the content box), as Chromium snaps the replaced content: a crisp image.
+	const Vector2f snapped_begin = position.Round();
+	const Vector2f snapped_end = (position + size).Round();
+	if (snapped_end.x > snapped_begin.x && snapped_end.y > snapped_begin.y)
+	{
+		position = snapped_begin;
+		size = snapped_end - snapped_begin;
+	}
 
 	// Cropped to the content box.
 	const Vector2f top_left = Math::Max(position, Vector2f(0.f));

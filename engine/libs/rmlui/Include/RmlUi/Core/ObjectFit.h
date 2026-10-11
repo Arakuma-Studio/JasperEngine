@@ -16,7 +16,8 @@ struct ObjectFitRect {
 /// Places an object of 'intrinsic_size' in a content box of 'box_size': 'fill' stretches it over the box, 'contain' and
 /// 'cover' scale it keeping its ratio to fit inside or to cover the box, 'none' keeps its size, 'scale-down' is the
 /// smaller of 'none' and 'contain'; the position is a length or percentage of the free space (box less object) per axis.
-/// An object without an intrinsic size (0 in an axis) fills the box. Returns false when nothing of it is visible.
+/// The object's edges are snapped to whole pixels of the box (as Chromium does). An object without an intrinsic size (0 in
+/// an axis) fills the box. Returns false when nothing of it is visible.
 RMLUICORE_API bool ComputeObjectFitRect(Vector2f box_size, Vector2f intrinsic_size, Style::ObjectFit fit, Style::LengthPercentage position_x,
 	Style::LengthPercentage position_y, ObjectFitRect& out);
 
