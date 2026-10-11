@@ -343,7 +343,12 @@ void jasperengine::htmlui::compat::rewriteBoxShadow(DeclContext& context){
         }
         if (!color && !hasVar){
             separate();
-            appendCurrentColor(shadows, context);
+            // the fork resolves currentcolor in a shadow where it is drawn (ForkFeature::CurrentColor): the
+            // element's color, also while it changes; without it the rule's static color or the companion
+            if (context.session.fork(ForkFeature::CurrentColor))
+                shadows += "currentcolor";
+            else
+                appendCurrentColor(shadows, context);
         }
     }
     companions::emitBoxShadow(context, shadows);

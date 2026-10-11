@@ -1558,7 +1558,9 @@ namespace {
             normalize.colors = facts.colorKeywords;
             // (the fork's outline-color takes currentcolor too: ForkFeature::Outline, p3-paint)
             // (and the fork's layers resolve currentcolor in gradient stops where they are drawn: ForkFeature::BackgroundLayers)
-            const bool nativeColorRewrite = writesCurrentColorNatively(row->rewrite) ||
+            // (box-shadow reaches the fork's box-shadow through compat's companions, substituted on the element:
+            // its currentcolor is the element's)
+            const bool nativeColorRewrite = writesCurrentColorNatively(row->rewrite) || row->rewrite == RewriteId::BoxShadow ||
                                             (row->rewrite == RewriteId::Outline && session.options.fork.has(ForkFeature::Outline)) ||
                                             ((row->rewrite == RewriteId::Background || row->rewrite == RewriteId::BackgroundLonghand ||
                                               row->rewrite == RewriteId::MaskImage) &&
