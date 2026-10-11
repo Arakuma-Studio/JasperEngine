@@ -109,6 +109,7 @@ namespace {
         {ForkFeature::Fixed, SampleKind::Declaration, "position: fixed", "", "HTMLUI-CSS-0007"},
         {ForkFeature::GroupOpacity, SampleKind::Declaration, "opacity: 0.5", "", ""},
         {ForkFeature::GroupOpacity, SampleKind::Declaration, "isolation: isolate", "", "HTMLUI-CSS-0003"},
+        {ForkFeature::GroupOpacity, SampleKind::Declaration, "will-change: transform, opacity", "", "HTMLUI-CSS-0003"},
         {ForkFeature::TimingFunctions, SampleKind::Declaration, "transition: opacity 0.2s ease-in-out", "quadratic-in-out", ""},
         {ForkFeature::Important, SampleKind::Rule, "color: red !important", ".sample{color:#ff0000ff;", ""},
         {ForkFeature::CssWideKeywords, SampleKind::Declaration, "color: inherit", "var(", ""},

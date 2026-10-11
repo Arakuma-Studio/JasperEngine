@@ -823,7 +823,7 @@ namespace {
         {"white-space-trim", U, FF::None, U, false, "none", false, RW::None, "", "not supported (draft)", "remove the whitespace in the markup", "css-text-4"},
         {"widows", I, FF::None, I, true, "2", false, RW::None, "", "paged media; no pages in a game UI", "", "css-break-3"},
         {"width", N, FF::None, N, false, "auto", false, RW::Sizing, "", "min-content, max-content, fit-content, stretch, -webkit-fill-available approximated as auto until the fork has BoxParity", "", "css-sizing-3"},
-        {"will-change", I, FF::None, I, false, "auto", false, RW::None, "", "browser optimization hint; no effect in a game UI", "", "css-will-change-1"},
+        {"will-change", I, FF::GroupOpacity, N, false, "auto", false, RW::None, "", "an optimization hint without an effect of its own; with the fork, naming a property that creates a stacking context (opacity, transform, filter, mask, isolation, ...) or a containing block for positioned boxes (transform, filter, perspective, contain, ...) creates it, as in CSS (GroupOpacity, phase 3); without it ignored", "", "css-will-change-1"},
         {"window-drag", I, FF::None, I, false, "none", false, RW::None, "", "window dragging belongs to the application window; ignored", "", "css-ui-4"},
         {"word-break", N, FF::TextProperties, N, true, "normal", false, RW::OverflowWrap, "", "keep-all -> normal (approximated; native with the fork); break-word native", "", "css-text-3"},
         {"word-space-transform", U, FF::None, U, true, "none", false, RW::None, "", "not supported", "insert the spaces in the text", "css-text-4"},
