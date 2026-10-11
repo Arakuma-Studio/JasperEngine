@@ -27,6 +27,6 @@ text-shadow: 0.1em 0.1em 0.2em #000000ff;
 #htmlui-root .var {
 text-shadow: var(--glow);
 }
-body#htmlui-root {
+body#htmlui-root:root {
 --glow: 0 0 8px #ff00ffff;
 }

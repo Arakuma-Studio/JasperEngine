@@ -51,7 +51,7 @@ box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 
 --html-box-shadow: 0px 0px 8px #00000080;
 box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
 }
-#htmlui-root .shadow-elsewhere:html-focus {
+#htmlui-root .shadow-elsewhere:focus {
 --html-outline-shadow: 0 0 0 2px #ffa500ff;
 box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
 }

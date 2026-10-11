@@ -190,6 +190,6 @@ border-left-style: solid;
 #htmlui-root .side-style {
 border-bottom-style: dotted;
 }
-body#htmlui-root {
+body#htmlui-root:root {
 --c: #ff0000ff;
 }

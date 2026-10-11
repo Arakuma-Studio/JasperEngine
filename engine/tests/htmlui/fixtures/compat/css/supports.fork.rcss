@@ -15,6 +15,10 @@ backdrop-filter: blur(4px);
 color: #0000ffff;
 --html-current-color: #0000ffff;
 }
+#htmlui-root .h {
+color: #008000ff;
+--html-current-color: #008000ff;
+}
 #htmlui-root .i {
 color: #ffc0cbff;
 --html-current-color: #ffc0cbff;

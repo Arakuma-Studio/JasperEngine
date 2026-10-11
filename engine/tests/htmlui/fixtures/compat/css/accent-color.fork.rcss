@@ -1,0 +1,16 @@
+body#htmlui-root:root {
+--html-accent: #e91e63ff;
+--html-check: html-layer("/@htmlui/ua/check.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll);
+--html-accent-contrast: #ffffffff;
+}
+#htmlui-root .auto {
+--html-accent: #0075ffff;
+}
+#htmlui-root .rgba {
+--html-accent: #008000cc;
+--html-check: html-layer("/@htmlui/ua/check.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll);
+--html-accent-contrast: #ffffffff;
+}
+#htmlui-root .var {
+--html-accent: var(--brand);
+}

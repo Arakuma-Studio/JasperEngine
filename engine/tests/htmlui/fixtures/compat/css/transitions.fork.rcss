@@ -55,7 +55,7 @@ transition: opacity var(--dur) var(--ease);
 #htmlui-root .whole {
 transition: var(--t);
 }
-body#htmlui-root {
+body#htmlui-root:root {
 --dur: 0.15s;
 --ease: cubic-bezier(0.4, 0, 0.2, 1);
 --t: color 1s ease;

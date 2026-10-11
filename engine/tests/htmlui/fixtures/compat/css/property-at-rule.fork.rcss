@@ -1,0 +1,10 @@
+body#htmlui-root:root {
+--angle: 0deg;
+}
+body#htmlui-root:root {
+--brand: #663399ff;
+}
+#htmlui-root .spin {
+transform: rotate(var(--angle));
+color: var(--brand);
+}

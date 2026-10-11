@@ -1,0 +1,23 @@
+#htmlui-root button:focus {
+--html-outline-shadow: 0 0 0 2px #0000ffff;
+box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+}
+#htmlui-root input:focus-visible {
+--html-box-shadow: 0px 0px 0px 2px #ffa500ff;
+box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+}
+#htmlui-root .menu:focus-within {
+background-color: #eeeeeeff;
+}
+#htmlui-root :focus, body#htmlui-root:focus {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+}
+#htmlui-root :focus:not(:focus-visible), body#htmlui-root:focus:not(:focus-visible) {
+--html-outline-shadow: 0 0 0 0 #0000;
+box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+}
+#htmlui-root a:hover:focus {
+color: #008000ff;
+--html-current-color: #008000ff;
+}

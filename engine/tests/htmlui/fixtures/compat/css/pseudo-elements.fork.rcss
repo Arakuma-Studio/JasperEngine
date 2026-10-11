@@ -8,6 +8,9 @@ height: 3px;
 content: "";
 position: absolute;
 }
+#htmlui-root .old::before {
+content: attr(data-x);
+}
 #htmlui-root .slider::before {
 content: "";
 background-color: #ffffffff;
@@ -22,7 +25,7 @@ font-style: italic;
 #htmlui-root .select selection {
 background-color: #ffff00ff;
 }
-#htmlui-root ol li > marker {
+#htmlui-root ol li::marker {
 color: #ff6347ff;
 --html-current-color: #ff6347ff;
 font-weight: bold;
