@@ -87,6 +87,13 @@ protected:
 	/// Formats, sizes, and positions all absolute elements whose containing block is this, and offsets relative elements.
 	void ClosePositionedElements();
 
+	/// For a scroll container, once its positioned elements are closed: the absolutely positioned boxes whose containing block
+	/// is this box or a box inside it (not inside another scroll container) extend its scrollable overflow (CSS Overflow 3
+	/// §2.2); they are laid out after the in-flow overflow is caught by SubmitBox. A scrollbar they need ('overflow: auto')
+	/// is enabled.
+	/// @returns False when a scrollbar was enabled: the box must be formatted again, as when SubmitBox fails.
+	bool CatchAbsoluteOverflow();
+
 	/// The containing block of an absolutely positioned element added without one, relative to our border box, when it is not
 	/// our padding box (a grid container's grid areas: GridContainer).
 	virtual std::optional<Rectanglef> GetAbsoluteContainingBlock(Element* element) const;
@@ -114,6 +121,9 @@ private:
 		const Vector2f padding_bottom_right) const;
 
 	AbsoluteElementMap absolute_elements; // List of absolutely positioned elements that we act as a containing block for.
+	// The absolutely positioned elements placed by us or by the boxes inside us whose scrollable overflow we hold
+	// (CatchAbsoluteOverflow): we are their nearest scroll container.
+	ElementList absolute_overflow_elements;
 	ElementList relative_elements;        // List of relatively positioned elements that we act as a containing block for.
 
 	Style::Overflow overflow_x = Style::Overflow::Visible;

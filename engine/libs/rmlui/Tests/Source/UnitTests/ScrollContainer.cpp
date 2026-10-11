@@ -143,3 +143,93 @@ TEST_CASE("ScrollContainer")
 	TestsShell::ShutdownShell();
 }
 
+namespace {
+
+const String absolute_overflow_rml = R"(
+<rml>
+<head>
+	<style>
+		body { width: 600px; height: 400px; margin: 0; padding: 0; }
+		div { display: block; }
+		scrollbarvertical { width: 15px; }
+		scrollbarhorizontal { height: 15px; }
+		scrollbarvertical slidertrack { height: 100%; }
+		scrollbarhorizontal slidertrack { width: 100%; height: 15px; }
+		scrollbarvertical sliderbar { margin: 3px; min-height: 17px; }
+		scrollbarhorizontal sliderbar { margin: 3px; min-width: 17px; }
+		scrollbarcorner { width: 15px; height: 15px; }
+		.scroller { position: absolute; width: 100px; height: 100px; overflow: auto; }
+		#a { left: 0; top: 0; }
+		#a-child { position: absolute; left: 10px; top: 10px; width: 150px; height: 50px; }
+		#b { left: 120px; top: 0; }
+		#b-inner { position: relative; height: 20px; margin-top: 5px; }
+		#b-child { position: absolute; left: 10px; top: 30px; width: 50px; height: 120px; }
+		#c { left: 240px; top: 0; overflow: hidden; }
+		#c-child { position: absolute; left: 30px; top: 40px; width: 150px; height: 150px; }
+		#d { left: 360px; top: 0; position: absolute; }
+		#d-scroller { position: static; width: 100px; height: 100px; overflow: auto; }
+		#d-child { position: absolute; left: 0; top: 0; width: 200px; height: 200px; }
+		#e { left: 0; top: 150px; }
+		#e-child { position: absolute; left: 0; top: 0; width: 50px; height: 50px; }
+		#e-grandchild { position: absolute; left: 40px; top: 60px; width: 100px; height: 100px; }
+	</style>
+</head>
+<body>
+	<div id="a" class="scroller"><div id="a-child"/></div>
+	<div id="b" class="scroller"><div id="b-inner"><div id="b-child"/></div></div>
+	<div id="c" class="scroller"><div id="c-child"/></div>
+	<div id="d"><div id="d-scroller"><div id="d-child"/></div></div>
+	<div id="e" class="scroller"><div id="e-child"><div id="e-grandchild"/></div></div>
+</body>
+</rml>
+)";
+
+} // namespace
+
+// Absolutely positioned boxes are scrollable overflow of the nearest scroll container of their containing block (CSS Overflow 3
+// §2.2): 6.3 laid them out after measuring the overflow, so they neither showed scrollbars nor could be scrolled to.
+TEST_CASE("ScrollContainer.AbsoluteOverflow")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	ElementDocument* document = context->LoadDocumentFromMemory(absolute_overflow_rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+
+	auto scrollbars = [&](const char* id) {
+		ElementScroll* scroll = document->GetElementById(id)->GetElementScroll();
+		return Vector2f(scroll->GetScrollbarSize(ElementScroll::VERTICAL), scroll->GetScrollbarSize(ElementScroll::HORIZONTAL));
+	};
+	auto scroll_size = [&](const char* id) {
+		Element* element = document->GetElementById(id);
+		return Vector2f(element->GetScrollWidth(), element->GetScrollHeight());
+	};
+
+	// its containing block is the scroll container: 160 wide (10 + 150), a horizontal scrollbar only
+	CHECK(scrollbars("a") == Vector2f(0.f, 15.f));
+	CHECK(scroll_size("a") == Vector2f(160.f, 85.f));
+
+	// its containing block is a box inside the scroll container: 5 + 30 + 120 = 155 high, a vertical scrollbar only
+	CHECK(scrollbars("b") == Vector2f(15.f, 0.f));
+	CHECK(scroll_size("b") == Vector2f(85.f, 155.f));
+
+	// 'overflow: hidden': no scrollbars, but scrollable to it
+	CHECK(scrollbars("c") == Vector2f(0.f, 0.f));
+	CHECK(scroll_size("c") == Vector2f(180.f, 190.f));
+	Element* c = document->GetElementById("c");
+	c->SetScrollTop(1000.f);
+	context->Update();
+	CHECK(c->GetScrollTop() == 90.f);
+
+	// its containing block is outside the scroll container: not its overflow
+	CHECK(scrollbars("d-scroller") == Vector2f(0.f, 0.f));
+	CHECK(scroll_size("d-scroller") == Vector2f(100.f, 100.f));
+
+	// a box positioned in an absolutely positioned box: 40 + 100 and 60 + 100, both scrollbars
+	CHECK(scrollbars("e") == Vector2f(15.f, 15.f));
+	CHECK(scroll_size("e") == Vector2f(140.f, 160.f));
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}

@@ -127,6 +127,9 @@ bool BlockContainer::Close(BlockContainer* parent_block_container)
 	// Now that we have been sized, we can proceed with formatting and placing positioned elements that this container
 	// acts as a containing block for.
 	ClosePositionedElements();
+	// (A scroll container is the root of its formatting context: formatted again when this fails, as when SubmitBox does.)
+	if (!CatchAbsoluteOverflow())
+		return false;
 
 	// Find the element baseline which is the distance from the margin bottom of the element to its baseline.
 	float element_baseline = 0;
