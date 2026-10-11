@@ -34,12 +34,11 @@
   #d0 { background-color: #40a0a0; }
   #d1 { display: revert; background-color: #a0a040; }
   #w5 { position: absolute; left: 150px; top: 120px; width: 120px; color: #602080; background-color: #e0e0e0; }
-  /* (the spans carry no id: the box of an inline box is not compared) */
-  .s1 { display: revert; }
-  .s2 { color: #208060; }
+  #s1 { display: revert; }
+  #s2 { color: #208060; }
   /* revert on a property without UA value behaves as unset: color inherits */
-  .s3 { color: #e02020; }
-  .s3 { color: revert; }
+  #s3 { color: #e02020; }
+  #s3 { color: revert; }
 </style>
 </head>
 <body>
@@ -47,6 +46,6 @@
 <div id="w2"><h1 id="h"></h1></div>
 <div id="w3"><p id="p"></p></div>
 <div id="w4"><div id="d0"></div><div id="d1" class="hid"></div></div>
-<div id="w5"><span class="hid s1">XX</span><span class="s2">XX</span><span class="s3">X</span></div>
+<div id="w5"><span id="s1" class="hid">XX</span><span id="s2">XX</span><span id="s3">X</span></div>
 </body>
 </html>

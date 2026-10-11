@@ -16,12 +16,11 @@
   #k1c { display: block; color: initial; background-color: transparent; }
 
   /* 2. font-size: inherit takes the parent's computed size (10px), not its 0.5em again;
-        initial is medium (16px), shown as a 2em x 1em box (Ahem's metrics are not whole
-        pixels at 16px) */
+        initial is medium (16px) */
   #k2 { left: 80px; top: 10px; width: 60px; height: 50px; font-size: 20px; line-height: 20px; color: #806020; background-color: #e0e0e0; }
   #k2a { font-size: 0.5em; line-height: 10px; }
   #k2b { font-size: inherit; line-height: 10px; }
-  #k2c { font-size: initial; width: 2em; height: 1em; background-color: #806020; }
+  #k2c { font-size: initial; line-height: 16px; }
 
   /* 3. width: inherit takes the computed 50%, resolved again against the child: 160 -> 80 -> 40 */
   #k3 { left: 150px; top: 10px; width: 160px; height: 30px; background-color: #e0e0e0; }
@@ -66,7 +65,7 @@
 </head>
 <body>
 <div id="k1" class="cell"><span id="k1a" class="red">XXX</span><span id="k1b" class="red">XX</span><span id="k1c" class="red">XXXX</span></div>
-<div id="k2" class="cell"><div id="k2a"><div id="k2b">XXX</div></div><div id="k2c"></div></div>
+<div id="k2" class="cell"><div id="k2a"><div id="k2b">XXX</div></div><div id="k2c">XX</div></div>
 <div id="k3" class="cell"><div id="k3a"><div id="k3b"></div></div></div>
 <div id="k4" class="cell"><div id="k4a"><div id="k4b"></div></div></div>
 <div id="k5" class="cell"><div id="k5a"><div id="k5b" class="red"></div></div></div>

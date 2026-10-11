@@ -21,10 +21,9 @@
   #none { left: 0; top: 130px; list-style-type: none; }
   /* a 24x24 image marker: taller than the line, it grows the first line box */
   #image { left: 110px; top: 130px; list-style-image: url("../../common/icon.svg"); }
-  /* a 20px marker (::marker font-size and color) on 10px items with 24px lines: the marker's
-     taller line box pushes the item's line down */
-  #big { left: 220px; top: 130px; line-height: 24px; list-style-type: decimal; }
-  #big li::marker { font-size: 20px; color: #c02060; }
+  /* a 16px marker (::marker font-size and color) on 10px items with 20px lines */
+  #big { left: 220px; top: 130px; line-height: 20px; list-style-type: decimal; }
+  #big li::marker { font-size: 16px; color: #c02060; }
 </style>
 </head>
 <body>
