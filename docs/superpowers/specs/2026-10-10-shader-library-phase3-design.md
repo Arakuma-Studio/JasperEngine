@@ -184,6 +184,70 @@ shaders and the editor is also written out in `/tmp/shader-research/p3-api.md`.
   passes and 11 images; every run's images and views made stay constant between frames 40 and
   100 (targets reused). Only the GL backend was run; the other backends were compiled, not run.
 
+### 4.4 Editor (sl/p3-editor)
+
+- Shared logic (§2.1 cost visibility): `Catalog` decides and words everything the inspector and
+  MCP say, so both agree: `getSceneInputsLabel(bits)` ("depth", "colour", "depth and colour"),
+  `getSceneInputsCost(bits, brief)` (brief: "a depth pre-pass and a colour copy per camera"; whole:
+  only passes with a visible reader pay, the depth pre-pass and its sharing with SSAO/SSR/post,
+  every mesh keeping a depth program, the copy's render-pass split on tile-based GPUs, Scene Color >
+  Scale / `scene_color_scale`, avoid on low-end mobile, transparent queue only),
+  `getShaderSceneInputsSummary(manifest)` ("Reads the scene depth (with SOFT) and colour"),
+  `getFeatureSceneInputs(manifest, define, whenOff)` (the inputs a feature or keyword value turns on
+  through its `feature=` rules, minus what the shader always reads; `whenOff` for `feature=!X`
+  rules), `getShaderSceneInputs(shader, features)`, `getMaterialSceneInputs(scene, entity, submesh,
+  extraPass)`, `getComponentSceneInputs`, and `getSceneInputQueueFix(scene, entity, submesh,
+  blend)`: for a submesh that `RenderSystem::getSubmeshSceneInputs` reports as reading from the
+  opaque queue, Alpha, only when Alpha does move it to the transparent queue (re-resolved on a
+  copy of the submesh; a fork forcing another `queue=` gets no fix).
+- Picker: every library-shader list (materials, extra passes, UI/points/lines/sky components,
+  scene defaults: `drawLibraryShaderCombo`) marks a shader whose `getPossibleSceneInputs()` is not
+  empty with an amber gauge and what it may read; its tooltip is the description, the summary,
+  the brief and the whole cost. The closed combo's tooltip adds the summary and brief cost. Feature
+  checkboxes and keyword values whose rules turn an input on get the same mark and tooltip ("On,
+  it reads the scene depth: ..."). Forks are not in the picker list; their feature rows are marked.
+- Info row: `drawShaderManifestRows` ends with "Reads scene <what>: <brief cost>" (amber, wrapped,
+  the whole cost in its tooltip) when the variant drawn (the shader with its features) reads the
+  scene: a material's shader, its extra pass's, a points component's. Like the other manifest
+  rows it shows for a single selection.
+- Opaque-queue error (§4.1): the row is wrapped and gets a "Use Alpha blending" button: one
+  `MultiPropertyCmd` (one undo step) setting `submeshes[N].material.blendMode` to Alpha on every
+  selected GameObject for which `getSceneInputQueueFix` holds. An extra pass reading the scene on
+  an opaque submesh gets the same fix (the pass draws at the submesh's queue position; the engine
+  has no per-pass queue).
+- Scene settings: the Scene Color > Scale help now weighs quality against cost (half: a quarter of
+  the pixels, a 2x2 average, right for distortion and mobile; full: sharp, four times the
+  bandwidth and memory). No "scene inputs in use" indicator: the engine has no accessor (the
+  readers and the last frame's stats are private `RenderSystem` members, only logged as the
+  "Scene inputs:" line); an engine getter (e.g. `uint32_t getSceneInputUsage() const`) would be
+  needed, outside this branch's files. Not added.
+- MCP: `list_shaders` adds `cost_note` to every entry whose `scene_inputs` is not empty (summary:
+  one line, also appended to the text line in brackets; detail: plus the whole cost); in detail
+  each feature has `scene_inputs` / `scene_inputs_when_off` and each keyword group a
+  `scene_inputs` map by value when they turn an input on. `get_entity` adds, for an entity with a
+  reader, `scene_inputs` (per reading submesh: `reads`, `extra_pass_reads`, `queue`, and on the
+  opaque-queue error `error` and `fix`, the `set_properties` values of the inspector's button;
+  per reading points component: `reads`), `scene_inputs_cost`, and a sentence on the text line
+  ("ERROR: ..." when one draws opaque). Terrains are skipped as in `sceneInputFindings`.
+  `get_shader_uniforms` adds `scene_inputs` and `cost_note` for the material's or component's
+  variant. Outputs of entities and shaders without scene inputs are unchanged.
+- Docs: `docs/mcp/guide/shaders.md` "Scene depth and colour" (when to use, cost, the
+  transparent-queue rule and its fix, the opaque+sky-only copy, what the tools report);
+  `McpInstructions` one sentence (16,356 of 16,384 bytes; the shaders paragraph tightened;
+  `scene_inputs` and `cost_note` added to the guide test's non-tool words); `TOOLS.md` regenerated.
+- Tests: `tools/mcp/tests/test_scene_inputs_editor.py` (forks: depth always, colour with a
+  feature; points): list_shaders `cost_note` and that features plus requires make up
+  `scene_inputs` (vacuous until library shaders read the scene: none did on this branch),
+  get_entity / get_shader_uniforms per variant, the opaque-queue error and fix, applying the fix
+  through `set_properties`, undo restoring the error, an extra pass reader, a points reader.
+- Checks run: full `tools/build.sh linux`; the MCP suite (268 passed, 3 slow ones skipped);
+  inspector screenshots over MCP (harness Xvfb, xdotool hovers) with a temporary manifest hack
+  (`unlit` given a `SOFT` feature requiring `scenedepth`, reverted, full rebuild after): the
+  picker's gauge on Unlit and its tooltip, the feature checkbox's gauge and tooltip, the info row,
+  the opaque-queue error with its button; the button set Alpha (error gone) and undo restored
+  Opaque (read back through `get_entity`); the 17 scene and prefab files of the fixture projects
+  re-saved with this editor and with a build of c46fa1d6: all byte-identical.
+
 ## 5. Definition of done
 
 All requirements implemented, all checks pass, merged into `shader-library`, review pass
