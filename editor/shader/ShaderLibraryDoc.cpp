@@ -242,6 +242,26 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
         else if (state.queue == ShaderQueue::TRANSPARENT) parts.push_back("queue transparent");
         if (state.shadows == ShaderShadowCasting::OFF) parts.push_back("shadows off");
         else if (state.shadows == ShaderShadowCasting::ON) parts.push_back("shadows on");
+        if (state.colorWrite >= 0)
+            parts.push_back("colour write " + ShaderManifest::getColorWriteName(state.colorWrite));
+        // the stencil keys the line sets, in @state syntax (masks in hex)
+        if (state.stencilSet != 0){
+            auto hex = [](int value){
+                static const char digits[] = "0123456789abcdef";
+                return std::string("0x") + digits[(value >> 4) & 15] + digits[value & 15];
+            };
+            const MaterialStencil& stencil = state.stencil;
+            std::string text = "stencil";
+            if (state.stencilSet & ShaderStencil_Compare)
+                text += std::string(" ") + ShaderManifest::getStencilCompareName(stencil.compare);
+            if (state.stencilSet & ShaderStencil_Ref) text += " ref " + std::to_string(stencil.ref);
+            if (state.stencilSet & ShaderStencil_ReadMask) text += " read mask " + hex(stencil.readMask);
+            if (state.stencilSet & ShaderStencil_WriteMask) text += " write mask " + hex(stencil.writeMask);
+            if (state.stencilSet & ShaderStencil_Pass) text += std::string(" pass ") + ShaderManifest::getStencilOpName(stencil.pass);
+            if (state.stencilSet & ShaderStencil_Fail) text += std::string(" fail ") + ShaderManifest::getStencilOpName(stencil.fail);
+            if (state.stencilSet & ShaderStencil_DepthFail) text += std::string(" depth fail ") + ShaderManifest::getStencilOpName(stencil.depthFail);
+            parts.push_back(text);
+        }
 
         std::string text;
         for (const std::string& part : parts)

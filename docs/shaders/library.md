@@ -85,14 +85,19 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Gradient Sky](#librarygradient_sky) `library:gradient_sky` | sky | Sky | none | - |
 | [Hologram](#libraryhologram) `library:hologram` | mesh | Effects | none | additive |
 | [Matcap](#librarymatcap) `library:matcap` | mesh | Stylized | none | opaque |
+| [Outline](#libraryoutline) `library:outline` | mesh | Outline and stencil | none | opaque |
+| [Outline (stencil)](#libraryoutline_stencil) `library:outline_stencil` | mesh | Outline and stencil | none | opaque |
 | [Panner](#librarypanner) `library:panner` | mesh | Effects | none | opaque |
 | [Panoramic Sky](#librarypanoramic_sky) `library:panoramic_sky` | sky | Sky | none | - |
 | [Particle](#libraryparticle) `library:particle` | points | Particles | none | alpha (Auto) |
 | [Procedural Sky](#libraryprocedural_sky) `library:procedural_sky` | sky | Sky | none | - |
 | [Rim](#libraryrim) `library:rim` | mesh | Effects | none | additive |
+| [Silhouette](#librarysilhouette) `library:silhouette` | mesh | Outline and stencil | none | alpha |
 | [Simple Lit](#librarysimple_lit) `library:simple_lit` | mesh | Lit | pixel, vertex, mixed | opaque |
 | [Spin and Bob](#libraryspin_bob) `library:spin_bob` | mesh | Animated | none, vertex, pixel | opaque |
 | [Sprite](#librarysprite) `library:sprite` | mesh | 2D | none | alpha |
+| [Sprite mask](#librarysprite_mask) `library:sprite_mask` | mesh | 2D | none | opaque |
+| [Stencil mask](#librarystencil_mask) `library:stencil_mask` | mesh | Outline and stencil | none | opaque |
 | [Toon](#librarytoon) `library:toon` | mesh | Stylized | pixel, mixed, vertex | opaque |
 | [Triplanar](#librarytriplanar) `library:triplanar` | mesh | Stylized | none, pixel, vertex | opaque |
 | [UI Effects](#libraryui_fx) `library:ui_fx` | ui | 2D | none | alpha (Auto) |
@@ -748,6 +753,21 @@ Sprite, tilemap and polygon effects on the sprite's own texture and colour: outl
 | `OVERLAY` | off | Overlay (hard light) |
 | `GLOW` | off | Glow |
 
+<a id="librarysprite_mask"></a>
+### Sprite mask (`library:sprite_mask`)
+
+Unity-style Sprite Mask: writes stencil 16 (bits 0xF0) in the shape of the sprite's own image (its texture rect or atlas frame; texels below the alpha cutoff write nothing), and no colour or depth. Put it on a Sprite (Sprite mask preset); sprites with the Visible inside mask preset (stencil equal 16) show only inside it, Visible outside mask (not equal) only outside. In a 3D or distance-sorted camera the mask (opaque queue) draws before the blended sprites; in a 2D camera that draws in hierarchy order, place the mask above the sprites it masks. Turn colour writes on to see it.
+
+- **Type**: mesh (a material's shader); category 2D.
+- **Lighting**: none.
+- **Inputs**: `uv1`.
+- **Default state**: blend opaque, cull off (both faces), depth write off, shadows off, colour write none, stencil always ref 16 write mask 0xf0 pass replace.
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `alphaCutoff` | range 0 to 1 | 0.5 | Alpha cutoff |
+
 <a id="libraryui_fx"></a>
 ### UI Effects (`library:ui_fx`)
 
@@ -877,3 +897,122 @@ Sky, horizon and ground colours with a sun disc and halo at the main directional
 | Feature | Default | Description |
 |---|---|---|
 | `CLOUDS` | off | Clouds |
+
+## Outline and stencil
+
+<a id="libraryoutline"></a>
+### Outline (`library:outline`)
+
+Inverted-hull outline: the mesh pushed out along its smoothed normal (closed at hard edges) and drawn with its front faces culled, in one colour. Use it as a material's extra pass (Outline (hull) preset): order After for opaque objects (cheapest), Before for blended ones (a blended object writes no depth, so a hull after it covers it). Width in pixels (constant at any distance, perspective or orthographic) or in world units (optionally growing with distance, capped). Works with skinning, morph targets and instancing; for Sprites use the Sprite shader's Outline feature instead (a flat quad has no hull). No shadows.
+
+- **Type**: mesh (a material's shader); category Outline and stencil.
+- **Lighting**: none.
+- **Inputs**: `smoothnormals`; `uv1` with `TEXTURE`.
+- **Default state**: blend opaque, cull front, depth write on, shadows off.
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `outlineColor` | HDR colour | (0.02, 0.02, 0.02, 1) | Colour |
+| `screenWidth` | range 0 to 32 | 3 | Width (pixels) (with `WIDTH_MODE_SCREEN`) |
+| `worldWidth` | float | 0.03 | Width (world units) (with `WIDTH_MODE_WORLD`) |
+| `distanceScale` | range 0 to 1 | 1 | Distance scaling (1: constant on-screen size beyond the reference distance) (with `DISTANCE_SCALE`) |
+| `referenceDistance` | float | 10 | Reference distance (world width applies up to it) (with `DISTANCE_SCALE`) |
+| `maxWidth` | float | 0.25 | Maximum width (world units) (with `DISTANCE_SCALE`) |
+| `textureTiling` | vector4 | (1, 1, 0, 0) | Texture tiling (xy) and offset (zw) (with `TEXTURE`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_outlineTexture` | white | Tint texture (with `TEXTURE`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `DISTANCE_SCALE` | off | Grow with distance (world width) |
+| `TEXTURE` | off | Tint texture |
+| `VERTEX_COLOR_WIDTH` | off | Width times vertex colour red |
+
+| Keyword group | Values (first is the default) | Description |
+|---|---|---|
+| `WIDTH_MODE` | `WIDTH_MODE_SCREEN`, `WIDTH_MODE_WORLD` | Width in |
+
+<a id="libraryoutline_stencil"></a>
+### Outline (stencil) (`library:outline_stencil`)
+
+QuickOutline-style outline that never covers its object: an extra pass After a main material that writes stencil 1 over its whole silhouette (Outline (stencil) preset: stencil always, ref 1, write mask 1, pass and depth-fail replace). Draws the pushed-out mesh where stencil bit 1 is not set. Visibility Always draws it through walls (give the object a sort priority above its occluders, as the preset does, so they draw first); Visible only depth-tests it. Width in pixels or world units, as Outline. Uses stencil bit 0x01. No shadows.
+
+- **Type**: mesh (a material's shader); category Outline and stencil.
+- **Lighting**: none.
+- **Inputs**: `smoothnormals`; `uv1` with `TEXTURE`.
+- **Default state**: blend opaque, cull off (both faces), depth write off, depth test always, shadows off, stencil notequal ref 1 read mask 0x01 write mask 0x00; with `VISIBILITY_VISIBLE_ONLY`: depth write on, depth test less-equal.
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `outlineColor` | HDR colour | (1, 0.6, 0.1, 1) | Colour |
+| `screenWidth` | range 0 to 32 | 4 | Width (pixels) (with `WIDTH_MODE_SCREEN`) |
+| `worldWidth` | float | 0.04 | Width (world units) (with `WIDTH_MODE_WORLD`) |
+| `distanceScale` | range 0 to 1 | 1 | Distance scaling (1: constant on-screen size beyond the reference distance) (with `DISTANCE_SCALE`) |
+| `referenceDistance` | float | 10 | Reference distance (world width applies up to it) (with `DISTANCE_SCALE`) |
+| `maxWidth` | float | 0.25 | Maximum width (world units) (with `DISTANCE_SCALE`) |
+| `textureTiling` | vector4 | (1, 1, 0, 0) | Texture tiling (xy) and offset (zw) (with `TEXTURE`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_outlineTexture` | white | Tint texture (with `TEXTURE`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `DISTANCE_SCALE` | off | Grow with distance (world width) |
+| `TEXTURE` | off | Tint texture |
+| `VERTEX_COLOR_WIDTH` | off | Width times vertex colour red |
+
+| Keyword group | Values (first is the default) | Description |
+|---|---|---|
+| `WIDTH_MODE` | `WIDTH_MODE_SCREEN`, `WIDTH_MODE_WORLD` | Width in |
+| `VISIBILITY` | `VISIBILITY_ALWAYS`, `VISIBILITY_VISIBLE_ONLY` | Visibility |
+
+<a id="librarysilhouette"></a>
+### Silhouette (`library:silhouette`)
+
+See-through silhouette: draws only the parts of the object hidden behind other objects (depth test greater, no depth write), in a flat colour or a fresnel glow, alpha blended. Use it as a material's extra pass, order Before (See-through silhouette preset), and draw the object after its occluders (the preset gives it sort priority 1). Each pixel blends once: stencil bit 0x02 is set where it draws (overlapping hidden parts do not stack). No shadows.
+
+- **Type**: mesh (a material's shader); category Outline and stencil.
+- **Lighting**: none.
+- **Inputs**: `position`, `normals` with `SILHOUETTE_MODE_FRESNEL`.
+- **Default state**: blend alpha, cull back, depth write off, depth test greater, shadows off, stencil notequal ref 2 read mask 0x02 write mask 0x02 pass replace.
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `color` | HDR colour | (0.25, 0.6, 1, 0.6) | Colour (alpha: opacity) |
+| `fresnelPower` | range 0.25 to 8 | 2 | Fresnel power (with `SILHOUETTE_MODE_FRESNEL`) |
+| `fresnelFill` | range 0 to 1 | 0.15 | Fresnel fill (opacity facing the view) (with `SILHOUETTE_MODE_FRESNEL`) |
+
+| Keyword group | Values (first is the default) | Description |
+|---|---|---|
+| `SILHOUETTE_MODE` | `SILHOUETTE_MODE_FLAT`, `SILHOUETTE_MODE_FRESNEL` | Shading |
+
+<a id="librarystencil_mask"></a>
+### Stencil mask (`library:stencil_mask`)
+
+Writes stencil 16 (bits 0xF0) where it draws, and no colour or depth: a portal, window or hole. Objects with a stencil test show only inside it (Visible inside mask preset: equal 16) or only outside it (Visible outside mask: not equal 16). Masks must draw before their readers: in the opaque queue they precede blended readers; give opaque readers a higher sort priority or the mask a lower one (the Stencil mask preset sets -1). Several masks: refs 16, 32 ... 240 under read/write mask 0xF0. Alpha clip cuts the mask's shape from a texture's alpha. Turn colour writes on to see it (Colour).
+
+- **Type**: mesh (a material's shader); category Outline and stencil.
+- **Lighting**: none.
+- **Inputs**: `uv1` with `ALPHA_CLIP`.
+- **Default state**: blend opaque, depth write off, shadows off, colour write none, stencil always ref 16 write mask 0xf0 pass replace.
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `color` | colour | (1, 0, 1, 1) | Colour (drawn only with colour writes on) |
+| `alphaCutoff` | range 0 to 1 | 0.5 | Alpha cutoff (with `ALPHA_CLIP`) |
+| `tiling` | vector4 | (1, 1, 0, 0) | Tiling (xy) and offset (zw) (with `ALPHA_CLIP`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_maskTexture` | white | Mask shape (alpha) (with `ALPHA_CLIP`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `ALPHA_CLIP` | off | Alpha clip shape |
