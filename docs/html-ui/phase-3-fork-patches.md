@@ -581,7 +581,8 @@ no `currentcolor`.
   (hue), `none` keyword = 0, out-of-range clamping, `rgb()` accepting 4 comma args.
 - `hwb()`; `lab/lch/oklab/oklch` exist — verify alpha and `none` handling.
 - `color-mix(in <space>, c1 [p1], c2 [p2])` for spaces `srgb`, `srgb-linear`, `oklab`, `oklch`,
-  `lab`, `lch`, `hsl`, `hwb`, `xyz`; constant-folded at parse time when both operands are literal.
+  `lab`, `lch`, `hsl`, `hwb`, `xyz`; constant-folded at parse time when both operands are literal;
+  with a `currentcolor` operand (also nested) resolved where `currentcolor` is (below).
 - Full CSS named-color table (148 names + `rebeccapurple`), case-insensitive.
 - `currentcolor`: parsed to `Property{Unit::KEYWORD, CurrentColor}` accepted by every `color`
   parser use. Resolution: `color` is computed first (like `font-size`, `ElementStyle.cpp:917`);
@@ -2039,7 +2040,7 @@ golden fixtures listed in its §3 section, removal of its entries from `known-fa
 flag flips with updated compat tests and consistency tests (§5.4), diagnostics for its §2.2 items,
 and the user-facing support notes in `docs/mcp/guide/html-ui.md` for its features.
 
-**p3-values as implemented** (wave 1; FORK.md P3-V1…P3-V11, where the implementation differs from
+**p3-values as implemented** (wave 1; FORK.md P3-V1…P3-V12, where the implementation differs from
 or makes precise §3.2 and §3.3):
 - **Lengths (§3.3.1).** `LengthContext {font_size, root_font_size, dp_ratio, vp_dimensions,
   font_face}` and `ComputeLength(value, context)` exist, but the five-scalar compute functions keep
@@ -2066,7 +2067,16 @@ or makes precise §3.2 and §3.3):
   reports the properties holding one changed when `color` is dirty. A shadow without a colour is
   `currentcolor` (CSS; 6.3 drew it black). Font effects and filters are instanced without an
   element: there `currentcolor` is black, and compat keeps its companion for them.
-  `color-mix()` with a `currentcolor` operand does not parse.
+  A `color-mix()` with a `currentcolor` operand (CSS Color 5) is kept as written and resolved
+  wherever `currentcolor` is (P3-V12): a `CurrentColorMixValue` (`Unit::STYLE_VALUE`; `StyleValue`
+  has RmlUi's RTTI to tell it apart) in plain colour properties, the `color_mix` text with the
+  `current_color` flag of `BoxShadow`, `ColorStop` and p3-text's `TextShadow`. It is resolved by
+  substituting the element's colour for `currentcolor` and parsing (8-bit colour, as the computed
+  `color`), at compute time, when a shadow or gradient is generated, and at each frame of a
+  transition or animation; a change of `color` moves it without a transition of its own, as in
+  Chromium (fixture `p3/values/color-mix-currentcolor`). Compat keeps it where it keeps
+  `currentcolor` (with `CurrentColor`); in its own decorators and companions it mixes the rule's
+  static colour (`HTMLUI-CSS-0005`), or drops the declaration (`HTMLUI-CSS-0016`) without one.
 - **Fonts (§3.3.4).** A list with several quoted parts reaches the `font_family` parser as written
   through p3-grid's `PropertyDefinition::SetValueAsWritten` (`font-family`, `cursor`; the Custom
   shorthands get their value that way since p3-grid; p3-values first had its own

@@ -370,7 +370,7 @@ What works in RCSS (standard CSS has all of it, and more through the rewrites ab
 - Input: see "Input" below.
 - CSS values (the layout engine's own, phase 3): every CSS Color 4 color (`rgb(0 0 0 / 50%)` with
   the alpha from 0 to 1, `hsl()`, `hwb()`, `lab()`, `oklch()`, `color-mix()`, the 148 names) and
-  `currentcolor`; the units `vmin`, `vmax`, `ch`, `ex`, `turn`, `grad`, `dvh`/`svw`/...; `calc()`,
+  `currentcolor`, also mixed (`color-mix(in srgb, currentcolor 40%, white)` follows the color); the units `vmin`, `vmax`, `ch`, `ex`, `turn`, `grad`, `dvh`/`svw`/...; `calc()`,
   `min()`, `max()`, `clamp()`; `font-family` lists with quoted names (`"Open Sans", sans-serif`),
   the `font` shorthand, `font-size` keywords (`small`, `larger`), `font-weight: bolder/lighter`,
   `line-height: normal` (the initial value: the font's line spacing); `transform-origin: top left`
