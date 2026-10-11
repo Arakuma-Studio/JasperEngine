@@ -1483,9 +1483,17 @@ namespace {
 			default: break;
 			}
 
+			// An item stretched in a single-line container of definite cross size gets the line's cross size, the container's
+			// (9.4 8., 11.): its hypothetical cross size is not used, so it is not measured.
+			const bool stretched_to_definite_line = !is_wrap && has_definite_cross_size && cross_stretch_size && !CrossStartAuto(child) &&
+				!CrossEndAuto(child) && child.align_self == ItemAlign::Stretch && !child.size[cross] &&
+				(child.size_keyword[cross] == Style::SizingKeyword::None || child.size_keyword[cross] == Style::SizingKeyword::Stretch);
+
 			float child_inner_cross = 0.f;
 			if (child_cross)
 				child_inner_cross = *child_cross;
+			else if (stretched_to_definite_line)
+				child_inner_cross = Math::Max(Clamp(*cross_stretch_size, transferred_min_cross, transferred_max_cross), padding_border_sum);
 			else
 			{
 				OptSize known;
