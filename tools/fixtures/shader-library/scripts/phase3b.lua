@@ -26,7 +26,8 @@
 --
 -- SL_GROUPS=phase3b frames the group; P3B_VIEW=<view> a close-up: water (the four pools),
 -- water_low (a grazing view of pools 1 and 2), water_edge (pool 4 across the screen's left
--- border: no smeared edge), glass, haze.
+-- and bottom borders: no smeared edge), glass, haze. P3B_ORTHO=1 makes the main camera
+-- orthographic.
 --   SMOKE_GAME_ENV="SL_GROUPS=phase3b" SMOKE_GAME_RUNS="water P3B_VIEW=water; water_low P3B_VIEW=water_low;
 --       water_edge P3B_VIEW=water_edge; glass P3B_VIEW=glass; haze P3B_VIEW=haze" tools/smoke-test.sh tools/fixtures/shader-library
 local Phase3b = {}
@@ -277,6 +278,11 @@ function Phase3b.build(ctx)
         local origin = Vector3(0, 0, z0)
         ctx.camera.position = origin + v[1]
         ctx.camera.target = origin + v[2]
+    end
+    if os.getenv("P3B_ORTHO") == "1" then
+        -- an orthographic main camera over the same view (thickness and shifts hold)
+        ctx.camera:setOrtho(-8.0, 8.0, -4.5, 4.5, 0.1, 100.0)
+        ctx:log("orthographic main camera")
     end
 end
 
