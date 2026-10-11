@@ -153,6 +153,32 @@ async def test_material_library_shader(ed: Editor):
     ed.check_eq(material["blendMode"], "alpha")
 
 
+async def test_lighting_modes_follow_manifest(ed: Editor):
+    """A material's lighting takes exactly the modes its shader lists (the runtime's rules):
+    every mesh library shader, and the built-in Lit (pixel, vertex, mixed)."""
+    ed.require_tools("list_shaders", "set_properties")
+    m = "submeshes[0].material."
+    modes = ["pixel", "vertex", "mixed", "none"]
+    listed = (await ed.call("list_shaders"))["shaders"]
+    cases = [("", ["pixel", "vertex", "mixed"])]
+    cases += [(s["shader"], s["lighting"]) for s in listed if s["type"] == "mesh" and s["shader"].startswith("library:")]
+    eid = await make_entity(ed, "LibLightingModes")
+    for shader, allowed in cases:
+        await ed.call("set_properties", entity=eid, values={"mesh": {m + "shader": shader, m + "lighting": "auto"}})
+        for mode in modes:
+            if mode in allowed:
+                await ed.call("set_properties", entity=eid, values={"mesh": {m + "lighting": mode}})
+                continue
+            msg = await ed.check_error("set_properties", entity=eid, values={"mesh": {m + "lighting": mode}})
+            takes = re.search(r"takes ([a-z, ]+)\.", msg)
+            ed.check(takes is not None, f"{shader or 'Lit'} {mode}: {msg}")
+            # the default (what auto draws) first, then the others
+            got = takes.group(1).split(", ")
+            ed.check_eq(got[0], "auto")
+            ed.check_eq(got[1], allowed[0], f"{shader or 'Lit'}: the default first")
+            ed.check_eq(sorted(got[1:]), sorted(allowed), f"{shader or 'Lit'}: {msg}")
+
+
 async def test_light_shading_and_cap(ed: Editor):
     ed.require_tools("set_properties", "set_scene_settings", "get_scene_settings")
     light = await make_entity(ed, "LibLight", "point_light")
