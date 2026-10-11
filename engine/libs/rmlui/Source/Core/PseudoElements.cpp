@@ -270,8 +270,6 @@ static ElementPtr InstancePseudoElement(Element& originating, PseudoElementType 
 
 void PseudoElements::Update(Element& element)
 {
-	if (!ElementCascade::TakePseudoDirty(element))
-		return;
 	// Text and pseudo-elements generate none.
 	if (element.GetPseudoElementType() != PseudoElementType::None || element.GetTagName() == "#text")
 		return;

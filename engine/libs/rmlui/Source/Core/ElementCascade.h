@@ -44,8 +44,6 @@ public:
 	static Element*& PseudoElementSlot(Element& element, PseudoElementType type);
 	/// Marks the element to generate its pseudo-elements again (PseudoElements::Update).
 	static void DirtyPseudoElements(Element& element);
-	/// Clears the mark and returns whether it was set.
-	static bool TakePseudoDirty(Element& element);
 
 	/// Marks the document to resolve its counters before its next layout (CounterResolver), and remembers that it uses
 	/// counters (its structure changes then dirty them too).

@@ -61,7 +61,7 @@ protected:
 
 /**
     The generation of pseudo-elements: Element::Update calls Update after the element's properties, when its definition
-    was matched again or a property markers depend on changed (ElementMeta::pseudo_dirty).
+    was matched again or a property markers depend on changed (Element::dirty_pseudo_elements).
  */
 class PseudoElements {
 public:

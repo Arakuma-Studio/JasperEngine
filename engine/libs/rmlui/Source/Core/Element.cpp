@@ -75,7 +75,7 @@ RMLUI_RTTI_Define(Element)
 Element::Element(const String& tag) :
 	local_stacking_context(false), local_stacking_context_forced(false), stacking_context_dirty(false), computed_values_are_default_initialized(true),
 	visible(true), offset_fixed(false), absolute_offset_dirty(true), rounded_main_padding_size_dirty(true), dirty_definition(false),
-	dirty_child_definitions(false), dirty_definition_self(false), dirty_animation(false), dirty_transition(false), dirty_transform(false), dirty_perspective(false),
+	dirty_child_definitions(false), dirty_definition_self(false), dirty_pseudo_elements(false), dirty_animation(false), dirty_transition(false), dirty_transform(false), dirty_perspective(false),
 	display_contents(false), tag(tag), relative_offset_base(0, 0), relative_offset_position(0, 0), absolute_offset(0, 0), scroll_offset(0, 0)
 {
 	RMLUI_ASSERT(tag == StringUtilities::ToLower(tag));
@@ -147,7 +147,11 @@ void Element::Update(float dp_ratio, Vector2f vp_dimensions)
 	}
 
 	// ::before, ::after, ::marker (phase 3, cascade), made before the children update so they are updated with them.
-	PseudoElements::Update(*this);
+	if (dirty_pseudo_elements)
+	{
+		dirty_pseudo_elements = false;
+		PseudoElements::Update(*this);
+	}
 
 	meta->effects.InstanceEffects();
 

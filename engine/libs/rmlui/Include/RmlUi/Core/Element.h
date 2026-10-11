@@ -754,6 +754,7 @@ private:
 	bool dirty_definition : 1; // Implies dirty child definitions as well.
 	bool dirty_child_definitions : 1;
 	bool dirty_definition_self : 1; // Re-match this element alone (its :has() selectors, phase 3).
+	bool dirty_pseudo_elements : 1; // PseudoElements::Update runs in the next update (phase 3).
 
 	bool dirty_animation : 1;
 	bool dirty_transition : 1;

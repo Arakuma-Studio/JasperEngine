@@ -31,8 +31,6 @@ struct ElementMeta {
 	std::optional<Rectanglef> containing_block_override;
 	// The pseudo-elements the element generates, by type: ::before, ::after, ::marker (phase 3, cascade: PseudoElements).
 	Element* pseudo_elements[3] = {nullptr, nullptr, nullptr};
-	// The definition was matched again, or a property its ::marker depends on changed: PseudoElements::Update runs.
-	bool pseudo_dirty = false;
 };
 
 struct ElementMetaPool {

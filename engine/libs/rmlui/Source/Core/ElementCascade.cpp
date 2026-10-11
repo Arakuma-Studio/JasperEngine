@@ -55,14 +55,7 @@ Element*& ElementCascade::PseudoElementSlot(Element& element, PseudoElementType 
 
 void ElementCascade::DirtyPseudoElements(Element& element)
 {
-	element.meta->pseudo_dirty = true;
-}
-
-bool ElementCascade::TakePseudoDirty(Element& element)
-{
-	const bool dirty = element.meta->pseudo_dirty;
-	element.meta->pseudo_dirty = false;
-	return dirty;
+	element.dirty_pseudo_elements = true;
 }
 
 void ElementCascade::DirtyCounters(ElementDocument& document)
