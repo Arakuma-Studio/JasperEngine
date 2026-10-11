@@ -28,6 +28,7 @@
 #include <map>
 #include <set>
 #include <mutex>
+#include <unordered_map>
 #include <random>
 #include <cstdint>
 #include <cstring>
@@ -130,6 +131,12 @@ namespace {
         submesh.customFSParams.writeValues(values, &mesh.shaderUniforms, manifest);
         submesh.customVSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest);
         submesh.customFSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest);
+        // the extra pass: its own parameters, else its manifest's defaults
+        if (submesh.extraPass){
+            const ShaderUniformValues& passValues = submesh.material.extraPass.shaderParams;
+            submesh.extraPass->customVSParams.writeValues(passValues, nullptr, submesh.extraPass->manifest.get());
+            submesh.extraPass->customFSParams.writeValues(passValues, nullptr, submesh.extraPass->manifest.get());
+        }
     }
 
     // the mesh blocks of both forks, from whichever pass draws first (depth runs before color)
@@ -2636,6 +2643,45 @@ std::string RenderSystem::getComponentShaderReference(const std::string& customS
     return ShaderReference::getColorVariantReference(customShader, shaderFeatures, blendMode);
 }
 
+bool RenderSystem::hasExtraPass(const Submesh& submesh, bool terrain){
+    // a terrain's patches are per-view instance buffers and painted layers: no extra pass
+    return !terrain && !submesh.material.extraPass.shader.empty();
+}
+
+std::string RenderSystem::getSubmeshExtraPassReference(const Submesh& submesh){
+    const MaterialPass& pass = submesh.material.extraPass;
+    return ShaderReference::getColorVariantReference(pass.shader, pass.shaderFeatures, pass.blendMode);
+}
+
+SubmeshShaderInputs RenderSystem::getExtraPassShaderInputs(const SubmeshShaderInputs& submeshInputs, const MaterialPass& pass){
+    SubmeshShaderInputs inputs = submeshInputs;
+    inputs.manifest = findManifest(pass.shader);
+    inputs.features = inputs.manifest ? ShaderReference::getEnabledFeatures(pass.shader, pass.shaderFeatures) : std::vector<std::string>();
+    // the pass has no lighting field: its shader's default mode
+    inputs.lighting = MaterialLighting::AUTO;
+    // it is in no shadow, depth or G-buffer pass
+    inputs.depthProgram = false;
+    inputs.customDepthShader = false;
+    inputs.castShadows = false;
+    // and an overlay of the submesh: no shadows received, no reflections
+    inputs.receiveShadows = false;
+    inputs.receiveIBL = false;
+    inputs.mirror = false;
+    return inputs;
+}
+
+RenderState RenderSystem::resolveExtraPassRenderState(const MeshComponent& mesh, const Submesh& submesh, const ShaderManifestState* manifestState){
+    // the same resolver as the submesh's colour state, with the pass's values (when that
+    // state gains a field, the pass's field of the same name goes here too)
+    const MaterialPass& pass = submesh.material.extraPass;
+    bool blended = false;
+    bool transparentQueue = false;
+    return resolveRenderState(pass.blendMode, pass.cullMode, pass.depthWrite, pass.depthTest,
+                              pass.depthOffsetFactor, pass.depthOffsetUnits, manifestState,
+                              usesAlphaBlend(submesh.material), submesh.faceCulling, mesh.cullingMode, mesh.windingOrder,
+                              blended, transparentQueue);
+}
+
 RenderState RenderSystem::resolveSubmeshRenderState(const MeshComponent& mesh, const Submesh& submesh, const ShaderManifest* manifest,
                                                     bool& blended, bool& transparentQueue){
     if (!manifest)
@@ -2716,8 +2762,8 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
                     submesh.hasTextureRect = true;
                 scanSubmeshAttributes(submesh, buffers);
 
-                const SubmeshShaderVariant variant = getSubmeshShaderVariant(environment,
-                    getSubmeshShaderInputs(*mesh, submesh, terrain, instmesh, mirror, sceneMeshShader));
+                const SubmeshShaderInputs inputs = getSubmeshShaderInputs(*mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
+                const SubmeshShaderVariant variant = getSubmeshShaderVariant(environment, inputs);
                 // the shader of each submesh (its material's, the mesh's, the scene's), see loadMesh
                 const uint16_t meshShaderId = ShaderPool::registerCustomShader(getSubmeshShaderReference(*mesh, submesh, sceneMeshShader));
                 const uint16_t depthShaderId = ShaderPool::registerCustomShader(getSubmeshDepthShaderReference(*mesh, submesh, sceneMeshShader));
@@ -2726,6 +2772,12 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
                     add(ShaderType::DEPTH, variant.depthProperties, depthShaderId);
                 if (variant.gbuffer)
                     add(ShaderType::GBUFFER, variant.gbufferProperties, 0);
+                // its extra pass (no built-in fallback: a pass that fails is not drawn)
+                if (hasExtraPass(submesh, terrain != nullptr)){
+                    const SubmeshShaderVariant pass = getSubmeshShaderVariant(environment, getExtraPassShaderInputs(inputs, submesh.material.extraPass));
+                    addKey(ShaderPool::getShaderKey(ShaderType::MESH, pass.properties,
+                                                    ShaderPool::registerCustomShader(getSubmeshExtraPassReference(submesh))));
+                }
             }
         }
     }
@@ -2758,6 +2810,29 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
     if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity)){
         add(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX, sky->shaderFeatures, MaterialBlendMode::AUTO));
     }
+}
+
+void RenderSystem::logRenderObjects(){
+    size_t meshes = 0, submeshes = 0, extraPasses = 0, extraPassObjects = 0, smoothNormalBuffers = 0;
+    auto meshArray = scene->getComponentArray<MeshComponent>();
+    for (int i = 0; i < meshArray->size(); i++){
+        const MeshComponent& mesh = meshArray->getComponentFromIndex(i);
+        if (!mesh.loaded)
+            continue;
+        meshes++;
+        submeshes += mesh.numSubmeshes;
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            if (mesh.submeshes[s].extraPass){
+                extraPassObjects++;
+                if (mesh.submeshes[s].extraPass->loaded)
+                    extraPasses++;
+            }
+        }
+        if (mesh.smoothNormals)
+            smoothNormalBuffers += mesh.smoothNormals->entries.size();
+    }
+    Log::print("Render objects: %zu meshes, %zu submeshes, %zu extra passes drawn (%zu allocated), %zu smoothed-normal buffers, %d object pipelines",
+               meshes, submeshes, extraPasses, extraPassObjects, smoothNormalBuffers, ObjectRender::getLivePipelineCount());
 }
 
 void RenderSystem::scanSubmeshAttributes(Submesh& submesh, const std::vector<const Buffer*>& buffers){
@@ -4145,9 +4220,26 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         attributeBuffers.push_back(buf.second);
     }
 
+    // the generated a_smoothNormal buffers this load binds (a copy of a component shares
+    // them until it loads: it makes its own, as it does its renders)
+    if (mesh.smoothNormals){
+        if (mesh.smoothNormals.use_count() > 1){
+            auto own = std::make_shared<MeshSmoothNormals>();
+            for (const MeshSmoothNormals::Entry& entry : mesh.smoothNormals->entries){
+                own->entries.emplace_back();
+                own->entries.back().key = entry.key;
+                own->entries.back().data = entry.data;
+            }
+            mesh.smoothNormals = own;
+        }
+        for (MeshSmoothNormals::Entry& entry : mesh.smoothNormals->entries)
+            entry.used = false;
+    }
+
     for (int i = 0; i < mesh.numSubmeshes; i++){
 
         ObjectRender& render = mesh.submeshes[i].render;
+        mesh.submeshes[i].smoothNormals = -1;
 
         render.beginLoad(mesh.submeshes[i].primitiveType);
 
@@ -4245,6 +4337,16 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 mesh.submeshes[i].shader = ShaderPool::get(ShaderType::MESH, mesh.submeshes[i].shaderProperties, 0);
             }
             if (!mesh.submeshes[i].shader->isCreated())
+                return false;
+        }
+        // the extra pass's shader too, before this load makes any pipeline (a load that
+        // returns false is tried again, and the pipelines of the try would be left behind)
+        if (hasExtraPass(mesh.submeshes[i], terrain != nullptr)){
+            const SubmeshShaderVariant passVariant = getSubmeshShaderVariant(shaderEnvironment,
+                getExtraPassShaderInputs(shaderInputs, mesh.submeshes[i].material.extraPass));
+            const uint16_t passShaderId = ShaderPool::registerCustomShader(getSubmeshExtraPassReference(mesh.submeshes[i]));
+            if (!ShaderPool::get(ShaderType::MESH, passVariant.properties, passShaderId)->isCreated() &&
+                    !ShaderPool::isShaderBuildFailed(ShaderType::MESH, passVariant.properties, passShaderId))
                 return false;
         }
         render.setShader(mesh.submeshes[i].shader.get());
@@ -4436,6 +4538,11 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             mesh.submeshes[i].vertexCount = mesh.vertexCount;
         }
 
+        // a_smoothNormal, when the shader asks for it (@require smoothnormals)
+        if (!bindSmoothNormals(render, shaderData, mesh, mesh.submeshes[i], buffers)){
+            return false;
+        }
+
         if (!render.endLoad(pipelines, colorState)){
             return false;
         }
@@ -4569,6 +4676,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 for (auto const &attr : instmesh->buffer.getAttributes()) {
                     depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), instmesh->buffer.getRender(), attr.second.getElements(), attr.second.getDataType(), instmesh->buffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                 }
+            }
+
+            if (!bindSmoothNormals(depthRender, depthShaderData, mesh, mesh.submeshes[i], buffers)){
+                return false;
             }
 
             // culls as the color pass resolved (a texture shadow casts from both faces)
@@ -4708,7 +4819,14 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             }
         }
         //----------End G-buffer shader---------------
+
+        // the material's extra pass (shader library phase 2), or nothing
+        if (!loadSubmeshExtraPass(entity, mesh, i, shaderInputs, shaderEnvironment, pipelines, buffers, bufferNameToRender, bufferStride, instmesh)){
+            return false;
+        }
     }
+
+    trimSmoothNormals(mesh);
 
     mesh.needReload = false;
     mesh.needUpdateShaderUniforms = false;
@@ -4915,6 +5033,565 @@ void RenderSystem::releaseMeshLods(MeshComponent& mesh){
         hadLods |= releaseSubmeshLod(mesh.submeshes[i]);
     if (hadLods)
         updateMeshLodErrors(mesh);
+}
+
+// ---- shader library phase 2: extra pass and smoothed normals
+
+namespace {
+    // what a_smoothNormal is made from: the submesh's positions, with its normals and
+    // triangles when it has them
+    struct SmoothNormalSource{
+        const Buffer* positionBuffer = nullptr;
+        const Attribute* position = nullptr;
+        const Buffer* normalBuffer = nullptr;
+        const Attribute* normal = nullptr;
+        const Buffer* indexBuffer = nullptr;
+        const Attribute* index = nullptr;
+        PrimitiveType primitive = PrimitiveType::TRIANGLES;
+    };
+
+    // Per vertex, the normal averaged over every vertex sharing its position (welded within a
+    // small tolerance of the mesh's size). Each vertex weighs its normal (its triangles'
+    // normal when the mesh has none) by the angles of its triangle corners, so a cube corner
+    // gets the even diagonal however its faces are split. Packed as 4 signed normalized bytes.
+    void computeSmoothNormals(const SmoothNormalSource& source, std::vector<int8_t>& out){
+        Buffer* positionBuffer = const_cast<Buffer*>(source.positionBuffer);
+        Attribute* positionAttribute = const_cast<Attribute*>(source.position);
+        const unsigned int count = source.position->getCount();
+
+        std::vector<Vector3> positions(count);
+        AABB bounds;
+        bounds.setNull();
+        for (unsigned int v = 0; v < count; v++){
+            positions[v] = positionBuffer->getVector3(positionAttribute, v);
+            bounds.merge(positions[v]);
+        }
+        std::vector<Vector3> normals;
+        if (source.normal){
+            normals.resize(count);
+            for (unsigned int v = 0; v < count; v++)
+                normals[v] = const_cast<Buffer*>(source.normalBuffer)->getVector3(const_cast<Attribute*>(source.normal), v).normalized();
+        }
+
+        // each vertex's normal weighed by its corner angles
+        std::vector<Vector3> weighted(count, Vector3::ZERO);
+        auto addTriangle = [&](uint32_t a, uint32_t b, uint32_t c){
+            if (a >= count || b >= count || c >= count || a == b || b == c || a == c)
+                return;
+            const Vector3 ab = positions[b] - positions[a];
+            const Vector3 ac = positions[c] - positions[a];
+            const Vector3 bc = positions[c] - positions[b];
+            Vector3 face = ab.crossProduct(ac);
+            if (face.squaredLength() <= 0.0f)
+                return;
+            face.normalize();
+            auto angle = [](Vector3 u, Vector3 w){
+                const float lu = u.length(), lw = w.length();
+                if (lu <= 0.0f || lw <= 0.0f)
+                    return 0.0f;
+                return std::acos(std::clamp(u.dotProduct(w) / (lu * lw), -1.0f, 1.0f));
+            };
+            const uint32_t corners[3] = {a, b, c};
+            const float angles[3] = {angle(ab, ac), angle(bc, -ab), angle(-ac, -bc)};
+            for (int k = 0; k < 3; k++){
+                const Vector3& normal = normals.empty() ? face : normals[corners[k]];
+                weighted[corners[k]] += normal * angles[k];
+            }
+        };
+
+        const bool triangles = source.primitive == PrimitiveType::TRIANGLES || source.primitive == PrimitiveType::TRIANGLE_STRIP;
+        if (triangles){
+            auto vertexAt = [&](unsigned int k) -> uint32_t {
+                if (!source.index)
+                    return k;
+                Buffer* indexBuffer = const_cast<Buffer*>(source.indexBuffer);
+                Attribute* indexAttribute = const_cast<Attribute*>(source.index);
+                return (source.index->getDataType() == AttributeDataType::UNSIGNED_INT)
+                    ? indexBuffer->getUInt32(indexAttribute, k) : indexBuffer->getUInt16(indexAttribute, k);
+            };
+            const unsigned int elements = source.index ? source.index->getCount() : count;
+            if (source.primitive == PrimitiveType::TRIANGLES){
+                for (unsigned int k = 0; k + 2 < elements; k += 3)
+                    addTriangle(vertexAt(k), vertexAt(k + 1), vertexAt(k + 2));
+            }else{
+                for (unsigned int k = 0; k + 2 < elements; k++){
+                    if (k % 2 == 0)
+                        addTriangle(vertexAt(k), vertexAt(k + 1), vertexAt(k + 2));
+                    else
+                        addTriangle(vertexAt(k + 1), vertexAt(k), vertexAt(k + 2));
+                }
+            }
+        }
+        // a vertex in no triangle (points, lines, unused) counts with its own normal
+        for (unsigned int v = 0; v < count; v++){
+            if (weighted[v].squaredLength() <= 0.0f && !normals.empty())
+                weighted[v] = normals[v];
+        }
+
+        // weld by position: cells of the tolerance's size, a vertex joining the first group
+        // whose first vertex is within the tolerance (in its cell or a neighbour)
+        const Vector3 extent = bounds.isNull() ? Vector3::ZERO : (bounds.getMaximum() - bounds.getMinimum());
+        const float tolerance = std::max(std::max(extent.x, std::max(extent.y, extent.z)) * 1e-5f, 1e-7f);
+        const float inverse = 1.0f / tolerance;
+        auto cellOf = [inverse](float value){ return (int64_t)std::floor(value * inverse); };
+        auto cellKey = [](int64_t x, int64_t y, int64_t z){
+            return ((uint64_t)(x & 0x1FFFFF) << 42) | ((uint64_t)(y & 0x1FFFFF) << 21) | (uint64_t)(z & 0x1FFFFF);
+        };
+        std::unordered_map<uint64_t, int> cellFirstGroup;
+        std::vector<int> groupNext;      // the next group in the same cell
+        std::vector<uint32_t> groupVertex; // the vertex that started it
+        std::vector<Vector3> groupSum;
+        std::vector<int> vertexGroup(count, -1);
+        cellFirstGroup.reserve(count);
+        const float tolerance2 = tolerance * tolerance;
+        for (unsigned int v = 0; v < count; v++){
+            const Vector3& p = positions[v];
+            int found = -1;
+            const int64_t x0 = cellOf(p.x - tolerance), x1 = cellOf(p.x + tolerance);
+            const int64_t y0 = cellOf(p.y - tolerance), y1 = cellOf(p.y + tolerance);
+            const int64_t z0 = cellOf(p.z - tolerance), z1 = cellOf(p.z + tolerance);
+            for (int64_t x = x0; x <= x1 && found == -1; x++){
+                for (int64_t y = y0; y <= y1 && found == -1; y++){
+                    for (int64_t z = z0; z <= z1 && found == -1; z++){
+                        auto it = cellFirstGroup.find(cellKey(x, y, z));
+                        for (int g = (it == cellFirstGroup.end()) ? -1 : it->second; g != -1; g = groupNext[g]){
+                            if ((positions[groupVertex[g]] - p).squaredLength() <= tolerance2){
+                                found = g;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if (found == -1){
+                found = (int)groupVertex.size();
+                groupVertex.push_back(v);
+                groupSum.push_back(Vector3::ZERO);
+                const uint64_t key = cellKey(cellOf(p.x), cellOf(p.y), cellOf(p.z));
+                auto it = cellFirstGroup.find(key);
+                groupNext.push_back(it == cellFirstGroup.end() ? -1 : it->second);
+                cellFirstGroup[key] = found;
+            }
+            vertexGroup[v] = found;
+            groupSum[found] += weighted[v];
+        }
+
+        out.resize((size_t)count * 4);
+        for (unsigned int v = 0; v < count; v++){
+            Vector3 n = groupSum[vertexGroup[v]];
+            // opposite faces sharing a position cancel out: keep the vertex's own
+            if (n.squaredLength() < 1e-12f)
+                n = weighted[v];
+            if (n.squaredLength() < 1e-12f)
+                n = normals.empty() ? Vector3(0.0f, 1.0f, 0.0f) : normals[v];
+            if (n.squaredLength() < 1e-12f)
+                n = Vector3(0.0f, 1.0f, 0.0f);
+            n.normalize();
+            out[(size_t)v * 4 + 0] = (int8_t)std::lround(std::clamp(n.x, -1.0f, 1.0f) * 127.0f);
+            out[(size_t)v * 4 + 1] = (int8_t)std::lround(std::clamp(n.y, -1.0f, 1.0f) * 127.0f);
+            out[(size_t)v * 4 + 2] = (int8_t)std::lround(std::clamp(n.z, -1.0f, 1.0f) * 127.0f);
+            out[(size_t)v * 4 + 3] = 0;
+        }
+    }
+}
+
+bool RenderSystem::bindSmoothNormals(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh, BufferMap& buffers){
+    const int slot = shaderData.getAttrIndex(AttributeType::SMOOTHNORMAL);
+    if (slot == -1)
+        return true;
+
+    if (submesh.smoothNormals == -1){
+        SmoothNormalSource source;
+        source.primitive = submesh.primitiveType;
+        const LodAttribute position = findSubmeshAttribute(submesh, buffers, AttributeType::POSITION);
+        if (!position.attribute || position.attribute->getDataType() != AttributeDataType::FLOAT || position.attribute->getElements() < 3){
+            Log::error("A shader of this mesh reads a_smoothNormal, but its positions are not 3 floats");
+            return false;
+        }
+        source.positionBuffer = position.buffer;
+        source.position = position.attribute;
+        const unsigned int count = position.attribute->getCount();
+        const LodAttribute normal = findSubmeshAttribute(submesh, buffers, AttributeType::NORMAL);
+        if (normal.attribute && normal.attribute->getDataType() == AttributeDataType::FLOAT &&
+                normal.attribute->getElements() >= 3 && normal.attribute->getCount() == count){
+            source.normalBuffer = normal.buffer;
+            source.normal = normal.attribute;
+        }
+        const LodAttribute index = findSubmeshAttribute(submesh, buffers, AttributeType::INDEX);
+        if (index.attribute && (index.attribute->getDataType() == AttributeDataType::UNSIGNED_SHORT ||
+                                index.attribute->getDataType() == AttributeDataType::UNSIGNED_INT)){
+            source.indexBuffer = index.buffer;
+            source.index = index.attribute;
+        }
+
+        // cached by what it is made of, so the same geometry is welded once
+        const uint32_t layout[3] = {(uint32_t)source.primitive, count, source.index ? source.index->getCount() : 0u};
+        uint64_t key = MeshLodPool::hash(0, layout, sizeof(layout));
+        key = attributeHash(key, position);
+        key = attributeHash(key, source.normal ? normal : LodAttribute());
+        key = attributeHash(key, source.index ? index : LodAttribute());
+
+        if (!mesh.smoothNormals)
+            mesh.smoothNormals = std::make_shared<MeshSmoothNormals>();
+        std::vector<MeshSmoothNormals::Entry>& entries = mesh.smoothNormals->entries;
+        int found = -1;
+        for (size_t e = 0; e < entries.size(); e++){
+            if (entries[e].key == key && entries[e].data.size() == (size_t)count * 4){
+                found = (int)e;
+                break;
+            }
+        }
+        if (found == -1){
+            entries.emplace_back();
+            entries.back().key = key;
+            computeSmoothNormals(source, entries.back().data);
+            found = (int)entries.size() - 1;
+        }
+        submesh.smoothNormals = found;
+    }
+
+    MeshSmoothNormals::Entry& entry = mesh.smoothNormals->entries[submesh.smoothNormals];
+    entry.used = true;
+    if (!entry.buffer.isCreated()){
+        if (entry.data.empty() || !entry.buffer.createBuffer((unsigned int)entry.data.size(), entry.data.data(), BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE))
+            return false;
+    }
+    render.addAttribute(slot, &entry.buffer, 4, AttributeDataType::BYTE, 4, 0, true, false);
+    return true;
+}
+
+void RenderSystem::releaseSmoothNormals(MeshComponent& mesh, bool keepData){
+    if (!mesh.smoothNormals)
+        return;
+    // a copy of the component shares them until its own load: its buffers are not ours alone
+    if (mesh.smoothNormals.use_count() == 1){
+        for (MeshSmoothNormals::Entry& entry : mesh.smoothNormals->entries)
+            entry.buffer.destroyBuffer();
+    }
+    if (!keepData)
+        mesh.smoothNormals.reset();
+}
+
+void RenderSystem::trimSmoothNormals(MeshComponent& mesh){
+    if (!mesh.smoothNormals)
+        return;
+    std::vector<MeshSmoothNormals::Entry>& entries = mesh.smoothNormals->entries;
+    std::vector<int> remap(entries.size(), -1);
+    size_t kept = 0;
+    for (size_t e = 0; e < entries.size(); e++){
+        if (!entries[e].used){
+            entries[e].buffer.destroyBuffer();
+            continue;
+        }
+        remap[e] = (int)kept;
+        if (kept != e)
+            entries[kept] = entries[e];
+        kept++;
+    }
+    entries.resize(kept);
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+        int& index = mesh.submeshes[s].smoothNormals;
+        index = (index >= 0 && index < (int)remap.size()) ? remap[index] : -1;
+    }
+    // nothing asks for them any more
+    if (entries.empty())
+        mesh.smoothNormals.reset();
+}
+
+unsigned int RenderSystem::bindSubmeshAttributes(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh,
+                                                 BufferMap& buffers, BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride,
+                                                 InstancedMeshComponent* instmesh){
+    // as loadMesh binds the colour render's
+    unsigned int indexCount = 0;
+    bool indexed = false;
+    for (auto const& buf : buffers){
+        if (!buf.second->isRenderAttributes())
+            continue;
+        if (buf.second->getType() == BufferType::INDEX_BUFFER){
+            indexed = true;
+            indexCount = buf.second->getCount();
+            Attribute indexattr = buf.second->getAttributes()[AttributeType::INDEX];
+            render.setIndex(buf.second->getRender(), indexattr.getDataType(), indexattr.getOffset());
+        }else{
+            for (auto const &attr : buf.second->getAttributes()) {
+                render.addAttribute(shaderData.getAttrIndex(attr.first), buf.second->getRender(), attr.second.getElements(), attr.second.getDataType(), buf.second->getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
+            }
+        }
+    }
+    for (auto const& attr : submesh.attributes){
+        if (!bufferNameToRender.count(attr.second.getBufferName()))
+            continue;
+        if (attr.first == AttributeType::INDEX){
+            indexed = true;
+            indexCount = attr.second.getCount();
+            render.setIndex(bufferNameToRender[attr.second.getBufferName()], attr.second.getDataType(), attr.second.getOffset());
+        }else{
+            render.addAttribute(shaderData.getAttrIndex(attr.first), bufferNameToRender[attr.second.getBufferName()], attr.second.getElements(), attr.second.getDataType(), bufferStride[attr.second.getBufferName()], attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
+        }
+    }
+    if (instmesh){
+        for (auto const &attr : instmesh->buffer.getAttributes()) {
+            render.addAttribute(shaderData.getAttrIndex(attr.first), instmesh->buffer.getRender(), attr.second.getElements(), attr.second.getDataType(), instmesh->buffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
+        }
+    }
+    return indexed ? indexCount : mesh.vertexCount;
+}
+
+void RenderSystem::releaseSubmeshExtraPass(Submesh& submesh, bool keepShader){
+    if (!submesh.extraPass)
+        return;
+    // a copy of the component shares the object until its own load
+    if (submesh.extraPass.use_count() > 1){
+        submesh.extraPass.reset();
+        return;
+    }
+    SubmeshExtraPass& extra = *submesh.extraPass;
+    if (extra.loaded)
+        extra.render.destroy();
+    extra.loaded = false;
+    extra.libraryBindings.clear();
+    extra.customVSParams.clear();
+    extra.customFSParams.clear();
+    if (keepShader)
+        return;
+    if (extra.shader){
+        extra.shader.reset();
+        ShaderPool::remove(ShaderType::MESH, extra.shaderProperties, extra.customShaderId);
+    }
+    submesh.extraPass.reset();
+}
+
+bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsigned int submeshIndex, const SubmeshShaderInputs& submeshInputs,
+                                        const MeshShaderEnvironment& environment, uint16_t pipelines, BufferMap& buffers,
+                                        BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride, InstancedMeshComponent* instmesh){
+    Submesh& submesh = mesh.submeshes[submeshIndex];
+    if (!hasExtraPass(submesh, submeshInputs.terrain)){
+        // nothing is kept for a submesh without one
+        releaseSubmeshExtraPass(submesh, false);
+        return true;
+    }
+    MaterialPass& pass = submesh.material.extraPass;
+
+    // the submesh's mesh variant bits with the pass's shader (getExtraPassShaderInputs)
+    const SubmeshShaderInputs inputs = getExtraPassShaderInputs(submeshInputs, pass);
+    const SubmeshShaderVariant variant = getSubmeshShaderVariant(environment, inputs);
+    const std::string reference = getSubmeshExtraPassReference(submesh);
+    const uint16_t customId = ShaderPool::registerCustomShader(reference);
+
+    // a copy of the component shares the object until it loads: it makes its own
+    if (!submesh.extraPass || submesh.extraPass.use_count() > 1)
+        submesh.extraPass = std::make_shared<SubmeshExtraPass>();
+    SubmeshExtraPass& extra = *submesh.extraPass;
+
+    // a load tried again (another submesh was not ready): the pipelines of the last try go
+    if (extra.loaded)
+        extra.render.destroy();
+    extra.loaded = false;
+    // the shader of another variant (the pass or the scene changed) goes back to the pool
+    if (extra.shader && (extra.shaderProperties != variant.properties || extra.customShaderId != customId)){
+        extra.shader.reset();
+        ShaderPool::remove(ShaderType::MESH, extra.shaderProperties, extra.customShaderId);
+    }
+    extra.shaderProperties = variant.properties;
+    extra.customShaderId = customId;
+    extra.order = pass.order;
+    extra.failed = false;
+    extra.shader = ShaderPool::get(ShaderType::MESH, extra.shaderProperties, extra.customShaderId);
+    if (!extra.shader->isCreated()){
+        if (ShaderPool::isShaderBuildFailed(ShaderType::MESH, extra.shaderProperties, extra.customShaderId)){
+            // no built-in fallback (it would draw the submesh twice): the submesh draws alone
+            Log::error("Extra pass shader '%s' failed to compile; drawing '%s' without its extra pass",
+                       reference.c_str(), scene->getEntityName(entity).c_str());
+            extra.failed = true;
+            return true;
+        }
+        return false;
+    }
+
+    extra.manifest = inputs.manifest;
+    extra.manifestState = inputs.manifest ? inputs.manifest->resolveState(inputs.features) : ShaderManifestState();
+
+    ObjectRender& render = extra.render;
+    render.beginLoad(submesh.primitiveType);
+    render.setShader(extra.shader.get());
+    ShaderData& shaderData = extra.shader->shaderData;
+
+    // the blocks of its variant, as the submesh's colour render resolves them
+    const uint32_t properties = extra.shaderProperties;
+    const bool p_lit = !(properties & (1u << 0));
+    extra.slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_PARAMS);
+    extra.slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_PARAMS);
+    extra.slotFSTexCoordSets = (properties & (1u << 2)) ? shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_TEXCOORDSETS) : -1;
+    extra.slotVSFade = (properties & (1u << 26)) ? shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE) : -1;
+    extra.slotFSFog = hasFog ? shaderData.getUniformBlockIndex(UniformBlockType::FS_FOG) : -1;
+    extra.slotVSObjectLights = -1;
+    extra.slotFSObjectLights = -1;
+    extra.sizeVSObjectLights = 0;
+    extra.sizeFSObjectLights = 0;
+    extra.slotFSLitFrame = -1;
+    extra.sizeFSLitFrame = 0;
+    extra.slotFSLighting = -1;
+    if (p_lit){
+        extra.slotVSObjectLights = shaderData.getUniformBlockIndexByName("u_vs_objectLights");
+        extra.slotFSObjectLights = shaderData.getUniformBlockIndexByName("u_fs_objectLights");
+        shaderData.getUniformBlockMembers("u_vs_objectLights", extra.sizeVSObjectLights);
+        shaderData.getUniformBlockMembers("u_fs_objectLights", extra.sizeFSObjectLights);
+        extra.sizeVSObjectLights = std::min(extra.sizeVSObjectLights, (unsigned int)sizeof(object_lights_t));
+        extra.sizeFSObjectLights = std::min(extra.sizeFSObjectLights, (unsigned int)sizeof(object_lights_t));
+        extra.slotFSLitFrame = shaderData.getUniformBlockIndexByName("u_fs_litFrame");
+        shaderData.getUniformBlockMembers("u_fs_litFrame", extra.sizeFSLitFrame);
+        extra.sizeFSLitFrame = std::min(extra.sizeFSLitFrame, (unsigned int)sizeof(lit_frame_t));
+        extra.slotFSLighting = shaderData.getUniformBlockIndex(UniformBlockType::FS_LIGHTING);
+    }
+    extra.slotFSLighting2D = (properties & (1u << 22)) ? shaderData.getUniformBlockIndex(UniformBlockType::FS_LIGHTING2D) : -1;
+    extra.slotVSSprite = submesh.hasTextureRect ? shaderData.getUniformBlockIndex(UniformBlockType::SPRITE_VS_PARAMS) : -1;
+    extra.slotVSSkinning = -1;
+    if (submesh.hasSkinning){
+        extra.slotVSSkinning = shaderData.getUniformBlockIndex(UniformBlockType::VS_SKINNING);
+        if (!bindSkinningResource(render, shaderData, mesh))
+            return false;
+    }
+    extra.slotVSMorphTarget = submesh.hasMorphTarget ? shaderData.getUniformBlockIndex(UniformBlockType::VS_MORPHTARGET) : -1;
+
+    // its own parameters, else its manifest's defaults
+    extra.customVSParams.resolve(shaderData, "u_vs_customParams");
+    extra.customFSParams.resolve(shaderData, "u_fs_customParams");
+    extra.customVSParams.writeValues(pass.shaderParams, nullptr, extra.manifest.get());
+    extra.customFSParams.writeValues(pass.shaderParams, nullptr, extra.manifest.get());
+
+    // the material's textures (a fork of Lit samples them) and its own custom textures
+    if (!loadPBRTextures(submesh.material, shaderData, render, mesh.receiveLights))
+        return false;
+    if (!loadShaderLibraryBindings(extra.libraryBindings, shaderData, render, pass.shaderTextures, extra.manifest.get()))
+        return false;
+    extra.needUpdateTexture = false;
+
+    bindSubmeshAttributes(render, shaderData, mesh, submesh, buffers, bufferNameToRender, bufferStride, instmesh);
+    if (!bindSmoothNormals(render, shaderData, mesh, submesh, buffers))
+        return false;
+
+    if (!render.endLoad(pipelines, resolveExtraPassRenderState(mesh, submesh, extra.manifest ? &extra.manifestState : nullptr)))
+        return false;
+
+    extra.loaded = true;
+    return true;
+}
+
+void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsigned int submeshIndex, Transform& transform, PipelineType pipType,
+                                        InstancedMeshComponent* instmesh, int instanceView, const MeshDraw& draw, unsigned int instanceCount,
+                                        const Matrix4* objectBlock, TilemapComponent* tilemap, uint32_t& builtLightBits){
+    Submesh& submesh = mesh.submeshes[submeshIndex];
+    SubmeshExtraPass& extra = *submesh.extraPass;
+    MaterialPass& pass = submesh.material.extraPass;
+    ObjectRender& render = extra.render;
+    ShaderData& shaderData = extra.shader->shaderData;
+    const uint32_t properties = extra.shaderProperties;
+
+    // textures changed, or one is a render target that was redrawn
+    if (extra.needUpdateTexture || checkPBRFrabebufferUpdate(submesh.material) ||
+            (!extra.libraryBindings.textures.empty() && shaderTexturesOutdated(extra.libraryBindings, pass.shaderTextures))){
+        if (loadPBRTextures(submesh.material, shaderData, render, mesh.receiveLights) &&
+                bindShaderTextures(extra.libraryBindings, render, pass.shaderTextures)){
+            extra.needUpdateTexture = false;
+        }
+    }
+
+    if (!render.beginDraw(pipType, passNoFaceCulling())){
+        mesh.needReload = true;
+        return;
+    }
+
+    applyFrameBlock(render, extra.libraryBindings);
+
+    if (extra.slotFSFog != -1){
+#ifdef JASPERENGINE_EDITOR
+        static fs_fog_t noFog = {Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
+        render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, (rv().secondary && rv().disableFog) ? &noFog : &fs_fog);
+#else
+        render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, &fs_fog);
+#endif
+    }
+
+    const bool lit = !(properties & (1u << 0));
+    if (lit){
+        loadSpotMaskTexture(shaderData, render);
+        if (extra.slotVSObjectLights != -1 || extra.slotFSObjectLights != -1){
+            const uint32_t lightBits = properties & ((1u << 3) | (1u << 28) | (1u << 29) | (1u << 30));
+            if (lightBits != builtLightBits){
+                buildObjectLights(mesh, properties, objectLightsBlock);
+                builtLightBits = lightBits;
+            }
+            render.applyUniformBlock(extra.slotVSObjectLights, extra.sizeVSObjectLights, &objectLightsBlock);
+            render.applyUniformBlock(extra.slotFSObjectLights, extra.sizeFSObjectLights, &objectLightsBlock);
+        }
+        if (extra.slotFSLitFrame != -1){
+            render.applyUniformBlock(extra.slotFSLitFrame, extra.sizeFSLitFrame, &passLitFrame);
+        }
+        if (extra.slotFSLighting != -1){
+            buildLegacyLighting(mesh, properties, legacyLightingBlock);
+            render.applyUniformBlock(extra.slotFSLighting, sizeof(fs_lighting_t), &legacyLightingBlock);
+        }
+        // USE_SSAO (a fork of Lit without a manifest)
+        if (properties & (1u << 21)){
+            render.addTexture(shaderData.getTextureIndex(TextureShaderType::SSAOTEXTURE), ShaderStageType::FRAGMENT,
+                              rv().currentSSAOTexture ? rv().currentSSAOTexture : &emptyWhite);
+        }
+    }
+
+    if (extra.slotFSLighting2D != -1){
+        render.applyUniformBlock(extra.slotFSLighting2D, sizeof(fs_lighting2d_t), &fs_lighting2d);
+    }
+    if (extra.slotVSSprite != -1){
+        render.applyUniformBlock(extra.slotVSSprite, sizeof(float) * 4, &submesh.textureRect);
+    }
+    if (submesh.hasSkinning){
+        applySkinningUniform(render, extra.slotVSSkinning, mesh, submesh);
+    }
+    if (extra.slotVSMorphTarget != -1){
+        if (!submesh.hasMorphNormal && !submesh.hasMorphTangent){
+            render.applyUniformBlock(extra.slotVSMorphTarget, sizeof(float) * MAX_MORPHTARGETS, &mesh.morphWeights);
+        }else{
+            render.applyUniformBlock(extra.slotVSMorphTarget, sizeof(float) * MAX_MORPHTARGETS / 2, &mesh.morphWeights);
+        }
+    }
+
+    // the material's prefix, the size its variant declares (a fork of Lit reads it)
+    if (lit){
+        render.applyUniformBlock(extra.slotFSParams, sizeof(float) * 12, &submesh.material);
+    }else if (properties & (1u << 24)){
+        render.applyUniformBlock(extra.slotFSParams, sizeof(float) * 8, &submesh.material);
+    }else{
+        render.applyUniformBlock(extra.slotFSParams, sizeof(float) * 4, &submesh.material);
+    }
+
+    if (extra.slotVSFade != -1 && instmesh){
+        applyInstanceFadeUniform(render, extra.slotVSFade, *instmesh, instanceFadeEye(entity, *instmesh, instanceView));
+    }
+    if (extra.slotFSTexCoordSets != -1){
+        const Material& mat = submesh.material;
+        int32_t texCoordSets[8] = {
+            mat.baseColorTexCoord, mat.metallicRoughnessTexCoord, mat.occlusionTexCoord, mat.emissiveTexCoord,
+            mat.normalTexCoord, 0, 0, 0
+        };
+        render.applyUniformBlock(extra.slotFSTexCoordSets, sizeof(texCoordSets), &texCoordSets);
+    }
+
+    render.applyUniformBlock(extra.slotVSParams, sizeof(float) * 48, (void*)objectBlock);
+
+    applyCustomUniforms(render, extra.customVSParams, frameTime, passResolution);
+    applyCustomUniforms(render, extra.customFSParams, frameTime, passResolution);
+
+    // the same instances, detail level and tilemap chunks as the submesh's draw
+    if (tilemap && !tilemapDrawRanges.empty()){
+        if (instmesh){
+            bindInstances(render, *instmesh, instanceView, draw.instanceFirst);
+        }
+        for (const TilemapDrawRange& range : tilemapDrawRanges){
+            render.draw(range.offset, range.count, instanceCount);
+        }
+    }else{
+        drawSubmeshGeometry(render, entity, mesh, submeshIndex, instmesh, instanceView, draw.lod, instanceCount);
+    }
 }
 
 bool RenderSystem::hasPendingMeshLods() const{
@@ -5377,6 +6054,15 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 render.replaceVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), terrainNodes->nodesbuffer[i].getRender());
             }
 
+            // the material's extra pass, drawn right before or after the submesh
+            SubmeshExtraPass* extraPass = (mesh.submeshes[i].extraPass && mesh.submeshes[i].extraPass->loaded) ? mesh.submeshes[i].extraPass.get() : nullptr;
+            if (extraPass){
+                if (mesh.submeshes[i].needUpdateTexture)
+                    extraPass->needUpdateTexture = true;
+                if (extraPass->order == MaterialPassOrder::BEFORE)
+                    drawSubmeshExtraPass(entity, mesh, i, transform, pipType, instmesh, instanceView, draw, instanceCount, objectBlock, tilemap, builtLightBits);
+            }
+
             const ShaderLibraryBindings& libraryBindings = mesh.submeshes[i].libraryBindings;
             bool needUpdateFramebuffer = checkPBRFrabebufferUpdate(mesh.submeshes[i].material) ||
                 (!libraryBindings.textures.empty() && shaderTexturesOutdated(libraryBindings, mesh.submeshes[i].material.shaderTextures));
@@ -5554,6 +6240,10 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 ShaderData& mirrorShaderData = mesh.submeshes[i].shader.get()->shaderData;
                 TextureRender* baseColor = mesh.submeshes[i].material.baseColorTexture.getRender(&emptyWhite);
                 render.addTexture(mirrorShaderData.getTextureIndex(TextureShaderType::BASECOLOR), ShaderStageType::FRAGMENT, baseColor ? baseColor : &emptyWhite);
+            }
+
+            if (extraPass && extraPass->order == MaterialPassOrder::AFTER){
+                drawSubmeshExtraPass(entity, mesh, i, transform, pipType, instmesh, instanceView, draw, instanceCount, objectBlock, tilemap, builtLightBits);
             }
         }
     }
@@ -6650,7 +7340,14 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
             for (auto& shaderTexture : submesh.material.shaderTextures){
                 shaderTexture.second.destroy();
             }
+            for (auto& shaderTexture : submesh.material.extraPass.shaderTextures){
+                shaderTexture.second.destroy();
+            }
         }
+
+        // the extra pass: its render always, its shader with the other assets
+        releaseSubmeshExtraPass(submesh, preserveAssets);
+        submesh.smoothNormals = -1;
 
         if (terrain){
             //Destroy terrain texture
@@ -6742,6 +7439,8 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
     }
     mesh.buffer.getRender()->destroyBuffer();
     mesh.indices.getRender()->destroyBuffer();
+    // generated from the buffers: kept with them, made again from new ones
+    releaseSmoothNormals(mesh, preserveAssets);
     mesh.bonesBuffer.destroyBuffer();
     mesh.bonesTexture.destroyTexture();
     for (int i = 0; i < mesh.numExternalBuffers; i++){

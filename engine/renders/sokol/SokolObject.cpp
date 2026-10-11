@@ -10,10 +10,16 @@
 #include "SokolShader.h"
 #include "Engine.h"
 
+#include <atomic>
+
 using namespace jasperengine;
 
 namespace {
+    // pipelines made and not destroyed yet (SokolObject::getLivePipelineCount)
+    std::atomic<int> livePipelines(0);
+
     sg_pipeline makePipeline(const sg_pipeline_desc& desc){
+        livePipelines++;
         if (Engine::isAsyncThread())
             return SokolCmdQueue::add_command_make_pipeline(desc);
         return sg_make_pipeline(desc);
@@ -22,6 +28,7 @@ namespace {
     void destroyPipeline(sg_pipeline pipeline){
         if (pipeline.id == SG_INVALID_ID)
             return;
+        livePipelines--;
         if (Engine::isAsyncThread()){
             SokolCmdQueue::add_command_destroy_pipeline(pipeline);
         }else{
@@ -59,6 +66,10 @@ void SokolObject::resetPipelines(){
     }
     noCullSame = 0;
 #endif
+}
+
+int SokolObject::getLivePipelineCount(){
+    return livePipelines.load();
 }
 
 SokolObject::SokolObject(const SokolObject& rhs) = default;

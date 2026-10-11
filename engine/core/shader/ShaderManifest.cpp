@@ -377,7 +377,8 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 else if (input == "color") rule.require |= ShaderRequire_Color;
                 else if (input == "position") rule.require |= ShaderRequire_Position;
                 else if (input == "rawcolor") rule.require |= ShaderRequire_RawColor;
-                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position)");
+                else if (input == "smoothnormals") rule.require |= ShaderRequire_SmoothNormals;
+                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position, smoothnormals)");
             }
             if (!valid)
                 continue;
@@ -934,6 +935,7 @@ std::vector<std::string> ShaderManifest::getRequireDefines(uint32_t require){
     if (require & ShaderRequire_UV2)      defines.push_back("SURFACE_UV2");
     if (require & ShaderRequire_Color)    defines.push_back("SURFACE_COLOR");
     if (require & ShaderRequire_RawColor) defines.push_back("SURFACE_RAW_COLOR");
+    if (require & ShaderRequire_SmoothNormals) defines.push_back("SURFACE_SMOOTH_NORMALS");
     return defines;
 }
 

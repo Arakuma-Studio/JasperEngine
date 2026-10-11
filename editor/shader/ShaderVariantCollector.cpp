@@ -379,6 +379,16 @@ namespace {
                     keys.insert(ShaderPool::getShaderKey(ShaderType::GBUFFER, variant.gbufferProperties));
                 }
             }
+
+            // its material's extra pass, as RenderSystem::loadSubmeshExtraPass picks it (a pass
+            // that fails is not drawn: no built-in fallback)
+            if (RenderSystem::hasExtraPass(submesh, terrain != nullptr)){
+                const SubmeshShaderInputs passInputs = RenderSystem::getExtraPassShaderInputs(inputs, submesh.material.extraPass);
+                const uint16_t passShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshExtraPassReference(submesh));
+                for (const MeshShaderEnvironment& environment : environments){
+                    keys.insert(ShaderPool::getShaderKey(ShaderType::MESH, RenderSystem::getSubmeshShaderVariant(environment, passInputs).properties, passShaderId));
+                }
+            }
         }
 
         void collectMesh(EntityRegistry* registry, Entity entity, const MeshComponent& mesh){

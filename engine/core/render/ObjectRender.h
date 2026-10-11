@@ -53,6 +53,9 @@ namespace jasperengine {
         void draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
 
         void destroy();
+
+        // pipelines made by every object and not destroyed yet (diagnostics)
+        static int getLivePipelineCount();
     };
 }
 

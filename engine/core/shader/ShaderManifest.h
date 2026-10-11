@@ -67,7 +67,10 @@ namespace jasperengine{
         ShaderRequire_UV2      = 1 << 3,
         ShaderRequire_Color    = 1 << 4,
         ShaderRequire_Position = 1 << 5,
-        ShaderRequire_RawColor = 1 << 6  // the vertex colour without the instance colour (v_rawColor)
+        ShaderRequire_RawColor = 1 << 6, // the vertex colour without the instance colour (v_rawColor)
+        // a_smoothNormal: the normal averaged over the vertices sharing a position, which the
+        // renderer generates for the mesh (shader library phase 2, inverted-hull outlines)
+        ShaderRequire_SmoothNormals = 1 << 7
     };
 
     struct JASPERENGINE_API ShaderManifestProperty{

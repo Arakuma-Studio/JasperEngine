@@ -85,3 +85,7 @@ void ObjectRender::destroy(){
     backend.destroy();
 
 }
+
+int ObjectRender::getLivePipelineCount(){
+    return SokolObject::getLivePipelineCount();
+}

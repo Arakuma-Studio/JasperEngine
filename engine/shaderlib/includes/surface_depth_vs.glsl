@@ -12,6 +12,7 @@
 // With SURFACE_DEPTH_VARYINGS defined before including, it also writes v_uv1 (SURFACE_UV1)
 // and v_color (SURFACE_COLOR, the vertex colour times the instance colour) for a fragment
 // stage that alpha clips (includes/surface_depth_fs.glsl with SURFACE_DEPTH_DISCARD).
+// SURFACE_SMOOTH_NORMALS gives the hook surfaceSmoothNormal as includes/surface_vs.glsl does.
 
 // Inputs only the hooks read: without them they are not declared at all, since a GL
 // driver drops an unread attribute and the bind then misses it
@@ -56,6 +57,10 @@ out vec2 v_projZW;
 
 #ifdef HAS_NORMALS
     in vec3 a_normal;
+#endif
+#if defined(SURFACE_SMOOTH_NORMALS) && defined(SURFACE_DISPLACE) && !defined(HAS_TERRAIN)
+    #define SURFACE_SMOOTH_NORMAL_INPUT
+    in vec3 a_smoothNormal;
 #endif
 #if defined(HAS_UV_SET1) && !defined(HAS_TERRAIN)
     in vec2 a_texcoord1;
@@ -102,6 +107,9 @@ out vec2 v_projZW;
 #include "includes/instance_normal.glsl"
 #include "includes/morphtarget.glsl"
 
+// the object-space smoothed normal the hook may read (SURFACE_SMOOTH_NORMALS)
+vec3 surfaceSmoothNormal;
+
 #ifdef SURFACE_DISPLACE
     vec3 surfaceDisplace(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv);
 #endif
@@ -124,12 +132,25 @@ void main() {
         objectNormal = normalize(objectNormal);
     #endif
 
+    #ifdef SURFACE_SMOOTH_NORMAL_INPUT
+        vec3 smoothNormal = normalize(getSkinNormal(a_smoothNormal, boneTransform));
+    #endif
+
     #ifdef HAS_INSTANCING
         mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
         vec4 pos = instanceMatrix * vec4(position, 1.0);
         objectNormal = normalize(instanceNormal(mat3(instanceMatrix), objectNormal));
+        #ifdef SURFACE_SMOOTH_NORMAL_INPUT
+            smoothNormal = normalize(instanceNormal(mat3(instanceMatrix), smoothNormal));
+        #endif
     #else
         vec4 pos = vec4(position, 1.0);
+    #endif
+
+    #ifdef SURFACE_SMOOTH_NORMAL_INPUT
+        surfaceSmoothNormal = smoothNormal;
+    #else
+        surfaceSmoothNormal = objectNormal;
     #endif
 
     #ifdef USE_INSTANCE_FADE

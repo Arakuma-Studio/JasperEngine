@@ -189,7 +189,7 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
         const std::pair<uint32_t, const char*> inputs[] = {
             {ShaderRequire_Position, "position"}, {ShaderRequire_Normals, "normals"}, {ShaderRequire_Tangents, "tangents"},
             {ShaderRequire_UV1, "uv1"}, {ShaderRequire_UV2, "uv2"}, {ShaderRequire_Color, "color"},
-            {ShaderRequire_RawColor, "rawcolor"}};
+            {ShaderRequire_RawColor, "rawcolor"}, {ShaderRequire_SmoothNormals, "smoothnormals"}};
         for (const auto& [flag, name] : inputs) {
             if (flags & flag) list.push_back(name);
         }

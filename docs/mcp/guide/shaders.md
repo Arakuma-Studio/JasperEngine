@@ -150,8 +150,11 @@ Manifest lines (library shaders and forks that declare them) beyond the basic on
   Example: `// @state[MODE_ALPHA] blend=alpha zwrite=off`.
 - `// @require <inputs> feature=<DEFINE>`: inputs required only while that define is on
   (`feature=!<DEFINE>`: while off). Inputs: `normals tangents uv1 uv2 color rawcolor
-  position`; `rawcolor` gives `v_rawColor`, the vertex colour without the instance colour
-  (`v_color` is their product).
+  position smoothnormals`; `rawcolor` gives `v_rawColor`, the vertex colour without the
+  instance colour (`v_color` is their product); `smoothnormals` gives a `SURFACE_DISPLACE`
+  hook `surfaceSmoothNormal`, the object-space normal averaged over the vertices sharing a
+  position (the engine makes it), so an inverted hull pushed along it has no gaps at hard
+  edges.
 - The engine defines the blend mode a variant draws with: `BLEND_NONE`, `BLEND_ALPHA`,
   `BLEND_PREMULTIPLIED`, `BLEND_ADDITIVE` or `BLEND_MULTIPLY` (`#ifdef BLEND_ADDITIVE`).
   `finalizeColor` fogs by it (additive fades to black, multiply to white);

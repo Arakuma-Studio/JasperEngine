@@ -1149,6 +1149,9 @@ void Engine::signalReadyOnce(){
     if (readyFrames >= 10){
         signalled = true;
         Log::print("Engine ready: every scene loaded and no shader build pending (frame %llu)", (unsigned long long)frames);
+        for (Scene* scene : scenes){
+            scene->getSystem<RenderSystem>()->logRenderObjects();
+        }
     }
 }
 

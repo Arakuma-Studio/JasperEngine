@@ -80,8 +80,9 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 - **Lighting**: the supported modes, the default first.
 - **Inputs**: the vertex data the shader reads (`position`, `normals`, `tangents`, `uv1`,
   `uv2`, `color` = vertex colour times instance colour, `rawcolor` = the vertex colour
-  alone); "with X" inputs only while feature X is on ("without X": while off). A mesh that
-  lacks one still draws (normal +Y, UV 0, white).
+  alone, `smoothnormals` = the normal averaged over the vertices sharing a position, made by
+  the engine); "with X" inputs only while feature X is on ("without X": while off). A mesh
+  that lacks one still draws (normal +Y, UV 0, white).
 - **Default state**: what Auto resolves to; `shadows off` means the object casts no shadow
   even when its mesh casts shadows. "With X" lines apply while feature or keyword value X is
   on.
@@ -196,7 +197,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
         const std::pair<uint32_t, const char*> inputs[] = {
             {ShaderRequire_Position, "position"}, {ShaderRequire_Normals, "normals"}, {ShaderRequire_Tangents, "tangents"},
             {ShaderRequire_UV1, "uv1"}, {ShaderRequire_UV2, "uv2"}, {ShaderRequire_Color, "color"},
-            {ShaderRequire_RawColor, "rawcolor"}};
+            {ShaderRequire_RawColor, "rawcolor"}, {ShaderRequire_SmoothNormals, "smoothnormals"}};
         std::string text;
         for (const auto& [flag, name] : inputs){
             if (require & flag)

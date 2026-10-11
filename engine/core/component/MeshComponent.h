@@ -96,6 +96,61 @@ namespace jasperengine{
         bool foldedDirectional = false;
     };
 
+    // The extra draw of a submesh whose material has an extra pass (Material::extraPass,
+    // shader library phase 2): its own shader, pipelines, uniform blocks and textures, built
+    // by RenderSystem::loadMesh and drawn by drawMesh right before or after the submesh. A
+    // submesh without an extra pass has none (Submesh::extraPass is null).
+    struct JASPERENGINE_API SubmeshExtraPass{
+        ObjectRender render;
+        std::shared_ptr<ShaderRender> shader;
+        uint32_t shaderProperties = 0; // ShaderType::MESH
+        uint16_t customShaderId = 0;   // the pass's shader reference, registered
+        MaterialPassOrder order = MaterialPassOrder::AFTER;
+
+        // the manifest of its shader (null for a fork without one) and its resolved @state
+        std::shared_ptr<const ShaderManifest> manifest;
+        ShaderManifestState manifestState;
+        ShaderLibraryBindings libraryBindings;
+        // filled from MaterialPass::shaderParams, else the manifest defaults
+        CustomUniformBlock customVSParams;
+        CustomUniformBlock customFSParams;
+
+        int slotVSParams = -1;
+        int slotFSParams = -1;
+        int slotFSTexCoordSets = -1;
+        int slotVSFade = -1;
+        int slotFSFog = -1;
+        int slotFSLighting = -1;
+        int slotVSObjectLights = -1;
+        int slotFSObjectLights = -1;
+        unsigned int sizeVSObjectLights = 0;
+        unsigned int sizeFSObjectLights = 0;
+        int slotFSLitFrame = -1;
+        unsigned int sizeFSLitFrame = 0;
+        int slotFSLighting2D = -1;
+        int slotVSSprite = -1;
+        int slotVSSkinning = -1;
+        int slotVSMorphTarget = -1;
+
+        bool loaded = false;
+        // its shader failed to build: the submesh draws without it
+        bool failed = false;
+        bool needUpdateTexture = false;
+    };
+
+    // a_smoothNormal of a mesh (manifest @require smoothnormals): per vertex of a position
+    // attribute, the normal averaged over the vertices sharing its position. Made at load,
+    // only for a mesh whose shaders ask for it, and kept while the geometry is the same.
+    struct JASPERENGINE_API MeshSmoothNormals{
+        struct Entry{
+            uint64_t key = 0;             // hash of the positions, normals and indices it is made of
+            std::vector<int8_t> data;     // 4 signed normalized bytes per vertex (xyz, 0)
+            BufferRender buffer;
+            bool used = false;            // by a submesh of the load that is running
+        };
+        std::vector<Entry> entries;
+    };
+
     struct JASPERENGINE_API Submesh{
         Material material;
         std::map<AttributeType, Attribute> attributes;
@@ -214,6 +269,11 @@ namespace jasperengine{
         std::shared_ptr<MeshLodData> lodData;
         ExternalBuffer lodIndices;
         uint64_t lodKey = 0;
+
+        // the material's extra pass as loaded (null: none, nothing allocated)
+        std::shared_ptr<SubmeshExtraPass> extraPass;
+        // MeshComponent::smoothNormals entry its position attribute uses (-1: none)
+        int smoothNormals = -1;
     };
 
     struct MeshComponent{
@@ -269,6 +329,9 @@ namespace jasperengine{
 
         // the lights it is drawn with, see MeshLights
         MeshLights lights;
+
+        // generated a_smoothNormal buffers, null unless a shader of a submesh asks for them
+        std::shared_ptr<MeshSmoothNormals> smoothNormals;
 
         bool receiveLights = true;
         bool receiveIBL = false; // image-based lighting from a sky environment or a reflection probe

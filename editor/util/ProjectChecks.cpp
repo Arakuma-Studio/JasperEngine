@@ -562,6 +562,9 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
                 for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
                     add(RenderSystem::getSubmeshShaderReference(*mesh, mesh->submeshes[s], sceneMeshShader), ShaderType::MESH);
                     add(RenderSystem::getSubmeshDepthShaderReference(*mesh, mesh->submeshes[s], sceneMeshShader), ShaderType::DEPTH);
+                    // and its material's extra pass
+                    if (RenderSystem::hasExtraPass(mesh->submeshes[s], scene->findComponent<TerrainComponent>(entity) != nullptr))
+                        add(RenderSystem::getSubmeshExtraPassReference(mesh->submeshes[s]), ShaderType::MESH);
                 }
             }
             auto addComponent = [&](const std::string& customShader, const std::vector<std::string>& features, ShaderType componentType,

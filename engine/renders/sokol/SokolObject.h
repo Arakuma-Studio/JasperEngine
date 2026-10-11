@@ -81,6 +81,8 @@ namespace jasperengine{
         void resetPipelines();
 
     public:
+        // pipelines made by every object and not destroyed yet (diagnostics)
+        static int getLivePipelineCount();
 
         SokolObject();
         SokolObject(const SokolObject& rhs);

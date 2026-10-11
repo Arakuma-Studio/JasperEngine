@@ -2883,6 +2883,11 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
                     if (mesh.submeshes[s].gbufferShader) {
                         keys.insert(ShaderPool::getShaderKey(ShaderType::GBUFFER, mesh.submeshes[s].gbufferShaderProperties));
                     }
+                    // the extra pass as loaded (from its reference: the build-fail state does not matter)
+                    if (mesh.submeshes[s].extraPass && RenderSystem::hasExtraPass(mesh.submeshes[s], false)) {
+                        keys.insert(ShaderPool::getShaderKey(ShaderType::MESH, mesh.submeshes[s].extraPass->shaderProperties,
+                            ShaderPool::registerCustomShader(RenderSystem::getSubmeshExtraPassReference(mesh.submeshes[s]))));
+                    }
                 }
             }
         }

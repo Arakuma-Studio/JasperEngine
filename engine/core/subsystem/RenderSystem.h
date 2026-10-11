@@ -1135,6 +1135,33 @@ namespace jasperengine{
 		static uint64_t attributeHash(uint64_t seed, const LodAttribute& attribute);
 		static bool readLodSource(const LodAttributes& attributes, MeshLodSource& source);
 		void pollMeshLod(MeshComponent& mesh, Submesh& submesh);
+
+		// shader library phase 2: the extra pass of a submesh (Material::extraPass) and the
+		// generated a_smoothNormal (@require smoothnormals)
+		using BufferMap = std::map<std::string, Buffer*>;
+		using BufferRenderMap = std::map<std::string, BufferRender*>;
+		using BufferStrideMap = std::map<std::string, unsigned int>;
+		// builds (or, without an extra pass, releases) the submesh's extra pass; false while
+		// its shader or textures are not ready
+		bool loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsigned int submeshIndex, const SubmeshShaderInputs& submeshInputs,
+		                          const MeshShaderEnvironment& environment, uint16_t pipelines, BufferMap& buffers,
+		                          BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride, InstancedMeshComponent* instmesh);
+		void releaseSubmeshExtraPass(Submesh& submesh, bool keepShader);
+		// draws it, with the instances, detail level and tilemap ranges of the submesh's draw
+		void drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsigned int submeshIndex, Transform& transform, PipelineType pipType,
+		                          InstancedMeshComponent* instmesh, int instanceView, const MeshDraw& draw, unsigned int instanceCount,
+		                          const Matrix4* objectBlock, TilemapComponent* tilemap, uint32_t& builtLightBits);
+		// the vertex attributes of the submesh (its buffers, its own attributes, the instance
+		// buffer) bound to a render; the index count when indexed, else the mesh's vertex count
+		unsigned int bindSubmeshAttributes(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh,
+		                                   BufferMap& buffers, BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride,
+		                                   InstancedMeshComponent* instmesh);
+		// a_smoothNormal for a render whose shader declares it: the mesh's generated buffer
+		// of the submesh's positions, made when missing; false when the mesh cannot have one
+		bool bindSmoothNormals(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh, BufferMap& buffers);
+		void releaseSmoothNormals(MeshComponent& mesh, bool keepData);
+		// forgets the generated buffers no submesh of the finished load uses
+		void trimSmoothNormals(MeshComponent& mesh);
 		static bool releaseSubmeshLod(Submesh& submesh);
 		void releaseMeshLods(MeshComponent& mesh);
 		static bool isMeshLodPending(Submesh& submesh);
@@ -1372,6 +1399,22 @@ namespace jasperengine{
 		// mode's BLEND_* define (ShaderReference::getColorVariantReference).
 		static std::string getSubmeshShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
 		static std::string getSubmeshDepthShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
+		// ---- shader library phase 2 (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
+		// Whether the submesh draws an extra pass: its material names one (a non-empty
+		// MaterialPass::shader) and it is not a Terrain's (terrain: the submesh's inputs)
+		static bool hasExtraPass(const Submesh& submesh, bool terrain);
+		// The custom shader string the extra pass's colour variant is keyed by: its shader with
+		// its features and the BLEND_* define of its resolved blend mode
+		static std::string getSubmeshExtraPassReference(const Submesh& submesh);
+		// The inputs the extra pass's variant comes from: the submesh's (the same mesh variant
+		// bits: skinning, morph targets, instancing, texture rect, vertex colour, fog, from
+		// getSubmeshShaderInputs) with its own shader's manifest and features, its default
+		// lighting mode, and no received shadows, IBL or mirror
+		static SubmeshShaderInputs getExtraPassShaderInputs(const SubmeshShaderInputs& submeshInputs, const MaterialPass& pass);
+		// Its colour pipeline state, resolved as the submesh's (resolveSubmeshRenderState):
+		// the pass's values, else its shader's @state with the rules of its features
+		// (manifestState, null: none), else the submesh's legacy behaviour
+		static RenderState resolveExtraPassRenderState(const MeshComponent& mesh, const Submesh& submesh, const ShaderManifestState* manifestState);
 		// The color pipeline state of a submesh: the material's value, else the manifest's
 		// @state with the @state[...] rules of the material's features, else the legacy
 		// behaviour. blended: not opaque; transparentQueue: drawn sorted after the opaque objects
@@ -1393,6 +1436,11 @@ namespace jasperengine{
 		// forked shader also lists the built-in variant it falls back to. For warming
 		// them up before the entity shows (ShaderVariantCollection::addEntityVariants).
 		void getShaderVariants(Entity entity, std::vector<ShaderKey>& keys);
+
+		// Logs what the loaded meshes hold on the GPU: submeshes, extra passes (none for a
+		// submesh without one), generated smoothed-normal buffers and the live pipelines of
+		// every object (Engine's ready signal prints it, for tests)
+		void logRenderObjects();
 
 		// copies the stacked scene composite to the swapchain (Engine::endCompositeFramebuffer)
 		void presentFramebufferToSwapchain(Framebuffer* source);

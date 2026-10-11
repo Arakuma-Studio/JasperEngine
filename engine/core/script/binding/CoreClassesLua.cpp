@@ -364,6 +364,40 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("NONE", MaterialLighting::NONE)
         .endNamespace();
 
+    // shader library phase 2: Material.extraPass.order
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialPassOrder")
+        .addVariable("AFTER", MaterialPassOrder::AFTER)
+        .addVariable("BEFORE", MaterialPassOrder::BEFORE)
+        .endNamespace();
+
+    // stencil state of a Material's extra pass (MaterialPass.stencil)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialStencilCompare")
+        .addVariable("AUTO", MaterialStencilCompare::AUTO)
+        .addVariable("DISABLED", MaterialStencilCompare::DISABLED)
+        .addVariable("NEVER", MaterialStencilCompare::NEVER)
+        .addVariable("LESS", MaterialStencilCompare::LESS)
+        .addVariable("EQUAL", MaterialStencilCompare::EQUAL)
+        .addVariable("LESS_EQUAL", MaterialStencilCompare::LESS_EQUAL)
+        .addVariable("GREATER", MaterialStencilCompare::GREATER)
+        .addVariable("NOT_EQUAL", MaterialStencilCompare::NOT_EQUAL)
+        .addVariable("GREATER_EQUAL", MaterialStencilCompare::GREATER_EQUAL)
+        .addVariable("ALWAYS", MaterialStencilCompare::ALWAYS)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialStencilOp")
+        .addVariable("KEEP", MaterialStencilOp::KEEP)
+        .addVariable("ZERO", MaterialStencilOp::ZERO)
+        .addVariable("REPLACE", MaterialStencilOp::REPLACE)
+        .addVariable("INCR_CLAMP", MaterialStencilOp::INCR_CLAMP)
+        .addVariable("DECR_CLAMP", MaterialStencilOp::DECR_CLAMP)
+        .addVariable("INVERT", MaterialStencilOp::INVERT)
+        .addVariable("INCR_WRAP", MaterialStencilOp::INCR_WRAP)
+        .addVariable("DECR_WRAP", MaterialStencilOp::DECR_WRAP)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("TextureFilter")
         .addVariable("NEAREST", TextureFilter::NEAREST)
@@ -1004,6 +1038,72 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
+        .beginClass<MaterialStencil>("MaterialStencil")
+        .addConstructor<void (*) (void)>()
+        .addProperty("compare", &MaterialStencil::compare, &MaterialStencil::compare)
+        .addProperty("ref", &MaterialStencil::ref, &MaterialStencil::ref)
+        .addProperty("readMask", &MaterialStencil::readMask, &MaterialStencil::readMask)
+        .addProperty("writeMask", &MaterialStencil::writeMask, &MaterialStencil::writeMask)
+        .addProperty("pass", &MaterialStencil::pass, &MaterialStencil::pass)
+        .addProperty("fail", &MaterialStencil::fail, &MaterialStencil::fail)
+        .addProperty("depthFail", &MaterialStencil::depthFail, &MaterialStencil::depthFail)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        // A Material's extra draw (material.extraPass, edited in place on the Material copy,
+        // then mesh:setMaterial(m)): its own shader, parameters, textures, features and state.
+        // An empty shader means no extra pass.
+        .beginClass<MaterialPass>("MaterialPass")
+        .addConstructor<void (*) (void)>()
+        .addProperty("shader", &MaterialPass::shader, &MaterialPass::shader)
+        .addProperty("blendMode", &MaterialPass::blendMode, &MaterialPass::blendMode)
+        .addProperty("cullMode", &MaterialPass::cullMode, &MaterialPass::cullMode)
+        .addProperty("depthWrite", &MaterialPass::depthWrite, &MaterialPass::depthWrite)
+        .addProperty("depthTest", &MaterialPass::depthTest, &MaterialPass::depthTest)
+        .addProperty("depthOffsetFactor", &MaterialPass::depthOffsetFactor, &MaterialPass::depthOffsetFactor)
+        .addProperty("depthOffsetUnits", &MaterialPass::depthOffsetUnits, &MaterialPass::depthOffsetUnits)
+        .addProperty("stencil", &MaterialPass::stencil, &MaterialPass::stencil)
+        // -1 auto, else a mask of red 1, green 2, blue 4, alpha 8
+        .addProperty("colorWrite", &MaterialPass::colorWrite, &MaterialPass::colorWrite)
+        .addProperty("order", &MaterialPass::order, &MaterialPass::order)
+        // a @property value of the pass's shader (colours linear); unset reads the manifest default
+        .addFunction("setShaderParam",
+            luabridge::overload<MaterialPass*, const std::string&, const Vector4&>(+[](MaterialPass* self, const std::string& name, const Vector4& value) {
+                ShaderUniforms::set(self->shaderParams, name, value);
+            }),
+            luabridge::overload<MaterialPass*, const std::string&, const Vector3&>(+[](MaterialPass* self, const std::string& name, const Vector3& value) {
+                // a colour given as (r, g, b) is opaque
+                ShaderUniforms::set(self->shaderParams, name, LuaBinding::getShaderParamValue(self->shader, name, value));
+            }),
+            luabridge::overload<MaterialPass*, const std::string&, const Vector2&>(+[](MaterialPass* self, const std::string& name, const Vector2& value) {
+                ShaderUniforms::set(self->shaderParams, name, Vector4(value.x, value.y, 0.0f, 0.0f));
+            }),
+            luabridge::overload<MaterialPass*, const std::string&, float>(+[](MaterialPass* self, const std::string& name, float value) {
+                ShaderUniforms::set(self->shaderParams, name, Vector4(value, 0.0f, 0.0f, 0.0f));
+            }))
+        .addFunction("getShaderParam", +[](const MaterialPass* self, const std::string& name) -> Vector4 {
+            return ShaderLibraryValues::getParam(self->shaderParams, self->shader, name);
+        })
+        .addFunction("removeShaderParam", +[](MaterialPass* self, const std::string& name) -> bool {
+            return ShaderUniforms::remove(self->shaderParams, name);
+        })
+        // the texture of a @texture uniform by path ("" removes it: the manifest default binds)
+        .addFunction("setShaderTexture", +[](MaterialPass* self, const std::string& name, const std::string& path) {
+            ShaderLibraryValues::setTexture(self->shaderTextures, name, path);
+        })
+        .addFunction("getShaderTexture", +[](const MaterialPass* self, const std::string& name) -> std::string {
+            return ShaderLibraryValues::getTexture(self->shaderTextures, name);
+        })
+        // a @feature on or off, or a @keywords value ("GROUP_VALUE") chosen
+        .addFunction("setShaderFeature", +[](MaterialPass* self, const std::string& define, bool enabled) {
+            ShaderLibraryValues::setFeature(self->shaderFeatures, self->shader, define, enabled);
+        })
+        .addFunction("isShaderFeatureEnabled", +[](const MaterialPass* self, const std::string& define) -> bool {
+            return ShaderLibraryValues::isFeatureEnabled(self->shaderFeatures, self->shader, define);
+        })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
         // Mesh::getMaterial hands back a copy: the values are written on it, then the copy is
         // set back (m.roughnessFactor = 0.2; mesh:setMaterial(m)). Textures stay read-only.
         .beginClass<Material>("Material")
@@ -1030,6 +1130,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("depthOffsetFactor", &Material::depthOffsetFactor, &Material::depthOffsetFactor)
         .addProperty("depthOffsetUnits", &Material::depthOffsetUnits, &Material::depthOffsetUnits)
         .addProperty("sortPriority", &Material::sortPriority, &Material::sortPriority)
+        // one optional extra draw of the submesh (outlines, masks), edited in place:
+        // m.extraPass.shader = "library:outline"; mesh:setMaterial(m)
+        .addProperty("extraPass", &Material::extraPass, &Material::extraPass)
         // a @property value of the shader (colours linear); unset reads the manifest default.
         // The shader is the material's, else the one its submesh draws with (a copy from
         // Mesh:getMaterial remembers it: the mesh's customShader or the scene default).

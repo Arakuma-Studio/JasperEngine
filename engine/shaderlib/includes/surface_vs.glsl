@@ -18,6 +18,15 @@
 //   SURFACE_UV2       @require uv2       out vec2 v_uv2
 //   SURFACE_COLOR     @require color     out vec4 v_color      vertex x instance colour
 //   SURFACE_RAW_COLOR @require rawcolor  out vec4 v_rawColor   the vertex colour alone
+//   SURFACE_SMOOTH_NORMALS @require smoothnormals  (no varying) surfaceSmoothNormal
+//
+// surfaceSmoothNormal (SURFACE_SMOOTH_NORMALS) is, for the displacement hooks below, the
+// object-space normal averaged over every vertex sharing the vertex's position (the
+// renderer generates it, a_smoothNormal), skinned and instanced like the normal: extruding
+// along it closes the gaps a hard-edged mesh leaves at its corners (inverted-hull
+// outlines). Morph targets do not move it (it is the base pose's). Only a hook reads it, so
+// the attribute is declared only with SURFACE_DISPLACE or SURFACE_DISPLACE_NORMAL; without
+// SURFACE_SMOOTH_NORMALS, and on a Terrain, it is the hook's objectNormal.
 //
 // A required input the mesh lacks gets a fallback: the normal is the model's +Y, a UV is
 // 0 and the colour white. SURFACE_NO_VERTEX_COLOR (defined before including) keeps the
@@ -94,6 +103,11 @@ in vec3 a_position;
 #endif
 #ifdef HAS_TANGENTS
     in vec4 a_tangent;
+#endif
+// read by a displacement hook only (see surfaceSmoothNormal above)
+#if defined(SURFACE_SMOOTH_NORMALS) && !defined(HAS_TERRAIN) && (defined(SURFACE_DISPLACE) || defined(SURFACE_DISPLACE_NORMAL))
+    #define SURFACE_SMOOTH_NORMAL_INPUT
+    in vec3 a_smoothNormal;
 #endif
 #if defined(HAS_UV_SET1) && !defined(HAS_TERRAIN)
     in vec2 a_texcoord1;
@@ -188,6 +202,9 @@ in vec3 a_position;
 #include "includes/instance_normal.glsl"
 #include "includes/morphtarget.glsl"
 
+// the object-space smoothed normal the hooks may read (SURFACE_SMOOTH_NORMALS)
+vec3 surfaceSmoothNormal;
+
 #ifdef SURFACE_DISPLACE
     // object-space position (after skinning, morph targets and the instance matrix), its
     // normal, the raw vertex colour and the first UV set; returns the moved position
@@ -271,12 +288,26 @@ void main() {
         objectNormal = normalize(objectNormal);
     #endif
 
+    #ifdef SURFACE_SMOOTH_NORMAL_INPUT
+        // skinned like the normal; morph targets leave it at the base pose
+        vec3 smoothNormal = normalize(getSkinNormal(a_smoothNormal, boneTransform));
+    #endif
+
     #ifdef HAS_INSTANCING
         mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
         vec4 pos = instanceMatrix * vec4(position, 1.0);
         objectNormal = normalize(instanceNormal(mat3(instanceMatrix), objectNormal));
+        #ifdef SURFACE_SMOOTH_NORMAL_INPUT
+            smoothNormal = normalize(instanceNormal(mat3(instanceMatrix), smoothNormal));
+        #endif
     #else
         vec4 pos = vec4(position, 1.0);
+    #endif
+
+    #ifdef SURFACE_SMOOTH_NORMAL_INPUT
+        surfaceSmoothNormal = smoothNormal;
+    #else
+        surfaceSmoothNormal = objectNormal;
     #endif
 
     #ifdef USE_INSTANCE_FADE
