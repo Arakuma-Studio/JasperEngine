@@ -797,6 +797,11 @@ std::string RmlRenderer::stripTextureFilter(const std::string& source, bool& nea
 }
 
 Rml::TextureHandle RmlRenderer::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions){
+    return GenerateTextureWithWrap(source, source_dimensions, false, false);
+}
+
+Rml::TextureHandle RmlRenderer::GenerateTextureWithWrap(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions, bool repeatX,
+                                                        bool repeatY){
     // already premultiplied RGBA8 (font pages, RmlUi callback textures)
     if (source_dimensions.x <= 0 || source_dimensions.y <= 0 ||
         source.size() != (size_t)source_dimensions.x * (size_t)source_dimensions.y * 4){
@@ -804,7 +809,9 @@ Rml::TextureHandle RmlRenderer::GenerateTexture(Rml::Span<const Rml::byte> sourc
         return 0;
     }
 
-    HtmlUITexture* texture = createStaticTexture(source.data(), source_dimensions.x, source_dimensions.y, "htmlui-texture");
+    HtmlUITexture* texture = createStaticTexture(source.data(), source_dimensions.x, source_dimensions.y, "htmlui-texture", TextureFilter::LINEAR,
+                                                 repeatX ? TextureWrap::REPEAT : TextureWrap::CLAMP_TO_EDGE,
+                                                 repeatY ? TextureWrap::REPEAT : TextureWrap::CLAMP_TO_EDGE);
     if (!texture){
         Log::error("[HTML UI] could not create a %d x %d texture", source_dimensions.x, source_dimensions.y);
         return 0;

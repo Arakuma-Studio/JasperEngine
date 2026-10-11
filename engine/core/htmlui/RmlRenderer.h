@@ -135,6 +135,9 @@ namespace jasperengine {
         static std::string stripTextureFilter(const std::string& source, bool& nearest, bool& repeatX, bool& repeatY);
         bool SupportsTextureWrapHint() override { return true; }
         Rml::TextureHandle GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions) override;
+        // a generated texture sampled with repeat wrap (an SVG rasterized at a background tile's size, repeated)
+        Rml::TextureHandle GenerateTextureWithWrap(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions, bool repeatX,
+                                                   bool repeatY) override;
         // deletes the HtmlUITexture behind any handle (also those handed to RmlUi through
         // CallbackTextureInterface::SetTextureHandle), after the frame when one is in progress
         void ReleaseTexture(Rml::TextureHandle texture) override;
