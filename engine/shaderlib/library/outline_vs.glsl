@@ -17,7 +17,18 @@
 // on-screen size (distanceScale 1) beyond referenceDistance, at most maxWidth; an
 // orthographic camera does not scale it (its picture does not shrink with distance).
 // VERTEX_COLOR_WIDTH multiplies the width by the vertex colour's red (0 hides the outline
-// there, a painted mask).
+// there, a painted mask). Every width also scales by surfaceFadeVisible, so an instance the
+// distance fade shrank to its base takes its outline with it (no outline-coloured dot).
+//
+// Hard edges: the push follows the smoothed normal, which keeps the hull closed at a hard
+// corner but leaves the band beside it narrower than width wherever the silhouette runs along
+// a face rather than the corner's diagonal: WORLD offsets each face by width times the cosine
+// between face and smoothed normal (width / sqrt(3) on a cube), SCREEN moves the corner width
+// pixels along its diagonal on screen, so an edge between two such corners sits width times
+// that cosine away (width / sqrt(2) along a cube face seen square on). Smooth meshes, and
+// silhouettes running through the corners, get the full width. A crack-free correction would
+// need the miter length per welded vertex (not per face vertex, which reopens the gaps), so
+// none is applied: raise the width, or bevel the mesh, for an even band on boxy meshes.
 //
 // The outline colour never takes the vertex or instance colour (SURFACE_NO_VERTEX_COLOR).
 // No depth program: an outline is an extra pass, which is in no shadow or depth pass.
@@ -86,5 +97,6 @@ vec3 surfaceDisplace(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv
         vec3 worldOffset = worldNormal * width;
     #endif
 
-    return objectPosition + worldOffset * normalMatrix;
+    // a faded instance's hull shrinks with it (1 without instance fade, folded away)
+    return objectPosition + (worldOffset * surfaceFadeVisible) * normalMatrix;
 }

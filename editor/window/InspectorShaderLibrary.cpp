@@ -812,7 +812,14 @@ void editor::InspectorWindow::drawStencilColorWriteRows(ComponentType cpType, Sc
     if (propertyHeader("Stencil", -1, stencil != MaterialStencil(), settings.child))
         editStencil([](MaterialStencil& value, Entity) { value = MaterialStencil(); });
     ImGui::SetNextItemWidth(-1);
-    if (ImGui::BeginCombo("##stencil_compare", current.c_str())) {
+    const bool compareOpen = ImGui::BeginCombo("##stencil_compare", current.c_str());
+    if (!compareOpen && ImGui::IsItemHovered())
+        ImGui::SetTooltip("Stencil test and write of this draw. The stencil is cleared at the start of each camera "
+                          "pass: masks and their readers draw in the same camera, masks first (opaque queue before "
+                          "transparent, Sort Priority within a queue).\nA test other than Always leaves the depth "
+                          "pre-pass. SSAO and SSR ignore the stencil: a masked object darkens and reflects at its "
+                          "whole shape.");
+    if (compareOpen) {
         if (ImGui::Selectable(autoLabel.c_str(), stencil.compare == MaterialStencilCompare::AUTO))
             editStencil([](MaterialStencil& value, Entity) { value.compare = MaterialStencilCompare::AUTO; });
         if (ImGui::IsItemHovered())

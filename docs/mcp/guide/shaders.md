@@ -75,9 +75,12 @@ linked to a `.material` file becomes its own material. Tune the result with the 
   `incr`... work too). A block merges the keys given; `null` resets it. The stencil is
   cleared at the start of each camera pass: a mask and its readers draw in the same camera,
   the mask first (opaque queue before transparent; `sortPriority` orders within a queue).
+  A test other than `always` leaves the depth pre-pass; SSAO and SSR ignore the stencil (a
+  masked object darkens and reflects at its whole shape).
 - `colorWrite`: `"auto"` (the shader's `colorwrite=`, else all), `"none"` (depth/stencil
   only: invisible masks) or channels of `"rgba"` (`"rgb"`); a mask 0-15 works too.
-- `extraPass` (a material's): one more draw of the submesh right before or after it, with
+- `extraPass` (a material's): one more draw of the submesh before or after its mesh's main
+  draws (Before passes ahead of all the mesh's submeshes, After passes after all of them), with
   its own mesh shader: `{shader, shaderParams, shaderTextures, shaderFeatures, blendMode,
   cullMode, depthWrite, depthTest, depthOffsetFactor, depthOffsetUnits, stencil, colorWrite,
   order}` (`order`: `after` or `before`), or one field `submeshes[0].material.extraPass.<key>`

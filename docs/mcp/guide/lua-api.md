@@ -696,7 +696,9 @@ rule, `DISABLED`, `NEVER` ... `ALWAYS`), `ref`, `readMask`, `writeMask` (0-255),
 edits the copy's) and on UI, Points and LineRenderer objects (a copy there: set it back,
 `local s = image.stencil; s.compare = MaterialStencilCompare.EQUAL; image.stencil = s`).
 `extraPass` (`MaterialPass`, edited in place on the copy, then `setMaterial`): one more draw
-of the submesh right after it (`order = MaterialPassOrder.BEFORE`: before it) with its own
+of the submesh after its mesh's main draws (`order = MaterialPassOrder.BEFORE`: ahead of
+them; on a mesh of several submeshes every After pass draws after all of its submeshes and
+every Before pass ahead of all of them, in submesh order) with its own
 `shader` (`""`: none), the same state fields as the material plus `stencil` and `colorWrite`,
 and the same parameter/texture/feature methods, resolved against its own shader; e.g.
 `m.extraPass.shader = "shaders/outline"; m.extraPass:setShaderParam("width", 0.05)`.

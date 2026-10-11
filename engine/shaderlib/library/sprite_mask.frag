@@ -12,9 +12,11 @@
 // The image is the material's base colour texture (a Sprite's, Tilemap's or MeshPolygon's,
 // includes/base_color_fs.glsl), at v_uv1, which the shared vertex path already maps into
 // the sprite's texture rect and the instance's rect, so atlas frames and animations mask
-// with their current frame. A mesh without UVs masks its whole shape.
+// with their current frame. A mesh without UVs masks its whole shape. Only the texture: the
+// colour factor would be an unread block.
 
 #include "includes/output.glsl"
+#define BASE_COLOR_TEXTURE_ONLY
 #include "includes/base_color_fs.glsl"
 
 uniform u_fs_customParams {

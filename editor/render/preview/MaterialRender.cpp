@@ -80,9 +80,8 @@ void editor::MaterialRender::applyMaterial(const Material& material, const std::
     Material drawn = material;
     drawn.colorWrite = previewColorWrite(material.colorWrite, material.shader.empty() ? meshShader : material.shader,
                                          material.shaderFeatures);
-    MaterialPass& pass = drawn.extraPass;
-    if (!pass.shader.empty())
-        pass.colorWrite = previewColorWrite(pass.colorWrite, pass.shader, pass.shaderFeatures);
+    if (MaterialPass* pass = drawn.extraPass.editIfSet(); pass && !pass->shader.empty())
+        pass->colorWrite = previewColorWrite(pass->colorWrite, pass->shader, pass->shaderFeatures);
     sphere->setCustomShader(meshShader);
     sphere->setMaterial(drawn);
 }

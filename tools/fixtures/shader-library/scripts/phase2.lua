@@ -11,7 +11,9 @@
 --     5. a sphere, world width growing with distance (DISTANCE_SCALE), capped
 --     6. a cube whose outline is tinted by a checker texture (TEXTURE)
 --     7. a vertex-coloured bumpy box, width times its vertex colour red (VERTEX_COLOR_WIDTH)
---     8. a blended glass box: the Outline (hull) preset puts the pass Before it
+--     8. a blended glass box: the Outline (hull) preset gives it the stencil outline instead
+--        (the material marks stencil bit 1, an After outline_stencil pass, Visible only, draws
+--        the hull's look outside the mark: a dark blue ring, the glass not filled)
 --   row 2, stencil (each object behind a low grey wall that hides its lower half):
 --     1. Outline (stencil) preset, screen width: the orange outline runs over the wall
 --        around the hidden half too, never over the cube itself
@@ -63,8 +65,14 @@ local function stencil(compare, ref, readMask, writeMask, pass, depthFail)
 end
 
 -- editor/material/MaterialPresets.cpp in Lua: preset(material, blended) edits a material
--- copy as the editor's preset does (blended: what isMaterialBlended answers for it)
+-- copy as the editor's preset does (blended: what isMaterialBlended answers for it), for
+-- the materials this group starts from (no stencil outline mark or pass to re-apply over;
+-- the readers here have no extra pass to mask)
 local PRESETS = {}
+
+local OUTLINE_MARK = 1      -- stencil bit of the outline mark
+local DRAW_ONCE_BITS = 12   -- 0x0C
+local MASK_BITS = 240       -- 0xF0
 
 local function setExtraPass(material, shader, order)
     if material.extraPass.shader ~= shader then
@@ -85,8 +93,46 @@ local function makeMask(material, shader)
     material.sortPriority = math.min(material.sortPriority, -1)
 end
 
+-- the material's test plus the outline mark (withVisibleOutlineMark): draw-once and mask
+-- readers keep their test and also write bit 1; anything else becomes the plain mark
+local function withVisibleOutlineMark(s)
+    if s.compare == MaterialStencilCompare.NOT_EQUAL and s.readMask == DRAW_ONCE_BITS then
+        return stencil(s.compare, s.ref | OUTLINE_MARK, DRAW_ONCE_BITS, DRAW_ONCE_BITS | OUTLINE_MARK, MaterialStencilOp.REPLACE)
+    end
+    if (s.compare == MaterialStencilCompare.EQUAL or s.compare == MaterialStencilCompare.NOT_EQUAL) and s.readMask == MASK_BITS then
+        return stencil(s.compare, s.ref | OUTLINE_MARK, MASK_BITS, OUTLINE_MARK, MaterialStencilOp.REPLACE)
+    end
+    return stencil(MaterialStencilCompare.ALWAYS, OUTLINE_MARK, 255, OUTLINE_MARK, MaterialStencilOp.REPLACE, MaterialStencilOp.REPLACE)
+end
+
+-- Outline (hull) on a blended material (makeVisibleOutline): a hull would fill the
+-- see-through shape, so an After outline_stencil pass, Visible only, starting from the
+-- hull's look (its default colour and widths), outside the material's stencil mark
+local function makeVisibleOutline(material)
+    if material.extraPass.shader ~= OUTLINE_STENCIL then
+        local hull = MaterialPass()
+        hull.shader = OUTLINE
+        local look = {
+            outlineColor = hull:getShaderParam("outlineColor"),
+            screenWidth = hull:getShaderParam("screenWidth").x,
+            worldWidth = hull:getShaderParam("worldWidth").x,
+        }
+        setExtraPass(material, OUTLINE_STENCIL, MaterialPassOrder.AFTER)
+        for member, value in pairs(look) do
+            material.extraPass:setShaderParam(member, value)
+        end
+    end
+    material.extraPass:setShaderFeature("VISIBILITY_VISIBLE_ONLY", true)
+    material.extraPass.order = MaterialPassOrder.AFTER
+    material.stencil = withVisibleOutlineMark(material.stencil)
+end
+
 function PRESETS.outline_hull(material, blended)
-    setExtraPass(material, OUTLINE, blended and MaterialPassOrder.BEFORE or MaterialPassOrder.AFTER)
+    if blended then
+        makeVisibleOutline(material)
+    else
+        setExtraPass(material, OUTLINE, MaterialPassOrder.AFTER)
+    end
 end
 
 function PRESETS.outline_stencil(material)
@@ -104,6 +150,10 @@ function PRESETS.draw_once_transparency(material, blended)
     material.stencil = stencil(MaterialStencilCompare.NOT_EQUAL, 4, 12, 12, MaterialStencilOp.REPLACE)
     if not blended then
         material.blendMode = MaterialBlendMode.ALPHA
+    end
+    -- now blended: a hull would fill it
+    if material.extraPass.shader == OUTLINE then
+        makeVisibleOutline(material)
     end
 end
 
@@ -245,7 +295,7 @@ local function buildOutlineRow(ctx)
         ctx:fail("models/bumpy_box.gltf did not load")
     end
 
-    -- 8: blended: the preset puts the hull before it
+    -- 8: blended: the preset gives it the stencil outline, Visible only
     local glass = Primitive(scene)
     glass:createBox(0.9, 0.9, 0.9)
     ctx:place(glass, 0.7)
@@ -255,9 +305,11 @@ local function buildOutlineRow(ctx)
         m.blendMode = MaterialBlendMode.ALPHA
     end)
     outline(ctx, glass, { outlineColor = Vector4(0.0, 0.05, 0.3, 1.0) }, true)
-    configure(ctx, glass, function(_, pass)
-        if pass.order ~= MaterialPassOrder.BEFORE then
-            ctx:fail("the blended glass's outline is not before it")
+    configure(ctx, glass, function(m, pass)
+        if pass.shader ~= OUTLINE_STENCIL or not pass:isShaderFeatureEnabled("VISIBILITY_VISIBLE_ONLY") or
+           pass.order ~= MaterialPassOrder.AFTER or m.stencil.compare ~= MaterialStencilCompare.ALWAYS or
+           m.stencil.writeMask ~= OUTLINE_MARK then
+            ctx:fail("the blended glass's outline is not the visible-only stencil outline")
         end
     end)
 

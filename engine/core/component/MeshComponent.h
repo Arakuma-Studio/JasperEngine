@@ -104,7 +104,8 @@ namespace jasperengine{
 
     // The extra draw of a submesh whose material has an extra pass (Material::extraPass,
     // shader library phase 2): its own shader, pipelines, uniform blocks and textures, built
-    // by RenderSystem::loadMesh and drawn by drawMesh right before or after the submesh. A
+    // by RenderSystem::loadMesh and drawn by drawMesh before (Before passes, ahead of all the
+    // mesh's submeshes) or after (After passes, after all of them) the mesh's main draws. A
     // submesh without an extra pass has none (Submesh::extraPass is null).
     struct JASPERENGINE_API SubmeshExtraPass{
         ObjectRender render;

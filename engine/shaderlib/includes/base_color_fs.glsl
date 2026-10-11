@@ -5,10 +5,13 @@
 // u_fs_pbrParams in the layout the engine uploads for unlit variants (with the alphaCutoff
 // of ALPHA_MASK) and u_baseColorTexture, which the engine binds by name. Lighting mode
 // none (MATERIAL_UNLIT) only. Fragment stage.
+// BASE_COLOR_TEXTURE_ONLY (defined before the include): only the texture, for a shader that
+// never reads the colour factor or the alpha mode (no u_fs_pbrParams: an unread block).
 
 #ifndef BASE_COLOR_FS_GLSL
 #define BASE_COLOR_FS_GLSL
 
+#ifndef BASE_COLOR_TEXTURE_ONLY
 uniform u_fs_pbrParams {
     vec4 baseColorFactor; // linear
     #ifdef ALPHA_MASK
@@ -18,6 +21,7 @@ uniform u_fs_pbrParams {
         float alphaCutoff;
     #endif
 } pbrParams;
+#endif
 
 #ifdef HAS_UV_SET1
     uniform texture2D u_baseColorTexture;
@@ -34,6 +38,7 @@ uniform u_fs_pbrParams {
     }
 #endif
 
+#ifndef BASE_COLOR_TEXTURE_ONLY
 // glTF alpha modes of the material: MASK discards below the cutoff, MASK and OPAQUE
 // make what survives opaque
 vec4 applyMaterialAlphaMode(vec4 color){
@@ -47,5 +52,6 @@ vec4 applyMaterialAlphaMode(vec4 color){
     #endif
     return color;
 }
+#endif
 
 #endif

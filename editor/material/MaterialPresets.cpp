@@ -21,13 +21,15 @@ namespace {
     const char* const VISIBILITY_ALWAYS = "VISIBILITY_ALWAYS";
     const char* const VISIBILITY_VISIBLE_ONLY = "VISIBILITY_VISIBLE_ONLY";
 
-    // how a Material holds its extra pass, in one place
-    MaterialPass& extraPassOf(Material& material){
-        return material.extraPass.edit();
-    }
-
+    // How a Material holds its extra pass (out of line, MaterialExtraPass), in one place.
+    // Reading never allocates (an unset pass reads as MaterialPass()); only editing does, so a
+    // preset that merely looks at the pass leaves a material without one unchanged.
     const MaterialPass& extraPassOf(const Material& material){
         return *material.extraPass;
+    }
+
+    MaterialPass& editExtraPass(Material& material){
+        return material.extraPass.edit();
     }
 
     void setExtraPassValue(Material& material, const MaterialPass& pass){
@@ -138,7 +140,7 @@ namespace {
             pass.shader = shader;
             setExtraPassValue(material, pass);
         }
-        extraPassOf(material).order = order;
+        editExtraPass(material).order = order;
     }
 
     // A preset setting the material's own stencil test (draw-once, the mask readers). A
@@ -173,7 +175,7 @@ namespace {
         const MaterialPass old = extraPassOf(material);
         setExtraPass(material, OUTLINE_SHADER, MaterialPassOrder::AFTER);
         if (wasVisibleOnly)
-            copyOutlineLook(old, extraPassOf(material));
+            copyOutlineLook(old, editExtraPass(material));
     }
 
     // Outline (hull) on a blended material. A hull's back faces fill the object's whole shape,
@@ -204,7 +206,7 @@ namespace {
             }
             setExtraPassValue(material, pass);
         }
-        MaterialPass& pass = extraPassOf(material);
+        MaterialPass& pass = editExtraPass(material);
         setFeature(pass, VISIBILITY_ALWAYS, false);
         setFeature(pass, VISIBILITY_VISIBLE_ONLY, true);
         pass.order = MaterialPassOrder::AFTER;
@@ -273,9 +275,10 @@ namespace {
     //   test (the same reason): its ring is not clipped where it crosses the mask.
     // - Any other pass with a stencil test of its own keeps it.
     void maskExtraPass(Material& material){
-        MaterialPass& pass = extraPassOf(material);
-        if (pass.shader.empty())
+        MaterialPass* passIfSet = material.extraPass.editIfSet();
+        if (!passIfSet || passIfSet->shader.empty())
             return;
+        MaterialPass& pass = *passIfSet;
         const MaterialStencil& test = material.stencil;
         const bool reader = isMaskReaderTest(test);
         const bool inside = test.compare == MaterialStencilCompare::EQUAL;
@@ -330,7 +333,7 @@ namespace {
             [](Material& material, const std::string&){
                 material.stencil = outlineStencil();
                 setExtraPass(material, OUTLINE_STENCIL_SHADER, MaterialPassOrder::AFTER);
-                setFeature(extraPassOf(material), VISIBILITY_VISIBLE_ONLY, false);
+                setFeature(editExtraPass(material), VISIBILITY_VISIBLE_ONLY, false);
                 drawAfterOccluders(material);
             }});
 
