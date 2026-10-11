@@ -1510,6 +1510,48 @@ content, alignment keywords), new `IntrinsicSizing.cpp`, `AspectRatio.cpp`, `Mar
 fit-content,min-max-content,aspect-ratio-card,aspect-ratio-img,margin-collapse-parent-child,
 margin-collapse-empty,display-contents,justify-start-end-safe}.html` plus the Taffy suites.
 
+#### 3.12.10 `p3-layout` as implemented
+
+FORK.md rows P3-L1..P3-L12. Where the implementation differs from or makes precise §3.11-3.12:
+
+- **Sizing keywords** are not `Type::Keyword` values: `width`/`height`/`min-*`/`max-*`/`flex-basis` compute to
+  `auto`/`none` and keep the keyword apart (`ComputedValues::*_keyword()`, `Style::SizingKeyword`, `fit_content_*()`
+  for `fit-content(<length-percentage>)`), so code that does not know them sees `auto`. `-webkit-fill-available` is
+  `stretch`. `min-width/min-height: auto` is the initial value (0 outside flex and grid items).
+- **Flex** (§3.12.9): the algorithm was replaced by a port of Taffy's `flexbox.rs` (8409f3f8) behind the same interface;
+  besides §3.12.1-3.12.7 it brings Taffy's `flex-wrap: balance` and `flex-line-count` (new `PropertyId::FlexLineCount`,
+  compat: native with `BoxParity`, not in Appendix B before). Before/after Taffy pass counts are in FORK.md P3-L2.
+  The automatic minimum size is measured lazily (only when it can clamp the item). A flex item's height is definite as
+  §9.8 says (percentage heights of its children are `auto` otherwise).
+- **Absolutely positioned boxes** follow CSS Position 3 (inset-modified containing block, `auto` margins only between two
+  insets). Exception: an `ElementDocument` with `auto` margins and no insets is centered as in 6.3 (documents and the
+  debugger rely on it). Vertical percentage margins are of the width, over-constrained `auto` margins are 0.
+- **Margin collapsing** is done after the fact (positions corrected up the chain of open top margins) rather than by
+  deferring placement; clearance, forced clearance after adjoining floats and empty boxes with clearance included.
+  Boxes with a new formatting context sit beside floats (CSS 2.1 §9.5), 6.3 always cleared them.
+- **`justify-items`/`justify-self`** align block-level boxes in block layout (fit-content width when not
+  `normal`/`stretch`); their compat rows stay on `ForkFeature::Grid` (BoxParity comes with it). The legacy values
+  `text-align: -webkit-left/-right/-center` align block children too (`text_align_legacy`, two keywords added to p3-text's
+  `text-align`).
+- **`position: fixed`**: the viewport is given as a containing-block override by `ContainerBox::AddAbsoluteElement` when no
+  ancestor has a transform, perspective, filter, backdrop filter or mask (`will-change` and `contain` are not registered);
+  the layout tells `Element::SetOffset` that the box is viewport-fixed (6.3 inferred it from the property). Clipping and
+  hit testing needed no change: they follow the offset parents, which skip the scroll containers left.
+- **`position: sticky`**: the shift is computed with the absolute offset (`ComputeStickyShift` in `Element.cpp`), not in
+  `UpdateOffset`, so scrolling (which dirties absolute offsets) moves it without listeners.
+- **Overflow**: `scrollbar-gutter: stable` reserves the vertical scrollbar of `auto`/`hidden` scroll containers
+  (`both-edges` as `stable`); compat: native with `Sticky`. A document that scrolls (`overflow-y` not `visible`) with an
+  automatic height is as tall as the viewport, so the root's (or the body's propagated) overflow scrolls the page.
+- **Grid items** (handed over by p3-grid): aspect ratio and sizing keywords in `GridItemMeasure`/`GridFormattingContext`;
+  a width-only request of a grid re-runs column sizing when an item's width can follow its height.
+- **Not done**: RTL mirroring of flex/sticky/fixed (spec 2.2), `contain`, `will-change`, `display: contents` on replaced
+  elements and form controls (they keep their box).
+- **Found on the way**: with 4x MSAA, Mesa's llvmpipe and lavapipe (the test image's drivers) let the samples of the
+  pixel row above and the column left of a scissor rectangle through (half coverage): scrolled content shows a 1 px line
+  above the top clip edge of `overflow: hidden` boxes (p3-grid's report). RmlUi's clip regions and the engine's target
+  scissors are exact, the line goes away without MSAA; the fixtures that scroll content past a clip edge carry a sidecar
+  tolerance naming it.
+
 ---
 
 ### 3.13 Transitions and animations (package `p3-animation`)
