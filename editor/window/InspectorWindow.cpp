@@ -2340,24 +2340,18 @@ void editor::InspectorWindow::openNewScriptDialog(SceneProject* sceneProject, co
     );
 }
 
-Texture editor::InspectorWindow::getMaterialPreview(const Material& material, const std::string id, bool receiveIBL){
+Texture editor::InspectorWindow::getMaterialPreview(const Material& material, const std::string id, bool receiveIBL,
+                                                   const std::string& meshShader){
     MaterialRender& materialRender = materialRenders[id];
 
-    auto texPending = [](const Texture& t) {
-        if (t.isFramebuffer() || CameraTextureLink::isCameraTexture(t))
-            return false; // framebuffer textures never enter the pool
-        std::string tid = t.getId();
-        return !tid.empty() && !TexturePool::get(tid);
-    };
-
-    bool pending = texPending(material.baseColorTexture) || texPending(material.emissiveTexture) ||
-                   texPending(material.metallicRoughnessTexture) || texPending(material.occlusionTexture) ||
-                   texPending(material.normalTexture);
-
-    if ((materialRender.getMaterial() != material) || materialRender.getReceiveIBL() != receiveIBL ||
-        !materialRender.getFramebuffer()->isCreated() || pending){
+    // drawn again until the sphere has the material's shader variant and textures: a library
+    // shader builds off the UI thread, and the first frames would keep the previous image
+    const std::string previewShader = material.shader.empty() ? meshShader : std::string();
+    if ((materialRender.getMaterial() != material) || materialRender.getMeshShader() != previewShader ||
+        materialRender.getReceiveIBL() != receiveIBL || !materialRender.getFramebuffer()->isCreated() ||
+        materialRender.isPending()){
         materialRender.setReceiveIBL(receiveIBL);
-        materialRender.applyMaterial(material);
+        materialRender.applyMaterial(material, previewShader);
         Engine::executeSceneOnce(materialRender.getScene());
     }
 
@@ -4672,11 +4666,16 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         ImGui::BeginGroup();
 
         bool receiveIBL = true;
+        std::string meshShader;
         if (cpType == ComponentType::MeshComponent && !entities.empty()) {
-            receiveIBL = sceneProject->scene->getComponent<MeshComponent>(entities[0]).receiveIBL;
+            const MeshComponent& previewMesh = sceneProject->scene->getComponent<MeshComponent>(entities[0]);
+            receiveIBL = previewMesh.receiveIBL;
+            // a material without its own shader draws with the mesh's, else the scene's
+            meshShader = previewMesh.customShader.empty() ? sceneProject->scene->getDefaultCustomShader(ShaderType::MESH)
+                                                          : previewMesh.customShader;
         }
 
-        Texture texRender = getMaterialPreview(newValue, id, receiveIBL);
+        Texture texRender = getMaterialPreview(newValue, id, receiveIBL, meshShader);
         float thumbSize = ImGui::GetFrameHeight() * 3;
         Widgets::image(Backend::getImGuiTexture(texRender.getRender()), ImVec2(thumbSize, thumbSize));
         if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
