@@ -122,6 +122,13 @@ public:
 	/// @return An application-specified handle to the new texture.
 	/// @note The texture should be extracted using the bounds defined by the active scissor region, thereby matching its size.
 	virtual TextureHandle SaveLayerAsTexture();
+	/// Fork: called by RmlUi when it wants to store the current layer as one part (tile) of a texture larger than the
+	/// render target, e.g. a box shadow larger than the window: the active scissor region of the layer is copied to
+	/// 'destination_offset' in 'texture'. With a zero 'texture', a transparent texture of 'texture_dimensions' is made
+	/// first and returned; the later tiles go into it.
+	/// @return The texture written to, or zero when not supported (the default): the caller then saves the layer with
+	/// SaveLayerAsTexture, cut by the render target.
+	virtual TextureHandle SaveLayerIntoTexture(TextureHandle texture, Vector2i texture_dimensions, Vector2i destination_offset);
 
 	/// Called by RmlUi when it wants to store the current layer as a mask image, to be applied later as a filter.
 	/// @return An application-specified handle to a new filter representing the stored mask image.

@@ -49,6 +49,11 @@ TextureHandle RenderInterface::SaveLayerAsTexture()
 	return TextureHandle{};
 }
 
+TextureHandle RenderInterface::SaveLayerIntoTexture(TextureHandle /*texture*/, Vector2i /*texture_dimensions*/, Vector2i /*destination_offset*/)
+{
+	return TextureHandle{};
+}
+
 CompiledFilterHandle RenderInterface::SaveLayerAsMaskImage()
 {
 	return CompiledFilterHandle{};

@@ -506,3 +506,40 @@ TEST_CASE("Backgrounds.wrapped_callback_texture")
 	document->Close();
 	context->Update();
 }
+
+TEST_CASE("Backgrounds.box_shadow_larger_than_the_window")
+{
+	// A box shadow texture larger than the window is rendered in tiles of the window's size (each with an apron for
+	// the blur), saved into one texture.
+	Context* context = TestsShell::GetContext();
+	TestsRenderInterface* render = TestsShell::GetTestsRenderInterface();
+	REQUIRE(context);
+	REQUIRE(render);
+	const Vector2i window = context->GetDimensions();
+
+	const String document_rml = R"(
+<rml>
+<head>
+<style>
+	body { margin: 0; }
+	div, p { display: block; }
+	div { width: %dpx; height: 40px; background-color: #fff; box-shadow: 0 20px 40px #000; }
+	p { width: 100px; height: 40px; background-color: #fff; box-shadow: 0 20px 40px #000; }
+</style>
+</head>
+<body><div/><p/></body>
+</rml>)";
+	ElementDocument* document = context->LoadDocumentFromMemory(CreateString(document_rml.c_str(), 2 * window.x));
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	render->ResetCounters();
+	context->Render();
+	render->ResetCounters();
+
+	// the wide box: its texture (2 window widths plus the blur) needs three tiles, side by side; the small one none
+	CHECK(render->GetCountersFromPreviousReset().save_layer_into_texture == 3);
+
+	document->Close();
+	context->Update();
+}
