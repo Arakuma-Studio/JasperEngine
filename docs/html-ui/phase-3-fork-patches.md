@@ -1039,13 +1039,14 @@ the commits):
 - **Areas.** The fixtures of §3.5 and §3.6 are the manifest areas `selectors` and `pseudo`
   (owner p3-cascade), next to `cascade`.
 - **Fork features.** `ForkFeature` gains `Has`, `FocusPseudoClasses`, `SelectorsLevel4` and
-  `ListMarkers` (appended after `Grid`); present with this package: `Important`,
+  `ListMarkers` (appended after p3-text's `TextShadow`, `TextProperties`: the values merged earlier keep their indices); present with this package: `Important`,
   `CssWideKeywords`, `RootIsWhere`, `Has`, `FocusPseudoClasses`, `SelectorsLevel4`,
   `PseudoElements`, `ListMarkers`.
-- **Fixtures and other packages.** RmlUi sizes an inline box 1.2 × its font size tall where
-  Chromium uses the font's ascent + descent (`Layout/InlineBox.cpp`, p3-text's), and
-  interpolates colours in linear light (`ElementAnimation.cpp`, p3-animation's): the fixtures of
-  this package compare no boxes or backgrounds of inline boxes and transition a length.
+- **Fixtures and other packages.** While this package was written, RmlUi sized an inline box
+  1.2 × its font size tall where Chromium uses the font's ascent + descent (fixed by p3-text,
+  P3-TX2), and it interpolates colours in linear light (`ElementAnimation.cpp`, p3-animation's):
+  the fixtures of this package compare no boxes or backgrounds of inline boxes and transition a
+  length. The fixtures use Ahem only.
 
 ---
 
