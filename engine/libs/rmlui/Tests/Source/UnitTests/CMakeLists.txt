@@ -6,6 +6,7 @@ add_executable(${TARGET_NAME}
 	AnimationLayers.cpp
 	Calculation.cpp
 	CalculationTypes.cpp
+	Colors.cpp
 	ContainingBlockOverride.cpp
 	Core.cpp
 	CustomProperties.cpp
@@ -55,6 +56,8 @@ add_executable(${TARGET_NAME}
 	TextTransform.cpp
 	TransitionsAnyChange.cpp
 	URL.cpp
+	Values.cpp
+	ValuesInterpolation.cpp
 	Variant.cpp
 	XMLParser.cpp
 	MarginCollapse.cpp
@@ -64,6 +67,7 @@ add_executable(${TARGET_NAME}
 	PositionFixed.cpp
 	PositionSticky.cpp
 	PluginDataModel.cpp
+	Position.cpp
 )
 
 set_common_target_options(${TARGET_NAME})

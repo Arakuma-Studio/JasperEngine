@@ -101,7 +101,8 @@ namespace Style {
 
 	struct LineHeight {
 		float value = 16.f * 1.2f; // The computed value (length)
-		enum InheritType : uint8_t { Number, Length } inherit_type = Number;
+		// Normal (phase 3, values): the font's line spacing, inherited as the keyword.
+		enum InheritType : uint8_t { Number, Length, Normal } inherit_type = Number;
 		float inherit_value = 1.2f;
 		LineHeight() {}
 		LineHeight(float value, InheritType inherit_type, float inherit_value) :

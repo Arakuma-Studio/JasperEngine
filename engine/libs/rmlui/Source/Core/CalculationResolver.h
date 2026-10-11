@@ -16,6 +16,7 @@ struct CalculationResolverContext {
 	Vector2f viewport_dimensions = {};
 	float dp_ratio = 1.f;
 	RelativeTarget relative_target = RelativeTarget::None;
+	FontFaceHandle font_face = 0; // 'ch' and 'ex'; without a face they are half the font size
 };
 
 struct ResolvedCalculation {

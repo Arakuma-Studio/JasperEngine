@@ -1627,6 +1627,22 @@
 		48544D4C00000000000001D6 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
 		524D4C554284DC5821E2199D /* LayoutProperties.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55D4B6A5AF3E097BDF /* LayoutProperties.cpp */; };
 		524D4C557ECF139566AA9FCC /* LayoutProperties.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55D4B6A5AF3E097BDF /* LayoutProperties.cpp */; };
+		524D4C55B82C8E8E23E956B5 /* ShorthandOrigin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556B00709877FF3A6D /* ShorthandOrigin.cpp */; };
+		524D4C55A7C54E0F3C860DC4 /* ShorthandOrigin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556B00709877FF3A6D /* ShorthandOrigin.cpp */; };
+		524D4C55F980B3B6D95D36CE /* ShorthandFont.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55879CBFB6B5AE6A46 /* ShorthandFont.cpp */; };
+		524D4C55A7B337346785F567 /* ShorthandFont.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55879CBFB6B5AE6A46 /* ShorthandFont.cpp */; };
+		524D4C558DD162F75DEFF4A5 /* PropertyParserFontFamily.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C557BD8AC98A5F3744D /* PropertyParserFontFamily.cpp */; };
+		524D4C55206BAEDFDCAA773F /* PropertyParserFontFamily.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C557BD8AC98A5F3744D /* PropertyParserFontFamily.cpp */; };
+		524D4C5554573162C73994CA /* PropertyParserCursor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C554E80657D173EC05C /* PropertyParserCursor.cpp */; };
+		524D4C5525F4EEAF9A94B06F /* PropertyParserCursor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C554E80657D173EC05C /* PropertyParserCursor.cpp */; };
+		524D4C55309F25009B457A88 /* PropertyParserAspectRatio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55777C5C45CB30183D /* PropertyParserAspectRatio.cpp */; };
+		524D4C551C2A0E5F6678CAAE /* PropertyParserAspectRatio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55777C5C45CB30183D /* PropertyParserAspectRatio.cpp */; };
+		524D4C556A2A63D2582C5300 /* LogicalProperties.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556AB460F2B0A4DA2E /* LogicalProperties.cpp */; };
+		524D4C5536DFB9FB3027647B /* LogicalProperties.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556AB460F2B0A4DA2E /* LogicalProperties.cpp */; };
+		524D4C55D960EBD2547F649F /* ElementStyleValues.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5566A1481009ECCE54 /* ElementStyleValues.cpp */; };
+		524D4C55058C30DA5BAF1E1C /* ElementStyleValues.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5566A1481009ECCE54 /* ElementStyleValues.cpp */; };
+		524D4C559EC340C6AEABE2AA /* ColorSpaces.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55E76504387640A69E /* ColorSpaces.cpp */; };
+		524D4C55DCBC7A23D237FC3B /* ColorSpaces.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55E76504387640A69E /* ColorSpaces.cpp */; };
 		524D4C550BB2161DD745C39A /* ShorthandAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5516D2D122E3B3877C /* ShorthandAnimation.cpp */; };
 		524D4C5586DFC2EA6BF35A73 /* ShorthandAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5516D2D122E3B3877C /* ShorthandAnimation.cpp */; };
 		524D4C55B48FED6B6C843B8B /* IndividualTransforms.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55CF39F53DAE41364C /* IndividualTransforms.cpp */; };
@@ -4721,6 +4737,14 @@
 		48544D4C00000000000001D1 /* URL.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = URL.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D4 /* Variant.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Variant.cpp; sourceTree = "<group>"; };
 		524D4C55D4B6A5AF3E097BDF /* LayoutProperties.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LayoutProperties.cpp; sourceTree = "<group>"; };
+		524D4C556B00709877FF3A6D /* ShorthandOrigin.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShorthandOrigin.cpp; sourceTree = "<group>"; };
+		524D4C55879CBFB6B5AE6A46 /* ShorthandFont.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShorthandFont.cpp; sourceTree = "<group>"; };
+		524D4C557BD8AC98A5F3744D /* PropertyParserFontFamily.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserFontFamily.cpp; sourceTree = "<group>"; };
+		524D4C554E80657D173EC05C /* PropertyParserCursor.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserCursor.cpp; sourceTree = "<group>"; };
+		524D4C55777C5C45CB30183D /* PropertyParserAspectRatio.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyParserAspectRatio.cpp; sourceTree = "<group>"; };
+		524D4C556AB460F2B0A4DA2E /* LogicalProperties.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LogicalProperties.cpp; sourceTree = "<group>"; };
+		524D4C5566A1481009ECCE54 /* ElementStyleValues.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementStyleValues.cpp; sourceTree = "<group>"; };
+		524D4C55E76504387640A69E /* ColorSpaces.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ColorSpaces.cpp; sourceTree = "<group>"; };
 		524D4C5516D2D122E3B3877C /* ShorthandAnimation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShorthandAnimation.cpp; sourceTree = "<group>"; };
 		524D4C55CF39F53DAE41364C /* IndividualTransforms.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = IndividualTransforms.cpp; sourceTree = "<group>"; };
 		524D4C55A253F2CACC519A83 /* ElementTransitions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementTransitions.cpp; sourceTree = "<group>"; };
@@ -8848,6 +8872,14 @@
 				524D4C55A253F2CACC519A83 /* ElementTransitions.cpp */,
 				524D4C55CF39F53DAE41364C /* IndividualTransforms.cpp */,
 				524D4C5516D2D122E3B3877C /* ShorthandAnimation.cpp */,
+				524D4C55E76504387640A69E /* ColorSpaces.cpp */,
+				524D4C5566A1481009ECCE54 /* ElementStyleValues.cpp */,
+				524D4C556AB460F2B0A4DA2E /* LogicalProperties.cpp */,
+				524D4C55777C5C45CB30183D /* PropertyParserAspectRatio.cpp */,
+				524D4C554E80657D173EC05C /* PropertyParserCursor.cpp */,
+				524D4C557BD8AC98A5F3744D /* PropertyParserFontFamily.cpp */,
+				524D4C55879CBFB6B5AE6A46 /* ShorthandFont.cpp */,
+				524D4C556B00709877FF3A6D /* ShorthandOrigin.cpp */,
 				524D4C55D4B6A5AF3E097BDF /* LayoutProperties.cpp */,
 			);
 			name = Core;
@@ -12801,6 +12833,14 @@
 				48544D4C00000000000001D2 /* URL.cpp in Sources */,
 				48544D4C00000000000001D5 /* Variant.cpp in Sources */,
 				524D4C554284DC5821E2199D /* LayoutProperties.cpp in Sources */,
+				524D4C55B82C8E8E23E956B5 /* ShorthandOrigin.cpp in Sources */,
+				524D4C55F980B3B6D95D36CE /* ShorthandFont.cpp in Sources */,
+				524D4C558DD162F75DEFF4A5 /* PropertyParserFontFamily.cpp in Sources */,
+				524D4C5554573162C73994CA /* PropertyParserCursor.cpp in Sources */,
+				524D4C55309F25009B457A88 /* PropertyParserAspectRatio.cpp in Sources */,
+				524D4C556A2A63D2582C5300 /* LogicalProperties.cpp in Sources */,
+				524D4C55D960EBD2547F649F /* ElementStyleValues.cpp in Sources */,
+				524D4C559EC340C6AEABE2AA /* ColorSpaces.cpp in Sources */,
 				524D4C550BB2161DD745C39A /* ShorthandAnimation.cpp in Sources */,
 				524D4C55B48FED6B6C843B8B /* IndividualTransforms.cpp in Sources */,
 				524D4C550338B0929C236D2D /* ElementTransitions.cpp in Sources */,
@@ -13031,6 +13071,14 @@
 				48544D4C00000000000001D3 /* URL.cpp in Sources */,
 				48544D4C00000000000001D6 /* Variant.cpp in Sources */,
 				524D4C557ECF139566AA9FCC /* LayoutProperties.cpp in Sources */,
+				524D4C55A7C54E0F3C860DC4 /* ShorthandOrigin.cpp in Sources */,
+				524D4C55A7B337346785F567 /* ShorthandFont.cpp in Sources */,
+				524D4C55206BAEDFDCAA773F /* PropertyParserFontFamily.cpp in Sources */,
+				524D4C5525F4EEAF9A94B06F /* PropertyParserCursor.cpp in Sources */,
+				524D4C551C2A0E5F6678CAAE /* PropertyParserAspectRatio.cpp in Sources */,
+				524D4C5536DFB9FB3027647B /* LogicalProperties.cpp in Sources */,
+				524D4C55058C30DA5BAF1E1C /* ElementStyleValues.cpp in Sources */,
+				524D4C55DCBC7A23D237FC3B /* ColorSpaces.cpp in Sources */,
 				524D4C5586DFC2EA6BF35A73 /* ShorthandAnimation.cpp in Sources */,
 				524D4C5565FAFDAB83B6E72D /* IndividualTransforms.cpp in Sources */,
 				524D4C555E5E3E6D60EA6799 /* ElementTransitions.cpp in Sources */,

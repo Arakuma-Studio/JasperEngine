@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>values: transform-origin keywords</title>
+<style>
+  /* transform-origin as a CSS <position>: keywords in either order, a keyword with a length, a z length. Each box
+     turns by 90deg and halves around its origin (edges stay on whole pixels); the gray frame is the untransformed box. */
+  html, body { margin: 0; }
+  .frame { position: absolute; width: 60px; height: 40px; background: #e8e8e8; }
+  .frame > div { width: 60px; height: 40px; background: rgba(40, 90, 160, 0.8); transform: rotate(90deg) scale(0.5); }
+  #f1 { left: 30px; top: 30px; }  #f2 { left: 130px; top: 30px; } #f3 { left: 230px; top: 30px; }
+  #f4 { left: 30px; top: 120px; } #f5 { left: 130px; top: 120px; } #f6 { left: 230px; top: 120px; }
+  #o1 { transform-origin: top left; }
+  #o2 { transform-origin: bottom right; }
+  #o3 { transform-origin: right top; }
+  #o4 { transform-origin: left 10px; }
+  #o5 { transform-origin: 20px bottom; }
+  #o6 { transform-origin: center top 5px; }
+</style>
+</head>
+<body>
+<div class="frame" id="f1"><div id="o1"></div></div>
+<div class="frame" id="f2"><div id="o2"></div></div>
+<div class="frame" id="f3"><div id="o3"></div></div>
+<div class="frame" id="f4"><div id="o4"></div></div>
+<div class="frame" id="f5"><div id="o5"></div></div>
+<div class="frame" id="f6"><div id="o6"></div></div>
+</body>
+</html>

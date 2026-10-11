@@ -379,6 +379,15 @@ namespace {
 bool props::isColor(Session& session, const ComponentValue& value){
     if (value.isToken(TokenType::Hash))
         return true;
+    // kept by the normalizer where the fork resolves it (ForkFeature::CurrentColor)
+    if (value.isToken(TokenType::Ident) && equalsNoCase(value.token.value, "currentcolor"))
+        return session.options.fork.has(ForkFeature::CurrentColor);
+    // ... and a color-mix() with a currentcolor operand, which the fork resolves as it
+    if (value.kind == ComponentValue::Kind::Function && equalsNoCase(value.name(), "color-mix")){
+        ColorParseInfo info;
+        return session.options.fork.has(ForkFeature::CurrentColor) && !ColorValue::parse(value, info, ColorContext()) &&
+               info.currentColorMix && !info.dynamicVar;
+    }
     if (isVar(value))
         return varKind(session, value) == "color";
     return false;

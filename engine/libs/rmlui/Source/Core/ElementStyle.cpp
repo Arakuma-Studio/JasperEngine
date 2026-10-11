@@ -63,7 +63,7 @@ static Units GetStyleValueUnitDependencies(const Property& property)
 }
 
 #ifdef RMLUI_MATH_EXPRESSIONS
-static const Units mutable_unit_mask = Unit::EM | Unit::REM | Unit::VW | Unit::VH | Unit::DP_SCALABLE_LENGTH;
+static const Units mutable_unit_mask = Unit::EM | Unit::REM | Unit::VW | Unit::VH | Unit::VMIN | Unit::VMAX | Unit::CH | Unit::EX | Unit::DP_SCALABLE_LENGTH;
 
 Units ElementStyle::GetMutableUnitDependencies(const Property& property) const
 {
@@ -755,35 +755,40 @@ const PropertyDictionary& ElementStyle::GetLocalStyleProperties() const
 
 static float ComputeLength(NumericValue value, Element* element)
 {
-	float font_size = 0.f;
-	float doc_font_size = 0.f;
-	float dp_ratio = 1.0f;
-	Vector2f vp_dimensions(1.0f);
+	LengthContext context;
+	context.vp_dimensions = Vector2f(1.0f);
 
 	if (Any(value.unit & Unit::DP_SCALABLE_LENGTH))
 	{
-		if (Context* context = element->GetContext())
-			dp_ratio = context->GetDensityIndependentPixelRatio();
+		if (Context* element_context = element->GetContext())
+			context.dp_ratio = element_context->GetDensityIndependentPixelRatio();
 	}
 
 	switch (value.unit)
 	{
-	case Unit::EM: font_size = element->GetComputedValues().font_size(); break;
+	case Unit::EM: context.font_size = element->GetComputedValues().font_size(); break;
 	case Unit::REM:
 		if (ElementDocument* document = element->GetOwnerDocument())
-			doc_font_size = document->GetComputedValues().font_size();
+			context.root_font_size = document->GetComputedValues().font_size();
 		else
-			doc_font_size = DefaultComputedValues().font_size();
+			context.root_font_size = DefaultComputedValues().font_size();
 		break;
 	case Unit::VW:
 	case Unit::VH:
-		if (Context* context = element->GetContext())
-			vp_dimensions = Vector2f(context->GetDimensions());
+	case Unit::VMIN:
+	case Unit::VMAX:
+		if (Context* element_context = element->GetContext())
+			context.vp_dimensions = Vector2f(element_context->GetDimensions());
+		break;
+	case Unit::CH:
+	case Unit::EX:
+		context.font_size = element->GetComputedValues().font_size();
+		context.font_face = element->GetFontFaceHandle();
 		break;
 	default: break;
 	}
 
-	const float result = ComputeLength(value, font_size, doc_font_size, dp_ratio, vp_dimensions);
+	const float result = ComputeLength(value, context);
 	return result;
 }
 
@@ -800,7 +805,9 @@ float ElementStyle::ResolveNumericValue(NumericValue value, float base_value) co
 	case Unit::PERCENT: return value.number * base_value * 0.01f;
 	case Unit::X: return value.number;
 	case Unit::DEG:
-	case Unit::RAD: return ComputeAngle(value);
+	case Unit::RAD:
+	case Unit::TURN:
+	case Unit::GRAD: return ComputeAngle(value);
 	default: break;
 	}
 
@@ -966,6 +973,7 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	//   4. Dirty properties in children that are inherited
 
 	Property property_storage;
+	const FontFaceHandle font_face_before = values.font_face_handle();
 	const float font_size_before = values.font_size();
 	const Style::LineHeight line_height_before = values.line_height();
 
@@ -983,6 +991,10 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		values.CopyInherited(*parent_values);
 	else if (!values_are_default_initialized)
 		values.CopyInherited(DefaultComputedValues());
+
+	// Values (p3-values): 'ch' and 'ex' resolve against the inherited font face until this element's own is known.
+	const FontFaceHandle loop_font_face = values.font_face_handle();
+	FontUnitScope font_unit_scope(loop_font_face);
 
 	SmallUnorderedSet<String> variable_dependencies;
 	bool dirty_em_properties = false;
@@ -1057,6 +1069,10 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 
 	bool dirty_font_face_handle = false;
 
+	// Values (p3-values): 'currentcolor' reads the color, computed at its first use.
+	bool color_computed = false;
+	Property current_color_storage;
+
 	// The border colors this element declares; the others are 'currentcolor', their initial value.
 	int declared_border_colors = 0;
 
@@ -1094,6 +1110,9 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		if (id >= PropertyId::BorderTopColor && id <= PropertyId::BorderLeftColor)
 			declared_border_colors |= 1 << (int(id) - int(PropertyId::BorderTopColor));
 
+		// Values (p3-values): 'currentcolor', relative font weights.
+		property = ResolveValueKeywords(id, property, values, parent_values, color_computed, current_color_storage);
+
 		ComputeValue(values, dp_ratio, vp_dimensions, font_size, document_font_size, dirty_font_face_handle, id, property);
 	}
 
@@ -1130,8 +1149,12 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	{
 		RMLUI_ZoneScopedN("FontFaceHandle");
 		values.font_face_handle(
-			GetFontEngineInterface()->GetFontFaceHandle(values.font_family(), values.font_style(), values.font_weight(), (int)values.font_size()));
+			GetFontEngineInterface()->GetFontFaceHandle(values.font_family(), values.font_style(), values.font_weight(), Math::RoundToInteger(values.font_size())));
 	}
+
+	// Values (p3-values): the values that depend on the font face.
+	ComputeFontRelativeValues(values, font_unit_scope, values_are_default_initialized ? FontFaceHandle(0) : font_face_before, loop_font_face, dp_ratio,
+		vp_dimensions, font_size, document_font_size, property_storage);
 
 	// Next, pass inheritable dirty properties onto our children
 	PropertyIdSet dirty_inherited_properties = (dirty_properties & StyleSheetSpecification::GetRegisteredInheritedProperties());

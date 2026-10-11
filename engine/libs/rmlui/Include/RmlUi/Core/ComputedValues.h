@@ -96,7 +96,7 @@ namespace Style {
 			has_font_effect(false), pointer_events(PointerEvents::Auto), focus(Focus::Auto), text_align(TextAlign::Start),
 			text_align_legacy(TextAlignLegacy::None), text_decoration(TextDecoration::None), text_transform(TextTransform::None),
 			white_space_collapse(WhiteSpaceCollapse::Collapse), text_wrap_mode(TextWrapMode::Wrap), word_break(WordBreak::Normal),
-			direction(Direction::Auto), visibility(Visibility::Visible), line_height_inherit_type(LineHeight::Number)
+			direction(Direction::Auto), visibility(Visibility::Visible), line_height_inherit_type(LineHeight::Normal)
 		{}
 
 		// Font face used to render text and resolve ex properties. Does not represent a true property
@@ -131,7 +131,7 @@ namespace Style {
 
 		Visibility visibility : 1;
 
-		LineHeight::InheritType line_height_inherit_type : 1;
+		LineHeight::InheritType line_height_inherit_type : 2;
 		float line_height = 16.f * 1.2f;
 		float line_height_inherit = 1.2f;
 

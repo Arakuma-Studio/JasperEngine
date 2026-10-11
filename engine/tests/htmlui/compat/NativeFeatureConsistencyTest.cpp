@@ -128,6 +128,31 @@ namespace {
         {ForkFeature::IndividualTransforms, SampleKind::Declaration, "translate: 10px 20%", "transform:translate(10px,20%)", ""},
         {ForkFeature::IndividualTransforms, SampleKind::Declaration, "rotate: x 45deg", "transform:rotatex(45deg)", ""},
         {ForkFeature::IndividualTransforms, SampleKind::Declaration, "scale: 1.5 2", "transform:scale(1.5,2)", ""},
+        // p3-values
+        {ForkFeature::CurrentColor, SampleKind::Declaration, "border-top-color: currentcolor", "var(--html-current-color", ""},
+        {ForkFeature::CurrentColor, SampleKind::Declaration, "background-color: currentColor", "var(--html-current-color", ""},
+        {ForkFeature::CurrentColor, SampleKind::Declaration, "color: currentcolor", "var(--html-unset)", ""},
+        {ForkFeature::CurrentColor, SampleKind::Declaration, "border-color: currentcolor", "var(--html-current-color", ""},
+        {ForkFeature::CurrentColor, SampleKind::Declaration, "border-top-color: color-mix(in srgb, currentcolor 40%, blue)", "", "HTMLUI-CSS-0016"},
+        {ForkFeature::CurrentColor, SampleKind::Declaration, "background-color: color-mix(in oklab, currentColor, white)", "", "HTMLUI-CSS-0016"},
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "width: 10vmin", "", "HTMLUI-CSS-0013"},
+        {ForkFeature::ExtraUnits, SampleKind::Rule, "height: 5vmax", "@media", ""},
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "margin-left: 2ch", "margin-left:1em", "HTMLUI-CSS-0005"},
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "padding-top: 1.5ex", "padding-top:0.75em", "HTMLUI-CSS-0005"},
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "transform: rotate(0.25turn)", "rotate(90deg)", ""},
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "width: 50dvw", "width:50vw", ""},
+        // (in grid values, which the fork reads as written with Grid: track lists and gaps)
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "grid-template-columns: 4ch minmax(2ex, 1fr) calc(1ch + 10px)", "grid-template-columns:2em minmax(1em,1fr)", "HTMLUI-CSS-0005"},
+        {ForkFeature::ExtraUnits, SampleKind::Rule, "grid-auto-rows: 10vmin", "@media", ""},
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "gap: 1ch 2ex", "gap:0.5em 1em", "HTMLUI-CSS-0005"},
+        // (in p3-text's spacing properties)
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "letter-spacing: 0.1ch", "letter-spacing:0.05em", "HTMLUI-CSS-0005"},
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "word-spacing: 1ex", "word-spacing:0.5em", "HTMLUI-CSS-0005"},
+        // (in p3-animation's translate / rotate / scale)
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "translate: 2ch 1ex", "translate:1em0.5em", "HTMLUI-CSS-0005"},
+        {ForkFeature::ExtraUnits, SampleKind::Declaration, "rotate: 0.25turn", "rotate:90deg", ""},
+        {ForkFeature::Calc, SampleKind::Declaration, "translate: calc(50% + 1em) 0px", "translate:50%", "HTMLUI-CSS-0007"},
+        {ForkFeature::LineHeightNormal, SampleKind::Declaration, "line-height: normal", "line-height:1.2", ""},
         // p3-layout
         {ForkFeature::Sticky, SampleKind::Declaration, "position: sticky", "position:relative", ""},
         {ForkFeature::Sticky, SampleKind::Declaration, "overflow: clip", "overflow:hidden", ""},

@@ -1,6 +1,7 @@
 #include "PropertyParserBoxShadow.h"
 #include "../../Include/RmlUi/Core/DecorationTypes.h"
 #include "../../Include/RmlUi/Core/StringUtilities.h"
+#include "PropertyParserColour.h"
 
 namespace Rml {
 
@@ -44,6 +45,7 @@ bool PropertyParserBoxShadow::ParseValue(Property& property, const String& value
 		BoxShadow& shadow = shadow_list.back();
 
 		int length_argument_index = 0;
+		bool has_color = false;
 
 		for (const String& argument : arguments)
 		{
@@ -98,7 +100,11 @@ bool PropertyParserBoxShadow::ParseValue(Property& property, const String& value
 			}
 			else if (parser_color->ParseValue(prop, argument, empty_parameter_map))
 			{
-				shadow.color = prop.Get<Colourb>().ToPremultiplied();
+				shadow.current_color = PropertyParserColour::DependsOnCurrentColor(prop);
+				if (PropertyParserColour::IsCurrentColorMix(prop))
+					shadow.color_mix = prop.value.Get<StyleValuePtr>()->ToString();
+				shadow.color = shadow.current_color ? ColourbPremultiplied() : prop.Get<Colourb>().ToPremultiplied();
+				has_color = true;
 			}
 			else
 			{
@@ -108,6 +114,10 @@ bool PropertyParserBoxShadow::ParseValue(Property& property, const String& value
 
 		if (length_argument_index < 2)
 			return false;
+
+		// CSS: a shadow without a color is 'currentcolor' (phase 3, values; 6.3 drew it black).
+		if (!has_color)
+			shadow.current_color = true;
 	}
 
 	property.unit = Unit::BOXSHADOWLIST;

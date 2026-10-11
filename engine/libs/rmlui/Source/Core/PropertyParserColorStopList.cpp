@@ -1,6 +1,7 @@
 #include "PropertyParserColorStopList.h"
 #include "../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../Include/RmlUi/Core/DecorationTypes.h"
+#include "PropertyParserColour.h"
 #include <string.h>
 
 namespace Rml {
@@ -54,7 +55,14 @@ bool PropertyParserColorStopList::ParseValue(Property& property, const String& v
 			return false;
 
 		ColorStop color_stop = {};
-		color_stop.color = p_color.Get<Colourb>().ToPremultiplied();
+		if (PropertyParserColour::DependsOnCurrentColor(p_color))
+		{
+			color_stop.current_color = true;
+			if (PropertyParserColour::IsCurrentColorMix(p_color))
+				color_stop.color_mix = p_color.value.Get<StyleValuePtr>()->ToString();
+		}
+		else
+			color_stop.color = p_color.Get<Colourb>().ToPremultiplied();
 
 		if (values.size() <= 1)
 			color_stops.push_back(color_stop);

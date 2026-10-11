@@ -38,73 +38,6 @@ namespace {
 		}
 	};
 
-	// 'auto || <ratio>', <ratio> = <number [0,inf]> [ / <number [0,inf]> ]?
-	class PropertyParserAspectRatio final : public PropertyParser {
-	public:
-		bool ParseValue(Property& property, const String& value, const ParameterMap& /*parameters*/) const override
-		{
-			String spaced;
-			spaced.reserve(value.size() + 4);
-			for (char c : value)
-			{
-				if (c == '/')
-					spaced += " / ";
-				else
-					spaced += c;
-			}
-
-			StringList tokens;
-			StringUtilities::ExpandString(tokens, spaced, ' ');
-			tokens.erase(std::remove(tokens.begin(), tokens.end(), String()), tokens.end());
-
-			bool is_auto = false;
-			if (!tokens.empty() && StringUtilities::ToLower(tokens.front()) == "auto")
-			{
-				is_auto = true;
-				tokens.erase(tokens.begin());
-			}
-			else if (!tokens.empty() && StringUtilities::ToLower(tokens.back()) == "auto")
-			{
-				is_auto = true;
-				tokens.pop_back();
-			}
-
-			float numerator = 0.f, denominator = 1.f;
-			if (tokens.empty())
-			{
-				if (!is_auto)
-					return false;
-			}
-			else if (tokens.size() == 1 || (tokens.size() == 3 && tokens[1] == "/"))
-			{
-				if (!ParseNonNegativeNumber(tokens[0], numerator))
-					return false;
-				if (tokens.size() == 3 && !ParseNonNegativeNumber(tokens[2], denominator))
-					return false;
-			}
-			else
-				return false;
-
-			property.value = StyleValuePtr(MakeShared<AspectRatioValue>(is_auto, numerator, tokens.empty() ? 0.f : denominator));
-			property.unit = Unit::STYLE_VALUE;
-			return true;
-		}
-
-	private:
-		static bool ParseNonNegativeNumber(const String& token, float& result)
-		{
-			if (token.empty())
-				return false;
-			for (char c : token)
-			{
-				if (!((c >= '0' && c <= '9') || c == '.' || c == 'e' || c == 'E' || c == '+' || c == '-'))
-					return false;
-			}
-			if (!TypeConverter<String, float>::Convert(token, result))
-				return false;
-			return result >= 0.f && std::isfinite(result);
-		}
-	};
 
 	Style::SizingKeyword ToSizingKeyword(const Property* property)
 	{
@@ -153,50 +86,10 @@ Units FitContentValue::GetUnitDependencies() const
 	return argument.GetUnitDependencies();
 }
 
-String AspectRatioValue::ToString() const
-{
-	String result;
-	if (is_auto)
-		result = "auto";
-	if (denominator > 0.f || numerator > 0.f)
-	{
-		if (!result.empty())
-			result += ' ';
-		result += CreateString("%g / %g", numerator, denominator);
-	}
-	return result;
-}
-
-bool AspectRatioValue::Equals(const StyleValue& other) const
-{
-	const AspectRatioValue& value = static_cast<const AspectRatioValue&>(other);
-	return is_auto == value.is_auto && numerator == value.numerator && denominator == value.denominator;
-}
-
-SharedPtr<const StyleValue> AspectRatioValue::Interpolate(const StyleValue& to, float alpha, Element& /*element*/) const
-{
-	const AspectRatioValue& target = static_cast<const AspectRatioValue&>(to);
-	const float from_ratio = GetRatio(), to_ratio = target.GetRatio();
-	if (is_auto || target.is_auto || from_ratio <= 0.f || to_ratio <= 0.f)
-		return nullptr;
-	const float ratio = std::exp(std::log(from_ratio) + (std::log(to_ratio) - std::log(from_ratio)) * alpha);
-	return MakeShared<AspectRatioValue>(false, ratio, 1.f);
-}
-
-float AspectRatioValue::GetRatio() const
-{
-	if (numerator <= 0.f || denominator <= 0.f || !std::isfinite(numerator) || !std::isfinite(denominator))
-		return 0.f;
-	const float ratio = numerator / denominator;
-	return std::isfinite(ratio) ? ratio : 0.f;
-}
-
 void RegisterLayoutParsers()
 {
 	static PropertyParserFitContent fit_content;
-	static PropertyParserAspectRatio aspect_ratio;
 	StyleSheetSpecification::RegisterParser("fit_content", &fit_content);
-	StyleSheetSpecification::RegisterParser("aspect_ratio", &aspect_ratio);
 }
 
 Style::LengthPercentageAuto ComputeSizingProperty(PropertyId id, const Property* property, Style::ComputedValues& values, float font_size,
@@ -244,14 +137,18 @@ void ComputeLayoutProperty(PropertyId id, const Property* property, Style::Compu
 	switch (id)
 	{
 	case PropertyId::AspectRatio:
-		if (property->unit == Unit::STYLE_VALUE)
+		// p3-values' 'aspect_ratio' parser: 'auto' a keyword, '<ratio>' Unit::RATIO (width, height), negative terms with 'auto'.
+		if (property->unit == Unit::RATIO)
 		{
-			if (const StyleValuePtr value = property->Get<StyleValuePtr>())
-			{
-				const AspectRatioValue& ratio = static_cast<const AspectRatioValue&>(*value);
-				values.aspect_ratio(ratio.GetRatio(), ratio.is_auto);
-			}
+			const Vector2f ratio = property->Get<Vector2f>();
+			const bool is_auto = (ratio.x < 0.f || ratio.y < 0.f);
+			const float width = Math::Absolute(ratio.x), height = Math::Absolute(ratio.y);
+			// A degenerate ratio (a zero or infinite term) is no ratio.
+			const float value = (width > 0.f && height > 0.f ? width / height : 0.f);
+			values.aspect_ratio(std::isfinite(value) ? value : 0.f, is_auto);
 		}
+		else
+			values.aspect_ratio(0.f, true);
 		break;
 	case PropertyId::OverflowClipMargin:
 	{

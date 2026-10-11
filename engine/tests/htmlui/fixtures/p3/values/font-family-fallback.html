@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>values: font-family fallback</title>
+<style>
+  /* A font-family list resolves from left to right: missing families fall through to the first one loaded (Ahem
+     squares, or Roboto); quoted and unquoted names, any case. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  @font-face { font-family: "Roboto Test"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-size: 20px; line-height: 1; color: #203050; }
+  p { margin: 0 0 8px 8px; }
+  /* the spans' boxes are their line boxes (an inline box's content height is the text package's) */
+  span { display: inline-block; }
+  #first { font-family: "Not Installed", 'Also Missing', Ahem, sans-serif; }
+  #generic { font-family: "Not Installed", 'Roboto Test'; }
+  #quoted { font-family: 'AHEM'; }
+  #var { --fonts: "Missing", Ahem; font-family: var(--fonts); }
+  #shorthand { font: italic 16px/1 "Not Installed", Ahem, serif; }
+</style>
+</head>
+<body>
+<p id="first"><span id="s1">XX XX</span></p>
+<p id="generic"><span id="s2">Hello</span></p>
+<p id="quoted"><span id="s3">XXX</span></p>
+<p id="var"><span id="s4">XXXX</span></p>
+<p id="shorthand"><span id="s5">XX</span></p>
+</body>
+</html>

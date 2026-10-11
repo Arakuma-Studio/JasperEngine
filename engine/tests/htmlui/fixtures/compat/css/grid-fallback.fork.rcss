@@ -54,5 +54,5 @@ justify-self: end;
 }
 #htmlui-root .complex {
 display: grid;
-grid-template-columns: [full-start] minmax(1rem, 1fr) [content-start] 30em [content-end] minmax(1rem, 1fr) [full-end];
+grid-template-columns: [full-start] minmax(1rem, 1fr) [content-start] 60ch [content-end] minmax(1rem, 1fr) [full-end];
 }

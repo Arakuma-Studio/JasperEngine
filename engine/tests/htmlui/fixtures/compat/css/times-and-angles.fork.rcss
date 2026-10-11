@@ -7,7 +7,7 @@ transition: opacity 0.2s ease-in, transform 0.5s;
 animation: 1.5s linear 0s infinite normal none running spin;
 }
 #htmlui-root .a {
-transform: rotate(180deg) skewX(90deg);
+transform: rotate(0.5turn) skewX(100grad);
 filter: hue-rotate(3.14159rad);
 }
 #htmlui-root .b {
@@ -19,6 +19,6 @@ transition-duration: 0s;
 }
 @keyframes spin {
 100% {
-transform: rotate(360deg);
+transform: rotate(1turn);
 }
 }

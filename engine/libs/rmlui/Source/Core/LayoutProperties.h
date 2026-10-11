@@ -28,25 +28,7 @@ public:
 	const LengthPercentageValue argument;
 };
 
-/// The value of 'aspect-ratio': 'auto', '<ratio>' or 'auto && <ratio>'. A degenerate ratio (a zero or infinite term)
-/// is stored as no ratio.
-class AspectRatioValue final : public StyleValue {
-public:
-	AspectRatioValue(bool is_auto, float numerator, float denominator) : is_auto(is_auto), numerator(numerator), denominator(denominator) {}
-
-	String ToString() const override;
-	bool Equals(const StyleValue& other) const override;
-	/// Ratios interpolate in log space (CSS Values 4 §5.5.1); 'auto' does not interpolate.
-	SharedPtr<const StyleValue> Interpolate(const StyleValue& to, float alpha, Element& element) const override;
-
-	/// The ratio as width / height, 0 if none or degenerate.
-	float GetRatio() const;
-
-	const bool is_auto;
-	const float numerator, denominator;
-};
-
-/// Registers the parsers of the layout properties ('fit_content', 'aspect_ratio').
+/// Registers the parsers of the layout properties ('fit_content'; 'aspect_ratio' is p3-values' PropertyParserAspectRatio).
 void RegisterLayoutParsers();
 
 /// Computes a width, height, min-width, min-height or flex-basis: a sizing keyword computes to 'auto', and the keyword
