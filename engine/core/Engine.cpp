@@ -1129,8 +1129,8 @@ void Engine::systemViewChanged(){
 // every scene drawn is fully loaded and no shader variant is still compiling, so a test
 // can wait for that instead of a fixed time. A few frames in a row must be ready: a
 // script creating objects in its first updates leaves the scenes loaded for a frame.
-// With JASPERENGINE_FRAME_STATS=1 too, it then logs the GPU work of a frame soon after and
-// of frames well after (SystemRender::logFrameStats): passes, draws and live resources, to
+// With JASPERENGINE_FRAME_STATS=1 too, it then logs the GPU work of frames 2, 30 and 90 after
+// it (SystemRender::logFrameStats): passes, draws and live resources, to
 // compare builds and to see that nothing is made per frame.
 void Engine::signalReadyOnce(){
     static const bool enabled = [](){
@@ -1151,7 +1151,7 @@ void Engine::signalReadyOnce(){
         if (frameStats){
             frames++;
             const uint64_t after = frames - signalledFrame;
-            if (after == 2 || after == 120 || after == 240)
+            if (after == 2 || after == 30 || after == 90)
                 SystemRender::logFrameStats(frames);
         }
         return;
