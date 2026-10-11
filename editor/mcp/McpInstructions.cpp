@@ -28,8 +28,7 @@ Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
 Most other components keep Unity's name plus "Component" (AudioSourceComponent,
-SkyboxComponent, ParticleSystemComponent, LineRendererComponent, RectTransformComponent,
-LayoutGroupComponent, Light2DComponent, ShadowCaster2DComponent, PositionTweenComponent...).
+ParticleSystemComponent, LineRendererComponent, RectTransformComponent, Light2DComponent...).
 Build Settings = export; Scenes in Build = the scene list in project.yaml.
 
 ## Addressing
@@ -50,8 +49,8 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 - assets: project-relative paths only ("assets/sprites/ship.png", "scripts/Player.lua").
 
 ## The loop
-1. Inspect: `editor_status` (also the project's absolute path), the scene list, the
-   hierarchy, then the GameObjects you will touch.
+1. Inspect: `editor_status`, the scene list, the hierarchy, then the GameObjects you will
+   touch.
 2. Edit scenes, prefabs and settings with tools, never by hand-editing .scene/.prefab/
    project.yaml (the editor would overwrite you). Group many edits in one `batch` call
    (undo_group: one undo step). Edit code with your own tools (see Code).
@@ -71,12 +70,10 @@ A tool error says what was wrong and lists valid choices: fix the arguments, don
 The project is a normal folder: `editor_status` gives its absolute path (project.path). Work
 in it (cd there) and read, edit, grep and git its scripts, shaders and .material files with
 your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/
-folder (Lua API stubs). lua-language-server reads the generated .luarc.json, clangd the
-generated .clangd (-> .jasperengine/clangd/compile_commands.json). Your edits are picked up
-before your next tool call (script properties re-parsed, open buffers reloaded, shader forks
-recompiled, textures reloaded); that call's result then carries `external_changes` {changed,
-problems: [{path, line, message}]}: fix those problems first. During play they wait until
-play stops.
+folder (Lua API stubs). Your edits are picked up before your next tool call (script
+properties re-parsed, open buffers reloaded, shader forks recompiled, textures reloaded); that
+call's result then carries `external_changes` {changed, problems: [{path, line, message}]}:
+fix those problems first. During play they wait until play stops.
 Validate without playing: check_script (Lua syntax, properties), check_shader, compile_scripts
 (C++), or `jasperengine-editor check` from a shell. Through tools: create_script (engine
 template, optional attach), attach_script / detach_script, set_script_properties. write_file /
@@ -95,8 +92,8 @@ A Lua script returns a module table; attach it to a GameObject through its Scrip
 self.scene is the Scene, self.entity the GameObject's numeric id (NOT an object: never call
 self.entity:...). Wrap it: GameObject(self.scene, self.entity), Sprite(...), Text(...),
 Rigidbody2D(...), AudioSource(...); a constructor given only self.scene CREATES a new
-GameObject. Declare the module `---@class Name : ScriptInstance` (Name = the file name; the
-templates do): lua-language-server then types self, properties included, and catches typos.
+GameObject. Declare the module `---@class Name : ScriptInstance` (Name = the file name, as the
+templates do): lua-language-server then types self and its properties and catches typos.
 
 ```lua
 ---@class Player : ScriptInstance
@@ -201,10 +198,9 @@ R"JE(
 - Collider sizes are local to the mesh and scaled by the GameObject's scale: never pre-divide
   or pre-multiply by scale. Do not guess sizes: omit them to fit the mesh bounds, or read the
   measured mesh bounds. Growing a collider's height grows it both ways about its center.
-- Mass comes from collider volume/area x density, never set directly. 3D: density 1000
-  (water), so a radius-1 sphere is ~4189 kg. 2D: density 1 per square meter of the
-  points-scaled shape, so a 100x100 point box is ~2.4 kg. Size forces as mass x acceleration;
-  if movement needs huge forces, lower the density instead.
+- Mass comes from collider volume/area x density (3D default 1000, water; 2D 1 per square
+  meter), never set directly. Size forces as mass x acceleration; if movement needs huge
+  forces, lower the density instead.
 - Continuous forces and torques go in onFixedUpdate, never onUpdate, and are NOT multiplied by
   deltatime. Rigidbody (3D): applyForce(f), applyForce(f, point), applyTorque(t), applyImpulse;
   mass is the property body.mass. Rigidbody2D: applyForceToCenter(f, true), applyForce(f, point,
@@ -227,23 +223,16 @@ R"JE(
   referenced, must be marked standalone or the build will not contain it.
 
 ## Shaders and materials
-Use the shader library first: list_shaders gives the engine's shaders ("library:<name>"),
-their type, lighting modes and, with name or detail, parameters, textures and features. A
-mesh shader goes on a submesh material (set_properties mesh submeshes[0].material.shader =
-"library:<name>", or a .material file through create_material / update_material), with
-.shaderParams.<member> (colours linear, "#RRGGBB" is sRGB), .shaderTextures.<uniform> (image
-path), .shaderFeatures ([defines] or {DEFINE: true}), .blendMode/.cullMode/.depthWrite/
-.lighting; UI, Points, Lines and Sky take customShader plus shaderUniforms, shaderTextures,
-shaderFeatures. Details: jasper://docs/shaders. Fork only when no library shader fits:
-fork_shader copies the built-in .vert/.frag into the project and sets customShader in one
-undoable step; never point a shader at files that do not exist. Edit a fork minimally after
-reading it: keep #version, every #include, the engine uniform blocks, ALL texture and sampler
-declarations, the in/out varyings and the code that reads them, and the output variable;
-change the shading math near the end of main(). Your parameters go in your own block
-(uniform u_fs_customParams { float amount; vec4 tint; } customParams; one scalar kind, no
-arrays or matrices), set with set_shader_uniform; the engine fills `time` and `resolution`.
-A Mesh fork that displaces or discards also needs a forked depth shader. On a compile error
-the GameObject falls back to the built-in shader and the Console has the error.
+Library first: list_shaders gives the engine's shaders ("library:<name>"), and with name their
+parameters, textures and features. A mesh shader goes on a submesh material
+(submeshes[0].material.shader with set_properties, or a .material file with create_material /
+update_material) with .shaderParams.<member> (colours linear, "#RRGGBB" is sRGB),
+.shaderTextures.<uniform> and .shaderFeatures; UI, Points, Lines and Sky take customShader plus
+shaderUniforms. Fork only when nothing fits: fork_shader copies the built-in shader into the
+project and sets customShader. Read a fork before editing it: keep its declarations, includes,
+varyings and output, change the math near the end of main(), parameters in its own
+u_fs_customParams block (set_shader_uniform); rules and depth forks: jasper://docs/shaders. A
+shader that fails to compile falls back to the built-in one; the Console has the error.
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export

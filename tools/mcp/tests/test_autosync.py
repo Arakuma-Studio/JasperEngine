@@ -365,6 +365,8 @@ def tool_params(ed: Editor, name: str) -> set:
 async def test_instructions_name_real_tools(ed: Editor):
     text = ed.instructions
     ed.check(len(text) > 1000, "no instructions")
+    # sent on every session: the budget of docs/mcp/DESIGN.md (detail goes in docs/mcp/guide)
+    ed.check(len(text.encode()) <= 16 * 1024, f"the guide is {len(text.encode())} bytes, over 16 KB")
     tools = ed.tool_names
     params: set = set()
     for t in ed.tool_list:

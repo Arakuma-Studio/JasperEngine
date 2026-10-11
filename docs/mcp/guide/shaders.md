@@ -8,6 +8,8 @@ The engine ships ready-made shaders, referenced as `"library:<name>"`. `list_sha
 them (name, type, category, description, lighting modes); `list_shaders name="toon"` (or
 `detail: true`) adds each one's parameters (member, kind, default, range, label, `feature`
 gating), textures (uniform, default), features, keyword groups and default render state.
+`type` filters by shader type: `mesh`, `ui`, `points`, `lines` or `sky` (sprites, tilemaps and
+models draw with mesh shaders).
 
 - **Mesh shaders go on a material**, per submesh: `set_properties` on the mesh with
   `submeshes[0].material.shader = "library:toon"` (`""` is the built-in Lit shader). A
@@ -22,7 +24,8 @@ gating), textures (uniform, default), features, keyword groups and default rende
     `set_shader_uniform` (entity + `submesh`) sets one and `get_shader_uniforms` lists them
     with labels and defaults.
   - `shaderTextures`: `{uniform: "assets/path.png" | null}`, or `shaderTextures.<uniform>`.
-    Unset ones bind the declared default (white, black, gray or flat normal).
+    Unset ones bind the declared default (white, black, gray or flat normal). Images only: a
+    camera's render texture goes in a built-in material texture (`baseColorTexture`, ...).
   - `shaderFeatures`: the enabled `@feature` defines and chosen `@keywords` values
     (`"<GROUP>_<VALUE>"`), e.g. `["RIM", "SPEC_MODE_HARD"]`; `"!RIM"` turns off a feature that
     is on by default. Writes also take `{"RIM": true}`, applied to the current list. A feature
@@ -33,10 +36,18 @@ gating), textures (uniform, default), features, keyword groups and default rende
     `depthOffsetUnits` (polygon offset; negative pulls towards the camera), `sortPriority`
     (transparent order, lower first). `auto` takes the shader's default state, else the
     engine's. UI, Points and Lines have `blendMode` and `depthWrite`.
-  - `lighting`: auto, pixel, vertex or mixed, only the modes the shader lists. `mixed`
+  - `lighting`: auto, pixel, vertex, mixed or none (unlit), only the modes the shader lists
+    (`list_shaders` gives them, the default first; the built-in Lit takes pixel, vertex and
+    mixed). Choosing another shader puts a mode it does not list back to auto. `mixed`
     follows each light's `shading` (both, pixel, vertex). The scene setting
     `max_lights_per_object` (1-16, default 8) caps the lights per object; the rest reaching
     it fold into its ambient.
+- A submesh material with `shader = ""` draws with the mesh's `customShader`, else the scene's
+  default mesh shader: its `shaderParams`, `shaderTextures` and `shaderFeatures` then follow that
+  shader's manifest (set both in one `set_properties` call and the values follow the new one).
+- Values set for another shader stay stored after a shader change (switching back finds them)
+  and are ignored by a shader that does not declare them; an edit only checks the entries it
+  names. `null` removes one.
 - `check_shader shader="library:toon#RIM"` compiles a library shader with features.
 
 Fork only when no library shader does what you need.
