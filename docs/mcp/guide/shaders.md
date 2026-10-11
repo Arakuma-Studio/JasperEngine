@@ -7,7 +7,7 @@ Served as `jasper://docs/shaders`.
 The engine ships ready-made shaders, referenced as `"library:<name>"`. `list_shaders` lists
 them (name, type, category, description, lighting modes); `list_shaders name="toon"` (or
 `detail: true`) adds each one's parameters (member, kind, default, range, label, `feature`
-gating), textures (uniform, default), features, keyword groups, the inputs it requires
+gating: shown while that define is on, `"!X"` while it is off), textures (uniform, default), features, keyword groups, the inputs it requires
 (`require`, plus `require_rules`: inputs only while a feature is on, `"!X"` while off) and its
 default render state (`state`, including `shadows: "off"` for shaders that cast none, plus
 `state_rules`: state a feature or keyword value turns on, e.g. hologram's
