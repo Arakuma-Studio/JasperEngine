@@ -270,11 +270,22 @@ static ElementPtr InstancePseudoElement(Element& originating, PseudoElementType 
 
 void PseudoElements::Update(Element& element)
 {
-	// Text and pseudo-elements generate none.
-	if (element.GetPseudoElementType() != PseudoElementType::None || element.GetTagName() == "#text")
+	// Pseudo-elements generate none.
+	if (element.GetPseudoElementType() != PseudoElementType::None)
 		return;
 
+	// The common case first: no pseudo-element yet, no rule that could make one, not a list item.
 	const StyleSheet* style_sheet = element.GetStyleSheet();
+	if (!ElementCascade::PseudoElementSlot(element, PseudoElementType::Before) && !ElementCascade::PseudoElementSlot(element, PseudoElementType::After) &&
+		!ElementCascade::PseudoElementSlot(element, PseudoElementType::Marker) && element.GetComputedValues().display() != Style::Display::ListItem &&
+		(!style_sheet ||
+			(!style_sheet->HasPseudoElementRules(PseudoElementType::Before) && !style_sheet->HasPseudoElementRules(PseudoElementType::After))))
+		return;
+
+	// Text generates none.
+	if (element.GetTagName() == "#text")
+		return;
+
 	bool changed = false;
 
 	for (PseudoElementType type : {PseudoElementType::Before, PseudoElementType::After, PseudoElementType::Marker})
