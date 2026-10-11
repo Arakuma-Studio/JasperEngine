@@ -83,6 +83,10 @@ async def build(ed, scene):
 
 async def main() -> None:
     async with Editor(project=str(HERE)) as ed:
+        # a re-run: the scene made last time goes first (create_scene does not overwrite a file)
+        scenes = (await ed.call("list_scenes"))["scenes"]
+        for old in [s for s in scenes if s.get("path") == "Saved.scene"]:
+            await ed.call("delete_scene", scene=old["id"], delete_file=True)
         made = await ed.call("create_scene", name="Saved", path="Saved.scene")
         scene = made["scene"]["id"] if isinstance(made["scene"], dict) else made["scene"]
         await build(ed, scene)
