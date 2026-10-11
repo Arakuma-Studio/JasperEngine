@@ -4456,10 +4456,15 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         }
     } attempt;
 
+    // looked up again (bindSmoothNormals): the first submesh to ask sets it on every submesh
+    // over the same vertices
+    for (int i = 0; i < mesh.numSubmeshes; i++){
+        mesh.submeshes[i].smoothNormals = -1;
+    }
+
     for (int i = 0; i < mesh.numSubmeshes; i++){
 
         ObjectRender& render = mesh.submeshes[i].render;
-        mesh.submeshes[i].smoothNormals = -1;
 
         render.beginLoad(mesh.submeshes[i].primitiveType);
         attempt.renders.push_back(&render);
@@ -5192,46 +5197,91 @@ void RenderSystem::releaseMeshLods(MeshComponent& mesh){
 // ---- shader library phase 2: extra pass and smoothed normals
 
 namespace {
-    // what a_smoothNormal is made from: the submesh's positions, with its normals and
-    // triangles when it has them
-    struct SmoothNormalSource{
-        const Buffer* positionBuffer = nullptr;
-        const Attribute* position = nullptr;
-        const Buffer* normalBuffer = nullptr;
-        const Attribute* normal = nullptr;
+    // A vertex attribute as up to 3 floats, whatever its component type: a quantized mesh's
+    // integers as they are (normalized ones to -1..1 or 0..1), missing components 0. False
+    // past the end of the buffer.
+    bool readAttributeVector3(const Buffer* buffer, const Attribute* attribute, unsigned int index, Vector3& out){
+        const unsigned int elements = std::min(attribute->getElements(), 3u);
+        size_t component = 4;
+        switch (attribute->getDataType()){
+            case AttributeDataType::BYTE: case AttributeDataType::UNSIGNED_BYTE: component = 1; break;
+            case AttributeDataType::SHORT: case AttributeDataType::UNSIGNED_SHORT: component = 2; break;
+            default: component = 4; break;
+        }
+        const size_t pos = (size_t)index * buffer->getStride() + attribute->getOffset();
+        if (pos + component * elements > buffer->getSize())
+            return false;
+        const unsigned char* data = buffer->getData() + pos;
+        const bool normalized = attribute->getNormalized();
+        float value[3] = {0.0f, 0.0f, 0.0f};
+        for (unsigned int e = 0; e < elements; e++){
+            const unsigned char* at = data + e * component;
+            switch (attribute->getDataType()){
+                case AttributeDataType::BYTE:{ int8_t v; memcpy(&v, at, 1); value[e] = normalized ? std::max(v / 127.0f, -1.0f) : (float)v; break; }
+                case AttributeDataType::UNSIGNED_BYTE:{ uint8_t v; memcpy(&v, at, 1); value[e] = normalized ? v / 255.0f : (float)v; break; }
+                case AttributeDataType::SHORT:{ int16_t v; memcpy(&v, at, 2); value[e] = normalized ? std::max(v / 32767.0f, -1.0f) : (float)v; break; }
+                case AttributeDataType::UNSIGNED_SHORT:{ uint16_t v; memcpy(&v, at, 2); value[e] = normalized ? v / 65535.0f : (float)v; break; }
+                case AttributeDataType::INT:{ int32_t v; memcpy(&v, at, 4); value[e] = (float)v; break; }
+                case AttributeDataType::UNSIGNED_INT:{ uint32_t v; memcpy(&v, at, 4); value[e] = (float)v; break; }
+                case AttributeDataType::FLOAT:{ memcpy(&value[e], at, 4); break; }
+            }
+        }
+        out = Vector3(value[0], value[1], value[2]);
+        return true;
+    }
+
+    // the triangles of one submesh drawing over the shared positions
+    struct SmoothNormalTriangles{
         const Buffer* indexBuffer = nullptr;
         const Attribute* index = nullptr;
         PrimitiveType primitive = PrimitiveType::TRIANGLES;
     };
 
+    // what a_smoothNormal is made from: positions (any component type, 2 or 3 of them), the
+    // normals when there are 3 per vertex, and the triangles of every submesh drawing over
+    // those positions, so submeshes sharing one vertex buffer share one entry (welded once)
+    struct SmoothNormalSource{
+        const Buffer* positionBuffer = nullptr;
+        const Attribute* position = nullptr;
+        const Buffer* normalBuffer = nullptr;
+        const Attribute* normal = nullptr;
+        std::vector<SmoothNormalTriangles> triangles;
+    };
+
     // Per vertex, the normal averaged over every vertex sharing its position (welded within a
     // small tolerance of the mesh's size). Each vertex weighs its normal (its triangles'
     // normal when the mesh has none) by the angles of its triangle corners, so a cube corner
-    // gets the even diagonal however its faces are split. Packed as 4 signed normalized bytes.
+    // gets the even diagonal however its faces are split. Only vertices some triangle uses
+    // take part (others would add a normal no face has); with no triangle at all (points,
+    // lines) every vertex counts with its own normal. Packed as 4 signed normalized bytes.
     void computeSmoothNormals(const SmoothNormalSource& source, std::vector<int8_t>& out){
-        Buffer* positionBuffer = const_cast<Buffer*>(source.positionBuffer);
-        Attribute* positionAttribute = const_cast<Attribute*>(source.position);
         const unsigned int count = source.position->getCount();
 
-        std::vector<Vector3> positions(count);
+        std::vector<Vector3> positions(count, Vector3::ZERO);
         AABB bounds;
         bounds.setNull();
         for (unsigned int v = 0; v < count; v++){
-            positions[v] = positionBuffer->getVector3(positionAttribute, v);
+            readAttributeVector3(source.positionBuffer, source.position, v, positions[v]);
             bounds.merge(positions[v]);
         }
         std::vector<Vector3> normals;
         if (source.normal){
-            normals.resize(count);
-            for (unsigned int v = 0; v < count; v++)
-                normals[v] = const_cast<Buffer*>(source.normalBuffer)->getVector3(const_cast<Attribute*>(source.normal), v).normalized();
+            normals.resize(count, Vector3::ZERO);
+            for (unsigned int v = 0; v < count; v++){
+                if (readAttributeVector3(source.normalBuffer, source.normal, v, normals[v]) && normals[v].squaredLength() > 0.0f)
+                    normals[v].normalize();
+            }
         }
 
         // each vertex's normal weighed by its corner angles
         std::vector<Vector3> weighted(count, Vector3::ZERO);
+        std::vector<uint8_t> referenced(count, 0);
+        bool anyTriangle = false;
         auto addTriangle = [&](uint32_t a, uint32_t b, uint32_t c){
             if (a >= count || b >= count || c >= count || a == b || b == c || a == c)
                 return;
+            referenced[a] = referenced[b] = referenced[c] = 1;
+            anyTriangle = true;
             const Vector3 ab = positions[b] - positions[a];
             const Vector3 ac = positions[c] - positions[a];
             const Vector3 bc = positions[c] - positions[b];
@@ -5253,18 +5303,19 @@ namespace {
             }
         };
 
-        const bool triangles = source.primitive == PrimitiveType::TRIANGLES || source.primitive == PrimitiveType::TRIANGLE_STRIP;
-        if (triangles){
+        for (const SmoothNormalTriangles& triangles : source.triangles){
+            if (triangles.primitive != PrimitiveType::TRIANGLES && triangles.primitive != PrimitiveType::TRIANGLE_STRIP)
+                continue;
             auto vertexAt = [&](unsigned int k) -> uint32_t {
-                if (!source.index)
+                if (!triangles.index)
                     return k;
-                Buffer* indexBuffer = const_cast<Buffer*>(source.indexBuffer);
-                Attribute* indexAttribute = const_cast<Attribute*>(source.index);
-                return (source.index->getDataType() == AttributeDataType::UNSIGNED_INT)
+                Buffer* indexBuffer = const_cast<Buffer*>(triangles.indexBuffer);
+                Attribute* indexAttribute = const_cast<Attribute*>(triangles.index);
+                return (triangles.index->getDataType() == AttributeDataType::UNSIGNED_INT)
                     ? indexBuffer->getUInt32(indexAttribute, k) : indexBuffer->getUInt16(indexAttribute, k);
             };
-            const unsigned int elements = source.index ? source.index->getCount() : count;
-            if (source.primitive == PrimitiveType::TRIANGLES){
+            const unsigned int elements = triangles.index ? triangles.index->getCount() : count;
+            if (triangles.primitive == PrimitiveType::TRIANGLES){
                 for (unsigned int k = 0; k + 2 < elements; k += 3)
                     addTriangle(vertexAt(k), vertexAt(k + 1), vertexAt(k + 2));
             }else{
@@ -5276,10 +5327,13 @@ namespace {
                 }
             }
         }
-        // a vertex in no triangle (points, lines, unused) counts with its own normal
-        for (unsigned int v = 0; v < count; v++){
-            if (weighted[v].squaredLength() <= 0.0f && !normals.empty())
-                weighted[v] = normals[v];
+        // no triangle at all (points, lines): every vertex counts with its own normal
+        if (!anyTriangle){
+            for (unsigned int v = 0; v < count; v++){
+                referenced[v] = 1;
+                if (!normals.empty())
+                    weighted[v] = normals[v];
+            }
         }
 
         // weld by position: cells of the tolerance's size, a vertex joining the first group
@@ -5299,6 +5353,8 @@ namespace {
         cellFirstGroup.reserve(count);
         const float tolerance2 = tolerance * tolerance;
         for (unsigned int v = 0; v < count; v++){
+            if (!referenced[v])
+                continue;
             const Vector3& p = positions[v];
             int found = -1;
             const int64_t x0 = cellOf(p.x - tolerance), x1 = cellOf(p.x + tolerance);
@@ -5332,7 +5388,7 @@ namespace {
 
         out.resize((size_t)count * 4);
         for (unsigned int v = 0; v < count; v++){
-            Vector3 n = groupSum[vertexGroup[v]];
+            Vector3 n = (vertexGroup[v] >= 0) ? groupSum[vertexGroup[v]] : Vector3::ZERO;
             // opposite faces sharing a position cancel out: keep the vertex's own
             if (n.squaredLength() < 1e-12f)
                 n = weighted[v];
@@ -5347,6 +5403,22 @@ namespace {
             out[(size_t)v * 4 + 3] = 0;
         }
     }
+
+    // a_smoothNormal when the positions cannot be read (fewer than 2 components, or none):
+    // the vertex normal (+Y without one), so the mesh still draws, without closed corners
+    void fallbackSmoothNormals(const Buffer* normalBuffer, const Attribute* normal, unsigned int count, std::vector<int8_t>& out){
+        out.assign((size_t)count * 4, 0);
+        for (unsigned int v = 0; v < count; v++){
+            Vector3 n(0.0f, 1.0f, 0.0f);
+            if (normal && (!readAttributeVector3(normalBuffer, normal, v, n) || n.squaredLength() < 1e-12f))
+                n = Vector3(0.0f, 1.0f, 0.0f);
+            n.normalize();
+            out[(size_t)v * 4 + 0] = (int8_t)std::lround(std::clamp(n.x, -1.0f, 1.0f) * 127.0f);
+            out[(size_t)v * 4 + 1] = (int8_t)std::lround(std::clamp(n.y, -1.0f, 1.0f) * 127.0f);
+            out[(size_t)v * 4 + 2] = (int8_t)std::lround(std::clamp(n.z, -1.0f, 1.0f) * 127.0f);
+        }
+    }
+
 }
 
 bool RenderSystem::bindSmoothNormals(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh, BufferMap& buffers){
@@ -5355,35 +5427,65 @@ bool RenderSystem::bindSmoothNormals(ObjectRender& render, ShaderData& shaderDat
         return true;
 
     if (submesh.smoothNormals == -1){
-        SmoothNormalSource source;
-        source.primitive = submesh.primitiveType;
         const LodAttribute position = findSubmeshAttribute(submesh, buffers, AttributeType::POSITION);
-        if (!position.attribute || position.attribute->getDataType() != AttributeDataType::FLOAT || position.attribute->getElements() < 3){
-            Log::error("A shader of this mesh reads a_smoothNormal, but its positions are not 3 floats");
-            return false;
-        }
+        auto normalOf = [&](Submesh& owner, unsigned int count) -> LodAttribute {
+            const LodAttribute normal = findSubmeshAttribute(owner, buffers, AttributeType::NORMAL);
+            if (normal.attribute && normal.attribute->getElements() >= 3 && normal.attribute->getCount() == count &&
+                    normal.attribute->getDataType() != AttributeDataType::UNSIGNED_INT && normal.attribute->getDataType() != AttributeDataType::INT)
+                return normal;
+            return LodAttribute();
+        };
+        const bool readable = position.attribute && position.attribute->getElements() >= 2 &&
+                              position.attribute->getDataType() != AttributeDataType::UNSIGNED_INT &&
+                              position.attribute->getDataType() != AttributeDataType::INT;
+        const unsigned int count = position.attribute ? position.attribute->getCount() : mesh.vertexCount;
+        const LodAttribute normal = normalOf(submesh, count);
+        auto sameAttribute = [](const LodAttribute& a, const LodAttribute& b){
+            if (!a.attribute || !b.attribute)
+                return !a.attribute && !b.attribute;
+            return a.buffer == b.buffer && a.attribute->getOffset() == b.attribute->getOffset() &&
+                   a.attribute->getCount() == b.attribute->getCount() && a.attribute->getDataType() == b.attribute->getDataType() &&
+                   a.attribute->getElements() == b.attribute->getElements();
+        };
+
+        // every submesh drawing over the same positions and normals: one entry for all of them
+        std::vector<unsigned int> sharing;
+        SmoothNormalSource source;
         source.positionBuffer = position.buffer;
         source.position = position.attribute;
-        const unsigned int count = position.attribute->getCount();
-        const LodAttribute normal = findSubmeshAttribute(submesh, buffers, AttributeType::NORMAL);
-        if (normal.attribute && normal.attribute->getDataType() == AttributeDataType::FLOAT &&
-                normal.attribute->getElements() >= 3 && normal.attribute->getCount() == count){
-            source.normalBuffer = normal.buffer;
-            source.normal = normal.attribute;
-        }
-        const LodAttribute index = findSubmeshAttribute(submesh, buffers, AttributeType::INDEX);
-        if (index.attribute && (index.attribute->getDataType() == AttributeDataType::UNSIGNED_SHORT ||
-                                index.attribute->getDataType() == AttributeDataType::UNSIGNED_INT)){
-            source.indexBuffer = index.buffer;
-            source.index = index.attribute;
+        source.normalBuffer = normal.buffer;
+        source.normal = normal.attribute;
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            Submesh& other = mesh.submeshes[s];
+            if (&other != &submesh){
+                if (other.smoothNormals != -1 || !sameAttribute(findSubmeshAttribute(other, buffers, AttributeType::POSITION), position) ||
+                        !sameAttribute(normalOf(other, count), normal))
+                    continue;
+            }
+            sharing.push_back(s);
+            SmoothNormalTriangles triangles;
+            triangles.primitive = other.primitiveType;
+            const LodAttribute index = findSubmeshAttribute(other, buffers, AttributeType::INDEX);
+            if (index.attribute && (index.attribute->getDataType() == AttributeDataType::UNSIGNED_SHORT ||
+                                    index.attribute->getDataType() == AttributeDataType::UNSIGNED_INT)){
+                triangles.indexBuffer = index.buffer;
+                triangles.index = index.attribute;
+            }
+            source.triangles.push_back(triangles);
         }
 
         // cached by what it is made of, so the same geometry is welded once
-        const uint32_t layout[3] = {(uint32_t)source.primitive, count, source.index ? source.index->getCount() : 0u};
-        uint64_t key = MeshLodPool::hash(0, layout, sizeof(layout));
+        std::vector<uint32_t> layout = {readable ? 1u : 0u, count};
+        for (const SmoothNormalTriangles& triangles : source.triangles){
+            layout.push_back((uint32_t)triangles.primitive);
+            layout.push_back(triangles.index ? triangles.index->getCount() : 0u);
+        }
+        uint64_t key = MeshLodPool::hash(0, layout.data(), layout.size() * sizeof(uint32_t));
         key = attributeHash(key, position);
-        key = attributeHash(key, source.normal ? normal : LodAttribute());
-        key = attributeHash(key, source.index ? index : LodAttribute());
+        key = attributeHash(key, normal);
+        for (const SmoothNormalTriangles& triangles : source.triangles){
+            key = attributeHash(key, triangles.index ? LodAttribute{const_cast<Buffer*>(triangles.indexBuffer), const_cast<Attribute*>(triangles.index)} : LodAttribute());
+        }
 
         if (!mesh.smoothNormals)
             mesh.smoothNormals = std::make_shared<MeshSmoothNormals>();
@@ -5398,10 +5500,18 @@ bool RenderSystem::bindSmoothNormals(ObjectRender& render, ShaderData& shaderDat
         if (found == -1){
             entries.emplace_back();
             entries.back().key = key;
-            computeSmoothNormals(source, entries.back().data);
+            if (readable){
+                computeSmoothNormals(source, entries.back().data);
+            }else{
+                Log::warn("A shader of this mesh reads a_smoothNormal (@require smoothnormals), but its positions cannot be read "
+                          "(%s): it gets the vertex normal instead, and an outline opens at hard edges",
+                          position.attribute ? "fewer than 2 components" : "none");
+                fallbackSmoothNormals(normal.buffer, normal.attribute, count, entries.back().data);
+            }
             found = (int)entries.size() - 1;
         }
-        submesh.smoothNormals = found;
+        for (unsigned int s : sharing)
+            mesh.submeshes[s].smoothNormals = found;
     }
 
     MeshSmoothNormals::Entry& entry = mesh.smoothNormals->entries[submesh.smoothNormals];
