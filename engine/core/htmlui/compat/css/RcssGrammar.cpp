@@ -794,6 +794,7 @@ namespace {
         {"overflow-x", ForkFeature::Sticky, "kw:clip"},
         {"overflow-y", ForkFeature::Sticky, "kw:clip"},
         {"position", ForkFeature::Sticky, "kw:sticky"},
+        {"scrollbar-gutter", ForkFeature::Sticky, "kw:auto,stable,stable both-edges,both-edges stable"},
         {"width", ForkFeature::BoxParity, "kw:min-content,max-content,fit-content,stretch,-webkit-fill-available|@fit_content"},
     };
 
@@ -955,14 +956,15 @@ namespace {
             return (isLength(argument) || isPercent(argument)) && argument.front() != '-';
         }
         if (kind == "flex_content"){
-            // the flex shorthand with a 'content' basis
+            // the flex shorthand with a 'content' or sizing keyword basis
             const Pieces words = split(value, ' ');
+            auto basis = [](std::string_view word){ return keywordIn(word, "content,min-content,max-content,fit-content"); };
             if (words.size() == 1)
-                return words[0] == "content";
+                return basis(words[0]);
             if (words.size() == 2)
-                return isNumber(words[0]) && words[1] == "content";
+                return isNumber(words[0]) && basis(words[1]);
             if (words.size() == 3)
-                return isNumber(words[0]) && isNumber(words[1]) && words[2] == "content";
+                return isNumber(words[0]) && isNumber(words[1]) && basis(words[2]);
             return false;
         }
         (void)calc;

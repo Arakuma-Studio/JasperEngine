@@ -1,5 +1,5 @@
 {
- "comment": "regression (found by p3-grid): scrolled content was drawn one pixel above the top clip edge of an overflow: hidden box. The boxes are scrolled so that a transparent gap, then a coloured stripe, crosses the top edge of the padding box",
+ "comment": "scrolled content at the clip edges of overflow: hidden (the one-pixel line above the top edge found by p3-grid is the drivers' MSAA scissor, see the tolerance). The boxes are scrolled so that a transparent gap, then a coloured stripe, crosses the top edge of the padding box. Tolerance: with 4x MSAA, Mesa's llvmpipe and lavapipe (the test image's GL and Vulkan drivers) let the samples of the pixel row above and the column left of a scissor rectangle through: content scrolled past the top edge of a clipping box shows as a half-covered line 1 px above it (measured: RmlUi's clip region and the target scissor are exact, the line goes away without MSAA; ZZ probe in the p3-layout report). The cluster limit covers that one line; the boxes keep their 1 px tolerance",
  "viewport": [
   390,
   120
@@ -56,5 +56,9 @@
   {
    "capture": "stripe"
   }
- ]
+ ],
+ "tolerance": {
+  "cluster": 400,
+  "badPercent": 1.0
+ }
 }

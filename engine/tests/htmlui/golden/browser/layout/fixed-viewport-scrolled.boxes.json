@@ -8,14 +8,6 @@
  "captures": {
   "top": [
    {
-    "id": "doc",
-    "tag": "html",
-    "x": 0,
-    "y": 0,
-    "w": 300,
-    "h": 540
-   },
-   {
     "id": "page",
     "tag": "div",
     "x": 0,
@@ -97,14 +89,6 @@
    }
   ],
   "scrolled": [
-   {
-    "id": "doc",
-    "tag": "html",
-    "x": 0,
-    "y": -130,
-    "w": 300,
-    "h": 540
-   },
    {
     "id": "page",
     "tag": "div",

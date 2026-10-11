@@ -1,5 +1,5 @@
 {
- "comment": "fit-content is the max-content width where it fits and the available width (not below min-content) where it does not; fit-content(70px) limits it; stretch fills the containing block less the margins (on a float, which shrinks to fit otherwise); padding and borders are around the content; an absolutely positioned box with both insets",
+ "comment": "fit-content is the max-content width where it fits and the available width (not below min-content) where it does not; stretch fills the containing block less the margins (on a float, which shrinks to fit otherwise); padding and borders are around the content; an absolutely positioned box with both insets (fit-content(<length>) for width is left out: Chromium does not support it)",
  "viewport": [
   275,
   195

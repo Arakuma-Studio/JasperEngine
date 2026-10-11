@@ -823,7 +823,8 @@ async function idBoxes(page){
             }
             return false;
         };
-        return [...document.querySelectorAll('[id]')].map((element) => {
+        // the root element (<html>) has no box of its own in the engine (its id names the document for steps)
+        return [...document.querySelectorAll('[id]')].filter((element) => element !== document.documentElement).map((element) => {
             const box = element.getBoundingClientRect();
             const entry = { id: element.id, tag: element.localName, x: box.x, y: box.y, w: box.width, h: box.height };
             if (transformed(element))
