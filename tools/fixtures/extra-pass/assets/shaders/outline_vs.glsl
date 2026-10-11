@@ -6,7 +6,7 @@
 #include "includes/surface_vs.glsl"
 
 uniform u_vs_customParams {
-    vec4 offset; // xyz in object units
+    vec3 offset; // object units
     float width; // object units
 } hullParams;
 
@@ -16,5 +16,5 @@ vec3 surfaceDisplace(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv
     #else
         vec3 direction = surfaceSmoothNormal;
     #endif
-    return objectPosition + direction * hullParams.width + hullParams.offset.xyz;
+    return objectPosition + direction * hullParams.width + hullParams.offset;
 }
