@@ -84,7 +84,7 @@ namespace {
     };
 
     const VarFamily* const kFamilies[] = {
-        &kDecoratorFamily, &kMaskFamily, &kFontEffectFamily, &kTransitionFamily, &kAnimationFamily, &kFontFamilyFamily,
+        &kDecoratorFamily, &kNativeLayersFamily, &kMaskFamily, &kFontEffectFamily, &kTransitionFamily, &kAnimationFamily, &kFontFamilyFamily,
         &kFilterFamily, &kEasingFamily,
     };
 

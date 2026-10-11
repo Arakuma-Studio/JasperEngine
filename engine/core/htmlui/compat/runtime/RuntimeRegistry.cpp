@@ -47,15 +47,23 @@ namespace {
     class LayerImageSource : public Rml::ImageSourceHandler {
     public:
         bool GetImage(Rml::Element* element, const Rml::String& url, const Rml::String& /*base_path*/, Rml::Vector2f draw_size,
-                      Image& out) override{
+                      bool repeatX, bool repeatY, Image& out) override{
             // the paths compat writes are resolved for the document (resolveUrlIn); others are
             // RmlUi's own (a .rml document): the fork loads them
             Rml::ElementDocument* document = element ? element->GetOwnerDocument() : nullptr;
             if (!document || !DocumentLoader::isCompatDocument(document))
                 return false;
+            // a raster image repeated along an axis: its texture sampled with repeat wrap there
+            // (RmlRenderer::LoadTexture reads rmlui-wrap); SVG images are rasterized per tile
+            const bool wrap = (repeatX || repeatY) && !decorators::isSvgPath(url);
+            std::string path = url;
+            if (wrap)
+                path += std::string(url.find('?') == std::string::npos ? "?" : "&") + "rmlui-wrap=" +
+                        (repeatX && repeatY ? "repeat" : (repeatX ? "repeat-x" : "repeat-y"));
             auto image = std::make_shared<decorators::Image>();
-            if (!image->load(element, url))
+            if (!image->load(element, path))
                 return true;   // reported once by load; nothing drawn
+            out.repeats = wrap;
             out.intrinsic_size = image->intrinsicSize();
             if (draw_size.x > 0.0f && draw_size.y > 0.0f){
                 out.texture = image->texture(element, draw_size);

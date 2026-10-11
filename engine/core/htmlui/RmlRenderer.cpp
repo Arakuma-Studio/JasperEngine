@@ -656,7 +656,8 @@ bool RmlRenderer::bindGeometry(Rml::CompiledGeometryHandle handle, ObjectRender&
     return true;
 }
 
-HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, int height, const char* label, TextureFilter filter){
+HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, int height, const char* label, TextureFilter filter,
+                                                TextureWrap wrapU, TextureWrap wrapV){
     std::unique_ptr<HtmlUITexture> texture = std::make_unique<HtmlUITexture>();
     texture->kind = HtmlUITexture::Kind::STATIC;
     texture->ownedRender = std::make_unique<TextureRender>();
@@ -678,7 +679,7 @@ HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, 
     gpuCreateCount++;
     // LINEAR (or NEAREST) min filter: no mipmaps
     if (!texture->ownedRender->createTexture(label, width, height, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data, size,
-                                             filter, filter, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE)){
+                                             filter, filter, wrapU, wrapV)){
         texture->ownedRender->destroyTexture();
         texture->dead = true;
         return nullptr;
@@ -693,8 +694,8 @@ HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, 
 Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& rmlSource){
     // phase-2 hook H7: "?htmlui-filter=nearest" (image-rendering: pixelated) asks for nearest
     // sampling and is not part of the file; "@htmlui/..." paths are compat's virtual files
-    bool nearest = false;
-    const std::string source = stripTextureFilter(rmlSource, nearest);
+    bool nearest = false, repeatX = false, repeatY = false;
+    const std::string source = stripTextureFilter(rmlSource, nearest, repeatX, repeatY);
     const TextureFilter filter = nearest ? TextureFilter::NEAREST : TextureFilter::LINEAR;
 
     HtmlUIFileLog::recordLazyFile(this, source);   // hot reload: images are loaded at draw time
@@ -749,7 +750,9 @@ Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, c
         out[3] = a;
     }
 
-    HtmlUITexture* texture = createStaticTexture(rgba.data(), width, height, "htmlui-image", filter);
+    HtmlUITexture* texture = createStaticTexture(rgba.data(), width, height, "htmlui-image", filter,
+                                                 repeatX ? TextureWrap::REPEAT : TextureWrap::CLAMP_TO_EDGE,
+                                                 repeatY ? TextureWrap::REPEAT : TextureWrap::CLAMP_TO_EDGE);
     if (!texture){
         Log::error("[HTML UI] could not create the texture of image '%s'", source.c_str());
         return 0;
@@ -760,8 +763,15 @@ Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, c
 }
 
 std::string RmlRenderer::stripTextureFilter(const std::string& source, bool& nearest){
+    bool repeatX = false, repeatY = false;
+    return stripTextureFilter(source, nearest, repeatX, repeatY);
+}
+
+std::string RmlRenderer::stripTextureFilter(const std::string& source, bool& nearest, bool& repeatX, bool& repeatY){
     static const std::string parameter = "htmlui-filter=nearest";
+    static const std::string wrap = "rmlui-wrap=";
     nearest = false;
+    repeatX = repeatY = false;
     const size_t query = source.find('?');
     if (query == std::string::npos)
         return source;
@@ -775,7 +785,11 @@ std::string RmlRenderer::stripTextureFilter(const std::string& source, bool& nea
         const std::string item = source.substr(start, end - start);
         if (item == parameter)
             nearest = true;
-        else if (!item.empty())
+        else if (item.compare(0, wrap.size(), wrap) == 0){
+            const std::string axes = item.substr(wrap.size());
+            repeatX = (axes == "repeat" || axes == "repeat-x");
+            repeatY = (axes == "repeat" || axes == "repeat-y");
+        }else if (!item.empty())
             kept += (kept.empty() ? "" : "&") + item;
         start = end + 1;
     }

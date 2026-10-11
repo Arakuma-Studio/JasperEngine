@@ -1,0 +1,43 @@
+#htmlui-root .same-rule {
+background-image: url("asset://compat/css/img/a.png");
+background-size: 16px auto;
+background-position-x: 100%;
+background-position-y: 50%;
+background-repeat: no-repeat no-repeat;
+}
+#htmlui-root .sprite {
+background-color: transparent;
+background-image: url("asset://compat/css/img/a.png");
+background-position-x: 0px;
+background-position-y: 0px;
+background-size: auto auto;
+background-repeat: no-repeat no-repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+#htmlui-root .sprite:hover {
+background-position-x: -32px;
+background-position-y: 0px;
+}
+#htmlui-root .sprite.big {
+background-size: 200% auto;
+}
+#htmlui-root .lonely {
+background-position-x: 50%;
+background-position-y: 50%;
+}
+#htmlui-root .origin {
+background-image: url("asset://compat/css/img/a.png");
+background-origin: content-box;
+background-clip: padding-box;
+background-attachment: fixed;
+}
+#htmlui-root .axis {
+background-image: url("asset://compat/css/img/a.png");
+background-position-x: 100%;
+background-position-y: 25%;
+}
+#htmlui-root .color {
+background-color: #00000040;
+}

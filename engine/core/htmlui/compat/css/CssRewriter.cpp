@@ -854,9 +854,13 @@ namespace {
                             name = name.substr(p.size());
                     }
                 }
-                // (a native text-shadow reads the variable as it is: no font-effect copy)
-                const std::string_view family =
-                    (name == "text-shadow" && session.options.fork.has(ForkFeature::TextShadow)) ? std::string_view() : varFamilyOf(name);
+                // (a native text-shadow reads the variable as it is: no font-effect copy; the fork's background and mask
+                // layers read it as the CSS value, its url()s resolved: phase 3 p3-paint)
+                const bool nativeLayers = session.options.fork.has(ForkFeature::BackgroundLayers) &&
+                                          (name == "background" || name == "background-image" || name == "mask" || name == "mask-image");
+                const std::string_view family = (name == "text-shadow" && session.options.fork.has(ForkFeature::TextShadow))
+                                                    ? std::string_view()
+                                                    : (nativeLayers ? std::string_view("native-layers") : varFamilyOf(name));
                 const ComponentValue* sole = soleValue(d.value);
                 const bool whole = sole && sole->isFunction("var");
                 const bool timing = name == "transition" || name == "animation" || name == "transition-timing-function" ||

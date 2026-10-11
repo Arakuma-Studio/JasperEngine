@@ -339,6 +339,12 @@ namespace {
             }else if (fork){
                 targets[0] = e.property.view();
                 count = 1;
+            }else if (context && context->session.fork(ForkFeature::BackgroundLayers) &&
+                      (lowerAscii(e.property).compare(0, 11, "background-") == 0 || lowerAscii(e.property).compare(0, 5, "mask-") == 0 ||
+                       lowerAscii(e.property) == "background" || lowerAscii(e.property) == "mask")){
+                // the fork transitions its layer properties (phase 3, p3-paint)
+                targets[0] = e.property.view();
+                count = 1;
             }else if (context && context->session.fork(ForkFeature::Outline) && lowerAscii(e.property).compare(0, 7, "outline") == 0){
                 // the fork transitions the outline properties themselves (phase 3, p3-paint)
                 targets[0] = e.property.view();
@@ -530,7 +536,11 @@ namespace {
         }
         if (name == "all" || name == "none" || ((name == "translate" || name == "rotate" || name == "scale") &&
                                                   session.options.fork.has(ForkFeature::IndividualTransforms)) ||
-            (name == "text-shadow" && session.options.fork.has(ForkFeature::TextShadow))){
+            (name == "text-shadow" && session.options.fork.has(ForkFeature::TextShadow)) ||
+            // the fork transitions its outline and layer properties themselves (phase 3, p3-paint)
+            (startsWith(name, "outline") && session.options.fork.has(ForkFeature::Outline)) ||
+            ((name == "background" || name == "mask" || startsWith(name, "background-") || startsWith(name, "mask-")) &&
+             session.options.fork.has(ForkFeature::BackgroundLayers))){
             names[0] = name;
             return 1;
         }

@@ -1258,9 +1258,14 @@ namespace {
             name = "background";
         }
 
-        // a whole-value var() is the fork's to resolve
+        // a whole-value var() is the fork's to resolve (typed: its url()s resolved)
         if (context.value.size() == 1 && isVar(context.value[0])){
-            context.emit(mask && context.name == "clip-path" ? std::string("mask-image") : std::string(plainName(context.name)), context.valueText());
+            const std::string target = mask && context.name == "clip-path" ? std::string("mask-image") : std::string(plainName(context.name));
+            std::optional<TypedVar> typed = context.name == "clip-path" ? std::nullopt : wholeVar(context, "native-layers");
+            if (typed)
+                context.emit(target, typed->reference);
+            else
+                context.emit(target, context.valueText());
             return;
         }
 
@@ -1306,6 +1311,26 @@ namespace {
                 return transparentFill(context.session, candidate);
             }) : nullptr;
             if (context.rule && (transparentFill(context.session, *context.rule) || base)){
+                // (a background-clip declaration alone: the colour of the gradient the rule, or its base rule, declares)
+                if (name == "background-clip"){
+                    middle.clear();
+                    for (const FlatRule* rule : {static_cast<const FlatRule*>(context.rule), base}){
+                        if (!rule || !middle.empty())
+                            continue;
+                        for (const char* property : {"background", "background-image"}){
+                            const std::optional<ValueList> value = ruleValue(context.session, *rule, property);
+                            Layers images;
+                            if (!value || !applyDeclaration(scope, property, *value, images))
+                                continue;
+                            for (const Layer& layer : images.layers){
+                                if (layer.kind == Layer::Kind::Gradient && layer.middleColor){
+                                    middle = text(*layer.middleColor);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
                 if (middle.empty())
                     middle = "#ffffffff";
                 context.reportAs(Severity::Warning, codes::ApproximatedVisible, "gradient text is drawn in a solid color (" + middle + ")",
@@ -1575,8 +1600,38 @@ namespace {
         return transformLayers(session, value, kind, ref, true);
     }
 
+    // the fork's layers (BackgroundLayers) read a variable as the CSS value it is, its url()s resolved for the file that
+    // declares it (phase 3, p3-paint)
+    std::string classifyNativeLayers(Session& session, const ValueList& value){
+        // (a colour is a background too: one kind)
+        const Words w = wordsOf(value);
+        if (w.size() == 1 && isColor(session, *w[0]))
+            return "layers";
+        LayerScope scope{session, 0, SourceRef(), false, nullptr, false};
+        Layers state;
+        return applyDeclaration(scope, "background", value, state) ? "layers" : std::string();
+    }
+    std::optional<std::string> transformNativeLayers(Session& session, const ValueList& value, const std::string&, SourceRef ref){
+        std::string out;
+        for (const ComponentValue& v : value){
+            if (v.isToken(TokenType::Url) || v.isFunction("url")){
+                std::optional<std::string> url = urlOf(v);
+                const std::string path = url ? resolveUrlIn(session, *url, ref.file, ref, "image") : std::string();
+                if (path.empty())
+                    return std::nullopt;
+                out += "url(\"" + path + "\")";
+                continue;
+            }
+            appendSerialized(out, v);
+        }
+        const size_t begin = out.find_first_not_of(" \t\n");
+        const size_t end = out.find_last_not_of(" \t\n");
+        return begin == std::string::npos ? std::string() : out.substr(begin, end - begin + 1);
+    }
+
 }
 
+const VarFamily jasperengine::htmlui::compat::kNativeLayersFamily = {"native-layers", classifyNativeLayers, transformNativeLayers};
 const VarFamily jasperengine::htmlui::compat::kDecoratorFamily = {"decorator", classifyDecorator, transformDecorator};
 const VarFamily jasperengine::htmlui::compat::kMaskFamily = {"mask", classifyMask, transformMask};
 

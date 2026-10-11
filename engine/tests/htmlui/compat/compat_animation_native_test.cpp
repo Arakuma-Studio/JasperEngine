@@ -99,8 +99,9 @@ TEST(CompatAnimationNative, WrittenAsDeclared){
     const Rewritten out = rewrite(kSheet, present);
 
     // transitions: CSS easings and allow-discrete kept; names compat writes as another property mapped
-    EXPECT_TRUE(out.has("transition: background-color 0.2s ease-in-out, decorator 0.2s ease-in-out, "
-                        "box-shadow 0.15s steps(3, jump-start) 0.05s, scale 0.2s cubic-bezier(0.2, 0, 0, 1.4), display 1s allow-discrete;")) << out.rcss;
+    // (background and outline-color are the fork's own with BackgroundLayers and Outline)
+    EXPECT_TRUE(out.has("transition: background 0.2s ease-in-out, outline-color 0.15s steps(3, jump-start) 0.05s, "
+                        "scale 0.2s cubic-bezier(0.2, 0, 0, 1.4), display 1s allow-discrete;")) << out.rcss;
     // a longhand alone is itself (phase 2 merged it with a base rule)
     EXPECT_TRUE(out.has("transition-duration: 0s;")) << out.rcss;
     // animations: every component written, the keyframes name last; no mirrored keyframes, no fill emulation
@@ -169,4 +170,13 @@ TEST(CompatAnimationNative, PhaseTwoRewritesWithoutTheFeatures){
     EXPECT_TRUE(transform.has("transform: translate(10px, 20%) rotateX(45deg) scale(1.5, 2) skewX(10deg);")) << transform.rcss;
     EXPECT_FALSE(transform.has("\nscale:")) << transform.rcss;
     EXPECT_TRUE(transform.has("transform 0.2s cubic-bezier(0.2, 0, 0, 1.4)")) << transform.rcss;
+
+    // BackgroundLayers absent: background transitions as the colour and the decorator; Outline absent: outline-color as
+    // box-shadow (phase 3, p3-paint)
+    const Rewritten layers = rewrite(kSheet, without(ForkFeature::BackgroundLayers));
+    EXPECT_TRUE(layers.has("background-color 0.2s ease-in-out, decorator 0.2s ease-in-out")) << layers.rcss;
+    EXPECT_TRUE(layers.has("outline-color 0.15s")) << layers.rcss;
+    const Rewritten outline = rewrite(kSheet, without(ForkFeature::Outline));
+    EXPECT_TRUE(outline.has("box-shadow 0.15s steps(3, jump-start) 0.05s")) << outline.rcss;
+    EXPECT_TRUE(outline.has("transition: background 0.2s")) << outline.rcss;
 }

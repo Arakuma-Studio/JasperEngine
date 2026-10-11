@@ -1,7 +1,7 @@
 #htmlui-root .ignored {
+isolation: auto;
 overflow-clip-margin: 0px;
 scrollbar-gutter: auto;
-isolation: auto;
 transition-behavior: normal;
 user-select: auto;
 }

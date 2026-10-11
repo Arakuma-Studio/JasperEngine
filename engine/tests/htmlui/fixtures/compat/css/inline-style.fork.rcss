@@ -2,7 +2,14 @@
 color: #ff0000ff;
 --html-current-color: #ff0000ff;
 background-color: transparent;
-decorator: html-layer("asset://ui/compat/css/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+background-image: url("asset://ui/compat/css/img/a.png");
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
 }
 @media (min-width: 600px) {
 #htmlui-root .inline-sheet {

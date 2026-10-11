@@ -52,5 +52,5 @@ outline: 2px solid #ff0000ff;
 outline-offset: 0.5em;
 }
 #htmlui-root .transition {
-transition: box-shadow 0.2s, box-shadow 0.2s;
+transition: outline-color 0.2s, outline-offset 0.2s;
 }

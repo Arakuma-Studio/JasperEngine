@@ -57,7 +57,14 @@ opacity: 1;
 @keyframes rewrites {
 0% {
 background-color: transparent;
-decorator: linear-gradient(#ff0000ff, #0000ffff) border-box;
+background-image: linear-gradient(#ff0000ff, #0000ffff);
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
 box-shadow: 0px 0px 0px #000000ff;
 border-top-width: 1px;
 border-top-style: solid;

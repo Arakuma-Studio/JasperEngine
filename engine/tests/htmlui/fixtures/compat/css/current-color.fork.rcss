@@ -45,7 +45,14 @@ stroke: currentcolor;
 }
 #htmlui-root .gradient {
 background-color: transparent;
-decorator: linear-gradient(var(--html-current-color, #000000ff), #00000000) border-box;
+background-image: linear-gradient(var(--html-current-color, #000000ff), #00000000);
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
 }
 #htmlui-root .var-color {
 color: var(--theme);

@@ -94,5 +94,5 @@ border-left-color: #ffffffff;
 background-color: #0080ff4d;
 }
 #htmlui-root .gradient-stop {
-decorator: linear-gradient(#00000080, #ffffff1a) border-box;
+background-image: linear-gradient(#00000080, #ffffff1a);
 }
