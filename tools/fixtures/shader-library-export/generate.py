@@ -18,6 +18,10 @@ Scenes (one camera each):
                  width; a blended object, which the hull preset gives the visible-only stencil
                  outline), a through-walls stencil outline, a see-through
                  silhouette, draw-once transparency, inside/outside stencil masks and sprite masks
+  Phase3B.scene  phase 3, scene-reading shaders B: library:water with DEPTH_FOAM, ABSORPTION and
+                 REFRACTION (a sloping bed, rocks crossing the surface), library:glass (blurred, normal
+                 mapped, a sphere reflecting a cubemap, pixel lit) and library:heat_haze (a quad with SOFT,
+                 a fresnel sphere) before a striped wall, every scroll frozen
 
     uv run --no-project --with mcp --with pyyaml python tools/fixtures/shader-library-export/generate.py [out dir]
 
@@ -32,6 +36,7 @@ import re
 import shutil
 import struct
 import sys
+import zlib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -611,6 +616,103 @@ async def build_stencil(ed, scene):
     await camera(ed, scene, [0, 2.0, 13.0], [0, 2.0, 0])
 
 
+def write_sky_cross(path: Path, face=32):
+    """a horizontal-cross cubemap (4:3, the single-file layout the engine reads): a blue sky darkening
+    to the zenith over a pale horizon, a brown ground; a plain RGB PNG written without imaging libraries"""
+    width, height = face * 4, face * 3
+
+    def color(x, y):
+        tx, ty = x // face, y // face
+        if (tx, ty) not in ((1, 0), (0, 1), (1, 1), (2, 1), (3, 1), (1, 2)):
+            return (0, 0, 0)
+        if ty == 0:
+            return (40, 90, 190)
+        if ty == 2:
+            return (90, 70, 50)
+        up = 1.0 - 2.0 * ((y - face) + 0.5) / face  # +1 top of a side face, -1 bottom
+        if up < 0.0:
+            return (110, 90, 65)
+        k = up ** 0.6
+        return tuple(int(round(h + (z - h) * k)) for h, z in zip((225, 230, 235), (40, 90, 190)))
+
+    raw = b"".join(b"\0" + bytes(c for x in range(width) for c in color(x, y)) for y in range(height))
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) + \
+        chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(png)
+
+
+SKY_CROSS = "assets/textures/p3b_sky_cross.png"
+
+
+async def build_phase3b(ed, scene):
+    """phase 3 B: water's scene features, glass and heat haze, every scroll and drift frozen"""
+    await lights(ed, scene)
+    unlit = lambda r, g, b, a=1.0: {M + "shader": "library:unlit",  # noqa: E731
+                                    M + "shaderParams.baseColor": [r, g, b, a]}
+    lit = lambda r, g, b: {M + "shader": "library:simple_lit", M + "lighting": "pixel",  # noqa: E731
+                           M + "shaderParams.baseColor": [r, g, b, 1.0]}
+    await mesh(ed, scene, "Ground", "plane", lit(0.42, 0.44, 0.48), [0, 0, -1.0],
+               geometry={"shape": "plane", "width": 16, "depth": 10})
+    # behind the glass a wall of sharp vertical stripes (the checker along u only), behind the haze a grid
+    await mesh(ed, scene, "Stripes", "plane", {**unlit(0.3, 0.45, 1.0),
+               M + "shaderTextures.u_baseTexture": T + "checker.png", M + "shaderParams.tiling": [2, 0.001, 0, 0]},
+               [-0.2, 1.4, -3.2], geometry={"shape": "box", "width": 4.0, "height": 2.8, "depth": 0.2})
+    await mesh(ed, scene, "Grid", "plane", {**unlit(0.9, 0.9, 0.9),
+               M + "shaderTextures.u_baseTexture": T + "checker.png", M + "shaderParams.tiling": [3, 2, 0, 0]},
+               [3.9, 1.4, -3.2], geometry={"shape": "box", "width": 4.0, "height": 2.8, "depth": 0.2})
+
+    # the pool: a checker bed rising out of the water at the back, a rock and a tilted block crossing
+    # the surface, a lip and two side walls
+    slope = math.degrees(math.atan(1.0 / 3.6))
+    await mesh(ed, scene, "Bed", "plane", {**unlit(0.85, 0.85, 0.8),
+               M + "shaderTextures.u_baseTexture": T + "checker.png", M + "shaderParams.tiling": [4, 4, 0, 0]},
+               [-3.6, 0.45, 0.2], rotation={"euler": [slope, 0, 0]},
+               geometry={"shape": "box", "width": 3.6, "height": 0.1, "depth": 3.6 / math.cos(math.radians(slope))})
+    grey = lit(0.5, 0.48, 0.45)
+    await mesh(ed, scene, "Rock", "sphere", grey, [-4.3, 0.6, 0.9], scale=[0.8, 0.8, 0.8])
+    await mesh(ed, scene, "Block", "cube", grey, [-2.8, 0.6, 0.5], rotation={"euler": [25, 35, 15]},
+               scale=[0.5, 1.0, 0.5])
+    for name, position, size in (("Lip", [-3.6, 0.4, 2.0], (3.7, 0.8, 0.1)),
+                                 ("Side-left", [-5.4, 0.5, 0.2], (0.1, 1.0, 3.6)),
+                                 ("Side-right", [-1.8, 0.5, 0.2], (0.1, 1.0, 3.6))):
+        await mesh(ed, scene, name, "plane", lit(0.6, 0.6, 0.62), position,
+                   geometry={"shape": "box", "width": size[0], "height": size[1], "depth": size[2]})
+    await mesh(ed, scene, "Water", "plane", mesh_values(mat("library:water",
+               {"layerScale": 2.0, "layerSpeed": [0, 0], "secondLayerScale": 1.3, "secondLayerSpeed": [0, 0],
+                "foamAmount": 0.08, "shoreFoamWidth": 0.15, "absorptionDepth": 0.8, "refractionStrength": 0.05},
+               {"u_normalTexture": T + "fx_water_normal.png", "u_noiseTexture": T + "fx_noise.png"},
+               ["DEPTH_FOAM", "ABSORPTION", "REFRACTION"]), lighting="pixel"),
+               [-3.6, 0.7, 0.2], geometry={"shape": "plane", "width": 3.6, "depth": 3.6})
+
+    # glass: a frosted pane, a normal-mapped absorbing pane, a sphere reflecting the sky cubemap (lit)
+    pane = {"shape": "box", "width": 0.9, "height": 1.3, "depth": 0.04}
+    await mesh(ed, scene, "Glass-frosted", "plane", mesh_values(mat("library:glass", {"blurRadius": 3.0}, {},
+               ["BLUR"])), [-1.4, 0.75, -2.5], rotation={"euler": [0, 20, 0]}, geometry=pane)
+    await mesh(ed, scene, "Glass-normal", "plane", mesh_values(mat("library:glass",
+               {"thickness": 0.4, "absorption": 3.0, "absorptionColor": [0.3, 0.75, 0.45, 1.0], "tiling": [2, 2, 0, 0]},
+               {"u_normalTexture": T + "fx_water_normal.png"}, ["NORMAL_MAP"])), [-0.1, 0.75, -2.0], geometry=pane)
+    await mesh(ed, scene, "Glass-sphere", "sphere", mesh_values(mat("library:glass",
+               {"thickness": 0.5, "reflectionColor": [1.0, 1.0, 1.0, 1.0], "reflectionStrength": 1.5},
+               {"u_reflectionTexture": {"cube": SKY_CROSS}}, ["REFLECTION_MAP"]), lighting="pixel"),
+               [1.1, 0.65, -2.3], scale=[1.1, 1.1, 1.1])
+
+    # heat haze before the grid: a quad with a soft intersection with the ground, a fresnel sphere
+    frozen = {"scrollSpeed": [0, 0], "secondScrollSpeed": [0, 0], "strength": 0.03}
+    await mesh(ed, scene, "Haze-quad", "plane", mesh_values(mat("library:heat_haze", {**frozen, "noiseTiling": [1, 1, 0.3, 0.1]},
+               {"u_noiseTexture": T + "fx_noise.png"}, ["SOFT"])), [3.0, 0.7, -2.4],
+               geometry={"shape": "wall", "width": 1.2, "height": 1.6})
+    await mesh(ed, scene, "Haze-sphere", "sphere", {**mesh_values(mat("library:heat_haze", frozen,
+               {"u_noiseTexture": T + "fx_noise.png"}, ["EDGE_FADE_FRESNEL"])), M + "cullMode": "back"},
+               [4.6, 1.0, -2.4], scale=[1.2, 1.2, 1.2])
+
+    await camera(ed, scene, [-0.6, 3.6, 7.2], [-0.6, 0.5, -1.0])
+
+
 def scene_id(made):
     return made["scene"]["id"] if isinstance(made["scene"], dict) else made["scene"]
 
@@ -640,6 +742,7 @@ async def main(out: Path) -> None:
         for png in used:
             shutil.copy(TEXTURES / png, textures / png)
         write_models(ed.project / "assets" / "models")
+        write_sky_cross(ed.project / SKY_CROSS)
         shutil.copy(OVERLAP, ed.project / "assets" / "models" / OVERLAP.name)
         await ed.call("sync_files")
 
@@ -667,6 +770,10 @@ async def main(out: Path) -> None:
         await build_stencil(ed, stencil)
         await ed.call("save_scene", scene=stencil)
 
+        phase3b = scene_id(await ed.call("create_scene", name="Phase3B", path="Phase3B.scene"))
+        await build_phase3b(ed, phase3b)
+        await ed.call("save_scene", scene=phase3b)
+
         await ed.call("save_project")
         problems = await ed.call("check_shader")
         failed = [r for r in problems["results"] if not r["ok"]]
@@ -675,7 +782,7 @@ async def main(out: Path) -> None:
 
         out.mkdir(parents=True, exist_ok=True)
         for name in ("project.yaml", "Lit.scene", "Blend.scene", "2D.scene", "UI.scene", "Stencil.scene",
-                     "SceneSelect.lua"):
+                     "Phase3B.scene", "SceneSelect.lua"):
             shutil.copy(ed.project / name, out / name)
         if (out / "assets").exists():
             shutil.rmtree(out / "assets")
