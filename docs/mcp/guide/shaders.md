@@ -8,7 +8,8 @@ The engine ships ready-made shaders, referenced as `"library:<name>"`. `list_sha
 them (name, type, category, description, lighting modes); `list_shaders name="toon"` (or
 `detail: true`) adds each one's parameters (member, kind, default, range, label, `feature`
 gating: shown while that define is on, `"!X"` while it is off), textures (uniform, default), features, keyword groups, the inputs it requires
-(`require`, plus `require_rules`: inputs only while a feature is on, `"!X"` while off) and its
+(`require`, plus `require_rules`: inputs only while a feature is on, `"!X"` while off; every
+entry also has `scene_inputs`, see "Scene depth and colour" below) and its
 default render state (`state`, including `shadows: "off"` for shaders that cast none, plus
 `state_rules`: state a feature or keyword value turns on, e.g. hologram's
 `BLEND_MODE_ALPHA` makes it alpha blended).
@@ -206,3 +207,37 @@ Manifest lines (library shaders and forks that declare them) beyond the basic on
   names `BLEND_*` are reserved.
 - Library mesh shaders draw on a Terrain too (its height-mapped patches; `uv1` is the
   terrain's tiled UV, painted layers stay Lit's).
+
+## Scene depth and colour
+
+A mesh or points shader can read the opaque scene behind it: soft particles, depth-fade
+water and fog cards, intersection glows, projected decals (depth); glass, refraction, heat
+haze (colour).
+
+- Manifest: `// @require scenedepth`, `// @require scenecolor`, gated like any input
+  (`// @require scenedepth feature=SOFT`: only the variants with `SOFT` read it and pay for
+  it). `list_shaders` gives `scene_inputs` (`["scenedepth", "scenecolor"]`, what some variant
+  may read) for every shader: show it as a cost.
+- In the `.frag`: `#include "includes/scene.glsl"` (it declares the engine's block and
+  textures for the variants that require them, nothing for the others). Functions:
+  `screenUV()` (0..1, y up, the current fragment), `sceneLinearDepth(uv)` (view-space
+  distance in world units of the opaque surface there; the far clip distance over the sky),
+  `fragmentLinearDepth()` (the same for the fragment being drawn), `sceneWorldPosition(uv)`
+  (world position of the opaque surface) and `sceneColor(uv)` (linear colour of the opaque
+  scene and sky, fog included, bilinear). The first three and `sceneWorldPosition` need
+  `scenedepth`, `sceneColor` needs `scenecolor`. Example, soft fade:
+  `alpha *= clamp((sceneLinearDepth(screenUV()) - fragmentLinearDepth()) / softness, 0.0, 1.0);`
+- The draw must be in the transparent queue (`@state queue=transparent` or a blend other
+  than opaque): it reads what the opaque queue drew. A material that puts such a shader in
+  the opaque queue is an error (`check_shader` without arguments, `check --shaders`, the
+  material inspector): it would read its own depth and a black colour. Transparent objects
+  are not in the colour copy, so they do not see each other through it.
+- Cost, only in the camera passes (scene camera, render-to-texture and mirror cameras,
+  editor views) where such a draw is visible: the scene depth is a depth pre-pass of the
+  opaque meshes (none extra when SSAO, SSR or a depth-reading post pass already draws one);
+  the scene colour is one copy of the pass after the opaque queue and the sky, at the scene
+  setting `scene_color_scale` (`half`, the default, or `full`; linear filtering). While the
+  scene has a depth reader, every mesh keeps a depth program. A camera drawing in hierarchy
+  order (2D, `transparentSort` off) copies right before the first draw reading the colour,
+  so the copy holds everything drawn before it. Reflection probe faces draw the opaque
+  queue only: such shaders are not in them.

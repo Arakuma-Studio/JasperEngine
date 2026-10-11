@@ -61,7 +61,14 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
   `uv2`, `color` = vertex colour times instance colour, `rawcolor` = the vertex colour
   alone, `smoothnormals` = the normal averaged over the vertices sharing a position, made by
   the engine); "with X" inputs only while feature X is on ("without X": while off). A mesh
-  that lacks one still draws (normal +Y, UV 0, white).
+  that lacks one still draws (normal +Y, UV 0, white). `scenedepth` and `scenecolor` are
+  the scene inputs (`includes/scene.glsl`), listed again under **Reads the scene**.
+- **Reads the scene**: the shader samples the opaque scene's depth or a copy of its colour.
+  The engine makes them only in camera passes that draw such a shader: a depth pre-pass
+  (shared with SSAO, SSR or a depth-reading post pass when one runs) and one copy of the
+  opaque scene and sky (Scene Color Scale: half resolution by default). Extra GPU work on
+  mobile; the shader draws in the transparent queue and does not see other transparent
+  objects.
 - **Default state**: what Auto resolves to; `shadows off` means the object casts no shadow
   even when its mesh casts shadows. "With X" lines apply while feature or keyword value X is
   on.
