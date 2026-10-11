@@ -317,8 +317,19 @@ namespace {
 		if (!inner_node_size.width)
 			inner_node_size.width = initial_column_sum;
 
-		// Only the width requested: the rows need no sizing (column sizing is not re-run for a size-only request).
-		if (run_mode == RunMode::ComputeWidth)
+		// Only the width requested: the rows need no sizing (column sizing is not re-run for a size-only request), unless the
+		// width of an item in an intrinsic column can follow the row sizes: through its aspect ratio, or through its
+		// percentage height (its content's aspect ratios, percentages). RmlUi asks for the width alone where Taffy and
+		// browsers size both axes: the fit-content width of absolutely positioned, floated and flex-item grids (p3-layout).
+		const bool width_follows_rows = std::any_of(items.begin(), items.end(), [](const GridItem& item) {
+			return item.crosses_intrinsic_column &&
+				(item.aspect_ratio > 0.f || item.size_height.type == Style::LengthPercentageAuto::Percentage
+#ifdef RMLUI_MATH_EXPRESSIONS
+					|| item.size_height.type == Style::LengthPercentageAuto::Calculation
+#endif
+				);
+		});
+		if (run_mode == RunMode::ComputeWidth && !width_follows_rows)
 		{
 			const float width = std::max(MaybeClamp(initial_column_sum + content_box_inset.width, min_size.width, max_size.width),
 				padding_border_size.width);
@@ -453,6 +464,11 @@ namespace {
 		}
 
 		border_box_size = Vector2f(container_border_box.width, container_border_box.height);
+		if (run_mode == RunMode::ComputeWidth)
+		{
+			content_width = container_border_box.width - padding_border_size.width;
+			return;
+		}
 
 		// 8. Track alignment. The vertical scrollbar takes its space at the end of the columns.
 		const float inline_size_without_scrollbar = std::max(container_border_box.width - padding_border_size.width, 0.f);
@@ -835,8 +851,11 @@ static float ComputeIntrinsicWidth(Element* element, Vector2f containing_block, 
 	run.measure_width = constraint;
 	run.containing_block = containing_block;
 	LayoutDetails::BuildBox(run.box, containing_block, element, BuildBoxMode::UnalignedBlock);
-	// A definite width is its own intrinsic width.
-	if (run.box.GetSize().x >= 0.f)
+	// A definite width is its own intrinsic width, unless the content is measured (LayoutDetails::GetContentWidth: the width
+	// of the element, a percentage of a containing block it does not have yet, does not count).
+	if (LayoutDetails::IsMeasuringContentOf(element))
+		run.box.SetContent(Vector2f(-1.f, run.box.GetSize().y));
+	else if (run.box.GetSize().x >= 0.f)
 		return run.box.GetSize().x;
 	// 'overflow: scroll' reserves its scrollbar's space whether it scrolls or not.
 	const ComputedValues& computed = element->GetComputedValues();

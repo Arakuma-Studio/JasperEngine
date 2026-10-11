@@ -25,9 +25,10 @@ public:
 	static UniquePtr<LayoutBox> Format(ContainerBox* parent_container, Element* element, const Box* override_initial_box);
 
 	/// Computes the max-content size of a flex container's content box.
-	static Vector2f GetMaxContentSize(Element* element);
+	/// @param[in] definite_content_height The height of the container's content box when its 'height' is definite, else negative.
+	static Vector2f GetMaxContentSize(Element* element, float definite_content_height = -1.f);
 	/// Computes the min-content width of a flex container's content box (the height is not computed, 0).
-	static Vector2f GetMinContentSize(Element* element);
+	static Vector2f GetMinContentSize(Element* element, float definite_content_height = -1.f);
 
 private:
 	FlexFormattingContext() = default;

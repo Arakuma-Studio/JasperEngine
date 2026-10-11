@@ -162,6 +162,9 @@ public:
 	Box& GetBox() { return box; }
 
 	// The first baseline of the container (CSS Flexbox §8.5), from its border-box top.
+	// The height of our content box, when it was definite as we were formatted (our intrinsic widths are measured with it).
+	void SetDefiniteContentHeight(float height) { definite_content_height = height; }
+
 	void SetFirstBaseline(bool has_baseline, float baseline)
 	{
 		has_first_baseline = has_baseline;
@@ -172,6 +175,7 @@ private:
 	Box box;
 	bool has_first_baseline = false;
 	float first_baseline = 0.f;
+	float definite_content_height = -1.f;
 };
 
 /**

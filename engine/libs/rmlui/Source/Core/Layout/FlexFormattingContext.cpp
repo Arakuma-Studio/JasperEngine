@@ -2046,13 +2046,17 @@ namespace {
 	}
 
 	// The intrinsic size of a flex container's content box under a min-content or max-content constraint.
-	Vector2f ComputeIntrinsicContentSize(Element* element, AvailableSpace::Type constraint)
+	Vector2f ComputeIntrinsicContentSize(Element* element, AvailableSpace::Type constraint, float definite_content_height)
 	{
 		const Vector2f infinity(10000.f, 10000.f);
 		RootBox root(infinity);
 		FlexContainer flex_container_box(element, &root);
 		Box box;
 		LayoutDetails::BuildBox(box, Vector2f(-1.f), element, BuildBoxMode::UnalignedBlock);
+		// A definite height that depends on a containing block (a percentage) is given by the box that was formatted: the
+		// percentage heights of the items resolve against it.
+		if (box.GetSize().y < 0.f && definite_content_height >= 0.f)
+			box.SetContent({box.GetSize().x, definite_content_height});
 
 		OptSize known;
 		if (box.GetSize().y >= 0.f)
@@ -2089,6 +2093,8 @@ UniquePtr<LayoutBox> FlexFormattingContext::Format(ContainerBox* parent_containe
 	const Vector2f box_content_size = box.GetSize();
 	const bool auto_height = (box_content_size.y < 0.0f);
 	const bool height_indefinite = (override_initial_box && !auto_height && LayoutDetails::IsHeightIndefinite(element));
+	if (!auto_height && !height_indefinite)
+		flex_container_box->SetDefiniteContentHeight(box_content_size.y);
 	const Vector2f edges = {box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding),
 		box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border, BoxArea::Padding)};
 
@@ -2144,14 +2150,14 @@ UniquePtr<LayoutBox> FlexFormattingContext::Format(ContainerBox* parent_containe
 	return flex_container_box;
 }
 
-Vector2f FlexFormattingContext::GetMaxContentSize(Element* element)
+Vector2f FlexFormattingContext::GetMaxContentSize(Element* element, float definite_content_height)
 {
-	return ComputeIntrinsicContentSize(element, AvailableSpace::MaxContent);
+	return ComputeIntrinsicContentSize(element, AvailableSpace::MaxContent, definite_content_height);
 }
 
-Vector2f FlexFormattingContext::GetMinContentSize(Element* element)
+Vector2f FlexFormattingContext::GetMinContentSize(Element* element, float definite_content_height)
 {
-	return {ComputeIntrinsicContentSize(element, AvailableSpace::MinContent).x, 0.f};
+	return {ComputeIntrinsicContentSize(element, AvailableSpace::MinContent, definite_content_height).x, 0.f};
 }
 
 } // namespace Rml

@@ -361,7 +361,7 @@ float FlexContainer::GetShrinkToFitWidth() const
 		return box.GetSize().x;
 
 	// Infer shrink-to-fit width from the intrinsic width of the element.
-	return FlexFormattingContext::GetMaxContentSize(element).x;
+	return FlexFormattingContext::GetMaxContentSize(element, definite_content_height).x;
 }
 
 float FlexContainer::GetMinContentWidth() const
@@ -370,7 +370,7 @@ float FlexContainer::GetMinContentWidth() const
 	if (element->GetComputedValues().width().type == Style::Width::Type::Length && !LayoutDetails::IsMeasuringContentOf(element))
 		return box.GetSize().x;
 
-	return FlexFormattingContext::GetMinContentSize(element).x;
+	return FlexFormattingContext::GetMinContentSize(element, definite_content_height).x;
 }
 
 String FlexContainer::DebugDumpTree(int depth) const
@@ -401,8 +401,8 @@ bool GridContainer::Close(const Vector2f visible_overflow_size, const Vector2f s
 
 float GridContainer::GetShrinkToFitWidth() const
 {
-	// For the trivial case of a fixed width, we simply return that.
-	if (element->GetComputedValues().width().type == Style::Width::Type::Length)
+	// For the trivial case of a fixed width, we simply return that (unless the content is measured, LayoutDetails::GetContentWidth).
+	if (element->GetComputedValues().width().type == Style::Width::Type::Length && !LayoutDetails::IsMeasuringContentOf(element))
 		return box.GetSize().x;
 
 	return GridFormattingContext::GetMaxContentWidth(element, containing_block);
@@ -410,7 +410,7 @@ float GridContainer::GetShrinkToFitWidth() const
 
 float GridContainer::GetMinContentWidth() const
 {
-	if (element->GetComputedValues().width().type == Style::Width::Type::Length)
+	if (element->GetComputedValues().width().type == Style::Width::Type::Length && !LayoutDetails::IsMeasuringContentOf(element))
 		return box.GetSize().x;
 
 	return GridFormattingContext::GetMinContentWidth(element, containing_block);
