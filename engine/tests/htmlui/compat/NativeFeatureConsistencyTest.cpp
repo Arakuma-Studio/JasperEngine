@@ -151,7 +151,7 @@ namespace {
         // (in p3-animation's translate / rotate / scale)
         {ForkFeature::ExtraUnits, SampleKind::Declaration, "translate: 2ch 1ex", "translate:1em0.5em", "HTMLUI-CSS-0005"},
         {ForkFeature::ExtraUnits, SampleKind::Declaration, "rotate: 0.25turn", "rotate:90deg", ""},
-        {ForkFeature::Calc, SampleKind::Declaration, "translate: calc(50% + 1em) 0px", "translate:50%", ""},
+        {ForkFeature::Calc, SampleKind::Declaration, "translate: calc(50% + 1em) 0px", "translate:50%", "HTMLUI-CSS-0007"},
         {ForkFeature::LineHeightNormal, SampleKind::Declaration, "line-height: normal", "line-height:1.2", ""},
     };
 

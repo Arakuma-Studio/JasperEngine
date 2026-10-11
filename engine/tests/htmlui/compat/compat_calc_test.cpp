@@ -223,3 +223,89 @@ TEST(CompatCalc, TheForkParsesWhatIsKept){
     Rml::Factory::ClearStyleSheetCache();
     HtmlUI::release();
 }
+
+// A translation by a sum is the sum of translations: folded without the fork's calc(), a sum of
+// lengths and percentages in a translate function is written as one translation per term, which
+// is exact (no load-time evaluation, no percentage reduced).
+TEST(CompatCalc, TranslationSumsStayExactInBothStates){
+    const Rewritten with = rewrite(".a { transform: translateX(calc(50% + 1em)) rotate(10deg); }", withCalc());
+    EXPECT_EQ(with.value("transform"), "translateX(calc(50% + 1em)) rotate(10deg)");
+    EXPECT_TRUE(with.diagnostics.empty());
+
+    const Rewritten without = rewrite(".a { transform: translateX(calc(50% + 1em)) rotate(10deg); }", withoutCalc());
+    EXPECT_EQ(without.value("transform"), "translateX(50%) translateX(1em) rotate(10deg)");
+    EXPECT_TRUE(without.diagnostics.empty());
+
+    // several arguments: the others are 0 in the added translations
+    const Rewritten two = rewrite(".a { transform: translate(calc(50% + 1em), 2ch); }", withoutCalc());
+    EXPECT_EQ(two.value("transform"), "translate(50%, 2ch) translate(1em, 0px)");
+    EXPECT_TRUE(two.diagnostics.empty());
+    const Rewritten minus = rewrite(".a { transform: translateY(calc(100% - 2px)); }", withoutCalc());
+    EXPECT_EQ(minus.value("transform"), "translateY(100%) translateY(-2px)");
+}
+
+// 'translate' combined into transform (the fork without IndividualTransforms): the same, in both
+// Calc states; with IndividualTransforms and without Calc the property cannot hold a sum, and the
+// reduction is reported.
+TEST(CompatCalc, TranslatePropertySums){
+    const ForkFeatures noIndividual = ForkFeatures::present().with(ForkFeature::IndividualTransforms, false);
+    for (const ForkFeatures& fork : {noIndividual, noIndividual.with(ForkFeature::Calc, false)}){
+        const Rewritten r = rewrite(".a { translate: calc(50% + 1em) 0px; }", fork);
+        EXPECT_EQ(r.value("transform"), "translate(50%, 0px) translate(1em, 0px)") << r.rcss;
+        EXPECT_TRUE(r.diagnostics.empty()) << r.rcss;
+        // merged with the rule's transform
+        const Rewritten merged = rewrite(".a { translate: calc(10px + 1em); transform: scale(2); }", fork);
+        EXPECT_NE(merged.value("transform").find("translate(10px, 0px)"), std::string::npos) << merged.rcss;
+        EXPECT_NE(merged.value("transform").find("translate(1em, 0px)"), std::string::npos) << merged.rcss;
+        EXPECT_TRUE(merged.diagnostics.empty()) << merged.rcss;
+    }
+
+    const Rewritten native = rewrite(".a { translate: calc(50% + 1em) 0px; }", ForkFeatures::present());
+    EXPECT_EQ(native.value("translate"), "calc(50% + 1em) 0px");
+    EXPECT_TRUE(native.diagnostics.empty());
+
+    const Rewritten reduced = rewrite(".a { translate: calc(50% + 1em) 0px; }", withoutCalc());
+    EXPECT_EQ(reduced.value("translate"), "50% 0px");
+    EXPECT_TRUE(reduced.reported(codes::ForkFallback));
+    const Rewritten evaluated = rewrite(".a { translate: calc(10px + 1em); }", withoutCalc());
+    EXPECT_EQ(evaluated.value("translate"), "26px");
+    EXPECT_TRUE(evaluated.reported(codes::ViewportDependent));
+}
+
+// Every other fold that loses the expression is reported: a percentage reduced (transform-origin,
+// perspective-origin) and a load-time evaluation (perspective); angles fold exactly.
+TEST(CompatCalc, LossyFoldsAreReported){
+    const Rewritten origin = rewrite(".a { transform-origin: calc(50% + 1em) 0; perspective-origin: calc(50% + 1em) 0; }", withoutCalc());
+    EXPECT_EQ(origin.value("transform-origin"), "50% 0");
+    EXPECT_TRUE(origin.reported(codes::ForkFallback));
+    size_t reductions = 0;
+    for (const Diagnostic& d : origin.diagnostics)
+        reductions += d.code == codes::ForkFallback ? 1 : 0;
+    EXPECT_EQ(reductions, 2u);
+
+    const Rewritten perspective = rewrite(".a { perspective: calc(100px + 1em); }", withoutCalc());
+    EXPECT_EQ(perspective.value("perspective"), "116px");
+    EXPECT_TRUE(perspective.reported(codes::ViewportDependent));
+    EXPECT_EQ(rewrite(".a { perspective: calc(100px + 1em); }", withCalc()).value("perspective"), "calc(100px + 1em)");
+
+    const Rewritten angle = rewrite(".a { transform: rotate(calc(1turn - 10grad)); rotate: x calc(0.5turn + 1deg); }", withoutCalc());
+    EXPECT_EQ(angle.value("transform"), "rotate(351deg)");
+    EXPECT_EQ(angle.value("rotate"), "x 181deg");
+    EXPECT_TRUE(angle.diagnostics.empty());
+}
+
+// Several approximations of one kind in a value are all named (the sink keeps one finding per
+// code and declaration: they are merged into one message).
+TEST(CompatCalc, EveryApproximatedUnitIsNamed){
+    const ForkFeatures noUnits = ForkFeatures::present().with(ForkFeature::ExtraUnits, false);
+    const Rewritten r = rewrite(".a { translate: 2ch 1ex; }", noUnits);
+    EXPECT_EQ(r.value("translate"), "1em 0.5em");
+    ASSERT_EQ(r.diagnostics.size(), 1u);
+    EXPECT_EQ(r.diagnostics[0].code, codes::ApproximatedMinor);
+    EXPECT_NE(r.diagnostics[0].message.find("'ch'"), std::string::npos) << r.diagnostics[0].message;
+    EXPECT_NE(r.diagnostics[0].message.find("'ex'"), std::string::npos) << r.diagnostics[0].message;
+    // with the feature both stay
+    const Rewritten native = rewrite(".a { translate: 2ch 1ex; }", ForkFeatures::present());
+    EXPECT_EQ(native.value("translate"), "2ch 1ex");
+    EXPECT_TRUE(native.diagnostics.empty());
+}

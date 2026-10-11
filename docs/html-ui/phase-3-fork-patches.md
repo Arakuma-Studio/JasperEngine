@@ -2108,7 +2108,13 @@ or makes precise §3.2 and §3.3):
   where `calc()` is (`NormalizeContext::unitsNative`, not custom properties), without orientation
   copies (`OutDecl::nativeUnits`) or style-attribute evaluation. With `IndividualTransforms`,
   `translate`, `rotate` and `scale` keep `calc()` and the units as `transform` does (the
-  `IndividualTransform` rewrite reads as written then). Text fixtures load Roboto from
+  `IndividualTransform` rewrite reads as written then). Folded without the fork's `calc()`, a
+  translation by a sum of lengths and percentages is written as one translation per term
+  (`translateX(calc(50% + 1em))` is `translateX(50%) translateX(1em)`, also for `translate`
+  combined into `transform`): exact. Every other lossy fold is reported (`HTMLUI-CSS-0007` a
+  percentage reduced, `HTMLUI-CSS-0013` a load-time evaluation, `HTMLUI-CSS-0005` an approximated
+  unit); findings of one code in one value are merged into one message, since the sink keeps one
+  finding per code and declaration (an `ex` after a `ch` was not named before). Text fixtures load Roboto from
   `fonts/Roboto-Regular-subset-post.ttf` (Chromium rejects the subset without a post table).
 
 ### Wave 2

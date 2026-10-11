@@ -1517,6 +1517,10 @@ namespace {
                 // translate / rotate / scale written as they are: the fork reads them with its transform parser
                 (row->rewrite == RewriteId::IndividualTransform && session.options.fork.has(ForkFeature::IndividualTransforms));
             normalize.unitsNative = normalize.calcNative;
+            // 'translate' combined into transform (no IndividualTransforms): a sum stays for the
+            // rewrite to write as one translation per term
+            normalize.lengthSums = row->rewrite == RewriteId::IndividualTransform && name == "translate" &&
+                                   !session.options.fork.has(ForkFeature::IndividualTransforms);
             nativeUnits = normalize.unitsNative && session.options.fork.has(ForkFeature::ExtraUnits);
             normalize.percentBasis = facts.percentBasis;
             normalize.vertical = facts.vertical;

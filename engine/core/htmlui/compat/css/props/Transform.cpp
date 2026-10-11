@@ -12,6 +12,9 @@
 #include "htmlui/compat/css/CssParser.h"
 #include "htmlui/compat/css/CssSerialize.h"
 #include "htmlui/compat/css/StaticCalc.h"
+
+#include <algorithm>
+#include <vector>
 #include "htmlui/compat/css/Units.h"
 #include "htmlui/compat/css/ValueNormalizer.h"
 
@@ -44,6 +47,32 @@ namespace {
             for (const ComponentValue& v : w){
                 if (!isLength(session, v, true) && !isVar(v) && !isCalc(v))
                     return std::nullopt;
+            }
+            // a sum kept by NormalizeContext::lengthSums: one translation per term (exact)
+            size_t count = 1;
+            std::vector<std::vector<ComponentValue>> terms(w.size());
+            for (size_t i = 0; i < w.size(); i++){
+                ValueList one;
+                one.push_back(w[i]);
+                terms[i] = ValueNormalizer::lengthSumTerms(one);
+                count = std::max(count, terms[i].size());
+            }
+            if (count > 1 && w.size() <= 3){
+                std::string chain;
+                for (size_t k = 0; k < count; k++){
+                    auto axis = [&](size_t i){
+                        if (k < terms[i].size())
+                            return lengthText(terms[i][k]);
+                        return k == 0 ? lengthText(w[i]) : std::string("0px");
+                    };
+                    if (!chain.empty())
+                        chain += ' ';
+                    if (w.size() == 3)
+                        chain += "translate3d(" + axis(0) + ", " + axis(1) + ", " + axis(2) + ")";
+                    else
+                        chain += "translate(" + axis(0) + ", " + (w.size() == 2 ? axis(1) : std::string("0px")) + ")";
+                }
+                return chain;
             }
             if (w.size() == 1)
                 return "translate(" + lengthText(w[0]) + ", 0px)";
@@ -92,6 +121,7 @@ namespace {
     ValueList normalized(Session& session, const Declaration& d){
         NormalizeContext context;
         context.options = &session.options;
+        context.lengthSums = d.name == "translate";
         context.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
         NormalizeResult result = ValueNormalizer::normalize(d.value, context);
         return result.ok ? trimWhitespace(result.value) : ValueList();
