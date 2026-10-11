@@ -275,8 +275,9 @@ TEST_F(CompatSvgElementTest, MonochromeInlineSvgIsTintedByColor){
     EXPECT_EQ(recording.getLiveTextureCount(), texturesBefore);
     EXPECT_EQ(vertexColour(draws[0]), Rml::ColourbPremultiplied(0, 0, 255, 255));
 
-    // opacity and image-color multiply in
-    byId("box")->SetProperty("opacity", "0.5");
+    // opacity and image-color multiply in: on the svg itself, a leaf drawing one thing (on the box it would be a group,
+    // drawn into a layer composited with the opacity: phase 3, p3-paint)
+    byId("box")->GetFirstChild()->SetProperty("opacity", "0.5");
     frame();
     draws = drawsOf(Rml::Vector2i(24, 24));
     ASSERT_EQ(draws.size(), 1u);

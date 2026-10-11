@@ -204,9 +204,10 @@ TEST_F(FullPathGoldenTest, AlphaBlend){
     // red and blue (premultiplied (64, 0, 128, 192) in the layer) over yellow
     EXPECT_TRUE(screen.is(150, 130, 127, 63, 128, 3));
     EXPECT_TRUE(screen.is(300, 130, 255, 255, 0));
-    // half-opacity white group, and its green child, over yellow
+    // half-opacity white group, and its green child, over yellow: the group is composited once (CSS; phase 3,
+    // p3-paint), the opaque green child covers the white in it
     EXPECT_TRUE(screen.is(350, 130, 255, 255, 128, 3));
-    EXPECT_TRUE(screen.is(400, 130, 127, 255, 64, 3));
+    EXPECT_TRUE(screen.is(400, 130, 128, 255, 0, 3));
 
     EXPECT_SCREEN_GOLDEN(screen, "alpha_blend");
 }

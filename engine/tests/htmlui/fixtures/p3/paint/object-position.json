@@ -1,0 +1,7 @@
+{
+ "comment": "object-position: keywords, lengths and percentages, edge offsets (right 6px bottom 4px), with cover and contain, and negative offsets cropping the image.",
+ "viewport": [
+  450,
+  170
+ ]
+}

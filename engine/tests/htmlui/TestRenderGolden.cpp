@@ -172,9 +172,9 @@ TEST_F(RmlRendererGoldenTest, Alpha){
     // #0000FF80 over it: premultiplied "over" in the layer, then over the background
     EXPECT_TRUE(probe.is(150, 130, 71, 7, 135, 255, 3));
     EXPECT_TRUE(probe.is(260, 200, 15, 15, 143));
-    // opacity 0.5 multiplies every color of the subtree (no group in phase 0)
+    // opacity 0.5 is a group (CSS; phase 3, p3-paint): the subtree is drawn opaque into a layer composited at 50%
     EXPECT_TRUE(probe.is(350, 50, 143, 143, 143));
-    EXPECT_TRUE(probe.is(400, 100, 71, 199, 71, 255, 3));
+    EXPECT_TRUE(probe.is(400, 100, 15, 143, 15, 255, 3));
     // a quarter-alpha white over the background
     EXPECT_TRUE(probe.is(300, 290, 87, 87, 87, 255, 3));
 

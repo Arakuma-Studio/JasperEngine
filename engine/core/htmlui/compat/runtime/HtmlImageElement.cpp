@@ -11,6 +11,7 @@
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementUtilities.h>
 #include <RmlUi/Core/MeshUtilities.h>
+#include <RmlUi/Core/ObjectFit.h>
 #include <RmlUi/Core/PropertyIdSet.h>
 #include <RmlUi/Core/RenderBox.h>
 #include <RmlUi/Core/RenderManager.h>
@@ -175,15 +176,17 @@ void HtmlImageElement::generateGeometry(){
     const Rml::RenderBox renderBox = GetRenderBox(Rml::BoxArea::Content);
     const Rml::Vector2f box = renderBox.GetFillSize();
     const Rml::Vector2f origin = renderBox.GetFillOffset();
-    const ObjectFit fit = parseObjectFit(CompatProperties::text(*this, CompatProperty::ObjectFit));
-    CssPosition position;
-    const std::string positionText = CompatProperties::text(*this, CompatProperty::ObjectPosition);
-    if (!positionText.empty() && !parseCssPosition(tokenize(positionText), this, position))
-        position = CssPosition();
-
-    LayerQuad quad;
-    if (!computeObjectFit(fit, natural, box, position, quad))
+    // object-fit and object-position are the fork's (phase 3, p3-paint: Rml::ComputeObjectFitRect)
+    const Rml::ComputedValues& fitValues = GetComputedValues();
+    Rml::ObjectFitRect fitted;
+    if (!Rml::ComputeObjectFitRect(box, natural, fitValues.object_fit(), fitValues.object_position_x(), fitValues.object_position_y(), fitted))
         return;
+    LayerQuad quad;
+    quad.rect = LayerRect{fitted.rect.TopLeft().x, fitted.rect.TopLeft().y, fitted.rect.Width(), fitted.rect.Height()};
+    quad.u0 = fitted.uv.TopLeft().x;
+    quad.v0 = fitted.uv.TopLeft().y;
+    quad.u1 = fitted.uv.BottomRight().x;
+    quad.v1 = fitted.uv.BottomRight().y;
 
     // the object's drawn size (for SVG rasterization): the quad before cropping
     const Rml::Vector2f drawn(quad.rect.width / std::max(1e-4f, quad.u1 - quad.u0), quad.rect.height / std::max(1e-4f, quad.v1 - quad.v0));
@@ -249,11 +252,9 @@ void HtmlImageElement::OnPropertyChange(const Rml::PropertyIdSet& changed_proper
         if (changed_properties.Contains(Rml::PropertyId((int)Rml::PropertyId::RmlUi_BorderTopLeftRadiusX + i)))
             geometryDirty = true;
     }
-    for (CompatProperty property : {CompatProperty::ObjectFit, CompatProperty::ObjectPosition}){
-        const Rml::PropertyId id = CompatProperties::id(property);
-        if (id != Rml::PropertyId::Invalid && changed_properties.Contains(id))
-            geometryDirty = true;
-    }
+    if (changed_properties.Contains(Rml::PropertyId::ObjectFit) || changed_properties.Contains(Rml::PropertyId::ObjectPositionX) ||
+        changed_properties.Contains(Rml::PropertyId::ObjectPositionY))
+        geometryDirty = true;
     const Rml::PropertyId rendering = CompatProperties::id(CompatProperty::ImageRendering);
     if (rendering != Rml::PropertyId::Invalid && changed_properties.Contains(rendering)){
         // nearest or linear sampling is a different texture

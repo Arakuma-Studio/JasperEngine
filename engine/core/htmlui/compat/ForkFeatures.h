@@ -22,7 +22,7 @@ namespace jasperengine::htmlui::compat {
         None, Calc, BorderStyle, PercentRadius, PseudoElements, RootIsWhere, Fixed,
         GroupOpacity, TimingFunctions, Important, CssWideKeywords, Grid,
         // appended by phase 3 (phase-3 spec Appendix A)
-        TextShadow, TextProperties, Outline,
+        TextShadow, TextProperties, Outline, ObjectFit,
         Count
     };
 

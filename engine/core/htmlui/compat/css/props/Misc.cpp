@@ -295,6 +295,15 @@ void jasperengine::htmlui::compat::rewriteObjectFit(DeclContext& context){
     std::vector<std::string> parts;
     for (const ComponentValue& v : w)
         parts.push_back(v.isToken(TokenType::Number) ? lengthText(v) : text(v));
+    if (context.fork(ForkFeature::ObjectFit)){
+        // the fork takes the CSS <position> (edge offsets: 'right 10px bottom 20%'; phase 3, p3-paint)
+        if (parts.empty() || parts.size() > 4){
+            unsupportedValue(context, "use one to four values, for example 50% 50%, left top or right 10px bottom 20px");
+            return;
+        }
+        context.emit("object-position", join(parts));
+        return;
+    }
     emitChecked(context, "object-position", join(parts), "use two values, for example 50% 50% or left top");
 }
 

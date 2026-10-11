@@ -33,12 +33,13 @@ namespace {
         true,    // TextShadow (phase 3, p3-text: native text-shadow; docs/html-ui/FORK.md)
         true,    // TextProperties (phase 3, p3-text: word-spacing, white-space longhands, overflow-wrap, text-decoration-*, ...)
         true,    // Outline (phase 3, p3-paint: outline-* drawn by the fork, the focus ring; docs/html-ui/FORK.md)
+        true,    // ObjectFit (phase 3, p3-paint: object-fit, object-position with <position>; docs/html-ui/FORK.md)
     };
 
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {
         "None", "Calc", "BorderStyle", "PercentRadius", "PseudoElements", "RootIsWhere", "Fixed",
         "GroupOpacity", "TimingFunctions", "Important", "CssWideKeywords", "Grid",
-        "TextShadow", "TextProperties", "Outline",
+        "TextShadow", "TextProperties", "Outline", "ObjectFit",
     };
 
     constexpr uint64_t bitOf(ForkFeature feature){
@@ -218,6 +219,8 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
                    parses("text-decoration", "underline dotted #ff0000ff 2px") && parses("overflow-wrap", "anywhere");
         case ForkFeature::Outline:
             return parses("outline", "2px dashed #ff0000ff") && parses("outline-style", "auto") && parses("outline-offset", "-2px");
+        case ForkFeature::ObjectFit:
+            return parses("object-fit", "scale-down") && parses("object-position", "right 10px bottom 20%");
         case ForkFeature::GroupOpacity:
             // not observable without rendering: the table is authoritative
             return std::nullopt;
