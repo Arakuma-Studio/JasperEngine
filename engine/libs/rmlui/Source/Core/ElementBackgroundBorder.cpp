@@ -143,7 +143,7 @@ void ElementBackgroundBorder::GenerateOutline(Element* element)
 		return;
 	}
 
-	const float opacity = computed.opacity();
+	const float opacity = element->GetDrawOpacity();
 	const ColourbPremultiplied color = computed.outline_color().ToPremultiplied(opacity);
 	const ColourbPremultiplied transparent(0, 0);
 	const bool is_auto = (style == Style::BorderStyle::Auto);
@@ -277,7 +277,7 @@ void ElementBackgroundBorder::GenerateGeometry(Element* element)
 	const ComputedValues& computed = element->GetComputedValues();
 	const bool has_box_shadow = computed.has_box_shadow();
 
-	const float opacity = computed.opacity();
+	const float opacity = element->GetDrawOpacity();
 	ColourbPremultiplied background_color = computed.background_color().ToPremultiplied(opacity);
 	Array<ColourbPremultiplied, 4> border_colors = {
 		computed.border_top_color().ToPremultiplied(opacity),

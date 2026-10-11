@@ -167,6 +167,10 @@ public:
 	/// Returns the z-index of the element.
 	/// @return The element's z-index.
 	float GetZIndex() const;
+	/// Returns the opacity the element's own drawing is multiplied with (CSS group opacity, phase 3): its opacity when it
+	/// is a leaf drawn without a layer (one kind of content, no element children), else 1 (an element with an opacity
+	/// below 1 is drawn into a layer composited with its opacity). Text nodes draw with their parent's.
+	float GetDrawOpacity() const;
 
 	/// Returns the element's font face handle.
 	/// @return The element's font face handle.
@@ -607,7 +611,13 @@ public:
 protected:
 	void Update(float dp_ratio, Vector2f vp_dimensions);
 	void Render();
-	// Draws the element's outline (phase 3, p3-paint): after the content of the stacking context the element is in.
+	// Whether the element is a stacking context, and its z-index (phase 3, p3-paint: CSS's conditions).
+	void UpdateLocalStackingContext();
+	// Whether the element is drawn without a layer though its opacity is below 1 (GetDrawOpacity).
+	void UpdateOpacityLeaf();
+	// Renders the elements of the local stacking context, and the outlines (phase 3, p3-paint).
+	void RenderStackingContextChildren();
+	// Draws the element's outline (phase 3, p3-paint), with its transform and clipping.
 	void RenderOutline();
 
 	/// Updates definition, computed values, and runs OnPropertyChange on this element.
@@ -740,6 +750,9 @@ private:
 	// State flags are packed together for compact data layout.
 	bool local_stacking_context;
 	bool local_stacking_context_forced;
+	// The element's opacity is below 1 and it is drawn without a layer, its opacity multiplied into its geometry
+	// (GetDrawOpacity).
+	bool opacity_leaf = false;
 	bool stacking_context_dirty;
 	bool computed_values_are_default_initialized;
 

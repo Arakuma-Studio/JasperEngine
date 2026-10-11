@@ -30,7 +30,7 @@ DecoratorDataHandle DecoratorTiledImage::GenerateElementData(Element* element, B
 
 	// Generate the geometry for the tile.
 	Mesh mesh;
-	tile.GenerateGeometry(mesh, computed, offset, size, tile.GetNaturalDimensions(element));
+	tile.GenerateGeometry(mesh, computed, element->GetDrawOpacity(), offset, size, tile.GetNaturalDimensions(element));
 
 	Geometry* data = new Geometry(element->GetRenderManager()->MakeGeometry(std::move(mesh)));
 

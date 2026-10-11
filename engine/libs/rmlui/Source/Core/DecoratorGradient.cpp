@@ -167,8 +167,7 @@ bool DecoratorStraightGradient::Initialise(const Direction in_direction, const C
 DecoratorDataHandle DecoratorStraightGradient::GenerateElementData(Element* element, BoxArea paint_area) const
 {
 	const RenderBox render_box = element->GetRenderBox(paint_area);
-	const ComputedValues& computed = element->GetComputedValues();
-	const float opacity = computed.opacity();
+	const float opacity = element->GetDrawOpacity();
 
 	Mesh mesh;
 	MeshUtilities::GenerateBackground(mesh, render_box, ColourbPremultiplied());
@@ -292,8 +291,7 @@ DecoratorDataHandle DecoratorLinearGradient::GenerateElementData(Element* elemen
 		return INVALID_DECORATORDATAHANDLE;
 
 	Mesh mesh;
-	const ComputedValues& computed = element->GetComputedValues();
-	const byte alpha = byte(computed.opacity() * 255.f);
+	const byte alpha = byte(element->GetDrawOpacity() * 255.f);
 	MeshUtilities::GenerateBackground(mesh, render_box, ColourbPremultiplied(alpha, alpha));
 
 	const Vector2f render_offset = render_box.GetFillOffset();
@@ -482,8 +480,7 @@ DecoratorDataHandle DecoratorRadialGradient::GenerateElementData(Element* elemen
 		return INVALID_DECORATORDATAHANDLE;
 
 	Mesh mesh;
-	const ComputedValues& computed = element->GetComputedValues();
-	const byte alpha = byte(computed.opacity() * 255.f);
+	const byte alpha = byte(element->GetDrawOpacity() * 255.f);
 	MeshUtilities::GenerateBackground(mesh, render_box, ColourbPremultiplied(alpha, alpha));
 
 	const Vector2f render_offset = render_box.GetFillOffset();
@@ -815,8 +812,7 @@ DecoratorDataHandle DecoratorConicGradient::GenerateElementData(Element* element
 		return INVALID_DECORATORDATAHANDLE;
 
 	Mesh mesh;
-	const ComputedValues& computed = element->GetComputedValues();
-	const byte alpha = byte(computed.opacity() * 255.f);
+	const byte alpha = byte(element->GetDrawOpacity() * 255.f);
 	MeshUtilities::GenerateBackground(mesh, render_box, ColourbPremultiplied(alpha, alpha));
 
 	const Vector2f render_offset = render_box.GetFillOffset();

@@ -540,6 +540,9 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterShorthand(ShorthandId::Border, "border", "border-width, border-style, border-color, border-image", ShorthandType::Custom);
 	properties.SetShorthandParser(ShorthandId::Border, &ParseBorderShorthand);
 
+	// Stacking contexts (phase 3, 3.8.2).
+	RegisterProperty(PropertyId::Isolation, "isolation", "auto", false, false).AddParser("keyword", "auto, isolate");
+
 	// Outline (phase 3, 3.7.1, 3.7.4): drawn outside the border box, without a place in the layout. The style keywords
 	// have the values of Style::BorderStyle (no 'hidden'; 'auto' is the focus ring); the colour is 'currentcolor' unless
 	// declared ('invert' is drawn as 'currentcolor', as browsers do).

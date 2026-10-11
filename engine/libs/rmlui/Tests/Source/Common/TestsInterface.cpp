@@ -166,10 +166,33 @@ void TestsRenderInterface::SetTransform(const Rml::Matrix4f* /*transform*/)
 	counters.set_transform += 1;
 }
 
-Rml::CompiledFilterHandle TestsRenderInterface::CompileFilter(const Rml::String& /*name*/, const Rml::Dictionary& /*parameters*/)
+Rml::CompiledFilterHandle TestsRenderInterface::CompileFilter(const Rml::String& name, const Rml::Dictionary& parameters)
 {
 	counters.compile_filter += 1;
+	if (name == "opacity")
+	{
+		auto it = parameters.find("value");
+		compiled_opacities.push_back(it != parameters.end() ? it->second.Get<float>() : -1.f);
+	}
 	return 1;
+}
+
+Rml::LayerHandle TestsRenderInterface::PushLayer()
+{
+	counters.push_layer += 1;
+	return Rml::LayerHandle(++layer_depth);
+}
+
+void TestsRenderInterface::CompositeLayers(Rml::LayerHandle /*source*/, Rml::LayerHandle /*destination*/, Rml::BlendMode /*blend_mode*/,
+	Rml::Span<const Rml::CompiledFilterHandle> /*filters*/)
+{
+	counters.composite_layers += 1;
+}
+
+void TestsRenderInterface::PopLayer()
+{
+	counters.pop_layer += 1;
+	layer_depth -= 1;
 }
 
 void TestsRenderInterface::ReleaseFilter(Rml::CompiledFilterHandle /*filter*/)
@@ -209,6 +232,7 @@ void TestsRenderInterface::Reset()
 {
 	VerifyMeshes();
 	meshes_set = false;
+	compiled_opacities.clear();
 	ResetCounters();
 }
 void TestsRenderInterface::VerifyMeshes()

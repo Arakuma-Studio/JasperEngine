@@ -1168,9 +1168,6 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	// it here so they are notified of a change.
 	if (dirty_properties.Contains(PropertyId::TextOverflow))
 		dirty_inherited_properties.Insert(PropertyId::TextOverflow);
-	// The same for opacity: not inherited, but children draw with their parent's opacity multiplied in.
-	if (dirty_properties.Contains(PropertyId::Opacity))
-		dirty_inherited_properties.Insert(PropertyId::Opacity);
 
 	// Propagate dirty inherited properties to children. Var shorthands are local to the element and never inherited.
 	if (!dirty_inherited_properties.Empty() || !dirty_variables.empty())
@@ -1408,9 +1405,8 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		values.image_color(p->Get<Colourb>());
 		break;
 	case PropertyId::Opacity:
-		// Not inherited: the element draws with its own opacity times the one its parent draws with (copied with the
-		// inherited values), until opacity groups composite whole subtrees (phase 3, paint).
-		{ float value; if (ComputeDefiniteNumber(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.opacity(Math::Clamp(value, 0.f, 1.f) * values.opacity()); }
+		// Not inherited: below 1 the element and its descendants are drawn as a group (phase 3, p3-paint).
+		{ float value; if (ComputeDefiniteNumber(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.opacity(Math::Clamp(value, 0.f, 1.f)); }
 		break;
 
 	case PropertyId::FontFamily:
@@ -1637,6 +1633,8 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.outline_offset(value); }
 		break;
 	case PropertyId::Isolation:
+		values.isolation((Isolation)p->Get<int>());
+		break;
 	case PropertyId::BackgroundImage:
 	case PropertyId::BackgroundPositionX:
 	case PropertyId::BackgroundPositionY:

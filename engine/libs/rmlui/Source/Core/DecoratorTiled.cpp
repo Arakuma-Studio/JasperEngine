@@ -71,13 +71,13 @@ Vector2f DecoratorTiled::Tile::GetNaturalDimensions(Element* element) const
 	return raw_dimensions * scale_raw_to_natural_dimensions;
 }
 
-void DecoratorTiled::Tile::GenerateGeometry(Mesh& mesh, const ComputedValues& computed, const Vector2f surface_origin,
+void DecoratorTiled::Tile::GenerateGeometry(Mesh& mesh, const ComputedValues& computed, float opacity, const Vector2f surface_origin,
 	const Vector2f surface_dimensions, const Vector2f tile_dimensions) const
 {
 	if (surface_dimensions.x <= 0 || surface_dimensions.y <= 0)
 		return;
 
-	const ColourbPremultiplied quad_colour = computed.image_color().ToPremultiplied(computed.opacity());
+	const ColourbPremultiplied quad_colour = computed.image_color().ToPremultiplied(opacity);
 
 	if (!tile_data_calculated)
 		return;

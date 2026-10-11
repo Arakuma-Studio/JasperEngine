@@ -94,7 +94,7 @@ SharedPtr<BoxShadowRenderable> BoxShadowCache::GetHandle(Element* element, const
 			computed.border_left_color().ToPremultiplied(),
 		};
 	}
-	BoxShadowGeometryInfo geom_info = GeometryBoxShadow::Resolve(element, background_color, border_colors, computed.opacity());
+	BoxShadowGeometryInfo geom_info = GeometryBoxShadow::Resolve(element, background_color, border_colors, element->GetDrawOpacity());
 	return GetOrCreateBoxShadow(*render_manager, geom_info);
 }
 

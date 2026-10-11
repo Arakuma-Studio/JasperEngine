@@ -328,15 +328,17 @@ TEST_CASE("InitialValues.behaviour")
 	context->Update();
 	TestsShell::SetNumExpectedWarnings(0);
 
-	// opacity is not inherited (its specified value), but an element draws with its ancestors' opacities multiplied in
+	// opacity is not inherited: the computed value is the element's own (the ancestors' apply as groups, phase 3 p3-paint:
+	// GroupOpacity.cpp)
 	CHECK(bordered->GetProperty(PropertyId::Opacity)->Get<float>() == 1.f);
 	CHECK(parent->GetComputedValues().opacity() == doctest::Approx(0.5f));
-	CHECK(bordered->GetComputedValues().opacity() == doctest::Approx(0.5f));
-	CHECK(nested->GetComputedValues().opacity() == doctest::Approx(0.25f));
+	CHECK(bordered->GetComputedValues().opacity() == doctest::Approx(1.f));
+	CHECK(nested->GetComputedValues().opacity() == doctest::Approx(0.5f));
 	parent->SetProperty("opacity", "0.8");
 	context->Update();
-	CHECK(bordered->GetComputedValues().opacity() == doctest::Approx(0.8f));
-	CHECK(nested->GetComputedValues().opacity() == doctest::Approx(0.4f));
+	CHECK(parent->GetComputedValues().opacity() == doctest::Approx(0.8f));
+	CHECK(bordered->GetComputedValues().opacity() == doctest::Approx(1.f));
+	CHECK(nested->GetComputedValues().opacity() == doctest::Approx(0.5f));
 
 	// visibility is inherited, and a child can set it back
 	CHECK(bordered->GetComputedValues().visibility() == Style::Visibility::Hidden);

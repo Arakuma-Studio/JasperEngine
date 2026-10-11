@@ -215,6 +215,16 @@ void ElementText::OnRender()
 
 	RenderManager& render_manager = GetContext()->GetRenderManager();
 
+	// The opacity the parent draws with changes without a property change of ours (it is not inherited).
+	const float draw_opacity = (GetParentNode() ? GetParentNode()->GetDrawOpacity() : 1.f);
+	if (draw_opacity != opacity)
+	{
+		opacity = draw_opacity;
+		colour = GetComputedValues().color().ToPremultiplied(opacity);
+		font_effects_dirty = true;
+		geometry_dirty = true;
+	}
+
 	// If our font effects have potentially changed, update it and force a geometry generation if necessary.
 	if (font_effects_dirty && UpdateFontEffects())
 		geometry_dirty = true;
@@ -519,7 +529,8 @@ void ElementText::OnPropertyChange(const PropertyIdSet& changed_properties)
 
 	if (changed_properties.Contains(PropertyId::Color) || changed_properties.Contains(PropertyId::Opacity))
 	{
-		const float new_opacity = computed.opacity();
+		// Text draws with the opacity its parent draws with (Element::GetDrawOpacity: group opacity, phase 3).
+		const float new_opacity = (GetParentNode() ? GetParentNode()->GetDrawOpacity() : 1.f);
 		const bool opacity_changed = opacity != new_opacity;
 
 		ColourbPremultiplied new_colour = computed.color().ToPremultiplied(new_opacity);

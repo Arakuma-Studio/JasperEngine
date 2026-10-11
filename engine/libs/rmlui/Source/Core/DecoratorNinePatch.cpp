@@ -37,7 +37,7 @@ DecoratorDataHandle DecoratorNinePatch::GenerateElementData(Element* element, Bo
 	const Vector2f surface_offset = render_box.GetFillOffset();
 	const Vector2f surface_dimensions = render_box.GetFillSize();
 
-	const ColourbPremultiplied quad_colour = computed.image_color().ToPremultiplied(computed.opacity());
+	const ColourbPremultiplied quad_colour = computed.image_color().ToPremultiplied(element->GetDrawOpacity());
 
 	/* In the following, we operate on the four diagonal vertices in the grid, as they define the whole grid. */
 

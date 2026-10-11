@@ -83,12 +83,12 @@ DecoratorDataHandle DecoratorTiledVertical::GenerateElementData(Element* element
 	const ComputedValues& computed = element->GetComputedValues();
 	Mesh mesh[COUNT];
 
-	tiles[TOP].GenerateGeometry(mesh[tiles[TOP].texture_index], computed, offset, top_dimensions, top_dimensions);
+	tiles[TOP].GenerateGeometry(mesh[tiles[TOP].texture_index], computed, element->GetDrawOpacity(), offset, top_dimensions, top_dimensions);
 
-	tiles[CENTRE].GenerateGeometry(mesh[tiles[CENTRE].texture_index], computed, offset + Vector2f(0, top_dimensions.y),
+	tiles[CENTRE].GenerateGeometry(mesh[tiles[CENTRE].texture_index], computed, element->GetDrawOpacity(), offset + Vector2f(0, top_dimensions.y),
 		Vector2f(centre_dimensions.x, size.y - (top_dimensions.y + bottom_dimensions.y)), centre_dimensions);
 
-	tiles[BOTTOM].GenerateGeometry(mesh[tiles[BOTTOM].texture_index], computed, offset + Vector2f(0, size.y - bottom_dimensions.y), bottom_dimensions,
+	tiles[BOTTOM].GenerateGeometry(mesh[tiles[BOTTOM].texture_index], computed, element->GetDrawOpacity(), offset + Vector2f(0, size.y - bottom_dimensions.y), bottom_dimensions,
 		bottom_dimensions);
 
 	const int num_textures = GetNumTextures();

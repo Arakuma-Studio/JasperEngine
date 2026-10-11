@@ -29,6 +29,7 @@ add_executable(${TARGET_NAME}
 	FlexFormatting.cpp
 	GridLayout.cpp
 	GridParsing.cpp
+	GroupOpacity.cpp
 	InitialValues.cpp
 	IntrinsicSizing.cpp
 	Layout.cpp
@@ -48,6 +49,7 @@ add_executable(${TARGET_NAME}
 	Specificity_Basic.cpp
 	Specificity_MediaQuery.cpp
 	StableVector.cpp
+	StackingContext.cpp
 	StringUtilities.cpp
 	StyleSheetParser.cpp
 	StyleValue.cpp

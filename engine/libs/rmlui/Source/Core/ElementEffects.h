@@ -56,6 +56,11 @@ private:
 	FilterEntryList filters;
 	FilterEntryList backdrop_filters;
 
+	// Group opacity (phase 3, p3-paint): the element and its stacking context are drawn into a layer composited with
+	// this filter, compiled for 'group_opacity_value'.
+	CompiledFilter group_opacity;
+	float group_opacity_value = 1.f;
+
 	// If set, a full reload is necessary.
 	bool effects_dirty = false;
 	// If set, element data of all decorators need to be regenerated.

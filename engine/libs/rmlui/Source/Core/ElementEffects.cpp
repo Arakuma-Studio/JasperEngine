@@ -182,10 +182,54 @@ void ElementEffects::ReleaseEffects()
 	backdrop_filters.clear();
 }
 
+// The ink overflow of the element's subtree: its bounding box (with its box shadow, outline and filters) joined with
+// those of its visible descendants, which a filter or a group opacity layer must not cut off (CSS: filters and opacity
+// apply to the whole stacking context; 6.3 clipped them to the element's border box).
+static void ExtendBySubtreeInkOverflow(Element* element, Rectanglef& region, int depth)
+{
+	const int num_children = element->GetNumChildren(true);
+	for (int i = 0; i < num_children; i++)
+	{
+		Element* child = element->GetChild(i);
+		if (!child->IsVisible())
+			continue;
+		Rectanglef child_region;
+		if (ElementUtilities::GetBoundingBox(child_region, child, BoxArea::Auto))
+		{
+			const ComputedValues& computed = child->GetComputedValues();
+			const float outline = computed.outline_width() + Math::Max(computed.outline_offset(), 0.f) +
+				(computed.outline_style() == Style::BorderStyle::Auto ? 3.f : 0.f);
+			if (outline > 0.f)
+				child_region = child_region.Extend(Vector2f(outline));
+			region = region.Join(child_region);
+		}
+		if (depth < 256)
+			ExtendBySubtreeInkOverflow(child, region, depth + 1);
+	}
+}
+
 void ElementEffects::RenderEffects(RenderStage render_stage)
 {
 	InstanceEffects();
 	ReloadEffectsData();
+
+	// Group opacity: an element with an opacity below 1 that is not drawn as a leaf (Element::GetDrawOpacity).
+	const float opacity = element->GetComputedValues().opacity();
+	const bool group = (opacity < 1.f && element->GetDrawOpacity() == 1.f);
+	if (group && (!group_opacity || group_opacity_value != opacity) && render_stage == RenderStage::Enter)
+	{
+		if (RenderManager* render_manager = element->GetRenderManager())
+		{
+			group_opacity.Release();
+			group_opacity = render_manager->CompileFilter("opacity", Dictionary{{"value", Variant(opacity)}});
+			group_opacity_value = opacity;
+		}
+	}
+	else if (!group && group_opacity)
+	{
+		group_opacity.Release();
+	}
+	const bool layer = (!filters.empty() || !mask_images.empty() || (group && group_opacity));
 
 	if (!decorators.empty())
 	{
@@ -202,7 +246,7 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 		}
 	}
 
-	if (filters.empty() && backdrop_filters.empty() && mask_images.empty())
+	if (!layer && backdrop_filters.empty())
 		return;
 
 	RenderManager* render_manager = element->GetRenderManager();
@@ -220,6 +264,15 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 		// Find the region being affected by the active filters and apply it as a scissor.
 		Rectanglef filter_region = Rectanglef::MakeInvalid();
 		ElementUtilities::GetBoundingBox(filter_region, element, force_clip_to_self_border_box ? BoxArea::Border : BoxArea::Auto);
+		if (!force_clip_to_self_border_box)
+		{
+			const ComputedValues& computed = element->GetComputedValues();
+			const float outline = computed.outline_width() + Math::Max(computed.outline_offset(), 0.f) +
+				(computed.outline_style() == Style::BorderStyle::Auto ? 3.f : 0.f);
+			if (outline > 0.f)
+				filter_region = filter_region.Extend(Vector2f(outline));
+			ExtendBySubtreeInkOverflow(element, filter_region, 0);
+		}
 
 		// The filter property may draw outside our normal clipping region due to ink overflow.
 		if (filter_id == PropertyId::Filter)
@@ -248,7 +301,7 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 	{
 		const LayerHandle backdrop_source_layer = render_manager->GetTopLayer();
 
-		if (!filters.empty() || !mask_images.empty())
+		if (layer)
 		{
 			render_manager->PushLayer();
 		}
@@ -282,13 +335,13 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 	}
 	else if (render_stage == RenderStage::Exit)
 	{
-		if (!filters.empty() || !mask_images.empty())
+		if (layer)
 		{
 			ApplyClippingRegion(PropertyId::Filter);
 
 			CompiledFilter mask_image_filter;
 			FilterHandleList filter_handles;
-			filter_handles.reserve(filters.size() + (mask_images.empty() ? 0 : 1));
+			filter_handles.reserve(filters.size() + (mask_images.empty() ? 0 : 1) + 1);
 
 			for (auto& filter : filters)
 				filter.compiled.AddHandleTo(filter_handles);
@@ -307,6 +360,10 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 				mask_image_filter.AddHandleTo(filter_handles);
 				render_manager->PopLayer();
 			}
+
+			// The group's opacity, in the same composite as the filters and the mask.
+			if (group && group_opacity)
+				group_opacity.AddHandleTo(filter_handles);
 
 			render_manager->CompositeLayers(render_manager->GetTopLayer(), render_manager->GetNextLayer(), BlendMode::Blend, filter_handles);
 			render_manager->PopLayer();

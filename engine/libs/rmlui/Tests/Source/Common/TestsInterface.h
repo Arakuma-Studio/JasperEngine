@@ -50,6 +50,10 @@ public:
 		size_t compile_shader;
 		size_t render_shader;
 		size_t release_shader;
+		// Layers (phase 3, p3-paint: group opacity, filters).
+		size_t push_layer;
+		size_t composite_layers;
+		size_t pop_layer;
 	};
 
 	Rml::CompiledGeometryHandle CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) override;
@@ -76,6 +80,14 @@ public:
 		Rml::TextureHandle texture) override;
 	void ReleaseShader(Rml::CompiledShaderHandle shader) override;
 
+	Rml::LayerHandle PushLayer() override;
+	void CompositeLayers(Rml::LayerHandle source, Rml::LayerHandle destination, Rml::BlendMode blend_mode,
+		Rml::Span<const Rml::CompiledFilterHandle> filters) override;
+	void PopLayer() override;
+
+	// The values of the 'opacity' filters compiled since the last Reset (group opacity), in order.
+	const Rml::Vector<float>& GetCompiledOpacities() const { return compiled_opacities; }
+
 	const Counters& GetCounters() const { return counters; }
 	void ResetCounters();
 	const Counters& GetCountersFromPreviousReset() const { return counters_from_previous_reset; }
@@ -91,4 +103,6 @@ private:
 	Counters counters_from_previous_reset = {};
 	Rml::Vector<Rml::Mesh> meshes;
 	bool meshes_set = false;
+	Rml::Vector<float> compiled_opacities;
+	int layer_depth = 0;
 };

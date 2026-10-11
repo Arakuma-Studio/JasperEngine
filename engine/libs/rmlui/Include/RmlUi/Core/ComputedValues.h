@@ -110,9 +110,6 @@ namespace Style {
 
 		float font_size = 16.f;
 
-		// The opacity the element draws with: its own (CSS: not inherited) times its parent's, until opacity groups
-		// composite whole subtrees (phase 3, paint).
-		float opacity = 1;
 		Colourb color = Colourb(0, 0, 0);
 
 		FontWeight font_weight : 10;
@@ -241,6 +238,11 @@ namespace Style {
 		float border_radius_values[8] = {};
 		uint16_t border_radius_types = 0; // LengthPercentage::Type of each, two bits a value.
 
+		// The element's opacity (CSS: not inherited): below 1 the element and its descendants are drawn as a group
+		// (Element::GetDrawOpacity, ElementEffects).
+		float opacity = 1.f;
+		Isolation isolation = Isolation::Auto;
+
 		// Outline: the width as declared (the computed width is 0 when the style is none), the colour unless it is
 		// 'currentcolor' (the initial value, and 'invert').
 		BorderStyle outline_style = BorderStyle::None;
@@ -326,7 +328,6 @@ namespace Style {
 		WhiteSpace     white_space()      const { return ToWhiteSpace(inherited.white_space_collapse, inherited.text_wrap_mode); }
 		WordBreak      word_break()       const { return inherited.word_break; }
 		Colourb        color()            const { return inherited.color; }
-		float          opacity()          const { return inherited.opacity; }
 		LineHeight     line_height()      const { return LineHeight(inherited.line_height, inherited.line_height_inherit_type, inherited.line_height_inherit); }
 		const String&  language()         const { return inherited.language; }
 		Direction      direction()        const { return inherited.direction; }
@@ -393,6 +394,8 @@ namespace Style {
 		// or 1 (vertical). A calc() value has the type Calculation and no expression: Element::GetRenderBox reads it.
 		LengthPercentage  border_radius(int corner, int axis) const { const int i = 2 * corner + axis; return LengthPercentage(LengthPercentage::Type((rare.border_radius_types >> (2 * i)) & 3), rare.border_radius_values[i]); }
 		bool              has_border_radius()          const { if (rare.border_radius_types != 0) return true; for (float value : rare.border_radius_values) { if (value != 0.f) return true; } return false; }
+		float             opacity()                    const { return rare.opacity; }
+		Isolation         isolation()                  const { return rare.isolation; }
 		BorderStyle       outline_style()              const { return rare.outline_style; }
 		float             outline_width()              const { return rare.outline_style == BorderStyle::None ? 0.f : rare.outline_width; }
 		float             outline_offset()             const { return rare.outline_offset; }
@@ -478,7 +481,6 @@ namespace Style {
 		void text_transform    (TextTransform value)  { inherited.text_transform     = value; }
 		void word_break        (WordBreak value)      { inherited.word_break         = value; }
 		void color             (Colourb value)        { inherited.color              = value; }
-		void opacity           (float value)          { inherited.opacity            = value; }
 		void line_height       (LineHeight value)     { inherited.line_height = value.value; inherited.line_height_inherit_type = value.inherit_type; inherited.line_height_inherit = value.inherit_value;  }
 		void language          (const String& value)  { inherited.language           = value; }
 		void direction         (Direction value)      { inherited.direction          = value; }
@@ -520,6 +522,8 @@ namespace Style {
 		// Cascade (p3-cascade)
 
 		// Paint (p3-paint)
+		void opacity                   (float value)                { rare.opacity = value; }
+		void isolation                 (Isolation value)            { rare.isolation = value; }
 		void outline_style             (BorderStyle value)          { rare.outline_style = value; }
 		void outline_width             (float value)                { rare.outline_width = value; }
 		void outline_offset            (float value)                { rare.outline_offset = value; }

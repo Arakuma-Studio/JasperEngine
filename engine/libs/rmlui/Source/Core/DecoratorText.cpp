@@ -78,7 +78,7 @@ bool DecoratorText::GenerateGeometry(Element* element, ElementData& element_data
 		Vector2f{element->ResolveNumericValue(align.x, size_of_align_area.x), element->ResolveNumericValue(align.y, size_of_align_area.y)};
 
 	const Vector2f offset = offset_to_align_area + offset_within_align_area;
-	const float opacity = computed.opacity();
+	const float opacity = element->GetDrawOpacity();
 	const ColourbPremultiplied text_color = (inherit_color ? computed.color() : color).ToPremultiplied(opacity);
 
 	RenderManager& render_manager = element->GetContext()->GetRenderManager();

@@ -177,7 +177,7 @@ void ElementImage::GenerateGeometry()
 	}
 
 	const ComputedValues& computed = GetComputedValues();
-	const ColourbPremultiplied quad_colour = computed.image_color().ToPremultiplied(computed.opacity());
+	const ColourbPremultiplied quad_colour = computed.image_color().ToPremultiplied(GetDrawOpacity());
 	const RenderBox render_box = GetRenderBox(BoxArea::Content);
 
 	MeshUtilities::GenerateQuad(mesh, render_box.GetFillOffset(), render_box.GetFillSize(), quad_colour, texcoords[0], texcoords[1]);
