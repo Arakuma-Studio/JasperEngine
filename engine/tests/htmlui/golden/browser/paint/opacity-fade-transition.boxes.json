@@ -1,0 +1,46 @@
+{
+ "fixture": "paint/opacity-fade-transition.html",
+ "viewport": [
+  300,
+  140
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "quarter": [
+   {
+    "id": "fade-out",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 100,
+    "h": 80
+   },
+   {
+    "id": "fade-in",
+    "tag": "div",
+    "x": 160,
+    "y": 20,
+    "w": 100,
+    "h": 80
+   }
+  ],
+  "three-quarters": [
+   {
+    "id": "fade-out",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 100,
+    "h": 80
+   },
+   {
+    "id": "fade-in",
+    "tag": "div",
+    "x": 160,
+    "y": 20,
+    "w": 100,
+    "h": 80
+   }
+  ]
+ }
+}

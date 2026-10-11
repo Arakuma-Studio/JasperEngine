@@ -1,0 +1,7 @@
+{
+ "comment": "z-index does nothing on a static block (the later sibling stays on top); on a positioned one it lifts it above its later sibling.",
+ "viewport": [
+  220,
+  220
+ ]
+}

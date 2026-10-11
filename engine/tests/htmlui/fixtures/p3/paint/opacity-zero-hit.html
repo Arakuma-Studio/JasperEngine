@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: opacity 0 is hit</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  div { position: absolute; width: 120px; height: 80px; }
+  #under { left: 20px; top: 20px; background-color: #3366cc; }
+  #over { left: 60px; top: 50px; background-color: #cc3333; opacity: 0; }
+  #over:hover { opacity: 1; background-color: #339966; }
+  #under:hover { background-color: #f4c430; }
+</style>
+</head>
+<body><div id="under"></div><div id="over"></div></body>
+</html>

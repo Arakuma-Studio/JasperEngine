@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: z-index on static elements</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  div { width: 120px; height: 60px; }
+  #a { background-color: #cc3333; z-index: 10; }
+  #b { margin-top: -30px; margin-left: 40px; background-color: #3366cc; }
+  #c { margin-top: 20px; position: relative; background-color: #cc3333; z-index: 10; }
+  #d { margin-top: -30px; margin-left: 40px; position: relative; background-color: #3366cc; }
+</style>
+</head>
+<body><div id="a"></div><div id="b"></div><div id="c"></div><div id="d"></div></body>
+</html>

@@ -1,0 +1,36 @@
+{
+ "fixture": "paint/z-index-flex-item.html",
+ "viewport": [
+  260,
+  260
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "r1",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 240,
+    "h": 60
+   },
+   {
+    "id": "r2",
+    "tag": "div",
+    "x": 10,
+    "y": 80,
+    "w": 240,
+    "h": 60
+   },
+   {
+    "id": "r3",
+    "tag": "div",
+    "x": 10,
+    "y": 150,
+    "w": 240,
+    "h": 60
+   }
+  ]
+ }
+}

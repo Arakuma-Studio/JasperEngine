@@ -1,0 +1,7 @@
+{
+ "comment": "the body's background (the root has none) paints the whole canvas, not only the body's box with its margins.",
+ "viewport": [
+  240,
+  160
+ ]
+}

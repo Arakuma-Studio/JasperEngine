@@ -1,0 +1,7 @@
+{
+ "comment": "z-index applies to static flex items: a raised first item, a lowered one, and an order 3 > 1 > auto.",
+ "viewport": [
+  260,
+  260
+ ]
+}

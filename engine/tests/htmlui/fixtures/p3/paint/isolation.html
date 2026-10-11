@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: isolation and stacking contexts</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .ctx { position: relative; width: 140px; height: 80px; margin: 10px; background-color: #dde6f5; }
+  .ctx > .low { position: absolute; left: 20px; top: 20px; width: 60px; height: 60px; background-color: #cc3333; z-index: -1; }
+  .ctx > .text { position: absolute; left: 50px; top: 10px; width: 60px; height: 40px; background-color: #3366cc; }
+  #i2 { isolation: isolate; }
+  #i3 { opacity: 0.99; }
+  #i4 { position: fixed; left: 200px; top: 10px; margin: 0; }
+</style>
+</head>
+<body><div class="ctx" id="i1"><div class="low"></div><div class="text"></div></div><div class="ctx" id="i2"><div class="low"></div><div class="text"></div></div><div class="ctx" id="i3"><div class="low"></div><div class="text"></div></div><div class="ctx" id="i4"><div class="low"></div><div class="text"></div></div></body>
+</html>

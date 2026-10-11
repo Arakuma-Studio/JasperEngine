@@ -1,0 +1,52 @@
+{
+ "fixture": "paint/opacity-nested.html",
+ "viewport": [
+  360,
+  180
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "outer",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 200,
+    "h": 150
+   },
+   {
+    "id": "middle",
+    "tag": "div",
+    "x": 40,
+    "y": 40,
+    "w": 140,
+    "h": 90
+   },
+   {
+    "id": "inner",
+    "tag": "div",
+    "x": 70,
+    "y": 60,
+    "w": 80,
+    "h": 50
+   },
+   {
+    "id": "inner2",
+    "tag": "div",
+    "x": 110,
+    "y": 80,
+    "w": 50,
+    "h": 40
+   },
+   {
+    "id": "side",
+    "tag": "div",
+    "x": 240,
+    "y": 10,
+    "w": 100,
+    "h": 150
+   }
+  ]
+ }
+}

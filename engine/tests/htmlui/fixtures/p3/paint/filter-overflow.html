@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: filters and opacity over overflowing descendants</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .f { position: absolute; width: 80px; height: 50px; background-color: #3366cc; }
+  .f > div { position: absolute; left: 50px; top: 30px; width: 70px; height: 50px; background-color: #cc3333; }
+  #blur { left: 20px; top: 20px; filter: grayscale(1); }
+  #bright { left: 180px; top: 20px; filter: brightness(0.5); }
+  #op { left: 20px; top: 130px; opacity: 0.5; }
+  #both { left: 180px; top: 130px; opacity: 0.6; filter: invert(1); }
+</style>
+</head>
+<body><div class="f" id="blur"><div></div></div><div class="f" id="bright"><div></div></div><div class="f" id="op"><div></div></div><div class="f" id="both"><div></div></div></body>
+</html>

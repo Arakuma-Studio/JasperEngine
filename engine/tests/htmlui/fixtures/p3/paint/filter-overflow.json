@@ -1,0 +1,7 @@
+{
+ "comment": "filters and group opacity apply to the descendants that overflow the element's box (6.3 cut the layer at the element's border box).",
+ "viewport": [
+  320,
+  230
+ ]
+}

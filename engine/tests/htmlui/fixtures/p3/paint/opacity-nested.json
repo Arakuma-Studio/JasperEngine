@@ -1,0 +1,7 @@
+{
+ "comment": "opacities multiply through nested groups: 0.6 x 0.5 x 0.8, and a half-transparent circle in a 0.9 group.",
+ "viewport": [
+  360,
+  180
+ ]
+}
