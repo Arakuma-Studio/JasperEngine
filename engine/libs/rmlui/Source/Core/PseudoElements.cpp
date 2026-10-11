@@ -341,10 +341,13 @@ void PseudoElements::Update(Element& element)
 
 void PseudoElements::OnAttributeChange(Element& element, const ElementAttributes& changed_attributes)
 {
-	for (PseudoElementType type : {PseudoElementType::Before, PseudoElementType::After, PseudoElementType::Marker})
+	if (ElementCascade::HasPseudoElements(element))
 	{
-		if (Element* pseudo_element = element.GetPseudoElement(type))
-			static_cast<ElementPseudo*>(pseudo_element)->OnOriginatingAttributeChange(changed_attributes);
+		for (PseudoElementType type : {PseudoElementType::Before, PseudoElementType::After, PseudoElementType::Marker})
+		{
+			if (Element* pseudo_element = element.GetPseudoElement(type))
+				static_cast<ElementPseudo*>(pseudo_element)->OnOriginatingAttributeChange(changed_attributes);
+		}
 	}
 	// <ol start>, <ol reversed>, <li value> number the list items (other elements' 'value', an input's, does not).
 	const String& tag = element.GetTagName();

@@ -200,7 +200,7 @@ void ElementText::SetText(const String& _text)
 			DirtyLayout();
 			// White space that collapses away is given no box by the layout (P2-8), which then places no line: the lines
 			// of the previous text would stay drawn.
-			if (std::all_of(text.begin(), text.end(), [](char c) { return StringUtilities::IsWhitespace(c); }))
+			if (!lines.empty() && std::all_of(text.begin(), text.end(), [](char c) { return StringUtilities::IsWhitespace(c); }))
 				ClearLines();
 		}
 	}
