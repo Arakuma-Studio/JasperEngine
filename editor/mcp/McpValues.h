@@ -16,6 +16,7 @@
 
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -93,12 +94,16 @@ namespace jasperengine::editor::mcp {
         // render texture turns its camera's renderToTexture on). Null with `error` set when
         // the value doesn't fit. Custom properties go through buildChanges.
         // shaderReference: the shader the property's shader-library values are for when a
-        // change before it (same call) sets another one; null reads the current one.
+        // change of the same call sets another one; null reads the current one.
+        // editedKeys: for a shaderParams / shaderUniforms / shaderTextures collection, the
+        // entries this edit names (only those are checked against the shader's manifest);
+        // null checks every entry of `value`.
         static Command* buildPropertyCommand(Project* project, uint32_t sceneId, Entity entity, ComponentType component,
                                              const std::string& propertyName, const PropertyData& property,
                                              const Json& value, std::string& error,
                                              std::function<void()> onChanged = nullptr,
-                                             const std::string* shaderReference = nullptr);
+                                             const std::string* shaderReference = nullptr,
+                                             const std::set<std::string>* editedKeys = nullptr);
 
         // One edit of set_properties / create_entity / add_component
         struct Change {
@@ -203,13 +208,18 @@ namespace jasperengine::editor::mcp {
 
         static Json shaderParamsToJson(const ShaderUniformValues& values);
         // `out` replaced by `value` (null clears); `manifest` (may be null) types colour hex
-        // strings and, for a library shader, refuses members it does not declare
-        static bool shaderParamsFromJson(const ShaderManifest* manifest, bool library, const Json& value, ShaderUniformValues& out, std::string& error);
+        // strings and, for a library shader, refuses members it does not declare (an unknown
+        // library shader refuses them all). checkedKeys: only those members are checked against
+        // the manifest; the others are values already stored (kept from a previous shader).
+        static bool shaderParamsFromJson(const ShaderManifest* manifest, bool library, const Json& value, ShaderUniformValues& out,
+                                         std::string& error, const std::set<std::string>* checkedKeys = nullptr);
         // one parameter: a number, 1-4 numbers or (colour kinds) "#RRGGBB[AA]" sRGB
         static bool shaderParamFromJson(const ShaderManifestProperty* property, const std::string& member, const Json& value, Vector4& out, std::string& error);
         static Json shaderTexturesToJson(Project* project, SceneProject* scene, const std::vector<std::pair<std::string, Texture>>& textures);
+        // image paths only (a camera's render texture is refused); checkedKeys as above
         static bool shaderTexturesFromJson(Project* project, SceneProject* scene, const ShaderManifest* manifest, bool library, const Json& value,
-                                           std::vector<std::pair<std::string, Texture>>& out, std::string& error);
+                                           std::vector<std::pair<std::string, Texture>>& out, std::string& error,
+                                           const std::set<std::string>* checkedKeys = nullptr);
         static Json shaderFeaturesToJson(const std::vector<std::string>& features);
         // a list replaces `inout`; an object {define: bool} edits it (ShaderLibraryValues::setFeature)
         static bool shaderFeaturesFromJson(const std::string& shader, const ShaderManifest* manifest, bool library, const Json& value,

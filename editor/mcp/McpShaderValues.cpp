@@ -9,6 +9,7 @@
 
 #include "Project.h"
 #include "shader/ShaderVariantCompiler.h"
+#include "util/CameraTextureLink.h"
 #include "util/Color.h"
 #include "util/Util.h"
 
@@ -94,6 +95,12 @@ std::string defineNames(const ShaderManifest& manifest) {
         for (const std::string& value : group.values) text += (text.empty() ? "" : ", ") + group.group + "_" + value;
     }
     return text.empty() ? "(none)" : text;
+}
+
+// a "library:" reference whose shader the build does not have: its values cannot be checked
+std::string unknownLibraryShaderText() {
+    return "the shader is not a library shader the engine has (set an existing one first); the library shaders: " +
+           McpValues::libraryShaderNamesText() + ".";
 }
 
 bool parseHex(const std::string& text, Vector4& out) {
@@ -284,7 +291,7 @@ bool McpValues::shaderParamFromJson(const ShaderManifestProperty* property, cons
 }
 
 bool McpValues::shaderParamsFromJson(const ShaderManifest* manifest, bool library, const Json& value, ShaderUniformValues& out,
-                                     std::string& error) {
+                                     std::string& error, const std::set<std::string>* checkedKeys) {
     out.clear();
     if (value.is_null()) return true;
     if (!value.is_object()) {
@@ -298,7 +305,13 @@ bool McpValues::shaderParamsFromJson(const ShaderManifest* manifest, bool librar
             return false;
         }
         const ShaderManifestProperty* property = manifest ? manifest->findProperty(member) : nullptr;
-        if (library && !property) {
+        // values kept from another shader stay; only what this edit names must be the shader's
+        const bool checked = !checkedKeys || checkedKeys->count(member) > 0;
+        if (library && checked && !manifest) {
+            error = unknownLibraryShaderText();
+            return false;
+        }
+        if (library && checked && !property) {
             error = "the shader has no parameter \"" + member + "\"; its parameters: " + memberNames(*manifest) + ".";
             return false;
         }
@@ -321,7 +334,8 @@ Json McpValues::shaderTexturesToJson(Project* project, SceneProject* scene, cons
 }
 
 bool McpValues::shaderTexturesFromJson(Project* project, SceneProject* scene, const ShaderManifest* manifest, bool library,
-                                       const Json& value, std::vector<std::pair<std::string, Texture>>& out, std::string& error) {
+                                       const Json& value, std::vector<std::pair<std::string, Texture>>& out, std::string& error,
+                                       const std::set<std::string>* checkedKeys) {
     out.clear();
     if (value.is_null()) return true;
     if (!value.is_object()) {
@@ -331,7 +345,12 @@ bool McpValues::shaderTexturesFromJson(Project* project, SceneProject* scene, co
     for (auto it = value.begin(); it != value.end(); ++it) {
         const std::string& uniform = it.key();
         const ShaderManifestTexture* declared = manifest ? manifest->findTexture(uniform) : nullptr;
-        if (library && !declared) {
+        const bool checked = !checkedKeys || checkedKeys->count(uniform) > 0;
+        if (library && checked && !manifest) {
+            error = unknownLibraryShaderText();
+            return false;
+        }
+        if (library && checked && !declared) {
             error = "the shader has no texture \"" + uniform + "\"; its textures: " + textureNames(*manifest) + ".";
             return false;
         }
@@ -342,7 +361,19 @@ bool McpValues::shaderTexturesFromJson(Project* project, SceneProject* scene, co
             error = uniform + ": " + why;
             return false;
         }
-        if (texture.empty() && camera == NULL_ENTITY) continue; // null: the manifest default
+        // a shader texture is an image: render textures are not linked, exported or remapped
+        // for these slots (a camera's texture goes in a material's baseColorTexture, ...)
+        if (camera != NULL_ENTITY || CameraTextureLink::isCameraTexture(texture) || texture.isFramebuffer()) {
+            error = uniform + ": a shader texture is an image path; a camera's render texture goes in a built-in "
+                    "material texture (baseColorTexture, emissiveTexture) or a UI image's texture.";
+            return false;
+        }
+        if (texture.empty()) continue; // null: the manifest default
+        if (declared && declared->cube != texture.isCubeMap()) {
+            error = uniform + (declared->cube ? " is a cube map: {\"cube\": \"image\" | [6 face paths]}."
+                                              : " is a 2D texture: an image path, not a cube map.");
+            return false;
+        }
         out.push_back({uniform, texture});
     }
     return true;
@@ -364,7 +395,11 @@ bool McpValues::shaderFeaturesFromJson(const std::string& shader, const ShaderMa
             error = "\"" + define + "\" is not a define name (upper case letters, digits and _).";
             return false;
         }
-        if (library && manifest && !manifest->findFeature(bare) && !manifest->findKeywordGroup(bare)) {
+        if (library && !manifest) {
+            error = unknownLibraryShaderText();
+            return false;
+        }
+        if (library && !manifest->findFeature(bare) && !manifest->findKeywordGroup(bare)) {
             error = "the shader has no feature \"" + bare + "\"; its features and keywords: " + defineNames(*manifest) + ".";
             return false;
         }
@@ -442,7 +477,12 @@ bool McpValues::materialShaderLibraryFromJson(Project* project, SceneProject* sc
             error = "shader: " + why;
             return false;
         }
+        const bool changed = out.shader != shader;
         out.shader = shader;
+        // a lighting mode the new shader does not list would draw its default anyway: auto
+        if (changed && !value.contains("lighting") && !Catalog::supportsLighting(out.lighting, findManifest(shader).get())) {
+            out.lighting = MaterialLighting::AUTO;
+        }
     }
     const std::shared_ptr<const ShaderManifest> manifest = findManifest(out.shader);
     const bool library = ShaderReference::isLibrary(out.shader);
