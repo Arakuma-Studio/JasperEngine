@@ -907,7 +907,7 @@ Inverted-hull outline: the mesh pushed out along its smoothed normal (closed at 
 
 - **Type**: mesh (a material's shader); category Outline and stencil.
 - **Lighting**: none.
-- **Inputs**: `smoothnormals`; `uv1` with `TEXTURE`.
+- **Inputs**: `smoothnormals`; `uv1` with `TEXTURE`; `rawcolor` with `VERTEX_COLOR_WIDTH`.
 - **Default state**: blend opaque, cull front, depth write on, shadows off.
 - **Depth program**: no (the built-in one).
 
@@ -942,7 +942,7 @@ QuickOutline-style outline that never covers its object: an extra pass After a m
 
 - **Type**: mesh (a material's shader); category Outline and stencil.
 - **Lighting**: none.
-- **Inputs**: `smoothnormals`; `uv1` with `TEXTURE`.
+- **Inputs**: `smoothnormals`; `uv1` with `TEXTURE`; `rawcolor` with `VERTEX_COLOR_WIDTH`.
 - **Default state**: blend opaque, cull off (both faces), depth write off, depth test always, shadows off, stencil notequal ref 1 read mask 0x01 write mask 0x00; with `VISIBILITY_VISIBLE_ONLY`: depth write on, depth test less-equal.
 - **Depth program**: no (the built-in one).
 

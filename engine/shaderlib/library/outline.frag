@@ -6,6 +6,7 @@
 // @description "Inverted-hull outline: the mesh pushed out along its smoothed normal (closed at hard edges) and drawn with its front faces culled, in one colour. Use it as a material's extra pass (Outline (hull) preset): order After for opaque objects (cheapest), Before for blended ones (a blended object writes no depth, so a hull after it covers it). Width in pixels (constant at any distance, perspective or orthographic) or in world units (optionally growing with distance, capped). Works with skinning, morph targets and instancing; for Sprites use the Sprite shader's Outline feature instead (a flat quad has no hull). No shadows."
 // @require smoothnormals
 // @require uv1 feature=TEXTURE
+// @require rawcolor feature=VERTEX_COLOR_WIDTH
 // @state blend=opaque cull=front zwrite=on shadows=off
 // @keywords WIDTH_MODE "Width in" SCREEN WORLD
 // @property outlineColor hdrcolor (0.02, 0.02, 0.02, 1) "Colour"

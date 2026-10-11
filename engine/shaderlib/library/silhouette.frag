@@ -45,7 +45,7 @@ void main(){
         // towards the camera: from the position in perspective, the view axis in orthographic
         vec3 toCamera = mix(frame.cameraPosition.xyz - v_position, -frame.cameraDirection.xyz, frame.cameraPosition.w);
         float facing = abs(dot(normalize(v_normal), normalize(toCamera)));
-        color.a *= mix(customParams.fresnelFill, 1.0, pow(1.0 - facing, customParams.fresnelPower));
+        color.a *= mix(customParams.fresnelFill, 1.0, pow(max(1.0 - facing, 0.0), customParams.fresnelPower));
     #endif
     g_finalColor = finalizeStraightColor(color);
 }
