@@ -2138,7 +2138,11 @@ void checkShaderTool(const CallPtr& call) {
             return;
         }
     }
-    checkShadersWithFindings(call, forks, [call](Json results, Json findings) {
+    // with every shader in use: the materials reading the scene from the opaque queue (phase 3)
+    const std::vector<ProjectChecks::Finding> stateFindings = args.contains("shader")
+        ? std::vector<ProjectChecks::Finding>() : ProjectChecks::sceneInputFindings(project);
+    checkShadersWithFindings(call, forks, [call, stateFindings](Json results, Json findings) {
+        for (const ProjectChecks::Finding& finding : stateFindings) findings.push_back(ProjectChecks::toJson(finding));
         size_t failed = 0;
         std::string text;
         for (const Json& r : results) {
@@ -2154,6 +2158,7 @@ void checkShaderTool(const CallPtr& call) {
                 text += "\n" + r.value("log", std::string());
             }
         }
+        for (const ProjectChecks::Finding& finding : stateFindings) text += "\nerror: " + finding.message;
         call->ok((failed ? std::to_string(failed) + " shader(s) failed to compile:" : std::string("All shaders compile:")) + text,
                  Json{{"results", results}, {"failed", failed}, {"findings", findings}});
     });

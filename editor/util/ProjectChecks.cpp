@@ -13,6 +13,8 @@
 #include "shader/ShaderVariantCompiler.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
+#include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 #include "util/ProjectUtils.h"
 #include "util/ScriptParser.h"
 #include "util/Util.h"
@@ -716,6 +718,32 @@ uint64_t editor::ProjectChecks::prepareShaderCheck(Project* project, ShaderUse& 
         }
     }
     return ShaderPool::getShaderKey(static_cast<ShaderType>(use.shaderType), properties, customId);
+}
+
+std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::sceneInputFindings(Project* project) {
+    std::vector<Finding> findings;
+    const fs::path root = project->getProjectPath();
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (!sceneProject->scene) continue;
+        Scene* scene = sceneProject->scene;
+        const std::string path = sceneProject->filepath.empty() ? std::string() : projectRelative(root, root / sceneProject->filepath);
+        const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+        for (Entity entity : sceneProject->entities) {
+            const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+            if (!mesh || scene->findComponent<TerrainComponent>(entity)) continue;
+            for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+                bool opaqueQueue = false;
+                const uint32_t inputs = RenderSystem::getSubmeshSceneInputs(*mesh, mesh->submeshes[s], sceneMeshShader, opaqueQueue);
+                if (!inputs || !opaqueQueue) continue;
+                const std::string what = (inputs == ShaderRequire_SceneInputs) ? "depth and colour" : (inputs & ShaderRequire_SceneDepth) ? "depth" : "colour";
+                findings.push_back({"shader", path, 0, 0, "error",
+                    "GameObject '" + scene->getEntityName(entity) + "' submesh " + std::to_string(s) + ": its shader reads the scene " + what +
+                    " but its material draws in the opaque queue (it would read its own depth and a black scene colour); "
+                    "set a blend mode other than opaque (submeshes[" + std::to_string(s) + "].material.blendMode)"});
+            }
+        }
+    }
+    return findings;
 }
 
 std::string editor::ProjectChecks::shaderSourcePath(Project* project, const std::string& base, const std::string& source) {

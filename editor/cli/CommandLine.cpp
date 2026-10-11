@@ -1968,6 +1968,9 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
             const ProjectChecks::ShaderCheck check = ProjectChecks::runShaderCheck(&project, use, key);
             run.findings.insert(run.findings.end(), check.findings.begin(), check.findings.end());
         }
+        // and the materials whose shader reads the scene from the opaque queue
+        const std::vector<ProjectChecks::Finding> sceneInputs = ProjectChecks::sceneInputFindings(&project);
+        run.findings.insert(run.findings.end(), sceneInputs.begin(), sceneInputs.end());
         run.checked.push_back({"shaders", forks.size()});
     }
 

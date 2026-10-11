@@ -688,6 +688,18 @@ void editor::InspectorWindow::drawMaterialSurfaceRows(ComponentType cpType, Scen
         return resolveMaterialStencilAuto(scene, entity, submesh);
     }, settingsMaterial);
 
+    // a shader reading the scene (phase 3) drawn before the scene is: an error
+    bool opaqueQueue = false;
+    const uint32_t sceneInputs = RenderSystem::getSubmeshSceneInputs(*mesh, sub, scene->getDefaultCustomShader(ShaderType::MESH), opaqueQueue);
+    if (sceneInputs && opaqueQueue){
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Error: reads the scene %s but draws in the opaque queue",
+                           (sceneInputs == ShaderRequire_SceneInputs) ? "depth and colour" : (sceneInputs & ShaderRequire_SceneDepth) ? "depth" : "colour");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("It would read its own depth and a black scene colour. Pick a blend other than Opaque (or a shader whose state is transparent).");
+    }
+
     // @state shadows=off (or a @state[...] rule of its features): the mesh's Cast Shadows does
     // not bring this submesh into the shadow maps
     if (stateManifest && stateManifest->resolveState(stateManifest->resolveFeatures(sub.material.shaderFeatures)).shadows == ShaderShadowCasting::OFF){

@@ -191,6 +191,10 @@ namespace jasperengine::editor {
         static std::vector<ShaderManifestDiagnostic> validateShaderManifest(const std::string& reference,
                                                                            const std::vector<const ShaderData*>& variants,
                                                                            bool onlyEnabledFeatures);
+        // Materials of the loaded scenes and prefab stages whose shader (or extra pass) reads the
+        // scene depth or colour (@require scenedepth / scenecolor) while the material resolves to
+        // the opaque queue: errors (tool "shader"), at the scene or prefab file
+        static std::vector<Finding> sceneInputFindings(Project* project);
         // The project file a compiler message source (an entry point or include key) of a fork is
         // ("engine/shaderlib/<key>" for an engine library include)
         static std::string shaderSourcePath(Project* project, const std::string& base, const std::string& source);
