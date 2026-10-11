@@ -282,6 +282,7 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
             state["stencil"] = stencil;
         }
         if (s.colorWrite >= 0) state["colorWrite"] = colorWriteToJson(s.colorWrite);
+        if (s.hasPriority) state["priority"] = s.priority;
         return state;
     };
     out["state"] = stateJson(manifest.state);

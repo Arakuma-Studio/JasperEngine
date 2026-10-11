@@ -78,7 +78,11 @@ namespace jasperengine{
         // must be in the transparent queue (it reads what the opaque queue drew).
         ShaderRequire_SceneDepth = 1 << 8,
         ShaderRequire_SceneColor = 1 << 9,
-        ShaderRequire_SceneInputs = ShaderRequire_SceneDepth | ShaderRequire_SceneColor
+        ShaderRequire_SceneInputs = ShaderRequire_SceneDepth | ShaderRequire_SceneColor,
+        // the reflection environment Lit reflects (includes/environment.glsl,
+        // SURFACE_ENVIRONMENT, u_environmentTexture): the sky's prefiltered map or the
+        // reflection probe around the object. Mesh shaders only; bound per draw, no pass.
+        ShaderRequire_Environment = 1 << 10
     };
 
     struct JASPERENGINE_API ShaderManifestProperty{
@@ -152,6 +156,10 @@ namespace jasperengine{
         MaterialStencil stencil;
         uint8_t stencilSet = 0; // ShaderStencilFields this state sets
         int colorWrite = -1;    // colorwrite=: MaterialColorWriteBits, -1 not set (all channels)
+        // priority=<int>: an offset added to the material's (or component's) sortPriority, the
+        // draw order within its queue, lower first (Unity's "Queue=Transparent-1"); 0 not set
+        bool hasPriority = false;
+        int priority = 0;
 
         // the values other sets (those it does not leave AUTO) replace these
         void apply(const ShaderManifestState& other);
@@ -326,6 +334,13 @@ namespace jasperengine{
         // the texture of a uniform: set from a path (an empty path removes it, so the
         // manifest default binds); false when nothing changed
         static bool setTexture(std::vector<std::pair<std::string, Texture>>& textures, const std::string& uniform, const std::string& path);
+        // a cube map for a @texture ... cube uniform: one image holding the six faces (a cross
+        // or a strip, as a Skybox takes it; an empty path removes it), or six face images
+        // (front, back, left, right, up, down)
+        static bool setCubeTexture(std::vector<std::pair<std::string, Texture>>& textures, const std::string& uniform, const std::string& path);
+        static bool setCubeTextureFaces(std::vector<std::pair<std::string, Texture>>& textures, const std::string& uniform,
+                                        const std::string& front, const std::string& back, const std::string& left,
+                                        const std::string& right, const std::string& up, const std::string& down);
         static std::string getTexture(const std::vector<std::pair<std::string, Texture>>& textures, const std::string& uniform);
         // Turns a @feature on or off ("!<define>" keeps a default-on feature off), or picks
         // a @keywords value (the others of its group are dropped); false when nothing changed

@@ -411,7 +411,8 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 else if (input == "smoothnormals") rule.require |= ShaderRequire_SmoothNormals;
                 else if (input == "scenedepth") rule.require |= ShaderRequire_SceneDepth;
                 else if (input == "scenecolor") rule.require |= ShaderRequire_SceneColor;
-                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position, smoothnormals, scenedepth, scenecolor)");
+                else if (input == "environment") rule.require |= ShaderRequire_Environment;
+                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position, smoothnormals, scenedepth, scenecolor, environment)");
             }
             if (!valid)
                 continue;
@@ -538,9 +539,20 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                         continue;
                     }
                     state.colorWrite = mask;
+                }else if (key == "priority"){
+                    // a signed integer, the draw order offset within the queue
+                    char* end = nullptr;
+                    const long number = std::strtol(value.c_str(), &end, 10);
+                    valid = !value.empty() && end && *end == '\0' && number >= -1000000 && number <= 1000000;
+                    if (!valid){
+                        report(lineNumber, true, "@state priority= takes an integer (added to the sort priority: lower draws first), got '" + value + "'");
+                        continue;
+                    }
+                    state.hasPriority = true;
+                    state.priority = (int)number;
                 }else{
                     report(lineNumber, true, "unknown @state key '" + key + "' (blend, cull, zwrite, ztest, offset, queue, shadows, "
-                                             "stencil, ref, readmask, writemask, pass, fail, zfail, colorwrite)");
+                                             "stencil, ref, readmask, writemask, pass, fail, zfail, colorwrite, priority)");
                     continue;
                 }
                 if (!valid){
@@ -821,7 +833,19 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
     for (const ShaderManifestTexture& texture : textures){
         if (texture.uniform == "u_sceneDepthTexture" || texture.uniform == "u_sceneColorTexture")
             report(texture.line, "@texture '" + texture.uniform + "' is reserved: the engine binds it for @require scenedepth / scenecolor");
+        if (texture.uniform == "u_environmentTexture")
+            report(texture.line, "@texture 'u_environmentTexture' is reserved: the engine binds it for @require environment");
     }
+    // the environment is bound to mesh draws (RenderSystem::applyEnvironment)
+    uint32_t possibleRequire = require;
+    int environmentLine = 1;
+    for (const ShaderManifestRequireRule& rule : requireRules){
+        if ((rule.require & ShaderRequire_Environment) && !(possibleRequire & ShaderRequire_Environment))
+            environmentLine = rule.line;
+        possibleRequire |= rule.require;
+    }
+    if ((possibleRequire & ShaderRequire_Environment) && hasType && type != ShaderType::MESH)
+        report(environmentLine, "@require environment needs @shader mesh");
     // a mesh variant reading the scene must draw after the opaque queue: its state has to put
     // it in the transparent queue (a material can still override it; the inspector and the
     // checks report that). Checked for the default features and for each feature= rule's
@@ -1036,6 +1060,10 @@ void ShaderManifestState::apply(const ShaderManifestState& other){
     if (other.stencilSet & ShaderStencil_DepthFail) stencil.depthFail = other.stencil.depthFail;
     stencilSet |= other.stencilSet;
     if (other.colorWrite >= 0) colorWrite = other.colorWrite;
+    if (other.hasPriority){
+        hasPriority = true;
+        priority = other.priority;
+    }
 }
 
 bool ShaderManifestState::hasStencil() const{
@@ -1077,6 +1105,7 @@ std::vector<std::string> ShaderManifest::getRequireDefines(uint32_t require){
     if (require & ShaderRequire_SmoothNormals) defines.push_back("SURFACE_SMOOTH_NORMALS");
     if (require & ShaderRequire_SceneDepth) defines.push_back("SURFACE_SCENE_DEPTH");
     if (require & ShaderRequire_SceneColor) defines.push_back("SURFACE_SCENE_COLOR");
+    if (require & ShaderRequire_Environment) defines.push_back("SURFACE_ENVIRONMENT");
     return defines;
 }
 
@@ -1092,7 +1121,8 @@ std::vector<std::string> ShaderManifest::getRequireNames(uint32_t require){
         {ShaderRequire_Position, "position"}, {ShaderRequire_Normals, "normals"}, {ShaderRequire_Tangents, "tangents"},
         {ShaderRequire_UV1, "uv1"}, {ShaderRequire_UV2, "uv2"}, {ShaderRequire_Color, "color"},
         {ShaderRequire_RawColor, "rawcolor"}, {ShaderRequire_SmoothNormals, "smoothnormals"},
-        {ShaderRequire_SceneDepth, "scenedepth"}, {ShaderRequire_SceneColor, "scenecolor"}};
+        {ShaderRequire_SceneDepth, "scenedepth"}, {ShaderRequire_SceneColor, "scenecolor"},
+        {ShaderRequire_Environment, "environment"}};
     std::vector<std::string> result;
     for (const auto& name : names){
         if (require & name.first)
@@ -1356,7 +1386,7 @@ bool ShaderLibraryValues::setTexture(std::vector<std::pair<std::string, Texture>
             textures.erase(textures.begin() + t);
             return true;
         }
-        if (textures[t].second.getPath() == path)
+        if (textures[t].second.getPath() == path && !textures[t].second.isCubeMap())
             return false;
         textures[t].second.setPath(path);
         return true;
@@ -1364,6 +1394,44 @@ bool ShaderLibraryValues::setTexture(std::vector<std::pair<std::string, Texture>
     if (path.empty())
         return false;
     textures.push_back({uniform, Texture(path)});
+    return true;
+}
+
+bool ShaderLibraryValues::setCubeTexture(std::vector<std::pair<std::string, Texture>>& textures, const std::string& uniform, const std::string& path){
+    if (path.empty())
+        return setTexture(textures, uniform, path);
+    for (auto& texture : textures){
+        if (texture.first != uniform)
+            continue;
+        if (texture.second.isCubeMap() && texture.second.getPath(0) == path && texture.second.getPath(1).empty())
+            return false;
+        texture.second.setCubeMap(path);
+        return true;
+    }
+    Texture texture;
+    texture.setCubeMap(path);
+    textures.push_back({uniform, texture});
+    return true;
+}
+
+bool ShaderLibraryValues::setCubeTextureFaces(std::vector<std::pair<std::string, Texture>>& textures, const std::string& uniform,
+                                              const std::string& front, const std::string& back, const std::string& left,
+                                              const std::string& right, const std::string& up, const std::string& down){
+    const std::string faces[6] = {front, back, left, right, up, down};
+    for (auto& texture : textures){
+        if (texture.first != uniform)
+            continue;
+        bool same = texture.second.isCubeMap();
+        for (size_t f = 0; f < 6 && same; f++)
+            same = texture.second.getPath(f) == faces[f];
+        if (same)
+            return false;
+        texture.second.setCubePaths(front, back, left, right, up, down);
+        return true;
+    }
+    Texture texture;
+    texture.setCubePaths(front, back, left, right, up, down);
+    textures.push_back({uniform, texture});
     return true;
 }
 

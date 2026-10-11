@@ -3,10 +3,10 @@
 // @shader mesh
 // @name "Projected decal"
 // @category "Effects"
-// @description "Box projector: put it on a unit cube (1 x 1 x 1) and scale, turn and move the cube over uneven ground, stairs or a wall; the texture projects down the box's Y axis onto whatever opaque surface is inside the box, fading on steep faces and towards the box's top and bottom. Alpha blended (the Multiply default blend darkens instead), unlit, no shadows; works with the camera inside the box. Give its material a sort priority below the transparent objects it may cover (-1). Reads the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees it (none when SSAO or SSR already made one)."
+// @description "Box projector: put it on a unit cube (1 x 1 x 1) and scale, turn and move the cube over uneven ground, stairs or a wall; the texture projects down the box's Y axis onto whatever opaque surface is inside the box, fading on steep faces and towards the box's top and bottom. Alpha blended (the Multiply default blend darkens instead), unlit, no shadows; works with the camera inside the box. It draws before the transparent objects of the same sort priority (its state has priority -1), so it does not paint over them. Reads the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees it (none when SSAO or SSR already made one)."
 // @require color
 // @require scenedepth
-// @state blend=alpha zwrite=off ztest=always cull=front shadows=off
+// @state blend=alpha zwrite=off ztest=always cull=front shadows=off priority=-1
 // @state[DECAL_BLEND_MULTIPLY] blend=multiply
 // @property tint color (1, 1, 1, 1) "Tint"
 // @property tiling vector4 (1, 1, 0, 0) "Tiling (xy) and offset (zw)"

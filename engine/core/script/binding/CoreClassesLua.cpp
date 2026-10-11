@@ -1120,6 +1120,16 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("setShaderTexture", +[](MaterialPass* self, const std::string& name, const std::string& path) {
             ShaderLibraryValues::setTexture(self->shaderTextures, name, path);
         })
+        // a cube map (a @texture ... cube uniform): one image of the six faces, or six images
+        .addFunction("setShaderCubeTexture",
+            luabridge::overload<MaterialPass*, const std::string&, const std::string&>(+[](MaterialPass* self, const std::string& name, const std::string& path) {
+                ShaderLibraryValues::setCubeTexture(self->shaderTextures, name, path);
+            }),
+            luabridge::overload<MaterialPass*, const std::string&, const std::string&, const std::string&, const std::string&,
+                                const std::string&, const std::string&, const std::string&>(+[](MaterialPass* self, const std::string& name,
+                    const std::string& front, const std::string& back, const std::string& left, const std::string& right, const std::string& up, const std::string& down) {
+                ShaderLibraryValues::setCubeTextureFaces(self->shaderTextures, name, front, back, left, right, up, down);
+            }))
         .addFunction("getShaderTexture", +[](const MaterialPass* self, const std::string& name) -> std::string {
             return ShaderLibraryValues::getTexture(self->shaderTextures, name);
         })
@@ -1196,6 +1206,16 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("setShaderTexture", +[](Material* self, const std::string& name, const std::string& path) {
             ShaderLibraryValues::setTexture(self->shaderTextures, name, path);
         })
+        // a cube map (a @texture ... cube uniform): one image of the six faces, or six images
+        .addFunction("setShaderCubeTexture",
+            luabridge::overload<Material*, const std::string&, const std::string&>(+[](Material* self, const std::string& name, const std::string& path) {
+                ShaderLibraryValues::setCubeTexture(self->shaderTextures, name, path);
+            }),
+            luabridge::overload<Material*, const std::string&, const std::string&, const std::string&, const std::string&,
+                                const std::string&, const std::string&, const std::string&>(+[](Material* self, const std::string& name,
+                    const std::string& front, const std::string& back, const std::string& left, const std::string& right, const std::string& up, const std::string& down) {
+                ShaderLibraryValues::setCubeTextureFaces(self->shaderTextures, name, front, back, left, right, up, down);
+            }))
         .addFunction("getShaderTexture", +[](const Material* self, const std::string& name) -> std::string {
             return ShaderLibraryValues::getTexture(self->shaderTextures, name);
         })

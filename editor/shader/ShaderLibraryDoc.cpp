@@ -91,8 +91,9 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
   mobile; the shader draws in the transparent queue and does not see other transparent
   objects.
 - **Default state**: what Auto resolves to; `shadows off` means the object casts no shadow
-  even when its mesh casts shadows. "With X" lines apply while feature or keyword value X is
-  on.
+  even when its mesh casts shadows; `priority -1` is added to the material's Sort Priority
+  (it draws before what has the same Sort Priority in its queue). "With X" lines apply while
+  feature or keyword value X is on.
 - **Depth program**: the shader moves vertices or discards fragments, and its shadows and
   depth pre-pass do the same.
 - **Properties**: colours are given in sRGB as edited (stored linear); "with X" rows show
@@ -245,6 +246,8 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
         else if (state.shadows == ShaderShadowCasting::ON) parts.push_back("shadows on");
         if (state.colorWrite >= 0)
             parts.push_back("colour write " + ShaderManifest::getColorWriteName(state.colorWrite));
+        if (state.hasPriority)
+            parts.push_back("priority " + std::string(state.priority > 0 ? "+" : "") + std::to_string(state.priority));
         // the stencil keys the line sets, in @state syntax (masks in hex)
         if (state.stencilSet != 0){
             auto hex = [](int value){
