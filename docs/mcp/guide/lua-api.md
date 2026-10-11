@@ -688,6 +688,11 @@ shader its submesh draws with (the mesh's `customShader`, else the scene default
 `getMaterial` / `material` resolves defaults and features against that one. UI (Image, Text,
 Polygon), Points, LineRenderer and Skybox objects have the same parameter/texture/feature
 methods for their `customShader`, and (but Skybox) `blendMode` and `depthWrite`.
+`extraPass` (`MaterialPass`, edited in place on the copy, then `setMaterial`): one more draw
+of the submesh right after it (`order = MaterialPassOrder.BEFORE`: before it) with its own
+`shader` (`""`: none), the same state fields as the material plus `stencil` and `colorWrite`,
+and the same parameter/texture/feature methods, resolved against its own shader; e.g.
+`m.extraPass.shader = "shaders/outline"; m.extraPass:setShaderParam("width", 0.05)`.
 
 ### 4.4 Primitive (Mesh)
 
@@ -965,6 +970,7 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
 | `MaterialCullMode` | `AUTO`, `BACK`, `FRONT`, `OFF` |
 | `MaterialDepthWrite` | `AUTO`, `ENABLED`, `DISABLED` |
 | `MaterialDepthTest` | `AUTO`, `LESS`, `LESS_EQUAL`, `EQUAL`, `GREATER_EQUAL`, `GREATER`, `NOT_EQUAL`, `ALWAYS` |
+| `MaterialPassOrder` | `AFTER`, `BEFORE` |
 | `ShadowCaster2DShape` | `AUTO_QUAD`, `POLYGON` |
 | `ReflectionProbeMode` | `STATIC`, `DYNAMIC` |
 | `ReflectionProbeUpdateMode` | `ON_LOAD`, `ON_MOVE`, `INTERVAL`, `MANUAL` |
