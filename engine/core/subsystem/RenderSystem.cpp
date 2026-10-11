@@ -7020,6 +7020,13 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
     // compensate (only PIP_RTT reverses winding on GL). The depth buffer therefore
     // stays in logical orientation; SSAO/SSR consumers flip Y on GL when sampling.
     Matrix4 renderVP = camera.viewProjectionMatrix;
+    // A mirror camera's reflection turns its faces' winding over (its colour pass culls with
+    // PIP_RTT_INVERT): mirrored in x the depth pass culls as the colour pass does, and the
+    // scene inputs read it mirrored back (fillSceneInputs)
+    if (camera.invertCulling){
+        static const Matrix4 flipXMatrix = Matrix4::scaleMatrix(Vector3(-1, 1, 1));
+        renderVP = flipXMatrix * renderVP;
+    }
 
     ssaoPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0)); // background -> depth ~1.0
     ssaoPassRender.startRenderPass(&target.getRender());
@@ -7186,9 +7193,9 @@ bool RenderSystem::ensureSceneColorRedirect(unsigned int width, unsigned int hei
 void RenderSystem::loadSceneColorCopy(){
     if (sceneColorCopyLoaded)
         return;
-    // the blit shader, into a copy target (depth-only attachment, never tested)
-    if (!sceneColorCopyShader)
-        sceneColorCopyShader = ShaderPool::get(ShaderType::BLIT, 0);
+    // the blit shader, into a copy target (depth-only attachment, never tested); asked again
+    // until it is built (each get() moves an asynchronous build on)
+    sceneColorCopyShader = ShaderPool::get(ShaderType::BLIT, 0);
     if (!sceneColorCopyShader || !sceneColorCopyShader->isCreated())
         return;
     sceneColorCopyRender.beginLoad(PrimitiveType::TRIANGLES);
@@ -7256,6 +7263,10 @@ void RenderSystem::fillSceneInputs(const CameraComponent& camera, const Rect& vi
     // the copy keeps the rows of its source
     passSceneBlock.colorParams = Vector4(topFirst ? -1.0f : 1.0f, topFirst ? 1.0f : 0.0f,
                                          copyWidth ? 1.0f / (float)copyWidth : 0.0f, copyHeight ? 1.0f / (float)copyHeight : 0.0f);
+    // the depth pre-pass draws unflipped: its first row is ndc -1 on GL, +1 elsewhere
+    // (depth_util.glsl); a mirror camera's draws it mirrored in x (renderOpaqueDepth)
+    const bool mirrored = camera.invertCulling;
+    passSceneBlock.depthParams = Vector4(mirrored ? -1.0f : 1.0f, gl ? 1.0f : -1.0f, mirrored ? 1.0f : 0.0f, gl ? 0.0f : 1.0f);
 }
 
 bool RenderSystem::ensureGBufferFramebuffer(unsigned int width, unsigned int height){
@@ -10889,9 +10900,11 @@ void RenderSystem::update(double dt){
         needReloadMeshes();
     }
 
-    // a scene reading the scene depth (phase 3) gives every mesh a depth program for the
-    // depth pre-pass; the last such object gone, they drop them again
-    const bool sceneDepth = (sceneInputUsage & ShaderRequire_SceneDepth) != 0;
+    // a scene reading the scene depth (phase 3), or a post pass sampling the depth, gives every
+    // mesh a depth program for the depth pre-pass (a mesh without one stopped that pass and
+    // reloaded every frame); the last such reader gone, they drop them again
+    const bool sceneDepth = (sceneInputUsage & ShaderRequire_SceneDepth) != 0 ||
+        (postProcessLoaded && postProcessNeedsDepth && !scene->getPostProcessPasses().empty());
     if (sceneDepth != sceneDepthPrograms){
         sceneDepthPrograms = sceneDepth;
         needReloadMeshes();

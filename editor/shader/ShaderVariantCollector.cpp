@@ -28,6 +28,7 @@
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
 #include "component/UIComponent.h"
+#include "util/Util.h"
 
 #include <filesystem>
 #include <map>
@@ -61,6 +62,20 @@ namespace {
         if (!manifest || !manifest->present)
             return false;
         return (manifest->resolveRequire(ShaderReference::getEnabledFeatures(shader, features)) & ShaderRequire_SceneDepth) != 0;
+    }
+
+    // RenderSystem::loadPostProcess: a pass of the chain (enabled or not: a script may turn it
+    // on) whose fork declares u_depthTexture
+    bool postProcessReadsDepth(Scene* scene){
+        for (const PostProcessPass& pass : scene->getPostProcessPasses()){
+            if (pass.shader.empty())
+                continue;
+            std::string source;
+            if (ShaderManifests::readForkFile(editor::Util::resolveCustomShaderPaths(pass.shader).frag, source) &&
+                    source.find("u_depthTexture") != std::string::npos)
+                return true;
+        }
+        return false;
     }
 
     uint32_t collectFacts(const editor::ShaderVariantContent& content){
@@ -135,10 +150,12 @@ namespace {
         environment.ssao = scene->isSSAOEnabled();
         environment.ssr = scene->isSSREnabled();
         environment.depthPrepass = scene->isDepthPrepassEnabled();
-        // a scene default shader reading the scene depth is drawn by what has no shader of its own
+        // a scene default shader reading the scene depth is drawn by what has no shader of its
+        // own; a post pass sampling the depth needs the depth pre-pass too
         environment.sceneDepth = (facts & FACT_SCENE_DEPTH) ||
             readsSceneDepth(scene->getDefaultCustomShader(ShaderType::MESH), {}) ||
-            readsSceneDepth(scene->getDefaultCustomShader(ShaderType::POINTS), {});
+            readsSceneDepth(scene->getDefaultCustomShader(ShaderType::POINTS), {}) ||
+            postProcessReadsDepth(scene);
         return environment;
     }
 

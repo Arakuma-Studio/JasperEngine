@@ -43,6 +43,7 @@ uniform u_fs_sceneInputs {
     vec4 inverseProjectionW;    // row w of the inverse projection (p = vec4(ndc, 1))
     vec4 screenParams;          // screenUV() = gl_FragCoord.xy * xy + zw
     vec4 colorParams;           // colour copy v = uv.y * x + y; zw = 1 / copy size in texels
+    vec4 depthParams;           // depth texture uv = screen uv * xy + zw
 } sceneInputs;
 
 #ifdef SURFACE_SCENE_DEPTH
@@ -76,8 +77,9 @@ float fragmentLinearDepth(){
     // the opaque scene's depth at a screen UV as stored (0 near .. 1 far; 1 where nothing
     // opaque was drawn)
     float sceneRawDepth(vec2 uv){
-        // the depth pre-pass target keeps the native row order (depth_util.glsl)
-        vec2 depthUV = vec2(uv.x, ndcYToDepthUV(uv.y * 2.0 - 1.0));
+        // the depth pre-pass target keeps the native row order (depth_util.glsl); a mirror's
+        // is drawn mirrored left to right (its faces keep their winding)
+        vec2 depthUV = uv * sceneInputs.depthParams.xy + sceneInputs.depthParams.zw;
         // the cleared background decodes slightly above 1
         return min(decodeDepth(textureLod(sampler2D(u_sceneDepthTexture, u_sceneDepth_smp), depthUV, 0.0)), 1.0);
     }

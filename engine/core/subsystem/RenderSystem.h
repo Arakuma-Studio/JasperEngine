@@ -206,6 +206,7 @@ namespace jasperengine{
 		Vector4 inverseProjectionW;    // row w of the inverse projection
 		Vector4 screenParams;          // screen UV (y up) = fragment coordinate * xy + zw
 		Vector4 colorParams;           // colour copy v = uv.y * x + y, zw = 1 / copy size
+		Vector4 depthParams;           // depth texture uv = screen uv * xy + zw
 	} scene_inputs_t;
 
 	typedef struct vs_points_params_t {
