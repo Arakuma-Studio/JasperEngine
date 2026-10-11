@@ -847,6 +847,9 @@ namespace jasperengine{
 			unsigned int lod = 0;
 		};
 		Entity activeReflectionProbe = NULL_ENTITY;
+		// the scene's sky: its first SkyboxComponent, as last loaded (another one leads the
+		// array after a removal or a reorder, see update)
+		Entity activeSky = NULL_ENTITY;
 		fs_reflection_probe_t fs_reflection_probe;
 
 		// 2D light path (Light2DComponent). Deliberately independent of

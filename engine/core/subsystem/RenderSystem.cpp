@@ -497,6 +497,7 @@ void RenderSystem::load(){
     hasMultipleCameras = false;
     lastMultiCameraDraw = false;
     capturingReflectionProbe = false;
+    activeSky = NULL_ENTITY;
     lastBatchSort = true;
     lastMeshLodEnabled = false;
     loadedPipelines = 0;
@@ -10517,6 +10518,26 @@ void RenderSystem::update(double dt){
     // the scene's sky is its first SkyboxComponent (SkyboxComponent.h); the others are not loaded
     auto skys = scene->getComponentArray<SkyboxComponent>();
     bool newHasIBL = false;
+    const Entity firstSky = skys->size() > 0 ? skys->getEntity(0) : NULL_ENTITY;
+    if (firstSky != activeSky){
+        // Another sky leads now (the first was removed, or the editor reordered them: its
+        // hierarchy order is the array's, ProjectUtils): the one it replaces unloads as a
+        // sky that is not first (its maps go), and the meshes rebind the image-based lighting
+        if (activeSky != NULL_ENTITY && scene->isEntityCreated(activeSky)){
+            if (SkyboxComponent* previous = scene->findComponent<SkyboxComponent>(activeSky)){
+                if (previous->loaded){
+                    previous->needReload = true;
+                    releaseSkyEnvironment(*previous);
+                    previous->needUpdateEnvironment = true;
+                    destroySky(activeSky, *previous);
+                }
+            }
+        }
+        if (activeSky != NULL_ENTITY && hasIBL){
+            needReloadMeshes();
+        }
+        activeSky = firstSky;
+    }
     if (skys->size() > 0){
         SkyboxComponent& sky = skys->getComponentFromIndex(0);
         Entity entity = skys->getEntity(0);

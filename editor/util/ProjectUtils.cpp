@@ -851,6 +851,9 @@ bool editor::ProjectUtils::moveEntityOrderByTarget(EntityRegistry* registry, std
 
     }
 
+    // the scene's sky is the first skybox in this order, live as after a reload
+    registry->sortComponentsByEntityOrder<SkyboxComponent>(entities);
+
     return true;
 }
 
@@ -886,6 +889,8 @@ void editor::ProjectUtils::moveEntityOrderByIndex(EntityRegistry* registry, std:
         }
 
     }
+
+    registry->sortComponentsByEntityOrder<SkyboxComponent>(entities);
 }
 
 void editor::ProjectUtils::moveEntityOrderByTransform(EntityRegistry* registry, std::vector<Entity>& entities, Entity source, Entity parent, size_t transformIndex, bool enableMove, bool sortEntities){
