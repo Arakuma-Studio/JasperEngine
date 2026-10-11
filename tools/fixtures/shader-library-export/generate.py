@@ -15,7 +15,8 @@ Scenes (one camera each):
   Stencil.scene  phase 2: every material preset (editor/material/MaterialPresets.cpp, applied with
                  the MCP tool apply_material_preset), so the extra pass and the stencil and colour
                  write state go through scene YAML and Factory export: outlines (screen and world
-                 width, a blended object), a through-walls stencil outline, a see-through
+                 width; a blended object, which the hull preset gives the visible-only stencil
+                 outline), a through-walls stencil outline, a see-through
                  silhouette, draw-once transparency, inside/outside stencil masks and sprite masks
 
     uv run --no-project --with mcp --with pyyaml python tools/fixtures/shader-library-export/generate.py [out dir]
