@@ -1322,11 +1322,15 @@ namespace {
         }
 
         auto emitList = [&](const char* longhand){
+            // (every layer dropped: no images)
+            if (state.layers.empty()){
+                if (std::string_view(longhand) == "image")
+                    context.emit(prefix + longhand, "none");
+                return;
+            }
             context.emit(prefix + longhand, nativeList(state.layers, longhand));
         };
         if (name == "background"){
-            if (state.layers.empty())
-                state.layers.push_back(Layer());
             if (!mask){
                 if (state.colorSet && state.color)
                     context.emit("background-color", text(*state.color));

@@ -240,6 +240,16 @@ bool ElementBackgroundLayers::HasLayers(Element* element, Kind kind)
 	return images && images->HasImages();
 }
 
+BoxArea ElementBackgroundLayers::GetColourClip(Element* element)
+{
+	const LayerKeywordList* clips = GetList<LayerKeywordList>(element, PropertyId::BackgroundClip);
+	if (!clips || clips->GetCount() == 0)
+		return BoxArea::Border;
+	const ImageLayerList* images = GetList<ImageLayerList>(element, PropertyId::BackgroundImage);
+	const size_t num_layers = (images && !images->layers.empty()) ? images->layers.size() : 1;
+	return BoxArea(clips->values[(num_layers - 1) % clips->GetCount()]);
+}
+
 void ElementBackgroundLayers::Release()
 {
 	ReleaseDraws();

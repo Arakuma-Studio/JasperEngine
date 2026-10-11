@@ -46,6 +46,8 @@ public:
 
 	// The element has layers with an image of this kind.
 	static bool HasLayers(Element* element, Kind kind);
+	// The box the background colour is clipped to: the background-clip of the bottom layer.
+	static BoxArea GetColourClip(Element* element);
 
 	void Dirty() { dirty = true; }
 	void Release();

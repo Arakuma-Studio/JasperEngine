@@ -426,12 +426,25 @@ void ElementBackgroundBorder::GenerateGeometry(Element* element)
 	Geometry& geometry = GetOrCreateBackground(BackgroundType::BackgroundBorder).geometry;
 	Mesh mesh = geometry.Release(Geometry::ReleaseMode::ClearMesh);
 
-	// The background colour covers the border box, under the border (CSS: the initial 'background-clip: border-box').
+	// The background colour covers the clip box of the bottom layer (CSS Backgrounds 3, 2.10), the border box by default,
+	// under the border.
+	const BoxArea colour_clip = ElementBackgroundLayers::GetColourClip(element);
 	for (int i = 0; i < element->GetNumBoxes(); i++)
 	{
 		const RenderBox padding_box = element->GetRenderBox(BoxArea::Padding, i);
-		const RenderBox background_box =
+		RenderBox background_box =
 			GeometryBorderStyles::BackgroundRenderBox(element->GetRenderBox(BoxArea::Border, i), padding_box, border_colors.data());
+		if (colour_clip != BoxArea::Border)
+		{
+			// The fill area with the inner curves (no border of its own).
+			const RenderBox clip_box = element->GetRenderBox(colour_clip, i);
+			const BorderMetrics metrics = GeometryBackgroundBorder::ComputeBorderMetrics(clip_box.GetBorderOffset(), clip_box.GetBorderWidths(),
+				clip_box.GetFillSize(), clip_box.GetBorderRadius());
+			CornerSizes2 radii = metrics.inner_radii;
+			for (Vector2f& radius : radii)
+				radius = Math::Max(radius, Vector2f(0.f));
+			background_box = RenderBox(clip_box.GetFillSize(), clip_box.GetBorderOffset() + clip_box.GetFillOffset(), EdgeSizes{}, radii);
+		}
 		MeshUtilities::GenerateBackgroundBorder(mesh, background_box, background_color, no_border.data(), feather_unit);
 		if (!border_above)
 			MeshUtilities::GenerateBackgroundBorder(mesh, padding_box, transparent, border_colors.data(), feather_unit);

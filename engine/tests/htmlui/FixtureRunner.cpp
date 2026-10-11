@@ -485,6 +485,10 @@ void FixtureRunner::frame(bool draw, bool* drawn){
     if (!r.target.isCreated())
         r.target.ensure(r.targetSize.x, r.targetSize.y, state->sampleCount);
     const bool begun = draw && r.renderer.beginFrame(r.target, r.contextSize);
+    // as HtmlUIContext: every edge of backgrounds and borders feathered on a single-sampled target,
+    // only curves on a multisampled one (phase-3 spec 3.7.3); the runner draws one target pixel per px
+    Rml::SetGeometryFeathering(state->sampleCount <= 1);
+    Rml::SetGeometryPixelSize(1.0f);
     hc::updateRuntime(r.context);
     r.context->Update();
     if (begun)
