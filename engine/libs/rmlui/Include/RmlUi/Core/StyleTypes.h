@@ -143,6 +143,9 @@ namespace Style {
 	// 'start' and 'end' are computed as such and resolve against 'direction' (ComputedValues::text_align() returns the
 	// resolved value; phase 3, p3-text).
 	enum class TextAlign : uint8_t { Left, Right, Center, Justify, Start, End };
+	// The block alignment of the legacy 'text-align' values -webkit-left, -webkit-right, -webkit-center: the block-level
+	// children of the element are aligned as by 'justify-self' (phase 3, p3-layout).
+	enum class TextAlignLegacy : uint8_t { None, Left, Right, Center };
 	// The lines of 'text-decoration-line': a combination of flags (phase 3, p3-text).
 	enum class TextDecoration : uint8_t { None = 0, Underline = 1, Overline = 2, LineThrough = 4 };
 	enum class TextTransform : uint8_t { None, Capitalize, Uppercase, Lowercase };

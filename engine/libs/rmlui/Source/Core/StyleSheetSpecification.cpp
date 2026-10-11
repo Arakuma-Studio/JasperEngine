@@ -425,7 +425,7 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterShorthand(ShorthandId::Font, "font", "font-style, font-weight, font-size, font-family", ShorthandType::FallThrough);
 
 	// 'start' and 'end' resolve against the direction, 'match-parent' to the parent's value (ComputeTextAlign, p3-text).
-	RegisterProperty(PropertyId::TextAlign, "text-align", "start", true, true).AddParser("keyword", "left, right, center, justify, start, end, match-parent, -webkit-center");
+	RegisterProperty(PropertyId::TextAlign, "text-align", "start", true, true).AddParser("keyword", "left, right, center, justify, start, end, match-parent, -webkit-center, -webkit-left, -webkit-right");
 	// The lines of the 'text-decoration' shorthand (p3-text); inherited, so that the decoration reaches the text inside.
 	RegisterProperty(PropertyId::TextDecoration, "text-decoration-line", "none", true, false).AddParser("text_decoration_line");
 	RegisterProperty(PropertyId::TextTransform, "text-transform", "none", true, true).AddParser("keyword", "none, capitalize, uppercase, lowercase");

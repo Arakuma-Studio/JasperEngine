@@ -455,3 +455,47 @@ TEST_CASE("Layout.ScrollbarGutter")
 	document->Close();
 	TestsShell::ShutdownShell();
 }
+
+// Phase 3 (p3-layout): the legacy 'text-align' values -webkit-left, -webkit-right and -webkit-center align the block-level
+// children of the element (as 'justify-items: legacy' in browsers); 'justify-self' takes precedence.
+TEST_CASE("Layout.TextAlignLegacy")
+{
+	const String document_rml = R"(
+<rml>
+<head>
+	<style>
+		body { width: 400px; height: 300px; margin: 0; padding: 0; }
+		div { display: block; height: 10px; }
+		.parent { width: 200px; height: auto; }
+		.child { width: 50px; }
+	</style>
+</head>
+<body>
+	<div class="parent" style="text-align: -webkit-center"><div id="center" class="child"/><div id="wide" style="max-width: 300px"/><div id="nested" style="height: auto"><div id="inherited" class="child"/></div></div>
+	<div class="parent" style="text-align: -webkit-right"><div id="start" class="child" style="justify-self: start"/><div id="self-center" class="child" style="justify-self: center"/><div id="right" class="child"/></div>
+	<div class="parent" style="text-align: center"><div id="plain" class="child"/></div>
+</body>
+</rml>
+)";
+
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+
+	auto x = [&](const char* id) { return document->GetElementById(id)->GetAbsoluteOffset(BoxArea::Border).x; };
+	CHECK(x("center") == doctest::Approx(75.f));
+	CHECK(x("wide") == doctest::Approx(0.f));
+	// Inherited with 'text-align'.
+	CHECK(x("inherited") == doctest::Approx(75.f));
+	CHECK(x("start") == doctest::Approx(0.f));
+	CHECK(x("self-center") == doctest::Approx(75.f));
+	CHECK(x("right") == doctest::Approx(150.f));
+	// 'center' aligns the text only.
+	CHECK(x("plain") == doctest::Approx(0.f));
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}

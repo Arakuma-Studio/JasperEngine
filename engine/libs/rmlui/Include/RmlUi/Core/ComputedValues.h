@@ -94,9 +94,9 @@ namespace Style {
 		InheritedValues() :
 			font_weight(FontWeight::Normal), font_kerning(FontKerning::Auto), has_letter_spacing(0), font_style(FontStyle::Normal),
 			has_font_effect(false), pointer_events(PointerEvents::Auto), focus(Focus::Auto), text_align(TextAlign::Start),
-			text_decoration(TextDecoration::None), text_transform(TextTransform::None), white_space_collapse(WhiteSpaceCollapse::Collapse),
-			text_wrap_mode(TextWrapMode::Wrap), word_break(WordBreak::Normal), direction(Direction::Auto), visibility(Visibility::Visible),
-			line_height_inherit_type(LineHeight::Number)
+			text_align_legacy(TextAlignLegacy::None), text_decoration(TextDecoration::None), text_transform(TextTransform::None),
+			white_space_collapse(WhiteSpaceCollapse::Collapse), text_wrap_mode(TextWrapMode::Wrap), word_break(WordBreak::Normal),
+			direction(Direction::Auto), visibility(Visibility::Visible), line_height_inherit_type(LineHeight::Number)
 		{}
 
 		// Font face used to render text and resolve ex properties. Does not represent a true property
@@ -120,6 +120,7 @@ namespace Style {
 		Focus focus : 1;
 
 		TextAlign text_align : 3;
+		TextAlignLegacy text_align_legacy : 2;
 		TextDecoration text_decoration : 3;
 		TextTransform text_transform : 2;
 		WhiteSpaceCollapse white_space_collapse : 3;
@@ -388,6 +389,7 @@ namespace Style {
 
 		// Text (p3-text)
 		TextAlign          specified_text_align()      const { return inherited.text_align; }
+		TextAlignLegacy    text_align_legacy()         const { return inherited.text_align_legacy; }
 		WhiteSpaceCollapse white_space_collapse()      const { return inherited.white_space_collapse; }
 		TextWrapMode       text_wrap_mode()            const { return inherited.text_wrap_mode; }
 		OverflowWrap       overflow_wrap()             const { return inherited.overflow_wrap; }
@@ -473,6 +475,7 @@ namespace Style {
 		void pointer_events    (PointerEvents value)  { inherited.pointer_events     = value; }
 		void focus             (Focus value)          { inherited.focus              = value; }
 		void text_align        (TextAlign value)      { inherited.text_align         = value; }
+		void text_align_legacy (TextAlignLegacy value) { inherited.text_align_legacy = value; }
 		void text_decoration   (TextDecoration value) { inherited.text_decoration    = value; }
 		void text_transform    (TextTransform value)  { inherited.text_transform     = value; }
 		void word_break        (WordBreak value)      { inherited.word_break         = value; }

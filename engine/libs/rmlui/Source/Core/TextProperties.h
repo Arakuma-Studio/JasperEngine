@@ -41,6 +41,8 @@ bool ParseTextDecorationShorthand(PropertyDictionary& dictionary, const Shorthan
 /// 'match-parent' takes the parent's value (resolved against this element's direction, as in Chromium), '-webkit-center'
 /// is 'center'.
 Style::TextAlign ComputeTextAlign(const Property* property, Element* element);
+/// The block alignment of the legacy -webkit-* values of 'text-align' (p3-layout), 'None' for the others.
+Style::TextAlignLegacy ComputeTextAlignLegacy(const Property* property, Element* element);
 /// 'letter-spacing' and 'word-spacing': 'normal' is 0, a length, a percentage of the font size, or a calc() of them.
 float ComputeTextSpacing(const Property* property, float font_size, float document_font_size, float dp_ratio, Vector2f vp_dimensions);
 

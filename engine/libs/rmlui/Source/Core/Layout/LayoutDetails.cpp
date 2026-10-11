@@ -730,9 +730,23 @@ float LayoutDetails::GetJustifySelfOffset(Element* element, float free_space)
 		return 0.f;
 
 	bool safe = false;
-	const JustifyItems justify = ResolveJustifySelf(element, safe);
+	JustifyItems justify = ResolveJustifySelf(element, safe);
 	if (safe && free_space < 0.f)
 		return 0.f;
+	// 'justify-items: legacy' of the parent: its legacy 'text-align' value (-webkit-left, -webkit-right, -webkit-center)
+	// aligns its block-level children, as in browsers.
+	if (justify == JustifyItems::Legacy && computed.justify_self() == Style::JustifySelf::Auto)
+	{
+		if (Element* parent = element->GetParentNode())
+		{
+			switch (parent->GetComputedValues().text_align_legacy())
+			{
+			case Style::TextAlignLegacy::Center: justify = JustifyItems::Center; break;
+			case Style::TextAlignLegacy::Right: justify = JustifyItems::Right; break;
+			default: break;
+			}
+		}
+	}
 	switch (justify)
 	{
 	case JustifyItems::Center: return 0.5f * free_space;

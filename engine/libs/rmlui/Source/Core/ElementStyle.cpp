@@ -1457,6 +1457,7 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 
 	case PropertyId::TextAlign:
 		values.text_align(ComputeTextAlign(p, element));
+		values.text_align_legacy(ComputeTextAlignLegacy(p, element));
 		break;
 	case PropertyId::TextDecoration:
 		values.text_decoration((TextDecoration)p->Get<int>());
