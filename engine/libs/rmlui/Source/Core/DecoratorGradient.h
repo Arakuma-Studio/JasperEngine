@@ -62,6 +62,7 @@ public:
 	bool Initialise(bool repeating, Corner corner, float angle, const ColorStopList& color_stops);
 
 	DecoratorDataHandle GenerateElementData(Element* element, BoxArea paint_area) const override;
+	CompiledShader CompileImageShader(Element* element, Vector2f size) const override;
 	void ReleaseElementData(DecoratorDataHandle element_data) const override;
 
 	void RenderElement(Element* element, DecoratorDataHandle element_data) const override;
@@ -128,6 +129,7 @@ public:
 	);
 
 	DecoratorDataHandle GenerateElementData(Element* element, BoxArea paint_area) const override;
+	CompiledShader CompileImageShader(Element* element, Vector2f size) const override;
 	void ReleaseElementData(DecoratorDataHandle element_data) const override;
 
 	void RenderElement(Element* element, DecoratorDataHandle element_data) const override;
@@ -185,6 +187,7 @@ public:
 	);
 
 	DecoratorDataHandle GenerateElementData(Element* element, BoxArea paint_area) const override;
+	CompiledShader CompileImageShader(Element* element, Vector2f size) const override;
 	void ReleaseElementData(DecoratorDataHandle element_data) const override;
 
 	void RenderElement(Element* element, DecoratorDataHandle element_data) const override;

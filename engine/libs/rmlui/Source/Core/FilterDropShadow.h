@@ -18,8 +18,12 @@ public:
 
 	void ExtendInkOverflow(Element* element, Rectanglef& scissor_region) const override;
 
+	// Without a colour the shadow takes the element's colour (CSS: 'currentcolor', phase 3 p3-paint).
+	void SetCurrentColor() { current_color = true; }
+
 private:
 	Colourb color;
+	bool current_color = false;
 	NumericValue value_offset_x, value_offset_y, value_sigma;
 #ifdef RMLUI_MATH_EXPRESSIONS
 	CalculationPtr calculation_offset_x, calculation_offset_y, calculation_sigma;

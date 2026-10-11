@@ -1,0 +1,7 @@
+{
+ "comment": "a hidden element keeps its place, paints nothing, and its visible child paints; collapse outside of tables is hidden.",
+ "viewport": [
+  240,
+  200
+ ]
+}

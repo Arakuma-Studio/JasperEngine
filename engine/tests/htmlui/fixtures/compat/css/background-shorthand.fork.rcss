@@ -1,0 +1,165 @@
+#htmlui-root .color-only {
+background-color: #123456ff;
+background-image: none;
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+#htmlui-root .none {
+background-color: transparent;
+background-image: none;
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+#htmlui-root .image-color {
+background-color: #ff0000ff;
+background-image: url("asset://compat/css/img/a.png");
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+#htmlui-root .full {
+background-color: #ffffffff;
+background-image: url("asset://compat/css/img/a.png");
+background-position-x: calc(100% - 10px);
+background-position-y: calc(100% - 20px);
+background-size: 50% auto;
+background-repeat: no-repeat no-repeat;
+background-origin: padding-box;
+background-clip: content-box;
+background-attachment: fixed;
+}
+#htmlui-root .repeat-x {
+background-color: transparent;
+background-image: url("asset://compat/css/img/a.png");
+background-position-x: 50%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat no-repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+#htmlui-root .repeat-y {
+background-color: transparent;
+background-image: url("asset://compat/css/img/a.png");
+background-position-x: 0%;
+background-position-y: 50%;
+background-size: auto auto;
+background-repeat: no-repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+#htmlui-root .space-round {
+background-color: transparent;
+background-image: url("asset://compat/css/img/a.png");
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: space round;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+#htmlui-root .cover {
+background-color: transparent;
+background-image: url("asset://compat/css/img/a.png");
+background-position-x: 50%;
+background-position-y: 50%;
+background-size: cover;
+background-repeat: no-repeat no-repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+#htmlui-root .contain {
+background-color: transparent;
+background-image: url("asset://compat/css/img/a.png");
+background-position-x: 50%;
+background-position-y: 50%;
+background-size: contain;
+background-repeat: no-repeat no-repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+#htmlui-root .lengths {
+background-color: transparent;
+background-image: url("asset://compat/css/img/a.png");
+background-position-x: 10px;
+background-position-y: 20px;
+background-size: 32px 16px;
+background-repeat: no-repeat no-repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+#htmlui-root .keywords {
+background-color: transparent;
+background-image: url("asset://compat/css/img/a.png");
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto 100%;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+#htmlui-root .border-box {
+background-color: transparent;
+background-image: url("asset://compat/css/img/a.png");
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: border-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+#htmlui-root .gradient-color {
+background-color: #000000ff;
+background-image: linear-gradient(#ff0000ff, #0000ffff), none;
+background-position-x: 0%, 0%;
+background-position-y: 0%, 0%;
+background-size: auto auto, auto auto;
+background-repeat: repeat repeat, repeat repeat;
+background-origin: padding-box, padding-box;
+background-clip: border-box, border-box;
+background-attachment: scroll, scroll;
+}
+#htmlui-root .transparent {
+background-color: #00000000;
+background-image: none;
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+#htmlui-root .local {
+background-color: transparent;
+background-image: url("asset://compat/css/img/a.png");
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: local;
+}

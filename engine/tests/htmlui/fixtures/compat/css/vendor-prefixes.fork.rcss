@@ -29,21 +29,38 @@ display: inline-flex;
 }
 #htmlui-root .grad {
 background-color: transparent;
-decorator: linear-gradient(to bottom, #ffffffff, #000000ff) border-box;
+background-image: linear-gradient(to bottom, #ffffffff, #000000ff);
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
 }
 #htmlui-root .grad2 {
-decorator: linear-gradient(45deg, #ff0000ff, #0000ffff) border-box;
+background-image: linear-gradient(45deg, #ff0000ff, #0000ffff);
 }
 #htmlui-root .grad3 {
 background-color: transparent;
-decorator: radial-gradient(circle farthest-corner at 50% 50%, #ff0000ff, #0000ffff) border-box;
+background-image: radial-gradient(circle farthest-corner at 50% 50%, #ff0000ff, #0000ffff);
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
 }
 #htmlui-root .old {
 background-color: transparent;
-decorator: none;
+background-image: none;
 }
 #htmlui-root .sticky {
 position: sticky;
+}
+#htmlui-root .clip {
+background-clip: padding-box;
 }
 #htmlui-root .fill {
 color: #ff00ffff;

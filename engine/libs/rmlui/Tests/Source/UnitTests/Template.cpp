@@ -217,7 +217,7 @@ TEST_CASE("template.inline+inline.identical.wrapped")
 			height: 450px;
 		}
 		p {
-			border: 1px aqua;
+			border: 1px solid aqua;
 			padding: 5px;
 			margin: 10px;
 		}
@@ -273,7 +273,7 @@ TEST_CASE("template.inline+inline.identical.siblings")
 			height: 450px;
 		}
 		p {
-			border: 1px aqua;
+			border: 1px solid aqua;
 			padding: 5px;
 			margin: 10px;
 		}

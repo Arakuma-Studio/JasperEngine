@@ -4,6 +4,4 @@ htmlui-imports/fonts/inter-orbitron-438965.css:19:3: info: @font-face descriptor
 htmlui-imports/fonts/inter-orbitron-438965.css:26:3: info: @font-face descriptor 'font-display' is dropped [HTMLUI-AT-0011]
 htmlui-imports/fonts/inter-orbitron-438965.css:33:3: info: @font-face descriptor 'font-display' is dropped [HTMLUI-AT-0011]
 inventory.html:11:1: info: Lucide script not run: Lucide icons are built into the engine: data-lucide elements are expanded at load (fix: remove the script) [HTMLUI-HTML-0007]
-inventory.html:85:48: info: the gap of outline-offset is filled with the outline color [HTMLUI-CSS-0005]
-inventory.html:107:5: info: radius 50% is drawn as 9999px: a circle on a square box, a stadium (not an ellipse) on a rectangle, until the fork has PercentRadius [HTMLUI-CSS-0007]
 inventory.html:167:3: info: Lucide script not run: Lucide icons are built into the engine: data-lucide elements are expanded at load (fix: remove the script) [HTMLUI-HTML-0007]

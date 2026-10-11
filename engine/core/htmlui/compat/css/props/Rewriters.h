@@ -106,6 +106,7 @@ namespace jasperengine::htmlui::compat {
 
     // var() families (css/props/*.cpp)
     extern const VarFamily kDecoratorFamily;
+    extern const VarFamily kNativeLayersFamily;
     extern const VarFamily kMaskFamily;
     extern const VarFamily kFontEffectFamily;
     extern const VarFamily kTransitionFamily;

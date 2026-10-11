@@ -36,7 +36,8 @@ namespace Style {
 			padding_left_type(LengthPercentage::Length),
 
 			top_type(LengthPercentageAuto::Auto), right_type(LengthPercentageAuto::Auto), bottom_type(LengthPercentageAuto::Auto),
-			left_type(LengthPercentageAuto::Auto), z_index_type(NumberAuto::Auto)
+			left_type(LengthPercentageAuto::Auto), z_index_type(NumberAuto::Auto), border_top_style(BorderStyle::None),
+			border_right_style(BorderStyle::None), border_bottom_style(BorderStyle::None), border_left_style(BorderStyle::None)
 		{}
 
 		Display display : 5;
@@ -62,6 +63,8 @@ namespace Style {
 
 		NumberAuto::Type z_index_type : 1;
 
+		BorderStyle border_top_style : 4, border_right_style : 4, border_bottom_style : 4, border_left_style : 4;
+
 		float width_value = 0;
 		float height_value = 0;
 
@@ -82,7 +85,9 @@ namespace Style {
 
 		float z_index_value = 0;
 
-		uint16_t border_top_width = 0, border_right_width = 0, border_bottom_width = 0, border_left_width = 0;
+		// The declared widths ('medium' initially, snapped to whole pixels); a side whose style is none or hidden computes
+		// its width to 0 (the accessors).
+		float border_top_width = 3.f, border_right_width = 3.f, border_bottom_width = 3.f, border_left_width = 3.f;
 
 		// The initial value is 'currentcolor': an element's border colors not declared follow its color (ElementStyle::ComputeValues).
 		Colourb border_top_color{0, 0, 0}, border_right_color{0, 0, 0}, border_bottom_color{0, 0, 0}, border_left_color{0, 0, 0};
@@ -105,9 +110,6 @@ namespace Style {
 
 		float font_size = 16.f;
 
-		// The opacity the element draws with: its own (CSS: not inherited) times its parent's, until opacity groups
-		// composite whole subtrees (phase 3, paint).
-		float opacity = 1;
 		Colourb color = Colourb(0, 0, 0);
 
 		FontWeight font_weight : 10;
@@ -215,7 +217,6 @@ namespace Style {
 		float flex_basis = 0;
 		float row_gap = 0, column_gap = 0;
 
-		int16_t border_top_left_radius = 0, border_top_right_radius = 0, border_bottom_right_radius = 0, border_bottom_left_radius = 0;
 		Colourb image_color = Colourb(255, 255, 255);
 		float scrollbar_margin = 0.f;
 
@@ -232,6 +233,29 @@ namespace Style {
 		// -- Cascade (p3-cascade) --
 
 		// -- Paint (p3-paint) --
+		// Border radii: the horizontal and the vertical radius of the corners top-left, top-right, bottom-right and
+		// bottom-left (index 2 * corner + axis). A length in px, a percentage (of the border box's width or height) or
+		// a calc() of both (Element::GetRenderBox resolves and scales them all).
+		LengthPercentage border_radius_values[8];
+
+		// The element's opacity (CSS: not inherited): below 1 the element and its descendants are drawn as a group
+		// (Element::GetDrawOpacity, ElementEffects).
+		float opacity = 1.f;
+		Isolation isolation = Isolation::Auto;
+		bool has_background_image = false; // a background layer with an image (ElementBackgroundLayers)
+
+		// object-fit and object-position (replaced elements: ComputeObjectFitRect in ObjectFit.h).
+		ObjectFit object_fit = ObjectFit::Fill;
+		LengthPercentage object_position_x = LengthPercentage(LengthPercentage::Percentage, 50.f);
+		LengthPercentage object_position_y = LengthPercentage(LengthPercentage::Percentage, 50.f);
+
+		// Outline: the width as declared (the computed width is 0 when the style is none), the colour unless it is
+		// 'currentcolor' (the initial value, and 'invert').
+		BorderStyle outline_style = BorderStyle::None;
+		bool outline_color_current = true;
+		Colourb outline_color{0, 0, 0};
+		float outline_width = 3.f;
+		float outline_offset = 0.f;
 
 		// -- Text (p3-text) --
 
@@ -282,10 +306,14 @@ namespace Style {
 		LengthPercentageAuto bottom()              const { return GetLengthPercentageAuto(common.bottom_type, common.bottom_value, ComputedCalculationSlot::Bottom); }
 		LengthPercentageAuto left()                const { return GetLengthPercentageAuto(common.left_type, common.left_value, ComputedCalculationSlot::Left); }
 		NumberAuto           z_index()             const { return NumberAuto(common.z_index_type, common.z_index_value); }
-		float                border_top_width()    const { return (float)common.border_top_width; }
-		float                border_right_width()  const { return (float)common.border_right_width; }
-		float                border_bottom_width() const { return (float)common.border_bottom_width; }
-		float                border_left_width()   const { return (float)common.border_left_width; }
+		float                border_top_width()    const { return IsBorderStylePainted(common.border_top_style) ? common.border_top_width : 0.f; }
+		float                border_right_width()  const { return IsBorderStylePainted(common.border_right_style) ? common.border_right_width : 0.f; }
+		float                border_bottom_width() const { return IsBorderStylePainted(common.border_bottom_style) ? common.border_bottom_width : 0.f; }
+		float                border_left_width()   const { return IsBorderStylePainted(common.border_left_style) ? common.border_left_width : 0.f; }
+		BorderStyle          border_top_style()    const { return common.border_top_style; }
+		BorderStyle          border_right_style()  const { return common.border_right_style; }
+		BorderStyle          border_bottom_style() const { return common.border_bottom_style; }
+		BorderStyle          border_left_style()   const { return common.border_left_style; }
 		BoxSizing            box_sizing()          const { return common.box_sizing; }
 		Display              display()             const { return common.display; }
 		Position             position()            const { return common.position; }
@@ -319,7 +347,6 @@ namespace Style {
 		WhiteSpace     white_space()      const { return ToWhiteSpace(inherited.white_space_collapse, inherited.text_wrap_mode); }
 		WordBreak      word_break()       const { return inherited.word_break; }
 		Colourb        color()            const { return inherited.color; }
-		float          opacity()          const { return inherited.opacity; }
 		LineHeight     line_height()      const { return LineHeight(inherited.line_height, inherited.line_height_inherit_type, inherited.line_height_inherit); }
 		const String&  language()         const { return inherited.language; }
 		Direction      direction()        const { return inherited.direction; }
@@ -350,12 +377,6 @@ namespace Style {
 		float             flex_grow()                  const { return GetLocalNumericProperty(PropertyId::FlexGrow, 0.f); }
 		float             flex_shrink()                const { return GetLocalNumericProperty(PropertyId::FlexShrink, 1.f); }
 		FlexBasis         flex_basis()                 const { return GetLengthPercentageAuto(rare.flex_basis_type, rare.flex_basis, ComputedCalculationSlot::FlexBasis); }
-		float             border_top_left_radius()     const { return (float)rare.border_top_left_radius; }
-		float             border_top_right_radius()    const { return (float)rare.border_top_right_radius; }
-		float             border_bottom_right_radius() const { return (float)rare.border_bottom_right_radius; }
-		float             border_bottom_left_radius()  const { return (float)rare.border_bottom_left_radius; }
-		CornerSizes       border_radius()              const { return {(float)rare.border_top_left_radius,     (float)rare.border_top_right_radius,
-		                                                               (float)rare.border_bottom_right_radius, (float)rare.border_bottom_left_radius}; }
 		TextOverflow      text_overflow()              const { return rare.text_overflow; }
 		String            text_overflow_string()       const { return GetLocalProperty(PropertyId::TextOverflow, String());; }
 		Clip              clip()                       const { return rare.clip; }
@@ -388,6 +409,21 @@ namespace Style {
 		// Cascade (p3-cascade)
 
 		// Paint (p3-paint)
+		// A border radius as declared: corner 0-3 (top-left, top-right, bottom-right, bottom-left), axis 0 (horizontal)
+		// or 1 (vertical): a length, a percentage or a calc() of both.
+		const LengthPercentage& border_radius(int corner, int axis) const { return rare.border_radius_values[2 * corner + axis]; }
+		bool              has_border_radius()          const { for (const LengthPercentage& value : rare.border_radius_values) { if (value.type != LengthPercentage::Length || value.value != 0.f) return true; } return false; }
+		float             opacity()                    const { return rare.opacity; }
+		Isolation         isolation()                  const { return rare.isolation; }
+		bool              has_background_image()       const { return rare.has_background_image; }
+		ObjectFit         object_fit()                 const { return rare.object_fit; }
+		LengthPercentage  object_position_x()          const { return rare.object_position_x; }
+		LengthPercentage  object_position_y()          const { return rare.object_position_y; }
+		BorderStyle       outline_style()              const { return rare.outline_style; }
+		float             outline_width()              const { return rare.outline_style == BorderStyle::None ? 0.f : rare.outline_width; }
+		float             outline_offset()             const { return rare.outline_offset; }
+		Colourb           outline_color()              const { return rare.outline_color_current ? inherited.color : rare.outline_color; }
+		bool              outline_color_is_current()   const { return rare.outline_color_current; }
 
 		// Text (p3-text)
 		TextAlign          specified_text_align()      const { return inherited.text_align; }
@@ -451,10 +487,14 @@ namespace Style {
 		void bottom             (LengthPercentageAuto value) { StoreLengthPercentageAuto(ComputedCalculationSlot::Bottom, value); common.bottom_type = value.type; common.bottom_value = value.value; }
 		void left               (LengthPercentageAuto value) { StoreLengthPercentageAuto(ComputedCalculationSlot::Left, value); common.left_type = value.type; common.left_value = value.value; }
 		void z_index            (NumberAuto value)           { common.z_index_type        = value.type; common.z_index_value        = value.value; }
-		void border_top_width   (int16_t value)              { common.border_top_width    = value; }
-		void border_right_width (int16_t value)              { common.border_right_width  = value; }
-		void border_bottom_width(int16_t value)              { common.border_bottom_width = value; }
-		void border_left_width  (int16_t value)              { common.border_left_width   = value; }
+		void border_top_width   (float value)                { common.border_top_width    = value; }
+		void border_right_width (float value)                { common.border_right_width  = value; }
+		void border_bottom_width(float value)                { common.border_bottom_width = value; }
+		void border_left_width  (float value)                { common.border_left_width   = value; }
+		void border_top_style   (BorderStyle value)          { common.border_top_style    = value; }
+		void border_right_style (BorderStyle value)          { common.border_right_style  = value; }
+		void border_bottom_style(BorderStyle value)          { common.border_bottom_style = value; }
+		void border_left_style  (BorderStyle value)          { common.border_left_style   = value; }
 		void box_sizing         (BoxSizing value)            { common.box_sizing          = value; }
 		void display            (Display value)              { common.display             = value; }
 		void position           (Position value)             { common.position            = value; }
@@ -485,7 +525,6 @@ namespace Style {
 		void text_transform    (TextTransform value)  { inherited.text_transform     = value; }
 		void word_break        (WordBreak value)      { inherited.word_break         = value; }
 		void color             (Colourb value)        { inherited.color              = value; }
-		void opacity           (float value)          { inherited.opacity            = value; }
 		void line_height       (LineHeight value)     { inherited.line_height = value.value; inherited.line_height_inherit_type = value.inherit_type; inherited.line_height_inherit = value.inherit_value;  }
 		void language          (const String& value)  { inherited.language           = value; }
 		void direction         (Direction value)      { inherited.direction          = value; }
@@ -506,10 +545,6 @@ namespace Style {
 		void perspective               (float value)             { rare.perspective                = value; }
 		void has_local_perspective     (bool value)              { rare.has_local_perspective      = value; }
 		void has_local_transform       (bool value)              { rare.has_local_transform        = value; }
-		void border_top_left_radius    (float value)             { rare.border_top_left_radius     = (int16_t)value; }
-		void border_top_right_radius   (float value)             { rare.border_top_right_radius    = (int16_t)value; }
-		void border_bottom_right_radius(float value)             { rare.border_bottom_right_radius = (int16_t)value; }
-		void border_bottom_left_radius (float value)             { rare.border_bottom_left_radius  = (int16_t)value; }
 		void text_overflow             (TextOverflow value)      { rare.text_overflow              = value; }
 		void clip                      (Clip value)              { rare.clip                       = value; }
 		void drag                      (Drag value)              { rare.drag                       = value; }
@@ -531,6 +566,18 @@ namespace Style {
 		// Cascade (p3-cascade)
 
 		// Paint (p3-paint)
+		void opacity                   (float value)                { rare.opacity = value; }
+		void isolation                 (Isolation value)            { rare.isolation = value; }
+		void has_background_image      (bool value)                 { rare.has_background_image = value; }
+		void object_fit                (ObjectFit value)            { rare.object_fit = value; }
+		void object_position_x         (LengthPercentage value)     { rare.object_position_x = std::move(value); }
+		void object_position_y         (LengthPercentage value)     { rare.object_position_y = std::move(value); }
+		void outline_style             (BorderStyle value)          { rare.outline_style = value; }
+		void outline_width             (float value)                { rare.outline_width = value; }
+		void outline_offset            (float value)                { rare.outline_offset = value; }
+		void outline_color             (Colourb value)              { rare.outline_color = value; rare.outline_color_current = false; }
+		void outline_color_current     ()                           { rare.outline_color_current = true; }
+		void border_radius             (int corner, int axis, LengthPercentage value) { rare.border_radius_values[2 * corner + axis] = std::move(value); }
 
 		// Text (p3-text)
 		void white_space_collapse      (WhiteSpaceCollapse value) { inherited.white_space_collapse = value; }

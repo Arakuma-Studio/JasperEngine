@@ -29,6 +29,7 @@ namespace jasperengine::htmlui::compat {
         Sticky, BoxParity,
         // phase 3, p3-cascade
         Has, FocusPseudoClasses, SelectorsLevel4, ListMarkers,
+        Outline, ObjectFit, BackgroundLayers,       // p3-paint
         Count
     };
 

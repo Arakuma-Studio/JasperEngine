@@ -1,0 +1,10 @@
+{
+ "comment": "outline-style: auto (the focus ring): default width and colour, 1px, 5px, with a colour, with an offset, rounded boxes, on a dark box, with currentcolor. Tolerance: the anti-aliased edge of a curve where it is nearly tangent to a pixel row or column: the engine fades it linearly over 1.1 px (feathering over 4x multisampling), Skia uses the covered area; such pixels differ by up to about 30 levels (scattered single pixels, no shape difference). The focus rings are thin (1 and 2 px) curves: most of their pixels are edge pixels. Measured 0.268 % on glcore and Vulkan; the cluster limit stays at the default (16 px).",
+ "viewport": [
+  320,
+  290
+ ],
+ "tolerance": {
+  "badPercent": 0.27
+ }
+}

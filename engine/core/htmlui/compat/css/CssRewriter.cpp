@@ -854,9 +854,13 @@ namespace {
                             name = name.substr(p.size());
                     }
                 }
-                // (a native text-shadow reads the variable as it is: no font-effect copy)
-                const std::string_view family =
-                    (name == "text-shadow" && session.options.fork.has(ForkFeature::TextShadow)) ? std::string_view() : varFamilyOf(name);
+                // (a native text-shadow reads the variable as it is: no font-effect copy; the fork's background and mask
+                // layers read it as the CSS value, its url()s resolved: phase 3 p3-paint)
+                const bool nativeLayers = session.options.fork.has(ForkFeature::BackgroundLayers) &&
+                                          (name == "background" || name == "background-image" || name == "mask" || name == "mask-image");
+                const std::string_view family = (name == "text-shadow" && session.options.fork.has(ForkFeature::TextShadow))
+                                                    ? std::string_view()
+                                                    : (nativeLayers ? std::string_view("native-layers") : varFamilyOf(name));
                 const ComponentValue* sole = soleValue(d.value);
                 const bool whole = sole && sole->isFunction("var");
                 const bool timing = name == "transition" || name == "animation" || name == "transition-timing-function" ||
@@ -952,7 +956,8 @@ namespace {
                 if (isBodyRule(rule))
                     bodyBackground = true;
             }
-            session.propagateBodyBackground = bodyBackground && !rootBackground;
+            // (the fork propagates it itself, at run time: ElementDocument::SetCanvasBackground)
+            session.propagateBodyBackground = bodyBackground && !rootBackground && !session.options.fork.has(ForkFeature::BackgroundLayers);
         }
 
         // overflow propagation (CSS Overflow 3 §3.3, phase 3 §3.11.3): with the root's overflow visible, the body's
@@ -1551,10 +1556,17 @@ namespace {
             // 4. value normalization
             NormalizeContext normalize;
             normalize.colors = facts.colorKeywords;
+            // (the fork's outline-color takes currentcolor too: ForkFeature::Outline, p3-paint)
+            // (and the fork's layers resolve currentcolor in gradient stops where they are drawn: ForkFeature::BackgroundLayers)
+            const bool nativeColorRewrite = writesCurrentColorNatively(row->rewrite) ||
+                                            (row->rewrite == RewriteId::Outline && session.options.fork.has(ForkFeature::Outline)) ||
+                                            ((row->rewrite == RewriteId::Background || row->rewrite == RewriteId::BackgroundLonghand ||
+                                              row->rewrite == RewriteId::MaskImage) &&
+                                             session.options.fork.has(ForkFeature::BackgroundLayers));
             normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint || keepsCurrentColorKeyword(session, *row) ||
-                                                (session.options.fork.has(ForkFeature::CurrentColor) && writesCurrentColorNatively(row->rewrite));
+                                                (session.options.fork.has(ForkFeature::CurrentColor) && nativeColorRewrite);
             normalize.currentColorMixNative = session.options.fork.has(ForkFeature::CurrentColor) &&
-                                              (writesCurrentColorNatively(row->rewrite) || keepsCurrentColorKeyword(session, *row));
+                                              (nativeColorRewrite || keepsCurrentColorKeyword(session, *row));
             // a style attribute or a keyframe cannot be duplicated per orientation: vmin/vmax evaluated
             normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
             // math functions the fork evaluates stay in the properties written as they are read

@@ -4,6 +4,9 @@ add_executable(${TARGET_NAME}
 	Alignment.cpp
 	Animation.cpp
 	AnimationLayers.cpp
+	Backgrounds.cpp
+	BorderRadius.cpp
+	BorderStyle.cpp
 	Calculation.cpp
 	CascadeKeywords.cpp
 	CalculationTypes.cpp
@@ -34,6 +37,7 @@ add_executable(${TARGET_NAME}
 	InlineStyle.cpp
 	GridLayout.cpp
 	GridParsing.cpp
+	GroupOpacity.cpp
 	IndividualTransforms.cpp
 	InitialValues.cpp
 	IntrinsicSizing.cpp
@@ -42,10 +46,13 @@ add_executable(${TARGET_NAME}
 	LineBreaking.cpp
 	ListMarkers.cpp
 	Localization.cpp
+	ObjectFit.cpp
+	Outline.cpp
 	main.cpp
 	Math.cpp
 	MediaQuery.cpp
 	Navigation.cpp
+	PaintTransitions.cpp
 	Properties.cpp
 	RootFontSize.cpp
 	PropertySpecification.cpp
@@ -56,6 +63,7 @@ add_executable(${TARGET_NAME}
 	Specificity_Basic.cpp
 	Specificity_MediaQuery.cpp
 	StableVector.cpp
+	StackingContext.cpp
 	StringUtilities.cpp
 	StyleSheetParser.cpp
 	StyleValue.cpp
@@ -67,6 +75,7 @@ add_executable(${TARGET_NAME}
 	Values.cpp
 	ValuesInterpolation.cpp
 	Variant.cpp
+	Visibility.cpp
 	XMLParser.cpp
 	MarginCollapse.cpp
 	AspectRatio.cpp

@@ -1,0 +1,44 @@
+{
+ "fixture": "paint/z-index-static-ignored.html",
+ "viewport": [
+  220,
+  220
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "a",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 120,
+    "h": 60
+   },
+   {
+    "id": "b",
+    "tag": "div",
+    "x": 40,
+    "y": 30,
+    "w": 120,
+    "h": 60
+   },
+   {
+    "id": "c",
+    "tag": "div",
+    "x": 0,
+    "y": 110,
+    "w": 120,
+    "h": 60
+   },
+   {
+    "id": "d",
+    "tag": "div",
+    "x": 40,
+    "y": 140,
+    "w": 120,
+    "h": 60
+   }
+  ]
+ }
+}

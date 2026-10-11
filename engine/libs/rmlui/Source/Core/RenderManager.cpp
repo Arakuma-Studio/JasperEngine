@@ -82,6 +82,19 @@ Texture RenderManager::LoadTexture(const String& source, const String& document_
 	return Texture(this, texture_database->file_database.InsertTexture(path));
 }
 
+Texture RenderManager::LoadTexture(const String& source, const String& document_path, const String& query)
+{
+	String path;
+	GetSystemInterface()->JoinPath(path, StringUtilities::Replace(document_path, '|', ':'), source);
+	path += (path.find('?') == String::npos ? "?" : "&") + query;
+	return Texture(this, texture_database->file_database.InsertTexture(path));
+}
+
+bool RenderManager::SupportsTextureWrapHint() const
+{
+	return render_interface && render_interface->SupportsTextureWrapHint();
+}
+
 CallbackTexture RenderManager::MakeCallbackTexture(CallbackTextureFunction callback)
 {
 	return CallbackTexture(this, texture_database->callback_database.CreateTexture(std::move(callback)));

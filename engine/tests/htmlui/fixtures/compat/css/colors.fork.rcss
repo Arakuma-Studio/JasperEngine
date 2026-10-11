@@ -1,0 +1,98 @@
+#htmlui-root .hex {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+background-color: #ff000088;
+border-top-color: #ff0000ff;
+border-right-color: #ff0000ff;
+border-bottom-color: #ff0000ff;
+border-left-color: #ff0000ff;
+outline-color: #ff000080;
+}
+#htmlui-root .rgb {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+background-color: #ff000080;
+caret-color: #00000080;
+}
+#htmlui-root .rgb-space {
+color: #1a334dff;
+--html-current-color: #1a334dff;
+background-color: #ff800040;
+border-top-color: #00ff00ff;
+border-right-color: #00ff00ff;
+border-bottom-color: #00ff00ff;
+border-left-color: #00ff00ff;
+}
+#htmlui-root .hsl {
+color: #40bf40ff;
+--html-current-color: #40bf40ff;
+background-color: #0000ff80;
+border-top-color: #008080ff;
+border-right-color: #008080ff;
+border-bottom-color: #008080ff;
+border-left-color: #008080ff;
+}
+#htmlui-root .hwb {
+color: #73cc1aff;
+--html-current-color: #73cc1aff;
+background-color: #00aaff66;
+}
+#htmlui-root .lab {
+color: #bf5700ff;
+--html-current-color: #bf5700ff;
+background-color: #769c3eff;
+}
+#htmlui-root .oklab {
+color: #bf81daff;
+--html-current-color: #bf81daff;
+background-color: #00b9c3cc;
+}
+#htmlui-root .color-fn {
+color: #ff8000ff;
+--html-current-color: #ff8000ff;
+background-color: #ff0000ff;
+border-top-color: #00a7a4ff;
+border-right-color: #00a7a4ff;
+border-bottom-color: #00a7a4ff;
+border-left-color: #00a7a4ff;
+}
+#htmlui-root .mix {
+color: #800080ff;
+--html-current-color: #800080ff;
+background-color: #8800ecff;
+border-top-color: #ff000033;
+border-right-color: #ff000033;
+border-bottom-color: #ff000033;
+border-left-color: #ff000033;
+}
+#htmlui-root .relative {
+color: #ff000080;
+--html-current-color: #ff000080;
+background-color: #007fffff;
+}
+#htmlui-root .light-dark {
+color: #111111ff;
+--html-current-color: #111111ff;
+}
+#htmlui-root .keywords {
+color: #00000000;
+--html-current-color: #00000000;
+background-color: #663399ff;
+border-top-color: #ffffffff;
+border-right-color: #ffffffff;
+border-bottom-color: #ffffffff;
+border-left-color: #ffffffff;
+}
+#htmlui-root .dynamic {
+--c: 255 0 0;
+}
+#htmlui-root .dynamic-2 {
+--c: 0 0 255;
+}
+#htmlui-root .static-var {
+--rgb: 0, 128, 255;
+background-color: #0080ff4d;
+}
+#htmlui-root .gradient-stop {
+background-image: linear-gradient(#00000080, #ffffff1a);
+}

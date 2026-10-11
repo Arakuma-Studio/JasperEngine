@@ -472,7 +472,7 @@ TEST_CASE("Values.logical_properties")
 		"#a { width: 300px; height: 300px; position: relative; } "
 		"#b { position: absolute; margin-inline: 10px 20px; margin-block: 5px; padding-inline-start: 3px; padding-block-end: 4px; "
 		"inset-inline-start: 7px; inset-block: 8px auto; inline-size: 50px; block-size: 40px; max-inline-size: 45px; min-block-size: 60px; "
-		"border-inline-width: 2px 4px; border-block-start-width: 1px; border-inline-color: #ff0000; border-block: 3px #0000ff; }");
+		"border-style: solid; border-inline-width: 2px 4px; border-block-start-width: 1px; border-inline-color: #ff0000; border-block: 3px solid #0000ff; }");
 	Element* b = document->GetElementById("b");
 	REQUIRE(b);
 	const auto& computed = b->GetComputedValues();

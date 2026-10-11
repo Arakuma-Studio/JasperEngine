@@ -13,13 +13,13 @@ border-bottom-color: currentcolor;
 border-left-width: 2px;
 border-left-style: solid;
 border-left-color: currentcolor;
+border-image: none;
 --html-box-shadow: 0px 0px 4px #336699ff;
 box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
 }
 #htmlui-root .companion {
 background-color: currentcolor;
---html-outline-shadow: 0 0 0 1px var(--html-current-color, #000000ff);
-box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+outline: 1px solid currentcolor;
 }
 #htmlui-root .borders-no-color {
 border-right-width: 3px;
@@ -31,6 +31,7 @@ border-bottom-color: currentcolor;
 border-left-width: 3px;
 border-left-style: solid;
 border-left-color: currentcolor;
+border-image: none;
 border-top-width: 1px;
 border-top-style: dashed;
 border-top-color: currentcolor;
@@ -44,7 +45,14 @@ stroke: currentcolor;
 }
 #htmlui-root .gradient {
 background-color: transparent;
-decorator: linear-gradient(var(--html-current-color, #000000ff), #00000000) border-box;
+background-image: linear-gradient(currentcolor, #00000000);
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
 }
 #htmlui-root .var-color {
 color: var(--theme);

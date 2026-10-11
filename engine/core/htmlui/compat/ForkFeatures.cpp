@@ -20,12 +20,12 @@ namespace {
     constexpr bool kPresent[(size_t)ForkFeature::Count] = {
         false,   // None (never present)
         true,    // Calc (phase 3, p3-base: upstream PR #983; docs/html-ui/FORK.md)
-        false,   // BorderStyle
-        false,   // PercentRadius
+        true,    // BorderStyle (phase 3, p3-paint: docs/html-ui/FORK.md)
+        true,    // PercentRadius (phase 3, p3-paint: percentages and elliptical radii; docs/html-ui/FORK.md)
         true,    // PseudoElements (phase 3, p3-cascade: docs/html-ui/FORK.md)
         true,    // RootIsWhere (phase 3, p3-cascade: docs/html-ui/FORK.md)
         true,    // Fixed (phase 3, p3-layout: position: fixed against the viewport; docs/html-ui/FORK.md P3-L8)
-        false,   // GroupOpacity
+        true,    // GroupOpacity (phase 3, p3-paint: opacity groups, not inherited; docs/html-ui/FORK.md)
         true,    // TimingFunctions (phase 3, p3-animation: CSS easing functions; docs/html-ui/FORK.md P3-A1)
         true,    // Important (phase 3, p3-cascade: docs/html-ui/FORK.md)
         true,    // CssWideKeywords (phase 3, p3-cascade: docs/html-ui/FORK.md)
@@ -43,6 +43,9 @@ namespace {
         true,    // FocusPseudoClasses (phase 3, p3-cascade)
         true,    // SelectorsLevel4 (phase 3, p3-cascade)
         true,    // ListMarkers (phase 3, p3-cascade)
+        true,    // Outline (phase 3, p3-paint: outline-* drawn by the fork, the focus ring; docs/html-ui/FORK.md)
+        true,    // ObjectFit (phase 3, p3-paint: object-fit, object-position with <position>; docs/html-ui/FORK.md)
+        true,    // BackgroundLayers (phase 3, p3-paint: background-* and mask-* layers, the canvas background; docs/html-ui/FORK.md)
     };
 
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {
@@ -53,6 +56,7 @@ namespace {
         "CurrentColor", "ExtraUnits", "LineHeightNormal",
         "Sticky", "BoxParity",
         "Has", "FocusPseudoClasses", "SelectorsLevel4", "ListMarkers",
+        "Outline", "ObjectFit", "BackgroundLayers",
     };
 
     constexpr uint64_t bitOf(ForkFeature feature){
@@ -283,6 +287,13 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
             // a sample of the family: the word-spacing property, the white-space and text-decoration shorthands
             return parses("word-spacing", "0.25em") && parses("white-space", "break-spaces") &&
                    parses("text-decoration", "underline dotted #ff0000ff 2px") && parses("overflow-wrap", "anywhere");
+        case ForkFeature::Outline:
+            return parses("outline", "2px dashed #ff0000ff") && parses("outline-style", "auto") && parses("outline-offset", "-2px");
+        case ForkFeature::BackgroundLayers:
+            return parses("background", "url(a.png) center / cover no-repeat, linear-gradient(#ff0000ff, #0000ffff) #000000ff") &&
+                   parses("mask", "linear-gradient(#000000ff, #00000000) 0% 0% / 10px 10px repeat-x");
+        case ForkFeature::ObjectFit:
+            return parses("object-fit", "scale-down") && parses("object-position", "right 10px bottom 20%");
         case ForkFeature::Sticky: {
             if (!parses("overflow", "clip"))
                 return false;

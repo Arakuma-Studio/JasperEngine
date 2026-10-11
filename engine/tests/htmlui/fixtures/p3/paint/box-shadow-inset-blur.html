@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: blurred inset box shadows (radii, spread, offset, flex containers)</title>
+<style>
+  html, body { margin: 0; background: #0f172a; }
+  .b { position: absolute; width: 90px; height: 70px; background: #1e293b; }
+  #b1 { left: 10px; top: 10px; box-shadow: inset 0 0 14px rgba(168, 85, 247, 0.45); }
+  #b2 { left: 120px; top: 10px; border-radius: 10px; box-shadow: inset 0 0 12px rgba(59, 130, 246, 0.4); }
+  #b3 { left: 230px; top: 10px; border-radius: 50%; box-shadow: inset 0 0 20px #f59e0b; }
+  #b4 { left: 340px; top: 10px; border-radius: 6px 24px; box-shadow: inset 4px 6px 10px 3px rgba(34, 197, 94, 0.8); }
+  #b5 { left: 10px; top: 100px; display: flex; align-items: center; justify-content: center; border: 2px solid #a855f7; border-radius: 10px; box-shadow: inset 0 0 14px rgba(168, 85, 247, 0.45); }
+  #b5 > div { width: 30px; height: 20px; background: #e2e8f0; }
+  #b6 { left: 120px; top: 100px; display: flex; border-radius: 12px; box-shadow: inset 0 0 8px 6px #22c55e, 0 0 10px rgba(245, 158, 11, 0.6); }
+  #b7 { left: 230px; top: 100px; border: 3px solid #3b82f6; box-shadow: inset 0 0 16px -4px #ffffff; }
+  #b8 { left: 340px; top: 100px; display: flex; flex-direction: column; border-radius: 20px; box-shadow: inset 0 -10px 12px rgba(0, 0, 0, 0.6), inset 0 0 0 2px #f43f5e; }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div><div class="b" id="b4"></div><div class="b" id="b5"><div></div></div><div class="b" id="b6"></div><div class="b" id="b7"></div><div class="b" id="b8"></div></body>
+</html>

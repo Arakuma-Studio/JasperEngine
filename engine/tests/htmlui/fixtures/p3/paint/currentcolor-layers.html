@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: currentcolor in background and mask layers, resolved where they are drawn</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; width: 100px; height: 70px; }
+  #b1 { left: 10px; top: 10px; color: #cc3333; background: linear-gradient(to right, currentcolor, #3366cc); }
+  #b2 { left: 120px; top: 10px; color: #339966; background: radial-gradient(circle, color-mix(in srgb, currentcolor 50%, #ffffff), currentcolor); }
+  #b3 { left: 230px; top: 10px; color: #3366cc; background: linear-gradient(currentcolor 0 50%, transparent 50%) 0 0 / 20px 20px, #f4c430; }
+  #b4 { left: 340px; top: 10px; color: #663399; background: conic-gradient(currentcolor, #f4c430, currentcolor); }
+  #b5 { left: 10px; top: 90px; color: #000000; background: #3366cc; mask: linear-gradient(to right, currentcolor, transparent); }
+  #b6 { left: 120px; top: 90px; color: #cc3333; }
+  #b6 > div { width: 100%; height: 100%; background: linear-gradient(currentcolor, #ffffff); }
+  #b1.alt, #b6.alt { color: #2a9d8f; }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div><div class="b" id="b4"></div><div class="b" id="b5"></div><div class="b" id="b6"><div></div></div></body>
+</html>

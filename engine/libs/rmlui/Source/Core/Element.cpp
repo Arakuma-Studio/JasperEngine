@@ -15,6 +15,7 @@
 #include "../../Include/RmlUi/Core/StyleSheet.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "../../Include/RmlUi/Core/TransformPrimitive.h"
+#include "CalculationResolver.h"
 #include "Clock.h"
 #include "ComputeProperty.h"
 #include "DataModel.h"
@@ -28,6 +29,7 @@
 #include "PseudoElements.h"
 #include "EventDispatcher.h"
 #include "EventSpecification.h"
+#include "GeometryBackgroundBorder.h"
 #include "Layout/LayoutDetails.h"
 #include "Layout/LayoutEngine.h"
 #include "PluginRegistry.h"
@@ -214,7 +216,12 @@ void Element::Render()
 	RMLUI_ZoneText(name.c_str(), name.size());
 #endif
 
+	// A transparent group draws nothing (it stays in the layout and can be hit).
+	if (meta->computed_values.opacity() <= 0.f)
+		return;
+
 	UpdateAbsoluteOffsetAndRenderBoxData();
+	UpdateOpacityLeaf();
 
 	if (stacking_context_dirty)
 		BuildLocalStackingContext();
@@ -224,7 +231,8 @@ void Element::Render()
 
 	meta->effects.RenderEffects(RenderStage::Enter);
 
-	if (ElementUtilities::SetClippingRegion(this))
+	// A hidden element (CSS visibility) paints nothing of its own; its visible descendants paint (phase 3, p3-paint).
+	if (meta->computed_values.visibility() == Style::Visibility::Visible && ElementUtilities::SetClippingRegion(this))
 	{
 		meta->background_border.Render(this);
 		meta->effects.RenderEffects(RenderStage::Decoration);
@@ -236,11 +244,98 @@ void Element::Render()
 		}
 	}
 
-	for (Element* element : stacking_context)
-		element->Render();
+	RenderStackingContextChildren();
 
 	ElementUtilities::ApplyTransform(*this);
 	meta->effects.RenderEffects(RenderStage::Exit);
+}
+
+// Outlines are painted as Chromium paints them (CSS UI 4 leaves their place open): per paint layer (the stacking context,
+// and each positioned element), after the layer's in-flow content and before its positioned descendants.
+void Element::RenderStackingContextChildren()
+{
+	const auto has_outline = [](const Element* element) {
+		return element->meta->computed_values.outline_style() != Style::BorderStyle::None &&
+			element->meta->computed_values.visibility() == Style::Visibility::Visible;
+	};
+
+	// An element that is not a stacking context has no children here, and its outline is painted by its stacking context.
+	const bool own_outline = (local_stacking_context && has_outline(this));
+	bool any_outline = own_outline;
+	for (const Element* element : stacking_context)
+		any_outline |= has_outline(element);
+	if (!any_outline)
+	{
+		for (Element* element : stacking_context)
+			element->Render();
+		return;
+	}
+
+	const auto is_descendant = [](const Element* element, const Element* ancestor) {
+		for (const Element* e = element->parent; e; e = e->parent)
+		{
+			if (e == ancestor)
+				return true;
+		}
+		return false;
+	};
+
+	// Stacks shared by the nested calls (a stacking context inside renders its own above ours, and leaves them as it
+	// found them).
+	struct OutlineLayer {
+		const Element* owner;
+		size_t begin; // The layer's outlines in 'pending', from here on.
+	};
+	static thread_local Vector<Element*> pending;
+	static thread_local Vector<OutlineLayer> layers;
+	const size_t pending_base = pending.size();
+	const size_t layers_base = layers.size();
+
+	const auto flush = [](size_t begin) {
+		// (Rendering an outline does not render elements: 'pending' stays as it is meanwhile.)
+		for (size_t i = begin; i < pending.size(); i++)
+			pending[i]->RenderOutline();
+		pending.resize(begin);
+	};
+
+	layers.push_back({this, pending_base});
+	if (own_outline)
+		pending.push_back(this);
+
+	for (Element* element : stacking_context)
+	{
+		while (layers.size() > layers_base + 1 && !is_descendant(element, layers.back().owner))
+		{
+			flush(layers.back().begin);
+			layers.pop_back();
+		}
+
+		const bool is_layer = (element->local_stacking_context || element->GetPosition() != Style::Position::Static);
+		// The outlines of the layer the element is in are painted before it, unless it is painted below the layer's content.
+		if (is_layer && !(element->local_stacking_context && element->z_index < 0.f))
+			flush(layers.back().begin);
+
+		element->Render();
+
+		// A stacking context paints its own outline (in its Render).
+		if (!element->local_stacking_context)
+		{
+			if (is_layer)
+				layers.push_back({element, pending.size()});
+			if (has_outline(element))
+				pending.push_back(element);
+		}
+	}
+	flush(pending_base);
+	layers.resize(layers_base);
+}
+
+void Element::RenderOutline()
+{
+	ElementUtilities::ApplyTransform(*this);
+	// Clipped as the element is by its ancestors; the outline itself lies outside of the element's own box.
+	if (ElementUtilities::SetClippingRegion(this))
+		meta->background_border.RenderOutline(this);
 }
 
 ElementPtr Element::Clone() const
@@ -633,7 +728,34 @@ RenderBox Element::GetRenderBox(BoxArea fill_area, int index, bool with_border_t
 	case BoxArea::Auto: RMLUI_ERROR;
 	}
 
-	RenderBox render_box{inner_size, box.offset, edge_sizes, meta->computed_values.border_radius()};
+	const ComputedValues& computed = meta->computed_values;
+
+	// The radii of the border box (CSS Backgrounds 3, 5.3 and 5.5): percentages of its width (horizontal radii) and height
+	// (vertical ones), then all scaled down together if the curves of two adjacent corners would overlap. The inner radii
+	// of the padding and content boxes follow from them (GeometryBackgroundBorder::ComputeBorderMetrics).
+	CornerSizes2 border_radius = {};
+	if (computed.has_border_radius())
+	{
+		const Vector2f border_size = box.padding_size + box.box.GetFrameSize(BoxArea::Border);
+		for (int i = 0; i < 8; i++)
+		{
+			const int corner = i / 2, axis = i % 2;
+			const float basis = (axis == 0 ? border_size.x : border_size.y);
+			// Lengths, percentages, and calc() of both (also the mixes a transition between them interpolates).
+			const float value = ResolveValue(computed.border_radius(corner, axis), basis);
+			border_radius[corner][axis] = Math::Max(value, 0.f);
+		}
+		GeometryBackgroundBorder::ScaleRadiiToFit(border_radius, border_size);
+		// A corner is square unless both of its radii are positive.
+		for (Vector2f& radius : border_radius)
+		{
+			if (radius.x <= 0.f || radius.y <= 0.f)
+				radius = Vector2f(0.f);
+		}
+	}
+
+	RenderBox render_box{inner_size, box.offset, edge_sizes, border_radius};
+	render_box.SetBorderStyles({computed.border_top_style(), computed.border_right_style(), computed.border_bottom_style(), computed.border_left_style()});
 
 	// A lowered and interrupted top border (a fieldset's legend): the painted main box starts `inset` px lower.
 	BorderTopCut cut;
@@ -689,6 +811,118 @@ bool Element::IsPointWithinElement(const Vector2f point)
 	}
 
 	return false;
+}
+
+void Element::UpdateLocalStackingContext()
+{
+	using namespace Style;
+	const ComputedValues& computed = meta->computed_values;
+
+	// CSS 2.2 9.9.1 and the properties that create stacking contexts (CSS Positioned Layout 3, Compositing 1, ...): z-index
+	// applies to positioned elements and to flex and grid items only (6.3 applied it to every element).
+	const Position position = computed.position();
+	bool is_item = false;
+	if (parent)
+	{
+		const Display parent_display = parent->meta->computed_values.display();
+		is_item = (parent_display == Display::Flex || parent_display == Display::InlineFlex || parent_display == Display::Grid ||
+			parent_display == Display::InlineGrid);
+	}
+	const ZIndex z_index_property = computed.z_index();
+	// Documents (forced stacking contexts) and the context's root element are ordered by their z-index whatever their
+	// position (Context::PullDocumentToFront).
+	const bool z_index_applies =
+		(z_index_property.type != ZIndex::Auto && (position != Position::Static || is_item || local_stacking_context_forced || !parent));
+
+	bool will_change = false;
+	if (const Property* property = GetLocalProperty(PropertyId::WillChange))
+	{
+		if (property->unit == Unit::STRING)
+		{
+			const String value = StringUtilities::ToLower(property->Get<String>());
+			will_change = (value.find("transform") != String::npos || value.find("opacity") != String::npos ||
+				value.find("filter") != String::npos || value.find("perspective") != String::npos);
+		}
+	}
+
+	const float new_z_index = (z_index_applies ? z_index_property.value : 0.f);
+	const bool enable_local_stacking_context = (z_index_applies || local_stacking_context_forced || computed.has_filter() ||
+		computed.has_backdrop_filter() || computed.has_mask_image() || computed.has_local_transform() || computed.has_local_perspective() ||
+		computed.opacity() < 1.f || position == Position::Fixed || position == Position::Sticky || computed.isolation() == Isolation::Isolate ||
+		will_change);
+
+	if (z_index != new_z_index || local_stacking_context != enable_local_stacking_context)
+	{
+		z_index = new_z_index;
+
+		if (local_stacking_context != enable_local_stacking_context)
+		{
+			local_stacking_context = enable_local_stacking_context;
+
+			// If we are no longer acting as a local stacking context, then we clear the list and are all set. Otherwise, we need to rebuild our
+			// local stacking context.
+			stacking_context.clear();
+			stacking_context_dirty = local_stacking_context;
+		}
+
+		// When our z-index or local stacking context changes, then we must dirty our parent stacking context so we are re-indexed.
+		if (parent)
+			parent->DirtyStackingContext();
+	}
+}
+
+float Element::GetDrawOpacity() const
+{
+	return opacity_leaf ? meta->computed_values.opacity() : 1.f;
+}
+
+// An element with an opacity below 1 is drawn into a layer composited with its opacity (ElementEffects), unless it draws
+// one thing only: then its opacity is multiplied into that geometry, which gives the same pixels without a layer.
+void Element::UpdateOpacityLeaf()
+{
+	const ComputedValues& computed = meta->computed_values;
+	const float opacity = computed.opacity();
+	bool leaf = false;
+	if (opacity < 1.f && opacity > 0.f && !computed.has_filter() && !computed.has_backdrop_filter() && !computed.has_mask_image())
+	{
+		bool has_text = false, has_element_child = false;
+		for (const ElementPtr& child : children)
+		{
+			if (child->GetTagName() == "#text")
+				has_text = true;
+			else
+				has_element_child = true;
+		}
+		if (!has_element_child)
+		{
+			const auto visible_border = [&computed](float width, Colourb color) { return width > 0.f && color.alpha > 0; };
+			Vector2f dimensions;
+			float ratio = 0.f;
+			const int painted = int(computed.background_color().alpha > 0) +
+				int(visible_border(computed.border_top_width(), computed.border_top_color()) ||
+					visible_border(computed.border_right_width(), computed.border_right_color()) ||
+					visible_border(computed.border_bottom_width(), computed.border_bottom_color()) ||
+					visible_border(computed.border_left_width(), computed.border_left_color())) +
+				int(computed.has_box_shadow()) + int(computed.has_decorator()) + int(computed.outline_style() != Style::BorderStyle::None) +
+				int(has_text) + int(GetIntrinsicDimensions(dimensions, ratio));
+			leaf = (painted <= 1);
+		}
+	}
+	if (leaf != opacity_leaf)
+	{
+		opacity_leaf = leaf;
+		meta->background_border.DirtyBorder();
+		// Everything drawn with the opacity is generated again: as for a change of the property (elements that draw
+		// content of their own, decorators, text children).
+		PropertyIdSet changed;
+		changed.Insert(PropertyId::Opacity);
+		OnPropertyChange(changed);
+		for (const ElementPtr& child : children)
+		{
+			if (child->GetTagName() == "#text")
+				child->OnPropertyChange(changed);
+		}
+	}
 }
 
 bool Element::IsVisible(bool include_ancestors) const
@@ -2049,14 +2283,14 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 		}
 	}
 
-	const bool border_radius_changed = (                                    //
-		changed_properties.Contains(PropertyId::BorderTopLeftRadius) ||     //
-		changed_properties.Contains(PropertyId::BorderTopRightRadius) ||    //
-		changed_properties.Contains(PropertyId::BorderBottomRightRadius) || //
-		changed_properties.Contains(PropertyId::BorderBottomLeftRadius)     //
-	);
+	// Each corner has a horizontal and a vertical radius (phase 3, p3-paint).
+	bool border_radius_changed = false;
+	for (int i = 0; i < 8; i++)
+		border_radius_changed |= changed_properties.Contains(PropertyId(int(PropertyId::RmlUi_BorderTopLeftRadiusX) + i));
 	const bool filter_or_mask_changed = (changed_properties.Contains(PropertyId::Filter) || changed_properties.Contains(PropertyId::BackdropFilter) ||
-		changed_properties.Contains(PropertyId::MaskImage));
+		changed_properties.Contains(PropertyId::MaskImage) || changed_properties.Contains(PropertyId::MaskSize) ||
+		changed_properties.Contains(PropertyId::MaskPositionX) || changed_properties.Contains(PropertyId::MaskPositionY) ||
+		changed_properties.Contains(PropertyId::MaskRepeat));
 	const bool perspective_changed = changed_properties.Contains(PropertyId::Perspective) ||
 		changed_properties.Contains(PropertyId::PerspectiveOriginX) || changed_properties.Contains(PropertyId::PerspectiveOriginY);
 	const bool transform_changed = changed_properties.Contains(PropertyId::Transform) || changed_properties.Contains(PropertyId::TransformOriginX) ||
@@ -2065,37 +2299,28 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 		changed_properties.Contains(PropertyId::Scale);
 
 	// Update the z-index and stacking context.
-	if (changed_properties.Contains(PropertyId::ZIndex) || filter_or_mask_changed || perspective_changed || transform_changed)
+	if (changed_properties.Contains(PropertyId::ZIndex) || filter_or_mask_changed || perspective_changed || transform_changed ||
+		changed_properties.Contains(PropertyId::Opacity) || changed_properties.Contains(PropertyId::Position) ||
+		changed_properties.Contains(PropertyId::Isolation) || changed_properties.Contains(PropertyId::WillChange))
 	{
-		const Style::ZIndex z_index_property = meta->computed_values.z_index();
-
-		const float new_z_index = (z_index_property.type == Style::ZIndex::Auto ? 0.f : z_index_property.value);
-		const bool enable_local_stacking_context = (z_index_property.type != Style::ZIndex::Auto || local_stacking_context_forced ||
-			meta->computed_values.has_filter() || meta->computed_values.has_backdrop_filter() || meta->computed_values.has_mask_image() ||
-			meta->computed_values.has_local_transform() || meta->computed_values.has_local_perspective());
-
-		if (z_index != new_z_index || local_stacking_context != enable_local_stacking_context)
-		{
-			z_index = new_z_index;
-
-			if (local_stacking_context != enable_local_stacking_context)
-			{
-				local_stacking_context = enable_local_stacking_context;
-
-				// If we are no longer acting as a local stacking context, then we clear the list and are all set. Otherwise, we need to rebuild our
-				// local stacking context.
-				stacking_context.clear();
-				stacking_context_dirty = local_stacking_context;
-			}
-
-			// When our z-index or local stacking context changes, then we must dirty our parent stacking context so we are re-indexed.
-			if (parent)
-				parent->DirtyStackingContext();
-		}
+		UpdateLocalStackingContext();
+	}
+	// 'z-index' applies to flex and grid items whatever their position.
+	if (changed_properties.Contains(PropertyId::Display))
+	{
+		for (int i = 0; i < GetNumChildren(true); i++)
+			GetChild(i)->UpdateLocalStackingContext();
 	}
 
-	// Dirty the background if it's changed.
-	if (border_radius_changed ||                                    //
+	// Dirty the background if it's changed (with the background layers, phase 3 p3-paint).
+	bool background_layers_changed = false;
+	for (PropertyId id : {PropertyId::BackgroundImage, PropertyId::BackgroundPositionX, PropertyId::BackgroundPositionY, PropertyId::BackgroundSize,
+			 PropertyId::BackgroundRepeat, PropertyId::BackgroundOrigin, PropertyId::BackgroundClip, PropertyId::BackgroundAttachment})
+		background_layers_changed |= changed_properties.Contains(id);
+	// (A colour change only where gradient layers may take 'currentcolor'.)
+	if (changed_properties.Contains(PropertyId::Color) && meta->computed_values.has_background_image())
+		background_layers_changed = true;
+	if (border_radius_changed || background_layers_changed ||       //
 		changed_properties.Contains(PropertyId::BackgroundColor) || //
 		changed_properties.Contains(PropertyId::Opacity) ||         //
 		changed_properties.Contains(PropertyId::ImageColor) ||      //
@@ -2197,6 +2422,19 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	}
 
 	// -- Paint (p3-paint) --
+	if (changed_properties.Contains(PropertyId::OutlineWidth) || changed_properties.Contains(PropertyId::OutlineStyle) ||
+		changed_properties.Contains(PropertyId::OutlineColor) || changed_properties.Contains(PropertyId::OutlineOffset) ||
+		changed_properties.Contains(PropertyId::Opacity) ||
+		(changed_properties.Contains(PropertyId::Color) && meta->computed_values.outline_color_is_current()))
+	{
+		meta->background_border.DirtyOutline();
+	}
+	if (changed_properties.Contains(PropertyId::BorderTopStyle) || changed_properties.Contains(PropertyId::BorderRightStyle) ||
+		changed_properties.Contains(PropertyId::BorderBottomStyle) || changed_properties.Contains(PropertyId::BorderLeftStyle))
+	{
+		meta->background_border.DirtyBackground();
+		meta->background_border.DirtyBorder();
+	}
 
 	// -- Text (p3-text) --
 
@@ -2668,7 +2906,12 @@ void Element::AddToStackingContext(Vector<StackingContextChild>& stacking_childr
 {
 	using Style::Display;
 
-	if (!IsVisible())
+	// 'display: none' removes the subtree. A hidden element (CSS visibility) is skipped when painting it, but its
+	// descendants that are visible paint: it stays in the list. Documents and the parts of widgets hide their whole subtree
+	// with it (ElementDocument::Hide, scrollbars, select boxes), as in 6.3.
+	if (meta->computed_values.display() == Display::None)
+		return;
+	if (meta->computed_values.visibility() != Style::Visibility::Visible && (local_stacking_context_forced || is_non_dom_element || !parent))
 		return;
 
 	const Display display = GetDisplay();

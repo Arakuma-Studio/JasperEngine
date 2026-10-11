@@ -36,10 +36,24 @@ width: 6px;
 }
 #htmlui-root .panel > scrollbarvertical > sliderbar, #htmlui-root .panel > scrollbarhorizontal > sliderbar {
 background-color: #555555ff;
-decorator: none;
+background-image: none;
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
 border-radius: 3px;
 }
 #htmlui-root .panel > scrollbarvertical > slidertrack, #htmlui-root .panel > scrollbarhorizontal > slidertrack {
 background-color: #00000000;
-decorator: none;
+background-image: none;
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
 }

@@ -4,8 +4,32 @@
 #include "../../Include/RmlUi/Core/FontEngineInterface.h"
 #include "../../Include/RmlUi/Core/Types.h"
 #include "GeometryBackgroundBorder.h"
+#include "GeometryBorderStyles.h"
 
 namespace Rml {
+
+static bool geometry_feathering = true;
+static float geometry_pixel_size = 1.f;
+
+void SetGeometryFeathering(bool enable)
+{
+	geometry_feathering = enable;
+}
+
+bool GetGeometryFeathering()
+{
+	return geometry_feathering;
+}
+
+void SetGeometryPixelSize(float pixel_size)
+{
+	geometry_pixel_size = (pixel_size > 0.f ? pixel_size : 1.f);
+}
+
+float GetGeometryPixelSize()
+{
+	return geometry_pixel_size;
+}
 
 void MeshUtilities::GenerateQuad(Mesh& mesh, Vector2f origin, Vector2f dimensions, ColourbPremultiplied colour)
 {
@@ -57,6 +81,12 @@ void MeshUtilities::GenerateLine(Mesh& mesh, Vector2f position, Vector2f size, C
 void MeshUtilities::GenerateBackgroundBorder(Mesh& out_mesh, const RenderBox& render_box, ColourbPremultiplied background_color,
 	const ColourbPremultiplied border_colors[4])
 {
+	GenerateBackgroundBorder(out_mesh, render_box, background_color, border_colors, geometry_pixel_size);
+}
+
+void MeshUtilities::GenerateBackgroundBorder(Mesh& out_mesh, const RenderBox& render_box, ColourbPremultiplied background_color,
+	const ColourbPremultiplied border_colors[4], float feather_unit)
+{
 	RMLUI_ASSERT(border_colors);
 
 	Vector<Vertex>& vertices = out_mesh.vertices;
@@ -85,12 +115,44 @@ void MeshUtilities::GenerateBackgroundBorder(Mesh& out_mesh, const RenderBox& re
 	GeometryBackgroundBorder geometry(vertices, indices);
 	const BorderMetrics metrics =
 		GeometryBackgroundBorder::ComputeBorderMetrics(render_box.GetBorderOffset(), border_widths, fill_size, render_box.GetBorderRadius());
+	const BorderStyles border_styles = render_box.GetBorderStyles();
+
+	// Anti-aliasing (phase 3, 3.7.3): with feathering every edge of the background and the border is feathered; without
+	// it (a multisampled target) only curved edges are, multisampling resolving the straight ones. Square, solid borders
+	// without feathering keep the fast path.
+	bool rounded = false;
+	for (const Vector2f& radius : metrics.outer_radii)
+		rounded |= (radius.x > 0.f && radius.y > 0.f);
+	const FeatherEdges edges = (geometry_feathering ? FeatherEdges::All : FeatherEdges::Curves);
 
 	if (has_background)
-		geometry.DrawBackground(metrics, background_color);
+	{
+		// A background inside a border and the border's inner edge stay sharp where they meet, so that no seam shows.
+		if (geometry_feathering || rounded)
+		{
+			// The sides whose border is drawn (the background reaches a little under them).
+			EdgeSizes drawn_widths = border_widths;
+			for (int i = 0; i < 4; i++)
+			{
+				if (border_colors[i].alpha == 0 || !Style::IsBorderStylePainted(border_styles[i]))
+					drawn_widths[i] = 0.f;
+			}
+			GeometryBorderStyles::DrawBackground(vertices, indices, metrics, background_color, has_border ? FeatherEdges::None : edges,
+				has_border ? &drawn_widths : nullptr, feather_unit);
+		}
+		else
+			geometry.DrawBackground(metrics, background_color);
+	}
 
 	if (has_border)
-		geometry.DrawBorder(metrics, border_widths, border_colors, render_box.GetBorderTopGap());
+	{
+		// Styles other than solid, and sides of different colours meeting at a rounded corner, need the styled generator.
+		if (geometry_feathering || rounded || GeometryBorderStyles::IsNeeded(metrics, border_widths, border_colors, border_styles))
+			GeometryBorderStyles::DrawBorder(vertices, indices, metrics, border_widths, border_colors, border_styles, render_box.GetBorderTopGap(),
+				edges, !has_background, feather_unit, render_box.GetSquareDots());
+		else
+			geometry.DrawBorder(metrics, border_widths, border_colors, render_box.GetBorderTopGap());
+	}
 
 #if 0
 	// Debug draw vertices

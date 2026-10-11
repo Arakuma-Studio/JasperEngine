@@ -2184,11 +2184,11 @@ TEST_CASE("Calculation.properties.direct_scalar_and_shorthand_coverage")
 	CHECK(document->SetProperty("margin", "calc(10px + min(5px, 10px)) calc(20px + max(1px, 2px))"));
 	CHECK(document->SetProperty("padding", "calc(1px + min(2px, 3px)) calc(4px + max(5px, 6px))"));
 	CHECK(document->SetProperty("border-width", "calc(1px + min(2px, 3px)) calc(4px + max(5px, 6px))"));
-	CHECK(document->SetProperty("border-top", "calc(1px + min(2px, 3px)) #fff"));
-	CHECK(document->SetProperty("border-right", "calc(1px + min(2px, 3px)) #fff"));
-	CHECK(document->SetProperty("border-bottom", "calc(1px + min(2px, 3px)) #fff"));
-	CHECK(document->SetProperty("border-left", "calc(1px + min(2px, 3px)) #fff"));
-	CHECK(document->SetProperty("border", "calc(1px + min(2px, 3px)) #fff"));
+	CHECK(document->SetProperty("border-top", "calc(1px + min(2px, 3px)) solid #fff"));
+	CHECK(document->SetProperty("border-right", "calc(1px + min(2px, 3px)) solid #fff"));
+	CHECK(document->SetProperty("border-bottom", "calc(1px + min(2px, 3px)) solid #fff"));
+	CHECK(document->SetProperty("border-left", "calc(1px + min(2px, 3px)) solid #fff"));
+	CHECK(document->SetProperty("border", "calc(1px + min(2px, 3px)) solid #fff"));
 	CHECK(document->SetProperty("border-radius", "calc(1px + min(2px, 3px)) calc(4px + max(5px, 6px))"));
 	CHECK(document->SetProperty("inset", "calc(1px + min(2px, 3px)) calc(4px + max(5px, 6px))"));
 	CHECK(document->SetProperty("font", "normal calc(300 + 100) calc(10px + min(10px, 20px)) LatoLatin"));
@@ -2204,7 +2204,7 @@ TEST_CASE("Calculation.properties.direct_scalar_and_shorthand_coverage")
 	CHECK(document->GetComputedValues().flex_shrink() == doctest::Approx(2.f));
 	CHECK(ResolveValue(document->GetComputedValues().flex_basis(), 100.f) == doctest::Approx(26.f));
 	CHECK(document->GetComputedValues().border_top_width() == doctest::Approx(3.f));
-	CHECK(document->GetComputedValues().border_top_left_radius() == doctest::Approx(3.f));
+	CHECK(ResolveValue(document->GetComputedValues().border_radius(0, 0), 100.f) == doctest::Approx(3.f));
 	CHECK(document->GetComputedValues().font_weight() == static_cast<Style::FontWeight>(400));
 	CHECK(document->GetComputedValues().font_size() == doctest::Approx(20.f));
 
@@ -2771,7 +2771,7 @@ TEST_CASE("Calculation.compound.shadow_filter_and_lazy_lifecycle")
 	CHECK(target->SetProperty("box-shadow", "#000 calc(1em + 1px) calc(1rem + 2px) calc(1vw + 3px) calc(1dp + 4px)"));
 	auto resolve_box_shadow = [&]() {
 		const BoxShadowGeometryInfo geometry =
-			GeometryBoxShadow::Resolve(target, CornerSizes{}, ColourbPremultiplied{}, Array<ColourbPremultiplied, 4>{}, 1.f);
+			GeometryBoxShadow::Resolve(target, ColourbPremultiplied{}, Array<ColourbPremultiplied, 4>{}, 1.f);
 		REQUIRE(geometry.shadow_list.size() == 1);
 		return geometry.shadow_list[0];
 	};

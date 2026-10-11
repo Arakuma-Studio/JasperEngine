@@ -75,10 +75,6 @@ String Text(const Style::Clip& value)
 {
 	return Text(value.GetType()) + ":" + Text(value.GetNumber());
 }
-String Text(const CornerSizes& value)
-{
-	return Text(value[0]) + "," + Text(value[1]) + "," + Text(value[2]) + "," + Text(value[3]);
-}
 String Text(const TransitionList* value)
 {
 	return (!value || value->none) ? "none" : CreateString("%d transitions", (int)value->transitions.size());
@@ -179,7 +175,11 @@ String Describe(const ComputedValues& values)
 	RMLUI_FIELD(flex_grow);
 	RMLUI_FIELD(flex_shrink);
 	RMLUI_FIELD(flex_basis);
-	RMLUI_FIELD(border_radius);
+	for (int corner = 0; corner < 4; corner++)
+	{
+		for (int axis = 0; axis < 2; axis++)
+			out += CreateString("border_radius[%d][%d]=", corner, axis) + Text(values.border_radius(corner, axis)) + "\n";
+	}
 	RMLUI_FIELD(text_overflow);
 	if (values.text_overflow() == Style::TextOverflow::String)
 		RMLUI_FIELD(text_overflow_string);
@@ -328,15 +328,17 @@ TEST_CASE("InitialValues.behaviour")
 	context->Update();
 	TestsShell::SetNumExpectedWarnings(0);
 
-	// opacity is not inherited (its specified value), but an element draws with its ancestors' opacities multiplied in
+	// opacity is not inherited: the computed value is the element's own (the ancestors' apply as groups, phase 3 p3-paint:
+	// GroupOpacity.cpp)
 	CHECK(bordered->GetProperty(PropertyId::Opacity)->Get<float>() == 1.f);
 	CHECK(parent->GetComputedValues().opacity() == doctest::Approx(0.5f));
-	CHECK(bordered->GetComputedValues().opacity() == doctest::Approx(0.5f));
-	CHECK(nested->GetComputedValues().opacity() == doctest::Approx(0.25f));
+	CHECK(bordered->GetComputedValues().opacity() == doctest::Approx(1.f));
+	CHECK(nested->GetComputedValues().opacity() == doctest::Approx(0.5f));
 	parent->SetProperty("opacity", "0.8");
 	context->Update();
-	CHECK(bordered->GetComputedValues().opacity() == doctest::Approx(0.8f));
-	CHECK(nested->GetComputedValues().opacity() == doctest::Approx(0.4f));
+	CHECK(parent->GetComputedValues().opacity() == doctest::Approx(0.8f));
+	CHECK(bordered->GetComputedValues().opacity() == doctest::Approx(1.f));
+	CHECK(nested->GetComputedValues().opacity() == doctest::Approx(0.5f));
 
 	// visibility is inherited, and a child can set it back
 	CHECK(bordered->GetComputedValues().visibility() == Style::Visibility::Hidden);

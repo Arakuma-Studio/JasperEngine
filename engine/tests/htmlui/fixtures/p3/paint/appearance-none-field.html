@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: text fields with and without appearance (html.css's 2px inset border)</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  input, textarea { position: absolute; width: 120px; height: 20px; }
+  #f1 { left: 10px; top: 10px; }
+  #f2 { left: 160px; top: 10px; appearance: none; }
+  #f3 { left: 10px; top: 50px; appearance: none; border-color: #3366cc; }
+  #f4 { left: 160px; top: 50px; appearance: none; background-color: #f4c430; }
+  #f5 { left: 10px; top: 90px; appearance: none; border-width: 4px; }
+  #t1 { left: 160px; top: 90px; appearance: none; height: 30px; resize: none; }
+</style>
+</head>
+<body><input id="f1"><input id="f2"><input id="f3"><input id="f4"><input id="f5"><textarea id="t1"></textarea></body>
+</html>

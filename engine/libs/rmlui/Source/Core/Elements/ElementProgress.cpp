@@ -221,7 +221,7 @@ void ElementProgress::GenerateGeometry()
 	}
 
 	const ComputedValues& computed = GetComputedValues();
-	const ColourbPremultiplied quad_colour = computed.image_color().ToPremultiplied(computed.opacity());
+	const ColourbPremultiplied quad_colour = computed.image_color().ToPremultiplied(GetDrawOpacity());
 
 	switch (direction)
 	{

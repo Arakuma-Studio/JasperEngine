@@ -314,7 +314,7 @@ TEST_CASE("GridLayout.absolute_positioning")
 {
 	Context* context = TestsShell::GetContext();
 	ElementDocument* document = LoadGrid(context, R"(
-		<div id="g" class="grid" style="position: relative; width: 100px; height: 60px; padding: 5px; border: 2px #000;
+		<div id="g" class="grid" style="position: relative; width: 100px; height: 60px; padding: 5px; border: 2px solid #000;
 			grid-template-columns: 50px 50px; grid-template-rows: 30px 30px;">
 			<div id="area" style="position: absolute; grid-column: 2 / 3; grid-row: 1 / 3; left: 0; top: 0; right: 0; bottom: 0;"/>
 			<div id="to-edge" style="position: absolute; grid-column: 2; grid-row: 1 / 3; left: 0; top: 0; right: 0; bottom: 0;"/>
@@ -375,7 +375,7 @@ TEST_CASE("GridLayout.static_position")
 	Context* context = TestsShell::GetContext();
 	ElementDocument* document = LoadGrid(context, R"(
 		<div style="position: relative; width: 200px; height: 200px;">
-			<div class="grid" style="width: 100px; height: 100px; border: 5px #000; padding: 10px;">
+			<div class="grid" style="width: 100px; height: 100px; border: 5px solid #000; padding: 10px;">
 				<div id="start" style="position: absolute; width: 30px; height: 30px;"/>
 				<div id="center" style="position: absolute; width: 30px; height: 30px; place-self: center;"/>
 				<div id="end" style="position: absolute; width: 30px; height: 30px; align-self: end; justify-self: end;"/>

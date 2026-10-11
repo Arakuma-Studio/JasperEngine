@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: object-position</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  img { position: absolute; width: 96px; height: 60px; background-color: #dde6f5; object-fit: none; image-rendering: pixelated; }
+  #a { left: 10px; top: 10px; object-position: left top; }
+  #b { left: 120px; top: 10px; object-position: right bottom; }
+  #c { left: 230px; top: 10px; object-position: 10px 20%; }
+  #d { left: 340px; top: 10px; object-position: right 6px bottom 4px; }
+  #e { left: 10px; top: 90px; object-position: center top; }
+  #f { left: 120px; top: 90px; object-fit: cover; object-position: left center; }
+  #g { left: 230px; top: 90px; object-fit: contain; object-position: 100% 0; }
+  #h { left: 340px; top: 90px; width: 40px; height: 40px; object-position: -10px -4px; }
+</style>
+</head>
+<body><img id="a" src="img/quad.png"><img id="b" src="img/quad.png"><img id="c" src="img/quad.png"><img id="d" src="img/quad.png"><img id="e" src="img/quad.png"><img id="f" src="img/quad.png"><img id="g" src="img/quad.png"><img id="h" src="img/quad.png"></body>
+</html>

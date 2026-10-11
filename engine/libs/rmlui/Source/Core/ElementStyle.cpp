@@ -23,6 +23,8 @@
 #include "ElementDefinition.h"
 #include "LayoutProperties.h"
 #include "ElementTransitions.h"
+#include "BackgroundLayerValues.h"
+#include "PaintProperties.h"
 #include "PropertiesIterator.h"
 #include "PropertyParserAnimation.h"
 #include "PropertyShorthandDefinition.h"
@@ -34,6 +36,15 @@
 #include <optional>
 
 namespace Rml {
+
+// A background-image or mask-image list with an image (phase 3, p3-paint).
+static bool HasImageLayers(const Property& property)
+{
+	if (property.unit != Unit::STYLE_VALUE)
+		return false;
+	const ImageLayerList* list = rmlui_dynamic_cast<const ImageLayerList*>(property.value.GetReference<StyleValuePtr>().get());
+	return list && list->HasImages();
+}
 
 struct ElementStyleData {
 	const PropertyDictionary empty_property_dictionary;
@@ -1398,9 +1409,6 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	// it here so they are notified of a change.
 	if (dirty_properties.Contains(PropertyId::TextOverflow))
 		dirty_inherited_properties.Insert(PropertyId::TextOverflow);
-	// The same for opacity: not inherited, but children draw with their parent's opacity multiplied in.
-	if (dirty_properties.Contains(PropertyId::Opacity))
-		dirty_inherited_properties.Insert(PropertyId::Opacity);
 
 	// Propagate dirty inherited properties to children. Var shorthands are local to the element and never inherited.
 	// Children that declare a non-inherited property 'inherit' follow it too.
@@ -1548,16 +1556,16 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		break;
 
 	case PropertyId::BorderTopWidth:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_top_width(ComputeBorderWidth(value)); }
+		values.border_top_width(ComputeLineWidth(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::BorderRightWidth:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_right_width(ComputeBorderWidth(value)); }
+		values.border_right_width(ComputeLineWidth(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::BorderBottomWidth:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_bottom_width(ComputeBorderWidth(value)); }
+		values.border_bottom_width(ComputeLineWidth(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 	case PropertyId::BorderLeftWidth:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_left_width(ComputeBorderWidth(value)); }
+		values.border_left_width(ComputeLineWidth(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		break;
 
 	case PropertyId::BorderTopColor:
@@ -1574,16 +1582,10 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		break;
 
 	case PropertyId::BorderTopLeftRadius:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_top_left_radius(value); }
-		break;
 	case PropertyId::BorderTopRightRadius:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_top_right_radius(value); }
-		break;
 	case PropertyId::BorderBottomRightRadius:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_bottom_right_radius(value); }
-		break;
 	case PropertyId::BorderBottomLeftRadius:
-		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.border_bottom_left_radius(value); }
+		// Not registered: each corner is a shorthand of its horizontal and vertical radius (p3-paint section below).
 		break;
 
 	case PropertyId::Display:
@@ -1674,9 +1676,8 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		values.image_color(p->Get<Colourb>());
 		break;
 	case PropertyId::Opacity:
-		// Not inherited: the element draws with its own opacity times the one its parent draws with (copied with the
-		// inherited values), until opacity groups composite whole subtrees (phase 3, paint).
-		{ float value; if (ComputeDefiniteNumber(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.opacity(Math::Clamp(value, 0.f, 1.f) * values.opacity()); }
+		// Not inherited: below 1 the element and its descendants are drawn as a group (phase 3, p3-paint).
+		{ float value; if (ComputeDefiniteNumber(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.opacity(Math::Clamp(value, 0.f, 1.f)); }
 		break;
 
 	case PropertyId::FontFamily:
@@ -1784,7 +1785,7 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		values.has_decorator(p->unit == Unit::DECORATOR && p->value.GetType() == Variant::DECORATORSPTR && p->value.GetReference<DecoratorsPtr>());
 		break;
 	case PropertyId::MaskImage:
-		values.has_mask_image(p->unit == Unit::DECORATOR && p->value.GetType() == Variant::DECORATORSPTR && p->value.GetReference<DecoratorsPtr>());
+		values.has_mask_image(HasImageLayers(*p));
 		break;
 	case PropertyId::FontEffect:
 		values.has_font_effect(p->unit == Unit::FONTEFFECT && p->value.GetType() == Variant::FONTEFFECTSPTR && p->value.GetReference<FontEffectsPtr>());
@@ -1864,9 +1865,17 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 
 	// -- Paint (p3-paint) --
 	case PropertyId::BorderTopStyle:
+		values.border_top_style((BorderStyle)p->Get<int>());
+		break;
 	case PropertyId::BorderRightStyle:
+		values.border_right_style((BorderStyle)p->Get<int>());
+		break;
 	case PropertyId::BorderBottomStyle:
+		values.border_bottom_style((BorderStyle)p->Get<int>());
+		break;
 	case PropertyId::BorderLeftStyle:
+		values.border_left_style((BorderStyle)p->Get<int>());
+		break;
 	case PropertyId::RmlUi_BorderTopLeftRadiusX:
 	case PropertyId::RmlUi_BorderTopLeftRadiusY:
 	case PropertyId::RmlUi_BorderTopRightRadiusX:
@@ -1875,12 +1884,32 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	case PropertyId::RmlUi_BorderBottomRightRadiusY:
 	case PropertyId::RmlUi_BorderBottomLeftRadiusX:
 	case PropertyId::RmlUi_BorderBottomLeftRadiusY:
+		{
+			const int index = int(id) - int(PropertyId::RmlUi_BorderTopLeftRadiusX);
+			values.border_radius(index / 2, index % 2, ComputeLengthPercentage(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		}
+		break;
 	case PropertyId::OutlineWidth:
+		values.outline_width(ComputeLineWidth(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		break;
 	case PropertyId::OutlineStyle:
+		values.outline_style((BorderStyle)p->Get<int>());
+		break;
 	case PropertyId::OutlineColor:
+		if (p->unit == Unit::KEYWORD)
+			values.outline_color_current();
+		else
+			values.outline_color(p->Get<Colourb>());
+		break;
 	case PropertyId::OutlineOffset:
+		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.outline_offset(value); }
+		break;
 	case PropertyId::Isolation:
+		values.isolation((Isolation)p->Get<int>());
+		break;
 	case PropertyId::BackgroundImage:
+		values.has_background_image(HasImageLayers(*p));
+		break;
 	case PropertyId::BackgroundPositionX:
 	case PropertyId::BackgroundPositionY:
 	case PropertyId::BackgroundSize:
@@ -1892,9 +1921,17 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	case PropertyId::MaskPositionX:
 	case PropertyId::MaskPositionY:
 	case PropertyId::MaskRepeat:
+		// Read by the layers from the element's properties.
+		break;
 	case PropertyId::ObjectFit:
+		values.object_fit((ObjectFit)p->Get<int>());
+		break;
 	case PropertyId::ObjectPositionX:
+		values.object_position_x(ComputeLengthPercentage(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		break;
 	case PropertyId::ObjectPositionY:
+		values.object_position_y(ComputeLengthPercentage(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		break;
 	case PropertyId::BorderImage:
 		break;
 

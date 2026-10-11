@@ -70,6 +70,10 @@ public:
 	Geometry MakeGeometry(Mesh&& mesh);
 
 	Texture LoadTexture(const String& source, const String& document_path = String());
+	/// Fork (phase 3, p3-paint): the texture of 'source' joined with the document path, with 'query' (a query parameter)
+	/// appended to the joined path; for RenderInterface::SupportsTextureWrapHint.
+	Texture LoadTexture(const String& source, const String& document_path, const String& query);
+	bool SupportsTextureWrapHint() const;
 	CallbackTexture MakeCallbackTexture(CallbackTextureFunction callback);
 
 	CompiledFilter CompileFilter(const String& name, const Dictionary& parameters);

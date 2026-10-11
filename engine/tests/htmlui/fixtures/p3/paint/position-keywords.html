@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: background-position</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; width: 100px; height: 70px; }
+  #b1 { left: 10px; top: 10px; }
+  #b2 { left: 120px; top: 10px; }
+  #b3 { left: 230px; top: 10px; }
+  #b4 { left: 340px; top: 10px; }
+  #b5 { left: 10px; top: 90px; }
+  #b6 { left: 120px; top: 90px; }
+  #b7 { left: 230px; top: 90px; }
+  #b8 { left: 340px; top: 90px; }
+  .b { background-image: url(img/tile.png); background-repeat: no-repeat; background-color: #dde6f5; }
+  #b1 { background-position: center; }
+  #b2 { background-position: right bottom; }
+  #b3 { background-position: bottom left; }
+  #b4 { background-position: right 10px bottom 5px; }
+  #b5 { background-position: 25% 75%; }
+  #b6 { background-position: 10px 20px; }
+  #b7 { background-position: center top 10px; }
+  #b8 { background-position-x: right 4px; background-position-y: 50%; }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div><div class="b" id="b4"></div><div class="b" id="b5"></div><div class="b" id="b6"></div><div class="b" id="b7"></div><div class="b" id="b8"></div></body>
+</html>

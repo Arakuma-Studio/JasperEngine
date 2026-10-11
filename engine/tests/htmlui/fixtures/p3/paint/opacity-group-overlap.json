@@ -1,0 +1,7 @@
+{
+ "comment": "opacity applies to the element and its descendants as a group: overlapping children do not show through each other; a child's opacity: 1 does not undo its parent's; a lone background (no layer) and a background under a border (a layer).",
+ "viewport": [
+  390,
+  230
+ ]
+}

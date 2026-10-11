@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: mask-image with gradients</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; width: 100px; height: 70px; }
+  #b1 { left: 10px; top: 10px; }
+  #b2 { left: 120px; top: 10px; }
+  #b3 { left: 230px; top: 10px; }
+  #b4 { left: 340px; top: 10px; }
+  .b { background: linear-gradient(to right, #cc3333, #3366cc); }
+  #b1 { mask-image: linear-gradient(black, transparent); }
+  #b2 { mask-image: radial-gradient(circle, black 50%, transparent 52%); }
+  #b3 { mask: linear-gradient(to right, black 50%, transparent 50%) 0 0 / 20px 20px; }
+  #b4 { mask-image: linear-gradient(black, black); mask-size: 50% 50%; mask-repeat: no-repeat; mask-position: center; }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div><div class="b" id="b4"></div></body>
+</html>

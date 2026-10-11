@@ -9,7 +9,6 @@ using RenderBoxList = Vector<RenderBox>;
 struct BoxShadowGeometryInfo {
 	ColourbPremultiplied background_color;
 	Array<ColourbPremultiplied, 4> border_colors;
-	CornerSizes border_radius;
 	Vector2i texture_dimensions;
 	Vector2f element_offset_in_texture;
 	RenderBoxList padding_render_boxes;
@@ -19,7 +18,7 @@ struct BoxShadowGeometryInfo {
 };
 inline bool operator==(const BoxShadowGeometryInfo& a, const BoxShadowGeometryInfo& b)
 {
-	return a.background_color == b.background_color && a.border_colors == b.border_colors && a.border_radius == b.border_radius &&
+	return a.background_color == b.background_color && a.border_colors == b.border_colors &&
 		a.texture_dimensions == b.texture_dimensions && a.element_offset_in_texture == b.element_offset_in_texture &&
 		a.padding_render_boxes == b.padding_render_boxes && a.border_render_boxes == b.border_render_boxes && a.shadow_list == b.shadow_list &&
 		a.opacity == b.opacity;
@@ -37,11 +36,11 @@ class GeometryBoxShadow {
 public:
 	/// Resolve the element's properties into its box geometry info.
 	/// @param[in] element The element to resolve.
-	/// @param[in] border_radius The border radius of the element.
+	/// The radii are those of the element's render boxes (percentages and overlapping curves resolved per box).
 	/// @param[in] background_color The background colour of the element.
 	/// @param[in] border_colors The border colours of the element.
 	/// @param[in] opacity The computed opacity of the element.
-	static BoxShadowGeometryInfo Resolve(Element* element, const CornerSizes& border_radius, ColourbPremultiplied background_color,
+	static BoxShadowGeometryInfo Resolve(Element* element, ColourbPremultiplied background_color,
 		const Array<ColourbPremultiplied, 4>& border_colors, float opacity);
 
 	/// Generate the texture and geometry for a box shadow and including the element's background and border.

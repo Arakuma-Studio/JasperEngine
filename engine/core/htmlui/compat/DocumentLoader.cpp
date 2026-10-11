@@ -792,6 +792,10 @@ Rml::ElementDocument* DocumentLoader::load(Rml::Context* context, const std::str
         logDiagnostics(compiled->sourcePath, compiled->diagnostics, options.verboseDiagnostics);
         return nullptr;
     }
+    // the HTML root's background, or the body's, is the canvas's (CSS Backgrounds 3 §2.11.2):
+    // the fork paints it over the whole context (BackgroundLayers, phase 3 p3-paint)
+    if (options.fork.has(ForkFeature::BackgroundLayers))
+        document->SetCanvasBackground(true, "htmlbody");
 
     // the compile's diagnostics, the mapped RmlUi messages of the load, the font check
     std::vector<Diagnostic> runtime = std::move(binding->diagnostics);

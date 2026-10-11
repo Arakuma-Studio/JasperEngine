@@ -1,0 +1,76 @@
+{
+ "fixture": "paint/object-fit-5.html",
+ "viewport": [
+  560,
+  200
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "fill",
+    "tag": "img",
+    "x": 10,
+    "y": 20,
+    "w": 96,
+    "h": 96
+   },
+   {
+    "id": "contain",
+    "tag": "img",
+    "x": 120,
+    "y": 20,
+    "w": 96,
+    "h": 96
+   },
+   {
+    "id": "cover",
+    "tag": "img",
+    "x": 230,
+    "y": 20,
+    "w": 96,
+    "h": 96
+   },
+   {
+    "id": "none",
+    "tag": "img",
+    "x": 340,
+    "y": 20,
+    "w": 96,
+    "h": 96
+   },
+   {
+    "id": "scale-down",
+    "tag": "img",
+    "x": 450,
+    "y": 20,
+    "w": 96,
+    "h": 96
+   },
+   {
+    "id": "cover-wide",
+    "tag": "img",
+    "x": 10,
+    "y": 140,
+    "w": 200,
+    "h": 40
+   },
+   {
+    "id": "contain-wide",
+    "tag": "img",
+    "x": 230,
+    "y": 140,
+    "w": 200,
+    "h": 40
+   },
+   {
+    "id": "scale-down-small",
+    "tag": "img",
+    "x": 450,
+    "y": 140,
+    "w": 30,
+    "h": 30
+   }
+  ]
+ }
+}

@@ -142,6 +142,7 @@ void TestsRenderInterface::RenderToClipMask(Rml::ClipMaskOperation /*mask_operat
 Rml::TextureHandle TestsRenderInterface::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source)
 {
 	counters.load_texture += 1;
+	loaded_texture_sources.push_back(source);
 	if (source.find("invalid") != Rml::String::npos)
 		return 0;
 
@@ -166,10 +167,33 @@ void TestsRenderInterface::SetTransform(const Rml::Matrix4f* /*transform*/)
 	counters.set_transform += 1;
 }
 
-Rml::CompiledFilterHandle TestsRenderInterface::CompileFilter(const Rml::String& /*name*/, const Rml::Dictionary& /*parameters*/)
+Rml::CompiledFilterHandle TestsRenderInterface::CompileFilter(const Rml::String& name, const Rml::Dictionary& parameters)
 {
 	counters.compile_filter += 1;
+	if (name == "opacity")
+	{
+		auto it = parameters.find("value");
+		compiled_opacities.push_back(it != parameters.end() ? it->second.Get<float>() : -1.f);
+	}
 	return 1;
+}
+
+Rml::LayerHandle TestsRenderInterface::PushLayer()
+{
+	counters.push_layer += 1;
+	return Rml::LayerHandle(++layer_depth);
+}
+
+void TestsRenderInterface::CompositeLayers(Rml::LayerHandle /*source*/, Rml::LayerHandle /*destination*/, Rml::BlendMode /*blend_mode*/,
+	Rml::Span<const Rml::CompiledFilterHandle> /*filters*/)
+{
+	counters.composite_layers += 1;
+}
+
+void TestsRenderInterface::PopLayer()
+{
+	counters.pop_layer += 1;
+	layer_depth -= 1;
 }
 
 void TestsRenderInterface::ReleaseFilter(Rml::CompiledFilterHandle /*filter*/)
@@ -177,9 +201,15 @@ void TestsRenderInterface::ReleaseFilter(Rml::CompiledFilterHandle /*filter*/)
 	counters.release_filter += 1;
 }
 
-Rml::CompiledShaderHandle TestsRenderInterface::CompileShader(const Rml::String& /*name*/, const Rml::Dictionary& /*parameters*/)
+bool TestsRenderInterface::SupportsTextureWrapHint()
+{
+	return true;
+}
+
+Rml::CompiledShaderHandle TestsRenderInterface::CompileShader(const Rml::String& name, const Rml::Dictionary& parameters)
 {
 	counters.compile_shader += 1;
+	compiled_shaders.push_back({name, parameters});
 	return 1;
 }
 
@@ -209,6 +239,9 @@ void TestsRenderInterface::Reset()
 {
 	VerifyMeshes();
 	meshes_set = false;
+	compiled_opacities.clear();
+	compiled_shaders.clear();
+	loaded_texture_sources.clear();
 	ResetCounters();
 }
 void TestsRenderInterface::VerifyMeshes()

@@ -1270,6 +1270,7 @@ TEST_CASE("custom_properties.body_media_combine")
 		--width: 16px;
 		background-color: var(--bg);
 		border-top-width: var(--width);
+		border-top-style: solid;
 	}
 	@media (theme: dark) {
 		body {

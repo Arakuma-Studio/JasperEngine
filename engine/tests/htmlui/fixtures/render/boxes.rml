@@ -3,17 +3,17 @@
     <link type="text/css" href="../common/base.css"/>
     <link type="text/css" href="render.css"/>
     <style>
-        #solid { left: 20px; top: 20px; width: 120px; height: 80px; background-color: #3060c0; border: 4px #ffffff; }
+        #solid { left: 20px; top: 20px; width: 120px; height: 80px; background-color: #3060c0; border: 4px solid #ffffff; }
         #sides { left: 180px; top: 20px; width: 100px; height: 60px; padding: 10px; background-color: #404040;
-                 border-top-width: 2px; border-right-width: 6px; border-bottom-width: 10px; border-left-width: 14px;
+                 border-top-width: 2px; border-right-width: 6px; border-bottom-width: 10px; border-left-width: 14px; border-style: solid;
                  border-top-color: #ff0000; border-right-color: #00ff00; border-bottom-color: #0000ff; border-left-color: #ffff00; }
         #r0 { left: 340px; top: 20px; width: 80px; height: 80px; background-color: #c03030; border-radius: 0px; }
         #r8 { left: 440px; top: 20px; width: 80px; height: 80px; background-color: #30c030; border-radius: 8px; }
-        #r24 { left: 540px; top: 20px; width: 80px; height: 80px; background-color: #3030c0; border-radius: 24px; border: 3px #ffffff; }
-        #outer { left: 20px; top: 150px; width: 260px; height: 180px; padding: 15px; background-color: #606060; border: 2px #c0c0c0; }
+        #r24 { left: 540px; top: 20px; width: 80px; height: 80px; background-color: #3030c0; border-radius: 24px; border: 3px solid #ffffff; }
+        #outer { left: 20px; top: 150px; width: 260px; height: 180px; padding: 15px; background-color: #606060; border: 2px solid #c0c0c0; }
         #middle { margin: 10px; height: 120px; padding: 10px; background-color: #a06020; }
         #inner { margin-left: 20px; width: 100px; height: 60px; background-color: #20a0a0; border-radius: 12px; }
-        #ring { left: 340px; top: 150px; width: 120px; height: 120px; border-radius: 60px; border: 10px #ffc000; }
+        #ring { left: 340px; top: 150px; width: 120px; height: 120px; border-radius: 60px; border: 10px solid #ffc000; }
         #pill { left: 480px; top: 170px; width: 140px; height: 40px; border-radius: 20px; background-color: #e040e0; }
     </style>
 </head>

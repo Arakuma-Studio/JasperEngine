@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: an opacity transition in the middle</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .box { position: absolute; top: 20px; width: 100px; height: 80px; transition: opacity 1s linear; }
+  .box > div { position: absolute; width: 60px; height: 50px; }
+  .box > .a { left: 0; top: 0; background-color: #cc3333; }
+  .box > .b { left: 40px; top: 30px; background-color: #3366cc; }
+  #fade-out { left: 20px; }
+  #fade-in { left: 160px; opacity: 0; }
+  #fade-out.on { opacity: 0; }
+  #fade-in.on { opacity: 1; }
+</style>
+</head>
+<body><div class="box" id="fade-out"><div class="a"></div><div class="b"></div></div><div class="box" id="fade-in"><div class="a"></div><div class="b"></div></div></body>
+</html>

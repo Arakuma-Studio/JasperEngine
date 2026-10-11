@@ -92,11 +92,17 @@ struct hash<::Rml::RenderBox> {
 				HashCombine(seed, v);
 			return seed;
 		};
+		static auto HashCorners = [](const ::Rml::CornerSizes2& arr) -> size_t {
+			size_t seed = 0;
+			for (const auto& v : arr)
+				HashCombine(seed, v);
+			return seed;
+		};
 
 		size_t seed = 0;
 		HashCombine(seed, box.GetFillSize());
 		HashCombine(seed, box.GetBorderOffset());
-		HashCombine(seed, HashArray4(box.GetBorderRadius()));
+		HashCombine(seed, HashCorners(box.GetBorderRadius()));
 		HashCombine(seed, HashArray4(box.GetBorderWidths()));
 		return seed;
 	}
@@ -111,11 +117,6 @@ struct hash<::Rml::BoxShadowGeometryInfo> {
 
 		HashCombine(seed, in.background_color);
 		for (const auto& v : in.border_colors)
-		{
-			HashCombine(seed, v);
-		}
-
-		for (const auto& v : in.border_radius)
 		{
 			HashCombine(seed, v);
 		}

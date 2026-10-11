@@ -1,0 +1,7 @@
+{
+ "comment": "mask-image with an image of alpha squares: tiled, centred once, stretched, with a second gradient layer (the masks add up). The mask image is a data: URL: Chromium fetches mask images in CORS mode, which a file:// page cannot do for a file.",
+ "viewport": [
+  460,
+  100
+ ]
+}

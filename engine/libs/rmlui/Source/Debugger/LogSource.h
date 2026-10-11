@@ -24,6 +24,7 @@ div.log-entry div.icon
 	height: 18dp;
 	text-align: center;
 	border-width: 1px;
+	border-style: solid;
 	margin-right: 5dp;
 }
 div.button
@@ -34,6 +35,7 @@ div.button
 	line-height: 20dp;
 	text-align: center;
 	border-width: 1px;
+	border-style: solid;
 	margin-right: 3dp;
 }
 div.button.clear

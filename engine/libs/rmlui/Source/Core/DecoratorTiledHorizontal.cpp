@@ -82,12 +82,12 @@ DecoratorDataHandle DecoratorTiledHorizontal::GenerateElementData(Element* eleme
 	const ComputedValues& computed = element->GetComputedValues();
 	Mesh mesh[COUNT];
 
-	tiles[LEFT].GenerateGeometry(mesh[tiles[LEFT].texture_index], computed, offset, left_dimensions, left_dimensions);
+	tiles[LEFT].GenerateGeometry(mesh[tiles[LEFT].texture_index], computed, element->GetDrawOpacity(), offset, left_dimensions, left_dimensions);
 
-	tiles[CENTRE].GenerateGeometry(mesh[tiles[CENTRE].texture_index], computed, offset + Vector2f(left_dimensions.x, 0),
+	tiles[CENTRE].GenerateGeometry(mesh[tiles[CENTRE].texture_index], computed, element->GetDrawOpacity(), offset + Vector2f(left_dimensions.x, 0),
 		Vector2f(size.x - (left_dimensions.x + right_dimensions.x), centre_dimensions.y), centre_dimensions);
 
-	tiles[RIGHT].GenerateGeometry(mesh[tiles[RIGHT].texture_index], computed, offset + Vector2f(size.x - right_dimensions.x, 0), right_dimensions,
+	tiles[RIGHT].GenerateGeometry(mesh[tiles[RIGHT].texture_index], computed, element->GetDrawOpacity(), offset + Vector2f(size.x - right_dimensions.x, 0), right_dimensions,
 		right_dimensions);
 
 	const int num_textures = GetNumTextures();

@@ -1088,8 +1088,10 @@ consistent if radii are resolved in one place. Box-shadow takes raw `computed.bo
   `none`-only property; compat keeps emulating other `border-image` values with its
   `html-border-image` decorator, phase 2 §3.11.3), `border-width` keywords
   `thin`=1px, `medium`=3px, `thick`=5px (initial `medium`, CSS), border widths stored as `float`
-  (6.3 `uint16_t`, `ComputedValues.h:78`) so `0.5px` hairlines survive (rendered with coverage
-  alpha when < 1 device px).
+  (6.3 `uint16_t`, `ComputedValues.h:78`). Computed widths snap as Chromium 153 snaps them
+  (measured, fixture `p3/paint/hairline.html`): a width in (0, 1) px is 1 px, larger ones are
+  rounded down to whole pixels (0.5 → 1, 1.5 → 1, 2.5 → 2, 2.9 → 2). *(Corrected by p3-paint: the
+  first text drew hairlines with coverage alpha; Chromium does not.)*
 - Computed border width = 0 when style is `none`/`hidden` (CSS) — in `ElementStyle::ComputeValues`
   after the property loop; layout (`LayoutDetails::BuildBox`) needs no change.
   **RCSS compatibility note**: RCSS that sets only `border-width` stops drawing borders; the compat
@@ -1112,8 +1114,9 @@ in `ComputeBorderMetrics` (`GeometryBackgroundBorder.cpp:46-51`) is removed; the
 removed (sub-pixel radii). `RenderBox` (`Include/RmlUi/Core/RenderBox.h:10-48`) changes its radius
 type to `CornerSizes2` (Vector2f per corner; public API change recorded in FORK.md). `DrawArcArc`,
 `DrawArcPoint`, `DrawBackgroundCorner` take elliptical outer radii; `GetNumPoints` uses `max(rx, ry)`
-and is raised for small radii so 50% circles of 24px stay round. `BoxShadowCache.cpp:92` takes
-radii from `GetRenderBox(BoxArea::Border)`; the spread adjustment
+and is raised for small radii so 50% circles of 24px stay round (as built: the number of points
+keeps the chords within 0.1 px of the curve, 3 to 129 per corner). The box shadow takes the radii
+of the element's render boxes (`GeometryBoxShadow::Resolve` has no radius argument any more); the spread adjustment
 (`GeometryBoxShadow.cpp:168-178`) becomes per axis. Hit testing stays rectangular
 (`Context.cpp:1450-1455`) — CSS hit-testing honours radii: add an ellipse test against the
 border-box radii in `Context::GetElementAtPoint` for elements with non-zero radii.
@@ -1127,29 +1130,47 @@ generator (`Source/Core/GeometryBorderStyles.cpp`) builds per side:
   to the fast path too).
 - **Centre path** per side: second half of the start corner arc, straight edge, first half of the
   end corner arc; arc length measured numerically from the tessellated points.
-- **Dashed** (measured on Chrome 150 while writing this spec, 300 px straight edges): `w < 3` →
-  dash `3w`, gap `2w` (1 px: 3/2, 2 px: 6/4); `w ≥ 3` → dash `2w`, gap `w` (4 px: 8/4, 8 px: 16/8).
-  The pattern starts and ends with a full dash at the corners; the gaps absorb the remainder
-  (`n = max(1, round((L + gap) / (dash + gap)))` dashes, gap stretched to fit, observed as single
-  1 px wider gaps). Each dash is a quad strip between the inner and outer offset curves over
-  `[s0, s1]` along the centre path (curved inside corners). Fixture
-  `p3/borders/dashed-widths.html` (w = 1, 2, 3, 4, 8; lengths 250, 300, 301) locks this.
-- **Dotted** (measured): round dots of diameter `w`, period `2w` (2 px: 2/2, 4 px and 8 px: period
-  8 and 16), a dot centred on each corner split point, spacing stretched to fit; `w = 1` renders
-  1 px squares with period 2. Dots are triangle fans with `GetNumPoints(w/2)`.
+- **Dashed** (measured on Chromium 153 by p3-paint; this replaces the first text's formula): `w < 3`
+  → dash `3w`, gap `2w`; `w ≥ 3` → dash `2w`, gap `w`. The gap is fitted as Blink's
+  `StrokeData::SelectBestDashGap` does (open path: available length `L + gap`; closed: `L`); a path
+  of `L ≤ 2·dash` is solid, an open one of `L ≤ 2·dash + gap` has two proportional dashes.
+  **Square boxes**: per side over the full outer length, a full dash at each end, plus a `w × w`
+  square at each end point (the corners are always painted). **Boxes with any rounded corner**: one
+  closed path along the centre line of the whole border, starting on the top edge where the
+  top-left curve ends, clockwise, period `L / n`. Each dash is a quad strip between the inner and
+  outer curves, cut at `[s0, s1]` by polygon clipping. Fixture `p3/paint/dashed-widths.html`.
+- **Dotted** (measured): square boxes with `w ≥ 3`: round dots of diameter `w`, centres from corner
+  centre to corner centre, `max(1, round(L / 2w))` spaces; `w < 3`: crisp `w × w` squares, one in
+  each corner and a centred pattern between them (`n = floor((L' + w) / 2w)`, `L'` the outer length
+  less `2w`, offset `floor(leftover / 2)`); rounded boxes: dots on the closed centre path at
+  `k · L / n`, `n` from `SelectBestDashGap(L, w, w, closed)`. A corner dot is clipped to its side's
+  half of the corner when the adjacent side differs in colour or style.
 - **Double** (measured, w = 6: 2/2/2): outer and inner solid bands of `round(w/3)` each, middle
   empty, radii offset accordingly; `w < 3` renders solid (CSS).
 - **Groove/ridge/inset/outset** (measured, colour rgb(200,100,50), w = 6): the "dark" colour is
   Chrome's `Color::Dark()`: `v = max(r,g,b)/255`, factor `max(0, (v − 0.33)/v)` → (116,58,29);
-  the "light" colour is the specified colour itself. groove: top/left outer half dark, inner half
-  light; bottom/right outer half light, inner half dark (bands `w/2`). ridge: inverted. inset:
-  top/left fully dark, bottom/right fully specified colour. outset: inverted. Black and very dark
-  colours: Chrome substitutes a fixed grey — measured by `p3/borders/3d-styles.html`
-  (black/white/red cases) and encoded by the implementer.
-- **Anti-aliasing**: border and background outer edges get a 1-device-px feather ring (outer vertex
-  ring with alpha 0) when the document renders without MSAA. Controlled by a new global
-  `Rml::SetGeometryFeathering(bool)` that the engine sets from its render-target MSAA state
-  (phase 1 renders documents into an MSAA target when available; then feathering stays off).
+  the "light" colour is `Color::Light()`: factor `min(1, v + 0.33)/v` (each channel
+  `int(factor · c/255 · 255.99998)`; black lightens to 0x54). *(Corrected by p3-paint: the first
+  text took the specified colour as the light one.)* With the colour's relative luminance
+  (sRGB-linearised) below about 0.0148 (≤ `#202020`): dark = `Light(c)`, light = `Light(Light(c))`;
+  above about 0.8331 (> `#ebebeb`): dark = `Dark(c)`, light = `c`; else dark = `Dark(c)`, light =
+  `Light(c)`. groove: top/left outer half dark, inner half light; bottom/right inverted (bands
+  `w/2`). ridge: inverted. inset: top/left dark, bottom/right light. outset: inverted. Fixture
+  `p3/paint/3d-styles.html` (black, white, grey and coloured cases).
+- **Anti-aliasing** *(as built by p3-paint; the first text turned feathering off with MSAA, which
+  left curves visibly coarser than Chromium's at 4 samples)*: `Rml::SetGeometryFeathering(bool)`,
+  default `true`: every edge of backgrounds and borders fades over one device pixel (the opaque
+  part ends half a pixel inside the edge, the transparent ring half a pixel outside, plus half a
+  pixel of transparent margin so every sample of an edge pixel sees the fade). `false`, which the
+  engine sets when the target is multisampled (`samples > 1`): only curves (rounded corners, round
+  dots) are feathered, straight edges stay exact for the samples. `Rml::SetGeometryPixelSize(float)`
+  gives the size of a device pixel in context units for contexts drawn scaled (the engine: `1 /
+  pixelRatio`); an element's transform scale is followed in quarter-octave steps
+  (`ElementBackgroundBorder`). Clip geometry is never feathered.
+- **Background colour**: covers the border box (the initial `background-clip: border-box`; 6.3
+  filled the padding box), so it shows through dashed, dotted, double and translucent borders as in
+  CSS; under opaque sides without gaps it ends 1 px inside the outer edge, so no fringe of it
+  shows around the border's anti-aliased edge.
 
 #### 3.7.4 Outline
 CSS paints outlines in a final pass of the stacking context (Appendix E step 10), so an outline
@@ -1162,14 +1183,30 @@ element's transform and clip applied. Geometry: the border generator applied to 
 expanded by `outline-offset + outline-width`, outer radii = border radii + offset (Chrome follows
 radii), clamped ≥ 0. `outline-style: auto` draws Chrome's focus ring: a 2 px solid ring in
 `outline-color` when it is not `currentcolor`/`auto`, else the two-tone ring (`#101010` 2 px
-inside a 1 px `#ffffff` halo) — `p3/borders/outline-auto.html` fixes the exact geometry. Outlines
+inside a 1 px `#ffffff` halo) — `p3/paint/outline-auto.html` fixes the exact geometry. Outlines
 never affect layout or clipping of other content and are included in the ink overflow used for
 layer bounds (§3.8.1).
+
+*As built by p3-paint (measured on Chromium 153, `p3/paint/outline-offset.html`,
+`outline-auto.html`; this replaces the paragraphs above where they differ):*
+- **Order**: Chromium does not paint outlines in one final pass of the stacking context: it paints
+  them per paint layer (the stacking context and every positioned element), after the layer's
+  in-flow content and before its positioned descendants — a positioned child covers its parent's
+  outline. The fork does the same (`Element::RenderStackingContextChildren`); a stacking context
+  paints its own outline inside its effects (opacity, filters).
+- **`auto`**: whatever `outline-width`, a 2 px ring in the outline colour (`currentcolor`, which is
+  `#101010`-like only because the text colour is; there is no fixed dark colour) centred one pixel
+  outside the border box moved out by `outline-offset` (one pixel further in when the element
+  has a border), inside a 1 px white ring; square corners are rounded (3 px for the coloured
+  ring, 4 px for the white one).
+- **Dotted** outlines use square dots at every width (dotted borders switch to round dots at
+  3 px).
 
 **Tests:** `Tests/Source/UnitTests/BorderStyle.cpp` (shorthand matrix in any order, resets,
 computed width 0 for none/hidden, `thin/medium/thick`), `BorderRadius.cpp` (`%`, `/`, overlap
 scaling numbers, calc), extend `ElementBackgroundBorder.cpp` (vertex counts for dashed/dotted,
-clip geometry equals background geometry). Goldens: `p3/borders/{shorthand-any-order,
+clip geometry equals background geometry). Goldens (one fixture area per package: `p3/paint/`,
+references in `golden/browser/paint/`): `p3/paint/{shorthand-any-order,
 styles-all-10,dashed-widths,dotted-rounded,double-rounded,3d-styles,radius-percent-circle,
 radius-elliptical,radius-overlap-scaling,radius-clip-children,box-shadow-radius-percent,
 outline-offset,outline-auto,hairline}.html`.
@@ -1209,6 +1246,10 @@ narrowed to the element's ink box (`:214-235`). An `opacity` filter exists
 - **Leaf fast path** (no layer; vertex alpha): α < 1 and E has no element children other than text
   nodes, no pseudo-elements, and paints at most one of {background/border/box-shadow/decorator,
   text}. This is exact (no overlap within E) and covers the common "fade a label/icon" case.
+  *(As built: each of background colour, border, box shadow, decorators, outline, text and a
+  replaced element's content (`GetIntrinsicDimensions`) counts as one thing — a background under a
+  border overlaps it; an element with a filter, backdrop filter or mask is never a leaf, its opacity
+  joins their composite. A change of leaf state re-runs the element's opacity change.)*
 - α == 0: skip rendering E's stacking context entirely; E stays hit-testable (CSS).
 - Layer scissor: the union of the subtree's ink overflow (E's border box + shadows/outlines +
   visible overflow of descendants, `LayoutBox::visible_overflow_size`) intersected with the current
@@ -1235,7 +1276,9 @@ narrowed to the element's ink box (`:214-235`). An `opacity` filter exists
 laid out, not painted, not hit-testable, but its descendants with `visibility: visible` paint and
 receive events. 6.3 skips the whole subtree (`AddToStackingContext`, `Element.cpp:2395-2399`):
 change to "skip own painting" (background/border/decoration/`OnRender`/text) and keep adding
-children. Interpolation (`ElementAnimation.cpp:215-228`) keeps its CSS special case.
+children. *(As built: documents (`ElementDocument::Hide` sets `visibility: hidden`) and the parts of
+widgets (scrollbars, select boxes) keep 6.3's whole-subtree hiding, else an author's `visibility:
+visible` would show through a hidden document; `Element::IsVisible()` keeps its meaning.)* Interpolation (`ElementAnimation.cpp:215-228`) keeps its CSS special case.
 
 #### 3.8.4 Canvas background
 CSS: the root element's background (or `<body>`'s when the root has none) paints the whole
@@ -1247,6 +1290,20 @@ whole canvas area, the context's dimensions (the document's containing block), n
 the document's border box, so a root background still covers the viewport when the document is
 scrolled or shorter than the canvas. A game that wants the scene visible simply leaves both
 transparent (the default).
+
+*As built (p3-paint):* the fork cannot tell an HTML root from an RML window document by itself
+(the Debugger's windows are documents with backgrounds and must not paint the whole context), so
+the canvas background is opted into per document: `ElementDocument::SetCanvasBackground(true,
+body_tag)` (compat's `DocumentLoader` calls it with `htmlbody` for HTML documents when the fork
+has `BackgroundLayers`). Such a document paints its canvas before anything else in the context
+order of the document: the document's own background (colour and layers), or, when that is
+transparent with no layers, the background of its first child with the body tag (CSS 2.2 14.2,
+Backgrounds 3 2.11.2), over the whole context rectangle; the layers are positioned in the root's
+boxes (a propagated body background is used as if declared on the root) and clipped to the canvas
+only; the element whose background went to the canvas does not paint it again. Compat's static body → root
+copy (phase 2 §3.10 item 1) is off when the fork propagates (it keeps running with the feature
+absent). `p3/paint/canvas-background-body.html` draws a body background over the whole viewport
+with a shorter, margined body.
 
 #### 3.8.5 Filter parity
 - `filter`/`backdrop-filter` function defaults: `blur()` = 0, `drop-shadow(x y)` colour =
@@ -1311,6 +1368,32 @@ at render time, cheap given the canvas rect), and `background` (`Custom`, full C
 - The RmlUi `decorator` property keeps working (fork-internal and used by phase-5 effects);
   `decorator` paints above `background-image` layers.
 
+*As built (p3-paint, `ForkFeature::BackgroundLayers`):* every longhand above and `mask-image`,
+`mask-position-x`/`-y` (`mask-position`), `mask-size`, `mask-repeat` and the `mask` shorthand are
+the fork's (`Source/Core/BackgroundLayerValues.{h,cpp}`: comma-list `StyleValue`s; a layer reads
+item `i % count` of each list, the image list sets the number of layers). Images: `none`, `url()`,
+the gradients and every registered decorator function; `background-clip: text`, `image()`,
+`image-set()`, `cross-fade()`, `element()`, `mask-origin`, `mask-clip`, `mask-mode`,
+`mask-composite` are compat diagnostics (unsupported or approximated, as before). Rendering
+(`ElementBackgroundLayers`): the colour is clipped to the bottom layer's `background-clip` box
+(with its inner radii), the layers are drawn bottom to top between the colour and the border, each
+tile computed as Chromium's `BackgroundImageGeometry` does (size, round, space, positions resolved
+against the free space, a tile that is not repeated drawn into a destination snapped to whole
+pixels with the image mapped from its unsnapped place, repeated tiles fractional). A `url()` image
+repeated along an axis is one quad sampled with repeat wrap there, as Chromium's image shader
+(`SkTileMode::kRepeat`): the fork asks the render interface for `url?rmlui-wrap=repeat|repeat-x|
+repeat-y` (CONTRACTS), or the application's `ImageSourceHandler` for a repeating texture; images
+the fork cannot get repeating are drawn tile by tile. Gradients are one shader for the tile size
+(`Decorator::CompileImageShader`), their `currentcolor` stops resolved when the layer is drawn;
+other decorator functions paint over the layer's clip box. A clip box with radii masks its layer
+with an anti-aliased rounded shape. `background-attachment: fixed` positions in the context
+rectangle, `local` in the scrollable overflow. Mask layers render into the element's mask layer
+(alpha). `background-position` and `-size` interpolate per layer (a length with a percentage as a
+`calc()` mix), image lists of gradients interpolate as `decorator` does, `url()` lists are discrete.
+Gradient hard stops are not softened (6.3 moved a stop one pixel away; Chromium draws them hard).
+Compat passes every `background-*`/`mask-*` declaration through with the feature present and keeps
+its emulation (the `html-layer` decorator, decorator-syntax masks) for it absent.
+
 #### 3.9.3 `object-fit`, `object-position`
 Registered for all elements, used by replaced elements: `ElementImage::GenerateGeometry`
 (`ElementImage.cpp:180-183`) and the phase-1 SVG/Lottie elements (same helper
@@ -1320,9 +1403,10 @@ Registered for all elements, used by replaced elements: `ElementImage::GenerateG
 
 **Tests:** `Tests/Source/UnitTests/Backgrounds.cpp` (shorthand round trips incl. multiple layers,
 `/` size, defaults reset; tile counts for repeat/space/round), `ObjectFit.cpp` (dest/uv rects for
-all five values). Goldens: `p3/backgrounds/{shorthand-gradient,multiple-layers,url-cover,
+all five values). Goldens: `p3/paint/{shorthand-gradient,multiple-layers,url-cover,
 url-contain,repeat-space-round,position-keywords,clip-padding-radius,origin-content,
-attachment-fixed,mask-image-gradient,mask-image-url}.html`, `p3/replaced/{object-fit-5,
+attachment-fixed,mask-image-gradient,mask-image-url,background-transition,currentcolor-layers,
+object-fit-svg}.html`, `p3/paint/{object-fit-5,
 object-position}.html`.
 
 ---

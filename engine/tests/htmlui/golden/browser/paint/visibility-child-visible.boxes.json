@@ -1,0 +1,11 @@
+{
+ "fixture": "paint/visibility-child-visible.html",
+ "viewport": [
+  240,
+  200
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": []
+ }
+}

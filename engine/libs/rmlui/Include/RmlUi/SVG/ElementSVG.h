@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Core/Element.h"
+#include "../Core/Geometry.h"
 #include "../Core/Header.h"
 
 namespace Rml {
@@ -79,9 +80,16 @@ private:
 	/// Generate unique internal ids for SVG elements using inline SVG.
 	static unsigned long internal_id_counter;
 
+	// An SVG file (src) is a replaced image: object-fit and object-position place it in the content box (phase 3,
+	// p3-paint), rasterised at the size it is drawn at. Inline SVG content is placed by its own preserveAspectRatio, as
+	// in browsers.
+	void GenerateFittedGeometry(const Function<SharedPtr<SVG::SVGData>(const Vector2i*)>& get_handle);
+
 	String svg_data;
 	bool svg_dirty = false;
 
 	SharedPtr<SVG::SVGData> handle;
+	Geometry fitted_geometry; // src: the part of the image drawn, relative to the content box
+	ColourbPremultiplied fitted_colour;
 };
 } // namespace Rml

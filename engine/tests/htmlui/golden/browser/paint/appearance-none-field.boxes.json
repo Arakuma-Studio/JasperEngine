@@ -1,0 +1,60 @@
+{
+ "fixture": "paint/appearance-none-field.html",
+ "viewport": [
+  310,
+  140
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "f1",
+    "tag": "input",
+    "x": 10,
+    "y": 10,
+    "w": 128,
+    "h": 26
+   },
+   {
+    "id": "f2",
+    "tag": "input",
+    "x": 160,
+    "y": 10,
+    "w": 128,
+    "h": 26
+   },
+   {
+    "id": "f3",
+    "tag": "input",
+    "x": 10,
+    "y": 50,
+    "w": 128,
+    "h": 26
+   },
+   {
+    "id": "f4",
+    "tag": "input",
+    "x": 160,
+    "y": 50,
+    "w": 128,
+    "h": 26
+   },
+   {
+    "id": "f5",
+    "tag": "input",
+    "x": 10,
+    "y": 90,
+    "w": 132,
+    "h": 30
+   },
+   {
+    "id": "t1",
+    "tag": "textarea",
+    "x": 160,
+    "y": 90,
+    "w": 126,
+    "h": 36
+   }
+  ]
+ }
+}

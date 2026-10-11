@@ -1,0 +1,18 @@
+{
+ "comment": "an element with opacity 0 draws nothing but is hit: hovering where it lies over another element hovers it (and shows it), not the element below.",
+ "viewport": [
+  220,
+  160
+ ],
+ "steps": [
+  {
+   "capture": "rest"
+  },
+  {
+   "hover": "#over"
+  },
+  {
+   "capture": "hover"
+  }
+ ]
+}

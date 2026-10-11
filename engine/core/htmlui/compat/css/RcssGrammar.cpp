@@ -819,6 +819,8 @@ namespace {
         {"position", ForkFeature::Sticky, "kw:sticky"},
         {"scrollbar-gutter", ForkFeature::Sticky, "kw:auto,stable,stable both-edges,both-edges stable"},
         {"width", ForkFeature::BoxParity, "kw:min-content,max-content,fit-content,stretch,-webkit-fill-available|@fit_content"},
+        // p3-paint (GroupOpacity: stacking contexts)
+        {"isolation", ForkFeature::GroupOpacity, "kw:auto,isolate"},
     };
 
     const ForkGrammar* findForkGrammar(std::string_view name){

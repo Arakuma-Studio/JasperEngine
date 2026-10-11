@@ -242,6 +242,15 @@ namespace Style {
 	// -- Cascade (p3-cascade) --
 
 	// -- Paint (p3-paint) --
+	// 'border-*-style' and 'outline-style' ('auto' is the outline's only, the focus ring).
+	enum class BorderStyle : uint8_t { None, Hidden, Dotted, Dashed, Solid, Double, Groove, Ridge, Inset, Outset, Auto };
+	// A border side with this style is painted and takes its width; 'none' and 'hidden' compute the width to 0.
+	inline bool IsBorderStylePainted(BorderStyle style)
+	{
+		return style != BorderStyle::None && style != BorderStyle::Hidden;
+	}
+	enum class Isolation : uint8_t { Auto, Isolate };
+	enum class ObjectFit : uint8_t { Fill, Contain, Cover, None, ScaleDown };
 
 	// -- Text (p3-text) --
 	enum class WhiteSpaceCollapse : uint8_t { Collapse, Preserve, PreserveBreaks, PreserveSpaces, BreakSpaces };

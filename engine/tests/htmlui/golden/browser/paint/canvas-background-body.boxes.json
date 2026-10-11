@@ -1,0 +1,11 @@
+{
+ "fixture": "paint/canvas-background-body.html",
+ "viewport": [
+  240,
+  160
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": []
+ }
+}

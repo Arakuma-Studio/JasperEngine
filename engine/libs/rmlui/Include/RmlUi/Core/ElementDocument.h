@@ -103,6 +103,14 @@ public:
 	/// @return True if the document is hogging focus.
 	bool IsModal() const;
 
+	/// Fork (phase 3, p3-paint): the document is the root of an HTML page. Its background, or when it has none the
+	/// background of its first child element named 'body_tag', is the canvas background: painted over the whole context,
+	/// below everything, its images positioned in the document's boxes (CSS Backgrounds 3, 2.11.2). The body then paints
+	/// no background of its own.
+	void SetCanvasBackground(bool enable, const String& body_tag = String());
+	bool HasCanvasBackground() const { return canvas_background; }
+	const String& GetCanvasBodyTag() const { return canvas_body_tag; }
+
 	/// Finds the next tabbable element in the document tree, starting at the given element, possibly wrapping around the document.
 	/// @param[in] current_element The element to start from.
 	/// @param[in] forward True to search forward, false to search backward.
@@ -140,6 +148,9 @@ protected:
 	void SetFocusableFromModal(bool focusable);
 
 private:
+	bool canvas_background = false;
+	String canvas_body_tag;
+
 	/// Searches forwards or backwards for a focusable element in the given subtree.
 	Element* SearchFocusSubtree(Element* element, bool forward);
 	/// Searches children of the given subtree for a focusable child.

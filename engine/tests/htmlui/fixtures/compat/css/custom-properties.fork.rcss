@@ -1,11 +1,10 @@
 body#htmlui-root:root {
 --accent: #00000080;
---bg: linear-gradient(135deg, #1e1e2eff, #11111bff) border-box;
+--bg: linear-gradient(135deg, #1e1e2eff, #11111bff);
 --shared: linear-gradient(#ff0000ff, #0000ffff);
---shared--decorator: linear-gradient(#ff0000ff, #0000ffff) border-box;
---shared--mask: linear-gradient(#ff0000ff, #0000ffff) border-box;
 --shadow: 0 0 8px #00ffffff;
 --theme-color: #333333ff;
+--theme-color--native-layers: #333333ff;
 --space: 1.5rem;
 --dur: 0.2s;
 --str: "hello";
@@ -14,19 +13,19 @@ body#htmlui-root:root {
 }
 #htmlui-root .dark {
 --theme-color: #eeeeeeff;
+--theme-color--native-layers: #eeeeeeff;
 --mixed: linear-gradient(#ff0000ff, #0000ffff);
 }
 #htmlui-root .uses {
 color: var(--accent);
-background-color: transparent;
-decorator: var(--bg);
+background: var(--bg);
 padding: var(--space);
 }
 #htmlui-root .typed-1 {
-decorator: var(--shared--decorator);
+background-image: var(--shared);
 }
 #htmlui-root .typed-2 {
-mask-image: var(--shared--mask);
+mask-image: var(--shared);
 }
 #htmlui-root .shadow-text {
 text-shadow: var(--shadow);
@@ -36,8 +35,7 @@ text-shadow: var(--shadow);
 box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
 }
 #htmlui-root .theme {
-background-color: var(--theme-color);
-decorator: none;
+background: var(--theme-color--native-layers);
 border-top-width: 1px;
 border-top-style: solid;
 border-top-color: var(--theme-color);
@@ -50,17 +48,17 @@ border-bottom-color: var(--theme-color);
 border-left-width: 1px;
 border-left-style: solid;
 border-left-color: var(--theme-color);
+border-image: none;
 }
 #htmlui-root .mixed {
-decorator: var(--mixed);
+background: var(--mixed);
 }
 #htmlui-root .undeclared {
-decorator: var(--from-lua);
+background: var(--from-lua);
 text-shadow: var(--nope);
 }
 #htmlui-root .fallback {
-background-color: transparent;
-decorator: var(--missing, linear-gradient(#000000ff, #ffffffff) border-box);
+background: var(--missing, linear-gradient(#000000ff, #ffffffff));
 color: var(--missing2, #ff0000ff);
 }
 #htmlui-root .chain {

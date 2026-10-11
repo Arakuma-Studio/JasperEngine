@@ -485,7 +485,7 @@ TEST_F(RmlRendererP1GoldenTest, ManyElements){
     // 500 small rounded buttons: one pass, few pipeline switches
     std::string rml = "<html><head><link type=\"text/css\" href=\"../common/base.css\"/><link type=\"text/css\" href=\"p1.css\"/>"
                       "<style>#grid { position: absolute; left: 6px; top: 12px; width: 500px; display: flex; flex-wrap: wrap; }"
-                      " #grid div { width: 14px; height: 10px; margin-right: 4px; margin-bottom: 3px; border-radius: 4px; border: 1px #ffffff; }"
+                      " #grid div { width: 14px; height: 10px; margin-right: 4px; margin-bottom: 3px; border-radius: 4px; border: 1px solid #ffffff; }"
                       "</style></head><body><div id=\"grid\">";
     for (int i = 0; i < 500; i++){
         char colour[32];

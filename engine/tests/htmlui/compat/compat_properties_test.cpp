@@ -7,6 +7,7 @@
 
 #include "RuntimeTestCommon.h"
 
+#include "htmlui/compat/ForkFeatures.h"
 #include "htmlui/compat/runtime/CompatProperties.h"
 
 #include <RmlUi/Core/PropertyDefinition.h>
@@ -34,8 +35,9 @@ namespace {
         {CompatProperty::ListStyleType, "list-style-type", true, "disc", true},
         {CompatProperty::ListStylePosition, "list-style-position", true, "outside", true},
         {CompatProperty::ListStyleImage, "list-style-image", true, "none", true},
-        {CompatProperty::ObjectFit, "object-fit", false, "fill"},
-        {CompatProperty::ObjectPosition, "object-position", false, "50% 50%"},
+        // object-fit, object-position: the fork's since its ObjectFit (p3-paint)
+        {CompatProperty::ObjectFit, "object-fit", false, "fill", true},
+        {CompatProperty::ObjectPosition, "object-position", false, "50% 50%", true},
         {CompatProperty::ImageRendering, "image-rendering", true, "auto"},
         {CompatProperty::AnimationFill, "-html-animation-fill", false, "none"},
         {CompatProperty::Fill, "fill", true, ""},
@@ -59,6 +61,9 @@ TEST_F(CompatPropertiesTest, EveryPropertyIsRegistered){
     for (const Expected& expected : kExpected){
         EXPECT_STREQ(CompatProperties::name(expected.property), expected.name);
         EXPECT_EQ(CompatProperties::registeredByCompat(expected.property), !expected.fork) << expected.name;
+        // (object-position is the fork's shorthand of object-position-x/-y: ForkFeature::ObjectFit, p3-paint)
+        if (expected.property == CompatProperty::ObjectPosition && expected.fork)
+            continue;
         const Rml::PropertyDefinition* definition = Rml::StyleSheetSpecification::GetProperty(expected.name);
         ASSERT_NE(definition, nullptr) << expected.name;
         EXPECT_EQ(definition->IsInherited(), expected.inherited) << expected.name;
@@ -93,7 +98,9 @@ TEST_F(CompatPropertiesTest, ValuesParseAndInheritAsSpecified){
     EXPECT_EQ(CompatProperties::text(*parent, CompatProperty::ListStylePosition), "inside");
     EXPECT_EQ(CompatProperties::text(*parent, CompatProperty::ListStyleImage), "/ui/bullet.png");
     EXPECT_EQ(CompatProperties::text(*parent, CompatProperty::ObjectFit), "cover");
-    EXPECT_EQ(CompatProperties::text(*parent, CompatProperty::ObjectPosition), "right 10px top");
+    // the fork's <position>: an offset from the right edge is a calc() (without ObjectFit: as written)
+    EXPECT_EQ(CompatProperties::text(*parent, CompatProperty::ObjectPosition),
+              ForkFeatures::present().has(ForkFeature::ObjectFit) ? "calc(100% - 10px) 0%" : "right 10px top");
     EXPECT_EQ(CompatProperties::text(*parent, CompatProperty::ImageRendering), "pixelated");
     EXPECT_EQ(CompatProperties::text(*parent, CompatProperty::AnimationFill), "forwards");
     Rml::Colourb fill;

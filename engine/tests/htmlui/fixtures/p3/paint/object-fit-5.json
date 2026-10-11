@@ -1,0 +1,7 @@
+{
+ "comment": "object-fit's five values for a 48 x 24 image in 96 x 96 boxes, cover and contain in wide boxes, scale-down in a small one (the box's background shows where the image does not). image-rendering: pixelated keeps the scaled pixels sharp on both sides.",
+ "viewport": [
+  560,
+  200
+ ]
+}

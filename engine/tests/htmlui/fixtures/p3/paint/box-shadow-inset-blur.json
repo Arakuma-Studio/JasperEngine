@@ -1,0 +1,10 @@
+{
+ "comment": "blurred inset box shadows: no radius, radii, a circle, elliptical corners, spread (positive and negative) and offsets, under a border, in flex containers, with an outer shadow and a hard inset ring (the inventory page's slots). Tolerance: single pixels along the curved edges of the rounded and elliptical boxes (the padding-box clip of the blurred layer is multisampled, Chromium's analytic), scattered, largest cluster 2 px. Measured 0.103 % on glcore and Vulkan; the cluster limit stays at the default (16 px).",
+ "viewport": [
+  440,
+  190
+ ],
+ "tolerance": {
+  "badPercent": 0.11
+ }
+}

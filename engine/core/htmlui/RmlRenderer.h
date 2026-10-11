@@ -130,6 +130,10 @@ namespace jasperengine {
         Rml::TextureHandle LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source) override;
         // the source without its htmlui-filter=nearest query parameter (other parameters stay)
         static std::string stripTextureFilter(const std::string& source, bool& nearest);
+        // also without the fork's rmlui-wrap=repeat|repeat-x|repeat-y (phase 3, p3-paint: a background or mask image
+        // repeated along those axes, sampled with repeat wrap there; CONTRACTS)
+        static std::string stripTextureFilter(const std::string& source, bool& nearest, bool& repeatX, bool& repeatY);
+        bool SupportsTextureWrapHint() override { return true; }
         Rml::TextureHandle GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions) override;
         // deletes the HtmlUITexture behind any handle (also those handed to RmlUi through
         // CallbackTextureInterface::SetTextureHandle), after the frame when one is in progress
@@ -297,7 +301,8 @@ namespace jasperengine {
 
         // textures
         HtmlUITexture* createStaticTexture(const uint8_t* rgba, int width, int height, const char* label,
-                                           TextureFilter filter = TextureFilter::LINEAR);
+                                           TextureFilter filter = TextureFilter::LINEAR,
+                                           TextureWrap wrapU = TextureWrap::CLAMP_TO_EDGE, TextureWrap wrapV = TextureWrap::CLAMP_TO_EDGE);
         HtmlUITexture* toTexture(Rml::TextureHandle handle);
         void destroyTexture(HtmlUITexture* texture);
         void flushPendingReleases();

@@ -1,0 +1,27 @@
+{
+ "comment": "currentcolor and color-mix(currentcolor) in gradient stops of background layers (one tiled), in a mask layer and in an inherited colour; the colour changes on two elements and the layers follow it.",
+ "viewport": [
+  450,
+  170
+ ],
+ "steps": [
+  {
+   "capture": "initial"
+  },
+  {
+   "addClass": [
+    "#b1",
+    "alt"
+   ]
+  },
+  {
+   "addClass": [
+    "#b6",
+    "alt"
+   ]
+  },
+  {
+   "capture": "changed"
+  }
+ ]
+}

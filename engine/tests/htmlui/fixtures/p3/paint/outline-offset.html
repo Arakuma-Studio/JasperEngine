@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: outlines and their offset</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  div { position: absolute; width: 60px; height: 30px; background-color: #dde6f5; }
+  #a { left: 20px; top: 20px; outline: 3px solid #cc3333; }
+  #b { left: 120px; top: 20px; outline: 2px solid #3366cc; outline-offset: 5px; }
+  #c { left: 220px; top: 20px; outline: 4px solid #339966; outline-offset: -8px; }
+  #d { left: 20px; top: 90px; outline: 3px dashed #cc3333; outline-offset: 2px; border: 2px solid #222222; }
+  #e { left: 120px; top: 90px; outline: 3px dotted #3366cc; outline-offset: 3px; }
+  #f { left: 220px; top: 90px; outline: 6px double #663399; }
+  #g { left: 20px; top: 160px; outline: 3px solid #cc3333; border-radius: 12px; }
+  #h { left: 120px; top: 160px; outline: 2px solid #3366cc; outline-offset: 6px; border-radius: 12px; }
+  #i { left: 220px; top: 160px; outline: 4px solid #339966; outline-offset: 4px; border-radius: 50%; }
+  #j { left: 20px; top: 230px; outline: 6px ridge #cc9933; outline-offset: 1px; }
+  #k { left: 120px; top: 230px; outline: thick solid; color: #663399; }
+  #l { left: 220px; top: 230px; width: 70px; outline: 2px solid #222222; }
+  #l > div { left: 30px; top: 10px; width: 60px; height: 30px; background-color: #f4c430; }
+</style>
+</head>
+<body><div id="a"></div><div id="b"></div><div id="c"></div><div id="d"></div><div id="e"></div><div id="f"></div><div id="g"></div><div id="h"></div><div id="i"></div><div id="j"></div><div id="k"></div><div id="l"><div></div></div></body>
+</html>

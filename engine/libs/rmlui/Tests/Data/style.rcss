@@ -60,11 +60,13 @@ scrollbarhorizontal slidertrack
 scrollbarvertical slidertrack
 {
 	border-left-width: 1dp;
+	border-left-style: solid;
 }
 scrollbarhorizontal slidertrack
 {
 	height: 15dp;
 	border-top-width: 1dp;
+	border-top-style: solid;
 }
 scrollbarvertical sliderbar,
 scrollbarhorizontal sliderbar
@@ -75,12 +77,14 @@ scrollbarhorizontal sliderbar
 scrollbarvertical sliderbar
 {
 	border-width: 1dp 0;
+	border-style: solid;
 	margin-left: 1dp;
 }
 scrollbarhorizontal sliderbar
 {
 	height: 15dp;
 	border-width: 0 1dp;
+	border-style: solid;
 	margin-top: 1dp;
 }
 scrollbarcorner
@@ -123,7 +127,7 @@ handle {
 input.radio, input.checkbox {
 	width: 10dp;
 	height: 10dp;
-	border: 1dp #666;
+	border: 1dp solid #666;
 	background: #fff;
 	tab-index: auto;
 }
@@ -142,7 +146,7 @@ input.radio:checked, input.checkbox:checked {
 input.text {
 	background-color: #fff;
 	color: #555;
-	border: 2dp #999;
+	border: 2dp solid #999;
 	padding: 5dp;
 	tab-index: auto;
 	cursor: text;

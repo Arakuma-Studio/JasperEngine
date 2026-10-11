@@ -26,8 +26,13 @@
 #include "htmlui/compat/runtime/HtmlShapeDecorator.h"
 #include "htmlui/compat/runtime/SvgElementHook.h"
 
+#include "htmlui/compat/DocumentLoader.h"
+#include "htmlui/compat/runtime/DecoratorCommon.h"
+
+#include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementInstancer.h>
 #include <RmlUi/Core/Factory.h>
+#include <RmlUi/Core/ImageSource.h>
 
 #include <memory>
 #include <vector>
@@ -36,12 +41,46 @@ using namespace jasperengine::htmlui::compat;
 
 namespace {
 
+    // The url() images of the fork's background and mask layers (phase 3, p3-paint): loaded as
+    // compat's own images (html-layer's), so SVG files are rasterized at the size of a tile,
+    // monochrome currentColor SVGs tinted, and image-rendering chooses the sampling
+    class LayerImageSource : public Rml::ImageSourceHandler {
+    public:
+        bool GetImage(Rml::Element* element, const Rml::String& url, const Rml::String& /*base_path*/, Rml::Vector2f draw_size,
+                      bool repeatX, bool repeatY, Image& out) override{
+            // the paths compat writes are resolved for the document (resolveUrlIn); others are
+            // RmlUi's own (a .rml document): the fork loads them
+            Rml::ElementDocument* document = element ? element->GetOwnerDocument() : nullptr;
+            if (!document || !DocumentLoader::isCompatDocument(document))
+                return false;
+            // a raster image repeated along an axis: its texture sampled with repeat wrap there
+            // (RmlRenderer::LoadTexture reads rmlui-wrap); SVG images are rasterized per tile
+            const bool wrap = (repeatX || repeatY) && !decorators::isSvgPath(url);
+            std::string path = url;
+            if (wrap)
+                path += std::string(url.find('?') == std::string::npos ? "?" : "&") + "rmlui-wrap=" +
+                        (repeatX && repeatY ? "repeat" : (repeatX ? "repeat-x" : "repeat-y"));
+            auto image = std::make_shared<decorators::Image>();
+            if (!image->load(element, path))
+                return true;   // reported once by load; nothing drawn
+            out.repeats = wrap;
+            out.intrinsic_size = image->intrinsicSize();
+            if (draw_size.x > 0.0f && draw_size.y > 0.0f){
+                out.texture = image->texture(element, draw_size);
+                out.colour = image->colour(element);
+                out.owner = image;
+            }
+            return true;
+        }
+    };
+
     struct Runtime {
         bool registered = false;
         std::unique_ptr<HtmlLayerDecoratorInstancer> layer;
         std::unique_ptr<HtmlShapeDecoratorInstancer> shape;
         std::unique_ptr<HtmlBorderImageDecoratorInstancer> borderImage;
         std::vector<std::unique_ptr<Rml::ElementInstancer>> elements;
+        LayerImageSource layerImages;
     };
 
     template<typename T>
@@ -65,6 +104,7 @@ void jasperengine::htmlui::compat::registerRuntime(){
     // properties first: the instancers and decorators read them
     CompatProperties::registerAll();
     SvgElementHook::install();
+    Rml::SetImageSourceHandler(&r.layerImages);
 
     // the pseudo-classes FocusTracker sets: the fork drops selectors with unknown ones (phase 3),
     // and compat writes them while FocusPseudoClasses is absent (forced off in tests)
@@ -100,6 +140,7 @@ void jasperengine::htmlui::compat::releaseRuntime(){
     AnimationFill::reset();
     HtmlListItemElement::resetMarkerEmulation();
     SvgElementHook::uninstall();
+    Rml::SetImageSourceHandler(nullptr);
     CompatProperties::reset();
     r.layer.reset();
     r.shape.reset();

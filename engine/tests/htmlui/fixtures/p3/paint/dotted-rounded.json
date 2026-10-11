@@ -1,0 +1,10 @@
+{
+ "comment": "dotted borders of 1, 2, 4, 6 and 8px, square, rounded and a circle. Tolerance: the dots sit where Chromium's are (on rounded boxes chosen for Skia's length of the centre path, truncated to whole pixels, and laid out in its measure), but Skia's analytic coverage of a round dot's edge differs from the engine's multisampled circle by up to a third of a pixel: the edge pixels of the dots differ, scattered (largest cluster 4 px). Measured 0.650 % on glcore and Vulkan; the cluster limit stays at the default (16 px).",
+ "viewport": [
+  330,
+  160
+ ],
+ "tolerance": {
+  "badPercent": 0.65
+ }
+}

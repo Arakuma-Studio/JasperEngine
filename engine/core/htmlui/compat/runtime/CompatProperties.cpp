@@ -130,6 +130,13 @@ const Rml::Property* CompatProperties::get(Rml::Element& element, CompatProperty
 }
 
 std::string CompatProperties::text(Rml::Element& element, CompatProperty property){
+    // the fork's object-position is a shorthand of its two axes (phase 3, p3-paint)
+    if (property == CompatProperty::ObjectPosition && !registeredByCompat(property)){
+        const Rml::Property* x = element.GetProperty("object-position-x");
+        const Rml::Property* y = element.GetProperty("object-position-y");
+        if (x && y)
+            return x->ToString() + " " + y->ToString();
+    }
     const Rml::Property* value = get(element, property);
     if (!value || value->unit == Rml::Unit::UNKNOWN)
         return std::string();

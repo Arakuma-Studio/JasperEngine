@@ -50,6 +50,10 @@ public:
 		size_t compile_shader;
 		size_t render_shader;
 		size_t release_shader;
+		// Layers (phase 3, p3-paint: group opacity, filters).
+		size_t push_layer;
+		size_t composite_layers;
+		size_t pop_layer;
 	};
 
 	Rml::CompiledGeometryHandle CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) override;
@@ -59,6 +63,7 @@ public:
 	Rml::TextureHandle LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source) override;
 	Rml::TextureHandle GenerateTexture(Rml::Span<const Rml::byte> source_data, Rml::Vector2i source_dimensions) override;
 	void ReleaseTexture(Rml::TextureHandle texture_handle) override;
+	bool SupportsTextureWrapHint() override;
 
 	void EnableScissorRegion(bool enable) override;
 	void SetScissorRegion(Rml::Rectanglei region) override;
@@ -76,6 +81,21 @@ public:
 		Rml::TextureHandle texture) override;
 	void ReleaseShader(Rml::CompiledShaderHandle shader) override;
 
+	Rml::LayerHandle PushLayer() override;
+	void CompositeLayers(Rml::LayerHandle source, Rml::LayerHandle destination, Rml::BlendMode blend_mode,
+		Rml::Span<const Rml::CompiledFilterHandle> filters) override;
+	void PopLayer() override;
+
+	// The values of the 'opacity' filters compiled since the last Reset (group opacity), in order.
+	const Rml::Vector<float>& GetCompiledOpacities() const { return compiled_opacities; }
+	// The shaders compiled since the last Reset (gradients of background layers), and the sources of the textures loaded.
+	struct CompiledShaderRecord {
+		Rml::String name;
+		Rml::Dictionary parameters;
+	};
+	const Rml::Vector<CompiledShaderRecord>& GetCompiledShaders() const { return compiled_shaders; }
+	const Rml::StringList& GetLoadedTextureSources() const { return loaded_texture_sources; }
+
 	const Counters& GetCounters() const { return counters; }
 	void ResetCounters();
 	const Counters& GetCountersFromPreviousReset() const { return counters_from_previous_reset; }
@@ -91,4 +111,8 @@ private:
 	Counters counters_from_previous_reset = {};
 	Rml::Vector<Rml::Mesh> meshes;
 	bool meshes_set = false;
+	Rml::Vector<float> compiled_opacities;
+	Rml::Vector<CompiledShaderRecord> compiled_shaders;
+	Rml::StringList loaded_texture_sources;
+	int layer_depth = 0;
 };

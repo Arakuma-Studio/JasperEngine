@@ -26,13 +26,13 @@ transition: opacity 1s steps(4, end), color 1s step-start;
 transition: opacity 1s linear(0, 0.25 75%, 1);
 }
 #htmlui-root .default {
-transition: background-color 0.3s, decorator 0.3s;
+transition: background 0.3s;
 }
 #htmlui-root .delay {
 transition: opacity 0.5s ease-in 0.1s, transform 1s -0.2s;
 }
 #htmlui-root .mapped {
-transition: box-shadow 0.2s, text-shadow 0.3s, decorator 1s, translate 1s;
+transition: outline-color 0.2s, text-shadow 0.3s, background-image 1s, translate 1s;
 }
 #htmlui-root .none {
 transition: none;

@@ -401,11 +401,24 @@ static SharedPtr<const Calculation::Node> MakeCalculationEndpointNode(const Prop
 	return node;
 }
 
+// A length and a percentage of a basis the animation does not know (phase 3, p3-paint: radii of the border box,
+// object-position's free space): their mix is the calc() of a length.
+static bool IsLengthPercentageMix(const Property& p0, const Property& p1, const PropertyDefinition* definition)
+{
+	if (definition && definition->GetRelativeTarget() != RelativeTarget::None)
+		return false;
+	const bool length0 = Any(p0.unit & Unit::LENGTH), length1 = Any(p1.unit & Unit::LENGTH);
+	return (length0 && p1.unit == Unit::PERCENT) || (p0.unit == Unit::PERCENT && length1);
+}
+
 static CalculationPtr InterpolateCalculations(const Property& p0, const Property& p1, float alpha)
 {
 	const CalculationPtr c0 = (p0.unit == Unit::CALCULATION ? p0.value.Get<CalculationPtr>() : nullptr);
 	const CalculationPtr c1 = (p1.unit == Unit::CALCULATION ? p1.value.Get<CalculationPtr>() : nullptr);
-	const CalculationNumericType* target_type = c0 && c0->GetRoot() ? &c0->GetType() : (c1 && c1->GetRoot() ? &c1->GetType() : nullptr);
+	CalculationNumericType length_type;
+	length_type.exponents[size_t(CalculationDimension::Length)] = 1;
+	const CalculationNumericType* target_type =
+		c0 && c0->GetRoot() ? &c0->GetType() : (c1 && c1->GetRoot() ? &c1->GetType() : (IsLengthPercentageMix(p0, p1, nullptr) ? &length_type : nullptr));
 	if (!target_type)
 		return nullptr;
 
@@ -470,7 +483,7 @@ static Property InterpolateProperties(const Property& p0, const Property& p1, fl
 #ifdef RMLUI_MATH_EXPRESSIONS
 	if ((Any(p0.unit & Unit::NUMERIC) || p0.unit == Unit::CALCULATION) && (Any(p1.unit & Unit::NUMERIC) || p1.unit == Unit::CALCULATION))
 	{
-		if (ShouldDeferCalculatedPercentageInterpolation(p0, p1, definition))
+		if (ShouldDeferCalculatedPercentageInterpolation(p0, p1, definition) || IsLengthPercentageMix(p0, p1, definition))
 		{
 			if (CalculationPtr calculation = InterpolateCalculations(p0, p1, alpha))
 				return Property{std::move(calculation), Unit::CALCULATION};
@@ -1372,6 +1385,20 @@ const Property* ElementAnimation::GetStartValue() const
 	if (tracks.empty() || tracks[0].GetKeys().empty())
 		return nullptr;
 	return &tracks[0].GetKeys().front().property;
+}
+
+// The decorator functions of background and mask layers interpolate as the 'decorator' property does (phase 3, p3-paint:
+// BackgroundLayerValues.cpp).
+bool InterpolateDecoratorLists(const DecoratorsPtr& from, const DecoratorsPtr& to, float alpha, Element& element, DecoratorsPtr& result)
+{
+	const Property p0{from ? from : MakeShared<DecoratorDeclarationList>(), Unit::DECORATOR};
+	const Property p1{to ? to : MakeShared<DecoratorDeclarationList>(), Unit::DECORATOR};
+	const Property interpolated = InterpolateProperties(p0, p1, alpha, element, nullptr);
+	if (interpolated.unit != Unit::DECORATOR)
+		return false;
+	result = interpolated.value.Get<DecoratorsPtr>();
+	// (A discrete step returns one of the ends: not an interpolation.)
+	return result && result != p0.value.GetReference<DecoratorsPtr>() && result != p1.value.GetReference<DecoratorsPtr>();
 }
 
 } // namespace Rml

@@ -1,10 +1,10 @@
-color: #ff0000ff; --html-current-color: #ff0000ff; background-color: #00000080; decorator: none; padding: 4px 8px;
-border-top-width: 1px; border-top-style: solid; border-top-color: currentcolor; border-right-width: 1px; border-right-style: solid; border-right-color: currentcolor; border-bottom-width: 1px; border-bottom-style: solid; border-bottom-color: currentcolor; border-left-width: 1px; border-left-style: solid; border-left-color: currentcolor; width: calc(100% - 20px); transition: opacity 0.2s ease;
+color: #ff0000ff; --html-current-color: #ff0000ff; background-color: #00000080; background-image: none; background-position-x: 0%; background-position-y: 0%; background-size: auto auto; background-repeat: repeat repeat; background-origin: padding-box; background-clip: border-box; background-attachment: scroll; padding: 4px 8px;
+border-top-width: 1px; border-top-style: solid; border-top-color: currentcolor; border-right-width: 1px; border-right-style: solid; border-right-color: currentcolor; border-bottom-width: 1px; border-bottom-style: solid; border-bottom-color: currentcolor; border-left-width: 1px; border-left-style: solid; border-left-color: currentcolor; border-image: none; width: calc(100% - 20px); transition: opacity 0.2s ease;
 width: 50vmin; height: 10vmax; font-size: clamp(12px, 2vw, 20px);
 margin: 0 !important; color: #0000ffff !important; --html-current-color: #0000ffff !important;
 display: grid; grid-template-columns: repeat(2, 1fr);
 text-shadow: 0 0 4px #ffffffff; top: unset; right: unset; bottom: unset; left: unset; color: inherit;
---local: 10px; width: var(--local); decorator: html-layer("asset://ui/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+--local: 10px; width: var(--local); background-image: url("asset://ui/img/a.png");
 /* important */
 #htmlui-root [data-htmlui-loc="5"] > scrollbarvertical {
 width: 0px;

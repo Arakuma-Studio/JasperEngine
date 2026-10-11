@@ -191,6 +191,32 @@ namespace {
 }
 
 void jasperengine::htmlui::compat::rewriteOutline(DeclContext& context){
+    if (context.fork(ForkFeature::Outline)){
+        // the fork draws outlines (phase 3 §3.7.4): every declaration passes through; CSS UI 4's
+        // 'outline-color: auto' is the current color there, 'hidden' is not an outline style
+        const Words w = wordsOf(context.value);
+        if (w.empty()){
+            unsupportedValue(context, "write outline: <width> <style> <color>");
+            return;
+        }
+        std::string out;
+        for (const ComponentValue* v : w){
+            if (isIdent(*v, "hidden")){
+                unsupportedValue(context, "use outline-style: none");
+                return;
+            }
+            if (!out.empty())
+                out += ' ';
+            if (context.name == "outline-color" && isIdent(*v, "auto"))
+                out += "currentcolor";
+            else if (context.name == "outline-offset" || ((context.name == "outline" || context.name == "outline-width") && isLength(context.session, *v)))
+                appendLength(out, *v);
+            else
+                appendSerialized(out, *v);
+        }
+        context.emit(context.name, out);
+        return;
+    }
     // every outline declaration of the rule merges into the last one
     Outline outline;
     if (context.rule){

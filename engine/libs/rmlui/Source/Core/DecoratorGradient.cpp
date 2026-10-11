@@ -178,8 +178,7 @@ bool DecoratorStraightGradient::Initialise(const Direction in_direction, const C
 DecoratorDataHandle DecoratorStraightGradient::GenerateElementData(Element* element, BoxArea paint_area) const
 {
 	const RenderBox render_box = element->GetRenderBox(paint_area);
-	const ComputedValues& computed = element->GetComputedValues();
-	const float opacity = computed.opacity();
+	const float opacity = element->GetDrawOpacity();
 
 	Mesh mesh;
 	MeshUtilities::GenerateBackground(mesh, render_box, ColourbPremultiplied());
@@ -275,19 +274,15 @@ bool DecoratorLinearGradient::Initialise(bool in_repeating, Corner in_corner, fl
 	return !color_stops.empty();
 }
 
-DecoratorDataHandle DecoratorLinearGradient::GenerateElementData(Element* element, BoxArea paint_area) const
+CompiledShader DecoratorLinearGradient::CompileImageShader(Element* element, Vector2f dimensions) const
 {
 	RenderManager* render_manager = element->GetRenderManager();
-	if (!render_manager)
-		return INVALID_DECORATORDATAHANDLE;
+	if (!render_manager || color_stops.empty())
+		return CompiledShader();
+	LinearGradientShape gradient_shape = CalculateShape(dimensions);
 
-	RMLUI_ASSERT(!color_stops.empty());
-
-	const RenderBox render_box = element->GetRenderBox(paint_area);
-	LinearGradientShape gradient_shape = CalculateShape(render_box.GetFillSize());
-
-	// One-pixel minimum color stop spacing to avoid aliasing.
-	const float soft_spacing = 1.f / gradient_shape.length;
+	// Fork (phase 3, p3-paint): hard stops stay hard, as Chromium draws them (upstream spaced stops one pixel apart).
+	const float soft_spacing = 0.f;
 
 	ColorStopList resolved_stops = ResolveColorStops(element, gradient_shape.length, soft_spacing, color_stops);
 
@@ -299,12 +294,24 @@ DecoratorDataHandle DecoratorLinearGradient::GenerateElementData(Element* elemen
 			{"repeating", Variant(repeating)},
 			{"color_stop_list", Variant(std::move(resolved_stops))},
 		});
+	return shader;
+}
+
+DecoratorDataHandle DecoratorLinearGradient::GenerateElementData(Element* element, BoxArea paint_area) const
+{
+	RenderManager* render_manager = element->GetRenderManager();
+	if (!render_manager)
+		return INVALID_DECORATORDATAHANDLE;
+
+	RMLUI_ASSERT(!color_stops.empty());
+
+	const RenderBox render_box = element->GetRenderBox(paint_area);
+	CompiledShader shader = CompileImageShader(element, render_box.GetFillSize());
 	if (!shader)
 		return INVALID_DECORATORDATAHANDLE;
 
 	Mesh mesh;
-	const ComputedValues& computed = element->GetComputedValues();
-	const byte alpha = byte(computed.opacity() * 255.f);
+	const byte alpha = byte(element->GetDrawOpacity() * 255.f);
 	MeshUtilities::GenerateBackground(mesh, render_box, ColourbPremultiplied(alpha, alpha));
 
 	const Vector2f render_offset = render_box.GetFillOffset();
@@ -464,21 +471,16 @@ bool DecoratorRadialGradient::Initialise(bool in_repeating, Shape in_shape, Size
 	return !color_stops.empty();
 }
 
-DecoratorDataHandle DecoratorRadialGradient::GenerateElementData(Element* element, BoxArea paint_area) const
+CompiledShader DecoratorRadialGradient::CompileImageShader(Element* element, Vector2f dimensions) const
 {
 	RenderManager* render_manager = element->GetRenderManager();
-	if (!render_manager)
-		return INVALID_DECORATORDATAHANDLE;
-
-	RMLUI_ASSERT(!color_stops.empty() && (shape == Shape::Circle || shape == Shape::Ellipse));
-
-	const RenderBox render_box = element->GetRenderBox(paint_area);
-	const Vector2f dimensions = render_box.GetFillSize();
+	if (!render_manager || color_stops.empty())
+		return CompiledShader();
 
 	RadialGradientShape gradient_shape = CalculateRadialGradientShape(element, dimensions);
 
-	// One-pixel minimum color stop spacing to avoid aliasing.
-	const float soft_spacing = 1.f / Math::Min(gradient_shape.radius.x, gradient_shape.radius.y);
+	// Fork (phase 3, p3-paint): hard stops stay hard, as Chromium draws them (upstream spaced stops one pixel apart).
+	const float soft_spacing = 0.f;
 
 	ColorStopList resolved_stops = ResolveColorStops(element, gradient_shape.radius.x, soft_spacing, color_stops);
 
@@ -489,12 +491,24 @@ DecoratorDataHandle DecoratorRadialGradient::GenerateElementData(Element* elemen
 			{"repeating", Variant(repeating)},
 			{"color_stop_list", Variant(std::move(resolved_stops))},
 		});
+	return shader;
+}
+
+DecoratorDataHandle DecoratorRadialGradient::GenerateElementData(Element* element, BoxArea paint_area) const
+{
+	RenderManager* render_manager = element->GetRenderManager();
+	if (!render_manager)
+		return INVALID_DECORATORDATAHANDLE;
+
+	RMLUI_ASSERT(!color_stops.empty() && (shape == Shape::Circle || shape == Shape::Ellipse));
+
+	const RenderBox render_box = element->GetRenderBox(paint_area);
+	CompiledShader shader = CompileImageShader(element, render_box.GetFillSize());
 	if (!shader)
 		return INVALID_DECORATORDATAHANDLE;
 
 	Mesh mesh;
-	const ComputedValues& computed = element->GetComputedValues();
-	const byte alpha = byte(computed.opacity() * 255.f);
+	const byte alpha = byte(element->GetDrawOpacity() * 255.f);
 	MeshUtilities::GenerateBackground(mesh, render_box, ColourbPremultiplied(alpha, alpha));
 
 	const Vector2f render_offset = render_box.GetFillOffset();
@@ -781,16 +795,11 @@ bool DecoratorConicGradient::Initialise(bool in_repeating, float in_angle, Vecto
 	return !color_stops.empty();
 }
 
-DecoratorDataHandle DecoratorConicGradient::GenerateElementData(Element* element, BoxArea paint_area) const
+CompiledShader DecoratorConicGradient::CompileImageShader(Element* element, Vector2f dimensions) const
 {
 	RenderManager* render_manager = element->GetRenderManager();
-	if (!render_manager)
-		return INVALID_DECORATORDATAHANDLE;
-
-	RMLUI_ASSERT(!color_stops.empty());
-
-	const RenderBox render_box = element->GetRenderBox(paint_area);
-	const Vector2f dimensions = render_box.GetFillSize();
+	if (!render_manager || color_stops.empty())
+		return CompiledShader();
 
 	Vector2f center;
 #ifdef RMLUI_MATH_EXPRESSIONS
@@ -822,12 +831,24 @@ DecoratorDataHandle DecoratorConicGradient::GenerateElementData(Element* element
 			{"repeating", Variant(repeating)},
 			{"color_stop_list", Variant(std::move(resolved_stops))},
 		});
+	return shader;
+}
+
+DecoratorDataHandle DecoratorConicGradient::GenerateElementData(Element* element, BoxArea paint_area) const
+{
+	RenderManager* render_manager = element->GetRenderManager();
+	if (!render_manager)
+		return INVALID_DECORATORDATAHANDLE;
+
+	RMLUI_ASSERT(!color_stops.empty());
+
+	const RenderBox render_box = element->GetRenderBox(paint_area);
+	CompiledShader shader = CompileImageShader(element, render_box.GetFillSize());
 	if (!shader)
 		return INVALID_DECORATORDATAHANDLE;
 
 	Mesh mesh;
-	const ComputedValues& computed = element->GetComputedValues();
-	const byte alpha = byte(computed.opacity() * 255.f);
+	const byte alpha = byte(element->GetDrawOpacity() * 255.f);
 	MeshUtilities::GenerateBackground(mesh, render_box, ColourbPremultiplied(alpha, alpha));
 
 	const Vector2f render_offset = render_box.GetFillOffset();
