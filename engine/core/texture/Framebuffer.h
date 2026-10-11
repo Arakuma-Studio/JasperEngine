@@ -22,8 +22,8 @@ namespace jasperengine{
             // when > 1 the framebuffer is created as a 2D multi render target (MRT)
             int numColorAttachments;
             ColorFormat colorFormats[SokolFramebuffer::MAX_COLOR_ATTACHMENTS];
-            // a depth-stencil attachment (default), or depth only
-            bool depthStencil;
+            // a depth-stencil attachment (default), depth only, or none
+            FramebufferDepth depth;
 
             unsigned long version; // increment every creation
 
@@ -50,6 +50,11 @@ namespace jasperengine{
             // pre-pass, the G-buffer) can be depth only. Applies on the next create().
             void setDepthStencil(bool depthStencil);
             bool isDepthStencil() const;
+            // DEPTH for a target only fullscreen effects (PIP_EFFECT pipelines) draw into: the
+            // SSAO and SSR targets, their blurs, post-process buffer 1. Applies on the next
+            // create().
+            void setDepthAttachment(FramebufferDepth depth);
+            FramebufferDepth getDepthAttachment() const;
 
             void setWidth(unsigned int width);
             unsigned int getWidth() const;

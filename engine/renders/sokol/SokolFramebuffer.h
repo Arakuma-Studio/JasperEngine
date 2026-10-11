@@ -34,8 +34,9 @@ namespace jasperengine{
         SokolFramebuffer(const SokolFramebuffer& rhs);
         SokolFramebuffer& operator=(const SokolFramebuffer& rhs);
 
-        // stencil: a depth-stencil attachment (colour passes that draw meshes), else depth only
-        bool createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap, bool stencil);
+        // depth: a depth-stencil attachment (colour passes that draw meshes), depth only, or
+        // none (a target only fullscreen effects draw into)
+        bool createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap, FramebufferDepth depth);
         bool createDepthOnlyFramebuffer(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap);
         // Multi render target variant (2D only). formats[i] selects the pixel format
         // for color attachment i; pass numColor==1 for the regular single-target case.

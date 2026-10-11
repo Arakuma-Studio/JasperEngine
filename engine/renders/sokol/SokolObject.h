@@ -48,6 +48,7 @@ namespace jasperengine{
         sg_pipeline rtt_nodepth_pip;
         sg_pipeline zprepass_pip;
         sg_pipeline zprepass_rtt_pip;
+        sg_pipeline effect_pip;
 
         sg_pipeline_desc pipeline_desc;
 
@@ -57,7 +58,7 @@ namespace jasperengine{
 #ifdef JASPERENGINE_EDITOR
         // Editor-only variants of the pipelines that cull no face, one per pipeline type,
         // created on the first draw that asks for one and destroyed with the others
-        static constexpr int PIPELINE_TYPES = 10;
+        static constexpr int PIPELINE_TYPES = 11;
         sg_pipeline noCullPipelines[PIPELINE_TYPES];
         // types whose pipeline already culls nothing, by bit index
         uint16_t noCullSame;

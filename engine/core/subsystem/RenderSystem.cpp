@@ -6613,14 +6613,14 @@ void RenderSystem::loadSSAO(){
     ssaoRender.beginLoad(PrimitiveType::TRIANGLES);
     ssaoRender.setShader(ssaoShader.get());
     ssaoSlotParams = ssaoShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSAO_FS_PARAMS);
-    if (!ssaoRender.endLoad(PIP_RTT, false, true, CullingMode::BACK, WindingOrder::CCW))
+    if (!ssaoRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
     // fullscreen blur pass
     ssaoBlurRender.beginLoad(PrimitiveType::TRIANGLES);
     ssaoBlurRender.setShader(ssaoBlurShader.get());
     ssaoBlurSlotParams = ssaoBlurShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSAO_BLUR_FS_PARAMS);
-    if (!ssaoBlurRender.endLoad(PIP_RTT, false, true, CullingMode::BACK, WindingOrder::CCW))
+    if (!ssaoBlurRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
     ssaoLoaded = true;
@@ -6681,6 +6681,8 @@ bool RenderSystem::ensureSSAOFramebuffers(unsigned int width, unsigned int heigh
     rv().ssaoFramebuffer.setMagFilter(TextureFilter::NEAREST);
     rv().ssaoFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     rv().ssaoFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    // fullscreen passes only (PIP_EFFECT): no stencil (see FramebufferDepth::DEPTH)
+    rv().ssaoFramebuffer.setDepthAttachment(FramebufferDepth::DEPTH);
     rv().ssaoFramebuffer.create();
 
     // blurred AO is sampled bilinearly by the lit meshes
@@ -6690,6 +6692,7 @@ bool RenderSystem::ensureSSAOFramebuffers(unsigned int width, unsigned int heigh
     rv().ssaoBlurFramebuffer.setMagFilter(TextureFilter::LINEAR);
     rv().ssaoBlurFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     rv().ssaoBlurFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    rv().ssaoBlurFramebuffer.setDepthAttachment(FramebufferDepth::DEPTH);
     rv().ssaoBlurFramebuffer.create();
 
     rv().ssaoWidth = width;
@@ -6739,7 +6742,7 @@ void RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResolution, Tex
 
     ssaoPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0));
     ssaoPassRender.startRenderPass(&rv().ssaoFramebuffer.getRender());
-    if (ssaoRender.beginDraw(PIP_RTT)){
+    if (ssaoRender.beginDraw(PIP_EFFECT)){
         ShaderData& sd = ssaoShader.get()->shaderData;
         ssaoRender.addTexture(sd.getTextureIndex(TextureShaderType::DEPTHTEXTURE), ShaderStageType::FRAGMENT, depthTexture);
         ssaoRender.addTexture(sd.getTextureIndex(TextureShaderType::GBUFFERTEXTURE), ShaderStageType::FRAGMENT, normalTexture);
@@ -6754,7 +6757,7 @@ void RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResolution, Tex
 
     ssaoPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0));
     ssaoPassRender.startRenderPass(&rv().ssaoBlurFramebuffer.getRender());
-    if (ssaoBlurRender.beginDraw(PIP_RTT)){
+    if (ssaoBlurRender.beginDraw(PIP_EFFECT)){
         ShaderData& bd = ssaoBlurShader.get()->shaderData;
         ssaoBlurRender.addTexture(bd.getTextureIndex(TextureShaderType::SSAOTEXTURE), ShaderStageType::FRAGMENT, &rv().ssaoFramebuffer.getRender().getColorTexture());
         ssaoBlurRender.applyUniformBlock(ssaoBlurSlotParams, sizeof(fs_ssao_blur_t), &fs_ssao_blur);
@@ -6994,14 +6997,14 @@ void RenderSystem::loadSSR(){
     ssrRender.beginLoad(PrimitiveType::TRIANGLES);
     ssrRender.setShader(ssrShader.get());
     ssrSlotParams = ssrShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSR_FS_PARAMS);
-    if (!ssrRender.endLoad(PIP_RTT, false, true, CullingMode::BACK, WindingOrder::CCW))
+    if (!ssrRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
     // fullscreen glossy blur pass
     ssrBlurRender.beginLoad(PrimitiveType::TRIANGLES);
     ssrBlurRender.setShader(ssrBlurShader.get());
     ssrBlurSlotParams = ssrBlurShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSR_BLUR_FS_PARAMS);
-    if (!ssrBlurRender.endLoad(PIP_RTT, false, true, CullingMode::BACK, WindingOrder::CCW))
+    if (!ssrBlurRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
     // composite targets either an offscreen framebuffer (PIP_RTT) or the swapchain
@@ -7075,6 +7078,8 @@ bool RenderSystem::ensureSSRFramebuffers(unsigned int width, unsigned int height
     rv().ssrFramebuffer.setMagFilter(TextureFilter::LINEAR);
     rv().ssrFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     rv().ssrFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    // fullscreen passes only (PIP_EFFECT): no stencil (see FramebufferDepth::DEPTH)
+    rv().ssrFramebuffer.setDepthAttachment(FramebufferDepth::DEPTH);
     rv().ssrFramebuffer.create();
 
     // glossy-blurred reflection (sampled by the composite when blur > 0)
@@ -7084,6 +7089,7 @@ bool RenderSystem::ensureSSRFramebuffers(unsigned int width, unsigned int height
     rv().ssrBlurFramebuffer.setMagFilter(TextureFilter::LINEAR);
     rv().ssrBlurFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     rv().ssrBlurFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    rv().ssrBlurFramebuffer.setDepthAttachment(FramebufferDepth::DEPTH);
     rv().ssrBlurFramebuffer.create();
 
     rv().ssrWidth = width;
@@ -7113,7 +7119,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
 
     ssrPassRender.setClearColor(Vector4(0.0, 0.0, 0.0, 0.0));
     ssrPassRender.startRenderPass(&rv().ssrFramebuffer.getRender());
-    if (ssrRender.beginDraw(PIP_RTT)){
+    if (ssrRender.beginDraw(PIP_EFFECT)){
         ShaderData& sd = ssrShader.get()->shaderData;
         ssrRender.addTexture(sd.getTextureIndex(TextureShaderType::DEPTHTEXTURE), ShaderStageType::FRAGMENT, &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(0));
         ssrRender.addTexture(sd.getTextureIndex(TextureShaderType::GBUFFERTEXTURE), ShaderStageType::FRAGMENT, &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(1));
@@ -7137,7 +7143,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
 
         ssrPassRender.setClearColor(Vector4(0.0, 0.0, 0.0, 0.0));
         ssrPassRender.startRenderPass(&rv().ssrBlurFramebuffer.getRender());
-        if (ssrBlurRender.beginDraw(PIP_RTT)){
+        if (ssrBlurRender.beginDraw(PIP_EFFECT)){
             ShaderData& bd = ssrBlurShader.get()->shaderData;
             ssrBlurRender.addTexture(bd.getTextureIndex(TextureShaderType::SSRTEXTURE), ShaderStageType::FRAGMENT, &rv().ssrFramebuffer.getRender().getColorTexture());
             ssrBlurRender.addTexture(bd.getTextureIndex(TextureShaderType::GBUFFERTEXTURE), ShaderStageType::FRAGMENT, &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(1));
@@ -7348,7 +7354,9 @@ void RenderSystem::loadPostProcess(){
         pass.render.beginLoad(PrimitiveType::TRIANGLES);
         pass.render.setShader(pass.shader.get());
         // the chain never targets the swapchain directly, renderPostProcess blits for that
-        if (!pass.render.endLoad(PIP_RTT, false, true, CullingMode::BACK, WindingOrder::CCW))
+        // PIP_RTT into buffer 0 and the destination (colour targets with depth-stencil),
+        // PIP_EFFECT into buffer 1 (depth only)
+        if (!pass.render.endLoad(PIP_RTT | PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
             return;
 
         ShaderData& sd = pass.shader.get()->shaderData;
@@ -7426,6 +7434,8 @@ bool RenderSystem::ensurePostProcessFramebuffers(unsigned int width, unsigned in
         rv().postProcessFramebuffer[i].setMagFilter(TextureFilter::LINEAR);
         rv().postProcessFramebuffer[i].setWrapU(TextureWrap::CLAMP_TO_EDGE);
         rv().postProcessFramebuffer[i].setWrapV(TextureWrap::CLAMP_TO_EDGE);
+        // buffer 0 takes the colour pass (meshes, stencil); buffer 1 only the chain's passes
+        rv().postProcessFramebuffer[i].setDepthAttachment(i == 0 ? FramebufferDepth::DEPTH_STENCIL : FramebufferDepth::DEPTH);
         rv().postProcessFramebuffer[i].create();
     }
 
@@ -7468,7 +7478,8 @@ void RenderSystem::renderPostProcess(FramebufferRender* destination){
             postProcessPassRender.startRenderPass(&rv().postProcessFramebuffer[pingPong].getRender());
         }
 
-        if (pass.render.beginDraw(PIP_RTT)){
+        // buffer 1 is depth only (ensurePostProcessFramebuffers)
+        if (pass.render.beginDraw((!writeDestination && pingPong == 1) ? PIP_EFFECT : PIP_RTT)){
             pass.render.addTexture(pass.slotSceneColor, ShaderStageType::FRAGMENT, input);
             pass.render.addTexture(pass.slotDepth, ShaderStageType::FRAGMENT, depthTexture);
             pass.render.addTexture(pass.slotGBuffer, ShaderStageType::FRAGMENT, gbufferTexture);

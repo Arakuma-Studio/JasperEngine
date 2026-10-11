@@ -21,8 +21,13 @@ bool FramebufferRender::createFramebuffer(TextureType textureType, int width, in
 }
 
 bool FramebufferRender::createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap, bool stencil){
+    return createFramebuffer(textureType, width, height, minFilter, magFilter, wrapU, wrapV, shadowMap,
+                             stencil ? FramebufferDepth::DEPTH_STENCIL : FramebufferDepth::DEPTH);
+}
+
+bool FramebufferRender::createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap, FramebufferDepth depth){
     if (Engine::isViewLoaded() && !isCreated())
-        return backend.createFramebuffer(textureType, width, height, minFilter, magFilter, wrapU, wrapV, shadowMap, stencil);
+        return backend.createFramebuffer(textureType, width, height, minFilter, magFilter, wrapU, wrapV, shadowMap, depth);
     else
         return false;
 }

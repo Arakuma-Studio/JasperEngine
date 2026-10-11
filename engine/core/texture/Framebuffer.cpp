@@ -19,7 +19,7 @@ Framebuffer::Framebuffer(){
     for (int i = 0; i < SokolFramebuffer::MAX_COLOR_ATTACHMENTS; i++){
         this->colorFormats[i] = ColorFormat::RGBA;
     }
-    this->depthStencil = true;
+    this->depth = FramebufferDepth::DEPTH_STENCIL;
     this->version = 0;
 }
 
@@ -33,9 +33,9 @@ Framebuffer& Framebuffer::operator=(const Framebuffer& rhs) = default;
 
 void Framebuffer::create(){
     if (numColorAttachments > 1){
-        render.createFramebufferMRT(width, height, minFilter, magFilter, wrapU, wrapV, numColorAttachments, colorFormats, depthStencil);
+        render.createFramebufferMRT(width, height, minFilter, magFilter, wrapU, wrapV, numColorAttachments, colorFormats, depth == FramebufferDepth::DEPTH_STENCIL);
     }else{
-        render.createFramebuffer(TextureType::TEXTURE_2D, width, height, minFilter, magFilter, wrapU, wrapV, false, depthStencil);
+        render.createFramebuffer(TextureType::TEXTURE_2D, width, height, minFilter, magFilter, wrapU, wrapV, false, depth);
     }
     version++;
 }
@@ -54,11 +54,19 @@ int Framebuffer::getNumColorAttachments() const{
 }
 
 void Framebuffer::setDepthStencil(bool depthStencil){
-    this->depthStencil = depthStencil;
+    this->depth = depthStencil ? FramebufferDepth::DEPTH_STENCIL : FramebufferDepth::DEPTH;
 }
 
 bool Framebuffer::isDepthStencil() const{
-    return this->depthStencil;
+    return this->depth == FramebufferDepth::DEPTH_STENCIL;
+}
+
+void Framebuffer::setDepthAttachment(FramebufferDepth depth){
+    this->depth = depth;
+}
+
+FramebufferDepth Framebuffer::getDepthAttachment() const{
+    return this->depth;
 }
 
 void Framebuffer::destroy(){

@@ -49,6 +49,7 @@ SokolObject::SokolObject(){
     rtt_nodepth_pip.id = SG_INVALID_ID;
     zprepass_pip.id = SG_INVALID_ID;
     zprepass_rtt_pip.id = SG_INVALID_ID;
+    effect_pip.id = SG_INVALID_ID;
     bind = {};
     loadIndexBuffer.id = SG_INVALID_ID;
     loadIndexOffset = 0;
@@ -261,6 +262,7 @@ void SokolObject::beginLoad(PrimitiveType primitiveType){
     rtt_nodepth_pip = {0};
     zprepass_pip = {0};
     zprepass_rtt_pip = {0};
+    effect_pip = {0};
     pipeline_desc = {0};
     resetPipelines();
 
@@ -517,6 +519,21 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
             desc.depth.write_enabled = false;
         }
         break;
+
+    // a fullscreen effect into a target with a depth-only attachment (FramebufferDepth::DEPTH):
+    // PIP_RTT's colour state; the depth is never tested or written, there is no stencil
+    case PipelineType::PIP_EFFECT:
+        desc.sample_count = 1;
+        applyBlend(desc.colors[0], true);
+        desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+        desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+        desc.depth.write_enabled = false;
+        if (loadState.faceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
+        }
+        desc.face_winding = getFaceWinding(rttWinding);
+        break;
     }
 
     return desc;
@@ -533,6 +550,7 @@ sg_pipeline& SokolObject::pipelineOf(PipelineType pipType){
     case PipelineType::PIP_RTT_INVERT: return rtt_invert_pip;
     case PipelineType::PIP_DEFAULT_NODEPTH: return nodepth_pip;
     case PipelineType::PIP_RTT_NODEPTH: return rtt_nodepth_pip;
+    case PipelineType::PIP_EFFECT: return effect_pip;
     default: return pip;
     }
 }
@@ -545,7 +563,8 @@ bool SokolObject::endLoad(uint16_t pipelines, const RenderState& state){
         PipelineType::PIP_DEPTH, PipelineType::PIP_ZPREPASS, PipelineType::PIP_ZPREPASS_RTT,
         PipelineType::PIP_SHADOW_DEPTH, PipelineType::PIP_GBUFFER,
         PipelineType::PIP_DEFAULT, PipelineType::PIP_DEFAULT_NODEPTH,
-        PipelineType::PIP_RTT, PipelineType::PIP_RTT_NODEPTH, PipelineType::PIP_RTT_INVERT
+        PipelineType::PIP_RTT, PipelineType::PIP_RTT_NODEPTH, PipelineType::PIP_RTT_INVERT,
+        PipelineType::PIP_EFFECT
     };
 
     for (PipelineType type : types){
@@ -628,6 +647,7 @@ void SokolObject::destroy(){
         destroyPipeline(rtt_nodepth_pip);
         destroyPipeline(zprepass_pip);
         destroyPipeline(zprepass_rtt_pip);
+        destroyPipeline(effect_pip);
 #ifdef JASPERENGINE_EDITOR
         for (sg_pipeline& variant : noCullPipelines){
             destroyPipeline(variant);
@@ -645,6 +665,7 @@ void SokolObject::destroy(){
     rtt_nodepth_pip.id = SG_INVALID_ID;
     zprepass_pip.id = SG_INVALID_ID;
     zprepass_rtt_pip.id = SG_INVALID_ID;
+    effect_pip.id = SG_INVALID_ID;
     resetPipelines();
     bind = {};
     pipeline_desc = {};
