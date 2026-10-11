@@ -231,6 +231,10 @@ namespace jasperengine{
         ShaderManifestState manifestState;
         ShaderLibraryBindings libraryBindings;
         ShaderLibraryBindings depthLibraryBindings;
+        // its colour pass writes neither colour nor depth (a stencil mask), resolved at load: it
+        // stays out of the SSAO depth pre-pass and the G-buffer, where it would be an invisible
+        // surface darkening and reflecting what is behind it
+        bool skipsScreenEffects = false;
 
         Rect textureRect = Rect(0.0, 0.0, 1.0, 1.0);
 

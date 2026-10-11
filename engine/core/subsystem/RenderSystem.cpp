@@ -4591,6 +4591,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         bool transparentQueue = false;
         const ShaderManifestState* manifestState = mesh.submeshes[i].manifest ? &mesh.submeshes[i].manifestState : nullptr;
         const RenderState colorState = resolveSubmeshRenderState(mesh, mesh.submeshes[i], manifestState, blended, transparentQueue);
+        mesh.submeshes[i].skipsScreenEffects = colorState.colorWriteMask == 0 && !colorState.depthWrite;
         mesh.submeshes[i].alphaBlend = transparentQueue;
         if (mesh.autoTransparency && !mesh.transparent && transparentQueue){
             mesh.transparent = true;
@@ -6439,6 +6440,9 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             // not even be loaded when no other depth pass needs it)
             if (!forSSAO && mesh.submeshes[i].manifest && mesh.submeshes[i].manifestState.shadows == ShaderShadowCasting::OFF)
                 continue;
+            // and what draws nothing visible (a stencil mask) is no surface for the pre-passes
+            if (forSSAO && mesh.submeshes[i].skipsScreenEffects)
+                continue;
 
             if (tilemap && !selectTilemapChunks(*tilemap, i, cameraFar, frustumPlanes))
                 continue;
@@ -6815,6 +6819,10 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
         // the G-buffer shader/render only exist when SSR was enabled at load time; a
         // mesh loaded before SSR was toggled on is skipped until it reloads
         if (!mesh.submeshes[i].gbufferShader)
+            continue;
+
+        // a stencil mask is no surface to reflect (see Submesh::skipsScreenEffects)
+        if (mesh.submeshes[i].skipsScreenEffects)
             continue;
 
         if (mesh.submeshes[i].vertexCount == 0){
