@@ -735,7 +735,7 @@ TEST_CASE("custom_properties.transition")
 	<style>
 		div {
 			background-color: red;
-			transition: all 0.2s;
+			transition: all 0.2s linear;
 		}
 
 		div.active {
@@ -766,7 +766,7 @@ TEST_CASE("custom_properties.transition")
 
 	system_interface->SetManualTime(0.1);
 	TestsShell::RenderLoop();
-	CHECK(div->GetComputedValues().background_color() == Colourb(180, 0, 180, 255));
+	CHECK(div->GetComputedValues().background_color() == Colourb(128, 0, 128, 255));
 
 	system_interface->SetManualTime(0.3);
 	TestsShell::RenderLoop();
@@ -784,7 +784,7 @@ TEST_CASE("custom_properties.transition_deep")
 	<style>
 		div {
 			background-color: red;
-			transition: all 0.2s;
+			transition: all 0.2s linear;
 		}
 
 		div.active {
@@ -816,7 +816,7 @@ TEST_CASE("custom_properties.transition_deep")
 
 	system_interface->SetManualTime(0.1);
 	TestsShell::RenderLoop();
-	CHECK(div->GetComputedValues().background_color() == Colourb(180, 0, 180, 255));
+	CHECK(div->GetComputedValues().background_color() == Colourb(128, 0, 128, 255));
 
 	system_interface->SetManualTime(0.3);
 	TestsShell::RenderLoop();
@@ -848,7 +848,7 @@ TEST_CASE("custom_properties.shorthand_transition")
 		rcss_rules = R"(
 			div {
 				padding: 10px;
-				transition: all 0.2s;
+				transition: all 0.2s linear;
 			}
 			div.active {
 				--padding: 20px;
@@ -862,7 +862,7 @@ TEST_CASE("custom_properties.shorthand_transition")
 			div {
 				--padding: 10px;
 				padding: var(--padding);
-				transition: padding 0.2s;
+				transition: padding 0.2s linear;
 			}
 			div.active {
 				--padding: 20px;
@@ -876,7 +876,7 @@ TEST_CASE("custom_properties.shorthand_transition")
 			div {
 				--padding: 10px;
 				padding: var(--padding);
-				transition: padding 0.2s;
+				transition: padding 0.2s linear;
 			}
 			div.active {
 				--indirect: 20px;
@@ -944,11 +944,12 @@ TEST_CASE("custom_properties.animation")
 	ElementDocument* document = context->LoadDocumentFromMemory(animation_rml);
 	Element* div = TestsShell::GetElementChild(document, 0);
 	document->Show();
-	CHECK(div->GetComputedValues().background_color() == Colourb(0, 255, 0, 255));
+	// The animation applies its first keyframe from its start (CSS; 6.3 applied nothing before the first time step).
+	CHECK(div->GetComputedValues().background_color() == Colourb(255, 0, 0, 255));
 
 	system_interface->SetManualTime(0.1);
 	TestsShell::RenderLoop();
-	CHECK(div->GetComputedValues().background_color() == Colourb(180, 0, 180, 255));
+	CHECK(div->GetComputedValues().background_color() == Colourb(128, 0, 128, 255));
 
 	document->Close();
 	TestsShell::ShutdownShell();

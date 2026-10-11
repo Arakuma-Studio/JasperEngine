@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>animation: cubic-bezier() with overshoot</title>
+<style>
+  html, body { margin: 0; }
+  div { position: absolute; left: 100px; height: 30px; background-color: #6040c0; }
+  #width { top: 20px; width: 100px; transition: width 1s cubic-bezier(0.68, -0.55, 0.265, 1.55); }
+  #move { top: 70px; width: 40px; transition: transform 1s cubic-bezier(0.68, -0.55, 0.265, 1.55); }
+  #width.on { width: 200px; }
+  #move.on { transform: translateX(150px); }
+</style>
+</head>
+<body>
+<div id="width"></div><div id="move"></div>
+</body>
+</html>

@@ -13,7 +13,11 @@
 #include "../../Include/RmlUi/Core/TransformPrimitive.h"
 #include "ComputeProperty.h"
 #include "ElementStyle.h"
+#include "ElementTransitions.h"
+#include "TextShadow.h"
 #include "TransformUtilities.h"
+#include <cmath>
+#include <limits>
 #ifdef RMLUI_MATH_EXPRESSIONS
 	#include "CalculationResolver.h"
 #endif
@@ -21,6 +25,7 @@
 namespace Rml {
 
 static Property InterpolateProperties(const Property& p0, const Property& p1, float alpha, Element& element, const PropertyDefinition* definition);
+static NumericValue InterpolateNumericValue(NumericValue v0, NumericValue v1, float alpha, Element& element, const PropertyDefinition* definition);
 
 template <typename T>
 static T Mix(const T& v0, const T& v1, float alpha)
@@ -28,36 +33,79 @@ static T Mix(const T& v0, const T& v1, float alpha)
 	return v0 * (1.0f - alpha) + v1 * alpha;
 }
 
-static Colourf ColourToLinearSpace(Colourb c)
+// Colours interpolate in premultiplied sRGB (CSS Color 4 for legacy colours): a transparent end does not darken the other.
+// Outputs outside [0, 1] (overshooting easings) extrapolate, and the result is clamped.
+static ColourbPremultiplied InterpolatePremultipliedColour(ColourbPremultiplied c0, ColourbPremultiplied c1, float alpha)
 {
-	Colourf result;
-	// Approximate inverse sRGB function
-	result.red = c.red / 255.f;
-	result.red *= result.red;
-	result.green = c.green / 255.f;
-	result.green *= result.green;
-	result.blue = c.blue / 255.f;
-	result.blue *= result.blue;
-	result.alpha = c.alpha / 255.f;
-	return result;
-}
-
-static Colourb ColourFromLinearSpace(Colourf c)
-{
-	Colourb result;
-	result.red = (byte)Math::Clamp(Math::SquareRoot(c.red) * 255.f, 0.0f, 255.f);
-	result.green = (byte)Math::Clamp(Math::SquareRoot(c.green) * 255.f, 0.0f, 255.f);
-	result.blue = (byte)Math::Clamp(Math::SquareRoot(c.blue) * 255.f, 0.0f, 255.f);
-	result.alpha = (byte)Math::Clamp(c.alpha * 255.f, 0.0f, 255.f);
+	auto channel = [alpha](byte a, byte b) { return (byte)Math::Clamp(Math::Round(Mix(float(a), float(b), alpha)), 0.0f, 255.f); };
+	ColourbPremultiplied result;
+	result.red = channel(c0.red, c1.red);
+	result.green = channel(c0.green, c1.green);
+	result.blue = channel(c0.blue, c1.blue);
+	result.alpha = channel(c0.alpha, c1.alpha);
+	// Premultiplied channels never exceed the alpha.
+	result.red = Math::Min(result.red, result.alpha);
+	result.green = Math::Min(result.green, result.alpha);
+	result.blue = Math::Min(result.blue, result.alpha);
 	return result;
 }
 
 static Colourb InterpolateColour(Colourb c0, Colourb c1, float alpha)
 {
-	Colourf c0f = ColourToLinearSpace(c0);
-	Colourf c1f = ColourToLinearSpace(c1);
-	Colourf c = Mix(c0f, c1f, alpha);
-	return ColourFromLinearSpace(c);
+	if (c0.alpha == 255 && c1.alpha == 255)
+	{
+		auto channel = [alpha](byte a, byte b) { return (byte)Math::Clamp(Math::Round(Mix(float(a), float(b), alpha)), 0.0f, 255.f); };
+		return Colourb(channel(c0.red, c1.red), channel(c0.green, c1.green), channel(c0.blue, c1.blue), 255);
+	}
+	return InterpolatePremultipliedColour(c0.ToPremultiplied(), c1.ToPremultiplied(), alpha).ToNonPremultiplied();
+}
+
+// Box shadows interpolate pairwise, the shorter list padded with transparent zero shadows (CSS Backgrounds 3 §7.2); a
+// pair with one shadow inset and the other not makes the lists discrete.
+static bool InterpolateBoxShadows(const BoxShadowList& list0, const BoxShadowList& list1, float alpha, Element& element, BoxShadowList& result)
+{
+	const size_t count = Math::Max(list0.size(), list1.size());
+	result.clear();
+	result.reserve(count);
+	for (size_t i = 0; i < count; i++)
+	{
+		BoxShadow transparent;
+		transparent.color = ColourbPremultiplied(0, 0, 0, 0);
+		BoxShadow s0 = (i < list0.size() ? list0[i] : transparent);
+		BoxShadow s1 = (i < list1.size() ? list1[i] : transparent);
+		if (i >= list0.size())
+			s0.inset = s1.inset;
+		if (i >= list1.size())
+			s1.inset = s0.inset;
+		if (s0.inset != s1.inset)
+			return false;
+#ifdef RMLUI_MATH_EXPRESSIONS
+		if (s0.offset_x_calculation || s0.offset_y_calculation || s0.blur_radius_calculation || s0.spread_distance_calculation ||
+			s1.offset_x_calculation || s1.offset_y_calculation || s1.blur_radius_calculation || s1.spread_distance_calculation)
+			return false;
+#endif
+		auto length = [&](NumericValue v0, NumericValue v1) {
+			if (v0.unit == Unit::UNKNOWN)
+				v0 = NumericValue(0.f, Unit::PX);
+			if (v1.unit == Unit::UNKNOWN)
+				v1 = NumericValue(0.f, Unit::PX);
+			if (v0.number == 0.f && v0.unit != v1.unit)
+				v0.unit = v1.unit;
+			if (v1.number == 0.f && v1.unit != v0.unit)
+				v1.unit = v0.unit;
+			return InterpolateNumericValue(v0, v1, alpha, element, nullptr);
+		};
+		BoxShadow shadow;
+		shadow.inset = s0.inset;
+		shadow.color = InterpolatePremultipliedColour(s0.color, s1.color, alpha);
+		shadow.offset_x = length(s0.offset_x, s1.offset_x);
+		shadow.offset_y = length(s0.offset_y, s1.offset_y);
+		shadow.blur_radius = length(s0.blur_radius, s1.blur_radius);
+		shadow.blur_radius.number = Math::Max(shadow.blur_radius.number, 0.f);
+		shadow.spread_distance = length(s0.spread_distance, s1.spread_distance);
+		result.push_back(shadow);
+	}
+	return true;
 }
 
 // Merges all the primitives to a single DecomposedMatrix4 primitive
@@ -636,6 +684,22 @@ static Property InterpolateProperties(const Property& p0, const Property& p1, fl
 		return Property{std::move(result), Unit::COLORSTOPLIST};
 	}
 
+	if (p0.unit == Unit::BOXSHADOWLIST && p1.unit == Unit::BOXSHADOWLIST)
+	{
+		BoxShadowList result;
+		if (!InterpolateBoxShadows(p0.value.GetReference<BoxShadowList>(), p1.value.GetReference<BoxShadowList>(), alpha, element, result))
+			return p_discrete;
+		return Property{std::move(result), Unit::BOXSHADOWLIST};
+	}
+
+	// 'text-shadow: none' is the empty shadow list: it interpolates with a list (padded with transparent shadows).
+	if (definition && definition->GetId() == PropertyId::TextShadow && p0.unit != p1.unit &&
+		(p0.unit == Unit::STYLE_VALUE || p1.unit == Unit::STYLE_VALUE) && (p0.unit == Unit::KEYWORD || p1.unit == Unit::KEYWORD))
+	{
+		const Property empty(StyleValuePtr(MakeShared<TextShadowListValue>()), Unit::STYLE_VALUE);
+		return InterpolateProperties(p0.unit == Unit::KEYWORD ? empty : p0, p1.unit == Unit::KEYWORD ? empty : p1, alpha, element, definition);
+	}
+
 	if (p0.unit == Unit::STYLE_VALUE && p1.unit == Unit::STYLE_VALUE)
 	{
 		const StyleValuePtr v0 = p0.value.Get<StyleValuePtr>();
@@ -881,36 +945,86 @@ static void PrepareFilter(AnimationKey& key)
 		property.value = MakeShared<FilterDeclarationList>();
 }
 
-ElementAnimation::ElementAnimation(PropertyId property_id, ElementAnimationOrigin origin, const Property& current_value, Element& element,
-	double start_world_time, float duration, int num_iterations, bool alternate_direction) :
-	property_id(property_id), duration(duration), num_iterations(num_iterations), alternate_direction(alternate_direction),
-	last_update_world_time(start_world_time), origin(origin)
+static bool IsNumericProperty(const Property& property)
 {
-	if (!current_value.definition)
-	{
-		Log::Message(Log::LT_WARNING, "Property in animation key did not have a definition (while adding key '%s').",
-			current_value.ToString().c_str());
-	}
-	InternalAddKey(0.0f, current_value, element, Tween{});
+	return Any(property.unit & Unit::NUMERIC)
+#ifdef RMLUI_MATH_EXPRESSIONS
+		|| property.unit == Unit::CALCULATION
+#endif
+		;
 }
 
-bool ElementAnimation::InternalAddKey(float time, const Property& in_property, Element& element, Tween tween)
+bool IsInterpolable(const Property& from, const Property& to, Element& element, const PropertyDefinition* definition)
 {
-	const Units valid_units = (Unit::NUMBER_LENGTH_PERCENT | Unit::ANGLE | Unit::COLOUR | Unit::TRANSFORM | Unit::KEYWORD | Unit::DECORATOR |
-		Unit::FILTER | Unit::STYLE_VALUE);
+	// 'text-shadow: none' against a shadow list (the empty list, padded).
+	if (definition && definition->GetId() == PropertyId::TextShadow && from.unit != to.unit &&
+		(from.unit == Unit::STYLE_VALUE || to.unit == Unit::STYLE_VALUE) && (from.unit == Unit::KEYWORD || to.unit == Unit::KEYWORD))
+		return true;
 
-	if (!Any(in_property.unit & valid_units)
-#ifdef RMLUI_MATH_EXPRESSIONS
-		&& in_property.unit != Unit::CALCULATION
-#endif
-	)
+	if (IsNumericProperty(from) && IsNumericProperty(to))
 	{
-		const char* property_type = (in_property.unit == Unit::BOXSHADOWLIST ? "Box shadows do not" : "Property value does not");
-		Log::Message(Log::LT_WARNING, "%s support animations or transitions. Value: %s", property_type, in_property.ToString().c_str());
+		if (from.unit == to.unit)
+			return true;
+#ifdef RMLUI_MATH_EXPRESSIONS
+		if (from.unit == Unit::CALCULATION || to.unit == Unit::CALCULATION)
+			return true;
+#endif
+		if (Any(from.unit & Unit::NUMBER_LENGTH_PERCENT) && Any(to.unit & Unit::NUMBER_LENGTH_PERCENT) && definition)
+			return true;
+		if (Any(from.unit & Unit::LENGTH) && Any(to.unit & Unit::LENGTH))
+			return true;
+		return Any(from.unit & Unit::ANGLE) && Any(to.unit & Unit::ANGLE);
+	}
+
+	if (from.unit != to.unit)
+		return false;
+
+	switch (from.unit)
+	{
+	case Unit::KEYWORD:
+		// 'visibility' interpolates when one of the values is 'visible' (CSS Transitions 1); other keywords are discrete.
+		if (definition && definition->GetId() == PropertyId::Visibility)
+			return from.Get<int>() == (int)Style::Visibility::Visible || to.Get<int>() == (int)Style::Visibility::Visible;
+		return false;
+	case Unit::COLOUR:
+	case Unit::TRANSFORM: return true;
+	case Unit::DECORATOR:
+		// A list from or to 'none' fades in or out; two lists interpolate when their decorators match.
+		if (!from.value.GetReference<DecoratorsPtr>() || !to.value.GetReference<DecoratorsPtr>())
+			return true;
+		break;
+	case Unit::FILTER:
+		if (!from.value.GetReference<FiltersPtr>() || !to.value.GetReference<FiltersPtr>())
+			return true;
+		break;
+	case Unit::COLORSTOPLIST:
+	case Unit::BOXSHADOWLIST: break;
+	case Unit::STYLE_VALUE:
+	{
+		const StyleValuePtr v0 = from.value.Get<StyleValuePtr>();
+		const StyleValuePtr v1 = to.value.Get<StyleValuePtr>();
+		return v0 && v1 && v0->Interpolate(*v1, 0.5f, element) != nullptr;
+	}
+	default: return false;
+	}
+
+	// Lists: interpolable unless the interpolation falls back to one of the ends (mismatched decorators or filters,
+	// colour stop lists of different lengths, an inset against an outset shadow).
+	const Property half = InterpolateProperties(from, to, 0.5f, element, definition);
+	return !(half == to) && !(half == from);
+}
+
+bool AnimationTrack::AddKey(float offset, const Property& in_property, Element& element, Tween tween, bool has_tween)
+{
+	// Every value animates at least discretely (CSS); only values that are not resolved are refused.
+	if (in_property.unit == Unit::UNKNOWN || in_property.unit == Unit::VAR_EXPRESSION || in_property.unit == Unit::SHORTHAND_PLACEHOLDER ||
+		in_property.unit == Unit::CSS_WIDE_KEYWORD)
+	{
+		Log::Message(Log::LT_WARNING, "Property value does not support animations or transitions. Value: %s", in_property.ToString().c_str());
 		return false;
 	}
 
-	keys.emplace_back(time, in_property, tween);
+	keys.emplace_back(offset, in_property, tween, has_tween);
 	Property& property = keys.back().property;
 	bool result = true;
 
@@ -936,6 +1050,60 @@ bool ElementAnimation::InternalAddKey(float time, const Property& in_property, E
 	return result;
 }
 
+Property AnimationTrack::GetValue(float progress, const Tween& default_tween, bool before_flag, Element& element) const
+{
+	if (keys.empty())
+		return Property{};
+	if (keys.size() == 1)
+		return keys[0].property;
+
+	// The segment that holds the progress: from the last key at or before it (the first key before the first offset, the
+	// last segment at the end), eased by the segment's start key.
+	size_t key0 = 0;
+	for (size_t i = 0; i + 1 < keys.size(); i++)
+	{
+		if (keys[i].time <= progress)
+			key0 = i;
+	}
+	const size_t key1 = key0 + 1;
+
+	const float t0 = keys[key0].time;
+	const float t1 = keys[key1].time;
+	float local = 1.f;
+	if (t1 - t0 > 1e-6f)
+		local = (progress - t0) / (t1 - t0);
+
+	const Tween& tween = (keys[key0].has_tween ? keys[key0].tween : default_tween);
+	const float alpha = tween.Evaluate(local, before_flag);
+
+	return InterpolateProperties(keys[key0].property, keys[key1].property, alpha, element, keys[0].property.definition);
+}
+
+ElementAnimation::ElementAnimation(PropertyId property_id, ElementAnimationOrigin origin, const Property& current_value, Element& element,
+	double start_world_time, float duration, int num_iterations, bool alternate_direction) :
+	origin(origin), start_time(start_world_time), duration(duration),
+	iteration_count(num_iterations < 0 ? std::numeric_limits<float>::infinity() : float(num_iterations)),
+	direction(alternate_direction ? AnimationDirection::Alternate : AnimationDirection::Normal), timing_function(Tween::LinearFunction({}))
+{
+	if (!current_value.definition)
+	{
+		Log::Message(Log::LT_WARNING, "Property in animation key did not have a definition (while adding key '%s').",
+			current_value.ToString().c_str());
+	}
+	// Transitions show their start value during their delay.
+	if (origin == ElementAnimationOrigin::Transition)
+		fill_mode = AnimationFillMode::Backwards;
+	tracks.emplace_back(property_id);
+	if (!tracks[0].AddKey(0.0f, current_value, element, Tween{}, true))
+		tracks.clear();
+}
+
+ElementAnimation::ElementAnimation(const Animation& animation, int occurrence, double start_world_time) :
+	origin(ElementAnimationOrigin::Animation), start_time(start_world_time), delay(animation.delay), duration(animation.duration),
+	iteration_count(animation.iteration_count), direction(animation.direction), fill_mode(animation.fill_mode), paused(animation.paused),
+	hold_time(0), timing_function(animation.tween), name(animation.name), occurrence(occurrence), animation(animation)
+{}
+
 bool ElementAnimation::AddKey(float target_time, const Property& in_property, Element& element, Tween tween, bool extend_duration)
 {
 	if (!IsInitalized())
@@ -943,106 +1111,205 @@ bool ElementAnimation::AddKey(float target_time, const Property& in_property, El
 		Log::Message(Log::LT_WARNING, "Element animation was not initialized properly, can't add key.");
 		return false;
 	}
-	if (!InternalAddKey(target_time, in_property, element, tween))
+
+	Vector<AnimationKey>& keys = tracks[0].GetKeys();
+	const float old_duration = duration;
+	const float new_duration = (extend_duration ? Math::Max(target_time, 0.f) : duration);
+
+	// The tween given with a key eases the segment that ends at it: it belongs to the segment's start key.
+	const AnimationKey previous_last = keys.back();
+	keys.back().tween = tween;
+	keys.back().has_tween = true;
+
+	// Keys are stored at offsets of the iteration, rescaled when the iteration grows.
+	if (new_duration != old_duration && new_duration > 0.f)
 	{
+		for (AnimationKey& key : keys)
+			key.time = key.time * old_duration / new_duration;
+	}
+	const float offset = (new_duration > 0.f ? Math::Clamp(target_time / new_duration, 0.f, 1.f) : 1.f);
+
+	if (!tracks[0].AddKey(offset, in_property, element, Tween{}, true))
+	{
+		// Restore the keys as they were.
+		if (new_duration != old_duration && new_duration > 0.f && old_duration > 0.f)
+			for (AnimationKey& key : keys)
+				key.time = key.time * new_duration / old_duration;
+		keys.back() = previous_last;
 		return false;
 	}
 
-	if (extend_duration)
-		duration = target_time;
-
+	duration = new_duration;
 	return true;
 }
 
-float ElementAnimation::GetInterpolationFactorAndKeys(int* out_key0, int* out_key1) const
+void ElementAnimation::AddTrack(AnimationTrack track)
 {
-	float t = time_since_iteration_start;
+	tracks.push_back(std::move(track));
+}
 
-	if (reverse_direction)
-		t = duration - t;
+float ElementAnimation::GetActiveDuration() const
+{
+	if (duration <= 0.f || iteration_count <= 0.f)
+		return 0.f;
+	if (std::isinf(iteration_count))
+		return std::numeric_limits<float>::infinity();
+	return duration * iteration_count;
+}
 
-	int key0 = -1;
-	int key1 = -1;
+ElementAnimation::Sample ElementAnimation::GetSample(double world_time) const
+{
+	// Web Animations, "Calculating the phase", "active time", "simple iteration progress", "directed progress".
+	Sample sample;
+	const double local_time = (paused ? hold_time : world_time - start_time);
+	const double active_duration = (double)GetActiveDuration();
+	const double end_time = Math::Max((double)delay + active_duration, 0.0);
+	const double before_active_boundary = Math::Max(Math::Min((double)delay, end_time), 0.0);
+	const double active_after_boundary = Math::Max(Math::Min((double)delay + active_duration, end_time), 0.0);
 
+	if (local_time < before_active_boundary)
+		sample.phase = AnimationPhase::Before;
+	else if (local_time >= active_after_boundary)
+		sample.phase = AnimationPhase::After;
+	else
+		sample.phase = AnimationPhase::Active;
+
+	const bool fills_backwards = (fill_mode == AnimationFillMode::Backwards || fill_mode == AnimationFillMode::Both);
+	const bool fills_forwards = (fill_mode == AnimationFillMode::Forwards || fill_mode == AnimationFillMode::Both);
+
+	double active_time = 0.0;
+	switch (sample.phase)
 	{
-		for (int i = 0; i < (int)keys.size(); i++)
-		{
-			if (keys[i].time >= t)
-			{
-				key1 = i;
-				break;
-			}
-		}
+	case AnimationPhase::Before:
+		sample.has_value = fills_backwards;
+		active_time = Math::Max(local_time - (double)delay, 0.0);
+		break;
+	case AnimationPhase::Active:
+		sample.has_value = true;
+		active_time = local_time - (double)delay;
+		break;
+	case AnimationPhase::After:
+	case AnimationPhase::Idle:
+		sample.has_value = fills_forwards;
+		active_time = Math::Max(Math::Min(local_time - (double)delay, active_duration), 0.0);
+		break;
+	}
+	sample.elapsed_time = (float)active_time;
 
-		if (key1 < 0)
-			key1 = (int)keys.size() - 1;
-		key0 = (key1 == 0 ? 0 : key1 - 1);
+	double overall_progress = 0.0;
+	if (duration <= 0.f)
+		overall_progress = (sample.phase == AnimationPhase::Before ? 0.0 : (double)iteration_count);
+	else
+		overall_progress = active_time / (double)duration;
+
+	double simple_progress = (std::isinf(overall_progress) ? 0.0 : std::fmod(overall_progress, 1.0));
+	if (simple_progress == 0.0 && sample.phase != AnimationPhase::Before && active_time == active_duration && iteration_count != 0.f &&
+		!std::isinf(overall_progress))
+		simple_progress = 1.0;
+	if (iteration_count == 0.f)
+		simple_progress = 0.0;
+
+	double current_iteration = 0.0;
+	if (sample.phase == AnimationPhase::After && std::isinf(iteration_count))
+		current_iteration = std::numeric_limits<double>::infinity();
+	else if (simple_progress == 1.0)
+		current_iteration = Math::Max(std::floor(overall_progress) - 1.0, 0.0);
+	else
+		current_iteration = std::floor(overall_progress);
+	sample.iteration = current_iteration;
+
+	bool forwards = true;
+	switch (direction)
+	{
+	case AnimationDirection::Normal: forwards = true; break;
+	case AnimationDirection::Reverse: forwards = false; break;
+	case AnimationDirection::Alternate: forwards = std::isinf(current_iteration) || std::fmod(current_iteration, 2.0) == 0.0; break;
+	case AnimationDirection::AlternateReverse: forwards = !(std::isinf(current_iteration) || std::fmod(current_iteration, 2.0) == 0.0); break;
 	}
 
-	RMLUI_ASSERT(key0 >= 0 && key0 < (int)keys.size() && key1 >= 0 && key1 < (int)keys.size());
+	sample.progress = (float)(forwards ? simple_progress : 1.0 - simple_progress);
+	sample.before_flag = ((sample.phase == AnimationPhase::Before && forwards) || (sample.phase == AnimationPhase::After && !forwards));
+	return sample;
+}
 
-	float alpha = 0.0f;
+Property ElementAnimation::GetValue(size_t track_index, const Sample& sample, Element& element) const
+{
+	if (track_index >= tracks.size() || !sample.has_value)
+		return Property{};
+	return tracks[track_index].GetValue(sample.progress, timing_function, sample.before_flag, element);
+}
 
-	{
-		const float t0 = keys[key0].time;
-		const float t1 = keys[key1].time;
-
-		const float eps = 1e-3f;
-
-		if (t1 - t0 > eps)
-			alpha = (t - t0) / (t1 - t0);
-
-		alpha = Math::Clamp(alpha, 0.0f, 1.0f);
-	}
-
-	alpha = keys[key1].tween(alpha);
-
-	if (out_key0)
-		*out_key0 = key0;
-	if (out_key1)
-		*out_key1 = key1;
-
-	return alpha;
+void ElementAnimation::RecordProgress(const Sample& sample)
+{
+	if (tracks.empty())
+		return;
+	// The eased progress of the first segment: a transition's output progress, for the reversing rule.
+	const Vector<AnimationKey>& keys = tracks[0].GetKeys();
+	const Tween& tween = (!keys.empty() && keys[0].has_tween ? keys[0].tween : timing_function);
+	last_eased_progress = (sample.has_value ? tween.Evaluate(sample.progress, sample.before_flag) : 0.f);
 }
 
 Property ElementAnimation::UpdateAndGetProperty(double world_time, Element& element)
 {
-	float dt = float(world_time - last_update_world_time);
-	if (keys.size() < 2 || animation_complete || dt <= 0.0f)
+	if (!IsInitalized() || tracks[0].GetKeys().size() < 2 || animation_complete)
 		return Property{};
 
-	dt = Math::Min(dt, 0.1f);
+	const Sample sample = GetSample(world_time);
+	RecordProgress(sample);
+	if (sample.phase == AnimationPhase::After)
+		animation_complete = true;
+	if (!sample.has_value && sample.phase != AnimationPhase::After)
+		return Property{};
 
-	last_update_world_time = world_time;
-	time_since_iteration_start += dt;
+	// A user animation ends at its last value.
+	Sample value_sample = sample;
+	value_sample.has_value = true;
+	return GetValue(0, value_sample, element);
+}
 
-	if (time_since_iteration_start >= duration)
-	{
-		// Next iteration
-		current_iteration += 1;
+void ElementAnimation::SetPaused(bool new_paused, double world_time)
+{
+	if (new_paused == paused)
+		return;
+	if (new_paused)
+		hold_time = world_time - start_time;
+	else
+		start_time = world_time - hold_time;
+	paused = new_paused;
+}
 
-		if (num_iterations == -1 || (current_iteration >= 0 && current_iteration < num_iterations))
-		{
-			time_since_iteration_start -= duration;
+void ElementAnimation::UpdateTiming(const Animation& new_animation, double world_time)
+{
+	delay = new_animation.delay;
+	duration = new_animation.duration;
+	iteration_count = new_animation.iteration_count;
+	direction = new_animation.direction;
+	fill_mode = new_animation.fill_mode;
+	timing_function = new_animation.tween;
+	SetPaused(new_animation.paused, world_time);
+	animation = new_animation;
+}
 
-			if (alternate_direction)
-				reverse_direction = !reverse_direction;
-		}
-		else
-		{
-			animation_complete = true;
-			time_since_iteration_start = duration;
-		}
-	}
+void ElementAnimation::SetTransitionData(const Transition& transition, const Property& in_reversing_adjusted_start, float in_reversing_factor)
+{
+	delay = transition.delay;
+	allow_discrete = transition.allow_discrete;
+	reversing_adjusted_start = in_reversing_adjusted_start;
+	reversing_shortening_factor = in_reversing_factor;
+}
 
-	int key0 = -1;
-	int key1 = -1;
+const Property* ElementAnimation::GetEndValue() const
+{
+	if (tracks.empty() || tracks[0].GetKeys().empty())
+		return nullptr;
+	return &tracks[0].GetKeys().back().property;
+}
 
-	float alpha = GetInterpolationFactorAndKeys(&key0, &key1);
-
-	Property result = InterpolateProperties(keys[key0].property, keys[key1].property, alpha, element, keys[0].property.definition);
-
-	return result;
+const Property* ElementAnimation::GetStartValue() const
+{
+	if (tracks.empty() || tracks[0].GetKeys().empty())
+		return nullptr;
+	return &tracks[0].GetKeys().front().property;
 }
 
 } // namespace Rml

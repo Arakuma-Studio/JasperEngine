@@ -1,0 +1,14 @@
+{
+ "comment": "A segment eases with its start keyframe's animation-timing-function (the animation's when the keyframe has none); a keyframe with two selectors.",
+ "viewport": [380, 120],
+ "steps": [
+  {"advance": 0.3},
+  {"capture": "a"},
+  {"advance": 0.4},
+  {"capture": "b"},
+  {"advance": 0.6},
+  {"capture": "c"},
+  {"advance": 0.4},
+  {"capture": "d"}
+ ]
+}

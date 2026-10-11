@@ -182,6 +182,20 @@ std::string UIEvent::getData() const{
     return event ? event->GetParameter<Rml::String>("text", "") : std::string();
 }
 
+std::string UIEvent::getAnimationName() const{
+    Rml::Event* event = liveEvent(state);
+    return event ? event->GetParameter<Rml::String>("animationName", "") : std::string();
+}
+
+std::string UIEvent::getPropertyName() const{
+    Rml::Event* event = liveEvent(state);
+    return event ? event->GetParameter<Rml::String>("propertyName", "") : std::string();
+}
+
+float UIEvent::getElapsedTime() const{
+    return floatParameter(state, "elapsedTime");
+}
+
 UIValue UIEvent::getDetail() const{
     if (!isValid() || !state->detail)
         return UIValue();

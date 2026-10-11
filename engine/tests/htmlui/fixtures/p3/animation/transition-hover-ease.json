@@ -1,0 +1,13 @@
+{
+ "comment": "A hover starts width and background-color transitions with each CSS easing keyword; captured at a quarter, half and the end.",
+ "viewport": [400, 230],
+ "steps": [
+  {"hover": "#area"},
+  {"advance": 0.25},
+  {"capture": "quarter"},
+  {"advance": 0.25},
+  {"capture": "half"},
+  {"advance": 1.0},
+  {"capture": "end"}
+ ]
+}

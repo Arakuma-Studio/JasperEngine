@@ -28,6 +28,8 @@ namespace {
         "click", "dblclick", "mousedown", "mouseup", "mousemove", "mouseover", "mouseout", "keydown", "keyup",
         "focus", "blur", "scroll", "resize", "load", "unload", "submit", "animationend", "transitionend",
         "dragstart", "drag", "dragend", "dragover", "dragdrop", "textinput",
+        // the phase-3 fork's CSS animation and transition events
+        "animationstart", "animationiteration", "animationcancel", "transitionrun", "transitionstart", "transitioncancel",
     };
 
     // DOM events documents never receive: listening to them would never fire

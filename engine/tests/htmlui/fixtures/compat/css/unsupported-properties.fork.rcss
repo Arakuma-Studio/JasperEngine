@@ -1,4 +1,5 @@
 #htmlui-root .unsupported {
+animation-composition: replace;
 text-decoration-color: currentcolor;
 text-decoration-style: solid;
 text-decoration-thickness: auto;

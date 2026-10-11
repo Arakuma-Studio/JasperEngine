@@ -232,7 +232,7 @@ diagnostic (below) says what changed.
 | `text-decoration` and its longhands (`underline overline line-through` together, color, `double`/`dotted`/`dashed`, thickness, `text-underline-offset`) | exact; `wavy` draws solid (note) |
 | zero-width space (`&ZeroWidthSpace;`), soft hyphen (`&shy;`), hyphens, CJK text | line-break opportunities as in Chrome; a line broken at a soft hyphen shows `-` |
 | `user-select: none` | text inputs select nothing; `text`/`all` do nothing (text outside inputs is never selectable, note) |
-| `transition: all .3s ease`, `animation: x .4s ease forwards`, `@keyframes` | times in `ms` work; CSS easings use the nearest built-in curve; `forwards`/`both` keep the end state |
+| `transition: all .3s ease`, `animation: x .4s ease forwards`, `@keyframes`, every `transition-*`/`animation-*` longhand, `@starting-style`, `translate`/`rotate`/`scale` | exact, as in Chromium: every easing (`ease`, `cubic-bezier()` with overshoot, `steps()` with every position, `linear()`), `ms` or `s`, delays (negative too), fill modes, the four directions, fractional iteration counts, `animation-play-state` (a real pause), a keyframe's own `animation-timing-function`, several animations of one property; transitions start on **any** change: classes and `:hover`, inline styles and scripts (`el.style.x = ...`, `setAttribute("style")`, data binding), `var()` changes, inherited values; `transition-behavior: allow-discrete` (a `display: none` exit animation), `box-shadow` and individual transforms transition; an element shown from `display: none` or newly created transitions only from its `@starting-style`. `animation-composition: add`/`accumulate` act as `replace` (note) |
 | `font: 600 14px/1.5 'Inter', sans-serif`, quoted family names | exact |
 | `:root` variables, `var()` | exact, also inside shorthands and gradients |
 | `@media (width >= 600px)`, `prefers-color-scheme`, `prefers-reduced-motion`, `@supports`, `@layer`, `@import`, CSS nesting (`&`), vendor prefixes | evaluated or flattened (`UIDocument:setColorScheme("dark")`, `setReducedMotion(true)` switch the two preferences) |
@@ -248,7 +248,7 @@ diagnostic (below) says what changed.
 **Not yet** (phase 3 adds them; until then a warning names each use):
 `::before`/`::after` (the rule is dropped: use a real element), `:has()`, `order`,
 `aspect-ratio`, `width: fit-content`/`min-content`/`max-content` (written as `auto`),
-`position: sticky`, `%` radii other than 50%, `@container`, `steps()` easings (linear),
+`position: sticky`, `%` radii other than 50%, `@container`,
 dashed/dotted/double borders (solid). Dropped with a warning and not planned: multi-column
 layout (`columns`), `writing-mode`, `font-variant-*`. `<video>`, `<canvas>`, `<iframe>` are a
 placeholder box (render a scene into a texture instead); JavaScript never runs.
@@ -352,7 +352,8 @@ What works in RCSS (standard CSS has all of it, and more through the rewrites ab
 - Flexbox: `display: flex`, `flex-direction`, `flex-wrap`, `justify-content`, `align-items`,
   `align-content`, `align-self`, `flex` and `flex-grow/shrink/basis`, `gap` (no `order`).
 - Transforms: `transform` (`translate`, `rotate`, `scale`, `skew`, `perspective`,
-  `rotateX/Y`, ...), `transform-origin`, `perspective`.
+  `rotateX/Y`, ...), the properties `translate`, `rotate`, `scale`, `transform-origin`,
+  `perspective`.
 - Images: `<img src="...">` and `decorator: image(...)`, with alpha.
 - Text: `font-size`, `color`, `font-weight` and `font-style` (a loaded face, else synthesized:
   "Fonts and text"), `font-effect` ("Text effects"),
@@ -364,7 +365,8 @@ What works in RCSS (standard CSS has all of it, and more through the rewrites ab
 - Selectors: type, `#id`, `.class`, descendant/child/sibling combinators, attribute
   selectors, `:hover`, `:active`, `:first-child`, `:nth-child()`, `:not()`.
 - `var()` custom properties, `@media` (width/height of the canvas, orientation),
-  `@keyframes` + `animation`, transitions as above.
+  `@keyframes` + `animation`, `@starting-style`, transitions (CSS syntax and easings, and
+  RmlUi's tween names such as `cubic-in-out`; the CSS default easing is `ease`).
 - Input: see "Input" below.
 - CSS values (the layout engine's own, phase 3): every CSS Color 4 color (`rgb(0 0 0 / 50%)` with
   the alpha from 0 to 1, `hsl()`, `hwb()`, `lab()`, `oklch()`, `color-mix()`, the 148 names) and
@@ -783,7 +785,8 @@ in the same UI Document when clicked unless a listener of `htmlnavigate` calls `
 
 | DOM name | What fires it |
 |---|---|
-| `click`, `dblclick`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout`, `keydown`, `keyup`, `focus`, `blur`, `scroll`, `resize`, `load`, `unload`, `submit`, `animationend`, `transitionend`, `dragstart`, `drag`, `dragend`, `dragover`, `dragdrop`, `textinput` | the same RmlUi event |
+| `click`, `dblclick`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout`, `keydown`, `keyup`, `focus`, `blur`, `scroll`, `resize`, `load`, `unload`, `submit`, `dragstart`, `drag`, `dragend`, `dragover`, `dragdrop`, `textinput` | the same RmlUi event |
+| `animationstart`, `animationiteration`, `animationend`, `animationcancel`, `transitionrun`, `transitionstart`, `transitionend`, `transitioncancel` | CSS animations and transitions, as in a browser (`animationName` or `propertyName`, and `elapsedTime` in seconds) |
 | `wheel` | the mouse wheel (`deltaX`, `deltaY`: steps, positive down/right) |
 | `input` | every edit of a text field, and every toggle |
 | `change` | a text field on blur when its value changed since it got focus; checkboxes, radios, selects and ranges when they change |
@@ -795,7 +798,8 @@ supported events. A listener gets a `UIEvent`: `type`, `target`, `currentTarget`
 `eventPhase` (1 capture, 2 target, 3 bubble), `button` (DOM numbering: 0 left, 1 middle,
 2 right), `clientX`/`clientY` (document px), `deltaX`/`deltaY`, `ctrlKey`, `shiftKey`,
 `altKey`, `metaKey`, `key`, `code`, `keyCode`, `repeat` (`event["repeat"]` in Lua), `data`
-(text of `textinput`), `detail` (a copy of the `dispatchEvent` detail), `defaultPrevented`,
+(text of `textinput`), `animationName`, `propertyName`, `elapsedTime` (animation and transition
+events), `detail` (a copy of the `dispatchEvent` detail), `defaultPrevented`,
 and `stopPropagation()`, `stopImmediatePropagation()`, `preventDefault()`. The event is valid
 only while the listener runs. `preventDefault()` skips the element's own action (a checkbox
 does not toggle, a prevented `keydown` types nothing, a prevented `wheel` does not scroll)
@@ -959,6 +963,10 @@ anime.animate(stats, { hp = 0, color = "#00ff00", duration = 2000, modifier = an
 - **utils**: `set get remove random createSeededRandom randomPick shuffle clamp round snap wrap
   mapRange lerp damp degToRad radToDeg roundPad padStart padEnd stagger`; with fewer arguments a
   util returns a function of the missing value (`modifier = anime.utils.round(0)`).
+- **With CSS transitions**: `anime` writes the element's inline style every frame, so a
+  property that also has a CSS `transition` starts that transition again at each write (as
+  Anime.js does in a browser): the value lags behind the animation. Drive a property from one
+  of them, not both (remove the `transition` of what `anime` animates).
 - **Clock**: everything runs on the UI clock, like CSS transitions: `Engine.timeScale` does not
   slow it (a pause menu animates while the game is frozen), `playbackRate`/`pause()` do.
   `clock = "game"` (animations, timelines, timers; children inherit it) runs on the scaled game
@@ -1144,8 +1152,8 @@ use in your files. Later phases:
 - Phase 3, the layout engine itself: `::before`/`::after`, `calc()` at layout time
   in every property, border styles, `%` radii, `:has()`, `order`, `aspect-ratio`,
   `fit-content`, real `position: fixed`/`sticky`, group `opacity`,
-  `cubic-bezier()`/`steps()` easings, parent/child margin collapsing, a legend as wide as its
-  text.
+  parent/child margin collapsing, a legend as wide as its text. (Transitions and animations
+  are already native: easings, longhands, fill modes, transitions on any change.)
 - Phase 4, tools for agents: `check --ui`, the MCP tools `inspect_ui`/`assert_ui`/
   `create_ui_document`, `import_files` for remote fonts and images, rewriting references
   inside HTML/CSS when an asset is renamed, the generated support matrix (every property,

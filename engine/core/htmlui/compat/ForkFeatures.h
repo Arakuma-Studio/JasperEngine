@@ -23,7 +23,8 @@ namespace jasperengine::htmlui::compat {
         GroupOpacity, TimingFunctions, Important, CssWideKeywords, Grid,
         // appended by phase 3 (phase-3 spec Appendix A)
         TextShadow, TextProperties,
-        CurrentColor, ExtraUnits, LineHeightNormal,
+        AnimationLonghands, IndividualTransforms,   // p3-animation
+        CurrentColor, ExtraUnits, LineHeightNormal,         // p3-values
         Count
     };
 

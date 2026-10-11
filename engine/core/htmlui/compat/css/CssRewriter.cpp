@@ -371,6 +371,7 @@ namespace {
         std::string layerName;                  // dotted name of the enclosing layer
         const SelectorList* parents = nullptr;
         std::vector<uint32_t> importChain;
+        bool startingStyle = false;             // inside @starting-style (AnimationLonghands)
     };
 
     int registerLayer(Session& session, const std::string& name){
@@ -433,6 +434,7 @@ namespace {
         rule.media = scope.media;
         rule.declarations = std::move(declarations);
         rule.layer = scope.layer;
+        rule.startingStyle = scope.startingStyle;
         rule.order = session.nextOrder++;
         session.sheets[scope.sheet].push_back(SheetItem{false, rule.index});
     }
@@ -457,6 +459,7 @@ namespace {
         rule.media = scope.media;
         rule.declarations = std::move(source.declarations);
         rule.layer = scope.layer;
+        rule.startingStyle = scope.startingStyle;
         rule.order = session.nextOrder++;
         session.sheets[scope.sheet].push_back(SheetItem{false, rule.index});
     }
@@ -645,6 +648,15 @@ namespace {
                 inner.media = MediaResult::conjoin(scope.media, media);
                 if (inner.media.never)
                     continue;
+                if (scope.parents && !rule.declarations.empty())
+                    addRule(session, inner, *scope.parents, rule.declarations, rule.ref, rule.preludeRef);
+                flatten(session, rule.rules, inner, false);
+                continue;
+            }
+            if (name == "starting-style" && session.options.fork.has(ForkFeature::AnimationLonghands)){
+                // the fork reads @starting-style (phase 3): its rules are written inside one
+                FlattenScope inner = scope;
+                inner.startingStyle = true;
                 if (scope.parents && !rule.declarations.empty())
                     addRule(session, inner, *scope.parents, rule.declarations, rule.ref, rule.preludeRef);
                 flatten(session, rule.rules, inner, false);
@@ -880,7 +892,9 @@ namespace {
                             session.inheritCompanions.insert(p);
                     }
                 }
-                if ((name == "animation" || name == "animation-direction") && (hasIdent(d.value, "reverse") || hasIdent(d.value, "alternate-reverse"))){
+                // mirrored keyframes for the reverse directions, unless the fork plays them (AnimationLonghands)
+                if ((name == "animation" || name == "animation-direction") && !session.options.fork.has(ForkFeature::AnimationLonghands) &&
+                    (hasIdent(d.value, "reverse") || hasIdent(d.value, "alternate-reverse"))){
                     std::vector<std::string> names = name == "animation" ? animationNames("animation", d.value) : std::vector<std::string>();
                     if (names.empty() && rule){
                         names = ruleAnimationNames(*rule);
@@ -1225,12 +1239,17 @@ namespace {
             any = any || !generated.declarations.empty();
         if (any)
         writeUnderMedia(writer, rule.media, rule.ref, [&](){
+            // (a rule of @starting-style is written inside one: AnimationLonghands)
+            if (rule.startingStyle)
+                writer.atRule("@starting-style {", rule.ref);
             if (!rootBackground.empty())
                 writeBlock(writer, "body#htmlui-root", rootBackground, rule.ref);
             writeBlock(writer, plainText, normal, rule.ref);
             writeBlock(writer, placeholderText, placeholderDeclarations, rule.ref);
             for (const GeneratedRule& generated : output.generated)
                 writeBlock(writer, plainWith(generated.suffix), generated.declarations, rule.ref);
+            if (rule.startingStyle)
+                writer.atRule("}", rule.ref);
         });
 
         if (!vmin.empty()){
@@ -1547,7 +1566,7 @@ namespace {
             // 6. the property rewrite
             if (name == "transform" && rule)
                 session.memoTaint++;
-            if (name == "transform" && rule && ruleHasIndividualTransform(*rule)){
+            if (name == "transform" && rule && ruleHasIndividualTransform(*rule) && !session.options.fork.has(ForkFeature::IndividualTransforms)){
                 // written with translate / rotate / scale (Transform.cpp)
             }else if (row->rewrite != RewriteId::None){
                 if (RewriteFunction function = findRewrite(row->rewrite))

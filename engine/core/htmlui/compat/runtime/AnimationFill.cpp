@@ -29,13 +29,13 @@ namespace {
 
     // the element's animation list as text, to notice a change
     std::string animationKey(Rml::Element* element){
-        const Rml::Property* property = element->GetProperty(Rml::PropertyId::Animation);
-        if (!property || property->unit != Rml::Unit::ANIMATION)
+        const Rml::AnimationList* list = element->GetComputedValues().animation();
+        if (!list)
             return std::string();
         std::string key;
-        for (const Rml::Animation& animation : property->Get<Rml::AnimationList>()){
+        for (const Rml::Animation& animation : *list){
             key += animation.name + "|" + std::to_string(animation.duration) + "|" + std::to_string(animation.delay) + "|" +
-                   std::to_string(animation.num_iterations) + "|" + (animation.alternate ? "a" : "") + (animation.paused ? "p" : "") + ";";
+                   std::to_string(animation.iteration_count) + "|" + std::to_string((int)animation.direction) + (animation.paused ? "p" : "") + ";";
         }
         return key;
     }
@@ -56,16 +56,17 @@ namespace {
     // animates it wins (as in CSS); its last keyframe holding the property, or the first one
     // for an alternate animation that ends going backwards (even iteration count)
     const Rml::Property* endValue(Rml::Element* element, Rml::PropertyId id){
-        const Rml::Property* list = element->GetProperty(Rml::PropertyId::Animation);
+        const Rml::AnimationList* animations = element->GetComputedValues().animation();
         const Rml::StyleSheet* sheet = element->GetStyleSheet();
-        if (!list || list->unit != Rml::Unit::ANIMATION || !sheet)
+        if (!animations || !sheet)
             return nullptr;
-        const Rml::AnimationList& animations = list->Get<Rml::AnimationList>();
-        for (auto it = animations.rbegin(); it != animations.rend(); ++it){
+        for (auto it = animations->rbegin(); it != animations->rend(); ++it){
             const Rml::Keyframes* keyframes = sheet->GetKeyframes(it->name);
             if (!keyframes)
                 continue;
-            const bool backwards = it->alternate && it->num_iterations > 0 && it->num_iterations % 2 == 0;
+            const bool alternate = it->direction == Rml::AnimationDirection::Alternate || it->direction == Rml::AnimationDirection::AlternateReverse;
+            const int count = it->IsInfinite() ? 0 : (int)it->iteration_count;
+            const bool backwards = alternate && count > 0 && (float)count == it->iteration_count && count % 2 == 0;
             const Rml::Property* value = nullptr;
             for (const Rml::KeyframeBlock& block : keyframes->blocks){
                 if (const Rml::Property* property = block.properties.GetProperty(id)){
@@ -80,31 +81,46 @@ namespace {
         return nullptr;
     }
 
+    void fill(Rml::Element* target, Rml::PropertyId id){
+        const Rml::Property* value = endValue(target, id);
+        if (!value)
+            return;
+        const Rml::Property copy = *value;
+        target->SetProperty(id, copy);
+        for (Filled& entry : filled()){
+            if (entry.element.get() == target && entry.id == id){
+                entry.value = copy;
+                entry.animation = animationKey(target);
+                return;
+            }
+        }
+        filled().push_back(Filled{target->GetObserverPtr(), id, copy, animationKey(target)});
+    }
+
+    // animationend of a CSS animation (the fork's: one per animation, `animationName`), or
+    // RmlUi 6.3's (one per property, `property`)
     class EndListener : public Rml::EventListener {
     public:
         void ProcessEvent(Rml::Event& event) override{
             Rml::Element* target = event.GetTargetElement();
             if (!target)
                 return;
-            const std::string fill = CompatProperties::text(*target, CompatProperty::AnimationFill);
-            if (fill != "forwards" && fill != "both")
+            const std::string fillMode = CompatProperties::text(*target, CompatProperty::AnimationFill);
+            if (fillMode != "forwards" && fillMode != "both")
                 return;
-            const Rml::PropertyId id = Rml::StyleSheetSpecification::GetPropertyId(event.GetParameter<Rml::String>("property", ""));
-            if (id == Rml::PropertyId::Invalid)
-                return;
-            const Rml::Property* value = endValue(target, id);
-            if (!value)
-                return;
-            const Rml::Property copy = *value;
-            target->SetProperty(id, copy);
-            for (Filled& entry : filled()){
-                if (entry.element.get() == target && entry.id == id){
-                    entry.value = copy;
-                    entry.animation = animationKey(target);
+            const std::string name = event.GetParameter<Rml::String>("animationName", "");
+            if (!name.empty()){
+                const Rml::StyleSheet* sheet = target->GetStyleSheet();
+                const Rml::Keyframes* keyframes = sheet ? sheet->GetKeyframes(name) : nullptr;
+                if (!keyframes)
                     return;
-                }
+                for (Rml::PropertyId id : keyframes->property_ids)
+                    fill(target, id);
+                return;
             }
-            filled().push_back(Filled{target->GetObserverPtr(), id, copy, animationKey(target)});
+            const Rml::PropertyId id = Rml::StyleSheetSpecification::GetPropertyId(event.GetParameter<Rml::String>("property", ""));
+            if (id != Rml::PropertyId::Invalid)
+                fill(target, id);
         }
     };
 

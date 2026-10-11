@@ -42,6 +42,13 @@ struct EventSpecificationData {
 		{EventId::Change        , "change"        , false , true  , DefaultActionPhase::None},
 		{EventId::Submit        , "submit"        , true  , true  , DefaultActionPhase::None},
 		{EventId::Tabchange     , "tabchange"     , false , true  , DefaultActionPhase::None},
+		// CSS Animations 1 and CSS Transitions 1 (phase 3): parameters 'animationName' or 'propertyName', 'elapsedTime'.
+		{EventId::Animationstart    , "animationstart"    , false , true  , DefaultActionPhase::None},
+		{EventId::Animationiteration, "animationiteration", false , true  , DefaultActionPhase::None},
+		{EventId::Animationcancel   , "animationcancel"   , false , true  , DefaultActionPhase::None},
+		{EventId::Transitionrun     , "transitionrun"     , false , true  , DefaultActionPhase::None},
+		{EventId::Transitionstart   , "transitionstart"   , false , true  , DefaultActionPhase::None},
+		{EventId::Transitioncancel  , "transitioncancel"  , false , true  , DefaultActionPhase::None},
 		// clang-format on
 	};
 

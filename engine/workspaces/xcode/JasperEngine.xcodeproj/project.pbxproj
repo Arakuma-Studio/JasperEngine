@@ -1641,6 +1641,14 @@
 		524D4C55058C30DA5BAF1E1C /* ElementStyleValues.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5566A1481009ECCE54 /* ElementStyleValues.cpp */; };
 		524D4C559EC340C6AEABE2AA /* ColorSpaces.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55E76504387640A69E /* ColorSpaces.cpp */; };
 		524D4C55DCBC7A23D237FC3B /* ColorSpaces.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55E76504387640A69E /* ColorSpaces.cpp */; };
+		524D4C550BB2161DD745C39A /* ShorthandAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5516D2D122E3B3877C /* ShorthandAnimation.cpp */; };
+		524D4C5586DFC2EA6BF35A73 /* ShorthandAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5516D2D122E3B3877C /* ShorthandAnimation.cpp */; };
+		524D4C55B48FED6B6C843B8B /* IndividualTransforms.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55CF39F53DAE41364C /* IndividualTransforms.cpp */; };
+		524D4C5565FAFDAB83B6E72D /* IndividualTransforms.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55CF39F53DAE41364C /* IndividualTransforms.cpp */; };
+		524D4C550338B0929C236D2D /* ElementTransitions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55A253F2CACC519A83 /* ElementTransitions.cpp */; };
+		524D4C555E5E3E6D60EA6799 /* ElementTransitions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55A253F2CACC519A83 /* ElementTransitions.cpp */; };
+		524D4C55FD256335C4F7A034 /* Easing.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BD039C8868B7E34A /* Easing.cpp */; };
+		524D4C555A1B3D505AB2EC70 /* Easing.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BD039C8868B7E34A /* Easing.cpp */; };
 		524D4C55256864F7CEE14598 /* TextUnicode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556DF9645915A0E99B /* TextUnicode.cpp */; };
 		524D4C55138D97365E2F6C3A /* TextUnicode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556DF9645915A0E99B /* TextUnicode.cpp */; };
 		524D4C555C1E0AEF6BBE41CA /* TextShadow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C553DCE338654F47B58 /* TextShadow.cpp */; };
@@ -4734,6 +4742,10 @@
 		524D4C556AB460F2B0A4DA2E /* LogicalProperties.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LogicalProperties.cpp; sourceTree = "<group>"; };
 		524D4C5566A1481009ECCE54 /* ElementStyleValues.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementStyleValues.cpp; sourceTree = "<group>"; };
 		524D4C55E76504387640A69E /* ColorSpaces.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ColorSpaces.cpp; sourceTree = "<group>"; };
+		524D4C5516D2D122E3B3877C /* ShorthandAnimation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShorthandAnimation.cpp; sourceTree = "<group>"; };
+		524D4C55CF39F53DAE41364C /* IndividualTransforms.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = IndividualTransforms.cpp; sourceTree = "<group>"; };
+		524D4C55A253F2CACC519A83 /* ElementTransitions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementTransitions.cpp; sourceTree = "<group>"; };
+		524D4C55BD039C8868B7E34A /* Easing.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Easing.cpp; sourceTree = "<group>"; };
 		524D4C556DF9645915A0E99B /* TextUnicode.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextUnicode.cpp; sourceTree = "<group>"; };
 		524D4C553DCE338654F47B58 /* TextShadow.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextShadow.cpp; sourceTree = "<group>"; };
 		524D4C558AC26B918A5CDD71 /* TextProperties.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextProperties.cpp; sourceTree = "<group>"; };
@@ -8853,6 +8865,10 @@
 				524D4C558AC26B918A5CDD71 /* TextProperties.cpp */,
 				524D4C553DCE338654F47B58 /* TextShadow.cpp */,
 				524D4C556DF9645915A0E99B /* TextUnicode.cpp */,
+				524D4C55BD039C8868B7E34A /* Easing.cpp */,
+				524D4C55A253F2CACC519A83 /* ElementTransitions.cpp */,
+				524D4C55CF39F53DAE41364C /* IndividualTransforms.cpp */,
+				524D4C5516D2D122E3B3877C /* ShorthandAnimation.cpp */,
 				524D4C55E76504387640A69E /* ColorSpaces.cpp */,
 				524D4C5566A1481009ECCE54 /* ElementStyleValues.cpp */,
 				524D4C556AB460F2B0A4DA2E /* LogicalProperties.cpp */,
@@ -12820,6 +12836,10 @@
 				524D4C556A2A63D2582C5300 /* LogicalProperties.cpp in Sources */,
 				524D4C55D960EBD2547F649F /* ElementStyleValues.cpp in Sources */,
 				524D4C559EC340C6AEABE2AA /* ColorSpaces.cpp in Sources */,
+				524D4C550BB2161DD745C39A /* ShorthandAnimation.cpp in Sources */,
+				524D4C55B48FED6B6C843B8B /* IndividualTransforms.cpp in Sources */,
+				524D4C550338B0929C236D2D /* ElementTransitions.cpp in Sources */,
+				524D4C55FD256335C4F7A034 /* Easing.cpp in Sources */,
 				524D4C55256864F7CEE14598 /* TextUnicode.cpp in Sources */,
 				524D4C555C1E0AEF6BBE41CA /* TextShadow.cpp in Sources */,
 				524D4C55402FB21DD019CAD1 /* TextProperties.cpp in Sources */,
@@ -13053,6 +13073,10 @@
 				524D4C5536DFB9FB3027647B /* LogicalProperties.cpp in Sources */,
 				524D4C55058C30DA5BAF1E1C /* ElementStyleValues.cpp in Sources */,
 				524D4C55DCBC7A23D237FC3B /* ColorSpaces.cpp in Sources */,
+				524D4C5586DFC2EA6BF35A73 /* ShorthandAnimation.cpp in Sources */,
+				524D4C5565FAFDAB83B6E72D /* IndividualTransforms.cpp in Sources */,
+				524D4C555E5E3E6D60EA6799 /* ElementTransitions.cpp in Sources */,
+				524D4C555A1B3D505AB2EC70 /* Easing.cpp in Sources */,
 				524D4C55138D97365E2F6C3A /* TextUnicode.cpp in Sources */,
 				524D4C55F8C32E9BEFF581D0 /* TextShadow.cpp in Sources */,
 				524D4C550A23F57B56916973 /* TextProperties.cpp in Sources */,
