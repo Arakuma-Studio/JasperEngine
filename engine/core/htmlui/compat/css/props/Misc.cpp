@@ -475,6 +475,12 @@ void jasperengine::htmlui::compat::rewriteAll(DeclContext& context){
         unsupportedValue(context, "use all: unset");
         return;
     }
+    // the fork's 'all' (phase 3, p3-cascade): every property it has, inherit and revert as CSS says (not direction, nor
+    // custom properties, nor RmlUi's interaction properties)
+    if (context.fork(ForkFeature::CssWideKeywords)){
+        context.emit("all", keyword);
+        return;
+    }
     if (keyword == "inherit")
         context.reportAs(Severity::Info, codes::ApproximatedMinor, "'all: inherit' resets the inherited properties only");
     // every CSS property the engine has (not direction, unicode-bidi or custom properties)
