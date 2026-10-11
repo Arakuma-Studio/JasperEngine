@@ -59,11 +59,11 @@ TEST_CASE("Outline.properties")
 
 	// Omitted parts take their initial values.
 	REQUIRE(Parse(dictionary, "outline", "auto"));
-	CHECK(Parsed(dictionary, "outline-width") == "medium");
+	CHECK(Parsed(dictionary, "outline-width") == "3px"); // medium: a length, it interpolates
 	CHECK(Parsed(dictionary, "outline-style") == "auto");
 	CHECK(Parsed(dictionary, "outline-color") == "currentcolor");
 	REQUIRE(Parse(dictionary, "outline", "thick solid"));
-	CHECK(Parsed(dictionary, "outline-width") == "thick");
+	CHECK(Parsed(dictionary, "outline-width") == "5px");
 	CHECK(Parsed(dictionary, "outline-color") == "currentcolor");
 	REQUIRE(Parse(dictionary, "outline", "none"));
 	CHECK(Parsed(dictionary, "outline-style") == "none");

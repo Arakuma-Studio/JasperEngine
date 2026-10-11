@@ -233,10 +233,9 @@ namespace Style {
 
 		// -- Paint (p3-paint) --
 		// Border radii: the horizontal and the vertical radius of the corners top-left, top-right, bottom-right and
-		// bottom-left (index 2 * corner + axis). A length in px or a percentage (of the border box's width or height);
-		// a calc() expression is resolved from the property (Element::GetRenderBox resolves and scales them all).
-		float border_radius_values[8] = {};
-		uint16_t border_radius_types = 0; // LengthPercentage::Type of each, two bits a value.
+		// bottom-left (index 2 * corner + axis). A length in px, a percentage (of the border box's width or height) or
+		// a calc() of both (Element::GetRenderBox resolves and scales them all).
+		LengthPercentage border_radius_values[8];
 
 		// The element's opacity (CSS: not inherited): below 1 the element and its descendants are drawn as a group
 		// (Element::GetDrawOpacity, ElementEffects).
@@ -398,9 +397,9 @@ namespace Style {
 
 		// Paint (p3-paint)
 		// A border radius as declared: corner 0-3 (top-left, top-right, bottom-right, bottom-left), axis 0 (horizontal)
-		// or 1 (vertical). A calc() value has the type Calculation and no expression: Element::GetRenderBox reads it.
-		LengthPercentage  border_radius(int corner, int axis) const { const int i = 2 * corner + axis; return LengthPercentage(LengthPercentage::Type((rare.border_radius_types >> (2 * i)) & 3), rare.border_radius_values[i]); }
-		bool              has_border_radius()          const { if (rare.border_radius_types != 0) return true; for (float value : rare.border_radius_values) { if (value != 0.f) return true; } return false; }
+		// or 1 (vertical): a length, a percentage or a calc() of both.
+		const LengthPercentage& border_radius(int corner, int axis) const { return rare.border_radius_values[2 * corner + axis]; }
+		bool              has_border_radius()          const { for (const LengthPercentage& value : rare.border_radius_values) { if (value.type != LengthPercentage::Length || value.value != 0.f) return true; } return false; }
 		float             opacity()                    const { return rare.opacity; }
 		Isolation         isolation()                  const { return rare.isolation; }
 		ObjectFit         object_fit()                 const { return rare.object_fit; }
@@ -545,7 +544,7 @@ namespace Style {
 		void outline_offset            (float value)                { rare.outline_offset = value; }
 		void outline_color             (Colourb value)              { rare.outline_color = value; rare.outline_color_current = false; }
 		void outline_color_current     ()                           { rare.outline_color_current = true; }
-		void border_radius             (int corner, int axis, LengthPercentage value) { const int i = 2 * corner + axis; rare.border_radius_values[i] = value.value; rare.border_radius_types = uint16_t((rare.border_radius_types & ~(3 << (2 * i))) | (int(value.type) << (2 * i))); }
+		void border_radius             (int corner, int axis, LengthPercentage value) { rare.border_radius_values[2 * corner + axis] = std::move(value); }
 
 		// Text (p3-text)
 		void white_space_collapse      (WhiteSpaceCollapse value) { inherited.white_space_collapse = value; }

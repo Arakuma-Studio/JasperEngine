@@ -635,22 +635,8 @@ RenderBox Element::GetRenderBox(BoxArea fill_area, int index, bool with_border_t
 		{
 			const int corner = i / 2, axis = i % 2;
 			const float basis = (axis == 0 ? border_size.x : border_size.y);
-			const Style::LengthPercentage radius = computed.border_radius(corner, axis);
-			float value = 0.f;
-#ifdef RMLUI_MATH_EXPRESSIONS
-			if (radius.type == Style::LengthPercentage::Calculation)
-			{
-				const Property* property =
-					meta->style.GetLocalPropertyWithResolvedVariables(PropertyId(int(PropertyId::RmlUi_BorderTopLeftRadiusX) + i));
-				if (property && property->unit == Unit::CALCULATION)
-				{
-					if (CalculationPtr calculation = property->value.Get<CalculationPtr>())
-						ResolveElementCalculation(*calculation, *this, basis, value);
-				}
-			}
-			else
-#endif
-				value = ResolveValue(radius, basis);
+			// Lengths, percentages, and calc() of both (also the mixes a transition between them interpolates).
+			const float value = ResolveValue(computed.border_radius(corner, axis), basis);
 			border_radius[corner][axis] = Math::Max(value, 0.f);
 		}
 		GeometryBackgroundBorder::ScaleRadiiToFit(border_radius, border_size);

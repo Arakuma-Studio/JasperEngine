@@ -2,6 +2,8 @@
 #include "../../Include/RmlUi/Core/Property.h"
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "../../Include/RmlUi/Core/PropertyDictionary.h"
+#include "../../Include/RmlUi/Core/PropertyParser.h"
+#include "../../Include/RmlUi/Core/StringUtilities.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "ComputeProperty.h"
 #include "PaintProperties.h"
@@ -150,6 +152,31 @@ bool ParseBorderRadiusShorthand(PropertyDictionary& dictionary, const ShorthandD
 	for (const auto& id_property : parsed.GetProperties())
 		dictionary.SetProperty(id_property.first, id_property.second);
 	return true;
+}
+
+namespace {
+	class PropertyParserLineWidth : public PropertyParser {
+	public:
+		bool ParseValue(Property& property, const String& value, const ParameterMap& parameters) const override
+		{
+			const String keyword = StringUtilities::ToLower(StringUtilities::StripWhitespace(value));
+			const float width = (keyword == "thin" ? 1.f : keyword == "medium" ? 3.f : keyword == "thick" ? 5.f : -1.f);
+			if (width >= 0.f)
+			{
+				property.value = Variant(width);
+				property.unit = Unit::PX;
+				return true;
+			}
+			PropertyParser* length = StyleSheetSpecification::GetParser("length");
+			return length && length->ParseValue(property, value, parameters);
+		}
+	};
+} // namespace
+
+PropertyParser* GetLineWidthParser()
+{
+	static PropertyParserLineWidth parser;
+	return &parser;
 }
 
 float ComputeLineWidth(const Property* property, float font_size, float document_font_size, float dp_ratio, Vector2f vp_dimensions)

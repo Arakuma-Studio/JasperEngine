@@ -44,6 +44,7 @@ add_executable(${TARGET_NAME}
 	Math.cpp
 	MediaQuery.cpp
 	Navigation.cpp
+	PaintTransitions.cpp
 	Properties.cpp
 	RootFontSize.cpp
 	PropertySpecification.cpp

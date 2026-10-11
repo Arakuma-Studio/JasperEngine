@@ -284,6 +284,7 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	// -- Cascade (p3-cascade) --
 
 	// -- Paint (p3-paint) --
+	RegisterParser("line_width", GetLineWidthParser());
 
 	// -- Text (p3-text) --
 	static PropertyParserTextDecorationLine text_decoration_line;
@@ -515,9 +516,7 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	for (PropertyId id : {PropertyId::BorderTopWidth, PropertyId::BorderRightWidth, PropertyId::BorderBottomWidth, PropertyId::BorderLeftWidth})
 	{
 		static const char* const names[] = {"border-top-width", "border-right-width", "border-bottom-width", "border-left-width"};
-		RegisterProperty(id, names[int(id) - int(PropertyId::BorderTopWidth)], "medium", false, true)
-			.AddParser("keyword", "thin, medium, thick")
-			.AddParser("length");
+		RegisterProperty(id, names[int(id) - int(PropertyId::BorderTopWidth)], "medium", false, true).AddParser("line_width");
 	}
 	RegisterShorthand(ShorthandId::BorderWidth, "border-width", "border-top-width, border-right-width, border-bottom-width, border-left-width", ShorthandType::Box);
 	RegisterProperty(PropertyId::BorderTopStyle, "border-top-style", "none", false, true).AddParser("keyword", "none, hidden, dotted, dashed, solid, double, groove, ridge, inset, outset");
@@ -548,7 +547,7 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	// Outline (phase 3, 3.7.1, 3.7.4): drawn outside the border box, without a place in the layout. The style keywords
 	// have the values of Style::BorderStyle (no 'hidden'; 'auto' is the focus ring); the colour is 'currentcolor' unless
 	// declared ('invert' is drawn as 'currentcolor', as browsers do).
-	RegisterProperty(PropertyId::OutlineWidth, "outline-width", "medium", false, false).AddParser("keyword", "thin, medium, thick").AddParser("length");
+	RegisterProperty(PropertyId::OutlineWidth, "outline-width", "medium", false, false).AddParser("line_width");
 	RegisterProperty(PropertyId::OutlineStyle, "outline-style", "none", false, false)
 		.AddParser("keyword", "none=0, dotted=2, dashed=3, solid=4, double=5, groove=6, ridge=7, inset=8, outset=9, auto=10");
 	RegisterProperty(PropertyId::OutlineColor, "outline-color", "currentcolor", false, false).AddParser("keyword", "currentcolor, invert").AddParser("color");

@@ -35,6 +35,12 @@ bool ParsePositionShorthand(PropertyDictionary& dictionary, const ShorthandDefin
 // The same, into the CSS text of the two axes.
 bool ParsePosition(const String& value, String& out_x, String& out_y);
 
+class PropertyParser;
+
+// The parser of border and outline widths ("line_width"): thin, medium and thick are the lengths 1px, 3px and 5px (CSS
+// computes them so, and they interpolate with lengths); else a length.
+PropertyParser* GetLineWidthParser();
+
 // The computed width of a border or outline: the keywords thin, medium and thick are 1px, 3px and 5px; a length is
 // snapped as Chromium snaps border widths (whole pixels, rounded down, a width between 0 and 1px is 1px).
 float ComputeLineWidth(const Property* property, float font_size, float document_font_size, float dp_ratio, Vector2f vp_dimensions);

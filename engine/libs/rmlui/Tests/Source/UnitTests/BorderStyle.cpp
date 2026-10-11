@@ -74,7 +74,7 @@ TEST_CASE("BorderStyle.shorthands")
 
 	// Omitted parts take their initial values: medium, none, the initial colour.
 	REQUIRE(Parse(dictionary, "border", "dashed"));
-	CHECK(Parsed(dictionary, "border-left-width") == "medium");
+	CHECK(Parsed(dictionary, "border-left-width") == "3px"); // medium (a length, it interpolates)
 	CHECK(Parsed(dictionary, "border-left-style") == "dashed");
 	CHECK(Parsed(dictionary, "border-left-color") == "#000000");
 	REQUIRE(Parse(dictionary, "border", "2px"));
@@ -90,12 +90,12 @@ TEST_CASE("BorderStyle.shorthands")
 
 	// The sides: AnyOrder, omitted parts reset.
 	REQUIRE(Parse(dictionary, "border-top", "dotted thick"));
-	CHECK(Parsed(dictionary, "border-top-width") == "thick");
+	CHECK(Parsed(dictionary, "border-top-width") == "5px");
 	CHECK(Parsed(dictionary, "border-top-style") == "dotted");
 	CHECK(Parsed(dictionary, "border-top-color") == "#000000");
 	CHECK(Parsed(dictionary, "border-right-style") == "<none>");
 	REQUIRE(Parse(dictionary, "border-left", "#00ff00 groove"));
-	CHECK(Parsed(dictionary, "border-left-width") == "medium");
+	CHECK(Parsed(dictionary, "border-left-width") == "3px"); // medium (a length, it interpolates)
 	CHECK_FALSE(Parse(dictionary, "border-bottom", "1px 2px"));
 
 	// border-style is a box shorthand of every style keyword.
