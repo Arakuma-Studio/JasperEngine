@@ -35,6 +35,20 @@
 --                     the scene, so no depth pre-pass or copy runs (the log says so)
 --   SI_SCENE=saved    Saved.scene (generate.py): the shaders on GameObjects saved in a scene, as
 --                     the editor's views draw them and the export collects their variants
+--   SI_SPAWN=depth    the identity scene; a reader of the scene depth (si_intersection) made in
+--                     view at frame 60, destroyed at 100, made again at 140, destroyed at 180.
+--   SI_SPAWN=color    the same with a reader of the scene colour (si_haze). Run with
+--                     JASPERENGINE_FRAME_STATS=all: each spawn draws every mesh (no frame with
+--                     only the sky and the transparent ones) and remakes no pipeline but its own
+--                     and the depth programs the first spawn adds (no reload of every mesh on
+--                     each spawn or destruction)
+--   SI_RESIZE=1       the render-to-texture camera's target changes size every frame (a window
+--                     drag): the scene-input targets of the old sizes go (images alive stay level)
+--   SI_ENV=1          the identity scene under a sky with a cube map (textures/sky_cross.png:
+--                     blue above, brown below): mirror balls (shaders/si_environment, sharp and
+--                     rough) reflecting the engine's environment (@require environment; magenta
+--                     without one), and library:glass with REFLECTION_MAP given the same cube map
+--                     from Lua (Material:setShaderCubeTexture)
 local SceneInputs = { properties = {} }
 
 local function log(fmt, ...)
@@ -210,6 +224,7 @@ local function buildInputs(self, scene, keep)
     rtt.target = Vector3(1.0, 0.8, 0.0)
     rtt.renderToTexture = true
     rtt:setFramebufferSize(512, 288)
+    self.rtt = rtt
     local screen = keep(Primitive(scene))
     screen:createBox(5.6, 3.15, 0.05)
     screen.position = Vector3(6.6, 5.6, -5.0)
@@ -296,6 +311,33 @@ local function buildIdentity(self, scene, keep)
     pane.castShadows = false
     configure(pane, function(m) unlit(m, 0.4, 0.8, 1.0, 0.35); m.blendMode = MaterialBlendMode.ALPHA end)
 
+    if env("SI_ENV") then
+        local sky = keep(Skybox(scene))
+        sky:setTexture("textures/sky_cross.png")
+        for i, roughness in ipairs({0.0, 0.6}) do
+            local ball = keep(Primitive(scene))
+            ball:createSphere(0.8)
+            ball.position = Vector3(-4.6 + i * 1.9, 2.6, 1.0)
+            ball.castShadows = false
+            configure(ball, function(m)
+                m.shader = "shaders/si_environment"
+                m:setShaderParam("roughness", roughness)
+            end)
+        end
+        local glassBall = keep(Primitive(scene))
+        glassBall:createSphere(0.8)
+        glassBall.position = Vector3(1.6, 2.6, 1.0)
+        glassBall.castShadows = false
+        configure(glassBall, function(m)
+            m.shader = "library:glass"
+            m:setShaderFeature("REFLECTION_MAP", true)
+            m:setShaderParam("reflectionColor", Vector4(1, 1, 1, 1))
+            m:setShaderParam("reflectionStrength", 2.0)
+            m:setShaderCubeTexture("u_reflectionTexture", "textures/sky_cross.png")
+        end)
+        log("environment balls under a cube map sky")
+    end
+
     if os.getenv("SI_SCENE") == "hidden" then
         -- behind the camera: loaded, so the scene has an object reading it, but in no pass
         local hidden = keep(Primitive(scene))
@@ -340,7 +382,10 @@ function SceneInputs:init()
         log("hierarchy-order camera")
     end
 
-    local build = (which == "identity" or which == "hidden") and buildIdentity or buildInputs
+    if os.getenv("SI_SPAWN") or env("SI_ENV") then
+        which = os.getenv("SI_SPAWN") and "spawn" or "environment"
+    end
+    local build = (which == "identity" or which == "hidden" or which == "spawn" or which == "environment") and buildIdentity or buildInputs
     local ok, err = pcall(build, self, scene, keep)
     if ok then
         log("built %s scene", which)
@@ -378,8 +423,48 @@ function SceneInputs:init()
     self.frames = 0
 end
 
+-- SI_SPAWN: a reader made and destroyed while the scene runs
+local function spawnReader(self)
+    local kind = os.getenv("SI_SPAWN")
+    local reader = Primitive(self.scene)
+    if kind == "color" then
+        reader:createBox(2.4, 1.6, 0.1)
+        reader.position = Vector3(-1.5, 1.4, 2.2)
+        configure(reader, function(m) m.shader = "shaders/si_haze" end)
+    else
+        reader:createSphere(1.0)
+        reader.position = Vector3(-1.5, 0.3, 2.2)
+        configure(reader, function(m) m.shader = "shaders/si_intersection" end)
+    end
+    reader.castShadows = false
+    self.spawned = reader
+    log("frame %d: %s reader made", self.frames, kind)
+end
+
+local function destroyReader(self)
+    if self.spawned then
+        local entity = self.spawned.entity
+        self.spawned.entityOwned = false
+        self.spawned = nil
+        self.scene:destroyEntity(entity)
+        log("frame %d: reader destroyed", self.frames)
+    end
+end
+
 function SceneInputs:onUpdate()
     self.frames = self.frames + 1
+    if os.getenv("SI_SPAWN") then
+        if self.frames == 60 or self.frames == 140 then
+            spawnReader(self)
+        elseif self.frames == 100 or self.frames == 180 then
+            destroyReader(self)
+        end
+    end
+    if self.rtt and env("SI_RESIZE") then
+        -- a size each frame, as a window being dragged
+        local step = self.frames % 40
+        self.rtt:setFramebufferSize(400 + step * 4, 225 + step * 2)
+    end
     if self.frames % 100 == 0 then
         log("frame %d: %d variants compiling", self.frames, ShaderPool.getPendingShaderCount())
     end
