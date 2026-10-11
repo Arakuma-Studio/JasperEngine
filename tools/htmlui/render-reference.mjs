@@ -909,6 +909,8 @@ async function renderP3Fixture(launchBrowser, { area, name }, boxesOnly){
         const captures = [];
         const capture = async (suffix) => {
             await page.waitForTimeout(SETTLE_MS);
+            // a step may use a face (or an image) the page did not draw before: loaded, and none failed
+            await waitForFonts(page, label);
             const png = boxesOnly ? null : await page.screenshot({ omitBackground: true, caret: 'hide' });
             captures.push({ suffix, png, boxes: await idBoxes(page) });
         };

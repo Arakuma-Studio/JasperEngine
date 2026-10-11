@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -245,12 +246,31 @@ TEST(BrowserCompareStrict, SizesMustMatch){
 
 // ---- the committed data ----------------------------------------------------------------------------
 
-// The fixtures' Roboto is the engine's built-in face (the bytes of DefaultFont.h).
+namespace {
+
+    // The tables of a TrueType font: tag -> bytes.
+    std::map<std::string, std::string> fontTables(const std::string& font){
+        std::map<std::string, std::string> result;
+        if (font.size() < 12)
+            return result;
+        auto u16 = [&](size_t at){ return (uint32_t(uint8_t(font[at])) << 8) | uint8_t(font[at + 1]); };
+        auto u32 = [&](size_t at){ return (u16(at) << 16) | u16(at + 2); };
+        const uint32_t count = u16(4);
+        for (uint32_t i = 0; i < count && 12 + 16 * (i + 1) <= font.size(); i++){
+            const size_t record = 12 + 16 * i;
+            const uint32_t offset = u32(record + 8), length = u32(record + 12);
+            if (size_t(offset) + length <= font.size())
+                result[font.substr(record, 4)] = font.substr(offset, length);
+        }
+        return result;
+    }
+
+}
+
+// The fixtures' Roboto is the engine's built-in face (DefaultFont.h) with a 'post' table: Chromium's font sanitizer
+// rejects a TrueType font without one (and draws another face), so the fixtures load this copy.
 TEST(BrowserFixtures, FontsAreTheEnginesFaces){
-    std::string roboto;
-    ASSERT_TRUE(readText(htmluiTestSourceDirectory() + "/fonts/Roboto-Regular-subset.ttf", roboto));
-    ASSERT_EQ(roboto.size(), size_t(roboto_regular_ttf_len));
-    EXPECT_TRUE(std::equal(roboto.begin(), roboto.end(), reinterpret_cast<const char*>(roboto_regular_ttf)));
+    const std::string roboto(reinterpret_cast<const char*>(roboto_regular_ttf), size_t(roboto_regular_ttf_len));
     std::string ahem;
     ASSERT_TRUE(readText(htmluiTestSourceDirectory() + "/fonts/Ahem.ttf", ahem));
     EXPECT_EQ(ahem.size(), 12480u);
@@ -258,20 +278,8 @@ TEST(BrowserFixtures, FontsAreTheEnginesFaces){
     // the copy Chromium loads: the same tables, plus 'post' (and the head checksum adjustment)
     std::string post;
     ASSERT_TRUE(readText(htmluiTestSourceDirectory() + "/fonts/Roboto-Regular-subset-post.ttf", post));
-    auto tables = [](const std::string& font){
-        std::map<std::string, std::string> result;
-        auto u16 = [&](size_t at){ return (uint32_t(uint8_t(font[at])) << 8) | uint8_t(font[at + 1]); };
-        auto u32 = [&](size_t at){ return (u16(at) << 16) | u16(at + 2); };
-        const uint32_t count = u16(4);
-        for (uint32_t i = 0; i < count && 12 + 16 * (i + 1) <= font.size(); i++){
-            const size_t record = 12 + 16 * i;
-            const uint32_t offset = u32(record + 8), length = u32(record + 12);
-            if (offset + length <= font.size())
-                result[font.substr(record, 4)] = font.substr(offset, length);
-        }
-        return result;
-    };
-    std::map<std::string, std::string> original = tables(roboto), copy = tables(post);
+    std::map<std::string, std::string> original = fontTables(roboto), copy = fontTables(post);
+    ASSERT_FALSE(original.empty());
     ASSERT_EQ(copy.count("post"), 1u);
     EXPECT_EQ(original.count("post"), 0u);
     copy.erase("post");
@@ -285,6 +293,56 @@ TEST(BrowserFixtures, FontsAreTheEnginesFaces){
         }
         EXPECT_EQ(entry.second, copy[entry.first]) << entry.first;
     }
+}
+
+// Every local font a Chromium-rendered fixture loads (browser-parity, Taffy and compat pages) exists and has the
+// tables Chromium's sanitizer requires ('post' among them): a font Chromium rejects makes it draw another face, and
+// the reference no longer shows the engine's text.
+TEST(BrowserFixtures, FontFacesLoadInChromium){
+    namespace fs = std::filesystem;
+    const fs::path fixtures = fs::path(htmluiTestSourceDirectory()) / "fixtures";
+    size_t checked = 0;
+    for (const char* area : {"p3", "taffy", "compat/pages"}){
+        std::error_code ec;
+        for (auto it = fs::recursive_directory_iterator(fixtures / area, ec); it != fs::recursive_directory_iterator(); it.increment(ec)){
+            const fs::path file = it->path();
+            const std::string extension = file.extension().string();
+            if (ec || !it->is_regular_file() || (extension != ".html" && extension != ".css"))
+                continue;
+            std::string text;
+            ASSERT_TRUE(readText(file.string(), text)) << file;
+            // url("...ttf"), url('...otf'), url(...woff2)
+            size_t at = 0;
+            while ((at = text.find("url(", at)) != std::string::npos){
+                at += 4;
+                size_t end = text.find(')', at);
+                if (end == std::string::npos)
+                    break;
+                std::string url = text.substr(at, end - at);
+                url.erase(std::remove(url.begin(), url.end(), '"'), url.end());
+                url.erase(std::remove(url.begin(), url.end(), '\''), url.end());
+                const std::string lower = [&]{ std::string l = url; for (char& c : l) c = char(std::tolower((unsigned char)c)); return l; }();
+                auto endsWith = [&](const char* suffix){
+                    const size_t n = std::strlen(suffix);
+                    return lower.size() >= n && lower.compare(lower.size() - n, n, suffix) == 0;
+                };
+                if (!(endsWith(".ttf") || endsWith(".otf") || endsWith(".woff") || endsWith(".woff2")) || lower.find("://") != std::string::npos ||
+                    lower.rfind("data:", 0) == 0)
+                    continue;
+                const fs::path font = (file.parent_path() / url).lexically_normal();
+                SCOPED_TRACE(file.string() + ": " + url);
+                std::string bytes;
+                ASSERT_TRUE(readText(font.string(), bytes)) << font << " is missing";
+                if (endsWith(".ttf") || endsWith(".otf")){
+                    const std::map<std::string, std::string> tables = fontTables(bytes);
+                    for (const char* required : {"cmap", "head", "hhea", "hmtx", "maxp", "name", "OS/2", "post"})
+                        EXPECT_EQ(tables.count(required), 1u) << font << " has no '" << required << "' table";
+                }
+                checked++;
+            }
+        }
+    }
+    EXPECT_GT(checked, 20u);
 }
 
 // manifest.json names every area and its owner; every fixture's sidecar loads, overrides its gate only

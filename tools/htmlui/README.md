@@ -43,8 +43,11 @@ list), in `rmlui:` commits. `Tests/Source/Common/TestsShell.h` has `GetElementCh
 A fixture is `engine/tests/htmlui/fixtures/p3/<area>/<name>.html` with a `<name>.json` sidecar; the
 areas and their owners are in `fixtures/p3/manifest.json` (`base values cascade paint text layout
 animation grid integration`, and `testkit`, the harness's self-tests). Fonts come from
-`engine/tests/htmlui/fonts/` with `@font-face` (`url("../../../fonts/Roboto-Regular-subset.ttf")`,
-the engine's built-in face, or `Ahem.ttf`); avoid generic families. JavaScript does not run.
+`engine/tests/htmlui/fonts/` with `@font-face` (`url("../../../fonts/Roboto-Regular-subset-post.ttf")`,
+the engine's built-in face with the `post` table Chromium requires, or `Ahem.ttf`); avoid generic
+families. The reference fails when a face does not load (also one a later step uses), and
+`BrowserFixtures.FontFacesLoadInChromium` checks every local font a fixture names. JavaScript does
+not run.
 
 ```json
 {
