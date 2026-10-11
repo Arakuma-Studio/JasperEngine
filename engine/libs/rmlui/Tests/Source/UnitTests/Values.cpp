@@ -672,3 +672,43 @@ TEST_CASE("Values.units.grid_tracks_and_gaps")
 	document->Close();
 	context->Update();
 }
+
+// The units and calc() in the text package's spacing properties (letter-spacing, word-spacing: lengths and percentages
+// of the font size).
+TEST_CASE("Values.units.text_spacing")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	PropertyDictionary dictionary;
+	if (!StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "word-spacing", "1ch"))
+	{
+		MESSAGE("word-spacing is not registered: skipped");
+		return;
+	}
+	const Vector2f viewport(context->GetDimensions());
+	const float vmin = Math::Min(viewport.x, viewport.y) * 0.01f;
+
+	ElementDocument* document = LoadValues(context,
+		"#a { font-size: 30px; letter-spacing: 0.5ch; word-spacing: calc(1ex + 2px); } "
+		"#b { letter-spacing: calc(1vmin + 10%); word-spacing: max(2px, 1vmax); }");
+	Element* a = document->GetElementById("a");
+	Element* b = document->GetElementById("b");
+
+	auto check = [&]() {
+		const float ch = ZeroAdvance(a);
+		const float ex = GetFontEngineInterface()->GetFontMetrics(a->GetFontFaceHandle()).x_height;
+		CHECK(a->GetComputedValues().letter_spacing() == doctest::Approx(0.5f * ch));
+		CHECK(a->GetComputedValues().word_spacing() == doctest::Approx(ex + 2.f));
+	};
+	check();
+	CHECK(b->GetComputedValues().letter_spacing() == doctest::Approx(vmin + 0.1f * 30.f));
+	CHECK(b->GetComputedValues().word_spacing() == doctest::Approx(Math::Max(2.f, Math::Max(viewport.x, viewport.y) * 0.01f)));
+
+	// They follow the font face.
+	a->SetProperty("font-size", "15px");
+	context->Update();
+	check();
+
+	document->Close();
+	context->Update();
+}
