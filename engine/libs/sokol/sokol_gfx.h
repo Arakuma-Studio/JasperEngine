@@ -7014,7 +7014,11 @@ typedef struct {
 #define _SG_VK_MAX_UB_DESCRIPTORSET_SLOTS (2 * SG_MAX_UNIFORMBLOCK_BINDSLOTS)
 #define _SG_VK_MAX_VIEW_SMP_DESCRIPTORSET_ENTRIES (SG_MAX_VIEW_BINDSLOTS + SG_MAX_SAMPLER_BINDSLOTS)
 #define _SG_VK_MAX_VIEW_SMP_DESCRIPTORSET_SLOTS (128)
+// JasperEngine: overridable, so a test build can run on Mesa's lavapipe (280-byte descriptors,
+// tools/smoke-test.sh SMOKE_BACKEND=vulkan); GPU drivers need far less
+#ifndef _SG_VK_MAX_DESCRIPTOR_DATA_SIZE
 #define _SG_VK_MAX_DESCRIPTOR_DATA_SIZE (256) // FIXME: llvmpipe needs 280 bytes, do we need to care about that?
+#endif
 
 typedef enum {
     _SG_VK_MEMTYPE_STORAGE_BUFFER,

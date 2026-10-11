@@ -144,12 +144,29 @@ bool createContext() {
         return false;
     }
 
+#if defined(SOKOL_GLES3)
+    // An OpenGL ES 3.2 context (sokol's GLES3 backend on Linux assumes 3.1+), to run
+    // the mobile/web shaders and code paths on a desktop (Mesa provides it)
+    if (!hasGlxExtension(display, screen, "GLX_EXT_create_context_es2_profile")) {
+        std::fprintf(stderr, "Error: GLX_EXT_create_context_es2_profile is required.\n");
+        return false;
+    }
+    const int attributes[] = {
+        GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
+        GLX_CONTEXT_MINOR_VERSION_ARB, 2,
+        GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_ES2_PROFILE_BIT_EXT,
+        None
+    };
+    const char* contextName = "OpenGL ES 3.2";
+#else
     const int attributes[] = {
         GLX_CONTEXT_MAJOR_VERSION_ARB, 4,
         GLX_CONTEXT_MINOR_VERSION_ARB, 1,
         GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
         None
     };
+    const char* contextName = "OpenGL 4.1 core";
+#endif
 
     // Some drivers report an unsupported profile with an X error instead of
     // returning null
@@ -164,7 +181,7 @@ bool createContext() {
     if (glxContextError || !glContext) {
         if (glContext) glXDestroyContext(display, glContext);
         glContext = nullptr;
-        std::fprintf(stderr, "Error: Could not create an OpenGL 4.1 core context.\n");
+        std::fprintf(stderr, "Error: Could not create an %s context.\n", contextName);
         return false;
     }
     if (!glXMakeCurrent(display, WindowLinux::handle(), glContext)) {

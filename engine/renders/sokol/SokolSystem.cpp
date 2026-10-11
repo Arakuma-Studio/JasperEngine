@@ -28,6 +28,12 @@ void sokol_log(const char* tag,                // e.g. 'sg'
         Log::debug("%s\n", message_or_null);
         return;
     }
+    // release builds of sokol carry no message: name the log item and its line instead
+    char unnamed[96];
+    if (!message_or_null){
+        snprintf(unnamed, sizeof(unnamed), "sokol %s log item %u (line %u)", tag ? tag : "", log_item_id, line_nr);
+        message_or_null = unnamed;
+    }
     if (log_level == 0){
         Log::print("(PANIC): %s\n", message_or_null);
     }else if (log_level == 1){
