@@ -233,6 +233,14 @@ namespace Style {
 		float border_radius_values[8] = {};
 		uint16_t border_radius_types = 0; // LengthPercentage::Type of each, two bits a value.
 
+		// Outline: the width as declared (the computed width is 0 when the style is none), the colour unless it is
+		// 'currentcolor' (the initial value, and 'invert').
+		BorderStyle outline_style = BorderStyle::None;
+		bool outline_color_current = true;
+		Colourb outline_color{0, 0, 0};
+		float outline_width = 3.f;
+		float outline_offset = 0.f;
+
 		// -- Text (p3-text) --
 
 		// -- Layout (p3-layout) --
@@ -377,6 +385,11 @@ namespace Style {
 		// or 1 (vertical). A calc() value has the type Calculation and no expression: Element::GetRenderBox reads it.
 		LengthPercentage  border_radius(int corner, int axis) const { const int i = 2 * corner + axis; return LengthPercentage(LengthPercentage::Type((rare.border_radius_types >> (2 * i)) & 3), rare.border_radius_values[i]); }
 		bool              has_border_radius()          const { if (rare.border_radius_types != 0) return true; for (float value : rare.border_radius_values) { if (value != 0.f) return true; } return false; }
+		BorderStyle       outline_style()              const { return rare.outline_style; }
+		float             outline_width()              const { return rare.outline_style == BorderStyle::None ? 0.f : rare.outline_width; }
+		float             outline_offset()             const { return rare.outline_offset; }
+		Colourb           outline_color()              const { return rare.outline_color_current ? inherited.color : rare.outline_color; }
+		bool              outline_color_is_current()   const { return rare.outline_color_current; }
 
 		// Text (p3-text)
 
@@ -494,6 +507,11 @@ namespace Style {
 		// Cascade (p3-cascade)
 
 		// Paint (p3-paint)
+		void outline_style             (BorderStyle value)          { rare.outline_style = value; }
+		void outline_width             (float value)                { rare.outline_width = value; }
+		void outline_offset            (float value)                { rare.outline_offset = value; }
+		void outline_color             (Colourb value)              { rare.outline_color = value; rare.outline_color_current = false; }
+		void outline_color_current     ()                           { rare.outline_color_current = true; }
 		void border_radius             (int corner, int axis, LengthPercentage value) { const int i = 2 * corner + axis; rare.border_radius_values[i] = value.value; rare.border_radius_types = uint16_t((rare.border_radius_types & ~(3 << (2 * i))) | (int(value.type) << (2 * i))); }
 
 		// Text (p3-text)

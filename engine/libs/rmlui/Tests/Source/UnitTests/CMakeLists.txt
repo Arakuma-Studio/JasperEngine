@@ -34,6 +34,7 @@ add_executable(${TARGET_NAME}
 	Layout.cpp
 	LayoutChildren.cpp
 	Localization.cpp
+	Outline.cpp
 	main.cpp
 	Math.cpp
 	MediaQuery.cpp

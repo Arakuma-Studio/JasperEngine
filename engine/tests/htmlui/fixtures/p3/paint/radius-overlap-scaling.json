@@ -1,0 +1,7 @@
+{
+ "comment": "radii larger than the box: all radii of a box are scaled by the smallest ratio of a side to the sum of its two radii (CSS Backgrounds 3, 5.5).",
+ "viewport": [
+  320,
+  200
+ ]
+}

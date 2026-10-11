@@ -1,0 +1,7 @@
+{
+ "comment": "outline-style: auto (the focus ring): default width and colour, 1px, 5px, with a colour, with an offset, rounded boxes, on a dark box, with currentcolor.",
+ "viewport": [
+  320,
+  290
+ ]
+}

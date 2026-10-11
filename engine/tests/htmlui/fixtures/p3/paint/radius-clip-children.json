@@ -1,0 +1,7 @@
+{
+ "comment": "overflow: hidden with rounded corners clips the children to the inner curve of the padding box: circle, ellipse, with a border, with padding (the children are clipped at the padding box, inside of it), scaled radii.",
+ "viewport": [
+  330,
+  200
+ ]
+}

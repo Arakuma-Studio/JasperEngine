@@ -251,7 +251,20 @@ void GeometryBoxShadow::GenerateTexture(CallbackTexture& out_shadow_texture, Geo
 
 				// @performance: Don't need to copy the mesh if this is the last use of it.
 				Geometry geometry_padding = render_manager.MakeGeometry(Mesh(mesh_padding));
-				geometry_padding.Render(info.element_offset_in_texture);
+				if (blur)
+				{
+					// CSS: the shadow is everything outside of its shape, blurred, and then shown inside the padding box. The
+					// blur layer is filled outside the shape over the whole texture: filled over the padding box only, the
+					// blur would fade the shadow towards the box's edge, where it is darkest.
+					Mesh mesh_fill;
+					MeshUtilities::GenerateQuad(mesh_fill, Vector2f(0.f), Vector2f(info.texture_dimensions), shadow.color);
+					Geometry geometry_fill = render_manager.MakeGeometry(std::move(mesh_fill));
+					geometry_fill.Render(Vector2f(0.f));
+				}
+				else
+				{
+					geometry_padding.Render(info.element_offset_in_texture);
+				}
 
 				render_manager.SetClipMask(ClipMaskOperation::Set, &geometry_padding, info.element_offset_in_texture);
 			}

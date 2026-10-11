@@ -1,0 +1,7 @@
+{
+ "comment": "box shadows follow percentage and elliptical radii: blurred under a circle, a spread ring around an ellipse, an offset copy, inset rings, inset and outer blurs, small radii growing by less than the spread.",
+ "viewport": [
+  390,
+  210
+ ]
+}

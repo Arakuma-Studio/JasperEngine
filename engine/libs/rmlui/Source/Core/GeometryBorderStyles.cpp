@@ -262,13 +262,20 @@ namespace {
 	// pixel centre). A transparent margin of half a pixel follows the fade, for the same reason.
 	constexpr float feather_half = 0.5f;
 	constexpr float feather_half_curve = 0.55f;
+	// With multisampling (only curves are feathered) the samples soften the edge as well: a narrower fade.
+	constexpr float feather_half_curve_multisampled = 0.35f;
+	inline float CurveHalf(FeatherEdges edges)
+	{
+		return edges == FeatherEdges::All ? feather_half_curve : (edges == FeatherEdges::Curves ? feather_half_curve_multisampled : 0.f);
+	}
 	constexpr float feather_margin = 0.5f;
 
 	class BorderWriter {
 	public:
 		// 'unit' is the size of a device pixel in the geometry's units (1 unless the geometry is drawn scaled).
 		BorderWriter(Vector<Vertex>& vertices, Vector<int>& indices, FeatherEdges edges, float unit) :
-			vertices(vertices), indices(indices), feather(edges == FeatherEdges::All), feather_curves(edges != FeatherEdges::None), unit(unit)
+			vertices(vertices), indices(indices), feather(edges == FeatherEdges::All), feather_curves(edges != FeatherEdges::None), unit(unit),
+			curve_half(CurveHalf(edges) * unit)
 		{}
 
 		// The band between the fractions t_outer and t_inner of the side's width (0 = outer edge, 1 = inner edge), over
@@ -335,7 +342,7 @@ namespace {
 				// One layout of levels for both pairs: with a solid core only if the band is thick enough at both.
 				const bool feather_band = (feather_outer || feather_inner) && a.thickness > 1e-4f && b.thickness > 1e-4f &&
 					(HalfOf(a) > 0.f || HalfOf(b) > 0.f);
-				const float needed = (feather_outer ? (feather_half_curve * unit) : 0.f) + (feather_inner ? (feather_half_curve * unit) : 0.f);
+				const float needed = (feather_outer ? curve_half : 0.f) + (feather_inner ? curve_half : 0.f);
 				const bool core = !feather_band || Math::Min(a.thickness, b.thickness) * (t_inner - t_outer) >= needed;
 				Level levels_a[8], levels_b[8];
 				const int num_levels = BandLevels(a, t_outer, t_inner, feather_band, feather_outer, feather_inner, core, levels_a);
@@ -404,8 +411,8 @@ namespace {
 				return;
 			}
 			const int num_points = 4 * QuarterSegments(Vector2f((radius + 0.5f) / unit));
-			const float solid_radius = (feather_curves ? Math::Max(radius - (feather_half_curve * unit), 0.f) : radius);
-			const float centre_alpha = (feather_curves && radius < (feather_half_curve * unit) ? radius / (feather_half_curve * unit) : 1.f);
+			const float solid_radius = (feather_curves ? Math::Max(radius - curve_half, 0.f) : radius);
+			const float centre_alpha = (feather_curves && radius < curve_half ? radius / curve_half : 1.f);
 			auto point = [&](float ring_radius, int i) {
 				return ArcPoint(center, Vector2f(ring_radius), 2.f * Math::RMLUI_PI * float(i % num_points) / float(num_points));
 			};
@@ -414,7 +421,7 @@ namespace {
 			if (feather_curves)
 			{
 				// The fade to transparent half a pixel outside, and a transparent margin (see BandLevels).
-				const float rings[3] = {solid_radius, radius + (feather_half_curve * unit), radius + (feather_half_curve * unit) + (feather_margin * unit)};
+				const float rings[3] = {solid_radius, radius + curve_half, radius + curve_half + (feather_margin * unit)};
 				const float alphas[3] = {centre_alpha, 0.f, 0.f};
 				for (int ring = 0; ring < 2; ring++)
 				{
@@ -528,7 +535,7 @@ namespace {
 		{
 			if (pair.straight)
 				return feather ? (feather_half * unit) : 0.f;
-			return feather_curves ? (feather_half_curve * unit) : 0.f;
+			return feather_curves ? curve_half : 0.f;
 		}
 
 		// The levels across a band at one pair: its edges, or with feathering the rims and the edges moved inwards. A
@@ -699,6 +706,7 @@ namespace {
 		bool feather;        // Straight edges (and the cut ends of dashes) are feathered.
 		bool feather_curves; // Curves (rounded corners, round dots) are feathered.
 		float unit;
+		float curve_half; // Half of the width of a curve's fade.
 		Vector<PolygonPoint> polygon, clipped;
 		Vector<OutlinePoint> outline;
 		struct DotClip {
@@ -907,7 +915,7 @@ void GeometryBorderStyles::DrawBackground(Vector<Vertex>& vertices, Vector<int>&
 	FeatherEdges edges, const EdgeSizes* under_border, float feather_unit)
 {
 	const float straight_half = (edges == FeatherEdges::All ? feather_half * feather_unit : 0.f);
-	const float curve_half = (edges != FeatherEdges::None ? feather_half_curve * feather_unit : 0.f);
+	const float curve_half = CurveHalf(edges) * feather_unit;
 
 	// The inner area of the metrics, its corners rounded by the inner radii. Under a border it reaches half a pixel
 	// below the border's inner edge (where that side has a border), so that no gap opens between the two.

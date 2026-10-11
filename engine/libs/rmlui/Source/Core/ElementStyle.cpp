@@ -1620,9 +1620,20 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		}
 		break;
 	case PropertyId::OutlineWidth:
+		values.outline_width(ComputeLineWidth(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		break;
 	case PropertyId::OutlineStyle:
+		values.outline_style((BorderStyle)p->Get<int>());
+		break;
 	case PropertyId::OutlineColor:
+		if (p->unit == Unit::KEYWORD)
+			values.outline_color_current();
+		else
+			values.outline_color(p->Get<Colourb>());
+		break;
 	case PropertyId::OutlineOffset:
+		{ float value; if (ComputeDefiniteLength(p, font_size, document_font_size, dp_ratio, vp_dimensions, value)) values.outline_offset(value); }
+		break;
 	case PropertyId::Isolation:
 	case PropertyId::BackgroundImage:
 	case PropertyId::BackgroundPositionX:

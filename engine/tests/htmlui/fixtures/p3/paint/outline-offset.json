@@ -1,0 +1,7 @@
+{
+ "comment": "outline: solid, positive and negative offsets, dashed over a border, dotted, double, around rounded boxes (the radii grow with the offset), ridge, the keyword width with currentcolor, and an outline above the element's overflowing child (outlines are painted last in their stacking context).",
+ "viewport": [
+  320,
+  290
+ ]
+}

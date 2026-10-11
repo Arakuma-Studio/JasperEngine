@@ -111,8 +111,10 @@ namespace {
             case PropertyId::MarginTop: case PropertyId::MarginRight: case PropertyId::MarginBottom: case PropertyId::MarginLeft:
             case PropertyId::PaddingTop: case PropertyId::PaddingRight: case PropertyId::PaddingBottom: case PropertyId::PaddingLeft:
             case PropertyId::BorderTopWidth: case PropertyId::BorderRightWidth: case PropertyId::BorderBottomWidth: case PropertyId::BorderLeftWidth:
-            case PropertyId::BorderTopLeftRadius: case PropertyId::BorderTopRightRadius:
-            case PropertyId::BorderBottomRightRadius: case PropertyId::BorderBottomLeftRadius:
+            case PropertyId::RmlUi_BorderTopLeftRadiusX: case PropertyId::RmlUi_BorderTopLeftRadiusY:
+            case PropertyId::RmlUi_BorderTopRightRadiusX: case PropertyId::RmlUi_BorderTopRightRadiusY:
+            case PropertyId::RmlUi_BorderBottomRightRadiusX: case PropertyId::RmlUi_BorderBottomRightRadiusY:
+            case PropertyId::RmlUi_BorderBottomLeftRadiusX: case PropertyId::RmlUi_BorderBottomLeftRadiusY:
             case PropertyId::FontSize: case PropertyId::LetterSpacing: case PropertyId::RowGap: case PropertyId::ColumnGap:
                 return true;
             default:
@@ -407,7 +409,14 @@ namespace {
             }
         }
 
-        static AnimRawValue getCssValue(Rml::Element* e, const std::string& property, AnimRawValue* inlineValue){
+        static AnimRawValue getCssValue(Rml::Element* e, const std::string& name, AnimRawValue* inlineValue){
+            // a corner radius is a shorthand of its horizontal and vertical radius in the fork
+            // (phase 3, p3-paint): its value reads as the horizontal one
+            const bool cornerRadius = startsWith(name, "border-") && name.size() > 14 &&
+                name.compare(name.size() - 7, 7, "-radius") == 0 &&
+                Rml::StyleSheetSpecification::GetPropertyId(name) == Rml::PropertyId::Invalid &&
+                Rml::StyleSheetSpecification::GetPropertyId("-rmlui-" + name + "-x") != Rml::PropertyId::Invalid;
+            const std::string property = cornerRadius ? "-rmlui-" + name + "-x" : name;
             const Rml::Property* local = inlineProperty(e, property);
             std::string inlineText = local ? propertyText(*local) : std::string();
             if (!inlineText.empty() && inlineValue)

@@ -8,6 +8,7 @@
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
 #include "BoxShadowCache.h"
+#include "GeometryBackgroundBorder.h"
 #include "GeometryBorderStyles.h"
 #include "GeometryBoxShadow.h"
 #include "TransformState.h"
@@ -52,9 +53,12 @@ void ElementBackgroundBorder::Render(Element* element)
 	{
 		for (auto& background : backgrounds)
 		{
-			if (background.first != BackgroundType::BackgroundBorder && background.first != BackgroundType::BorderAbove)
+			if (background.first != BackgroundType::BackgroundBorder && background.first != BackgroundType::BorderAbove &&
+				background.first != BackgroundType::Outline)
 				background.second.geometry.Release();
 		}
+		// The outline follows the border box and its radii.
+		outline_dirty = true;
 
 		GenerateGeometry(element);
 
@@ -86,6 +90,125 @@ void ElementBackgroundBorder::RenderBorder(Element* element)
 		if (border->geometry)
 			border->geometry.Render(element->GetAbsoluteOffset(BoxArea::Border));
 	}
+}
+
+void ElementBackgroundBorder::RenderOutline(Element* element)
+{
+	if (outline_dirty || background_dirty || border_dirty)
+	{
+		GenerateOutline(element);
+		outline_dirty = false;
+	}
+	if (Background* outline = GetBackground(BackgroundType::Outline))
+	{
+		if (outline->geometry)
+			outline->geometry.Render(element->GetAbsoluteOffset(BoxArea::Border));
+	}
+}
+
+// The radii of a box's corners at 'distance' outside of it (inside if negative), as the radii of a box shadow's spread:
+// a square corner stays square, small radii grow by less than the distance (CSS Backgrounds 3, 6.1.1).
+static CornerSizes2 OutsetRadii(CornerSizes2 radii, float distance)
+{
+	for (Vector2f& corner : radii)
+	{
+		if (corner.x <= 0.f || corner.y <= 0.f)
+		{
+			corner = Vector2f(0.f);
+			continue;
+		}
+		for (int axis = 0; axis < 2; axis++)
+		{
+			float& radius = corner[axis];
+			float factor = 1.f;
+			if (distance > 0.f && radius < distance)
+			{
+				const float ratio_minus_one = (radius / distance) - 1.f;
+				factor = 1.f + ratio_minus_one * ratio_minus_one * ratio_minus_one;
+			}
+			radius = Math::Max(radius + factor * distance, 0.f);
+		}
+	}
+	return radii;
+}
+
+void ElementBackgroundBorder::GenerateOutline(Element* element)
+{
+	RenderManager* render_manager = element->GetRenderManager();
+	const ComputedValues& computed = element->GetComputedValues();
+	const Style::BorderStyle style = computed.outline_style();
+	if (!render_manager || style == Style::BorderStyle::None || style == Style::BorderStyle::Hidden)
+	{
+		EraseBackground(BackgroundType::Outline);
+		return;
+	}
+
+	const float opacity = computed.opacity();
+	const ColourbPremultiplied color = computed.outline_color().ToPremultiplied(opacity);
+	const ColourbPremultiplied transparent(0, 0);
+	const bool is_auto = (style == Style::BorderStyle::Auto);
+
+	// Whole pixels, as browsers snap them.
+	const float width = computed.outline_width();
+	float offset = float(int(computed.outline_offset()));
+	if (!is_auto && width <= 0.f)
+	{
+		EraseBackground(BackgroundType::Outline);
+		return;
+	}
+
+	Geometry& geometry = GetOrCreateBackground(BackgroundType::Outline).geometry;
+	Mesh mesh = geometry.Release(Geometry::ReleaseMode::ClearMesh);
+
+	// A ring of 'ring_width' whose inner edge lies 'distance' outside of the border box (inside when negative).
+	auto add_ring = [&](const RenderBox& border_box, float distance, float ring_width, ColourbPremultiplied ring_color,
+						Style::BorderStyle ring_style, float min_outer_radius) {
+		const Vector2f size = border_box.GetFillSize();
+		// A negative offset shrinks the ring to a line or a point in the middle of the box at most.
+		distance = Math::Max(distance, -0.5f * Math::Min(size.x, size.y));
+		CornerSizes2 radii = OutsetRadii(border_box.GetBorderRadius(), distance + ring_width);
+		for (Vector2f& radius : radii)
+		{
+			if (radius.x < min_outer_radius || radius.y < min_outer_radius)
+				radius = Vector2f(min_outer_radius);
+		}
+		RenderBox ring(size + Vector2f(2.f * distance), border_box.GetBorderOffset() - Vector2f(distance + ring_width),
+			EdgeSizes{ring_width, ring_width, ring_width, ring_width}, radii);
+		GeometryBackgroundBorder::ScaleRadiiToFit(radii, ring.GetFillSize() + Vector2f(2.f * ring_width));
+		ring.SetBorderRadius(radii);
+		ring.SetBorderStyles({ring_style, ring_style, ring_style, ring_style});
+		const ColourbPremultiplied colors[4] = {ring_color, ring_color, ring_color, ring_color};
+		MeshUtilities::GenerateBackgroundBorder(mesh, ring, transparent, colors, feather_unit);
+	};
+
+	for (int i = 0; i < element->GetNumBoxes(); i++)
+	{
+		const RenderBox border_box = element->GetRenderBox(BoxArea::Border, i);
+		if (is_auto)
+		{
+			// The focus ring as Chromium 153 draws it (measured, fixture p3/paint/outline-auto): a ring of 2px in the
+			// outline colour whatever the outline's width, centred on the border edge moved out by the offset (one pixel
+			// further in when the element has a border), and a white ring of 1px around it; square corners are rounded by
+			// the ring's width.
+			const EdgeSizes border_widths = element->GetRenderBox(BoxArea::Padding, i).GetBorderWidths();
+			const bool has_border = (border_widths[0] > 0.f || border_widths[1] > 0.f || border_widths[2] > 0.f || border_widths[3] > 0.f);
+			const float centre = offset - (has_border ? 1.f : 0.f);
+			add_ring(border_box, centre + 1.f, 1.f, ColourbPremultiplied(255, 255).ToNonPremultiplied().ToPremultiplied(opacity),
+				Style::BorderStyle::Solid, 4.f);
+			add_ring(border_box, centre - 1.f, 2.f, color, Style::BorderStyle::Solid, 3.f);
+		}
+		else
+		{
+			add_ring(border_box, offset, width, color, style, 0.f);
+		}
+	}
+
+	geometry = render_manager->MakeGeometry(std::move(mesh));
+}
+
+void ElementBackgroundBorder::DirtyOutline()
+{
+	outline_dirty = true;
 }
 
 void ElementBackgroundBorder::DirtyBackground()

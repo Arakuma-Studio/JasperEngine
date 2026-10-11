@@ -242,10 +242,13 @@ void HtmlImageElement::OnAttributeChange(const Rml::ElementAttributes& changed_a
 void HtmlImageElement::OnPropertyChange(const Rml::PropertyIdSet& changed_properties){
     Rml::Element::OnPropertyChange(changed_properties);
     if (changed_properties.Contains(Rml::PropertyId::ImageColor) || changed_properties.Contains(Rml::PropertyId::Opacity) ||
-        changed_properties.Contains(Rml::PropertyId::Color) || changed_properties.Contains(Rml::PropertyId::BorderTopLeftRadius) ||
-        changed_properties.Contains(Rml::PropertyId::BorderTopRightRadius) || changed_properties.Contains(Rml::PropertyId::BorderBottomRightRadius) ||
-        changed_properties.Contains(Rml::PropertyId::BorderBottomLeftRadius))
+        changed_properties.Contains(Rml::PropertyId::Color))
         geometryDirty = true;
+    // the horizontal and the vertical radius of the four corners (consecutive ids)
+    for (int i = 0; i < 8; i++){
+        if (changed_properties.Contains(Rml::PropertyId((int)Rml::PropertyId::RmlUi_BorderTopLeftRadiusX + i)))
+            geometryDirty = true;
+    }
     for (CompatProperty property : {CompatProperty::ObjectFit, CompatProperty::ObjectPosition}){
         const Rml::PropertyId id = CompatProperties::id(property);
         if (id != Rml::PropertyId::Invalid && changed_properties.Contains(id))

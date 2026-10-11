@@ -554,18 +554,25 @@ void jasperengine::htmlui::compat::rewriteBorderRadius(DeclContext& context){
         horizontal.push_back(v);
     }
     ValueList w = words(horizontal);
+    ValueList vertical;
     if (elliptical){
-        // a / b: equal radii are circular arcs, others are drawn with the horizontal radius
-        ValueList vertical;
         bool after = false;
         for (const ComponentValue& v : context.value){
             if (v.isToken(TokenType::Delim) && v.token.isDelim('/')){
+                if (after){
+                    unsupportedValue(context, "use one '/' between the horizontal and the vertical radii");
+                    return;
+                }
                 after = true;
                 continue;
             }
             if (after)
                 vertical.push_back(v);
         }
+    }
+    const bool native = context.fork(ForkFeature::PercentRadius);
+    if (elliptical && !native){
+        // a / b: equal radii are circular arcs, others are drawn with the horizontal radius
         if (text(horizontal) != text(vertical))
             context.reportAs(Severity::Warning, codes::ApproximatedVisible, "elliptical radii '" + context.valueText() +
                              "' are drawn with the horizontal radius", "use one radius per corner");
@@ -590,6 +597,38 @@ void jasperengine::htmlui::compat::rewriteBorderRadius(DeclContext& context){
             if (n == corners[i])
                 targets = {i};
         }
+    }
+    if (native && !targets.empty()){
+        // the fork has a horizontal and a vertical radius per corner, lengths or percentages of the
+        // border box (phase 3 §3.7.1): 'border-radius: <1-4> [ / <1-4> ]', a corner '<x> <y>?'
+        const bool corner = targets.size() == 1;
+        const ValueList v = words(vertical);
+        const size_t most = corner ? 2 : 4;
+        if (w.empty() || w.size() > most || (elliptical && (corner || v.empty() || v.size() > most))){
+            unsupportedValue(context, corner ? "use one or two lengths or percentages" :
+                             "use one to four lengths or percentages, and as many after a '/'");
+            return;
+        }
+        auto radii = [&](const ValueList& list, std::string& out){
+            for (const ComponentValue& value : list){
+                std::string item;
+                if (isVar(value) || value.isToken(TokenType::Percentage))
+                    item = text(value);
+                else if (isLength(context.session, value, true))
+                    item = lengthText(value);
+                else
+                    return false;
+                out += (out.empty() ? "" : " ") + item;
+            }
+            return true;
+        };
+        std::string x, y;
+        if (!radii(w, x) || !radii(v, y)){
+            unsupportedValue(context, "use lengths or percentages");
+            return;
+        }
+        context.emit(corner ? corners[targets[0]] : "border-radius", elliptical ? x + " / " + y : x);
+        return;
     }
     if (targets.empty() || w.empty() || (targets.size() == 1 && w.size() != 1) || w.size() > 4){
         unsupportedValue(context, "use one to four lengths");

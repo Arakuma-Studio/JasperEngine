@@ -532,6 +532,16 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterShorthand(ShorthandId::Border, "border", "border-width, border-style, border-color, border-image", ShorthandType::Custom);
 	properties.SetShorthandParser(ShorthandId::Border, &ParseBorderShorthand);
 
+	// Outline (phase 3, 3.7.1, 3.7.4): drawn outside the border box, without a place in the layout. The style keywords
+	// have the values of Style::BorderStyle (no 'hidden'; 'auto' is the focus ring); the colour is 'currentcolor' unless
+	// declared ('invert' is drawn as 'currentcolor', as browsers do).
+	RegisterProperty(PropertyId::OutlineWidth, "outline-width", "medium", false, false).AddParser("keyword", "thin, medium, thick").AddParser("length");
+	RegisterProperty(PropertyId::OutlineStyle, "outline-style", "none", false, false)
+		.AddParser("keyword", "none=0, dotted=2, dashed=3, solid=4, double=5, groove=6, ridge=7, inset=8, outset=9, auto=10");
+	RegisterProperty(PropertyId::OutlineColor, "outline-color", "currentcolor", false, false).AddParser("keyword", "currentcolor, invert").AddParser("color");
+	RegisterProperty(PropertyId::OutlineOffset, "outline-offset", "0px", false, false).AddParser("length");
+	RegisterShorthand(ShorthandId::Outline, "outline", "outline-width, outline-style, outline-color", ShorthandType::AnyOrder);
+
 	// Radii (phase 3, 3.7.1): every corner has a horizontal and a vertical radius, a length or a percentage of the border
 	// box's width or height; 'border-<corner>-radius: <x> <y>?' and 'border-radius: <1-4 values> [ / <1-4 values> ]?' are
 	// Custom shorthands of them (the 6.3 ids of the four corners are not registered any more).

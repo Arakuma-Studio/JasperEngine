@@ -391,11 +391,14 @@ Rml::Geometry decorators::makeClipGeometry(Rml::Element* element, Rml::BoxArea a
     Rml::RenderManager* renderManager = element ? element->GetRenderManager() : nullptr;
     if (!renderManager)
         return Rml::Geometry();
-    const Rml::CornerSizes radii = element->GetComputedValues().border_radius();
-    if (radii[0] <= 0.0f && radii[1] <= 0.0f && radii[2] <= 0.0f && radii[3] <= 0.0f)
+    if (!element->GetComputedValues().has_border_radius())
+        return Rml::Geometry();
+    // the radii as the fork resolved them (percentages, overlapping curves scaled)
+    const Rml::RenderBox box = element->GetRenderBox(area);
+    if (!box.HasBorderRadius())
         return Rml::Geometry();
     Rml::Mesh mesh;
-    Rml::MeshUtilities::GenerateBackground(mesh, element->GetRenderBox(area), Rml::ColourbPremultiplied(255, 255, 255, 255));
+    Rml::MeshUtilities::GenerateBackground(mesh, box, Rml::ColourbPremultiplied(255, 255, 255, 255));
     if (mesh.indices.empty())
         return Rml::Geometry();
     return renderManager->MakeGeometry(std::move(mesh));

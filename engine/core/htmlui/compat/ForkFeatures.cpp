@@ -21,7 +21,7 @@ namespace {
         false,   // None (never present)
         true,    // Calc (phase 3, p3-base: upstream PR #983; docs/html-ui/FORK.md)
         true,    // BorderStyle (phase 3, p3-paint: docs/html-ui/FORK.md)
-        false,   // PercentRadius
+        true,    // PercentRadius (phase 3, p3-paint: percentages and elliptical radii; docs/html-ui/FORK.md)
         false,   // PseudoElements
         false,   // RootIsWhere
         false,   // Fixed

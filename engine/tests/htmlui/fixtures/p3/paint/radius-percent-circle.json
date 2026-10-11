@@ -1,0 +1,7 @@
+{
+ "comment": "border-radius in percent: circles of 24 and 60px, ellipses (50% of a rectangle), 10%, two values, with borders, 100% (scaled to 50%), single corners.",
+ "viewport": [
+  330,
+  220
+ ]
+}

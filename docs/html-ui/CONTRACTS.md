@@ -196,7 +196,8 @@ Conventions that apply everywhere:
 | Native `background-*`/`mask-*` accepting registered decorator functions as layers | fork | P3 p3-paint | P2 (`html-layer`, `html-shape`), P5 (`jfx-*` layers) | P3 §3.9.1 |
 | `ComputeObjectFitRect` | fork API | P3 p3-paint | P1 SVG/Lottie elements, P2 `HtmlImageElement` | P3 §3.9.3 |
 | `TextShapingContext::word_spacing` (engine font engine applies it) | fork API | P3 p3-text | P0/P1 `RmlFontEngine` | P3 §3.10 |
-| `Rml::SetGeometryFeathering(bool)` (engine sets it from the target's MSAA) | fork API | P3 p3-paint | P1 `HtmlUIContext` | P3 §3.7.3 |
+| `Rml::SetGeometryFeathering(bool)` (`MeshUtilities.h`; default true: every background and border edge is feathered; false: curves only. The engine passes `samples <= 1` each frame) and `Rml::SetGeometryPixelSize(float)` (a device pixel in context units; the engine passes `1 / pixelRatio`) | fork API | P3 p3-paint | P1 `HtmlUIContext::render`, `engine/tests/htmlui/TestRenderCommon.h` | P3 §3.7.3 |
+| `Rml::RenderBox` radii are `CornerSizes2` (`Vector2f` per corner, resolved and scaled by `Element::GetRenderBox`); `ComputedValues::border_radius(corner, axis)` / `has_border_radius()` replace `border_*_radius()`; the corner radius properties are shorthands of `PropertyId::RmlUi_Border*RadiusX/Y` | fork API | P3 p3-paint | compat decorators (`DecoratorCommon.cpp`), `HtmlImageElement`, `anim/AnimProperty.cpp` | P3 §3.7.2 |
 | `SetMouseCursor` receives the first supported CSS cursor keyword | fork | P3 p3-values | P1 `System::setMouseCursor` | P3 §3.3.8 |
 
 ## 12. Agent tooling (phase 4)

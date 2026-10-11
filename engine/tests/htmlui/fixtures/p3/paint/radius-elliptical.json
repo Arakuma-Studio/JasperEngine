@@ -1,0 +1,7 @@
+{
+ "comment": "elliptical radii: a / b, four horizontal radii over one vertical, corners with two values, with a border (the inner curve follows the border widths), four border colours and widths, percentages per axis.",
+ "viewport": [
+  320,
+  230
+ ]
+}

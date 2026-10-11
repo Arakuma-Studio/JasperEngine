@@ -607,6 +607,8 @@ public:
 protected:
 	void Update(float dp_ratio, Vector2f vp_dimensions);
 	void Render();
+	// Draws the element's outline (phase 3, p3-paint): after the content of the stacking context the element is in.
+	void RenderOutline();
 
 	/// Updates definition, computed values, and runs OnPropertyChange on this element.
 	void UpdateProperties(float dp_ratio, Vector2f vp_dimensions);

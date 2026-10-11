@@ -213,8 +213,27 @@ void Element::Render()
 	for (Element* element : stacking_context)
 		element->Render();
 
+	// Outlines are painted last in their stacking context (CSS 2.2 appendix E, step 10): above the content of the
+	// elements they belong to and above the elements that follow them. A stacking context paints its own outline, inside
+	// of its effects (opacity, filters).
+	for (Element* element : stacking_context)
+	{
+		if (!element->local_stacking_context && element->meta->computed_values.outline_style() != Style::BorderStyle::None)
+			element->RenderOutline();
+	}
+
 	ElementUtilities::ApplyTransform(*this);
+	if (local_stacking_context && meta->computed_values.outline_style() != Style::BorderStyle::None)
+		RenderOutline();
 	meta->effects.RenderEffects(RenderStage::Exit);
+}
+
+void Element::RenderOutline()
+{
+	ElementUtilities::ApplyTransform(*this);
+	// Clipped as the element is by its ancestors; the outline itself lies outside of the element's own box.
+	if (ElementUtilities::SetClippingRegion(this))
+		meta->background_border.RenderOutline(this);
 }
 
 ElementPtr Element::Clone() const
@@ -2095,6 +2114,13 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	// -- Cascade (p3-cascade) --
 
 	// -- Paint (p3-paint) --
+	if (changed_properties.Contains(PropertyId::OutlineWidth) || changed_properties.Contains(PropertyId::OutlineStyle) ||
+		changed_properties.Contains(PropertyId::OutlineColor) || changed_properties.Contains(PropertyId::OutlineOffset) ||
+		changed_properties.Contains(PropertyId::Opacity) ||
+		(changed_properties.Contains(PropertyId::Color) && meta->computed_values.outline_color_is_current()))
+	{
+		meta->background_border.DirtyOutline();
+	}
 	if (changed_properties.Contains(PropertyId::BorderTopStyle) || changed_properties.Contains(PropertyId::BorderRightStyle) ||
 		changed_properties.Contains(PropertyId::BorderBottomStyle) || changed_properties.Contains(PropertyId::BorderLeftStyle))
 	{
