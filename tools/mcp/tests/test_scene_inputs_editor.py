@@ -140,9 +140,14 @@ async def test_list_shaders_cost(ed: Editor):
                 made |= set(names)
         ed.check_eq(sorted(made), sorted(detail["scene_inputs"]), f"{reference}: require and features make up scene_inputs")
     # a shader reading nothing has no feature marks
+    toon = (await ed.call("list_shaders", name="toon"))["shaders"][0]
+    ed.check(not toon["scene_inputs"] and "cost_note" not in toon, f"toon: {toon!r}")
+    ed.check(all("scene_inputs" not in f for f in toon["features"]), f"toon features unmarked: {toon['features']!r}")
+    # one reading through a feature marks only that feature (unlit SOFT, phase 3)
     unlit = (await ed.call("list_shaders", name="unlit"))["shaders"][0]
-    ed.check(not unlit["scene_inputs"] and "cost_note" not in unlit, f"unlit: {unlit!r}")
-    ed.check(all("scene_inputs" not in f for f in unlit["features"]), f"unlit features unmarked: {unlit['features']!r}")
+    ed.check_eq(unlit["scene_inputs"], ["scenedepth"], "unlit may read the scene depth")
+    marked = {f["define"]: f["scene_inputs"] for f in unlit["features"] if "scene_inputs" in f}
+    ed.check_eq(marked, {"SOFT": ["scenedepth"]}, "only unlit's SOFT is marked")
 
 
 async def test_material_variant(ed: Editor):
