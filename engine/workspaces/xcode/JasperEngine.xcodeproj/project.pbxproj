@@ -1625,6 +1625,12 @@
 		48544D4C00000000000001D3 /* URL.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D1 /* URL.cpp */; };
 		48544D4C00000000000001D5 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
 		48544D4C00000000000001D6 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
+		524D4C55E9E92CC63F397D9E /* ShorthandBorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5580D853E3200868C1 /* ShorthandBorder.cpp */; };
+		524D4C55128BA1FC840FCDA8 /* ShorthandBorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5580D853E3200868C1 /* ShorthandBorder.cpp */; };
+		524D4C5588399584E46A0FA2 /* ObjectFit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C557174AEEF16171B3E /* ObjectFit.cpp */; };
+		524D4C55DB94DAFA992E8A7E /* ObjectFit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C557174AEEF16171B3E /* ObjectFit.cpp */; };
+		524D4C551D3D386A7441A82A /* GeometryBorderStyles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C551C90D4B57552E78F /* GeometryBorderStyles.cpp */; };
+		524D4C55A0DC50B51F62B6CB /* GeometryBorderStyles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C551C90D4B57552E78F /* GeometryBorderStyles.cpp */; };
 		524D4C55256864F7CEE14598 /* TextUnicode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556DF9645915A0E99B /* TextUnicode.cpp */; };
 		524D4C55138D97365E2F6C3A /* TextUnicode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556DF9645915A0E99B /* TextUnicode.cpp */; };
 		524D4C555C1E0AEF6BBE41CA /* TextShadow.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C553DCE338654F47B58 /* TextShadow.cpp */; };
@@ -4710,6 +4716,9 @@
 		48544D4C00000000000001CE /* TypeConverter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TypeConverter.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D1 /* URL.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = URL.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D4 /* Variant.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Variant.cpp; sourceTree = "<group>"; };
+		524D4C5580D853E3200868C1 /* ShorthandBorder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShorthandBorder.cpp; sourceTree = "<group>"; };
+		524D4C557174AEEF16171B3E /* ObjectFit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ObjectFit.cpp; sourceTree = "<group>"; };
+		524D4C551C90D4B57552E78F /* GeometryBorderStyles.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GeometryBorderStyles.cpp; sourceTree = "<group>"; };
 		524D4C556DF9645915A0E99B /* TextUnicode.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextUnicode.cpp; sourceTree = "<group>"; };
 		524D4C553DCE338654F47B58 /* TextShadow.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextShadow.cpp; sourceTree = "<group>"; };
 		524D4C558AC26B918A5CDD71 /* TextProperties.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextProperties.cpp; sourceTree = "<group>"; };
@@ -8829,6 +8838,9 @@
 				524D4C558AC26B918A5CDD71 /* TextProperties.cpp */,
 				524D4C553DCE338654F47B58 /* TextShadow.cpp */,
 				524D4C556DF9645915A0E99B /* TextUnicode.cpp */,
+				524D4C551C90D4B57552E78F /* GeometryBorderStyles.cpp */,
+				524D4C557174AEEF16171B3E /* ObjectFit.cpp */,
+				524D4C5580D853E3200868C1 /* ShorthandBorder.cpp */,
 			);
 			name = Core;
 			path = Source/Core;
@@ -12780,6 +12792,9 @@
 				48544D4C00000000000001CF /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D2 /* URL.cpp in Sources */,
 				48544D4C00000000000001D5 /* Variant.cpp in Sources */,
+				524D4C55E9E92CC63F397D9E /* ShorthandBorder.cpp in Sources */,
+				524D4C5588399584E46A0FA2 /* ObjectFit.cpp in Sources */,
+				524D4C551D3D386A7441A82A /* GeometryBorderStyles.cpp in Sources */,
 				524D4C55256864F7CEE14598 /* TextUnicode.cpp in Sources */,
 				524D4C555C1E0AEF6BBE41CA /* TextShadow.cpp in Sources */,
 				524D4C55402FB21DD019CAD1 /* TextProperties.cpp in Sources */,
@@ -13005,6 +13020,9 @@
 				48544D4C00000000000001D0 /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D3 /* URL.cpp in Sources */,
 				48544D4C00000000000001D6 /* Variant.cpp in Sources */,
+				524D4C55128BA1FC840FCDA8 /* ShorthandBorder.cpp in Sources */,
+				524D4C55DB94DAFA992E8A7E /* ObjectFit.cpp in Sources */,
+				524D4C55A0DC50B51F62B6CB /* GeometryBorderStyles.cpp in Sources */,
 				524D4C55138D97365E2F6C3A /* TextUnicode.cpp in Sources */,
 				524D4C55F8C32E9BEFF581D0 /* TextShadow.cpp in Sources */,
 				524D4C550A23F57B56916973 /* TextProperties.cpp in Sources */,
