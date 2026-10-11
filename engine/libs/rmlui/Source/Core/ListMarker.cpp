@@ -188,7 +188,8 @@ void ElementListMarker::BuildGenerated()
 	image_element = nullptr;
 
 	// Markers keep their spaces and their case (Chromium's ::marker defaults).
-	SetProperty(PropertyId::WhiteSpace, Property(Style::WhiteSpace::Pre));
+	SetProperty(PropertyId::WhiteSpaceCollapse, Property(Style::WhiteSpaceCollapse::Preserve));
+	SetProperty(PropertyId::TextWrapMode, Property(Style::TextWrapMode::Nowrap));
 	SetProperty(PropertyId::TextTransform, Property(Style::TextTransform::None));
 
 	if (!image_source.empty())
