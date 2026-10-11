@@ -102,6 +102,29 @@ bool jasperengine::htmlui::compat::ruleHasIndividualTransform(const FlatRule& ru
 }
 
 void jasperengine::htmlui::compat::rewriteIndividualTransform(DeclContext& context){
+    if (context.fork(ForkFeature::IndividualTransforms)){
+        // the fork has translate / rotate / scale (phase 3): written as they are, checked as phase 2 reads them
+        // (an angle after the axis of 'rotate' read either way, as CSS allows)
+        ValueList value = context.value;
+        ValueList w = words(value);
+        if (context.name == "rotate" && w.size() == 2 && !w[0].isToken(TokenType::Ident) && w[1].isToken(TokenType::Ident))
+        {
+            value.clear();
+            value.push_back(w[1]);
+            value.push_back(ValueNormalizer::whitespace());
+            value.push_back(w[0]);
+        }
+        bool hasVar = false;
+        for (const ComponentValue& v : context.value)
+            hasVar = hasVar || isVar(v);
+        if (!hasVar && !functionOf(context.session, context.name, value)){
+            context.reportAs(Severity::Warning, codes::UnsupportedValue, "'" + context.sourceText() + "' is not supported; declaration dropped");
+            context.dropped = true;
+            return;
+        }
+        context.emit(context.name, context.valueText());
+        return;
+    }
     std::string translate, rotate, scale, transform;
     bool transformSet = false;
     auto apply = [&](const std::string& name, const ValueList& value) -> bool {

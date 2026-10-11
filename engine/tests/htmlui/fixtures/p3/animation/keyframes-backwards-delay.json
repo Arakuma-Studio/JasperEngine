@@ -1,0 +1,12 @@
+{
+ "comment": "During the delay backwards and both apply the first keyframe, none the element's style; a negative delay starts part way in.",
+ "viewport": [320, 190],
+ "steps": [
+  {"advance": 0.4},
+  {"capture": "delay"},
+  {"advance": 1.0},
+  {"capture": "running"},
+  {"advance": 1.0},
+  {"capture": "after"}
+ ]
+}

@@ -1,4 +1,5 @@
 #htmlui-root .unsupported {
+animation-composition: replace;
 counter-increment: none;
 counter-reset: none;
 counter-set: none;

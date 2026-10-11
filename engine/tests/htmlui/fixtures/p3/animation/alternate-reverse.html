@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>animation: animation-direction</title>
+<style>
+  html, body { margin: 0; }
+  @keyframes move { from { left: 20px; } to { left: 300px; } }
+  div { position: absolute; left: 160px; width: 40px; height: 30px; background-color: #208080; }
+  #normal { top: 10px; animation: move 1s linear 2; }
+  #reverse { top: 50px; animation: move 1s linear 2 reverse; }
+  #alternate { top: 90px; animation: move 1s linear 2 alternate; }
+  #alternate-reverse { top: 130px; animation: move 1s linear 2 alternate-reverse; }
+  #forwards { top: 170px; animation: move 1s linear 2 alternate-reverse forwards; }
+</style>
+</head>
+<body>
+<div id="normal"></div><div id="reverse"></div><div id="alternate"></div><div id="alternate-reverse"></div><div id="forwards"></div>
+</body>
+</html>

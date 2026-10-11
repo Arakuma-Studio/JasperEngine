@@ -718,26 +718,35 @@ private:
 	void ClampScrollOffset();
 	void ClampScrollOffsetRecursive();
 
-	/// Start an animation, replacing any existing animations of the same property name. If start_value is null, the element's current value is used.
+	/// Start a user animation, replacing any user animation or transition of the same property. If start_value is null, the element's current
+	/// value is used.
 	ElementAnimationList::iterator StartAnimation(PropertyId property_id, const Property* start_value, int num_iterations, bool alternate_direction,
-		float delay, bool initiated_by_animation_property);
+		float delay);
 
-	/// Add a key to an animation, extending its duration. If target_value is null, the element's current value is used.
-	bool AddAnimationKeyTime(PropertyId property_id, const Property* target_value, float time, Tween tween);
+	/// Start a transition of the given property on this element (phase 3: on any change of its computed value, ElementStyle::ComputeValues),
+	/// replacing a running transition of the property. 'reversing_adjusted_start' and 'reversing_shortening_factor' follow the CSS reversing rule.
+	/// @return True if the transition was added.
+	bool StartTransition(const Transition& transition, const Property& start_value, const Property& target_value,
+		const Property& reversing_adjusted_start, float reversing_shortening_factor);
+	/// Cancels the running transition of a property (transitioncancel), removing its value from the transition layer.
+	void CancelTransition(PropertyId id);
+	/// The running transition of a property, or nullptr.
+	const ElementAnimation* GetTransition(PropertyId id) const;
 
-	/// Start a transition of the given property on this element.
-	/// If an animation exists for the property, the call will be ignored. If a transition exists for this property, it will be replaced.
-	/// @return True if the transition was added or replaced.
-	bool StartTransition(const Transition& transition, const Property& start_value, const Property& target_value);
-
-	/// Removes all transitions that are no longer part of the element's 'transition' property.
+	/// Cancels the transitions whose properties are no longer part of the element's transition list.
 	void HandleTransitionProperty();
 
-	/// Starts new animations and removes animations no longer part of the element's 'animation' property.
+	/// Starts, updates and cancels the CSS animations to follow the element's animation list: an animation is matched by its name and
+	/// occurrence, so that a change of its other properties (its play state, its duration, ...) does not restart it.
 	void HandleAnimationProperty();
 
-	/// Advances the animations (including transitions) forward in time.
+	/// Advances the animations (including transitions) to the context's time, applies their values to the animation layers, and dispatches
+	/// their events.
 	void AdvanceAnimations();
+
+	/// Follows the element's display (and its ancestors'): CSS animations and transitions stop while it is 'none', and restart after.
+	/// @return True if the element's style must be computed again (shown again: transitions from its @starting-style).
+	bool UpdateAnimationDisplay();
 
 	// State flags are packed together for compact data layout.
 	bool local_stacking_context;
@@ -760,6 +769,9 @@ private:
 	bool dirty_transition : 1;
 	bool dirty_transform : 1;
 	bool dirty_perspective : 1;
+
+	bool animation_displayed : 1; // The element and its ancestors are not 'display: none' (CSS animations run).
+	bool animations_running : 1;  // An animation needs further updates (not paused or finished).
 
 	bool display_contents : 1; // The computed 'display' is 'contents' (its children are laid out and painted in its place).
 

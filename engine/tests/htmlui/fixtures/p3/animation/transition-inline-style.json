@@ -1,0 +1,16 @@
+{
+ "comment": "Inline style changes from a script (the element API's style, setAttribute of style) transition like any other computed-value change.",
+ "viewport": [400, 140],
+ "steps": [
+  {"setStyle": ["#box", "width", "300px"]},
+  {"setStyle": ["#box", "background-color", "#c0c020"]},
+  {"setAttr": ["#attr", "style", "width: 260px"]},
+  {"advance": 0.5},
+  {"capture": "half"},
+  {"setStyle": ["#box", "margin-left", "40px"]},
+  {"advance": 0.5},
+  {"capture": "mixed"},
+  {"advance": 1.0},
+  {"capture": "end"}
+ ]
+}

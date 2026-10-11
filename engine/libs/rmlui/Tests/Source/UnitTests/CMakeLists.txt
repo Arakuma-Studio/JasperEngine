@@ -11,6 +11,7 @@ add_executable(${TARGET_NAME}
 	Core.cpp
 	Counters.cpp
 	CustomProperties.cpp
+	Easing.cpp
 	DataBinding.cpp
 	DataExpression.cpp
 	DataModel.cpp
@@ -32,6 +33,7 @@ add_executable(${TARGET_NAME}
 	InlineStyle.cpp
 	GridLayout.cpp
 	GridParsing.cpp
+	IndividualTransforms.cpp
 	InitialValues.cpp
 	IntrinsicSizing.cpp
 	Layout.cpp
@@ -59,6 +61,7 @@ add_executable(${TARGET_NAME}
 	Template.cpp
 	TextProperties.cpp
 	TextTransform.cpp
+	TransitionsAnyChange.cpp
 	URL.cpp
 	Variant.cpp
 	XMLParser.cpp

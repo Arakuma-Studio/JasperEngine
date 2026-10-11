@@ -1,0 +1,46 @@
+{
+ "fixture": "animation/play-state-paused.html",
+ "viewport": [
+  380,
+  120
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "held": [
+   {
+    "id": "toggled",
+    "tag": "div",
+    "x": 90,
+    "y": 20,
+    "w": 40,
+    "h": 30
+   },
+   {
+    "id": "paused",
+    "tag": "div",
+    "x": 20,
+    "y": 70,
+    "w": 40,
+    "h": 30
+   }
+  ],
+  "resumed": [
+   {
+    "id": "toggled",
+    "tag": "div",
+    "x": 160,
+    "y": 20,
+    "w": 40,
+    "h": 30
+   },
+   {
+    "id": "paused",
+    "tag": "div",
+    "x": 90,
+    "y": 70,
+    "w": 40,
+    "h": 30
+   }
+  ]
+ }
+}

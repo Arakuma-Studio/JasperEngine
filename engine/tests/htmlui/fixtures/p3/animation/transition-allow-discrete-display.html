@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>animation: transition-behavior: allow-discrete on display</title>
+<style>
+  html, body { margin: 0; }
+  .pop { position: absolute; top: 20px; width: 120px; height: 80px; background-color: #3070b0; display: none; opacity: 0; }
+  .pop.open { display: block; opacity: 1; }
+  #discrete { left: 20px; transition: opacity 1s linear, display 1s linear allow-discrete; }
+  #immediate { left: 180px; transition: opacity 1s linear, display 1s linear; }
+</style>
+</head>
+<body>
+<div id="discrete" class="pop open"></div>
+<div id="immediate" class="pop open"></div>
+</body>
+</html>

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>animation: animation-play-state</title>
+<style>
+  html, body { margin: 0; }
+  @keyframes move { from { left: 20px; } to { left: 300px; } }
+  div { position: absolute; left: 160px; width: 40px; height: 30px; background-color: #a06020; }
+  #toggled { top: 20px; animation: move 2s linear forwards; }
+  #toggled.hold { animation-play-state: paused; }
+  #paused { top: 70px; animation: move 2s linear forwards paused; }
+  #paused.go { animation-play-state: running; }
+</style>
+</head>
+<body>
+<div id="toggled"></div><div id="paused"></div>
+</body>
+</html>

@@ -111,9 +111,12 @@ void jasperengine::htmlui::compat::releaseRuntime(){
 void jasperengine::htmlui::compat::updateRuntime(Rml::Context* context){
     // phase 3's FocusPseudoClasses and AnimationLonghands turn these off (§3.6): with the fork's
     // leaf-only :focus, :focus-within and :focus-visible the selectors pass through and nothing
-    // tracks the focus; AnimationLonghands' gate goes here when the feature exists
+    // tracks the focus
     static const bool trackFocus = !ForkFeatures::present().has(ForkFeature::FocusPseudoClasses);
     if (trackFocus)
         FocusTracker::update(context);
-    AnimationFill::update(context);
+    // the fork keeps an animation's end values itself (animation-fill-mode, phase 3)
+    static const bool fillEmulated = !ForkFeatures::present().has(ForkFeature::AnimationLonghands);
+    if (fillEmulated)
+        AnimationFill::update(context);
 }

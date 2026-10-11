@@ -4,8 +4,7 @@ body#htmlui-root:root {
 }
 #htmlui-root .t {
 transition: opacity 0.2s ease-in, transform 0.5s;
-animation: 1.5s infinite linear spin;
--html-animation-fill: none;
+animation: 1.5s linear 0s infinite normal none running spin;
 }
 #htmlui-root .a {
 transform: rotate(180deg) skewX(90deg);
@@ -14,6 +13,9 @@ filter: hue-rotate(3.14159rad);
 #htmlui-root .b {
 background-color: transparent;
 decorator: linear-gradient(45deg, #ff0000ff, #0000ffff) border-box;
+}
+#htmlui-root .c {
+transition-duration: 0s;
 }
 @keyframes spin {
 100% {
