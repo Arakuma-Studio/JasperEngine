@@ -575,7 +575,7 @@ void UILottieElement::generateGeometry(){
         return;
 
     const Rml::ComputedValues& computed = GetComputedValues();
-    const Rml::ColourbPremultiplied colour = computed.image_color().ToPremultiplied(computed.opacity());
+    const Rml::ColourbPremultiplied colour = computed.image_color().ToPremultiplied(GetDrawOpacity());
 
     Rml::Mesh mesh = geometry.Release(Rml::Geometry::ReleaseMode::ClearMesh);
     Rml::MeshUtilities::GenerateQuad(mesh, Rml::Vector2f(0, 0), Rml::Vector2f(renderSize), colour, Rml::Vector2f(0, 0), Rml::Vector2f(1, 1));

@@ -381,8 +381,8 @@ Rml::Texture Image::texture(Rml::Element* element, Rml::Vector2f size){
 Rml::ColourbPremultiplied Image::colour(Rml::Element* element) const{
     const Rml::ComputedValues& computed = element->GetComputedValues();
     if (svg && svg->tint == SvgTint::Color)
-        return computed.color().ToPremultiplied(computed.opacity());
-    return Rml::Colourb(255, 255, 255, 255).ToPremultiplied(computed.opacity());
+        return computed.color().ToPremultiplied(element->GetDrawOpacity());
+    return Rml::Colourb(255, 255, 255, 255).ToPremultiplied(element->GetDrawOpacity());
 }
 
 // ---------------------------------------------------------------- clip

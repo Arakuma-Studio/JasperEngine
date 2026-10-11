@@ -534,7 +534,7 @@ namespace {
         {"offset-path", U, FF::None, U, false, "none", false, RW::None, "", "motion paths are not supported (Warning)", "animate translate / transform with @keyframes", "motion-1"},
         {"offset-position", U, FF::None, U, false, "normal", false, RW::None, "", "motion paths are not supported (Warning)", "animate translate / transform with @keyframes", "motion-1"},
         {"offset-rotate", U, FF::None, U, false, "auto", false, RW::None, "", "motion paths are not supported (Warning)", "animate translate / transform with @keyframes", "motion-1"},
-        {"opacity", N, FF::GroupOpacity, N, false, "1", false, RW::Opacity, "", "not a group (children blend separately) until the fork has GroupOpacity", "", "css-color-4"},
+        {"opacity", N, FF::GroupOpacity, N, false, "1", false, RW::Opacity, "", "drawn as a group (one layer composited with the opacity) by the fork (GroupOpacity); without it children blend separately", "", "css-color-4"},
         {"order", U, FF::None, U, false, "0", false, RW::None, "", "visual reordering is not supported (Warning)", "reorder the elements in the markup", "css-flexbox-1"},
         {"orphans", I, FF::None, I, true, "2", false, RW::None, "", "paged media; no pages in a game UI", "", "css-break-3"},
         {"outline", E, FF::Outline, N, false, "auto none medium", false, RW::Outline, "box-shadow ring through --html-outline-shadow", "drawn by the fork with every style and the focus ring (Outline); without it a box-shadow ring through companions, styles other than solid/auto drawn solid (Info)", "", "css-ui-4"},

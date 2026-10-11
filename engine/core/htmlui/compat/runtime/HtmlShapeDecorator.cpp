@@ -492,9 +492,8 @@ Rml::DecoratorDataHandle HtmlShapeDecorator::GenerateElementData(Rml::Element* e
         return textureInterface.GenerateTexture({reinterpret_cast<const Rml::byte*>(rgba->data()), rgba->size()}, pixels);
     });
 
-    const Rml::ComputedValues& computed = element->GetComputedValues();
     Rml::Mesh mesh;
-    Rml::MeshUtilities::GenerateQuad(mesh, box.TopLeft(), box.Size(), Rml::Colourb(255, 255, 255, 255).ToPremultiplied(computed.opacity()),
+    Rml::MeshUtilities::GenerateQuad(mesh, box.TopLeft(), box.Size(), Rml::Colourb(255, 255, 255, 255).ToPremultiplied(element->GetDrawOpacity()),
                                      Rml::Vector2f(0, 0), Rml::Vector2f(1, 1));
     data->geometry = renderManager->MakeGeometry(std::move(mesh));
     return reinterpret_cast<Rml::DecoratorDataHandle>(data);

@@ -25,7 +25,7 @@ namespace {
         false,   // PseudoElements
         false,   // RootIsWhere
         false,   // Fixed
-        false,   // GroupOpacity
+        true,    // GroupOpacity (phase 3, p3-paint: opacity groups, not inherited; docs/html-ui/FORK.md)
         false,   // TimingFunctions
         false,   // Important
         false,   // CssWideKeywords

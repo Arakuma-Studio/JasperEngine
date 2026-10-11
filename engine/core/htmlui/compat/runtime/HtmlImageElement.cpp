@@ -207,7 +207,7 @@ void HtmlImageElement::generateGeometry(){
         base = Rml::Colourb((Rml::byte)((base.red * color.red + 127) / 255), (Rml::byte)((base.green * color.green + 127) / 255),
                             (Rml::byte)((base.blue * color.blue + 127) / 255), (Rml::byte)((base.alpha * color.alpha + 127) / 255));
     }
-    const Rml::ColourbPremultiplied colour = base.ToPremultiplied(computed.opacity());
+    const Rml::ColourbPremultiplied colour = base.ToPremultiplied(GetDrawOpacity());
     Rml::Mesh mesh;
     Rml::MeshUtilities::GenerateQuad(mesh, origin + Rml::Vector2f(quad.rect.x, quad.rect.y), Rml::Vector2f(quad.rect.width, quad.rect.height), colour,
                                      Rml::Vector2f(quad.u0, quad.v0), Rml::Vector2f(quad.u1, quad.v1));

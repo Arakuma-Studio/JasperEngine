@@ -468,7 +468,7 @@ void HtmlInputElement::OnRender(){
         imageTexture = image.texture(this, size);
         const Rml::ComputedValues& computed = GetComputedValues();
         Rml::Mesh mesh;
-        Rml::MeshUtilities::GenerateQuad(mesh, Rml::Vector2f(0, 0), size, computed.image_color().ToPremultiplied(computed.opacity()),
+        Rml::MeshUtilities::GenerateQuad(mesh, Rml::Vector2f(0, 0), size, computed.image_color().ToPremultiplied(GetDrawOpacity()),
                                          Rml::Vector2f(0, 0), Rml::Vector2f(1, 1));
         imageGeometry = renderManager->MakeGeometry(std::move(mesh));
     }
