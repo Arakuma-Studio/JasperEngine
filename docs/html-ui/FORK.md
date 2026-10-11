@@ -244,8 +244,8 @@ clamp the item, and the width of a row container is asked without its items' cro
 of a row flex container stops after its main size`), so nested `inline-flex` levels no longer format their content
 again at every level. The cases above 10 %: the "fast version" document gives its articles `flex: 1` and no
 `min-width`, so CSS's automatic minimum size (`min-width: auto`, which 6.3 did not have) measures each article's
-min-content width, a formatting of its paragraphs one word per line; `min-width: 0` on such items, as in browsers, makes
-it as fast as before. Basic shrink-to-fit, and the wrapping flexbox of the grid benchmark, format each item once more
+min-content width, a formatting of its paragraphs one word per line; `min-width: 0` on such items skips
+that measure. Basic shrink-to-fit, and the wrapping flexbox of the grid benchmark, format each item once more
 than 6.3: Taffy measures the item's height at its flexed width (its hypothetical cross size) before the final layout.
 Recovered on the way: items stretched to a single line of definite cross size are not measured (`flexbox.chat` was
 +1660 % before that, a min-content formatting of every message), the row-width shortcut above (Basic was +20 %).
