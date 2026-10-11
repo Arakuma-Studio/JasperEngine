@@ -4468,6 +4468,108 @@ bool editor::Catalog::supportsLighting(MaterialLighting mode, const ShaderManife
     return RenderSystem::supportsLighting(mode, lightingManifest(manifest));
 }
 
+std::string editor::Catalog::getSceneInputsLabel(uint32_t inputs) {
+    inputs &= ShaderRequire_SceneInputs;
+    if (inputs == ShaderRequire_SceneInputs) return "depth and colour";
+    if (inputs & ShaderRequire_SceneDepth) return "depth";
+    if (inputs & ShaderRequire_SceneColor) return "colour";
+    return std::string();
+}
+
+std::string editor::Catalog::getSceneInputsCost(uint32_t inputs, bool brief) {
+    const bool depth = (inputs & ShaderRequire_SceneDepth) != 0;
+    const bool color = (inputs & ShaderRequire_SceneColor) != 0;
+    if (!depth && !color) return std::string();
+    if (brief) {
+        return std::string(depth && color ? "a depth pre-pass and a colour copy" : depth ? "a depth pre-pass" : "a colour copy") +
+               " per camera";
+    }
+    std::string text = "Paid only by the camera passes where such a draw is visible (scene camera, render-to-texture and mirror cameras, editor views). ";
+    if (depth) {
+        text += "Scene depth: one more geometry pass of the opaque meshes per camera (none when SSAO, SSR or a depth-reading "
+                "post-process pass already draws one), and every mesh keeps a depth program. ";
+    }
+    if (color) {
+        text += "Scene colour: a copy of the opaque scene and the sky per camera, which splits its render pass (a store and load "
+                "of the targets on tile-based mobile GPUs); its resolution is the scene setting Scene Color > Scale "
+                "(scene_color_scale; half, the default, copies a quarter of the pixels). ";
+    }
+    text += "Avoid on low-end mobile. The draw must be in the transparent queue (a blend other than Opaque).";
+    return text;
+}
+
+std::string editor::Catalog::getShaderSceneInputsSummary(const ShaderManifest& manifest) {
+    const uint32_t possible = manifest.getPossibleSceneInputs();
+    if (!possible) return std::string();
+    // per input: always (@require), else the feature= rules that add it
+    auto when = [&manifest](uint32_t bit) {
+        if (manifest.require & bit) return std::string();
+        std::vector<std::string> defines;
+        for (const ShaderManifestRequireRule& rule : manifest.requireRules) {
+            const std::string define = (rule.negate ? "!" : "") + rule.define;
+            if ((rule.require & bit) && std::find(defines.begin(), defines.end(), define) == defines.end()) defines.push_back(define);
+        }
+        std::string text;
+        for (const std::string& define : defines) text += (text.empty() ? "" : " or ") + define;
+        return " (with " + text + ")";
+    };
+    const std::string depth = (possible & ShaderRequire_SceneDepth) ? when(ShaderRequire_SceneDepth) : std::string();
+    const std::string color = (possible & ShaderRequire_SceneColor) ? when(ShaderRequire_SceneColor) : std::string();
+    if (possible == ShaderRequire_SceneInputs) {
+        if (depth == color) return "Reads the scene depth and colour" + depth;
+        return "Reads the scene depth" + depth + " and colour" + color;
+    }
+    return (possible & ShaderRequire_SceneDepth) ? "Reads the scene depth" + depth : "Reads the scene colour" + color;
+}
+
+uint32_t editor::Catalog::getFeatureSceneInputs(const ShaderManifest& manifest, const std::string& define, bool whenOff) {
+    uint32_t inputs = 0;
+    for (const ShaderManifestRequireRule& rule : manifest.requireRules) {
+        if (rule.define == define && rule.negate == whenOff) inputs |= rule.require;
+    }
+    return inputs & ShaderRequire_SceneInputs & ~manifest.require;
+}
+
+uint32_t editor::Catalog::getShaderSceneInputs(const std::string& shader, const std::vector<std::string>& shaderFeatures) {
+    std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
+    if (!manifest || !manifest->present) return 0;
+    return manifest->resolveRequire(ShaderReference::getEnabledFeatures(shader, shaderFeatures)) & ShaderRequire_SceneInputs;
+}
+
+uint32_t editor::Catalog::getMaterialSceneInputs(Scene* scene, Entity entity, unsigned int submesh, bool extraPass) {
+    const MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
+    if (!mesh || submesh >= mesh->numSubmeshes) return 0;
+    const Submesh& sub = mesh->submeshes[submesh];
+    if (extraPass) {
+        const MaterialPass& pass = sub.material.extraPass;
+        return getShaderSceneInputs(pass.shader, pass.shaderFeatures);
+    }
+    return getShaderSceneInputs(RenderSystem::getSubmeshShader(*mesh, sub, scene->getDefaultCustomShader(ShaderType::MESH)),
+                                sub.material.shaderFeatures);
+}
+
+uint32_t editor::Catalog::getComponentSceneInputs(Scene* scene, Entity entity, ComponentType component) {
+    if (!scene || component == ComponentType::MeshComponent) return 0;
+    const std::vector<std::string>* features = getPropertyRef<std::vector<std::string>>(scene, entity, component, "shaderFeatures");
+    if (!features) return 0;
+    return getShaderSceneInputs(getShaderReferenceForProperty(scene, entity, component, "customShader"), *features);
+}
+
+bool editor::Catalog::getSceneInputQueueFix(Scene* scene, Entity entity, unsigned int submesh, MaterialBlendMode& blendMode) {
+    const MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
+    if (!mesh || submesh >= mesh->numSubmeshes) return false;
+    const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+    bool opaqueQueue = false;
+    if (!RenderSystem::getSubmeshSceneInputs(*mesh, mesh->submeshes[submesh], sceneMeshShader, opaqueQueue) || !opaqueQueue) return false;
+    // only when Alpha does move it (a fork's @state queue= decides before the blend)
+    Submesh fixed = mesh->submeshes[submesh];
+    fixed.material.blendMode = MaterialBlendMode::ALPHA;
+    RenderSystem::getSubmeshSceneInputs(*mesh, fixed, sceneMeshShader, opaqueQueue);
+    if (opaqueQueue) return false;
+    blendMode = MaterialBlendMode::ALPHA;
+    return true;
+}
+
 uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Material& to) {
     uint64_t flags = UpdateFlags_Mesh_Texture;
     // resolved when the mesh loads: the shader, its variant and its pipelines

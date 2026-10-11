@@ -14202,7 +14202,9 @@ void editor::InspectorWindow::show(){
 
                     const float sceneColorScaleComboWidth = ImGui::CalcTextSize("Half").x + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f;
                     drawScenePropertyRow<SceneColorScale>(sceneProject, "scene_color_scale", "Scale", ScenePropertyInputType::Combo, sceneColorScaleComboWidth, 0.0f, 1.0f,
-                        "Resolution of the copy of the opaque scene that shaders reading the scene colour (glass, heat haze, refraction) sample. Taken only in camera passes that draw such a shader. Half is cheaper (mobile).");
+                        "Resolution of the copy of the opaque scene and sky that shaders reading the scene colour (glass, heat haze, refraction) sample, taken once per camera pass that draws such a shader. "
+                        "Half (default): a quarter of the pixels to copy and keep, slightly blurred (each texel averages 2x2 pixels), right for distortion and on mobile. "
+                        "Full: sharp, for clear glass seen up close, at four times the copy's bandwidth and memory.");
 
                     ImGui::EndTable();
                 }

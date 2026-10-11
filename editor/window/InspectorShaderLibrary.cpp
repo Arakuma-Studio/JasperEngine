@@ -18,6 +18,7 @@
 #include "material/MaterialPresets.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
+#include "Theme.h"
 #include "util/Color.h"
 #include "util/FileDialogs.h"
 #include "util/Util.h"
@@ -156,6 +157,43 @@ namespace {
         return label;
     }
 
+    // a tooltip of a paragraph or more, wrapped
+    void wrappedTooltip(const std::string& text) {
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 32.0f);
+        ImGui::TextUnformatted(text.c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+
+    // The mark of a shader, feature or keyword value that reads the scene (phase 3): an amber
+    // gauge and what it reads, on the line of the item before it. True while it is hovered.
+    bool sceneInputsBadge(uint32_t inputs) {
+        ImGui::SameLine();
+        ImGui::TextColored(editor::Theme::Colors::WarningText, ICON_FA_GAUGE_HIGH " %s", editor::Catalog::getSceneInputsLabel(inputs).c_str());
+        return ImGui::IsItemHovered();
+    }
+
+    // The tooltip of a mark: what is read (and when), then the cost
+    std::string sceneInputsTooltip(const std::string& what, uint32_t inputs) {
+        return what + ": " + editor::Catalog::getSceneInputsCost(inputs, true) + ".\n\n" + editor::Catalog::getSceneInputsCost(inputs);
+    }
+
+    // One row under a shader's rows: what the draw reads of the scene in its current variant and
+    // what that costs (the whole cost in its tooltip); nothing when it reads nothing
+    void sceneInputsInfoRow(uint32_t inputs) {
+        if (!inputs)
+            return;
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(1);
+        ImGui::PushStyleColor(ImGuiCol_Text, editor::Theme::Colors::WarningText);
+        ImGui::TextWrapped(ICON_FA_GAUGE_HIGH " Reads scene %s: %s", editor::Catalog::getSceneInputsLabel(inputs).c_str(),
+                           editor::Catalog::getSceneInputsCost(inputs, true).c_str());
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered())
+            wrappedTooltip(editor::Catalog::getSceneInputsCost(inputs));
+    }
+
     std::shared_ptr<const ShaderManifest> presentManifest(const std::string& shader) {
         std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
         return (manifest && manifest->present) ? manifest : nullptr;
@@ -269,7 +307,15 @@ void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentS
                 const std::string label = (manifest->name.empty() ? reference : manifest->name) + "##" + reference;
                 if (ImGui::Selectable(label.c_str(), currentShader == reference) && currentShader != reference)
                     setShader(reference);
-                if (!manifest->description.empty() && ImGui::IsItemHovered())
+                bool hovered = ImGui::IsItemHovered();
+                // a shader reading the scene depth or colour (phase 3) costs passes: marked
+                const uint32_t sceneInputs = manifest->getPossibleSceneInputs();
+                if (sceneInputs)
+                    hovered = sceneInputsBadge(sceneInputs) || hovered;
+                if (hovered && sceneInputs)
+                    wrappedTooltip((manifest->description.empty() ? std::string() : manifest->description + "\n\n") +
+                                   sceneInputsTooltip(Catalog::getShaderSceneInputsSummary(*manifest), sceneInputs));
+                else if (hovered && !manifest->description.empty())
                     ImGui::SetTooltip("%s", manifest->description.c_str());
             }
         }
@@ -283,7 +329,11 @@ void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentS
     }
     if (ShaderReference::isLibrary(currentShader) && ImGui::IsItemHovered()) {
         std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(currentShader);
-        if (manifest && !manifest->description.empty())
+        if (manifest && manifest->getPossibleSceneInputs())
+            wrappedTooltip(currentShader + (manifest->description.empty() ? std::string() : "\n\n" + manifest->description) + "\n\n" +
+                           Catalog::getShaderSceneInputsSummary(*manifest) + " (cost: " +
+                           Catalog::getSceneInputsCost(manifest->getPossibleSceneInputs(), true) + ")");
+        else if (manifest && !manifest->description.empty())
             ImGui::SetTooltip("%s\n\n%s", currentShader.c_str(), manifest->description.c_str());
         else if (!manifest)
             ImGui::SetTooltip("%s is not a library shader of this engine", currentShader.c_str());
@@ -347,8 +397,22 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
             ShaderLibraryValues::setFeature(changed, shader, feature.define, enabled);
             setFeatures(changed);
         }
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s%s", feature.define.c_str(), feature.defaultOn ? " (on by default)" : "");
+        bool hovered = ImGui::IsItemHovered();
+        const std::string featureTip = feature.define + (feature.defaultOn ? " (on by default)" : "");
+        // a feature turning on a scene input (its feature= requires): marked like the picker
+        const uint32_t onInputs = Catalog::getFeatureSceneInputs(*manifest, feature.define);
+        const uint32_t offInputs = Catalog::getFeatureSceneInputs(*manifest, feature.define, true);
+        if (onInputs || offInputs) {
+            hovered = sceneInputsBadge(onInputs | offInputs) || hovered;
+            if (hovered) {
+                std::string what;
+                if (onInputs) what = "On, it reads the scene " + Catalog::getSceneInputsLabel(onInputs);
+                if (offInputs) what += (what.empty() ? "Off, it reads the scene " : "; off, the scene ") + Catalog::getSceneInputsLabel(offInputs);
+                wrappedTooltip(featureTip + "\n\n" + sceneInputsTooltip(what, onInputs | offInputs));
+            }
+        } else if (hovered) {
+            ImGui::SetTooltip("%s", featureTip.c_str());
+        }
         ImGui::PopID();
     }
     for (const ShaderManifestKeywords& group : manifest->keywords) {
@@ -367,6 +431,13 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
                     std::vector<std::string> changed = features;
                     ShaderLibraryValues::setFeature(changed, shader, group.group + "_" + value, true);
                     setFeatures(changed);
+                }
+                // a value turning on a scene input: marked like a feature
+                bool hovered = ImGui::IsItemHovered();
+                if (const uint32_t inputs = Catalog::getFeatureSceneInputs(*manifest, group.group + "_" + value)) {
+                    hovered = sceneInputsBadge(inputs) || hovered;
+                    if (hovered)
+                        wrappedTooltip(sceneInputsTooltip(value + " reads the scene " + Catalog::getSceneInputsLabel(inputs), inputs));
                 }
             }
             ImGui::EndCombo();
@@ -521,6 +592,10 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
         ImGui::PopID();
     }
     prefabRowProperty.clear();
+
+    // what this variant reads of the scene (phase 3) and the cost: a material's, its extra
+    // pass's or a points component's
+    sceneInputsInfoRow(Catalog::getShaderSceneInputs(shader, features));
 
     return true;
 }
@@ -688,16 +763,40 @@ void editor::InspectorWindow::drawMaterialSurfaceRows(ComponentType cpType, Scen
         return resolveMaterialStencilAuto(scene, entity, submesh);
     }, settingsMaterial);
 
-    // a shader reading the scene (phase 3) drawn before the scene is: an error
+    // a shader reading the scene (phase 3) drawn before the scene is: an error, with a button
+    // moving it to the transparent queue (Catalog::getSceneInputQueueFix: Alpha blending, one
+    // undo step for every selected GameObject in that state)
     bool opaqueQueue = false;
     const uint32_t sceneInputs = RenderSystem::getSubmeshSceneInputs(*mesh, sub, scene->getDefaultCustomShader(ShaderType::MESH), opaqueQueue);
     if (sceneInputs && opaqueQueue){
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(1);
-        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Error: reads the scene %s but draws in the opaque queue",
-                           (sceneInputs == ShaderRequire_SceneInputs) ? "depth and colour" : (sceneInputs & ShaderRequire_SceneDepth) ? "depth" : "colour");
+        ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ErrorText);
+        ImGui::TextWrapped("Error: reads the scene %s but draws in the opaque queue", Catalog::getSceneInputsLabel(sceneInputs).c_str());
+        ImGui::PopStyleColor();
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("It would read its own depth and a black scene colour. Pick a blend other than Opaque (or a shader whose state is transparent).");
+        MaterialBlendMode fixBlend = MaterialBlendMode::ALPHA;
+        if (Catalog::getSceneInputQueueFix(scene, entities[0], submesh, fixBlend)) {
+            if (ImGui::Button((std::string(ICON_FA_WRENCH " Use Alpha blending##scene_input_fix_") + std::to_string(submesh)).c_str())) {
+                const uint32_t sceneId = sceneProject->id;
+                auto* multi = new MultiPropertyCmd();
+                bool changed = false;
+                for (Entity entity : entities) {
+                    MaterialBlendMode blend = MaterialBlendMode::ALPHA;
+                    if (!Catalog::getSceneInputQueueFix(scene, entity, submesh, blend))
+                        continue;
+                    multi->addPropertyCmd<int>(project, sceneId, entity, cpType, prefix + "blendMode", (int)blend, settingsMaterial.onValueChanged);
+                    changed = true;
+                }
+                if (changed)
+                    CommandHandle::get(sceneId)->addCommandNoMerge(multi);
+                else
+                    delete multi;
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Set Blend Mode to Alpha: the submesh draws in the transparent queue, after the scene it reads (undoable)");
+        }
     }
 
     // @state shadows=off (or a @state[...] rule of its features): the mesh's Cast Shadows does

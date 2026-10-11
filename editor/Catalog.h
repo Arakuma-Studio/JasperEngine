@@ -234,6 +234,37 @@ namespace jasperengine::editor{
         // assignment outside a property command: linked material files)
         static uint64_t getMaterialUpdateFlags(const Material& from, const Material& to);
 
+        // ---- scene inputs (docs/superpowers/specs/2026-10-10-shader-library-phase3-design.md):
+        // what a draw reads of the opaque scene, ShaderRequire_SceneDepth / _SceneColor bits.
+        // The inspector (picker marks, info and error rows) and MCP (list_shaders cost_note,
+        // get_entity / get_shader_uniforms scene_inputs) say the same through these.
+        // "depth", "colour" or "depth and colour" ("" for none)
+        static std::string getSceneInputsLabel(uint32_t inputs);
+        // What reading them costs: brief, the extra work per camera pass ("a depth pre-pass and a
+        // colour copy per camera"); else the whole explanation (when it is paid, what it costs,
+        // the scene setting, mobile advice, the transparent-queue rule). "" for none
+        static std::string getSceneInputsCost(uint32_t inputs, bool brief = false);
+        // What some variant of a shader reads and with which features ("Reads the scene depth
+        // (with SOFT) and colour"), "" for a shader that reads nothing of the scene
+        static std::string getShaderSceneInputsSummary(const ShaderManifest& manifest);
+        // The scene inputs a @feature or @keywords define (<GROUP>_<VALUE>) turns on through its
+        // feature= rules, without what the shader reads anyway; whenOff: the ones its
+        // "feature=!<DEFINE>" rules read while it is off
+        static uint32_t getFeatureSceneInputs(const ShaderManifest& manifest, const std::string& define, bool whenOff = false);
+        // What a variant of a shader reference reads with a shaderFeatures list (0 without a manifest)
+        static uint32_t getShaderSceneInputs(const std::string& shader, const std::vector<std::string>& shaderFeatures);
+        // What submesh `submesh`'s material reads in its current variant: its shader (its own,
+        // else the mesh's or the scene's), or with extraPass its extra pass's shader
+        static uint32_t getMaterialSceneInputs(Scene* scene, Entity entity, unsigned int submesh, bool extraPass);
+        // What a UI/Points/Lines/Sky component's shader (own or the scene's) reads in its current variant
+        static uint32_t getComponentSceneInputs(Scene* scene, Entity entity, ComponentType component);
+        // A submesh whose shader or extra pass reads the scene while it draws in the opaque queue
+        // (an error: RenderSystem::getSubmeshSceneInputs): the blend mode that moves it to the
+        // transparent queue (Alpha), what the inspector's fix button and MCP's fix set on
+        // submeshes[N].material.blendMode. False when it is not such a submesh, or when a blend
+        // mode would not move it (a shader forcing another queue).
+        static bool getSceneInputQueueFix(Scene* scene, Entity entity, unsigned int submesh, MaterialBlendMode& blendMode);
+
         template<typename T>
         static T* getPropertyRef(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){
             PropertyData property = Catalog::getProperty(registry, entity, component, propertyName);
