@@ -25,7 +25,8 @@ namespace {
 
 	using Opt = std::optional<float>;
 
-	enum class RunMode { ComputeSize, PerformLayout };
+	// ComputeWidth: only the container's width is requested (Taffy's ComputeSize with RequestedAxis::Horizontal).
+	enum class RunMode { ComputeSize, ComputeWidth, PerformLayout };
 
 	// Alignment of items and lines, Taffy's AlignItemsKeyword and AlignContentKeyword ('normal' resolved by the caller).
 	enum class ItemAlign : uint8_t { Start, End, FlexStart, FlexEnd, Center, Baseline, LastBaseline, Stretch };
@@ -2002,6 +2003,14 @@ namespace {
 		}
 		(void)main;
 
+		// Only the width requested and it is the main size: nothing below changes it (this avoids measuring the cross size
+		// of every item).
+		if (run_mode == RunMode::ComputeWidth && row)
+		{
+			output.size = container_size;
+			return output;
+		}
+
 		// 6. Resolve the flexible lengths.
 		for (FlexLine& line : lines)
 			ResolveFlexibleLengths(line);
@@ -2027,7 +2036,7 @@ namespace {
 		// 15. The container's used cross size.
 		const float total_line_cross_size = DetermineContainerCrossSize(known);
 		output.size = container_size;
-		if (run_mode == RunMode::ComputeSize)
+		if (run_mode != RunMode::PerformLayout)
 			return output;
 
 		// 16. Align the lines.
@@ -2064,7 +2073,7 @@ namespace {
 		const AvailableSpace available =
 			(constraint == AvailableSpace::MinContent ? AvailableSpace::MakeMinContent() : AvailableSpace::MakeMaxContent());
 		FlexAlgorithm algorithm(element, &flex_container_box, box, Vector2f(-1.f));
-		const FlexAlgorithm::Output output = algorithm.Run(known, available, AvailableSpace::MakeMaxContent(), Vector2f(0.f), RunMode::ComputeSize);
+		const FlexAlgorithm::Output output = algorithm.Run(known, available, AvailableSpace::MakeMaxContent(), Vector2f(0.f), RunMode::ComputeWidth);
 		const Vector2f edges = {box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding),
 			box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border, BoxArea::Padding)};
 		return Math::Max(output.size - edges, Vector2f(0.f));
