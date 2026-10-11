@@ -1,0 +1,64 @@
+{
+ "fixture": "animation/starting-style-entry.html",
+ "viewport": [
+  300,
+  160
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "shown": [
+   {
+    "id": "fade",
+    "tag": "div",
+    "x": 40,
+    "y": 20,
+    "w": 40,
+    "h": 50
+   },
+   {
+    "id": "plain",
+    "tag": "div",
+    "x": 40,
+    "y": 90,
+    "w": 200,
+    "h": 50
+   }
+  ],
+  "half": [
+   {
+    "id": "fade",
+    "tag": "div",
+    "x": 40,
+    "y": 20,
+    "w": 120,
+    "h": 50
+   },
+   {
+    "id": "plain",
+    "tag": "div",
+    "x": 40,
+    "y": 90,
+    "w": 200,
+    "h": 50
+   }
+  ],
+  "end": [
+   {
+    "id": "fade",
+    "tag": "div",
+    "x": 40,
+    "y": 20,
+    "w": 200,
+    "h": 50
+   },
+   {
+    "id": "plain",
+    "tag": "div",
+    "x": 40,
+    "y": 90,
+    "w": 200,
+    "h": 50
+   }
+  ]
+ }
+}

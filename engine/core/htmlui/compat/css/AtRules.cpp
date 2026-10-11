@@ -401,7 +401,9 @@ namespace {
             }
             DeclarationList declarations;
             for (const Declaration& d : frame.declarations){
-                if (d.name == "animation-timing-function" || d.name == "-webkit-animation-timing-function"){
+                // (the fork reads a keyframe's own easing with AnimationLonghands: Animation.cpp writes it)
+                if ((d.name == "animation-timing-function" || d.name == "-webkit-animation-timing-function") &&
+                    !session.options.fork.has(ForkFeature::AnimationLonghands)){
                     session.sink->reportAs(Severity::Warning, codes::AnimationApproximated, d.ref,
                                            "per-keyframe animation-timing-function is not supported; dropped",
                                            "set the easing on the animation itself");

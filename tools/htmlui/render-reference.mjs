@@ -779,7 +779,7 @@ async function adoptAnimations(page){
                 continue;
             animation.pause();
             animation.currentTime = 0;
-            state.animations.push({ animation, start: state.time });
+            state.animations.push({ animation, local: 0 });
         }
     });
 }
@@ -788,11 +788,25 @@ async function advanceAnimations(page, seconds){
     await page.evaluate((dt) => {
         const state = window.__htmluiFixture;
         state.time += dt;
+        // A CSS animation whose animation-play-state is paused holds its time (pause() above makes
+        // the browser ignore the property, so the seek follows it instead; phase-3 spec 3.13.5).
+        const cssPaused = (animation) => {
+            if (typeof animation.animationName !== 'string' || !animation.effect || !animation.effect.target)
+                return false;
+            const style = getComputedStyle(animation.effect.target);
+            const names = style.animationName.split(',').map((name) => name.trim());
+            const states = style.animationPlayState.split(',').map((value) => value.trim());
+            const index = names.indexOf(animation.animationName);
+            return index >= 0 && states[index % states.length] === 'paused';
+        };
         // only the live ones: seeking a cancelled transition would revive it
         const live = new Set(document.getAnimations());
-        for (const { animation, start } of state.animations){
-            if (live.has(animation))
-                animation.currentTime = (state.time - start) * 1000;
+        for (const entry of state.animations){
+            if (!live.has(entry.animation))
+                continue;
+            if (!cssPaused(entry.animation))
+                entry.local += dt;
+            entry.animation.currentTime = entry.local * 1000;
         }
     }, seconds);
 }

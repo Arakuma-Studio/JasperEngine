@@ -1198,6 +1198,9 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("deltaX", &UIEvent::getDeltaX)
         .addProperty("deltaY", &UIEvent::getDeltaY)
         .addProperty("data", &UIEvent::getData)
+        .addProperty("animationName", &UIEvent::getAnimationName)
+        .addProperty("propertyName", &UIEvent::getPropertyName)
+        .addProperty("elapsedTime", &UIEvent::getElapsedTime)
         // the dispatchEvent detail, copied (nil, boolean, number, string or table)
         .addProperty("detail", [](const UIEvent* self, lua_State* L) -> luabridge::LuaRef {
             HtmlUILua::pushValue(L, self->getDetail());

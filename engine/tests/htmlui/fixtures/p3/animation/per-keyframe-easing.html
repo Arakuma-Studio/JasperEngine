@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>animation: animation-timing-function in keyframes</title>
+<style>
+  html, body { margin: 0; }
+  @keyframes eased {
+    0% { left: 20px; animation-timing-function: steps(2); }
+    50% { left: 160px; animation-timing-function: ease-in; }
+    100% { left: 300px; }
+  }
+  @keyframes merged {
+    0%, 100% { left: 20px; }
+    50% { left: 300px; animation-timing-function: linear; }
+  }
+  div { position: absolute; width: 40px; height: 30px; background-color: #405080; }
+  #eased { top: 20px; animation: eased 2s linear; }
+  #merged { top: 70px; animation: merged 2s ease; }
+</style>
+</head>
+<body>
+<div id="eased"></div><div id="merged"></div>
+</body>
+</html>

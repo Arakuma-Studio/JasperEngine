@@ -9,6 +9,7 @@ add_executable(${TARGET_NAME}
 	ContainingBlockOverride.cpp
 	Core.cpp
 	CustomProperties.cpp
+	Easing.cpp
 	DataBinding.cpp
 	DataExpression.cpp
 	DataModel.cpp
@@ -27,6 +28,7 @@ add_executable(${TARGET_NAME}
 	FlexFormatting.cpp
 	GridLayout.cpp
 	GridParsing.cpp
+	IndividualTransforms.cpp
 	InitialValues.cpp
 	IntrinsicSizing.cpp
 	Layout.cpp
@@ -51,6 +53,7 @@ add_executable(${TARGET_NAME}
 	Template.cpp
 	TextProperties.cpp
 	TextTransform.cpp
+	TransitionsAnyChange.cpp
 	URL.cpp
 	Variant.cpp
 	XMLParser.cpp

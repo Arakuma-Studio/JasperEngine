@@ -414,6 +414,172 @@ namespace {
         return text.empty() ? std::string("none") : text;
     }
 
+    std::string& animationBuffer();
+
+    // ---- the fork's own animations (ForkFeature::AnimationLonghands, phase 3)
+
+    const char* directionText(Direction direction){
+        static const char* const names[] = {"normal", "reverse", "alternate", "alternate-reverse"};
+        return names[(int)direction];
+    }
+
+    const char* fillText(Fill fill){
+        static const char* const names[] = {"none", "forwards", "backwards", "both"};
+        return names[(int)fill];
+    }
+
+    // An entry with every component written (the name last), so that the fork's any-order parser
+    // gives each component to the longhand it was written for.
+    void writeNativeEntries(DeclContext& context, const ArenaList<Entry>& entries, std::string& out){
+        Session& session = context.session;
+        for (const Entry& e : entries){
+            if (e.hasEasing && !e.easing.note.empty())
+                context.reportAs(e.easing.severity, e.easing.code, e.easing.note, std::string(), text(e.raw));
+            if (!out.empty())
+                out += ", ";
+            if (e.duration.given())
+                appendTiming(out, e.duration);
+            else
+                out += "0s";
+            out += ' ';
+            out += e.hasEasing && !e.easing.text.empty() ? e.easing.text.view() : std::string_view("ease");
+            out += ' ';
+            if (e.delay.given())
+                appendTiming(out, e.delay);
+            else
+                out += "0s";
+            out += ' ';
+            if (e.count == Count::Infinite)
+                out += "infinite";
+            else if (e.count == Count::Number)
+                appendNumber(out, e.countValue);
+            else
+                out += '1';
+            out += ' ';
+            out += directionText(e.direction);
+            out += ' ';
+            out += fillText(e.fill);
+            out += e.paused ? " paused " : " running ";
+            out += e.name.empty() ? std::string("none") : session.keyframeName(e.name);
+        }
+    }
+
+    // one longhand of the family as the fork reads it; false when malformed
+    bool writeNativeLonghand(DeclContext& context, std::string_view name, std::string& out){
+        Session& session = context.session;
+        for (const ValueRange& group : commaRanges(context.value)){
+            const Words w = wordsOf(group);
+            if (w.size() != 1)
+                return false;
+            const ComponentValue& v = *w[0];
+            if (!out.empty())
+                out += ", ";
+            if (isVar(v)){
+                out += text(v);
+                continue;
+            }
+            const std::string_view k = identView(v);
+            double s = 0;
+            if (name == "animation-name"){
+                if (v.isToken(TokenType::Ident) && k == "none")
+                    out += "none";
+                else if (v.isToken(TokenType::Ident) || v.isToken(TokenType::String))
+                    out += session.keyframeName(v.token.value);
+                else
+                    return false;
+            }else if (name == "animation-duration" || name == "animation-delay"){
+                if (!seconds(v, s) || (name == "animation-duration" && s < 0))
+                    return false;
+                appendTiming(out, secondsTiming(s));
+            }else if (name == "animation-timing-function"){
+                std::optional<EasingResult> easing = easingOf(session, v);
+                if (!easing)
+                    return false;
+                if (!easing->note.empty())
+                    context.reportAs(easing->severity, easing->code, easing->note, std::string(), text(v));
+                out += easing->text.view();
+            }else if (name == "animation-iteration-count"){
+                if (isIdent(v, "infinite"))
+                    out += "infinite";
+                else if (v.isToken(TokenType::Number) && v.token.number >= 0)
+                    appendNumber(out, v.token.number);
+                else
+                    return false;
+            }else if (name == "animation-direction"){
+                Direction direction;
+                if (!directionOf(k, direction))
+                    return false;
+                out += directionText(direction);
+            }else if (name == "animation-fill-mode"){
+                Fill fill;
+                if (!fillOf(k, fill))
+                    return false;
+                out += fillText(fill);
+            }else if (name == "animation-play-state"){
+                if (k != "running" && k != "paused")
+                    return false;
+                out += k;
+            }else if (name == "animation-composition"){
+                if (k != "replace" && k != "add" && k != "accumulate")
+                    return false;
+                if (k != "replace")
+                    context.reportAs(Severity::Info, codes::AnimationApproximated, "'animation-composition: " + std::string(k) +
+                                     "' composites as 'replace'", "write the combined values in the keyframes");
+                out += k;
+            }else{
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // The fork has the CSS animation properties: each declaration is written as it is, normalized
+    // (times in s, easing as the fork reads it, keyframes names as compat writes the @keyframes).
+    void rewriteNativeAnimation(DeclContext& context){
+        const std::string_view name = plain(context.name);
+        if (context.keyframe){
+            // a keyframe's own easing; the other animation properties have no effect in a keyframe
+            if (name == "animation-timing-function"){
+                std::string& value = animationBuffer();
+                value.clear();
+                const Words w = wordsOf(context.value);
+                if (w.size() == 1 && writeNativeLonghand(context, name, value)){
+                    context.emit("animation-timing-function", Text(std::string_view(value)));
+                    return;
+                }
+            }
+            context.dropped = true;
+            return;
+        }
+        for (const ComponentValue& v : context.value){
+            if (isVar(v)){
+                context.emit(std::string(name), context.valueText());
+                return;
+            }
+        }
+        std::string& value = animationBuffer();
+        value.clear();
+        if (name == "animation"){
+            ArenaList<Entry> entries;
+            if (!applyAnimation(context.session, "animation", context.value, entries)){
+                context.reportAs(Severity::Warning, codes::UnsupportedValue, "'" + context.sourceText() + "' is not supported; declaration dropped",
+                                 "write animation: <name> <duration> <easing> <delay> <count> <direction> <fill-mode>");
+                context.dropped = true;
+                return;
+            }
+            writeNativeEntries(context, entries, value);
+            context.emit("animation", value.empty() ? Text::view("none") : Text(std::string_view(value)));
+            return;
+        }
+        if (!writeNativeLonghand(context, name, value)){
+            context.reportAs(Severity::Warning, codes::UnsupportedValue, "'" + context.sourceText() + "' is not supported; declaration dropped",
+                             "write " + std::string(name) + " as CSS defines it");
+            context.dropped = true;
+            return;
+        }
+        context.emit(std::string(name), Text(std::string_view(value)));
+    }
+
     // (one buffer for the animations of the thread: the emitted value is a copy)
     std::string& animationBuffer(){
         static thread_local std::string buffer;
@@ -429,6 +595,10 @@ void jasperengine::htmlui::compat::rewriteAnimation(DeclContext& context){
 }
 
 void jasperengine::htmlui::compat::rewriteAnimationLonghand(DeclContext& context){
+    if (context.fork(ForkFeature::AnimationLonghands)){
+        rewriteNativeAnimation(context);
+        return;
+    }
     if (context.keyframe){
         context.dropped = true;
         return;
