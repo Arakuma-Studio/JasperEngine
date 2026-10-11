@@ -11,7 +11,9 @@
 using namespace Rml;
 
 // The content of a scroll container is clipped to its scrollport, the padding box without the scrollbars (CSS Overflow 3
-// §3), so a positioned descendant does not paint over them.
+// §3), so a positioned descendant does not paint over them; a scrollbar's bar keeps its margins along the track (the
+// thumb of Chromium's scrollbars is 3px off the track's ends), and an auto height of a horizontal bar fills the scrollbar
+// inside the bar's vertical margins.
 
 namespace {
 
@@ -105,6 +107,36 @@ TEST_CASE("ScrollContainer")
 		Rectanglei region;
 		REQUIRE(ElementUtilities::GetClippingRegion(document->GetElementById("plain-child"), region));
 		CHECK(region.Size() == Vector2i(100, 100));
+	}
+
+	SUBCASE("the bars keep their margins along the track")
+	{
+		Element* track = Part(vertical, "slidertrack");
+		Element* bar = Part(vertical, "sliderbar");
+		REQUIRE(track);
+		REQUIRE(bar);
+		const float track_top = track->GetAbsoluteOffset(BoxArea::Border).y;
+		const float track_length = track->GetBox().GetSize().y;
+		// 3px from the track's start, (track - 6) x 145 / 330 long (the sticky box and the content plus the padding)
+		CHECK(bar->GetAbsoluteOffset(BoxArea::Border).y == doctest::Approx(track_top + 3.f));
+		CHECK(bar->GetBox().GetSize(BoxArea::Border).y == doctest::Approx(Math::Round((track_length - 6.f) * 145.f / 330.f)));
+		CHECK(bar->GetAbsoluteOffset(BoxArea::Border).x == doctest::Approx(vertical->GetAbsoluteOffset(BoxArea::Border).x + 3.f));
+		CHECK(bar->GetBox().GetSize(BoxArea::Border).x == doctest::Approx(9.f));
+
+		// scrolled to the end: 3px from the track's end
+		scroller->SetScrollTop(scroller->GetScrollHeight());
+		context->Update();
+		const float bar_bottom = bar->GetAbsoluteOffset(BoxArea::Border).y + bar->GetBox().GetSize(BoxArea::Border).y;
+		CHECK(bar_bottom == doctest::Approx(track_top + track_length - 3.f).epsilon(0.01));
+
+		// the horizontal bar: 9px high (an auto height inside its 3px margins), 3px from the top and the track's start
+		Element* htrack = Part(horizontal, "slidertrack");
+		Element* hbar = Part(horizontal, "sliderbar");
+		REQUIRE(htrack);
+		REQUIRE(hbar);
+		CHECK(hbar->GetBox().GetSize(BoxArea::Border).y == doctest::Approx(9.f));
+		CHECK(hbar->GetAbsoluteOffset(BoxArea::Border).y == doctest::Approx(horizontal->GetAbsoluteOffset(BoxArea::Border).y + 3.f));
+		CHECK(hbar->GetAbsoluteOffset(BoxArea::Border).x == doctest::Approx(htrack->GetAbsoluteOffset(BoxArea::Border).x + 3.f));
 	}
 
 	document->Close();

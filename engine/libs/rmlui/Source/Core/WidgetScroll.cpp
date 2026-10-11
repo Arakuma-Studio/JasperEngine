@@ -274,8 +274,11 @@ void WidgetScroll::FormatBar()
 	Vector2f bar_box_content = bar_box.GetSize();
 	if (orientation == HORIZONTAL)
 	{
+		// An auto height fills the scrollbar across, inside the bar's own margins, borders and padding (as an auto width does
+		// in a vertical scrollbar).
 		if (height.type == height.Auto)
-			bar_box_content.y = parent->GetBox().GetSize().y;
+			bar_box_content.y =
+				Math::Max(parent->GetBox().GetSize().y - bar_box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Margin, BoxArea::Padding), 0.f);
 	}
 
 	float relative_bar_length;
@@ -346,19 +349,22 @@ void WidgetScroll::ProcessEvent(Event& event)
 			float new_bar_position = 0.f;
 			if (orientation == HORIZONTAL)
 			{
-				float traversable_track_length = track->GetBox().GetSize().x - bar->GetBox().GetSize().x;
+				// (the bar's margin box moves along the track: PositionBar)
+				float traversable_track_length = track->GetBox().GetSize().x - bar->GetBox().GetSize(BoxArea::Margin).x;
 				if (traversable_track_length > 0)
 				{
-					float traversable_track_origin = track->GetAbsoluteOffset().x + bar_drag_anchor;
+					float traversable_track_origin =
+						track->GetAbsoluteOffset().x + bar->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Left) + bar_drag_anchor;
 					new_bar_position = (event.GetParameter("mouse_x", 0.f) - traversable_track_origin) / traversable_track_length;
 				}
 			}
 			else
 			{
-				float traversable_track_length = track->GetBox().GetSize().y - bar->GetBox().GetSize().y;
+				float traversable_track_length = track->GetBox().GetSize().y - bar->GetBox().GetSize(BoxArea::Margin).y;
 				if (traversable_track_length > 0)
 				{
-					float traversable_track_origin = track->GetAbsoluteOffset().y + bar_drag_anchor;
+					float traversable_track_origin =
+						track->GetAbsoluteOffset().y + bar->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Top) + bar_drag_anchor;
 					new_bar_position = (event.GetParameter("mouse_y", 0.f) - traversable_track_origin) / traversable_track_length;
 				}
 			}
@@ -424,23 +430,26 @@ void WidgetScroll::ProcessEvent(Event& event)
 void WidgetScroll::PositionBar()
 {
 	const Vector2f track_dimensions = track->GetBox().GetSize();
-	const Vector2f bar_dimensions = bar->GetBox().GetSize(BoxArea::Border);
+	// The bar moves along the track with its margin box (its margins along the track keep it off the track's ends, as they
+	// shorten it in FormatBar).
+	const Box& bar_box = bar->GetBox();
+	const Vector2f bar_dimensions = bar_box.GetSize(BoxArea::Margin);
 
 	if (orientation == VERTICAL)
 	{
-		const float traversable_track_length = track_dimensions.y - bar_dimensions.y;
+		const float traversable_track_length = Math::Max(track_dimensions.y - bar_dimensions.y, 0.f);
 		const Vector2f offset = {
-			bar->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Left),
-			track->GetRelativeOffset().y + traversable_track_length * bar_position,
+			bar_box.GetEdge(BoxArea::Margin, BoxEdge::Left),
+			track->GetRelativeOffset().y + bar_box.GetEdge(BoxArea::Margin, BoxEdge::Top) + traversable_track_length * bar_position,
 		};
 		bar->SetOffset(offset.Round(), parent);
 	}
 	else
 	{
-		const float traversable_track_length = track_dimensions.x - bar_dimensions.x;
+		const float traversable_track_length = Math::Max(track_dimensions.x - bar_dimensions.x, 0.f);
 		const Vector2f offset = {
-			track->GetRelativeOffset().x + traversable_track_length * bar_position,
-			bar->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Top),
+			track->GetRelativeOffset().x + bar_box.GetEdge(BoxArea::Margin, BoxEdge::Left) + traversable_track_length * bar_position,
+			bar_box.GetEdge(BoxArea::Margin, BoxEdge::Top),
 		};
 		bar->SetOffset(offset.Round(), parent);
 	}
