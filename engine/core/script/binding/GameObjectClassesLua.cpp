@@ -683,7 +683,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const float, const float, const float, const float>(&Mesh::setColor),
             luabridge::overload<Vector4>(&Mesh::setColor))
         .addProperty("alpha", &Mesh::getAlpha, &Mesh::setAlpha)
-        // a copy remembering the shader its submesh draws with (LuaBinding::setMaterialDrawnShader)
+        // submesh 0's material, a copy whose shader values follow the shader the submesh draws with
         .addProperty("material", +[](const Mesh* self, lua_State* L) -> luabridge::LuaRef { return meshMaterial(self, 0, L); },
                      (void(Mesh::*)(const Material&))&Mesh::setMaterial)
         .addFunction("setMaterial", 
