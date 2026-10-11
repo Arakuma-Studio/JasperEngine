@@ -236,6 +236,35 @@ TEST_CASE("TransitionsAnyChange.starting_style")
 	CHECK(pop->GetComputedValues().opacity() == doctest::Approx(0.5f));
 }
 
+TEST_CASE("TransitionsAnyChange.starting_style_specificity")
+{
+	// A starting-style rule has its own selector's specificity (CSS adds none): here it loses to the more specific base
+	// rule, so the element starts at opacity 1 and nothing fades; the equally specific one wins by order.
+	Fixture f(R"(
+		.pop { width: 40px; transition: opacity 1s linear; }
+		.pop.a { opacity: 1; }
+		.pop.b { opacity: 1; }
+		@starting-style {
+			.pop { opacity: 0; }
+			.pop.b { opacity: 0.2; }
+		}
+	)");
+	ElementPtr element_a = f.document->CreateElement("div");
+	element_a->SetClass("pop", true);
+	element_a->SetClass("a", true);
+	Element* a = f.parent->AppendChild(std::move(element_a));
+	ElementPtr element_b = f.document->CreateElement("div");
+	element_b->SetClass("pop", true);
+	element_b->SetClass("b", true);
+	Element* b = f.parent->AppendChild(std::move(element_b));
+	f.Update();
+	CHECK(a->GetComputedValues().opacity() == doctest::Approx(1.f));
+	CHECK(b->GetComputedValues().opacity() == doctest::Approx(0.2f));
+	f.clock.AdvanceTo(0.5);
+	CHECK(a->GetComputedValues().opacity() == doctest::Approx(1.f));
+	CHECK(b->GetComputedValues().opacity() == doctest::Approx(0.6f));
+}
+
 TEST_CASE("TransitionsAnyChange.starting_style_when_shown")
 {
 	Fixture f(R"(

@@ -48,7 +48,8 @@ StyleSheetFactory::StyleSheetFactory() :
 		{"default", StructuralSelectorType::Default},
 		{"target", StructuralSelectorType::Target},
 	},
-	pseudo_classes{"hover", "active", "focus", "focus-visible", "focus-within", "checked", "selected", "placeholder-shown", "drag"}
+	pseudo_classes{"hover", "active", "focus", "focus-visible", "focus-within", "checked", "selected", "placeholder-shown", "drag",
+		"-rmlui-starting-style"}
 {}
 
 StyleSheetFactory::~StyleSheetFactory() {}
