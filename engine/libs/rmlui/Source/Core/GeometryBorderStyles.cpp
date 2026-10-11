@@ -874,6 +874,28 @@ namespace {
 		return max_gap;
 	}
 
+	// The length Skia measures for a quarter ellipse of a rounded rectangle (SkContourMeasure, which Chromium's
+	// Path::length uses): the conic of the corner, split at its parameter's midpoint while the midpoint lies more than half
+	// a pixel (in x or y) from the chord's, measured as the sum of its chords. Slightly shorter than the arc.
+	float ConicChordLength(Vector2f p0, Vector2f p1, Vector2f p2, float t0, Vector2f q0, float t1, Vector2f q1, int depth)
+	{
+		const float weight = 0.70710678f;
+		const float t = 0.5f * (t0 + t1);
+		const float a = (1.f - t) * (1.f - t), b = 2.f * t * (1.f - t) * weight, c = t * t;
+		const Vector2f half = (a * p0 + b * p1 + c * p2) / (a + b + c);
+		const Vector2f off = half - 0.5f * (q0 + q1);
+		if (depth < 16 && Math::Max(Math::Absolute(off.x), Math::Absolute(off.y)) > 0.5f)
+			return ConicChordLength(p0, p1, p2, t0, q0, t, half, depth + 1) + ConicChordLength(p0, p1, p2, t, half, t1, q1, depth + 1);
+		return Length(q1 - q0);
+	}
+	float SkiaQuarterEllipseLength(Vector2f radii)
+	{
+		if (radii.x <= 0.f || radii.y <= 0.f)
+			return 0.f;
+		const Vector2f p0(radii.x, 0.f), p1(radii.x, radii.y), p2(0.f, radii.y);
+		return ConicChordLength(p0, p1, p2, 0.f, p0, 1.f, p2, 0);
+	}
+
 	// The dash and gap of a dashed border (Chromium: 3w and 2w below 3px, 2w and w from 3px).
 	void DashPattern(float width, float& dash, float& space)
 	{
@@ -881,31 +903,33 @@ namespace {
 		space = (width < 3.f ? 2.f : 1.f) * width;
 	}
 
-	// The dashes of a stroke of the given length (Chromium's StrokeData::SetupPaintDashPathEffect): begin and length of
-	// each, empty for a solid stroke.
-	void DashesOfStroke(float length, float dash, float space, bool closed_path, Vector<Interval>& dashes)
+	// The dashes of a stroke (Chromium's DashEffectFromStrokeStyle): begin and end of each, empty for a solid stroke.
+	// Chromium chooses them for the length truncated to whole pixels (GeometryInfo's 'int path_length'); Skia then repeats
+	// the pattern along the whole of the path as it measures it ('measured_length'), so that a closed path can end with
+	// a sliver of a dash before its origin.
+	void DashesOfStroke(float measured_length, float dash, float space, bool closed_path, Vector<Interval>& dashes)
 	{
 		dashes.clear();
+		const float length = std::floor(measured_length + 1e-3f);
 		if (length <= 2.f * dash)
 			return;
-		float period = 0.f;
-		int num_dashes = 0;
-		if (length <= 2.f * dash + space && !closed_path)
+		const float two_dashes = 2.f * dash + space + (closed_path ? space : 0.f);
+		float gap = space;
+		if (length <= two_dashes)
 		{
 			// Two dashes, proportionally sized.
-			const float scale = length / (2.f * dash + space);
+			const float scale = length / two_dashes;
 			dash *= scale;
-			space *= scale;
-			num_dashes = 2;
-			period = dash + space;
+			gap *= scale;
 		}
 		else
 		{
-			const float gap = SelectBestDashGap(length, dash, space, closed_path, num_dashes);
-			period = dash + gap;
+			int num_dashes = 0;
+			gap = SelectBestDashGap(length, dash, space, closed_path, num_dashes);
 		}
-		for (int i = 0; i < num_dashes; i++)
-			dashes.push_back({float(i) * period, float(i) * period + dash});
+		const float period = dash + gap;
+		for (float begin = 0.f; begin < measured_length - 1e-3f && period > 0.f; begin += period)
+			dashes.push_back({begin, Math::Min(begin + dash, measured_length)});
 	}
 } // namespace
 
@@ -976,6 +1000,42 @@ void GeometryBorderStyles::DrawBorder(Vector<Vertex>& vertices, Vector<int>& ind
 		perimeter += rails[side].pairs.back().s - rails[side].pairs.front().s;
 	}
 	const float origin = rails[TOP].pairs[rails[TOP].straight_begin].s - rails[TOP].pairs.front().s;
+
+	// Chromium chooses the dashes and dots of the closed path for the length Skia measures of it (its corners measured
+	// as chords), truncated to whole pixels, and lays them out in that measure. The path's eight parts from the origin
+	// (a straight edge, then the corner after it), with their lengths in Skia's measure and in this path's.
+	float skia_parts[8] = {}, rail_parts[8] = {};
+	float skia_perimeter = 0.f;
+	if (rounded)
+	{
+		for (int side = 0; side < 4; side++)
+		{
+			const SideRail& rail = rails[side];
+			const SideRail& next = rails[(side + 1) % 4];
+			const size_t end_begin = rail.straight_begin + 1;
+			rail_parts[2 * side] = rail.pairs[end_begin].s - rail.pairs[rail.straight_begin].s;
+			rail_parts[2 * side + 1] = (rail.pairs.back().s - rail.pairs[end_begin].s) + (next.pairs[next.straight_begin].s - next.pairs.front().s);
+			skia_parts[2 * side] = rail_parts[2 * side];
+			const int corner = (side + 1) % 4;
+			const int vertical_side = (corner == 0 || corner == 3 ? LEFT : RIGHT), horizontal_side = (corner <= 1 ? TOP : BOTTOM);
+			const Vector2f radii = metrics.outer_radii[corner] - 0.5f * Vector2f(edge_sizes[vertical_side], edge_sizes[horizontal_side]);
+			skia_parts[2 * side + 1] = (IsRounded(OuterRadius(metrics, corner)) ? SkiaQuarterEllipseLength(radii) : 0.f);
+		}
+		for (float part : skia_parts)
+			skia_perimeter += part;
+	}
+	// A length along the closed path from its origin in Skia's measure, in this path's.
+	auto from_skia = [&](float at) {
+		float rail_at = 0.f;
+		for (int i = 0; i < 8; i++)
+		{
+			if (at <= skia_parts[i] || i == 7)
+				return rail_at + (skia_parts[i] > 0.f ? Math::Min(at / skia_parts[i], 1.f) * rail_parts[i] : 0.f);
+			at -= skia_parts[i];
+			rail_at += rail_parts[i];
+		}
+		return rail_at;
+	};
 
 	// The part of [begin, end] (lengths along the closed centre path from its origin) on a side, in the side's lengths.
 	auto add_path_interval = [&](Vector<Interval>& out, int side, float begin, float end, Interval gap) {
@@ -1062,11 +1122,11 @@ void GeometryBorderStyles::DrawBorder(Vector<Vertex>& vertices, Vector<int>& ind
 			intervals.clear();
 			if (rounded)
 			{
-				DashesOfStroke(perimeter, dash, space, true, dashes);
+				DashesOfStroke(skia_perimeter, dash, space, true, dashes);
 				if (dashes.empty())
 					add_path_interval(intervals, side, 0.f, perimeter, gap);
 				for (const Interval& interval : dashes)
-					add_path_interval(intervals, side, interval.begin, interval.end, gap);
+					add_path_interval(intervals, side, from_skia(interval.begin), from_skia(interval.end), gap);
 			}
 			else
 			{
@@ -1097,14 +1157,15 @@ void GeometryBorderStyles::DrawBorder(Vector<Vertex>& vertices, Vector<int>& ind
 		{
 			if (rounded)
 			{
-				// Round dots one width apart or a little more, the first at the path's origin.
+				// Chromium's dash of length zero with round caps, repeated every gap + width - 0.01 (its epsilon) along the
+				// path as Skia measures it.
 				int num_dots = 0;
-				const float gap_length = SelectBestDashGap(perimeter, width, width, true, num_dots);
-				const float period = gap_length + width;
+				const float gap_length = SelectBestDashGap(std::floor(skia_perimeter + 1e-3f), width, width, true, num_dots);
+				const float period = gap_length + width - 0.01f;
 				const float side_length = rail.pairs.back().s - rail.pairs.front().s;
-				for (int i = 0; i < num_dots; i++)
+				for (int i = 0; float(i) * period < skia_perimeter - 1e-3f; i++)
 				{
-					float local = std::fmod(origin + float(i) * period - side_start[side], perimeter);
+					float local = std::fmod(origin + from_skia(float(i) * period) - side_start[side], perimeter);
 					if (local < 0.f)
 						local += perimeter;
 					if (local >= side_length)
