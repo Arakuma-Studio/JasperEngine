@@ -86,6 +86,22 @@ TEST_CASE("LineBreaking.pair_rules")
 	CHECK_FALSE(opportunity('(', 0x4E2D));
 }
 
+// ElementText's tokenizer asks for the pair rules between two ASCII characters only after a hyphen.
+TEST_CASE("LineBreaking.ascii_pairs_break_after_a_hyphen_only")
+{
+	for (Style::WordBreak word_break : {Style::WordBreak::Normal, Style::WordBreak::BreakAll, Style::WordBreak::KeepAll, Style::WordBreak::BreakWord})
+	{
+		for (char32_t a = 0; a < 0x80; a++)
+		{
+			for (char32_t b = 1; b < 0x80; b++)
+			{
+				if (a != '-' && TextUnicode::IsLineBreakOpportunity(Character(a), Character(b), word_break))
+					FAIL("a line-break opportunity between ASCII characters ", int(a), " and ", int(b), " not after a hyphen");
+			}
+		}
+	}
+}
+
 TEST_CASE("LineBreaking.zero_width_space")
 {
 	FixedAdvanceFontScope scope;
