@@ -1387,4 +1387,18 @@ const Property* ElementAnimation::GetStartValue() const
 	return &tracks[0].GetKeys().front().property;
 }
 
+// The decorator functions of background and mask layers interpolate as the 'decorator' property does (phase 3, p3-paint:
+// BackgroundLayerValues.cpp).
+bool InterpolateDecoratorLists(const DecoratorsPtr& from, const DecoratorsPtr& to, float alpha, Element& element, DecoratorsPtr& result)
+{
+	const Property p0{from ? from : MakeShared<DecoratorDeclarationList>(), Unit::DECORATOR};
+	const Property p1{to ? to : MakeShared<DecoratorDeclarationList>(), Unit::DECORATOR};
+	const Property interpolated = InterpolateProperties(p0, p1, alpha, element, nullptr);
+	if (interpolated.unit != Unit::DECORATOR)
+		return false;
+	result = interpolated.value.Get<DecoratorsPtr>();
+	// (A discrete step returns one of the ends: not an interpolation.)
+	return result && result != p0.value.GetReference<DecoratorsPtr>() && result != p1.value.GetReference<DecoratorsPtr>();
+}
+
 } // namespace Rml

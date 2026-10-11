@@ -11,6 +11,15 @@
 
 using namespace Rml;
 
+// A colour stop with a fixed colour (currentcolor and its color-mix() at their defaults).
+static ColorStop MakeColorStop(ColourbPremultiplied color, NumericValue position)
+{
+	ColorStop stop;
+	stop.color = color;
+	stop.position = position;
+	return stop;
+}
+
 TEST_CASE("Properties")
 {
 	const Vector2i window_size(1024, 768);
@@ -128,16 +137,16 @@ TEST_CASE("Properties")
 				"red, blue",
 				"#ff0000, #0000ff",
 				{
-					ColorStop{ColourbPremultiplied(255, 0, 0), NumericValue{}},
-					ColorStop{ColourbPremultiplied(0, 0, 255), NumericValue{}},
+					MakeColorStop(ColourbPremultiplied(255, 0, 0), NumericValue{}),
+					MakeColorStop(ColourbPremultiplied(0, 0, 255), NumericValue{}),
 				},
 			},
 			{
 				"red 5px, blue 50%",
 				"#ff0000 5px, #0000ff 50%",
 				{
-					ColorStop{ColourbPremultiplied(255, 0, 0), NumericValue{5.f, Unit::PX}},
-					ColorStop{ColourbPremultiplied(0, 0, 255), NumericValue{50.f, Unit::PERCENT}},
+					MakeColorStop(ColourbPremultiplied(255, 0, 0), NumericValue{5.f, Unit::PX}),
+					MakeColorStop(ColourbPremultiplied(0, 0, 255), NumericValue{50.f, Unit::PERCENT}),
 				},
 			},
 			{
@@ -145,9 +154,9 @@ TEST_CASE("Properties")
 				"red, #00f 50%, rgba(0, 255,0, 150) 10dp",
 				"#ff0000, #0000ff 50%, #00ff00 10dp",
 				{
-					ColorStop{ColourbPremultiplied(255, 0, 0), NumericValue{}},
-					ColorStop{ColourbPremultiplied(0, 0, 255), NumericValue{50.f, Unit::PERCENT}},
-					ColorStop{ColourbPremultiplied(0, 255, 0, 255), NumericValue{10.f, Unit::DP}},
+					MakeColorStop(ColourbPremultiplied(255, 0, 0), NumericValue{}),
+					MakeColorStop(ColourbPremultiplied(0, 0, 255), NumericValue{50.f, Unit::PERCENT}),
+					MakeColorStop(ColourbPremultiplied(0, 255, 0, 255), NumericValue{10.f, Unit::DP}),
 				},
 			},
 			{
@@ -155,9 +164,9 @@ TEST_CASE("Properties")
 				// Channels are rounded (phase 3, values; 6.3 truncated).
 				"#808080, #0000ff 50%, #00ff0080 10dp",
 				{
-					ColorStop{ColourbPremultiplied(128, 128, 128), NumericValue{}},
-					ColorStop{ColourbPremultiplied(0, 0, 255), NumericValue{50.f, Unit::PERCENT}},
-					ColorStop{ColourbPremultiplied(0, 128, 0, 128), NumericValue{10.f, Unit::DP}},
+					MakeColorStop(ColourbPremultiplied(128, 128, 128), NumericValue{}),
+					MakeColorStop(ColourbPremultiplied(0, 0, 255), NumericValue{50.f, Unit::PERCENT}),
+					MakeColorStop(ColourbPremultiplied(0, 128, 0, 128), NumericValue{10.f, Unit::DP}),
 				},
 			},
 			{
@@ -165,45 +174,45 @@ TEST_CASE("Properties")
 				// CSS Color 4 Lab (D50, phase 3, values; 6.3 converted with a D65 white), as Chromium.
 				"#848484, #5800fd 50%, #00ff1780 10dp",
 				{
-					ColorStop{ColourbPremultiplied(132, 132, 132), NumericValue{}},
-					ColorStop{ColourbPremultiplied(88, 0, 253), NumericValue{50.f, Unit::PERCENT}},
-					ColorStop{ColourbPremultiplied(0, 128, 12, 128), NumericValue{10.f, Unit::DP}},
+					MakeColorStop(ColourbPremultiplied(132, 132, 132), NumericValue{}),
+					MakeColorStop(ColourbPremultiplied(88, 0, 253), NumericValue{50.f, Unit::PERCENT}),
+					MakeColorStop(ColourbPremultiplied(0, 128, 12, 128), NumericValue{10.f, Unit::DP}),
 				},
 			},
 			{
 				"lch(55% none 300.0), lch(30% 85% 180.0) 50%, lch(90% 90 100.0 / 50%) 10dp",
 				"#848484, #006144 50%, #e5e70080 10dp",
 				{
-					ColorStop{ColourbPremultiplied(132, 132, 132), NumericValue{}},
-					ColorStop{ColourbPremultiplied(0, 97, 68), NumericValue{50.f, Unit::PERCENT}},
-					ColorStop{ColourbPremultiplied(115, 116, 0, 128), NumericValue{10.f, Unit::DP}},
+					MakeColorStop(ColourbPremultiplied(132, 132, 132), NumericValue{}),
+					MakeColorStop(ColourbPremultiplied(0, 97, 68), NumericValue{50.f, Unit::PERCENT}),
+					MakeColorStop(ColourbPremultiplied(115, 116, 0, 128), NumericValue{10.f, Unit::DP}),
 				},
 			},
 			{
 				"oklab(85% -50% 70%), oklab(0.2 0.4 -0.4) 50%, oklab(100% none 0.4 / 0.25) 10dp",
 				"#98ed00, #6700c1 50%, #ffdf0040 10dp",
 				{
-					ColorStop{ColourbPremultiplied(152, 237, 0), NumericValue{}},
-					ColorStop{ColourbPremultiplied(103, 0, 193), NumericValue{50.f, Unit::PERCENT}},
-					ColorStop{ColourbPremultiplied(64, 56, 0, 64), NumericValue{10.f, Unit::DP}},
+					MakeColorStop(ColourbPremultiplied(152, 237, 0), NumericValue{}),
+					MakeColorStop(ColourbPremultiplied(103, 0, 193), NumericValue{50.f, Unit::PERCENT}),
+					MakeColorStop(ColourbPremultiplied(64, 56, 0, 64), NumericValue{10.f, Unit::DP}),
 				},
 			},
 			{
 				"oklch(75% 100% 30.0), oklch(0.5 0.2 270) 50%, oklch(1.0 0.1 none / 0.5) 10dp",
 				"#ff0000, #3b51d3 50%, #ffe1fb80 10dp",
 				{
-					ColorStop{ColourbPremultiplied(255, 0, 0), NumericValue{}},
-					ColorStop{ColourbPremultiplied(59, 81, 211), NumericValue{50.f, Unit::PERCENT}},
-					ColorStop{ColourbPremultiplied(128, 113, 126, 128), NumericValue{10.f, Unit::DP}},
+					MakeColorStop(ColourbPremultiplied(255, 0, 0), NumericValue{}),
+					MakeColorStop(ColourbPremultiplied(59, 81, 211), NumericValue{50.f, Unit::PERCENT}),
+					MakeColorStop(ColourbPremultiplied(128, 113, 126, 128), NumericValue{10.f, Unit::DP}),
 				},
 			},
 			{
 				"red 50px 20%, blue 10in",
 				"#ff0000 50px, #ff0000 20%, #0000ff 10in",
 				{
-					ColorStop{ColourbPremultiplied(255, 0, 0), NumericValue{50.f, Unit::PX}},
-					ColorStop{ColourbPremultiplied(255, 0, 0), NumericValue{20.f, Unit::PERCENT}},
-					ColorStop{ColourbPremultiplied(0, 0, 255), NumericValue{10.f, Unit::INCH}},
+					MakeColorStop(ColourbPremultiplied(255, 0, 0), NumericValue{50.f, Unit::PX}),
+					MakeColorStop(ColourbPremultiplied(255, 0, 0), NumericValue{20.f, Unit::PERCENT}),
+					MakeColorStop(ColourbPremultiplied(0, 0, 255), NumericValue{10.f, Unit::INCH}),
 				},
 			},
 		};

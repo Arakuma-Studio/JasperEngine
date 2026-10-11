@@ -2165,7 +2165,9 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	for (int i = 0; i < 8; i++)
 		border_radius_changed |= changed_properties.Contains(PropertyId(int(PropertyId::RmlUi_BorderTopLeftRadiusX) + i));
 	const bool filter_or_mask_changed = (changed_properties.Contains(PropertyId::Filter) || changed_properties.Contains(PropertyId::BackdropFilter) ||
-		changed_properties.Contains(PropertyId::MaskImage));
+		changed_properties.Contains(PropertyId::MaskImage) || changed_properties.Contains(PropertyId::MaskSize) ||
+		changed_properties.Contains(PropertyId::MaskPositionX) || changed_properties.Contains(PropertyId::MaskPositionY) ||
+		changed_properties.Contains(PropertyId::MaskRepeat));
 	const bool perspective_changed = changed_properties.Contains(PropertyId::Perspective) ||
 		changed_properties.Contains(PropertyId::PerspectiveOriginX) || changed_properties.Contains(PropertyId::PerspectiveOriginY);
 	const bool transform_changed = changed_properties.Contains(PropertyId::Transform) || changed_properties.Contains(PropertyId::TransformOriginX) ||
@@ -2187,8 +2189,15 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 			GetChild(i)->UpdateLocalStackingContext();
 	}
 
-	// Dirty the background if it's changed.
-	if (border_radius_changed ||                                    //
+	// Dirty the background if it's changed (with the background layers, phase 3 p3-paint).
+	bool background_layers_changed = false;
+	for (PropertyId id : {PropertyId::BackgroundImage, PropertyId::BackgroundPositionX, PropertyId::BackgroundPositionY, PropertyId::BackgroundSize,
+			 PropertyId::BackgroundRepeat, PropertyId::BackgroundOrigin, PropertyId::BackgroundClip, PropertyId::BackgroundAttachment})
+		background_layers_changed |= changed_properties.Contains(id);
+	// (A colour change only where gradient layers may take 'currentcolor'.)
+	if (changed_properties.Contains(PropertyId::Color) && meta->computed_values.has_background_image())
+		background_layers_changed = true;
+	if (border_radius_changed || background_layers_changed ||       //
 		changed_properties.Contains(PropertyId::BackgroundColor) || //
 		changed_properties.Contains(PropertyId::Opacity) ||         //
 		changed_properties.Contains(PropertyId::ImageColor) ||      //

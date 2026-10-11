@@ -7,6 +7,7 @@
 #include "../../Include/RmlUi/Core/Filter.h"
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/StyleSheet.h"
+#include "ElementBackgroundLayers.h"
 #include "ElementStyle.h"
 
 namespace Rml {
@@ -38,13 +39,13 @@ void ElementEffects::InstanceEffects()
 
 	const ComputedValues& computed = element->GetComputedValues();
 
-	if (computed.has_decorator() || computed.has_mask_image())
+	if (computed.has_decorator())
 	{
 		const StyleSheet* style_sheet = element->GetStyleSheet();
 		if (!style_sheet)
 			return;
 
-		for (const auto id : {PropertyId::Decorator, PropertyId::MaskImage})
+		for (const auto id : {PropertyId::Decorator})
 		{
 			const Property* property = element->GetStyle()->GetLocalPropertyWithResolvedVariables(id);
 			if (!property || property->unit != Unit::DECORATOR)
@@ -69,7 +70,7 @@ void ElementEffects::InstanceEffects()
 			const DecoratorPtrList& decorator_list = style_sheet->InstanceDecorators(*render_manager, *decorators_ptr, source);
 			RMLUI_ASSERT(decorator_list.empty() || decorator_list.size() == decorators_ptr->list.size());
 
-			DecoratorEntryList& decorators_target = (id == PropertyId::Decorator ? decorators : mask_images);
+			DecoratorEntryList& decorators_target = decorators;
 			decorators_target.reserve(decorators_ptr->list.size());
 
 			for (size_t i = 0; i < decorator_list.size() && i < decorators_ptr->list.size(); i++)
@@ -82,7 +83,7 @@ void ElementEffects::InstanceEffects()
 					entry.decorator = decorator;
 					entry.paint_area = decorators_ptr->list[i].paint_area;
 					if (entry.paint_area == BoxArea::Auto)
-						entry.paint_area = (id == PropertyId::Decorator ? BoxArea::Padding : BoxArea::Border);
+						entry.paint_area = BoxArea::Padding;
 
 					RMLUI_ASSERT(entry.paint_area >= BoxArea::Border && entry.paint_area <= BoxArea::Content);
 					decorators_target.push_back(std::move(entry));
@@ -131,7 +132,7 @@ void ElementEffects::ReloadEffectsData()
 		effects_data_dirty = false;
 
 		bool decorator_data_failed = false;
-		for (DecoratorEntryList* list : {&decorators, &mask_images})
+		for (DecoratorEntryList* list : {&decorators})
 		{
 			for (DecoratorEntry& decorator : *list)
 			{
@@ -168,7 +169,7 @@ void ElementEffects::ReloadEffectsData()
 
 void ElementEffects::ReleaseEffects()
 {
-	for (DecoratorEntryList* list : {&decorators, &mask_images})
+	for (DecoratorEntryList* list : {&decorators})
 	{
 		for (DecoratorEntry& decorator : *list)
 		{
@@ -229,7 +230,9 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 	{
 		group_opacity.Release();
 	}
-	const bool layer = (!filters.empty() || !mask_images.empty() || (group && group_opacity));
+	// Masks: mask-image layers (ElementBackgroundLayers, phase 3 p3-paint).
+	const bool has_mask = element->GetComputedValues().has_mask_image();
+	const bool layer = (!filters.empty() || has_mask || (group && group_opacity));
 
 	if (!decorators.empty())
 	{
@@ -341,21 +344,18 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 
 			CompiledFilter mask_image_filter;
 			FilterHandleList filter_handles;
-			filter_handles.reserve(filters.size() + (mask_images.empty() ? 0 : 1) + 1);
+			filter_handles.reserve(filters.size() + (has_mask ? 1 : 0) + 1);
 
 			for (auto& filter : filters)
 				filter.compiled.AddHandleTo(filter_handles);
 
-			if (!mask_images.empty())
+			if (has_mask)
 			{
 				render_manager->PushLayer();
 
-				for (int i = (int)mask_images.size() - 1; i >= 0; i--)
-				{
-					DecoratorEntry& mask_image = mask_images[i];
-					if (mask_image.decorator_data)
-						mask_image.decorator->RenderElement(element, mask_image.decorator_data);
-				}
+				if (!mask_layers)
+					mask_layers = MakeUnique<ElementBackgroundLayers>(ElementBackgroundLayers::Kind::Mask);
+				mask_layers->Render(element);
 				mask_image_filter = render_manager->SaveLayerAsMaskImage();
 				mask_image_filter.AddHandleTo(filter_handles);
 				render_manager->PopLayer();
@@ -375,11 +375,15 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 void ElementEffects::DirtyEffects()
 {
 	effects_dirty = true;
+	if (mask_layers)
+		mask_layers->Dirty();
 }
 
 void ElementEffects::DirtyEffectsData()
 {
 	effects_data_dirty = true;
+	if (mask_layers)
+		mask_layers->Dirty();
 }
 
 } // namespace Rml

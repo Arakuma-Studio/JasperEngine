@@ -20,6 +20,7 @@
 #include "ControlledLifetimeResource.h"
 #include "ElementDefinition.h"
 #include "ElementTransitions.h"
+#include "BackgroundLayerValues.h"
 #include "PaintProperties.h"
 #include "PropertiesIterator.h"
 #include "PropertyParserAnimation.h"
@@ -32,6 +33,15 @@
 #include <optional>
 
 namespace Rml {
+
+// A background-image or mask-image list with an image (phase 3, p3-paint).
+static bool HasImageLayers(const Property& property)
+{
+	if (property.unit != Unit::STYLE_VALUE)
+		return false;
+	const ImageLayerList* list = rmlui_dynamic_cast<const ImageLayerList*>(property.value.GetReference<StyleValuePtr>().get());
+	return list && list->HasImages();
+}
 
 struct ElementStyleData {
 	const PropertyDictionary empty_property_dictionary;
@@ -1533,7 +1543,7 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		values.has_decorator(p->unit == Unit::DECORATOR && p->value.GetType() == Variant::DECORATORSPTR && p->value.GetReference<DecoratorsPtr>());
 		break;
 	case PropertyId::MaskImage:
-		values.has_mask_image(p->unit == Unit::DECORATOR && p->value.GetType() == Variant::DECORATORSPTR && p->value.GetReference<DecoratorsPtr>());
+		values.has_mask_image(HasImageLayers(*p));
 		break;
 	case PropertyId::FontEffect:
 		values.has_font_effect(p->unit == Unit::FONTEFFECT && p->value.GetType() == Variant::FONTEFFECTSPTR && p->value.GetReference<FontEffectsPtr>());
@@ -1656,6 +1666,8 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		values.isolation((Isolation)p->Get<int>());
 		break;
 	case PropertyId::BackgroundImage:
+		values.has_background_image(HasImageLayers(*p));
+		break;
 	case PropertyId::BackgroundPositionX:
 	case PropertyId::BackgroundPositionY:
 	case PropertyId::BackgroundSize:

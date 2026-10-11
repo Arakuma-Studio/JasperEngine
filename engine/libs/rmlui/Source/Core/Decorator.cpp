@@ -58,6 +58,11 @@ const Sprite* DecoratorInstancerInterface::GetSprite(const String& name) const
 	return style_sheet.GetSprite(name);
 }
 
+CompiledShader Decorator::CompileImageShader(Element* /*element*/, Vector2f /*size*/) const
+{
+	return CompiledShader();
+}
+
 Texture DecoratorInstancerInterface::GetTexture(const String& filename) const
 {
 	if (!property_source)

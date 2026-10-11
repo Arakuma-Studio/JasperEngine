@@ -3,6 +3,7 @@
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
 #include "GridStyleValues.h"
 #include "IdNameMap.h"
+#include "BackgroundLayerValues.h"
 #include "PaintProperties.h"
 #include "PropertyParserAlignment.h"
 #include "PropertyParserAspectRatio.h"
@@ -307,6 +308,7 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 
 	// -- Paint (p3-paint) --
 	RegisterParser("line_width", GetLineWidthParser());
+	RegisterBackgroundLayerParsers();
 
 	// -- Text (p3-text) --
 	static PropertyParserTextDecorationLine text_decoration_line;
@@ -409,7 +411,6 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 
 	// Need some work on this if we are to include images.
 	RegisterProperty(PropertyId::BackgroundColor, "background-color", "transparent", false, false).AddParser("color");
-	RegisterShorthand(ShorthandId::Background, "background", "background-color", ShorthandType::FallThrough);
 
 	RegisterProperty(PropertyId::Color, "color", "black", true, false).AddParser("color");
 
@@ -472,7 +473,6 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 
 	// Decorators and effects
 	RegisterProperty(PropertyId::Decorator, "decorator", "", false, false).AddParser("decorator");
-	RegisterProperty(PropertyId::MaskImage, "mask-image", "", false, false).AddParser("decorator");
 	RegisterProperty(PropertyId::FontEffect, "font-effect", "", true, false).AddParser("font_effect");
 
 	RegisterProperty(PropertyId::Filter, "filter", "", false, false).AddParser("filter", "filter");
@@ -569,6 +569,34 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::ObjectPositionY, "object-position-y", "50%", false, false).AddParser("length_percent");
 	RegisterShorthand(ShorthandId::ObjectPosition, "object-position", "object-position-x, object-position-y", ShorthandType::Custom);
 	properties.SetShorthandParser(ShorthandId::ObjectPosition, &ParsePositionShorthand);
+
+	// Background and mask layers (phase 3, 3.9): comma lists, one item per layer (BackgroundLayerValues.h); url(),
+	// gradients and every registered decorator function are images. 'background' takes the colour in its last layer.
+	RegisterProperty(PropertyId::BackgroundImage, "background-image", "none", false, false).AddParser("image_layers");
+	RegisterProperty(PropertyId::BackgroundPositionX, "background-position-x", "0%", false, false).AddParser("layer_position_x");
+	RegisterProperty(PropertyId::BackgroundPositionY, "background-position-y", "0%", false, false).AddParser("layer_position_y");
+	RegisterShorthand(ShorthandId::BackgroundPosition, "background-position", "background-position-x, background-position-y", ShorthandType::Custom);
+	properties.SetShorthandParser(ShorthandId::BackgroundPosition, &ParseLayerPositionShorthand);
+	RegisterProperty(PropertyId::BackgroundSize, "background-size", "auto", false, false).AddParser("layer_size");
+	RegisterProperty(PropertyId::BackgroundRepeat, "background-repeat", "repeat", false, false).AddParser("layer_repeat");
+	RegisterProperty(PropertyId::BackgroundOrigin, "background-origin", "padding-box", false, false).AddParser("layer_box");
+	RegisterProperty(PropertyId::BackgroundClip, "background-clip", "border-box", false, false).AddParser("layer_box");
+	RegisterProperty(PropertyId::BackgroundAttachment, "background-attachment", "scroll", false, false).AddParser("layer_attachment");
+	RegisterShorthand(ShorthandId::Background, "background",
+		"background-color, background-image, background-position-x, background-position-y, background-size, background-repeat, "
+		"background-origin, background-clip, background-attachment",
+		ShorthandType::Custom);
+	properties.SetShorthandParser(ShorthandId::Background, &ParseBackgroundShorthand);
+	// (RCSS decorator syntax in mask-image keeps working: decorator functions are images.)
+	RegisterProperty(PropertyId::MaskImage, "mask-image", "none", false, false).AddParser("image_layers");
+	RegisterProperty(PropertyId::MaskPositionX, "mask-position-x", "0%", false, false).AddParser("layer_position_x");
+	RegisterProperty(PropertyId::MaskPositionY, "mask-position-y", "0%", false, false).AddParser("layer_position_y");
+	RegisterShorthand(ShorthandId::MaskPosition, "mask-position", "mask-position-x, mask-position-y", ShorthandType::Custom);
+	properties.SetShorthandParser(ShorthandId::MaskPosition, &ParseLayerPositionShorthand);
+	RegisterProperty(PropertyId::MaskSize, "mask-size", "auto", false, false).AddParser("layer_size");
+	RegisterProperty(PropertyId::MaskRepeat, "mask-repeat", "repeat", false, false).AddParser("layer_repeat");
+	RegisterShorthand(ShorthandId::Mask, "mask", "mask-image, mask-position-x, mask-position-y, mask-size, mask-repeat", ShorthandType::Custom);
+	properties.SetShorthandParser(ShorthandId::Mask, &ParseMaskShorthand);
 
 	// Stacking contexts (phase 3, 3.8.2).
 	RegisterProperty(PropertyId::Isolation, "isolation", "auto", false, false).AddParser("keyword", "auto, isolate");

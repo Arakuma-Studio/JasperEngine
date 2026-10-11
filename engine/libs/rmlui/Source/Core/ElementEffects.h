@@ -6,6 +6,7 @@
 namespace Rml {
 
 class Decorator;
+class ElementBackgroundLayers;
 class Element;
 class Filter;
 
@@ -52,7 +53,7 @@ private:
 
 	// The list of decorators and filters used by this element.
 	DecoratorEntryList decorators;
-	DecoratorEntryList mask_images;
+	UniquePtr<ElementBackgroundLayers> mask_layers; // mask-image layers
 	FilterEntryList filters;
 	FilterEntryList backdrop_filters;
 

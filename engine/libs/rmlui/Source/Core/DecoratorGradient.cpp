@@ -274,16 +274,12 @@ bool DecoratorLinearGradient::Initialise(bool in_repeating, Corner in_corner, fl
 	return !color_stops.empty();
 }
 
-DecoratorDataHandle DecoratorLinearGradient::GenerateElementData(Element* element, BoxArea paint_area) const
+CompiledShader DecoratorLinearGradient::CompileImageShader(Element* element, Vector2f dimensions) const
 {
 	RenderManager* render_manager = element->GetRenderManager();
-	if (!render_manager)
-		return INVALID_DECORATORDATAHANDLE;
-
-	RMLUI_ASSERT(!color_stops.empty());
-
-	const RenderBox render_box = element->GetRenderBox(paint_area);
-	LinearGradientShape gradient_shape = CalculateShape(render_box.GetFillSize());
+	if (!render_manager || color_stops.empty())
+		return CompiledShader();
+	LinearGradientShape gradient_shape = CalculateShape(dimensions);
 
 	// One-pixel minimum color stop spacing to avoid aliasing.
 	const float soft_spacing = 1.f / gradient_shape.length;
@@ -298,6 +294,19 @@ DecoratorDataHandle DecoratorLinearGradient::GenerateElementData(Element* elemen
 			{"repeating", Variant(repeating)},
 			{"color_stop_list", Variant(std::move(resolved_stops))},
 		});
+	return shader;
+}
+
+DecoratorDataHandle DecoratorLinearGradient::GenerateElementData(Element* element, BoxArea paint_area) const
+{
+	RenderManager* render_manager = element->GetRenderManager();
+	if (!render_manager)
+		return INVALID_DECORATORDATAHANDLE;
+
+	RMLUI_ASSERT(!color_stops.empty());
+
+	const RenderBox render_box = element->GetRenderBox(paint_area);
+	CompiledShader shader = CompileImageShader(element, render_box.GetFillSize());
 	if (!shader)
 		return INVALID_DECORATORDATAHANDLE;
 
@@ -462,16 +471,11 @@ bool DecoratorRadialGradient::Initialise(bool in_repeating, Shape in_shape, Size
 	return !color_stops.empty();
 }
 
-DecoratorDataHandle DecoratorRadialGradient::GenerateElementData(Element* element, BoxArea paint_area) const
+CompiledShader DecoratorRadialGradient::CompileImageShader(Element* element, Vector2f dimensions) const
 {
 	RenderManager* render_manager = element->GetRenderManager();
-	if (!render_manager)
-		return INVALID_DECORATORDATAHANDLE;
-
-	RMLUI_ASSERT(!color_stops.empty() && (shape == Shape::Circle || shape == Shape::Ellipse));
-
-	const RenderBox render_box = element->GetRenderBox(paint_area);
-	const Vector2f dimensions = render_box.GetFillSize();
+	if (!render_manager || color_stops.empty())
+		return CompiledShader();
 
 	RadialGradientShape gradient_shape = CalculateRadialGradientShape(element, dimensions);
 
@@ -487,6 +491,19 @@ DecoratorDataHandle DecoratorRadialGradient::GenerateElementData(Element* elemen
 			{"repeating", Variant(repeating)},
 			{"color_stop_list", Variant(std::move(resolved_stops))},
 		});
+	return shader;
+}
+
+DecoratorDataHandle DecoratorRadialGradient::GenerateElementData(Element* element, BoxArea paint_area) const
+{
+	RenderManager* render_manager = element->GetRenderManager();
+	if (!render_manager)
+		return INVALID_DECORATORDATAHANDLE;
+
+	RMLUI_ASSERT(!color_stops.empty() && (shape == Shape::Circle || shape == Shape::Ellipse));
+
+	const RenderBox render_box = element->GetRenderBox(paint_area);
+	CompiledShader shader = CompileImageShader(element, render_box.GetFillSize());
 	if (!shader)
 		return INVALID_DECORATORDATAHANDLE;
 
@@ -778,16 +795,11 @@ bool DecoratorConicGradient::Initialise(bool in_repeating, float in_angle, Vecto
 	return !color_stops.empty();
 }
 
-DecoratorDataHandle DecoratorConicGradient::GenerateElementData(Element* element, BoxArea paint_area) const
+CompiledShader DecoratorConicGradient::CompileImageShader(Element* element, Vector2f dimensions) const
 {
 	RenderManager* render_manager = element->GetRenderManager();
-	if (!render_manager)
-		return INVALID_DECORATORDATAHANDLE;
-
-	RMLUI_ASSERT(!color_stops.empty());
-
-	const RenderBox render_box = element->GetRenderBox(paint_area);
-	const Vector2f dimensions = render_box.GetFillSize();
+	if (!render_manager || color_stops.empty())
+		return CompiledShader();
 
 	Vector2f center;
 #ifdef RMLUI_MATH_EXPRESSIONS
@@ -819,6 +831,19 @@ DecoratorDataHandle DecoratorConicGradient::GenerateElementData(Element* element
 			{"repeating", Variant(repeating)},
 			{"color_stop_list", Variant(std::move(resolved_stops))},
 		});
+	return shader;
+}
+
+DecoratorDataHandle DecoratorConicGradient::GenerateElementData(Element* element, BoxArea paint_area) const
+{
+	RenderManager* render_manager = element->GetRenderManager();
+	if (!render_manager)
+		return INVALID_DECORATORDATAHANDLE;
+
+	RMLUI_ASSERT(!color_stops.empty());
+
+	const RenderBox render_box = element->GetRenderBox(paint_area);
+	CompiledShader shader = CompileImageShader(element, render_box.GetFillSize());
 	if (!shader)
 		return INVALID_DECORATORDATAHANDLE;
 

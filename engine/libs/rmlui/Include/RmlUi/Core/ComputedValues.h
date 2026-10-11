@@ -241,6 +241,7 @@ namespace Style {
 		// (Element::GetDrawOpacity, ElementEffects).
 		float opacity = 1.f;
 		Isolation isolation = Isolation::Auto;
+		bool has_background_image = false; // a background layer with an image (ElementBackgroundLayers)
 
 		// object-fit and object-position (replaced elements: ComputeObjectFitRect in ObjectFit.h).
 		ObjectFit object_fit = ObjectFit::Fill;
@@ -402,6 +403,7 @@ namespace Style {
 		bool              has_border_radius()          const { for (const LengthPercentage& value : rare.border_radius_values) { if (value.type != LengthPercentage::Length || value.value != 0.f) return true; } return false; }
 		float             opacity()                    const { return rare.opacity; }
 		Isolation         isolation()                  const { return rare.isolation; }
+		bool              has_background_image()       const { return rare.has_background_image; }
 		ObjectFit         object_fit()                 const { return rare.object_fit; }
 		LengthPercentage  object_position_x()          const { return rare.object_position_x; }
 		LengthPercentage  object_position_y()          const { return rare.object_position_y; }
@@ -536,6 +538,7 @@ namespace Style {
 		// Paint (p3-paint)
 		void opacity                   (float value)                { rare.opacity = value; }
 		void isolation                 (Isolation value)            { rare.isolation = value; }
+		void has_background_image      (bool value)                 { rare.has_background_image = value; }
 		void object_fit                (ObjectFit value)            { rare.object_fit = value; }
 		void object_position_x         (LengthPercentage value)     { rare.object_position_x = std::move(value); }
 		void object_position_y         (LengthPercentage value)     { rare.object_position_y = std::move(value); }

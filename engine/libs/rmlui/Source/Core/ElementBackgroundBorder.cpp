@@ -4,10 +4,12 @@
 #include "../../Include/RmlUi/Core/Context.h"
 #include "../../Include/RmlUi/Core/DecorationTypes.h"
 #include "../../Include/RmlUi/Core/Element.h"
+#include "../../Include/RmlUi/Core/ElementDocument.h"
 #include "../../Include/RmlUi/Core/MeshUtilities.h"
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
 #include "BoxShadowCache.h"
+#include "ElementBackgroundLayers.h"
 #include "GeometryBackgroundBorder.h"
 #include "GeometryBorderStyles.h"
 #include "GeometryBoxShadow.h"
@@ -17,6 +19,79 @@
 namespace Rml {
 
 ElementBackgroundBorder::ElementBackgroundBorder() {}
+
+ElementBackgroundBorder::~ElementBackgroundBorder() {}
+
+// The canvas background (CSS Backgrounds 3, 2.11.2): the document's background, or when it has none the background of its
+// first child named as the document's body.
+static bool HasOwnBackground(Element* element)
+{
+	const ComputedValues& computed = element->GetComputedValues();
+	return computed.background_color().alpha > 0 || computed.has_background_image();
+}
+
+static Element* GetCanvasSource(ElementDocument* document)
+{
+	if (!document || !document->HasCanvasBackground())
+		return nullptr;
+	if (HasOwnBackground(document))
+		return document;
+	const String& body_tag = document->GetCanvasBodyTag();
+	if (body_tag.empty())
+		return nullptr;
+	for (int i = 0; i < document->GetNumChildren(); i++)
+	{
+		Element* child = document->GetChild(i);
+		if (child->GetTagName() == body_tag)
+			return HasOwnBackground(child) ? child : nullptr;
+	}
+	return nullptr;
+}
+
+void ElementBackgroundBorder::RenderCanvas(Element* document_element)
+{
+	ElementDocument* document = rmlui_dynamic_cast<ElementDocument*>(document_element);
+	Element* source = GetCanvasSource(document);
+	Context* context = document_element->GetContext();
+	RenderManager* render_manager = document_element->GetRenderManager();
+	if (!source || !context || !render_manager)
+		return;
+
+	const Vector2f canvas_size(context->GetDimensions());
+	const ComputedValues& computed = source->GetComputedValues();
+
+	// Generated again when the source, its background or the canvas changes.
+	String signature = CreateString("%p %g %g ", (void*)source, canvas_size.x, canvas_size.y);
+	{
+		const Colourb c = computed.background_color();
+		signature += CreateString("%d,%d,%d,%d %g ", c.red, c.green, c.blue, c.alpha, source->GetDrawOpacity());
+	}
+	for (PropertyId id : {PropertyId::BackgroundImage, PropertyId::BackgroundPositionX, PropertyId::BackgroundPositionY, PropertyId::BackgroundSize,
+			 PropertyId::BackgroundRepeat, PropertyId::BackgroundOrigin, PropertyId::BackgroundClip, PropertyId::BackgroundAttachment})
+	{
+		if (const Property* property = source->GetProperty(id))
+			signature += property->ToString() + ";";
+	}
+	if (signature != canvas_signature)
+	{
+		canvas_signature = signature;
+		Mesh mesh;
+		MeshUtilities::GenerateQuad(mesh, Vector2f(0.f), canvas_size, computed.background_color().ToPremultiplied(source->GetDrawOpacity()));
+		canvas_colour = render_manager->MakeGeometry(std::move(mesh));
+		if (canvas_layers)
+			canvas_layers->Dirty();
+	}
+
+	// Over the whole context: the colour, then the layers, sized and positioned in the document's boxes.
+	canvas_colour.Render(Vector2f(0.f));
+	if (computed.has_background_image())
+	{
+		if (!canvas_layers)
+			canvas_layers = MakeUnique<ElementBackgroundLayers>(ElementBackgroundLayers::Kind::Background);
+		const Rectanglef canvas = Rectanglef::FromPositionSize(-source->GetAbsoluteOffset(BoxArea::Border), canvas_size);
+		canvas_layers->Render(source, &canvas, document_element);
+	}
+}
 
 // The size of a device pixel in the element's units: the context's pixel size (SetGeometryPixelSize) over the scale the
 // element's transform draws it with, in steps of a fourth of an octave so that an animated scale generates the geometry a
@@ -42,6 +117,17 @@ static float GetFeatherUnit(Element* element)
 
 void ElementBackgroundBorder::Render(Element* element)
 {
+	// The canvas background, below everything of the document (and the body's, when it is the canvas's).
+	ElementDocument* owner = element->GetOwnerDocument();
+	const bool on_canvas = (owner && owner->HasCanvasBackground() && GetCanvasSource(owner) == element);
+	if (on_canvas != background_on_canvas)
+	{
+		background_on_canvas = on_canvas;
+		background_dirty = true;
+	}
+	if (owner == element && owner->HasCanvasBackground())
+		RenderCanvas(element);
+
 	const float new_feather_unit = GetFeatherUnit(element);
 	if (new_feather_unit != feather_unit)
 	{
@@ -65,7 +151,8 @@ void ElementBackgroundBorder::Render(Element* element)
 		background_dirty = false;
 		border_dirty = false;
 	}
-	else if (element->GetComputedValues().has_decorator() != border_above_decorators)
+	else if ((element->GetComputedValues().has_decorator() || (element->GetComputedValues().has_background_image() && !background_on_canvas)) !=
+		border_above_decorators)
 	{
 		// decorators came or went: the border moves above or below them (the clip geometries stay valid)
 		GenerateGeometry(element);
@@ -80,6 +167,18 @@ void ElementBackgroundBorder::Render(Element* element)
 	{
 		const Vector2f offset = element->GetAbsoluteOffset(BoxArea::Border);
 		background->geometry.Render(offset);
+	}
+
+	// The background layers, between the colour and the border (CSS paints them so; the border is drawn by RenderBorder).
+	if (element->GetComputedValues().has_background_image() && !background_on_canvas)
+	{
+		if (!layers)
+			layers = MakeUnique<ElementBackgroundLayers>(ElementBackgroundLayers::Kind::Background);
+		layers->Render(element);
+	}
+	else if (layers)
+	{
+		layers.reset();
 	}
 }
 
@@ -216,6 +315,9 @@ void ElementBackgroundBorder::DirtyOutline()
 void ElementBackgroundBorder::DirtyBackground()
 {
 	background_dirty = true;
+	if (layers)
+		layers->Dirty();
+	canvas_signature.clear();
 }
 
 void ElementBackgroundBorder::DirtyBorder()
@@ -280,7 +382,9 @@ void ElementBackgroundBorder::GenerateGeometry(Element* element)
 	const bool has_box_shadow = computed.has_box_shadow();
 
 	const float opacity = element->GetDrawOpacity();
-	ColourbPremultiplied background_color = computed.background_color().ToPremultiplied(opacity);
+	// (The canvas draws the background of its source.)
+	ColourbPremultiplied background_color =
+		background_on_canvas ? ColourbPremultiplied(0, 0) : computed.background_color().ToPremultiplied(opacity);
 	Array<ColourbPremultiplied, 4> border_colors = {
 		computed.border_top_color().ToPremultiplied(opacity),
 		computed.border_right_color().ToPremultiplied(opacity),
@@ -290,7 +394,7 @@ void ElementBackgroundBorder::GenerateGeometry(Element* element)
 
 	// CSS paints the background color, then the background images, then the border: with decorators (the images) the
 	// border is drawn separately, after them (RenderBorder).
-	const bool border_above = computed.has_decorator();
+	const bool border_above = computed.has_decorator() || (computed.has_background_image() && !background_on_canvas);
 	border_above_decorators = border_above;
 	if (border_above)
 	{

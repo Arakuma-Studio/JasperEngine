@@ -455,6 +455,13 @@ ElementPtr ElementDocument::CreateTextNode(const String& text)
 	return element;
 }
 
+void ElementDocument::SetCanvasBackground(bool enable, const String& body_tag)
+{
+	canvas_background = enable;
+	canvas_body_tag = body_tag;
+	// (ElementBackgroundBorder looks the canvas's source up as it renders.)
+}
+
 bool ElementDocument::IsModal() const
 {
 	return modal && IsVisible();
