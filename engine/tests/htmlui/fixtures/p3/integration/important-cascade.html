@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>integration: !important against more specific rules</title>
+<style>
+  .c3 { color: #2a9d48 !important; }
+</style>
+<link rel="stylesheet" href="important-cascade.css">
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .grid { display: grid; grid-template-columns: repeat(7, 30px); gap: 6px; padding: 8px; }
+  .grid > div { height: 30px; color: #000000; background-color: currentcolor; }
+  .grid > div.border { background-color: #ffffff; border: 6px solid #d62828; box-sizing: border-box; }
+  .grid > div.pseudo { background-color: #ffffff; position: relative; }
+  .grid > div.pseudo::before { content: ""; position: absolute; inset: 4px; background-color: #d62828; }
+  #e1 { color: #d62828; }            .c1 { color: #2a9d48 !important; }
+  #p2 { color: #d62828; }            .c2 { color: #2a9d48 !important; }
+  #p2 > div { height: 30px; background-color: currentcolor; }
+  #e3 { color: #d62828; }
+  #e4 { color: #d62828; }            @media (min-width: 1px) { .c4 { color: #2a9d48 !important; } }
+  #e5 { border-color: #d62828; }     .c5 { border: 6px solid #2a9d48 !important; }
+  #e6 { color: #d62828; }            .c6 { --c: #2a9d48; color: var(--c) !important; }
+  #e7:not(.x) { color: #d62828; }    .c7 { color: #2a9d48 !important; }
+  #e8 { color: #d62828; }            .wrap { & .c8 { color: #2a9d48 !important; } }
+  :is(#e9) { color: #d62828; }       .c9 { color: #2a9d48 !important; }
+                                     .c10 { color: #2a9d48 !important; }
+  .c11 { color: #d62828 !important; }
+  #e12 { color: #d62828; }           .c12 { color: #2a9d48 ! IMPORTANT; }
+  html body .grid #e13 { color: #d62828; } .c13 { color: #2a9d48 !important; }
+  #e14 { background: #d62828; }      .c14 { background-color: #2a9d48 !important; }
+  #e15 { color: #2a9d48 !important; } .c15 { color: #d62828 !important; }
+  #e16 { border-color: #d62828; }    .c16 { border-color: currentcolor !important; color: #2a9d48 !important; }
+  #e17::before { background-color: #2a9d48 !important; } .c17::before { background-color: #d62828 !important; }
+  #e18.pseudo::before { background-color: #d62828; } .c18::before { background-color: #2a9d48 !important; }
+  #e19 { color: #d62828; }           .c19:hover, .c19 { color: #2a9d48 !important; }
+  #e20 { color: #d62828; }
+  .c21 { color: #d62828 !important; }
+  #e22 { opacity: 0.2; }             .c22 { opacity: 1 !important; color: #2a9d48 !important; }
+  #e23 { color: #d62828; }           div.c23 { color: #2a9d48 !important; }
+  #e24 { color: #d62828; }           * { } [data-x] { color: #2a9d48 !important; }
+  #e25 { all: unset; }               .c25 { display: block !important; height: 30px !important; color: #2a9d48 !important; background-color: currentcolor !important; }
+  #e26 { color: #d62828; }           .c26 { color: rgb(42 157 72 / 1) !important; }
+  #e27 { color: #d62828; }           .c27 { color: color-mix(in srgb, #2a9d48 100%, #000000) !important; }
+  #e28 { color: #d62828; }           .c28 { color: hsl(136.3 57.5% 39%) !important; }
+</style>
+</head>
+<body>
+<div class="grid wrap">
+  <div id="e1" class="c1"></div>
+  <div id="p2" class="c2" style="background-color: transparent"><div id="e2"></div></div>
+  <div id="e3" class="c3"></div>
+  <div id="e4" class="c4"></div>
+  <div id="e5" class="c5 border"></div>
+  <div id="e6" class="c6"></div>
+  <div id="e7" class="c7"></div>
+  <div id="e8" class="c8"></div>
+  <div id="e9" class="c9"></div>
+  <div id="e10" class="c10" style="color: #d62828"></div>
+  <div id="e11" class="c11" style="color: #2a9d48 !important"></div>
+  <div id="e12" class="c12"></div>
+  <div id="e13" class="c13"></div>
+  <div id="e14" class="c14"></div>
+  <div id="e15" class="c15"></div>
+  <div id="e16" class="c16 border"></div>
+  <div id="e17" class="c17 pseudo"></div>
+  <div id="e18" class="c18 pseudo"></div>
+  <div id="e19" class="c19"></div>
+  <div id="e20" class="c20"></div>
+  <div id="e21" class="c21"></div>
+  <div id="e22" class="c22"></div>
+  <div id="e23" class="c23"></div>
+  <div id="e24" data-x="1"></div>
+  <div id="e25" class="c25"></div>
+  <div id="e26" class="c26"></div>
+  <div id="e27" class="c27"></div>
+  <div id="e28" class="c28"></div>
+</div>
+</body>
+</html>

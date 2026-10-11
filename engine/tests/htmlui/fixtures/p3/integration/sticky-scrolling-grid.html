@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>integration: sticky headers in a scrolling grid</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  /* a grid that is its own scroll container: the header row sticks to the top of the scrollport,
+     the side column to its left edge; sticky grid items are kept inside their grid area */
+  #table {
+    position: absolute; left: 10px; top: 10px; width: 260px; height: 150px;
+    overflow: auto; display: grid;
+    grid-template-columns: 70px repeat(4, 90px);
+    grid-auto-rows: 30px; gap: 2px; background: #d0d4dc;
+  }
+  #table > div { background: #f6f7fa; }
+  #table > .head { position: sticky; top: 0; background: #2b4c7e; z-index: 2; }
+  #table > .side { position: sticky; left: 0; background: #e3a33a; z-index: 1; }
+  #table > .corner { position: sticky; top: 0; left: 0; background: #12263f; z-index: 3; }
+  #table > .odd { background: #e9edf4; }
+  /* a sidebar in a page grid: align-self: start lets it move inside its tall grid area */
+  #page {
+    position: absolute; left: 290px; top: 10px; width: 200px; height: 150px; overflow: auto;
+    display: grid; grid-template-columns: 60px 1fr; gap: 6px; background: #eef2e6;
+  }
+  #nav { position: sticky; top: 6px; align-self: start; height: 60px; background: #5a8f29; }
+  #stretched { position: sticky; top: 6px; background: #aa4466; }
+  #content { height: 420px; background: repeating-linear-gradient(#cfd8c0 0 20px, #e4ead9 20px 40px); }
+</style>
+</head>
+<body>
+<div id="table">
+  <div class="corner" id="corner"></div><div class="head" id="h1"></div><div class="head"></div><div class="head"></div><div class="head" id="h4"></div>
+  <div class="side" id="s1"></div><div></div><div class="odd"></div><div></div><div class="odd"></div>
+  <div class="side"></div><div class="odd"></div><div></div><div class="odd"></div><div></div>
+  <div class="side"></div><div></div><div class="odd"></div><div></div><div class="odd"></div>
+  <div class="side"></div><div class="odd"></div><div></div><div class="odd"></div><div></div>
+  <div class="side"></div><div></div><div class="odd"></div><div></div><div class="odd"></div>
+  <div class="side"></div><div class="odd"></div><div></div><div class="odd"></div><div></div>
+  <div class="side"></div><div></div><div class="odd"></div><div></div><div class="odd"></div>
+  <div class="side" id="s8"></div><div class="odd"></div><div></div><div class="odd"></div><div id="last"></div>
+</div>
+<div id="page"><div id="nav"></div><div id="content"></div></div>
+<div style="position: absolute; left: 290px; top: 170px; width: 200px; height: 60px; overflow: auto; display: grid; grid-template-columns: 60px 1fr;" id="page2"><div id="stretched"></div><div style="height: 200px; background: #dde3ee"></div></div>
+</body>
+</html>

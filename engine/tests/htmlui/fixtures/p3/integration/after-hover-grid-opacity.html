@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>integration: ::after with a :hover transition inside a grid item with group opacity</title>
+<style>
+  html, body { margin: 0; background: #f4f1ea; }
+  .cards { display: grid; grid-template-columns: repeat(3, 110px); gap: 12px; padding: 14px; }
+  .card { position: relative; height: 90px; opacity: 0.55; background: #1d3557; border-radius: 8px; }
+  .card .a, .card .b { position: absolute; width: 50px; height: 50px; top: 12px; }
+  .card .a { left: 14px; background: #e63946; }
+  .card .b { left: 40px; top: 26px; background: #ffb703; }
+  .card::after {
+    content: "";
+    position: absolute; left: 0; bottom: 0; height: 8px; width: 0;
+    background-color: #2a9d8f; border-radius: 0 0 8px 8px;
+    transition: width 1s linear, background-color 1s linear;
+  }
+  .card:hover::after { width: 100%; background-color: #f72585; }
+  .card::before { content: ""; position: absolute; right: 8px; top: 8px; width: 14px; height: 14px; border-radius: 50%; background: #ffffff; }
+</style>
+</head>
+<body>
+<div class="cards" id="cards">
+  <div class="card" id="c1"><div class="a"></div><div class="b"></div></div>
+  <div class="card" id="c2"><div class="a"></div><div class="b"></div></div>
+  <div class="card" id="c3" style="opacity: 1"><div class="a"></div><div class="b"></div></div>
+</div>
+</body>
+</html>

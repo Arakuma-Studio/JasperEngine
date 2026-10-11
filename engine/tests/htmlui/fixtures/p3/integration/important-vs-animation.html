@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>integration: !important against animations and transitions</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  @keyframes grow { from { width: 40px; background-color: #d62828; } to { width: 240px; background-color: #003049; } }
+  .bar { position: absolute; left: 10px; height: 22px; width: 100px; background-color: #f77f00; }
+  /* an animation overrides normal declarations */
+  #normal { top: 10px; animation: grow 2s linear infinite; }
+  /* an important declaration overrides the animation of its property; the other property animates */
+  #imp { top: 40px; animation: grow 2s linear infinite; width: 100px !important; }
+  /* an important class rule beats a normal id rule, also against the animation */
+  #byid { top: 70px; width: 60px; background-color: #2a9d8f; }
+  .imp-class { width: 180px !important; background-color: #6a4c93 !important; animation: grow 2s linear infinite; }
+  /* an important inline declaration beats an important stylesheet one; transitions beat both */
+  #trans { top: 100px; width: 50px !important; transition: width 1s linear; }
+  #trans.wide { width: 250px !important; }
+  #text { position: absolute; top: 130px; left: 10px; width: 120px; height: 22px; }
+  #text { background-color: #e9c46a; }
+  div#text { background-color: #264653; }
+  .bright { background-color: #ff006e !important; }
+</style>
+</head>
+<body>
+<div class="bar" id="normal"></div>
+<div class="bar" id="imp"></div>
+<div class="bar imp-class" id="byid"></div>
+<div class="bar" id="trans"></div>
+<div class="bar" id="inline" style="top: 160px; width: 90px !important; animation: grow 2s linear infinite"></div>
+<div id="text" class="bright"></div>
+</body>
+</html>

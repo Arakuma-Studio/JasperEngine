@@ -1,0 +1,37 @@
+{
+ "comment": "A grid that scrolls: the header row sticks to the top, the first column to the left, the corner to both (z-index on the sticky grid items); a page grid with a sticky sidebar (align-self: start moves inside its grid area) and a stretched sticky item (fills its area: nowhere to move). Captured at rest and scrolled on both axes. Rendered without MSAA (\"samples\": 1), at the default tolerances: with 4x MSAA, Mesa's llvmpipe and lavapipe (the test image's GL and Vulkan drivers, Mesa 23.2.1) let half the samples of the row above and the column left of a scissor rectangle through, so the content scrolled past the grids' clip edges would show a half-covered 1 px line there (MsaaScissor.FourSamples reproduces it with raw sokol calls).",
+ "viewport": [
+  500,
+  240
+ ],
+ "samples": 1,
+ "steps": [
+  {
+   "capture": "top"
+  },
+  {
+   "scroll": [
+    "#table",
+    50,
+    70
+   ]
+  },
+  {
+   "scroll": [
+    "#page",
+    0,
+    120
+   ]
+  },
+  {
+   "scroll": [
+    "#page2",
+    0,
+    50
+   ]
+  },
+  {
+   "capture": "scrolled"
+  }
+ ]
+}
