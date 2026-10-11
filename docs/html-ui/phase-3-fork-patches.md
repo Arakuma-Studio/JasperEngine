@@ -2039,7 +2039,7 @@ golden fixtures listed in its §3 section, removal of its entries from `known-fa
 flag flips with updated compat tests and consistency tests (§5.4), diagnostics for its §2.2 items,
 and the user-facing support notes in `docs/mcp/guide/html-ui.md` for its features.
 
-**p3-values as implemented** (wave 1; FORK.md P3-V1…P3-V10, where the implementation differs from
+**p3-values as implemented** (wave 1; FORK.md P3-V1…P3-V11, where the implementation differs from
 or makes precise §3.2 and §3.3):
 - **Lengths (§3.3.1).** `LengthContext {font_size, root_font_size, dp_ratio, vp_dimensions,
   font_face}` and `ComputeLength(value, context)` exist, but the five-scalar compute functions keep
@@ -2093,10 +2093,22 @@ or makes precise §3.2 and §3.3):
 - **Numbers (§3.3.5).** `PropertyParserNumber::Restriction` (`AlphaValue`, `NonNegative`,
   `Integer`); the `aspect_ratio` parser's values for p3-layout: KEYWORD 0 (`auto`), RATIO
   `(w, h)`, RATIO `(-w, -h)` for `auto <ratio>`.
+- **Interpolation (§3.13, after the p3-animation merge).** A `calc()` against a length interpolates
+  frame by frame with its percentage resolved against the current containing block (a calc mix in
+  effect, not a discrete flip: `10px` to `calc(50% + 2em)` follows a resize while it runs); a
+  property whose percentages resolve at layout keeps a calc node (p3-animation's
+  `InterpolateCalculations`). The new units mix as px (`vmin`, `ch`, `ex`) and radians (`turn`,
+  `grad`, also in `transform` and `rotate`). `currentcolor` against a colour is the element's colour
+  at each frame (in `color` the parent's), in plain colours, box shadows and gradient stops
+  (P3-V11; p3-text's text shadows already did); a computed `currentcolor` that stays does not start
+  a transition when `color` changes, the value follows `color`, as in Chromium. A `calc()` in a box
+  shadow is its length in pixels (P3-V11; the list was discrete).
 - **Compat (Appendix A).** `CurrentColor`: kept in the colour and border rewrites only (colour,
   background, border and caret colours); the companion stays everywhere else. `ExtraUnits`: kept
   where `calc()` is (`NormalizeContext::unitsNative`, not custom properties), without orientation
-  copies (`OutDecl::nativeUnits`) or style-attribute evaluation. Text fixtures load Roboto from
+  copies (`OutDecl::nativeUnits`) or style-attribute evaluation. With `IndividualTransforms`,
+  `translate`, `rotate` and `scale` keep `calc()` and the units as `transform` does (the
+  `IndividualTransform` rewrite reads as written then). Text fixtures load Roboto from
   `fonts/Roboto-Regular-subset-post.ttf` (Chromium rejects the subset without a post table).
 
 ### Wave 2
