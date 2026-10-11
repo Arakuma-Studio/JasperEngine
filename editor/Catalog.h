@@ -259,6 +259,10 @@ namespace jasperengine::editor{
         // What a UI/Points/Lines/Sky component's shader (own or the scene's) reads in its current variant;
         // for a mesh, what its shader reads in the variants of the submeshes drawing with it
         static uint32_t getComponentSceneInputs(Scene* scene, Entity entity, ComponentType component);
+        // What this scene's last frame produced for its draws reading the scene, as ShaderRequire_
+        // bits (RenderSystem::getSceneInputUsage): the scene settings' "In Use" row and
+        // get_scene_settings' scene_inputs_in_use
+        static uint32_t getSceneInputsInUse(Scene* scene);
         // A submesh whose shader or extra pass reads the scene while it draws in the opaque queue
         // (an error: RenderSystem::getSubmeshSceneInputs): the blend mode that moves it to the
         // transparent queue (Alpha), what the inspector's fix button and MCP's fix set on

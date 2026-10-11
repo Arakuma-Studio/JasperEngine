@@ -870,6 +870,13 @@ void getSceneSettingsTool(const CallPtr& call) {
     }
     Json data = {{"scene_id", scene->id}, {"settings", values}};
     if (detail) data["schema"] = schemaOut;
+    if (wanted.size() == sceneSettings().size()) {
+        // not a setting: what the last frame made for the draws reading the scene (phase 3), the
+        // inspector's Scene Color > In Use row
+        const uint32_t inUse = Catalog::getSceneInputsInUse(scene->scene);
+        data["scene_inputs_in_use"] = McpValues::sceneInputsToJson(inUse);
+        if (inUse) text += "\n(last frame: scene " + Catalog::getSceneInputsLabel(inUse) + " made for the shaders reading it)";
+    }
     call->ok(text, data);
 }
 
@@ -1075,7 +1082,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "Get Scene Settings";
         tool.description =
             "Scene settings (Inspector > Scene: lighting, shadows, gravity, LOD, SSAO, SSR, fixed resolution, "
-            "default shaders, post_process). detail=true adds type, default, options, help.";
+            "default shaders, post_process). detail=true adds type, default, options, help. Without names also "
+            "scene_inputs_in_use: what the last frame made for shaders reading the scene (scenedepth, scenecolor).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"names", array(string(""), "Default: all.")},

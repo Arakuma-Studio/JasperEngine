@@ -4567,6 +4567,13 @@ uint32_t editor::Catalog::getComponentSceneInputs(Scene* scene, Entity entity, C
     return getShaderSceneInputs(getShaderReferenceForProperty(scene, entity, component, "customShader"), *features);
 }
 
+uint32_t editor::Catalog::getSceneInputsInUse(Scene* scene) {
+    auto render = scene ? scene->getSystem<RenderSystem>() : nullptr;
+    if (!render) return 0;
+    const uint32_t usage = render->getSceneInputUsage();
+    return ((usage & 1u) ? ShaderRequire_SceneDepth : 0u) | ((usage & 2u) ? ShaderRequire_SceneColor : 0u);
+}
+
 bool editor::Catalog::getSceneInputQueueFix(Scene* scene, Entity entity, unsigned int submesh, MaterialBlendMode& blendMode) {
     const MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
     if (!mesh || submesh >= mesh->numSubmeshes) return false;
