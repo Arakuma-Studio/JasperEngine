@@ -232,6 +232,26 @@ namespace {
                 }
                 return;
             }
+            if (!parsed && info.currentColorMix && !info.dynamicVar){
+                if (context.currentColorMixNative && context.compat().fork.has(ForkFeature::CurrentColor)){
+                    out.push_back(v);
+                    return;
+                }
+                // elsewhere (compat's decorators and companions) currentcolor is the rule's static color
+                const std::string current = context.color();
+                if (current.size() == 9){
+                    ColorParseInfo staticInfo;
+                    ColorContext staticContext = colorContext();
+                    staticContext.currentColor = current;
+                    if (std::optional<CssColor> mixed = ColorValue::parse(v, staticInfo, staticContext)){
+                        const uint32_t rgba = ColorValue::toRgba8(*mixed, &clipped);
+                        report(codes::ApproximatedMinor, Severity::Info, "'" + serialize(v) + "' mixes the rule's color " + current.substr(0, 7) +
+                               " (it does not follow a change of color here)", "use the color in a color property, or write the mixed color");
+                        out.push_back(ValueNormalizer::hash(ColorValue::hex(rgba).substr(1)));
+                        return;
+                    }
+                }
+            }
             if (!parsed){
                 if (info.dynamic){
                     fail(codes::ColorUnresolvable, "color '" + serialize(v) + "' depends on a value that is only known at runtime; declaration dropped",

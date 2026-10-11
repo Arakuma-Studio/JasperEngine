@@ -309,3 +309,39 @@ TEST(CompatCalc, EveryApproximatedUnitIsNamed){
     EXPECT_EQ(native.value("translate"), "2ch 1ex");
     EXPECT_TRUE(native.diagnostics.empty());
 }
+
+// A color-mix() with a currentcolor operand (CSS Color 5; p3-values): with ForkFeature::CurrentColor the fork
+// resolves it as it resolves currentcolor, so the colour rewrites keep it as written; without the feature, and in the
+// values compat writes into its own decorators, it is mixed with the rule's static color (reported), or dropped and
+// reported when the rule has none.
+TEST(CompatCurrentColorMix, KeptForTheForkOrMixedStatically){
+    const char* sheet = ".a { color: #ff0000; border-top-color: color-mix(in srgb, currentcolor 25%, blue); "
+                        "background-color: color-mix(in srgb, color-mix(in srgb, currentColor, white), black); }";
+    const Rewritten native = rewrite(sheet, ForkFeatures::present());
+    EXPECT_EQ(native.value("border-top-color"), "color-mix(in srgb, currentcolor 25%, blue)") << native.rcss;
+    EXPECT_EQ(native.value("background-color"), "color-mix(in srgb, color-mix(in srgb, currentColor, white), black)") << native.rcss;
+    EXPECT_TRUE(native.diagnostics.empty()) << native.rcss;
+
+    const ForkFeatures absent = ForkFeatures::present().with(ForkFeature::CurrentColor, false);
+    const Rewritten mixed = rewrite(sheet, absent);
+    EXPECT_EQ(mixed.value("border-top-color"), "#4000bfff") << mixed.rcss;
+    EXPECT_EQ(mixed.value("background-color"), "#804040ff") << mixed.rcss;
+    EXPECT_TRUE(mixed.reported(codes::ApproximatedMinor)) << mixed.rcss;
+
+    // no static color: dropped, reported
+    const Rewritten unknown = rewrite(".a { border-top-color: color-mix(in srgb, currentcolor, blue); }", absent);
+    EXPECT_EQ(unknown.value("border-top-color"), "");
+    EXPECT_TRUE(unknown.reported(codes::ColorUnresolvable)) << unknown.rcss;
+    // a var() without a static value stays unresolvable in every state
+    const Rewritten var = rewrite(".a { border-top-color: color-mix(in srgb, currentcolor, var(--x)); }", ForkFeatures::present());
+    EXPECT_TRUE(var.reported(codes::ColorUnresolvable)) << var.rcss;
+    // invalid operands are still found
+    const Rewritten invalid = rewrite(".a { border-top-color: color-mix(in srgb, currentcolor, nocolor); }", ForkFeatures::present());
+    EXPECT_EQ(invalid.value("border-top-color"), "");
+    EXPECT_TRUE(invalid.reported(codes::UnsupportedValue)) << invalid.rcss;
+
+    // in a shadow (written into compat's decorator) it is the rule's static color, also with the feature
+    const Rewritten shadow = rewrite(".a { color: #ff0000; box-shadow: 0 0 2px color-mix(in srgb, currentcolor, blue); }", ForkFeatures::present());
+    EXPECT_EQ(shadow.rcss.find("currentcolor"), std::string::npos) << shadow.rcss;
+    EXPECT_TRUE(shadow.reported(codes::ApproximatedMinor)) << shadow.rcss;
+}

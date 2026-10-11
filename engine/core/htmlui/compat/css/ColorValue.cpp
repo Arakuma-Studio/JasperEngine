@@ -314,6 +314,8 @@ namespace {
                     return parseHex(token.value);
                 if (token.type == TokenType::Ident){
                     if (equalsNoCase(token.value, "currentcolor")){
+                        if (depth > 0 && context.currentColor.size() == 9)
+                            return parseHex(context.currentColor.substr(1));
                         info.currentColor = true;
                         return std::nullopt;
                     }
@@ -335,6 +337,7 @@ namespace {
                 ValueList replacement;
                 if (!context.resolveVar || !context.resolveVar(value, replacement)){
                     info.dynamic = true;
+                    info.dynamicVar = true;
                     info.error = "var() without a static value";
                     return std::nullopt;
                 }
@@ -434,6 +437,7 @@ namespace {
                     ValueList replacement;
                     if (depth > 8 || !context.resolveVar || !context.resolveVar(v, replacement)){
                         info.dynamic = true;
+                        info.dynamicVar = true;
                         info.error = "var() without a static value";
                         return false;
                     }
@@ -550,7 +554,7 @@ namespace {
                 std::optional<CalcValue> result = StaticCalc::evaluate(v, calc);
                 if (!result){
                     if (calc.varUnresolved)
-                        info.dynamic = true;
+                        info.dynamic = info.dynamicVar = true;
                     return std::nullopt;
                 }
                 if (result->isNumber()){
@@ -610,6 +614,7 @@ namespace {
             if (!base){
                 if (inner.currentColor || inner.dynamic){
                     info.dynamic = true;
+                    info.dynamicVar = info.dynamicVar || inner.dynamicVar;
                     info.error = "relative color from a dynamic origin";
                 }else{
                     info.error = inner.error;
@@ -911,8 +916,10 @@ namespace {
             ColorParseInfo darkInfo;
             Parser dark(darkInfo, context);
             if (!dark.parseValue(*values[1], depth + 1) && !darkInfo.currentColor){
-                if (darkInfo.dynamic)
+                if (darkInfo.dynamic){
                     info.dynamic = true;
+                    info.dynamicVar = info.dynamicVar || darkInfo.dynamicVar;
+                }
                 return fail("invalid dark color in light-dark()");
             }
             return parseValue(*values[0], depth + 1);
@@ -949,6 +956,7 @@ namespace {
 
             CssColor colors[2];
             std::optional<double> percents[2];
+            bool currentOperand = false;   // currentColor (or a color-mix() of it) as an operand
             for (int i = 0; i < 2; i++){
                 const ComponentValue* colorValue = nullptr;
                 for (const ComponentValue& v : parts[i + 1]){
@@ -981,9 +989,16 @@ namespace {
                 ColorParseInfo inner;
                 Parser parser(inner, context);
                 std::optional<CssColor> c = parser.parseValue(*colorValue, depth + 1);
+                if (!c && (inner.currentColor || inner.currentColorMix) && !inner.dynamicVar){
+                    // the other operand and the percentages are still checked
+                    currentOperand = true;
+                    colors[i] = CssColor{};
+                    continue;
+                }
                 if (!c){
                     if (inner.currentColor || inner.dynamic){
                         info.dynamic = true;
+                        info.dynamicVar = info.dynamicVar || inner.dynamicVar;
                         info.error = "color-mix() with a dynamic color";
                     }else{
                         info.error = inner.error;
@@ -1008,6 +1023,13 @@ namespace {
             const double sum = p1 + p2;
             if (sum <= 0)
                 return fail("color-mix() percentages add up to zero");
+            if (currentOperand){
+                // valid, with a value only known for an element (CSS Color 5: resolved as currentColor is)
+                info.dynamic = true;
+                info.currentColorMix = true;
+                info.error = "color-mix() with currentcolor";
+                return std::nullopt;
+            }
             double alphaMultiplier = 1.0;
             if (sum < 100)
                 alphaMultiplier = sum / 100.0;

@@ -135,6 +135,8 @@ namespace {
         {ForkFeature::CurrentColor, SampleKind::Declaration, "background-color: currentColor", "var(--html-current-color", ""},
         {ForkFeature::CurrentColor, SampleKind::Declaration, "color: currentcolor", "var(--html-unset)", ""},
         {ForkFeature::CurrentColor, SampleKind::Declaration, "border-color: currentcolor", "var(--html-current-color", ""},
+        {ForkFeature::CurrentColor, SampleKind::Declaration, "border-top-color: color-mix(in srgb, currentcolor 40%, blue)", "", "HTMLUI-CSS-0016"},
+        {ForkFeature::CurrentColor, SampleKind::Declaration, "background-color: color-mix(in oklab, currentColor, white)", "", "HTMLUI-CSS-0016"},
         {ForkFeature::ExtraUnits, SampleKind::Declaration, "width: 10vmin", "", "HTMLUI-CSS-0013"},
         {ForkFeature::ExtraUnits, SampleKind::Rule, "height: 5vmax", "@media", ""},
         {ForkFeature::ExtraUnits, SampleKind::Declaration, "margin-left: 2ch", "margin-left:1em", "HTMLUI-CSS-0005"},

@@ -415,6 +415,9 @@ namespace {
         }
         if (acceptsWithFork(ForkFeature::CurrentColor) && equalsNoCase(v, "currentcolor"))
             return true;
+        // (the fork resolves a color-mix() of currentcolor as currentcolor; compat folds every other color-mix())
+        if (acceptsWithFork(ForkFeature::CurrentColor) && startsWithNoCase(v, "color-mix(") && v.back() == ')')
+            return true;
         return startsWithNoCase(v, "rgb(") || startsWithNoCase(v, "rgba(") || startsWithNoCase(v, "hsl(") ||
                startsWithNoCase(v, "hsla(");
     }

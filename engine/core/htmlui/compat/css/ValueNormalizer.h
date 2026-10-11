@@ -55,6 +55,9 @@ namespace jasperengine::htmlui::compat {
         // calc() that is a sum of lengths and percentages (folded without the fork's calc()) is
         // written as calc(a + b) for the rewrite to split into one translation per term (exact)
         bool lengthSums = false;
+        // the value is written where the fork resolves currentcolor itself (ForkFeature::CurrentColor):
+        // a color-mix() with a currentcolor operand stays, as the fork resolves it like currentcolor
+        bool currentColorMixNative = false;
         PercentBasis percentBasis = PercentBasis::ContainingBlock;
         bool vertical = false;                // the percentage basis is a height (top, bottom, height, ...)
         // the session's options (the defaults when not given)

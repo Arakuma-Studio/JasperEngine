@@ -1508,6 +1508,8 @@ namespace {
             normalize.colors = facts.colorKeywords;
             normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint || keepsCurrentColorKeyword(session, *row) ||
                                                 (session.options.fork.has(ForkFeature::CurrentColor) && writesCurrentColorNatively(row->rewrite));
+            normalize.currentColorMixNative = session.options.fork.has(ForkFeature::CurrentColor) &&
+                                              (writesCurrentColorNatively(row->rewrite) || keepsCurrentColorKeyword(session, *row));
             // a style attribute or a keyframe cannot be duplicated per orientation: vmin/vmax evaluated
             normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
             // math functions the fork evaluates stay in the properties written as they are read
