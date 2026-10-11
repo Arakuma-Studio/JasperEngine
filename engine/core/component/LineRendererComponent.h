@@ -65,6 +65,9 @@ namespace jasperengine{
         // AUTO keeps the built-in state (alpha blend, depth write on)
         MaterialBlendMode blendMode = MaterialBlendMode::AUTO;
         MaterialDepthWrite depthWrite = MaterialDepthWrite::AUTO;
+        // phase 2: stencil test/write and colour channels (AUTO = manifest, else none / all)
+        MaterialStencil stencil;
+        int colorWrite = -1;
         // resolved at load: the shader's manifest (null without one) and what it reads of
         // the frame block and custom textures
         std::shared_ptr<const ShaderManifest> shaderManifest;
