@@ -6329,6 +6329,47 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         // lighting and capacity bits
         uint32_t builtLightBits = UINT32_MAX;
 
+        // The extra passes (Material::extraPass) of the whole mesh go around all of its main
+        // draws: every Before pass ahead of the first, every After pass behind the last, in
+        // submesh order. Interleaved per submesh, a submesh's pass would see the other
+        // submeshes of its own object half drawn: a silhouette (Before, depth test greater)
+        // shows through the submeshes drawn before it, and a stencil outline (After, outside
+        // the stencil its object marks) covers the submeshes that have not marked it yet.
+        bool hasBeforePasses = false;
+        bool hasAfterPasses = false;
+        for (int i = 0; i < mesh.numSubmeshes; i++){
+            const SubmeshExtraPass* extra = mesh.submeshes[i].extraPass.get();
+            if (extra && extra->loaded){
+                if (extra->order == MaterialPassOrder::BEFORE)
+                    hasBeforePasses = true;
+                else
+                    hasAfterPasses = true;
+            }
+        }
+        auto drawExtraPasses = [&](MaterialPassOrder order){
+            for (int i = 0; i < mesh.numSubmeshes; i++){
+                SubmeshExtraPass* extra = mesh.submeshes[i].extraPass.get();
+                if (!extra || !extra->loaded || extra->order != order || mesh.submeshes[i].vertexCount == 0)
+                    continue;
+                if (tilemap && !selectTilemapChunks(*tilemap, i, camera.farClip, camera.frustumPlanes))
+                    continue;
+                if (order == MaterialPassOrder::BEFORE){
+                    // checked once for both draws: rebinding a redrawn render target texture takes
+                    // its new version, so the pass rebinding first would hide the change from the
+                    // main draw; the main draw is told through its own flag
+                    const bool outdated = checkPBRFrabebufferUpdate(mesh.submeshes[i].material);
+                    if (mesh.submeshes[i].needUpdateTexture || outdated)
+                        extra->needUpdateTexture = true;
+                    if (outdated)
+                        mesh.submeshes[i].needUpdateTexture = true;
+                }
+                drawSubmeshExtraPass(entity, mesh, i, transform, pipType, instmesh, instanceView, draw, instanceCount, objectBlock, tilemap, builtLightBits);
+            }
+        };
+        if (hasBeforePasses){
+            drawExtraPasses(MaterialPassOrder::BEFORE);
+        }
+
         for (int i = 0; i < mesh.numSubmeshes; i++){
             // an indexed submesh without indices has nothing to draw (a tilemap rect
             // with no tile placed on it). Its texture state is cleared here because
@@ -6350,16 +6391,12 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 render.replaceVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), terrainNodes->nodesbuffer[i].getRender());
             }
 
-            // the material's extra pass, drawn right before or after the submesh
-            // checked once for both draws: rebinding a redrawn render target texture takes its
-            // new version, so the draw that rebinds first would hide the change from the other
+            // checked once for this draw and its After pass, which then rebinds (see above)
             const bool pbrFramebufferOutdated = checkPBRFrabebufferUpdate(mesh.submeshes[i].material);
-            SubmeshExtraPass* extraPass = (mesh.submeshes[i].extraPass && mesh.submeshes[i].extraPass->loaded) ? mesh.submeshes[i].extraPass.get() : nullptr;
-            if (extraPass){
-                if (mesh.submeshes[i].needUpdateTexture || pbrFramebufferOutdated)
-                    extraPass->needUpdateTexture = true;
-                if (extraPass->order == MaterialPassOrder::BEFORE)
-                    drawSubmeshExtraPass(entity, mesh, i, transform, pipType, instmesh, instanceView, draw, instanceCount, objectBlock, tilemap, builtLightBits);
+            SubmeshExtraPass* extraPass = mesh.submeshes[i].extraPass.get();
+            if (extraPass && extraPass->loaded && extraPass->order == MaterialPassOrder::AFTER &&
+                    (mesh.submeshes[i].needUpdateTexture || pbrFramebufferOutdated)){
+                extraPass->needUpdateTexture = true;
             }
 
             const ShaderLibraryBindings& libraryBindings = mesh.submeshes[i].libraryBindings;
@@ -6540,10 +6577,10 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 TextureRender* baseColor = mesh.submeshes[i].material.baseColorTexture.getRender(&emptyWhite);
                 render.addTexture(mirrorShaderData.getTextureIndex(TextureShaderType::BASECOLOR), ShaderStageType::FRAGMENT, baseColor ? baseColor : &emptyWhite);
             }
+        }
 
-            if (extraPass && extraPass->order == MaterialPassOrder::AFTER){
-                drawSubmeshExtraPass(entity, mesh, i, transform, pipType, instmesh, instanceView, draw, instanceCount, objectBlock, tilemap, builtLightBits);
-            }
+        if (hasAfterPasses){
+            drawExtraPasses(MaterialPassOrder::AFTER);
         }
     }
 
