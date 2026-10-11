@@ -167,7 +167,8 @@ public:
 	void DirtyPropertiesWithUnitsRecursive(Units units);
 
 	/// Returns true if any properties are dirty such that computed values need to be recomputed
-	bool AnyPropertiesDirty() const;
+	/// (inline: Element::Update asks for every element on every update)
+	bool AnyPropertiesDirty() const { return !dirty_properties.Empty() || !dirty_variables.empty() || !dirty_var_shorthands.empty(); }
 
 	/// Resolves variables and var expression shorthands for a single property taken from a keyframe block.
 	/// @param[in] id The property being resolved.

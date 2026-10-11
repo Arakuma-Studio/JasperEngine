@@ -166,9 +166,16 @@ void Element::Update(float dp_ratio, Vector2f vp_dimensions)
 
 	OnUpdate();
 
-	HandleTransitionProperty();
-	HandleAnimationProperty();
-	AdvanceAnimations();
+	// The flags are tested here: most elements have no animations, and the calls are not inlined (their early returns
+	// would cost a function prologue per element and update).
+	if (dirty_transition)
+		HandleTransitionProperty();
+	if (dirty_animation)
+		HandleAnimationProperty();
+	if (!animations.empty())
+		AdvanceAnimations();
+	else
+		animations_running = false;
 
 	meta->scroll.Update();
 

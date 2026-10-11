@@ -50,10 +50,11 @@ public:
 
 	bool Empty() const
 	{
+		// One test of the OR-ed words rather than a branch per word.
+		uint64_t any = 0;
 		for (uint64_t word : words)
-			if (word)
-				return false;
-		return true;
+			any |= word;
+		return any == 0;
 	}
 	bool Contains(PropertyId id) const { return size_t(id) < N && (words[size_t(id) / 64] & Bit(size_t(id))) != 0; }
 

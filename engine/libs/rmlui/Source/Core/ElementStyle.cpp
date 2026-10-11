@@ -1110,11 +1110,6 @@ void ElementStyle::DirtyPropertiesWithUnitsRecursive(Units units)
 		element->GetChild(i)->GetStyle()->DirtyPropertiesWithUnitsRecursive(units);
 }
 
-bool ElementStyle::AnyPropertiesDirty() const
-{
-	return !dirty_properties.Empty() || !dirty_variables.empty() || !dirty_var_shorthands.empty();
-}
-
 const Property* ElementStyle::ResolveKeyFrameProperty(PropertyId id, const Property* property, const PropertyDictionary& block_properties,
 	std::optional<PropertyDictionary>& block_substituted_shorthands, SmallUnorderedSet<String>& variable_dependencies, Property& property_storage)
 {
