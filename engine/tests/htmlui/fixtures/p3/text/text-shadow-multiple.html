@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: several text shadows</title>
+<style>
+  /* A list of shadows: the first one is painted on top, all of them behind the text; with and without blur. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  @font-face { font-family: "Roboto Text"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  div { position: absolute; left: 20px; font-size: 20px; color: #ffffff; }
+  body { background: #ffffff; }
+</style>
+</head>
+<body>
+<div id="stack" style="top: 20px; color: #305080; text-shadow: 2px 2px #e04040, 4px 4px #20a040, 6px 6px #4040e0">XÉX</div>
+<div id="mixed" style="top: 70px; color: #305080; text-shadow: 0 0 4px #e04040, 5px 5px #20a040">XÉX</div>
+</body>
+</html>

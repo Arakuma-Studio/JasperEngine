@@ -31,6 +31,7 @@ add_executable(${TARGET_NAME}
 	IntrinsicSizing.cpp
 	Layout.cpp
 	LayoutChildren.cpp
+	LineBreaking.cpp
 	Localization.cpp
 	main.cpp
 	Math.cpp
@@ -48,6 +49,8 @@ add_executable(${TARGET_NAME}
 	StyleSheetParser.cpp
 	StyleValue.cpp
 	Template.cpp
+	TextProperties.cpp
+	TextTransform.cpp
 	URL.cpp
 	Variant.cpp
 	XMLParser.cpp

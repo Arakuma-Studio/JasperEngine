@@ -1,0 +1,36 @@
+{
+ "fixture": "text/ellipsis-flex-child.html",
+ "viewport": [
+  150,
+  60
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "label",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 80,
+    "h": 10
+   },
+   {
+    "id": "fixed",
+    "tag": "div",
+    "x": 90,
+    "y": 10,
+    "w": 40,
+    "h": 10
+   },
+   {
+    "id": "short",
+    "tag": "div",
+    "x": 10,
+    "y": 30,
+    "w": 80,
+    "h": 10
+   }
+  ]
+ }
+}

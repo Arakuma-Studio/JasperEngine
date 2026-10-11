@@ -1,0 +1,68 @@
+{
+ "fixture": "text/align-start-end.html",
+ "viewport": [
+  260,
+  80
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "ltr-start",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 100,
+    "h": 10
+   },
+   {
+    "id": "ltr-end",
+    "tag": "div",
+    "x": 10,
+    "y": 24,
+    "w": 100,
+    "h": 10
+   },
+   {
+    "id": "rtl-start",
+    "tag": "div",
+    "x": 10,
+    "y": 38,
+    "w": 100,
+    "h": 10
+   },
+   {
+    "id": "rtl-end",
+    "tag": "div",
+    "x": 10,
+    "y": 52,
+    "w": 100,
+    "h": 10
+   },
+   {
+    "id": "inherit-end",
+    "tag": "div",
+    "x": 130,
+    "y": 10,
+    "w": 100,
+    "h": 10
+   },
+   {
+    "id": "match",
+    "tag": "div",
+    "x": 130,
+    "y": 24,
+    "w": 100,
+    "h": 10
+   },
+   {
+    "id": "webkit-center",
+    "tag": "div",
+    "x": 130,
+    "y": 38,
+    "w": 100,
+    "h": 10
+   }
+  ]
+ }
+}

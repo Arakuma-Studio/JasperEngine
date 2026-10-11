@@ -1,0 +1,76 @@
+{
+ "fixture": "text/letter-word-spacing.html",
+ "viewport": [
+  200,
+  200
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "ls-px",
+    "tag": "span",
+    "x": 10,
+    "y": 10,
+    "w": 48,
+    "h": 10
+   },
+   {
+    "id": "ls-pct",
+    "tag": "span",
+    "x": 10,
+    "y": 30,
+    "w": 60,
+    "h": 10
+   },
+   {
+    "id": "ls-neg",
+    "tag": "span",
+    "x": 10,
+    "y": 50,
+    "w": 32,
+    "h": 10
+   },
+   {
+    "id": "ws-px",
+    "tag": "span",
+    "x": 10,
+    "y": 70,
+    "w": 62,
+    "h": 10
+   },
+   {
+    "id": "ws-em",
+    "tag": "span",
+    "x": 10,
+    "y": 90,
+    "w": 80,
+    "h": 20
+   },
+   {
+    "id": "ws-pct",
+    "tag": "span",
+    "x": 10,
+    "y": 120,
+    "w": 90,
+    "h": 10
+   },
+   {
+    "id": "both",
+    "tag": "span",
+    "x": 10,
+    "y": 140,
+    "w": 59,
+    "h": 10
+   },
+   {
+    "id": "inherited",
+    "tag": "span",
+    "x": 10,
+    "y": 160,
+    "w": 50,
+    "h": 20
+   }
+  ]
+ }
+}

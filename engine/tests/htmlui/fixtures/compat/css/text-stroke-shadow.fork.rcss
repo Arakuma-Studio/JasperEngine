@@ -1,0 +1,13 @@
+#htmlui-root .title {
+font-effect: outline(1px #000000ff);
+text-shadow: 0 2px 4px #00000088;
+}
+#htmlui-root .glow {
+text-shadow: 0 0 10px #ffd700ff;
+}
+#htmlui-root .outline {
+font-effect: outline(2px #ffffffff);
+}
+#htmlui-root .none {
+text-shadow: none;
+}

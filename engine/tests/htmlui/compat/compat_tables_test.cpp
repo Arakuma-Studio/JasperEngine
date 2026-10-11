@@ -77,8 +77,10 @@ TEST(CompatTables, PropertyTableSortedUniqueAndLinted){
         EXPECT_NE(row.output, nullptr);
         EXPECT_GT(std::strlen(row.spec), 0u) << row.name;
         EXPECT_LT((size_t)row.rewrite, (size_t)RewriteId::Count) << row.name;
-        // a dropped property is never dispatched to a rewrite
-        if (row.support == Support::Unsupported || row.support == Support::Ignored)
+        // a property dropped in every fork state is never dispatched to a rewrite (one a fork
+        // feature makes supported is, with the feature: phase 3)
+        const auto dropped = [](Support support){ return support == Support::Unsupported || support == Support::Ignored; };
+        if (dropped(row.support) && (row.fork == ForkFeature::None || dropped(row.supportWithFork)))
             EXPECT_EQ(row.rewrite, RewriteId::None) << row.name;
         EXPECT_EQ(findProperty(row.name), &row) << row.name;
     }

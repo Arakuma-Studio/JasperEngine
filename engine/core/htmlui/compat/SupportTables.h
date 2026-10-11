@@ -48,6 +48,8 @@ namespace jasperengine::htmlui::compat {
         Content,     // content (pseudo-elements)
         All,         // all: unset/initial/inherit/revert
         LineClamp,   // -webkit-line-clamp, line-clamp
+        // added by phase 3
+        UserSelect,  // user-select (p3-text: text/all/contain select nothing outside text inputs)
         Count
     };
 

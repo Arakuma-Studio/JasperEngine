@@ -19,6 +19,9 @@ color: #0000ffff;
 color: #ffc0cbff;
 --html-current-color: #ffc0cbff;
 }
+#htmlui-root .l {
+text-wrap: balance;
+}
 #htmlui-root .m {
 position: relative;
 }

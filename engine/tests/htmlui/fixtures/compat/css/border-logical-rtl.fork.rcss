@@ -13,5 +13,5 @@ padding-left: 2px;
 border-top-right-radius: 4px;
 }
 #htmlui-root .text {
-text-align: right;
+text-align: start;
 }

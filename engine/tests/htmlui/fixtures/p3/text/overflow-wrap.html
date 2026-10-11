@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: overflow-wrap and word-break</title>
+<style>
+  /* A word wider than its line is broken anywhere with overflow-wrap (anywhere, break-word, the word-wrap alias) and word-break: break-all; it first moves to a line of its own. Min-content (an inline-block in a zero-width box): anywhere counts the breaks, break-word does not. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  @font-face { font-family: "Roboto Text"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  .w { position: absolute; width: 50px; background: #e0e8f0; }
+  .min { position: absolute; width: 0; }
+  .min span { display: inline-block; background: #f0e0d0; }
+</style>
+</head>
+<body>
+<div class="w" id="normal" style="left: 10px; top: 10px">XXXXXXXX</div>
+<div class="w" id="anywhere" style="left: 70px; top: 10px; overflow-wrap: anywhere">XXXXXXXX</div>
+<div class="w" id="break-word" style="left: 130px; top: 10px; overflow-wrap: break-word">XX XXXXXXXX</div>
+<div class="w" id="word-wrap" style="left: 190px; top: 10px; word-wrap: break-word">XXXXXXXX</div>
+<div class="w" id="break-all" style="left: 10px; top: 60px; word-break: break-all">XX XXXXXXX</div>
+<div class="min" style="left: 70px; top: 60px"><span id="min-anywhere" style="overflow-wrap: anywhere">XXXX XX</span></div>
+<div class="min" style="left: 130px; top: 60px"><span id="min-break-word" style="overflow-wrap: break-word">XXXX XX</span></div>
+</body>
+</html>

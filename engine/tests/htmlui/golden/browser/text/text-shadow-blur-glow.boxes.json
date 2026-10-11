@@ -1,0 +1,44 @@
+{
+ "fixture": "text/text-shadow-blur-glow.html",
+ "viewport": [
+  220,
+  120
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "blur",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 60,
+    "h": 20
+   },
+   {
+    "id": "glow",
+    "tag": "div",
+    "x": 20,
+    "y": 70,
+    "w": 60,
+    "h": 20
+   },
+   {
+    "id": "soft",
+    "tag": "div",
+    "x": 120,
+    "y": 20,
+    "w": 60,
+    "h": 20
+   },
+   {
+    "id": "far",
+    "tag": "div",
+    "x": 120,
+    "y": 70,
+    "w": 60,
+    "h": 20
+   }
+  ]
+ }
+}

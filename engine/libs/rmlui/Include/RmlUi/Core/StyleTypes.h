@@ -139,11 +139,16 @@ namespace Style {
 	enum class FontWeight : uint16_t { Auto = 0, Normal = 400, Bold = 700 }; // Any definite value in the range [1,1000] is valid.
 	enum class FontKerning : uint8_t { Auto, Normal, None };
 
-	enum class TextAlign : uint8_t { Left, Right, Center, Justify };
-	enum class TextDecoration : uint8_t { None, Underline, Overline, LineThrough };
+	// 'start' and 'end' are computed as such and resolve against 'direction' (ComputedValues::text_align() returns the
+	// resolved value; phase 3, p3-text).
+	enum class TextAlign : uint8_t { Left, Right, Center, Justify, Start, End };
+	// The lines of 'text-decoration-line': a combination of flags (phase 3, p3-text).
+	enum class TextDecoration : uint8_t { None = 0, Underline = 1, Overline = 2, LineThrough = 4 };
 	enum class TextTransform : uint8_t { None, Capitalize, Uppercase, Lowercase };
+	// The 'white-space' keywords of CSS 2.1. Phase 3 (p3-text) computes 'white-space-collapse' and 'text-wrap-mode', of
+	// which 'white-space' is the shorthand; ComputedValues::white_space() maps them to the nearest of these.
 	enum class WhiteSpace : uint8_t { Normal, Pre, Nowrap, Prewrap, Preline };
-	enum class WordBreak : uint8_t { Normal, BreakAll, BreakWord };
+	enum class WordBreak : uint8_t { Normal, BreakAll, BreakWord, KeepAll };
 
 	enum class Drag : uint8_t { None, Drag, DragDrop, Block, Clone };
 	enum class TabIndex : uint8_t { None, Auto };
@@ -233,6 +238,41 @@ namespace Style {
 	// -- Paint (p3-paint) --
 
 	// -- Text (p3-text) --
+	enum class WhiteSpaceCollapse : uint8_t { Collapse, Preserve, PreserveBreaks, PreserveSpaces, BreakSpaces };
+	enum class TextWrapMode : uint8_t { Wrap, Nowrap };
+	enum class OverflowWrap : uint8_t { Normal, Anywhere, BreakWord };
+	// 'wavy' is drawn as 'solid' (phase-3 spec 2.2).
+	enum class TextDecorationStyle : uint8_t { Solid, Double, Dotted, Dashed, Wavy };
+	// 'text' and 'all' select nothing outside text inputs (phase-3 spec 2.2); 'none' disables selection in text inputs.
+	enum class UserSelect : uint8_t { Auto, Text, None, Contain, All };
+
+	inline TextDecoration operator|(TextDecoration a, TextDecoration b) { return TextDecoration(uint8_t(a) | uint8_t(b)); }
+	inline bool HasTextDecoration(TextDecoration lines, TextDecoration line) { return (uint8_t(lines) & uint8_t(line)) != 0; }
+
+	// 'start' and 'end' against the direction ('auto' reads as 'ltr').
+	inline TextAlign ResolveTextAlign(TextAlign align, Direction direction)
+	{
+		if (align == TextAlign::Start)
+			return direction == Direction::Rtl ? TextAlign::Right : TextAlign::Left;
+		if (align == TextAlign::End)
+			return direction == Direction::Rtl ? TextAlign::Left : TextAlign::Right;
+		return align;
+	}
+
+	// The CSS 2.1 'white-space' keyword nearest to the longhands: spaces preserved or not, lines wrapped or not.
+	inline WhiteSpace ToWhiteSpace(WhiteSpaceCollapse collapse, TextWrapMode wrap_mode)
+	{
+		const bool wrap = (wrap_mode == TextWrapMode::Wrap);
+		switch (collapse)
+		{
+		case WhiteSpaceCollapse::Collapse: return wrap ? WhiteSpace::Normal : WhiteSpace::Nowrap;
+		case WhiteSpaceCollapse::PreserveBreaks: return wrap ? WhiteSpace::Preline : WhiteSpace::Nowrap;
+		case WhiteSpaceCollapse::Preserve:
+		case WhiteSpaceCollapse::PreserveSpaces:
+		case WhiteSpaceCollapse::BreakSpaces: break;
+		}
+		return wrap ? WhiteSpace::Prewrap : WhiteSpace::Pre;
+	}
 
 	// -- Layout (p3-layout) --
 

@@ -1,0 +1,7 @@
+{
+ "comment": "A blurred shadow is a Gaussian blur of half the blur radius (as Chromium); a glow is a blurred shadow without offset; drawn behind the text.",
+ "viewport": [
+  220,
+  120
+ ]
+}

@@ -1,0 +1,7 @@
+{
+ "comment": "A word wider than its line is broken anywhere with overflow-wrap (anywhere, break-word, the word-wrap alias) and word-break: break-all; it first moves to a line of its own. Min-content (an inline-block in a zero-width box): anywhere counts the breaks, break-word does not.",
+ "viewport": [
+  260,
+  140
+ ]
+}
