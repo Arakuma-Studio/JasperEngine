@@ -538,14 +538,17 @@ Rml::Element* FixtureRunner::element(const std::string& id, std::string* error) 
     return found;
 }
 
-// the pointer to the element's border-box centre, rounded as the reference script rounds it
+// the pointer to the element's border-box centre, rounded as the reference script rounds it; on screen, through the
+// transforms of the element and its ancestors (the reference takes getBoundingClientRect())
 bool FixtureRunner::pointerTo(const std::string& id, std::string* error){
     Rml::Element* target = element(id, error);
     if (!target)
         return false;
-    const Rml::Vector2f offset = target->GetAbsoluteOffset(Rml::BoxArea::Border);
-    const Rml::Vector2f size = target->GetBox().GetSize(Rml::BoxArea::Border);
-    state->render->context->ProcessMouseMove(int(std::lround(offset.x + size.x * 0.5f)), int(std::lround(offset.y + size.y * 0.5f)), 0);
+    Rml::Rectanglef box;
+    if (!Rml::ElementUtilities::GetBoundingBox(box, target, Rml::BoxArea::Border))
+        box = Rml::Rectanglef::FromPositionSize(target->GetAbsoluteOffset(Rml::BoxArea::Border), target->GetBox().GetSize(Rml::BoxArea::Border));
+    const Rml::Vector2f centre = box.Center();
+    state->render->context->ProcessMouseMove(int(std::lround(centre.x)), int(std::lround(centre.y)), 0);
     return true;
 }
 

@@ -22,7 +22,8 @@
 // - data-lucide elements are expanded from the engine's Lucide pack with compat's algorithm;
 // - Playwright's default --hide-scrollbars is dropped: element scrollbars (Chromium's classic
 //   15px ones, or ::-webkit-scrollbar styles) are part of the reference, as the engine draws
-//   them; only the root viewport's scrollbar is hidden (the engine's root does not scroll);
+//   them; only the root viewport's scrollbar is hidden (the engine's root does not scroll; in
+//   fixture mode it is kept when the page makes the viewport scroll, as the engine's root then does);
 // - CSS transitions are disabled, animations finished (end state), states applied from
 //   <meta name="htmlui-ref-hover|htmlui-ref-focus|htmlui-ref-active" content="#selector">.
 //
@@ -851,6 +852,21 @@ async function idBoxes(page){
     });
 }
 
+// The engine's document scrolls (and shows its scrollbars) only when the page makes the viewport a scroll
+// container: html's overflow, or body's when html's is visible (CSS Overflow 3 3.3), auto or scroll. A browser's
+// viewport scrolls by default; its scrollbar is hidden then (ROOT_SCROLLBAR_CSS), kept otherwise.
+async function viewportScrolls(page){
+    return page.evaluate(() => {
+        const root = getComputedStyle(document.documentElement);
+        let overflow = [root.overflowX, root.overflowY];
+        if (overflow[0] === 'visible' && overflow[1] === 'visible' && document.body){
+            const body = getComputedStyle(document.body);
+            overflow = [body.overflowX, body.overflowY];
+        }
+        return overflow.some((value) => value === 'auto' || value === 'scroll');
+    });
+}
+
 async function waitForFonts(page, label){
     await page.evaluate(async () => {
         await document.fonts.ready;
@@ -886,7 +902,7 @@ async function renderP3Fixture(launchBrowser, { area, name }, boxesOnly){
         const context = await newFixtureContext(browser, sidecar.viewport, blocked);
         const page = await context.newPage();
         await page.goto(pathToFileURL(path.join(P3_DIR, area, `${name}.html`)).href, { waitUntil: 'load' });
-        await injectStyle(page, ROOT_SCROLLBAR_CSS + (sidecar.selfTest?.referenceCss ?? ''));
+        await injectStyle(page, (await viewportScrolls(page) ? '' : ROOT_SCROLLBAR_CSS) + (sidecar.selfTest?.referenceCss ?? ''));
         await waitForFonts(page, label);
         await adoptAnimations(page);
 
