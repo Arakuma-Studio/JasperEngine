@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: background-origin</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; width: 100px; height: 70px; }
+  #b1 { left: 10px; top: 10px; }
+  #b2 { left: 120px; top: 10px; }
+  #b3 { left: 230px; top: 10px; }
+  #b4 { left: 340px; top: 10px; }
+  .b { border: 6px solid rgba(0,0,0,0.3); padding: 8px; width: 76px; height: 46px; background-image: url(img/tile.png); background-repeat: no-repeat; background-color: #dde6f5; }
+  #b1 { background-origin: padding-box; }
+  #b2 { background-origin: border-box; }
+  #b3 { background-origin: content-box; background-position: right bottom; }
+  #b4 { background-origin: content-box; background-size: 100% 100%; background-clip: content-box; }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div><div class="b" id="b4"></div></body>
+</html>

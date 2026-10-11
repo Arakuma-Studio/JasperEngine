@@ -25,7 +25,7 @@ namespace jasperengine::htmlui::compat {
         TextShadow, TextProperties,
         AnimationLonghands, IndividualTransforms,   // p3-animation
         CurrentColor, ExtraUnits, LineHeightNormal,         // p3-values
-        Outline, ObjectFit,                         // p3-paint
+        Outline, ObjectFit, BackgroundLayers,       // p3-paint
         Count
     };
 

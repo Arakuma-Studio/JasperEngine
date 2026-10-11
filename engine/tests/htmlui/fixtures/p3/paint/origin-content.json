@@ -1,0 +1,7 @@
+{
+ "comment": "background-origin padding-box (initial), border-box, content-box at the far corner, a content-box image sized to the content box.",
+ "viewport": [
+  460,
+  100
+ ]
+}

@@ -63,6 +63,7 @@ private:
 		SharedPtr<const Decorator> decorator;
 		uintptr_t decorator_data = 0;
 		Geometry clip_mask; // rounded clip box: the anti-aliased shape the layer is masked with
+		SharedPtr<void> image_owner; // the application's image (ImageSourceHandler)
 	};
 
 	void Generate(Element* element, const Rectanglef* canvas, Element* area_element);

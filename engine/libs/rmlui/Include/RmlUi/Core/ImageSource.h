@@ -20,7 +20,8 @@ public:
 	struct Image {
 		Texture texture;                  // to draw it at 'draw_size' (none when only the size was asked for)
 		Vector2f intrinsic_size;          // in px; 0 in an axis: the image has no intrinsic size in it
-		ColourbPremultiplied colour{255}; // multiplied with the texture (the element's draw opacity is applied after)
+		ColourbPremultiplied colour{255}; // the vertex colour to draw the texture with (the element's draw opacity included)
+		SharedPtr<void> owner;            // keeps the texture alive while the fork draws it
 	};
 
 	/// The image of 'url' (relative to 'base_path', the path of the document or style sheet that names it) for the

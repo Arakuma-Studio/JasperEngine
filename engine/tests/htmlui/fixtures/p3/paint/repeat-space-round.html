@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: background-repeat space and round</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; width: 100px; height: 70px; }
+  #b1 { left: 10px; top: 10px; }
+  #b2 { left: 120px; top: 10px; }
+  #b3 { left: 230px; top: 10px; }
+  #b4 { left: 340px; top: 10px; }
+  #b5 { left: 10px; top: 90px; }
+  #b6 { left: 120px; top: 90px; }
+  #b7 { left: 230px; top: 90px; }
+  #b8 { left: 340px; top: 90px; }
+  .b { background-image: url(img/tile.png); background-color: #dde6f5; }
+  #b1 { background-repeat: space; }
+  #b2 { background-repeat: round; }
+  #b3 { background-repeat: space no-repeat; }
+  #b4 { background-repeat: round repeat; }
+  #b5 { background-repeat: space; background-size: 30px 30px; }
+  #b6 { background-repeat: round; background-size: 30px 30px; }
+  #b7 { width: 30px; background-repeat: space; background-position: center; }
+  #b8 { background-repeat: round space; background-size: 22px; }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div><div class="b" id="b4"></div><div class="b" id="b5"></div><div class="b" id="b6"></div><div class="b" id="b7"></div><div class="b" id="b8"></div></body>
+</html>

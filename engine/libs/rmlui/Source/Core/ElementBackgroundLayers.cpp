@@ -438,8 +438,8 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 					if (!image_source_handler->GetImage(element, layer.url, base_path, tiles.tile_size, image) || !image.texture)
 						continue;
 					draw.texture = image.texture;
-					const Colourb tint = image.colour.ToNonPremultiplied();
-					colour = tint.ToPremultiplied(opacity);
+					draw.image_owner = image.owner;
+					colour = image.colour;
 				}
 				else
 					draw.texture = raster;

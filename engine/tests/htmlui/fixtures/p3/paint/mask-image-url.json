@@ -1,0 +1,7 @@
+{
+ "comment": "mask-image with an image of alpha squares: tiled, centred once, stretched, with a second gradient layer (the masks add up).",
+ "viewport": [
+  460,
+  100
+ ]
+}

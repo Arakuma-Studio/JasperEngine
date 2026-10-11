@@ -26,8 +26,12 @@
 #include "htmlui/compat/runtime/HtmlShapeDecorator.h"
 #include "htmlui/compat/runtime/SvgElementHook.h"
 
+#include "htmlui/compat/DocumentLoader.h"
+#include "htmlui/compat/runtime/DecoratorCommon.h"
+
 #include <RmlUi/Core/ElementInstancer.h>
 #include <RmlUi/Core/Factory.h>
+#include <RmlUi/Core/ImageSource.h>
 
 #include <memory>
 #include <vector>
@@ -42,6 +46,32 @@ namespace {
         std::unique_ptr<HtmlShapeDecoratorInstancer> shape;
         std::unique_ptr<HtmlBorderImageDecoratorInstancer> borderImage;
         std::vector<std::unique_ptr<Rml::ElementInstancer>> elements;
+        LayerImageSource layerImages;
+    };
+
+    // The url() images of the fork's background and mask layers (phase 3, p3-paint): loaded as
+    // compat's own images (html-layer's), so SVG files are rasterized at the size of a tile,
+    // monochrome currentColor SVGs tinted, and image-rendering chooses the sampling
+    class LayerImageSource : public Rml::ImageSourceHandler {
+    public:
+        bool GetImage(Rml::Element* element, const Rml::String& url, const Rml::String& /*base_path*/, Rml::Vector2f draw_size,
+                      Image& out) override{
+            // the paths compat writes are resolved for the document (resolveUrlIn); others are
+            // RmlUi's own (a .rml document): the fork loads them
+            Rml::ElementDocument* document = element ? element->GetOwnerDocument() : nullptr;
+            if (!document || !DocumentLoader::isCompatDocument(document))
+                return false;
+            auto image = std::make_shared<decorators::Image>();
+            if (!image->load(element, url))
+                return true;   // reported once by load; nothing drawn
+            out.intrinsic_size = image->intrinsicSize();
+            if (draw_size.x > 0.0f && draw_size.y > 0.0f){
+                out.texture = image->texture(element, draw_size);
+                out.colour = image->colour(element);
+                out.owner = image;
+            }
+            return true;
+        }
     };
 
     template<typename T>
@@ -65,6 +95,7 @@ void jasperengine::htmlui::compat::registerRuntime(){
     // properties first: the instancers and decorators read them
     CompatProperties::registerAll();
     SvgElementHook::install();
+    Rml::SetImageSourceHandler(&r.layerImages);
 
     // decorators (§3.11.3); the names p2-css writes
     r.layer = std::make_unique<HtmlLayerDecoratorInstancer>();
@@ -94,6 +125,7 @@ void jasperengine::htmlui::compat::releaseRuntime(){
     FocusTracker::reset();
     AnimationFill::reset();
     SvgElementHook::uninstall();
+    Rml::SetImageSourceHandler(nullptr);
     CompatProperties::reset();
     r.layer.reset();
     r.shape.reset();

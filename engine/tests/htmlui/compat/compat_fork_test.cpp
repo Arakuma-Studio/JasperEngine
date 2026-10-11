@@ -54,7 +54,7 @@ TEST(ForkFeatures, ProbesNeedRmlUi){
 TEST(ForkFeatures, PresentFeatures){
     // polarity: true = the fork has it; phase 2 shipped every entry false, phase 3 flips them
     // with the fork patches (docs/html-ui/FORK.md): Calc with upstream PR #983 (p3-base), Grid (p3-grid),
-    // BorderStyle, PercentRadius, Outline, GroupOpacity and ObjectFit (p3-paint), TextShadow and TextProperties (p3-text),
+    // BorderStyle, PercentRadius, Outline, GroupOpacity, ObjectFit and BackgroundLayers (p3-paint), TextShadow and TextProperties (p3-text),
     // TimingFunctions, AnimationLonghands, IndividualTransforms (p3-animation); CurrentColor, ExtraUnits,
     // LineHeightNormal (p3-values)
     const ForkFeatures present = ForkFeatures::present();
@@ -73,7 +73,8 @@ TEST(ForkFeatures, PresentFeatures){
         .with(ForkFeature::LineHeightNormal, true)
         .with(ForkFeature::Outline, true)
         .with(ForkFeature::GroupOpacity, true)
-        .with(ForkFeature::ObjectFit, true);
+        .with(ForkFeature::ObjectFit, true)
+        .with(ForkFeature::BackgroundLayers, true);
     for (size_t i = 0; i < (size_t)ForkFeature::Count; i++)
         EXPECT_EQ(present.has((ForkFeature)i), expected.has((ForkFeature)i)) << forkFeatureName((ForkFeature)i);
     EXPECT_EQ(present, expected);

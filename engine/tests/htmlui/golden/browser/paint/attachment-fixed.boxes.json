@@ -1,0 +1,36 @@
+{
+ "fixture": "paint/attachment-fixed.html",
+ "viewport": [
+  430,
+  130
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "scrolled": [
+   {
+    "id": "fixed",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 120,
+    "h": 80
+   },
+   {
+    "id": "fixed2",
+    "tag": "div",
+    "x": 150,
+    "y": 30,
+    "w": 120,
+    "h": 80
+   },
+   {
+    "id": "scroller",
+    "tag": "div",
+    "x": 290,
+    "y": 10,
+    "w": 120,
+    "h": 80
+   }
+  ]
+ }
+}

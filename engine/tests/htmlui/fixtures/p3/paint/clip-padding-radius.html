@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: background-clip with rounded corners</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; width: 100px; height: 70px; }
+  #b1 { left: 10px; top: 10px; }
+  #b2 { left: 120px; top: 10px; }
+  #b3 { left: 230px; top: 10px; }
+  #b4 { left: 340px; top: 10px; }
+  #b5 { left: 10px; top: 90px; }
+  #b6 { left: 120px; top: 90px; }
+  #b7 { left: 230px; top: 90px; }
+  #b8 { left: 340px; top: 90px; }
+  .b { border: 8px dashed rgba(0, 0, 0, 0.4); border-radius: 18px; background: linear-gradient(#cc3333, #3366cc); }
+  #b2 { background-clip: padding-box; }
+  #b3 { background-clip: content-box; padding: 8px; width: 84px; height: 54px; }
+  #b4 { background: url(img/tile.png) #f4c430; background-clip: padding-box; }
+  #b5 { background: url(img/tile.png); }
+  #b6 { border-radius: 50%; background: url(img/tile.png) #dde6f5; background-clip: padding-box; }
+  #b7 { border-radius: 30px 6px; background-clip: border-box; }
+  #b8 { background-color: #3366cc; background-image: none; background-clip: padding-box; }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div><div class="b" id="b4"></div><div class="b" id="b5"></div><div class="b" id="b6"></div><div class="b" id="b7"></div><div class="b" id="b8"></div></body>
+</html>

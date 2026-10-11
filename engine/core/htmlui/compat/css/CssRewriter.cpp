@@ -948,7 +948,8 @@ namespace {
                 if (isBodyRule(rule))
                     bodyBackground = true;
             }
-            session.propagateBodyBackground = bodyBackground && !rootBackground;
+            // (the fork propagates it itself, at run time: ElementDocument::SetCanvasBackground)
+            session.propagateBodyBackground = bodyBackground && !rootBackground && !session.options.fork.has(ForkFeature::BackgroundLayers);
         }
 
         // the root font size (rem, root em) from static root rules

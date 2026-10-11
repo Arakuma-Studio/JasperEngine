@@ -1,0 +1,7 @@
+{
+ "comment": "background-clip border-box, padding-box and content-box with rounded corners under a translucent dashed border: gradients and images clipped to the inner curves, a colour clipped too.",
+ "viewport": [
+  460,
+  180
+ ]
+}
