@@ -19,6 +19,7 @@ local GROUPS = {
     "core", "lighting", "lit", "stylized", "effects", "nature", "animated",
     "sprites", "ui", "particles", "sky", "decals", "extra",
     "2d",
+    "checks",
 }
 
 -- each group fills rows of COLUMNS cells, starting on the row after the previous group's
