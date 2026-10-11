@@ -11,6 +11,15 @@
 
 using namespace Rml;
 
+// A colour stop with a fixed colour (the other members, currentcolor and its color-mix(), at their defaults).
+static ColorStop MakeColorStop(ColourbPremultiplied color, NumericValue position)
+{
+	ColorStop stop;
+	stop.color = color;
+	stop.position = position;
+	return stop;
+}
+
 static bool DictionaryApproximateMatch(const Rml::Dictionary& dict, const Rml::Dictionary& dict_expected)
 {
 	for (auto& pair : dict)
@@ -253,8 +262,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"p0", Variant(Vector2f{0.f, 100.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"p1", Variant(Vector2f{200.f, 100.f})},
 				{"repeating", Variant(false)},
@@ -269,8 +278,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"p1", Variant(Vector2f{200.f, 100.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(true)},
 			},
@@ -284,9 +293,9 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"p1", Variant(Vector2f{200.f, 100.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{150, 150, 150, 255}, {0.25f, Unit::NUMBER}},
-						ColorStop{{255, 0, 0, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({150, 150, 150, 255}, {0.25f, Unit::NUMBER}),
+						MakeColorStop({255, 0, 0, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -300,8 +309,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"p1", Variant(Vector2f{200.f, 100.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {0.25f, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {0.25f, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -315,10 +324,10 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"p1", Variant(Vector2f{200.f, 100.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 0, 0, 255}, {0.5f, Unit::NUMBER}},
-						ColorStop{{255, 0, 0, 255}, {0.75f, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 0, 0, 255}, {0.5f, Unit::NUMBER}),
+						MakeColorStop({255, 0, 0, 255}, {0.75f, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -332,8 +341,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"p1", Variant(Vector2f{100.f, 50.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -347,8 +356,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"p1", Variant(Vector2f{100.f, 0.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -362,8 +371,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"p1", Variant(Vector2f{100.f, 200.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -377,8 +386,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"p1", Variant(Vector2f{200.f, 0.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -393,8 +402,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"radius", Variant(Vector2f{Math::SquareRoot(2.f) * 100.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -407,8 +416,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"radius", Variant(Vector2f{Math::SquareRoot(2.f) * 100.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(true)},
 			},
@@ -421,8 +430,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"radius", Variant(Vector2f{100.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -435,9 +444,9 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"radius", Variant(Vector2f{100.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0.25f, Unit::NUMBER}},
-						ColorStop{{0, 0, 0, 255}, {0.5f, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0.25f, Unit::NUMBER}),
+						MakeColorStop({0, 0, 0, 255}, {0.5f, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -450,8 +459,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"radius", Variant(Vector2f{50.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -464,8 +473,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"radius", Variant(Vector2f{50.f, 100.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -478,8 +487,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"radius", Variant(Vector2f{150.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -492,8 +501,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"radius", Variant(Vector2f{150.f, 100.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -506,8 +515,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"radius", Variant(Math::SquareRoot(2.f) * Vector2f{200.f, 100.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -520,8 +529,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"radius", Variant(Vector2f{50.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -534,8 +543,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"radius", Variant(Vector2f{100.f, 50.f})},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -550,8 +559,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"angle", Variant(0.f)},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -564,8 +573,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"angle", Variant(0.f)},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(true)},
 			},
@@ -578,8 +587,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"angle", Variant(0.f)},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0.5f, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0.5f, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -592,9 +601,9 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"angle", Variant(0.f)},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0.5f, Unit::NUMBER}},
-						ColorStop{{0, 0, 0, 255}, {0.75f, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0.5f, Unit::NUMBER}),
+						MakeColorStop({0, 0, 0, 255}, {0.75f, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -607,8 +616,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"angle", Variant(1.5708f)},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -621,8 +630,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"angle", Variant(1.5708f)},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},
@@ -635,8 +644,8 @@ TEST_CASE("decorator.gradients_and_shader")
 				{"angle", Variant(0.f)},
 				{"color_stop_list",
 					Variant(ColorStopList{
-						ColorStop{{0, 0, 0, 255}, {0, Unit::NUMBER}},
-						ColorStop{{255, 255, 255, 255}, {1, Unit::NUMBER}},
+						MakeColorStop({0, 0, 0, 255}, {0, Unit::NUMBER}),
+						MakeColorStop({255, 255, 255, 255}, {1, Unit::NUMBER}),
 					})},
 				{"repeating", Variant(false)},
 			},

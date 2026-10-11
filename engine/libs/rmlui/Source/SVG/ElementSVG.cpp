@@ -3,7 +3,11 @@
 #include "../../Include/RmlUi/Core/ElementDocument.h"
 #include "../../Include/RmlUi/Core/ElementUtilities.h"
 #include "../../Include/RmlUi/Core/FileInterface.h"
+#include "../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../Include/RmlUi/Core/Geometry.h"
+#include "../../Include/RmlUi/Core/MeshUtilities.h"
+#include "../../Include/RmlUi/Core/ObjectFit.h"
+#include "../../Include/RmlUi/Core/RenderManager.h"
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
 #include "../../Include/RmlUi/Core/SystemInterface.h"
 #include "SVGCache.h"
@@ -62,8 +66,59 @@ bool ElementSVG::GetIntrinsicDimensions(Vector2f& dimensions, float& ratio)
 void ElementSVG::OnRender()
 {
 	EnsureSourceLoaded();
-	if (handle)
+	if (!handle)
+		return;
+	if (HasAttribute("src"))
+	{
+		if (fitted_geometry)
+			fitted_geometry.Render(GetAbsoluteOffset(BoxArea::Content), handle->texture);
+	}
+	else
+	{
 		handle->geometry.Render(GetAbsoluteOffset(BoxArea::Content), handle->texture);
+	}
+}
+
+void ElementSVG::GenerateFittedGeometry(const Function<SharedPtr<SVG::SVGData>(const Vector2i*)>& get_handle)
+{
+	fitted_geometry = Geometry();
+	RenderManager* render_manager = GetRenderManager();
+	if (!render_manager)
+		return;
+
+	// First at the size of the content box: the image's intrinsic size.
+	handle = get_handle(nullptr);
+	if (!handle)
+		return;
+
+	// The image's size as layout sees it (intrinsic size, width/height attributes, dp ratio).
+	Vector2f natural = handle->intrinsic_dimensions;
+	if (HasAttribute("width"))
+		natural.x = GetAttribute<float>("width", 0);
+	if (HasAttribute("height"))
+		natural.y = GetAttribute<float>("height", 0);
+	natural *= ElementUtilities::GetDensityIndependentPixelRatio(this);
+
+	const ComputedValues& computed = GetComputedValues();
+	const Vector2f box = GetBox().GetSize(BoxArea::Content).Round();
+	ObjectFitRect fit;
+	// Nothing visible (no box yet, during the layout that asks for the intrinsic size): the handle stays for that.
+	if (!ComputeObjectFitRect(box, natural, computed.object_fit(), computed.object_position_x(), computed.object_position_y(), fit))
+		return;
+
+	// Rasterised at the size the whole image is drawn at; the visible part of it is drawn.
+	const Vector2i dimensions(Math::Max(fit.size.Round(), Vector2f(1.f)));
+	if (dimensions != Vector2i(box))
+	{
+		SharedPtr<SVG::SVGData> fitted = get_handle(&dimensions);
+		handle = std::move(fitted);
+	}
+	if (!handle)
+		return;
+
+	Mesh mesh;
+	MeshUtilities::GenerateQuad(mesh, fit.rect.TopLeft(), fit.rect.Size(), fitted_colour, fit.uv.TopLeft(), fit.uv.BottomRight());
+	fitted_geometry = render_manager->MakeGeometry(std::move(mesh));
 }
 
 void ElementSVG::OnResize()
@@ -91,7 +146,9 @@ void ElementSVG::OnPropertyChange(const PropertyIdSet& changed_properties)
 {
 	Element::OnPropertyChange(changed_properties);
 
-	if (changed_properties.Contains(PropertyId::ImageColor) || changed_properties.Contains(PropertyId::Opacity))
+	if (changed_properties.Contains(PropertyId::ImageColor) || changed_properties.Contains(PropertyId::Opacity) ||
+		changed_properties.Contains(PropertyId::ObjectFit) || changed_properties.Contains(PropertyId::ObjectPositionX) ||
+		changed_properties.Contains(PropertyId::ObjectPositionY))
 	{
 		svg_dirty = true;
 	}
@@ -139,6 +196,7 @@ void ElementSVG::EnsureSourceLoaded()
 
 	const bool crop_to_content = HasAttribute("crop-to-content");
 	const auto source = GetAttribute<String>("src", "");
+	fitted_geometry = Geometry();
 	if (source.empty())
 	{
 		const auto source_id = GetAttribute<String>("rmlui-svgdata-id", "svgdata:undefined");
@@ -175,6 +233,8 @@ void ElementSVG::EnsureSourceLoaded()
 	}
 	else
 	{
+		// An SVG file: an image, placed by object-fit and object-position.
+		fitted_colour = SVG::SVGCache::GetColour(this);
 		if (SVG::SourceHook* hook = SVG::GetSourceHook())
 		{
 			// The file, resolved against the document as the cache resolves it
@@ -190,13 +250,20 @@ void ElementSVG::EnsureSourceLoaded()
 			if (!path.empty() && GetFileInterface()->LoadFile(path, file_data) && hook->ProcessSource(this, path, file_data, hooked))
 			{
 				// the new handle before the old one goes: a colour change keeps the rasterised texture
-				handle = SVG::SVGCache::GetHandle(hooked.source_id, hooked.data, SVG::SVGCache::Data, this, crop_to_content, BoxArea::Content,
-					hooked.use_colour ? &hooked.colour : nullptr);
+				if (hooked.use_colour)
+					fitted_colour = hooked.colour;
+				GenerateFittedGeometry([&](const Vector2i* dimensions) {
+					return SVG::SVGCache::GetHandle(hooked.source_id, hooked.data, SVG::SVGCache::Data, this, crop_to_content, BoxArea::Content,
+						&fitted_colour, dimensions);
+				});
 				return;
 			}
 		}
 
-		handle = SVG::SVGCache::GetHandle(source, source, SVG::SVGCache::File, this, crop_to_content, BoxArea::Content);
+		GenerateFittedGeometry([&](const Vector2i* dimensions) {
+			return SVG::SVGCache::GetHandle(source, source, SVG::SVGCache::File, this, crop_to_content, BoxArea::Content, &fitted_colour,
+				dimensions);
+		});
 	}
 }
 } // namespace Rml
