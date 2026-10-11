@@ -29,6 +29,7 @@
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/runtime/DecoratorCommon.h"
 
+#include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementInstancer.h>
 #include <RmlUi/Core/Factory.h>
 #include <RmlUi/Core/ImageSource.h>
@@ -39,15 +40,6 @@
 using namespace jasperengine::htmlui::compat;
 
 namespace {
-
-    struct Runtime {
-        bool registered = false;
-        std::unique_ptr<HtmlLayerDecoratorInstancer> layer;
-        std::unique_ptr<HtmlShapeDecoratorInstancer> shape;
-        std::unique_ptr<HtmlBorderImageDecoratorInstancer> borderImage;
-        std::vector<std::unique_ptr<Rml::ElementInstancer>> elements;
-        LayerImageSource layerImages;
-    };
 
     // The url() images of the fork's background and mask layers (phase 3, p3-paint): loaded as
     // compat's own images (html-layer's), so SVG files are rasterized at the size of a tile,
@@ -72,6 +64,15 @@ namespace {
             }
             return true;
         }
+    };
+
+    struct Runtime {
+        bool registered = false;
+        std::unique_ptr<HtmlLayerDecoratorInstancer> layer;
+        std::unique_ptr<HtmlShapeDecoratorInstancer> shape;
+        std::unique_ptr<HtmlBorderImageDecoratorInstancer> borderImage;
+        std::vector<std::unique_ptr<Rml::ElementInstancer>> elements;
+        LayerImageSource layerImages;
     };
 
     template<typename T>
