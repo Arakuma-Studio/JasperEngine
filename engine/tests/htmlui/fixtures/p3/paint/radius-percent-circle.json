@@ -1,7 +1,10 @@
 {
- "comment": "border-radius in percent: circles of 24 and 60px, ellipses (50% of a rectangle), 10%, two values, with borders, 100% (scaled to 50%), single corners.",
+ "comment": "border-radius in percent: circles of 24 and 60px, ellipses (50% of a rectangle), 10%, two values, with borders, 100% (scaled to 50%), single corners. Tolerance: the anti-aliased edge of a curve where it is nearly tangent to a pixel row or column: the engine fades it linearly over 1.1 px (feathering over 4x multisampling), Skia uses the covered area; such pixels differ by up to about 30 levels (scattered single pixels, no shape difference).",
  "viewport": [
   330,
   220
- ]
+ ],
+ "tolerance": {
+  "badPercent": 0.35
+ }
 }

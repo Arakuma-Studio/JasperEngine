@@ -770,6 +770,8 @@ namespace {
         {"white-space-collapse", ForkFeature::TextProperties, "kw:collapse,preserve,preserve-breaks,preserve-spaces,break-spaces"},
         {"word-break", ForkFeature::TextProperties, "kw:normal,break-all,break-word,keep-all"},
         {"word-spacing", ForkFeature::TextProperties, "kw:normal|length_percent"},
+        // p3-paint (GroupOpacity: stacking contexts)
+        {"isolation", ForkFeature::GroupOpacity, "kw:auto,isolate"},
     };
 
     const ForkGrammar* findForkGrammar(std::string_view name){

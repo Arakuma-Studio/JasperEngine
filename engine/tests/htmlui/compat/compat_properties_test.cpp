@@ -7,6 +7,7 @@
 
 #include "RuntimeTestCommon.h"
 
+#include "htmlui/compat/ForkFeatures.h"
 #include "htmlui/compat/runtime/CompatProperties.h"
 
 #include <RmlUi/Core/PropertyDefinition.h>
@@ -56,6 +57,13 @@ TEST_F(CompatPropertiesTest, EveryPropertyIsRegistered){
     std::vector<std::string> names;
     for (const Expected& expected : kExpected){
         EXPECT_STREQ(CompatProperties::name(expected.property), expected.name);
+        // the fork registers object-fit and object-position (ForkFeature::ObjectFit, phase 3 p3-paint): compat steps aside
+        const bool fork = (expected.property == CompatProperty::ObjectFit || expected.property == CompatProperty::ObjectPosition) &&
+                          ForkFeatures::present().has(ForkFeature::ObjectFit);
+        if (fork){
+            EXPECT_FALSE(CompatProperties::registeredByCompat(expected.property)) << expected.name;
+            continue;
+        }
         EXPECT_TRUE(CompatProperties::registeredByCompat(expected.property)) << expected.name;
         const Rml::PropertyDefinition* definition = Rml::StyleSheetSpecification::GetProperty(expected.name);
         ASSERT_NE(definition, nullptr) << expected.name;
@@ -90,7 +98,9 @@ TEST_F(CompatPropertiesTest, ValuesParseAndInheritAsSpecified){
     EXPECT_EQ(CompatProperties::text(*parent, CompatProperty::ListStylePosition), "inside");
     EXPECT_EQ(CompatProperties::text(*parent, CompatProperty::ListStyleImage), "/ui/bullet.png");
     EXPECT_EQ(CompatProperties::text(*parent, CompatProperty::ObjectFit), "cover");
-    EXPECT_EQ(CompatProperties::text(*parent, CompatProperty::ObjectPosition), "right 10px top");
+    // the fork's <position>: an offset from the right edge is a calc() (without ObjectFit: as written)
+    EXPECT_EQ(CompatProperties::text(*parent, CompatProperty::ObjectPosition),
+              ForkFeatures::present().has(ForkFeature::ObjectFit) ? "calc(100% - 10px) 0%" : "right 10px top");
     EXPECT_EQ(CompatProperties::text(*parent, CompatProperty::ImageRendering), "pixelated");
     EXPECT_EQ(CompatProperties::text(*parent, CompatProperty::AnimationFill), "forwards");
     Rml::Colourb fill;

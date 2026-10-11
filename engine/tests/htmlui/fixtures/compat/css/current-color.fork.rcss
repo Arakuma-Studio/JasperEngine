@@ -19,8 +19,7 @@ box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 
 }
 #htmlui-root .companion {
 background-color: var(--html-current-color, #000000ff);
---html-outline-shadow: 0 0 0 1px var(--html-current-color, #000000ff);
-box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+outline: 1px solid var(--html-current-color, #000000ff);
 }
 #htmlui-root .borders-no-color {
 border-right-width: 3px;

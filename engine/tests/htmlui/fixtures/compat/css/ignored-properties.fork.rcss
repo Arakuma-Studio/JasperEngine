@@ -1,3 +1,4 @@
 #htmlui-root .ignored {
+isolation: auto;
 user-select: auto;
 }

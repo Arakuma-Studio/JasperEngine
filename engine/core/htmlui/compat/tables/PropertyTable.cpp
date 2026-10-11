@@ -528,6 +528,8 @@ namespace {
         {"nav-up", N, FF::None, N, false, "none", false, RW::TabIndexLike, "", "RmlUi engine extension (keyboard / gamepad navigation)", "", "rmlui"},
         {"object-fit", E, FF::ObjectFit, N, false, "fill", false, RW::ObjectFit, "registered property", "the fork's (ObjectFit), read by img; without it registered by compat", "", "css-images-3"},
         {"object-position", E, FF::ObjectFit, N, false, "50% 50%", false, RW::ObjectFit, "registered property", "the fork's (ObjectFit: <position> with edge offsets), read by img; without it two values registered by compat", "", "css-images-3"},
+        {"object-position-x", N, FF::None, N, false, "50%", false, RW::None, "", "RmlUi fork longhand: the horizontal part of object-position (written through the CSS property)", "", "rmlui"},
+        {"object-position-y", N, FF::None, N, false, "50%", false, RW::None, "", "RmlUi fork longhand: the vertical part of object-position (written through the CSS property)", "", "rmlui"},
         {"offset", U, FF::None, U, false, "normal none 0 auto / auto", false, RW::None, "", "motion paths are not supported (Warning)", "animate translate / transform with @keyframes", "motion-1"},
         {"offset-anchor", U, FF::None, U, false, "auto", false, RW::None, "", "motion paths are not supported (Warning)", "animate translate / transform with @keyframes", "motion-1"},
         {"offset-distance", U, FF::None, U, false, "0", false, RW::None, "", "motion paths are not supported (Warning)", "animate translate / transform with @keyframes", "motion-1"},

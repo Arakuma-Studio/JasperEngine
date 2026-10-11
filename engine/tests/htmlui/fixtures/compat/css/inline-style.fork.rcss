@@ -1,0 +1,15 @@
+#htmlui-root .inline-sheet {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+background-color: transparent;
+decorator: html-layer("asset://ui/compat/css/img/a.png" auto auto 0% 0% repeat repeat padding-box border-box scroll);
+}
+@media (min-width: 600px) {
+#htmlui-root .inline-sheet {
+color: #0000ffff;
+--html-current-color: #0000ffff;
+}
+}
+#htmlui-root .inline-sheet:html-focus {
+outline: 1px solid;
+}
