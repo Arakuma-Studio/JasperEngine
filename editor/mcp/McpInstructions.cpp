@@ -175,7 +175,7 @@ R"JE(
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
   sends send_input events while it waits (hold a key for 2 game seconds, then check).
 - run_build runs an exported desktop player: input events, screenshots_at (seconds since
-  launch), and returns its errors (Lua errors too) and the log tail.
+  launch); returns its errors (Lua ones too) and the log tail.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x
@@ -223,17 +223,18 @@ R"JE(
   referenced, must be marked standalone or the build will not contain it.
 
 ## Shaders and materials
-Library first: list_shaders gives the engine's shaders ("library:<name>"), and with name their
-parameters, textures and features. A mesh shader goes on a submesh material
-(submeshes[0].material.shader with set_properties, or a .material file with create_material /
+Library first: list_shaders, the engine's shaders ("library:<name>"; with name: parameters,
+textures, features). A mesh shader goes on a submesh material
+(set_properties submeshes[0].material.shader, or a .material file: create_material /
 update_material) with .shaderParams.<member> (colours linear, "#RRGGBB" is sRGB),
 .shaderTextures.<uniform> and .shaderFeatures; UI, Points, Lines and Sky take customShader plus
 shaderUniforms. Outlines and stencil effects: apply_material_preset (list_material_presets), then
-tune the material's extraPass and stencil. Fork only when nothing fits: fork_shader copies the built-in shader into the
-project and sets customShader. Read a fork before editing it: keep its declarations, includes,
-varyings and output, change the math near the end of main(), parameters in its own
-u_fs_customParams block (set_shader_uniform); rules and depth forks: jasper://docs/shaders. A
-shader that fails to compile falls back to the built-in one; the Console has the error.
+tune its extraPass and stencil. Shaders with scene_inputs (cost_note) add a depth
+pass or colour copy per camera and must draw transparent; avoid on low-end mobile. Fork only
+when nothing fits: fork_shader copies the built-in shader and sets customShader. Read a fork
+before editing: keep its declarations, includes, varyings and output, change the math near the
+end of main(), parameters in its u_fs_customParams block (set_shader_uniform); rules and depth
+forks: jasper://docs/shaders. A failing shader draws as the built-in one (error in the Console).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export

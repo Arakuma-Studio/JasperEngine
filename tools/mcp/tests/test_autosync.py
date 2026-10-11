@@ -340,6 +340,8 @@ async def test_large_project_incremental():
 NON_TOOL_WORDS = {
     "on_start",                 # "Lua has no ..." list (names from other engines)
     "external_changes",         # the field results carry after files changed on disk
+    "scene_inputs",             # list_shaders / get_entity fields of shaders reading the scene
+    "cost_note",
 }
 
 

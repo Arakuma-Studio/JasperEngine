@@ -214,10 +214,14 @@ A mesh or points shader can read the opaque scene behind it: soft particles, dep
 water and fog cards, intersection glows, projected decals (depth); glass, refraction, heat
 haze (colour).
 
+**When to use it.** Only for effects that need what is behind the surface: a fade where it
+meets geometry, a distortion of the background. Each costs extra GPU work in every camera that
+sees it (below); prefer a cheaper look when one exists (an additive glow instead of a soft
+particle on low-end mobile, a tinted alpha surface instead of refraction).
+
 - Manifest: `// @require scenedepth`, `// @require scenecolor`, gated like any input
   (`// @require scenedepth feature=SOFT`: only the variants with `SOFT` read it and pay for
-  it). `list_shaders` gives `scene_inputs` (`["scenedepth", "scenecolor"]`, what some variant
-  may read) for every shader: show it as a cost.
+  it).
 - In the `.frag`: `#include "includes/scene.glsl"` (it declares the engine's block and
   textures for the variants that require them, nothing for the others). Functions:
   `screenUV()` (0..1, y up, the current fragment), `sceneLinearDepth(uv)` (view-space
@@ -227,17 +231,38 @@ haze (colour).
   scene and sky, fog included, bilinear). The first three and `sceneWorldPosition` need
   `scenedepth`, `sceneColor` needs `scenecolor`. Example, soft fade:
   `alpha *= clamp((sceneLinearDepth(screenUV()) - fragmentLinearDepth()) / softness, 0.0, 1.0);`
-- The draw must be in the transparent queue (`@state queue=transparent` or a blend other
-  than opaque): it reads what the opaque queue drew. A material that puts such a shader in
-  the opaque queue is an error (`check_shader` without arguments, `check --shaders`, the
-  material inspector): it would read its own depth and a black colour. Transparent objects
-  are not in the colour copy, so they do not see each other through it.
-- Cost, only in the camera passes (scene camera, render-to-texture and mirror cameras,
-  editor views) where such a draw is visible: the scene depth is a depth pre-pass of the
-  opaque meshes (none extra when SSAO, SSR or a depth-reading post pass already draws one);
-  the scene colour is one copy of the pass after the opaque queue and the sky, at the scene
-  setting `scene_color_scale` (`half`, the default, or `full`; linear filtering). While the
-  scene has a depth reader, every mesh keeps a depth program. A camera drawing in hierarchy
-  order (2D, `transparentSort` off) copies right before the first draw reading the colour,
-  so the copy holds everything drawn before it. Reflection probe faces draw the opaque
-  queue only: such shaders are not in them.
+- **Transparent queue only.** A mesh draw reading the scene must be in the transparent queue
+  (`@state queue=transparent` or a blend other than opaque): it reads what the opaque queue
+  drew. A material that puts such a shader (or its extra pass, which draws at the submesh's
+  queue position) in the opaque queue is an error (`check_shader` without arguments,
+  `check --shaders`, the material inspector, `get_entity` below): it would read its own depth
+  and a black colour. The fix is a blend other than opaque on the submesh
+  (`submeshes[N].material.blendMode = "alpha"`; the inspector's error row has a button for it).
+  Points have no queue: they always draw after the copy.
+- **The copy holds the opaque scene and the sky only.** Transparent objects are not in it, so
+  two glass panes do not see each other through it (as Unity URP's opaque texture), and UI,
+  lines and gizmos are not either. Reflection probe faces draw the opaque queue only: such
+  shaders are not in them. A camera drawing in hierarchy order (2D, `transparentSort` off)
+  copies right before the first draw reading the colour, so the copy holds everything drawn
+  before it.
+- **Cost**, only in the camera passes (scene camera, render-to-texture and mirror cameras,
+  editor views) where such a draw is visible; a scene without one pays nothing:
+  - scene depth: one more geometry pass of the opaque meshes (none extra when SSAO, SSR or a
+    depth-reading post pass already draws one), and while the scene has a depth reader every
+    mesh keeps a depth program;
+  - scene colour: one copy of the pass after the opaque queue and the sky, and a split of its
+    render pass (a store and load of colour, depth and stencil on tile-based mobile GPUs). Its
+    resolution is the scene setting `scene_color_scale`: `half` (the default, a quarter of the
+    pixels, slightly blurred) or `full` (sharp, four times the bandwidth and memory).
+  Avoid them on low-end mobile; a few readers on screen cost the same as one (the pass is per
+  camera, not per object).
+- **What the tools say.** `list_shaders`: `scene_inputs` on every shader (what some variant may
+  read) and `cost_note` on those that read something (which features turn it on and the cost;
+  one line in the list, the whole cost with `name` / `detail`); in detail each feature and
+  keyword value that turns an input on has `scene_inputs` (`scene_inputs_when_off` for a
+  `feature=!X` rule). `get_entity`: `scene_inputs`, one entry per reading submesh
+  (`reads`, `extra_pass_reads` of their current variants, `queue`, and on the opaque-queue
+  error `error` and `fix`, the `set_properties` values that fix it) or points component, with
+  `scene_inputs_cost`. `get_shader_uniforms`: `scene_inputs` and `cost_note` of that variant.
+  The inspector marks the same shaders, features and keyword values in its picker with a gauge
+  and shows a "Reads scene ..." row under a reading material, extra pass or points shader.
