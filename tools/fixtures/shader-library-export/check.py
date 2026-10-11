@@ -32,7 +32,12 @@ REPO = HERE.parent.parent.parent
 sys.path.insert(0, str(REPO / "tools" / "mcp"))
 from harness import Editor  # noqa: E402
 
-SCENES = ["Lit", "Blend", "2D", "UI"]   # Lit is the start scene; the others are SLX_SCENE runs
+SCENES = ["Lit", "Blend", "2D", "UI", "Stencil"]   # Lit is the start scene; the others are SLX_SCENE runs
+# Stencil (phase 2 presets) exists once generate.py has run with an editor that saves extra passes and
+# stencil state (scene YAML) and has the apply_material_preset MCP tool
+if not (HERE / "Stencil.scene").exists():
+    print("check.py: Stencil.scene is missing: run generate.py to add the phase 2 presets scene", file=sys.stderr)
+    SCENES.remove("Stencil")
 CANVAS = (1280, 720)              # the project's window: the game draws it at the screen's top left
 CELL = 16
 CELL_LIMIT = 24.0

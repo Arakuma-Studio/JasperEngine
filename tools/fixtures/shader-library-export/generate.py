@@ -12,6 +12,11 @@ Scenes (one camera each):
   2D.scene       library:sprite Sprites (each feature), library:particle Points (each blend mode
                  and feature), the gradient sky
   UI.scene       library:ui_fx Images (each feature and blend mode) over a striped backdrop
+  Stencil.scene  phase 2: every material preset (editor/material/MaterialPresets.cpp, applied with
+                 the MCP tool apply_material_preset), so the extra pass and the stencil and colour
+                 write state go through scene YAML and Factory export: outlines (screen and world
+                 width, a blended object), a through-walls stencil outline, a see-through
+                 silhouette, draw-once transparency, inside/outside stencil masks and sprite masks
 
     uv run --no-project --with mcp --with pyyaml python tools/fixtures/shader-library-export/generate.py [out dir]
 
@@ -252,7 +257,9 @@ def mesh_values(m, lighting=None, blend=None, features=None):
     return v
 
 
-MODELS = {"sphere": "assets/models/uv_sphere.gltf", "cube": "assets/models/box.gltf"}
+MODELS = {"sphere": "assets/models/uv_sphere.gltf", "cube": "assets/models/box.gltf",
+          "overlap": "assets/models/overlap_quads.gltf"}
+OVERLAP = REPO / "tools" / "fixtures" / "shader-library" / "assets" / "models" / "overlap_quads.gltf"
 
 
 async def mesh(ed, scene, name, shape, values, position, rotation=None, scale=None, geometry=None):
@@ -512,6 +519,97 @@ async def build_ui(ed, hud):
         await ed.call("set_properties", scene=hud, entity=eid, values={"ui": values})
 
 
+async def preset(ed, scene, eid, name, values=None):
+    """applies an editor material preset to the entity's first submesh, then pass/material values"""
+    await ed.call("apply_material_preset", scene=scene, entity=eid, submesh=0, preset=name)
+    if values:
+        await ed.call("set_properties", scene=scene, entity=eid, values={"mesh": values})
+
+
+P = M + "extraPass."
+
+
+async def build_stencil(ed, scene):
+    """phase 2: each material preset, the outline width modes and keywords, masks and sprite masks"""
+    await lights(ed, scene, sun_shadows=False)
+    unlit = lambda r, g, b, a=1.0: {M + "shader": "library:unlit",  # noqa: E731
+                                    M + "shaderParams.baseColor": [r, g, b, a]}
+    await mesh(ed, scene, "Backdrop", "plane", unlit(0.45, 0.47, 0.52), [0, 2.0, -2.5],
+               rotation={"euler": [90, 0, 0]}, geometry={"shape": "plane", "width": 18, "depth": 9})
+
+    async def wall(x, y):
+        await mesh(ed, scene, f"wall-{x}", "plane", unlit(0.3, 0.32, 0.36), [x, y - 0.35, 0.9],
+                   rotation={"euler": [90, 0, 0]}, geometry={"shape": "plane", "width": 1.6, "depth": 0.7})
+
+    # row 1: Outline (hull): screen width, world width, distance scale, texture, a blended object
+    outlines = [
+        ("outline-screen", "cube", unlit(0.85, 0.3, 0.25), {P + "shaderParams.screenWidth": 4.0}),
+        ("outline-world", "cube", unlit(0.85, 0.3, 0.25),
+         {P + "shaderFeatures": ["WIDTH_MODE_WORLD"], P + "shaderParams.worldWidth": 0.06}),
+        ("outline-distance", "sphere", unlit(0.9, 0.9, 0.85),
+         {P + "shaderFeatures": ["WIDTH_MODE_WORLD", "DISTANCE_SCALE"], P + "shaderParams.worldWidth": 0.03,
+          P + "shaderParams.referenceDistance": 5.0, P + "shaderParams.maxWidth": 0.1}),
+        ("outline-texture", "cube", unlit(0.95, 0.95, 0.95),
+         {P + "shaderFeatures": ["WIDTH_MODE_WORLD", "TEXTURE"], P + "shaderParams.worldWidth": 0.08,
+          P + "shaderTextures.u_outlineTexture": T + "checker.png", P + "shaderParams.outlineColor": [1, 0.3, 0.05, 1]}),
+        ("outline-glass", "cube", {**unlit(0.2, 0.45, 1.0, 0.45), M + "blendMode": "alpha"},
+         {P + "shaderParams.outlineColor": [0.0, 0.05, 0.3, 1.0]}),
+    ]
+    for i, (name, shape, base, values) in enumerate(outlines):
+        eid = await mesh(ed, scene, name, shape, base, [-6.0 + i * 3.0, 4.2, 0], rotation=TILT.get(shape),
+                         scale=[0.9, 0.9, 0.9])
+        await preset(ed, scene, eid, "outline_hull", values)
+
+    # row 2: Outline (stencil) through a wall and visible only, see-through silhouette flat and fresnel
+    hidden = [
+        ("outline-stencil", "outline_stencil", {}),
+        ("outline-stencil-visible", "outline_stencil", {P + "shaderFeatures": ["VISIBILITY_VISIBLE_ONLY"]}),
+        ("silhouette-flat", "see_through_silhouette", {}),
+        ("silhouette-fresnel", "see_through_silhouette",
+         {P + "shaderFeatures": ["SILHOUETTE_MODE_FRESNEL"], P + "shaderParams.color": [0.2, 1.0, 0.4, 0.9]}),
+    ]
+    for i, (name, which, values) in enumerate(hidden):
+        x = -4.5 + i * 3.0
+        eid = await mesh(ed, scene, name, "sphere", unlit(0.95, 0.75, 0.3), [x, 2.1, 0])
+        await preset(ed, scene, eid, which, values)
+        await wall(x, 2.1)
+
+    # row 3: draw-once beside a stacking copy, a square mask with an inside reader, a leaf-shaped
+    # mask with an outside reader, a sprite mask over an inside and an outside sprite
+    # one mesh of three overlapping squares: stacking its overlaps, then with Draw-once transparency
+    for i, once in enumerate((False, True)):
+        eid = await mesh(ed, scene, f"overlap-{'once' if once else 'stacked'}", "overlap",
+                         {**unlit(0.25, 0.65, 1.0, 0.45), M + "blendMode": "alpha"}, [-7.0 + i * 1.7, 0.0, 0.2])
+        if once:
+            await preset(ed, scene, eid, "draw_once_transparency")
+    for i, (reader, shaped) in enumerate((("visible_inside_mask", False), ("visible_outside_mask", True))):
+        x = -3.0 + i * 3.0
+        eid = await mesh(ed, scene, f"masked-{reader}", "sphere", unlit(0.9, 0.15, 0.1), [x, 0.0, 0])
+        await preset(ed, scene, eid, reader)
+        mid = await mesh(ed, scene, f"mask-{reader}", "plane", unlit(1.0, 0.0, 1.0), [x, 0.0, 0.8],
+                         rotation={"euler": [90, 0, 0]}, geometry={"shape": "plane", "width": 0.8, "depth": 0.8})
+        await preset(ed, scene, mid, "stencil_mask",
+                     {M + "shaderFeatures": ["ALPHA_CLIP"], M + "shaderTextures.u_maskTexture": T + "leaf.png"}
+                     if shaped else None)
+    for i, reader in enumerate(("visible_inside_mask", "visible_outside_mask")):
+        x = 3.0 + i * 2.0
+        for name, texture, z in ((f"sprite-{reader}", "checker.png", 0.0), (f"sprite-mask-{i}", "character.png", 0.05)):
+            r = await ed.call("create_entity", scene=scene, type="sprite", name=name, position=[x, 0.0, z],
+                              select=False)
+            eid = r["entity_id"]
+            await ed.call("set_properties", scene=scene, entity=eid, values={
+                "sprite": {"width": 64, "height": 64, "pivotPreset": "center"},
+                "mesh": {M + "baseColorTexture": T + texture, M + "alphaMode": "blend", "receiveLights": False}})
+            await ed.call("set_transform", scene=scene, entity=eid, scale=1.5 / 64)
+            if texture == "checker.png":
+                await ed.call("set_properties", scene=scene, entity=eid, values={"mesh": {M + "shader": "library:sprite"}})
+                await preset(ed, scene, eid, reader)
+            else:
+                await preset(ed, scene, eid, "sprite_mask")
+
+    await camera(ed, scene, [0, 2.0, 13.0], [0, 2.0, 0])
+
+
 def scene_id(made):
     return made["scene"]["id"] if isinstance(made["scene"], dict) else made["scene"]
 
@@ -541,6 +639,7 @@ async def main(out: Path) -> None:
         for png in used:
             shutil.copy(TEXTURES / png, textures / png)
         write_models(ed.project / "assets" / "models")
+        shutil.copy(OVERLAP, ed.project / "assets" / "models" / OVERLAP.name)
         await ed.call("sync_files")
 
         lit = (await ed.call("list_scenes"))["scenes"][0]["id"]
@@ -563,6 +662,10 @@ async def main(out: Path) -> None:
         await build_ui(ed, ui)
         await ed.call("save_scene", scene=ui)
 
+        stencil = scene_id(await ed.call("create_scene", name="Stencil", path="Stencil.scene"))
+        await build_stencil(ed, stencil)
+        await ed.call("save_scene", scene=stencil)
+
         await ed.call("save_project")
         problems = await ed.call("check_shader")
         failed = [r for r in problems["results"] if not r["ok"]]
@@ -570,7 +673,8 @@ async def main(out: Path) -> None:
               problems["findings"])
 
         out.mkdir(parents=True, exist_ok=True)
-        for name in ("project.yaml", "Lit.scene", "Blend.scene", "2D.scene", "UI.scene", "SceneSelect.lua"):
+        for name in ("project.yaml", "Lit.scene", "Blend.scene", "2D.scene", "UI.scene", "Stencil.scene",
+                     "SceneSelect.lua"):
             shutil.copy(ed.project / name, out / name)
         if (out / "assets").exists():
             shutil.rmtree(out / "assets")
