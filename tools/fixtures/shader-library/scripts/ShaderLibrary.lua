@@ -23,6 +23,7 @@ local GROUPS = {
     "core", "lit", "stylized", "effects", "sky",
     "2d",
     "checks",
+    "phase2",
 }
 
 -- each group fills rows of COLUMNS cells, starting on the row after the previous group's
