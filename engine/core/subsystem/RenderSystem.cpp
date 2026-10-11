@@ -27,6 +27,7 @@
 #include <cmath>
 #include <map>
 #include <set>
+#include <mutex>
 #include <random>
 #include <cstdint>
 #include <cstring>
@@ -188,11 +189,11 @@ namespace {
     // values, then the manifest's @state, then the legacy state given.
     RenderState resolveRenderState(MaterialBlendMode blendMode, MaterialCullMode cullMode, MaterialDepthWrite depthWrite,
                                    MaterialDepthTest depthTest, float offsetFactor, float offsetUnits,
-                                   const ShaderManifest* manifest, bool legacyBlended, bool legacyFaceCulling,
+                                   const ShaderManifestState* resolvedState, bool legacyBlended, bool legacyFaceCulling,
                                    CullingMode legacyCullingMode, WindingOrder windingOrder,
                                    bool& blended, bool& transparentQueue){
         const ShaderManifestState noState;
-        const ShaderManifestState& manifestState = manifest ? manifest->state : noState;
+        const ShaderManifestState& manifestState = resolvedState ? *resolvedState : noState;
 
         RenderState state;
         state.windingOrder = windingOrder;
@@ -1134,31 +1135,64 @@ Vector4 RenderSystem::environmentInfo() const{
     return Vector4(1.0, 1.0, 1.0, 0.0);
 }
 
-void RenderSystem::fillFrameLighting(frame_t& frame, const CameraComponent& camera) const{
-    frame.lightingInfo = Vector4(shadowPCFRadius(), 0.0f, 0.0f, 0.0f);
-    frame.environment = environmentInfo();
-    frame.viewportInfo = lightingViewportInfo(camera);
+void RenderSystem::fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, const CameraComponent& camera) const{
+    const float pcfRadius = shadowPCFRadius();
+    frame.lightingInfo = Vector4(pcfRadius, 0.0f, 0.0f, 0.0f);
 
     // the variant decides whether fog applies: a fogless scene leaves these unread
-    frame.fogColor_type = fs_fog.color_type;
-    frame.fogDensity_start_end = fs_fog.density_start_end;
+    Vector4 fogColorType = fs_fog.color_type;
+    Vector4 fogDensityStartEnd = fs_fog.density_start_end;
 #ifdef JASPERENGINE_EDITOR
     if (rv().secondary && rv().disableFog){
         // exponential fog of density 0: a factor of 1 everywhere, no fog
-        frame.fogColor_type = Vector4(0.0f, 0.0f, 0.0f, 1.0f);
-        frame.fogDensity_start_end = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+        fogColorType = Vector4(0.0f, 0.0f, 0.0f, 1.0f);
+        fogDensityStartEnd = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
     }
 #endif
+    frame.fogColor_type = fogColorType;
+    frame.fogDensity_start_end = fogDensityStartEnd;
+
+    // Lit's part (includes/lit_frame.glsl): the camera from the frame block's contract
+    // members (filled first, fillFrameBlock), the rest packed into their spare components
+    const Vector4 viewport = lightingViewportInfo(camera);
+    const Vector4 environment = environmentInfo();
+    // linear fog (type 0) reads start and end, the exponential ones the density
+    const float fogParam = (fogColorType.w == 0.0f) ? fogDensityStartEnd.z : fogDensityStartEnd.x;
+    litFrame.cameraPosition_fogEnd = Vector4(frame.cameraPosition.x, frame.cameraPosition.y, frame.cameraPosition.z, fogDensityStartEnd.w);
+    litFrame.ambient_fogType = Vector4(frame.ambient.x, frame.ambient.y, frame.ambient.z, fogColorType.w);
+    litFrame.fogColor_param = Vector4(fogColorType.x, fogColorType.y, fogColorType.z, fogParam);
+    litFrame.cameraForward_pcf = Vector4(frame.cameraDirection.x, frame.cameraDirection.y, frame.cameraDirection.z, pcfRadius);
+    litFrame.viewport_ssao_envRotation = Vector4(viewport.x, viewport.y, viewport.z + 2.0f * viewport.w, environment.w);
+    litFrame.environmentColor = Vector4(environment.x, environment.y, environment.z, 0.0f);
 }
 
 //-----Unified lighting: per-object light lists-----
 
-// spot mask tiles are packed 3 bits per light (7 = none), 8 lights per float of counts.zw
+// spot_shadow.w of the lights block packs (shadow map index + 1) in 6 bits, the cascades
+// in 3 and the spot mask tile in 3 (7 = none): 12 bits, exact in a float
 static_assert(SPOT_MASK_ATLAS_TILES <= 7, "spot mask tiles must fit 3 bits, 7 meaning none");
-static_assert(MAX_LIGHTS_PER_OBJECT <= 16, "counts.zw hold the spot mask tiles of 16 lights");
+static_assert(MAX_SHADOW_ATLAS_SLOTS < 63 && MAX_POINT_SHADOW_ATLAS_SLOTS < 63, "shadow map indices must fit 6 bits");
+static_assert(MAX_SHADOWCASCADES <= 7, "shadow cascades must fit 3 bits");
+static_assert(MAX_LIGHTS_PER_OBJECT <= 16, "the lights block tiers are 4, 8 and 16 lights");
 static_assert(MAX_LIGHTS <= 8, "the legacy eyePos.w holds the spot mask tiles of 8 lights");
 
 namespace {
+    // a unit vector octahedral-encoded into [-1, 1]^2 (lights.glsl lightsOctahedralDecode)
+    Vector2 octahedralEncode(const Vector3& vector){
+        const float sum = std::abs(vector.x) + std::abs(vector.y) + std::abs(vector.z);
+        if (sum <= 1e-8f)
+            return Vector2(0.0f, 1.0f); // +Y
+        float x = vector.x / sum;
+        float y = vector.y / sum;
+        if (vector.z < 0.0f){
+            const float wrappedX = (1.0f - std::abs(y)) * (x >= 0.0f ? 1.0f : -1.0f);
+            const float wrappedY = (1.0f - std::abs(x)) * (y >= 0.0f ? 1.0f : -1.0f);
+            x = wrappedX;
+            y = wrappedY;
+        }
+        return Vector2(x, y);
+    }
+
     float lightLuminance(const Vector4& colorIntensity){
         return (0.2126f * colorIntensity.x + 0.7152f * colorIntensity.y + 0.0722f * colorIntensity.z) * std::max(colorIntensity.w, 0.0f);
     }
@@ -1226,6 +1260,25 @@ namespace {
             attenuation *= lightSpotAttenuation(towardsLight, directionRange, coneShadow.y, coneShadow.x);
         }
         return attenuation;
+    }
+
+    // Whether a spot light's outer cone can touch the bounds' sphere: false when the sphere
+    // lies wholly outside the cone (its distance to the cone's surface is over its radius),
+    // or, for a cone narrower than a hemisphere, wholly behind the apex
+    bool spotReachesBounds(const Vector4& positionType, const Vector4& directionRange, float outerConeCos, const LightBounds& bounds){
+        Vector3 axis(directionRange.x, directionRange.y, directionRange.z);
+        const float axisLength = axis.length();
+        if (axisLength <= 1e-6f)
+            return true;
+        axis = axis / axisLength;
+        const Vector3 toCenter = bounds.center - Vector3(positionType.x, positionType.y, positionType.z);
+        const float along = toCenter.dotProduct(axis);
+        const float across = std::sqrt(std::max(toCenter.dotProduct(toCenter) - along * along, 0.0f));
+        const float cosAngle = std::clamp(outerConeCos, -1.0f, 1.0f);
+        const float sinAngle = std::sqrt(std::max(1.0f - cosAngle * cosAngle, 0.0f));
+        if (cosAngle > 0.0f && along < -bounds.radius)
+            return false;
+        return across * cosAngle - along * sinAngle <= bounds.radius;
     }
 
     // a light over the cap into an L1 SH ambient: its Lambert diffuse, kept non-negative as
@@ -1301,6 +1354,15 @@ void RenderSystem::updateSceneLights(){
         sceneLight.color_intensity = Vector4(light.color.x, light.color.y, light.color.z, light.intensity);
         sceneLight.cone_shadow = Vector4(light.innerConeCos, light.outerConeCos, (float)light.shadowMapIndex, (float)light.numShadowCascades);
         sceneLight.spot_mask = Vector4(light.worldUp.x, light.worldUp.y, light.worldUp.z, spotMask ? light.spotMaskAspect : 0.0f);
+        // the per-object lights block's form (includes/lights.glsl); spot_shadow.w is per draw
+        const bool directional = light.type == LightType::DIRECTIONAL;
+        const bool spot = light.type == LightType::SPOT;
+        sceneLight.packed[0] = Vector4(position.x, position.y, position.z, directional ? 0.0f : 1.0f + std::max(light.range, 0.0f));
+        sceneLight.packed[1] = Vector4(light.worldDirection.x, light.worldDirection.y, light.worldDirection.z, spot ? light.innerConeCos : -2.0f);
+        sceneLight.packed[2] = Vector4(light.color.x * light.intensity, light.color.y * light.intensity, light.color.z * light.intensity,
+                                       spot ? light.outerConeCos : -2.0f);
+        const Vector2 up = octahedralEncode(light.worldUp);
+        sceneLight.packed[3] = Vector4(up.x, up.y, spotMask ? light.spotMaskAspect : 0.0f, 0.0f);
         sceneLight.cullingMask = light.cullingMask;
         sceneLight.spotMaskTile = spotMask ? light.spotMaskTile : -1;
         sceneLight.shading = light.shading;
@@ -1331,6 +1393,18 @@ void RenderSystem::updateObjectLights(){
         SceneLight before = previousSceneLights[index];
         before.direction_range = light.direction_range;
         before.position_type = light.position_type;
+        return before == light;
+    };
+    // a directional light that only turned or changed colour or intensity (a day-night
+    // cycle), still giving light
+    auto onlyRetinted = [this](int index){
+        const SceneLight& light = sceneLights[index];
+        if (light.position_type.w != 0.0f || index >= (int)previousSceneLights.size())
+            return false;
+        SceneLight before = previousSceneLights[index];
+        before.direction_range = light.direction_range;
+        before.position_type = light.position_type;
+        before.color_intensity = light.color_intensity;
         return before == light;
     };
     auto isPicked = [](const MeshLights& picked, int index){
@@ -1364,6 +1438,12 @@ void RenderSystem::updateObjectLights(){
             for (int index : changedLights){
                 if (onlyTurned(index) && isPicked(picked, index)){
                     // its rank and reach do not depend on its direction, which the draw reads
+                    continue;
+                }
+                if (!picked.foldedDirectional && onlyRetinted(index) && isPicked(picked, index)){
+                    // every directional light reaching the mesh is in its list (directional
+                    // lights rank first), so its colour cannot change the pick or the SH;
+                    // the draw reads it live
                     continue;
                 }
                 if (picked.reachMask & (1ull << (index & 63))){
@@ -1412,9 +1492,13 @@ void RenderSystem::selectMeshLights(Entity entity, MeshComponent& mesh, const Tr
         picked.sh[c] = Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
     }
 
+    picked.foldedDirectional = false;
+
     // a light over the cap goes into the SH, with its spot cone at the center
     auto fold = [&](int index){
         const SceneLight& light = sceneLights[index];
+        if (light.position_type.w == 0.0f)
+            picked.foldedDirectional = true;
         Vector3 towardsLight;
         const float attenuation = estimateLightAttenuation(light.position_type, light.direction_range, light.cone_shadow, bounds, true, towardsLight);
         foldLight(light.color_intensity, towardsLight, attenuation, picked.sh);
@@ -1448,6 +1532,11 @@ void RenderSystem::selectMeshLights(Entity entity, MeshComponent& mesh, const Tr
                 continue;
         }
         reachMask |= 1ull << (i & 63);
+
+        // a spot whose cone misses the bounds gives the mesh nothing (it stays in reachMask,
+        // so turning it towards the mesh picks again)
+        if (light.position_type.w == 2.0f && !spotReachesBounds(light.position_type, light.direction_range, light.cone_shadow.y, bounds))
+            continue;
 
         // ranked without the spot cone: a spot may light part of the mesh away from its center
         Vector3 towardsLight;
@@ -1490,71 +1579,83 @@ void RenderSystem::selectMeshLights(Entity entity, MeshComponent& mesh, const Tr
     picked.epoch = lightListEpoch;
 }
 
-// The object's lights for a submesh variant: pixel lights first (USE_PUNCTUAL), then
-// vertex lights (USE_VERTEX_LIGHTS); MIXED sends the lights shaded VERTEX per vertex and
-// the others per pixel. Arrays packed at the variant's capacity.
-unsigned int RenderSystem::buildObjectLights(const MeshComponent& mesh, uint32_t properties, object_lights_t& block) const{
+// The object's lights for a submesh variant, as scene light indices into order: pixel
+// lights first (USE_PUNCTUAL), then vertex lights (USE_VERTEX_LIGHTS), each in scene order;
+// MIXED sends the lights shaded VERTEX per vertex and the others per pixel. At most the
+// variant's capacity.
+void RenderSystem::orderObjectLights(const MeshComponent& mesh, uint32_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const{
     const int capacity = (properties & (1u << 29)) ? 4 : ((properties & (1u << 30)) ? 16 : 8);
     const bool pixel = (properties & (1u << 3)) != 0;
     const bool vertex = (properties & (1u << 28)) != 0;
     const MeshLights& picked = mesh.lights;
+
+    pixelCount = 0;
+    vertexCount = 0;
+    if (picked.epoch == 0)
+        return;
+    for (int pass = 0; pass < 2; pass++){
+        for (unsigned int k = 0; k < picked.count; k++){
+            const int index = picked.lights[k];
+            if (index >= (int)sceneLights.size())
+                continue;
+            const bool perPixel = pixel && (!vertex || sceneLights[index].shading != LightShading::VERTEX);
+            if (pass == 0 && perPixel && pixelCount < capacity){
+                order[pixelCount++] = index;
+            }else if (pass == 1 && !perPixel && vertex && pixelCount + vertexCount < capacity){
+                order[pixelCount + vertexCount++] = index;
+            }
+        }
+    }
+}
+
+// the shadow cascades of a light in the pass being drawn: directional cascades are fitted
+// to its camera
+int RenderSystem::passLightCascades(const SceneLight& light) const{
     const CameraShadows& camera = ps();
+    const int slot = (int)light.cone_shadow.z;
+    if (light.position_type.w == 0.0f && camera.ownLightCameras && slot >= 0 && slot < MAX_SHADOW_ATLAS_SLOTS)
+        return (int)camera.lightCameras[slot].numCascades;
+    return (int)light.cone_shadow.w;
+}
+
+// The per-object lights block of a submesh variant (layout in includes/lights.glsl), at the
+// variant's capacity C: counts, then position_type[C], direction_inner[C], color_outer[C]
+// (all the vertex stage reads), the SH ambient, spot_shadow[C].
+void RenderSystem::buildObjectLights(const MeshComponent& mesh, uint32_t properties, object_lights_t& block) const{
+    const int capacity = (properties & (1u << 29)) ? 4 : ((properties & (1u << 30)) ? 16 : 8);
+    const MeshLights& picked = mesh.lights;
 
     int order[MAX_LIGHTS_PER_OBJECT];
     int pixelCount = 0;
     int vertexCount = 0;
-    if (picked.epoch != 0){
-        // pixel lights, then vertex lights, each in scene order
-        for (int pass = 0; pass < 2; pass++){
-            for (unsigned int k = 0; k < picked.count; k++){
-                const int index = picked.lights[k];
-                if (index >= (int)sceneLights.size())
-                    continue;
-                const bool perPixel = pixel && (!vertex || sceneLights[index].shading != LightShading::VERTEX);
-                if (pass == 0 && perPixel && pixelCount < capacity){
-                    order[pixelCount++] = index;
-                }else if (pass == 1 && !perPixel && vertex && pixelCount + vertexCount < capacity){
-                    order[pixelCount + vertexCount++] = index;
-                }
-            }
-        }
-    }
+    orderObjectLights(mesh, properties, order, pixelCount, vertexCount);
 
+    Vector4* positionType = block.data + 1;
+    Vector4* directionInner = positionType + capacity;
+    Vector4* colorOuter = directionInner + capacity;
+    Vector4* sh = colorOuter + capacity;
+    Vector4* spotShadow = sh + 3;
+
+    block.data[0] = Vector4((float)pixelCount, (float)vertexCount, 0.0f, 0.0f);
     for (int c = 0; c < 3; c++){
-        block.sh[c] = (picked.epoch != 0) ? picked.sh[c] : Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
+        sh[c] = (picked.epoch != 0) ? picked.sh[c] : Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
     }
 
-    uint32_t tiles[2] = {0, 0};
-    Vector4* position_type = block.lights;
-    Vector4* direction_range = block.lights + capacity;
-    Vector4* color_intensity = block.lights + 2 * capacity;
-    Vector4* cone_shadow = block.lights + 3 * capacity;
-    Vector4* spot_mask = block.lights + 4 * capacity;
     for (int n = 0; n < pixelCount + vertexCount; n++){
         const SceneLight& light = sceneLights[order[n]];
-        position_type[n] = light.position_type;
-        direction_range[n] = light.direction_range;
-        color_intensity[n] = light.color_intensity;
-        cone_shadow[n] = light.cone_shadow;
-        // directional cascades are fitted to the camera of the pass being drawn
-        const int slot = (int)light.cone_shadow.z;
-        if (light.position_type.w == 0.0f && camera.ownLightCameras && slot >= 0 && slot < MAX_SHADOW_ATLAS_SLOTS){
-            cone_shadow[n].w = (float)camera.lightCameras[slot].numCascades;
-        }
-        spot_mask[n] = light.spot_mask;
-        const int tile = (n < pixelCount && light.spotMaskTile >= 0) ? light.spotMaskTile : 7;
-        if (tile == 7){
-            spot_mask[n].w = 0.0f; // vertex lights take the cone
-        }
-        tiles[n / 8] |= (uint32_t)tile << (3 * (n % 8));
+        positionType[n] = light.packed[0];
+        directionInner[n] = light.packed[1];
+        colorOuter[n] = light.packed[2];
+        spotShadow[n] = light.packed[3];
+        // vertex lights take the cone, never the mask or a shadow
+        const bool perPixel = n < pixelCount;
+        const int tile = (perPixel && light.spotMaskTile >= 0) ? light.spotMaskTile : 7;
+        const int shadowSlot = perPixel ? (int)light.cone_shadow.z : -1;
+        const int cascades = perPixel ? passLightCascades(light) : 0;
+        if (!perPixel)
+            spotShadow[n].z = 0.0f;
+        spotShadow[n].w = (float)((std::max(shadowSlot + 1, 0) & 63) | ((cascades & 7) << 6) | ((tile & 7) << 9));
     }
-    for (int n = pixelCount + vertexCount; n < 16; n++){
-        tiles[n / 8] |= 7u << (3 * (n % 8));
-    }
-
-    block.counts = Vector4((float)pixelCount, (float)vertexCount, (float)tiles[0], (float)tiles[1]);
-
-    return (unsigned int)((4 + 5 * capacity) * sizeof(Vector4));
 }
 
 // An older fork's u_fs_lighting: the camera's part, then the object's first MAX_LIGHTS
@@ -1565,44 +1666,40 @@ void RenderSystem::buildLegacyLighting(const MeshComponent& mesh, uint32_t prope
 
     // every picked light per pixel, at the largest capacity
     const uint32_t legacyProperties = (properties | (1u << 3) | (1u << 30)) & ~((1u << 28) | (1u << 29));
-    object_lights_t lists;
-    buildObjectLights(mesh, legacyProperties, lists);
-    const int capacity = MAX_LIGHTS_PER_OBJECT;
-    const int pixelCount = (int)lists.counts.x;
+    int order[MAX_LIGHTS_PER_OBJECT];
+    int pixelCount = 0;
+    int vertexCount = 0;
+    orderObjectLights(mesh, legacyProperties, order, pixelCount, vertexCount);
     const int count = std::min(pixelCount, MAX_LIGHTS);
 
     // more than the block holds: the directional lights first (they rank first), each group
     // in scene order; MAX_LIGHTS or fewer keep scene order, as the lights added up before
     if (pixelCount > MAX_LIGHTS){
-        object_lights_t sorted = lists;
+        int sorted[MAX_LIGHTS_PER_OBJECT];
         int n = 0;
-        uint32_t tiles[2] = {0, 0};
         for (int pass = 0; pass < 2; pass++){
             for (int k = 0; k < pixelCount; k++){
-                if ((lists.lights[k].w == 0.0f) != (pass == 0))
-                    continue;
-                for (int a = 0; a < 5; a++){
-                    sorted.lights[a * capacity + n] = lists.lights[a * capacity + k];
-                }
-                const uint32_t tile = ((uint32_t)((k < 8) ? lists.counts.z : lists.counts.w) >> (3 * (k % 8))) & 7u;
-                tiles[n / 8] |= tile << (3 * (n % 8));
-                n++;
+                if ((sceneLights[order[k]].position_type.w == 0.0f) == (pass == 0))
+                    sorted[n++] = order[k];
             }
         }
-        sorted.counts.z = (float)tiles[0];
-        sorted.counts.w = (float)tiles[1];
-        lists = sorted;
+        std::copy(sorted, sorted + pixelCount, order);
     }
 
     uint32_t tiles = 0;
     for (int n = 0; n < MAX_LIGHTS; n++){
         if (n < count){
-            block.position_type[n] = lists.lights[n];
-            block.direction_range[n] = lists.lights[capacity + n];
-            block.color_intensity[n] = lists.lights[2 * capacity + n];
-            block.inCon_ouCon_shadows_cascades[n] = lists.lights[3 * capacity + n];
-            block.spotUp_maskAspect[n] = lists.lights[4 * capacity + n];
-            tiles |= (((uint32_t)lists.counts.z >> (3 * n)) & 7u) << (3 * n);
+            const SceneLight& light = sceneLights[order[n]];
+            block.position_type[n] = light.position_type;
+            block.direction_range[n] = light.direction_range;
+            block.color_intensity[n] = light.color_intensity;
+            block.inCon_ouCon_shadows_cascades[n] = light.cone_shadow;
+            block.inCon_ouCon_shadows_cascades[n].w = (float)passLightCascades(light);
+            block.spotUp_maskAspect[n] = light.spot_mask;
+            const uint32_t tile = (light.spotMaskTile >= 0) ? (uint32_t)light.spotMaskTile : 7u;
+            if (tile == 7u)
+                block.spotUp_maskAspect[n].w = 0.0f;
+            tiles |= tile << (3 * n);
         }else{
             // adds nothing
             block.position_type[n] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -1615,17 +1712,20 @@ void RenderSystem::buildLegacyLighting(const MeshComponent& mesh, uint32_t prope
     }
     block.eyePos.w = (float)tiles;
 
-    Vector4 sh[3] = {lists.sh[0], lists.sh[1], lists.sh[2]};
+    const MeshLights& picked = mesh.lights;
+    Vector4 sh[3];
     bool leftOut = false;
     for (int c = 0; c < 3; c++){
+        sh[c] = (picked.epoch != 0) ? picked.sh[c] : Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
         leftOut = leftOut || sh[c].w != lightListAmbient[c];
     }
     if (pixelCount > count){
         const LightBounds bounds(mesh.lights.bounds, Vector3(0.0f, 0.0f, 0.0f));
         for (int n = count; n < pixelCount; n++){
+            const SceneLight& light = sceneLights[order[n]];
             Vector3 towardsLight;
-            const float attenuation = estimateLightAttenuation(lists.lights[n], lists.lights[capacity + n], lists.lights[3 * capacity + n], bounds, true, towardsLight);
-            foldLight(lists.lights[2 * capacity + n], towardsLight, attenuation, sh);
+            const float attenuation = estimateLightAttenuation(light.position_type, light.direction_range, light.cone_shadow, bounds, true, towardsLight);
+            foldLight(light.color_intensity, towardsLight, attenuation, sh);
         }
         leftOut = true;
     }
@@ -2214,6 +2314,10 @@ void RenderSystem::renderReflectionProbeCapture(){
     passShadows = &captureShadows;
 
     capturingReflectionProbe = true;
+    // the face's draws flip Y like a cube face (isRenderingFlipped reads the flag), so the
+    // frame block's matrices are made again for them: the shadow passes above drew with
+    // the camera's unflipped ones
+    updatePassFrame(captureCamera, captureTransform, Vector2((float)resolution, (float)resolution));
     passResolution = Vector2((float)resolution, (float)resolution);
     runtime.capturePass.setClearColor(probe->includeSky ? scene->getBackgroundColor() : Vector4(0.0f, 0.0f, 0.0f, 1.0f));
     runtime.capturePass.startRenderPass(&runtime.captureFramebuffer, (size_t)face);
@@ -2510,7 +2614,8 @@ const std::string& RenderSystem::getSubmeshShader(const MeshComponent& mesh, con
 }
 
 std::string RenderSystem::getSubmeshShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader){
-    return ShaderReference::getVariantReference(getSubmeshShader(mesh, submesh, sceneMeshShader), submesh.material.shaderFeatures);
+    return ShaderReference::getColorVariantReference(getSubmeshShader(mesh, submesh, sceneMeshShader), submesh.material.shaderFeatures,
+                                                     submesh.material.blendMode);
 }
 
 std::string RenderSystem::getSubmeshDepthShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader){
@@ -2526,27 +2631,40 @@ std::string RenderSystem::getSubmeshDepthShaderReference(const MeshComponent& me
     return ShaderReference::getVariantReference(mesh.customDepthShader, submesh.material.shaderFeatures);
 }
 
-std::string RenderSystem::getComponentShaderReference(const std::string& customShader, const std::vector<std::string>& shaderFeatures){
-    return ShaderReference::getVariantReference(customShader, shaderFeatures);
+std::string RenderSystem::getComponentShaderReference(const std::string& customShader, const std::vector<std::string>& shaderFeatures,
+                                                      MaterialBlendMode blendMode){
+    return ShaderReference::getColorVariantReference(customShader, shaderFeatures, blendMode);
 }
 
 RenderState RenderSystem::resolveSubmeshRenderState(const MeshComponent& mesh, const Submesh& submesh, const ShaderManifest* manifest,
                                                     bool& blended, bool& transparentQueue){
+    if (!manifest)
+        return resolveSubmeshRenderState(mesh, submesh, (const ShaderManifestState*)nullptr, blended, transparentQueue);
+    const ShaderManifestState state = manifest->resolveState(manifest->resolveFeatures(submesh.material.shaderFeatures));
+    return resolveSubmeshRenderState(mesh, submesh, &state, blended, transparentQueue);
+}
+
+RenderState RenderSystem::resolveSubmeshRenderState(const MeshComponent& mesh, const Submesh& submesh, const ShaderManifestState* manifestState,
+                                                    bool& blended, bool& transparentQueue){
     const Material& material = submesh.material;
     return resolveRenderState(material.blendMode, material.cullMode, material.depthWrite, material.depthTest,
-                              material.depthOffsetFactor, material.depthOffsetUnits, manifest,
+                              material.depthOffsetFactor, material.depthOffsetUnits, manifestState,
                               usesAlphaBlend(material), submesh.faceCulling, mesh.cullingMode, mesh.windingOrder,
                               blended, transparentQueue);
 }
 
-RenderState RenderSystem::resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite, const ShaderManifest* manifest, bool legacyCulling){
+RenderState RenderSystem::resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite, const ShaderManifest* manifest,
+                                                      const std::vector<std::string>& shaderFeatures, bool legacyCulling){
     bool blended = false;
     bool transparentQueue = false;
+    ShaderManifestState manifestState;
+    if (manifest)
+        manifestState = manifest->resolveState(manifest->resolveFeatures(shaderFeatures));
     RenderState state = resolveRenderState(blendMode, MaterialCullMode::AUTO, depthWrite, MaterialDepthTest::AUTO, 0.0f, 0.0f,
-                                           manifest, true, legacyCulling, CullingMode::BACK, WindingOrder::CCW,
+                                           manifest ? &manifestState : nullptr, true, legacyCulling, CullingMode::BACK, WindingOrder::CCW,
                                            blended, transparentQueue);
     // AUTO keeps the component's legacy depth write (on), blended or not
-    const MaterialDepthWrite write = resolveState(depthWrite, manifest ? manifest->state.depthWrite : MaterialDepthWrite::AUTO);
+    const MaterialDepthWrite write = resolveState(depthWrite, manifestState.depthWrite);
     if (write == MaterialDepthWrite::AUTO)
         state.depthWrite = true;
     return state;
@@ -2565,9 +2683,9 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
     };
     // the component's fork, the scene default, or built-in (as the load functions pick),
     // with the features the component enables
-    auto shaderId = [this](const std::string& customShader, ShaderType type, const std::vector<std::string>& features){
+    auto shaderId = [this](const std::string& customShader, ShaderType type, const std::vector<std::string>& features, MaterialBlendMode blendMode){
         return ShaderPool::registerCustomShader(getComponentShaderReference(
-            customShader.empty() ? scene->getDefaultCustomShader(type) : customShader, features));
+            customShader.empty() ? scene->getDefaultCustomShader(type) : customShader, features, blendMode));
     };
 
     if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
@@ -2627,18 +2745,18 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
             }
         }
         add(ShaderType::UI, ShaderPool::getUIProperties(hasTexture, hasFontAtlasTexture, false, vertexColorVec4),
-            shaderId(ui->customShader, ShaderType::UI, ui->shaderFeatures));
+            shaderId(ui->customShader, ShaderType::UI, ui->shaderFeatures, ui->blendMode));
     }
     if (PointsComponent* points = scene->findComponent<PointsComponent>(entity)){
         const bool hasTexture = !points->texture.empty();
         add(ShaderType::POINTS, ShaderPool::getPointsProperties(hasTexture, false, true, hasTexture && points->hasTextureRect),
-            shaderId(points->customShader, ShaderType::POINTS, points->shaderFeatures));
+            shaderId(points->customShader, ShaderType::POINTS, points->shaderFeatures, points->blendMode));
     }
     if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)){
-        add(ShaderType::LINES, ShaderPool::getLinesProperties(false, true), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures));
+        add(ShaderType::LINES, ShaderPool::getLinesProperties(false, true), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
     }
     if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity)){
-        add(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX, sky->shaderFeatures));
+        add(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX, sky->shaderFeatures, MaterialBlendMode::AUTO));
     }
 }
 
@@ -2744,6 +2862,12 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     const std::string& shader = getSubmeshShader(mesh, submesh, sceneMeshShader);
     inputs.manifest = findManifest(shader);
     inputs.depthProgram = ShaderReference::isLibrary(shader) && inputs.manifest && inputs.manifest->depth;
+    if (inputs.manifest){
+        inputs.features = ShaderReference::getEnabledFeatures(shader, material.shaderFeatures);
+        // @state shadows=off (with its keyword rules) keeps the submesh out of the shadow maps
+        if (inputs.manifest->resolveState(inputs.features).shadows == ShaderShadowCasting::OFF)
+            inputs.castShadows = false;
+    }
     if (inputs.depthProgram){
         // the library depth program takes the depth fork's place
         inputs.customDepthShader = false;
@@ -2774,15 +2898,26 @@ namespace {
     }
 }
 
-void RenderSystem::warnUnsupportedLighting(const Material& material, const std::string& shader, const ShaderManifest* manifest, const std::string& entityName){
+void RenderSystem::warnUnsupportedLighting(const Material& material, const std::string& shader, const ShaderManifest* manifest,
+                                           const std::string& entityName, Entity entity, unsigned int submesh){
     static const char* const names[] = {"auto", "pixel", "vertex", "mixed", "none"};
     const MaterialLighting resolved = resolveLighting(material.lighting, manifest);
-    // once per material and shader pair (a material is named by its file, else its GameObject)
+    // once per material and shader pair (a material is named by its file, else its GameObject,
+    // else, created at runtime without a name, by its entity and submesh); meshes may load on
+    // the scene loading thread
+    static std::mutex reportedMutex;
     static std::set<std::string> reported;
-    const std::string materialName = material.name.empty() ? entityName : material.name;
+    std::string materialName = material.name;
+    if (materialName.empty()){
+        materialName = entityName.empty() ? "entity " + std::to_string(entity) : entityName;
+        materialName += " submesh " + std::to_string(submesh);
+    }
     const std::string shaderName = shader.empty() ? std::string("Lit (built-in)") : shader;
-    if (!reported.insert(materialName + "\n" + shaderName + "\n" + names[(int)material.lighting]).second)
-        return;
+    {
+        std::lock_guard<std::mutex> lock(reportedMutex);
+        if (!reported.insert(materialName + "\n" + shaderName + "\n" + names[(int)material.lighting]).second)
+            return;
+    }
     Log::warn("Material '%s': shader '%s' has no '%s' lighting mode; drawing with its default, '%s'",
               materialName.c_str(), shaderName.c_str(), names[(int)material.lighting], names[(int)resolved]);
 }
@@ -2836,7 +2971,9 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     if (inputs.terrain && (inputs.terrainBlendMaps || hasPBRTextures)){
         p_hasTexture1 = true;
     }
-    const bool p_terrainSurface = inputs.terrain && inputs.terrainSurface;
+    // painted layer surfaces are Lit's (a shader with a manifest draws a terrain with its
+    // own surface, its uv1 the terrain's tiled UV)
+    const bool p_terrainSurface = inputs.terrain && inputs.terrainSurface && !inputs.manifest;
     const bool useIBL = (environment.ibl || environment.reflectionProbes) && inputs.receiveIBL;
     // the stages evaluating the object's lights: pixel (USE_PUNCTUAL), vertex
     // (USE_VERTEX_LIGHTS) or both, which the lights' own shading then splits (MIXED)
@@ -2899,13 +3036,18 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // model's +Y in surface_vs.glsl.
     bool p_vertexColorVec3 = inputs.vertexColor3;
     bool p_vertexColorVec4 = inputs.vertexColor4;
+    const uint32_t manifestRequire = manifest ? manifest->resolveRequire(inputs.features) : 0;
     if (manifest){
-        const uint32_t require = manifest->require;
+        const uint32_t require = manifestRequire;
         if (!inputs.terrain){
             p_hasTexture1 = (require & ShaderRequire_UV1) && inputs.texCoord1;
             p_hasTexture2 = (require & ShaderRequire_UV2) && inputs.texCoord2;
+        }else{
+            // a terrain's UV set is the one its vertex stage makes (includes/terrain_vs.glsl)
+            p_hasTexture1 = (require & ShaderRequire_UV1) != 0;
+            p_hasTexture2 = false;
         }
-        const bool requiresColor = (require & ShaderRequire_Color) != 0;
+        const bool requiresColor = (require & (ShaderRequire_Color | ShaderRequire_RawColor)) != 0;
         p_vertexColorVec3 = requiresColor && inputs.vertexColor3;
         p_vertexColorVec4 = requiresColor && inputs.vertexColor4;
 
@@ -2920,10 +3062,12 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     const bool p_alphaMask = inputs.alphaMode == MaterialAlphaMode::MASK;
     const bool p_alphaOpaque = inputs.alphaMode == MaterialAlphaMode::ALPHA_OPAQUE;
     // AUTO + textureShadow preserves the legacy opt-in for editor-created
-    // materials; explicit glTF modes derive the depth behavior from alphaMode.
+    // materials; explicit glTF modes derive the depth behavior from alphaMode. A shader
+    // with a manifest never alpha clips the depth pass by the material: its colour pass
+    // does not discard by it (a shader that clips has its own @depth program and hook)
     Material alphaMaterial;
     alphaMaterial.alphaMode = inputs.alphaMode;
-    const bool p_depthAlphaMask = usesAlphaMask(alphaMaterial, inputs.textureShadow);
+    const bool p_depthAlphaMask = !manifest && usesAlphaMask(alphaMaterial, inputs.textureShadow);
     const bool p_depthTexture = p_depthAlphaMask && inputs.texCoord1 && inputs.baseColorTexture;
     const bool p_instanceFade = inputs.instanced && inputs.instanceFade;
 
@@ -2945,16 +3089,19 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         // a library depth program gets the inputs its manifest requires, as the color pass
         bool d_normals = false, d_vertexColorVec3 = false, d_vertexColorVec4 = false, d_uv1 = false;
         if (inputs.depthProgram && inputs.manifest){
-            const uint32_t require = inputs.manifest->require;
-            d_normals = (require & (ShaderRequire_Normals | ShaderRequire_Tangents)) && inputs.normal;
-            d_vertexColorVec3 = (require & ShaderRequire_Color) && inputs.vertexColor3;
-            d_vertexColorVec4 = (require & ShaderRequire_Color) && inputs.vertexColor4;
-            d_uv1 = (require & ShaderRequire_UV1) && inputs.texCoord1;
+            const uint32_t require = manifestRequire;
+            d_normals = (require & (ShaderRequire_Normals | ShaderRequire_Tangents)) && (inputs.normal || inputs.terrain);
+            const bool d_color = (require & (ShaderRequire_Color | ShaderRequire_RawColor)) != 0;
+            d_vertexColorVec3 = d_color && inputs.vertexColor3 && !inputs.terrain;
+            d_vertexColorVec4 = d_color && inputs.vertexColor4 && !inputs.terrain;
+            d_uv1 = (require & ShaderRequire_UV1) && (inputs.texCoord1 || inputs.terrain);
         }
+        // the sprite rect the alpha-clip UV goes through (an atlas frame's shadow)
+        const bool d_textureRect = inputs.textureRect && !inputs.terrain && (p_depthTexture || d_uv1);
         variant.depthProperties = ShaderPool::getDepthMeshProperties(
             p_depthTexture, inputs.skinning, inputs.morphTarget,
             inputs.morphNormal, inputs.morphTangent, inputs.terrain, inputs.instanced,
-            p_depthAlphaMask, p_instanceFade, d_normals, d_vertexColorVec3, d_vertexColorVec4, d_uv1);
+            p_depthAlphaMask, p_instanceFade, d_normals, d_vertexColorVec3, d_vertexColorVec4, d_uv1, d_textureRect);
     }
 
     // the G-buffer shader feeds the SSR geometry pass (MRT: packed depth + view-space
@@ -3116,8 +3263,8 @@ void RenderSystem::updatePassFrame(const CameraComponent& camera, const Transfor
 
 void RenderSystem::updatePassFrame(const CameraComponent& camera, const Transform& cameraTransform, const Vector2& resolution){
     fillFrameBlock(passFrame, camera, cameraTransform, resolution);
-    // the engine-internal members appended after ambient
-    fillFrameLighting(passFrame, camera);
+    // the engine-internal members appended after ambient, and Lit's camera block
+    fillFrameLighting(passFrame, passLitFrame, camera);
 }
 
 void RenderSystem::applyFrameBlock(ObjectRender& render, const ShaderLibraryBindings& bindings){
@@ -4010,9 +4157,11 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         const SubmeshShaderInputs shaderInputs = getSubmeshShaderInputs(mesh, mesh.submeshes[i], terrain, instmesh, hasMirror, sceneMeshShader);
         const SubmeshShaderVariant variant = getSubmeshShaderVariant(shaderEnvironment, shaderInputs);
         mesh.submeshes[i].manifest = shaderInputs.manifest;
+        // its @state with the rules of the features the material enables
+        mesh.submeshes[i].manifestState = shaderInputs.manifest ? shaderInputs.manifest->resolveState(shaderInputs.features) : ShaderManifestState();
         if (!supportsLighting(shaderInputs.lighting, shaderInputs.manifest.get())){
             warnUnsupportedLighting(mesh.submeshes[i].material, getSubmeshShader(mesh, mesh.submeshes[i], sceneMeshShader),
-                                    shaderInputs.manifest.get(), scene->getEntityName(entity));
+                                    shaderInputs.manifest.get(), scene->getEntityName(entity), entity, (unsigned int)i);
         }
 
         // what the variant enables, from the property bits (see ShaderPool::getMeshProperties)
@@ -4117,8 +4266,17 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         }
         if (p_lit){
             // the object's lights (includes/lights.glsl), or the legacy block of an older fork
+            // the vertex stage declares a prefix of the fragment stage's block (includes/lights.glsl)
             mesh.submeshes[i].slotVSObjectLights = shaderData.getUniformBlockIndexByName("u_vs_objectLights");
             mesh.submeshes[i].slotFSObjectLights = shaderData.getUniformBlockIndexByName("u_fs_objectLights");
+            shaderData.getUniformBlockMembers("u_vs_objectLights", mesh.submeshes[i].sizeVSObjectLights);
+            shaderData.getUniformBlockMembers("u_fs_objectLights", mesh.submeshes[i].sizeFSObjectLights);
+            mesh.submeshes[i].sizeVSObjectLights = std::min(mesh.submeshes[i].sizeVSObjectLights, (unsigned int)sizeof(object_lights_t));
+            mesh.submeshes[i].sizeFSObjectLights = std::min(mesh.submeshes[i].sizeFSObjectLights, (unsigned int)sizeof(object_lights_t));
+            // the built-in Lit's camera block (includes/lit_frame.glsl): the prefix it declares
+            mesh.submeshes[i].slotFSLitFrame = shaderData.getUniformBlockIndexByName("u_fs_litFrame");
+            shaderData.getUniformBlockMembers("u_fs_litFrame", mesh.submeshes[i].sizeFSLitFrame);
+            mesh.submeshes[i].sizeFSLitFrame = std::min(mesh.submeshes[i].sizeFSLitFrame, (unsigned int)sizeof(lit_frame_t));
             mesh.submeshes[i].slotFSLighting = shaderData.getUniformBlockIndex(UniformBlockType::FS_LIGHTING);
             if (p_ibl){
                 mesh.submeshes[i].slotFSReflectionProbe = shaderData.getUniformBlockIndex(UniformBlockType::FS_REFLECTION_PROBE);
@@ -4203,8 +4361,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         // (alpha blended materials go to the transparent queue and write no depth)
         bool blended = false;
         bool transparentQueue = false;
-        const RenderState colorState = resolveSubmeshRenderState(mesh, mesh.submeshes[i], mesh.submeshes[i].manifest.get(),
-                                                                 blended, transparentQueue);
+        const ShaderManifestState* manifestState = mesh.submeshes[i].manifest ? &mesh.submeshes[i].manifestState : nullptr;
+        const RenderState colorState = resolveSubmeshRenderState(mesh, mesh.submeshes[i], manifestState, blended, transparentQueue);
         mesh.submeshes[i].alphaBlend = transparentQueue;
         if (mesh.autoTransparency && !mesh.transparent && transparentQueue){
             mesh.transparent = true;
@@ -4217,10 +4375,15 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         // the camera depth pre-pass leaves out a forked color shader without a depth
         // program (its vertices may not match), and what writes no depth
         const bool forkedColor = mesh.submeshes[i].customShaderId != 0 && !ShaderReference::isLibrary(meshShaderSrc);
-        const ShaderManifest* stateManifest = mesh.submeshes[i].manifest.get();
         const bool explicitDepthWrite = resolveState(mesh.submeshes[i].material.depthWrite,
-            stateManifest ? stateManifest->state.depthWrite : MaterialDepthWrite::AUTO) != MaterialDepthWrite::AUTO;
+            manifestState ? manifestState->depthWrite : MaterialDepthWrite::AUTO) != MaterialDepthWrite::AUTO;
         if ((forkedColor && depthShaderSrc.empty()) || (explicitDepthWrite && !colorState.depthWrite)){
+            mesh.skipsDepthPrepass = true;
+        }
+        // and a colour pass that fails its own pre-pass depth (a strict or inverted test:
+        // less, greater, not equal), which would draw nothing
+        if (colorState.depthCompare != DepthCompare::LESS_EQUAL && colorState.depthCompare != DepthCompare::EQUAL &&
+                colorState.depthCompare != DepthCompare::GREATER_EQUAL && colorState.depthCompare != DepthCompare::ALWAYS){
             mesh.skipsDepthPrepass = true;
         }
     
@@ -4293,6 +4456,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             }
             if (p_instanceFade){
                 mesh.submeshes[i].slotVSDepthFade = depthShaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE);
+            }
+            // the sprite rect an alpha-clipping depth program's UV goes through ('Txr')
+            if (mesh.submeshes[i].hasTextureRect){
+                mesh.submeshes[i].slotVSDepthSprite = depthShaderData.getUniformBlockIndex(UniformBlockType::SPRITE_VS_PARAMS);
             }
 
             if (mesh.submeshes[i].hasSkinning){
@@ -5186,9 +5353,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         CameraShadows& passLighting = ps();
 
         // the object's lights (MeshComponent::lights) as the last submesh built them: its
-        // lighting and capacity bits, and the bytes of that block
+        // lighting and capacity bits
         uint32_t builtLightBits = UINT32_MAX;
-        unsigned int objectLightsSize = 0;
 
         for (int i = 0; i < mesh.numSubmeshes; i++){
             // an indexed submesh without indices has nothing to draw (a tilemap rect
@@ -5281,11 +5447,14 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 if (mesh.submeshes[i].slotVSObjectLights != -1 || mesh.submeshes[i].slotFSObjectLights != -1){
                     const uint32_t lightBits = mesh.submeshes[i].shaderProperties & ((1u << 3) | (1u << 28) | (1u << 29) | (1u << 30));
                     if (lightBits != builtLightBits){
-                        objectLightsSize = buildObjectLights(mesh, mesh.submeshes[i].shaderProperties, objectLightsBlock);
+                        buildObjectLights(mesh, mesh.submeshes[i].shaderProperties, objectLightsBlock);
                         builtLightBits = lightBits;
                     }
-                    render.applyUniformBlock(mesh.submeshes[i].slotVSObjectLights, objectLightsSize, &objectLightsBlock);
-                    render.applyUniformBlock(mesh.submeshes[i].slotFSObjectLights, objectLightsSize, &objectLightsBlock);
+                    render.applyUniformBlock(mesh.submeshes[i].slotVSObjectLights, mesh.submeshes[i].sizeVSObjectLights, &objectLightsBlock);
+                    render.applyUniformBlock(mesh.submeshes[i].slotFSObjectLights, mesh.submeshes[i].sizeFSObjectLights, &objectLightsBlock);
+                }
+                if (mesh.submeshes[i].slotFSLitFrame != -1){
+                    render.applyUniformBlock(mesh.submeshes[i].slotFSLitFrame, mesh.submeshes[i].sizeFSLitFrame, &passLitFrame);
                 }
                 if (mesh.submeshes[i].slotFSLighting != -1){
                     buildLegacyLighting(mesh, mesh.submeshes[i].shaderProperties, legacyLightingBlock);
@@ -5467,6 +5636,9 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
 
             if (mesh.submeshes[i].slotVSDepthFade != -1 && instmesh){
                 applyInstanceFadeUniform(depthRender, mesh.submeshes[i].slotVSDepthFade, *instmesh, instanceFadeEye(entity, *instmesh, instanceView));
+            }
+            if (mesh.submeshes[i].slotVSDepthSprite != -1){
+                depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthSprite, sizeof(float) * 4, &mesh.submeshes[i].textureRect);
             }
 
             if (mesh.submeshes[i].slotFSDepthMaterial != -1){
@@ -6524,6 +6696,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotFSLighting = -1;
         submesh.slotVSObjectLights = -1;
         submesh.slotFSObjectLights = -1;
+        submesh.slotFSLitFrame = -1;
         submesh.slotFSReflectionProbe = -1;
         submesh.slotVSSprite = -1;
         submesh.slotVSShadows = -1;
@@ -6540,6 +6713,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSDepthSkinning = -1;
         submesh.slotVSDepthMorphTarget = -1;
         submesh.slotVSDepthTerrain = -1;
+        submesh.slotVSDepthSprite = -1;
 
         submesh.slotVSGBufferParams = -1;
         submesh.slotFSGBufferMaterial = -1;
@@ -6621,7 +6795,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
 
     ui.shaderProperties = ShaderPool::getUIProperties(p_hasTexture, p_hasFontAtlasTexture, false, p_vertexColorVec4);
     const std::string& uiShaderBase = ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader;
-    const std::string uiShaderSrc = getComponentShaderReference(uiShaderBase, ui.shaderFeatures);
+    const std::string uiShaderSrc = getComponentShaderReference(uiShaderBase, ui.shaderFeatures, ui.blendMode);
     ui.customShaderId = ShaderPool::registerCustomShader(uiShaderSrc);
     ui.shader = ShaderPool::get(ShaderType::UI, ui.shaderProperties, ui.customShaderId);
     if (!ui.shader->isCreated()){
@@ -6698,7 +6872,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     
     ui.needUpdateTexture = false;
 
-    if (!render.endLoad(pipelines, resolveComponentRenderState(ui.blendMode, ui.depthWrite, ui.shaderManifest.get(), false))){
+    if (!render.endLoad(pipelines, resolveComponentRenderState(ui.blendMode, ui.depthWrite, ui.shaderManifest.get(), ui.shaderFeatures, false))){
         return false;
     }
 
@@ -6832,7 +7006,7 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
 
     points.shaderProperties = ShaderPool::getPointsProperties(p_hasTexture, false, true, p_hasTextureRect);
     const std::string& pointsShaderBase = points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader;
-    const std::string pointsShaderSrc = getComponentShaderReference(pointsShaderBase, points.shaderFeatures);
+    const std::string pointsShaderSrc = getComponentShaderReference(pointsShaderBase, points.shaderFeatures, points.blendMode);
     points.customShaderId = ShaderPool::registerCustomShader(pointsShaderSrc);
     points.shader = ShaderPool::get(ShaderType::POINTS, points.shaderProperties, points.customShaderId);
     if (!points.shader->isCreated()){
@@ -6891,7 +7065,7 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
 
     points.needUpdateTexture = false;
 
-    if (!render.endLoad(pipelines, resolveComponentRenderState(points.blendMode, points.depthWrite, points.shaderManifest.get(), false))){
+    if (!render.endLoad(pipelines, resolveComponentRenderState(points.blendMode, points.depthWrite, points.shaderManifest.get(), points.shaderFeatures, false))){
         return false;
     }
 
@@ -6916,7 +7090,7 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
 
     lines.shaderProperties = ShaderPool::getLinesProperties(false, true);
     const std::string& linesShaderBase = lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader;
-    const std::string linesShaderSrc = getComponentShaderReference(linesShaderBase, lines.shaderFeatures);
+    const std::string linesShaderSrc = getComponentShaderReference(linesShaderBase, lines.shaderFeatures, lines.blendMode);
     lines.customShaderId = ShaderPool::registerCustomShader(linesShaderSrc);
     lines.shader = ShaderPool::get(ShaderType::LINES, lines.shaderProperties, lines.customShaderId);
     if (!lines.shader->isCreated()){
@@ -6967,7 +7141,7 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
         return false;
     }
 
-    if (!render.endLoad(pipelines, resolveComponentRenderState(lines.blendMode, lines.depthWrite, lines.shaderManifest.get(), false))){
+    if (!render.endLoad(pipelines, resolveComponentRenderState(lines.blendMode, lines.depthWrite, lines.shaderManifest.get(), lines.shaderFeatures, false))){
         return false;
     }
 
@@ -7229,7 +7403,7 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
     render->beginLoad(PrimitiveType::TRIANGLES);
 
     const std::string& skyShaderBase = sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader;
-    const std::string skyShaderSrc = getComponentShaderReference(skyShaderBase, sky.shaderFeatures);
+    const std::string skyShaderSrc = getComponentShaderReference(skyShaderBase, sky.shaderFeatures, MaterialBlendMode::AUTO);
     sky.customShaderId = ShaderPool::registerCustomShader(skyShaderSrc);
     sky.shader = ShaderPool::get(ShaderType::SKYBOX, 0, sky.customShaderId);
     if (!sky.shader->isCreated()){
@@ -7277,7 +7451,7 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
         }
     }
 
-    if (!render->endLoad(pipelines, resolveComponentRenderState(MaterialBlendMode::AUTO, MaterialDepthWrite::AUTO, sky.shaderManifest.get(), true))){
+    if (!render->endLoad(pipelines, resolveComponentRenderState(MaterialBlendMode::AUTO, MaterialDepthWrite::AUTO, sky.shaderManifest.get(), sky.shaderFeatures, true))){
         return false;
     }
 
@@ -9391,7 +9565,9 @@ void RenderSystem::update(double dt){
                 // the queue the render state resolves to (legacy: alpha blended materials)
                 bool blended = false;
                 bool alphaBlend = false;
-                resolveSubmeshRenderState(mesh, mesh.submeshes[s], mesh.submeshes[s].manifest.get(), blended, alphaBlend);
+                // the manifest's state as loaded (keyword rules resolved at load, no allocation)
+                resolveSubmeshRenderState(mesh, mesh.submeshes[s], mesh.submeshes[s].manifest ? &mesh.submeshes[s].manifestState : nullptr,
+                                          blended, alphaBlend);
                 expectedTransparent = expectedTransparent || alphaBlend;
 
                 if (mesh.submeshes[s].alphaBlend != alphaBlend){
@@ -9424,7 +9600,7 @@ void RenderSystem::update(double dt){
 
                 // A layer gains or loses its own surface from the editor, a script or an AI
                 // action, and only a reload can swap the terrain variant that reads it
-                if (terrain){
+                if (terrain && !mesh.submeshes[s].manifest){
                     const bool shaderTerrainSurface = (mesh.submeshes[s].shaderProperties & (1u << 27)) != 0;
                     if (shaderTerrainSurface != hasTerrainSurfaceLayers(*terrain)){
                         mesh.needReload = true;

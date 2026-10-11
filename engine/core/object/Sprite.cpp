@@ -12,6 +12,9 @@ using namespace jasperengine;
 
 Sprite::Sprite(Scene* scene): Mesh(scene){
     addComponent<SpriteComponent>();
+    // its one submesh exists from the start (MeshSystem::prepareSpriteMesh builds it on the
+    // first update), so a script can set its material right after creating it
+    getComponent<MeshComponent>().numSubmeshes = 1;
     animation = NULL;
 }
 

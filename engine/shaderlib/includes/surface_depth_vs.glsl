@@ -7,9 +7,11 @@
 //   vec3 surfaceDisplace(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv){ ... }
 //
 // The inputs a manifest @require asks for come in as the colour pass's do (a missing one
-// gets the same fallback, SURFACE_NO_VERTEX_COLOR works the same). With SURFACE_DEPTH_VARYINGS defined before including, it also
-// writes v_uv1 (SURFACE_UV1) and v_color (SURFACE_COLOR) for a fragment stage that alpha
-// clips (includes/surface_depth_fs.glsl with SURFACE_DEPTH_DISCARD).
+// gets the same fallback, SURFACE_NO_VERTEX_COLOR works the same; the hook's colour is the
+// raw vertex colour, a terrain's patches and UV and the sprite texture rect apply alike).
+// With SURFACE_DEPTH_VARYINGS defined before including, it also writes v_uv1 (SURFACE_UV1)
+// and v_color (SURFACE_COLOR, the vertex colour times the instance colour) for a fragment
+// stage that alpha clips (includes/surface_depth_fs.glsl with SURFACE_DEPTH_DISCARD).
 
 // Inputs only the hooks read: without them they are not declared at all, since a GL
 // driver drops an unread attribute and the bind then misses it
@@ -23,6 +25,9 @@
     #undef HAS_UV_SET1
     #undef HAS_VERTEX_COLOR_VEC3
     #undef HAS_VERTEX_COLOR_VEC4
+#endif
+#ifndef HAS_UV_SET1
+    #undef HAS_TEXTURERECT
 #endif
 
 uniform u_vs_depthParams {
@@ -40,14 +45,24 @@ invariant gl_Position;
     } fadeParams;
 #endif
 
+#ifdef HAS_TEXTURERECT
+    uniform u_vs_spriteParams {
+        vec4 textureRect;
+    } spriteParams;
+#endif
+
 in vec3 a_position;
 out vec2 v_projZW;
 
 #ifdef HAS_NORMALS
     in vec3 a_normal;
 #endif
-#ifdef HAS_UV_SET1
+#if defined(HAS_UV_SET1) && !defined(HAS_TERRAIN)
     in vec2 a_texcoord1;
+#endif
+#ifdef HAS_TERRAIN
+    #define TERRAIN_NO_SURFACE_VARYINGS
+    #include "includes/terrain_vs.glsl"
 #endif
 #if defined(HAS_VERTEX_COLOR_VEC3) && !defined(SURFACE_NO_VERTEX_COLOR)
     in vec3 a_color;
@@ -91,10 +106,17 @@ void main() {
 
     vec3 position = getMorphPosition(a_position);
     position = getSkinPosition(position, boneTransform);
+    #ifdef HAS_TERRAIN
+        position = getTerrainPosition(position, depthParams.modelMatrix);
+    #endif
 
     vec3 objectNormal = vec3(0.0, 1.0, 0.0);
     #ifdef HAS_NORMALS
-        objectNormal = normalize(getSkinNormal(getMorphNormal(a_normal), boneTransform));
+        objectNormal = getSkinNormal(getMorphNormal(a_normal), boneTransform);
+        #ifdef HAS_TERRAIN
+            objectNormal = getTerrainNormal(objectNormal, position);
+        #endif
+        objectNormal = normalize(objectNormal);
     #endif
 
     #ifdef HAS_INSTANCING
@@ -116,26 +138,34 @@ void main() {
         pos.xyz = mix(fadeOrigin, pos.xyz, fadeVisible);
     #endif
 
-    vec4 color = vec4(1.0);
+    // the raw vertex colour (the hook's), and times the instance colour (v_color)
+    vec4 rawColor = vec4(1.0);
     #if defined(HAS_VERTEX_COLOR_VEC3) && !defined(SURFACE_NO_VERTEX_COLOR)
-        color = vec4(a_color, 1.0);
+        rawColor = vec4(a_color, 1.0);
     #elif defined(HAS_VERTEX_COLOR_VEC4) && !defined(SURFACE_NO_VERTEX_COLOR)
-        color = a_color;
+        rawColor = a_color;
     #endif
+    vec4 color = rawColor;
     #if defined(HAS_INSTANCING) && defined(SURFACE_COLOR) && defined(SURFACE_DEPTH_INPUTS)
         color *= i_color;
     #endif
 
+    // as includes/surface_vs.glsl's uv1
     vec2 uv1 = vec2(0.0);
-    #ifdef HAS_UV_SET1
+    #if defined(HAS_UV_SET1) && defined(HAS_TERRAIN)
+        uv1 = getTerrainUV(position);
+    #elif defined(HAS_UV_SET1)
         uv1 = a_texcoord1;
+        #ifdef HAS_TEXTURERECT
+            uv1 = uv1 * spriteParams.textureRect.zw + spriteParams.textureRect.xy;
+        #endif
         #ifdef HAS_INSTANCING
             uv1 = uv1 * i_textureRect.zw + i_textureRect.xy;
         #endif
     #endif
 
     #ifdef SURFACE_DISPLACE
-        pos.xyz = surfaceDisplace(pos.xyz, objectNormal, color, uv1);
+        pos.xyz = surfaceDisplace(pos.xyz, objectNormal, rawColor, uv1);
     #endif
 
     #ifdef SURFACE_DEPTH_VARYINGS

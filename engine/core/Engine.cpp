@@ -34,6 +34,7 @@
 #include "sokol_time.h"
 
 #include <algorithm>
+#include <cstdlib>
 
 using namespace jasperengine;
 
@@ -1124,6 +1125,33 @@ void Engine::systemViewChanged(){
     onViewChanged.call();
 }
 
+// With JASPERENGINE_READY_SIGNAL set (tools/smoke-test.sh sets it), logs once the frame
+// every scene drawn is fully loaded and no shader variant is still compiling, so a test
+// can wait for that instead of a fixed time. A few frames in a row must be ready: a
+// script creating objects in its first updates leaves the scenes loaded for a frame.
+void Engine::signalReadyOnce(){
+    static const bool enabled = [](){
+        const char* value = std::getenv("JASPERENGINE_READY_SIGNAL");
+        return value && value[0] != '\0' && value[0] != '0';
+    }();
+    static bool signalled = false;
+    static int readyFrames = 0;
+    static uint64_t frames = 0;
+    if (!enabled || signalled)
+        return;
+
+    frames++;
+    bool ready = ShaderPool::getPendingShaderCount() == 0 && !scenes.empty();
+    for (size_t i = 0; ready && i < scenes.size(); i++){
+        ready = scenes[i]->getSystem<RenderSystem>()->isAllLoaded();
+    }
+    readyFrames = ready ? readyFrames + 1 : 0;
+    if (readyFrames >= 10){
+        signalled = true;
+        Log::print("Engine ready: every scene loaded and no shader build pending (frame %llu)", (unsigned long long)frames);
+    }
+}
+
 void Engine::systemDraw(){
     const int MAX_UPDATES_PER_FRAME = 100;
 
@@ -1243,6 +1271,8 @@ void Engine::systemDraw(){
 
     // after the draw, so the new scenes are drawn loaded before the loading scene goes
     SceneManager::updateLoading();
+
+    signalReadyOnce();
 
     frameRunning = false;
 

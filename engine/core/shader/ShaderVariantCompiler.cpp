@@ -337,6 +337,7 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & (1 << 10)) defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"}); // 'Vc3'
     if (prop & (1 << 11)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"}); // 'Vc4'
     if (prop & (1 << 12)) defs.push_back({"HAS_UV_SET1", "1"});           // 'Uv1'
+    if (prop & (1 << 13)) defs.push_back({"HAS_TEXTURERECT", "1"});       // 'Txr'
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
@@ -671,9 +672,11 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
         // the includes it reaches are the embedded library's too: a cached build of it is
         // stale once the library changes
         appendSignaturePart(signatureInput, "library-hash", std::to_string(getLibraryHash()));
-        // the varyings its @require asks surface_vs.glsl for (a depth program too)
+        // the varyings its @require asks surface_vs.glsl for (a depth program too), with the
+        // feature= ones of the variant's features
         if (std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(base)){
-            for (const std::string& define : manifest->getRequireDefines())
+            const std::vector<std::string> enabled = result.defines;
+            for (const std::string& define : manifest->getRequireDefines(enabled))
                 result.defines.push_back(define);
         }
         result.signature = signatureInput;
@@ -756,7 +759,8 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
     ShaderManifest manifest;
     manifest.parse(fragSource, result.fragFile);
     manifest.parse(vertSource, result.vertFile);
-    for (const std::string& define : manifest.getRequireDefines())
+    const std::vector<std::string> enabled = result.defines;
+    for (const std::string& define : manifest.getRequireDefines(enabled))
         result.defines.push_back(define);
     result.manifest = manifest.present;
 

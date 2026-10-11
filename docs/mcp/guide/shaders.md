@@ -122,3 +122,25 @@ uniform u_fs_customParams {
   `@feature`, `@state`, ...; read `engine/shaderlib/library/unlit.frag` with
   `read_engine_source`): its parameters then get labels and defaults, and it takes
   `shaderTextures` and `shaderFeatures` like a library shader.
+
+## Manifest: conditional state, requires and blend
+
+Manifest lines (library shaders and forks that declare them) beyond the basic ones:
+
+- `// @state shadows=off`: the submesh casts no shadows (the mesh's `castShadows` still
+  turns them off too). Other keys: `blend`, `cull`, `zwrite`, `ztest`, `offset`, `queue`.
+- `// @state[<DEFINE>] key=value...`: state applied while a `@feature` or `@keywords`
+  value (`<GROUP>_<VALUE>`) is on; `[!<DEFINE>]` while it is off. Order: material value,
+  then the matching `@state[...]` lines (later wins), then `@state`, then the engine's.
+  Example: `// @state[MODE_ALPHA] blend=alpha zwrite=off`.
+- `// @require <inputs> feature=<DEFINE>`: inputs required only while that define is on
+  (`feature=!<DEFINE>`: while off). Inputs: `normals tangents uv1 uv2 color rawcolor
+  position`; `rawcolor` gives `v_rawColor`, the vertex colour without the instance colour
+  (`v_color` is their product).
+- The engine defines the blend mode a variant draws with: `BLEND_NONE`, `BLEND_ALPHA`,
+  `BLEND_PREMULTIPLIED`, `BLEND_ADDITIVE` or `BLEND_MULTIPLY` (`#ifdef BLEND_ADDITIVE`).
+  `finalizeColor` fogs by it (additive fades to black, multiply to white), so a shader
+  needs no keyword of its own for the blend. Feature and keyword names `BLEND_*` are
+  reserved.
+- Library mesh shaders draw on a Terrain too (its height-mapped patches; `uv1` is the
+  terrain's tiled UV, painted layers stay Lit's).

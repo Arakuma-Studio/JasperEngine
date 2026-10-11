@@ -557,13 +557,14 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
                     add(RenderSystem::getSubmeshDepthShaderReference(*mesh, mesh->submeshes[s], sceneMeshShader), ShaderType::DEPTH);
                 }
             }
-            auto addComponent = [&](const std::string& customShader, const std::vector<std::string>& features, ShaderType componentType) {
-                if (!features.empty()) add(RenderSystem::getComponentShaderReference(customShader, features), componentType);
+            auto addComponent = [&](const std::string& customShader, const std::vector<std::string>& features, ShaderType componentType,
+                                    MaterialBlendMode blendMode) {
+                if (!features.empty()) add(RenderSystem::getComponentShaderReference(customShader, features, blendMode), componentType);
             };
-            if (UIComponent* ui = scene->findComponent<UIComponent>(entity)) addComponent(ui->customShader, ui->shaderFeatures, ShaderType::UI);
-            if (PointsComponent* points = scene->findComponent<PointsComponent>(entity)) addComponent(points->customShader, points->shaderFeatures, ShaderType::POINTS);
-            if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)) addComponent(lines->customShader, lines->shaderFeatures, ShaderType::LINES);
-            if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity)) addComponent(sky->customShader, sky->shaderFeatures, ShaderType::SKYBOX);
+            if (UIComponent* ui = scene->findComponent<UIComponent>(entity)) addComponent(ui->customShader, ui->shaderFeatures, ShaderType::UI, ui->blendMode);
+            if (PointsComponent* points = scene->findComponent<PointsComponent>(entity)) addComponent(points->customShader, points->shaderFeatures, ShaderType::POINTS, points->blendMode);
+            if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)) addComponent(lines->customShader, lines->shaderFeatures, ShaderType::LINES, lines->blendMode);
+            if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity)) addComponent(sky->customShader, sky->shaderFeatures, ShaderType::SKYBOX, MaterialBlendMode::AUTO);
         }
         const std::pair<const char*, ShaderType> defaults[] = {
             {"default_mesh_shader", ShaderType::MESH}, {"default_ui_shader", ShaderType::UI},

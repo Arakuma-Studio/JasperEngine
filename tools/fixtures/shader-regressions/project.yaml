@@ -1,0 +1,20 @@
+name: ShaderRegressions
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: letterbox
+vsync: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+assetsDir: assets
+luaDir: scripts
+export:
+  # The script builds everything: every variant compiles at runtime
+  shaderAdditions:
+    - type: mesh
+      properties: 1112
+    - type: depth
+startSceneId: 1
+scenes:
+  - filepath: Main Scene.scene

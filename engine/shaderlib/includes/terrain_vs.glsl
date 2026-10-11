@@ -17,8 +17,10 @@ in float i_terrainnode_range;
 in float i_terrainnode_resolution; //int
 
 // The color pass always carries the surface varyings; of the two DEPTH_SHADER passes only
-// the G-buffer wants them, and only when painted layers supply the surface it writes.
-#if !defined(DEPTH_SHADER) || defined(HAS_TERRAIN_PBR)
+// the G-buffer wants them, and only when painted layers supply the surface it writes. The
+// library's shared vertex paths (includes/surface_vs.glsl, surface_depth_vs.glsl) define
+// TERRAIN_NO_SURFACE_VARYINGS: a library shader reads its own varyings, not these.
+#if (!defined(DEPTH_SHADER) || defined(HAS_TERRAIN_PBR)) && !defined(TERRAIN_NO_SURFACE_VARYINGS)
     #define TERRAIN_SURFACE_VARYINGS
 #endif
 
@@ -34,7 +36,7 @@ in float i_terrainnode_resolution; //int
     #endif
 #endif
 
-#if defined(HAS_TERRAIN_PBR) && defined(HAS_NORMALS)
+#if defined(HAS_TERRAIN_PBR) && defined(HAS_NORMALS) && !defined(TERRAIN_NO_SURFACE_VARYINGS)
     // Layer normals are built on the terrain's own axes; these carry them into whichever
     // space the pass shades in, so a rotated terrain still lights correctly
     out vec3 v_terrainAxisX;
@@ -125,3 +127,9 @@ vec3 getTerrainNormal(vec3 normal, vec3 position){
         return v_terrainTextureCoords * float(terrain.textureBaseTiles);
     }
 #endif
+
+// the terrain's UV set of a position from getTerrainPosition: its base map coordinates
+// tiled textureBaseTiles times (what Lit's v_uv1 holds), without the surface varyings
+vec2 getTerrainUV(vec3 position){
+    return (position.xz + (terrain.size / 2.0)) / terrain.size * float(terrain.textureBaseTiles);
+}

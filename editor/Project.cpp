@@ -2797,9 +2797,10 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     // resolve the effective custom shader (component > scene default > built-in) from the
     // strings rather than the cached customShaderId, which lags a reload frame after a
     // scene-default change and is zeroed by the build-fail fallback
-    auto effectiveShaderId = [&](const std::string& customShader, ShaderType type, const std::vector<std::string>& features) -> uint16_t {
+    auto effectiveShaderId = [&](const std::string& customShader, ShaderType type, const std::vector<std::string>& features,
+                                 MaterialBlendMode blendMode) -> uint16_t {
         return ShaderPool::registerCustomShader(RenderSystem::getComponentShaderReference(
-            customShader.empty() ? scene->getDefaultCustomShader(type) : customShader, features));
+            customShader.empty() ? scene->getDefaultCustomShader(type) : customShader, features, blendMode));
     };
 
     // the runtime falls back to the built-in variant when a custom shader fails to build,
@@ -2886,28 +2887,28 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
         if (signature.test(scene->getComponentId<UIComponent>())) {
             const UIComponent& ui = scene->getComponent<UIComponent>(entity);
             if (ui.loaded) {
-                insertKeys(ShaderType::UI, ui.shaderProperties, effectiveShaderId(ui.customShader, ShaderType::UI, ui.shaderFeatures));
+                insertKeys(ShaderType::UI, ui.shaderProperties, effectiveShaderId(ui.customShader, ShaderType::UI, ui.shaderFeatures, ui.blendMode));
             }
         }
 
         if (signature.test(scene->getComponentId<PointsComponent>())) {
             const PointsComponent& pts = scene->getComponent<PointsComponent>(entity);
             if (pts.loaded) {
-                insertKeys(ShaderType::POINTS, pts.shaderProperties, effectiveShaderId(pts.customShader, ShaderType::POINTS, pts.shaderFeatures));
+                insertKeys(ShaderType::POINTS, pts.shaderProperties, effectiveShaderId(pts.customShader, ShaderType::POINTS, pts.shaderFeatures, pts.blendMode));
             }
         }
 
         if (signature.test(scene->getComponentId<LineRendererComponent>())) {
             const LineRendererComponent& ln = scene->getComponent<LineRendererComponent>(entity);
             if (ln.loaded) {
-                insertKeys(ShaderType::LINES, ln.shaderProperties, effectiveShaderId(ln.customShader, ShaderType::LINES, ln.shaderFeatures));
+                insertKeys(ShaderType::LINES, ln.shaderProperties, effectiveShaderId(ln.customShader, ShaderType::LINES, ln.shaderFeatures, ln.blendMode));
             }
         }
 
         if (signature.test(scene->getComponentId<SkyboxComponent>())) {
             const SkyboxComponent& sky = scene->getComponent<SkyboxComponent>(entity);
             if (sky.loaded) {
-                insertKeys(ShaderType::SKYBOX, 0, effectiveShaderId(sky.customShader, ShaderType::SKYBOX, sky.shaderFeatures));
+                insertKeys(ShaderType::SKYBOX, 0, effectiveShaderId(sky.customShader, ShaderType::SKYBOX, sky.shaderFeatures, MaterialBlendMode::AUTO));
             }
         }
     }

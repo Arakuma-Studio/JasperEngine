@@ -38,11 +38,21 @@ out vec2 v_projZW;
     in vec4 i_matrix_col2;
     in vec4 i_matrix_col3;
     in vec4 i_matrix_col4;
+    #if defined(HAS_TEXTURE)
+        in vec4 i_textureRect;
+    #endif
 #endif
 
 #if defined(HAS_TEXTURE)
     in vec2 a_texcoord1;
     out vec2 v_uv1;
+    // the alpha clip samples the frame the colour pass draws: the sprite texture rect
+    // (atlas frame) and the instance's, as mesh.vert's v_uv1
+    #ifdef HAS_TEXTURERECT
+        uniform u_vs_spriteParams {
+            vec4 textureRect;
+        } spriteParams;
+    #endif
 #endif
 
 #include "includes/skinning.glsl"
@@ -75,6 +85,12 @@ void main() {
 
     #if defined(HAS_TEXTURE)
         v_uv1 = a_texcoord1;
+        #ifdef HAS_TEXTURERECT
+            v_uv1 = v_uv1 * spriteParams.textureRect.zw + spriteParams.textureRect.xy;
+        #endif
+        #ifdef HAS_INSTANCING
+            v_uv1 = v_uv1 * i_textureRect.zw + i_textureRect.xy;
+        #endif
     #endif
 
     #ifdef USE_INSTANCE_FADE

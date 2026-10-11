@@ -158,9 +158,11 @@ namespace jasperengine{
                         bool alphaMask = false, bool alphaOpaque = false, bool instanceFade = false,
                         bool terrainPBR = false,
                         bool vertexLights = false, int lightCapacity = 8);
-        // normals, vertexColorVec3/4 and uv1: the inputs a library depth program requires
+        // normals, vertexColorVec3/4 and uv1: the inputs a library depth program requires;
+        // textureRect: the sprite texture rect its UV (texture or uv1) goes through
         static uint32_t getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask = false, bool instanceFade = false,
-                                               bool normals = false, bool vertexColorVec3 = false, bool vertexColorVec4 = false, bool uv1 = false);
+                                               bool normals = false, bool vertexColorVec3 = false, bool vertexColorVec4 = false, bool uv1 = false,
+                                               bool textureRect = false);
         static uint32_t getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR = false);
         static uint32_t getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4);
         static uint32_t getPointsProperties(bool texture, bool vertexColorVec3, bool vertexColorVec4, bool textureRect);

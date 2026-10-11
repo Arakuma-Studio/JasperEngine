@@ -75,7 +75,7 @@ float getLightConeAttenuation(Light light, vec3 pointToLight)
 }
 
 // Projected spot masks share one horizontal atlas of SPOT_MASK_TILES tiles. The tile of a
-// light comes from the per-object lights block (lights.glsl), or, for a fork declaring the
+// light comes from the per-object lights block (lights.glsl, spot_shadow.w), or, for a fork declaring the
 // legacy u_fs_lighting block, from eyePos.w (3 bits per legacy light index).
 #if defined(LIGHTS_SPOT_MASKS) || !defined(LIGHTS_DECLARED)
 
@@ -86,8 +86,7 @@ float getLightConeAttenuation(Light light, vec3 pointToLight)
 int getSpotMaskTile(int lightIndex)
 {
     #ifdef LIGHTS_SPOT_MASKS
-        float packedTiles = (lightIndex < 8) ? objectLights.counts.z : objectLights.counts.w;
-        return (int(packedTiles) >> (3 * (lightIndex & 7))) & 7;
+        return (int(objectLights.spot_shadow[lightIndex].w) >> 9) & 7;
     #else
         return (int(lighting.eyePos.w) >> (3 * lightIndex)) & 7;
     #endif

@@ -5,8 +5,10 @@
 #define SHADOWS_GLSL
 
 // PCF tap radius from the scene's shadow quality, uniform-driven so quality changes need no
-// shader rebuild: the frame block's, or the legacy block's cameraDir.w
-#ifdef LIGHTS_FS_DECLARED
+// shader rebuild: Lit's camera block's, the frame block's, or the legacy block's cameraDir.w
+#if defined(LIT_FRAME_DECLARED)
+    #define SHADOW_PCF_RADIUS litFrame.cameraForward_pcf.w
+#elif defined(LIGHTS_FS_DECLARED)
     #define SHADOW_PCF_RADIUS frame.lightingInfo.x
 #else
     #define SHADOW_PCF_RADIUS lighting.cameraDir.w

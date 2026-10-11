@@ -1,20 +1,36 @@
-// Scene fog. Its values live in the engine frame block (frame.glsl: fogColor_type and
-// fogDensity_start_end), declared here in the fragment stage, so fog costs no uniform
-// block of its own. Include it only in a .frag, and only with HAS_FOG.
+// Scene fog, fragment stage only, with HAS_FOG. Its values come from the block the shader
+// already uploads: the built-in Lit's camera block (includes/lit_frame.glsl), else the
+// engine frame block when the fragment stage declares it before this include
+// (includes/frame.glsl: fogColor_type and fogDensity_start_end), else a 32-byte block of
+// its own (u_fs_fog), so a shader that reads nothing else of the frame block (an unlit
+// sprite, a tilemap) does not upload it for fog.
 #ifndef FOG_GLSL
 #define FOG_GLSL
 
-#ifndef FRAME_FS
-    #define FRAME_FS
+#if defined(LIT_FRAME_DECLARED)
+    // one parameter serves density (exponential) or start (linear)
+    #define FOG_COLOR_TYPE vec4(litFrame.fogColor_param.rgb, litFrame.ambient_fogType.w)
+    #define FOG_DENSITY_START_END vec4(litFrame.fogColor_param.w, 0.0, litFrame.fogColor_param.w, litFrame.cameraPosition_fogEnd.w)
+#elif defined(FRAME_FS_DECLARED)
+    #define FOG_COLOR_TYPE frame.fogColor_type
+    #define FOG_DENSITY_START_END frame.fogDensity_start_end
+#else
+    uniform u_fs_fog {
+        vec4 color_type;         // rgb fog colour, w type: 0 linear, 1 exponential, 2 exponential squared
+        vec4 density_start_end;  // x density, z linear start, w linear end
+    } engineFog;
+    #define FOG_COLOR_TYPE engineFog.color_type
+    #define FOG_DENSITY_START_END engineFog.density_start_end
 #endif
-#include "includes/frame.glsl"
 
 vec3 getFogColor(vec3 color){
-    int fogType = int(frame.fogColor_type.w);
-    vec3 fogColor = frame.fogColor_type.xyz;
-    float fogDensity = frame.fogDensity_start_end.x;
-    float fogLinearStart = frame.fogDensity_start_end.z;
-    float fogLinearEnd = frame.fogDensity_start_end.w;
+    vec4 fogColorType = FOG_COLOR_TYPE;
+    vec4 fogDensityStartEnd = FOG_DENSITY_START_END;
+    int fogType = int(fogColorType.w);
+    vec3 fogColor = fogColorType.xyz;
+    float fogDensity = fogDensityStartEnd.x;
+    float fogLinearStart = fogDensityStartEnd.z;
+    float fogLinearEnd = fogDensityStartEnd.w;
 
     float fogFactor = 0.0;
     const float LOG2 = 1.442695;

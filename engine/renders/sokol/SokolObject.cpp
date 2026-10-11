@@ -146,7 +146,18 @@ sg_compare_func SokolObject::getCompareFunc(DepthCompare compare){
 
 void SokolObject::applyBlend(sg_color_target_state& target, bool offscreen){
     if (loadState.blend == BlendMode::NONE){
-        target.blend.enabled = false;
+        if (!offscreen){
+            target.blend.enabled = false;
+            return;
+        }
+        // an offscreen target composites coverage in alpha as the legacy pipelines did
+        // (below), so an opaque surface writing alpha < 1 does not punch a hole in what
+        // is behind it; the colour replaces
+        target.blend.enabled = true;
+        target.blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+        target.blend.dst_factor_rgb = SG_BLENDFACTOR_ZERO;
+        target.blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+        target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
         return;
     }
     target.blend.enabled = true;
