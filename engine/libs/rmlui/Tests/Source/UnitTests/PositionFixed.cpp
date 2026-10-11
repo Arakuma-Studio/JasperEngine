@@ -25,6 +25,8 @@ const String position_fixed_rml = R"(
 		#percent { position: fixed; left: 50%; top: 25%; width: 10%; height: 10%; }
 		#transformed { transform: translateX(0px); width: 200px; height: 100px; padding: 5px; margin-left: 30px; }
 		#inside { position: fixed; left: 10px; top: 20px; width: 50%; height: 10px; }
+		scrollbarvertical { width: 12px; }
+		scrollbarhorizontal { height: 12px; }
 	</style>
 </head>
 <body>
@@ -91,7 +93,8 @@ TEST_CASE("PositionFixed")
 		if (ElementUtilities::GetClippingRegion(fixed, clip_region))
 		{
 			CHECK(float(clip_region.Left()) <= offset(fixed).x);
-			CHECK(float(clip_region.Right()) >= Math::Min(offset(fixed).x + 50.f, 400.f));
+			// (the document clips it to its scrollport: its box without its scrollbar)
+			CHECK(float(clip_region.Right()) >= Math::Min(offset(fixed).x + 50.f, 400.f - 12.f));
 			CHECK(clip_region.Width() > 100);
 		}
 		CHECK(scroller->GetScrollWidth() == doctest::Approx(scroller->GetClientWidth()));
