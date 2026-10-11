@@ -586,7 +586,7 @@ RML_DOC = """<rml>
         body { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
         div { display: block; }
         #r { position: absolute; left: 900px; top: 500px; width: 100px; height: 100px; background-color: rgba(255, 255, 0, 255);
-             border: 4px #ff00ff; }
+             border: 4px solid #ff00ff; }
     </style>
 </head>
 <body>
