@@ -781,11 +781,17 @@ void editor::InspectorWindow::drawStencilColorWriteRows(ComponentType cpType, Sc
     ImGui::BeginDisabled(colorWrite < 0);
     static const std::pair<int, const char*> channels[] = {
         {MATERIAL_COLOR_WRITE_R, "R"}, {MATERIAL_COLOR_WRITE_G, "G"}, {MATERIAL_COLOR_WRITE_B, "B"}, {MATERIAL_COLOR_WRITE_A, "A"}};
+    // one toggle per channel, highlighted while it is written (narrow enough for the column)
     for (const auto& [bit, label] : channels) {
-        ImGui::SameLine();
-        bool on = (shown & bit) != 0;
-        if (ImGui::Checkbox((std::string(label) + "##color_write_" + label).c_str(), &on))
-            setColorWrite(on ? (shown | bit) : (shown & ~bit));
+        ImGui::SameLine(0.0f, 2.0f);
+        const bool on = (shown & bit) != 0;
+        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[on ? ImGuiCol_ButtonActive : ImGuiCol_FrameBg]);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[on ? ImGuiCol_Text : ImGuiCol_TextDisabled]);
+        if (ImGui::Button((std::string(label) + "##color_write_" + label).c_str(), ImVec2(ImGui::GetFrameHeight(), 0)))
+            setColorWrite(on ? (shown & ~bit) : (shown | bit));
+        ImGui::PopStyleColor(2);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("%s channel: %s", label, on ? "written" : "not written");
     }
     ImGui::EndDisabled();
     if (colorWrite == 0) {
