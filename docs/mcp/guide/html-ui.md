@@ -180,7 +180,9 @@ h1 { font-family: 'Orbitron', sans-serif; text-shadow: 0 0 20px rgba(124, 58, 23
   every user-agent rule, whatever its specificity, as in a browser.
 - `accent-color` colors checkboxes, radios, sliders and progress bars (a light accent gets a
   dark check mark, as in Chrome); `appearance: none` removes a control's own look so your
-  `background`, `border` and `::-webkit-slider-thumb` styles draw alone. As in a browser, a
+  `background`, `border` and `::-webkit-slider-thumb` styles draw alone (a checkbox or radio then has
+  no border, rounding or checked fill of its own, and fields, buttons and selects lose their rounding,
+  as in Chrome). As in a browser, a
   reset such as `* { margin: 0; padding: 0; box-sizing: border-box }` does not reach a
   control's inner parts (slider track and thumb, select arrow, scrollbars): style those
   through their pseudo-elements.
