@@ -1,12 +1,13 @@
 """Checks that the exported game draws the shader-library-export fixture as the editor does.
 
-For each scene (Lit, Blend, 2D, UI) it renders the editor's Game view (the scene through its camera,
-not playing) over MCP, runs tools/smoke-test.sh on the fixture (one export and build; the game runs
-once per scene, SLX_SCENE picking it), and compares each game screenshot with the editor's render:
-both scaled to the editor's size and slightly blurred, the per-pixel difference (largest channel,
-0-255) averaged over 16 px cells. A cell differing by more than CELL_LIMIT, or a mean difference
-above MEAN_LIMIT, fails: a material that lost its shader, a parameter, a texture or a feature on the
-way to the build changes a whole object, far above the noise of shadow edges and filtering.
+For each scene (Lit, Blend, 2D, UI, Stencil, Phase3A) it renders the editor's Game view (the scene
+through its camera, not playing) over MCP, runs tools/smoke-test.sh on the fixture (one export and
+build; the game runs once per scene, SLX_SCENE picking it), and compares each game screenshot with
+the editor's render: both scaled to the editor's size and slightly blurred, the per-pixel difference
+(largest channel, 0-255) averaged over 16 px cells. A cell differing by more than CELL_LIMIT, or a
+mean difference above MEAN_LIMIT, fails: a material that lost its shader, a parameter, a texture or
+a feature on the way to the build changes a whole object, far above the noise of shadow edges and
+filtering.
 
 Writes to build/shader-library-export/: editor-<scene>.png, game-<scene>.png and compare-<scene>.png
 (editor, game, and the difference x4 with the failing cells boxed in red).
@@ -32,7 +33,7 @@ REPO = HERE.parent.parent.parent
 sys.path.insert(0, str(REPO / "tools" / "mcp"))
 from harness import Editor  # noqa: E402
 
-SCENES = ["Lit", "Blend", "2D", "UI", "Stencil"]   # Lit is the start scene; the others are SLX_SCENE runs
+SCENES = ["Lit", "Blend", "2D", "UI", "Stencil", "Phase3A"]   # Lit is the start scene; the others are SLX_SCENE runs
 # Stencil (phase 2 presets) exists once generate.py has run with an editor that saves extra passes and
 # stencil state (scene YAML) and has the apply_material_preset MCP tool
 if not (HERE / "Stencil.scene").exists():
