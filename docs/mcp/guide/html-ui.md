@@ -170,8 +170,8 @@ h1 { font-family: 'Orbitron', sans-serif; text-shadow: 0 0 20px rgba(124, 58, 23
   covers the canvas (CSS `px` = canvas pixels, `100vw` x `100vh` = the canvas); media queries
   see the canvas size.
 - The background is **transparent**, not white: the UI draws over the game. Give `html` or
-  `body` a background for a full-screen menu (a `body` background covers the whole canvas, as
-  in CSS).
+  `body` a background for a full-screen menu (the `html` background, or the `body`'s when `html`
+  has none, covers the whole canvas, as in CSS, also when the page is shorter or scrolled).
 - Default styles come from the user-agent stylesheet: block and inline display, heading sizes
   and margins, paragraph and list margins, `body { margin: 8px }`, list markers, tables, links
   (`#0000ee`, underlined), and form controls that look like Chromium's light theme (buttons,
@@ -409,13 +409,13 @@ where it differs):
 |---|---|---|
 | Rounded clipping | `overflow: hidden; border-radius: 16px;` | children are clipped to the rounded box (stencil); nested clips intersect |
 | Clipping inside transforms | `overflow: hidden; transform: rotate(10deg);` | children in normal flow that overflow are clipped to the transformed box |
-| Gradients | `background: linear-gradient(90deg, #f00, #00f 60%, #0f0);` | also `radial-gradient(circle 40px at center, ...)`, `conic-gradient(from 30deg at 50% 50%, ...)`, the `repeating-` forms and several layers; at most **16 color stops** (the rest are dropped with a warning). RCSS: `decorator: linear-gradient(...)` |
-| Background images | `background: url(bg.png) center / cover no-repeat;` | every `background-size`, `-position`, `-repeat` (`space`, `round`), `-origin`, `-clip`, `fixed`. RCSS: `decorator: image(bg.png)` |
+| Gradients | `background: linear-gradient(90deg, #f00, #00f 60%, #0f0);` | also `radial-gradient(circle 40px at center, ...)`, `conic-gradient(from 30deg at 50% 50%, ...)`, the `repeating-` forms and several layers, each with its own size, position and repeat; hard stops stay hard, as in a browser; at most **16 color stops** (the rest are dropped with a warning). RCSS: the same `background-image`, or `decorator: linear-gradient(...)` (drawn above the background layers) |
+| Background images | `background: url(bg.png) center / cover no-repeat;` | several layers, every `background-size`, `-position`, `-repeat` (`space`, `round`), `-origin`, `-clip`, `-attachment` (`fixed`, `local`), clipped to rounded corners; `background-position` and `background-size` transition and animate. RCSS: the same properties |
 | Filters | `filter: blur(4px) grayscale(1) drop-shadow(0 2px 4px #000);` | `opacity`, `blur`, `drop-shadow`, `brightness`, `contrast`, `invert`, `grayscale`, `sepia`, `hue-rotate`, `saturate`, applied left to right, to the element and everything it contains (also children that overflow it); `drop-shadow` without a color uses the text color. RCSS: the color first, `drop-shadow(#000 0 2px 4px)` |
 | Opacity | `opacity: 0.5;` | a group: the element and its children are drawn into a layer that fades as one image (an element that draws one thing, such as a lone background or an icon, fades without a layer). Animating it changes one value per frame, no geometry |
 | Backdrop filters | `backdrop-filter: blur(10px);` | the same filters, applied to what is behind the element's border box |
 | Box shadows | `box-shadow: 4px 6px 12px 2px rgba(0, 0, 0, 0.5), inset 0 0 0 3px #ff0;` | an outer shadow is blurred and then clipped to outside the box, as in CSS (a zero-offset blurred shadow is a glow). RCSS: the color first, `inset` last |
-| Masks and shapes | `mask-image: linear-gradient(90deg, #000, transparent);`, `clip-path: circle(50%);` | the content's alpha is multiplied by the mask's; `clip-path` takes `inset()`, `circle()`, `ellipse()`, `polygon()`, `path()` |
+| Masks and shapes | `mask-image: linear-gradient(90deg, #000, transparent);`, `mask: url(mask.png) center / 50% no-repeat;`, `clip-path: circle(50%);` | the content's alpha is multiplied by the mask's; mask layers take images and gradients with `mask-size`, `-position`, `-repeat` (not `mask-mode`, `-origin`, `-clip`, `-composite`); `clip-path` takes `inset()`, `circle()`, `ellipse()`, `polygon()`, `path()` |
 
 Anti-aliasing: the target is multisampled (4x by default). The project setting *HTML UI MSAA*
 (`graphics.html_ui_msaa_samples`: 1, 2, 4 or 8; `UIDocumentSystem::setPreferredSampleCount`

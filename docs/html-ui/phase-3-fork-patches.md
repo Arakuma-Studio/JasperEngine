@@ -1208,14 +1208,19 @@ the document's border box, so a root background still covers the viewport when t
 scrolled or shorter than the canvas. A game that wants the scene visible simply leaves both
 transparent (the default).
 
-*Not built by p3-paint:* the fork cannot tell an HTML root from an RML window document (the
-Debugger's windows are documents with backgrounds: they must not paint the whole context), and
-marking the HTML root changes every compat RML output. Compat's root rule (`position: absolute;
-width: 100%; min-height: 100%`) already makes the root cover the viewport and grow with its
-content, so `p3/paint/canvas-background-body.html` matches Chromium without a fork change. Left
-open: a root with an explicit size or margins, and compat's propagation condition (it skips the
-body's background when any root rule sets a background, even a transparent one; CSS propagates
-whenever the root's background is transparent).
+*As built (p3-paint):* the fork cannot tell an HTML root from an RML window document by itself
+(the Debugger's windows are documents with backgrounds and must not paint the whole context), so
+the canvas background is opted into per document: `ElementDocument::SetCanvasBackground(true,
+body_tag)` (compat's `DocumentLoader` calls it with `htmlbody` for HTML documents when the fork
+has `BackgroundLayers`). Such a document paints its canvas before anything else in the context
+order of the document: the document's own background (colour and layers), or, when that is
+transparent with no layers, the background of its first child with the body tag (CSS 2.2 14.2,
+Backgrounds 3 2.11.2), over the whole context rectangle; the layers are positioned in the root's
+boxes (a propagated body background is used as if declared on the root) and clipped to the canvas
+only; the element whose background went to the canvas does not paint it again. Compat's static body → root
+copy (phase 2 §3.10 item 1) is off when the fork propagates (it keeps running with the feature
+absent). `p3/paint/canvas-background-body.html` draws a body background over the whole viewport
+with a shorter, margined body.
 
 #### 3.8.5 Filter parity
 - `filter`/`backdrop-filter` function defaults: `blur()` = 0, `drop-shadow(x y)` colour =
@@ -1280,15 +1285,31 @@ at render time, cheap given the canvas rect), and `background` (`Custom`, full C
 - The RmlUi `decorator` property keeps working (fork-internal and used by phase-5 effects);
   `decorator` paints above `background-image` layers.
 
-*Status after p3-paint:* 3.9.1 and 3.9.2 are not built (`ForkFeature::BackgroundLayers` stays
-absent, `background-*` and `mask-*` other than `background-color` stay unregistered in the fork).
-Compat's emulation keeps drawing them: `url()` layers with every `background-size`, `-position`,
-`-repeat` (space, round), `-origin`, `-clip`, `-attachment` value through its `html-layer`
-decorator, gradients as RmlUi's gradient decorators over the clip box (a gradient layer with a
-size or position is drawn once over the whole box, `HTMLUI-CSS-0006`), registered decorator
-functions as layers, `mask-image` through the fork's decorator-syntax property. Native layers are
-left for a later package; the background colour already follows `background-clip: border-box`
-(3.7, P3-P1).
+*As built (p3-paint, `ForkFeature::BackgroundLayers`):* every longhand above and `mask-image`,
+`mask-position-x`/`-y` (`mask-position`), `mask-size`, `mask-repeat` and the `mask` shorthand are
+the fork's (`Source/Core/BackgroundLayerValues.{h,cpp}`: comma-list `StyleValue`s; a layer reads
+item `i % count` of each list, the image list sets the number of layers). Images: `none`, `url()`,
+the gradients and every registered decorator function; `background-clip: text`, `image()`,
+`image-set()`, `cross-fade()`, `element()`, `mask-origin`, `mask-clip`, `mask-mode`,
+`mask-composite` are compat diagnostics (unsupported or approximated, as before). Rendering
+(`ElementBackgroundLayers`): the colour is clipped to the bottom layer's `background-clip` box
+(with its inner radii), the layers are drawn bottom to top between the colour and the border, each
+tile computed as Chromium's `BackgroundImageGeometry` does (size, round, space, positions resolved
+against the free space, a tile that is not repeated drawn into a destination snapped to whole
+pixels with the image mapped from its unsnapped place, repeated tiles fractional). A `url()` image
+repeated along an axis is one quad sampled with repeat wrap there, as Chromium's image shader
+(`SkTileMode::kRepeat`): the fork asks the render interface for `url?rmlui-wrap=repeat|repeat-x|
+repeat-y` (CONTRACTS), or the application's `ImageSourceHandler` for a repeating texture; images
+the fork cannot get repeating are drawn tile by tile. Gradients are one shader for the tile size
+(`Decorator::CompileImageShader`), their `currentcolor` stops resolved when the layer is drawn;
+other decorator functions paint over the layer's clip box. A clip box with radii masks its layer
+with an anti-aliased rounded shape. `background-attachment: fixed` positions in the context
+rectangle, `local` in the scrollable overflow. Mask layers render into the element's mask layer
+(alpha). `background-position` and `-size` interpolate per layer (a length with a percentage as a
+`calc()` mix), image lists of gradients interpolate as `decorator` does, `url()` lists are discrete.
+Gradient hard stops are not softened (6.3 moved a stop one pixel away; Chromium draws them hard).
+Compat passes every `background-*`/`mask-*` declaration through with the feature present and keeps
+its emulation (the `html-layer` decorator, decorator-syntax masks) for it absent.
 
 #### 3.9.3 `object-fit`, `object-position`
 Registered for all elements, used by replaced elements: `ElementImage::GenerateGeometry`
