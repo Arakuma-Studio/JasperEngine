@@ -1297,6 +1297,12 @@ void LayoutDetails::BuildAbsoluteBoxHeight(Box& box, const ComputedValues& compu
 			content_area.y = content_area.x / ratio;
 	}
 	const bool keyword = (computed.height_keyword() != Style::SizingKeyword::None);
+	// A document that scrolls (overflow-y 'auto', 'scroll' or 'hidden') is the viewport's scroll container (CSS Overflow 3
+	// §3.3, the root's overflow is the viewport's): with an automatic height it is as tall as the viewport, its content
+	// scrolls in it (it would otherwise grow with its content and never scroll).
+	if (content_area.y < 0.f && containing_block.y >= 0.f && !keyword && axis.auto_margins_without_insets &&
+		LayoutDetails::IsScrollContainer(Style::Overflow::Visible, computed.overflow_y()))
+		content_area.y = Math::Max(containing_block.y - edges - axis.margin_start - axis.margin_end, 0.f);
 	if (content_area.y < 0.f && containing_block.y >= 0.f &&
 		((axis.has_inset_start && axis.has_inset_end && !replaced_element && !table && !keyword) ||
 			computed.height_keyword() == Style::SizingKeyword::Stretch))

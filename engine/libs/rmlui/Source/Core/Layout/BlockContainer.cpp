@@ -609,9 +609,10 @@ float BlockContainer::GetIntrinsicContentWidth(ChildWidth child_width, FloatsWid
 	auto& computed = element->GetComputedValues();
 
 	float content_width = 0.0f;
-	if (computed.width().type == Style::Width::Length && !LayoutDetails::IsMeasuringContentOf(element))
+	const bool definite_width = (computed.width().type == Style::Width::Length && !LayoutDetails::IsMeasuringContentOf(element));
+	if (definite_width)
 	{
-		// We have a definite width, so use that size.
+		// We have a definite width, so use that size (the floats of our formatting context are inside it).
 		content_width = box.GetSize().x;
 	}
 	else
@@ -627,7 +628,7 @@ float BlockContainer::GetIntrinsicContentWidth(ChildWidth child_width, FloatsWid
 		}
 	}
 
-	if (root_space)
+	if (root_space && !definite_width)
 		content_width = floats_width(content_width);
 
 	// The size of its content alone while it is measured (LayoutDetails::GetContentWidth).
