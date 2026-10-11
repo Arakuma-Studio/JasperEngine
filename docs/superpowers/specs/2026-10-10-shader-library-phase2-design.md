@@ -121,3 +121,100 @@ Stencil mask, Visible inside mask, Visible outside mask, Sprite mask. Presets ar
 
 All requirements implemented, all checks pass, merged into `shader-library`, review pass
 found no open correctness bugs.
+
+## 5. Implementation notes
+
+Decisions taken while implementing phase 2, and deviations from the text above. They
+override the sections they refer to; later agents follow them.
+
+### 5.2 Extra pass (sl/p2-pass)
+
+- Data: `Submesh::extraPass` is a `std::shared_ptr<SubmeshExtraPass>` (render, shader,
+  slots, custom blocks, library bindings, order), null for a submesh whose material has no
+  `extraPass.shader`: such a submesh allocates nothing (no object, pipeline, uniform storage
+  or texture binding). A component copy shares the pointer until its own load, which makes
+  a new object (like the value `ObjectRender`s, whose handles a copy shares).
+- Load: `RenderSystem::loadSubmeshExtraPass`, at the end of each submesh of `loadMesh`
+  (after the depth and G-buffer renders). It binds the same vertex attributes as the colour
+  render (`bindSubmeshAttributes`: buffers, the submesh's own attributes, the instance
+  buffer), skinning, morph targets, the sprite rect, the frame block, its own custom blocks
+  (`MaterialPass::shaderParams`, else its manifest defaults), its own `@texture`s (unset:
+  manifest defaults) and the material's PBR textures (a fork of Lit without a manifest
+  samples them). While its shader builds the mesh does not load (as for its other shaders).
+  A pass whose shader fails to build is logged and skipped (`SubmeshExtraPass::failed`): no
+  built-in fallback, which would draw the submesh a second time. A Terrain has no extra pass
+  (`RenderSystem::hasExtraPass(submesh, terrain)`).
+- Variant: `getExtraPassShaderInputs(submeshInputs, pass)` takes the submesh's
+  `SubmeshShaderInputs` (attributes, skinning, morph, instancing and fade, texture rect,
+  vertex colour, alpha mode, fog from the scene) with the pass's manifest and features, its
+  shader's default lighting mode (`MaterialPass` has no lighting field), and no received
+  shadows, IBL or mirror; `getSubmeshShaderVariant` turns them into bits as for any submesh.
+  The reference is `getSubmeshExtraPassReference` (features + `BLEND_*` of the pass's
+  blend). `getShaderVariants`, `ShaderVariantCollector`, `Project::collectSceneShaderKeys`
+  and `check --shaders` use the same functions, so exports precompile the pass variants
+  (only the custom key: no built-in fallback). These bits are a subset of what the main draw
+  can produce (no shadows/IBL/mirror), so the `shaders --library` matrix needs no extra-pass
+  cases.
+- State: `resolveExtraPassRenderState` calls the same `resolveRenderState` as the submesh
+  with the pass's values, its manifest state (`@state` + `@state[...]` of its features) and
+  the submesh's legacy behaviour (material alpha blend, face culling, cull mode, winding).
+  When the stencil work merges, the pass's `stencil` and `colorWrite` must be passed there
+  exactly where `resolveSubmeshRenderState` passes the material's. `Mesh::setMaterial`
+  reloads on any pass change but its parameters (rewritten into the blocks) and texture
+  files (rebound).
+- Draw: inside `drawMesh`'s submesh loop, right before (`BEFORE`) or after (`AFTER`) the
+  submesh's draw, so it keeps the submesh's queue position in every colour pass (opaque,
+  transparent, hierarchy-order cameras, RTT, mirrors, probes, editor views), with the same
+  instances (view slices and LOD buckets), detail level and tilemap chunks. It is in no
+  shadow, depth pre-pass or G-buffer pass. A lit pass (its manifest's default lighting is
+  lit) gets the object's light list, Lit's camera block and the legacy lighting block when
+  declared, and the 2D lights; shadows are never received (an overlay pass).
+- Release: `destroyMesh` destroys the pass render always and its shader and textures with the
+  other assets; a reload whose material has no pass anymore frees the object; a variant
+  change returns the old shader to the pool.
+
+### 5.3 Smoothed normals (sl/p2-pass)
+
+- `@require smoothnormals` (`ShaderRequire_SmoothNormals`, define `SURFACE_SMOOTH_NORMALS`).
+  New `AttributeType::SMOOTHNORMAL` (appended), attribute `a_smoothNormal`, 4 signed
+  normalized bytes per vertex (xyz, w 0) in its own vertex buffer.
+- `surface_vs.glsl` / `surface_depth_vs.glsl`: the hooks read the global `vec3
+  surfaceSmoothNormal` (object space, after skinning and the instance matrix, normalized;
+  morph targets leave it at the base pose). The attribute is declared only with a
+  displacement hook (`SURFACE_DISPLACE` or `SURFACE_DISPLACE_NORMAL`; depth programs:
+  `SURFACE_DISPLACE`), since only a hook can read it and a GL driver drops an unread
+  attribute; without `SURFACE_SMOOTH_NORMALS`, or on a Terrain, `surfaceSmoothNormal` is the
+  hook's `objectNormal`.
+- Made by the renderer when a loaded shader (main, depth or pass) declares `a_smoothNormal`
+  (`bindSmoothNormals`): per vertex of the submesh's position attribute, the angle-weighted
+  sum over the triangles at each vertex of its own normal (the face normal when the mesh has
+  none), summed over the vertices welded by position (cells of 1e-5 of the mesh's largest
+  extent), normalized; opposite faces that cancel keep the vertex's normal. Cached in
+  `MeshComponent::smoothNormals`, keyed by a hash of the positions, normals and indices, so
+  reloads reuse it and a geometry change makes a new one; entries no submesh uses after a
+  load are freed, and all of it when no shader asks.
+- Diagnostics: with `JASPERENGINE_READY_SIGNAL` the engine also logs "Render objects: N
+  meshes, N submeshes, N extra passes drawn (N allocated), N smoothed-normal buffers, N object
+  pipelines" per scene (`RenderSystem::logRenderObjects`, `ObjectRender::getLivePipelineCount`).
+- Lua: `Material.extraPass` (a `MaterialPass`, edited in place on the material copy, then
+  `setMaterial`) with every field, `setShaderParam`/`getShaderParam`/`removeShaderParam`,
+  `setShaderTexture`/`getShaderTexture`, `setShaderFeature`/`isShaderFeatureEnabled`
+  (resolved against the pass's own shader); `MaterialPassOrder`; `MaterialStencil`,
+  `MaterialStencilCompare` and `MaterialStencilOp` for `MaterialPass.stencil` (the stencil
+  work may already bind them for `Material.stencil`: keep one registration).
+- Not done here (editor waves): serialization, Factory codegen, model-reload override flags
+  for `extraPass`, inspector, Catalog paths, MCP.
+- Fixture: `tools/fixtures/extra-pass` (fixture-only forks `assets/shaders/outline`,
+  `assets/shaders/lit_outline`, `assets/shaders/silhouette`; `EP_FOCUS=<case>` close-ups;
+  `EP_SCENE=overhead|overhead_pass`: 40 cubes hold 123 object pipelines without passes and
+  133 with ten outlined, one pipeline per pass and nothing for the other submeshes).
+- An inverted hull after a blended object (which writes no depth) covers it: on transparent
+  objects the outline goes `BEFORE` (the fixture's glass box). Presets should pick it.
+- The extra pass's shader is requested before the submesh builds any pipeline, so a load
+  waiting for it leaves no pipelines behind; the pass render is destroyed before a retry.
+  (Pre-existing, not changed: a load that fails after a submesh's `endLoad`, e.g. waiting
+  for a later submesh, abandons that submesh's pipelines.)
+- Pre-existing, worked around in the fixture: a Lit Sprite with `alphaMode` AUTO decides
+  transparency from its image data (`Texture::isTransparent`, false while the data is not
+  loaded or once released), so it can load opaque and write depth over its transparent
+  texels; the fixture sets `MaterialAlphaMode.BLEND` on its sprites and tilemap.
