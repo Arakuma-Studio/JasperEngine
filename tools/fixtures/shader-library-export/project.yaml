@@ -16,3 +16,4 @@ scenes:
   - filepath: UI.scene
   - filepath: Stencil.scene
   - filepath: Phase3A.scene
+  - filepath: Phase3B.scene

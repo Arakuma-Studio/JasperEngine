@@ -39,6 +39,12 @@ SCENES = ["Lit", "Blend", "2D", "UI", "Stencil", "Phase3A"]   # Lit is the start
 if not (HERE / "Stencil.scene").exists():
     print("check.py: Stencil.scene is missing: run generate.py to add the phase 2 presets scene", file=sys.stderr)
     SCENES.remove("Stencil")
+# Phase3B (phase 3 scene-reading shaders B: water's scene features, glass, heat haze), once generated
+if (HERE / "Phase3B.scene").exists():
+    SCENES.append("Phase3B")
+else:
+    print("check.py: Phase3B.scene is missing: run generate.py to add the phase 3 water/glass/haze scene",
+          file=sys.stderr)
 CANVAS = (1280, 720)              # the project's window: the game draws it at the screen's top left
 CELL = 16
 CELL_LIMIT = 24.0

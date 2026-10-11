@@ -90,7 +90,9 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Fake Lit](#libraryfake_lit) `library:fake_lit` | mesh | Stylized | none, vertex | opaque |
 | [Flipbook](#libraryflipbook) `library:flipbook` | mesh | Effects | none | alpha |
 | [Foliage](#libraryfoliage) `library:foliage` | mesh | Nature | pixel, vertex, none | opaque |
+| [Glass](#libraryglass) `library:glass` | mesh | Effects | none, pixel | alpha |
 | [Gradient Sky](#librarygradient_sky) `library:gradient_sky` | sky | Sky | none | - |
+| [Heat Haze](#libraryheat_haze) `library:heat_haze` | mesh | Effects | none | alpha |
 | [Hologram](#libraryhologram) `library:hologram` | mesh | Effects | none | additive |
 | [Matcap](#librarymatcap) `library:matcap` | mesh | Stylized | none | opaque |
 | [Outline](#libraryoutline) `library:outline` | mesh | Outline and stencil | none | opaque |
@@ -546,6 +548,81 @@ Sprite-sheet animation on a mesh: plays the frames of a columns x rows sheet at 
 | `ALPHA_CLIP` | off | Alpha clip |
 | `VERTEX_COLOR` | off | Vertex colour |
 
+<a id="libraryglass"></a>
+### Glass (`library:glass`)
+
+Glass and clear plastic: the scene behind it bent by its normals (index of refraction and thickness, optional normal map), tinted and absorbed along the path through it, a fresnel reflection of a cubemap or a colour, a glint of the per-pixel lights; BLUR frosts it. Reads the scene colour and depth: on mobile a copy of the screen (half resolution by default), a split of the render pass and an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one). Alpha blended (transparent queue), no depth write, casts no shadows; other transparent objects are not seen through it.
+
+- **Type**: mesh (a material's shader); category Effects.
+- **Lighting**: none (default), per pixel.
+- **Inputs**: `position`, `normals`, `scenedepth`, `scenecolor`; `uv1` with `NORMAL_MAP`.
+- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one) and the scene colour (a copy of the opaque scene, at the scene's Scene Color Scale), in the camera passes that draw it.
+- **Default state**: blend alpha, depth write off, shadows off.
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `tint` | colour | (0.92, 0.97, 1, 1) | Tint |
+| `ior` | range 1 to 2.5 | 1.45 | Index of refraction |
+| `thickness` | float | 0.25 | Thickness (world units the view travels inside) |
+| `absorptionColor` | colour | (0.45, 0.8, 0.75, 1) | Absorption colour (thick glass turns to it) |
+| `absorption` | float | 0 | Absorption (per world unit of path) |
+| `reflectionColor` | colour | (0.8, 0.86, 0.95, 1) | Reflection colour (times the cubemap with REFLECTION_MAP) |
+| `reflectionStrength` | range 0 to 2 | 1 | Reflection strength |
+| `specularColor` | colour | (1, 1, 1, 1) | Specular colour (per pixel lights) |
+| `gloss` | range 0 to 1 | 0.9 | Glossiness (per pixel lights) |
+| `normalStrength` | range 0 to 2 | 1 | Normal strength (with `NORMAL_MAP`) |
+| `tiling` | vector4 | (1, 1, 0, 0) | Normal map tiling (xy) and offset (zw) (with `NORMAL_MAP`) |
+| `blurRadius` | range 0 to 4 | 1.5 | Blur radius (texels of the scene colour copy) (with `BLUR`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_normalTexture` | flat normal | Normal map (with `NORMAL_MAP`) |
+| `u_reflectionTexture` | black | Reflection cubemap (cube map) (with `REFLECTION_MAP`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `NORMAL_MAP` | off | Normal map |
+| `REFLECTION_MAP` | off | Reflection cubemap |
+| `BLUR` | off | Frosted (blurred) |
+
+<a id="libraryheat_haze"></a>
+### Heat Haze (`library:heat_haze`)
+
+Shimmer over fire, exhausts and portals: the scene behind the mesh wobbled by two layers of a scrolling noise texture, as strong as the mask texture, the vertex and instance alpha and the soft edge (UV border for quads and sprites, fresnel for volumes) allow. Reads the scene colour: on mobile a copy of the screen (half resolution by default) and a split of the render pass; SOFT also reads the scene depth (an extra depth-only pass of the opaque meshes, none when SSAO or SSR already made one). Alpha blended, no depth write, both faces (give a closed volume cull back), casts no shadows; other transparent objects are not seen through it.
+
+- **Type**: mesh (a material's shader); category Effects.
+- **Lighting**: none.
+- **Inputs**: `uv1`, `color`, `scenecolor`; `position`, `normals` with `EDGE_FADE_FRESNEL`; `scenedepth` with `SOFT`.
+- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one) and the scene colour (a copy of the opaque scene, at the scene's Scene Color Scale), in the camera passes that draw it.
+- **Default state**: blend alpha, cull off (both faces), depth write off, shadows off.
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `strength` | range 0 to 0.1 | 0.012 | Distortion (screen UV) |
+| `noiseTiling` | vector4 | (1, 1, 0, 0) | Noise tiling (xy) and offset (zw) |
+| `scrollSpeed` | vector2 | (0, -0.6) | Noise scroll (UV per second) |
+| `secondScrollSpeed` | vector2 | (0.07, -0.9) | Second noise layer scroll (UV per second, 1.7 times smaller) |
+| `tint` | colour | (1, 1, 1, 1) | Tint |
+| `edgeWidth` | range 0.01 to 0.5 | 0.25 | Soft edge width (UV) (with `EDGE_FADE_UV`) |
+| `fresnelPower` | range 0.25 to 8 | 1.5 | Edge fade power (with `EDGE_FADE_FRESNEL`) |
+| `softness` | float | 0.4 | Soft intersection (world units) (with `SOFT`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_noiseTexture` | gray | Distortion noise (red: x, green: y) |
+| `u_maskTexture` | white | Mask (red times alpha) (with `MASK_TEXTURE`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `MASK_TEXTURE` | off | Mask texture |
+| `SOFT` | off | Soft intersection (reads the scene depth) |
+
+| Keyword group | Values (first is the default) | Description |
+|---|---|---|
+| `EDGE_FADE` | `EDGE_FADE_UV`, `EDGE_FADE_FRESNEL`, `EDGE_FADE_NONE` | Soft edge |
+
 <a id="libraryhologram"></a>
 ### Hologram (`library:hologram`)
 
@@ -732,11 +809,12 @@ Leaves and grass: wind sway in the vertex stage (masked by the vertex colour's r
 <a id="librarywater"></a>
 ### Water (`library:water`)
 
-Stylised water without scene depth: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint. Alpha blended; casts no shadows.
+Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint. Optional scene-reading features: DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness) read the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth. Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass. Alpha blended; casts no shadows.
 
 - **Type**: mesh (a material's shader); category Nature.
 - **Lighting**: none (default), per pixel.
-- **Inputs**: `position`, `normals`.
+- **Inputs**: `position`, `normals`; `scenedepth` with `DEPTH_FOAM`; `scenedepth` with `ABSORPTION`; `scenedepth`, `scenecolor` with `REFRACTION`.
+- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one) and the scene colour (a copy of the opaque scene, at the scene's Scene Color Scale), in the camera passes that draw it.
 - **Default state**: blend alpha, shadows off.
 - **Depth program**: yes (shadows and depth follow its vertices and clipping).
 
@@ -759,6 +837,12 @@ Stylised water without scene depth: shallow to deep colour by the view angle, tw
 | `waveHeight` | float | 0.06 | Wave height (world units) (with `WAVES`) |
 | `waveLength` | float | 2.5 | Wave length (world units) (with `WAVES`) |
 | `waveSpeed` | float | 0.8 | Wave speed (world units per second) (with `WAVES`) |
+| `shoreFoamWidth` | float | 0.12 | Shore foam width (world units of depth) (with `DEPTH_FOAM`) |
+| `shoreFoamBreakup` | range 0 to 1 | 0.7 | Shore foam break-up (by the foam noise) (with `DEPTH_FOAM`) |
+| `absorptionDepth` | float | 1.5 | Deep colour thickness (world units of water along the view) (with `ABSORPTION`) |
+| `shoreFade` | float | 0.1 | Shore fade (world units of water) (with `ABSORPTION`) |
+| `refractionStrength` | range 0 to 0.2 | 0.04 | Refraction (screen UV per unit of ripple) (with `REFRACTION`) |
+| `refractionDepth` | float | 0.5 | Full refraction from this thickness (world units) (with `REFRACTION`) |
 
 | Texture | Default | Description |
 |---|---|---|
@@ -768,6 +852,9 @@ Stylised water without scene depth: shallow to deep colour by the view angle, tw
 | Feature | Default | Description |
 |---|---|---|
 | `WAVES` | off | Waves |
+| `DEPTH_FOAM` | off | Shore foam (reads the scene depth) |
+| `ABSORPTION` | off | Depth colour (reads the scene depth) |
+| `REFRACTION` | off | Refraction (reads the scene colour and depth) |
 
 ## Animated
 
