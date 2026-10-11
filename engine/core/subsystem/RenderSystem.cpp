@@ -8310,10 +8310,11 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
             count(lines.loaded || (!lines.loadCalled && isShaderUnavailable(lines.shader, ShaderType::LINES, lines.shaderProperties, lines.customShaderId)));
     }
 
-    // Check SkyboxComponents
+    // Check the SkyboxComponent: only the first is drawn (and loaded), so another one would
+    // keep the scene from ever counting as loaded
     auto skyArray = scene->getComponentArray<SkyboxComponent>();
-    for (int i = 0; i < skyArray->size(); i++) {
-        const SkyboxComponent& sky = skyArray->getComponentFromIndex(i);
+    if (skyArray->size() > 0) {
+        const SkyboxComponent& sky = skyArray->getComponentFromIndex(0);
         count(sky.loaded || (!sky.loadCalled && isShaderUnavailable(sky.shader, ShaderType::SKYBOX, 0, sky.customShaderId)));
     }
 }
