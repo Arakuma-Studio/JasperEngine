@@ -462,3 +462,47 @@ override the sections they refer to; later agents follow them.
   through `submeshes[0].material.extraPass.*`); it needs the editor wave's serialization,
   Catalog paths and MCP tool, so it was not generated on this branch: run `generate.py`
   after the merge, then `check.sh` (which skips the scene, with a message, until it exists).
+
+### 5.6 Engine fixes (sl/p2-enginefix)
+
+- Failed mesh loads. `loadMesh` now asks for every submesh's main, depth, G-buffer and
+  extra-pass shaders in a first loop (all at once, so they build together) and waits there,
+  before any pipeline exists. A failure after that (a texture still loading, a full pool) runs
+  `LoadAttempt`'s release: the renders and extra passes that try began are destroyed.
+  `SokolObject::beginLoad` forgets all ten pipeline handles (the no-depth and pre-pass ones
+  survived it), so a release never touches handles a component copy shares, and the live
+  count counts only valid handles. Lua: `ObjectRender.getLivePipelineCount()`. The note of
+  5.2 about abandoned pipelines no longer applies.
+- AUTO alpha mode. The cause was not timing: a mesh never loads before its base texture's
+  GPU texture exists. A `Texture` that found that texture already in `TexturePool` (a second
+  sprite, tilemap or mesh of the same image) had no image data, so `isTransparent()` said
+  false. `TextureRender` keeps the image's transparency (`setTransparent`, set by
+  `TexturePool::get` when it makes it) and `Texture::isTransparent` falls back to it. The
+  per-frame queue comparison in `update` already reloads a mesh once when it changes. Points
+  decide their transparency after their texture is requested. Library mesh shaders all state
+  `blend=` in their manifests, so AUTO matters to them only through a fork or a shader without
+  it; their extra passes resolve with the submesh's legacy blend, which this fixes too. The
+  extra-pass fixture no longer forces `MaterialAlphaMode.BLEND`.
+- Fork paths. A fork path is project-relative (canonical; what forking writes). One the
+  project root does not have is looked up in the assets directory (`shaders/x` for
+  `assets/shaders/x` with `assetsDir: assets`): `editor::Project::findShaderFile`, the only
+  place of the rule, used by the shader compiler's reader (editor, export precompile,
+  `check --shaders`, `check_shader`), the manifest reader, the checks' file matching and
+  error paths, MCP existence checks, the inspector's file rows and the rename/delete remap.
+  The game already resolved both (its asset root holds the assets directory and every shader
+  source at its project-relative path, the latter winning, as the project root wins in the
+  editor). Reference strings are not rewritten, so the `.sdat` names the export writes are the
+  ones the game looks up, Lua-set ones included. Not changed: a "run" build
+  (`Generator.cpp`, `JASPERENGINE_ASSET_PATH` = the assets directory) reads forks from the
+  assets directory only, so project-relative forks outside it (e.g. the fork default
+  `<project>/shaders`) and the `assets/...` spelling miss their manifests there (read from
+  the code, not run).
+- Several skyboxes. Nothing else was wrong: every consumer (draw, IBL, reflection probes,
+  SSR, loaded count) takes component index 0, the first added (removal keeps the order); the
+  others are never loaded and take over when the first is removed. Unity-like (one scene
+  skybox); now documented on `SkyboxComponent`, with a warning logged when the sky loads in a
+  scene with more than one. Remaining editor quirk (not fixed): reordering skyboxes in the
+  Hierarchy changes the file order, hence the active sky, only after a reload or in an export.
+- Fixture `tools/fixtures/shader-regressions` cases 6 (alpha), 7 (leak check; logs "[SR]
+  leak check passed", `SMOKE_GAME_SECONDS="ready 70"`), 8 (second skybox) and 9 (fork paths
+  in `shaderAdditions`).

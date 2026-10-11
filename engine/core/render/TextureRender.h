@@ -54,6 +54,14 @@ namespace jasperengine {
         static bool isViewValid(uint32_t viewId);
 
         bool isCreated();
+
+        // whether the image it was made from has transparent texels (TextureData::isTransparent),
+        // for a Texture that found it in TexturePool and so never loaded the image itself
+        void setTransparent(bool transparent);
+        bool isTransparent() const;
+
+    private:
+        bool transparent = false;
     };
 }
 

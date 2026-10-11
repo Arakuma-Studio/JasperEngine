@@ -4310,18 +4310,28 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             entry.used = false;
     }
 
+    // Every submesh's shaders first, before any pipeline is made. A load that waits for one
+    // returns false and is tried again, so a later submesh's shader still building must stop
+    // the load before an earlier submesh makes pipelines. All of them are asked for, so
+    // they build together.
+    struct SubmeshLoad {
+        SubmeshShaderInputs shaderInputs;
+        SubmeshShaderVariant variant;
+        std::string meshShaderSrc;
+        std::string depthShaderSrc;
+    };
+    std::vector<SubmeshLoad> submeshLoads(mesh.numSubmeshes);
+    bool shadersReady = true;
+
     for (int i = 0; i < mesh.numSubmeshes; i++){
-
-        ObjectRender& render = mesh.submeshes[i].render;
-        mesh.submeshes[i].smoothNormals = -1;
-
-        render.beginLoad(mesh.submeshes[i].primitiveType);
 
         // The vertex attribute flags come from the current buffers and attributes
         scanSubmeshAttributes(mesh.submeshes[i], attributeBuffers);
 
-        const SubmeshShaderInputs shaderInputs = getSubmeshShaderInputs(mesh, mesh.submeshes[i], terrain, instmesh, hasMirror, sceneMeshShader);
-        const SubmeshShaderVariant variant = getSubmeshShaderVariant(shaderEnvironment, shaderInputs);
+        submeshLoads[i].shaderInputs = getSubmeshShaderInputs(mesh, mesh.submeshes[i], terrain, instmesh, hasMirror, sceneMeshShader);
+        submeshLoads[i].variant = getSubmeshShaderVariant(shaderEnvironment, submeshLoads[i].shaderInputs);
+        const SubmeshShaderInputs& shaderInputs = submeshLoads[i].shaderInputs;
+        const SubmeshShaderVariant& variant = submeshLoads[i].variant;
         mesh.submeshes[i].manifest = shaderInputs.manifest;
         // its @state with the rules of the features the material enables
         mesh.submeshes[i].manifestState = shaderInputs.manifest ? shaderInputs.manifest->resolveState(shaderInputs.features) : ShaderManifestState();
@@ -4329,6 +4339,126 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             warnUnsupportedLighting(mesh.submeshes[i].material, getSubmeshShader(mesh, mesh.submeshes[i], sceneMeshShader),
                                     shaderInputs.manifest.get(), scene->getEntityName(entity), entity, (unsigned int)i);
         }
+
+        // remember whether this submesh's lit shader applies IBL specular, so the SSR
+        // G-buffer can flag those pixels for the energy-conserving composite
+        // (see ShaderPool::getMeshProperties for the bits)
+        mesh.submeshes[i].hasIBL = (variant.properties & (1u << 19)) != 0;
+
+        mesh.submeshes[i].shaderProperties = variant.properties;
+        mesh.submeshes[i].loadedLighting = mesh.submeshes[i].material.lighting;
+        // a custom main shader (a library shader or a fork) overrides the built-in Mesh
+        // shader; the variant (#define) system, depth/gbuffer passes and bind-slots are
+        // unchanged. Priority: material shader > component customShader > scene default
+        // shader > built-in (empty); the material's features key the variant too.
+        submeshLoads[i].meshShaderSrc = getSubmeshShaderReference(mesh, mesh.submeshes[i], sceneMeshShader);
+        const std::string& meshShaderSrc = submeshLoads[i].meshShaderSrc;
+        mesh.submeshes[i].customShaderId = ShaderPool::registerCustomShader(meshShaderSrc);
+        mesh.submeshes[i].shader = ShaderPool::get(ShaderType::MESH, mesh.submeshes[i].shaderProperties, mesh.submeshes[i].customShaderId);
+        // the depth shader feeds shadow maps (casters) and the SSAO depth pre-pass
+        // (SSR uses its own G-buffer shader, built below). A depth fork is built even
+        // without a pass, so its uniforms and build errors show up in the editor.
+        // the library shader's depth program, the depth fork, or built-in
+        submeshLoads[i].depthShaderSrc = getSubmeshDepthShaderReference(mesh, mesh.submeshes[i], sceneMeshShader);
+        const std::string& depthShaderSrc = submeshLoads[i].depthShaderSrc;
+        if (variant.depth){
+            mesh.submeshes[i].depthShaderProperties = variant.depthProperties;
+            mesh.submeshes[i].customDepthShaderId = ShaderPool::registerCustomShader(depthShaderSrc);
+            mesh.submeshes[i].depthShader = ShaderPool::get(ShaderType::DEPTH, mesh.submeshes[i].depthShaderProperties, mesh.submeshes[i].customDepthShaderId);
+            if (!mesh.submeshes[i].depthShader->isCreated()){
+                // same fallback as the main shader below
+                if (mesh.submeshes[i].customDepthShaderId != 0 &&
+                    ShaderPool::isShaderBuildFailed(ShaderType::DEPTH, mesh.submeshes[i].depthShaderProperties, mesh.submeshes[i].customDepthShaderId)){
+                    Log::error("Custom depth shader '%s' failed to compile; rendering '%s' with the built-in shader",
+                               depthShaderSrc.c_str(), scene->getEntityName(entity).c_str());
+                    mesh.submeshes[i].customDepthShaderId = 0;
+                    mesh.submeshes[i].depthShader = ShaderPool::get(ShaderType::DEPTH, mesh.submeshes[i].depthShaderProperties, 0);
+                }
+            }
+            if (mesh.submeshes[i].depthShader->isCreated()){
+                // custom blocks of a forked depth shader, sharing the mesh values
+                ShaderData& depthShaderData = mesh.submeshes[i].depthShader.get()->shaderData;
+                mesh.submeshes[i].customVSDepthParams.resolve(depthShaderData, "u_vs_customParams");
+                mesh.submeshes[i].customFSDepthParams.resolve(depthShaderData, "u_fs_customParams");
+            }else{
+                shadersReady = false;
+            }
+        }else if (mesh.submeshes[i].depthShader){
+            // a reload keeps the handle; release it with the key it was taken with
+            mesh.submeshes[i].depthShader.reset();
+            ShaderPool::remove(ShaderType::DEPTH, mesh.submeshes[i].depthShaderProperties, mesh.submeshes[i].customDepthShaderId);
+            mesh.submeshes[i].customDepthShaderId = 0;
+        }
+        // the G-buffer shader feeds the SSR geometry pass (MRT: packed depth + view-space
+        // normal/roughness/metallic). Built only when SSR is enabled (it needs normals).
+        if (variant.gbuffer){
+            mesh.submeshes[i].gbufferShaderProperties = variant.gbufferProperties;
+            mesh.submeshes[i].gbufferShader = ShaderPool::get(ShaderType::GBUFFER, mesh.submeshes[i].gbufferShaderProperties);
+            if (!mesh.submeshes[i].gbufferShader->isCreated())
+                shadersReady = false;
+        }
+        if (!mesh.submeshes[i].shader->isCreated()){
+            // A custom shader that failed to compile falls back to the built-in shader so
+            // the object stays visible and the mesh finishes loading (otherwise needReload
+            // stays set and we retry forever). The fork is retried after its source changes
+            // (invalidateCustomShaders clears the failure and re-flags needReload).
+            if (mesh.submeshes[i].customShaderId != 0 &&
+                ShaderPool::isShaderBuildFailed(ShaderType::MESH, mesh.submeshes[i].shaderProperties, mesh.submeshes[i].customShaderId)){
+                Log::error("Custom shader '%s' failed to compile; rendering '%s' with the built-in shader",
+                           meshShaderSrc.c_str(), scene->getEntityName(entity).c_str());
+                mesh.submeshes[i].customShaderId = 0;
+                mesh.submeshes[i].shader = ShaderPool::get(ShaderType::MESH, mesh.submeshes[i].shaderProperties, 0);
+            }
+            if (!mesh.submeshes[i].shader->isCreated())
+                shadersReady = false;
+        }
+        // the extra pass's shader too (loadSubmeshExtraPass takes it below)
+        if (hasExtraPass(mesh.submeshes[i], terrain != nullptr)){
+            const SubmeshShaderVariant passVariant = getSubmeshShaderVariant(shaderEnvironment,
+                getExtraPassShaderInputs(shaderInputs, mesh.submeshes[i].material.extraPass));
+            const uint16_t passShaderId = ShaderPool::registerCustomShader(getSubmeshExtraPassReference(mesh.submeshes[i]));
+            if (!ShaderPool::get(ShaderType::MESH, passVariant.properties, passShaderId)->isCreated() &&
+                    !ShaderPool::isShaderBuildFailed(ShaderType::MESH, passVariant.properties, passShaderId))
+                shadersReady = false;
+        }
+    }
+    if (!shadersReady){
+        return false;
+    }
+
+    // Then the pipelines. A load failing from here on (a texture still loading, a resource
+    // pool full) destroys the pipelines this try made before returning: the next try makes
+    // them again, and a mesh destroyed before it loads has nothing to release. Only what
+    // this try began (a copy of the component shares its source's pipelines until it loads).
+    struct LoadAttempt {
+        std::vector<ObjectRender*> renders;
+        std::vector<SubmeshExtraPass*> extraPasses;
+        bool succeeded = false;
+        ~LoadAttempt(){
+            if (succeeded)
+                return;
+            for (ObjectRender* render : renders)
+                render->destroy();
+            for (SubmeshExtraPass* extra : extraPasses){
+                extra->render.destroy();
+                extra->loaded = false;
+            }
+        }
+    } attempt;
+
+    for (int i = 0; i < mesh.numSubmeshes; i++){
+
+        ObjectRender& render = mesh.submeshes[i].render;
+        mesh.submeshes[i].smoothNormals = -1;
+
+        render.beginLoad(mesh.submeshes[i].primitiveType);
+        attempt.renders.push_back(&render);
+
+        const SubmeshShaderInputs& shaderInputs = submeshLoads[i].shaderInputs;
+        const SubmeshShaderVariant& variant = submeshLoads[i].variant;
+        const std::string& meshShaderSrc = submeshLoads[i].meshShaderSrc;
+        const std::string& depthShaderSrc = submeshLoads[i].depthShaderSrc;
+        const bool needDepthPass = variant.depthPass;
 
         // what the variant enables, from the property bits (see ShaderPool::getMeshProperties)
         const uint32_t meshProperties = variant.properties;
@@ -4344,85 +4474,6 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         // see ShaderPool::getDepthMeshProperties
         const bool p_depthTexture = (variant.depthProperties & (1u << 0)) != 0;
         const bool p_depthAlphaMask = (variant.depthProperties & (1u << 7)) != 0;
-
-        // remember whether this submesh's lit shader applies IBL specular, so the SSR
-        // G-buffer can flag those pixels for the energy-conserving composite
-        mesh.submeshes[i].hasIBL = p_ibl;
-
-        mesh.submeshes[i].shaderProperties = meshProperties;
-        mesh.submeshes[i].loadedLighting = mesh.submeshes[i].material.lighting;
-        // a custom main shader (a library shader or a fork) overrides the built-in Mesh
-        // shader; the variant (#define) system, depth/gbuffer passes and bind-slots are
-        // unchanged. Priority: material shader > component customShader > scene default
-        // shader > built-in (empty); the material's features key the variant too.
-        const std::string meshShaderSrc = getSubmeshShaderReference(mesh, mesh.submeshes[i], sceneMeshShader);
-        mesh.submeshes[i].customShaderId = ShaderPool::registerCustomShader(meshShaderSrc);
-        mesh.submeshes[i].shader = ShaderPool::get(ShaderType::MESH, mesh.submeshes[i].shaderProperties, mesh.submeshes[i].customShaderId);
-        // the depth shader feeds shadow maps (casters) and the SSAO depth pre-pass
-        // (SSR uses its own G-buffer shader, built below). A depth fork is built even
-        // without a pass, so its uniforms and build errors show up in the editor.
-        const bool needDepthPass = variant.depthPass;
-        // the library shader's depth program, the depth fork, or built-in
-        const std::string depthShaderSrc = getSubmeshDepthShaderReference(mesh, mesh.submeshes[i], sceneMeshShader);
-        if (variant.depth){
-            mesh.submeshes[i].depthShaderProperties = variant.depthProperties;
-            mesh.submeshes[i].customDepthShaderId = ShaderPool::registerCustomShader(depthShaderSrc);
-            mesh.submeshes[i].depthShader = ShaderPool::get(ShaderType::DEPTH, mesh.submeshes[i].depthShaderProperties, mesh.submeshes[i].customDepthShaderId);
-            if (!mesh.submeshes[i].depthShader->isCreated()){
-                // same fallback as the main shader below
-                if (mesh.submeshes[i].customDepthShaderId != 0 &&
-                    ShaderPool::isShaderBuildFailed(ShaderType::DEPTH, mesh.submeshes[i].depthShaderProperties, mesh.submeshes[i].customDepthShaderId)){
-                    Log::error("Custom depth shader '%s' failed to compile; rendering '%s' with the built-in shader",
-                               depthShaderSrc.c_str(), scene->getEntityName(entity).c_str());
-                    mesh.submeshes[i].customDepthShaderId = 0;
-                    mesh.submeshes[i].depthShader = ShaderPool::get(ShaderType::DEPTH, mesh.submeshes[i].depthShaderProperties, 0);
-                }
-                if (!mesh.submeshes[i].depthShader->isCreated())
-                    return false;
-            }
-            // custom blocks of a forked depth shader, sharing the mesh values
-            ShaderData& depthShaderData = mesh.submeshes[i].depthShader.get()->shaderData;
-            mesh.submeshes[i].customVSDepthParams.resolve(depthShaderData, "u_vs_customParams");
-            mesh.submeshes[i].customFSDepthParams.resolve(depthShaderData, "u_fs_customParams");
-        }else if (mesh.submeshes[i].depthShader){
-            // a reload keeps the handle; release it with the key it was taken with
-            mesh.submeshes[i].depthShader.reset();
-            ShaderPool::remove(ShaderType::DEPTH, mesh.submeshes[i].depthShaderProperties, mesh.submeshes[i].customDepthShaderId);
-            mesh.submeshes[i].customDepthShaderId = 0;
-        }
-        // the G-buffer shader feeds the SSR geometry pass (MRT: packed depth + view-space
-        // normal/roughness/metallic). Built only when SSR is enabled (it needs normals).
-        if (variant.gbuffer){
-            mesh.submeshes[i].gbufferShaderProperties = variant.gbufferProperties;
-            mesh.submeshes[i].gbufferShader = ShaderPool::get(ShaderType::GBUFFER, mesh.submeshes[i].gbufferShaderProperties);
-            if (!mesh.submeshes[i].gbufferShader->isCreated())
-                return false;
-        }
-        if (!mesh.submeshes[i].shader->isCreated()){
-            // A custom shader that failed to compile falls back to the built-in shader so
-            // the object stays visible and the mesh finishes loading (otherwise needReload
-            // stays set and we retry forever). The fork is retried after its source changes
-            // (invalidateCustomShaders clears the failure and re-flags needReload).
-            if (mesh.submeshes[i].customShaderId != 0 &&
-                ShaderPool::isShaderBuildFailed(ShaderType::MESH, mesh.submeshes[i].shaderProperties, mesh.submeshes[i].customShaderId)){
-                Log::error("Custom shader '%s' failed to compile; rendering '%s' with the built-in shader",
-                           meshShaderSrc.c_str(), scene->getEntityName(entity).c_str());
-                mesh.submeshes[i].customShaderId = 0;
-                mesh.submeshes[i].shader = ShaderPool::get(ShaderType::MESH, mesh.submeshes[i].shaderProperties, 0);
-            }
-            if (!mesh.submeshes[i].shader->isCreated())
-                return false;
-        }
-        // the extra pass's shader too, before this load makes any pipeline (a load that
-        // returns false is tried again, and the pipelines of the try would be left behind)
-        if (hasExtraPass(mesh.submeshes[i], terrain != nullptr)){
-            const SubmeshShaderVariant passVariant = getSubmeshShaderVariant(shaderEnvironment,
-                getExtraPassShaderInputs(shaderInputs, mesh.submeshes[i].material.extraPass));
-            const uint16_t passShaderId = ShaderPool::registerCustomShader(getSubmeshExtraPassReference(mesh.submeshes[i]));
-            if (!ShaderPool::get(ShaderType::MESH, passVariant.properties, passShaderId)->isCreated() &&
-                    !ShaderPool::isShaderBuildFailed(ShaderType::MESH, passVariant.properties, passShaderId))
-                return false;
-        }
         render.setShader(mesh.submeshes[i].shader.get());
         ShaderData& shaderData = mesh.submeshes[i].shader.get()->shaderData;
 
@@ -4636,6 +4687,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             ObjectRender& depthRender = mesh.submeshes[i].depthRender;
 
             depthRender.beginLoad(mesh.submeshes[i].primitiveType);
+            attempt.renders.push_back(&depthRender);
 
             depthRender.setShader(mesh.submeshes[i].depthShader.get());
             ShaderData& depthShaderData = mesh.submeshes[i].depthShader.get()->shaderData;
@@ -4791,6 +4843,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             ObjectRender& gbufferRender = mesh.submeshes[i].gbufferRender;
 
             gbufferRender.beginLoad(mesh.submeshes[i].primitiveType);
+            attempt.renders.push_back(&gbufferRender);
 
             gbufferRender.setShader(mesh.submeshes[i].gbufferShader.get());
             ShaderData& gbufferShaderData = mesh.submeshes[i].gbufferShader.get()->shaderData;
@@ -4905,10 +4958,16 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         //----------End G-buffer shader---------------
 
         // the material's extra pass (shader library phase 2), or nothing
-        if (!loadSubmeshExtraPass(entity, mesh, i, shaderInputs, shaderEnvironment, pipelines, buffers, bufferNameToRender, bufferStride, instmesh)){
+        const bool extraPassLoaded = loadSubmeshExtraPass(entity, mesh, i, shaderInputs, shaderEnvironment, pipelines, buffers, bufferNameToRender, bufferStride, instmesh);
+        // after the call the pass object is this component's own (none without a pass)
+        if (mesh.submeshes[i].extraPass){
+            attempt.extraPasses.push_back(mesh.submeshes[i].extraPass.get());
+        }
+        if (!extraPassLoaded){
             return false;
         }
     }
+    attempt.succeeded = true;
 
     trimSmoothNormals(mesh);
 
@@ -7779,12 +7838,6 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
 
     render.beginLoad(PrimitiveType::POINTS);
 
-    if (points.autoTransparency && !points.transparent){
-        if (points.texture.isTransparent()){ // Particle color is not tested here
-            points.transparent = true;
-        }
-    }
-
     bool hasPointsTexture = !points.texture.empty();
 
     bool p_hasTexture = false;
@@ -7850,6 +7903,12 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
             return false;
         }
         render.addTexture(shaderData.getTextureIndex(TextureShaderType::POINTS), ShaderStageType::FRAGMENT, textureRender);
+    }
+    // once the texture is loaded (or found in the pool): its alpha is known only then
+    if (points.autoTransparency && !points.transparent){
+        if (points.texture.isTransparent()){ // Particle color is not tested here
+            points.transparent = true;
+        }
     }
     if (!loadShaderLibraryBindings(points.libraryBindings, shaderData, render, points.shaderTextures, points.shaderManifest.get())){
         return false;
@@ -8250,6 +8309,13 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
     sky.needReload = false;
     sky.loadCalled = true;
     SystemRender::addQueueCommand(&changeLoaded, new check_load_t{scene, entity});
+
+    // one sky per scene (see SkyboxComponent): say which, once per load
+    const size_t skies = scene->getComponentArray<SkyboxComponent>()->size();
+    if (skies > 1){
+        Log::warn("Scene has %zu skyboxes: only the first added (entity %u '%s') is drawn and lights the scene",
+                  skies, (unsigned int)entity, scene->getEntityName(entity).c_str());
+    }
 
     return true;
 }
@@ -10235,6 +10301,7 @@ void RenderSystem::update(double dt){
     loadLights2D();
     loadAndProcessFog();
 
+    // the scene's sky is its first SkyboxComponent (SkyboxComponent.h); the others are not loaded
     auto skys = scene->getComponentArray<SkyboxComponent>();
     bool newHasIBL = false;
     if (skys->size() > 0){

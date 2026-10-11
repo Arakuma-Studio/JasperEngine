@@ -16,6 +16,7 @@
 #include "util/ScriptParser.h"
 #include "util/ScopedDefaultEntityPool.h"
 #include "util/CxxStandards.h"
+#include "util/Util.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -1061,6 +1062,25 @@ namespace jasperengine::editor{
         bool isInsideAssetsPath(const std::filesystem::path& path) const;
         std::filesystem::path resolveLuaPath(const std::filesystem::path& luaRelative) const;
         std::filesystem::path normalizeToLuaRelative(const std::filesystem::path& path) const;
+
+        // Shader fork files. A fork path (customShader, a material's shader, an include) is
+        // project-relative; one the project root does not have is looked up in the assets
+        // directory, the assets-relative spelling ("shaders/x" for "assets/shaders/x"). The
+        // game resolves both alike: its asset root holds the assets directory and, at their
+        // project-relative paths, every shader source (Exporter::copyCustomShaderSources,
+        // which wins on a clash, as the project root wins here). The one place of the rule:
+        // the absolute file, or empty when neither root has it.
+        static std::filesystem::path findShaderFile(const std::filesystem::path& projectRoot, const std::filesystem::path& assetsRoot,
+                                                    const std::string& relative);
+        // the project-relative path of the file a fork path resolves to (as given when none has
+        // it), to show, open and match it
+        std::string resolveShaderFile(const std::string& relative) const;
+        // Util::resolveCustomShaderPaths with each entry point through resolveShaderFile
+        Util::CustomShaderPaths resolveCustomShaderFiles(const std::string& customShader) const;
+        // reads a fork file as the shader compilers and manifests see it
+        bool readShaderFile(const std::string& relative, std::string& content) const;
+        // the project-relative files a fork path can name: itself and, under the assets directory
+        std::vector<std::string> shaderFileCandidates(const std::string& relative) const;
 
         // Applies new roots: referenced files outside them are moved in keeping their
         // layout, then every stored reference is rewritten and saved.

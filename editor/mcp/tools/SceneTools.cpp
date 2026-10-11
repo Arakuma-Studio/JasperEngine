@@ -721,7 +721,7 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
 
 bool shaderBaseExists(Project* project, const std::string& base) {
     if (base.empty()) return true;
-    Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(base);
+    Util::CustomShaderPaths paths = project->resolveCustomShaderFiles(base);
     return fs::exists(project->getProjectPath() / paths.vert) && fs::exists(project->getProjectPath() / paths.frag);
 }
 

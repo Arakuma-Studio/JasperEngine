@@ -155,7 +155,7 @@ bool McpValues::checkShaderReference(Project* project, const std::string& refere
         error = "\"library:\" is reserved for library shaders.";
         return false;
     }
-    Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(reference);
+    Util::CustomShaderPaths paths = project ? project->resolveCustomShaderFiles(reference) : Util::resolveCustomShaderPaths(reference);
     std::error_code ec;
     if (!project || !fs::exists(project->getProjectPath() / paths.vert, ec) || !fs::exists(project->getProjectPath() / paths.frag, ec)) {
         error = "references missing files (" + paths.vert + ", " + paths.frag + "): use a library shader (list_shaders) "

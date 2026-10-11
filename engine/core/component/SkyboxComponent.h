@@ -13,6 +13,14 @@
 
 namespace jasperengine{
 
+    // A scene has one sky, as a Unity scene has one skybox (RenderSettings.skybox): the first
+    // SkyboxComponent added (component array index 0, the order entities are created in,
+    // which removal keeps) is drawn, lights meshes (IBL) and feeds reflection probes and SSR.
+    // Any other is never loaded and costs nothing; it takes over when the first is removed, not
+    // when the first is hidden (visible=false: no sky drawn, its lighting kept). The renderer
+    // logs a warning when it loads a sky while the scene has more than one. In the editor, the
+    // creation order is the scene file's (hierarchy) order once saved, so reordering skyboxes in
+    // the Hierarchy changes which one is used only after the scene is reloaded or exported.
     struct JASPERENGINE_API SkyboxComponent{
         bool loaded = false;
         bool loadCalled = false;

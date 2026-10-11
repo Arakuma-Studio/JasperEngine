@@ -50,8 +50,10 @@ bool readTextFile(const std::filesystem::path& path, std::string& content) {
 
 // a library shader resolves the same in any project; its DEPTH variant is another program
 std::string customSourceCacheKey(editor::Project* project, const std::string& customShader, ShaderType shaderType) {
+    // (with the assets directory, which a fork path may be relative to: Project::findShaderFile)
     const std::string root = (project && !ShaderReference::isLibrary(customShader))
-        ? project->getProjectPath().lexically_normal().generic_string() : std::string();
+        ? project->getProjectPath().lexically_normal().generic_string() + '\n' + project->getAssetsPath().lexically_normal().generic_string()
+        : std::string();
     return root + '\n' + customShader + '\n' + std::to_string(static_cast<int>(shaderType));
 }
 
@@ -71,13 +73,14 @@ std::shared_ptr<const CustomSourceSnapshot> resolveCustomSources(editor::Project
         return it->second;
 
     const std::filesystem::path projectRoot = project ? project->getProjectPath() : std::filesystem::path();
+    const std::filesystem::path assetsRoot = project ? project->getAssetsPath() : std::filesystem::path();
     auto snapshot = std::make_shared<CustomSourceSnapshot>();
     ShaderVariantCompiler::FileReader reader;
     if (project) {
-        reader = [projectRoot](const std::string& relativePath, std::string& content) {
-            std::error_code ec;
-            const std::filesystem::path path = projectRoot / relativePath;
-            return std::filesystem::is_regular_file(path, ec) && readTextFile(path, content);
+        // entry points and includes: project-relative, else assets-relative, as the game reads them
+        reader = [projectRoot, assetsRoot](const std::string& relativePath, std::string& content) {
+            const std::filesystem::path path = editor::Project::findShaderFile(projectRoot, assetsRoot, relativePath);
+            return !path.empty() && readTextFile(path, content);
         };
     }
     snapshot->sources = ShaderVariantCompiler::resolveCustomShaderSources(customShader, reader, shaderType);

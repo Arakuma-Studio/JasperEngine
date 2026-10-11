@@ -15,6 +15,15 @@ export:
     - type: mesh
       properties: 1112
     - type: depth
+    # 9. the pillars' fork named assets-relative (shaders/...) and project-relative
+    # (assets/shaders/...): the export finds and precompiles both (the game logs no runtime
+    # compile of them)
+    - type: mesh
+      properties: 3
+      customShader: "shaders/no_shadow#BLEND_NONE"
+    - type: mesh
+      properties: 3
+      customShader: "assets/shaders/no_shadow#BLEND_ADDITIVE,GLOW"
 startSceneId: 1
 scenes:
   - filepath: Main Scene.scene

@@ -16,8 +16,27 @@
 --      GLOW feature (@state[GLOW] blend=additive: see-through); and a Sprite whose
 --      library:sprite shader is set right after it is created, over its submeshes (a new
 --      Sprite reported none before its first update, so the shader was dropped).
+--   6. alpha, right of the front row over a checker wall: built-in Lit objects whose
+--      MaterialAlphaMode AUTO takes transparency from the base texture's alpha. A Sprite with
+--      its own image (a ring), two Sprites sharing the character image with the library sprite
+--      of 5, and two quads sharing a third use of it (a user that found the GPU texture already
+--      made had no image data, read opaque and wrote a dark square): every one shows its shape
+--      over the checker, no square.
+--   7. leak, far right: a model of two submeshes whose second waits for its shader (and, the
+--      last time, its texture) while the first is ready; made and destroyed again, each time
+--      the live pipeline count goes back to the count before it (a load waiting for a later
+--      submesh left the first submesh's pipelines behind on every try). Runs once the scene
+--      has settled and logs "[SR] leak check passed"; then one stays: a flat orange box (the
+--      library:unlit submesh) beside a shaded Lit one.
+--   8. a second Skybox (red), created after the procedural sky of 1: only the first added is
+--      the scene's sky (logged as a warning), so the sky stays blue and nothing is red.
+--   9. fork paths: the orange pillar of 5 names its fork assets-relative ("shaders/no_shadow"),
+--      the green one project-relative ("assets/shaders/no_shadow"); project.yaml's
+--      shaderAdditions makes the export precompile a variant of each (it could not find the
+--      first), and the game compiles neither at runtime.
 --
 --   tools/smoke-test.sh tools/fixtures/shader-regressions
+--   SMOKE_GAME_SECONDS="ready 70" tools/smoke-test.sh tools/fixtures/shader-regressions  (7 done)
 --   SMOKE_GAME_ENV="SR_FOCUS=probe" tools/smoke-test.sh tools/fixtures/shader-regressions
 local Regressions = { properties = {} }
 
@@ -40,6 +59,11 @@ local function buildProbe(self, scene)
     local sky = Skybox(scene)
     sky.customShader = "library:procedural_sky"
     self.sky = sky
+
+    -- 8. a second Skybox, red: a scene has one sky, the first added (the engine warns once)
+    local extraSky = Skybox(scene)
+    extraSky:setColor(1.0, 0.0, 0.0)
+    self.extraSky = extraSky
 
     local sphere = Model(scene)
     if not sphere:loadModel("models/chrome_sphere.gltf") then
@@ -162,7 +186,8 @@ local function buildFront(self, scene)
         material:setShaderParam("baseColor", Vector4(0.9, 0.6, 0.1, 1.0))
     end)
     self.glowPillar = pillar(-2.5, function(material)
-        material.shader = "shaders/no_shadow"
+        -- the same fork by its project-relative path (9)
+        material.shader = "assets/shaders/no_shadow"
         material:setShaderParam("baseColor", Vector4(0.2, 0.9, 0.4, 1.0))
         material:setShaderFeature("GLOW", true)
     end)
@@ -189,6 +214,134 @@ local function buildFront(self, scene)
     self.sprite = sprite
 end
 
+local function buildAlpha(self, scene)
+    local wall = Primitive(scene)
+    wall:createWall(4.8, 1.8, 3)
+    wall.position = Vector3(2.65, 0.9, 2.5)
+    wall:setTexture("textures/checker.png")
+    wall.receiveLights = false
+
+    local function sprite(x, image)
+        local s = Sprite(scene)
+        s:setTexture(image)
+        s:setSize(64, 64)
+        s:setScale(0.9 / 64)
+        s.pivotPreset = PivotPreset.CENTER
+        s.castShadows = false
+        s.position = Vector3(x, 0.9, 3.0)
+        return s
+    end
+    local function quad(x, image)
+        local q = Primitive(scene)
+        q:createWall(0.9, 0.9)
+        q.position = Vector3(x, 0.9, 3.0)
+        q:setTexture(image)
+        q.castShadows = false
+        return q
+    end
+    self.alphaObjects = {
+        sprite(0.85, "textures/ring_alpha.png"),
+        sprite(1.75, "textures/character.png"),
+        sprite(2.65, "textures/character.png"),
+        quad(3.55, "textures/character.png"),
+        quad(4.45, "textures/character.png"),
+    }
+end
+
+-- 7: one model of two submeshes per try; the second's shader is a variant nothing else uses
+local LEAK_TRIES = {
+    { "VERTEX_COLOR" },
+    { "ALPHA_CLIP" },
+    { "VERTEX_COLOR", "ALPHA_CLIP" },
+    { texture = "textures/stripes.png" },
+}
+
+local function makeLeakModel(scene, try)
+    local model = Model(scene)
+    if not model:loadModel("models/two_parts.gltf") then
+        fail("models/two_parts.gltf did not load")
+        return nil
+    end
+    model.position = Vector3(5.7, 0.5, 3.6)
+    model:setRotation(0, -20, 0)
+    model.scale = Vector3(0.8, 0.8, 0.8)
+    if not try then
+        -- both submeshes Lit, as loaded
+    elseif try.texture then
+        -- Lit as the first submesh, with an image no one loaded yet
+        local material = model:getMaterial(1)
+        material.baseColorTexture:setPath(try.texture)
+        model:setMaterial(1, material)
+    else
+        local material = model:getMaterial(1)
+        material.shader = "library:unlit"
+        material:setShaderParam("baseColor", Vector4(0.95, 0.55, 0.15, 1.0))
+        for _, feature in ipairs(try) do
+            material:setShaderFeature(feature, true)
+        end
+        model:setMaterial(1, material)
+    end
+    return model
+end
+
+-- the scene is settled when no shader has been compiling for a while
+local function settled(self)
+    if ShaderPool.getPendingShaderCount() > 0 then
+        self.quietFrames = 0
+        return false
+    end
+    self.quietFrames = (self.quietFrames or 0) + 1
+    return self.quietFrames >= 30
+end
+
+local function updateLeak(self, scene)
+    local leak = self.leak
+    if leak.done or not settled(self) then
+        return
+    end
+    local live = ObjectRender.getLivePipelineCount()
+    if leak.state == "baseline" then
+        -- a first model of the same layout, so the first submesh's variant is ready on every try
+        if not leak.warm then
+            leak.warm = makeLeakModel(scene, nil)
+            if leak.warm then
+                leak.warm.position = Vector3(0, -80, 0)
+            end
+            self.quietFrames = 0
+            return
+        end
+        leak.baseline = live
+        leak.try = 1
+        leak.model = makeLeakModel(scene, LEAK_TRIES[1])
+        leak.state = "loading"
+        self.quietFrames = 0
+    elseif leak.state == "loading" then
+        log("leak try %d: %d pipelines over the baseline %d with the model", leak.try, live - leak.baseline, leak.baseline)
+        GameObject.destroyImmediate(leak.model)
+        leak.model = nil
+        leak.state = "destroyed"
+        self.quietFrames = 0
+    elseif leak.state == "destroyed" then
+        if live ~= leak.baseline then
+            fail("leak try %d: %d pipelines after the model was destroyed, %d before it (%d left behind)",
+                 leak.try, live, leak.baseline, live - leak.baseline)
+            leak.done = true
+            return
+        end
+        if leak.try == #LEAK_TRIES then
+            log("leak check passed (%d tries)", #LEAK_TRIES)
+            -- the one left in the scene
+            leak.model = makeLeakModel(scene, LEAK_TRIES[1])
+            leak.done = true
+            return
+        end
+        leak.try = leak.try + 1
+        leak.model = makeLeakModel(scene, LEAK_TRIES[leak.try])
+        leak.state = "loading"
+        self.quietFrames = 0
+    end
+end
+
 function Regressions:init()
     RegisterEngineEvent(self, "onUpdate")
     local scene = self.scene
@@ -206,7 +359,7 @@ function Regressions:init()
     light.shadows = true
     self.camera, self.light = camera, light
 
-    for _, case in ipairs({ {"probe", buildProbe}, {"prepass", buildPrepass}, {"rtt", buildRtt}, {"terrain", buildTerrain}, {"front", buildFront} }) do
+    for _, case in ipairs({ {"probe", buildProbe}, {"prepass", buildPrepass}, {"rtt", buildRtt}, {"terrain", buildTerrain}, {"front", buildFront}, {"alpha", buildAlpha} }) do
         local ok, err = pcall(case[2], self, scene)
         if ok then
             log("built %s", case[1])
@@ -218,7 +371,8 @@ function Regressions:init()
     local focus = os.getenv("SR_FOCUS")
     local targets = { probe = Vector3(-6.0, 1.4, 0.0), prepass = Vector3(-1.8, 0.8, 0.0),
                       rtt = Vector3(2.4, 1.4, 0.0), terrain = Vector3(7.0, 0.5, -1.0),
-                      front = Vector3(-3.2, 0.8, 3.0) }
+                      front = Vector3(-3.2, 0.8, 3.0), alpha = Vector3(2.65, 0.9, 3.0),
+                      leak = Vector3(5.7, 0.5, 3.6) }
     if focus and targets[focus] then
         local target = targets[focus]
         camera.target = target
@@ -226,10 +380,12 @@ function Regressions:init()
         log("focus on %s", focus)
     end
     self.frames = 0
+    self.leak = { state = "baseline" }
 end
 
 function Regressions:onUpdate()
     self.frames = self.frames + 1
+    updateLeak(self, self.scene)
     if self.frames % 100 == 0 then
         log("frame %d: %d variants compiling", self.frames, ShaderPool.getPendingShaderCount())
     end

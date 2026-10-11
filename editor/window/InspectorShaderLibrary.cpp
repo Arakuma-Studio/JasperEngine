@@ -497,7 +497,7 @@ bool editor::InspectorWindow::drawMaterialShaderRows(ComponentType cpType, Scene
         ImGui::TextDisabled("(different shaders)");
     drawLibraryShaderCombo(mixed ? std::string() : currentShader, ShaderType::MESH, setShader, popupName);
     const Util::CustomShaderPaths paths = (!currentShader.empty() && !ShaderReference::isLibrary(currentShader))
-        ? Util::resolveCustomShaderPaths(currentShader) : Util::CustomShaderPaths();
+        ? project->resolveCustomShaderFiles(currentShader) : Util::CustomShaderPaths();
     drawShaderFilesPopup(popupName, setShader, paths.vert, paths.frag);
     prefabRowProperty.clear();
 
