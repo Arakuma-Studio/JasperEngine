@@ -273,6 +273,16 @@ than 6.3: Taffy measures the item's height at its flexed width (its hypothetical
 Recovered on the way: items stretched to a single line of definite cross size are not measured (`flexbox.chat` was
 +1660 % before that, a min-content formatting of every message), the row-width shortcut above (Basic was +20 %).
 
+### Test-harness note (p3-layout): MSAA scissor on Mesa
+
+Not a fork patch, recorded here with the layout fixtures it concerns. Under 4x MSAA, Mesa's llvmpipe and lavapipe
+(23.2.1, the test image's GL and Vulkan drivers) let 2 of the 4 samples of the pixels in the row above and the column
+left of a scissor rectangle through; `MsaaScissor.*` in `engine/tests/htmlui/TestRenderMsaaScissor.cpp` reproduces it
+with raw sokol calls and through `RmlRenderer`, and documents it (an exact result or exactly that pattern passes). The
+fork's clip regions and the engine's scissors are exact integers; the renderer is unchanged. The browser-parity
+fixtures `layout/{fixed-not-clipped,overflow-hidden-scrolled,sticky-header-list,sticky-bottom,sticky-in-flex}` render
+with the sidecar option `"samples": 1` at the default tolerances (phase-3 spec §3.12.10, DESIGN deviation 17).
+
 ## Updating upstream
 
 1. Copy the new tag over the vendored subset (same include/exclude lists).

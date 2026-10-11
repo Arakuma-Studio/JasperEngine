@@ -325,6 +325,9 @@ TEST(BrowserFixtures, ManifestAndReferencesAreConsistent){
         if (sidecar.toleranceOverridden){
             EXPECT_FALSE(sidecar.comment.empty()) << "a tolerance override needs a comment (spec 5.2)";
         }
+        if (sidecar.sampleCount != 4){
+            EXPECT_FALSE(sidecar.comment.empty()) << "\"samples\" needs a comment";
+        }
         if (!sidecar.referenceCss.empty() || sidecar.expectMismatch){
             EXPECT_EQ(fixture.area, "testkit") << "selfTest is for the harness's own fixtures";
         }
@@ -368,7 +371,7 @@ TEST_P(BrowserParity, MatchesChromium){
     ASSERT_TRUE(loadReferenceBoxes(browserReferenceDirectory() + "/" + fixture.area + "/" + fixture.name + ".boxes.json", referenceBoxes, &error))
         << error;
 
-    FixtureRunner runner(sidecar.width, sidecar.height);
+    FixtureRunner runner(sidecar.width, sidecar.height, sidecar.sampleCount);
     if (!runner.valid())
         GTEST_SKIP() << "no headless GPU context";
 

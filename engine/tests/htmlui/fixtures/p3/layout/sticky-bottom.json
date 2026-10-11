@@ -1,9 +1,10 @@
 {
- "comment": "a footer stuck above the bottom of the scrollport before it is reached and in flow afterwards; a box stuck below the top by its inset; in a horizontal scroller, boxes stuck by left and right. Tolerance: with 4x MSAA, Mesa's llvmpipe and lavapipe (the test image's GL and Vulkan drivers) let the samples of the pixel row above and the column left of a scissor rectangle through: content scrolled past the top edge of a clipping box shows as a half-covered line 1 px above it (measured: RmlUi's clip region and the target scissor are exact, the line goes away without MSAA; ZZ probe in the p3-layout report). The cluster limit covers that one line; the boxes keep their 1 px tolerance",
+ "comment": "a footer stuck above the bottom of the scrollport before it is reached and in flow afterwards; a box stuck below the top by its inset; in a horizontal scroller, boxes stuck by left and right. Rendered without MSAA (\"samples\": 1), at the default tolerances: with 4x MSAA, Mesa's llvmpipe and lavapipe (the test image's GL and Vulkan drivers, Mesa 23.2.1) let half the samples of the row above and the column left of a scissor rectangle through, so content scrolled past a clip edge would show a half-covered 1 px line there (MsaaScissor.FourSamples reproduces it with raw sokol calls; the scissor reaches glScissor/vkCmdSetScissor as exact integers, the max edges are exact)",
  "viewport": [
   200,
   185
  ],
+ "samples": 1,
  "steps": [
   {
    "capture": "top"
@@ -42,9 +43,5 @@
   {
    "capture": "end"
   }
- ],
- "tolerance": {
-  "cluster": 400,
-  "badPercent": 1.0
- }
+ ]
 }

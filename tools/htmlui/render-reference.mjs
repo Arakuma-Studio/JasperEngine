@@ -38,7 +38,7 @@
 //                                             and to the committed references (reproducibility)
 //
 // - p3 fixtures: engine/tests/htmlui/fixtures/p3/<area>/<name>.html with a <name>.json sidecar
-//   {viewport: [w, h], steps: [...], boxes, tolerance, comment}; the steps (hover, focus, press,
+//   {viewport: [w, h], steps: [...], boxes, tolerance, samples, comment}; the steps (hover, focus, press,
 //   release, addClass, removeClass, setStyle, setAttr, scroll, advance, capture) run in order, every
 //   capture step (or one at the end when there is none) writes golden/browser/<area>/<name>[.<suffix>].png
 //   and the boxes of every element with an id into <name>.boxes.json. JavaScript stays off (the steps
@@ -764,6 +764,9 @@ function loadSidecar(area, name){
         throw new Error(`${where}: capture suffixes must differ`);
     if (sidecar.tolerance !== undefined && !(typeof sidecar.comment === 'string' && sidecar.comment.trim()))
         throw new Error(`${where}: a "tolerance" override needs a "comment" explaining the rasterization difference (spec 5.2)`);
+    // "samples" (1 or 4) is the engine's MSAA for the fixture (Chromium has its own antialiasing)
+    if (sidecar.samples !== undefined && !((sidecar.samples === 1 || sidecar.samples === 4) && typeof sidecar.comment === 'string' && sidecar.comment.trim()))
+        throw new Error(`${where}: "samples" is 1 or 4, with a "comment" saying why`);
     if (sidecar.selfTest !== undefined && area !== 'testkit')
         throw new Error(`${where}: "selfTest" is for the harness's own fixtures (fixtures/p3/testkit)`);
     return { viewport, steps, boxes: sidecar.boxes === true, selfTest: sidecar.selfTest ?? null };
