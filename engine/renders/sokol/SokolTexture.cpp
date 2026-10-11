@@ -442,7 +442,7 @@ void SokolTexture::createTextureView(const char* label){
 bool SokolTexture::createFramebufferTexture(
             TextureType type, bool depth, bool shadowMap, int width, int height,
             TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV,
-            ColorFormat colorFormat){
+            ColorFormat colorFormat, bool stencil){
     sg_image_desc img_desc = {0};
     if (depth){
         img_desc.usage.depth_stencil_attachment = true;
@@ -472,8 +472,11 @@ bool SokolTexture::createFramebufferTexture(
     img_desc.sample_count = 1;
 
     if (depth){
-        img_desc.pixel_format = SG_PIXELFORMAT_DEPTH;
-        img_desc.label = "framebuffer-depth-image";
+        // DEPTH_STENCIL: GL/GLES3 DEPTH24_STENCIL8, D3D11 R24G8_TYPELESS (D24S8 to draw, depth
+        // to sample), Metal Depth32Float_Stencil8, Vulkan D32_SFLOAT_S8_UINT; sokol samples
+        // its depth aspect. DEPTH: a 32-bit float depth (shadow maps)
+        img_desc.pixel_format = stencil ? SG_PIXELFORMAT_DEPTH_STENCIL : SG_PIXELFORMAT_DEPTH;
+        img_desc.label = stencil ? "framebuffer-depth-stencil-image" : "framebuffer-depth-image";
     } else {
         img_desc.pixel_format = (colorFormat == ColorFormat::RED) ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
         img_desc.label = "framebuffer-color-image";

@@ -97,10 +97,11 @@ namespace luabridge
     template<> struct Stack<MaterialCullMode> : EnumWrapper<MaterialCullMode>{};
     template<> struct Stack<MaterialDepthWrite> : EnumWrapper<MaterialDepthWrite>{};
     template<> struct Stack<MaterialDepthTest> : EnumWrapper<MaterialDepthTest>{};
-    // phase 2: the extra pass's order and stencil state
+    // phase 2: the extra pass's order
     template<> struct Stack<MaterialPassOrder> : EnumWrapper<MaterialPassOrder>{};
     template<> struct Stack<MaterialStencilCompare> : EnumWrapper<MaterialStencilCompare>{};
     template<> struct Stack<MaterialStencilOp> : EnumWrapper<MaterialStencilOp>{};
+    template<> struct Stack<MaterialColorWriteBits> : EnumWrapper<MaterialColorWriteBits>{};
 
     template <>
     struct Stack <Touch>

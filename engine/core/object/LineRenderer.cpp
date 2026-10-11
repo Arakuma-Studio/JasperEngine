@@ -326,6 +326,36 @@ MaterialDepthWrite LineRenderer::getDepthWrite() const{
     return lines.depthWrite;
 }
 
+void LineRenderer::setStencil(const MaterialStencil& stencil){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    if (lines.stencil != stencil){
+        lines.stencil = stencil;
+        lines.needReload = true;
+    }
+}
+
+MaterialStencil LineRenderer::getStencil() const{
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    return lines.stencil;
+}
+
+void LineRenderer::setColorWrite(int colorWrite){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    if (lines.colorWrite != colorWrite){
+        lines.colorWrite = colorWrite;
+        lines.needReload = true;
+    }
+}
+
+int LineRenderer::getColorWrite() const{
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    return lines.colorWrite;
+}
+
 void LineRenderer::setEnabled(bool enabled){
     getComponent<LineRendererComponent>().enabled = enabled;
 }

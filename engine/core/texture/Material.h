@@ -125,7 +125,11 @@ namespace jasperengine{
         MATERIAL_COLOR_WRITE_G = 2,
         MATERIAL_COLOR_WRITE_B = 4,
         MATERIAL_COLOR_WRITE_A = 8,
-        MATERIAL_COLOR_WRITE_ALL = 15
+        MATERIAL_COLOR_WRITE_ALL = 15,
+        // named masks (Lua's MaterialColorWrite)
+        MATERIAL_COLOR_WRITE_NONE = 0,
+        MATERIAL_COLOR_WRITE_RGB = 7,
+        MATERIAL_COLOR_WRITE_AUTO = -1
     };
 
     enum class MaterialPassOrder {

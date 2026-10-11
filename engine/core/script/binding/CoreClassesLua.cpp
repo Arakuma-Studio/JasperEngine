@@ -355,23 +355,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("ALWAYS", MaterialDepthTest::ALWAYS)
         .endNamespace();
 
-    luabridge::getGlobalNamespace(L)
-        .beginNamespace("MaterialLighting")
-        .addVariable("AUTO", MaterialLighting::AUTO)
-        .addVariable("PIXEL", MaterialLighting::PIXEL)
-        .addVariable("VERTEX", MaterialLighting::VERTEX)
-        .addVariable("MIXED", MaterialLighting::MIXED)
-        .addVariable("NONE", MaterialLighting::NONE)
-        .endNamespace();
-
-    // shader library phase 2: Material.extraPass.order
-    luabridge::getGlobalNamespace(L)
-        .beginNamespace("MaterialPassOrder")
-        .addVariable("AFTER", MaterialPassOrder::AFTER)
-        .addVariable("BEFORE", MaterialPassOrder::BEFORE)
-        .endNamespace();
-
-    // stencil state of a Material's extra pass (MaterialPass.stencil)
+    // stencil test of a Material (and UI/points/lines): AUTO takes the shader's @state,
+    // DISABLED turns it off, any other compare makes the whole MaterialStencil explicit
     luabridge::getGlobalNamespace(L)
         .beginNamespace("MaterialStencilCompare")
         .addVariable("AUTO", MaterialStencilCompare::AUTO)
@@ -396,6 +381,35 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("INVERT", MaterialStencilOp::INVERT)
         .addVariable("INCR_WRAP", MaterialStencilOp::INCR_WRAP)
         .addVariable("DECR_WRAP", MaterialStencilOp::DECR_WRAP)
+        .endNamespace();
+
+    // colorWrite values: AUTO (-1), NONE (0) or a sum of R, G, B, A
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialColorWrite")
+        .addVariable("AUTO", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_AUTO)
+        .addVariable("NONE", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_NONE)
+        .addVariable("R", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_R)
+        .addVariable("G", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_G)
+        .addVariable("B", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_B)
+        .addVariable("A", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_A)
+        .addVariable("RGB", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_RGB)
+        .addVariable("ALL", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_ALL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialLighting")
+        .addVariable("AUTO", MaterialLighting::AUTO)
+        .addVariable("PIXEL", MaterialLighting::PIXEL)
+        .addVariable("VERTEX", MaterialLighting::VERTEX)
+        .addVariable("MIXED", MaterialLighting::MIXED)
+        .addVariable("NONE", MaterialLighting::NONE)
+        .endNamespace();
+
+    // shader library phase 2: Material.extraPass.order
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialPassOrder")
+        .addVariable("AFTER", MaterialPassOrder::AFTER)
+        .addVariable("BEFORE", MaterialPassOrder::BEFORE)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -1038,8 +1052,10 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
+        // the stencil state of a Material (material.stencil.compare = ... edits the material's
+        // own) or of a UI/points/lines object (a copy: set it back)
         .beginClass<MaterialStencil>("MaterialStencil")
-        .addConstructor<void (*) (void)>()
+        .addConstructor<void()>()
         .addProperty("compare", &MaterialStencil::compare, &MaterialStencil::compare)
         .addProperty("ref", &MaterialStencil::ref, &MaterialStencil::ref)
         .addProperty("readMask", &MaterialStencil::readMask, &MaterialStencil::readMask)
@@ -1063,7 +1079,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("depthOffsetFactor", &MaterialPass::depthOffsetFactor, &MaterialPass::depthOffsetFactor)
         .addProperty("depthOffsetUnits", &MaterialPass::depthOffsetUnits, &MaterialPass::depthOffsetUnits)
         .addProperty("stencil", &MaterialPass::stencil, &MaterialPass::stencil)
-        // -1 auto, else a mask of red 1, green 2, blue 4, alpha 8
+        // MaterialColorWrite.AUTO (-1), NONE (0) or a sum of R, G, B, A
         .addProperty("colorWrite", &MaterialPass::colorWrite, &MaterialPass::colorWrite)
         .addProperty("order", &MaterialPass::order, &MaterialPass::order)
         // a @property value of the pass's shader (colours linear); unset reads the manifest default
@@ -1130,6 +1146,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("depthOffsetFactor", &Material::depthOffsetFactor, &Material::depthOffsetFactor)
         .addProperty("depthOffsetUnits", &Material::depthOffsetUnits, &Material::depthOffsetUnits)
         .addProperty("sortPriority", &Material::sortPriority, &Material::sortPriority)
+        .addProperty("stencil", &Material::stencil, &Material::stencil)
+        .addProperty("colorWrite", &Material::colorWrite, &Material::colorWrite)
         // one optional extra draw of the submesh (outlines, masks), edited in place:
         // m.extraPass.shader = "library:outline"; mesh:setMaterial(m)
         .addProperty("extraPass", &Material::extraPass, &Material::extraPass)
@@ -1199,7 +1217,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<FramebufferRender>("FramebufferRender")
         .addConstructor <void (*) (void)> ()
-        .addFunction("createFramebuffer", &FramebufferRender::createFramebuffer)
+        .addFunction("createFramebuffer", static_cast<bool (FramebufferRender::*)(TextureType, int, int, TextureFilter, TextureFilter, TextureWrap, TextureWrap, bool)>(&FramebufferRender::createFramebuffer))
         .addFunction("destroyFramebuffer", &FramebufferRender::destroyFramebuffer)
         .addFunction("isCreated", &FramebufferRender::isCreated)
         .addFunction("getColorTexture", &FramebufferRender::getColorTexture)

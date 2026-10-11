@@ -254,3 +254,33 @@ MaterialDepthWrite Polygon::getDepthWrite() const{
 
     return ui.depthWrite;
 }
+
+void Polygon::setStencil(const MaterialStencil& stencil){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    if (ui.stencil != stencil){
+        ui.stencil = stencil;
+        ui.needReload = true;
+    }
+}
+
+MaterialStencil Polygon::getStencil() const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ui.stencil;
+}
+
+void Polygon::setColorWrite(int colorWrite){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    if (ui.colorWrite != colorWrite){
+        ui.colorWrite = colorWrite;
+        ui.needReload = true;
+    }
+}
+
+int Polygon::getColorWrite() const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ui.colorWrite;
+}

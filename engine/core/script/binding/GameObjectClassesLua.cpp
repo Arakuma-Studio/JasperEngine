@@ -1015,6 +1015,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("isShaderFeatureEnabled", &Points::isShaderFeatureEnabled)
         .addProperty("blendMode", &Points::getBlendMode, &Points::setBlendMode)
         .addProperty("depthWrite", &Points::getDepthWrite, &Points::setDepthWrite)
+        .addProperty("stencil", &Points::getStencil, &Points::setStencil)
+        .addProperty("colorWrite", &Points::getColorWrite, &Points::setColorWrite)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1066,6 +1068,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("isShaderFeatureEnabled", &LineRenderer::isShaderFeatureEnabled)
         .addProperty("blendMode", &LineRenderer::getBlendMode, &LineRenderer::setBlendMode)
         .addProperty("depthWrite", &LineRenderer::getDepthWrite, &LineRenderer::setDepthWrite)
+        .addProperty("stencil", &LineRenderer::getStencil, &LineRenderer::setStencil)
+        .addProperty("colorWrite", &LineRenderer::getColorWrite, &LineRenderer::setColorWrite)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1189,6 +1193,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("isShaderFeatureEnabled", &Polygon::isShaderFeatureEnabled)
         .addProperty("blendMode", &Polygon::getBlendMode, &Polygon::setBlendMode)
         .addProperty("depthWrite", &Polygon::getDepthWrite, &Polygon::setDepthWrite)
+        .addProperty("stencil", &Polygon::getStencil, &Polygon::setStencil)
+        .addProperty("colorWrite", &Polygon::getColorWrite, &Polygon::setColorWrite)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1247,6 +1253,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("isShaderFeatureEnabled", &Text::isShaderFeatureEnabled)
         .addProperty("blendMode", &Text::getBlendMode, &Text::setBlendMode)
         .addProperty("depthWrite", &Text::getDepthWrite, &Text::setDepthWrite)
+        .addProperty("stencil", &Text::getStencil, &Text::setStencil)
+        .addProperty("colorWrite", &Text::getColorWrite, &Text::setColorWrite)
         .addProperty("pivotBaseline", &Text::isPivotBaseline, &Text::setPivotBaseline)
         .addProperty("pivotCentered", &Text::isPivotCentered, &Text::setPivotCentered)
         .addFunction("getAABB", &Text::getAABB)
@@ -1303,6 +1311,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("isShaderFeatureEnabled", &Image::isShaderFeatureEnabled)
         .addProperty("blendMode", &Image::getBlendMode, &Image::setBlendMode)
         .addProperty("depthWrite", &Image::getDepthWrite, &Image::setDepthWrite)
+        .addProperty("stencil", &Image::getStencil, &Image::setStencil)
+        .addProperty("colorWrite", &Image::getColorWrite, &Image::setColorWrite)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

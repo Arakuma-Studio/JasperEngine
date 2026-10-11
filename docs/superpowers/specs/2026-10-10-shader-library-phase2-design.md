@@ -127,6 +127,99 @@ found no open correctness bugs.
 Decisions taken while implementing phase 2, and deviations from the text above. They
 override the sections they refer to; later agents follow them.
 
+### 5.1 Stencil (sl/p2-stencil)
+
+- Attachments. The swapchain already was `DEPTH_STENCIL` on every platform (GLX, WGL, NSGL
+  and Emscripten ask for 8 stencil bits, Metal views use `Depth32Float_Stencil8`, the D3D11
+  and Vulkan contexts create D24S8 / D32S8) except Android, whose EGL config now asks for
+  `EGL_STENCIL_SIZE 8` (falling back to a config without stencil, where stencil tests
+  always pass). Offscreen: `Framebuffer` creates a `DEPTH_STENCIL` attachment by default
+  (camera textures, fixed resolution, editor scene/game views and previews, mirrors,
+  reflection probe faces, the SSR scene colour, post-process ping-pong, the Vulkan
+  composite target) and the `PIP_RTT`, `PIP_RTT_INVERT`, `PIP_RTT_NODEPTH` and
+  `PIP_ZPREPASS_RTT` pipelines expect it; swapchain pipelines take the environment default
+  (`DEPTH_STENCIL`). Depth only, as before: shadow atlases (`createFramebuffer(...,
+  shadowMap=true)`, `createDepthOnlyFramebuffer`), the SSAO depth pre-pass target and the
+  G-buffer (`Framebuffer::setDepthStencil(false)`), drawn by `PIP_DEPTH`,
+  `PIP_SHADOW_DEPTH` and `PIP_GBUFFER`, whose depth format stays `DEPTH`. The fullscreen
+  effect targets (SSAO, SSR, blur) keep a depth attachment of the `PIP_RTT` format they are
+  drawn with. `FramebufferRender::createFramebuffer(..., shadowMap)` (Lua-bound) means
+  depth-stencil unless `shadowMap`; an overload takes the choice explicitly.
+- Sampling a depth-stencil depth: no engine pass samples the depth texture of a colour
+  target (SSAO/SSR/post read the packed depth colour of the depth pre-pass or the G-buffer;
+  shadows sample the depth-only atlases), so the choice never changes what a shader reads.
+  Every depth attachment still gets a texture view; sokol creates it with the depth aspect
+  only (GL/GLES3 `DEPTH24_STENCIL8` samples depth by default, D3D11 SRV
+  `R24_UNORM_X8_TYPELESS` over `R24G8_TYPELESS`, Metal samples `Depth32Float_Stencil8`,
+  Vulkan view aspect `DEPTH_BIT`). Precision on GL/D3D11 offscreen targets moved from
+  32-bit float to 24-bit depth, what the swapchain always had; renders compared pixel for
+  pixel (see below).
+- Clears: `SokolCamera` passes clear depth (1) and stencil (0) together; sokol's default
+  was already clear, so nothing changed for existing passes. Stencil never survives a pass:
+  a mask and its readers must draw in the same camera pass.
+- `RenderState` gains `stencilEnabled`, `stencilCompare` (`StencilCompare`), `stencilRef`,
+  `stencilReadMask`, `stencilWriteMask`, `stencilPass/Fail/DepthFail` (`StencilOp`) and
+  `colorWriteMask` (`ColorWriteBits`, the bits of `MaterialColorWriteBits` and of sokol's
+  `sg_color_mask`). `SokolObject::applyStencilAndColorMask` sets them on the colour
+  pipelines (default, no-depth, RTT, RTT invert, RTT no-depth and the editor's no-cull
+  variants, which are rebuilt from `makePipelineDesc`); the swapchain mask is
+  `colorWrite & RGB` (alpha was never written to the swapchain), offscreen the full mask;
+  0 becomes `SG_COLORMASK_NONE`. Depth, z-prepass, shadow and G-buffer pipelines ignore both.
+- Resolution: `resolveRenderState` (RenderSystem.cpp) keeps its old signature and gained an
+  overload taking `const MaterialStencil&` and `int colorWrite`; the old one passes AUTO,
+  so manifest stencil still applies. `resolveSubmeshRenderState` (unchanged signature)
+  passes the material's values; `resolveComponentRenderState` gained an overload with the
+  component's (`ui/points/lines.stencil`, `colorWrite`), the old one passes AUTO (the
+  editor's labels, sky). The extra pass (sl/p2-pass) should call the new overload with
+  `MaterialPass::stencil` / `colorWrite` against its own manifest state.
+  `MaterialStencil::compare` AUTO takes the manifest's stencil rule; DISABLED turns it off;
+  anything else takes the whole struct (ref and masks clamped to 0..255). Stencil is
+  enabled for any compare other than AUTO/DISABLED (ALWAYS included).
+- Manifest. `ShaderManifestState` gained `stencil` (a `MaterialStencil`, compare AUTO when
+  the manifest names none, DISABLED for `stencil=off`), `stencilSet` (`ShaderStencilFields`:
+  which keys a `@state` line set; a `@state[...]` rule replaces only those over the base)
+  and `colorWrite` (-1 unset), plus `hasStencil()`. `ref`/`readmask`/`writemask` take 0..255
+  decimal or `0x` hex; ops are keep, zero, replace, incr, decr, invert, incrwrap, decrwrap;
+  `colorwrite=` is `none` or any subset of `rgba` in any order without repeats. Errors carry
+  file:line; stencil values on a line without `stencil=` on it or in the base `@state`
+  before it are an error. Accessors for the editor/MCP (`list_shaders` should report
+  `state.stencil` and `state.colorWrite` with them): `ShaderManifest::getStencilCompareName`
+  / `parseStencilCompare`, `getStencilOpName` / `parseStencilOp`, `getColorWriteName` /
+  `parseColorWrite`.
+- Depth pre-pass: a submesh whose stencil test is not ALWAYS leaves the camera depth
+  pre-pass (`MeshComponent::skipsDepthPrepass`), which would otherwise write its depth where
+  the stencil hides it and cut holes in what is behind. A writer that always passes stays in
+  it and writes stencil in its colour pass, where its depth equals the pre-pass depth. The
+  SSAO depth pre-pass and the G-buffer ignore stencil: SSAO darkens and SSR reflects the
+  whole shape of a masked object (visible in the fixture with `STENCIL_EFFECTS=1`).
+- Sorting: `MeshComponent::opaqueSortPriority` (set at load, the lowest `sortPriority` of
+  the opaque submeshes) orders the opaque queue before the distance, nearest first, with a
+  stable sort (ties keep the transform order); with every priority 0 it is the old order.
+  Transparent ties (same priority and distance) break by submission order (transform
+  order), so the queue is deterministic. A 2D pass (no distance sort: a canvas camera, or
+  `transparentSort` off) still draws in transform order and ignores `sortPriority`, as
+  before. Priority is per mesh: one mesh's submeshes draw in submesh order.
+- Reloads: `Mesh::setMaterial` and `Catalog::getMaterialUpdateFlags` reload the mesh on a
+  stencil or colour write change; the component setters (`Image`, `Text`, `Polygon`,
+  `Points`, `LineRenderer`: `setStencil`/`getStencil`, `setColorWrite`/`getColorWrite`) do
+  too. Serialization, inspector, Catalog paths and MCP are not done (editor wave).
+- Lua: `MaterialStencil()` (fields compare, ref, readMask, writeMask, pass, fail,
+  depthFail), `material.stencil` (the material's own: `m.stencil.ref = 2` edits it),
+  `material.colorWrite`, the same two properties on Image/Text/Polygon/Points/LineRenderer
+  (`stencil` is a copy there: set it back), enums `MaterialStencilCompare`,
+  `MaterialStencilOp` and `MaterialColorWrite` (AUTO -1, NONE, R, G, B, A, RGB, ALL;
+  `MaterialColorWriteBits` gained `MATERIAL_COLOR_WRITE_NONE`, `_RGB` and `_AUTO` for it).
+  `extraPass` is not bound here.
+- Fixture `tools/fixtures/stencil` (Lua-built, orthographic): inside mask (with a masked
+  LineRenderer), outside mask, draw-once on one mesh of overlapping squares beside the same
+  mesh blended normally, a sprite masked by a character sprite whose fork
+  `shaders/sprite_mask` takes `stencil=always ref=4 pass=replace colorwrite=none` from its
+  manifest (alpha cutoff 0.5), a mask behind its reader that `sortPriority -1` draws first;
+  the same row drawn by a render-to-texture camera below. `STENCIL_PREPASS=1` (renders
+  identically), `STENCIL_EFFECTS=1` (SSAO + SSR), `STENCIL_SCENE=effects` (no stencil: a
+  glossy floor, a chrome sphere, boxes, SSAO and SSR; pixel-identical to the build before
+  this work).
+
 ### 5.2 Extra pass (sl/p2-pass)
 
 - Data: `Submesh::extraPass` is a `std::shared_ptr<SubmeshExtraPass>` (render, shader,
@@ -158,8 +251,8 @@ override the sections they refer to; later agents follow them.
 - State: `resolveExtraPassRenderState` calls the same `resolveRenderState` as the submesh
   with the pass's values, its manifest state (`@state` + `@state[...]` of its features) and
   the submesh's legacy behaviour (material alpha blend, face culling, cull mode, winding).
-  When the stencil work merges, the pass's `stencil` and `colorWrite` must be passed there
-  exactly where `resolveSubmeshRenderState` passes the material's. `Mesh::setMaterial`
+  It passes the pass's `stencil` and `colorWrite` (the stencil overload), so the pass takes
+  them, else its own manifest's stencil and colour write. `Mesh::setMaterial`
   reloads on any pass change but its parameters (rewritten into the blocks) and texture
   files (rebound).
 - Draw: inside `drawMesh`'s submesh loop, right before (`BEFORE`) or after (`AFTER`) the

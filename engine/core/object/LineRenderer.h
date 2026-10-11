@@ -70,6 +70,13 @@ namespace jasperengine{
         MaterialBlendMode getBlendMode() const;
         void setDepthWrite(MaterialDepthWrite depthWrite);
         MaterialDepthWrite getDepthWrite() const;
+        // stencil test/write and colour channels (MaterialColorWriteBits, -1 AUTO); AUTO takes
+        // the shader's @state, else stencil off and every channel. getStencil gives a copy:
+        // set it back after changing a field
+        void setStencil(const MaterialStencil& stencil);
+        MaterialStencil getStencil() const;
+        void setColorWrite(int colorWrite);
+        int getColorWrite() const;
     };
 }
 

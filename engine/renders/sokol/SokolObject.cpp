@@ -197,6 +197,55 @@ void SokolObject::applyBlend(sg_color_target_state& target, bool offscreen){
     }
 }
 
+namespace {
+    sg_compare_func toSokolStencilCompare(StencilCompare compare){
+        switch (compare){
+            case StencilCompare::NEVER:         return SG_COMPAREFUNC_NEVER;
+            case StencilCompare::LESS:          return SG_COMPAREFUNC_LESS;
+            case StencilCompare::EQUAL:         return SG_COMPAREFUNC_EQUAL;
+            case StencilCompare::LESS_EQUAL:    return SG_COMPAREFUNC_LESS_EQUAL;
+            case StencilCompare::GREATER:       return SG_COMPAREFUNC_GREATER;
+            case StencilCompare::NOT_EQUAL:     return SG_COMPAREFUNC_NOT_EQUAL;
+            case StencilCompare::GREATER_EQUAL: return SG_COMPAREFUNC_GREATER_EQUAL;
+            default:                            return SG_COMPAREFUNC_ALWAYS;
+        }
+    }
+
+    sg_stencil_op toSokolStencilOp(StencilOp op){
+        switch (op){
+            case StencilOp::ZERO:       return SG_STENCILOP_ZERO;
+            case StencilOp::REPLACE:    return SG_STENCILOP_REPLACE;
+            case StencilOp::INCR_CLAMP: return SG_STENCILOP_INCR_CLAMP;
+            case StencilOp::DECR_CLAMP: return SG_STENCILOP_DECR_CLAMP;
+            case StencilOp::INVERT:     return SG_STENCILOP_INVERT;
+            case StencilOp::INCR_WRAP:  return SG_STENCILOP_INCR_WRAP;
+            case StencilOp::DECR_WRAP:  return SG_STENCILOP_DECR_WRAP;
+            default:                    return SG_STENCILOP_KEEP;
+        }
+    }
+}
+
+void SokolObject::applyStencilAndColorMask(sg_pipeline_desc& desc, bool offscreen){
+    if (loadState.stencilEnabled){
+        sg_stencil_face_state face = {};
+        face.compare = toSokolStencilCompare(loadState.stencilCompare);
+        face.fail_op = toSokolStencilOp(loadState.stencilFail);
+        face.depth_fail_op = toSokolStencilOp(loadState.stencilDepthFail);
+        face.pass_op = toSokolStencilOp(loadState.stencilPass);
+        desc.stencil.enabled = true;
+        desc.stencil.front = face;
+        desc.stencil.back = face;
+        desc.stencil.read_mask = loadState.stencilReadMask;
+        desc.stencil.write_mask = loadState.stencilWriteMask;
+        desc.stencil.ref = loadState.stencilRef;
+    }
+
+    // the swapchain keeps its alpha (RGB only, as before the mask was configurable)
+    int mask = loadState.colorWriteMask & (offscreen ? COLOR_WRITE_ALL : (COLOR_WRITE_R | COLOR_WRITE_G | COLOR_WRITE_B));
+    // ColorWriteBits are sokol's channel bits; 0 is sokol's "default" (all), so none is explicit
+    desc.colors[0].write_mask = (mask == 0) ? SG_COLORMASK_NONE : (sg_color_mask)mask;
+}
+
 void SokolObject::beginLoad(PrimitiveType primitiveType){
     bind = {0};
     pip = {0};
@@ -367,7 +416,8 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
         desc.depth.bias_slope_scale = loadState.depthBiasSlope;
         desc.colors[0].write_mask = SG_COLORMASK_NONE;
         desc.sample_count = 1;
-        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+        // the offscreen colour pass it draws into has a depth-stencil attachment
+        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
         desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
         if (loadState.prepassFaceCulling){
             desc.cull_mode = getCullMode(loadState.cullingMode);
@@ -415,7 +465,7 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
             desc.cull_mode = getCullMode(loadState.cullingMode);
         }
         desc.face_winding = getFaceWinding(loadWinding);
-        desc.colors[0].write_mask = SG_COLORMASK_RGB;
+        applyStencilAndColorMask(desc, false);
         applyBlend(desc.colors[0], false);
         if (pipType == PipelineType::PIP_DEFAULT){
             desc.depth.compare = getCompareFunc(loadState.depthCompare);
@@ -438,9 +488,11 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
         desc.depth.compare = getCompareFunc(loadState.depthCompare);
         desc.depth.bias = loadState.depthBias;
         desc.depth.bias_slope_scale = loadState.depthBiasSlope;
-        desc.colors[0].write_mask = SG_COLORMASK_RGBA;
+        applyStencilAndColorMask(desc, true);
         applyBlend(desc.colors[0], true);
-        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+        // offscreen colour passes (cameras, editor views, effects) have a depth-stencil
+        // attachment, see SokolFramebuffer
+        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
         desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
         if (loadState.faceCulling){
             desc.cull_mode = getCullMode(loadState.cullingMode);

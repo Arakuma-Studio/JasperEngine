@@ -22,6 +22,8 @@ namespace jasperengine{
             // when > 1 the framebuffer is created as a 2D multi render target (MRT)
             int numColorAttachments;
             ColorFormat colorFormats[SokolFramebuffer::MAX_COLOR_ATTACHMENTS];
+            // a depth-stencil attachment (default), or depth only
+            bool depthStencil;
 
             unsigned long version; // increment every creation
 
@@ -42,6 +44,12 @@ namespace jasperengine{
             // configure multiple color attachments; formats may be null (defaults to RGBA)
             void setColorAttachments(int count, const ColorFormat* formats = nullptr);
             int getNumColorAttachments() const;
+
+            // Colour passes drawing meshes (PIP_RTT pipelines) need the default depth-stencil
+            // attachment; a target only depth-format pipelines draw into (the SSAO depth
+            // pre-pass, the G-buffer) can be depth only. Applies on the next create().
+            void setDepthStencil(bool depthStencil);
+            bool isDepthStencil() const;
 
             void setWidth(unsigned int width);
             unsigned int getWidth() const;

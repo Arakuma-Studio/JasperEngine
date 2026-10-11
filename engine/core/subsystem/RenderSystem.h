@@ -299,6 +299,8 @@ namespace jasperengine{
 			float distanceToCamera;
 			// transparent queue order (MeshComponent::transparentSortPriority), lower first
 			int sortPriority;
+			// submission order: equal priority and distance draw in it, deterministically
+			uint32_t order;
 		};
 
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
@@ -310,6 +312,8 @@ namespace jasperengine{
 			TilemapComponent* tilemap;
 			Transform* transform;
 			float distanceToCamera;
+			// MeshComponent::opaqueSortPriority, honoured before the distance (lower first)
+			int sortPriority;
 		};
 
 		// One merged run of tilemap indices to draw, in elements relative to the
@@ -324,7 +328,9 @@ namespace jasperengine{
 			bool operator()(const TransparentRenderData& lhs, const TransparentRenderData& rhs) const{
 				if (lhs.sortPriority != rhs.sortPriority)
 					return lhs.sortPriority > rhs.sortPriority;
-				return lhs.distanceToCamera < rhs.distanceToCamera;
+				if (lhs.distanceToCamera != rhs.distanceToCamera)
+					return lhs.distanceToCamera < rhs.distanceToCamera;
+				return lhs.order > rhs.order;
 			}
 		};
 
@@ -1425,6 +1431,10 @@ namespace jasperengine{
 		                                             bool& blended, bool& transparentQueue);
 		// The same for UI, points, lines and sky (AUTO: alpha blend and depth write, legacyCulling)
 		static RenderState resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite, const ShaderManifest* manifest,
+		                                               const std::vector<std::string>& shaderFeatures, bool legacyCulling);
+		// with the component's stencil and colour write (phase 2; AUTO: the manifest's)
+		static RenderState resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite,
+		                                               const MaterialStencil& stencil, int colorWrite, const ShaderManifest* manifest,
 		                                               const std::vector<std::string>& shaderFeatures, bool legacyCulling);
 		// the shader-library custom shader string of a UI/points/lines/sky shader with its
 		// features and the BLEND_* define of its blend mode (Skybox: AUTO)

@@ -326,3 +326,33 @@ MaterialDepthWrite Image::getDepthWrite() const{
 
     return ui.depthWrite;
 }
+
+void Image::setStencil(const MaterialStencil& stencil){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    if (ui.stencil != stencil){
+        ui.stencil = stencil;
+        ui.needReload = true;
+    }
+}
+
+MaterialStencil Image::getStencil() const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ui.stencil;
+}
+
+void Image::setColorWrite(int colorWrite){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    if (ui.colorWrite != colorWrite){
+        ui.colorWrite = colorWrite;
+        ui.needReload = true;
+    }
+}
+
+int Image::getColorWrite() const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ui.colorWrite;
+}

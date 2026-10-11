@@ -116,6 +116,18 @@ namespace jasperengine{
         OFF
     };
 
+    // the stencil keys a @state sets (ShaderManifestState::stencilSet), so a @state[...] rule
+    // replaces only those over the base @state
+    enum ShaderStencilFields : uint8_t{
+        ShaderStencil_Compare   = 1 << 0, // stencil=
+        ShaderStencil_Ref       = 1 << 1, // ref=
+        ShaderStencil_ReadMask  = 1 << 2, // readmask=
+        ShaderStencil_WriteMask = 1 << 3, // writemask=
+        ShaderStencil_Pass      = 1 << 4, // pass=
+        ShaderStencil_Fail      = 1 << 5, // fail=
+        ShaderStencil_DepthFail = 1 << 6  // zfail=
+    };
+
     // @state defaults; AUTO leaves the value to the engine's legacy behaviour
     struct JASPERENGINE_API ShaderManifestState{
         MaterialBlendMode blend = MaterialBlendMode::AUTO;
@@ -127,9 +139,16 @@ namespace jasperengine{
         float depthOffsetUnits = 0.0f;
         ShaderQueue queue = ShaderQueue::AUTO;
         ShaderShadowCasting shadows = ShaderShadowCasting::AUTO;
+        // stencil rule (phase 2): compare AUTO when the manifest has none (stencil off),
+        // DISABLED for stencil=off; the other fields as given, else MaterialStencil's defaults
+        MaterialStencil stencil;
+        uint8_t stencilSet = 0; // ShaderStencilFields this state sets
+        int colorWrite = -1;    // colorwrite=: MaterialColorWriteBits, -1 not set (all channels)
 
         // the values other sets (those it does not leave AUTO) replace these
         void apply(const ShaderManifestState& other);
+        // whether it names a stencil test (stencil= other than off)
+        bool hasStencil() const;
     };
 
     // "@state[<DEFINE>] key=value...": state that applies while a @feature or @keywords
@@ -226,6 +245,21 @@ namespace jasperengine{
         static bool hasManifestLines(const std::string& source);
         static std::string getLightingModeName(ShaderLightingMode mode);
         static std::string getShaderTypeToken(ShaderType type);
+
+        // @state stencil and colour write values (section 2.1 of the phase 2 spec), for the
+        // editor, MCP and checks: names as the manifest writes them
+        // stencil=: off, never, less, equal, lequal, greater, notequal, gequal, always
+        // (AUTO: "auto")
+        static const char* getStencilCompareName(MaterialStencilCompare compare);
+        static bool parseStencilCompare(const std::string& name, MaterialStencilCompare& compare);
+        // pass= / fail= / zfail=: keep, zero, replace, incr, decr, invert, incrwrap, decrwrap
+        static const char* getStencilOpName(MaterialStencilOp op);
+        static bool parseStencilOp(const std::string& name, MaterialStencilOp& op);
+        // colorwrite=: "none", or the channels in rgba order ("rgba", "rgb", "a", "rg"...);
+        // -1: "auto"
+        static std::string getColorWriteName(int colorWrite);
+        // any subset of the letters r, g, b, a in any order, or none; -1 on error
+        static int parseColorWrite(const std::string& name);
     };
 
     // A shader reference string (section 3.1): "" built-in, "library:<name>" an engine

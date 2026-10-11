@@ -186,6 +186,56 @@ namespace {
         }
     }
 
+    StencilCompare toStencilCompare(MaterialStencilCompare compare){
+        switch (compare){
+            case MaterialStencilCompare::NEVER:         return StencilCompare::NEVER;
+            case MaterialStencilCompare::LESS:          return StencilCompare::LESS;
+            case MaterialStencilCompare::EQUAL:         return StencilCompare::EQUAL;
+            case MaterialStencilCompare::LESS_EQUAL:    return StencilCompare::LESS_EQUAL;
+            case MaterialStencilCompare::GREATER:       return StencilCompare::GREATER;
+            case MaterialStencilCompare::NOT_EQUAL:     return StencilCompare::NOT_EQUAL;
+            case MaterialStencilCompare::GREATER_EQUAL: return StencilCompare::GREATER_EQUAL;
+            default:                                    return StencilCompare::ALWAYS;
+        }
+    }
+
+    StencilOp toStencilOp(MaterialStencilOp op){
+        switch (op){
+            case MaterialStencilOp::ZERO:       return StencilOp::ZERO;
+            case MaterialStencilOp::REPLACE:    return StencilOp::REPLACE;
+            case MaterialStencilOp::INCR_CLAMP: return StencilOp::INCR_CLAMP;
+            case MaterialStencilOp::DECR_CLAMP: return StencilOp::DECR_CLAMP;
+            case MaterialStencilOp::INVERT:     return StencilOp::INVERT;
+            case MaterialStencilOp::INCR_WRAP:  return StencilOp::INCR_WRAP;
+            case MaterialStencilOp::DECR_WRAP:  return StencilOp::DECR_WRAP;
+            default:                            return StencilOp::KEEP;
+        }
+    }
+
+    uint8_t clampStencilByte(int value){
+        return (uint8_t)std::clamp(value, 0, 255);
+    }
+
+    // Stencil and colour write (phase 2): an explicit MaterialStencil (compare not AUTO) is
+    // taken whole, else the manifest's stencil rule, else off; colorWrite -1 takes the
+    // manifest's colorwrite, else every channel.
+    void resolveStencilState(const MaterialStencil& stencil, int colorWrite, const ShaderManifestState& manifestState, RenderState& state){
+        const MaterialStencil& resolved = (stencil.compare != MaterialStencilCompare::AUTO) ? stencil : manifestState.stencil;
+        state.stencilEnabled = resolved.compare != MaterialStencilCompare::AUTO && resolved.compare != MaterialStencilCompare::DISABLED;
+        if (state.stencilEnabled){
+            state.stencilCompare = toStencilCompare(resolved.compare);
+            state.stencilRef = clampStencilByte(resolved.ref);
+            state.stencilReadMask = clampStencilByte(resolved.readMask);
+            state.stencilWriteMask = clampStencilByte(resolved.writeMask);
+            state.stencilPass = toStencilOp(resolved.pass);
+            state.stencilFail = toStencilOp(resolved.fail);
+            state.stencilDepthFail = toStencilOp(resolved.depthFail);
+        }
+
+        const int mask = (colorWrite >= 0) ? colorWrite : manifestState.colorWrite;
+        state.colorWriteMask = (mask >= 0) ? (uint8_t)(mask & COLOR_WRITE_ALL) : (uint8_t)COLOR_WRITE_ALL;
+    }
+
     // explicit value, else the manifest's @state value, else AUTO (the legacy behaviour)
     template<typename T>
     T resolveState(T explicitValue, T manifestValue){
@@ -193,9 +243,11 @@ namespace {
     }
 
     // Render state resolution (section 5.2) shared by meshes and components: the explicit
-    // values, then the manifest's @state, then the legacy state given.
+    // values, then the manifest's @state, then the legacy state given. Stencil and colour
+    // write (phase 2) resolve the same way (resolveStencilState).
     RenderState resolveRenderState(MaterialBlendMode blendMode, MaterialCullMode cullMode, MaterialDepthWrite depthWrite,
                                    MaterialDepthTest depthTest, float offsetFactor, float offsetUnits,
+                                   const MaterialStencil& stencil, int colorWrite,
                                    const ShaderManifestState* resolvedState, bool legacyBlended, bool legacyFaceCulling,
                                    CullingMode legacyCullingMode, WindingOrder windingOrder,
                                    bool& blended, bool& transparentQueue){
@@ -246,7 +298,20 @@ namespace {
             transparentQueue = blended;
         }
 
+        resolveStencilState(stencil, colorWrite, manifestState, state);
+
         return state;
+    }
+
+    // the same without explicit stencil or colour write (AUTO: the manifest's, else off / all)
+    RenderState resolveRenderState(MaterialBlendMode blendMode, MaterialCullMode cullMode, MaterialDepthWrite depthWrite,
+                                   MaterialDepthTest depthTest, float offsetFactor, float offsetUnits,
+                                   const ShaderManifestState* resolvedState, bool legacyBlended, bool legacyFaceCulling,
+                                   CullingMode legacyCullingMode, WindingOrder windingOrder,
+                                   bool& blended, bool& transparentQueue){
+        return resolveRenderState(blendMode, cullMode, depthWrite, depthTest, offsetFactor, offsetUnits,
+                                  MaterialStencil(), -1, resolvedState, legacyBlended, legacyFaceCulling,
+                                  legacyCullingMode, windingOrder, blended, transparentQueue);
     }
 
     // the manifest a shader string has, when it has one (built-in and forks without
@@ -2677,7 +2742,7 @@ RenderState RenderSystem::resolveExtraPassRenderState(const MeshComponent& mesh,
     bool blended = false;
     bool transparentQueue = false;
     return resolveRenderState(pass.blendMode, pass.cullMode, pass.depthWrite, pass.depthTest,
-                              pass.depthOffsetFactor, pass.depthOffsetUnits, manifestState,
+                              pass.depthOffsetFactor, pass.depthOffsetUnits, pass.stencil, pass.colorWrite, manifestState,
                               usesAlphaBlend(submesh.material), submesh.faceCulling, mesh.cullingMode, mesh.windingOrder,
                               blended, transparentQueue);
 }
@@ -2694,12 +2759,18 @@ RenderState RenderSystem::resolveSubmeshRenderState(const MeshComponent& mesh, c
                                                     bool& blended, bool& transparentQueue){
     const Material& material = submesh.material;
     return resolveRenderState(material.blendMode, material.cullMode, material.depthWrite, material.depthTest,
-                              material.depthOffsetFactor, material.depthOffsetUnits, manifestState,
+                              material.depthOffsetFactor, material.depthOffsetUnits, material.stencil, material.colorWrite, manifestState,
                               usesAlphaBlend(material), submesh.faceCulling, mesh.cullingMode, mesh.windingOrder,
                               blended, transparentQueue);
 }
 
 RenderState RenderSystem::resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite, const ShaderManifest* manifest,
+                                                      const std::vector<std::string>& shaderFeatures, bool legacyCulling){
+    return resolveComponentRenderState(blendMode, depthWrite, MaterialStencil(), -1, manifest, shaderFeatures, legacyCulling);
+}
+
+RenderState RenderSystem::resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite,
+                                                      const MaterialStencil& stencil, int colorWrite, const ShaderManifest* manifest,
                                                       const std::vector<std::string>& shaderFeatures, bool legacyCulling){
     bool blended = false;
     bool transparentQueue = false;
@@ -2707,6 +2778,7 @@ RenderState RenderSystem::resolveComponentRenderState(MaterialBlendMode blendMod
     if (manifest)
         manifestState = manifest->resolveState(manifest->resolveFeatures(shaderFeatures));
     RenderState state = resolveRenderState(blendMode, MaterialCullMode::AUTO, depthWrite, MaterialDepthTest::AUTO, 0.0f, 0.0f,
+                                           stencil, colorWrite,
                                            manifest ? &manifestState : nullptr, true, legacyCulling, CullingMode::BACK, WindingOrder::CCW,
                                            blended, transparentQueue);
     // AUTO keeps the component's legacy depth write (on), blended or not
@@ -4212,8 +4284,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
     // recomputed from every submesh below
     mesh.transparentSortPriority = 0;
+    mesh.opaqueSortPriority = 0;
     mesh.skipsDepthPrepass = false;
     bool hasTransparentSubmesh = false;
+    bool hasOpaqueSubmesh = false;
 
     std::vector<const Buffer*> attributeBuffers;
     for (auto const& buf : buffers){
@@ -4473,6 +4547,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             const int priority = mesh.submeshes[i].material.sortPriority;
             mesh.transparentSortPriority = hasTransparentSubmesh ? std::min(mesh.transparentSortPriority, priority) : priority;
             hasTransparentSubmesh = true;
+        }else{
+            const int priority = mesh.submeshes[i].material.sortPriority;
+            mesh.opaqueSortPriority = hasOpaqueSubmesh ? std::min(mesh.opaqueSortPriority, priority) : priority;
+            hasOpaqueSubmesh = true;
         }
         // the camera depth pre-pass leaves out a forked color shader without a depth
         // program (its vertices may not match), and what writes no depth
@@ -4486,6 +4564,12 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         // less, greater, not equal), which would draw nothing
         if (colorState.depthCompare != DepthCompare::LESS_EQUAL && colorState.depthCompare != DepthCompare::EQUAL &&
                 colorState.depthCompare != DepthCompare::GREATER_EQUAL && colorState.depthCompare != DepthCompare::ALWAYS){
+            mesh.skipsDepthPrepass = true;
+        }
+        // and a stencil test: the pre-pass would write depth where the stencil hides the
+        // colour (a writer that always passes keeps its depth; it writes stencil when its
+        // colour pass draws, at the depth the pre-pass left)
+        if (colorState.stencilEnabled && colorState.stencilCompare != StencilCompare::ALWAYS){
             mesh.skipsDepthPrepass = true;
         }
     
@@ -6479,6 +6563,8 @@ bool RenderSystem::ensureSSAOFramebuffers(unsigned int width, unsigned int heigh
     rv().ssaoDepthFramebuffer.setMagFilter(TextureFilter::NEAREST);
     rv().ssaoDepthFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     rv().ssaoDepthFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    // drawn only by PIP_DEPTH pipelines, which ignore stencil
+    rv().ssaoDepthFramebuffer.setDepthStencil(false);
     rv().ssaoDepthFramebuffer.create();
 
     rv().ssaoFramebuffer.setWidth(width);
@@ -6625,6 +6711,8 @@ bool RenderSystem::ensureGBufferFramebuffer(unsigned int width, unsigned int hei
     rv().gbufferFramebuffer.setMagFilter(TextureFilter::NEAREST);
     rv().gbufferFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     rv().gbufferFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    // drawn only by PIP_GBUFFER pipelines, which ignore stencil
+    rv().gbufferFramebuffer.setDepthStencil(false);
     rv().gbufferFramebuffer.create();
 
     return rv().gbufferFramebuffer.isCreated();
@@ -7576,7 +7664,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     
     ui.needUpdateTexture = false;
 
-    if (!render.endLoad(pipelines, resolveComponentRenderState(ui.blendMode, ui.depthWrite, ui.shaderManifest.get(), ui.shaderFeatures, false))){
+    if (!render.endLoad(pipelines, resolveComponentRenderState(ui.blendMode, ui.depthWrite, ui.stencil, ui.colorWrite, ui.shaderManifest.get(), ui.shaderFeatures, false))){
         return false;
     }
 
@@ -7769,7 +7857,7 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
 
     points.needUpdateTexture = false;
 
-    if (!render.endLoad(pipelines, resolveComponentRenderState(points.blendMode, points.depthWrite, points.shaderManifest.get(), points.shaderFeatures, false))){
+    if (!render.endLoad(pipelines, resolveComponentRenderState(points.blendMode, points.depthWrite, points.stencil, points.colorWrite, points.shaderManifest.get(), points.shaderFeatures, false))){
         return false;
     }
 
@@ -7845,7 +7933,7 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
         return false;
     }
 
-    if (!render.endLoad(pipelines, resolveComponentRenderState(lines.blendMode, lines.depthWrite, lines.shaderManifest.get(), lines.shaderFeatures, false))){
+    if (!render.endLoad(pipelines, resolveComponentRenderState(lines.blendMode, lines.depthWrite, lines.stencil, lines.colorWrite, lines.shaderManifest.get(), lines.shaderFeatures, false))){
         return false;
     }
 
@@ -11541,6 +11629,8 @@ void RenderSystem::drawCameras(bool includeMain){
 // post-process chain and the fixed resolution run for the view camera only.
 void RenderSystem::renderCameraPass(const CameraPass& pass){
     std::priority_queue<TransparentRenderData, std::vector<TransparentRenderData>, TransparentRenderComparison> transparentRenders;
+    // submission order of transparentRenders, the last tie-break of their sort
+    uint32_t transparentOrder = 0;
 
     auto transforms = scene->getComponentArray<Transform>();
 
@@ -11773,14 +11863,18 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
             if (!mesh.transparent){
                 const float distance = mesh.worldAABB.isNull() ? 0.0f : mesh.worldAABB.squaredDistance(cameraTransform.worldPosition);
-                opaqueRenders.push_back({entity, &mesh, instmesh, terrain, tilemap, &transform, distance});
+                opaqueRenders.push_back({entity, &mesh, instmesh, terrain, tilemap, &transform, distance, mesh.opaqueSortPriority});
             }else if (distanceSort){
-                transparentRenders.push({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, objectDistance(transform), mesh.transparentSortPriority});
+                transparentRenders.push({TransparentRenderType::MESH, entity, &mesh, nullptr, instmesh, terrain, tilemap, &transform, objectDistance(transform), mesh.transparentSortPriority, transparentOrder++});
             }
         }
 
         if (distanceSort){
-            std::sort(opaqueRenders.begin(), opaqueRenders.end(), [](const OpaqueRenderData& a, const OpaqueRenderData& b){
+            // sortPriority first (lower draws first, so stencil writers go before their
+            // readers), then nearest first; stable, so ties keep the transform order
+            std::stable_sort(opaqueRenders.begin(), opaqueRenders.end(), [](const OpaqueRenderData& a, const OpaqueRenderData& b){
+                if (a.sortPriority != b.sortPriority)
+                    return a.sortPriority < b.sortPriority;
                 return a.distanceToCamera < b.distanceToCamera;
             });
         }
@@ -11945,7 +12039,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 if (!points.transparent || !distanceSort){
                     drawPoints(entity, points, transform, camera, cameraTransform, colorPip);
                 }else{
-                    transparentRenders.push({TransparentRenderType::POINTS, entity, nullptr, &points, nullptr, nullptr, nullptr, &transform, objectDistance(transform), 0});
+                    transparentRenders.push({TransparentRenderType::POINTS, entity, nullptr, &points, nullptr, nullptr, nullptr, &transform, objectDistance(transform), 0, transparentOrder++});
                 }
             }
 
