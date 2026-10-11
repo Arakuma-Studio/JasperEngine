@@ -48,13 +48,14 @@ out vec4 g_finalColor;
 #include "includes/output.glsl"
 
 void main() {
+    // both textures read before the discard: past it, the quad's dropped pixels leave the
+    // implicit derivatives undefined
     float noise = dissolveNoise(v_uv1);
+    vec2 uv = v_uv1 * customParams.tiling.xy + customParams.tiling.zw;
+    vec4 base = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv)) * v_color;
     if (noise < dissolveClipLevel()){
         discard;
     }
-
-    vec2 uv = v_uv1 * customParams.tiling.xy + customParams.tiling.zw;
-    vec4 base = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv)) * v_color;
     vec3 color = base.rgb;
 
     #ifdef USE_PUNCTUAL

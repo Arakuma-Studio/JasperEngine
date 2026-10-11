@@ -73,6 +73,11 @@ out vec4 g_finalColor;
 // the tangent frame from the screen-space derivatives of the position and UV (no tangent
 // attribute needed), as Lit does for a mesh without tangents
 vec3 perturbNormal(vec3 normal, vec2 uv){
+    // sampled before the early returns below: its implicit derivatives need every pixel of
+    // the quad still running (uniform control flow)
+    vec3 mapped = texture(sampler2D(u_normalTexture, u_normal_smp), uv).rgb * 2.0 - vec3(1.0);
+    mapped.xy *= customParams.normalStrength;
+
     vec3 dpx = dFdx(v_position);
     vec3 dpy = dFdy(v_position);
     vec2 duvx = dFdx(uv);
@@ -89,9 +94,6 @@ vec3 perturbNormal(vec3 normal, vec2 uv){
     }
     tangent /= tangentLength;
     vec3 bitangent = cross(normal, tangent);
-
-    vec3 mapped = texture(sampler2D(u_normalTexture, u_normal_smp), uv).rgb * 2.0 - vec3(1.0);
-    mapped.xy *= customParams.normalStrength;
     return normalize(mat3(tangent, bitangent, normal) * mapped);
 }
 #endif
@@ -114,7 +116,8 @@ void main() {
             if (!gl_FrontFacing){
                 n = -n;
             }
-            vec3 v = normalize(frame.cameraPosition.xyz - v_position);
+            // towards the camera (an orthographic camera looks along one direction)
+            vec3 v = (frame.cameraPosition.w > 0.5) ? -frame.cameraDirection.xyz : normalize(frame.cameraPosition.xyz - v_position);
             float shininess = exp2(10.0 * customParams.gloss + 1.0);
 
             diffuseLight += ambientLight(n);

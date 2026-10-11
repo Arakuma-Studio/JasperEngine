@@ -92,7 +92,8 @@ void main() {
             if (!gl_FrontFacing){
                 n = -n;
             }
-            vec3 v = normalize(frame.cameraPosition.xyz - v_position);
+            // towards the camera (an orthographic camera looks along one direction)
+            vec3 v = (frame.cameraPosition.w > 0.5) ? -frame.cameraDirection.xyz : normalize(frame.cameraPosition.xyz - v_position);
             vec3 translucent = customParams.translucencyColor * customParams.translucency;
 
             light += ambientLight(n);
