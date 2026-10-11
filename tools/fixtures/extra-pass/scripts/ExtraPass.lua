@@ -32,9 +32,9 @@
 --   SMOKE_GAME_RUNS="overhead EP_SCENE=overhead; overhead_pass EP_SCENE=overhead_pass" tools/smoke-test.sh tools/fixtures/extra-pass
 local ExtraPass = { properties = {} }
 
-local OUTLINE = "shaders/outline"
-local LIT_OUTLINE = "shaders/lit_outline"
-local SILHOUETTE = "shaders/silhouette"
+local OUTLINE = "assets/shaders/outline"
+local LIT_OUTLINE = "assets/shaders/lit_outline"
+local SILHOUETTE = "assets/shaders/silhouette"
 
 local function log(fmt, ...)
     print("[EP] " .. string.format(fmt, ...))
