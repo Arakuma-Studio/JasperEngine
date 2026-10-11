@@ -62,11 +62,15 @@ namespace {
                 {"--html-radio-ring", "inset 0 0 0 1.5px var(--html-accent-contrast, #ffffff)"},
                 {"--html-control-disabled-border", "#7676764d"},
                 {"--html-check-disabled-fill", "#0075ff4d"},
-                {"--html-select-arrow", "html-layer(\"/@htmlui/ua/arrow-down.svg\" 10px 6px 3px 50% no-repeat no-repeat padding-box border-box scroll)"},
+                {"--html-select-arrow", "url(\"/@htmlui/ua/arrow-down.svg\")"},
+                {"--html-select-arrow-color", "currentcolor"},
                 {"--html-thumb", "none"},
                 {"--html-slider-fill", "var(--html-accent, #0075ff)"},
                 {"--html-slider-height", "16px"},
-                {"--html-slider-track-margin", "5px"},
+                {"--html-slider-track-margin", "4px"},
+                {"--html-slider-track-inset", "1px"},
+                {"--html-slider-thumb-margin", "-2px"},
+                {"--html-slider-thumb-transform", "scale(0.9375)"},
                 {"--html-slider-track-height", "6px"},
                 {"--html-slider-track-border", "1px"},
                 // the track's own colors (not the checkbox's and select's --html-control-*)
@@ -271,11 +275,15 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         context.emit("--html-control-disabled-border", "transparent");
         context.emit("--html-check-disabled-fill", "transparent");
         context.emit("--html-select-arrow", "none");
+        context.emit("--html-select-arrow-color", "transparent");
         context.emit("--html-thumb", "none");
         // a range without its look: no value fill, as tall as its track (Chromium)
         context.emit("--html-slider-fill", "transparent");
         context.emit("--html-slider-height", "auto");
         context.emit("--html-slider-track-margin", "0px");
+        context.emit("--html-slider-track-inset", "0px");
+        context.emit("--html-slider-thumb-margin", "0px");
+        context.emit("--html-slider-thumb-transform", "none");
         context.emit("--html-slider-track-height", "auto");
         context.emit("--html-slider-track-border", "0px");
         context.emit("--html-slider-track-bg", "transparent");
@@ -291,8 +299,9 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
                                       "--html-control-border-width", "--html-field-padding", "--html-field-border-width",
                                       "--html-field-border-style", "--html-control-radius", "--html-check-radius", "--html-radio-radius", "--html-check-fill",
                                       "--html-radio-ring", "--html-control-disabled-border", "--html-check-disabled-fill",
-                                      "--html-select-arrow", "--html-thumb", "--html-slider-fill", "--html-slider-height",
-                                      "--html-slider-track-margin", "--html-slider-track-height", "--html-slider-track-border",
+                                      "--html-select-arrow", "--html-select-arrow-color", "--html-thumb", "--html-slider-fill", "--html-slider-height",
+                                      "--html-slider-track-margin", "--html-slider-track-inset", "--html-slider-thumb-margin", "--html-slider-thumb-transform",
+                                      "--html-slider-track-height", "--html-slider-track-border",
                                       "--html-slider-track-bg", "--html-slider-track-border-color"})
             context.emit(companion, uaCompanionDefault(companion));
         return;
