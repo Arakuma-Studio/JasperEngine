@@ -1039,6 +1039,12 @@ the commits):
   and removed by `PseudoElements::Update` from `Element::Update` (after the element's
   properties), their content built in `OnPropertyChange`. `ElementStyle::UpdateDefinition` of a
   pseudo-element asks `StyleSheet::GetElementDefinition(originating, type)`.
+- **Keywords and p3-values' types.** The CSS-wide keyword is resolved first, then p3-values'
+  `ResolveValueKeywords`: `currentcolor` and `color-mix(... currentcolor ...)` reached through
+  `inherit`, `initial` (the border colours' initial value), `unset` or `revert` stay keywords and
+  are resolved with the element's own `color`, as CSS Color 4 computes them. Logical properties
+  (p3-values' shorthands of physical longhands) take keywords and `!important` per longhand
+  (`CascadeKeywords.ValueTypes`).
 - **Areas.** The fixtures of §3.5 and §3.6 are the manifest areas `selectors` and `pseudo`
   (owner p3-cascade), next to `cascade`.
 - **Fork features.** `ForkFeature` gains `Has`, `FocusPseudoClasses`, `SelectorsLevel4` and
