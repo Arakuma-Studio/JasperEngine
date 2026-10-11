@@ -309,6 +309,49 @@ TEST_CASE("TransitionsAnyChange.lists_that_do_not_match_are_discrete")
 	CHECK(f.a->GetProperty<String>("decorator") == "horizontal-gradient(#00ff00 #0000ff)");
 }
 
+TEST_CASE("TransitionsAnyChange.grid_and_other_discrete_properties")
+{
+	// Grid properties (track lists, lines, areas, auto-flow), strings and other values without interpolation: a transition
+	// or an animation of them is discrete, and neither warns nor asserts.
+	Fixture f(R"(
+		@keyframes tracks {
+			from { grid-template-columns: 10px 10px; grid-auto-flow: row; font-family: a; }
+			to { grid-template-columns: 1fr 2fr 30px; grid-auto-flow: column dense; font-family: b; }
+		}
+		#parent { display: grid; width: 100px; grid-template-columns: 20px 20px; grid-template-areas: "a b"; grid-auto-flow: row;
+			grid-auto-rows: 10px; transition: all 1s linear allow-discrete; }
+		#parent.on { grid-template-columns: repeat(2, 40px) 1fr; grid-template-areas: "b a ."; grid-auto-flow: column; grid-auto-rows: 20px;
+			cursor: pointer; }
+		#a { grid-row-start: auto; grid-column-end: span 1; transition: all 1s linear; }
+		#a.on { grid-row-start: 2; grid-column-end: span 2; }
+		#b { animation: tracks 1s linear infinite; }
+	)");
+
+	f.parent->SetClass("on", true);
+	f.a->SetClass("on", true);
+	f.Update();
+	// Without allow-discrete: at once. With it: at half way.
+	CHECK(f.a->GetProperty<String>("grid-row-start") == "2");
+	CHECK(f.parent->GetProperty<String>("grid-template-columns") == "20px 20px");
+	f.clock.AdvanceTo(0.25);
+	CHECK(f.parent->GetProperty<String>("grid-template-columns") == "20px 20px");
+	f.clock.AdvanceTo(0.75);
+	CHECK(f.parent->GetProperty<String>("grid-template-columns") != "20px 20px");
+	f.clock.AdvanceTo(1.5);
+	CHECK(f.parent->GetProperty<int>("grid-auto-flow") == 1); // column
+
+	// Back, and interrupted half way.
+	f.parent->SetClass("on", false);
+	f.a->SetClass("on", false);
+	f.Update();
+	f.clock.AdvanceTo(1.8);
+	f.parent->SetClass("on", true);
+	f.Update();
+	f.clock.AdvanceTo(3.5);
+	CHECK(f.parent->GetProperty<int>("grid-auto-flow") == 1); // column
+	CHECK(f.b->GetProperty<String>("grid-auto-flow") != "");
+}
+
 TEST_CASE("TransitionsAnyChange.relative_units")
 {
 	Fixture f(R"(

@@ -1002,14 +1002,9 @@ bool IsInterpolable(const Property& from, const Property& to, Element& element, 
 
 bool AnimationTrack::AddKey(float offset, const Property& in_property, Element& element, Tween tween, bool has_tween)
 {
-	const Units valid_units = (Unit::NUMBER_LENGTH_PERCENT | Unit::ANGLE | Unit::COLOUR | Unit::TRANSFORM | Unit::KEYWORD | Unit::DECORATOR |
-		Unit::FILTER | Unit::STYLE_VALUE | Unit::BOXSHADOWLIST);
-
-	if (!Any(in_property.unit & valid_units)
-#ifdef RMLUI_MATH_EXPRESSIONS
-		&& in_property.unit != Unit::CALCULATION
-#endif
-	)
+	// Every value animates at least discretely (CSS); only values that are not resolved are refused.
+	if (in_property.unit == Unit::UNKNOWN || in_property.unit == Unit::VAR_EXPRESSION || in_property.unit == Unit::SHORTHAND_PLACEHOLDER ||
+		in_property.unit == Unit::CSS_WIDE_KEYWORD)
 	{
 		Log::Message(Log::LT_WARNING, "Property value does not support animations or transitions. Value: %s", in_property.ToString().c_str());
 		return false;
