@@ -1,5 +1,6 @@
 #include "InlineBox.h"
 #include "LayoutDetails.h"
+#include <cmath>
 #include "../../../Include/RmlUi/Core/Box.h"
 #include "../../../Include/RmlUi/Core/Element.h"
 #include "../../../Include/RmlUi/Core/FontMetrics.h"
@@ -28,7 +29,7 @@ void InlineBoxBase::GetStrut(float& out_total_height_above, float& out_total_dep
 	// the ascent rounded down; the baseline is then on a whole pixel of the line.
 	float ascent, descent;
 	LayoutDetails::GetIntegerAscentDescent(GetFontMetrics(), ascent, descent);
-	const float half_leading = Math::RoundDown(0.5f * (line_height - (ascent + descent)));
+	const float half_leading = std::floor(0.5f * (line_height - (ascent + descent)));
 	out_total_height_above = ascent + half_leading;
 	out_total_depth_below = line_height - out_total_height_above;
 }

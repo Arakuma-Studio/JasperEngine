@@ -1223,6 +1223,11 @@ static PseudoElementType GetPseudoElementType(const String& name, bool legacy_co
 bool StyleSheetParser::ParseCompoundSelectors(const String& rule, Vector<CompoundSelector>& compounds)
 {
 	compounds.clear();
+	// One allocation for the usual selector: as many compounds as descendant/child/sibling steps, plus one.
+	size_t num_steps = 1;
+	for (const char c : rule)
+		num_steps += (c == ' ' || c == '>' || c == '+' || c == '~');
+	compounds.reserve(num_steps);
 
 	// Create each node going down the tree.
 	for (size_t index = 0; index < rule.size();)
@@ -1328,7 +1333,8 @@ bool StyleSheetParser::ParseCompoundSelectors(const String& rule, Vector<Compoun
 					String pseudo_name = ExtractUnescapedSelectorToken(rule, start_index + (double_colon ? 2 : 1), end_index);
 					// Pseudo-class and pseudo-element names are ASCII case-insensitive; their arguments are kept as written.
 					const size_t name_end = Math::Min(pseudo_name.find('('), pseudo_name.size());
-					pseudo_name = StringUtilities::ToLower(pseudo_name.substr(0, name_end)) + pseudo_name.substr(name_end);
+					if (std::any_of(pseudo_name.begin(), pseudo_name.begin() + name_end, [](char c) { return c >= 'A' && c <= 'Z'; }))
+						pseudo_name = StringUtilities::ToLower(pseudo_name.substr(0, name_end)) + pseudo_name.substr(name_end);
 
 					const PseudoElementType pseudo_element = GetPseudoElementType(pseudo_name, !double_colon);
 					if (pseudo_element != PseudoElementType::None)

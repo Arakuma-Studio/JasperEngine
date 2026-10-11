@@ -12,6 +12,9 @@ namespace Cascade {
 	// Finds a trailing '!important' outside strings and parentheses; 'stripped' receives the value before it.
 	static bool StripImportant(const String& value, String& stripped)
 	{
+		// The common case: no '!' at all.
+		if (value.find('!') == String::npos)
+			return false;
 		size_t bang = String::npos;
 		int depth = 0;
 		char quote = 0;
@@ -103,7 +106,20 @@ namespace Cascade {
 
 	bool ParseKeyword(const String& value, CssWideKeyword& keyword)
 	{
-		const String word = StringUtilities::ToLower(StringUtilities::StripWhitespace(value));
+		// The common case first, without copies: a value that is not one of the five words.
+		size_t begin = 0, end = value.size();
+		while (begin < end && StringUtilities::IsWhitespace(value[begin]))
+			begin++;
+		while (end > begin && StringUtilities::IsWhitespace(value[end - 1]))
+			end--;
+		const size_t length = end - begin;
+		if (length < 5 || length > 12)
+			return false;
+		const char first = char(value[begin] | 0x20);
+		if (first != 'i' && first != 'u' && first != 'r')
+			return false;
+
+		const String word = StringUtilities::ToLower(value.substr(begin, length));
 		if (word == "inherit")
 			keyword = CssWideKeyword::Inherit;
 		else if (word == "initial")
@@ -192,6 +208,15 @@ namespace Cascade {
 	static bool ParseRawDeclaration(const PropertySpecification& specification, PropertyDictionary& dictionary, const String& name,
 		const String& value, bool& result)
 	{
+		// Only these names (the common case is none of them: no lookup, no copy).
+		static const char* const raw_names[] = {"content", "quotes", "counter-reset", "counter-increment", "counter-set", "list-style-type",
+			"list-style-image", "list-style"};
+		bool raw_name = false;
+		for (const char* raw : raw_names)
+			raw_name = raw_name || name == raw;
+		if (!raw_name)
+			return false;
+
 		const String stripped = StringUtilities::StripWhitespace(value);
 		if (stripped.find("var(") != String::npos)
 			return false;
