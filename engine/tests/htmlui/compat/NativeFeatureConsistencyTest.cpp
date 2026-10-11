@@ -89,6 +89,7 @@ namespace {
         {ForkFeature::ObjectFit, SampleKind::Declaration, "object-position: right 10px bottom 20%", "", "HTMLUI-CSS-0004"},
         {ForkFeature::BackgroundLayers, SampleKind::Declaration, "background: linear-gradient(#ff0000ff, #0000ffff) 10px 20px / 30px 40px repeat-x padding-box content-box #000000ff", "decorator:", ""},
         {ForkFeature::BackgroundLayers, SampleKind::Declaration, "background-image: linear-gradient(#ff0000ff, #0000ffff), none", "decorator:", ""},
+        {ForkFeature::BackgroundLayers, SampleKind::Declaration, "background-image: linear-gradient(currentcolor, #0000ffff)", "decorator:", ""},
         {ForkFeature::BackgroundLayers, SampleKind::Declaration, "background-position: 10px 20%", "decorator:", ""},
         {ForkFeature::BackgroundLayers, SampleKind::Declaration, "background-position-x: 10px", "decorator:", ""},
         {ForkFeature::BackgroundLayers, SampleKind::Declaration, "background-position-y: 20%", "decorator:", ""},

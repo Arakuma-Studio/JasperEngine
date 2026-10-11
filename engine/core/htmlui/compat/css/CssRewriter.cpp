@@ -1547,8 +1547,12 @@ namespace {
             NormalizeContext normalize;
             normalize.colors = facts.colorKeywords;
             // (the fork's outline-color takes currentcolor too: ForkFeature::Outline, p3-paint)
+            // (and the fork's layers resolve currentcolor in gradient stops where they are drawn: ForkFeature::BackgroundLayers)
             const bool nativeColorRewrite = writesCurrentColorNatively(row->rewrite) ||
-                                            (row->rewrite == RewriteId::Outline && session.options.fork.has(ForkFeature::Outline));
+                                            (row->rewrite == RewriteId::Outline && session.options.fork.has(ForkFeature::Outline)) ||
+                                            ((row->rewrite == RewriteId::Background || row->rewrite == RewriteId::BackgroundLonghand ||
+                                              row->rewrite == RewriteId::MaskImage) &&
+                                             session.options.fork.has(ForkFeature::BackgroundLayers));
             normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint || keepsCurrentColorKeyword(session, *row) ||
                                                 (session.options.fork.has(ForkFeature::CurrentColor) && nativeColorRewrite);
             normalize.currentColorMixNative = session.options.fork.has(ForkFeature::CurrentColor) &&

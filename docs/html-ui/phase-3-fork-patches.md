@@ -1322,7 +1322,8 @@ Registered for all elements, used by replaced elements: `ElementImage::GenerateG
 `/` size, defaults reset; tile counts for repeat/space/round), `ObjectFit.cpp` (dest/uv rects for
 all five values). Goldens: `p3/paint/{shorthand-gradient,multiple-layers,url-cover,
 url-contain,repeat-space-round,position-keywords,clip-padding-radius,origin-content,
-attachment-fixed,mask-image-gradient,mask-image-url}.html`, `p3/paint/{object-fit-5,
+attachment-fixed,mask-image-gradient,mask-image-url,background-transition,currentcolor-layers,
+object-fit-svg}.html`, `p3/paint/{object-fit-5,
 object-position}.html`.
 
 ---
