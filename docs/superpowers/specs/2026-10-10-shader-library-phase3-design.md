@@ -184,6 +184,82 @@ shaders and the editor is also written out in `/tmp/shader-research/p3-api.md`.
   passes and 11 images; every run's images and views made stay constant between frames 40 and
   100 (targets reused). Only the GL backend was run; the other backends were compiled, not run.
 
+### 4.2 Shaders A (sl/p3-shaders-a)
+
+- Soft particles (§2.2): `particle` and `unlit` gain `SOFT` (`@require scenedepth feature=SOFT`,
+  alpha times `saturate((sceneLinearDepth - fragmentLinearDepth) / softness)`) and a separate
+  `NEAR_FADE` (invisible at `nearFadeStart`, whole from `nearFadeEnd`, view-space distances),
+  not part of `SOFT`: a camera fade alone reads no scene depth. Without a scene input its
+  distance comes from the frame block's projection (z and w rows inverted at
+  `gl_FragCoord.z`, right in perspective and orthographic cameras, approximate under a
+  mirror's oblique near plane); with one it is `fragmentLinearDepth()`. The shared maths is
+  `library/soft_fade.glsl` (`softIntersection`, `softViewDistance`, `softRamp`), also used by
+  `depth_fade`. `unlit` is opaque by default, so `@state[SOFT]` and `@state[NEAR_FADE]` make it
+  `blend=alpha zwrite=off shadows=off` (the transparent queue the scene-depth rule asks for; a
+  soft card casts no shadow); a material blend still wins (additive glows), and the
+  premultiplied blend fades the whole colour. Points have no queue; the particle's own
+  `zwrite=off` is unchanged. Instanced meshes work through `unlit` (instance colour alpha).
+- `rim` `INTERSECTION`: `pow(1 - saturate(gap / intersectionWidth), intersectionPower)` times
+  `intersectionColor` (HDR), added to the fresnel glow (the pattern brightens it with
+  `TEXTURE`); both take the rim colour's alpha, as the additive blend does.
+- `projected_decal` (new, Effects): drawn as a unit cube (1 x 1 x 1, -0.5..0.5: the box
+  primitive and the export fixture's `box.gltf`), sized by its transform. `@state blend=alpha
+  zwrite=off ztest=always cull=front shadows=off`, `@keywords DECAL_BLEND ALPHA MULTIPLY` with
+  `@state[DECAL_BLEND_MULTIPLY] blend=multiply` (as `decal`). Its decal space needs the box's
+  inverse model matrix in the fragment stage: `projected_decal.vert` computes it in the
+  displacement hook (model matrix times the instance matrix, affine inverse through
+  `inverse(mat3)`) and passes three `flat` rows, so the decal needs no script or property to
+  follow its transform and works instanced. The texture maps the box's XZ like a plane of its
+  size (u along +X, v along +Z, `tiling`), projected down the box's Y axis. Fades: `edgeFade`
+  towards the box's top and bottom (a slope leaving the box ends softly); `ANGLE_FADE` (default
+  on, `angleFadeStart`/`End` in degrees, cosines computed per vertex into a flat varying) with
+  the surface normal from the screen derivatives of the reconstructed position, turned towards
+  the camera (the derivatives' handedness differs between backends), against the box's Y axis
+  in world space (the gradient of its local y). Chosen over an up-axis or height-only fade,
+  which cannot tell a stair riser from a tread; it costs no extra depth sample and leaves at
+  most a pixel-wide seam along depth steps (not visible in the fixture's stairs at 1280x720).
+  The camera inside the box works (the back faces still cover the screen). With
+  `ztest=always` a decal drawn after transparent objects would paint over them: the
+  description asks for a material sort priority below them (-1); the manifest has no sort key.
+  Unlit like `decal`.
+- `depth_fade` (new, Effects): texture times HDR tint and vertex/instance colour, both faces,
+  `blend=alpha zwrite=off shadows=off`, `@keywords FADE_BLEND ALPHA ADDITIVE` (light shafts).
+  `SOFT` default on (`softness`); near (`nearFadeStart`/`End`) and far (`farFadeStart`/`End`)
+  camera fades always on (smoothstep ramps of the view distance; they replace the owner's
+  `pos.z / pos.w` fade); `SCROLL` (`scrollSpeed`, wrapped with `fract`), `MASK` (red times
+  alpha of `u_maskTexture` at the untiled UV, so a grey mask and a white particle sprite both
+  shape the card), `EDGE_FADE` (`pow(|n.v|, edgeFadePower)`, `@require normals position
+  feature=EDGE_FADE`).
+- Every manifest of these shaders states the mobile cost of reading the scene depth.
+- Pre-existing, fixed: `check_shader` / `check --shaders` validated a variant's rows with the
+  features of its (already resolved) reference resolved again, which turned a default-on
+  feature the variant has off back on: `projected_decal` with `!ANGLE_FADE` and `depth_fade`
+  with `!SOFT` reported their rows as missing (`ProjectChecks::validateShaderManifest` now takes
+  the reference's defines as they are). The `shaders --library` matrix never compiled a lone
+  default-on feature off: it now adds a set with each default-on feature off
+  (`editor/shader/ShaderLibraryMatrix.cpp`).
+- Fixture: group `phase3a` of `tools/fixtures/shader-library` (`scripts/phase3a.lua`, its header
+  lists the cells and `PH3A_VIEW` close-ups: soft, near, quads, field, decals, stairs, decals_b,
+  fog, inside, enter, ortho). `tools/fixtures/shader-library-export/Phase3A.scene` from
+  `generate.py` (`build_phase3a`), checked by `check.py`; only that scene, `project.yaml` and
+  `fx_dirt.png` were taken from the regeneration (the other scenes come out identical but for
+  their ids).
+- MCP tests updated for the new manifests: `test_shader_library_editor.py` (unlit's features,
+  rim's `require_rules`) and `test_scene_inputs.py` (the "reads nothing" case is now `toon`;
+  `unlit` and `projected_decal` list `scenedepth`).
+- Checks run: full `tools/build.sh linux`; `shaders --library all --backend all` (31 shaders,
+  9132 compiles, no failure or manifest diagnostic); smoke tests with screenshots of the
+  `phase3a` group (every `PH3A_VIEW`, `enter` at three times: outside, inside, outside), of
+  `scene-inputs` and of the whole `shader-library`; seen in them: no hard line where soft points
+  and soft quads cross the wall and the floor (their hard twins cut), near-faded points thin out
+  towards the camera, the shield's band follows the ground line, the bump and the crate, decals
+  undistorted on flat ground, on the treads only with the angle fade (stretched down the
+  risers without it), clipped at the box's far edge with the camera inside, right in the
+  orthographic view, fog cards soft where they cross the ground, the rock and the wall (the
+  SOFT-off card cut); `tools/fixtures/shader-library-export/check.sh` (six scenes pass, Phase3A
+  mean difference 0.84); the MCP suite (262 passed, 3 slow ones skipped). Only the GL backend
+  was run; the others were compiled.
+
 ## 5. Definition of done
 
 All requirements implemented, all checks pass, merged into `shader-library`, review pass
