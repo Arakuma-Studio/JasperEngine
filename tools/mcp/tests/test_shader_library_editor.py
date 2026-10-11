@@ -177,6 +177,8 @@ async def test_lighting_modes_follow_manifest(ed: Editor):
             ed.check_eq(got[0], "auto")
             ed.check_eq(got[1], allowed[0], f"{shader or 'Lit'}: the default first")
             ed.check_eq(sorted(got[1:]), sorted(allowed), f"{shader or 'Lit'}: {msg}")
+    # the scene round trip below expects no lighting set
+    await ed.call("delete_entities", entities=[eid])
 
 
 async def test_light_shading_and_cap(ed: Editor):
