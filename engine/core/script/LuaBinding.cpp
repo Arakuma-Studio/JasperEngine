@@ -3,6 +3,9 @@
 
 #include <unordered_map>
 #include "LuaBinding.h"
+#include "shader/ShaderManifest.h"
+#include "math/Vector3.h"
+#include "math/Vector4.h"
 
 #include "Log.h"
 #include "System.h"
@@ -122,6 +125,61 @@ void LuaBinding::createLuaState(){
     registerHelpersFunctions(luastate);
 
     collectLoadedModuleNames(luastate, baselineLuaModules);
+}
+
+namespace {
+    // registry key of the weak table Material userdata -> drawn shader
+    const char* const MATERIAL_SHADER_TABLE = "jasperengine.materialDrawnShader";
+
+    void pushMaterialShaderTable(lua_State* L){
+        if (lua_getfield(L, LUA_REGISTRYINDEX, MATERIAL_SHADER_TABLE) == LUA_TTABLE)
+            return;
+        lua_pop(L, 1);
+        lua_newtable(L);
+        lua_newtable(L);
+        lua_pushstring(L, "k");
+        lua_setfield(L, -2, "__mode");
+        lua_setmetatable(L, -2);
+        lua_pushvalue(L, -1);
+        lua_setfield(L, LUA_REGISTRYINDEX, MATERIAL_SHADER_TABLE);
+    }
+}
+
+void LuaBinding::setMaterialDrawnShader(lua_State* L, int index, const std::string& shader){
+    index = lua_absindex(L, index);
+    if (!lua_isuserdata(L, index))
+        return;
+    pushMaterialShaderTable(L);
+    lua_pushvalue(L, index);
+    if (shader.empty())
+        lua_pushnil(L);
+    else
+        lua_pushstring(L, shader.c_str());
+    lua_rawset(L, -3);
+    lua_pop(L, 1);
+}
+
+std::string LuaBinding::getMaterialDrawnShader(lua_State* L, int index){
+    index = lua_absindex(L, index);
+    if (!lua_isuserdata(L, index))
+        return std::string();
+    pushMaterialShaderTable(L);
+    lua_pushvalue(L, index);
+    lua_rawget(L, -2);
+    std::string shader = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
+    lua_pop(L, 2);
+    return shader;
+}
+
+Vector4 LuaBinding::getShaderParamValue(const std::string& shader, const std::string& name, const Vector3& value){
+    float w = 0.0f;
+    if (!shader.empty()){
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+        const ShaderManifestProperty* property = manifest ? manifest->findProperty(name) : nullptr;
+        if (property && (property->kind == ShaderPropertyKind::COLOR || property->kind == ShaderPropertyKind::HDRCOLOR))
+            w = 1.0f;
+    }
+    return Vector4(value.x, value.y, value.z, w);
 }
 
 lua_State* LuaBinding::getLuaState(){

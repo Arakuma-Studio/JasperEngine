@@ -7,6 +7,8 @@
 
 #include "LuaBridge.h"
 #include "LuaBridgeAddon.h"
+#include "Scene.h"
+#include "subsystem/RenderSystem.h"
 
 #include "EntityHandle.h"
 #include "Fog.h"
@@ -241,8 +243,34 @@ int luaDestroyImmediate(lua_State* L){
 
 }
 
+namespace {
+    // the shader a component draws with: its customShader, else the scene's default
+    template <class T>
+    std::string componentShader(const T* self, ShaderType type){
+        const std::string shader = self->getCustomShader();
+        Scene* scene = self->getScene();
+        return (shader.empty() && scene) ? scene->getDefaultCustomShader(type) : shader;
+    }
+}
+
 void LuaBinding::registerGameObjectClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
+
+    // Mesh:getMaterial: the submesh's material, a copy that knows the shader the submesh draws
+    // with when the material names none (the mesh's customShader, else the scene default)
+    static luabridge::LuaRef (*meshMaterial)(const Mesh*, unsigned int, lua_State*) =
+        +[](const Mesh* self, unsigned int submesh, lua_State* L) -> luabridge::LuaRef {
+            const MeshComponent& mesh = self->getComponent<MeshComponent>();
+            luabridge::LuaRef ref(L, self->getMaterial(submesh));
+            if (submesh < mesh.numSubmeshes && mesh.submeshes[submesh].material.shader.empty() && self->getScene()) {
+                const std::string drawn = RenderSystem::getSubmeshShader(mesh, mesh.submeshes[submesh],
+                    self->getScene()->getDefaultCustomShader(ShaderType::MESH));
+                ref.push(L);
+                LuaBinding::setMaterialDrawnShader(L, -1, drawn);
+                lua_pop(L, 1);
+            }
+            return ref;
+        };
 
     luabridge::getGlobalNamespace(L)
         .beginNamespace("CameraType")
@@ -406,10 +434,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // falls back to the manifest default
         .addFunction("setShaderParam",
             luabridge::overload<const std::string&, const Vector4&>(&Skybox::setShaderUniform),
-            luabridge::overload<const std::string&, const Vector3&>(&Skybox::setShaderUniform),
+            luabridge::overload<Skybox*, const std::string&, const Vector3&>(+[](Skybox* self, const std::string& name, const Vector3& value) {
+                // a colour given as (r, g, b) is opaque
+                self->setShaderUniform(name, LuaBinding::getShaderParamValue(componentShader(self, ShaderType::SKYBOX), name, value));
+            }),
             luabridge::overload<const std::string&, const Vector2&>(&Skybox::setShaderUniform),
             luabridge::overload<const std::string&, float>(&Skybox::setShaderUniform))
         .addFunction("getShaderParam", &Skybox::getShaderParam)
+        .addFunction("removeShaderParam", &Skybox::removeShaderUniform)
         .addFunction("setShaderTexture", &Skybox::setShaderTexture)
         .addFunction("getShaderTexture", &Skybox::getShaderTexture)
         .addFunction("setShaderFeature", &Skybox::setShaderFeature)
@@ -651,13 +683,19 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const float, const float, const float, const float>(&Mesh::setColor),
             luabridge::overload<Vector4>(&Mesh::setColor))
         .addProperty("alpha", &Mesh::getAlpha, &Mesh::setAlpha)
-        .addProperty("material", (Material(Mesh::*)()const)&Mesh::getMaterial, (void(Mesh::*)(const Material&))&Mesh::setMaterial)
+        // a copy remembering the shader its submesh draws with (LuaBinding::setMaterialDrawnShader)
+        .addProperty("material", +[](const Mesh* self, lua_State* L) -> luabridge::LuaRef { return meshMaterial(self, 0, L); },
+                     (void(Mesh::*)(const Material&))&Mesh::setMaterial)
         .addFunction("setMaterial", 
             luabridge::overload<const Material&>(&Mesh::setMaterial),
             luabridge::overload<unsigned int, const Material&>(&Mesh::setMaterial))
         .addFunction("getMaterial", 
-            luabridge::overload<>(&Mesh::getMaterial),
-            luabridge::overload<unsigned int>(&Mesh::getMaterial))
+            luabridge::overload<const Mesh*, lua_State*>(+[](const Mesh* self, lua_State* L) -> luabridge::LuaRef {
+                return meshMaterial(self, 0, L);
+            }),
+            luabridge::overload<const Mesh*, unsigned int, lua_State*>(+[](const Mesh* self, unsigned int submesh, lua_State* L) -> luabridge::LuaRef {
+                return meshMaterial(self, submesh, L);
+            }))
         .addProperty("primitiveType", (PrimitiveType(Mesh::*)()const)&Mesh::getPrimitiveType, (void(Mesh::*)(PrimitiveType))&Mesh::setPrimitiveType)
         .addFunction("setPrimitiveType", 
             luabridge::overload<PrimitiveType>(&Mesh::setPrimitiveType),
@@ -963,10 +1001,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // falls back to the manifest default
         .addFunction("setShaderParam",
             luabridge::overload<const std::string&, const Vector4&>(&Points::setShaderUniform),
-            luabridge::overload<const std::string&, const Vector3&>(&Points::setShaderUniform),
+            luabridge::overload<Points*, const std::string&, const Vector3&>(+[](Points* self, const std::string& name, const Vector3& value) {
+                // a colour given as (r, g, b) is opaque
+                self->setShaderUniform(name, LuaBinding::getShaderParamValue(componentShader(self, ShaderType::POINTS), name, value));
+            }),
             luabridge::overload<const std::string&, const Vector2&>(&Points::setShaderUniform),
             luabridge::overload<const std::string&, float>(&Points::setShaderUniform))
         .addFunction("getShaderParam", &Points::getShaderParam)
+        .addFunction("removeShaderParam", &Points::removeShaderUniform)
         .addFunction("setShaderTexture", &Points::setShaderTexture)
         .addFunction("getShaderTexture", &Points::getShaderTexture)
         .addFunction("setShaderFeature", &Points::setShaderFeature)
@@ -1010,10 +1052,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // falls back to the manifest default
         .addFunction("setShaderParam",
             luabridge::overload<const std::string&, const Vector4&>(&LineRenderer::setShaderUniform),
-            luabridge::overload<const std::string&, const Vector3&>(&LineRenderer::setShaderUniform),
+            luabridge::overload<LineRenderer*, const std::string&, const Vector3&>(+[](LineRenderer* self, const std::string& name, const Vector3& value) {
+                // a colour given as (r, g, b) is opaque
+                self->setShaderUniform(name, LuaBinding::getShaderParamValue(componentShader(self, ShaderType::LINES), name, value));
+            }),
             luabridge::overload<const std::string&, const Vector2&>(&LineRenderer::setShaderUniform),
             luabridge::overload<const std::string&, float>(&LineRenderer::setShaderUniform))
         .addFunction("getShaderParam", &LineRenderer::getShaderParam)
+        .addFunction("removeShaderParam", &LineRenderer::removeShaderUniform)
         .addFunction("setShaderTexture", &LineRenderer::setShaderTexture)
         .addFunction("getShaderTexture", &LineRenderer::getShaderTexture)
         .addFunction("setShaderFeature", &LineRenderer::setShaderFeature)
@@ -1129,10 +1175,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // falls back to the manifest default
         .addFunction("setShaderParam",
             luabridge::overload<const std::string&, const Vector4&>(&Polygon::setShaderUniform),
-            luabridge::overload<const std::string&, const Vector3&>(&Polygon::setShaderUniform),
+            luabridge::overload<Polygon*, const std::string&, const Vector3&>(+[](Polygon* self, const std::string& name, const Vector3& value) {
+                // a colour given as (r, g, b) is opaque
+                self->setShaderUniform(name, LuaBinding::getShaderParamValue(componentShader(self, ShaderType::UI), name, value));
+            }),
             luabridge::overload<const std::string&, const Vector2&>(&Polygon::setShaderUniform),
             luabridge::overload<const std::string&, float>(&Polygon::setShaderUniform))
         .addFunction("getShaderParam", &Polygon::getShaderParam)
+        .addFunction("removeShaderParam", &Polygon::removeShaderUniform)
         .addFunction("setShaderTexture", &Polygon::setShaderTexture)
         .addFunction("getShaderTexture", &Polygon::getShaderTexture)
         .addFunction("setShaderFeature", &Polygon::setShaderFeature)
@@ -1183,10 +1233,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // falls back to the manifest default
         .addFunction("setShaderParam",
             luabridge::overload<const std::string&, const Vector4&>(&Text::setShaderUniform),
-            luabridge::overload<const std::string&, const Vector3&>(&Text::setShaderUniform),
+            luabridge::overload<Text*, const std::string&, const Vector3&>(+[](Text* self, const std::string& name, const Vector3& value) {
+                // a colour given as (r, g, b) is opaque
+                self->setShaderUniform(name, LuaBinding::getShaderParamValue(componentShader(self, ShaderType::UI), name, value));
+            }),
             luabridge::overload<const std::string&, const Vector2&>(&Text::setShaderUniform),
             luabridge::overload<const std::string&, float>(&Text::setShaderUniform))
         .addFunction("getShaderParam", &Text::getShaderParam)
+        .addFunction("removeShaderParam", &Text::removeShaderUniform)
         .addFunction("setShaderTexture", &Text::setShaderTexture)
         .addFunction("getShaderTexture", &Text::getShaderTexture)
         .addFunction("setShaderFeature", &Text::setShaderFeature)
@@ -1235,10 +1289,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // falls back to the manifest default
         .addFunction("setShaderParam",
             luabridge::overload<const std::string&, const Vector4&>(&Image::setShaderUniform),
-            luabridge::overload<const std::string&, const Vector3&>(&Image::setShaderUniform),
+            luabridge::overload<Image*, const std::string&, const Vector3&>(+[](Image* self, const std::string& name, const Vector3& value) {
+                // a colour given as (r, g, b) is opaque
+                self->setShaderUniform(name, LuaBinding::getShaderParamValue(componentShader(self, ShaderType::UI), name, value));
+            }),
             luabridge::overload<const std::string&, const Vector2&>(&Image::setShaderUniform),
             luabridge::overload<const std::string&, float>(&Image::setShaderUniform))
         .addFunction("getShaderParam", &Image::getShaderParam)
+        .addFunction("removeShaderParam", &Image::removeShaderUniform)
         .addFunction("setShaderTexture", &Image::setShaderTexture)
         .addFunction("getShaderTexture", &Image::getShaderTexture)
         .addFunction("setShaderFeature", &Image::setShaderFeature)
