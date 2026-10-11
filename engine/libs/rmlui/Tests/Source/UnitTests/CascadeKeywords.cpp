@@ -37,6 +37,8 @@ static const String keywords_rml = R"(
 		#c-chain { padding-left: inherit; }
 		#c-all { all: initial; }
 		#c-all-unset { all: unset; }
+		.radius { border-radius: 7px; tab-index: auto; nav-down: auto; -rmlui-direction: rtl; }
+		#c-all-radius { all: unset; }
 		#c-shorthand { padding: inherit; }
 		#c-case { color: INHERIT; }
 	</style>
@@ -53,6 +55,7 @@ static const String keywords_rml = R"(
 		<div id="c-chain"><div id="c-chain-child"/></div>
 		<div id="c-all"/>
 		<div id="c-all-unset"/>
+		<div id="c-all-radius" class="radius"/>
 		<div id="c-shorthand"/>
 		<div id="c-case"/>
 	</div>
@@ -138,6 +141,13 @@ TEST_CASE("CascadeKeywords")
 		CHECK(values("c-all-unset").display() == Style::Display::Inline);
 		CHECK(values("c-all-unset").color() == green);
 		CHECK(values("c-all-unset").font_size() == 10.f);
+
+		// every CSS property, the radii's -rmlui- longhands included; not direction nor RmlUi's interaction properties
+		// (focusability, navigation: attributes in HTML)
+		CHECK_FALSE(values("c-all-radius").has_border_radius());
+		CHECK(values("c-all-radius").tab_index() == Style::TabIndex::Auto);
+		CHECK(document->GetElementById("c-all-radius")->GetProperty(PropertyId::NavDown)->ToString() == "auto");
+		CHECK(values("c-all-radius").direction() == Style::Direction::Rtl);
 	}
 
 	SUBCASE("shorthands and case")

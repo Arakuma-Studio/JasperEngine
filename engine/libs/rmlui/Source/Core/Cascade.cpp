@@ -149,17 +149,32 @@ namespace Cascade {
 		}
 	}
 
+	// The properties 'all' leaves alone: 'direction' (CSS Cascade 5 §3.2; -rmlui-direction) and those that are not CSS style but
+	// the host's interaction settings, attributes in HTML (focusability, keyboard navigation, dragging, the language).
+	bool IsReachedByAll(PropertyId id)
+	{
+		switch (id)
+		{
+		case PropertyId::RmlUi_Direction:
+		case PropertyId::RmlUi_Language:
+		case PropertyId::TabIndex:
+		case PropertyId::Focus:
+		case PropertyId::NavUp:
+		case PropertyId::NavRight:
+		case PropertyId::NavDown:
+		case PropertyId::NavLeft:
+		case PropertyId::Drag: return false;
+		default: return true;
+		}
+	}
+
 	void SetAllProperties(const PropertySpecification& specification, PropertyDictionary& dictionary, CssWideKeyword keyword)
 	{
+		// (Every other property: also the -rmlui- longhands of CSS properties, such as the radii of border-radius.)
 		for (const PropertyId id : specification.GetRegisteredProperties())
 		{
-			const PropertyDefinition* definition = specification.GetProperty(id);
-			if (!definition)
-				continue;
-			const String& name = StyleSheetSpecification::GetPropertyName(id);
-			if (StringUtilities::StartsWith(name, "-rmlui-"))
-				continue;
-			dictionary.SetProperty(id, KeywordProperty(keyword));
+			if (specification.GetProperty(id) && IsReachedByAll(id))
+				dictionary.SetProperty(id, KeywordProperty(keyword));
 		}
 	}
 
