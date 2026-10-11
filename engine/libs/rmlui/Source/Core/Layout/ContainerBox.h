@@ -94,6 +94,9 @@ protected:
 	/// is enabled.
 	/// @returns False when a scrollbar was enabled: the box must be formatted again, as when SubmitBox fails.
 	bool CatchAbsoluteOverflow();
+	/// True when a box up the chain of our parents is the containing block of fixed boxes (for a 'position: fixed' box: it
+	/// is not fixed to the viewport).
+	bool HasFixedPositioningContainingBlockAncestor() const;
 
 	/// The containing block of an absolutely positioned element added without one, relative to our border box, when it is not
 	/// our padding box (a grid container's grid areas: GridContainer).

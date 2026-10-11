@@ -233,3 +233,41 @@ TEST_CASE("ScrollContainer.AbsoluteOverflow")
 	document->Close();
 	TestsShell::ShutdownShell();
 }
+
+// The scrollable overflow of a scroll container includes the block-end margin of its last in-flow content, also one
+// collapsed through a child (Chromium: 150px + 20px margin is 170px; with 5px padding 175px).
+TEST_CASE("ScrollContainer.EndMargins")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	const String rml = R"(
+<rml>
+<head>
+	<style>
+		body { width: 600px; height: 400px; margin: 0; padding: 0; }
+		div { display: block; }
+		scrollbarvertical { width: 0px; }
+		scrollbarhorizontal { height: 0px; }
+		.s { overflow: auto; width: 100px; height: 100px; }
+		.child { height: 150px; margin-bottom: 20px; }
+	</style>
+</head>
+<body>
+	<div class="s" id="a"><div class="child"/></div>
+	<div class="s" id="b"><div><div class="child"/></div></div>
+	<div class="s" id="c" style="padding-bottom: 5px"><div class="child"/></div>
+	<div class="s" id="d" style="display: flex; flex-direction: column"><div class="child" style="flex: none"/></div>
+</body>
+</rml>
+)";
+	ElementDocument* document = context->LoadDocumentFromMemory(rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	CHECK(document->GetElementById("a")->GetScrollHeight() == 170.f);
+	CHECK(document->GetElementById("b")->GetScrollHeight() == 170.f);
+	CHECK(document->GetElementById("c")->GetScrollHeight() == 175.f);
+	CHECK(document->GetElementById("d")->GetScrollHeight() == 170.f);
+	document->Close();
+	TestsShell::ShutdownShell();
+}

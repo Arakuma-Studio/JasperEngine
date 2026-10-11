@@ -2,6 +2,7 @@
 #include "../../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../../Include/RmlUi/Core/Context.h"
 #include "../../../Include/RmlUi/Core/Element.h"
+#include "../../../Include/RmlUi/Core/ElementDocument.h"
 #include "../../../Include/RmlUi/Core/ElementScroll.h"
 #include "../../../Include/RmlUi/Core/Profiling.h"
 #include "../ElementMeta.h"
@@ -45,7 +46,23 @@ void ContainerBox::AddAbsoluteElement(Element* element, Vector2f static_position
 	{
 		if (Context* context = element->GetContext())
 		{
-			containing_block = Rectanglef::FromPositionSize(Vector2f(0.f), Vector2f(context->GetDimensions()));
+			// The viewport without the scrollbars of a document that covers it and scrolls (the root element's scrollbars
+			// are the viewport's: 'right: 0' is left of the vertical scrollbar, as in browsers).
+			Vector2f size = Vector2f(context->GetDimensions());
+			ElementDocument* document = element->GetOwnerDocument();
+			// (A document that scrolls with an automatic height is as tall as the viewport: BlockContainer.)
+			const Box* document_box = (document && this->element == document ? GetIfBox() : nullptr);
+			if (document_box)
+			{
+				const Vector2f document_size = document_box->GetSize(BoxArea::Border);
+				ElementScroll* scroll = document->GetElementScroll();
+				if (document_size.x >= size.x - 0.5f && (document_size.y >= size.y - 0.5f || document_box->GetSize().y < 0.f))
+				{
+					size.x = Math::Max(size.x - scroll->GetScrollbarSize(ElementScroll::VERTICAL), 0.f);
+					size.y = Math::Max(size.y - scroll->GetScrollbarSize(ElementScroll::HORIZONTAL), 0.f);
+				}
+			}
+			containing_block = Rectanglef::FromPositionSize(Vector2f(0.f), size);
 			viewport_fixed = true;
 		}
 	}
@@ -154,12 +171,15 @@ void ContainerBox::ClosePositionedElements()
 			// Set the offset of the element; the element itself will take care of any RCSS-defined positional offsets.
 			absolute_element->SetOffset(offset, element, absolute_element_pair.second.viewport_fixed);
 
-			// Its box is scrollable overflow of the nearest scroll container from us (a box fixed to the viewport scrolls with
-			// nothing).
+			// Its box is scrollable overflow of the nearest scroll container from us, through the chain of containing blocks
+			// (a box fixed to the viewport, or inside one, scrolls with nothing).
 			if (!absolute_element_pair.second.viewport_fixed)
 			{
 				for (ContainerBox* container = this; container; container = container->parent_container)
 				{
+					if (container->element && container->element->GetPosition() == Style::Position::Fixed &&
+						!container->HasFixedPositioningContainingBlockAncestor())
+						break;
 					if (container->element && container->IsScrollContainer())
 					{
 						container->absolute_overflow_elements.push_back(absolute_element);
@@ -169,6 +189,14 @@ void ContainerBox::ClosePositionedElements()
 			}
 		}
 	}
+}
+
+bool ContainerBox::HasFixedPositioningContainingBlockAncestor() const
+{
+	for (const ContainerBox* container = parent_container; container; container = container->parent_container)
+		if (container->is_fixed_positioning_containing_block)
+			return true;
+	return false;
 }
 
 bool ContainerBox::CatchAbsoluteOverflow()

@@ -4,6 +4,8 @@
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementUtilities.h>
+#include <RmlUi/Core/StringUtilities.h>
+#include <RmlUi/Core/ElementScroll.h>
 #include <doctest.h>
 
 using namespace Rml;
@@ -72,6 +74,34 @@ TEST_CASE("PositionFixed")
 		CHECK(size(percent).x == doctest::Approx(0.1f * viewport.x));
 		CHECK(size(percent).y == doctest::Approx(0.1f * viewport.y));
 		CHECK(fixed->GetOffsetParent() == document);
+	}
+
+	SUBCASE("The scrollbars of a document covering the viewport are the viewport's")
+	{
+		// As the root element's scrollbars in browsers: 'right: 20px' is 20px left of the vertical scrollbar.
+		document->SetProperty("width", CreateString("%dpx", int(viewport.x)));
+		document->SetProperty("height", CreateString("%dpx", int(viewport.y)));
+		context->Update();
+		REQUIRE(document->GetElementScroll()->GetScrollbarSize(ElementScroll::VERTICAL) == 12.f);
+		CHECK(offset(fixed).x == doctest::Approx(viewport.x - 12.f - 20.f - 50.f));
+		CHECK(size(percent).x == doctest::Approx(0.1f * (viewport.x - 12.f)));
+	}
+
+	SUBCASE("Boxes inside a fixed box are not the document's scrollable overflow")
+	{
+		const float before = document->GetScrollHeight();
+		Element* holder = document->AppendChild(document->CreateElement("div"));
+		holder->SetProperty("position", "fixed");
+		holder->SetProperty("top", "0px");
+		holder->SetProperty("width", "10px");
+		holder->SetProperty("height", "10px");
+		Element* child = holder->AppendChild(document->CreateElement("div"));
+		child->SetProperty("position", "absolute");
+		child->SetProperty("top", "5000px");
+		child->SetProperty("width", "10px");
+		child->SetProperty("height", "10px");
+		context->Update();
+		CHECK(document->GetScrollHeight() == doctest::Approx(before));
 	}
 
 	SUBCASE("No scroll moves it")
