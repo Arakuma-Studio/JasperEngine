@@ -7,17 +7,17 @@
 --       update = function(ctx, dt) ... end,  -- optional, every frame
 --   }
 --
--- Groups are looked up by the names in GROUPS (add yours there); a missing one is skipped.
+-- Groups are looked up by the names in GROUPS (add yours there); each must exist.
 --   tools/smoke-test.sh tools/fixtures/shader-library
 --
--- SL_GROUPS="a,b" in the environment builds only those groups. A group built alone has
+-- SL_GROUPS="a,b" in the environment builds only those groups (a name GROUPS does not list
+-- is an error, so a typo never passes as an empty run). A group built alone has
 -- ctx.solo set and may frame a close-up of itself with ctx.camera, ctx.light, ctx.ground:
 --   SMOKE_GAME_ENV="SL_GROUPS=2d" tools/smoke-test.sh tools/fixtures/shader-library
 local ShaderLibrary = { properties = {} }
 
 local GROUPS = {
-    "core", "lighting", "lit", "stylized", "effects", "nature", "animated",
-    "sprites", "ui", "particles", "sky", "decals", "extra",
+    "core", "lit", "stylized", "effects", "sky",
     "2d",
     "checks",
 }
@@ -59,8 +59,7 @@ end
 
 -- sets shader on every submesh of a mesh; configure(material, submesh) edits each material
 function Context:setShader(mesh, shader, configure)
-    -- a Sprite (Tilemap, MeshPolygon) reports no submesh until its first update builds it
-    for i = 0, math.max(mesh:getNumSubmeshes(), 1) - 1 do
+    for i = 0, mesh:getNumSubmeshes() - 1 do
         local material = mesh:getMaterial(i)
         material.shader = shader
         if configure then
@@ -93,7 +92,7 @@ function ShaderLibrary:buildGroup(name, originZ, solo)
         table.insert(self.groups, { module = group, ctx = ctx })
     elseif ok then
         fail("group %s is not a table with build(ctx)", name)
-    elseif not tostring(group):find("no file in assets directory", 1, true) then
+    else
         fail("group %s failed to load: %s", name, tostring(group))
     end
 end
@@ -126,9 +125,17 @@ function ShaderLibrary:init()
     local only = os.getenv("SL_GROUPS")
     if only and only ~= "" then
         selected = {}
+        local known = {}
+        for _, name in ipairs(GROUPS) do
+            known[name] = true
+        end
         for name in only:gmatch("[^,%s]+") do
-            selected[name] = true
-            selectedCount = selectedCount + 1
+            if known[name] then
+                selected[name] = true
+                selectedCount = selectedCount + 1
+            else
+                fail("SL_GROUPS names unknown group %s (groups: %s)", name, table.concat(GROUPS, ", "))
+            end
         end
         log("building only %s", only)
     end

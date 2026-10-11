@@ -3,6 +3,9 @@
 -- The ones that move vertices or discard fragments cast shadows on the ground from their
 -- depth programs: the swaying plants, the spinning and bobbing pickups, the dissolving
 -- spheres (with the holes), the clipped flipbook. Decals lie on the ground and on a wall.
+-- The see-through ones (rim, hologram, water, decal, the blended flipbooks) cast no shadow
+-- by their shaders' state (@state shadows=off), with the meshes' castShadows left on; the
+-- blended panner cards keep castShadows off themselves (panner is opaque by default).
 -- Assets: textures/fx_*.png and models/fx_*.gltf, from effects_assets.py.
 local Effects = {}
 
@@ -49,13 +52,11 @@ local function rimAndHologram(ctx)
     -- rim: the plain fresnel glow, additive
     local glow = sphere(ctx, 0.65)
     ctx:place(glow, 0.8)
-    glow.castShadows = false
     ctx:setShader(glow, RIM)
 
     -- rim: a force field, both faces, with the scrolling hexagon pattern
     local shield = sphere(ctx, 0.7)
     ctx:place(shield, 0.8)
-    shield.castShadows = false
     ctx:setShader(shield, RIM, function(material)
         material:setShaderFeature("TEXTURE", true)
         material:setShaderTexture("u_patternTexture", "textures/fx_hex.png")
@@ -70,14 +71,12 @@ local function rimAndHologram(ctx)
     ring:createTorus(0.45, 0.16)
     ctx:place(ring, 0.8)
     ring:setRotation(70, 0, 0)
-    ring.castShadows = false
     ctx:setShader(ring, HOLOGRAM)
 
     -- hologram: scanlines from a texture, in orange
     local box = Primitive(ctx.scene)
     box:createBox(0.9, 1.1, 0.9)
     ctx:place(box, 0.7)
-    box.castShadows = false
     ctx:setShader(box, HOLOGRAM, function(material)
         material:setShaderFeature("SCANLINE_TEXTURE", true)
         material:setShaderTexture("u_scanlineTexture", "textures/fx_scanlines.png")
@@ -85,16 +84,14 @@ local function rimAndHologram(ctx)
         material:setShaderParam("scanlineDensity", 4)
     end)
 
-    -- hologram: BLEND_MODE ALPHA with the material's alpha blend: a dark-tinted figure
-    -- that covers what is behind it instead of adding light
+    -- hologram: BLEND_MODE ALPHA, which alone makes it alpha blended (@state[...]): a
+    -- dark-tinted figure that covers what is behind it instead of adding light
     local figure = model(ctx, "models/sphere.gltf")
     ctx:place(figure, 0.8)
-    figure.castShadows = false
     ctx:setShader(figure, HOLOGRAM, function(material)
         material:setShaderFeature("BLEND_MODE_ALPHA", true)
         material:setShaderParam("tint", Vector4(0.05, 0.2, 0.9, 1.0))
         material:setShaderParam("fill", 0.35)
-        material.blendMode = MaterialBlendMode.ALPHA
     end)
 end
 
@@ -205,7 +202,6 @@ local function flipbook(ctx)
     -- looping at 6 frames per second, alpha blended
     local loop = card(ctx, 1.2)
     ctx:place(loop, 0.85)
-    loop.castShadows = false
     ctx:setShader(loop, FLIPBOOK, function(material)
         material:setShaderTexture("u_sheetTexture", "textures/fx_flipbook.png")
         material:setShaderParam("fps", 6)
@@ -214,7 +210,6 @@ local function flipbook(ctx)
     -- FRAME_BLEND at 2 frames per second: each frame crossfades into the next
     local blend = card(ctx, 1.2)
     ctx:place(blend, 0.85)
-    blend.castShadows = false
     ctx:setShader(blend, FLIPBOOK, function(material)
         material:setShaderFeature("FRAME_BLEND", true)
         material:setShaderTexture("u_sheetTexture", "textures/fx_flipbook.png")
@@ -237,7 +232,6 @@ local function flipbook(ctx)
     -- holds the last frame (loop off), restarted every 5 seconds through startTime
     local once = card(ctx, 1.2)
     ctx:place(once, 0.85)
-    once.castShadows = false
     ctx:setShader(once, FLIPBOOK, function(material)
         material:setShaderTexture("u_sheetTexture", "textures/fx_flipbook.png")
         material:setShaderParam("fps", 8)
@@ -252,7 +246,6 @@ local function water(ctx)
     local function waterTile(configure)
         local tile = model(ctx, "models/fx_water_grid.gltf")
         ctx:place(tile, 0.25)
-        tile.castShadows = false
         ctx:setShader(tile, WATER, function(material)
             material:setShaderTexture("u_normalTexture", "textures/fx_water_normal.png")
             material:setShaderTexture("u_noiseTexture", "textures/fx_noise.png")
@@ -388,20 +381,17 @@ local function decals(ctx)
     local hazard = Primitive(ctx.scene)
     hazard:createPlane(1.5, 1.5)
     ctx:place(hazard, 0.0)
-    hazard.castShadows = false
     ctx:setShader(hazard, DECAL, function(material)
         material:setShaderTexture("u_baseTexture", "textures/fx_decal.png")
     end)
 
-    -- dirt multiplied onto the ground (MULTIPLY with the multiply blend)
+    -- dirt multiplied onto the ground (DECAL_BLEND MULTIPLY alone makes it a multiply blend)
     local dirt = Primitive(ctx.scene)
     dirt:createPlane(1.6, 1.6)
     ctx:place(dirt, 0.0)
-    dirt.castShadows = false
     ctx:setShader(dirt, DECAL, function(material)
         material:setShaderFeature("DECAL_BLEND_MULTIPLY", true)
         material:setShaderTexture("u_baseTexture", "textures/fx_dirt.png")
-        material.blendMode = MaterialBlendMode.MULTIPLY
     end)
 
     -- on a wall: a lit box with an alpha decal and a dirt decal on its front face
@@ -412,7 +402,6 @@ local function decals(ctx)
     local sign = Primitive(ctx.scene)
     sign:createWall(0.8, 0.8)
     extra(ctx, sign, Vector3(position.x - 0.3, 0.7, position.z + 0.1))
-    sign.castShadows = false
     ctx:setShader(sign, DECAL, function(material)
         material:setShaderTexture("u_baseTexture", "textures/fx_decal.png")
         material:setShaderParam("tint", Vector4(1.0, 0.6, 0.6, 1.0))
@@ -420,11 +409,9 @@ local function decals(ctx)
     local stain = Primitive(ctx.scene)
     stain:createWall(0.9, 0.9)
     extra(ctx, stain, Vector3(position.x + 0.35, 0.55, position.z + 0.1))
-    stain.castShadows = false
     ctx:setShader(stain, DECAL, function(material)
         material:setShaderFeature("DECAL_BLEND_MULTIPLY", true)
         material:setShaderTexture("u_baseTexture", "textures/fx_dirt.png")
-        material.blendMode = MaterialBlendMode.MULTIPLY
     end)
 end
 

@@ -36,7 +36,7 @@ local function sprite(ctx, texture, configure)
     s:setSize(TEXELS, TEXELS)
     s:setScale(SIZE / TEXELS)
     s.pivotPreset = PivotPreset.CENTER
-    s.castShadows = false
+    -- castShadows stays on: the sprite shader casts none (@state shadows=off)
     s.receiveLights = false -- the 2D-lit one sets it back
     put(ctx, s, 1.0)
     ctx:setShader(s, SPRITE, configure)
@@ -110,7 +110,6 @@ local function buildSprites(ctx)
     instanced:setSize(TEXELS, TEXELS)
     instanced:setScale(SIZE * 0.5 / TEXELS)
     instanced.pivotPreset = PivotPreset.CENTER
-    instanced.castShadows = false
     instanced.receiveLights = false
     put(ctx, instanced, 1.0)
     instanced:createInstancedMesh()
@@ -125,10 +124,10 @@ local function buildSprites(ctx)
     ctx.lit = sprite(ctx, "textures/character.png")
     ctx.lit.receiveLights = true
 
-    -- straight and premultiplied soft sprites: the same look
+    -- straight and premultiplied soft sprites: the same look (the Premultiplied blend mode
+    -- alone reads the texture as premultiplied, BLEND_PREMULTIPLIED)
     sprite(ctx, "textures/soft.png"):setColor(0.3, 0.6, 1.0, 1.0)
     sprite(ctx, "textures/soft_premultiplied.png", function(m)
-        m:setShaderFeature("ALPHA_PREMULTIPLIED", true)
         m.blendMode = MaterialBlendMode.PREMULTIPLIED
     end):setColor(0.3, 0.6, 1.0, 1.0)
 
@@ -219,13 +218,12 @@ local function buildParticles(ctx)
     points(ctx, function(p)
         p.blendMode = MaterialBlendMode.ADDITIVE
     end)
+    -- the blend mode alone shapes the output (BLEND_*), no keyword
     points(ctx, function(p)
         p.blendMode = MaterialBlendMode.PREMULTIPLIED
-        p:setShaderFeature("OUTPUT_PREMULTIPLY", true)
     end)
     points(ctx, function(p)
         p.blendMode = MaterialBlendMode.MULTIPLY
-        p:setShaderFeature("OUTPUT_MULTIPLY", true)
     end)
     points(ctx, function(p)
         p.blendMode = MaterialBlendMode.ADDITIVE
