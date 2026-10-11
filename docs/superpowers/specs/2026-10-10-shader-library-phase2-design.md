@@ -506,3 +506,72 @@ override the sections they refer to; later agents follow them.
 - Fixture `tools/fixtures/shader-regressions` cases 6 (alpha), 7 (leak check; logs "[SR]
   leak check passed", `SMOKE_GAME_SECONDS="ready 70"`), 8 (second skybox) and 9 (fork paths
   in `shaderAdditions`).
+
+### 5.8 Review fixes: editor and presets (sl/p2-fix-editor)
+
+Overrides the outline_hull and draw-once notes of 5.5, the last notes of 5.3 about blended
+objects, and the "previews transparent" note of 5.4.
+
+- Fork remaps. A fork renamed, moved (`move_asset`, the Project window) or deleted is
+  remapped or cleared in submesh materials' `shader` and `extraPass.shader` too (scenes,
+  prefabs and `.material` files; library references are never touched), with a mesh reload,
+  beside the components' `customShader` / `customDepthShader` and the scene defaults
+  (`Project::applyCustomShaderPathChange`, `visitMaterialFiles`). Closed scenes are not
+  rewritten (as for every other remap).
+- `set_properties` refuses, per entity and component, a whole value (a material, an extra
+  pass, a `stencil` block, `shaderParams` / `shaderTextures` / `shaderFeatures` /
+  `shaderUniforms`) together with a path inside it in one call: their commands were each
+  built from the values before the call, so the later one undid the other, and an entry was
+  checked against the old shader. The error gives the one-value form (the inner path nested
+  in the object, which merges) or two calls.
+- Inspector, several GameObjects selected: a stencil test, an Auto reset or a colour
+  channel changes only that on each one's own value (one undo step). A test picked from
+  Auto starts from the rule that GameObject's own shader resolves to; an explicit test, Off
+  included, keeps its ref, masks and ops.
+- Presets judge a material by the shader its submesh draws with: its own, else the mesh's
+  `customShader`, else the scene's default mesh shader (`MaterialPreset::apply(material,
+  meshShader)`, `meshShaderFor`); a `.material` file (no mesh) by its own shader.
+  `isMaterialBlended(material, meshShader)`: the material's blend, else that shader's
+  resolved `@state` blend, else the legacy rule.
+- Outline (hull) on a blended material is the stencil outline, not an inverted hull: the
+  hull's back faces fill the whole shape, which a blended object (no depth write) shows
+  through Before and is covered by After. The material marks its silhouette with bit 0x01
+  and an After `library:outline_stencil` pass with `VISIBILITY_VISIBLE_ONLY` draws outside
+  it (depth tested, so no sort priority change). A new pass starts from the hull's defaults
+  (colour and width), a hull pass it replaces keeps its values and features, and re-applying
+  on an opaque material turns it back into a hull with them. Opaque materials keep the hull
+  After. The mark: alone, the Outline (stencil) state (always, ref 1, write mask 1, replace,
+  depth-fail replace); over draw-once, not equal ref 4|1 on read mask 0x0C, write mask 0x0D,
+  replace; over a mask reader, its compare with ref 16|1 on read mask 0xF0, write mask 0x01,
+  replace (no depth-fail replace when combined: the write mask would write the test's bits
+  where the object is hidden; a visible-only outline needs no hidden marks). So draw-once
+  and an outline go together, and Draw-once turns a hull outline into this one.
+- The through-walls Outline (stencil) keeps its own stencil (its depth-fail mark cannot
+  share a test): a test preset (draw-once, mask readers) still removes its pass, it replaces
+  the material's test, and applying it sets Visibility back to Always. Replacing an
+  outline_stencil pass with another pass preset drops the mark and keeps the test it was
+  combined with. A mask preset clears the pass (as before).
+- A mask reader masks the extra pass (`maskExtraPass`, after every preset): a pass without
+  a stencil test of its own (the hull, most passes) takes the reader's test (write mask 0);
+  a silhouette inside a mask tests equal ref on 0xF2 and inverts bit 0x02 (still blends
+  once), outside it takes the mask test alone (overlapping hidden parts then blend more than
+  once); a visible-only outline inside a mask tests equal ref on 0xF1 (inside the mask,
+  outside the mark); outside a mask it keeps its own test, since "mask differs and bit 0x01
+  clear" is no single stencil test: its ring is not clipped where it crosses the mask. A
+  pass's own explicit test is never replaced; a mask test a preset gave a pass goes back to
+  Auto once the material reads no mask.
+- MCP `apply_material_preset`, `link_material` and `create_material` require `submesh` to be
+  a whole number from 0 (a fix-it error instead of a raw JSON type error; -1 no longer reads
+  as 0); any handler's JSON type error reads as a wrong argument type.
+- Material previews and thumbnails draw alpha wherever a material or its extra pass writes
+  colour without alpha (explicit or the shader's `colorwrite=`), so they show opaque, as the
+  game does on its opaque target; a mask writing no colour stays invisible.
+- Docs: Sort Priority orders within the opaque queue too (inspector help, MCP error, guides);
+  `lua-api.md` lists `MaterialStencilCompare`, `MaterialStencilOp`, `MaterialColorWrite` and
+  `ObjectRender.getLivePipelineCount()`. The extra-pass fixture's case 7 (a lit hull before
+  a glass box) shows the hull's back faces through the glass, as documented there.
+- Tests: `test_shader_library_phase2_review.py` (MCP) and
+  `test_shader_library_phase2_inspector.py` (the inspector driven with xdotool in the
+  harness's Xvfb; it skips when the default layout moved). Re-saving the 15 scene and prefab
+  files of every fixture project with this editor and with 962af759's gives byte-identical
+  files.
