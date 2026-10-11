@@ -55,6 +55,7 @@ public:
 		size_t composite_layers;
 		size_t pop_layer;
 		size_t composite_layers_plus; // with BlendMode::Plus (cross-faded background images)
+		size_t generate_texture_with_wrap; // GenerateTextureWithWrap with an axis repeated (also counted in generate_texture)
 	};
 
 	Rml::CompiledGeometryHandle CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) override;
@@ -63,6 +64,8 @@ public:
 
 	Rml::TextureHandle LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source) override;
 	Rml::TextureHandle GenerateTexture(Rml::Span<const Rml::byte> source_data, Rml::Vector2i source_dimensions) override;
+	Rml::TextureHandle GenerateTextureWithWrap(Rml::Span<const Rml::byte> source_data, Rml::Vector2i source_dimensions, bool repeat_x,
+		bool repeat_y) override;
 	void ReleaseTexture(Rml::TextureHandle texture_handle) override;
 	bool SupportsTextureWrapHint() override;
 

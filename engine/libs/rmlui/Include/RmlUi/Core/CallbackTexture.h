@@ -50,6 +50,8 @@ public:
 	/// @param[in] dimensions The width and height of the texture.
 	/// @return True on success.
 	bool GenerateTexture(Span<const byte> source, Vector2i dimensions) const;
+	/// Fork: the same, the texture sampled with repeat wrap along the axes asked for (RenderInterface::GenerateTextureWithWrap).
+	bool GenerateTexture(Span<const byte> source, Vector2i dimensions, bool repeat_x, bool repeat_y) const;
 
 	/// Store the current layer as a texture, so that it can be rendered with geometry later.
 	/// @note The texture will be extracted using the bounds defined by the active scissor region, thereby matching its size.

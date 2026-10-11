@@ -2,12 +2,14 @@
 #include "../../../Source/Core/ElementBackgroundLayers.h"
 #include "../Common/TestsInterface.h"
 #include "../Common/TestsShell.h"
+#include <RmlUi/Core/CallbackTexture.h>
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/DecorationTypes.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/Property.h>
+#include <RmlUi/Core/RenderManager.h>
 #include <RmlUi/Core/PropertyDictionary.h>
 #include <RmlUi/Core/StringUtilities.h>
 #include <RmlUi/Core/StyleSheetSpecification.h>
@@ -467,6 +469,40 @@ TEST_CASE("Backgrounds.canvas")
 	context->Update();
 	context->Render();
 
+	document->Close();
+	context->Update();
+}
+
+// A callback texture generated with repeat wrap (an SVG background tile the application rasterizes, repeated as one quad)
+// reaches RenderInterface::GenerateTextureWithWrap; without an axis repeated it is an ordinary GenerateTexture.
+TEST_CASE("Backgrounds.wrapped_callback_texture")
+{
+	Context* context = TestsShell::GetContext();
+	TestsRenderInterface* render = TestsShell::GetTestsRenderInterface();
+	REQUIRE(context);
+	REQUIRE(render);
+	ElementDocument* document = context->LoadDocumentFromMemory("<rml><body/></rml>");
+	REQUIRE(document);
+	RenderManager* render_manager = document->GetRenderManager();
+	REQUIRE(render_manager);
+
+	const byte pixels[4 * 4] = {};
+	auto make = [&](bool repeat_x, bool repeat_y) {
+		return render_manager->MakeCallbackTexture([&pixels, repeat_x, repeat_y](const CallbackTextureInterface& texture_interface) {
+			return texture_interface.GenerateTexture({pixels, sizeof(pixels)}, Vector2i(2, 2), repeat_x, repeat_y);
+		});
+	};
+	render->ResetCounters();
+	CallbackTexture plain = make(false, false);
+	CallbackTexture repeated = make(true, false);
+	CHECK(Texture(plain).GetDimensions() == Vector2i(2, 2));
+	CHECK(Texture(repeated).GetDimensions() == Vector2i(2, 2));
+	render->ResetCounters();
+	CHECK(render->GetCountersFromPreviousReset().generate_texture == 2);
+	CHECK(render->GetCountersFromPreviousReset().generate_texture_with_wrap == 1);
+
+	plain.Release();
+	repeated.Release();
 	document->Close();
 	context->Update();
 }

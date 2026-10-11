@@ -157,6 +157,14 @@ Rml::TextureHandle TestsRenderInterface::GenerateTexture(Rml::Span<const Rml::by
 	return 1;
 }
 
+Rml::TextureHandle TestsRenderInterface::GenerateTextureWithWrap(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions, bool repeat_x,
+	bool repeat_y)
+{
+	if (repeat_x || repeat_y)
+		counters.generate_texture_with_wrap += 1;
+	return GenerateTexture(source, source_dimensions);
+}
+
 void TestsRenderInterface::ReleaseTexture(Rml::TextureHandle /*texture_handle*/)
 {
 	counters.release_texture += 1;

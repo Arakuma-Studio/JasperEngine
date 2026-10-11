@@ -67,6 +67,11 @@ public:
 	/// along those axes (clamped along the other). Background and mask images repeated along an axis are then drawn as one
 	/// quad, filtered across the seams of their tiles as browsers do; without it they are drawn tile by tile.
 	virtual bool SupportsTextureWrapHint();
+	/// Fork (phase 3, p3-integration): GenerateTexture for a texture sampled with repeat wrap along the axes asked for
+	/// (clamped along the others), when SupportsTextureWrapHint() is true: an image the application renders at the size of
+	/// a background tile (an SVG) repeats as one quad, as LoadTexture's 'rmlui-wrap' textures. By default the texture of
+	/// GenerateTexture (clamped).
+	virtual TextureHandle GenerateTextureWithWrap(Span<const byte> source, Vector2i source_dimensions, bool repeat_x, bool repeat_y);
 
 	/// Called by RmlUi when it wants to enable or disable scissoring to clip content.
 	/// @param[in] enable True to enable scissoring, false to disable it.
