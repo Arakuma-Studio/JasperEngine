@@ -117,6 +117,14 @@ Stencil mask, Visible inside mask, Visible outside mask, Sprite mask. Presets ar
 - Phase 1 regression checks still pass; scenes without stencil or extra passes render
   identically and allocate nothing new per submesh.
 
+Run for the final pass (5.9), beyond the above: the export-equivalence fixture
+(`tools/fixtures/shader-library-export/check.sh`, editor render against the exported game for
+every scene including the presets' `Stencil.scene`), the stencil and extra-pass fixtures, the
+shader-regressions fixture, the MCP suite, a byte-identical re-save of the fixture projects
+against the phase 1 tag's editor (differences only in phase 2 data), a pixel-identical 6-light
+scene against the phase 1 tag and 0c59f0a0, and the game-build size of `Material`, `Submesh`
+and `MeshComponent`.
+
 ## 4. Definition of done
 
 All requirements implemented, all checks pass, merged into `shader-library`, review pass
@@ -649,3 +657,72 @@ objects, and the "previews transparent" note of 5.4.
   harness's Xvfb; it skips when the default layout moved). Re-saving the 15 scene and prefab
   files of every fixture project with this editor and with 962af759's gives byte-identical
   files.
+
+### 5.9 Final pass (sl/p2-final)
+
+The merge of 5.7 and 5.8 (c2f29ea6), built and checked as a whole; overrides the notes above
+where they disagree.
+
+- Merge fixes. `MaterialRender` (previews) still bound the extra pass by non-const reference
+  (the merge did not compile); it edits through `editIfSet()`. The preset helpers read the pass
+  through the const accessor only (`extraPassOf(const Material&)`) and write through
+  `editExtraPass` / `editIfSet()`, so a preset that only looks at a material's pass (every
+  preset runs `maskExtraPass`) allocates none: untouched materials stay unallocated, compare and
+  serialize as before. (Reads through the Catalog paths `...material.extraPass.*` still call
+  `edit()`, as 5.7 says; a pass made that way holds `MaterialPass()`, which compares and
+  serializes as no pass and is dropped by the next copy.)
+- `sl/p2-verify` (962af759), not recorded above: an extra pass is no longer kept alive by model
+  reloads or shared by clones; stencil masks (no colour, no depth write:
+  `Submesh::skipsScreenEffects`) stay out of the SSAO depth pre-pass and the G-buffer;
+  smoothed-normal entries stable on async loads; library normal matrix made per draw in scenes
+  without lights; outline `VERTEX_COLOR_WIDTH` requires `rawcolor`; silhouette fresnel clamped
+  (no NaN); preset combinations that broke an outline; extra-pass forks reload on edit; and run
+  builds read forks from the project root, then the assets directory (5.6's "Not changed" about
+  run builds no longer applies).
+- Outline (G1, G3, G5). `outline_vs.glsl` scales the push by `surfaceFadeVisible` (a faded
+  instance takes its outline with it). Hard edges are a documented limit (`outline_vs.glsl`,
+  both manifests, `docs/shaders/library.md`): the push follows the corner's smoothed normal, so
+  the band beside a sharp corner is narrower than the width: SCREEN width/sqrt2 along a box face
+  seen square on, WORLD faces offset by width/sqrt3 on a box. A crack-free correction needs a
+  miter length per welded vertex (per face vertex reopens the gaps the smoothed normal closes),
+  so none is applied. `outline.frag`'s comment block describes the stencil outline for blended
+  objects.
+- `sprite_mask` (G2) declares only the base colour texture: `includes/base_color_fs.glsl` takes
+  `BASE_COLOR_TEXTURE_ONLY` (no `u_fs_pbrParams`, no `applyMaterialAlphaMode`).
+- Fixtures (G4, G6, G7). Stencil fixture case F: `library:sprite_mask` in front of its reader
+  with no sort priority, drawn first because the mask is in the opaque queue (both rows; the six
+  cases are 3.6 apart). `phase2.lua` mirrors the blended Outline (hull) preset (mark bit 1, an
+  After `outline_stencil` pass, Visible only, from the hull's look) and checks it.
+  `shader-library-export/Stencil.scene` regenerated with `generate.py` (the other scenes
+  regenerate identical but for their random ids and a sprite's runtime `transparent` flag, so
+  they were kept).
+- Docs. The Lua and MCP guides say extra passes draw around all of a mesh's submeshes (5.7);
+  the Stencil row's tooltip and the MCP shader guide state that a test other than Always leaves
+  the depth pre-pass and that SSAO and SSR ignore the stencil.
+- Open items, final status. Fixed: hull outline on blended objects (5.8), mask readers and the
+  extra pass (5.8, with the documented limits there: a visible-only outline outside a mask is
+  not clipped; a silhouette outside a mask may blend more than once where hidden parts overlap),
+  probes and sortPriority (5.7), smoothed normals of non-float positions (5.7), fork renames
+  (5.8), centroid (5.7), previews without alpha writes (F1, 5.8), live skybox order (F3, 5.7),
+  run-build fork paths (F2, p2-verify). Design limits, documented in this spec, the inspector
+  and the guides: stencil readers leave the depth pre-pass and SSAO/SSR ignore the stencil (F4,
+  5.1); silhouette with the depth pre-pass shows self-occluded parts (F5, silhouette manifest);
+  through-walls outline and silhouette rely on the presets' sort priority (F6); outline width
+  beside hard corners (above).
+- Checks run on this branch: full `tools/build.sh linux`; `shaders --library all --backend all`
+  (29 shaders, 8700 compiles, no failure or manifest diagnostic) and 56 built-in variants on six
+  backends (Lit tiers and modes with shadows, IBL, SSAO, fog, normal map, skinning, morph,
+  instancing and fade; 2D lights and shadows; terrain including `mesh:Ter,Puc,Nor,Shw,Tpb,Tan,Nmp`;
+  mirror; depth incl. `Txr`; G-buffer; UI; points; lines; sky; shadow2d); smoke tests with
+  screenshots of shader-library (whole, each group, the phase 2 views), stencil (and its
+  pre-pass/effects runs), extra-pass (and `EP_SCENE=figure`), shader-regressions, unified-lighting,
+  runtime-shaders and prefab-runtime; `check.sh` on all five export scenes (Stencil: mean
+  difference 0.57); the MCP suite (256 passed, 3 slow ones skipped); an export with `--backend
+  all` of the export fixture (274 variants on six backends, none failed or missing); the 15
+  scene and prefab files of the fixture projects re-saved with this editor and with the phase 1
+  tag's: 14 byte-identical, `shader-library-export/Stencil.scene` differing only by phase 2
+  data (the extra passes and stencil the phase 1 editor drops, and the precompiled variants of
+  the phase 2 mask shaders); the 6-light scene pixel for pixel as the phase 1 tag (SSAO and SSR
+  off, on, each alone, a three-pass post-process chain) and as 0c59f0a0 (the same but the
+  chain). Game-build sizes (Linux GCC): `Material` 1928, `Submesh` 6976, `MeshComponent` 126080
+  bytes (phase 1 tag: 1888 / 6752 / 122480).
