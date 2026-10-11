@@ -111,6 +111,9 @@ void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentS
         categories[manifest->category.empty() ? "Other" : manifest->category].push_back({reference, manifest});
     }
 
+    // the files popup opens after the combo closes: opened from inside the combo's own popup
+    // window, its id would not match the BeginPopup of the row (drawShaderFilesPopup)
+    bool openFiles = false;
     ImGui::SetNextItemWidth(-1);
     if (ImGui::BeginCombo(("##shader_picker_" + popupName).c_str(), preview.c_str())) {
         if (ImGui::Selectable(builtIn, currentShader.empty()) && !currentShader.empty())
@@ -131,7 +134,7 @@ void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentS
         ImGui::Separator();
         const bool fork = !currentShader.empty() && !ShaderReference::isLibrary(currentShader);
         if (ImGui::Selectable("Custom file...", fork))
-            ImGui::OpenPopup(popupName.c_str());
+            openFiles = true;
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("A shader of this project: pick its .vert and .frag files");
         ImGui::EndCombo();
@@ -140,7 +143,11 @@ void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentS
         std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(currentShader);
         if (manifest && !manifest->description.empty())
             ImGui::SetTooltip("%s\n\n%s", currentShader.c_str(), manifest->description.c_str());
+        else if (!manifest)
+            ImGui::SetTooltip("%s is not a library shader of this engine", currentShader.c_str());
     }
+    if (openFiles)
+        ImGui::OpenPopup(popupName.c_str());
 }
 
 bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::string& shader,
@@ -387,11 +394,23 @@ bool editor::InspectorWindow::drawMaterialShaderRows(ComponentType cpType, Scene
         mixed = mixed || !other || *other != currentShader;
     }
 
-    // the same shader on every selected submesh, one undo step
+    // the same shader on every selected submesh, one undo step; a lighting mode the shader
+    // the submesh then draws with does not list goes back to Auto (its combo lists only those)
     auto setShader = [&](const std::string& value) {
         auto* multi = new MultiPropertyCmd();
-        for (Entity entity : entities)
+        for (Entity entity : entities) {
             multi->addPropertyCmd<std::string>(project, sceneId, entity, cpType, shaderProperty, value, settingsMaterial.onValueChanged);
+            MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+            if (!mesh || submesh >= mesh->numSubmeshes)
+                continue;
+            Submesh drawn = mesh->submeshes[submesh];
+            drawn.material.shader = value;
+            const std::string shader = RenderSystem::getSubmeshShader(*mesh, drawn, scene->getDefaultCustomShader(ShaderType::MESH));
+            std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
+            if (!Catalog::supportsLighting(drawn.material.lighting, manifest.get()))
+                multi->addPropertyCmd<int>(project, sceneId, entity, cpType, prefix + "lighting", (int)MaterialLighting::AUTO,
+                                           settingsMaterial.onValueChanged);
+        }
         CommandHandle::get(sceneId)->addCommandNoMerge(multi);
     };
 
@@ -422,6 +441,11 @@ bool editor::InspectorWindow::drawMaterialShaderRows(ComponentType cpType, Scene
             ImGui::TableSetColumnIndex(1);
             ImGui::TextDisabled("Select one GameObject to edit the shader's values");
         }
+    } else if (ShaderReference::isLibrary(drawnShader) && !manifest) {
+        // a reference the engine does not have (renamed, mistyped): it draws with the built-in one
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextDisabled("%s is not a library shader of this engine", drawnShader.c_str());
     }
     // a library shader has its own parameters; the built-in Lit and forks of it read the PBR ones
     return !ShaderReference::isLibrary(drawnShader);
@@ -515,22 +539,32 @@ void editor::InspectorWindow::drawMaterialSurfaceRows(ComponentType cpType, Scen
 }
 
 void editor::InspectorWindow::drawComponentStateRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities){
-    static std::vector<EnumEntry> blendEntries = {
-        {(int)MaterialBlendMode::AUTO, "Auto (Alpha)"}, {(int)MaterialBlendMode::NONE, "Opaque"},
-        {(int)MaterialBlendMode::ALPHA, "Alpha"}, {(int)MaterialBlendMode::PREMULTIPLIED, "Premultiplied"},
-        {(int)MaterialBlendMode::ADDITIVE, "Additive"}, {(int)MaterialBlendMode::MULTIPLY, "Multiply"}};
-    static std::vector<EnumEntry> depthWriteEntries = {
-        {(int)MaterialDepthWrite::AUTO, "Auto (On)"}, {(int)MaterialDepthWrite::ENABLED, "On"},
-        {(int)MaterialDepthWrite::DISABLED, "Off"}};
-
     if (!Catalog::findProperty(sceneProject->scene, entities[0], cpType, "blendMode").ref)
         return;
 
+    // what Auto resolves to with the shader the component draws with (its @state, else the
+    // component's legacy state: alpha blending, depth write on), as RenderSystem loads it
+    const std::string shader = Catalog::getShaderReferenceForProperty(sceneProject->scene, entities[0], cpType, "customShader");
+    std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
+    const RenderState resolved = RenderSystem::resolveComponentRenderState(MaterialBlendMode::AUTO, MaterialDepthWrite::AUTO,
+        (manifest && manifest->present) ? manifest.get() : nullptr, false);
+
+    AutoEnumEntries blendEntries, depthWriteEntries;
+    blendEntries.autoLabel = std::string("Auto (") + blendLabel(resolved.blend) + ")";
+    blendEntries.entries = {
+        {(int)MaterialBlendMode::AUTO, blendEntries.autoLabel.c_str()}, {(int)MaterialBlendMode::NONE, "Opaque"},
+        {(int)MaterialBlendMode::ALPHA, "Alpha"}, {(int)MaterialBlendMode::PREMULTIPLIED, "Premultiplied"},
+        {(int)MaterialBlendMode::ADDITIVE, "Additive"}, {(int)MaterialBlendMode::MULTIPLY, "Multiply"}};
+    depthWriteEntries.autoLabel = resolved.depthWrite ? "Auto (On)" : "Auto (Off)";
+    depthWriteEntries.entries = {
+        {(int)MaterialDepthWrite::AUTO, depthWriteEntries.autoLabel.c_str()}, {(int)MaterialDepthWrite::ENABLED, "On"},
+        {(int)MaterialDepthWrite::DISABLED, "Off"}};
+
     RowSettings settings;
-    settings.enumEntries = &blendEntries;
+    settings.enumEntries = &blendEntries.entries;
     settings.help = "How the colour mixes with what is behind. Auto: the shader's @state, else alpha blending.";
     propertyRow(RowPropertyType::Enum, cpType, "blendMode", "Blend Mode", sceneProject, entities, settings);
-    settings.enumEntries = &depthWriteEntries;
+    settings.enumEntries = &depthWriteEntries.entries;
     settings.help = "Whether it writes depth. Auto: the shader's @state, else on.";
     propertyRow(RowPropertyType::Enum, cpType, "depthWrite", "Depth Write", sceneProject, entities, settings);
 }
