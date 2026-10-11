@@ -3,40 +3,40 @@ color: #336699ff;
 --html-current-color: #336699ff;
 border-top-width: 2px;
 border-top-style: solid;
-border-top-color: #336699ff;
+border-top-color: currentcolor;
 border-right-width: 2px;
 border-right-style: solid;
-border-right-color: #336699ff;
+border-right-color: currentcolor;
 border-bottom-width: 2px;
 border-bottom-style: solid;
-border-bottom-color: #336699ff;
+border-bottom-color: currentcolor;
 border-left-width: 2px;
 border-left-style: solid;
-border-left-color: #336699ff;
+border-left-color: currentcolor;
 --html-box-shadow: 0px 0px 4px #336699ff;
 box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
 }
 #htmlui-root .companion {
-background-color: var(--html-current-color, #000000ff);
+background-color: currentcolor;
 --html-outline-shadow: 0 0 0 1px var(--html-current-color, #000000ff);
 box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
 }
 #htmlui-root .borders-no-color {
 border-right-width: 3px;
 border-right-style: solid;
-border-right-color: var(--html-current-color, #000000ff);
+border-right-color: currentcolor;
 border-bottom-width: 3px;
 border-bottom-style: solid;
-border-bottom-color: var(--html-current-color, #000000ff);
+border-bottom-color: currentcolor;
 border-left-width: 3px;
 border-left-style: solid;
-border-left-color: var(--html-current-color, #000000ff);
+border-left-color: currentcolor;
 border-top-width: 1px;
 border-top-style: dashed;
-border-top-color: var(--html-current-color, #000000ff);
+border-top-color: currentcolor;
 }
 #htmlui-root .color-itself {
-color: var(--html-unset);
+color: currentcolor;
 }
 #htmlui-root .icon {
 fill: currentcolor;

@@ -481,6 +481,26 @@ namespace {
 				unit = Unit::RAD;
 			else if (EqualsAsciiCaseInsensitive(unit_name, "x"))
 				unit = Unit::X;
+			else if (EqualsAsciiCaseInsensitive(unit_name, "vmin") || EqualsAsciiCaseInsensitive(unit_name, "svmin") ||
+				EqualsAsciiCaseInsensitive(unit_name, "lvmin") || EqualsAsciiCaseInsensitive(unit_name, "dvmin"))
+				unit = Unit::VMIN;
+			else if (EqualsAsciiCaseInsensitive(unit_name, "vmax") || EqualsAsciiCaseInsensitive(unit_name, "svmax") ||
+				EqualsAsciiCaseInsensitive(unit_name, "lvmax") || EqualsAsciiCaseInsensitive(unit_name, "dvmax"))
+				unit = Unit::VMAX;
+			else if (EqualsAsciiCaseInsensitive(unit_name, "svw") || EqualsAsciiCaseInsensitive(unit_name, "lvw") ||
+				EqualsAsciiCaseInsensitive(unit_name, "dvw"))
+				unit = Unit::VW;
+			else if (EqualsAsciiCaseInsensitive(unit_name, "svh") || EqualsAsciiCaseInsensitive(unit_name, "lvh") ||
+				EqualsAsciiCaseInsensitive(unit_name, "dvh"))
+				unit = Unit::VH;
+			else if (EqualsAsciiCaseInsensitive(unit_name, "ch"))
+				unit = Unit::CH;
+			else if (EqualsAsciiCaseInsensitive(unit_name, "ex"))
+				unit = Unit::EX;
+			else if (EqualsAsciiCaseInsensitive(unit_name, "turn"))
+				unit = Unit::TURN;
+			else if (EqualsAsciiCaseInsensitive(unit_name, "grad"))
+				unit = Unit::GRAD;
 			else if ((target.allowed_final_types & CalculationTypeMask(CalculationFinalType::Time)) != 0 &&
 				(EqualsAsciiCaseInsensitive(unit_name, "s") || (milliseconds = EqualsAsciiCaseInsensitive(unit_name, "ms"))))
 			{
@@ -489,7 +509,8 @@ namespace {
 			}
 			if (unit == Unit::UNKNOWN)
 				return nullptr;
-			if (unit == Unit::EM || unit == Unit::REM || unit == Unit::VW || unit == Unit::VH || unit == Unit::DP || Any(unit & Unit::PPI_UNIT))
+			if (unit == Unit::EM || unit == Unit::REM || unit == Unit::VW || unit == Unit::VH || unit == Unit::VMIN || unit == Unit::VMAX ||
+				unit == Unit::CH || unit == Unit::EX || unit == Unit::DP || Any(unit & Unit::PPI_UNIT))
 				dependency_mask = dependency_mask | unit;
 			auto node = MakeShared<Calculation::Node>();
 			node->value = milliseconds ? number * 0.001f : number;
@@ -565,6 +586,14 @@ namespace {
 		case Unit::DEG: return true;
 		case Unit::RAD:
 			result.value *= 180.f / float(3.14159265358979323846);
+			result.unit = Unit::DEG;
+			return true;
+		case Unit::TURN:
+			result.value *= 360.f;
+			result.unit = Unit::DEG;
+			return true;
+		case Unit::GRAD:
+			result.value *= 0.9f;
 			result.unit = Unit::DEG;
 			return true;
 		case Unit::X: return true;

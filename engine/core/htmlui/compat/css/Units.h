@@ -56,6 +56,10 @@ namespace jasperengine::htmlui::compat {
     };
     JASPERENGINE_API RcssUnit rcssUnit(std::string_view unit);
 
+    // The units rcssUnit converts that the fork parses and computes itself (ForkFeature::ExtraUnits,
+    // phase 3): vmin, vmax, ch, ex, turn, grad and the small/large/dynamic viewport units.
+    JASPERENGINE_API bool isForkUnit(std::string_view unit);
+
     // lowercase ASCII copy
     JASPERENGINE_API std::string lowerAscii(std::string_view text);
     inline bool equalsNoCase(std::string_view a, std::string_view b){

@@ -22,6 +22,26 @@ struct PropertyParserNumberData {
 		{"pc", Unit::PC},
 		{"deg", Unit::DEG},
 		{"rad", Unit::RAD},
+		// CSS Values 4 (phase 3): the small, large and dynamic viewport units alias the viewport units, as the
+		// viewport never changes with browser chrome here; 'Q' is not supported.
+		{"vmin", Unit::VMIN},
+		{"vmax", Unit::VMAX},
+		{"svw", Unit::VW},
+		{"svh", Unit::VH},
+		{"lvw", Unit::VW},
+		{"lvh", Unit::VH},
+		{"dvw", Unit::VW},
+		{"dvh", Unit::VH},
+		{"svmin", Unit::VMIN},
+		{"svmax", Unit::VMAX},
+		{"lvmin", Unit::VMIN},
+		{"lvmax", Unit::VMAX},
+		{"dvmin", Unit::VMIN},
+		{"dvmax", Unit::VMAX},
+		{"ch", Unit::CH},
+		{"ex", Unit::EX},
+		{"turn", Unit::TURN},
+		{"grad", Unit::GRAD},
 	};
 };
 
@@ -85,6 +105,12 @@ PropertyParserNumber::PropertyParserNumber(Units units, Unit zero_unit, Calculat
 
 PropertyParserNumber::~PropertyParserNumber() {}
 
+PropertyParserNumber& PropertyParserNumber::SetRestriction(Restriction in_restriction)
+{
+	restriction = in_restriction;
+	return *this;
+}
+
 bool PropertyParserNumber::ParseValue(Property& property, const String& value, const ParameterMap& /*parameters*/) const
 {
 	// Find the beginning of the unit string in 'value'.
@@ -128,6 +154,26 @@ bool PropertyParserNumber::ParseValue(Property& property, const String& value, c
 
 	if (Any(unit & units))
 	{
+		switch (restriction)
+		{
+		case Restriction::None: break;
+		case Restriction::AlphaValue:
+			if (unit == Unit::PERCENT)
+			{
+				property.value = float_value * 0.01f;
+				property.unit = Unit::NUMBER;
+				return true;
+			}
+			break;
+		case Restriction::NonNegative:
+			if (float_value < 0.f)
+				return false;
+			break;
+		case Restriction::Integer:
+			if (float_value != float(int(float_value)))
+				return false;
+			break;
+		}
 		property.value = float_value;
 		property.unit = unit;
 		return true;

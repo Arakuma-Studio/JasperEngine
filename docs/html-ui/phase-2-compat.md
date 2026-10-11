@@ -2022,7 +2022,7 @@ phase removes it, in that phase's spec:
 
 | Pin on the page | Engine limit | Removed by |
 |---|---|---|
-| `line-height: 1.2` on the body, `line-height: 15px` on the controls (Chromium's `normal` for 13.333px Roboto) | `line-height: normal` is `1.2` | phase 3 `LineHeightNormal` (`phase-3-fork-patches.md` §3.3.6, which also removes the pins) |
+| `line-height: 1.2` on the body, `line-height: 15px` on the controls (Chromium's `normal` for 13.333px Roboto) | `line-height: normal` is `1.2` | phase 3 `LineHeightNormal` (`phase-3-fork-patches.md` §3.3.6): removed by p3-values, the page passes its gates without them |
 | `font-size: 13px` on the text-sized controls | font sizes are whole pixels: Chromium's 13.333px draws at 13px | kept (RmlUi's font engine interface is integer; phase-3 spec §2.2) |
 | `font-family: sans-serif` (Roboto) on the form | text runs are a whole number of pixels wide, so another face's space and glyph advances differ by up to a pixel per run | kept (same row of phase-3 spec §2.2) |
 

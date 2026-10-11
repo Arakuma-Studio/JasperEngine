@@ -34,6 +34,9 @@ namespace {
         true,    // TextProperties (phase 3, p3-text: word-spacing, white-space longhands, overflow-wrap, text-decoration-*, ...)
         true,    // AnimationLonghands (phase 3, p3-animation: FORK.md P3-A1..P3-A4)
         true,    // IndividualTransforms (phase 3, p3-animation: FORK.md P3-A5)
+        true,    // CurrentColor (phase 3, p3-values: rmlui: currentcolor; docs/html-ui/FORK.md)
+        true,    // ExtraUnits (phase 3, p3-values: rmlui: CSS units vmin, vmax, ch, ex, turn, grad)
+        true,    // LineHeightNormal (phase 3, p3-values: rmlui: line-height: normal)
     };
 
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {
@@ -41,6 +44,7 @@ namespace {
         "GroupOpacity", "TimingFunctions", "Important", "CssWideKeywords", "Grid",
         "TextShadow", "TextProperties",
         "AnimationLonghands", "IndividualTransforms",
+        "CurrentColor", "ExtraUnits", "LineHeightNormal",
     };
 
     constexpr uint64_t bitOf(ForkFeature feature){
@@ -195,6 +199,13 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
             return parses("rotate", "45deg") && parses("scale", "1.5") && parses("translate", "10px 20%");
         case ForkFeature::CssWideKeywords:
             return parses("color", "inherit");
+        case ForkFeature::CurrentColor:
+            return parses("border-top-color", "currentcolor") && parses("box-shadow", "0 0 1px currentcolor");
+        case ForkFeature::ExtraUnits:
+            return parses("width", "1vmin") && parses("width", "1vmax") && parses("width", "1ch") && parses("width", "1ex") &&
+                   parses("transform", "rotate(1turn)") && parses("transform", "rotate(1grad)") && parses("width", "1svw");
+        case ForkFeature::LineHeightNormal:
+            return parses("line-height", "normal");
         case ForkFeature::Important: {
             Rml::SharedPtr<Rml::StyleSheetContainer> sheet = Rml::Factory::InstanceStyleSheetString("div { color: #f00 !important; }");
             return sheet != nullptr && capture.problems() == 0;

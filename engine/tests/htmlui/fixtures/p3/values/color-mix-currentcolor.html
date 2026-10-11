@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>values: color-mix() with currentcolor</title>
+<style>
+  /* color-mix() with a currentcolor operand (CSS Color 5) in borders and backgrounds, nested, in another space and in
+     'color' itself (the parent's color); a class changes the color, which the mixes follow without a transition of
+     their own, and a transition runs from a mix to a color. */
+  html, body { margin: 0; }
+  div { position: absolute; }
+  .box { width: 60px; height: 40px; }
+  #a { left: 10px; top: 10px; color: #c03030; border: 4px solid color-mix(in srgb, currentcolor 25%, #0000ff); }
+  #b { left: 100px; top: 10px; color: #3060c0; background-color: color-mix(in oklab, currentColor, #ffffff); }
+  #c { left: 190px; top: 10px; color: #30a050; background-color: color-mix(in srgb, color-mix(in srgb, currentcolor, #ffffff), #000000 30%); }
+  #d { left: 280px; top: 10px; color: #a050a0; }
+  #d > div { left: 10px; top: 10px; width: 40px; height: 20px; color: color-mix(in srgb, currentcolor, #000000); background-color: currentcolor; }
+  /* (on a white box: the border is translucent, and the canvas behind it is not painted alike) */
+  #w { left: 0; top: 70px; width: 90px; height: 70px; background-color: #ffffff; }
+  #e { left: 10px; top: 10px; color: #d08020; border: 4px solid color-mix(in srgb, currentcolor 60%, transparent); background-color: #ffffff; }
+  #f { left: 100px; top: 80px; color: #405060; background-color: color-mix(in srgb, currentcolor 50%, #ffffff);
+       transition: background-color 1s linear; }
+  #f.on { color: #e04080; }
+  #g { left: 190px; top: 80px; color: #2080a0; background-color: color-mix(in srgb, currentcolor 50%, #ffff00);
+       transition: background-color 1s linear; }
+  #g.on { background-color: #000000; }
+</style>
+</head>
+<body>
+<div class="box" id="a"></div>
+<div class="box" id="b"></div>
+<div class="box" id="c"></div>
+<div class="box" id="d"><div id="d1"></div></div>
+<div id="w"><div class="box" id="e"></div></div>
+<div class="box" id="f"></div>
+<div class="box" id="g"></div>
+</body>
+</html>

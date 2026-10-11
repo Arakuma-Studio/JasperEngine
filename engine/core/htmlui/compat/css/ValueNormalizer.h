@@ -47,6 +47,17 @@ namespace jasperengine::htmlui::compat {
         // ForkFeature::Calc they are checked and kept; otherwise (compat decorator arguments,
         // values a rewrite reads token by token) they are folded as without the feature
         bool calcNative = false;
+        // the value is written where the fork computes vmin, vmax, ch, ex, turn, grad and the
+        // s/l/d viewport units itself (an RmlUi property that reads it as written; not custom
+        // properties, which compat's decorators may read): with ForkFeature::ExtraUnits they stay
+        bool unitsNative = false;
+        // the value of the 'translate' property, which a rewrite writes as translate functions: a
+        // calc() that is a sum of lengths and percentages (folded without the fork's calc()) is
+        // written as calc(a + b) for the rewrite to split into one translation per term (exact)
+        bool lengthSums = false;
+        // the value is written where the fork resolves currentcolor itself (ForkFeature::CurrentColor):
+        // a color-mix() with a currentcolor operand stays, as the fork resolves it like currentcolor
+        bool currentColorMixNative = false;
         PercentBasis percentBasis = PercentBasis::ContainingBlock;
         bool vertical = false;                // the percentage basis is a height (top, bottom, height, ...)
         // the session's options (the defaults when not given)
@@ -102,6 +113,10 @@ namespace jasperengine::htmlui::compat {
         static PercentBasis percentBasisOf(const std::string& property, bool* vertical = nullptr);
         // properties whose idents are not colors (font-family, animation-name, ...)
         static bool colorKeywordsApply(const std::string& property);
+
+        // the terms of a calc(a + b) that NormalizeContext::lengthSums kept (each a dimension,
+        // percentage or 0); empty for any other value
+        static std::vector<ComponentValue> lengthSumTerms(const ValueList& value);
 
         // synthetic component values
         static ComponentValue ident(const std::string& name);

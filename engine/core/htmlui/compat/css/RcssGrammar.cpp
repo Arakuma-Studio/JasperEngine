@@ -19,6 +19,13 @@ using namespace jasperengine::htmlui::compat;
 
 namespace {
 
+    // The fork features of the accepts() call running on this thread (the values the fork parses
+    // with them: phase-3 units, 'currentcolor', 'line-height: normal')
+    thread_local uint64_t acceptedForkBits = 0;
+    bool acceptsWithFork(ForkFeature feature){
+        return ForkFeatures::fromBits(acceptedForkBits).has(feature);
+    }
+
     struct PropertyGrammar {
         std::string_view name;
         std::string_view grammar;   // alternatives separated by '|'; see check()
@@ -361,6 +368,7 @@ namespace {
             return false;
         const Unit unit(raw);
         // vmin/vmax: the writer replaces them with vw/vh per orientation before RmlUi sees them
+        // (unless the fork computes them: ExtraUnits)
         static constexpr std::string_view units[] = {"px", "dp", "vw", "vh", "em", "rem", "in", "cm", "mm", "pt", "pc", "vmin", "vmax"};
         if (unit.view.empty())
             return n == 0;
@@ -368,7 +376,7 @@ namespace {
             if (unit.view == u)
                 return true;
         }
-        return false;
+        return acceptsWithFork(ForkFeature::ExtraUnits) && isForkUnit(unit.view) && unit.view != "turn" && unit.view != "grad";
     }
     bool isPercent(std::string_view v){
         double n = 0;
@@ -386,7 +394,8 @@ namespace {
         if (!numberAndUnit(v, n, raw))
             return false;
         const Unit unit(raw);
-        return unit.view == "deg" || unit.view == "rad" || (unit.view.empty() && n == 0);
+        return unit.view == "deg" || unit.view == "rad" || (unit.view.empty() && n == 0) ||
+               (acceptsWithFork(ForkFeature::ExtraUnits) && (unit.view == "turn" || unit.view == "grad"));
     }
     bool isColor(std::string_view v){
         if (!v.empty() && v[0] == '#'){
@@ -404,6 +413,11 @@ namespace {
             if (equalsNoCase(v, n))
                 return true;
         }
+        if (acceptsWithFork(ForkFeature::CurrentColor) && equalsNoCase(v, "currentcolor"))
+            return true;
+        // (the fork resolves a color-mix() of currentcolor as currentcolor; compat folds every other color-mix())
+        if (acceptsWithFork(ForkFeature::CurrentColor) && startsWithNoCase(v, "color-mix(") && v.back() == ')')
+            return true;
         return startsWithNoCase(v, "rgb(") || startsWithNoCase(v, "rgba(") || startsWithNoCase(v, "hsl(") ||
                startsWithNoCase(v, "hsla(");
     }
@@ -488,11 +502,14 @@ namespace {
                 }
                 return false;
             };
+            // (the fork's units with ExtraUnits)
+            const bool forkUnit = acceptsWithFork(ForkFeature::ExtraUnits) && isForkUnit(unit.view);
+            const bool forkAngle = forkUnit && (unit.view == "turn" || unit.view == "grad");
             if (unit.view.empty())
                 units |= CalcNumber;
-            else if (in(lengths))
+            else if (in(lengths) || (forkUnit && !forkAngle))
                 units |= CalcLength;
-            else if (in(angles))
+            else if (in(angles) || forkAngle)
                 units |= CalcAngle;
             else if (in(times))
                 units |= CalcTime;
@@ -927,6 +944,14 @@ bool RcssGrammar::accepts(std::string_view property, std::string_view value){
 }
 
 bool RcssGrammar::accepts(std::string_view property, std::string_view value, const ForkFeatures& fork){
+    if (fork.has(ForkFeature::LineHeightNormal) && property == "line-height" && equalsNoCase(trim(value), "normal"))
+        return true;
+    // the fork's units and currentcolor are accepted where it has them (ExtraUnits, CurrentColor)
+    struct Scope {
+        uint64_t previous;
+        explicit Scope(uint64_t bits) : previous(acceptedForkBits) { acceptedForkBits = bits; }
+        ~Scope(){ acceptedForkBits = previous; }
+    } scope(fork.bits());
     const bool calc = fork.has(ForkFeature::Calc);
     if (const ForkGrammar* row = findForkGrammar(property); row && fork.has(row->feature)){
         const std::string_view trimmed = trim(value);

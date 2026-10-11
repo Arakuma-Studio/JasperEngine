@@ -6,6 +6,7 @@
 #include "../../Include/RmlUi/Core/StringUtilities.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "../../Include/RmlUi/Core/TypeConverter.h"
+#include "PropertyParserColour.h"
 
 namespace Rml {
 
@@ -32,7 +33,15 @@ namespace {
 		}
 		PropertyParser* parser = StyleSheetSpecification::GetParser("color");
 		Property property;
-		if (!parser || !parser->ParseValue(property, token, ParameterMap()) || property.unit != Unit::COLOUR)
+		if (!parser || !parser->ParseValue(property, token, ParameterMap()))
+			return false;
+		if (PropertyParserColour::IsCurrentColorMix(property))
+		{
+			shadow.current_colour = true;
+			shadow.colour_mix = property.value.Get<StyleValuePtr>()->ToString();
+			return true;
+		}
+		if (property.unit != Unit::COLOUR)
 			return false;
 		shadow.colour = property.Get<Colourb>();
 		shadow.current_colour = false;
@@ -142,7 +151,9 @@ String TextShadowListValue::ToString() const
 		if (!result.empty())
 			result += ", ";
 		result += shadow.offset_x.ToString() + " " + shadow.offset_y.ToString() + " " + shadow.blur.ToString();
-		if (!shadow.current_colour)
+		if (!shadow.colour_mix.empty())
+			result += " " + shadow.colour_mix;
+		else if (!shadow.current_colour)
 		{
 			String colour;
 			TypeConverter<Colourb, String>::Convert(shadow.colour, colour);
@@ -179,12 +190,18 @@ SharedPtr<const StyleValue> TextShadowListValue::Interpolate(const StyleValue& t
 		shadow.offset_x = InterpolateLength(a.offset_x, b.offset_x, alpha, element);
 		shadow.offset_y = InterpolateLength(a.offset_y, b.offset_y, alpha, element);
 		shadow.blur = InterpolateLength(a.blur, b.blur, alpha, element);
-		if (a.current_colour && b.current_colour)
+		if (a.current_colour && b.current_colour && a.colour_mix == b.colour_mix)
+		{
 			shadow.current_colour = true;
+			shadow.colour_mix = a.colour_mix;
+		}
 		else
 		{
 			shadow.current_colour = false;
-			shadow.colour = InterpolateColour(a.current_colour ? element_colour : a.colour, b.current_colour ? element_colour : b.colour, alpha);
+			auto colour_of = [&](const TextShadow& s) {
+				return s.current_colour ? PropertyParserColour::ResolveCurrentColor(s.colour_mix, element_colour) : s.colour;
+			};
+			shadow.colour = InterpolateColour(colour_of(a), colour_of(b), alpha);
 		}
 		result->shadows.push_back(std::move(shadow));
 	}
@@ -216,7 +233,7 @@ Vector<ResolvedTextShadow> ResolveTextShadows(Element& element)
 		ResolvedTextShadow resolved;
 		resolved.offset = Vector2f(ToPixels(shadow.offset_x, element), ToPixels(shadow.offset_y, element));
 		resolved.blur = Math::Max(ToPixels(shadow.blur, element), 0.f);
-		resolved.colour = (shadow.current_colour ? element_colour : shadow.colour);
+		resolved.colour = (shadow.current_colour ? PropertyParserColour::ResolveCurrentColor(shadow.colour_mix, element_colour) : shadow.colour);
 		result.push_back(resolved);
 	}
 	return result;

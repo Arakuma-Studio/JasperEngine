@@ -324,9 +324,10 @@ TEST_CASE("custom_properties.shorthand_font")
 		TestsShell::RenderLoop();
 		CHECK(div->GetComputedValues().font_size() == 12);
 		CHECK(div->GetComputedValues().font_weight() == Style::FontWeight::Bold);
-		CHECK(div->GetComputedValues().line_height().value == 12.0f * 1.2f);
+		// The initial line height is 'normal' (phase 3, values): LatoLatin's line spacing at 12px, 14px (6.3: 1.2).
+		CHECK(div->GetComputedValues().line_height().value == 14.f);
 		CHECK(p->GetComputedValues().font_weight() == Style::FontWeight::Bold);
-		CHECK(p->GetComputedValues().line_height().value == 12.0f * 1.2f);
+		CHECK(p->GetComputedValues().line_height().value == 14.f);
 	}
 
 	SUBCASE("overriding a single property that's also in a shorthand")
@@ -1161,7 +1162,7 @@ TEST_CASE("custom_properties.media_query")
 		}
 	}
 	div {
-		background-color: rgba(var(--bg-color), 127);
+		background-color: rgba(var(--bg-color), 0.5);
 	}
 	</style>
 </head>
@@ -1178,11 +1179,11 @@ TEST_CASE("custom_properties.media_query")
 
 	context->SetDimensions(Vector2i(800, 320));
 	TestsShell::RenderLoop();
-	CHECK(document->GetElementById("div")->GetComputedValues().background_color() == Colourb(0, 255, 0, 127));
+	CHECK(document->GetElementById("div")->GetComputedValues().background_color() == Colourb(0, 255, 0, 128));
 
 	context->SetDimensions(Vector2i(600, 320));
 	TestsShell::RenderLoop();
-	CHECK(document->GetElementById("div")->GetComputedValues().background_color() == Colourb(255, 255, 255, 127));
+	CHECK(document->GetElementById("div")->GetComputedValues().background_color() == Colourb(255, 255, 255, 128));
 
 	document->Close();
 	TestsShell::ShutdownShell();

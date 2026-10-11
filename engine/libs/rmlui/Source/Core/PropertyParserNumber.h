@@ -30,6 +30,11 @@ public:
 	static void Initialize();
 	static void Shutdown();
 
+	/// Phase 3 (values): what CSS requires of some numbers. 'AlphaValue' reads a percentage as a fraction ('50%' is 0.5,
+	/// <alpha-value>), 'NonNegative' rejects negative numbers (flex factors), 'Integer' rejects non-integers (z-index).
+	enum class Restriction { None, AlphaValue, NonNegative, Integer };
+	PropertyParserNumber& SetRestriction(Restriction restriction);
+
 private:
 	static ControlledLifetimeResource<struct PropertyParserNumberData> parser_data;
 
@@ -38,6 +43,8 @@ private:
 
 	// If zero unit is set and pure numbers are not allowed, parsing of "0" is still allowed and assigned the given unit.
 	Unit zero_unit;
+
+	Restriction restriction = Restriction::None;
 
 #ifdef RMLUI_MATH_EXPRESSIONS
 	CalculationParseTarget calculation_target;
