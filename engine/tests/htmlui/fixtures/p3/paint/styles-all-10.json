@@ -1,10 +1,10 @@
 {
- "comment": "every border style at 6px on square and rounded boxes, mixed styles and colours per side (corner splits). Tolerance: rounded dotted, dashed, double and groove borders: the curved edges are anti-aliased differently (feathering over 4x multisampling vs Skia's analytic coverage) and Skia lays dots and dashes along a flattened path; scattered edge pixels differ.",
+ "comment": "every border style at 6px on square and rounded boxes, mixed styles and colours per side (corner splits). Tolerance: rounded dotted, dashed, double and groove borders: the curved edges are anti-aliased differently (feathering over 4x multisampling vs Skia's analytic coverage) and Skia lays dots and dashes along a flattened path; scattered edge pixels differ. Measured 0.351 % on glcore and Vulkan; the cluster limit stays at the default (16 px).",
  "viewport": [
   410,
   250
  ],
  "tolerance": {
-  "badPercent": 0.5
+  "badPercent": 0.36
  }
 }

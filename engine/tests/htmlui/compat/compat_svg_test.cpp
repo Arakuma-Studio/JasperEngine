@@ -307,6 +307,53 @@ TEST_F(CompatSvgElementTest, MixedSvgFileIsRasterizedWithTheColor){
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_VERBOSE, "HTMLUI-SVG-0001"), 1u);
 }
 
+TEST_F(CompatSvgElementTest, SvgFileIsPlacedByObjectFit){
+    // an SVG file is an image: object-fit and object-position place it (phase 3, p3-paint:
+    // Rml::ComputeObjectFitRect, as <img>), rasterized at the size it is drawn at
+    ASSERT_NE(show("<svg id='icon' src='svg/mixed.svg' style='width: 40px; height: 40px; object-fit: contain;'/>", "svg { display: block; }"), nullptr);
+    auto quad = [&](const RecordingRenderInterface::Draw& draw){
+        const RecordingRenderInterface::Geometry* geometry = recording.getGeometry(draw.geometry);
+        Rml::Vector2f low(1e9f), high(-1e9f), uvLow(1e9f), uvHigh(-1e9f);
+        for (const Rml::Vertex& v : geometry->vertices){
+            low = Rml::Math::Min(low, v.position); high = Rml::Math::Max(high, v.position);
+            uvLow = Rml::Math::Min(uvLow, v.tex_coord); uvHigh = Rml::Math::Max(uvHigh, v.tex_coord);
+        }
+        return std::make_pair(Rml::Rectanglef::FromCorners(low, high), Rml::Rectanglef::FromCorners(uvLow, uvHigh));
+    };
+    // contain: the 20 x 10 image at 40 x 20, centred vertically
+    std::vector<RecordingRenderInterface::Draw> draws = drawsOf(Rml::Vector2i(40, 20));
+    ASSERT_EQ(draws.size(), 1u);
+    auto [rect, uv] = quad(draws[0]);
+    EXPECT_FLOAT_EQ(rect.Top(), 10.0f);
+    EXPECT_FLOAT_EQ(rect.Height(), 20.0f);
+    EXPECT_FLOAT_EQ(rect.Width(), 40.0f);
+
+    // cover: 80 x 40, the middle half shown
+    byId("icon")->SetProperty("object-fit", "cover");
+    frame();
+    draws = drawsOf(Rml::Vector2i(80, 40));
+    ASSERT_EQ(draws.size(), 1u);
+    std::tie(rect, uv) = quad(draws[0]);
+    EXPECT_FLOAT_EQ(rect.Width(), 40.0f);
+    EXPECT_FLOAT_EQ(rect.Height(), 40.0f);
+    EXPECT_FLOAT_EQ(uv.Left(), 0.25f);
+    EXPECT_FLOAT_EQ(uv.Right(), 0.75f);
+
+    // none, at the right bottom: 20 x 10 in the corner
+    byId("icon")->SetProperty("object-fit", "none");
+    byId("icon")->SetProperty("object-position", "right bottom");
+    frame();
+    draws = drawsOf(Rml::Vector2i(20, 10));
+    ASSERT_EQ(draws.size(), 1u);
+    std::tie(rect, uv) = quad(draws[0]);
+    EXPECT_FLOAT_EQ(rect.Width(), 20.0f);
+    EXPECT_FLOAT_EQ(rect.Height(), 10.0f);
+    // (the geometry is relative to the content box)
+    EXPECT_FLOAT_EQ(rect.Left(), 20.0f);
+    EXPECT_FLOAT_EQ(rect.Top(), 30.0f);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "[HTML UI]"), 0u);
+}
+
 TEST_F(CompatSvgElementTest, MonochromeFileAndForeignObject){
     ASSERT_NE(show("<svg src='svg/mono.svg' style='color: #808000;'/><svg src='svg/foreign.svg'/>", "svg { display: block; }"), nullptr);
     std::vector<RecordingRenderInterface::Draw> mono = drawsOf(Rml::Vector2i(20, 20));

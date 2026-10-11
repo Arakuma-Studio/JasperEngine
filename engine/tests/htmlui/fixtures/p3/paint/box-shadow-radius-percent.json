@@ -1,10 +1,10 @@
 {
- "comment": "box shadows follow percentage and elliptical radii: blurred under a circle, a spread ring around an ellipse, an offset copy, inset rings, inset and outer blurs, small radii growing by less than the spread. Tolerance: the anti-aliased edge of a curve where it is nearly tangent to a pixel row or column: the engine fades it linearly over 1.1 px (feathering over 4x multisampling), Skia uses the covered area; such pixels differ by up to about 30 levels (scattered single pixels, no shape difference). The blurred shadows are the engine's Gaussian blur of the shadow shape, Skia's analytic blur: their soft edges differ by a few levels, and their curves as above.",
+ "comment": "box shadows follow percentage and elliptical radii: blurred under a circle, a spread ring around an ellipse, an offset copy, inset rings, inset and outer blurs, small radii growing by less than the spread. Tolerance: the anti-aliased edge of a curve where it is nearly tangent to a pixel row or column: the engine fades it linearly over 1.1 px (feathering over 4x multisampling), Skia uses the covered area; such pixels differ by up to about 30 levels (scattered single pixels, no shape difference). The blurred shadows are the engine's Gaussian blur of the shadow shape, Skia's analytic blur: their soft edges differ by a few levels, and their curves as above. Measured 0.339 % on glcore and Vulkan; the cluster limit stays at the default (16 px).",
  "viewport": [
   390,
   210
  ],
  "tolerance": {
-  "badPercent": 0.4
+  "badPercent": 0.34
  }
 }

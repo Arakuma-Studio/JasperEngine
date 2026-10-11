@@ -1,10 +1,10 @@
 {
- "comment": "outline: solid, positive and negative offsets, dashed over a border, dotted, double, around rounded boxes (the radii grow with the offset), ridge, the keyword width with currentcolor, and an outline above the element's overflowing child (outlines are painted last in their stacking context). Tolerance: the anti-aliased edge of a curve where it is nearly tangent to a pixel row or column: the engine fades it linearly over 1.1 px (feathering over 4x multisampling), Skia uses the covered area; such pixels differ by up to about 30 levels (scattered single pixels, no shape difference). Dotted and dashed rings: the ends of the dashes and the square dots are where 4x multisampling covers a pixel partly.",
+ "comment": "outline: solid, positive and negative offsets, dashed over a border, dotted, double, around rounded boxes (the radii grow with the offset), ridge, the keyword width with currentcolor, and an outline above the element's overflowing child (outlines are painted last in their stacking context). Tolerance: the anti-aliased edge of a curve where it is nearly tangent to a pixel row or column: the engine fades it linearly over 1.1 px (feathering over 4x multisampling), Skia uses the covered area; such pixels differ by up to about 30 levels (scattered single pixels, no shape difference). Dotted and dashed rings: the ends of the dashes and the square dots are where 4x multisampling covers a pixel partly. Measured 0.336 % on glcore and Vulkan; the cluster limit stays at the default (16 px).",
  "viewport": [
   320,
   290
  ],
  "tolerance": {
-  "badPercent": 0.4
+  "badPercent": 0.34
  }
 }

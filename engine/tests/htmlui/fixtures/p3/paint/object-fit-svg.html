@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: SVG object-fit</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  svg, img { position: absolute; width: 100px; height: 50px; background-color: #dde6f5; }
+  img { image-rendering: pixelated; }
+  #a { left:10px; top:10px; width:60px; height:60px; }
+  #b { left:90px; top:10px; width:100px; height:30px; }
+  #c { left:210px; top:10px; width:60px; height:60px; }
+  #d { left:290px; top:10px; width:60px; height:60px; }
+  #e { left:370px; top:10px; width:60px; height:60px; object-fit: cover; }
+  #f { left:10px; top:90px; object-fit: fill; }
+  #g { left:130px; top:90px; object-fit: contain; }
+  #h { left:250px; top:90px; object-fit: cover; object-position: left top; }
+  #i { left:370px; top:90px; width:60px; object-fit: none; object-position: right 4px bottom 2px; }
+</style>
+</head>
+<body><svg id="a" viewBox="0 0 20 10"><rect width="20" height="5" fill="#cc3333"/><rect y="5" width="20" height="5" fill="#3366cc"/></svg><svg id="b" viewBox="0 0 20 10"><rect width="20" height="5" fill="#cc3333"/><rect y="5" width="20" height="5" fill="#3366cc"/></svg><svg id="c" viewBox="0 0 20 10" preserveAspectRatio="xMinYMin meet"><rect width="20" height="5" fill="#cc3333"/><rect y="5" width="20" height="5" fill="#3366cc"/></svg><svg id="d" viewBox="0 0 20 10" preserveAspectRatio="none"><rect width="20" height="5" fill="#cc3333"/><rect y="5" width="20" height="5" fill="#3366cc"/></svg><svg id="e" viewBox="0 0 20 10"><rect width="20" height="5" fill="#cc3333"/><rect y="5" width="20" height="5" fill="#3366cc"/></svg><img id="f" src="img/bands.svg"><img id="g" src="img/bands.svg"><img id="h" src="img/bands.svg"><img id="i" src="img/bands.svg"></body>
+</html>

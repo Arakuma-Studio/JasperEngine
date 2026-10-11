@@ -380,6 +380,49 @@ TEST_F(LottieElementTest, ContentIsFittedAndCentred){
     EXPECT_EQ(alphaAt(190, 50), 0);
 }
 
+TEST_F(LottieElementTest, ObjectFitAndPosition){
+    JASPER_REQUIRE_GPU();
+    // object-fit and object-position place the animation as they place an <img> (phase 3, p3-paint:
+    // Rml::ComputeObjectFitRect); the canvas is the content box, so the part outside is cut off
+    auto alphaAt = [&](UILottieElement* lottie, int width, int x, int y){
+        std::vector<uint8_t> pixels;
+        HtmlUITexture* texture = lottie->getTexture();
+        if (!texture || !readTexturePixels(*texture->render, width, 100, 4, pixels))
+            return -1;
+        return (int)pixels[((size_t)y * width + x) * 4 + 3];
+    };
+
+    // fill: the 200 x 200 animation stretched over 200 x 100, everywhere opaque where it is
+    UILottieElement* lottie = load("src=\"image_ext.json\"", "width: 200px; height: 100px; object-fit: fill;");
+    ASSERT_NE(lottie, nullptr);
+    frame(0.0);
+    frame(0.0);
+    EXPECT_EQ(alphaAt(lottie, 200, 10, 50), 255);
+    EXPECT_EQ(alphaAt(lottie, 200, 190, 50), 255);
+
+    // contain at the left: 100 x 100 at x 0
+    lottie->SetProperty("object-fit", "contain");
+    lottie->SetProperty("object-position", "left center");
+    frame(0.0);
+    frame(0.0);
+    EXPECT_EQ(alphaAt(lottie, 200, 10, 50), 255);
+    EXPECT_EQ(alphaAt(lottie, 200, 150, 50), 0);
+
+    // contain at the right
+    lottie->SetProperty("object-position", "right 0px center");
+    frame(0.0);
+    frame(0.0);
+    EXPECT_EQ(alphaAt(lottie, 200, 10, 50), 0);
+    EXPECT_EQ(alphaAt(lottie, 200, 150, 50), 255);
+
+    // cover: 200 x 200 cut to the box, opaque over all of it
+    lottie->SetProperty("object-fit", "cover");
+    frame(0.0);
+    frame(0.0);
+    EXPECT_EQ(alphaAt(lottie, 200, 10, 50), 255);
+    EXPECT_EQ(alphaAt(lottie, 200, 190, 50), 255);
+}
+
 TEST_F(LottieElementTest, ClockDrivesTheFrame){
     JASPER_REQUIRE_GPU();
     UILottieElement* lottie = load("src=\"shapes.json\" autoplay=\"autoplay\"");

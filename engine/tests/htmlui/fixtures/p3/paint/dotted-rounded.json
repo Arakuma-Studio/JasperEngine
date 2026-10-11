@@ -1,10 +1,10 @@
 {
- "comment": "dotted borders of 1, 2, 4, 6 and 8px, square, rounded and a circle. Tolerance: on rounded boxes Skia lays the dots out along the flattened centre path of the rounded rectangle, the engine along its exact arcs, so the dots on and next to the curves sit up to 1 px apart; their edge pixels differ (scattered, no cluster above 16).",
+ "comment": "dotted borders of 1, 2, 4, 6 and 8px, square, rounded and a circle. Tolerance: on rounded boxes Skia lays the dots out along the flattened centre path of the rounded rectangle, the engine along its exact arcs, so the dots on and next to the curves sit up to 1 px apart; their edge pixels differ (scattered, no cluster above 16). Measured 1.019 % on glcore and Vulkan; the cluster limit stays at the default (16 px).",
  "viewport": [
   330,
   160
  ],
  "tolerance": {
-  "badPercent": 1.5
+  "badPercent": 1.02
  }
 }

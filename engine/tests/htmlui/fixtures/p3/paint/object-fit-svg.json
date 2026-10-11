@@ -1,0 +1,7 @@
+{
+ "comment": "SVG content: inline <svg> is placed by its viewBox and preserveAspectRatio (default xMidYMid meet, xMinYMin, none); object-fit does not apply to it (Chromium ignores it: the cover case draws as the default); an SVG file in <img> is an image, placed by object-fit and object-position (fill, contain, cover at the left top, none at an edge offset).",
+ "viewport": [
+  450,
+  160
+ ]
+}

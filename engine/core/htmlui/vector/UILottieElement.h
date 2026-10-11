@@ -32,7 +32,9 @@ namespace jasperengine {
     // per element (HtmlUITexture DYNAMIC), updated in place, and only when the shown frame
     // changes or the element is resized. Playback time is the UI clock (HtmlUIClock).
     // Events on the element: load, error (parameter "message"), play, pause, loop, complete.
-    // The content is fitted into the content box keeping its aspect ratio, centred, and
+    // The content is placed in the content box by object-fit and object-position (Rml::
+    // ComputeObjectFitRect, as <img>); without a declared object-fit it is contained, centred
+    // (an animation's own aspect ratio, as lottie-player and an SVG's preserveAspectRatio), and
     // tinted by image-color x opacity like <img> and <svg>. playonhover (phase-2 hook H9, the
     // lottie-player `hover` attribute): the pointer entering plays, leaving stops (back to
     // the first frame), as @lottiefiles/lottie-player does.
