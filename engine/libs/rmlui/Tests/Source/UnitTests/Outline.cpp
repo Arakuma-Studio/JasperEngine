@@ -159,3 +159,39 @@ TEST_CASE("Outline.computed_and_drawn")
 	document->Close();
 	TestsShell::ShutdownShell();
 }
+
+TEST_CASE("Outline.current_color")
+{
+	// 'currentcolor' and color-mix() of it are resolved for the element, and follow a change of its colour: in the
+	// outline and in the border colours (phase 3, p3-paint with p3-values).
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+	Element* a = document->GetElementById("a");
+	REQUIRE(a->SetProperty("color", "#ff0000"));
+	REQUIRE(a->SetProperty("outline", "2px solid color-mix(in srgb, currentcolor 50%, #0000ff)"));
+	REQUIRE(a->SetProperty("border", "2px solid color-mix(in srgb, currentcolor 50%, #00ff00)"));
+	TestsShell::RenderLoop();
+	const ComputedValues& computed = a->GetComputedValues();
+	CHECK(computed.outline_color() == Colourb(128, 0, 128));
+	CHECK(computed.border_top_color() == Colourb(128, 128, 0));
+
+	REQUIRE(a->SetProperty("color", "#0000ff"));
+	TestsShell::RenderLoop();
+	CHECK(computed.outline_color() == Colourb(0, 0, 255));
+	CHECK(computed.border_top_color() == Colourb(0, 128, 128));
+
+	REQUIRE(a->SetProperty("outline-color", "currentcolor"));
+	REQUIRE(a->SetProperty("border-color", "currentcolor"));
+	TestsShell::RenderLoop();
+	CHECK(computed.outline_color() == Colourb(0, 0, 255));
+	CHECK(computed.border_left_color() == Colourb(0, 0, 255));
+	REQUIRE(a->SetProperty("color", "#00ff00"));
+	TestsShell::RenderLoop();
+	CHECK(computed.outline_color() == Colourb(0, 255, 0));
+	CHECK(computed.border_left_color() == Colourb(0, 255, 0));
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}

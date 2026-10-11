@@ -533,15 +533,8 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	properties.SetShorthandParser(ShorthandId::Font, &ParseFontShorthand);
 	properties.SetShorthandParser(ShorthandId::TransformOrigin, &ParseTransformOriginShorthand);
 	properties.SetShorthandParser(ShorthandId::PerspectiveOrigin, &ParsePerspectiveOriginShorthand);
-	size_t num_logical_shorthands = 0;
-	const LogicalShorthand* logical_shorthands = GetLogicalShorthands(num_logical_shorthands);
-	for (size_t i = 0; i < num_logical_shorthands; i++)
-	{
-		const LogicalShorthand& logical = logical_shorthands[i];
-		RegisterShorthand(logical.id, logical.name, logical.items, logical.type);
-		if (logical.parser)
-			properties.SetShorthandParser(logical.id, logical.parser);
-	}
+	// (The logical shorthands are registered after every package's properties: they name some, such as p3-paint's
+	// border-<side> shorthands. See the end of this function.)
 
 	// -- Cascade (p3-cascade) --
 
@@ -676,6 +669,18 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 
 	// -- Grid (p3-grid) --
 	RegisterGridProperties(properties);
+
+	// -- Values (p3-values), continued: the logical shorthands, which name the physical properties and shorthands of
+	// the other packages (border-<side> of p3-paint) --
+	size_t num_logical_shorthands = 0;
+	const LogicalShorthand* logical_shorthands = GetLogicalShorthands(num_logical_shorthands);
+	for (size_t i = 0; i < num_logical_shorthands; i++)
+	{
+		const LogicalShorthand& logical = logical_shorthands[i];
+		RegisterShorthand(logical.id, logical.name, logical.items, logical.type);
+		if (logical.parser)
+			properties.SetShorthandParser(logical.id, logical.parser);
+	}
 
 	instance->properties.property_map->ReserveUnnamed(PropertyId::NumDefinedIds);
 	instance->properties.shorthand_map->ReserveUnnamed(ShorthandId::NumDefinedIds);

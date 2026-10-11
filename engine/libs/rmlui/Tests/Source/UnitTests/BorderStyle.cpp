@@ -76,7 +76,7 @@ TEST_CASE("BorderStyle.shorthands")
 	REQUIRE(Parse(dictionary, "border", "dashed"));
 	CHECK(Parsed(dictionary, "border-left-width") == "3px"); // medium (a length, it interpolates)
 	CHECK(Parsed(dictionary, "border-left-style") == "dashed");
-	CHECK(Parsed(dictionary, "border-left-color") == "#000000");
+	CHECK(Parsed(dictionary, "border-left-color") == "currentcolor");
 	REQUIRE(Parse(dictionary, "border", "2px"));
 	CHECK(Parsed(dictionary, "border-top-style") == "none");
 
@@ -92,7 +92,7 @@ TEST_CASE("BorderStyle.shorthands")
 	REQUIRE(Parse(dictionary, "border-top", "dotted thick"));
 	CHECK(Parsed(dictionary, "border-top-width") == "5px");
 	CHECK(Parsed(dictionary, "border-top-style") == "dotted");
-	CHECK(Parsed(dictionary, "border-top-color") == "#000000");
+	CHECK(Parsed(dictionary, "border-top-color") == "currentcolor");
 	CHECK(Parsed(dictionary, "border-right-style") == "<none>");
 	REQUIRE(Parse(dictionary, "border-left", "#00ff00 groove"));
 	CHECK(Parsed(dictionary, "border-left-width") == "3px"); // medium (a length, it interpolates)
