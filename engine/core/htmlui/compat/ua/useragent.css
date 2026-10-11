@@ -619,8 +619,9 @@ dialog {
 }
 
 /* 6. Focus ring ------------------------------------------------------------------------------
-   Chromium's `outline: auto`: a 2px dark ring outside the box; text fields show it on any
-   focus. The rewriter draws outlines as a box-shadow ring (3.9.7) that keeps the element's
+   Chromium's `outline: auto`: a 2px ring outside the box with a 1px white halo; text fields
+   show it on any focus. The fork draws it (ForkFeature::Outline, phase 3 §3.7.4); without the
+   feature the rewriter draws outlines as a box-shadow ring (3.9.7) that keeps the element's
    own shadows. */
 
 :focus-visible {

@@ -336,6 +336,10 @@ namespace {
             }else if (fork){
                 targets[0] = e.property.view();
                 count = 1;
+            }else if (context && context->session.fork(ForkFeature::Outline) && lowerAscii(e.property).compare(0, 7, "outline") == 0){
+                // the fork transitions the outline properties themselves (phase 3, p3-paint)
+                targets[0] = e.property.view();
+                count = 1;
             }else if (context && context->session.fork(ForkFeature::TextShadow) && equalsNoCase(e.property.view(), "text-shadow")){
                 // the fork transitions text-shadow itself (phase 3, p3-text)
                 targets[0] = "text-shadow";

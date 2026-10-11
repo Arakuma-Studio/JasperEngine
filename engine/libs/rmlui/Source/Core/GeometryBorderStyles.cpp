@@ -262,11 +262,9 @@ namespace {
 	// pixel centre). A transparent margin of half a pixel follows the fade, for the same reason.
 	constexpr float feather_half = 0.5f;
 	constexpr float feather_half_curve = 0.55f;
-	// With multisampling (only curves are feathered) the samples soften the edge as well: a narrower fade.
-	constexpr float feather_half_curve_multisampled = 0.35f;
 	inline float CurveHalf(FeatherEdges edges)
 	{
-		return edges == FeatherEdges::All ? feather_half_curve : (edges == FeatherEdges::Curves ? feather_half_curve_multisampled : 0.f);
+		return edges == FeatherEdges::None ? 0.f : feather_half_curve;
 	}
 	constexpr float feather_margin = 0.5f;
 

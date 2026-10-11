@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/compat/css/CascadeKeywords.h"
+#include "htmlui/compat/ForkFeatures.h"
 #include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/SupportTables.h"
@@ -119,6 +120,35 @@ std::vector<std::string> CascadeKeywords::outputProperties(const std::string& cs
         if (cssProperty == "overflow-wrap" || cssProperty == "white-space-collapse" || cssProperty == "text-wrap" ||
             cssProperty == "text-wrap-mode" || cssProperty == "text-decoration-line")
             return {cssProperty};
+    }
+    // the fork's borders and outlines (phase 3, p3-paint)
+    if (fork.has(ForkFeature::Outline) && cssProperty.compare(0, 7, "outline") == 0)
+        return cssProperty == "outline" ? std::vector<std::string>{"outline-width", "outline-style", "outline-color"}
+                                        : std::vector<std::string>{cssProperty};
+    if (fork.has(ForkFeature::BorderStyle)){
+        static const char* const sides[] = {"top", "right", "bottom", "left"};
+        auto perSide = [](const char* const* list, size_t count, const char* suffix){
+            std::vector<std::string> out;
+            for (size_t i = 0; i < count; i++)
+                out.push_back(std::string("border-") + list[i] + suffix);
+            return out;
+        };
+        if (cssProperty == "border-style")
+            return perSide(sides, 4, "-style");
+        for (const char* side : sides){
+            if (cssProperty == std::string("border-") + side + "-style")
+                return {cssProperty};
+            if (cssProperty == std::string("border-") + side)
+                return {cssProperty + "-width", cssProperty + "-style", cssProperty + "-color"};
+        }
+        if (cssProperty == "border"){
+            std::vector<std::string> out = perSide(sides, 4, "-width");
+            for (const std::string& p : perSide(sides, 4, "-style"))
+                out.push_back(p);
+            for (const std::string& p : perSide(sides, 4, "-color"))
+                out.push_back(p);
+            return out;
+        }
     }
     const auto it = shorthands().find(cssProperty);
     if (it != shorthands().end())
