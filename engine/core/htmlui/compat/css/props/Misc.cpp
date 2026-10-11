@@ -50,6 +50,14 @@ namespace {
                 {"--html-check-baseline", "-3px"},
                 {"--html-control-bg", "#ffffff"},
                 {"--html-control-border", "#767676"},
+                {"--html-control-border-width", "1px"},
+                {"--html-control-radius", "2px"},
+                {"--html-check-radius", "2px"},
+                {"--html-radio-radius", "9999px"},
+                {"--html-check-fill", "var(--html-accent, #0075ff)"},
+                {"--html-radio-ring", "inset 0 0 0 1.5px var(--html-accent-contrast, #ffffff)"},
+                {"--html-control-disabled-border", "#7676764d"},
+                {"--html-check-disabled-fill", "#0075ff4d"},
                 {"--html-select-arrow", "html-layer(\"/@htmlui/ua/arrow-down.svg\" 10px 6px 3px 50% no-repeat no-repeat padding-box border-box scroll)"},
                 {"--html-thumb", "none"},
                 {"--html-slider-fill", "var(--html-accent, #0075ff)"},
@@ -244,6 +252,16 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         context.emit("--html-check-baseline", "0px");
         context.emit("--html-control-bg", "transparent");
         context.emit("--html-control-border", "transparent");
+        // checkbox and radio: no frame, rounding, fill or ring (Chromium's html.css gives them none)
+        context.emit("--html-control-border-width", "0px");
+        // text fields, buttons, selects: the theme's 2px rounding (Chromium's html.css has none)
+        context.emit("--html-control-radius", "0px");
+        context.emit("--html-check-radius", "0px");
+        context.emit("--html-radio-radius", "0px");
+        context.emit("--html-check-fill", "transparent");
+        context.emit("--html-radio-ring", "none");
+        context.emit("--html-control-disabled-border", "transparent");
+        context.emit("--html-check-disabled-fill", "transparent");
         context.emit("--html-select-arrow", "none");
         context.emit("--html-thumb", "none");
         // a range without its look: no value fill, as tall as its track (Chromium)
@@ -262,6 +280,8 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         if (keyword != "auto")
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "'appearance: " + keyword + "' is treated as 'auto'");
         for (const char* companion : {"--html-check", "--html-check-baseline", "--html-control-bg", "--html-control-border",
+                                      "--html-control-border-width", "--html-control-radius", "--html-check-radius", "--html-radio-radius", "--html-check-fill",
+                                      "--html-radio-ring", "--html-control-disabled-border", "--html-check-disabled-fill",
                                       "--html-select-arrow", "--html-thumb", "--html-slider-fill", "--html-slider-height",
                                       "--html-slider-track-margin", "--html-slider-track-height", "--html-slider-track-border",
                                       "--html-slider-track-bg", "--html-slider-track-border-color"})
