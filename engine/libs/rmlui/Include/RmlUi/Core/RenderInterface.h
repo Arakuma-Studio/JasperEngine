@@ -61,6 +61,12 @@ public:
 	/// @param[in] texture The texture handle to release.
 	virtual void ReleaseTexture(TextureHandle texture) = 0;
 
+	/// Fork (phase 3, p3-paint): true when LoadTexture understands a source whose query ends in the parameter
+	/// 'rmlui-wrap=repeat', '=repeat-x' or '=repeat-y': it strips the parameter and samples that texture with repeat wrap
+	/// along those axes (clamped along the other). Background and mask images repeated along an axis are then drawn as one
+	/// quad, filtered across the seams of their tiles as browsers do; without it they are drawn tile by tile.
+	virtual bool SupportsTextureWrapHint();
+
 	/// Called by RmlUi when it wants to enable or disable scissoring to clip content.
 	/// @param[in] enable True to enable scissoring, false to disable it.
 	virtual void EnableScissorRegion(bool enable) = 0;

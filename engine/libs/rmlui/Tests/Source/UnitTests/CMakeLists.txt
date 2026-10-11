@@ -4,6 +4,7 @@ add_executable(${TARGET_NAME}
 	Alignment.cpp
 	Animation.cpp
 	AnimationLayers.cpp
+	Backgrounds.cpp
 	BorderRadius.cpp
 	BorderStyle.cpp
 	Calculation.cpp

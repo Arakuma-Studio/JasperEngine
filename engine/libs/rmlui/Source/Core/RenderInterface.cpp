@@ -34,6 +34,11 @@ void RenderInterface::CompositeLayers(LayerHandle /*source*/, LayerHandle /*dest
 
 void RenderInterface::PopLayer() {}
 
+bool RenderInterface::SupportsTextureWrapHint()
+{
+	return false;
+}
+
 TextureHandle RenderInterface::SaveLayerAsTexture()
 {
 	return TextureHandle{};

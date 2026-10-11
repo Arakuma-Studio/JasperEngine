@@ -142,6 +142,7 @@ void TestsRenderInterface::RenderToClipMask(Rml::ClipMaskOperation /*mask_operat
 Rml::TextureHandle TestsRenderInterface::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source)
 {
 	counters.load_texture += 1;
+	loaded_texture_sources.push_back(source);
 	if (source.find("invalid") != Rml::String::npos)
 		return 0;
 
@@ -200,9 +201,15 @@ void TestsRenderInterface::ReleaseFilter(Rml::CompiledFilterHandle /*filter*/)
 	counters.release_filter += 1;
 }
 
-Rml::CompiledShaderHandle TestsRenderInterface::CompileShader(const Rml::String& /*name*/, const Rml::Dictionary& /*parameters*/)
+bool TestsRenderInterface::SupportsTextureWrapHint()
+{
+	return true;
+}
+
+Rml::CompiledShaderHandle TestsRenderInterface::CompileShader(const Rml::String& name, const Rml::Dictionary& parameters)
 {
 	counters.compile_shader += 1;
+	compiled_shaders.push_back({name, parameters});
 	return 1;
 }
 
@@ -233,6 +240,8 @@ void TestsRenderInterface::Reset()
 	VerifyMeshes();
 	meshes_set = false;
 	compiled_opacities.clear();
+	compiled_shaders.clear();
+	loaded_texture_sources.clear();
 	ResetCounters();
 }
 void TestsRenderInterface::VerifyMeshes()

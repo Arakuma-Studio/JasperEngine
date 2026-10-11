@@ -145,19 +145,66 @@ LayerTiles ComputeLayerTiles(const LayerTileInput& in, const Function<float(int 
 	const Vector<float> ys = TileStarts(area.Top(), area_size.y, tile.y, position_y, in.repeat_y, clip.Top(), clip.Bottom());
 	if (xs.size() * ys.size() > 65536)
 		return out;
-	out.tiles.reserve(xs.size() * ys.size());
-	for (float y : ys)
-	{
-		for (float x : xs)
+
+	// The spans of the tiles along an axis, cropped to the clip: their extent and the part of the tile they show (0 to 1;
+	// beyond 1 over tiles drawn as one span). As Chromium's BackgroundImageGeometry and DrawTiledBackground: a tile that is
+	// not repeated along the axis is drawn into a destination snapped to whole pixels, the image mapped from its
+	// unsnapped place (a tile after the area's start: the image's start snapped and its end one tile further, snapped);
+	// repeated tiles keep their fractional size and phase.
+	struct Span {
+		float begin, end, uv0, uv1;
+	};
+	auto spans = [](const Vector<float>& starts, float size, LayerRepeat repeat, bool wrap, bool& wrapped, float area_begin, float clip_begin,
+					 float clip_end) {
+		Vector<Span> result;
+		const bool repeating = (repeat == LayerRepeat::Repeat || repeat == LayerRepeat::Round);
+		auto add = [&](float origin, float begin, float end) {
+			const float b = Math::Max(begin, clip_begin), e = Math::Min(end, clip_end);
+			if (e - b > 1e-4f)
+				result.push_back({b, e, (b - origin) / size, (e - origin) / size});
+		};
+		wrapped = false;
+		if (wrap && repeating && starts.size() > 1)
 		{
-			const Vector2f top_left = Math::Max(Vector2f(x, y), clip.TopLeft());
-			const Vector2f bottom_right = Math::Min(Vector2f(x, y) + tile, clip.BottomRight());
-			if (bottom_right.x - top_left.x <= 1e-4f || bottom_right.y - top_left.y <= 1e-4f)
+			// One span over the tiles, sampled with repeat wrap.
+			wrapped = true;
+			add(starts.front(), starts.front(), starts.back() + size);
+			return result;
+		}
+		const bool single = (repeat == LayerRepeat::NoRepeat || starts.size() == 1) && !repeating;
+		for (float start : starts)
+		{
+			if (!single)
+			{
+				add(start, start, start + size);
 				continue;
+			}
+			const float u0 = Math::Max(start, clip_begin), u1 = Math::Min(start + size, clip_end);
+			if (u1 - u0 <= 1e-4f)
+				continue;
+			const float begin = std::round(u0);
+			const bool after_start = (start > area_begin + 1e-4f && start >= clip_begin);
+			float end = (after_start && u1 >= start + size - 1e-4f ? std::round(begin + size) : std::round(u1));
+			end = Math::Min(end, Math::Max(std::round(clip_end), begin));
+			if (end - begin < 0.5f)
+				continue;
+			result.push_back({begin, end, (u0 - start) / size, (u1 - start) / size});
+		}
+		return result;
+	};
+	const Vector<Span> columns =
+		spans(xs, tile.x, in.repeat_x, in.wrap_x, out.wrapped_x, area.Left(), clip.Left(), clip.Right());
+	const Vector<Span> rows = spans(ys, tile.y, in.repeat_y, in.wrap_y, out.wrapped_y, area.Top(), clip.Top(), clip.Bottom());
+
+	out.tiles.reserve(columns.size() * rows.size());
+	for (const Span& row : rows)
+	{
+		for (const Span& column : columns)
+		{
 			LayerTile result;
-			result.rect = Rectanglef::FromCorners(top_left, bottom_right);
-			result.uv0 = (top_left - Vector2f(x, y)) / tile;
-			result.uv1 = (bottom_right - Vector2f(x, y)) / tile;
+			result.rect = Rectanglef::FromCorners(Vector2f(column.begin, row.begin), Vector2f(column.end, row.end));
+			result.uv0 = Vector2f(column.uv0, row.uv0);
+			result.uv1 = Vector2f(column.uv1, row.uv1);
 			out.tiles.push_back(result);
 		}
 	}
@@ -374,7 +421,7 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 		Texture raster;
 		if (layer.kind == ImageLayer::Kind::Url)
 		{
-			if (image_source_handler && image_source_handler->GetImage(element, layer.url, base_path, Vector2f(0.f), handled))
+			if (image_source_handler && image_source_handler->GetImage(element, layer.url, base_path, Vector2f(0.f), false, false, handled))
 			{
 				handled_by_application = true;
 				intrinsic = handled.intrinsic_size;
@@ -400,7 +447,8 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 				positioning_area = Rectanglef::FromPositionSize(-element_offset, viewport);
 				depends_on_offset = true;
 			}
-			else if (attachment == LayerAttachment::Local && element->GetScrollWidth() > element->GetClientWidth() + 0.5f)
+			else if (attachment == LayerAttachment::Local && (element->GetScrollWidth() > element->GetClientWidth() + 0.5f ||
+						 element->GetScrollHeight() > element->GetClientHeight() + 0.5f))
 			{
 				const Rectanglef padding = AreaRect(element, BoxArea::Padding, box_index);
 				const Vector2f scroll(element->GetScrollLeft(), element->GetScrollTop());
@@ -420,9 +468,13 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 				input.resolved_size.y = Math::Max(ResolveLengthPercentage(size.y, *element, positioning_area.Height()), 0.f);
 			input.repeat_x = repeat_x;
 			input.repeat_y = repeat_y;
-			const LayerTiles tiles = ComputeLayerTiles(input, [&](int axis, float free_space) {
+			auto resolve_position = [&](int axis, float free_space) {
 				return ResolveLengthPercentage(axis == 0 ? position_x : position_y, *element, free_space);
-			});
+			};
+			// An image repeated along an axis is sampled with repeat wrap there (filtered across the seams of its tiles as
+			// Chromium's image shader is), when the texture can be.
+			input.wrap_x = input.wrap_y = (layer.kind == ImageLayer::Kind::Url);
+			LayerTiles tiles = ComputeLayerTiles(input, resolve_position);
 			if (tiles.tiles.empty())
 				continue;
 
@@ -435,24 +487,46 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 				if (!draw.shader)
 					continue;
 				const byte alpha = byte(opacity * 255.f);
+				// A generated image is not stretched into a snapped destination (Chromium draws it at the tile's size).
 				for (const LayerTile& tile : tiles.tiles)
-					AddQuad(mesh, tile.rect.TopLeft(), tile.rect.BottomRight(), tile.uv0 * tiles.tile_size, tile.uv1 * tiles.tile_size,
-						ColourbPremultiplied(alpha, alpha));
+					AddQuad(mesh, tile.rect.TopLeft(), tile.rect.BottomRight(), tile.uv0 * tiles.tile_size,
+						tile.uv0 * tiles.tile_size + tile.rect.Size(), ColourbPremultiplied(alpha, alpha));
 			}
 			else
 			{
 				ColourbPremultiplied colour = white;
+				const bool wrap = (tiles.wrapped_x || tiles.wrapped_y);
 				if (handled_by_application)
 				{
 					ImageSourceHandler::Image image;
-					if (!image_source_handler->GetImage(element, layer.url, base_path, tiles.tile_size, image) || !image.texture)
+					if (!image_source_handler->GetImage(element, layer.url, base_path, tiles.tile_size, tiles.wrapped_x, tiles.wrapped_y, image) ||
+						!image.texture)
 						continue;
+					if (wrap && !image.repeats)
+					{
+						// The application's texture does not repeat: the tiles one by one.
+						input.wrap_x = input.wrap_y = false;
+						tiles = ComputeLayerTiles(input, resolve_position);
+					}
 					draw.texture = image.texture;
 					draw.image_owner = image.owner;
 					colour = image.colour;
 				}
+				else if (wrap && render_manager->SupportsTextureWrapHint())
+				{
+					// The render interface samples a texture whose source asks for it with repeat wrap.
+					const char* axes = (tiles.wrapped_x && tiles.wrapped_y ? "repeat" : (tiles.wrapped_x ? "repeat-x" : "repeat-y"));
+					draw.texture = render_manager->LoadTexture(layer.url, base_path, String("rmlui-wrap=") + axes);
+				}
 				else
+				{
+					if (wrap)
+					{
+						input.wrap_x = input.wrap_y = false;
+						tiles = ComputeLayerTiles(input, resolve_position);
+					}
 					draw.texture = raster;
+				}
 				for (const LayerTile& tile : tiles.tiles)
 					AddQuad(mesh, tile.rect.TopLeft(), tile.rect.BottomRight(), tile.uv0, tile.uv1, colour);
 			}

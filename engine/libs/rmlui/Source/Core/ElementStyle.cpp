@@ -1683,6 +1683,8 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	case PropertyId::MaskPositionX:
 	case PropertyId::MaskPositionY:
 	case PropertyId::MaskRepeat:
+		// Read by the layers from the element's properties.
+		break;
 	case PropertyId::ObjectFit:
 		values.object_fit((ObjectFit)p->Get<int>());
 		break;

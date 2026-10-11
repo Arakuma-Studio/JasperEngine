@@ -19,14 +19,19 @@ struct LayerTileInput {
 	LayerSize size;
 	Vector2f resolved_size;  // the explicit size of 'size' in px (where not auto)
 	LayerRepeat repeat_x = LayerRepeat::Repeat, repeat_y = LayerRepeat::Repeat;
+	// The image can be sampled with repeat wrap along that axis: tiles repeated (or rounded) along it are one rectangle.
+	bool wrap_x = false, wrap_y = false;
 };
 struct LayerTile {
 	Rectanglef rect;
-	Vector2f uv0, uv1;
+	Vector2f uv0, uv1; // beyond 0 to 1 along an axis whose tiles are one rectangle
 };
 struct LayerTiles {
 	Vector2f tile_size;
 	Vector<LayerTile> tiles;
+	// The tiles along that axis are one rectangle (more than one tile met the clip): the texture must repeat there, as
+	// Chromium's image shader does (SkTileMode::kRepeat where the destination leaves the tile, kClamp otherwise).
+	bool wrapped_x = false, wrapped_y = false;
 };
 // 'resolve_position' gives the position along an axis for the free space (area - tile) of that axis.
 LayerTiles ComputeLayerTiles(const LayerTileInput& input, const Function<float(int axis, float free_space)>& resolve_position);
