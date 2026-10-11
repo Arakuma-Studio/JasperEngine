@@ -30,15 +30,42 @@ namespace {
         return stencil;
     }
 
+    // What the outline_stencil preset makes the material write: bit 0x01 over its whole
+    // silhouette, hidden parts included, which its pass outlines outside of
+    MaterialStencil outlineStencil(){
+        return makeStencil(MaterialStencilCompare::ALWAYS, PRESET_OUTLINE_STENCIL_BIT, 0xFF,
+                           PRESET_OUTLINE_STENCIL_BIT, MaterialStencilOp::REPLACE, MaterialStencilOp::REPLACE);
+    }
+
+    bool isOutlineStencil(const MaterialStencil& stencil){
+        const MaterialStencil outline = outlineStencil();
+        return stencil.compare == outline.compare && stencil.ref == outline.ref && stencil.readMask == outline.readMask &&
+               stencil.writeMask == outline.writeMask && stencil.pass == outline.pass && stencil.fail == outline.fail &&
+               stencil.depthFail == outline.depthFail;
+    }
+
     // An extra pass drawing shader in order. A pass that already uses the shader keeps its
     // parameters, textures, features and state (re-applying a preset only fixes its order);
-    // any other pass is replaced whole, so no state of another shader leaks into it.
+    // any other pass is replaced whole, so no state of another shader leaks into it. Replacing
+    // an outline_stencil pass also drops the silhouette mark the material wrote for it, which
+    // would otherwise hide other objects' stencil outlines wherever this one covers them.
     void setExtraPass(Material& material, const char* shader, MaterialPassOrder order){
         if (material.extraPass.shader != shader){
+            if (material.extraPass.shader == OUTLINE_STENCIL_SHADER && isOutlineStencil(material.stencil))
+                material.stencil = MaterialStencil();
             material.extraPass = MaterialPass();
             material.extraPass.shader = shader;
         }
         material.extraPass.order = order;
+    }
+
+    // A preset replacing the material's own stencil: an outline_stencil pass draws outside the
+    // silhouette the old stencil marked, so without that mark it would cover the whole object
+    // (through walls by default); it goes with the stencil it needs.
+    void setMaterialStencil(Material& material, const MaterialStencil& stencil){
+        material.stencil = stencil;
+        if (material.extraPass.shader == OUTLINE_STENCIL_SHADER)
+            material.extraPass = MaterialPass();
     }
 
     // Effects that draw over what is already on screen (through-walls outline, silhouette)
@@ -60,6 +87,8 @@ namespace {
         material.depthWrite = MaterialDepthWrite::AUTO;
         material.colorWrite = MATERIAL_COLOR_WRITE_AUTO;
         material.stencil = MaterialStencil();
+        // an invisible mask draws no outline or silhouette either
+        material.extraPass = MaterialPass();
         material.sortPriority = std::min(material.sortPriority, -1);
     }
 
@@ -72,7 +101,7 @@ namespace {
             current.readMask == PRESET_MASK_BITS && (current.ref & PRESET_MASK_BITS) != 0){
             ref = current.ref & PRESET_MASK_BITS;
         }
-        material.stencil = makeStencil(compare, ref, PRESET_MASK_BITS, PRESET_MASK_BITS, MaterialStencilOp::KEEP);
+        setMaterialStencil(material, makeStencil(compare, ref, PRESET_MASK_BITS, PRESET_MASK_BITS, MaterialStencilOp::KEEP));
     }
 
     std::vector<MaterialPreset> makePresets(){
@@ -94,8 +123,7 @@ namespace {
             "depth test fails) and an After extra pass (library:outline_stencil) draws the pushed-out mesh "
             "outside it. Sort priority at least 1 so occluders draw first. Keeps the material's shader.",
             [](Material& material){
-                material.stencil = makeStencil(MaterialStencilCompare::ALWAYS, PRESET_OUTLINE_STENCIL_BIT, 0xFF,
-                                               PRESET_OUTLINE_STENCIL_BIT, MaterialStencilOp::REPLACE, MaterialStencilOp::REPLACE);
+                material.stencil = outlineStencil();
                 setExtraPass(material, OUTLINE_STENCIL_SHADER, MaterialPassOrder::AFTER);
                 drawAfterOccluders(material);
             }});
@@ -114,10 +142,13 @@ namespace {
             "stencil not equal 4 and replace on bits 0x0C. Makes an opaque material alpha blended. "
             "Overlapping draw-once objects need different refs (4, 8, 12).",
             [](Material& material){
-                material.stencil = makeStencil(MaterialStencilCompare::NOT_EQUAL, PRESET_DRAW_ONCE_REF, PRESET_DRAW_ONCE_MASK,
-                                               PRESET_DRAW_ONCE_MASK, MaterialStencilOp::REPLACE);
+                setMaterialStencil(material, makeStencil(MaterialStencilCompare::NOT_EQUAL, PRESET_DRAW_ONCE_REF,
+                                                         PRESET_DRAW_ONCE_MASK, PRESET_DRAW_ONCE_MASK, MaterialStencilOp::REPLACE));
                 if (!isMaterialBlended(material))
                     material.blendMode = MaterialBlendMode::ALPHA;
+                // now blended, it writes no depth: a hull after it would cover it (outline_hull)
+                if (material.extraPass.shader == OUTLINE_SHADER)
+                    material.extraPass.order = MaterialPassOrder::BEFORE;
             }});
 
         presets.push_back({"stencil_mask", "Stencil mask",

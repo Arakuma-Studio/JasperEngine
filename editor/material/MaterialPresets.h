@@ -29,7 +29,9 @@ namespace jasperengine::editor {
     // A material has one stencil state, so the presets that set the material's own stencil
     // (outline_stencil, draw_once_transparency, the masks and their readers) replace one
     // another; the extra-pass presets (outline_hull, see_through_silhouette) combine with
-    // any of them except each other (one extra pass per material).
+    // any of them except each other (one extra pass per material). The outline_stencil pass
+    // needs its material's stencil, so another stencil preset removes it, and a mask (which
+    // draws nothing visible) keeps no extra pass.
     struct MaterialPreset {
         std::string id, name, description;
         std::function<void(Material&)> apply;
