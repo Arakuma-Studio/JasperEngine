@@ -3,10 +3,9 @@
 // @shader mesh
 // @name "Sprite"
 // @category "2D"
-// @description "Sprite, tilemap and polygon effects on the sprite's own texture and colour: outline, hue shift, hit flash, grayscale, colour replace, overlay and glow; lit by 2D lights."
+// @description "Sprite, tilemap and polygon effects on the sprite's own texture and colour: outline, hue shift, hit flash, grayscale, colour replace, overlay and glow; lit by 2D lights. Alpha blended, both faces, no shadows; with the Premultiplied blend mode the texture is read as premultiplied."
 // @require uv1 color
-// @state blend=alpha zwrite=off cull=off
-// @keywords ALPHA "Texture alpha (Premultiplied: also set the blend mode to Premultiplied)" STRAIGHT PREMULTIPLIED
+// @state blend=alpha zwrite=off cull=off shadows=off
 // @feature OUTLINE "Outline"
 // @feature HUE_SHIFT "Hue shift"
 // @feature FLASH "Hit flash"
@@ -38,6 +37,11 @@
 // effects run on straight-alpha linear colour in this order: colour replace, hue shift,
 // grayscale, overlay, flash, outline (behind the sprite), the material's alpha mode, 2D
 // lights, glow. With OUTLINE or OVERLAY the texture is read inside the current frame only.
+// The blend mode is the material's (alpha by default): with Premultiplied (BLEND_PREMULTIPLIED)
+// the texture is premultiplied, un-premultiplied for the effects and premultiplied again on
+// output (finalizeStraightColor), as are the other modes' outputs. No shadows by default:
+// the sprite's shape is its texture's alpha, and without a depth program a shadow would be
+// the whole quad (as Unity's sprites, which cast none either).
 
 #if (defined(OUTLINE) || defined(OVERLAY)) && defined(HAS_UV_SET1)
     #define SPRITE_FRAME_RECT
@@ -118,7 +122,7 @@ out vec4 g_finalColor;
 vec4 spriteTexel(vec2 uv){
     #ifdef HAS_UV_SET1
         vec4 texel = sampleBaseColorTexture(uv);
-        #ifdef ALPHA_PREMULTIPLIED
+        #ifdef BLEND_PREMULTIPLIED
             texel.rgb /= max(texel.a, 1.0 / 255.0);
         #endif
         return texel;
@@ -238,8 +242,5 @@ void main() {
         color.rgb += alphaGlow(spriteAlpha, customParams.glowScale, customParams.glowPower, customParams.glowColor.rgb);
     #endif
 
-    g_finalColor = finalizeColor(color);
-    #ifdef ALPHA_PREMULTIPLIED
-        g_finalColor.rgb *= g_finalColor.a;
-    #endif
+    g_finalColor = finalizeStraightColor(color);
 }

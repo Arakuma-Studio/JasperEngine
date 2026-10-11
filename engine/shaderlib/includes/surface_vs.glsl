@@ -21,7 +21,9 @@
 //
 // A required input the mesh lacks gets a fallback: the normal is the model's +Y, a UV is
 // 0 and the colour white. SURFACE_NO_VERTEX_COLOR (defined before including) keeps the
-// vertex colour attribute out of v_color (the instance colour still applies).
+// vertex colour attribute out of v_color (the instance colour still applies); the
+// attribute is then read only for v_rawColor (SURFACE_RAW_COLOR) and, when the shader also
+// defines SURFACE_DISPLACE_COLOR, for the displacement hook's colour (white otherwise).
 //
 // v_color is a tint (the instance colour multiplies it); v_rawColor is the vertex colour
 // attribute alone, for data painted into it (a wind or AO mask) that an instance tint must
@@ -29,7 +31,8 @@
 //
 // A shader's own .vert can move vertices before projection, in object space (after
 // skinning, morphing and the instance matrix; color is the raw vertex colour, without the
-// instance colour, as the depth programs see it):
+// instance colour, as the depth programs see it; under SURFACE_NO_VERTEX_COLOR it is
+// white unless SURFACE_DISPLACE_COLOR is defined too):
 //
 //   #define SURFACE_DISPLACE
 //   #include "includes/surface_vs.glsl"
@@ -103,11 +106,16 @@ in vec3 a_position;
 #ifdef HAS_UV_SET2
     in vec2 a_texcoord2;
 #endif
-#if defined(HAS_VERTEX_COLOR_VEC3) && !defined(SURFACE_NO_VERTEX_COLOR)
-    in vec3 a_color;
-#endif
-#if defined(HAS_VERTEX_COLOR_VEC4) && !defined(SURFACE_NO_VERTEX_COLOR)
-    in vec4 a_color;
+// the vertex colour attribute is declared only where something reads it (a GL driver drops
+// an unread attribute)
+#if !defined(SURFACE_NO_VERTEX_COLOR) || defined(SURFACE_RAW_COLOR) || defined(SURFACE_DISPLACE_COLOR)
+    #if defined(HAS_VERTEX_COLOR_VEC3)
+        #define SURFACE_VERTEX_COLOR_INPUT
+        in vec3 a_color;
+    #elif defined(HAS_VERTEX_COLOR_VEC4)
+        #define SURFACE_VERTEX_COLOR_INPUT
+        in vec4 a_color;
+    #endif
 #endif
 
 #ifdef HAS_INSTANCING
@@ -193,17 +201,21 @@ in vec3 a_position;
 // the vertex colour attribute, white without one
 vec4 surfaceRawVertexColor(){
     vec4 color = vec4(1.0);
-    #if defined(HAS_VERTEX_COLOR_VEC3) && !defined(SURFACE_NO_VERTEX_COLOR)
+    #if defined(SURFACE_VERTEX_COLOR_INPUT) && defined(HAS_VERTEX_COLOR_VEC3)
         color = vec4(a_color, 1.0);
-    #elif defined(HAS_VERTEX_COLOR_VEC4) && !defined(SURFACE_NO_VERTEX_COLOR)
+    #elif defined(SURFACE_VERTEX_COLOR_INPUT)
         color = a_color;
     #endif
     return color;
 }
 
-// v_color: the vertex colour times the instance colour
+// v_color: the vertex colour (not with SURFACE_NO_VERTEX_COLOR) times the instance colour
 vec4 surfaceVertexColor(vec4 rawColor){
-    vec4 color = rawColor;
+    #ifdef SURFACE_NO_VERTEX_COLOR
+        vec4 color = vec4(1.0);
+    #else
+        vec4 color = rawColor;
+    #endif
     #if defined(HAS_INSTANCING) && defined(SURFACE_COLOR)
         color *= i_color;
     #endif

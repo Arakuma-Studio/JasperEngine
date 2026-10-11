@@ -3,7 +3,7 @@
 // @shader mesh
 // @name "Foliage"
 // @category "Nature"
-// @description "Leaves and grass: wind sway in the vertex stage (masked by the vertex colour's red or by the height), alpha cutout, both faces drawn, light through back-lit leaves. Shadows sway and cut out with it."
+// @description "Leaves and grass: wind sway in the vertex stage (masked by the vertex colour's red or by the height), alpha cutout, both faces drawn, light through back-lit leaves; the instance colour tints, the vertex colour does not. Shadows sway and cut out with it."
 // @lighting pixel vertex none
 // @require uv1 color
 // @state blend=opaque cull=off
@@ -29,7 +29,8 @@
 // The wind (library/foliage.glsl) moves the plant as a whole, its phase from where it
 // stands so a field ripples downwind, with slow gusts and a little per-vertex flutter.
 // WIND_MASK_VERTEX_COLOR: the vertex colour's red is how much a vertex sways (0 at the
-// roots), and the vertex colour does not tint; WIND_MASK_HEIGHT: the sway grows from
+// roots; the raw vertex colour, so an instance colour tints the leaves without changing
+// the sway); WIND_MASK_HEIGHT: the sway grows from
 // heightStart to heightStart + heightRange above the origin. Both faces are lit from
 // their own side; per pixel lights also shine through a leaf seen against them
 // (translucency). Light units: includes/lights.glsl.
@@ -46,7 +47,7 @@ uniform texture2D u_baseTexture;
 uniform sampler u_base_smp;
 
 in vec2 v_uv1;
-in vec4 v_color; // the instance colour (and the vertex colour, a wind mask, with WIND_MASK_VERTEX_COLOR)
+in vec4 v_color; // the instance colour (the vertex colour never tints, foliage.vert)
 
 #ifdef USE_PUNCTUAL
     in vec3 v_position;
@@ -68,12 +69,7 @@ out vec4 g_finalColor;
 
 void main() {
     vec2 uv = v_uv1 * customParams.tiling.xy + customParams.tiling.zw;
-    vec4 tint = v_color;
-    #ifdef WIND_MASK_VERTEX_COLOR
-        // the colour is the wind mask: only its alpha applies
-        tint = vec4(1.0, 1.0, 1.0, v_color.a);
-    #endif
-    vec4 base = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv)) * tint;
+    vec4 base = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv)) * v_color;
 
     #ifdef ALPHA_CLIP
         // the same test as foliage_depth.frag

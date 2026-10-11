@@ -3,9 +3,8 @@
 // @shader points
 // @name "Particle"
 // @category "Particles"
-// @description "Point-sprite particles: texture (sprite-sheet rect per point) times the particle colour, with alpha-as-light glow and noise erosion over the particle's life."
+// @description "Point-sprite particles: texture (sprite-sheet rect per point) times the particle colour, with alpha-as-light glow and noise erosion over the particle's life. Draws in the Points component's blend mode (alpha by default; additive, premultiplied and multiply need no other setting); no depth write."
 // @state zwrite=off
-// @keywords OUTPUT "Colour output: Straight for the Alpha and Additive blend modes, Premultiply for Premultiplied, Multiply for Multiply" STRAIGHT PREMULTIPLY MULTIPLY
 // @feature GLOW "Glow (alpha as light)"
 // @feature EROSION "Erosion (the particle's alpha dissolves it through a noise texture)"
 // @property tint color (1, 1, 1, 1) "Tint"
@@ -17,10 +16,11 @@
 // @texture u_erosionTexture gray "Erosion noise (red channel)" feature=EROSION
 
 // Blending is the Points component's blend mode (Alpha by default); depth writes are off
-// so overlapping particles do not cut each other. The colour output must match the blend
-// mode: Premultiplied wants colour x alpha, Multiply wants white where the particle is
-// transparent. With EROSION the particle's alpha (fading over its life) is the dissolve
-// threshold instead of a fade: 1 whole, 0 gone.
+// so overlapping particles do not cut each other. The colour is straight alpha and
+// finalizeStraightColor shapes it for the blend the engine compiles the variant with
+// (BLEND_*): Premultiplied gets colour x alpha, Multiply white where the particle is
+// transparent, Additive and Alpha the colour as it is. With EROSION the particle's alpha
+// (fading over its life) is the dissolve threshold instead of a fade: 1 whole, 0 gone.
 
 uniform u_fs_customParams {
     vec4 tint;
@@ -68,10 +68,5 @@ void main() {
         color.rgb += alphaGlow(texel.a, customParams.glowScale, customParams.glowPower, customParams.glowColor.rgb) * particle.rgb;
     #endif
 
-    g_finalColor = finalizeColor(color);
-    #if defined(OUTPUT_PREMULTIPLY)
-        g_finalColor.rgb *= g_finalColor.a;
-    #elif defined(OUTPUT_MULTIPLY)
-        g_finalColor.rgb = mix(vec3(1.0), g_finalColor.rgb, g_finalColor.a);
-    #endif
+    g_finalColor = finalizeStraightColor(color);
 }

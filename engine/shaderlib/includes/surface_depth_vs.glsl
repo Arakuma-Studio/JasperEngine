@@ -64,11 +64,16 @@ out vec2 v_projZW;
     #define TERRAIN_NO_SURFACE_VARYINGS
     #include "includes/terrain_vs.glsl"
 #endif
-#if defined(HAS_VERTEX_COLOR_VEC3) && !defined(SURFACE_NO_VERTEX_COLOR)
-    in vec3 a_color;
-#endif
-#if defined(HAS_VERTEX_COLOR_VEC4) && !defined(SURFACE_NO_VERTEX_COLOR)
-    in vec4 a_color;
+// as includes/surface_vs.glsl: under SURFACE_NO_VERTEX_COLOR only a hook that reads it
+// (SURFACE_DISPLACE_COLOR) gets the attribute
+#if !defined(SURFACE_NO_VERTEX_COLOR) || defined(SURFACE_DISPLACE_COLOR)
+    #if defined(HAS_VERTEX_COLOR_VEC3)
+        #define SURFACE_VERTEX_COLOR_INPUT
+        in vec3 a_color;
+    #elif defined(HAS_VERTEX_COLOR_VEC4)
+        #define SURFACE_VERTEX_COLOR_INPUT
+        in vec4 a_color;
+    #endif
 #endif
 
 #ifdef HAS_INSTANCING
@@ -140,12 +145,16 @@ void main() {
 
     // the raw vertex colour (the hook's), and times the instance colour (v_color)
     vec4 rawColor = vec4(1.0);
-    #if defined(HAS_VERTEX_COLOR_VEC3) && !defined(SURFACE_NO_VERTEX_COLOR)
+    #if defined(SURFACE_VERTEX_COLOR_INPUT) && defined(HAS_VERTEX_COLOR_VEC3)
         rawColor = vec4(a_color, 1.0);
-    #elif defined(HAS_VERTEX_COLOR_VEC4) && !defined(SURFACE_NO_VERTEX_COLOR)
+    #elif defined(SURFACE_VERTEX_COLOR_INPUT)
         rawColor = a_color;
     #endif
-    vec4 color = rawColor;
+    #ifdef SURFACE_NO_VERTEX_COLOR
+        vec4 color = vec4(1.0);
+    #else
+        vec4 color = rawColor;
+    #endif
     #if defined(HAS_INSTANCING) && defined(SURFACE_COLOR) && defined(SURFACE_DEPTH_INPUTS)
         color *= i_color;
     #endif

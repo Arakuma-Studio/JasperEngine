@@ -5,7 +5,8 @@
 // @category "Effects"
 // @description "Burns the surface away where a noise texture is below the cutoff, with a glowing edge band; both faces drawn, so the inside shows through the holes. Shadows get the same holes."
 // @lighting none pixel
-// @require uv1 color normals
+// @require uv1 color
+// @require normals feature=WORLD_NOISE
 // @state blend=opaque cull=off
 // @property baseColor color (1, 1, 1, 1) "Base colour"
 // @property tiling vector4 (1, 1, 0, 0) "Tiling (xy) and offset (zw)"

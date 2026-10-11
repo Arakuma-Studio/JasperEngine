@@ -6,11 +6,6 @@
 // includes/surface_vs.glsl.
 #define SURFACE_NO_VERTEX_COLOR
 #define SURFACE_VERTEX_AMBIENT
-// the world position and normal reach the fragment stage only for pixel lights and the rim
-#if !defined(USE_PUNCTUAL) && !defined(RIM)
-    #undef SURFACE_POSITION
-    #undef SURFACE_NORMALS
-#endif
 #if defined(USE_VERTEX_LIGHTS) && !defined(USE_PUNCTUAL)
     // the hook moves nothing: it runs once per vertex to write v_toonPeak
     #define TOON_VERTEX_PEAK

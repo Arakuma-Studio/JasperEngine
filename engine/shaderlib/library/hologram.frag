@@ -3,9 +3,10 @@
 // @shader mesh
 // @name "Hologram"
 // @category "Effects"
-// @description "Sci-fi hologram: scanlines scrolling along world Y (procedural or from a texture), fresnel rim and flicker, in a tint. Additive by default; BLEND_MODE ALPHA is for the alpha blend mode (set the material's blend mode to Alpha)."
+// @description "Sci-fi hologram: scanlines scrolling along world Y (procedural or from a texture), fresnel rim and flicker, in a tint. Additive by default (Default blend Alpha: alpha blended); no depth write, no shadows."
 // @require normals position
-// @state blend=additive zwrite=off
+// @state blend=additive zwrite=off shadows=off
+// @state[BLEND_MODE_ALPHA] blend=alpha
 // @property tint hdrcolor (0.3, 0.9, 1, 1) "Tint"
 // @property fill range(0, 1) 0.2 "Fill"
 // @property scanlineDensity float 14 "Scanlines per world unit"
@@ -18,14 +19,16 @@
 // @property flickerSpeed float 14 "Flicker rate (changes per second)"
 // @texture u_scanlineTexture white "Scanline texture (red, along V)" feature=SCANLINE_TEXTURE
 // @feature SCANLINE_TEXTURE "Scanline texture"
-// @keywords BLEND_MODE "Blend" ADDITIVE ALPHA
+// @keywords BLEND_MODE "Default blend" ADDITIVE ALPHA
 
 // brightness = (fill + scanlines * strength + rim * rimIntensity) * flicker. Scanlines run
 // along world Y, so they stay level whatever the object's rotation; procedural ones are
 // pow(sin, sharpness) and fade to their average where they get finer than a pixel.
-// ADDITIVE adds tint * brightness (the blend default; the fog fades it out). ALPHA writes
-// the tint with brightness as its opacity (above 1 it brightens the colour) for the Alpha
-// blend mode, which the material sets: the default state cannot follow the keyword.
+// The output follows the blend mode the variant draws with (BLEND_*): additive adds tint *
+// brightness (the fog fades it out); the others write the tint with brightness as its
+// opacity (above 1 it brightens the colour), straight alpha. BLEND_MODE picks the default
+// blend (@state[BLEND_MODE_ALPHA]); a material's own blend mode wins over it. No shadows:
+// a see-through glow has none.
 
 uniform u_fs_customParams {
     vec4 tint;
@@ -85,10 +88,10 @@ void main() {
 
     float brightness = (customParams.fill + lines * customParams.scanlineStrength + rim * customParams.rimIntensity) * flicker;
 
-    #ifdef BLEND_MODE_ALPHA
-        float alpha = clamp(brightness, 0.0, 1.0) * customParams.tint.a;
-        g_finalColor = finalizeColor(vec4(customParams.tint.rgb * max(brightness, 1.0), alpha));
+    #ifdef BLEND_ADDITIVE
+        g_finalColor = finalizeColor(vec4(customParams.tint.rgb * brightness, customParams.tint.a));
     #else
-        g_finalColor = finalizeBlendedColor(vec4(customParams.tint.rgb * brightness, customParams.tint.a), vec3(0.0));
+        float alpha = clamp(brightness, 0.0, 1.0) * customParams.tint.a;
+        g_finalColor = finalizeStraightColor(vec4(customParams.tint.rgb * max(brightness, 1.0), alpha));
     #endif
 }

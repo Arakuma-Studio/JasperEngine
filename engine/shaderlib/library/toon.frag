@@ -5,7 +5,8 @@
 // @category "Stylized"
 // @description "Cel shading: the light falls in hard bands (or follows a ramp texture), the unlit side takes a shadow colour, with optional hard specular highlight and rim light. Receives shadows."
 // @lighting pixel mixed vertex
-// @require position normals uv1 color
+// @require uv1 color
+// @require position normals feature=RIM
 // @state blend=opaque
 // @property baseColor color (1, 1, 1, 1) "Base colour"
 // @property tiling vector4 (1, 1, 0, 0) "Tiling (xy) and offset (zw)"
@@ -82,7 +83,8 @@ in vec4 v_color; // the instance colour
 #endif
 
 #if defined(USE_PUNCTUAL) || defined(RIM)
-    // the world position and normal, for the pixel lights and the rim (toon.vert)
+    // the world position and normal, for the pixel lights (always written for a pixel-lit
+    // variant) and the rim (@require position normals feature=RIM)
     #define TOON_SURFACE
     in vec3 v_position;
     in vec3 v_normal;
@@ -126,11 +128,11 @@ float toonLit(float x){
 // how far pixel light i reaches the position, 0 to 1: its attenuation without the inverse
 // square falloff (the range window, the spot cone or mask), 1 for a directional light
 float toonReach(int i, float attenuation){
-    vec4 positionType = objectLights.position_type[i];
-    if (positionType.w < 0.5){
+    Light light = getLightData(i);
+    if (light.type == LightType_Directional){
         return attenuation;
     }
-    vec3 toLight = positionType.xyz - v_position;
+    vec3 toLight = light.position - v_position;
     return min(attenuation * dot(toLight, toLight), 1.0);
 }
 #endif

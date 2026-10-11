@@ -3,7 +3,7 @@
 // @shader mesh
 // @name "Unlit"
 // @category "Basic"
-// @description "Base colour times base map, optionally times vertex colour, without lighting."
+// @description "Base colour times base map, optionally times vertex colour, without lighting; optional alpha clip, whose shadows are cut out too."
 // @require uv1 color
 // @state blend=opaque
 // @property baseColor color (1, 1, 1, 1) "Base colour"

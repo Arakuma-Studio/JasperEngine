@@ -1,10 +1,12 @@
 #version 450
 
 // library:foliage: the shared vertex path with the wind of library/foliage.glsl. The
-// vertex colour is a wind mask with WIND_MASK_VERTEX_COLOR (and comes along in v_color for
-// its alpha); with WIND_MASK_HEIGHT v_color is the instance colour.
-#ifdef WIND_MASK_HEIGHT
-    #define SURFACE_NO_VERTEX_COLOR
+// vertex colour never tints (v_color is the instance colour); with WIND_MASK_VERTEX_COLOR
+// the wind hook reads it as the mask (SURFACE_DISPLACE_COLOR: the raw vertex colour, which
+// an instance colour does not scale, so instanced plants sway evenly whatever their tint).
+#define SURFACE_NO_VERTEX_COLOR
+#ifdef WIND_MASK_VERTEX_COLOR
+    #define SURFACE_DISPLACE_COLOR
 #endif
 
 #define SURFACE_DISPLACE

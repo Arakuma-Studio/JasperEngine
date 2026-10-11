@@ -3,10 +3,10 @@
 // @shader mesh
 // @name "Water"
 // @category "Nature"
-// @description "Stylised water without scene depth: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint. Alpha blended."
+// @description "Stylised water without scene depth: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint. Alpha blended; casts no shadows."
 // @lighting none pixel
 // @require position normals
-// @state blend=alpha
+// @state blend=alpha shadows=off
 // @property shallowColor color (0.25, 0.8, 0.85, 0.5) "Shallow colour (looking down)"
 // @property deepColor color (0.03, 0.25, 0.45, 0.92) "Deep colour (grazing view)"
 // @property fresnelPower range(0.5, 8) 3 "Fresnel power"
@@ -36,7 +36,8 @@
 // Without scene depth there is no shoreline foam (phase 3). Pixel lighting: Lambert from
 // the ambient and the pixel lights on the water and foam colour, plus a Blinn-Phong glint
 // of each pixel light (shadowed), which also makes the water more opaque. Light units:
-// includes/lights.glsl.
+// includes/lights.glsl. No shadows (@state shadows=off): the surface is see-through, so
+// the bed below stays lit.
 
 uniform u_fs_customParams {
     vec4 shallowColor;
@@ -143,5 +144,5 @@ void main() {
         alpha = clamp(alpha + dot(specular, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
     #endif
 
-    g_finalColor = finalizeColor(vec4(color, alpha));
+    g_finalColor = finalizeStraightColor(vec4(color, alpha));
 }

@@ -7,12 +7,10 @@
     #define SURFACE_NO_VERTEX_COLOR
 #endif
 
-// @require normals is for the world noise; unlit without it, nothing reads them
+// the world noise reads the normal attribute (@require normals feature=WORLD_NOISE) in its
+// own varyings; v_normal is for the pixel lights only
 #ifndef USE_PUNCTUAL
     #undef SURFACE_NORMALS
-    #ifndef WORLD_NOISE
-        #undef HAS_NORMALS
-    #endif
 #endif
 
 #ifdef WORLD_NOISE

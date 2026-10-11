@@ -5,7 +5,9 @@
 // @category "Stylized"
 // @description "Lighting faked without lights: surfaces facing down and away from the camera blend to a shadow colour, with optional matcap shine, baked shadow texture, vertex AO, emission and axis fog. Cheap; no scene lights needed."
 // @lighting none vertex
-// @require position normals uv1 uv2 color
+// @require position normals uv1 color
+// @require uv2 feature=SHADOW_TEXTURE
+// @require rawcolor feature=VERTEX_AO
 // @state blend=opaque
 // @property baseColor color (1, 1, 1, 1) "Tint"
 // @property tiling vector4 (1, 1, 0, 0) "Tiling (xy) and offset (zw)"
@@ -41,8 +43,9 @@
 // and the colour albedo (+ the additive matcap) blends to the shadow colour by saturate(s).
 // Vertex lighting adds each vertex light's diffuse times the albedo on top (the shading
 // stands in for the ambient, which is left out). Then emission, then the axis fog: a
-// linear fog along a world direction, measured from the camera. Without VERTEX_AO the
-// albedo takes the instance colour; with it the vertex colour's red is the occlusion.
+// linear fog along a world direction, measured from the camera. The albedo takes the
+// instance colour; the vertex colour does not tint: with VERTEX_AO its red (the raw vertex
+// colour, v_rawColor, which an instance colour does not scale) is the occlusion.
 
 uniform u_fs_customParams {
     vec4 baseColor;
@@ -85,7 +88,10 @@ in vec2 v_uv1;
 #if defined(SHADOW_TEXTURE) && defined(HAS_UV_SET2)
     in vec2 v_uv2;
 #endif
-in vec4 v_color; // the instance colour; times the vertex colour with VERTEX_AO
+in vec4 v_color; // the instance colour
+#ifdef VERTEX_AO
+    in vec4 v_rawColor; // the vertex colour alone, white without one
+#endif
 
 #ifdef USE_VERTEX_LIGHTS
     // the vertex lights' diffuse, without the ambient (fake_lit.vert)
@@ -103,10 +109,7 @@ out vec4 g_finalColor;
 
 void main() {
     vec2 uv = v_uv1 * customParams.tiling.xy + customParams.tiling.zw;
-    vec4 base = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv));
-    #ifndef VERTEX_AO
-        base *= v_color;
-    #endif
+    vec4 base = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv)) * v_color;
 
     vec3 n = normalize(v_normal);
     if (!gl_FrontFacing){
@@ -132,7 +135,7 @@ void main() {
         shadow += (1.0 - texture(sampler2D(u_shadowTexture, u_shadow_smp), shadowUV).r) * customParams.shadowTextureStrength;
     #endif
     #ifdef VERTEX_AO
-        shadow += clamp((1.0 - v_color.r) * customParams.aoStrength, 0.0, 1.0);
+        shadow += clamp((1.0 - v_rawColor.r) * customParams.aoStrength, 0.0, 1.0);
     #endif
     color = mix(color, customParams.shadowColor.rgb, clamp(shadow, 0.0, 1.0));
 

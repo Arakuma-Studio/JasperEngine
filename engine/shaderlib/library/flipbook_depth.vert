@@ -2,8 +2,7 @@
 
 // Depth program of library:flipbook: for the alpha clip (ALPHA_CLIP, flipbook_depth.frag)
 // the same frame UVs as the colour pass (library/flipbook.glsl) and the colour; without
-// it, the plain depth program.
-#undef HAS_NORMALS
+// it, the plain depth program. The frame UVs take the place of v_uv1, which nothing reads.
 #undef SURFACE_UV1
 #ifdef ALPHA_CLIP
     #define SURFACE_DEPTH_VARYINGS

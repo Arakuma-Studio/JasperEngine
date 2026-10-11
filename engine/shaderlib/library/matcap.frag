@@ -4,7 +4,8 @@
 // @name "Matcap"
 // @category "Stylized"
 // @description "Material capture: the colour comes from a matcap image looked up by the view-space normal, replacing, multiplying or adding to the base map. Assign a matcap image (ADD wants a shine matcap, mostly black: the default white one adds full white); unlit."
-// @require position normals uv1 color
+// @require position normals color
+// @require uv1 feature=!MATCAP_MODE_REPLACE
 // @state blend=opaque
 // @property baseColor color (1, 1, 1, 1) "Tint"
 // @property tiling vector4 (1, 1, 0, 0) "Tiling (xy) and offset (zw)"

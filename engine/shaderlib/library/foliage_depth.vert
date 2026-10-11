@@ -1,20 +1,20 @@
 #version 450
 
 // Depth program of library:foliage: the same wind (library/foliage.glsl), and for the
-// cutout (ALPHA_CLIP, foliage_depth.frag) the UV and colour. Inputs nothing reads stay
+// cutout (ALPHA_CLIP, foliage_depth.frag) the UV and the instance colour, as the colour
+// pass (foliage.vert: the vertex colour is only the wind mask). Inputs nothing reads stay
 // undeclared.
 #ifdef ALPHA_CLIP
     #define SURFACE_DEPTH_VARYINGS
 #else
+    // no cutout: nothing reads the UV or v_color (nor the instance colour)
     #undef HAS_UV_SET1
-    #ifdef WIND_MASK_HEIGHT
-        #undef SURFACE_COLOR
-    #endif
+    #undef SURFACE_COLOR
 #endif
-#ifdef WIND_MASK_HEIGHT
-    #define SURFACE_NO_VERTEX_COLOR
+#define SURFACE_NO_VERTEX_COLOR
+#ifdef WIND_MASK_VERTEX_COLOR
+    #define SURFACE_DISPLACE_COLOR
 #endif
-#undef HAS_NORMALS
 
 #define SURFACE_DISPLACE
 #include "includes/surface_depth_vs.glsl"

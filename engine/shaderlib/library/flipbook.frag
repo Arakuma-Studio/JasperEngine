@@ -3,9 +3,10 @@
 // @shader mesh
 // @name "Flipbook"
 // @category "Effects"
-// @description "Sprite-sheet animation on a mesh: plays the frames of a columns x rows sheet at a frame rate, looping or holding the last frame, optionally crossfading between frames. Alpha blended by default; alpha clip for opaque cutouts."
+// @description "Sprite-sheet animation on a mesh: plays the frames of a columns x rows sheet at a frame rate, looping or holding the last frame, optionally crossfading between frames. Alpha blended by default; alpha clip for opaque cutouts, which also cast shadows of the frame's shape."
 // @require uv1 color
 // @state blend=alpha
+// @state[!ALPHA_CLIP] shadows=off
 // @property tint hdrcolor (1, 1, 1, 1) "Tint"
 // @property columns int 4 "Columns"
 // @property rows int 4 "Rows"
@@ -26,6 +27,8 @@
 // last one (a negative fps plays them backwards: a one-shot then holds the first). Frames
 // run left to right, then top to bottom, and fill the mesh's UV square.
 // To restart a one-shot animation, a script sets startTime to Engine.systemTime.
+// Shadows only with ALPHA_CLIP (@state[!ALPHA_CLIP] shadows=off): its depth program cuts
+// them to the frame; a blended sheet (fire, smoke) has no solid shape to cast.
 
 uniform u_fs_customParams {
     vec4 tint;

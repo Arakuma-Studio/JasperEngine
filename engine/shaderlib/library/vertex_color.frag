@@ -5,7 +5,8 @@
 // @category "Stylized"
 // @description "The mesh's vertex colours times a tint, optionally times a texture. Unlit, or Lambert lit per vertex or per pixel."
 // @lighting none vertex pixel
-// @require uv1 color
+// @require color
+// @require uv1 feature=TEXTURE
 // @state blend=opaque
 // @property baseColor color (1, 1, 1, 1) "Tint"
 // @property tiling vector4 (1, 1, 0, 0) "Tiling (xy) and offset (zw)" feature=TEXTURE
@@ -14,7 +15,8 @@
 
 // colour = vertex colour (white when the mesh has none) * instance colour * tint
 // (* texture). Lit modes: Lambert diffuse plus SH ambient, shadows from pixel lights.
-// Without scene lights the variant is unlit. Light units: includes/lights.glsl.
+// Without scene lights the variant is unlit. Light units: includes/lights.glsl. The UVs
+// reach the fragment stage only with TEXTURE (@require uv1 feature=TEXTURE).
 
 uniform u_fs_customParams {
     vec4 baseColor;
