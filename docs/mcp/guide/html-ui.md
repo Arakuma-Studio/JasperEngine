@@ -181,8 +181,8 @@ h1 { font-family: 'Orbitron', sans-serif; text-shadow: 0 0 20px rgba(124, 58, 23
 - `accent-color` colors checkboxes, radios, sliders and progress bars (a light accent gets a
   dark check mark, as in Chrome); `appearance: none` removes a control's own look so your
   `background`, `border` and `::-webkit-slider-thumb` styles draw alone (a checkbox or radio then has
-  no border, rounding or checked fill of its own, and fields, buttons and selects lose their rounding,
-  as in Chrome). As in a browser, a
+  no border, rounding or checked fill of its own, fields, buttons and selects lose their rounding,
+  and a text field gets the plain 2px inset border, as in Chrome). As in a browser, a
   reset such as `* { margin: 0; padding: 0; box-sizing: border-box }` does not reach a
   control's inner parts (slider track and thumb, select arrow, scrollbars): style those
   through their pseudo-elements.
