@@ -570,6 +570,12 @@ lighting mode, with moving lights (more lights than the cap, mixed per-light sha
 sprites, UI, particles and a sky. `tools/smoke-test.sh tools/fixtures/shader-library`
 exports, builds, runs and screenshots it without errors or missing-shader log lines.
 
+### 11.2b Export equivalence
+
+`tools/fixtures/shader-library-export/check.sh` renders a saved (not Lua-built) scene of
+every library shader, mode and blend in the editor and in the exported game and compares
+them cell by cell; it catches export-path bugs that a plain smoke test does not.
+
 ### 11.3 Regression
 
 - The editor and engine build with `tools/build.sh linux`.
