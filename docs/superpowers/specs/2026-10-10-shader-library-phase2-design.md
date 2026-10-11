@@ -300,7 +300,9 @@ override the sections they refer to; later agents follow them.
 - Fixture: `tools/fixtures/extra-pass` (fixture-only forks `assets/shaders/outline`,
   `assets/shaders/lit_outline`, `assets/shaders/silhouette`; `EP_FOCUS=<case>` close-ups;
   `EP_SCENE=overhead|overhead_pass`: 40 cubes hold 123 object pipelines without passes and
-  133 with ten outlined, one pipeline per pass and nothing for the other submeshes).
+  133 with ten outlined, one pipeline per pass and nothing for the other submeshes). Its
+  stencil case (QuickOutline style: material stencil always/replace 1, an AFTER hull with
+  `pass.stencil` not-equal 1) checks the pass's own stencil state after the merge.
 - An inverted hull after a blended object (which writes no depth) covers it: on transparent
   objects the outline goes `BEFORE` (the fixture's glass box). Presets should pick it.
 - The extra pass's shader is requested before the submesh builds any pipeline, so a load

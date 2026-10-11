@@ -20,9 +20,13 @@
 --    10. a Tilemap of three tiles, each with a drop shadow
 --    11. a render-to-texture camera's view of an outlined cube, on a quad (a pass in an
 --        RTT camera)
+--    12. a sphere writing stencil 1 with an AFTER hull that tests stencil not-equal 1 (the
+--        pass's own stencil state): an orange rim around a white sphere, drawn after it
+--        (compare 6, the same hull without stencil, which covers its sphere)
 --   The light casts shadows on the ground: the outlined objects cast the shadow of their
 --   shape, not of the hull (the extra pass is in no shadow or depth pass).
 --
+--   EP_FOCUS=cubes|column|batch|halo|glass|sprites|rtt|stencil: a close-up of one case.
 --   EP_SCENE=overhead: 40 plain cubes, no extra pass; EP_SCENE=overhead_pass: the same 40,
 --   ten of them outlined. With JASPERENGINE_READY_SIGNAL the engine logs "Render objects:
 --   ..." once loaded: the submeshes without a pass allocate nothing (extra passes allocated
@@ -225,10 +229,31 @@ local function buildRtt(self, scene)
 
     local screen = Primitive(scene)
     screen:createBox(1.4, 1.4, 0.05)
-    screen.position = Vector3(2.4, 0.75, 5.0)
+    screen.position = Vector3(1.6, 0.75, 5.0)
     screen.receiveLights = false
     screen:setTexture(camera:getFramebuffer())
     self.rttCube, self.rttCamera, self.rttScreen = cube, camera, screen
+end
+
+local function buildStencil(self, scene)
+    -- 12: QuickOutline style: the sphere writes stencil 1, its AFTER hull (back faces, no
+    -- depth write) draws only where the stencil is not 1: an orange rim, the sphere uncovered
+    local sphere = Primitive(scene)
+    sphere:createSphere(0.6, 32, 16)
+    sphere.position = Vector3(3.6, 0.75, 5.0)
+    sphere:setColor(0.95, 0.95, 0.95)
+    setExtraPass(sphere, function(pass, material)
+        material.stencil.compare = MaterialStencilCompare.ALWAYS
+        material.stencil.ref = 1
+        material.stencil.pass = MaterialStencilOp.REPLACE
+        outline(0.15, Vector4(1.0, 0.45, 0.05, 1.0))(pass)
+        pass.cullMode = MaterialCullMode.BACK
+        pass.depthWrite = MaterialDepthWrite.DISABLED
+        pass.stencil.compare = MaterialStencilCompare.NOT_EQUAL
+        pass.stencil.ref = 1
+        pass.order = MaterialPassOrder.AFTER
+    end)
+    self.stencilSphere = sphere
 end
 
 local function buildOverhead(self, scene, withPasses)
@@ -272,7 +297,7 @@ function ExtraPass:init()
     if mode == "overhead" or mode == "overhead_pass" then
         buildOverhead(self, scene, mode == "overhead_pass")
     else
-        for _, case in ipairs({ {"back", buildBack}, {"front", buildFront}, {"rtt", buildRtt} }) do
+        for _, case in ipairs({ {"back", buildBack}, {"front", buildFront}, {"rtt", buildRtt}, {"stencil", buildStencil} }) do
             local ok, err = pcall(case[2], self, scene)
             if ok then
                 log("built %s", case[1])
@@ -281,11 +306,11 @@ function ExtraPass:init()
             end
         end
     end
-    -- EP_FOCUS=cubes|column|batch|halo|glass|sprites|rtt: a close-up of one case
+    -- EP_FOCUS: a close-up of one case
     local focus = os.getenv("EP_FOCUS")
     local targets = { cubes = Vector3(-6.35, 1.0, 0.0), column = Vector3(-2.9, 1.0, 0.0), batch = Vector3(-0.7, 1.0, 0.0),
                       halo = Vector3(2.7, 1.0, 0.0), glass = Vector3(6.2, 1.0, 0.0), sprites = Vector3(-3.9, 0.8, 5.0),
-                      rtt = Vector3(2.4, 0.75, 5.0) }
+                      rtt = Vector3(1.6, 0.75, 5.0), stencil = Vector3(3.6, 0.75, 5.0) }
     if focus and targets[focus] then
         local target = targets[focus]
         camera.target = target
