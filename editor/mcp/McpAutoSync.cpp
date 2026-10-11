@@ -633,12 +633,13 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
         return;
     }
     // Compile the forks those files belong to, so their errors come with this call
-    w4::checkShadersAsync(call, forks, [run, report, shaderFiles](Json results) mutable {
+    Project* project = ctx.project();
+    w4::checkShadersAsync(call, forks, [run, report, shaderFiles, project](Json results) mutable {
         Json& problems = report["problems"];
         for (const Json& result : results) {
             if (result.value("ok", false)) continue;
             const std::string base = result.value("shader", std::string());
-            const Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(base);
+            const Util::CustomShaderPaths paths = project->resolveCustomShaderFiles(base);
             // Name the changed file of the fork (else its fragment shader)
             std::string path = paths.frag.empty() ? base : paths.frag;
             for (const std::string& file : shaderFiles) {

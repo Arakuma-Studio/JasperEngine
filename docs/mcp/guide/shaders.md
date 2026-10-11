@@ -67,6 +67,8 @@ editable `includes/` folder beside the fork.
 - Never set `customShader` by hand to files that do not exist. The value is a base path with
   no extension (`base.vert` + `base.frag`), or two explicit paths joined by `|`
   (`"a.vert|b.frag"`) when the names differ. Both a .vert and a .frag are always required.
+- Paths are project-relative (`assets/shaders/x` when the assets directory is `assets`); the
+  assets-relative spelling (`shaders/x`) also resolves, in the editor, checks, exports and game.
 - Clear `customShader` (empty string) to go back to the built-in shader.
 - A Mesh fork drives the color pass only. When it displaces vertices or discards fragments,
   also fork the depth shader (`fork_shader` with shader type `depth`, which sets

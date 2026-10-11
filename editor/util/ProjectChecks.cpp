@@ -604,7 +604,8 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
         }
         bool found = false;
         for (const ShaderUse& use : forks) {
-            Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(use.base);
+            // the files it resolves to (an assets-relative fork path: under the assets directory)
+            Util::CustomShaderPaths paths = project->resolveCustomShaderFiles(use.base);
             if (paths.vert == file || paths.frag == file) {
                 found = true;
                 if (covered.insert(forkKey(use)).second) result.push_back(use);
@@ -627,7 +628,7 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
     std::vector<ShaderUse> result = shaderForksInUse(project);
     std::set<std::string> usedFiles;
     for (const ShaderUse& use : result) {
-        Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(use.base);
+        Util::CustomShaderPaths paths = project->resolveCustomShaderFiles(use.base);
         usedFiles.insert(paths.vert);
         usedFiles.insert(paths.frag);
     }
@@ -649,7 +650,7 @@ int editor::ProjectChecks::guessShaderType(Project* project, const std::string& 
         if (manifest->hasType) return static_cast<int>(manifest->type);
     }
     std::string frag;
-    readFile(project->getProjectPath() / Util::resolveCustomShaderPaths(base).frag, frag);
+    project->readShaderFile(Util::resolveCustomShaderPaths(base).frag, frag);
     if (frag.find("u_fs_postParams") != std::string::npos || frag.find("postprocess") != std::string::npos) return static_cast<int>(ShaderType::POSTPROCESS);
     if (frag.find("includes/ui") != std::string::npos) return static_cast<int>(ShaderType::UI);
     if (frag.find("includes/sky") != std::string::npos) return static_cast<int>(ShaderType::SKYBOX);
@@ -722,17 +723,19 @@ std::string editor::ProjectChecks::shaderSourcePath(Project* project, const std:
     if (ShaderReference::isLibrary(base)) {
         return ShaderVariantCompiler::getLibrarySources().count(source) ? "engine/shaderlib/" + source : source;
     }
+    // the files as the compiler's reader found them (Project::findShaderFile), project-relative
     const Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(base);
-    if (source == paths.vert || source == paths.frag) return source;
+    if (source == paths.vert || source == paths.frag) return project->resolveShaderFile(source);
     if (!ShaderVariantCompiler::isSafeRelativePath(source)) return source;
-    const fs::path root = project->getProjectPath();
-    std::error_code ec;
+    const fs::path projectRoot = project->getProjectPath();
+    const fs::path assetsRoot = project->getAssetsPath();
     // the include resolution of ShaderVariantCompiler::resolveCustomShaderSources
     const std::string includeRoot = ShaderVariantCompiler::getCustomShaderIncludeRoot(base);
-    if (!includeRoot.empty() && includeRoot != "." && fs::is_regular_file(root / includeRoot / source, ec)) {
-        return (fs::path(includeRoot) / source).lexically_normal().generic_string();
+    if (!includeRoot.empty() && includeRoot != ".") {
+        const std::string local = (fs::path(includeRoot) / source).lexically_normal().generic_string();
+        if (!Project::findShaderFile(projectRoot, assetsRoot, local).empty()) return project->resolveShaderFile(local);
     }
-    if (fs::is_regular_file(root / source, ec)) return fs::path(source).lexically_normal().generic_string();
+    if (!Project::findShaderFile(projectRoot, assetsRoot, source).empty()) return project->resolveShaderFile(source);
     if (ShaderVariantCompiler::getLibrarySources().count(source)) return "engine/shaderlib/" + source;
     return source;
 }
@@ -793,7 +796,7 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
             }
             const std::string entry = ShaderReference::isLibrary(use.base)
                 ? "engine/shaderlib/library/" + ShaderReference::getLibraryName(use.base) + ".frag"
-                : Util::resolveCustomShaderPaths(use.base).frag;
+                : project->resolveCustomShaderFiles(use.base).frag;
             check.findings.push_back({"shader", entry, 0, 0, "error",
                                       first.empty() ? std::string(e.what()) : first});
         }

@@ -1354,6 +1354,21 @@ void editor::Project::applyCustomShaderPathChange(const std::function<bool(std::
     }
 }
 
+// The project-relative files a fork path can name (findShaderFile): itself, and under the
+// assets directory; whether they exist or not (a rename or delete has already happened)
+std::vector<std::string> editor::Project::shaderFileCandidates(const std::string& relative) const {
+    std::vector<std::string> candidates;
+    if (relative.empty()) {
+        return candidates;
+    }
+    candidates.push_back(relative);
+    const fs::path assetsRelative = normalizeToProjectRelative(getAssetsPath());
+    if (!assetsRelative.empty() && assetsRelative != "." && *assetsRelative.begin() != "..") {
+        candidates.push_back((assetsRelative / relative).lexically_normal().generic_string());
+    }
+    return candidates;
+}
+
 void editor::Project::remapShaderFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
     if (projectPath.empty()) {
         return;
@@ -1369,19 +1384,27 @@ void editor::Project::remapShaderFilePath(const std::filesystem::path& oldPath, 
     // customShader resolves to a .vert and a .frag entry point; remap each path against the
     // rename and rebuild the value. A single-file rename of a shared-base pair naturally
     // becomes the separate-file form; a directory rename remaps both via child match.
+    // (an assets-relative entry point is matched at its project-relative path too, see
+    // findShaderFile; the remapped value is project-relative)
     applyCustomShaderPathChange([&](std::string& customShader) -> bool {
         Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(customShader);
         std::string newVert = paths.vert;
         std::string newFrag = paths.frag;
         bool changed = false;
         std::string updated;
-        if (remapRelativeString(oldRelative, newRelative, paths.vert, updated)) {
-            newVert = updated;
-            changed = true;
+        for (const std::string& candidate : shaderFileCandidates(paths.vert)) {
+            if (remapRelativeString(oldRelative, newRelative, candidate, updated)) {
+                newVert = updated;
+                changed = true;
+                break;
+            }
         }
-        if (remapRelativeString(oldRelative, newRelative, paths.frag, updated)) {
-            newFrag = updated;
-            changed = true;
+        for (const std::string& candidate : shaderFileCandidates(paths.frag)) {
+            if (remapRelativeString(oldRelative, newRelative, candidate, updated)) {
+                newFrag = updated;
+                changed = true;
+                break;
+            }
         }
         if (changed) {
             customShader = Util::makeCustomShader(newVert, newFrag);
@@ -1405,9 +1428,13 @@ void editor::Project::cleanupShaderFilePath(const std::filesystem::path& deleted
     // deleted path against each resolved entry point (handles shared-base and separate forms).
     applyCustomShaderPathChange([&](std::string& customShader) -> bool {
         Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(customShader);
-        if (matchesRelativeString(deletedRelative, paths.vert) || matchesRelativeString(deletedRelative, paths.frag)) {
-            customShader.clear();
-            return true;
+        for (const std::string& entry : {paths.vert, paths.frag}) {
+            for (const std::string& candidate : shaderFileCandidates(entry)) {
+                if (matchesRelativeString(deletedRelative, candidate)) {
+                    customShader.clear();
+                    return true;
+                }
+            }
         }
         return false;
     });
@@ -1935,6 +1962,58 @@ std::filesystem::path editor::Project::resolveLuaPath(const std::filesystem::pat
 
 std::filesystem::path editor::Project::normalizeToLuaRelative(const std::filesystem::path& path) const{
     return normalizeAgainstRoot(getLuaPath(), path);
+}
+
+std::filesystem::path editor::Project::findShaderFile(const std::filesystem::path& projectRoot, const std::filesystem::path& assetsRoot,
+                                                      const std::string& relative){
+    if (!ShaderVariantCompiler::isSafeRelativePath(relative)){
+        return {};
+    }
+    std::error_code ec;
+    for (const std::filesystem::path& root : {projectRoot, assetsRoot}){
+        if (root.empty()){
+            continue;
+        }
+        const std::filesystem::path file = (root / relative).lexically_normal();
+        if (std::filesystem::is_regular_file(file, ec)){
+            return file;
+        }
+    }
+    return {};
+}
+
+std::string editor::Project::resolveShaderFile(const std::string& relative) const{
+    const std::filesystem::path file = findShaderFile(projectPath, getAssetsPath(), relative);
+    if (file.empty()){
+        return relative;
+    }
+    return normalizeToProjectRelative(file).generic_string();
+}
+
+editor::Util::CustomShaderPaths editor::Project::resolveCustomShaderFiles(const std::string& customShader) const{
+    Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(customShader);
+    if (!paths.vert.empty()){
+        paths.vert = resolveShaderFile(paths.vert);
+    }
+    if (!paths.frag.empty()){
+        paths.frag = resolveShaderFile(paths.frag);
+    }
+    return paths;
+}
+
+bool editor::Project::readShaderFile(const std::string& relative, std::string& content) const{
+    const std::filesystem::path file = findShaderFile(projectPath, getAssetsPath(), relative);
+    if (file.empty()){
+        return false;
+    }
+    std::ifstream stream(file, std::ios::binary);
+    if (!stream){
+        return false;
+    }
+    std::ostringstream buffer;
+    buffer << stream.rdbuf();
+    content = buffer.str();
+    return true;
 }
 
 // Only a directory without project files can be moved as a whole: those are referenced
@@ -5170,18 +5249,10 @@ bool editor::Project::loadProject(const std::filesystem::path path, bool updateL
         projectPath = path;
 
         // shader manifests of forks are read from this project's files
-        ShaderManifests::setForkReader([root = projectPath](const std::string& relativePath, std::string& content) {
-            std::error_code ec;
-            const fs::path file = root / relativePath;
-            if (!ShaderVariantCompiler::isSafeRelativePath(relativePath) || !fs::is_regular_file(file, ec))
-                return false;
-            std::ifstream stream(file, std::ios::binary);
-            if (!stream)
-                return false;
-            std::ostringstream buffer;
-            buffer << stream.rdbuf();
-            content = buffer.str();
-            return true;
+        // (the project root, else the assets directory: findShaderFile, read when asked, so
+        // the assets directory loaded with the project and any later change apply)
+        ShaderManifests::setForkReader([this](const std::string& relativePath, std::string& content) {
+            return readShaderFile(relativePath, content);
         });
 
         // Before any scene or prefab loads: every prefab file gets its GUID (the one-shot

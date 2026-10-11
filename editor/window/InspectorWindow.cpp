@@ -6057,7 +6057,8 @@ void editor::InspectorWindow::drawShaderRowContents(const std::string& currentSh
     // or live in separate files (stored as "shaders/mesh.vert|shaders/other.frag").
     // a library shader ("library:<name>") lives in the engine: no project file to open
     const bool library = ShaderReference::isLibrary(currentShader);
-    const Util::CustomShaderPaths paths = library ? Util::CustomShaderPaths() : Util::resolveCustomShaderPaths(currentShader);
+    // (project-relative files; an assets-relative fork path resolves under the assets directory)
+    const Util::CustomShaderPaths paths = library ? Util::CustomShaderPaths() : project->resolveCustomShaderFiles(currentShader);
     const bool hasCustom = !currentShader.empty();
     const bool separate = !library && Util::isSeparateCustomShader(currentShader);
     const bool vertExists = hasCustom && !library && std::filesystem::exists(projectPath / paths.vert);

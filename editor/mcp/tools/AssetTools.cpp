@@ -1927,7 +1927,8 @@ void checkShaderTool(const CallPtr& call) {
                 return;
             }
         } else {
-            Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(base);
+            // project-relative, else under the assets directory (Project::findShaderFile)
+            Util::CustomShaderPaths paths = project->resolveCustomShaderFiles(base);
             std::error_code ec;
             if (!fs::exists(project->getProjectPath() / paths.vert, ec) || !fs::exists(project->getProjectPath() / paths.frag, ec)) {
                 call->fail("Shader files not found: " + paths.vert + ", " + paths.frag + ".");
@@ -1946,7 +1947,7 @@ void checkShaderTool(const CallPtr& call) {
             }
             type = static_cast<int>(it->second);
         } else if (!library) {
-            for (const ProjectChecks::ShaderUse& use : ProjectChecks::shaderForksUsingFiles(project, {Util::resolveCustomShaderPaths(base).vert})) {
+            for (const ProjectChecks::ShaderUse& use : ProjectChecks::shaderForksUsingFiles(project, {project->resolveCustomShaderFiles(base).vert})) {
                 if (use.base == base) type = use.shaderType;
             }
         }
