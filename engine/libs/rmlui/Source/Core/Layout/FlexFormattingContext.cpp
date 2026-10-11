@@ -417,8 +417,11 @@ void FlexFormattingContext::Format(Vector2f& flex_resulting_content_size, Vector
 			RMLUI_ASSERT(initial_box_size.y < 0.f);
 
 			Box format_box = item.box;
+			// (the stretched width, within the item's min-width and max-width: its text wraps at the width it gets)
 			if (initial_box_size.x < 0.f && flex_available_content_size.x >= 0.f)
-				format_box.SetContent(Vector2f(flex_available_content_size.x - item.cross.sum_edges, initial_box_size.y));
+				format_box.SetContent(Vector2f(
+					Math::Max(Math::Min(flex_available_content_size.x - item.cross.sum_edges, item.cross.max_size), item.cross.min_size),
+					initial_box_size.y));
 
 			FormattingContext::FormatIndependent(flex_container_box, element, (format_box.GetSize().x >= 0 ? &format_box : nullptr),
 				FormattingContextType::Block);

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-transform with Unicode case mapping</title>
+<style>
+  /* uppercase maps the sharp s to SS (one letter more: the boxes see it), lowercase and capitalize; Ahem squares make every width exact, Roboto shows the letters (boxes compared, the image reported). */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  @font-face { font-family: "Roboto Text"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  div { position: absolute; left: 10px; white-space: nowrap; }
+  span { display: inline-block; background: #e0e8f0; }
+  .roboto { font-family: "Roboto Text"; font-size: 16px; }
+</style>
+</head>
+<body>
+<div style="top: 10px"><span id="upper" style="text-transform: uppercase">straße àéî</span></div>
+<div style="top: 30px"><span id="lower" style="text-transform: lowercase">ÀÉÎ ÕÜ ABC</span></div>
+<div style="top: 50px"><span id="none">straße</span></div>
+<div class="roboto" style="top: 70px"><span id="cap" style="text-transform: capitalize">foo-bar don't e.g. über 3rd</span></div>
+<div class="roboto" style="top: 100px"><span id="upper-roboto" style="text-transform: uppercase">straße über</span></div>
+<div class="roboto" style="top: 130px"><span id="lower-roboto" style="text-transform: lowercase">ÀÉÎ ÕÜ ABC</span></div>
+</body>
+</html>

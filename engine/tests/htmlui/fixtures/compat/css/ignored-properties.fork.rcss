@@ -1,3 +1,4 @@
 #htmlui-root .ignored {
 transition-behavior: normal;
+user-select: auto;
 }

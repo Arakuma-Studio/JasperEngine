@@ -85,37 +85,6 @@ String Style::ComputedValues::cursor() const
 	return String();
 }
 
-float Style::ComputedValues::letter_spacing() const
-{
-	if (inherited.has_letter_spacing)
-	{
-		if (auto p = element->GetProperty(PropertyId::LetterSpacing))
-		{
-#ifdef RMLUI_MATH_EXPRESSIONS
-			if (p->unit == Unit::CALCULATION)
-			{
-				float dp_ratio = 1.f;
-				Vector2f vp_dimensions(1.f);
-				if (Context* context = element->GetContext())
-				{
-					dp_ratio = context->GetDensityIndependentPixelRatio();
-					vp_dimensions = Vector2f(context->GetDimensions());
-				}
-				float document_font_size = DefaultComputedValues().font_size();
-				if (ElementDocument* document = element->GetOwnerDocument())
-					document_font_size = document->GetComputedValues().font_size();
-				float value = 0.f;
-				if (ComputeDefiniteLength(p, font_size(), document_font_size, dp_ratio, vp_dimensions, value))
-					return value;
-				return 0.f;
-			}
-#endif
-			return element->ResolveLength(p->GetNumericValue());
-		}
-	}
-	return 0.f;
-}
-
 float Style::ComputedValues::GetLocalNumericProperty(PropertyId id, float default_value) const
 {
 	if (const Property* p = GetLocalPropertyWithResolvedVariables(id))

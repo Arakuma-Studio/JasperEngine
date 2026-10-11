@@ -1,0 +1,60 @@
+{
+ "fixture": "text/text-transform-unicode.html",
+ "viewport": [
+  320,
+  170
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "upper",
+    "tag": "span",
+    "x": 10,
+    "y": 10,
+    "w": 110,
+    "h": 10
+   },
+   {
+    "id": "lower",
+    "tag": "span",
+    "x": 10,
+    "y": 30,
+    "w": 100,
+    "h": 10
+   },
+   {
+    "id": "none",
+    "tag": "span",
+    "x": 10,
+    "y": 50,
+    "w": 60,
+    "h": 10
+   },
+   {
+    "id": "cap",
+    "tag": "span",
+    "x": 10,
+    "y": 70,
+    "w": 191.984375,
+    "h": 16
+   },
+   {
+    "id": "upper-roboto",
+    "tag": "span",
+    "x": 10,
+    "y": 100,
+    "w": 110.703125,
+    "h": 16
+   },
+   {
+    "id": "lower-roboto",
+    "tag": "span",
+    "x": 10,
+    "y": 130,
+    "w": 73.09375,
+    "h": 16
+   }
+  ]
+ }
+}

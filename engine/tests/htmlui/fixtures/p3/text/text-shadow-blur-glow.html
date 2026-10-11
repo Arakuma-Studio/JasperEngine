@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-shadow with blur</title>
+<style>
+  /* A blurred shadow is a Gaussian blur of half the blur radius (as Chromium); a glow is a blurred shadow without offset; drawn behind the text. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  @font-face { font-family: "Roboto Text"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  div { position: absolute; left: 20px; font-size: 20px; color: #ffffff; }
+  body { background: #203040; }
+</style>
+</head>
+<body>
+<div id="blur" style="top: 20px; text-shadow: 4px 4px 6px #000000">XÉX</div>
+<div id="glow" style="top: 70px; text-shadow: 0 0 8px #40c0ff">XÉX</div>
+<div id="soft" style="left: 120px; top: 20px; color: #203040; text-shadow: 0 0 3px #ffffff">XÉX</div>
+<div id="far" style="left: 120px; top: 70px; text-shadow: 6px 6px 2px #ff6060">XÉX</div>
+</body>
+</html>

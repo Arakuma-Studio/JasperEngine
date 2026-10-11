@@ -225,7 +225,12 @@ diagnostic (below) says what changed.
 | `background:` shorthands, several layers, `url()` with `cover`/`contain`/`repeat`/`space`/`round`/positions, gradients incl. `repeating-*` and `-webkit-` forms | exact |
 | `border-radius: 50%` | exact on squares and pills (a stadium on other rectangles); other `%` radii dropped until phase 3 |
 | `outline`, `outline-offset` | a ring around the box (the offset gap is filled with the outline color) |
-| `text-shadow`, `-webkit-text-stroke` | text effects (glow for blurred shadows) |
+| `text-shadow` | exact: offsets, blur, several shadows, `currentcolor` (drawn by the layout engine, blurred like Chrome) |
+| `-webkit-text-stroke` | an outline text effect (drawn outside the glyphs) |
+| `letter-spacing`, `word-spacing` (lengths, `%` of the font size), `text-transform` (Unicode: `ß` → `SS`, `capitalize` per word), `white-space` (all six values, `white-space-collapse`, `text-wrap-mode`), `overflow-wrap`/`word-wrap`, `word-break` (`break-all`, `keep-all`), `text-align` (`start`, `end`, `match-parent`), `text-overflow: ellipsis` | exact |
+| `text-decoration` and its longhands (`underline overline line-through` together, color, `double`/`dotted`/`dashed`, thickness, `text-underline-offset`) | exact; `wavy` draws solid (note) |
+| zero-width space (`&ZeroWidthSpace;`), soft hyphen (`&shy;`), hyphens, CJK text | line-break opportunities as in Chrome; a line broken at a soft hyphen shows `-` |
+| `user-select: none` | text inputs select nothing; `text`/`all` do nothing (text outside inputs is never selectable, note) |
 | `transition: all .3s ease`, `animation: x .4s ease forwards`, `@keyframes`, every `transition-*`/`animation-*` longhand, `@starting-style`, `translate`/`rotate`/`scale` | exact, as in Chromium: every easing (`ease`, `cubic-bezier()` with overshoot, `steps()` with every position, `linear()`), `ms` or `s`, delays (negative too), fill modes, the four directions, fractional iteration counts, `animation-play-state` (a real pause), a keyframe's own `animation-timing-function`, several animations of one property; transitions start on **any** change: classes and `:hover`, inline styles and scripts (`el.style.x = ...`, `setAttribute("style")`, data binding), `var()` changes, inherited values; `transition-behavior: allow-discrete` (a `display: none` exit animation), `box-shadow` and individual transforms transition; an element shown from `display: none` or newly created transitions only from its `@starting-style`. `animation-composition: add`/`accumulate` act as `replace` (note) |
 | `font: 600 14px/1.5 'Inter', sans-serif`, quoted family names | exact |
 | `:root` variables, `var()` | exact, also inside shorthands and gradients |
@@ -254,6 +259,13 @@ placeholder box (render a scene into a texture instead); JavaScript never runs.
 - Font sizes are whole pixels (`13.333px`, Chrome's size for buttons and inputs, draws at
   13px) and every run of text is a whole number of pixels wide: text can be a pixel or two
   narrower or wider than in Chrome.
+- `text-align: justify` aligns left (no justification). `text-wrap: balance`/`pretty` wrap
+  like `wrap` (note). `hyphens: auto` does not hyphenate (note): put `&shy;` where a word may
+  break. A text decoration is one set of lines per text: an element inside an underlined one
+  that declares its own `text-decoration` replaces the underline on its text instead of
+  adding to it. `-webkit-line-clamp` cuts the text without an ellipsis (warning);
+  `text-overflow: ellipsis` works on a single line (`white-space: nowrap; overflow: hidden`).
+  `::first-line` and `::first-letter` are not supported: wrap the text in a `<span>`.
 - Tables: one without a `width` fills its container (Chrome shrinks it to its content), and
   columns without a width share the table's width equally (Chrome sizes them by content): give
   tables and columns a width. `border-collapse: collapse` removes the spacing but keeps each
@@ -345,9 +357,11 @@ What works in RCSS (standard CSS has all of it, and more through the rewrites ab
 - Images: `<img src="...">` and `decorator: image(...)`, with alpha.
 - Text: `font-size`, `color`, `font-weight` and `font-style` (a loaded face, else synthesized:
   "Fonts and text"), `font-effect` ("Text effects"),
-  `line-height`, `text-align` (left, center, right, justify), `letter-spacing`,
-  `text-decoration` (underline, overline, line-through), `white-space`, `text-transform`,
-  word wrapping; `<br/>`.
+  `line-height`, `text-align` (left, center, right, start, end; justify aligns left),
+  `letter-spacing`, `word-spacing`, `text-decoration` (and `text-decoration-line/-color/
+  -style/-thickness`, `text-underline-offset`), `text-shadow`, `white-space` (and
+  `white-space-collapse`, `text-wrap-mode`), `overflow-wrap`, `word-break`, `text-transform`,
+  `text-overflow`, word wrapping; `<br/>`.
 - Selectors: type, `#id`, `.class`, descendant/child/sibling combinators, attribute
   selectors, `:hover`, `:active`, `:first-child`, `:nth-child()`, `:not()`.
 - `var()` custom properties, `@media` (width/height of the canvas, orientation),
@@ -428,11 +442,16 @@ naming it and draws nothing for it.
 
 ## Text effects
 
-Standard CSS `text-shadow` and `-webkit-text-stroke` are translated to these effects in
-`.html` documents: `text-shadow: 2px 2px #000` is a shadow, one with a blur radius
-(`0 0 8px #7c3aed`) a glow, several shadows several effects, `-webkit-text-stroke: 1px #000`
-an outline (drawn outside the glyphs, where Chrome centres the stroke on their edge). In an
-`.rml` document write RmlUi's own property:
+Standard CSS `text-shadow` works in `.html` and `.rml` documents alike: `text-shadow: 2px 2px
+#000` is a hard shadow, one with a blur radius (`0 0 8px #7c3aed`) a glow (a Gaussian blur of
+half the radius, as in Chrome), a comma list several shadows (the first on top), all behind
+the text; a shadow without a color takes the text's color, and underlines cast it too. Each
+blurred shadow of a text draws through an offscreen layer: fine for titles and counters, not
+for long body text. `text-shadow` transitions and animates.
+
+`-webkit-text-stroke: 1px #000` is translated to the outline effect below (drawn outside the
+glyphs, where Chrome centres the stroke on their edge). RmlUi's own effects property, for
+`.rml` documents and for effects CSS has no property for:
 
 `font-effect` (inherited) draws effects with the text, comma-separated:
 
@@ -1135,6 +1154,9 @@ Limits by design:
   `<video>`, `<canvas>` or `<iframe>`.
 - Fonts: TTF/OTF only (no WOFF/WOFF2); whole-pixel font sizes and advances; no built-in serif
   or monospace face.
+- Text: no justification (`text-align: justify` aligns left), no automatic hyphenation, no
+  selection of text outside inputs, no `::first-line`/`::first-letter`, no vertical text;
+  `text-decoration-style: wavy` draws solid.
 - Tables use RmlUi's table model (full-width auto tables, equal columns, no collapsed
   borders).
 - Linux has no multi-touch (core X11 input). The IME composition shows inside the field on

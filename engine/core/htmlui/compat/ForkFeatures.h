@@ -21,7 +21,9 @@ namespace jasperengine::htmlui::compat {
     enum class ForkFeature : uint8_t {
         None, Calc, BorderStyle, PercentRadius, PseudoElements, RootIsWhere, Fixed,
         GroupOpacity, TimingFunctions, Important, CssWideKeywords, Grid,
-        AnimationLonghands, IndividualTransforms,   // phase 3, p3-animation
+        // appended by phase 3 (phase-3 spec Appendix A)
+        TextShadow, TextProperties,
+        AnimationLonghands, IndividualTransforms,   // p3-animation
         Count
     };
 

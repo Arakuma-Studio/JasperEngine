@@ -339,6 +339,10 @@ namespace {
             }else if (fork){
                 targets[0] = e.property.view();
                 count = 1;
+            }else if (context && context->session.fork(ForkFeature::TextShadow) && equalsNoCase(e.property.view(), "text-shadow")){
+                // the fork transitions text-shadow itself (phase 3, p3-text)
+                targets[0] = "text-shadow";
+                count = 1;
             }else{
                 count = transitionTargets(Arena::current().copy(lowerAscii(e.property)), targets);
                 if (count == 0){
@@ -511,7 +515,7 @@ namespace {
 
     // The name a transition entry gives the fork: the property compat writes for it when that is
     // another one (background images as the decorator, outline and box-shadow as box-shadow,
-    // text-shadow as font-effect, translate / rotate / scale as transform without
+    // text-shadow as font-effect without TextShadow, translate / rotate / scale as transform without
     // IndividualTransforms, ...); unknown names as written (CSS keeps them in the lists).
     size_t nativeTransitionNames(Session& session, std::string_view written, std::string_view (&names)[2], bool firstOnly){
         const std::string lower = lowerAscii(written);
@@ -521,7 +525,8 @@ namespace {
                 name = name.substr(prefix.size());
         }
         if (name == "all" || name == "none" || ((name == "translate" || name == "rotate" || name == "scale") &&
-                                                  session.options.fork.has(ForkFeature::IndividualTransforms))){
+                                                  session.options.fork.has(ForkFeature::IndividualTransforms)) ||
+            (name == "text-shadow" && session.options.fork.has(ForkFeature::TextShadow))){
             names[0] = name;
             return 1;
         }

@@ -1,0 +1,60 @@
+{
+ "fixture": "text/ellipsis-single-line.html",
+ "viewport": [
+  100,
+  120
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "direct",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 55,
+    "h": 10
+   },
+   {
+    "id": "inline",
+    "tag": "div",
+    "x": 10,
+    "y": 30,
+    "w": 55,
+    "h": 10
+   },
+   {
+    "id": "inside",
+    "tag": "span",
+    "x": 10,
+    "y": 30,
+    "w": 100,
+    "h": 10
+   },
+   {
+    "id": "fits",
+    "tag": "div",
+    "x": 10,
+    "y": 50,
+    "w": 55,
+    "h": 10
+   },
+   {
+    "id": "clip",
+    "tag": "div",
+    "x": 10,
+    "y": 70,
+    "w": 55,
+    "h": 10
+   },
+   {
+    "id": "after",
+    "tag": "div",
+    "x": 10,
+    "y": 90,
+    "w": 55,
+    "h": 10
+   }
+  ]
+ }
+}

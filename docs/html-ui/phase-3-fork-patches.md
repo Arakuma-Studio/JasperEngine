@@ -84,6 +84,7 @@ colours, `image-set()` by dp ratio), phase 2's behaviour stays.
 | `@layer` cascade layers, `revert-layer` with layers | No cascade layers in the parser; `revert-layer` without layers behaves as `revert` (CSS-correct when no layers exist), `@layer` blocks are diagnosed by compat. | "Remove `@layer`; order rules by specificity." |
 | CSS counters in `counter()` styles other than the list in §3.6; `@counter-style` | Long tail. | "Use one of: decimal, decimal-leading-zero, lower/upper-alpha/latin, lower/upper-roman, lower-greek, disc, circle, square, none." |
 | `text-decoration-style: wavy`, `text-emphasis`, `text-indent: hanging/each-line`, `hyphens: auto` | Long tail; `wavy` renders as `solid`. | listed per property |
+| `text-align: justify` | 6.3 has no justification (the value is accepted and aligns left); distributing space needs per-line glyph placement in the font engine interface. | "Justified text is aligned left." (the guide's limits list) |
 | `mix-blend-mode`, `background-blend-mode` | Needs blend modes beyond `Blend/Replace` in `RenderInterface::CompositeLayers` (RenderInterface.h:98-122) on all sokol backends; phase 5 (effects) owns new compositing modes. | "Not supported; use opacity or a pre-blended image." |
 | `background-clip: text` | Needs text as a mask layer per text run; phase 5 effects library provides a shader decorator for gradient text. | "Use the gradient-text effect (phase 5)." |
 | `display: ruby*`, table `border-collapse: collapse` parity, `caption-side`, CSS automatic table layout | Tables are rare in game UI; RmlUi's table model is kept as is: a table without a `width` fills its container (CSS shrinks it to its content) and columns without a width share the table's width equally (CSS sizes them by content). Phase 2's golden pages leave these widths out of the layout gate (`data-ref-tol="auto-width"` on `ua-defaults`' table, the `settings` key-binding table's cells have no ids). | per property; the guide says "give tables and columns a width" |
@@ -1251,7 +1252,7 @@ object-position}.html`.
 | `overflow-wrap` (`word-wrap` alias) | missing; `word-break: break-word` exists (`:365`) | `normal anywhere break-word`; line breaker in `ElementText::GenerateLine` breaks inside words when a word does not fit; `anywhere` also affects min-content (soft wrap opportunities count for `GetMinContentWidth`), `break-word` does not (CSS). |
 | `word-break` | `normal break-all break-word` | add `keep-all` (no breaks between CJK letters). |
 | `text-overflow` | `clip ellipsis <string>` (`:340`) | Parity: applies to a block container with `overflow` ≠ `visible` and the text overflowing its line box (6.3 rules checked against Chrome on `p3/text/ellipsis-*`), two-value syntax diagnosed. |
-| `text-decoration` | single keyword property (`:362`) | `text-decoration-line` (multiple values: `underline overline line-through`), `-color` (initial `currentcolor`), `-style` (`solid double dotted dashed`; `wavy` → solid + diagnostic), `-thickness` (`auto | from-font | <lp>`), `text-underline-offset`, `text-decoration` `AnyOrder` shorthand. Geometry from `FontMetrics::underline_position/thickness` (`FontMetrics.h:16-17`). Decorations propagate to inline descendants (CSS) — RmlUi draws per text element; keep, but descendants inherit the drawing via the existing inherited `text-decoration` value. |
+| `text-decoration` | single keyword property (`:362`) | `text-decoration-line` (multiple values: `underline overline line-through`), `-color` (initial `currentcolor`), `-style` (`solid double dotted dashed`; `wavy` → solid + diagnostic), `-thickness` (`auto | from-font | <lp>`), `text-underline-offset`, `text-decoration` `Custom` shorthand (the line takes several words). Geometry as Chromium draws it (see "as implemented"). Decorations propagate to inline descendants (CSS) — RmlUi draws per text element; keep, but descendants inherit the drawing via the existing inherited `text-decoration` value. |
 | `text-shadow` | missing (only `font-effect: shadow`) | New inherited property (`TextShadowListValue : StyleValue`: list of `offset-x offset-y blur? color?`, colour default `currentcolor`, interpolable). Rendering in `ElementText`: for each shadow (painted back to front, behind the text) the text geometry is generated again with the shadow colour and translated by the offset; blur > 0 renders those meshes into a layer and composites with the `blur` filter (σ = blur/2, CSS) — scissor = text ink box + 3σ. No dependency on font-engine effects. |
 | `text-align` | `left right center justify` (`:361`) | add `start`, `end` (resolve via direction), `match-parent`; `-webkit-center` → center. |
 | `vertical-align` | keywords + length (`:331-333`) | parity check fixtures: `middle` uses `x_height/2` from metrics; `text-top/bottom` use font ascent/descent; `%` of line-height. |
@@ -1267,6 +1268,80 @@ fixed advances — `TestsInterface` font engine). Goldens: `p3/text/{letter-word
 text-transform-unicode,white-space-all,overflow-wrap,ellipsis-single-line,ellipsis-flex-child,
 decoration-longhands,text-shadow-hard,text-shadow-blur-glow,text-shadow-multiple,align-start-end,
 vertical-align-middle}.html`.
+
+**p3-text as implemented** (FORK.md rows P3-TX1…P3-TX6; where it differs from or makes precise the
+table above):
+
+- **Zero-width space (p3-testkit's baseline bug).** Two causes. Engine: `TextShaper::selectFace`
+  took the first fallback face with a glyph for U+200B and kept it for the letters after it; a
+  default-ignorable code point (`TextShaper::isDefaultIgnorable`: U+200B, joiners, word joiner, soft
+  hyphen, variation selectors, bidi marks, BOM) now keeps the current face, and HarfBuzz draws it as
+  nothing with no advance. Fork: text is tokenised by code point and a word ends at a line-break
+  opportunity inside it (`TextUnicode::IsLineBreakOpportunity`, the UAX #14 pair rules for the
+  classes generated into `UnicodeLineBreakTables.inl`): after U+200B, a soft hyphen (a line that
+  ends there shows `-`), a hyphen or a dash; around ideographs, kana, Hangul and emoji (not with
+  `word-break: keep-all`); never before closing punctuation, after opening punctuation, around
+  U+2060/U+00A0 or before combining marks. Three layout defects the breaks revealed are fixed with
+  it: an inline box's content area is the font's rounded ascent plus descent (P3-TX2, was 1.2 em), a
+  column flex item is measured within its `min-width`/`max-width` (P3-TX3, in p3-layout's file), a
+  shrink-to-fit width is at least the min-content width (P3-TX4, in `LayoutDetails.cpp`).
+  `FixtureRunner` boxes are the union of an element's boxes (an inline split over lines), as
+  `getBoundingClientRect`.
+  Taffy known failures: the baseline's 52 `text-zwsp` lines and the 119 p3-grid re-owned to
+  p3-text once grid was native (171): 125 pass (14 + 111) and are removed; the 46 others (38 + 8)
+  fail for layout causes and are re-owned to p3-layout, each with a `(p3-text: …)` note naming it
+  (aspect-ratio, sizing keywords, flex automatic minimum size, `flex-basis: content`, absolute
+  positioning; the two float fixtures: a definite-width block adds its floats to its shrink-to-fit
+  width). No `text-zwsp` line is left.
+- **`text-transform`.** `uppercase`/`lowercase` use the full mappings (SpecialCasing's unconditional
+  ones: `ß` → `SS`, `ﬁ` → `FI`, `İ` → `i̇`, final sigma); `capitalize` uses the *simple* titlecase
+  mapping (`ß` stays) and Chromium's word starts (`Foo-Bar`, `Don't`, `E.G.`, `3rd`, `X_y`), both
+  measured on Chromium 153. Generated from Unicode 16.0.0; the generator also writes the line-break
+  classes.
+- **`white-space`.** `PropertyId::WhiteSpace` is not registered any more (its name is the
+  shorthand's); `ComputedValues::white_space()` returns the nearest CSS 2.1 keyword of the two
+  longhands, `white_space_collapse()` and `text_wrap_mode()` the values. The widgets set the
+  longhands. `preserve-spaces` is implemented (Chromium 153 does not parse it: no fixture).
+- **`overflow-wrap`.** A word is broken only when it starts its line (it first moves to a line of
+  its own); this also holds for the legacy `word-break: break-word`.
+- **`text-decoration`.** The shorthand is `Custom`, not `AnyOrder`: the line takes several words.
+  `text-decoration-line` is `PropertyId::TextDecoration` with a flags value
+  (`Style::TextDecoration` is a bit set). The geometry is Chromium's, not `FontMetrics::
+  underline_position/thickness`: thickness `auto` = font size / 10 floored (min 1 px), `from-font`
+  the font's; underline top = baseline + max(1, ceil(thickness / 2)) (or `text-underline-offset`),
+  overline on top of the rounded ascent, line-through centred a third of the ascent above the
+  baseline; `double` = two lines a third of the thickness apart, dots and dashes with Chromium's
+  lengths and stretched gaps. Underline and overline are painted under the text, line-through over
+  it. The colour is the decorating box's (the nearest ancestor declaring `text-decoration-line`):
+  its `text-decoration-color`, or its `color`.
+- **`text-align`.** `start` is the initial value and stays the computed value;
+  `ComputedValues::text_align()` returns it resolved against the element's direction (`left`/
+  `right`), `specified_text_align()` the keyword. `match-parent` takes the parent's keyword and
+  resolves it against the element's own direction, as Chromium does (CSS says the parent's).
+  `justify` still aligns left: 6.3 has no justification and none is added (§2.2 list, the guide).
+- **`text-overflow`.** The clipping block container is found through inline ancestors, the clip
+  edge is measured from the text's own position (6.3 compared a line's width with the container's
+  width, wrong for text that does not start at the container's left), and the ellipsis is drawn in
+  the container's colour. Chromium has no string value: not in a fixture.
+- **`word-spacing`.** The engine applies it in `TextShaper` (`ShapeOptions::wordSpacing`, set by
+  `RmlFontEngine::toShapeOptions`), where the clusters' code points are known; letter spacing is
+  not added after a default-ignorable (Chromium adds none after U+200B).
+- **`text-shadow`.** As planned; the decoration lines cast the shadow too. `currentcolor` is kept
+  by compat (`keepsCurrentColorKeyword`).
+- **`user-select`** is registered as CSS defines it, not inherited: `none` on a text input or text
+  area turns its selection off (the cursor still moves); a container's `user-select: none` does
+  not reach the inputs inside it, as in browsers.
+- **Not done here:** the font-size rounding of the last table row is p3-values' (§3.3.4, in
+  `ElementStyle.cpp`); `cursor` lists are p3-values' (§3.3.8); `vertical-align` and
+  `pointer-events` needed no change (`p3/text/vertical-align-middle` passes on 6.3's rules).
+- **Fixtures.** Chromium's font sanitizer rejects `fonts/Roboto-Regular-subset.ttf` (no `post`
+  table), so a fixture that names it draws a fallback face in the reference:
+  `fonts/Roboto-Regular-subset-post.ttf` is the same font with a `post` table (checked by
+  `BrowserFixtures.FontsAreTheEnginesFaces`). The text fixtures use Ahem for exact advances and
+  pixel comparison; `text-transform-unicode` also draws Roboto (boxes oracle).
+- **Compat.** `ForkFeature::TextShadow` and `::TextProperties` are appended and present; the
+  rewrites of `Text.cpp` pass the properties through with them (checked by `RcssGrammar`'s fork
+  rows), `RewriteId::UserSelect` is appended for `user-select`'s Info on `text`/`all`/`contain`.
 
 ---
 
@@ -1635,7 +1710,7 @@ FORK.md rows P3-A1…P3-A5 (package-prefixed ids, so that wave-1 packages cannot
   are present. With `AnimationLonghands` the transition/animation rewrites write each declaration as
   declared (normalized; transition property names that compat writes as another property are mapped:
   background images to `decorator`, `outline`/`box-shadow` to `box-shadow`, `text-shadow` to
-  `font-effect`, `translate`/`rotate`/`scale` to `transform` without `IndividualTransforms`; packages
+  `font-effect` without `TextShadow`, `translate`/`rotate`/`scale` to `transform` without `IndividualTransforms`; packages
   that make those native update `nativeTransitionNames` in `Transition.cpp`), keep per-keyframe
   easing and `@starting-style` (written as `@starting-style { rule }`, inside `@media` when nested
   there), and the `AnimationFill` runtime is skipped (its tests drive it directly).
@@ -2267,7 +2342,7 @@ is needed.
 | p3-values | — (new units/values only) | `margin-inline/-block(-start/-end)`, `padding-inline/-block(*)`, `inset-inline/-block(*)`, `border-inline/-block(*)`, `inline-size`, `block-size`, `min-/max-inline-size`, `min-/max-block-size`; `font` (now Custom), `transform-origin`/`perspective-origin` (Custom) |
 | p3-cascade | `content`, `quotes`, `counter-reset`, `counter-increment`, `counter-set`, `list-style-type`, `list-style-position`, `list-style-image` | `all`, `list-style` |
 | p3-paint | `border-{top,right,bottom,left}-style`, `-rmlui-border-{tl,tr,br,bl}-radius-{x,y}` (8, replacing the 4 radius ids), `outline-width`, `outline-style`, `outline-color`, `outline-offset`, `isolation`, `background-image`, `background-position-x`, `background-position-y`, `background-size`, `background-repeat`, `background-origin`, `background-clip`, `background-attachment`, `mask-size`, `mask-position-x`, `mask-position-y`, `mask-repeat`, `object-fit`, `object-position-x`, `object-position-y`, `border-image` (none only) | `border-style`, `border-*` (AnyOrder), `border` (AnyOrder), `border-*-radius` (4), `border-radius` (Custom), `outline`, `background` (Custom), `background-position`, `mask`, `mask-position`, `object-position` |
-| p3-text | `word-spacing`, `overflow-wrap`, `white-space-collapse`, `text-wrap-mode`, `text-decoration-color`, `text-decoration-style`, `text-decoration-thickness`, `text-underline-offset`, `text-shadow`, `user-select`, `accent-color` (`text-decoration` becomes `text-decoration-line`) | `white-space` (Custom), `text-wrap`, `text-decoration` (AnyOrder), `word-wrap` (alias) |
+| p3-text | `word-spacing`, `overflow-wrap`, `white-space-collapse`, `text-wrap-mode`, `text-decoration-color`, `text-decoration-style`, `text-decoration-thickness`, `text-underline-offset`, `text-shadow`, `user-select`, `accent-color` (`text-decoration` becomes `text-decoration-line`; the `white-space` longhand id is retired) | `white-space` (Custom), `text-wrap` (Custom), `text-decoration` (Custom), `word-wrap` (alias) |
 | p3-layout | `overflow-clip-margin`, `aspect-ratio`, `scrollbar-gutter` | — |
 | p3-animation | `transition-property`, `transition-duration`, `transition-timing-function`, `transition-delay`, `transition-behavior`, `animation-name`, `animation-duration`, `animation-timing-function`, `animation-delay`, `animation-iteration-count`, `animation-direction`, `animation-fill-mode`, `animation-play-state`, `animation-composition`, `translate`, `rotate`, `scale` | `transition`, `animation` (both Custom, replacing the 6.3 list properties) |
 | p3-grid | `grid-template-columns`, `grid-template-rows`, `grid-template-areas`, `grid-auto-columns`, `grid-auto-rows`, `grid-auto-flow`, `grid-row-start`, `grid-row-end`, `grid-column-start`, `grid-column-end` | `grid-row`, `grid-column`, `grid-area`, `grid-template`, `grid`, `grid-gap`/`grid-row-gap`/`grid-column-gap` (aliases) |

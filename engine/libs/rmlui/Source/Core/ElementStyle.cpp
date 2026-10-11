@@ -23,6 +23,7 @@
 #include "PropertiesIterator.h"
 #include "PropertyParserAnimation.h"
 #include "PropertyShorthandDefinition.h"
+#include "TextProperties.h"
 #ifdef RMLUI_MATH_EXPRESSIONS
 	#include "Calculation.h"
 #endif
@@ -1443,11 +1444,12 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		break;
 	case PropertyId::LetterSpacing:
 		values.has_letter_spacing(p->unit != Unit::KEYWORD);
+		values.letter_spacing(ComputeTextSpacing(p, font_size, document_font_size, dp_ratio, vp_dimensions));
 		dirty_font_face_handle = true;
 		break;
 
 	case PropertyId::TextAlign:
-		values.text_align((TextAlign)p->Get<int>());
+		values.text_align(ComputeTextAlign(p, element));
 		break;
 	case PropertyId::TextDecoration:
 		values.text_decoration((TextDecoration)p->Get<int>());
@@ -1456,7 +1458,7 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		values.text_transform((TextTransform)p->Get<int>());
 		break;
 	case PropertyId::WhiteSpace:
-		values.white_space((WhiteSpace)p->Get<int>());
+		// Not registered: 'white-space' is the shorthand of the text section's longhands.
 		break;
 	case PropertyId::WordBreak:
 		values.word_break((WordBreak)p->Get<int>());
@@ -1633,14 +1635,25 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 
 	// -- Text (p3-text) --
 	case PropertyId::WordSpacing:
+		values.word_spacing(ComputeTextSpacing(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		break;
 	case PropertyId::OverflowWrap:
+		values.overflow_wrap((OverflowWrap)p->Get<int>());
+		break;
 	case PropertyId::WhiteSpaceCollapse:
+		values.white_space_collapse((WhiteSpaceCollapse)p->Get<int>());
+		break;
 	case PropertyId::TextWrapMode:
+		values.text_wrap_mode((TextWrapMode)p->Get<int>());
+		break;
+	case PropertyId::TextShadow:
+		values.has_text_shadow(p->unit == Unit::STYLE_VALUE);
+		break;
+	// Fetched from the element's properties (ElementText, WidgetTextInput).
 	case PropertyId::TextDecorationColor:
 	case PropertyId::TextDecorationStyle:
 	case PropertyId::TextDecorationThickness:
 	case PropertyId::TextUnderlineOffset:
-	case PropertyId::TextShadow:
 	case PropertyId::UserSelect:
 	case PropertyId::AccentColor:
 		break;

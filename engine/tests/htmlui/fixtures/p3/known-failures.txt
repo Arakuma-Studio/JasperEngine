@@ -3,4 +3,3 @@
 # A wave-1 package adds a line here only for a fixture of its area that needs another package's
 # feature (owner = that package).
 # <area>/<name> owner=<package> reason=<class> # <why>
-text/zero-width-space owner=p3-text reason=text-zwsp # U+200B switches the text after it to a fallback face (TextShaper::selectFace keeps the current face) and is no line-break opportunity

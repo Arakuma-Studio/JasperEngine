@@ -3,7 +3,8 @@
 
 // Text (phase-2 §3.9.7 "Text"): text-shadow and -webkit-text-stroke as RmlUi font effects,
 // -webkit-text-fill-color, text-decoration lines, text-align keywords, the white-space family,
-// word breaking, line clamping.
+// word breaking, line clamping. With the fork's TextShadow and TextProperties (phase 3, p3-text)
+// the text properties pass through natively, checked against the fork's grammar.
 
 #include "htmlui/compat/css/props/Rewriters.h"
 #include "htmlui/compat/LiteralCompare.h"
@@ -147,6 +148,17 @@ namespace {
         return effects;
     }
 
+    // The declaration written as it is for the fork's own property (phase 3): its value checked
+    // against the fork's grammar, else the declaration is dropped as an unsupported value.
+    void emitNative(DeclContext& context, const std::string& property, const std::string& suggestion = std::string()){
+        const std::string value = context.valueText();
+        if (!RcssGrammar::accepts(property, value, context.session.options.fork)){
+            unsupportedValue(context, suggestion);
+            return;
+        }
+        context.emit(property, value);
+    }
+
     std::optional<std::string> borderLikeWidth(Session& session, const ComponentValue& v){
         const std::string k = identOf(v);
         if (k == "thin")
@@ -173,6 +185,11 @@ const VarFamily jasperengine::htmlui::compat::kFontEffectFamily = {"font-effect"
 
 void jasperengine::htmlui::compat::rewriteTextShadow(DeclContext& context){
     const Words w = wordsOf(context.value);
+    if (context.session.fork(ForkFeature::TextShadow)){
+        // native: blur, several shadows and currentcolor as in CSS (ElementText draws them)
+        emitNative(context, "text-shadow", "write text-shadow: <x> <y> [<blur>] [<color>], ...");
+        return;
+    }
     if (w.size() == 1 && isIdent(*w[0], "none")){
         companions::emitTextShadow(context, std::string_view());
         return;
@@ -268,6 +285,15 @@ void jasperengine::htmlui::compat::rewriteTextFillColor(DeclContext& context){
 
 void jasperengine::htmlui::compat::rewriteTextDecoration(DeclContext& context){
     ValueList w = words(context.value);
+    if (context.session.fork(ForkFeature::TextProperties)){
+        // native: the shorthand and its longhands; a wavy line is drawn solid
+        for (const ComponentValue& v : w){
+            if (identOf(v) == "wavy" && (context.name == "text-decoration" || context.name == "text-decoration-style"))
+                context.reportAs(Severity::Info, codes::ApproximatedMinor, "a wavy text decoration is drawn solid", "use solid, double, dotted or dashed");
+        }
+        emitNative(context, context.name);
+        return;
+    }
     std::vector<std::string> lines;
     std::vector<std::string> dropped;
     for (const ComponentValue& v : w){
@@ -305,6 +331,26 @@ void jasperengine::htmlui::compat::rewriteTextAlign(DeclContext& context){
     ValueList w = words(context.value);
     const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
     const bool rtl = context.session.rootDirection == "rtl";
+    if (context.session.fork(ForkFeature::TextProperties)){
+        // native: start, end and match-parent follow the element's direction
+        if (k == "left" || k == "right" || k == "center" || k == "justify" || k == "start" || k == "end" || k == "match-parent" ||
+            k == "-webkit-center"){
+            context.emit("text-align", k);
+            return;
+        }
+        if (k == "-moz-center"){
+            context.emit("text-align", "center");
+            return;
+        }
+        if (k == "-webkit-match-parent"){
+            context.emit("text-align", "match-parent");
+            return;
+        }
+        if (k == "justify-all"){
+            context.emit("text-align", "justify");
+            return;
+        }
+    }
     if (k == "left" || k == "right" || k == "center" || k == "justify"){
         context.emit("text-align", k);
         return;
@@ -343,6 +389,17 @@ void jasperengine::htmlui::compat::rewriteWhiteSpace(DeclContext& context){
     std::vector<std::string> k;
     for (const ComponentValue& v : w)
         k.push_back(identOf(v));
+    if (context.session.fork(ForkFeature::TextProperties) && n != "text-wrap-style"){
+        // native: white-space is the shorthand of white-space-collapse and text-wrap-mode
+        if (n == "text-wrap"){
+            for (const std::string& word : k){
+                if (word == "balance" || word == "pretty" || word == "stable")
+                    context.reportAs(Severity::Info, codes::ApproximatedMinor, "'text-wrap: " + word + "' wraps lines greedily in the engine");
+            }
+        }
+        emitNative(context, n);
+        return;
+    }
     if (w.size() == 1 && isVar(w[0])){
         if (n == "white-space")
             context.emit("white-space", text(w[0]));
@@ -436,6 +493,16 @@ void jasperengine::htmlui::compat::rewriteWhiteSpace(DeclContext& context){
 void jasperengine::htmlui::compat::rewriteOverflowWrap(DeclContext& context){
     ValueList w = words(context.value);
     const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
+    if (context.session.fork(ForkFeature::TextProperties)){
+        // native: overflow-wrap (and its alias word-wrap), word-break with keep-all
+        if (context.name == "word-break" && k == "auto-phrase"){
+            context.reportAs(Severity::Info, codes::ApproximatedMinor, "'word-break: auto-phrase' is written as normal");
+            context.emit("word-break", "normal");
+            return;
+        }
+        emitNative(context, context.name == "word-wrap" ? std::string("overflow-wrap") : context.name);
+        return;
+    }
     if (context.name == "word-break"){
         if (k == "normal" || k == "break-all" || k == "break-word"){
             context.emit("word-break", k);
@@ -499,7 +566,17 @@ void jasperengine::htmlui::compat::rewriteLineClamp(DeclContext& context){
         maxHeight = formatNumber(lines * 1.2, 4) + "em";
     context.reportAs(Severity::Warning, codes::ApproximatedVisible, "'" + context.sourceText() + "' cuts the text at " +
                      formatNumber(lines) + " lines (max-height " + maxHeight + ") without an ellipsis",
-                     "set a line-height on the rule so the cut is exact");
+                     "for an ellipsis use one line with text-overflow: ellipsis; set a line-height on the rule so the cut is exact");
     context.emit("max-height", maxHeight);
     context.emit("overflow", "hidden");
+}
+
+void jasperengine::htmlui::compat::rewriteUserSelect(DeclContext& context){
+    // (reached with the fork's TextProperties: the row is Ignored without it)
+    ValueList w = words(context.value);
+    const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
+    if (k == "text" || k == "all" || k == "contain")
+        context.reportAs(Severity::Info, codes::ApproximatedMinor, "'user-select: " + k + "' selects nothing: text outside text inputs is not selectable",
+                         "only text inputs and text areas select text");
+    emitNative(context, "user-select");
 }

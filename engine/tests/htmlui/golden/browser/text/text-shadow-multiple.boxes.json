@@ -1,0 +1,28 @@
+{
+ "fixture": "text/text-shadow-multiple.html",
+ "viewport": [
+  160,
+  110
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "stack",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 60,
+    "h": 20
+   },
+   {
+    "id": "mixed",
+    "tag": "div",
+    "x": 20,
+    "y": 70,
+    "w": 60,
+    "h": 20
+   }
+  ]
+ }
+}
