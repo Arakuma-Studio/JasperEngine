@@ -33,6 +33,7 @@
 #include "htmlui/compat/css/props/Rewriters.h"
 
 #include <algorithm>
+#include <functional>
 #include <atomic>
 #include <array>
 #include <map>
@@ -290,8 +291,18 @@ std::optional<TypedVar> Session::typedVar(const ComponentValue& var, const std::
             return std::nullopt;
         kind = k;
     }
-    // a declaration that itself references a variable cannot be written in another kind
-    if (const std::vector<CustomPropertyIndex::Entry>* entries = vars.find(name)){
+    // a declaration that itself references a variable cannot be written in another kind; background layers without
+    // a url() are written as declared (only their urls are rewritten), whatever variables they reference
+    std::function<bool(const ValueList&)> hasUrl = [&hasUrl](const ValueList& value){
+        for (const ComponentValue& v : value){
+            if (v.isToken(TokenType::Url) || v.isFunction("url") || v.isFunction("src") || v.isFunction("image-set") ||
+                v.isFunction("-webkit-image-set") || hasUrl(v.children))
+                return true;
+        }
+        return false;
+    };
+    const bool asDeclared = (kind == "layers" && std::none_of(values.begin(), values.end(), hasUrl));
+    if (const std::vector<CustomPropertyIndex::Entry>* entries = asDeclared ? nullptr : vars.find(name)){
         for (const CustomPropertyIndex::Entry& entry : *entries){
             std::vector<std::string> nested;
             CustomPropertyIndex::referencedVariables(entry.value, nested);
