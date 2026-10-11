@@ -90,6 +90,23 @@ static PseudoElementType PseudoElementTypeOfTag(const String& tag)
 	return PseudoElementType::None;
 }
 
+// Whether a descendant of 'element' is 'position: fixed', or also 'absolute' with 'with_absolute' (their containing block may
+// be 'element', or a box inside it).
+static bool HasPositionedDescendant(Element* element, bool with_absolute)
+{
+	const int num_children = element->GetNumChildren(true);
+	for (int i = 0; i < num_children; i++)
+	{
+		Element* child = element->GetChild(i);
+		const Style::Position position = child->GetComputedValues().position();
+		if (position == Style::Position::Fixed || (with_absolute && position == Style::Position::Absolute))
+			return true;
+		if (HasPositionedDescendant(child, with_absolute))
+			return true;
+	}
+	return false;
+}
+
 Element::Element(const String& tag) :
 	local_stacking_context(false), local_stacking_context_forced(false), stacking_context_dirty(false), computed_values_are_default_initialized(true),
 	visible(true), offset_fixed(false), absolute_offset_dirty(true), rounded_main_padding_size_dirty(true), dirty_definition(false),
@@ -2292,18 +2309,19 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 		changed_properties.Contains(PropertyId::Scale);
 
 	// A transform, a filter, ... make the element the containing block of its fixed and absolutely positioned descendants:
-	// their layout changes when that starts or stops (not when only their values change, as in a transition).
+	// their layout changes when that starts or stops (not when only their values change, as in a transition), if it has
+	// such descendants (a 'position' change dirties the layout anyway).
 	if (transform_changed || perspective_changed || filter_or_mask_changed || changed_properties.Contains(PropertyId::WillChange) ||
 		changed_properties.Contains(PropertyId::Position))
 	{
 		const bool new_fixed_containing_block = WillChange::IsFixedPositioningContainingBlock(meta->computed_values);
 		const bool new_absolute_containing_block = WillChange::IsAbsolutePositioningContainingBlock(meta->computed_values);
-		if (new_fixed_containing_block != fixed_containing_block || new_absolute_containing_block != absolute_containing_block)
-		{
-			fixed_containing_block = new_fixed_containing_block;
-			absolute_containing_block = new_absolute_containing_block;
+		const bool fixed_flip = (new_fixed_containing_block != fixed_containing_block);
+		const bool absolute_flip = (new_absolute_containing_block != absolute_containing_block);
+		fixed_containing_block = new_fixed_containing_block;
+		absolute_containing_block = new_absolute_containing_block;
+		if ((fixed_flip || absolute_flip) && HasPositionedDescendant(this, absolute_flip))
 			DirtyLayout();
-		}
 	}
 
 	// Update the z-index and stacking context.
