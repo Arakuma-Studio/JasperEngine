@@ -68,12 +68,21 @@ BoxShadowGeometryInfo GeometryBoxShadow::Resolve(Element* element, ColourbPremul
 		// Extend the render-texture to encompass box-shadow blur and spread.
 		for (const BoxShadow& shadow : shadow_list)
 		{
+			const Vector2f offset = {shadow.offset_x.number, shadow.offset_y.number};
 			if (!shadow.inset)
 			{
 				const float extend = 1.5f * shadow.blur_radius.number + shadow.spread_distance.number;
-				const Vector2f offset = {shadow.offset_x.number, shadow.offset_y.number};
 				extend_min = Math::Min(extend_min, offset - Vector2f(extend));
 				extend_max = Math::Max(extend_max, offset + Vector2f(extend));
+			}
+			else if (shadow.blur_radius.number >= 0.5f)
+			{
+				// A blurred inset shadow is blurred from a fill outside its shape: the fill must reach as far beyond the
+				// padding box as the blur reads (three sigma) for the shadow to be darkest at the box's edge, also where the
+				// shape meets the padding box (no offset, no spread) and nothing of the fill lies inside the texture.
+				const float extend = 1.5f * shadow.blur_radius.number + Math::Absolute(offset.x) + Math::Absolute(offset.y);
+				extend_min = Math::Min(extend_min, Vector2f(-extend));
+				extend_max = Math::Max(extend_max, Vector2f(extend));
 			}
 		}
 
