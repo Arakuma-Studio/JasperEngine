@@ -84,8 +84,11 @@ linked to a `.material` file becomes its own material. Tune the result with the 
   (`.shaderParams.<member>`, `.shaderTextures.<uniform>`). Its values follow its own shader's
   manifest (not the material's), with the same rules as the material's; its `auto` state is
   its shader's `@state`. `shader: ""` draws no pass; a whole object merges, `null` removes
-  the pass. An inverted hull (`library:outline`) after a blended object covers it: put it
-  `before` (the preset does). The pass casts no shadows and skips the depth pre-pass.
+  the pass. An inverted hull (`library:outline`) is for opaque objects (`after`: their depth
+  hides the inner hull); its back faces fill a blended object's shape on either side, so the
+  `outline_hull` preset gives a blended material (its blend, else the shader it draws with)
+  stencil bit 1 and `library:outline_stencil` Visible only instead. A mask reader preset masks
+  the pass too. The pass casts no shadows and skips the depth pre-pass.
 - A manifest declares stencil and colour state with `@state stencil=<test> ref= readmask=
   writemask= pass= fail= zfail= colorwrite=` (also in `@state[...]` rules); `list_shaders`
   reports them in `state.stencil` / `state.colorWrite`.

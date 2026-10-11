@@ -12,8 +12,12 @@
 --        rim around a white sphere (the sphere draws over the hull)
 --     6. the same pass AFTER the sphere: an orange ball (the hull covers the sphere)
 --     7. an alpha-blended blue box with a BEFORE outline lit by the pixel lights
---        (shaders/lit_outline): a transparent object (the hull goes before it, which writes
---        no depth), and a lit pass
+--        (shaders/lit_outline): a lit pass, drawn before a transparent submesh in the
+--        transparent queue. The box looks filled: the hull's lit back faces show through the
+--        glass (an inverted hull fills a blended object's whole shape, before it as seen
+--        through it, after it as drawn over it). So it is no outline for a blended object:
+--        the Outline (hull) preset gives a blended material case 12's technique instead
+--        (stencil mark + library:outline_stencil, Visible only)
 --   front row:
 --     8. a Sprite with a BEFORE drop shadow (shaders/silhouette: its image's shape, offset)
 --     9. a Sprite with the same pass AFTER: a dark shape over it
@@ -151,7 +155,9 @@ local function buildBack(self, scene)
     setExtraPass(glass, function(pass, material)
         pass.shader = LIT_OUTLINE
         pass:setShaderParam("width", 0.06)
-        -- before it: the blended box writes no depth, so a hull after it would cover it
+        -- before it: the blended box writes no depth, so a hull after it would cover it;
+        -- before it, its back faces show through the glass instead (the case shows a lit
+        -- pass with a blended submesh, not a blended object's outline)
         pass.order = MaterialPassOrder.BEFORE
         material.blendMode = MaterialBlendMode.ALPHA
     end)

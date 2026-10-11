@@ -1523,7 +1523,8 @@ void applyMaterialPresetTool(const CallPtr& call) {
                 from.name.clear();
                 unlinked.push_back(McpRefs::entityPath(sceneProject, entity) + " submesh " + std::to_string(s) + " (" + linked + ")");
             }
-            const Material to = applyMaterialPreset(*preset, from);
+            // judged by the shader the submesh draws with (the mesh's or the scene's when it names none)
+            const Material to = applyMaterialPreset(*preset, from, meshShaderFor(sceneProject->scene, entity));
             addMaterialChangeCommands(*multi, project, sceneProject->id, entity, s, from, to);
             applied.push_back({{"entity", McpRefs::entityJson(sceneProject, entity)}, {"submesh", s}, {"unlinked", !linked.empty()}});
         }

@@ -3,7 +3,7 @@
 // @shader mesh
 // @name "Outline"
 // @category "Outline and stencil"
-// @description "Inverted-hull outline: the mesh pushed out along its smoothed normal (closed at hard edges) and drawn with its front faces culled, in one colour. Use it as a material's extra pass (Outline (hull) preset): order After for opaque objects (cheapest), Before for blended ones (a blended object writes no depth, so a hull after it covers it). Width in pixels (constant at any distance, perspective or orthographic) or in world units (optionally growing with distance, capped). Works with skinning, morph targets and instancing; for Sprites use the Sprite shader's Outline feature instead (a flat quad has no hull). No shadows."
+// @description "Inverted-hull outline: the mesh pushed out along its smoothed normal (closed at hard edges) and drawn with its front faces culled, in one colour. Use it as an opaque material's extra pass, order After (Outline (hull) preset): the object's depth hides the inner hull. Not for blended objects: the hull's back faces fill the whole shape, which a blended object (no depth write) shows through Before and is covered by After; the Outline (hull) preset gives a blended material Outline (stencil), Visible only, instead. Width in pixels (constant at any distance, perspective or orthographic) or in world units (optionally growing with distance, capped). Works with skinning, morph targets and instancing; for Sprites use the Sprite shader's Outline feature instead (a flat quad has no hull). No shadows."
 // @require smoothnormals
 // @require uv1 feature=TEXTURE
 // @require rawcolor feature=VERTEX_COLOR_WIDTH

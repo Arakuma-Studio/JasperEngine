@@ -3,7 +3,7 @@
 // @shader mesh
 // @name "Outline (stencil)"
 // @category "Outline and stencil"
-// @description "QuickOutline-style outline that never covers its object: an extra pass After a main material that writes stencil 1 over its whole silhouette (Outline (stencil) preset: stencil always, ref 1, write mask 1, pass and depth-fail replace). Draws the pushed-out mesh where stencil bit 1 is not set. Visibility Always draws it through walls (give the object a sort priority above its occluders, as the preset does, so they draw first); Visible only depth-tests it. Width in pixels or world units, as Outline. Uses stencil bit 0x01. No shadows."
+// @description "QuickOutline-style outline that never covers its object: an extra pass After a main material that writes stencil 1 over its whole silhouette (Outline (stencil) preset: stencil always, ref 1, write mask 1, pass and depth-fail replace). Draws the pushed-out mesh where stencil bit 1 is not set. Visibility Always draws it through walls (give the object a sort priority above its occluders, as the preset does, so they draw first); Visible only depth-tests it: the outline of blended objects, which an inverted hull would fill (the Outline (hull) preset on a blended material, whose stencil also writes bit 1 over its draw-once or mask test). Width in pixels or world units, as Outline. Uses stencil bit 0x01. No shadows."
 // @require smoothnormals
 // @require uv1 feature=TEXTURE
 // @require rawcolor feature=VERTEX_COLOR_WIDTH

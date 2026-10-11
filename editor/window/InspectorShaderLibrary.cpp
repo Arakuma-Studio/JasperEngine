@@ -826,8 +826,10 @@ void editor::InspectorWindow::drawMaterialPresetRow(ComponentType cpType, SceneP
                     if (!mesh || submesh >= mesh->numSubmeshes)
                         continue;
                     const Material& from = mesh->submeshes[submesh].material;
+                    // judged by the shader the submesh draws with (the mesh's or the scene's when it names none)
                     changed |= addMaterialChangeCommands(*multi, project, sceneId, entity, submesh, from,
-                                                         applyMaterialPreset(preset, from), settingsMaterial.onValueChanged);
+                                                         applyMaterialPreset(preset, from, meshShaderFor(scene, entity)),
+                                                         settingsMaterial.onValueChanged);
                 }
                 if (changed)
                     CommandHandle::get(sceneId)->addCommandNoMerge(multi);

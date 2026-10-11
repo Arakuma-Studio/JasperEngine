@@ -18,23 +18,33 @@ namespace jasperengine::editor {
     // already uses its shader). The inspector's Presets menu and the MCP tools
     // list_material_presets / apply_material_preset call these on a submesh material.
     //
+    // A preset judges the material by the shader it draws with: its own, else meshShader (the
+    // mesh's customShader, else the scene's default mesh shader, as
+    // RenderSystem::getSubmeshShader; "" the built-in Lit). A .material file has no mesh: it
+    // is judged by its own shader.
+    //
     // Stencil bits are reserved per family, so effects on different objects can be combined
     // in one camera pass (the stencil is cleared at each pass start and never survives it):
-    //   0x01        outline_stencil  (the main material marks its silhouette, ref 1)
+    //   0x01        the outline mark: the main material marks its silhouette, which an
+    //               outline_stencil pass outlines outside of (Outline (stencil), and Outline
+    //               (hull) on a blended material)
     //   0x02        see_through_silhouette (the silhouette pass marks where it blended)
     //   0x0C        draw_once_transparency (ref 4; 8 and 12 for more draw-once objects
     //               that overlap on screen: each needs its own ref to blend once)
     //   0xF0        stencil_mask, sprite_mask, visible_inside_mask, visible_outside_mask
     //               (ref 16; 32, 48 ... 240 for more masks, each reader using its mask's ref)
-    // A material has one stencil state, so the presets that set the material's own stencil
-    // (outline_stencil, draw_once_transparency, the masks and their readers) replace one
-    // another; the extra-pass presets (outline_hull, see_through_silhouette) combine with
-    // any of them except each other (one extra pass per material). The outline_stencil pass
-    // needs its material's stencil, so another stencil preset removes it, and a mask (which
-    // draws nothing visible) keeps no extra pass.
+    // A material has one stencil state. The material-stencil tests (draw-once, the mask
+    // readers) replace one another; a visible-only outline mark (Outline (hull) on a blended
+    // material) combines with either (one test plus the mark's write of bit 0x01). The
+    // through-walls Outline (stencil) also marks the hidden parts (depth-fail replace), which
+    // no other test can share: it replaces the material's test, and a test preset removes it.
+    // The extra-pass presets (outlines, silhouette) replace each other (one extra pass per
+    // material). A mask reader also masks the extra pass (see visible_inside_mask), and a mask
+    // (which draws nothing visible) keeps no extra pass.
     struct MaterialPreset {
         std::string id, name, description;
-        std::function<void(Material&)> apply;
+        // meshShader: the shader the material draws with when it names none
+        std::function<void(Material& material, const std::string& meshShader)> apply;
     };
 
     // stencil refs and masks of the families above
@@ -50,11 +60,10 @@ namespace jasperengine::editor {
     // the preset with this id, or null
     const MaterialPreset* findMaterialPreset(const std::string& id);
 
-    // whether a material draws blended: its blend mode, else its shader manifest's @state
-    // blend (with its features), else the engine's legacy rule (alpha mode Blend, or Auto
-    // with a transparent base colour texture or a base colour alpha below 1). A material
-    // without its own shader is judged as the built-in Lit (a mesh-level custom shader is
-    // not the material's).
-    bool isMaterialBlended(const Material& material);
+    // whether a material draws blended: its blend mode, else the @state blend (with its
+    // features) of the shader it draws with (its own, else meshShader), else the engine's
+    // legacy rule (alpha mode Blend, or Auto with a transparent base colour texture or a base
+    // colour alpha below 1)
+    bool isMaterialBlended(const Material& material, const std::string& meshShader = std::string());
 
 }

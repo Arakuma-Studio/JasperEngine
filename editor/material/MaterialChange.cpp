@@ -11,9 +11,9 @@
 
 using namespace jasperengine;
 
-Material editor::applyMaterialPreset(const MaterialPreset& preset, const Material& material) {
+Material editor::applyMaterialPreset(const MaterialPreset& preset, const Material& material, const std::string& meshShader) {
     Material result = material;
-    if (preset.apply) preset.apply(result);
+    if (preset.apply) preset.apply(result, meshShader);
     // a lighting mode the preset's shader does not list would draw its default anyway: auto
     if (result.shader != material.shader && !result.shader.empty()) {
         std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(result.shader);
@@ -21,6 +21,12 @@ Material editor::applyMaterialPreset(const MaterialPreset& preset, const Materia
             result.lighting = MaterialLighting::AUTO;
     }
     return result;
+}
+
+std::string editor::meshShaderFor(Scene* scene, Entity entity) {
+    const MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
+    if (mesh && !mesh->customShader.empty()) return mesh->customShader;
+    return scene ? scene->getDefaultCustomShader(ShaderType::MESH) : std::string();
 }
 
 bool editor::addMaterialChangeCommands(MultiPropertyCmd& multi, Project* project, uint32_t sceneId, Entity entity, unsigned int submesh,
