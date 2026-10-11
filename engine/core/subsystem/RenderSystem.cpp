@@ -8557,9 +8557,8 @@ void RenderSystem::updateTransform(Transform& transform, Entity entity){
         transform.worldRotation = transform.rotation;
     }
 
-    if (hasLights){
-        transform.normalMatrix = transform.modelMatrix.inverse().transpose();
-    }
+    // library shaders read it in unlit scenes too (outlines, matcap, rim, fresnel)
+    transform.normalMatrix = transform.modelMatrix.inverse().transpose();
 }
 
 void RenderSystem::updateCamera(CameraComponent& camera, Transform& transform){
