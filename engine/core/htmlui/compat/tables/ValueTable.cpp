@@ -355,6 +355,8 @@ namespace {
         {"text-align", "end", R, FF::None, R, "right", "LTR; an RTL document swaps it", ""},
         {"text-align", "-webkit-center", R, FF::None, R, "center", "legacy prefixed value", ""},
         {"text-align", "-moz-center", R, FF::None, R, "center", "legacy prefixed value", ""},
+        {"text-align", "-webkit-left", R, FF::None, R, "left", "legacy prefixed value (with the fork it also aligns block children)", ""},
+        {"text-align", "-webkit-right", R, FF::None, R, "right", "legacy prefixed value (with the fork it also aligns block children)", ""},
         {"text-align", "match-parent", R, FF::None, R, "left", "the parent's direction is not resolved (Info)", ""},
         {"text-align", "justify-all", R, FF::None, R, "justify", "the last line is not justified", ""},
         {"text-decoration", "<multiple lines>", A, FF::None, A, "the first line keyword", "only one decoration line (Info)", ""},

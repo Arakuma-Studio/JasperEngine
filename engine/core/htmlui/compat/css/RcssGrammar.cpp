@@ -755,7 +755,7 @@ namespace {
         {"accent-color", ForkFeature::TextProperties, "kw:auto|color"},
         {"letter-spacing", ForkFeature::TextProperties, "kw:normal|length_percent"},
         {"overflow-wrap", ForkFeature::TextProperties, "kw:normal,anywhere,break-word"},
-        {"text-align", ForkFeature::TextProperties, "kw:left,right,center,justify,start,end,match-parent,-webkit-center"},
+        {"text-align", ForkFeature::TextProperties, "kw:left,right,center,justify,start,end,match-parent,-webkit-center,-webkit-left,-webkit-right"},
         {"text-decoration", ForkFeature::TextProperties, "@text_decoration"},
         {"text-decoration-color", ForkFeature::TextProperties, "kw:currentcolor|color"},
         {"text-decoration-line", ForkFeature::TextProperties, "@text_decoration_line"},

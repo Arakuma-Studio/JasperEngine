@@ -334,7 +334,7 @@ void jasperengine::htmlui::compat::rewriteTextAlign(DeclContext& context){
     if (context.session.fork(ForkFeature::TextProperties)){
         // native: start, end and match-parent follow the element's direction
         if (k == "left" || k == "right" || k == "center" || k == "justify" || k == "start" || k == "end" || k == "match-parent" ||
-            k == "-webkit-center"){
+            k == "-webkit-center" || k == "-webkit-left" || k == "-webkit-right"){
             context.emit("text-align", k);
             return;
         }
@@ -361,6 +361,10 @@ void jasperengine::htmlui::compat::rewriteTextAlign(DeclContext& context){
     }
     if (k == "end"){
         context.emit("text-align", rtl ? "left" : "right");
+        return;
+    }
+    if (k == "-webkit-left" || k == "-webkit-right"){
+        context.emit("text-align", k == "-webkit-left" ? "left" : "right");
         return;
     }
     if (k == "-webkit-center" || k == "-moz-center" || k == "-webkit-match-parent"){
