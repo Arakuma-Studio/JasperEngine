@@ -995,7 +995,7 @@ counters-nested,list-markers-outside,list-markers-inside,ordered-start-reversed}
 
 #### 3.6.5 `p3-cascade` as implemented
 
-Where the implementation differs from or makes precise §3.4–3.6 (FORK.md rows P3-C1…P3-C8 list
+Where the implementation differs from or makes precise §3.4–3.6 (FORK.md rows P3-C1…P3-C10 list
 the commits):
 
 - **One hook (§3.4.1, §3.4.2).** `PropertySpecification::ParsePropertyDeclaration` (a file other
@@ -1768,9 +1768,9 @@ FORK.md rows P3-A1…P3-A5 (package-prefixed ids, so that wave-1 packages cannot
   changes (`CaptureBeforeChangeValues`); one that arrives with an inline change does not transition.
   "Previously `display: none`" is the element's own flag from the previous update
   (`Element::animation_displayed`), ancestors included. `@starting-style` rules are stored with the
-  private pseudo-class `:-rmlui-starting-style` on their subject; the starting definition is the
-  element's definition with that pseudo-class set, so the rules cascade with the others, at one
-  pseudo-class more specificity (an approximation: CSS adds none). Only the element's own declared
+  private pseudo-class `:-rmlui-starting-style` on their subject, inside `:where()` (p3-cascade,
+  `c974c5e7`); the starting definition is the element's definition with that pseudo-class set, so the
+  rules cascade with the others at their own specificity, as in CSS. Only the element's own declared
   starting values count (an inherited starting value is not looked up). An element shown again
   starts from its starting style whatever changed: when its own style change shows it, every
   property its list covers is looked at (not only the changed ones), and when an ancestor shows it
