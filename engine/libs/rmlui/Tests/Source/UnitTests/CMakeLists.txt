@@ -8,10 +8,12 @@ add_executable(${TARGET_NAME}
 	BorderRadius.cpp
 	BorderStyle.cpp
 	Calculation.cpp
+	CascadeKeywords.cpp
 	CalculationTypes.cpp
 	Colors.cpp
 	ContainingBlockOverride.cpp
 	Core.cpp
+	Counters.cpp
 	CustomProperties.cpp
 	Easing.cpp
 	DataBinding.cpp
@@ -30,6 +32,9 @@ add_executable(${TARGET_NAME}
 	EventListener.cpp
 	Filter.cpp
 	FlexFormatting.cpp
+	FocusPseudoClasses.cpp
+	Important.cpp
+	InlineStyle.cpp
 	GridLayout.cpp
 	GridParsing.cpp
 	GroupOpacity.cpp
@@ -39,6 +44,7 @@ add_executable(${TARGET_NAME}
 	Layout.cpp
 	LayoutChildren.cpp
 	LineBreaking.cpp
+	ListMarkers.cpp
 	Localization.cpp
 	ObjectFit.cpp
 	Outline.cpp
@@ -50,7 +56,9 @@ add_executable(${TARGET_NAME}
 	Properties.cpp
 	RootFontSize.cpp
 	PropertySpecification.cpp
+	PseudoElements.cpp
 	Selectors.cpp
+	SelectorsHas.cpp
 	ShorthandTypes.cpp
 	Specificity_Basic.cpp
 	Specificity_MediaQuery.cpp

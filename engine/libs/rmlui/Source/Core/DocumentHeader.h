@@ -25,6 +25,7 @@ public:
 		String content; // Only set for inline resources.
 		bool is_inline = false;
 		int line = 0;   // Only set for inline resources.
+		bool user_agent = false; // A style sheet linked with origin="user-agent" (StyleSheetContainer::SetOrigin).
 	};
 	using ResourceList = Vector<Resource>;
 

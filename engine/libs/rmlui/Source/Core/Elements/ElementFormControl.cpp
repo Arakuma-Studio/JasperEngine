@@ -49,15 +49,10 @@ void ElementFormControl::OnAttributeChange(const ElementAttributes& changed_attr
 		bool is_disabled = IsDisabled();
 		SetPseudoClass("disabled", is_disabled);
 
-		// Disable focus when element is disabled. This will also prevent click
-		// events (when originating from user inputs, see Context) to reach the element.
+		// A disabled control cannot take the focus, which also keeps click events (when originating from user inputs,
+		// see Context) from reaching it. Its inline style is left alone (phase 3): the focus code reads :disabled.
 		if (is_disabled)
-		{
-			SetProperty(PropertyId::Focus, Property(Style::Focus::None));
 			Blur();
-		}
-		else
-			RemoveProperty(PropertyId::Focus);
 	}
 }
 

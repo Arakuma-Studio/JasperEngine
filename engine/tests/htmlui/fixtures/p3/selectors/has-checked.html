@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>selectors: :has()</title>
+<style>
+  html, body { margin: 0; }
+  /* checkboxes without their native look: a plain 16x16 box whose color shows :checked */
+  input[type="checkbox"] { appearance: none; position: absolute; left: 4px; top: 4px; width: 16px; height: 16px; margin: 0; padding: 0; border: 0; background-color: #ffffff; outline: none; }
+  input[type="checkbox"]:checked { background-color: #202020; }
+
+  /* 1. li:has(> input:checked): only the direct child counts; #cb is toggled by the steps */
+  #list { position: absolute; left: 10px; top: 10px; width: 100px; margin: 0; padding: 0; list-style-type: none; }
+  #list li { display: block; position: relative; height: 24px; margin-bottom: 4px; }
+  li { background-color: #c0c0c0; }
+  li:has(> input:checked) { background-color: #40a060; }
+  #deep { position: absolute; left: 30px; top: 0; width: 24px; height: 24px; }
+
+  /* 2. .card:has(.badge), at any depth */
+  .card { position: absolute; top: 10px; width: 50px; height: 30px; background-color: #c0c0c0; }
+  .card:has(.badge) { background-color: #4060c0; }
+  .badge { display: block; width: 10px; height: 10px; background-color: #f0c020; }
+  #c1 { left: 130px; }
+  #c2 { left: 190px; }
+  #c1i { padding: 4px; }
+
+  /* 3. relative selectors with sibling combinators */
+  .a { position: absolute; width: 40px; height: 20px; background-color: #c0c0c0; }
+  .a:has(+ .x) { background-color: #a04080; }
+  .a:has(~ .z) { height: 30px; }
+  #a1 { left: 130px; top: 60px; }
+  #x1 { position: absolute; left: 180px; top: 60px; width: 10px; height: 10px; background-color: #606060; }
+  #a2 { left: 130px; top: 100px; }
+  #y2 { position: absolute; left: 180px; top: 100px; width: 10px; height: 10px; background-color: #606060; }
+
+  /* 4. :has() in a non-subject compound: the panel's checkbox state styles a following box */
+  #panel { position: absolute; left: 10px; top: 110px; width: 100px; height: 24px; background-color: #d0d0d0; }
+  #panel:has(#cb2:checked) + #after { background-color: #c06020; }
+  #after { position: absolute; left: 10px; top: 140px; width: 100px; height: 10px; background-color: #a0a0a0; }
+</style>
+</head>
+<body>
+<ul id="list">
+  <li id="li1"><input type="checkbox" id="cb"></li>
+  <li id="li2"><input type="checkbox" id="cbon" checked></li>
+  <li id="li3"><span id="deep"><input type="checkbox" id="cbdeep" checked></span></li>
+</ul>
+<div id="c1" class="card"><div id="c1i"><span id="b1" class="badge"></span></div></div>
+<div id="c2" class="card"><span id="nb"></span></div>
+<div id="a1" class="a"></div><div id="x1" class="x"></div>
+<div id="a2" class="a"></div><div id="y2" class="y"></div><div id="z2" class="z"></div>
+<div id="panel"><input type="checkbox" id="cb2" checked></div>
+<div id="after"></div>
+</body>
+</html>

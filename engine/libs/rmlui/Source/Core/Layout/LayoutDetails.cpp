@@ -1,4 +1,5 @@
 #include "LayoutDetails.h"
+#include "../../../Include/RmlUi/Core/FontMetrics.h"
 #include "../../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../../Include/RmlUi/Core/Element.h"
 #include "../../../Include/RmlUi/Core/ElementDocument.h"

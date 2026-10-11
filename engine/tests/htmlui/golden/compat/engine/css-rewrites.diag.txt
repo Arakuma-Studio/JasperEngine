@@ -3,7 +3,6 @@ css-rewrites.html:104:58: info: clip-path clips the drawing, not the pointer hit
 css-rewrites.html:105:39: info: clip-path clips the drawing, not the pointer hit area [HTMLUI-CSS-0005]
 css-rewrites.html:106:38: info: clip-path clips the drawing, not the pointer hit area [HTMLUI-CSS-0005]
 css-rewrites.html:123:22: info: '-webkit-linear-gradient()' is read as 'linear-gradient()' [HTMLUI-CSS-0009]
-css-rewrites.html:129:28: info: 'border-radius: inherit' copies the nearest ancestor's declared border-top-left-radius (relative units re-resolve here) [HTMLUI-CSS-0011]
 css-rewrites.html:135:5: info: nested rules are flattened (& replaced by the parent selector) [HTMLUI-AT-0008]
 css-rewrites.html:147:10: info: media query '(width >= 600px)' is written for RmlUi as '(min-width: 600px)' [HTMLUI-AT-0005]
 css-rewrites.html:152:13: info: @supports (display: flex) is true: its rules apply [HTMLUI-AT-0003]

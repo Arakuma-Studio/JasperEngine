@@ -3,6 +3,7 @@
 
 #include "htmlui/compat/runtime/HtmlListItemElement.h"
 
+#include "htmlui/compat/ForkFeatures.h"
 #include "htmlui/compat/runtime/CompatProperties.h"
 #include "htmlui/compat/runtime/ListMarkers.h"
 
@@ -64,6 +65,9 @@ namespace {
 RMLUI_RTTI_Define(HtmlListItemElement)
 
 HtmlListItemElement::HtmlListItemElement(const Rml::String& tag): Rml::Element(tag){
+    // the fork's ::marker draws the marker (phase 3, ListMarkers)
+    if (!markerEmulation())
+        return;
     Rml::ElementPtr markerElement = Rml::Factory::InstanceElement(this, "marker", "marker", Rml::XMLAttributes());
     if (!markerElement)
         return;
@@ -77,6 +81,25 @@ HtmlListItemElement::HtmlListItemElement(const Rml::String& tag): Rml::Element(t
 }
 
 HtmlListItemElement::~HtmlListItemElement() = default;
+
+namespace {
+    bool& emulationFlag(){
+        static bool value = !ForkFeatures::present().has(ForkFeature::ListMarkers);
+        return value;
+    }
+}
+
+bool HtmlListItemElement::markerEmulation(){
+    return emulationFlag();
+}
+
+void HtmlListItemElement::setMarkerEmulation(bool on){
+    emulationFlag() = on;
+}
+
+void HtmlListItemElement::resetMarkerEmulation(){
+    emulationFlag() = !ForkFeatures::present().has(ForkFeature::ListMarkers);
+}
 
 int HtmlListItemElement::ordinal(){
     Rml::Element* list = GetParentNode();

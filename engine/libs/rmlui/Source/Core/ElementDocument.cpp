@@ -7,6 +7,7 @@
 #include "../../Include/RmlUi/Core/StyleSheet.h"
 #include "../../Include/RmlUi/Core/StyleSheetContainer.h"
 #include "DocumentHeader.h"
+#include "ElementCascade.h"
 #include "ElementStyle.h"
 #include "EventDispatcher.h"
 #include "Layout/LayoutDetails.h"
@@ -34,7 +35,7 @@ namespace {
 
 		const ComputedValues& computed = element->GetComputedValues();
 
-		if (computed.focus() == Style::Focus::None)
+		if (ElementCascade::IsUnfocusable(element))
 			return CanFocus::NoAndNoChildren;
 
 		if (computed.tab_index() == Style::TabIndex::Auto)
@@ -152,6 +153,9 @@ void ElementDocument::ProcessHeader(const DocumentHeader* document_header)
 
 	// Store the source address that we came from
 	source_url = document_header->source;
+	const size_t fragment = source_url.rfind('#');
+	if (fragment != String::npos)
+		target = source_url.substr(fragment + 1);
 
 	// Construct a new header and copy the template details across
 	DocumentHeader header;
@@ -200,7 +204,17 @@ void ElementDocument::ProcessHeader(const DocumentHeader* document_header)
 		else
 		{
 			const StyleSheetContainer* sub_sheet = StyleSheetFactory::GetStyleSheetContainer(rcss.path);
-			if (sub_sheet)
+			if (sub_sheet && rcss.user_agent)
+			{
+				// A user-agent sheet (origin="user-agent"): its declarations are tagged for 'revert'.
+				SharedPtr<StyleSheetContainer> user_agent_sheet = sub_sheet->CombineStyleSheetContainer(StyleSheetContainer());
+				user_agent_sheet->SetOrigin(StyleOrigin::UserAgent);
+				if (new_style_sheet)
+					new_style_sheet->MergeStyleSheetContainer(*user_agent_sheet);
+				else
+					new_style_sheet = std::move(user_agent_sheet);
+			}
+			else if (sub_sheet)
 			{
 				if (new_style_sheet)
 					new_style_sheet->MergeStyleSheetContainer(*sub_sheet);
@@ -252,6 +266,26 @@ void ElementDocument::SetTitle(const String& _title)
 const String& ElementDocument::GetTitle() const
 {
 	return title;
+}
+
+void ElementDocument::SetTarget(const String& id)
+{
+	if (id == target)
+		return;
+	Element* old_target = (target.empty() ? nullptr : GetElementById(target));
+	target = id;
+	Element* new_target = (target.empty() ? nullptr : GetElementById(target));
+	// :target changes for the two elements (and what depends on them through combinators).
+	for (Element* element : {old_target, new_target})
+	{
+		if (element)
+			ElementCascade::DirtyDefinition(element, true);
+	}
+}
+
+const String& ElementDocument::GetTarget() const
+{
+	return target;
 }
 
 const String& ElementDocument::GetSourceURL() const
@@ -482,6 +516,9 @@ void ElementDocument::UpdateDocument()
 
 void ElementDocument::UpdateLayout()
 {
+	// CSS counters (phase 3): the texts of the pseudo-elements and list markers that show them, before formatting.
+	ElementCascade::ResolveCounters(*this);
+
 	// Note: Carefully consider when to call this function for performance reasons.
 	// Ideally, only called once per update loop.
 	if (layout_dirty)

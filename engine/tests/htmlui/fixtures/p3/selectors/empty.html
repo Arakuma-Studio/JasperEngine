@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>selectors: :empty</title>
+<style>
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  .t { position: absolute; top: 10px; width: 40px; height: 40px; background-color: #c0c0c0; font-family: "Ahem"; font-size: 10px; line-height: 10px; }
+  .t:empty { background-color: #40a060; }
+  .t:not(:empty) { height: 30px; }
+  span { display: block; width: 10px; height: 10px; background-color: #606060; }
+  span:empty { background-color: #2060c0; }
+  #e1 { left: 10px; }
+  #e2 { left: 60px; }
+  #e3 { left: 110px; }
+  #e4 { left: 160px; }
+  #e5 { left: 210px; }
+</style>
+</head>
+<body>
+<div id="e1" class="t"></div>
+<div id="e2" class="t"><!-- only a comment --></div>
+<div id="e3" class="t"> </div>
+<div id="e4" class="t"><span id="e4s"></span></div>
+<div id="e5" class="t"><!-- a comment --><span id="e5s"><!-- and another --></span></div>
+</body>
+</html>

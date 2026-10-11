@@ -60,7 +60,10 @@ Element* XMLNodeHandlerHead::ElementStart(XMLParser* parser, const String& name,
 			// If its RCSS (... or CSS!), add to the RCSS fields.
 			if (type == "text/rcss" || type == "text/css")
 			{
-				parser->GetDocumentHeader()->rcss.push_back(MakeExternalResource(parser, href));
+				DocumentHeader::Resource resource = MakeExternalResource(parser, href);
+				// The cascade origin of the sheet: the user-agent sheet's declarations are what 'revert' restores.
+				resource.user_agent = (StringUtilities::ToLower(Get<String>(attributes, "origin", "")) == "user-agent");
+				parser->GetDocumentHeader()->rcss.push_back(std::move(resource));
 			}
 
 			// If its an template, add to the template fields

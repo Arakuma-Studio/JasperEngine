@@ -50,6 +50,14 @@ namespace {
                 {"--html-check-baseline", "-3px"},
                 {"--html-control-bg", "#ffffff"},
                 {"--html-control-border", "#767676"},
+                {"--html-control-border-width", "1px"},
+                {"--html-control-radius", "2px"},
+                {"--html-check-radius", "2px"},
+                {"--html-radio-radius", "9999px"},
+                {"--html-check-fill", "var(--html-accent, #0075ff)"},
+                {"--html-radio-ring", "inset 0 0 0 1.5px var(--html-accent-contrast, #ffffff)"},
+                {"--html-control-disabled-border", "#7676764d"},
+                {"--html-check-disabled-fill", "#0075ff4d"},
                 {"--html-select-arrow", "html-layer(\"/@htmlui/ua/arrow-down.svg\" 10px 6px 3px 50% no-repeat no-repeat padding-box border-box scroll)"},
                 {"--html-thumb", "none"},
                 {"--html-slider-fill", "var(--html-accent, #0075ff)"},
@@ -244,6 +252,16 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         context.emit("--html-check-baseline", "0px");
         context.emit("--html-control-bg", "transparent");
         context.emit("--html-control-border", "transparent");
+        // checkbox and radio: no frame, rounding, fill or ring (Chromium's html.css gives them none)
+        context.emit("--html-control-border-width", "0px");
+        // text fields, buttons, selects: the theme's 2px rounding (Chromium's html.css has none)
+        context.emit("--html-control-radius", "0px");
+        context.emit("--html-check-radius", "0px");
+        context.emit("--html-radio-radius", "0px");
+        context.emit("--html-check-fill", "transparent");
+        context.emit("--html-radio-ring", "none");
+        context.emit("--html-control-disabled-border", "transparent");
+        context.emit("--html-check-disabled-fill", "transparent");
         context.emit("--html-select-arrow", "none");
         context.emit("--html-thumb", "none");
         // a range without its look: no value fill, as tall as its track (Chromium)
@@ -262,6 +280,8 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         if (keyword != "auto")
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "'appearance: " + keyword + "' is treated as 'auto'");
         for (const char* companion : {"--html-check", "--html-check-baseline", "--html-control-bg", "--html-control-border",
+                                      "--html-control-border-width", "--html-control-radius", "--html-check-radius", "--html-radio-radius", "--html-check-fill",
+                                      "--html-radio-ring", "--html-control-disabled-border", "--html-check-disabled-fill",
                                       "--html-select-arrow", "--html-thumb", "--html-slider-fill", "--html-slider-height",
                                       "--html-slider-track-margin", "--html-slider-track-height", "--html-slider-track-border",
                                       "--html-slider-track-bg", "--html-slider-track-border-color"})
@@ -361,6 +381,46 @@ void jasperengine::htmlui::compat::rewriteScrollbarStyle(DeclContext& context){
     context.generate(" > scrollbarhorizontal > slidertrack", "background-color", track);
 }
 
+namespace {
+    std::string trimText(const std::string& text){
+        const size_t first = text.find_first_not_of(" \t\n");
+        if (first == std::string::npos)
+            return std::string();
+        return text.substr(first, text.find_last_not_of(" \t\n") - first + 1);
+    }
+}
+
+namespace {
+    // counter(name, style) / counters(name, separator, style) with a counter style the fork does
+    // not draw: it counts in decimal (phase-3 spec 2.2), said once per declaration
+    void reportCounterStyles(DeclContext& context){
+        static const char* const known[] = {"decimal", "decimal-leading-zero", "lower-alpha", "lower-latin", "upper-alpha",
+                                            "upper-latin", "lower-roman", "upper-roman", "lower-greek", "disc", "circle",
+                                            "square", "none", "disclosure-open", "disclosure-closed"};
+        for (const ComponentValue& v : context.value){
+            const bool counters = v.isFunction("counters");
+            if (!counters && !v.isFunction("counter"))
+                continue;
+            const std::vector<ValueList> arguments = commaGroups(v.children);
+            const size_t styleIndex = counters ? 2 : 1;
+            if (arguments.size() <= styleIndex)
+                continue;
+            const ValueList styleWords = words(arguments[styleIndex]);
+            const std::string style = styleWords.size() == 1 ? identOf(styleWords[0]) : std::string();
+            if (style.empty())
+                continue;   // a string, or nothing the fork reads: its own parser decides
+            bool found = false;
+            for (const char* name : known)
+                found = found || style == name;
+            if (!found){
+                context.reportAs(Severity::Info, codes::ApproximatedMinor, "counter style '" + style + "' is drawn as decimal",
+                                 "use one of: decimal, decimal-leading-zero, lower/upper-alpha/latin, lower/upper-roman, lower-greek, disc, circle, square, none");
+                return;
+            }
+        }
+    }
+}
+
 void jasperengine::htmlui::compat::rewriteContent(DeclContext& context){
     bool pseudoElement = false;
     if (context.rule){
@@ -370,7 +430,29 @@ void jasperengine::htmlui::compat::rewriteContent(DeclContext& context){
         }
     }
     if (context.fork(ForkFeature::PseudoElements) && pseudoElement){
-        context.emit("content", context.valueText());
+        // url() items point at the resolved resource, as in every other image property; the rest
+        // (strings, attr(), counter(), counters(), quotes) is the fork's as written
+        reportCounterStyles(context);
+        ValueList w = words(context.value);
+        bool hasUrl = false;
+        for (const ComponentValue& v : w)
+            hasUrl = hasUrl || (urlOf(v) && !v.isToken(TokenType::String));
+        if (!hasUrl){
+            context.emit("content", context.valueText());
+            return;
+        }
+        std::string value;
+        for (const ComponentValue& v : context.value){
+            if (urlOf(v) && !v.isToken(TokenType::String)){
+                const std::string path = resolveUrl(context, v, "image");
+                if (path.empty())
+                    return;   // reported
+                value += "url(" + serializeString(path) + ")";
+                continue;
+            }
+            appendSerialized(value, v);
+        }
+        context.emit("content", trimText(value));
         return;
     }
     context.reportAs(Severity::Info, codes::IgnoredProperty, "'content' only applies to ::before / ::after; dropped");

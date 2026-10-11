@@ -54,30 +54,38 @@ TEST(ForkFeatures, ProbesNeedRmlUi){
 TEST(ForkFeatures, PresentFeatures){
     // polarity: true = the fork has it; phase 2 shipped every entry false, phase 3 flips them
     // with the fork patches (docs/html-ui/FORK.md): Calc with upstream PR #983 (p3-base), Grid (p3-grid),
-    // BorderStyle, PercentRadius, Outline, GroupOpacity, ObjectFit and BackgroundLayers (p3-paint), TextShadow and TextProperties
-    // (p3-text), TimingFunctions, AnimationLonghands, IndividualTransforms (p3-animation); CurrentColor, ExtraUnits,
-    // LineHeightNormal (p3-values); Fixed, Sticky and BoxParity (p3-layout)
+    // BorderStyle, PercentRadius, Outline, GroupOpacity, ObjectFit and BackgroundLayers (p3-paint), TextShadow and TextProperties (p3-text), TimingFunctions, AnimationLonghands, IndividualTransforms (p3-animation);
+    // CurrentColor, ExtraUnits, LineHeightNormal (p3-values); Fixed, Sticky and BoxParity (p3-layout);
+    // Important, CssWideKeywords, RootIsWhere, PseudoElements, Has, FocusPseudoClasses, SelectorsLevel4, ListMarkers (p3-cascade)
     const ForkFeatures present = ForkFeatures::present();
     const ForkFeatures expected = ForkFeatures::none()
-        .with(ForkFeature::Calc, true)
-        .with(ForkFeature::Grid, true)
-        .with(ForkFeature::BorderStyle, true)
-        .with(ForkFeature::PercentRadius, true)
-        .with(ForkFeature::TextShadow, true)
-        .with(ForkFeature::TextProperties, true)
-        .with(ForkFeature::TimingFunctions, true)
-        .with(ForkFeature::AnimationLonghands, true)
-        .with(ForkFeature::IndividualTransforms, true)
-        .with(ForkFeature::CurrentColor, true)
-        .with(ForkFeature::ExtraUnits, true)
-        .with(ForkFeature::LineHeightNormal, true)
-        .with(ForkFeature::Fixed, true)
-        .with(ForkFeature::Sticky, true)
-        .with(ForkFeature::BoxParity, true)
-        .with(ForkFeature::Outline, true)
-        .with(ForkFeature::GroupOpacity, true)
-        .with(ForkFeature::ObjectFit, true)
-        .with(ForkFeature::BackgroundLayers, true);
+                                      .with(ForkFeature::Calc, true)
+                                      .with(ForkFeature::Grid, true)
+                                      .with(ForkFeature::TextShadow, true)
+                                      .with(ForkFeature::TextProperties, true)
+                                      .with(ForkFeature::TimingFunctions, true)
+                                      .with(ForkFeature::AnimationLonghands, true)
+                                      .with(ForkFeature::IndividualTransforms, true)
+                                      .with(ForkFeature::CurrentColor, true)
+                                      .with(ForkFeature::ExtraUnits, true)
+                                      .with(ForkFeature::LineHeightNormal, true)
+                                      .with(ForkFeature::Fixed, true)
+                                      .with(ForkFeature::Sticky, true)
+                                      .with(ForkFeature::BoxParity, true)
+                                      .with(ForkFeature::Important, true)
+                                      .with(ForkFeature::CssWideKeywords, true)
+                                      .with(ForkFeature::RootIsWhere, true)
+                                      .with(ForkFeature::Has, true)
+                                      .with(ForkFeature::FocusPseudoClasses, true)
+                                      .with(ForkFeature::SelectorsLevel4, true)
+                                      .with(ForkFeature::PseudoElements, true)
+                                      .with(ForkFeature::ListMarkers, true)
+                                      .with(ForkFeature::BorderStyle, true)
+                                      .with(ForkFeature::PercentRadius, true)
+                                      .with(ForkFeature::Outline, true)
+                                      .with(ForkFeature::GroupOpacity, true)
+                                      .with(ForkFeature::ObjectFit, true)
+                                      .with(ForkFeature::BackgroundLayers, true);
     for (size_t i = 0; i < (size_t)ForkFeature::Count; i++)
         EXPECT_EQ(present.has((ForkFeature)i), expected.has((ForkFeature)i)) << forkFeatureName((ForkFeature)i);
     EXPECT_EQ(present, expected);

@@ -30,9 +30,20 @@ public:
 	static void ClearStyleSheetCache();
 
 	/// Returns one of the available node selectors.
-	/// @param name[in] The name of the desired selector.
-	/// @return The selector registered with the given name, or nullptr if none exists.
+	/// @param name[in] The name of the desired selector, with its parenthesized argument if any (the name in lower case).
+	/// @return The selector registered with the given name, or one of type Invalid if none exists or its argument is
+	/// invalid.
 	static StructuralSelector GetSelector(const String& name);
+
+	/// True for the names of the pseudo-classes elements carry as state (:hover, :active, :focus, :checked, ...), and
+	/// those registered with RegisterPseudoClass. A selector with any other pseudo-class is invalid (phase 3: dropped
+	/// with a warning instead of a rule that never matches).
+	static bool IsPseudoClass(const String& name);
+	/// Registers the name of a pseudo-class that an application sets on elements (Element::SetPseudoClass).
+	static void RegisterPseudoClass(const String& name);
+
+	/// Parses an An+B expression (CSS Syntax 3), or 'odd'/'even'.
+	static bool ParseAnB(const String& text, int& a, int& b);
 
 private:
 	StyleSheetFactory();
@@ -47,6 +58,9 @@ private:
 	// Custom complex selectors available for style sheets.
 	using SelectorMap = UnorderedMap<String, StructuralSelectorType>;
 	SelectorMap selectors;
+
+	// The pseudo-classes elements carry as state.
+	UnorderedSet<String> pseudo_classes;
 };
 
 } // namespace Rml

@@ -1,0 +1,102 @@
+#pragma once
+
+#include "../../Include/RmlUi/Core/Geometry.h"
+#include "PseudoElements.h"
+
+namespace Rml {
+
+class ElementDefinition;
+
+/**
+    The ::marker of a 'display: list-item' element (docs/html-ui/phase-3-fork-patches.md 3.6.4). Its content is the
+    'content' of a ::marker rule, else made from the inherited list-style-* values: an image ('list-style-image'),
+    a symbol (disc, circle, square, disclosure-open, disclosure-closed: drawn as shapes sized from the font, as
+    Chromium draws them), or the item's 'list-item' counter in the counter style followed by ". " (a string style is
+    used as written).
+
+    'list-style-position: inside': the first box of the item's first line (an inline box; a symbol is an inline-block
+    of its own width, with Chromium's margins: -1px and 1em; an image is followed by 7px). 'outside': an inline-block
+    on the first line whose margins cancel its advance and put it outside the item's start edge, where Chromium
+    places it (the end of an ordinal marker at the item's content start; a symbol 'ascent * 2 / 3 + 8' px before it;
+    an image 7px before it); it is aligned on the line's baseline and does not move the item's content along the
+    line. An outside text marker has the width of its text measured as one string, the text ending at its end edge
+    (a font engine that rounds each word lays the text out up to a pixel narrower). An image that cannot be loaded
+    gives the marker of the list-style-type.
+ */
+class ElementListMarker final : public ElementPseudo {
+public:
+	RMLUI_RTTI_DeclareWithParent(ElementListMarker, ElementPseudo)
+
+	explicit ElementListMarker(const String& tag);
+	~ElementListMarker();
+
+	/// Whether a list item generates a marker: 'display: list-item' with a list-style-type or a list-style-image, or a
+	/// ::marker rule that sets 'content'.
+	static bool IsGenerated(Element& element, const ElementDefinition* marker_definition);
+
+	bool UsesCounters() const override;
+	void OnCountersResolved(const CssCounterSet& counters, int& quote_depth) override;
+
+	/// The text of the marker (empty for a symbol or an image), for tests.
+	const String& GetMarkerText() const { return marker_text; }
+	/// The counter style or string the marker shows ("" for an image or a ::marker content).
+	const String& GetMarkerStyle() const { return style; }
+
+protected:
+	void OnUpdate() override;
+	void OnPropertyChange(const PropertyIdSet& changed_properties) override;
+	void OnGeneratedTextChange() override;
+	void OnRender() override;
+	void OnResize() override;
+	void OnLayout() override;
+	void BuildContent() override;
+
+private:
+	// The generated content: the children for the style, the text for the ordinal.
+	void BuildGenerated();
+	void UpdateGeneratedText();
+	// The box and its margins on the line (display, width, margins as inline properties).
+	void UpdateBox();
+	// UpdateBox and the computation of its properties, when the text changed while the counters were resolved.
+	void RefreshBoxBeforeLayout();
+	void GenerateSymbolGeometry();
+
+	bool custom_content = false; // A ::marker rule sets 'content'.
+	String style;                // The list-style-type (or the string, quoted with '"' first).
+	String image_source;         // The list-style-image URL of the image shown, if any.
+	String image_requested;      // The list-style-image URL of the item ('image_source' is empty when it cannot be shown).
+	int ordinal = 1;
+	String marker_text;
+	ElementText* text_element = nullptr;
+	Element* image_element = nullptr;
+	Geometry symbol_geometry;
+	bool geometry_dirty = true;
+	bool box_dirty = true;
+
+	// The box properties set last (they are set again only when they change).
+	struct BoxProperties {
+		bool inline_block = false;
+		bool fixed_width = false;
+		bool align_right = false;
+		float width = 0.f;
+		float margin_left = 0.f;
+		float margin_right = 0.f;
+		bool operator==(const BoxProperties& other) const
+		{
+			return inline_block == other.inline_block && fixed_width == other.fixed_width && align_right == other.align_right &&
+				width == other.width && margin_left == other.margin_left && margin_right == other.margin_right;
+		}
+	};
+	BoxProperties applied_box;
+	bool box_applied = false;
+};
+
+namespace ListMarker {
+	using Rml::ElementListMarker;
+	inline bool IsGenerated(Element& element, const ElementDefinition* marker_definition)
+	{
+		return ElementListMarker::IsGenerated(element, marker_definition);
+	}
+} // namespace ListMarker
+
+} // namespace Rml

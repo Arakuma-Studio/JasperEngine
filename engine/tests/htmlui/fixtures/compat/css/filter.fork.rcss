@@ -30,9 +30,6 @@ backdrop-filter: blur(12px);
 #htmlui-root .var {
 filter: var(--f);
 }
-#htmlui-root .blend {
-isolation: isolate;
-}
-body#htmlui-root {
+body#htmlui-root:root {
 --f: drop-shadow(#ffffffff 0px 0px 4px);
 }

@@ -837,10 +837,13 @@ void DocumentLoader::restyle(Rml::ElementDocument* document, const CompatDocumen
 
     // the head's sheets in order, as ElementDocument::ProcessHeader combines them
     std::shared_ptr<Rml::StyleSheetContainer> combined;
-    auto addFile = [&combined](const std::string& path){
+    auto addFile = [&combined](const std::string& path, bool userAgent = false){
         std::shared_ptr<Rml::StyleSheetContainer> sheet = Rml::Factory::InstanceStyleSheetFile("/" + VirtualFiles::normalize(path));
         if (!sheet)
             return;
+        // the user-agent origin, as <link origin="user-agent"> gives it (phase-3 §3.4.3: what 'revert' restores)
+        if (userAgent)
+            sheet->SetOrigin(Rml::StyleOrigin::UserAgent);
         if (combined)
             combined->MergeStyleSheetContainer(*sheet);
         else
@@ -856,7 +859,7 @@ void DocumentLoader::restyle(Rml::ElementDocument* document, const CompatDocumen
             combined = sheet;
     };
 
-    addFile(compiled.userAgentPath);
+    addFile(compiled.userAgentPath, true);
     if (!compiled.hints.rcss.empty())
         addInline(compiled.hints.rcss, compiled.hintsLine);
     for (size_t i = 0; i < compiled.stylesheets.size(); i++){

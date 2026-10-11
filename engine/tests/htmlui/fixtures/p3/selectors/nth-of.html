@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>selectors: :nth-child(of S) and An+B forms</title>
+<style>
+  html, body { margin: 0; }
+  ul { position: absolute; top: 10px; width: 40px; margin: 0; padding: 0; list-style-type: none; }
+  li { display: block; height: 10px; margin-bottom: 2px; background-color: #c0c0c0; }
+  .done { background-color: #a0a0c0; }
+  .x { background-color: #c0a0a0; }
+  /* 1. :nth-child(2 of .done): the second .done item, not the second child */
+  #u1 { left: 10px; }
+  #u1 li:nth-child(2 of .done) { background-color: #2060c0; }
+  /* 2. :nth-last-child(1 of .x): the last .x item */
+  #u2 { left: 60px; }
+  #u2 li:nth-last-child(1 of .x) { background-color: #c04040; }
+  /* 3. odd, even and -n+3 */
+  #u3 { left: 110px; }
+  #u3 li:nth-child(odd) { background-color: #40a060; }
+  #u4 { left: 160px; }
+  #u4 li:nth-child(even) { background-color: #a06020; }
+  #u5 { left: 210px; }
+  #u5 li:nth-child(-n+3) { background-color: #8040a0; }
+  /* 4. An+B with spaces and signs, of S with a compound, nth-last-child(2n) */
+  #u6 { left: 260px; }
+  #u6 li:nth-child( 3n + 1 ) { background-color: #20a0a0; }
+  #u7 { left: 310px; }
+  #u7 li:nth-child(2n+1 of .done.x) { background-color: #606020; }
+  #u8 { left: 360px; }
+  #u8 li:nth-last-child(2n) { background-color: #c06080; }
+</style>
+</head>
+<body>
+<ul id="u1"><li id="a1"></li><li id="a2" class="done"></li><li id="a3"></li><li id="a4" class="done"></li><li id="a5" class="done"></li><li id="a6"></li></ul>
+<ul id="u2"><li id="b1" class="x"></li><li id="b2"></li><li id="b3" class="x"></li><li id="b4" class="x"></li><li id="b5"></li><li id="b6"></li></ul>
+<ul id="u3"><li></li><li></li><li></li><li></li><li></li><li></li></ul>
+<ul id="u4"><li></li><li></li><li></li><li></li><li></li><li></li></ul>
+<ul id="u5"><li></li><li></li><li></li><li></li><li></li><li></li></ul>
+<ul id="u6"><li></li><li></li><li></li><li></li><li></li><li></li><li></li></ul>
+<ul id="u7"><li class="done x"></li><li class="done"></li><li class="done x"></li><li class="x"></li><li class="done x"></li><li class="done x"></li></ul>
+<ul id="u8"><li></li><li></li><li></li><li></li><li></li><li></li></ul>
+</body>
+</html>

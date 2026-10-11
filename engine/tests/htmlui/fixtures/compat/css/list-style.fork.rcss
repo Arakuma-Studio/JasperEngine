@@ -1,0 +1,48 @@
+#htmlui-root ul.a {
+list-style-type: square;
+list-style-position: inside;
+list-style-image: none;
+}
+#htmlui-root ol.b {
+list-style-type: decimal;
+list-style-position: outside;
+list-style-image: none;
+}
+#htmlui-root .c {
+list-style-type: none;
+list-style-position: outside;
+list-style-image: none;
+}
+#htmlui-root .d {
+list-style-type: lower-roman;
+list-style-position: outside;
+}
+#htmlui-root .e {
+list-style-type: "→ ";
+}
+#htmlui-root .f {
+list-style-type: armenian;
+}
+#htmlui-root .g {
+list-style-type: disclosure-open;
+}
+#htmlui-root .h {
+list-style-image: asset://compat/css/img/icon.svg;
+}
+#htmlui-root .i {
+list-style-type: circle;
+list-style-position: outside;
+list-style-image: asset://compat/css/img/a.png;
+}
+#htmlui-root .j {
+list-style-type: upper-latin;
+}
+#htmlui-root .k {
+list-style-type: lower-greek;
+}
+#htmlui-root .l {
+list-style-type: decimal-leading-zero;
+}
+#htmlui-root .m {
+list-style-type: custom-style;
+}

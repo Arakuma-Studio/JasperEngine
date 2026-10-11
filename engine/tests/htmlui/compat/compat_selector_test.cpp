@@ -4,6 +4,7 @@
 // SelectorRewriter (phase-2 §3.8, §3.9.5, Appendix B), table-driven: CSS selector list ->
 // RCSS selectors per origin and fork-feature set.
 
+#include "htmlui/compat/CompatOptions.h"
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/SourceFiles.h"
 #include "htmlui/compat/css/CssParser.h"
@@ -139,6 +140,37 @@ TEST(CompatSelector, ForkFeatures){
     EXPECT_EQ(run(":matches(.a, .b)", withFork()), "#htmlui-root :is(.a, .b)");
     EXPECT_EQ(run("p::before", withFork()), "#htmlui-root p::before");
     EXPECT_EQ(run("p:after", withFork()), "#htmlui-root p::after");
+    // phase 3, p3-cascade: Has, FocusPseudoClasses, SelectorsLevel4
+    EXPECT_EQ(run("li:has(> input:checked)", withFork()), "#htmlui-root li:has(> input:checked)");
+    EXPECT_EQ(run(".card:has(+ .badge, body .x)", withFork()), "#htmlui-root .card:has(+ .badge, htmlbody .x)");
+    EXPECT_EQ(run("div:has(:has(p))", withFork()), "invalid");
+    EXPECT_EQ(run("a:focus", withFork()), "#htmlui-root a:focus");
+    EXPECT_EQ(run("a:focus-visible", withFork()), "#htmlui-root a:focus-visible");
+    EXPECT_EQ(run("form:focus-within", withFork()), "#htmlui-root form:focus-within");
+    EXPECT_EQ(run("input:enabled", withFork()), "#htmlui-root input:enabled");
+    EXPECT_EQ(run("a:any-link, a:link", withFork()), "#htmlui-root a:any-link | #htmlui-root a:link");
+    EXPECT_EQ(run("input:-moz-read-only", withFork()), "#htmlui-root input:read-only");
+    EXPECT_EQ(run("input:required:read-write, :optional", withFork()), "#htmlui-root input:required:read-write | #htmlui-root :optional | body#htmlui-root:optional");
+    EXPECT_EQ(run("input:default, :target, :indeterminate", withFork()),
+              "#htmlui-root input:default | #htmlui-root :target | body#htmlui-root:target | #htmlui-root :indeterminate | body#htmlui-root:indeterminate");
+    EXPECT_EQ(run("[type=a i]", withFork()), "#htmlui-root [type=\"a\" i]");
+    EXPECT_EQ(run("li:nth-child(2n+1 of .done, body .x)", withFork()), "#htmlui-root li:nth-child(2n+1 of .done, htmlbody .x)");
+    EXPECT_EQ(run("li:nth-child(2 of ::before)", withFork()), "");
+    // absent: phase 2's rewrites
+    EXPECT_EQ(run("li:has(> input:checked)"), "");
+    EXPECT_EQ(run("input:enabled"), "#htmlui-root input:not(:disabled)");
+    EXPECT_EQ(run("li:nth-child(2 of .x)"), "");
+}
+
+TEST(CompatSelector, SpecificityOfLevel4){
+    auto spec = [](const char* css){
+        std::optional<SelectorList> list = SelectorRewriter::parseList(css);
+        return list ? SelectorRewriter::specificity((*list)[0]) : 0u;
+    };
+    EXPECT_EQ(spec(":where(#a, .b)"), 0u);
+    EXPECT_EQ(spec(":is(#a, .b)"), 1000000u);
+    EXPECT_EQ(spec("li:has(> .a, #b)"), 10000u + 1000000u);
+    EXPECT_EQ(spec(":nth-child(2 of .a, #b)"), 100000u + 1000000u);
 }
 
 TEST(CompatSelector, Specificity){
@@ -193,7 +225,11 @@ TEST(CompatSelector, Nesting){
 TEST(CompatSelector, QuerySelector){
     EXPECT_EQ(CssRewriter::rewriteSelector("body > .menu", nullptr), "htmlbody > .menu");
     EXPECT_EQ(CssRewriter::rewriteSelector("html", nullptr), "body");
-    EXPECT_EQ(CssRewriter::rewriteSelector("input:focus", nullptr), "input:html-focus");
+    // FocusPseudoClasses present: the fork's :focus; absent, phase 2's :html-focus
+    EXPECT_EQ(CssRewriter::rewriteSelector("input:focus", nullptr), "input:focus");
+    CompatOptions absent;
+    absent.fork = ForkFeatures::present().with(ForkFeature::FocusPseudoClasses, false);
+    EXPECT_EQ(CssRewriter::rewriteSelector("input:focus", nullptr, absent), "input:html-focus");
     EXPECT_EQ(CssRewriter::rewriteSelector(".a,  .b", nullptr), ".a, .b");
 }
 
@@ -202,7 +238,8 @@ TEST(CompatSelector, QuerySelector){
 // and every list it leaves to them is one they parse, map or report differently.
 TEST(CompatSelector, ScannedListsAreWrittenAsParsedOnes){
     // scanned: 0 never, 1 always, 2 for the user-agent origin only (an author selector whose
-    // first compound could match the root element has a root variant)
+    // first compound could match the root element has a root variant), 3 with the fork's
+    // FocusPseudoClasses, 4 with SelectorsLevel4 (the pseudo-classes they keep as written)
     struct Case {
         const char* css;
         int scanned;
@@ -213,7 +250,8 @@ TEST(CompatSelector, ScannedListsAreWrittenAsParsedOnes){
         {"input[disabled]", true}, {".x[data-state=\"open\"]", true}, {".x[data-state='open']", true}, {".x[data-state=open]", true},
         {".x[lang|=en]", true}, {".x[a^=\"b\"][c$=d][e*=f][g~=h]", true}, {".x[a=\"\"]", true}, {"*.a", true}, {"* .a", 2},
         {".a *", true}, {".a, .b", true}, {".a ,.b , .a", true}, {"_x", true}, {"-x", true}, {".-x", true}, {"#-x", true},
-        {"html", false}, {"body .a", false}, {"template", false}, {"#htmlui-root .a", false}, {".a:focus", false}, {".a::before", false},
+        {"html", false}, {"body .a", false}, {"template", false}, {"#htmlui-root .a", false}, {".a:focus", 3}, {".a::before", false},
+        {".a:focus-within .b:focus-visible", 3}, {"input.a:enabled", 4}, {"a.x:any-link", 4}, {".a:has(.b)", false},
         {".a:before", false}, {".a:not(.b)", false}, {".a:is(.b)", false}, {".a:nth-child(2)", false}, {":hover", 2}, {"*", 2},
         {".a[x i]", false}, {".a[ x ]", false}, {".a[x=\"a b\"]", false}, {".a[x=\"a\\\"b\"]", false}, {".a[x=\"a\\\"]", false},
         {".a /* c */ .b", false}, {".a\\:b", false}, {".\xc3\xa9", false}, {"ns|a", false}, {"*|a", false}, {".a || .b", false},
@@ -232,7 +270,8 @@ TEST(CompatSelector, ScannedListsAreWrittenAsParsedOnes){
             ScannedSelectors scanned;
             const bool read = SelectorRewriter::scanList(c.css, options, scanned);
             const bool userAgent = options.origin == SelectorOptions::Origin::UserAgent;
-            EXPECT_EQ(read, c.scanned == 1 || (c.scanned == 2 && userAgent));
+            EXPECT_EQ(read, c.scanned == 1 || (c.scanned == 2 && userAgent) || (c.scanned == 3 && options.fork.has(ForkFeature::FocusPseudoClasses)) ||
+                                (c.scanned == 4 && options.fork.has(ForkFeature::SelectorsLevel4)));
             if (!read)
                 continue;
             std::optional<SelectorList> list = SelectorRewriter::parseList(c.css);

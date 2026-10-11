@@ -27,14 +27,17 @@ namespace {
         const char* name;
         bool inherited;
         const char* defaultText;   // "" = unset
+        bool fork = false;         // the fork's own property (phase 3): found registered, not registered here
     };
 
     const Expected kExpected[] = {
-        {CompatProperty::ListStyleType, "list-style-type", true, "disc"},
-        {CompatProperty::ListStylePosition, "list-style-position", true, "outside"},
-        {CompatProperty::ListStyleImage, "list-style-image", true, "none"},
-        {CompatProperty::ObjectFit, "object-fit", false, "fill"},
-        {CompatProperty::ObjectPosition, "object-position", false, "50% 50%"},
+        // list-style-*: the fork's since its ListMarkers (p3-cascade)
+        {CompatProperty::ListStyleType, "list-style-type", true, "disc", true},
+        {CompatProperty::ListStylePosition, "list-style-position", true, "outside", true},
+        {CompatProperty::ListStyleImage, "list-style-image", true, "none", true},
+        // object-fit, object-position: the fork's since its ObjectFit (p3-paint)
+        {CompatProperty::ObjectFit, "object-fit", false, "fill", true},
+        {CompatProperty::ObjectPosition, "object-position", false, "50% 50%", true},
         {CompatProperty::ImageRendering, "image-rendering", true, "auto"},
         {CompatProperty::AnimationFill, "-html-animation-fill", false, "none"},
         {CompatProperty::Fill, "fill", true, ""},
@@ -57,19 +60,16 @@ TEST_F(CompatPropertiesTest, EveryPropertyIsRegistered){
     std::vector<std::string> names;
     for (const Expected& expected : kExpected){
         EXPECT_STREQ(CompatProperties::name(expected.property), expected.name);
-        // the fork registers object-fit and object-position (ForkFeature::ObjectFit, phase 3 p3-paint): compat steps aside
-        const bool fork = (expected.property == CompatProperty::ObjectFit || expected.property == CompatProperty::ObjectPosition) &&
-                          ForkFeatures::present().has(ForkFeature::ObjectFit);
-        if (fork){
-            EXPECT_FALSE(CompatProperties::registeredByCompat(expected.property)) << expected.name;
+        EXPECT_EQ(CompatProperties::registeredByCompat(expected.property), !expected.fork) << expected.name;
+        // (object-position is the fork's shorthand of object-position-x/-y: ForkFeature::ObjectFit, p3-paint)
+        if (expected.property == CompatProperty::ObjectPosition && expected.fork)
             continue;
-        }
-        EXPECT_TRUE(CompatProperties::registeredByCompat(expected.property)) << expected.name;
         const Rml::PropertyDefinition* definition = Rml::StyleSheetSpecification::GetProperty(expected.name);
         ASSERT_NE(definition, nullptr) << expected.name;
         EXPECT_EQ(definition->IsInherited(), expected.inherited) << expected.name;
         EXPECT_EQ(definition->GetId(), CompatProperties::id(expected.property)) << expected.name;
-        names.push_back(expected.name);
+        if (!expected.fork)
+            names.push_back(expected.name);
     }
     EXPECT_EQ(CompatProperties::registeredNames(), names);
     // a second call changes nothing

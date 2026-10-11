@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>selectors: :is() and :where() specificity</title>
+<style>
+  html, body { margin: 0; }
+  .box { position: absolute; top: 10px; width: 40px; height: 40px; margin: 0; }
+
+  /* 1. :is() takes its most specific argument (#nope: 1,0,0) even when .a matched,
+        so it beats the later .a.b (0,2,0) */
+  :is(.a, #nope) { background-color: #20a040; }
+  .a.b { background-color: #e02020; }
+  #t1 { left: 10px; }
+
+  /* 2. :where() has zero specificity: an earlier plain class wins over it */
+  .c { background-color: #2060a0; }
+  :where(#t2, .c) { background-color: #e02020; }
+  #t2 { left: 60px; }
+
+  /* 3. nested :is() lists: .outer :is(.p, :is(.q, .r)) is (0,2,0) and beats the later div.q (0,1,1) */
+  .outer :is(.p, :is(.q, .r)) { background-color: #a06020; }
+  div.q { background-color: #e02020; }
+  #t3w { position: absolute; left: 110px; top: 10px; }
+  #t3 { left: 0; top: 0; }
+
+  /* 4. type and class mixed: :is(p, .m) is (0,1,0) when p matched; it beats the later p (0,0,1) */
+  :is(p, .m) { background-color: #6040c0; }
+  p { background-color: #e02020; }
+  #t4 { left: 160px; }
+
+  /* 5. :where() inside a compound adds nothing: .w:where(.v) (0,1,0) loses to the later .v (0,1,0) */
+  .w:where(.v) { background-color: #e02020; }
+  .v { background-color: #20a0a0; }
+  #t5 { left: 210px; }
+
+  /* 6. a selector list: one rule styles both an id'ed div and a span through :is() */
+  :is(#t6, span.s) { background-color: #c08040; }
+  #t6 { left: 10px; top: 60px; }
+  #t7 { display: block; left: 60px; top: 60px; }
+
+  /* 7. :is() in the middle of a complex selector; :where() around a whole complex selector
+        loses to an earlier class */
+  body > :is(div, span) > .in { background-color: #40c080; }
+  div.in { background-color: #e02020; }
+  #t8, #t9 { background-color: #d0d0d0; }
+  #t8 { left: 110px; top: 60px; }
+  #t8a { width: 20px; height: 20px; }
+  .in2 { background-color: #8040a0; }
+  :where(body > div > .in2) { background-color: #e02020; }
+  #t9 { left: 160px; top: 60px; }
+  #t9a { width: 20px; height: 20px; }
+</style>
+</head>
+<body>
+<div id="t1" class="box a b"></div>
+<div id="t2" class="box c"></div>
+<div id="t3w" class="outer"><div id="t3" class="box q"></div></div>
+<p id="t4" class="box"></p>
+<div id="t5" class="box w v"></div>
+<div id="t6" class="box"></div><span id="t7" class="box s"></span>
+<div id="t8" class="box"><div id="t8a" class="in"></div></div>
+<div id="t9" class="box"><div id="t9a" class="in2"></div></div>
+</body>
+</html>

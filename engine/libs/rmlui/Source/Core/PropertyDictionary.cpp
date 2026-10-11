@@ -1,5 +1,6 @@
 #include "../../Include/RmlUi/Core/PropertyDictionary.h"
 #include "../../Include/RmlUi/Core/ID.h"
+#include "Cascade.h"
 
 namespace Rml {
 
@@ -9,6 +10,7 @@ void PropertyDictionary::SetProperty(PropertyId id, const Property& property)
 {
 	RMLUI_ASSERT(id != PropertyId::Invalid);
 	properties[id] = property;
+	has_important |= property.important;
 }
 
 void PropertyDictionary::RemoveProperty(PropertyId id)
@@ -28,6 +30,7 @@ const Property* PropertyDictionary::GetProperty(PropertyId id) const
 
 void PropertyDictionary::SetCustomProperty(String name, Property property)
 {
+	has_important |= property.important;
 	custom_properties.insert_or_assign(std::move(name), std::move(property));
 }
 
@@ -48,6 +51,7 @@ const Property* PropertyDictionary::GetCustomProperty(const String& name) const
 void PropertyDictionary::SetVarShorthand(ShorthandId id, Property property)
 {
 	RMLUI_ASSERT(property.unit == Unit::VAR_EXPRESSION);
+	has_important |= property.important;
 	var_shorthands.insert_or_assign(id, std::move(property));
 }
 
@@ -92,14 +96,21 @@ const UnorderedMap<String, Property>& PropertyDictionary::GetCustomProperties() 
 
 void PropertyDictionary::Import(const PropertyDictionary& other, int property_specificity)
 {
+	// A forced specificity is the selector's: important declarations rank above every normal one (Cascade.h).
+	auto Specificity = [property_specificity](const Property& property) {
+		if (property_specificity <= 0)
+			return property.specificity;
+		return property_specificity + (property.important ? Cascade::ImportantOffset : 0);
+	};
+
 	for (const auto& [id, property] : other.properties)
-		SetProperty(id, property, property_specificity > 0 ? property_specificity : property.specificity);
+		SetProperty(id, property, Specificity(property));
 
 	for (const auto& [name, property] : other.custom_properties)
-		SetCustomProperty(name, property, property_specificity > 0 ? property_specificity : property.specificity);
+		SetCustomProperty(name, property, Specificity(property));
 
 	for (const auto& [id, property] : other.var_shorthands)
-		SetVarShorthand(id, property, property_specificity > 0 ? property_specificity : property.specificity);
+		SetVarShorthand(id, property, Specificity(property));
 }
 
 void PropertyDictionary::Merge(const PropertyDictionary& other, int specificity_offset)
@@ -119,6 +130,7 @@ void PropertyDictionary::Clear()
 	properties.clear();
 	custom_properties.clear();
 	var_shorthands.clear();
+	has_important = false;
 }
 
 void PropertyDictionary::SetSourceOfAllProperties(const SharedPtr<const PropertySource>& property_source)
@@ -131,6 +143,16 @@ void PropertyDictionary::SetSourceOfAllProperties(const SharedPtr<const Property
 		p.second.source = property_source;
 }
 
+void PropertyDictionary::SetOriginOfAllProperties(StyleOrigin origin)
+{
+	for (auto& p : properties)
+		p.second.origin = origin;
+	for (auto& p : custom_properties)
+		p.second.origin = origin;
+	for (auto& p : var_shorthands)
+		p.second.origin = origin;
+}
+
 void PropertyDictionary::SetProperty(PropertyId id, const Property& property, int specificity)
 {
 	PropertyMap::iterator iterator = properties.find(id);
@@ -139,6 +161,7 @@ void PropertyDictionary::SetProperty(PropertyId id, const Property& property, in
 
 	Property& new_property = (properties[id] = property);
 	new_property.specificity = specificity;
+	has_important |= property.important;
 }
 
 void PropertyDictionary::SetCustomProperty(const String& name, const Property& property, int specificity)
@@ -149,6 +172,7 @@ void PropertyDictionary::SetCustomProperty(const String& name, const Property& p
 
 	Property& new_property = custom_properties.insert_or_assign(name, property).first->second;
 	new_property.specificity = specificity;
+	has_important |= property.important;
 }
 
 void PropertyDictionary::SetVarShorthand(ShorthandId id, const Property& property, int specificity)
@@ -160,6 +184,7 @@ void PropertyDictionary::SetVarShorthand(ShorthandId id, const Property& propert
 
 	Property& new_property = var_shorthands.insert_or_assign(id, property).first->second;
 	new_property.specificity = specificity;
+	has_important |= property.important;
 }
 
 } // namespace Rml

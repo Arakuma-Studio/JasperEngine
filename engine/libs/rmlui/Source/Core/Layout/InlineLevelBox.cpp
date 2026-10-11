@@ -65,13 +65,21 @@ void InlineLevelBox::SetHeightAndVerticalAlignment(float _height_above_baseline,
 	case VerticalAlign::Sub: parent_baseline_offset = (1.f / 5.f) * (float)parent->GetFontMetrics().size + 1.f; break;
 	case VerticalAlign::Super: parent_baseline_offset = (-1.f / 3.f) * (float)parent->GetFontMetrics().size - 1.f; break;
 	case VerticalAlign::TextTop:
-		parent_baseline_offset = -parent->GetFontMetrics().ascent;
+	{
+		float parent_ascent, parent_descent;
+		LayoutDetails::GetIntegerAscentDescent(parent->GetFontMetrics(), parent_ascent, parent_descent);
+		parent_baseline_offset = -parent_ascent;
 		self_baseline_offset = height_above_baseline;
 		break;
+	}
 	case VerticalAlign::TextBottom:
-		parent_baseline_offset = parent->GetFontMetrics().descent;
+	{
+		float parent_ascent, parent_descent;
+		LayoutDetails::GetIntegerAscentDescent(parent->GetFontMetrics(), parent_ascent, parent_descent);
+		parent_baseline_offset = parent_descent;
 		self_baseline_offset = -depth_below_baseline;
 		break;
+	}
 	case VerticalAlign::Middle:
 		parent_baseline_offset = -0.5f * parent->GetFontMetrics().x_height;
 		self_baseline_offset = 0.5f * (height_above_baseline - depth_below_baseline);

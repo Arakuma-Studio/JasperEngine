@@ -35,6 +35,13 @@ namespace jasperengine::htmlui::compat {
         explicit HtmlListItemElement(const Rml::String& tag);
         ~HtmlListItemElement() override;
 
+        // Phase 2's marker emulation (the `marker` child): on while the fork lacks ListMarkers
+        // (phase 3), whose ::marker draws the markers then. Elements made while it is off have no
+        // marker child. Tests switch it on to check the emulation; releaseRuntime resets it.
+        static bool markerEmulation();
+        static void setMarkerEmulation(bool on);
+        static void resetMarkerEmulation();
+
         Rml::Element* getMarker() const { return marker; }
         const std::string& getMarkerText() const { return markerText; }
         // the counter value of this item in its list

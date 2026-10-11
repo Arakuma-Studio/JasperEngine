@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>selectors: :focus, :focus-within, :focus-visible</title>
+<style>
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  *:focus { outline: none; }
+
+  /* the form and its wrapper: :focus-within on the whole chain, :focus never on an ancestor */
+  #outer { position: absolute; left: 10px; top: 10px; width: 160px; height: 100px; background-color: #d0d0d0; }
+  #outer:focus { background-color: #e02020; }
+  #outer:focus-within { background-color: #c0c0e0; }
+  #form { position: absolute; left: 10px; top: 10px; width: 140px; height: 70px; margin: 0; background-color: #e0e0e0; }
+  #form:focus { background-color: #e02020; }
+  #form:focus-within { background-color: #a0d0a0; }
+  #fieldwrap { position: absolute; left: 10px; top: 10px; width: 120px; height: 30px; background-color: #f0f0f0; }
+  #fieldwrap:focus { background-color: #e02020; }
+
+  /* the input: :focus fills it, :focus-visible (keyboard) also sets its border color */
+  #input { position: absolute; left: 4px; top: 4px; box-sizing: border-box; width: 100px; height: 22px; margin: 0; padding: 0; border: 2px solid #606060; background-color: #ffffff; font-family: "Ahem"; font-size: 10px; line-height: 10px; color: #000000; }
+  #input:focus { background-color: #f0e080; }
+  #input:focus-visible { border: 2px solid #c02060; }
+  #other { position: absolute; left: 10px; top: 46px; width: 120px; height: 16px; background-color: #b0b0b0; }
+  #other:focus-within { background-color: #e02020; }
+
+  /* a box outside the form, focused with the mouse: :focus but not :focus-visible */
+  #box { position: absolute; left: 190px; top: 10px; width: 60px; height: 60px; background-color: #c0c0c0; }
+  #box:focus { background-color: #2080c0; }
+  #box:focus-visible { background-color: #e02020; }
+</style>
+</head>
+<body>
+<div id="outer">
+  <form id="form">
+    <div id="fieldwrap"><input id="input" type="text"></div>
+    <div id="other"></div>
+  </form>
+</div>
+<div id="box" tabindex="0"></div>
+</body>
+</html>

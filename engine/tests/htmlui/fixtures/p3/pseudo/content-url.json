@@ -1,0 +1,4 @@
+{
+ "comment": "content: url() (spec 3.6.2): the image is a replaced element at its intrinsic size on the baseline: #i1::before is checker.png (64x64) before the X (#i1 is 66px tall: image bottom on the 8px Ahem baseline plus the 2px descent); #i2::after is a block holding icon.svg (24x24, #i2 36px tall); #i3 mixes strings and an image (A, icon, B, X).",
+ "viewport": [240, 110]
+}

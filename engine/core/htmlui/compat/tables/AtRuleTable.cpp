@@ -35,7 +35,7 @@ namespace {
         {"@-moz-document", U, FF::None, U, "", "contents dropped (Warning)", "put the rules in the stylesheet of the document they target"},
         {"@page", I, FF::None, I, "", "printing only; dropped (Info)", ""},
         {"@namespace", I, FF::None, I, "", "namespaces are not used; dropped (Info)", ""},
-        {"@counter-style", I, FF::None, I, "", "custom counter styles are not supported; dropped (Info)", ""},
+        {"@counter-style", I, FF::None, I, "", "custom counter styles are not supported; dropped (Info)", "use one of: decimal, decimal-leading-zero, lower/upper-alpha/latin, lower/upper-roman, lower-greek, disc, circle, square, none"},
         {"@font-feature-values", I, FF::None, I, "", "font features are not supported; dropped (Info)", ""},
         {"@font-palette-values", I, FF::None, I, "", "font palettes are not supported; dropped (Info)", ""},
         {"@view-transition", I, FF::None, I, "", "view transitions are not supported; dropped (Info)", ""},

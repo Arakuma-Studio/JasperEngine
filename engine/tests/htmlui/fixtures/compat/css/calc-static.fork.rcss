@@ -1,4 +1,4 @@
-body#htmlui-root {
+body#htmlui-root:root {
 --gap: 16px;
 --cols: 3;
 --mixed: 10px;

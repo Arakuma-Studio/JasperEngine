@@ -61,7 +61,7 @@ dialog:not([open]) {
 
 address, article, aside, blockquote, center, details, dialog, dd, div, dl, dt, fieldset,
 figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, legend,
-listing, main, menu, nav, ol, optgroup, p, plaintext, pre, search, section, summary, ul,
+listing, main, menu, nav, ol, optgroup, p, plaintext, pre, search, section, ul,
 xmp {
     display: block;
 }
@@ -156,6 +156,9 @@ h6 {
 ul, ol, menu {
     margin: 1em 0;
     padding-left: 40px;
+    /* the list-item counter of the fork's markers (ListMarkers, PseudoElements); without the
+       feature the li emulation numbers the items and compat drops the declaration silently */
+    counter-reset: list-item;
 }
 
 ul, menu {
@@ -317,7 +320,7 @@ input, textarea, select, button {
 input {
     padding: 2px 3px;
     border: 1px solid #767676;
-    border-radius: 2px;
+    border-radius: var(--html-control-radius, 2px);
     background-color: Field;
     width: 177px;
     cursor: text;
@@ -333,7 +336,7 @@ textarea {
     font-family: monospace;
     padding: 2px;
     border: 1px solid #767676;
-    border-radius: 2px;
+    border-radius: var(--html-control-radius, 2px);
     background-color: Field;
     white-space: pre-wrap;
     word-break: break-word;
@@ -359,7 +362,7 @@ button, input[type="button"], input[type="submit"], input[type="reset"], input[t
     width: auto;
     padding: 2px 7px;
     border: 1px solid #767676;
-    border-radius: 2px;
+    border-radius: var(--html-control-radius, 2px);
     background-color: ButtonFace;
     color: ButtonText;
     text-align: center;
@@ -399,16 +402,18 @@ input[type="image"] {
     cursor: pointer;
 }
 
-/* checkbox and radio: 13x13, painted like Chromium's theme */
+/* checkbox and radio: 13x13, painted like Chromium's theme. The frame, the rounding, the
+   check and the ring are the theme's: without it (`appearance: none`, the companions) the
+   control has no border, background or radius, as Chromium's html.css gives it none. */
 input[type="checkbox"], input[type="radio"] {
     box-sizing: border-box;
     width: 13px;
     height: 13px;
     padding: 0;
-    border-width: 1px;
+    border-width: var(--html-control-border-width, 1px);
     border-style: solid;
     border-color: var(--html-control-border, #767676);
-    border-radius: 2px;
+    border-radius: var(--html-check-radius, 2px);
     background-color: var(--html-control-bg, #ffffff);
     cursor: default;
 }
@@ -423,29 +428,29 @@ input[type="checkbox"] {
 
 input[type="radio"] {
     margin: 3px 3px 0 5px;
-    border-radius: 9999px;
+    border-radius: var(--html-radio-radius, 9999px);
 }
 
 input[type="checkbox"]:checked {
-    border-color: var(--html-accent, #0075ff);
-    background-color: var(--html-accent, #0075ff);
+    border-color: var(--html-check-fill, var(--html-accent, #0075ff));
+    background-color: var(--html-check-fill, var(--html-accent, #0075ff));
     decorator: var(--html-check, html-layer("/@htmlui/ua/check.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll));
 }
 
 /* the checked radio: an accent ring, a white gap and an accent dot */
 input[type="radio"]:checked {
-    border-color: var(--html-accent, #0075ff);
-    background-color: var(--html-accent, #0075ff);
-    box-shadow: inset 0 0 0 1.5px var(--html-accent-contrast, #ffffff);
+    border-color: var(--html-check-fill, var(--html-accent, #0075ff));
+    background-color: var(--html-check-fill, var(--html-accent, #0075ff));
+    box-shadow: var(--html-radio-ring, inset 0 0 0 1.5px var(--html-accent-contrast, #ffffff));
 }
 
 input[type="checkbox"]:disabled, input[type="radio"]:disabled {
-    border-color: #7676764d;
+    border-color: var(--html-control-disabled-border, #7676764d);
 }
 
 input[type="checkbox"]:checked:disabled, input[type="radio"]:checked:disabled {
-    border-color: #0075ff4d;
-    background-color: #0075ff4d;
+    border-color: var(--html-check-disabled-fill, #0075ff4d);
+    background-color: var(--html-check-disabled-fill, #0075ff4d);
 }
 
 /* range: 129x16 with a 2px margin; RmlUi's slider widget parts. With `appearance: none` the
@@ -527,7 +532,7 @@ select {
     border-width: 1px;
     border-style: solid;
     border-color: var(--html-control-border, #767676);
-    border-radius: 2px;
+    border-radius: var(--html-control-radius, 2px);
     background-color: var(--html-control-bg, #ffffff);
     color: FieldText;
     white-space: pre;
@@ -590,8 +595,11 @@ label {
     cursor: default;
 }
 
-/* details and summary: the disclosure triangle is the summary's list marker */
+/* details and summary: the disclosure triangle is the summary's list marker (written as a
+   list item: block without the fork's ListMarkers, where HtmlSummaryElement draws it) */
 summary {
+    display: list-item;
+    counter-increment: list-item 0;
     list-style-type: disclosure-closed;
     list-style-position: inside;
     cursor: default;

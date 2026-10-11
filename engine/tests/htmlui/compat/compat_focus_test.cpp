@@ -5,10 +5,16 @@
 // ancestors, never a document), :html-focus-visible only when RmlUi marks the focus visible
 // (keyboard navigation, text fields, focus(true)), across Tab and click sequences, blur,
 // removal of the focused element.
+//
+// Phase 3 (p3-cascade): with the fork's FocusPseudoClasses present, updateRuntime no longer runs
+// FocusTracker (the fork's :focus is leaf-only, :focus-within and :focus-visible are native and
+// compat passes them through): CompatFocusTest drives FocusTracker itself, as it would run with
+// the feature absent; CompatNativeFocus checks the present state.
 
 #include "PerfFixtures.h"
 #include "RuntimeTestCommon.h"
 
+#include "htmlui/compat/ForkFeatures.h"
 #include "htmlui/compat/runtime/FocusTracker.h"
 
 #include <gtest/gtest.h>
@@ -22,6 +28,21 @@ namespace {
 
     class CompatFocusTest : public RuntimeContextTest {
     protected:
+        // phase 2's emulation, run before each Context::Update as updateRuntime runs it while
+        // FocusPseudoClasses is absent
+        void frame(){
+            FocusTracker::update(context);
+            RuntimeContextTest::frame();
+        }
+        void click(Rml::Element* element, int modifiers = 0){
+            RuntimeContextTest::click(element, modifiers);
+            frame();
+        }
+        void key(Rml::Input::KeyIdentifier identifier, int modifiers = 0){
+            RuntimeContextTest::key(identifier, modifiers);
+            frame();
+        }
+
         bool focus(const char* id){
             return byId(id)->IsPseudoClassSet(FocusTracker::kFocus);
         }
@@ -64,8 +85,8 @@ TEST_F(CompatFocusTest, ClickFocusesTheLeafWithoutVisibleFocus){
     ASSERT_EQ(context->GetFocusElement(), byId("one"));
     EXPECT_TRUE(focus("one"));
     EXPECT_FALSE(visible("one"));
-    // RmlUi's chain: the ancestors have :focus (that is :focus-within), not :html-focus
-    EXPECT_TRUE(byId("outer")->IsPseudoClassSet("focus"));
+    // the ancestors have :focus-within (the fork's; phase 2's RmlUi set :focus on the chain), not :html-focus
+    EXPECT_TRUE(byId("outer")->IsPseudoClassSet("focus-within"));
     EXPECT_FALSE(focus("outer"));
     EXPECT_EQ(focusCount(document), 1);
     frame();
@@ -153,7 +174,7 @@ TEST_F(CompatFocusTest, PerContext){
     second->Show();
     second->GetElementById("x")->Focus(true);
     byId("one")->Focus(false);
-    htmlui::compat::updateRuntime(other);
+    FocusTracker::update(other);
     other->Update();
     frame();
     EXPECT_TRUE(second->GetElementById("x")->IsPseudoClassSet(FocusTracker::kFocusVisible));
@@ -183,4 +204,31 @@ TEST_F(CompatFocusTest, PerFrameCost){
     FocusTracker::update(context);
     GTEST_SKIP() << "performance targets are measured in Release builds";
 #endif
+}
+
+// FocusPseudoClasses present: nothing tracks the focus, the fork's pseudo-classes do it all
+TEST_F(RuntimeContextTest, CompatNativeFocus){
+    ASSERT_TRUE(ForkFeatures::present().has(ForkFeature::FocusPseudoClasses));
+    ASSERT_NE(show("<div id='outer'><div id='one' class='item'>one</div><input id='text' type='text'/></div>",
+                   ".item, input { tab-index: auto; focus: auto; width: 100px; height: 20px; } "
+                   ".item:focus { width: 120px; } .item:focus-visible { height: 30px; } #outer:focus-within { width: 300px; } "
+                   "#outer:focus { height: 7px; }"),
+              nullptr);
+    click(byId("one"));
+    ASSERT_EQ(context->GetFocusElement(), byId("one"));
+    EXPECT_EQ(FocusTracker::focused(context), nullptr);
+    EXPECT_FALSE(byId("one")->IsPseudoClassSet(FocusTracker::kFocus));
+    frame();
+    EXPECT_FLOAT_EQ(byId("one")->GetBox().GetSize().x, 120.0f);
+    EXPECT_FLOAT_EQ(byId("one")->GetBox().GetSize().y, 20.0f);
+    EXPECT_FLOAT_EQ(byId("outer")->GetBox().GetSize().x, 300.0f);
+    EXPECT_NE(byId("outer")->GetBox().GetSize().y, 7.0f);
+
+    key(Rml::Input::KI_TAB);
+    ASSERT_EQ(context->GetFocusElement(), byId("text"));
+    EXPECT_TRUE(byId("text")->IsPseudoClassSet("focus-visible"));
+    EXPECT_FALSE(byId("one")->IsPseudoClassSet("focus"));
+    frame();
+    EXPECT_FLOAT_EQ(byId("one")->GetBox().GetSize().x, 100.0f);
+    EXPECT_FLOAT_EQ(byId("outer")->GetBox().GetSize().x, 300.0f);
 }

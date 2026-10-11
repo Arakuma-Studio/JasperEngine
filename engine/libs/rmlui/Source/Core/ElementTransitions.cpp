@@ -33,7 +33,8 @@ static bool starting_style_rules = false;
 
 const char* GetStartingStyleSelectorSuffix()
 {
-	return ":-rmlui-starting-style";
+	// Inside :where(): the starting-style rules cascade with the others at their own specificity, as in CSS.
+	return ":where(:-rmlui-starting-style)";
 }
 
 const String& GetStartingStylePseudoClass()

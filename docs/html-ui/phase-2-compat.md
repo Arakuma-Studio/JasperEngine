@@ -4401,7 +4401,7 @@ place (§3.10 fieldset and the `ua-defaults` pins, §4 "p2-css as implemented").
   while checkboxes and selects read them with `#ffffff`/`#767676`, and `auto` writes one value
   per companion, so `input[type=range] { appearance: auto }` drew a white track with a dark
   border. The track has its own companions now (`--html-slider-track-bg`,
-  `--html-slider-track-border-color`, written by `appearance: none`/`auto`), and
+  `--html-slider-track-border-color`, `--html-control-border-width`, `--html-control-radius`, `--html-check-radius`, `--html-radio-radius`, `--html-check-fill`, `--html-radio-ring`, `--html-control-disabled-border`, `--html-check-disabled-fill` (p3-cascade: the theme's frame, rounding, fill and ring of checkboxes and radios and the rounding of text fields, buttons and selects, none of it with `appearance: none`), written by `appearance: none`/`auto`), and
   `CompatUaSheet.AppearanceAutoWritesTheSheetsFallbacks` holds every companion to one fallback
   that equals what `auto` writes.
 - Play stop on the compat path (`compat_playstop_test.cpp`): no Lua reference, the documents

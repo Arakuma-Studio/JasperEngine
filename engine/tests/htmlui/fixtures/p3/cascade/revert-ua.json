@@ -1,0 +1,4 @@
+{
+ "comment": "revert (spec 3.4.3) restores the user-agent origin's value after an author reset (* { margin: 0; padding: 0 }): the inner ul's padding-left: revert is 40px (#u2), h1 margin: revert is 0.67em of its 30px font (#h at y 20.1 in #w2) and p margin: revert is 1em (#p at y 15); display: revert shows a div hidden by an author rule as a block (#d1 below #d0) and a span as inline (#s1 on the same line as #s2); color: revert without a UA value inherits (#s3 #602080).",
+ "viewport": [300, 160]
+}

@@ -1,0 +1,36 @@
+{
+ "fixture": "pseudo/content-url.html",
+ "viewport": [
+  240,
+  110
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "i1",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 100,
+    "h": 66
+   },
+   {
+    "id": "i2",
+    "tag": "div",
+    "x": 130,
+    "y": 10,
+    "w": 60,
+    "h": 36
+   },
+   {
+    "id": "i3",
+    "tag": "div",
+    "x": 130,
+    "y": 70,
+    "w": 100,
+    "h": 26
+   }
+  ]
+ }
+}

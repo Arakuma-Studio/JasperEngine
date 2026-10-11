@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../../Include/RmlUi/Core/Element.h"
 #include "../../Include/RmlUi/Core/Types.h"
 
 namespace Rml {
@@ -46,6 +47,7 @@ enum class AttributeSelectorType {
 };
 struct AttributeSelector {
 	AttributeSelectorType type = AttributeSelectorType::Always;
+	bool case_insensitive = false; // The 'i' flag: the value is compared ASCII case-insensitively ('s', the default, sensitively).
 	String name;
 	String value;
 };
@@ -59,6 +61,9 @@ using AttributeSelectorList = Vector<AttributeSelector>;
 struct SelectorTree {
 	UniquePtr<StyleSheetNode> root;
 	Vector<StyleSheetNode*> leafs; // Owned by root.
+	// For :has(): whether each leaf's relative selector starts with a sibling combinator ('+', '~'): its candidates are
+	// the following siblings of the subject and their descendants, else the subject's descendants.
+	Vector<bool> sibling_relative;
 };
 
 /**
@@ -81,6 +86,23 @@ enum class StructuralSelectorType {
 	Empty,
 	Not,
 	Scope,
+
+	// Phase 3, cascade (docs/html-ui/phase-3-fork-patches.md 3.5)
+	Root,          // :root, the document element
+	Is,            // :is(), :matches(), :-webkit-any(): the most specific argument's specificity
+	Where,         // :where(): zero specificity
+	Has,           // :has(), relative selectors
+	Enabled,       // :enabled
+	Disabled,      // :disabled, also from a disabled <fieldset> ancestor
+	AnyLink,       // :link, :any-link: a or area with href
+	Never,         // :visited, never matches
+	ReadOnly,      // :read-only
+	ReadWrite,     // :read-write
+	Required,      // :required
+	Optional,      // :optional
+	Indeterminate, // :indeterminate
+	Default,       // :default
+	Target,        // :target, the element whose id is the document's target (ElementDocument::SetTarget)
 };
 struct StructuralSelector {
 	StructuralSelector(StructuralSelectorType type, int a, int b) : type(type), a(a), b(b) {}
@@ -117,8 +139,15 @@ struct CompoundSelector {
 	AttributeSelectorList attributes;
 	StructuralSelectorList structural_selectors;
 	SelectorCombinator combinator = SelectorCombinator::Descendant; // Determines how to match with our parent node.
+	// The pseudo-element the selector ends in (::before, ::after, ::marker): the compound matches the originating
+	// element, and the node's properties style its pseudo-element. Only the last compound of a selector has one.
+	PseudoElementType pseudo_element = PseudoElementType::None;
 };
 bool operator==(const CompoundSelector& a, const CompoundSelector& b);
+
+/// True when the element is disabled for CSS's :disabled (and for focus and clicks, phase 3): a form control with the
+/// 'disabled' pseudo-class or attribute, or inside a disabled <fieldset> (except its first <legend>).
+bool IsElementDisabled(const Element* element);
 
 /// Returns true if the node the given selector is discriminating for is applicable to a given element.
 /// @param element[in] The element to determine node applicability for.

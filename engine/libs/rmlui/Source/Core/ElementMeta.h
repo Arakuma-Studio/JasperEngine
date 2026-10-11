@@ -29,6 +29,8 @@ struct ElementMeta {
 	// area, the viewport), relative to the offset parent's border box; set by the box that formats it
 	// (ContainerBox::ClosePositionedElements).
 	std::optional<Rectanglef> containing_block_override;
+	// The pseudo-elements the element generates, by type: ::before, ::after, ::marker (phase 3, cascade: PseudoElements).
+	Element* pseudo_elements[3] = {nullptr, nullptr, nullptr};
 };
 
 struct ElementMetaPool {

@@ -360,6 +360,9 @@ TEST_F(CompatElementTest, Autofocus){
 // ---------------------------------------------------------------- details / summary
 
 TEST_F(CompatElementTest, DetailsToggle){
+    // the summary's marker of phase 2's emulation (ListMarkers absent)
+    HtmlListItemElement::setMarkerEmulation(true);
+    struct Reset { ~Reset(){ HtmlListItemElement::resetMarkerEmulation(); } } reset;
     ASSERT_NE(show("<details id='d'><summary id='s'>More</summary><div id='body'>text</div></details>"
                    "<details id='a1' name='acc' open=''><summary id='s1'>1</summary></details>"
                    "<details id='a2' name='acc'><summary id='s2'>2</summary></details>",

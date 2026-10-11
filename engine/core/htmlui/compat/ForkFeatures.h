@@ -27,6 +27,8 @@ namespace jasperengine::htmlui::compat {
         CurrentColor, ExtraUnits, LineHeightNormal,         // p3-values
         // phase 3, p3-layout
         Sticky, BoxParity,
+        // phase 3, p3-cascade
+        Has, FocusPseudoClasses, SelectorsLevel4, ListMarkers,
         Outline, ObjectFit, BackgroundLayers,       // p3-paint
         Count
     };

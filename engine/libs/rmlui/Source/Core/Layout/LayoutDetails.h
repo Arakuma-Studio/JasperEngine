@@ -2,6 +2,8 @@
 
 #include "../../../Include/RmlUi/Core/StyleTypes.h"
 #include "../../../Include/RmlUi/Core/Types.h"
+#include "../../../Include/RmlUi/Core/FontMetrics.h"
+#include <cmath>
 
 namespace Rml {
 
@@ -76,6 +78,20 @@ class LayoutDetails {
 public:
 	/// A text element of white space only that CSS collapses away (white-space other than pre, pre-wrap, break-spaces).
 	static bool IsCollapsibleWhiteSpaceText(Element* element);
+
+	/// The font's ascent and descent in whole pixels, as Chromium lays text out with them (SimpleFontData::PlatformInit):
+	/// each rounded, and when the descent was rounded down a pixel moves from the ascent to the descent, so that no
+	/// glyph is cut at the bottom (Ahem at 16px: 12.8 and 3.2 give 12 and 4).
+	static void GetIntegerAscentDescent(const FontMetrics& metrics, float& out_ascent, float& out_descent)
+	{
+		out_ascent = std::floor(metrics.ascent + 0.5f);
+		out_descent = std::floor(metrics.descent + 0.5f);
+		if (out_descent < metrics.descent && out_ascent >= 1.f)
+		{
+			out_descent += 1.f;
+			out_ascent -= 1.f;
+		}
+	}
 
 	/// Returns the boxes to lay out inside an element, in order: its ::marker, its ::before, its DOM children, its ::after
 	/// (pseudo-elements once they are generated, Element::GetPseudoElement). A 'display: contents' child is replaced by its

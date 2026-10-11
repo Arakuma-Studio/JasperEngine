@@ -1,4 +1,4 @@
-body#htmlui-root {
+body#htmlui-root:root {
 --accent: #00000080;
 --bg: linear-gradient(135deg, #1e1e2eff, #11111bff);
 --shared: linear-gradient(#ff0000ff, #0000ffff);
