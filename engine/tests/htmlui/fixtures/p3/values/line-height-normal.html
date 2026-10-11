@@ -6,13 +6,13 @@
 <style>
   /* line-height: normal is the font's ascent + descent + line gap (hhea), each rounded as Chromium does,
      so it differs per font and size; it is also the initial value and inherits as the keyword.
-     Roboto is the engine's built-in face through the generic family: Chromium rejects the subset file as a
-     web font (no 'name'/'post' tables), and the reference tool's fontconfig maps sans-serif to the same bytes. */
+     Roboto is the engine's built-in face with a 'post' table (Chromium rejects the subset without one). */
+  @font-face { font-family: "Roboto Test"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf") format("truetype"); }
   @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
   @font-face { font-family: "Inter Test"; src: url("../../compat/pages/htmlui-imports/fonts/inter/Inter-400.ttf") format("truetype"); }
   @font-face { font-family: "Orbitron Test"; font-weight: 700; src: url("../../compat/pages/htmlui-imports/fonts/orbitron/Orbitron-700.ttf") format("truetype"); }
   html, body { margin: 0; }
-  body { font-family: sans-serif; font-size: 16px; color: #203040; }
+  body { font-family: "Roboto Test"; font-size: 16px; color: #203040; }
   .col { position: absolute; top: 4px; width: 150px; }
   .col > div { background: #dde4ee; margin-bottom: 2px; }
   #ahem { left: 160px; font-family: "Ahem"; color: #602020; }
