@@ -161,21 +161,13 @@ in vec3 a_position;
     out vec3 v_tangent;
     out vec3 v_bitangent;
 #endif
-// with MSAA an edge pixel is shaded at its center, which can lie outside a sprite
-// or tile quad; centroid keeps the atlas UV inside the rect
+// centroid under HAS_TEXTURERECT (includes/surface_uv.glsl, which fragment stages use too)
+#include "includes/surface_uv.glsl"
 #ifdef SURFACE_UV1
-    #ifdef HAS_TEXTURERECT
-        centroid out vec2 v_uv1;
-    #else
-        out vec2 v_uv1;
-    #endif
+    SURFACE_UV_OUT vec2 v_uv1;
 #endif
 #ifdef SURFACE_UV2
-    #ifdef HAS_TEXTURERECT
-        centroid out vec2 v_uv2;
-    #else
-        out vec2 v_uv2;
-    #endif
+    SURFACE_UV_OUT vec2 v_uv2;
 #endif
 #ifdef SURFACE_COLOR
     out vec4 v_color;

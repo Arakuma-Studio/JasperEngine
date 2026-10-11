@@ -21,13 +21,9 @@ uniform u_fs_customParams {
     float alphaCutoff;
 } customParams;
 
-// as the vertex stage declares it (includes/surface_vs.glsl): GLSL ES 3.00 links only matching
-// qualifiers, and a sprite always has a texture rect
-#ifdef HAS_TEXTURERECT
-    centroid in vec2 v_uv1;
-#else
-    in vec2 v_uv1;
-#endif
+// as the vertex stage declares it (centroid on a sprite, which always has a texture rect)
+#include "includes/surface_uv.glsl"
+SURFACE_UV_IN vec2 v_uv1;
 
 out vec4 g_finalColor;
 

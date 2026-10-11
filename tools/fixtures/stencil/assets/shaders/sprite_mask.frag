@@ -15,7 +15,9 @@ uniform u_fs_customParams {
     float alphaCutoff;
 } customParams;
 
-in vec2 v_uv1;
+// centroid on sprites, as the vertex stage writes it (GLSL ES links matching qualifiers only)
+#include "includes/surface_uv.glsl"
+SURFACE_UV_IN vec2 v_uv1;
 out vec4 g_finalColor;
 
 void main(){
