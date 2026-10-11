@@ -30,12 +30,16 @@
 // band(x) steps x into `bands` levels (any lit x reaches the first one) with smooth edges
 // `bandSmoothness` of a band wide, or with RAMP is the ramp's colour at x. The shadow
 // colour fills the unlit side: albedo * shadowColor where no light reaches the first band.
-// The SH ambient adds smoothly; vertex lights (mixed) add their smooth diffuse.
-// In vertex mode the interpolated vertex light is banded instead, in steps of 1/bands of
-// full brightness (light 1 = the albedo itself), keeping its colour. SPECULAR is a hard
-// Blinn highlight of the pixel lights; RIM adds rimColor on silhouettes, optionally only
-// on the lit side. Without scene lights the variant is unlit: the base colour (and rim).
-// Light units: includes/lights.glsl.
+// Which side is lit follows n.l and the light's reach (its range window and spot cone),
+// not its distance falloff: a point light's bands stay as crisp far from it as near, only
+// dimmer (the radiance falls off). The SH ambient adds smoothly; vertex lights (mixed) add
+// their smooth diffuse.
+// In vertex mode the vertex stage (toon.vert) also sums each vertex light's full radiance
+// (as if facing it) and reach; their interpolated ratio is the vertex lights' n.l, banded
+// as above and times that radiance, so one light is as bright per vertex as per pixel.
+// SPECULAR is a hard Blinn highlight of the pixel lights; RIM adds rimColor on
+// silhouettes, optionally only on the lit side. Without scene lights the variant is
+// unlit: the base colour (and rim). Light units: includes/lights.glsl.
 
 uniform u_fs_customParams {
     vec4 baseColor;
@@ -72,6 +76,8 @@ in vec4 v_color; // the instance colour
     in vec3 v_vertexLight;
     #ifndef USE_PUNCTUAL
         in vec3 v_vertexAmbient;
+        // rgb the vertex lights' radiance / PI facing them, a their reach (toon.vert)
+        in vec4 v_toonPeak;
     #endif
 #endif
 
@@ -116,6 +122,19 @@ float toonLit(float x){
 }
 #endif
 
+#ifdef USE_PUNCTUAL
+// how far pixel light i reaches the position, 0 to 1: its attenuation without the inverse
+// square falloff (the range window, the spot cone or mask), 1 for a directional light
+float toonReach(int i, float attenuation){
+    vec4 positionType = objectLights.position_type[i];
+    if (positionType.w < 0.5){
+        return attenuation;
+    }
+    vec3 toLight = positionType.xyz - v_position;
+    return min(attenuation * dot(toLight, toLight), 1.0);
+}
+#endif
+
 void main() {
     vec2 uv = v_uv1 * customParams.tiling.xy + customParams.tiling.zw;
     vec4 base = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv)) * v_color;
@@ -155,7 +174,7 @@ void main() {
                 float onLit = toonLit(x);
                 vec3 radiance = s.radiance * LIGHT_INV_PI;
                 light += radiance * toonBand(x);
-                lit += onLit * s.attenuation;
+                lit += onLit * toonReach(i, s.attenuation);
                 #ifdef SPECULAR
                     float NdotH = dot(n, normalize(s.direction + toCamera));
                     specular += radiance * (smoothstep(specularCos - specularEdge, specularCos + specularEdge, NdotH) * onLit);
@@ -166,11 +185,12 @@ void main() {
                 light += v_vertexLight;
             #endif
         #else
-            // vertex mode: band the interpolated light, keeping its colour
-            float intensity = dot(v_vertexLight, vec3(0.2126, 0.7152, 0.0722));
-            float x = min(intensity, 1.0);
-            light = v_vertexAmbient + v_vertexLight * (toonBand(x) / max(x, 1e-3));
-            lit = toonLit(x);
+            // vertex mode: the vertex lights' n.l is their diffuse over their radiance
+            // facing them; banded as per pixel, times that radiance
+            const vec3 luminance = vec3(0.2126, 0.7152, 0.0722);
+            float x = clamp(dot(v_vertexLight, luminance) / max(dot(v_toonPeak.rgb, luminance), 1e-6), 0.0, 1.0);
+            light = v_vertexAmbient + v_toonPeak.rgb * toonBand(x);
+            lit = toonLit(x) * v_toonPeak.a;
         #endif
 
         lit = clamp(lit, 0.0, 1.0);
