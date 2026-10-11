@@ -16,9 +16,23 @@ color: #0000ffff;
 color: #008000ff;
 --html-current-color: #008000ff;
 }
-#htmlui-root :is(.x) {
+#htmlui-root :is(.x, :has(.y)) {
 color: #ffc0cbff;
 --html-current-color: #ffc0cbff;
+}
+#htmlui-root .list:has(> li.selected) {
+border-top-width: 1px;
+border-top-style: solid;
+border-top-color: currentcolor;
+border-right-width: 1px;
+border-right-style: solid;
+border-right-color: currentcolor;
+border-bottom-width: 1px;
+border-bottom-style: solid;
+border-bottom-color: currentcolor;
+border-left-width: 1px;
+border-left-style: solid;
+border-left-color: currentcolor;
 }
 #htmlui-root :is(::before, .z) {
 color: #808080ff;

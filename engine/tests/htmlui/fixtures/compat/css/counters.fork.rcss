@@ -1,0 +1,14 @@
+#htmlui-root ol {
+counter-reset: list-item;
+}
+#htmlui-root li {
+counter-increment: list-item;
+}
+#htmlui-root .custom {
+counter-reset: section 3;
+counter-increment: section;
+counter-set: section 1;
+}
+#htmlui-root .none {
+counter-reset: none;
+}

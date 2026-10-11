@@ -296,6 +296,8 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 {
 	RMLUI_ASSERT(is_vertically_positioned && !is_closed);
 
+	const bool collapsed_line = CanCollapseLine();
+
 	// Horizontal alignment using available space on our line.
 	if (box_cursor < line_width)
 	{
@@ -326,6 +328,8 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 			fragment.layout_width,
 			fragment.split_left,
 			fragment.split_right,
+			collapsed_line,
+			line_position.y - offset_parent_position.y,
 		};
 		fragment.box->Submit(placed_fragment);
 	}

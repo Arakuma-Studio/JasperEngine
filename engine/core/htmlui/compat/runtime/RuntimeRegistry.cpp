@@ -66,6 +66,11 @@ void jasperengine::htmlui::compat::registerRuntime(){
     CompatProperties::registerAll();
     SvgElementHook::install();
 
+    // the pseudo-classes FocusTracker sets: the fork drops selectors with unknown ones (phase 3),
+    // and compat writes them while FocusPseudoClasses is absent (forced off in tests)
+    Rml::Factory::RegisterPseudoClass(FocusTracker::kFocus);
+    Rml::Factory::RegisterPseudoClass(FocusTracker::kFocusVisible);
+
     // decorators (§3.11.3); the names p2-css writes
     r.layer = std::make_unique<HtmlLayerDecoratorInstancer>();
     r.shape = std::make_unique<HtmlShapeDecoratorInstancer>();
@@ -93,6 +98,7 @@ void jasperengine::htmlui::compat::releaseRuntime(){
     Runtime& r = runtime();
     FocusTracker::reset();
     AnimationFill::reset();
+    HtmlListItemElement::resetMarkerEmulation();
     SvgElementHook::uninstall();
     CompatProperties::reset();
     r.layer.reset();
@@ -103,9 +109,12 @@ void jasperengine::htmlui::compat::releaseRuntime(){
 }
 
 void jasperengine::htmlui::compat::updateRuntime(Rml::Context* context){
-    // phase 3's FocusPseudoClasses and AnimationLonghands turn these off (§3.6): the gates
-    // go here when the features exist
-    FocusTracker::update(context);
+    // phase 3's FocusPseudoClasses and AnimationLonghands turn these off (§3.6): with the fork's
+    // leaf-only :focus, :focus-within and :focus-visible the selectors pass through and nothing
+    // tracks the focus
+    static const bool trackFocus = !ForkFeatures::present().has(ForkFeature::FocusPseudoClasses);
+    if (trackFocus)
+        FocusTracker::update(context);
     // the fork keeps an animation's end values itself (animation-fill-mode, phase 3)
     static const bool fillEmulated = !ForkFeatures::present().has(ForkFeature::AnimationLonghands);
     if (fillEmulated)

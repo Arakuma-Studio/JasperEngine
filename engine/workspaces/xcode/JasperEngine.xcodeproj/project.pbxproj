@@ -1625,6 +1625,18 @@
 		48544D4C00000000000001D3 /* URL.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D1 /* URL.cpp */; };
 		48544D4C00000000000001D5 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
 		48544D4C00000000000001D6 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
+		524D4C555644AD8ECED374A2 /* PseudoElements.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556083FA32FAA82DED /* PseudoElements.cpp */; };
+		524D4C55AD1A4962699F661F /* PseudoElements.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556083FA32FAA82DED /* PseudoElements.cpp */; };
+		524D4C554BFC13846E68B456 /* ListMarker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55AB3E779BC8EF94CF /* ListMarker.cpp */; };
+		524D4C55EF3DBE312010D3B6 /* ListMarker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55AB3E779BC8EF94CF /* ListMarker.cpp */; };
+		524D4C559F344446AB0C20FD /* ElementCascade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5592698C0E49BB7A9F /* ElementCascade.cpp */; };
+		524D4C55DFCA79B0B18FDCEF /* ElementCascade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5592698C0E49BB7A9F /* ElementCascade.cpp */; };
+		524D4C55E8B8216E9475ADD3 /* CounterResolver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C558B231A2A813F3358 /* CounterResolver.cpp */; };
+		524D4C5527BC25CB46A177B7 /* CounterResolver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C558B231A2A813F3358 /* CounterResolver.cpp */; };
+		524D4C55BE06ADB4B3545726 /* ContentValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5521C788CE3DCA1844 /* ContentValue.cpp */; };
+		524D4C5572FF4A1C74C32DF8 /* ContentValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5521C788CE3DCA1844 /* ContentValue.cpp */; };
+		524D4C55943CE355FCCC912F /* Cascade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C550718B218AB78A43D /* Cascade.cpp */; };
+		524D4C55CDEC91C3E4A06878 /* Cascade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C550718B218AB78A43D /* Cascade.cpp */; };
 		524D4C554284DC5821E2199D /* LayoutProperties.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55D4B6A5AF3E097BDF /* LayoutProperties.cpp */; };
 		524D4C557ECF139566AA9FCC /* LayoutProperties.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55D4B6A5AF3E097BDF /* LayoutProperties.cpp */; };
 		524D4C55B82C8E8E23E956B5 /* ShorthandOrigin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C556B00709877FF3A6D /* ShorthandOrigin.cpp */; };
@@ -4736,6 +4748,12 @@
 		48544D4C00000000000001CE /* TypeConverter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TypeConverter.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D1 /* URL.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = URL.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D4 /* Variant.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Variant.cpp; sourceTree = "<group>"; };
+		524D4C556083FA32FAA82DED /* PseudoElements.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PseudoElements.cpp; sourceTree = "<group>"; };
+		524D4C55AB3E779BC8EF94CF /* ListMarker.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ListMarker.cpp; sourceTree = "<group>"; };
+		524D4C5592698C0E49BB7A9F /* ElementCascade.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementCascade.cpp; sourceTree = "<group>"; };
+		524D4C558B231A2A813F3358 /* CounterResolver.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CounterResolver.cpp; sourceTree = "<group>"; };
+		524D4C5521C788CE3DCA1844 /* ContentValue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContentValue.cpp; sourceTree = "<group>"; };
+		524D4C550718B218AB78A43D /* Cascade.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Cascade.cpp; sourceTree = "<group>"; };
 		524D4C55D4B6A5AF3E097BDF /* LayoutProperties.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LayoutProperties.cpp; sourceTree = "<group>"; };
 		524D4C556B00709877FF3A6D /* ShorthandOrigin.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShorthandOrigin.cpp; sourceTree = "<group>"; };
 		524D4C55879CBFB6B5AE6A46 /* ShorthandFont.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShorthandFont.cpp; sourceTree = "<group>"; };
@@ -8881,6 +8899,12 @@
 				524D4C55879CBFB6B5AE6A46 /* ShorthandFont.cpp */,
 				524D4C556B00709877FF3A6D /* ShorthandOrigin.cpp */,
 				524D4C55D4B6A5AF3E097BDF /* LayoutProperties.cpp */,
+				524D4C550718B218AB78A43D /* Cascade.cpp */,
+				524D4C5521C788CE3DCA1844 /* ContentValue.cpp */,
+				524D4C558B231A2A813F3358 /* CounterResolver.cpp */,
+				524D4C5592698C0E49BB7A9F /* ElementCascade.cpp */,
+				524D4C55AB3E779BC8EF94CF /* ListMarker.cpp */,
+				524D4C556083FA32FAA82DED /* PseudoElements.cpp */,
 			);
 			name = Core;
 			path = Source/Core;
@@ -12832,6 +12856,12 @@
 				48544D4C00000000000001CF /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D2 /* URL.cpp in Sources */,
 				48544D4C00000000000001D5 /* Variant.cpp in Sources */,
+				524D4C555644AD8ECED374A2 /* PseudoElements.cpp in Sources */,
+				524D4C554BFC13846E68B456 /* ListMarker.cpp in Sources */,
+				524D4C559F344446AB0C20FD /* ElementCascade.cpp in Sources */,
+				524D4C55E8B8216E9475ADD3 /* CounterResolver.cpp in Sources */,
+				524D4C55BE06ADB4B3545726 /* ContentValue.cpp in Sources */,
+				524D4C55943CE355FCCC912F /* Cascade.cpp in Sources */,
 				524D4C554284DC5821E2199D /* LayoutProperties.cpp in Sources */,
 				524D4C55B82C8E8E23E956B5 /* ShorthandOrigin.cpp in Sources */,
 				524D4C55F980B3B6D95D36CE /* ShorthandFont.cpp in Sources */,
@@ -13070,6 +13100,12 @@
 				48544D4C00000000000001D0 /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D3 /* URL.cpp in Sources */,
 				48544D4C00000000000001D6 /* Variant.cpp in Sources */,
+				524D4C55AD1A4962699F661F /* PseudoElements.cpp in Sources */,
+				524D4C55EF3DBE312010D3B6 /* ListMarker.cpp in Sources */,
+				524D4C55DFCA79B0B18FDCEF /* ElementCascade.cpp in Sources */,
+				524D4C5527BC25CB46A177B7 /* CounterResolver.cpp in Sources */,
+				524D4C5572FF4A1C74C32DF8 /* ContentValue.cpp in Sources */,
+				524D4C55CDEC91C3E4A06878 /* Cascade.cpp in Sources */,
 				524D4C557ECF139566AA9FCC /* LayoutProperties.cpp in Sources */,
 				524D4C55A7C54E0F3C860DC4 /* ShorthandOrigin.cpp in Sources */,
 				524D4C55A7B337346785F567 /* ShorthandFont.cpp in Sources */,

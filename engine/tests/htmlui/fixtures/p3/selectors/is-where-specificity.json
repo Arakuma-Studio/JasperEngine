@@ -1,0 +1,4 @@
+{
+ "comment": ":is() and :where() (spec 3.5.2): :is() has the specificity of its most specific argument whichever matched (#t1, #t3 nested, #t4 type/class mix), :where() has none (#t2: an earlier .c wins; #t5 and #t9a: the later equal rule wins); selector lists inside :is() (#t6, #t7) and :is() inside a complex selector (#t8a). No #e02020 anywhere.",
+ "viewport": [260, 110]
+}

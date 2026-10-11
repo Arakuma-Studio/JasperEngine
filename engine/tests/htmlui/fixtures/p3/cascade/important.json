@@ -1,0 +1,4 @@
+{
+ "comment": "!important (spec 3.4.1): author !important beats a later id rule, a later sheet and a non-important inline style; between two !important declarations specificity decides; inline !important beats author !important; !important on padding/margin shorthands marks every longhand (#i6 is 40x40 at 14,76); on var() values and custom properties; '! important' and '!IMPORTANT' spellings. No box may be #e02020.",
+ "viewport": [300, 140]
+}

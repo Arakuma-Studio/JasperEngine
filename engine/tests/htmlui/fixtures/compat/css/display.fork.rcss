@@ -50,7 +50,7 @@ display: inline-grid;
 display: contents;
 }
 #htmlui-root .li {
-display: block;
+display: list-item;
 }
 #htmlui-root .caption {
 display: block;

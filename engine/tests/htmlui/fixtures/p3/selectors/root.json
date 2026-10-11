@@ -1,0 +1,4 @@
+{
+ "comment": ":root (spec 3.5.1): matches the html element only, with a pseudo-class's specificity (its background #f0e8d0 and --a beat the later html rule); custom properties declared on :root and html reach the boxes through var(); div:root and body:root never match; #r4:not(:root) matches.",
+ "viewport": [200, 60]
+}

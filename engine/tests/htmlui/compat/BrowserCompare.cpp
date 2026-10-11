@@ -533,6 +533,7 @@ struct BrowserPage::State {
     Options options;
     std::unique_ptr<RenderTestContext> render;
     Rml::ElementDocument* document = nullptr;
+    bool markersHidden = false;   // a render without text hid the symbol markers
     std::shared_ptr<const hc::CompatDocument> compiled;
     bool gpu = false;
 };
@@ -699,11 +700,36 @@ bool BrowserPage::applyStates(const ReferenceLayout& reference, std::string* err
     return true;
 }
 
+namespace {
+
+    // The fork's symbol markers (disc, circle, square, disclosure triangles: shapes, not glyphs)
+    // are text in CSS, painted with the text's color: a render without text hides them, as
+    // the reference's transparent text fill does. An image marker stays.
+    void showSymbolMarkers(Rml::Element* element, bool show){
+        if (!element)
+            return;
+        if (Rml::Element* marker = element->GetPseudoElement(Rml::PseudoElementType::Marker)){
+            const bool image = marker->GetNumChildren() > 0 && marker->GetChild(0)->GetTagName() == "img";
+            if (show || image)
+                marker->RemoveProperty(Rml::PropertyId::Visibility);
+            else
+                marker->SetProperty(Rml::PropertyId::Visibility, Rml::Property(Rml::Style::Visibility::Hidden));
+        }
+        for (int i = 0; i < element->GetNumChildren(); i++)
+            showSymbolMarkers(element->GetChild(i), show);
+    }
+
+}
+
 bool BrowserPage::render(Image& image, bool withText){
     image = Image();
     if (!valid())
         return false;
     HtmlUI::getFontEngine().setRenderTextForTesting(withText);
+    if (!withText || state->markersHidden){
+        showSymbolMarkers(state->document, withText);
+        state->markersHidden = !withText;
+    }
     bool drawn = false;
     // the UI shader variants compile one per frame on the first frames
     for (int i = 0; i < 40 && !drawn; i++)

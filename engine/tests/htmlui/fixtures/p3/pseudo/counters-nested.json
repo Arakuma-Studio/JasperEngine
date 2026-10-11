@@ -1,0 +1,4 @@
+{
+ "comment": "Counters (spec 3.6.3) in Ahem, so values show as widths: nested counters(item, \".\", upper-roman) I, I.I, I.II, I.II.I, II (#c1) and counters(n, \"-\") (#c1b); counter(r, upper-roman) 1..8 (#c2: 1,2,3,2,1,2,3,4 squares); lower-alpha from 25 with a counter-reset on an item (#c3: y z aa ab a ac, Chromium follows CSS Lists 3: the item after the reset continues the list's counter because the parent already has one named a); decimal-leading-zero with counter-increment 95 and counter-set -4 (#c4: 08 09 10 105 -4 -3, the pad counts the sign); an increment without reset (#c5: 3 6 9 12); a reset on an item reaching its following siblings when the parent has no such counter (#c6: 1 11 12 13).",
+ "viewport": [330, 150]
+}

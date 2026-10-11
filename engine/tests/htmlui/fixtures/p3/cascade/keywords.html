@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>cascade: inherit, initial, unset</title>
+<style>
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  .cell { position: absolute; font-family: "Ahem"; font-size: 10px; line-height: 10px; }
+  .red { color: #e02020; background-color: #e02020; }
+
+  /* 1. color (inherited): inherit and unset take the parent's color, initial is black */
+  #k1 { left: 10px; top: 10px; width: 60px; height: 40px; color: #2060a0; background-color: #e0e0e0; }
+  #k1a { display: block; color: inherit; background-color: transparent; }
+  #k1b { display: block; color: unset; background-color: transparent; }
+  #k1c { display: block; color: initial; background-color: transparent; }
+
+  /* 2. font-size: inherit takes the parent's computed size (10px), not its 0.5em again;
+        initial is medium (16px) */
+  #k2 { left: 80px; top: 10px; width: 60px; height: 50px; font-size: 20px; line-height: 20px; color: #806020; background-color: #e0e0e0; }
+  #k2a { font-size: 0.5em; line-height: 10px; }
+  #k2b { font-size: inherit; line-height: 10px; }
+  #k2c { font-size: initial; line-height: 16px; }
+
+  /* 3. width: inherit takes the computed 50%, resolved again against the child: 160 -> 80 -> 40 */
+  #k3 { left: 150px; top: 10px; width: 160px; height: 30px; background-color: #e0e0e0; }
+  #k3a { width: 50%; background-color: #6080c0; }
+  #k3b { width: inherit; height: 10px; background-color: #203060; }
+
+  /* 4. padding: inherit (non-inherited shorthand) */
+  #k4 { left: 10px; top: 90px; padding: 4px 8px; background-color: #c0c0c0; }
+  #k4a { padding: inherit; background-color: #60a060; }
+  #k4b { width: 10px; height: 10px; background-color: #204020; }
+
+  /* 5. background-color: inherit: the grandchild overflows its parent, so its own color shows */
+  #k5 { left: 80px; top: 90px; width: 60px; height: 40px; background-color: #c0c0c0; }
+  #k5a { width: 20px; height: 20px; background-color: #c08020; }
+  #k5b { width: 50px; height: 10px; }
+  #k5b.red { background-color: inherit; }
+
+  /* 6. margin: unset is initial (0) for a non-inherited property */
+  .m10 { margin: 10px; }
+  #k6w { left: 150px; top: 90px; width: 60px; background-color: #c0c0c0; }
+  #k6 { width: 20px; height: 20px; margin: unset; background-color: #a040a0; }
+
+  /* 7. custom properties: --x: initial is the guaranteed-invalid value, so var() takes the
+        fallback; --y: inherit takes the parent's value */
+  :root { --x: #e02020; }
+  #k7 { left: 220px; top: 90px; width: 40px; height: 20px; --x: initial; background-color: var(--x, #20a040); }
+  #k7w { left: 270px; top: 90px; width: 40px; height: 40px; --y: #6040c0; background-color: #c0c0c0; }
+  #k7b { width: 20px; height: 20px; --y: #e02020; --y: inherit; background-color: var(--y, #e02020); }
+
+  /* 8. width: initial is auto (fills the 60px container); background-color: initial and unset
+        are transparent (the container's #a0c0e0 shows) */
+  #k8w { left: 10px; top: 160px; width: 60px; background-color: #a0c0e0; }
+  .narrow { width: 20px; height: 10px; background-color: #e02020; }
+  #k8a { width: initial; background-color: #40a0a0; }
+  #k8b { background-color: initial; }
+  #k8c { background-color: unset; }
+
+  /* 9. height: inherit (px) and display: inherit on a span whose parent is a block */
+  #k9 { left: 80px; top: 160px; width: 60px; height: 30px; background-color: #c0c0c0; }
+  #k9a { display: inherit; width: 30px; height: inherit; background-color: #4060a0; }
+</style>
+</head>
+<body>
+<div id="k1" class="cell"><span id="k1a" class="red">XXX</span><span id="k1b" class="red">XX</span><span id="k1c" class="red">XXXX</span></div>
+<div id="k2" class="cell"><div id="k2a"><div id="k2b">XXX</div></div><div id="k2c">XX</div></div>
+<div id="k3" class="cell"><div id="k3a"><div id="k3b"></div></div></div>
+<div id="k4" class="cell"><div id="k4a"><div id="k4b"></div></div></div>
+<div id="k5" class="cell"><div id="k5a"><div id="k5b" class="red"></div></div></div>
+<div id="k6w" class="cell"><div id="k6" class="m10"></div></div>
+<div id="k7" class="cell"></div>
+<div id="k7w" class="cell"><div id="k7b"></div></div>
+<div id="k8w" class="cell"><div id="k8a" class="narrow"></div><div id="k8b" class="narrow"></div><div id="k8c" class="narrow"></div></div>
+<div id="k9" class="cell"><span id="k9a"></span></div>
+</body>
+</html>

@@ -47,6 +47,8 @@ namespace jasperengine::htmlui::compat {
         // ForkFeature::Calc they are checked and kept; otherwise (compat decorator arguments,
         // values a rewrite reads token by token) they are folded as without the feature
         bool calcNative = false;
+        // attr() is kept: 'content' with the fork's PseudoElements (the originating element's attribute)
+        bool attrNative = false;
         // the value is written where the fork computes vmin, vmax, ch, ex, turn, grad and the
         // s/l/d viewport units itself (an RmlUi property that reads it as written; not custom
         // properties, which compat's decorators may read): with ForkFeature::ExtraUnits they stay

@@ -1,6 +1,8 @@
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
+#include "Cascade.h"
+#include "ContentValue.h"
 #include "GridStyleValues.h"
 #include "IdNameMap.h"
 #include "LayoutProperties.h"
@@ -304,6 +306,19 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	RegisterParser("aspect_ratio", &aspect_ratio_parser);
 
 	// -- Cascade (p3-cascade) --
+	{
+		// Generated content (ContentValue.h); the instances live as long as the program, as the default parsers do.
+		static PropertyParserContent content_parser;
+		static PropertyParserQuotes quotes_parser;
+		static PropertyParserCounterList counter_list_parser;
+		static PropertyParserListStyleType list_style_type_parser;
+		static PropertyParserUrl url_parser;
+		RegisterParser("content", &content_parser);
+		RegisterParser("quotes", &quotes_parser);
+		RegisterParser("counter_list", &counter_list_parser);
+		RegisterParser("list_style_type", &list_style_type_parser);
+		RegisterParser("url", &url_parser);
+	}
 
 	// -- Paint (p3-paint) --
 
@@ -561,6 +576,37 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	}
 
 	// -- Cascade (p3-cascade) --
+	{
+		// 'all' takes CSS-wide keywords only (Cascade::ParseAllShorthand), which set every registered property but the
+		// '-rmlui-*' ones, whenever they are registered. Its items are the properties registered up to here: what a
+		// var() value of 'all' and GetShorthandUnderlyingProperties reach.
+		String all_properties;
+		for (const PropertyId id : properties.GetRegisteredProperties())
+		{
+			const String& name = GetPropertyName(id);
+			if (StringUtilities::StartsWith(name, "-rmlui-"))
+				continue;
+			if (!all_properties.empty())
+				all_properties += ", ";
+			all_properties += name;
+		}
+		RegisterShorthand(ShorthandId::All, "all", all_properties, ShorthandType::Custom);
+		properties.SetShorthandParser(ShorthandId::All, &Cascade::ParseAllShorthand);
+	}
+	// Generated content and lists (3.6): pseudo-elements, counters, list markers.
+	RegisterProperty(PropertyId::Content, "content", "normal", false, true).AddParser("keyword", "normal, none").AddParser("content");
+	RegisterProperty(PropertyId::Quotes, "quotes", "auto", true, false).AddParser("keyword", "auto, none").AddParser("quotes");
+	RegisterProperty(PropertyId::CounterReset, "counter-reset", "none", false, false).AddParser("keyword", "none").AddParser("counter_list", "reversed");
+	RegisterProperty(PropertyId::CounterIncrement, "counter-increment", "none", false, false).AddParser("keyword", "none").AddParser("counter_list");
+	RegisterProperty(PropertyId::CounterSet, "counter-set", "none", false, false).AddParser("keyword", "none").AddParser("counter_list");
+	RegisterProperty(PropertyId::ListStyleType, "list-style-type", "disc", true, true)
+		.AddParser("list_style_type",
+			"disc, circle, square, decimal, decimal-leading-zero, lower-alpha, lower-latin, upper-alpha, upper-latin, lower-roman, upper-roman, "
+			"lower-greek, disclosure-open, disclosure-closed, none");
+	RegisterProperty(PropertyId::ListStylePosition, "list-style-position", "outside", true, true).AddParser("keyword", "outside, inside");
+	RegisterProperty(PropertyId::ListStyleImage, "list-style-image", "none", true, true).AddParser("keyword", "none").AddParser("url");
+	RegisterShorthand(ShorthandId::ListStyle, "list-style", "list-style-type, list-style-position, list-style-image", ShorthandType::Custom);
+	properties.SetShorthandParser(ShorthandId::ListStyle, &ParseListStyleShorthand);
 
 	// -- Paint (p3-paint) --
 

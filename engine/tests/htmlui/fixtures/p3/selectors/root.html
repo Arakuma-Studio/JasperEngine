@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>selectors: :root</title>
+<style>
+  html, body { margin: 0; }
+  /* :root has a pseudo-class's specificity (0,1,0): it beats the later html rule (0,0,1) */
+  :root { --a: #2060a0; --b: #a02060; --size: 30px; background-color: #f0e8d0; }
+  html { --a: #e02020; background-color: #e02020; --c: #20a060; }
+  /* :root matches only the document element */
+  div:root, body:root, :root > body:root { background-color: #e02020; }
+  :root > body > #r1 { background-color: var(--a); }
+  :root #r2 { background-color: var(--b); width: var(--size); }
+  html:root #r3 { background-color: var(--c); }
+  #r4:not(:root) { background-color: #806020; }
+  .box { position: absolute; top: 10px; width: 40px; height: 40px; background-color: #e02020; }
+  #r1 { left: 10px; }
+  #r2 { left: 60px; }
+  #r3 { left: 100px; }
+  #r4 { left: 150px; }
+</style>
+</head>
+<body>
+<div id="r1" class="box"></div><div id="r2" class="box"></div><div id="r3" class="box"></div><div id="r4" class="box"></div>
+</body>
+</html>

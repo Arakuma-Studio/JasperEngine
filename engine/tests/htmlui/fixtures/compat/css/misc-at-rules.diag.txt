@@ -5,7 +5,7 @@ compat/css/misc-at-rules.css:5:1: warning: '@document' is not supported; dropped
 compat/css/misc-at-rules.css:6:1: warning: '@-moz-document' is not supported; dropped with its contents (fix: put the rules in the stylesheet of the document they target) [HTMLUI-AT-0001]
 compat/css/misc-at-rules.css:7:1: info: '@page' has no effect in the engine; dropped [HTMLUI-AT-0001]
 compat/css/misc-at-rules.css:8:1: info: '@namespace' has no effect in the engine; dropped [HTMLUI-AT-0001]
-compat/css/misc-at-rules.css:9:1: info: '@counter-style' has no effect in the engine; dropped [HTMLUI-AT-0001]
+compat/css/misc-at-rules.css:9:1: info: '@counter-style' has no effect in the engine; dropped (fix: use one of: decimal, decimal-leading-zero, lower/upper-alpha/latin, lower/upper-roman, lower-greek, disc, circle, square, none) [HTMLUI-AT-0001]
 compat/css/misc-at-rules.css:10:1: info: '@font-feature-values' has no effect in the engine; dropped [HTMLUI-AT-0001]
 compat/css/misc-at-rules.css:11:1: info: '@font-palette-values' has no effect in the engine; dropped [HTMLUI-AT-0001]
 compat/css/misc-at-rules.css:12:1: info: '@view-transition' has no effect in the engine; dropped [HTMLUI-AT-0001]

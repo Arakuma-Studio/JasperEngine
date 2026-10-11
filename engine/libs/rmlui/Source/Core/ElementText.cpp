@@ -196,7 +196,13 @@ void ElementText::SetText(const String& _text)
 		text = _text;
 
 		if (dirty_layout_on_change)
+		{
 			DirtyLayout();
+			// White space that collapses away is given no box by the layout (P2-8), which then places no line: the lines
+			// of the previous text would stay drawn.
+			if (!lines.empty() && std::all_of(text.begin(), text.end(), [](char c) { return StringUtilities::IsWhitespace(c); }))
+				ClearLines();
+		}
 	}
 }
 
@@ -804,7 +810,8 @@ void ElementText::GenerateDecoration(Mesh& under, Mesh& over, const FontFaceHand
 		if (property->unit != Unit::KEYWORD)
 			underline_top = Math::Round(ResolveLengthPercentage(LengthPercentageValueOf(*property), *this, font_size));
 	}
-	const float ascent = Math::Round(metrics.ascent);
+	float ascent, descent;
+	LayoutDetails::GetIntegerAscentDescent(metrics, ascent, descent);
 	// overline: on top of the ascent; line-through: centred a third of the ascent above the baseline
 	const float overline_top = -ascent - thickness;
 	const float line_through_top = -ascent / 3.f - 0.5f * thickness;

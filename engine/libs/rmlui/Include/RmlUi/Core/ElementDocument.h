@@ -56,6 +56,13 @@ public:
 	/// Returns the source address of this document.
 	const String& GetSourceURL() const;
 
+	/// Sets the id of the document's target element, what CSS's :target matches (a URL fragment). Initially the fragment
+	/// of the source URL, if any.
+	/// @param[in] id The id, or empty for no target.
+	void SetTarget(const String& id);
+	/// Returns the id of the document's target element (see SetTarget).
+	const String& GetTarget() const;
+
 	/// Returns the document's compiled style sheet.
 	/// @note The style sheet may be regenerated when media query parameters change, invalidating the pointer.
 	const StyleSheet* GetStyleSheet() const override;
@@ -161,6 +168,12 @@ private:
 
 	String title;
 	String source_url;
+	String target;
+
+	// Phase 3, cascade: the document uses CSS counters (or list markers, quotes), and they must be resolved before the next
+	// layout (ElementCascade::ResolveCounters).
+	bool counters_used = false;
+	bool counters_dirty = false;
 
 	SharedPtr<StyleSheetContainer> style_sheet_container;
 
@@ -173,6 +186,7 @@ private:
 	bool position_dirty;
 
 	friend class Rml::Context;
+	friend class Rml::ElementCascade;
 	friend class Rml::Factory;
 };
 

@@ -57,6 +57,8 @@ namespace {
                name == "not" || name == "has" || name == "host" || name == "host-context";
     }
 
+    bool hasOf(const ValueList& arguments);
+
     // ---- parsing
 
     class Parser {
@@ -304,6 +306,23 @@ namespace {
                                 return false;
                             }
                             simple.selectors = std::move(*parsed);
+                        }else if ((simple.name == "nth-child" || simple.name == "nth-last-child") && hasOf(n->children)){
+                            // An+B of S: S parsed here (the An+B part stays in the arguments)
+                            ValueList tail;
+                            bool after = false;
+                            for (const ComponentValue& v : n->children){
+                                if (after)
+                                    tail.push_back(v);
+                                else if (v.isToken(TokenType::Ident) && equalsNoCase(v.token.value, "of"))
+                                    after = true;
+                            }
+                            Parser inner(tail, file);
+                            std::optional<SelectorList> parsed = inner.list(false);
+                            if (!parsed){
+                                fail(n, "invalid selector in :" + simple.name + "(An+B of S)");
+                                return false;
+                            }
+                            simple.selectors = std::move(*parsed);
                         }
                     }else{
                         fail(n, "invalid pseudo-class");
@@ -410,6 +429,9 @@ namespace {
         for (const ComponentValue& v : arguments){
             if (v.isWhitespace() || v.isToken(TokenType::Comment))
                 continue;
+            // (the 'of S' part is written from the selectors)
+            if (v.isToken(TokenType::Ident) && equalsNoCase(v.token.value, "of"))
+                break;
             if (v.isToken(TokenType::Number)){
                 if (!text.empty() && v.token.number >= 0 && text.back() != '+' && text.back() != '-')
                     text += '+';
@@ -428,6 +450,23 @@ namespace {
             if (v.isToken(TokenType::Ident) && equalsNoCase(v.token.value, "of"))
                 return true;
         }
+        return false;
+    }
+
+    // The pseudo-classes RmlUi matches as written (lowercase): the rewriter keeps them, and
+    // SelectorRewriter::scanList writes the lists that use them from their text. With the fork's
+    // FocusPseudoClasses (phase 3) the focus ones are CSS's; with SelectorsLevel4 the form states.
+    bool keptPseudoClassName(std::string_view n, const ForkFeatures& fork){
+        if (n == "hover" || n == "active" || n == "checked" || n == "disabled" || n == "placeholder-shown" || n == "scope" ||
+            n == "first-child" || n == "last-child" || n == "only-child" || n == "first-of-type" || n == "last-of-type" ||
+            n == "only-of-type" || n == "empty" || n == "selected" || n == "drag" || n == "html-focus" || n == "html-focus-visible")
+            return true;
+        if (fork.has(ForkFeature::FocusPseudoClasses) && (n == "focus" || n == "focus-visible" || n == "focus-within"))
+            return true;
+        if (fork.has(ForkFeature::SelectorsLevel4) &&
+            (n == "enabled" || n == "link" || n == "any-link" || n == "-webkit-any-link" || n == "required" || n == "optional" ||
+             n == "read-only" || n == "read-write" || n == "indeterminate" || n == "default" || n == "target"))
+            return true;
         return false;
     }
 
@@ -458,12 +497,9 @@ namespace {
         }
 
         // pseudo-classes RmlUi matches as written (pseudoClass() keeps them)
-        static bool keptPseudoClass(const SimpleSelector& simple){
+        bool keptPseudoClass(const SimpleSelector& simple) const {
             const Text& n = simple.name;
-            return !simple.function &&
-                   (n == "hover" || n == "active" || n == "checked" || n == "disabled" || n == "placeholder-shown" || n == "scope" ||
-                    n == "first-child" || n == "last-child" || n == "only-child" || n == "first-of-type" || n == "last-of-type" ||
-                    n == "only-of-type" || n == "empty" || n == "selected" || n == "drag" || n == "html-focus" || n == "html-focus-visible");
+            return !simple.function && keptPseudoClassName(n, options.fork);
         }
 
         // Would mapSelector() return the selector unchanged (and report nothing)? Types other
@@ -492,7 +528,7 @@ namespace {
                                 return false;
                             break;
                         case Kind::Attribute:
-                            if (simple.flag)
+                            if (simple.flag && !options.fork.has(ForkFeature::SelectorsLevel4))
                                 return false;
                             break;
                         case Kind::PseudoClass:
@@ -710,7 +746,7 @@ namespace {
                             break;
                         case Kind::Attribute: {
                             SimpleSelector copy = forward<Owned>(simple);
-                            if (copy.flag){
+                            if (copy.flag && !options.fork.has(ForkFeature::SelectorsLevel4)){
                                 report(codes::SelectorRewritten, &simple,
                                        std::string("attribute selector flag '") + copy.flag + "' is removed" + (copy.flag == 'i' ? "; matching is case-sensitive" : ""),
                                        "", copy.flag == 'i' ? "[attr i]" : "[attr s]", Severity::Info);
@@ -790,16 +826,87 @@ namespace {
             return s;
         }
 
+        // :has() with the fork (Has): its relative selectors mapped (no band: they are relative to the subject)
+        bool relativeList(const SimpleSelector& simple, ArenaList<SimpleSelector>& target, int depth){
+            SimpleSelector copy = simple;
+            copy.selectors.clear();
+            for (const ComplexSelector& argument : simple.selectors){
+                if (containsHas(argument)){
+                    report(codes::InvalidSelector, &simple, "':has()' inside ':has()' is invalid; the rule is dropped, as browsers drop it", "", ":has()");
+                    invalidRule = true;
+                    return false;
+                }
+                SelectorList expanded = expand(argument);
+                for (ComplexSelector& variant : expanded){
+                    bool placeholder = false, pseudo = false;
+                    if (!mapSelector(variant, placeholder, pseudo, depth + 1) || placeholder || pseudo){
+                        report(codes::UnsupportedSelector, &simple, "':has()' with an argument the engine cannot match; selector dropped",
+                               "simplify the :has() argument", ":has()");
+                        return false;
+                    }
+                    if (!resolveRoot(variant))
+                        continue;
+                    variant.relative = true;
+                    copy.selectors.push_back(std::move(variant));
+                }
+            }
+            if (copy.selectors.empty())
+                return false;   // :has() of nothing matches nothing
+            target.push_back(std::move(copy));
+            return true;
+        }
+
+        static bool containsHas(const ComplexSelector& selector){
+            for (const Compound& compound : selector.compounds){
+                for (const SimpleSelector& simple : compound.simples){
+                    if (simple.kind == Kind::PseudoClass && simple.name == "has")
+                        return true;
+                    for (const ComplexSelector& inner : simple.selectors){
+                        if (containsHas(inner))
+                            return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // :nth-child(An+B of S) with the fork (SelectorsLevel4): S (parsed with the selector) mapped like a :not() argument
+        bool nthOf(const SimpleSelector& simple, ArenaList<SimpleSelector>& target, int depth){
+            SimpleSelector copy = simple;
+            copy.selectors.clear();
+            for (const ComplexSelector& argument : simple.selectors){
+                SelectorList expanded = expand(argument);
+                for (ComplexSelector& variant : expanded){
+                    bool placeholder = false, pseudo = false;
+                    if (!mapSelector(variant, placeholder, pseudo, depth + 1) || placeholder || pseudo){
+                        report(codes::UnsupportedSelector, &simple, "':" + simple.name + "(An+B of S)' with a selector the engine cannot match; selector dropped",
+                               "add a class to the elements to count", ":nth-child(of S)");
+                        return false;
+                    }
+                    if (!resolveRoot(variant))
+                        continue;
+                    copy.selectors.push_back(std::move(variant));
+                }
+            }
+            if (copy.selectors.empty())
+                return false;
+            target.push_back(std::move(copy));
+            return true;
+        }
+
         bool pseudoClass(const SimpleSelector& simple, ArenaList<SimpleSelector>& target, int depth){
             const Text& n = simple.name;
             if (!simple.function){
-                if (n == "hover" || n == "active" || n == "checked" || n == "disabled" || n == "placeholder-shown" || n == "scope" ||
-                    n == "first-child" || n == "last-child" || n == "only-child" || n == "first-of-type" || n == "last-of-type" ||
-                    n == "only-of-type" || n == "empty" || n == "selected" || n == "drag" ||
-                    n == "html-focus" || n == "html-focus-visible"){
+                if (keptPseudoClassName(n, options.fork)){
                     target.push_back(simple);
                     return true;
                 }
+                // phase 3, SelectorsLevel4: the fork matches the form-state pseudo-classes as CSS does
+                if (options.fork.has(ForkFeature::SelectorsLevel4) && (n == "-moz-read-only" || n == "-moz-read-write")){
+                    target.push_back(makePseudo(n == "-moz-read-only" ? "read-only" : "read-write"));
+                    return true;
+                }
+                // (with FocusPseudoClasses, the SelectorsLevel4 names: keptPseudoClassName above)
                 if (n == "focus"){
                     target.push_back(makePseudo("html-focus"));
                     return true;
@@ -842,7 +949,12 @@ namespace {
                     return true;
                 }
                 if (n == "root"){
-                    target.push_back(rootMarker());
+                    // with the fork (RootIsWhere) the pseudo-class is kept next to the root element's
+                    // selector, so that ':root' weighs more than 'html' as it does in CSS
+                    SimpleSelector marker = rootMarker();
+                    if (options.fork.has(ForkFeature::RootIsWhere))
+                        marker.flag = 'p';
+                    target.push_back(marker);
                     return true;
                 }
                 if (n == "defined"){
@@ -854,6 +966,8 @@ namespace {
             }else{
                 if (n == "nth-child" || n == "nth-last-child" || n == "nth-of-type" || n == "nth-last-of-type"){
                     if (hasOf(simple.arguments)){
+                        if ((n == "nth-child" || n == "nth-last-child") && options.fork.has(ForkFeature::SelectorsLevel4))
+                            return nthOf(simple, target, depth);
                         report(codes::UnsupportedSelector, &simple, "':" + n + "(An+B of S)' is not supported; selector dropped",
                                "add a class to the elements to count", ":nth-child(of S)");
                         return false;
@@ -919,6 +1033,8 @@ namespace {
                 }
             }
             if (n == "has"){
+                if (simple.function && options.fork.has(ForkFeature::Has))
+                    return relativeList(simple, target, depth);
                 report(codes::UnsupportedSelector, &simple, "':has()' is not supported; selector dropped", "set a class from Lua", ":has()");
                 return false;
             }
@@ -988,6 +1104,14 @@ namespace {
                 return true;
             }
             if (n == "marker"){
+                // the fork's ::marker (ListMarkers); phase 2's child marker element without it
+                if (options.fork.has(ForkFeature::ListMarkers)){
+                    SimpleSelector copy = simple;
+                    copy.legacyColon = false;
+                    simples.push_back(copy);
+                    pseudoElement = true;
+                    return true;
+                }
                 appended.push_back(elementCompound("marker", '>'));
                 return true;
             }
@@ -1078,6 +1202,8 @@ namespace {
                     simples.push_back(id);
                 }
                 for (const SimpleSelector& s : compound.simples){
+                    if (s.kind == Kind::RootMarker && s.flag == 'p')
+                        simples.push_back(makePseudo("root"));
                     if (s.kind == Kind::RootMarker || s.kind == Kind::Universal)
                         continue;
                     if (s.kind == Kind::Type)
@@ -1189,11 +1315,13 @@ namespace {
                 case Kind::Class:
                 case Kind::Attribute: total += 100000; break;
                 case Kind::PseudoClass:
-                    if (s.name == "not" || s.name == "is" || s.name == "where"){
+                    if (s.name == "where"){
+                        // zero (a :where() left in a selector is the fork's, RootIsWhere)
+                    }else if (s.name == "not" || s.name == "is" || s.name == "has" || (s.name.compare(0, 4, "nth-") == 0 && !s.selectors.empty())){
                         uint32_t best = 0;
                         for (const ComplexSelector& argument : s.selectors)
                             best = std::max(best, SelectorRewriter::specificity(argument));
-                        total += best;
+                        total += best + (s.name.compare(0, 4, "nth-") == 0 ? 100000 : 0);
                     }else{
                         total += 100000;
                     }
@@ -1398,7 +1526,16 @@ namespace {
                 text += s.name;
                 if (s.function){
                     text += "(";
-                    if (!s.selectors.empty()){
+                    if (s.name.compare(0, 4, "nth-") == 0 && !s.selectors.empty()){
+                        // An+B of S
+                        text += anbText(s.arguments);
+                        text += " of ";
+                        for (size_t i = 0; i < s.selectors.size(); i++){
+                            if (i > 0)
+                                text += ", ";
+                            appendComplex(text, s.selectors[i]);
+                        }
+                    }else if (!s.selectors.empty()){
                         for (size_t i = 0; i < s.selectors.size(); i++){
                             if (i > 0)
                                 text += ", ";
@@ -1617,12 +1754,6 @@ namespace {
         return true;
     }
 
-    // the pseudo-classes Rewriter::keptPseudoClass keeps (lowercase)
-    bool keptPseudoClassName(std::string_view n){
-        return n == "hover" || n == "active" || n == "checked" || n == "disabled" || n == "placeholder-shown" || n == "scope" ||
-               n == "first-child" || n == "last-child" || n == "only-child" || n == "first-of-type" || n == "last-of-type" ||
-               n == "only-of-type" || n == "empty" || n == "selected" || n == "drag" || n == "html-focus" || n == "html-focus-visible";
-    }
 
     bool structuralPseudoClassName(std::string_view n){
         return n == "first-child" || n == "last-child" || n == "only-child" || n == "first-of-type" || n == "last-of-type" ||
@@ -1748,7 +1879,7 @@ namespace {
                     char* const nameStart = w;
                     w = writeLower(w, source.substr(i + 1, end - i - 1));
                     const std::string_view name(nameStart, (size_t)(w - nameStart));
-                    if (!keptPseudoClassName(name))
+                    if (!keptPseudoClassName(name, options.fork))
                         return nullptr;
                     specificity += 100000;
                     if (firstCompound && structuralPseudoClassName(name))

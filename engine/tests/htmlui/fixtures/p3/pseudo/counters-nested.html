@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pseudo: counters</title>
+<style>
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  /* Ahem draws every digit and letter as the same square: the counter values show as widths,
+     so each list is built for its values to have distinct lengths */
+  html, body { margin: 0; }
+  ol, ul { margin: 0; padding: 0; list-style-type: none; }
+  li { display: block; }
+  .col { position: absolute; top: 10px; font-family: "Ahem"; font-size: 10px; line-height: 10px; color: #404040; background-color: #e8e8e8; }
+
+  /* 1. nested lists: counters(item, ".", upper-roman) = I, I.I, I.II, I.II.I, II */
+  #c1 { left: 10px; width: 100px; }
+  .tree { counter-reset: item; }
+  .tree .tree { padding-left: 10px; }
+  .tree > li { counter-increment: item; }
+  .tree > li::before { content: counters(item, ".", upper-roman) " "; color: #2060c0; }
+  /* the same tree with decimal and a "-" separator: 1, 1-1, 1-2, 1-2-1, 2 (in #c1b) */
+  #c1b { left: 10px; top: 80px; width: 100px; }
+  .tree2 { counter-reset: n; }
+  .tree2 > li { counter-increment: n; }
+  .tree2 > li::before { content: counters(n, "-") ":"; color: #c02060; }
+
+  /* 2. counter(x, upper-roman) for 1..8: I II III IV V VI VII VIII */
+  #c2 { left: 120px; width: 50px; counter-reset: r; }
+  #c2 > li { counter-increment: r; }
+  #c2 > li::before { content: counter(r, upper-roman); color: #a06020; }
+
+  /* 3. lower-alpha from 25: y z aa ab, then a reset on an item: a, and the next item goes on
+        with the list's counter (ac): CSS Lists 3 counter inheritance (an element inherits a
+        preceding sibling's counter only when its parent has none of that name) */
+  #c3 { left: 180px; width: 40px; counter-reset: a 24; }
+  #c3 > li { counter-increment: a; }
+  #c3 > li::before { content: counter(a, lower-alpha); color: #20a060; }
+  #c3 > li.restart { counter-reset: a; }
+
+  /* 4. decimal-leading-zero: 08 09 10, counter-increment 95 gives 105, counter-set -4 gives -4
+        (the pad width counts the negative sign), then -3 */
+  #c4 { left: 230px; width: 50px; counter-reset: d 7; }
+  #c4 > li { counter-increment: d; }
+  #c4 > li::before { content: counter(d, decimal-leading-zero); color: #8040a0; }
+  #c4 > li.jump { counter-increment: d 95; }
+  #c4 > li.set { counter-set: d -4; }
+  /* a counter that was never reset is instantiated at 0 by the increment */
+  #c5 { left: 290px; width: 30px; }
+  #c5 > li { counter-increment: fresh 3; }
+  #c5 > li::before { content: counter(fresh); color: #206080; }
+  /* 5. a counter-reset on an item of a list without that counter reaches the following
+        siblings: 1 (instantiated by the increment), 11, 12, 13 */
+  #c6 { left: 120px; top: 100px; width: 40px; }
+  #c6 > li { counter-increment: s; }
+  #c6 > li.head { counter-reset: s 10; }
+  #c6 > li::before { content: counter(s); color: #a02060; }
+</style>
+</head>
+<body>
+<ol id="c1" class="col tree">
+  <li id="t1">X<ol class="tree"><li id="t11">X</li><li id="t12">X<ol class="tree"><li id="t121">X</li></ol></li></ol></li>
+  <li id="t2">X</li>
+</ol>
+<ol id="c1b" class="col tree2">
+  <li>X<ol class="tree2"><li>X</li><li>X<ol class="tree2"><li>X</li></ol></li></ol></li>
+  <li>X</li>
+</ol>
+<ul id="c2" class="col"><li></li><li></li><li></li><li></li><li></li><li></li><li></li><li></li></ul>
+<ul id="c3" class="col"><li></li><li></li><li></li><li></li><li class="restart"></li><li></li></ul>
+<ul id="c4" class="col"><li></li><li></li><li></li><li class="jump"></li><li class="set"></li><li></li></ul>
+<ul id="c5" class="col"><li></li><li></li><li></li><li></li></ul>
+<ul id="c6" class="col"><li></li><li class="head"></li><li></li><li></li></ul>
+</body>
+</html>

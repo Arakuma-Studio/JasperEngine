@@ -138,7 +138,7 @@ border-left-width: 1px;
 border-left-style: solid;
 border-left-color: #ff0000ff;
 }
-body#htmlui-root {
+body#htmlui-root:root {
 --line: #444444ff;
 --b: 1px solid #ff0000ff;
 }

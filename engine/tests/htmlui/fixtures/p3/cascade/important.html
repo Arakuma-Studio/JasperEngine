@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>cascade: !important</title>
+<style>
+  /* Every box is green-ish (#20a040 family) when !important is honoured, #e02020 when not. */
+  html, body { margin: 0; }
+  .box { position: absolute; width: 40px; height: 40px; background-color: #e02020; }
+
+  /* 1. author !important beats a higher-specificity (id) normal rule declared later */
+  .imp1 { background-color: #20a040 !important; }
+  #i1 { left: 10px; top: 10px; background-color: #e02020; }
+
+  /* 2. two !important declarations: the higher specificity wins, whatever the order */
+  #i2 { left: 60px; top: 10px; background-color: #208040 !important; }
+  .imp2 { background-color: #e02020 !important; }
+
+  /* 3. !important in the same rule as a later normal declaration of the same property */
+  #i3 { left: 110px; top: 10px; background-color: #40c060 !important; background-color: #e02020; }
+
+  /* 4. author !important beats a non-important inline style */
+  .imp4 { background-color: #20a080 !important; }
+  #i4 { left: 160px; top: 10px; }
+
+  /* 5. inline !important beats author !important (even an id rule) */
+  #i5 { left: 210px; top: 10px; background-color: #e02020 !important; }
+
+  /* 6. !important on shorthands: padding and margin longhands all become important */
+  .imp6 { padding: 10px !important; margin: 6px 0 0 4px !important; }
+  #i6 { left: 10px; top: 70px; width: 20px; height: 20px; padding: 2px; padding-left: 0; margin: 0; background-color: #2060a0; }
+
+  /* 7. !important on a value with var(); the custom property itself may be overridden normally */
+  :root { --good: #a0a020; --w: 30px; }
+  .imp7 { background-color: var(--good) !important; width: var(--w) !important; }
+  #i7 { left: 70px; top: 70px; background-color: #e02020; width: 60px; }
+
+  /* 8. spelling: whitespace after "!" and upper case */
+  .imp8 { background-color: #6040c0 ! important; }
+  #i8 { left: 150px; top: 70px; background-color: #e02020; }
+  .imp9 { height: 20px !IMPORTANT; background-color: #c06020; }
+  #i9 { left: 200px; top: 70px; height: 60px; }
+
+  /* 10. a custom property declared !important wins over a more specific normal one */
+  .imp10 { --tone: #20a0a0 !important; }
+  #i10 { left: 250px; top: 70px; --tone: #e02020; background-color: var(--tone); }
+</style>
+<style>
+  /* a second sheet: its normal rules cannot override the first sheet's !important ones */
+  .imp1 { background-color: #e02020; }
+  #i4 { background-color: #e02020; }
+</style>
+</head>
+<body>
+<div id="i1" class="box imp1"></div>
+<div id="i2" class="box imp2"></div>
+<div id="i3" class="box"></div>
+<div id="i4" class="box imp4" style="background-color: #e02020"></div>
+<div id="i5" class="box" style="background-color: #2080c0 !important"></div>
+<div id="i6" class="box imp6"></div>
+<div id="i7" class="box imp7"></div>
+<div id="i8" class="box imp8"></div>
+<div id="i9" class="box imp9"></div>
+<div id="i10" class="box imp10"></div>
+</body>
+</html>

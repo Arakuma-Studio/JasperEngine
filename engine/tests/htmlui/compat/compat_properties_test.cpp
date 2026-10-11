@@ -26,12 +26,14 @@ namespace {
         const char* name;
         bool inherited;
         const char* defaultText;   // "" = unset
+        bool fork = false;         // the fork's own property (phase 3): found registered, not registered here
     };
 
     const Expected kExpected[] = {
-        {CompatProperty::ListStyleType, "list-style-type", true, "disc"},
-        {CompatProperty::ListStylePosition, "list-style-position", true, "outside"},
-        {CompatProperty::ListStyleImage, "list-style-image", true, "none"},
+        // list-style-*: the fork's since its ListMarkers (p3-cascade)
+        {CompatProperty::ListStyleType, "list-style-type", true, "disc", true},
+        {CompatProperty::ListStylePosition, "list-style-position", true, "outside", true},
+        {CompatProperty::ListStyleImage, "list-style-image", true, "none", true},
         {CompatProperty::ObjectFit, "object-fit", false, "fill"},
         {CompatProperty::ObjectPosition, "object-position", false, "50% 50%"},
         {CompatProperty::ImageRendering, "image-rendering", true, "auto"},
@@ -56,12 +58,13 @@ TEST_F(CompatPropertiesTest, EveryPropertyIsRegistered){
     std::vector<std::string> names;
     for (const Expected& expected : kExpected){
         EXPECT_STREQ(CompatProperties::name(expected.property), expected.name);
-        EXPECT_TRUE(CompatProperties::registeredByCompat(expected.property)) << expected.name;
+        EXPECT_EQ(CompatProperties::registeredByCompat(expected.property), !expected.fork) << expected.name;
         const Rml::PropertyDefinition* definition = Rml::StyleSheetSpecification::GetProperty(expected.name);
         ASSERT_NE(definition, nullptr) << expected.name;
         EXPECT_EQ(definition->IsInherited(), expected.inherited) << expected.name;
         EXPECT_EQ(definition->GetId(), CompatProperties::id(expected.property)) << expected.name;
-        names.push_back(expected.name);
+        if (!expected.fork)
+            names.push_back(expected.name);
     }
     EXPECT_EQ(CompatProperties::registeredNames(), names);
     // a second call changes nothing

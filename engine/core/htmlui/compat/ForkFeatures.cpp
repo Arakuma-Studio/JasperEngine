@@ -22,13 +22,13 @@ namespace {
         true,    // Calc (phase 3, p3-base: upstream PR #983; docs/html-ui/FORK.md)
         false,   // BorderStyle
         false,   // PercentRadius
-        false,   // PseudoElements
-        false,   // RootIsWhere
+        true,    // PseudoElements (phase 3, p3-cascade: docs/html-ui/FORK.md)
+        true,    // RootIsWhere (phase 3, p3-cascade: docs/html-ui/FORK.md)
         true,    // Fixed (phase 3, p3-layout: position: fixed against the viewport; docs/html-ui/FORK.md P3-L8)
         false,   // GroupOpacity
         true,    // TimingFunctions (phase 3, p3-animation: CSS easing functions; docs/html-ui/FORK.md P3-A1)
-        false,   // Important
-        false,   // CssWideKeywords
+        true,    // Important (phase 3, p3-cascade: docs/html-ui/FORK.md)
+        true,    // CssWideKeywords (phase 3, p3-cascade: docs/html-ui/FORK.md)
         true,    // Grid (phase 3, p3-grid: CSS Grid, a port of Taffy; docs/html-ui/FORK.md P3-G1..P3-G3)
         true,    // TextShadow (phase 3, p3-text: native text-shadow; docs/html-ui/FORK.md)
         true,    // TextProperties (phase 3, p3-text: word-spacing, white-space longhands, overflow-wrap, text-decoration-*, ...)
@@ -39,6 +39,10 @@ namespace {
         true,    // LineHeightNormal (phase 3, p3-values: rmlui: line-height: normal)
         true,    // Sticky (phase 3, p3-layout: position: sticky, overflow: clip; docs/html-ui/FORK.md P3-L1, P3-L8)
         true,    // BoxParity (phase 3, p3-layout: flex, block and sizing parity; docs/html-ui/FORK.md P3-L2..P3-L10)
+        true,    // Has (phase 3, p3-cascade)
+        true,    // FocusPseudoClasses (phase 3, p3-cascade)
+        true,    // SelectorsLevel4 (phase 3, p3-cascade)
+        true,    // ListMarkers (phase 3, p3-cascade)
     };
 
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {
@@ -48,6 +52,7 @@ namespace {
         "AnimationLonghands", "IndividualTransforms",
         "CurrentColor", "ExtraUnits", "LineHeightNormal",
         "Sticky", "BoxParity",
+        "Has", "FocusPseudoClasses", "SelectorsLevel4", "ListMarkers",
     };
 
     constexpr uint64_t bitOf(ForkFeature feature){
@@ -88,6 +93,8 @@ namespace {
         bool isSelector = false;
         bool rootSelector = false;
         bool fixed = false;
+        bool focusPseudoClasses = false;
+        bool listMarkers = false;
         bool sticky = false;
         bool marginCollapse = false;
     };
@@ -115,6 +122,8 @@ div { display: block; }
 <div id="a"></div>
 <div id="b"></div>
 <div id="s"><div id="tall"></div><div id="f"></div></div>
+<div id="fw"><div id="fc"></div></div>
+<div id="lm" style="display: list-item; list-style-type: decimal;"></div>
 <div id="st"><div id="sticky"></div><div id="st-tall"></div></div>
 <div id="mc-root"><div id="mc"><div id="mc-child"></div></div></div>
 </body>
@@ -162,11 +171,28 @@ div { display: block; }
                 // margin collapsing: #mc's top margin collapses with its first child's, so #mc starts 4px down
                 result.marginCollapse = std::fabs(mc->GetAbsoluteTop() - 4.0f) < 0.5f;
             }
+            // a list item generates its ::marker
+            if (Rml::Element* item = document->GetElementById("lm"))
+                result.listMarkers = item->GetPseudoElement(Rml::PseudoElementType::Marker) != nullptr;
+            // :focus on the focused element only, :focus-within on its ancestors
+            Rml::Element* within = document->GetElementById("fw");
+            Rml::Element* focused = document->GetElementById("fc");
+            if (within && focused && focused->Focus()){
+                result.focusPseudoClasses = focused->IsPseudoClassSet("focus") && !within->IsPseudoClassSet("focus") &&
+                                            within->IsPseudoClassSet("focus-within");
+            }
             document->Close();
         }
 
         Rml::RemoveContext(name);
         return result;
+    }
+
+    // a sheet loads and every selector of it is valid (an invalid selector is dropped with a warning)
+    bool loadsCleanly(const char* rcss, RmlLogTranslator::Capture& capture){
+        const size_t before = capture.problems();
+        Rml::SharedPtr<Rml::StyleSheetContainer> sheet = Rml::Factory::InstanceStyleSheetString(rcss);
+        return sheet != nullptr && capture.problems() == before;
     }
 
     bool isRmlInitialised(){
@@ -276,6 +302,22 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
         case ForkFeature::GroupOpacity:
             // not observable without rendering: the table is authoritative
             return std::nullopt;
+        case ForkFeature::Has:
+            return loadsCleanly("li:has(> input:checked), .a:has(+ .b) { color: #f00; }", capture);
+        case ForkFeature::FocusPseudoClasses: {
+            const DocumentProbe result = probeWithDocument();
+            if (!result.loaded)
+                return std::nullopt;
+            return result.focusPseudoClasses;
+        }
+        case ForkFeature::ListMarkers: {
+            const DocumentProbe result = probeWithDocument();
+            if (!result.loaded)
+                return std::nullopt;
+            return result.listMarkers;
+        }
+        case ForkFeature::SelectorsLevel4:
+            return loadsCleanly("input:enabled, [lang=\"en\" i], li:nth-child(2 of .x), :read-write, :default, :target { color: #f00; }", capture);
         case ForkFeature::None:
         case ForkFeature::Count:
             break;

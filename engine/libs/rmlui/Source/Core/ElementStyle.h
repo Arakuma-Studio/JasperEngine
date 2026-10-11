@@ -32,6 +32,10 @@ public:
 
 	/// Update this definition if required
 	void UpdateDefinition();
+#ifdef RMLUI_TESTS_ENABLED
+	/// The number of UpdateDefinition calls so far, of every element (tests measure selector invalidation with it).
+	static int GetNumDefinitionUpdates();
+#endif
 
 	/// Sets or removes a pseudo-class on the element.
 	/// @param[in] pseudo_class The pseudo class to activate or deactivate.
@@ -85,6 +89,10 @@ public:
 	void RemoveCustomProperty(const String& name);
 	/// Removes a local var shorthand override on the element.
 	void RemoveVarShorthand(ShorthandId id);
+	/// Replaces the declarations of the element's 'style' attribute (phase 3, CSS semantics): the inline declarations
+	/// the previous attribute value set and the new one lacks are removed, the new ones set. Declarations set otherwise
+	/// (Element::SetProperty, data bindings) are kept unless the attribute sets the same property.
+	void SetStyleAttribute(const PropertyDictionary& properties);
 	/// Returns one of this element's properties, with lookup into parents for inherited properties.
 	/// @param[in] id The ID of the property to fetch the value for.
 	/// @return The value of this property for this element, or the default value if none is declared.
@@ -250,6 +258,22 @@ private:
 
 	// Specified property: The property value before being computed. Includes the cascade, excludes variable substitution.
 	static PropertyElementPair GetSpecifiedProperty(const PropertySources& sources, PropertyId id);
+	// The declaration a CSS-wide keyword of the element's property stands for (phase 3, cascade): the parent's
+	// specified property for 'inherit', the user-agent declaration for 'revert', the property's initial value (with no
+	// element) for 'initial'; 'unset' is one of 'inherit' and 'initial'.
+	static PropertyElementPair ResolveSpecifiedKeyword(const PropertySources& sources, PropertyId id, const Property& keyword_property);
+	// The same for computing values: a null property when the element computes the value as if nothing were declared
+	// (the initial value of a non-inherited property, the parent's value of an inherited one); else the declaration to
+	// compute and the element whose font size and variables it is computed with (null: this element).
+	struct ComputedKeyword {
+		const Property* property = nullptr;
+		Element* element = nullptr;
+		bool explicit_inherit = false; // a non-inherited property set to 'inherit' (directly or through 'unset')
+	};
+	ComputedKeyword ResolveComputedKeyword(PropertyId id, const Property& keyword_property) const;
+	// The local property of an inherited property for the computed-value pre-passes, with its CSS-wide keyword resolved
+	// (null: the parent's value).
+	const Property* GetLocalPropertyForCompute(PropertyId id) const;
 	static PropertyElementPair GetSpecifiedCustomProperty(const PropertySources& sources, const String& name);
 	static PropertyElementPair GetSpecifiedShorthand(const PropertySources& sources, ShorthandId id);
 
@@ -314,6 +338,9 @@ private:
 	SharedPtr<const ElementDefinition> definition;
 	// Any properties that have been overridden in this element.
 	PropertyDictionary inline_properties;
+	// An important declaration was set inline (not cleared when it is removed): the cascade then compares the inline
+	// style with the definition by importance (Cascade.h).
+	bool inline_important = false;
 	// Properties computed from shorthands with variables, here resolved.
 	PropertyDictionary expanded_shorthands;
 	// Values of running transitions and animations (most elements have none).
@@ -322,6 +349,18 @@ private:
 	UniquePtr<ElementAnimationStyle> animation_style;
 	// The after-change values of the properties the element transitions (p3-animation).
 	UniquePtr<TransitionSnapshot> transition_snapshot;
+
+	// What the 'style' attribute declared last (allocated with the first attribute), see SetStyleAttribute.
+	struct StyleAttributeDeclarations {
+		PropertyIdSet properties;
+		StringList custom_properties;
+		Vector<ShorthandId> var_shorthands;
+	};
+	UniquePtr<StyleAttributeDeclarations> style_attribute;
+
+	// The non-inherited properties this element declares as 'inherit' (allocated when there are any): they follow the
+	// parent's values when those change (phase 3, cascade).
+	UniquePtr<PropertyIdSet> explicit_inherit;
 
 	PropertyIdSet dirty_properties;
 	UnorderedSet<String> dirty_variables;

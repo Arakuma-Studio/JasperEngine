@@ -1,0 +1,4 @@
+{
+ "comment": "::before/::after (spec 3.6.1, 3.6.2) with Ahem string content: inline around the element's text (#h1: AB XX C), block with sizes, backgrounds and empty content (#h2 is 30px tall), the legacy :before/:after (#h3), inline-block with padding (#h4), content none/normal generating nothing (#h5 one 10px line), inheritance from the originating element (#h6 color), and a 20px ::after growing the line box (#h7).",
+ "viewport": [240, 130]
+}

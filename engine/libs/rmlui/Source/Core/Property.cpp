@@ -15,6 +15,23 @@ Property::Property() : unit(Unit::UNKNOWN), specificity(-1)
 
 String Property::ToString() const
 {
+	if (important)
+	{
+		Property normal = *this;
+		normal.important = false;
+		return normal.ToString() + " !important";
+	}
+	if (unit == Unit::CSS_WIDE_KEYWORD)
+	{
+		switch (CssWideKeyword(value.Get<int>()))
+		{
+		case CssWideKeyword::Inherit: return "inherit";
+		case CssWideKeyword::Initial: return "initial";
+		case CssWideKeyword::Unset: return "unset";
+		case CssWideKeyword::Revert: return "revert";
+		}
+		return String();
+	}
 #ifdef RMLUI_MATH_EXPRESSIONS
 	if (unit == Unit::CALCULATION)
 	{

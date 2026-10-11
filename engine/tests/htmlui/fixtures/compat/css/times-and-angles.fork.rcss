@@ -1,4 +1,4 @@
-body#htmlui-root {
+body#htmlui-root:root {
 --dur: 0.25s;
 --turn: 90deg;
 }

@@ -2,6 +2,7 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/Factory.h>
 #include <RmlUi/Core/Types.h>
 #include <doctest.h>
 #include <nanobench.h>
@@ -179,6 +180,12 @@ TEST_CASE("Selectors")
 {
 	Context* context = TestsShell::GetContext();
 	REQUIRE(context);
+
+	// The dummy pseudo-classes of the generated rules (:a, :bb, ...) are declared: an unknown pseudo-class makes its
+	// selector invalid (p3-cascade), which would drop those rules instead of matching them.
+	for (int i = 1; i < num_rule_iterations; i++)
+		for (char c = 'a'; c <= 'z'; c++)
+			Factory::RegisterPseudoClass(String(i, c));
 
 	constexpr int num_rows = 50;
 	const String rml = GenerateRml(num_rows);

@@ -35,6 +35,6 @@ border-radius: 0.5em;
 #htmlui-root .var {
 border-radius: var(--r);
 }
-body#htmlui-root {
+body#htmlui-root:root {
 --r: 12px;
 }
