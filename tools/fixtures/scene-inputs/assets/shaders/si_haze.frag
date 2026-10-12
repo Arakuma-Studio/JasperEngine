@@ -31,5 +31,6 @@ void main() {
     float t = frame.time.x * 3.0;
     vec2 wobble = vec2(sin(v_uv1.y * customParams.frequency + t), cos(v_uv1.x * customParams.frequency * 0.7 + t * 1.3));
     vec3 color = sceneColor(screenUV() + wobble * customParams.amount * mask);
-    g_finalColor = finalizeColor(vec4(color, mask));
+    // the scene colour has its fog already: not fogged again
+    g_finalColor = finalizeFoggedColor(vec4(color, mask));
 }

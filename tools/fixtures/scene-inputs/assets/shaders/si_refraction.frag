@@ -34,7 +34,9 @@ void main() {
     if (sceneLinearDepth(refracted) < fragmentLinearDepth()){
         refracted = uv;
     }
-    vec3 color = sceneColor(refracted) * customParams.tint.rgb;
-    color += customParams.rim * (1.0 - abs(n.z)) * vec3(0.6, 0.8, 1.0);
-    g_finalColor = finalizeColor(vec4(color, 1.0));
+    // the scene colour has its fog: the tint (a filter) fades to white and the rim (added
+    // light) to black with it, and the result is written without fogging it again
+    vec3 color = sceneColor(refracted) * fadeByFog(customParams.tint.rgb, vec3(1.0));
+    color += fadeByFog(customParams.rim * (1.0 - abs(n.z)) * vec3(0.6, 0.8, 1.0), vec3(0.0));
+    g_finalColor = finalizeFoggedColor(vec4(color, 1.0));
 }
