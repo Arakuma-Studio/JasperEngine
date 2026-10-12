@@ -69,6 +69,15 @@ local function env(name)
     return os.getenv(name) == "1"
 end
 
+-- SI_SPAWN's value (depth or color), nil when unset or empty
+local function spawnKind()
+    local kind = os.getenv("SI_SPAWN")
+    if kind == "" then
+        return nil
+    end
+    return kind
+end
+
 -- the material of every submesh, changed by apply, set back
 local function configure(mesh, apply)
     local count = mesh:getNumSubmeshes()
@@ -424,8 +433,8 @@ function SceneInputs:init()
         log("hierarchy-order camera")
     end
 
-    if os.getenv("SI_SPAWN") or env("SI_ENV") or env("SI_SPLIT") then
-        which = os.getenv("SI_SPAWN") and "spawn" or (env("SI_ENV") and "environment" or "split")
+    if spawnKind() or env("SI_ENV") or env("SI_SPLIT") then
+        which = spawnKind() and "spawn" or (env("SI_ENV") and "environment" or "split")
     end
     local build = (which == "identity" or which == "hidden" or which == "spawn" or which == "environment" or which == "split") and buildIdentity or buildInputs
     local ok, err = pcall(build, self, scene, keep)
@@ -467,7 +476,7 @@ end
 
 -- SI_SPAWN: a reader made and destroyed while the scene runs
 local function spawnReader(self)
-    local kind = os.getenv("SI_SPAWN")
+    local kind = spawnKind()
     local reader = Primitive(self.scene)
     if kind == "color" then
         reader:createBox(2.4, 1.6, 0.1)
@@ -495,7 +504,7 @@ end
 
 function SceneInputs:onUpdate()
     self.frames = self.frames + 1
-    if os.getenv("SI_SPAWN") then
+    if spawnKind() then
         if self.frames == 60 or self.frames == 140 then
             spawnReader(self)
         elseif self.frames == 100 or self.frames == 180 then
