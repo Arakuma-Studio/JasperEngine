@@ -408,8 +408,8 @@ per run). Before = the fork at `431a0bbd` (phases 0-2 and P3-T1/T2, before phase
 `f54d29f6c` (all of wave 1); final = `ae2b8aebc` (p3-integration, with P3-I15..I20). Per iteration, or per
 measured call where the case names one. Scripts and dumps of the measurement: `/tmp/p3int/bench` on the build host
 (`run-callgrind.sh <tree> <out>`, `compare.py <before> <after>`; not committed). Of 237 whole-iteration cases,
-208 were more than 5 % above 6.3 at `f54d29f6c`, 96 are at `ae2b8aebc`; every update and render walk without
-changes is now below 6.3. Representative cases:
+208 were more than 5 % above 6.3 at `f54d29f6c`, 96 are at `ae2b8aebc`; the update walk without changes and the
+render walk of unchanged geometry are now below 6.3. Representative cases:
 
 | Case | Before (6.3 fork) | Merged | Final | Final vs before |
 |---|---|---|---|---|
@@ -443,7 +443,8 @@ The remaining regressions above 5 %, by cause, each a correctness requirement of
   `box_shadow` +31..+90 %, small render deltas of every bordered case): every edge is anti-aliased (feathered)
   and borders are built as Chromium draws them (P3-P1: styles, dash layout, corner joins; P3-P2: elliptical radii);
   a blurred shadow renders into a texture. The cost is paid when the geometry is regenerated (a change of size,
-  radius or colour), not per frame: the `Reference` render loops are below 6.3. P3-I20 took 24..48 % of it.
+  radius or colour; the `box_shadow` cases regenerate it in their loop, +24 % in their `Reference`), not per frame:
+  `background_border`'s `Reference` and the empty and bordered render walks are below 6.3. P3-I20 took 24..48 % of it.
   Not done: recolouring the cached mesh on a colour-only change (`Background all`, `Border all`): the generator
   derives several shades per side (`groove`/`ridge`/`inset`/`outset`, the feathered fringe's alpha) from the
   colours, so a recolour pass would duplicate that logic for a case games rarely hit every frame.
