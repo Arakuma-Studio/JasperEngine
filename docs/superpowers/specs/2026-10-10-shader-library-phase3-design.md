@@ -403,6 +403,104 @@ shaders and the editor is also written out in `/tmp/shader-research/p3-api.md`.
   Opaque (read back through `get_entity`); the 17 scene and prefab files of the fixture projects
   re-saved with this editor and with a build of c46fa1d6: all byte-identical.
 
+### 4.5 Review fixes: engine (sl/p3-fix-engine)
+
+Fixes of the engine review at 914391fd and the phase 3 follow-ups. The contract changes are also in
+`/tmp/shader-research/p3-review/engine-api-changes-p3.md`.
+
+- First reader (review 1): readers are registered before they load
+  (`RenderSystem::predictSceneInputUsers`, once per load of a mesh or points component, from its
+  shaders' manifests and features), so the switch giving every mesh a depth program and the
+  exported scene camera's offscreen pipelines (`updateSceneInputPrograms`, before
+  `updateSwapchainRedirect`) flip before the meshes load in that update: the first reader no longer
+  draws a frame with the meshes lacking a depth program missing from the colour pass, and the
+  scene no longer loads every mesh twice. A depth pre-pass leaves out a submesh whose depth
+  pipeline is missing instead of flagging the mesh for reload; a pass draws no scene depth pre-pass
+  while the meshes have no depth programs (far-depth fallback). Both switches stay on 600 updates
+  (about 10 s) after the last reader goes, so readers made and destroyed (effects, pickups) reload
+  nothing. A colour reader not loaded yet turns the exported scene camera offscreen at once, so its
+  first frame reads a copy. Reproduction: `scene-inputs` `SI_SPAWN=depth|color` with
+  `JASPERENGINE_FRAME_STATS=all` (new: every frame's sokol stats from the first). Before: on the
+  depth spawn frame the mesh casting no shadow was not drawn (38 draws instead of 40) and the
+  next frame reloaded every mesh (pipelines made 21 -> 48), the destruction reloaded them again
+  (68) and the respawn repeated both (69 -> 96); the colour spawn frame drew the reader without a
+  copy (2 passes) and every spawn or destruction reloaded every object. After: the spawn frame
+  draws 40 (depth) / takes the copy (colour, 5 passes), the first spawn makes the depth programs
+  once (47 made), the destruction and the respawn make only the reader's own (47 -> 50).
+- Resize (review 2): a scene-input target of a size the view no longer draws at (not used in this
+  draw of the view nor the one before, `RenderView::sceneInputDraws`) goes when a target of a new
+  size is made. Reproduction `SI_RESIZE=1` (the render-to-texture camera's target resized every
+  frame): images alive grew to 181 before, stay at 29 after.
+- Export collector (review 3): a mesh or points component without a shader of its own resolves
+  the scene's default shader with its own features (`collectFacts(content, scene)`); a scene whose
+  default is `library:unlit` with SOFT on a material now exports the built-in depth programs.
+- Shared depths (review 4): the SSR G-buffer depth is not the scene depth while a visible opaque
+  mesh is drawn differently by it (`gbufferDepthMismatch`: a library `@depth` program or depth fork
+  reading a parameter block, the frame block or a texture, or a split mesh): the pass makes its own
+  pre-pass (`SI_SPLIT=1 SI_SSR=1`: 1 depth pre-pass, 0 shared). The SSAO and post-process depth
+  pre-passes make per-camera billboard matrices (`renderDepthPrePass(camera, perCameraTransform)`).
+- Colour redirect (review 5): a moved reader is tested against the bounds its new model matrix
+  gives (a billboard no longer keeps the redirect on).
+- Mixed meshes (review 6): `getSubmeshSceneInputs`' `opaqueQueue` follows the mesh's queue
+  (autoTransparency off: `mesh.transparent` decides, so a blended reader kept opaque is reported).
+  A mesh whose blended submeshes read the scene and that has opaque ones (autoTransparency) is
+  split (`MeshComponent::splitQueues`): its opaque submeshes draw in the opaque queue and in the
+  scene depth pre-passes, its blended ones in the transparent queue (`passSubmeshQueue`), so a
+  basin under water is in the depth and copy the water reads (`SI_SPLIT=1`: the figure's torso
+  shows its own backpack). In a 2D (hierarchy-order) pass a split mesh still draws whole; mixed
+  meshes without a reader are unchanged (whole in the transparent queue).
+- Stencil (review 7): opaque submeshes testing the stencil (not always) are out of the scene depth
+  and SSAO pre-passes (`Submesh::stencilTested`).
+- 2D copy (review 8): a hierarchy-order pass takes the copy before the first reader it draws
+  (`drawsSceneColorReader`: the draw's own visibility tests).
+- `@state priority=<int>` (glsl review 1b): added to the material's sort priority (meshes: the
+  min over submeshes of sortPriority + priority; transparent points: the priority), keyword and
+  feature rules allowed; `list_shaders` `state.priority`, the library doc's Default state.
+  `projected_decal` has `priority=-1` and no longer asks for a material sort priority.
+- Pipeline churn (follow-up): the full shader-library fixture made 2922 pipelines for 1046 alive
+  because its first scene-depth reader and first colour reader loaded after the other objects:
+  every mesh reloaded for its depth program, then every object for the scene camera's offscreen
+  pipelines. With the readers registered first it makes 1048 for 1048 alive (GL, frame stats).
+- `RenderSystem::getSceneInputUsage()` keeps the editor branch's form (bit 0 the last frame made
+  or shared a scene depth, bit 1 it took a colour copy); `getSceneInputDetails()` adds the readers,
+  the last frame's passes, targets alive, depth programs held and the redirect. The "Scene
+  inputs:" line ends with whether the scene camera draws offscreen for the copy.
+- Environment (follow-up): `@require environment` (`ShaderRequire_Environment`,
+  `SURFACE_ENVIRONMENT`, mesh shaders) and `includes/environment.glsl`
+  (`environmentColor(worldDirection, roughness)`, `environmentPresent()`): the reflection probe
+  whose box holds the mesh (its capture and intensity, no box projection), else the sky's
+  prefiltered GGX map with the sky's tint and rotation, else black; bound per draw
+  (`applyEnvironment`), no pass. Cheap (one block and one cube texture for the shaders that
+  require it), so implemented; glass does not use it yet (the GLSL branch's to wire). Fixture
+  `SI_ENV=1` (mirror balls, sharp and rough, under a cube-map sky).
+- Lua cube textures (follow-up): `Material` / `MaterialPass` `:setShaderCubeTexture(uniform,
+  path)` (one image of six faces) and the six-path form (`ShaderLibraryValues::setCubeTexture`,
+  `setCubeTextureFaces`); `SI_ENV=1` sets glass's `REFLECTION_MAP` from Lua.
+- Not changed: a mesh reloading for a new variant (lights, the light cap, fog, IBL settling) is not
+  drawn until its shaders are built; with runtime compilation that blanks it for the compile time
+  (unified-lighting's cap switch shows nothing for a few seconds on software GL). Exported builds
+  load precompiled shaders in the same update.
+- MCP: `test_scene_inputs.py::test_list_shaders_state_priority` (projected_decal's
+  `state.priority` -1, none on toon).
+- Checks run (on the branch merged with `shader-library` c3f3eec4): full `tools/build.sh linux`;
+  `shaders --library all --backend all` (33 shaders, 9810 compiles, 0 failures) and 78 built-in
+  variants on six backends (the phase 3 list plus SSAO, SSR, composite, blit, postprocess), 0
+  failures; smoke tests with screenshots read of `scene-inputs` (default and every switch:
+  ortho, fixed, prepass, SSAO, SSR, full, post, 2D, invisible, mirror, identity, hidden, saved,
+  env, split, split + SSR), `shader-library` (all groups, phase3a, phase3b: 1056 pipelines alive,
+  1056 made), `stencil`, `extra-pass`, `shader-regressions`, `unified-lighting` (its cap switch
+  blanks the lit meshes 2 s after ready while they recompile, pre-existing; whole at 15 s),
+  `runtime-shaders` on GL; `scene-inputs` (default, SSR, 2D, mirror, env, split) and
+  `shader-library` phase3a / phase3b on `SMOKE_BACKEND=vulkan` and `gles3` (same images as GL:
+  depth grids inside the white lines, refraction, the environment balls blue side up);
+  `check.sh` on GL and Vulkan (seven scenes pass); the MCP suite (272 passed, 3 skipped);
+  `SI_SCENE=identity` against a build of the phase 2 tag with the frame-stats commits
+  (c07e24af + b3d3a2b0, a temporary detached worktree): default, SSAO, SSR, both and the depth
+  pre-pass setting pixel for pixel and frame-stats identical; with the depth-sampling post pass the
+  phase 2 build left the meshes without a depth program out of the depth and reloaded them every
+  frame (250 pipelines made), the fix of 4.1 (84 made, 2 more draws, the far half darkened over
+  the meshes too).
+
 ### 4.6 Review fixes: shaders (sl/p3-fix-glsl)
 
 Fixes of the GLSL review at 914391fd (the engine-side `@state priority=` and projected_decal's

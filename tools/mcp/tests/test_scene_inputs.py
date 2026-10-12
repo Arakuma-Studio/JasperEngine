@@ -130,3 +130,12 @@ async def test_list_shaders_scene_inputs(ed: Editor):
     for name in ("unlit", "projected_decal"):
         entry = (await ed.call("list_shaders", name=name))["shaders"][0]
         ed.check_eq(entry.get("scene_inputs"), ["scenedepth"], f"{name} may read the scene depth")
+
+
+async def test_list_shaders_state_priority(ed: Editor):
+    # @state priority= (engine review fixes): projected_decal draws before the transparent objects
+    # of the same sort priority
+    entry = (await ed.call("list_shaders", name="projected_decal"))["shaders"][0]
+    ed.check_eq(entry.get("state", {}).get("priority"), -1, f"projected_decal's state priority: {entry.get('state')!r}")
+    entry = (await ed.call("list_shaders", name="toon"))["shaders"][0]
+    ed.check("priority" not in entry.get("state", {}), f"no priority where the manifest sets none: {entry.get('state')!r}")
