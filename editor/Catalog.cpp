@@ -4574,19 +4574,41 @@ uint32_t editor::Catalog::getSceneInputsInUse(Scene* scene) {
     return ((usage & 1u) ? ShaderRequire_SceneDepth : 0u) | ((usage & 2u) ? ShaderRequire_SceneColor : 0u);
 }
 
-bool editor::Catalog::getSceneInputQueueFix(Scene* scene, Entity entity, unsigned int submesh, MaterialBlendMode& blendMode) {
+editor::Catalog::SceneInputQueueFix editor::Catalog::getSceneInputQueueFix(Scene* scene, Entity entity, unsigned int submesh) {
     const MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
-    if (!mesh || submesh >= mesh->numSubmeshes) return false;
+    if (!mesh || submesh >= mesh->numSubmeshes) return SceneInputQueueFix::NONE;
     const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
     bool opaqueQueue = false;
-    if (!RenderSystem::getSubmeshSceneInputs(*mesh, mesh->submeshes[submesh], sceneMeshShader, opaqueQueue) || !opaqueQueue) return false;
+    if (!RenderSystem::getSubmeshSceneInputs(*mesh, mesh->submeshes[submesh], sceneMeshShader, opaqueQueue) || !opaqueQueue)
+        return SceneInputQueueFix::NONE;
+    // without auto transparency the mesh's own Transparent decides the queue: no blend moves it
+    if (!mesh->autoTransparency) return SceneInputQueueFix::MESH_TRANSPARENT;
     // only when Alpha does move it (a fork's @state queue= decides before the blend)
     Submesh fixed = mesh->submeshes[submesh];
     fixed.material.blendMode = MaterialBlendMode::ALPHA;
     RenderSystem::getSubmeshSceneInputs(*mesh, fixed, sceneMeshShader, opaqueQueue);
-    if (opaqueQueue) return false;
-    blendMode = MaterialBlendMode::ALPHA;
-    return true;
+    return opaqueQueue ? SceneInputQueueFix::NONE : SceneInputQueueFix::ALPHA_BLEND;
+}
+
+std::string editor::Catalog::getSceneInputQueueFixProperty(SceneInputQueueFix fix, unsigned int submesh) {
+    switch (fix) {
+        case SceneInputQueueFix::ALPHA_BLEND: return "submeshes[" + std::to_string(submesh) + "].material.blendMode";
+        case SceneInputQueueFix::MESH_TRANSPARENT: return "transparent";
+        default: return "";
+    }
+}
+
+std::string editor::Catalog::getSceneInputQueueAdvice(SceneInputQueueFix fix, unsigned int submesh) {
+    switch (fix) {
+        case SceneInputQueueFix::ALPHA_BLEND:
+            return "set a blend mode other than opaque (submeshes[" + std::to_string(submesh) + "].material.blendMode)";
+        case SceneInputQueueFix::MESH_TRANSPARENT:
+            return "the mesh's Auto Transparency is off and its Transparent off, which keeps it opaque whatever the blend: "
+                   "turn the mesh's Transparent on (transparent)";
+        default:
+            return "its shader's state draws it in the opaque queue whatever the blend: use a shader whose @state is "
+                   "transparent, or turn the mesh's Auto Transparency off and its Transparent on";
+    }
 }
 
 uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Material& to) {

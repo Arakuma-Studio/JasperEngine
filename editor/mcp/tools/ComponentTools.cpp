@@ -314,7 +314,7 @@ void getEntityTool(const CallPtr& call) {
         data["scene_inputs"] = sceneInputs;
         data["scene_inputs_cost"] = Catalog::getSceneInputsCost(reads);
         text += ". Reads the scene " + Catalog::getSceneInputsLabel(reads) + " (" + Catalog::getSceneInputsCost(reads, true) + ")" +
-                (error ? "; ERROR: a reader draws in the opaque queue (scene_inputs[].fix)" : "");
+                (error ? "; ERROR: a reader draws in the opaque queue (scene_inputs[].error, .fix)" : "");
     }
     if (elided) data["note"] = std::to_string(elided) + " large custom value(s) elided; name them in properties to read them.";
     call->ok(text, data);

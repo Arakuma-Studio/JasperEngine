@@ -747,8 +747,8 @@ std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::sceneInputFin
                 const std::string what = (inputs == ShaderRequire_SceneInputs) ? "depth and colour" : (inputs & ShaderRequire_SceneDepth) ? "depth" : "colour";
                 findings.push_back({"shader", path, 0, 0, "error",
                     "GameObject '" + scene->getEntityName(entity) + "' submesh " + std::to_string(s) + ": its shader reads the scene " + what +
-                    " but its material draws in the opaque queue (it would read its own depth and a black scene colour); "
-                    "set a blend mode other than opaque (submeshes[" + std::to_string(s) + "].material.blendMode)"});
+                    " but it draws in the opaque queue (it would read its own depth and a black scene colour); " +
+                    Catalog::getSceneInputQueueAdvice(Catalog::getSceneInputQueueFix(scene, entity, s), s)});
             }
         }
     }

@@ -6,7 +6,8 @@ about a draw reading the scene depth or colour and its cost.
   on (scene_inputs), so that with what the shader always requires they make up scene_inputs.
 - get_entity: scene_inputs per reading submesh (its shader's and its extra pass's current
   variant), the queue, the opaque-queue error with the fix the inspector's button applies
-  (Catalog::getSceneInputQueueFix: blendMode alpha), and scene_inputs_cost; points readers too.
+  (Catalog::getSceneInputQueueFix: blendMode alpha, or the mesh's transparent when its
+  autoTransparency is off), and scene_inputs_cost; points readers too.
   The fix applied through set_properties clears the error and undo brings it back (the same
   property command as the button).
 - get_shader_uniforms: scene_inputs and cost_note of the material's (or component's) variant; for a
@@ -215,6 +216,43 @@ async def test_opaque_queue_fix_and_undo(ed: Editor):
     inputs, _, _ = await entity_inputs(ed, eid)
     ed.check_eq(inputs[0]["queue"], "opaque", "undo puts it back")
     ed.check("fix" in inputs[0], f"the fix again: {inputs[0]!r}")
+    await ed.call("delete_entities", entities=[eid])
+
+
+async def test_opaque_queue_fix_mesh_transparent(ed: Editor):
+    # Auto Transparency off and Transparent off: the mesh's flag keeps an Alpha reader opaque,
+    # so the error names that cause and the fix is the mesh's Transparent, not the blend
+    eid = await make_entity(ed, "Soft editor kept opaque")
+    await ed.call("set_properties", entity=eid, values={"mesh": {M + "shader": "shaders/soft_editor", M + "blendMode": "alpha",
+                                                                 "autoTransparency": False}})
+    await ed.call("set_properties", entity=eid, values={"mesh": {"transparent": False}})
+    inputs, _, _ = await entity_inputs(ed, eid)
+    entry = inputs[0]
+    ed.check_eq(entry["queue"], "opaque", "kept opaque by the mesh")
+    ed.check("Transparent on" in entry.get("error", "") and "blend mode other" not in entry.get("error", ""),
+             f"the error names the mesh's Transparent: {entry!r}")
+    ed.check_eq(entry.get("fix"), {"transparent": True}, "the fix is the mesh's Transparent")
+    r = await ed.call("check_shader", timeout=300)
+    messages = [f["message"] for f in r.get("findings", []) if "Soft editor kept opaque" in f.get("message", "")]
+    ed.check(len(messages) == 1 and "turn the mesh's Transparent on (transparent)" in messages[0], f"the check says it too: {messages!r}")
+
+    await ed.call("set_properties", entity=eid, values={"mesh": entry["fix"]})
+    inputs, _, _ = await entity_inputs(ed, eid)
+    ed.check_eq(inputs[0]["queue"], "transparent", "fixed")
+    ed.check("error" not in inputs[0] and "fix" not in inputs[0], f"no error left: {inputs[0]!r}")
+    await ed.call("undo")
+    inputs, _, _ = await entity_inputs(ed, eid)
+    ed.check_eq(inputs[0].get("fix"), {"transparent": True}, "undo puts it back")
+
+    # the opaque blend with the auto transparency off: still the mesh's flag (Alpha alone would not move it)
+    await ed.call("set_properties", entity=eid, values={"mesh": {M + "blendMode": "opaque"}})
+    inputs, _, _ = await entity_inputs(ed, eid)
+    ed.check_eq(inputs[0].get("fix"), {"transparent": True}, f"opaque blend, auto off: {inputs[0]!r}")
+    # auto transparency on: the blend decides, Alpha is the fix
+    await ed.call("set_properties", entity=eid, values={"mesh": {"autoTransparency": True}})
+    inputs, _, _ = await entity_inputs(ed, eid)
+    ed.check_eq(inputs[0].get("fix"), {M + "blendMode": "alpha"}, f"auto on: {inputs[0]!r}")
+    ed.check("blend mode other than opaque" in inputs[0].get("error", ""), f"the blend named: {inputs[0]!r}")
     await ed.call("delete_entities", entities=[eid])
 
 

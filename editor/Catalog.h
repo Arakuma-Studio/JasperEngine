@@ -264,11 +264,18 @@ namespace jasperengine::editor{
         // get_scene_settings' scene_inputs_in_use
         static uint32_t getSceneInputsInUse(Scene* scene);
         // A submesh whose shader or extra pass reads the scene while it draws in the opaque queue
-        // (an error: RenderSystem::getSubmeshSceneInputs): the blend mode that moves it to the
-        // transparent queue (Alpha), what the inspector's fix button and MCP's fix set on
-        // submeshes[N].material.blendMode. False when it is not such a submesh, or when a blend
-        // mode would not move it (a shader forcing another queue).
-        static bool getSceneInputQueueFix(Scene* scene, Entity entity, unsigned int submesh, MaterialBlendMode& blendMode);
+        // (an error: RenderSystem::getSubmeshSceneInputs): what moves it to the transparent queue,
+        // the inspector's fix button and MCP's fix. With the mesh's Auto Transparency on, Alpha
+        // blending (submeshes[N].material.blendMode), when it does move it (not a shader forcing
+        // another queue: NONE); with it off the mesh's Transparent decides the queue whatever the
+        // blend, so turning it on (transparent). NONE too when it is not such a submesh.
+        enum class SceneInputQueueFix { NONE, ALPHA_BLEND, MESH_TRANSPARENT };
+        static SceneInputQueueFix getSceneInputQueueFix(Scene* scene, Entity entity, unsigned int submesh);
+        // the property the fix sets ("submeshes[N].material.blendMode", "transparent"; "" for NONE)
+        static std::string getSceneInputQueueFixProperty(SceneInputQueueFix fix, unsigned int submesh);
+        // why the submesh draws in the opaque queue and what to do, one sentence for the inspector,
+        // the checks and MCP (the cause the fix would remove, or the shader's state)
+        static std::string getSceneInputQueueAdvice(SceneInputQueueFix fix, unsigned int submesh);
 
         template<typename T>
         static T* getPropertyRef(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){

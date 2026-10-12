@@ -190,11 +190,15 @@ Json McpValues::entitySceneInputsToJson(Scene* scene, Entity entity) {
             if (passReads) entry["extra_pass_reads"] = sceneInputsToJson(passReads);
             entry["queue"] = opaqueQueue ? "opaque" : "transparent";
             if (opaqueQueue) {
+                const Catalog::SceneInputQueueFix fix = Catalog::getSceneInputQueueFix(scene, entity, s);
                 entry["error"] = "reads the scene " + Catalog::getSceneInputsLabel(reads | passReads) +
-                                 " but draws in the opaque queue: it would read its own depth and a black colour";
-                MaterialBlendMode blend = MaterialBlendMode::ALPHA;
-                if (Catalog::getSceneInputQueueFix(scene, entity, s, blend)) {
-                    entry["fix"] = {{"submeshes[" + std::to_string(s) + "].material.blendMode", enumToJson((int)blend, *enumTable("material_blend_mode"))}};
+                                 " but draws in the opaque queue: it would read its own depth and a black colour; " +
+                                 Catalog::getSceneInputQueueAdvice(fix, s);
+                // the set_properties values of the inspector's fix button
+                if (fix == Catalog::SceneInputQueueFix::ALPHA_BLEND) {
+                    entry["fix"] = {{Catalog::getSceneInputQueueFixProperty(fix, s), enumToJson((int)MaterialBlendMode::ALPHA, *enumTable("material_blend_mode"))}};
+                } else if (fix == Catalog::SceneInputQueueFix::MESH_TRANSPARENT) {
+                    entry["fix"] = {{Catalog::getSceneInputQueueFixProperty(fix, s), true}};
                 }
             }
             list.push_back(entry);

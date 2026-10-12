@@ -24,6 +24,7 @@
 #include "util/Util.h"
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <map>
 
@@ -764,29 +765,37 @@ void editor::InspectorWindow::drawMaterialSurfaceRows(ComponentType cpType, Scen
     }, settingsMaterial);
 
     // a shader reading the scene (phase 3) drawn before the scene is: an error, with a button
-    // moving it to the transparent queue (Catalog::getSceneInputQueueFix: Alpha blending, one
-    // undo step for every selected GameObject in that state)
+    // moving it to the transparent queue (Catalog::getSceneInputQueueFix: Alpha blending, or the
+    // mesh's Transparent when its Auto Transparency is off; one undo step for every selected
+    // GameObject the same fix applies to)
     bool opaqueQueue = false;
     const uint32_t sceneInputs = RenderSystem::getSubmeshSceneInputs(*mesh, sub, scene->getDefaultCustomShader(ShaderType::MESH), opaqueQueue);
     if (sceneInputs && opaqueQueue){
+        const Catalog::SceneInputQueueFix fix = Catalog::getSceneInputQueueFix(scene, entities[0], submesh);
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(1);
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ErrorText);
         ImGui::TextWrapped("Error: reads the scene %s but draws in the opaque queue", Catalog::getSceneInputsLabel(sceneInputs).c_str());
         ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("It would read its own depth and a black scene colour. Pick a blend other than Opaque (or a shader whose state is transparent).");
-        MaterialBlendMode fixBlend = MaterialBlendMode::ALPHA;
-        if (Catalog::getSceneInputQueueFix(scene, entities[0], submesh, fixBlend)) {
-            if (ImGui::Button((std::string(ICON_FA_WRENCH " Use Alpha blending##scene_input_fix_") + std::to_string(submesh)).c_str())) {
+        if (ImGui::IsItemHovered()){
+            std::string advice = Catalog::getSceneInputQueueAdvice(fix, submesh);
+            if (!advice.empty()) advice[0] = (char)std::toupper((unsigned char)advice[0]);
+            ImGui::SetTooltip("It would read its own depth and a black scene colour. %s.", advice.c_str());
+        }
+        if (fix != Catalog::SceneInputQueueFix::NONE) {
+            const bool alpha = fix == Catalog::SceneInputQueueFix::ALPHA_BLEND;
+            const char* label = alpha ? ICON_FA_WRENCH " Use Alpha blending##scene_input_fix_" : ICON_FA_WRENCH " Make the mesh transparent##scene_input_fix_";
+            if (ImGui::Button((std::string(label) + std::to_string(submesh)).c_str())) {
                 const uint32_t sceneId = sceneProject->id;
                 auto* multi = new MultiPropertyCmd();
                 bool changed = false;
                 for (Entity entity : entities) {
-                    MaterialBlendMode blend = MaterialBlendMode::ALPHA;
-                    if (!Catalog::getSceneInputQueueFix(scene, entity, submesh, blend))
+                    if (Catalog::getSceneInputQueueFix(scene, entity, submesh) != fix)
                         continue;
-                    multi->addPropertyCmd<int>(project, sceneId, entity, cpType, prefix + "blendMode", (int)blend, settingsMaterial.onValueChanged);
+                    if (alpha)
+                        multi->addPropertyCmd<int>(project, sceneId, entity, cpType, prefix + "blendMode", (int)MaterialBlendMode::ALPHA, settingsMaterial.onValueChanged);
+                    else
+                        multi->addPropertyCmd<bool>(project, sceneId, entity, ComponentType::MeshComponent, "transparent", true);
                     changed = true;
                 }
                 if (changed)
@@ -794,8 +803,13 @@ void editor::InspectorWindow::drawMaterialSurfaceRows(ComponentType cpType, Scen
                 else
                     delete multi;
             }
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Set Blend Mode to Alpha: the submesh draws in the transparent queue, after the scene it reads (undoable)");
+            if (ImGui::IsItemHovered()){
+                if (alpha)
+                    ImGui::SetTooltip("Set Blend Mode to Alpha: the submesh draws in the transparent queue, after the scene it reads (undoable)");
+                else
+                    ImGui::SetTooltip("Turn the mesh's Transparent on (its Auto Transparency is off, so the blend does not move it): "
+                                      "the mesh draws in the transparent queue, after the scene it reads (undoable)");
+            }
         }
     }
 

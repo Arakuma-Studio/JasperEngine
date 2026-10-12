@@ -240,7 +240,9 @@ particle on low-end mobile, a tinted alpha surface instead of refraction).
   queue position) in the opaque queue is an error (`check_shader` without arguments,
   `check --shaders`, the material inspector, `get_entity` below): it would read its own depth
   and a black colour. The fix is a blend other than opaque on the submesh
-  (`submeshes[N].material.blendMode = "alpha"`; the inspector's error row has a button for it).
+  (`submeshes[N].material.blendMode = "alpha"`), or, on a mesh whose Auto Transparency is off
+  (its `transparent` then decides the queue, whatever the blend), `transparent = true`; the
+  inspector's error row has a button for the one that applies, `get_entity`'s `fix` is it.
   Points have no queue: they always draw after the copy.
 - **The copy holds the opaque scene and the sky only.** Transparent objects are not in it, so
   two glass panes do not see each other through it (as Unity URP's opaque texture), and UI,
