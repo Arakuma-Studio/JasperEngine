@@ -197,6 +197,12 @@ fork files only to combine the rows above; they are not listed.
 | P3-I12 | `d947c24a` `rmlui: a replaced grid item not sized by its area has its natural height or the one its ratio gives its width` | `Source/Core/Layout/{LayoutDetails.{h,cpp},GridFormattingContext.cpp}`; `Tests/Source/UnitTests/GridLayout.cpp` | Found by the settings sample page: a text input aligned (`align-items: center`) in a grid row was formatted from content and had no content height. `LayoutDetails::GetReplacedContentHeightForWidth`: an `auto` height follows the content width through the preferred ratio (natural or `aspect-ratio`), clamped by `min-height`/`max-height`, else the natural height; used for the grid item's final box and by `GetContentHeightForWidth` (the grid's row sizing). | upstreamable | `GridLayout.replaced_items`; fixture `integration/sample-settings` |
 | P3-I13 | `5dac4f2d` `rmlui: a range's value fill is placed at the track's border box; a select's arrow at the right of its padding box` | `Source/Core/Elements/{WidgetSlider,WidgetDropDown}.cpp`; `Tests/Source/UnitTests/{ElementFormControlInput,ElementFormControlSelect}.cpp` | Found by the settings sample page. `WidgetSlider::FormatProgress` placed the fill at the track's content box (6.3: `GetRelativeOffset()` defaults to the content area), so a fill as large as the track overflowed it by its border; now its border box. Chromium paints a menu list's arrow inside the border whatever the author's right padding (which adds to the text's inset): `WidgetDropDown::OnLayout` places `selectarrow` at the right of the padding box. | upstreamable | `form.input.range.progress_on_track`, `form.select.arrow_position`; fixture `integration/sample-settings` |
 | P3-I14 | `ef035a37` `rmlui: a box-shadow texture larger than the window is rendered in tiles …` | `Include/RmlUi/Core/{RenderInterface,CallbackTexture}.h`, `Source/Core/{RenderInterface,CallbackTexture,GeometryBoxShadow}.cpp`; `Tests/Source/Common/TestsInterface.{h,cpp}` (`save_layer_into_texture`), `Tests/Source/UnitTests/Backgrounds.cpp` | Found by the main-menu sample page: 6.3 renders an element's box-shadow texture (shadows, background and border) into a layer of the window's size; a larger texture was cut by the window and then stretched over its full size (a 369px card with a 40px blur in a 400px window: background and border drawn 9px low and too tall; 6.3 logs "Results may be clipped"). A texture larger than the window is now rendered in tiles of the window's size, each with an apron as wide as the blur reads (both 16px aligned, so a downscaled blur samples the same grid in every tile), and saved into one texture: `RenderInterface::SaveLayerIntoTexture(texture, dimensions, offset)` (default: unsupported, 6.3's path) and `CallbackTextureInterface::SaveLayerAsTextureTile`. | upstreamable (API addition) | `Backgrounds.box_shadow_larger_than_the_window`; fixture `integration/sample-main-menu` |
+| P3-I15 | `b711a1c0` `rmlui: Element::Update tests the transition, animation and animation-list flags before calling out, ElementStyle::AnyPropertiesDirty is inline and PropertyIdSet::Empty tests the OR of its words` | `Include/RmlUi/Core/PropertyIdSet.h`, `Source/Core/{Element.cpp,ElementStyle.{h,cpp}}` | Performance (benchmarks below): the unmodified update walk was +30.6 % since p3-base and p3-animation (out-of-line calls per element); now -16.7 % against 6.3. | upstreamable | the unit tests; benchmarks |
+| P3-I16 | `ff56284b` `rmlui: Element::Render skips RenderEffects and UpdateOpacityLeaf inline for elements without effects or opacity, tests the absolute-offset dirty flags inline, and the clipping region takes the clip box's size without a whole render box and asks for scrollbar parts only when there are scrollbars` | `Include/RmlUi/Core/Element.h`, `Source/Core/{Element.cpp,ElementEffects.h,ElementUtilities.cpp}` | Performance: the render walk was +16..22 % since p3-layout and p3-paint (and P3-I2); now -16..18 % against 6.3. | upstreamable | the unit tests; benchmarks |
+| P3-I17 | `484a0259` `rmlui: ElementText's tokenizer reads ASCII inline, appends runs of plain ASCII characters at once and asks the UAX #14 pair rules between two ASCII characters only after a hyphen` | `Source/Core/ElementText.cpp`; `Tests/Source/UnitTests/LineBreaking.cpp` | Performance: P3-TX1's UAX #14 breaking made `BuildToken` about 3x costlier per character; the same tokens for ASCII text at a fraction (a test checks that no other ASCII pair breaks). | upstreamable (with P3-TX1) | `LineBreaking.ascii_pairs_break_after_a_hyphen_only`; benchmarks |
+| P3-I18 | `b400b7f0` `rmlui: style computation without the per-property overhead of phase 3 …` | `Include/RmlUi/Core/Variant.inl`, `Source/Core/{Variant.cpp,Cascade.cpp,ElementStyle.{h,cpp},ElementStyleValues.cpp,PropertyParserColour.{h,cpp}}` | Performance: `~Variant` inline (calls `Clear` only for the types it destroys), `ComputeValues` tests `Contains(Visibility)` before `Size()`, resolves keywords only for the units that can hold them, runs the `ch`/`ex` pass only when a property may hold them, tests `currentcolor` units inline; `Cascade::ParseDeclaration` returns at once for a value without `!` that cannot be a CSS-wide keyword. | upstreamable | the unit tests; benchmarks |
+| P3-I19 | `6dde97d5` `rmlui: justify-items, justify-self and align-content are looked up from the declarations only when the element declares them` | `Include/RmlUi/Core/ComputedValues.h`, `Source/Core/ElementStyle.cpp` | Performance: p3-layout's `ResolveJustifySelf` read the declarations (with variable resolution) for every block box and its parent; flags set by `ComputeValues` gate it (data binding updates -6 %, grid relayout -13 %). | upstreamable (with P3-L*) | the unit tests; benchmarks |
+| P3-I20 | `ae2b8aeb` `rmlui: GeometryBorderStyles generates the same triangles with less work …` | `Source/Core/GeometryBorderStyles.cpp` | Performance: one cosine and sine per arc angle, a rail pair's band levels shared by its two segments, the fill's offset directions found once for its three rings, working vectors kept per thread, an uncut side's bands sharing their vertices (no unused vertices of zero-width bands; `BorderStyle.geometry` checks fewer vertices, the triangles are the same, checked over 3456 boxes). Backgrounds and borders regenerated -24..48 %, unique box shadows -30 %. | fork-only (with P3-P1) | `BorderStyle`; engine goldens; benchmarks |
 
 ### Fork features made present
 
@@ -391,6 +397,101 @@ selector parsed (unknown pseudo-classes make a selector invalid), the replacemen
 
 The wall-time cases above 10 % (`div div`, `custom_properties`) are within the run-to-run spread of this host; their
 instruction counts moved by +4.0 % and +6.9 %.
+
+### Benchmarks (phase 3, final: p3-integration)
+
+Instruction counts (callgrind 3.22, deterministic) of RmlUi's whole benchmark suite (`Tests/Source/Benchmarks`, the
+same sources for every tree, adapted per tree only where a tree lacks an API: no `RegisterPseudoClass` before
+p3-cascade, no `border-style` before p3-paint, no calc() before p3-base), static Release builds (`-O3 -DNDEBUG`,
+g++ 13.3), `NANOBENCH_CALLGRIND=1` (2 untimed and 4 measured iterations of each nanobench run, one callgrind part
+per run). Before = the fork at `431a0bbd` (phases 0-2 and P3-T1/T2, before phase 3's patches); merged = `html-ui`
+`f54d29f6c` (all of wave 1); final = `ae2b8aebc` (p3-integration, with P3-I15..I20). Per iteration, or per
+measured call where the case names one. Scripts and dumps of the measurement: `/tmp/p3int/bench` on the build host
+(`run-callgrind.sh <tree> <out>`, `compare.py <before> <after>`; not committed). Of 237 whole-iteration cases,
+208 were more than 5 % above 6.3 at `f54d29f6c`, 96 are at `ae2b8aebc`; every update and render walk without
+changes is now below 6.3. Representative cases:
+
+| Case | Before (6.3 fork) | Merged | Final | Final vs before |
+|---|---|---|---|---|
+| `element` Update (unmodified), N=100: `Context::Update` | 860660 | 1123882 | 716758 | -16.7 % |
+| `element` Update (hover): whole iteration | 2076934 | 2334160 | 2137764 | +2.9 % |
+| `background_border` Render empty divs: `Context::Render` | 888367 | 1089320 | 726127 | -18.3 % |
+| `flexbox.chat` Long words | 54458608 | 110343364 | 48516885 | -10.9 % |
+| `flexbox.chat` Short words | 3099932 | 4875849 | 3369549 | +8.7 % |
+| `element.long_texts` SetInnerRML + Update | 89674777 | 129241776 | 100420082 | +12.0 % |
+| `element.creation_and_destruction` SetInnerRML + Update | 32155430 | 42173396 | 39678952 | +23.4 % |
+| `elementdocument-baseline` LoadDocument + Show + Update + Render | 2747780 | 3463344 | 3326052 | +21.0 % |
+| `table_basic` SetInnerRML + Update | 507124 | 711796 | 678310 | +33.8 % |
+| `table_inline-block` SetInnerRML + Update | 562690 | 899029 | 868385 | +54.3 % |
+| `custom_properties` theme toggle (no variables) | 197370 | 382648 | 343346 | +74.0 % |
+| `custom_properties` theme toggle (variables) | 1755846 | 2110147 | 2054448 | +17.0 % |
+| `data_binding` Update: Basic | 363161 | 456057 | 401230 | +10.5 % |
+| `flexbox` basic SetInnerRML + Update | 2049828 | 4466160 | 3297498 | +60.9 % |
+| `flexbox` basic SetInnerRML + Update (fast version) | 1046449 | 2926596 | 2219239 | +112.1 % |
+| `flexbox.shrink-to-fit` Basic | 177278 | 285686 | 237225 | +33.8 % |
+| `flexbox.shrink-to-fit` Nested | 14239356 | 2886604 | 2685835 | -81.1 % |
+| `grid` flex reference: Relayout | 6237948 | 8626985 | 7426703 | +19.1 % |
+| `background_border` Border no-radius (regenerated) | 166282 | 502345 | 355907 | +114.0 % |
+| `background_border` Border large-radius (regenerated) | 385292 | 3505235 | 1819017 | +372.1 % |
+| `background_border` Background all (colour change, regenerated) | 585362 | 5357455 | 2928767 | +400.3 % |
+| `box_shadow` unique shadows | 1487807 | 4052868 | 2826624 | +90.0 % |
+| `box_shadow` repeated shadows | 712396 | 957760 | 934869 | +31.2 % |
+| `WidgetTextInput` CalculateCharacterIndex, emoji N=50 | 2787072 | 3370575 | 3359820 | +20.6 % |
+
+The remaining regressions above 5 %, by cause, each a correctness requirement of phase 3:
+- **Background, border and shadow geometry** (`background_border` +114..+400 % when the geometry is regenerated,
+  `box_shadow` +31..+90 %, small render deltas of every bordered case): every edge is anti-aliased (feathered)
+  and borders are built as Chromium draws them (P3-P1: styles, dash layout, corner joins; P3-P2: elliptical radii);
+  a blurred shadow renders into a texture. The cost is paid when the geometry is regenerated (a change of size,
+  radius or colour), not per frame: the `Reference` render loops are below 6.3. P3-I20 took 24..48 % of it.
+  Not done: recolouring the cached mesh on a colour-only change (`Background all`, `Border all`): the generator
+  derives several shades per side (`groove`/`ridge`/`inset`/`outset`, the feathered fringe's alpha) from the
+  colours, so a recolour pass would duplicate that logic for a case games rarely hit every frame.
+- **Layout** (`flexbox` +29..+112 %, `flexbox.shrink-to-fit` Basic +34 %, `grid` flex reference +19..+25 %): CSS's
+  automatic minimum size (`min-width: auto`) measures flex items' min-content widths, Taffy's algorithm measures an
+  item's hypothetical cross size at its flexed width, and a shrink-to-fit width is at least the min-content width
+  (P3-L2, P3-L9, P3-TX4; the p3-layout section above). Nested shrink-to-fit is 5x faster than 6.3.
+- **Style computation of the phase-3 property set** (element creation +9..+26 %, documents +14..+21 %, tables
+  +34..+54 %, data binding +9..+12 %, theme toggles +17..+74 %, `calc` parsing +6..+17 %): every element computes
+  about twice as many properties (grid, layer lists, animation longhands, outline, text, logical properties) into a
+  larger `ComputedValues`; the `background` shorthand sets every layer longhand (CSS); `currentcolor`, `line-height:
+  normal` and font-relative units are resolved where CSS resolves them; transitions are checked on any computed
+  change (P3-A3); declarations are checked for `!important` and the CSS-wide keywords and selectors for their
+  pseudo-classes (P3-C1, P3-C2, P3-C4). The per-property overhead that was not needed is gone (P3-I15, P3-I18,
+  P3-I19); the no-variable theme toggle restyles every element of the document, which is all `ComputeValues`.
+- **Text** (`long_texts` +6..+12 %, `chat` short words +9 %, text-input character index of emoji and Japanese +6..+21 %):
+  UAX #14 line breaking and the CSS text properties (P3-TX1, P3-TX5); ASCII text takes the fast path of P3-I17,
+  other scripts the full pair rules.
+
+## Upstream rebase rehearsal (p3-integration)
+
+Rehearsed in a scratch clone of `https://github.com/mikke89/RmlUi` (2026-10-11/12): upstream `master` at
+`e74ad4ed33cce4d13f25a13a14c79764a1050d00` (2026-10-08), 13 commits after tag `6.3`. Every fork commit
+was turned into a patch relative to `engine/libs/rmlui` (`git format-patch --relative`, without our
+`CMakeLists.txt` and `hidden-symbols.map`) and applied with `git am -3`/`cherry-pick`, in landing order (each
+package's commits in the order its merge reached `html-ui`). First the series was replayed on `6.3` itself
+(21 commits needed the resolutions the package-sync merges made in the real history, and one closing commit
+carries the merge resolutions that are not per commit: p3-grid's `SetValueAsWritten` replacing p3-values'
+`SplitOption::Raw`, p3-values' aspect-ratio parser replacing p3-layout's, two include orders); the replay's tree
+equals the committed `engine/libs/rmlui` but for the build files. The replay was then rebased on `master`:
+161 commits (the 140 up to `f54d29f6c` and p3-integration's 21), 156 applied cleanly, 5 conflicts, each
+resolved:
+
+| Patch | Commit | Conflicting file | Hunks | Cause | Resolution |
+|---|---|---|---|---|---|
+| P2-2 | `cc633f88` | `Source/Core/GeometryBoxShadow.cpp` | 1 | upstream `96fda451` (box shadows of transparent or zero-area boxes, #1015) guards the outer shadow's clip with `if (mesh_padding_border)` on the lines the patch reorders | the patch's blur-first order inside upstream's guard |
+| P3-1 (tests) | `460b6b5e` | `Tests/Source/UnitTests/CMakeLists.txt` | 1 | upstream `96fda451` adds `BoxShadow.cpp` to the test list next to the patch's tests | both entries |
+| P3-11 | `88a58860` | `Tests/Source/UnitTests/CMakeLists.txt` | 1 | the same neighbour | both entries |
+| P3-C1 | `62be9492` | `Source/Core/StyleSheetParser.cpp` | 1 | upstream `b7b4a068` adds `#include "SystemInterface.h"` (the `@font-face` path fix `d4c0e91f`) next to the patch's `#include "Cascade.h"` | both includes |
+| P3-I14 | `ef035a37` | `Source/Core/GeometryBoxShadow.cpp` | 3 | upstream `96fda451`'s empty-mesh checks (`if (!mesh_shadow \|\| (inset && !mesh_padding)) continue;`, the `mesh_padding_border` guard) on the lines the patch moves into the tile lambda | upstream's checks inside the lambda, with its `element_offset` |
+
+Every other patch applied cleanly (P3-V10 is empty against the fork, the same change as P3-TX2). The
+rebased sources compile (syntax-only build of the changed files with the fork's defines); the unit tests were
+not run on the rebased tree. Behaviour that changes with the rebase without a conflict: `@font-face` sources are
+joined with the style sheet's path through the system interface (`RmlSystem::JoinPath` in the engine), wheel
+scrolling chooses the scroll container by the wheel's direction, and upstream's new
+`Tests/Source/UnitTests/BoxShadow.cpp` joins the vendored tests on a re-vendor. Upstream status of the patches:
+the "Upstream status" column above (no fork patch is merged upstream; PR #983 is P3-1's source).
 
 ## Updating upstream
 
