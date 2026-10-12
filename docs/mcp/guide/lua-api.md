@@ -682,13 +682,18 @@ sprites) sorted by their distance to the camera position, not by Z.
 `depthOffsetUnits`, `sortPriority` (draw order within its queue, opaque or transparent, lower
 first, before distance); methods `setShaderParam(name, value)` (colours linear; a
 `Vector3` colour is opaque), `getShaderParam(name)` (unset: the manifest default),
-`removeShaderParam(name)`, `setShaderTexture(uniform, path)` (`""` back to the default),
-`getShaderTexture(uniform)`, `setShaderFeature(define, on)` (a `@keywords` value is
+`removeShaderParam(name)`, `setShaderTexture(uniform, path)` (`""` back to the default; on a
+`@texture ... cube` uniform it sets a 2D texture: use the cube form),
+`setShaderCubeTexture(uniform, path)` (a `@texture ... cube` uniform: one image holding the six
+faces, the layouts a Skybox takes) or `setShaderCubeTexture(uniform, front, back, left, right,
+up, down)` (six images), `getShaderTexture(uniform)` (a cube map's single image or front
+face), `setShaderFeature(define, on)` (a `@keywords` value is
 `"GROUP_VALUE"`), `isShaderFeatureEnabled(define)`. A material with `shader = ""` feeds the
 shader its submesh draws with (the mesh's `customShader`, else the scene default): a copy from
 `getMaterial` / `material` resolves defaults and features against that one. UI (Image, Text,
 Polygon), Points, LineRenderer and Skybox objects have the same parameter/texture/feature
-methods for their `customShader`, and (but Skybox) `blendMode` and `depthWrite`.
+methods for their `customShader` (but `setShaderCubeTexture`: set a cube uniform of theirs from
+the editor or MCP), and (but Skybox) `blendMode` and `depthWrite`.
 `stencil` (`MaterialStencil()`: `compare` (`MaterialStencilCompare.*`: `AUTO` takes the shader's
 rule, `DISABLED`, `NEVER` ... `ALWAYS`), `ref`, `readMask`, `writeMask` (0-255), `pass`, `fail`,
 `depthFail` (`MaterialStencilOp.*`)) and `colorWrite` (`MaterialColorWrite.*`: `AUTO`, `NONE`,
@@ -700,7 +705,8 @@ of the submesh after its mesh's main draws (`order = MaterialPassOrder.BEFORE`: 
 them; on a mesh of several submeshes every After pass draws after all of its submeshes and
 every Before pass ahead of all of them, in submesh order) with its own
 `shader` (`""`: none), the same state fields as the material plus `stencil` and `colorWrite`,
-and the same parameter/texture/feature methods, resolved against its own shader; e.g.
+and the same parameter/texture/feature methods (`setShaderCubeTexture` included), resolved
+against its own shader; e.g.
 `m.extraPass.shader = "shaders/outline"; m.extraPass:setShaderParam("width", 0.05)`.
 
 ### 4.4 Primitive (Mesh)
