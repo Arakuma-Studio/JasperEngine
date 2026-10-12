@@ -21,6 +21,8 @@
 --     decals: a multiply dirt decal over uneven ground (bumps and a ramp), a large arrow
 --       box the "inside" views put the camera in, and a wall decal (box turned so its Y
 --       axis leaves the wall; the floor inside the box is faded by the angle)
+--     a decal box scaled to zero height over the flat ground before the stairs (no inverse:
+--       it must draw nothing)
 --
 --   near fade: two lines of floating points running away from the "near" view's camera,
 --     the left one with NEAR_FADE (invisible right at the camera, whole from 1.5 units),
@@ -31,6 +33,8 @@
 -- up close), decals_b, fog, inside (the
 -- camera inside the large decal box), enter (the camera moving into that box and out, 7 s
 -- outside, 3 s in, 7 s inside, 3 s out), ortho (orthographic camera over the whole group).
+-- PH3A_FOG=1 adds a dense exponential scene fog (decals take the fog of the surface they
+-- lie on, not of the box's far faces: no lighter or darker patch where a decal lies).
 --   SMOKE_GAME_ENV="SL_GROUPS=phase3a" SMOKE_GAME_RUNS="soft PH3A_VIEW=soft; near PH3A_VIEW=near;
 --       quads PH3A_VIEW=quads; field PH3A_VIEW=field; decals PH3A_VIEW=decals; stairs PH3A_VIEW=stairs;
 --       decals_b PH3A_VIEW=decals_b; fog PH3A_VIEW=fog; inside PH3A_VIEW=inside;
@@ -221,6 +225,11 @@ local function buildDecalsBack(ctx, o)
     decalBox(ctx, o + Vector3(3.6, 0.6, -10.5), Vector3(1.4, 0.6, 1.4), Vector3(90, 0, 0))
 end
 
+-- a box scaled to zero height (a plane: its bottom face draws, with no inverse matrix)
+local function buildZeroDecal(ctx, o)
+    decalBox(ctx, o + Vector3(3.6, 0.0, 0.4), Vector3(1.0, 0.0, 1.0), Vector3(0, 0, 0))
+end
+
 local function buildSoftQuads(ctx, o)
     box(ctx, Vector3(4.6, 1.8, 0.16), o + Vector3(-5.2, 0.9, -7.8), 25)
     local angle = 25
@@ -330,6 +339,14 @@ function Phase3a.build(ctx)
     buildSoftQuads(ctx, o)
     buildFog(ctx, o)
     buildDecalsBack(ctx, o)
+    buildZeroDecal(ctx, o)
+    if os.getenv("PH3A_FOG") == "1" then
+        local fog = keep(ctx, Fog(ctx.scene))
+        fog.type = FogType.EXPONENTIAL
+        fog:setColor(0.55, 0.6, 0.7)
+        fog.density = 0.12
+        ctx:log("scene fog")
+    end
     ctx.rows = ROWS
     ctx.count = ROWS * 8
 

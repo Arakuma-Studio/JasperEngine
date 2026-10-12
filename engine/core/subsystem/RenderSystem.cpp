@@ -2985,6 +2985,10 @@ uint32_t RenderSystem::getSceneInputUsage() const{
     return ((lastSceneInputStats.depthPrePasses + lastSceneInputStats.sharedDepth) ? 1u : 0u) | (lastSceneInputStats.colorCopies ? 2u : 0u);
 }
 
+uint32_t RenderSystem::getSceneInputUsage() const{
+    return ((lastSceneInputStats.depthPrePasses + lastSceneInputStats.sharedDepth) ? 1u : 0u) | (lastSceneInputStats.colorCopies ? 2u : 0u);
+}
+
 void RenderSystem::scanSubmeshAttributes(Submesh& submesh, const std::vector<const Buffer*>& buffers){
     // Reset before rescanning: model reloads can replace and reorder submeshes, so
     // retaining a flag from the previous slot may select a shader attribute that the

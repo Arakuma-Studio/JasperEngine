@@ -221,7 +221,6 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
     for (ShaderLightingMode mode : manifest.lighting) lighting.push_back(ShaderManifest::getLightingModeName(mode));
     out["lighting"] = lighting;
     // what some variant reads of the scene (phase 3): "scenedepth" adds a depth pre-pass and
-    // "scenecolor" a copy of the opaque scene to the camera passes that draw it
     // "scenecolor" a copy of the opaque scene to the camera passes that draw it; cost_note says
     // when (which features) and what that costs (Catalog: what the inspector's marks say)
     const uint32_t possibleSceneInputs = manifest.getPossibleSceneInputs();

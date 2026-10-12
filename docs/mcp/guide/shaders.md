@@ -186,7 +186,9 @@ uniform u_fs_customParams {
 Manifest lines (library shaders and forks that declare them) beyond the basic ones:
 
 - `// @state shadows=off`: the submesh casts no shadows (the mesh's `castShadows` still
-  turns them off too). Other keys: `blend`, `cull`, `zwrite`, `ztest`, `offset`, `queue`.
+  turns them off too). Other keys: `blend`, `cull`, `zwrite`, `ztest`, `offset`, `queue`,
+  `priority`. A shader can offset its queue order with `@state priority=N`, added to the
+  material's sort priority.
 - `// @state[<DEFINE>] key=value...`: state applied while a `@feature` or `@keywords`
   value (`<GROUP>_<VALUE>`) is on; `[!<DEFINE>]` while it is off. Order: material value,
   then the matching `@state[...]` lines (later wins), then `@state`, then the engine's.
@@ -228,8 +230,9 @@ particle on low-end mobile, a tinted alpha surface instead of refraction).
   distance in world units of the opaque surface there; the far clip distance over the sky),
   `fragmentLinearDepth()` (the same for the fragment being drawn), `sceneWorldPosition(uv)`
   (world position of the opaque surface) and `sceneColor(uv)` (linear colour of the opaque
-  scene and sky, fog included, bilinear). The first three and `sceneWorldPosition` need
-  `scenedepth`, `sceneColor` needs `scenecolor`. Example, soft fade:
+  scene and sky, fog included, bilinear). `screenUV` and `fragmentLinearDepth` are declared
+  with either input, `sceneLinearDepth` and `sceneWorldPosition` need `scenedepth`,
+  `sceneColor` needs `scenecolor`. Example, soft fade:
   `alpha *= clamp((sceneLinearDepth(screenUV()) - fragmentLinearDepth()) / softness, 0.0, 1.0);`
 - **Transparent queue only.** A mesh draw reading the scene must be in the transparent queue
   (`@state queue=transparent` or a blend other than opaque): it reads what the opaque queue
@@ -241,10 +244,23 @@ particle on low-end mobile, a tinted alpha surface instead of refraction).
   Points have no queue: they always draw after the copy.
 - **The copy holds the opaque scene and the sky only.** Transparent objects are not in it, so
   two glass panes do not see each other through it (as Unity URP's opaque texture), and UI,
-  lines and gizmos are not either. Reflection probe faces draw the opaque queue only: such
+  lines and gizmos are not either. A shader drawing the copy in place of what is behind it
+  (library `glass`, `water` with REFRACTION, `heat_haze` where its mask is whole) hides every
+  transparent object behind it (particles, alpha meshes, other water): keep those in front
+  of it or opaque. `water` REFRACTION at strength 0 draws exactly the water without it.
+  Compositing over the copy in a shader: mix display-encoded values (`encodeColor`,
+  `finalizeStraightColorOverScene` in `includes/output.glsl`), as the hardware blend does. Reflection probe faces draw the opaque queue only: such
   shaders are not in them. A camera drawing in hierarchy order (2D, `transparentSort` off)
   copies right before the first draw reading the colour, so the copy holds everything drawn
   before it.
+- **Where the copy comes from.** The colour is copied out of an offscreen target (the screen
+  cannot be read). An exported game drawing its main scene straight to the screen (no
+  post-process, SSR or fixed resolution) draws it offscreen and blits it to the screen instead,
+  while a colour reader is visible (and some frames after): those frames have no MSAA of the
+  screen. A layer scene (a child scene or `Engine.addSceneLayer`, drawn over the main
+  scene) drawn straight to the screen has no copy: its colour readers read black (its depth
+  readers see the layer's own opaque meshes). Render-to-texture cameras and the editor's
+  views always have one.
 - **Cost**, only in the camera passes (scene camera, render-to-texture and mirror cameras,
   editor views) where such a draw is visible; a scene without one pays nothing:
   - scene depth: one more geometry pass of the opaque meshes (none extra when SSAO, SSR or a

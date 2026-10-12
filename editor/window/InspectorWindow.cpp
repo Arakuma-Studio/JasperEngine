@@ -14197,7 +14197,7 @@ void editor::InspectorWindow::show(){
                 ImGui::SeparatorText("Scene Color");
 
                 if (ImGui::BeginTable("scene_color_settings_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Scale"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("In Use"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                     const float sceneColorScaleComboWidth = ImGui::CalcTextSize("Half").x + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f;
@@ -14205,6 +14205,30 @@ void editor::InspectorWindow::show(){
                         "Resolution of the copy of the opaque scene and sky that shaders reading the scene colour (glass, heat haze, refraction) sample, taken once per camera pass that draws such a shader. "
                         "Half (default): a quarter of the pixels to copy and keep, slightly blurred (each texel averages 2x2 pixels), right for distortion and on mobile. "
                         "Full: sharp, for clear glass seen up close, at four times the copy's bandwidth and memory.");
+
+                    // what the last frame made for the draws reading the scene (depth too: no table of its own)
+                    const uint32_t sceneInputsInUse = jasperengine::editor::Catalog::getSceneInputsInUse(sceneProject->scene);
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextUnformatted("In Use");
+                    ImGui::TableSetColumnIndex(1);
+                    if (sceneInputsInUse) {
+                        const std::string label = jasperengine::editor::Catalog::getSceneInputsLabel(sceneInputsInUse);
+                        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_GAUGE_HIGH " %c%s", (char)std::toupper((unsigned char)label[0]), label.c_str() + 1);
+                    } else {
+                        ImGui::TextDisabled("None");
+                    }
+                    if (ImGui::IsItemHovered()) {
+                        const std::string help = sceneInputsInUse
+                            ? "What the last frame made for the shaders reading the scene " + jasperengine::editor::Catalog::getSceneInputsLabel(sceneInputsInUse) +
+                              " in the cameras and views drawing one: " + jasperengine::editor::Catalog::getSceneInputsCost(sceneInputsInUse, true) + "."
+                            : std::string("What the last frame made for shaders reading the scene depth or colour: nothing, no visible draw reads them, so they cost nothing.");
+                        ImGui::BeginTooltip();
+                        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 32.0f);
+                        ImGui::TextUnformatted(help.c_str());
+                        ImGui::PopTextWrapPos();
+                        ImGui::EndTooltip();
+                    }
 
                     ImGui::EndTable();
                 }

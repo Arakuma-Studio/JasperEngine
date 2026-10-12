@@ -9,10 +9,22 @@ about a draw reading the scene depth or colour and its cost.
   (Catalog::getSceneInputQueueFix: blendMode alpha), and scene_inputs_cost; points readers too.
   The fix applied through set_properties clears the error and undo brings it back (the same
   property command as the button).
-- get_shader_uniforms: scene_inputs and cost_note of the material's (or component's) variant."""
+- get_shader_uniforms: scene_inputs and cost_note of the material's (or component's) variant; for a
+  mesh's own customShader, what its submeshes' variants of it read.
+- check --files <fork file> (CLI): the opaque-queue errors of the materials drawing with the forks
+  checked, not of every material in the project."""
 
 from __future__ import annotations
 
+import asyncio
+import json
+import re
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+import harness
 from harness import Editor, find_key
 
 TIMEOUT = 600
@@ -233,3 +245,118 @@ async def test_points_reader(ed: Editor):
     u = await ed.call("get_shader_uniforms", entity=eid)
     ed.check_eq(u.get("scene_inputs"), ["scenedepth"], f"get_shader_uniforms of the component: {u!r}")
     await ed.call("delete_entities", entities=[eid])
+
+
+async def test_mesh_custom_shader_reader(ed: Editor):
+    # the mesh's own customShader (no submesh shader): get_shader_uniforms without a submesh
+    # reports the component, whose shader is what its submeshes draw with
+    eid = await make_entity(ed, "Soft editor mesh fork")
+    await ed.call("set_properties", entity=eid, values={"mesh": {"customShader": "shaders/soft_editor"}})
+    inputs, _, _ = await entity_inputs(ed, eid)
+    ed.check_eq([e["reads"] for e in inputs], [["scenedepth"]], f"get_entity sees the reader: {inputs!r}")
+    u = await ed.call("get_shader_uniforms", entity=eid)
+    ed.check("submesh" not in u, f"the component, not a submesh: {u!r}")
+    ed.check_eq(u.get("scene_inputs"), ["scenedepth"], f"get_shader_uniforms of the mesh's fork: {u!r}")
+    ed.check("Scene depth:" in u.get("cost_note", ""), f"cost_note: {u!r}")
+    # the variant is the submesh's: TINT on its material reads the colour too
+    await ed.call("set_properties", entity=eid, values={"mesh": {M + "shaderFeatures": ["TINT"]}})
+    u = await ed.call("get_shader_uniforms", entity=eid)
+    ed.check_eq(u.get("scene_inputs"), ["scenedepth", "scenecolor"], f"follows the submesh's variant: {u!r}")
+    await ed.call("delete_entities", entities=[eid])
+
+
+def run_cli_check(project: Path, *args: str) -> tuple[int, dict]:
+    cmd = harness.editor_command() + ["check", "--project", str(project), *args, "--format", "json"]
+    r = subprocess.run(cmd, cwd=str(project), input="", capture_output=True, text=True, timeout=600)
+    try:
+        return r.returncode, json.loads(r.stdout)
+    except json.JSONDecodeError:
+        raise harness.TestFailure(f"check printed no JSON (exit {r.returncode}): {r.stdout[-1500:]}{r.stderr[-1500:]}")
+
+
+def opaque_queue_errors(data: dict) -> list[str]:
+    return [f["message"] for f in data.get("findings", []) if "opaque queue" in f.get("message", "")]
+
+
+async def test_cli_files_only_reports_their_materials(ed: Editor):
+    # an opaque material on the soft fork, saved; and an unrelated fork
+    eid = await make_entity(ed, "Soft editor CLI")
+    await ed.call("set_properties", entity=eid, values={"mesh": {M + "shader": "shaders/soft_editor", M + "blendMode": "opaque"}})
+    lib = harness.REPO / "engine" / "shaderlib"
+    await write_fork(ed, "shaders/plain_editor", (lib / "mesh.vert").read_text(), (lib / "mesh.frag").read_text())
+    await ed.call("save_scene")
+    await ed.call("save_project")
+
+    tmp = Path(tempfile.mkdtemp(prefix="jasper-si-check-"))
+    try:
+        copy = tmp / "project"
+        shutil.copytree(ed.project, copy, symlinks=True,
+                        ignore=lambda d, names: ({".git"} | ({"build"} if Path(d).name == ".jasperengine" else set())) & set(names))
+        _, data = run_cli_check(copy, "--files", "shaders/plain_editor.frag")
+        ed.check_eq(opaque_queue_errors(data), [], "checking an unrelated fork reports no other material")
+        _, data = run_cli_check(copy, "--files", "shaders/soft_editor.frag")
+        errors = opaque_queue_errors(data)
+        ed.check(len(errors) == 1 and "Soft editor CLI" in errors[0], f"the fork's material: {data!r}")
+        _, data = run_cli_check(copy, "--shaders")
+        ed.check(any("Soft editor CLI" in m for m in opaque_queue_errors(data)), f"every shader: every material: {data!r}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    await ed.call("delete_entities", entities=[eid])
+    await ed.call("save_scene")
+
+
+async def test_scene_inputs_in_use(ed: Editor):
+    # get_scene_settings (all settings): what the last frame made for the readers, as the scene
+    # settings' Scene Color > In Use row; a name filter asks for settings only
+    only = await ed.call("get_scene_settings", names=["scene_color_scale"])
+    ed.check("scene_inputs_in_use" not in only, f"names: settings only: {only!r}")
+    eid = await make_entity(ed, "Soft editor in use")
+    await ed.call("set_properties", entity=eid, values={"mesh": {M + "shader": "shaders/soft_editor", M + "shaderFeatures": ["TINT"]}})
+    await ed.call("frame_entity", entity=eid)
+    used = None
+    for _ in range(60):
+        used = (await ed.call("get_scene_settings"))["scene_inputs_in_use"]
+        if used == ["scenedepth", "scenecolor"]:
+            break
+        await asyncio.sleep(0.5)
+    ed.check_eq(used, ["scenedepth", "scenecolor"], "a visible reader of both: both made")
+    # no reader left: nothing made
+    others = [e["id"] for e in (await ed.call("find_entities", name="Soft editor*"))["entities"]]
+    await ed.call("delete_entities", entities=others)
+    for _ in range(60):
+        used = (await ed.call("get_scene_settings"))["scene_inputs_in_use"]
+        if used == []:
+            break
+        await asyncio.sleep(0.5)
+    ed.check_eq(used, [], "no reader: nothing made")
+
+
+async def test_guide_scene_inputs():
+    """docs/mcp/guide/shaders.md says what each includes/scene.glsl function needs as the include
+    declares it, and where the colour copy cannot come from"""
+    glsl = (harness.REPO / "engine" / "shaderlib" / "includes" / "scene.glsl").read_text()
+    needs = {}
+    stack = []
+    for line in glsl.splitlines():
+        code = line.strip()
+        if code.startswith("#if"):
+            stack.append(code)
+        elif code.startswith("#endif"):
+            stack.pop()
+        match = re.match(r"(?:float|vec2|vec3|vec4)\s+(\w+)\(", code)
+        if match:
+            inner = stack[-1] if stack else ""
+            needs[match.group(1)] = ("scenedepth" if "SURFACE_SCENE_DEPTH" in inner and "||" not in inner else
+                                     "scenecolor" if "SURFACE_SCENE_COLOR" in inner and "||" not in inner else "either")
+    guide = (harness.REPO / "docs" / "mcp" / "guide" / "shaders.md").read_text()
+    section = " ".join(guide.split("## Scene depth and colour", 1)[1].split("\n## ", 1)[0].split())
+    said = {}
+    for names, what in re.findall(r"((?:`\w+`(?:, | and )?)+) (?:are declared with either input|needs? `(\w+)`)", section):
+        for name in re.findall(r"`(\w+)`", names):
+            said[name] = what or "either"
+    documented = {name: need for name, need in needs.items() if f"`{name}(" in section}
+    if len(documented) < 5 or documented != {name: said.get(name) for name in documented}:
+        raise harness.TestFailure(f"scene.glsl {documented!r} vs the guide {said!r}")
+    for words in ("offscreen", "blits it to the screen", "no MSAA", "layer scene", "colour readers read black"):
+        if words not in section:
+            raise harness.TestFailure(f"the guide's scene inputs section lacks {words!r}")

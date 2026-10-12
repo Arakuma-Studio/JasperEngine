@@ -720,8 +720,14 @@ uint64_t editor::ProjectChecks::prepareShaderCheck(Project* project, ShaderUse& 
     return ShaderPool::getShaderKey(static_cast<ShaderType>(use.shaderType), properties, customId);
 }
 
-std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::sceneInputFindings(Project* project) {
+std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::sceneInputFindings(Project* project, const std::vector<ShaderUse>* forks) {
     std::vector<Finding> findings;
+    // the references the forks were collected as (shaderForksInUse: the submeshes' colour
+    // references and their extra passes')
+    std::set<std::string> checked;
+    if (forks) {
+        for (const ShaderUse& use : *forks) checked.insert(use.base);
+    }
     const fs::path root = project->getProjectPath();
     for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
         if (!sceneProject->scene) continue;
@@ -735,6 +741,9 @@ std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::sceneInputFin
                 bool opaqueQueue = false;
                 const uint32_t inputs = RenderSystem::getSubmeshSceneInputs(*mesh, mesh->submeshes[s], sceneMeshShader, opaqueQueue);
                 if (!inputs || !opaqueQueue) continue;
+                if (forks && !checked.count(RenderSystem::getSubmeshShaderReference(*mesh, mesh->submeshes[s], sceneMeshShader)) &&
+                        !(RenderSystem::hasExtraPass(mesh->submeshes[s], false) &&
+                          checked.count(RenderSystem::getSubmeshExtraPassReference(mesh->submeshes[s])))) continue;
                 const std::string what = (inputs == ShaderRequire_SceneInputs) ? "depth and colour" : (inputs & ShaderRequire_SceneDepth) ? "depth" : "colour";
                 findings.push_back({"shader", path, 0, 0, "error",
                     "GameObject '" + scene->getEntityName(entity) + "' submesh " + std::to_string(s) + ": its shader reads the scene " + what +

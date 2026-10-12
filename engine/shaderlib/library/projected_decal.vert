@@ -5,7 +5,9 @@
 // instance matrix of an instanced box), as the three rows of an affine 3x4 matrix, the same
 // at every vertex (flat). Computed per vertex from the matrices the draw already has (a
 // box has 8 to 24 vertices), so the decal needs no script to feed it its own transform.
-// The displacement hook only reads the matrices; the position is unchanged. With
+// A box scaled to zero along an axis has no inverse: its rows then put every point outside
+// the box, so it draws nothing. The displacement hook only reads the matrices; the position
+// is unchanged. With
 // ANGLE_FADE it also passes the cosines of the two fade angles (once per vertex, not per
 // pixel).
 
@@ -32,12 +34,20 @@ vec3 surfaceDisplace(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv
     #ifdef HAS_INSTANCING
         boxMatrix = boxMatrix * mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
     #endif
-    // affine inverse: [A | t]^-1 = [A^-1 | -A^-1 t]
-    mat3 inverseAxes = inverse(mat3(boxMatrix));
-    vec3 translation = -(inverseAxes * boxMatrix[3].xyz);
-    v_decalRow0 = vec4(inverseAxes[0][0], inverseAxes[1][0], inverseAxes[2][0], translation.x);
-    v_decalRow1 = vec4(inverseAxes[0][1], inverseAxes[1][1], inverseAxes[2][1], translation.y);
-    v_decalRow2 = vec4(inverseAxes[0][2], inverseAxes[1][2], inverseAxes[2][2], translation.z);
+    mat3 axes = mat3(boxMatrix);
+    if (abs(determinant(axes)) > 0.0){
+        // affine inverse: [A | t]^-1 = [A^-1 | -A^-1 t]
+        mat3 inverseAxes = inverse(axes);
+        vec3 translation = -(inverseAxes * boxMatrix[3].xyz);
+        v_decalRow0 = vec4(inverseAxes[0][0], inverseAxes[1][0], inverseAxes[2][0], translation.x);
+        v_decalRow1 = vec4(inverseAxes[0][1], inverseAxes[1][1], inverseAxes[2][1], translation.y);
+        v_decalRow2 = vec4(inverseAxes[0][2], inverseAxes[1][2], inverseAxes[2][2], translation.z);
+    }else{
+        // no inverse (scaled to zero): local x 1 everywhere, outside the box
+        v_decalRow0 = vec4(0.0, 0.0, 0.0, 1.0);
+        v_decalRow1 = vec4(0.0);
+        v_decalRow2 = vec4(0.0);
+    }
     #ifdef ANGLE_FADE
         v_angleFade = cos(radians(vec2(customParams.angleFadeStart, customParams.angleFadeEnd)));
     #endif

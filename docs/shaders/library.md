@@ -552,7 +552,7 @@ Sprite-sheet animation on a mesh: plays the frames of a columns x rows sheet at 
 <a id="libraryglass"></a>
 ### Glass (`library:glass`)
 
-Glass and clear plastic: the scene behind it bent by its normals (index of refraction and thickness, optional normal map), tinted and absorbed along the path through it, a fresnel reflection of a cubemap or a colour, a glint of the per-pixel lights; BLUR frosts it. Reads the scene colour and depth: on mobile a copy of the screen (half resolution by default), a split of the render pass and an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one). Alpha blended (transparent queue), no depth write, casts no shadows; other transparent objects are not seen through it.
+Glass and clear plastic: the scene behind it bent by its normals (index of refraction and thickness, optional normal map), tinted and absorbed along the path through it, a fresnel reflection of a cubemap or a colour, a glint of the per-pixel lights; BLUR frosts it. Reads the scene colour and depth: on mobile a copy of the screen (half resolution by default), a split of the render pass and an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one). Alpha blended (transparent queue), no depth write, casts no shadows. Transparent objects behind the glass are not seen through it (it shows the scene colour, which holds only opaque objects and the sky): keep them in front of it or make them opaque.
 
 - **Type**: mesh (a material's shader); category Effects.
 - **Lighting**: none (default), per pixel.
@@ -590,7 +590,7 @@ Glass and clear plastic: the scene behind it bent by its normals (index of refra
 <a id="libraryheat_haze"></a>
 ### Heat Haze (`library:heat_haze`)
 
-Shimmer over fire, exhausts and portals: the scene behind the mesh wobbled by two layers of a scrolling noise texture, as strong as the mask texture, the vertex and instance alpha and the soft edge (UV border for quads and sprites, fresnel for volumes) allow. Reads the scene colour: on mobile a copy of the screen (half resolution by default) and a split of the render pass; SOFT also reads the scene depth (an extra depth-only pass of the opaque meshes, none when SSAO or SSR already made one). Alpha blended, no depth write, both faces (give a closed volume cull back), casts no shadows; other transparent objects are not seen through it.
+Shimmer over fire, exhausts and portals: the scene behind the mesh wobbled by two layers of a scrolling noise texture, as strong as the mask texture, the vertex and instance alpha and the soft edge (UV border for quads and sprites, fresnel for volumes) allow. Reads the scene colour: on mobile a copy of the screen (half resolution by default) and a split of the render pass; SOFT also reads the scene depth (an extra depth-only pass of the opaque meshes, none when SSAO or SSR already made one). Without SOFT, a shift that lands on an object in front of the haze pulls that object's colour into it (a smear along its outline): turn SOFT on where objects pass in front. Transparent objects behind the haze are hidden where it is at full strength (it shows the scene colour, which holds only opaque objects and the sky), faintly seen where it fades. Alpha blended, no depth write, both faces (give a closed volume cull back), casts no shadows.
 
 - **Type**: mesh (a material's shader); category Effects.
 - **Lighting**: none.
@@ -810,7 +810,7 @@ Leaves and grass: wind sway in the vertex stage (masked by the vertex colour's r
 <a id="librarywater"></a>
 ### Water (`library:water`)
 
-Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint. Optional scene-reading features: DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness) read the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth. Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass. Alpha blended; casts no shadows.
+Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint. Optional scene-reading features: DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness) read the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth. Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass. REFRACTION hides other transparent objects behind the water where it bends the view (the scene colour holds only opaque objects and the sky), and needs the Alpha or Premultiplied blend (Additive and Multiply draw it unrefracted). Alpha blended; casts no shadows.
 
 - **Type**: mesh (a material's shader); category Nature.
 - **Lighting**: none (default), per pixel.

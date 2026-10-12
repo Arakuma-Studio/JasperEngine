@@ -193,8 +193,10 @@ namespace jasperengine::editor {
                                                                            bool onlyEnabledFeatures);
         // Materials of the loaded scenes and prefab stages whose shader (or extra pass) reads the
         // scene depth or colour (@require scenedepth / scenecolor) while the material resolves to
-        // the opaque queue: errors (tool "shader"), at the scene or prefab file
-        static std::vector<Finding> sceneInputFindings(Project* project);
+        // the opaque queue: errors (tool "shader"), at the scene or prefab file. With forks, only
+        // the materials drawing with one of them (their shader or extra pass): a check of some
+        // files reports the materials of the forks it checked
+        static std::vector<Finding> sceneInputFindings(Project* project, const std::vector<ShaderUse>* forks = nullptr);
         // The project file a compiler message source (an entry point or include key) of a fork is
         // ("engine/shaderlib/<key>" for an engine library include)
         static std::string shaderSourcePath(Project* project, const std::string& base, const std::string& source);

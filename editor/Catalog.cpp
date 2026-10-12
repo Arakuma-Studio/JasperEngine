@@ -4549,10 +4549,29 @@ uint32_t editor::Catalog::getMaterialSceneInputs(Scene* scene, Entity entity, un
 }
 
 uint32_t editor::Catalog::getComponentSceneInputs(Scene* scene, Entity entity, ComponentType component) {
-    if (!scene || component == ComponentType::MeshComponent) return 0;
+    if (!scene) return 0;
+    if (component == ComponentType::MeshComponent) {
+        // the mesh's shader (its customShader, else the scene's) has no features of its own: the
+        // submeshes drawing with it pick its variants through their materials
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        if (!mesh) return 0;
+        const std::string& shader = mesh->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::MESH) : mesh->customShader;
+        uint32_t inputs = 0;
+        for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+            if (mesh->submeshes[s].material.shader.empty()) inputs |= getShaderSceneInputs(shader, mesh->submeshes[s].material.shaderFeatures);
+        }
+        return inputs;
+    }
     const std::vector<std::string>* features = getPropertyRef<std::vector<std::string>>(scene, entity, component, "shaderFeatures");
     if (!features) return 0;
     return getShaderSceneInputs(getShaderReferenceForProperty(scene, entity, component, "customShader"), *features);
+}
+
+uint32_t editor::Catalog::getSceneInputsInUse(Scene* scene) {
+    auto render = scene ? scene->getSystem<RenderSystem>() : nullptr;
+    if (!render) return 0;
+    const uint32_t usage = render->getSceneInputUsage();
+    return ((usage & 1u) ? ShaderRequire_SceneDepth : 0u) | ((usage & 2u) ? ShaderRequire_SceneColor : 0u);
 }
 
 bool editor::Catalog::getSceneInputQueueFix(Scene* scene, Entity entity, unsigned int submesh, MaterialBlendMode& blendMode) {

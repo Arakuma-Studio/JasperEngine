@@ -392,7 +392,7 @@ shaders and the editor is also written out in `/tmp/shader-research/p3-api.md`.
   `scene_inputs` and `cost_note` added to the guide test's non-tool words); `TOOLS.md` regenerated.
 - Tests: `tools/mcp/tests/test_scene_inputs_editor.py` (forks: depth always, colour with a
   feature; points): list_shaders `cost_note` and that features plus requires make up
-  `scene_inputs` (vacuous until library shaders read the scene: none did on this branch),
+  `scene_inputs`,
   get_entity / get_shader_uniforms per variant, the opaque-queue error and fix, applying the fix
   through `set_properties`, undo restoring the error, an extra pass reader, a points reader.
 - Checks run: full `tools/build.sh linux`; the MCP suite (268 passed, 3 slow ones skipped);
@@ -402,6 +402,121 @@ shaders and the editor is also written out in `/tmp/shader-research/p3-api.md`.
   the opaque-queue error with its button; the button set Alpha (error gone) and undo restored
   Opaque (read back through `get_entity`); the 17 scene and prefab files of the fixture projects
   re-saved with this editor and with a build of c46fa1d6: all byte-identical.
+
+### 4.6 Review fixes: shaders (sl/p3-fix-glsl)
+
+Fixes of the GLSL review at 914391fd (the engine-side `@state priority=` and projected_decal's
+`priority=-1` are the engine-fix branch's).
+
+- Includes (additive; existing callers unchanged): `fog.glsl` `getFogFactor(fogDist)` and
+  `getFogColorAtDistance(color, fogDist)` (`getFogColor` is that at `gl_FragCoord.z /
+  gl_FragCoord.w`); `output.glsl` `fragmentFogDistance()`, `finalizeColorAtFogDistance`,
+  `finalizeStraightColorAtFogDistance`, `finalizeBlendedColorAtFogDistance` (the plain ones call
+  them), `fadeByFog(color, neutral)` / `fadeByFogAtFogDistance` (a filter fades to white, a glint
+  to black), `sceneFogDistance(uv, depth01)` (declared after `includes/scene.glsl` with
+  `SURFACE_SCENE_DEPTH`: the fog distance the opaque surface under `uv` got, `depth01 /
+  dot(inverseProjectionW, ndc)`, i.e. its depth times its clip w: right in perspective,
+  orthographic and oblique projections), `encodeColor(linear)` and
+  `finalizeStraightColorOverScene(color, behind, behindWeight)`.
+- Compositing over the scene colour (§4.3 correction): the targets hold display-encoded colour
+  and the hardware blends those values as stored, so §4.3's in-shader `mix(scene, applyFog(own),
+  a)` in linear did not draw what the blend draws (G 0.8, a 0.5 over black: 0.66 against 0.45).
+  `finalizeStraightColorOverScene` mixes encoded values: weight 0 is `finalizeStraightColor` over
+  the target bit for bit, 1 replaces the target (alpha 1), in between it outputs coverage `a + (1
+  - a) w` of `mix(own, behind, (1 - a) w / coverage)` (alpha and premultiplied blends); Additive
+  and Multiply cannot remove what is behind and draw `finalizeStraightColor`.
+- Transparent objects behind (review item 1): (a) water, glass and heat_haze descriptions and
+  `docs/mcp/guide/shaders.md` say plainly that they hide transparent objects behind them. (c)
+  Water: the refracted sample's weight is `clamp(refractionStrength * reach * resolution.y / 2)`
+  (whole once a unit of ripple shifts it 2 pixels; `reach` the thickness ramp), so at
+  `refractionStrength` 0 REFRACTION draws exactly the water without it (transparent objects
+  behind included) and the first bit of thickness at the shore blends over the target. Glass:
+  not possible (its transmission filter multiplies what is behind by a colour, which an alpha
+  blend cannot do to the target): documented. Heat haze already blends by its mask (objects
+  behind show where it fades): documented. The REFRACTION-only tint fade over `refractionDepth`
+  is gone (it changed the water at strength 0; ABSORPTION's `shoreFade` is the soft shore).
+- `projected_decal`: fogged at `sceneFogDistance` of the surface under it, not at the box's
+  back face (the multiply blend fades to white by it); the texture sampled with `textureGrad`,
+  each UV derivative held to 4 times the smaller one (a depth step under the quad makes one jump:
+  no tiny mip at stair nosings and outlines, up to 4:1 stretch kept at grazing views); a box
+  scaled to zero has no inverse: the vertex stage sends every point outside (rows `(0,0,0,1)`,
+  0, 0) and the fragment test is `!(max <= 0.5)`. The description's and comment's sort-priority
+  advice is left to the engine-fix branch.
+- `glass`: the seen side is decided by the mesh's normal before the normal map (the mapped
+  normal flipped pixel by pixel at grazing views: dark speckle along the pane), a mapped normal
+  tilting away is pulled back just past the silhouette (continuous); composite in display values
+  as three blended layers would draw it (scene times the transmission filter, the reflection
+  mixed by the fresnel, the glint added); the tint and absorption filter fades to white with the
+  fog, the glint to black. Additive draws the reflection and glint, Multiply the filter.
+- `heat_haze`: the tint fades to white with the fog; the description says that without SOFT a
+  shift landing on an object in front smears it into the haze.
+- Re-read for the same bug classes: depth_fade, particle / unlit SOFT and NEAR_FADE and rim
+  INTERSECTION draw their own fragment (their fog and blends are right). The scene-inputs
+  fixture forks `si_refraction` / `si_haze` (`finalizeColor(sceneColor(...))`, fog twice) are
+  fixture code, not changed.
+- Fixture: `phase3a` `PH3A_FOG=1` (dense exponential scene fog) and a decal box scaled to zero
+  height before the stairs; `phase3b` a transparent red box under pool 4 (sortPriority -1),
+  `P3B_REFRACTION=zero|off` (strength 0 or REFRACTION off on pools 1 and 4, every scroll stopped:
+  the regression check is that the two screenshots are identical), `P3B_VIEW=glass_grazing`.
+- Checks run: full `tools/build.sh linux`; `shaders --library all --backend all` (33 shaders, 9810
+  compiles, 0 failures, no manifest diagnostic) and built-in `mesh:Fog`, `mesh:Uv1,Nor,Fog`,
+  `mesh:Ult,Fog` on six backends; smoke tests of `SL_GROUPS=phase3b` (water, water_low,
+  water_edge, glass, glass_grazing, haze, P3B_ORTHO, and the zero/off pair) and `SL_GROUPS=phase3a`
+  (decals, stairs, decals_b, and with PH3A_FOG decals, decals_b, inside, ortho) on GL and
+  `SMOKE_BACKEND=gles3`: `P3B_REFRACTION=zero` and `=off` 0 differing pixels on both backends
+  (with the transparent box visible through pool 4 in both); A/B runs against the 5e8a0a92
+  glass and decal (as fixture forks): the grazing normal-mapped pane lost its dark speckle;
+  under fog the decal ink went from 107.6 to 104.2 (the surface's fog, the ground around 104.2);
+  without fog the decals are unchanged. Not reproduced on llvmpipe: the zero-scaled box drew
+  nothing with the old shader too, and the fixture's decal texture showed no mip outline before
+  either (both fixes are defensive there). `check.sh` (seven scenes pass; Phase3A mean 0.84,
+  Phase3B 0.47; no regeneration needed); the MCP suite (268 passed, 3 skipped).
+
+### 4.7 Review fixes: editor (sl/p3-fix-editor)
+
+Fixes of the phase 3 review of the editor, MCP and fixtures (each reproduced first, each with a
+regression test in `tools/mcp/tests/test_scene_inputs_editor.py`):
+
+- `test_list_shaders_cost` already used toon as the shader reading nothing and asserted unlit's
+  `SOFT` reading `scenedepth` (fixed by 8e04a5d4); the "(vacuous until ...)" wording of §4.4 is gone.
+- Guide: `screenUV` and `fragmentLinearDepth` are declared with either input (`scene.glsl`
+  declares them under `SURFACE_SCENE_DEPTH || SURFACE_SCENE_COLOR`); only `sceneLinearDepth` /
+  `sceneWorldPosition` need `scenedepth` and `sceneColor` needs `scenecolor`.
+  `test_guide_scene_inputs` derives what each function needs from the include's `#if` nesting and
+  compares it with the guide's sentence.
+- `Catalog::getComponentSceneInputs` of a MeshComponent was 0: `get_shader_uniforms` on a mesh
+  whose own `customShader` reads the scene said nothing. It is now the OR over the submeshes
+  drawing with the mesh's shader (no shader of their own) of that shader's variant with their
+  material's features (the mesh's shader has no features of its own).
+- `check --files <shader file>` listed the opaque-queue errors of every material.
+  `ProjectChecks::sceneInputFindings(project, forks)` keeps, with a fork list, the materials whose
+  colour reference (`getSubmeshShaderReference`) or extra pass reference is one of the forks
+  checked (the same strings `shaderForksInUse` collects); `check --shaders` (every shader) passes
+  none and reports all. MCP `check_shader` keeps its rule (state findings only without `shader`).
+- `tools/fixtures/scene-inputs/generate.py` deletes the previous `Saved.scene` (`delete_scene`
+  with its file, in the editor's project copy) before `create_scene`: re-runs work (run twice in
+  a row; the regenerated scene differs only in its random id and the camera aspect, not committed).
+- Guide additions: an exported game drawing straight to the screen draws offscreen and blits
+  while a colour reader is visible and 30 frames after (no swapchain MSAA those frames); a layer
+  scene (child scene, `Engine.addSceneLayer`) drawn straight to the screen has no copy, its colour
+  readers read black (its depth readers see its own opaque meshes); render-to-texture cameras and
+  editor views always have one. Also `@state priority=N` (one sentence, the engine-fix branch's
+  manifest key). `list_shaders` does not show it: no accessor for it existed on this base.
+- Duplicated comment line in `McpValues::manifestToJson` removed.
+- Scene inputs in use (supersedes "No ... indicator" of §4.4): `Catalog::getSceneInputsInUse
+  (scene)` maps `RenderSystem::getSceneInputUsage()` (bit 0 depth, bit 1 colour, the scene's last
+  frame) to `ShaderRequire_` bits. Inspector: Scene Color gets an "In Use" row (amber gauge and
+  "Depth and colour" / "Depth" / "Colour", or a disabled "None"; tooltip: the brief cost).
+  `get_scene_settings` without `names` adds `scene_inputs_in_use` (not a setting; a name filter
+  returns settings only); `TOOLS.md` regenerated. The accessor did not exist on this base: commit
+  24bbcd41 adds a placeholder (from `lastSceneInputStats`: depth when a pre-pass ran or a depth was
+  shared, colour when a copy was taken) for the engine-fix branch's real one to replace at merge.
+  Checked in the editor (harness Xvfb, a 3D scene with a reader of both in the Scene view): the
+  row reads "Depth and colour" in amber.
+- Checks run: full `tools/build.sh linux`; the MCP suite (271 passed, 3 skipped; the timing test
+  `test_cli_lua_isolated_state` failed under the parallel load and passed alone);
+  `tools/fixtures/shader-library-export/check.sh` (all 7 scenes ok); `generate.py` of the
+  scene-inputs fixture twice in a row (both 9 variants, 0 failed, 0 findings).
 
 ## 5. Definition of done
 
