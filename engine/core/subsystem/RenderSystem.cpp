@@ -5135,8 +5135,15 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (mesh.submeshes[i].alphaBlend)
             blendedSceneInputs |= submeshInputs;
         // an opaque surface whose depth program moves or clips it (a library @depth program
-        // or a depth fork): the SSR G-buffer draws it with the built-in one
-        if (!mesh.submeshes[i].alphaBlend && mesh.submeshes[i].customDepthShaderId != 0 && mesh.submeshes[i].depthShader)
+        // or a depth fork reading a parameter block, the frame block or a texture: displacing
+        // by time or parameters, clipping by a texture), which the SSR G-buffer draws with the
+        // built-in program. A @depth program without them (unlit without ALPHA_CLIP) draws
+        // what the built-in one does.
+        const Submesh& submesh = mesh.submeshes[i];
+        if (!submesh.alphaBlend && submesh.customDepthShaderId != 0 && submesh.depthShader &&
+                (submesh.customVSDepthParams.slot != -1 || submesh.customFSDepthParams.slot != -1 ||
+                 submesh.depthLibraryBindings.slotVSFrame != -1 || submesh.depthLibraryBindings.slotFSFrame != -1 ||
+                 !submesh.depthLibraryBindings.textures.empty()))
             customDepthOpaque = true;
     }
     mesh.sceneInputs = sceneInputs & ShaderRequire_SceneInputs;
