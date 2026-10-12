@@ -1659,6 +1659,14 @@ namespace jasperengine{
 		void needReloadPoints();
 		void needReloadLines();
 		void needReloadMeshes();
+		// a change of the scene's shader environment that leaves every resource the loaded
+		// variants bind alive (light cap, fog, lights added or removed, reflection probes, 2D
+		// shadows, scene depth programs): a loaded mesh keeps drawing its variant until the new
+		// one's shaders are built (meshVariantShadersReady), then reloads in that update, so a
+		// runtime compile shows no gap; with precompiled shaders it reloads in the same update
+		// as needReloadMeshes does
+		void needReloadMeshVariants();
+		bool meshVariantShadersReady(Entity entity, const MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain);
 		void needReloadPostProcess();
 		void needUpdatePostProcessUniforms();
 		void needReloadUIs();

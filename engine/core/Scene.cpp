@@ -216,8 +216,9 @@ SceneColorScale Scene::getSceneColorScale() const{
 void Scene::setSSAOEnabled(bool ssaoEnabled){
     if (settings.ssaoEnabled != ssaoEnabled){
         settings.ssaoEnabled = ssaoEnabled;
-        // toggling SSAO changes the mesh shader variant (USE_SSAO), so recompile
-        getSystem<RenderSystem>()->needReloadMeshes();
+        // toggling SSAO changes the mesh shader variant (USE_SSAO), so recompile (the loaded
+        // variants draw meanwhile: every pass binds its AO texture or white)
+        getSystem<RenderSystem>()->needReloadMeshVariants();
     }
 }
 

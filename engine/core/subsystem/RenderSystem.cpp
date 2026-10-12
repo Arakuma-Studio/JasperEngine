@@ -1890,7 +1890,7 @@ bool RenderSystem::loadLights2D(){
     // USE_SHADOWS_2D is baked into mesh shader variants, so a flip (first shadow
     // light + occluder appearing, or the last one going away) rebuilds meshes
     if (hasShadows2D != prevHasShadows2D){
-        needReloadMeshes();
+        needReloadMeshVariants();
     }
 
     return true;
@@ -1991,7 +1991,7 @@ bool RenderSystem::loadAndProcessFog(){
 
     // fog is a shader variant: a Fog added or removed while playing switches every mesh
     if (hasFog != hadFog){
-        needReloadMeshes();
+        needReloadMeshVariants();
     }
 
     return hasFog;
@@ -2095,7 +2095,7 @@ void RenderSystem::updateReflectionProbes(double dt){
     bool newHasReflectionProbes = probes->size() > 0;
     if (newHasReflectionProbes != hasReflectionProbes){
         hasReflectionProbes = newHasReflectionProbes;
-        needReloadMeshes();
+        needReloadMeshVariants();
     }
 
     activeReflectionProbe = NULL_ENTITY;
@@ -4291,7 +4291,7 @@ void RenderSystem::setDisableFog(bool disableFog){
     this->disableFog = disableFog;
 
     // fog is a shader variant
-    needReloadMeshes();
+    needReloadMeshVariants();
 }
 
 void RenderSystem::setDisableFixedResolution(bool disableFixedResolution){
@@ -5160,6 +5160,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
     trimSmoothNormals(mesh);
 
     mesh.needReload = false;
+    // loaded with the current environment
+    mesh.needVariantReload = false;
     mesh.needUpdateShaderUniforms = false;
     mesh.needUpdateAABB = true;
     mesh.loadCalled = true;
@@ -6617,7 +6619,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 }
             }
 
-            if (hasFog){
+            // the variant's (a mesh waiting for a variant reload keeps its block when the fog goes)
+            if (mesh.submeshes[i].slotFSFog != -1){
 #ifdef JASPERENGINE_EDITOR
                 // exponential fog of density 0: a factor of 1 everywhere, no fog
                 static fs_fog_t noFog = {Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
@@ -6667,7 +6670,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     buildLegacyLighting(mesh, mesh.submeshes[i].shaderProperties, legacyLightingBlock);
                     render.applyUniformBlock(mesh.submeshes[i].slotFSLighting, sizeof(fs_lighting_t), &legacyLightingBlock);
                 }
-                if (hasShadows && (mesh.submeshes[i].shaderProperties & (1u << 4))){
+                // the variant's ('Shw'; a mesh waiting for a variant reload keeps its blocks)
+                if (mesh.submeshes[i].shaderProperties & (1u << 4)){
                     render.applyUniformBlock(mesh.submeshes[i].slotVSShadows, sizeof(float) * (20 * MAX_SHADOW_ATLAS_SLOTS), &passLighting.vs_shadows);
                     render.applyUniformBlock(mesh.submeshes[i].slotFSShadows, sizeof(fs_shadows_t), &passLighting.fs_shadows);
                     render.applyUniformBlock(mesh.submeshes[i].slotFSPointShadows, sizeof(fs_point_shadows_t), &passLighting.fs_point_shadows);
@@ -6843,8 +6847,8 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                 // a submesh without this depth program is left out of a pre-pass (its scene
                 // gives every mesh one when a pass needs them all: updateSceneInputPrograms);
                 // reloading would not give it one and would leave the mesh out of its colour
-                // pass this frame
-                if (forSSAO)
+                // pass this frame; a mesh waiting for its new variant gets it then
+                if (forSSAO || mesh.needVariantReload)
                     continue;
                 mesh.needReload = true;
                 return false;
@@ -7252,7 +7256,7 @@ void RenderSystem::updateSceneInputPrograms(){
     if (depthPrograms != sceneDepthPrograms){
         sceneDepthPrograms = depthPrograms;
         sceneDepthIdleUpdates = 0;
-        needReloadMeshes();
+        needReloadMeshVariants();
     }
 
     // the same for the scene camera's offscreen pipelines of an exported build (a colour reader:
@@ -8321,6 +8325,9 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotFSParams = -1;
         submesh.slotFSTexCoordSets = -1;
         submesh.slotVSFade = -1;
+        // set only when the variant has them (loadMesh): a reload without must not keep them
+        submesh.slotFSFog = -1;
+        submesh.slotFSMirror = -1;
         submesh.slotFSLighting = -1;
         submesh.slotVSObjectLights = -1;
         submesh.slotFSObjectLights = -1;
@@ -9866,6 +9873,53 @@ void RenderSystem::needReloadMeshes() {
     }
 }
 
+void RenderSystem::needReloadMeshVariants() {
+    auto meshes = scene->getComponentArray<MeshComponent>();
+    for (int i = 0; i < meshes->size(); i++) {
+        MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        // one not loaded (or already reloading) loads with the new environment anyway
+        if (mesh.loaded && !mesh.needReload)
+            mesh.needVariantReload = true;
+        else
+            mesh.needReload = true;
+    }
+}
+
+// Whether every shader a reload of the mesh would take now is built (or failed: the load
+// falls back), asking for them as loadMesh does (ShaderPool::get starts their builds). The
+// variants as loadMesh resolves them, from the submeshes' attributes of their last load
+// (a variant-only reload keeps the buffers).
+bool RenderSystem::meshVariantShadersReady(Entity entity, const MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain){
+    if (!Engine::isViewLoaded())
+        return false;
+    auto ready = [](ShaderType type, uint32_t properties, uint16_t customId){
+        return ShaderPool::get(type, properties, customId)->isCreated() || ShaderPool::isShaderBuildFailed(type, properties, customId);
+    };
+    const MeshShaderEnvironment shaderEnvironment = getMeshShaderEnvironment();
+    const bool hasMirror = (scene->findComponent<MirrorComponent>(entity) != NULL);
+    const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+    bool allReady = true;
+    for (unsigned int i = 0; i < mesh.numSubmeshes; i++){
+        const Submesh& submesh = mesh.submeshes[i];
+        const SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, hasMirror, sceneMeshShader);
+        const SubmeshShaderVariant variant = getSubmeshShaderVariant(shaderEnvironment, inputs);
+        allReady = ready(ShaderType::MESH, variant.properties,
+                         ShaderPool::registerCustomShader(getSubmeshShaderReference(mesh, submesh, sceneMeshShader))) && allReady;
+        if (variant.depth){
+            allReady = ready(ShaderType::DEPTH, variant.depthProperties,
+                             ShaderPool::registerCustomShader(getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader))) && allReady;
+        }
+        if (variant.gbuffer){
+            allReady = ready(ShaderType::GBUFFER, variant.gbufferProperties, 0) && allReady;
+        }
+        if (hasExtraPass(submesh, terrain != nullptr)){
+            const SubmeshShaderVariant passVariant = getSubmeshShaderVariant(shaderEnvironment, getExtraPassShaderInputs(inputs, submesh.material.extraPass));
+            allReady = ready(ShaderType::MESH, passVariant.properties, ShaderPool::registerCustomShader(getSubmeshExtraPassReference(submesh))) && allReady;
+        }
+    }
+    return allReady;
+}
+
 void RenderSystem::needReloadUIs() {
     auto uis = scene->getComponentArray<UIComponent>();
     for (int i = 0; i < uis->size(); i++) {
@@ -9923,7 +9977,8 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < meshes->size(); i++) {
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        count(mesh.loaded || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)));
+        // a mesh drawing its previous variant while the new one builds is still loading
+        count((mesh.loaded && !mesh.needVariantReload) || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)));
     }
 
     // Check UIComponents
@@ -11171,7 +11226,7 @@ void RenderSystem::update(double dt){
     const int lightCapacity = getLightCapacity(scene->getMaxLightsPerObject());
     if (lightCapacity != lightCapacityTier){
         lightCapacityTier = lightCapacity;
-        needReloadMeshes();
+        needReloadMeshVariants();
     }
 
     if (pipelines != loadedPipelines){
@@ -11414,6 +11469,17 @@ void RenderSystem::update(double dt){
 
             if (mesh.autoTransparency && mesh.transparent != expectedTransparent){
                 mesh.needReload = true;
+            }
+
+            // a new variant for the environment: the loaded one draws until its shaders are built
+            if (mesh.needVariantReload){
+                if (!mesh.loaded || mesh.needReload){
+                    mesh.needReload = true;
+                    mesh.needVariantReload = false;
+                }else if (meshVariantShadersReady(entity, mesh, instmesh, terrain)){
+                    mesh.needReload = true;
+                    mesh.needVariantReload = false;
+                }
             }
 
             if (mesh.loaded && mesh.needReload){
@@ -13228,16 +13294,16 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
 void RenderSystem::onComponentAdded(Entity entity, ComponentId componentId) {
     if (componentId == scene->getComponentId<LightComponent>()) {
-        needReloadMeshes();
+        needReloadMeshVariants();
     } else if (componentId == scene->getComponentId<Light2DComponent>()) {
         // shader variant change (USE_LIGHT2D)
-        needReloadMeshes();
+        needReloadMeshVariants();
     } else if (componentId == scene->getComponentId<MirrorComponent>()) {
         // a mirror enables the inverted-culling pipeline on meshes; reload so it bakes
         needReloadMeshes();
     } else if (componentId == scene->getComponentId<ReflectionProbeComponent>()) {
         hasReflectionProbes = true;
-        needReloadMeshes();
+        needReloadMeshVariants();
     }
 }
 
@@ -13249,9 +13315,9 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     if (componentId == scene->getComponentId<LightComponent>()) {
         LightComponent& light = scene->getComponent<LightComponent>(entity);
         destroyLight(light);
-        needReloadMeshes();
+        needReloadMeshVariants();
     } else if (componentId == scene->getComponentId<Light2DComponent>()) {
-        needReloadMeshes();
+        needReloadMeshVariants();
     } else if (componentId == scene->getComponentId<MeshComponent>()) {
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         destroyMesh(entity, mesh);
@@ -13287,7 +13353,7 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
         destroyReflectionProbe(entity, probe);
         cameraShadows.erase(entity);
         hasReflectionProbes = scene->getComponentArray<ReflectionProbeComponent>()->size() > 1;
-        needReloadMeshes();
+        needReloadMeshVariants();
     }
 }
 

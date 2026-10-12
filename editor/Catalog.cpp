@@ -525,9 +525,9 @@ namespace {
     };
 
     static const FastPropertyDescriptor kLightProperties[] = {
-        makeFastPropertyNoDefault<LightComponent, LightType, &LightComponent::type>("type", PropertyType::Enum, UpdateFlags_LightShadowMap | UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Reload),
+        makeFastPropertyNoDefault<LightComponent, LightType, &LightComponent::type>("type", PropertyType::Enum, UpdateFlags_LightShadowMap | UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Variant),
         makeFastProperty<LightComponent, Vector3, &LightComponent::direction>("direction", PropertyType::Vector3, UpdateFlags_Transform),
-        makeFastProperty<LightComponent, bool, &LightComponent::shadows>("shadows", PropertyType::Bool, UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Reload),
+        makeFastProperty<LightComponent, bool, &LightComponent::shadows>("shadows", PropertyType::Bool, UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Variant),
         makeFastProperty<LightComponent, float, &LightComponent::intensity>("intensity", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<LightComponent, float, &LightComponent::range>("range", PropertyType::Float, UpdateFlags_LightShadowCamera),
         makeFastProperty<LightComponent, Vector3, &LightComponent::color>("color", PropertyType::Vector3, UpdateFlags_None),
@@ -537,11 +537,11 @@ namespace {
         // read by RenderSystem every frame (lighting and shadow casters)
         makeFastProperty<LightComponent, uint32_t, &LightComponent::cullingMask>("cullingMask", PropertyType::UInt, UpdateFlags_None),
         makeFastProperty<LightComponent, float, &LightComponent::shadowBias>("shadowBias", PropertyType::Float, UpdateFlags_None),
-        makeFastProperty<LightComponent, unsigned int, &LightComponent::mapResolution>("mapResolution", PropertyType::UInt, UpdateFlags_LightShadowMap | UpdateFlags_Scene_Mesh_Reload),
+        makeFastProperty<LightComponent, unsigned int, &LightComponent::mapResolution>("mapResolution", PropertyType::UInt, UpdateFlags_LightShadowMap | UpdateFlags_Scene_Mesh_Variant),
         makeFastProperty<LightComponent, bool, &LightComponent::automaticShadowCamera>("automaticShadowCamera", PropertyType::Bool, UpdateFlags_LightShadowCamera),
         {"shadowCameraNear", PropertyType::Float, UpdateFlags_LightShadowCamera, nullptr, &getLightShadowNearRef},
         {"shadowCameraFar", PropertyType::Float, UpdateFlags_LightShadowCamera, nullptr, &getLightShadowFarRef},
-        makeFastProperty<LightComponent, unsigned int, &LightComponent::numShadowCascades>("numShadowCascades", PropertyType::UInt, UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Reload),
+        makeFastProperty<LightComponent, unsigned int, &LightComponent::numShadowCascades>("numShadowCascades", PropertyType::UInt, UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Variant),
         // read by RenderSystem when it picks each mesh's lights
         makeFastProperty<LightComponent, LightShading, &LightComponent::shading>("shading", PropertyType::Enum, UpdateFlags_None),
     };
@@ -552,7 +552,7 @@ namespace {
         makeFastProperty<Light2DComponent, float, &Light2DComponent::range>("range", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<Light2DComponent, float, &Light2DComponent::falloff>("falloff", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<Light2DComponent, float, &Light2DComponent::height>("height", PropertyType::Float, UpdateFlags_None),
-        makeFastProperty<Light2DComponent, bool, &Light2DComponent::shadows>("shadows", PropertyType::Bool, UpdateFlags_Scene_Mesh_Reload),
+        makeFastProperty<Light2DComponent, bool, &Light2DComponent::shadows>("shadows", PropertyType::Bool, UpdateFlags_Scene_Mesh_Variant),
         makeFastProperty<Light2DComponent, float, &Light2DComponent::shadowBias>("shadowBias", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<Light2DComponent, float, &Light2DComponent::shadowSoftness>("shadowSoftness", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<Light2DComponent, unsigned int, &Light2DComponent::mapResolution>("mapResolution", PropertyType::UInt, UpdateFlags_None),
@@ -4240,10 +4240,12 @@ uint64_t editor::Catalog::getComponentStructuralUpdateFlags(ComponentType compTy
         // adding/removing a 2D light toggles the USE_LIGHT2D shader variant
         case ComponentType::Light2DComponent:
         case ComponentType::FogComponent:
+        case ComponentType::ReflectionProbeComponent:
+            // variants only: the loaded ones draw until the new ones are built
+            return UpdateFlags_Scene_Mesh_Variant;
         // adding/removing a mirror toggles the inverted-culling pipeline baked
         // into meshes, so they must reload
         case ComponentType::MirrorComponent:
-        case ComponentType::ReflectionProbeComponent:
             return UpdateFlags_Scene_Mesh_Reload;
         default:
             return UpdateFlags_None;
@@ -4658,6 +4660,16 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
         for (int i = 0; i < meshes->size(); i++) {
             MeshComponent& mesh = meshes->getComponentFromIndex(i);
             mesh.needReload = true;
+        }
+    }else if (updateFlags & UpdateFlags_Scene_Mesh_Variant){
+        // as RenderSystem::needReloadMeshVariants (the registry may be a prefab's, without one)
+        auto meshes = registry->getComponentArray<MeshComponent>();
+        for (int i = 0; i < meshes->size(); i++) {
+            MeshComponent& mesh = meshes->getComponentFromIndex(i);
+            if (mesh.loaded && !mesh.needReload)
+                mesh.needVariantReload = true;
+            else
+                mesh.needReload = true;
         }
     }
     if (updateFlags & (UpdateFlags_Mesh_Reload | UpdateFlags_Mesh_Texture)){

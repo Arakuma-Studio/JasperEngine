@@ -391,6 +391,10 @@ namespace jasperengine{
         bool needUpdateAABB = false;
         bool needUpdateBuffer = false;
         bool needReload = false;
+        // the scene's shader environment changed (light cap, fog, lights, scene depth programs:
+        // RenderSystem::needReloadMeshVariants): the mesh keeps drawing its loaded variant and
+        // reloads once the new variant's shaders are built (needReload then)
+        bool needVariantReload = false;
     };
     
 }

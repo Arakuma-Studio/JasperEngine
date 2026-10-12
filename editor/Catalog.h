@@ -57,8 +57,12 @@ namespace jasperengine::editor{
         UpdateFlags_Terrain_Foliage     = (uint64_t)1 << 35,
         // shaderUniforms of Mesh/UI/Points/Lines/Sky (no shader reload)
         UpdateFlags_Shader_Uniforms     = (uint64_t)1 << 36,
+        // every mesh needs a new shader variant for the scene's environment (lights, fog, probes),
+        // its resources unchanged: the loaded variants draw until the new ones are built
+        // (RenderSystem::needReloadMeshVariants)
+        UpdateFlags_Scene_Mesh_Variant  = (uint64_t)1 << 37,
         // handlers that touch the whole scene, must be masked out when applying all flags
-        UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Reflection_Probe_Recapture_All
+        UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
 
     // the order of components here affects properties window
