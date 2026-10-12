@@ -6,7 +6,10 @@
 --
 -- Rows, front to back: PIXEL, MIXED, VERTEX materials (vertex lights are diffuse only: the
 -- metallic primitives show only their ambient there; the glTF sphere and box are dielectric). The cap switches 8 -> 4 -> 8 while
--- playing (a capacity tier change reloads every lit mesh).
+-- playing (a capacity tier change reloads every lit mesh). UL_CAP_AT=<a>,<b> moves the two
+-- switches to a and b seconds of play (default 2 and 4): later than the first frames, while the
+-- new variants compile the lit meshes keep drawing their previous ones (no blank frames); the
+-- game logs the variants still compiling every half second after a switch.
 local UnifiedLighting = { properties = {} }
 
 local function log(fmt, ...)
@@ -39,6 +42,13 @@ function UnifiedLighting:init()
     self.time = 0
     self.frames = 0
     self.stage = 0
+    self.capAt = { 2.0, 4.0 }
+    local at = os.getenv("UL_CAP_AT")
+    if at and at ~= "" then
+        local a, b = at:match("^%s*([%d.]+)[%s,]+([%d.]+)%s*$")
+        self.capAt = { tonumber(a) or 2.0, tonumber(b) or 4.0 }
+    end
+    self.nextPendingLog = nil
     -- a GameObject made here lives as long as its Lua object: keep them all
     self.objects = {}
     local function keep(object)
@@ -186,14 +196,27 @@ function UnifiedLighting:onUpdate()
     end
 
     -- a capacity tier change reloads every lit mesh; nothing may fail or go missing
-    if self.stage == 0 and self.time >= 2.0 then
+    if self.stage == 0 and self.time >= self.capAt[1] then
         self.stage = 1
         scene.maxLightsPerObject = 4
         log("frame %d: cap %d", self.frames, scene.maxLightsPerObject)
-    elseif self.stage == 1 and self.time >= 4.0 then
+        self.nextPendingLog = self.time
+        self.switchedAt = self.time
+    elseif self.stage == 1 and self.time >= self.capAt[2] then
         self.stage = 2
         scene.maxLightsPerObject = 8
         log("frame %d: cap %d", self.frames, scene.maxLightsPerObject)
+        self.nextPendingLog = self.time
+        self.switchedAt = self.time
+    end
+
+    -- after a switch: the variants still compiling, every half second for 2 s and until none
+    -- (the switch's own frame asks for them after this script's update)
+    if self.nextPendingLog and self.time >= self.nextPendingLog then
+        local pending = ShaderPool.getPendingShaderCount()
+        log("frame %d (%.2f s): %d variants compiling", self.frames, self.time, pending)
+        local more = pending > 0 or self.time < self.switchedAt + 2.0
+        self.nextPendingLog = more and (self.time + 0.5) or nil
     end
 
     if self.frames % 100 == 0 then
