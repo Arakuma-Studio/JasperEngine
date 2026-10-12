@@ -3,17 +3,18 @@
 // @shader mesh
 // @name "Glass"
 // @category "Effects"
-// @description "Glass and clear plastic: the scene behind it bent by its normals (index of refraction and thickness, optional normal map), tinted and absorbed along the path through it, a fresnel reflection of a cubemap or a colour, a glint of the per-pixel lights; BLUR frosts it. Reads the scene colour and depth: on mobile a copy of the screen (half resolution by default), a split of the render pass and an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one). Alpha blended (transparent queue), no depth write, casts no shadows. Transparent objects behind the glass are not seen through it (it shows the scene colour, which holds only opaque objects and the sky): keep them in front of it or make them opaque."
+// @description "Glass and clear plastic: the scene behind it bent by its normals (index of refraction and thickness, optional normal map), tinted and absorbed along the path through it, a fresnel reflection of the scene's environment (the reflection probe around it, else the sky's environment map, else the reflection colour; REFLECTION_MAP gives it a cubemap of its own instead), a glint of the per-pixel lights; BLUR frosts it. Reads the scene colour and depth: on mobile a copy of the screen (half resolution by default), a split of the render pass and an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one). Alpha blended (transparent queue), no depth write, casts no shadows. Transparent objects behind the glass are not seen through it (it shows the scene colour, which holds only opaque objects and the sky): keep them in front of it or make them opaque."
 // @lighting none pixel
 // @require normals position scenecolor scenedepth
 // @require uv1 feature=NORMAL_MAP
+// @require environment feature=!REFLECTION_MAP
 // @state blend=alpha zwrite=off shadows=off
 // @property tint color (0.92, 0.97, 1, 1) "Tint"
 // @property ior range(1, 2.5) 1.45 "Index of refraction"
 // @property thickness float 0.25 "Thickness (world units the view travels inside)"
 // @property absorptionColor color (0.45, 0.8, 0.75, 1) "Absorption colour (thick glass turns to it)"
 // @property absorption float 0 "Absorption (per world unit of path)"
-// @property reflectionColor color (0.8, 0.86, 0.95, 1) "Reflection colour (times the cubemap with REFLECTION_MAP)"
+// @property reflectionColor color (0.8, 0.86, 0.95, 1) "Reflection colour (times the environment or the cubemap; alone without either)"
 // @property reflectionStrength range(0, 2) 1 "Reflection strength"
 // @property specularColor color (1, 1, 1, 1) "Specular colour (per pixel lights)"
 // @property gloss range(0, 1) 0.9 "Glossiness (per pixel lights)"
@@ -23,7 +24,7 @@
 // @texture u_normalTexture normal "Normal map" feature=NORMAL_MAP
 // @texture u_reflectionTexture black "Reflection cubemap" cube feature=REFLECTION_MAP
 // @feature NORMAL_MAP "Normal map"
-// @feature REFLECTION_MAP "Reflection cubemap"
+// @feature REFLECTION_MAP "Reflection cubemap (instead of the environment)"
 // @feature BLUR "Frosted (blurred)"
 
 // Refraction: the view ray I (camera to surface) bent by refract(I, n, 1 / ior) travels
@@ -37,11 +38,13 @@
 // Transmission: scene colour * tint, times mix(1, absorptionColor, 1 - exp(-absorption *
 // path)), the path being thickness / |n.v| (the rim of a ball and a pane seen at an angle
 // absorb more). Reflection: Schlick's fresnel with f0 from the index of refraction (0.034
-// for 1.45), reflectionStrength times reflectionColor, or times the cubemap
-// (REFLECTION_MAP, sampled in the reflected direction, linear from sRGB). The engine's sky
-// IBL and reflection probes are the built-in Lit's and are not bound to library shaders:
-// give REFLECTION_MAP the sky's or a probe-like cubemap, or match reflectionColor to the
-// sky. Pixel lights add a Blinn-Phong glint (shadowed). The result is written with alpha 1:
+// for 1.45), reflectionStrength times reflectionColor times the environment in the
+// reflected direction (@require environment, includes/environment.glsl: the reflection
+// probe whose box holds the mesh, else the sky's prefiltered environment map, as the
+// built-in Lit reflects; sharp, roughness 0); without an environment (no probe, a sky
+// without a cube map) reflectionColor alone. REFLECTION_MAP replaces the environment by a
+// cubemap of the material's own (linear from sRGB) and binds no environment. Pixel lights
+// add a Blinn-Phong glint (shadowed). The result is written with alpha 1:
 // the glass composes what is behind in the shader, as the engine's blends would draw three
 // layers over it (display-encoded values, includes/output.glsl encodeColor): the
 // transmission filter multiplied, the reflection mixed by the fresnel, the glint added. The
@@ -87,6 +90,8 @@ uniform u_fs_customParams {
     uniform textureCube u_reflectionTexture;
     uniform sampler u_reflection_smp;
 #endif
+
+#include "includes/environment.glsl"
 
 in vec3 v_position;
 in vec3 v_normal;
@@ -187,8 +192,12 @@ void main() {
     f0 *= f0;
     float fresnel = f0 + (1.0 - f0) * pow(1.0 - nv, 5.0);
     vec3 reflection = customParams.reflectionColor.rgb * customParams.reflectionStrength;
-    #ifdef REFLECTION_MAP
+    #if defined(REFLECTION_MAP)
         reflection *= sRGBToLinear(texture(samplerCube(u_reflectionTexture, u_reflection_smp), reflect(-v, n)).rgb);
+    #elif defined(SURFACE_ENVIRONMENT)
+        if (environmentPresent()){
+            reflection *= environmentColor(reflect(-v, n), 0.0);
+        }
     #endif
 
     vec3 glint = vec3(0.0);

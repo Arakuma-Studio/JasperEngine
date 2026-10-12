@@ -19,6 +19,9 @@
 --     4. a glass sphere 0.9 in front (a lens: the stripes turned over), a red post in front
 --        of it (the post is not refracted, the sphere around it still is)
 --     5. a glass sphere 2.0 in front, pixel lit (sun glint), tinted blue
+--   a reflection probe around the glass (its box from the wall to 6 in front): every glass
+--   reflects its capture (@require environment: the stripes, the ground, the sky) at the
+--   fresnel angles, the spheres' rims and the turned pane most
 --   back right, heat haze before a checker grid wall:
 --     1. a fire (opaque, alpha-clipped orange and yellow flames) with a haze quad over and above it
 --        (UV soft edge, SOFT: no line where it meets the ground)
@@ -218,6 +221,15 @@ local function buildGlass(ctx, z0)
         material:setShaderParam("tint", Vector4(0.7, 0.85, 1.0, 1))
         material:setShaderParam("thickness", 0.4)
     end)
+
+    -- the environment the glass reflects: a probe whose box holds the glass (not the water
+    -- in front nor the haze on the right), capturing from in front of the panes
+    local probe = ReflectionProbe(scene)
+    probe.position = Vector3(-3.9, 1.0, wallZ + 3.0)
+    probe.resolution = 128
+    probe.includeSky = true
+    probe:setBoxSize(7.8, 4.0, 6.0)
+    table.insert(ctx.objects, probe)
 end
 
 local function haze(ctx, mesh, configure)

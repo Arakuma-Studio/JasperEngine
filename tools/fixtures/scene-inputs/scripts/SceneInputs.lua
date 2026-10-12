@@ -53,8 +53,9 @@
 --   SI_ENV=1          the identity scene under a sky with a cube map (textures/sky_cross.png:
 --                     blue above, brown below): mirror balls (shaders/si_environment, sharp and
 --                     rough) reflecting the engine's environment (@require environment; magenta
---                     without one), and library:glass with REFLECTION_MAP given the same cube map
---                     from Lua (Material:setShaderCubeTexture)
+--                     without one), library:glass with REFLECTION_MAP given the same cube map
+--                     from Lua (Material:setShaderCubeTexture), and library:glass without it on
+--                     the right (the environment: the same sky, the two glass balls alike)
 local SceneInputs = { properties = {} }
 
 local function log(fmt, ...)
@@ -385,6 +386,16 @@ local function buildIdentity(self, scene, keep)
             m:setShaderParam("reflectionColor", Vector4(1, 1, 1, 1))
             m:setShaderParam("reflectionStrength", 2.0)
             m:setShaderCubeTexture("u_reflectionTexture", "textures/sky_cross.png")
+        end)
+        -- library:glass without REFLECTION_MAP: the engine's environment (the sky's map)
+        local envGlass = keep(Primitive(scene))
+        envGlass:createSphere(0.8)
+        envGlass.position = Vector3(3.5, 2.6, 1.0)
+        envGlass.castShadows = false
+        configure(envGlass, function(m)
+            m.shader = "library:glass"
+            m:setShaderParam("reflectionColor", Vector4(1, 1, 1, 1))
+            m:setShaderParam("reflectionStrength", 2.0)
         end)
         log("environment balls under a cube map sky")
     end
