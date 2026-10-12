@@ -52,9 +52,9 @@
 // blends texture * tint * instance colour by its alpha times opacity and the fades; the
 // Multiply default blend (DECAL_BLEND_MULTIPLY, @state[...]) darkens what is under it by that
 // colour faded to white. Unlit: an alpha decal does not darken in shadow, a multiply one
-// keeps the surface's lighting. It draws in the transparent queue: give its material a
-// sort priority below the transparent objects it may cover (-1), so it draws before them
-// (with ztest=always a decal drawn later would paint over them). Moving objects inside the
+// keeps the surface's lighting. It draws in the transparent queue with @state priority=-1
+// (added to its material's sort priority), so it draws before the transparent objects of the
+// same sort priority it may cover (with ztest=always a decal drawn later would paint over them). Moving objects inside the
 // box take the decal too (they are in the scene depth); transparent ones never do.
 
 uniform u_fs_customParams {
