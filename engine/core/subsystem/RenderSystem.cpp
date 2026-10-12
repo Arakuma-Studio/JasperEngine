@@ -10762,8 +10762,8 @@ void RenderSystem::updateSceneColorRedirect(CameraComponent& mainCamera){
     if (!sceneColorRedirectAllowed)
         return;
 
-    // a reader of the scene colour the camera may see this frame: in its view, loaded but not
-    // drawn yet (its first draw reads a copy too), or points (no bounds)
+    // a reader of the scene colour the camera may see this frame: in its view, not loaded yet
+    // (registered before it loads: predictSceneInputUsers), or points (no bounds)
     bool seen = false;
     for (const auto& user : sceneInputMeshes){
         if (!(user.second & ShaderRequire_SceneColor) || !scene->isEntityCreated(user.first))
@@ -10773,14 +10773,12 @@ void RenderSystem::updateSceneColorRedirect(CameraComponent& mainCamera){
         Transform* transform = scene->findComponent<Transform>(entity);
         if (!mesh || !transform || !transform->visible || !isRenderActive(entity) || !isLayerVisible(entity, mainCamera.cullingMask))
             continue;
-        // (loaded last update: the loaded flag comes with the render queue; one that never
-        // loads keeps nothing on)
-        if (mesh->loadCalled && !mesh->loaded){
+        // loading this update or the last (the loaded flag comes with the render queue): its
+        // bounds are not known yet, and its first draw reads a copy too
+        if (!mesh->loaded){
             seen = true;
             break;
         }
-        if (!mesh->loaded)
-            continue;
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
         if (transform->needUpdate || mesh->needUpdateAABB){
             // moved (a billboard turns every frame): its bounds are made again later in the
@@ -10804,7 +10802,7 @@ void RenderSystem::updateSceneColorRedirect(CameraComponent& mainCamera){
             continue;
         PointsComponent* points = scene->findComponent<PointsComponent>(user.first);
         Transform* transform = scene->findComponent<Transform>(user.first);
-        seen = points && transform && (points->loaded || points->loadCalled) && transform->visible && isRenderActive(user.first) && isLayerVisible(user.first, mainCamera.cullingMask);
+        seen = points && transform && transform->visible && isRenderActive(user.first) && isLayerVisible(user.first, mainCamera.cullingMask);
     }
 
     // kept some frames after the last one seen: an object at the edge of the view does not
