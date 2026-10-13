@@ -1261,7 +1261,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "Get Scene Settings";
         tool.description =
             "Scene settings (Inspector > Scene: lighting, shadows, gravity, LOD, SSAO, SSR, fixed resolution, "
-            "default shaders, post_process). detail=true adds type, default, options, help. Without names also "
+            "default shaders, post_process, post_processing: the fields away from their defaults; each field is also "
+            "post_processing.<field>). detail=true adds type, default, options, help. Without names also "
             "scene_inputs_in_use: what the last frame made for shaders reading the scene (scenedepth, scenecolor).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
@@ -1279,7 +1280,9 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "Set Scene Settings";
         tool.description =
             "Sets scene settings: {name: value}, names and shapes from get_scene_settings. post_process replaces the "
-            "pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": [0.5,0,0,0]}}].";
+            "pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": [0.5,0,0,0]}}]. "
+            "post_processing {field: value} changes the fields it names (null resets all), as post_processing.<field> does; "
+            "every post-processing value of a call is one step.";
         tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")}}, {"settings"});
         tool.annotations.idempotent = true;
         tool.handler = setSceneSettingsTool;
