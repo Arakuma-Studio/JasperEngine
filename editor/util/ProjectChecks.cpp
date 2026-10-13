@@ -6,7 +6,11 @@
 #include "AppSettings.h"
 #include "Catalog.h"
 #include "Out.h"
+#include "EditorVersion.h"
 #include "Project.h"
+#include "htmlui/HtmlUIDependencies.h"
+#include "htmlui/compat/CompatApi.h"
+#include "htmlui/compat/SupportTables.h"
 #include "pool/ShaderPool.h"
 #include "script/LuaBinding.h"
 #include "shader/ShaderBuilder.h"
@@ -47,7 +51,8 @@ int toolOrder(const std::string& tool) {
     if (tool == "lua") return 0;
     if (tool == "shader") return 1;
     if (tool == "cpp") return 2;
-    return 3;
+    if (tool == "ui") return 3;
+    return 4;
 }
 
 std::string oneLine(const std::string& text) {
@@ -100,8 +105,11 @@ void splitLuaMessage(const std::string& text, const std::string& chunkName, int&
 // ======================================================================== findings
 
 Json editor::ProjectChecks::toJson(const Finding& finding) {
-    return Json{{"tool", finding.tool}, {"path", finding.path}, {"line", finding.line}, {"col", finding.col},
-                {"severity", finding.severity}, {"message", finding.message}};
+    Json out{{"tool", finding.tool}, {"path", finding.path}, {"line", finding.line}, {"col", finding.col},
+             {"severity", finding.severity}, {"message", finding.message}};
+    if (!finding.code.empty()) out["code"] = finding.code;
+    if (!finding.suggestion.empty()) out["suggestion"] = finding.suggestion;
+    return out;
 }
 
 Json editor::ProjectChecks::toJson(const std::vector<Finding>& findings) {
@@ -116,7 +124,10 @@ std::string editor::ProjectChecks::toText(const Finding& finding) {
         out += ":" + std::to_string(finding.line);
         if (finding.col > 0) out += ":" + std::to_string(finding.col);
     }
-    return out + ": " + finding.severity + ": " + oneLine(finding.message);
+    out += ": " + finding.severity + ": " + oneLine(finding.message);
+    if (!finding.suggestion.empty()) out += " (fix: " + oneLine(finding.suggestion) + ")";
+    if (!finding.code.empty()) out += " [" + finding.code + "]";
+    return out;
 }
 
 void editor::ProjectChecks::sortFindings(std::vector<Finding>& findings) {
@@ -494,6 +505,373 @@ editor::ProjectChecks::CppBuildReport editor::ProjectChecks::summarizeCppBuild(c
                                        (last.empty() ? std::string() : "; last output: " + last)});
     }
     return report;
+}
+
+// ======================================================================== HTML/CSS UI
+
+namespace {
+
+namespace compat = jasperengine::htmlui::compat;
+
+// The asset-relative path of an absolute path inside the assets directory ("" when outside)
+std::string assetRelative(const fs::path& assetsRoot, const fs::path& absolute) {
+    const fs::path rel = absolute.lexically_normal().lexically_relative(assetsRoot.lexically_normal());
+    if (rel.empty() || rel == "." || *rel.begin() == "..") return {};
+    return rel.generic_u8string();
+}
+
+// compat's asset-relative path under the assets directory; empty when it is absolute or climbs
+// out of it
+fs::path assetFile(const fs::path& assetsRoot, const std::string& assetPath) {
+    if (assetPath.empty() || assetPath[0] == '/' || assetPath[0] == '\\') return {};
+    const fs::path rel = fs::u8path(assetPath);
+    if (rel.is_absolute() || rel.has_root_name() || rel.has_root_directory()) return {};
+    const fs::path normal = rel.lexically_normal();
+    if (normal.empty() || normal == "." || *normal.begin() == "..") return {};
+    return assetsRoot / normal;
+}
+
+YAML::Node loadProjectYaml(const fs::path& projectRoot) {
+    try {
+        return YAML::LoadFile((projectRoot / "project.yaml").string());
+    } catch (const std::exception&) {
+        return YAML::Node();
+    }
+}
+
+// The web export's custom HTML shell (project.yaml web.customHtmlShell, relative to the
+// project), absolute; empty when there is none
+fs::path webShellFile(const fs::path& projectRoot, const YAML::Node& node) {
+    try {
+        if (node && node["web"] && node["web"]["customHtmlShell"]) {
+            const fs::path shell = fs::u8path(node["web"]["customHtmlShell"].as<std::string>());
+            if (!shell.empty()) return (shell.is_absolute() ? shell : projectRoot / shell).lexically_normal();
+        }
+    } catch (const std::exception&) {
+    }
+    return {};
+}
+
+// The canvas size documents load with (project.yaml canvasWidth/canvasHeight)
+compat::CompatSize canvasSize(const YAML::Node& node) {
+    compat::CompatSize size;
+    try {
+        if (node && node["canvasWidth"]) size.x = node["canvasWidth"].as<int>();
+        if (node && node["canvasHeight"]) size.y = node["canvasHeight"].as<int>();
+    } catch (const std::exception&) {
+    }
+    if (size.x <= 0 || size.y <= 0) size = compat::CompatSize();
+    return size;
+}
+
+// ---- ui-support: the code a construct of a table row is reported with
+
+struct RowCode {
+    const compat::DiagCodeInfo* info = nullptr;
+    compat::Severity severity = compat::Severity::Info;
+};
+
+RowCode rowCode(compat::DiagCode code) {
+    RowCode out;
+    out.info = compat::findDiagnosticCode(code);
+    if (out.info) out.severity = out.info->severity;
+    return out;
+}
+
+RowCode rowCode(compat::DiagCode code, compat::Severity severity) {
+    RowCode out = rowCode(code);
+    out.severity = severity;
+    return out;
+}
+
+// The severity a row's note gives its diagnostic ("... (Warning)", "(Info, phase-3 spec 3.9)"):
+// the first marker, which describes the engine as built (a note on a fork-dependent row puts
+// the fork-present case first); `fallback` when the note has none
+compat::Severity noteSeverity(const char* note, compat::Severity fallback) {
+    const std::string_view text(note ? note : "");
+    const size_t warning = text.find("(Warning");
+    const size_t info = text.find("(Info");
+    if (warning == std::string_view::npos && info == std::string_view::npos) return fallback;
+    return warning < info ? compat::Severity::Warning : compat::Severity::Info;
+}
+
+// An approximated CSS row: approximated-visible (a Warning) or approximated-minor (an Info)
+RowCode approximatedCode(const char* note, compat::Severity fallback) {
+    return noteSeverity(note, fallback) == compat::Severity::Warning ? rowCode(compat::codes::ApproximatedVisible)
+                                                                     : rowCode(compat::codes::ApproximatedMinor);
+}
+
+bool startsWith(std::string_view text, std::string_view prefix) {
+    return text.size() >= prefix.size() && text.compare(0, prefix.size(), prefix) == 0;
+}
+
+} // namespace
+
+bool editor::ProjectChecks::isUiFile(const std::string& path) {
+    const std::string ext = lowerExtension(fs::u8path(path));
+    return ext == ".html" || ext == ".htm" || ext == ".css";
+}
+
+fs::path editor::ProjectChecks::assetsRootFromProjectFile(const fs::path& projectRoot) {
+    std::string assetsDir;
+    const YAML::Node node = loadProjectYaml(projectRoot);
+    try {
+        if (node && node["assetsDir"]) assetsDir = node["assetsDir"].as<std::string>();
+    } catch (const std::exception&) {
+    }
+    const fs::path dir = fs::u8path(assetsDir);
+    fs::path out;
+    if (dir.empty() || dir == ".") out = projectRoot;
+    else if (dir.is_absolute()) out = dir;
+    else out = projectRoot / dir;
+    out = out.lexically_normal();
+    if (!out.empty() && out.filename().empty()) out = out.parent_path();
+    return out;
+}
+
+compat::FileAccess editor::ProjectChecks::projectFiles(const fs::path& projectRoot) {
+    const fs::path assets = assetsRootFromProjectFile(projectRoot.lexically_normal());
+    compat::FileAccess access;
+    access.read = [assets](const std::string& assetPath, std::string& content) {
+        const fs::path file = assetFile(assets, assetPath);
+        std::error_code ec;
+        if (file.empty() || !fs::is_regular_file(file, ec)) return false;
+        return readFile(file, content);
+    };
+    access.exists = [assets](const std::string& assetPath) {
+        const fs::path file = assetFile(assets, assetPath);
+        std::error_code ec;
+        return !file.empty() && fs::is_regular_file(file, ec);
+    };
+    return access;
+}
+
+editor::ProjectChecks::Finding editor::ProjectChecks::uiFinding(const fs::path& projectRoot, const fs::path& assetsRoot,
+                                                                const compat::Diagnostic& diagnostic) {
+    Finding finding;
+    finding.tool = "ui";
+    if (!diagnostic.file.empty()) {
+        const fs::path file = assetFile(assetsRoot, diagnostic.file);
+        finding.path = file.empty() ? diagnostic.file : projectRelative(projectRoot, file);
+    }
+    finding.line = static_cast<int>(diagnostic.line);
+    finding.col = static_cast<int>(diagnostic.column);
+    finding.severity = compat::severityName(diagnostic.severity);
+    finding.message = diagnostic.message;
+    finding.code = diagnostic.code.id();
+    finding.suggestion = diagnostic.suggestion;
+    return finding;
+}
+
+editor::ProjectChecks::UiCheck editor::ProjectChecks::checkUiFiles(const fs::path& projectRootIn, const std::vector<fs::path>& files) {
+    UiCheck check;
+    const fs::path projectRoot = projectRootIn.lexically_normal();
+    const fs::path assets = assetsRootFromProjectFile(projectRoot);
+    const YAML::Node project = loadProjectYaml(projectRoot);
+    const fs::path shell = webShellFile(projectRoot, project);
+
+    // as the documents load (DocumentLoader's compile), without RmlUi: pure CPU
+    compat::CheckOptions options;
+    options.verifyWithRmlUi = false;
+    options.files = projectFiles(projectRoot);
+    options.compat.viewport = canvasSize(project);
+
+    // what to check: documents first, then stylesheets
+    std::vector<fs::path> documents, stylesheets;
+    auto classify = [&](const fs::path& path) {
+        const fs::path normal = path.lexically_normal();
+        if (!shell.empty() && normal == shell) return;   // the web export's page, not a game UI
+        if (assetRelative(assets, normal).empty()) return;
+        const std::string ext = lowerExtension(normal);
+        if (ext == ".html" || ext == ".htm") documents.push_back(normal);
+        else if (ext == ".css") stylesheets.push_back(normal);
+    };
+    if (files.empty()) {
+        for (const fs::path& file : findProjectFiles(projectRoot, {".html", ".htm", ".css"})) classify(file);
+    } else {
+        std::set<fs::path> seen;
+        for (const fs::path& file : files) {
+            if (seen.insert(file.lexically_normal()).second) classify(file);
+        }
+    }
+
+    std::set<std::string> findingKeys, filesRead, readByDocuments;
+    auto add = [&](const std::string& checked, const compat::CheckReport& report) {
+        filesRead.insert(checked);
+        for (const std::string& file : report.files) {
+            const fs::path absolute = assetFile(assets, file);
+            if (!absolute.empty()) filesRead.insert(projectRelative(projectRoot, absolute));
+        }
+        for (const compat::Diagnostic& diagnostic : report.diagnostics) {
+            if (diagnostic.severity == compat::Severity::Info) continue;
+            Finding finding = uiFinding(projectRoot, assets, diagnostic);
+            const std::string key = finding.path + "\n" + std::to_string(finding.line) + "\n" + std::to_string(finding.col) +
+                                    "\n" + finding.severity + "\n" + finding.code + "\n" + finding.message;
+            if (findingKeys.insert(key).second) check.findings.push_back(std::move(finding));
+        }
+    };
+    for (const fs::path& document : documents) {
+        const compat::CheckReport report = compat::checkDocument(assetRelative(assets, document), options);
+        check.documents++;
+        for (const std::string& file : report.files) readByDocuments.insert(jasperengine::normalizeHtmlUIPath(file));
+        add(projectRelative(projectRoot, document), report);
+    }
+    for (const fs::path& stylesheet : stylesheets) {
+        const std::string assetPath = assetRelative(assets, stylesheet);
+        // the whole project: a stylesheet a document links was checked as that document loads it
+        if (files.empty() && readByDocuments.count(jasperengine::normalizeHtmlUIPath(assetPath))) continue;
+        const compat::CheckReport report = compat::checkStylesheet(assetPath, options);
+        check.stylesheets++;
+        add(projectRelative(projectRoot, stylesheet), report);
+    }
+    check.files.assign(filesRead.begin(), filesRead.end());
+    sortFindings(check.findings);
+    return check;
+}
+
+Json editor::ProjectChecks::uiSupportJson() {
+    using compat::Support;
+    using compat::Severity;
+    namespace codes = compat::codes;
+    const compat::ForkFeatures present = compat::ForkFeatures::present();
+
+    Json features = Json::array();
+    auto add = [&](const char* kind, const std::string& name, Support support, const char* note, const char* suggestion,
+                   const RowCode& code, Json extra = Json::object()) {
+        Json item = {{"kind", kind}, {"name", name}, {"support", compat::supportName(support)},
+                     {"note", note ? note : ""}, {"suggestion", suggestion ? suggestion : ""}};
+        if (code.info) {
+            item["code"] = code.info->code.id();
+            item["severity"] = compat::severityName(code.severity);
+        }
+        for (auto it = extra.begin(); it != extra.end(); ++it) item[it.key()] = it.value();
+        features.push_back(std::move(item));
+    };
+
+    for (const compat::ElementSupport& row : compat::elementTable()) {
+        const Support support = compat::effectiveSupport(row, present);
+        RowCode code;
+        if (support == Support::Unsupported || support == Support::Ignored || support == Support::Fallback) {
+            code = rowCode(codes::UnsupportedElement);
+        } else if (support == Support::Approximated) {
+            code = rowCode(codes::ElementMapped, noteSeverity(row.note, Severity::Info));
+        }
+        add("element", row.name, support, row.note, row.suggestion, code);
+    }
+    for (const compat::AttributeSupport& row : compat::attributeTable()) {
+        const Support support = compat::effectiveSupport(row, present);
+        RowCode code;
+        if (std::string_view(row.name) == "on*") {
+            code = rowCode(codes::EventHandlerAttribute);
+        } else if (support == Support::Unsupported || support == Support::Fallback) {
+            code = rowCode(codes::UnsupportedAttribute, Severity::Warning);
+        } else if (support == Support::Ignored || support == Support::Approximated) {
+            code = rowCode(codes::UnsupportedAttribute, Severity::Info);
+        }
+        add("attribute", row.name, support, row.note, row.suggestion, code, {{"element", row.element}});
+    }
+    for (const compat::InputTypeSupport& row : compat::inputTypeTable()) {
+        const Support support = compat::effectiveSupport(row, present);
+        RowCode code;
+        if (row.reported) code = rowCode(codes::InputTypeApproximated, row.severity);
+        add("input_type", row.type, support, row.note, row.suggestion, code);
+    }
+    for (const compat::PropertySupport& row : compat::propertyTable()) {
+        const Support support = compat::effectiveSupport(row, present);
+        RowCode code;
+        switch (support) {
+            case Support::Unsupported: code = rowCode(codes::UnsupportedProperty, Severity::Warning); break;
+            case Support::Ignored: code = rowCode(codes::IgnoredProperty); break;
+            case Support::Approximated: code = approximatedCode(row.note, Severity::Warning); break;
+            case Support::Fallback: code = rowCode(codes::ForkFallback, Severity::Warning); break;
+            default: break;
+        }
+        add("property", row.name, support, row.note, row.suggestion, code);
+    }
+    for (const compat::ValueSupport& row : compat::valueTable()) {
+        const Support support = compat::effectiveSupport(row, present);
+        RowCode code;
+        switch (support) {
+            case Support::Unsupported: code = rowCode(codes::UnsupportedValue, Severity::Warning); break;
+            case Support::Ignored: code = rowCode(codes::ApproximatedMinor); break;
+            case Support::Approximated: code = approximatedCode(row.note, Severity::Warning); break;
+            case Support::Fallback: code = rowCode(codes::ForkFallback, Severity::Warning); break;
+            default: break;
+        }
+        add("value", row.value, support, row.note, row.suggestion, code, {{"property", row.property}});
+    }
+    for (const compat::FunctionSupport& row : compat::functionTable()) {
+        const Support support = compat::effectiveSupport(row, present);
+        RowCode code;
+        switch (support) {
+            case Support::Unsupported: code = rowCode(codes::UnsupportedFunction); break;
+            case Support::Approximated: case Support::Ignored: code = approximatedCode(row.note, Severity::Info); break;
+            case Support::Fallback: code = rowCode(codes::ForkFallback, Severity::Warning); break;
+            default: break;
+        }
+        add("function", row.name, support, row.note, row.suggestion, code);
+    }
+    for (const compat::UnitSupport& row : compat::unitTable()) {
+        const Support support = compat::effectiveSupport(row, present);
+        RowCode code;
+        switch (support) {
+            case Support::Unsupported: code = rowCode(codes::UnsupportedUnit); break;
+            case Support::Approximated: case Support::Ignored: code = approximatedCode(row.note, Severity::Info); break;
+            case Support::Fallback: code = rowCode(codes::ForkFallback, Severity::Warning); break;
+            default: break;
+        }
+        add("unit", row.unit, support, row.note, row.suggestion, code);
+    }
+    for (const compat::SelectorSupport& row : compat::selectorTable()) {
+        const Support support = compat::effectiveSupport(row, present);
+        RowCode code;
+        switch (support) {
+            case Support::Unsupported: code = rowCode(codes::UnsupportedSelector); break;
+            case Support::Ignored: code = rowCode(codes::SelectorIgnored); break;
+            case Support::Approximated: code = rowCode(codes::SelectorRewritten, noteSeverity(row.note, Severity::Info)); break;
+            case Support::Fallback:
+                code = rowCode(row.kind == compat::SelectorKind::PseudoElement ? codes::PseudoElementPending : codes::UnsupportedSelector);
+                break;
+            default: break;
+        }
+        add(compat::selectorKindName(row.kind), row.name, support, row.note, row.suggestion, code);
+    }
+    for (const compat::AtRuleSupport& row : compat::atRuleTable()) {
+        const Support support = compat::effectiveSupport(row, present);
+        const std::string_view name(row.name);
+        RowCode code;
+        if (support == Support::Unsupported || support == Support::Fallback) {
+            code = rowCode(codes::UnsupportedAtRule, Severity::Warning);
+        } else if (support == Support::Ignored) {
+            code = rowCode(codes::UnsupportedAtRule, Severity::Info);
+        } else if (support == Support::Approximated) {
+            if (startsWith(name, "@layer")) code = rowCode(codes::LayerFlattened);
+            else if (startsWith(name, "@supports")) code = rowCode(codes::SupportsEvaluated);
+            else if (startsWith(name, "@property")) code = rowCode(codes::PropertyApproximated);
+            else if (startsWith(name, "@import")) code = rowCode(codes::ImportProblem, Severity::Info);
+            else if (startsWith(name, "@keyframes")) code = rowCode(codes::AnimationApproximated, Severity::Info);
+            else if (startsWith(name, "@font-face")) code = rowCode(codes::FontFaceDescriptor);
+            else if (startsWith(name, "@media")) code = rowCode(codes::MediaNormalized);
+            else code = rowCode(codes::UnsupportedAtRule, noteSeverity(row.note, Severity::Info));
+        }
+        add("at_rule", row.name, support, row.note, row.suggestion, code);
+    }
+    for (const compat::MediaFeatureSupport& row : compat::mediaFeatureTable()) {
+        const Support support = compat::effectiveSupport(row, present);
+        RowCode code;
+        if (support == Support::Unsupported || support == Support::Fallback) code = rowCode(codes::MediaFeatureUnsupported);
+        else if (support == Support::Approximated || support == Support::Ignored) code = rowCode(codes::MediaStatic);
+        add("media_feature", row.name, support, row.note, row.suggestion, code);
+    }
+
+    Json diagnostics = Json::array();
+    for (const compat::DiagCodeInfo& info : compat::diagnosticCodes()) {
+        // severity: the default one; by_case: the reporter picks it (Appendix F "by case")
+        diagnostics.push_back({{"code", info.code.id()}, {"name", info.name}, {"severity", compat::severityName(info.severity)},
+                               {"by_case", info.severityByCase}, {"summary", info.title ? info.title : ""},
+                               {"help", info.help ? info.help : ""}});
+    }
+    return {{"version", 1}, {"editor_version", JASPERENGINE_EDITOR_VERSION}, {"features", features}, {"diagnostics", diagnostics}};
 }
 
 // ======================================================================== shaders

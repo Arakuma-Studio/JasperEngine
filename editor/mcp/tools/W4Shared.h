@@ -79,6 +79,20 @@ namespace jasperengine::editor::mcp {
         // every attached script and scans the project for changes since the last sync.
         // Returns {changed, code_editor, script_properties, problems, notes}.
         Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changed, bool full);
+        // HTML UI documents using changed files (.html/.htm/.css and the images, svg, fonts,
+        // json/lottie they read). Every open scene, prefab stage and running Play scene:
+        // UIDocumentSystem::reloadChangedFiles (shares its stamps with the editor's poller,
+        // HtmlUIWatcher: a file is reloaded once, whoever sees it first). Changed .html/.htm/.css
+        // that no live document depends on are checked with ProjectChecks::checkUiFiles. Returns
+        // {reloaded: [{scene, entity: {id,name,path}, html, stylesheet_only}], current: <documents
+        //  depending on a changed file the poller had already reloaded>,
+        //  problems: [{path, line, col, severity, code, message, suggestion}]}
+        // problems: the diagnostics located in a changed file, from the documents' (re)load or the
+        // check (Info dropped), and a live document whose file is gone. Paths project-relative.
+        Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed);
+        // A file syncHtmlUi looks at: .html/.htm/.css, images (.svg included), fonts (.ttf/.otf),
+        // .json/.lottie
+        bool isHtmlUiFile(const std::string& path);
         // The project's files as syncFiles' next full sync compares them: taken when the project is
         // opened (McpAutoSync's baseline), so edits made before the first sync are listed by it
         void takeSyncSnapshot(Project* project, const std::set<std::string>& changedAlready = {});

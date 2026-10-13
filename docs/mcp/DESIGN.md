@@ -223,23 +223,37 @@ the same work and reports it itself):
 
 - **Scan**: stat-based against a cached map (mtime + size) of the project's tracked files
   (Lua, C++ `.h/.hpp/.hh/.hxx/.inl/.c/.cc/.cpp/.cxx`, shaders `.vert/.frag/.glsl`,
-  `.material`, images) and folders (mtime: an added, removed or renamed entry), skipping
+  `.material`, HTML UI `.html/.htm/.css`; assets: images (`.svg` included), fonts `.ttf/.otf`,
+  `.json/.lottie`) and folders (mtime: an added, removed or renamed entry), skipping
   hidden folders (`.jasperengine`, `.git`...), `build`, `node_modules` and `trash`.
   `.scene`, `.prefab`, `project.yaml` and the terrain maps the editor writes from its
   in-memory terrain (`terrain_maps/terrain_edit_*.png`, written asynchronously after a
   sculpt) are not tracked: the editor owns them. Files changed
-  this session, folders and code files are checked whole on every call (up to 2000 of each);
-  images rotate within a ~2 ms budget, resuming where the last scan stopped. The baseline is
-  taken (in `McpServer::tick`) when a project opens.
+  this session, folders and code files (HTML UI included) are checked whole on every call (up to
+  2000 of each); assets rotate within a ~2 ms budget, resuming where the last scan stopped. The
+  baseline is taken (in `McpServer::tick`) when a project opens.
 - **Pick-up**: changed paths go through `w4::syncFiles` (ScriptTools.cpp; the same as
   `sync_files` with paths): clean code editor buffers reloaded, script properties re-parsed,
-  Lua syntax checked, materials refreshed, shader forks invalidated, textures reloaded, asset
-  database and Project window refreshed. Shader forks using a changed shader file are then
-  compiled (`w4::checkShadersAsync`; the call waits for it through `waitUntil`) so their
-  errors are reported with the call.
+  Lua syntax checked, materials refreshed, shader forks invalidated, textures reloaded, HTML UI
+  documents reloaded, asset database and Project window refreshed. Shader forks using a changed
+  shader file are then compiled (`w4::checkShadersAsync`; the call waits for it through
+  `waitUntil`) so their errors are reported with the call.
+- **HTML UI**: UI documents reload live, before the tool runs, in edit mode and during play
+  (`w4::syncHtmlUi`: `UIDocumentSystem::reloadChangedFiles` of every open scene, prefab stage and
+  running Play scene), sharing the per-document stamps with the editor's own poller
+  (`HtmlUIWatcher`, 0.25 s): whichever sees an edit first reloads it, the other finds it current,
+  so a change is reloaded once. A CSS-only change restyles in place (elements and listeners
+  kept); any other change rebuilds the document (`onLoad` again). The diagnostics located in the
+  changed files, from the documents' (re)load, or from `ProjectChecks::checkUiFiles` for a changed
+  `.html/.css` no live document uses (the same code as `check --ui`), become `problems`.
 - **Report**: the call's result gets `structuredContent.external_changes` = `{changed,
   added?, removed?, changed_count?, problems: [{path, line, message}], script_properties?,
-  reloaded_buffers?, deferred?}` and one text content item; nothing when nothing changed.
+  reloaded_buffers?, ui_reloaded?, ui_current?, deferred?}` and one text content item; nothing
+  when nothing changed. UI problems also carry `col`, `severity`, `code` and `suggestion` (the
+  text prints a warning as `path:line: warning: message [code]`); `ui_reloaded` =
+  `[{scene, entity: {id, name, path}, html, stylesheet_only}]`, `ui_current` = how many documents
+  reading a changed file the poller had already reloaded (text: `Reloaded UI: assets/ui/menu.html
+  in "Menu" (styles only); 1 document(s) were already current.`).
 - **Not the agent's changes**: `syncFiles` (the funnel of `write_file`, `create_script`,
   the material and asset tools, `code_editor` save, undo of file writes) restamps what it
   handled (`McpAutoSync::filesSynced`). After a call that may write files (not read-only, or
@@ -252,7 +266,10 @@ the same work and reports it itself):
 - **Play**: the editor does not re-parse scripts during play (Play restores the scene from a
   snapshot when it stops; `CodeEditor::checkExternalScriptChanges` waits too). Changes found
   then are reported with `deferred` (Lua syntax still checked) and picked up by the first
-  call after play stops.
+  call after play stops. HTML UI files are not deferred: `.html/.htm/.css`, fonts and
+  `.json/.lottie` go through the pick-up at once (the running and the edit-time documents
+  reload); a changed image reaches the documents at once and the scene textures after play;
+  `deferred` is set only when non-UI files wait.
 - **The editor's own 1 s poll** (`CodeEditor::checkFileChanges` for open buffers,
   `checkExternalScriptChanges` for attached scripts) keeps running for humans. Buffers are
   reloaded through the same `checkFileChanges` (one shared `lastWriteTime`, so never twice);
