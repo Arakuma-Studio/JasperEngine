@@ -135,6 +135,40 @@ namespace {
         return "selector \"" + selector + "\" is not valid: " + reason;
     }
 
+    // the first pseudo-element a selector names ("::before", ":after"), "" when none: they are
+    // not elements (RmlUi keeps them out of the DOM), so a query cannot return them
+    std::string pseudoElementOf(std::string_view selector){
+        char quote = 0;
+        int brackets = 0;
+        for (size_t i = 0; i < selector.size(); i++){
+            const char c = selector[i];
+            if (quote){
+                if (c == '\\')
+                    i++;
+                else if (c == quote)
+                    quote = 0;
+                continue;
+            }
+            if (c == '"' || c == '\''){
+                quote = c;
+            }else if (c == '['){
+                brackets++;
+            }else if (c == ']'){
+                brackets--;
+            }else if (c == ':' && brackets == 0){
+                const bool doubled = i + 1 < selector.size() && selector[i + 1] == ':';
+                size_t end = i + (doubled ? 2 : 1);
+                std::string name;
+                while (end < selector.size() && (isIdentChar(selector[end]) || (unsigned char)selector[end] >= 0x80))
+                    name += (char)std::tolower((unsigned char)selector[end++]);
+                if (doubled || name == "before" || name == "after" || name == "first-line" || name == "first-letter")
+                    return (doubled ? "::" : ":") + name;
+                i = end - 1;
+            }
+        }
+        return std::string();
+    }
+
     // a matching selector, the warnings RmlUi gives for an empty one collected instead of logged
     bool matches(Rml::Element* element, const std::string& rmlSelector){
         hc::RmlLogTranslator::Capture capture;
@@ -761,6 +795,11 @@ bool inspect::rmlSelector(const Doc& doc, const std::string& selector, std::stri
     const std::string text = trim(selector);
     if (text.empty()){
         error = "selector is empty";
+        return false;
+    }
+    const std::string pseudoElement = pseudoElementOf(text);
+    if (!pseudoElement.empty()){
+        error = invalidSelector(text, pseudoElement + " is a pseudo-element, not an element: select the element it belongs to");
         return false;
     }
     if (!doc.compat){
