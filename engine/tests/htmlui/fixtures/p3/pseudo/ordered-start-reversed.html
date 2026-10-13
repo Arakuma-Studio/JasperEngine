@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pseudo: ol start, reversed and li value</title>
+<style>
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  /* Ahem draws every digit as the same square: the numbers show as marker widths, so the lists
+     are built for their values to have distinct lengths */
+  html, body { margin: 0; }
+  ol { position: absolute; top: 10px; width: 40px; margin: 0; padding: 0 0 0 50px; list-style-type: decimal; font-family: "Ahem"; font-size: 10px; line-height: 12px; color: #2060c0; background-color: #e8e8e8; }
+  li span { color: #404040; }
+  li { background-color: #d0d8e8; }
+  /* start=8: 8 9 10 11 */
+  #o1 { left: 0; }
+  /* reversed with 10 items: 10 9 8 ... 1 */
+  #o2 { left: 100px; }
+  /* reversed start=10 with 3 items: 10 9 8 */
+  #o3 { left: 200px; }
+  /* li value=10 in the middle: 1 10 11, then value=-2: -2 -1 */
+  #o4 { left: 0; top: 70px; }
+  /* start=4 with upper-roman: IV V VI VII */
+  #o5 { left: 200px; top: 70px; list-style-type: upper-roman; }
+  /* reversed with a li value: 3 items, value=99 on the second: 3 99 98 */
+  #o6 { left: 200px; top: 130px; }
+</style>
+</head>
+<body>
+<ol id="o1" start="8"><li><span>X</span></li><li><span>X</span></li><li><span>X</span></li><li><span>X</span></li></ol>
+<ol id="o2" reversed><li><span>X</span></li><li><span>X</span></li><li><span>X</span></li><li><span>X</span></li><li><span>X</span></li><li><span>X</span></li><li><span>X</span></li><li><span>X</span></li><li><span>X</span></li><li><span>X</span></li></ol>
+<ol id="o3" reversed start="10"><li><span>X</span></li><li><span>X</span></li><li><span>X</span></li></ol>
+<ol id="o4"><li><span>X</span></li><li value="10"><span>X</span></li><li><span>X</span></li><li value="-2"><span>X</span></li><li><span>X</span></li></ol>
+<ol id="o5" start="4"><li><span>X</span></li><li><span>X</span></li><li><span>X</span></li><li><span>X</span></li></ol>
+<ol id="o6" reversed><li><span>X</span></li><li value="99"><span>X</span></li><li><span>X</span></li></ol>
+</body>
+</html>

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="stylesheet" type="text/css" href="../base.css">
+  <title>
+    Flow-root avoids sibling floats
+  </title>
+</head>
+<body>
+
+<div id="test-root" style="display: block; width: 100px;">
+  <div style="display: block; float: left; width: 30px; height: 20px;"></div>
+  <div style="display: flow-root;">
+    <div style="display: block; height: 10px;"></div>
+  </div>
+</div>
+
+</body>
+</html>

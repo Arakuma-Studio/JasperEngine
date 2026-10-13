@@ -209,6 +209,22 @@ TEST(CompatSvgPreprocess, RasterizeAtAnySize){
     EXPECT_NEAR(rgba[0], 128, 1);
     EXPECT_NEAR(rgba[3], 128, 1);
 
+    // laid out at a logical size of its own, scaled to the pixels (a background tile of 9.5 x 20 px rasterized at
+    // 10 x 20, as Skia rasterizes Chromium's SVG pattern tile): meet places a 9.5 px square 5.25 px down, the scale
+    // stretches it across the 10 columns
+    rgba = htmlui::rasterizeSvg(square, 10, 20, 9.5f, 20.0f);
+    ASSERT_EQ(rgba.size(), 10u * 20u * 4u);
+    auto alpha = [&](int x, int y){ return (int)rgba[(size_t(y) * 10 + size_t(x)) * 4 + 3]; };
+    EXPECT_EQ(alpha(5, 4), 0);
+    EXPECT_NEAR(alpha(5, 5), 191, 3);
+    EXPECT_EQ(alpha(5, 6), 255);
+    EXPECT_EQ(alpha(0, 10), 255);
+    EXPECT_EQ(alpha(9, 10), 255);
+    EXPECT_NEAR(alpha(5, 14), 191, 3);
+    EXPECT_EQ(alpha(5, 15), 0);
+    // the same logical and pixel size: as without one
+    EXPECT_EQ(htmlui::rasterizeSvg(square, 40, 20, 40.0f, 20.0f), htmlui::rasterizeSvg(square, 40, 20));
+
     TestSystem::get().clearLogs();
     EXPECT_TRUE(htmlui::rasterizeSvg(square, 0, 10).empty());
     EXPECT_TRUE(htmlui::rasterizeSvg(square, 10, 20000).empty());
@@ -275,8 +291,9 @@ TEST_F(CompatSvgElementTest, MonochromeInlineSvgIsTintedByColor){
     EXPECT_EQ(recording.getLiveTextureCount(), texturesBefore);
     EXPECT_EQ(vertexColour(draws[0]), Rml::ColourbPremultiplied(0, 0, 255, 255));
 
-    // opacity and image-color multiply in
-    byId("box")->SetProperty("opacity", "0.5");
+    // opacity and image-color multiply in: on the svg itself, a leaf drawing one thing (on the box it would be a group,
+    // drawn into a layer composited with the opacity: phase 3, p3-paint)
+    byId("box")->GetFirstChild()->SetProperty("opacity", "0.5");
     frame();
     draws = drawsOf(Rml::Vector2i(24, 24));
     ASSERT_EQ(draws.size(), 1u);
@@ -304,6 +321,53 @@ TEST_F(CompatSvgElementTest, MixedSvgFileIsRasterizedWithTheColor){
     EXPECT_EQ(left[0], 255); EXPECT_EQ(left[1], 0);
     // the diagnostic once per file
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_VERBOSE, "HTMLUI-SVG-0001"), 1u);
+}
+
+TEST_F(CompatSvgElementTest, SvgFileIsPlacedByObjectFit){
+    // an SVG file is an image: object-fit and object-position place it (phase 3, p3-paint:
+    // Rml::ComputeObjectFitRect, as <img>), rasterized at the size it is drawn at
+    ASSERT_NE(show("<svg id='icon' src='svg/mixed.svg' style='width: 40px; height: 40px; object-fit: contain;'/>", "svg { display: block; }"), nullptr);
+    auto quad = [&](const RecordingRenderInterface::Draw& draw){
+        const RecordingRenderInterface::Geometry* geometry = recording.getGeometry(draw.geometry);
+        Rml::Vector2f low(1e9f), high(-1e9f), uvLow(1e9f), uvHigh(-1e9f);
+        for (const Rml::Vertex& v : geometry->vertices){
+            low = Rml::Math::Min(low, v.position); high = Rml::Math::Max(high, v.position);
+            uvLow = Rml::Math::Min(uvLow, v.tex_coord); uvHigh = Rml::Math::Max(uvHigh, v.tex_coord);
+        }
+        return std::make_pair(Rml::Rectanglef::FromCorners(low, high), Rml::Rectanglef::FromCorners(uvLow, uvHigh));
+    };
+    // contain: the 20 x 10 image at 40 x 20, centred vertically
+    std::vector<RecordingRenderInterface::Draw> draws = drawsOf(Rml::Vector2i(40, 20));
+    ASSERT_EQ(draws.size(), 1u);
+    auto [rect, uv] = quad(draws[0]);
+    EXPECT_FLOAT_EQ(rect.Top(), 10.0f);
+    EXPECT_FLOAT_EQ(rect.Height(), 20.0f);
+    EXPECT_FLOAT_EQ(rect.Width(), 40.0f);
+
+    // cover: 80 x 40, the middle half shown
+    byId("icon")->SetProperty("object-fit", "cover");
+    frame();
+    draws = drawsOf(Rml::Vector2i(80, 40));
+    ASSERT_EQ(draws.size(), 1u);
+    std::tie(rect, uv) = quad(draws[0]);
+    EXPECT_FLOAT_EQ(rect.Width(), 40.0f);
+    EXPECT_FLOAT_EQ(rect.Height(), 40.0f);
+    EXPECT_FLOAT_EQ(uv.Left(), 0.25f);
+    EXPECT_FLOAT_EQ(uv.Right(), 0.75f);
+
+    // none, at the right bottom: 20 x 10 in the corner
+    byId("icon")->SetProperty("object-fit", "none");
+    byId("icon")->SetProperty("object-position", "right bottom");
+    frame();
+    draws = drawsOf(Rml::Vector2i(20, 10));
+    ASSERT_EQ(draws.size(), 1u);
+    std::tie(rect, uv) = quad(draws[0]);
+    EXPECT_FLOAT_EQ(rect.Width(), 20.0f);
+    EXPECT_FLOAT_EQ(rect.Height(), 10.0f);
+    // (the geometry is relative to the content box)
+    EXPECT_FLOAT_EQ(rect.Left(), 20.0f);
+    EXPECT_FLOAT_EQ(rect.Top(), 30.0f);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "[HTML UI]"), 0u);
 }
 
 TEST_F(CompatSvgElementTest, MonochromeFileAndForeignObject){

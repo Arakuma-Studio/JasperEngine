@@ -362,14 +362,28 @@ TEST_F(CompatPlayStopTest, DocumentAndCheckReturnTheSameFindings){
         "compat/integrate/mistakes.html:14:28: error: remote image 'https://images.example.net/logo.png' is not imported",
         "compat/integrate/mistakes.html:16:27: error: 'onclick' (JavaScript) is not run (fix: use element:addEventListener('click', fn) in Lua",
         "compat/integrate/mistakes.html:20:3: error: JavaScript is not run (the engine has no JavaScript engine) (fix: use <script type=\"text/lua\">",
-        "compat/integrate/mistakes.css:13:3: warning: 'position: sticky' is drawn as 'relative'",
         "compat/integrate/mistakes.css:17:3: warning: 'backgroud-color' is not a CSS property; dropped (fix: did you mean 'background-color'?) [HTMLUI-CSS-0001]",
-        "compat/integrate/mistakes.css:22:3: warning: 'display: grid' is drawn as a wrapping flex container until the fork has Grid (fix: lay the items out with flex) [HTMLUI-CSS-0007]",
         "compat/integrate/mistakes.html: info: font family 'Segoe UI' is not loaded and not generic",
     };
     for (const char* line : expected){
         const bool found = std::any_of(loaded.begin(), loaded.end(), [line](const std::string& text){ return text.compare(0, std::strlen(line), line) == 0; });
         EXPECT_TRUE(found) << "no finding starting with: " << line;
+    }
+    // the fork sticks the menu (ForkFeature::Sticky, phase 3): 'position: sticky' has no finding; without it, it is drawn as relative
+    if (hc::ForkFeatures::present().has(hc::ForkFeature::Sticky)){
+        EXPECT_TRUE(std::none_of(loaded.begin(), loaded.end(), [](const std::string& text){ return text.find("'position: sticky'") != std::string::npos; }));
+    }else{
+        const char* line = "compat/integrate/mistakes.css:13:3: warning: 'position: sticky' is drawn as 'relative'";
+        EXPECT_TRUE(std::any_of(loaded.begin(), loaded.end(), [line](const std::string& text){ return text.compare(0, std::strlen(line), line) == 0; }))
+            << "no finding starting with: " << line;
+    }
+    // the fork lays the grid out (ForkFeature::Grid, phase 3): 'display: grid' has no finding
+    if (hc::ForkFeatures::present().has(hc::ForkFeature::Grid)){
+        EXPECT_TRUE(std::none_of(loaded.begin(), loaded.end(), [](const std::string& text){ return text.find("'display: grid'") != std::string::npos; }));
+    }else{
+        EXPECT_TRUE(std::any_of(loaded.begin(), loaded.end(), [](const std::string& text){
+            return text.rfind("compat/integrate/mistakes.css:22:3: warning: 'display: grid' is drawn as a wrapping flex container", 0) == 0;
+        }));
     }
     // each once
     EXPECT_EQ(std::adjacent_find(loaded.begin(), loaded.end()), loaded.end());

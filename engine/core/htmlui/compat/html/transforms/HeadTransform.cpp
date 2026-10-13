@@ -475,6 +475,12 @@ void jasperengine::htmlui::compat::transformRoot(TransformContext& context){
     HtmlAttr& rootId = root.setAttr("id", DocumentLoader::kRootId);
     rootId.nameRef = SourceRef{};
     context.rootDirection = toLower(trim(root.attr("dir")));
+    // phase-3 spec 2.2: the text runs right to left, the layout is not mirrored
+    if (context.rootDirection == "rtl"){
+        const HtmlAttr* dir = root.findAttr("dir");
+        context.sink.reportAs(Severity::Info, codes::ApproximatedMinor, dir ? dir->nameRef : SourceRef{},
+                              "<html dir=\"rtl\"> sets the text direction; block, flex and grid layouts are not mirrored", hints::kMirroredLayout);
+    }
 
     for (std::unique_ptr<HtmlNode>& child : root.children){
         if (child->is("body")){

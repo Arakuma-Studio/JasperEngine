@@ -966,6 +966,8 @@ else()
             PATTERN ".git" EXCLUDE
             # test sources, fixtures and golden images (engine/tests only, not a vendored lib's tests)
             REGEX "/engine/tests$" EXCLUDE
+            # RmlUi's own test suites: built standalone by tools/htmlui/run-rmlui-tests.sh, never by a project
+            REGEX "/engine/libs/rmlui/Tests$" EXCLUDE
     )
 endif()
 

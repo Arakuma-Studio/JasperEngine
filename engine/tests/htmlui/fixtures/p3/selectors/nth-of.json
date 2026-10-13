@@ -1,0 +1,4 @@
+{
+ "comment": ":nth-child(An+B of S) and :nth-last-child (spec 3.5.6): #u1 colors its second .done item (#a4, the 4th child), #u2 its last .x item (#b4, not the last child); odd, even, -n+3, ' 3n + 1 ' with spaces, 2n+1 of a compound selector (#u7: the 1st and 3rd .done.x items = children 1 and 5) and nth-last-child(2n).",
+ "viewport": [410, 100]
+}

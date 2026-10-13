@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pseudo: inside list markers</title>
+<style>
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  /* inside markers are the first inline box of the item's first line; the item text wraps
+     under the marker */
+  ul, ol { position: absolute; width: 90px; margin: 0; padding: 0 0 0 10px; list-style-position: inside; font-family: "Ahem"; font-size: 10px; line-height: 14px; color: #2060c0; background-color: #e8e8e8; }
+  li span { color: #404040; }
+  li { background-color: #d0d8e8; }
+  .sym { font-size: 20px; line-height: 24px; width: 110px; }
+  #disc { left: 0; top: 10px; list-style-type: disc; }
+  #square { left: 130px; top: 10px; list-style-type: square; }
+  #dec { left: 0; top: 80px; list-style-type: decimal; }
+  #roman { left: 110px; top: 80px; list-style-type: upper-roman; }
+  /* list-style shorthand: inside + type in any order */
+  #alpha { left: 220px; top: 80px; width: 70px; list-style: lower-alpha inside; }
+  /* a long item wraps: the second line starts at the li's content edge, not after the marker */
+  #wrap { left: 0; top: 140px; width: 60px; list-style-type: decimal; }
+</style>
+</head>
+<body>
+<ul id="disc" class="sym"><li id="d1"><span>XX</span></li><li id="d2"><span>X</span></li></ul>
+<ul id="square" class="sym"><li id="s1"><span>XX</span></li><li id="s2"><span>X</span></li></ul>
+<ol id="dec"><li id="n1"><span>XX</span></li><li id="n2"><span>X</span></li><li id="n3"><span>X</span></li></ol>
+<ol id="roman"><li id="r1"><span>X</span></li><li id="r2"><span>X</span></li><li id="r3"><span>X</span></li></ol>
+<ol id="alpha"><li id="a1"><span>X</span></li><li id="a2"><span>XX</span></li></ol>
+<ol id="wrap"><li id="w1"><span>XX XX XX</span></li></ol>
+</body>
+</html>

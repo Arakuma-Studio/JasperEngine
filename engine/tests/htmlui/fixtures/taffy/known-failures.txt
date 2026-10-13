@@ -1,0 +1,11 @@
+# Taffy fixtures the fork does not pass yet: BoxParityTest expects them to fail and fails when one
+# passes, so the package that fixes a fixture removes its line (phase-3 spec 4, wave 1).
+# <suite>/<name> owner=<package> reason=<class> # <first difference of the baseline run>
+# Written by tools/htmlui/import-taffy-fixtures.py known-failures from a baseline run; the reason
+# class is read from the features the fixture uses (classify), the owner is the package of that
+# feature. Empty since phase 3 (every line removed by its package; p3-integration checked it). The
+# baseline run had 889 fixtures:
+#   p3-grid: 530 (grid-unsupported 530)
+#   p3-layout: 307 (absolute-position 57, aspect-ratio 37, block-alignment 12, block-layout 12, box-sizing 4, flex-algorithm 24, flex-alignment 50, flex-min-max 10, flex-wrap 27, float 12, intrinsic-sizing 2, margin-collapse 55, overflow 5)
+#   p3-text: 52 (text-zwsp 52)
+

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>cascade: all: unset and all: initial</title>
+<style>
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  #wrap { position: absolute; left: 0; top: 0; width: 320px; height: 160px; font-family: "Ahem"; font-size: 10px; line-height: 10px; color: #204080; background-color: #f0f0e0; }
+
+  /* all: unset drops the UA button look (border, padding, background, system font, centred
+     text): inherited properties come from #wrap (Ahem 10px, #204080), the others are initial.
+     Custom properties are not reset by `all`; the declarations after it apply. */
+  #b1 { --tone: #e0c040; all: unset; position: absolute; left: 10px; top: 10px; padding: 4px; background-color: var(--tone, #e02020); }
+  /* a later rule's all: unset wipes the earlier rule's properties (same specificity) */
+  .styled { border: 2px solid #e02020; padding: 10px; background-color: #e02020; color: #e02020; font-size: 20px; }
+  #b2 { position: absolute; left: 10px; top: 40px; }
+  .reset { all: unset; }
+  /* declarations after `all` in the same rule apply; the text stays left-aligned (text-align
+     inherits) and the height comes from the content (no vertical centring question) */
+  #b3 { all: unset; position: absolute; left: 10px; top: 70px; width: 60px; padding-top: 6px; color: #a02060; background-color: #c0e0c0; }
+
+  /* all: initial also resets the inherited properties: color black, font-size 16px (medium),
+     display inline (blockified by position: absolute) */
+  #d1 { all: initial; position: absolute; left: 120px; top: 10px; width: 80px; height: 40px; background-color: #c0d0f0; }
+  #d1t { display: block; font-family: "Ahem"; line-height: 16px; }
+  /* all: unset on a div: inherited properties (color, font) from #wrap */
+  #d2 { all: unset; position: absolute; left: 120px; top: 70px; width: 80px; height: 30px; background-color: #e0c0c0; }
+</style>
+</head>
+<body>
+<div id="wrap">
+<button id="b1">XX</button>
+<button id="b2" class="styled reset">XXX</button>
+<button id="b3">XX</button>
+<div id="d1"><span id="d1t">XX</span></div>
+<div id="d2"><span id="d2t">XXX</span></div>
+</div>
+</body>
+</html>

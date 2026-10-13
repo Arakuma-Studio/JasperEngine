@@ -1,5 +1,27 @@
 namespace Rml {
 
+inline Variant::~Variant()
+{
+	// Only the types Clear destroys call it: the others (numbers, vectors, colours, pointers) are left without a call.
+	switch (type)
+	{
+	case STRING:
+	case TRANSFORMPTR:
+#ifdef RMLUI_MATH_EXPRESSIONS
+	case CALCULATIONPTR:
+#endif
+	case TRANSITIONLIST:
+	case ANIMATIONLIST:
+	case DECORATORSPTR:
+	case FILTERSPTR:
+	case FONTEFFECTSPTR:
+	case COLORSTOPLIST:
+	case BOXSHADOWLIST:
+	case STYLEVALUEPTR: Clear(); break;
+	default: break;
+	}
+}
+
 inline Variant::Type Variant::GetType() const
 {
 	return type;
@@ -54,6 +76,9 @@ bool Variant::GetInto(T& value) const
 		case SCRIPTINTERFACE: return TypeConverter<ScriptInterface*, T>::Convert(*reinterpret_cast<ScriptInterface* const*>(data), value);
 		case VOIDPTR: return TypeConverter<void*, T>::Convert(*reinterpret_cast<void* const*>(data), value);
 		case TRANSFORMPTR: return TypeConverter<TransformPtr, T>::Convert(*reinterpret_cast<const TransformPtr*>(data), value);
+#ifdef RMLUI_MATH_EXPRESSIONS
+		case CALCULATIONPTR: return TypeConverter<CalculationPtr, T>::Convert(*reinterpret_cast<const CalculationPtr*>(data), value);
+#endif
 		case TRANSITIONLIST: return TypeConverter<TransitionList, T>::Convert(*reinterpret_cast<const TransitionList*>(data), value);
 		case ANIMATIONLIST: return TypeConverter<AnimationList, T>::Convert(*reinterpret_cast<const AnimationList*>(data), value);
 		case DECORATORSPTR: return TypeConverter<DecoratorsPtr, T>::Convert(*reinterpret_cast<const DecoratorsPtr*>(data), value);
@@ -61,6 +86,7 @@ bool Variant::GetInto(T& value) const
 		case FONTEFFECTSPTR: return TypeConverter<FontEffectsPtr, T>::Convert(*reinterpret_cast<const FontEffectsPtr*>(data), value);
 		case COLORSTOPLIST: return TypeConverter<ColorStopList, T>::Convert(*(ColorStopList*)data, value); break;
 		case BOXSHADOWLIST: return TypeConverter<BoxShadowList, T>::Convert(*reinterpret_cast<const BoxShadowList*>(data), value);
+		case STYLEVALUEPTR: return TypeConverter<StyleValuePtr, T>::Convert(*reinterpret_cast<const StyleValuePtr*>(data), value);
 		case NONE: break;
 		}
 	}

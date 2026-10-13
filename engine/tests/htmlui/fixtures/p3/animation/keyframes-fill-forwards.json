@@ -1,0 +1,10 @@
+{
+ "comment": "After the end, forwards and both keep the last keyframe (a fractional count stops half way into its last iteration); without a fill mode the element's own style returns.",
+ "viewport": [400, 190],
+ "steps": [
+  {"advance": 0.25},
+  {"capture": "running"},
+  {"advance": 1.25},
+  {"capture": "after"}
+ ]
+}

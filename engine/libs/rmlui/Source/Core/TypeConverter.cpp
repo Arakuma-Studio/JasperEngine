@@ -7,11 +7,15 @@
 #include "../../Include/RmlUi/Core/PropertySpecification.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "../../Include/RmlUi/Core/StyleSheetTypes.h"
+#include "../../Include/RmlUi/Core/StyleValue.h"
 #include "../../Include/RmlUi/Core/Transform.h"
 #include "../../Include/RmlUi/Core/TransformPrimitive.h"
 #include "PropertyParserColour.h"
 #include "PropertyParserDecorator.h"
 #include "TransformUtilities.h"
+#ifdef RMLUI_MATH_EXPRESSIONS
+	#include "Calculation.h"
+#endif
 
 namespace Rml {
 
@@ -39,6 +43,13 @@ bool TypeConverter<Unit, String>::Convert(const Unit& src, String& dest)
 
 	case Unit::DEG:     dest = "deg"; return true;
 	case Unit::RAD:     dest = "rad"; return true;
+
+	case Unit::VMIN:    dest = "vmin"; return true;
+	case Unit::VMAX:    dest = "vmax"; return true;
+	case Unit::CH:      dest = "ch";   return true;
+	case Unit::EX:      dest = "ex";   return true;
+	case Unit::TURN:    dest = "turn"; return true;
+	case Unit::GRAD:    dest = "grad"; return true;
 	// clang-format on
 	default: break;
 	}
@@ -72,6 +83,22 @@ bool TypeConverter<TransformPtr, String>::Convert(const TransformPtr& src, Strin
 	return true;
 }
 
+#ifdef RMLUI_MATH_EXPRESSIONS
+bool TypeConverter<CalculationPtr, CalculationPtr>::Convert(const CalculationPtr& src, CalculationPtr& dest)
+{
+	dest = src;
+	return true;
+}
+
+bool TypeConverter<CalculationPtr, String>::Convert(const CalculationPtr& src, String& dest)
+{
+	if (!src)
+		return false;
+	dest = src->ToString();
+	return true;
+}
+#endif
+
 bool TypeConverter<TransitionList, TransitionList>::Convert(const TransitionList& src, TransitionList& dest)
 {
 	dest = src;
@@ -89,14 +116,14 @@ bool TypeConverter<TransitionList, String>::Convert(const TransitionList& src, S
 	for (size_t i = 0; i < src.transitions.size(); i++)
 	{
 		const Transition& t = src.transitions[i];
-		dest += StyleSheetSpecification::GetPropertyName(t.id) + ' ';
-		dest += t.tween.to_string() + ' ';
+		dest += (t.id == PropertyId::Invalid ? String("all") : StyleSheetSpecification::GetPropertyName(t.id)) + ' ';
 		if (TypeConverter<float, String>::Convert(t.duration, tmp))
 			dest += tmp + "s ";
-		if (t.delay > 0.0f && TypeConverter<float, String>::Convert(t.delay, tmp))
+		dest += t.tween.to_string() + ' ';
+		if (t.delay != 0.0f && TypeConverter<float, String>::Convert(t.delay, tmp))
 			dest += tmp + "s ";
-		if (t.reverse_adjustment_factor > 0.0f && TypeConverter<float, String>::Convert(t.reverse_adjustment_factor, tmp))
-			dest += tmp + ' ';
+		if (t.allow_discrete)
+			dest += "allow-discrete ";
 		if (dest.size() > 0)
 			dest.resize(dest.size() - 1);
 		if (i != src.transitions.size() - 1)
@@ -113,6 +140,8 @@ bool TypeConverter<AnimationList, AnimationList>::Convert(const AnimationList& s
 
 bool TypeConverter<AnimationList, String>::Convert(const AnimationList& src, String& dest)
 {
+	static const char* const directions[] = {"normal", "reverse", "alternate", "alternate-reverse"};
+	static const char* const fill_modes[] = {"none", "forwards", "backwards", "both"};
 	String tmp;
 	for (size_t i = 0; i < src.size(); i++)
 	{
@@ -120,16 +149,18 @@ bool TypeConverter<AnimationList, String>::Convert(const AnimationList& src, Str
 		if (TypeConverter<float, String>::Convert(a.duration, tmp))
 			dest += tmp + "s ";
 		dest += a.tween.to_string() + " ";
-		if (a.delay > 0.0f && TypeConverter<float, String>::Convert(a.delay, tmp))
+		if (a.delay != 0.0f && TypeConverter<float, String>::Convert(a.delay, tmp))
 			dest += tmp + "s ";
-		if (a.alternate)
-			dest += "alternate ";
+		if (a.IsInfinite())
+			dest += "infinite ";
+		else if (a.iteration_count != 1.0f && TypeConverter<float, String>::Convert(a.iteration_count, tmp))
+			dest += tmp + " ";
+		if (a.direction != AnimationDirection::Normal)
+			dest += String(directions[(int)a.direction]) + " ";
+		if (a.fill_mode != AnimationFillMode::None)
+			dest += String(fill_modes[(int)a.fill_mode]) + " ";
 		if (a.paused)
 			dest += "paused ";
-		if (a.num_iterations == -1)
-			dest += "infinite ";
-		else if (TypeConverter<int, String>::Convert(a.num_iterations, tmp))
-			dest += tmp + " ";
 		dest += a.name;
 		if (i != src.size() - 1)
 			dest += ", ";
@@ -220,7 +251,7 @@ bool TypeConverter<ColorStopList, String>::Convert(const ColorStopList& src, Str
 	for (size_t i = 0; i < src.size(); i++)
 	{
 		const ColorStop& stop = src[i];
-		dest += ToString(stop.color.ToNonPremultiplied());
+		dest += (stop.current_color ? (stop.color_mix.empty() ? String("currentcolor") : stop.color_mix) : ToString(stop.color.ToNonPremultiplied()));
 
 		if (Any(stop.position.unit & Unit::NUMBER_LENGTH_PERCENT))
 			dest += " " + ToString(stop.position.number) + ToString(stop.position.unit);
@@ -228,6 +259,18 @@ bool TypeConverter<ColorStopList, String>::Convert(const ColorStopList& src, Str
 		if (i < src.size() - 1)
 			dest += ", ";
 	}
+	return true;
+}
+
+bool TypeConverter<StyleValuePtr, StyleValuePtr>::Convert(const StyleValuePtr& src, StyleValuePtr& dest)
+{
+	dest = src;
+	return true;
+}
+
+bool TypeConverter<StyleValuePtr, String>::Convert(const StyleValuePtr& src, String& dest)
+{
+	dest = (src ? src->ToString() : String());
 	return true;
 }
 
@@ -253,7 +296,8 @@ bool TypeConverter<BoxShadowList, String>::Convert(const BoxShadowList& src, Str
 		if (shadow.inset)
 			temp += " inset";
 
-		dest += ToString(shadow.color.ToNonPremultiplied()) + temp;
+		dest += (shadow.current_color ? (shadow.color_mix.empty() ? String("currentcolor") : shadow.color_mix) : ToString(shadow.color.ToNonPremultiplied())) +
+			temp;
 
 		if (i < src.size() - 1)
 		{

@@ -1,0 +1,22 @@
+{
+ "comment": "An agent-written inventory grid: grid centered with place-items on a radial gradient, repeat() of var() slots with spanning items, rarity colours through custom properties with var() fallbacks, ::before orbs with a glow and ::after counts from attr(), a hover scale and border transition (captured at the end). Text-heavy (boxes are the oracle): the glyph rasterization differs from Chromium's (FreeType hinting, synthetic bold outline vs bitmap dilation); the page without its text is gated at the strict metric (noText).",
+ "viewport": [
+  520,
+  360
+ ],
+ "boxes": true, "noText": true,
+ "steps": [
+  {
+   "capture": "rest"
+  },
+  {
+   "hover": "#potion"
+  },
+  {
+   "advance": 0.2
+  },
+  {
+   "capture": "hover"
+  }
+ ]
+}

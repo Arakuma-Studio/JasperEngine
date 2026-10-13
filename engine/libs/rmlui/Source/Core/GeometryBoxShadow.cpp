@@ -9,10 +9,15 @@
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
 #include "ElementStyle.h"
+#include "GeometryBorderStyles.h"
+#include "PropertyParserColour.h"
+#ifdef RMLUI_MATH_EXPRESSIONS
+	#include "CalculationResolver.h"
+#endif
 
 namespace Rml {
 
-BoxShadowGeometryInfo GeometryBoxShadow::Resolve(Element* element, const CornerSizes& border_radius, ColourbPremultiplied background_color,
+BoxShadowGeometryInfo GeometryBoxShadow::Resolve(Element* element, ColourbPremultiplied background_color,
 	const Array<ColourbPremultiplied, 4>& border_colors, float opacity)
 {
 	RMLUI_ZoneScoped;
@@ -25,13 +30,35 @@ BoxShadowGeometryInfo GeometryBoxShadow::Resolve(Element* element, const CornerS
 	RMLUI_ASSERT(p_box_shadow->value.GetType() == Variant::BOXSHADOWLIST);
 	BoxShadowList shadow_list = p_box_shadow->value.Get<BoxShadowList>();
 
-	// Resolve all lengths to px units.
+	// Resolve all lengths to px units, and 'currentcolor' to the element's color (phase 3, values).
 	for (BoxShadow& shadow : shadow_list)
 	{
+		if (shadow.current_color)
+		{
+			shadow.color = PropertyParserColour::ResolveCurrentColor(shadow.color_mix, element->GetComputedValues().color()).ToPremultiplied();
+			shadow.current_color = false;
+		}
+#ifdef RMLUI_MATH_EXPRESSIONS
+		auto resolve_length = [&](NumericValue value, const CalculationPtr& calculation) {
+			if (!calculation)
+				return element->ResolveLength(value);
+			float result = 0.f;
+			return ResolveElementCalculation(*calculation, *element, 0.f, result) ? result : 0.f;
+		};
+		shadow.blur_radius = NumericValue(resolve_length(shadow.blur_radius, shadow.blur_radius_calculation), Unit::PX);
+		shadow.spread_distance = NumericValue(resolve_length(shadow.spread_distance, shadow.spread_distance_calculation), Unit::PX);
+		shadow.offset_x = NumericValue(resolve_length(shadow.offset_x, shadow.offset_x_calculation), Unit::PX);
+		shadow.offset_y = NumericValue(resolve_length(shadow.offset_y, shadow.offset_y_calculation), Unit::PX);
+		shadow.blur_radius_calculation.reset();
+		shadow.spread_distance_calculation.reset();
+		shadow.offset_x_calculation.reset();
+		shadow.offset_y_calculation.reset();
+#else
 		shadow.blur_radius = NumericValue(element->ResolveLength(shadow.blur_radius), Unit::PX);
 		shadow.spread_distance = NumericValue(element->ResolveLength(shadow.spread_distance), Unit::PX);
 		shadow.offset_x = NumericValue(element->ResolveLength(shadow.offset_x), Unit::PX);
 		shadow.offset_y = NumericValue(element->ResolveLength(shadow.offset_y), Unit::PX);
+#endif
 	}
 
 	{
@@ -41,12 +68,21 @@ BoxShadowGeometryInfo GeometryBoxShadow::Resolve(Element* element, const CornerS
 		// Extend the render-texture to encompass box-shadow blur and spread.
 		for (const BoxShadow& shadow : shadow_list)
 		{
+			const Vector2f offset = {shadow.offset_x.number, shadow.offset_y.number};
 			if (!shadow.inset)
 			{
 				const float extend = 1.5f * shadow.blur_radius.number + shadow.spread_distance.number;
-				const Vector2f offset = {shadow.offset_x.number, shadow.offset_y.number};
 				extend_min = Math::Min(extend_min, offset - Vector2f(extend));
 				extend_max = Math::Max(extend_max, offset + Vector2f(extend));
+			}
+			else if (shadow.blur_radius.number >= 0.5f)
+			{
+				// A blurred inset shadow is blurred from a fill outside its shape: the fill must reach as far beyond the
+				// padding box as the blur reads (three sigma) for the shadow to be darkest at the box's edge, also where the
+				// shape meets the padding box (no offset, no spread) and nothing of the fill lies inside the texture.
+				const float extend = 1.5f * shadow.blur_radius.number + Math::Absolute(offset.x) + Math::Absolute(offset.y);
+				extend_min = Math::Min(extend_min, Vector2f(-extend));
+				extend_max = Math::Max(extend_max, Vector2f(extend));
 			}
 		}
 
@@ -81,7 +117,6 @@ BoxShadowGeometryInfo GeometryBoxShadow::Resolve(Element* element, const CornerS
 	BoxShadowGeometryInfo geometry_info;
 	geometry_info.background_color = background_color;
 	geometry_info.border_colors = border_colors;
-	geometry_info.border_radius = border_radius;
 	geometry_info.texture_dimensions = texture_dimensions;
 	geometry_info.element_offset_in_texture = element_offset_in_texture;
 	geometry_info.padding_render_boxes = std::move(padding_render_boxes);
@@ -96,9 +131,17 @@ void GeometryBoxShadow::GenerateTexture(CallbackTexture& out_shadow_texture, Geo
 {
 	RMLUI_ZoneScoped;
 
+	// The background colour covers the border box, under the border (CSS: the initial 'background-clip: border-box').
 	Mesh mesh = out_background_border_geometry.Release(Geometry::ReleaseMode::ClearMesh);
+	const ColourbPremultiplied transparent(0, 0);
+	const ColourbPremultiplied no_border[4] = {transparent, transparent, transparent, transparent};
 	for (size_t i = 0; i < info.padding_render_boxes.size(); i++)
-		MeshUtilities::GenerateBackgroundBorder(mesh, info.padding_render_boxes[i], info.background_color, info.border_colors.data());
+	{
+		const RenderBox background_box =
+			GeometryBorderStyles::BackgroundRenderBox(info.border_render_boxes[i], info.padding_render_boxes[i], info.border_colors.data());
+		MeshUtilities::GenerateBackgroundBorder(mesh, background_box, info.background_color, no_border);
+		MeshUtilities::GenerateBackgroundBorder(mesh, info.padding_render_boxes[i], transparent, info.border_colors.data());
+	}
 	out_background_border_geometry = render_manager.MakeGeometry(std::move(mesh));
 
 	// Callback for generating the box-shadow texture. Using a callback ensures that the texture can be regenerated at any time, for example if the
@@ -146,105 +189,182 @@ void GeometryBoxShadow::GenerateTexture(CallbackTexture& out_shadow_texture, Geo
 			render_manager.SetState(initial_render_state);
 			return false;
 		}
+
+		// Renders the texture's content into a new layer, the texture's point 'origin' at the layer's top-left corner.
+		auto render_content = [&](const Vector2f origin) {
+			const Vector2f element_offset = info.element_offset_in_texture - origin;
+			render_manager.DisableClipMask();
+			render_manager.PushLayer();
+			out_background_border_geometry.Render(element_offset);
+
+			for (int shadow_index = (int)info.shadow_list.size() - 1; shadow_index >= 0; shadow_index--)
+			{
+				const BoxShadow& shadow = info.shadow_list[shadow_index];
+				const Vector2f shadow_offset = {shadow.offset_x.number, shadow.offset_y.number};
+				const bool inset = shadow.inset;
+				const float spread_distance = shadow.spread_distance.number;
+				const float blur_radius = shadow.blur_radius.number;
+
+				// The radii of the shadow's shape (CSS Backgrounds 3, 6.1.1): each horizontal and vertical radius of the box grows
+				// (shrinks when inset) by the spread distance, by less when it is smaller than the spread so that a square corner
+				// stays square. A corner without a curve in one axis has none at all.
+				auto spread_radii = [&](CornerSizes2 radii) {
+					for (Vector2f& corner : radii)
+					{
+						if (corner.x <= 0.f || corner.y <= 0.f)
+						{
+							corner = Vector2f(0.f);
+							continue;
+						}
+						for (int axis = 0; axis < 2; axis++)
+						{
+							float& radius = corner[axis];
+							float spread_factor = (inset ? -1.f : 1.f);
+							if (radius < spread_distance)
+							{
+								const float ratio_minus_one = (radius / spread_distance) - 1.f;
+								spread_factor *= 1.f + ratio_minus_one * ratio_minus_one * ratio_minus_one;
+							}
+							radius = Math::Max(radius + spread_factor * spread_distance, 0.f);
+						}
+					}
+					return radii;
+				};
+
+				Mesh mesh_shadow;
+
+				// Generate the shadow geometry. For outer box-shadows it is rendered normally, while for inset box-shadows it is used as a clipping mask.
+				for (size_t i = 0; i < num_boxes; i++)
+				{
+					const float signed_spread_distance = (inset ? -spread_distance : spread_distance);
+					RenderBox render_box = (inset ? info.padding_render_boxes : info.border_render_boxes)[i];
+					render_box.SetFillSize(Math::Max(render_box.GetFillSize() + Vector2f(2.f * signed_spread_distance), Vector2f{0.001f}));
+					render_box.SetBorderRadius(spread_radii(render_box.GetBorderRadius()));
+					render_box.SetBorderOffset(render_box.GetBorderOffset() - Vector2f(signed_spread_distance));
+					MeshUtilities::GenerateBackground(mesh_shadow, render_box, shadow.color);
+				}
+
+				CompiledFilter blur;
+				if (blur_radius >= 0.5f)
+				{
+					blur = render_manager.CompileFilter("blur", Dictionary{{"sigma", Variant(0.5f * blur_radius)}});
+					if (blur)
+						render_manager.PushLayer();
+				}
+
+				Geometry geometry_shadow = render_manager.MakeGeometry(std::move(mesh_shadow));
+
+				if (inset)
+				{
+					render_manager.SetClipMask(ClipMaskOperation::SetInverse, &geometry_shadow, shadow_offset + element_offset);
+
+					for (Rml::Vertex& vertex : mesh_padding.vertices)
+						vertex.colour = shadow.color;
+
+					// @performance: Don't need to copy the mesh if this is the last use of it.
+					Geometry geometry_padding = render_manager.MakeGeometry(Mesh(mesh_padding));
+					if (blur)
+					{
+						// CSS: the shadow is everything outside of its shape, blurred, and then shown inside the padding box. The
+						// blur layer is filled outside the shape over the whole texture: filled over the padding box only, the
+						// blur would fade the shadow towards the box's edge, where it is darkest.
+						Mesh mesh_fill;
+						MeshUtilities::GenerateQuad(mesh_fill, -origin, Vector2f(info.texture_dimensions), shadow.color);
+						Geometry geometry_fill = render_manager.MakeGeometry(std::move(mesh_fill));
+						geometry_fill.Render(Vector2f(0.f));
+					}
+					else
+					{
+						geometry_padding.Render(element_offset);
+					}
+
+					render_manager.SetClipMask(ClipMaskOperation::Set, &geometry_padding, element_offset);
+				}
+				else
+				{
+					// CSS: an outer shadow is blurred first and then shown only outside the border box,
+					// so a blurred shadow without offset or spread (a glow) still shows around the box.
+					// With a blur the shadow is drawn unclipped into the blur layer and the clip applies
+					// when the blurred layer is composited.
+					Mesh mesh = mesh_padding_border;
+					Geometry geometry_padding_border = render_manager.MakeGeometry(std::move(mesh));
+					if (blur)
+					{
+						render_manager.DisableClipMask();
+						geometry_shadow.Render(shadow_offset + element_offset);
+					}
+					render_manager.SetClipMask(ClipMaskOperation::SetInverse, &geometry_padding_border, element_offset);
+					if (!blur)
+						geometry_shadow.Render(shadow_offset + element_offset);
+				}
+
+				if (blur)
+				{
+					FilterHandleList filters;
+					blur.AddHandleTo(filters);
+					render_manager.CompositeLayers(render_manager.GetTopLayer(), render_manager.GetNextLayer(), BlendMode::Blend, filters);
+					render_manager.PopLayer();
+					blur.Release();
+				}
+			}
+
+		};
+
+		bool saved = false;
 		if (scissor_region != Rectanglei::FromSize(info.texture_dimensions))
 		{
-			Log::Message(Log::LT_INFO,
-				"The desired box-shadow texture dimensions (%d, %d) are larger than the current window region (%d, %d). "
-				"Results may be clipped.",
-				info.texture_dimensions.x, info.texture_dimensions.y, scissor_region.Width(), scissor_region.Height());
+			// Fork: a texture larger than the window is made of tiles of the window's size, each rendered with an apron as
+			// wide as the blur reads, so the tiles join without seams.
+			float max_blur_radius = 0.f;
+			for (const BoxShadow& shadow : info.shadow_list)
+				max_blur_radius = Math::Max(max_blur_radius, shadow.blur_radius.number);
+			// Apron and step are multiples of 16 px: a blur rendered at a fraction of the size (down to 1/16) samples the
+			// same grid in every tile.
+			const int grid = 16;
+			const int apron = (max_blur_radius >= 0.5f ? Math::RoundUpToInteger(1.5f * max_blur_radius) + 2 : 0);
+			const int aligned_apron = (apron + grid - 1) / grid * grid;
+			// The tiles' window: the render target, no larger than a tile covering the texture with its aprons.
+			const Vector2i window = Math::Min(render_manager.GetViewport(), info.texture_dimensions + Vector2i(2 * aligned_apron));
+			Vector2i step;
+			for (int axis = 0; axis < 2; axis++)
+			{
+				const int inner = window[axis] - 2 * aligned_apron;
+				step[axis] = (inner >= info.texture_dimensions[axis] ? info.texture_dimensions[axis] : inner / grid * grid);
+			}
+			if (step.x > 0 && step.y > 0)
+			{
+				saved = true;
+				for (int y = 0; saved && y < info.texture_dimensions.y; y += step.y)
+				{
+					for (int x = 0; saved && x < info.texture_dimensions.x; x += step.x)
+					{
+						render_manager.SetScissorRegion(Rectanglei::FromSize(window));
+						render_content(Vector2f(float(x - aligned_apron), float(y - aligned_apron)));
+						const Vector2i tile_size = Math::Min(step, info.texture_dimensions - Vector2i(x, y));
+						render_manager.SetScissorRegion(Rectanglei::FromPositionSize(Vector2i(aligned_apron), tile_size));
+						saved = texture_interface.SaveLayerAsTextureTile(info.texture_dimensions, Vector2i(x, y));
+						render_manager.PopLayer();
+					}
+				}
+				// (only the first tile can fail: the render interface does not make tiles)
+			}
+			if (!saved)
+			{
+				Log::Message(Log::LT_INFO,
+					"The desired box-shadow texture dimensions (%d, %d) are larger than the current window region (%d, %d). "
+					"Results may be clipped.",
+					info.texture_dimensions.x, info.texture_dimensions.y, scissor_region.Width(), scissor_region.Height());
+				render_manager.SetScissorRegion(Rectanglei::FromSize(info.texture_dimensions));
+			}
 		}
 
-		render_manager.PushLayer();
-		out_background_border_geometry.Render(info.element_offset_in_texture);
-
-		for (int shadow_index = (int)info.shadow_list.size() - 1; shadow_index >= 0; shadow_index--)
+		if (!saved)
 		{
-			const BoxShadow& shadow = info.shadow_list[shadow_index];
-			const Vector2f shadow_offset = {shadow.offset_x.number, shadow.offset_y.number};
-			const bool inset = shadow.inset;
-			const float spread_distance = shadow.spread_distance.number;
-			const float blur_radius = shadow.blur_radius.number;
-
-			CornerSizes spread_radii = info.border_radius;
-			for (int i = 0; i < 4; i++)
-			{
-				float& radius = spread_radii[i];
-				float spread_factor = (inset ? -1.f : 1.f);
-				if (radius < spread_distance)
-				{
-					const float ratio_minus_one = (radius / spread_distance) - 1.f;
-					spread_factor *= 1.f + ratio_minus_one * ratio_minus_one * ratio_minus_one;
-				}
-				radius = Math::Max(radius + spread_factor * spread_distance, 0.f);
-			}
-
-			Mesh mesh_shadow;
-
-			// Generate the shadow geometry. For outer box-shadows it is rendered normally, while for inset box-shadows it is used as a clipping mask.
-			for (size_t i = 0; i < num_boxes; i++)
-			{
-				const float signed_spread_distance = (inset ? -spread_distance : spread_distance);
-				RenderBox render_box = (inset ? info.padding_render_boxes : info.border_render_boxes)[i];
-				render_box.SetFillSize(Math::Max(render_box.GetFillSize() + Vector2f(2.f * signed_spread_distance), Vector2f{0.001f}));
-				render_box.SetBorderRadius(spread_radii);
-				render_box.SetBorderOffset(render_box.GetBorderOffset() - Vector2f(signed_spread_distance));
-				MeshUtilities::GenerateBackground(mesh_shadow, render_box, shadow.color);
-			}
-
-			CompiledFilter blur;
-			if (blur_radius >= 0.5f)
-			{
-				blur = render_manager.CompileFilter("blur", Dictionary{{"sigma", Variant(0.5f * blur_radius)}});
-				if (blur)
-					render_manager.PushLayer();
-			}
-
-			Geometry geometry_shadow = render_manager.MakeGeometry(std::move(mesh_shadow));
-
-			if (inset)
-			{
-				render_manager.SetClipMask(ClipMaskOperation::SetInverse, &geometry_shadow, shadow_offset + info.element_offset_in_texture);
-
-				for (Rml::Vertex& vertex : mesh_padding.vertices)
-					vertex.colour = shadow.color;
-
-				// @performance: Don't need to copy the mesh if this is the last use of it.
-				Geometry geometry_padding = render_manager.MakeGeometry(Mesh(mesh_padding));
-				geometry_padding.Render(info.element_offset_in_texture);
-
-				render_manager.SetClipMask(ClipMaskOperation::Set, &geometry_padding, info.element_offset_in_texture);
-			}
-			else
-			{
-				// CSS: an outer shadow is blurred first and then shown only outside the border box,
-				// so a blurred shadow without offset or spread (a glow) still shows around the box.
-				// With a blur the shadow is drawn unclipped into the blur layer and the clip applies
-				// when the blurred layer is composited.
-				Mesh mesh = mesh_padding_border;
-				Geometry geometry_padding_border = render_manager.MakeGeometry(std::move(mesh));
-				if (blur)
-				{
-					render_manager.DisableClipMask();
-					geometry_shadow.Render(shadow_offset + info.element_offset_in_texture);
-				}
-				render_manager.SetClipMask(ClipMaskOperation::SetInverse, &geometry_padding_border, info.element_offset_in_texture);
-				if (!blur)
-					geometry_shadow.Render(shadow_offset + info.element_offset_in_texture);
-			}
-
-			if (blur)
-			{
-				FilterHandleList filters;
-				blur.AddHandleTo(filters);
-				render_manager.CompositeLayers(render_manager.GetTopLayer(), render_manager.GetNextLayer(), BlendMode::Blend, filters);
-				render_manager.PopLayer();
-				blur.Release();
-			}
+			render_content(Vector2f(0.f));
+			texture_interface.SaveLayerAsTexture();
+			render_manager.PopLayer();
 		}
 
-		texture_interface.SaveLayerAsTexture();
-
-		render_manager.PopLayer();
 		render_manager.SetState(initial_render_state);
 
 		return true;

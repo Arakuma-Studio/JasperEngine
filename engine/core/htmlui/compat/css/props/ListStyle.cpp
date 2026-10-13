@@ -3,6 +3,9 @@
 
 // Lists (phase-2 §3.9.7 "Lists"): list-style-* are properties the compat runtime registers
 // (markers drawn by the li and summary elements, §3.11.6); the shorthand is split into them.
+// With the fork's ListMarkers (phase 3) they are the fork's own: the types are written as they
+// are (a counter style the fork does not draw counts in decimal, as CSS's fallback does, Info),
+// the image URL resolved, and 'inside' is exact.
 
 #include "htmlui/compat/css/props/Rewriters.h"
 #include "htmlui/compat/LiteralCompare.h"
@@ -51,6 +54,13 @@ namespace {
             return std::string();
         if (isEmulatedType(k))
             return k;
+        if (context.fork(ForkFeature::ListMarkers)){
+            // CSS: a counter style the engine does not define counts in decimal (phase-3 §2.2)
+            if (report)
+                context.reportAs(Severity::Info, codes::ApproximatedMinor, "list-style-type '" + k + "' is drawn as decimal",
+                                 "use one of: decimal, decimal-leading-zero, lower/upper-alpha/latin, lower/upper-roman, lower-greek, disc, circle, square, none");
+            return k;
+        }
         if (isNumericCounterStyle(k) || k == "symbols"){
             if (report)
                 context.reportAs(Severity::Info, codes::ApproximatedMinor, "list-style-type '" + k + "' is drawn as decimal");
@@ -74,7 +84,7 @@ void jasperengine::htmlui::compat::rewriteListStyle(DeclContext& context){
             return;
         }
         std::string type = typeOf(context, w[0], true);
-        if (type.empty() && w[0].isToken(TokenType::Ident)){
+        if (type.empty() && w[0].isToken(TokenType::Ident) && !context.fork(ForkFeature::ListMarkers)){
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "list-style-type '" + identOf(w[0]) + "' is drawn as disc");
             type = "disc";
         }
@@ -91,8 +101,9 @@ void jasperengine::htmlui::compat::rewriteListStyle(DeclContext& context){
             unsupportedValue(context, "use inside or outside");
             return;
         }
-        // the user-agent sheet's own `inside` (summary's disclosure triangle, one line) is exact
-        if (k == "inside" && context.origin != RuleOrigin::UserAgent)
+        // the user-agent sheet's own `inside` (summary's disclosure triangle, one line) is exact,
+        // and the fork's (ListMarkers) is
+        if (k == "inside" && context.origin != RuleOrigin::UserAgent && !context.fork(ForkFeature::ListMarkers))
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "'list-style-position: inside' draws the marker outside and shifts the content");
         context.emit("list-style-position", k);
         return;
@@ -129,7 +140,7 @@ void jasperengine::htmlui::compat::rewriteListStyle(DeclContext& context){
             continue;
         }
         std::string t = typeOf(context, v, true);
-        if (t.empty() && v.isToken(TokenType::Ident)){
+        if (t.empty() && v.isToken(TokenType::Ident) && !context.fork(ForkFeature::ListMarkers)){
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "list-style-type '" + k + "' is drawn as disc");
             t = "disc";
         }
@@ -143,7 +154,7 @@ void jasperengine::htmlui::compat::rewriteListStyle(DeclContext& context){
         type = "none";
     if (type.empty())
         type = "disc";
-    if (position == "inside" && context.origin != RuleOrigin::UserAgent)
+    if (position == "inside" && context.origin != RuleOrigin::UserAgent && !context.fork(ForkFeature::ListMarkers))
         context.reportAs(Severity::Info, codes::ApproximatedMinor, "'list-style-position: inside' draws the marker outside and shifts the content");
     context.emit("list-style-type", type);
     context.emit("list-style-position", position.empty() ? "outside" : position);

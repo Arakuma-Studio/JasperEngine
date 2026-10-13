@@ -8,12 +8,15 @@
 #include "../../Include/RmlUi/Core/ElementUtilities.h"
 #include "../../Include/RmlUi/Core/Factory.h"
 #include "../../Include/RmlUi/Core/Profiling.h"
+#include "../../Include/RmlUi/Core/RenderBox.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
 #include "../../Include/RmlUi/Core/StreamMemory.h"
 #include "../../Include/RmlUi/Core/SystemInterface.h"
 #include "DataModel.h"
+#include "ElementCascade.h"
 #include "EventDispatcher.h"
 #include "PluginRegistry.h"
+#include "PseudoElements.h"
 #include "ScrollController.h"
 #include "StreamFile.h"
 #include <algorithm>
@@ -619,7 +622,7 @@ static Element* FindFocusElement(Element* element)
 	if (!owner_document || owner_document->GetComputedValues().focus() == Style::Focus::None)
 		return nullptr;
 
-	while (element && element->GetComputedValues().focus() == Style::Focus::None)
+	while (element && ElementCascade::IsUnfocusable(element))
 	{
 		element = element->GetParentNode();
 	}
@@ -1234,9 +1237,29 @@ bool Context::OnFocusChange(Element* new_focus, bool focus_visible)
 		element = element->GetParentNode();
 	}
 
+	// The focus pseudo-classes (CSS Selectors 4, phase 3): ':focus' on the focused element alone, ':focus-within' on it
+	// and its ancestors, ':focus-visible' on the focused element when the focus came from the keyboard or navigation
+	// (text fields set it themselves when focused). The old element loses them before the blur events, the new one gets
+	// them before the focus events. The events still go to the whole chains.
+	if (old_focus)
+	{
+		old_focus->SetPseudoClass("focus", false);
+		old_focus->SetPseudoClass("focus-visible", false);
+	}
+	for (Element* old_element : old_chain)
+	{
+		if (new_chain.count(old_element) == 0)
+			old_element->SetPseudoClass("focus-within", false);
+	}
+
 	// Send out blur/focus events.
 	Dictionary parameters;
 	SendEvents(old_chain, new_chain, EventId::Blur, parameters);
+
+	for (Element* new_element : new_chain)
+		new_element->SetPseudoClass("focus-within", true);
+	new_focus->SetPseudoClass("focus", true);
+	new_focus->SetPseudoClass("focus-visible", focus_visible);
 
 	if (focus_visible)
 		parameters["focus_visible"] = true;
@@ -1388,6 +1411,42 @@ void Context::ResetActiveChain()
 	active = nullptr;
 }
 
+// CSS hit testing follows the curves of the border box (phase 3, p3-paint): a point in the rectangle of one of the
+// element's boxes but outside of the ellipse of a rounded corner is not within the element.
+static bool IsPointWithinBorderRadius(Element* element, Vector2f point)
+{
+	if (!element->GetComputedValues().has_border_radius())
+		return true;
+
+	const Vector2f origin = element->GetAbsoluteOffset(BoxArea::Border);
+	for (int i = 0; i < element->GetNumBoxes(); i++)
+	{
+		const RenderBox box = element->GetRenderBox(BoxArea::Border, i);
+		const Vector2f size = box.GetFillSize();
+		const Vector2f p = point - origin - box.GetBorderOffset();
+		if (p.x < 0.f || p.y < 0.f || p.x > size.x || p.y > size.y)
+			continue;
+
+		// The distance into the box from the corner's two edges, for top-left, top-right, bottom-right, bottom-left.
+		const Vector2f from_corner[4] = {p, {size.x - p.x, p.y}, size - p, {p.x, size.y - p.y}};
+		const CornerSizes2 radii = box.GetBorderRadius();
+		bool inside = true;
+		for (int corner = 0; corner < 4 && inside; corner++)
+		{
+			const Vector2f r = radii[corner];
+			const Vector2f d = from_corner[corner];
+			if (r.x > 0.f && r.y > 0.f && d.x < r.x && d.y < r.y)
+			{
+				const Vector2f q = (r - d) / r;
+				inside = (q.x * q.x + q.y * q.y <= 1.f);
+			}
+		}
+		if (inside)
+			return true;
+	}
+	return false;
+}
+
 Element* Context::GetElementAtPoint(Vector2f point, const Element* ignore_element, Element* element) const
 {
 	if (!element)
@@ -1448,15 +1507,17 @@ Element* Context::GetElementAtPoint(Vector2f point, const Element* ignore_elemen
 		}
 	}
 
-	// Ignore elements whose pointer events are disabled.
-	if (element->GetComputedValues().pointer_events() == Style::PointerEvents::None)
+	// Ignore elements whose pointer events are disabled, and hidden elements (their visible descendants were tested above,
+	// in the stacking context they are part of).
+	if (element->GetComputedValues().pointer_events() == Style::PointerEvents::None ||
+		element->GetComputedValues().visibility() != Style::Visibility::Visible)
 		return nullptr;
 
 	// Projection may fail if we have a singular transformation matrix.
 	bool projection_result = element->Project(point);
 
 	// Check if the point is actually within this element.
-	bool within_element = (projection_result && element->IsPointWithinElement(point));
+	bool within_element = (projection_result && element->IsPointWithinElement(point) && IsPointWithinBorderRadius(element, point));
 	if (within_element)
 	{
 		// The element may have been clipped out of view if it overflows an ancestor, so check its clipping region.
@@ -1465,8 +1526,10 @@ Element* Context::GetElementAtPoint(Vector2f point, const Element* ignore_elemen
 			within_element = clip_region.Contains(Vector2i(point));
 	}
 
+	// A hit on a pseudo-element (or inside one) is a hit on its originating element (phase 3): events target it and its
+	// :hover applies, so 'a:hover::after' rules follow the pointer.
 	if (within_element)
-		return element;
+		return PseudoElements::GetOriginatingElement(element);
 
 	return nullptr;
 }

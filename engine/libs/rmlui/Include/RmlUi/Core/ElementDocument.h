@@ -56,6 +56,13 @@ public:
 	/// Returns the source address of this document.
 	const String& GetSourceURL() const;
 
+	/// Sets the id of the document's target element, what CSS's :target matches (a URL fragment). Initially the fragment
+	/// of the source URL, if any.
+	/// @param[in] id The id, or empty for no target.
+	void SetTarget(const String& id);
+	/// Returns the id of the document's target element (see SetTarget).
+	const String& GetTarget() const;
+
 	/// Returns the document's compiled style sheet.
 	/// @note The style sheet may be regenerated when media query parameters change, invalidating the pointer.
 	const StyleSheet* GetStyleSheet() const override;
@@ -96,6 +103,14 @@ public:
 	/// @return True if the document is hogging focus.
 	bool IsModal() const;
 
+	/// Fork (phase 3, p3-paint): the document is the root of an HTML page. Its background, or when it has none the
+	/// background of its first child element named 'body_tag', is the canvas background: painted over the whole context,
+	/// below everything, its images positioned in the document's boxes (CSS Backgrounds 3, 2.11.2). The body then paints
+	/// no background of its own.
+	void SetCanvasBackground(bool enable, const String& body_tag = String());
+	bool HasCanvasBackground() const { return canvas_background; }
+	const String& GetCanvasBodyTag() const { return canvas_body_tag; }
+
 	/// Finds the next tabbable element in the document tree, starting at the given element, possibly wrapping around the document.
 	/// @param[in] current_element The element to start from.
 	/// @param[in] forward True to search forward, false to search backward.
@@ -133,6 +148,9 @@ protected:
 	void SetFocusableFromModal(bool focusable);
 
 private:
+	bool canvas_background = false;
+	String canvas_body_tag;
+
 	/// Searches forwards or backwards for a focusable element in the given subtree.
 	Element* SearchFocusSubtree(Element* element, bool forward);
 	/// Searches children of the given subtree for a focusable child.
@@ -161,6 +179,12 @@ private:
 
 	String title;
 	String source_url;
+	String target;
+
+	// Phase 3, cascade: the document uses CSS counters (or list markers, quotes), and they must be resolved before the next
+	// layout (ElementCascade::ResolveCounters).
+	bool counters_used = false;
+	bool counters_dirty = false;
 
 	SharedPtr<StyleSheetContainer> style_sheet_container;
 
@@ -173,6 +197,7 @@ private:
 	bool position_dirty;
 
 	friend class Rml::Context;
+	friend class Rml::ElementCascade;
 	friend class Rml::Factory;
 };
 

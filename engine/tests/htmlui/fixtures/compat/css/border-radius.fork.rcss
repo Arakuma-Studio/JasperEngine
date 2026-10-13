@@ -21,10 +21,10 @@ border-top-left-radius: 50%;
 border-bottom-right-radius: 25%;
 }
 #htmlui-root .elliptical {
-border-radius: 10px;
+border-radius: 10px / 20px;
 }
 #htmlui-root .elliptical-equal {
-border-radius: 8px;
+border-radius: 8px / 8px;
 }
 #htmlui-root .zero {
 border-radius: 0px;
@@ -35,6 +35,6 @@ border-radius: 0.5em;
 #htmlui-root .var {
 border-radius: var(--r);
 }
-body#htmlui-root {
+body#htmlui-root:root {
 --r: 12px;
 }

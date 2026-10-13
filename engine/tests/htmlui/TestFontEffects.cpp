@@ -381,8 +381,8 @@ TEST_F(RmlFontEffectsTest, SyntheticBold){
     Rml::FontFaceHandle bold = handle("Roboto", 48, Rml::Style::FontWeight::Bold);
     ASSERT_EQ(engine.getChain(bold)[0], engine.getChain(regular)[0]);
 
-    // the advance grows by the strength (48 / 24 = 2 px) for each of the 5 glyphs
-    EXPECT_NEAR(width(bold, "Hello"), width(regular, "Hello") + 10, 1);
+    // the advances stay the regular face's (Chromium's fake bold: the outline grows, the advance does not)
+    EXPECT_EQ(width(bold, "Hello"), width(regular, "Hello"));
     Generated r = generate(regular, 0, "Hello");
     Generated b = generate(bold, 0, "Hello");
     EXPECT_EQ(b.width, width(bold, "Hello"));
@@ -390,8 +390,8 @@ TEST_F(RmlFontEffectsTest, SyntheticBold){
     // a bitmap 2 px wider and taller, on the same baseline
     EXPECT_EQ(b.size(0, 0), r.size(0, 0) + Rml::Vector2f(2, 2));
     EXPECT_EQ(b.vertex(0, 0, 2).position.y, r.vertex(0, 0, 2).position.y);
-    // later glyphs moved right by the earlier glyphs' growth
-    EXPECT_NEAR(b.vertex(0, 4, 0).position.x - r.vertex(0, 4, 0).position.x, 8.0f, 1.0f);
+    // later glyphs at the regular face's positions
+    EXPECT_NEAR(b.vertex(0, 4, 0).position.x - r.vertex(0, 4, 0).position.x, 0.0f, 1.0f);
 
     // a weight of 600 on a 400 face: < 300 lighter, no synthesis
     EXPECT_EQ(width(handle("Roboto", 48, Rml::Style::FontWeight(600)), "Hello"), width(regular, "Hello"));

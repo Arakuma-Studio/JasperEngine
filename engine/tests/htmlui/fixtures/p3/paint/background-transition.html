@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: background-position and -size transitions</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; width: 100px; height: 70px; }
+  #b1 { left: 10px; top: 10px; }
+  #b2 { left: 120px; top: 10px; }
+  #b3 { left: 230px; top: 10px; }
+  .b { background: url(img/tile.png) #dde6f5; background-repeat: no-repeat; transition: background-position 1s linear, background-size 1s linear; }
+  #b1 { background-position: 0 0; }
+  #b1.on { background-position: 80px 50px; }
+  #b2 { background-position: 0% 0%; }
+  #b2.on { background-position: right 10px bottom 10px; }
+  #b3 { background-size: 10px 10px; }
+  #b3.on { background-size: 60px 40px; }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div></body>
+</html>

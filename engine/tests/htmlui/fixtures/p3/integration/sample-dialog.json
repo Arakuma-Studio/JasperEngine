@@ -1,0 +1,22 @@
+{
+ "comment": "An agent-written confirmation dialog: a scene whose ::before is the dim overlay (z-index above the tiled page background), a centered dialog (translate(-50%, -50%)) with a big shadow and a round ::before badge sticking out above it (generated text, line-height centering), flex buttons with a hover colour transition (captured at the end). Text-heavy (boxes are the oracle): the glyph rasterization differs from Chromium's (FreeType hinting, synthetic bold outline vs bitmap dilation); the page without its text is gated at the strict metric (noText).",
+ "viewport": [
+  600,
+  360
+ ],
+ "boxes": true, "noText": true,
+ "steps": [
+  {
+   "capture": "rest"
+  },
+  {
+   "hover": "#stay"
+  },
+  {
+   "advance": 0.3
+  },
+  {
+   "capture": "hover"
+  }
+ ]
+}

@@ -31,10 +31,10 @@ width: 10px;
 #htmlui-root [href*="game"] {
 width: 11px;
 }
-#htmlui-root [type="CHECKBOX"] {
+#htmlui-root [type="CHECKBOX" i] {
 width: 12px;
 }
-#htmlui-root [type="a"] {
+#htmlui-root [type="a" s] {
 width: 13px;
 }
 #htmlui-root ul li {
@@ -67,37 +67,37 @@ width: 24px;
 #htmlui-root input:placeholder-shown {
 width: 25px;
 }
-#htmlui-root a:html-focus {
+#htmlui-root a:focus {
 width: 26px;
 }
-#htmlui-root a:html-focus-visible {
+#htmlui-root a:focus-visible {
 width: 27px;
 }
-#htmlui-root nav:focus {
+#htmlui-root nav:focus-within {
 width: 28px;
 }
-#htmlui-root input:not(:disabled) {
+#htmlui-root input:enabled {
 width: 29px;
 }
-#htmlui-root a[href] {
+#htmlui-root a:link {
 width: 30px;
 }
-#htmlui-root a[href] {
+#htmlui-root a:any-link {
 width: 31px;
 }
-#htmlui-root input[required] {
+#htmlui-root input:required {
 width: 33px;
 }
-#htmlui-root input:not([required]) {
+#htmlui-root input:optional {
 width: 34px;
 }
-#htmlui-root input[readonly] {
+#htmlui-root input:read-only {
 width: 35px;
 }
-#htmlui-root input:not([readonly]) {
+#htmlui-root input:read-write {
 width: 36px;
 }
-body#htmlui-root {
+body#htmlui-root:root {
 width: 37px;
 }
 #htmlui-root :scope, body#htmlui-root:scope {
@@ -148,6 +148,9 @@ width: 52px;
 #htmlui-root :not(div > p), body#htmlui-root:not(div > p) {
 width: 53px;
 }
+#htmlui-root li:nth-child(2 of .x) {
+width: 54px;
+}
 #htmlui-root :is(h1, h2) span {
 width: 55px;
 }
@@ -160,8 +163,20 @@ width: 57px;
 #htmlui-root :where(.c, .d) {
 width: 58px;
 }
+#htmlui-root div:has(> img) {
+width: 59px;
+}
 #htmlui-root [lang|="en"] {
 width: 60px;
+}
+#htmlui-root input:indeterminate {
+width: 62px;
+}
+#htmlui-root input:default {
+width: 63px;
+}
+#htmlui-root :target, body#htmlui-root:target {
+width: 71px;
 }
 #htmlui-root my-element {
 width: 82px;
@@ -197,7 +212,7 @@ color: #ff0000ff;
 color: #ff0000ff;
 --html-current-color: #ff0000ff;
 }
-#htmlui-root li > marker {
+#htmlui-root li::marker {
 color: #ff0000ff;
 --html-current-color: #ff0000ff;
 }

@@ -5,9 +5,14 @@
 // 4000 (and the edges: 0, negatives), as Chromium formats them; live <li> markers: counters
 // (start, reversed, value, nesting), the marker outside the DOM and left of the first line,
 // none/inside/string/image markers, no marker on non-list-item displays.
+//
+// Phase 3 (p3-cascade): with the fork's ListMarkers the li emulation is off (the fork's ::marker
+// draws the markers); CompatMarkerElementTest switches it on to keep checking it, and
+// CompatForkMarkers checks the present state.
 
 #include "RuntimeTestCommon.h"
 
+#include "htmlui/compat/ForkFeatures.h"
 #include "htmlui/compat/runtime/HtmlListItemElement.h"
 #include "htmlui/compat/runtime/ListMarkers.h"
 
@@ -88,7 +93,18 @@ TEST(CompatMarkers, TypesAndStrings){
 
 namespace {
 
-    using CompatMarkerElementTest = jasperengine::test::compat::RuntimeContextTest;
+    // phase 2's emulation, as it runs while ListMarkers is absent
+    class CompatMarkerElementTest : public jasperengine::test::compat::RuntimeContextTest {
+    protected:
+        void SetUp() override{
+            jasperengine::htmlui::compat::HtmlListItemElement::setMarkerEmulation(true);
+            RuntimeContextTest::SetUp();
+        }
+        void TearDown() override{
+            RuntimeContextTest::TearDown();
+            jasperengine::htmlui::compat::HtmlListItemElement::resetMarkerEmulation();
+        }
+    };
 
     jasperengine::htmlui::compat::HtmlListItemElement* item(Rml::Element* element){
         return rmlui_dynamic_cast<jasperengine::htmlui::compat::HtmlListItemElement*>(element);
@@ -180,4 +196,21 @@ TEST_F(CompatMarkerElementTest, RenumbersOnValueChange){
     frame();
     EXPECT_EQ(item(byId("x1"))->getMarkerText(), "7. ");
     EXPECT_EQ(item(byId("x2"))->getMarkerText(), "8. ");
+}
+
+// ListMarkers present: no marker child, the fork's ::marker of a list item
+using CompatForkMarkerTest = jasperengine::test::compat::RuntimeContextTest;
+TEST_F(CompatForkMarkerTest, FromTheFork){
+    ASSERT_TRUE(ForkFeatures::present().has(ForkFeature::ListMarkers));
+    ASSERT_FALSE(HtmlListItemElement::markerEmulation());
+    ASSERT_NE(show("<ol id='list'><li id='a1'>one</li><li id='a2'>two</li></ol>",
+                   "ol { display: block; padding-left: 40px; counter-reset: list-item; list-style-type: decimal; } li { display: list-item; }"),
+              nullptr);
+    frame();
+    frame();
+    EXPECT_EQ(item(byId("a1"))->getMarker(), nullptr);
+    Rml::Element* marker = byId("a2")->GetPseudoElement(Rml::PseudoElementType::Marker);
+    ASSERT_NE(marker, nullptr);
+    EXPECT_EQ(marker->GetTagName(), "::marker");
+    EXPECT_EQ(byId("list")->GetNumChildren(), 2);
 }

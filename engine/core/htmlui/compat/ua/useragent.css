@@ -61,7 +61,7 @@ dialog:not([open]) {
 
 address, article, aside, blockquote, center, details, dialog, dd, div, dl, dt, fieldset,
 figcaption, figure, footer, form, h1, h2, h3, h4, h5, h6, header, hgroup, hr, legend,
-listing, main, menu, nav, ol, optgroup, p, plaintext, pre, search, section, summary, ul,
+listing, main, menu, nav, ol, optgroup, p, plaintext, pre, search, section, ul,
 xmp {
     display: block;
 }
@@ -156,6 +156,9 @@ h6 {
 ul, ol, menu {
     margin: 1em 0;
     padding-left: 40px;
+    /* the list-item counter of the fork's markers (ListMarkers, PseudoElements); without the
+       feature the li emulation numbers the items and compat drops the declaration silently */
+    counter-reset: list-item;
 }
 
 ul, menu {
@@ -313,11 +316,15 @@ input, textarea, select, button {
 }
 
 /* text-like inputs: Chromium lays out `padding: 1px 2px; border: 2px inset` and paints a 1px
-   #767676 frame with 2px corners; 177px is the content width of size=20 at 13.333px */
+   #767676 frame with 2px corners; 177px is the content width of size=20 at 13.333px. Without
+   its look (`appearance: none`, the companions) the field is html.css's: `padding: 1px 2px;
+   border: 2px inset #767676`. */
 input {
-    padding: 2px 3px;
-    border: 1px solid #767676;
-    border-radius: 2px;
+    padding: var(--html-field-padding, 2px 3px);
+    border-width: var(--html-field-border-width, 1px);
+    border-style: var(--html-field-border-style, solid);
+    border-color: #767676;
+    border-radius: var(--html-control-radius, 2px);
     background-color: Field;
     width: 177px;
     cursor: text;
@@ -333,7 +340,7 @@ textarea {
     font-family: monospace;
     padding: 2px;
     border: 1px solid #767676;
-    border-radius: 2px;
+    border-radius: var(--html-control-radius, 2px);
     background-color: Field;
     white-space: pre-wrap;
     word-break: break-word;
@@ -359,7 +366,7 @@ button, input[type="button"], input[type="submit"], input[type="reset"], input[t
     width: auto;
     padding: 2px 7px;
     border: 1px solid #767676;
-    border-radius: 2px;
+    border-radius: var(--html-control-radius, 2px);
     background-color: ButtonFace;
     color: ButtonText;
     text-align: center;
@@ -399,16 +406,18 @@ input[type="image"] {
     cursor: pointer;
 }
 
-/* checkbox and radio: 13x13, painted like Chromium's theme */
+/* checkbox and radio: 13x13, painted like Chromium's theme. The frame, the rounding, the
+   check and the ring are the theme's: without it (`appearance: none`, the companions) the
+   control has no border, background or radius, as Chromium's html.css gives it none. */
 input[type="checkbox"], input[type="radio"] {
     box-sizing: border-box;
     width: 13px;
     height: 13px;
     padding: 0;
-    border-width: 1px;
+    border-width: var(--html-control-border-width, 1px);
     border-style: solid;
     border-color: var(--html-control-border, #767676);
-    border-radius: 2px;
+    border-radius: var(--html-check-radius, 2px);
     background-color: var(--html-control-bg, #ffffff);
     cursor: default;
 }
@@ -423,33 +432,37 @@ input[type="checkbox"] {
 
 input[type="radio"] {
     margin: 3px 3px 0 5px;
-    border-radius: 9999px;
+    border-radius: var(--html-radio-radius, 9999px);
 }
 
 input[type="checkbox"]:checked {
-    border-color: var(--html-accent, #0075ff);
-    background-color: var(--html-accent, #0075ff);
+    border-color: var(--html-check-fill, var(--html-accent, #0075ff));
+    background-color: var(--html-check-fill, var(--html-accent, #0075ff));
     decorator: var(--html-check, html-layer("/@htmlui/ua/check.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll));
 }
 
 /* the checked radio: an accent ring, a white gap and an accent dot */
 input[type="radio"]:checked {
-    border-color: var(--html-accent, #0075ff);
-    background-color: var(--html-accent, #0075ff);
-    box-shadow: inset 0 0 0 1.5px var(--html-accent-contrast, #ffffff);
+    border-color: var(--html-check-fill, var(--html-accent, #0075ff));
+    background-color: var(--html-check-fill, var(--html-accent, #0075ff));
+    box-shadow: var(--html-radio-ring, inset 0 0 0 1.5px var(--html-accent-contrast, #ffffff));
 }
 
 input[type="checkbox"]:disabled, input[type="radio"]:disabled {
-    border-color: #7676764d;
+    border-color: var(--html-control-disabled-border, #7676764d);
 }
 
 input[type="checkbox"]:checked:disabled, input[type="radio"]:checked:disabled {
-    border-color: #0075ff4d;
-    background-color: #0075ff4d;
+    border-color: var(--html-check-disabled-fill, #0075ff4d);
+    background-color: var(--html-check-disabled-fill, #0075ff4d);
 }
 
-/* range: 129x16 with a 2px margin; RmlUi's slider widget parts. With `appearance: none` the
-   companions make it as tall as its track, with no value fill (Chromium). */
+/* range: 129x16 with a 2px margin; RmlUi's slider widget parts. Chromium paints an 8px track
+   centered in the box and inset 1px at its ends, fully rounded; the value fill up to the thumb
+   is clipped to it, and the track's 1px border is stroked over both at half alpha (#767676 at
+   50%: #b2b2b2 over the track's #efefef). The thumb is a 15px circle centered in its 16px box.
+   With `appearance: none` the companions make it as tall as its track, with no value fill
+   (Chromium). */
 input[type="range"] {
     box-sizing: border-box;
     width: 129px;
@@ -464,19 +477,27 @@ input[type="range"] {
 }
 
 input[type="range"] slidertrack {
-    margin-top: var(--html-slider-track-margin, 5px);
+    margin-top: var(--html-slider-track-margin, 4px);
+    margin-left: var(--html-slider-track-inset, 1px);
+    margin-right: var(--html-slider-track-inset, 1px);
     height: var(--html-slider-track-height, 6px);
     border-width: var(--html-slider-track-border, 1px);
     border-style: solid;
     border-color: var(--html-slider-track-border-color, #b2b2b2);
-    border-radius: 3px;
+    border-radius: 4px;
     background-color: var(--html-slider-track-bg, #efefef);
 }
 
-/* the fill covers the track's border box (the widget places it at the track's offset) */
+/* the fill covers the track's border box (the widget places it at the track's offset) and runs
+   under the thumb; its border is the track's, stroked over it */
 input[type="range"] sliderprogress {
+    box-sizing: border-box;
     height: 8px;
-    border-radius: 3px;
+    padding-right: 8px;
+    border-width: var(--html-slider-track-border, 1px);
+    border-style: solid;
+    border-color: #76767680;
+    border-radius: 4px;
     background-color: var(--html-slider-fill, var(--html-accent, #0075ff));
 }
 
@@ -484,8 +505,13 @@ input[type="range"] sliderbar {
     box-sizing: border-box;
     width: 16px;
     height: 16px;
+    /* the widget moves it along the track's content box: the margins give it the whole box */
+    margin-left: var(--html-slider-thumb-margin, -2px);
+    margin-right: var(--html-slider-thumb-margin, -2px);
     border-radius: 8px;
     background-color: var(--html-accent, #0075ff);
+    /* the 15px circle: the widget places the box at whole pixels */
+    transform: var(--html-slider-thumb-transform, scale(0.9375));
     decorator: var(--html-thumb, none);
 }
 
@@ -499,7 +525,9 @@ input[type="range"]:disabled sliderbar, input[type="range"]:disabled sliderprogr
 
 /* progress (and meter, mapped to progress): a 10em x 1em box; Chromium draws the bar 0.5em
    tall, centered, with a 1px line inside the track that the value covers. The fill is RmlUi's
-   `fill`, laid out in the content box. */
+   `fill`, laid out in the content box. The track is the padding box between two transparent
+   borders: its colour is an inset shadow (a background colour would also cover the border
+   box, as CSS paints it). */
 progress {
     box-sizing: border-box;
     width: 10em;
@@ -509,8 +537,8 @@ progress {
     border-style: solid;
     border-color: transparent;
     border-radius: 0.5em;
-    background-color: #efefef;
-    box-shadow: inset 0 0 0 1px #b2b2b2;
+    background-color: transparent;
+    box-shadow: inset 0 0 0 1px #b2b2b2, inset 0 0 0 1em #efefef;
 }
 
 progress fill {
@@ -525,7 +553,7 @@ select {
     border-width: 1px;
     border-style: solid;
     border-color: var(--html-control-border, #767676);
-    border-radius: 2px;
+    border-radius: var(--html-control-radius, 2px);
     background-color: var(--html-control-bg, #ffffff);
     color: FieldText;
     white-space: pre;
@@ -537,9 +565,14 @@ select selectvalue {
     padding: 1px 0 1px 4px;
 }
 
+/* the chevron is drawn in the select's text color (Chromium): the color through the arrow's mask */
 select selectarrow {
     width: 16px;
-    decorator: var(--html-select-arrow, html-layer("/@htmlui/ua/arrow-down.svg" 10px 6px 3px 50% no-repeat no-repeat padding-box border-box scroll));
+    background-color: var(--html-select-arrow-color, currentcolor);
+    mask-image: var(--html-select-arrow, url("/@htmlui/ua/arrow-down.svg"));
+    mask-size: 10px 6px;
+    mask-position: 3px 50%;
+    mask-repeat: no-repeat;
 }
 
 select selectbox {
@@ -588,8 +621,11 @@ label {
     cursor: default;
 }
 
-/* details and summary: the disclosure triangle is the summary's list marker */
+/* details and summary: the disclosure triangle is the summary's list marker (written as a
+   list item: block without the fork's ListMarkers, where HtmlSummaryElement draws it) */
 summary {
+    display: list-item;
+    counter-increment: list-item 0;
     list-style-type: disclosure-closed;
     list-style-position: inside;
     cursor: default;
@@ -617,8 +653,9 @@ dialog {
 }
 
 /* 6. Focus ring ------------------------------------------------------------------------------
-   Chromium's `outline: auto`: a 2px dark ring outside the box; text fields show it on any
-   focus. The rewriter draws outlines as a box-shadow ring (3.9.7) that keeps the element's
+   Chromium's `outline: auto`: a 2px ring outside the box with a 1px white halo; text fields
+   show it on any focus. The fork draws it (ForkFeature::Outline, phase 3 §3.7.4); without the
+   feature the rewriter draws outlines as a box-shadow ring (3.9.7) that keeps the element's
    own shadows. */
 
 :focus-visible {
@@ -653,6 +690,9 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible {
 }
 
 /* 7. Scrollbars (Chromium 153's classic 15px scrollbar) ------------------------------------- */
+/* The thumb is 3px off the track on every side: its length is (track - 6px) x visible / total, at least 17px
+   (Chromium's Fluent scrollbar minimum), and it moves between 3px from the arrows (measured on Chromium 153's
+   references, p3-integration). */
 
 scrollbarvertical {
     width: 15px;
@@ -665,15 +705,15 @@ scrollbarhorizontal {
 }
 
 scrollbarvertical sliderbar {
-    margin: 0 3px;
-    min-height: 20px;
+    margin: 3px;
+    min-height: 17px;
     border-radius: 4.5px;
     background-color: #8b8b8b;
 }
 
 scrollbarhorizontal sliderbar {
-    margin: 3px 0;
-    min-width: 20px;
+    margin: 3px;
+    min-width: 17px;
     border-radius: 4.5px;
     background-color: #8b8b8b;
 }

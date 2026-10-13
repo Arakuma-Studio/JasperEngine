@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pseudo: a transition on :hover::after</title>
+<style>
+  html, body { margin: 0; }
+  /* hovering the link (or its generated box: hits on a pseudo-element target the originating
+     element) changes the ::after background with a 1s linear transition */
+  #link { position: absolute; left: 10px; top: 10px; display: block; width: 100px; height: 40px; background-color: #d0d0d0; }
+  #link::after { content: ""; position: absolute; left: 20px; top: 10px; width: 60px; height: 20px; background-color: #0000ff; transition: background-color 1s linear; }
+  #link:hover::after { background-color: #ff0000; }
+  /* ::before changes without a transition */
+  #link::before { content: ""; position: absolute; left: 0; top: 0; width: 10px; height: 10px; background-color: #808080; }
+  #link:hover::before { background-color: #20a040; }
+</style>
+</head>
+<body>
+<a id="link" href="other.html"></a>
+</body>
+</html>

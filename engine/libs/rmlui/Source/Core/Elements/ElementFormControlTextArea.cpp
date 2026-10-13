@@ -175,7 +175,9 @@ void ElementFormControlTextArea::SetWordWrapProperties()
 	const bool word_wrap = GetWordWrap();
 	SetProperty(PropertyId::OverflowX, Property(word_wrap ? Style::Overflow::Hidden : Style::Overflow::Auto));
 	SetProperty(PropertyId::OverflowY, Property(Style::Overflow::Auto));
-	SetProperty(PropertyId::WhiteSpace, Property(word_wrap ? Style::WhiteSpace::Prewrap : Style::WhiteSpace::Pre));
+	// 'white-space: pre-wrap' or 'pre' (phase 3: the shorthand of these two)
+	SetProperty(PropertyId::WhiteSpaceCollapse, Property(Style::WhiteSpaceCollapse::Preserve));
+	SetProperty(PropertyId::TextWrapMode, Property(word_wrap ? Style::TextWrapMode::Wrap : Style::TextWrapMode::Nowrap));
 }
 
 } // namespace Rml

@@ -1,0 +1,55 @@
+{
+ "fixture": "layout/fixed-in-transform.html",
+ "viewport": [
+  220,
+  190
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "transformed",
+    "tag": "div",
+    "x": 30,
+    "y": 25,
+    "w": 170,
+    "h": 100,
+    "transformed": true
+   },
+   {
+    "id": "fixed",
+    "tag": "div",
+    "x": 140,
+    "y": 85,
+    "w": 50,
+    "h": 30,
+    "transformed": true
+   },
+   {
+    "id": "stretch",
+    "tag": "div",
+    "x": 40,
+    "y": 35,
+    "w": 85,
+    "h": 20,
+    "transformed": true
+   },
+   {
+    "id": "filtered",
+    "tag": "div",
+    "x": 20,
+    "y": 130,
+    "w": 160,
+    "h": 40
+   },
+   {
+    "id": "in-filter",
+    "tag": "div",
+    "x": 20,
+    "y": 150,
+    "w": 40,
+    "h": 20
+   }
+  ]
+ }
+}

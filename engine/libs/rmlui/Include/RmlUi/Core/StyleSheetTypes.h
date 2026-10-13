@@ -2,6 +2,7 @@
 
 #include "Factory.h"
 #include "PropertyDictionary.h"
+#include "Tween.h"
 #include "Types.h"
 #include "Utilities.h"
 
@@ -16,6 +17,10 @@ struct KeyframeBlock {
 	KeyframeBlock(float normalized_time) : normalized_time(normalized_time) {}
 	float normalized_time; // [0, 1]
 	PropertyDictionary properties;
+	// The keyframe's own animation-timing-function, easing the segment that starts at it (phase 3); without it the
+	// animation's timing function is used.
+	bool has_tween = false;
+	Tween tween;
 };
 struct Keyframes {
 	Vector<PropertyId> property_ids;
@@ -78,6 +83,21 @@ struct StyleSheetIndex {
 	// The following objects are given in prioritized order. Any nodes in the first object will not be contained in the next one and so on.
 	NodeIndex ids, classes, tags;
 	NodeList other;
+
+	// Phase 3, cascade: the nodes whose selector ends in a pseudo-element, per type (::before, ::after, ::marker), kept
+	// out of the lists above; they are matched against the originating element (StyleSheet::GetElementDefinition).
+	NodeList pseudo_element_nodes[3];
+
+	// What :has() selectors depend on, for invalidation: whether the sheet has any, whether one sits in a compound that
+	// is not a subject (its matches affect other elements), whether one has a sibling-relative argument, and the
+	// names inside their arguments ("tag", "#id", ".class", "[attribute", ":pseudo-class").
+	struct HasDependencies {
+		bool used = false;
+		bool in_non_subject = false;
+		bool sibling_relative = false;
+		SmallUnorderedSet<String> names;
+	};
+	HasDependencies has;
 };
 } // namespace Rml
 

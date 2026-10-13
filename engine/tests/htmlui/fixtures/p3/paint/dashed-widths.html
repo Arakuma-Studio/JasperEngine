@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: dashed border widths and lengths</title>
+<style>
+  /* Chromium's dashes: 3w/2w below 3px, 2w/w from 3px; full dashes at both ends, gaps stretched */
+  html, body { margin: 0; background: #ffffff; }
+  div { position: absolute; left: 10px; height: 0; border-top: 0 dashed #222222; }
+  #w1a { top: 10px; width: 250px; border-top-width: 1px; }
+  #w1b { top: 20px; width: 300px; border-top-width: 1px; }
+  #w1c { top: 30px; width: 301px; border-top-width: 1px; }
+  #w2a { top: 40px; width: 250px; border-top-width: 2px; }
+  #w2b { top: 50px; width: 300px; border-top-width: 2px; }
+  #w2c { top: 60px; width: 301px; border-top-width: 2px; }
+  #w3a { top: 70px; width: 250px; border-top-width: 3px; }
+  #w3b { top: 80px; width: 300px; border-top-width: 3px; }
+  #w3c { top: 90px; width: 301px; border-top-width: 3px; }
+  #w4a { top: 100px; width: 250px; border-top-width: 4px; }
+  #w4b { top: 110px; width: 300px; border-top-width: 4px; }
+  #w4c { top: 120px; width: 301px; border-top-width: 4px; }
+  #w8a { top: 130px; width: 250px; border-top-width: 8px; }
+  #w8b { top: 145px; width: 300px; border-top-width: 8px; }
+  #w8c { top: 160px; width: 301px; border-top-width: 8px; }
+  #box { top: 180px; width: 120px; height: 40px; border: 4px dashed #cc3333; }
+  #box2 { top: 180px; left: 160px; width: 140px; height: 40px; border: 1px dashed #3366cc; border-left-width: 8px; }
+</style>
+</head>
+<body><div id="w1a"></div><div id="w1b"></div><div id="w1c"></div><div id="w2a"></div><div id="w2b"></div><div id="w2c"></div><div id="w3a"></div><div id="w3b"></div><div id="w3c"></div><div id="w4a"></div><div id="w4b"></div><div id="w4c"></div><div id="w8a"></div><div id="w8b"></div><div id="w8c"></div><div id="box"></div><div id="box2"></div></body>
+</html>

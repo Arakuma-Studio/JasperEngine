@@ -1,0 +1,30 @@
+{
+ "comment": "A sprite-like walk with each step position, captured between and on the jumps.",
+ "viewport": [
+  400,
+  210
+ ],
+ "steps": [
+  {
+   "capture": "start"
+  },
+  {
+   "advance": 0.3
+  },
+  {
+   "capture": "a"
+  },
+  {
+   "advance": 0.25
+  },
+  {
+   "capture": "b"
+  },
+  {
+   "advance": 0.35
+  },
+  {
+   "capture": "c"
+  }
+ ]
+}

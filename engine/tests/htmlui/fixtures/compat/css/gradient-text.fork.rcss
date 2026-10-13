@@ -1,0 +1,39 @@
+#htmlui-root .title {
+background-color: transparent;
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+background-image: none;
+color: #feca57ff;
+--html-current-color: #feca57ff;
+}
+#htmlui-root .title2 {
+background-image: none;
+color: #00000000;
+--html-current-color: #00000000;
+}
+#htmlui-root .no-transparent {
+background-color: transparent;
+background-image: linear-gradient(#ff0000ff, #0000ffff);
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+#htmlui-root .base {
+color: #00000000;
+--html-current-color: #00000000;
+background-image: linear-gradient(#ffd700ff, #ffa500ff);
+}
+#htmlui-root .base:hover {
+background-image: none;
+color: #ffa500ff;
+--html-current-color: #ffa500ff;
+}

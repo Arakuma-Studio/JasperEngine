@@ -1,0 +1,10 @@
+{
+ "comment": "background-clip border-box, padding-box and content-box with rounded corners under a translucent dashed border: gradients and images clipped to the inner curves, a colour clipped too. Tolerance: the dashes are where Chromium's are (count and gap for Skia's truncated length of the centre path), but the reference's dash ends are quantized by its rasterizer (gaps 7.7 to 9.7 px wide for a nominal 8.8 px) and its curves anti-aliased analytically: single-pixel columns at dash ends and curve edges differ, scattered (largest cluster 8 px). Measured 0.147 % on glcore and Vulkan; the cluster limit stays at the default (16 px).",
+ "viewport": [
+  460,
+  180
+ ],
+ "tolerance": {
+  "badPercent": 0.15
+ }
+}

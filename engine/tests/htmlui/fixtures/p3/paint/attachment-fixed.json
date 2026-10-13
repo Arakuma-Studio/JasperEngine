@@ -1,0 +1,19 @@
+{
+ "comment": "background-attachment: fixed tiles from the viewport's corner, a fixed gradient spans the viewport, local scrolls with the content (scrolled by 30px).",
+ "viewport": [
+  430,
+  130
+ ],
+ "steps": [
+  {
+   "scroll": [
+    "#scroller",
+    0,
+    30
+   ]
+  },
+  {
+   "capture": "scrolled"
+  }
+ ]
+}

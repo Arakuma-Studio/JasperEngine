@@ -1,4 +1,6 @@
 #include "InlineBox.h"
+#include "LayoutDetails.h"
+#include <cmath>
 #include "../../../Include/RmlUi/Core/Box.h"
 #include "../../../Include/RmlUi/Core/Element.h"
 #include "../../../Include/RmlUi/Core/FontMetrics.h"
@@ -21,11 +23,14 @@ InlineLevelBox* InlineBoxBase::AddChild(UniquePtr<InlineLevelBox> child)
 
 void InlineBoxBase::GetStrut(float& out_total_height_above, float& out_total_depth_below) const
 {
-	const FontMetrics& font_metrics = GetFontMetrics();
 	const float line_height = GetElement()->GetLineHeight();
 
-	const float half_leading = 0.5f * (line_height - (font_metrics.ascent + font_metrics.descent));
-	out_total_height_above = font_metrics.ascent + half_leading;
+	// As Chromium (NGLineHeightMetrics::AddLeading): the whole-pixel ascent and descent, and the half-leading added to
+	// the ascent rounded down; the baseline is then on a whole pixel of the line.
+	float ascent, descent;
+	LayoutDetails::GetIntegerAscentDescent(GetFontMetrics(), ascent, descent);
+	const float half_leading = std::floor(0.5f * (line_height - (ascent + descent)));
+	out_total_height_above = ascent + half_leading;
 	out_total_depth_below = line_height - out_total_height_above;
 }
 
@@ -65,8 +70,12 @@ InlineBox::InlineBox(const InlineLevelBox* parent, Element* element, const Box& 
 	const FontMetrics& font_metrics = GetFontMetrics();
 
 	// The inline box content height does not depend on the 'line-height' property, only on the font, and is not exactly
-	// specified by CSS. Here we choose to size the content height equal to the default line-height for the font-size.
-	const float inner_height = 1.2f * (float)font_metrics.size;
+	// specified by CSS (CSS 2.1 §10.6.1). As browsers do, it is the font's ascent plus descent in whole pixels
+	// (LayoutDetails::GetIntegerAscentDescent): the content area of a span is as tall as Chromium's
+	// (getBoundingClientRect, backgrounds).
+	float rounded_ascent, rounded_descent;
+	LayoutDetails::GetIntegerAscentDescent(font_metrics, rounded_ascent, rounded_descent);
+	const float inner_height = rounded_ascent + rounded_descent;
 	box.SetContent(Vector2f(-1.f, inner_height));
 
 	float height_above_baseline, depth_below_baseline;
@@ -77,10 +86,8 @@ InlineBox::InlineBox(const InlineLevelBox* parent, Element* element, const Box& 
 	const float edge_right = box.GetCumulativeEdge(BoxArea::Padding, BoxEdge::Right);
 	SetInlineBoxSpacing(edge_left, edge_right);
 
-	// Vertically position the box so that its content box is equally spaced around its font ascent and descent metrics.
-	const float half_leading = 0.5f * (inner_height - (font_metrics.ascent + font_metrics.descent));
-	baseline_to_border_height =
-		font_metrics.ascent + half_leading + box.GetEdge(BoxArea::Border, BoxEdge::Top) + box.GetEdge(BoxArea::Padding, BoxEdge::Top);
+	// Vertically position the box so that its content box spans the font's (rounded) ascent above the baseline.
+	baseline_to_border_height = rounded_ascent + box.GetEdge(BoxArea::Border, BoxEdge::Top) + box.GetEdge(BoxArea::Padding, BoxEdge::Top);
 }
 
 FragmentConstructor InlineBox::CreateFragment(InlineLayoutMode mode, float available_width, float right_spacing_width, bool /*first_box*/,
@@ -98,7 +105,7 @@ void InlineBox::Submit(const PlacedFragment& placed_fragment)
 	RMLUI_ASSERT(element && element != placed_fragment.offset_parent);
 
 	Box element_box = box;
-	element_box.SetContent({placed_fragment.layout_width, element_box.GetSize().y});
+	element_box.SetContent({placed_fragment.layout_width, placed_fragment.collapsed_line ? 0.f : element_box.GetSize().y});
 
 	if (placed_fragment.split_left)
 		ZeroBoxEdge(element_box, BoxEdge::Left);
@@ -107,8 +114,10 @@ void InlineBox::Submit(const PlacedFragment& placed_fragment)
 
 	// In inline layout, fragments are positioned in terms of (x: margin edge, y: baseline), while element offsets are
 	// specified relative to their border box. Thus, find the offset from the fragment position to the border edge.
-	const Vector2f border_position =
+	Vector2f border_position =
 		placed_fragment.position + Vector2f{element_box.GetEdge(BoxArea::Margin, BoxEdge::Left), -baseline_to_border_height};
+	if (placed_fragment.collapsed_line)
+		border_position.y = placed_fragment.line_top;
 
 	// We can determine the principal fragment based on its left split: Only the principal one has its left side intact,
 	// subsequent fragments have their left side split.

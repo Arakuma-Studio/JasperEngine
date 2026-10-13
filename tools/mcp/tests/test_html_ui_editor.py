@@ -264,7 +264,9 @@ async def test_msaa_setting(ed: Editor):
     text = (ed.project / "project.yaml").read_text()
     ed.check("htmlUiMsaaSamples: 2" in text, "saved to project.yaml")
 
-    # end to end: a rotated square's edges are smoothed with 4 samples, stepped with 1
+    # end to end: the setting reaches the renderer. A rotated square's edges are smooth with 4 samples (multisampling)
+    # and with 1 (the fork feathers the edges itself when the target has one sample, phase 3 p3-paint): both draw
+    # partly covered pixels, and differently.
     await ed.call("write_file", path=ROT_DOC, content=ROT_HTML)
     made = await ed.call("create_scene", name="HtmlUiMsaa", type="UI")
     scene = made["scene"]["id"]
@@ -272,7 +274,7 @@ async def test_msaa_setting(ed: Editor):
     ent = await ed.call("create_entity", scene=scene, type="ui_document", name="Rotated")
     await ed.call("set_properties", scene=scene, entity=ent["entity_id"], values={"uidocument": {"filename": ROT_DOC}})
 
-    async def edge_pixels(samples: int) -> int:
+    async def edge_pixels(samples: int):
         await ed.call("set_project_settings", values={"graphics.html_ui_msaa_samples": samples})
         shot = await ed.call_raw("screenshot", {"view": "game", "scene": scene, "max_width": 1280})
         png = shot.images[0][0]
@@ -280,12 +282,14 @@ async def test_msaa_setting(ed: Editor):
         from htmlui_pixels import decode_png
         w, h, ch, rows = decode_png(png)
         # partly covered pixels: red between 40 and 215 with no green/blue
-        return sum(1 for y in range(h) for x in range(w)
-                   if 40 < rows[y][x * ch] < 215 and rows[y][x * ch + 1] < 30 and rows[y][x * ch + 2] < 30)
+        edge = {(x, y) for y in range(h) for x in range(w)
+                if 40 < rows[y][x * ch] < 215 and rows[y][x * ch + 1] < 30 and rows[y][x * ch + 2] < 30}
+        return edge
 
-    stepped = await edge_pixels(1)
-    smooth = await edge_pixels(4)
-    ed.check(smooth > stepped * 2 + 50, f"MSAA 4 smooths the edges: {smooth} partly covered pixels, {stepped} with 1 sample")
+    one = await edge_pixels(1)
+    four = await edge_pixels(4)
+    ed.check(len(one) > 200 and len(four) > 200, f"smooth edges: {len(four)} partly covered pixels with 4 samples, {len(one)} with 1")
+    ed.check(len(one ^ four) > 50, f"the sample count changes the edges: {len(one ^ four)} pixels differ")
 
 
 async def test_scene_view_shows_document(ed: Editor):

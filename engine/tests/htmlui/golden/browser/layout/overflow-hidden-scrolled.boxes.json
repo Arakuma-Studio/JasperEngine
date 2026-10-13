@@ -1,0 +1,88 @@
+{
+ "fixture": "layout/overflow-hidden-scrolled.html",
+ "viewport": [
+  390,
+  120
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "top": [
+   {
+    "id": "plain",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 100,
+    "h": 80
+   },
+   {
+    "id": "padded",
+    "tag": "div",
+    "x": 130,
+    "y": 10,
+    "w": 112,
+    "h": 92
+   },
+   {
+    "id": "bordered",
+    "tag": "div",
+    "x": 260,
+    "y": 10,
+    "w": 120,
+    "h": 100
+   }
+  ],
+  "gap": [
+   {
+    "id": "plain",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 100,
+    "h": 80
+   },
+   {
+    "id": "padded",
+    "tag": "div",
+    "x": 130,
+    "y": 10,
+    "w": 112,
+    "h": 92
+   },
+   {
+    "id": "bordered",
+    "tag": "div",
+    "x": 260,
+    "y": 10,
+    "w": 120,
+    "h": 100
+   }
+  ],
+  "stripe": [
+   {
+    "id": "plain",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 100,
+    "h": 80
+   },
+   {
+    "id": "padded",
+    "tag": "div",
+    "x": 130,
+    "y": 10,
+    "w": 112,
+    "h": 92
+   },
+   {
+    "id": "bordered",
+    "tag": "div",
+    "x": 260,
+    "y": 10,
+    "w": 120,
+    "h": 100
+   }
+  ]
+ }
+}

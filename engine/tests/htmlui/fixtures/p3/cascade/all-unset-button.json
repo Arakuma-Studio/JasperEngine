@@ -1,0 +1,4 @@
+{
+ "comment": "The all shorthand (spec 3.4.2): <button> with all: unset loses the UA look (no border, padding or background, Ahem 10px #204080 inherited from #wrap, left-aligned), keeps its custom property and takes the declarations after `all` (#b1 28x18 with a #e0c040 background; #b2: a later all: unset wipes .styled; #b3 60x16 with left-aligned #a02060 text); a div with all: initial has black 16px text (#d1); all: unset on a div inherits color and font (#d2).",
+ "viewport": [320, 160]
+}

@@ -64,7 +64,8 @@ bool DecoratorText::GenerateGeometry(Element* element, ElementData& element_data
 		return true;
 
 	const auto& computed = element->GetComputedValues();
-	const TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing()};
+	const TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing(),
+		computed.word_spacing()};
 
 	const int string_width = font_engine_interface->GetStringWidth(font_face_handle, text, text_shaping_context);
 
@@ -77,7 +78,7 @@ bool DecoratorText::GenerateGeometry(Element* element, ElementData& element_data
 		Vector2f{element->ResolveNumericValue(align.x, size_of_align_area.x), element->ResolveNumericValue(align.y, size_of_align_area.y)};
 
 	const Vector2f offset = offset_to_align_area + offset_within_align_area;
-	const float opacity = computed.opacity();
+	const float opacity = element->GetDrawOpacity();
 	const ColourbPremultiplied text_color = (inherit_color ? computed.color() : color).ToPremultiplied(opacity);
 
 	RenderManager& render_manager = element->GetContext()->GetRenderManager();
@@ -124,6 +125,10 @@ SharedPtr<Decorator> DecoratorTextInstancer::InstanceDecorator(const String& /*n
 	Array<const Property*, 2> p_align = {properties.GetProperty(ids.align_x), properties.GetProperty(ids.align_y)};
 	if (!p_text || !p_color || !p_align[0] || !p_align[1])
 		return nullptr;
+#ifdef RMLUI_MATH_EXPRESSIONS
+	if (p_align[0]->unit == Unit::CALCULATION || p_align[1]->unit == Unit::CALCULATION)
+		return nullptr;
+#endif
 
 	String text = StringUtilities::DecodeRml(p_text->Get<String>());
 	if (text.empty())

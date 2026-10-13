@@ -50,10 +50,17 @@ public:
 	/// @param[in] dimensions The width and height of the texture.
 	/// @return True on success.
 	bool GenerateTexture(Span<const byte> source, Vector2i dimensions) const;
+	/// Fork: the same, the texture sampled with repeat wrap along the axes asked for (RenderInterface::GenerateTextureWithWrap).
+	bool GenerateTexture(Span<const byte> source, Vector2i dimensions, bool repeat_x, bool repeat_y) const;
 
 	/// Store the current layer as a texture, so that it can be rendered with geometry later.
 	/// @note The texture will be extracted using the bounds defined by the active scissor region, thereby matching its size.
 	void SaveLayerAsTexture() const;
+	/// Fork: store the active scissor region of the current layer at 'offset' of a texture of 'dimensions', which may be
+	/// larger than the render target (RenderInterface::SaveLayerIntoTexture). The first call makes the texture, later
+	/// calls add tiles to it.
+	/// @return False when the render interface does not support it; no texture is set then by the first call.
+	bool SaveLayerAsTextureTile(Vector2i dimensions, Vector2i offset) const;
 
 	/// Manually set the texture directly from a custom texture handle.
 	/// @param[in] handle The handle that represents the texture.

@@ -10,8 +10,11 @@
 #include "../../Include/RmlUi/Core/StyleSheet.h"
 #include "../../Include/RmlUi/Core/StyleSheetContainer.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
+#include "Cascade.h"
 #include "ComputeProperty.h"
 #include "ControlledLifetimeResource.h"
+#include "ElementTransitions.h"
+#include "PropertyParserAnimation.h"
 #include "StyleSheetFactory.h"
 #include "StyleSheetNode.h"
 #include <algorithm>
@@ -108,6 +111,23 @@ static void ParseAttributeSelector(AttributeSelector& attribute, const String& r
 	// Move cursor past operator. Non-'=' symbols are always followed by '=' so move two characters.
 	size_t i_value_begin = i_operator + (c == '=' ? 1 : 2);
 	String value = StringUtilities::StripWhitespace(rule.substr(i_value_begin, end - i_value_begin));
+
+	// A case-sensitivity flag after the value, separated by white space: 'i' (ASCII case-insensitive) or 's' (Selectors 4).
+	const size_t flag_separator = value.find_last_of(" \t\n\r\f");
+	if (flag_separator != String::npos && flag_separator + 2 == value.size() && !IsEscapedCharacter(value, flag_separator))
+	{
+		const char flag = value.back();
+		const String unflagged = StringUtilities::StripWhitespace(value.substr(0, flag_separator));
+		const bool quoted_value = unflagged.size() >= 2 &&
+			((unflagged.front() == '"' && unflagged.back() == '"') || (unflagged.front() == '\'' && unflagged.back() == '\''));
+		const bool plain_value = unflagged.find_first_of(" \t\n\r\f\"'") == String::npos;
+		if ((flag == 'i' || flag == 'I' || flag == 's' || flag == 'S') && (quoted_value || plain_value))
+		{
+			attribute.case_insensitive = (flag == 'i' || flag == 'I');
+			value = unflagged;
+		}
+	}
+
 	if (value.size() >= 2 && ((value.front() == '"' && value.back() == '"') || (value.front() == '\'' && value.back() == '\'')))
 		value = value.substr(1, value.size() - 2);
 
@@ -201,6 +221,10 @@ public:
 
 			if (const Property* property = properties.GetProperty(id_resolution))
 			{
+#ifdef RMLUI_MATH_EXPRESSIONS
+				if (property->unit == Unit::CALCULATION)
+					return false;
+#endif
 				if (property->unit == Unit::X)
 					image_resolution_factor = property->Get<float>();
 			}
@@ -212,13 +236,37 @@ public:
 
 			Vector2f position, size;
 			if (auto p = properties.GetProperty(id_rx))
+			{
+#ifdef RMLUI_MATH_EXPRESSIONS
+				if (p->unit == Unit::CALCULATION)
+					return false;
+#endif
 				position.x = p->Get<float>();
+			}
 			if (auto p = properties.GetProperty(id_ry))
+			{
+#ifdef RMLUI_MATH_EXPRESSIONS
+				if (p->unit == Unit::CALCULATION)
+					return false;
+#endif
 				position.y = p->Get<float>();
+			}
 			if (auto p = properties.GetProperty(id_rw))
+			{
+#ifdef RMLUI_MATH_EXPRESSIONS
+				if (p->unit == Unit::CALCULATION)
+					return false;
+#endif
 				size.x = p->Get<float>();
+			}
 			if (auto p = properties.GetProperty(id_rh))
+			{
+#ifdef RMLUI_MATH_EXPRESSIONS
+				if (p->unit == Unit::CALCULATION)
+					return false;
+#endif
 				size.y = p->Get<float>();
+			}
 
 			sprite_definitions.emplace_back(name, Rectanglef::FromPositionSize(position, size));
 		}
@@ -326,7 +374,17 @@ public:
 			return true;
 		}
 
-		return specification.ParsePropertyDeclaration(*properties, name, value);
+		if (!specification.ParsePropertyDeclaration(*properties, name, value))
+			return false;
+#ifdef RMLUI_MATH_EXPRESSIONS
+		if (name == "font-weight" || name == "-rmlui-face-index")
+		{
+			const PropertyId id = (name == "font-weight" ? CastId(FontFaceId::FontWeight) : CastId(FontFaceId::FaceIndex));
+			if (const Property* property = properties->GetProperty(id); property && property->unit == Unit::CALCULATION)
+				return false;
+		}
+#endif
+		return true;
 	}
 };
 
@@ -385,7 +443,12 @@ static void PostprocessKeyframes(KeyframesMap& keyframes_map)
 		// Sort keyframes on selector value.
 		std::sort(blocks.begin(), blocks.end(), [](const KeyframeBlock& a, const KeyframeBlock& b) { return a.normalized_time < b.normalized_time; });
 
+		// A keyframe's animation-timing-function eases the segment that starts at it (phase 3); the other animation and
+		// transition properties have no effect in a keyframe (CSS Animations 1) and are dropped.
+		ProcessKeyframeTimingFunctions(blocks);
+
 		// Add all property names specified by any block
+		property_ids.clear();
 		if (blocks.size() > 0)
 			property_ids.reserve(blocks.size() * blocks[0].properties.GetNumProperties());
 		for (auto& block : blocks)
@@ -448,12 +511,8 @@ bool StyleSheetParser::ParseKeyframeBlock(KeyframesMap& keyframes_map, const Str
 			keyframes.blocks.emplace_back(selector);
 			it = (keyframes.blocks.end() - 1);
 		}
-		else
-		{
-			// In case of duplicate keyframes, we only use the latest definition as per CSS rules
-			it->properties = PropertyDictionary();
-		}
 
+		// Keyframes with the same selector cascade: the later declarations override the earlier ones (CSS Animations 1).
 		it->properties.Import(properties);
 	}
 
@@ -550,6 +609,10 @@ bool StyleSheetParser::ParseFontFaceBlock(const SharedPtr<const PropertySource>&
 	}
 
 	auto get_property = [&properties](FontFaceId id) { return properties.GetProperty(static_cast<PropertyId>(id)); };
+#ifdef RMLUI_MATH_EXPRESSIONS
+	if (get_property(FontFaceId::FaceIndex)->unit == Unit::CALCULATION || get_property(FontFaceId::FontWeight)->unit == Unit::CALCULATION)
+		return false;
+#endif
 	const String family = get_property(FontFaceId::FontFamily)->Get<String>();
 	const bool is_fallback = get_property(FontFaceId::FallbackFace)->Get<bool>();
 	const int face_index = get_property(FontFaceId::FaceIndex)->Get<int>();
@@ -578,6 +641,7 @@ bool StyleSheetParser::ParseMediaFeatureMap(const String& rules, PropertyDiction
 	String current_string;
 
 	modifier = MediaQueryModifier::None;
+	int value_parenthesis_depth = 0;
 
 	for (size_t cursor = 0; cursor < rules.length(); cursor++)
 	{
@@ -587,6 +651,11 @@ bool StyleSheetParser::ParseMediaFeatureMap(const String& rules, PropertyDiction
 		{
 		case ' ':
 		{
+			if (state == Value)
+			{
+				current_string += character;
+				break;
+			}
 			if (state == Global)
 			{
 				current_string = StringUtilities::StripWhitespace(StringUtilities::ToLower(std::move(current_string)));
@@ -610,6 +679,12 @@ bool StyleSheetParser::ParseMediaFeatureMap(const String& rules, PropertyDiction
 		}
 		case '(':
 		{
+			if (state == Value)
+			{
+				++value_parenthesis_depth;
+				current_string += character;
+				break;
+			}
 			if (state != Global)
 			{
 				Log::Message(Log::LT_WARNING, "Unexpected '(' in @media query list at %s:%d.", stream_file_name.c_str(), line_number);
@@ -632,6 +707,12 @@ bool StyleSheetParser::ParseMediaFeatureMap(const String& rules, PropertyDiction
 		break;
 		case ')':
 		{
+			if (state == Value && value_parenthesis_depth > 0)
+			{
+				--value_parenthesis_depth;
+				current_string += character;
+				break;
+			}
 			if (state != Value)
 			{
 				Log::Message(Log::LT_WARNING, "Unexpected ')' in @media query list at %s:%d.", stream_file_name.c_str(), line_number);
@@ -646,6 +727,7 @@ bool StyleSheetParser::ParseMediaFeatureMap(const String& rules, PropertyDiction
 
 			current_string.clear();
 			state = Global;
+			value_parenthesis_depth = 0;
 		}
 		break;
 		case ':':
@@ -694,7 +776,7 @@ bool StyleSheetParser::Parse(MediaBlockList& style_sheets, Stream* _stream, int 
 	parse_buffer_pos = 0;
 	stream_file_name = StringUtilities::Replace(stream->GetSourceURL().GetURL(), '|', ':');
 
-	enum class State { Global, AtRuleIdentifier, KeyframeBlock, Invalid };
+	enum class State { Global, AtRuleIdentifier, KeyframeBlock, StartingStyle, Invalid };
 	State state = State::Global;
 
 	MediaBlock current_block = {};
@@ -786,6 +868,13 @@ bool StyleSheetParser::Parse(MediaBlockList& style_sheets, Stream* _stream, int 
 					if (at_rule_identifier == "keyframes")
 					{
 						state = State::KeyframeBlock;
+					}
+					else if (at_rule_identifier == "starting-style")
+					{
+						// The style rules of @starting-style (p3-animation) give an element's before-change style when it is first
+						// styled or stops being 'display: none'.
+						at_rule_name.clear();
+						state = State::StartingStyle;
 					}
 					else if (at_rule_identifier == "decorator")
 					{
@@ -892,6 +981,8 @@ bool StyleSheetParser::Parse(MediaBlockList& style_sheets, Stream* _stream, int 
 					PropertyDictionary properties;
 					PropertySpecificationParser parser(properties, StyleSheetSpecification::GetPropertySpecification());
 					ReadProperties(parser);
+					// CSS ignores the important declarations of a keyframe.
+					Cascade::RemoveImportantDeclarations(properties);
 
 					if (!ParseKeyframeBlock(current_block.stylesheet->keyframes, at_rule_name, pre_token_str, properties))
 						continue;
@@ -904,6 +995,47 @@ bool StyleSheetParser::Parse(MediaBlockList& style_sheets, Stream* _stream, int 
 				else
 				{
 					Log::Message(Log::LT_WARNING, "Invalid character '%c' found while parsing keyframe block in stylesheet at %s:%d", token,
+						stream_file_name.c_str(), line_number);
+					state = State::Invalid;
+				}
+			}
+			break;
+			case State::StartingStyle:
+			{
+				if (token == '{')
+				{
+					if (!current_block.stylesheet)
+						current_block = {PropertyDictionary{}, UniquePtr<StyleSheet>(new StyleSheet()), MediaQueryModifier::None};
+
+					const int rule_line_number = line_number;
+					PropertyDictionary properties;
+					PropertySpecificationParser parser(properties, StyleSheetSpecification::GetPropertySpecification());
+					ReadProperties(parser);
+
+					// Each rule is stored with the starting-style pseudo-class on its subject, which only the starting style sets.
+					StringList rule_name_list;
+					StringUtilities::ExpandString(rule_name_list, pre_token_str, ',', '(', ')');
+					for (const String& rule_name : rule_name_list)
+					{
+						const String selector = StringUtilities::StripWhitespace(rule_name) + GetStartingStyleSelectorSuffix();
+						auto source = MakeShared<PropertySource>(stream_file_name, rule_line_number, UnescapeSelectorToken(rule_name));
+						properties.SetSourceOfAllProperties(source);
+						if (!ImportProperties(current_block.stylesheet->root.get(), selector, properties, rule_count))
+						{
+							Log::Message(Log::LT_WARNING, "Invalid selector '%s' encountered while parsing stylesheet at %s:%d.", rule_name.c_str(),
+								stream_file_name.c_str(), line_number);
+						}
+					}
+					rule_count++;
+					NoteStartingStyleRules();
+				}
+				else if (token == '}')
+				{
+					state = State::Global;
+				}
+				else
+				{
+					Log::Message(Log::LT_WARNING, "Invalid character '%c' found while parsing @starting-style in stylesheet at %s:%d", token,
 						stream_file_name.c_str(), line_number);
 					state = State::Invalid;
 				}
@@ -964,6 +1096,12 @@ StyleSheetNodeListRaw StyleSheetParser::ConstructNodes(StyleSheetNode& root_node
 	}
 
 	return leaf_nodes;
+}
+
+StyleSheetNode* StyleSheetParser::ConstructNode(StyleSheetNode& root_node, const String& selector)
+{
+	const PropertyDictionary empty_properties;
+	return ImportProperties(&root_node, selector, empty_properties, 0);
 }
 
 void StyleSheetParser::ReadProperties(AbstractPropertyParser& property_parser)
@@ -1070,10 +1208,26 @@ void StyleSheetParser::ReadProperties(AbstractPropertyParser& property_parser)
 	}
 }
 
-StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const String& rule, const PropertyDictionary& properties,
-	int rule_specificity)
+// The pseudo-element a '::name' (or legacy ':before'/':after') selector names; None for an unknown one.
+static PseudoElementType GetPseudoElementType(const String& name, bool legacy_colon)
 {
-	StyleSheetNode* leaf_node = node;
+	if (name == "before")
+		return PseudoElementType::Before;
+	if (name == "after")
+		return PseudoElementType::After;
+	if (name == "marker" && !legacy_colon)
+		return PseudoElementType::Marker;
+	return PseudoElementType::None;
+}
+
+bool StyleSheetParser::ParseCompoundSelectors(const String& rule, Vector<CompoundSelector>& compounds)
+{
+	compounds.clear();
+	// One allocation for the usual selector: as many compounds as descendant/child/sibling steps, plus one.
+	size_t num_steps = 1;
+	for (const char c : rule)
+		num_steps += (c == ' ' || c == '>' || c == '+' || c == '~');
+	compounds.reserve(num_steps);
 
 	// Create each node going down the tree.
 	for (size_t index = 0; index < rule.size();)
@@ -1081,20 +1235,44 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 		CompoundSelector selector;
 
 		// Determine the combinator connecting the previous node if any.
-		for (; index > 0 && index < rule.size(); index++)
+		bool explicit_combinator = false;
+		for (; index < rule.size(); index++)
 		{
 			bool reached_end_of_combinators = false;
 			switch (rule[index])
 			{
-			case ' ': break;
-			case '>': selector.combinator = SelectorCombinator::Child; break;
-			case '+': selector.combinator = SelectorCombinator::NextSibling; break;
-			case '~': selector.combinator = SelectorCombinator::SubsequentSibling; break;
+			case ' ':
+			case '\t':
+			case '\n':
+			case '\r':
+			case '\f': break;
+			case '>':
+			case '+':
+			case '~':
+				// A selector starts with a compound, and two combinators in a row are invalid.
+				if (compounds.empty() || explicit_combinator)
+					return false;
+				explicit_combinator = true;
+				selector.combinator = (rule[index] == '>' ? SelectorCombinator::Child
+						: rule[index] == '+'                 ? SelectorCombinator::NextSibling
+															 : SelectorCombinator::SubsequentSibling);
+				break;
 			default: reached_end_of_combinators = true; break;
 			}
 			if (reached_end_of_combinators)
 				break;
 		}
+		if (index >= rule.size())
+		{
+			// Trailing white space ends the selector; a trailing combinator is invalid.
+			if (explicit_combinator)
+				return false;
+			break;
+		}
+
+		// A pseudo-element ends the selector: nothing may follow it (':hover::before' is the form for a state).
+		if (!compounds.empty() && compounds.back().pseudo_element != PseudoElementType::None)
+			return false;
 
 		// Determine the node's requirements.
 		while (index < rule.size())
@@ -1105,20 +1283,20 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 			if (rule[start_index] == '*')
 				start_index += 1;
 
-			if (rule[start_index] == '[')
+			if (start_index < rule.size() && rule[start_index] == '[')
 			{
 				end_index = FindAttributeSelectorEnd(rule, start_index);
 				if (end_index == String::npos)
-					return nullptr;
+					return false;
 				end_index += 1;
 			}
-			else
+			else if (start_index < rule.size())
 			{
 				int parenthesis_count = 0;
 
 				if (rule[start_index] == ':')
 				{
-					// Parse pseudo-element ::A as pseudo-class with name :A
+					// A pseudo-element '::name'.
 					if (end_index < rule.size() && rule[end_index] == ':')
 						end_index += 1;
 				}
@@ -1126,7 +1304,7 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 				// Read until we hit the next identifier. Don't match inside parenthesis in case of structural selectors.
 				for (; end_index < rule.size(); end_index++)
 				{
-					static const String identifiers = "#.:[ >+~";
+					static const String identifiers = "#.:[ >+~\t\n\r\f";
 					if (parenthesis_count == 0 && identifiers.find(rule[end_index]) != String::npos && !IsEscapedCharacter(rule, end_index))
 						break;
 
@@ -1135,9 +1313,15 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 					else if (rule[end_index] == ')' && !IsEscapedCharacter(rule, end_index))
 						parenthesis_count -= 1;
 				}
+				if (parenthesis_count != 0)
+					return false;
 			}
 
-			if (end_index > start_index)
+			// Nothing may follow a pseudo-element in its compound either.
+			if (end_index > start_index && selector.pseudo_element != PseudoElementType::None)
+				return false;
+
+			if (end_index > start_index && start_index < rule.size())
 			{
 				switch (rule[start_index])
 				{
@@ -1145,12 +1329,29 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 				case '.': selector.class_names.push_back(ExtractUnescapedSelectorToken(rule, start_index + 1, end_index)); break;
 				case ':':
 				{
-					String pseudo_class_name = ExtractUnescapedSelectorToken(rule, start_index + 1, end_index);
-					StructuralSelector node_selector = StyleSheetFactory::GetSelector(pseudo_class_name);
+					const bool double_colon = (start_index + 1 < end_index && rule[start_index + 1] == ':');
+					String pseudo_name = ExtractUnescapedSelectorToken(rule, start_index + (double_colon ? 2 : 1), end_index);
+					// Pseudo-class and pseudo-element names are ASCII case-insensitive; their arguments are kept as written.
+					const size_t name_end = Math::Min(pseudo_name.find('('), pseudo_name.size());
+					if (std::any_of(pseudo_name.begin(), pseudo_name.begin() + name_end, [](char c) { return c >= 'A' && c <= 'Z'; }))
+						pseudo_name = StringUtilities::ToLower(pseudo_name.substr(0, name_end)) + pseudo_name.substr(name_end);
+
+					const PseudoElementType pseudo_element = GetPseudoElementType(pseudo_name, !double_colon);
+					if (pseudo_element != PseudoElementType::None)
+					{
+						selector.pseudo_element = pseudo_element;
+						break;
+					}
+					if (double_colon)
+						return false; // An unknown pseudo-element.
+
+					StructuralSelector node_selector = StyleSheetFactory::GetSelector(pseudo_name);
 					if (node_selector.type != StructuralSelectorType::Invalid)
 						selector.structural_selectors.push_back(node_selector);
+					else if (pseudo_name.find('(') == String::npos && StyleSheetFactory::IsPseudoClass(pseudo_name))
+						selector.pseudo_class_names.push_back(std::move(pseudo_name));
 					else
-						selector.pseudo_class_names.push_back(std::move(pseudo_class_name));
+						return false; // An unknown pseudo-class, or an invalid argument.
 				}
 				break;
 				case '[':
@@ -1158,7 +1359,7 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 					const size_t i_attr_begin = start_index + 1;
 					const size_t i_attr_end = end_index - 1;
 					if (i_attr_end <= i_attr_begin)
-						return nullptr;
+						return false;
 
 					AttributeSelector attribute;
 					ParseAttributeSelector(attribute, rule, i_attr_begin, i_attr_end);
@@ -1173,8 +1374,8 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 			index = end_index;
 
 			// If we reached a combinator then we submit the current node and start fresh with a new node.
-			static const String combinators(" >+~");
-			if (combinators.find(rule[index]) != String::npos)
+			static const String combinators(" >+~\t\n\r\f");
+			if (index >= rule.size() || combinators.find(rule[index]) != String::npos)
 				break;
 		}
 
@@ -1184,6 +1385,23 @@ StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const S
 		std::sort(selector.pseudo_class_names.begin(), selector.pseudo_class_names.end());
 		std::sort(selector.structural_selectors.begin(), selector.structural_selectors.end());
 
+		compounds.push_back(std::move(selector));
+	}
+
+	return !compounds.empty();
+}
+
+StyleSheetNode* StyleSheetParser::ImportProperties(StyleSheetNode* node, const String& rule, const PropertyDictionary& properties,
+	int rule_specificity)
+{
+	// The whole selector is read before any node is made: an invalid selector leaves the tree as it was.
+	Vector<CompoundSelector> compounds;
+	if (!ParseCompoundSelectors(rule, compounds))
+		return nullptr;
+
+	StyleSheetNode* leaf_node = node;
+	for (CompoundSelector& selector : compounds)
+	{
 		// Add the new child node, or retrieve the existing child if we have an exact match.
 		leaf_node = leaf_node->GetOrCreateChildNode(std::move(selector));
 	}

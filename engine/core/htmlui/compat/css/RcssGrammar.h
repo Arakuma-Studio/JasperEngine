@@ -11,6 +11,7 @@
 // RmlUi (editor CLI).
 
 #include "Export.h"
+#include "htmlui/compat/ForkFeatures.h"
 
 #include <string>
 #include <string_view>
@@ -24,6 +25,10 @@ namespace jasperengine::htmlui::compat {
         // Would RmlUi parse `value` for `property`? Values with var() are not checked (RmlUi
         // resolves them per element). Unknown properties: false.
         static bool accepts(std::string_view property, std::string_view value);
+        // The same for the fork with `fork`'s features: with ForkFeature::Calc, a calc(), min(),
+        // max() or clamp() stands for one numeric value whose units suit it (a length where a
+        // length is read, ...; their arithmetic is checked by the value normalizer).
+        static bool accepts(std::string_view property, std::string_view value, const ForkFeatures& fork);
         // the keywords of a keyword property ("" when the property takes no keywords)
         static std::string keywords(std::string_view property);
     };

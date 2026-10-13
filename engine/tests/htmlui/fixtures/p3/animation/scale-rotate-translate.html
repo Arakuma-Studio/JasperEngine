@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>animation: individual transform properties</title>
+<style>
+  html, body { margin: 0; }
+  div { position: absolute; top: 60px; width: 60px; height: 40px; background-color: #3060a0; }
+  /* (quarter turns and whole-pixel sizes at the captures: the edges stay on the pixel grid) */
+  #card { left: 60px; scale: 1; transition: scale 1s linear, rotate 1s linear, translate 1s linear; }
+  #card.on { scale: 2; rotate: 180deg; translate: 20px 10px; }
+  #combined { left: 230px; translate: 10px 0px; rotate: 90deg; scale: 0.5; transform: translateX(20px); }
+</style>
+</head>
+<body>
+<div id="card"></div><div id="combined"></div>
+</body>
+</html>

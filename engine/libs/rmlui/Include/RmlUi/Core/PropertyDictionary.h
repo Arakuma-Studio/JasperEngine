@@ -37,6 +37,9 @@ public:
 
 	/// Returns true if the dictionary contains no properties, custom properties, or var shorthands.
 	bool Empty() const;
+	/// Returns true if an important declaration has been set on the dictionary since it was created or cleared (it may
+	/// have been removed since).
+	bool HasImportantProperties() const { return has_important; }
 	/// Returns the number of plain properties in the dictionary, excludes custom properties and shorthands.
 	int GetNumProperties() const;
 	/// Returns the map of plain properties in the dictionary.
@@ -52,7 +55,7 @@ public:
 	/// are at least equal.
 	/// @param[in] property_dictionary The properties to import.
 	/// @param[in] specificity The specificity for all incoming properties. If this is not specified, the properties will keep their original
-	/// specificity.
+	/// specificity. When it is, important properties get it plus the importance offset (they rank above every normal declaration).
 	void Import(const PropertyDictionary& property_dictionary, int specificity = -1);
 
 	/// Merges the contents of another fully-specified property dictionary with this one.
@@ -67,6 +70,8 @@ public:
 
 	/// Set the source of all properties in the dictionary to the given one.
 	void SetSourceOfAllProperties(const SharedPtr<const PropertySource>& property_source);
+	/// Set the cascade origin of all properties in the dictionary.
+	void SetOriginOfAllProperties(StyleOrigin origin);
 
 private:
 	// Sets a property on the dictionary and its specificity if there is no name conflict, or its
@@ -84,6 +89,7 @@ private:
 
 	UnorderedMap<String, Property> custom_properties;
 	UnorderedMap<ShorthandId, Property> var_shorthands;
+	bool has_important = false;
 };
 
 } // namespace Rml

@@ -18,6 +18,7 @@
 #include "htmlui/compat/ua/UserAgentStyle.h"
 
 #include <cmath>
+#include <iterator>
 #include <map>
 
 using namespace jasperengine::htmlui::compat;
@@ -33,7 +34,7 @@ namespace {
 
     // emits name: value when RCSS accepts it, else reports
     void emitChecked(DeclContext& context, const std::string& property, const std::string& value, const std::string& suggestion = std::string()){
-        if (!RcssGrammar::accepts(property, value)){
+        if (!RcssGrammar::accepts(property, value, context.session.options.fork)){
             unsupportedValue(context, suggestion);
             return;
         }
@@ -50,11 +51,26 @@ namespace {
                 {"--html-check-baseline", "-3px"},
                 {"--html-control-bg", "#ffffff"},
                 {"--html-control-border", "#767676"},
-                {"--html-select-arrow", "html-layer(\"/@htmlui/ua/arrow-down.svg\" 10px 6px 3px 50% no-repeat no-repeat padding-box border-box scroll)"},
+                {"--html-control-border-width", "1px"},
+                {"--html-field-padding", "2px 3px"},
+                {"--html-field-border-width", "1px"},
+                {"--html-field-border-style", "solid"},
+                {"--html-control-radius", "2px"},
+                {"--html-check-radius", "2px"},
+                {"--html-radio-radius", "9999px"},
+                {"--html-check-fill", "var(--html-accent, #0075ff)"},
+                {"--html-radio-ring", "inset 0 0 0 1.5px var(--html-accent-contrast, #ffffff)"},
+                {"--html-control-disabled-border", "#7676764d"},
+                {"--html-check-disabled-fill", "#0075ff4d"},
+                {"--html-select-arrow", "url(\"/@htmlui/ua/arrow-down.svg\")"},
+                {"--html-select-arrow-color", "currentcolor"},
                 {"--html-thumb", "none"},
                 {"--html-slider-fill", "var(--html-accent, #0075ff)"},
                 {"--html-slider-height", "16px"},
-                {"--html-slider-track-margin", "5px"},
+                {"--html-slider-track-margin", "4px"},
+                {"--html-slider-track-inset", "1px"},
+                {"--html-slider-thumb-margin", "-2px"},
+                {"--html-slider-thumb-transform", "scale(0.9375)"},
                 {"--html-slider-track-height", "6px"},
                 {"--html-slider-track-border", "1px"},
                 // the track's own colors (not the checkbox's and select's --html-control-*)
@@ -244,12 +260,30 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         context.emit("--html-check-baseline", "0px");
         context.emit("--html-control-bg", "transparent");
         context.emit("--html-control-border", "transparent");
+        // checkbox and radio: no frame, rounding, fill or ring (Chromium's html.css gives them none)
+        context.emit("--html-control-border-width", "0px");
+        // text fields, buttons, selects: the theme's 2px rounding (Chromium's html.css has none)
+        context.emit("--html-control-radius", "0px");
+        // text fields: html.css's `padding: 1px 2px; border: 2px inset` (the fork draws inset: BorderStyle, p3-paint)
+        context.emit("--html-field-padding", "1px 2px");
+        context.emit("--html-field-border-width", "2px");
+        context.emit("--html-field-border-style", context.fork(ForkFeature::BorderStyle) ? "inset" : "solid");
+        context.emit("--html-check-radius", "0px");
+        context.emit("--html-radio-radius", "0px");
+        context.emit("--html-check-fill", "transparent");
+        context.emit("--html-radio-ring", "none");
+        context.emit("--html-control-disabled-border", "transparent");
+        context.emit("--html-check-disabled-fill", "transparent");
         context.emit("--html-select-arrow", "none");
+        context.emit("--html-select-arrow-color", "transparent");
         context.emit("--html-thumb", "none");
         // a range without its look: no value fill, as tall as its track (Chromium)
         context.emit("--html-slider-fill", "transparent");
         context.emit("--html-slider-height", "auto");
         context.emit("--html-slider-track-margin", "0px");
+        context.emit("--html-slider-track-inset", "0px");
+        context.emit("--html-slider-thumb-margin", "0px");
+        context.emit("--html-slider-thumb-transform", "none");
         context.emit("--html-slider-track-height", "auto");
         context.emit("--html-slider-track-border", "0px");
         context.emit("--html-slider-track-bg", "transparent");
@@ -262,8 +296,12 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         if (keyword != "auto")
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "'appearance: " + keyword + "' is treated as 'auto'");
         for (const char* companion : {"--html-check", "--html-check-baseline", "--html-control-bg", "--html-control-border",
-                                      "--html-select-arrow", "--html-thumb", "--html-slider-fill", "--html-slider-height",
-                                      "--html-slider-track-margin", "--html-slider-track-height", "--html-slider-track-border",
+                                      "--html-control-border-width", "--html-field-padding", "--html-field-border-width",
+                                      "--html-field-border-style", "--html-control-radius", "--html-check-radius", "--html-radio-radius", "--html-check-fill",
+                                      "--html-radio-ring", "--html-control-disabled-border", "--html-check-disabled-fill",
+                                      "--html-select-arrow", "--html-select-arrow-color", "--html-thumb", "--html-slider-fill", "--html-slider-height",
+                                      "--html-slider-track-margin", "--html-slider-track-inset", "--html-slider-thumb-margin", "--html-slider-thumb-transform",
+                                      "--html-slider-track-height", "--html-slider-track-border",
                                       "--html-slider-track-bg", "--html-slider-track-border-color"})
             context.emit(companion, uaCompanionDefault(companion));
         return;
@@ -295,6 +333,15 @@ void jasperengine::htmlui::compat::rewriteObjectFit(DeclContext& context){
     std::vector<std::string> parts;
     for (const ComponentValue& v : w)
         parts.push_back(v.isToken(TokenType::Number) ? lengthText(v) : text(v));
+    if (context.fork(ForkFeature::ObjectFit)){
+        // the fork takes the CSS <position> (edge offsets: 'right 10px bottom 20%'; phase 3, p3-paint)
+        if (parts.empty() || parts.size() > 4){
+            unsupportedValue(context, "use one to four values, for example 50% 50%, left top or right 10px bottom 20px");
+            return;
+        }
+        context.emit("object-position", join(parts));
+        return;
+    }
     emitChecked(context, "object-position", join(parts), "use two values, for example 50% 50% or left top");
 }
 
@@ -352,6 +399,46 @@ void jasperengine::htmlui::compat::rewriteScrollbarStyle(DeclContext& context){
     context.generate(" > scrollbarhorizontal > slidertrack", "background-color", track);
 }
 
+namespace {
+    std::string trimText(const std::string& text){
+        const size_t first = text.find_first_not_of(" \t\n");
+        if (first == std::string::npos)
+            return std::string();
+        return text.substr(first, text.find_last_not_of(" \t\n") - first + 1);
+    }
+}
+
+namespace {
+    // counter(name, style) / counters(name, separator, style) with a counter style the fork does
+    // not draw: it counts in decimal (phase-3 spec 2.2), said once per declaration
+    void reportCounterStyles(DeclContext& context){
+        static const char* const known[] = {"decimal", "decimal-leading-zero", "lower-alpha", "lower-latin", "upper-alpha",
+                                            "upper-latin", "lower-roman", "upper-roman", "lower-greek", "disc", "circle",
+                                            "square", "none", "disclosure-open", "disclosure-closed"};
+        for (const ComponentValue& v : context.value){
+            const bool counters = v.isFunction("counters");
+            if (!counters && !v.isFunction("counter"))
+                continue;
+            const std::vector<ValueList> arguments = commaGroups(v.children);
+            const size_t styleIndex = counters ? 2 : 1;
+            if (arguments.size() <= styleIndex)
+                continue;
+            const ValueList styleWords = words(arguments[styleIndex]);
+            const std::string style = styleWords.size() == 1 ? identOf(styleWords[0]) : std::string();
+            if (style.empty())
+                continue;   // a string, or nothing the fork reads: its own parser decides
+            bool found = false;
+            for (const char* name : known)
+                found = found || style == name;
+            if (!found){
+                context.reportAs(Severity::Info, codes::ApproximatedMinor, "counter style '" + style + "' is drawn as decimal",
+                                 "use one of: decimal, decimal-leading-zero, lower/upper-alpha/latin, lower/upper-roman, lower-greek, disc, circle, square, none");
+                return;
+            }
+        }
+    }
+}
+
 void jasperengine::htmlui::compat::rewriteContent(DeclContext& context){
     bool pseudoElement = false;
     if (context.rule){
@@ -361,7 +448,29 @@ void jasperengine::htmlui::compat::rewriteContent(DeclContext& context){
         }
     }
     if (context.fork(ForkFeature::PseudoElements) && pseudoElement){
-        context.emit("content", context.valueText());
+        // url() items point at the resolved resource, as in every other image property; the rest
+        // (strings, attr(), counter(), counters(), quotes) is the fork's as written
+        reportCounterStyles(context);
+        ValueList w = words(context.value);
+        bool hasUrl = false;
+        for (const ComponentValue& v : w)
+            hasUrl = hasUrl || (urlOf(v) && !v.isToken(TokenType::String));
+        if (!hasUrl){
+            context.emit("content", context.valueText());
+            return;
+        }
+        std::string value;
+        for (const ComponentValue& v : context.value){
+            if (urlOf(v) && !v.isToken(TokenType::String)){
+                const std::string path = resolveUrl(context, v, "image");
+                if (path.empty())
+                    return;   // reported
+                value += "url(" + serializeString(path) + ")";
+                continue;
+            }
+            appendSerialized(value, v);
+        }
+        context.emit("content", trimText(value));
         return;
     }
     context.reportAs(Severity::Info, codes::IgnoredProperty, "'content' only applies to ::before / ::after; dropped");
@@ -373,6 +482,12 @@ void jasperengine::htmlui::compat::rewriteAll(DeclContext& context){
     const std::string keyword = w.size() == 1 ? identOf(w[0]) : std::string();
     if (keyword != "unset" && keyword != "initial" && keyword != "inherit" && keyword != "revert" && keyword != "revert-layer"){
         unsupportedValue(context, "use all: unset");
+        return;
+    }
+    // the fork's 'all' (phase 3, p3-cascade): every property it has, inherit and revert as CSS says (not direction, nor
+    // custom properties, nor RmlUi's interaction properties)
+    if (context.fork(ForkFeature::CssWideKeywords)){
+        context.emit("all", keyword);
         return;
     }
     if (keyword == "inherit")
@@ -392,7 +507,21 @@ void jasperengine::htmlui::compat::rewriteAll(DeclContext& context){
         "align-items", "align-self", "flex-basis", "flex-direction", "flex-grow", "flex-shrink", "flex-wrap",
         "justify-content",
     };
-    for (const char* property : properties){
+    // ... and the paint properties the fork has (phase 3, p3-paint)
+    std::vector<const char*> list(std::begin(properties), std::end(properties));
+    if (context.fork(ForkFeature::BorderStyle))
+        list.insert(list.end(), {"border-top-style", "border-right-style", "border-bottom-style", "border-left-style"});
+    if (context.fork(ForkFeature::Outline))
+        list.insert(list.end(), {"outline-width", "outline-style", "outline-color", "outline-offset"});
+    if (context.fork(ForkFeature::BackgroundLayers))
+        list.insert(list.end(), {"background-position-x", "background-position-y", "background-size", "background-repeat",
+                                 "background-origin", "background-clip", "background-attachment", "mask-position-x",
+                                 "mask-position-y", "mask-size", "mask-repeat"});
+    if (context.fork(ForkFeature::ObjectFit))
+        list.insert(list.end(), {"object-fit", "object-position"});
+    if (context.fork(ForkFeature::GroupOpacity))
+        list.push_back("isolation");
+    for (const char* property : list){
         const PropertySupport* row = findProperty(property);
         if (keyword == "inherit" && !(row && row->inherited))
             continue;
@@ -403,6 +532,10 @@ void jasperengine::htmlui::compat::rewriteAll(DeclContext& context){
 void jasperengine::htmlui::compat::rewriteDirection(DeclContext& context){
     ValueList w = words(context.value);
     const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
+    // phase-3 spec 2.2: the text runs right to left, the layout is not mirrored
+    if (k == "rtl")
+        context.reportAs(Severity::Info, codes::ApproximatedMinor, "'direction: rtl' sets the text direction; block, flex and grid layouts are not mirrored",
+                         hints::kMirroredLayout);
     if (k == "ltr" || k == "rtl"){
         context.emit("-rmlui-direction", k);
         return;

@@ -8,8 +8,10 @@
 #include "../../Include/RmlUi/Core/Geometry.h"
 #include "../../Include/RmlUi/Core/MeshUtilities.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
+#include "../../Include/RmlUi/Core/StringUtilities.h"
 #include "../../Include/RmlUi/Core/SystemInterface.h"
 #include "../../Include/RmlUi/Core/Texture.h"
+#include "../../Include/RmlUi/Core/TypeConverter.h"
 #include "../../Include/RmlUi/Core/Utilities.h"
 #include "../Core/ControlledLifetimeResource.h"
 #include <algorithm>
@@ -101,6 +103,79 @@ namespace SVG {
 	SVGData::~SVGData()
 	{
 		ReleaseHandle(this);
+	}
+
+	// viewBox -> the rectangle (0, 0, size) through preserveAspectRatio: scale and translation per axis.
+	struct AxisMap {
+		Vector2f scale, translate;
+	};
+	static AxisMap ViewBoxMap(const float view_box[4], Vector2f size, const String& preserve_aspect_ratio)
+	{
+		StringList words;
+		StringUtilities::ExpandString(words, preserve_aspect_ratio, ' ');
+		String align = "xmidymid";
+		bool slice = false;
+		for (const String& word : words)
+		{
+			const String w = StringUtilities::ToLower(word);
+			if (w == "slice")
+				slice = true;
+			else if (w == "meet" || w == "defer" || w.empty())
+				continue;
+			else
+				align = w;
+		}
+		AxisMap map;
+		const Vector2f view_size(Math::Max(view_box[2], 1e-6f), Math::Max(view_box[3], 1e-6f));
+		if (align == "none")
+		{
+			map.scale = size / view_size;
+			map.translate = -Vector2f(view_box[0], view_box[1]) * map.scale;
+			return map;
+		}
+		const float k = slice ? Math::Max(size.x / view_size.x, size.y / view_size.y) : Math::Min(size.x / view_size.x, size.y / view_size.y);
+		map.scale = Vector2f(k);
+		const Vector2f free = size - view_size * k;
+		const float fx = (align.find("xmin") != String::npos ? 0.f : align.find("xmax") != String::npos ? 1.f : 0.5f);
+		const float fy = (align.find("ymin") != String::npos ? 0.f : align.find("ymax") != String::npos ? 1.f : 0.5f);
+		map.translate = Vector2f(fx * free.x, fy * free.y) - Vector2f(view_box[0], view_box[1]) * k;
+		return map;
+	}
+
+	// The matrix that makes the document's root, which lunasvg lays out at its intrinsic size, draw into a viewport of
+	// 'size' (as browsers draw an SVG in a box of that size).
+	static lunasvg::Matrix ViewportMatrix(const lunasvg::Document& document, Vector2f size)
+	{
+		const lunasvg::Element root = document.documentElement();
+		float view_box[4] = {};
+		bool has_view_box = false;
+		if (root.hasAttribute("viewBox"))
+		{
+			String text = root.getAttribute("viewBox");
+			for (char& c : text)
+				if (c == ',')
+					c = ' ';
+			StringList parts;
+			StringUtilities::ExpandString(parts, text, ' ');
+			int n = 0;
+			for (const String& part : parts)
+			{
+				if (part.empty() || n >= 4)
+					continue;
+				view_box[n++] = FromString<float>(part, 0.f);
+			}
+			has_view_box = (n == 4 && view_box[2] > 0.f && view_box[3] > 0.f);
+		}
+		if (!has_view_box)
+			return lunasvg::Matrix(); // unscaled, at the top left
+		const String par = root.hasAttribute("preserveAspectRatio") ? String(root.getAttribute("preserveAspectRatio")) : String();
+		const Vector2f intrinsic(document.width(), document.height());
+		// lunasvg's own mapping into the intrinsic size, undone, then the mapping into the viewport.
+		const AxisMap inner = ViewBoxMap(view_box, intrinsic, par);
+		const AxisMap outer = ViewBoxMap(view_box, size, par);
+		const Vector2f scale = outer.scale / inner.scale;
+		const Vector2f translate = outer.translate - inner.translate * scale;
+		return lunasvg::Matrix(scale.x, 0, 0, scale.y, translate.x, translate.y);
 	}
 
 	static Vector<SVGTexture>::iterator FindSVGTexture(SVGDocument& doc, Vector2i dimensions, bool crop_to_content)
@@ -234,7 +309,11 @@ namespace SVG {
 				}
 				else
 				{
-					bitmap = svg_document->renderToBitmap(dimensions.x, dimensions.y);
+					// The bitmap is the SVG viewport (CSS: the replaced element's box, phase 3 p3-paint): the viewBox maps
+					// into it through preserveAspectRatio, content without a viewBox is drawn at its size, unscaled.
+					bitmap = lunasvg::Bitmap(dimensions.x, dimensions.y);
+					bitmap.clear(0x00000000);
+					svg_document->render(bitmap, ViewportMatrix(*svg_document, Vector2f(dimensions)));
 				}
 
 				if (!bitmap.valid() || !bitmap.data())
@@ -359,16 +438,21 @@ namespace SVG {
 		svg_cache_data.Shutdown();
 	}
 
+	ColourbPremultiplied SVGCache::GetColour(Element* element)
+	{
+		return element->GetComputedValues().image_color().ToPremultiplied(element->GetDrawOpacity());
+	}
+
 	SharedPtr<SVGData> SVGCache::GetHandle(const String& source_id, const String& source, SourceType source_type, Element* element,
-		const bool crop_to_content, const BoxArea area, const ColourbPremultiplied* colour_override)
+		const bool crop_to_content, const BoxArea area, const ColourbPremultiplied* colour_override, const Vector2i* dimensions_override)
 	{
 		RenderManager* render_manager = element->GetRenderManager();
 		if (!render_manager)
 			return {};
 
-		const ComputedValues& computed = element->GetComputedValues();
-		const ColourbPremultiplied colour = colour_override ? *colour_override : computed.image_color().ToPremultiplied(computed.opacity());
-		Vector2i dimensions(element->GetBox().GetSize(area).Round());
+		// The opacity the element draws with (group opacity, phase 3: its own only when it is a leaf).
+		const ColourbPremultiplied colour = colour_override ? *colour_override : GetColour(element);
+		Vector2i dimensions = dimensions_override ? *dimensions_override : Vector2i(element->GetBox().GetSize(area).Round());
 		if (dimensions.x == 0 || dimensions.y == 0)
 			dimensions = {0, 0};
 

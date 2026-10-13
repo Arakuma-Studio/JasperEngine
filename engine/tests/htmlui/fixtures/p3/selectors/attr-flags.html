@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>selectors: attribute selectors and their i/s flags</title>
+<style>
+  html, body { margin: 0; }
+  .b { position: absolute; width: 30px; height: 30px; background-color: #c0c0c0; }
+  /* row 1: = with the i flag (data-* values are case-sensitive by default). The s flag is
+     left out: Chromium 153 does not support it and drops the rule. */
+  [data-x="abc" i] { background-color: #40a060; }
+  [data-y="ABC"] { background-color: #2060c0; }
+  [data-z="abc"] { background-color: #e02020; }
+  [data-w="AbC" I] { background-color: #a06020; }
+  #a1 { left: 10px; top: 10px; }
+  #a2 { left: 50px; top: 10px; }
+  #a3 { left: 90px; top: 10px; }
+  #a4 { left: 130px; top: 10px; }
+  #a5 { left: 170px; top: 10px; }
+  #a6 { left: 210px; top: 10px; }
+  /* row 2: |= (exact or followed by "-"); .b keeps the rule off the html element */
+  .b[lang|="en"] { background-color: #8040a0; }
+  #l1 { left: 10px; top: 50px; }
+  #l2 { left: 50px; top: 50px; }
+  #l3 { left: 90px; top: 50px; }
+  #l4 { left: 130px; top: 50px; }
+  /* row 3: ^= $= *=, with and without i */
+  [data-p^="pre"] { background-color: #c06080; }
+  [data-p$="fix"] { height: 20px; }
+  [data-p*="mid"] { background-color: #20a0a0; }
+  [data-q^="PRE" i] { background-color: #a0a020; }
+  [data-q$="END" i] { width: 20px; }
+  [data-q*="Mid"] { background-color: #e02020; }
+  #p1 { left: 10px; top: 90px; }
+  #p2 { left: 50px; top: 90px; }
+  #p3 { left: 90px; top: 90px; }
+  #p4 { left: 130px; top: 90px; }
+  #p5 { left: 170px; top: 90px; }
+  #p6 { left: 210px; top: 90px; }
+  /* row 4: presence and ~= (whitespace-separated word) */
+  [data-flag] { background-color: #606060; }
+  [data-words~="two"] { background-color: #c0a040; }
+  #f1 { left: 10px; top: 130px; }
+  #f2 { left: 50px; top: 130px; }
+  #f3 { left: 90px; top: 130px; }
+  #f4 { left: 130px; top: 130px; }
+</style>
+</head>
+<body>
+<div id="a1" class="b" data-x="abc"></div>
+<div id="a2" class="b" data-x="ABC"></div>
+<div id="a3" class="b" data-y="ABC"></div>
+<div id="a4" class="b" data-y="abc"></div>
+<div id="a5" class="b" data-z="ABC"></div>
+<div id="a6" class="b" data-w="aBc"></div>
+<div id="l1" class="b" lang="en"></div>
+<div id="l2" class="b" lang="en-us"></div>
+<div id="l3" class="b" lang="english"></div>
+<div id="l4" class="b" lang="fr-en"></div>
+<div id="p1" class="b" data-p="prefix"></div>
+<div id="p2" class="b" data-p="amidst"></div>
+<div id="p3" class="b" data-p="Prefix"></div>
+<div id="p4" class="b" data-q="prelude"></div>
+<div id="p5" class="b" data-q="the-end"></div>
+<div id="p6" class="b" data-q="a-mid-b"></div>
+<div id="f1" class="b" data-flag=""></div>
+<div id="f2" class="b" data-words="one two three"></div>
+<div id="f3" class="b" data-words="onetwo"></div>
+<div id="f4" class="b"></div>
+</body>
+</html>

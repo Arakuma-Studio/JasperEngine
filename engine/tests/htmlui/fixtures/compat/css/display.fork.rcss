@@ -47,10 +47,10 @@ display: grid;
 display: inline-grid;
 }
 #htmlui-root .contents {
-display: block;
+display: contents;
 }
 #htmlui-root .li {
-display: block;
+display: list-item;
 }
 #htmlui-root .caption {
 display: block;

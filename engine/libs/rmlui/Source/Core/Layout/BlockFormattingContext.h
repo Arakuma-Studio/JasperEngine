@@ -2,6 +2,7 @@
 
 #include "../../../Include/RmlUi/Core/Types.h"
 #include "FormattingContext.h"
+#include "LayoutDetails.h"
 
 namespace Rml {
 
@@ -35,7 +36,11 @@ private:
 
 	// Determine how to format a child element of a block container, and format it accordingly, possibly including any children.
 	// @return False if the box caused an automatic vertical scrollbar to appear in the block formatting context root, forcing it to be reformatted.
-	static bool FormatBlockContainerChild(BlockContainer* parent_container, Element* element);
+	// @param[in] siblings The layout children of the container (LayoutDetails::GetLayoutChildren).
+	// @param[in] index The child to format.
+	static bool FormatBlockContainerChild(BlockContainer* parent_container, const LayoutChildList& siblings, size_t index);
+	// Format the layout children of an element (LayoutDetails::GetLayoutChildren) in the given container.
+	static bool FormatChildren(BlockContainer* container, Element* element);
 };
 
 } // namespace Rml

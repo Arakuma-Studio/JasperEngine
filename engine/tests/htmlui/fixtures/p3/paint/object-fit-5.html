@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: object-fit</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  img { position: absolute; top: 20px; width: 96px; height: 96px; background-color: #dde6f5; image-rendering: pixelated; }
+  #fill { left: 10px; object-fit: fill; }
+  #contain { left: 120px; object-fit: contain; }
+  #cover { left: 230px; object-fit: cover; }
+  #none { left: 340px; object-fit: none; }
+  #scale-down { left: 450px; object-fit: scale-down; }
+  #cover-wide { left: 10px; top: 140px; width: 200px; height: 40px; object-fit: cover; }
+  #contain-wide { left: 230px; top: 140px; width: 200px; height: 40px; object-fit: contain; }
+  #scale-down-small { left: 450px; top: 140px; width: 30px; height: 30px; object-fit: scale-down; }
+</style>
+</head>
+<body><img id="fill" src="img/quad.png"><img id="contain" src="img/quad.png"><img id="cover" src="img/quad.png"><img id="none" src="img/quad.png"><img id="scale-down" src="img/quad.png"><img id="cover-wide" src="img/quad.png"><img id="contain-wide" src="img/quad.png"><img id="scale-down-small" src="img/quad.png"></body>
+</html>

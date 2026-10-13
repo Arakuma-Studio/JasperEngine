@@ -80,10 +80,11 @@ namespace {
         {RewriteId::Content, rewriteContent},
         {RewriteId::All, rewriteAll},
         {RewriteId::LineClamp, rewriteLineClamp},
+        {RewriteId::UserSelect, rewriteUserSelect},
     };
 
     const VarFamily* const kFamilies[] = {
-        &kDecoratorFamily, &kMaskFamily, &kFontEffectFamily, &kTransitionFamily, &kAnimationFamily, &kFontFamilyFamily,
+        &kDecoratorFamily, &kNativeLayersFamily, &kMaskFamily, &kFontEffectFamily, &kTransitionFamily, &kAnimationFamily, &kFontFamilyFamily,
         &kFilterFamily, &kEasingFamily,
     };
 
@@ -378,6 +379,22 @@ namespace {
 bool props::isColor(Session& session, const ComponentValue& value){
     if (value.isToken(TokenType::Hash))
         return true;
+    // kept by the normalizer where the fork resolves it (ForkFeature::CurrentColor)
+    if (value.isToken(TokenType::Ident) && equalsNoCase(value.token.value, "currentcolor"))
+        return session.options.fork.has(ForkFeature::CurrentColor);
+    // ... a color function with a var() the normalizer kept for the fork (ForkFeature::ColorFunctions)
+    if (value.kind == ComponentValue::Kind::Function && session.options.fork.has(ForkFeature::ColorFunctions) &&
+        ValueNormalizer::isRuntimeColorFunction(value)){
+        ColorParseInfo info;
+        if (!ColorValue::parse(value, info, ColorContext()) && info.dynamicVar && !info.relative && !info.lightDark)
+            return true;
+    }
+    // ... and a color-mix() with a currentcolor operand, which the fork resolves as it
+    if (value.kind == ComponentValue::Kind::Function && equalsNoCase(value.name(), "color-mix")){
+        ColorParseInfo info;
+        return session.options.fork.has(ForkFeature::CurrentColor) && !ColorValue::parse(value, info, ColorContext()) &&
+               info.currentColorMix && !info.dynamicVar;
+    }
     if (isVar(value))
         return varKind(session, value) == "color";
     return false;

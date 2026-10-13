@@ -1,0 +1,44 @@
+{
+ "fixture": "paint/filter-overflow.html",
+ "viewport": [
+  320,
+  230
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "blur",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 80,
+    "h": 50
+   },
+   {
+    "id": "bright",
+    "tag": "div",
+    "x": 180,
+    "y": 20,
+    "w": 80,
+    "h": 50
+   },
+   {
+    "id": "op",
+    "tag": "div",
+    "x": 20,
+    "y": 130,
+    "w": 80,
+    "h": 50
+   },
+   {
+    "id": "both",
+    "tag": "div",
+    "x": 180,
+    "y": 130,
+    "w": 80,
+    "h": 50
+   }
+  ]
+ }
+}

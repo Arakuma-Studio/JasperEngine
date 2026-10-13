@@ -24,7 +24,7 @@ InlineContainer::InlineContainer(BlockContainer* _parent, float _available_width
 
 	const auto& computed = parent->GetElement()->GetComputedValues();
 	element_line_height = computed.line_height().value;
-	wrap_content = (computed.white_space() != Style::WhiteSpace::Nowrap);
+	wrap_content = (computed.text_wrap_mode() == Style::TextWrapMode::Wrap);
 	text_align = computed.text_align();
 }
 
@@ -242,6 +242,16 @@ bool InlineContainer::GetBaselineOfLastLine(float& out_baseline) const
 	if (!line_boxes.empty())
 	{
 		out_baseline = line_boxes.back()->GetPosition().y + line_boxes.back()->GetBaseline();
+		return true;
+	}
+	return false;
+}
+
+bool InlineContainer::GetBaselineOfFirstLine(float& out_baseline) const
+{
+	if (!line_boxes.empty())
+	{
+		out_baseline = line_boxes.front()->GetPosition().y + line_boxes.front()->GetBaseline();
 		return true;
 	}
 	return false;

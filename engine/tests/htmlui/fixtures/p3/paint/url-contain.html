@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: background-size: contain and lengths</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; width: 100px; height: 70px; }
+  #b1 { left: 10px; top: 10px; }
+  #b2 { left: 120px; top: 10px; }
+  #b3 { left: 230px; top: 10px; }
+  #b4 { left: 340px; top: 10px; }
+  #b5 { left: 10px; top: 90px; }
+  #b6 { left: 120px; top: 90px; }
+  #b7 { left: 230px; top: 90px; }
+  #b8 { left: 340px; top: 90px; }
+  .b { background-image: url(img/quad.png); background-repeat: no-repeat; background-color: #dde6f5; }
+  #b1 { background-size: contain; }
+  #b2 { background-size: contain; background-position: center; }
+  #b3 { background-size: contain; background-repeat: repeat; }
+  #b4 { background-size: 50%; }
+  #b5 { background-size: auto 35px; }
+  #b6 { background-size: 30px 30px; background-repeat: repeat; }
+  #b7 { background-size: 25% auto; background-repeat: repeat-x; }
+  #b8 { background-size: 96px 48px; background-position: center; }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div><div class="b" id="b4"></div><div class="b" id="b5"></div><div class="b" id="b6"></div><div class="b" id="b7"></div><div class="b" id="b8"></div></body>
+</html>

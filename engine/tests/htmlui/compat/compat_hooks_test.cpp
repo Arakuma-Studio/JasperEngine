@@ -102,6 +102,15 @@ TEST(CompatTextureHook, StripTextureFilter){
     EXPECT_TRUE(nearest);
     EXPECT_EQ(RmlRenderer::stripTextureFilter("ui/a.png?v=3", nearest), "ui/a.png?v=3");
     EXPECT_FALSE(nearest);
+
+    // the fork's repeat wrap of background and mask images (phase 3, p3-paint)
+    bool repeatX = false, repeatY = false;
+    EXPECT_EQ(RmlRenderer::stripTextureFilter("ui/a.png?rmlui-wrap=repeat", nearest, repeatX, repeatY), "ui/a.png");
+    EXPECT_TRUE(repeatX && repeatY);
+    EXPECT_EQ(RmlRenderer::stripTextureFilter("ui/a.png?htmlui-filter=nearest&rmlui-wrap=repeat-x", nearest, repeatX, repeatY), "ui/a.png");
+    EXPECT_TRUE(nearest && repeatX && !repeatY);
+    EXPECT_EQ(RmlRenderer::stripTextureFilter("ui/a.png?v=3&rmlui-wrap=repeat-y", nearest, repeatX, repeatY), "ui/a.png?v=3");
+    EXPECT_TRUE(!nearest && !repeatX && repeatY);
 }
 
 TEST(CompatTextureHook, VirtualFilesAndNearestSampling){

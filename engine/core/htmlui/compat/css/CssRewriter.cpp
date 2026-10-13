@@ -33,6 +33,7 @@
 #include "htmlui/compat/css/props/Rewriters.h"
 
 #include <algorithm>
+#include <functional>
 #include <atomic>
 #include <array>
 #include <map>
@@ -290,8 +291,18 @@ std::optional<TypedVar> Session::typedVar(const ComponentValue& var, const std::
             return std::nullopt;
         kind = k;
     }
-    // a declaration that itself references a variable cannot be written in another kind
-    if (const std::vector<CustomPropertyIndex::Entry>* entries = vars.find(name)){
+    // a declaration that itself references a variable cannot be written in another kind; background layers without
+    // a url() are written as declared (only their urls are rewritten), whatever variables they reference
+    std::function<bool(const ValueList&)> hasUrl = [&hasUrl](const ValueList& value){
+        for (const ComponentValue& v : value){
+            if (v.isToken(TokenType::Url) || v.isFunction("url") || v.isFunction("src") || v.isFunction("image-set") ||
+                v.isFunction("-webkit-image-set") || hasUrl(v.children))
+                return true;
+        }
+        return false;
+    };
+    const bool asDeclared = (kind == "layers" && std::none_of(values.begin(), values.end(), hasUrl));
+    if (const std::vector<CustomPropertyIndex::Entry>* entries = asDeclared ? nullptr : vars.find(name)){
         for (const CustomPropertyIndex::Entry& entry : *entries){
             std::vector<std::string> nested;
             CustomPropertyIndex::referencedVariables(entry.value, nested);
@@ -371,6 +382,7 @@ namespace {
         std::string layerName;                  // dotted name of the enclosing layer
         const SelectorList* parents = nullptr;
         std::vector<uint32_t> importChain;
+        bool startingStyle = false;             // inside @starting-style (AnimationLonghands)
     };
 
     int registerLayer(Session& session, const std::string& name){
@@ -433,6 +445,7 @@ namespace {
         rule.media = scope.media;
         rule.declarations = std::move(declarations);
         rule.layer = scope.layer;
+        rule.startingStyle = scope.startingStyle;
         rule.order = session.nextOrder++;
         session.sheets[scope.sheet].push_back(SheetItem{false, rule.index});
     }
@@ -457,6 +470,7 @@ namespace {
         rule.media = scope.media;
         rule.declarations = std::move(source.declarations);
         rule.layer = scope.layer;
+        rule.startingStyle = scope.startingStyle;
         rule.order = session.nextOrder++;
         session.sheets[scope.sheet].push_back(SheetItem{false, rule.index});
     }
@@ -650,6 +664,15 @@ namespace {
                 flatten(session, rule.rules, inner, false);
                 continue;
             }
+            if (name == "starting-style" && session.options.fork.has(ForkFeature::AnimationLonghands)){
+                // the fork reads @starting-style (phase 3): its rules are written inside one
+                FlattenScope inner = scope;
+                inner.startingStyle = true;
+                if (scope.parents && !rule.declarations.empty())
+                    addRule(session, inner, *scope.parents, rule.declarations, rule.ref, rule.preludeRef);
+                flatten(session, rule.rules, inner, false);
+                continue;
+            }
             if (name == "supports"){
                 if (!AtRules::evaluateSupports(session, rule))
                     continue;
@@ -778,6 +801,10 @@ namespace {
         return name == "background" || name.compare(0, 11, "background-") == 0;
     }
 
+    bool isOverflowProperty(std::string_view name){
+        return name == "overflow" || name == "overflow-x" || name == "overflow-y";
+    }
+
     void prePass(Session& session, const std::vector<DeclarationList>& styleAttributes){
         // selectors (a scanned list was rewritten when it was read)
         for (FlatRule& rule : session.rules){
@@ -838,7 +865,13 @@ namespace {
                             name = name.substr(p.size());
                     }
                 }
-                const std::string_view family = varFamilyOf(name);
+                // (a native text-shadow reads the variable as it is: no font-effect copy; the fork's background and mask
+                // layers read it as the CSS value, its url()s resolved: phase 3 p3-paint)
+                const bool nativeLayers = session.options.fork.has(ForkFeature::BackgroundLayers) &&
+                                          (name == "background" || name == "background-image" || name == "mask" || name == "mask-image");
+                const std::string_view family = (name == "text-shadow" && session.options.fork.has(ForkFeature::TextShadow))
+                                                    ? std::string_view()
+                                                    : (nativeLayers ? std::string_view("native-layers") : varFamilyOf(name));
                 const ComponentValue* sole = soleValue(d.value);
                 const bool whole = sole && sole->isFunction("var");
                 const bool timing = name == "transition" || name == "animation" || name == "transition-timing-function" ||
@@ -863,21 +896,24 @@ namespace {
                 }
                 if (startsWith(name, "border-image") && !hasIdent(d.value, "none"))
                     session.usesBorderImage = true;
-                if (name == "text-shadow" && !hasIdent(d.value, "none"))
+                // (a native text-shadow and a text stroke's font effect do not share the font-effect list)
+                if (name == "text-shadow" && !hasIdent(d.value, "none") && !session.options.fork.has(ForkFeature::TextShadow))
                     session.usesTextShadow = true;
                 if (startsWith(name, "-webkit-text-stroke"))
                     session.usesTextStroke = true;
                 // (keywordOf(d.value) == "inherit")
                 if (sole && sole->isToken(TokenType::Ident) && equalsNoCase(sole->token.value, "inherit") &&
                     !session.options.fork.has(ForkFeature::CssWideKeywords)){
-                    for (const std::string& p : CascadeKeywords::outputProperties(name)){
+                    for (const std::string& p : CascadeKeywords::outputProperties(name, session.options.fork)){
                         const PropertySupport* row = session.facts(name).row;
                         const bool inherited = row ? row->inherited : CascadeKeywords::inherited(p);
                         if (!inherited && !CascadeKeywords::inherited(p))
                             session.inheritCompanions.insert(p);
                     }
                 }
-                if ((name == "animation" || name == "animation-direction") && (hasIdent(d.value, "reverse") || hasIdent(d.value, "alternate-reverse"))){
+                // mirrored keyframes for the reverse directions, unless the fork plays them (AnimationLonghands)
+                if ((name == "animation" || name == "animation-direction") && !session.options.fork.has(ForkFeature::AnimationLonghands) &&
+                    (hasIdent(d.value, "reverse") || hasIdent(d.value, "alternate-reverse"))){
                     std::vector<std::string> names = name == "animation" ? animationNames("animation", d.value) : std::vector<std::string>();
                     if (names.empty() && rule){
                         names = ruleAnimationNames(*rule);
@@ -931,7 +967,30 @@ namespace {
                 if (isBodyRule(rule))
                     bodyBackground = true;
             }
-            session.propagateBodyBackground = bodyBackground && !rootBackground;
+            // (the fork propagates it itself, at run time: ElementDocument::SetCanvasBackground)
+            session.propagateBodyBackground = bodyBackground && !rootBackground && !session.options.fork.has(ForkFeature::BackgroundLayers);
+        }
+
+        // overflow propagation (CSS Overflow 3 §3.3, phase 3 §3.11.3): with the root's overflow visible, the body's
+        // is the viewport's (our root's, the document being the viewport's scroll container) and the body's is visible
+        {
+            bool rootOverflow = false, bodyOverflow = false;
+            for (const FlatRule& rule : session.rules){
+                if (rule.dropped || rule.origin != RuleOrigin::Author || rule.scanned)
+                    continue;
+                bool overflow = false;
+                for (const Declaration& d : rule.declarations)
+                    overflow = overflow || isOverflowProperty(d.name);
+                if (!overflow)
+                    continue;
+                for (const ComplexSelector& s : rule.selectors()){
+                    if (SelectorRewriter::isRootRule(s, session.selectorOptions))
+                        rootOverflow = true;
+                }
+                if (isBodyRule(rule))
+                    bodyOverflow = true;
+            }
+            session.propagateBodyOverflow = bodyOverflow && !rootOverflow;
         }
 
         // the root font size (rem, root em) from static root rules
@@ -1064,28 +1123,34 @@ namespace {
         return walk(values);
     }
 
+    // a declaration written with the fork's own !important (ForkFeature::Important: the flag is
+    // part of the value text)
+    inline bool writtenImportant(const OutDecl& declaration){
+        constexpr std::string_view suffix = " !important";
+        const std::string_view value = declaration.value.view();
+        return value.size() > suffix.size() && value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+    }
+
+    // does `later` (after `earlier` in the same rule) replace it? The last declaration of a
+    // property wins, but a normal one never replaces an important one
+    inline bool replaces(const OutDecl& later, const OutDecl& earlier){
+        return later.name == earlier.name && (!writtenImportant(earlier) || writtenImportant(later));
+    }
+
     // the declarations that take effect: in one rule the last declaration of a property wins,
-    // so earlier ones are not written
+    // so earlier ones are not written (an important one stays before a later normal one; the
+    // fork keeps it)
     std::vector<const OutDecl*> effective(const ArenaList<OutDecl>& declarations){
         std::vector<const OutDecl*> out;
         out.reserve(declarations.size());
-        if (declarations.size() <= 32){
-            // a rule's few declarations: a later one of the same name is found by a scan
-            for (size_t i = 0; i < declarations.size(); i++){
-                bool later = false;
-                for (size_t j = i + 1; j < declarations.size() && !later; j++)
-                    later = declarations[j].name == declarations[i].name;
-                if (!later)
-                    out.push_back(&declarations[i]);
-            }
-            return out;
-        }
-        std::set<std::string> seen;
-        for (size_t i = declarations.size(); i-- > 0;){
-            if (seen.insert(declarations[i].name).second)
+        // a rule's declarations: a later one of the same name is found by a scan
+        for (size_t i = 0; i < declarations.size(); i++){
+            bool later = false;
+            for (size_t j = i + 1; j < declarations.size() && !later; j++)
+                later = replaces(declarations[j], declarations[i]);
+            if (!later)
                 out.push_back(&declarations[i]);
         }
-        std::reverse(out.begin(), out.end());
         return out;
     }
 
@@ -1098,7 +1163,7 @@ namespace {
             for (size_t i = 0; i < declarations.size(); i++){
                 bool later = false;
                 for (size_t j = i + 1; j < declarations.size() && !later; j++)
-                    later = declarations[j].name == declarations[i].name;
+                    later = replaces(declarations[j], declarations[i]);
                 if (!later)
                     writer.declaration(declarations[i].name, declarations[i].value, declarations[i].ref);
             }
@@ -1144,10 +1209,10 @@ namespace {
         processDeclarations(session, &rule, rule.origin, false, rule.declarations, output);
 
         // !important and vmin/vmax declarations are written apart: without any (the usual
-        // case) the output is the rule's block as it is
+        // case) the output is the rule's block as it is (vmin/vmax the fork computes stay)
         bool apart = false;
         for (const OutDecl& d : output.declarations)
-            apart = apart || d.important || (rule.origin != RuleOrigin::StyleAttribute && hasViewportOrientation(d.value));
+            apart = apart || d.important || (rule.origin != RuleOrigin::StyleAttribute && !d.nativeUnits && hasViewportOrientation(d.value));
         ArenaList<OutDecl> rest, vmin;
         if (apart){
             Session::ImportantRule important;
@@ -1158,7 +1223,7 @@ namespace {
                     important.declarations.push_back(std::move(d));
                     continue;
                 }
-                if (rule.origin != RuleOrigin::StyleAttribute && hasViewportOrientation(d.value))
+                if (rule.origin != RuleOrigin::StyleAttribute && !d.nativeUnits && hasViewportOrientation(d.value))
                     vmin.push_back(std::move(d));
                 else
                     rest.push_back(std::move(d));
@@ -1216,18 +1281,32 @@ namespace {
                 d.value = d.name == "background-color" ? "transparent" : d.name == "decorator" ? "none" : "linear-gradient(#0000, #0000)";
             }
         }
+        // the body's overflow on the root (the viewport), the body itself visible (phase 3 §3.11.3)
+        if (session.propagateBodyOverflow && rule.origin == RuleOrigin::Author && isBodyRule(rule)){
+            for (OutDecl& d : normal){
+                if (!isOverflowProperty(d.name))
+                    continue;
+                rootBackground.push_back(d);
+                d.value = "visible";
+            }
+        }
 
         bool any = !normal.empty() || !placeholderDeclarations.empty();
         for (const GeneratedRule& generated : output.generated)
             any = any || !generated.declarations.empty();
         if (any)
         writeUnderMedia(writer, rule.media, rule.ref, [&](){
+            // (a rule of @starting-style is written inside one: AnimationLonghands)
+            if (rule.startingStyle)
+                writer.atRule("@starting-style {", rule.ref);
             if (!rootBackground.empty())
                 writeBlock(writer, "body#htmlui-root", rootBackground, rule.ref);
             writeBlock(writer, plainText, normal, rule.ref);
             writeBlock(writer, placeholderText, placeholderDeclarations, rule.ref);
             for (const GeneratedRule& generated : output.generated)
                 writeBlock(writer, plainWith(generated.suffix), generated.declarations, rule.ref);
+            if (rule.startingStyle)
+                writer.atRule("}", rule.ref);
         });
 
         if (!vmin.empty()){
@@ -1335,6 +1414,47 @@ namespace {
         return note && std::strstr(note, "(Info)") != nullptr;
     }
 
+    // The rewrites that write the declared value as it is (keywords mapped, the value checked
+    // against RmlUi's grammar), so a calc()/min()/max()/clamp() the fork evaluates can stay in
+    // it (ForkFeature::Calc). The others read their value token by token or write it into
+    // compat decorator arguments: math functions are folded for them in every fork state.
+    // The rewrites that write a color value as it is into an RmlUi property whose colour parser
+    // takes 'currentcolor' (ForkFeature::CurrentColor): the keyword stays for the fork to resolve.
+    // The others write colors into compat decorator arguments, font effects, filters or
+    // companions read elsewhere: the current-color companion stays there in every fork state.
+    bool writesCurrentColorNatively(RewriteId rewrite){
+        return rewrite == RewriteId::ColorValue || rewrite == RewriteId::Border;
+    }
+
+    bool writesCalcNatively(RewriteId rewrite){
+        switch (rewrite){
+            case RewriteId::None:
+            case RewriteId::Sizing:
+            case RewriteId::Gap:
+            case RewriteId::FontSize:
+            case RewriteId::LineHeight:
+            case RewriteId::ZIndex:
+            case RewriteId::Opacity:
+            // (p3-values: the fork's parsers take them there too; a logical property's value goes to
+            // its physical properties as written)
+            case RewriteId::LogicalBox:
+            case RewriteId::FontWeight:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    // The fork reads currentcolor itself in these values (p3-text: text-shadow, text-decoration-color):
+    // the keyword is kept instead of the rule's static color.
+    bool keepsCurrentColorKeyword(const Session& session, const PropertySupport& row){
+        if (row.rewrite == RewriteId::TextShadow)
+            return session.options.fork.has(ForkFeature::TextShadow);
+        if (row.rewrite == RewriteId::TextDecoration)
+            return session.options.fork.has(ForkFeature::TextProperties);
+        return false;
+    }
+
     // what the normalizer may read of the rule for a value (see processOne)
     struct ValueNeeds {
         bool staticColor = false;   // a currentcolor ident or a var()
@@ -1402,6 +1522,10 @@ namespace {
                 }
                 if (onlyListItem)
                     severity = Severity::Info;
+                // the user-agent sheet's list-item counter (for the fork's markers): the li
+                // emulation numbers the items without it
+                if (onlyListItem && origin == RuleOrigin::UserAgent)
+                    return done;
             }
             session.sink->reportAs(severity, codes::UnsupportedProperty, d.ref, "'" + name + "' is not supported; dropped", suggestion,
                                    std::string(), name);
@@ -1425,11 +1549,17 @@ namespace {
             }
         } valueStorage{context};
 
+        // the value kept the units the fork computes (ForkFeature::ExtraUnits)
+        bool nativeUnits = false;
         // the color property's own currentColor is `inherit`
         const ComponentValue* sole = soleValue(d.value);
         const std::string keyword = name != "all" ? CascadeKeywords::keywordOf(d.value) : std::string();
         if (name == "color" && sole && sole->isToken(TokenType::Ident) && equalsNoCase(sole->token.value, "currentcolor")){
-            context.emit("color", std::string("var(") + companions::kUnset + ")");
+            // the parent's color: the fork's own meaning of it (ForkFeature::CurrentColor), else `inherit`
+            if (session.options.fork.has(ForkFeature::CurrentColor))
+                context.emit("color", "currentcolor");
+            else
+                context.emit("color", std::string("var(") + companions::kUnset + ")");
         }else if (!keyword.empty()){
             // 5. CSS-wide keywords
             CascadeKeywords::apply(context, keyword);
@@ -1437,9 +1567,38 @@ namespace {
             // 4. value normalization
             NormalizeContext normalize;
             normalize.colors = facts.colorKeywords;
-            normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint;
+            // (the fork's outline-color takes currentcolor too: ForkFeature::Outline, p3-paint)
+            // (and the fork's layers resolve currentcolor in gradient stops where they are drawn: ForkFeature::BackgroundLayers)
+            // (box-shadow reaches the fork's box-shadow through compat's companions, substituted on the element:
+            // its currentcolor is the element's)
+            const bool nativeColorRewrite = writesCurrentColorNatively(row->rewrite) || row->rewrite == RewriteId::BoxShadow ||
+                                            (row->rewrite == RewriteId::Outline && session.options.fork.has(ForkFeature::Outline)) ||
+                                            ((row->rewrite == RewriteId::Background || row->rewrite == RewriteId::BackgroundLonghand ||
+                                              row->rewrite == RewriteId::MaskImage) &&
+                                             session.options.fork.has(ForkFeature::BackgroundLayers));
+            normalize.keepCurrentColorKeyword = row->rewrite == RewriteId::SvgPaint || keepsCurrentColorKeyword(session, *row) ||
+                                                (session.options.fork.has(ForkFeature::CurrentColor) && nativeColorRewrite);
+            normalize.currentColorMixNative = session.options.fork.has(ForkFeature::CurrentColor) &&
+                                              (nativeColorRewrite || keepsCurrentColorKeyword(session, *row));
+            // (box-shadow reaches the fork through compat's companions, which it substitutes; filter as written)
+            normalize.colorFunctionsNative = session.options.fork.has(ForkFeature::ColorFunctions) &&
+                                             (nativeColorRewrite || keepsCurrentColorKeyword(session, *row) ||
+                                              row->rewrite == RewriteId::BoxShadow || row->rewrite == RewriteId::Filter);
             // a style attribute or a keyframe cannot be duplicated per orientation: vmin/vmax evaluated
             normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
+            // math functions the fork evaluates stay in the properties written as they are read
+            // (not in the families a rewrite reads token by token or into decorator arguments)
+            normalize.calcNative = writesCalcNatively(row->rewrite) ||
+                (row->rewrite == RewriteId::Grid && session.options.fork.has(ForkFeature::Grid)) ||
+                // translate / rotate / scale written as they are: the fork reads them with its transform parser
+                (row->rewrite == RewriteId::IndividualTransform && session.options.fork.has(ForkFeature::IndividualTransforms));
+            normalize.unitsNative = normalize.calcNative;
+            // 'translate' combined into transform (no IndividualTransforms): a sum stays for the
+            // rewrite to write as one translation per term
+            normalize.lengthSums = row->rewrite == RewriteId::IndividualTransform && name == "translate" &&
+                                   !session.options.fork.has(ForkFeature::IndividualTransforms);
+            nativeUnits = normalize.unitsNative && session.options.fork.has(ForkFeature::ExtraUnits);
+            normalize.attrNative = row->rewrite == RewriteId::Content && session.options.fork.has(ForkFeature::PseudoElements);
             normalize.percentBasis = facts.percentBasis;
             normalize.vertical = facts.vertical;
             normalize.options = &session.options;
@@ -1490,7 +1649,7 @@ namespace {
             // 6. the property rewrite
             if (name == "transform" && rule)
                 session.memoTaint++;
-            if (name == "transform" && rule && ruleHasIndividualTransform(*rule)){
+            if (name == "transform" && rule && ruleHasIndividualTransform(*rule) && !session.options.fork.has(ForkFeature::IndividualTransforms)){
                 // written with translate / rotate / scale (Transform.cpp)
             }else if (row->rewrite != RewriteId::None){
                 if (RewriteFunction function = findRewrite(row->rewrite))
@@ -1531,7 +1690,7 @@ namespace {
                     context.reportAs(Severity::Warning, codes::UnsupportedProperty, "'" + name + "' is not supported by the engine; dropped", row->suggestion);
                     return done;
                 }
-                if (!RcssGrammar::accepts(name, text)){
+                if (!RcssGrammar::accepts(name, text, session.options.fork)){
                     std::string suggestion;
                     const std::string keywords = RcssGrammar::keywords(name);
                     if (!keywords.empty())
@@ -1553,6 +1712,7 @@ namespace {
             if (out.final)
                 continue;
             out.final = true;
+            out.nativeUnits = nativeUnits;
             if (d.important){
                 if (keyframe){
                     out.important = false;
@@ -1568,7 +1728,8 @@ namespace {
             if (keyframe)
                 continue;
             const bool keyword = CascadeKeywords::isKeywordText(out.value);
-            if (out.name == "color" && !startsWith(out.value, "var(") && !keyword)
+            // (a `color: currentcolor` the fork resolves is the parent's: the inherited companion stays right)
+            if (out.name == "color" && !startsWith(out.value, "var(") && !keyword && out.value.view() != "currentcolor")
                 extra.push_back(OutDecl{companions::kCurrentColor, out.value, out.ref, out.important, false, true});
             // (nothing to add when no rule reads a property with `inherit`)
             if (!session.inheritCompanions.empty() && !keyword && out.value.find("--html-inh-") == std::string::npos){
@@ -1641,6 +1802,7 @@ namespace {
             const OutDecl& a = check.declarations[i];
             const OutDecl& b = session.memoOutput[entry.first + i];
             same = a.name == b.name && a.value == b.value && a.important == b.important && a.vmin == b.vmin && a.final == b.final &&
+                   a.nativeUnits == b.nativeUnits &&
                    sameRef(a.ref, d.ref);
         }
         for (size_t i = 0; same && i < entry.fontCount; i++)
@@ -1664,6 +1826,8 @@ namespace {
             NormalizeContext context;
             context.customProperty = true;
             context.options = &session.options;
+            // RmlUi substitutes the written value where it is used (the index keeps a folded copy)
+            context.calcNative = true;
             context.inlineStyle = origin == RuleOrigin::StyleAttribute;
             context.report = [&](DiagCode code, Severity severity, const std::string& message, const std::string& suggestion){
                 session.sink->reportAs(severity, code, d.ref, message, suggestion, std::string(), d.name);
@@ -1730,10 +1894,15 @@ namespace {
             }
             if (text.empty())
                 text = " ";
+            // the fork's own !important (ForkFeature::Important) also weighs custom properties;
+            // without it an important custom property is a normal one, as in phase 2
+            const bool important = d.important && !keyframe && session.options.fork.has(ForkFeature::Important);
+            if (important)
+                text += " !important";
             OutDecl out{d.name, text, d.ref, false, false};
             output.declarations.push_back(out);
             for (const auto& copy : copies)
-                output.declarations.push_back(OutDecl{copy.first, copy.second, d.ref, false, false});
+                output.declarations.push_back(OutDecl{copy.first, important ? copy.second + " !important" : copy.second, d.ref, false, false});
             return;
         }
 
@@ -1806,7 +1975,8 @@ namespace {
         if (d.important && rule && !keyframe && origin == RuleOrigin::Author && !session.options.fork.has(ForkFeature::Important) &&
             output.declarations.size() > first)
             importantConflicts(session, *rule, output.declarations[first], name, d.ref);
-        if (d.important && origin == RuleOrigin::StyleAttribute){
+        // (with the fork's Important the cascade is CSS's: nothing to report)
+        if (d.important && origin == RuleOrigin::StyleAttribute && !session.options.fork.has(ForkFeature::Important)){
             const auto it = session.propertyRulesIndex().find(name);
             if (it != session.propertyRules.end()){
                 for (const Session::PropertyUse& use : it->second){

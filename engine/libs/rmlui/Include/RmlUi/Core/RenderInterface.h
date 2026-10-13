@@ -15,6 +15,7 @@ enum class ClipMaskOperation {
 enum class BlendMode {
 	Blend,   // Normal alpha blending.
 	Replace, // Replace the destination colors from the source.
+	Plus,    // Add the source to the destination (premultiplied, CSS 'plus-lighter'): cross-fade().
 };
 
 /**
@@ -60,6 +61,17 @@ public:
 	/// Called by RmlUi when a loaded or generated texture is no longer required.
 	/// @param[in] texture The texture handle to release.
 	virtual void ReleaseTexture(TextureHandle texture) = 0;
+
+	/// Fork (phase 3, p3-paint): true when LoadTexture understands a source whose query ends in the parameter
+	/// 'rmlui-wrap=repeat', '=repeat-x' or '=repeat-y': it strips the parameter and samples that texture with repeat wrap
+	/// along those axes (clamped along the other). Background and mask images repeated along an axis are then drawn as one
+	/// quad, filtered across the seams of their tiles as browsers do; without it they are drawn tile by tile.
+	virtual bool SupportsTextureWrapHint();
+	/// Fork (phase 3, p3-integration): GenerateTexture for a texture sampled with repeat wrap along the axes asked for
+	/// (clamped along the others), when SupportsTextureWrapHint() is true: an image the application renders at the size of
+	/// a background tile (an SVG) repeats as one quad, as LoadTexture's 'rmlui-wrap' textures. By default the texture of
+	/// GenerateTexture (clamped).
+	virtual TextureHandle GenerateTextureWithWrap(Span<const byte> source, Vector2i source_dimensions, bool repeat_x, bool repeat_y);
 
 	/// Called by RmlUi when it wants to enable or disable scissoring to clip content.
 	/// @param[in] enable True to enable scissoring, false to disable it.
@@ -110,6 +122,13 @@ public:
 	/// @return An application-specified handle to the new texture.
 	/// @note The texture should be extracted using the bounds defined by the active scissor region, thereby matching its size.
 	virtual TextureHandle SaveLayerAsTexture();
+	/// Fork: called by RmlUi when it wants to store the current layer as one part (tile) of a texture larger than the
+	/// render target, e.g. a box shadow larger than the window: the active scissor region of the layer is copied to
+	/// 'destination_offset' in 'texture'. With a zero 'texture', a transparent texture of 'texture_dimensions' is made
+	/// first and returned; the later tiles go into it.
+	/// @return The texture written to, or zero when not supported (the default): the caller then saves the layer with
+	/// SaveLayerAsTexture, cut by the render target.
+	virtual TextureHandle SaveLayerIntoTexture(TextureHandle texture, Vector2i texture_dimensions, Vector2i destination_offset);
 
 	/// Called by RmlUi when it wants to store the current layer as a mask image, to be applied later as a filter.
 	/// @return An application-specified handle to a new filter representing the stored mask image.

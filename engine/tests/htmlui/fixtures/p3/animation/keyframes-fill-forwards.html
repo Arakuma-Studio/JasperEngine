@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>animation: animation-fill-mode forwards</title>
+<style>
+  html, body { margin: 0; }
+  @keyframes grow { from { width: 40px; background-color: #208020; } to { width: 300px; background-color: #2050d0; } }
+  div { position: absolute; left: 20px; width: 100px; height: 30px; background-color: #999999; }
+  #forwards { top: 20px; animation: grow 0.5s linear forwards; }
+  #none { top: 60px; animation: grow 0.5s linear; }
+  #both { top: 100px; animation: grow 0.5s ease-out both; }
+  #count { top: 140px; animation: grow 0.4s linear 2.5 forwards; }
+</style>
+</head>
+<body>
+<div id="forwards"></div><div id="none"></div><div id="both"></div><div id="count"></div>
+</body>
+</html>

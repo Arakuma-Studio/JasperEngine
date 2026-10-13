@@ -1,0 +1,44 @@
+{
+ "fixture": "grid/flex-in-grid.html",
+ "viewport": [
+  300,
+  120
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "g",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 300,
+    "h": 120
+   },
+   {
+    "id": "row",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 100,
+    "h": 45
+   },
+   {
+    "id": "wrap",
+    "tag": "div",
+    "x": 105,
+    "y": 0,
+    "w": 195,
+    "h": 45
+   },
+   {
+    "id": "col",
+    "tag": "div",
+    "x": 0,
+    "y": 50,
+    "w": 100,
+    "h": 70
+   }
+  ]
+ }
+}

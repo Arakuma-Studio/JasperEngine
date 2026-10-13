@@ -1,0 +1,67 @@
+{
+ "fixture": "animation/cubic-bezier-overshoot.html",
+ "viewport": [
+  400,
+  120
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "under": [
+   {
+    "id": "width",
+    "tag": "div",
+    "x": 100,
+    "y": 20,
+    "w": 90.71875,
+    "h": 30
+   },
+   {
+    "id": "move",
+    "tag": "div",
+    "x": 86.09474182128906,
+    "y": 70,
+    "w": 40,
+    "h": 30,
+    "transformed": true
+   }
+  ],
+  "over": [
+   {
+    "id": "width",
+    "tag": "div",
+    "x": 100,
+    "y": 20,
+    "w": 209.203125,
+    "h": 30
+   },
+   {
+    "id": "move",
+    "tag": "div",
+    "x": 263.8135681152344,
+    "y": 70,
+    "w": 40,
+    "h": 30,
+    "transformed": true
+   }
+  ],
+  "end": [
+   {
+    "id": "width",
+    "tag": "div",
+    "x": 100,
+    "y": 20,
+    "w": 200,
+    "h": 30
+   },
+   {
+    "id": "move",
+    "tag": "div",
+    "x": 250,
+    "y": 70,
+    "w": 40,
+    "h": 30,
+    "transformed": true
+   }
+  ]
+ }
+}

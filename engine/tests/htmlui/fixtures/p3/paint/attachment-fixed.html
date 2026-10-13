@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: background-attachment</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; width: 100px; height: 70px; }
+  #fixed { position: absolute; left: 10px; top: 10px; width: 120px; height: 80px; background: url(img/tile.png) fixed #dde6f5; }
+  #fixed2 { position: absolute; left: 150px; top: 30px; width: 120px; height: 80px; background: linear-gradient(to right, #cc3333, #3366cc) fixed; background-size: 100% 100%; }
+  #scroller { position: absolute; left: 290px; top: 10px; width: 120px; height: 80px; overflow: auto; background: url(img/tile.png) local #dde6f5; }
+  #scroller > div { height: 200px; }
+</style>
+</head>
+<body><div id="fixed"></div><div id="fixed2"></div><div id="scroller"><div></div></div></body>
+</html>

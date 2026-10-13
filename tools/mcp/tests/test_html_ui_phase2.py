@@ -2,8 +2,8 @@
 
 An agent's-eye run and the checks no single package owned:
 - a menu written the way an LLM writes one for a browser, with the mistakes the diagnostics
-  exist for (a Tailwind CDN script and stylesheet, a JavaScript <script>, onclick=, display:
-  grid, position: sticky, a property name one letter off, a remote image nobody imported): every
+  exist for (a Tailwind CDN script and stylesheet, a JavaScript <script>, onclick=,
+  position: sticky, a property name one letter off, a remote image nobody imported): every
   one is in the Console with file:line:column, its code and a suggestion, once, and in the
   document's diagnostics; the page still draws;
 - the file fixed (Lua instead of JavaScript, flex instead of grid, a Google Font and an image
@@ -127,10 +127,10 @@ EXPECTED = [
     ("ui/p2/menu.html", 14, 28, "error", "HTMLUI-IMP-0001", "remote image 'https://images.example.net/missing-logo.png' is not imported", "load the document in the editor"),
     ("ui/p2/menu.html", 16, 27, "error", "HTMLUI-HTML-0005", "'onclick' (JavaScript) is not run", "addEventListener('click', fn) in Lua"),
     ("ui/p2/menu.html", 20, 3, "error", "HTMLUI-HTML-0006", "JavaScript is not run", '<script type="text/lua">'),
-    ("ui/p2/menu.css", 13, 3, "warning", "HTMLUI-CSS-0006", "'position: sticky' is drawn as 'relative'", "position: absolute"),
     ("ui/p2/menu.css", 17, 3, "warning", "HTMLUI-CSS-0001", "'backgroud-color' is not a CSS property", "did you mean 'background-color'?"),
-    ("ui/p2/menu.css", 22, 3, "warning", "HTMLUI-CSS-0007", "'display: grid' is drawn as a wrapping flex container", "lay the items out with flex"),
 ]
+# (the menu's 'display: grid' is no finding since phase 3: the layout engine has CSS Grid, ForkFeature::Grid)
+# (nor its 'position: sticky': the layout engine sticks it, ForkFeature::Sticky)
 
 GOOD_HTML = f"""<!DOCTYPE html>
 <html lang="en">
@@ -276,7 +276,7 @@ async def test_mistakes_are_reported(ed: Editor):
              "info lines listed without the verbose setting")
     summary = summaries(lines, "ui/p2/menu.html")
     ed.check(summary, "no summary line for ui/p2/menu.html")
-    ed.check("4 errors, 4 warnings" in summary[-1], f"the summary: {summary[-1]}")
+    ed.check("4 errors, 2 warnings" in summary[-1], f"the summary: {summary[-1]}")
 
     # the same findings through the document, with the notes (edit mode: no script has run)
     found = await lua(ed, """
@@ -586,7 +586,7 @@ RML_DOC = """<rml>
         body { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
         div { display: block; }
         #r { position: absolute; left: 900px; top: 500px; width: 100px; height: 100px; background-color: rgba(255, 255, 0, 255);
-             border: 4px #ff00ff; }
+             border: 4px solid #ff00ff; }
     </style>
 </head>
 <body>
@@ -772,7 +772,7 @@ async def test_verbose_setting_reaches_the_compat_layer():
             notes = [m for m in lines if m.startswith("[HTML UI] ui/p2/menu.") and ": info: " in m]
             ed.check(notes, "no info lines with Verbose Diagnostics on; [HTML UI] lines:\n" +
                      "\n".join(m for m in lines if "[HTML UI]" in m))
-            ed.check(any("grid-template-columns" in m and "[HTMLUI-CSS-0007]" in m for m in notes), f"the grid note: {notes}")
+            ed.check(any("font family 'Segoe UI'" in m and "[HTMLUI-CSS-0023]" in m for m in notes), f"the font note: {notes}")
             summary = summaries(lines, "ui/p2/menu.html")[-1]
             count = int(summary.split(" warnings, ")[1].split(" note")[0])
             ed.check_eq(len(notes) % count if count else 1, 0, f"as many info lines as the summary counts notes: {summary} / {len(notes)}")

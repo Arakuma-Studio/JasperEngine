@@ -2,14 +2,33 @@
 #include "../../Include/RmlUi/Core/Box.h"
 #include "../../Include/RmlUi/Core/Math.h"
 #include <algorithm>
+#include <cmath>
 #include <float.h>
 
 namespace Rml {
 
 GeometryBackgroundBorder::GeometryBackgroundBorder(Vector<Vertex>& vertices, Vector<int>& indices) : vertices(vertices), indices(indices) {}
 
+void GeometryBackgroundBorder::ScaleRadiiToFit(CornerSizes2& radii, Vector2f box_size)
+{
+	float scale_factor = 1.f;
+	auto fit = [&](float length, float radius_a, float radius_b) {
+		if (radius_a + radius_b > length && radius_a + radius_b > 0.f)
+			scale_factor = Math::Min(scale_factor, Math::Max(length, 0.f) / (radius_a + radius_b));
+	};
+	fit(box_size.x, radii[TOP_LEFT].x, radii[TOP_RIGHT].x);       // Top
+	fit(box_size.y, radii[TOP_RIGHT].y, radii[BOTTOM_RIGHT].y);   // Right
+	fit(box_size.x, radii[BOTTOM_RIGHT].x, radii[BOTTOM_LEFT].x); // Bottom
+	fit(box_size.y, radii[BOTTOM_LEFT].y, radii[TOP_LEFT].y);     // Left
+	if (scale_factor < 1.f)
+	{
+		for (Vector2f& radius : radii)
+			radius *= scale_factor;
+	}
+}
+
 BorderMetrics GeometryBackgroundBorder::ComputeBorderMetrics(Vector2f outer_position, EdgeSizes edge_sizes, Vector2f inner_size,
-	CornerSizes outer_radii_def)
+	CornerSizes2 outer_radii_def)
 {
 	BorderMetrics metrics = {};
 
@@ -32,30 +51,28 @@ BorderMetrics GeometryBackgroundBorder::ComputeBorderMetrics(Vector2f outer_posi
 		inner_position + Vector2f(0, inner_size.y),
 	};
 
-	// -- For curved borders, find the positions to draw ellipses around, and the scaled outer and inner radii --
+	// -- For curved borders, find the positions to draw ellipses around, and the outer and inner radii --
 
-	const float sum_radius = (outer_radii_def[TOP_LEFT] + outer_radii_def[TOP_RIGHT] + outer_radii_def[BOTTOM_RIGHT] + outer_radii_def[BOTTOM_LEFT]);
-	const bool has_radius = (sum_radius > 1.f);
+	bool has_radius = false;
+	for (Vector2f& radius : outer_radii_def)
+	{
+		// A corner with a zero radius is square (CSS).
+		if (radius.x <= 0.f || radius.y <= 0.f)
+			radius = Vector2f(0.f);
+		else
+			has_radius = true;
+	}
 
 	if (has_radius)
 	{
 		auto& outer_radii = metrics.outer_radii;
 		outer_radii = outer_radii_def;
 
-		// Scale the radii such that we have no overlapping curves: against the border box, as CSS does (CSS
-		// Backgrounds 3 §5.5); the padding box made a bordered `border-radius: 50%` circle a rounded square.
-		float scale_factor = FLT_MAX;
-		scale_factor = Math::Min(scale_factor, outer_size.x / (outer_radii[TOP_LEFT] + outer_radii[TOP_RIGHT]));       // Top
-		scale_factor = Math::Min(scale_factor, outer_size.y / (outer_radii[TOP_RIGHT] + outer_radii[BOTTOM_RIGHT]));   // Right
-		scale_factor = Math::Min(scale_factor, outer_size.x / (outer_radii[BOTTOM_RIGHT] + outer_radii[BOTTOM_LEFT])); // Bottom
-		scale_factor = Math::Min(scale_factor, outer_size.y / (outer_radii[BOTTOM_LEFT] + outer_radii[TOP_LEFT]));     // Left
-		scale_factor = Math::Min(1.0f, scale_factor);
+		// The radii come resolved and scaled against the border box (Element::GetRenderBox, CSS Backgrounds 3 5.5);
+		// radii set on a render box by hand are scaled here if their curves overlap.
+		ScaleRadiiToFit(outer_radii, outer_size);
 
-		// Scaled-down radii are not rounded: rounding up made adjacent curves overlap (a 7px circle drew as a diamond).
-		for (float& radius : outer_radii)
-			radius = (scale_factor < 1.0f ? radius * scale_factor : Math::Round(radius));
-
-		// Place the circle/ellipse centers
+		// Place the ellipse centers
 		metrics.positions_circle_center = {
 			metrics.positions_outer[TOP_LEFT] + Vector2f(1, 1) * outer_radii[TOP_LEFT],
 			metrics.positions_outer[TOP_RIGHT] + Vector2f(-1, 1) * outer_radii[TOP_RIGHT],
@@ -64,10 +81,10 @@ BorderMetrics GeometryBackgroundBorder::ComputeBorderMetrics(Vector2f outer_posi
 		};
 
 		metrics.inner_radii = {
-			Vector2f(outer_radii[TOP_LEFT]) - Vector2f(edge_sizes[LEFT], edge_sizes[TOP]),
-			Vector2f(outer_radii[TOP_RIGHT]) - Vector2f(edge_sizes[RIGHT], edge_sizes[TOP]),
-			Vector2f(outer_radii[BOTTOM_RIGHT]) - Vector2f(edge_sizes[RIGHT], edge_sizes[BOTTOM]),
-			Vector2f(outer_radii[BOTTOM_LEFT]) - Vector2f(edge_sizes[LEFT], edge_sizes[BOTTOM]),
+			outer_radii[TOP_LEFT] - Vector2f(edge_sizes[LEFT], edge_sizes[TOP]),
+			outer_radii[TOP_RIGHT] - Vector2f(edge_sizes[RIGHT], edge_sizes[TOP]),
+			outer_radii[BOTTOM_RIGHT] - Vector2f(edge_sizes[RIGHT], edge_sizes[BOTTOM]),
+			outer_radii[BOTTOM_LEFT] - Vector2f(edge_sizes[LEFT], edge_sizes[BOTTOM]),
 		};
 	}
 
@@ -127,9 +144,9 @@ void GeometryBackgroundBorder::DrawBorder(const BorderMetrics& metrics, EdgeSize
 			{
 				// The top edge is interrupted (Element::GetBorderTopCut): it runs from the corner to a pair of vertices where
 				// the gap begins, and on from a pair where the gap ends. The gap stays within the straight part of the edge.
-				const float x_min = Math::Max(metrics.positions_inner[TOP_LEFT].x, metrics.positions_outer[TOP_LEFT].x + metrics.outer_radii[TOP_LEFT]);
+				const float x_min = Math::Max(metrics.positions_inner[TOP_LEFT].x, metrics.positions_outer[TOP_LEFT].x + metrics.outer_radii[TOP_LEFT].x);
 				const float x_max =
-					Math::Min(metrics.positions_inner[TOP_RIGHT].x, metrics.positions_outer[TOP_RIGHT].x - metrics.outer_radii[TOP_RIGHT]);
+					Math::Min(metrics.positions_inner[TOP_RIGHT].x, metrics.positions_outer[TOP_RIGHT].x - metrics.outer_radii[TOP_RIGHT].x);
 				if (x_max > x_min)
 				{
 					const float x0 = Math::Clamp(metrics.positions_outer[TOP_LEFT].x + top_gap.x, x_min, x_max);
@@ -152,10 +169,10 @@ void GeometryBackgroundBorder::DrawBorder(const BorderMetrics& metrics, EdgeSize
 	}
 }
 
-void GeometryBackgroundBorder::DrawBackgroundCorner(Corner corner, Vector2f pos_inner, Vector2f pos_circle_center, float R, Vector2f r,
+void GeometryBackgroundBorder::DrawBackgroundCorner(Corner corner, Vector2f pos_inner, Vector2f pos_circle_center, Vector2f R, Vector2f r,
 	ColourbPremultiplied color)
 {
-	if (R == 0 || r.x <= 0 || r.y <= 0)
+	if (R.x <= 0 || R.y <= 0 || r.x <= 0 || r.y <= 0)
 	{
 		DrawPoint(pos_inner, color);
 	}
@@ -217,13 +234,13 @@ void GeometryBackgroundBorder::FillBackground(int index_start)
 	}
 }
 
-void GeometryBackgroundBorder::DrawBorderCorner(Corner corner, Vector2f pos_outer, Vector2f pos_inner, Vector2f pos_circle_center, float R,
+void GeometryBackgroundBorder::DrawBorderCorner(Corner corner, Vector2f pos_outer, Vector2f pos_inner, Vector2f pos_circle_center, Vector2f R,
 	Vector2f r, ColourbPremultiplied color0, ColourbPremultiplied color1)
 {
 	const float a0 = float((int)corner + 2) * 0.5f * Math::RMLUI_PI;
 	const float a1 = float((int)corner + 3) * 0.5f * Math::RMLUI_PI;
 
-	if (R == 0)
+	if (R.x <= 0 || R.y <= 0)
 	{
 		DrawPointPoint(pos_outer, pos_inner, color0, color1);
 	}
@@ -253,10 +270,10 @@ void GeometryBackgroundBorder::DrawPointPoint(Vector2f pos_outer, Vector2f pos_i
 	}
 }
 
-void GeometryBackgroundBorder::DrawArcArc(Vector2f pos_center, float R, Vector2f r, float a0, float a1, ColourbPremultiplied color0,
+void GeometryBackgroundBorder::DrawArcArc(Vector2f pos_center, Vector2f R, Vector2f r, float a0, float a1, ColourbPremultiplied color0,
 	ColourbPremultiplied color1, int num_points)
 {
-	RMLUI_ASSERT(num_points >= 2 && R > 0 && r.x > 0 && r.y > 0);
+	RMLUI_ASSERT(num_points >= 2 && R.x > 0 && R.y > 0 && r.x > 0 && r.y > 0);
 
 	const int num_triangles = 2 * (num_points - 1);
 
@@ -292,17 +309,17 @@ void GeometryBackgroundBorder::DrawArcArc(Vector2f pos_center, float R, Vector2f
 	}
 }
 
-void GeometryBackgroundBorder::DrawArcPoint(Vector2f pos_center, Vector2f pos_inner, float R, float a0, float a1, ColourbPremultiplied color0,
+void GeometryBackgroundBorder::DrawArcPoint(Vector2f pos_center, Vector2f pos_inner, Vector2f R, float a0, float a1, ColourbPremultiplied color0,
 	ColourbPremultiplied color1, int num_points)
 {
-	RMLUI_ASSERT(R > 0 && num_points >= 2);
+	RMLUI_ASSERT(R.x > 0 && R.y > 0 && num_points >= 2);
 
 	const int offset_vertices = (int)vertices.size();
 	vertices.reserve(offset_vertices + num_points + 2);
 
 	// Generate the vertices. We could also split the arc mid-way to create a sharp color transition.
 	DrawPoint(pos_inner, color0);
-	DrawArc(pos_center, Vector2f(R), a0, a1, color0, color1, num_points);
+	DrawArc(pos_center, R, a0, a1, color0, color1, num_points);
 	DrawPoint(pos_inner, color1);
 
 	RMLUI_ASSERT((int)vertices.size() - offset_vertices == num_points + 2);
@@ -349,9 +366,14 @@ void GeometryBackgroundBorder::FillEdge(int index_next_corner)
 	indices[offset_indices + 5] = index_next_corner + 1;
 }
 
-int GeometryBackgroundBorder::GetNumPoints(float R) const
+int GeometryBackgroundBorder::GetNumPoints(Vector2f radius)
 {
-	return Math::Clamp(3 + Math::RoundToInteger(R / 6.f), 2, 100);
+	// 6.3 used 3 + R / 6 points, which leaves small curves visibly polygonal (a circle of 24px had 5 points a quarter).
+	const float r = Math::Max(radius.x, radius.y);
+	if (r <= 0.5f)
+		return 2;
+	const float step = 2.f * std::acos(Math::Max(0.f, 1.f - 0.1f / r));
+	return Math::Clamp(1 + int(std::ceil(0.5f * Math::RMLUI_PI / step)), 3, 129);
 }
 
 } // namespace Rml

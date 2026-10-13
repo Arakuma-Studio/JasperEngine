@@ -27,13 +27,20 @@ void ElementScroll::Update()
 	}
 }
 
-void ElementScroll::EnableScrollbar(Orientation orientation, float element_width)
+bool ElementScroll::IsScrollbarGutterOnly(Orientation orientation) const
 {
-	if (!scrollbars[orientation].enabled)
+	return scrollbars[orientation].enabled && scrollbars[orientation].gutter_only;
+}
+
+void ElementScroll::EnableScrollbar(Orientation orientation, float element_width, bool gutter_only)
+{
+	if (!scrollbars[orientation].enabled || scrollbars[orientation].gutter_only != gutter_only)
 	{
 		CreateScrollbar(orientation);
-		scrollbars[orientation].element->SetProperty(PropertyId::Visibility, Property(Style::Visibility::Visible));
+		scrollbars[orientation].element->SetProperty(PropertyId::Visibility,
+			Property(gutter_only ? Style::Visibility::Hidden : Style::Visibility::Visible));
 		scrollbars[orientation].enabled = true;
+		scrollbars[orientation].gutter_only = gutter_only;
 	}
 
 	// Determine the size of the scrollbar.
@@ -59,6 +66,7 @@ void ElementScroll::DisableScrollbar(Orientation orientation)
 	{
 		scrollbars[orientation].element->SetProperty(PropertyId::Visibility, Property(Style::Visibility::Hidden));
 		scrollbars[orientation].enabled = false;
+		scrollbars[orientation].gutter_only = false;
 
 		if (corner)
 			corner->SetProperty(PropertyId::Visibility, Property(Style::Visibility::Hidden));

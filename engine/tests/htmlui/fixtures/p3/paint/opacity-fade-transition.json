@@ -1,0 +1,33 @@
+{
+ "comment": "a group fading out and one fading in, captured a quarter and three quarters of the way (linear): the composite opacity changes, the children stay opaque within the group.",
+ "viewport": [
+  300,
+  140
+ ],
+ "steps": [
+  {
+   "addClass": [
+    "#fade-out",
+    "on"
+   ]
+  },
+  {
+   "addClass": [
+    "#fade-in",
+    "on"
+   ]
+  },
+  {
+   "advance": 0.25
+  },
+  {
+   "capture": "quarter"
+  },
+  {
+   "advance": 0.5
+  },
+  {
+   "capture": "three-quarters"
+  }
+ ]
+}

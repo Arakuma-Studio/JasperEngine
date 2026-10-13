@@ -13,12 +13,12 @@ bool TableGrid::Build(Element* element_table, TableWrapper& table_wrapper)
 	RMLUI_ASSERT(rows.empty() && columns.empty() && cells.empty() && open_cells.empty());
 	ElementList non_parented_cell_elements;
 
-	const int num_table_children = element_table->GetNumChildren();
-	for (int i = 0; i < num_table_children; i++)
+	ScopedLayoutChildList table_children;
+	LayoutDetails::GetLayoutChildren(element_table, *table_children, false);
+	for (Element* element : *table_children)
 	{
 		using Display = Style::Display;
 
-		Element* element = element_table->GetChild(i);
 		const Display display = element->GetDisplay();
 
 		// white space between table parts is not rendered
@@ -41,13 +41,13 @@ bool TableGrid::Build(Element* element_table, TableWrapper& table_wrapper)
 		}
 		else if (display == Display::TableRowGroup)
 		{
-			const int num_row_group_children = element->GetNumChildren();
+			ScopedLayoutChildList row_group_children;
+			LayoutDetails::GetLayoutChildren(element, *row_group_children, false);
 			const int row_group_index = (int)rows.size();
 			int num_rows_added = 0;
 
-			for (int j = 0; j < num_row_group_children; j++)
+			for (Element* element_row : *row_group_children)
 			{
-				Element* element_row = element->GetChild(j);
 				const Display display_row = element_row->GetDisplay();
 				if (LayoutDetails::IsCollapsibleWhiteSpaceText(element_row))
 					continue;
@@ -71,7 +71,7 @@ bool TableGrid::Build(Element* element_table, TableWrapper& table_wrapper)
 				rows[row_group_index].element_group = element;
 				rows[row_group_index].group_span = num_rows_added;
 			}
-			if (element->GetPosition() == Style::Position::Relative)
+			if (element->GetPosition() == Style::Position::Relative || element->GetPosition() == Style::Position::Sticky)
 				table_wrapper.AddRelativeElement(element);
 		}
 		else if (rows.empty() && display == Display::TableColumn)
@@ -137,10 +137,10 @@ void TableGrid::PushColumnGroup(Element* element_column_group)
 	if (group_span == 0)
 	{
 		// Look through the column group to find all its column children.
-		const int num_column_group_children = element_column_group->GetNumChildren();
-		for (int j = 0; j < num_column_group_children; j++)
+		ScopedLayoutChildList column_group_children;
+		LayoutDetails::GetLayoutChildren(element_column_group, *column_group_children, false);
+		for (Element* child : *column_group_children)
 		{
-			Element* child = element_column_group->GetChild(j);
 			if (child->GetDisplay() == Style::Display::TableColumn)
 			{
 				const int column_span = Math::Max(1, child->GetAttribute("span", 1));
@@ -195,12 +195,12 @@ void TableGrid::PushRow(Element* element_row, ElementList cell_elements, TableWr
 	{
 		RMLUI_ASSERT(cell_elements.empty());
 
-		const int num_row_children = element_row->GetNumChildren();
-		cell_elements.reserve(num_row_children);
+		ScopedLayoutChildList row_children;
+		LayoutDetails::GetLayoutChildren(element_row, *row_children, false);
+		cell_elements.reserve(row_children->size());
 
-		for (int j = 0; j < num_row_children; j++)
+		for (Element* element_cell : *row_children)
 		{
-			Element* element_cell = element_row->GetChild(j);
 			if (LayoutDetails::IsCollapsibleWhiteSpaceText(element_cell))
 				continue;
 
@@ -215,7 +215,7 @@ void TableGrid::PushRow(Element* element_row, ElementList cell_elements, TableWr
 			}
 		}
 
-		if (element_row->GetPosition() == Style::Position::Relative)
+		if (element_row->GetPosition() == Style::Position::Relative || element_row->GetPosition() == Style::Position::Sticky)
 			table_wrapper.AddRelativeElement(element_row);
 	}
 
@@ -281,7 +281,7 @@ void TableGrid::PushRow(Element* element_row, ElementList cell_elements, TableWr
 			cell.column_begin = column;
 			cell.column_last = column_last;
 
-			if (cell_position == Style::Position::Relative)
+			if (cell_position == Style::Position::Relative || cell_position == Style::Position::Sticky)
 				table_wrapper.AddRelativeElement(element_cell);
 		}
 

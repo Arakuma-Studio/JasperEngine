@@ -62,6 +62,7 @@ public:
 	bool Initialise(bool repeating, Corner corner, float angle, const ColorStopList& color_stops);
 
 	DecoratorDataHandle GenerateElementData(Element* element, BoxArea paint_area) const override;
+	CompiledShader CompileImageShader(Element* element, Vector2f size) const override;
 	void ReleaseElementData(DecoratorDataHandle element_data) const override;
 
 	void RenderElement(Element* element, DecoratorDataHandle element_data) const override;
@@ -120,9 +121,15 @@ public:
 	DecoratorRadialGradient();
 	virtual ~DecoratorRadialGradient();
 
-	bool Initialise(bool repeating, Shape shape, SizeType size_type, Vector2Numeric size, Vector2Numeric position, const ColorStopList& color_stops);
+	bool Initialise(bool repeating, Shape shape, SizeType size_type, Vector2Numeric size, Vector2Numeric position, const ColorStopList& color_stops
+#ifdef RMLUI_MATH_EXPRESSIONS
+		,
+		Array<CalculationPtr, 2> size_calculations = {}, Array<CalculationPtr, 2> position_calculations = {}
+#endif
+	);
 
 	DecoratorDataHandle GenerateElementData(Element* element, BoxArea paint_area) const override;
+	CompiledShader CompileImageShader(Element* element, Vector2f size) const override;
 	void ReleaseElementData(DecoratorDataHandle element_data) const override;
 
 	void RenderElement(Element* element, DecoratorDataHandle element_data) const override;
@@ -138,6 +145,10 @@ private:
 	SizeType size_type = {};
 	Vector2Numeric size;
 	Vector2Numeric position;
+#ifdef RMLUI_MATH_EXPRESSIONS
+	Array<CalculationPtr, 2> size_calculations;
+	Array<CalculationPtr, 2> position_calculations;
+#endif
 
 	ColorStopList color_stops;
 };
@@ -168,9 +179,15 @@ public:
 	DecoratorConicGradient();
 	virtual ~DecoratorConicGradient();
 
-	bool Initialise(bool repeating, float angle, Vector2Numeric position, const ColorStopList& color_stops);
+	bool Initialise(bool repeating, float angle, Vector2Numeric position, const ColorStopList& color_stops
+#ifdef RMLUI_MATH_EXPRESSIONS
+		,
+		Array<CalculationPtr, 2> position_calculations = {}
+#endif
+	);
 
 	DecoratorDataHandle GenerateElementData(Element* element, BoxArea paint_area) const override;
+	CompiledShader CompileImageShader(Element* element, Vector2f size) const override;
 	void ReleaseElementData(DecoratorDataHandle element_data) const override;
 
 	void RenderElement(Element* element, DecoratorDataHandle element_data) const override;
@@ -179,6 +196,9 @@ private:
 	bool repeating = false;
 	float angle = {};
 	Vector2Numeric position;
+#ifdef RMLUI_MATH_EXPRESSIONS
+	Array<CalculationPtr, 2> position_calculations;
+#endif
 	ColorStopList color_stops;
 };
 

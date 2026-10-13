@@ -216,6 +216,7 @@ binding (the sections above already say them in place):
 | 14 | The compat pipeline runs at document load in shipped games too (in-memory cache, no export-time precompilation); principle 4 concerns shaders and assets | phase 2 §3.12.2 |
 | 15 | The RmlUi debugger is compiled only into the editor, Debug exports and the test build | phase 1 §3.8.7 |
 | 16 | Excluded with reasons: X11 multi-touch, in-document IME preedit on Linux and in the editor Game view, Lottie expressions/audio, UV hits on skinned meshes (bind pose); CSS features of phase 3 §2.2 (e.g. `writing-mode`, `@container`, `subgrid`, `mix-blend-mode`) are diagnosed, not implemented | phase 1 §2, phase 3 §2.2 |
+| 17 | The browser-parity fixtures that scroll content past a clip edge render without MSAA (sidecar `"samples": 1`): llvmpipe and lavapipe (Mesa 23.2.1, the test image's drivers) let half the samples of the row above and the column left of a scissor rectangle through under MSAA (`MsaaScissor.*` reproduces it with raw sokol calls); the renderer is unchanged | phase 3 §3.12.10, §5.2 |
 
 ## Research facts (verified in code, October 2026)
 

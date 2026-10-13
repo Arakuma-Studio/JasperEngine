@@ -5,6 +5,7 @@
 #include "StyleSheetNode.h"
 #include "StyleSheetParser.h"
 #include "StyleSheetSelector.h"
+#include <limits.h>
 
 namespace Rml {
 
@@ -25,7 +26,30 @@ StyleSheetFactory::StyleSheetFactory() :
 		{"empty", StructuralSelectorType::Empty},
 		{"not", StructuralSelectorType::Not},
 		{"scope", StructuralSelectorType::Scope},
-	}
+		// Phase 3, cascade (docs/html-ui/phase-3-fork-patches.md 3.5)
+		{"root", StructuralSelectorType::Root},
+		{"is", StructuralSelectorType::Is},
+		{"matches", StructuralSelectorType::Is},
+		{"-webkit-any", StructuralSelectorType::Is},
+		{"-moz-any", StructuralSelectorType::Is},
+		{"where", StructuralSelectorType::Where},
+		{"has", StructuralSelectorType::Has},
+		{"enabled", StructuralSelectorType::Enabled},
+		{"disabled", StructuralSelectorType::Disabled},
+		{"link", StructuralSelectorType::AnyLink},
+		{"any-link", StructuralSelectorType::AnyLink},
+		{"-webkit-any-link", StructuralSelectorType::AnyLink},
+		{"visited", StructuralSelectorType::Never},
+		{"read-only", StructuralSelectorType::ReadOnly},
+		{"read-write", StructuralSelectorType::ReadWrite},
+		{"required", StructuralSelectorType::Required},
+		{"optional", StructuralSelectorType::Optional},
+		{"indeterminate", StructuralSelectorType::Indeterminate},
+		{"default", StructuralSelectorType::Default},
+		{"target", StructuralSelectorType::Target},
+	},
+	pseudo_classes{"hover", "active", "focus", "focus-visible", "focus-within", "checked", "selected", "placeholder-shown", "drag",
+		"-rmlui-starting-style"}
 {}
 
 StyleSheetFactory::~StyleSheetFactory() {}
@@ -67,6 +91,112 @@ void StyleSheetFactory::ClearStyleSheetCache()
 	instance->stylesheets.clear();
 }
 
+bool StyleSheetFactory::IsPseudoClass(const String& name)
+{
+	return instance->pseudo_classes.count(name) != 0;
+}
+
+void StyleSheetFactory::RegisterPseudoClass(const String& name)
+{
+	instance->pseudo_classes.insert(StringUtilities::ToLower(name));
+}
+
+bool StyleSheetFactory::ParseAnB(const String& text, int& a, int& b)
+{
+	const String s = StringUtilities::ToLower(StringUtilities::StripWhitespace(text));
+	if (s == "odd")
+	{
+		a = 2;
+		b = 1;
+		return true;
+	}
+	if (s == "even")
+	{
+		a = 2;
+		b = 0;
+		return true;
+	}
+
+	size_t i = 0;
+	auto ReadInteger = [&](int& value) {
+		const size_t begin = i;
+		long long result = 0;
+		while (i < s.size() && s[i] >= '0' && s[i] <= '9')
+		{
+			result = Math::Min(result * 10 + (s[i] - '0'), (long long)INT_MAX);
+			i++;
+		}
+		value = (int)result;
+		return i > begin;
+	};
+	auto SkipWhitespace = [&]() {
+		while (i < s.size() && StringUtilities::IsWhitespace(s[i]))
+			i++;
+	};
+
+	int sign = 1;
+	if (i < s.size() && (s[i] == '+' || s[i] == '-'))
+	{
+		sign = (s[i] == '-' ? -1 : 1);
+		i++;
+	}
+	int number = 0;
+	const bool has_number = ReadInteger(number);
+	if (i >= s.size() || s[i] != 'n')
+	{
+		// B alone
+		if (!has_number || i != s.size())
+			return false;
+		a = 0;
+		b = sign * number;
+		return true;
+	}
+
+	a = sign * (has_number ? number : 1);
+	b = 0;
+	i++; // 'n'
+	SkipWhitespace();
+	if (i == s.size())
+		return true;
+	if (s[i] != '+' && s[i] != '-')
+		return false;
+	const int b_sign = (s[i] == '-' ? -1 : 1);
+	i++;
+	SkipWhitespace();
+	int b_number = 0;
+	if (!ReadInteger(b_number) || i != s.size())
+		return false;
+	b = b_sign * b_number;
+	return true;
+}
+
+// The selector list of a functional pseudo-class argument, in a tree of its own. 'forgiving': an invalid selector of
+// the list is left out instead of invalidating the list (Selectors 4, :is() and :where()).
+static SharedPtr<SelectorTree> MakeSelectorTree(const String& selectors, bool forgiving, int& specificity)
+{
+	auto tree = MakeShared<SelectorTree>();
+	tree->root = MakeUnique<StyleSheetNode>();
+
+	StringList selector_list;
+	StringUtilities::ExpandString(selector_list, selectors, ',', '(', ')');
+	specificity = 0;
+	for (const String& selector : selector_list)
+	{
+		StyleSheetNode* leaf = StyleSheetParser::ConstructNode(*tree->root, selector);
+		if (!leaf || leaf == tree->root.get())
+		{
+			if (forgiving)
+				continue;
+			return nullptr;
+		}
+		tree->leafs.push_back(leaf);
+		specificity = Math::Max(specificity, leaf->GetSpecificity());
+	}
+	if (tree->leafs.empty() && !forgiving)
+		return nullptr;
+	return tree;
+}
+
 StructuralSelector StyleSheetFactory::GetSelector(const String& name)
 {
 	SelectorMap::const_iterator it;
@@ -77,8 +207,9 @@ StructuralSelector StyleSheetFactory::GetSelector(const String& name)
 	else
 		it = instance->selectors.find(name.substr(0, parameter_start));
 
+	const StructuralSelector invalid(StructuralSelectorType::Invalid, 0, 0);
 	if (it == instance->selectors.end())
-		return StructuralSelector(StructuralSelectorType::Invalid, 0, 0);
+		return invalid;
 
 	const StructuralSelectorType selector_type = it->second;
 
@@ -89,7 +220,10 @@ StructuralSelector StyleSheetFactory::GetSelector(const String& name)
 	case StructuralSelectorType::Nth_Last_Child:
 	case StructuralSelectorType::Nth_Of_Type:
 	case StructuralSelectorType::Nth_Last_Of_Type:
-	case StructuralSelectorType::Not: requires_parameter = true; break;
+	case StructuralSelectorType::Not:
+	case StructuralSelectorType::Is:
+	case StructuralSelectorType::Where:
+	case StructuralSelectorType::Has: requires_parameter = true; break;
 	default: break;
 	}
 
@@ -100,82 +234,97 @@ StructuralSelector StyleSheetFactory::GetSelector(const String& name)
 	{
 		Log::Message(Log::LT_WARNING, "Invalid selector ':%s' encountered, expected %s parameters", name.c_str(),
 			requires_parameter ? "parenthesized" : "no");
-		return StructuralSelector(StructuralSelectorType::Invalid, 0, 0);
+		return invalid;
 	}
 
-	// Parse the 'a' and 'b' values.
-	int a = 1;
-	int b = 0;
+	if (!has_parameter)
+		return StructuralSelector(selector_type, 1, 0);
 
-	if (has_parameter)
+	const String parameters = StringUtilities::StripWhitespace(StringView(name, parameter_start + 1, parameter_end - (parameter_start + 1)));
+
+	switch (selector_type)
 	{
-		const String parameters = StringUtilities::StripWhitespace(StringView(name, parameter_start + 1, parameter_end - (parameter_start + 1)));
+	case StructuralSelectorType::Not:
+	case StructuralSelectorType::Is:
+	case StructuralSelectorType::Where:
+	{
+		// Forgiving selector lists, except for :not() (Selectors 4).
+		int specificity = 0;
+		SharedPtr<SelectorTree> tree = MakeSelectorTree(parameters, selector_type != StructuralSelectorType::Not, specificity);
+		if (!tree)
+			return invalid;
+		if (selector_type == StructuralSelectorType::Where)
+			specificity = 0;
+		return StructuralSelector(selector_type, std::move(tree), specificity);
+	}
+	case StructuralSelectorType::Has:
+	{
+		// Relative selectors: each argument is matched relative to the subject (':scope' in front), and :has() does not
+		// nest.
+		const String lower = StringUtilities::ToLower(parameters);
+		if (lower.find(":has(") != String::npos)
+			return invalid;
 
-		if (selector_type == StructuralSelectorType::Not)
+		StringList relative_list;
+		StringUtilities::ExpandString(relative_list, parameters, ',', '(', ')');
+		String scoped;
+		Vector<bool> sibling_relative;
+		for (const String& relative : relative_list)
 		{
-			auto list = MakeShared<SelectorTree>();
-			list->root = MakeUnique<StyleSheetNode>();
-			list->leafs = StyleSheetParser::ConstructNodes(*list->root, parameters);
-
-			int specificity = 0;
-			for (const StyleSheetNode* node : list->leafs)
-				specificity = Math::Max(specificity, node->GetSpecificity());
-
-			return StructuralSelector(selector_type, std::move(list), specificity);
+			const String trimmed = StringUtilities::StripWhitespace(relative);
+			if (trimmed.empty())
+				return invalid;
+			if (!scoped.empty())
+				scoped += ", ";
+			scoped += ":scope " + trimmed;
+			sibling_relative.push_back(trimmed[0] == '+' || trimmed[0] == '~');
 		}
+		int specificity = 0;
+		SharedPtr<SelectorTree> tree = MakeSelectorTree(scoped, false, specificity);
+		if (!tree || tree->leafs.size() != sibling_relative.size())
+			return invalid;
+		tree->sibling_relative = std::move(sibling_relative);
+		// The prepended ':scope' does not count.
+		return StructuralSelector(selector_type, std::move(tree), Math::Max(0, specificity - (int)SelectorSpecificity::PseudoClass));
+	}
+	default: break;
+	}
 
-		// Check for 'even' or 'odd' first.
-		if (parameters == "even")
+	// ':nth-child(An+B [of S])', ':nth-last-child(An+B [of S])', ':nth-of-type(An+B)', ':nth-last-of-type(An+B)'.
+	String an_b = parameters;
+	SharedPtr<SelectorTree> of_tree;
+	int of_specificity = 0;
+	if (selector_type == StructuralSelectorType::Nth_Child || selector_type == StructuralSelectorType::Nth_Last_Child)
+	{
+		const String lower = StringUtilities::ToLower(parameters);
+		for (size_t i = lower.find("of"); i != String::npos; i = lower.find("of", i + 1))
 		{
-			a = 2;
-			b = 0;
-		}
-		else if (parameters == "odd")
-		{
-			a = 2;
-			b = 1;
-		}
-		else
-		{
-			// Alrighty; we've got an equation in the form of [[+/-]an][(+/-)b]. So, foist up, we split on 'n'.
-			const size_t n_index = parameters.find('n');
-			if (n_index == String::npos)
-			{
-				// The equation is 0n + b. So a = 0, and we only have to parse b.
-				a = 0;
-				b = atoi(parameters.c_str());
-			}
-			else
-			{
-				if (n_index == 0)
-					a = 1;
-				else
-				{
-					const String a_parameter = parameters.substr(0, n_index);
-					if (StringUtilities::StripWhitespace(a_parameter) == "-")
-						a = -1;
-					else
-						a = atoi(a_parameter.c_str());
-				}
-
-				size_t pm_index = parameters.find('+', n_index + 1);
-				if (pm_index != String::npos)
-					b = 1;
-				else
-				{
-					pm_index = parameters.find('-', n_index + 1);
-					if (pm_index != String::npos)
-						b = -1;
-				}
-
-				if (n_index == parameters.size() - 1 || pm_index == String::npos)
-					b = 0;
-				else
-					b = b * atoi(parameters.data() + pm_index + 1);
-			}
+			const bool word_begin = (i > 0 && StringUtilities::IsWhitespace(lower[i - 1]));
+			const bool word_end = (i + 2 < lower.size() && StringUtilities::IsWhitespace(lower[i + 2]));
+			if (!word_begin || !word_end)
+				continue;
+			an_b = parameters.substr(0, i);
+			of_tree = MakeSelectorTree(StringUtilities::StripWhitespace(parameters.substr(i + 2)), false, of_specificity);
+			if (!of_tree)
+				return invalid;
+			break;
 		}
 	}
 
+	int a = 0, b = 0;
+	if (!ParseAnB(an_b, a, b))
+	{
+		Log::Message(Log::LT_WARNING, "Invalid selector ':%s' encountered, the argument is not of the form An+B", name.c_str());
+		return invalid;
+	}
+
+	if (of_tree)
+	{
+		StructuralSelector result(selector_type, std::move(of_tree), (int)SelectorSpecificity::PseudoClass + of_specificity);
+		result.a = a;
+		result.b = b;
+		return result;
+	}
 	return StructuralSelector(selector_type, a, b);
 }
 

@@ -1,12 +1,21 @@
 #include "PropertyParserColorStopList.h"
 #include "../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../Include/RmlUi/Core/DecorationTypes.h"
+#include "PropertyParserColour.h"
 #include <string.h>
 
 namespace Rml {
 
 PropertyParserColorStopList::PropertyParserColorStopList(PropertyParser* parser_color) :
-	parser_color(parser_color), parser_length_percent_angle(Unit::LENGTH_PERCENT | Unit::ANGLE, Unit::PERCENT)
+	parser_color(parser_color),
+#ifdef RMLUI_MATH_EXPRESSIONS
+	parser_length_percent(Unit::LENGTH_PERCENT, Unit::PERCENT,
+		MakeCalculationParseTarget(CalculationFinalType::Length, CalculationPercentageHint::Length)),
+	parser_angle_percent(Unit::ANGLE | Unit::PERCENT, Unit::PERCENT,
+		MakeCalculationParseTarget(CalculationFinalType::Angle, CalculationPercentageHint::Angle))
+#else
+	parser_length_percent(Unit::LENGTH_PERCENT, Unit::PERCENT), parser_angle_percent(Unit::ANGLE | Unit::PERCENT, Unit::PERCENT)
+#endif
 {
 	RMLUI_ASSERT(parser_color);
 }
@@ -26,7 +35,9 @@ bool PropertyParserColorStopList::ParseValue(Property& property, const String& v
 	if (color_stop_str_list.empty())
 		return false;
 
-	const Unit accepted_units = (parameters.count("angle") ? (Unit::ANGLE | Unit::PERCENT) : Unit::LENGTH_PERCENT);
+	const bool angle_positions = parameters.count("angle") != 0;
+	const Unit accepted_units = (angle_positions ? (Unit::ANGLE | Unit::PERCENT) : Unit::LENGTH_PERCENT);
+	const PropertyParserNumber& position_parser = (angle_positions ? parser_angle_percent : parser_length_percent);
 
 	ColorStopList color_stops;
 	color_stops.reserve(color_stop_str_list.size());
@@ -44,7 +55,14 @@ bool PropertyParserColorStopList::ParseValue(Property& property, const String& v
 			return false;
 
 		ColorStop color_stop = {};
-		color_stop.color = p_color.Get<Colourb>().ToPremultiplied();
+		if (PropertyParserColour::DependsOnCurrentColor(p_color))
+		{
+			color_stop.current_color = true;
+			if (PropertyParserColour::IsCurrentColorMix(p_color))
+				color_stop.color_mix = p_color.value.Get<StyleValuePtr>()->ToString();
+		}
+		else
+			color_stop.color = p_color.Get<Colourb>().ToPremultiplied();
 
 		if (values.size() <= 1)
 			color_stops.push_back(color_stop);
@@ -52,11 +70,20 @@ bool PropertyParserColorStopList::ParseValue(Property& property, const String& v
 		for (size_t i = 1; i < values.size(); i++)
 		{
 			Property p_position(Style::LengthPercentageAuto::Auto);
-			if (!parser_length_percent_angle.ParseValue(p_position, values[i], empty_parameter_map))
+			if (!position_parser.ParseValue(p_position, values[i], empty_parameter_map))
 				return false;
 
 			if (Any(p_position.unit & accepted_units))
 				color_stop.position = NumericValue(p_position.Get<float>(), p_position.unit);
+#ifdef RMLUI_MATH_EXPRESSIONS
+			else if (p_position.unit == Unit::CALCULATION)
+			{
+				color_stop.position = NumericValue(0.f, angle_positions ? Unit::RAD : Unit::PX);
+				color_stop.position_calculation = p_position.value.Get<CalculationPtr>();
+				if (!color_stop.position_calculation)
+					return false;
+			}
+#endif
 			else if (p_position.unit != Unit::KEYWORD)
 				return false;
 

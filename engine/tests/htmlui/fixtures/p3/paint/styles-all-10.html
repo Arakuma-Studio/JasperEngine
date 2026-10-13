@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: the ten border styles</title>
+<style>
+  /* none hidden dotted dashed solid double groove ridge inset outset, 6px, square and rounded */
+  html, body { margin: 0; background: #ffffff; }
+  div { position: absolute; width: 50px; height: 34px; border: 6px #3366cc; background-color: #f4f4f4; }
+  .r { border-radius: 12px; }
+  #none { left: 10px; top: 10px; border-style: none; }
+  #hidden { left: 90px; top: 10px; border-style: hidden; }
+  #dotted { left: 170px; top: 10px; border-style: dotted; }
+  #dashed { left: 250px; top: 10px; border-style: dashed; }
+  #solid { left: 330px; top: 10px; border-style: solid; }
+  #double { left: 10px; top: 70px; border-style: double; }
+  #groove { left: 90px; top: 70px; border-style: groove; }
+  #ridge { left: 170px; top: 70px; border-style: ridge; }
+  #inset { left: 250px; top: 70px; border-style: inset; }
+  #outset { left: 330px; top: 70px; border-style: outset; }
+  #rdotted { left: 10px; top: 130px; border-style: dotted; }
+  #rdashed { left: 90px; top: 130px; border-style: dashed; }
+  #rdouble { left: 170px; top: 130px; border-style: double; }
+  #rgroove { left: 250px; top: 130px; border-style: groove; }
+  #rinset { left: 330px; top: 130px; border-style: inset; }
+  #mixed { left: 10px; top: 190px; width: 130px; border-style: solid dashed double dotted; border-color: #cc3333 #339933 #3366cc #000000; }
+  #rmixed { left: 170px; top: 190px; width: 130px; border-radius: 16px; border-style: solid; border-color: #cc3333 #339933 #3366cc #000000; }
+</style>
+</head>
+<body><div id="none"></div><div id="hidden"></div><div id="dotted"></div><div id="dashed"></div><div id="solid"></div><div id="double"></div><div id="groove"></div><div id="ridge"></div><div id="inset"></div><div id="outset"></div><div id="rdotted" class="r"></div><div id="rdashed" class="r"></div><div id="rdouble" class="r"></div><div id="rgroove" class="r"></div><div id="rinset" class="r"></div><div id="mixed"></div><div id="rmixed"></div></body>
+</html>

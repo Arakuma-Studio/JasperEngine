@@ -1,0 +1,11 @@
+{
+ "comment": "Cascade order with the animation layers (CSS Cascade 4): an animation beats normal declarations and loses to important ones (#imp keeps its width, its colour animates; #byid: an important class rule beats the id rule and the animation; #inline: an important inline width); a transition beats important declarations (#trans goes from one important width to another); an important class colour beats a more specific id rule (#text). Captured at 0.5 s and 1.5 s of the animation, the transition half way.",
+ "viewport": [280, 190],
+ "steps": [
+  {"addClass": ["#trans", "wide"]},
+  {"advance": 0.5},
+  {"capture": "a"},
+  {"advance": 1.0},
+  {"capture": "b"}
+ ]
+}

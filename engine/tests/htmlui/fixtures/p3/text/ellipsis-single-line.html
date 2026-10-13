@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-overflow: ellipsis on one line</title>
+<style>
+  /* text-overflow applies to a block container that clips its overflow, also to the text of its inline descendants; the ellipsis replaces the letters that do not fit. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  @font-face { font-family: "Roboto Text"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  .box { position: absolute; left: 10px; width: 55px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; background: #e0e8f0; }
+</style>
+</head>
+<body>
+<div class="box" id="direct" style="top: 10px">XXXXXXXXXX</div>
+<div class="box" id="inline" style="top: 30px"><span id="inside">XXXXXXXXXX</span></div>
+<div class="box" id="fits" style="top: 50px">XXXXX</div>
+<div class="box" id="clip" style="top: 70px; text-overflow: clip">XXXXXXXXXX</div>
+<div class="box" id="after" style="top: 90px">XX <span style="color: #a03030">XXXXXXXX</span></div>
+</body>
+</html>

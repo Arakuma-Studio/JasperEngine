@@ -11,6 +11,7 @@ border-bottom-color: #00000000;
 border-left-width: 10px;
 border-left-style: solid;
 border-left-color: #00000000;
+border-image: none;
 --html-border-image: html-border-image("asset://compat/css/img/a.png" 30 30 30 30 nofill 1 1 1 1 0 0 0 0 round round);
 decorator: var(--html-border-image, linear-gradient(#0000, #0000)), var(--html-bg-layers, linear-gradient(#0000, #0000));
 }
@@ -36,11 +37,23 @@ decorator: var(--html-border-image, linear-gradient(#0000, #0000)), var(--html-b
 }
 #htmlui-root .bg {
 background-color: transparent;
---html-bg-layers: html-layer("asset://compat/css/img/b.png" auto auto 0% 0% no-repeat no-repeat padding-box border-box scroll);
-decorator: var(--html-border-image, linear-gradient(#0000, #0000)), var(--html-bg-layers, linear-gradient(#0000, #0000));
+background-image: url("asset://compat/css/img/b.png");
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: no-repeat no-repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
 }
 #htmlui-root .bg-gradient {
 background-color: transparent;
---html-bg-layers: linear-gradient(#000000ff, #ffffffff) border-box;
-decorator: var(--html-border-image, linear-gradient(#0000, #0000)), var(--html-bg-layers, linear-gradient(#0000, #0000));
+background-image: linear-gradient(#000000ff, #ffffffff);
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
 }

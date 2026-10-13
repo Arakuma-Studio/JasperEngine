@@ -25,55 +25,55 @@ flex-basis: initial;
 flex: 0 0 50%;
 }
 #htmlui-root .jc1 {
-justify-content: flex-start;
+justify-content: start;
 }
 #htmlui-root .jc2 {
-justify-content: flex-end;
+justify-content: end;
 }
 #htmlui-root .jc3 {
-justify-content: flex-start;
+justify-content: left;
 }
 #htmlui-root .jc4 {
-justify-content: flex-end;
+justify-content: right;
 }
 #htmlui-root .jc5 {
-justify-content: flex-start;
+justify-content: normal;
 }
 #htmlui-root .jc6 {
-justify-content: flex-start;
+justify-content: stretch;
 }
 #htmlui-root .jc7 {
-justify-content: center;
+justify-content: safe center;
 }
 #htmlui-root .jc8 {
 justify-content: space-evenly;
 }
 #htmlui-root .ai1 {
-align-items: flex-start;
+align-items: start;
 }
 #htmlui-root .ai2 {
-align-items: flex-end;
+align-items: self-end;
 }
 #htmlui-root .ai3 {
-align-items: stretch;
+align-items: normal;
 }
 #htmlui-root .ai4 {
-align-items: baseline;
+align-items: first baseline;
 }
 #htmlui-root .ai5 {
-align-items: baseline;
+align-items: last baseline;
 }
 #htmlui-root .as1 {
-align-self: flex-end;
+align-self: end;
 }
 #htmlui-root .as2 {
-align-self: flex-start;
+align-self: unsafe flex-start;
 }
 #htmlui-root .ac1 {
-align-content: flex-start;
+align-content: start;
 }
 #htmlui-root .ac2 {
-align-content: stretch;
+align-content: normal;
 }
 #htmlui-root .ac3 {
 align-content: flex-start;

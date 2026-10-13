@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pseudo: content: url()</title>
+<style>
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  .host { position: absolute; font-family: "Ahem"; font-size: 10px; line-height: 10px; color: #404040; background-color: #e0e0e0; }
+  /* an image as the whole content: a replaced inline box at its intrinsic size (64x64),
+     sitting on the baseline of the line */
+  #i1 { left: 10px; top: 10px; width: 100px; }
+  #i1::before { content: url("../../common/checker.png"); }
+  /* an SVG (24x24) after the text, in a block pseudo-element */
+  #i2 { left: 130px; top: 10px; width: 60px; }
+  #i2::after { content: url("../../common/icon.svg"); display: block; background-color: #c0d0f0; }
+  /* strings and an image mixed in one content list */
+  #i3 { left: 130px; top: 70px; width: 100px; }
+  #i3::before { content: "A" url("../../common/icon.svg") "B"; color: #a02060; }
+</style>
+</head>
+<body>
+<div id="i1" class="host">X</div>
+<div id="i2" class="host">XX</div>
+<div id="i3" class="host">X</div>
+</body>
+</html>

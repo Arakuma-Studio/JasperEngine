@@ -1,0 +1,46 @@
+{
+ "fixture": "paint/opacity-zero-hit.html",
+ "viewport": [
+  220,
+  160
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "rest": [
+   {
+    "id": "under",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 120,
+    "h": 80
+   },
+   {
+    "id": "over",
+    "tag": "div",
+    "x": 60,
+    "y": 50,
+    "w": 120,
+    "h": 80
+   }
+  ],
+  "hover": [
+   {
+    "id": "under",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 120,
+    "h": 80
+   },
+   {
+    "id": "over",
+    "tag": "div",
+    "x": 60,
+    "y": 50,
+    "w": 120,
+    "h": 80
+   }
+  ]
+ }
+}

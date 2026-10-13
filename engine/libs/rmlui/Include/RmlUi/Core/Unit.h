@@ -1,11 +1,13 @@
 #pragma once
 
 #include "Header.h"
+#include <stdint.h>
 #include <type_traits>
 
 namespace Rml {
 
-enum class Unit {
+// 64 bits (phase 3): 6.3 used bits 0-29, upstream PR #983 takes bit 30 and the phase-3 groundwork reserves bits 31-38.
+enum class Unit : uint64_t {
 	UNKNOWN = 0,
 
 	// Basic types.
@@ -55,12 +57,29 @@ enum class Unit {
 	VAR_EXPRESSION = 1 << 28,        // substituted and resolved at compute time; fetch as <String>
 	SHORTHAND_PLACEHOLDER = 1 << 29, // dependent on a shorthand that must be substituted and resolved at compute time; always empty
 
-	LENGTH = PX | DP | VW | VH | EM | REM | PPI_UNIT,
+#ifdef RMLUI_MATH_EXPRESSIONS
+	CALCULATION = 1 << 30, // CSS mathematical expression; fetch as <CalculationPtr>
+#endif
+
+	// Phase 3 (docs/html-ui/phase-3-fork-patches.md 3.1.3). The new units are parsed and computed by the values
+	// package (p3-values); groundwork reserves them so that every package compiles against the final enum.
+	VMIN = uint64_t(1) << 31, // smaller of the viewport's width and height percentage; number suffixed by 'vmin'; fetch as <float>
+	VMAX = uint64_t(1) << 32, // larger of the viewport's width and height percentage; number suffixed by 'vmax'; fetch as <float>
+	CH = uint64_t(1) << 33,   // advance of '0' in the element's font; number suffixed by 'ch'; fetch as <float>
+	EX = uint64_t(1) << 34,   // x-height of the element's font; number suffixed by 'ex'; fetch as <float>
+	TURN = uint64_t(1) << 35, // number suffixed by 'turn'; fetch as <float>
+	GRAD = uint64_t(1) << 36, // number suffixed by 'grad'; fetch as <float>
+
+	// Values tied to phase-3 types.
+	STYLE_VALUE = uint64_t(1) << 37,      // complex value of a phase-3 property; fetch as <StyleValuePtr>
+	CSS_WIDE_KEYWORD = uint64_t(1) << 38, // inherit, initial, unset, revert (p3-cascade); fetch as <int>
+
+	LENGTH = PX | DP | VW | VH | EM | REM | PPI_UNIT | VMIN | VMAX | CH | EX,
 	LENGTH_PERCENT = LENGTH | PERCENT,
 	NUMBER_PERCENT = NUMBER | PERCENT,
 	NUMBER_LENGTH_PERCENT = NUMBER | LENGTH | PERCENT,
 	DP_SCALABLE_LENGTH = DP | PPI_UNIT,
-	ANGLE = DEG | RAD,
+	ANGLE = DEG | RAD | TURN | GRAD,
 	NUMERIC = NUMBER_LENGTH_PERCENT | ANGLE | X
 };
 

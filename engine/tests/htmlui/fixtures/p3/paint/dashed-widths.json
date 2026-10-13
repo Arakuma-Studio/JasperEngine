@@ -1,0 +1,10 @@
+{
+ "comment": "dashed lines of 1, 2, 3, 4 and 8px over 250, 300 and 301px (the dash pattern measured on Chromium), dashed boxes with corners. Tolerance: dash ends fall on fractional positions; Chromium covers those pixels analytically, the engine's 4x multisampling in steps of 25 %, so single end pixels differ by more than 24 levels (scattered, no cluster). Measured 0.196 % on glcore and Vulkan; the cluster limit stays at the default (16 px).",
+ "viewport": [
+  330,
+  240
+ ],
+ "tolerance": {
+  "badPercent": 0.2
+ }
+}

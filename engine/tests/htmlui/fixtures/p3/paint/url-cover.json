@@ -1,0 +1,7 @@
+{
+ "comment": "cover: the 48 x 24 image scaled to cover wide and tall boxes, cropped, at the default and other positions.",
+ "viewport": [
+  460,
+  100
+ ]
+}

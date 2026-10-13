@@ -184,8 +184,9 @@ bool FontRegistry::hasFamily(const std::string& family){
 }
 
 bool FontRegistry::isGenericFamily(const std::string& family){
+    // (emoji, math and ui-rounded: CSS Fonts 4, phase 3; they map to the built-in faces too)
     static const char* generics[] = {"sans-serif", "serif", "monospace", "system-ui", "ui-sans-serif",
-                                     "ui-serif", "ui-monospace", "cursive", "fantasy"};
+                                     "ui-serif", "ui-monospace", "ui-rounded", "cursive", "fantasy", "emoji", "math"};
 
     std::string name = normalizeFamily(family);
     for (const char* generic : generics){

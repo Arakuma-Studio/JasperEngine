@@ -178,7 +178,7 @@ void jasperengine::htmlui::compat::rewriteFontSize(DeclContext& context){
         context.emit("font-size", "0px");
         return;
     }
-    if (!RcssGrammar::accepts("font-size", text(v))){
+    if (!RcssGrammar::accepts("font-size", text(v), context.session.options.fork)){
         unsupportedValue(context, "use a length or a percentage");
         return;
     }
@@ -189,6 +189,11 @@ void jasperengine::htmlui::compat::rewriteFontWeight(DeclContext& context){
     ValueList w = words(context.value);
     if (w.size() == 1){
         const std::string k = identOf(w[0]);
+        if ((k == "bolder" || k == "lighter") && context.session.fork(ForkFeature::RelativeFontWeight)){
+            // the fork computes them against the parent's weight (CSS Fonts 4's table)
+            context.emit("font-weight", k);
+            return;
+        }
         if (k == "bolder" || k == "lighter"){
             const std::string value = k == "bolder" ? "700" : "100";
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "'font-weight: " + k + "' is written as " + value +
@@ -205,7 +210,7 @@ void jasperengine::htmlui::compat::rewriteFontWeight(DeclContext& context){
         context.emit("font-weight", text(w[0]));
         return;
     }
-    if (!RcssGrammar::accepts("font-weight", context.valueText())){
+    if (!RcssGrammar::accepts("font-weight", context.valueText(), context.session.options.fork)){
         unsupportedValue(context, "use normal, bold or a number");
         return;
     }
@@ -233,14 +238,15 @@ void jasperengine::htmlui::compat::rewriteFontStyle(DeclContext& context){
 void jasperengine::htmlui::compat::rewriteLineHeight(DeclContext& context){
     ValueList w = words(context.value);
     if (w.size() == 1 && isIdent(w[0], "normal")){
-        context.emit("line-height", "1.2");
+        // the fork computes 'normal' from the font's metrics (ForkFeature::LineHeightNormal)
+        context.emit("line-height", context.fork(ForkFeature::LineHeightNormal) ? "normal" : "1.2");
         return;
     }
     if (w.size() == 1 && isVar(w[0])){
         context.emit("line-height", text(w[0]));
         return;
     }
-    if (!RcssGrammar::accepts("line-height", context.valueText())){
+    if (!RcssGrammar::accepts("line-height", context.valueText(), context.session.options.fork)){
         unsupportedValue(context, "use a number, a length or a percentage");
         return;
     }
@@ -265,7 +271,7 @@ void jasperengine::htmlui::compat::rewriteFont(DeclContext& context){
             context.emit("font-style", "normal");
             context.emit("font-weight", "400");
             context.emit("font-size", "13.333px");
-            context.emit("line-height", "1.2");
+            context.emit("line-height", context.fork(ForkFeature::LineHeightNormal) ? "normal" : "1.2");
             context.emit("font-family", "system-ui");
             context.session.result->fontFamilies.push_back("system-ui");
             return;

@@ -1,63 +1,55 @@
 #htmlui-root .solid {
---html-outline-shadow: 0 0 0 2px #ff0000ff;
-box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+outline: 2px solid #ff0000ff;
 }
 #htmlui-root .offset {
---html-outline-shadow: 0 0 0 5px #ff0000ff;
-box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+outline: 2px solid #ff0000ff;
+outline-offset: 3px;
 }
 #htmlui-root .negative {
---html-outline-shadow: inset 0 0 0 2px #0000ffff;
-box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+outline: 2px solid #0000ffff;
+outline-offset: -4px;
 }
 #htmlui-root .none {
---html-outline-shadow: 0 0 0 0 #0000;
-box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+outline: none;
 }
 #htmlui-root .zero {
---html-outline-shadow: 0 0 0 0 #0000;
-box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+outline: 0px;
 }
 #htmlui-root .style-none {
---html-outline-shadow: 0 0 0 0 #0000;
-box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+outline-style: none;
 }
 #htmlui-root .dashed {
---html-outline-shadow: 0 0 0 1px #008000ff;
-box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+outline: 1px dashed #008000ff;
 }
 #htmlui-root .auto {
---html-outline-shadow: 0 0 0 1px #ffffffff, 0 0 0 3px #101010ff;
-box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+outline: auto;
 }
 #htmlui-root .invert {
---html-outline-shadow: 0 0 0 1px #000000ff;
-box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+outline: 1px solid invert;
 }
 #htmlui-root .no-color {
---html-outline-shadow: 0 0 0 3px var(--html-current-color, #000000ff);
-box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+outline: 3px solid;
 }
 #htmlui-root .longhands {
---html-outline-shadow: 0 0 0 4px #00ff00ff;
-box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+outline-width: 4px;
+outline-style: solid;
+outline-color: #00ff00ff;
 }
 #htmlui-root .with-shadow {
 --html-box-shadow: 0px 2px 4px #000000ff;
---html-outline-shadow: 0 0 0 1px #ffffffff;
 box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+outline: 1px solid #ffffffff;
 }
 #htmlui-root .shadow-elsewhere {
 --html-box-shadow: 0px 0px 8px #00000080;
 box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
 }
-#htmlui-root .shadow-elsewhere:html-focus {
---html-outline-shadow: 0 0 0 2px #ffa500ff;
-box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+#htmlui-root .shadow-elsewhere:focus {
+outline: 2px solid #ffa500ff;
 }
 #htmlui-root .em-offset {
---html-outline-shadow: 0 0 0 2px #ff0000ff;
-box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
+outline: 2px solid #ff0000ff;
+outline-offset: 0.5em;
 }
 #htmlui-root .transition {
 transition: outline-color 0.2s, outline-offset 0.2s;

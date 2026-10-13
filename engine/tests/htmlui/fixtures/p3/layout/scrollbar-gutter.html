@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: scrollbar-gutter: stable</title>
+<style>
+  html, body { margin: 0; }
+  .scroller { position: absolute; top: 15px; width: 100px; height: 70px; background-color: #dddddd; }
+  .scroller > div { height: 30px; background-color: #334466; }
+  #auto { left: 15px; overflow: auto; }
+  #stable { left: 130px; overflow: auto; scrollbar-gutter: stable; }
+  #hidden { left: 245px; overflow: hidden; scrollbar-gutter: stable; }
+  #flex { left: 360px; overflow: auto; scrollbar-gutter: stable; display: flex; }
+  #flex > div { flex: 1; }
+</style>
+</head>
+<body>
+<div id="auto" class="scroller"><div id="auto-content"></div></div>
+<div id="stable" class="scroller"><div id="stable-content"></div></div>
+<div id="hidden" class="scroller"><div id="hidden-content"></div></div>
+<div id="flex" class="scroller"><div id="flex-content"></div></div>
+</body>
+</html>

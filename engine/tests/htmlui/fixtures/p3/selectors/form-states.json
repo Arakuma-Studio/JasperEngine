@@ -1,0 +1,4 @@
+{
+ "comment": "Form state pseudo-classes (spec 3.5.5) on plain boxes (appearance: none, no text): :enabled/:disabled, inputs of a disabled fieldset are :disabled (#fsin, #fsin2 gray); :checked on checkbox and radio (blue) and on <option selected> (#ind1 blue through :has(), #ind2 stays gray); :read-write/:read-only; :required/:optional; :link and :any-link on a[href] only (#ln2, #al2 stay gray). No #e02020 anywhere.",
+ "viewport": [260, 130]
+}

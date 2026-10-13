@@ -1,0 +1,68 @@
+{
+ "fixture": "text/vertical-align-middle.html",
+ "viewport": [
+  260,
+  70
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "line",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 200,
+    "h": 40
+   },
+   {
+    "id": "middle",
+    "tag": "span",
+    "x": 50,
+    "y": 23,
+    "w": 10,
+    "h": 10
+   },
+   {
+    "id": "text-top",
+    "tag": "span",
+    "x": 80,
+    "y": 20,
+    "w": 10,
+    "h": 10
+   },
+   {
+    "id": "text-bottom",
+    "tag": "span",
+    "x": 110,
+    "y": 30,
+    "w": 10,
+    "h": 10
+   },
+   {
+    "id": "length",
+    "tag": "span",
+    "x": 140,
+    "y": 20,
+    "w": 10,
+    "h": 10
+   },
+   {
+    "id": "percent",
+    "tag": "span",
+    "x": 170,
+    "y": 36,
+    "w": 10,
+    "h": 10
+   },
+   {
+    "id": "baseline",
+    "tag": "span",
+    "x": 200,
+    "y": 26,
+    "w": 10,
+    "h": 10
+   }
+  ]
+ }
+}

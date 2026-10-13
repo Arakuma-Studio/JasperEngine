@@ -1,0 +1,28 @@
+{
+ "fixture": "testkit/ahem-text.html",
+ "viewport": [
+  240,
+  100
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "text",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 120,
+    "h": 20
+   },
+   {
+    "id": "wrap",
+    "tag": "div",
+    "x": 10,
+    "y": 60,
+    "w": 70,
+    "h": 30
+   }
+  ]
+ }
+}

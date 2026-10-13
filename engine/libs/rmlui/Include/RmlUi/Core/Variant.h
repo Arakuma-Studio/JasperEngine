@@ -37,6 +37,9 @@ public:
 		COLOURB = 'h',
 		SCRIPTINTERFACE = 'p',
 		TRANSFORMPTR = 't',
+#ifdef RMLUI_MATH_EXPRESSIONS
+		CALCULATIONPTR = 'M',
+#endif
 		TRANSITIONLIST = 'T',
 		ANIMATIONLIST = 'A',
 		DECORATORSPTR = 'D',
@@ -44,6 +47,7 @@ public:
 		FONTEFFECTSPTR = 'E',
 		COLORSTOPLIST = 'C',
 		BOXSHADOWLIST = 'S',
+		STYLEVALUEPTR = 'v',
 		VOIDPTR = '*',
 	};
 
@@ -117,6 +121,10 @@ private:
 	void Set(String&& value);
 	void Set(const TransformPtr& value);
 	void Set(TransformPtr&& value);
+#ifdef RMLUI_MATH_EXPRESSIONS
+	void Set(const CalculationPtr& value);
+	void Set(CalculationPtr&& value);
+#endif
 	void Set(const TransitionList& value);
 	void Set(TransitionList&& value);
 	void Set(const AnimationList& value);
@@ -131,6 +139,8 @@ private:
 	void Set(ColorStopList&& value);
 	void Set(const BoxShadowList& value);
 	void Set(BoxShadowList&& value);
+	void Set(const StyleValuePtr& value);
+	void Set(StyleValuePtr&& value);
 
 	template <typename T, typename = std::enable_if_t<std::is_enum_v<T>>>
 	void Set(const T value);

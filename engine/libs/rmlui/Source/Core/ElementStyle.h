@@ -9,7 +9,10 @@
 namespace Rml {
 
 class ElementDefinition;
+class FontUnitScope;
 class PlainPropertiesIterator;
+struct ElementAnimationStyle;
+struct TransitionSnapshot;
 class AllPropertiesIterator;
 enum class RelativeTarget;
 
@@ -25,9 +28,14 @@ public:
 	/// Constructor
 	/// @param[in] element The element this structure belongs to.
 	ElementStyle(Element* element);
+	~ElementStyle();
 
 	/// Update this definition if required
 	void UpdateDefinition();
+#ifdef RMLUI_TESTS_ENABLED
+	/// The number of UpdateDefinition calls so far, of every element (tests measure selector invalidation with it).
+	static int GetNumDefinitionUpdates();
+#endif
 
 	/// Sets or removes a pseudo-class on the element.
 	/// @param[in] pseudo_class The pseudo class to activate or deactivate.
@@ -81,10 +89,17 @@ public:
 	void RemoveCustomProperty(const String& name);
 	/// Removes a local var shorthand override on the element.
 	void RemoveVarShorthand(ShorthandId id);
+	/// Replaces the declarations of the element's 'style' attribute (phase 3, CSS semantics): the inline declarations
+	/// the previous attribute value set and the new one lacks are removed, the new ones set. Declarations set otherwise
+	/// (Element::SetProperty, data bindings) are kept unless the attribute sets the same property.
+	void SetStyleAttribute(const PropertyDictionary& properties);
 	/// Returns one of this element's properties, with lookup into parents for inherited properties.
 	/// @param[in] id The ID of the property to fetch the value for.
 	/// @return The value of this property for this element, or the default value if none is declared.
 	const Property* GetProperty(PropertyId id) const;
+	/// Returns one of this element's properties as GetProperty does, but without the element's own animation layers: the
+	/// value its declarations give (CSS's underlying value of an animation).
+	const Property* GetUnderlyingProperty(PropertyId id) const;
 	/// Returns one of this element's custom properties, with lookup into parents.
 	/// @param[in] name The name of the property to fetch the value for (including "--" prefix).
 	/// @return The value of this property for this element, or nullptr if no property exists with the given name.
@@ -108,6 +123,28 @@ public:
 	/// Returns the local style properties, excluding any properties from local classes.
 	const PropertyDictionary& GetLocalStyleProperties() const;
 
+	/// The animation layers (phase 3): the values that running transitions and animations apply over the declared ones
+	/// (inline style included), consulted in CSS cascade order: transitions, then animations, then the declarations
+	/// (p3-cascade puts !important declarations between transitions and animations). They are set and removed by the
+	/// element's animation code, so that it never writes the inline style.
+	void SetTransitionProperty(PropertyId id, const Property& property);
+	void RemoveTransitionProperty(PropertyId id);
+	void SetAnimatedProperty(PropertyId id, const Property& property);
+	void RemoveAnimatedProperty(PropertyId id);
+	/// The values of the layers, or nullptr when the element has none.
+	const PropertyDictionary* GetTransitionProperties() const;
+	const PropertyDictionary* GetAnimatedProperties() const;
+
+	/// The computed transition and animation lists (phase 3, p3-animation): built from the transition-* and animation-*
+	/// longhands whenever they change; nullptr when the element has no transition or no animation.
+	const TransitionList* GetTransitionList() const;
+	const AnimationList* GetAnimationList() const;
+
+	/// Called when the element is displayed again after it or an ancestor was 'display: none' (p3-animation): if it has
+	/// transitions and @starting-style rules exist, its style is computed again so that it transitions from its starting
+	/// style. Returns true if properties were dirtied for that.
+	bool RestartTransitionsFromStartingStyle();
+
 	/// Resolves a numeric value with units of number, percentage, length, or angle to their canonical unit (unit-less, 'px', or 'rad').
 	/// @param[in] value The value to be resolved.
 	/// @param[in] base_value The value that is scaled by the number or percentage value, if applicable.
@@ -130,7 +167,8 @@ public:
 	void DirtyPropertiesWithUnitsRecursive(Units units);
 
 	/// Returns true if any properties are dirty such that computed values need to be recomputed
-	bool AnyPropertiesDirty() const;
+	/// (inline: Element::Update asks for every element on every update)
+	bool AnyPropertiesDirty() const { return !dirty_properties.Empty() || !dirty_variables.empty() || !dirty_var_shorthands.empty(); }
 
 	/// Resolves variables and var expression shorthands for a single property taken from a keyframe block.
 	/// @param[in] id The property being resolved.
@@ -163,10 +201,15 @@ public:
 	static void Shutdown();
 
 private:
+	struct AnimationLayers {
+		PropertyDictionary transition_properties;
+		PropertyDictionary animated_properties;
+	};
 	struct PropertySources {
 		Element* element;
 		const ElementDefinition* definition;
 		const PropertyDictionary& inline_properties;
+		const AnimationLayers* animation_layers = nullptr;
 	};
 	struct DirtyPropertiesRef {
 		PropertyIdSet& properties;
@@ -189,13 +232,60 @@ private:
 	void ComputeValue(Style::ComputedValues& values, float dp_ratio, Vector2f vp_dimensions, float font_size, float document_font_size,
 		bool& dirty_font_face_handle, PropertyId id, const Property* p);
 
-	static const Property* GetLocalProperty(PropertyId id, const PropertyDictionary& inline_properties, const ElementDefinition* definition);
+	// Values (p3-values, ElementStyleValues.cpp): hooks of ComputeValues. Each property's 'currentcolor' is replaced by
+	// this element's color (in 'color' itself the parent's), which is computed at the first one ('color_computed'); the
+	// properties holding one are reported changed with the color. 'bolder'/'lighter' are replaced by the weight they
+	// compute to from the parent's.
+	void ComputeColor(Style::ComputedValues& values, const Style::ComputedValues* parent_values);
+	const Property* ResolveValueKeywords(PropertyId id, const Property* property, Style::ComputedValues& values,
+		const Style::ComputedValues* parent_values, bool& color_computed, Property& current_color_storage);
+	// After the font face is known: 'ch' and 'ex' lengths are computed again against it when it changed. Their pass over
+	// the properties is made only when one of the properties ComputeValues computed may hold them ('any_font_face_candidates',
+	// FontFaceCandidateUnits), or with animation layers (their values may have changed since).
+	void ComputeFontRelativeValues(Style::ComputedValues& values, FontUnitScope& font_unit_scope, FontFaceHandle previous_font_face,
+		FontFaceHandle loop_font_face, float dp_ratio, Vector2f vp_dimensions, float font_size, float document_font_size,
+		Property& property_storage, bool any_font_face_candidates);
+	// The units of a specified value that may hold 'ch' or 'ex'.
+	static Units FontFaceCandidateUnits()
+	{
+		return Unit::CH | Unit::EX | Unit::VAR_EXPRESSION | Unit::SHORTHAND_PLACEHOLDER | Unit::STYLE_VALUE
+#ifdef RMLUI_MATH_EXPRESSIONS
+			| Unit::CALCULATION
+#endif
+			;
+	}
+
+#ifdef RMLUI_MATH_EXPRESSIONS
+	Units GetMutableUnitDependencies(const Property& property) const;
+	Units GetResolvedUnitDependencies(PropertyId id) const;
+	void UpdateResolvedUnitDependencies(PropertyId id, const Property& specified_property, const Property* resolved_property);
+	void EraseResolvedUnitDependencies(PropertyId id);
+#endif
+
+	static const Property* GetLocalProperty(PropertyId id, const PropertyDictionary& inline_properties, const ElementDefinition* definition,
+		const AnimationLayers* animation_layers = nullptr);
 	static const Property* GetLocalCustomProperty(const String& name, const PropertyDictionary& inline_properties,
 		const ElementDefinition* definition);
 	static const Property* GetLocalShorthand(ShorthandId id, const PropertyDictionary& inline_properties, const ElementDefinition* definition);
 
 	// Specified property: The property value before being computed. Includes the cascade, excludes variable substitution.
 	static PropertyElementPair GetSpecifiedProperty(const PropertySources& sources, PropertyId id);
+	// The declaration a CSS-wide keyword of the element's property stands for (phase 3, cascade): the parent's
+	// specified property for 'inherit', the user-agent declaration for 'revert', the property's initial value (with no
+	// element) for 'initial'; 'unset' is one of 'inherit' and 'initial'.
+	static PropertyElementPair ResolveSpecifiedKeyword(const PropertySources& sources, PropertyId id, const Property& keyword_property);
+	// The same for computing values: a null property when the element computes the value as if nothing were declared
+	// (the initial value of a non-inherited property, the parent's value of an inherited one); else the declaration to
+	// compute and the element whose font size and variables it is computed with (null: this element).
+	struct ComputedKeyword {
+		const Property* property = nullptr;
+		Element* element = nullptr;
+		bool explicit_inherit = false; // a non-inherited property set to 'inherit' (directly or through 'unset')
+	};
+	ComputedKeyword ResolveComputedKeyword(PropertyId id, const Property& keyword_property) const;
+	// The local property of an inherited property for the computed-value pre-passes, with its CSS-wide keyword resolved
+	// (null: the parent's value).
+	const Property* GetLocalPropertyForCompute(PropertyId id) const;
 	static PropertyElementPair GetSpecifiedCustomProperty(const PropertySources& sources, const String& name);
 	static PropertyElementPair GetSpecifiedShorthand(const PropertySources& sources, ShorthandId id);
 
@@ -213,7 +303,40 @@ private:
 	static void ExpandVarShorthands(PropertyDictionary& out_substituted_shorthands, const PropertySources& sources,
 		std::optional<DirtyPropertiesRef> dirty_properties);
 
-	static void TransitionPropertyChanges(const PropertySources& sources, PropertyIdSet& changed_properties, const ElementDefinition* new_definition);
+	// Rebuilds the computed transition and animation lists when their longhands are among the dirty properties.
+	void UpdateAnimationLists(const PropertyIdSet& dirty);
+
+	// -- Transitions on any change of a computed value (p3-animation, ElementTransitions.cpp) --
+	struct ComputeContext {
+		Style::ComputedValues& values;
+		const Style::ComputedValues* parent_values;
+		const Style::ComputedValues* document_values;
+		float dp_ratio;
+		Vector2f vp_dimensions;
+	};
+	// Pre-pass of 'font-size' or 'line-height': the value to compute instead of the declared one (a transition's start
+	// value) if a transition starts or stops, else nullptr.
+	const Property* TransitionPrePass(PropertyId id, const ComputeContext& context);
+	// After the main loop: starts and updates the transitions of the changed properties, and computes the values they
+	// apply now.
+	void TransitionChangedProperties(const ComputeContext& context, const PropertyIdSet& dirty, float font_size, float document_font_size,
+		bool& dirty_font_face_handle);
+	// Before the definition changes: keeps the before-change values of the changed properties the element has none for.
+	void CaptureBeforeChangeValues(const PropertyIdSet& changed_properties, const ElementDefinition* new_definition);
+	// One property: compares its declared value with the before-change value and starts, reverses or cancels its
+	// transition. Returns true if the computed value is now 'applied'.
+	bool TransitionProperty(PropertyId id, bool first_style, bool displayed, const ComputeContext& context, Property& applied);
+	// The property's value from the declarations of the element and, for inherited properties, of its ancestors, without
+	// any animation layer: the after-change value.
+	const Property* GetDeclaredValue(PropertyId id, Property& storage) const;
+	// The font size of the element's (and its ancestors') declarations, without their transitions and animations.
+	float GetDeclaredFontSize(const ComputeContext& context) const;
+	// A property in computed form: relative lengths resolved to px, so that a change of font size or viewport is a change.
+	Property ComputedForm(PropertyId id, const Property& property, const ComputeContext& context) const;
+	// The value of a property in the element's starting style (@starting-style), or nullptr if it gives none.
+	const Property* GetStartingStyleValue(PropertyId id, Property& storage);
+	// The element's definition with its @starting-style rules (nullptr if they change nothing), kept in the snapshot.
+	const ElementDefinition* GetStartingStyleDefinition();
 
 	// Element these properties belong to
 	Element* element;
@@ -227,12 +350,36 @@ private:
 	SharedPtr<const ElementDefinition> definition;
 	// Any properties that have been overridden in this element.
 	PropertyDictionary inline_properties;
+	// An important declaration was set inline (not cleared when it is removed): the cascade then compares the inline
+	// style with the definition by importance (Cascade.h).
+	bool inline_important = false;
 	// Properties computed from shorthands with variables, here resolved.
 	PropertyDictionary expanded_shorthands;
+	// Values of running transitions and animations (most elements have none).
+	UniquePtr<AnimationLayers> animation_layers;
+	// The computed transition and animation lists (p3-animation; elements without transition or animation have none).
+	UniquePtr<ElementAnimationStyle> animation_style;
+	// The after-change values of the properties the element transitions (p3-animation).
+	UniquePtr<TransitionSnapshot> transition_snapshot;
+
+	// What the 'style' attribute declared last (allocated with the first attribute), see SetStyleAttribute.
+	struct StyleAttributeDeclarations {
+		PropertyIdSet properties;
+		StringList custom_properties;
+		Vector<ShorthandId> var_shorthands;
+	};
+	UniquePtr<StyleAttributeDeclarations> style_attribute;
+
+	// The non-inherited properties this element declares as 'inherit' (allocated when there are any): they follow the
+	// parent's values when those change (phase 3, cascade).
+	UniquePtr<PropertyIdSet> explicit_inherit;
 
 	PropertyIdSet dirty_properties;
 	UnorderedSet<String> dirty_variables;
 	UnorderedSet<ShorthandId> dirty_var_shorthands;
+#ifdef RMLUI_MATH_EXPRESSIONS
+	UniquePtr<UnorderedMap<PropertyId, Units>> resolved_unit_dependencies;
+#endif
 };
 
 } // namespace Rml

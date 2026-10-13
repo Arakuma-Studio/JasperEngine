@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>grid: grid-template shorthand with spanning header and footer</title>
+<style>
+  html, body { margin: 0; }
+  #g { position: absolute; left: 0; top: 0; width: 300px; height: 200px; display: grid;
+       grid-template: auto 1fr auto / 60px 1fr 50px; background-color: #eeeeee; }
+  #header { grid-column: 1 / -1; height: 24px; background-color: #222266; }
+  #left { background-color: #aa3333; }
+  #content { background-color: #f0f0c0; }
+  #right { background-color: #33aa33; }
+  #footer { grid-column: 1 / 4; height: 16px; background-color: #555555; }
+</style>
+</head>
+<body>
+<div id="g"><div id="header"></div><div id="left"></div><div id="content"></div><div id="right"></div><div id="footer"></div></div>
+</body>
+</html>

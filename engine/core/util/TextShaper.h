@@ -22,7 +22,8 @@ namespace jasperengine {
 
     struct ShapeOptions {
         bool kerning = true;          // false: hb feature "kern" = 0
-        float letterSpacing = 0.0f;   // pixels added after each cluster; != 0 also turns off liga/clig/dlig
+        float letterSpacing = 0.0f;   // pixels added after each cluster (not after a default-ignorable one); != 0 also turns off liga/clig/dlig
+        float wordSpacing = 0.0f;     // pixels added after each space: U+0020, U+00A0, U+1361 (CSS Text 3 §8.1)
         int baseDirection = 0;        // 0 auto (SBLevelDefaultLTR, today's behavior), 1 LTR, 2 RTL
         std::string language;         // BCP 47; empty: guessed by HarfBuzz from the script, as STBText does
     };
@@ -32,7 +33,10 @@ namespace jasperengine {
     // script, so letters only join inside their own font and script.
     class JASPERENGINE_API TextShaper {
     public:
-        // faces = chain (primary first), scales[i] = pixels per font unit of face i
+        // faces = chain (primary first), scales[i] = pixels per font unit of face i.
+        // A default-ignorable codepoint (zero-width space, joiners, word joiner, soft hyphen,
+        // variation selectors, bidi controls) keeps the current face: it draws nothing and
+        // takes no space, so a face without a glyph for it is no reason to switch fonts.
         static unsigned int selectFace(const std::vector<const FontFace*>& faces, uint32_t codepoint, unsigned int current);
         // appends the glyphs of codepoints[offset, offset + length) to `out`, left to right
         static void shapeRange(const std::vector<const FontFace*>& faces, const std::vector<float>& scales,
@@ -42,6 +46,9 @@ namespace jasperengine {
         static float measure(const std::vector<const FontFace*>& faces, const std::vector<float>& scales,
                              const std::vector<uint32_t>& codepoints, size_t offset, size_t length,
                              const ShapeOptions& options);
+        // Unicode's Default_Ignorable_Code_Point (DerivedCoreProperties.txt, Unicode 15.1):
+        // invisible, zero advance (HarfBuzz hides them in any face that has a space glyph)
+        static bool isDefaultIgnorable(uint32_t codepoint);
         // invalid sequences become U+FFFD
         static void decodeUtf8(const char* text, size_t length, std::vector<uint32_t>& codepoints);
     };

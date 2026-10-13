@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: double borders</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  div { position: absolute; border: 0 double #3366cc; background-color: #f4f4f4; }
+  #a { left: 10px; top: 10px; width: 80px; height: 40px; border-width: 6px; }
+  #b { left: 120px; top: 10px; width: 80px; height: 40px; border-width: 9px; border-radius: 20px; }
+  #c { left: 230px; top: 10px; width: 60px; height: 60px; border-width: 12px; border-radius: 50%; border-color: #cc3333; }
+  #d { left: 10px; top: 90px; width: 80px; height: 40px; border-width: 2px; }
+  #e { left: 120px; top: 90px; width: 80px; height: 40px; border-width: 3px 6px 9px 12px; border-radius: 8px; }
+</style>
+</head>
+<body><div id="a"></div><div id="b"></div><div id="c"></div><div id="d"></div><div id="e"></div></body>
+</html>

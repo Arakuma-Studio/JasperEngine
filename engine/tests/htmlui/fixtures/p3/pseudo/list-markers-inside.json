@@ -1,0 +1,4 @@
+{
+ "comment": "Inside ::marker boxes (spec 3.6.4): the marker is the first inline box of the item's first line. Symbol markers at 20px: Chromium paints a 5x5 disc/square at the li's content start (x +0) and the item text starts 26px further; ordinal markers at 10px ('1. ' = two squares and a space, 'III. ', the list-style shorthand 'lower-alpha inside'); a long item wraps its second line back to the li's content edge (#wrap).",
+ "viewport": [300, 200]
+}

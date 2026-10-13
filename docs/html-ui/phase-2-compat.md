@@ -2022,7 +2022,7 @@ phase removes it, in that phase's spec:
 
 | Pin on the page | Engine limit | Removed by |
 |---|---|---|
-| `line-height: 1.2` on the body, `line-height: 15px` on the controls (Chromium's `normal` for 13.333px Roboto) | `line-height: normal` is `1.2` | phase 3 `LineHeightNormal` (`phase-3-fork-patches.md` §3.3.6, which also removes the pins) |
+| `line-height: 1.2` on the body, `line-height: 15px` on the controls (Chromium's `normal` for 13.333px Roboto) | `line-height: normal` is `1.2` | phase 3 `LineHeightNormal` (`phase-3-fork-patches.md` §3.3.6): removed by p3-values, the page passes its gates without them |
 | `font-size: 13px` on the text-sized controls | font sizes are whole pixels: Chromium's 13.333px draws at 13px | kept (RmlUi's font engine interface is integer; phase-3 spec §2.2) |
 | `font-family: sans-serif` (Roboto) on the form | text runs are a whole number of pixels wide, so another face's space and glyph advances differ by up to a pixel per run | kept (same row of phase-3 spec §2.2) |
 
@@ -4401,7 +4401,7 @@ place (§3.10 fieldset and the `ua-defaults` pins, §4 "p2-css as implemented").
   while checkboxes and selects read them with `#ffffff`/`#767676`, and `auto` writes one value
   per companion, so `input[type=range] { appearance: auto }` drew a white track with a dark
   border. The track has its own companions now (`--html-slider-track-bg`,
-  `--html-slider-track-border-color`, written by `appearance: none`/`auto`), and
+  `--html-slider-track-border-color`, `--html-control-border-width`, `--html-control-radius`, `--html-check-radius`, `--html-radio-radius`, `--html-check-fill`, `--html-radio-ring`, `--html-control-disabled-border`, `--html-check-disabled-fill` (p3-cascade: the theme's frame, rounding, fill and ring of checkboxes and radios and the rounding of text fields, buttons and selects, none of it with `appearance: none`), written by `appearance: none`/`auto`), and
   `CompatUaSheet.AppearanceAutoWritesTheSheetsFallbacks` holds every companion to one fallback
   that equals what `auto` writes.
 - Play stop on the compat path (`compat_playstop_test.cpp`): no Lua reference, the documents

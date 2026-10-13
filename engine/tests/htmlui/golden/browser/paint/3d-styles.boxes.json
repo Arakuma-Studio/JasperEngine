@@ -1,0 +1,11 @@
+{
+ "fixture": "paint/3d-styles.html",
+ "viewport": [
+  250,
+  210
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": []
+ }
+}

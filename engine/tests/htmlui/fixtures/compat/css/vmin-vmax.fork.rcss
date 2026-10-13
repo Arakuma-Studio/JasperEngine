@@ -1,0 +1,41 @@
+#htmlui-root .box {
+width: 50vmin;
+height: 50vmin;
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+}
+#htmlui-root .wide {
+font-size: 5vmax;
+padding: 2vmin 4vmax;
+}
+@media (min-width: 600px) and (orientation: landscape) {
+#htmlui-root .box {
+border-radius: 10vh;
+}
+}
+@media (min-width: 600px) and (orientation: portrait) {
+#htmlui-root .box {
+border-radius: 10vw;
+}
+}
+@keyframes grow {
+0% {
+width: 10vmin;
+}
+100% {
+width: 20vmax;
+}
+}
+#htmlui-root .v {
+width: var(--size);
+}
+@media (orientation: landscape) {
+#htmlui-root .v {
+--size: 8vh;
+}
+}
+@media (orientation: portrait) {
+#htmlui-root .v {
+--size: 8vw;
+}
+}

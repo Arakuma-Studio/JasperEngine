@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-overflow in a flex item</title>
+<style>
+  /* A flex item that may shrink below its content (min-width: 0) clips its text with an ellipsis next to a fixed-width sibling. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  @font-face { font-family: "Roboto Text"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  .row { position: absolute; left: 10px; width: 120px; display: flex; background: #e0e8f0; }
+  .label { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .fixed { width: 40px; flex: none; background: #c0d0e0; }
+</style>
+</head>
+<body>
+<div class="row" style="top: 10px"><div class="label" id="label">XXXXXXXXXXXX</div><div class="fixed" id="fixed">XX</div></div>
+<div class="row" style="top: 30px"><div class="label" id="short">XXX</div><div class="fixed">XX</div></div>
+</body>
+</html>

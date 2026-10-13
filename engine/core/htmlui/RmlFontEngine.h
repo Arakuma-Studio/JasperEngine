@@ -118,7 +118,6 @@ namespace jasperengine {
             std::vector<float> emScales;   // document px per font unit of each face
             std::vector<float> boldStrength; // per face: synthetic bold in document px, 0 = the face has the weight
             std::vector<float> italicShear;  // per face: synthetic italic shear, 0 = none
-            bool synthesizesBold = false;
             int size = 0;
             Rml::FontMetrics metrics = {};
         };

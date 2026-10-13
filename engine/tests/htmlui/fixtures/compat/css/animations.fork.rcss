@@ -1,77 +1,70 @@
 #htmlui-root .all-parts {
-animation: 2s 0.5s infinite alternate paused ease-in-out pulse;
--html-animation-fill: forwards;
+animation: 2s ease-in-out 0.5s infinite alternate both paused pulse;
 }
 #htmlui-root .ms {
-animation: 0.3s fade;
--html-animation-fill: none;
+animation: 0.3s ease 0s 1 normal none running fade;
 }
 #htmlui-root .reverse {
-animation: 1s slide-rev;
--html-animation-fill: none;
+animation: 1s ease 0s 1 reverse none running slide;
 }
 #htmlui-root .alt-reverse {
-animation: 1s infinite alternate slide-rev;
--html-animation-fill: none;
+animation: 1s ease 0s infinite alternate-reverse none running slide;
 }
 #htmlui-root .forwards {
-animation: 0.5s 0.2s fade;
--html-animation-fill: forwards;
+animation: 0.5s ease 0.2s 1 normal forwards running fade;
 }
 #htmlui-root .backwards {
-animation: 1s 1s fade;
--html-animation-fill: none;
+animation: 1s ease 1s 1 normal backwards running fade;
 }
 #htmlui-root .both-nodelay {
-animation: 1s fade;
--html-animation-fill: forwards;
+animation: 1s ease 0s 1 normal both running fade;
 }
 #htmlui-root .fraction {
-animation: 1s 3 fade;
--html-animation-fill: none;
+animation: 1s ease 0s 2.6 normal none running fade;
 }
 #htmlui-root .zero-count {
-animation: none;
--html-animation-fill: none;
+animation: 1s ease 0s 0 normal none running fade;
 }
 #htmlui-root .zero-duration {
-animation: none;
--html-animation-fill: none;
+animation: 0s ease 0s 1 normal none running fade;
 }
 #htmlui-root .none {
-animation: none;
--html-animation-fill: none;
+animation: 0s ease 0s 1 normal none running none;
 }
 #htmlui-root .list {
-animation: 1s fade, 2s infinite linear pulse;
--html-animation-fill: none;
+animation: 1s ease 0s 1 normal none running fade, 2s linear 0s infinite normal none running pulse;
 }
 #htmlui-root .longhands {
-animation: 1.5s infinite alternate paused steps(3) pulse;
--html-animation-fill: none;
+animation-name: pulse;
+animation-duration: 1.5s;
+animation-iteration-count: infinite;
+animation-timing-function: steps(3);
+animation-direction: alternate;
+animation-play-state: paused;
 }
 #htmlui-root .item {
-animation: 0.4s ease-out fade;
--html-animation-fill: forwards;
+animation: 0.4s ease-out 0s 1 normal both running fade;
 }
 #htmlui-root .item:nth-child(2) {
-animation: 0.4s 0.1s ease-out fade;
--html-animation-fill: forwards;
+animation-delay: 0.1s;
 }
 #htmlui-root .item:nth-child(3) {
-animation: 0.4s 0.2s ease-out fade;
--html-animation-fill: forwards;
+animation-delay: 0.2s;
+}
+#htmlui-root .lonely {
+animation-duration: 3s;
 }
 #htmlui-root .fill-only {
--html-animation-fill: forwards;
+animation-fill-mode: forwards;
+}
+#htmlui-root .composition {
+animation-composition: add;
 }
 #htmlui-root .quoted {
-animation: 1s kf-fc01caf3;
--html-animation-fill: none;
+animation: 1s ease 0s 1 normal none running kf-fc01caf3;
 }
 #htmlui-root .bezier {
-animation: 1s cubic-bezier(0.17,0.67,0.83,0.67) pulse;
--html-animation-fill: none;
+animation: 1s cubic-bezier(0.17,0.67,0.83,0.67) 0s 1 normal none running pulse;
 }
 @keyframes fade {
 0% {
@@ -97,17 +90,6 @@ left: 0;
 left: 50px;
 }
 100% {
-left: 100px;
-}
-}
-@keyframes slide-rev {
-100% {
-left: 0;
-}
-70% {
-left: 50px;
-}
-0% {
 left: 100px;
 }
 }

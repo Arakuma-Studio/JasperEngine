@@ -2,7 +2,10 @@
 
 #include "ID.h"
 #include "Types.h"
-#include <bitset>
+#include <stdint.h>
+#if defined(_MSC_VER) && !defined(__clang__)
+	#include <intrin.h>
+#endif
 
 namespace Rml {
 
@@ -11,15 +14,19 @@ class PropertyIdSetIterator;
 /*
     PropertyIdSet is a 'set'-like container for PropertyIds.
 
-    Implemented as a wrapper around bitset. It is cheap to construct and use, requiring no dynamic allocation.
+    Implemented as a fixed bit set of 64-bit words. It is cheap to construct and use, requiring no dynamic allocation.
 
     Supports union and intersection operations between two sets, as well as iteration through the IDs that are inserted.
+    Iteration skips empty words, so its cost follows the number of inserted IDs rather than the number of possible IDs.
 */
 
 class RMLUICORE_API PropertyIdSet {
 private:
 	static constexpr size_t N = size_t(PropertyId::MaxNumIds);
-	std::bitset<N> defined_ids;
+	static constexpr size_t NumWords = (N + 63) / 64;
+	uint64_t words[NumWords] = {};
+
+	static uint64_t Bit(size_t index) { return uint64_t(1) << (index % 64); }
 
 public:
 	PropertyIdSet() { static_assert((size_t)PropertyId::Invalid == 0, "PropertyIdSet makes an assumption that PropertyId::Invalid is zero."); }
@@ -27,25 +34,43 @@ public:
 	void Insert(PropertyId id)
 	{
 		RMLUI_ASSERT(size_t(id) < N);
-		defined_ids.set((size_t)id);
+		words[size_t(id) / 64] |= Bit(size_t(id));
 	}
 
-	void Clear() { defined_ids.reset(); }
+	void Clear()
+	{
+		for (uint64_t& word : words)
+			word = 0;
+	}
 	void Erase(PropertyId id)
 	{
 		RMLUI_ASSERT(size_t(id) < N);
-		defined_ids.reset((size_t)id);
+		words[size_t(id) / 64] &= ~Bit(size_t(id));
 	}
 
-	bool Empty() const { return defined_ids.none(); }
-	bool Contains(PropertyId id) const { return defined_ids.test((size_t)id); }
+	bool Empty() const
+	{
+		// One test of the OR-ed words rather than a branch per word.
+		uint64_t any = 0;
+		for (uint64_t word : words)
+			any |= word;
+		return any == 0;
+	}
+	bool Contains(PropertyId id) const { return size_t(id) < N && (words[size_t(id) / 64] & Bit(size_t(id))) != 0; }
 
-	size_t Size() const { return defined_ids.count(); }
+	size_t Size() const
+	{
+		size_t count = 0;
+		for (uint64_t word : words)
+			count += PopCount(word);
+		return count;
+	}
 
 	// Union with another set
 	PropertyIdSet& operator|=(const PropertyIdSet& other)
 	{
-		defined_ids |= other.defined_ids;
+		for (size_t i = 0; i < NumWords; i++)
+			words[i] |= other.words[i];
 		return *this;
 	}
 	PropertyIdSet operator|(const PropertyIdSet& other) const
@@ -58,13 +83,14 @@ public:
 	// Intersection with another set
 	PropertyIdSet& operator&=(const PropertyIdSet& other)
 	{
-		defined_ids &= other.defined_ids;
+		for (size_t i = 0; i < NumWords; i++)
+			words[i] &= other.words[i];
 		return *this;
 	}
 	PropertyIdSet operator&(const PropertyIdSet& other) const
 	{
-		PropertyIdSet result;
-		result.defined_ids = (defined_ids & other.defined_ids);
+		PropertyIdSet result = *this;
+		result &= other;
 		return result;
 	}
 
@@ -76,6 +102,58 @@ public:
 	// Erases the property id represented by a valid iterator. Iterator must be in the range [begin, end).
 	// @return A new iterator pointing to the next element or end().
 	inline PropertyIdSetIterator Erase(PropertyIdSetIterator it);
+
+private:
+	// The index of the first contained id at or after 'index', or N if there is none.
+	size_t NextFrom(size_t index) const
+	{
+		size_t word_index = index / 64;
+		if (word_index >= NumWords)
+			return N;
+		uint64_t word = words[word_index] & (~uint64_t(0) << (index % 64));
+		while (true)
+		{
+			if (word)
+				return word_index * 64 + CountTrailingZeros(word);
+			if (++word_index >= NumWords)
+				return N;
+			word = words[word_index];
+		}
+	}
+
+	static size_t CountTrailingZeros(uint64_t word)
+	{
+		RMLUI_ASSERT(word != 0);
+#if defined(__GNUC__) || defined(__clang__)
+		return (size_t)__builtin_ctzll(word);
+#elif defined(_MSC_VER) && (defined(_M_X64) || defined(_M_ARM64))
+		unsigned long index = 0;
+		_BitScanForward64(&index, word);
+		return (size_t)index;
+#else
+		size_t count = 0;
+		while ((word & 1) == 0)
+		{
+			word >>= 1;
+			count++;
+		}
+		return count;
+#endif
+	}
+
+	static size_t PopCount(uint64_t word)
+	{
+#if defined(__GNUC__) || defined(__clang__)
+		return (size_t)__builtin_popcountll(word);
+#else
+		size_t count = 0;
+		for (; word; word &= word - 1)
+			count++;
+		return count;
+#endif
+	}
+
+	friend class PropertyIdSetIterator;
 };
 
 class RMLUICORE_API PropertyIdSetIterator {
@@ -97,11 +175,8 @@ public:
 private:
 	inline void ProceedToNextValid()
 	{
-		for (; id_index < size_t(PropertyId::MaxNumIds); ++id_index)
-		{
-			if (container->Contains(static_cast<PropertyId>(id_index)))
-				return;
-		}
+		if (container && id_index < size_t(PropertyId::MaxNumIds))
+			id_index = container->NextFrom(id_index);
 	}
 
 	const PropertyIdSet* container = nullptr;
@@ -125,7 +200,7 @@ PropertyIdSetIterator PropertyIdSet::end() const
 PropertyIdSetIterator PropertyIdSet::Erase(PropertyIdSetIterator it)
 {
 	RMLUI_ASSERT(it.container == this && it.id_index < N);
-	defined_ids.reset(it.id_index);
+	words[it.id_index / 64] &= ~Bit(it.id_index);
 	++it;
 	return it;
 }

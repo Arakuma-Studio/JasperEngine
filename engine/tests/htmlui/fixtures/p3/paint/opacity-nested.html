@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: nested opacity</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  div { position: absolute; }
+  #outer { left: 10px; top: 10px; width: 200px; height: 150px; background-color: #3366cc; opacity: 0.6; }
+  #middle { left: 30px; top: 30px; width: 140px; height: 90px; background-color: #cc3333; opacity: 0.5; }
+  #inner { left: 30px; top: 20px; width: 80px; height: 50px; background-color: #f4c430; }
+  #inner2 { left: 70px; top: 40px; width: 50px; height: 40px; background-color: #339966; opacity: 0.8; }
+  #side { left: 240px; top: 10px; width: 100px; height: 150px; background-color: #222222; opacity: 0.9; }
+  #side > div { left: 20px; top: 20px; width: 60px; height: 60px; background-color: #ffffff; opacity: 0.5; border-radius: 50%; }
+</style>
+</head>
+<body><div id="outer"><div id="middle"><div id="inner"></div><div id="inner2"></div></div></div><div id="side"><div></div></div></body>
+</html>

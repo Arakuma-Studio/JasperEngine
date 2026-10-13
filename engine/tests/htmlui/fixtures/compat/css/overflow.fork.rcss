@@ -1,0 +1,39 @@
+#htmlui-root .v {
+overflow: visible;
+}
+#htmlui-root .h {
+overflow: hidden;
+}
+#htmlui-root .a {
+overflow: auto;
+}
+#htmlui-root .s {
+overflow: scroll;
+}
+#htmlui-root .clip {
+overflow: clip;
+}
+#htmlui-root .overlay {
+overflow: auto;
+}
+#htmlui-root .two {
+overflow: hidden auto;
+}
+#htmlui-root .x {
+overflow-x: clip;
+}
+#htmlui-root .y {
+overflow-y: auto;
+}
+#htmlui-root .margin {
+overflow-clip-margin: 4px;
+}
+#htmlui-root .ob {
+overscroll-behavior: contain;
+}
+#htmlui-root .obx {
+overscroll-behavior: contain;
+}
+#htmlui-root .oby {
+overscroll-behavior: auto;
+}

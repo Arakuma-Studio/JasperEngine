@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: order</title>
+<style>
+  html, body { margin: 0; }
+  .flex { display: flex; position: absolute; left: 15px; width: 240px; height: 40px; background-color: #eeeeee; }
+  .flex > div { width: 40px; margin: 5px; }
+  .a { background-color: #334466; } .b { background-color: #aa3333; } .c { background-color: #33aa55; } .d { background-color: #aa8833; }
+  #row { top: 15px; } #reverse { top: 65px; flex-direction: row-reverse; } #column { top: 115px; height: 120px; flex-direction: column; flex-wrap: wrap; align-content: flex-start; }
+  #column > div { height: 30px; }
+</style>
+</head>
+<body>
+<div id="row" class="flex"><div id="r1" class="a" style="order: 2"></div><div id="r2" class="b"></div><div id="r3" class="c" style="order: -1"></div><div id="r4" class="d" style="order: 2"></div></div>
+<div id="reverse" class="flex"><div id="v1" class="a" style="order: 1"></div><div id="v2" class="b"></div><div id="v3" class="c" style="order: -1"></div><div id="v4" class="d"></div></div>
+<div id="column" class="flex"><div id="c1" class="a" style="order: 3"></div><div id="c2" class="b" style="order: 1"></div><div id="c3" class="c" style="order: 2"></div><div id="c4" class="d"></div></div>
+</body>
+</html>

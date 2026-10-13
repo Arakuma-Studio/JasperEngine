@@ -1,0 +1,84 @@
+{
+ "fixture": "text/decoration-longhands.html",
+ "viewport": [
+  300,
+  170
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "under",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 80,
+    "h": 20
+   },
+   {
+    "id": "over",
+    "tag": "div",
+    "x": 10,
+    "y": 40,
+    "w": 80,
+    "h": 20
+   },
+   {
+    "id": "through",
+    "tag": "div",
+    "x": 10,
+    "y": 70,
+    "w": 80,
+    "h": 20
+   },
+   {
+    "id": "all",
+    "tag": "div",
+    "x": 10,
+    "y": 100,
+    "w": 80,
+    "h": 20
+   },
+   {
+    "id": "thick",
+    "tag": "div",
+    "x": 10,
+    "y": 130,
+    "w": 80,
+    "h": 20
+   },
+   {
+    "id": "double",
+    "tag": "div",
+    "x": 140,
+    "y": 10,
+    "w": 80,
+    "h": 20
+   },
+   {
+    "id": "dashed",
+    "tag": "div",
+    "x": 140,
+    "y": 40,
+    "w": 120,
+    "h": 20
+   },
+   {
+    "id": "dotted",
+    "tag": "div",
+    "x": 140,
+    "y": 70,
+    "w": 120,
+    "h": 20
+   },
+   {
+    "id": "inherit",
+    "tag": "div",
+    "x": 140,
+    "y": 100,
+    "w": 80,
+    "h": 20
+   }
+  ]
+ }
+}

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: group opacity of overlapping children</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .group { position: absolute; width: 120px; height: 90px; opacity: 0.5; }
+  .group > div { position: absolute; width: 70px; height: 50px; }
+  .a { left: 0; top: 0; background-color: #cc3333; }
+  .b { left: 40px; top: 30px; background-color: #3366cc; }
+  #g1 { left: 10px; top: 10px; }
+  #g2 { left: 160px; top: 10px; opacity: 0.7; }
+  #g2 > .b { border: 6px solid #222222; }
+  #g3 { left: 10px; top: 120px; opacity: 0.4; background-color: #f4c430; }
+  #g4 { left: 160px; top: 120px; opacity: 0.6; }
+  #g4 > .a { opacity: 1; box-shadow: 4px 4px 0 #339966; }
+  #leaf { position: absolute; left: 310px; top: 10px; width: 60px; height: 60px; background-color: #663399; opacity: 0.5; }
+  #leaf-border { position: absolute; left: 310px; top: 120px; width: 50px; height: 50px; border: 5px solid #cc3333; background-color: #3366cc; opacity: 0.5; }
+</style>
+</head>
+<body><div class="group" id="g1"><div class="a"></div><div class="b"></div></div><div class="group" id="g2"><div class="a"></div><div class="b"></div></div><div class="group" id="g3"><div class="a"></div><div class="b"></div></div><div class="group" id="g4"><div class="a"></div><div class="b"></div></div><div id="leaf"></div><div id="leaf-border"></div></body>
+</html>

@@ -1,0 +1,4 @@
+{
+ "comment": "Attribute selectors (spec 3.5.6): [a=v i] matches case-insensitively (#a1, #a2, #a6 with an upper-case I flag), without a flag the match is case-sensitive (#a3 only; #a4, #a5 gray; the s flag is not tested: Chromium 153 drops rules using it); |= (#l1, #l2 only), ^= $= *= (case-sensitive: #p1 pink 20px tall, #p2 teal, #p3 gray) and with i (#p4 olive, #p5 20px wide, #p6 gray); presence ([data-flag=\"\"]) and ~= (#f2 only). No #e02020 anywhere.",
+ "viewport": [250, 170]
+}

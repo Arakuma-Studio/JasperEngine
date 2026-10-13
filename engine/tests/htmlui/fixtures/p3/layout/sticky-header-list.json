@@ -1,0 +1,43 @@
+{
+ "comment": "each header sticks to the top of the scrollport while its section is in view and leaves with its section (the containing block); captured in flow, stuck, being pushed out by the end of its section, and with the next header stuck. Rendered without MSAA (\"samples\": 1), at the default tolerances: with 4x MSAA, Mesa's llvmpipe and lavapipe (the test image's GL and Vulkan drivers, Mesa 23.2.1) let half the samples of the row above and the column left of a scissor rectangle through, so content scrolled past a clip edge would show a half-covered 1 px line there (MsaaScissor.FourSamples reproduces it with raw sokol calls; the scissor reaches glScissor/vkCmdSetScissor as exact integers, the max edges are exact)",
+ "viewport": [
+  200,
+  150
+ ],
+ "samples": 1,
+ "steps": [
+  {
+   "capture": "top"
+  },
+  {
+   "scroll": [
+    "#list",
+    0,
+    60
+   ]
+  },
+  {
+   "capture": "stuck"
+  },
+  {
+   "scroll": [
+    "#list",
+    0,
+    130
+   ]
+  },
+  {
+   "capture": "leaving"
+  },
+  {
+   "scroll": [
+    "#list",
+    0,
+    200
+   ]
+  },
+  {
+   "capture": "next"
+  }
+ ]
+}

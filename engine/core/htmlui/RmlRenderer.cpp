@@ -656,7 +656,8 @@ bool RmlRenderer::bindGeometry(Rml::CompiledGeometryHandle handle, ObjectRender&
     return true;
 }
 
-HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, int height, const char* label, TextureFilter filter){
+HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, int height, const char* label, TextureFilter filter,
+                                                TextureWrap wrapU, TextureWrap wrapV){
     std::unique_ptr<HtmlUITexture> texture = std::make_unique<HtmlUITexture>();
     texture->kind = HtmlUITexture::Kind::STATIC;
     texture->ownedRender = std::make_unique<TextureRender>();
@@ -678,7 +679,7 @@ HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, 
     gpuCreateCount++;
     // LINEAR (or NEAREST) min filter: no mipmaps
     if (!texture->ownedRender->createTexture(label, width, height, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data, size,
-                                             filter, filter, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE)){
+                                             filter, filter, wrapU, wrapV)){
         texture->ownedRender->destroyTexture();
         texture->dead = true;
         return nullptr;
@@ -693,8 +694,8 @@ HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, 
 Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& rmlSource){
     // phase-2 hook H7: "?htmlui-filter=nearest" (image-rendering: pixelated) asks for nearest
     // sampling and is not part of the file; "@htmlui/..." paths are compat's virtual files
-    bool nearest = false;
-    const std::string source = stripTextureFilter(rmlSource, nearest);
+    bool nearest = false, repeatX = false, repeatY = false;
+    const std::string source = stripTextureFilter(rmlSource, nearest, repeatX, repeatY);
     const TextureFilter filter = nearest ? TextureFilter::NEAREST : TextureFilter::LINEAR;
 
     HtmlUIFileLog::recordLazyFile(this, source);   // hot reload: images are loaded at draw time
@@ -749,7 +750,9 @@ Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, c
         out[3] = a;
     }
 
-    HtmlUITexture* texture = createStaticTexture(rgba.data(), width, height, "htmlui-image", filter);
+    HtmlUITexture* texture = createStaticTexture(rgba.data(), width, height, "htmlui-image", filter,
+                                                 repeatX ? TextureWrap::REPEAT : TextureWrap::CLAMP_TO_EDGE,
+                                                 repeatY ? TextureWrap::REPEAT : TextureWrap::CLAMP_TO_EDGE);
     if (!texture){
         Log::error("[HTML UI] could not create the texture of image '%s'", source.c_str());
         return 0;
@@ -760,8 +763,15 @@ Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, c
 }
 
 std::string RmlRenderer::stripTextureFilter(const std::string& source, bool& nearest){
+    bool repeatX = false, repeatY = false;
+    return stripTextureFilter(source, nearest, repeatX, repeatY);
+}
+
+std::string RmlRenderer::stripTextureFilter(const std::string& source, bool& nearest, bool& repeatX, bool& repeatY){
     static const std::string parameter = "htmlui-filter=nearest";
+    static const std::string wrap = "rmlui-wrap=";
     nearest = false;
+    repeatX = repeatY = false;
     const size_t query = source.find('?');
     if (query == std::string::npos)
         return source;
@@ -775,7 +785,11 @@ std::string RmlRenderer::stripTextureFilter(const std::string& source, bool& nea
         const std::string item = source.substr(start, end - start);
         if (item == parameter)
             nearest = true;
-        else if (!item.empty())
+        else if (item.compare(0, wrap.size(), wrap) == 0){
+            const std::string axes = item.substr(wrap.size());
+            repeatX = (axes == "repeat" || axes == "repeat-x");
+            repeatY = (axes == "repeat" || axes == "repeat-y");
+        }else if (!item.empty())
             kept += (kept.empty() ? "" : "&") + item;
         start = end + 1;
     }
@@ -783,6 +797,11 @@ std::string RmlRenderer::stripTextureFilter(const std::string& source, bool& nea
 }
 
 Rml::TextureHandle RmlRenderer::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions){
+    return GenerateTextureWithWrap(source, source_dimensions, false, false);
+}
+
+Rml::TextureHandle RmlRenderer::GenerateTextureWithWrap(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions, bool repeatX,
+                                                        bool repeatY){
     // already premultiplied RGBA8 (font pages, RmlUi callback textures)
     if (source_dimensions.x <= 0 || source_dimensions.y <= 0 ||
         source.size() != (size_t)source_dimensions.x * (size_t)source_dimensions.y * 4){
@@ -790,7 +809,9 @@ Rml::TextureHandle RmlRenderer::GenerateTexture(Rml::Span<const Rml::byte> sourc
         return 0;
     }
 
-    HtmlUITexture* texture = createStaticTexture(source.data(), source_dimensions.x, source_dimensions.y, "htmlui-texture");
+    HtmlUITexture* texture = createStaticTexture(source.data(), source_dimensions.x, source_dimensions.y, "htmlui-texture", TextureFilter::LINEAR,
+                                                 repeatX ? TextureWrap::REPEAT : TextureWrap::CLAMP_TO_EDGE,
+                                                 repeatY ? TextureWrap::REPEAT : TextureWrap::CLAMP_TO_EDGE);
     if (!texture){
         Log::error("[HTML UI] could not create a %d x %d texture", source_dimensions.x, source_dimensions.y);
         return 0;
@@ -1246,8 +1267,8 @@ void RmlRenderer::CompositeLayers(Rml::LayerHandle sourceHandle, Rml::LayerHandl
         return;
     }
 
-    // a layer nothing was drawn into is transparent: blending it changes nothing
-    if (blendMode == Rml::BlendMode::Blend && source < (int)layerClearPending.size() && layerClearPending[source])
+    // a layer nothing was drawn into is transparent: blending or adding it changes nothing
+    if (blendMode != Rml::BlendMode::Replace && source < (int)layerClearPending.size() && layerClearPending[source])
         return;
     ensureLayerCleared(source);
 
@@ -1284,7 +1305,10 @@ void RmlRenderer::CompositeLayers(Rml::LayerHandle sourceHandle, Rml::LayerHandl
     draw.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
     draw.source = &context.primary().getRender().getColorTexture();
     draw.scissor = currentScissorTarget();
-    const BlendMode blend = (blendMode == Rml::BlendMode::Replace) ? BlendMode::NONE : BlendMode::PREMULTIPLIED;
+    // Plus (the fork's cross-fade of background images): the premultiplied colours added
+    const BlendMode blend = (blendMode == Rml::BlendMode::Replace) ? BlendMode::NONE
+                            : (blendMode == Rml::BlendMode::Plus) ? BlendMode::ADDITIVE_PREMULTIPLIED
+                                                                    : BlendMode::PREMULTIPLIED;
     drawPost(*destinationLayer, LoadAction::LOAD, draw, getGeometryState(blend));
 }
 
@@ -1424,7 +1448,10 @@ void RmlRenderer::blurInto(Framebuffer& source, Framebuffer& destination, Frameb
     PostDraw blur;
     blur.variant = (int)HtmlUIPostVariant::BLUR;
     blur.viewport = full;
-    blur.scissor = scissor;
+    // the taps are mirrored at the data's edges (Chromium's backdrop blur); the two passes also write one texel
+    // around the data, mirrored too, so the linear upscale below blends the edge texels with them, not with the
+    // transparent clear (the downscaled data sits in the top-left of full-size targets: the texel beyond it is free)
+    blur.scissor = Rml::Rectanglei::FromCorners(scissor.p0 - Rml::Vector2i(1), scissor.p1 + Rml::Vector2i(1)).Intersect(full);
     blurWeights(sigma, blur.params.weights);
     blur.params.texCoordMinMax[0] = ((float)scissor.Left() + 0.5f) / (float)width;
     blur.params.texCoordMinMax[1] = ((float)scissor.Top() + 0.5f) / (float)height;
@@ -1437,8 +1464,8 @@ void RmlRenderer::blurInto(Framebuffer& source, Framebuffer& destination, Frameb
     blur.params.params[2] = 1.0f / (float)height;
     drawPost(destination, LoadAction::CLEAR, blur, postTargetState(BlendMode::NONE));
 
-    // horizontal: destination -> temp; the clear leaves the region a transparent border, so
-    // the linear upscale below blends nothing from outside it (GL3's padded clear)
+    // horizontal: destination -> temp; the clear leaves the region beyond the extended edge a
+    // transparent border (GL3's padded clear)
     blur.source = &destination.getRender().getColorTexture();
     blur.params.params[1] = 1.0f / (float)width;
     blur.params.params[2] = 0.0f;
@@ -1515,6 +1542,67 @@ Rml::TextureHandle RmlRenderer::SaveLayerAsTexture(){
     HtmlUITexture* result = texture.release();
     liveTextures.insert(result);
     return reinterpret_cast<Rml::TextureHandle>(result);
+}
+
+Rml::TextureHandle RmlRenderer::SaveLayerIntoTexture(Rml::TextureHandle textureHandle, Rml::Vector2i textureDimensions,
+                                                     Rml::Vector2i destinationOffset){
+    if (frameState != FrameState::ACTIVE || !target || !scissorEnabled)
+        return 0;
+    const Rml::Rectanglei bounds = currentScissorTarget();
+    if (isEmpty(bounds) || textureDimensions.x <= 0 || textureDimensions.y <= 0)
+        return 0;
+
+    const int top = layersSize - 1;
+    ensureLayerCleared(top);
+    Framebuffer* layer = target->getLayer(top);
+    if (!layer)
+        return 0;
+    if (activeFramebuffer == layer)
+        endPass();
+
+    HtmlUITexture* texture = reinterpret_cast<HtmlUITexture*>(textureHandle);
+    LoadAction load = LoadAction::LOAD;
+    if (!texture){
+        std::unique_ptr<HtmlUITexture> created = std::make_unique<HtmlUITexture>();
+        created->kind = HtmlUITexture::Kind::RENDER_TARGET;
+        created->ownedTarget = std::make_unique<Framebuffer>();
+        FramebufferDesc desc;
+        desc.width = textureDimensions.x;
+        desc.height = textureDimensions.y;
+        desc.color = ColorFormat::RGBA;
+        desc.depth = DepthStencilFormat::NONE;
+        desc.sampleCount = 1;
+        desc.label = "htmlui-layer-texture";
+        gpuCreateCount++;
+        if (!created->ownedTarget->create(desc)){
+            Log::error("[HTML UI] could not create a %d x %d layer texture", desc.width, desc.height);
+            return 0;
+        }
+        created->render = &created->ownedTarget->getRender().getColorTexture();
+        created->width = desc.width;
+        created->height = desc.height;
+        texture = created.release();
+        liveTextures.insert(texture);
+        // the first tile clears the whole texture
+        load = LoadAction::CLEAR;
+    }else if (texture->kind != HtmlUITexture::Kind::RENDER_TARGET || !texture->ownedTarget ||
+               texture->width != textureDimensions.x || texture->height != textureDimensions.y){
+        return 0;
+    }
+
+    // the scissor region of the top layer at the offset (no flip: every image is top-left origin)
+    PostDraw copy;
+    copy.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
+    copy.source = &layer->getRender().getColorTexture();
+    copy.uvTransform[0] = (float)bounds.Width() / (float)targetSize.x;
+    copy.uvTransform[1] = (float)bounds.Height() / (float)targetSize.y;
+    copy.uvTransform[2] = (float)bounds.Left() / (float)targetSize.x;
+    copy.uvTransform[3] = (float)bounds.Top() / (float)targetSize.y;
+    copy.viewport = Rml::Rectanglei::FromPositionSize(destinationOffset, bounds.Size());
+    copy.scissor = copy.viewport;
+    drawPost(*texture->ownedTarget, load, copy, postTargetState(BlendMode::NONE));
+    endPass();
+    return reinterpret_cast<Rml::TextureHandle>(texture);
 }
 
 Rml::CompiledFilterHandle RmlRenderer::SaveLayerAsMaskImage(){

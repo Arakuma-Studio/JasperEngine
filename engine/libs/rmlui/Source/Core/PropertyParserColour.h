@@ -1,13 +1,21 @@
 #pragma once
 
 #include "../../Include/RmlUi/Core/PropertyParser.h"
+#include "../../Include/RmlUi/Core/StyleValue.h"
 #include "../../Include/RmlUi/Core/Types.h"
 #include "ControlledLifetimeResource.h"
 
 namespace Rml {
 
+namespace ColorSpaces {
+	struct Color;
+}
+
 /**
-    A property parser that parses a colour value.
+    A property parser that parses a colour value: CSS Color 4 and 5 (phase 3, values). Hex colors, the CSS named colors
+    and 'transparent', rgb()/rgba()/hsl()/hsla() in the comma and the space syntax, hwb(), lab(), lch(), oklab(), oklch(),
+    color() in the srgb, srgb-linear and xyz spaces, and color-mix(), all case-insensitive. Components out of range are
+    clamped, 'none' is zero, the alpha is a number from 0 to 1 or a percentage.
  */
 
 class PropertyParserColour : public PropertyParser {
@@ -22,8 +30,25 @@ public:
 	/// @return True if the value was parsed successfully, false otherwise.
 	bool ParseValue(Property& property, const String& value, const ParameterMap& parameters) const override;
 
-	/// Parse a colour directly.
+	/// Parse a colour directly. 'currentcolor' is not a colour here: it has no value without an element.
 	static bool ParseColour(Colourb& colour, const String& value);
+
+	/// The keyword value 'currentcolor' parses to (Unit::KEYWORD) where a property, a box shadow or a color stop takes a
+	/// colour: the element's 'color', resolved when the values are computed (ElementStyle) or the shadow and gradient are
+	/// generated. No keyword list uses this value.
+	static constexpr int CurrentColor = 0x43430000;
+	static bool IsCurrentColor(const Property& property) { return property.unit == Unit::KEYWORD && IsCurrentColorKeyword(property); }
+
+	/// A color-mix() with a 'currentcolor' operand (CSS Color 5) has no value without an element either: it parses to a
+	/// CurrentColorMixValue (Unit::STYLE_VALUE) and is resolved where 'currentcolor' is; a box shadow, a color stop or a
+	/// text shadow keeps its text with the currentcolor flag.
+	static bool IsCurrentColorMix(const Property& property) { return property.unit == Unit::STYLE_VALUE && IsCurrentColorMixValue(property); }
+	/// 'currentcolor' or a color-mix() of it.
+	static bool DependsOnCurrentColor(const Property& property) { return IsCurrentColor(property) || IsCurrentColorMix(property); }
+	/// The colour of a colour property for an element whose 'color' is 'current_color'.
+	static Colourb Resolve(const Property& property, Colourb current_color);
+	/// The colour of a 'currentcolor' or of the text of a color-mix() of it ('mix' empty: 'currentcolor' itself).
+	static Colourb ResolveCurrentColor(const String& mix, Colourb current_color);
 
 	static void Initialize();
 	static void Shutdown();
@@ -31,24 +56,27 @@ public:
 private:
 	static ControlledLifetimeResource<struct PropertyParserColourData> parser_data;
 
-	// Parse a colour in hex-code form (e.g. #FF00FF or #00FF00FF).
+	// The tests behind the unit (inline above: most properties have another unit).
+	static bool IsCurrentColorKeyword(const Property& property);
+	static bool IsCurrentColorMixValue(const Property& property);
+
+	// Parses any colour into its color space; 'depth' limits nested color-mix().
+	static bool ParseColor(ColorSpaces::Color& color, const String& value, int depth);
 	static bool ParseHexColour(Colourb& colour, const String& value);
+	static bool ParseColorFunction(ColorSpaces::Color& color, const String& name, const String& arguments, int depth);
+	static bool ParseColorMix(ColorSpaces::Color& color, const String& arguments, int depth);
+};
 
-	// Parse a colour in RGB form (e.g. rgb(255, 0, 255) or rgba(0, 255, 0, 255)).
-	static bool ParseRGBColour(Colourb& colour, const String& value);
+/// The value of a colour property that is a color-mix() with a 'currentcolor' operand.
+class CurrentColorMixValue final : public StyleValue {
+public:
+	RMLUI_RTTI_DeclareWithParent(CurrentColorMixValue, StyleValue)
 
-	// Parse a colour in HSL form (e.g. hsl(0, 100%, 50%) or hsla(0, 100%, 50%, 1.0)).
-	static bool ParseHSLColour(Colourb& colour, const String& value);
+	explicit CurrentColorMixValue(String text) : text(std::move(text)) {}
+	String text; // the color-mix() as written (lower case)
 
-	// Parse a colour in CIELAB form (e.g. lab(100.0 0.0 0.0) or lab(50.0 -60.0 60.0 / 0.5)
-	//     or CIELCh form (e.g. lch(100.0 0.0 30) or lch(100.0 0.0 60 / 0.5)).
-	static bool ParseCIELABColour(Colourb& colour, const String& value);
-
-	// Parse a colour in Oklab form (e.g. oklab(1.0 0.0 0.0) or oklab(0.5 -0.2 0.2 / 0.5))
-	//     or Oklch form (e.g. oklch(1.0 0.0 30) or oklch(1.0 0.0 60 / 0.5)).
-	static bool ParseOklabColour(Colourb& colour, const String& value);
-
-	static bool GetColourFunctionValues(StringList& values, const String& value, bool is_comma_separated);
+	String ToString() const override { return text; }
+	bool Equals(const StyleValue& other) const override { return text == static_cast<const CurrentColorMixValue&>(other).text; }
 };
 
 } // namespace Rml

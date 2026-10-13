@@ -71,13 +71,13 @@ Vector2f DecoratorTiled::Tile::GetNaturalDimensions(Element* element) const
 	return raw_dimensions * scale_raw_to_natural_dimensions;
 }
 
-void DecoratorTiled::Tile::GenerateGeometry(Mesh& mesh, const ComputedValues& computed, const Vector2f surface_origin,
+void DecoratorTiled::Tile::GenerateGeometry(Mesh& mesh, const ComputedValues& computed, float opacity, const Vector2f surface_origin,
 	const Vector2f surface_dimensions, const Vector2f tile_dimensions) const
 {
 	if (surface_dimensions.x <= 0 || surface_dimensions.y <= 0)
 		return;
 
-	const ColourbPremultiplied quad_colour = computed.image_color().ToPremultiplied(computed.opacity());
+	const ColourbPremultiplied quad_colour = computed.image_color().ToPremultiplied(opacity);
 
 	if (!tile_data_calculated)
 		return;
@@ -166,6 +166,11 @@ void DecoratorTiled::Tile::GenerateGeometry(Mesh& mesh, const ComputedValues& co
 			case Style::LengthPercentage::Percentage:
 				tile_offset[i] = (surface_dimensions[i] - final_tile_dimensions[i]) * align[i].value * 0.01f;
 				break;
+#ifdef RMLUI_MATH_EXPRESSIONS
+			case Style::LengthPercentage::Calculation:
+				RMLUI_ASSERTMSG(false, "Decorator tile alignment rejects calculated values during property parsing.");
+				break;
+#endif
 			}
 		}
 		tile_offset = tile_offset.Round();
@@ -273,6 +278,21 @@ bool DecoratorTiledInstancer::GetTileProperties(DecoratorTiled::Tile* tiles, Tex
 		// tiles in a shorthand since we can't always declare an empty string.
 		if (texture_name.empty() || texture_name == "auto")
 			continue;
+
+#ifdef RMLUI_MATH_EXPRESSIONS
+		// Tiled decorators are an RmlUi extension and do not opt into CSS math. Reject calculated
+		// alignment before resolving sprites or textures so the rejection is deterministic and cannot
+		// be masked by an unrelated resource-loading failure.
+		if (ids.fit != PropertyId::Invalid)
+		{
+			for (const PropertyId align_id : {ids.align_x, ids.align_y})
+			{
+				const Property* align_property = properties.GetProperty(align_id);
+				if (align_property && align_property->unit == Unit::CALCULATION)
+					return false;
+			}
+		}
+#endif
 
 		// We are required to set default values before instancing the tile, thus, all properties should always be
 		// dereferencable. If the debugger captures a zero-dereference, check that all properties for every tile is set

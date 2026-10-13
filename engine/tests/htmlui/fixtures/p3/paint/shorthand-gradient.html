@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: background shorthand with gradients</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; width: 100px; height: 70px; }
+  #b1 { left: 10px; top: 10px; }
+  #b2 { left: 120px; top: 10px; }
+  #b3 { left: 230px; top: 10px; }
+  #b4 { left: 340px; top: 10px; }
+  #b5 { left: 10px; top: 90px; }
+  #b6 { left: 120px; top: 90px; }
+  #b7 { left: 230px; top: 90px; }
+  #b8 { left: 340px; top: 90px; }
+  #b1 { background: linear-gradient(to right, #cc3333, #3366cc); }
+  #b2 { background: linear-gradient(45deg, #cc3333 0%, #f4c430 50%, #3366cc 100%) #222222; }
+  #b3 { background: radial-gradient(circle at 30% 40%, #ffffff, #339966 60%, #222222); }
+  #b4 { background: conic-gradient(from 90deg, #cc3333, #3366cc, #cc3333); }
+  #b5 { background: repeating-linear-gradient(45deg, #cc3333 0 6px, #ffffff 6px 12px); }
+  #b6 { background: linear-gradient(#cc3333, #3366cc) center / 40px 30px no-repeat #dde6f5; }
+  #b7 { background: linear-gradient(to right, #cc3333 50%, #3366cc 50%) 0 0 / 20px 20px; }
+  #b8 { background: radial-gradient(#f4c430 40%, transparent 41%) 5px 5px / 20px 20px #663399; }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div><div class="b" id="b4"></div><div class="b" id="b5"></div><div class="b" id="b6"></div><div class="b" id="b7"></div><div class="b" id="b8"></div></body>
+</html>

@@ -10,6 +10,7 @@
 #include "htmlui/compat/UrlResolver.h"
 #include "htmlui/compat/VirtualFiles.h"
 #include "htmlui/compat/css/RcssWriter.h"
+#include "htmlui/compat/css/Units.h"
 #include "htmlui/compat/html/HtmlParser.h"
 #include "htmlui/compat/html/HtmlTransform.h"
 #include "htmlui/compat/html/RmlSerializer.h"
@@ -103,6 +104,34 @@ namespace {
         return fnv1a64(text, seed);
     }
 
+    // What of the <html> element's attributes the selectors depend on: its class names and its
+    // attribute names (attribute values are matched by RmlUi at runtime), sorted
+    std::string rootSignatureOf(const std::vector<std::pair<std::string, std::string>>& attributes){
+        std::vector<std::string> parts;
+        for (const auto& attribute : attributes){
+            const std::string name = lowerAscii(attribute.first);
+            if (name == "class"){
+                std::string current;
+                for (char c : attribute.second + " "){
+                    if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'){
+                        if (!current.empty())
+                            parts.push_back("." + current);
+                        current.clear();
+                    }else{
+                        current += c;
+                    }
+                }
+            }
+            parts.push_back("[" + name);
+        }
+        std::sort(parts.begin(), parts.end());
+        parts.erase(std::unique(parts.begin(), parts.end()), parts.end());
+        std::string signature;
+        for (const std::string& part : parts)
+            signature += part + " ";
+        return signature;
+    }
+
     // everything of the options that changes the output, the viewport apart
     uint64_t optionsHash(const CompatOptions& options){
         uint64_t hash = 0xcbf29ce484222325ull;
@@ -115,6 +144,13 @@ namespace {
         const uint64_t limit = options.diagnosticLimit;
         hash = fnv1a64(std::string_view(reinterpret_cast<const char*>(&limit), sizeof(limit)), hash);
         hash = hashString(hash, options.colorScheme);
+        if (options.rootAttributesSet){
+            hash = hashString(hash, "root");
+            for (const auto& attribute : options.rootAttributes){
+                hash = hashString(hash, attribute.first);
+                hash = hashString(hash, attribute.second);
+            }
+        }
         const uint32_t version = DocumentLoader::kVersion;
         return fnv1a64(std::string_view(reinterpret_cast<const char*>(&version), sizeof(version)), hash);
     }
@@ -313,13 +349,17 @@ namespace {
         rewriteContext.rootDirection = context.rootDirection;
         // the <html> attributes as the author wrote them (the reserved id is compat's; the
         // author id is rootId): `.dark .x` also matches <html class="dark"> (p2-css)
-        if (context.root){
+        if (options.rootAttributesSet){
+            // as a script left them on the loaded document (restyleForRoot)
+            rewriteContext.rootAttributes = options.rootAttributes;
+        }else if (context.root){
             for (const HtmlAttr& attribute : context.root->attrs){
                 if (attribute.name == "id" || attribute.name == "data-html-id")
                     continue;
                 rewriteContext.rootAttributes.emplace_back(attribute.name, attribute.value);
             }
         }
+        document->rootSignature = rootSignatureOf(rewriteContext.rootAttributes);
 
         RewriteResult result;
         {
@@ -792,6 +832,10 @@ Rml::ElementDocument* DocumentLoader::load(Rml::Context* context, const std::str
         logDiagnostics(compiled->sourcePath, compiled->diagnostics, options.verboseDiagnostics);
         return nullptr;
     }
+    // the HTML root's background, or the body's, is the canvas's (CSS Backgrounds 3 §2.11.2):
+    // the fork paints it over the whole context (BackgroundLayers, phase 3 p3-paint)
+    if (options.fork.has(ForkFeature::BackgroundLayers))
+        document->SetCanvasBackground(true, "htmlbody");
 
     // the compile's diagnostics, the mapped RmlUi messages of the load, the font check
     std::vector<Diagnostic> runtime = std::move(binding->diagnostics);
@@ -833,10 +877,13 @@ void DocumentLoader::restyle(Rml::ElementDocument* document, const CompatDocumen
 
     // the head's sheets in order, as ElementDocument::ProcessHeader combines them
     std::shared_ptr<Rml::StyleSheetContainer> combined;
-    auto addFile = [&combined](const std::string& path){
+    auto addFile = [&combined](const std::string& path, bool userAgent = false){
         std::shared_ptr<Rml::StyleSheetContainer> sheet = Rml::Factory::InstanceStyleSheetFile("/" + VirtualFiles::normalize(path));
         if (!sheet)
             return;
+        // the user-agent origin, as <link origin="user-agent"> gives it (phase-3 §3.4.3: what 'revert' restores)
+        if (userAgent)
+            sheet->SetOrigin(Rml::StyleOrigin::UserAgent);
         if (combined)
             combined->MergeStyleSheetContainer(*sheet);
         else
@@ -852,7 +899,7 @@ void DocumentLoader::restyle(Rml::ElementDocument* document, const CompatDocumen
             combined = sheet;
     };
 
-    addFile(compiled.userAgentPath);
+    addFile(compiled.userAgentPath, true);
     if (!compiled.hints.rcss.empty())
         addInline(compiled.hints.rcss, compiled.hintsLine);
     for (size_t i = 0; i < compiled.stylesheets.size(); i++){
@@ -888,7 +935,37 @@ std::shared_ptr<const CompatDocument> DocumentLoader::restyleForViewport(Rml::El
                                                                           const CompatOptions& options){
     if (!document || !compiled || !compiled->dependsOnViewport || compiled->options.viewport == options.viewport)
         return compiled;
+    return restyleWith(document, compiled, options);
+}
 
+std::shared_ptr<const CompatDocument> DocumentLoader::restyleForRoot(Rml::ElementDocument* document,
+                                                                     const std::shared_ptr<const CompatDocument>& compiled){
+    if (!document || !compiled || !compiled->compiled || compiled->sourcePath.empty())
+        return compiled;
+    // the root's attributes now (the author's: not the reserved id, the author id, compat's own)
+    std::vector<std::pair<std::string, std::string>> attributes;
+    for (const auto& attribute : document->GetAttributes()){
+        const std::string& name = attribute.first;
+        if (name == "id" || name == "data-html-id" || name == "style" || name == "class" || name.compare(0, 12, "data-htmlui-") == 0)
+            continue;
+        attributes.emplace_back(name, attribute.second.Get<Rml::String>());
+    }
+    // (the classes as RmlUi has them: SetClass does not rewrite the attribute)
+    const Rml::String classes = document->GetClassNames();
+    if (!classes.empty())
+        attributes.emplace_back("class", classes);
+    std::sort(attributes.begin(), attributes.end());
+    if (rootSignatureOf(attributes) == compiled->rootSignature)
+        return compiled;
+    CompatOptions options = compiled->options;
+    options.rootAttributesSet = true;
+    options.rootAttributes = std::move(attributes);
+    return restyleWith(document, compiled, options);
+}
+
+std::shared_ptr<const CompatDocument> DocumentLoader::restyleWith(Rml::ElementDocument* document,
+                                                                  const std::shared_ptr<const CompatDocument>& compiled,
+                                                                  const CompatOptions& options){
     std::shared_ptr<const CompatDocument> fresh = compile(compiled->sourcePath, options);
     if (!fresh->compiled)
         return compiled;

@@ -170,8 +170,8 @@ h1 { font-family: 'Orbitron', sans-serif; text-shadow: 0 0 20px rgba(124, 58, 23
   covers the canvas (CSS `px` = canvas pixels, `100vw` x `100vh` = the canvas); media queries
   see the canvas size.
 - The background is **transparent**, not white: the UI draws over the game. Give `html` or
-  `body` a background for a full-screen menu (a `body` background covers the whole canvas, as
-  in CSS).
+  `body` a background for a full-screen menu (the `html` background, or the `body`'s when `html`
+  has none, covers the whole canvas, as in CSS, also when the page is shorter or scrolled).
 - Default styles come from the user-agent stylesheet: block and inline display, heading sizes
   and margins, paragraph and list margins, `body { margin: 8px }`, list markers, tables, links
   (`#0000ee`, underlined), and form controls that look like Chromium's light theme (buttons,
@@ -180,12 +180,17 @@ h1 { font-family: 'Orbitron', sans-serif; text-shadow: 0 0 20px rgba(124, 58, 23
   every user-agent rule, whatever its specificity, as in a browser.
 - `accent-color` colors checkboxes, radios, sliders and progress bars (a light accent gets a
   dark check mark, as in Chrome); `appearance: none` removes a control's own look so your
-  `background`, `border` and `::-webkit-slider-thumb` styles draw alone. As in a browser, a
+  `background`, `border` and `::-webkit-slider-thumb` styles draw alone (a checkbox or radio then has
+  no border, rounding or checked fill of its own, fields, buttons and selects lose their rounding,
+  and a text field gets the plain 2px inset border, as in Chrome). As in a browser, a
   reset such as `* { margin: 0; padding: 0; box-sizing: border-box }` does not reach a
   control's inner parts (slider track and thumb, select arrow, scrollbars): style those
   through their pseudo-elements.
 - `:focus` and `:focus-visible` match the focused element only (`:focus-within` its
   ancestors too); Tab moves the focus through buttons, links, inputs and `tabindex="0"`.
+- Themes: rules on classes or attributes of `<html>` (`html.dark`, `:root[data-theme="light"]`)
+  follow a change made from a script (`doc.documentElement.classList:toggle("dark")`), and
+  their custom properties with them (colors, `hsl(var(--hue) ...)`, transitions included).
 
 ### Scripts, icons, remote files
 
@@ -220,53 +225,82 @@ diagnostic (below) says what changed.
 
 | You write | The engine |
 |---|---|
-| any CSS color: `rgba(0,0,0,.5)`, `rgb(0 0 0 / 50%)`, `hsl()`, `oklch()`, `color-mix()`, 148 names, `#rgba` | exact (hex) |
-| `border: 1px solid #fff`, per-side borders, `border-color: red green` | exact; `dashed`/`dotted`/`double` draw solid (warning), `inset`/`outset`/`groove`/`ridge` with Chromium's shades |
-| `background:` shorthands, several layers, `url()` with `cover`/`contain`/`repeat`/`space`/`round`/positions, gradients incl. `repeating-*` and `-webkit-` forms | exact |
-| `border-radius: 50%` | exact on squares and pills (a stadium on other rectangles); other `%` radii dropped until phase 3 |
-| `outline`, `outline-offset` | a ring around the box (the offset gap is filled with the outline color) |
-| `text-shadow`, `-webkit-text-stroke` | text effects (glow for blurred shadows) |
-| `transition: all .3s ease`, `animation: x .4s ease forwards`, `@keyframes` | times in `ms` work; CSS easings use the nearest built-in curve; `forwards`/`both` keep the end state |
-| `font: 600 14px/1.5 'Inter', sans-serif`, quoted family names | exact |
+| any CSS color: `rgba(0,0,0,.5)`, `rgb(0 0 0 / 50%)`, `hsl()`, `oklch()`, `color-mix()`, 148 names, `#rgba` | exact (hex). A color function of a theme variable declared with several values (`hsl(var(--hue) 70% 50%)` with `--hue` set in `:root` and in `.dark`, or set from a script) stays a function the layout engine evaluates, so it follows the theme switch |
+| `currentColor` | exact: the layout engine resolves it in `color`, `background-color`, border and caret colors (it follows a change of `color`, `:hover` included); in box shadows (a shadow without a color is `currentColor`), text shadows and gradient stops too; in outlines, filters and text effects it is the color through a variable every `color` declaration sets |
+| `border: 1px solid #fff`, per-side borders, `border-color: red green`, every `border-style` | exact: `dashed`, `dotted`, `double`, `groove`, `ridge`, `inset`, `outset` drawn as Chrome draws them (dash lengths, round or square dots, Chrome's 3D shades); widths snap as in Chrome (`0.5px` is 1px, `2.5px` is 2px); edges anti-aliased |
+| `background:` shorthands, several layers, `url()` with `cover`/`contain`/`repeat`/`space`/`round`/positions, gradients incl. `repeating-*` and `-webkit-` forms | exact; a transition of `background-image` between `url()` images cross-fades them, as in Chrome (gradients and `none` switch at the midpoint, `mask-image` switches) |
+| `border-radius` with `%` and elliptical radii (`50%`, `20px / 10px`, `border-top-left-radius: 30px 10px`) | exact, scaled down when the curves would overlap; children clip to the curve, box shadows and hit testing follow it |
+| `outline`, `outline-offset`, `outline-style` (every style and `auto`, the focus ring) | exact; painted above the element's content but below its positioned children, as Chrome paints them |
+| `opacity` | exact: the element and its children fade as one image (a group), `opacity: 0` still receives the mouse |
+| `will-change: transform` (or `opacity`, `filter`, ...) | exact: a hint naming a property that creates a stacking context or a containing block for `position: fixed` children does so at once, as in Chrome |
+| `isolation: isolate`, `visibility: hidden` with a `visible` child | exact (a stacking context; the child shows) |
+| `text-shadow` | exact: offsets, blur, several shadows, `currentcolor` (drawn by the layout engine, blurred like Chrome) |
+| `-webkit-text-stroke` | an outline text effect (drawn outside the glyphs) |
+| `letter-spacing`, `word-spacing` (lengths, `%` of the font size), `text-transform` (Unicode: `ß` → `SS`, `capitalize` per word), `white-space` (all six values, `white-space-collapse`, `text-wrap-mode`), `overflow-wrap`/`word-wrap`, `word-break` (`break-all`, `keep-all`), `text-align` (`start`, `end`, `match-parent`), `text-overflow: ellipsis` | exact |
+| `text-decoration` and its longhands (`underline overline line-through` together, color, `double`/`dotted`/`dashed`, thickness, `text-underline-offset`) | exact; `wavy` draws solid (note) |
+| zero-width space (`&ZeroWidthSpace;`), soft hyphen (`&shy;`), hyphens, CJK text | line-break opportunities as in Chrome; a line broken at a soft hyphen shows `-` |
+| `user-select: none` | text inputs select nothing; `text`/`all` do nothing (text outside inputs is never selectable, note) |
+| `transition: all .3s ease`, `animation: x .4s ease forwards`, `@keyframes`, every `transition-*`/`animation-*` longhand, `@starting-style`, `translate`/`rotate`/`scale` | exact, as in Chromium: every easing (`ease`, `cubic-bezier()` with overshoot, `steps()` with every position, `linear()`), `ms` or `s`, delays (negative too), fill modes, the four directions, fractional iteration counts, `animation-play-state` (a real pause), a keyframe's own `animation-timing-function`, several animations of one property; transitions start on **any** change: classes and `:hover`, inline styles and scripts (`el.style.x = ...`, `setAttribute("style")`, data binding), `var()` changes, inherited values; `transition-behavior: allow-discrete` (a `display: none` exit animation), `box-shadow` and individual transforms transition; an element shown from `display: none` or newly created transitions only from its `@starting-style`. `animation-composition: add`/`accumulate` act as `replace` (note) |
+| `font: 600 14px/1.5 'Inter', sans-serif`, quoted family names, `font-weight: bolder`/`lighter` (relative to the parent's weight) | exact. A weight the font has no face for is synthesized (bold drawn emboldened, keeping the regular face's width; italic slanted), as in Chrome |
 | `:root` variables, `var()` | exact, also inside shorthands and gradients |
 | `@media (width >= 600px)`, `prefers-color-scheme`, `prefers-reduced-motion`, `@supports`, `@layer`, `@import`, CSS nesting (`&`), vendor prefixes | evaluated or flattened (`UIDocument:setColorScheme("dark")`, `setReducedMotion(true)` switch the two preferences) |
-| `inherit`, `initial`, `unset`, `!important` | exact for inherited properties and `!important` against equal or lower specificity (a warning names a more specific rule that still wins); `inherit` on a property that does not inherit copies the nearest ancestor's declared value (note), and on one longhand of `animation`/`transition` (`animation-delay: inherit`) the ancestor's whole `animation`/`transition` |
-| `calc()`, `min()`, `max()`, `clamp()`, `round()`, `mod()`, `abs()`, `sin()`, ... | computed when the document loads, and again when the canvas is resized for viewport units (`calc(40px + 2rem)`, `calc(100vh - 64px)`); a `%` mixed with `px` keeps the `%` part (`calc(100% - 32px)` is `100%`, warning) until phase 3. Dropped with a warning: a `var()` inside when the variable is declared more than once (`:root` and `.dark`: no single value to compute with, `HTMLUI-CSS-0012`), and `round()` of a length without a step (`round(17.4px)`; write `round(17.4px, 1px)`) |
-| `vmin`/`vmax`, `dvh`/`svh`/`lvh`, `ch`/`ex` | exact / `vh` / `0.5em` (note) |
-| `clip-path` shapes, `mask-image`, `object-fit`, `image-rendering: pixelated` | exact |
+| `inherit`, `initial`, `unset`, `revert`, `all`, `!important` | exact: the CSS cascade (an `!important` declaration beats more specific rules and the `style` attribute, an inline `!important` beats everything; `all: unset` strips a button's or input's built-in look; `revert` goes back to the built-in style of the element). On one longhand of `animation`/`transition` (`animation-delay: inherit`) `inherit` takes the ancestor's whole `animation`/`transition` |
+| `:is()`, `:where()`, `:has()`, `:not()` with lists, `:root`, `:focus-within`, `:enabled`/`:disabled`, `:checked`, `:required`/`:optional`, `:read-only`/`:read-write`, `:indeterminate`, `:default`, `:link`/`:any-link`, `:target`, `[type="a" i]`, `:nth-child(2n+1 of .x)` | exact, with their CSS weights (`:where()` weighs nothing). `li:has(> input:checked)`, `.card:has(.badge)`, `.a:has(+ .b)` restyle when the inner state changes. `:visited` never matches. A selector the engine does not know (a misspelt pseudo-class) drops that selector with a warning, as in a browser |
+| `::before`, `::after`, `content` (strings, `attr()`, `url()`, `counter()`, `counters()`, `open-quote`/`close-quote`), `quotes`, `counter-reset`/`counter-increment`/`counter-set`, `::marker`, `list-style` | exact: generated boxes take any property (`position: absolute` badges, `display: block` rules, transitions on `:hover::after`), inherit from their element, and clicks on them go to that element. Counter styles: `decimal`, `decimal-leading-zero`, `lower/upper-alpha` (`-latin`), `lower/upper-roman`, `lower-greek`, `disc`, `circle`, `square`, `none`, or a string; any other style counts in decimal (note) |
+| `calc()`, `min()`, `max()`, `clamp()`, `round()`, `mod()`, `abs()`, `sin()`, ... | `calc()`, `min()`, `max()` and `clamp()` are exact, computed by the layout engine (`width: calc(100% - 32px)`, `min(100%, 600px)`, `calc(100vh - 64px)`), in sizes, margins, paddings, insets, logical properties (`margin-inline`, `inset-block`, ...), `flex-basis`, `gap`, `font-size`, `font-weight`, `line-height`, `opacity`, `z-index`, transforms and custom properties. Elsewhere (borders, shadows, gradients, shapes) and for the other functions (`round()`, `abs()`, `sin()`, ...) they are computed when the document loads, and again when the canvas is resized for viewport units; there a `%` mixed with `px` keeps the `%` part (warning). Dropped with a warning: a `var()` inside when the variable is declared more than once (`:root` and `.dark`: no single value to compute with, `HTMLUI-CSS-0012`), and `round()` of a length without a step (`round(17.4px)`; write `round(17.4px, 1px)`) |
+| `vmin`/`vmax`, `dvh`/`svh`/`lvh`/`dvw`/..., `ch`/`ex`, `turn`/`grad` | exact, computed by the layout engine where the value reaches it as written (the properties `calc()` stays in, above; `ch` and `ex` from the element's own font, `vmin`/`vmax` follow a canvas resize); elsewhere `vmin`/`vmax` are exact through orientation copies, `ch`/`ex` are `0.5em` (note), `turn`/`grad` are converted to `deg` |
+| `line-height: normal` (also the initial value) | exact: the font's own line spacing (ascent + descent + line gap, rounded as in Chrome), per font and size |
+| `clip-path` shapes, `mask-image`, `object-fit`, `object-position` (also `right 10px bottom 20%`), `image-rendering: pixelated` | exact |
 | `::-webkit-scrollbar(-thumb/-track)`, `scrollbar-width`, `scrollbar-color`, `::placeholder`, `::-webkit-slider-thumb` | the engine's scrollbar, placeholder and slider parts |
-| `position: fixed` | positioned like `absolute` against the page (no scrolling page in a game UI) until phase 3; `sticky` acts as `relative` |
+| `position: fixed` | exact: placed against the screen (the viewport), not moved by any scrolling, not clipped by the scroll boxes it is in; an ancestor with a `transform`, `translate`/`rotate`/`scale`, `perspective`, `filter`, `backdrop-filter` or a `will-change` naming one is its containing block instead, as in browsers (a `mask` is not). When the page itself scrolls, `right: 0`/`bottom: 0` end at its scrollbars, as in a browser |
+| `position: sticky` (`top`/`bottom`/`left`/`right`) | exact: laid out in flow, it sticks inside the scrollport of its nearest scrolling ancestor while its parent box is in view (headers of a scrolling list, a sidebar) |
+| `overflow: clip`, `overflow-x/-y: clip`, `overflow-clip-margin`; `overflow` on `body` | exact: clips without scrolling (scripts cannot scroll it); `overflow` on `body` applies to the page, as in browsers. A page whose root scrolls (`overflow: auto`/`hidden` on `html` or `body`) is as tall as the screen and its content scrolls in it |
+| `scrollbar-gutter: stable` | the vertical scrollbar's space is kept in `auto`/`hidden` scroll boxes (`both-edges` reserves one side) |
+| flexbox: `order`, `flex-basis: content`/`min-content`/`max-content`/`fit-content`, `min-width/min-height: auto` (an item does not shrink below its content), `flex-wrap: wrap`/`wrap-reverse`, `align-*`/`justify-content` with `start`, `end`, `left`, `right`, `self-start`, `self-end`, `safe`/`unsafe`, `first`/`last baseline`, `inline-flex` | exact (the layout engine's flexbox is a port of Taffy's, checked against Chromium on Taffy's fixtures) |
+| `width`/`height`/`min-*`/`max-*`: `fit-content`, `min-content`, `max-content`, `stretch` (`-webkit-fill-available`), `fit-content(200px)` | exact (`fit-content(<length>)` on a width is Firefox's; Chrome ignores it) |
+| `aspect-ratio` (`16 / 9`, `auto 4 / 3`) | exact on blocks, flex and grid items and absolutely positioned boxes; taller content makes a block taller than its ratio, as in browsers |
+| margins | collapse as in browsers: siblings, a parent and its first or last child, through empty boxes (not across padding, borders, `overflow` other than `visible`, flex/grid containers) |
+| floats | as in browsers; a box with its own formatting context (`overflow: hidden`, `display: flow-root`, flex, grid) sits beside floats and narrows, or moves below them when it does not fit |
+| `display: contents`, `display: flow-root` | exact: `contents` boxes nothing (its children take its place in the layout), events and inheritance still go through it |
+| `justify-self`/`justify-items` on block children, `text-align: -webkit-center`/`-webkit-left`/`-webkit-right` | align block children narrower than their parent, as in Chrome |
+| CSS Grid: `display: grid`/`inline-grid`, `grid-template-columns`/`-rows` (`px`, `%`, `fr`, `auto`, `min-content`, `max-content`, `minmax()`, `fit-content()`, `repeat()` with `auto-fill`/`auto-fit`, `calc()`, line names), `grid-template-areas`, `grid-area`/`grid-row`/`grid-column` (line numbers, negative lines, `span`, names), `grid-auto-rows`/`-columns`/`-flow` (`dense`), `grid-template`, `grid`, `gap` (and `grid-gap`), `justify-items`/`-self`, `align-items`/`-self`, `place-*`, `justify-content`/`align-content`, `order` of grid items | exact: the layout engine lays the grid out (a port of the Taffy engine's CSS Grid, checked against Chromium); absolutely positioned children of a positioned grid use their grid area as containing block; `subgrid` and `masonry` are dropped with a warning (use nested grids with explicit track sizes); a grid follows `direction: rtl` text but its columns are not mirrored |
 
-**Not yet** (phase 3 adds them; until then a warning names each use): `display: grid` and
-`inline-grid` (laid out as a wrapping flex row: fixed column counts work, placement does not),
-`::before`/`::after` (the rule is dropped: use a real element), `:has()`, `order`,
-`aspect-ratio`, `width: fit-content`/`min-content`/`max-content` (written as `auto`),
-`position: sticky`, `%` radii other than 50%, `@container`, `steps()` easings (linear),
-dashed/dotted/double borders (solid). Dropped with a warning and not planned: multi-column
-layout (`columns`), `writing-mode`, `font-variant-*`. `<video>`, `<canvas>`, `<iframe>` are a
+**Not supported** (a warning or a note names each use, with the replacement): `@container`
+and `container-type` (use media queries on the canvas size), `subgrid` and `masonry` (nested grids
+with explicit track sizes), multi-column layout (`columns`: use grid or `flex-wrap`),
+`writing-mode` and vertical text, mirrored layout for `direction: rtl` (`<html dir="rtl">`: the
+text runs right to left, boxes stay left to right), `scroll-snap-*` and `scroll-behavior: smooth`
+(scroll from Lua), `mix-blend-mode`, `background-blend-mode`, `font-variant-*`,
+`font-feature-settings`, `::first-line`, `::first-letter`, `@counter-style` (use one of the
+built-in counter styles), `-webkit-line-clamp` (cut without an ellipsis), `cursor: url()` (the
+fallback keyword is used). `<video>`, `<canvas>`, `<iframe>` are a
 placeholder box (render a scene into a texture instead); JavaScript never runs.
 
 **Differences without a diagnostic** (the engine cannot tell where they matter):
-- `opacity` is not a group until phase 3: each element of the subtree fades on its own, so
-  overlapping children show through each other (`filter: opacity()` is a group).
-- `line-height: normal` is `1.2` until phase 3 (Chrome uses the font's own spacing, about 1.17
-  for Roboto and 1.21 for Inter): set `line-height` where text must line up to the pixel.
+- `z-index` on an element that is neither positioned nor a flex or grid item does nothing (as
+  in CSS; before phase 3 the engine applied it to any element).
 - Font sizes are whole pixels (`13.333px`, Chrome's size for buttons and inputs, draws at
   13px) and every run of text is a whole number of pixels wide: text can be a pixel or two
   narrower or wider than in Chrome.
+- `text-align: justify` aligns left (no justification; a note says so). `text-wrap: balance`/`pretty` wrap
+  like `wrap` (note). `hyphens: auto` does not hyphenate (note): put `&shy;` where a word may
+  break. A text decoration is one set of lines per text: an element inside an underlined one
+  that declares its own `text-decoration` replaces the underline on its text instead of
+  adding to it. `-webkit-line-clamp` cuts the text without an ellipsis (warning);
+  `text-overflow: ellipsis` works on a single line (`white-space: nowrap; overflow: hidden`).
+  `::first-line` and `::first-letter` are not supported: wrap the text in a `<span>`.
 - Tables: one without a `width` fills its container (Chrome shrinks it to its content), and
   columns without a width share the table's width equally (Chrome sizes them by content): give
   tables and columns a width. `border-collapse: collapse` removes the spacing but keeps each
   cell's own borders (this one warns).
-- A `<legend>` sits on its fieldset's top border with a gap, as in Chrome, but its box is as
-  wide as the fieldset until phase 3 (a legend's own background or border spans the fieldset:
-  give the legend a `width`).
+- A `<legend>` sits on its fieldset's top border with a gap and is as wide as its text, as in
+  Chrome.
 - `pre`, `code`, `kbd` and `samp` use the inherited font size, where Chrome draws them at 13px
   when no font size is set anywhere (its monospace default); there is no monospace face built
   in (`monospace` is Roboto), and a tab in `<pre>` is one space (`tab-size` has no effect).
 - A password field shows `*` for each character, not a bullet.
-- Margins of a parent and its first or last child do not collapse (sibling margins do) until
-  phase 3: a heading at the top of a box keeps its top margin inside the box.
+- Right-to-left documents: flex rows, `start`/`end` alignment and sticky/fixed insets are not
+  mirrored (`direction: rtl` affects the text only; a note says so).
 
 ### Reading the diagnostics
 
@@ -300,8 +334,7 @@ Every problem, loss or approximation is reported with the place in **your** file
 [HTML UI] ui/menu.html:20:3: error: JavaScript is not run (the engine has no JavaScript engine) (fix: use <script type="text/lua"> with the element API (document:querySelector, addEventListener, ...)) [HTMLUI-HTML-0006]
 [HTML UI] ui/menu.css:13:3: warning: 'position: sticky' is drawn as 'relative' (it does not stick) (fix: pin the element with position: absolute in a non-scrolling container) [HTMLUI-CSS-0006]
 [HTML UI] ui/menu.css:17:3: warning: 'backgroud-color' is not a CSS property; dropped (fix: did you mean 'background-color'?) [HTMLUI-CSS-0001]
-[HTML UI] ui/menu.css:22:3: warning: 'display: grid' is drawn as a wrapping flex container until the fork has Grid (fix: lay the items out with flex) [HTMLUI-CSS-0007]
-[HTML UI] ui/menu.html: 4 errors, 4 warnings, 2 notes
+[HTML UI] ui/menu.html: 4 errors, 3 warnings, 1 note
 ```
 
 ## `.rml` documents: RmlUi's own dialect
@@ -317,16 +350,17 @@ not close a `<div>` there, as in a browser: `HTMLUI-HTML-0026` warns; the old
 In an `.rml` document the parser is XML: close every tag (`<div/>`, `<img src="a.png"/>`,
 `<br/>`), quote every attribute, escape `&` and `<`. There is **no user-agent stylesheet**:
 every element is inline until you give it `display: block` (or `flex`), and the style
-language is **RCSS**. Rules that differ from browser CSS:
+language is **RCSS**. Text without a declaration is black and 16px, as in a browser (before
+phase 3 it was white and 12px: give the root `color` and `font-size` when a document relied on
+that), and a border without a color takes the text color. Rules that differ from browser CSS:
 
 | Write | Not (rejected or misread today) |
 |---|---|
-| `border: 2px #ff0000;` (width and color, always solid) | `border: 2px solid red;` |
+| `border: 2px solid #ff0000;` (a style is needed, as in CSS: `border: 2px #ff0000;` draws nothing since phase 3) | `border: 2px #ff0000;` |
 | `#rrggbb`, `#rrggbbaa`, `rgba(255, 0, 0, 128)` (alpha 0-255) | `rgba(255, 0, 0, 0.5)` (reads as almost transparent), `rgb(0 0 0 / 50%)` |
 | `font-family: Roboto, sans-serif;` (unquoted list) | `font-family: "Roboto", sans-serif;` (quoted names are a syntax error) |
 | `decorator: image(bg.png);` for a background image | `background-image: url(bg.png);` |
 | `-rmlui-direction: rtl;` (right-to-left base direction) | `direction: rtl;` |
-| `border-radius: 12px;` | `border-radius: 50%;` |
 | `transition: background-color 0.2s cubic-in-out;` on class / pseudo-class changes | `transition: opacity 200ms ease;` |
 
 What works in RCSS (standard CSS has all of it, and more through the rewrites above):
@@ -334,23 +368,40 @@ What works in RCSS (standard CSS has all of it, and more through the rewrites ab
   widths and colors per side, `border-radius`, `box-sizing`, `background-color`,
   `position: absolute/relative` with `left/top/right/bottom/inset`, `z-index`, `overflow:
   hidden/auto/scroll` (clipping, rounded and transformed too: see "Rendering features and
-  limits"), `visibility`, `opacity` (multiplies each element's colors; not a group:
-  `filter: opacity()` is).
+  limits"), `visibility` (a hidden element's `visible` children show), `opacity` (a group:
+  the subtree fades as one image), `outline`, `isolation`, `object-fit`/`object-position`.
+- **Borders need a style** (CSS): `border: 1px #fff` or `border-width: 2px` alone draws no
+  border, as in a browser; write `border: 1px solid #fff`.
 - Flexbox: `display: flex`, `flex-direction`, `flex-wrap`, `justify-content`, `align-items`,
   `align-content`, `align-self`, `flex` and `flex-grow/shrink/basis`, `gap` (no `order`).
 - Transforms: `transform` (`translate`, `rotate`, `scale`, `skew`, `perspective`,
-  `rotateX/Y`, ...), `transform-origin`, `perspective`.
+  `rotateX/Y`, ...), the properties `translate`, `rotate`, `scale`, `transform-origin`,
+  `perspective`.
 - Images: `<img src="...">` and `decorator: image(...)`, with alpha.
 - Text: `font-size`, `color`, `font-weight` and `font-style` (a loaded face, else synthesized:
   "Fonts and text"), `font-effect` ("Text effects"),
-  `line-height`, `text-align` (left, center, right, justify), `letter-spacing`,
-  `text-decoration` (underline, overline, line-through), `white-space`, `text-transform`,
-  word wrapping; `<br/>`.
+  `line-height`, `text-align` (left, center, right, start, end; justify aligns left),
+  `letter-spacing`, `word-spacing`, `text-decoration` (and `text-decoration-line/-color/
+  -style/-thickness`, `text-underline-offset`), `text-shadow`, `white-space` (and
+  `white-space-collapse`, `text-wrap-mode`), `overflow-wrap`, `word-break`, `text-transform`,
+  `text-overflow`, word wrapping; `<br/>`.
 - Selectors: type, `#id`, `.class`, descendant/child/sibling combinators, attribute
   selectors, `:hover`, `:active`, `:first-child`, `:nth-child()`, `:not()`.
 - `var()` custom properties, `@media` (width/height of the canvas, orientation),
-  `@keyframes` + `animation`, transitions as above.
+  `@keyframes` + `animation`, `@starting-style`, transitions (CSS syntax and easings, and
+  RmlUi's tween names such as `cubic-in-out`; the CSS default easing is `ease`).
 - Input: see "Input" below.
+- CSS values (the layout engine's own, phase 3): every CSS Color 4 color (`rgb(0 0 0 / 50%)` with
+  the alpha from 0 to 1, `hsl()`, `hwb()`, `lab()`, `oklch()`, `color-mix()`, the 148 names) and
+  `currentcolor`, also mixed (`color-mix(in srgb, currentcolor 40%, white)` follows the color); the units `vmin`, `vmax`, `ch`, `ex`, `turn`, `grad`, `dvh`/`svw`/...; `calc()`,
+  `min()`, `max()`, `clamp()`; `font-family` lists with quoted names (`"Open Sans", sans-serif`),
+  the `font` shorthand, `font-size` keywords (`small`, `larger`), `font-weight: bolder/lighter`,
+  `line-height: normal` (the initial value: the font's line spacing); `transform-origin: top left`
+  and `perspective-origin: right 10px bottom 20%`; the logical properties (`margin-inline`,
+  `padding-block`, `inset-inline-start`, `inline-size`, ..., left-to-right only); `cursor` lists
+  (`url(x.png), pointer`: the keyword is used); `opacity: 50%`. Initial values are CSS's: black
+  16px text, `currentcolor` borders. A `cursor` may still name the application's own cursors
+  (`cursor: arrow`).
 
 **The UI clock** (both kinds of document): CSS transitions and animations, Lottie and `anime`
 run on the engine's frame time before the time scale, so a pause menu animates while
@@ -372,12 +423,13 @@ where it differs):
 |---|---|---|
 | Rounded clipping | `overflow: hidden; border-radius: 16px;` | children are clipped to the rounded box (stencil); nested clips intersect |
 | Clipping inside transforms | `overflow: hidden; transform: rotate(10deg);` | children in normal flow that overflow are clipped to the transformed box |
-| Gradients | `background: linear-gradient(90deg, #f00, #00f 60%, #0f0);` | also `radial-gradient(circle 40px at center, ...)`, `conic-gradient(from 30deg at 50% 50%, ...)`, the `repeating-` forms and several layers; at most **16 color stops** (the rest are dropped with a warning). RCSS: `decorator: linear-gradient(...)` |
-| Background images | `background: url(bg.png) center / cover no-repeat;` | every `background-size`, `-position`, `-repeat` (`space`, `round`), `-origin`, `-clip`, `fixed`. RCSS: `decorator: image(bg.png)` |
-| Filters | `filter: blur(4px) grayscale(1) drop-shadow(0 2px 4px #000);` | `opacity`, `blur`, `drop-shadow`, `brightness`, `contrast`, `invert`, `grayscale`, `sepia`, `hue-rotate`, `saturate`, applied left to right; `filter: opacity()` is a group (the subtree fades as one image), unlike the `opacity` property. RCSS: the color first, `drop-shadow(#000 0 2px 4px)` |
+| Gradients | `background: linear-gradient(90deg, #f00, #00f 60%, #0f0);` | also `radial-gradient(circle 40px at center, ...)`, `conic-gradient(from 30deg at 50% 50%, ...)`, the `repeating-` forms and several layers, each with its own size, position and repeat; hard stops stay hard, as in a browser; at most **16 color stops** (the rest are dropped with a warning). RCSS: the same `background-image`, or `decorator: linear-gradient(...)` (drawn above the background layers) |
+| Background images | `background: url(bg.png) center / cover no-repeat;` | several layers, every `background-size`, `-position`, `-repeat` (`space`, `round`), `-origin`, `-clip`, `-attachment` (`fixed`, `local`), clipped to rounded corners; `background-position` and `background-size` transition and animate. RCSS: the same properties |
+| Filters | `filter: blur(4px) grayscale(1) drop-shadow(0 2px 4px #000);` | `opacity`, `blur`, `drop-shadow`, `brightness`, `contrast`, `invert`, `grayscale`, `sepia`, `hue-rotate`, `saturate`, applied left to right, to the element and everything it contains (also children that overflow it); `drop-shadow` without a color uses the text color. RCSS: the color first, `drop-shadow(#000 0 2px 4px)` |
+| Opacity | `opacity: 0.5;` | a group: the element and its children are drawn into a layer that fades as one image (an element that draws one thing, such as a lone background or an icon, fades without a layer). Animating it changes one value per frame, no geometry |
 | Backdrop filters | `backdrop-filter: blur(10px);` | the same filters, applied to what is behind the element's border box |
 | Box shadows | `box-shadow: 4px 6px 12px 2px rgba(0, 0, 0, 0.5), inset 0 0 0 3px #ff0;` | an outer shadow is blurred and then clipped to outside the box, as in CSS (a zero-offset blurred shadow is a glow). RCSS: the color first, `inset` last |
-| Masks and shapes | `mask-image: linear-gradient(90deg, #000, transparent);`, `clip-path: circle(50%);` | the content's alpha is multiplied by the mask's; `clip-path` takes `inset()`, `circle()`, `ellipse()`, `polygon()`, `path()` |
+| Masks and shapes | `mask-image: linear-gradient(90deg, #000, transparent);`, `mask: url(mask.png) center / 50% no-repeat;`, `clip-path: circle(50%);` | the content's alpha is multiplied by the mask's; mask layers take images and gradients with `mask-size`, `-position`, `-repeat` (not `mask-mode`, `-origin`, `-clip`, `-composite`); `clip-path` takes `inset()`, `circle()`, `ellipse()`, `polygon()`, `path()` |
 
 Anti-aliasing: the target is multisampled (4x by default). The project setting *HTML UI MSAA*
 (`graphics.html_ui_msaa_samples`: 1, 2, 4 or 8; `UIDocumentSystem::setPreferredSampleCount`
@@ -397,8 +449,8 @@ naming it and draws nothing for it.
 
 - Built in: Roboto (Latin, Cyrillic, Greek) and Noto Sans Arabic (Arabic with shaping and
   bidirectional text, right-to-left with `direction: rtl`; RCSS: `-rmlui-direction: rtl`).
-  Generic families (`sans-serif`, `serif`, `monospace`, `system-ui`) map to Roboto; there is
-  no built-in serif or monospace face yet.
+  Generic families (`sans-serif`, `serif`, `monospace`, `system-ui`, `ui-*`, `cursive`, `fantasy`,
+  `emoji`, `math`) map to Roboto; there is no built-in serif, monospace or emoji face yet.
 - `font-family` lists fall back in order. A family that is not loaded is skipped: an `.html`
   document records one note per family (`HTMLUI-CSS-0023`, in `getDiagnostics()` and counted
   in the summary), an `.rml` document logs one `[HTML UI] font-family '<name>' is not loaded`
@@ -425,11 +477,16 @@ naming it and draws nothing for it.
 
 ## Text effects
 
-Standard CSS `text-shadow` and `-webkit-text-stroke` are translated to these effects in
-`.html` documents: `text-shadow: 2px 2px #000` is a shadow, one with a blur radius
-(`0 0 8px #7c3aed`) a glow, several shadows several effects, `-webkit-text-stroke: 1px #000`
-an outline (drawn outside the glyphs, where Chrome centres the stroke on their edge). In an
-`.rml` document write RmlUi's own property:
+Standard CSS `text-shadow` works in `.html` and `.rml` documents alike: `text-shadow: 2px 2px
+#000` is a hard shadow, one with a blur radius (`0 0 8px #7c3aed`) a glow (a Gaussian blur of
+half the radius, as in Chrome), a comma list several shadows (the first on top), all behind
+the text; a shadow without a color takes the text's color, and underlines cast it too. Each
+blurred shadow of a text draws through an offscreen layer: fine for titles and counters, not
+for long body text. `text-shadow` transitions and animates.
+
+`-webkit-text-stroke: 1px #000` is translated to the outline effect below (drawn outside the
+glyphs, where Chrome centres the stroke on their edge). RmlUi's own effects property, for
+`.rml` documents and for effects CSS has no property for:
 
 `font-effect` (inherited) draws effects with the text, comma-separated:
 
@@ -585,7 +642,7 @@ documents: `img`, `input` and `label` replace RmlUi's, compatible with RmlUi's a
 | `<button>` | `type="submit"` (the default) submits its `<form>` (the `submit` event carries the button's `name`/`value` and every named control), `reset` resets the form, `button` does nothing; `form="id"` works; `disabled` gets `:disabled` and no click; Enter and Space activate it |
 | `<a href>` | Enter activates; `#id` scrolls to the element; any other link dispatches `htmlnavigate` on the document (`href`, `url`, `fragment`, `document`, `external`): a `.html` link loads that document in the same component, external links only notify (there is no browser) |
 | `<input>` | the `type` attribute stays as written; `number` filters typing, steps with Up/Down by `step` within `min`/`max` and clamps on blur/Enter; `date`, `time`, `datetime-local`, `month`, `week` are text fields showing the format; `color` a text field; `reset` resets the form; `image` submits and shows `src`; `file` is a disabled "Choose File" button; Enter in a text field submits its form; Space toggles checkboxes; `autofocus` |
-| `<ol>`/`<ul>`/`<li>` | markers from `list-style-type` (disc, circle, square, decimal, decimal-leading-zero, lower/upper-alpha and -latin, lower/upper-roman, lower-greek, strings), `list-style-image`, `list-style-position`; `ol start`, `reversed`, `li value`; style them with `li::marker` |
+| `<ol>`/`<ul>`/`<li>` | markers from `list-style-type` (disc, circle, square, decimal, decimal-leading-zero, lower/upper-alpha and -latin, lower/upper-roman, lower-greek, strings), `list-style-image` (the image, 7px before the text), `list-style-position` (`inside` puts the marker in the first line); `ol start`, `reversed`, `li value`; nested numbering with `counter-reset`/`counters()`; style them with `li::marker` (`color`, `font-size`, `content`); any `display: list-item` element gets a marker |
 | `<details>`/`<summary>` | clicking (or Enter/Space on) the summary toggles `open`; a `toggle` event follows; details with the same `name` form an accordion |
 | `<dialog>` | `open` shows it; Lua `dialog:showModal()`, `show()`, `close(value)`; Escape closes a modal dialog (`cancel`, then `close`). No backdrop, no focus trap |
 | `<img>` | `object-fit`, `object-position`, `image-rendering: pixelated` (nearest sampling), SVG sources drawn at their size |
@@ -752,7 +809,8 @@ in the same UI Document when clicked unless a listener of `htmlnavigate` calls `
 
 | DOM name | What fires it |
 |---|---|
-| `click`, `dblclick`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout`, `keydown`, `keyup`, `focus`, `blur`, `scroll`, `resize`, `load`, `unload`, `submit`, `animationend`, `transitionend`, `dragstart`, `drag`, `dragend`, `dragover`, `dragdrop`, `textinput` | the same RmlUi event |
+| `click`, `dblclick`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout`, `keydown`, `keyup`, `focus`, `blur`, `scroll`, `resize`, `load`, `unload`, `submit`, `dragstart`, `drag`, `dragend`, `dragover`, `dragdrop`, `textinput` | the same RmlUi event |
+| `animationstart`, `animationiteration`, `animationend`, `animationcancel`, `transitionrun`, `transitionstart`, `transitionend`, `transitioncancel` | CSS animations and transitions, as in a browser (`animationName` or `propertyName`, and `elapsedTime` in seconds) |
 | `wheel` | the mouse wheel (`deltaX`, `deltaY`: steps, positive down/right) |
 | `input` | every edit of a text field, and every toggle |
 | `change` | a text field on blur when its value changed since it got focus; checkboxes, radios, selects and ranges when they change |
@@ -764,7 +822,8 @@ supported events. A listener gets a `UIEvent`: `type`, `target`, `currentTarget`
 `eventPhase` (1 capture, 2 target, 3 bubble), `button` (DOM numbering: 0 left, 1 middle,
 2 right), `clientX`/`clientY` (document px), `deltaX`/`deltaY`, `ctrlKey`, `shiftKey`,
 `altKey`, `metaKey`, `key`, `code`, `keyCode`, `repeat` (`event["repeat"]` in Lua), `data`
-(text of `textinput`), `detail` (a copy of the `dispatchEvent` detail), `defaultPrevented`,
+(text of `textinput`), `animationName`, `propertyName`, `elapsedTime` (animation and transition
+events), `detail` (a copy of the `dispatchEvent` detail), `defaultPrevented`,
 and `stopPropagation()`, `stopImmediatePropagation()`, `preventDefault()`. The event is valid
 only while the listener runs. `preventDefault()` skips the element's own action (a checkbox
 does not toggle, a prevented `keydown` types nothing, a prevented `wheel` does not scroll)
@@ -928,6 +987,10 @@ anime.animate(stats, { hp = 0, color = "#00ff00", duration = 2000, modifier = an
 - **utils**: `set get remove random createSeededRandom randomPick shuffle clamp round snap wrap
   mapRange lerp damp degToRad radToDeg roundPad padStart padEnd stagger`; with fewer arguments a
   util returns a function of the missing value (`modifier = anime.utils.round(0)`).
+- **With CSS transitions**: `anime` writes the element's inline style every frame, so a
+  property that also has a CSS `transition` starts that transition again at each write (as
+  Anime.js does in a browser): the value lags behind the animation. Drive a property from one
+  of them, not both (remove the `transition` of what `anime` animates).
 - **Clock**: everything runs on the UI clock, like CSS transitions: `Engine.timeScale` does not
   slow it (a pause menu animates while the game is frozen), `playbackRate`/`pause()` do.
   `clock = "game"` (animations, timelines, timers; children inherit it) runs on the scaled game
@@ -1110,11 +1173,11 @@ the files ship with the assets).
 What standard HTML/CSS does not do yet is listed under "Writing HTML/CSS for the engine" (the
 rewrites table, "Not yet" and "Differences without a diagnostic"); the Console names every
 use in your files. Later phases:
-- Phase 3, the layout engine itself: CSS Grid, `::before`/`::after`, `calc()` with mixed
-  units at layout time, border styles, `%` radii, `:has()`, `order`, `aspect-ratio`,
-  `fit-content`, real `position: fixed`/`sticky`, group `opacity`, `line-height: normal`,
-  `cubic-bezier()`/`steps()` easings, parent/child margin collapsing, a legend as wide as its
-  text.
+- Phase 3, the layout engine itself, is done: the CSS above (calc(), border styles, radii, outlines,
+  group opacity, background and mask layers, pseudo-elements and counters, the full cascade and
+  Selectors 4, CSS Grid, flexbox and block layout parity, fixed and sticky positioning, CSS
+  transitions and animations) is native, checked against Chromium; what it leaves out is the
+  "Not supported" list above.
 - Phase 4, tools for agents: `check --ui`, the MCP tools `inspect_ui`/`assert_ui`/
   `create_ui_document`, `import_files` for remote fonts and images, rewriting references
   inside HTML/CSS when an asset is renamed, the generated support matrix (every property,
@@ -1126,6 +1189,9 @@ Limits by design:
   `<video>`, `<canvas>` or `<iframe>`.
 - Fonts: TTF/OTF only (no WOFF/WOFF2); whole-pixel font sizes and advances; no built-in serif
   or monospace face.
+- Text: no justification (`text-align: justify` aligns left), no automatic hyphenation, no
+  selection of text outside inputs, no `::first-line`/`::first-letter`, no vertical text;
+  `text-decoration-style: wavy` draws solid.
 - Tables use RmlUi's table model (full-width auto tables, equal columns, no collapsed
   borders).
 - Linux has no multi-touch (core X11 input). The IME composition shows inside the field on

@@ -1,6 +1,10 @@
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
+#ifdef RMLUI_MATH_EXPRESSIONS
+	#include "Calculation.h"
+#endif
 #include "../../Include/RmlUi/Core/Log.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
+#include "PropertyParserColour.h"
 
 namespace Rml {
 
@@ -90,12 +94,27 @@ bool PropertyDefinition::ParseValue(Property& property, const String& value) con
 
 bool PropertyDefinition::GetValue(String& value, const Property& property) const
 {
+#ifdef RMLUI_MATH_EXPRESSIONS
+	if (property.unit == Unit::CALCULATION)
+	{
+		const CalculationPtr calculation = property.value.Get<CalculationPtr>();
+		value = calculation ? calculation->ToString() : String();
+		return bool(calculation);
+	}
+#endif
 	value = property.value.Get<String>();
 
 	switch (property.unit)
 	{
 	case Unit::KEYWORD:
 	{
+		// 'currentcolor' of a colour property (phase 3, values).
+		if (PropertyParserColour::IsCurrentColor(property))
+		{
+			value = "currentcolor";
+			return true;
+		}
+
 		int parser_index = property.parser_index;
 		if (parser_index < 0 || parser_index >= (int)parsers.size())
 		{
@@ -163,6 +182,17 @@ PropertyDefinition& PropertyDefinition::SetRelativeTarget(RelativeTarget relativ
 {
 	this->relative_target = relative_target;
 	return *this;
+}
+
+PropertyDefinition& PropertyDefinition::SetValueAsWritten()
+{
+	value_as_written = true;
+	return *this;
+}
+
+bool PropertyDefinition::IsValueAsWritten() const
+{
+	return value_as_written;
 }
 
 } // namespace Rml

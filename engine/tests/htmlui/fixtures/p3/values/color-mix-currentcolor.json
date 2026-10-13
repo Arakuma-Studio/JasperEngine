@@ -1,0 +1,11 @@
+{
+ "comment": "color-mix() with a currentcolor operand in border and background colors (srgb, oklab, nested, a transparent operand) and in color (the parent's color); a color change is followed at once by the mixes (#f: no transition of background-color), and a transition from a mix to a color runs (#g: half way).",
+ "viewport": [360, 140],
+ "steps": [
+  {"capture": "base"},
+  {"addClass": ["#f", "on"]},
+  {"addClass": ["#g", "on"]},
+  {"advance": 0.5},
+  {"capture": "half"}
+ ]
+}

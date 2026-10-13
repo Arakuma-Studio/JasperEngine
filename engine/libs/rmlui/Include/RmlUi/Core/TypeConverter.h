@@ -10,7 +10,7 @@
 
 namespace Rml {
 
-enum class Unit;
+enum class Unit : uint64_t;
 
 /**
     Templatised TypeConverters with Template Specialisation.
@@ -70,6 +70,19 @@ class TypeConverter<TransformPtr, String> {
 public:
 	RMLUICORE_API static bool Convert(const TransformPtr& src, String& dest);
 };
+
+#ifdef RMLUI_MATH_EXPRESSIONS
+template <>
+class TypeConverter<CalculationPtr, CalculationPtr> {
+public:
+	RMLUICORE_API static bool Convert(const CalculationPtr& src, CalculationPtr& dest);
+};
+template <>
+class TypeConverter<CalculationPtr, String> {
+public:
+	RMLUICORE_API static bool Convert(const CalculationPtr& src, String& dest);
+};
+#endif
 
 template <>
 class TypeConverter<TransitionList, TransitionList> {
@@ -145,6 +158,17 @@ template <>
 class TypeConverter<BoxShadowList, String> {
 public:
 	RMLUICORE_API static bool Convert(const BoxShadowList& src, String& dest);
+};
+
+template <>
+class TypeConverter<StyleValuePtr, StyleValuePtr> {
+public:
+	RMLUICORE_API static bool Convert(const StyleValuePtr& src, StyleValuePtr& dest);
+};
+template <>
+class TypeConverter<StyleValuePtr, String> {
+public:
+	RMLUICORE_API static bool Convert(const StyleValuePtr& src, String& dest);
 };
 
 } // namespace Rml

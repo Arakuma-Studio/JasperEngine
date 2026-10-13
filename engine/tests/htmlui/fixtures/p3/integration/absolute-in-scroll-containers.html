@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>integration: absolutely positioned boxes in overflow: hidden and auto boxes</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .box { position: absolute; width: 100px; height: 100px; background: #e3e6ec; }
+  /* a card with a ribbon and a glow that overflow it: clipped */
+  #card { overflow: hidden; left: 10px; top: 10px; border-radius: 10px; }
+  #ribbon { position: absolute; right: -30px; top: 14px; width: 120px; height: 18px; background: #d1495b; transform: rotate(45deg); }
+  #glow { position: absolute; left: -20px; bottom: -20px; width: 60px; height: 60px; border-radius: 50%; background: #edae49; }
+  #shadowed { margin: 50px 0 0 30px; width: 40px; height: 20px; background: #00798c; box-shadow: 0 0 0 30px #30638e; }
+  /* an absolutely positioned panel overflowing an auto scroller: a horizontal scrollbar */
+  #auto { overflow: auto; left: 130px; top: 10px; }
+  #panel { position: absolute; left: 10px; top: 10px; width: 150px; height: 50px; background: #3d348b; }
+  /* its containing block inside the scroller: a vertical scrollbar */
+  #auto2 { overflow: auto; left: 250px; top: 10px; height: 70px; }
+  #rel { position: relative; height: 20px; background: #a7c4a0; }
+  #drop { position: absolute; left: 10px; top: 30px; width: 50px; height: 80px; background: #2b9348; }
+  /* its containing block outside the scroller: neither clipped nor scrollable */
+  #outer { position: absolute; left: 370px; top: 10px; width: 100px; height: 100px; }
+  #auto3 { overflow: auto; width: 80px; height: 60px; background: #e3e6ec; }
+  #free { position: absolute; left: 40px; top: 40px; width: 70px; height: 70px; background: #f18701; }
+</style>
+</head>
+<body>
+<div class="box" id="card"><div id="ribbon"></div><div id="glow"></div><div id="shadowed"></div></div>
+<div class="box" id="auto"><div id="panel"></div></div>
+<div class="box" id="auto2"><div id="rel"><div id="drop"></div></div></div>
+<div id="outer"><div id="auto3"><div id="free"></div></div></div>
+</body>
+</html>

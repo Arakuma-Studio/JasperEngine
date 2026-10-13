@@ -1,0 +1,7 @@
+/* phase 3 (p3-grid): the fork lays grids out (ForkFeature::Grid): grid values pass through, calc() included;
+   subgrid and masonry are not implemented (phase-3 spec 2.2) and are dropped in every fork state */
+.sub { display: grid; grid-template-columns: subgrid [a]; grid-template-rows: masonry; }
+.calc { display: grid; grid-template-columns: calc(50% - 10px) minmax(calc(2em + 4px), 1fr); gap: calc(1em + 2px); }
+.areas { display: inline-grid; grid-template: "a a" 40px "b c" 1fr / 1fr 2fr; justify-items: center; }
+.item { grid-area: b; justify-self: end; grid-column: span 2 / -1; }
+.legacy { grid-gap: 4px 8px; grid-row-gap: 2px; grid-column-gap: 3px; }

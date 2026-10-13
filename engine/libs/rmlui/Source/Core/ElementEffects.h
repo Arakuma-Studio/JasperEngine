@@ -6,6 +6,7 @@
 namespace Rml {
 
 class Decorator;
+class ElementBackgroundLayers;
 class Element;
 class Filter;
 
@@ -23,6 +24,14 @@ public:
 	void InstanceEffects();
 
 	void RenderEffects(RenderStage render_stage);
+
+	// False when RenderEffects has nothing to do at any stage: no effects to instance or reload, no decorators, filters,
+	// backdrop filters, mask or group opacity. Element::Render tests it inline, as most elements have none of them.
+	bool NeedsRenderEffects(float opacity, bool has_mask_image) const
+	{
+		return effects_dirty || effects_data_dirty || !decorators.empty() || !filters.empty() || !backdrop_filters.empty() || bool(group_opacity) ||
+			opacity < 1.f || has_mask_image;
+	}
 
 	// Mark effects as dirty and force them to reset themselves.
 	void DirtyEffects();
@@ -52,9 +61,14 @@ private:
 
 	// The list of decorators and filters used by this element.
 	DecoratorEntryList decorators;
-	DecoratorEntryList mask_images;
+	UniquePtr<ElementBackgroundLayers> mask_layers; // mask-image layers
 	FilterEntryList filters;
 	FilterEntryList backdrop_filters;
+
+	// Group opacity (phase 3, p3-paint): the element and its stacking context are drawn into a layer composited with
+	// this filter, compiled for 'group_opacity_value'.
+	CompiledFilter group_opacity;
+	float group_opacity_value = 1.f;
 
 	// If set, a full reload is necessary.
 	bool effects_dirty = false;

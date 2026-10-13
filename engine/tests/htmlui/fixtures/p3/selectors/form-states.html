@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>selectors: form state pseudo-classes</title>
+<style>
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  /* every control is a plain box: no native look, no text, only the state colors */
+  input, select, fieldset, a { position: absolute; box-sizing: border-box; margin: 0; padding: 0; border: 0; appearance: none; outline: none; font-family: "Ahem"; font-size: 10px; line-height: 10px; }
+  input { width: 40px; height: 20px; background-color: #e02020; }
+
+  /* 1. :enabled / :disabled, and inputs of a disabled fieldset are disabled */
+  .g-en:enabled { background-color: #40a060; }
+  .g-en:disabled { background-color: #808080; }
+  #en { left: 10px; top: 10px; }
+  #dis { left: 60px; top: 10px; }
+  fieldset { left: 110px; top: 6px; width: 100px; height: 28px; background-color: #e0e0e0; }
+  fieldset:disabled { background-color: #c0c0e0; }
+  #fsin { left: 4px; top: 4px; }
+  #fsin2 { left: 54px; top: 4px; }
+
+  /* 2. :checked on checkbox and radio */
+  input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; }
+  .g-ck { background-color: #c0c0c0; }
+  .g-ck:checked { background-color: #2060c0; }
+  #ck1 { left: 10px; top: 40px; }
+  #ck2 { left: 40px; top: 40px; }
+  #rd1 { left: 70px; top: 40px; }
+  #rd2 { left: 100px; top: 40px; }
+
+  /* 3. :checked on <option selected>: the select's own text is hidden (color = background);
+        the indicator boxes follow the option states through :has(); the options carry no id
+        (Chromium gives them no box) */
+  #selw { position: absolute; left: 130px; top: 40px; width: 120px; height: 20px; }
+  select { left: 0; top: 0; width: 40px; height: 20px; color: #d0d0d0; background-color: #d0d0d0; }
+  #ind1, #ind2 { position: absolute; top: 0; width: 30px; height: 20px; background-color: #c0c0c0; }
+  #ind1 { left: 50px; }
+  #ind2 { left: 90px; }
+  #selw:has(option[value="b"]:checked) > #ind1 { background-color: #2060c0; }
+  #selw:has(option[value="a"]:checked) > #ind2 { background-color: #e02020; }
+
+  /* 4. :read-only / :read-write (text fields) */
+  .g-ro:read-write { background-color: #40a060; }
+  .g-ro:read-only { background-color: #a06040; }
+  #rw { left: 10px; top: 70px; }
+  #ro { left: 60px; top: 70px; }
+
+  /* 5. :required / :optional */
+  .g-rq:required { background-color: #c04080; }
+  .g-rq:optional { background-color: #60a0c0; }
+  #rq { left: 110px; top: 70px; }
+  #op { left: 160px; top: 70px; }
+
+  /* 6. :link and :any-link match a[href] only */
+  a { display: block; width: 40px; height: 20px; background-color: #c0c0c0; }
+  .g-ln:link { background-color: #2040a0; }
+  .g-al:any-link { background-color: #a0a020; }
+  #ln1 { left: 10px; top: 100px; }
+  #ln2 { left: 60px; top: 100px; }
+  #al1 { left: 110px; top: 100px; }
+  #al2 { left: 160px; top: 100px; }
+</style>
+</head>
+<body>
+<input id="en" class="g-en" type="text">
+<input id="dis" class="g-en" type="text" disabled>
+<fieldset id="fs" disabled><input id="fsin" class="g-en" type="text"><input id="fsin2" class="g-en" type="text"></fieldset>
+<input id="ck1" class="g-ck" type="checkbox">
+<input id="ck2" class="g-ck" type="checkbox" checked>
+<input id="rd1" class="g-ck" type="radio" name="r">
+<input id="rd2" class="g-ck" type="radio" name="r" checked>
+<div id="selw"><select id="sel"><option value="a">X</option><option value="b" selected>X</option></select><div id="ind1"></div><div id="ind2"></div></div>
+<input id="rw" class="g-ro" type="text">
+<input id="ro" class="g-ro" type="text" readonly>
+<input id="rq" class="g-rq" type="text" required>
+<input id="op" class="g-rq" type="text">
+<a id="ln1" class="g-ln" href="other.html"></a>
+<a id="ln2" class="g-ln"></a>
+<a id="al1" class="g-al" href="other.html"></a>
+<a id="al2" class="g-al"></a>
+</body>
+</html>

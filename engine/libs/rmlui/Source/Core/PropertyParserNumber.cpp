@@ -1,4 +1,5 @@
 #include "PropertyParserNumber.h"
+#include "../../Include/RmlUi/Core/Property.h"
 #include <stdlib.h>
 
 namespace Rml {
@@ -21,10 +22,68 @@ struct PropertyParserNumberData {
 		{"pc", Unit::PC},
 		{"deg", Unit::DEG},
 		{"rad", Unit::RAD},
+		// CSS Values 4 (phase 3): the small, large and dynamic viewport units alias the viewport units, as the
+		// viewport never changes with browser chrome here; 'Q' is not supported.
+		{"vmin", Unit::VMIN},
+		{"vmax", Unit::VMAX},
+		{"svw", Unit::VW},
+		{"svh", Unit::VH},
+		{"lvw", Unit::VW},
+		{"lvh", Unit::VH},
+		{"dvw", Unit::VW},
+		{"dvh", Unit::VH},
+		{"svmin", Unit::VMIN},
+		{"svmax", Unit::VMAX},
+		{"lvmin", Unit::VMIN},
+		{"lvmax", Unit::VMAX},
+		{"dvmin", Unit::VMIN},
+		{"dvmax", Unit::VMAX},
+		{"ch", Unit::CH},
+		{"ex", Unit::EX},
+		{"turn", Unit::TURN},
+		{"grad", Unit::GRAD},
 	};
 };
 
 ControlledLifetimeResource<PropertyParserNumberData> PropertyParserNumber::parser_data;
+
+#ifdef RMLUI_MATH_EXPRESSIONS
+static bool IsMathFunction(const String& value)
+{
+	if (value.empty())
+		return false;
+
+	// Ordinary numeric values overwhelmingly begin with a digit, sign, or decimal point. Keep that
+	// hot path allocation-free and avoid case-folding the complete value merely to identify the four
+	// supported math function prefixes.
+	const char first = value.front();
+	if (first != 'c' && first != 'C' && first != 'm' && first != 'M')
+		return false;
+
+	auto StartsWithCaseInsensitive = [&value](StringView prefix) {
+		return value.size() >= prefix.size() && StringUtilities::StringCompareCaseInsensitive(StringView(value, 0, prefix.size()), prefix);
+	};
+
+	if (first == 'c' || first == 'C')
+		return StartsWithCaseInsensitive("calc(") || StartsWithCaseInsensitive("clamp(");
+
+	return StartsWithCaseInsensitive("min(") || StartsWithCaseInsensitive("max(");
+}
+
+static bool ParseMathValue(Property& property, const String& value, const CalculationParseTarget& calculation_target)
+{
+	if (calculation_target.allowed_final_types == 0)
+		return false;
+
+	CalculationPtr calculation;
+	if (!ParseCalculation(value, calculation_target, calculation))
+		return false;
+
+	property.value = std::move(calculation);
+	property.unit = Unit::CALCULATION;
+	return true;
+}
+#endif
 
 void PropertyParserNumber::Initialize()
 {
@@ -38,7 +97,19 @@ void PropertyParserNumber::Shutdown()
 
 PropertyParserNumber::PropertyParserNumber(Units units, Unit zero_unit) : units(units), zero_unit(zero_unit) {}
 
+#ifdef RMLUI_MATH_EXPRESSIONS
+PropertyParserNumber::PropertyParserNumber(Units units, Unit zero_unit, CalculationParseTarget calculation_target) :
+	units(units), zero_unit(zero_unit), calculation_target(calculation_target)
+{}
+#endif
+
 PropertyParserNumber::~PropertyParserNumber() {}
+
+PropertyParserNumber& PropertyParserNumber::SetRestriction(Restriction in_restriction)
+{
+	restriction = in_restriction;
+	return *this;
+}
 
 bool PropertyParserNumber::ParseValue(Property& property, const String& value, const ParameterMap& /*parameters*/) const
 {
@@ -61,6 +132,13 @@ bool PropertyParserNumber::ParseValue(Property& property, const String& value, c
 	float float_value = strtof(str_number.c_str(), &str_end);
 	if (str_number.c_str() == str_end)
 	{
+#ifdef RMLUI_MATH_EXPRESSIONS
+		// Preserve the legacy numeric parser as the fast path. Supported math expressions always begin
+		// with an identifier and therefore reach this fallback only after ordinary number conversion
+		// fails, so non-math RCSS pays no math-prefix detection cost.
+		if (IsMathFunction(value))
+			return ParseMathValue(property, value, calculation_target);
+#endif
 		// Number conversion failed
 		return false;
 	}
@@ -76,6 +154,26 @@ bool PropertyParserNumber::ParseValue(Property& property, const String& value, c
 
 	if (Any(unit & units))
 	{
+		switch (restriction)
+		{
+		case Restriction::None: break;
+		case Restriction::AlphaValue:
+			if (unit == Unit::PERCENT)
+			{
+				property.value = float_value * 0.01f;
+				property.unit = Unit::NUMBER;
+				return true;
+			}
+			break;
+		case Restriction::NonNegative:
+			if (float_value < 0.f)
+				return false;
+			break;
+		case Restriction::Integer:
+			if (float_value != float(int(float_value)))
+				return false;
+			break;
+		}
 		property.value = float_value;
 		property.unit = unit;
 		return true;

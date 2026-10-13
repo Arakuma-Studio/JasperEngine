@@ -32,6 +32,7 @@ h2
 {
 	background-color: #ddd;
 	border-width: 1dp 0px;
+	border-style: solid;
 	border-color: #888;
 }
 h3
@@ -65,6 +66,7 @@ div#close_button
 	color: black;
 	background-color: #ddd;
 	border-width: 1dp;
+	border-style: solid;
 	border-color: #666;
 	text-align: center;
 }
@@ -84,8 +86,10 @@ div#content
 	overflow: auto;
 	background: white;
 	border-width: 2dp;
+	border-style: solid;
 	border-color: #888;
 	border-top-width: 0;
+	border-top-style: solid;
 }
 .error
 {
@@ -130,11 +134,13 @@ scrollbarhorizontal slidertrack
 scrollbarvertical slidertrack
 {
 	border-left-width: 1dp;
+	border-left-style: solid;
 }
 scrollbarhorizontal slidertrack
 {
 	height: 15dp;
 	border-top-width: 1dp;
+	border-top-style: solid;
 }
 scrollbarvertical sliderbar,
 scrollbarhorizontal sliderbar
@@ -145,12 +151,14 @@ scrollbarhorizontal sliderbar
 scrollbarvertical sliderbar
 {
 	border-width: 1dp 0;
+	border-style: solid;
 	margin-left: 1dp;
 }
 scrollbarhorizontal sliderbar
 {
 	height: 15dp;
 	border-width: 0 1dp;
+	border-style: solid;
 	margin-top: 1dp;
 }
 scrollbarcorner

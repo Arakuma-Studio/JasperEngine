@@ -1,0 +1,31 @@
+#htmlui-root .u {
+text-decoration: underline;
+}
+#htmlui-root .none {
+text-decoration: none;
+}
+#htmlui-root .lt {
+text-decoration: line-through;
+}
+#htmlui-root .full {
+text-decoration: underline dotted #ff0000ff 2px;
+}
+#htmlui-root .two {
+text-decoration: underline overline;
+}
+#htmlui-root .line {
+text-decoration-line: overline;
+}
+#htmlui-root .style {
+text-decoration-style: wavy;
+}
+#htmlui-root .color {
+text-decoration-color: #ff0000ff;
+}
+#htmlui-root .thickness {
+text-decoration-thickness: 2px;
+text-underline-offset: 4px;
+}
+#htmlui-root .blink {
+text-decoration: blink;
+}

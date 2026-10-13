@@ -1,0 +1,11 @@
+{
+ "comment": "A fixed box is contained by an ancestor with a transform (also translate, rotate, scale), perspective, a filter, a backdrop-filter or will-change naming one of them (or contain); not by a mask, will-change: opacity or transform-origin (those fixed boxes stack at the viewport's bottom left); adding a transform moves it into its holder; will-change: position contains absolutely positioned boxes only. Captured at rest, after the page scrolls (the viewport-fixed boxes stay) and with #h14 transformed.",
+ "viewport": [500, 260],
+ "steps": [
+  {"capture": "rest"},
+  {"scroll": ["#doc", 0, 40]},
+  {"capture": "scrolled"},
+  {"addClass": ["#h14", "on"]},
+  {"capture": "transformed"}
+ ]
+}

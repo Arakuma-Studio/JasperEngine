@@ -187,7 +187,7 @@ bool SvgElementHook::ProcessSource(Rml::Element* element, const Rml::String& pat
             result.source_id = id;
             result.data = svg->xml;
             result.use_colour = true;
-            result.colour = tint.ToPremultiplied(computed.opacity());
+            result.colour = tint.ToPremultiplied(element->GetDrawOpacity());
             return true;
         }
         case SvgTint::Substitute:{

@@ -2350,7 +2350,9 @@ strength is `max(1, size/24)` **document** px (layout does not change with the r
 the bitmap dilation is that times the raster scale, rounded, at least 1 physical px, and
 spreads right and up (FreeType's `FT_Bitmap_Embolden` direction: baseline and left edge stay).
 Every glyph of an emboldened face with a non-zero advance grows by the strength, in
-`GetStringWidth` and `GenerateString` alike. The italic shear is geometry only (the bitmap is
+`GetStringWidth` and `GenerateString` alike. *Changed in phase 3 (p3-integration):* the advances
+stay the regular face's, as Chromium's fake bold (Skia emboldens the outline, the advances are the
+face's): bold text synthesized from a regular face is as wide as the regular text. The italic shear is geometry only (the bitmap is
 the upright one), so only the bold dilation is in the glyph key; effect quads are sheared
 with the text. Synthesis applies to every face of the chain (fallback faces too).
 

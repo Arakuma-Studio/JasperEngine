@@ -11,6 +11,10 @@
 #include "htmlui/compat/css/BaseRules.h"
 #include "htmlui/compat/css/CssParser.h"
 #include "htmlui/compat/css/CssSerialize.h"
+#include "htmlui/compat/css/StaticCalc.h"
+
+#include <algorithm>
+#include <vector>
 #include "htmlui/compat/css/Units.h"
 #include "htmlui/compat/css/ValueNormalizer.h"
 
@@ -29,6 +33,11 @@ namespace {
         return text(v);
     }
 
+    // calc(), min(), max(), clamp() kept for the fork (its Calc and IndividualTransforms; checked by the normalizer)
+    bool isCalc(const ComponentValue& v){
+        return v.kind == ComponentValue::Kind::Function && StaticCalc::isCalcFamily(lowerAscii(v.name().view()));
+    }
+
     // the transform function of an individual property; "" for none, nullopt when invalid
     std::optional<std::string> functionOf(Session& session, const std::string& property, const ValueList& value){
         ValueList w = words(value);
@@ -36,8 +45,34 @@ namespace {
             return std::string();
         if (property == "translate"){
             for (const ComponentValue& v : w){
-                if (!isLength(session, v, true) && !isVar(v))
+                if (!isLength(session, v, true) && !isVar(v) && !isCalc(v))
                     return std::nullopt;
+            }
+            // a sum kept by NormalizeContext::lengthSums: one translation per term (exact)
+            size_t count = 1;
+            std::vector<std::vector<ComponentValue>> terms(w.size());
+            for (size_t i = 0; i < w.size(); i++){
+                ValueList one;
+                one.push_back(w[i]);
+                terms[i] = ValueNormalizer::lengthSumTerms(one);
+                count = std::max(count, terms[i].size());
+            }
+            if (count > 1 && w.size() <= 3){
+                std::string chain;
+                for (size_t k = 0; k < count; k++){
+                    auto axis = [&](size_t i){
+                        if (k < terms[i].size())
+                            return lengthText(terms[i][k]);
+                        return k == 0 ? lengthText(w[i]) : std::string("0px");
+                    };
+                    if (!chain.empty())
+                        chain += ' ';
+                    if (w.size() == 3)
+                        chain += "translate3d(" + axis(0) + ", " + axis(1) + ", " + axis(2) + ")";
+                    else
+                        chain += "translate(" + axis(0) + ", " + (w.size() == 2 ? axis(1) : std::string("0px")) + ")";
+                }
+                return chain;
             }
             if (w.size() == 1)
                 return "translate(" + lengthText(w[0]) + ", 0px)";
@@ -49,7 +84,7 @@ namespace {
         }
         if (property == "rotate"){
             auto angle = [](const ComponentValue& v){
-                return (v.isToken(TokenType::Dimension) && unitCategory(v.token.unit) == UnitCategory::Angle) ||
+                return (v.isToken(TokenType::Dimension) && unitCategory(v.token.unit) == UnitCategory::Angle) || isCalc(v) ||
                        (v.isToken(TokenType::Number) && v.token.number == 0);
             };
             auto angleText = [](const ComponentValue& v){ return v.isToken(TokenType::Number) ? std::string("0deg") : text(v); };
@@ -71,7 +106,7 @@ namespace {
         }
         // scale
         for (const ComponentValue& v : w){
-            if (!v.isToken(TokenType::Number) && !v.isToken(TokenType::Percentage) && !isVar(v))
+            if (!v.isToken(TokenType::Number) && !v.isToken(TokenType::Percentage) && !isVar(v) && !isCalc(v))
                 return std::nullopt;
         }
         if (w.size() == 1)
@@ -86,6 +121,7 @@ namespace {
     ValueList normalized(Session& session, const Declaration& d){
         NormalizeContext context;
         context.options = &session.options;
+        context.lengthSums = d.name == "translate";
         context.resolveVar = [&session](const ComponentValue& var, ValueList& out){ return session.staticVar(var, out); };
         NormalizeResult result = ValueNormalizer::normalize(d.value, context);
         return result.ok ? trimWhitespace(result.value) : ValueList();
@@ -102,6 +138,29 @@ bool jasperengine::htmlui::compat::ruleHasIndividualTransform(const FlatRule& ru
 }
 
 void jasperengine::htmlui::compat::rewriteIndividualTransform(DeclContext& context){
+    if (context.fork(ForkFeature::IndividualTransforms)){
+        // the fork has translate / rotate / scale (phase 3): written as they are, checked as phase 2 reads them
+        // (an angle after the axis of 'rotate' read either way, as CSS allows)
+        ValueList value = context.value;
+        ValueList w = words(value);
+        if (context.name == "rotate" && w.size() == 2 && !w[0].isToken(TokenType::Ident) && w[1].isToken(TokenType::Ident))
+        {
+            value.clear();
+            value.push_back(w[1]);
+            value.push_back(ValueNormalizer::whitespace());
+            value.push_back(w[0]);
+        }
+        bool hasVar = false;
+        for (const ComponentValue& v : context.value)
+            hasVar = hasVar || isVar(v);
+        if (!hasVar && !functionOf(context.session, context.name, value)){
+            context.reportAs(Severity::Warning, codes::UnsupportedValue, "'" + context.sourceText() + "' is not supported; declaration dropped");
+            context.dropped = true;
+            return;
+        }
+        context.emit(context.name, context.valueText());
+        return;
+    }
     std::string translate, rotate, scale, transform;
     bool transformSet = false;
     auto apply = [&](const std::string& name, const ValueList& value) -> bool {

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pseudo: ::before and ::after</title>
+<style>
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  .host { position: absolute; width: 100px; font-family: "Ahem"; font-size: 10px; line-height: 10px; color: #404040; background-color: #e0e0e0; }
+
+  /* 1. inline pseudo-elements with string content around the element's own text */
+  #h1 { left: 10px; top: 10px; }
+  #h1::before { content: "AB"; color: #2060c0; background-color: #c0d0f0; }
+  #h1::after { content: "C"; color: #c02060; }
+
+  /* 2. block pseudo-elements with sizes and backgrounds; empty strings still generate a box */
+  #h2 { left: 10px; top: 30px; }
+  #h2::before { content: ""; display: block; width: 40px; height: 10px; background-color: #40a060; }
+  #h2::after { content: "XY"; display: block; padding-left: 10px; color: #806020; background-color: #a0c0a0; }
+
+  /* 3. the legacy single-colon forms */
+  #h3 { left: 10px; top: 70px; }
+  #h3:before { content: "X"; color: #a04080; }
+  #h3:after { content: "YY"; color: #20a0a0; }
+
+  /* 4. inline-block pseudo-elements with explicit sizes and padding */
+  #h4 { left: 130px; top: 10px; height: 30px; }
+  #h4::before { content: ""; display: inline-block; width: 20px; height: 20px; background-color: #c08020; }
+  #h4::after { content: "Z"; display: inline-block; padding: 0 5px; background-color: #8080c0; color: #ffffff; }
+
+  /* 5. content: none and normal generate nothing; ::before inherits from its element */
+  #h5 { left: 130px; top: 50px; color: #20a040; }
+  #h5::before { content: none; display: block; height: 20px; background-color: #e02020; }
+  #h5::after { content: normal; display: block; height: 20px; background-color: #e02020; }
+  #h6 { left: 130px; top: 70px; color: #2040a0; }
+  #h6::before { content: "PP"; }
+
+  /* 6. a bigger ::after (20px) on the same line: the line grows, baselines align */
+  #h7 { left: 130px; top: 90px; }
+  #h7::after { content: "W"; font-size: 20px; line-height: 20px; color: #a02020; }
+</style>
+</head>
+<body>
+<div id="h1" class="host">XX</div>
+<div id="h2" class="host">X</div>
+<div id="h3" class="host">XX</div>
+<div id="h4" class="host">X</div>
+<div id="h5" class="host">XXX</div>
+<div id="h6" class="host">X</div>
+<div id="h7" class="host">XX</div>
+</body>
+</html>

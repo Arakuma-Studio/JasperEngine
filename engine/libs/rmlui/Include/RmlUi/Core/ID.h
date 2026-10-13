@@ -33,6 +33,104 @@ enum class ShorthandId : uint8_t {
 	FlexFlow,
 	Nav,
 
+	/*
+	  Phase 3 shorthands (docs/html-ui/phase-3-fork-patches.md, Appendix B), one group per package. All of them are
+	  declared here by groundwork so that the packages never edit this enum; each package registers its own group in
+	  its section of StyleSheetSpecification::RegisterDefaultProperties. An id that is not registered yet is reserved:
+	  it has no name and nothing parses into it.
+	*/
+
+	// Groundwork (p3-base): alignment
+	PlaceItems,
+	PlaceSelf,
+	PlaceContent,
+
+	// Values (p3-values): logical properties
+	MarginInline,
+	MarginInlineStart,
+	MarginInlineEnd,
+	MarginBlock,
+	MarginBlockStart,
+	MarginBlockEnd,
+	PaddingInline,
+	PaddingInlineStart,
+	PaddingInlineEnd,
+	PaddingBlock,
+	PaddingBlockStart,
+	PaddingBlockEnd,
+	InsetInline,
+	InsetInlineStart,
+	InsetInlineEnd,
+	InsetBlock,
+	InsetBlockStart,
+	InsetBlockEnd,
+	BorderInline,
+	BorderInlineWidth,
+	BorderInlineStyle,
+	BorderInlineColor,
+	BorderInlineStart,
+	BorderInlineStartWidth,
+	BorderInlineStartStyle,
+	BorderInlineStartColor,
+	BorderInlineEnd,
+	BorderInlineEndWidth,
+	BorderInlineEndStyle,
+	BorderInlineEndColor,
+	BorderBlock,
+	BorderBlockWidth,
+	BorderBlockStyle,
+	BorderBlockColor,
+	BorderBlockStart,
+	BorderBlockStartWidth,
+	BorderBlockStartStyle,
+	BorderBlockStartColor,
+	BorderBlockEnd,
+	BorderBlockEndWidth,
+	BorderBlockEndStyle,
+	BorderBlockEndColor,
+	InlineSize,
+	BlockSize,
+	MinInlineSize,
+	MaxInlineSize,
+	MinBlockSize,
+	MaxBlockSize,
+
+	// Cascade (p3-cascade)
+	All,
+	ListStyle,
+
+	// Paint (p3-paint)
+	BorderStyle,
+	BorderTopLeftRadius,
+	BorderTopRightRadius,
+	BorderBottomRightRadius,
+	BorderBottomLeftRadius,
+	Outline,
+	BackgroundPosition,
+	Mask,
+	MaskPosition,
+	ObjectPosition,
+
+	// Text (p3-text)
+	WhiteSpace,
+	TextWrap,
+	TextDecoration,
+	WordWrap,
+
+	// Animation (p3-animation)
+	Transition,
+	Animation,
+
+	// Grid (p3-grid)
+	GridRow,
+	GridColumn,
+	GridArea,
+	GridTemplate,
+	Grid,
+	GridGap,
+	GridRowGap,
+	GridColumnGap,
+
 	NumDefinedIds,
 	FirstCustomId = NumDefinedIds,
 
@@ -40,7 +138,7 @@ enum class ShorthandId : uint8_t {
 	MaxNumIds = 0xff
 };
 
-enum class PropertyId : uint8_t {
+enum class PropertyId : uint16_t {
 	Invalid,
 
 	/*
@@ -157,11 +255,122 @@ enum class PropertyId : uint8_t {
 	RmlUi_Language,
 	RmlUi_Direction,
 
+	/*
+	  Phase 3 longhands (docs/html-ui/phase-3-fork-patches.md, Appendix B), one group per package. All of them are
+	  declared here by groundwork so that the packages never edit this enum; each package registers its own group in
+	  its section of StyleSheetSpecification::RegisterDefaultProperties (and adds its cases to the matching sections of
+	  ElementStyle::ComputeValue and Element::OnPropertyChange). An id that is not registered yet is reserved: it has
+	  no name and nothing parses into it.
+	*/
+
+	// Groundwork (p3-base)
+	Order,
+	JustifyItems,
+	JustifySelf,
+	WillChange,
+
+	// Values (p3-values): new units and values only
+
+	// Cascade (p3-cascade)
+	Content,
+	Quotes,
+	CounterReset,
+	CounterIncrement,
+	CounterSet,
+	ListStyleType,
+	ListStylePosition,
+	ListStyleImage,
+
+	// Paint (p3-paint)
+	BorderTopStyle,
+	BorderRightStyle,
+	BorderBottomStyle,
+	BorderLeftStyle,
+	RmlUi_BorderTopLeftRadiusX,
+	RmlUi_BorderTopLeftRadiusY,
+	RmlUi_BorderTopRightRadiusX,
+	RmlUi_BorderTopRightRadiusY,
+	RmlUi_BorderBottomRightRadiusX,
+	RmlUi_BorderBottomRightRadiusY,
+	RmlUi_BorderBottomLeftRadiusX,
+	RmlUi_BorderBottomLeftRadiusY,
+	OutlineWidth,
+	OutlineStyle,
+	OutlineColor,
+	OutlineOffset,
+	Isolation,
+	BackgroundImage,
+	BackgroundPositionX,
+	BackgroundPositionY,
+	BackgroundSize,
+	BackgroundRepeat,
+	BackgroundOrigin,
+	BackgroundClip,
+	BackgroundAttachment,
+	MaskSize,
+	MaskPositionX,
+	MaskPositionY,
+	MaskRepeat,
+	ObjectFit,
+	ObjectPositionX,
+	ObjectPositionY,
+	BorderImage,
+
+	// Text (p3-text)
+	WordSpacing,
+	OverflowWrap,
+	WhiteSpaceCollapse,
+	TextWrapMode,
+	TextDecorationColor,
+	TextDecorationStyle,
+	TextDecorationThickness,
+	TextUnderlineOffset,
+	TextShadow,
+	UserSelect,
+	AccentColor,
+
+	// Layout (p3-layout)
+	OverflowClipMargin,
+	AspectRatio,
+	ScrollbarGutter,
+	FlexLineCount,
+
+	// Animation (p3-animation)
+	TransitionProperty,
+	TransitionDuration,
+	TransitionTimingFunction,
+	TransitionDelay,
+	TransitionBehavior,
+	AnimationName,
+	AnimationDuration,
+	AnimationTimingFunction,
+	AnimationDelay,
+	AnimationIterationCount,
+	AnimationDirection,
+	AnimationFillMode,
+	AnimationPlayState,
+	AnimationComposition,
+	Translate,
+	Rotate,
+	Scale,
+
+	// Grid (p3-grid)
+	GridTemplateColumns,
+	GridTemplateRows,
+	GridTemplateAreas,
+	GridAutoColumns,
+	GridAutoRows,
+	GridAutoFlow,
+	GridRowStart,
+	GridRowEnd,
+	GridColumnStart,
+	GridColumnEnd,
+
 	NumDefinedIds,
 	FirstCustomId = NumDefinedIds,
 
 	// The maximum number of IDs. This limits the number of possible custom IDs to MaxNumIds - FirstCustomId.
-	MaxNumIds = 128
+	MaxNumIds = 256
 };
 
 enum class MediaQueryId : uint8_t {
@@ -239,6 +448,14 @@ enum class EventId : uint16_t {
 	Change,
 	Submit,
 	Tabchange,
+
+	// CSS animation and transition events (phase 3, p3-animation)
+	Animationstart,
+	Animationiteration,
+	Animationcancel,
+	Transitionrun,
+	Transitionstart,
+	Transitioncancel,
 
 	NumDefinedIds,
 

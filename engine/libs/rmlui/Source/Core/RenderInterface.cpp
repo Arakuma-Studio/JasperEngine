@@ -34,7 +34,22 @@ void RenderInterface::CompositeLayers(LayerHandle /*source*/, LayerHandle /*dest
 
 void RenderInterface::PopLayer() {}
 
+bool RenderInterface::SupportsTextureWrapHint()
+{
+	return false;
+}
+
+TextureHandle RenderInterface::GenerateTextureWithWrap(Span<const byte> source, Vector2i source_dimensions, bool /*repeat_x*/, bool /*repeat_y*/)
+{
+	return GenerateTexture(source, source_dimensions);
+}
+
 TextureHandle RenderInterface::SaveLayerAsTexture()
+{
+	return TextureHandle{};
+}
+
+TextureHandle RenderInterface::SaveLayerIntoTexture(TextureHandle /*texture*/, Vector2i /*texture_dimensions*/, Vector2i /*destination_offset*/)
 {
 	return TextureHandle{};
 }

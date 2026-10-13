@@ -1,0 +1,10 @@
+{
+ "comment": "Several background layers transitioned at once (transition: all): per layer the positions and sizes interpolate, the colour interpolates, the gradient images themselves change at once (Chromium does not interpolate gradients) and url() images stay; a rounded box clipped to its padding box. Captured at a quarter, half way and at the end.",
+ "viewport": [400, 100],
+ "steps": [
+  {"addClass": ["#a", "on"]}, {"addClass": ["#b", "on"]}, {"addClass": ["#c", "on"]},
+  {"advance": 0.25}, {"capture": "quarter"},
+  {"advance": 0.25}, {"capture": "half"},
+  {"advance": 0.6}, {"capture": "end"}
+ ]
+}

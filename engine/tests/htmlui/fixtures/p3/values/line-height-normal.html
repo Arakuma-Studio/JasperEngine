@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>values: line-height normal</title>
+<style>
+  /* line-height: normal is the font's ascent + descent + line gap (hhea), each rounded as Chromium does,
+     so it differs per font and size; it is also the initial value and inherits as the keyword.
+     Roboto is the engine's built-in face with a 'post' table (Chromium rejects the subset without one). */
+  @font-face { font-family: "Roboto Test"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf") format("truetype"); }
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  @font-face { font-family: "Inter Test"; src: url("../../compat/pages/htmlui-imports/fonts/inter/Inter-400.ttf") format("truetype"); }
+  @font-face { font-family: "Orbitron Test"; font-weight: 700; src: url("../../compat/pages/htmlui-imports/fonts/orbitron/Orbitron-700.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Roboto Test"; font-size: 16px; color: #203040; }
+  .col { position: absolute; top: 4px; width: 150px; }
+  .col > div { background: #dde4ee; margin-bottom: 2px; }
+  #ahem { left: 160px; font-family: "Ahem"; color: #602020; }
+  #ahem > div { background: #eedddd; }
+  #mixed { left: 320px; width: 70px; }
+  #mixed span { font-size: 24px; }
+  #explicit { line-height: 1.5; }
+  #reset { line-height: 20px; }
+  #reset > div { line-height: normal; }
+  #fonts { left: 400px; width: 150px; }
+  .inter { font-family: "Inter Test"; }
+  .orbitron { font-family: "Orbitron Test"; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="col" id="roboto">
+  <div id="r10" style="font-size: 10px">Line</div>
+  <div id="r12" style="font-size: 12px">Line</div>
+  <div id="r13" style="font-size: 13px">Line</div>
+  <div id="r14" style="font-size: 14px">Line</div>
+  <div id="r16">Line</div>
+  <div id="r17" style="font-size: 17px">Line</div>
+  <div id="r20" style="font-size: 20px">Line</div>
+  <div id="r24" style="font-size: 24px">Line</div>
+  <div id="r32" style="font-size: 32px">Line</div>
+  <div id="r16wrap" style="width: 60px">Two lines wrap</div>
+</div>
+<div class="col" id="ahem">
+  <div id="a10" style="font-size: 10px">X</div>
+  <div id="a16">X</div>
+  <div id="a20" style="font-size: 20px">X</div>
+  <div id="a32" style="font-size: 32px">X</div>
+  <div id="a16wrap" style="width: 40px">XX XX</div>
+</div>
+<div class="col" id="mixed">
+  <div id="m1">Aa <span id="big">Bb</span> cc</div>
+  <div id="explicit"><div id="e1">Num</div></div>
+  <div id="reset"><div id="n1" style="font-family: Ahem">X</div></div>
+</div>
+<div class="col" id="fonts">
+  <div class="inter" id="i13" style="font-size: 13px">Line</div>
+  <div class="inter" id="i16">Line</div>
+  <div class="inter" id="i21" style="font-size: 21px">Line</div>
+  <div class="orbitron" id="o16">LINE</div>
+  <div class="orbitron" id="o23" style="font-size: 23px">LINE</div>
+  <div class="inter" id="i16wrap" style="width: 60px">Two lines wrap</div>
+</div>
+</body>
+</html>

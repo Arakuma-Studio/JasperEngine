@@ -1,0 +1,40 @@
+{
+ "fixture": "pseudo/hover-transition.html",
+ "viewport": [
+  130,
+  60
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "rest": [
+   {
+    "id": "link",
+    "tag": "a",
+    "x": 10,
+    "y": 10,
+    "w": 100,
+    "h": 40
+   }
+  ],
+  "mid": [
+   {
+    "id": "link",
+    "tag": "a",
+    "x": 10,
+    "y": 10,
+    "w": 100,
+    "h": 40
+   }
+  ],
+  "end": [
+   {
+    "id": "link",
+    "tag": "a",
+    "x": 10,
+    "y": 10,
+    "w": 100,
+    "h": 40
+   }
+  ]
+ }
+}

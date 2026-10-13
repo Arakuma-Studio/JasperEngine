@@ -4,6 +4,9 @@ display: flex;
 #htmlui-root .b {
 display: grid;
 }
+#htmlui-root .d {
+width: 1px;
+}
 #htmlui-root .e {
 color: #ff0000ff;
 --html-current-color: #ff0000ff;
@@ -15,12 +18,19 @@ backdrop-filter: blur(4px);
 color: #0000ffff;
 --html-current-color: #0000ffff;
 }
+#htmlui-root .h {
+color: #008000ff;
+--html-current-color: #008000ff;
+}
 #htmlui-root .i {
 color: #ffc0cbff;
 --html-current-color: #ffc0cbff;
 }
+#htmlui-root .l {
+text-wrap: balance;
+}
 #htmlui-root .m {
-position: relative;
+position: sticky;
 }
 #htmlui-root .o {
 gap: 1px;

@@ -1,22 +1,31 @@
-body#htmlui-root {
+body#htmlui-root:root {
 --dur: 0.25s;
 --turn: 90deg;
 }
 #htmlui-root .t {
 transition: opacity 0.2s ease-in, transform 0.5s;
-animation: 1.5s infinite linear spin;
--html-animation-fill: none;
+animation: 1.5s linear 0s infinite normal none running spin;
 }
 #htmlui-root .a {
-transform: rotate(180deg) skewX(90deg);
+transform: rotate(0.5turn) skewX(100grad);
 filter: hue-rotate(3.14159rad);
 }
 #htmlui-root .b {
 background-color: transparent;
-decorator: linear-gradient(45deg, #ff0000ff, #0000ffff) border-box;
+background-image: linear-gradient(45deg, #ff0000ff, #0000ffff);
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+#htmlui-root .c {
+transition-duration: 0s;
 }
 @keyframes spin {
 100% {
-transform: rotate(360deg);
+transform: rotate(1turn);
 }
 }

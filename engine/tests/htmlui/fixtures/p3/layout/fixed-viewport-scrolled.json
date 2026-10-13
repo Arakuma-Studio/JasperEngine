@@ -1,0 +1,22 @@
+{
+ "comment": "fixed boxes are positioned and sized against the viewport (insets, percentages) and stay there when the page (the viewport, overflow: hidden, scrolled by script) scrolls",
+ "viewport": [
+  300,
+  200
+ ],
+ "steps": [
+  {
+   "capture": "top"
+  },
+  {
+   "scroll": [
+    "#doc",
+    0,
+    130
+   ]
+  },
+  {
+   "capture": "scrolled"
+  }
+ ]
+}

@@ -115,6 +115,10 @@ namespace jasperengine { namespace test {
             if (!target.isCreated())
                 target.ensure(targetSize.x, targetSize.y, sampleCount());
             const bool begun = renderer.beginFrame(target, contextSize);
+            // as HtmlUIContext: every edge of backgrounds and borders feathered without
+            // multisampling, curves only with it, one target pixel wide
+            Rml::SetGeometryFeathering(sampleCount() <= 1);
+            Rml::SetGeometryPixelSize(targetSize.x > 0 ? (float)contextSize.x / (float)targetSize.x : 1.0f);
             if (context){
                 context->Update();
                 if (begun)

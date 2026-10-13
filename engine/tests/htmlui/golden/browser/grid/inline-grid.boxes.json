@@ -1,0 +1,36 @@
+{
+ "fixture": "grid/inline-grid.html",
+ "viewport": [
+  300,
+  40
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "line",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 300,
+    "h": 22
+   },
+   {
+    "id": "ig1",
+    "tag": "div",
+    "x": 20,
+    "y": 0,
+    "w": 52,
+    "h": 10
+   },
+   {
+    "id": "ig2",
+    "tag": "div",
+    "x": 92,
+    "y": 0,
+    "w": 52,
+    "h": 22
+   }
+  ]
+ }
+}

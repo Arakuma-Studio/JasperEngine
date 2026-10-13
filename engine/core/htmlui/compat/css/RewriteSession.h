@@ -51,6 +51,7 @@ namespace jasperengine::htmlui::compat {
         MediaResult media = MediaResult::unconditional();
         DeclarationList declarations;
         int layer = -1;                // index in Session::layerOrder; -1 unlayered
+        bool startingStyle = false;    // a rule of @starting-style (written inside one: AnimationLonghands)
         uint32_t order = 0;            // source order within the document
         // the selector stage
         ArenaList<RewrittenSelector> rewritten;
@@ -95,6 +96,7 @@ namespace jasperengine::htmlui::compat {
         bool important = false;
         bool vmin = false;             // holds vmin/vmax: written in orientation copies of the rule
         bool final = false;            // already through the pipeline's last step (synthetic declarations)
+        bool nativeUnits = false;      // its vmin/vmax are the fork's (ForkFeature::ExtraUnits): no orientation copies
     };
 
     // a rule generated next to an author rule: <rule selector><suffix> { decls }
@@ -223,6 +225,7 @@ namespace jasperengine::htmlui::compat {
         // §3.10 item 1: no root rule sets a background and a `body` rule does: the body's
         // background is written on the root (it covers the canvas, as CSS propagates it)
         bool propagateBodyBackground = false;
+        bool propagateBodyOverflow = false;   // body overflow -> root (phase 3 §3.11.3)
         SelectorOptions selectorOptions;            // author rules
         SelectorOptions userAgentSelectorOptions;   // the same for user-agent rules
         uint32_t nextOrder = 0;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "StyleTypes.h"
 #include "Types.h"
 
 namespace Rml {
@@ -8,6 +9,10 @@ namespace Rml {
 using EdgeSizes = Array<float, 4>;
 // Ordered by top-left, top-right, bottom-right, bottom-left.
 using CornerSizes = Array<float, 4>;
+// The horizontal (x) and vertical (y) radius of each corner, in the same order.
+using CornerSizes2 = Array<Vector2f, 4>;
+// The border style of each side, ordered by top, right, bottom, left.
+using BorderStyles = Array<Style::BorderStyle, 4>;
 
 /**
     Provides the data needed to generate a mesh for a given element's box.
@@ -15,8 +20,15 @@ using CornerSizes = Array<float, 4>;
 
 class RenderBox {
 public:
-	RenderBox(Vector2f fill_size, Vector2f border_offset, EdgeSizes border_widths, CornerSizes border_radius) :
+	/// @param border_radius The radii of the border box's corners, already resolved (percentages) and scaled so that
+	/// adjacent curves do not overlap, as Element::GetRenderBox returns them.
+	RenderBox(Vector2f fill_size, Vector2f border_offset, EdgeSizes border_widths, CornerSizes2 border_radius) :
 		fill_size(fill_size), border_offset(border_offset), border_widths(border_widths), border_radius(border_radius)
+	{}
+	/// With circular corners.
+	RenderBox(Vector2f fill_size, Vector2f border_offset, EdgeSizes border_widths, CornerSizes border_radius) :
+		fill_size(fill_size), border_offset(border_offset), border_widths(border_widths),
+		border_radius{Vector2f(border_radius[0]), Vector2f(border_radius[1]), Vector2f(border_radius[2]), Vector2f(border_radius[3])}
 	{}
 
 	/// Returns the size of the fill area of the box.
@@ -36,10 +48,29 @@ public:
 	/// Sets the border widths of the box.
 	void SetBorderWidths(EdgeSizes value) { border_widths = value; }
 
-	/// Returns the border radius of the box.
-	CornerSizes GetBorderRadius() const { return border_radius; }
-	/// Sets the border radius of the box.
-	void SetBorderRadius(CornerSizes value) { border_radius = value; }
+	/// Returns the radii of the corners of the border box: horizontal (x) and vertical (y), in px.
+	CornerSizes2 GetBorderRadius() const { return border_radius; }
+	/// Sets the radii of the corners of the border box.
+	void SetBorderRadius(CornerSizes2 value) { border_radius = value; }
+	/// True if a corner is rounded (both of its radii are positive).
+	bool HasBorderRadius() const
+	{
+		for (const Vector2f& radius : border_radius)
+		{
+			if (radius.x > 0.f && radius.y > 0.f)
+				return true;
+		}
+		return false;
+	}
+
+	/// Returns the border style of each side (solid unless set: the styles of Element::GetRenderBox are the element's).
+	BorderStyles GetBorderStyles() const { return border_styles; }
+	/// Sets the border style of each side.
+	void SetBorderStyles(BorderStyles value) { border_styles = value; }
+
+	/// Dotted sides drawn with square dots whatever their width (Chromium's outlines); else round from 3px on.
+	bool GetSquareDots() const { return square_dots; }
+	void SetSquareDots(bool value) { square_dots = value; }
 
 	/// Returns the part of the top border that is not drawn: its begin (x) and end (y) in px from the left border edge
 	/// (Element::GetBorderTopCut). Empty when the end is not after the begin.
@@ -51,13 +82,16 @@ private:
 	Vector2f fill_size;
 	Vector2f border_offset;
 	EdgeSizes border_widths;
-	CornerSizes border_radius;
+	CornerSizes2 border_radius;
 	Vector2f border_top_gap;
+	bool square_dots = false;
+	BorderStyles border_styles = {Style::BorderStyle::Solid, Style::BorderStyle::Solid, Style::BorderStyle::Solid, Style::BorderStyle::Solid};
 };
 inline bool operator==(const RenderBox& a, const RenderBox& b)
 {
 	return a.GetFillSize() == b.GetFillSize() && a.GetBorderOffset() == b.GetBorderOffset() && a.GetBorderWidths() == b.GetBorderWidths() &&
-		a.GetBorderRadius() == b.GetBorderRadius() && a.GetBorderTopGap() == b.GetBorderTopGap();
+		a.GetBorderRadius() == b.GetBorderRadius() && a.GetBorderTopGap() == b.GetBorderTopGap() && a.GetBorderStyles() == b.GetBorderStyles() &&
+		a.GetSquareDots() == b.GetSquareDots();
 }
 inline bool operator!=(const RenderBox& a, const RenderBox& b)
 {

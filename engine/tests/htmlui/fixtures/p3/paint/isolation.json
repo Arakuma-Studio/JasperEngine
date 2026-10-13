@@ -1,0 +1,7 @@
+{
+ "comment": "a child with a negative z-index goes below its parent's background unless the parent is a stacking context: none, isolation: isolate, opacity below 1, position: fixed.",
+ "viewport": [
+  360,
+  320
+ ]
+}

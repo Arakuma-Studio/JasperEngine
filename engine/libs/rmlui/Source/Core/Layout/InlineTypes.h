@@ -34,6 +34,10 @@ struct PlacedFragment {
 	float layout_width;
 	bool split_left;
 	bool split_right;
+	// The line is a zero-height line box (CSS 2.1 §9.4.2: nothing but empty inline boxes): an inline box on it is placed at
+	// the line's top with no height, as Chromium gives such an empty span.
+	bool collapsed_line = false;
+	float line_top = 0.f; // The line's top, relative to the offset parent (with collapsed_line).
 };
 
 } // namespace Rml

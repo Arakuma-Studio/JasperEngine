@@ -13,9 +13,19 @@ bool LayoutBox::GetBaselineOfLastLine(float& /*out_baseline*/) const
 	return false;
 }
 
+bool LayoutBox::GetBaselineOfFirstLine(float& /*out_baseline*/) const
+{
+	return false;
+}
+
 float LayoutBox::GetShrinkToFitWidth() const
 {
 	return 0.f;
+}
+
+float LayoutBox::GetMinContentWidth() const
+{
+	return GetShrinkToFitWidth();
 }
 void* LayoutBox::operator new(size_t size)
 {

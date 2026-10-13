@@ -1,0 +1,102 @@
+set(TARGET_NAME "rmlui_unit_tests")
+
+add_executable(${TARGET_NAME}
+	Alignment.cpp
+	Animation.cpp
+	AnimationLayers.cpp
+	Backgrounds.cpp
+	BorderRadius.cpp
+	BorderStyle.cpp
+	Calculation.cpp
+	CascadeKeywords.cpp
+	CalculationTypes.cpp
+	Colors.cpp
+	ContainingBlockOverride.cpp
+	Core.cpp
+	Counters.cpp
+	CustomProperties.cpp
+	Easing.cpp
+	DataBinding.cpp
+	DataExpression.cpp
+	DataModel.cpp
+	Debugger.cpp
+	Decorator.cpp
+	Element.cpp
+	ElementBackgroundBorder.cpp
+	ElementDocument.cpp
+	ElementHandle.cpp
+	ElementFormControlInput.cpp
+	ElementFormControlSelect.cpp
+	ElementImage.cpp
+	ElementStyle.cpp
+	EventListener.cpp
+	Filter.cpp
+	FlexFormatting.cpp
+	FocusPseudoClasses.cpp
+	Important.cpp
+	InlineStyle.cpp
+	GridLayout.cpp
+	GridParsing.cpp
+	GroupOpacity.cpp
+	IndividualTransforms.cpp
+	InitialValues.cpp
+	IntrinsicSizing.cpp
+	Layout.cpp
+	LayoutChildren.cpp
+	LineBreaking.cpp
+	ListMarkers.cpp
+	Localization.cpp
+	ObjectFit.cpp
+	Outline.cpp
+	main.cpp
+	Math.cpp
+	MediaQuery.cpp
+	Navigation.cpp
+	PaintTransitions.cpp
+	Properties.cpp
+	RootFontSize.cpp
+	PropertySpecification.cpp
+	PseudoElements.cpp
+	Selectors.cpp
+	SelectorsHas.cpp
+	ShorthandTypes.cpp
+	Specificity_Basic.cpp
+	Specificity_MediaQuery.cpp
+	StableVector.cpp
+	StackingContext.cpp
+	StringUtilities.cpp
+	StyleSheetParser.cpp
+	StyleValue.cpp
+	Template.cpp
+	TextProperties.cpp
+	TextTransform.cpp
+	TransitionsAnyChange.cpp
+	URL.cpp
+	Values.cpp
+	ValuesInterpolation.cpp
+	Variant.cpp
+	Visibility.cpp
+	XMLParser.cpp
+	MarginCollapse.cpp
+	ScrollContainer.cpp
+	AspectRatio.cpp
+	DisplayContents.cpp
+	SizingKeywords.cpp
+	PositionFixed.cpp
+	PositionSticky.cpp
+	PluginDataModel.cpp
+	Position.cpp
+)
+
+set_common_target_options(${TARGET_NAME})
+
+target_link_libraries(${TARGET_NAME} PRIVATE
+	rmlui_tests_common
+	rmlui_core
+	doctest::doctest
+	trompeloeil::trompeloeil
+)
+
+if(NOT EMSCRIPTEN)
+	doctest_discover_tests(${TARGET_NAME})
+endif()

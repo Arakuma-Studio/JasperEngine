@@ -22,12 +22,9 @@ mask-image: html-shape("rect(0 100px 50px 0)");
 #htmlui-root .box {
 mask-image: html-shape("circle(40%) padding-box");
 }
-#htmlui-root .url {
-mask-image: none;
-}
 #htmlui-root .none {
 mask-image: none;
 }
 #htmlui-root .units {
-mask-image: html-shape("inset(1em calc(10px + 5px))");
+mask-image: html-shape("inset(1em 15px)");
 }

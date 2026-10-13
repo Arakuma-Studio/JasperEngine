@@ -1,0 +1,14 @@
+{
+ "comment": "Pausing holds an animation's time and resuming continues from there (no restart, no jump); an animation paused from its start runs from its start when resumed.",
+ "viewport": [380, 120],
+ "steps": [
+  {"advance": 0.5},
+  {"addClass": ["#toggled", "hold"]},
+  {"advance": 1.0},
+  {"capture": "held"},
+  {"removeClass": ["#toggled", "hold"]},
+  {"addClass": ["#paused", "go"]},
+  {"advance": 0.5},
+  {"capture": "resumed"}
+ ]
+}

@@ -1,0 +1,30 @@
+{
+ "comment": "Absolutely positioned boxes and the ink overflow of a box (a box-shadow) are clipped by an overflow: hidden ancestor in their containing-block chain, rounded corners included (a card with a ribbon and a glow); an overflowing absolutely positioned box is scrollable overflow of the nearest scroll container of its containing block (scrollbars appear; scrolled to the end in the second capture), not of a scroller its containing block is outside of. Rendered without MSAA (\"samples\": 1), at the default tolerances: with 4x MSAA, Mesa's llvmpipe and lavapipe (the test image's GL and Vulkan drivers, Mesa 23.2.1) let half the samples of the row above and the column left of a scissor rectangle through, so the content scrolled past the scrollers' clip edges would show a half-covered 1 px line there (MsaaScissor.FourSamples reproduces it with raw sokol calls).",
+ "viewport": [
+  490,
+  130
+ ],
+ "samples": 1,
+ "steps": [
+  {
+   "capture": "rest"
+  },
+  {
+   "scroll": [
+    "#auto",
+    100,
+    0
+   ]
+  },
+  {
+   "scroll": [
+    "#auto2",
+    0,
+    100
+   ]
+  },
+  {
+   "capture": "scrolled"
+  }
+ ]
+}

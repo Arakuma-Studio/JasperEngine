@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Property.h"
 #include "StyleSheetTypes.h"
 #include "Traits.h"
 
@@ -35,6 +36,11 @@ public:
 
 	/// Merge another style sheet container into this.
 	void MergeStyleSheetContainer(const StyleSheetContainer& container);
+
+	/// Sets the cascade origin of every declaration of the contained sheets (StyleSheet::SetOrigin), before the container
+	/// is merged into a document's sheets: a <link> with origin="user-agent" does this.
+	/// @note The sheets of a container are shared with the containers it was combined from or merged into.
+	void SetOrigin(StyleOrigin origin);
 
 private:
 	MediaBlockList media_blocks;

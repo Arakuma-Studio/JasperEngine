@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>integration: counters inside flex</title>
+<style>
+  @font-face { font-family: "Roboto Fixture"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf"); }
+  html, body { margin: 0; background: #ffffff; font-family: "Roboto Fixture"; font-size: 14px; }
+  .steps { display: flex; gap: 10px; padding: 10px; counter-reset: step; }
+  .step { counter-increment: step; flex: 1; display: flex; align-items: center; gap: 6px; padding: 6px; background: #edf2fb; border-radius: 6px; }
+  .step::before { content: counter(step); display: inline-flex; justify-content: center; align-items: center; width: 22px; height: 22px;
+                  border-radius: 50%; background: #3a86ff; color: #ffffff; }
+  .step.done::before { content: "+"; background: #2a9d8f; }
+  .list { display: flex; flex-direction: column; gap: 4px; margin: 0 10px; padding: 0; list-style: none; counter-reset: item 4; }
+  .list li { counter-increment: item -1; display: flex; }
+  .list li::before { content: counter(item, upper-roman) ". "; width: 40px; color: #6c757d; }
+  .nested { counter-reset: section; display: flex; gap: 8px; margin: 10px; }
+  .nested > div { counter-increment: section; display: flex; flex-direction: column; }
+  .nested > div::before { content: "S" counter(section); color: #d62828; }
+  .nested > div > span { counter-increment: sub; }
+  .nested > div > span::after { content: counters(section, ".") "-" counter(sub); color: #003049; }
+</style>
+</head>
+<body>
+<div class="steps"><div class="step done" id="s1">Load</div><div class="step" id="s2">Play</div><div class="step" id="s3">Win</div></div>
+<ol class="list"><li id="l1">Four</li><li id="l2">Three</li><li id="l3">Two</li></ol>
+<div class="nested"><div id="n1"><span></span><span></span></div><div id="n2"><span></span></div></div>
+</body>
+</html>

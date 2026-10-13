@@ -1,0 +1,38 @@
+#htmlui-root .f {
+filter: blur(4px) brightness(1.2) contrast(110%) grayscale(1) hue-rotate(90deg) invert(0.5) opacity(80%) saturate(2) sepia(0.3);
+}
+#htmlui-root .ds {
+filter: drop-shadow(#00000080 0px 2px 4px);
+}
+#htmlui-root .ds-color-first {
+filter: drop-shadow(#ff0000ff 2px 2px 0px);
+}
+#htmlui-root .ds-no-color {
+color: #00ff00ff;
+--html-current-color: #00ff00ff;
+filter: drop-shadow(#00ff00ff 1px 1px 2px);
+}
+#htmlui-root .ds-current {
+filter: drop-shadow(var(--html-current-color, #000000ff) 0px 0px 3px);
+}
+#htmlui-root .url {
+filter: blur(2px);
+}
+#htmlui-root .none {
+filter: none;
+}
+#htmlui-root .empty-args {
+filter: blur(0px) hue-rotate(0deg);
+}
+#htmlui-root .backdrop {
+backdrop-filter: blur(12px);
+}
+#htmlui-root .var {
+filter: var(--f);
+}
+#htmlui-root .blend {
+isolation: isolate;
+}
+body#htmlui-root:root {
+--f: drop-shadow(#ffffffff 0px 0px 4px);
+}

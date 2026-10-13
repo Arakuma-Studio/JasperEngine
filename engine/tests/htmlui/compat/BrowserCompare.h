@@ -24,7 +24,8 @@
 //   bad in either counts once), in percent of all pixels;
 // - max-block: the image cut in 8x8 blocks; per block and channel the difference of the two
 //   images' mean values; the largest over channels and blocks.
-// Phase 3 adds its stricter metric (compareStrict) and the fixture runner next to these.
+// Phase 3 adds its stricter metric (compareStrict, below) for the browser-parity fixtures
+// (fixtures/p3, golden/browser; FixtureRunner.h, BrowserParityTest.cpp).
 
 #include "Export.h"
 #include "htmlui/compat/ForkFeatures.h"
@@ -86,6 +87,38 @@ namespace jasperengine::test::compat {
     };
 
     ImageMetrics compareImages(const Image& actual, const Image& expected, int channelThreshold);
+
+    // The phase-3 metric (spec 5.2), on premultiplied RGBA8: a pixel is bad when its largest
+    // channel difference to the pixel at the same place exceeds the threshold and no pixel of the
+    // 3x3 neighbourhood in the other image is within the threshold in every channel (counted in
+    // both directions: bad in either counts once); an image passes when the bad pixels are at
+    // most maxBadPercent of it and no 4-connected cluster of bad pixels is larger than
+    // maxCluster. A fixture's sidecar may override the gate ("tolerance", with a comment).
+    struct StrictGate {
+        int channelThreshold = 24;
+        double maxBadPercent = 0.1;
+        size_t maxCluster = 16;
+    };
+    inline constexpr StrictGate kStrictGate{};
+
+    struct StrictMetrics {
+        bool comparable = false;
+        std::string error;                  // when not comparable (missing image, sizes)
+        StrictGate gate;
+        size_t badPixels = 0;
+        double badPercent = 0.0;
+        size_t largestCluster = 0;
+        int clusterX = 0, clusterY = 0;     // a pixel of the largest cluster
+        int clusterMinX = 0, clusterMinY = 0, clusterMaxX = 0, clusterMaxY = 0;   // its bounds
+
+        bool passes() const;
+        std::string text() const;
+    };
+
+    StrictMetrics compareStrict(const Image& actual, const Image& expected, const StrictGate& gate = kStrictGate);
+    // `expected` at 30 % gray, the strict metric's bad pixels red, the largest cluster's bounds
+    // outlined in yellow; opaque
+    Image strictHeatMap(const Image& actual, const Image& expected, const StrictGate& gate = kStrictGate);
     // `expected` at 30 % gray, bad pixels red (brighter = larger difference), the worst 8x8
     // block outlined in yellow; opaque
     Image heatMap(const Image& actual, const Image& expected, int channelThreshold);

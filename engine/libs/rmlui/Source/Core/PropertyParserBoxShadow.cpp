@@ -1,6 +1,7 @@
 #include "PropertyParserBoxShadow.h"
 #include "../../Include/RmlUi/Core/DecorationTypes.h"
 #include "../../Include/RmlUi/Core/StringUtilities.h"
+#include "PropertyParserColour.h"
 
 namespace Rml {
 
@@ -44,6 +45,7 @@ bool PropertyParserBoxShadow::ParseValue(Property& property, const String& value
 		BoxShadow& shadow = shadow_list.back();
 
 		int length_argument_index = 0;
+		bool has_color = false;
 
 		for (const String& argument : arguments)
 		{
@@ -53,12 +55,41 @@ bool PropertyParserBoxShadow::ParseValue(Property& property, const String& value
 			Property prop;
 			if (parser_length->ParseValue(prop, argument, empty_parameter_map))
 			{
+				NumericValue numeric_value;
+#ifdef RMLUI_MATH_EXPRESSIONS
+				CalculationPtr calculation;
+				if (prop.unit == Unit::CALCULATION)
+				{
+					calculation = prop.value.Get<CalculationPtr>();
+					if (!calculation)
+						return false;
+					numeric_value = NumericValue(0.f, Unit::PX);
+				}
+				else
+#endif
+					numeric_value = prop.GetNumericValue();
 				switch (length_argument_index)
 				{
-				case 0: shadow.offset_x = prop.GetNumericValue(); break;
-				case 1: shadow.offset_y = prop.GetNumericValue(); break;
-				case 2: shadow.blur_radius = prop.GetNumericValue(); break;
-				case 3: shadow.spread_distance = prop.GetNumericValue(); break;
+				case 0: shadow.offset_x = numeric_value;
+#ifdef RMLUI_MATH_EXPRESSIONS
+					shadow.offset_x_calculation = calculation;
+#endif
+					break;
+				case 1: shadow.offset_y = numeric_value;
+#ifdef RMLUI_MATH_EXPRESSIONS
+					shadow.offset_y_calculation = calculation;
+#endif
+					break;
+				case 2: shadow.blur_radius = numeric_value;
+#ifdef RMLUI_MATH_EXPRESSIONS
+					shadow.blur_radius_calculation = calculation;
+#endif
+					break;
+				case 3: shadow.spread_distance = numeric_value;
+#ifdef RMLUI_MATH_EXPRESSIONS
+					shadow.spread_distance_calculation = calculation;
+#endif
+					break;
 				default: return false;
 				}
 				length_argument_index += 1;
@@ -69,7 +100,11 @@ bool PropertyParserBoxShadow::ParseValue(Property& property, const String& value
 			}
 			else if (parser_color->ParseValue(prop, argument, empty_parameter_map))
 			{
-				shadow.color = prop.Get<Colourb>().ToPremultiplied();
+				shadow.current_color = PropertyParserColour::DependsOnCurrentColor(prop);
+				if (PropertyParserColour::IsCurrentColorMix(prop))
+					shadow.color_mix = prop.value.Get<StyleValuePtr>()->ToString();
+				shadow.color = shadow.current_color ? ColourbPremultiplied() : prop.Get<Colourb>().ToPremultiplied();
+				has_color = true;
 			}
 			else
 			{
@@ -79,6 +114,10 @@ bool PropertyParserBoxShadow::ParseValue(Property& property, const String& value
 
 		if (length_argument_index < 2)
 			return false;
+
+		// CSS: a shadow without a color is 'currentcolor' (phase 3, values; 6.3 drew it black).
+		if (!has_color)
+			shadow.current_color = true;
 	}
 
 	property.unit = Unit::BOXSHADOWLIST;

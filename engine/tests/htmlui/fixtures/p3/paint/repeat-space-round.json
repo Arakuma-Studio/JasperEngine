@@ -1,0 +1,7 @@
+{
+ "comment": "space (tiles spread edge to edge), round (a whole number of tiles, rescaled), per axis, with sizes; a box that fits one tile only (space places it at the position).",
+ "viewport": [
+  460,
+  180
+ ]
+}

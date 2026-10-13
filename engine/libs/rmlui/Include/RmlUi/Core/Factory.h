@@ -133,6 +133,11 @@ public:
 	static void ClearStyleSheetCache();
 	/// Clears the template cache. This will force templates to be reloaded.
 	static void ClearTemplateCache();
+	/// Registers the name of a pseudo-class the application sets on elements (Element::SetPseudoClass), so that style
+	/// sheets may select it. Selectors with any other pseudo-class than the built-in ones and the registered ones are
+	/// invalid and dropped with a warning. Call after Rml::Initialise; registrations last until Rml::Shutdown.
+	/// @param[in] name The name, without the colon.
+	static void RegisterPseudoClass(const String& name);
 
 	/// Registers an instancer for all events.
 	/// @param[in] instancer The instancer to be called.

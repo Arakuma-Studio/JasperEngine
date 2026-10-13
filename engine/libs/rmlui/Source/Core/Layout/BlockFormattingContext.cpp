@@ -9,6 +9,7 @@
 #include "BlockContainer.h"
 #include "FloatedBoxSpace.h"
 #include "LayoutDetails.h"
+#include <float.h>
 
 namespace Rml {
 
@@ -67,18 +68,22 @@ static OuterDisplayType GetOuterDisplayType(Style::Display display)
 	case Style::Display::Block:
 	case Style::Display::FlowRoot:
 	case Style::Display::Flex:
-	case Style::Display::Table: return OuterDisplayType::BlockLevel;
+	case Style::Display::Table:
+	case Style::Display::Grid:
+	case Style::Display::ListItem: return OuterDisplayType::BlockLevel;
 
 	case Style::Display::Inline:
 	case Style::Display::InlineBlock:
 	case Style::Display::InlineFlex:
-	case Style::Display::InlineTable: return OuterDisplayType::InlineLevel;
+	case Style::Display::InlineTable:
+	case Style::Display::InlineGrid: return OuterDisplayType::InlineLevel;
 
 	case Style::Display::TableRow:
 	case Style::Display::TableRowGroup:
 	case Style::Display::TableColumn:
 	case Style::Display::TableColumnGroup:
 	case Style::Display::TableCell:
+	case Style::Display::Contents: // Generates no box: replaced by its children (LayoutDetails::GetLayoutChildren).
 	case Style::Display::None: break;
 	}
 
@@ -95,7 +100,7 @@ UniquePtr<LayoutBox> BlockFormattingContext::Format(ContainerBox* parent_contain
 	RMLUI_ZoneName(name.c_str(), name.size());
 #endif
 
-	const Vector2f containing_block = LayoutDetails::GetContainingBlock(parent_container, element->GetPosition()).size;
+	const Vector2f containing_block = LayoutDetails::GetContainingBlock(parent_container, element).size;
 
 	Box box;
 	if (override_initial_box)
@@ -105,8 +110,19 @@ UniquePtr<LayoutBox> BlockFormattingContext::Format(ContainerBox* parent_contain
 
 	float min_height, max_height;
 	LayoutDetails::GetDefiniteMinMaxHeight(min_height, max_height, element->GetComputedValues(), box, containing_block.y);
+	// Its content height alone while it is measured (LayoutDetails::GetContentHeight).
+	if (box.GetSize().y < 0.f && LayoutDetails::IsMeasuringContentOf(element))
+	{
+		min_height = 0.f;
+		max_height = FLT_MAX;
+	}
 
 	UniquePtr<BlockContainer> container = MakeUnique<BlockContainer>(parent_container, nullptr, element, box, min_height, max_height);
+	container->SetHeightIndefinite(override_initial_box && LayoutDetails::IsHeightIndefinite(element));
+	float content_max_height = 0.f;
+	if (!override_initial_box && element->GetComputedValues().aspect_ratio() > 0.f &&
+		LayoutDetails::IsAspectRatioHeightMinimum(element, box, containing_block.y, content_max_height))
+		container->SetHeightGrowsWithContent(content_max_height);
 
 	DebugDumpLayoutTree debug_dump_tree(element, container.get());
 
@@ -124,11 +140,8 @@ UniquePtr<LayoutBox> BlockFormattingContext::Format(ContainerBox* parent_contain
 			// inline content.
 			all_children_formatted = FormatInlineBox(container.get(), element);
 		}
-		for (int i = 0; i < element->GetNumChildren() && all_children_formatted; i++)
-		{
-			if (!FormatBlockContainerChild(container.get(), element->GetChild(i)))
-				all_children_formatted = false;
-		}
+		if (all_children_formatted)
+			all_children_formatted = FormatChildren(container.get(), element);
 
 		if (all_children_formatted && container->Close(nullptr))
 			// Success, break out of the loop.
@@ -154,14 +167,15 @@ bool BlockFormattingContext::FormatBlockBox(BlockContainer* parent_container, El
 	BlockContainer* container = parent_container->OpenBlockBox(element, box, min_height, max_height);
 	if (!container)
 		return false;
+	float content_max_height = 0.f;
+	if (element->GetComputedValues().aspect_ratio() > 0.f &&
+		LayoutDetails::IsAspectRatioHeightMinimum(element, box, containing_block.y, content_max_height))
+		container->SetHeightGrowsWithContent(content_max_height);
 
 	// Format our children. This may result in scrollbars being added to our formatting context root, then we need to
 	// bail out and restart formatting for the current block formatting context.
-	for (int i = 0; i < element->GetNumChildren(); i++)
-	{
-		if (!FormatBlockContainerChild(container, element->GetChild(i)))
-			return false;
-	}
+	if (!FormatChildren(container, element))
+		return false;
 
 	if (!container->Close(parent_container))
 		return false;
@@ -179,19 +193,29 @@ bool BlockFormattingContext::FormatInlineBox(BlockContainer* parent_container, E
 	auto inline_box_handle = parent_container->AddInlineElement(element, box);
 
 	// Format the element's children.
-	for (int i = 0; i < element->GetNumChildren(); i++)
-	{
-		if (!FormatBlockContainerChild(parent_container, element->GetChild(i)))
-			return false;
-	}
+	if (!FormatChildren(parent_container, element))
+		return false;
 
 	parent_container->CloseInlineElement(inline_box_handle);
 
 	return true;
 }
 
-bool BlockFormattingContext::FormatBlockContainerChild(BlockContainer* parent_container, Element* element)
+bool BlockFormattingContext::FormatChildren(BlockContainer* container, Element* element)
 {
+	ScopedLayoutChildList children;
+	LayoutDetails::GetLayoutChildren(element, *children, false);
+	for (size_t i = 0; i < children->size(); i++)
+	{
+		if (!FormatBlockContainerChild(container, *children, i))
+			return false;
+	}
+	return true;
+}
+
+bool BlockFormattingContext::FormatBlockContainerChild(BlockContainer* parent_container, const LayoutChildList& siblings, size_t index)
+{
+	Element* element = siblings[index];
 #ifdef RMLUI_TRACY_PROFILING
 	RMLUI_ZoneScoped;
 	auto name = CreateString(">%s %x", element->GetAddress(false, false).c_str(), element);
@@ -212,8 +236,9 @@ bool BlockFormattingContext::FormatBlockContainerChild(BlockContainer* parent_co
 		if (!parent_container->HasOpenInlineContent())
 			return true;
 		bool inline_follows = false;
-		for (Element* sibling = element->GetNextSibling(); sibling; sibling = sibling->GetNextSibling())
+		for (size_t sibling_index = index + 1; sibling_index < siblings.size(); sibling_index++)
 		{
+			Element* sibling = siblings[sibling_index];
 			const ComputedValues& sibling_computed = sibling->GetComputedValues();
 			if (sibling_computed.display() == Style::Display::None || sibling_computed.position() == Style::Position::Absolute ||
 				sibling_computed.position() == Style::Position::Fixed || LayoutDetails::IsCollapsibleWhiteSpaceText(sibling))
@@ -262,7 +287,21 @@ bool BlockFormattingContext::FormatBlockContainerChild(BlockContainer* parent_co
 		// Otherwise, check if we have a sized block-level box.
 		else if (layout_box && outer_display == OuterDisplayType::BlockLevel)
 		{
-			if (!parent_container->AddBlockLevelBox(std::move(layout_box), element, element->GetBox()))
+			// A box that establishes a new formatting context does not overlap the floats of ours (CSS 2.1 §9.5): it goes
+			// beside them, narrowed if its width is automatic, or below them.
+			BlockContainer::FloatFit float_fit;
+			float fitted_width = 0.f;
+			const bool fitted = parent_container->FitBesideFloats(element, element->GetBox(), float_fit, fitted_width);
+			if (fitted && fitted_width != element->GetBox().GetSize().x)
+			{
+				Box box;
+				LayoutDetails::BuildBox(box, LayoutDetails::GetContainingBlock(parent_container, position_property).size, element);
+				box.SetContent({fitted_width, box.GetSize().y});
+				layout_box = FormattingContext::FormatIndependent(parent_container, element, &box, FormattingContextType::None);
+				if (!layout_box)
+					return false;
+			}
+			if (!parent_container->AddBlockLevelBox(std::move(layout_box), element, element->GetBox(), fitted ? &float_fit : nullptr))
 				return false;
 		}
 		// Nope, then this must be an inline-level box.
@@ -279,7 +318,10 @@ bool BlockFormattingContext::FormatBlockContainerChild(BlockContainer* parent_co
 	// The element is an in-flow box participating in this same block formatting context.
 	switch (display)
 	{
-	case Style::Display::Block: return FormatBlockBox(parent_container, element);
+	case Style::Display::Block:
+	case Style::Display::ListItem: // (its ::marker comes with the list-item package)
+	case Style::Display::Grid:     // (until grid formatting contexts)
+		return FormatBlockBox(parent_container, element);
 	case Style::Display::Inline: return FormatInlineBox(parent_container, element);
 	default:
 		RMLUI_ERROR; // Should have been handled above.

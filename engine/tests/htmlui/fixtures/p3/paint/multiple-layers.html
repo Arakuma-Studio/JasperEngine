@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: several background layers</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; width: 100px; height: 70px; }
+  #b1 { left: 10px; top: 10px; }
+  #b2 { left: 120px; top: 10px; }
+  #b3 { left: 230px; top: 10px; }
+  #b4 { left: 340px; top: 10px; }
+  #b1 { background: url(img/tile.png) no-repeat 10px 10px, linear-gradient(#cc3333, #3366cc); }
+  #b2 { background: linear-gradient(rgba(255,255,255,0.5), transparent), url(img/tile.png) #dde6f5; }
+  #b3 { background-image: url(img/tile.png), url(img/quad.png), linear-gradient(#339966, #222222); background-repeat: no-repeat, no-repeat, repeat; background-position: right top, left bottom, 0 0; }
+  #b4 { background-image: url(img/tile.png), linear-gradient(#cc3333, #3366cc); background-size: 10px 10px; background-position: 0 0, 50% 50%; }
+</style>
+</head>
+<body><div class="b" id="b1"></div><div class="b" id="b2"></div><div class="b" id="b3"></div><div class="b" id="b4"></div></body>
+</html>

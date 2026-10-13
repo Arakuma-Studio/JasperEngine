@@ -385,6 +385,10 @@ std::string SvgPreprocess::colorText(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 }
 
 std::vector<uint8_t> jasperengine::htmlui::rasterizeSvg(std::string_view xml, int width, int height){
+    return rasterizeSvg(xml, width, height, 0.0f, 0.0f);
+}
+
+std::vector<uint8_t> jasperengine::htmlui::rasterizeSvg(std::string_view xml, int width, int height, float logicalWidth, float logicalHeight){
     std::vector<uint8_t> rgba;
     if (width <= 0 || height <= 0 || width > 16384 || height > 16384){
         Log::error("[HTML UI] SVG rasterization: %i x %i is outside 1..16384", width, height);
@@ -404,10 +408,20 @@ std::vector<uint8_t> jasperengine::htmlui::rasterizeSvg(std::string_view xml, in
     lunasvg::Element root = document->documentElement();
     if (!root.hasAttribute("viewBox") && intrinsicWidth > 0.0f && intrinsicHeight > 0.0f)
         root.setAttribute("viewBox", "0 0 " + compat::formatNumber(intrinsicWidth) + " " + compat::formatNumber(intrinsicHeight));
-    root.setAttribute("width", std::to_string(width));
-    root.setAttribute("height", std::to_string(height));
+    const bool logical = logicalWidth > 0.0f && logicalHeight > 0.0f && (logicalWidth != (float)width || logicalHeight != (float)height);
+    root.setAttribute("width", logical ? compat::formatNumber(logicalWidth) : std::to_string(width));
+    root.setAttribute("height", logical ? compat::formatNumber(logicalHeight) : std::to_string(height));
     document->forceLayout();
-    lunasvg::Bitmap bitmap = document->renderToBitmap(width, height);
+    lunasvg::Bitmap bitmap;
+    if (logical){
+        bitmap = lunasvg::Bitmap(width, height);
+        if (bitmap.valid()){
+            bitmap.clear(0x00000000);
+            document->render(bitmap, lunasvg::Matrix::scaled((float)width / logicalWidth, (float)height / logicalHeight));
+        }
+    }else{
+        bitmap = document->renderToBitmap(width, height);
+    }
     if (!bitmap.valid() || !bitmap.data() || bitmap.width() != width || bitmap.height() != height){
         Log::error("[HTML UI] SVG rasterization: the SVG could not be rendered at %i x %i", width, height);
         return rgba;

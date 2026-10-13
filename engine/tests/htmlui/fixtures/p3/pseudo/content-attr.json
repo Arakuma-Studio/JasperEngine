@@ -1,0 +1,12 @@
+{
+ "comment": "content: attr() (spec 3.6.2) in Ahem: 'before' shows AB (blue) before #x's X, [7] after #y's XX, <> around nothing before #z's X (missing attribute = empty string) and TTT after #w's X; the steps set data-label to ABCDE, data-n to 123, add data-missing=MM and remove title, and 'after' shows the regenerated text.",
+ "viewport": [180, 90],
+ "steps": [
+  {"capture": "before"},
+  {"setAttr": ["#x", "data-label", "ABCDE"]},
+  {"setAttr": ["#y", "data-n", "123"]},
+  {"setAttr": ["#z", "data-missing", "MM"]},
+  {"setAttr": ["#w", "title", null]},
+  {"capture": "after"}
+ ]
+}

@@ -4,18 +4,15 @@
 <meta charset="UTF-8">
 <title>User-agent defaults</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
-<!-- golden page (phase-2 spec 5.3): unstyled HTML. The rules set a bundled font and pin
-     font-size and line-height, so the comparison does not depend on Chromium's per-font
-     rounding of `line-height: normal` (the engine approximates it as 1.2 until phase 3's
-     LineHeightNormal). The form controls get the 15px Chromium computes for their UA
-     `line-height: normal` (13.333px Roboto); everything else about them is the UA's. The form
-     is in the built-in Roboto: the spaces between its controls are 3.96px there (Inter's are
-     4.5px, which the engine's whole-pixel advances round up, drifting the controls apart). The
+<!-- golden page (phase-2 spec 5.3): unstyled HTML. The rules set a bundled font and pin the
+     font size; the line height is the UA's `normal`, the font's own line spacing (phase 3's
+     LineHeightNormal; phase 2 pinned 1.2 on the body and 15px on the controls). The form is in
+     the built-in Roboto: the spaces between its controls are 3.96px there (Inter's are 4.5px,
+     which the engine's whole-pixel advances round up, drifting the controls apart). The
      engine's font sizes are whole pixels (13.333px draws at 13px): the controls that are as wide
      as their text (buttons, select) get 13px on both sides. -->
 <style>
-  body { font-family: Inter, sans-serif; font-size: 16px; line-height: 1.2; }
-  input, button, select, textarea { line-height: 15px; }
+  body { font-family: Inter, sans-serif; font-size: 16px; }
   button, input[type="submit"], input[type="reset"], select { font-size: 13px; }
   form { font-family: sans-serif; }
 </style>
@@ -31,7 +28,7 @@
 
 <form id="form" data-ref-tol="text">
 <fieldset id="fieldset" data-ref-tol="text">
-<legend id="legend" data-ref-tol="auto-width">Fieldset legend</legend>
+<legend id="legend">Fieldset legend</legend>
 <input type="text" id="text" value="Text input">
 <input type="password" id="password" value="secret">
 <input type="number" id="number" value="42">

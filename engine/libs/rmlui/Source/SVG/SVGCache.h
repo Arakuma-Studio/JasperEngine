@@ -43,7 +43,10 @@ namespace SVG {
 		///	@note When changing color or dimensions of an SVG without changing the source file, it's best to get a
 		/// new handle before releasing the old one, to avoid unnecessarily reloading data.
 		static SharedPtr<SVGData> GetHandle(const String& source_id, const String& source, SourceType source_type, Element* element,
-			const bool crop_to_content, const BoxArea area, const ColourbPremultiplied* colour_override = nullptr);
+			const bool crop_to_content, const BoxArea area, const ColourbPremultiplied* colour_override = nullptr,
+			const Vector2i* dimensions_override = nullptr);
+		/// The colour the element's SVG is drawn with: image-color times the opacity the element draws with.
+		static ColourbPremultiplied GetColour(Element* element);
 	};
 
 } // namespace SVG

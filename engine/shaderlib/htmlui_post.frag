@@ -5,7 +5,7 @@
 //   HAS_COLOR_MATRIX   brightness/contrast/invert/grayscale/sepia/hue-rotate/saturate
 //   HAS_BLEND_MASK     multiplies by the mask image's alpha (mask-image)
 //   HAS_DROP_SHADOW    the source's alpha times the shadow colour, inside texCoordMinMax
-//   HAS_BLUR           one 7-tap separable gaussian pass along params.yz
+//   HAS_BLUR           one 7-tap separable gaussian pass along params.yz, mirrored at texCoordMinMax
 //   HAS_UNPREMULTIPLY  straight alpha (render-to-texture documents)
 uniform u_fs_htmluiPost {
     vec4 params;            // x: opacity (passthrough), yz: texel offset (blur)
@@ -30,7 +30,7 @@ vec4 source(vec2 uv){
     return texture(sampler2D(u_htmluiPostTex, u_htmluiPost_smp), uv);
 }
 
-#if defined(HAS_BLUR) || defined(HAS_DROP_SHADOW)
+#if defined(HAS_DROP_SHADOW)
 // 1 inside [min, max] (texel centres of the region), 0 outside: nothing bleeds in from
 // neighbouring content (GLES has no CLAMP_TO_BORDER)
 float inRegion(vec2 uv){
@@ -40,9 +40,19 @@ float inRegion(vec2 uv){
 #endif
 
 #ifdef HAS_BLUR
+// the region's texels mirrored at its edges (Skia's mirror tile mode, which Chromium's backdrop-filter blur
+// uses): a blur cut by the viewport or by the region extends the content at the edge instead of fading it out
+vec2 mirrored(vec2 uv){
+    vec2 halfTexel = 0.5 / vec2(textureSize(sampler2D(u_htmluiPostTex, u_htmluiPost_smp), 0));
+    vec2 lo = htmluiPost.texCoordMinMax.xy - halfTexel;
+    vec2 hi = htmluiPost.texCoordMinMax.zw + halfTexel;
+    uv = mix(uv, 2.0 * lo - uv, step(uv, lo));
+    uv = mix(uv, 2.0 * hi - uv, step(hi, uv));
+    return clamp(uv, htmluiPost.texCoordMinMax.xy, htmluiPost.texCoordMinMax.zw);
+}
+
 vec4 tap(float i, float weight){
-    vec2 uv = v_uv - i * htmluiPost.params.yz;
-    return source(uv) * (inRegion(uv) * weight);
+    return source(mirrored(v_uv - i * htmluiPost.params.yz)) * weight;
 }
 #endif
 

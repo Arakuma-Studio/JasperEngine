@@ -1,0 +1,52 @@
+{
+ "fixture": "text/text-shadow-hard.html",
+ "viewport": [
+  200,
+  130
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "down",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 60,
+    "h": 20
+   },
+   {
+    "id": "up",
+    "tag": "div",
+    "x": 10,
+    "y": 50,
+    "w": 60,
+    "h": 20
+   },
+   {
+    "id": "current",
+    "tag": "div",
+    "x": 10,
+    "y": 90,
+    "w": 60,
+    "h": 20
+   },
+   {
+    "id": "decorated",
+    "tag": "div",
+    "x": 110,
+    "y": 10,
+    "w": 60,
+    "h": 20
+   },
+   {
+    "id": "inherited",
+    "tag": "div",
+    "x": 110,
+    "y": 50,
+    "w": 60,
+    "h": 20
+   }
+  ]
+ }
+}

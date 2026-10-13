@@ -20,6 +20,7 @@
 #include <RmlUi/Core/Factory.h>
 #include <RmlUi/Core/FileInterface.h>
 #include <RmlUi/Core/MeshUtilities.h>
+#include <RmlUi/Core/ObjectFit.h>
 #include <RmlUi/Core/PropertyIdSet.h>
 #include <RmlUi/Core/RenderManager.h>
 #include <RmlUi/Core/StringUtilities.h>
@@ -538,16 +539,38 @@ void UILottieElement::OnPropertyChange(const Rml::PropertyIdSet& changed_propert
 
     if (changed_properties.Contains(Rml::PropertyId::ImageColor) || changed_properties.Contains(Rml::PropertyId::Opacity))
         geometryDirty = true;
+    // object-fit / object-position: the picture moves in the canvas, drawn again
+    if (changed_properties.Contains(Rml::PropertyId::ObjectFit) || changed_properties.Contains(Rml::PropertyId::ObjectPositionX) ||
+        changed_properties.Contains(Rml::PropertyId::ObjectPositionY)){
+        if (canvas && animation){
+            layoutPicture();
+            frameDirty = true;
+        }
+    }
 }
 
 void UILottieElement::layoutPicture(){
     tvg::Picture* picture = animation->picture();
-    // contain: the largest uniform scale that fits, centred
-    const float scale = std::min(canvasSize.x / intrinsicSize.x, canvasSize.y / intrinsicSize.y);
-    const float width = intrinsicSize.x * scale;
-    const float height = intrinsicSize.y * scale;
-    picture->size(width, height);
-    picture->translate((canvasSize.x - width) * 0.5f, (canvasSize.y - height) * 0.5f);
+    // object-fit and object-position (the fork's, as <img>); without a declared object-fit:
+    // contain (the animation's own aspect ratio). The canvas is the content box: it crops.
+    const Rml::ComputedValues& computed = GetComputedValues();
+    const Rml::Style::ObjectFit fit = GetLocalProperty(Rml::PropertyId::ObjectFit) ? computed.object_fit() : Rml::Style::ObjectFit::Contain;
+    Rml::ObjectFitRect placed;
+    if (!Rml::ComputeObjectFitRect(Rml::Vector2f(canvasSize), intrinsicSize, fit, computed.object_position_x(), computed.object_position_y(),
+                                   placed)){
+        picture->size(0.0f, 0.0f);
+        return;
+    }
+    // where the whole picture lies: the drawn part less the part of it cut off
+    const Rml::Vector2f origin = placed.rect.TopLeft() - placed.uv.TopLeft() * placed.size;
+    // the picture at its own size, scaled and moved by a transform (a second size() of an
+    // animation's picture is not applied by ThorVG)
+    picture->size(intrinsicSize.x, intrinsicSize.y);
+    const tvg::Matrix transform = {placed.size.x / intrinsicSize.x, 0.0f, origin.x, 0.0f, placed.size.y / intrinsicSize.y, origin.y, 0.0f, 0.0f, 1.0f};
+    picture->transform(transform);
+    // ThorVG redraws the changed region only, which misses the part a smaller picture leaves: the
+    // target is cleared, the next rasterization draws the whole picture again
+    std::fill(pixels.begin(), pixels.end(), 0u);
 }
 
 void UILottieElement::rasterize(){
@@ -575,7 +598,7 @@ void UILottieElement::generateGeometry(){
         return;
 
     const Rml::ComputedValues& computed = GetComputedValues();
-    const Rml::ColourbPremultiplied colour = computed.image_color().ToPremultiplied(computed.opacity());
+    const Rml::ColourbPremultiplied colour = computed.image_color().ToPremultiplied(GetDrawOpacity());
 
     Rml::Mesh mesh = geometry.Release(Rml::Geometry::ReleaseMode::ClearMesh);
     Rml::MeshUtilities::GenerateQuad(mesh, Rml::Vector2f(0, 0), Rml::Vector2f(renderSize), colour, Rml::Vector2f(0, 0), Rml::Vector2f(1, 1));

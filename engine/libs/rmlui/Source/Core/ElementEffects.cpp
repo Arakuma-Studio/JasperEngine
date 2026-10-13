@@ -1,4 +1,5 @@
 #include "ElementEffects.h"
+#include "../../Include/RmlUi/Core/Context.h"
 #include "../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../Include/RmlUi/Core/Decorator.h"
 #include "../../Include/RmlUi/Core/Element.h"
@@ -7,6 +8,7 @@
 #include "../../Include/RmlUi/Core/Filter.h"
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/StyleSheet.h"
+#include "ElementBackgroundLayers.h"
 #include "ElementStyle.h"
 
 namespace Rml {
@@ -38,13 +40,13 @@ void ElementEffects::InstanceEffects()
 
 	const ComputedValues& computed = element->GetComputedValues();
 
-	if (computed.has_decorator() || computed.has_mask_image())
+	if (computed.has_decorator())
 	{
 		const StyleSheet* style_sheet = element->GetStyleSheet();
 		if (!style_sheet)
 			return;
 
-		for (const auto id : {PropertyId::Decorator, PropertyId::MaskImage})
+		for (const auto id : {PropertyId::Decorator})
 		{
 			const Property* property = element->GetStyle()->GetLocalPropertyWithResolvedVariables(id);
 			if (!property || property->unit != Unit::DECORATOR)
@@ -69,7 +71,7 @@ void ElementEffects::InstanceEffects()
 			const DecoratorPtrList& decorator_list = style_sheet->InstanceDecorators(*render_manager, *decorators_ptr, source);
 			RMLUI_ASSERT(decorator_list.empty() || decorator_list.size() == decorators_ptr->list.size());
 
-			DecoratorEntryList& decorators_target = (id == PropertyId::Decorator ? decorators : mask_images);
+			DecoratorEntryList& decorators_target = decorators;
 			decorators_target.reserve(decorators_ptr->list.size());
 
 			for (size_t i = 0; i < decorator_list.size() && i < decorators_ptr->list.size(); i++)
@@ -82,7 +84,7 @@ void ElementEffects::InstanceEffects()
 					entry.decorator = decorator;
 					entry.paint_area = decorators_ptr->list[i].paint_area;
 					if (entry.paint_area == BoxArea::Auto)
-						entry.paint_area = (id == PropertyId::Decorator ? BoxArea::Padding : BoxArea::Border);
+						entry.paint_area = BoxArea::Padding;
 
 					RMLUI_ASSERT(entry.paint_area >= BoxArea::Border && entry.paint_area <= BoxArea::Content);
 					decorators_target.push_back(std::move(entry));
@@ -131,7 +133,7 @@ void ElementEffects::ReloadEffectsData()
 		effects_data_dirty = false;
 
 		bool decorator_data_failed = false;
-		for (DecoratorEntryList* list : {&decorators, &mask_images})
+		for (DecoratorEntryList* list : {&decorators})
 		{
 			for (DecoratorEntry& decorator : *list)
 			{
@@ -168,7 +170,7 @@ void ElementEffects::ReloadEffectsData()
 
 void ElementEffects::ReleaseEffects()
 {
-	for (DecoratorEntryList* list : {&decorators, &mask_images})
+	for (DecoratorEntryList* list : {&decorators})
 	{
 		for (DecoratorEntry& decorator : *list)
 		{
@@ -182,10 +184,56 @@ void ElementEffects::ReleaseEffects()
 	backdrop_filters.clear();
 }
 
+// The ink overflow of the element's subtree: its bounding box (with its box shadow, outline and filters) joined with
+// those of its visible descendants, which a filter or a group opacity layer must not cut off (CSS: filters and opacity
+// apply to the whole stacking context; 6.3 clipped them to the element's border box).
+static void ExtendBySubtreeInkOverflow(Element* element, Rectanglef& region, int depth)
+{
+	const int num_children = element->GetNumChildren(true);
+	for (int i = 0; i < num_children; i++)
+	{
+		Element* child = element->GetChild(i);
+		if (child->GetComputedValues().display() == Style::Display::None)
+			continue;
+		Rectanglef child_region;
+		if (ElementUtilities::GetBoundingBox(child_region, child, BoxArea::Auto))
+		{
+			const ComputedValues& computed = child->GetComputedValues();
+			const float outline = computed.outline_width() + Math::Max(computed.outline_offset(), 0.f) +
+				(computed.outline_style() == Style::BorderStyle::Auto ? 3.f : 0.f);
+			if (outline > 0.f)
+				child_region = child_region.Extend(Vector2f(outline));
+			region = region.Join(child_region);
+		}
+		if (depth < 256)
+			ExtendBySubtreeInkOverflow(child, region, depth + 1);
+	}
+}
+
 void ElementEffects::RenderEffects(RenderStage render_stage)
 {
 	InstanceEffects();
 	ReloadEffectsData();
+
+	// Group opacity: an element with an opacity below 1 that is not drawn as a leaf (Element::GetDrawOpacity).
+	const float opacity = element->GetComputedValues().opacity();
+	const bool group = (opacity < 1.f && element->GetDrawOpacity() == 1.f);
+	if (group && (!group_opacity || group_opacity_value != opacity) && render_stage == RenderStage::Enter)
+	{
+		if (RenderManager* render_manager = element->GetRenderManager())
+		{
+			group_opacity.Release();
+			group_opacity = render_manager->CompileFilter("opacity", Dictionary{{"value", Variant(opacity)}});
+			group_opacity_value = opacity;
+		}
+	}
+	else if (!group && group_opacity)
+	{
+		group_opacity.Release();
+	}
+	// Masks: mask-image layers (ElementBackgroundLayers, phase 3 p3-paint).
+	const bool has_mask = element->GetComputedValues().has_mask_image();
+	const bool layer = (!filters.empty() || has_mask || (group && group_opacity));
 
 	if (!decorators.empty())
 	{
@@ -202,7 +250,7 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 		}
 	}
 
-	if (filters.empty() && backdrop_filters.empty() && mask_images.empty())
+	if (!layer && backdrop_filters.empty())
 		return;
 
 	RenderManager* render_manager = element->GetRenderManager();
@@ -220,6 +268,15 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 		// Find the region being affected by the active filters and apply it as a scissor.
 		Rectanglef filter_region = Rectanglef::MakeInvalid();
 		ElementUtilities::GetBoundingBox(filter_region, element, force_clip_to_self_border_box ? BoxArea::Border : BoxArea::Auto);
+		if (!force_clip_to_self_border_box)
+		{
+			const ComputedValues& computed = element->GetComputedValues();
+			const float outline = computed.outline_width() + Math::Max(computed.outline_offset(), 0.f) +
+				(computed.outline_style() == Style::BorderStyle::Auto ? 3.f : 0.f);
+			if (outline > 0.f)
+				filter_region = filter_region.Extend(Vector2f(outline));
+			ExtendBySubtreeInkOverflow(element, filter_region, 0);
+		}
 
 		// The filter property may draw outside our normal clipping region due to ink overflow.
 		if (filter_id == PropertyId::Filter)
@@ -234,21 +291,23 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 		render_manager->SetScissorRegion(scissor_region);
 	};
 	auto ApplyScissorRegionForBackdrop = [this, &render_manager]() {
-		// Set the scissor region for backdrop drawing, which covers the element's border box plus any area we may need
-		// to read from, such as any blur radius.
+		// Set the scissor region for backdrop drawing: the element's border box, within the viewport. As in browsers,
+		// the filters read nothing beyond it (a blur extends the content at the region's edges instead of reading the
+		// content next to the element, or the transparent target beyond the viewport).
 		Rectanglef filter_region = Rectanglef::MakeInvalid();
 		ElementUtilities::GetBoundingBox(filter_region, element, BoxArea::Border);
-		for (const auto& filter : backdrop_filters)
-			filter.filter->ExtendInkOverflow(element, filter_region);
 		Math::ExpandToPixelGrid(filter_region);
-		render_manager->SetScissorRegion(Rectanglei(filter_region));
+		Rectanglei region(filter_region);
+		if (Context* context = element->GetContext())
+			region = region.IntersectIfValid(Rectanglei::FromSize(context->GetDimensions()));
+		render_manager->SetScissorRegion(region);
 	};
 
 	if (render_stage == RenderStage::Enter)
 	{
 		const LayerHandle backdrop_source_layer = render_manager->GetTopLayer();
 
-		if (!filters.empty() || !mask_images.empty())
+		if (layer)
 		{
 			render_manager->PushLayer();
 		}
@@ -282,31 +341,32 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 	}
 	else if (render_stage == RenderStage::Exit)
 	{
-		if (!filters.empty() || !mask_images.empty())
+		if (layer)
 		{
 			ApplyClippingRegion(PropertyId::Filter);
 
 			CompiledFilter mask_image_filter;
 			FilterHandleList filter_handles;
-			filter_handles.reserve(filters.size() + (mask_images.empty() ? 0 : 1));
+			filter_handles.reserve(filters.size() + (has_mask ? 1 : 0) + 1);
 
 			for (auto& filter : filters)
 				filter.compiled.AddHandleTo(filter_handles);
 
-			if (!mask_images.empty())
+			if (has_mask)
 			{
 				render_manager->PushLayer();
 
-				for (int i = (int)mask_images.size() - 1; i >= 0; i--)
-				{
-					DecoratorEntry& mask_image = mask_images[i];
-					if (mask_image.decorator_data)
-						mask_image.decorator->RenderElement(element, mask_image.decorator_data);
-				}
+				if (!mask_layers)
+					mask_layers = MakeUnique<ElementBackgroundLayers>(ElementBackgroundLayers::Kind::Mask);
+				mask_layers->Render(element);
 				mask_image_filter = render_manager->SaveLayerAsMaskImage();
 				mask_image_filter.AddHandleTo(filter_handles);
 				render_manager->PopLayer();
 			}
+
+			// The group's opacity, in the same composite as the filters and the mask.
+			if (group && group_opacity)
+				group_opacity.AddHandleTo(filter_handles);
 
 			render_manager->CompositeLayers(render_manager->GetTopLayer(), render_manager->GetNextLayer(), BlendMode::Blend, filter_handles);
 			render_manager->PopLayer();
@@ -318,11 +378,15 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 void ElementEffects::DirtyEffects()
 {
 	effects_dirty = true;
+	if (mask_layers)
+		mask_layers->Dirty();
 }
 
 void ElementEffects::DirtyEffectsData()
 {
 	effects_data_dirty = true;
+	if (mask_layers)
+		mask_layers->Dirty();
 }
 
 } // namespace Rml

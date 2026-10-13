@@ -1,0 +1,7 @@
+{
+ "comment": "flex-basis: content sizes the item by its content whatever its width or height; auto takes the size property; min-content, max-content and fit-content as flex basis",
+ "viewport": [
+  270,
+  220
+ ]
+}

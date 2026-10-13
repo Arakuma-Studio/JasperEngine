@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en" id="doc">
+<head>
+<meta charset="utf-8">
+<title>integration: a fixed modal with backdrop-filter over a scrolled document</title>
+<style>
+  html { overflow: auto; }
+  html, body { margin: 0; }
+  body { background: #e8ecf3; }
+  .row { height: 60px; margin: 10px 20px; border-radius: 10px; }
+  .row:nth-child(4n+1) { background: #ef476f; }
+  .row:nth-child(4n+2) { background: #ffd166; }
+  .row:nth-child(4n+3) { background: #06d6a0; }
+  .row:nth-child(4n+4) { background: #118ab2; }
+  .overlay { position: fixed; inset: 0; background: rgba(8, 12, 24, 0.35); backdrop-filter: blur(6px); }
+  .modal { position: fixed; left: 50%; top: 50%; width: 220px; height: 120px; transform: translate(-50%, -50%);
+           background: rgba(255, 255, 255, 0.85); border-radius: 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); }
+  .modal .title { position: absolute; left: 20px; top: 20px; width: 120px; height: 14px; background: #073b4c; border-radius: 7px; }
+  .modal .button { position: absolute; right: 20px; bottom: 20px; width: 80px; height: 30px; background: #118ab2; border-radius: 8px; }
+  .corner { position: fixed; right: 10px; top: 10px; width: 30px; height: 30px; border-radius: 50%; background: #073b4c; }
+</style>
+</head>
+<body>
+<div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div>
+<div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div>
+<div class="overlay" id="overlay"></div>
+<div class="modal" id="modal"><div class="title"></div><div class="button" id="ok"></div></div>
+<div class="corner" id="corner"></div>
+</body>
+</html>

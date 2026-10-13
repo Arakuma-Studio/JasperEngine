@@ -1,0 +1,14 @@
+{
+ "comment": "background-image transitions as Chromium draws them: two url() images cross-fade (the images added, weighted: exact for translucent images too), lists of different lengths by their lowest common multiple with as many layers painted as the new value has, tiles and a rounded clip; gradients and none against an image change at once (no transition); a transition: all of a background shorthand interpolates the size and colour and cross-fades the image. Captured at a quarter, at half and at the end.",
+ "viewport": [370, 110],
+ "steps": [
+  {"addClass": ["#opaque", "on"]}, {"addClass": ["#translucent", "on"]}, {"addClass": ["#both", "on"]}, {"addClass": ["#lists", "on"]},
+  {"addClass": ["#tiles", "on"]}, {"addClass": ["#gradient", "on"]}, {"addClass": ["#none", "on"]}, {"addClass": ["#button", "on"]},
+  {"advance": 0.25},
+  {"capture": "quarter"},
+  {"advance": 0.25},
+  {"capture": "half"},
+  {"advance": 0.6},
+  {"capture": "end"}
+ ]
+}

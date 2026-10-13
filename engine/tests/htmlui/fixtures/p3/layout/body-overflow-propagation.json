@@ -1,0 +1,22 @@
+{
+ "comment": "overflow on body applies to the viewport (CSS Overflow 3 3.3): the 120px body does not clip its 400px content, and the viewport, not the body, scrolls (by script, as overflow is hidden)",
+ "viewport": [
+  240,
+  180
+ ],
+ "steps": [
+  {
+   "capture": "top"
+  },
+  {
+   "scroll": [
+    "#doc",
+    0,
+    150
+   ]
+  },
+  {
+   "capture": "scrolled"
+  }
+ ]
+}

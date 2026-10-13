@@ -28,8 +28,16 @@ namespace {
         return text(v);
     }
 
-    // the flex shorthand in RmlUi's three-value form
+    // the flex shorthand in RmlUi's three-value form (a 'content' or sizing keyword basis: with the fork's BoxParity,
+    // else 'auto')
     std::optional<std::string> flexValue(Session& session, const ValueList& w){
+        const bool parity = session.options.fork.has(ForkFeature::BoxParity);
+        auto keywordBasis = [&](const ComponentValue& v) -> std::optional<std::string> {
+            const std::string k = identOf(v);
+            if (k == "content" || k == "min-content" || k == "max-content" || k == "fit-content")
+                return parity ? k : std::string("auto");
+            return std::nullopt;
+        };
         if (w.size() == 1){
             const std::string k = identOf(w[0]);
             if (k == "none")
@@ -40,22 +48,29 @@ namespace {
                 return std::string("0 1 auto");
             if (w[0].isToken(TokenType::Number))
                 return text(w[0]) + " 1 0%";
-            if (isLength(session, w[0], true) || k == "content")
-                return "1 1 " + (k == "content" ? std::string("auto") : basisText(w[0]));
+            if (const std::optional<std::string> basis = keywordBasis(w[0]))
+                return "1 1 " + *basis;
+            if (isLength(session, w[0], true))
+                return "1 1 " + basisText(w[0]);
             return std::nullopt;
         }
         if (w.size() == 2 && w[0].isToken(TokenType::Number)){
             if (w[1].isToken(TokenType::Number) && w[1].token.number != 0)
                 return text(w[0]) + " " + text(w[1]) + " 0%";
+            if (const std::optional<std::string> basis = keywordBasis(w[1]))
+                return text(w[0]) + " 1 " + *basis;
             if (isLength(session, w[1], true) || isIdent(w[1], "auto"))
                 return text(w[0]) + " 1 " + basisText(w[1]);
             if (w[1].isToken(TokenType::Number))
                 return text(w[0]) + " 0 0%";
             return std::nullopt;
         }
-        if (w.size() == 3 && w[0].isToken(TokenType::Number) && w[1].isToken(TokenType::Number) &&
-            (isLength(session, w[2], true) || isIdent(w[2], "auto") || isIdent(w[2], "content")))
-            return text(w[0]) + " " + text(w[1]) + " " + (isIdent(w[2], "content") ? std::string("auto") : basisText(w[2]));
+        if (w.size() == 3 && w[0].isToken(TokenType::Number) && w[1].isToken(TokenType::Number)){
+            if (const std::optional<std::string> basis = keywordBasis(w[2]))
+                return text(w[0]) + " " + text(w[1]) + " " + *basis;
+            if (isLength(session, w[2], true) || isIdent(w[2], "auto"))
+                return text(w[0]) + " " + text(w[1]) + " " + basisText(w[2]);
+        }
         return std::nullopt;
     }
 
@@ -187,7 +202,18 @@ void jasperengine::htmlui::compat::rewriteFlex(DeclContext& context){
 void jasperengine::htmlui::compat::rewriteAlignKeyword(DeclContext& context){
     const std::string& n = context.name;
     ValueList w = words(context.value);
+    // the fork has the CSS Box Alignment 3 values (BoxParity): written as they are
+    if (context.fork(ForkFeature::BoxParity) && !(w.size() == 1 && isVar(w[0]))){
+        std::string value;
+        for (const ComponentValue& v : w)
+            value += (value.empty() ? "" : " ") + lowerAscii(text(v));
+        if (RcssGrammar::accepts(n, value, context.session.options.fork)){
+            context.emit(n, value);
+            return;
+        }
+    }
     if (n == "justify-items" || n == "justify-self"){
+        // (they align block-level boxes too with BoxParity, which comes with Grid)
         if (context.fork(ForkFeature::Grid)){
             context.emit(n, context.valueText());
             return;
@@ -254,7 +280,7 @@ void jasperengine::htmlui::compat::rewriteGap(DeclContext& context){
             values.push_back(text(v));
     }
     const std::string value = join(values);
-    if (!RcssGrammar::accepts(n, value)){
+    if (!RcssGrammar::accepts(n, value, context.session.options.fork)){
         unsupportedValue(context, "use a length or percentage");
         return;
     }

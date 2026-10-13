@@ -37,7 +37,7 @@ DecoratorDataHandle DecoratorNinePatch::GenerateElementData(Element* element, Bo
 	const Vector2f surface_offset = render_box.GetFillOffset();
 	const Vector2f surface_dimensions = render_box.GetFillSize();
 
-	const ColourbPremultiplied quad_colour = computed.image_color().ToPremultiplied(computed.opacity());
+	const ColourbPremultiplied quad_colour = computed.image_color().ToPremultiplied(element->GetDrawOpacity());
 
 	/* In the following, we operate on the four diagonal vertices in the grid, as they define the whole grid. */
 
@@ -178,7 +178,15 @@ SharedPtr<Decorator> DecoratorNinePatchInstancer::InstanceDecorator(const String
 	Array<NumericValue, 4> edges;
 	for (int i = 0; i < 4; i++)
 	{
-		edges[i] = properties.GetProperty(edge_ids[i])->GetNumericValue();
+		const Property* edge_property = properties.GetProperty(edge_ids[i]);
+		RMLUI_ASSERT(edge_property);
+#ifdef RMLUI_MATH_EXPRESSIONS
+		// Nine-patch edge values are an RmlUi-specific numeric extension. They intentionally do not
+		// accept CSS math, so reject before the legacy NumericValue extraction boundary.
+		if (edge_property->unit == Unit::CALCULATION)
+			return nullptr;
+#endif
+		edges[i] = edge_property->GetNumericValue();
 		if (edges[i].number != 0.0f)
 		{
 			edges_set = true;

@@ -124,11 +124,30 @@ bool ValueNormalizer::colorKeywordsApply(const std::string& property){
     return !noColors.contains(property);
 }
 
+bool ValueNormalizer::isRuntimeColorFunction(const ComponentValue& v){
+    if (v.kind != ComponentValue::Kind::Function)
+        return false;
+    static const char* const names[] = {"rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color", "color-mix"};
+    bool known = false;
+    for (const char* name : names)
+        known = known || equalsNoCase(v.token.value, name);
+    if (!known)
+        return false;
+    for (const ComponentValue& argument : v.children){
+        if (argument.isToken(TokenType::Ident) && equalsNoCase(argument.token.value, "from"))
+            return false;
+        if (argument.kind == ComponentValue::Kind::Function && !equalsNoCase(argument.token.value, "var") &&
+            !equalsNoCase(argument.token.value, "calc") && !isRuntimeColorFunction(argument))
+            return false;
+    }
+    return true;
+}
+
 namespace {
 
     class Walker {
     public:
-        explicit Walker(const NormalizeContext& context): context(context) {}
+        explicit Walker(const NormalizeContext& context): context(context), keepLengthSums(context.lengthSums) {}
 
         NormalizeResult result;
 
@@ -153,9 +172,31 @@ namespace {
 
     private:
         void report(DiagCode code, Severity severity, const std::string& message, const std::string& suggestion = std::string()){
-            if (context.report)
-                context.report(code, severity, message, suggestion);
+            // kept until the value is done: the sink keeps one finding per code and declaration, so
+            // findings of one code (a 'ch' and an 'ex' approximated) are merged into one message
+            for (Pending& pending : pendingReports){
+                if (pending.code == code){
+                    pending.severity = std::min(pending.severity, severity);
+                    if (pending.message.find(message) == std::string::npos)
+                        pending.message += "; " + message;
+                    if (!suggestion.empty() && pending.suggestion.find(suggestion) == std::string::npos)
+                        pending.suggestion += (pending.suggestion.empty() ? "" : "; ") + suggestion;
+                    return;
+                }
+            }
+            pendingReports.push_back(Pending{code, severity, message, suggestion});
         }
+
+    public:
+        void flushReports(){
+            if (context.report){
+                for (const Pending& pending : pendingReports)
+                    context.report(pending.code, pending.severity, pending.message, pending.suggestion);
+            }
+            pendingReports.clear();
+        }
+
+    private:
 
         void fail(DiagCode code, const std::string& message, const std::string& suggestion = std::string()){
             report(code, Severity::Warning, message, suggestion);
@@ -210,6 +251,33 @@ namespace {
                 }
                 return;
             }
+            if (!parsed && info.currentColorMix && !info.dynamicVar){
+                if (context.currentColorMixNative && context.compat().fork.has(ForkFeature::CurrentColor)){
+                    out.push_back(v);
+                    return;
+                }
+                // elsewhere (compat's decorators and companions) currentcolor is the rule's static color
+                const std::string current = context.color();
+                if (current.size() == 9){
+                    ColorParseInfo staticInfo;
+                    ColorContext staticContext = colorContext();
+                    staticContext.currentColor = current;
+                    if (std::optional<CssColor> mixed = ColorValue::parse(v, staticInfo, staticContext)){
+                        const uint32_t rgba = ColorValue::toRgba8(*mixed, &clipped);
+                        report(codes::ApproximatedMinor, Severity::Info, "'" + serialize(v) + "' mixes the rule's color " + current.substr(0, 7) +
+                               " (it does not follow a change of color here)", "use the color in a color property, or write the mixed color");
+                        out.push_back(ValueNormalizer::hash(ColorValue::hex(rgba).substr(1)));
+                        return;
+                    }
+                }
+            }
+            if (!parsed && info.dynamicVar && !info.relative && !info.lightDark && context.colorFunctionsNative &&
+                context.compat().fork.has(ForkFeature::ColorFunctions) && ValueNormalizer::isRuntimeColorFunction(v)){
+                // (rgb(var(--rgb) / 0.5), hsl(var(--h) 50% 50%), color-mix(in srgb, var(--a) 40%, white): the
+                // fork substitutes the variable when the element's style is computed and parses the color)
+                out.push_back(v);
+                return;
+            }
             if (!parsed){
                 if (info.dynamic){
                     fail(codes::ColorUnresolvable, "color '" + serialize(v) + "' depends on a value that is only known at runtime; declaration dropped",
@@ -231,6 +299,13 @@ namespace {
 
         void dimension(const ComponentValue& v, ValueList& out){
             const Token& t = v.token;
+            // the units the fork computes itself (ForkFeature::ExtraUnits) stay where the value reaches
+            // RmlUi as it is written; elsewhere (decorator arguments, values read token by token) they
+            // are converted as without the feature
+            if (context.unitsNative && context.compat().fork.has(ForkFeature::ExtraUnits) && isForkUnit(t.unit)){
+                out.push_back(v);
+                return;
+            }
             const RcssUnit unit = rcssUnit(t.unit);
             if (unit.unsupported){
                 fail(codes::UnsupportedUnit, "container query unit '" + t.unit + "' is not supported; declaration dropped",
@@ -296,6 +371,50 @@ namespace {
         }
 
         // the folded value as component values (relative units mapped like any dimension)
+        // A translate function folded without the fork's calc(): an argument that is a sum of lengths
+        // (50% + 1em) is written as one translation per term, translate(50%) translate(1em), which
+        // is exact; the other arguments are 0 in the added translations.
+        void translate(const ComponentValue& v, ValueList& out){
+            const bool saved = keepLengthSums;
+            keepLengthSums = true;
+            ComponentValue copy = shell(v);
+            copy.children = list(v.children);
+            keepLengthSums = saved;
+            if (!result.ok)
+                return;
+            std::vector<ValueList> args = splitAtCommas(copy.children);
+            std::vector<std::vector<ComponentValue>> terms(args.size());
+            size_t count = 1;
+            for (size_t i = 0; i < args.size(); i++){
+                ValueList arg = trimWhitespace(args[i]);
+                terms[i] = ValueNormalizer::lengthSumTerms(arg);
+                count = std::max(count, terms[i].size());
+            }
+            if (count == 1){
+                out.push_back(std::move(copy));
+                return;
+            }
+            for (size_t k = 0; k < count; k++){
+                if (k > 0)
+                    out.push_back(ValueNormalizer::whitespace());
+                ComponentValue part = shell(v);
+                for (size_t i = 0; i < args.size(); i++){
+                    if (i > 0){
+                        part.children.push_back(ValueNormalizer::comma());
+                        part.children.push_back(ValueNormalizer::whitespace());
+                    }
+                    if (k < terms[i].size())
+                        part.children.push_back(terms[i][k]);
+                    else if (k == 0){
+                        for (const ComponentValue& c : trimWhitespace(args[i]))
+                            part.children.push_back(c);
+                    }else
+                        part.children.push_back(ValueNormalizer::dimension(0, "px"));
+                }
+                out.push_back(std::move(part));
+            }
+        }
+
         void emitCalc(const CalcValue& value, ValueList& out){
             ValueList raw;
             if (value.terms.empty()){
@@ -320,14 +439,36 @@ namespace {
         void math(const ComponentValue& v, ValueList& out){
             const std::string name = lowerAscii(v.name());
             const bool calcFamily = StaticCalc::isCalcFamily(name) || name == "-webkit-calc" || name == "-moz-calc";
-            if (calcFamily && context.compat().fork.has(ForkFeature::Calc)){
-                ComponentValue copy = shell(v);
-                if (name != "calc" && name != "min" && name != "max" && name != "clamp")
-                    copy.token.value = "calc";
-                copy.children = list(v.children);
-                out.push_back(std::move(copy));
-                return;
+            if (calcFamily && context.calcNative && context.compat().fork.has(ForkFeature::Calc)){
+                // the fork evaluates the expression at layout time: it is kept when it is valid
+                // (its types checked with any context; a var() without one static value is the
+                // fork's to substitute) and holds no other math function, which the fork lacks
+                CalcContext check;
+                check.resolveVar = context.resolveVar;
+                check.pxPerUnit = [](std::string_view){ return std::optional<double>(1.0); };
+                std::string error;
+                const bool valid = StaticCalc::evaluate(v, check, &error).has_value() || check.varUnresolved;
+                if (!valid){
+                    fail(codes::UnsupportedValue, "'" + serialize(v) + "' cannot be evaluated (" + error + "); declaration dropped",
+                         "write the value without calc()");
+                    return;
+                }
+                bool otherMath = false;
+                for (const std::string& f : check.functions){
+                    if (!StaticCalc::isCalcFamily(f))
+                        otherMath = true;
+                }
+                if (!otherMath){
+                    ComponentValue copy = shell(v);
+                    if (name != "calc" && name != "min" && name != "max" && name != "clamp")
+                        copy.token.value = "calc";
+                    copy.children = list(v.children);
+                    out.push_back(std::move(copy));
+                    return;
+                }
+                // round(), sin(), ... inside: folded statically, as in every fork state
             }
+            const bool calcPresent = calcFamily && context.compat().fork.has(ForkFeature::Calc);
             CalcContext calc;
             calc.resolveVar = context.resolveVar;
             calc.pxPerUnit = [this](std::string_view unit){ return pxPerUnit(unit); };
@@ -350,9 +491,36 @@ namespace {
                 if (!StaticCalc::isCalcFamily(f))
                     otherMath = true;
             }
+            if (keepLengthSums && calcFamily && !otherMath && !calc.usedContext && value->terms.size() > 1){
+                // a translation by a sum is the sum of translations: exact without calc()
+                bool lengths = true;
+                for (const auto& term : value->terms)
+                    lengths = lengths && (term.first == "%" || (!term.first.empty() && isLengthCategory(unitCategory(term.first))));
+                if (lengths){
+                    ValueList children;
+                    for (const auto& term : value->terms){
+                        if (!children.empty()){
+                            children.push_back(ValueNormalizer::whitespace());
+                            children.push_back(ValueNormalizer::delim('+'));
+                            children.push_back(ValueNormalizer::whitespace());
+                        }
+                        if (term.first == "%")
+                            children.push_back(ValueNormalizer::percentage(term.second));
+                        else
+                            dimension(ValueNormalizer::dimension(term.second, term.first), children);
+                    }
+                    if (result.ok)
+                        out.push_back(ValueNormalizer::function("calc", std::move(children)));
+                    return;
+                }
+            }
             if (calc.usedContext && percentEstimated){
                 result.dependsOnViewport = true;
-                report(codes::ForkFallback, Severity::Warning, "'" + written + "' compares a percentage with a length; it is decided for the current viewport",
+                // (with the fork's Calc, only values a rewrite reads token by token get here: not a
+                // fallback that a fork feature removes, an approximation of that rewrite)
+                report(calcPresent ? codes::ApproximatedVisible : codes::ForkFallback, Severity::Warning,
+                       "'" + written + "' compares a percentage with a length; it is decided for the current viewport" +
+                           std::string(calcPresent ? " (the engine evaluates calc() where it reads a value as written, not in this rewritten one)" : ""),
                        "set the size with max-width / min-width, or flex");
             }else if (calc.usedContext){
                 if (calc.usedViewport)
@@ -376,8 +544,11 @@ namespace {
                         folded = converted;
                     }else{
                         const double percent = folded.get("%");
-                        report(codes::ForkFallback, Severity::Warning, "'" + written + "' is reduced to '" + formatNumber(percent) +
-                               "%' until the fork has calc()", "size the element with box-sizing, padding or flex instead");
+                        report(calcPresent ? codes::ApproximatedVisible : codes::ForkFallback, Severity::Warning,
+                               "'" + written + "' is reduced to '" + formatNumber(percent) + "%'" +
+                                   (calcPresent ? std::string(" (the engine evaluates calc() where it reads a value as written, not in this rewritten one)")
+                                                : std::string(" until the fork has calc()")),
+                               "size the element with box-sizing, padding or flex instead");
                         folded = CalcValue::of(percent, "%");
                     }
                 }
@@ -485,6 +656,10 @@ namespace {
                 env(v, out);
                 return;
             }
+            if (name == "attr" && context.attrNative){
+                out.push_back(v);
+                return;
+            }
             if (name == "attr"){
                 fail(codes::UnsupportedFunction, "'" + serialize(v) + "' is not supported; declaration dropped",
                      "write the value in the CSS, or set it from Lua");
@@ -492,6 +667,11 @@ namespace {
             }
             if (StaticCalc::isMathFunction(name)){
                 math(v, out);
+                return;
+            }
+            if ((name == "translate" || name == "translatex" || name == "translatey" || name == "translatez" || name == "translate3d") &&
+                !(context.calcNative && context.compat().fork.has(ForkFeature::Calc))){
+                translate(v, out);
                 return;
             }
             if (context.colors && ColorValue::isColorFunction(name)){
@@ -515,6 +695,15 @@ namespace {
         }
 
         const NormalizeContext& context;
+        struct Pending {
+            DiagCode code;
+            Severity severity;
+            std::string message, suggestion;
+        };
+        std::vector<Pending> pendingReports;
+        // in a translation folded without the fork's calc(): a sum of lengths stays calc(a + b),
+        // split into one translation per term (splitTranslate, or the 'translate' rewrite)
+        bool keepLengthSums = false;
         std::set<std::string> reportedApproximations;
         bool percentEstimated = false;
     };
@@ -543,6 +732,23 @@ void jasperengine::htmlui::compat::trimInPlace(ValueList& values){
         values.erase(values.begin(), values.begin() + (std::ptrdiff_t)leading);
 }
 
+std::vector<ComponentValue> ValueNormalizer::lengthSumTerms(const ValueList& value){
+    std::vector<ComponentValue> terms;
+    const ComponentValue* sole = soleValue(value);
+    if (!sole || sole->kind != ComponentValue::Kind::Function || !equalsNoCase(sole->name(), "calc"))
+        return terms;
+    for (const ComponentValue& c : sole->children){
+        if (c.isWhitespace() || (c.isToken(TokenType::Delim) && c.token.value.view() == "+"))
+            continue;
+        if (!c.isToken(TokenType::Dimension) && !c.isToken(TokenType::Percentage) && !c.isToken(TokenType::Number))
+            return std::vector<ComponentValue>();
+        terms.push_back(c);
+    }
+    if (terms.size() < 2)
+        terms.clear();
+    return terms;
+}
+
 NormalizeResult ValueNormalizer::normalize(const ValueList& value, const NormalizeContext& context){
     return normalize(value, context, ValueList());
 }
@@ -551,6 +757,7 @@ NormalizeResult ValueNormalizer::normalize(const ValueList& value, const Normali
                                            ValueList&& storage){
     Walker walker(context);
     ValueList out = walker.list(value, std::move(storage));
+    walker.flushReports();
     NormalizeResult result = walker.result;
     result.value = std::move(out);
     return result;

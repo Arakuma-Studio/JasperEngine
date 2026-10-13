@@ -1,0 +1,126 @@
+{
+ "fixture": "integration/sample-settings.html",
+ "viewport": [
+  640,
+  360
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "rest": [
+   {
+    "id": "name",
+    "tag": "input",
+    "x": 236,
+    "y": 87,
+    "w": 320,
+    "h": 30
+   },
+   {
+    "id": "quality",
+    "tag": "select",
+    "x": 236,
+    "y": 129,
+    "w": 320,
+    "h": 32
+   },
+   {
+    "id": "volume",
+    "tag": "input",
+    "x": 238,
+    "y": 175,
+    "w": 320,
+    "h": 16
+   },
+   {
+    "id": "vsync",
+    "tag": "input",
+    "x": 240,
+    "y": 208,
+    "w": 13,
+    "h": 13
+   },
+   {
+    "id": "hints",
+    "tag": "input",
+    "x": 324.53125,
+    "y": 208,
+    "w": 13,
+    "h": 13
+   },
+   {
+    "id": "cancel",
+    "tag": "button",
+    "x": 399.421875,
+    "y": 242,
+    "w": 80.625,
+    "h": 34
+   },
+   {
+    "id": "save",
+    "tag": "button",
+    "x": 490.046875,
+    "y": 242,
+    "w": 65.953125,
+    "h": 34
+   }
+  ],
+  "focused": [
+   {
+    "id": "name",
+    "tag": "input",
+    "x": 236,
+    "y": 87,
+    "w": 320,
+    "h": 30
+   },
+   {
+    "id": "quality",
+    "tag": "select",
+    "x": 236,
+    "y": 129,
+    "w": 320,
+    "h": 32
+   },
+   {
+    "id": "volume",
+    "tag": "input",
+    "x": 238,
+    "y": 175,
+    "w": 320,
+    "h": 16
+   },
+   {
+    "id": "vsync",
+    "tag": "input",
+    "x": 240,
+    "y": 208,
+    "w": 13,
+    "h": 13
+   },
+   {
+    "id": "hints",
+    "tag": "input",
+    "x": 324.53125,
+    "y": 208,
+    "w": 13,
+    "h": 13
+   },
+   {
+    "id": "cancel",
+    "tag": "button",
+    "x": 399.421875,
+    "y": 242,
+    "w": 80.625,
+    "h": 34
+   },
+   {
+    "id": "save",
+    "tag": "button",
+    "x": 490.046875,
+    "y": 242,
+    "w": 65.953125,
+    "h": 34
+   }
+  ]
+ }
+}

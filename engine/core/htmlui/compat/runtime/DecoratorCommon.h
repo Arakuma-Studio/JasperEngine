@@ -94,8 +94,10 @@ namespace jasperengine::htmlui::compat::decorators {
 
         // the texture to draw at `size` document px: raster images as loaded, SVG rasterized at
         // size x raster scale (pixels shared through a process cache). The vertex colour: white
-        // x opacity, or for a monochrome currentColor SVG the element's color x opacity.
-        Rml::Texture texture(Rml::Element* element, Rml::Vector2f size);
+        // x opacity, or for a monochrome currentColor SVG the element's color x opacity. An SVG
+        // repeated along an axis (a background tile) is sampled with repeat wrap there,
+        // rasterized at its size rounded up.
+        Rml::Texture texture(Rml::Element* element, Rml::Vector2f size, bool repeatX = false, bool repeatY = false);
         Rml::ColourbPremultiplied colour(Rml::Element* element) const;
 
     private:
@@ -106,6 +108,7 @@ namespace jasperengine::htmlui::compat::decorators {
         Rml::CallbackTexture svgTexture;
         Rml::Vector2i svgTextureSize{0, 0};
         std::string svgTextureXml;
+        bool svgTextureRepeatX = false, svgTextureRepeatY = false;
     };
 
     // the shape of an element box with its rounded corners (border-box coordinates); empty
@@ -130,7 +133,8 @@ namespace jasperengine::htmlui::compat::decorators {
     };
 
     // premultiplied RGBA of an SVG at a pixel size, shared by every decorator (bounded cache)
-    std::shared_ptr<const std::vector<uint8_t>> rasterizeCached(const std::string& xml, int width, int height);
+    std::shared_ptr<const std::vector<uint8_t>> rasterizeCached(const std::string& xml, int width, int height, float logicalWidth = 0.0f,
+                                                                float logicalHeight = 0.0f);
     size_t rasterCacheSize();
 
     // "[HTML UI] <document>: warning: message (fix: ...) [code]" once per (document, message)

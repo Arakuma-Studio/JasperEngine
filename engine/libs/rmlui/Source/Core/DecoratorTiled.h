@@ -62,7 +62,7 @@ public:
 		/// @param[in] surface_origin The starting point of the first tile to generate.
 		/// @param[in] surface_dimensions The dimensions of the surface to be tiled.
 		/// @param[in] tile_dimensions The dimensions to render this tile at.
-		void GenerateGeometry(Mesh& mesh, const ComputedValues& computed_values, Vector2f surface_origin, Vector2f surface_dimensions,
+		void GenerateGeometry(Mesh& mesh, const ComputedValues& computed_values, float opacity, Vector2f surface_origin, Vector2f surface_dimensions,
 			Vector2f tile_dimensions) const;
 
 		struct TileData {

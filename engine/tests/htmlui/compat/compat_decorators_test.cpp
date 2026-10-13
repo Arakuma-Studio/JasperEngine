@@ -184,12 +184,12 @@ TEST_F(CompatDecoratorTest, ShapeIsRasterizedAtTheBoxSize){
 }
 
 TEST_F(CompatDecoratorTest, BorderImageNineSlice){
-    ASSERT_NE(show("<div id='box'/>", "#box { width: 60px; height: 40px; border-width: 4px; border-color: transparent; "
+    ASSERT_NE(show("<div id='box'/>", "#box { width: 60px; height: 40px; border-width: 4px; border-style: solid; border-color: transparent; "
                    "decorator: html-border-image(\"asset://compat/runtime/nine3x3.png\" 1 1 1 1 nofill 1 1 1 1 0 0 0 0 stretch stretch); }"), nullptr);
     std::vector<RecordingRenderInterface::Draw> draws = drawsFromSource("nine3x3.png");
     ASSERT_EQ(draws.size(), 1u);
     EXPECT_EQ(draws[0].vertexCount, 8u * 4u);   // corners and edges
-    ASSERT_NE(show("<div id='box'/>", "#box { width: 60px; height: 40px; border-width: 4px; border-color: transparent; "
+    ASSERT_NE(show("<div id='box'/>", "#box { width: 60px; height: 40px; border-width: 4px; border-style: solid; border-color: transparent; "
                    "decorator: html-border-image(\"asset://compat/runtime/nine3x3.png\" 1 1 1 1 fill 1 1 1 1 0 0 0 0 stretch stretch); }"), nullptr);
     draws = drawsFromSource("nine3x3.png");
     ASSERT_EQ(draws.size(), 1u);
@@ -259,7 +259,7 @@ TEST(CompatDecoratorGpu, ShapeMaskAndLayersDraw){
             "#mask { left: 0; background-color: #ff0000; mask-image: html-shape(\"circle(50%)\"); } "
             "#layer { left: 64px; decorator: html-layer(\"asset://compat/runtime/pixels2x2.png\" 32px 32px 0% 0% repeat repeat padding-box border-box scroll); "
             "image-rendering: pixelated; } "
-            "#frame { left: 128px; width: 48px; height: 48px; border-width: 8px; border-color: transparent; "
+            "#frame { left: 128px; width: 48px; height: 48px; border-width: 8px; border-style: solid; border-color: transparent; "
             "decorator: html-border-image(\"asset://compat/runtime/nine3x3.png\" 1 1 1 1 fill 1 1 1 1 0 0 0 0 stretch stretch); image-rendering: pixelated; }"
             "</style></head><body><div id='mask'/><div id='layer'/><div id='frame'/></body></rml>";
         ASSERT_NE(test.loadFromMemory(rml, "compat/runtime/decorators.rml"), nullptr);

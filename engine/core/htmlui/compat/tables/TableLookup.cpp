@@ -247,7 +247,7 @@ const char* jasperengine::htmlui::compat::rewriteIdName(RewriteId id){
         "ClipPath", "ListStyle", "ObjectFit", "ImageRendering", "AccentColor", "Appearance",
         "IndividualTransform", "ColorValue", "Cursor", "PointerEvents", "TabIndexLike", "Direction",
         "SvgPaint", "ScrollbarStyle", "Gap", "BorderSpacing", "Visibility", "ZIndex", "Opacity",
-        "Sizing", "Flex", "Grid", "Content", "All", "LineClamp",
+        "Sizing", "Flex", "Grid", "Content", "All", "LineClamp", "UserSelect",
     };
     static_assert(sizeof(names) / sizeof(names[0]) == (size_t)RewriteId::Count, "one name per RewriteId");
     const size_t index = (size_t)id;

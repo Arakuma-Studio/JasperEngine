@@ -667,6 +667,7 @@ namespace {
         bool sizeSet = false;
         Repeat repeatX = Repeat::Repeat, repeatY = Repeat::Repeat;
         bool fixed = false;                            // background-attachment: fixed (scroll otherwise)
+        bool local = false;                            // background-attachment: local (the fork draws it; else scroll)
         Box origin = Box::PaddingBox, clip = Box::BorderBox;
         bool clipText = false;
     };
@@ -893,9 +894,11 @@ namespace {
                 continue;
             }
             if (k == "scroll" || k == "fixed" || k == "local"){
-                if (k == "local")
+                const bool native = scope.context && scope.context->fork(ForkFeature::BackgroundLayers);
+                if (k == "local" && !native)
                     say(scope, Severity::Info, codes::ApproximatedMinor, "'background-attachment: local' is drawn as scroll");
                 layer.fixed = k == "fixed";
+                layer.local = k == "local";
                 continue;
             }
             Box box;
@@ -1141,6 +1144,7 @@ namespace {
                 if (k != "scroll" && k != "fixed" && k != "local")
                     return false;
                 layer.fixed = k == "fixed";
+                layer.local = k == "local";
             }else{
                 return false;
             }
@@ -1193,8 +1197,211 @@ namespace {
         return buffer;
     }
 
+    // ---- the fork's layers (ForkFeature::BackgroundLayers, phase 3 p3-paint): each declaration is written as the
+    // native longhands it sets, the values normalized (url() resolved, gradients as the fork's gradient functions)
+
+    // one longhand list of the layers
+    std::string nativeList(const ArenaList<Layer>& layers, const char* longhand){
+        std::string out;
+        for (size_t i = 0; i < layers.size(); i++){
+            const Layer& layer = layers[i];
+            if (i > 0)
+                out += ", ";
+            const std::string_view name = longhand;
+            if (name == "image"){
+                switch (layer.kind){
+                    case Layer::Kind::None: out += "none"; break;
+                    case Layer::Kind::Var: appendSerialized(out, *layer.var); break;
+                    case Layer::Kind::Gradient: out += layer.image.view(); break;
+                    case Layer::Kind::Image:
+                        out += "url(";
+                        appendString(out, layer.image);
+                        out += ")";
+                        break;
+                }
+            }else if (name == "position-x"){
+                appendAxis(out, layer.x);
+            }else if (name == "position-y"){
+                appendAxis(out, layer.y);
+            }else if (name == "size"){
+                if (layer.sizeX.kind == Size::Kind::Cover || layer.sizeX.kind == Size::Kind::Contain){
+                    appendSize(out, layer.sizeX);
+                }else{
+                    appendSize(out, layer.sizeX);
+                    out += ' ';
+                    appendSize(out, layer.sizeY);
+                }
+            }else if (name == "repeat"){
+                out += repeatName(layer.repeatX);
+                out += ' ';
+                out += repeatName(layer.repeatY);
+            }else if (name == "origin"){
+                out += boxName(layer.origin);
+            }else if (name == "clip"){
+                out += boxName(layer.clip);
+            }else if (name == "attachment"){
+                out += layer.fixed ? "fixed" : layer.local ? "local" : "scroll";
+            }
+        }
+        return out;
+    }
+
+    void rewriteLayersNative(DeclContext& context, bool mask){
+        LayerScope scope = scopeOf(context, mask);
+        const std::string prefix = mask ? "mask-" : "background-";
+        std::string_view name = plainName(context.name);
+        std::string maskName;
+        if (mask && startsWith(name, "mask-")){
+            maskName = "background-" + std::string(name.substr(5));
+            name = maskName;
+        }else if (mask && name == "mask"){
+            name = "background";
+        }
+
+        // a whole-value var() is the fork's to resolve (typed: its url()s resolved)
+        if (context.value.size() == 1 && isVar(context.value[0])){
+            const std::string target = mask && context.name == "clip-path" ? std::string("mask-image") : std::string(plainName(context.name));
+            std::optional<TypedVar> typed = context.name == "clip-path" ? std::nullopt : wholeVar(context, "native-layers");
+            if (typed)
+                context.emit(target, typed->reference);
+            else
+                context.emit(target, context.valueText());
+            return;
+        }
+
+        if (mask && context.name == "clip-path"){
+            const Words w = wordsOf(context.value);
+            if (w.size() == 1 && isIdent(*w[0], "none")){
+                context.emit("mask-image", "none");
+                return;
+            }
+            std::optional<std::string> shape = clipPathShape(context, context.declaration);
+            if (shape)
+                context.emit("mask-image", *shape);
+            return;
+        }
+
+        // the layers the declaration describes: the shorthand all of them, a longhand one list
+        Layers state;
+        const ArenaList<ValueRange> groups = commaRanges(context.value);
+        if (name != "background" && name != "background-image"){
+            // a list longhand: one layer per item
+            for (size_t i = 0; i < groups.size(); i++)
+                state.layers.push_back(Layer());
+        }
+        if (!applyDeclaration(scope, context.name, context.value, state)){
+            context.reportAs(Severity::Warning, codes::UnsupportedValue, "'" + context.sourceText() + "' is not supported; declaration dropped",
+                             "check the background syntax");
+            context.dropped = true;
+            return;
+        }
+
+        // gradient text: background-clip: text with a transparent text fill, as without the fork
+        bool clipText = false;
+        std::string middle;
+        for (const Layer& layer : state.layers){
+            if (layer.clipText){
+                clipText = true;
+                if (middle.empty())
+                    middle = layer.kind == Layer::Kind::Gradient ? (layer.middleColor ? text(*layer.middleColor) : std::string()) : "#ffffffff";
+            }
+        }
+        if (clipText && !mask){
+            const FlatRule* base = context.rule ? BaseRules::find(context.session, *context.rule, [&](const FlatRule& candidate){
+                return transparentFill(context.session, candidate);
+            }) : nullptr;
+            if (context.rule && (transparentFill(context.session, *context.rule) || base)){
+                // (a background-clip declaration alone: the colour of the gradient the rule, or its base rule, declares)
+                if (name == "background-clip"){
+                    middle.clear();
+                    for (const FlatRule* rule : {static_cast<const FlatRule*>(context.rule), base}){
+                        if (!rule || !middle.empty())
+                            continue;
+                        for (const char* property : {"background", "background-image"}){
+                            const std::optional<ValueList> value = ruleValue(context.session, *rule, property);
+                            Layers images;
+                            if (!value || !applyDeclaration(scope, property, *value, images))
+                                continue;
+                            for (const Layer& layer : images.layers){
+                                if (layer.kind == Layer::Kind::Gradient && layer.middleColor){
+                                    middle = text(*layer.middleColor);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (middle.empty())
+                    middle = "#ffffffff";
+                context.reportAs(Severity::Warning, codes::ApproximatedVisible, "gradient text is drawn in a solid color (" + middle + ")",
+                                 "use a solid text color");
+                if (name == "background")
+                    context.emit("background-color", state.colorSet && state.color ? Text(text(*state.color)) : Text::view("transparent"));
+                context.emit("background-image", "none");
+                context.emit("color", middle);
+                return;
+            }
+            context.reportAs(Severity::Info, codes::ApproximatedMinor, "'background-clip: text' without a transparent text color is dropped");
+            if (name == "background-clip")
+                return;
+        }
+
+        auto emitList = [&](const char* longhand){
+            // (every layer dropped: no images)
+            if (state.layers.empty()){
+                if (std::string_view(longhand) == "image")
+                    context.emit(prefix + longhand, "none");
+                return;
+            }
+            context.emit(prefix + longhand, nativeList(state.layers, longhand));
+        };
+        if (name == "background"){
+            if (!mask){
+                if (state.colorSet && state.color)
+                    context.emit("background-color", text(*state.color));
+                else
+                    context.emit("background-color", "transparent");
+            }
+            for (const char* longhand : {"image", "position-x", "position-y", "size", "repeat"})
+                emitList(longhand);
+            if (!mask){
+                for (const char* longhand : {"origin", "clip", "attachment"})
+                    emitList(longhand);
+            }
+            return;
+        }
+        if (name == "background-image")
+            emitList("image");
+        else if (name == "background-position"){
+            emitList("position-x");
+            emitList("position-y");
+        }else if (name == "background-position-x")
+            emitList("position-x");
+        else if (name == "background-position-y")
+            emitList("position-y");
+        else if (name == "background-size")
+            emitList("size");
+        else if (name == "background-repeat")
+            emitList("repeat");
+        else if (!mask && name == "background-origin")
+            emitList("origin");
+        else if (!mask && name == "background-clip")
+            emitList("clip");
+        else if (!mask && name == "background-attachment")
+            emitList("attachment");
+        else{
+            // mask-origin, mask-clip, mask-mode, mask-composite: the fork has no such properties
+            context.reportAs(Severity::Info, codes::ApproximatedMinor, "'" + context.name + "' has no effect (the mask's box is its border box)");
+            context.dropped = true;
+        }
+    }
+
     // the family of the rule, merged at its last declaration (and with the base rule)
     void rewriteLayers(DeclContext& context, bool mask){
+        if (context.fork(ForkFeature::BackgroundLayers)){
+            rewriteLayersNative(context, mask);
+            return;
+        }
         LayerScope scope = scopeOf(context, mask);
         Layers state;
         if (context.rule && !context.keyframe){
@@ -1393,8 +1600,38 @@ namespace {
         return transformLayers(session, value, kind, ref, true);
     }
 
+    // the fork's layers (BackgroundLayers) read a variable as the CSS value it is, its url()s resolved for the file that
+    // declares it (phase 3, p3-paint)
+    std::string classifyNativeLayers(Session& session, const ValueList& value){
+        // (a colour is a background too: one kind)
+        const Words w = wordsOf(value);
+        if (w.size() == 1 && isColor(session, *w[0]))
+            return "layers";
+        LayerScope scope{session, 0, SourceRef(), false, nullptr, false};
+        Layers state;
+        return applyDeclaration(scope, "background", value, state) ? "layers" : std::string();
+    }
+    std::optional<std::string> transformNativeLayers(Session& session, const ValueList& value, const std::string&, SourceRef ref){
+        std::string out;
+        for (const ComponentValue& v : value){
+            if (v.isToken(TokenType::Url) || v.isFunction("url")){
+                std::optional<std::string> url = urlOf(v);
+                const std::string path = url ? resolveUrlIn(session, *url, ref.file, ref, "image") : std::string();
+                if (path.empty())
+                    return std::nullopt;
+                out += "url(\"" + path + "\")";
+                continue;
+            }
+            appendSerialized(out, v);
+        }
+        const size_t begin = out.find_first_not_of(" \t\n");
+        const size_t end = out.find_last_not_of(" \t\n");
+        return begin == std::string::npos ? std::string() : out.substr(begin, end - begin + 1);
+    }
+
 }
 
+const VarFamily jasperengine::htmlui::compat::kNativeLayersFamily = {"native-layers", classifyNativeLayers, transformNativeLayers};
 const VarFamily jasperengine::htmlui::compat::kDecoratorFamily = {"decorator", classifyDecorator, transformDecorator};
 const VarFamily jasperengine::htmlui::compat::kMaskFamily = {"mask", classifyMask, transformMask};
 

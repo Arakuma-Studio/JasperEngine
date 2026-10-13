@@ -84,6 +84,7 @@ colours, `image-set()` by dp ratio), phase 2's behaviour stays.
 | `@layer` cascade layers, `revert-layer` with layers | No cascade layers in the parser; `revert-layer` without layers behaves as `revert` (CSS-correct when no layers exist), `@layer` blocks are diagnosed by compat. | "Remove `@layer`; order rules by specificity." |
 | CSS counters in `counter()` styles other than the list in §3.6; `@counter-style` | Long tail. | "Use one of: decimal, decimal-leading-zero, lower/upper-alpha/latin, lower/upper-roman, lower-greek, disc, circle, square, none." |
 | `text-decoration-style: wavy`, `text-emphasis`, `text-indent: hanging/each-line`, `hyphens: auto` | Long tail; `wavy` renders as `solid`. | listed per property |
+| `text-align: justify` | 6.3 has no justification (the value is accepted and aligns left); distributing space needs per-line glyph placement in the font engine interface. | "Justified text is aligned left." (the guide's limits list) |
 | `mix-blend-mode`, `background-blend-mode` | Needs blend modes beyond `Blend/Replace` in `RenderInterface::CompositeLayers` (RenderInterface.h:98-122) on all sokol backends; phase 5 (effects) owns new compositing modes. | "Not supported; use opacity or a pre-blended image." |
 | `background-clip: text` | Needs text as a mask layer per text run; phase 5 effects library provides a shader decorator for gradient text. | "Use the gradient-text effect (phase 5)." |
 | `display: ruby*`, table `border-collapse: collapse` parity, `caption-side`, CSS automatic table layout | Tables are rare in game UI; RmlUi's table model is kept as is: a table without a `width` fills its container (CSS shrinks it to its content) and columns without a width share the table's width equally (CSS sizes them by content). Phase 2's golden pages leave these widths out of the layout gate (`data-ref-tol="auto-width"` on `ua-defaults`' table, the `settings` key-binding table's cells have no ids). | per property; the guide says "give tables and columns a width" |
@@ -248,7 +249,8 @@ different things and neither depends on the other:
 
 - `PropertyId` (`ID.h:43`) becomes `enum class PropertyId : uint16_t` with `MaxNumIds = 256`
   (6.3 uses 101 of 128; phase 3 adds ~70 longhands, Appendix B). `PropertyIdSet`
-  (`PropertyIdSet.h:21`) follows automatically (`std::bitset<256>`). Check every
+  (`PropertyIdSet.h:21`) follows (as implemented: four 64-bit words iterated by trailing-zero
+  count, as 6.3's two were, rather than `std::bitset<256>`). Check every
   `static_cast<uint8_t>`/`uint8_t` storage of a `PropertyId` (grep `uint8_t` near `PropertyId`).
 - `ShorthandId` stays `uint8_t` (max `0xff`; ~30 used + ~30 added).
 - `Unit` (`Unit.h:8`) becomes `enum class Unit : uint64_t`. PR #983 takes bit 30
@@ -410,6 +412,86 @@ hottest files (`ComputedValues.h`, `StyleTypes.h`, `ElementStyle.cpp`, `ElementA
 `PropertyParserAnimation.cpp`, `PropertyParserTransform.cpp`); everything else in groundwork is
 applied on top of it.
 
+#### 3.1.12 `p3-base` as implemented
+
+Where the implementation differs from or makes precise §3.1.1–3.1.11 and §3.2 (FORK.md rows
+P3-1…P3-11 list the commits):
+
+- **Order.** PR #983 (P3-1) is the first commit; P3-2…P3-11 follow in the order of §3.1.3–3.1.10.
+  Its tests and our own run in the vendored suite (`tools/htmlui/run-rmlui-tests.sh`), which
+  defines `RMLUI_MATH_EXPRESSIONS` as the engine does. The media-query cases of
+  `Calculation.cpp` expect the WPT results at the 16px initial font size.
+- **Initial values (§3.1.2).** Done: `font-size: 16px`, `color: black`, `min-width`/`min-height:
+  auto` (computed `LengthPercentageAuto`; layout reads `auto` as 0 until p3-layout's automatic
+  minimum size), alignment `normal` (`justify-items: legacy`), `opacity` not inherited,
+  `visibility` inherited. Deferred: `line-height` stays `1.2` (19.2px at 16px) until p3-values
+  adds `normal` (§3.3.6); `border-*-color` stays registered as `black` because `currentcolor`
+  cannot be declared before p3-values (§3.3.2), but an element that declares no border colour
+  computes it to its own `color` (a post-pass in `ComputeValues`, recomputed when `color`
+  changes), which is the CSS initial value's effect. `opacity`: the property is not inherited and
+  `ComputedValues::opacity()` stays what rendering multiplies by: the element's opacity times its
+  parent's computed `opacity()` (the "draw opacity"); p3-paint's group opacity (§3.8) replaces
+  the product and moves the field. A change of the inherited `visibility` alone (showing a
+  document) takes the parent's value without recomputing the element's other values (`df6da7d8`;
+  without it, `custom_properties.data_model` warned twice and loading a document cost 10 % more).
+  Phase-2 table data: `rmluiDefaultDiffers` is now false for `color`, `font-size`,
+  `border-*-color` (physical, logical, shorthand), `min-width`, `min-height`.
+  `InitialValues.cpp` asserts, for every registered property, that its registered default
+  computes to the default-constructed value.
+- **Capacity (§3.1.3).** Appendix B ids are in `ID.h`, grouped per package, and reserved without
+  a name (`IdNameMap::ReserveUnnamed`): a package registers its own with the usual
+  `RegisterProperty`/`RegisterShorthand`; an unregistered id has no name and parses nothing.
+  `will-change` is registered (`auto` or a string).
+- **Shorthands (§3.1.4).** `PropertySpecification::SetShorthandDefaults`, `SplitCommaList`,
+  `SplitWhitespaceList` (both parenthesis- and quote-aware) and `ParseAnyOrderShorthand` (for
+  Custom parsers that delegate) are public. `border-top` etc. keep `FallThrough` until p3-paint
+  re-registers them with `AnyOrder` (their longhands change there).
+- **Style values (§3.1.5).** `ResolveLengthPercentage` takes `Element&` (calc resolution reads
+  the element's font and the context's viewport); the value type is `LengthPercentageValue`
+  (`NumericValue` or `CalculationPtr`) with `ParseLengthPercentage(String, LengthPercentageValue&)`
+  and `ParsePosition(const StringList& tokens, LengthPercentageValue& x, LengthPercentageValue& y)`
+  for p3-values' `<position>` (§3.3.3) and p3-paint's backgrounds.
+- **Layout children (§3.1.6).** `grid`/`inline-grid` are in the enum and laid out as block /
+  inline-block, but the `display` keyword list gains only `list-item` and `contents` now: the
+  grid keywords are parsed once p3-grid lands (otherwise `ForkFeature::Grid`'s probe would turn
+  true early). `list-item` lays out as `block` until p3-cascade's markers. Lists come from a
+  reused stack (`ScopedLayoutChildList`) so block layout does not allocate per container, and
+  read each child's `display: contents` from a flag on the element (`Element::display_contents`)
+  rather than its computed values. A change of `order`, or of `display` to or from `contents`,
+  dirties the parent's stacking context, so paint follows `order`.
+- **Alignment (§3.1.7).** `baseline` stays the existing `Baseline` value (= first baseline;
+  `first baseline` parses to it) and `LastBaseline` is appended; `Left`/`Right` and `Legacy`
+  only in the justify enums. `safe`/`unsafe` are stored in the keyword property's value above the
+  keyword (`1 << 8` safe, `2 << 8` unsafe); `ComputedValues` returns the keyword from the
+  usual accessor and the flag from `align_items_overflow()` etc. `legacy left/right/center`
+  computes to `legacy`. Flex layout reads `normal` as 6.3's defaults (`stretch` items,
+  `flex-start` content), `start`/`self-start`/`left` as `flex-start` and `end`/`self-end`/`right`
+  as `flex-end`; p3-layout owns the exact mapping (§3.12.7).
+- **Intrinsic sizing (§3.1.8).** The min-content measurement formats at available width 0 as
+  planned; while it runs, nested shrink-to-fit boxes (floats, inline-blocks) take their own
+  min-content width instead of their shrink-to-fit width (`LayoutDetails::GetShrinkToFitWidth`
+  checks a measuring flag). Tables are not measured: without a definite width their
+  min-content and max-content widths are their edges until p3-layout adds table measurement. `LayoutMeasureCache` keys are element,
+  kind (`MinContentWidth`, `MaxContentWidth`, `HeightForWidth`), containing block and width;
+  `LayoutMeasureCache::Scope` makes one current for a `FormatElement` call (nested calls get
+  their own) and `LayoutMeasureCache::Get()` returns it.
+- **Containing-block override (§3.1.9).** `std::optional<Rectanglef>` (RmlUi has no `Optional`);
+  layout code asks `LayoutDetails::GetContainingBlock(container, element)`, which honours it.
+- **Animation layers (§3.1.10).** `ElementStyle::SetTransitionProperty/RemoveTransitionProperty/
+  SetAnimatedProperty/RemoveAnimatedProperty/GetTransitionProperties/GetAnimatedProperties`; the
+  dictionaries are allocated on first use. The animation code still writes inline properties until
+  p3-animation moves it onto the layers.
+- **`Calc` (§3.2, Appendix A).** `kPresent[Calc]` is true. Compat keeps a valid `calc()`,
+  `min()`, `max()`, `clamp()` only where the declaration reaches RCSS as written: properties
+  without a rewrite and the `Sizing`, `Gap`, `FontSize`, `LineHeight`, `ZIndex`, `Opacity`
+  rewrites (`NormalizeContext::calcNative`) and custom properties; `RcssGrammar::accepts(property,
+  value, fork)` checks the result (a calc() must have the property's unit class: lengths for
+  `box-shadow`, times for `transition`/`animation`). Every other rewrite (shapes, gradients,
+  transforms, …) still folds as in phase 2, and a reduction with `Calc` present reports
+  `HTMLUI-CSS-0006` instead of the fork-fallback code. An invalid calc() is
+  `HTMLUI-CSS-0004` as in the browser. p3-values widens `calcNative` as its value types learn
+  calc().
+
 ---
 
 ### 3.2 `calc()`, `min()`, `max()`, `clamp()` (PR #983; `p3-base` applies, `p3-values` extends)
@@ -499,7 +581,8 @@ no `currentcolor`.
   (hue), `none` keyword = 0, out-of-range clamping, `rgb()` accepting 4 comma args.
 - `hwb()`; `lab/lch/oklab/oklch` exist — verify alpha and `none` handling.
 - `color-mix(in <space>, c1 [p1], c2 [p2])` for spaces `srgb`, `srgb-linear`, `oklab`, `oklch`,
-  `lab`, `lch`, `hsl`, `hwb`, `xyz`; constant-folded at parse time when both operands are literal.
+  `lab`, `lch`, `hsl`, `hwb`, `xyz`; constant-folded at parse time when both operands are literal;
+  with a `currentcolor` operand (also nested) resolved where `currentcolor` is (below).
 - Full CSS named-color table (148 names + `rebeccapurple`), case-insensitive.
 - `currentcolor`: parsed to `Property{Unit::KEYWORD, CurrentColor}` accepted by every `color`
   parser use. Resolution: `color` is computed first (like `font-size`, `ElementStyle.cpp:917`);
@@ -533,7 +616,7 @@ value CSS grammar with keyword order freedom and edge offsets `right 10px bottom
   compat rewrite, only the separator contract is checked (unit test in
   `engine/tests/htmlui/FontFamilyListTest.cpp`).
 - `font-size` keywords `xx-small … xxx-large` (CSS table relative to 16px), `smaller`/`larger`
-  (×1/1.2 of parent), `math` → `medium`.
+  (×1/1.2 of parent), `math` → the parent's size (Chromium; was planned as `medium`).
 - `font-weight`: `bolder`/`lighter` (CSS relative-weight table, computed against parent), numbers
   1–1000.
 - `font` shorthand (`StyleSheetSpecification.cpp:359`, FallThrough) → `Custom`:
@@ -541,6 +624,8 @@ value CSS grammar with keyword order freedom and edge offsets `right 10px bottom
   and system font keywords (`caption`, `menu`, … → diagnosed). Omitted longhands reset.
 - Font size passed to the font engine is rounded, not truncated (`ElementStyle.cpp:1000`
   `(int)values.font_size()` → `Math::RoundToInteger`); `FontEngineInterface` keeps `int size`.
+  (As implemented: `math` is the parent's size, as Chromium; quoted lists reach the parser
+  as written; see "p3-values as implemented" in §4.)
 
 #### 3.3.5 Numbers
 - `opacity`, `flex-grow`, `flex-shrink` accept `%` where CSS does (opacity), clamp negative
@@ -632,10 +717,13 @@ Bug: changing the `style` attribute only calls `SetProperty` for the new declara
     `GetProperty :653-661`): `initial` → `PropertyDefinition::GetDefaultValue()`; `inherit` → the
     parent's specified/computed property; `unset` → `inherit` for inherited properties, else
     `initial`; `revert` → the value from the user-agent origin (below), else `unset`.
-  - Computed level (`ComputeValues :873-1027`): `inherit` copies the parent's **computed** field
-    (new `ComputedValues::CopyFrom(PropertyId, const ComputedValues&)` generated per id), so `em`
-    and `%` are not re-resolved; `initial` computes the default property. The font-size and
-    line-height pre-passes (`:917-970`) handle the keywords too.
+  - Computed level (`ComputeValues`): `inherit` on a non-inherited property computes the
+    declaration the nearest ancestor resolves to, with **that ancestor's** font size, so `em` is
+    not re-resolved against the element (`ElementStyle::ResolveComputedKeyword`; no per-id
+    `ComputedValues::CopyFrom`: the one generic path serves the 187 ids and stays correct as
+    packages add properties); inherited properties take the parent's computed field as they
+    always did; `initial` computes the default property. The font-size and line-height
+    pre-passes handle the keywords too.
   - Inherited-dirty propagation: an element whose property is `inherit` on a non-inherited property
     must be dirtied when the parent's value changes: `ComputeValues` propagates dirty ids for
     which any child has an explicit `inherit` (child style keeps a small `explicit_inherit`
@@ -648,9 +736,11 @@ The compat layer (phase 2) links the user-agent stylesheet first, as
 Fork addition: `XMLNodeHandlerHead` reads the `origin` attribute of a `<link>` and calls
 `StyleSheet::SetOrigin(StyleOrigin::UserAgent)` on that sheet before it is merged; when sheets
 are merged (`StyleSheet.cpp:43-44`), UA properties are tagged `origin = UserAgent` in `Property`
-(2 bits, next to `important`). `ElementDefinition` keeps, in addition to the merged dictionary, a
-`PropertyDictionary ua_properties` filled only from UA-origin nodes (small: the UA sheet matches
-few rules per element). `revert` returns the UA value for that id, else behaves as `unset`.
+(next to `important`). A style sheet node keeps its UA-origin declarations apart
+(`StyleSheetNode::user_agent_properties`: an author rule with the same selector merges into the
+same node and would otherwise overwrite them), and `ElementDefinition::GetUserAgentProperty`
+(`GetUserAgentCustomProperty`) merges them from the matched nodes on demand (the UA sheet
+matches few rules per element). `revert` returns the UA value for that id, else behaves as `unset`.
 Compat's `DocumentLoader::restyle`/`restyleForViewport` (phase 2 §3.12.1) rebuild the
 container from the cached UA sheet and call `SetOrigin` on it (additive one-line change in
 phase-2 code). The presentational-hints `<style>` is author origin, as in CSS. The root band
@@ -699,8 +789,8 @@ Unknown or invalid selectors must not silently create never-matching rules: the 
 Structural selector type `Root`: `element == element->GetOwnerDocument()` (a document is its own
 owner, `Element.cpp:2137-2143`). With phase 2's root mapping (§3.1.1) this is the HTML
 `<html>` (RML `body#htmlui-root`); compat keeps rewriting `:root` to `body#htmlui-root` for the
-root band, which matches the same element. Specificity:
-pseudo-class.
+root band and, with `RootIsWhere`, keeps the pseudo-class next to it (`body#htmlui-root:root`),
+so `:root` outweighs `html` as in CSS. Specificity: pseudo-class.
 
 #### 3.5.2 `:is()`, `:where()`
 `StructuralSelectorType::Is`, `Where` (`StyleSheetSelector.h:69`), registered in the factory map
@@ -719,7 +809,8 @@ it only gains the forgiving-list behavior.
   `x` → `:scope x`, `+ x` → `:scope + x`, `~ x` → `:scope ~ x`), then `ConstructNodes`. Nested
   `:has()` is rejected (CSS).
 - Matching: for `>`/descendant forms walk the subject's descendants (DOM children only, pseudo-
-  elements excluded), for `+`/`~` the following siblings, calling `leaf->IsApplicable(candidate,
+  elements excluded; the options a `<select>` keeps in its `selectbox` part are walked as its
+  descendants), for `+`/`~` the following siblings, calling `leaf->IsApplicable(candidate,
   /*scope=*/subject)` (`:scope` already compares `element == scope`, `StyleSheetSelector.cpp:352`).
 - Invalidation: `StyleSheet::BuildIndex` records `uses_has` and the set of tag/class/id/attribute
   names appearing inside `:has()` arguments. When a sheet uses `:has`, `Element::DirtyDefinition`,
@@ -732,8 +823,9 @@ it only gains the forgiving-list behavior.
   re-matches fewer than 50 elements (counter in `RMLUI_TESTS_ENABLED` builds).
 
 #### 3.5.4 `:focus`, `:focus-within`, `:focus-visible`
-- `Context::OnFocusChange` (`Context.cpp:1190-1237`) sets pseudo-classes itself after dispatching
-  events: `focus` only on the new focus element (removed from the old), `focus-within` on
+- `Context::OnFocusChange` (`Context.cpp:1190-1237`) sets pseudo-classes itself, between the Blur
+  and the Focus events (a Focus listener sees the new state, as in browsers): `focus` only on the
+  new focus element (removed from the old), `focus-within` on
   `new_chain` (removed from `old_chain \ new_chain`), `focus-visible` only on the new focus element
   when the focus was keyboard/gamepad-initiated (the existing `focus_visible` parameter).
 - Remove the Target-phase handling at `Element.cpp:2034-2042`. The Focus/Blur events are still
@@ -788,7 +880,7 @@ attr-flags}.html` (states driven by fixture steps, §5.2).
 
 **Storage decision.** Pseudo-elements are real `Element` objects owned by the originating element
 as **non-DOM children** (`AppendChild(…, dom_element=false)`, `Element.cpp:1344-1371`), pointers in
-`ElementMeta` (`pseudo_before`, `pseudo_after`, `pseudo_marker`). Consequences:
+`ElementMeta` (`pseudo_elements[3]`, indexed by type). Consequences:
 - DOM APIs (`GetChild`, `GetNumChildren()`, siblings, `QuerySelector*`, `GetElementById`,
   structural selectors, `GetInnerRML`, data-binding `data-for`, the Lua element API) already skip
   non-DOM children — no change needed and no risk of `:nth-child` counting them.
@@ -850,32 +942,45 @@ call sites, Lua proxies and data binding.)
 - `CounterResolver` in `ElementDocument`: when a counter property, `display`, the DOM order or a
   pseudo-element's existence changes, the document is marked `counters_dirty`; before layout
   (`ElementDocument::UpdateLayout`) a pre-order walk over the layout tree (elements +
-  pseudo-elements, `display:none` excluded) applies reset/set/increment with CSS scoping
-  (counters are inherited by descendants and following siblings' subtrees) and updates the text of
-  every pseudo-element whose content uses `counter()`/`counters()`. Implicit `list-item` counter:
-  incremented by every `display: list-item` element, reset by `ol`/`ul`/`menu` via the UA
-  stylesheet (`ol { counter-reset: list-item }`), `<ol start>`/`reversed` and `<li value>` handled
-  by UA attribute rules + the resolver.
+  pseudo-elements, `display:none` excluded) applies reset/set/increment with CSS Lists 3 §4.4.1
+  inheritance (an element takes its parent's counters, those of its preceding sibling it does not
+  have yet, and the values of the previous element in tree order) and updates the text of
+  every pseudo-element whose content uses `counter()`/`counters()`; `quotes` depth is counted in
+  the same walk. Implicit `list-item` counter: incremented by every `display: list-item` element,
+  reset by `ol`/`ul`/`menu` via the UA stylesheet (`ol { counter-reset: list-item }`); the
+  resolver reads `<ol start>`, `<ol reversed>` and `<li value>` when the list's `counter-reset`
+  names `list-item` without a value (no UA attribute rules: `attr()` cannot give an integer).
+  `counter-reset: reversed(name)` is parsed.
 - Styles: `decimal`, `decimal-leading-zero`, `lower-alpha/latin`, `upper-alpha/latin`,
   `lower-roman`, `upper-roman`, `lower-greek`, `disc`, `circle`, `square`, `none`, `<string>`
   (others diagnosed, §2.2).
 
 #### 3.6.4 `display: list-item` and `::marker`
 - Properties: `list-style-type` (inherited, initial `disc`), `list-style-position` (inherited,
-  `outside` | `inside`), `list-style-image` (`none` | `url()`: the marker is that image at its
-  intrinsic size, as phase 2's emulation already supports), `list-style` (`AnyOrder`
-  shorthand). Phase 2 registers the three longhands itself today; its `registerAll()` skips
-  names the fork registers (phase 2 §3.11.1).
+  `outside` | `inside`), `list-style-image` (`none` | `url()`, or as RCSS writes its other
+  sources a string or a bare path: the marker is that image at its intrinsic size, as phase 2's
+  emulation already supports; an image that cannot be loaded gives the type's marker),
+  `list-style` (`Custom` shorthand: `none` fills the type, then the image; the image as `url()`
+  only). The three longhands force a layout. Phase 2 registered them itself; its `registerAll()`
+  skips names the fork registers (phase 2 §3.11.1).
 - A `display: list-item` element gets a `::marker` pseudo-element when `list-style-type` is not
-  `none` or a `::marker` rule sets `content`. Default content: counter text + `". "` for ordinal
-  styles; the bullet glyph (U+2022 disc, U+25E6 circle, U+25AA square) + space for symbol styles.
-  `::marker` accepts only the CSS-allowed properties (color, font-*, content, white-space,
-  animation/transition, direction); others are ignored at definition time.
-- Layout: `inside` → the marker is the first inline box of the element's first line. `outside` →
-  the marker is laid out as an inline-block (shrink-to-fit) positioned so that its end edge touches
-  the list item's border-box start edge and its baseline aligns with the first line box's baseline;
-  it does not affect the list item's size and is painted with the list item. Implemented in
-  `BlockContainer`/`InlineContainer` when the first line box closes (`LineBox` gives the baseline).
+  `none`, it has a `list-style-image`, or a `::marker` rule sets `content`. Default content:
+  counter text + `". "` for ordinal styles; symbol styles (disc, circle, square, and the
+  disclosure triangles of `summary`) are **drawn as shapes** sized from the font's ascent, as
+  Chromium paints them (the built-in fonts have no glyphs for most of them, and a glyph would
+  not match the reference's size or position). `::marker` takes any property: the CSS
+  restriction to color, font-*, content, white-space, animation/transition and direction is not
+  enforced (a rule that sets others styles the marker's box; reported by nothing).
+- Layout (`ElementListMarker`, `Source/Core/ListMarker.cpp`): the marker is the first layout
+  child (§3.1.6). `inside` → the first box of the element's first line (ordinal text: an inline
+  box; a symbol: an inline-block of Chromium's symbol width with margins -1px and 1em; an image
+  followed by 7px). `outside` → an inline-block on the first line whose negative margin puts it
+  before the item's start edge and whose margins cancel its advance, with Chromium's offsets
+  (`ListMarker::InlineMarginsForOutside`: an ordinal ends at the item's content start, a symbol
+  sits `ascent * 2 / 3 + 8` px before it, an image 7px before it). It is aligned on the line's
+  baseline and does not move the item's content along the line; a marker taller than the line
+  (a bigger `::marker` font, an image) grows the first line box, as in Chromium. No change to
+  `BlockContainer`/`InlineContainer` was needed.
 - Compat: phase 2 emulates markers (`HtmlListItemElement`/`HtmlSummaryElement` `marker`
   child, `ListMarkers`, `::marker` → `marker`, `display: list-item` → `block`, UA
   `li { display: block }`). p3-cascade appends `ForkFeature::ListMarkers`; with it present the
@@ -890,6 +995,69 @@ returns originating element, inheritance from originating element, transitions o
 `:hover::after`, destruction with the parent, data-for siblings), `Counters.cpp`, `ListMarkers.cpp`.
 Goldens: `p3/pseudo/{before-after-basic,content-attr,content-url,hover-transition,
 counters-nested,list-markers-outside,list-markers-inside,ordered-start-reversed}.html`.
+
+#### 3.6.5 `p3-cascade` as implemented
+
+Where the implementation differs from or makes precise §3.4–3.6 (FORK.md rows P3-C1…P3-C13 list
+the commits):
+
+- **One hook (§3.4.1, §3.4.2).** `PropertySpecification::ParsePropertyDeclaration` (a file other
+  packages edit) only calls `Cascade::ParseDeclaration` (`Source/Core/Cascade.{h,cpp}`), which
+  handles `!important`, the CSS-wide keywords and the raw-value properties below, for the main
+  specification only (decorator and font-effect specifications are untouched). A dictionary that
+  holds important declarations parses a later normal declaration apart and keeps the important
+  longhands (`a: x !important; a: y` stays `x`, also through shorthands).
+- **Cascade order (§3.4.1).** Normal sheet < normal inline < important sheet < important inline
+  (`Cascade::ImportantOffset = 1 << 29`, `InlineSpecificity = 1 << 28`); transitions above all,
+  animations between normal and important declarations (p3-base's layers). `@keyframes` drop
+  important declarations.
+- **Keywords (§3.4.2).** Resolved at the specified level (`ElementStyle::ResolveSpecifiedKeyword`)
+  and at the computed level (`ResolveComputedKeyword`, see §3.4.2 as corrected: no `CopyFrom`).
+  `revert-layer` is `revert`. `all` skips `direction`, custom properties and `-rmlui-*`.
+  `UpdateDefinition` treats a keyword declaration, or one whose importance changed, as changed
+  even when it compares equal (the value it resolves to may differ).
+- **Origin (§3.4.3).** UA declarations are kept per style sheet node (§3.4.3 as corrected).
+  `<link origin="user-agent">` and `StyleSheetContainer::SetOrigin`; compat's
+  `DocumentLoader::restyle` sets it on the rebuilt container.
+- **Raw values.** `ParsePropertyValues` unquotes a single string and rejects several, so `content`,
+  `quotes`, `counter-*`, `list-style-type`, `list-style-image` and `list-style` are parsed from
+  the raw declaration text (`Cascade::ParseDeclaration`), not through the value splitter.
+- **Invalid selectors (§3.5).** An unknown pseudo-class or pseudo-element makes its selector
+  invalid: dropped with a warning (the rule's other selectors stay; inside `:is()`/`:where()`/
+  `:not()` only that argument is dropped). An application that sets pseudo-classes of its own
+  declares them: `Factory::RegisterPseudoClass(name)` (compat registers `html-focus` and
+  `html-focus-visible` for the fork state without `FocusPseudoClasses`).
+- **Form states (§3.5.5).** `:enabled`/`:disabled` follow the `disabled` attribute and a disabled
+  `fieldset` ancestor (`IsElementDisabled`); `ElementCascade::IsUnfocusable` makes them
+  unfocusable in `Element::Focus`, `Context::FindFocusElement` and the document's tab order.
+  `:target`: `ElementDocument::SetTarget(id)`, initialized from the URL fragment.
+- **`ElementCascade` (`Source/Core/ElementCascade.{h,cpp}`).** The package's hooks into `Element`
+  and `ElementDocument` (a friend of both): `:has()` invalidation, focusability, pseudo-element
+  slots, counter dirtying. `Element` gains `GetPseudoElement`, `GetPseudoElementType` and the
+  `dirty_definition_self` flag.
+- **Pseudo-elements (§3.6.2).** `ElementPseudo` (`Source/Core/PseudoElements.{h,cpp}`), created
+  and removed by `PseudoElements::Update` from `Element::Update` (after the element's
+  properties), their content built in `OnPropertyChange`. `ElementStyle::UpdateDefinition` of a
+  pseudo-element asks `StyleSheet::GetElementDefinition(originating, type)`.
+- **Keywords and p3-values' types.** The CSS-wide keyword is resolved first, then p3-values'
+  `ResolveValueKeywords`: `currentcolor` and `color-mix(... currentcolor ...)` reached through
+  `inherit`, `initial` (the border colours' initial value), `unset` or `revert` stay keywords and
+  are resolved with the element's own `color`, as CSS Color 4 computes them. Logical properties
+  (p3-values' shorthands of physical longhands) take keywords and `!important` per longhand
+  (`CascadeKeywords.ValueTypes`).
+- **Areas.** The fixtures of §3.5 and §3.6 are the manifest areas `selectors` and `pseudo`
+  (owner p3-cascade), next to `cascade`.
+- **Fork features.** `ForkFeature` gains `Has`, `FocusPseudoClasses`, `SelectorsLevel4` and
+  `ListMarkers` (appended after p3-text's `TextShadow`, `TextProperties`: the values merged earlier keep their indices); present with this package: `Important`,
+  `CssWideKeywords`, `RootIsWhere`, `Has`, `FocusPseudoClasses`, `SelectorsLevel4`,
+  `PseudoElements`, `ListMarkers`.
+- **Fixtures and other packages.** The fixtures use Ahem only, compare the boxes of inline
+  spans and transition colours as first written. Their failures that were not this package's
+  were fixed where they were found: whole-pixel ascent/descent and floored half-leading as in
+  Chromium (P3-C11, inline layout), an empty span on a zero-height line has no height (P3-C12),
+  and the user-agent sheet's control theme (border, radius, fill, ring of checkboxes and radios,
+  rounding of fields, buttons and selects) follows `appearance: none` through companions, as
+  Chromium's html.css gives those controls none of it.
 
 ---
 
@@ -920,8 +1088,10 @@ consistent if radii are resolved in one place. Box-shadow takes raw `computed.bo
   `none`-only property; compat keeps emulating other `border-image` values with its
   `html-border-image` decorator, phase 2 §3.11.3), `border-width` keywords
   `thin`=1px, `medium`=3px, `thick`=5px (initial `medium`, CSS), border widths stored as `float`
-  (6.3 `uint16_t`, `ComputedValues.h:78`) so `0.5px` hairlines survive (rendered with coverage
-  alpha when < 1 device px).
+  (6.3 `uint16_t`, `ComputedValues.h:78`). Computed widths snap as Chromium 153 snaps them
+  (measured, fixture `p3/paint/hairline.html`): a width in (0, 1) px is 1 px, larger ones are
+  rounded down to whole pixels (0.5 → 1, 1.5 → 1, 2.5 → 2, 2.9 → 2). *(Corrected by p3-paint: the
+  first text drew hairlines with coverage alpha; Chromium does not.)*
 - Computed border width = 0 when style is `none`/`hidden` (CSS) — in `ElementStyle::ComputeValues`
   after the property loop; layout (`LayoutDetails::BuildBox`) needs no change.
   **RCSS compatibility note**: RCSS that sets only `border-width` stops drawing borders; the compat
@@ -944,8 +1114,9 @@ in `ComputeBorderMetrics` (`GeometryBackgroundBorder.cpp:46-51`) is removed; the
 removed (sub-pixel radii). `RenderBox` (`Include/RmlUi/Core/RenderBox.h:10-48`) changes its radius
 type to `CornerSizes2` (Vector2f per corner; public API change recorded in FORK.md). `DrawArcArc`,
 `DrawArcPoint`, `DrawBackgroundCorner` take elliptical outer radii; `GetNumPoints` uses `max(rx, ry)`
-and is raised for small radii so 50% circles of 24px stay round. `BoxShadowCache.cpp:92` takes
-radii from `GetRenderBox(BoxArea::Border)`; the spread adjustment
+and is raised for small radii so 50% circles of 24px stay round (as built: the number of points
+keeps the chords within 0.1 px of the curve, 3 to 129 per corner). The box shadow takes the radii
+of the element's render boxes (`GeometryBoxShadow::Resolve` has no radius argument any more); the spread adjustment
 (`GeometryBoxShadow.cpp:168-178`) becomes per axis. Hit testing stays rectangular
 (`Context.cpp:1450-1455`) — CSS hit-testing honours radii: add an ellipse test against the
 border-box radii in `Context::GetElementAtPoint` for elements with non-zero radii.
@@ -959,29 +1130,47 @@ generator (`Source/Core/GeometryBorderStyles.cpp`) builds per side:
   to the fast path too).
 - **Centre path** per side: second half of the start corner arc, straight edge, first half of the
   end corner arc; arc length measured numerically from the tessellated points.
-- **Dashed** (measured on Chrome 150 while writing this spec, 300 px straight edges): `w < 3` →
-  dash `3w`, gap `2w` (1 px: 3/2, 2 px: 6/4); `w ≥ 3` → dash `2w`, gap `w` (4 px: 8/4, 8 px: 16/8).
-  The pattern starts and ends with a full dash at the corners; the gaps absorb the remainder
-  (`n = max(1, round((L + gap) / (dash + gap)))` dashes, gap stretched to fit, observed as single
-  1 px wider gaps). Each dash is a quad strip between the inner and outer offset curves over
-  `[s0, s1]` along the centre path (curved inside corners). Fixture
-  `p3/borders/dashed-widths.html` (w = 1, 2, 3, 4, 8; lengths 250, 300, 301) locks this.
-- **Dotted** (measured): round dots of diameter `w`, period `2w` (2 px: 2/2, 4 px and 8 px: period
-  8 and 16), a dot centred on each corner split point, spacing stretched to fit; `w = 1` renders
-  1 px squares with period 2. Dots are triangle fans with `GetNumPoints(w/2)`.
+- **Dashed** (measured on Chromium 153 by p3-paint; this replaces the first text's formula): `w < 3`
+  → dash `3w`, gap `2w`; `w ≥ 3` → dash `2w`, gap `w`. The gap is fitted as Blink's
+  `StrokeData::SelectBestDashGap` does (open path: available length `L + gap`; closed: `L`); a path
+  of `L ≤ 2·dash` is solid, an open one of `L ≤ 2·dash + gap` has two proportional dashes.
+  **Square boxes**: per side over the full outer length, a full dash at each end, plus a `w × w`
+  square at each end point (the corners are always painted). **Boxes with any rounded corner**: one
+  closed path along the centre line of the whole border, starting on the top edge where the
+  top-left curve ends, clockwise, period `L / n`. Each dash is a quad strip between the inner and
+  outer curves, cut at `[s0, s1]` by polygon clipping. Fixture `p3/paint/dashed-widths.html`.
+- **Dotted** (measured): square boxes with `w ≥ 3`: round dots of diameter `w`, centres from corner
+  centre to corner centre, `max(1, round(L / 2w))` spaces; `w < 3`: crisp `w × w` squares, one in
+  each corner and a centred pattern between them (`n = floor((L' + w) / 2w)`, `L'` the outer length
+  less `2w`, offset `floor(leftover / 2)`); rounded boxes: dots on the closed centre path at
+  `k · L / n`, `n` from `SelectBestDashGap(L, w, w, closed)`. A corner dot is clipped to its side's
+  half of the corner when the adjacent side differs in colour or style.
 - **Double** (measured, w = 6: 2/2/2): outer and inner solid bands of `round(w/3)` each, middle
   empty, radii offset accordingly; `w < 3` renders solid (CSS).
 - **Groove/ridge/inset/outset** (measured, colour rgb(200,100,50), w = 6): the "dark" colour is
   Chrome's `Color::Dark()`: `v = max(r,g,b)/255`, factor `max(0, (v − 0.33)/v)` → (116,58,29);
-  the "light" colour is the specified colour itself. groove: top/left outer half dark, inner half
-  light; bottom/right outer half light, inner half dark (bands `w/2`). ridge: inverted. inset:
-  top/left fully dark, bottom/right fully specified colour. outset: inverted. Black and very dark
-  colours: Chrome substitutes a fixed grey — measured by `p3/borders/3d-styles.html`
-  (black/white/red cases) and encoded by the implementer.
-- **Anti-aliasing**: border and background outer edges get a 1-device-px feather ring (outer vertex
-  ring with alpha 0) when the document renders without MSAA. Controlled by a new global
-  `Rml::SetGeometryFeathering(bool)` that the engine sets from its render-target MSAA state
-  (phase 1 renders documents into an MSAA target when available; then feathering stays off).
+  the "light" colour is `Color::Light()`: factor `min(1, v + 0.33)/v` (each channel
+  `int(factor · c/255 · 255.99998)`; black lightens to 0x54). *(Corrected by p3-paint: the first
+  text took the specified colour as the light one.)* With the colour's relative luminance
+  (sRGB-linearised) below about 0.0148 (≤ `#202020`): dark = `Light(c)`, light = `Light(Light(c))`;
+  above about 0.8331 (> `#ebebeb`): dark = `Dark(c)`, light = `c`; else dark = `Dark(c)`, light =
+  `Light(c)`. groove: top/left outer half dark, inner half light; bottom/right inverted (bands
+  `w/2`). ridge: inverted. inset: top/left dark, bottom/right light. outset: inverted. Fixture
+  `p3/paint/3d-styles.html` (black, white, grey and coloured cases).
+- **Anti-aliasing** *(as built by p3-paint; the first text turned feathering off with MSAA, which
+  left curves visibly coarser than Chromium's at 4 samples)*: `Rml::SetGeometryFeathering(bool)`,
+  default `true`: every edge of backgrounds and borders fades over one device pixel (the opaque
+  part ends half a pixel inside the edge, the transparent ring half a pixel outside, plus half a
+  pixel of transparent margin so every sample of an edge pixel sees the fade). `false`, which the
+  engine sets when the target is multisampled (`samples > 1`): only curves (rounded corners, round
+  dots) are feathered, straight edges stay exact for the samples. `Rml::SetGeometryPixelSize(float)`
+  gives the size of a device pixel in context units for contexts drawn scaled (the engine: `1 /
+  pixelRatio`); an element's transform scale is followed in quarter-octave steps
+  (`ElementBackgroundBorder`). Clip geometry is never feathered.
+- **Background colour**: covers the border box (the initial `background-clip: border-box`; 6.3
+  filled the padding box), so it shows through dashed, dotted, double and translucent borders as in
+  CSS; under opaque sides without gaps it ends 1 px inside the outer edge, so no fringe of it
+  shows around the border's anti-aliased edge.
 
 #### 3.7.4 Outline
 CSS paints outlines in a final pass of the stacking context (Appendix E step 10), so an outline
@@ -994,14 +1183,30 @@ element's transform and clip applied. Geometry: the border generator applied to 
 expanded by `outline-offset + outline-width`, outer radii = border radii + offset (Chrome follows
 radii), clamped ≥ 0. `outline-style: auto` draws Chrome's focus ring: a 2 px solid ring in
 `outline-color` when it is not `currentcolor`/`auto`, else the two-tone ring (`#101010` 2 px
-inside a 1 px `#ffffff` halo) — `p3/borders/outline-auto.html` fixes the exact geometry. Outlines
+inside a 1 px `#ffffff` halo) — `p3/paint/outline-auto.html` fixes the exact geometry. Outlines
 never affect layout or clipping of other content and are included in the ink overflow used for
 layer bounds (§3.8.1).
+
+*As built by p3-paint (measured on Chromium 153, `p3/paint/outline-offset.html`,
+`outline-auto.html`; this replaces the paragraphs above where they differ):*
+- **Order**: Chromium does not paint outlines in one final pass of the stacking context: it paints
+  them per paint layer (the stacking context and every positioned element), after the layer's
+  in-flow content and before its positioned descendants — a positioned child covers its parent's
+  outline. The fork does the same (`Element::RenderStackingContextChildren`); a stacking context
+  paints its own outline inside its effects (opacity, filters).
+- **`auto`**: whatever `outline-width`, a 2 px ring in the outline colour (`currentcolor`, which is
+  `#101010`-like only because the text colour is; there is no fixed dark colour) centred one pixel
+  outside the border box moved out by `outline-offset` (one pixel further in when the element
+  has a border), inside a 1 px white ring; square corners are rounded (3 px for the coloured
+  ring, 4 px for the white one).
+- **Dotted** outlines use square dots at every width (dotted borders switch to round dots at
+  3 px).
 
 **Tests:** `Tests/Source/UnitTests/BorderStyle.cpp` (shorthand matrix in any order, resets,
 computed width 0 for none/hidden, `thin/medium/thick`), `BorderRadius.cpp` (`%`, `/`, overlap
 scaling numbers, calc), extend `ElementBackgroundBorder.cpp` (vertex counts for dashed/dotted,
-clip geometry equals background geometry). Goldens: `p3/borders/{shorthand-any-order,
+clip geometry equals background geometry). Goldens (one fixture area per package: `p3/paint/`,
+references in `golden/browser/paint/`): `p3/paint/{shorthand-any-order,
 styles-all-10,dashed-widths,dotted-rounded,double-rounded,3d-styles,radius-percent-circle,
 radius-elliptical,radius-overlap-scaling,radius-clip-children,box-shadow-radius-percent,
 outline-offset,outline-auto,hairline}.html`.
@@ -1041,6 +1246,10 @@ narrowed to the element's ink box (`:214-235`). An `opacity` filter exists
 - **Leaf fast path** (no layer; vertex alpha): α < 1 and E has no element children other than text
   nodes, no pseudo-elements, and paints at most one of {background/border/box-shadow/decorator,
   text}. This is exact (no overlap within E) and covers the common "fade a label/icon" case.
+  *(As built: each of background colour, border, box shadow, decorators, outline, text and a
+  replaced element's content (`GetIntrinsicDimensions`) counts as one thing — a background under a
+  border overlaps it; an element with a filter, backdrop filter or mask is never a leaf, its opacity
+  joins their composite. A change of leaf state re-runs the element's opacity change.)*
 - α == 0: skip rendering E's stacking context entirely; E stays hit-testable (CSS).
 - Layer scissor: the union of the subtree's ink overflow (E's border box + shadows/outlines +
   visible overflow of descendants, `LayoutBox::visible_overflow_size`) intersected with the current
@@ -1067,7 +1276,9 @@ narrowed to the element's ink box (`:214-235`). An `opacity` filter exists
 laid out, not painted, not hit-testable, but its descendants with `visibility: visible` paint and
 receive events. 6.3 skips the whole subtree (`AddToStackingContext`, `Element.cpp:2395-2399`):
 change to "skip own painting" (background/border/decoration/`OnRender`/text) and keep adding
-children. Interpolation (`ElementAnimation.cpp:215-228`) keeps its CSS special case.
+children. *(As built: documents (`ElementDocument::Hide` sets `visibility: hidden`) and the parts of
+widgets (scrollbars, select boxes) keep 6.3's whole-subtree hiding, else an author's `visibility:
+visible` would show through a hidden document; `Element::IsVisible()` keeps its meaning.)* Interpolation (`ElementAnimation.cpp:215-228`) keeps its CSS special case.
 
 #### 3.8.4 Canvas background
 CSS: the root element's background (or `<body>`'s when the root has none) paints the whole
@@ -1079,6 +1290,20 @@ whole canvas area, the context's dimensions (the document's containing block), n
 the document's border box, so a root background still covers the viewport when the document is
 scrolled or shorter than the canvas. A game that wants the scene visible simply leaves both
 transparent (the default).
+
+*As built (p3-paint):* the fork cannot tell an HTML root from an RML window document by itself
+(the Debugger's windows are documents with backgrounds and must not paint the whole context), so
+the canvas background is opted into per document: `ElementDocument::SetCanvasBackground(true,
+body_tag)` (compat's `DocumentLoader` calls it with `htmlbody` for HTML documents when the fork
+has `BackgroundLayers`). Such a document paints its canvas before anything else in the context
+order of the document: the document's own background (colour and layers), or, when that is
+transparent with no layers, the background of its first child with the body tag (CSS 2.2 14.2,
+Backgrounds 3 2.11.2), over the whole context rectangle; the layers are positioned in the root's
+boxes (a propagated body background is used as if declared on the root) and clipped to the canvas
+only; the element whose background went to the canvas does not paint it again. Compat's static body → root
+copy (phase 2 §3.10 item 1) is off when the fork propagates (it keeps running with the feature
+absent). `p3/paint/canvas-background-body.html` draws a body background over the whole viewport
+with a shorter, margined body.
 
 #### 3.8.5 Filter parity
 - `filter`/`backdrop-filter` function defaults: `blur()` = 0, `drop-shadow(x y)` colour =
@@ -1143,6 +1368,35 @@ at render time, cheap given the canvas rect), and `background` (`Custom`, full C
 - The RmlUi `decorator` property keeps working (fork-internal and used by phase-5 effects);
   `decorator` paints above `background-image` layers.
 
+*As built (p3-paint, `ForkFeature::BackgroundLayers`):* every longhand above and `mask-image`,
+`mask-position-x`/`-y` (`mask-position`), `mask-size`, `mask-repeat` and the `mask` shorthand are
+the fork's (`Source/Core/BackgroundLayerValues.{h,cpp}`: comma-list `StyleValue`s; a layer reads
+item `i % count` of each list, the image list sets the number of layers). Images: `none`, `url()`,
+the gradients and every registered decorator function; `background-clip: text`, `image()`,
+`image-set()`, `cross-fade()`, `element()`, `mask-origin`, `mask-clip`, `mask-mode`,
+`mask-composite` are compat diagnostics (unsupported or approximated, as before). Rendering
+(`ElementBackgroundLayers`): the colour is clipped to the bottom layer's `background-clip` box
+(with its inner radii), the layers are drawn bottom to top between the colour and the border, each
+tile computed as Chromium's `BackgroundImageGeometry` does (size, round, space, positions resolved
+against the free space, a tile that is not repeated drawn into a destination snapped to whole
+pixels with the image mapped from its unsnapped place, repeated tiles fractional). A `url()` image
+repeated along an axis is one quad sampled with repeat wrap there, as Chromium's image shader
+(`SkTileMode::kRepeat`): the fork asks the render interface for `url?rmlui-wrap=repeat|repeat-x|
+repeat-y` (CONTRACTS), or the application's `ImageSourceHandler` for a repeating texture; images
+the fork cannot get repeating are drawn tile by tile. Gradients are one shader for the tile size
+(`Decorator::CompileImageShader`), their `currentcolor` stops resolved when the layer is drawn;
+other decorator functions paint over the layer's clip box. A clip box with radii masks its layer
+with an anti-aliased rounded shape. `background-attachment: fixed` positions in the context
+rectangle, `local` in the scrollable overflow. Mask layers render into the element's mask layer
+(alpha). `background-position` and `-size` interpolate per layer (a length with a percentage as a
+`calc()` mix), image lists of gradients interpolate as `decorator` does, `url()` lists are discrete.
+*Changed by p3-integration (FORK.md P3-I7), as Chromium 153 measures:* `url()` lists (and cross-fades
+of them) cross-fade layer by layer, the lists repeated to their least common multiple; lists with a
+gradient or `none`, and `mask-image`, are discrete.
+Gradient hard stops are not softened (6.3 moved a stop one pixel away; Chromium draws them hard).
+Compat passes every `background-*`/`mask-*` declaration through with the feature present and keeps
+its emulation (the `html-layer` decorator, decorator-syntax masks) for it absent.
+
 #### 3.9.3 `object-fit`, `object-position`
 Registered for all elements, used by replaced elements: `ElementImage::GenerateGeometry`
 (`ElementImage.cpp:180-183`) and the phase-1 SVG/Lottie elements (same helper
@@ -1152,9 +1406,10 @@ Registered for all elements, used by replaced elements: `ElementImage::GenerateG
 
 **Tests:** `Tests/Source/UnitTests/Backgrounds.cpp` (shorthand round trips incl. multiple layers,
 `/` size, defaults reset; tile counts for repeat/space/round), `ObjectFit.cpp` (dest/uv rects for
-all five values). Goldens: `p3/backgrounds/{shorthand-gradient,multiple-layers,url-cover,
+all five values). Goldens: `p3/paint/{shorthand-gradient,multiple-layers,url-cover,
 url-contain,repeat-space-round,position-keywords,clip-padding-radius,origin-content,
-attachment-fixed,mask-image-gradient,mask-image-url}.html`, `p3/replaced/{object-fit-5,
+attachment-fixed,mask-image-gradient,mask-image-url,background-transition,currentcolor-layers,
+object-fit-svg}.html`, `p3/paint/{object-fit-5,
 object-position}.html`.
 
 ---
@@ -1170,7 +1425,7 @@ object-position}.html`.
 | `overflow-wrap` (`word-wrap` alias) | missing; `word-break: break-word` exists (`:365`) | `normal anywhere break-word`; line breaker in `ElementText::GenerateLine` breaks inside words when a word does not fit; `anywhere` also affects min-content (soft wrap opportunities count for `GetMinContentWidth`), `break-word` does not (CSS). |
 | `word-break` | `normal break-all break-word` | add `keep-all` (no breaks between CJK letters). |
 | `text-overflow` | `clip ellipsis <string>` (`:340`) | Parity: applies to a block container with `overflow` ≠ `visible` and the text overflowing its line box (6.3 rules checked against Chrome on `p3/text/ellipsis-*`), two-value syntax diagnosed. |
-| `text-decoration` | single keyword property (`:362`) | `text-decoration-line` (multiple values: `underline overline line-through`), `-color` (initial `currentcolor`), `-style` (`solid double dotted dashed`; `wavy` → solid + diagnostic), `-thickness` (`auto | from-font | <lp>`), `text-underline-offset`, `text-decoration` `AnyOrder` shorthand. Geometry from `FontMetrics::underline_position/thickness` (`FontMetrics.h:16-17`). Decorations propagate to inline descendants (CSS) — RmlUi draws per text element; keep, but descendants inherit the drawing via the existing inherited `text-decoration` value. |
+| `text-decoration` | single keyword property (`:362`) | `text-decoration-line` (multiple values: `underline overline line-through`), `-color` (initial `currentcolor`), `-style` (`solid double dotted dashed`; `wavy` → solid + diagnostic), `-thickness` (`auto | from-font | <lp>`), `text-underline-offset`, `text-decoration` `Custom` shorthand (the line takes several words). Geometry as Chromium draws it (see "as implemented"). Decorations propagate to inline descendants (CSS) — RmlUi draws per text element; keep, but descendants inherit the drawing via the existing inherited `text-decoration` value. |
 | `text-shadow` | missing (only `font-effect: shadow`) | New inherited property (`TextShadowListValue : StyleValue`: list of `offset-x offset-y blur? color?`, colour default `currentcolor`, interpolable). Rendering in `ElementText`: for each shadow (painted back to front, behind the text) the text geometry is generated again with the shadow colour and translated by the offset; blur > 0 renders those meshes into a layer and composites with the `blur` filter (σ = blur/2, CSS) — scissor = text ink box + 3σ. No dependency on font-engine effects. |
 | `text-align` | `left right center justify` (`:361`) | add `start`, `end` (resolve via direction), `match-parent`; `-webkit-center` → center. |
 | `vertical-align` | keywords + length (`:331-333`) | parity check fixtures: `middle` uses `x_height/2` from metrics; `text-top/bottom` use font ascent/descent; `%` of line-height. |
@@ -1186,6 +1441,80 @@ fixed advances — `TestsInterface` font engine). Goldens: `p3/text/{letter-word
 text-transform-unicode,white-space-all,overflow-wrap,ellipsis-single-line,ellipsis-flex-child,
 decoration-longhands,text-shadow-hard,text-shadow-blur-glow,text-shadow-multiple,align-start-end,
 vertical-align-middle}.html`.
+
+**p3-text as implemented** (FORK.md rows P3-TX1…P3-TX6; where it differs from or makes precise the
+table above):
+
+- **Zero-width space (p3-testkit's baseline bug).** Two causes. Engine: `TextShaper::selectFace`
+  took the first fallback face with a glyph for U+200B and kept it for the letters after it; a
+  default-ignorable code point (`TextShaper::isDefaultIgnorable`: U+200B, joiners, word joiner, soft
+  hyphen, variation selectors, bidi marks, BOM) now keeps the current face, and HarfBuzz draws it as
+  nothing with no advance. Fork: text is tokenised by code point and a word ends at a line-break
+  opportunity inside it (`TextUnicode::IsLineBreakOpportunity`, the UAX #14 pair rules for the
+  classes generated into `UnicodeLineBreakTables.inl`): after U+200B, a soft hyphen (a line that
+  ends there shows `-`), a hyphen or a dash; around ideographs, kana, Hangul and emoji (not with
+  `word-break: keep-all`); never before closing punctuation, after opening punctuation, around
+  U+2060/U+00A0 or before combining marks. Three layout defects the breaks revealed are fixed with
+  it: an inline box's content area is the font's rounded ascent plus descent (P3-TX2, was 1.2 em), a
+  column flex item is measured within its `min-width`/`max-width` (P3-TX3, in p3-layout's file), a
+  shrink-to-fit width is at least the min-content width (P3-TX4, in `LayoutDetails.cpp`).
+  `FixtureRunner` boxes are the union of an element's boxes (an inline split over lines), as
+  `getBoundingClientRect`.
+  Taffy known failures: the baseline's 52 `text-zwsp` lines and the 119 p3-grid re-owned to
+  p3-text once grid was native (171): 125 pass (14 + 111) and are removed; the 46 others (38 + 8)
+  fail for layout causes and are re-owned to p3-layout, each with a `(p3-text: …)` note naming it
+  (aspect-ratio, sizing keywords, flex automatic minimum size, `flex-basis: content`, absolute
+  positioning; the two float fixtures: a definite-width block adds its floats to its shrink-to-fit
+  width). No `text-zwsp` line is left.
+- **`text-transform`.** `uppercase`/`lowercase` use the full mappings (SpecialCasing's unconditional
+  ones: `ß` → `SS`, `ﬁ` → `FI`, `İ` → `i̇`, final sigma); `capitalize` uses the *simple* titlecase
+  mapping (`ß` stays) and Chromium's word starts (`Foo-Bar`, `Don't`, `E.G.`, `3rd`, `X_y`), both
+  measured on Chromium 153. Generated from Unicode 16.0.0; the generator also writes the line-break
+  classes.
+- **`white-space`.** `PropertyId::WhiteSpace` is not registered any more (its name is the
+  shorthand's); `ComputedValues::white_space()` returns the nearest CSS 2.1 keyword of the two
+  longhands, `white_space_collapse()` and `text_wrap_mode()` the values. The widgets set the
+  longhands. `preserve-spaces` is implemented (Chromium 153 does not parse it: no fixture).
+- **`overflow-wrap`.** A word is broken only when it starts its line (it first moves to a line of
+  its own); this also holds for the legacy `word-break: break-word`.
+- **`text-decoration`.** The shorthand is `Custom`, not `AnyOrder`: the line takes several words.
+  `text-decoration-line` is `PropertyId::TextDecoration` with a flags value
+  (`Style::TextDecoration` is a bit set). The geometry is Chromium's, not `FontMetrics::
+  underline_position/thickness`: thickness `auto` = font size / 10 floored (min 1 px), `from-font`
+  the font's; underline top = baseline + max(1, ceil(thickness / 2)) (or `text-underline-offset`),
+  overline on top of the rounded ascent, line-through centred a third of the ascent above the
+  baseline; `double` = two lines a third of the thickness apart, dots and dashes with Chromium's
+  lengths and stretched gaps. Underline and overline are painted under the text, line-through over
+  it. The colour is the decorating box's (the nearest ancestor declaring `text-decoration-line`):
+  its `text-decoration-color`, or its `color`.
+- **`text-align`.** `start` is the initial value and stays the computed value;
+  `ComputedValues::text_align()` returns it resolved against the element's direction (`left`/
+  `right`), `specified_text_align()` the keyword. `match-parent` takes the parent's keyword and
+  resolves it against the element's own direction, as Chromium does (CSS says the parent's).
+  `justify` still aligns left: 6.3 has no justification and none is added (§2.2 list, the guide).
+- **`text-overflow`.** The clipping block container is found through inline ancestors, the clip
+  edge is measured from the text's own position (6.3 compared a line's width with the container's
+  width, wrong for text that does not start at the container's left), and the ellipsis is drawn in
+  the container's colour. Chromium has no string value: not in a fixture.
+- **`word-spacing`.** The engine applies it in `TextShaper` (`ShapeOptions::wordSpacing`, set by
+  `RmlFontEngine::toShapeOptions`), where the clusters' code points are known; letter spacing is
+  not added after a default-ignorable (Chromium adds none after U+200B).
+- **`text-shadow`.** As planned; the decoration lines cast the shadow too. `currentcolor` is kept
+  by compat (`keepsCurrentColorKeyword`).
+- **`user-select`** is registered as CSS defines it, not inherited: `none` on a text input or text
+  area turns its selection off (the cursor still moves); a container's `user-select: none` does
+  not reach the inputs inside it, as in browsers.
+- **Not done here:** the font-size rounding of the last table row is p3-values' (§3.3.4, in
+  `ElementStyle.cpp`); `cursor` lists are p3-values' (§3.3.8); `vertical-align` and
+  `pointer-events` needed no change (`p3/text/vertical-align-middle` passes on 6.3's rules).
+- **Fixtures.** Chromium's font sanitizer rejects `fonts/Roboto-Regular-subset.ttf` (no `post`
+  table), so a fixture that names it draws a fallback face in the reference:
+  `fonts/Roboto-Regular-subset-post.ttf` is the same font with a `post` table (checked by
+  `BrowserFixtures.FontsAreTheEnginesFaces`). The text fixtures use Ahem for exact advances and
+  pixel comparison; `text-transform-unicode` also draws Roboto (boxes oracle).
+- **Compat.** `ForkFeature::TextShadow` and `::TextProperties` are appended and present; the
+  rewrites of `Text.cpp` pass the properties through with them (checked by `RcssGrammar`'s fork
+  rows), `RewriteId::UserSelect` is appended for `user-select`'s Info on `text`/`all`/`contain`.
 
 ---
 
@@ -1354,6 +1683,56 @@ content, alignment keywords), new `IntrinsicSizing.cpp`, `AspectRatio.cpp`, `Mar
 fit-content,min-max-content,aspect-ratio-card,aspect-ratio-img,margin-collapse-parent-child,
 margin-collapse-empty,display-contents,justify-start-end-safe}.html` plus the Taffy suites.
 
+#### 3.12.10 `p3-layout` as implemented
+
+FORK.md rows P3-L1..P3-L12. Where the implementation differs from or makes precise §3.11-3.12:
+
+- **Sizing keywords** are not `Type::Keyword` values: `width`/`height`/`min-*`/`max-*`/`flex-basis` compute to
+  `auto`/`none` and keep the keyword apart (`ComputedValues::*_keyword()`, `Style::SizingKeyword`, `fit_content_*()`
+  for `fit-content(<length-percentage>)`), so code that does not know them sees `auto`. `-webkit-fill-available` is
+  `stretch`. `min-width/min-height: auto` is the initial value (0 outside flex and grid items).
+- **Flex** (§3.12.9): the algorithm was replaced by a port of Taffy's `flexbox.rs` (8409f3f8) behind the same interface;
+  besides §3.12.1-3.12.7 it brings Taffy's `flex-wrap: balance` and `flex-line-count` (new `PropertyId::FlexLineCount`,
+  compat: native with `BoxParity`, not in Appendix B before). Before/after Taffy pass counts are in FORK.md P3-L2.
+  The automatic minimum size is measured lazily (only when it can clamp the item). A flex item's height is definite as
+  §9.8 says (percentage heights of its children are `auto` otherwise).
+- **Absolutely positioned boxes** follow CSS Position 3 (inset-modified containing block, `auto` margins only between two
+  insets). Exception: an `ElementDocument` with `auto` margins and no insets is centered as in 6.3 (documents and the
+  debugger rely on it). Vertical percentage margins are of the width, over-constrained `auto` margins are 0.
+- **Margin collapsing** is done after the fact (positions corrected up the chain of open top margins) rather than by
+  deferring placement; clearance, forced clearance after adjoining floats and empty boxes with clearance included.
+  Boxes with a new formatting context sit beside floats (CSS 2.1 §9.5), 6.3 always cleared them.
+- **`justify-items`/`justify-self`** align block-level boxes in block layout (fit-content width when not
+  `normal`/`stretch`); their compat rows stay on `ForkFeature::Grid` (BoxParity comes with it). The legacy values
+  `text-align: -webkit-left/-right/-center` align block children too (`text_align_legacy`, two keywords added to p3-text's
+  `text-align`).
+- **`position: fixed`**: the viewport is given as a containing-block override by `ContainerBox::AddAbsoluteElement` when no
+  ancestor has a transform, perspective, filter, backdrop filter or mask (`will-change` and `contain` are not registered);
+  the layout tells `Element::SetOffset` that the box is viewport-fixed (6.3 inferred it from the property). Clipping and
+  hit testing needed no change: they follow the offset parents, which skip the scroll containers left.
+- **`position: sticky`**: the shift is computed with the absolute offset (`ComputeStickyShift` in `Element.cpp`), not in
+  `UpdateOffset`, so scrolling (which dirties absolute offsets) moves it without listeners.
+- **Overflow**: `scrollbar-gutter: stable` reserves the vertical scrollbar of `auto`/`hidden` scroll containers
+  (`both-edges` as `stable`); compat: native with `Sticky`. A document that scrolls (`overflow-y` not `visible`) with an
+  automatic height is as tall as the viewport, so the root's (or the body's propagated) overflow scrolls the page.
+- **Grid items** (handed over by p3-grid): aspect ratio and sizing keywords in `GridItemMeasure`/`GridFormattingContext`;
+  a width-only request of a grid re-runs column sizing when an item's width can follow its height.
+- **Not done**: RTL mirroring of flex/sticky/fixed (spec 2.2), `contain`, `will-change`.
+- **Found on the way (decision)**: the 1 px line p3-grid saw above the top clip edge of scrolled `overflow: hidden`
+  content is a Mesa rasterizer bug, not ours. `MsaaScissor.*` (`engine/tests/htmlui/TestRenderMsaaScissor.cpp`)
+  reproduces it with raw sokol calls (a 4x MSAA attachment of an engine framebuffer, an integer scissor rectangle, one
+  fullscreen triangle, the pass resolve): on llvmpipe (GL) and lavapipe (Vulkan), Mesa 23.2.1 / LLVM 15 in the test
+  image, 2 of the 4 samples of every pixel in the row above and in the column left of the rectangle pass the scissor
+  test (alpha 128, the corner 64); the right and bottom edges, every pixel inside and the 1-sample run are exact. The
+  rectangle reaches `glScissor` / `vkCmdSetScissor` as the exact integers given (sokol passes them through; on GL the
+  y-flip is `height - (y + h)` only with `origin_top_left`, which the engine sets per backend), so the off-by-half is
+  the drivers' (a scissor test must keep or drop a pixel whole). The same pattern shows through `RmlRenderer`
+  (`MsaaScissor.HtmlUIClipEdge`). Decision: the renderer is unchanged (exact on real drivers); the test documents the
+  bug (it accepts an exact result or exactly that pattern, and fails on anything else), and the browser-parity
+  fixtures that scroll content past a clip edge (`layout/{fixed-not-clipped,overflow-hidden-scrolled,
+  sticky-header-list,sticky-bottom,sticky-in-flex}`) render without MSAA through the new sidecar option
+  `"samples": 1` (with a comment), at the default tolerances.
+
 ---
 
 ### 3.13 Transitions and animations (package `p3-animation`)
@@ -1498,6 +1877,82 @@ transition-allow-discrete-display,steps-sprite,cubic-bezier-overshoot,keyframes-
 keyframes-backwards-delay,alternate-reverse,play-state-paused,per-keyframe-easing,
 starting-style-entry,box-shadow-transition,scale-rotate-translate}.html`.
 
+#### 3.13.8 `p3-animation` as implemented
+
+FORK.md rows P3-A1…P3-A5 (package-prefixed ids, so that wave-1 packages cannot collide):
+
+- **Timing functions (P3-A1).** As planned; `linear` is `linear()` without stops (the identity) and
+  serializes as `linear`; `cubic-bezier()` solves to 1e-7 in double precision (not duration-scaled).
+  Unknown easing names are invalid; RmlUi's tween names stay valid.
+- **Longhands (P3-A1).** Comma lists in one `StyleValue` type (`AnimationListValue`), parsers
+  `transition_property`, `animation_duration` (no negatives), `animation_time`, `animation_easing`,
+  `animation_iteration_count`, `animation_name`, `animation_keyword` (registered from the package's
+  own file). `animation-composition` accepts `add`/`accumulate` and composites them as `replace`
+  (compat reports them, `HTMLUI-CSS-0021`). The shorthands are `Custom`; 6.3's `PropertyId::Transition`
+  and `PropertyId::Animation` are left unregistered (reserved), their names belong to the shorthands.
+  The computed lists are cached per element (`ElementStyle::GetTransitionList/GetAnimationList`, built
+  in `ComputeValues` when a longhand changes); entries whose combined duration is zero and
+  `animation-name: none` items are left out. Deviations kept from RmlUi: several property names in one
+  transition entry (`transition: opacity width 1s`) when all are properties. Removed: the RCSS
+  reverse-adjustment number in `transition` (the CSS reversing rule replaces it). The initial easing is
+  `ease` (6.3: linear), a documented fork-only change of 6.3 test expectations.
+- **Layers and timing (P3-A2).** One `ElementAnimation` per CSS animation with an `AnimationTrack` per
+  property (offsets in [0, 1]); user animations (`Element::Animate`) still write the inline style. A
+  `display: none` element **or ancestor** cancels CSS animations and transitions (tracked per element
+  in `Element::UpdateAnimationDisplay`), as CSS requires; shown again, animations start over. Events
+  are new `EventId`s appended after `Tabchange` (`ID.h`); `transitionend` keeps 6.3's `property`
+  parameter and user animations keep 6.3's per-property `animationend`. A transition cancelled during
+  style computation dispatches `transitioncancel` at the next update (no event dispatch inside
+  `ComputeValues`).
+- **Transitions on any change (P3-A3).** The snapshot (`TransitionSnapshot`, `ElementTransitions.cpp`)
+  holds after-change values in computed form; em lengths are compared against the *declared* font
+  size of the element and its ancestors (`ElementStyle::GetDeclaredFontSize`), so an animated font
+  size does not restart em transitions every frame. Values come from declarations only (every
+  element's animation layers excluded), which is how changes produced by animations, the element's or
+  an ancestor's, never start transitions. With `transition: all` the snapshot holds every declared
+  and inherited property after the first style; a property first declared later starts from its
+  initial value. A transition list that arrives with the change (`.a.on { transition: ...; }`, the
+  "hover-only transition") is handled by keeping the before-change values when the definition
+  changes (`CaptureBeforeChangeValues`); one that arrives with an inline change does not transition.
+  "Previously `display: none`" is the element's own flag from the previous update
+  (`Element::animation_displayed`), ancestors included. `@starting-style` rules are stored with the
+  private pseudo-class `:-rmlui-starting-style` on their subject, inside `:where()` (p3-cascade,
+  `c974c5e7`); the starting definition is the element's definition with that pseudo-class set, so the
+  rules cascade with the others at their own specificity, as in CSS. Only the element's own declared
+  starting values count (an inherited starting value is not looked up). An element shown again
+  starts from its starting style whatever changed: when its own style change shows it, every
+  property its list covers is looked at (not only the changed ones), and when an ancestor shows it
+  its style is computed once more (`ElementStyle::RestartTransitionsFromStartingStyle`).
+- **Interpolation (P3-A4).** `box-shadow` pairwise with transparent padding; inset mismatch and
+  calc() lengths in shadows are discrete. Colours in premultiplied sRGB everywhere RmlUi interpolates
+  colours (also gradient stops, filters, decorators). `StyleValue` types interpolate through their own
+  `Interpolate` (a list value is interpolable only when that succeeds for the pair): `text-shadow`
+  (p3-text) pads the shorter list like `box-shadow`, `none` counting as the empty list. Every other
+  resolved value (grid track lists and lines, strings, the keyword properties p3-text added, ...)
+  animates and transitions discretely (flip at 50%; for transitions only with `allow-discrete`), so
+  no property kind warns or asserts (`TransitionsAnyChange.cpp` `grid_and_other_discrete_properties`,
+  `text_properties`).
+- **Individual transforms (P3-A5).** Held as the equivalent one-function `transform` value, parsed by
+  the `transform` parser (calc() included); `Element::OnPropertyChange`'s `transform_changed` gains
+  the three ids (an additive condition in p3-paint's block).
+- **Compat.** `TimingFunctions`, `AnimationLonghands` (appended) and `IndividualTransforms` (appended)
+  are present. With `AnimationLonghands` the transition/animation rewrites write each declaration as
+  declared (normalized; transition property names that compat writes as another property are mapped:
+  background images to `decorator`, `outline`/`box-shadow` to `box-shadow`, `text-shadow` to
+  `font-effect` without `TextShadow`, `translate`/`rotate`/`scale` to `transform` without `IndividualTransforms`; packages
+  that make those native update `nativeTransitionNames` in `Transition.cpp`), keep per-keyframe
+  easing and `@starting-style` (written as `@starting-style { rule }`, inside `@media` when nested
+  there), and the `AnimationFill` runtime is skipped (its tests drive it directly).
+- **Reference tool.** `render-reference.mjs` pauses every animation to seek it, which makes Chromium
+  ignore `animation-play-state`; fixture mode now advances a CSS animation only while its computed
+  play state is `running` (no change for existing references).
+- **Fixtures.** The fourteen of 3.13 in `fixtures/p3/animation/`. `scale-rotate-translate` captures
+  quarter turns and whole-pixel sizes (rotated edges are not anti-aliased before p3-paint's
+  feathering), `transition-var` shows the inherited colour with Ahem text (`currentColor` in a
+  background is compat's companion until p3-values, which transitions do not follow).
+  `FixtureRunner::idBoxes` reports a `display: none` element (or one inside) as an all-zero box, as
+  `getBoundingClientRect()` does.
+
 ---
 
 ### 3.14 CSS Grid (package `p3-grid`)
@@ -1630,6 +2085,51 @@ holy-grail,auto-fill-cards,auto-fit-collapse,minmax-fr,fit-content,dense-gallery
 lines,named-lines,align-justify-matrix,place-shorthands,abs-pos-area,scroll-grid,inline-grid,
 grid-in-flex,flex-in-grid,percent-gap}.html`.
 
+#### 3.14.7 `p3-grid` as implemented
+
+FORK.md rows P3-G1 (properties), P3-G2 (layout), P3-G3 (benchmark). Where the implementation differs from or makes
+precise §3.14.1-3.14.6:
+
+- **Values.** `GridTrackBreadth` is `{Kind {Length, Auto, MinContent, MaxContent, Fr}, LengthPercentageValue length,
+  float fr}`: one `Length` kind holds px, the relative units, `%` and `calc()` (groundwork's `LengthPercentageValue`);
+  `GridTrackSize` keeps its written form (`Breadth`, `MinMax`, `FitContent`) for serialization;
+  `GridTemplateAreasValue` keeps its rows as written; `GridLineValue::index` is the line number (`Line`), the nth line of
+  the name (`NamedLine`, 0: the first) or the count (`Span`, `NamedSpan`). Invalid templates (two auto repeats, an auto
+  repeat beside a track without a fixed size, `fr` minimums, nested `repeat()`, `subgrid`, `masonry`) are parse
+  errors, so the declaration is dropped as in browsers.
+- **Quoted values.** 6.3 removes the quotes of a value and rejects a second string, so `grid-template-areas` could not
+  parse: a property may now take its value as written (`PropertyDefinition::SetValueAsWritten`; quotes kept, the value
+  split at commas only to detect `var()` and unbalanced quotes), and `Custom` shorthands get theirs with the quotes kept
+  (`grid-template`, `grid`). p3-cascade's `content` and `quotes` can use the same mechanism.
+- **Gaps.** `normal` parses (the `gap` parser) to 0; `column-gap` percentages are of the width.
+- **Layout files.** As §3.14.2, in namespace `Rml::GridLayout`, plus `GridTypes.cpp` (value resolution). Item lengths
+  are read from `ComputedValues` once per run; track lengths are resolved with the container's context (em, vw, dp) and
+  `calc()` at layout time.
+- **Measuring (§3.14.3).** As planned; a definite available width measures the fit-content width. Every measurement goes
+  through `LayoutMeasureCache` and the per-item caches of a run.
+- **Intrinsic size (§3.14.4).** `GridContainer::GetShrinkToFitWidth`/`GetMinContentWidth` run placement and column
+  sizing under a max-content/min-content constraint and stop there (Taffy's `ComputeSize` early exit). As for flex
+  containers, `LayoutDetails` formats the element before asking: that formatting is not reused.
+- **Absolutely positioned children (§3.14.5).** A child whose containing block is the grid gets its grid area through
+  the containing-block override; a descendant whose containing block is the grid (its parent a static item) through
+  `ContainerBox::GetAbsoluteContainingBlock`, a virtual hook `ClosePositionedElements` asks when no override was given
+  (`GridContainer` keeps the final tracks and line names until it closes). With both insets of an axis `auto`, the box is
+  aligned in its grid area (or in the grid's content box when the grid is not its containing block) by its self
+  alignment: the grid measures its margin box first. Alignment within the inset-modified containing block with insets
+  set (CSS Position 3) is not done (RmlUi's absolute layout, p3-layout).
+- **Differences from Taffy.** Relative offsets of items are RmlUi's (percentages of the container's content box, not
+  the grid area). Item baselines are the last line's (RmlUi has no first-line baseline); a flex or grid item without one
+  gives its first item's bottom border edge, an item without any its own; `last baseline` aligns as its fallback
+  `safe end`. `aspect-ratio` and sizing keywords of items wait for p3-layout.
+- **Compat.** `ForkFeature::Grid` present: grid declarations pass through, `calc()` in them is kept
+  (`calcNative` for `RewriteId::Grid`); `subgrid` and `masonry` are dropped with `HTMLUI-CSS-0004` in every state.
+- **Taffy fixtures.** Of the 530 `grid-unsupported` known failures, 387 pass; the other 143 are re-owned to the cause
+  they still have: p3-text `text-zwsp` 119, p3-layout `aspect-ratio` 12, `absolute-position` 2, `flex-alignment` 5
+  (compat drops `safe` until `BoxParity`), p3-paint `border-style` 5 (compat writes `border-style: solid` as medium
+  widths over the declared `border-width` until `BorderStyle`).
+- **Found on the way.** The engine draws scrolled content one pixel above the top clip edge of an `overflow: hidden`
+  box (any layout; `scroll-grid` scrolls to a gutter there). Owner: p3-layout (overflow).
+
 ## 4. Work packages
 
 Waves: **wave 0** (2 packages in parallel) lands first; **wave 1** (7 packages in parallel) branches
@@ -1703,8 +2203,45 @@ package's owned function makes it additive (new overload, new hook call) and lis
   (`grid-unsupported`, `flex-min-auto`, `margin-collapse`, `rtl-excluded`, …); the excluded list
   (rtl, writing-mode, `x*` fixtures) separately in `excluded.txt` with reasons.
 - **Tests:** self-tests of the harness: a fixture that must match (identical simple boxes), a
-  fixture that must fail (1 px offset) — the comparison reports it; `render.mjs` reproducibility
-  (two runs byte-identical PNGs).
+  fixture that must fail (2 px offset: one pixel beyond the 1 px box tolerance; a 1 px offset is
+  within it and within the image metric's 3x3 neighbourhood, so it must pass) — the comparison
+  reports it; `render-reference.mjs` reproducibility (two runs byte-identical PNGs).
+
+**p3-testkit as implemented** (wave 0):
+- `tools/htmlui/run-rmlui-tests.sh [--docker] [--clean] [-- <doctest args>]` (§5.1): no GLFW; a
+  window-less backend (`tools/htmlui/rmlui-tests/RmlUi_Backend_Null.cpp`) and our own CMake driver
+  (`tools/htmlui/rmlui-tests/CMakeLists.txt`, globs the fork's sources) replace upstream's library
+  CMake (which lists files by name); `--docker` runs in the engine's Linux image with FreeType built
+  from source (pinned `VER-2-13-3`), the host uses `pkg-config freetype2`; the engine library never
+  links FreeType. The vendored `Tests/` subset is in FORK.md. 6.3's tests assumed white-space-only
+  text is dropped, which P2-8 changed: 39 cases failed on the fork; P3-T1 (`rmlui:` no missing-font
+  warning for white-space text) and P3-T2 (the tests walk element children: `TestsShell::
+  GetElementChild/GetNumElementChildren/GetNextElementSibling`) make all 146 cases (8306
+  assertions) pass on the fork, on the host and in Docker.
+- `render-reference.mjs --fixtures <all|p3|area|area/name|taffy|taffy/suite|taffy/suite/name>`,
+  `--boxes-only`, `--verify`, `--check`, `--jobs`, `--self-test` (§5.2, §5.3); `--self-test` renders
+  the testkit fixtures twice and requires byte-identical PNG and JSON, to each other and to the
+  committed references.
+- `engine/tests/htmlui/FixtureRunner.{h,cpp}` (sidecar reader, `FixtureRunner`, lists, Taffy
+  references), `BoxParityTest.cpp` (`Taffy/BoxParity.MatchesChromium/<suite>_<name>`,
+  `BoxParityHarness.*`, `BoxParityFixtures.ListsAndReferencesAreConsistent`), `BrowserParityTest.cpp`
+  (`P3/BrowserParity.MatchesChromium/<area>_<name>`, `BrowserCompareStrict.*`, `BrowserFixtures.*`),
+  `compat/NativeFeatureConsistencyTest.cpp` (`NativeFeatureConsistency.*`, §5.4);
+  `BrowserCompare::compareStrict` / `strictHeatMap` / `StrictGate` / `StrictMetrics`.
+- Self-test fixtures `fixtures/p3/testkit/{match-boxes, offset-1px, offset-2px, steps, ahem-text}`:
+  all match Chromium exactly (0 bad pixels, boxes equal) on the current fork, `offset-2px` is
+  reported (`#b x` 2 px, a 134-pixel bad cluster). `fixtures/p3/text/zero-width-space` is seeded as
+  a p3-text known failure (below).
+- Baseline against the fork of phases 0–2 (`known-failures.txt`): Taffy 1595 fixtures, 75 excluded,
+  1520 compared: 631 pass, 889 known failures — p3-grid 530 (`grid-unsupported`), p3-layout 307
+  (`absolute-position` 57, `margin-collapse` 55, `flex-alignment` 50, `aspect-ratio` 37, `flex-wrap`
+  27, `flex-algorithm` 24, `block-alignment` 12, `block-layout` 12, `float` 12, `flex-min-max` 10,
+  `overflow` 5, `box-sizing` 4, `intrinsic-sizing` 2), p3-text 52 (`text-zwsp`: the engine's text
+  shaper (`TextShaper::selectFace`) keeps the fallback face it picked for U+200B, which Ahem lacks,
+  for the letters after it, and RmlUi breaks no line at U+200B; about 190 fixtures build their sizes
+  from zero-width spaces, those not counted here are grid fixtures). Classes are a guide
+  (`import-taffy-fixtures.py classify`): a package that removes its cause but finds another
+  re-owns the line (`tools/htmlui/README.md`, "Known failures").
 
 ### Wave 1
 
@@ -1723,6 +2260,93 @@ golden fixtures listed in its §3 section, removal of its entries from `known-fa
 flag flips with updated compat tests and consistency tests (§5.4), diagnostics for its §2.2 items,
 and the user-facing support notes in `docs/mcp/guide/html-ui.md` for its features.
 
+**p3-values as implemented** (wave 1; FORK.md P3-V1…P3-V12, where the implementation differs from
+or makes precise §3.2 and §3.3):
+- **Lengths (§3.3.1).** `LengthContext {font_size, root_font_size, dp_ratio, vp_dimensions,
+  font_face}` and `ComputeLength(value, context)` exist, but the five-scalar compute functions keep
+  their signatures, so the `ElementStyle::ComputeValue` switch (every package's section) is
+  untouched: while an element's values are computed its font face is current (`FontUnitScope`,
+  the inherited face first), and a post-pass of `ComputeValues` (`ElementStyleValues.cpp`, the
+  hook the line-height post-pass shares) computes the `ch`/`ex` values again against the element's
+  own face once it is known and reports them changed when the face changed. `ch` is the advance of
+  '0' (`GetStringWidth`, whole pixels), `ex` the font's `x_height`; half the font size without a
+  face. The `s/l/d` forms of `vmin`/`vmax` alias them too. `CalculationResolverContext::font_face`.
+  `calc()` has two evaluation paths, both extended: the compute-time canonicalization
+  (`ResolveCalculation`) and the use-time evaluation against an element
+  (`ResolveElementCalculation`: grid tracks, transforms, shadows, gradient stops); the second was
+  found missing on the merge with p3-grid (`calc(2ex + 1vmax)` as a track was 0). Grid track lists
+  and gaps take the units through the shared `length_percent` parser (fixture
+  `p3/values/grid-units`).
+- **Colors (§3.3.2).** `lab()`/`lch()` are CIE Lab D50 (6.3 converted with a D65 white, so 6.3's
+  test expectations change); `color()` takes srgb, srgb-linear and xyz; out-of-gamut colours clip
+  per channel, as Chromium 153 does (no CSS gamut mapping); channels round. `currentcolor` is
+  `Property{Unit::KEYWORD, PropertyParserColour::CurrentColor}` in plain colour properties and a
+  `current_color` flag of `BoxShadow` and `ColorStop`; no per-element id set is kept: the
+  `ComputeValues` loop replaces the keyword (every local property is visited there anyway),
+  computing `color` at the first one it meets rather than in a pre-pass of every element, and
+  reports the properties holding one changed when `color` is dirty. A shadow without a colour is
+  `currentcolor` (CSS; 6.3 drew it black). Font effects and filters are instanced without an
+  element: there `currentcolor` is black, and compat keeps its companion for them.
+  A `color-mix()` with a `currentcolor` operand (CSS Color 5) is kept as written and resolved
+  wherever `currentcolor` is (P3-V12): a `CurrentColorMixValue` (`Unit::STYLE_VALUE`; `StyleValue`
+  has RmlUi's RTTI to tell it apart) in plain colour properties, the `color_mix` text with the
+  `current_color` flag of `BoxShadow`, `ColorStop` and p3-text's `TextShadow`. It is resolved by
+  substituting the element's colour for `currentcolor` and parsing (8-bit colour, as the computed
+  `color`), at compute time, when a shadow or gradient is generated, and at each frame of a
+  transition or animation; a change of `color` moves it without a transition of its own, as in
+  Chromium (fixture `p3/values/color-mix-currentcolor`). Compat keeps it where it keeps
+  `currentcolor` (with `CurrentColor`); in its own decorators and companions it mixes the rule's
+  static colour (`HTMLUI-CSS-0005`), or drops the declaration (`HTMLUI-CSS-0016`) without one.
+- **Fonts (§3.3.4).** A list with several quoted parts reaches the `font_family` parser as written
+  through p3-grid's `PropertyDefinition::SetValueAsWritten` (`font-family`, `cursor`; the Custom
+  shorthands get their value that way since p3-grid; p3-values first had its own
+  `SplitOption::Raw`, dropped at the merge), and a custom property of several quoted parts
+  (`--fonts: "A", B`), which 6.3's split rejected, is kept as written; quoted names collapse their
+  white space as unquoted ones. `font-size: math` is
+  the parent's size (as Chromium outside MathML), not `medium`. `cursor` keeps fallback keywords
+  (`help, pointer`, below).
+- **`line-height: normal` (§3.3.6).** The used value rounds the ascent, the descent and the line
+  gap each to whole pixels, as Chromium (`round(A) + round(D) + round(G)`; Roboto 16px is 19px, not
+  18.75). Chromium's content area of an inline box is `round(A) + round(D)`, which RmlUi sized as
+  1.2 times the font size: P3-V10 changes that one expression of `InlineBox` (p3-text's file) so
+  inline backgrounds line up with `normal` lines (the `ua-defaults` gates). The phase-0/1 RML
+  goldens keep 1.2 through `fixtures/common/base.css`.
+- **Logical properties (§3.3.7).** The `border-*-style` logical shorthands cannot list the paint
+  package's style longhands (registered after the values section): they have no items and name
+  the longhands by id when they parse, so they parse once those exist and a `var()` in them is not
+  substituted. Compat keeps mapping logical properties itself (RTL swap); `calc()` and the new
+  units stay in them now (`writesCalcNatively` gains `LogicalBox` and `FontWeight`).
+- **Cursor (§3.3.8).** Application cursor names (identifiers such as `arrow`, which RmlUi
+  documents use) are kept as written; several keywords are kept as fallbacks, the system
+  interface takes the first it knows (phase 1's `RmlSystem::cursorFromCss`): the value
+  `SetMouseCursor` receives is the keyword list without the image entries.
+- **Numbers (§3.3.5).** `PropertyParserNumber::Restriction` (`AlphaValue`, `NonNegative`,
+  `Integer`); the `aspect_ratio` parser's values for p3-layout: KEYWORD 0 (`auto`), RATIO
+  `(w, h)`, RATIO `(-w, -h)` for `auto <ratio>`.
+- **Interpolation (§3.13, after the p3-animation merge).** A `calc()` against a length interpolates
+  frame by frame with its percentage resolved against the current containing block (a calc mix in
+  effect, not a discrete flip: `10px` to `calc(50% + 2em)` follows a resize while it runs); a
+  property whose percentages resolve at layout keeps a calc node (p3-animation's
+  `InterpolateCalculations`). The new units mix as px (`vmin`, `ch`, `ex`) and radians (`turn`,
+  `grad`, also in `transform` and `rotate`). `currentcolor` against a colour is the element's colour
+  at each frame (in `color` the parent's), in plain colours, box shadows and gradient stops
+  (P3-V11; p3-text's text shadows already did); a computed `currentcolor` that stays does not start
+  a transition when `color` changes, the value follows `color`, as in Chromium. A `calc()` in a box
+  shadow is its length in pixels (P3-V11; the list was discrete).
+- **Compat (Appendix A).** `CurrentColor`: kept in the colour and border rewrites only (colour,
+  background, border and caret colours); the companion stays everywhere else. `ExtraUnits`: kept
+  where `calc()` is (`NormalizeContext::unitsNative`, not custom properties), without orientation
+  copies (`OutDecl::nativeUnits`) or style-attribute evaluation. With `IndividualTransforms`,
+  `translate`, `rotate` and `scale` keep `calc()` and the units as `transform` does (the
+  `IndividualTransform` rewrite reads as written then). Folded without the fork's `calc()`, a
+  translation by a sum of lengths and percentages is written as one translation per term
+  (`translateX(calc(50% + 1em))` is `translateX(50%) translateX(1em)`, also for `translate`
+  combined into `transform`): exact. Every other lossy fold is reported (`HTMLUI-CSS-0007` a
+  percentage reduced, `HTMLUI-CSS-0013` a load-time evaluation, `HTMLUI-CSS-0005` an approximated
+  unit); findings of one code in one value are merged into one message, since the sink keeps one
+  finding per code and declaration (an `ex` after a `ch` was not named before). Text fixtures load Roboto from
+  `fonts/Roboto-Regular-subset-post.ttf` (Chromium rejects the subset without a post table).
+
 ### Wave 2
 
 #### `p3-integration` — cross-feature verification and closing
@@ -1740,13 +2364,68 @@ and the user-facing support notes in `docs/mcp/guide/html-ui.md` for its feature
   clone and record conflicts per patch in FORK.md; run the full acceptance list (§6).
 - **Deps:** all wave-1 packages merged.
 
+#### `p3-integration` as implemented
+
+**Fixtures** (`fixtures/p3/integration/`, Chromium references, default tolerances unless noted):
+`after-hover-grid-opacity` (`::after` transitioned on `:hover` in a grid item under group opacity),
+`sticky-scrolling-grid` and `absolute-in-scroll-containers` (`"samples": 1`, the Mesa MSAA scissor
+pattern of §3.12.10), `calc-var-grid-tracks`, `important-vs-animation`, `important-cascade` (28
+`!important`/specificity cases, the wave-1 leftover), `fixed-modal-backdrop` (a fixed modal with a
+backdrop blur over a scrolled document), `fixed-containing-blocks` (transform, filter, will-change,
+mask), `background-image-crossfade`, `svg-background-repeat`, `theme-color-variables` (root classes
+toggled), `color-mix-currentcolor-transition`, `logical-grid`, `counters-flex`,
+`all-unset-buttons-grid`, `background-layers-transition`, `text-shadow-group-opacity`, and the five
+agent-written sample pages `sample-main-menu`, `sample-settings`, `sample-inventory`, `sample-hud`,
+`sample-dialog`. The sample pages are text-heavy (`"boxes": true, "noText": true`, §5.2): the boxes
+and the image without text are gated at the default tolerances, the full image is reported (the
+glyphs differ in rasterization: hinting, synthetic bold drawn by bitmap dilation rather than Skia's
+outline emboldening). The other text-heavy fixtures (`all-unset-buttons-grid`, `counters-flex`,
+`text-shadow-group-opacity`, `text/text-transform-unicode`, `text/zero-width-space`,
+`values/font-family-fallback`, `values/line-height-normal`) carry the same gate.
+
+**Found and fixed by the fixtures** (fork rows in FORK.md P3-I*): content of scroll containers
+clipped to the scrollport (P3-I2), scrollbar thumb margins (P3-I3), absolutely positioned boxes as
+scrollable overflow (P3-I4), the viewport containing block without the root's scrollbars and the
+end margins of scrollable overflow (P3-I10), backdrop filters reading the border box with mirrored
+blur edges (P3-I11, and `htmlui_post.frag`), replaced grid items' heights (P3-I12), the range fill
+and select arrow placement (P3-I13), box-shadow textures larger than the window (P3-I14); in the
+engine: the UA range and select drawn as Chromium's (8px centred track inset 1px, a 15px thumb, the
+value fill under the half-alpha track border; the chevron in the text colour), synthetic bold
+keeping the regular advances (P1 §3.13 changed), `all` written for the fork (`CssWideKeywords`),
+`box-shadow` keeping `currentcolor`, colour functions of theme variables kept for the fork
+(`ColorFunctions`), `font-weight: bolder/lighter` (`RelativeFontWeight`), root classes and
+attributes changed by a script restyle the document (`DocumentLoader::restyleForRoot`), a url-free
+`var()` of background layers is typed; in the harness: pointer steps through transforms, the root
+scrollbar of a scrolling viewport kept in the references, fonts checked at every capture.
+
+**Wave-1 leftovers:** (1) `!important` class vs id: not reproducible, kept as a test (P3-I5) and a
+fixture; (2) image-list transitions: cross-fade (P3-I7, §3.9.2 changed); (3) seams of repeated SVG
+tiles: tiles rasterized at whole pixels and repeated by the sampler (P3-I8; `space` with a
+fractional gap stays a sub-pixel apart from Chromium, which shrinks the tiles); (4) the font
+without a `post` table: removed, the harness checks every fixture font (`FontFacesLoadInChromium`);
+(5) `text-align: justify`: a note with §2.2's hint (and `direction: rtl` with the mirrored-layout
+hint); (6) fixed containing blocks: `will-change`, `perspective`, `backdrop-filter`, not `mask`,
+dynamic changes (P3-I6); (7) benchmarks: FORK.md "Benchmarks (phase 3, final)"; (8) the Desktop
+player MCP test with `JASPER_SLOW_BUILD=1`; (9) every `ForkFeature` present, `present() == all()`
+asserted, probes and consistency samples for the two appended features.
+
+**Excluded Taffy fixtures:** `x*` (Taffy's invalid, §5.3), `direction: rtl`, `writing-mode` (§2.2);
+the two fixtures that built a track list with a script are written out statically by the importer
+(`needs-script` is gone). Both `known-failures.txt` are empty.
+
 ## 5. Test plan
 
 ### 5.1 RmlUi's own unit tests (standalone, host)
 The fork's `Tests/` must keep building and passing. They need RmlUi's sample shell (FreeType for
 `Shell::LoadFonts`, a backend for `rmlui_shell`), which the engine build does not have, so they are
 built standalone on the host (verified on this host: Ubuntu, GCC 13, FreeType 2.13 via
-`pkg-config freetype2` = 26.1.20, no GLFW/SDL packages, X11 headers without `xf86vmode.h`):
+`pkg-config freetype2` = 26.1.20, no GLFW/SDL packages, X11 headers without `xf86vmode.h`).
+**As implemented** (p3-testkit) the script differs from the sketch below: no GLFW (a window-less
+backend; `RMLUI_TESTS_USE_SHELL=1` is not supported), our own CMake driver instead of upstream's
+library CMake (`RMLUI_MATH_EXPRESSIONS` does not exist at 6.3), the upstream parts also include
+`Samples/basic/{demo,benchmark}/data` (documents the tests load), the build trees are
+`build/rmlui-tests/<host|docker>/`, and `--docker` builds in the engine's image with FreeType from
+source; see "p3-testkit as implemented" in §4. The sketch as written during spec work:
 
 ```
 # tools/htmlui/run-rmlui-tests.sh  (what it does; verified manually during spec writing)
@@ -1767,7 +2446,8 @@ cmake --build build/rmlui-tests/build -j3 --target rmlui_unit_tests
 # 4. Run (no display needed: the tests use a dummy render interface unless RMLUI_TESTS_USE_SHELL=1):
 build/rmlui-tests/build/rmlui_unit_tests
 ```
-Baseline at 6.3: `146 test cases, 8306 assertions, all passed, 0.8 s`. With PR #983: 182 cases,
+Baseline at 6.3: `146 test cases, 8306 assertions, all passed, 0.8 s`; on the fork of phases 0–2
+the same, with the 6.3 tests adapted to P2-8 (FORK.md P3-T1, P3-T2). With PR #983: 182 cases,
 10611 assertions. The script takes the upstream parts from a pinned clone of tag `6.3` (cached;
 `git clone --depth 1 -b 6.3 https://github.com/mikke89/RmlUi.git`) unless phase 0 vendored them.
 It also builds and runs `rmlui_benchmarks` with `--benchmark` subsets for style computation and
@@ -1792,15 +2472,18 @@ The agent-browser MCP tool is not used for goldens (shared browser, non-determin
   (`tools/htmlui/package.json` pins `playwright-core@1.63.0`, headless shell revision 1243 =
   Chromium 153.0.8010.12, which the script enforces; `phase-2-compat.md` §5.3) gains a
   `--fixtures <area|name>` mode for phase-3 fixtures (sidecar below) and `--boxes-only`
-  (§5.3). Same launch flags as phase 2's page mode, including `--hide-scrollbars` (the Taffy
-  fixtures add their own 15 px scrollbar rule), `deviceScaleFactor: 1`, viewport from the
-  sidecar. (Found by p2-ua: `--hide-scrollbars`, Playwright's default, also hides
-  `::-webkit-scrollbar`-styled scrollbars and they take no layout space, so the Taffy 15 px
-  scrollbar rule needs the flag removed, as phase 2's page mode does with `ignoreDefaultArgs`
-  and an injected `html::-webkit-scrollbar{display:none}`; page mode also runs with
-  JavaScript off, a fontconfig that maps generic families to the engine's built-in Roboto, a
-  fresh browser per capture, and accepts Chromium's cross-process raster noise in `--verify`:
-  phase-2 §5.3.) Runs on the host (playwright and the browser cache live there), never in Docker or
+  (§5.3). Same launch flags as phase 2's page mode, `deviceScaleFactor: 1`, viewport from the
+  sidecar. As implemented (p3-testkit), Playwright's `--hide-scrollbars` is removed in fixture mode
+  too (`ignoreDefaultArgs`) and only the root viewport's scrollbar is hidden by an injected
+  `html::-webkit-scrollbar{display:none!important}`: the flag also hides
+  `::-webkit-scrollbar`-styled scrollbars, which then take no layout space (found by p2-ua), so
+  with it the Taffy 15 px scrollbar rule would have no effect. The Taffy references take 15 px
+  scrollbars (e.g. `leaf_overflow_scrollbars_take_up_space_both_axis` is 35x25), and 1509 of the
+  1520 compared references agree with Taffy's own browser-generated expectations within 1 px
+  (the 11 others differ only by the XML's coordinate convention). Fixture mode runs with JavaScript
+  off (the steps run in Playwright's evaluation world), the same fontconfig, a fresh browser per
+  p3 fixture and one browser with a fresh context per Taffy fixture (layout only; runs with 1 and 6
+  parallel contexts give identical JSON). Runs on the host (playwright and the browser cache live there), never in Docker or
   CI; `npx playwright-core install chromium-headless-shell` installs the browser if missing.
   Phase-2 page references keep their own mode (`--all`, meta-tag states, finished animations);
   phase-3 fixtures use sidecar steps and seeked animations.
@@ -1812,19 +2495,38 @@ The agent-browser MCP tool is not used for goldens (shared browser, non-determin
   `FixtureRunner` through the UIDocument/Lua element API (hover/focus through injected input
   events), and `advance` drives the document clock deterministically through phase 1's
   `HtmlUIClock::setFixedTime` (the time `RmlSystem::GetElapsedTime` returns).
+  As implemented (p3-testkit; `tools/htmlui/README.md` has the full form): targets are `#id`;
+  also `{"press": "#id"}` (pointer down at the centre, held), `{"release": true | "#id"}`,
+  `{"removeClass": [...]}`, `setStyle` with `""` and `setAttr` with `null` remove; `focus` with
+  `"keyboard": true` presses Tab until the element has the focus, without it clicks the element
+  (the pointer stays there); pointer positions are the rounded centre of the border box on both
+  sides; without a capture step one capture is taken at the end (`<name>.png`); `"comment"` is
+  required with `"tolerance"` (`channel`, `badPercent`, `cluster`, `box`) and with `"samples": 1` (the engine renders the
+  fixture without MSAA instead of its default 4x; for content scrolled past clip edges, §3.12.10); `"boxes": true` makes
+  the boxes the oracle and the image comparison reported only (glyph rasterization differs);
+  `"selfTest": {"expect": "match" | "mismatch", "referenceCss"}` is for `fixtures/p3/testkit`
+  only (the CSS is injected into the reference alone). Areas and owners are listed in
+  `fixtures/p3/manifest.json`; `fixtures/p3/known-failures.txt` works like Taffy's (§5.3). The
+  engine clock moves in 0.05 s steps to the exact target time (RmlUi advances an animation by at
+  most 0.1 s per update); every animation and transition in the reference is paused when it
+  starts and seeked to the same time.
 - Browser side for `advance`: all animations are paused at load (`document.getAnimations()` →
   `pause()`, then `currentTime` = accumulated advance for each capture), CSS transitions are
   started by the step and seeked the same way, so captures are frame-exact.
 - Outputs (committed): `engine/tests/htmlui/golden/browser/<area>/<name>[.<capture>].png`,
-  `<name>.boxes.json` (border-box rect of every element in DOM order that has an `id`;
+  `<name>.boxes.json` (`{fixture, viewport, browser, captures: {<suffix>: [{id, tag, x, y, w, h,
+  transformed?}]}}`, unrounded: border-box rect of every element in DOM order that has an `id`;
   browsers expose no DOM geometry for `::before`/`::after`, so pseudo-element boxes are checked by
   pixels, and by unit tests on the engine side), `golden/browser/VERSION` (Chrome + playwright
   versions). References are regenerated only by `node tools/htmlui/render-reference.mjs --fixtures <area|fixture>`; changed images are
   inspected (BRIEF.md).
 - Fonts: every fixture uses `@font-face` with files in `engine/tests/htmlui/fonts/`:
   `Roboto-Regular-subset.ttf` extracted from `engine/core/util/DefaultFont.h` (same bytes the
-  engine uses) and `Ahem.ttf` (CC0, Kozea/Ahem; also converted from the woff2 embedded in Taffy's
-  `test_base_style.css`). Generic families are avoided in fixtures.
+  engine uses) and `Ahem.ttf` (CC0, Kozea/Ahem). As implemented: Ahem is Kozea/Ahem tag 1.0 as
+  released; the WOFF2 in Taffy's `test_base_style.css` is a FontForge re-save of the same font (same
+  metrics and advances, a slightly different cmap), not converted. The asset root while a fixture
+  runs is `engine/tests/htmlui`, so the fixtures' relative URLs reach `fonts/` in the engine as in
+  Chromium. Generic families are avoided in fixtures.
 - Comparison (`BrowserCompare::compareStrict`, added by p3-testkit to phase 2's
   `BrowserCompare`; phase 0's `ImageCompare` stays the engine-golden comparator): images are
   compared in premultiplied sRGB; a pixel is bad when its
@@ -1833,7 +2535,12 @@ The agent-browser MCP tool is not used for goldens (shared browser, non-determin
   the image and no 4-connected bad cluster exceeds 16 pixels. Text-heavy fixtures additionally
   carry `"boxes": true` (the box comparison below is the primary oracle; pixels use the same
   metric). Per-fixture overrides are allowed only with a comment in the sidecar explaining the
-  rasterization difference.
+  rasterization difference. *As implemented (p3-integration):* a text-heavy fixture also carries
+  `"noText": true` (required with `"boxes": true`): every capture is taken a second time with the text
+  made transparent on both sides (the reference: the steps rerun with phase 2's `NO_TEXT_CSS`; the
+  engine: the same frame drawn without glyphs, text decorations and symbol markers, as the phase-2
+  golden pages' no-text render) and that image is gated at the default metric; only the full image
+  with its glyphs is reported. The text caret is hidden in every capture on both sides.
 - Box comparison: for each id'ed element, engine border box (`Element::GetAbsoluteOffset(Border)`
   + `GetBox().GetSize(Border)`) vs Chrome `getBoundingClientRect()` (untransformed elements),
   |Δ| ≤ 1 px on x, y, width, height.
@@ -1854,6 +2561,20 @@ Excluded (`excluded.txt`, with reason): fixtures whose name starts with `x` (Taf
 fixtures using `direction: rtl` (24 grid, 17 flex, 10 block) or `writing-mode` (2 grid) — §2.2.
 Every other fixture must pass at the end of phase 3.
 
+As implemented (p3-testkit): each fixture links one shared `fixtures/taffy/base.css` (Taffy's sheet
+on the local Ahem, its `::-webkit-scrollbar` rule unchanged) instead of an inline copy: one place to
+adapt, and one compiled sheet for 1595 documents; no engine UA addition is needed, the compat UA
+sheet already gives RmlUi's scrollbars Chromium's 15 px. The reference script is
+`render-reference.mjs --fixtures taffy --boxes-only`; it writes one
+`golden/browser/taffy/<suite>.boxes.json` per suite (fixture name -> `[[path, tag, x, y, w, h]]`,
+`path` = child indices among element children, `#test-root` in the viewport so its own insets and
+margins are compared, the others relative to it). `BoxParityTest` is parameterized over the
+fixture files and runs the 1520 compared fixtures in about 2 s. The exclusions are 75: 17 `x*`,
+51 `rtl-excluded`, 5 `writing-mode-excluded` (2 grid, 3 flex) and 2 `needs-script` (grid fixtures
+that build `grid-template-columns` with JavaScript, which neither side runs).
+`known-failures.txt`: `<suite>/<name> owner=<package> reason=<class> # <first difference>`; a listed
+fixture must fail, an unlisted one must pass (baseline in §4, "p3-testkit as implemented").
+
 ### 5.4 Compat consistency tests
 `engine/tests/htmlui/compat/NativeFeatureConsistencyTest.cpp` (p3-testkit creates, every package
 adds rows): for each table row whose `effectiveSupport` is `Native` with
@@ -1863,6 +2584,12 @@ output for the sample passes the declaration through (normalized) with the featu
 (c) no fallback diagnostic is emitted. For each feature of Appendix A, a test that forcing it
 absent (`ForkFeatures::with(X, false)`) still produces phase 2's rewrite or emulation (the code
 is kept, §1), and `ForkFeatures.TableMatchesProbes` (phase 2) passes with every new probe.
+As implemented: the table rows have no sample column, so the test holds the samples (`kSamples`:
+feature, kind declaration/selector/rule, CSS, and phase 2's absent output or diagnostic code); a
+feature appended to `ForkFeature` needs a sample (`EveryFeatureHasASample`), a property or
+selector row made Native by a present feature needs a sample of that feature and property
+(`NativeRowsHaveSamples`); (b) compares what RmlUi parses from the sample and from compat's
+output (custom-property companions aside), (c) allows no diagnostic at all.
 
 ### 5.5 Other suites
 - Engine golden regression (phase-0 harness) and the existing `jasperengine-htmlui-tests`.
@@ -1879,7 +2606,9 @@ Phase 3 is accepted when all boxes are checked on the merged `html-ui` branch:
 - [ ] Every phase-3 fork change is in `rmlui:` commits; FORK.md lists each patch (commits, files,
       reason, upstream status, tests), PR #983 provenance and the Taffy commit + license.
 - [ ] `tools/htmlui/run-rmlui-tests.sh` passes: all 6.3 cases (expectations changed only where FORK.md
-      documents an initial-value change), all PR #983 cases, all phase-3 cases.
+      documents an initial-value change, a CSS value fix (P3-V*: the `rgba()` alpha scale, D50 Lab,
+      rounded channels, shadows without a colour, `transform-origin` keyword order, `cursor` keywords),
+      or P2-8's white-space text: P3-T2), all PR #983 cases, all phase-3 cases.
 - [ ] Benchmarks recorded before/after for style computation, `:has`-free documents and layout;
       no unexplained regression > 10 %.
 - [ ] Zero new compiler warnings in the fork and engine on Linux GCC; Web and Android builds pass.
@@ -1942,7 +2671,7 @@ is needed.
 | Phase-3 feature | `ForkFeature` | Phase-2 behaviour while absent (kept, testable by forcing absent) | Package |
 |---|---|---|---|
 | root model | none | phase 2's mapping is final (§3.1.1); root `%`/`em` font sizes converted to px in stylesheets | p3-base |
-| `calc()`, `min()`, `max()`, `clamp()` | `Calc` | static folding with load-time viewport values; other math functions stay folded in every state | p3-values (p3-base lands PR #983) |
+| `calc()`, `min()`, `max()`, `clamp()` | `Calc` | static folding with load-time viewport values; other math functions stay folded in every state | p3-base lands PR #983 and makes `Calc` present for the rewrites that write a value as is (§3.1.12); p3-values widens the set |
 | `rgba()` alpha 0–1, space syntax, named colours, `hwb()`, `color-mix()` | none | every colour normalized to `#rrggbbaa` (valid for the fork too) | p3-values |
 | `currentcolor` | **`CurrentColor`** | `--html-current-color` companion written on `color`, read through `var()` | p3-values |
 | `font-family` lists | none | unquoted comma list; the fork's `font_family` parser canonicalizes it, the engine font engine resolves it (contract test `FontFamilyListTest`) | p3-values |
@@ -1985,7 +2714,7 @@ is needed.
 | p3-values | — (new units/values only) | `margin-inline/-block(-start/-end)`, `padding-inline/-block(*)`, `inset-inline/-block(*)`, `border-inline/-block(*)`, `inline-size`, `block-size`, `min-/max-inline-size`, `min-/max-block-size`; `font` (now Custom), `transform-origin`/`perspective-origin` (Custom) |
 | p3-cascade | `content`, `quotes`, `counter-reset`, `counter-increment`, `counter-set`, `list-style-type`, `list-style-position`, `list-style-image` | `all`, `list-style` |
 | p3-paint | `border-{top,right,bottom,left}-style`, `-rmlui-border-{tl,tr,br,bl}-radius-{x,y}` (8, replacing the 4 radius ids), `outline-width`, `outline-style`, `outline-color`, `outline-offset`, `isolation`, `background-image`, `background-position-x`, `background-position-y`, `background-size`, `background-repeat`, `background-origin`, `background-clip`, `background-attachment`, `mask-size`, `mask-position-x`, `mask-position-y`, `mask-repeat`, `object-fit`, `object-position-x`, `object-position-y`, `border-image` (none only) | `border-style`, `border-*` (AnyOrder), `border` (AnyOrder), `border-*-radius` (4), `border-radius` (Custom), `outline`, `background` (Custom), `background-position`, `mask`, `mask-position`, `object-position` |
-| p3-text | `word-spacing`, `overflow-wrap`, `white-space-collapse`, `text-wrap-mode`, `text-decoration-color`, `text-decoration-style`, `text-decoration-thickness`, `text-underline-offset`, `text-shadow`, `user-select`, `accent-color` (`text-decoration` becomes `text-decoration-line`) | `white-space` (Custom), `text-wrap`, `text-decoration` (AnyOrder), `word-wrap` (alias) |
+| p3-text | `word-spacing`, `overflow-wrap`, `white-space-collapse`, `text-wrap-mode`, `text-decoration-color`, `text-decoration-style`, `text-decoration-thickness`, `text-underline-offset`, `text-shadow`, `user-select`, `accent-color` (`text-decoration` becomes `text-decoration-line`; the `white-space` longhand id is retired) | `white-space` (Custom), `text-wrap` (Custom), `text-decoration` (Custom), `word-wrap` (alias) |
 | p3-layout | `overflow-clip-margin`, `aspect-ratio`, `scrollbar-gutter` | — |
 | p3-animation | `transition-property`, `transition-duration`, `transition-timing-function`, `transition-delay`, `transition-behavior`, `animation-name`, `animation-duration`, `animation-timing-function`, `animation-delay`, `animation-iteration-count`, `animation-direction`, `animation-fill-mode`, `animation-play-state`, `animation-composition`, `translate`, `rotate`, `scale` | `transition`, `animation` (both Custom, replacing the 6.3 list properties) |
 | p3-grid | `grid-template-columns`, `grid-template-rows`, `grid-template-areas`, `grid-auto-columns`, `grid-auto-rows`, `grid-auto-flow`, `grid-row-start`, `grid-row-end`, `grid-column-start`, `grid-column-end` | `grid-row`, `grid-column`, `grid-area`, `grid-template`, `grid`, `grid-gap`/`grid-row-gap`/`grid-column-gap` (aliases) |

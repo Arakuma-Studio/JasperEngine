@@ -1,0 +1,22 @@
+#htmlui-root .inline-sheet {
+color: #ff0000ff;
+--html-current-color: #ff0000ff;
+background-color: transparent;
+background-image: url("asset://ui/compat/css/img/a.png");
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}
+@media (min-width: 600px) {
+#htmlui-root .inline-sheet {
+color: #0000ffff;
+--html-current-color: #0000ffff;
+}
+}
+#htmlui-root .inline-sheet:focus {
+outline: 1px solid;
+}

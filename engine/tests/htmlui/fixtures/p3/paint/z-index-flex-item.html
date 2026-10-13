@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: z-index on flex items</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .row { display: flex; margin: 10px; }
+  .row > div { width: 100px; height: 60px; }
+  .row > div + div { margin-left: -40px; }
+  .red { background-color: #cc3333; }
+  .blue { background-color: #3366cc; }
+  .green { background-color: #339966; }
+  #r1 .red { z-index: 2; }
+  #r2 .blue { z-index: -1; }
+  #r3 .green { z-index: 1; } #r3 .red { z-index: 3; }
+</style>
+</head>
+<body><div class="row" id="r1"><div class="red"></div><div class="blue"></div></div><div class="row" id="r2"><div class="red"></div><div class="blue"></div></div><div class="row" id="r3"><div class="red"></div><div class="blue"></div><div class="green"></div></div></body>
+</html>
