@@ -437,6 +437,16 @@ namespace jasperengine::editor{
         float getPostProcessLabelSize(const PostProcessShader& resolved);
         void drawPostProcessUniforms(uint32_t sceneId, const std::vector<PostProcessPass>& passes, size_t index,
                                      const PostProcessShader& resolved);
+        // the user pass's own fields beyond shader, enabled and uniforms (InspectorPostProcessing.cpp)
+        void drawPostProcessPassFields(SceneProject* sceneProject, const std::vector<PostProcessPass>& passes, size_t index);
+
+        // The engine's post-processing (PostProcessingSettings, InspectorPostProcessing.cpp): effects
+        // by group with enable checkboxes and cost tiers, presets, the estimated cost readout
+        void drawScenePostProcessing(SceneProject* sceneProject);
+        void drawPostProcessingFieldRow(SceneProject* sceneProject, const PostProcessingSettings& settings,
+                                        const PostProcessingSettings::Field& field, const char* label,
+                                        const std::string& help, bool indent);
+        void drawPostProcessingCost(SceneProject* sceneProject, const PostProcessingSettings& settings);
 
         // Commits a planned fork as one undoable step and opens the new .vert/.frag in the
         // code editor. Alerts instead when the plan is invalid or the files cannot be written.

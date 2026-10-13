@@ -153,6 +153,9 @@ use) checks on demand.
 Targets of `fork_shader`: `component` (a GameObject's renderable), `depth` (a Mesh's depth
 pass), `scene_default` (with `shader_type`: every component of that type without its own fork)
 and `post_process` (a scene post-process pass: `pass_index`, or omit it to add a new pass).
+A pass may also be a library post-process shader (`list_shaders` type `postprocess`), take
+`textures` {uniform: image} and a `scale` (0.1..1, its resolution), and read
+`u_originalSceneTexture` (the scene before the chain) besides `u_sceneColorTexture`.
 
 ## Parameters: the custom block
 

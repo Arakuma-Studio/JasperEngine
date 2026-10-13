@@ -763,6 +763,7 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"hide_container_guides", &SceneDisplaySettings::hideContainerGuides},
         {"hide_selection_outline", &SceneDisplaySettings::hideSelectionOutline},
         {"disable_fog", &SceneDisplaySettings::disableFog},
+        {"show_post_processing", &SceneDisplaySettings::showPostProcessing},
     };
     return flags;
 }
@@ -901,6 +902,8 @@ void setSceneCameraTool(const CallPtr& call) {
                 else if (displayFlags().count(it.key())) s->displaySettings.*(displayFlags().at(it.key())) = it.value().get<bool>();
             }
             changed.push_back("display");
+            // a view preference, kept per scene in the workspace file (as the Gizmos menu does)
+            p->saveWorkspaceFile();
         }
         s->needUpdateRender = true;
         Json data = {{"scene", McpRefs::sceneJson(p, *s)}, {"camera", sceneCameraJson(s)}, {"changed", changed}};
@@ -1140,7 +1143,7 @@ void registerViewTools(McpRegistry& registry) {
             {"distance", number("", 0.2, 2000)},
             {"center", vec2("World point at the view centre.")},
             {"zoom", number("World units per pixel.", 0.01, 1000)},
-            {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false}.")},
+            {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false, show_post_processing: true}; saved with the workspace.")},
             {"screenshot", sceneShot},
             {"max_width", maxWidth}
         });

@@ -6037,7 +6037,12 @@ void editor::InspectorWindow::drawScenePostProcess(SceneProject* sceneProject){
                     });
             };
 
-            drawShaderRowContents(passes[i].shader, setShader, onFork, "post_process_" + std::to_string(i));
+            // the library's post-process shaders (@shader postprocess), a project file, or a fork
+            const std::string passId = "post_process_" + std::to_string(i);
+            drawLibraryShaderCombo(passes[i].shader, ShaderType::POSTPROCESS, setShader, "Edit Shader Files##" + passId);
+            drawShaderRowContents(passes[i].shader, setShader, onFork, passId);
+
+            drawPostProcessPassFields(sceneProject, passes, i);
 
             drawPostProcessUniforms(sceneId, passes, i, resolved);
 
@@ -7769,6 +7774,20 @@ void editor::InspectorWindow::drawCameraComponent(ComponentType cpType, ScenePro
         if (!canPreviewCamera && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip(sceneProject->playState == ScenePlayState::STOPPED ? "Camera transform unavailable" : "Stop the scene to preview cameras");
         }
+    }
+
+    // the scene's post-processing (scene settings) reaches the main camera only
+    if (entities.size() == 1 && sceneProject->sceneType != SceneType::SCENE_UI) {
+        const bool mainCamera = sceneProject->mainCamera == entities[0];
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("Post");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextDisabled("%s", mainCamera ? "Main camera: post-processed" : "Not post-processed");
+        ImGui::SetItemTooltip("%s", mainCamera
+            ? "The scene's Post-processing settings (Inspector with nothing selected) apply to this camera's image."
+            : "Only the scene's main camera is post-processed (Scene settings > Post-processing); other cameras, "
+              "render-to-texture ones included, draw without it.");
     }
 
     endTable();
@@ -14343,10 +14362,18 @@ void editor::InspectorWindow::show(){
                 ImGui::EndTable();
             }
 
-            // Ordered fullscreen passes run after the scene color (and SSR) pass; each one
-            // is a forked shader whose uniforms become rows here.
+            // The engine's post-processing of the main camera (effects, presets, cost), then the
+            // ordered user passes run after the scene color (and SSR) pass: each one a library
+            // post-process shader or a fork whose uniforms become rows here.
             if (sceneProject->sceneType != SceneType::SCENE_UI) {
                 ImGui::SeparatorText("Post-processing");
+                drawScenePostProcessing(sceneProject);
+                ImGui::Spacing();
+                ImGui::SeparatorText("Custom Passes");
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextDisabled("Fullscreen shaders of the library or your own, run in order after the scene is drawn (before "
+                                    "the uber pass): each costs one more pass at the scene's resolution.");
+                ImGui::PopTextWrapPos();
                 drawScenePostProcess(sceneProject);
             }
 

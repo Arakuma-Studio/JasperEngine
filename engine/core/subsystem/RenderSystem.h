@@ -1457,6 +1457,10 @@ namespace jasperengine{
 		// quarter of the source's size, or null while its programs build
 		TextureRender* renderBloomChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight);
 		TextureRender* renderBlurChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight);
+	public:
+		// the blur chain's dual-filter levels for a radius (0..3: 1 + 2 x levels passes)
+		static int getBlurLevels(float radius);
+	private:
 		// the multisampled scene target for a colour target of this size (made or resized)
 		bool ensureMsaaFramebuffer(unsigned int width, unsigned int height, int samples);
 		// the target the multisampled scene resolves into before its blit to the swapchain

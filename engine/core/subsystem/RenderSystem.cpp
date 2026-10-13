@@ -4126,13 +4126,18 @@ TextureRender* RenderSystem::renderBloomChain(TextureRender* source, unsigned in
     return &targets.up[0].getRender().getColorTexture();
 }
 
+int RenderSystem::getBlurLevels(float radius){
+    radius = std::min(std::max(radius, 0.0f), 4.0f);
+    return std::max(0, std::min(PostChainTargets::LEVELS - 1, (int)std::ceil(radius - 1e-3f)));
+}
+
 TextureRender* RenderSystem::renderBlurChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight){
     if (!loadBloomProgram(BLOOM_PREFILTER_PLAIN) || !loadBloomProgram(BLOOM_DOWN) || !loadBloomProgram(BLOOM_UP))
         return nullptr;
     // the radius: as many dual-filter levels (each doubles the reach), the taps spread by the
     // fraction left (0: the quarter-resolution box alone)
     const float radius = std::min(std::max(scene->getPostProcessing().blurRadius, 0.0f), 4.0f);
-    const int levels = std::min(PostChainTargets::LEVELS - 1, (int)std::ceil(radius - 1e-3f));
+    const int levels = getBlurLevels(radius);
     const float spread = levels > 0 ? radius / (float)levels : 1.0f;
     PostChainTargets& targets = rv().blurTargets;
     if (!ensurePostChainTargets(targets, sourceWidth, sourceHeight, levels))
