@@ -288,7 +288,7 @@ style those through their pseudo-elements (`::-webkit-slider-thumb`, `::-webkit-
 |---|---|
 | `<script>` (JavaScript) | `<script type="text/lua">` or a Lua script on the GameObject (`HTMLUI-HTML-0006`, error) |
 | `onclick="..."` and every `on*` attribute | `el:addEventListener("click", fn)` in Lua, or `data-event-click` with a data model (`HTMLUI-HTML-0005`, error) |
-| `<canvas>`, `<video>` | a Lottie animation, an image sequence, or a scene rendered to a texture shown in an `<img>`-like element of the game (`HTMLUI-HTML-0002`: a placeholder box) |
+| `<canvas>`, `<video>` | a Lottie animation or an image sequence; 3D or video content drawn by the game behind a transparent part of the page, or the document on a mesh in texture mode (`HTMLUI-HTML-0002`: a placeholder box) |
 | `<iframe>` | another UI Document (`HTMLUI-HTML-0002`) |
 | `title="tooltip"` | a tooltip element shown on `mouseover` from Lua (`HTMLUI-HTML-0004`, info) |
 | `<div/>` | `<div></div>`: in HTML a non-void element does not self-close (`HTMLUI-HTML-0026`) |
@@ -993,7 +993,7 @@ file instead: `import_files {"icons": ["lucide:play"]}`.
 ### Importing remote fonts, images and animations
 
 A document may link what a page links: Google Fonts, CDN stylesheets (Font Awesome, animate.css),
-remote images, LottieFiles animations. **Keep the `https://` URLs as written**: the editor
+remote images, LottieFiles animations. **The `https://` URLs can stay as written**: the editor
 downloads each once into `assets/htmlui-imports/` and records it in
 `assets/htmlui-imports/manifest.json`, through which the runtime serves the URL from the project
 (offline, also in exports).
@@ -1111,7 +1111,7 @@ The page is the canvas, so responsiveness is about the canvas size:
 
 | `graphics.scaling_mode` | Canvas (= `100vw` x `100vh`) when the window changes |
 |---|---|
-| `letterbox`, `crop`, `stretch` | fixed at `canvas_width` x `canvas_height`: the layout never changes, the result is scaled |
+| `letterbox`, `crop`, `stretch` | fixed at `graphics.canvas_width` x `graphics.canvas_height`: the layout never changes, the result is scaled |
 | `fit_width` (default) | width fixed, height follows the window's aspect ratio |
 | `fit_height` | height fixed, width follows the window's aspect ratio |
 | `native` | the window in screen pixels |
