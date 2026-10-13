@@ -1777,8 +1777,13 @@ Where the code differs from 3.7, 3.9 and 5.4 (also in `CONTRACTS.md`):
   maximize_on_play: true}`: the headless editor's Game view (1600x900 window) shows the canvas at
   1415x796 while playing (904x509 without maximizing). The crop is box-filtered down to
   1280x720 for the committed golden and both are compared at 640x360 (tolerance 24, at most 1%).
-  The test scenes clear to `(0.09, 0.1, 0.13)`. The two runs must agree within the tolerance
-  (fraction 0).
+  The test scenes clear to `(0.09, 0.1, 0.13)`. The two runs must agree within the tolerance on
+  all but 0.01% of the pixels (not fraction 0): the antialiased edges of rounded boxes under
+  blurred shadows vary by a few pixels between play sessions (5 to 42 of 1.1 M pixels measured).
+  Play keeps the document the editor loaded, so CSS animations that run from the load have a
+  phase that depends on the wall time spent in edit mode: the test reloads `main_menu` (infinite
+  keyframes, no data model) once play is held (`RESTART_CSS`); a document that makes a data model
+  is reloaded by `createDataModel` at play time anyway.
 - **Tests, wave 1**: the scenes are built with `create_scene` (2D), `create_entity`,
   `add_component`, `set_properties` and `attach_script` from the project copy's files
   (`assets/ui/<n>/`, Lua in `scripts/`); elements are found with `eval_lua`
@@ -1802,7 +1807,8 @@ Where the code differs from 3.7, 3.9 and 5.4 (also in `CONTRACTS.md`):
   `border-radius` on an `<img>` does not clip the picture (a wrapper with `overflow: hidden`
   does); a `<button>` taller than its content does not center it vertically as Chromium does
   (the examples use flex); a `<select>` with a fixed `height` keeps its text at the top (padding
-  instead); no `::before`/`::after` on `<input>`; `check --ui --files` on a stylesheet alone warns
+  instead); no `::before`/`::after` on `<input>`; `offsetWidth`/`offsetHeight` of an element
+  hidden with `display: none` (`data-if`) keep their last value instead of 0; `check --ui --files` on a stylesheet alone warns
   about a shorthand whose `var()` only an inline style defines (a default in the sheet avoids it).
 
 ### 4.4 `p4-guide`: guide, AGENTS.md, stubs, API search
