@@ -935,6 +935,7 @@ public:
 	}
 
 	Variant Result() const { return R; }
+	bool HasMissingVariable() const { return expression_interface.HasMissingVariable(); }
 
 private:
 	Variant R, L;
@@ -1135,7 +1136,11 @@ bool DataExpression::Run(const DataExpressionInterface& expression_interface, Va
 {
 	DataInterpreter interpreter(program, addresses, expression_interface);
 
-	if (!interpreter.Run())
+	const bool success = interpreter.Run();
+	// the interpreter reads through its own copy of the interface
+	if (interpreter.HasMissingVariable())
+		expression_interface.missing_variable = true;
+	if (!success)
 		return false;
 
 	out_value = interpreter.Result();
@@ -1177,7 +1182,8 @@ Variant DataExpressionInterface::GetValue(const DataAddress& address) const
 	}
 	else if (data_model)
 	{
-		data_model->GetVariableInto(address, result);
+		if (!data_model->GetVariableInto(address, result) && data_model->AllowMissingVariables())
+			missing_variable = true;
 	}
 	return result;
 }
