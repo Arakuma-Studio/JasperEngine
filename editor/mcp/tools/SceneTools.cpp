@@ -12,6 +12,7 @@
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
 
+#include "PostProcessingPresets.h"
 #include "Project.h"
 #include "command/type/AddChildSceneCmd.h"
 #include "command/type/DeleteFileCmd.h"
@@ -21,6 +22,8 @@
 #include "command/type/ScenePropertyCmd.h"
 #include "command/type/SetChildSceneStartActiveCmd.h"
 #include "command/type/SetMainCameraCmd.h"
+#include "pool/ShaderPool.h"
+#include "subsystem/RenderSystem.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
 
@@ -630,7 +633,7 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"default_points_shader", SettingKind::String, "library:<name> or forked shader base path for points (\"\" built-in)"},
         {"default_lines_shader", SettingKind::String, "library:<name> or forked shader base path for lines (\"\" built-in)"},
         {"post_process", SettingKind::PostProcess,
-         "post-process passes in order: [{shader: fork base path, enabled: bool, uniforms: {name: [x,y,z,w]}}]"},
+         "post-process passes in order: [{shader: \"library:<name>\" or a fork base path, enabled: bool, uniforms: {name: [x,y,z,w]}}]"},
         {"post_processing", SettingKind::PostProcessing,
          "the engine's post-processing of the main camera: {field: value} of the fields away from their defaults; "
          "setting an object changes the fields it names, null resets all. Each field is also the setting "
@@ -647,8 +650,10 @@ const std::vector<SceneSetting>& sceneSettings() {
     return all;
 }
 
-// one post-processing field as JSON (enums by name)
-Json postProcessingFieldToJson(const PostProcessingSettings& settings, const PostProcessingSettings::Field& field) {
+// one post-processing field as JSON (enums by name; the LUT image project-relative, as every asset
+// path of MCP, when project is given: it is stored relative to the assets directory)
+Json postProcessingFieldToJson(const PostProcessingSettings& settings, const PostProcessingSettings::Field& field,
+                               Project* project = nullptr) {
     using FT = PostProcessingSettings::FieldType;
     const void* ref = settings.getFieldRef(field);
     switch (field.type) {
@@ -656,18 +661,18 @@ Json postProcessingFieldToJson(const PostProcessingSettings& settings, const Pos
         case FT::Int: return *(const int*)ref;
         case FT::Float: return McpValues::number(*(const float*)ref);
         case FT::Vector3: return McpValues::toJson(*(const Vector3*)ref);
-        case FT::String: return *(const std::string*)ref;
+        case FT::String: return McpValues::assetPathToJson(project, *(const std::string*)ref);
         case FT::Enum: return std::string(field.enumNames[*(const int*)ref]);
     }
     return nullptr;
 }
 
 // the fields away from their defaults, by snake name
-Json postProcessingToJson(const PostProcessingSettings& settings) {
+Json postProcessingToJson(const PostProcessingSettings& settings, Project* project = nullptr) {
     static const PostProcessingSettings defaults;
     Json object = Json::object();
     for (const PostProcessingSettings::Field& field : PostProcessingSettings::getFields()) {
-        Json value = postProcessingFieldToJson(settings, field);
+        Json value = postProcessingFieldToJson(settings, field, project);
         if (value != postProcessingFieldToJson(defaults, field)) object[field.snakeName] = value;
     }
     return object;
@@ -721,7 +726,13 @@ bool postProcessingFieldFromJson(Project* project, const PostProcessingSettings:
                 error = name + ": no file \"" + path + "\" in the project.";
                 return false;
             }
-            *(std::string*)ref = path;
+            // stored relative to the assets directory, as the engine loads it (and the inspector stores it)
+            std::string stored;
+            if (!McpValues::assetPathFromJson(project, path, stored, error)) {
+                error = name + ": " + error;
+                return false;
+            }
+            *(std::string*)ref = stored;
             return true;
         }
         case FT::Enum: {
@@ -794,19 +805,20 @@ Json postProcessToJson(const std::vector<PostProcessPass>& passes) {
 template<typename T>
 Json readSetting(Scene* scene, const SceneSetting& setting, bool defaults);
 
-Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults);
+Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults, Project* project);
 
 template<typename T>
 Json readSetting(Scene* scene, const SceneSetting& setting, bool defaults) {
     return defaults ? Json(Catalog::getScenePropertyDefault<T>(setting.name)) : Json(Catalog::getSceneProperty<T>(scene, setting.name));
 }
 
-Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = false) {
+Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = false, Project* project = nullptr) {
     switch (setting.kind) {
         case SettingKind::PostProcessing:
-            return postProcessingToJson(defaults || !scene ? PostProcessingSettings() : scene->getPostProcessing());
+            return postProcessingToJson(defaults || !scene ? PostProcessingSettings() : scene->getPostProcessing(), project);
         case SettingKind::PostProcessingField:
-            return postProcessingFieldToJson(defaults || !scene ? PostProcessingSettings() : scene->getPostProcessing(), *setting.field);
+            return postProcessingFieldToJson(defaults || !scene ? PostProcessingSettings() : scene->getPostProcessing(), *setting.field,
+                                             project);
         case SettingKind::Bool: return readSetting<bool>(scene, setting, defaults);
         case SettingKind::Int: return readSetting<int>(scene, setting, defaults);
         case SettingKind::Float:
@@ -963,7 +975,14 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                 }
                 PostProcessPass pass;
                 pass.shader = item.value("shader", std::string());
-                if (!shaderBaseExists(project, pass.shader)) {
+                if (ShaderReference::isLibrary(pass.shader)) {
+                    // a library post-process shader (@shader postprocess, list_shaders)
+                    std::string why;
+                    if (!McpValues::checkShaderReference(project, pass.shader, ShaderType::POSTPROCESS, why)) {
+                        error = where + ".shader: " + why;
+                        return nullptr;
+                    }
+                } else if (!shaderBaseExists(project, pass.shader)) {
                     error = where + ".shader \"" + pass.shader + "\": no forked shader there (fork the post-process shader first).";
                     return nullptr;
                 }
@@ -1010,7 +1029,7 @@ void getSceneSettingsTool(const CallPtr& call) {
     Json schemaOut = Json::object();
     std::string text = "Scene " + std::to_string(scene->id) + " \"" + scene->name + "\" settings:";
     for (const SceneSetting* setting : wanted) {
-        Json value = settingValue(scene->scene, *setting);
+        Json value = settingValue(scene->scene, *setting, false, call->ctx().project());
         text += "\n" + std::string(setting->name) + " = " + value.dump();
         values[setting->name] = value;
         if (detail) {
@@ -1099,10 +1118,133 @@ void setSceneSettingsTool(const CallPtr& call) {
     SceneProject* updated = project->getScene(id);
     Json values = Json::object();
     for (auto it = args["settings"].begin(); it != args["settings"].end(); ++it) {
-        values[it.key()] = settingValue(updated->scene, *findSetting(it.key()));
+        values[it.key()] = settingValue(updated->scene, *findSetting(it.key()), false, project);
     }
     call->ok("Set " + std::to_string(values.size()) + " scene setting(s) (one undo step).",
              Json{{"scene_id", id}, {"settings", values}});
+}
+
+// ------------------------------------------------------------------ post-processing presets
+
+// the cost estimate of PostProcessingPresets (the inspector's Estimated cost readout)
+Json postProcessingCostToJson(const PostProcessingCost& cost) {
+    auto side = [](const PostProcessingCostSide& side) {
+        Json list = Json::array();
+        for (const PostProcessingCostPass& pass : side.passes) {
+            list.push_back({{"label", pass.label}, {"count", pass.count}, {"screens", McpValues::number(pass.area)},
+                            {"full_resolution", pass.fullResolution}});
+        }
+        return Json{{"passes", side.passCount}, {"full_resolution_passes", side.fullResolutionPasses},
+                    {"screens", McpValues::number(side.fullscreen)}, {"pass_list", list}};
+    };
+    return Json{{"estimate", true},
+                {"engine", side(cost.engine)},
+                {"unity_urp", side(cost.urp)},
+                {"tiers", {{"in_shader", cost.inShader}, {"uber_pass", cost.uber}, {"bloom_chain", cost.chain}}},
+                {"scene_shading", McpValues::number(cost.sceneShading)},
+                {"notes", cost.notes}};
+}
+
+PostProcessingCost sceneCost(Scene* scene, const PostProcessingSettings& settings) {
+    int userPasses = 0;
+    for (const PostProcessPass& pass : scene->getPostProcessPasses())
+        if (pass.enabled) userPasses++;
+    return estimatePostProcessingCost(settings, userPasses, Catalog::getSceneProperty<bool>(scene, "fixed_resolution_enabled"));
+}
+
+std::string costText(const PostProcessingCost& cost) {
+    char text[200];
+    std::snprintf(text, sizeof(text), "%d passes, %d at full resolution, %.2f screens shaded (Unity URP: %d, %d, %.2f)",
+                  cost.engine.passCount, cost.engine.fullResolutionPasses, cost.engine.fullscreen,
+                  cost.urp.passCount, cost.urp.fullResolutionPasses, cost.urp.fullscreen);
+    return text;
+}
+
+std::string postPresetIdsText() {
+    std::string ids;
+    for (const PostProcessingPreset& preset : getPostProcessingPresets()) ids += (ids.empty() ? "" : ", ") + preset.id;
+    return ids;
+}
+
+// what the running game's renderer applies (play mode only)
+Json appliedPostProcessingJson(SceneProject* scene) {
+    if (scene->playState != ScenePlayState::PLAYING && scene->playState != ScenePlayState::PAUSED) return nullptr;
+    std::shared_ptr<RenderSystem> render = scene->scene->getSystem<RenderSystem>();
+    if (!render) return nullptr;
+    const PostProcessingTiers& tiers = render->getActivePostProcessingTiers();
+    Json features = Json::array();
+    const int count = ShaderPool::getShaderPropertyCount(ShaderType::BLIT);
+    for (int bit = 0; bit < count && bit < 32; bit++) {
+        if (tiers.uberFeatures & (1u << bit)) features.push_back(ShaderPool::getShaderPropertyName(ShaderType::BLIT, bit, false));
+    }
+    return Json{{"in_shader", tiers.tailColor}, {"uber_pass", tiers.uber}, {"uber_features", features},
+                {"render_scale", McpValues::number(tiers.renderScale)}};
+}
+
+void listPostProcessingPresetsTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    if (!scene->scene) {
+        call->fail(McpRefs::notOpenError(project, *scene));
+        return;
+    }
+    Json presets = Json::array();
+    std::string text = std::to_string(getPostProcessingPresets().size()) + " post-processing preset(s); "
+                       "apply_post_processing_preset applies one (estimated cost after the scene, alone):";
+    for (const PostProcessingPreset& preset : getPostProcessingPresets()) {
+        const PostProcessingCost cost = estimatePostProcessingCost(preset.settings, 0, false);
+        presets.push_back({{"id", preset.id}, {"name", preset.name}, {"description", preset.description},
+                           {"settings", postProcessingToJson(preset.settings, project)},
+                           {"cost", {{"passes", cost.engine.passCount}, {"screens", McpValues::number(cost.engine.fullscreen)},
+                                     {"unity_urp_passes", cost.urp.passCount},
+                                     {"unity_urp_screens", McpValues::number(cost.urp.fullscreen)}}}});
+        text += "\n" + preset.id + " (" + preset.name + "): " + preset.description + " [" + costText(cost) + "]";
+    }
+    const PostProcessingSettings settings = scene->scene->getPostProcessing();
+    const PostProcessingPreset* matched = matchPostProcessingPreset(settings);
+    const PostProcessingCost cost = sceneCost(scene->scene, settings);
+    Json current = {{"scene_id", scene->id}, {"preset", matched ? Json(matched->id) : Json(nullptr)},
+                    {"settings", postProcessingToJson(settings, project)}, {"cost", postProcessingCostToJson(cost)}};
+    text += "\nScene \"" + scene->name + "\": " + (matched ? "preset " + matched->id : std::string("custom settings")) +
+            ", estimated " + costText(cost) + ".";
+    Json applied = appliedPostProcessingJson(scene);
+    if (!applied.is_null()) current["applied"] = applied;
+    call->ok(text, Json{{"presets", presets}, {"current", current}});
+}
+
+void applyPostProcessingPresetTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    const std::string id = call->args().value("preset", std::string());
+    const PostProcessingPreset* preset = findPostProcessingPreset(id);
+    if (!preset) {
+        call->fail("No post-processing preset \"" + id + "\". The presets: " + postPresetIdsText() + " (list_post_processing_presets).");
+        return;
+    }
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    if (!scene->scene) {
+        call->fail(McpRefs::notOpenError(project, *scene));
+        return;
+    }
+    if (scene->sceneType == SceneType::SCENE_UI) {
+        call->fail("\"" + scene->name + "\" is a UI scene: UI scenes are never post-processed (set it on the 2D or 3D scene "
+                   "whose main camera draws the game).");
+        return;
+    }
+    const uint32_t sceneId = scene->id;
+    std::string error;
+    if (!runSceneCommand(sceneId, new ScenePropertyCmd<PostProcessingSettings>(project, sceneId, "post_processing", preset->settings), error)) {
+        call->fail(error);
+        return;
+    }
+    SceneProject* updated = project->getScene(sceneId);
+    const PostProcessingCost cost = sceneCost(updated->scene, updated->scene->getPostProcessing());
+    call->ok("Applied the " + preset->name + " post-processing preset to \"" + updated->name + "\" (one undo step): estimated " +
+             costText(cost) + ".",
+             Json{{"scene_id", sceneId}, {"preset", preset->id},
+                  {"settings", postProcessingToJson(updated->scene->getPostProcessing(), project)},
+                  {"cost", postProcessingCostToJson(cost)}});
 }
 
 } // namespace
@@ -1286,6 +1428,37 @@ void registerSceneTools(McpRegistry& registry) {
         tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")}}, {"settings"});
         tool.annotations.idempotent = true;
         tool.handler = setSceneSettingsTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "list_post_processing_presets";
+        tool.title = "List Post-processing Presets";
+        tool.description =
+            "Post-processing presets (none, mobile, console, stylised, crt_retro): id, name, description, the "
+            "post_processing fields each sets and its estimated cost. current: the scene's preset (null = custom), "
+            "settings and estimated cost {engine, unity_urp: {passes, full_resolution_passes, screens, pass_list}, "
+            "tiers, notes} (an estimate from the research cost model, not a measurement); while playing also "
+            "applied (what the renderer runs).";
+        tool.inputSchema = object({{"scene", sceneRef()}});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = listPostProcessingPresetsTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "apply_post_processing_preset";
+        tool.title = "Apply Post-processing Preset";
+        tool.description =
+            "Replace the scene's whole post_processing with a preset (list_post_processing_presets) as one undo step. "
+            "Fine-tune after with set_scene_settings post_processing.<field>. Returns {settings, cost}.";
+        tool.inputSchema = object({
+            {"preset", string("Preset id or name, e.g. \"mobile\".")},
+            {"scene", sceneRef()}
+        }, {"preset"});
+        tool.annotations.idempotent = true;
+        tool.handler = applyPostProcessingPresetTool;
         registry.addTool(std::move(tool));
     }
 }
