@@ -8,6 +8,7 @@
 #include "../../Include/RmlUi/Core/Factory.h"
 #include "../../Include/RmlUi/Core/FontEngineInterface.h"
 #include "../../Include/RmlUi/Core/Math.h"
+#include "../../Include/RmlUi/Core/MeshUtilities.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
 #include "../../Include/RmlUi/Core/TextShapingContext.h"
 #include "DataController.h"
@@ -281,9 +282,9 @@ bool ElementUtilities::SetClippingRegion(Element* element, bool force_clip_self)
 	return true;
 }
 
-ScopedReplacedContentClip::ScopedReplacedContentClip(Element* element)
+ScopedReplacedContentClip::ScopedReplacedContentClip(Element* element, bool enable)
 {
-	if (!element || !element->GetComputedValues().has_border_radius())
+	if (!enable || !element || !element->GetComputedValues().has_border_radius())
 		return;
 	RenderManager* manager = element->GetRenderManager();
 	if (!manager)
@@ -307,6 +308,71 @@ ScopedReplacedContentClip::~ScopedReplacedContentClip()
 {
 	if (render_manager)
 		render_manager->SetState(saved_state);
+}
+
+void ReplacedContentGeometry::Set(Rectanglef new_rect, ColourbPremultiplied new_colour, Vector2f top_left_texcoord, Vector2f bottom_right_texcoord)
+{
+	if (is_set && new_rect.TopLeft() == rect.TopLeft() && new_rect.BottomRight() == rect.BottomRight() && new_colour == colour &&
+		top_left_texcoord == texcoords[0] && bottom_right_texcoord == texcoords[1])
+		return;
+	rect = new_rect;
+	colour = new_colour;
+	texcoords[0] = top_left_texcoord;
+	texcoords[1] = bottom_right_texcoord;
+	is_set = true;
+	dirty = true;
+}
+
+void ReplacedContentGeometry::Clear()
+{
+	geometry = Geometry();
+	is_set = false;
+	dirty = true;
+}
+
+void ReplacedContentGeometry::Render(Element* element, Texture texture)
+{
+	if (!is_set || !element)
+		return;
+	RenderManager* render_manager = element->GetRenderManager();
+	if (!render_manager)
+		return;
+
+	const bool new_rounded = element->GetComputedValues().has_border_radius();
+	if (new_rounded)
+	{
+		const RenderBox new_content_box = element->GetRenderBox(BoxArea::Content, 0, false);
+		if (!rounded || !(new_content_box == content_box) || feather_unit != ElementBackgroundBorder::GetFeatherUnit(element))
+		{
+			content_box = new_content_box;
+			dirty = true;
+		}
+	}
+	else if (rounded)
+	{
+		dirty = true;
+	}
+
+	if (dirty || !geometry)
+	{
+		rounded = new_rounded;
+		feather_unit = ElementBackgroundBorder::GetFeatherUnit(element);
+		Mesh mesh = geometry.Release(Geometry::ReleaseMode::ClearMesh);
+		if (rounded)
+		{
+			needs_clip = !MeshUtilities::GenerateReplacedContent(mesh, content_box, rect, colour, texcoords[0], texcoords[1], feather_unit);
+		}
+		else
+		{
+			MeshUtilities::GenerateQuad(mesh, rect.TopLeft(), rect.Size(), colour, texcoords[0], texcoords[1]);
+			needs_clip = false;
+		}
+		geometry = render_manager->MakeGeometry(std::move(mesh));
+		dirty = false;
+	}
+
+	ScopedReplacedContentClip clip(element, needs_clip);
+	geometry.Render(element->GetAbsoluteOffset(BoxArea::Border), texture);
 }
 
 bool ElementUtilities::GetBoundingBox(Rectanglef& out_rectangle, Element* element, BoxArea box_area)

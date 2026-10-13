@@ -3,6 +3,8 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/Mesh.h>
+#include <RmlUi/Core/MeshUtilities.h>
 #include <doctest.h>
 
 using namespace Rml;
@@ -164,8 +166,59 @@ TEST_CASE("elementimage.preserve_ratio")
 	TestsShell::ShutdownShell();
 }
 
-// Fork (P4-G1): the picture of a rounded img is trimmed to its content edge curve by a clip mask (CSS Backgrounds 3 §5.3); a
-// square img draws without one.
+// Fork (P4-G1): the picture of a replaced element is trimmed to the content edge curve of a rounded box (CSS Backgrounds 3 §5.3).
+TEST_CASE("elementimage.replaced_content_mesh")
+{
+	// A 40 x 40 content box at (14, 14): a 4px border, 10px of padding, 20px radii (6px at the content edge).
+	const RenderBox content_box(Vector2f(40.f), Vector2f(0.f), EdgeSizes{14.f, 14.f, 14.f, 14.f}, CornerSizes{20.f, 20.f, 20.f, 20.f});
+	const ColourbPremultiplied white(255, 255, 255, 255);
+
+	SUBCASE("covering")
+	{
+		// The content box filled like a background, the texture coordinates of the quad (here larger: object-fit cover).
+		Mesh mesh;
+		const Rectanglef quad = Rectanglef::FromPositionSize({4.f, 14.f}, {60.f, 40.f});
+		CHECK(MeshUtilities::GenerateReplacedContent(mesh, content_box, quad, white, {0.f, 0.f}, {1.f, 1.f}, 1.f));
+		CHECK(mesh.vertices.size() > 16);
+		for (const Vertex& vertex : mesh.vertices)
+		{
+			CHECK(vertex.position.x >= 14.f - 1.f);
+			CHECK(vertex.position.x <= 54.f + 1.f);
+			CHECK(vertex.tex_coord.x == doctest::Approx((vertex.position.x - 4.f) / 60.f));
+			CHECK(vertex.tex_coord.y == doctest::Approx((vertex.position.y - 14.f) / 40.f));
+		}
+	}
+
+	SUBCASE("inside")
+	{
+		// Clear of the curves: the quad as it is.
+		Mesh mesh;
+		CHECK(MeshUtilities::GenerateReplacedContent(mesh, content_box, Rectanglef::FromPositionSize({16.f, 20.f}, {36.f, 20.f}), white, {0.f, 0.f},
+			{1.f, 1.f}, 1.f));
+		CHECK(mesh.vertices.size() == 4);
+	}
+
+	SUBCASE("crossing")
+	{
+		// A corner of the quad beyond the curve: generated untrimmed, for a clip mask.
+		Mesh mesh;
+		CHECK(!MeshUtilities::GenerateReplacedContent(mesh, content_box, Rectanglef::FromPositionSize({14.f, 16.f}, {40.f, 20.f}), white,
+			{0.f, 0.f}, {1.f, 1.f}, 1.f));
+		CHECK(mesh.vertices.size() == 4);
+	}
+
+	SUBCASE("square")
+	{
+		const RenderBox square(Vector2f(40.f), Vector2f(0.f), EdgeSizes{}, CornerSizes{});
+		Mesh mesh;
+		CHECK(MeshUtilities::GenerateReplacedContent(mesh, square, Rectanglef::FromPositionSize({0.f, 10.f}, {40.f, 20.f}), white, {0.f, 0.f},
+			{1.f, 1.f}, 1.f));
+		CHECK(mesh.vertices.size() == 4);
+	}
+}
+
+// Fork (P4-G1): a rounded img whose picture crosses its curve (object-fit: contain) draws it under a clip mask; a square img,
+// or a rounded one whose picture covers its content box (trimmed by its mesh), draws without one.
 TEST_CASE("elementimage.rounded_content_clip")
 {
 	Context* context = TestsShell::GetContext();
@@ -177,8 +230,8 @@ TEST_CASE("elementimage.rounded_content_clip")
 <head>
 	<style>
 		body { left: 0; top: 0; right: 0; bottom: 0; }
-		img { display: block; width: 40px; height: 40px; }
-		#round { border-radius: 12px; padding: 4px; border: 2px #000; }
+		img { display: block; width: 40px; height: 80px; }
+		#round { border-radius: 50%; padding: 4px; border: 2px #000; }
 	</style>
 </head>
 <body>
@@ -200,7 +253,12 @@ TEST_CASE("elementimage.rounded_content_clip")
 		return render->GetCountersFromPreviousReset();
 	};
 
-	// One mask for the rounded picture, none for the square one.
+	// Filled: the mesh trims the picture.
+	CHECK(render_frame().render_to_clip_mask == 0);
+
+	// Contained (a square picture in a tall box, across the elliptical curves): one mask.
+	round->SetProperty("object-fit", "contain");
+	context->Update();
 	CHECK(render_frame().render_to_clip_mask == 1);
 
 	round->SetProperty("border-radius", "0px");

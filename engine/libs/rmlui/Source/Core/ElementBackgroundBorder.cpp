@@ -96,7 +96,7 @@ void ElementBackgroundBorder::RenderCanvas(Element* document_element)
 // The size of a device pixel in the element's units: the context's pixel size (SetGeometryPixelSize) over the scale the
 // element's transform draws it with, in steps of a fourth of an octave so that an animated scale generates the geometry a
 // few times only.
-static float GetFeatherUnit(Element* element)
+float ElementBackgroundBorder::GetFeatherUnit(Element* element)
 {
 	const float pixel_size = GetGeometryPixelSize();
 	const TransformState* transform_state = element->GetTransformState();

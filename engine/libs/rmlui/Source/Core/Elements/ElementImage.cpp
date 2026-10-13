@@ -82,9 +82,7 @@ void ElementImage::OnRender()
 	if (geometry_dirty)
 		GenerateGeometry();
 
-	// The picture is trimmed to the content edge curve of a rounded box (fork, P4-G1).
-	ScopedReplacedContentClip clip(this);
-	geometry.Render(GetAbsoluteOffset(BoxArea::Border), texture);
+	geometry.Render(this, texture);
 }
 
 void ElementImage::OnAttributeChange(const ElementAttributes& changed_attributes)
@@ -164,9 +162,6 @@ void ElementImage::OnStyleSheetChange()
 
 void ElementImage::GenerateGeometry()
 {
-	// Release the old geometry before specifying the new vertices.
-	Mesh mesh = geometry.Release(Geometry::ReleaseMode::ClearMesh);
-
 	// Generate the texture coordinates.
 	Vector2f texcoords[2];
 	if (rect_source != RectSource::None)
@@ -191,12 +186,11 @@ void ElementImage::GenerateGeometry()
 	if (ComputeObjectFitRect(render_box.GetFillSize(), natural, computed.object_fit(), computed.object_position_x(), computed.object_position_y(), fit))
 	{
 		const Vector2f uv_size = texcoords[1] - texcoords[0];
-		MeshUtilities::GenerateQuad(mesh, render_box.GetFillOffset() + fit.rect.TopLeft(), fit.rect.Size(), quad_colour,
+		geometry.Set(Rectanglef::FromPositionSize(render_box.GetFillOffset() + fit.rect.TopLeft(), fit.rect.Size()), quad_colour,
 			texcoords[0] + fit.uv.TopLeft() * uv_size, texcoords[0] + fit.uv.BottomRight() * uv_size);
 	}
-
-	if (RenderManager* render_manager = GetRenderManager())
-		geometry = render_manager->MakeGeometry(std::move(mesh));
+	else
+		geometry.Clear();
 
 	geometry_dirty = false;
 }

@@ -105,6 +105,16 @@ namespace SVG {
 		ReleaseHandle(this);
 	}
 
+	Vector2i SVGData::GetDimensions() const
+	{
+		return cache_key.dimensions;
+	}
+
+	ColourbPremultiplied SVGData::GetColour() const
+	{
+		return cache_key.colour;
+	}
+
 	// viewBox -> the rectangle (0, 0, size) through preserveAspectRatio: scale and translation per axis.
 	struct AxisMap {
 		Vector2f scale, translate;
