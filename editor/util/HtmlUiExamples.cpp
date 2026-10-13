@@ -165,7 +165,14 @@ bool editor::HtmlUiExamples::writeTo(const fs::path& dir, std::string& error){
     for (const File& file : files()){
         const fs::path target = dir / FileUtils::pathFromUtf8(file.path);
         kept.insert(target.lexically_normal());
-        if (FileUtils::writeFile(target, std::string(file.data)) == FileUtils::WriteResult::Failed){
+        // a folder where the file has to be (or an unreadable file): writeFile's comparison throws
+        bool written = false;
+        try {
+            written = FileUtils::writeFile(target, std::string(file.data)) != FileUtils::WriteResult::Failed;
+        } catch (const std::exception&) {
+            written = false;
+        }
+        if (!written){
             if (failed++ == 0)
                 firstFailure = FileUtils::pathToUtf8(target);
         }
