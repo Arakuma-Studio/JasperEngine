@@ -305,6 +305,30 @@ TEST_CASE("form.input.themed_box")
 	TestsShell::ShutdownShell();
 }
 
+// Fork (P4-G13): radios without a name are in no group (HTML): checking one leaves the others; radios with one name are.
+TEST_CASE("form.input.radio.unnamed")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	ElementDocument* document = context->LoadDocumentFromMemory(R"(<rml><head/><body>
+		<input type="radio" id="a" checked=""/><input type="radio" id="b" checked=""/>
+		<input type="radio" name="n" id="c" checked=""/><input type="radio" name="n" id="d" checked=""/>
+	</body></rml>)");
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	CHECK(document->GetElementById("a")->HasAttribute("checked"));
+	CHECK(document->GetElementById("b")->HasAttribute("checked"));
+	CHECK(!document->GetElementById("c")->HasAttribute("checked"));
+	CHECK(document->GetElementById("d")->HasAttribute("checked"));
+	document->GetElementById("a")->RemoveAttribute("checked");
+	document->GetElementById("a")->SetAttribute("checked", "");
+	context->Update();
+	CHECK(document->GetElementById("b")->HasAttribute("checked"));
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
 // Fork (P4-G3): a single-line text field taller than its line centers the line (Chromium), also when it is shorter.
 TEST_CASE("form.input.text.centered_line")
 {
