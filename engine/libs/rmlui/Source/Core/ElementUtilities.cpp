@@ -281,6 +281,34 @@ bool ElementUtilities::SetClippingRegion(Element* element, bool force_clip_self)
 	return true;
 }
 
+ScopedReplacedContentClip::ScopedReplacedContentClip(Element* element)
+{
+	if (!element || !element->GetComputedValues().has_border_radius())
+		return;
+	RenderManager* manager = element->GetRenderManager();
+	if (!manager)
+		return;
+	Geometry* clip_geometry = element->GetElementBackgroundBorder()->GetClipGeometry(element, BoxArea::Content);
+	if (!clip_geometry || !*clip_geometry)
+		return;
+
+	render_manager = manager;
+	saved_state = manager->GetState();
+	const TransformState* transform_state = element->GetTransformState();
+	const Matrix4f* transform = (transform_state ? transform_state->GetTransform() : nullptr);
+	ClipMaskGeometryList clip_mask_list = saved_state.clip_mask_list;
+	// The first mask of a list sets the stencil, the others intersect it (as GetClippingRegion's lists).
+	const ClipMaskOperation operation = (clip_mask_list.empty() ? ClipMaskOperation::Set : ClipMaskOperation::Intersect);
+	clip_mask_list.push_back(ClipMaskGeometry{operation, clip_geometry, element->GetAbsoluteOffset(BoxArea::Border).Round(), transform});
+	manager->SetClipMask(std::move(clip_mask_list));
+}
+
+ScopedReplacedContentClip::~ScopedReplacedContentClip()
+{
+	if (render_manager)
+		render_manager->SetState(saved_state);
+}
+
 bool ElementUtilities::GetBoundingBox(Rectanglef& out_rectangle, Element* element, BoxArea box_area)
 {
 	RMLUI_ASSERT(element);

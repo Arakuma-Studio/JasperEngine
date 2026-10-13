@@ -109,4 +109,24 @@ public:
 	static bool ApplyDataViewsControllers(Element* element);
 };
 
+/**
+    Fork (P4-G1): clips what a replaced element draws itself (an image, an SVG, an animation) to its content edge curve while
+    it lives, when the element has a border radius: CSS Backgrounds 3 §5.3 trims the content of replaced elements to the
+    content edge curve (the inner border edge with its radii reduced by the borders and the padding). The mask is added to the
+    clip mask the element is rendered with (its ancestors' clips), and the render state is restored at the end of the scope.
+    Construct it in OnRender, before drawing the content.
+ */
+class RMLUICORE_API ScopedReplacedContentClip : NonCopyMoveable {
+public:
+	explicit ScopedReplacedContentClip(Element* element);
+	~ScopedReplacedContentClip();
+
+	/// True when a clip mask was added (the element has a border radius and a render manager).
+	bool IsActive() const { return render_manager != nullptr; }
+
+private:
+	RenderManager* render_manager = nullptr;
+	RenderState saved_state;
+};
+
 } // namespace Rml

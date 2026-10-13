@@ -1,3 +1,4 @@
+#include "../Common/TestsInterface.h"
 #include "../Common/TestsShell.h"
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
@@ -158,6 +159,62 @@ TEST_CASE("elementimage.preserve_ratio")
 	}
 
 	TestsShell::RenderLoop();
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+// Fork (P4-G1): the picture of a rounded img is trimmed to its content edge curve by a clip mask (CSS Backgrounds 3 §5.3); a
+// square img draws without one.
+TEST_CASE("elementimage.rounded_content_clip")
+{
+	Context* context = TestsShell::GetContext();
+	TestsRenderInterface* render = TestsShell::GetTestsRenderInterface();
+	REQUIRE(render);
+
+	static const String rml = R"(
+<rml>
+<head>
+	<style>
+		body { left: 0; top: 0; right: 0; bottom: 0; }
+		img { display: block; width: 40px; height: 40px; }
+		#round { border-radius: 12px; padding: 4px; border: 2px #000; }
+	</style>
+</head>
+<body>
+	<img id="square" src="/assets/high_scores_alien_1.tga"/>
+	<img id="round" src="/assets/high_scores_alien_1.tga"/>
+</body>
+</rml>
+)";
+	ElementDocument* document = context->LoadDocumentFromMemory(rml, "assets/");
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+
+	Element* round = document->GetElementById("round");
+	const auto render_frame = [&]() {
+		render->ResetCounters();
+		context->Render();
+		render->ResetCounters();
+		return render->GetCountersFromPreviousReset();
+	};
+
+	// One mask for the rounded picture, none for the square one.
+	CHECK(render_frame().render_to_clip_mask == 1);
+
+	round->SetProperty("border-radius", "0px");
+	context->Update();
+	CHECK(render_frame().render_to_clip_mask == 0);
+
+	// Inside an 'overflow: hidden' rounded box, the picture's own mask intersects the box's.
+	round->RemoveProperty("border-radius");
+	document->GetElementById("square")->SetProperty("display", "none");
+	document->SetProperty("overflow", "hidden");
+	document->SetProperty("border-radius", "5px");
+	context->Update();
+	// The img is clipped by the document's mask, then by the document's and the picture's, then by the document's again.
+	CHECK(render_frame().render_to_clip_mask == 4);
 
 	document->Close();
 	TestsShell::ShutdownShell();

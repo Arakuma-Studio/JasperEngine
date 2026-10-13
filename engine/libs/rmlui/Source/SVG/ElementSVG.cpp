@@ -68,6 +68,8 @@ void ElementSVG::OnRender()
 	EnsureSourceLoaded();
 	if (!handle)
 		return;
+	// The picture is trimmed to the content edge curve of a rounded box (fork, P4-G1).
+	ScopedReplacedContentClip clip(this);
 	if (HasAttribute("src"))
 	{
 		if (fitted_geometry)

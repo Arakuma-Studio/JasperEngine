@@ -82,6 +82,8 @@ void ElementImage::OnRender()
 	if (geometry_dirty)
 		GenerateGeometry();
 
+	// The picture is trimmed to the content edge curve of a rounded box (fork, P4-G1).
+	ScopedReplacedContentClip clip(this);
 	geometry.Render(GetAbsoluteOffset(BoxArea::Border), texture);
 }
 
