@@ -11,6 +11,11 @@
 // Rounded on the display-encoded colour (perceptually even steps); the 4x4 Bayer pattern
 // moves each pixel's rounding threshold by up to one level. Display colour in and out.
 
+// the defaults Vulkan GLSL has anyway, stated: glslang warns about implicit ones in a shader
+// using precision qualifiers (the mediump below reaches GLES as RelaxedPrecision)
+precision highp float;
+precision highp int;
+
 in vec2 v_texcoord;
 out vec4 frag_color;
 

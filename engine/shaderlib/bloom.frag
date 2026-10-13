@@ -1,4 +1,8 @@
 #version 450
+// the defaults Vulkan GLSL has anyway, stated: glslang warns about implicit ones in a shader
+// using precision qualifiers (the mediump below reaches GLES as RelaxedPrecision)
+precision highp float;
+precision highp int;
 
 // The bloom and blur chain (shader library phase 4, tier T2), see bloom.vert. Every target of
 // the chain is SRGB8A8: the hardware decodes on sampling (before filtering) and encodes on

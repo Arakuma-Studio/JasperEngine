@@ -1,4 +1,8 @@
 #version 450
+// the defaults Vulkan GLSL has anyway, stated: glslang warns about implicit ones in a shader
+// using precision qualifiers (the mediump below reaches GLES as RelaxedPrecision)
+precision highp float;
+precision highp int;
 
 // The uber pass (shader library phase 4, tier T1): the scene colour (display-encoded RGBA8)
 // to the destination in one fullscreen pass, with the effects its variant compiles in

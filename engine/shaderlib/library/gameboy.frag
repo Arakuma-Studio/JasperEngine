@@ -18,6 +18,11 @@
 
 #include "includes/srgb.glsl"
 
+// the defaults Vulkan GLSL has anyway, stated: glslang warns about implicit ones in a shader
+// using precision qualifiers (the mediump below reaches GLES as RelaxedPrecision)
+precision highp float;
+precision highp int;
+
 in vec2 v_texcoord;
 out vec4 frag_color;
 
