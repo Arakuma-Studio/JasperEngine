@@ -250,6 +250,30 @@ async def test_guide_structure():
         check(path in named, f"the guide's complete file {path} is missing")
 
 
+async def test_guide_examples_table():
+    """The examples table of the guide follows examples.json: one row per example and template, in
+    the manifest's order, each naming the checks its manifest entry runs; what the table says an
+    example shows is in it (the icons are the built-in Lucide icons, not inline SVG)."""
+    text = guide_text()
+    manifest = json.loads((EXAMPLES / "examples.json").read_text(encoding="utf-8"))["examples"]
+    section = text.split("\n## Examples\n", 1)[1].split("\n## ", 1)[0]
+    rows = [line for line in section.split("\n") if line.startswith("| `") and not line.startswith("| `template`")]
+    names = [re.match(r"\| `([a-z_]+)` \|", row).group(1) for row in rows]
+    check_eq(names, [entry["name"] for entry in manifest], "the table's rows, in the manifest's order")
+    for row, entry in zip(rows, manifest):
+        cells = [cell.strip() for cell in row.strip("|").split("|")]
+        checks = {word for word in re.findall(r"[a-z_]+", cells[2]) if word in ASSERT_CHECK_TYPES}
+        check_eq(checks, {c["type"] for c in entry["checks"]}, f"{entry['name']}: the checks the table names")
+    main = rows[names.index("main_menu")]
+    check("inline SVG" not in main and "data-lucide" in main, f"main_menu's icons are the built-in Lucide ones: {main}")
+    check("data-lucide" in (EXAMPLES / "main_menu" / "main_menu.html").read_text(encoding="utf-8"), "main_menu uses data-lucide")
+
+
+# assert_ui's check types (HtmlUIAssertions' AssertKind, phase-4 spec 3.6.2)
+ASSERT_CHECK_TYPES = {"exists", "count", "visible", "text_fits", "no_overlap", "within_parent", "within_viewport", "contrast",
+                      "min_size"}
+
+
 # ---------------------------------------------------------------------------- 2. html/css blocks (CLI)
 
 async def test_guide_css_html_snippets_clean():

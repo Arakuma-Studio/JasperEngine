@@ -25,6 +25,9 @@ public:
 
 	Geometry* GetClipGeometry(Element* element, BoxArea clip_area);
 
+	// The size of a device pixel in the element's units, for its feathered edges.
+	static float GetFeatherUnit(Element* element);
+
 private:
 	enum class BackgroundType { BackgroundBorder, BoxShadowAndBackgroundBorder, ClipBorder, ClipPadding, ClipContent, BorderAbove, Outline, Count };
 	struct Background {

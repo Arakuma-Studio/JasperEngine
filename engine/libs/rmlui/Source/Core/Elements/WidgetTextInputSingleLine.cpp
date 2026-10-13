@@ -22,4 +22,9 @@ void WidgetTextInputSingleLine::LineBreak()
 	DispatchChangeEvent(true);
 }
 
+float WidgetTextInputSingleLine::GetTextOffsetTop() const
+{
+	return 0.5f * (GetElement()->GetBox().GetSize(BoxArea::Content).y - GetLineHeight());
+}
+
 } // namespace Rml

@@ -29,6 +29,10 @@ namespace jasperengine::htmlui::compat {
         // "submit", "reset" or "button" (unknown types are submit, as in HTML)
         std::string getType() const;
 
+        // laid out as Chromium lays out a button: its content centered vertically as one block
+        // (the fork's P4-G2)
+        bool HasButtonLayout() const override;
+
     protected:
         void OnAttributeChange(const Rml::ElementAttributes& changed_attributes) override;
         void OnUpdate() override;

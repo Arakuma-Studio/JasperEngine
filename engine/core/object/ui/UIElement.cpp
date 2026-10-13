@@ -9,6 +9,7 @@
 
 #include "Engine.h"
 #include "Log.h"
+#include "htmlui/HtmlUIInspectorInternal.h"
 #include "htmlui/compat/LuaHooks.h"
 #include "htmlui/compat/runtime/HtmlDialogElement.h"
 
@@ -372,6 +373,9 @@ void UIElement::removeStyleProperty(const std::string& name){
 
 Rect UIElement::getBoundingBox() const{
     HTMLUI_ELEMENT(Rect(0, 0, 0, 0))
+    // no box (display: none, or not in a document): 0, as getBoundingClientRect
+    if (!htmlui::inspect::hasLayoutBox(element))
+        return Rect(0, 0, 0, 0);
 
     const Rml::Vector2f position = element->GetAbsoluteOffset(Rml::BoxArea::Border);
     const Rml::Vector2f size = element->GetBox().GetSize(Rml::BoxArea::Border);
@@ -844,7 +848,7 @@ void UIElement::scrollBy(float dx, float dy, bool smooth){
 
 float UIElement::getScrollTop() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetScrollTop();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetScrollTop() : 0.0f;
 }
 
 void UIElement::setScrollTop(float value){
@@ -854,7 +858,7 @@ void UIElement::setScrollTop(float value){
 
 float UIElement::getScrollLeft() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetScrollLeft();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetScrollLeft() : 0.0f;
 }
 
 void UIElement::setScrollLeft(float value){
@@ -864,46 +868,50 @@ void UIElement::setScrollLeft(float value){
 
 float UIElement::getScrollWidth() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetScrollWidth();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetScrollWidth() : 0.0f;
 }
 
 float UIElement::getScrollHeight() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetScrollHeight();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetScrollHeight() : 0.0f;
 }
 
 float UIElement::getClientWidth() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetClientWidth();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetClientWidth() : 0.0f;
 }
 
 float UIElement::getClientHeight() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetClientHeight();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetClientHeight() : 0.0f;
 }
 
 float UIElement::getOffsetWidth() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetOffsetWidth();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetOffsetWidth() : 0.0f;
 }
 
 float UIElement::getOffsetHeight() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetOffsetHeight();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetOffsetHeight() : 0.0f;
 }
 
 float UIElement::getOffsetLeft() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetOffsetLeft();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetOffsetLeft() : 0.0f;
 }
 
 float UIElement::getOffsetTop() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetOffsetTop();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetOffsetTop() : 0.0f;
 }
 
 UIRect UIElement::getBoundingClientRect() const{
     HTMLUI_ELEMENT((UIRect{0, 0, 0, 0, 0, 0, 0, 0}))
+    // an element without a box (display: none on it or an ancestor, display: contents, not in
+    // a document): all zeros, as in a browser (RmlUi keeps the box it had last)
+    if (!htmlui::inspect::hasLayoutBox(element))
+        return UIRect{0, 0, 0, 0, 0, 0, 0, 0};
 
     // the border box in document px, through the element's transforms as in a browser
     const Rml::Vector2f position = element->GetAbsoluteOffset(Rml::BoxArea::Border);

@@ -1,0 +1,4 @@
+{
+ "comment": "a button centers its content vertically as one block (Chromium's anonymous button content box): in its content box (padding), with min-height, as display: block, ignoring align-content, safely (taller content starts at the top), its baseline that of the centered line; button inputs too. Flex and grid buttons are laid out as flex and grid containers (stretched, flex-start, a centered column). Ahem labels.",
+ "viewport": [570, 270]
+}

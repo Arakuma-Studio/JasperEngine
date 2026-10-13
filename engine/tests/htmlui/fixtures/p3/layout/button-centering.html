@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: a button centers its content vertically</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #223344; }
+  button, input { position: absolute; box-sizing: border-box; width: 70px; height: 80px; margin: 0; padding: 0; border: 2px solid #556677; border-radius: 0; background: #dde4ee; color: #223344; font-family: "Ahem"; font-size: 10px; line-height: 1; }
+  span { display: block; height: 16px; background: #e8a0a0; }
+  span + span { background: #a0b8e8; }
+  #b1 { left: 10px; top: 10px; }
+  #b2 { left: 90px; top: 10px; padding: 10px 0 30px; }
+  #b3 { left: 170px; top: 10px; height: auto; min-height: 80px; }
+  #b4 { left: 250px; top: 10px; display: block; }
+  #b5 { left: 330px; top: 10px; display: flex; }
+  #b6 { left: 410px; top: 10px; display: flex; align-items: flex-start; }
+  #b7 { left: 490px; top: 10px; display: grid; }
+  #b8 { left: 10px; top: 110px; height: 30px; }
+  #b8 span { height: 50px; }
+  #b9 { left: 90px; top: 110px; }
+  #b10 { left: 170px; top: 110px; align-content: start; }
+  #b11 { left: 250px; top: 110px; display: flex; flex-direction: column; justify-content: center; }
+  #i1 { left: 330px; top: 110px; height: 50px; }
+  #i2 { left: 410px; top: 110px; display: block; height: 40px; }
+  #line { position: absolute; left: 10px; top: 210px; width: 300px; background: #f4f4f4; }
+  #line button { position: static; height: 40px; width: 50px; vertical-align: baseline; }
+</style>
+</head>
+<body><button id="b1"><span id="s1"></span></button><button id="b2"><span id="s2"></span></button><button id="b3"><span id="s3"></span></button><button id="b4"><span id="s4"></span></button><button id="b5"><span id="s5" style="width: 20px"></span><span id="s5b" style="width: 20px"></span></button><button id="b6"><span id="s6" style="width: 20px"></span></button><button id="b7"><span id="s7"></span></button><button id="b8"><span id="s8"></span></button><button id="b9">XX XX</button><button id="b10"><span id="s10"></span></button><button id="b11"><span id="s11"></span><span id="s11b"></span></button><input id="i1" type="submit" value="XXX"><input id="i2" type="button" value="XX"><div id="line">XX<button id="b12">XX</button>XX<button id="b13"><span id="s13" style="height: 10px"></span></button></div></body>
+</html>

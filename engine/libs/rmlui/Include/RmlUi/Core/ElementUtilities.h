@@ -1,7 +1,10 @@
 #pragma once
 
+#include "Geometry.h"
 #include "Header.h"
+#include "RenderBox.h"
 #include "RenderManager.h"
+#include "Texture.h"
 #include "Types.h"
 
 namespace Rml {
@@ -107,6 +110,61 @@ public:
 	/// Attributes such as 'data-' are used to create the views and controllers.
 	/// @return True if a data view or controller was constructed.
 	static bool ApplyDataViewsControllers(Element* element);
+};
+
+/**
+    Fork (P4-G1): clips what a replaced element draws itself (an image, an SVG, an animation) to its content edge curve while
+    it lives, when the element has a border radius: CSS Backgrounds 3 §5.3 trims the content of replaced elements to the
+    content edge curve (the inner border edge with its radii reduced by the borders and the padding). The mask is added to the
+    clip mask the element is rendered with (its ancestors' clips), and the render state is restored at the end of the scope.
+    Construct it in OnRender, before drawing the content.
+ */
+class RMLUICORE_API ScopedReplacedContentClip : NonCopyMoveable {
+public:
+	/// @param[in] enable False adds no clip mask (for a picture its mesh trims, see ReplacedContentGeometry).
+	explicit ScopedReplacedContentClip(Element* element, bool enable = true);
+	~ScopedReplacedContentClip();
+
+	/// True when a clip mask was added (the element has a border radius and a render manager).
+	bool IsActive() const { return render_manager != nullptr; }
+
+private:
+	RenderManager* render_manager = nullptr;
+	RenderState saved_state;
+};
+
+/**
+    Fork (P4-G1): the picture of a replaced element (an image, an SVG, an animation frame): a textured quad drawn at the
+    element's border box, trimmed to the element's content edge curve when it has a border radius (CSS Backgrounds 3 §5.3):
+    by its mesh (MeshUtilities::GenerateReplacedContent: the feathered curves of a background), else under a clip mask
+    (ScopedReplacedContentClip). The mesh is made again when the quad, the content box or its radii change.
+ */
+class RMLUICORE_API ReplacedContentGeometry {
+public:
+	/// Sets the quad: 'rect' relative to the element's border box, its colour and its texture coordinates. Setting the same
+	/// quad again keeps the mesh.
+	void Set(Rectanglef rect, ColourbPremultiplied colour, Vector2f top_left_texcoord = Vector2f(0.f),
+		Vector2f bottom_right_texcoord = Vector2f(1.f));
+	/// Forgets the quad and releases the mesh: nothing is drawn.
+	void Clear();
+	/// True when a quad is set.
+	bool IsSet() const { return is_set; }
+
+	/// Draws the quad with a texture at the element's border box.
+	void Render(Element* element, Texture texture);
+
+private:
+	Geometry geometry;
+	Rectanglef rect;
+	ColourbPremultiplied colour;
+	Vector2f texcoords[2];
+	bool is_set = false;
+	bool dirty = true;
+	bool needs_clip = false;
+	// What the mesh was made for.
+	bool rounded = false;
+	RenderBox content_box = RenderBox({}, {}, {}, CornerSizes{});
+	float feather_unit = 0.f;
 };
 
 } // namespace Rml

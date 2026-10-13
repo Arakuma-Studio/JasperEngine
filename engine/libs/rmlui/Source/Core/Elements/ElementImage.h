@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../Include/RmlUi/Core/Element.h"
+#include "../../../Include/RmlUi/Core/ElementUtilities.h"
 #include "../../../Include/RmlUi/Core/Geometry.h"
 #include "../../../Include/RmlUi/Core/Header.h"
 #include "../../../Include/RmlUi/Core/Spritesheet.h"
@@ -93,8 +94,8 @@ private:
 	Rectanglef rect;
 	enum class RectSource { None, Attribute, Sprite } rect_source;
 
-	// The geometry used to render this element.
-	Geometry geometry;
+	// The geometry used to render this element (fork, P4-G1: trimmed to the content edge curve of a rounded box).
+	ReplacedContentGeometry geometry;
 	bool geometry_dirty;
 };
 

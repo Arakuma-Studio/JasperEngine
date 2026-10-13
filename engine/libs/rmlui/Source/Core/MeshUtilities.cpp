@@ -199,4 +199,69 @@ void MeshUtilities::GenerateBackground(Mesh& out_mesh, const RenderBox& render_b
 	geometry.DrawBackground(metrics, color);
 }
 
+// Whether a point (relative to the border box) is inside the inner curve of the metrics' rounded box.
+static bool IsInsideInnerCurve(const BorderMetrics& metrics, Vector2f point)
+{
+	constexpr float epsilon = 0.01f;
+	if (point.x < metrics.positions_inner[0].x - epsilon || point.y < metrics.positions_inner[0].y - epsilon ||
+		point.x > metrics.positions_inner[2].x + epsilon || point.y > metrics.positions_inner[2].y + epsilon)
+		return false;
+	// Corners in the order top-left, top-right, bottom-right, bottom-left: the quadrant beyond the curve's centre.
+	const Vector2f directions[4] = {{-1.f, -1.f}, {1.f, -1.f}, {1.f, 1.f}, {-1.f, 1.f}};
+	for (int corner = 0; corner < 4; corner++)
+	{
+		const Vector2f radius = metrics.inner_radii[corner];
+		if (radius.x <= 0.f || radius.y <= 0.f)
+			continue;
+		const Vector2f centre = metrics.positions_circle_center[corner];
+		const Vector2f delta = point - centre;
+		if (delta.x * directions[corner].x <= 0.f || delta.y * directions[corner].y <= 0.f)
+			continue;
+		const float x = delta.x / radius.x, y = delta.y / radius.y;
+		if (x * x + y * y > 1.f + epsilon)
+			return false;
+	}
+	return true;
+}
+
+bool MeshUtilities::GenerateReplacedContent(Mesh& mesh, const RenderBox& content_box, Rectanglef rect, ColourbPremultiplied color,
+	Vector2f top_left_texcoord, Vector2f bottom_right_texcoord, float feather_unit)
+{
+	const Vector2f fill_offset = content_box.GetFillOffset();
+	const Vector2f fill_size = content_box.GetFillSize();
+	if (!content_box.HasBorderRadius() || fill_size.x <= 0.f || fill_size.y <= 0.f || rect.Width() <= 0.f || rect.Height() <= 0.f)
+	{
+		GenerateQuad(mesh, rect.TopLeft(), rect.Size(), color, top_left_texcoord, bottom_right_texcoord);
+		return true;
+	}
+
+	// (Within half a pixel: the content area and the quad may be rounded differently.)
+	constexpr float tolerance = 0.5f;
+	const Vector2f fill_end = fill_offset + fill_size;
+	const bool covers = (rect.Left() <= fill_offset.x + tolerance && rect.Top() <= fill_offset.y + tolerance &&
+		rect.Right() >= fill_end.x - tolerance && rect.Bottom() >= fill_end.y - tolerance);
+	if (covers)
+	{
+		// The content area as a background: its feathered curves fade the picture as a background's fade its color.
+		const int first_vertex = (int)mesh.vertices.size();
+		const ColourbPremultiplied transparent(0, 0);
+		const ColourbPremultiplied no_borders[4] = {transparent, transparent, transparent, transparent};
+		GenerateBackgroundBorder(mesh, content_box, color, no_borders, feather_unit);
+		const Vector2f texcoord_size = bottom_right_texcoord - top_left_texcoord;
+		for (int i = first_vertex; i < (int)mesh.vertices.size(); i++)
+		{
+			Vertex& vertex = mesh.vertices[i];
+			vertex.tex_coord = top_left_texcoord + (vertex.position - rect.TopLeft()) / rect.Size() * texcoord_size;
+		}
+		return true;
+	}
+
+	GenerateQuad(mesh, rect.TopLeft(), rect.Size(), color, top_left_texcoord, bottom_right_texcoord);
+	const BorderMetrics metrics =
+		GeometryBackgroundBorder::ComputeBorderMetrics(content_box.GetBorderOffset(), content_box.GetBorderWidths(), fill_size, content_box.GetBorderRadius());
+	// The rounded box is convex: a quad whose corners are inside its curve is inside it.
+	return IsInsideInnerCurve(metrics, rect.TopLeft()) && IsInsideInnerCurve(metrics, rect.TopRight()) &&
+		IsInsideInnerCurve(metrics, rect.BottomRight()) && IsInsideInnerCurve(metrics, rect.BottomLeft());
+}
+
 } // namespace Rml

@@ -27,8 +27,10 @@ UniquePtr<LayoutBox> ReplacedFormattingContext::Format(ContainerBox* parent_cont
 
 	// Usually, replaced elements add children to the hidden DOM. If we happen to have any normal DOM children, e.g.
 	// added by the user, we format them using normal block formatting rules. Since replaced elements provide their
-	// own rendering, this could cause conflicting or strange layout results, and is done at the user's own risk.
-	if (element->HasChildNodes())
+	// own rendering, this could cause conflicting or strange layout results, and is done at the user's own risk. The
+	// ::before and ::after boxes of a form control that has them (a checkbox) are laid out so too, in its content box
+	// (fork, P4-G5).
+	if (element->HasChildNodes() || element->GetPseudoElement(PseudoElementType::Before) || element->GetPseudoElement(PseudoElementType::After))
 	{
 		RootBox root(box);
 		BlockFormattingContext::Format(&root, element, &box);

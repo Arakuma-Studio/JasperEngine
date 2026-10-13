@@ -186,6 +186,12 @@ Rml::CompiledFilterHandle TestsRenderInterface::CompileFilter(const Rml::String&
 	return 1;
 }
 
+Rml::TextureHandle TestsRenderInterface::SaveLayerAsTexture()
+{
+	counters.save_layer_as_texture += 1;
+	return Rml::TextureHandle(1);
+}
+
 Rml::TextureHandle TestsRenderInterface::SaveLayerIntoTexture(Rml::TextureHandle texture, Rml::Vector2i /*texture_dimensions*/,
 	Rml::Vector2i /*destination_offset*/)
 {

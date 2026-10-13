@@ -501,6 +501,71 @@ async def test_cli_ui_dedupe():
         check_eq(data["checked"], {"ui": 3}, "with --files the css named is checked on its own")
 
 
+# ---------------------------------------------------------------------------- 5b. variables of a stylesheet (p4-gaps)
+
+VARS_CSS = """\
+.card { border: var(--edge); }
+.typo { border: var(--edeg); }
+"""
+VARS_HTML = """\
+<html><head><link rel="stylesheet" href="vars.css"></head>
+<body><div class="card" style="--edge: 2px solid #ff0000">card</div><div class="typo">typo</div></body></html>
+"""
+MIXED_CSS = """\
+:root { --line: 1px solid #000000; }
+.alt { --line: 2px dashed #0000ff; }
+.box { border: var(--line); }
+"""
+
+
+async def test_cli_ui_stylesheet_variables():
+    """A stylesheet named with --files is checked with the documents that load it: a variable a
+    style attribute defines is no finding, one no document defines (a typo) is. A sheet no document
+    loads cannot know its documents' variables: it is not judged on the ones it does not declare,
+    but still on the ones it does."""
+    with scratch_project() as project:
+        write(project, "assets/ui/vars.css", VARS_CSS)
+        write(project, "assets/ui/vars.html", VARS_HTML)
+        code, data = run_json(project, "--files", "assets/ui/vars.css")
+        found = [(f["path"], f["line"], f["code"]) for f in data["findings"]]
+        check_eq(found, [("assets/ui/vars.css", line_of(VARS_CSS, "--edeg"), "HTMLUI-CSS-0012")],
+                 "only the typo, which no document defines")
+        check_eq(data["checked"], {"ui": 1}, "the css named is the file checked")
+        check_eq(code, 0, "warnings only: exit 0")
+        # the document finds the same
+        code, data = run_json(project, "--files", "assets/ui/vars.html")
+        check_eq([(f["path"], f["line"], f["code"]) for f in data["findings"]],
+                 [("assets/ui/vars.css", line_of(VARS_CSS, "--edeg"), "HTMLUI-CSS-0012")], "the document's check")
+        # both named: once
+        code, data = run_json(project, "--files", "assets/ui/vars.html", "assets/ui/vars.css")
+        check_eq(len(data["findings"]), 1, f"deduped: {data['findings']}")
+        # the whole project: the same
+        code, data = run_json(project, "--ui")
+        check_eq([(f["path"], f["line"]) for f in data["findings"] if f["code"] == "HTMLUI-CSS-0012"],
+                 [("assets/ui/vars.css", line_of(VARS_CSS, "--edeg"))], "the whole project")
+
+        # a second document defines the typo'd name too: no finding left
+        write(project, "assets/ui/vars2.html", VARS_HTML.replace('class="typo"', 'class="typo" style="--edeg: 1px solid #000000"'))
+        code, data = run_json(project, "--files", "assets/ui/vars.css")
+        check_eq([(f["line"], f["code"]) for f in data["findings"]], [(line_of(VARS_CSS, "--edeg"), "HTMLUI-CSS-0012")],
+                 "vars.html still loads it without --edeg")
+        (project / "assets/ui/vars.html").unlink()
+        code, data = run_json(project, "--files", "assets/ui/vars.css")
+        check_eq(data["findings"], [], "every document that loads the sheet defines both")
+
+        # no document loads it: the variables it does not declare are not judged (a document may define them) ...
+        (project / "assets/ui/vars2.html").unlink()
+        code, data = run_json(project, "--files", "assets/ui/vars.css")
+        check_eq((code, data["findings"]), (0, []), "a lone sheet with undeclared variables: no false positive")
+        code, data = run_json(project, "--ui")
+        check_eq([f for f in data["findings"] if f["path"] == "assets/ui/vars.css"], [], "nor in the whole-project check")
+        # ... the ones it declares are
+        write(project, "assets/ui/mixed.css", MIXED_CSS)
+        code, data = run_json(project, "--files", "assets/ui/mixed.css")
+        check_eq([(f["line"], f["code"]) for f in data["findings"]], [(line_of(MIXED_CSS, ".box"), "HTMLUI-CSS-0012")],
+                 "a variable the sheet declares with two values")
+
+
 # ---------------------------------------------------------------------------- 6. hook
 
 async def test_hook_ui_warnings_once():

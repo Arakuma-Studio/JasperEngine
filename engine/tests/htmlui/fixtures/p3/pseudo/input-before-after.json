@@ -1,0 +1,4 @@
+{
+ "comment": "::before and ::after on inputs, as Chromium draws them: the custom switch (an appearance: none checkbox whose ::before is the knob, positioned in it, moved by :checked), in-flow generated boxes laid out in the content box of a checkbox and a radio; none on a text or a button input. Ahem text.",
+ "viewport": [410, 50]
+}
