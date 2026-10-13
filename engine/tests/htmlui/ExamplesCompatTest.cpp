@@ -9,6 +9,8 @@
 
 #include "htmlui/compat/CompatApi.h"
 
+#include "TestSystem.h"
+
 #include "json.hpp"
 
 #include <gtest/gtest.h>
@@ -85,6 +87,11 @@ TEST(ExamplesCompat, ManifestListsTheNineExamplesAndBlank){
 TEST(ExamplesCompat, EveryExampleIsCleanAtEveryViewport){
     const nlohmann::json json = manifest();
     ASSERT_TRUE(json.is_object() && json["examples"].is_array());
+    // RmlUi (verifyWithRmlUi) opens the pictures through the engine's files: the library is the asset root
+    struct AssetRoot {
+        AssetRoot(){ jasperengine::test::TestSystem::get().setAssetPath(examplesRoot().lexically_normal().string()); }
+        ~AssetRoot(){ jasperengine::test::TestSystem::get().setAssetPath(""); }
+    } assetRoot;
     int checked = 0;
     for (const nlohmann::json& entry : json["examples"]){
         const std::string name = entry.value("name", "");

@@ -47,7 +47,7 @@
 
     <footer class="footer">
       <span class="weight-label"><i data-lucide="weight"></i> Weight</span>
-      <div class="weight-track"><div id="weight-fill" class="weight-fill" data-style-width="weight / maxWeight * 100 + '%'"></div></div>
+      <div class="weight-track"><div id="weight-fill" class="weight-fill" data-style-width="maxWeight > 0 ? weight / maxWeight * 100 + '%' : '0'"></div></div>
       <span class="weight-value">{{ weight }} / {{ maxWeight }}</span>
       <span class="hint">Drag items to rearrange</span>
     </footer>

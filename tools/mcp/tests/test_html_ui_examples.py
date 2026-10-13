@@ -161,8 +161,10 @@ async def console_cursor(ed: Editor) -> int:
 
 
 async def errors_since(ed: Editor, cursor: int) -> list[str]:
-    result = await ed.call("read_console", since=cursor, types=["error"], limit=1000)
-    return [e.get("message", "") for e in result["entries"]]
+    """Errors, and the warnings of the HTML UI and of scripts, since the cursor."""
+    result = await ed.call("read_console", since=cursor, types=["error", "warning"], limit=1000)
+    return [e.get("message", "") for e in result["entries"]
+            if e.get("type") == "error" or "[HTML UI]" in e.get("message", "") or "Lua" in e.get("message", "")]
 
 
 def copy_example(project: Path, name: str, source: Path) -> None:
@@ -708,6 +710,7 @@ def _make_tests(name: str) -> None:
             check(data["checked"].get("ui", 0) >= 1, f"checked {data['checked']}")
 
     async def edit_mode(ed: Editor):
+        cursor = await console_cursor(ed)
         state = await ensure_scene(ed, name)
         values = await lua(ed, f"""
             local doc = UIDocument(scene, entity('{name}'))
@@ -723,6 +726,8 @@ def _make_tests(name: str) -> None:
         check(not shot.is_error and shot.images, f"edit-mode screenshot: {shot.text[:300]}")
         (ed.scratch.root / f"{name}.edit.png").write_bytes(shot.images[0][0])
         check(not pngdiff.flat(pngdiff.decode(shot.images[0][0])), f"{name}: the edit-mode Game view is flat")
+        problems = await errors_since(ed, cursor)
+        check(not problems, f"{name}: Console problems in edit mode: {problems[:5]}")
 
     async def play_golden(ed: Editor):
         state = await ensure_scene(ed, name)
@@ -741,7 +746,7 @@ def _make_tests(name: str) -> None:
                 if run == 0:
                     await after(ed, name)
                 errors = await errors_since(ed, cursor)
-                check(not errors, f"{name}: Console errors while playing: {errors[:5]}")
+                check(not errors, f"{name}: Console problems while playing: {errors[:5]}")
                 await ed.call("play", action="stop")
         finally:
             await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
