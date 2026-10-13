@@ -86,6 +86,9 @@ namespace jasperengine::htmlui::inspect {
 
     // a box area of the main box, through the element's CSS transforms (bounding rect)
     InspectRect boxRect(Rml::Element* element, Rml::BoxArea area);
+    // a layout-space rect of the element (its text lines) through its CSS transforms (bounding rect): the
+    // space boxRect and the clip regions are in
+    InspectRect transformedRect(Rml::Element* element, const InspectRect& rect);
     // the border box: every box of the element (an inline split over lines) united
     InspectRect borderRect(Rml::Element* element);
 

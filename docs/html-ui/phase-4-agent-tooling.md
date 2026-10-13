@@ -2149,6 +2149,12 @@ Where the code differs from or makes precise 3.6, 3.8.3, 5.6 and 5.7 (also in `C
   checks failed at 720x1280). `Element::UpdateTransformStates()` (new, public) recomputes them;
   `withViewport` calls it after the layout at the requested size and after restoring
   (`InspectorTest.WithViewportTransforms`).
+- **TextFits through transforms** (`HtmlUIAssertions.cpp`, p4-inspector's file): the clip regions
+  are boxes through their CSS transforms (`boxRect`), the text line boxes are in layout space; the
+  text now goes through its element's transform before the clip test (`inspect::transformedRect`).
+  The `loading` example's card (`left: 50%; translateX(-50%)`) failed `text_fits` at 1024x768 and
+  720x1280 with "cut by the overflow of #loading", its untransformed layout box running past the
+  page (`AssertionsTest.TextFitsInATransformedBox`).
 - **`send_input` targets and opacity.** `elementCenter` takes the first match that is shown (not
   `display: none` / `visibility: hidden` / zero size), an opaque one first, else a transparent one:
   the pointer reaches an `opacity: 0` element, as in a browser (the `settings` switches are an

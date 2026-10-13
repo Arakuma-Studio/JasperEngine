@@ -1041,6 +1041,10 @@ bool inspect::contains(const InspectRect& outer, const InspectRect& inner, float
            inner.y + inner.height <= outer.y + outer.height + tolerance;
 }
 
+InspectRect inspect::transformedRect(Rml::Element* element, const InspectRect& rect){
+    return transformed(element, rect);
+}
+
 inspect::ClipRegion inspect::clipOf(Rml::Element* element, const std::function<bool(Rml::Element*)>& skip){
     using Rml::Style::Clip;
     using Rml::Style::Overflow;
