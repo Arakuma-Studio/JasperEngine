@@ -352,6 +352,45 @@ TEST_F(RmlRendererP1GoldenTest, BoxShadow){
     expectGolden(test, "box_shadow");
 }
 
+// A box shadow whose texture is larger than the context is rendered in tiles (fork P3-I14,
+// SaveLayerIntoTexture). On a scaled canvas (the document drawn at screen resolution, target and
+// context sizes differ) the tiles hold target pixels: the texture is made at the target's scale.
+// It was made at the context's, so the background and border it carries were drawn scaled and
+// shifted (found by phase 4's settings example in the editor's Game view).
+TEST_F(RmlRendererP1GoldenTest, BoxShadowTilesOnAScaledCanvas){
+    JASPER_REQUIRE_GPU();
+    const char* rml = R"(<rml><head><style>
+        body { display: block; width: 100%; height: 100%; margin: 0px; }
+        #box { position: absolute; left: 50px; top: 40px; width: 300px; height: 220px;
+               background-color: #3050c0; border: 4px solid #f0f0f0; box-shadow: 0px 20px 60px #000000c0; }
+    </style></head><body><div id="box"/></body></rml>)";
+    // 1.5 and 0.75 target pixels per document px; the shadow texture (about 480 x 450) is larger
+    // than the 400 x 300 context either way
+    for (const float scale : {1.5f, 0.75f}){
+        const int targetWidth = (int)(400 * scale);
+        const int targetHeight = (int)(300 * scale);
+        RenderTestContext test(targetWidth, targetHeight, 400, 300, 1);
+        ASSERT_TRUE(test.isValid());
+        ASSERT_TRUE(test.loadFromMemory(rml, "p1/box_shadow_tiles.rml"));
+        ASSERT_TRUE(test.renderUntilDrawn());
+        std::vector<uint8_t> screen;
+        ASSERT_TRUE(test.readScreen(screen));
+        PixelProbe probe{screen, targetWidth};
+        auto at = [scale](float v){ return (int)(v * scale); };
+        SCOPED_TRACE("scale " + std::to_string(scale));
+        // the background inside the border, near each corner and in the middle
+        EXPECT_TRUE(probe.is(at(200), at(150), 0x30, 0x50, 0xc0, 255, 8));
+        EXPECT_TRUE(probe.is(at(62), at(52), 0x30, 0x50, 0xc0, 255, 8));
+        EXPECT_TRUE(probe.is(at(342), at(256), 0x30, 0x50, 0xc0, 255, 8));
+        // the border at the left and bottom edges
+        EXPECT_TRUE(probe.is(at(52), at(150), 0xf0, 0xf0, 0xf0, 255, 24));
+        EXPECT_TRUE(probe.is(at(200), at(266), 0xf0, 0xf0, 0xf0, 255, 24));
+        // the shadow below the box is dark, the far corner outside it is the backdrop
+        EXPECT_LT(probe.at(at(200), at(285))[0], 0x18);
+        EXPECT_TRUE(probe.isBackground(at(5), at(5)));
+    }
+}
+
 TEST_F(RmlRendererP1GoldenTest, MaskImage){
     JASPER_REQUIRE_GPU();
     P1Context test;
