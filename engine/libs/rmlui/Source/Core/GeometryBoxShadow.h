@@ -15,13 +15,18 @@ struct BoxShadowGeometryInfo {
 	RenderBoxList border_render_boxes;
 	BoxShadowList shadow_list;
 	float opacity;
+	// Fork (P4-G7): how the background and border drawn into the texture are anti-aliased (MeshUtilities feathering and the
+	// size of a device pixel in the element's units): a texture made at another pixel size has other edges, and must not be
+	// shared with an element drawn at this one.
+	bool feathering = true;
+	float feather_unit = 1.f;
 };
 inline bool operator==(const BoxShadowGeometryInfo& a, const BoxShadowGeometryInfo& b)
 {
 	return a.background_color == b.background_color && a.border_colors == b.border_colors &&
 		a.texture_dimensions == b.texture_dimensions && a.element_offset_in_texture == b.element_offset_in_texture &&
 		a.padding_render_boxes == b.padding_render_boxes && a.border_render_boxes == b.border_render_boxes && a.shadow_list == b.shadow_list &&
-		a.opacity == b.opacity;
+		a.opacity == b.opacity && a.feathering == b.feathering && a.feather_unit == b.feather_unit;
 }
 inline bool operator!=(const BoxShadowGeometryInfo& a, const BoxShadowGeometryInfo& b)
 {

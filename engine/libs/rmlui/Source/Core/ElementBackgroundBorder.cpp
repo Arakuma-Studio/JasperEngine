@@ -133,6 +133,9 @@ void ElementBackgroundBorder::Render(Element* element)
 	{
 		feather_unit = new_feather_unit;
 		background_dirty = true;
+		// The image layers' rounded clips are feathered too (fork, P4-G7: they kept the pixel size they were made at).
+		if (layers)
+			layers->Dirty();
 	}
 
 	if (background_dirty || border_dirty)
