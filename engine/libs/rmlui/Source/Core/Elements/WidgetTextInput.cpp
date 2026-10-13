@@ -453,11 +453,16 @@ void WidgetTextInput::OnUpdate()
 	}
 }
 
+float WidgetTextInput::GetTextOffsetTop() const
+{
+	return 0.f;
+}
+
 void WidgetTextInput::OnResize()
 {
 	GenerateCursor();
 
-	Vector2f text_position = parent->GetBox().GetPosition(BoxArea::Content);
+	Vector2f text_position = parent->GetBox().GetPosition(BoxArea::Content) + Vector2f(0.f, GetTextOffsetTop());
 	text_element->SetOffset(text_position, parent);
 	selected_text_element->SetOffset(text_position, parent);
 
@@ -472,7 +477,8 @@ void WidgetTextInput::OnRender()
 
 	ElementUtilities::SetClippingRegion(text_element);
 
-	Vector2f text_translation = parent->GetAbsoluteOffset() - Vector2f(parent->GetScrollLeft(), parent->GetScrollTop());
+	Vector2f text_translation =
+		parent->GetAbsoluteOffset() - Vector2f(parent->GetScrollLeft(), parent->GetScrollTop()) + Vector2f(0.f, GetTextOffsetTop());
 	selection_composition_geometry.Render(text_translation);
 
 	if (cursor_visible && selection_length <= 0 && !parent->IsDisabled())
@@ -488,6 +494,10 @@ void WidgetTextInput::OnLayout()
 		internal_dimensions = parent->GetBox().GetSize(BoxArea::Content);
 		FormatElement();
 		UpdateCursorPosition(true);
+		// (The line's height may have changed without a resize: the text moves with its centering.)
+		const Vector2f text_position = parent->GetBox().GetPosition(BoxArea::Content) + Vector2f(0.f, GetTextOffsetTop());
+		text_element->SetOffset(text_position, parent);
+		selected_text_element->SetOffset(text_position, parent);
 		force_formatting_on_next_layout = false;
 	}
 }
@@ -1632,7 +1642,8 @@ void WidgetTextInput::SetKeyboardActive(bool active)
 	if (active)
 	{
 		// Activate the keyboard and submit the cursor position and line height to enable clients to adjust the input method editor (IME).
-		const Vector2f element_offset = parent->GetAbsoluteOffset() - Vector2f{parent->GetScrollLeft(), parent->GetScrollTop()};
+		const Vector2f element_offset =
+			parent->GetAbsoluteOffset() - Vector2f{parent->GetScrollLeft(), parent->GetScrollTop()} + Vector2f(0.f, GetTextOffsetTop());
 		const Vector2f absolute_cursor_position = element_offset + cursor_position;
 		system->ActivateKeyboard(absolute_cursor_position, cursor_size.y);
 	}
