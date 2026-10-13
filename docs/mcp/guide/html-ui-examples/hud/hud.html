@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<!--
+  HUD: the in-game overlay, one panel per corner, over a transparent page.
+  Shows: data binding to a Lua table (data-model "hud": {{ }} text, data-style-width and
+  data-style-height for bars and cooldowns, data-class-* for states), CSS grid and flex,
+  repeating gradients as bar segments, a circular minimap (border-radius: 50%, an SVG asset,
+  absolutely placed compass letters), keyframes for the low-health pulse, and a full-screen
+  damage vignette that HudUI.lua flashes with anime. HudUI:damage(n), :fire() and :reload()
+  are the game's API; the "demo" property plays them by itself.
+  In the editor (no Lua) the model is empty: the texts are blank and each bound size falls back
+  to 0 (the "> 0 ? ... : '0'" in the expressions), so no invalid style is set. Press Play.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HUD</title>
+  <link rel="stylesheet" href="hud.css">
+</head>
+<body>
+  <div class="hud" data-model="hud">
+    <div id="damage-vignette" class="vignette"></div>
+    <div class="crosshair"></div>
+
+    <section class="hud-panel vitals" data-class-low="health <= 30">
+      <div class="who">
+        <span class="level">12</span>
+        <span class="hud-label name">Vanguard</span>
+      </div>
+      <div class="meter health">
+        <i data-lucide="heart"></i>
+        <div class="track"><div id="health-fill" class="fill" data-style-width="health > 0 ? health + '%' : '0'"></div></div>
+        <span class="hud-label value">{{ health }}</span>
+      </div>
+      <div class="meter shield">
+        <i data-lucide="shield"></i>
+        <div class="track"><div id="shield-fill" class="fill" data-style-width="shield > 0 ? shield + '%' : '0'"></div></div>
+        <span class="hud-label value">{{ shield }}</span>
+      </div>
+    </section>
+
+    <section class="hud-panel status">
+      <span class="hud-label caption">Score</span>
+      <span id="score" class="score">{{ score }}</span>
+      <span id="timer" class="timer"><i data-lucide="timer"></i>{{ timer }}</span>
+    </section>
+
+    <section class="hud-panel radar">
+      <div class="minimap">
+        <img class="terrain" src="assets/compass.svg" alt="">
+        <span class="dir n">N</span><span class="dir e">E</span><span class="dir s">S</span><span class="dir w">W</span>
+        <span class="blip enemy" style="--x: 68%; --y: 30%"></span>
+        <span class="blip enemy" style="--x: 30%; --y: 62%"></span>
+        <span class="blip objective" style="--x: 74%; --y: 70%"></span>
+        <i class="player" data-lucide="navigation"></i>
+      </div>
+      <span class="hud-label zone">Ashen Quarry</span>
+    </section>
+
+    <section class="hud-panel abilities">
+      <div class="ability" data-class-ready="abilities[0].cooldown <= 0">
+        <i data-lucide="flame"></i>
+        <div class="cooldown" data-style-height="abilities[0].cooldown > 0 ? abilities[0].cooldown + '%' : '0'"></div>
+        <kbd>Q</kbd>
+      </div>
+      <div class="ability" data-class-ready="abilities[1].cooldown <= 0">
+        <i data-lucide="shield-plus"></i>
+        <div class="cooldown" data-style-height="abilities[1].cooldown > 0 ? abilities[1].cooldown + '%' : '0'"></div>
+        <kbd>E</kbd>
+      </div>
+      <div class="ability" data-class-ready="abilities[2].cooldown <= 0">
+        <i data-lucide="wind"></i>
+        <div class="cooldown" data-style-height="abilities[2].cooldown > 0 ? abilities[2].cooldown + '%' : '0'"></div>
+        <kbd>R</kbd>
+      </div>
+    </section>
+
+    <section class="hud-panel weapon" data-class-empty="ammo == 0">
+      <div class="weapon-name"><i data-lucide="crosshair"></i><span class="hud-label">{{ weapon }}</span></div>
+      <div class="rounds">
+        <span id="ammo" class="ammo">{{ ammo }}</span>
+        <span id="reserve" class="reserve">/ {{ reserve }}</span>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

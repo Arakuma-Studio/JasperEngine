@@ -1863,6 +1863,97 @@ Where the code differs from 3.4, 3.5 and 5.2-5.3 (also in `CONTRACTS.md`):
   `create_entity` + `add_component uidocument` + `set_properties` + `attach_script`, with files
   copied in by the test.
 
+#### 4.3.1 `p4-examples` as implemented
+
+Where the code differs from 3.7, 3.9 and 5.4 (also in `CONTRACTS.md`):
+
+- **Icons**: the examples use the engine's built-in Lucide icons, `<i data-lucide="play"></i>`
+  (phase 2 made them native: the same inline SVG `lucide.createIcons()` makes, `currentColor`),
+  not hand-copied inline SVG markup. The item pictures of `inventory` and `shop`
+  (`assets/items/*.svg`) are Lucide icons saved as files with a fixed stroke colour (an `<img>`
+  is drawn from them in Chromium too); `LICENSE-lucide.txt` covers both, `NOTICE.md` has a line
+  for the copies. The Lottie spinner and the other SVGs (logo, compass, portrait) are ours.
+- **Markup** (the public surface of 3.7.2 kept, with these differences): `dialogue` is a
+  `section.dialogue` and its choices are `button.choice` children of `div#choices` (a `<ul>`
+  holds only `<li>`; `.choice:nth-child(2)` is the second choice), created by Lua with
+  `createElement`/`createTextNode`/`appendChild`; `shop` cards are `article.card`; `main_menu`'s
+  `h1.logo` sits in `header#brand` with an SVG emblem, and every menu button logs
+  `main_menu: <id>` (`#settings` also opens the panel: 5.4's ArrowDown + Enter checks it).
+- **Data binding**: buy buttons use `data-attrif-disabled="gold < item.price"` (RmlUi's boolean
+  attribute view; `data-attr-disabled` writes `disabled="false"`, which disables);
+  drag and drop is the engine's CSS property `drag: drag-drop` on `.slot` (browsers ignore it;
+  RmlUi has no `drag` attribute) with `data-event-dragstart="pick(i)"` /
+  `data-event-dragdrop="drop(i)"`. A `data-for` element stays in the DOM, hidden, as the
+  **last** child of its parent: `.slot:nth-child(1)` is the first slot, and a count of `.slot`
+  that includes hidden elements is 25 (the manifest's `count .slot = 24` assumes `assert_ui`
+  counts what is shown).
+- **Settings switches**: an invisible `<input type="checkbox">` over a `span.knob` whose
+  `::before` is the knob (`input:checked + .knob`): the engine generates no `::before`/`::after`
+  on `<input>` (Chromium does with `appearance: none`; reported as a parity gap, not fixed here).
+- **HUD**: `HudUI:damage(n)` takes the shield first, so 5.4's step is `damage(80)` (50 shield,
+  then 30 health: `#health-fill` at 70%). The score is shown with thousands separators.
+- **Loading**: 5.4's "wait 1.5 s" is the 90 frames every example plays first (3 s of
+  `duration`: 50%). `#press-key` is `data-if`: it stays in the DOM, so the test reads
+  `offsetHeight > 0`.
+- **Toasts**: at most 5 showing; a sixth sends the oldest away with its exit animation (removed
+  when it ends). The countdown bar is a CSS animation whose duration Lua sets.
+- **Lua**: as 3.7.1, plus: listener functions are made once in `init` and added again in
+  `onDocumentLoad` (adding a function twice is ignored); properties are declared with
+  `---@field` under the class (the editor's script stubs skip what a script declares), so the
+  scripts check clean with or without the project's generated stubs.
+- **examples.json**: `assets` lists every asset file; `checks` use `assert_ui`'s field names
+  (`single_line`, `unobstructed`, `allow_scroll`, `container`, `background`); viewports per
+  example (portrait 720x1280 where the layout is meant for it: menus, dialogue, toasts, loading).
+- **`HtmlUiExamples`**: as 3.7.3 plus `find(path)`, `pascalName(stem)` (words of ASCII letters and
+  digits capitalized and joined; other characters dropped, since a Lua name is ASCII; `Document`
+  when nothing is left, `Ui` in front of a digit) and `titleName(stem)`. `names()` lists the
+  examples, then the templates (`blank`). `instantiate` normalizes `\` and a leading `./`,
+  rejects paths that leave the project, also renames `'assets/` in Lua, and gives `blank` the
+  title in `<title>` and `<h1>`. `writeTo` writes only changed files (`FileUtils::writeFile`) and
+  removes files and folders no longer embedded. The CMake block numbers the arrays
+  (`html_ui_example_<n>`), the files sorted by path.
+- **Project copy and lua-language-server**: `.luarc.json` gains `workspace.ignoreDir`
+  `[".vscode", ".jasperengine/engine-api/html-ui-examples"]` (merged into a user's file like
+  `workspace.library`): the copy is reference material, and its Lua classes would otherwise be
+  defined twice once a template is instantiated (`duplicate-set-field`).
+- **Goldens** (3.9): the play test sets `configure_game_view {aspect: "project", scale: 1,
+  maximize_on_play: true}`: the headless editor's Game view (1600x900 window) shows the canvas at
+  1415x796 while playing (904x509 without maximizing). The crop is box-filtered down to
+  1280x720 for the committed golden and both are compared at 640x360 (tolerance 24, at most 1%).
+  The test scenes clear to `(0.09, 0.1, 0.13)`. The two runs must agree within the tolerance on
+  all but 0.01% of the pixels (not fraction 0): the antialiased edges of rounded boxes under
+  blurred shadows vary by a few pixels between play sessions (5 to 42 of 1.1 M pixels measured).
+  Play keeps the document the editor loaded, so CSS animations that run from the load have a
+  phase that depends on the wall time spent in edit mode: the test reloads `main_menu` (infinite
+  keyframes, no data model) once play is held (`RESTART_CSS`); a document that makes a data model
+  is reloaded by `createDataModel` at play time anyway.
+- **Tests, wave 1**: the scenes are built with `create_scene` (2D), `create_entity`,
+  `add_component`, `set_properties` and `attach_script` from the project copy's files
+  (`assets/ui/<n>/`, Lua in `scripts/`); elements are found with `eval_lua`
+  (`getBoundingClientRect`) and driven with canvas coordinates. `WAVE-2` marks: the resource
+  check in `test_<n>_files_in_project`, `test_<n>_asserts` (`assert_ui`), `ensure_scene`
+  (`create_ui_document {template}`), `center` (`send_input {target}`), the `inspect_ui` hover
+  check of `main_menu`. `instantiate`'s renames are tested in C++
+  (`editor/htmlui/tests/HtmlUiExamplesTest.cpp`, `htmlui-editor-tests`: every template
+  instantiated under another stem compiles clean), as is `writeTo`.
+- **Engine fixes the examples found** (in other packages' files, reported):
+  - fork P4-E1 (`FORK.md`): a background with `var()` in both its image and its size crashed
+    (the image list read from the style's one returned-property storage was freed by the next
+    `var()` longhand); transitions with `var()` in two longhands did not run;
+  - `UIDocumentSystemReload.cpp`: the reload a late `createDataModel` makes restored the old
+    elements' form values into bound controls, which wrote them into the model (a settings
+    screen lost every model value);
+  - `RmlRenderer::SaveLayerIntoTexture`: a box shadow larger than the context (rendered in tiles,
+    P3-I14) drew its background and border scaled and shifted on a scaled canvas (the editor's
+    Game view, high-DPI screens).
+- **Parity gaps found and worked around in the examples** (not fixed; for phase 2/3 owners):
+  `border-radius` on an `<img>` does not clip the picture (a wrapper with `overflow: hidden`
+  does); a `<button>` taller than its content does not center it vertically as Chromium does
+  (the examples use flex); a `<select>` with a fixed `height` keeps its text at the top (padding
+  instead); no `::before`/`::after` on `<input>`; `offsetWidth`/`offsetHeight` of an element
+  hidden with `display: none` (`data-if`) keep their last value instead of 0; `check --ui --files` on a stylesheet alone warns
+  about a shorthand whose `var()` only an inline style defines (a default in the sheet avoids it).
+
 ### 4.4 `p4-guide`: guide, AGENTS.md, stubs, API search
 
 - **Goal:** 3.8.1, 3.8.2 (README part), 3.8.4, 3.8.5.

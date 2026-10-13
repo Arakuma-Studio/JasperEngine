@@ -1,0 +1,217 @@
+/* Dialogue. Design tokens first: change the look here. */
+:root {
+  --accent: #34d399;
+  --accent-2: #10b981;
+  --plate: #f59e0b;
+  --text: #f0fdf7;
+  --muted: rgba(220, 245, 235, 0.65);
+  --box: rgba(8, 20, 18, 0.88);
+  --line: rgba(52, 211, 153, 0.25);
+  --radius: 18px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  color: var(--text);
+}
+
+/* darkens the bottom of the game so the box reads on any scene */
+.scrim {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 55vh;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.65));
+  pointer-events: none;
+}
+
+.dialogue {
+  position: fixed;
+  left: 50%;
+  bottom: clamp(36px, 7vh, 64px);
+  transform: translateX(-50%);
+  width: min(980px, 94vw);
+  min-height: 170px;
+  padding: 1.75rem 1.75rem 1.5rem;
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(52, 211, 153, 0.14), transparent 55%),
+    var(--box);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+}
+
+/* ---- Portrait ---- */
+.portrait {
+  width: 120px;
+  height: 120px;
+  overflow: hidden;   /* clips the picture to the circle */
+  border-radius: 50%;
+  /* two rings (spread shadows) and a glow around the picture */
+  box-shadow: 0 0 0 3px #0b1716, 0 0 0 6px var(--accent), 0 0 28px rgba(52, 211, 153, 0.45);
+}
+
+.portrait img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---- Name plate and text ---- */
+.body {
+  position: relative;
+  min-width: 0;
+}
+
+.speaker {
+  position: absolute;
+  top: -3.1rem;
+  left: 0;
+  padding: 0.35rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #1c1305;
+  background: linear-gradient(180deg, #fbbf24, var(--plate));
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.35);
+}
+
+.dialogue-text {
+  min-height: 3.4em;
+  font-size: 1.2rem;
+  line-height: 1.6;
+  color: var(--text);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* ---- Choices (DialogueUI.lua creates the buttons) ---- */
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+}
+
+.choices:empty {
+  display: none;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 44px;
+  padding: 0 1rem;
+  font: inherit;
+  font-size: 1rem;
+  text-align: left;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+.choice .key {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #06231a;
+  background: var(--accent);
+  border-radius: 6px;
+}
+
+.choice:hover,
+.choice:focus-visible {
+  background-color: rgba(52, 211, 153, 0.14);
+  border-color: var(--accent);
+  transform: translateX(4px);
+}
+
+.choice:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- Continue marker: shown while the box waits for a click ---- */
+.continue {
+  position: absolute;
+  right: 1.25rem;
+  bottom: 0.9rem;
+  width: 26px;
+  height: 26px;
+  color: var(--accent);
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.continue svg {
+  width: 26px;
+  height: 26px;
+}
+
+.dialogue.waiting .continue {
+  opacity: 1;
+  animation: bounce 900ms ease-in-out infinite;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(6px); }
+}
+
+.hint {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 12px;
+  font-size: 0.8rem;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+kbd {
+  padding: 0.05rem 0.4rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+}
+
+/* Portrait screens: the portrait above the text */
+@media (max-width: 760px) {
+  .dialogue {
+    grid-template-columns: 1fr;
+    padding-top: 2.25rem;
+  }
+
+  .portrait {
+    position: absolute;
+    top: -60px;
+    right: 1.5rem;
+    width: 84px;
+    height: 84px;
+  }
+}

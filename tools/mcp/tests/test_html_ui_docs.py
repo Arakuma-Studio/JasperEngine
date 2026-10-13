@@ -632,7 +632,17 @@ async def test_luals_ui_stubs(ed: Editor):
     scripts["GoodUI.lua"] = GOOD_UI_LUA
     ws = lua_workspace(ed, scripts, dirs)
     try:
+        # the guide's scripts and the examples' each in a workspace of their own: a guide snippet may
+        # name a class as an example does (HudUI), which would be a duplicate definition in one
+        for name in list(ws.glob("src*")):
+            shutil.move(str(name), str(ws.parent / name.name))
         diags = luals_check(ws)
+        for f in ws.glob("*.lua"):
+            f.unlink()
+        for d in dirs:
+            shutil.copytree(d, ws / "src0")
+            diags += luals_check(ws)
+            shutil.rmtree(ws / "src0", ignore_errors=True)
         ed.check(not diags, "lua-language-server warnings on the guide's / examples' scripts:\n" +
                  "\n".join(f"{d['file']}:{d['line']}: {d['code']}: {d['message']}" for d in diags))
         for f in ws.glob("*.lua"):

@@ -206,6 +206,35 @@ TEST_F(ScriptDataModelTest, CreateAfterLoadReloadsTheDocument){
     EXPECT_EQ(documentSystem(scene()).getDataModelNames(document->getEntity()), (std::vector<std::string>{"shop", "unused"}));
 }
 
+// A late createDataModel reloads the document to bind it (above). The form values a reload keeps
+// for elements with an id are not restored into bound controls: the model holds their values, and
+// the old elements' defaults (a range at its minimum, an unchecked box, the first option) written
+// back would have replaced the model's (found by phase 4's settings example).
+TEST_F(ScriptDataModelTest, CreateAfterLoadKeepsTheModelValuesOfBoundControls){
+    ASSERT_TRUE(document->load("p4/bound_controls.html"));
+    update();
+    EXPECT_LUA(R"(
+        doc:getElementById("free").value = "kept"
+        model = doc:createDataModel("form", { volume = 70, music = true, quality = "high", name = "Ada" })
+        assert(model.volume == 70, tostring(model.volume))
+        assert(model.music == true, tostring(model.music))
+        assert(model.quality == "high", tostring(model.quality))
+        assert(model.name == "Ada", tostring(model.name))
+    )");
+    update();
+    update();
+    EXPECT_LUA(R"(
+        assert(model.volume == 70 and model.music == true and model.quality == "high" and model.name == "Ada")
+        assert(tonumber(doc:getElementById("volume").value) == 70, doc:getElementById("volume").value)
+        assert(doc:getElementById("music").checked == true)
+        assert(doc:getElementById("quality").value == "high", doc:getElementById("quality").value)
+        assert(doc:getElementById("name").value == "Ada", doc:getElementById("name").value)
+        -- an unbound control with an id keeps its value across the reload, as before
+        assert(doc:getElementById("free").value == "kept", doc:getElementById("free").value)
+    )");
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
+}
+
 TEST_F(ScriptDataModelTest, CppApi){
     UIValue initial = UIValue::object();
     initial["gold"] = 10;

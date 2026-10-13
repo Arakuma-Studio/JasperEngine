@@ -154,7 +154,8 @@ namespace jasperengine {
         void PopLayer() override;
         Rml::TextureHandle SaveLayerAsTexture() override;
         // the scissor region of the top layer into a texture of any size (fork: a box shadow larger than the window,
-        // rendered in tiles); a zero texture makes a cleared one of textureDimensions first
+        // rendered in tiles); a zero texture makes a cleared one of textureDimensions first. Dimensions and offset
+        // are in document px; the texture holds target pixels (scaled by the target-to-context ratio)
         Rml::TextureHandle SaveLayerIntoTexture(Rml::TextureHandle texture, Rml::Vector2i textureDimensions,
                                                 Rml::Vector2i destinationOffset) override;
         Rml::CompiledFilterHandle SaveLayerAsMaskImage() override;

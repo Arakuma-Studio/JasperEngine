@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<!--
+  Pause menu: an overlay over the running game.
+  Shows: a full-screen dim with backdrop-filter: blur(), a card with gradients, shadows and
+  rounded corners, icon buttons with :hover / :focus-visible transitions, <kbd> hints, and an
+  opacity + visibility transition driven by the "open" class. PauseMenuUI.lua toggles it with
+  Escape (an engine key event), freezes the game with Engine.timeScale = 0 while it is open
+  (the UI keeps animating: it runs on the UI clock) and scales the card in with anime.
+  The markup starts open so the editor shows the design; the script closes it on start.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Pause menu</title>
+  <link rel="stylesheet" href="pause_menu.css">
+</head>
+<body>
+  <div class="pause open" id="pause">
+    <section class="pause-card" id="pause-card" aria-labelledby="pause-title">
+      <header class="pause-header">
+        <span class="badge"><i data-lucide="pause"></i></span>
+        <div>
+          <h2 id="pause-title">Paused</h2>
+          <p class="meta">Chapter 3 &middot; The Sunken Archive</p>
+        </div>
+      </header>
+
+      <dl class="stats">
+        <div><dt>Played</dt><dd>01:42:17</dd></div>
+        <div><dt>Secrets</dt><dd>7 / 12</dd></div>
+        <div><dt>Difficulty</dt><dd>Veteran</dd></div>
+      </dl>
+
+      <div class="actions">
+        <button class="pause-button primary" id="resume">
+          <i data-lucide="play"></i><span>Resume</span><kbd>Esc</kbd>
+        </button>
+        <button class="pause-button" id="options">
+          <i data-lucide="settings"></i><span>Options</span>
+        </button>
+        <button class="pause-button" id="restart">
+          <i data-lucide="rotate-ccw"></i><span>Restart checkpoint</span>
+        </button>
+        <button class="pause-button danger" id="to-menu">
+          <i data-lucide="house"></i><span>Quit to menu</span>
+        </button>
+      </div>
+
+      <footer class="saved"><i data-lucide="circle-check"></i> Progress saved 2 minutes ago</footer>
+    </section>
+  </div>
+</body>
+</html>

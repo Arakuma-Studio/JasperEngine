@@ -184,8 +184,9 @@ namespace {
 		return "";
 	}
 
-	// The items of a longhand of the style, or of its initial value.
-	const Vector<AnimationListItem>* GetItems(const ElementStyle& style, PropertyId id)
+	// The items of a longhand of the style, or of its initial value. `keep_alive` holds the list: a value resolved from
+	// var() lives in the style's one returned-property storage, which the next resolved longhand replaces.
+	const Vector<AnimationListItem>* GetItems(const ElementStyle& style, PropertyId id, Vector<StyleValuePtr>& keep_alive)
 	{
 		const Property* property = style.GetLocalPropertyWithResolvedVariables(id);
 		if (!property || property->unit != Unit::STYLE_VALUE)
@@ -198,6 +199,7 @@ namespace {
 		const StyleValuePtr value = property->value.Get<StyleValuePtr>();
 		if (!value)
 			return nullptr;
+		keep_alive.push_back(value);
 		return &static_cast<const AnimationListValue&>(*value).GetItems();
 	}
 
@@ -422,13 +424,14 @@ void PropertyParserAnimation::RegisterParsers()
 TransitionList BuildTransitionList(const ElementStyle& style)
 {
 	TransitionList result;
-	const Vector<AnimationListItem>* properties = GetItems(style, PropertyId::TransitionProperty);
+	Vector<StyleValuePtr> keep_alive;
+	const Vector<AnimationListItem>* properties = GetItems(style, PropertyId::TransitionProperty, keep_alive);
 	if (!properties)
 		return result;
-	const Vector<AnimationListItem>* durations = GetItems(style, PropertyId::TransitionDuration);
-	const Vector<AnimationListItem>* easings = GetItems(style, PropertyId::TransitionTimingFunction);
-	const Vector<AnimationListItem>* delays = GetItems(style, PropertyId::TransitionDelay);
-	const Vector<AnimationListItem>* behaviors = GetItems(style, PropertyId::TransitionBehavior);
+	const Vector<AnimationListItem>* durations = GetItems(style, PropertyId::TransitionDuration, keep_alive);
+	const Vector<AnimationListItem>* easings = GetItems(style, PropertyId::TransitionTimingFunction, keep_alive);
+	const Vector<AnimationListItem>* delays = GetItems(style, PropertyId::TransitionDelay, keep_alive);
+	const Vector<AnimationListItem>* behaviors = GetItems(style, PropertyId::TransitionBehavior, keep_alive);
 
 	for (size_t i = 0; i < properties->size(); i++)
 	{
@@ -472,16 +475,17 @@ TransitionList BuildTransitionList(const ElementStyle& style)
 AnimationList BuildAnimationList(const ElementStyle& style)
 {
 	AnimationList result;
-	const Vector<AnimationListItem>* names = GetItems(style, PropertyId::AnimationName);
+	Vector<StyleValuePtr> keep_alive;
+	const Vector<AnimationListItem>* names = GetItems(style, PropertyId::AnimationName, keep_alive);
 	if (!names)
 		return result;
-	const Vector<AnimationListItem>* durations = GetItems(style, PropertyId::AnimationDuration);
-	const Vector<AnimationListItem>* easings = GetItems(style, PropertyId::AnimationTimingFunction);
-	const Vector<AnimationListItem>* delays = GetItems(style, PropertyId::AnimationDelay);
-	const Vector<AnimationListItem>* counts = GetItems(style, PropertyId::AnimationIterationCount);
-	const Vector<AnimationListItem>* directions = GetItems(style, PropertyId::AnimationDirection);
-	const Vector<AnimationListItem>* fill_modes = GetItems(style, PropertyId::AnimationFillMode);
-	const Vector<AnimationListItem>* play_states = GetItems(style, PropertyId::AnimationPlayState);
+	const Vector<AnimationListItem>* durations = GetItems(style, PropertyId::AnimationDuration, keep_alive);
+	const Vector<AnimationListItem>* easings = GetItems(style, PropertyId::AnimationTimingFunction, keep_alive);
+	const Vector<AnimationListItem>* delays = GetItems(style, PropertyId::AnimationDelay, keep_alive);
+	const Vector<AnimationListItem>* counts = GetItems(style, PropertyId::AnimationIterationCount, keep_alive);
+	const Vector<AnimationListItem>* directions = GetItems(style, PropertyId::AnimationDirection, keep_alive);
+	const Vector<AnimationListItem>* fill_modes = GetItems(style, PropertyId::AnimationFillMode, keep_alive);
+	const Vector<AnimationListItem>* play_states = GetItems(style, PropertyId::AnimationPlayState, keep_alive);
 
 	for (size_t i = 0; i < names->size(); i++)
 	{

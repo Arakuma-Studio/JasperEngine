@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<!--
+  Settings: a tabbed options window.
+  Shows: form controls bound two ways to a Lua table (data-model "settings": data-value on
+  ranges and selects, data-checked on switches, {{ }} value labels, a ternary expression for
+  the key-binding buttons); switches made of an invisible checkbox over a track whose knob is
+  a ::before (input:checked + .knob); ranges styled through ::-webkit-slider-runnable-track and
+  ::-webkit-slider-thumb (::-moz-range-progress for the fill); selects with a CSS chevron;
+  tabs as a grid; :focus-visible rings. SettingsUI.lua switches tabs (the "active" class),
+  captures a key for a binding, resets and applies.
+  In the editor (no Lua) the values are empty: press Play to see them.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Settings</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <div class="settings" data-model="settings">
+    <header class="head">
+      <h2><i data-lucide="settings-2"></i> Settings</h2>
+      <p>Changes apply when you press Apply.</p>
+    </header>
+
+    <nav class="tabs" aria-label="Settings sections">
+      <button class="tab active" id="tab-graphics" data-panel="panel-graphics"><i data-lucide="monitor"></i>Graphics</button>
+      <button class="tab" id="tab-audio" data-panel="panel-audio"><i data-lucide="volume-2"></i>Audio</button>
+      <button class="tab" id="tab-controls" data-panel="panel-controls"><i data-lucide="gamepad-2"></i>Controls</button>
+      <button class="tab" id="tab-gameplay" data-panel="panel-gameplay"><i data-lucide="swords"></i>Gameplay</button>
+    </nav>
+
+    <section class="panel active" id="panel-graphics">
+      <div class="row">
+        <label for="resolution">Resolution</label>
+        <span class="select"><select id="resolution" data-value="resolution">
+          <option value="1280x720">1280 &times; 720</option>
+          <option value="1920x1080">1920 &times; 1080</option>
+          <option value="2560x1440">2560 &times; 1440</option>
+        </select></span>
+      </div>
+      <div class="row">
+        <label for="quality">Quality</label>
+        <span class="select"><select id="quality" data-value="quality">
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="ultra">Ultra</option>
+        </select></span>
+      </div>
+      <div class="row">
+        <label for="fov">Field of view</label>
+        <input type="range" id="fov" min="60" max="110" data-value="fov">
+        <output class="value">{{ fov }}&deg;</output>
+      </div>
+      <div class="row">
+        <label for="vsync">V-Sync</label>
+        <label class="switch"><input type="checkbox" id="vsync" data-checked="vsync"><span class="knob"></span></label>
+      </div>
+      <div class="row">
+        <label for="bloom">Bloom</label>
+        <label class="switch"><input type="checkbox" id="bloom" data-checked="bloom"><span class="knob"></span></label>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-audio">
+      <div class="row">
+        <label for="master">Master volume</label>
+        <input type="range" id="master" min="0" max="100" data-value="master">
+        <output class="value">{{ master }}%</output>
+      </div>
+      <div class="row">
+        <label for="music">Music</label>
+        <input type="range" id="music" min="0" max="100" data-value="music">
+        <output class="value">{{ music }}%</output>
+      </div>
+      <div class="row">
+        <label for="sfx">Effects</label>
+        <input type="range" id="sfx" min="0" max="100" data-value="sfx">
+        <output class="value">{{ sfx }}%</output>
+      </div>
+      <div class="row">
+        <label for="subtitles">Subtitles</label>
+        <label class="switch"><input type="checkbox" id="subtitles" data-checked="subtitles"><span class="knob"></span></label>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-controls">
+      <div class="row">
+        <label for="bind-forward">Move forward</label>
+        <button class="keybind" id="bind-forward" data-action="forward" data-class-listening="capturing == 'forward'">{{ capturing == 'forward' ? 'Press a key…' : keys.forward }}</button>
+      </div>
+      <div class="row">
+        <label for="bind-jump">Jump</label>
+        <button class="keybind" id="bind-jump" data-action="jump" data-class-listening="capturing == 'jump'">{{ capturing == 'jump' ? 'Press a key…' : keys.jump }}</button>
+      </div>
+      <div class="row">
+        <label for="bind-interact">Interact</label>
+        <button class="keybind" id="bind-interact" data-action="interact" data-class-listening="capturing == 'interact'">{{ capturing == 'interact' ? 'Press a key…' : keys.interact }}</button>
+      </div>
+      <div class="row">
+        <label for="sensitivity">Mouse sensitivity</label>
+        <input type="range" id="sensitivity" min="1" max="20" data-value="sensitivity">
+        <output class="value">{{ sensitivity }}</output>
+      </div>
+      <div class="row">
+        <label for="invert">Invert Y axis</label>
+        <label class="switch"><input type="checkbox" id="invert" data-checked="invertY"><span class="knob"></span></label>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-gameplay">
+      <div class="row">
+        <label for="difficulty">Difficulty</label>
+        <span class="select"><select id="difficulty" data-value="difficulty">
+          <option value="story">Story</option>
+          <option value="normal">Normal</option>
+          <option value="veteran">Veteran</option>
+        </select></span>
+      </div>
+      <div class="row">
+        <label for="shake">Camera shake</label>
+        <input type="range" id="shake" min="0" max="100" data-value="shake">
+        <output class="value">{{ shake }}%</output>
+      </div>
+      <div class="row">
+        <label for="damage-numbers">Damage numbers</label>
+        <label class="switch"><input type="checkbox" id="damage-numbers" data-checked="damageNumbers"><span class="knob"></span></label>
+      </div>
+    </section>
+
+    <footer class="actions">
+      <button class="ghost" id="back"><i data-lucide="arrow-left"></i>Back</button>
+      <button class="ghost" id="reset"><i data-lucide="rotate-ccw"></i>Reset</button>
+      <button class="primary" id="apply"><i data-lucide="check"></i>Apply</button>
+    </footer>
+  </div>
+</body>
+</html>
