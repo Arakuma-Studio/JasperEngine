@@ -1606,6 +1606,146 @@ not-installed skips.
   - built in the Linux editor build and the Web build; this file has no GL code.
 - **Tests:** 5.1.
 
+#### 4.1.1 `p4-inspector` as implemented
+
+Where the implementation differs from or makes precise §3.3 (and what it found in §3.2.2):
+
+- **Files.** `engine/core/htmlui/HtmlUIInspector.{h,cpp}`, `HtmlUIAssertions.{h,cpp}`, plus
+  `HtmlUIInspectorInternal.h` (engine-internal: the document of an entity, selectors, refs,
+  boxes, clip regions and hit tests over RmlUi elements, shared by the two `.cpp`). Tests
+  `engine/tests/htmlui/InspectorTest.cpp`, `AssertionsTest.cpp` and their fixture
+  `InspectorTestCommon.h` (each test writes its files into its own directory, made the assets
+  directory, in a 1280×720 canvas). The test CMake globs `*.cpp`, so it needed no line; the
+  engine CMake lists the two sources after the htmlui block; the Xcode workspace lists the five
+  files in the iOS and macOS engine targets (ids `48544D4C` + sha1 of `p4-inspector:<kind>:<name>`).
+  `UIDocumentSystem` was not changed: every accessor of §3.2.2 exists (`pushDataModel` is
+  non-const and takes `(lua_State*, Entity, name)`; texture-mode documents are found with
+  `getTextureContext`; `getCompiledDocument` follows viewport/root restyles through `compiledOf`).
+- **Headers.** As §3.3, with include guards (the engine's style) instead of `#pragma once`.
+  `InspectStyle` gains `file`, `line`, `column`: the location `source` names (empty/0 for
+  `user-agent`, `default`, `inherited from …`), so a tool rewrites the path without parsing
+  `source`. `HtmlUIInspector::withViewport` gains an overload with the entity: the context its
+  document is in (a texture-mode document's own context, at its texture size), else the
+  scene's; the scene-only form lays out the screen context.
+- **Paths are asset-relative** everywhere (`DocumentInfo::html`, `dependencies`, the
+  diagnostics, `InspectStyle::source`/`file`: `ui/menu.css:42:3`), as the engine's paths are
+  (CONTRACTS "Paths"); the header comments of §3.3 said project-relative. The MCP tools prefix
+  the assets directory at their boundary.
+- **Selectors.** An HTML document's selectors are CSS, rewritten as Lua's `querySelector` does
+  (`CssRewriter::rewriteSelector`: `body`, `html`, `:focus`, …); an `.rml` document's are RCSS
+  as written. The `<html>` root can match (`query("html")`). A rewrite error, an empty result
+  or an RmlUi rejection (its warning captured, not logged) is the error
+  `selector "div[[" is not valid: <reason>`. A selector naming a pseudo-element (`::before`,
+  `:after`, `::marker`, …) is refused the same way: pseudo-elements are not elements in RmlUi
+  (non-DOM children; their hits go to their element). `""` is `<body>` for `query` only;
+  `HtmlUIAssertions` errors with `selector is empty`. SVG internals are never matched or
+  listed (`<svg>` is a leaf).
+- **Refs.** `html` for an HTML document's root, `body` for `<body>` (an `.rml` document's
+  root is `body`). `#id` only for an id that is unique in the document and needs no CSS escape
+  (`[A-Za-z_-][A-Za-z0-9_-]*`); other ids are stepped through. Steps are
+  `tag:nth-child(n)` counting element siblings as RmlUi does; the tag is left out (bare
+  `:nth-child(n)`) for an element whose RML tag the selector rewrite does not name by its DOM
+  name. Element `tag`s are DOM names (`LuaHooks::localName`); `htmlui-*` classes, the
+  `data-htmlui-*` attributes and the root's internal id are hidden as Lua hides them.
+- **Boxes** are bounding rects through CSS transforms, as `UIElement::getBoundingClientRect`
+  (the nearest transform state of the element or an ancestor); an inline element's border box
+  unites its line fragments. Every call first runs `ElementDocument::UpdateDocument`;
+  transforms are the ones of the last drawn frame (RmlUi computes them when rendering).
+- **Flags.** `hidden` is `display: none` on the element or an ancestor, or the computed
+  (inherited) `visibility` — a `visibility: visible` child of a hidden parent is visible, as in
+  CSS. Elements under `display: none` get only `hidden`/`transparent` (they have no layout).
+  `clipped` uses the clip regions below; `overflowX/Y` RmlUi's scroll vs client size (layout
+  records the scrollable overflow of every block box, `overflow: visible` included).
+- **Clip regions** follow `ElementUtilities::GetClippingRegion` in floats: the containing-block
+  chain (`GetOffsetParent`), `clip: none|always|<n>`, the scrollport without scrollbars,
+  `overflow: clip` per axis with `overflow-clip-margin`.
+- **Hit tests** search the entity's document only (`Context::GetElementAtPoint` from it), climb
+  from non-DOM parts (scrollbars, pseudo-elements) to their element, and return nothing where
+  the engine lets the pointer through to the game: a document or HTML `<body>` without a
+  background (`HtmlUIContext::passesPointerThrough`). The stack ends at `<body>` (or is
+  `[html]` when the root itself is hit; with the routing rule above, such a page is never the
+  hit). `InspectorTest.HitTestFollowsTheEngineRouting` checks
+  "empty" against `UIDocumentSystem::eventOnPointerMove` returning "not consumed".
+- **Values** (`detail`, `styles`): lengths in px with at most 2 decimals (`em`, `rem`, `vw`, …
+  resolved for the element, `font-size` its computed size), percentages as written, numbers
+  with at most 3 decimals, colours `rgb()`/`rgba()` (alpha 2 decimals), `currentcolor` resolved,
+  keywords and other values as RmlUi prints them. A shorthand name gives its longhands' values
+  (one value when they agree: `padding` → `4px 6px 4px 6px`). Custom properties (`--accent`)
+  give their specified value as the compat rewrite wrote it (colours as `#rrggbbaa`). A CSS
+  property the compat tables know but RmlUi has no value for gives value `""` and source
+  `not supported`. An unknown name is the error `unknown CSS property "colr" (did you mean
+  color?)` (closest CSS name by edit distance, the text §3.6.1 shows). `properties` empty:
+  the seven always-shown properties, then every longhand whose value is not its registered
+  initial value, by CSS name, each name once.
+- **Sources.** RmlUi's `Property::source` gives the rule's RCSS line; the inspector finds the
+  rule in the compiled sheet that line maps to (the sheets as `DocumentLoader::registerDocument`
+  maps them: author files, inline `<style>`s, presentational hints, the `!important` sheet),
+  scans the rule's block for the last declaration of the property or of a shorthand that sets
+  it, and maps that line to `file:line:col` of the authored declaration (`ui/vp.css:5:10` for a
+  one-line rule inside `@media`). `selector` is the authored selector list of the rule, or the
+  piece of it that matches the element (`.btn.primary` of `.btn.primary, .other`); hints have
+  none. `user-agent` is the UA sheet's origin. A local value in the element's inline
+  properties, or set without a sheet (a script's `style`, an animation), is
+  `<html>:<line> (style attribute)` (the element's line, `locateElement`). Not local: an
+  inherited property names the nearest ancestor that sets it (`inherited from #panel`), else
+  `default`. `.rml` documents give RmlUi's `path:line` and rule name.
+- **`withViewport`** sets whole-pixel dimensions (`HtmlUIContext::setDimensions`, which also
+  restyles viewport-compiled documents) and `HtmlUIContext::update()`, from 1 to 16384 px per
+  side. The restore finds the context again and skips it when `fn` removed it (a texture-mode
+  document reloaded as a screen one).
+- **Assertions** (messages are one sentence with px at most 1 decimal, ratios 2):
+  - `Exists`/`Count`: `matched 3, expected exactly 2` / `at least` / `at most`, ref = the selector.
+  - `Visible`: `display: none [on <ref>]`, `visibility: hidden`, `effective opacity 0.02 (below
+    0.05)`, `border box is 0px x 40px`, `border box [x,y wxh] is outside the WxH viewport`,
+    `fully clipped by the overflow of <ref>`; `unobstructed` takes the context's topmost element
+    at the centre of the visible part: `covered by <ref> at (x, y)` (otherRef/otherRect the
+    cover), `covered by #sheet of the UI document ui/top.html at (x, y)` (an element of another
+    document; a transparent page is not one: the pointer passes through it, see below),
+    `pointer-events: none: the pointer goes through it at (x, y)`.
+  - `TextFits`: text line boxes come from the layout (each line's baseline, the strut's
+    whole-pixel ascent/descent and half-leading as `InlineBoxBase::GetStrut`, the line height)
+    and the font engine's width of each line's text (RmlUi fills its own widths only when it
+    draws), hanging white space left out; compared in layout space (no transforms) with the
+    content box of the element, or of its block container for inline text. Hidden elements are
+    skipped. `text is 212px wide in a 118px content box (94px over)`, `… tall …`,
+    `text is cut by the overflow of <ref> (Npx hidden)`, `text wraps to N lines (single line
+    expected)`, joined with `; ` per element. `allow_scroll` also ignores the clip of those
+    scroll containers. Ellipsised text (`text-overflow`) does not fit.
+  - `NoOverlap`: rect/otherRect are the two border boxes, the intersection is in the message
+    (`overlaps #b by 20px x 10px at [80,90 20x10]`); a `with` set matching nothing fails
+    (`with selector matched nothing`); `matched` counts both sets' distinct elements.
+  - `WithinParent`/`WithinViewport`: `extends past the padding box of <ref>: 30px right, 20px
+    bottom` / `extends past the 1280x720 viewport: 40px right`; a `container` no ancestor
+    matches fails (`no ancestor matches ".x"`).
+  - `Contrast` checks the visible elements with own text among the matches and their
+    descendants (the matches themselves when none has text): the element and its ancestors are
+    composited as rendering groups (background colour, image, content, then the group's
+    opacity), the text over its own background first. Image layers (decorators and the fork's
+    `background-image` layers) and the transparent root are resolved by computing with two
+    extremes: a difference makes the element inconclusive (or, for the root, uses `background`).
+    `contrast 1.23:1 (#777777 on #888888) is below 4.5:1` (` (large text)` when 3:1 applied).
+  - `MinSize` skips hidden and transparent matches; a zero-size one fails:
+    `is 40x40px, smaller than 44x44px`.
+- **Input routing through stacked documents (fixed here, at the coordinator's request).** An
+  upper screen document used to keep the pointer from the documents below even where it was
+  transparent: its `<html>` is `min-height: 100%`, so it was the hit, `isContent` called it
+  not content, and the engine passed the pointer to the game. Now a page that paints no
+  background, and whose document has no pointer listener (on `<html>` or `<body>`: a listening
+  page takes the pointer on its empty parts, as in a browser), is not hit at all and the
+  pointer goes on to the next document below in z-order, then to the game (fork patch P4-1 `Rml::Context::SetPointerPassThrough`,
+  `HtmlUIContext::passesPointerThrough`, phase-1 spec §3.6.2 "as implemented",
+  `TestInputPassThrough.cpp`). `hitTest` stays per entity; `unobstructed` fails only on an
+  element of another document over the element.
+- **Tests:** `InspectorTest` 21 cases (§5.1 1-10, plus empty and whitespace-only documents,
+  pseudo-classes, pseudo-elements, texture-mode documents, reloads between queries and inside
+  `withViewport`, stylesheet restyles, unicode text and ids, `.rml` documents, data models, a
+  3 302-element tree), `AssertionsTest` 10 cases (every kind: pass, fail with its numbers, edge
+  cases of §5.1, other viewports, a document over another), `InputPassThroughTest` 10 cases
+  (clicks and hover through an upper page, listening pages taking the pointer (body, document,
+  wheel, `data-event-*`, "click outside" closing a dropdown, removal restoring the pass-through), the upper element winning, capture and drag over
+  another document, both pages empty, three layers, painted pages, `pointer-events: none`),
+  `PointerPassThrough.documents` in the vendored RmlUi suite.
+
 ### 4.2 `p4-checks`: `check --ui`, hook, `ui-support`, hot reload pick-up
 
 - **Goal:** 3.4 and 3.5.

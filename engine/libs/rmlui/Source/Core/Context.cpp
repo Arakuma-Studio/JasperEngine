@@ -1529,9 +1529,21 @@ Element* Context::GetElementAtPoint(Vector2f point, const Element* ignore_elemen
 	// A hit on a pseudo-element (or inside one) is a hit on its originating element (phase 3): events target it and its
 	// :hover applies, so 'a:hover::after' rules follow the pointer.
 	if (within_element)
+	{
+		// An element the pointer passes through (SetPointerPassThrough, phase 4) is not hit itself; its descendants were
+		// tested above, and the caller goes on to what is below it.
+		if (pointer_pass_through && pointer_pass_through(element))
+			return nullptr;
 		return PseudoElements::GetOriginatingElement(element);
+	}
 
 	return nullptr;
+}
+
+void Context::SetPointerPassThrough(Function<bool(Element*)> filter)
+{
+	pointer_pass_through = std::move(filter);
+	// The hover chain follows at the next update or pointer event.
 }
 
 void Context::CreateDragClone(Element* element)

@@ -1840,6 +1840,13 @@
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		48544D4C78124CC99E1EABE6 /* HtmlUIInspector.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4CD1BC6E137B04E6B6 /* HtmlUIInspector.h */; };
+		48544D4CE2CF0E65C2C973C2 /* HtmlUIInspector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C1D9C506F82E136FE /* HtmlUIInspector.cpp */; };
+		48544D4CED116BC10893A7C5 /* HtmlUIInspector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C1D9C506F82E136FE /* HtmlUIInspector.cpp */; };
+		48544D4C98EA102F865794CB /* HtmlUIInspectorInternal.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4CF6E10DE1E9E06189 /* HtmlUIInspectorInternal.h */; };
+		48544D4CE1234BC040797AA1 /* HtmlUIAssertions.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C902C11E0EBE565B6 /* HtmlUIAssertions.h */; };
+		48544D4C49B8ED581219210D /* HtmlUIAssertions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C7CF433923061423A /* HtmlUIAssertions.cpp */; };
+		48544D4C2474E6B89BDA709B /* HtmlUIAssertions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C7CF433923061423A /* HtmlUIAssertions.cpp */; };
 		434F4D50BAC5177F50516E80 /* HtmlFieldsetElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D509CC75CECC3CDD0AE /* HtmlFieldsetElement.h */; };
 		434F4D50DA09FAE463E22E38 /* HtmlFieldsetElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5053F261551B80943C /* HtmlFieldsetElement.cpp */; };
 		434F4D50607312AEAD952E55 /* HtmlFieldsetElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5053F261551B80943C /* HtmlFieldsetElement.cpp */; };
@@ -4869,6 +4876,11 @@
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		48544D4CD1BC6E137B04E6B6 /* HtmlUIInspector.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIInspector.h; sourceTree = "<group>"; };
+		48544D4C1D9C506F82E136FE /* HtmlUIInspector.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIInspector.cpp; sourceTree = "<group>"; };
+		48544D4CF6E10DE1E9E06189 /* HtmlUIInspectorInternal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIInspectorInternal.h; sourceTree = "<group>"; };
+		48544D4C902C11E0EBE565B6 /* HtmlUIAssertions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIAssertions.h; sourceTree = "<group>"; };
+		48544D4C7CF433923061423A /* HtmlUIAssertions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIAssertions.cpp; sourceTree = "<group>"; };
 		434F4D509CC75CECC3CDD0AE /* HtmlFieldsetElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlFieldsetElement.h; sourceTree = "<group>"; };
 		434F4D5053F261551B80943C /* HtmlFieldsetElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlFieldsetElement.cpp; sourceTree = "<group>"; };
 		434F4D509829603415289A0C /* DiagnosticsJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DiagnosticsJson.h; sourceTree = "<group>"; };
@@ -8716,6 +8728,11 @@
 				48544D4C0000000000000003 /* HtmlUI.cpp */,
 				48544D4C00000000000002A6 /* HtmlUIClock.h */,
 				48544D4C00000000000002A8 /* HtmlUIClock.cpp */,
+				48544D4CD1BC6E137B04E6B6 /* HtmlUIInspector.h */,
+				48544D4C1D9C506F82E136FE /* HtmlUIInspector.cpp */,
+				48544D4CF6E10DE1E9E06189 /* HtmlUIInspectorInternal.h */,
+				48544D4C902C11E0EBE565B6 /* HtmlUIAssertions.h */,
+				48544D4C7CF433923061423A /* HtmlUIAssertions.cpp */,
 				4544495431300000000000A1 /* HtmlUIDependencies.h */,
 				4544495431300000000000A3 /* HtmlUIDependencies.cpp */,
 				48544D4C00000000000002AB /* HtmlUIRenderStats.h */,
@@ -10046,6 +10063,9 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				48544D4C78124CC99E1EABE6 /* HtmlUIInspector.h in Headers */,
+				48544D4C98EA102F865794CB /* HtmlUIInspectorInternal.h in Headers */,
+				48544D4CE1234BC040797AA1 /* HtmlUIAssertions.h in Headers */,
 				434F4D50BAC5177F50516E80 /* HtmlFieldsetElement.h in Headers */,
 				434F4D5004BA06E34072BEAE /* DiagnosticsJson.h in Headers */,
 				434F4D507D7BFEE5F218EEC6 /* Arena.h in Headers */,
@@ -11824,6 +11844,8 @@
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				48544D4CE2CF0E65C2C973C2 /* HtmlUIInspector.cpp in Sources */,
+				48544D4C49B8ED581219210D /* HtmlUIAssertions.cpp in Sources */,
 				434F4D50607312AEAD952E55 /* HtmlFieldsetElement.cpp in Sources */,
 				434F4D50B92138D5E718E024 /* Arena.cpp in Sources */,
 				434F4D5012A32150F51A6F60 /* Transition.cpp in Sources */,
@@ -12166,6 +12188,8 @@
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				48544D4CED116BC10893A7C5 /* HtmlUIInspector.cpp in Sources */,
+				48544D4C2474E6B89BDA709B /* HtmlUIAssertions.cpp in Sources */,
 				434F4D50DA09FAE463E22E38 /* HtmlFieldsetElement.cpp in Sources */,
 				434F4D502C6392B25636A0F9 /* Arena.cpp in Sources */,
 				434F4D503AFB9B941608861B /* Transition.cpp in Sources */,
