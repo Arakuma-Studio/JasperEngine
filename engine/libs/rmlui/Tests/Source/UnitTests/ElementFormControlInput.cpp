@@ -2,6 +2,9 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/Elements/ElementFormControlInput.h>
+#include <RmlUi/Core/EventListener.h>
+#include <RmlUi/Core/Input.h>
 #include <doctest.h>
 
 using namespace Rml;
@@ -86,6 +89,59 @@ TEST_CASE("form.input.range.progress_on_track")
 	REQUIRE(progress);
 	CHECK(progress->GetAbsoluteOffset(BoxArea::Border) == track->GetAbsoluteOffset(BoxArea::Border));
 
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+// fork P4-3: a text field leaves the key events of a gamepad to the document
+TEST_CASE("form.input.text.gamepad_keys")
+{
+	const String document_rml = R"(<rml>
+	<head>
+		<link type="text/rcss" href="/assets/rml.rcss" />
+		<style>
+			body { font-family: LatoLatin; width: 300px; height: 200px; }
+			input.text { width: 200px; }
+		</style>
+	</head>
+	<body>
+		<input id="field" type="text" value="abc"/>
+	</body>
+</rml>)";
+
+	struct KeyCounter : EventListener {
+		int count = 0;
+		void ProcessEvent(Event& /*event*/) override { count++; }
+	} counter;
+
+	Context* context = TestsShell::GetContext();
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	document->Show();
+	context->Update();
+	document->AddEventListener(EventId::Keydown, &counter);
+
+	auto* field = rmlui_dynamic_cast<ElementFormControlInput*>(document->GetElementById("field"));
+	REQUIRE(field);
+	field->Focus(true);
+	context->Update();
+
+	// a gamepad's key: the field neither edits nor stops it
+	for (Input::KeyIdentifier key : {Input::KI_DELETE, Input::KI_RIGHT, Input::KI_ESCAPE})
+	{
+		Dictionary parameters;
+		parameters["key_identifier"] = (int)key;
+		parameters["gamepad"] = 0;
+		CHECK(field->DispatchEvent(EventId::Keydown, parameters));
+	}
+	CHECK(counter.count == 3);
+	CHECK(field->GetValue() == "abc");
+
+	// the keyboard's: the field takes it (the caret is at the start)
+	CHECK_FALSE(context->ProcessKeyDown(Input::KI_DELETE, 0));
+	CHECK(counter.count == 3);
+	CHECK(field->GetValue() == "bc");
+
+	document->RemoveEventListener(EventId::Keydown, &counter);
 	document->Close();
 	TestsShell::ShutdownShell();
 }
