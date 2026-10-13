@@ -49,6 +49,7 @@ bool HtmlUIContext::processTouchStart(int pointer, Rml::Vector2f position, int m
         activeElement = hover->GetObserverPtr();
     }else{
         activeElement.reset();
+        releaseFocus();
     }
 
     return isPointerOverContent();

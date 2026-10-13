@@ -464,6 +464,12 @@ The remaining regressions above 5 %, by cause, each a correctness requirement of
   UAX #14 line breaking and the CSS text properties (P3-TX1, P3-TX5); ASCII text takes the fast path of P3-I17,
   other scripts the full pair rules.
 
+## Phase 4 patches
+
+| Id | Commits | Files | What and why | Upstream | Tests |
+|---|---|---|---|---|---|
+| P4-1 | `de09ed90` `rmlui: Context::SetPointerPassThrough: elements the pointer passes through …`; `1c2a9f9d` (its test) | `Include/RmlUi/Core/Context.h`, `Source/Core/Context.cpp`; `Tests/Source/UnitTests/{PointerPassThrough.cpp (new),CMakeLists.txt}` | p4-inspector, at the coordinator's request (phase-1 spec §3.6.2 "as implemented"): an element under the point for which the context's filter returns true is not hit itself, as with `pointer-events: none` on that element alone; its descendants still are, and `GetElementAtPoint` goes on to the elements and documents below it. Hover, presses, touches and drag hover all go through `GetElementAtPoint`, so they follow it. The engine passes transparent pages that do not listen for the pointer (`HtmlUIContext::passesPointerThrough`), so a click on the empty part of an upper screen document reaches the document below, then the game. | upstreamable | `PointerPassThrough.documents` |
+
 ## Upstream rebase rehearsal (p3-integration)
 
 Rehearsed in a scratch clone of `https://github.com/mikke89/RmlUi` (2026-10-11/12): upstream `master` at
