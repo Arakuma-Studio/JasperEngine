@@ -31,6 +31,7 @@
 #include "command/type/UnlinkMaterialCmd.h"
 #include "component/MeshComponent.h"
 #include "htmlui/HtmlUiImporters.h"
+#include "htmlui/compat/ImportManifest.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 #include "texture/Material.h"
@@ -1362,7 +1363,9 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
         }
     }
     if (written > 0) {
-        changed.push_back(project->getAssetsPath() / "htmlui-imports" / "manifest.json");
+        // the runtime resolves remote URLs through the manifest (a document that keeps them: rewrite false)
+        jasperengine::htmlui::compat::ImportManifest::reload();
+        changed.push_back(project->getAssetsPath() / fs::u8path(jasperengine::htmlui::compat::ImportManifest::kPath));
         syncFiles(ctx, changed, false);
         if (ProjectWindow* window = ctx.projectWindow()) window->refreshCurrentDirectory();
     }
