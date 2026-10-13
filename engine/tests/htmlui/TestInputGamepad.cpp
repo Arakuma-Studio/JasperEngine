@@ -642,3 +642,19 @@ TEST_F(InputGamepadTest, AClickedPanelDoesNotTakeTheGamepad){
     press(D_GAMEPAD_BUTTON_DPAD_UP);
     EXPECT_EQ(gameDowns.size(), 2u);
 }
+
+// B closes a modal <dialog> as Escape does (its cancel and close events)
+TEST_F(InputGamepadTest, BClosesAModalDialog){
+    load("html, body { margin: 0; }\n",
+         "<button id=\"open\">Open</button>\n"
+         "<dialog id=\"dlg\"><button id=\"inside\">OK</button></dialog>");
+    UIElement dialog = doc().getElementById("dlg");
+    ASSERT_TRUE(dialog.isValid());
+    dialog.showModal();
+    GpuEnvironment::drawFrames(1);
+    ASSERT_TRUE(dialog.hasAttribute("open"));
+    focus("inside");
+    press(D_GAMEPAD_BUTTON_B);
+    GpuEnvironment::drawFrames(1);
+    EXPECT_FALSE(dialog.hasAttribute("open"));
+}
