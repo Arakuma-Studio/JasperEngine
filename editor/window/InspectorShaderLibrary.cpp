@@ -343,6 +343,68 @@ void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentS
         ImGui::OpenPopup(popupName.c_str());
 }
 
+bool editor::InspectorWindow::drawShaderPropertyValue(const ShaderManifestProperty& property, const std::string& id, const Vector4& value,
+                                                      Vector4& edited, bool& continuous){
+    edited = value;
+    continuous = true;
+    bool changed = false;
+    ImGui::SetNextItemWidth(-1);
+    switch (property.kind) {
+        case ShaderPropertyKind::COLOR:
+        case ShaderPropertyKind::HDRCOLOR: {
+            // edited as sRGB, stored linear (alpha as is)
+            const bool hdr = property.kind == ShaderPropertyKind::HDRCOLOR;
+            Vector4 srgb = Color::linearTosRGB(value);
+            float color[4] = {srgb.x, srgb.y, srgb.z, srgb.w};
+            ImGuiColorEditFlags flags = ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf;
+            if (hdr) flags |= ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float;
+            if (ImGui::ColorEdit4(id.c_str(), color, flags)) {
+                const Vector4 linear = Color::sRGBToLinear(Vector4(color[0], color[1], color[2], color[3]));
+                edited = Vector4(linear.x, linear.y, linear.z, color[3]);
+                changed = true;
+            }
+            break;
+        }
+        case ShaderPropertyKind::RANGE: {
+            float v = value.x;
+            if (ImGui::SliderFloat(id.c_str(), &v, property.min, property.max)) {
+                edited = Vector4(v, 0.0f, 0.0f, 0.0f);
+                changed = true;
+            }
+            break;
+        }
+        case ShaderPropertyKind::TOGGLE: {
+            bool on = value.x != 0.0f;
+            if (ImGui::Checkbox(id.c_str(), &on)) {
+                edited = Vector4(on ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
+                changed = true;
+                continuous = false;
+            }
+            break;
+        }
+        case ShaderPropertyKind::INT: {
+            int v = (int)value.x;
+            if (ImGui::DragInt(id.c_str(), &v, 0.1f)) {
+                edited = Vector4((float)v, 0.0f, 0.0f, 0.0f);
+                changed = true;
+            }
+            break;
+        }
+        default: {
+            const int components = property.kind == ShaderPropertyKind::VECTOR2 ? 2
+                                 : property.kind == ShaderPropertyKind::VECTOR3 ? 3
+                                 : property.kind == ShaderPropertyKind::VECTOR4 ? 4 : 1;
+            float fields[4] = {value.x, value.y, value.z, value.w};
+            if (ImGui::DragScalarN(id.c_str(), ImGuiDataType_Float, fields, components, 0.01f)) {
+                edited = Vector4(fields[0], fields[1], fields[2], fields[3]);
+                changed = true;
+            }
+            break;
+        }
+    }
+    return changed;
+}
+
 bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::string& shader,
                                                      const std::string& paramsProperty, const std::string& texturesProperty,
                                                      const std::string& featuresProperty, const std::function<void()>& onValueChanged){
@@ -474,62 +536,9 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
         }
         const std::string id = "##param_value_" + property.member;
         Vector4 edited = value;
-        bool changed = false;
         bool continuous = true;
         ImGui::SetNextItemWidth(-1);
-        switch (property.kind) {
-            case ShaderPropertyKind::COLOR:
-            case ShaderPropertyKind::HDRCOLOR: {
-                // edited as sRGB, stored linear (alpha as is)
-                const bool hdr = property.kind == ShaderPropertyKind::HDRCOLOR;
-                Vector4 srgb = Color::linearTosRGB(value);
-                float color[4] = {srgb.x, srgb.y, srgb.z, srgb.w};
-                ImGuiColorEditFlags flags = ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf;
-                if (hdr) flags |= ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float;
-                if (ImGui::ColorEdit4(id.c_str(), color, flags)) {
-                    const Vector4 linear = Color::sRGBToLinear(Vector4(color[0], color[1], color[2], color[3]));
-                    edited = Vector4(linear.x, linear.y, linear.z, color[3]);
-                    changed = true;
-                }
-                break;
-            }
-            case ShaderPropertyKind::RANGE: {
-                float v = value.x;
-                if (ImGui::SliderFloat(id.c_str(), &v, property.min, property.max)) {
-                    edited = Vector4(v, 0.0f, 0.0f, 0.0f);
-                    changed = true;
-                }
-                break;
-            }
-            case ShaderPropertyKind::TOGGLE: {
-                bool on = value.x != 0.0f;
-                if (ImGui::Checkbox(id.c_str(), &on)) {
-                    edited = Vector4(on ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
-                    changed = true;
-                    continuous = false;
-                }
-                break;
-            }
-            case ShaderPropertyKind::INT: {
-                int v = (int)value.x;
-                if (ImGui::DragInt(id.c_str(), &v, 0.1f)) {
-                    edited = Vector4((float)v, 0.0f, 0.0f, 0.0f);
-                    changed = true;
-                }
-                break;
-            }
-            default: {
-                const int components = property.kind == ShaderPropertyKind::VECTOR2 ? 2
-                                     : property.kind == ShaderPropertyKind::VECTOR3 ? 3
-                                     : property.kind == ShaderPropertyKind::VECTOR4 ? 4 : 1;
-                float fields[4] = {value.x, value.y, value.z, value.w};
-                if (ImGui::DragScalarN(id.c_str(), ImGuiDataType_Float, fields, components, 0.01f)) {
-                    edited = Vector4(fields[0], fields[1], fields[2], fields[3]);
-                    changed = true;
-                }
-                break;
-            }
-        }
+        const bool changed = drawShaderPropertyValue(property, id, value, edited, continuous);
         if (changed) {
             ShaderUniformValues newParams = params;
             ShaderUniforms::set(newParams, property.member, edited);
