@@ -82,6 +82,12 @@ decals, intersection highlights), while scenes that use none of them pay nothing
 - A scene with none of these shaders runs no depth pre-pass or colour copy it did not run
   before (verified through a pass-count debug log or counter).
 - Phase 1 and 2 regression checks still pass.
+- Added by the final pass (§4.8): the scene-reading shaders run on the GL, Vulkan and GLES3
+  backends (smoke tests) and the D3D11 and Metal ones compile; fixture scenes re-saved by this
+  editor and by the phase 2 tag's are byte-identical but for phase 3 fields; a scene without
+  scene-input shaders is pixel and frame-stats identical to the phase 2 tag (SSAO, SSR, both,
+  the depth pre-pass setting); a runtime change of the light cap draws every lit mesh in every
+  frame while the new variants compile (`unified-lighting` `UL_CAP_AT`, per-frame stats).
 
 ## 4. Implementation notes
 
@@ -615,6 +621,96 @@ regression test in `tools/mcp/tests/test_scene_inputs_editor.py`):
   `test_cli_lua_isolated_state` failed under the parallel load and passed alone);
   `tools/fixtures/shader-library-export/check.sh` (all 7 scenes ok); `generate.py` of the
   scene-inputs fixture twice in a row (both 9 variants, 0 failed, 0 findings).
+
+### 4.8 Final pass (sl/p3-final)
+
+On `shader-library` bfd6c54a (every phase 3 branch and review fix merged).
+
+- `glass` reflects the engine environment (§2.2 "fresnel reflection from the reflection probe or a
+  cubemap"; supersedes §4.3's "the probe/IBL is not used"): `@require environment
+  feature=!REFLECTION_MAP`, the reflection is `reflectionColor * reflectionStrength *
+  environmentColor(reflect(-v, n), 0)` (the probe whose box holds the mesh, else the sky's
+  prefiltered map, sharp), `reflectionColor` alone where `environmentPresent()` is false (no probe,
+  a sky without a cube map). `REFLECTION_MAP` stays an override: the material's own cubemap, no
+  environment bound. Description, property and feature labels say so; `docs/shaders/library.md`
+  regenerated (Inputs: "`environment` without `REFLECTION_MAP`"). Fixtures: `phase3b` puts a
+  reflection probe around the glass (`P3B_PROBE=0` leaves it out: the A/B at
+  `P3B_VIEW=glass_grazing` changes the panes' and spheres' reflections from the probe's dark
+  capture to the bright sky environment, ~200k pixels); scene-inputs `SI_ENV=1` adds a glass ball
+  without `REFLECTION_MAP` beside the `REFLECTION_MAP` one (same sky cube map): the two look alike.
+  The export fixture needs no regeneration: a manifest require is not part of a scene's
+  `shaderKeys`, so `Phase3B.scene` is unchanged and `check.sh` passes with it (its panes reflect
+  the scene's default sky in the editor and the game alike).
+- Docs: `docs/mcp/guide/lua-api.md` lists `setShaderCubeTexture(uniform, path)` and the six-face form
+  on `Material` and `MaterialPass` (and that `setShaderTexture` on a cube uniform sets a 2D texture;
+  the components' shader methods have no cube form).
+- Opaque-queue error (§4.4, §4.5 review 6): the fix now follows the cause.
+  `Catalog::getSceneInputQueueFix(scene, entity, submesh)` returns `ALPHA_BLEND` (auto transparency
+  on and Alpha moves the submesh), `MESH_TRANSPARENT` (auto transparency off: the mesh's Transparent
+  decides the queue whatever the blend) or `NONE` (a shader forcing the queue);
+  `getSceneInputQueueAdvice` words it for `check --shaders` / `check_shader` (ProjectChecks), the
+  `get_entity` `error` and the inspector tooltip; the inspector button ("Use Alpha blending" or "Make
+  the mesh transparent", one undo step over the selection having that fix) and `get_entity`'s `fix`
+  (`{"submeshes[N].material.blendMode": "alpha"}` or `{"transparent": true}`) apply it.
+  `docs/mcp/guide/shaders.md` updated. Test `test_opaque_queue_fix_mesh_transparent` (error and
+  check wording, fix, apply, undo, back to Alpha with auto transparency on).
+- Variant reloads keep drawing (supersedes §4.5's "Not changed"): a change of the scene's shader
+  environment used to reload every mesh at once, and a mesh reloading is not drawn until its shaders
+  are built. Reproduced with the new `unified-lighting` `UL_CAP_AT=6,12` and
+  `JASPERENGINE_FRAME_STATS=all` (the default 2 s / 4 s switches fall before the first presented
+  frame under software GL): on bfd6c54a frames 25-28 after the 8 -> 4 switch drew 0 of 144 draws
+  (0 pipelines alive) while the Lc4 variants compiled; now 144 draws in every frame, the meshes
+  reload one frame later with their new variants (pipelines made 93 -> 186 in one update).
+  `RenderSystem::needReloadMeshVariants()` marks loaded meshes `MeshComponent::needVariantReload`:
+  they keep drawing and reload in the update `meshVariantShadersReady` finds every shader the reload
+  takes built (asked for as `loadMesh` does), so with precompiled shaders (exported builds) the
+  reload happens in the same update as before. Used for the changes that leave every resource a
+  loaded variant binds alive: the light capacity tier, fog on/off and `setDisableFog`, lights and 2D
+  lights added or removed and a light's type, shadows, map size (Lua and the editor:
+  `UpdateFlags_Scene_Mesh_Variant`), 2D shadows on/off, reflection probes added or removed, SSAO,
+  and the scene-depth program switch. Still a full reload (documented limit; the old variant would
+  bind freed or incompatible resources): the sky's IBL maps changing, the render pipelines /
+  destinations (fixed resolution, scene stacks), mirrors, the depth pre-pass and SSR settings, the
+  scene default shader. Supporting changes: the fog block and the shadow blocks are applied by the
+  variant (its fog slot, its Shw bit) instead of the scene's current flags (identical outside a
+  wait); `destroyMesh` resets `slotFSFog` and `slotFSMirror` (a reload without them kept stale
+  slots, pre-existing); a shadow pass skips a waiting mesh without a depth program instead of
+  forcing its reload; `getLoadCount` counts a waiting mesh as loading (the ready signal and
+  loading screens wait for it). `SI_SPAWN=depth|color` frame stats are identical to bfd6c54a.
+- Follow-ups re-read (§4.1-4.7, `/tmp/shader-research/p3-followups.md`, the three reviews): all
+  fixed or design limits now stated in the spec and user-facing text. Made user-facing here: water
+  (no shore foam at a vertical face seen from straight above; a faint line along outlines with
+  REFRACTION), `projected_decal` (a pixel-wide seam along depth steps with ANGLE_FADE) and
+  `heat_haze` (the UV soft edge assumes 0..1 UVs) in their descriptions (they were in comments
+  only). Already user-facing: reflection probes do not contain readers, the copy holds opaque
+  objects and the sky only, glass/water/haze hide transparent objects behind them, the offscreen
+  redirect without swapchain MSAA, layer scenes without a copy. Fixed: §4.6's double fog of the
+  `si_refraction` / `si_haze` fixture forks (`finalizeFoggedColor`, tint and rim faded by the fog).
+  §4.7's "`list_shaders` does not show [priority]" is superseded by §4.5 (`state.priority`). D3D11
+  and Metal are compiled, not run (no such backend on the Linux hosts).
+- Checks run: full `tools/build.sh linux`; `shaders --library all --backend all` (33 shaders, 9810
+  compiles, 0 failures, no manifest diagnostic; glass 65 variants) and 72 built-in variants on six
+  backends (432 compiles, 0 failures: Lit tiers 4/8/16 x pixel/vertex/mixed with shadows, IBL, SSAO,
+  fog, normal map; skinning, morph, instancing and fade; 2D lights and shadows; terrain incl.
+  `mesh:Ter,Puc,Nor,Shw,Tpb,Tan,Nmp`; mirror; unlit alpha modes; depth incl. `Txr`; G-buffer; UI;
+  points; lines; sky; shadow2d; blit); GL smoke tests with screenshots read: `shader-library` (all
+  groups and each group alone, `P3B_VIEW=glass`, the probe A/B), `scene-inputs` (default and every
+  switch: ortho, fixed, prepass, SSAO, SSR, full, post, 2D, invisible, mirror, identity, hidden,
+  saved, spawn depth/colour, resize, split, split + SSR, env), `stencil`, `extra-pass`,
+  `shader-regressions`, `unified-lighting` (default, and `UL_CAP_AT` against bfd6c54a),
+  `runtime-shaders`, `prefab-runtime` (logic test, PASS); `SMOKE_BACKEND=vulkan` and `gles3`:
+  `scene-inputs` (default, SSR, 2D, mirror, env, split, ortho, post, identity), `shader-library`
+  phase3a, phase3b (and its glass view), phase2, core, `stencil`: the same images as GL (mean
+  per-pixel difference 0.00-0.43 of 255); `check.sh` on GL and Vulkan (7 scenes ok each, Phase3B
+  mean 0.47); the MCP suite (274 passed, 3 skipped); export `--backend all` of the export fixture
+  (307 variants x 6 backends) and of `scene-inputs` (24 x 6), 0 failures; the 16 scene and 3 prefab
+  files of the fixture projects re-saved by this editor and by a build of the `shader-library-phase2`
+  tag: 17 byte-identical, `Phase3A.scene` and `Phase3B.scene` differ only in phase 3 data (the
+  phase 2 editor does not know the phase 3 shaders: other `shaderKeys` and `transparent` flags);
+  `SI_SCENE=identity` against that build with c07e24af + b3d3a2b0 (a temporary detached worktree,
+  removed): default, SSAO, SSR, both and the depth pre-pass setting 0 differing pixels and the same
+  frame stats (2 / 5 / 5 / 7 / 2 passes, 32 / 41 / 41 / 43 / 39 draws, same images, pipelines and
+  views).
 
 ## 5. Definition of done
 
