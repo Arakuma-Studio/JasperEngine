@@ -653,7 +653,10 @@ TEST_CASE("Navigation.FindNavigationTarget")
 		document->UpdateDocument();
 		CHECK(Target(document, "a2", NavigationSearchDirection::Down) == "b2");
 		CHECK(Target(document, "b1", NavigationSearchDirection::Right) == "b2");
-		CHECK(Target(document, "a3", NavigationSearchDirection::Down) == "c3");
+		// down, the near diagonal b2 beats the far aligned c3 (the gap across weighs 2 vertically, as in Chromium)
+		CHECK(Target(document, "a3", NavigationSearchDirection::Down) == "b2");
+		// sideways the gap weighs 30: from b1 right the aligned b2, not the nearer-looking a2 above it
+		CHECK(Target(document, "b1", NavigationSearchDirection::Right) == "b2");
 
 		document->Close();
 	}
