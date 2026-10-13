@@ -82,7 +82,9 @@ Parity stops at:
   `text-align: justify`, table column sizing, no built-in monospace or serif face.
 
 Everything else that is not drawn exactly like Chrome is reported where you wrote it, with a
-code and a fix ("The loop in detail"). Zero warnings means the page is drawn as Chrome draws it.
+code and a fix ("The loop in detail"). Zero warnings means nothing you wrote was dropped or
+approximated: what remains are the few differences without a diagnostic listed under "CSS that
+differs".
 
 ### Documents on meshes (texture mode)
 
@@ -702,6 +704,9 @@ end
 
 ---@param id string
 function MenuUI:activate(id)
+    for i, button in ipairs(self.buttons) do
+        if button.id == id then self.index = i end   -- the keys go on from a clicked button
+    end
     byId(self.doc, "status").textContent = "Selected: " .. id
     print("menu: " .. id)
 end
