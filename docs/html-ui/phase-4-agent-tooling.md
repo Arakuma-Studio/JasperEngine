@@ -2104,10 +2104,13 @@ the pinned headless shell with the references' fonts).
   input-type notes, so the `HTMLUI-HTML-0008` warning each one already gets at load and the
   support matrix, say "no ::before/::after"; the `meter` row says it is drawn as a progress bar,
   also with `appearance: none`; the guide lists them.
-- **Examples and goldens**: the settings example's selects (`appearance: none` with their own
-  border and padding) lose the 4px inner padding and the 16px arrow box, as in Chromium; no
-  example worked around the gaps. The guide's form-control paragraph says what `appearance: none`
-  leaves on each control and that inline buttons are inline-blocks.
+- **Examples and goldens**: no example worked around the gaps. The settings example's selects
+  (`appearance: none` with their own border, padding and chevron) lose the menu list's 4px inner
+  padding and 16px arrow box, as in Chromium; they are on the Graphics tab, outside its golden
+  (Audio), so no golden image changed (`test_html_ui_examples.py`, every C++ golden and fixture
+  reference unchanged). The guide's form-control paragraph says what `appearance: none` leaves on
+  each control, that an unsized custom checkbox needs a size, and that inline buttons are
+  inline-blocks.
 
 ### 4.4 `p4-guide`: guide, AGENTS.md, stubs, API search
 
