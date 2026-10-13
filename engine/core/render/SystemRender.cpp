@@ -32,17 +32,26 @@ void SystemRender::shutdown(){
 }
 
 namespace{
+    struct FrameStatsRequest{
+        uint64_t frame;
+        uint32_t view;
+    };
+
     void printFrameStats(void* data){
-        uint64_t* frame = static_cast<uint64_t*>(data);
+        FrameStatsRequest* request = static_cast<FrameStatsRequest*>(data);
         const std::string line = SokolSystem::getFrameStatsLine();
-        if (!line.empty())
-            Log::print("Frame stats (frame %llu): %s", (unsigned long long)*frame, line.c_str());
-        delete frame;
+        if (!line.empty()){
+            if (request->view == SystemRender::FRAME_STATS_FRAME)
+                Log::print("Frame stats (frame %llu): %s", (unsigned long long)request->frame, line.c_str());
+            else
+                Log::print("Frame stats (frame %llu, view %u): %s", (unsigned long long)request->frame, request->view, line.c_str());
+        }
+        delete request;
     }
 }
 
-void SystemRender::logFrameStats(uint64_t frame){
-    addQueueCommand(&printFrameStats, new uint64_t(frame));
+void SystemRender::logFrameStats(uint64_t frame, uint32_t view){
+    addQueueCommand(&printFrameStats, new FrameStatsRequest{frame, view});
 }
 
 void SystemRender::scheduleCleanup(void (*cleanupFunc)(void* cleanupData), void* cleanupData, int32_t numFramesToDefer){

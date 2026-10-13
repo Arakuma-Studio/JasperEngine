@@ -1133,6 +1133,19 @@ void Engine::systemViewChanged(){
 // it (SystemRender::logFrameStats): passes, draws and live resources, to
 // compare builds and to see that nothing is made per frame; JASPERENGINE_FRAME_STATS=all logs
 // every frame from the first (loading, and a frame that skips draws or remakes pipelines).
+namespace{
+    // the frames signalReadyOnce counted (frame stats: Engine::drawView names its view's line by it)
+    uint64_t frameStatsFrames = 0;
+
+    bool frameStatsEveryFrame(){
+        static const bool all = [](){
+            const char* value = std::getenv("JASPERENGINE_FRAME_STATS");
+            return value && std::string(value) == "all";
+        }();
+        return all;
+    }
+}
+
 void Engine::signalReadyOnce(){
     static const bool enabled = [](){
         const char* value = std::getenv("JASPERENGINE_READY_SIGNAL");
@@ -1143,13 +1156,10 @@ void Engine::signalReadyOnce(){
         return value && value[0] != '\0' && value[0] != '0';
     }();
     // "all": every frame from the first, loading included (what a frame makes or skips)
-    static const bool frameStatsAll = [](){
-        const char* value = std::getenv("JASPERENGINE_FRAME_STATS");
-        return value && std::string(value) == "all";
-    }();
+    const bool frameStatsAll = frameStatsEveryFrame();
     static bool signalled = false;
     static int readyFrames = 0;
-    static uint64_t frames = 0;
+    uint64_t& frames = frameStatsFrames;
     static uint64_t signalledFrame = 0;
     if (!enabled)
         return;
@@ -1343,6 +1353,9 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
     currentFrameStats = gameFrameStats;
 
     SystemRender::commit();
+    // JASPERENGINE_FRAME_STATS=all: this view's passes too (each view commits on its own)
+    if (frameStatsEveryFrame())
+        SystemRender::logFrameStats(frameStatsFrames, viewId);
 
     drawSemaphore.release();
 }
