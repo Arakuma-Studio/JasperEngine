@@ -1,5 +1,6 @@
 #include "../../../Include/RmlUi/Core/Elements/ElementFormControlInput.h"
 #include "../../../Include/RmlUi/Core/Event.h"
+#include "../ElementStyle.h"
 #include "InputTypeButton.h"
 #include "InputTypeCheckbox.h"
 #include "InputTypeRadio.h"
@@ -126,6 +127,8 @@ void ElementFormControlInput::OnAttributeChange(const ElementAttributes& changed
 		SetClass(new_type_name, true);
 		type_name = new_type_name;
 
+		// The display of a button follows HasButtonLayout() (fork, P4-G10).
+		GetStyle()->DirtyProperty(PropertyId::Display);
 		DirtyLayout();
 	}
 

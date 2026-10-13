@@ -1414,6 +1414,11 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	ComputeFontRelativeValues(values, font_unit_scope, values_are_default_initialized ? FontFaceHandle(0) : font_face_before, loop_font_face, dp_ratio,
 		vp_dimensions, font_size, document_font_size, property_storage, any_font_face_candidates);
 
+	// A button laid out as an inline box is an inline-block: HTML's button layout (an outer display type of 'inline'
+	// behaves as 'inline-block'), and Chromium's computed value (fork, P4-G10).
+	if ((values.display() == Style::Display::Inline || values.display() == Style::Display::InlineTable) && element->HasButtonLayout())
+		values.display(Style::Display::InlineBlock);
+
 	// Next, pass inheritable dirty properties onto our children
 	PropertyIdSet dirty_inherited_properties = (dirty_properties & StyleSheetSpecification::GetRegisteredInheritedProperties());
 

@@ -169,6 +169,54 @@ TEST_CASE("form.input.button.centered_content")
 	TestsShell::ShutdownShell();
 }
 
+// Fork (P4-G10): a button whose display is inline (or inline-table) is an inline-block, as HTML's button layout and
+// Chromium have it: its size and padding apply, it is one box on the line; it follows the input's type.
+TEST_CASE("form.input.button.display_inline")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+
+	const String document_rml = R"(<rml>
+	<head>
+		<style>
+			body { width: 600px; height: 600px; font-family: LatoLatin; font-size: 16px; }
+			input, span { display: inline; width: 60px; height: 30px; padding: 2px 5px; }
+		</style>
+	</head>
+	<body>
+		<p>x <input type="button" id="button" value="Go"/> x <input type="submit" id="table" style="display: inline-table" value="Go"/> x <input type="text" id="text"/> <span id="span">x</span></p>
+	</body>
+	</rml>)";
+
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+
+	Element* button = document->GetElementById("button");
+	Element* table = document->GetElementById("table");
+	Element* text = document->GetElementById("text");
+	Element* span = document->GetElementById("span");
+	CHECK(button->GetDisplay() == Style::Display::InlineBlock);
+	CHECK(table->GetDisplay() == Style::Display::InlineBlock);
+	CHECK(button->GetBox().GetSize() == Vector2f(60.f, 30.f));
+	CHECK(button->GetBox().GetEdge(BoxArea::Padding, BoxEdge::Left) == doctest::Approx(5.f));
+	// Other elements keep 'inline': a text field (replaced: an inline-level box anyway), a span (its width does not apply).
+	CHECK(text->GetDisplay() == Style::Display::Inline);
+	CHECK(span->GetDisplay() == Style::Display::Inline);
+	CHECK(span->GetBox().GetSize().x < 60.f);
+
+	// The display follows the type.
+	text->SetAttribute("type", "button");
+	button->SetAttribute("type", "text");
+	context->Update();
+	CHECK(text->GetDisplay() == Style::Display::InlineBlock);
+	CHECK(button->GetDisplay() == Style::Display::Inline);
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
 // Fork (P4-G3): a single-line text field taller than its line centers the line (Chromium), also when it is shorter.
 TEST_CASE("form.input.text.centered_line")
 {
