@@ -2146,6 +2146,11 @@ bool Element::GetBorderTopCut(BorderTopCut& /*cut*/)
 	return false;
 }
 
+bool Element::HasButtonLayout() const
+{
+	return false;
+}
+
 void Element::DirtyBorderTopCut()
 {
 	meta->background_border.DirtyBackground();

@@ -24,6 +24,8 @@ public:
 	/// Returns a string representation of the current value of the form control.
 	/// @return The value of the form control.
 	String GetValue() const override;
+	/// Fork (P4-G2): the button and submit types are laid out as HTML buttons (their label centered vertically).
+	bool HasButtonLayout() const override;
 	/// Sets the current value of the form control.
 	/// @param value[in] The new value of the form control.
 	void SetValue(const String& value) override;

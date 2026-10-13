@@ -162,6 +162,11 @@ void ElementFormControlInput::ProcessDefaultAction(Event& event)
 		type->ProcessDefaultAction(event);
 }
 
+bool ElementFormControlInput::HasButtonLayout() const
+{
+	return type_name == "button" || type_name == "submit";
+}
+
 bool ElementFormControlInput::GetIntrinsicDimensions(Vector2f& dimensions, float& ratio)
 {
 	if (type)
