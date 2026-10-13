@@ -305,6 +305,40 @@ TEST_CASE("form.input.themed_box")
 	TestsShell::ShutdownShell();
 }
 
+// Fork (P4-G14): a block-level button in normal flow is as wide as its content (HTML's button layout: fit-content), its
+// auto margins taking the rest; a flex item is sized as any.
+TEST_CASE("form.input.button.block_fit_content")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	ElementDocument* document = context->LoadDocumentFromMemory(R"(<rml><head><style>
+		body { width: 600px; height: 600px; font-family: LatoLatin; font-size: 16px; }
+		div { display: block; width: 300px; }
+		input { display: block; padding: 0 5px; }
+		#flex { display: flex; flex-direction: column; }
+	</style></head><body>
+		<div><input type="button" id="block" value="Go"/><input type="button" id="centered" style="margin: 0 auto" value="Go"/>
+		<input type="button" id="wide" style="width: 100%" value="Go"/><input type="button" id="flexbutton" style="display: flex" value="Go"/></div>
+		<div id="flex"><input type="button" id="item" value="Go"/></div>
+		<div><div id="plain" style="padding: 0 5px">Go</div></div>
+	</body></rml>)");
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	const auto width = [&](const char* id) { return document->GetElementById(id)->GetBox().GetSize(BoxArea::Border).x; };
+	const float fit = width("block");
+	CHECK(fit < 100.f);
+	CHECK(fit > 10.f);
+	CHECK(width("centered") == doctest::Approx(fit));
+	CHECK(document->GetElementById("centered")->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Left) == doctest::Approx((300.f - fit) * 0.5f));
+	CHECK(width("wide") == doctest::Approx(310.f)); // (content-box: and its padding)
+	CHECK(width("flexbutton") < 100.f);
+	CHECK(width("item") == doctest::Approx(300.f));
+	CHECK(width("plain") == doctest::Approx(310.f));
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
 // Fork (P4-G13): radios without a name are in no group (HTML): checking one leaves the others; radios with one name are.
 TEST_CASE("form.input.radio.unnamed")
 {

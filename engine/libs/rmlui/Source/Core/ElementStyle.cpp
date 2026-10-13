@@ -1191,6 +1191,7 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	const FontFaceHandle font_face_before = values.font_face_handle();
 	const float font_size_before = values.font_size();
 	const Style::LineHeight line_height_before = values.line_height();
+	const Style::Display display_before = values.display();
 
 	// The next flag is just a small optimization, if the element was just created we don't need to copy all the default values.
 	if (!values_are_default_initialized)
@@ -1436,6 +1437,9 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		default: break;
 		}
 	}
+	// (it follows the native appearance, which no property of its own declares)
+	if (!values_are_default_initialized && values.display() != display_before)
+		dirty_properties.Insert(PropertyId::Display);
 
 	// A themed box (Chromium's checkbox and radio, fork P4-G12): no border, padding or border radius, and no background
 	// painted; the theme draws in the element's parts. The properties it overrides are dirty when it comes or goes.
