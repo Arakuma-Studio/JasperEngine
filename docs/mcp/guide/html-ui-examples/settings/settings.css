@@ -147,21 +147,36 @@ body {
   color: var(--accent);
 }
 
-/* ---- Switch: a checkbox drawn as a track with a knob (::before) ---- */
+/* ---- Switch: the real checkbox, invisible, over a track (.knob) whose knob is its ::before ---- */
 .switch {
-  appearance: none;
   position: relative;
+  display: inline-block;
   width: 46px;
   height: 26px;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.knob {
+  position: absolute;
+  inset: 0;
   background: rgba(255, 255, 255, 0.14);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 13px;
-  cursor: pointer;
+  pointer-events: none;
   transition: background-color 180ms ease, border-color 180ms ease;
 }
 
-.switch::before {
+.knob::before {
   content: "";
   position: absolute;
   left: 3px;
@@ -174,13 +189,18 @@ body {
   transition: transform 180ms ease;
 }
 
-.switch:checked {
+.switch input:checked + .knob {
   background-color: var(--accent-2);
   border-color: var(--accent);
 }
 
-.switch:checked::before {
+.switch input:checked + .knob::before {
   transform: translateX(20px);
+}
+
+.switch input:focus-visible + .knob {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ---- Range ---- */

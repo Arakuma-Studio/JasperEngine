@@ -2,11 +2,12 @@
 <!--
   Settings: a tabbed options window.
   Shows: form controls bound two ways to a Lua table (data-model "settings": data-value on
-  ranges and selects, data-checked on switches, {{ }} value labels, a ternary expression for the
-  key-binding buttons), switches made of a plain checkbox with appearance: none and ::before,
-  ranges styled through ::-webkit-slider-runnable-track / -thumb (and ::-moz-range-progress for
-  the fill), selects with a CSS chevron, tabs as a grid, :focus-visible rings. SettingsUI.lua
-  switches tabs (the "active" class), captures a key for a binding, resets and applies.
+  ranges and selects, data-checked on switches, {{ }} value labels, a ternary expression for
+  the key-binding buttons); switches made of an invisible checkbox over a track whose knob is
+  a ::before (input:checked + .knob); ranges styled through ::-webkit-slider-runnable-track and
+  ::-webkit-slider-thumb (::-moz-range-progress for the fill); selects with a CSS chevron;
+  tabs as a grid; :focus-visible rings. SettingsUI.lua switches tabs (the "active" class),
+  captures a key for a binding, resets and applies.
   In the editor (no Lua) the values are empty: press Play to see them.
 -->
 <html lang="en">
@@ -54,11 +55,11 @@
       </div>
       <div class="row">
         <label for="vsync">V-Sync</label>
-        <input type="checkbox" class="switch" id="vsync" data-checked="vsync">
+        <label class="switch"><input type="checkbox" id="vsync" data-checked="vsync"><span class="knob"></span></label>
       </div>
       <div class="row">
         <label for="bloom">Bloom</label>
-        <input type="checkbox" class="switch" id="bloom" data-checked="bloom">
+        <label class="switch"><input type="checkbox" id="bloom" data-checked="bloom"><span class="knob"></span></label>
       </div>
     </section>
 
@@ -80,7 +81,7 @@
       </div>
       <div class="row">
         <label for="subtitles">Subtitles</label>
-        <input type="checkbox" class="switch" id="subtitles" data-checked="subtitles">
+        <label class="switch"><input type="checkbox" id="subtitles" data-checked="subtitles"><span class="knob"></span></label>
       </div>
     </section>
 
@@ -104,7 +105,7 @@
       </div>
       <div class="row">
         <label for="invert">Invert Y axis</label>
-        <input type="checkbox" class="switch" id="invert" data-checked="invertY">
+        <label class="switch"><input type="checkbox" id="invert" data-checked="invertY"><span class="knob"></span></label>
       </div>
     </section>
 
@@ -124,7 +125,7 @@
       </div>
       <div class="row">
         <label for="damage-numbers">Damage numbers</label>
-        <input type="checkbox" class="switch" id="damage-numbers" data-checked="damageNumbers">
+        <label class="switch"><input type="checkbox" id="damage-numbers" data-checked="damageNumbers"><span class="knob"></span></label>
       </div>
     </section>
 
