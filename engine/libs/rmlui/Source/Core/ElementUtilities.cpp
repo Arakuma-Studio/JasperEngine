@@ -116,6 +116,17 @@ int ElementUtilities::GetStringWidth(Element* element, StringView string, Charac
 	return GetFontEngineInterface()->GetStringWidth(font_face_handle, string, text_shaping_context, prior_character);
 }
 
+// A scrollbar or the scrollbar corner of 'scroll_container' (the elements ElementScroll appends to it).
+static bool IsScrollbarPart(const Element* element, Element* scroll_container)
+{
+	if (!element || element->GetParentNode() != scroll_container)
+		return false;
+	ElementScroll* scroll = scroll_container->GetElementScroll();
+	if (element == scroll->GetScrollbar(ElementScroll::VERTICAL) || element == scroll->GetScrollbar(ElementScroll::HORIZONTAL))
+		return true;
+	return element->GetTagName() == "scrollbarcorner";
+}
+
 bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_region, ClipMaskGeometryList* out_clip_mask_list,
 	bool force_clip_self)
 {
@@ -130,6 +141,8 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 	// For each that we find, we combine their clipping region with the existing clipping region, and so build up a
 	// complete clipping region for the element.
 	Element* clipping_element = (force_clip_self ? element : element->GetOffsetParent());
+	// The element on the offset-parent chain below 'clipping_element' (a scroll container's scrollbars are not clipped by it).
+	const Element* child_on_chain = (force_clip_self ? nullptr : element);
 
 	Rectanglef clip_region = Rectanglef::MakeInvalid();
 
@@ -146,9 +159,10 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 		if (((clip_always || clip_enabled) && num_ignored_clips == 0) || force_clip_current_element)
 		{
 			const BoxArea clip_area = (force_clip_current_element ? BoxArea::Border : clipping_element->GetClipArea());
-			const bool has_clipping_content =
-				(clip_always || force_clip_current_element || clipping_element->GetClientWidth() < clipping_element->GetScrollWidth() - 0.5f ||
-					clipping_element->GetClientHeight() < clipping_element->GetScrollHeight() - 0.5f);
+			// Every descendant that has this element in its containing-block chain is clipped (CSS). 6.3 clipped only when
+			// the scrollable overflow exceeded the client area, which leaves out absolutely positioned boxes (they are laid
+			// out after it is measured) and the ink overflow of the content (shadows, outlines): they drew outside an
+			// 'overflow: hidden' box.
 			bool disable_scissor_clipping = false;
 
 			if (out_clip_mask_list)
@@ -158,8 +172,8 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 				const bool has_border_radius = clip_computed.has_border_radius();
 
 				// If the element has border-radius we always use a clip mask, since we can't easily predict if content is located on the curved
-				// region to be clipped. If the element has a transform we only use a clip mask when the content clips.
-				if (has_border_radius || (transform && has_clipping_content))
+				// region to be clipped; with a transform too, the scissor cannot follow it.
+				if (has_border_radius || transform)
 				{
 					Geometry* clip_geometry = clipping_element->GetElementBackgroundBorder()->GetClipGeometry(clipping_element, clip_area);
 					const ClipMaskOperation clip_operation = (out_clip_mask_list->empty() ? ClipMaskOperation::Set : ClipMaskOperation::Intersect);
@@ -175,11 +189,27 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 					disable_scissor_clipping = true;
 			}
 
-			if (has_clipping_content && !disable_scissor_clipping)
+			if (!disable_scissor_clipping)
 			{
 				// Shrink the scissor region to the element's client area.
 				Vector2f element_offset = clipping_element->GetAbsoluteOffset(clip_area).Round();
-				Vector2f element_size = clipping_element->GetRenderBox(clip_area, 0, false).GetFillSize();
+				Vector2f element_size = clipping_element->GetRenderBoxFillSize(clip_area);
+				// The content of a scroll container is clipped to its scrollport: the padding box without the scrollbars (and
+				// a 'scrollbar-gutter'), which sit between its border and its padding (CSS Overflow 3 §3); the scrollbars
+				// themselves are not clipped by it. 6.3 clipped to the whole padding box, so a positioned descendant (a sticky
+				// header, say) painted over the scrollbars.
+				if (clip_area == BoxArea::Padding && !force_clip_current_element)
+				{
+					ElementScroll* scroll = clipping_element->GetElementScroll();
+					const float scrollbar_width = scroll->GetScrollbarSize(ElementScroll::VERTICAL);
+					const float scrollbar_height = scroll->GetScrollbarSize(ElementScroll::HORIZONTAL);
+					// (Without scrollbars there is nothing to take off, whether the element is a scrollbar part or not.)
+					if ((scrollbar_width == 0.f && scrollbar_height == 0.f) || !IsScrollbarPart(child_on_chain, clipping_element))
+					{
+						element_size.x = Math::Max(element_size.x - scrollbar_width, 0.f);
+						element_size.y = Math::Max(element_size.y - scrollbar_height, 0.f);
+					}
+				}
 				Rectanglef element_region = Rectanglef::FromPositionSize(element_offset, element_size);
 
 				// 'overflow: clip' clips its axis only, at the padding box extended by 'overflow-clip-margin' (CSS Overflow 3/4).
@@ -216,6 +246,7 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 			break;
 
 		// Climb the tree to this region's parent.
+		child_on_chain = clipping_element;
 		clipping_element = clipping_element->GetOffsetParent();
 	}
 

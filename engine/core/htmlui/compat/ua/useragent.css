@@ -457,8 +457,12 @@ input[type="checkbox"]:checked:disabled, input[type="radio"]:checked:disabled {
     background-color: var(--html-check-disabled-fill, #0075ff4d);
 }
 
-/* range: 129x16 with a 2px margin; RmlUi's slider widget parts. With `appearance: none` the
-   companions make it as tall as its track, with no value fill (Chromium). */
+/* range: 129x16 with a 2px margin; RmlUi's slider widget parts. Chromium paints an 8px track
+   centered in the box and inset 1px at its ends, fully rounded; the value fill up to the thumb
+   is clipped to it, and the track's 1px border is stroked over both at half alpha (#767676 at
+   50%: #b2b2b2 over the track's #efefef). The thumb is a 15px circle centered in its 16px box.
+   With `appearance: none` the companions make it as tall as its track, with no value fill
+   (Chromium). */
 input[type="range"] {
     box-sizing: border-box;
     width: 129px;
@@ -473,19 +477,27 @@ input[type="range"] {
 }
 
 input[type="range"] slidertrack {
-    margin-top: var(--html-slider-track-margin, 5px);
+    margin-top: var(--html-slider-track-margin, 4px);
+    margin-left: var(--html-slider-track-inset, 1px);
+    margin-right: var(--html-slider-track-inset, 1px);
     height: var(--html-slider-track-height, 6px);
     border-width: var(--html-slider-track-border, 1px);
     border-style: solid;
     border-color: var(--html-slider-track-border-color, #b2b2b2);
-    border-radius: 3px;
+    border-radius: 4px;
     background-color: var(--html-slider-track-bg, #efefef);
 }
 
-/* the fill covers the track's border box (the widget places it at the track's offset) */
+/* the fill covers the track's border box (the widget places it at the track's offset) and runs
+   under the thumb; its border is the track's, stroked over it */
 input[type="range"] sliderprogress {
+    box-sizing: border-box;
     height: 8px;
-    border-radius: 3px;
+    padding-right: 8px;
+    border-width: var(--html-slider-track-border, 1px);
+    border-style: solid;
+    border-color: #76767680;
+    border-radius: 4px;
     background-color: var(--html-slider-fill, var(--html-accent, #0075ff));
 }
 
@@ -493,8 +505,13 @@ input[type="range"] sliderbar {
     box-sizing: border-box;
     width: 16px;
     height: 16px;
+    /* the widget moves it along the track's content box: the margins give it the whole box */
+    margin-left: var(--html-slider-thumb-margin, -2px);
+    margin-right: var(--html-slider-thumb-margin, -2px);
     border-radius: 8px;
     background-color: var(--html-accent, #0075ff);
+    /* the 15px circle: the widget places the box at whole pixels */
+    transform: var(--html-slider-thumb-transform, scale(0.9375));
     decorator: var(--html-thumb, none);
 }
 
@@ -548,9 +565,14 @@ select selectvalue {
     padding: 1px 0 1px 4px;
 }
 
+/* the chevron is drawn in the select's text color (Chromium): the color through the arrow's mask */
 select selectarrow {
     width: 16px;
-    decorator: var(--html-select-arrow, html-layer("/@htmlui/ua/arrow-down.svg" 10px 6px 3px 50% no-repeat no-repeat padding-box border-box scroll));
+    background-color: var(--html-select-arrow-color, currentcolor);
+    mask-image: var(--html-select-arrow, url("/@htmlui/ua/arrow-down.svg"));
+    mask-size: 10px 6px;
+    mask-position: 3px 50%;
+    mask-repeat: no-repeat;
 }
 
 select selectbox {
@@ -668,6 +690,9 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible {
 }
 
 /* 7. Scrollbars (Chromium 153's classic 15px scrollbar) ------------------------------------- */
+/* The thumb is 3px off the track on every side: its length is (track - 6px) x visible / total, at least 17px
+   (Chromium's Fluent scrollbar minimum), and it moves between 3px from the arrows (measured on Chromium 153's
+   references, p3-integration). */
 
 scrollbarvertical {
     width: 15px;
@@ -680,15 +705,15 @@ scrollbarhorizontal {
 }
 
 scrollbarvertical sliderbar {
-    margin: 0 3px;
-    min-height: 20px;
+    margin: 3px;
+    min-height: 17px;
     border-radius: 4.5px;
     background-color: #8b8b8b;
 }
 
 scrollbarhorizontal sliderbar {
-    margin: 3px 0;
-    min-width: 20px;
+    margin: 3px;
+    min-width: 17px;
     border-radius: 4.5px;
     background-color: #8b8b8b;
 }

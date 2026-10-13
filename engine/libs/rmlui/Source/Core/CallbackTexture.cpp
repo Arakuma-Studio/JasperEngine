@@ -35,6 +35,21 @@ bool CallbackTextureInterface::GenerateTexture(Span<const byte> source, Vector2i
 	return texture_handle != TextureHandle{};
 }
 
+bool CallbackTextureInterface::GenerateTexture(Span<const byte> source, Vector2i new_dimensions, bool repeat_x, bool repeat_y) const
+{
+	if (!repeat_x && !repeat_y)
+		return GenerateTexture(source, new_dimensions);
+	if (texture_handle)
+	{
+		RMLUI_ERRORMSG("Texture already set");
+		return false;
+	}
+	texture_handle = render_interface.GenerateTextureWithWrap(source, new_dimensions, repeat_x, repeat_y);
+	if (texture_handle)
+		dimensions = new_dimensions;
+	return texture_handle != TextureHandle{};
+}
+
 void CallbackTextureInterface::SaveLayerAsTexture() const
 {
 	if (texture_handle)
@@ -53,6 +68,27 @@ void CallbackTextureInterface::SaveLayerAsTexture() const
 	texture_handle = render_interface.SaveLayerAsTexture();
 	if (texture_handle)
 		dimensions = region.Size();
+}
+
+bool CallbackTextureInterface::SaveLayerAsTextureTile(Vector2i new_dimensions, Vector2i offset) const
+{
+	if (texture_handle && dimensions != new_dimensions)
+	{
+		RMLUI_ERRORMSG("Texture already set");
+		return false;
+	}
+	if (!render_manager.GetScissorRegion().Valid())
+	{
+		RMLUI_ERRORMSG("Save layer as texture requires a scissor region to be set first");
+		return false;
+	}
+
+	const TextureHandle result = render_interface.SaveLayerIntoTexture(texture_handle, new_dimensions, offset);
+	if (!result)
+		return false;
+	texture_handle = result;
+	dimensions = new_dimensions;
+	return true;
 }
 
 void CallbackTextureInterface::SetTextureHandle(TextureHandle handle, Vector2i new_dimensions) const

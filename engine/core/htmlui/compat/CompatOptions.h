@@ -9,6 +9,8 @@
 #include <cstddef>
 #include <functional>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace jasperengine::htmlui::compat {
 
@@ -44,6 +46,11 @@ namespace jasperengine::htmlui::compat {
         bool verboseDiagnostics = false;      // Info lines logged one by one
         size_t diagnosticLimit = 1000;
         bool dropTransitionsForTesting = false;   // golden tests: transitions removed, as the reference script does
+        // The <html> element's attributes as a script left them (DocumentLoader::restyleForRoot): when
+        // set, they replace those of the HTML file for the selectors that may match the root
+        // (`.dark .x` with <html class="dark">); the id and data-htmlui-* attributes are not in it.
+        bool rootAttributesSet = false;
+        std::vector<std::pair<std::string, std::string>> rootAttributes;
     };
 
 }

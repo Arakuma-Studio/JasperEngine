@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en" id="doc">
+<head>
+<meta charset="utf-8">
+<title>integration: a theme in custom properties read by color functions</title>
+<style>
+  /* the way agents write themes (shadcn/tailwind style): channels in variables, colors built where used */
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --primary: 221 83% 53%;
+    --accent-rgb: 245, 158, 11;
+    --ring: #2563eb;
+    --radius: 8px;
+  }
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --primary: 142 71% 45%;
+    --accent-rgb: 236, 72, 153;
+    --ring: #22c55e;
+  }
+  html, body { margin: 0; }
+  #app { position: absolute; inset: 0; background: hsl(var(--background)); color: hsl(var(--foreground)); }
+  .panel { position: absolute; left: 10px; top: 10px; width: 280px; height: 160px; border-radius: var(--radius);
+           background-color: hsl(var(--background)); border: 2px solid hsl(var(--primary) / 0.6); }
+  .button { position: absolute; left: 20px; top: 20px; width: 110px; height: 32px; border-radius: var(--radius);
+            background-color: hsl(var(--primary)); box-shadow: 0 2px 6px rgba(var(--accent-rgb), 0.5); }
+  .chip { position: absolute; left: 150px; top: 20px; width: 110px; height: 32px; border-radius: 16px;
+          background-color: rgba(var(--accent-rgb), 0.25); border: 1px solid rgb(var(--accent-rgb)); }
+  .mix { position: absolute; left: 20px; top: 70px; width: 110px; height: 32px;
+         background-color: color-mix(in srgb, var(--ring) 35%, white); outline: 2px solid color-mix(in srgb, var(--ring), black 20%); outline-offset: 2px; }
+  .gradient { position: absolute; left: 150px; top: 70px; width: 110px; height: 32px;
+              background-image: linear-gradient(90deg, hsl(var(--primary)), rgba(var(--accent-rgb), 0.8)); }
+  .line { position: absolute; left: 20px; top: 120px; width: 240px; height: 4px; background-color: hsl(var(--foreground) / 0.3); }
+</style>
+</head>
+<body>
+<div id="app">
+<div class="panel" id="panel">
+  <div class="button" id="button"></div><div class="chip" id="chip"></div>
+  <div class="mix" id="mix"></div><div class="gradient" id="gradient"></div><div class="line" id="line"></div>
+</div>
+</div>
+</body>
+</html>

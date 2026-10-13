@@ -189,6 +189,11 @@ void jasperengine::htmlui::compat::rewriteFontWeight(DeclContext& context){
     ValueList w = words(context.value);
     if (w.size() == 1){
         const std::string k = identOf(w[0]);
+        if ((k == "bolder" || k == "lighter") && context.session.fork(ForkFeature::RelativeFontWeight)){
+            // the fork computes them against the parent's weight (CSS Fonts 4's table)
+            context.emit("font-weight", k);
+            return;
+        }
         if (k == "bolder" || k == "lighter"){
             const std::string value = k == "bolder" ? "700" : "100";
             context.reportAs(Severity::Info, codes::ApproximatedMinor, "'font-weight: " + k + "' is written as " + value +

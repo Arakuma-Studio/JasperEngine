@@ -821,6 +821,12 @@ namespace {
         {"width", ForkFeature::BoxParity, "kw:min-content,max-content,fit-content,stretch,-webkit-fill-available|@fit_content"},
         // p3-paint (GroupOpacity: stacking contexts)
         {"isolation", ForkFeature::GroupOpacity, "kw:auto,isolate"},
+        // p3-values: relative weights computed against the parent's
+        {"font-weight", ForkFeature::RelativeFontWeight, "kw:bolder,lighter"},
+        // p3-cascade: the shorthand of every property, CSS-wide keywords only
+        {"all", ForkFeature::CssWideKeywords, "kw:initial,inherit,unset,revert,revert-layer"},
+        // a list of property names: those that create a stacking context or a containing block do so (p3-integration)
+        {"will-change", ForkFeature::GroupOpacity, "string"},
     };
 
     const ForkGrammar* findForkGrammar(std::string_view name){

@@ -519,22 +519,17 @@ PropertyParserColour::PropertyParserColour() {}
 
 PropertyParserColour::~PropertyParserColour() {}
 
-bool PropertyParserColour::IsCurrentColor(const Property& property)
+bool PropertyParserColour::IsCurrentColorKeyword(const Property& property)
 {
-	return property.unit == Unit::KEYWORD && property.value.GetType() == Variant::INT && property.value.Get<int>() == CurrentColor;
+	return property.value.GetType() == Variant::INT && property.value.Get<int>() == CurrentColor;
 }
 
 RMLUI_RTTI_Define(CurrentColorMixValue)
 
-bool PropertyParserColour::IsCurrentColorMix(const Property& property)
+bool PropertyParserColour::IsCurrentColorMixValue(const Property& property)
 {
-	return property.unit == Unit::STYLE_VALUE && property.value.GetType() == Variant::STYLEVALUEPTR &&
+	return property.value.GetType() == Variant::STYLEVALUEPTR &&
 		rmlui_dynamic_cast<const CurrentColorMixValue*>(property.value.GetReference<StyleValuePtr>().get()) != nullptr;
-}
-
-bool PropertyParserColour::DependsOnCurrentColor(const Property& property)
-{
-	return IsCurrentColor(property) || IsCurrentColorMix(property);
 }
 
 // The text with each 'currentcolor' replaced by the colour (as #rrggbbaa).

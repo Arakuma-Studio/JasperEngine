@@ -78,6 +78,7 @@ add_executable(${TARGET_NAME}
 	Visibility.cpp
 	XMLParser.cpp
 	MarginCollapse.cpp
+	ScrollContainer.cpp
 	AspectRatio.cpp
 	DisplayContents.cpp
 	SizingKeywords.cpp

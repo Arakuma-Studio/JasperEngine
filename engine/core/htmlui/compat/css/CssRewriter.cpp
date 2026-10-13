@@ -33,6 +33,7 @@
 #include "htmlui/compat/css/props/Rewriters.h"
 
 #include <algorithm>
+#include <functional>
 #include <atomic>
 #include <array>
 #include <map>
@@ -290,8 +291,18 @@ std::optional<TypedVar> Session::typedVar(const ComponentValue& var, const std::
             return std::nullopt;
         kind = k;
     }
-    // a declaration that itself references a variable cannot be written in another kind
-    if (const std::vector<CustomPropertyIndex::Entry>* entries = vars.find(name)){
+    // a declaration that itself references a variable cannot be written in another kind; background layers without
+    // a url() are written as declared (only their urls are rewritten), whatever variables they reference
+    std::function<bool(const ValueList&)> hasUrl = [&hasUrl](const ValueList& value){
+        for (const ComponentValue& v : value){
+            if (v.isToken(TokenType::Url) || v.isFunction("url") || v.isFunction("src") || v.isFunction("image-set") ||
+                v.isFunction("-webkit-image-set") || hasUrl(v.children))
+                return true;
+        }
+        return false;
+    };
+    const bool asDeclared = (kind == "layers" && std::none_of(values.begin(), values.end(), hasUrl));
+    if (const std::vector<CustomPropertyIndex::Entry>* entries = asDeclared ? nullptr : vars.find(name)){
         for (const CustomPropertyIndex::Entry& entry : *entries){
             std::vector<std::string> nested;
             CustomPropertyIndex::referencedVariables(entry.value, nested);
@@ -1558,7 +1569,9 @@ namespace {
             normalize.colors = facts.colorKeywords;
             // (the fork's outline-color takes currentcolor too: ForkFeature::Outline, p3-paint)
             // (and the fork's layers resolve currentcolor in gradient stops where they are drawn: ForkFeature::BackgroundLayers)
-            const bool nativeColorRewrite = writesCurrentColorNatively(row->rewrite) ||
+            // (box-shadow reaches the fork's box-shadow through compat's companions, substituted on the element:
+            // its currentcolor is the element's)
+            const bool nativeColorRewrite = writesCurrentColorNatively(row->rewrite) || row->rewrite == RewriteId::BoxShadow ||
                                             (row->rewrite == RewriteId::Outline && session.options.fork.has(ForkFeature::Outline)) ||
                                             ((row->rewrite == RewriteId::Background || row->rewrite == RewriteId::BackgroundLonghand ||
                                               row->rewrite == RewriteId::MaskImage) &&
@@ -1567,6 +1580,10 @@ namespace {
                                                 (session.options.fork.has(ForkFeature::CurrentColor) && nativeColorRewrite);
             normalize.currentColorMixNative = session.options.fork.has(ForkFeature::CurrentColor) &&
                                               (nativeColorRewrite || keepsCurrentColorKeyword(session, *row));
+            // (box-shadow reaches the fork through compat's companions, which it substitutes; filter as written)
+            normalize.colorFunctionsNative = session.options.fork.has(ForkFeature::ColorFunctions) &&
+                                             (nativeColorRewrite || keepsCurrentColorKeyword(session, *row) ||
+                                              row->rewrite == RewriteId::BoxShadow || row->rewrite == RewriteId::Filter);
             // a style attribute or a keyframe cannot be duplicated per orientation: vmin/vmax evaluated
             normalize.inlineStyle = origin == RuleOrigin::StyleAttribute || keyframe;
             // math functions the fork evaluates stay in the properties written as they are read

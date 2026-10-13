@@ -227,6 +227,10 @@ namespace Style {
 
 		// -- Groundwork (p3-base) --
 		int order = 0;
+		uint8_t will_change = 0; // the hints of 'will-change' (WillChange::Hint bits, Source/Core/WillChange.h)
+		// The element declares justify-items, justify-self, align-content (ElementStyle::ComputeValues): their accessors look
+		// the declaration up only then (block layout asks for them for every box).
+		bool has_justify_items = false, has_justify_self = false, has_align_content = false;
 
 		// -- Values (p3-values) --
 
@@ -368,7 +372,7 @@ namespace Style {
 		float             transform_origin_z()         const { return rare.transform_origin_z; }
 		bool              has_local_transform()        const { return rare.has_local_transform || rare.has_translate || rare.has_rotate || rare.has_scale; }
 		bool              has_local_perspective()      const { return rare.has_local_perspective; }
-		AlignContent      align_content()              const { return GetLocalPropertyAlignment(PropertyId::AlignContent, AlignContent::Normal); }
+		AlignContent      align_content()              const { return rare.has_align_content ? GetLocalPropertyAlignment(PropertyId::AlignContent, AlignContent::Normal) : AlignContent::Normal; }
 		AlignItems        align_items()                const { return GetLocalPropertyAlignment(PropertyId::AlignItems, AlignItems::Normal); }
 		AlignSelf         align_self()                 const { return GetLocalPropertyAlignment(PropertyId::AlignSelf, AlignSelf::Auto); }
 		FlexDirection     flex_direction()             const { return GetLocalPropertyKeyword(PropertyId::FlexDirection, FlexDirection::Row); }
@@ -395,14 +399,15 @@ namespace Style {
 		// -- Phase 3: one section per package (see RareValues) --
 		// Groundwork (p3-base)
 		int               order()                      const { return rare.order; }
-		JustifyItems      justify_items()              const { return GetLocalPropertyAlignment(PropertyId::JustifyItems, JustifyItems::Legacy); }
-		JustifySelf       justify_self()               const { return GetLocalPropertyAlignment(PropertyId::JustifySelf, JustifySelf::Auto); }
-		OverflowAlignment align_content_overflow()     const { return GetLocalPropertyOverflowAlignment(PropertyId::AlignContent); }
+		uint8_t           will_change()                const { return rare.will_change; }
+		JustifyItems      justify_items()              const { return rare.has_justify_items ? GetLocalPropertyAlignment(PropertyId::JustifyItems, JustifyItems::Legacy) : JustifyItems::Legacy; }
+		JustifySelf       justify_self()               const { return rare.has_justify_self ? GetLocalPropertyAlignment(PropertyId::JustifySelf, JustifySelf::Auto) : JustifySelf::Auto; }
+		OverflowAlignment align_content_overflow()     const { return rare.has_align_content ? GetLocalPropertyOverflowAlignment(PropertyId::AlignContent) : OverflowAlignment::Default; }
 		OverflowAlignment align_items_overflow()       const { return GetLocalPropertyOverflowAlignment(PropertyId::AlignItems); }
 		OverflowAlignment align_self_overflow()        const { return GetLocalPropertyOverflowAlignment(PropertyId::AlignSelf); }
 		OverflowAlignment justify_content_overflow()   const { return GetLocalPropertyOverflowAlignment(PropertyId::JustifyContent); }
-		OverflowAlignment justify_items_overflow()     const { return GetLocalPropertyOverflowAlignment(PropertyId::JustifyItems); }
-		OverflowAlignment justify_self_overflow()      const { return GetLocalPropertyOverflowAlignment(PropertyId::JustifySelf); }
+		OverflowAlignment justify_items_overflow()     const { return rare.has_justify_items ? GetLocalPropertyOverflowAlignment(PropertyId::JustifyItems) : OverflowAlignment::Default; }
+		OverflowAlignment justify_self_overflow()      const { return rare.has_justify_self ? GetLocalPropertyOverflowAlignment(PropertyId::JustifySelf) : OverflowAlignment::Default; }
 
 		// Values (p3-values)
 
@@ -560,6 +565,10 @@ namespace Style {
 		// Phase 3: one section per package (see RareValues)
 		// Groundwork (p3-base)
 		void order                     (int value)               { rare.order                      = value; }
+		void will_change               (uint8_t value)           { rare.will_change                = value; }
+		void has_justify_items         (bool value)              { rare.has_justify_items          = value; }
+		void has_justify_self          (bool value)              { rare.has_justify_self           = value; }
+		void has_align_content         (bool value)              { rare.has_align_content          = value; }
 
 		// Values (p3-values)
 

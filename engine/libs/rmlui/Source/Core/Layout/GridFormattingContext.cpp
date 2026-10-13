@@ -616,6 +616,13 @@ namespace {
 		LayoutDetails::BuildBox(item_box, Vector2f(area_width, area_height), item_element, BuildBoxMode::UnalignedBlock);
 		const float edges_width = item_box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
 		const float edges_height = item_box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border, BoxArea::Padding);
+		// A replaced item not sized by the grid area has its natural height, or the one its ratio gives its width (it
+		// is not formatted from content).
+		if (!height && item_element->IsReplaced())
+			height = MaybeClamp(LayoutDetails::GetReplacedContentHeightForWidth(item_element, item_box, std::max(*width - edges_width, 0.f),
+									 Vector2f(area_width, area_height)) +
+					edges_height,
+				min_height, max_height);
 		item_box.SetContent(Vector2f(std::max(*width - edges_width, 0.f), height ? std::max(*height - edges_height, 0.f) : -1.f));
 
 		UniquePtr<LayoutBox> item_layout_box = FormattingContext::FormatIndependent(container_box, item_element, &item_box, FormattingContextType::Block);

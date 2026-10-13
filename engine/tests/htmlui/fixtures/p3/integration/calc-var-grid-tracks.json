@@ -1,0 +1,4 @@
+{
+ "comment": "Grid tracks built from calc() over custom properties: a repeat() count and a track size from var(), minmax() with a calc() minimum in em, rows from calc() of a var() and rem; a rule that overrides the variables (a nested calc() gap); clamp(), min(), max() tracks with percentages and a vw gap.",
+ "viewport": [480, 330]
+}

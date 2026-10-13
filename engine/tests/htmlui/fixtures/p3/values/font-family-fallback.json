@@ -1,5 +1,5 @@
 {
  "comment": "font-family lists: missing families fall through to Ahem or to the generic family, quoted names, a list in a variable, the font shorthand.",
  "viewport": [300, 150],
- "boxes": true
+ "boxes": true, "noText": true
 }

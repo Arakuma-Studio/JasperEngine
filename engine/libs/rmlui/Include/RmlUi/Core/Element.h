@@ -139,6 +139,9 @@ public:
 	/// @param[in] with_border_top_cut The box as it is painted, with the element's top border cut (GetBorderTopCut). False: the box as it is laid out (clipping).
 	/// @return The requested render box.
 	RenderBox GetRenderBox(BoxArea fill_area = BoxArea::Padding, int index = 0, bool with_border_top_cut = true);
+	/// The fill size of the main render box as laid out, GetRenderBox(fill_area, 0, false).GetFillSize(), without the rest
+	/// of the render box (the clipping region asks for it per element and frame).
+	Vector2f GetRenderBoxFillSize(BoxArea fill_area);
 	/// Returns the number of boxes making up this element's geometry.
 	/// @return the number of boxes making up this element's geometry.
 	int GetNumBoxes();
@@ -706,7 +709,13 @@ private:
 
 	void DirtyAbsoluteOffset();
 	void DirtyAbsoluteOffsetRecursive();
-	void UpdateAbsoluteOffsetAndRenderBoxData();
+	// The test is inline (Render and GetRenderBox ask for every element and frame), the update out of line.
+	void UpdateAbsoluteOffsetAndRenderBoxData()
+	{
+		if (absolute_offset_dirty || rounded_main_padding_size_dirty)
+			UpdateDirtyAbsoluteOffsetAndRenderBoxData();
+	}
+	void UpdateDirtyAbsoluteOffsetAndRenderBoxData();
 	void UpdateOffset();
 	void SetBaseline(float baseline);
 	// The containing block that replaces the offset parent's padding box for this absolutely positioned element, relative
@@ -791,6 +800,10 @@ private:
 	bool animations_running : 1;  // An animation needs further updates (not paused or finished).
 
 	bool display_contents : 1; // The computed 'display' is 'contents' (its children are laid out and painted in its place).
+	// It is the containing block of fixed / of absolutely positioned descendants (a transform, a filter, 'will-change', ...:
+	// WillChange.h), as of the last change of those properties: the layout is dirtied when it changes.
+	bool fixed_containing_block : 1;
+	bool absolute_containing_block : 1;
 
 	OwnedElementList children;
 	int num_non_dom_children;

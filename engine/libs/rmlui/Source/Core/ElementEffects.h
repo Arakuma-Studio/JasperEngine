@@ -25,6 +25,14 @@ public:
 
 	void RenderEffects(RenderStage render_stage);
 
+	// False when RenderEffects has nothing to do at any stage: no effects to instance or reload, no decorators, filters,
+	// backdrop filters, mask or group opacity. Element::Render tests it inline, as most elements have none of them.
+	bool NeedsRenderEffects(float opacity, bool has_mask_image) const
+	{
+		return effects_dirty || effects_data_dirty || !decorators.empty() || !filters.empty() || !backdrop_filters.empty() || bool(group_opacity) ||
+			opacity < 1.f || has_mask_image;
+	}
+
 	// Mark effects as dirty and force them to reset themselves.
 	void DirtyEffects();
 	// Mark the element data of effects as dirty.

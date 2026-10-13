@@ -57,6 +57,11 @@ namespace jasperengine::test {
         // text-heavy fixture: the boxes are the oracle, the image is compared and reported only
         // (stb_truetype and Skia rasterize glyphs differently)
         bool boxes = false;
+        // "noText": every capture is also taken with the text made transparent (the engine draws no glyphs, text
+        // decorations or symbol markers; the reference injects page mode's NO_TEXT_CSS) and compared with
+        // <name>[.<capture>].notext.png at the gate, whatever "boxes" says: a text-heavy fixture keeps a strict
+        // image gate for everything but its glyphs (as the phase-2 golden pages' no-text image)
+        bool noText = false;
         compat::StrictGate gate;             // kStrictGate unless "tolerance" overrides it
         float boxTolerance = 1.0f;           // px, |delta| of x, y, w, h
         bool toleranceOverridden = false;
@@ -140,6 +145,7 @@ namespace jasperengine::test {
         struct Capture {
             std::string suffix;
             compat::Image image;                    // premultiplied, transparent background; empty without images
+            compat::Image noTextImage;              // the same frame without text ("noText"); empty otherwise
             std::vector<compat::LayoutBox> boxes;   // every element with an id, document order
         };
 
@@ -159,7 +165,7 @@ namespace jasperengine::test {
         bool step(const FixtureStep& step, std::string* error = nullptr);
 
         double time() const;        // the fixture's clock (seconds of `advance`)
-        bool capture(Capture& capture, bool image = true);
+        bool capture(Capture& capture, bool image = true, bool noText = false);
         std::vector<compat::LayoutBox> idBoxes() const;
         // #test-root and every element under it (Taffy fixtures)
         bool taffyBoxes(std::vector<TaffyBox>& boxes, std::string* error = nullptr) const;

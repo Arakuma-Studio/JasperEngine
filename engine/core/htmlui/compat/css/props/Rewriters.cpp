@@ -382,6 +382,13 @@ bool props::isColor(Session& session, const ComponentValue& value){
     // kept by the normalizer where the fork resolves it (ForkFeature::CurrentColor)
     if (value.isToken(TokenType::Ident) && equalsNoCase(value.token.value, "currentcolor"))
         return session.options.fork.has(ForkFeature::CurrentColor);
+    // ... a color function with a var() the normalizer kept for the fork (ForkFeature::ColorFunctions)
+    if (value.kind == ComponentValue::Kind::Function && session.options.fork.has(ForkFeature::ColorFunctions) &&
+        ValueNormalizer::isRuntimeColorFunction(value)){
+        ColorParseInfo info;
+        if (!ColorValue::parse(value, info, ColorContext()) && info.dynamicVar && !info.relative && !info.lightDark)
+            return true;
+    }
     // ... and a color-mix() with a currentcolor operand, which the fork resolves as it
     if (value.kind == ComponentValue::Kind::Function && equalsNoCase(value.name(), "color-mix")){
         ColorParseInfo info;

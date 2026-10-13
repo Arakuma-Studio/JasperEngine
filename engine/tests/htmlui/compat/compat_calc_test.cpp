@@ -332,16 +332,25 @@ TEST(CompatCurrentColorMix, KeptForTheForkOrMixedStatically){
     const Rewritten unknown = rewrite(".a { border-top-color: color-mix(in srgb, currentcolor, blue); }", absent);
     EXPECT_EQ(unknown.value("border-top-color"), "");
     EXPECT_TRUE(unknown.reported(codes::ColorUnresolvable)) << unknown.rcss;
-    // a var() without a static value stays unresolvable in every state
+    // a var() without a static value: written for the fork, which substitutes it (ColorFunctions); unresolvable without it
     const Rewritten var = rewrite(".a { border-top-color: color-mix(in srgb, currentcolor, var(--x)); }", ForkFeatures::present());
-    EXPECT_TRUE(var.reported(codes::ColorUnresolvable)) << var.rcss;
+    EXPECT_EQ(var.value("border-top-color"), "color-mix(in srgb, currentcolor, var(--x))") << var.rcss;
+    EXPECT_TRUE(var.diagnostics.empty()) << var.rcss;
+    const Rewritten noFunctions =
+        rewrite(".a { border-top-color: color-mix(in srgb, currentcolor, var(--x)); }", ForkFeatures::present().with(ForkFeature::ColorFunctions, false));
+    EXPECT_TRUE(noFunctions.reported(codes::ColorUnresolvable)) << noFunctions.rcss;
     // invalid operands are still found
     const Rewritten invalid = rewrite(".a { border-top-color: color-mix(in srgb, currentcolor, nocolor); }", ForkFeatures::present());
     EXPECT_EQ(invalid.value("border-top-color"), "");
     EXPECT_TRUE(invalid.reported(codes::UnsupportedValue)) << invalid.rcss;
 
-    // in a shadow (written into compat's decorator) it is the rule's static color, also with the feature
-    const Rewritten shadow = rewrite(".a { color: #ff0000; box-shadow: 0 0 2px color-mix(in srgb, currentcolor, blue); }", ForkFeatures::present());
-    EXPECT_EQ(shadow.rcss.find("currentcolor"), std::string::npos) << shadow.rcss;
-    EXPECT_TRUE(shadow.reported(codes::ApproximatedMinor)) << shadow.rcss;
+    // in a box shadow too (the fork's box-shadow substitutes compat's companion on the element: the element's color,
+    // also while it changes); without the feature the rule's static color, reported
+    const char* shadowSheet = ".a { color: #ff0000; box-shadow: 0 0 2px color-mix(in srgb, currentcolor, blue); }";
+    const Rewritten shadow = rewrite(shadowSheet, ForkFeatures::present());
+    EXPECT_NE(shadow.rcss.find("color-mix(in srgb, currentcolor, blue)"), std::string::npos) << shadow.rcss;
+    EXPECT_TRUE(shadow.diagnostics.empty()) << shadow.rcss;
+    const Rewritten staticShadow = rewrite(shadowSheet, absent);
+    EXPECT_EQ(staticShadow.rcss.find("currentcolor"), std::string::npos) << staticShadow.rcss;
+    EXPECT_TRUE(staticShadow.reported(codes::ApproximatedMinor)) << staticShadow.rcss;
 }

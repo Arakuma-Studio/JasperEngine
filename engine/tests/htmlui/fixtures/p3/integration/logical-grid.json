@@ -1,0 +1,4 @@
+{
+ "comment": "Logical properties on a grid and its items: inline-size, block-size, margin-inline/-block, padding-inline/-block, border-inline-start, border-block-end (dashed), logical corner radii, inset-inline-start on a relative item, min-block-size on a spanning row, max-inline-size with margin-inline: auto.",
+ "viewport": [360, 180]
+}

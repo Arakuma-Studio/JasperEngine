@@ -14,6 +14,7 @@
 #include "htmlui/compat/runtime/RuntimeRegistry.h"
 
 #include "HtmlUI.h"
+#include "RmlFontEngine.h"
 #include "HtmlUIClock.h"
 #include "object/ui/UIElement.h"
 #include "object/ui/UIElementInternal.h"
@@ -98,6 +99,7 @@ bool jasperengine::test::loadSidecar(const std::string& path, FixtureSidecar& si
         if (sidecar.width <= 0 || sidecar.height <= 0 || sidecar.width > 4096 || sidecar.height > 4096)
             return fail(error, path + ": bad viewport");
         sidecar.boxes = json.value("boxes", false);
+        sidecar.noText = json.value("noText", false);
         sidecar.comment = json.value("comment", "");
         if (json.contains("tolerance")){
             const nlohmann::json& tolerance = json["tolerance"];
@@ -538,14 +540,17 @@ Rml::Element* FixtureRunner::element(const std::string& id, std::string* error) 
     return found;
 }
 
-// the pointer to the element's border-box centre, rounded as the reference script rounds it
+// the pointer to the element's border-box centre, rounded as the reference script rounds it; on screen, through the
+// transforms of the element and its ancestors (the reference takes getBoundingClientRect())
 bool FixtureRunner::pointerTo(const std::string& id, std::string* error){
     Rml::Element* target = element(id, error);
     if (!target)
         return false;
-    const Rml::Vector2f offset = target->GetAbsoluteOffset(Rml::BoxArea::Border);
-    const Rml::Vector2f size = target->GetBox().GetSize(Rml::BoxArea::Border);
-    state->render->context->ProcessMouseMove(int(std::lround(offset.x + size.x * 0.5f)), int(std::lround(offset.y + size.y * 0.5f)), 0);
+    Rml::Rectanglef box;
+    if (!Rml::ElementUtilities::GetBoundingBox(box, target, Rml::BoxArea::Border))
+        box = Rml::Rectanglef::FromPositionSize(target->GetAbsoluteOffset(Rml::BoxArea::Border), target->GetBox().GetSize(Rml::BoxArea::Border));
+    const Rml::Vector2f centre = box.Center();
+    state->render->context->ProcessMouseMove(int(std::lround(centre.x)), int(std::lround(centre.y)), 0);
     return true;
 }
 
@@ -680,9 +685,31 @@ std::vector<compat::LayoutBox> FixtureRunner::idBoxes() const{
     return boxes;
 }
 
-bool FixtureRunner::capture(Capture& capture, bool image){
+namespace {
+
+    // The fork's symbol markers (disc, circle, square, disclosure triangles: shapes, not glyphs) are text in CSS,
+    // painted with the text's colour: a capture without text hides them, as the reference's transparent text fill
+    // does (BrowserCompare's no-text render of the phase-2 golden pages does the same). An image marker stays.
+    void showSymbolMarkers(Rml::Element* element, bool show){
+        if (!element)
+            return;
+        if (Rml::Element* marker = element->GetPseudoElement(Rml::PseudoElementType::Marker)){
+            const bool image = marker->GetNumChildren() > 0 && marker->GetChild(0)->GetTagName() == "img";
+            if (show || image)
+                marker->RemoveProperty(Rml::PropertyId::Visibility);
+            else
+                marker->SetProperty(Rml::PropertyId::Visibility, Rml::Property(Rml::Style::Visibility::Hidden));
+        }
+        for (int i = 0; i < element->GetNumChildren(); i++)
+            showSymbolMarkers(element->GetChild(i), show);
+    }
+
+}
+
+bool FixtureRunner::capture(Capture& capture, bool image, bool noText){
     capture.image = compat::Image();
-    if (image){
+    capture.noTextImage = compat::Image();
+    auto read = [this](compat::Image& out){
         bool drawn = false;
         // the UI shader variants compile one per frame on the first frames; then one more frame,
         // so what the first drawn frame loaded (images, SVG rasters) is in place
@@ -694,11 +721,40 @@ bool FixtureRunner::capture(Capture& capture, bool image){
         std::vector<uint8_t> rgba;
         if (!drawn || !state->render->readLayer(rgba))
             return false;
-        capture.image.width = state->render->targetSize.x;
-        capture.image.height = state->render->targetSize.y;
-        capture.image.rgba = std::move(rgba);
+        out.width = state->render->targetSize.x;
+        out.height = state->render->targetSize.y;
+        out.rgba = std::move(rgba);
+        return true;
+    };
+    // the reference's screenshots hide the text caret (`caret: 'hide'`); its blink here follows the wall clock,
+    // not the fixture's: the focused text field draws none while the images are taken
+    Rml::Element* caretElement = nullptr;
+    if (image){
+        Rml::Element* focus = state->render->context->GetFocusElement();
+        const std::string tag = focus ? focus->GetTagName() : std::string();
+        if ((tag == "input" || tag == "textarea") && focus->GetAttribute<Rml::String>("style", "").find("caret-color") == Rml::String::npos){
+            caretElement = focus;
+            caretElement->SetProperty("caret-color", "transparent");
+        }
     }
+    struct CaretRestore {
+        Rml::Element* element;
+        ~CaretRestore(){ if (element) element->RemoveProperty("caret-color"); }
+    } caretRestore{caretElement};
+    if (image && !read(capture.image))
+        return false;
     capture.boxes = idBoxes();
+    if (image && noText){
+        // the same frame (the clock is fixed) without glyphs: the layout does not change
+        HtmlUI::getFontEngine().setRenderTextForTesting(false);
+        showSymbolMarkers(state->document, false);
+        const bool drawn = read(capture.noTextImage);
+        HtmlUI::getFontEngine().setRenderTextForTesting(true);
+        showSymbolMarkers(state->document, true);
+        frame(true, nullptr);
+        if (!drawn)
+            return false;
+    }
     return true;
 }
 
@@ -710,14 +766,14 @@ bool FixtureRunner::run(const FixtureSidecar& sidecar, std::vector<Capture>& cap
         if (s.kind == FixtureStep::Kind::Capture){
             Capture capture;
             capture.suffix = s.suffix;
-            if (!this->capture(capture, images))
+            if (!this->capture(capture, images, sidecar.noText))
                 return fail(error, "capture '" + s.suffix + "' did not draw");
             captures.push_back(std::move(capture));
         }
     }
     if (captures.empty()){
         Capture capture;
-        if (!this->capture(capture, images))
+        if (!this->capture(capture, images, sidecar.noText))
             return fail(error, "the capture did not draw");
         captures.push_back(std::move(capture));
     }

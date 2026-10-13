@@ -209,6 +209,22 @@ TEST(CompatSvgPreprocess, RasterizeAtAnySize){
     EXPECT_NEAR(rgba[0], 128, 1);
     EXPECT_NEAR(rgba[3], 128, 1);
 
+    // laid out at a logical size of its own, scaled to the pixels (a background tile of 9.5 x 20 px rasterized at
+    // 10 x 20, as Skia rasterizes Chromium's SVG pattern tile): meet places a 9.5 px square 5.25 px down, the scale
+    // stretches it across the 10 columns
+    rgba = htmlui::rasterizeSvg(square, 10, 20, 9.5f, 20.0f);
+    ASSERT_EQ(rgba.size(), 10u * 20u * 4u);
+    auto alpha = [&](int x, int y){ return (int)rgba[(size_t(y) * 10 + size_t(x)) * 4 + 3]; };
+    EXPECT_EQ(alpha(5, 4), 0);
+    EXPECT_NEAR(alpha(5, 5), 191, 3);
+    EXPECT_EQ(alpha(5, 6), 255);
+    EXPECT_EQ(alpha(0, 10), 255);
+    EXPECT_EQ(alpha(9, 10), 255);
+    EXPECT_NEAR(alpha(5, 14), 191, 3);
+    EXPECT_EQ(alpha(5, 15), 0);
+    // the same logical and pixel size: as without one
+    EXPECT_EQ(htmlui::rasterizeSvg(square, 40, 20, 40.0f, 20.0f), htmlui::rasterizeSvg(square, 40, 20));
+
     TestSystem::get().clearLogs();
     EXPECT_TRUE(htmlui::rasterizeSvg(square, 0, 10).empty());
     EXPECT_TRUE(htmlui::rasterizeSvg(square, 10, 20000).empty());

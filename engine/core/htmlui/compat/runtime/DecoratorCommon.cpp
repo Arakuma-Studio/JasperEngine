@@ -5,6 +5,7 @@
 
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/Hash.h"
+#include "htmlui/compat/css/CssSerialize.h"
 #include "htmlui/compat/runtime/CompatProperties.h"
 #include "htmlui/compat/runtime/SvgElementHook.h"
 
@@ -350,30 +351,39 @@ bool Image::load(Rml::Element* element, const std::string& path){
     return true;
 }
 
-Rml::Texture Image::texture(Rml::Element* element, Rml::Vector2f size){
+Rml::Texture Image::texture(Rml::Element* element, Rml::Vector2f size, bool repeatX, bool repeatY){
     if (!svg)
         return raster;
     Rml::RenderManager* renderManager = element ? element->GetRenderManager() : nullptr;
     if (!renderManager)
         return Rml::Texture();
     const float scale = rasterScale(element);
-    const Rml::Vector2i pixels(std::max(1, std::min(8192, (int)std::lround(size.x * scale))),
-                               std::max(1, std::min(8192, (int)std::lround(size.y * scale))));
+    // a repeated tile is rasterized at its size rounded up and sampled down to it, as Skia's picture shader does with the
+    // tile of Chromium's SVG pattern (SVGImage::DrawPatternForContainer)
+    const bool pattern = repeatX || repeatY;
+    auto toPixels = [pattern](float length){
+        return std::max(1, std::min(8192, pattern ? (int)std::ceil(length - 0.001f) : (int)std::lround(length)));
+    };
+    const Rml::Vector2i pixels(toPixels(size.x * scale), toPixels(size.y * scale));
     std::string xml = svg->xml;
     if (svg->tint == SvgTint::Substitute){
         const Rml::Colourb color = element->GetComputedValues().color();
         xml = svg->withColor(SvgPreprocess::colorText(color.red, color.green, color.blue, color.alpha));
     }
-    if (svgTexture && pixels == svgTextureSize && xml == svgTextureXml)
+    if (svgTexture && pixels == svgTextureSize && xml == svgTextureXml && repeatX == svgTextureRepeatX && repeatY == svgTextureRepeatY)
         return svgTexture;
 
-    std::shared_ptr<const std::vector<uint8_t>> rgba = rasterizeCached(xml, pixels.x, pixels.y);
+    // (a repeated tile is laid out at its exact size: its preserveAspectRatio places the content there)
+    const Rml::Vector2f logical = pattern ? size * scale : Rml::Vector2f(0.0f, 0.0f);
+    std::shared_ptr<const std::vector<uint8_t>> rgba = rasterizeCached(xml, pixels.x, pixels.y, logical.x, logical.y);
     if (!rgba || rgba->empty())
         return Rml::Texture();
     svgTextureSize = pixels;
     svgTextureXml = xml;
-    svgTexture = renderManager->MakeCallbackTexture([rgba, pixels](const Rml::CallbackTextureInterface& textureInterface) -> bool {
-        return textureInterface.GenerateTexture({reinterpret_cast<const Rml::byte*>(rgba->data()), rgba->size()}, pixels);
+    svgTextureRepeatX = repeatX;
+    svgTextureRepeatY = repeatY;
+    svgTexture = renderManager->MakeCallbackTexture([rgba, pixels, repeatX, repeatY](const Rml::CallbackTextureInterface& textureInterface) -> bool {
+        return textureInterface.GenerateTexture({reinterpret_cast<const Rml::byte*>(rgba->data()), rgba->size()}, pixels, repeatX, repeatY);
     });
     return svgTexture;
 }
@@ -429,8 +439,11 @@ RoundedClip::~RoundedClip(){
 
 // ---------------------------------------------------------------- caches, reports
 
-std::shared_ptr<const std::vector<uint8_t>> decorators::rasterizeCached(const std::string& xml, int width, int height){
-    const std::string key = toHex(fnv1a64(xml)) + ":" + std::to_string(xml.size()) + ":" + std::to_string(width) + "x" + std::to_string(height);
+std::shared_ptr<const std::vector<uint8_t>> decorators::rasterizeCached(const std::string& xml, int width, int height, float logicalWidth,
+                                                                     float logicalHeight){
+    std::string key = toHex(fnv1a64(xml)) + ":" + std::to_string(xml.size()) + ":" + std::to_string(width) + "x" + std::to_string(height);
+    if (logicalWidth > 0.0f && logicalHeight > 0.0f)
+        key += ":" + formatNumber(logicalWidth) + "x" + formatNumber(logicalHeight);
     RasterCache& cache = rasterCache();
     {
         std::lock_guard<std::mutex> lock(cache.mutex);
@@ -441,7 +454,7 @@ std::shared_ptr<const std::vector<uint8_t>> decorators::rasterizeCached(const st
             }
         }
     }
-    auto pixels = std::make_shared<const std::vector<uint8_t>>(htmlui::rasterizeSvg(xml, width, height));
+    auto pixels = std::make_shared<const std::vector<uint8_t>>(htmlui::rasterizeSvg(xml, width, height, logicalWidth, logicalHeight));
     if (pixels->empty())
         return nullptr;
     std::lock_guard<std::mutex> lock(cache.mutex);

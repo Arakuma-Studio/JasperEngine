@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Main Menu</title>
+<style>
+  @font-face { font-family: "Game Sans"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf"); }
+
+  :root {
+    --bg-1: #0f0c29;
+    --bg-2: #302b63;
+    --bg-3: #24243e;
+    --accent: #f72585;
+    --accent-2: #7209b7;
+    --text: #f1f1f1;
+    --muted: rgba(241, 241, 241, 0.6);
+    --radius: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family: "Game Sans", system-ui, sans-serif;
+    background: linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 50%, var(--bg-3) 100%);
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .menu {
+    width: 300px;
+    padding: 28px 24px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: calc(var(--radius) * 1.5);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+    text-align: center;
+  }
+
+  .logo {
+    font-size: 32px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    text-shadow: 0 0 12px rgba(247, 37, 133, 0.6);
+  }
+
+  .subtitle {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 22px;
+  }
+
+  .menu-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .menu-item {
+    position: relative;
+    display: block;
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text);
+    font-size: 16px;
+    text-decoration: none;
+    transition: transform 0.2s ease, background-color 0.2s ease;
+    overflow: hidden;
+  }
+
+  .menu-item::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: linear-gradient(to bottom, var(--accent), var(--accent-2));
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .menu-item:hover {
+    background-color: rgba(255, 255, 255, 0.16);
+    transform: translateX(6px);
+  }
+
+  .menu-item:hover::before { opacity: 1; }
+
+  .menu-item.primary {
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    font-weight: bold;
+  }
+
+  .footer {
+    margin-top: 18px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+  <div class="menu">
+    <h1 class="logo">Nebula</h1>
+    <p class="subtitle">A space adventure</p>
+    <ul class="menu-list">
+      <li><a href="#" class="menu-item primary" id="play">New Game</a></li>
+      <li><a href="#" class="menu-item" id="continue">Continue</a></li>
+      <li><a href="#" class="menu-item" id="settings">Settings</a></li>
+      <li><a href="#" class="menu-item" id="quit">Quit</a></li>
+    </ul>
+    <p class="footer">v1.0.3</p>
+  </div>
+</body>
+</html>

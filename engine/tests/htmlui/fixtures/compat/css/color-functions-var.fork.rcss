@@ -1,0 +1,43 @@
+body#htmlui-root:root {
+--primary: 222 47% 51%;
+--rgb: 255, 0, 0;
+--a: #3366ccff;
+}
+#htmlui-root .dark {
+--primary: 0 80% 50%;
+--rgb: 0, 128, 255;
+--a: #cc6633ff;
+}
+#htmlui-root .a {
+color: hsl(var(--primary));
+--html-current-color: hsl(var(--primary));
+background-color: rgba(var(--rgb), 0.2);
+}
+#htmlui-root .b {
+border-top-width: 2px;
+border-top-style: solid;
+border-top-color: color-mix(in srgb, var(--a) 40%, white);
+border-right-width: 2px;
+border-right-style: solid;
+border-right-color: color-mix(in srgb, var(--a) 40%, white);
+border-bottom-width: 2px;
+border-bottom-style: solid;
+border-bottom-color: color-mix(in srgb, var(--a) 40%, white);
+border-left-width: 2px;
+border-left-style: solid;
+border-left-color: color-mix(in srgb, var(--a) 40%, white);
+border-image: none;
+outline: 1px solid rgb(var(--rgb) / 50%);
+}
+#htmlui-root .c {
+text-shadow: 0 1px 2px hsl(var(--primary) / 0.5);
+background-color: transparent;
+background-image: linear-gradient(hsl(var(--primary)), color-mix(in oklab, var(--a), black));
+background-position-x: 0%;
+background-position-y: 0%;
+background-size: auto auto;
+background-repeat: repeat repeat;
+background-origin: padding-box;
+background-clip: border-box;
+background-attachment: scroll;
+}

@@ -215,7 +215,6 @@ Rml::FontFaceHandle RmlFontEngine::GetFontFaceHandle(const Rml::String& family, 
         const bool bold = cssWeight - face->getWeight() >= 300;
         handle->boldStrength.push_back(bold ? RmlFontEffects::boldStrength(size) : 0.0f);
         handle->italicShear.push_back((italic && !face->isItalic()) ? RmlFontEffects::italicShear : 0.0f);
-        handle->synthesizesBold = handle->synthesizesBold || bold;
     }
 
     const FontFace& primary = *handle->chain[0];
@@ -316,29 +315,14 @@ void RmlFontEngine::decodeText(Rml::StringView string, std::vector<uint32_t>& co
 }
 
 float RmlFontEngine::measure(const FaceHandle& handle, const std::vector<uint32_t>& codepoints, const ShapeOptions& options) const{
-    if (!handle.synthesizesBold)
-        return TextShaper::measure(handle.faces, handle.emScales, codepoints, 0, codepoints.size(), options);
-
-    std::vector<ShapedGlyph> shaped;
-    shape(handle, codepoints, options, shaped);
-    float total = 0.0f;
-    for (const ShapedGlyph& glyph : shaped){
-        total += glyph.xAdvance;
-    }
-    return total;
+    return TextShaper::measure(handle.faces, handle.emScales, codepoints, 0, codepoints.size(), options);
 }
 
 void RmlFontEngine::shape(const FaceHandle& handle, const std::vector<uint32_t>& codepoints, const ShapeOptions& options,
                           std::vector<ShapedGlyph>& shaped) const{
+    // a synthetic bold glyph keeps its advance: Chromium (Skia's fake bold) emboldens the outline
+    // and leaves the advances alone, so bold text is as wide as the regular face's
     TextShaper::shapeRange(handle.faces, handle.emScales, codepoints, 0, codepoints.size(), 0, options, shaped);
-
-    if (!handle.synthesizesBold)
-        return;
-    // a synthetic bold glyph is wider by its dilation (zero-width marks stay zero-width)
-    for (ShapedGlyph& glyph : shaped){
-        if (glyph.xAdvance != 0.0f)
-            glyph.xAdvance += handle.boldStrength[glyph.face];
-    }
 }
 
 float RmlFontEngine::scaleFor(const Rml::RenderManager& renderManager) const{
@@ -494,7 +478,7 @@ const RmlFontEngine::GlyphEntry& RmlFontEngine::getEffectGlyph(const FaceHandle&
     if (fontFace->rasterizeGlyph(glyphIndex, handle.emScales[face], coverage, width, height, xoff, yoff) && bold > 0)
         RmlFontEffects::embolden(coverage, width, height, yoff, bold);
 
-    const int advance = (int)std::lround(fontFace->getGlyphAdvance(glyphIndex, handle.emScales[face]) + strength);
+    const int advance = (int)std::lround(fontFace->getGlyphAdvance(glyphIndex, handle.emScales[face]));
     const Rml::FontGlyph glyph = RmlFontEffects::wrapCoverage(coverage.data(), width, height, xoff, yoff, advance);
 
     RmlFontEffects::Bitmap bitmap;

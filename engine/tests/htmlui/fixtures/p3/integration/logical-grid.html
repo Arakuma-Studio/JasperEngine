@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>integration: logical properties with grid</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; inline-size: 300px; margin-block: 10px; margin-inline: 12px;
+          padding-block: 8px 4px; padding-inline: 10px 20px; border-inline-start: 6px solid #264653; border-block-end: 3px dashed #e76f51;
+          background: #f1faee; }
+  .grid > div { block-size: 30px; background: #2a9d8f; border-start-start-radius: 8px; border-end-end-radius: 12px; }
+  .grid > .wide { grid-column: span 2; margin-inline-start: 10px; inset-inline-start: 5px; position: relative; background: #e9c46a; }
+  .grid > .tall { grid-row: span 2; block-size: auto; min-block-size: 50px; padding-block-start: 4px; background: #f4a261; }
+  .box { inline-size: 120px; max-inline-size: 30%; min-block-size: 20px; margin-inline: auto; background: #457b9d; }
+</style>
+</head>
+<body>
+<div class="grid" id="g"><div id="a"></div><div class="wide" id="b"></div><div class="tall" id="c"></div><div id="d"></div><div id="e"></div><div id="f"></div></div>
+<div class="box" id="box"></div>
+</body>
+</html>

@@ -2,9 +2,11 @@
 #include "../../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../../Include/RmlUi/Core/Context.h"
 #include "../../../Include/RmlUi/Core/Element.h"
+#include "../../../Include/RmlUi/Core/ElementDocument.h"
 #include "../../../Include/RmlUi/Core/ElementScroll.h"
 #include "../../../Include/RmlUi/Core/Profiling.h"
 #include "../ElementMeta.h"
+#include "../WillChange.h"
 #include "FlexFormattingContext.h"
 #include "FormattingContext.h"
 #include "GridFormattingContext.h"
@@ -44,7 +46,23 @@ void ContainerBox::AddAbsoluteElement(Element* element, Vector2f static_position
 	{
 		if (Context* context = element->GetContext())
 		{
-			containing_block = Rectanglef::FromPositionSize(Vector2f(0.f), Vector2f(context->GetDimensions()));
+			// The viewport without the scrollbars of a document that covers it and scrolls (the root element's scrollbars
+			// are the viewport's: 'right: 0' is left of the vertical scrollbar, as in browsers).
+			Vector2f size = Vector2f(context->GetDimensions());
+			ElementDocument* document = element->GetOwnerDocument();
+			// (A document that scrolls with an automatic height is as tall as the viewport: BlockContainer.)
+			const Box* document_box = (document && this->element == document ? GetIfBox() : nullptr);
+			if (document_box)
+			{
+				const Vector2f document_size = document_box->GetSize(BoxArea::Border);
+				ElementScroll* scroll = document->GetElementScroll();
+				if (document_size.x >= size.x - 0.5f && (document_size.y >= size.y - 0.5f || document_box->GetSize().y < 0.f))
+				{
+					size.x = Math::Max(size.x - scroll->GetScrollbarSize(ElementScroll::VERTICAL), 0.f);
+					size.y = Math::Max(size.y - scroll->GetScrollbarSize(ElementScroll::HORIZONTAL), 0.f);
+				}
+			}
+			containing_block = Rectanglef::FromPositionSize(Vector2f(0.f), size);
 			viewport_fixed = true;
 		}
 	}
@@ -152,8 +170,109 @@ void ContainerBox::ClosePositionedElements()
 
 			// Set the offset of the element; the element itself will take care of any RCSS-defined positional offsets.
 			absolute_element->SetOffset(offset, element, absolute_element_pair.second.viewport_fixed);
+
+			// Its box is scrollable overflow of the nearest scroll container from us, through the chain of containing blocks
+			// (a box fixed to the viewport, or inside one, scrolls with nothing).
+			if (!absolute_element_pair.second.viewport_fixed)
+			{
+				for (ContainerBox* container = this; container; container = container->parent_container)
+				{
+					if (container->element && container->element->GetPosition() == Style::Position::Fixed &&
+						!container->HasFixedPositioningContainingBlockAncestor())
+						break;
+					if (container->element && container->IsScrollContainer())
+					{
+						container->absolute_overflow_elements.push_back(absolute_element);
+						break;
+					}
+				}
+			}
 		}
 	}
+}
+
+bool ContainerBox::HasFixedPositioningContainingBlockAncestor() const
+{
+	for (const ContainerBox* container = parent_container; container; container = container->parent_container)
+		if (container->is_fixed_positioning_containing_block)
+			return true;
+	return false;
+}
+
+bool ContainerBox::CatchAbsoluteOverflow()
+{
+	if (absolute_overflow_elements.empty())
+		return true;
+	ElementList overflow_elements = std::move(absolute_overflow_elements);
+	absolute_overflow_elements.clear();
+	if (!element || !IsScrollContainer())
+		return true;
+
+	// The extent of the boxes from our padding box's top-left corner (unscrolled): their border boxes, with their own
+	// overflow when they do not clip it. The offset parents up to us are the boxes they were laid out in, none of which
+	// scrolls (we are the nearest scroll container).
+	const Box& box = element->GetBox();
+	const Vector2f border_top_left = {box.GetEdge(BoxArea::Border, BoxEdge::Left), box.GetEdge(BoxArea::Border, BoxEdge::Top)};
+	Vector2f extent;
+	bool found = false;
+	for (Element* absolute_element : overflow_elements)
+	{
+		Vector2f position;
+		Element* ancestor = absolute_element;
+		for (; ancestor && ancestor != element; ancestor = ancestor->GetOffsetParent())
+			position += ancestor->GetRelativeOffset(BoxArea::Border);
+		if (ancestor != element || absolute_element->GetDisplay() == Style::Display::None)
+			continue;
+
+		const Box& absolute_box = absolute_element->GetBox();
+		Vector2f size = absolute_box.GetSize(BoxArea::Border);
+		const auto& computed = absolute_element->GetComputedValues();
+		if (!LayoutDetails::IsScrollContainer(computed.overflow_x(), computed.overflow_y()) && computed.overflow_x() != Style::Overflow::Clip &&
+			computed.overflow_y() != Style::Overflow::Clip)
+		{
+			const Vector2f absolute_border_top_left = {absolute_box.GetEdge(BoxArea::Border, BoxEdge::Left),
+				absolute_box.GetEdge(BoxArea::Border, BoxEdge::Top)};
+			size = Math::Max(size, absolute_border_top_left + Vector2f(absolute_element->GetScrollWidth(), absolute_element->GetScrollHeight()));
+		}
+		extent = Math::Max(extent, position - border_top_left + size);
+		found = true;
+	}
+	if (!found)
+		return true;
+
+	const Vector2f scrollable_overflow = {element->GetScrollWidth(), element->GetScrollHeight()};
+	if (extent.x <= scrollable_overflow.x + 0.5f && extent.y <= scrollable_overflow.y + 0.5f)
+		return true;
+	element->SetScrollableOverflowRectangle(Math::Max(scrollable_overflow, extent), false);
+
+	// 'overflow: auto' shows a scrollbar for them as for in-flow overflow (CatchOverflow).
+	ElementScroll* element_scroll = element->GetElementScroll();
+	const float padding_width = box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Padding);
+	bool scrollbar_enabled = false;
+	if (overflow_x == Style::Overflow::Auto && extent.x > element->GetClientWidth() + 0.5f &&
+		element_scroll->GetScrollbarSize(ElementScroll::HORIZONTAL) == 0.f)
+	{
+		element_scroll->EnableScrollbar(ElementScroll::HORIZONTAL, padding_width);
+		scrollbar_enabled |= (element_scroll->GetScrollbarSize(ElementScroll::HORIZONTAL) != 0.f);
+	}
+	if (overflow_y == Style::Overflow::Auto && extent.y > element->GetClientHeight() + 0.5f)
+	{
+		if (element_scroll->GetScrollbarSize(ElementScroll::VERTICAL) == 0.f)
+		{
+			element_scroll->EnableScrollbar(ElementScroll::VERTICAL, padding_width);
+			scrollbar_enabled |= (element_scroll->GetScrollbarSize(ElementScroll::VERTICAL) != 0.f);
+		}
+		else if (element_scroll->IsScrollbarGutterOnly(ElementScroll::VERTICAL))
+		{
+			element_scroll->EnableScrollbar(ElementScroll::VERTICAL, padding_width);
+		}
+	}
+	if (scrollbar_enabled)
+		return false;
+
+	// The scrollbars' thumbs follow the larger overflow.
+	element_scroll->FormatScrollbars();
+	return true;
 }
 
 std::optional<Rectanglef> ContainerBox::GetAbsoluteContainingBlock(Element* /*element*/) const
@@ -179,9 +298,8 @@ ContainerBox::ContainerBox(Type type, Element* element, ContainerBox* parent_con
 		const auto& computed = element->GetComputedValues();
 		overflow_x = computed.overflow_x();
 		overflow_y = computed.overflow_y();
-		is_fixed_positioning_containing_block = (computed.has_local_transform() || computed.has_local_perspective() || computed.has_filter() ||
-			computed.has_backdrop_filter() || computed.has_mask_image());
-		is_absolute_positioning_containing_block = (computed.position() != Style::Position::Static || is_fixed_positioning_containing_block);
+		is_fixed_positioning_containing_block = WillChange::IsFixedPositioningContainingBlock(computed);
+		is_absolute_positioning_containing_block = WillChange::IsAbsolutePositioningContainingBlock(computed);
 	}
 }
 
@@ -341,6 +459,8 @@ bool FlexContainer::Close(const Vector2f visible_overflow_size, const Vector2f s
 		return false;
 
 	ClosePositionedElements();
+	if (!CatchAbsoluteOverflow())
+		return false;
 
 	SubmitElementLayout();
 	SetElementBaseline(element_baseline);
@@ -393,6 +513,8 @@ bool GridContainer::Close(const Vector2f visible_overflow_size, const Vector2f s
 
 	ClosePositionedElements();
 	absolute_area_resolver.reset();
+	if (!CatchAbsoluteOverflow())
+		return false;
 
 	SubmitElementLayout();
 	SetElementBaseline(element_baseline);

@@ -2,12 +2,14 @@
 #include "../../../Source/Core/ElementBackgroundLayers.h"
 #include "../Common/TestsInterface.h"
 #include "../Common/TestsShell.h"
+#include <RmlUi/Core/CallbackTexture.h>
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/DecorationTypes.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/Property.h>
+#include <RmlUi/Core/RenderManager.h>
 #include <RmlUi/Core/PropertyDictionary.h>
 #include <RmlUi/Core/StringUtilities.h>
 #include <RmlUi/Core/StyleSheetSpecification.h>
@@ -322,16 +324,115 @@ TEST_CASE("Backgrounds.interpolation")
 	system->SetManualTime(0.5);
 	context->Update();
 
-	// A length and a percentage mix as a calc(); lengths interpolate; url() images change at the end (discrete).
+	// A length and a percentage mix as a calc(); lengths interpolate; url() images cross-fade (Chromium).
 	CHECK(a->GetProperty("background-position-x")->ToString() == "50%"); // calc(50% + 0px)
 	CHECK(a->GetProperty("background-position-y")->ToString() == "10px");
 	CHECK(a->GetProperty("background-size")->ToString() == "20px calc(5px + 25%)");
-	CHECK(a->GetProperty("background-image")->ToString() == "url(j.png)");
+	CHECK(a->GetProperty("background-image")->ToString() == "cross-fade(url(i.png) 50%, url(j.png))");
 
 	system->SetManualTime(1.5);
 	context->Update();
 	CHECK(a->GetProperty("background-position-x")->ToString() == "100%");
 	CHECK(a->GetProperty("background-size")->ToString() == "30px 50%");
+	CHECK(a->GetProperty("background-image")->ToString() == "url(j.png)");
+
+	document->Close();
+	context->Update();
+	system->SetManualTime(0.0);
+}
+
+// background-image interpolates as Chromium 153 does: lists of url() images cross-fade image by image (CSS Images 4
+// cross-fade(), the shorter list repeated to the lowest common multiple of the lengths, no more layers painted than the
+// element's own value has; the images are added in a layer), gradients, 'none' and mask-image are discrete: no
+// transition starts.
+TEST_CASE("Backgrounds.cross_fade")
+{
+	Context* context = TestsShell::GetContext();
+	TestsSystemInterface* system = TestsShell::GetTestsSystemInterface();
+	TestsRenderInterface* render = TestsShell::GetTestsRenderInterface();
+	REQUIRE(context);
+	REQUIRE(render);
+	system->SetManualTime(0.0);
+
+	const String rml = R"(
+<rml>
+<head>
+	<style>
+		body { display: block; width: 400px; height: 300px; }
+		div { display: block; width: 100px; height: 50px; transition: background-image 1s linear, mask-image 1s linear; }
+		#single { background-image: url(i.png); }
+		#single.on { background-image: url(j.png); }
+		#lists { background-image: url(i.png), url(j.png); background-size: 10px 10px; background-repeat: no-repeat; }
+		#lists.on { background-image: url(k.png); }
+		#grown { background-image: url(i.png); }
+		#grown.on { background-image: url(j.png), url(k.png); }
+		#gradient { background-image: linear-gradient(red, blue); }
+		#gradient.on { background-image: linear-gradient(blue, red); }
+		#none { background-image: none; }
+		#none.on { background-image: url(j.png); }
+		#mask { mask-image: url(i.png); }
+		#mask.on { mask-image: url(j.png); }
+		#same { background-image: url(i.png); }
+		#same.on { background-image: url(i.png), url(i.png); }
+	</style>
+</head>
+<body><div id="single"/><div id="lists"/><div id="grown"/><div id="gradient"/><div id="none"/><div id="mask"/><div id="same"/></body>
+</rml>
+)";
+	ElementDocument* document = context->LoadDocumentFromMemory(rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	context->Render();
+	const char* ids[] = {"single", "lists", "grown", "gradient", "none", "mask", "same"};
+	for (const char* id : ids)
+		document->GetElementById(id)->SetClass("on", true);
+	context->Update();
+	system->SetManualTime(0.25);
+	context->Update();
+
+	auto image = [&](const char* id, const char* property = "background-image") { return document->GetElementById(id)->GetProperty(property)->ToString(); };
+	CHECK(image("single") == "cross-fade(url(i.png) 75%, url(j.png))");
+	// two to one: the lowest common multiple, 2
+	CHECK(image("lists") == "cross-fade(url(i.png) 75%, url(k.png)), cross-fade(url(j.png) 75%, url(k.png))");
+	CHECK(image("grown") == "cross-fade(url(i.png) 75%, url(j.png)), cross-fade(url(i.png) 75%, url(k.png))");
+	CHECK(image("same") == "url(i.png), url(i.png)");
+	// discrete: no transition, the new value at once
+	CHECK(image("gradient") == "linear-gradient(blue, red)");
+	CHECK(image("none") == "url(j.png)");
+	CHECK(image("mask", "mask-image") == "url(j.png)");
+
+	// The layers painted: no more than the element's own value has (Chromium paints the layers of the element's style).
+	auto painted = [&](const char* id) {
+		Element* element = document->GetElementById(id);
+		const Property* property = element->GetProperty(PropertyId::BackgroundImage);
+		const auto* list = rmlui_dynamic_cast<const ImageLayerList*>(property->value.GetReference<StyleValuePtr>().get());
+		REQUIRE(list);
+		return ElementBackgroundLayers::GetLayerCount(element, PropertyId::BackgroundImage, *list);
+	};
+	CHECK(painted("lists") == 1);
+	CHECK(painted("grown") == 2);
+
+	// Each cross-faded layer is drawn in a layer of its own, its second image added to the first.
+	render->ResetCounters();
+	context->Render();
+	render->ResetCounters();
+	CHECK(render->GetCountersFromPreviousReset().composite_layers_plus == 4); // single 1, lists 1, grown 2
+
+	// A transition from the middle of one cross-fades the cross-fade: a weighted mean of three images.
+	Element* single = document->GetElementById("single");
+	single->SetProperty("background-image", "url(m.png)");
+	context->Update();
+	system->SetManualTime(0.75);
+	context->Update();
+	CHECK(image("single") == "cross-fade(url(i.png) 37.5%, url(j.png) 12.5%, url(m.png))");
+	single->RemoveProperty("background-image");
+	context->Update();
+
+	system->SetManualTime(5.0);
+	context->Update();
+	CHECK(image("single") == "url(j.png)");
+	CHECK(image("grown") == "url(j.png), url(k.png)");
 
 	document->Close();
 	context->Update();
@@ -367,6 +468,77 @@ TEST_CASE("Backgrounds.canvas")
 	CHECK_FALSE(document->HasCanvasBackground());
 	context->Update();
 	context->Render();
+
+	document->Close();
+	context->Update();
+}
+
+// A callback texture generated with repeat wrap (an SVG background tile the application rasterizes, repeated as one quad)
+// reaches RenderInterface::GenerateTextureWithWrap; without an axis repeated it is an ordinary GenerateTexture.
+TEST_CASE("Backgrounds.wrapped_callback_texture")
+{
+	Context* context = TestsShell::GetContext();
+	TestsRenderInterface* render = TestsShell::GetTestsRenderInterface();
+	REQUIRE(context);
+	REQUIRE(render);
+	ElementDocument* document = context->LoadDocumentFromMemory("<rml><body/></rml>");
+	REQUIRE(document);
+	RenderManager* render_manager = document->GetRenderManager();
+	REQUIRE(render_manager);
+
+	const byte pixels[4 * 4] = {};
+	auto make = [&](bool repeat_x, bool repeat_y) {
+		return render_manager->MakeCallbackTexture([&pixels, repeat_x, repeat_y](const CallbackTextureInterface& texture_interface) {
+			return texture_interface.GenerateTexture({pixels, sizeof(pixels)}, Vector2i(2, 2), repeat_x, repeat_y);
+		});
+	};
+	render->ResetCounters();
+	CallbackTexture plain = make(false, false);
+	CallbackTexture repeated = make(true, false);
+	CHECK(Texture(plain).GetDimensions() == Vector2i(2, 2));
+	CHECK(Texture(repeated).GetDimensions() == Vector2i(2, 2));
+	render->ResetCounters();
+	CHECK(render->GetCountersFromPreviousReset().generate_texture == 2);
+	CHECK(render->GetCountersFromPreviousReset().generate_texture_with_wrap == 1);
+
+	plain.Release();
+	repeated.Release();
+	document->Close();
+	context->Update();
+}
+
+TEST_CASE("Backgrounds.box_shadow_larger_than_the_window")
+{
+	// A box shadow texture larger than the window is rendered in tiles of the window's size (each with an apron for
+	// the blur), saved into one texture.
+	Context* context = TestsShell::GetContext();
+	TestsRenderInterface* render = TestsShell::GetTestsRenderInterface();
+	REQUIRE(context);
+	REQUIRE(render);
+	const Vector2i window = context->GetDimensions();
+
+	const String document_rml = R"(
+<rml>
+<head>
+<style>
+	body { margin: 0; }
+	div, p { display: block; }
+	div { width: %dpx; height: 40px; background-color: #fff; box-shadow: 0 20px 40px #000; }
+	p { width: 100px; height: 40px; background-color: #fff; box-shadow: 0 20px 40px #000; }
+</style>
+</head>
+<body><div/><p/></body>
+</rml>)";
+	ElementDocument* document = context->LoadDocumentFromMemory(CreateString(document_rml.c_str(), 2 * window.x));
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	render->ResetCounters();
+	context->Render();
+	render->ResetCounters();
+
+	// the wide box: its texture (2 window widths plus the blur) needs three tiles, side by side; the small one none
+	CHECK(render->GetCountersFromPreviousReset().save_layer_into_texture == 3);
 
 	document->Close();
 	context->Update();

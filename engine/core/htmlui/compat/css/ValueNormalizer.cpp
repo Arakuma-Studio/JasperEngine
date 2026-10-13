@@ -124,6 +124,25 @@ bool ValueNormalizer::colorKeywordsApply(const std::string& property){
     return !noColors.contains(property);
 }
 
+bool ValueNormalizer::isRuntimeColorFunction(const ComponentValue& v){
+    if (v.kind != ComponentValue::Kind::Function)
+        return false;
+    static const char* const names[] = {"rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color", "color-mix"};
+    bool known = false;
+    for (const char* name : names)
+        known = known || equalsNoCase(v.token.value, name);
+    if (!known)
+        return false;
+    for (const ComponentValue& argument : v.children){
+        if (argument.isToken(TokenType::Ident) && equalsNoCase(argument.token.value, "from"))
+            return false;
+        if (argument.kind == ComponentValue::Kind::Function && !equalsNoCase(argument.token.value, "var") &&
+            !equalsNoCase(argument.token.value, "calc") && !isRuntimeColorFunction(argument))
+            return false;
+    }
+    return true;
+}
+
 namespace {
 
     class Walker {
@@ -251,6 +270,13 @@ namespace {
                         return;
                     }
                 }
+            }
+            if (!parsed && info.dynamicVar && !info.relative && !info.lightDark && context.colorFunctionsNative &&
+                context.compat().fork.has(ForkFeature::ColorFunctions) && ValueNormalizer::isRuntimeColorFunction(v)){
+                // (rgb(var(--rgb) / 0.5), hsl(var(--h) 50% 50%), color-mix(in srgb, var(--a) 40%, white): the
+                // fork substitutes the variable when the element's style is computed and parses the color)
+                out.push_back(v);
+                return;
             }
             if (!parsed){
                 if (info.dynamic){

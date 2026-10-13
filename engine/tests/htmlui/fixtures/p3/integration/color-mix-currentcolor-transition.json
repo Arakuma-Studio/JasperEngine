@@ -1,0 +1,10 @@
+{
+ "comment": "Borders, outlines, background colors, gradient stops and a box shadow mixed from currentcolor follow a transition of color frame by frame (the mixes have no transition of their own, as in Chromium): captured at a quarter, half way and at the end.",
+ "viewport": [370, 100],
+ "steps": [
+  {"addClass": ["#a", "hot"]}, {"addClass": ["#b", "hot"]}, {"addClass": ["#c", "hot"]},
+  {"advance": 0.25}, {"capture": "quarter"},
+  {"advance": 0.25}, {"capture": "half"},
+  {"advance": 0.6}, {"capture": "end"}
+ ]
+}

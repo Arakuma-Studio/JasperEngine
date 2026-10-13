@@ -14,7 +14,7 @@ border-left-width: 2px;
 border-left-style: solid;
 border-left-color: currentcolor;
 border-image: none;
---html-box-shadow: 0px 0px 4px #336699ff;
+--html-box-shadow: 0px 0px 4px currentcolor;
 box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
 }
 #htmlui-root .companion {

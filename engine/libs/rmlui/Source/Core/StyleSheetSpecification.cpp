@@ -555,14 +555,14 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 
 	// -- Cascade (p3-cascade) --
 	{
-		// 'all' takes CSS-wide keywords only (Cascade::ParseAllShorthand), which set every registered property but the
-		// '-rmlui-*' ones, whenever they are registered. Its items are the properties registered up to here: what a
-		// var() value of 'all' and GetShorthandUnderlyingProperties reach.
+		// 'all' takes CSS-wide keywords only (Cascade::ParseAllShorthand), which set every registered property but direction
+		// and RmlUi's interaction properties (Cascade::IsReachedByAll), whenever they are registered. Its items are the
+		// properties registered up to here: what a var() value of 'all' and GetShorthandUnderlyingProperties reach.
 		String all_properties;
 		for (const PropertyId id : properties.GetRegisteredProperties())
 		{
 			const String& name = GetPropertyName(id);
-			if (StringUtilities::StartsWith(name, "-rmlui-"))
+			if (!Cascade::IsReachedByAll(id))
 				continue;
 			if (!all_properties.empty())
 				all_properties += ", ";
@@ -636,7 +636,7 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 		ShorthandType::Custom);
 	properties.SetShorthandParser(ShorthandId::Background, &ParseBackgroundShorthand);
 	// (RCSS decorator syntax in mask-image keeps working: decorator functions are images.)
-	RegisterProperty(PropertyId::MaskImage, "mask-image", "none", false, false).AddParser("image_layers");
+	RegisterProperty(PropertyId::MaskImage, "mask-image", "none", false, false).AddParser("image_layers", "mask");
 	RegisterProperty(PropertyId::MaskPositionX, "mask-position-x", "0%", false, false).AddParser("layer_position_x");
 	RegisterProperty(PropertyId::MaskPositionY, "mask-position-y", "0%", false, false).AddParser("layer_position_y");
 	RegisterShorthand(ShorthandId::MaskPosition, "mask-position", "mask-position-x, mask-position-y", ShorthandType::Custom);

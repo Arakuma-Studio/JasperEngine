@@ -293,8 +293,23 @@ BoxArea ElementBackgroundLayers::GetColourClip(Element* element)
 	if (!clips || clips->GetCount() == 0)
 		return BoxArea::Border;
 	const ImageLayerList* images = GetList<ImageLayerList>(element, PropertyId::BackgroundImage);
-	const size_t num_layers = (images && !images->layers.empty()) ? images->layers.size() : 1;
+	const size_t num_layers = (images && !images->layers.empty()) ? GetLayerCount(element, PropertyId::BackgroundImage, *images) : 1;
 	return BoxArea(clips->values[(num_layers - 1) % clips->GetCount()]);
+}
+
+size_t ElementBackgroundLayers::GetLayerCount(Element* element, PropertyId image_id, const ImageLayerList& images)
+{
+	size_t count = images.layers.size();
+	if (images.cross_faded)
+	{
+		const Property* underlying = element->GetStyle()->GetUnderlyingProperty(image_id);
+		if (underlying && underlying->unit == Unit::STYLE_VALUE)
+		{
+			if (const auto* own = rmlui_dynamic_cast<const ImageLayerList*>(underlying->value.GetReference<StyleValuePtr>().get()))
+				count = Math::Min(count, Math::Max(own->layers.size(), size_t(1)));
+		}
+	}
+	return Math::Max(count, size_t(1));
 }
 
 void ElementBackgroundLayers::Release()
@@ -359,7 +374,8 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 	const Vector2f element_offset = element->GetAbsoluteOffset(BoxArea::Border);
 
 	const int num_boxes = canvas ? 1 : element->GetNumBoxes();
-	for (int i = (int)images->layers.size() - 1; i >= 0; i--)
+	const int num_layers = (int)Math::Min(GetLayerCount(element, ids.image, *images), images->layers.size());
+	for (int i = num_layers - 1; i >= 0; i--)
 	{
 		const ImageLayer& layer = images->layers[i];
 		if (layer.kind == ImageLayer::Kind::None)
@@ -414,12 +430,45 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 			probe_shader.Release();
 		}
 
-		// The image's intrinsic size.
+		// The image's intrinsic size; a cross-fade's is the weighted mean of its images' (Chromium: CSSCrossfadeValue blends
+		// the sizes), each image stretched over the tile.
 		Vector2f intrinsic;
 		ImageSourceHandler::Image handled;
 		bool handled_by_application = false;
 		Texture raster;
-		if (layer.kind == ImageLayer::Kind::Url)
+		struct FadeSource {
+			String url;
+			float weight = 0.f;
+			bool handled = false;
+			Texture raster;
+		};
+		Vector<FadeSource> fade_sources;
+		if (layer.kind == ImageLayer::Kind::CrossFade)
+		{
+			for (const auto& leaf : layer.fade)
+			{
+				FadeSource source;
+				source.url = leaf.first;
+				source.weight = leaf.second;
+				Vector2f size;
+				ImageSourceHandler::Image image;
+				if (image_source_handler && image_source_handler->GetImage(element, leaf.first, base_path, Vector2f(0.f), false, false, image))
+				{
+					source.handled = true;
+					size = image.intrinsic_size;
+				}
+				else
+				{
+					source.raster = render_manager->LoadTexture(leaf.first, base_path);
+					size = Vector2f(source.raster.GetDimensions());
+				}
+				intrinsic += size * leaf.second;
+				fade_sources.push_back(std::move(source));
+			}
+			if (intrinsic.x <= 0.f && intrinsic.y <= 0.f)
+				continue;
+		}
+		else if (layer.kind == ImageLayer::Kind::Url)
 		{
 			if (image_source_handler && image_source_handler->GetImage(element, layer.url, base_path, Vector2f(0.f), false, false, handled))
 			{
@@ -480,7 +529,39 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 
 			Draw draw;
 			Mesh mesh;
-			if (decorator)
+			if (layer.kind == ImageLayer::Kind::CrossFade)
+			{
+				// Each image over every tile, its colour weighted (premultiplied: all four channels); added when rendered.
+				for (const FadeSource& source : fade_sources)
+				{
+					FadeImage image;
+					ColourbPremultiplied colour = white;
+					if (source.handled)
+					{
+						ImageSourceHandler::Image handled_image;
+						if (!image_source_handler->GetImage(element, source.url, base_path, tiles.tile_size, false, false, handled_image) ||
+							!handled_image.texture)
+							continue;
+						image.texture = handled_image.texture;
+						image.image_owner = handled_image.owner;
+						colour = handled_image.colour;
+					}
+					else
+					{
+						image.texture = source.raster;
+					}
+					colour = ColourbPremultiplied(byte(colour.red * source.weight + 0.5f), byte(colour.green * source.weight + 0.5f),
+						byte(colour.blue * source.weight + 0.5f), byte(colour.alpha * source.weight + 0.5f));
+					Mesh fade_mesh;
+					for (const LayerTile& tile : tiles.tiles)
+						AddQuad(fade_mesh, tile.rect.TopLeft(), tile.rect.BottomRight(), tile.uv0, tile.uv1, colour);
+					image.geometry = render_manager->MakeGeometry(std::move(fade_mesh));
+					draw.fade.push_back(std::move(image));
+				}
+				if (draw.fade.empty())
+					continue;
+			}
+			else if (decorator)
 			{
 				// A gradient: one shader for the tile size, the texture coordinates of each tile its own positions.
 				draw.shader = decorator->CompileImageShader(element, tiles.tile_size);
@@ -530,7 +611,8 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 				for (const LayerTile& tile : tiles.tiles)
 					AddQuad(mesh, tile.rect.TopLeft(), tile.rect.BottomRight(), tile.uv0, tile.uv1, colour);
 			}
-			draw.geometry = render_manager->MakeGeometry(std::move(mesh));
+			if (draw.fade.empty())
+				draw.geometry = render_manager->MakeGeometry(std::move(mesh));
 
 			const RenderBox clip_box = element->GetRenderBox(clip_area, box_index, false);
 			if (clip_box.HasBorderRadius() && !canvas)
@@ -571,16 +653,38 @@ void ElementBackgroundLayers::Render(Element* element, const Rectanglef* canvas,
 	for (Draw& draw : draws)
 	{
 		const bool masked = bool(draw.clip_mask);
-		if (masked)
+		const bool fade = !draw.fade.empty();
+		if (masked || fade)
 			render_manager->PushLayer();
 
-		if (draw.decorator)
+		if (fade)
+		{
+			// cross-fade(): the weighted images added (Chromium draws the image faded to with plus-lighter over the one
+			// faded from), then composited as one layer.
+			for (size_t i = 0; i < draw.fade.size(); i++)
+			{
+				if (i > 0)
+					render_manager->PushLayer();
+				draw.fade[i].geometry.Render(offset, draw.fade[i].texture);
+				if (i > 0)
+				{
+					render_manager->CompositeLayers(render_manager->GetTopLayer(), render_manager->GetNextLayer(), BlendMode::Plus, {});
+					render_manager->PopLayer();
+				}
+			}
+		}
+		else if (draw.decorator)
 			draw.decorator->RenderElement(element, draw.decorator_data);
 		else if (draw.shader)
 			draw.geometry.Render(offset, {}, draw.shader);
 		else
 			draw.geometry.Render(offset, draw.texture);
 
+		if (fade && !masked)
+		{
+			render_manager->CompositeLayers(render_manager->GetTopLayer(), render_manager->GetNextLayer(), BlendMode::Blend, {});
+			render_manager->PopLayer();
+		}
 		if (masked)
 		{
 			// The layer, masked by the anti-aliased shape of its rounded clip box.

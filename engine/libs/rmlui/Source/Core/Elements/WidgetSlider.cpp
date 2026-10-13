@@ -346,11 +346,12 @@ void WidgetSlider::FormatProgress()
 	progress_box.SetContent(progress_box_content);
 	progress->SetBox(progress_box);
 
-        Vector2f offset = track->GetRelativeOffset();
-        offset.x += progress->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Left);
-        offset.y += progress->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Top);
+	// At the track's border box: a fill as large as the track covers it, border included.
+	Vector2f offset = track->GetRelativeOffset(BoxArea::Border);
+	offset.x += progress->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Left);
+	offset.y += progress->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Top);
 
-        progress->SetOffset(offset, parent);
+	progress->SetOffset(offset, parent);
 
 	ResizeProgress();
 }

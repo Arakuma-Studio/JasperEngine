@@ -1390,6 +1390,9 @@ with an anti-aliased rounded shape. `background-attachment: fixed` positions in 
 rectangle, `local` in the scrollable overflow. Mask layers render into the element's mask layer
 (alpha). `background-position` and `-size` interpolate per layer (a length with a percentage as a
 `calc()` mix), image lists of gradients interpolate as `decorator` does, `url()` lists are discrete.
+*Changed by p3-integration (FORK.md P3-I7), as Chromium 153 measures:* `url()` lists (and cross-fades
+of them) cross-fade layer by layer, the lists repeated to their least common multiple; lists with a
+gradient or `none`, and `mask-image`, are discrete.
 Gradient hard stops are not softened (6.3 moved a stop one pixel away; Chromium draws them hard).
 Compat passes every `background-*`/`mask-*` declaration through with the feature present and keeps
 its emulation (the `html-layer` decorator, decorator-syntax masks) for it absent.
@@ -2361,6 +2364,55 @@ or makes precise §3.2 and §3.3):
   clone and record conflicts per patch in FORK.md; run the full acceptance list (§6).
 - **Deps:** all wave-1 packages merged.
 
+#### `p3-integration` as implemented
+
+**Fixtures** (`fixtures/p3/integration/`, Chromium references, default tolerances unless noted):
+`after-hover-grid-opacity` (`::after` transitioned on `:hover` in a grid item under group opacity),
+`sticky-scrolling-grid` and `absolute-in-scroll-containers` (`"samples": 1`, the Mesa MSAA scissor
+pattern of §3.12.10), `calc-var-grid-tracks`, `important-vs-animation`, `important-cascade` (28
+`!important`/specificity cases, the wave-1 leftover), `fixed-modal-backdrop` (a fixed modal with a
+backdrop blur over a scrolled document), `fixed-containing-blocks` (transform, filter, will-change,
+mask), `background-image-crossfade`, `svg-background-repeat`, `theme-color-variables` (root classes
+toggled), `color-mix-currentcolor-transition`, `logical-grid`, `counters-flex`,
+`all-unset-buttons-grid`, `background-layers-transition`, `text-shadow-group-opacity`, and the five
+agent-written sample pages `sample-main-menu`, `sample-settings`, `sample-inventory`, `sample-hud`,
+`sample-dialog`. The sample pages are text-heavy (`"boxes": true, "noText": true`, §5.2): the boxes
+and the image without text are gated at the default tolerances, the full image is reported (the
+glyphs differ in rasterization: hinting, synthetic bold drawn by bitmap dilation rather than Skia's
+outline emboldening). The other text-heavy fixtures (`all-unset-buttons-grid`, `counters-flex`,
+`text-shadow-group-opacity`, `text/text-transform-unicode`, `text/zero-width-space`,
+`values/font-family-fallback`, `values/line-height-normal`) carry the same gate.
+
+**Found and fixed by the fixtures** (fork rows in FORK.md P3-I*): content of scroll containers
+clipped to the scrollport (P3-I2), scrollbar thumb margins (P3-I3), absolutely positioned boxes as
+scrollable overflow (P3-I4), the viewport containing block without the root's scrollbars and the
+end margins of scrollable overflow (P3-I10), backdrop filters reading the border box with mirrored
+blur edges (P3-I11, and `htmlui_post.frag`), replaced grid items' heights (P3-I12), the range fill
+and select arrow placement (P3-I13), box-shadow textures larger than the window (P3-I14); in the
+engine: the UA range and select drawn as Chromium's (8px centred track inset 1px, a 15px thumb, the
+value fill under the half-alpha track border; the chevron in the text colour), synthetic bold
+keeping the regular advances (P1 §3.13 changed), `all` written for the fork (`CssWideKeywords`),
+`box-shadow` keeping `currentcolor`, colour functions of theme variables kept for the fork
+(`ColorFunctions`), `font-weight: bolder/lighter` (`RelativeFontWeight`), root classes and
+attributes changed by a script restyle the document (`DocumentLoader::restyleForRoot`), a url-free
+`var()` of background layers is typed; in the harness: pointer steps through transforms, the root
+scrollbar of a scrolling viewport kept in the references, fonts checked at every capture.
+
+**Wave-1 leftovers:** (1) `!important` class vs id: not reproducible, kept as a test (P3-I5) and a
+fixture; (2) image-list transitions: cross-fade (P3-I7, §3.9.2 changed); (3) seams of repeated SVG
+tiles: tiles rasterized at whole pixels and repeated by the sampler (P3-I8; `space` with a
+fractional gap stays a sub-pixel apart from Chromium, which shrinks the tiles); (4) the font
+without a `post` table: removed, the harness checks every fixture font (`FontFacesLoadInChromium`);
+(5) `text-align: justify`: a note with §2.2's hint (and `direction: rtl` with the mirrored-layout
+hint); (6) fixed containing blocks: `will-change`, `perspective`, `backdrop-filter`, not `mask`,
+dynamic changes (P3-I6); (7) benchmarks: FORK.md "Benchmarks (phase 3, final)"; (8) the Desktop
+player MCP test with `JASPER_SLOW_BUILD=1`; (9) every `ForkFeature` present, `present() == all()`
+asserted, probes and consistency samples for the two appended features.
+
+**Excluded Taffy fixtures:** `x*` (Taffy's invalid, §5.3), `direction: rtl`, `writing-mode` (§2.2);
+the two fixtures that built a track list with a script are written out statically by the importer
+(`needs-script` is gone). Both `known-failures.txt` are empty.
+
 ## 5. Test plan
 
 ### 5.1 RmlUi's own unit tests (standalone, host)
@@ -2483,7 +2535,12 @@ The agent-browser MCP tool is not used for goldens (shared browser, non-determin
   the image and no 4-connected bad cluster exceeds 16 pixels. Text-heavy fixtures additionally
   carry `"boxes": true` (the box comparison below is the primary oracle; pixels use the same
   metric). Per-fixture overrides are allowed only with a comment in the sidecar explaining the
-  rasterization difference.
+  rasterization difference. *As implemented (p3-integration):* a text-heavy fixture also carries
+  `"noText": true` (required with `"boxes": true`): every capture is taken a second time with the text
+  made transparent on both sides (the reference: the steps rerun with phase 2's `NO_TEXT_CSS`; the
+  engine: the same frame drawn without glyphs, text decorations and symbol markers, as the phase-2
+  golden pages' no-text render) and that image is gated at the default metric; only the full image
+  with its glyphs is reported. The text caret is hidden in every capture on both sides.
 - Box comparison: for each id'ed element, engine border box (`Element::GetAbsoluteOffset(Border)`
   + `GetBox().GetSize(Border)`) vs Chrome `getBoundingClientRect()` (untransformed elements),
   |Δ| ≤ 1 px on x, y, width, height.

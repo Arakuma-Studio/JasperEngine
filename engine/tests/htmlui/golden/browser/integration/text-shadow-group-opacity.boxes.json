@@ -1,0 +1,44 @@
+{
+ "fixture": "integration/text-shadow-group-opacity.html",
+ "viewport": [
+  360,
+  110
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "a",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 87.140625,
+    "h": 33
+   },
+   {
+    "id": "b",
+    "tag": "div",
+    "x": 10,
+    "y": 55,
+    "w": 103.484375,
+    "h": 33
+   },
+   {
+    "id": "g",
+    "tag": "div",
+    "x": 230,
+    "y": 10,
+    "w": 110,
+    "h": 80
+   },
+   {
+    "id": "s",
+    "tag": "span",
+    "x": 238,
+    "y": 30,
+    "w": 56.046875,
+    "h": 25
+   }
+  ]
+ }
+}

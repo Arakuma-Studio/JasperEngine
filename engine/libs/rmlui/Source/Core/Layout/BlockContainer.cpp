@@ -127,6 +127,9 @@ bool BlockContainer::Close(BlockContainer* parent_block_container)
 	// Now that we have been sized, we can proceed with formatting and placing positioned elements that this container
 	// acts as a containing block for.
 	ClosePositionedElements();
+	// (A scroll container is the root of its formatting context: formatted again when this fails, as when SubmitBox does.)
+	if (!CatchAbsoluteOverflow())
+		return false;
 
 	// Find the element baseline which is the distance from the margin bottom of the element to its baseline.
 	float element_baseline = 0;
@@ -190,7 +193,12 @@ bool BlockContainer::EncloseChildBox(LayoutBox* child, Vector2f child_position, 
 	inner_content_size = Math::Max(inner_content_size, child_position + child->GetVisibleOverflowSize());
 
 	// Separately extend the margin-box size of the child's margin box, since this does not propagate to parents unlike visible overflow.
-	inner_content_margin_size = Math::Max(inner_content_margin_size, child_position + child_border_size + child_margin_bottom_right);
+	// Below the child: its bottom margin as collapsed with the margins of its last children (they end the scrollable
+	// overflow of a scroll container as in browsers, also through a wrapper).
+	Vector2f margin_bottom_right = child_margin_bottom_right;
+	if (!child_collapsed_through)
+		margin_bottom_right.y = Math::Max(margin_bottom_right.y, child_bottom_margin_set.Resolve());
+	inner_content_margin_size = Math::Max(inner_content_margin_size, child_position + child_border_size + margin_bottom_right);
 
 	const Vector2f content_size =
 		Math::Max(Vector2f{box.GetSize().x, box_cursor + (top_margin_open ? 0.f : trailing_margin_set.Resolve())}, inner_content_size);

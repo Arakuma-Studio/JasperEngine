@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>integration: multiple background layers with transitions</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; top: 10px; width: 120px; height: 80px; transition: all 1s linear; }
+  #a { left: 10px;
+       background: linear-gradient(45deg, rgba(255,255,255,0.4) 25%, transparent 25%) 0 0 / 20px 20px,
+                   radial-gradient(circle at 20% 30%, #ffd166 0 12px, transparent 13px) 0 0 / 60px 40px no-repeat,
+                   #118ab2; }
+  #a.on { background: linear-gradient(45deg, rgba(255,255,255,0.4) 25%, transparent 25%) 10px 10px / 40px 40px,
+                      radial-gradient(circle at 20% 30%, #ffd166 0 12px, transparent 13px) 60px 40px / 60px 40px no-repeat,
+                      #073b4c; }
+  #b { left: 140px; background-color: #ef476f; background-image: url(img/checker.png), url(img/ring.png);
+       background-size: 16px 16px, 32px 32px; background-position: 0 0, center; background-repeat: repeat, no-repeat; }
+  #b.on { background-size: 24px 24px, 64px 64px; background-position: 8px 8px, 10px 10px; background-color: #06d6a0; }
+  #c { left: 270px; border-radius: 16px; background: radial-gradient(#ffffff 20%, transparent 21%) 0 0 / 16px 16px, #8338ec;
+       background-clip: padding-box; border: 6px solid rgba(0,0,0,0.2); }
+  #c.on { background-size: 32px 32px; background-position: 4px 4px; background-color: #3a86ff; }
+</style>
+</head>
+<body>
+<div class="b" id="a"></div><div class="b" id="b"></div><div class="b" id="c"></div>
+</body>
+</html>

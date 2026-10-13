@@ -1,0 +1,4 @@
+{
+ "comment": "Important declarations against more specific normal ones, one cell each (green wins, red loses): class against id, inherited, an earlier sheet and a linked sheet, a media block, a shorthand, var(), :not()/:is() specificity, CSS nesting, inline styles, spaced and upper-case !IMPORTANT, a background shorthand, two important rules (the more specific wins), currentcolor, ::before, a hover selector list, an attribute selector, all: unset, colour syntaxes.",
+ "viewport": [280, 170]
+}

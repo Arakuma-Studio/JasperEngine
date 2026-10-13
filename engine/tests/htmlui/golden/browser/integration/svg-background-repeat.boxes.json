@@ -1,0 +1,84 @@
+{
+ "fixture": "integration/svg-background-repeat.html",
+ "viewport": [
+  370,
+  250
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "whole",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 110,
+    "h": 70
+   },
+   {
+    "id": "fraction",
+    "tag": "div",
+    "x": 130,
+    "y": 10,
+    "w": 110,
+    "h": 70
+   },
+   {
+    "id": "offset",
+    "tag": "div",
+    "x": 250,
+    "y": 10,
+    "w": 110,
+    "h": 70
+   },
+   {
+    "id": "small",
+    "tag": "div",
+    "x": 10,
+    "y": 90,
+    "w": 110,
+    "h": 70
+   },
+   {
+    "id": "round",
+    "tag": "div",
+    "x": 130,
+    "y": 90,
+    "w": 110,
+    "h": 70
+   },
+   {
+    "id": "space",
+    "tag": "div",
+    "x": 250,
+    "y": 90,
+    "w": 110,
+    "h": 70
+   },
+   {
+    "id": "x",
+    "tag": "div",
+    "x": 10,
+    "y": 170,
+    "w": 110,
+    "h": 70
+   },
+   {
+    "id": "cover",
+    "tag": "div",
+    "x": 130,
+    "y": 170,
+    "w": 110,
+    "h": 70
+   },
+   {
+    "id": "rounded",
+    "tag": "div",
+    "x": 250,
+    "y": 170,
+    "w": 110,
+    "h": 70
+   }
+  ]
+ }
+}

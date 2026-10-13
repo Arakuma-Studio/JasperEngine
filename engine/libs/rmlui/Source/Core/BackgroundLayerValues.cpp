@@ -8,6 +8,7 @@
 #include "../../Include/RmlUi/Core/StringUtilities.h"
 #include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "../../Include/RmlUi/Core/TypeConverter.h"
+#include <algorithm>
 #include "PropertyShorthandDefinition.h"
 #include <numeric>
 
@@ -362,12 +363,13 @@ namespace {
 
 	class PropertyParserImageLayers final : public PropertyParser {
 	public:
-		bool ParseValue(Property& property, const String& value, const ParameterMap& /*parameters*/) const override
+		bool ParseValue(Property& property, const String& value, const ParameterMap& parameters) const override
 		{
 			const String stripped = StringUtilities::StripWhitespace(value);
 			if (stripped.empty())
 				return false;
 			auto list = MakeShared<ImageLayerList>();
+			list->mask = (parameters.find("mask") != parameters.end());
 			auto decorators = MakeShared<DecoratorDeclarationList>();
 			PropertyParser* decorator_parser = StyleSheetSpecification::GetParser("decorator");
 			for (const String& item : SplitLayerList(stripped, ','))
@@ -722,12 +724,6 @@ bool ImageLayerList::HasImages() const
 
 String ImageLayerList::ToString() const
 {
-	if (interpolated && decorators)
-	{
-		String text;
-		TypeConverter<DecoratorsPtr, String>::Convert(decorators, text);
-		return text;
-	}
 	String out;
 	for (const ImageLayer& layer : layers)
 	{
@@ -743,34 +739,94 @@ bool ImageLayerList::Equals(const StyleValue& other) const
 	return ToString() == static_cast<const ImageLayerList&>(other).ToString();
 }
 
-SharedPtr<const StyleValue> ImageLayerList::Interpolate(const StyleValue& to_value, float alpha, Element& element) const
-{
-	const ImageLayerList& to = static_cast<const ImageLayerList&>(to_value);
-	auto decorators_only = [](const ImageLayerList& list) {
+namespace {
+	// The url()s of an image of a list and their weights: a url() alone, or a cross-fade.
+	Vector<std::pair<String, float>> FadeLeaves(const ImageLayer& layer)
+	{
+		if (layer.kind == ImageLayer::Kind::CrossFade)
+			return layer.fade;
+		return {{layer.url, 1.f}};
+	}
+
+	// cross-fade(A, B, alpha): the url()s of both, weighted by 1 - alpha and alpha (the same url() once); serialized as
+	// Chromium's computed value, e.g. 'cross-fade(url("a.png") 75%, url("b.png"))'.
+	ImageLayer CrossFade(const ImageLayer& from, const ImageLayer& to, float alpha)
+	{
+		Vector<std::pair<String, float>> leaves;
+		auto add = [&leaves](const Vector<std::pair<String, float>>& source, float factor) {
+			for (const auto& leaf : source)
+			{
+				const float weight = leaf.second * factor;
+				if (weight <= 0.f)
+					continue;
+				auto it = std::find_if(leaves.begin(), leaves.end(), [&](const std::pair<String, float>& entry) { return entry.first == leaf.first; });
+				if (it != leaves.end())
+					it->second += weight;
+				else
+					leaves.emplace_back(leaf.first, weight);
+			}
+		};
+		add(FadeLeaves(from), 1.f - alpha);
+		add(FadeLeaves(to), alpha);
+
+		ImageLayer layer;
+		if (leaves.size() == 1)
+		{
+			layer.kind = ImageLayer::Kind::Url;
+			layer.url = leaves[0].first;
+			layer.text = "url(" + layer.url + ")";
+			return layer;
+		}
+		layer.kind = ImageLayer::Kind::CrossFade;
+		layer.text = "cross-fade(";
+		for (size_t i = 0; i < leaves.size(); i++)
+		{
+			if (i > 0)
+				layer.text += ", ";
+			layer.text += "url(" + leaves[i].first + ")";
+			if (i + 1 < leaves.size())
+				layer.text += CreateString(" %g%%", double(leaves[i].second) * 100.0);
+		}
+		layer.text += ")";
+		layer.fade = std::move(leaves);
+		return layer;
+	}
+
+	bool OnlyImages(const ImageLayerList& list)
+	{
+		if (list.layers.empty() || list.mask)
+			return false;
 		for (const ImageLayer& layer : list.layers)
-			if (layer.kind == ImageLayer::Kind::Url)
+			if (layer.kind != ImageLayer::Kind::Url && layer.kind != ImageLayer::Kind::CrossFade)
 				return false;
 		return true;
-	};
-	if (!decorators_only(*this) || !decorators_only(to))
-		return nullptr;
-	DecoratorsPtr from_list = HasImages() ? decorators : DecoratorsPtr();
-	DecoratorsPtr to_list = to.HasImages() ? to.decorators : DecoratorsPtr();
-	DecoratorsPtr mixed;
-	if (!InterpolateDecoratorLists(from_list, to_list, alpha, element, mixed))
-		return nullptr;
-	auto result = MakeShared<ImageLayerList>();
-	result->interpolated = true;
-	auto declarations = MakeShared<DecoratorDeclarationList>(*mixed);
-	declarations->value.clear(); // not cached (StyleSheet::InstanceDecorators)
-	for (size_t i = 0; i < declarations->list.size(); i++)
-	{
-		ImageLayer layer;
-		layer.kind = ImageLayer::Kind::Decorator;
-		layer.decorator_index = int(i);
-		result->layers.push_back(std::move(layer));
 	}
-	result->decorators = std::move(declarations);
+} // namespace
+
+SharedPtr<const StyleValue> ImageLayerList::Interpolate(const StyleValue& to_value, float alpha, Element& /*element*/) const
+{
+	const ImageLayerList& to = static_cast<const ImageLayerList&>(to_value);
+	if (!OnlyImages(*this) || !OnlyImages(to))
+		return nullptr;
+
+	const size_t from_count = layers.size(), to_count = to.layers.size();
+	size_t a = from_count, b = to_count;
+	while (b != 0)
+	{
+		const size_t r = a % b;
+		a = b;
+		b = r;
+	}
+	const size_t count = from_count / a * to_count;
+	// (a list of hundreds of layers is no background: discrete)
+	if (count > 256)
+		return nullptr;
+
+	auto result = MakeShared<ImageLayerList>();
+	result->cross_faded = true;
+	result->layers.reserve(count);
+	for (size_t i = 0; i < count; i++)
+		result->layers.push_back(CrossFade(layers[i % from_count], to.layers[i % to_count], alpha));
 	return result;
 }
 

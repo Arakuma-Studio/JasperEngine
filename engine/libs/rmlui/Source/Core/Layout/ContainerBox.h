@@ -70,7 +70,8 @@ public:
 	// Returns true if this box acts as a containing block for absolutely positioned descendants.
 	bool IsAbsolutePositioningContainingBlock() const { return is_absolute_positioning_containing_block; }
 	// Returns true if this box acts as a containing block for descendants with 'position: fixed', instead of the viewport
-	// (CSS Transforms 1 §2, Filter Effects 1 §5, CSS Masking 1: a transform, perspective, filter, backdrop filter or mask).
+	// (CSS Transforms 1 §2, Filter Effects 1 §5, CSS Will Change 1: a transform, perspective, filter, backdrop filter, or
+	// 'will-change' naming one: WillChange::IsFixedPositioningContainingBlock).
 	bool IsFixedPositioningContainingBlock() const { return is_fixed_positioning_containing_block; }
 
 protected:
@@ -86,6 +87,16 @@ protected:
 
 	/// Formats, sizes, and positions all absolute elements whose containing block is this, and offsets relative elements.
 	void ClosePositionedElements();
+
+	/// For a scroll container, once its positioned elements are closed: the absolutely positioned boxes whose containing block
+	/// is this box or a box inside it (not inside another scroll container) extend its scrollable overflow (CSS Overflow 3
+	/// §2.2); they are laid out after the in-flow overflow is caught by SubmitBox. A scrollbar they need ('overflow: auto')
+	/// is enabled.
+	/// @returns False when a scrollbar was enabled: the box must be formatted again, as when SubmitBox fails.
+	bool CatchAbsoluteOverflow();
+	/// True when a box up the chain of our parents is the containing block of fixed boxes (for a 'position: fixed' box: it
+	/// is not fixed to the viewport).
+	bool HasFixedPositioningContainingBlockAncestor() const;
 
 	/// The containing block of an absolutely positioned element added without one, relative to our border box, when it is not
 	/// our padding box (a grid container's grid areas: GridContainer).
@@ -114,6 +125,9 @@ private:
 		const Vector2f padding_bottom_right) const;
 
 	AbsoluteElementMap absolute_elements; // List of absolutely positioned elements that we act as a containing block for.
+	// The absolutely positioned elements placed by us or by the boxes inside us whose scrollable overflow we hold
+	// (CatchAbsoluteOverflow): we are their nearest scroll container.
+	ElementList absolute_overflow_elements;
 	ElementList relative_elements;        // List of relatively positioned elements that we act as a containing block for.
 
 	Style::Overflow overflow_x = Style::Overflow::Visible;

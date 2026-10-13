@@ -135,7 +135,8 @@ const Property* ElementStyle::ResolveValueKeywords(PropertyId id, const Property
 }
 
 void ElementStyle::ComputeFontRelativeValues(Style::ComputedValues& values, FontUnitScope& font_unit_scope, FontFaceHandle previous_font_face,
-	FontFaceHandle loop_font_face, float dp_ratio, Vector2f vp_dimensions, float font_size, float document_font_size, Property& property_storage)
+	FontFaceHandle loop_font_face, float dp_ratio, Vector2f vp_dimensions, float font_size, float document_font_size, Property& property_storage,
+	bool any_font_face_candidates)
 {
 	const FontFaceHandle font_face = values.font_face_handle();
 	font_unit_scope.SetFontFace(font_face);
@@ -165,14 +166,10 @@ void ElementStyle::ComputeFontRelativeValues(Style::ComputedValues& values, Font
 
 	// 'ch' and 'ex' lengths were computed against the inherited face: compute them again against the element's own,
 	// and report them changed when the face differs from the one of the last computation.
-	if (font_face != loop_font_face || font_face != previous_font_face)
+	if ((font_face != loop_font_face || font_face != previous_font_face) && (any_font_face_candidates || animation_layers))
 	{
 		// The units a specified value that may hold 'ch' or 'ex' has.
-		const Units candidate_units = Unit::CH | Unit::EX | Unit::VAR_EXPRESSION | Unit::SHORTHAND_PLACEHOLDER | Unit::STYLE_VALUE
-#ifdef RMLUI_MATH_EXPRESSIONS
-			| Unit::CALCULATION
-#endif
-			;
+		const Units candidate_units = FontFaceCandidateUnits();
 		SmallUnorderedSet<String> variable_dependencies;
 		bool dirty_font_face_handle = false;
 		for (auto it = Iterate(); !it.AtEnd(); ++it)

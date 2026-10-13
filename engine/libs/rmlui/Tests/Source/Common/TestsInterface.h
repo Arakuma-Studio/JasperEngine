@@ -54,6 +54,9 @@ public:
 		size_t push_layer;
 		size_t composite_layers;
 		size_t pop_layer;
+		size_t composite_layers_plus; // with BlendMode::Plus (cross-faded background images)
+		size_t generate_texture_with_wrap; // GenerateTextureWithWrap with an axis repeated (also counted in generate_texture)
+		size_t save_layer_into_texture;    // SaveLayerIntoTexture: tiles of a texture larger than the window
 	};
 
 	Rml::CompiledGeometryHandle CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) override;
@@ -62,6 +65,8 @@ public:
 
 	Rml::TextureHandle LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source) override;
 	Rml::TextureHandle GenerateTexture(Rml::Span<const Rml::byte> source_data, Rml::Vector2i source_dimensions) override;
+	Rml::TextureHandle GenerateTextureWithWrap(Rml::Span<const Rml::byte> source_data, Rml::Vector2i source_dimensions, bool repeat_x,
+		bool repeat_y) override;
 	void ReleaseTexture(Rml::TextureHandle texture_handle) override;
 	bool SupportsTextureWrapHint() override;
 
@@ -82,6 +87,7 @@ public:
 	void ReleaseShader(Rml::CompiledShaderHandle shader) override;
 
 	Rml::LayerHandle PushLayer() override;
+	Rml::TextureHandle SaveLayerIntoTexture(Rml::TextureHandle texture, Rml::Vector2i texture_dimensions, Rml::Vector2i destination_offset) override;
 	void CompositeLayers(Rml::LayerHandle source, Rml::LayerHandle destination, Rml::BlendMode blend_mode,
 		Rml::Span<const Rml::CompiledFilterHandle> filters) override;
 	void PopLayer() override;

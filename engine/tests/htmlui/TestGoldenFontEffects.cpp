@@ -156,14 +156,14 @@ TEST_F(TextFeatureGoldenTest, FontSynthesis){
     EXPECT_GT(bold.count, regular.count * 13 / 10);
     EXPECT_GT(both.count, regular.count * 12 / 10);   // the slanted stems are partly cut at x = 92
 
-    // the advance grows by the dilation (40 / 24 -> 2 px at raster scale 1): the sixth stem
-    // starts 5 * 2 px further right than the regular one, the first in the same place
+    // the advances stay the regular face's (Chromium's fake bold): every stem starts where the
+    // regular one does (the dilation spreads right)
     const std::vector<int> regularStems = runStarts(screen, (regular.y0 + regular.y1) / 2, 0, 92);
     const std::vector<int> boldStems = runStarts(screen, (bold.y0 + bold.y1) / 2, 0, 92);
     ASSERT_GE(regularStems.size(), 6u);
     ASSERT_GE(boldStems.size(), 6u);
     EXPECT_NEAR(boldStems[0], regularStems[0], 1);
-    EXPECT_NEAR(boldStems[5] - regularStems[5], 10, 2);
+    EXPECT_NEAR(boldStems[5], regularStems[5], 1);
 
     // the first stem's left edge near its top against near its bottom: tan 12deg of the rows between
     auto lean = [&screen](const InkBox& box){

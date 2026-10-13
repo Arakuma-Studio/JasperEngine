@@ -135,6 +135,9 @@ namespace jasperengine {
         static std::string stripTextureFilter(const std::string& source, bool& nearest, bool& repeatX, bool& repeatY);
         bool SupportsTextureWrapHint() override { return true; }
         Rml::TextureHandle GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions) override;
+        // a generated texture sampled with repeat wrap (an SVG rasterized at a background tile's size, repeated)
+        Rml::TextureHandle GenerateTextureWithWrap(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions, bool repeatX,
+                                                   bool repeatY) override;
         // deletes the HtmlUITexture behind any handle (also those handed to RmlUi through
         // CallbackTextureInterface::SetTextureHandle), after the frame when one is in progress
         void ReleaseTexture(Rml::TextureHandle texture) override;
@@ -150,6 +153,10 @@ namespace jasperengine {
                              Rml::Span<const Rml::CompiledFilterHandle> filters) override;
         void PopLayer() override;
         Rml::TextureHandle SaveLayerAsTexture() override;
+        // the scissor region of the top layer into a texture of any size (fork: a box shadow larger than the window,
+        // rendered in tiles); a zero texture makes a cleared one of textureDimensions first
+        Rml::TextureHandle SaveLayerIntoTexture(Rml::TextureHandle texture, Rml::Vector2i textureDimensions,
+                                                Rml::Vector2i destinationOffset) override;
         Rml::CompiledFilterHandle SaveLayerAsMaskImage() override;
         Rml::CompiledFilterHandle CompileFilter(const Rml::String& name, const Rml::Dictionary& parameters) override;
         void ReleaseFilter(Rml::CompiledFilterHandle filter) override;

@@ -1,0 +1,5 @@
+{
+ "comment": "Text with several hard shadows, a blurred glow and a blurred drop shadow inside elements with group opacity: text, shadows, background and an overlapping box composite as one layer at the group's opacity. Text: the boxes are the oracle.",
+ "viewport": [360, 110],
+ "boxes": true, "noText": true
+}

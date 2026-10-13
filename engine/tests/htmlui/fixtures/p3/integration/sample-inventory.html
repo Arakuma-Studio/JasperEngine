@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Inventory</title>
+<style>
+  @font-face { font-family: "Game Sans"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf"); }
+
+  :root {
+    --slot: 56px;
+    --gap: 8px;
+    --panel: #2b2d42;
+    --slot-bg: #3c3f58;
+    --common: #8d99ae;
+    --rare: #4cc9f0;
+    --epic: #b5179e;
+    --legendary: #ffb703;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    background: radial-gradient(circle at top, #4a4e69, #22223b);
+    font-family: "Game Sans", sans-serif;
+    color: #edf2f4;
+  }
+
+  .inventory {
+    background: var(--panel);
+    padding: 16px;
+    border-radius: 14px;
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.05), 0 12px 30px rgba(0, 0, 0, 0.5);
+  }
+
+  .inventory h2 {
+    margin: 0 0 12px;
+    font-size: 16px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #8d99ae;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(6, var(--slot));
+    grid-auto-rows: var(--slot);
+    gap: var(--gap);
+  }
+
+  .slot {
+    position: relative;
+    background: var(--slot-bg);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+
+  .slot:hover { border-color: #edf2f4; transform: scale(1.06); }
+
+  .slot.item::before {
+    content: "";
+    position: absolute;
+    inset: 10px;
+    border-radius: 50%;
+    background: var(--rarity, var(--common));
+    box-shadow: 0 0 10px var(--rarity, var(--common));
+  }
+
+  .slot.item::after {
+    content: attr(data-count);
+    position: absolute;
+    right: 4px;
+    bottom: 2px;
+    font-size: 11px;
+    color: #ffffff;
+  }
+
+  .rare { --rarity: var(--rare); }
+  .epic { --rarity: var(--epic); }
+  .legendary { --rarity: var(--legendary); border-color: var(--legendary); }
+
+  .wide { grid-column: span 2; }
+  .big { grid-column: span 2; grid-row: span 2; }
+</style>
+</head>
+<body>
+  <div class="inventory">
+    <h2>Inventory</h2>
+    <div class="grid">
+      <div class="slot item big legendary" id="sword" data-count="1"></div>
+      <div class="slot item rare" id="potion" data-count="5"></div>
+      <div class="slot item" data-count="12"></div>
+      <div class="slot item epic wide" id="bow" data-count="1"></div>
+      <div class="slot"></div>
+      <div class="slot item" data-count="3"></div>
+      <div class="slot"></div>
+      <div class="slot item rare" data-count="2"></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot item epic" data-count="7"></div>
+      <div class="slot"></div>
+      <div class="slot"></div>
+      <div class="slot" id="empty"></div>
+    </div>
+  </div>
+</body>
+</html>

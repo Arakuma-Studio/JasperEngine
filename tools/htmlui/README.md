@@ -43,8 +43,11 @@ list), in `rmlui:` commits. `Tests/Source/Common/TestsShell.h` has `GetElementCh
 A fixture is `engine/tests/htmlui/fixtures/p3/<area>/<name>.html` with a `<name>.json` sidecar; the
 areas and their owners are in `fixtures/p3/manifest.json` (`base values cascade paint text layout
 animation grid integration`, and `testkit`, the harness's self-tests). Fonts come from
-`engine/tests/htmlui/fonts/` with `@font-face` (`url("../../../fonts/Roboto-Regular-subset.ttf")`,
-the engine's built-in face, or `Ahem.ttf`); avoid generic families. JavaScript does not run.
+`engine/tests/htmlui/fonts/` with `@font-face` (`url("../../../fonts/Roboto-Regular-subset-post.ttf")`,
+the engine's built-in face with the `post` table Chromium requires, or `Ahem.ttf`); avoid generic
+families. The reference fails when a face does not load (also one a later step uses), and
+`BrowserFixtures.FontFacesLoadInChromium` checks every local font a fixture names. JavaScript does
+not run.
 
 ```json
 {
@@ -61,7 +64,9 @@ the engine's built-in face, or `Ahem.ttf`); avoid generic families. JavaScript d
   {"advance": 0.25},                      // seconds of the UI clock: animations and transitions are seeked
   {"capture": "hover"}                    // golden/browser/<area>/<name>.hover.png; without a capture step, one at the end (<name>.png)
  ],
- "boxes": true,                           // text-heavy: the boxes are the oracle, the image is reported only
+ "boxes": true,                           // text-heavy: the boxes are the oracle, the full image is reported only
+ "noText": true,                          // required with "boxes": every capture is also taken without text and gated
+                                          // strictly against <name>[.<capture>].notext.png (see below)
  "tolerance": {"channel": 24, "badPercent": 0.1, "cluster": 16, "box": 1},
  "samples": 1                             // the engine renders without MSAA (default 4x); needs a comment. For content scrolled
                                           // past a clip edge: Mesa's llvmpipe/lavapipe leak half the samples there (MsaaScissor.*)
@@ -73,6 +78,16 @@ compares the image with the strict metric (`BrowserCompare::compareStrict`: a pi
 is off by more than 24 and no pixel of its 3x3 neighbourhood in the other image is within 24; at most
 0.1 % bad pixels and no 4-connected bad cluster above 16 pixels) and the border box of every element
 with an id within 1 px.
+
+`"noText": true` (required with `"boxes": true`, `BrowserFixtures.ManifestAndReferencesAreConsistent`)
+keeps a text-heavy fixture as strict as the phase-2 golden pages' no-text gate: the reference runs the
+steps a second time in a fresh browser with page mode's `NO_TEXT_CSS` (transparent text fill, no text
+shadows, decorations or caret) into `<name>[.<capture>].notext.png`; the engine takes every capture a
+second time with the same frame drawn without glyphs, text decorations or symbol markers
+(`RmlFontEngine::setRenderTextForTesting(false)`, as `BrowserPage::render(image, false)`), and
+`BrowserParityTest` gates that image at the sidecar's tolerances whatever `"boxes"` says. Only the
+glyphs stay report-only. Both sides hide the text caret in every capture (the reference's screenshot
+option; the engine sets `caret-color: transparent` on the focused field while it reads the images).
 
 ```
 cd tools/htmlui && npm ci                                          # once (playwright-core 1.63.0)

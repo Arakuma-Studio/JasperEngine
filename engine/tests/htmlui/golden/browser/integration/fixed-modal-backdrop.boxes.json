@@ -1,0 +1,82 @@
+{
+ "fixture": "integration/fixed-modal-backdrop.html",
+ "viewport": [
+  320,
+  260
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "top": [
+   {
+    "id": "overlay",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 305,
+    "h": 260
+   },
+   {
+    "id": "modal",
+    "tag": "div",
+    "x": 42.5,
+    "y": 70,
+    "w": 220,
+    "h": 120,
+    "transformed": true
+   },
+   {
+    "id": "ok",
+    "tag": "div",
+    "x": 162.5,
+    "y": 140,
+    "w": 80,
+    "h": 30,
+    "transformed": true
+   },
+   {
+    "id": "corner",
+    "tag": "div",
+    "x": 265,
+    "y": 10,
+    "w": 30,
+    "h": 30
+   }
+  ],
+  "scrolled": [
+   {
+    "id": "overlay",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 305,
+    "h": 260
+   },
+   {
+    "id": "modal",
+    "tag": "div",
+    "x": 42.5,
+    "y": 70,
+    "w": 220,
+    "h": 120,
+    "transformed": true
+   },
+   {
+    "id": "ok",
+    "tag": "div",
+    "x": 162.5,
+    "y": 140,
+    "w": 80,
+    "h": 30,
+    "transformed": true
+   },
+   {
+    "id": "corner",
+    "tag": "div",
+    "x": 265,
+    "y": 10,
+    "w": 30,
+    "h": 30
+   }
+  ]
+ }
+}

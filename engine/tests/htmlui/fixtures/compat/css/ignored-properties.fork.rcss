@@ -4,4 +4,5 @@ overflow-clip-margin: 0px;
 scrollbar-gutter: auto;
 transition-behavior: normal;
 user-select: auto;
+will-change: auto;
 }

@@ -18,14 +18,17 @@ struct ShorthandDefinition;
 enum class LayerRepeat : uint8_t { Repeat, Space, Round, NoRepeat };
 enum class LayerAttachment : uint8_t { Scroll, Fixed, Local };
 
-// One image of an image list: none, a url(), or a decorator function (the gradients and every registered decorator
-// function: compat's html-layer(), html-shape(), phase 5's jfx-*()).
+// One image of an image list: none, a url(), a decorator function (the gradients and every registered decorator
+// function: compat's html-layer(), html-shape(), phase 5's jfx-*()), or the cross-fade of url() images a transition or an
+// animation of background-image draws (CSS Images 4 cross-fade(): ImageLayerList::Interpolate).
 struct ImageLayer {
-	enum class Kind : uint8_t { None, Url, Decorator };
+	enum class Kind : uint8_t { None, Url, Decorator, CrossFade };
 	Kind kind = Kind::None;
 	String url;               // Url: as written, unquoted
 	int decorator_index = -1; // Decorator: its declaration in ImageLayerList::decorators (with its RCSS paint area, Auto: none)
-	String text;              // the item as written
+	String text;              // the item as written (CrossFade: serialized as Chromium's computed value)
+	// CrossFade: the url()s mixed and their weights (each above 0, summing to 1), the images added with them.
+	Vector<std::pair<String, float>> fade;
 };
 
 class ImageLayerList final : public StyleValue {
@@ -37,13 +40,18 @@ public:
 	// the list's text, the instancing cache key.
 	SharedPtr<DecoratorDeclarationList> decorators;
 
-	// Interpolated: serialized from the decorator declarations.
-	bool interpolated = false;
+	// mask-image's list: discrete (Chromium 153 does not interpolate it).
+	bool mask = false;
+	// Interpolated (url() images cross-faded): the element draws no more layers than its own value has (Chromium paints the
+	// layers of the element's style, the interpolated list being the lowest common multiple of the two lengths).
+	bool cross_faded = false;
 
 	bool HasImages() const;
 	String ToString() const override;
 	bool Equals(const StyleValue& other) const override;
-	// Lists of decorator functions (or none) interpolate as the 'decorator' property does; others are discrete.
+	// As Chromium 153 (CSSImageListInterpolationType): two lists of url() images (or their cross-fades) interpolate image by
+	// image as cross-fade(), the shorter list repeated to the lowest common multiple of the lengths; a list with a gradient,
+	// a decorator function or 'none', and mask-image, are discrete (no transition starts without 'allow-discrete').
 	SharedPtr<const StyleValue> Interpolate(const StyleValue& to, float alpha, Element& element) const override;
 	Units GetUnitDependencies() const override;
 };
@@ -110,9 +118,6 @@ bool ParseMaskShorthand(PropertyDictionary& dictionary, const ShorthandDefinitio
 	const PropertySpecification& specification);
 bool ParseLayerPositionShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
 	const PropertySpecification& specification);
-
-// The interpolation of decorator lists (ElementAnimation.cpp).
-bool InterpolateDecoratorLists(const DecoratorsPtr& from, const DecoratorsPtr& to, float alpha, Element& element, DecoratorsPtr& result);
 
 // Splits at the commas (or white space) outside of parentheses and quotes.
 StringList SplitLayerList(const String& value, char separator);

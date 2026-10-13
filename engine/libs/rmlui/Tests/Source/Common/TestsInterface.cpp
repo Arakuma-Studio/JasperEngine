@@ -157,6 +157,14 @@ Rml::TextureHandle TestsRenderInterface::GenerateTexture(Rml::Span<const Rml::by
 	return 1;
 }
 
+Rml::TextureHandle TestsRenderInterface::GenerateTextureWithWrap(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions, bool repeat_x,
+	bool repeat_y)
+{
+	if (repeat_x || repeat_y)
+		counters.generate_texture_with_wrap += 1;
+	return GenerateTexture(source, source_dimensions);
+}
+
 void TestsRenderInterface::ReleaseTexture(Rml::TextureHandle /*texture_handle*/)
 {
 	counters.release_texture += 1;
@@ -178,16 +186,25 @@ Rml::CompiledFilterHandle TestsRenderInterface::CompileFilter(const Rml::String&
 	return 1;
 }
 
+Rml::TextureHandle TestsRenderInterface::SaveLayerIntoTexture(Rml::TextureHandle texture, Rml::Vector2i /*texture_dimensions*/,
+	Rml::Vector2i /*destination_offset*/)
+{
+	counters.save_layer_into_texture += 1;
+	return texture ? texture : Rml::TextureHandle(1);
+}
+
 Rml::LayerHandle TestsRenderInterface::PushLayer()
 {
 	counters.push_layer += 1;
 	return Rml::LayerHandle(++layer_depth);
 }
 
-void TestsRenderInterface::CompositeLayers(Rml::LayerHandle /*source*/, Rml::LayerHandle /*destination*/, Rml::BlendMode /*blend_mode*/,
+void TestsRenderInterface::CompositeLayers(Rml::LayerHandle /*source*/, Rml::LayerHandle /*destination*/, Rml::BlendMode blend_mode,
 	Rml::Span<const Rml::CompiledFilterHandle> /*filters*/)
 {
 	counters.composite_layers += 1;
+	if (blend_mode == Rml::BlendMode::Plus)
+		counters.composite_layers_plus += 1;
 }
 
 void TestsRenderInterface::PopLayer()

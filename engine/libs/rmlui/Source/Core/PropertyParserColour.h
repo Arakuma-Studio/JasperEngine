@@ -37,14 +37,14 @@ public:
 	/// colour: the element's 'color', resolved when the values are computed (ElementStyle) or the shadow and gradient are
 	/// generated. No keyword list uses this value.
 	static constexpr int CurrentColor = 0x43430000;
-	static bool IsCurrentColor(const Property& property);
+	static bool IsCurrentColor(const Property& property) { return property.unit == Unit::KEYWORD && IsCurrentColorKeyword(property); }
 
 	/// A color-mix() with a 'currentcolor' operand (CSS Color 5) has no value without an element either: it parses to a
 	/// CurrentColorMixValue (Unit::STYLE_VALUE) and is resolved where 'currentcolor' is; a box shadow, a color stop or a
 	/// text shadow keeps its text with the currentcolor flag.
-	static bool IsCurrentColorMix(const Property& property);
+	static bool IsCurrentColorMix(const Property& property) { return property.unit == Unit::STYLE_VALUE && IsCurrentColorMixValue(property); }
 	/// 'currentcolor' or a color-mix() of it.
-	static bool DependsOnCurrentColor(const Property& property);
+	static bool DependsOnCurrentColor(const Property& property) { return IsCurrentColor(property) || IsCurrentColorMix(property); }
 	/// The colour of a colour property for an element whose 'color' is 'current_color'.
 	static Colourb Resolve(const Property& property, Colourb current_color);
 	/// The colour of a 'currentcolor' or of the text of a color-mix() of it ('mix' empty: 'currentcolor' itself).
@@ -55,6 +55,10 @@ public:
 
 private:
 	static ControlledLifetimeResource<struct PropertyParserColourData> parser_data;
+
+	// The tests behind the unit (inline above: most properties have another unit).
+	static bool IsCurrentColorKeyword(const Property& property);
+	static bool IsCurrentColorMixValue(const Property& property);
 
 	// Parses any colour into its color space; 'depth' limits nested color-mix().
 	static bool ParseColor(ColorSpaces::Color& color, const String& value, int depth);

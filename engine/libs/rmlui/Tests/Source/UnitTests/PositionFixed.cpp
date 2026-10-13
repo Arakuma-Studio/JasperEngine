@@ -4,6 +4,8 @@
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementUtilities.h>
+#include <RmlUi/Core/StringUtilities.h>
+#include <RmlUi/Core/ElementScroll.h>
 #include <doctest.h>
 
 using namespace Rml;
@@ -25,6 +27,8 @@ const String position_fixed_rml = R"(
 		#percent { position: fixed; left: 50%; top: 25%; width: 10%; height: 10%; }
 		#transformed { transform: translateX(0px); width: 200px; height: 100px; padding: 5px; margin-left: 30px; }
 		#inside { position: fixed; left: 10px; top: 20px; width: 50%; height: 10px; }
+		scrollbarvertical { width: 12px; }
+		scrollbarhorizontal { height: 12px; }
 	</style>
 </head>
 <body>
@@ -72,6 +76,34 @@ TEST_CASE("PositionFixed")
 		CHECK(fixed->GetOffsetParent() == document);
 	}
 
+	SUBCASE("The scrollbars of a document covering the viewport are the viewport's")
+	{
+		// As the root element's scrollbars in browsers: 'right: 20px' is 20px left of the vertical scrollbar.
+		document->SetProperty("width", CreateString("%dpx", int(viewport.x)));
+		document->SetProperty("height", CreateString("%dpx", int(viewport.y)));
+		context->Update();
+		REQUIRE(document->GetElementScroll()->GetScrollbarSize(ElementScroll::VERTICAL) == 12.f);
+		CHECK(offset(fixed).x == doctest::Approx(viewport.x - 12.f - 20.f - 50.f));
+		CHECK(size(percent).x == doctest::Approx(0.1f * (viewport.x - 12.f)));
+	}
+
+	SUBCASE("Boxes inside a fixed box are not the document's scrollable overflow")
+	{
+		const float before = document->GetScrollHeight();
+		Element* holder = document->AppendChild(document->CreateElement("div"));
+		holder->SetProperty("position", "fixed");
+		holder->SetProperty("top", "0px");
+		holder->SetProperty("width", "10px");
+		holder->SetProperty("height", "10px");
+		Element* child = holder->AppendChild(document->CreateElement("div"));
+		child->SetProperty("position", "absolute");
+		child->SetProperty("top", "5000px");
+		child->SetProperty("width", "10px");
+		child->SetProperty("height", "10px");
+		context->Update();
+		CHECK(document->GetScrollHeight() == doctest::Approx(before));
+	}
+
 	SUBCASE("No scroll moves it")
 	{
 		const Vector2f before = offset(fixed);
@@ -91,7 +123,8 @@ TEST_CASE("PositionFixed")
 		if (ElementUtilities::GetClippingRegion(fixed, clip_region))
 		{
 			CHECK(float(clip_region.Left()) <= offset(fixed).x);
-			CHECK(float(clip_region.Right()) >= Math::Min(offset(fixed).x + 50.f, 400.f));
+			// (the document clips it to its scrollport: its box without its scrollbar)
+			CHECK(float(clip_region.Right()) >= Math::Min(offset(fixed).x + 50.f, 400.f - 12.f));
 			CHECK(clip_region.Width() > 100);
 		}
 		CHECK(scroller->GetScrollWidth() == doctest::Approx(scroller->GetClientWidth()));
@@ -121,6 +154,50 @@ TEST_CASE("PositionFixed")
 		document->SetScrollTop(30.f);
 		context->Update();
 		CHECK(offset(inside) == before - Vector2f(0.f, 30.f));
+	}
+
+	SUBCASE("will-change, filters and masks")
+	{
+		// 'will-change' naming a property that makes a containing block (Chromium's list: WillChange::ParseHints) does; a mask
+		// does not (CSS Masking: a stacking context only); a change of the property moves the fixed box at once.
+		const std::pair<const char*, const char*> containing[] = {{"will-change", "transform"}, {"will-change", "top, filter"},
+			{"will-change", "Perspective"}, {"will-change", "backdrop-filter"}, {"will-change", "contain"}, {"filter", "blur(0px)"},
+			{"backdrop-filter", "blur(1px)"}, {"perspective", "100px"}, {"rotate", "0deg"}};
+		const std::pair<const char*, const char*> not_containing[] = {{"will-change", "opacity"}, {"will-change", "position"},
+			{"will-change", "transform-origin"}, {"will-change", "mask-image"}, {"mask-image", "linear-gradient(red, red)"}};
+		Element* scroller_child = document->GetElementById("fixed");
+		auto check = [&](const char* name, const char* value, bool contains) {
+			INFO(name << ": " << value);
+			scroller->SetProperty(name, value);
+			context->Update();
+			CHECK((scroller_child->GetOffsetParent() == scroller) == contains);
+			if (contains)
+				CHECK(offset(scroller_child).y == doctest::Approx(offset(scroller).y + 10.f));
+			scroller->RemoveProperty(name);
+			context->Update();
+			CHECK(scroller_child->GetOffsetParent() == document);
+			CHECK(offset(scroller_child).y == doctest::Approx(10.f));
+		};
+		for (const auto& declaration : containing)
+			check(declaration.first, declaration.second, true);
+		for (const auto& declaration : not_containing)
+			check(declaration.first, declaration.second, false);
+
+		// 'will-change: position' makes a containing block for absolutely positioned boxes only.
+		ElementPtr box = document->CreateElement("div");
+		box->SetProperty("height", "10px");
+		box->SetProperty("margin-top", "50px");
+		Element* static_box = document->AppendChild(std::move(box));
+		Element* absolute = static_box->AppendChild(document->CreateElement("div"));
+		absolute->SetProperty("position", "absolute");
+		absolute->SetProperty("top", "7px");
+		absolute->SetProperty("height", "5px");
+		context->Update();
+		CHECK(absolute->GetOffsetParent() != static_box);
+		static_box->SetProperty("will-change", "position");
+		context->Update();
+		CHECK(absolute->GetOffsetParent() == static_box);
+		CHECK(offset(absolute).y == doctest::Approx(offset(static_box).y + 7.f));
 	}
 
 	document->Close();

@@ -150,6 +150,13 @@ namespace jasperengine::htmlui::compat {
         inline constexpr DiagCode SvgInternalCss{DiagArea::SVG, 3};
     }
 
+    // Hints shared by several reporters (phase-3 spec 2.2's replacement hints).
+    namespace hints {
+        // direction: rtl and <html dir="rtl">: the text runs right to left, layouts are not mirrored
+        inline constexpr const char* kMirroredLayout =
+            "Mirrored layout is not supported; mirror the layout explicitly (e.g. flex-direction: row-reverse).";
+    }
+
 }
 
 #endif //COMPAT_DIAGNOSTICCODES_H

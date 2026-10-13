@@ -882,7 +882,9 @@ void ElementText::GenerateDecoration(Mesh& under, Mesh& over, const FontFaceHand
 		GenerateDecorationLine(over, line_through_top);
 }
 
-static Character ReadCharacter(const char* p, const char* string_end, bool decode_escape_characters, const char*& next, bool& non_breaking)
+// The escape codes and UTF-8 sequences of ReadCharacter.
+static Character ReadEscapedOrEncodedCharacter(const char* p, const char* string_end, bool decode_escape_characters, const char*& next,
+	bool& non_breaking)
 {
 	non_breaking = false;
 	if (decode_escape_characters && *p == '&')
@@ -917,6 +919,32 @@ static Character ReadCharacter(const char* p, const char* string_end, bool decod
 	}
 	next = p;
 	return TextUnicode::DecodeUTF8(next, string_end);
+}
+
+static bool IsContinuationByte(char c)
+{
+	return (static_cast<unsigned char>(c) & 0xC0) == 0x80;
+}
+
+// The character at 'p' (an escape code decoded if asked) and the position after it; 'non_breaking' for '&nbsp;'. ASCII
+// is read inline (as DecodeUTF8 reads it: a byte below 0x80 not followed by stray continuation bytes).
+static inline Character ReadCharacter(const char* p, const char* string_end, bool decode_escape_characters, const char*& next, bool& non_breaking)
+{
+	const unsigned char byte = static_cast<unsigned char>(*p);
+	if (byte < 0x80 && !(decode_escape_characters && byte == '&') && (p + 1 == string_end || !IsContinuationByte(p[1])))
+	{
+		non_breaking = false;
+		next = p + 1;
+		return static_cast<Character>(byte);
+	}
+	return ReadEscapedOrEncodedCharacter(p, string_end, decode_escape_characters, next, non_breaking);
+}
+
+// A character of a run that BuildToken appends at once: printable ASCII other than a space, a hyphen (a line may break
+// after it) and an escape code's '&'.
+static bool IsPlainAsciiByte(char c, bool decode_escape_characters)
+{
+	return c > ' ' && c < 0x7F && c != '-' && !(decode_escape_characters && c == '&');
 }
 
 static bool IsWhiteSpaceCharacter(Character c)
@@ -1060,6 +1088,27 @@ static bool BuildToken(String& token, const char*& token_begin, const char* stri
 		}
 		else
 		{
+			// A run of plain ASCII characters, without a text transform: no line-break opportunity between two of them (only
+			// after a hyphen), so all but the last are appended at once; the last one is read again and paired with the
+			// character after the run as usual. (Each one is not followed by stray continuation bytes: ReadCharacter reads
+			// it alone.)
+			if (rules.text_transform == Style::TextTransform::None && !non_breaking && next == token_begin + 1 &&
+				IsPlainAsciiByte(*token_begin, rules.decode_escape_characters))
+			{
+				const char* run_end = next;
+				while (run_end != string_end && IsPlainAsciiByte(*run_end, rules.decode_escape_characters) &&
+					(run_end + 1 == string_end || !IsContinuationByte(run_end[1])))
+					++run_end;
+				if (run_end - token_begin >= 2)
+				{
+					token.append(token_begin, run_end - 1);
+					token_begin = run_end - 1;
+					peeked_at = nullptr;
+					// ('previous' and 'before_previous' are read by the text transforms only.)
+					continue;
+				}
+			}
+
 			// The character after this one, for line breaking and the final sigma.
 			Character following = Character::Null;
 			bool following_non_breaking = false;
@@ -1076,8 +1125,11 @@ static bool BuildToken(String& token, const char*& token_begin, const char* stri
 			AppendTransformed(token, character, before_previous, previous, following, rules.text_transform);
 			token_begin = next;
 
-			// A line-break opportunity between this character and the next ends the token.
+			// A line-break opportunity between this character and the next ends the token. Between two ASCII characters
+			// the only one is after a hyphen (TextUnicode::IsLineBreakOpportunity: the ASCII line-break classes break after HY
+			// alone), so the pair rules are asked only then and for other characters.
 			if (following != Character::Null && !IsWhiteSpaceCharacter(following) && !non_breaking && !following_non_breaking &&
+				(character == Character('-') || (char32_t)character >= 0x80 || (char32_t)following >= 0x80) &&
 				TextUnicode::IsLineBreakOpportunity(character, following, rules.word_break))
 				return false;
 		}

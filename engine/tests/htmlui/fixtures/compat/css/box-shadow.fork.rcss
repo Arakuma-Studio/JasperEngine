@@ -21,7 +21,7 @@ box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 
 #htmlui-root .no-color {
 color: #ff8800ff;
 --html-current-color: #ff8800ff;
---html-box-shadow: 0px 0px 10px #ff8800ff;
+--html-box-shadow: 0px 0px 10px currentcolor;
 box-shadow: var(--html-outline-shadow, 0 0 0 0 #0000), var(--html-box-shadow, 0 0 0 0 #0000);
 }
 #htmlui-root .none {

@@ -1,0 +1,32 @@
+{
+ "comment": "An agent-written HUD with fixed corners on a transparent page: translucent corner panels with backdrop-filter, gradient bars clipped by a rounded overflow: hidden track (border-radius: inherit), a circular minimap with an ::after marker, a flex row of ability slots (one at reduced opacity), a centered crosshair; the HP bar's width transitions after a style change (captured half way and at the end). Text-heavy (boxes are the oracle): the glyph rasterization differs from Chromium's (FreeType hinting, synthetic bold outline vs bitmap dilation); the page without its text is gated at the strict metric (noText).",
+ "viewport": [
+  640,
+  360
+ ],
+ "boxes": true, "noText": true,
+ "steps": [
+  {
+   "capture": "rest"
+  },
+  {
+   "setStyle": [
+    "#hp",
+    "width",
+    "30%"
+   ]
+  },
+  {
+   "advance": 0.15
+  },
+  {
+   "capture": "half"
+  },
+  {
+   "advance": 0.3
+  },
+  {
+   "capture": "end"
+  }
+ ]
+}

@@ -7,6 +7,7 @@
 // again for each initialisation.
 
 #include "htmlui/compat/runtime/RuntimeRegistry.h"
+#include "htmlui/compat/DocumentLoader.h"
 
 #include "htmlui/compat/ForkFeatures.h"
 #include "htmlui/compat/runtime/AnimationFill.h"
@@ -29,6 +30,7 @@
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/runtime/DecoratorCommon.h"
 
+#include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementInstancer.h>
 #include <RmlUi/Core/Factory.h>
@@ -53,11 +55,13 @@ namespace {
             Rml::ElementDocument* document = element ? element->GetOwnerDocument() : nullptr;
             if (!document || !DocumentLoader::isCompatDocument(document))
                 return false;
-            // a raster image repeated along an axis: its texture sampled with repeat wrap there
-            // (RmlRenderer::LoadTexture reads rmlui-wrap); SVG images are rasterized per tile
-            const bool wrap = (repeatX || repeatY) && !decorators::isSvgPath(url);
+            // an image repeated along an axis: its texture sampled with repeat wrap there, filtered
+            // across the tiles' edges as Chromium's pattern is (raster images: RmlRenderer::LoadTexture
+            // reads rmlui-wrap; SVG images: rasterized at the tile's size, GenerateTextureWithWrap)
+            const bool svg = decorators::isSvgPath(url);
+            const bool wrap = (repeatX || repeatY);
             std::string path = url;
-            if (wrap)
+            if (wrap && !svg)
                 path += std::string(url.find('?') == std::string::npos ? "?" : "&") + "rmlui-wrap=" +
                         (repeatX && repeatY ? "repeat" : (repeatX ? "repeat-x" : "repeat-y"));
             auto image = std::make_shared<decorators::Image>();
@@ -66,7 +70,7 @@ namespace {
             out.repeats = wrap;
             out.intrinsic_size = image->intrinsicSize();
             if (draw_size.x > 0.0f && draw_size.y > 0.0f){
-                out.texture = image->texture(element, draw_size);
+                out.texture = image->texture(element, draw_size, repeatX, repeatY);
                 out.colour = image->colour(element);
                 out.owner = image;
             }
@@ -150,6 +154,16 @@ void jasperengine::htmlui::compat::releaseRuntime(){
 }
 
 void jasperengine::htmlui::compat::updateRuntime(Rml::Context* context){
+    // a script changed the class or attribute names of <html>: the selectors that may match the
+    // root follow (DocumentLoader::restyleForRoot)
+    if (context){
+        for (int i = 0; i < context->GetNumDocuments(); i++){
+            Rml::ElementDocument* document = context->GetDocument(i);
+            if (std::shared_ptr<const CompatDocument> compiled = DocumentLoader::compiledOf(document))
+                DocumentLoader::restyleForRoot(document, compiled);
+        }
+    }
+
     // phase 3's FocusPseudoClasses and AnimationLonghands turn these off (§3.6): with the fork's
     // leaf-only :focus, :focus-within and :focus-visible the selectors pass through and nothing
     // tracks the focus

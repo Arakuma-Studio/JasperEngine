@@ -66,6 +66,31 @@ def read(path):
 
 # --- exclusions (phase-3 spec 5.3, 2.2) ---------------------------------------------------------
 
+# Taffy's two fixtures that build a track list with a script (the list is too long to write out in its
+# generator): the script is evaluated here and its value written into the root's style attribute, so the
+# engine (which runs no fixture script) and the reference read the same static fixture.
+STATIC_SCRIPT_RE = re.compile(
+    r'[ \t]*<script>\s*const tracks = "([^"]*)"\.repeat\((\d+)\)\.trim\(\);\s*'
+    r'document\.getElementById\("test-root"\)\.style\.gridTemplateColumns = `([^`]*)`;\s*</script>[ \t]*\r?\n')
+
+
+def expand_static_script(text):
+    """The fixture with a known track-list script evaluated into the root's style, or the text unchanged."""
+    match = STATIC_SCRIPT_RE.search(text)
+    if not match:
+        return text
+    tracks = (match.group(1) * int(match.group(2))).strip()
+    value = match.group(3).replace('${tracks}', tracks)
+    root = re.search(r'(<div id="test-root"[^>]*style=")([^"]*)(")', text)
+    if not root:
+        fail('expected a test-root with a style attribute next to the track-list script')
+    style = root.group(2).rstrip()
+    style = style + ('' if style.endswith(';') else ';') + f' grid-template-columns: {value};'
+    text = text[:root.start(2)] + style + text[root.end(2):]
+    match = STATIC_SCRIPT_RE.search(text)
+    return text[:match.start()] + text[match.end():]
+
+
 def exclusion(name, source):
     """(reason class, explanation) when the fixture is not compared, else None."""
     if name.startswith('x'):
@@ -124,8 +149,9 @@ def do_import(args):
             text, links = LINK_RE.subn(LOCAL_LINK, text)
             if scripts != 1 or links != 1:
                 fail(f'{suite}/{name}.html: expected one test_helper.js <script> and one test_base_style.css <link>')
+            text = expand_static_script(text)
             write(os.path.join(target_dir, name + '.html'), text)
-            reason = exclusion(name, source)
+            reason = exclusion(name, text)
             if reason:
                 excluded.append((f'{suite}/{name}', reason))
         counts[suite] = len(names)
@@ -138,7 +164,8 @@ def do_import(args):
 
     lines = ['# Taffy fixtures that are not compared (BoxParityTest skips them and says why), written by',
              '# tools/htmlui/import-taffy-fixtures.py import. One per line: <suite>/<name> reason=<class> # <why>.',
-             '# Classes: taffy-invalid, rtl-excluded, writing-mode-excluded (phase-3 spec 2.2), needs-script.', '']
+             '# Classes: taffy-invalid (spec 5.3), rtl-excluded, writing-mode-excluded (phase-3 spec 2.2), needs-script (none left:',
+             '# the two track-list scripts are evaluated into the fixtures).', '']
     for fixture, (reason, why) in excluded:
         lines.append(f'{fixture} reason={reason} # {why}')
     write(os.path.join(OUT, 'excluded.txt'), '\n'.join(lines) + '\n')

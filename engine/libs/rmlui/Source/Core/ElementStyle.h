@@ -167,7 +167,8 @@ public:
 	void DirtyPropertiesWithUnitsRecursive(Units units);
 
 	/// Returns true if any properties are dirty such that computed values need to be recomputed
-	bool AnyPropertiesDirty() const;
+	/// (inline: Element::Update asks for every element on every update)
+	bool AnyPropertiesDirty() const { return !dirty_properties.Empty() || !dirty_variables.empty() || !dirty_var_shorthands.empty(); }
 
 	/// Resolves variables and var expression shorthands for a single property taken from a keyframe block.
 	/// @param[in] id The property being resolved.
@@ -238,10 +239,21 @@ private:
 	void ComputeColor(Style::ComputedValues& values, const Style::ComputedValues* parent_values);
 	const Property* ResolveValueKeywords(PropertyId id, const Property* property, Style::ComputedValues& values,
 		const Style::ComputedValues* parent_values, bool& color_computed, Property& current_color_storage);
-	// After the font face is known: 'ch' and 'ex' lengths are computed again against it when it changed.
+	// After the font face is known: 'ch' and 'ex' lengths are computed again against it when it changed. Their pass over
+	// the properties is made only when one of the properties ComputeValues computed may hold them ('any_font_face_candidates',
+	// FontFaceCandidateUnits), or with animation layers (their values may have changed since).
 	void ComputeFontRelativeValues(Style::ComputedValues& values, FontUnitScope& font_unit_scope, FontFaceHandle previous_font_face,
 		FontFaceHandle loop_font_face, float dp_ratio, Vector2f vp_dimensions, float font_size, float document_font_size,
-		Property& property_storage);
+		Property& property_storage, bool any_font_face_candidates);
+	// The units of a specified value that may hold 'ch' or 'ex'.
+	static Units FontFaceCandidateUnits()
+	{
+		return Unit::CH | Unit::EX | Unit::VAR_EXPRESSION | Unit::SHORTHAND_PLACEHOLDER | Unit::STYLE_VALUE
+#ifdef RMLUI_MATH_EXPRESSIONS
+			| Unit::CALCULATION
+#endif
+			;
+	}
 
 #ifdef RMLUI_MATH_EXPRESSIONS
 	Units GetMutableUnitDependencies(const Property& property) const;

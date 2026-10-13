@@ -79,6 +79,10 @@ namespace Cascade {
 	bool ParseAllShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
 		const PropertySpecification& specification);
 
+	/// False for the properties the 'all' shorthand does not set: direction and RmlUi's interaction properties (tab-index,
+	/// focus, nav-*, drag) and -rmlui-language.
+	bool IsReachedByAll(PropertyId id);
+
 	/// Removes the important declarations of a dictionary: CSS ignores them in keyframes.
 	void RemoveImportantDeclarations(PropertyDictionary& dictionary);
 

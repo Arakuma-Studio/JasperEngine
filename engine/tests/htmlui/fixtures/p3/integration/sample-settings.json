@@ -1,0 +1,19 @@
+{
+ "comment": "An agent-written settings screen with form controls: a centered card, a two-column grid of rows (label and control), a text input focused (author outline with offset), a select, a range with accent-color, checkboxes in inline-flex labels, and buttons. Text-heavy (boxes are the oracle): the glyph rasterization differs from Chromium's (FreeType hinting, synthetic bold outline vs bitmap dilation); the page without its text is gated at the strict metric (noText).",
+ "viewport": [
+  640,
+  360
+ ],
+ "boxes": true, "noText": true,
+ "steps": [
+  {
+   "capture": "rest"
+  },
+  {
+   "focus": "#name"
+  },
+  {
+   "capture": "focused"
+  }
+ ]
+}

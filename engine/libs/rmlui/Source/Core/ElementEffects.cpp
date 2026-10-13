@@ -1,4 +1,5 @@
 #include "ElementEffects.h"
+#include "../../Include/RmlUi/Core/Context.h"
 #include "../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../Include/RmlUi/Core/Decorator.h"
 #include "../../Include/RmlUi/Core/Element.h"
@@ -290,14 +291,16 @@ void ElementEffects::RenderEffects(RenderStage render_stage)
 		render_manager->SetScissorRegion(scissor_region);
 	};
 	auto ApplyScissorRegionForBackdrop = [this, &render_manager]() {
-		// Set the scissor region for backdrop drawing, which covers the element's border box plus any area we may need
-		// to read from, such as any blur radius.
+		// Set the scissor region for backdrop drawing: the element's border box, within the viewport. As in browsers,
+		// the filters read nothing beyond it (a blur extends the content at the region's edges instead of reading the
+		// content next to the element, or the transparent target beyond the viewport).
 		Rectanglef filter_region = Rectanglef::MakeInvalid();
 		ElementUtilities::GetBoundingBox(filter_region, element, BoxArea::Border);
-		for (const auto& filter : backdrop_filters)
-			filter.filter->ExtendInkOverflow(element, filter_region);
 		Math::ExpandToPixelGrid(filter_region);
-		render_manager->SetScissorRegion(Rectanglei(filter_region));
+		Rectanglei region(filter_region);
+		if (Context* context = element->GetContext())
+			region = region.IntersectIfValid(Rectanglei::FromSize(context->GetDimensions()));
+		render_manager->SetScissorRegion(region);
 	};
 
 	if (render_stage == RenderStage::Enter)

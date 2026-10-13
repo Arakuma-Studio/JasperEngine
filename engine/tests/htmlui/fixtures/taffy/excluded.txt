@@ -1,6 +1,7 @@
 # Taffy fixtures that are not compared (BoxParityTest skips them and says why), written by
 # tools/htmlui/import-taffy-fixtures.py import. One per line: <suite>/<name> reason=<class> # <why>.
-# Classes: taffy-invalid, rtl-excluded, writing-mode-excluded (phase-3 spec 2.2), needs-script.
+# Classes: taffy-invalid (spec 5.3), rtl-excluded, writing-mode-excluded (phase-3 spec 2.2), needs-script (none left:
+# the two track-list scripts are evaluated into the fixtures).
 
 grid/grid_absolute_align_self_self_end reason=rtl-excluded # direction: rtl: mirrored layout is not implemented (phase-3 spec 2.2)
 grid/grid_absolute_collapsed_auto_fit_tracks_rtl reason=rtl-excluded # direction: rtl: mirrored layout is not implemented (phase-3 spec 2.2)
@@ -26,8 +27,6 @@ grid/grid_justify_items_sized_start_direction_rtl reason=rtl-excluded # directio
 grid/grid_justify_self_direction_rtl reason=rtl-excluded # direction: rtl: mirrored layout is not implemented (phase-3 spec 2.2)
 grid/grid_justify_self_rtl reason=rtl-excluded # direction: rtl: mirrored layout is not implemented (phase-3 spec 2.2)
 grid/grid_justify_self_self_start_child_rtl reason=rtl-excluded # direction: rtl: mirrored layout is not implemented (phase-3 spec 2.2)
-grid/grid_overlarge_auto_repeat_fixed_plus_large_track_list reason=needs-script # builds its styles with JavaScript, which neither the engine nor the reference runs
-grid/grid_overlarge_auto_repeat_track_list_over_u16 reason=needs-script # builds its styles with JavaScript, which neither the engine nor the reference runs
 grid/grid_relayout_vertical_text reason=writing-mode-excluded # writing-mode: vertical layout is not implemented (phase-3 spec 2.2)
 grid/grid_scrollbar_rtl reason=rtl-excluded # direction: rtl: mirrored layout is not implemented (phase-3 spec 2.2)
 grid/xgrid_aspect_ratio_fill_child_min_width reason=taffy-invalid # Taffy's own known-invalid fixture (name starts with x)

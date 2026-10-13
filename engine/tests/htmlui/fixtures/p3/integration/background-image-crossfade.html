@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>integration: background-image transitions cross-fade url() images</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  .b { position: absolute; width: 80px; height: 40px; transition: background-image 1s linear; background-size: 80px 40px; }
+  #opaque { left: 10px; top: 10px; background-image: url(img/red.png); }
+  #opaque.on { background-image: url(img/blue.png); }
+  #translucent { left: 100px; top: 10px; background-image: url(img/red.png); }
+  #translucent.on { background-image: url(img/green-half.png); }
+  #both { left: 190px; top: 10px; background-image: url(img/red-half.png); }
+  #both.on { background-image: url(img/green-half.png); }
+  /* two layers to one: the lowest common multiple, as many painted as the new value has */
+  #lists { left: 280px; top: 10px; background-image: url(img/checker.png), url(img/ring.png);
+           background-size: 16px 16px; background-position: 0 0, 20px 0; background-repeat: no-repeat; }
+  #lists.on { background-image: url(img/blue.png); }
+  /* tiles, a rounded clip and a background colour under the images */
+  #tiles { left: 10px; top: 60px; background: url(img/checker.png) 0 0 / 10px 10px repeat #8fbf8f; border-radius: 14px; }
+  #tiles.on { background-image: url(img/ring.png); }
+  /* gradients do not interpolate: the new one at once */
+  #gradient { left: 100px; top: 60px; background-image: linear-gradient(90deg, #c03030, #3050c0); }
+  #gradient.on { background-image: linear-gradient(90deg, #30a050, #e0b020); }
+  /* none against an image: at once */
+  #none { left: 190px; top: 60px; background-color: #dddddd; }
+  #none.on { background-image: url(img/red.png); }
+  /* a transition: all on a hover, as an agent writes a button */
+  #button { left: 280px; top: 60px; background: #2d3142 url(img/checker.png) center / 16px 16px no-repeat; transition: all 1s linear; }
+  #button.on { background: #4f5d75 url(img/ring.png) center / 32px 32px no-repeat; }
+</style>
+</head>
+<body>
+<div class="b" id="opaque"></div><div class="b" id="translucent"></div><div class="b" id="both"></div><div class="b" id="lists"></div>
+<div class="b" id="tiles"></div><div class="b" id="gradient"></div><div class="b" id="none"></div><div class="b" id="button"></div>
+</body>
+</html>

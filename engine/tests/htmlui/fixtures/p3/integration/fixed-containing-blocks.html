@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" id="doc">
+<head>
+<meta charset="utf-8">
+<title>integration: what contains position: fixed</title>
+<style>
+  html { overflow: hidden; }
+  html, body { margin: 0; background: #ffffff; }
+  #page { height: 600px; }
+  .holder { position: absolute; width: 60px; height: 40px; background: #dfe3ea; top: 70px; }
+  .fixed { position: fixed; left: 6px; bottom: 6px; width: 20px; height: 12px; background: #c0392b; }
+  .abs { position: absolute; right: 4px; top: 4px; width: 10px; height: 10px; background: #2c3e50; }
+  #h1 { left: 10px; transform: translateX(0); }
+  #h2 { left: 80px; translate: 0 0; }
+  #h3 { left: 150px; rotate: 0deg; }
+  #h4 { left: 220px; scale: 1; }
+  #h5 { left: 290px; perspective: 200px; }
+  #h6 { left: 360px; filter: blur(0px); }
+  #h7 { left: 430px; backdrop-filter: blur(1px); }
+  #h8 { left: 10px; top: 130px; will-change: transform; }
+  #h9 { left: 80px; top: 130px; will-change: top, filter; }
+  #h10 { left: 150px; top: 130px; will-change: contain; }
+  #h11 { left: 220px; top: 130px; will-change: opacity; }
+  #h12 { left: 290px; top: 130px; mask-image: linear-gradient(#000, #000); }
+  #h13 { left: 360px; top: 130px; will-change: transform-origin; }
+  #h14 { left: 430px; top: 130px; }
+  #h14.on { transform: scale(1); }
+  /* static boxes: will-change: position contains the absolutely positioned box only */
+  .flow { position: absolute; top: 190px; width: 60px; height: 40px; }
+  .flow > div { margin-left: 20px; height: 40px; background: #ecdcc8; }
+  .flow .abs { left: 4px; right: auto; }
+  #s1 { left: 10px; } #s1 > div { will-change: position; }
+  #s2 { left: 80px; } 
+</style>
+</head>
+<body>
+<div id="page">
+  <div class="holder" id="h1"><div class="fixed" id="f1"></div><div class="abs"></div></div>
+  <div class="holder" id="h2"><div class="fixed" id="f2"></div><div class="abs"></div></div>
+  <div class="holder" id="h3"><div class="fixed" id="f3"></div><div class="abs"></div></div>
+  <div class="holder" id="h4"><div class="fixed" id="f4"></div><div class="abs"></div></div>
+  <div class="holder" id="h5"><div class="fixed" id="f5"></div><div class="abs"></div></div>
+  <div class="holder" id="h6"><div class="fixed" id="f6"></div><div class="abs"></div></div>
+  <div class="holder" id="h7"><div class="fixed" id="f7"></div><div class="abs"></div></div>
+  <div class="holder" id="h8"><div class="fixed" id="f8"></div><div class="abs"></div></div>
+  <div class="holder" id="h9"><div class="fixed" id="f9"></div><div class="abs"></div></div>
+  <div class="holder" id="h10"><div class="fixed" id="f10"></div><div class="abs"></div></div>
+  <div class="holder" id="h11"><div class="fixed" id="f11"></div><div class="abs"></div></div>
+  <div class="holder" id="h12"><div class="fixed" id="f12"></div><div class="abs"></div></div>
+  <div class="holder" id="h13"><div class="fixed" id="f13"></div><div class="abs"></div></div>
+  <div class="holder" id="h14"><div class="fixed" id="f14"></div><div class="abs"></div></div>
+  <div class="flow" id="s1"><div><div class="abs" id="a1"></div></div></div>
+  <div class="flow" id="s2"><div><div class="abs" id="a2"></div></div></div>
+</div>
+</body>
+</html>

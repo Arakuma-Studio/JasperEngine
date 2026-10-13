@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HUD</title>
+<style>
+  @font-face { font-family: "Game Sans"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf"); }
+
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    font-family: "Game Sans", sans-serif;
+    color: #ffffff;
+    overflow: hidden;
+  }
+
+  .hud-corner {
+    position: fixed;
+    padding: 10px 14px;
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 10px;
+    backdrop-filter: blur(4px);
+  }
+
+  .top-left { top: 12px; left: 12px; }
+  .top-right { top: 12px; right: 12px; text-align: right; }
+  .bottom-left { bottom: 12px; left: 12px; }
+  .bottom-right { bottom: 12px; right: 12px; }
+
+  .bar {
+    width: 160px;
+    height: 10px;
+    margin-top: 6px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    border-radius: inherit;
+    transition: width 0.3s ease-out;
+  }
+
+  .health .bar-fill { width: 72%; background: linear-gradient(90deg, #e63946, #ff6b6b); }
+  .mana .bar-fill { width: 40%; background: linear-gradient(90deg, #4361ee, #4cc9f0); }
+
+  .label { font-size: 12px; opacity: 0.8; }
+
+  .score { font-size: 22px; font-weight: bold; }
+
+  .minimap {
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.6);
+    background: radial-gradient(circle, #2d6a4f 0%, #1b4332 70%);
+    position: relative;
+  }
+
+  .minimap::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 8px;
+    height: 8px;
+    margin: -4px 0 0 -4px;
+    border-radius: 50%;
+    background: #ffd166;
+    box-shadow: 0 0 6px #ffd166;
+  }
+
+  .slots { display: flex; gap: 6px; }
+
+  .ability {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: #3a0ca3;
+    border: 2px solid #7209b7;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 2px 4px;
+    box-sizing: border-box;
+    font-size: 11px;
+  }
+
+  .ability.cooldown { opacity: 0.4; }
+
+  .crosshair {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    width: 18px;
+    height: 18px;
+    transform: translate(-50%, -50%);
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    border-radius: 50%;
+  }
+</style>
+</head>
+<body>
+  <div class="hud-corner top-left" id="vitals">
+    <div class="health"><span class="label">HP</span><div class="bar"><div class="bar-fill" id="hp"></div></div></div>
+    <div class="mana"><span class="label">MP</span><div class="bar"><div class="bar-fill"></div></div></div>
+  </div>
+  <div class="hud-corner top-right" id="score-box">
+    <div class="label">Score</div>
+    <div class="score">12450</div>
+  </div>
+  <div class="hud-corner bottom-left" id="map"><div class="minimap"></div></div>
+  <div class="hud-corner bottom-right" id="abilities">
+    <div class="slots">
+      <div class="ability">1</div><div class="ability cooldown">2</div><div class="ability">3</div>
+    </div>
+  </div>
+  <div class="crosshair" id="crosshair"></div>
+</body>
+</html>

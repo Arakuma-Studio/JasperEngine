@@ -85,6 +85,8 @@ border-left-color: #ffffffff;
 }
 #htmlui-root .dynamic {
 --c: 255 0 0;
+color: rgb(var(--c) / 50%);
+--html-current-color: rgb(var(--c) / 50%);
 }
 #htmlui-root .dynamic-2 {
 --c: 0 0 255;

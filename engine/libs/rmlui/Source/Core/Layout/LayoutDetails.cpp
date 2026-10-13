@@ -573,7 +573,10 @@ float LayoutDetails::GetContentHeightForWidth(Element* element, float border_box
 	Box box;
 	LayoutDetails::BuildBox(box, containing_block, element, BuildBoxMode::UnalignedBlock);
 	const float edges = box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
-	box.SetContent({Math::Max(0.f, border_box_width - edges), box.GetSize().y});
+	const float content_width = Math::Max(0.f, border_box_width - edges);
+	const float content_height =
+		(element->IsReplaced() ? GetReplacedContentHeightForWidth(element, box, content_width, containing_block) : box.GetSize().y);
+	box.SetContent({content_width, content_height});
 
 	RootBox root(Math::Max(containing_block, Vector2f(0.f)));
 	if (FormattingContext::FormatIndependent(&root, element, &box, FormattingContextType::Block))
@@ -582,6 +585,35 @@ float LayoutDetails::GetContentHeightForWidth(Element* element, float border_box
 	if (cache)
 		cache->Insert(element, LayoutMeasureCache::Kind::HeightForWidth, containing_block, border_box_width, result);
 	return result;
+}
+
+float LayoutDetails::GetReplacedContentHeightForWidth(Element* element, const Box& box, float content_width, Vector2f containing_block)
+{
+	const ComputedValues& computed = element->GetComputedValues();
+	if (ResolveValueOr(computed.height(), containing_block.y, -1.f) >= 0.f || content_width < 0.f)
+		return box.GetSize().y;
+
+	Vector2f intrinsic_size(-1.f);
+	float ratio = -1.f;
+	element->GetIntrinsicDimensions(intrinsic_size, ratio);
+	float height = 0.f;
+	if (computed.aspect_ratio() > 0.f && (!computed.aspect_ratio_auto() || ratio <= 0.f))
+	{
+		// 'aspect-ratio' holds between the box-sizing boxes.
+		Vector2f edges;
+		if (computed.box_sizing() == Style::BoxSizing::BorderBox)
+			edges = {box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding),
+				box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border, BoxArea::Padding)};
+		height = Math::Max((content_width + edges.x) / computed.aspect_ratio() - edges.y, 0.f);
+	}
+	else if (ratio > 0.f)
+		height = content_width / ratio;
+	else
+		return box.GetSize().y;
+
+	float min_height = 0.f, max_height = FLT_MAX;
+	GetMinMaxHeight(min_height, max_height, computed, box, containing_block.y);
+	return Math::Clamp(height, min_height, Math::Max(min_height, max_height));
 }
 
 float LayoutDetails::GetShrinkToFitWidth(Element* element, Vector2f containing_block, float available_width)

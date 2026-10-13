@@ -26,6 +26,7 @@
 #include "ElementEffects.h"
 #include "ElementMeta.h"
 #include "ElementStyle.h"
+#include "WillChange.h"
 #include "PseudoElements.h"
 #include "EventDispatcher.h"
 #include "EventSpecification.h"
@@ -89,11 +90,28 @@ static PseudoElementType PseudoElementTypeOfTag(const String& tag)
 	return PseudoElementType::None;
 }
 
+// Whether a descendant of 'element' is 'position: fixed', or also 'absolute' with 'with_absolute' (their containing block may
+// be 'element', or a box inside it).
+static bool HasPositionedDescendant(Element* element, bool with_absolute)
+{
+	const int num_children = element->GetNumChildren(true);
+	for (int i = 0; i < num_children; i++)
+	{
+		Element* child = element->GetChild(i);
+		const Style::Position position = child->GetComputedValues().position();
+		if (position == Style::Position::Fixed || (with_absolute && position == Style::Position::Absolute))
+			return true;
+		if (HasPositionedDescendant(child, with_absolute))
+			return true;
+	}
+	return false;
+}
+
 Element::Element(const String& tag) :
 	local_stacking_context(false), local_stacking_context_forced(false), stacking_context_dirty(false), computed_values_are_default_initialized(true),
 	visible(true), offset_fixed(false), absolute_offset_dirty(true), rounded_main_padding_size_dirty(true), dirty_definition(false),
 	dirty_child_definitions(false), dirty_definition_self(false), dirty_pseudo_elements(false), pseudo_element_type(PseudoElementTypeOfTag(tag)), has_pseudo_elements(false), dirty_animation(false), dirty_transition(false),
-	dirty_transform(false), dirty_perspective(false), animation_displayed(true), animations_running(false), display_contents(false), tag(tag),
+	dirty_transform(false), dirty_perspective(false), animation_displayed(true), animations_running(false), display_contents(false), fixed_containing_block(false), absolute_containing_block(false), tag(tag),
 	relative_offset_base(0, 0), relative_offset_position(0, 0), absolute_offset(0, 0), scroll_offset(0, 0)
 {
 	RMLUI_ASSERT(tag == StringUtilities::ToLower(tag));
@@ -148,9 +166,16 @@ void Element::Update(float dp_ratio, Vector2f vp_dimensions)
 
 	OnUpdate();
 
-	HandleTransitionProperty();
-	HandleAnimationProperty();
-	AdvanceAnimations();
+	// The flags are tested here: most elements have no animations, and the calls are not inlined (their early returns
+	// would cost a function prologue per element and update).
+	if (dirty_transition)
+		HandleTransitionProperty();
+	if (dirty_animation)
+		HandleAnimationProperty();
+	if (!animations.empty())
+		AdvanceAnimations();
+	else
+		animations_running = false;
 
 	meta->scroll.Update();
 
@@ -216,12 +241,17 @@ void Element::Render()
 	RMLUI_ZoneText(name.c_str(), name.size());
 #endif
 
+	const ComputedValues& computed = meta->computed_values;
+	ElementEffects& effects = meta->effects;
+
 	// A transparent group draws nothing (it stays in the layout and can be hit).
-	if (meta->computed_values.opacity() <= 0.f)
+	if (computed.opacity() <= 0.f)
 		return;
 
 	UpdateAbsoluteOffsetAndRenderBoxData();
-	UpdateOpacityLeaf();
+	// (Only an opacity below 1 makes a leaf; the test is inline, as most elements are opaque.)
+	if (computed.opacity() < 1.f || opacity_leaf)
+		UpdateOpacityLeaf();
 
 	if (stacking_context_dirty)
 		BuildLocalStackingContext();
@@ -229,13 +259,16 @@ void Element::Render()
 	UpdateTransformState();
 	ElementUtilities::ApplyTransform(*this);
 
-	meta->effects.RenderEffects(RenderStage::Enter);
+	// The effects are asked at each stage (rendering may change them), and skipped when they have nothing to do.
+	if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+		effects.RenderEffects(RenderStage::Enter);
 
 	// A hidden element (CSS visibility) paints nothing of its own; its visible descendants paint (phase 3, p3-paint).
-	if (meta->computed_values.visibility() == Style::Visibility::Visible && ElementUtilities::SetClippingRegion(this))
+	if (computed.visibility() == Style::Visibility::Visible && ElementUtilities::SetClippingRegion(this))
 	{
 		meta->background_border.Render(this);
-		meta->effects.RenderEffects(RenderStage::Decoration);
+		if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+			effects.RenderEffects(RenderStage::Decoration);
 		meta->background_border.RenderBorder(this);
 
 		{
@@ -247,7 +280,8 @@ void Element::Render()
 	RenderStackingContextChildren();
 
 	ElementUtilities::ApplyTransform(*this);
-	meta->effects.RenderEffects(RenderStage::Exit);
+	if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+		effects.RenderEffects(RenderStage::Exit);
 }
 
 // Outlines are painted as Chromium paints them (CSS UI 4 leaves their place open): per paint layer (the stacking context,
@@ -562,56 +596,53 @@ static Vector2f ComputeStickyShift(Element* element, Vector2f border_position)
 		shift_axis(1, computed.top(), computed.bottom(), BoxEdge::Top, BoxEdge::Bottom));
 }
 
-void Element::UpdateAbsoluteOffsetAndRenderBoxData()
+void Element::UpdateDirtyAbsoluteOffsetAndRenderBoxData()
 {
-	if (absolute_offset_dirty || rounded_main_padding_size_dirty)
+	absolute_offset_dirty = false;
+	rounded_main_padding_size_dirty = false;
+
+	Vector2f offset_from_ancestors;
+	if (offset_parent)
+		offset_from_ancestors = offset_parent->GetAbsoluteOffset(BoxArea::Border);
+
+	if (!offset_fixed)
 	{
-		absolute_offset_dirty = false;
-		rounded_main_padding_size_dirty = false;
-
-		Vector2f offset_from_ancestors;
+		// Add any parent scrolling onto our position as well.
 		if (offset_parent)
-			offset_from_ancestors = offset_parent->GetAbsoluteOffset(BoxArea::Border);
+			offset_from_ancestors -= offset_parent->scroll_offset;
 
-		if (!offset_fixed)
+		// Finally, there may be relatively positioned elements between ourself and our containing block, add their relative offsets as well.
+		for (Element* ancestor = parent; ancestor && ancestor != offset_parent; ancestor = ancestor->parent)
 		{
-			// Add any parent scrolling onto our position as well.
-			if (offset_parent)
-				offset_from_ancestors -= offset_parent->scroll_offset;
-
-			// Finally, there may be relatively positioned elements between ourself and our containing block, add their relative offsets as well.
-			for (Element* ancestor = parent; ancestor && ancestor != offset_parent; ancestor = ancestor->parent)
-			{
-				// (the shift of a sticky one is found with its absolute offset)
-				if (ancestor->absolute_offset_dirty && ancestor->GetPosition() == Style::Position::Sticky)
-					ancestor->UpdateAbsoluteOffsetAndRenderBoxData();
-				offset_from_ancestors += ancestor->relative_offset_position;
-			}
+			// (the shift of a sticky one is found with its absolute offset)
+			if (ancestor->absolute_offset_dirty && ancestor->GetPosition() == Style::Position::Sticky)
+				ancestor->UpdateAbsoluteOffsetAndRenderBoxData();
+			offset_from_ancestors += ancestor->relative_offset_position;
 		}
+	}
 
-		// 'position: sticky': the shift that keeps the box in the sticky view rectangle of its scroll container, for the
-		// current scroll offsets (scrolling dirties the absolute offsets below the scroll container).
-		if (meta->computed_values.position() == Style::Position::Sticky)
-			relative_offset_position = ComputeStickyShift(this, relative_offset_base + offset_from_ancestors);
+	// 'position: sticky': the shift that keeps the box in the sticky view rectangle of its scroll container, for the
+	// current scroll offsets (scrolling dirties the absolute offsets below the scroll container).
+	if (meta->computed_values.position() == Style::Position::Sticky)
+		relative_offset_position = ComputeStickyShift(this, relative_offset_base + offset_from_ancestors);
 
-		const Vector2f relative_offset = relative_offset_base + relative_offset_position;
-		absolute_offset = relative_offset + offset_from_ancestors;
+	const Vector2f relative_offset = relative_offset_base + relative_offset_position;
+	absolute_offset = relative_offset + offset_from_ancestors;
 
-		// Next, we find the rounded size of the box so that elements can be placed border-to-border next to each other
-		// without any gaps. To achieve this, we have to adjust their rounded/rendered sizes based on their position, in
-		// such a way that the bottom-right of this element exactly matches the top-left of the next element. The order
-		// of floating-point operations matter here, we want to replicate the operations in the layout engine as close
-		// as possible to avoid any gaps.
-		const Vector2f main_padding_size = main_box.GetSize(BoxArea::Padding);
-		const Vector2f bottom_right_absolute_offset = (relative_offset + main_padding_size) + offset_from_ancestors;
-		const Vector2f new_rounded_main_padding_size = bottom_right_absolute_offset.Round() - absolute_offset.Round();
-		if (new_rounded_main_padding_size != rounded_main_padding_size)
-		{
-			rounded_main_padding_size = new_rounded_main_padding_size;
-			meta->background_border.DirtyBackground();
-			meta->background_border.DirtyBorder();
-			meta->effects.DirtyEffectsData();
-		}
+	// Next, we find the rounded size of the box so that elements can be placed border-to-border next to each other
+	// without any gaps. To achieve this, we have to adjust their rounded/rendered sizes based on their position, in
+	// such a way that the bottom-right of this element exactly matches the top-left of the next element. The order
+	// of floating-point operations matter here, we want to replicate the operations in the layout engine as close
+	// as possible to avoid any gaps.
+	const Vector2f main_padding_size = main_box.GetSize(BoxArea::Padding);
+	const Vector2f bottom_right_absolute_offset = (relative_offset + main_padding_size) + offset_from_ancestors;
+	const Vector2f new_rounded_main_padding_size = bottom_right_absolute_offset.Round() - absolute_offset.Round();
+	if (new_rounded_main_padding_size != rounded_main_padding_size)
+	{
+		rounded_main_padding_size = new_rounded_main_padding_size;
+		meta->background_border.DirtyBackground();
+		meta->background_border.DirtyBorder();
+		meta->effects.DirtyEffectsData();
 	}
 }
 
@@ -770,6 +801,24 @@ RenderBox Element::GetRenderBox(BoxArea fill_area, int index, bool with_border_t
 	return render_box;
 }
 
+Vector2f Element::GetRenderBoxFillSize(BoxArea fill_area)
+{
+	RMLUI_ASSERTMSG(fill_area >= BoxArea::Border && fill_area <= BoxArea::Content,
+		"Render box can only be generated with fill area of border, padding or content.");
+
+	// As GetRenderBox computes the inner size of the main box.
+	UpdateAbsoluteOffsetAndRenderBoxData();
+	switch (fill_area)
+	{
+	case BoxArea::Border: return rounded_main_padding_size + main_box.GetFrameSize(BoxArea::Border);
+	case BoxArea::Padding: return rounded_main_padding_size;
+	case BoxArea::Content: return rounded_main_padding_size - main_box.GetFrameSize(BoxArea::Padding);
+	case BoxArea::Margin:
+	case BoxArea::Auto: RMLUI_ERROR;
+	}
+	return Vector2f();
+}
+
 int Element::GetNumBoxes()
 {
 	return 1 + (int)additional_boxes.size();
@@ -834,16 +883,8 @@ void Element::UpdateLocalStackingContext()
 	const bool z_index_applies =
 		(z_index_property.type != ZIndex::Auto && (position != Position::Static || is_item || local_stacking_context_forced || !parent));
 
-	bool will_change = false;
-	if (const Property* property = GetLocalProperty(PropertyId::WillChange))
-	{
-		if (property->unit == Unit::STRING)
-		{
-			const String value = StringUtilities::ToLower(property->Get<String>());
-			will_change = (value.find("transform") != String::npos || value.find("opacity") != String::npos ||
-				value.find("filter") != String::npos || value.find("perspective") != String::npos);
-		}
-	}
+	// 'will-change' naming a property that creates a stacking context (CSS Will Change 1 §3.1, WillChange::ParseHints).
+	const bool will_change = (computed.will_change() & WillChange::StackingContext) != 0;
 
 	const float new_z_index = (z_index_applies ? z_index_property.value : 0.f);
 	const bool enable_local_stacking_context = (z_index_applies || local_stacking_context_forced || computed.has_filter() ||
@@ -2297,6 +2338,22 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 		changed_properties.Contains(PropertyId::TransformOriginY) || changed_properties.Contains(PropertyId::TransformOriginZ) ||
 		changed_properties.Contains(PropertyId::Translate) || changed_properties.Contains(PropertyId::Rotate) ||
 		changed_properties.Contains(PropertyId::Scale);
+
+	// A transform, a filter, ... make the element the containing block of its fixed and absolutely positioned descendants:
+	// their layout changes when that starts or stops (not when only their values change, as in a transition), if it has
+	// such descendants (a 'position' change dirties the layout anyway).
+	if (transform_changed || perspective_changed || filter_or_mask_changed || changed_properties.Contains(PropertyId::WillChange) ||
+		changed_properties.Contains(PropertyId::Position))
+	{
+		const bool new_fixed_containing_block = WillChange::IsFixedPositioningContainingBlock(meta->computed_values);
+		const bool new_absolute_containing_block = WillChange::IsAbsolutePositioningContainingBlock(meta->computed_values);
+		const bool fixed_flip = (new_fixed_containing_block != fixed_containing_block);
+		const bool absolute_flip = (new_absolute_containing_block != absolute_containing_block);
+		fixed_containing_block = new_fixed_containing_block;
+		absolute_containing_block = new_absolute_containing_block;
+		if ((fixed_flip || absolute_flip) && HasPositionedDescendant(this, absolute_flip))
+			DirtyLayout();
+	}
 
 	// Update the z-index and stacking context.
 	if (changed_properties.Contains(PropertyId::ZIndex) || filter_or_mask_changed || perspective_changed || transform_changed ||

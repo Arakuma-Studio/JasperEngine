@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dialog</title>
+<style>
+  @font-face { font-family: "Game Sans"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf"); }
+
+  body {
+    margin: 0;
+    height: 100vh;
+    font-family: "Game Sans", sans-serif;
+    background: url("img/checker.png") 0 0 / 32px 32px, #264653;
+  }
+
+  .scene {
+    position: relative;
+    height: 100%;
+  }
+
+  .scene::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 1;
+  }
+
+  .dialog {
+    position: absolute;
+    z-index: 2;
+    left: 50%;
+    top: 50%;
+    width: 340px;
+    transform: translate(-50%, -50%);
+    background: #fefae0;
+    color: #283618;
+    border-radius: 16px;
+    padding: 22px 24px 18px;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+  }
+
+  .dialog::before {
+    content: "!";
+    position: absolute;
+    top: -22px;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    margin-left: -22px;
+    border-radius: 50%;
+    background: #bc6c25;
+    color: #fefae0;
+    font-size: 26px;
+    line-height: 44px;
+    text-align: center;
+    border: 4px solid #fefae0;
+    box-sizing: border-box;
+  }
+
+  .dialog h3 {
+    margin: 12px 0 8px;
+    font-size: 18px;
+    text-align: center;
+  }
+
+  .dialog p {
+    margin: 0 0 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #606c38;
+    text-align: center;
+  }
+
+  .buttons {
+    display: flex;
+    gap: 10px;
+  }
+
+  .buttons button {
+    flex: 1;
+    padding: 10px 0;
+    border-radius: 8px;
+    border: 2px solid #bc6c25;
+    background: transparent;
+    color: #bc6c25;
+    font-family: inherit;
+    font-size: 14px;
+    transition: background-color 0.2s, color 0.2s;
+  }
+
+  .buttons button.confirm { background: #bc6c25; color: #fefae0; }
+  .buttons button:hover { background: #dda15e; color: #283618; }
+</style>
+</head>
+<body>
+  <div class="scene">
+    <div class="dialog" id="dialog" role="dialog">
+      <h3>Leave the dungeon?</h3>
+      <p>Unsaved progress will be lost. Your loot stays in the chest.</p>
+      <div class="buttons">
+        <button id="stay">Stay</button>
+        <button class="confirm" id="leave">Leave</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
