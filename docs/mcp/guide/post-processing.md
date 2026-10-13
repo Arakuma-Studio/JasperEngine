@@ -61,8 +61,39 @@ scene_shading, notes}`; while playing also `applied` (what the renderer runs: `i
 - Bloom is cheap here (quarter resolution); keep `bloom_intensity` modest.
 - Avoid stacking custom `post_process` passes: each one is a full pass (a `scale` below 1
   makes it cheaper). One of FXAA or MSAA is usually enough.
-- Measure: run with `JASPERENGINE_FRAME_STATS=1` (editor or exported game) and read the
-  "Frame stats ... pass list:" lines in the log.
+- Measure: run with `JASPERENGINE_READY_SIGNAL=1 JASPERENGINE_FRAME_STATS=1` (editor or
+  exported game) and read the "Frame stats ... pass list:" lines in the log: frames 2, 30 and
+  90 after everything loaded (`JASPERENGINE_FRAME_STATS=all`: every frame; in the editor each
+  extra view, e.g. the Game view beside the Scene view, logs its own "view N" line).
+
+## Limits
+
+Design limits of this stack, each a trade for mobile cost:
+
+- 8-bit scene (LDR). Exposure and the tone mapping curve run in every shader before the
+  8-bit write (the scene image cannot hold highlights for a later curve), so transparent
+  objects blend after the curve, in display values (as Godot's mobile renderer and Unreal's
+  mobile LDR mode). Bloom reads that image too: a full-white surface above `bloom_threshold`
+  glows like a light.
+- UI. UI components the main camera draws are part of its image: the uber pass and
+  `render_scale` reach them (as fixed resolution and custom passes always did); UI shaders
+  never take the in-shader colour. Put a HUD that must stay sharp and untouched in a layer
+  scene. Point sprites keep their size in pixels of the scaled image.
+- Frosted panels. The blurred scene (`blur_enabled`, `u_blurredSceneTexture`) exists for
+  layer scenes drawn after the post-processed scene; in that scene itself it is black.
+- MSAA applies to the main camera's scene pass only: not to mirrors, other render-to-texture
+  cameras, layer scenes or the edit-mode Scene view without its post-processing toggle.
+  Changing `msaa_samples` reloads the objects. On GLES it resolves with a blit (no
+  `EXT_multisampled_render_to_texture`); a device without 2x (lavapipe) runs without MSAA.
+- Chromatic aberration with FXAA: where the shift is under a pixel every channel stays
+  antialiased; a stronger fringe at the screen edges is a shifted, not re-antialiased, copy.
+- Colour LUT size: `neutral` at `lut_size` 16 is up to about 3/255 off its curve in the
+  shoulder; use 32 where that shows.
+- A painted terrain (PBR layers) with any in-shader colour effect leaves its base material's
+  emissive texture out (16-texture budget; the emissive factor still applies).
+- Runtime switches: an uber feature or chain a script turns on that the export did not
+  precompile builds its variant at runtime; the previous image is kept meanwhile.
+- The editor's cost readout is an estimate; the measured pass list is in the log (above).
 
 ## Fields
 
@@ -86,6 +117,35 @@ strip, Unity's layout).
 - Bloom and blur: `bloom_enabled`, `bloom_threshold`, `bloom_knee`, `bloom_intensity`,
   `bloom_tint`, `bloom_scatter`, `blur_enabled`, `blur_radius`, `blur_intensity`.
 - Resolution: `render_scale` (0.5-1).
+
+## Custom passes
+
+`post_process` (a scene setting, a list) runs fullscreen passes on the scene image before the
+uber pass, in order. A pass is a library post shader (`library:crt`, `pixelate`, `posterize`,
+`edge_neon`, `gameboy`, `blur`: `list_shaders type=postprocess`) or a fork
+(`fork_shader target=post_process`). Each item: `shader`, `enabled`, `uniforms` (the
+manifest's `@property` names; unset ones take its defaults), `textures` ({uniform: path}),
+`scale` (0.1-1: the pass's output resolution). A shader may also declare
+`u_originalSceneTexture` to read the scene before the chain.
+
+```json
+{"post_process": [{"shader": "library:pixelate", "uniforms": {"pixelSize": 6}, "scale": 0.5},
+                  {"shader": "library:crt", "enabled": false}]}
+```
+
+From Lua, `scene.postProcessPasses` is the list:
+
+```lua
+local pass = PostProcessPass()
+pass.shader = "library:pixelate"
+pass.scale = 0.5
+pass:setUniform("pixelSize", 4.0)
+scene.postProcessPasses = { pass }
+```
+
+`pass:setTexture(uniform, path)` / `getTexture(uniform)` set a texture the pass's shader
+declares; `scene:setPostProcessUniform(index, name, value)` and
+`setPostProcessPassEnabled(index, on)` change a pass of the running chain.
 
 ## Lua
 

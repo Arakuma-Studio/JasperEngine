@@ -12,7 +12,7 @@ not served; `jasper://docs` lists the served documents. The guide refers to them
 | [cpp-scripting.md](cpp-scripting.md) | `jasper://docs/cpp-scripting` | C++ script kinds, DPROPERTY, event macros, includes, script dirs, ProjectBuild.cmake |
 | [physics.md](physics.md) | `jasper://docs/physics` | bodies and colliders, mass and density, forces, teleporting, layers, ray casts |
 | [shaders.md](shaders.md) | `jasper://docs/shaders` | library shaders (list_shaders, material shader values and render state), forking built-in shaders, editing rules, the custom uniform block |
-| [post-processing.md](post-processing.md) | `jasper://docs/post-processing` | the main camera's post-processing: cost tiers, presets (list/apply_post_processing_preset), the cost readout, mobile advice, fields, Lua `scene.postProcessing` |
+| [post-processing.md](post-processing.md) | `jasper://docs/post-processing` | the main camera's post-processing: cost tiers, presets (list/apply_post_processing_preset), the cost readout, mobile advice, limits, fields, custom passes (`post_process`), Lua `scene.postProcessing` |
 | [prefabs.md](prefabs.md) | `jasper://docs/prefabs` | overrides, Apply/Revert, Prefab Mode, variants, Instantiate/Destroy, the build's prefabs |
 | [../../unity-glossary.md](../../unity-glossary.md) | `jasper://docs/unity-glossary` | Unity term to engine name tables |
 

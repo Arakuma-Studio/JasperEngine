@@ -78,7 +78,7 @@ const std::vector<PostProcessingSettings::Field>& PostProcessingSettings::getFie
         PP_FIELD(blurEnabled, "blur_enabled", T::Bool, 0.0f, 1.0f, "blurred copy of the scene (quarter-resolution chain)"),
         PP_FIELD(blurRadius, "blur_radius", T::Float, 0.0f, 4.0f, "blur radius"),
         PP_FIELD(blurIntensity, "blur_intensity", T::Float, 0.0f, 1.0f, "how much the screen shows the blur (0 only the texture)"),
-        PP_FIELD(renderScale, "render_scale", T::Float, 0.5f, 1.0f, "3D scene resolution, 0.5..1 of the output (UI stays native)"),
+        PP_FIELD(renderScale, "render_scale", T::Float, 0.5f, 1.0f, "3D scene resolution, 0.5..1 of the output (the main camera's UI too; a layer scene's HUD stays native)"),
         PP_FIELD(msaaSamples, "msaa_samples", T::Int, 1.0f, 4.0f, "multisampling of the scene target: 1, 2 or 4"),
     };
     return fields;

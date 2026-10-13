@@ -21,6 +21,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - Sprites, tilemaps, and polygons, plus 2D lights, normal maps, and 2D shadow casters
 - GLTF and OBJ models with skeletal animation, morph targets, and mesh instancing
 - PBR materials with dynamic lights and cascaded shadows, sky-driven IBL, SSAO, fog, and planar mirrors
+- A library of 40 ready-made shaders (toon, matcap, water, glass, outlines, sprites, skies, post effects...), per-pixel, per-vertex or mixed lighting with any number of lights, and a mobile-first post-processing stack (tone mapping and grading in the shaders, one uber pass, quarter-resolution bloom): see [docs/shaders](docs/shaders/README.md)
 - Keyframe tracks, tweens with easing, crossfade blending, and sprite-sheet animation
 - Particle systems and heightmap terrain with clipmap LOD and sculpting tools
 - UI toolkit with Rect Transforms, layout groups, text, images, buttons, input fields, scrollbars, and other widgets

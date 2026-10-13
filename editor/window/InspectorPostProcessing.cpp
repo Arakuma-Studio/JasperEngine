@@ -67,7 +67,11 @@ namespace {
             {"Color", {
                 {"Exposure & Tone Mapping", nullptr, {{"exposure", "Exposure"}, {"tonemap", "Tone Mapping"}},
                  "Exposure in stops, then the curve that maps the lit scene to the screen: ACES (filmic), Neutral (Khronos "
-                 "PBR: base colours stay as authored), Reinhard, AgX. None clamps, as without post-processing.",
+                 "PBR: base colours stay as authored), Reinhard, AgX. None clamps, as without post-processing. The scene "
+                 "image is 8-bit, so the curve runs in every shader before the write: transparent objects blend "
+                 "after it (display values), as in mobile renderers. A painted terrain (PBR layers) with any "
+                 "colour effect leaves its base material's emissive texture out (texture budget; the emissive "
+                 "factor still applies).",
                  [](PostProcessingSettings& s) { s.tonemap = TonemapMode::ACES; }, nullptr},
                 {"Color Grading", "color_grading_enabled",
                  {{"temperature", "Temperature"}, {"tint", "Tint"}, {"contrast", "Contrast"}, {"saturation", "Saturation"},
@@ -90,7 +94,9 @@ namespace {
                  "Darkens the image towards its corners (towards Color).",
                  [](PostProcessingSettings& s) { s.vignetteEnabled = true; }, nullptr},
                 {"Chromatic Aberration", "chromatic_aberration_enabled", {{"chromatic_aberration_intensity", "Intensity"}},
-                 "Red and blue fringes growing towards the screen's edges (two extra taps).",
+                 "Red and blue fringes growing towards the screen's edges (two extra taps). With FXAA, every channel "
+                 "stays antialiased where the shift is under a pixel; a stronger fringe at the edges is a shifted "
+                 "copy, not antialiased again.",
                  [](PostProcessingSettings& s) { s.chromaticAberrationEnabled = true; }, nullptr},
                 {"Film Grain", "film_grain_enabled", {{"film_grain_intensity", "Intensity"}, {"film_grain_response", "Response"}},
                  "Animated noise, weaker in bright areas (Response).",
@@ -103,7 +109,9 @@ namespace {
                  [](PostProcessingSettings& s) { s.fxaaEnabled = true; }, nullptr},
                 {"MSAA", nullptr, {{"msaa_samples", "MSAA"}},
                  "Multisampling of the main camera's scene (geometry edges only), clamped to what the device supports. "
-                 "It and FXAA can both be on; one is usually enough.",
+                 "It and FXAA can both be on; one is usually enough. Not applied to mirrors, other render-to-texture "
+                 "cameras, layer scenes or the edit-mode Scene view without Show post-processing; changing the "
+                 "count reloads the objects.",
                  [](PostProcessingSettings& s) { s.msaaSamples = 4; },
                  "Part of the scene pass: a tile-based GPU resolves the samples in tile memory (2x is nearly free, 4x costs "
                  "bandwidth; GLES resolves with a blit), into the target the other effects read. In an exported game with "
@@ -131,19 +139,24 @@ namespace {
                 {"Bloom", "bloom_enabled",
                  {{"bloom_threshold", "Threshold"}, {"bloom_knee", "Knee"}, {"bloom_intensity", "Intensity"},
                   {"bloom_tint", "Tint"}, {"bloom_scatter", "Scatter"}},
-                 "Glow around bright areas (above Threshold on the display colour), blurred at a quarter of the resolution.",
+                 "Glow around bright areas (above Threshold on the display colour), blurred at a quarter of the resolution. "
+                 "LDR: the scene image is 8-bit, so a full-white surface above Threshold glows like a light; keep "
+                 "Threshold high for lamps only.",
                  [](PostProcessingSettings& s) { s.bloomEnabled = true; }, nullptr},
             }},
             {"Blur", {
                 {"Blur", "blur_enabled", {{"blur_radius", "Radius"}, {"blur_intensity", "Intensity"}},
                  "A blurred copy of the scene from the bloom chain: on screen by Intensity (0 keeps the image sharp and "
-                 "only makes the texture, e.g. for frosted UI panels).",
+                 "only makes the texture, e.g. for frosted UI panels). Panels sample it in a layer scene (a HUD) drawn "
+                 "after the post-processed scene; in that scene itself the texture is black.",
                  [](PostProcessingSettings& s) { s.blurEnabled = true; }, nullptr},
             }},
             {"Resolution", {
                 {"Render Scale", nullptr, {{"render_scale", "Render Scale"}},
                  "Resolution of the 3D scene (0.5-1 of the output), upscaled by the uber pass: the biggest saving on "
-                 "high-density phone screens. UI drawn by a layer scene stays at full resolution.",
+                 "high-density phone screens. UI the main camera draws is part of its image and scales with it; UI drawn "
+                 "by a layer scene stays at full resolution. Point sprites keep their size in pixels of the scaled "
+                 "image (larger on screen), as with fixed resolution.",
                  [](PostProcessingSettings& s) { s.renderScale = 0.75f; }, nullptr},
             }},
         };
@@ -481,7 +494,7 @@ void editor::InspectorWindow::drawPostProcessingCost(SceneProject* sceneProject,
     ImGui::PopTextWrapPos();
 
     // while the game runs: what the engine applies (its tiers), the cheap part of a measurement;
-    // the pass list itself is in the log with JASPERENGINE_FRAME_STATS=1
+    // the pass list itself is in the log with JASPERENGINE_READY_SIGNAL=1 JASPERENGINE_FRAME_STATS=all
     const bool running = sceneProject->playState == ScenePlayState::PLAYING || sceneProject->playState == ScenePlayState::PAUSED;
     if (running) {
         if (RenderSystem* render = sceneProject->scene->getSystem<RenderSystem>().get()) {
@@ -495,7 +508,9 @@ void editor::InspectorWindow::drawPostProcessingCost(SceneProject* sceneProject,
             ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_PLAY " Applied now: %s", applied.empty() ? "nothing" : applied.c_str());
             ImGui::PopTextWrapPos();
             ImGui::SetItemTooltip("What the running game's renderer applies. Start the editor or the exported game with "
-                                  "JASPERENGINE_FRAME_STATS=1 to log the measured pass list every frame.");
+                                  "JASPERENGINE_READY_SIGNAL=1 and JASPERENGINE_FRAME_STATS=all to log the measured pass "
+                                  "list of every frame once loaded (=1: three frames); in the editor each extra view "
+                                  "(the Scene view while playing) logs its own line.");
         }
     }
 

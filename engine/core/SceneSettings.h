@@ -136,7 +136,8 @@ namespace jasperengine{
         float sharpenIntensity = 0.5f;              // 0..1
 
         // T2: dual-filter bloom from quarter resolution, composited by the uber pass. threshold
-        // and knee on the display colour (0..1), intensity, tint, scatter 0..1 (radius)
+        // and knee on the display colour (0..1), intensity, tint, scatter 0..1 (radius). LDR:
+        // the scene target is 8-bit, so a full-white surface blooms like a light
         bool bloomEnabled = false;
         float bloomThreshold = 0.8f;
         float bloomKnee = 0.5f;
@@ -144,14 +145,16 @@ namespace jasperengine{
         Vector3 bloomTint = Vector3(1.0f, 1.0f, 1.0f);
         float bloomScatter = 0.7f;
 
-        // T2: the same chain without threshold: a blurred copy of the scene (UI backgrounds can
-        // sample it), shown on screen by blurIntensity (0 = only the texture, 1 = full screen blur)
+        // T2: the same chain without threshold: a blurred copy of the scene (UI backgrounds of
+        // layer scenes drawn after it can sample it), shown on screen by blurIntensity (0 = only
+        // the texture, 1 = full screen blur)
         bool blurEnabled = false;
         float blurRadius = 1.0f;
         float blurIntensity = 1.0f;
 
-        // resolution of the 3D scene, 0.5..1 of the output, upscaled by the uber pass (the UI
-        // stays at the output's resolution)
+        // resolution of the 3D scene, 0.5..1 of the output, upscaled by the uber pass (UI the main
+        // camera draws is part of its image and scales too; a layer scene's HUD stays at the
+        // output's resolution)
         float renderScale = 1.0f;
         // multisampling of the main camera's scene target (1, 2 or 4, clamped to what the device
         // has): resolved at the end of the scene pass into the target the effects read; with
