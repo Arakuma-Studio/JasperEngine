@@ -485,3 +485,82 @@ user-pass and editor work is also written out in `/tmp/shader-research/p4-api.md
   tube, scanlines, fringes) one uber pass each; the HUD layer is untouched in all. The bloom
   chain is not on this base (`uberBloomTexture` null binds black), so the measured pass lists of
   Mobile and Console are 1 pass where the estimate counts the chain's 7.
+
+### 5.5 Review fixes: editor (sl/p4-fix-editor)
+
+The editor/MCP/tooling items of the phase 4 review (`/tmp/shader-research/p4-review/editor.md`),
+each reproduced on 3097628f first (MCP test or xdotool probe), then fixed with a regression test.
+
+- LUT path on asset changes (1). `visitSceneSettingsAssetPaths` (Project.cpp) rewrites
+  `postProcessing.lutTexture` like the pass textures: a rename or move rewrites it, a deletion
+  clears it (set back through `Scene::setPostProcessing`). Before, the session kept the strip the
+  renderer had cached and a reopened scene or an export lost it.
+- Pass uniform rows (2). A pass whose shader has a manifest draws the members it declares
+  (`@property`) as the material inspector does (`InspectorWindow::drawShaderPropertyValue`, shared
+  with `drawShaderManifestRows`): label, range slider, colour picker (sRGB), toggle, and the
+  manifest default while unset, which is what the engine renders (the rows showed 0 and a nudge
+  stored about 0.01); a set member has a reset arrow. Undeclared members (forks) keep the generic
+  rows. The label column also fits the texture slots.
+- Pass textures over MCP (3). `get_scene_settings post_process` gives `textures` through
+  `McpValues::shaderTexturesToJson` (a plain path, or `{path, min_filter, ...}` / `{cube}`), so a
+  read-modify-write keeps sampler settings and cube maps.
+- MSAA texts and cost (4). MSAA is applied (5.2): the inspector, `SceneSettings.h`,
+  `getPostProcessingTiers`' comment and the guide no longer say it is stored only, nor that FXAA
+  turns it off (both can be on; the editor advises one). Its tag is "scene pass": the samples
+  resolve at the end of the scene pass (in tile memory on tilers, a blit on GLES); in an exported
+  game with nothing else offscreen (no uber pass, user pass or fixed resolution) the scene resolves
+  into a target blitted to the screen, one more full-resolution pass, which the estimate now
+  counts ("MSAA resolve blit to the screen") with a note.
+- Blur count (5). The chain tier text and the guide's T2 row give bloom 7 passes and blur
+  `1 + 2 x ceil(radius)` (3 at radius 1, 5 to radius 2, 7 above), as `getBlurLevels`.
+- User passes in the estimate (6). `estimatePostProcessingCost(settings, passes, fixedResolution)`
+  takes the pass list: each enabled pass at the scene's size times its scale squared (full
+  resolution only at scale 1 without render scale or fixed resolution), then, without the uber
+  pass, the chain's end: a copy into the fixed-resolution target after a last pass below full size,
+  or (no fixed resolution) the blit to the screen an exported game always ends the chain with
+  (the editor's Game view draws a last full-size pass straight into the view: noted). With the
+  uber pass nothing is added (it reads the chain's output). Render scale alone counts the uber
+  pass (the engine fix makes it the plain upscale).
+- Undo steps (7). The pass uniform rows (and a component's fork uniform rows, the same pattern)
+  close their merged command on release (`setNoMerge`), so separate drags, or a drag then the
+  Scale slider, are separate steps (one Ctrl+Z reverted both).
+- Shader change (8). Picking another shader for a pass clears its uniforms and keeps only the
+  textures the new shader's manifest declares (none for a shader without one).
+- Images changed on disk (9). The editor's file pick-up (`sync_files` and the automatic one before
+  each MCP call: `reloadTextures` in ScriptTools.cpp) now also reloads the user passes' textures
+  (pool entry marked stale with `TexturePool::invalidate`: the chain's copies hold the GPU
+  texture; the scene keeps the released copies) and the LUT strip, through a new engine entry
+  point, `RenderSystem::invalidatePostProcessTextures()` (forgets the strip's cached path and
+  reloads the chain; the only engine code of this branch). The GUI has no image watcher for any
+  texture (entity textures included): an image edited outside the editor is picked up by the next
+  MCP call or `sync_files`, as before.
+- MCP validation (10). `set_scene_settings` refuses a Vector3 field outside its range (it was
+  clamped silently), takes enums by name in any case or by index (DESIGN.md), refuses unknown keys
+  of a `post_process` item and a non-bool `enabled`, checks a library pass's `uniforms` against its
+  manifest (`shaderParamsFromJson`: unknown members refused, colours as hex), and refuses
+  `post_processing` / `post_processing.<field>` on UI scenes as the preset tool and the inspector
+  do. `tools/build.sh` and `tools/smoke-test.sh` expand their flag arrays as `${a[@]+"${a[@]}"}`
+  (an empty array under `set -u` fails on bash before 4.4, macOS).
+- Stylised lift (10). Warm, as 5.3 says: lift (0.04, 0.02, 0) (amber shadows) with the warm gain;
+  the old (0.02, 0, 0.04) lifted blue more than red. Warm was the intent: the preset's gain is warm
+  and a cool lift under a warm gain splits the shadows purple, which reads as a mistake.
+- Tests: `test_post_processing_review_fixes.py` (MCP: LUT rename/delete, pass texture round trip,
+  validation, the warm lift, the cost estimate cases, the LUT strip and a pass texture changed on
+  disk shown in the Game view) and `test_post_process_inspector.py` (xdotool in the harness's Xvfb,
+  as the phase 2 inspector test: a drag of an unset CRT parameter starts from its default 240,
+  two drags and a Scale click are three undo steps, switching a fork with a texture to
+  `library:pixelate` drops the texture). On 3097628f both fail at each item.
+- Checks run (4 cores, one heavy job at a time): full `tools/build.sh linux`; MCP suite pinned to
+  4 cores (290 passed, 0 failed, 3 skipped); every scene, prefab and project.yaml of the 10 fixture
+  projects (31 files) re-saved over MCP with this editor and with a build of 3097628f: all
+  byte-identical; `tools/fixtures/post-processing` on GL (`PP_SCENE=saved`, frame stats) after
+  applying each preset to a copy of Saved.scene through `apply_post_processing_preset`: all pass,
+  and each measured pass list matches the estimate's engine count (None: the pre-phase-4 list;
+  Mobile and Console: 7 bloom passes + `uber 1280x720` = 8, as estimated; Stylised and CRT Retro:
+  `uber 1280x720` = 1); screenshots read: Mobile and Console compress the lit wall (Console with
+  vignette, grain and fringes), Stylised large pixels with the punchy, now warm grade, CRT Retro
+  the curved tube and scanlines, the HUD layer untouched in all. Inspector screenshot over MCP
+  (no temporary hack: the test scrolls with xdotool) of a `library:crt` pass: Curvature 0.300,
+  Scanlines over the height 240.000, Scanline darkness 0.500, Aperture grille 0.300, Colour
+  fringing 1.000, Dark corners 0.400, its manifest's labels and sliders
+  (`/tmp/shader-research/p4-fix-editor-shots/`).

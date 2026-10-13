@@ -3613,8 +3613,8 @@ PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSet
     const bool vignette = settings.vignetteEnabled && settings.vignetteIntensity > 0.0f;
     const bool dither = settings.ditherEnabled;
 
-    // (msaaSamples does not run the uber pass: the multisampled scene target is not made yet,
-    // see the phase 4 spec's implementation notes)
+    // (msaaSamples does not run the uber pass: the multisampled scene target resolves into
+    // whatever offscreen target the camera draws to, see the phase 4 spec's notes 5.2)
     tiers.uber = features != 0 || tiers.renderScale < 1.0f;
     if (tiers.uber){
         // the grade, vignette and dither move to the uber pass (after the bloom composite and
@@ -8831,6 +8831,14 @@ void RenderSystem::needUpdatePostProcessUniforms(){
 
 void RenderSystem::needUpdatePostProcessing(){
     postProcessingDirty = true;
+}
+
+void RenderSystem::invalidatePostProcessTextures(){
+    // applyPostProcessing reads the strip again when its path differs from this one
+    postLutStripPath.clear();
+    postLutStrip = PostColorLut::Strip();
+    postProcessingDirty = true;
+    postProcessNeedReload = true;
 }
 
 void RenderSystem::loadPostProcess(){

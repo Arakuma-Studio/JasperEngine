@@ -71,7 +71,8 @@ std::vector<PostProcessingPreset> makePresets() {
         s.colorGradingEnabled = true;
         s.contrast = 1.45f;
         s.saturation = 1.4f;
-        s.lift = Vector3(0.02f, 0.0f, 0.04f);
+        // warm: red and a little green lift the shadows (amber), the gain warms the highlights
+        s.lift = Vector3(0.04f, 0.02f, 0.0f);
         s.gain = Vector3(1.05f, 1.0f, 0.95f);
         s.vignetteEnabled = true;
         // gentle: clipped highlights stay bright towards the edges
@@ -179,8 +180,8 @@ const char* getPostProcessingCostTierLabel(PostProcessingCostTier tier) {
             return "T1, the uber pass: one fullscreen pass shared by every T1 effect (with fixed resolution it is "
                    "the upscale blit drawn anyway).";
         case PostProcessingCostTier::CHAIN:
-            return "T2, the bloom chain: 7 small passes from a quarter of the resolution (about 0.17 of a screen) "
-                   "plus the uber pass that composites it.";
+            return "T2, a chain from a quarter of the resolution plus the uber pass that composites it: bloom is 7 small "
+                   "passes (about 0.17 of a screen); blur 1 + 2 x ceil(radius) (3 at radius 1, 5 to radius 2, 7 above).";
         case PostProcessingCostTier::NONE:
             break;
     }
@@ -198,7 +199,8 @@ std::string describeUberFeatures(uint32_t uberFeatures) {
     return text;
 }
 
-PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& settings, int userPasses, bool fixedResolution) {
+PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& settings, const std::vector<PostProcessPass>& passes,
+                                              bool fixedResolution) {
     PostProcessingCost cost;
     const PostProcessingTiers tiers = RenderSystem::getPostProcessingTiers(settings);
     const float scale = tiers.uber ? tiers.renderScale : 1.0f;
@@ -210,11 +212,44 @@ PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& sett
     cost.uber = tiers.uber;
     cost.chain = bloom || blur;
     cost.sceneShading = area;
-    userPasses = std::max(userPasses, 0);
 
-    // ---- this engine: the user chain and the chains at the scene's size, then the uber pass
+    // the enabled user passes and their resolution scales (PostProcessPass::getAppliedScale)
+    std::vector<float> passScales;
+    for (const PostProcessPass& pass : passes)
+        if (pass.enabled) passScales.push_back(pass.getAppliedScale());
+    const int userPasses = (int)passScales.size();
+
+    // ---- this engine (an exported game drawing to the screen): the user chain at the scene's
+    // size (each pass at its scale), the chains, then the uber pass (RenderSystem::renderPostProcess,
+    // renderCameraPass)
     PostProcessingCostSide& engine = cost.engine;
-    if (userPasses > 0) engine.passes.push_back({"user pass", userPasses, area * userPasses, !scaled && !fixedResolution});
+    for (int i = 0; i < userPasses; i++) {
+        const float passScale = passScales[i];
+        const bool full = passScale >= 0.999f;
+        std::string label = "user pass " + std::to_string(i + 1);
+        if (!full) {
+            char text[32];
+            std::snprintf(text, sizeof(text), " (scale %.2f)", passScale);
+            label += text;
+        }
+        engine.passes.push_back({label, 1, area * passScale * passScale, full && !scaled && !fixedResolution});
+    }
+    if (userPasses > 0 && !tiers.uber) {
+        // the uber pass reads the chain's last output as it is; without it the chain ends in a
+        // copy to the fixed-resolution target (only after a last pass below full size), or in
+        // the blit to the screen (always: the chain never draws to the swapchain itself)
+        const bool lastScaled = passScales.back() < 0.999f;
+        if (fixedResolution) {
+            if (lastScaled) engine.passes.push_back({"user chain copy", 1, area, false});
+        } else {
+            engine.passes.push_back({"user chain blit to the screen", 1, 1.0f, true});
+        }
+    }
+    // MSAA resolves inside the scene pass into the offscreen target the scene draws to; with
+    // nothing offscreen (no uber pass, user pass or fixed resolution) that target is made for
+    // it and blitted to the screen
+    const bool msaaBlit = tiers.msaaSamples > 1 && !tiers.uber && !fixedResolution && userPasses == 0;
+    if (msaaBlit) engine.passes.push_back({"MSAA resolve blit to the screen", 1, 1.0f, true});
     if (bloom) addChain(engine, "bloom", area);
     if (blur) addChain(engine, "blur", area, RenderSystem::getBlurLevels(settings.blurRadius));
     if (tiers.uber) engine.passes.push_back({"uber", 1, 1.0f, true});
@@ -268,7 +303,19 @@ PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& sett
         cost.notes.push_back(text);
     }
     if (userPasses > 0) {
-        cost.notes.push_back("Each user pass is one more pass at the scene's resolution: on mobile, prefer the built-in effects.");
+        cost.notes.push_back(std::string("Each user pass is one more pass at the scene's resolution (times its scale squared): on "
+                                         "mobile, prefer the built-in effects.") +
+                             (tiers.uber ? "" : fixedResolution ? " A last pass below full size is copied to the fixed-resolution target."
+                                                                : " Without the uber pass the chain ends with a blit to the screen "
+                                                                  "(the editor's Game view draws its last full-size pass straight to the view)."));
+    }
+    if (tiers.msaaSamples > 1) {
+        cost.notes.push_back(msaaBlit
+            ? "MSAA: the samples resolve in tile memory at the end of the scene pass; with nothing else offscreen the exported "
+              "game resolves into a target blitted to the screen (one full-resolution pass, counted). Desktop GPUs pay the "
+              "multisampled target's memory and bandwidth."
+            : "MSAA: the samples resolve in tile memory at the end of the scene pass, into the target the effects read (no "
+              "pass of its own). Desktop GPUs pay the multisampled target's memory and bandwidth.");
     }
     if (!cost.urpCustom.empty()) {
         std::string names;

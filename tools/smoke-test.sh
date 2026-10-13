@@ -73,7 +73,8 @@ CPU_FLAGS=()
 
 # The host's passwd/group give the container user a name, which the D-Bus
 # session the editor's file dialogs need insists on.
-docker run --rm "${CPU_FLAGS[@]}" \
+# (the ${a[@]+...} form: an empty array under set -u fails on bash before 4.4, e.g. macOS)
+docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
     --user "$(id -u):$(id -g)" \
     -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
     -v "$ROOT:/src" -w "/src/$OUT" \

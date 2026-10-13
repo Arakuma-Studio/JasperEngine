@@ -153,9 +153,9 @@ namespace jasperengine{
         // resolution of the 3D scene, 0.5..1 of the output, upscaled by the uber pass (the UI
         // stays at the output's resolution)
         float renderScale = 1.0f;
-        // multisampling of the main camera's scene target (1, 2 or 4). Stored, serialized and
-        // reported; the renderer does not apply it yet (the multisampled scene target and its
-        // pipelines are the render-target work of phase 4's next step)
+        // multisampling of the main camera's scene target (1, 2 or 4, clamped to what the device
+        // has): resolved at the end of the scene pass into the target the effects read; with
+        // nothing else offscreen an exported game blits that target to the screen (one pass)
         int msaaSamples = 1;
 
         bool operator==(const PostProcessingSettings& o) const;

@@ -5820,9 +5820,13 @@ void editor::InspectorWindow::drawShaderUniformRows(ComponentType cpType, SceneP
             ShaderUniformValues newValues = values;
             ShaderUniforms::set(newValues, uniform.name, newValue);
 
-            // dragging merges into one undo step
-            CommandHandle::get(sceneId)->addCommand(
-                new PropertyCmd<ShaderUniformValues>(project, sceneId, entity, cpType, "shaderUniforms", newValues));
+            // dragging merges into one undo step, closed when the widget is released
+            cmd = new PropertyCmd<ShaderUniformValues>(project, sceneId, entity, cpType, "shaderUniforms", newValues);
+            CommandHandle::get(sceneId)->addCommand(cmd);
+        }
+        if (ImGui::IsItemDeactivatedAfterEdit() && cmd) {
+            cmd->setNoMerge();
+            cmd = nullptr;
         }
     }
 
@@ -5880,15 +5884,34 @@ editor::InspectorWindow::PostProcessShader editor::InspectorWindow::resolvePostP
         resolved.block.resolve(resolved.shader->shaderData, "u_fs_postParams");
     }
 
+    if (!pass.shader.empty()){
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(pass.shader);
+        if (manifest && manifest->present)
+            resolved.manifest = manifest;
+    }
+
     return resolved;
 }
 
 // widest uniform name the pass declares, so the rows are not truncated to "Shader"
-float editor::InspectorWindow::getPostProcessLabelSize(const PostProcessShader& resolved){
+float editor::InspectorWindow::getPostProcessLabelSize(const PostProcessShader& resolved, const PostProcessPass& pass){
     // no reset arrow on these rows, so they only need getLabelSize's half-icon padding
     float width = getLabelSize("Shader", false);
-    for (const ShaderUniform& uniform : resolved.block.members)
-        width = std::max(width, getLabelSize(uniform.name, false));
+    for (const ShaderUniform& uniform : resolved.block.members){
+        const ShaderManifestProperty* property = resolved.manifest ? resolved.manifest->findProperty(uniform.name) : nullptr;
+        // a manifest row shows its label and the reset arrow
+        if (property && !property->label.empty())
+            width = std::max(width, getLabelSize(property->label));
+        else
+            width = std::max(width, getLabelSize(uniform.name, property != nullptr));
+    }
+    // the texture slots (drawPostProcessPassFields): the manifest's labels and any set by name
+    if (resolved.manifest){
+        for (const ShaderManifestTexture& texture : resolved.manifest->textures)
+            width = std::max(width, getLabelSize(texture.label.empty() ? texture.uniform : texture.label, false));
+    }
+    for (const auto& entry : pass.textures)
+        width = std::max(width, getLabelSize(entry.first, false));
 
     return width;
 }
@@ -5905,16 +5928,79 @@ void editor::InspectorWindow::drawPostProcessUniforms(uint32_t sceneId, const st
         return;
     }
 
+    const ShaderUniformValues& values = passes[index].uniforms;
     for (const ShaderUniform& uniform : resolved.block.members){
-        Vector4 newValue;
-        if (drawShaderUniformRow(uniform, passes[index].uniforms, "##pp_uniform_", newValue)){
-            std::vector<PostProcessPass> newPasses = passes;
-            newPasses[index].setUniform(uniform.name, newValue);
+        ImGui::PushID(uniform.name.c_str());
+        // a member the shader's manifest declares (@property): its label, range and widget, and
+        // its default while unset (what the engine renders), with a reset arrow once set
+        const ShaderManifestProperty* property = resolved.manifest ? resolved.manifest->findProperty(uniform.name) : nullptr;
+        if (property && !ShaderUniforms::isReserved(uniform.name) && ShaderUniforms::isEditable(uniform)){
+            const bool hasValue = ShaderUniforms::has(values, uniform.name);
+            const Vector4 value = hasValue ? ShaderUniforms::get(values, uniform.name) : property->defaultValue;
 
-            // dragging merges into one undo step
-            CommandHandle::get(sceneId)->addCommand(
-                new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", newPasses));
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(property->label.empty() ? uniform.name.c_str() : property->label.c_str());
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", uniform.name.c_str());
+            bool reset = false;
+            if (hasValue){
+                ImGui::SameLine();
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, ImGui::GetStyle().FramePadding.y));
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                reset = ImGui::Button(ICON_FA_ROTATE_LEFT "##reset");
+                ImGui::SetItemTooltip("Reset to the shader's default");
+                ImGui::PopStyleColor(2);
+                ImGui::PopStyleVar(2);
+            }
+            if (reset){
+                std::vector<PostProcessPass> newPasses = passes;
+                ShaderUniforms::remove(newPasses[index].uniforms, uniform.name);
+                CommandHandle::get(sceneId)->addCommandNoMerge(
+                    new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", newPasses));
+                ImGui::PopID();
+                continue;
+            }
+
+            ImGui::TableSetColumnIndex(1);
+            Vector4 edited;
+            bool continuous = true;
+            if (drawShaderPropertyValue(*property, "##pp_param_" + uniform.name, value, edited, continuous)){
+                std::vector<PostProcessPass> newPasses = passes;
+                newPasses[index].setUniform(uniform.name, edited);
+                Command* passCmd = new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", newPasses);
+                if (continuous){
+                    // dragging merges into one undo step, closed when the widget is released
+                    cmd = passCmd;
+                    CommandHandle::get(sceneId)->addCommand(passCmd);
+                }else{
+                    CommandHandle::get(sceneId)->addCommandNoMerge(passCmd);
+                }
+            }
+            if (ImGui::IsItemHovered() && !ImGui::IsItemActive())
+                ImGui::SetTooltip("%s", uniform.name.c_str());
+        }else{
+            Vector4 newValue;
+            if (drawShaderUniformRow(uniform, values, "##pp_uniform_", newValue)){
+                std::vector<PostProcessPass> newPasses = passes;
+                newPasses[index].setUniform(uniform.name, newValue);
+
+                // dragging merges into one undo step, closed when the widget is released
+                Command* passCmd = new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", newPasses);
+                cmd = passCmd;
+                CommandHandle::get(sceneId)->addCommand(passCmd);
+            }
         }
+        // a released drag ends its undo step: the next drag (of any row of the chain, all one
+        // scene property) is a step of its own
+        if (ImGui::IsItemDeactivatedAfterEdit() && cmd){
+            cmd->setNoMerge();
+            cmd = nullptr;
+        }
+        ImGui::PopID();
     }
 
     drawShaderUniformWarnings(Catalog::getShaderUniformWarnings({&resolved.block}));
@@ -5998,7 +6084,7 @@ void editor::InspectorWindow::drawScenePostProcess(SceneProject* sceneProject){
         PostProcessShader resolved = resolvePostProcessShader(passes[i]);
 
         if (ImGui::BeginTable("scene_post_process_pass_table", 2, tableFlags)){
-            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getPostProcessLabelSize(resolved));
+            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getPostProcessLabelSize(resolved, passes[i]));
             ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
             ImGui::TableNextRow();
@@ -6010,6 +6096,13 @@ void editor::InspectorWindow::drawScenePostProcess(SceneProject* sceneProject){
                 std::vector<PostProcessPass> newPasses = passes;
                 newPasses[i].shader = value;
                 newPasses[i].uniforms.clear(); // another shader has other members
+                // and other textures: keep only the ones the new shader's manifest declares
+                // (an old one with a colliding name would be bound silently otherwise)
+                std::shared_ptr<const ShaderManifest> manifest = value.empty() ? nullptr : ShaderManifests::get(value);
+                auto& textures = newPasses[i].textures;
+                textures.erase(std::remove_if(textures.begin(), textures.end(), [&](const std::pair<std::string, Texture>& entry){
+                    return !manifest || !manifest->present || !manifest->findTexture(entry.first);
+                }), textures.end());
                 setPasses(newPasses);
             };
             std::string defaultName = sceneProject->name + " Post " + std::to_string(i + 1);

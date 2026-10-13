@@ -66,7 +66,8 @@ CPU_FLAGS=()
 [[ -n "${DOCKER_CPUS:-}" ]] && CPU_FLAGS=(--cpus "$DOCKER_CPUS")
 
 run() {
-    docker run --rm "${TTY_FLAGS[@]}" "${CPU_FLAGS[@]}" \
+    # (the ${a[@]+...} form: an empty array under set -u fails on bash before 4.4, e.g. macOS)
+    docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         --user "$(id -u):$(id -g)" \
         -v "$ROOT:/src" -w /src \
         -v "$MAIN/.git:$MAIN/.git:ro" \

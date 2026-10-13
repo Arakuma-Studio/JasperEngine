@@ -28,7 +28,9 @@
 #include "command/type/PropertyCmd.h"
 #include "component/ScriptComponent.h"
 #include "pool/TextureDataPool.h"
+#include "pool/TexturePool.h"
 #include "script/LuaBinding.h"
+#include "subsystem/RenderSystem.h"
 #include "texture/Material.h"
 #include "texture/Texture.h"
 #include "util/ProjectChecks.h"
@@ -358,6 +360,35 @@ int reloadTextures(Project* project, const std::set<std::string>& images) {
                 }
             }
         }
+        // the scene's post-processing images (phase 4): the user passes' textures and the LUT
+        // strip, which the renderer caches by path
+        bool postImages = false;
+        std::vector<PostProcessPass> passes = sceneProject->scene->getPostProcessPasses();
+        for (PostProcessPass& pass : passes) {
+            for (auto& entry : pass.textures) {
+                if (matches(entry.second)) {
+                    // the GPU texture is held by the chain's copies, not by the scene's: the
+                    // pool entry is marked stale for them to rebuild it from the new pixels
+                    TexturePool::invalidate(entry.second.getId());
+                    reload(entry.second);
+                    postImages = true;
+                }
+            }
+        }
+        // the scene keeps the released textures (no pixels held), so the chain's reload below
+        // reads the file again; same paths, so this is no edit (and no undo step)
+        if (postImages) sceneProject->scene->setPostProcessPasses(passes);
+        const std::string lut = sceneProject->scene->getPostProcessing().lutTexture;
+        if (!lut.empty() && images.count(McpValues::assetPathToJson(project, lut)) > 0) {
+            count++;
+            postImages = true;
+        }
+        if (postImages) {
+            if (std::shared_ptr<RenderSystem> render = sceneProject->scene->getSystem<RenderSystem>())
+                render->invalidatePostProcessTextures();
+            touched = true;
+        }
+
         if (touched) sceneProject->needUpdateRender = true;
     }
     return count;

@@ -1229,19 +1229,32 @@ void editor::Project::cleanupScriptFilePath(const std::filesystem::path& deleted
     }
 }
 
-// the images the scene's settings name: its post-process passes' textures (phase 4)
+// the images the scene's settings name: its post-process passes' textures and the
+// post-processing LUT strip (phase 4)
 static bool visitSceneSettingsAssetPaths(Scene* scene, const std::function<bool(std::string&)>& transform) {
     std::vector<PostProcessPass> passes = scene->getPostProcessPasses();
-    bool changed = false;
+    bool passesChanged = false;
     for (PostProcessPass& pass : passes) {
         for (auto& texture : pass.textures) {
-            changed |= visitTexturePaths(texture.second, transform);
+            passesChanged |= visitTexturePaths(texture.second, transform);
         }
     }
-    if (changed) {
+    if (passesChanged) {
         scene->setPostProcessPasses(passes);
     }
-    return changed;
+
+    // the LUT is a plain path (assets-relative), read by the renderer when it changes
+    PostProcessingSettings postProcessing = scene->getPostProcessing();
+    bool lutChanged = false;
+    if (!postProcessing.lutTexture.empty()) {
+        std::string lut = postProcessing.lutTexture;
+        if (transform(lut) && lut != postProcessing.lutTexture) {
+            postProcessing.lutTexture = lut;
+            scene->setPostProcessing(postProcessing);
+            lutChanged = true;
+        }
+    }
+    return passesChanged || lutChanged;
 }
 
 void editor::Project::applyAssetPathChange(const std::function<bool(std::string&)>& transform) {

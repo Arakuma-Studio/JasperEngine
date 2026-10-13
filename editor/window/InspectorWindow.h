@@ -5,6 +5,7 @@
 
 #include "Project.h"
 #include "render/Render.h"
+#include "shader/ShaderManifest.h"
 #include "render/preview/MeshPreviewRender.h"
 #include "render/preview/DirectionRender.h"
 #include "util/PrimitiveParameters.h"
@@ -391,6 +392,12 @@ namespace jasperengine::editor{
         bool drawShaderManifestRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::string& shader,
                                     const std::string& paramsProperty, const std::string& texturesProperty,
                                     const std::string& featuresProperty, const std::function<void()>& onValueChanged);
+        // The value widget of one manifest parameter (@property) at `value`, full width: colour
+        // pickers editing sRGB (stored linear), sliders for ranges, checkboxes for toggles, drag
+        // fields. True with `edited` when it changed; `continuous` false for a one-click change
+        // (its own undo step) and true while dragging (merged until released)
+        bool drawShaderPropertyValue(const ShaderManifestProperty& property, const std::string& id, const Vector4& value,
+                                     Vector4& edited, bool& continuous);
         // A submesh material's Shader row and manifest rows; true when the built-in PBR rows
         // apply (built-in Lit or a fork)
         bool drawMaterialShaderRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
@@ -432,9 +439,12 @@ namespace jasperengine::editor{
             std::shared_ptr<ShaderRender> shader;
             CustomUniformBlock block; // u_fs_postParams, slot -1 when not declared
             bool buildFailed = false;
+            // the shader's manifest (library shaders, forks keeping theirs): the members it
+            // declares as @property rows show its labels, ranges and defaults
+            std::shared_ptr<const ShaderManifest> manifest;
         };
         PostProcessShader resolvePostProcessShader(const PostProcessPass& pass);
-        float getPostProcessLabelSize(const PostProcessShader& resolved);
+        float getPostProcessLabelSize(const PostProcessShader& resolved, const PostProcessPass& pass);
         void drawPostProcessUniforms(uint32_t sceneId, const std::vector<PostProcessPass>& passes, size_t index,
                                      const PostProcessShader& resolved);
         // the user pass's own fields beyond shader, enabled and uniforms (InspectorPostProcessing.cpp)
