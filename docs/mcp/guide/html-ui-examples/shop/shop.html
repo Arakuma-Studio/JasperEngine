@@ -3,10 +3,11 @@
   Shop: a merchant screen.
   Shows: a responsive card grid (grid-template-columns: repeat(auto-fill, minmax())), cards from
   a data model (data-for), filter chips that set the model's filter (data-event-click,
-  data-class-active, data-if), buy buttons disabled when gold is short (data-attrif-disabled,
-  :disabled, :has() dims the card), a confirmation dialog with a quantity stepper, gradients and
-  glows. ShopUI.lua opens the dialog, takes the gold and counts the purse down with anime on a
-  plain Lua number. In the editor (no Lua) the grid is empty: press Play to see the wares.
+  data-class-active, data-if), buy buttons disabled when gold is short (data-attr-disabled:
+  false removes the attribute; :disabled, :has() dims the card), a confirmation dialog with a
+  quantity stepper, gradients and glows. ShopUI.lua opens the dialog, takes the gold and counts
+  the purse down with anime on a plain Lua number. In the editor (no Lua) the grid is empty:
+  press Play to see the wares.
 -->
 <html lang="en">
 <head>
@@ -42,7 +43,7 @@
           <p class="stats">{{ item.stats }}</p>
           <div class="buy-row">
             <span class="price"><i data-lucide="coins"></i>{{ item.price }}</span>
-            <button class="buy" data-attrif-disabled="gold < item.price" data-event-click="buy(i)">Buy</button>
+            <button class="buy" data-attr-disabled="gold < item.price" data-event-click="buy(i)">Buy</button>
           </div>
         </article>
       </div>
@@ -53,9 +54,9 @@
         <div class="modal-icon"><img data-attr-src="pendingIcon" alt=""></div>
         <h3 id="confirm-title">Buy {{ pendingName }}?</h3>
         <div class="stepper">
-          <button id="qty-minus" aria-label="One less" data-attrif-disabled="qty <= 1"><i data-lucide="minus"></i></button>
+          <button id="qty-minus" aria-label="One less" data-attr-disabled="qty <= 1"><i data-lucide="minus"></i></button>
           <span id="qty" class="qty">{{ qty }}</span>
-          <button id="qty-plus" aria-label="One more" data-attrif-disabled="(qty + 1) * pendingPrice > gold"><i data-lucide="plus"></i></button>
+          <button id="qty-plus" aria-label="One more" data-attr-disabled="(qty + 1) * pendingPrice > gold"><i data-lucide="plus"></i></button>
         </div>
         <p class="total">Total <span class="price"><i data-lucide="coins"></i>{{ qty * pendingPrice }}</span></p>
         <div class="modal-actions">

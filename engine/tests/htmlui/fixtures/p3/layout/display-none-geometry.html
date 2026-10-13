@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: an element hidden with display: none has no box</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  #panel { position: absolute; left: 20px; top: 20px; width: 200px; padding: 10px; border: 4px solid #556677; background: #dde4ee; }
+  #inner { height: 40px; margin-bottom: 8px; background: #a0b8e8; }
+  #scroller { height: 50px; overflow: auto; background: #e8eef6; }
+  #tall { height: 120px; background: #e8a0a0; }
+  #chip { display: inline-block; width: 30px; height: 20px; margin-top: 8px; background: #556677; }
+  #after { position: absolute; left: 260px; top: 20px; width: 80px; height: 60px; background: #88aa88; }
+  #contents { display: contents; }
+  #in-contents { position: absolute; left: 260px; top: 100px; width: 80px; height: 30px; background: #aa8888; }
+</style>
+</head>
+<body><div id="panel"><div id="inner"></div><div id="scroller"><div id="tall"></div></div><span id="chip"></span></div><div id="after"></div><div id="contents"><div id="in-contents"></div></div></body>
+</html>

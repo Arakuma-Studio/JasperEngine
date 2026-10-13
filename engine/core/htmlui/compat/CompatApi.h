@@ -48,7 +48,10 @@ namespace jasperengine::htmlui::compat {
     // A whole document as it loads (HTML, its stylesheets, imports): the same diagnostics as
     // UIDocument::getDiagnostics() for the compile. htmlPath asset-relative.
     JASPERENGINE_API CheckReport checkDocument(const std::string& htmlPath, const CheckOptions& options);
-    // One stylesheet on its own (an author sheet as a document links it).
+    // One stylesheet on its own (an author sheet as a document links it). The custom properties
+    // its documents define are unknown: a declaration that needs the value of a variable the
+    // sheet (and its imports) does not declare is not reported (HTMLUI-CSS-0012, p4-gaps); check
+    // the documents that link it for that (ProjectChecks does, for `check --ui --files x.css`).
     JASPERENGINE_API CheckReport checkStylesheet(const std::string& cssPath, const CheckOptions& options);
 
     // Source of an element of a loaded document (reads data-htmlui-loc): location fields only.

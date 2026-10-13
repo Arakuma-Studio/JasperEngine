@@ -345,8 +345,8 @@ kbd svg {
   font-weight: 600;
 }
 
+/* the markup sets each bar's --value */
 .bar {
-  --value: 50%;   /* the markup sets each bar's own value */
   display: block;
   width: 120px;
   height: 6px;

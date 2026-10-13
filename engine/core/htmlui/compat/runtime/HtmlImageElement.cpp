@@ -163,10 +163,8 @@ bool HtmlImageElement::isLoaded(){
 
 void HtmlImageElement::generateGeometry(){
     geometryDirty = false;
-    geometry = Rml::Geometry();
+    geometry.Clear();
     texture = Rml::Texture();
-    // replaced content is clipped to the rounded padding box, as in CSS (a round avatar)
-    clipGeometry = decorators::makeClipGeometry(this, Rml::BoxArea::Padding);
     Rml::RenderManager* renderManager = GetRenderManager();
     if (!renderManager || !loaded)
         return;
@@ -211,21 +209,17 @@ void HtmlImageElement::generateGeometry(){
                             (Rml::byte)((base.blue * color.blue + 127) / 255), (Rml::byte)((base.alpha * color.alpha + 127) / 255));
     }
     const Rml::ColourbPremultiplied colour = base.ToPremultiplied(GetDrawOpacity());
-    Rml::Mesh mesh;
-    Rml::MeshUtilities::GenerateQuad(mesh, origin + Rml::Vector2f(quad.rect.x, quad.rect.y), Rml::Vector2f(quad.rect.width, quad.rect.height), colour,
-                                     Rml::Vector2f(quad.u0, quad.v0), Rml::Vector2f(quad.u1, quad.v1));
-    geometry = renderManager->MakeGeometry(std::move(mesh));
+    geometry.Set(Rml::Rectanglef::FromPositionSize(origin + Rml::Vector2f(quad.rect.x, quad.rect.y), Rml::Vector2f(quad.rect.width, quad.rect.height)),
+                 colour, Rml::Vector2f(quad.u0, quad.v0), Rml::Vector2f(quad.u1, quad.v1));
 }
 
 void HtmlImageElement::OnRender(){
     ensureLoaded();
     if (geometryDirty)
         generateGeometry();
-    if (!geometry)
-        return;
-    const Rml::Vector2f offset = GetAbsoluteOffset(Rml::BoxArea::Border);
-    decorators::RoundedClip clip(this, clipGeometry, offset);
-    geometry.Render(offset, texture);
+    // trimmed to the content edge curve of a rounded box, as in CSS (a round avatar; the fork's
+    // P4-G1)
+    geometry.Render(this, texture);
 }
 
 void HtmlImageElement::OnResize(){
@@ -247,11 +241,6 @@ void HtmlImageElement::OnPropertyChange(const Rml::PropertyIdSet& changed_proper
     if (changed_properties.Contains(Rml::PropertyId::ImageColor) || changed_properties.Contains(Rml::PropertyId::Opacity) ||
         changed_properties.Contains(Rml::PropertyId::Color))
         geometryDirty = true;
-    // the horizontal and the vertical radius of the four corners (consecutive ids)
-    for (int i = 0; i < 8; i++){
-        if (changed_properties.Contains(Rml::PropertyId((int)Rml::PropertyId::RmlUi_BorderTopLeftRadiusX + i)))
-            geometryDirty = true;
-    }
     if (changed_properties.Contains(Rml::PropertyId::ObjectFit) || changed_properties.Contains(Rml::PropertyId::ObjectPositionX) ||
         changed_properties.Contains(Rml::PropertyId::ObjectPositionY))
         geometryDirty = true;

@@ -95,6 +95,25 @@ TEST_F(CompatElementTest, ButtonSubmitsItsFormWithNameAndValue){
     EXPECT_EQ(submits.events[1]["out"], "o");
 }
 
+// P4-G2: a <button> taller than its content centers it vertically, as Chromium's anonymous button
+// content box does (safe; in the content box), whatever align-content says; a flex button is a
+// flex container
+TEST_F(CompatElementTest, ButtonCentersItsContentVertically){
+    ASSERT_NE(show("<button id='a'><div id='ac' style='height: 20px;'/></button>"
+                   "<button id='b' style='padding: 10px 0 30px; align-content: start;'><div id='bc' style='height: 20px;'/></button>"
+                   "<button id='c' style='height: 10px;'><div id='cc' style='height: 20px;'/></button>"
+                   "<button id='d' style='display: flex;'><div id='dc' style='height: 20px;'/></button>",
+                   "button { display: inline-block; box-sizing: border-box; width: 60px; height: 80px; padding: 0; border: 0; }"), nullptr);
+    ASSERT_NE(rmlui_dynamic_cast<HtmlButtonElement*>(byId("a")), nullptr);
+    const auto top = [this](const char* button, const char* child){
+        return byId(child)->GetAbsoluteOffset(Rml::BoxArea::Border).y - byId(button)->GetAbsoluteOffset(Rml::BoxArea::Content).y;
+    };
+    EXPECT_FLOAT_EQ(top("a", "ac"), 30.0f);
+    EXPECT_FLOAT_EQ(top("b", "bc"), 10.0f);
+    EXPECT_FLOAT_EQ(top("c", "cc"), 0.0f);
+    EXPECT_FLOAT_EQ(top("d", "dc"), 0.0f);
+}
+
 TEST_F(CompatElementTest, DisabledButtonGetsNoClick){
     ASSERT_NE(show("<form id='f'><button id='go' disabled=''>Go</button></form>", kControls), nullptr);
     Recorder submits, clicks;
@@ -528,6 +547,92 @@ TEST_F(CompatElementTest, ImageSizeFitAndSampling){
         }
     }
     EXPECT_TRUE(svg);
+}
+
+// P4-G1: the picture of a rounded <img> is trimmed to its content edge curve: by the mesh (the
+// content box filled like a background, feathered curves) when it covers the content box or lies
+// inside the curve, under a clip mask when it crosses the curve
+TEST_F(CompatElementTest, RoundedImageIsTrimmedToTheContentCurve){
+    const auto pictureOf = [this](const char* id, size_t& vertices){
+        vertices = 0;
+        for (const RecordingRenderInterface::Draw& draw : recording.getDraws()){
+            const RecordingRenderInterface::Texture* texture = recording.getTexture(draw.texture);
+            if (texture && texture->source.find("wide4x2.png") != std::string::npos &&
+                draw.translation == byId(id)->GetAbsoluteOffset(Rml::BoxArea::Border)){
+                vertices = recording.getGeometry(draw.geometry)->vertices.size();
+                return true;
+            }
+        }
+        return false;
+    };
+    size_t vertices = 0;
+
+    // square: a quad, no mask
+    ASSERT_NE(show("<img id='a' src='wide4x2.png' style='width: 40px; height: 40px;'/>", kControls), nullptr);
+    ASSERT_TRUE(pictureOf("a", vertices));
+    EXPECT_EQ(vertices, 4u);
+    EXPECT_EQ(recording.clipMaskRenders, 0);
+
+    // fill, rounded: the rounded content box, no mask; texture coordinates follow the quad
+    ASSERT_NE(show("<img id='a' src='wide4x2.png' style='width: 40px; height: 40px; border-radius: 50%;'/>", kControls), nullptr);
+    ASSERT_TRUE(pictureOf("a", vertices));
+    EXPECT_GT(vertices, 16u);
+    EXPECT_EQ(recording.clipMaskRenders, 0);
+
+    // padding and a border: the curve's radii lose them (20 - 4 - 10 = 6), the picture is the content box
+    ASSERT_NE(show("<img id='a' src='wide4x2.png' style='width: 40px; height: 40px; padding: 10px; border: 4px solid #000; "
+                   "border-radius: 20px;'/>", kControls), nullptr);
+    ASSERT_TRUE(pictureOf("a", vertices));
+    EXPECT_GT(vertices, 16u);
+    for (const RecordingRenderInterface::Draw& draw : recording.getDraws()){
+        const RecordingRenderInterface::Texture* texture = recording.getTexture(draw.texture);
+        if (!texture || texture->source.find("wide4x2.png") == std::string::npos)
+            continue;
+        for (const Rml::Vertex& vertex : recording.getGeometry(draw.geometry)->vertices){
+            // (the feathered ring reaches a little over the edge)
+            EXPECT_GE(vertex.position.x, 14.0f - 1.5f);
+            EXPECT_LE(vertex.position.x, 54.0f + 1.5f);
+            EXPECT_NEAR(vertex.tex_coord.x, (vertex.position.x - 14.0f) / 40.0f, 1e-4f);
+        }
+    }
+    EXPECT_EQ(recording.clipMaskRenders, 0);
+
+    // contain: a 40 x 20 picture across the curves of a 50% radius: a quad under a clip mask
+    ASSERT_NE(show("<img id='a' src='wide4x2.png' style='width: 40px; height: 40px; border-radius: 50%; object-fit: contain;'/>", kControls),
+              nullptr);
+    ASSERT_TRUE(pictureOf("a", vertices));
+    EXPECT_EQ(vertices, 4u);
+    EXPECT_EQ(recording.clipMaskSets, 1);
+
+    // none: a 4 x 2 picture in the middle, inside the curve: a quad, no mask
+    ASSERT_NE(show("<img id='a' src='wide4x2.png' style='width: 40px; height: 40px; border-radius: 8px; object-fit: none;'/>", kControls),
+              nullptr);
+    ASSERT_TRUE(pictureOf("a", vertices));
+    EXPECT_EQ(vertices, 4u);
+    EXPECT_EQ(recording.clipMaskRenders, 0);
+}
+
+// P4-G5: ::before and ::after on the engine's inputs as Chromium draws them: checkbox, radio and
+// range yes; text-like, button-like and the types the engine approximates by a text field or a
+// button (color, date, file, reset, image) no
+TEST_F(CompatElementTest, InputsHaveGeneratedContentAsInChromium){
+    const char* types[] = {"checkbox", "radio", "range", "text", "password", "number", "submit", "button", "reset", "image", "file", "color", "date"};
+    std::string body;
+    for (const char* type : types)
+        body += std::string("<input id='") + type + "' type='" + type + "' class='g'/>";
+    ASSERT_NE(show(body, std::string(kControls) + ".g::before { content: ''; display: block; width: 4px; height: 4px; } .g::after { content: 'x'; }"),
+              nullptr);
+    for (const char* type : types){
+        const bool expected = std::string(type) == "checkbox" || std::string(type) == "radio" || std::string(type) == "range";
+        Rml::Element* input = byId(type);
+        ASSERT_NE(input, nullptr) << type;
+        EXPECT_EQ(input->GetPseudoElement(Rml::PseudoElementType::Before) != nullptr, expected) << type;
+        EXPECT_EQ(input->GetPseudoElement(Rml::PseudoElementType::After) != nullptr, expected) << type;
+    }
+    // laid out in the checkbox's content box
+    Rml::Element* before = byId("checkbox")->GetPseudoElement(Rml::PseudoElementType::Before);
+    EXPECT_EQ(before->GetBox().GetSize(), Rml::Vector2f(4, 4));
+    EXPECT_EQ(before->GetAbsoluteOffset(Rml::BoxArea::Border), byId("checkbox")->GetAbsoluteOffset(Rml::BoxArea::Content));
 }
 
 // ---------------------------------------------------------------- label

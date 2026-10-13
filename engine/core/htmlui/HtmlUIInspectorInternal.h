@@ -109,6 +109,11 @@ namespace jasperengine::htmlui::inspect {
 
     // the element itself or the nearest ancestor with display: none (null when none)
     Rml::Element* displayNoneAt(Rml::Element* element);
+    // whether the element has a box, as the CSSOM geometry APIs see it: it is in a document,
+    // neither it nor an ancestor has display: none, and it is not display: contents. RmlUi keeps
+    // the last box of an element it no longer lays out; without a box every offset, client and
+    // scroll size, getBoundingClientRect and the inspector's boxes are 0, as in a browser (p4-gaps)
+    bool hasLayoutBox(Rml::Element* element);
     // product of the opacities of the element and its ancestors
     float effectiveOpacity(Rml::Element* element);
 

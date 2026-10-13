@@ -158,6 +158,16 @@ public:
 	/// Returns true if the element is replaced, thereby handling its own rendering.
 	/// @return True if the element is a replaced element.
 	bool IsReplaced();
+	/// Fork (P4-G2): true for an element laid out as an HTML button (Chromium's anonymous button content box): as a block
+	/// container it is the root of a block formatting context and its content is centered vertically in its content box as one
+	/// block, 'safe' (content taller than the box starts at its top), whatever 'align-content' says. A button laid out as a flex
+	/// or grid container is laid out as any other.
+	virtual bool HasButtonLayout() const;
+	/// Fork (P4-G5): whether the element's ::before and ::after boxes are generated and laid out. By default an element that
+	/// is not replaced has them and a replaced one (an image, a text field, a select) does not; a form control overrides it
+	/// as Chromium decides: checkbox, radio and range inputs have them (laid out in their content box), text and button
+	/// inputs do not.
+	virtual bool HasGeneratedContentBoxes();
 
 	/// Checks if a given point in screen coordinates lies within the bordered area of this element.
 	/// @param[in] point The point to test.

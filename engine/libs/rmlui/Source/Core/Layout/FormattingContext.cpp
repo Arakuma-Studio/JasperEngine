@@ -48,7 +48,7 @@ UniquePtr<LayoutBox> FormattingContext::FormatIndependent(ContainerBox* parent_c
 		computed.position() == Position::Absolute || computed.position() == Position::Fixed ||
 		LayoutDetails::IsScrollContainer(computed.overflow_x(), computed.overflow_y()) || !element->GetParentNode() ||
 		IsFlexOrGridContainer(element->GetParentNode()->GetDisplay()) ||
-		(display != Display::Inline && computed.align_content() != Style::AlignContent::Normal))
+		(display != Display::Inline && (computed.align_content() != Style::AlignContent::Normal || element->HasButtonLayout())))
 	{
 		type = FormattingContextType::Block;
 	}

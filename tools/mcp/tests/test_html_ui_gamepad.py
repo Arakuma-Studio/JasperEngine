@@ -175,8 +175,9 @@ async def test_dpad_and_a(ed: Editor):
 
 async def test_focus_visible_shows(ed: Editor):
     """The button the gamepad moved to shows its :focus-visible colour."""
+    # (left of the label: a button centers its label, as Chromium does since p4-gaps)
     values = await lua(ed, """local r = object('Pad', 'UIDocument'):getElementById('b2'):getBoundingClientRect()
-        return r.left + r.width / 2, r.top + r.height / 2""")
+        return r.left + 10, r.top + r.height / 2""")
     shot = await ed.call_raw("screenshot", {"view": "game", "max_width": 1280})
     ed.check(not shot.is_error and shot.images, f"no screenshot: {shot.text[:300]}")
     png = shot.images[0][0]

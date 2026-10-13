@@ -70,6 +70,22 @@ public:
 	/// @note Vertex positions are relative to the border-box, vertex texture coordinates are default initialized.
 	static void GenerateBackground(Mesh& mesh, const RenderBox& render_box, ColourbPremultiplied color);
 
+	/// Fork (P4-G1): Generates the picture of a replaced element, a textured quad, trimmed by its mesh to the content edge curve
+	/// of a rounded box (CSS Backgrounds 3 §5.3): a quad that covers the content area is generated as the content area filled
+	/// like a background (its curves feathered as GenerateBackgroundBorder feathers them) with the quad's texture coordinates,
+	/// a quad inside the curve as it is.
+	/// @param[out] mesh A mesh to append the generated vertices and indices into.
+	/// @param[in] content_box The render box of the content area (Element::GetRenderBox(BoxArea::Content, 0, false)).
+	/// @param[in] rect The quad, relative to the border box.
+	/// @param[in] color The color of the quad's vertices.
+	/// @param[in] top_left_texcoord The texture coordinates at the top-left of the quad.
+	/// @param[in] bottom_right_texcoord The texture coordinates at the bottom-right of the quad.
+	/// @param[in] feather_unit The size of a device pixel in the mesh's units (as GenerateBackgroundBorder takes it).
+	/// @return False when the quad crosses the curve without covering the content area: it is then generated untrimmed, to be
+	/// drawn under a clip mask (ScopedReplacedContentClip).
+	static bool GenerateReplacedContent(Mesh& mesh, const RenderBox& content_box, Rectanglef rect, ColourbPremultiplied color,
+		Vector2f top_left_texcoord, Vector2f bottom_right_texcoord, float feather_unit);
+
 private:
 	MeshUtilities() = delete;
 };

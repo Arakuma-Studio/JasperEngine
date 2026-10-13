@@ -250,3 +250,34 @@ div { display: block; }
         std::cout << "[ MSAA     ] HTML UI, " << samples << " sample(s): " << (mesaPattern ? "Mesa's half-covered edges" : "exact") << "\n";
     }
 }
+
+// p4-gaps: the same page rendered and read back many times is the same image. HtmlUIClipEdge once
+// failed in a full run (about one render in 70 of a new context): the harness's glGetTexImage
+// returned the layer with some of its blocks not rasterized yet (llvmpipe's rasterizer threads; a
+// second read of the same texture was whole, and so was the screen it was composited onto). The
+// readback waits for the GPU (glFinish, harness/Readback.cpp); 200 renders see the race with a
+// probability of about 94 %.
+TEST(MsaaScissor, HtmlUIClipEdgeReadsBackTheSameImage){
+    JASPER_REQUIRE_GPU();
+    std::vector<uint8_t> first;
+    for (int i = 0; i < 200; i++){
+        RenderTestContext render(64, 48, 64, 48, 1);
+        ASSERT_TRUE(render.isValid());
+        Rml::ElementDocument* document = render.loadFromMemory(R"(<rml><head><style>
+body { width: 64px; height: 48px; margin: 0; padding: 0; }
+div { display: block; }
+#clip { position: absolute; left: 10px; top: 10px; width: 30px; height: 20px; overflow: hidden; }
+#content { height: 200px; width: 100px; margin-left: -20px; background-color: #ffffff; }
+</style></head><body><div id="clip"><div id="content"/></div></body></rml>)", "msaa-scissor-repeat");
+        ASSERT_NE(document, nullptr);
+        ASSERT_TRUE(render.renderUntilDrawn());
+        document->GetElementById("clip")->SetScrollTop(30.0f);
+        ASSERT_TRUE(render.renderFrame());
+        std::vector<uint8_t> rgba;
+        ASSERT_TRUE(render.readLayer(rgba));
+        if (i == 0)
+            first = rgba;
+        else
+            ASSERT_EQ(rgba, first) << "render " << i << " read back another image";
+    }
+}

@@ -710,18 +710,63 @@ editor::ProjectChecks::UiCheck editor::ProjectChecks::checkUiFiles(const fs::pat
             if (findingKeys.insert(key).second) check.findings.push_back(std::move(finding));
         }
     };
+    std::map<fs::path, compat::CheckReport> documentReports;
     for (const fs::path& document : documents) {
-        const compat::CheckReport report = compat::checkDocument(assetRelative(assets, document), options);
+        const compat::CheckReport& report = documentReports[document] = compat::checkDocument(assetRelative(assets, document), options);
         check.documents++;
         for (const std::string& file : report.files) readByDocuments.insert(jasperengine::normalizeHtmlUIPath(file));
         add(projectRelative(projectRoot, document), report);
     }
+    // A stylesheet named on its own is checked in the context of the project's documents that load
+    // it (p4-gaps): only they know the custom properties it reads (a style attribute, another sheet),
+    // so a variable a document defines is no finding and one no document defines is. A sheet no
+    // document loads is checked alone, which does not judge the variables it does not declare.
+    std::vector<fs::path> projectDocuments;
+    bool projectDocumentsListed = false;
+    auto documentsLoading = [&](const std::string& assetPath) {
+        if (!projectDocumentsListed) {
+            projectDocumentsListed = true;
+            for (const fs::path& file : findProjectFiles(projectRoot, {".html", ".htm"})) {
+                const fs::path normal = file.lexically_normal();
+                if ((!shell.empty() && normal == shell) || assetRelative(assets, normal).empty()) continue;
+                projectDocuments.push_back(normal);
+            }
+        }
+        std::vector<const compat::CheckReport*> loading;
+        const std::string wanted = jasperengine::normalizeHtmlUIPath(assetPath);
+        for (const fs::path& document : projectDocuments) {
+            auto found = documentReports.find(document);
+            if (found == documentReports.end())
+                found = documentReports.emplace(document, compat::checkDocument(assetRelative(assets, document), options)).first;
+            for (const std::string& file : found->second.files) {
+                if (jasperengine::normalizeHtmlUIPath(file) == wanted) {
+                    loading.push_back(&found->second);
+                    break;
+                }
+            }
+        }
+        return loading;
+    };
     for (const fs::path& stylesheet : stylesheets) {
         const std::string assetPath = assetRelative(assets, stylesheet);
         // the whole project: a stylesheet a document links was checked as that document loads it
         if (files.empty() && readByDocuments.count(jasperengine::normalizeHtmlUIPath(assetPath))) continue;
-        const compat::CheckReport report = compat::checkStylesheet(assetPath, options);
+        compat::CheckReport report = compat::checkStylesheet(assetPath, options);
         check.stylesheets++;
+        const std::vector<const compat::CheckReport*> loading = files.empty() ? std::vector<const compat::CheckReport*>() : documentsLoading(assetPath);
+        if (!loading.empty()) {
+            // the findings in the sheet and the files it imports, as its documents load them
+            std::set<std::string> own;
+            for (const std::string& file : report.files) own.insert(jasperengine::normalizeHtmlUIPath(file));
+            compat::CheckReport inContext;
+            inContext.files = report.files;
+            for (const compat::CheckReport* document : loading) {
+                for (const compat::Diagnostic& diagnostic : document->diagnostics) {
+                    if (own.count(jasperengine::normalizeHtmlUIPath(diagnostic.file))) inContext.diagnostics.push_back(diagnostic);
+                }
+            }
+            report = std::move(inContext);
+        }
         add(projectRelative(projectRoot, stylesheet), report);
     }
     check.files.assign(filesRead.begin(), filesRead.end());

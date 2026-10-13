@@ -230,7 +230,11 @@ void WidgetDropDown::OnRender()
 	if (value_layout_dirty)
 	{
 		ElementUtilities::FormatElement(value_element, parent_element->GetBox().GetSize(BoxArea::Border));
-		value_element->SetOffset(parent_element->GetBox().GetPosition(BoxArea::Content), parent_element);
+		// The value is centered vertically in the content box of a select taller than one line (Chromium; fork, P4-G3).
+		// Like Chromium's, the centering is not 'safe': in a select shorter than its line, the line overflows both edges.
+		const Box& select_box = parent_element->GetBox();
+		const float free_height = select_box.GetSize(BoxArea::Content).y - value_element->GetBox().GetSize(BoxArea::Margin).y;
+		value_element->SetOffset(select_box.GetPosition(BoxArea::Content) + Vector2f(0.f, 0.5f * free_height), parent_element);
 
 		value_layout_dirty = false;
 	}
@@ -248,9 +252,20 @@ void WidgetDropDown::OnLayout()
 	}
 
 	// Layout the button box. The selection element layout is deferred until it is opened. The button sits at the right
-	// of the padding box: the select's right padding does not move it (as browsers paint the menu list arrow).
-	const float padding_right = parent_element->GetBox().GetEdge(BoxArea::Padding, BoxEdge::Right);
-	ElementUtilities::PositionElement(button_element, Vector2f(-padding_right, 0), ElementUtilities::TOP_RIGHT);
+	// of the padding box: the select's right padding does not move it (as browsers paint the menu list arrow). Without a
+	// height it spans the padding box's height, so that an arrow centered in it is centered as Chromium centers it whatever
+	// the vertical padding (fork, P4-G3).
+	const Box& select_box = parent_element->GetBox();
+	const float padding_right = select_box.GetEdge(BoxArea::Padding, BoxEdge::Right);
+	const float padding_top = select_box.GetEdge(BoxArea::Padding, BoxEdge::Top);
+	ElementUtilities::PositionElement(button_element, Vector2f(-padding_right, -padding_top), ElementUtilities::TOP_RIGHT);
+	if (button_element->GetComputedValues().height().type == Style::Height::Auto)
+	{
+		Box arrow_box = button_element->GetBox();
+		const float edges = arrow_box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Margin, BoxArea::Padding);
+		arrow_box.SetContent(Vector2f(arrow_box.GetSize().x, Math::Max(select_box.GetSize(BoxArea::Padding).y - edges, 0.f)));
+		button_element->SetBox(arrow_box);
+	}
 
 	box_layout_dirty = true;
 	value_layout_dirty = true;

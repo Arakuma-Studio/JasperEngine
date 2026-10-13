@@ -8,6 +8,7 @@
 #include "../../Include/RmlUi/Core/Factory.h"
 #include "../../Include/RmlUi/Core/FontEngineInterface.h"
 #include "../../Include/RmlUi/Core/Math.h"
+#include "../../Include/RmlUi/Core/MeshUtilities.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
 #include "../../Include/RmlUi/Core/TextShapingContext.h"
 #include "DataController.h"
@@ -279,6 +280,99 @@ bool ElementUtilities::SetClippingRegion(Element* element, bool force_clip_self)
 	render_manager.SetClipMask(std::move(clip_mask_list));
 
 	return true;
+}
+
+ScopedReplacedContentClip::ScopedReplacedContentClip(Element* element, bool enable)
+{
+	if (!enable || !element || !element->GetComputedValues().has_border_radius())
+		return;
+	RenderManager* manager = element->GetRenderManager();
+	if (!manager)
+		return;
+	Geometry* clip_geometry = element->GetElementBackgroundBorder()->GetClipGeometry(element, BoxArea::Content);
+	if (!clip_geometry || !*clip_geometry)
+		return;
+
+	render_manager = manager;
+	saved_state = manager->GetState();
+	const TransformState* transform_state = element->GetTransformState();
+	const Matrix4f* transform = (transform_state ? transform_state->GetTransform() : nullptr);
+	ClipMaskGeometryList clip_mask_list = saved_state.clip_mask_list;
+	// The first mask of a list sets the stencil, the others intersect it (as GetClippingRegion's lists).
+	const ClipMaskOperation operation = (clip_mask_list.empty() ? ClipMaskOperation::Set : ClipMaskOperation::Intersect);
+	clip_mask_list.push_back(ClipMaskGeometry{operation, clip_geometry, element->GetAbsoluteOffset(BoxArea::Border).Round(), transform});
+	manager->SetClipMask(std::move(clip_mask_list));
+}
+
+ScopedReplacedContentClip::~ScopedReplacedContentClip()
+{
+	if (render_manager)
+		render_manager->SetState(saved_state);
+}
+
+void ReplacedContentGeometry::Set(Rectanglef new_rect, ColourbPremultiplied new_colour, Vector2f top_left_texcoord, Vector2f bottom_right_texcoord)
+{
+	if (is_set && new_rect.TopLeft() == rect.TopLeft() && new_rect.BottomRight() == rect.BottomRight() && new_colour == colour &&
+		top_left_texcoord == texcoords[0] && bottom_right_texcoord == texcoords[1])
+		return;
+	rect = new_rect;
+	colour = new_colour;
+	texcoords[0] = top_left_texcoord;
+	texcoords[1] = bottom_right_texcoord;
+	is_set = true;
+	dirty = true;
+}
+
+void ReplacedContentGeometry::Clear()
+{
+	geometry = Geometry();
+	is_set = false;
+	dirty = true;
+}
+
+void ReplacedContentGeometry::Render(Element* element, Texture texture)
+{
+	if (!is_set || !element)
+		return;
+	RenderManager* render_manager = element->GetRenderManager();
+	if (!render_manager)
+		return;
+
+	const bool new_rounded = element->GetComputedValues().has_border_radius();
+	if (new_rounded)
+	{
+		const RenderBox new_content_box = element->GetRenderBox(BoxArea::Content, 0, false);
+		if (!rounded || !(new_content_box == content_box) || feather_unit != ElementBackgroundBorder::GetFeatherUnit(element))
+		{
+			content_box = new_content_box;
+			dirty = true;
+		}
+	}
+	else if (rounded)
+	{
+		dirty = true;
+	}
+
+	if (dirty || !geometry)
+	{
+		rounded = new_rounded;
+		feather_unit = ElementBackgroundBorder::GetFeatherUnit(element);
+		Mesh mesh = geometry.Release(Geometry::ReleaseMode::ClearMesh);
+		if (rounded)
+		{
+			needs_clip = !MeshUtilities::GenerateReplacedContent(mesh, content_box, rect, colour, texcoords[0], texcoords[1], feather_unit);
+		}
+		else
+		{
+			MeshUtilities::GenerateQuad(mesh, rect.TopLeft(), rect.Size(), colour, texcoords[0], texcoords[1]);
+			needs_clip = false;
+		}
+		geometry = render_manager->MakeGeometry(std::move(mesh));
+		dirty = false;
+	}
+
+	ScopedReplacedContentClip clip(element, needs_clip);
+	geometry.Render(element->GetAbsoluteOffset(BoxArea::Border), texture);
 }
 
 bool ElementUtilities::GetBoundingBox(Rectanglef& out_rectangle, Element* element, BoxArea box_area)

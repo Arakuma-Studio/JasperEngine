@@ -63,9 +63,9 @@ GOLDEN_SIZE = (1280, 720)
 COMPARE_SIZE = (640, 360)
 CHANNEL_TOLERANCE = 24
 MAX_FRACTION = 0.01
-# Two runs from fresh starts: the same image but for the antialiased edge pixels of rounded boxes
-# under blurred shadows, which vary by a few pixels between play sessions (at most 0.01%)
-RUNS_MAX_FRACTION = 0.0001
+# Two runs from fresh starts: the same image (rendering is deterministic: p4-gaps fixed the shadow
+# textures that kept the pixel size of the view they were first drawn in, fork P4-G7)
+RUNS_MAX_FRACTION = 0.0
 
 # Per example: the public surface the spec (§3.7.2), the tests and the docs name
 SURFACE = {

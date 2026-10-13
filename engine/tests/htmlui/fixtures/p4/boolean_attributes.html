@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>boolean attributes from data bindings</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    button, input { display: block; width: 160px; height: 24px; }
+    [hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <div data-model="shop">
+    <button id="buy" data-attr-disabled="gold < price" data-event-click="bought = bought + 1">Buy</button>
+    <button id="buy-if" data-attrif-disabled="gold < price">Buy</button>
+    <input type="checkbox" id="owned" data-attr-checked="owned">
+    <input type="text" id="note" data-attr-readonly="locked" data-attr-required="!locked" data-attr-placeholder="label">
+    <p id="hint" data-attr-hidden="!locked">Locked</p>
+  </div>
+</body>
+</html>

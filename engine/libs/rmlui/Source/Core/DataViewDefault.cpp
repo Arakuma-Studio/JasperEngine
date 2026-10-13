@@ -63,6 +63,15 @@ DataViewAttribute::DataViewAttribute(Element* element, String override_attribute
 	DataViewCommon(element, std::move(override_attribute), sort_offset)
 {}
 
+// Fork (P4-G9): HTML's boolean attributes (HTML 2.4.2: present or absent, whatever their value; "false" is true).
+static bool IsHtmlBooleanAttribute(const String& name)
+{
+	static const SmallUnorderedSet<String> names = {"allowfullscreen", "async", "autofocus", "autoplay", "checked", "controls", "default",
+		"defer", "disabled", "formnovalidate", "hidden", "inert", "ismap", "itemscope", "loop", "multiple", "muted", "nomodule", "novalidate",
+		"open", "playsinline", "readonly", "required", "reversed", "selected"};
+	return names.count(name) != 0;
+}
+
 bool DataViewAttribute::Update(DataModel& model)
 {
 	const String& attribute_name = GetModifier();
@@ -73,6 +82,26 @@ bool DataViewAttribute::Update(DataModel& model)
 
 	if (element && GetExpression().Run(expr_interface, variant))
 	{
+		// A boolean attribute is removed for false (or no value) and set empty for true, as data-attrif sets it: writing
+		// disabled="false" would disable (fork, P4-G9). Other values are written as they are.
+		if (IsHtmlBooleanAttribute(attribute_name) &&
+			(variant.GetType() == Variant::BOOL || variant.GetType() == Variant::NONE))
+		{
+			const bool value = (variant.GetType() == Variant::BOOL && variant.Get<bool>());
+			const Variant* attribute = element->GetAttribute(attribute_name);
+			if (!value && attribute)
+			{
+				element->RemoveAttribute(attribute_name);
+				result = true;
+			}
+			else if (value && (!attribute || !attribute->Get<String>().empty()))
+			{
+				element->SetAttribute(attribute_name, String());
+				result = true;
+			}
+			return result;
+		}
+
 		const String value = variant.Get<String>();
 		const Variant* attribute = element->GetAttribute(attribute_name);
 

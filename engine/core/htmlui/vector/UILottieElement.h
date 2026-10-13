@@ -10,6 +10,7 @@
 
 #include <RmlUi/Core/CallbackTexture.h>
 #include <RmlUi/Core/Element.h>
+#include <RmlUi/Core/ElementUtilities.h>
 #include <RmlUi/Core/Geometry.h>
 
 #include <cstdint>
@@ -149,7 +150,8 @@ namespace jasperengine {
         Rml::CallbackTexture texture;
         HtmlUITexture* liveTexture = nullptr;     // owned by the renderer (ReleaseTexture deletes it)
         Rml::Vector2i textureSize{0, 0};
-        Rml::Geometry geometry;
+        Rml::ReplacedContentGeometry geometry;
+        Rml::ColourbPremultiplied pictureColour;
         bool geometryDirty = true;
         Rml::Vector2i renderSize{0, 0};
 

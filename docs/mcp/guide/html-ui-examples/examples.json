@@ -72,7 +72,7 @@
              {"type": "min_size", "selector": ".choice"}]},
  {"name": "shop", "title": "Shop", "example": true,
   "description": "A merchant screen: filter chips, a card grid bound to a data model, buy buttons disabled when gold is short, a quantity dialog and an animated gold counter.",
-  "demonstrates": ["grid auto-fill", "data-for + data-if filtering", "data-attrif-disabled", ":disabled", "modal overlay", "quantity stepper", "anime on a number", "chips with :has()", "gradients and glows"],
+  "demonstrates": ["grid auto-fill", "data-for + data-if filtering", "data-attr-disabled", ":disabled", "modal overlay", "quantity stepper", "anime on a number", "chips with :has()", "gradients and glows"],
   "html": "shop.html", "css": "shop.css", "lua": "ShopUI.lua",
   "assets": ["assets/items/apple.svg", "assets/items/armor.svg", "assets/items/axe.svg", "assets/items/bomb.svg", "assets/items/crown.svg", "assets/items/gem.svg", "assets/items/helmet.svg", "assets/items/potion.svg", "assets/items/shield.svg", "assets/items/sword.svg", "assets/items/wand.svg"],
   "viewports": [[1280, 720], [1920, 1080], [1024, 768]],

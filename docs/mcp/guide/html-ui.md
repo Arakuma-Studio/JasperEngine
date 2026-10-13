@@ -262,10 +262,15 @@ Every rule you write beats every user-agent rule. Every element's status:
 Form controls: `accent-color` colors checkboxes, radios, sliders and progress bars;
 `appearance: none` removes a control's own look so your `background`, `border` and
 `::-webkit-slider-thumb` styles draw alone (a checkbox or radio then has no border or checked
-fill of its own, as in Chrome). As in a browser, a reset such as `* { margin: 0; padding: 0 }`
-does not reach a control's inner parts (slider track and thumb, select arrow, scrollbars):
-style those through their pseudo-elements (`::-webkit-slider-thumb`, `::-webkit-scrollbar`,
-`::placeholder`).
+fill of its own, as in Chrome). As in Chrome, checkbox, radio and range inputs draw `::before`
+and `::after` (laid out in the input's box), so a switch is one element: an
+`input[type="checkbox"]` with `appearance: none`, a track `background` and the knob its
+`::before`, moved by `:checked::before`; text and button inputs draw none. A button's content
+and a `<select>`'s or a text field's line are centered vertically in a taller box, and
+`border-radius` clips an `<img>`, `<svg>` or `<lottie>` picture to its rounded content box. As
+in a browser, a reset such as `* { margin: 0; padding: 0 }` does not reach a control's inner
+parts (slider track and thumb, select arrow, scrollbars): style those through their
+pseudo-elements (`::-webkit-slider-thumb`, `::-webkit-scrollbar`, `::placeholder`).
 
 | Element | Behavior |
 |---|---|
@@ -548,7 +553,7 @@ is the global `document`.
 | Classes and style | `classList:add(...)`, `remove(...)`, `toggle(name[, force])`, `contains(name)`; `style.backgroundColor` or `style["background-color"]` (write: inline, `""` or nil removes; read: the computed value as CSS text), `style:getPropertyValue/setProperty/removeProperty`, `style.cssText` |
 | Forms | `value`, `checked`, `disabled` (read the new value in `input`/`change` listeners from `event.target.value`) |
 | Focus and actions | `focus()`, `blur()`, `click()`; `<dialog>`: `show()`, `showModal()`, `close([value])`; `<lottie>`: `play()`, `pause()`, `stop()`, `seek(s)`, ... |
-| Geometry and scroll | `getBoundingClientRect()` (`x y width height top left right bottom`, document px = canvas px for screen documents, through transforms), `offsetLeft/Top/Width/Height`, `clientWidth/Height`, `scrollTop`, `scrollLeft`, `scrollWidth`, `scrollHeight`, `scrollIntoView([alignToTop])`, `scrollTo(x, y[, smooth])`, `scrollBy(dx, dy[, smooth])` |
+| Geometry and scroll | `getBoundingClientRect()` (`x y width height top left right bottom`, document px = canvas px for screen documents, through transforms), `offsetLeft/Top/Width/Height`, `clientWidth/Height`, `scrollTop`, `scrollLeft`, `scrollWidth`, `scrollHeight` (all 0 for an element with `display: none` on it or an ancestor, a `data-if` that is false, or one not in the document, as in a browser), `scrollIntoView([alignToTop])`, `scrollTo(x, y[, smooth])`, `scrollBy(dx, dy[, smooth])` |
 | Events | `addEventListener(type, fn[, capture or {capture=, once=}])`, `removeEventListener(type, fn[, capture])`, `dispatchEvent(type[, detail[, bubbles]])` (false when a listener prevented it) |
 
 Queries that find nothing return `nil`. The engine's own attributes (`data-htmlui-*`) and
@@ -723,7 +728,8 @@ updates when Lua assigns them; form controls write back.
 | `data-if="health > 0"`, `data-visible="..."` | present / shown only when true |
 | `data-class-low="health < 30"` | the class `low` while true |
 | `data-style-width="health + '%'"` | an inline style from an expression |
-| `data-attr-src="item.icon"`, `data-attr-disabled="gold < price"` | an attribute |
+| `data-attr-src="item.icon"`, `data-attr-disabled="gold < price"` | an attribute; on a boolean attribute (`disabled`, `checked`, `selected`, `hidden`, `readonly`, `required`, `multiple`, `autofocus`, `open`, ...) `false` removes it and `true` sets it, as in HTML (`disabled="false"` would disable) |
+| `data-attrif-disabled="gold < price"` | the attribute present while true (any attribute) |
 | `data-value="volume"`, `data-checked="music"` | two-way binding of a control |
 | `data-event-click="heal(10)"` | calls the model's function `heal(event, 10)` |
 
@@ -1336,13 +1342,13 @@ your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read the
 
 | `template` | Shows | Its `assert_ui` checks |
 |---|---|---|
-| `main_menu` | title screen: animated gradient backdrop, icon buttons, keyboard navigation, a slide-in settings panel; flex, transitions, keyframes, anime timeline + stagger, inline SVG icons, `:focus` | count, visible, text_fits, no_overlap, within_viewport, contrast, min_size of `.menu-button` / `.menu` |
+| `main_menu` | title screen: animated gradient backdrop, icon buttons, keyboard navigation, a slide-in settings panel; flex, grid areas, transitions, keyframes, `backdrop-filter`, anime timeline + stagger, built-in Lucide icons (`data-lucide`), `:focus-visible` | count, visible, text_fits, no_overlap, within_viewport, contrast, min_size of `.menu-button` / `.menu` |
 | `pause_menu` | Escape toggles a blurred overlay (`backdrop-filter`) and `Engine.timeScale`; anime entrance | visible, text_fits, no_overlap, within_viewport, contrast, min_size |
-| `hud` | health and shield bars, score and timer, minimap, ammo, ability cooldowns, damage vignette; data binding (`data-style-width`) | within_viewport, no_overlap, text_fits, contrast with background, visible |
+| `hud` | health and shield bars, score and timer, minimap, ammo, ability cooldowns, damage flash; data binding (`{{ }}`, `data-style-width`, `data-class-*`) | within_viewport, no_overlap, text_fits, contrast with background, visible |
 | `inventory` | a CSS grid of slots from `data-for`, drag and drop, a hover tooltip, equipment | count, no_overlap, within_parent, within_viewport, text_fits, visible |
 | `settings` | tabs, sliders, switches, selects, key bindings; two-way `data-value`/`data-checked` | visible, no_overlap, min_size, text_fits, within_parent, within_viewport |
 | `dialogue` | portrait, typewriter text, choices; `onUpdate` timing | text_fits, within_viewport, contrast, no_overlap, min_size |
-| `shop` | filter chips, cards with `data-if`, a confirm modal, an animated gold counter | text_fits, no_overlap, within_parent, contrast, min_size, within_viewport |
+| `shop` | filter chips, cards with `data-for` + `data-if`, buy buttons disabled by `data-attr-disabled`, a quantity dialog, an animated gold counter | text_fits, no_overlap, within_parent, contrast, min_size, within_viewport |
 | `toasts` | toasts created from Lua (`createElement`, `appendChild`), enter and exit animations | within_viewport, no_overlap, text_fits, contrast |
 | `loading` | progress bar, Lottie spinner, rotating tips, "press any key" | visible, text_fits, within_viewport |
 | `blank` | an empty page with a heading (the default template; no script) | visible |

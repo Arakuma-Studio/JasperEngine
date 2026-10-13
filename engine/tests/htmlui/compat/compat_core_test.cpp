@@ -366,6 +366,37 @@ TEST(CompatUserAgent, EmbeddedHeaderMatchesTheCMakeOne){
 
 // ---- CompatApi
 
+// p4-gaps: a stylesheet on its own does not know the variables its documents define: a
+// declaration that needs the value of a variable it does not declare (nor its imports) is not
+// judged; one it declares with two values is; its document judges both
+TEST(CompatApi, CheckStylesheetLeavesUndeclaredVariablesToItsDocuments){
+    const FileAccess files = memoryFiles({
+        {"ui/vars.css", "@import \"base.css\";\n.card { border: var(--edge); }\n.mixed { border: var(--line); }\n"
+                        ".based { border: var(--base); }\n"},
+        {"ui/base.css", ":root { --line: 1px solid #000; --base: 2px solid #f00; }\n.alt { --line: 2px dashed #00f; }\n"},
+        {"ui/vars.html", "<html><head><link rel=\"stylesheet\" href=\"vars.css\"></head><body>"
+                         "<div class=\"card\" style=\"--edge: 3px solid #0f0\">x</div></body></html>\n"},
+        {"ui/typo.html", "<html><head><link rel=\"stylesheet\" href=\"vars.css\"></head><body>x</body></html>\n"},
+    });
+    CheckOptions options;
+    options.files = files;
+    options.verifyWithRmlUi = false;
+    const auto untyped = [](const CheckReport& report){
+        std::vector<uint32_t> lines;
+        for (const Diagnostic& diagnostic : report.diagnostics){
+            if (diagnostic.code == codes::VarUntyped && diagnostic.file == "ui/vars.css")
+                lines.push_back(diagnostic.line);
+        }
+        return lines;
+    };
+    // alone: --edge is not declared (line 2 is not judged), --line is, with two values (line 3), and
+    // --base once (in the imported sheet: line 4 is fine)
+    EXPECT_EQ(untyped(checkStylesheet("ui/vars.css", options)), std::vector<uint32_t>{3});
+    // a document that defines --edge: the same; one that does not: --edge is a finding there
+    EXPECT_EQ(untyped(checkDocument("ui/vars.html", options)), std::vector<uint32_t>{3});
+    EXPECT_EQ(untyped(checkDocument("ui/typo.html", options)), (std::vector<uint32_t>{2, 3}));
+}
+
 TEST(CompatApi, CheckStylesheet){
     const FileAccess files = memoryFiles({
         {"ui/menu.css", "a { color: red; width: bogus; }\n.b { height: 2px; \"unclosed\n}\n.c { background: url(//cdn.example.com/x.png) }\n"},

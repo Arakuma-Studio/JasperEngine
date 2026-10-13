@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pseudo: ::before and ::after on inputs</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #223344; }
+  input { position: absolute; margin: 0; font-family: "Ahem"; font-size: 10px; line-height: 1; }
+  /* the custom switch: an appearance: none checkbox, its knob a ::before */
+  .switch { appearance: none; box-sizing: border-box; width: 44px; height: 24px; border: 2px solid #556677; border-radius: 0; background: #dde4ee; }
+  .switch::before { content: ""; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; background: #556677; }
+  .switch:checked { background: #88aadd; }
+  .switch:checked::before { left: 22px; background: #ffffff; }
+  #s1 { left: 10px; top: 10px; }
+  #s2 { left: 70px; top: 10px; }
+  /* in-flow generated boxes, in the content box */
+  .box { appearance: none; box-sizing: border-box; width: 40px; height: 30px; border: 3px solid #556677; padding: 4px; background: #eef2f6; }
+  .box::before { content: ""; display: block; width: 12px; height: 8px; background: #d06060; }
+  .box::after { content: "X"; color: #3060c0; }
+  #r1 { left: 130px; top: 10px; border-radius: 0; }
+  #c1 { left: 190px; top: 10px; }
+  /* no generated boxes: text and button inputs */
+  #t1, #b1 { appearance: none; box-sizing: border-box; width: 60px; height: 30px; border: 2px solid #556677; border-radius: 0; padding: 0; background: #eef2f6; color: #223344; }
+  #t1 { left: 250px; top: 10px; }
+  #b1 { left: 330px; top: 10px; }
+  #t1::before, #b1::before { content: "XX"; color: #d06060; }
+  #t1::after, #b1::after { content: ""; display: block; width: 20px; height: 20px; background: #d06060; }
+</style>
+</head>
+<body><input type="checkbox" id="s1" class="switch"><input type="checkbox" id="s2" class="switch" checked><input type="radio" id="r1" class="box"><input type="checkbox" id="c1" class="box"><input type="text" id="t1" value="X"><input type="button" id="b1" value="XX"></body>
+</html>

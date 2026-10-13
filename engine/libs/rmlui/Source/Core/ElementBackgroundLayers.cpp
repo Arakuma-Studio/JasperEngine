@@ -1,4 +1,5 @@
 #include "ElementBackgroundLayers.h"
+#include "ElementBackgroundBorder.h"
 #include "../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../Include/RmlUi/Core/Context.h"
 #include "../../Include/RmlUi/Core/Decorator.h"
@@ -257,8 +258,8 @@ namespace {
 	}
 
 	// The anti-aliased shape of a clip box with rounded corners: its fill area with the inner curves of the border box's
-	// radii, the edges feathered as the background colour's.
-	Geometry MakeClipMask(RenderManager& render_manager, const RenderBox& clip_box)
+	// radii, the edges feathered as the background colour's (over the element's device pixel: fork, P4-G7).
+	Geometry MakeClipMask(RenderManager& render_manager, const RenderBox& clip_box, float feather_unit)
 	{
 		const BorderMetrics metrics = GeometryBackgroundBorder::ComputeBorderMetrics(clip_box.GetBorderOffset(), clip_box.GetBorderWidths(),
 			clip_box.GetFillSize(), clip_box.GetBorderRadius());
@@ -269,7 +270,7 @@ namespace {
 		const ColourbPremultiplied none(0, 0);
 		const ColourbPremultiplied no_border[4] = {none, none, none, none};
 		Mesh mesh;
-		MeshUtilities::GenerateBackgroundBorder(mesh, shape, ColourbPremultiplied(255), no_border);
+		MeshUtilities::GenerateBackgroundBorder(mesh, shape, ColourbPremultiplied(255), no_border, feather_unit);
 		return render_manager.MakeGeometry(std::move(mesh));
 	}
 
@@ -428,7 +429,7 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 					continue;
 				const RenderBox clip_box = element->GetRenderBox(clip_area, 0, false);
 				if (clip_box.HasBorderRadius() && !canvas)
-					draw.clip_mask = MakeClipMask(*render_manager, clip_box);
+					draw.clip_mask = MakeClipMask(*render_manager, clip_box, ElementBackgroundBorder::GetFeatherUnit(element));
 				draws.push_back(std::move(draw));
 				continue;
 			}
@@ -622,7 +623,7 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 			const RenderBox clip_box = element->GetRenderBox(clip_area, box_index, false);
 			if (clip_box.HasBorderRadius() && !canvas)
 			{
-				draw.clip_mask = MakeClipMask(*render_manager, clip_box);
+				draw.clip_mask = MakeClipMask(*render_manager, clip_box, ElementBackgroundBorder::GetFeatherUnit(element));
 			}
 			draws.push_back(std::move(draw));
 		}

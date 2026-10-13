@@ -77,6 +77,9 @@ static bool readFramebufferPixels(Framebuffer* framebuffer, uint8_t*& pixels, bo
         pixels = new uint8_t[width * height * 4];
         needDelete = true;
 
+        // every command that renders into the texture finished first: GL makes glGetTexImage
+        // wait for them, Mesa's llvmpipe (the headless editor's driver) did not always (p4-gaps)
+        glFinish();
         glBindTexture(GL_TEXTURE_2D, framebuffer->getRender().getColorTexture().getGLHandler());
         glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
         glBindTexture(GL_TEXTURE_2D, 0);

@@ -68,20 +68,15 @@ void ElementSVG::OnRender()
 	EnsureSourceLoaded();
 	if (!handle)
 		return;
-	if (HasAttribute("src"))
-	{
-		if (fitted_geometry)
-			fitted_geometry.Render(GetAbsoluteOffset(BoxArea::Content), handle->texture);
-	}
-	else
-	{
-		handle->geometry.Render(GetAbsoluteOffset(BoxArea::Content), handle->texture);
-	}
+	// Inline: the rasterised content box (the quad of handle->geometry, at the content box).
+	if (!HasAttribute("src"))
+		picture.Set(Rectanglef::FromPositionSize(GetBox().GetPosition(BoxArea::Content), Vector2f(handle->GetDimensions())), handle->GetColour());
+	picture.Render(this, handle->texture);
 }
 
 void ElementSVG::GenerateFittedGeometry(const Function<SharedPtr<SVG::SVGData>(const Vector2i*)>& get_handle)
 {
-	fitted_geometry = Geometry();
+	picture.Clear();
 	RenderManager* render_manager = GetRenderManager();
 	if (!render_manager)
 		return;
@@ -116,9 +111,8 @@ void ElementSVG::GenerateFittedGeometry(const Function<SharedPtr<SVG::SVGData>(c
 	if (!handle)
 		return;
 
-	Mesh mesh;
-	MeshUtilities::GenerateQuad(mesh, fit.rect.TopLeft(), fit.rect.Size(), fitted_colour, fit.uv.TopLeft(), fit.uv.BottomRight());
-	fitted_geometry = render_manager->MakeGeometry(std::move(mesh));
+	picture.Set(Rectanglef::FromPositionSize(GetBox().GetPosition(BoxArea::Content) + fit.rect.TopLeft(), fit.rect.Size()), fitted_colour,
+		fit.uv.TopLeft(), fit.uv.BottomRight());
 }
 
 void ElementSVG::OnResize()
@@ -196,7 +190,7 @@ void ElementSVG::EnsureSourceLoaded()
 
 	const bool crop_to_content = HasAttribute("crop-to-content");
 	const auto source = GetAttribute<String>("src", "");
-	fitted_geometry = Geometry();
+	picture.Clear();
 	if (source.empty())
 	{
 		const auto source_id = GetAttribute<String>("rmlui-svgdata-id", "svgdata:undefined");
