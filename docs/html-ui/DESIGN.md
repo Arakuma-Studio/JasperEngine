@@ -164,6 +164,13 @@ and keeps working; both systems coexist in the same scene.
   `Context::SetPointerPassThrough`, P4-1). A listening page takes the pointer on its empty
   parts, as a browser page does ("click outside closes the menu"). Hover, presses, wheel,
   touches and focus follow it; a press keeps its capture until its release.
+- Gamepads reach the focused document first too (phase 4, p4-input): buttons, the left stick's
+  directions and the triggers are `keydown`/`keyup` events (`code` `GamepadA`, `GamepadDPadUp`,
+  … as in Edge's gamepad key events; `key` `ArrowUp`/`Enter`/`Escape` where the button stands
+  for a keyboard key), with spatial navigation (or the element's `nav-*`) for the directions,
+  Enter/Space activation with `:active` for A and a cancelable Escape for B; held directions
+  repeat on the UI clock. While an element in the Tab order has the focus, the directions and A
+  are the document's; other buttons only when a listener uses them; the rest is the game's.
 - Platform additions: clipboard API and mouse cursor in `System` (all platforms), IME
   composition where the platform layer supports it.
 
@@ -217,7 +224,7 @@ binding (the sections above already say them in place):
 | 7 | Phase 3 scope widened (values, cascade, selectors, text, backgrounds, positioning, box/flex parity, animations, grid) and the fork's initial values switched to CSS initial values | phase 3 §2, §3.1.2 |
 | 8 | `@property` (registered custom properties) is phase 5's, not phase 3's | phase 5 §3.11, §3.18 |
 | 9 | Effects run as decorators **and** filters, with one `ShaderType::UI_EFFECT`; phase 1 has no effect registry, only extension points | phase 5 §3.18; phase 1 §3.3.3 |
-| 10 | Fork patches outside phase 3: phase 1 (`Event::PreventDefault`), phase 2 (SVG `currentColor` hook in the SVG plugin), phase 5 (`@property` var lookup, `-jfx-text-fill`); all recorded in `FORK.md` | phase 1 §3.14, phase 2 H8, phase 5 §3.18 |
+| 10 | Fork patches outside phase 3: phase 1 (`Event::PreventDefault`), phase 2 (SVG `currentColor` hook in the SVG plugin), phase 4 (P4-1 pointer pass-through; P4-2 … P4-5 of p4-input: the gamepad navigation target, text fields leaving gamepad keys, `data-style` of a missing variable, the `data-for` template no sibling), phase 5 (`@property` var lookup, `-jfx-text-fill`); all recorded in `FORK.md` | phase 1 §3.14, phase 2 H8, phase 4 §4.1.1, §4.6.1, phase 5 §3.18 |
 | 11 | One UI clock (unscaled frame time) for RmlUi, Lottie, `anime` and effects | phase 1 §3.0 |
 | 12 | Documents stay inside the camera colour pass (post-process applies to them); no compositing after post-process | phase 1 §3.5 |
 | 13 | Hot reload: engine entry point `reloadChangedFiles` (phase 1) shared by the editor watcher and `McpAutoSync` (phase 4) | phase 1 §3.8.6, phase 4 §3.5 |
@@ -226,6 +233,7 @@ binding (the sections above already say them in place):
 | 16 | Excluded with reasons: X11 multi-touch, in-document IME preedit on Linux and in the editor Game view, Lottie expressions/audio, UV hits on skinned meshes (bind pose); CSS features of phase 3 §2.2 (e.g. `writing-mode`, `@container`, `subgrid`, `mix-blend-mode`) are diagnosed, not implemented | phase 1 §2, phase 3 §2.2 |
 | 17 | The browser-parity fixtures that scroll content past a clip edge render without MSAA (sidecar `"samples": 1`): llvmpipe and lavapipe (Mesa 23.2.1, the test image's drivers) let half the samples of the row above and the column left of a scissor rectangle through under MSAA (`MsaaScissor.*` reproduces it with raw sokol calls); the renderer is unchanged | phase 3 §3.12.10, §5.2 |
 | 18 | A transparent page that does not listen for the pointer passes it to the documents below it in z-order before the game (phase 1 had every transparent page pass it straight to the game, so an upper full-screen document blocked every lower one, and its own page listeners got the empty-area events); a page with a pointer listener on its document or `<body>` takes them, per document; a fork hook, P4-1 | phase 1 §3.6.2 "as implemented (p4-inspector)" |
+| 19 | Gamepads reach the focused document as `keydown`/`keyup` events (Edge's gamepad key codes, the keyboard meaning of the navigation buttons, spatial navigation, a fork entry point P4-2), added by phase 4's corrective package p4-input: phase 1 routed only the keyboard, while phase 4 §3.8.1 §10 assumed gamepads too. The `data-for` template is left out of the Lua DOM and of structural selectors (P4-5) | phase 4 §4.6.1 |
 
 ## Research facts (verified in code, October 2026)
 
