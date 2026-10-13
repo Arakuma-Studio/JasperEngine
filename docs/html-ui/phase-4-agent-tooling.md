@@ -1977,15 +1977,15 @@ unit test that fails without the fix.
   whatever `align-content` says, in the content box (padding, `min-height`, `display: block` and
   `flow-root` too); flex and grid buttons are flex and grid containers, as in Chromium. The
   baseline moves with the centered line; a button without a line has its baseline at its content
-  box's bottom. Fixture `layout/button-centering`. (A `display: inline` button stays an inline box:
-  Chromium makes it an inline-block; not changed.)
+  box's bottom. Fixture `layout/button-centering`. (A `display: inline` button stayed an inline box:
+  Chromium makes it an inline-block; fixed by p4-gaps2, 4.3.3.)
 - **G3, selects and text fields** (fork P4-G3): a select's value is centered in its content box and
   its arrow in its padding box, a single-line text field's line in its content box (not safely, as
   Chromium). The UA chevron (`compat/ua/arrow-down.svg`) is stroked at 2.1 instead of 1.6: at the
   same place its strokes rasterized lighter than Chromium's. Fixture `layout/select-height`.
-  Not changed: a select with `appearance: none` keeps no border in the engine (Chromium keeps
-  html.css's 1px border, and drops the menu list's 4px inner start padding); the companions clear
-  it with the checkbox's.
+  Not changed: a select with `appearance: none` kept no border in the engine (Chromium keeps
+  html.css's 1px border, and drops the menu list's 4px inner start padding); the companions cleared
+  it with the checkbox's (fixed by p4-gaps2, 4.3.3).
 - **G4, geometry of elements without a box**: RmlUi keeps the box an element had when it is
   hidden. The element API (`UIElement`: `getBoundingClientRect`, `getBoundingBox`,
   `offsetLeft/Top/Width/Height`, `clientWidth/Height`, `scrollTop/Left/Width/Height`, so Lua) and
@@ -1999,8 +1999,8 @@ unit test that fails without the fix.
   range have them (laid out in the input's content box), text-like and button-like types do not (a
   button input drew them); progress bars (and so the engine's `<meter>`) have them too. Chromium also draws them on `color`, `file` and the date/time types,
   which the engine approximates by a text field or a button: they draw none. A checkbox with
-  `appearance: none` and no size stays 13x13 (the UA sheet's size; Chromium sizes it by its
-  content). Fixture `pseudo/input-before-after`. The settings example's switches are now
+  `appearance: none` and no size stayed 13x13 (the UA sheet's size; Chromium sizes it by its
+  content; fixed by p4-gaps2, 4.3.3). Fixture `pseudo/input-before-after`. The settings example's switches are now
   `input[type=checkbox].switch` with `appearance: none`, the knob their `::before`.
 - **G6, `check --ui --files` on a stylesheet**: a stylesheet named on its own is checked in the
   context of the project's documents that load it (their checks' findings in the sheet and its
@@ -2041,6 +2041,73 @@ unit test that fails without the fix.
   rounded `<img>`, no wrapper), shop (`data-attr-disabled`), main_menu (no `--value` default); their
   goldens regenerated and inspected. The guide's notes say what now works (form-control
   pseudo-elements, centering, rounded pictures, boolean `data-attr`, geometry of hidden elements).
+
+#### 4.3.3 `p4-gaps2` as implemented (corrective package)
+
+The parity gaps 4.3.2 left (also in `CONTRACTS.md` and `FORK.md` P4-G10, P4-G11). Each has a
+browser-parity fixture with a Chromium reference, passing at the default tolerances, and a unit
+test that fails without the fix. Chromium was measured first (computed styles, boxes and pixels of
+the pinned headless shell with the references' fonts).
+
+- **G1, controls with `appearance: none`** (UA sheet and the `appearance` rewrite): the
+  companions cleared one shared look (`--html-control-bg`, `--html-control-border`) for selects and
+  checkboxes alike, so a select lost the 1px border Chromium keeps. Each control now has companions
+  of its own and gets exactly html.css's look without its theme: a select keeps `1px solid #767676`
+  on ButtonFace (`#efefef`) with no arrow and none of the menu list's inner padding
+  (`--html-select-bg`, `--html-select-padding`, `--html-select-arrow-width`; its border colour is no
+  companion any more); `<button>` and button, submit and reset inputs get `padding: 1px 6px;
+  border: 2px outset` ButtonBorder (black, Chromium 153), the same on hover and press
+  (`--html-button-padding`, `-border-width`, `-border-style`, `-border`, `-hover-bg`,
+  `-hover-border`, `-active-bg`, `-active-border`; the file input approximation keeps its button
+  look, as Chromium's inner button does); a progress bar (and so the engine's `<meter>`) is
+  html.css's `::-webkit-progress-bar`/`-value`: the whole box `#808080`, the value `#008000`, no
+  rounding (`--html-progress-border-width`, `-radius`, `-bg`, `-track`, `-fill-radius`, `-fill`).
+  Checked against Chromium with no other difference: textarea (its 1px frame), the text-like
+  fields (2px inset, p3-paint) and range (Chromium keeps the thumb's own look; so does the
+  engine). Found on the way and fixed: `input[type=search]` is `box-sizing: border-box` with a
+  185px default width (html.css; its auto and none looks are both 8px of padding and border); the
+  shadows `appearance: none` cleared were `none`, which is not a valid entry of the box-shadow list
+  the outline companion joins (`Invalid substitution` errors for a checked radio and the progress
+  track): an empty shadow `0 0 0 0 #0000`. `CompatUaSheet.AppearanceAutoWritesTheSheetsFallbacks`
+  covers the new companions. Fixture `paint/appearance-none-controls` (Ahem with `line-height: 1`:
+  Chromium measures a select's `line-height: normal` with the fallback font when the web font
+  loads after the first layout, and never lays it out again); test
+  `AppearanceNone.ControlsKeepTheirOwnHtmlCssLook`.
+- **G2, a checkbox or radio with `appearance: none` and no size** (UA sheet, `HtmlInputElement`,
+  fork P4-G11): Chromium's theme only sizes an auto width or height (13px, the border box, each
+  on its own); without it the control is an inline-block sized by its content: 0x0 alone or with
+  `content: ""`, its `::before`/`::after` text or block, plus padding and border (border-box or
+  content-box), a positioned `::before` adding nothing. The UA sheet's size is the companion
+  `--html-check-size` (`13px`, `auto` under `none`); `HtmlInputElement::GetIntrinsicDimensions`
+  reads it: with the theme the intrinsic size is 13px less the borders and padding of a border-box
+  control, without a ratio (RmlUi's was 16x16 with ratio 1); without it a checkbox or radio is not
+  replaced and is laid out as a block container. Checkboxes and radios are `overflow: visible`
+  (Chromium; the UA's `input { overflow: hidden }` clipped their generated boxes and made them
+  scroll containers, whose baseline is the bottom margin edge). Their baseline is their last
+  line's, and an empty `::before` gives none (P4-G11: zero-height line boxes do not exist for
+  baselines, CSS 2.1 §9.4.2; the fork took them). Fixture `layout/checkbox-content-size`; tests
+  `AppearanceNone.CheckboxIsSizedByItsContent`, `Layout.Baseline.ZeroHeightLines`. Not changed:
+  a themed checkbox or radio in a box that is not 13x13 is drawn as a stretched box (Chromium
+  draws its 13px square centered), and an author background shows on a themed checkbox (Chromium
+  paints the theme's white).
+- **G3, `display: inline` buttons** (fork P4-G10): an element with `HasButtonLayout()` (the
+  engine's `<button>`, button, submit and reset inputs) computes `display: inline` and
+  `inline-table` as `inline-block` (HTML's button layout; Chromium's computed value with its
+  theme); with `appearance: none` Chromium keeps the computed `inline` but lays the button out the
+  same, the engine reports `inline-block`. Other display values are unchanged (Chromium also
+  blockifies `table` and `list-item` on themed buttons). Fixture `layout/button-display-inline`;
+  tests `form.input.button.display_inline`, `ButtonDisplay.InlineIsInlineBlock`.
+- **G4, the inputs the engine approximates** (`color`, `date`, `time`, `datetime-local`, `month`,
+  `week`, `file`): Chromium draws their `::before`/`::after` around its own shadow content (a
+  swatch, date fields, a button and a label), which the engine does not render; they stay without
+  generated boxes (`HasGeneratedContentBoxes`, P4-G5). Documented and diagnosed: their
+  input-type notes, so the `HTMLUI-HTML-0008` warning each one already gets at load and the
+  support matrix, say "no ::before/::after"; the `meter` row says it is drawn as a progress bar,
+  also with `appearance: none`; the guide lists them.
+- **Examples and goldens**: the settings example's selects (`appearance: none` with their own
+  border and padding) lose the 4px inner padding and the 16px arrow box, as in Chromium; no
+  example worked around the gaps. The guide's form-control paragraph says what `appearance: none`
+  leaves on each control and that inline buttons are inline-blocks.
 
 ### 4.4 `p4-guide`: guide, AGENTS.md, stubs, API search
 
