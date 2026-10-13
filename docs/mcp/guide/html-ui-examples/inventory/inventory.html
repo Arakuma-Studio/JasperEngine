@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<!--
+  Inventory: a window with equipment slots, a 6 x 4 item grid and a tooltip.
+  Shows: CSS grid, data binding of a list (data-for over the "inventory" model, data-attr-src for
+  the item pictures, data-class-* for rarity, data-if, data-event-* callbacks with the slot
+  index), drag and drop (the engine's drag: drag-drop property; dragdrop swaps the entries),
+  a tooltip InventoryUI.lua fills and places next to the hovered slot (getBoundingClientRect),
+  rarity glows with box-shadow, and a weight bar whose width is a data-bound expression.
+  In the editor (no Lua) the grid is empty: press Play to see the items.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Inventory</title>
+  <link rel="stylesheet" href="inventory.css">
+</head>
+<body>
+  <div class="inventory" data-model="inventory">
+    <header class="titlebar">
+      <h2><i data-lucide="backpack"></i> Inventory</h2>
+      <span id="gold" class="gold"><i data-lucide="coins"></i>{{ gold }}</span>
+      <button id="close" class="close" aria-label="Close"><i data-lucide="x"></i></button>
+    </header>
+
+    <div class="content">
+      <aside class="equipment">
+        <h3>Equipped</h3>
+        <div class="equip-slot epic"><img src="assets/items/sword.svg" alt=""><span>Weapon</span></div>
+        <div class="equip-slot"><img src="assets/items/helmet.svg" alt=""><span>Head</span></div>
+        <div class="equip-slot rare"><img src="assets/items/armor.svg" alt=""><span>Chest</span></div>
+        <dl class="stats">
+          <div><dt>Attack</dt><dd>42</dd></div>
+          <div><dt>Armor</dt><dd>18</dd></div>
+        </dl>
+      </aside>
+
+      <div class="grid">
+        <div class="slot" data-for="item, i : items"
+             data-class-filled="item.icon != ''" data-class-rare="item.rarity == 'rare'" data-class-epic="item.rarity == 'epic'"
+             data-event-mouseover="hover(i)" data-event-mouseout="unhover()"
+             data-event-dragstart="pick(i)" data-event-dragdrop="drop(i)">
+          <img data-if="item.icon != ''" data-attr-src="item.icon" alt="">
+          <span class="count" data-if="item.count > 1">{{ item.count }}</span>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <span class="weight-label"><i data-lucide="weight"></i> Weight</span>
+      <div class="weight-track"><div id="weight-fill" class="weight-fill" data-style-width="weight / maxWeight * 100 + '%'"></div></div>
+      <span class="weight-value">{{ weight }} / {{ maxWeight }}</span>
+      <span class="hint">Drag items to rearrange</span>
+    </footer>
+  </div>
+
+  <div id="tooltip" class="tooltip" role="tooltip">
+    <p id="tooltip-title" class="tooltip-title">Item</p>
+    <p id="tooltip-rarity" class="tooltip-rarity">Common</p>
+    <p id="tooltip-desc" class="tooltip-desc">Description</p>
+  </div>
+</body>
+</html>

@@ -13,6 +13,7 @@
 #include "util/Util.h"
 #include "engine_lua_stubs.h"
 #include "util/ProjectChecks.h"
+#include "util/HtmlUiExamples.h"
 #include "json.hpp"
 #include "lua.h"
 
@@ -1803,6 +1804,10 @@ void editor::Generator::writeEditorTooling(const fs::path& projectPath, const fs
         writeLuaRc(projectPath, stubsRelative.generic_string(), pluginRelative.generic_string());
         writeCompileDatabase(projectPath, projectInternalPath, cxxStandard, scriptDirs);
         writeClangdConfig(projectPath, (relativeInternalPath / "clangd").generic_string());
+        std::string examplesError;
+        if (!HtmlUiExamples::writeTo(projectInternalPath / "engine-api" / "html-ui-examples", examplesError)) {
+            Out::error("Failed to write the HTML UI examples: %s", examplesError.c_str());
+        }
     } catch (const std::exception& e) {
         Out::error("Failed to write the code tool files (Lua API stubs, .luarc.json, .clangd): %s", e.what());
     }

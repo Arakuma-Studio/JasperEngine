@@ -1,0 +1,108 @@
+{
+ "version": 1,
+ "examples": [
+  {
+   "name": "main_menu",
+   "title": "Main menu",
+   "example": true,
+   "description": "Title screen with an animated backdrop, icon buttons, keyboard navigation and a slide-in settings panel.",
+   "demonstrates": [
+    "flex",
+    "grid areas",
+    "radial gradients",
+    "keyframes",
+    "transitions",
+    "::before",
+    ":focus-visible",
+    "backdrop-filter",
+    "anime timeline + stagger",
+    "Lucide icons",
+    "keyboard navigation",
+    "class toggling from Lua"
+   ],
+   "html": "main_menu.html",
+   "css": "main_menu.css",
+   "lua": "MainMenuUI.lua",
+   "assets": [
+    "assets/logo.svg"
+   ],
+   "viewports": [
+    [
+     1280,
+     720
+    ],
+    [
+     1920,
+     1080
+    ],
+    [
+     1024,
+     768
+    ],
+    [
+     720,
+     1280
+    ]
+   ],
+   "checks": [
+    {
+     "type": "count",
+     "selector": ".menu-button",
+     "count": 4
+    },
+    {
+     "type": "visible",
+     "selector": ".menu-button",
+     "unobstructed": true
+    },
+    {
+     "type": "text_fits",
+     "selector": ".menu-button",
+     "single_line": true
+    },
+    {
+     "type": "no_overlap",
+     "selector": ".menu-button"
+    },
+    {
+     "type": "within_viewport",
+     "selector": ".menu"
+    },
+    {
+     "type": "contrast",
+     "selector": ".menu-button"
+    },
+    {
+     "type": "min_size",
+     "selector": ".menu-button"
+    }
+   ]
+  },
+  {
+   "name": "blank",
+   "title": "Blank",
+   "example": false,
+   "description": "A centered heading on a transparent page: the starting point for your own document.",
+   "demonstrates": [
+    ":root tokens",
+    "flex centering"
+   ],
+   "html": "blank.html",
+   "css": "blank.css",
+   "lua": "BlankUI.lua",
+   "assets": [],
+   "viewports": [
+    [
+     1280,
+     720
+    ]
+   ],
+   "checks": [
+    {
+     "type": "visible",
+     "selector": "h1"
+    }
+   ]
+  }
+ ]
+}
