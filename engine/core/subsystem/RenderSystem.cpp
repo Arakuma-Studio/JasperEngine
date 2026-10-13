@@ -2420,6 +2420,7 @@ void RenderSystem::renderReflectionProbeCapture(){
     updatePassFrame(captureCamera, captureTransform, Vector2((float)resolution, (float)resolution));
     passResolution = Vector2((float)resolution, (float)resolution);
     runtime.capturePass.setClearColor(probe->includeSky ? scene->getBackgroundColor() : Vector4(0.0f, 0.0f, 0.0f, 1.0f));
+    runtime.capturePass.setLabel("reflection probe");
     runtime.capturePass.startRenderPass(&runtime.captureFramebuffer, (size_t)face);
 
     auto skys = scene->getComponentArray<SkyboxComponent>();
@@ -7087,6 +7088,7 @@ TextureRender* RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResol
     fs_ssao.noiseScale = Vector4((float)w / 4.0f, (float)h / 4.0f, 1.0f / (float)w, 1.0f / (float)h);
 
     ssaoPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0));
+    ssaoPassRender.setLabel("ssao");
     ssaoPassRender.startRenderPass(&rv().ssaoFramebuffer.getRender());
     if (ssaoRender.beginDraw(PIP_EFFECT)){
         ShaderData& sd = ssaoShader.get()->shaderData;
@@ -7102,6 +7104,7 @@ TextureRender* RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResol
     fs_ssao_blur.texelSize = Vector4(1.0f / (float)w, 1.0f / (float)h, 0.0, 0.0);
 
     ssaoPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0));
+    ssaoPassRender.setLabel("ssao blur");
     ssaoPassRender.startRenderPass(&rv().ssaoBlurFramebuffer.getRender());
     if (ssaoBlurRender.beginDraw(PIP_EFFECT)){
         ShaderData& bd = ssaoBlurShader.get()->shaderData;
@@ -7134,6 +7137,7 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
     }
 
     ssaoPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0)); // background -> depth ~1.0
+    ssaoPassRender.setLabel("depth pre-pass");
     ssaoPassRender.startRenderPass(&target.getRender());
     passResolution = Vector2((float)width, (float)height);
 
@@ -7476,6 +7480,7 @@ TextureRender* RenderSystem::copySceneColor(TextureRender* source, const Rect& v
                                 viewport.getHeight() / (float)targetHeight, rowStart / (float)targetHeight);
 
     sceneInputPassRender.setClearColor(Vector4(0.0f, 0.0f, 0.0f, 1.0f));
+    sceneInputPassRender.setLabel("scene colour copy");
     sceneInputPassRender.startRenderPass(&target->framebuffer.getRender());
     if (sceneColorCopyRender.beginDraw(PIP_EFFECT)){
         ShaderData& shaderData = sceneColorCopyShader.get()->shaderData;
@@ -7663,6 +7668,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
     Matrix4 viewMatrix = camera.viewMatrix;
 
     gbufferPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0)); // color[0] background -> depth ~1.0
+    gbufferPassRender.setLabel("gbuffer");
     gbufferPassRender.startRenderPass(&rv().gbufferFramebuffer.getRender());
 
     auto transforms = scene->getComponentArray<Transform>();
@@ -7835,6 +7841,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
     fs_ssr.misc = Vector4(1.0f / (float)w, 1.0f / (float)h, flipGL, scene->getSSRBlur());
 
     ssrPassRender.setClearColor(Vector4(0.0, 0.0, 0.0, 0.0));
+    ssrPassRender.setLabel("ssr");
     ssrPassRender.startRenderPass(&rv().ssrFramebuffer.getRender());
     if (ssrRender.beginDraw(PIP_EFFECT)){
         ShaderData& sd = ssrShader.get()->shaderData;
@@ -7859,6 +7866,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
         fs_ssr_blur.params = Vector4(1.0f / (float)w, 1.0f / (float)h, blurRadius, flipGL);
 
         ssrPassRender.setClearColor(Vector4(0.0, 0.0, 0.0, 0.0));
+        ssrPassRender.setLabel("ssr blur");
         ssrPassRender.startRenderPass(&rv().ssrBlurFramebuffer.getRender());
         if (ssrBlurRender.beginDraw(PIP_EFFECT)){
             ShaderData& bd = ssrBlurShader.get()->shaderData;
@@ -7900,6 +7908,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
         }
     }
 
+    ssrPassRender.setLabel("ssr composite");
     ssrPassRender.setClearColor(scene->getBackgroundColor());
     PipelineType compositePip;
     if (destination){
@@ -7991,6 +8000,7 @@ void RenderSystem::renderBlit(TextureRender* source, Rect viewport){
     // bars outside the viewport keep the background color (same as the direct
     // path, which clears the whole destination before applying the viewport)
     fixedResPassRender.setClearColor(scene->getBackgroundColor());
+    fixedResPassRender.setLabel("blit");
 
     PipelineType blitPip;
     bool flipGL = false;
@@ -8193,6 +8203,7 @@ void RenderSystem::renderPostProcess(FramebufferRender* destination){
         PostProcessRuntime& pass = postProcessPasses[i];
         bool writeDestination = destination && (i + 1 == (int)postProcessPasses.size());
 
+        postProcessPassRender.setLabel("user post-process");
         if (writeDestination){
             postProcessPassRender.startRenderPass(destination);
         }else{
@@ -12429,6 +12440,7 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
 
             if (!projectivePassStarted){
                 shadowAtlasPassRender.setClearDepth(1.0f);
+                shadowAtlasPassRender.setLabel("shadow");
                 shadowAtlasPassRender.startRenderPass(&projectiveAtlas);
                 projectivePassStarted = true;
             }
@@ -12469,6 +12481,7 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
             }
 
             Rect slotRect = getShadowPointAtlasSlotRect(slotIndex);
+            shadowPointAtlasPassRender.setLabel("point shadow");
             shadowPointAtlasPassRender.startRenderPass(&pointAtlas);
             shadowPointAtlasPassRender.applyViewport(slotRect);
             shadowPointAtlasPassRender.applyScissor(slotRect);
@@ -12527,6 +12540,7 @@ void RenderSystem::render2DShadows(){
             shadow2DAtlasPassRender.setLoadActionLoad();
         }
         Rect rowRect(0.0f, (float)light.shadowMapIndex, (float)shadow2DAtlasWidth, 1.0f);
+        shadow2DAtlasPassRender.setLabel("2d shadow");
         shadow2DAtlasPassRender.startRenderPass(&shadow2DAtlasFramebuffer);
         shadow2DAtlasPassRender.applyViewport(rowRect);
         shadow2DAtlasPassRender.applyScissor(rowRect);
@@ -12902,6 +12916,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // for a pass split by the scene-colour copy)
     FramebufferRender* colorTarget = nullptr;
     bool colorPassViewportApplied = false;
+    camera.render.setLabel(pass.renderToTexture ? "camera rtt" : (isBaseLayer() ? "camera" : "camera layer"));
     auto startColorPass = [&](FramebufferRender* framebuffer){
         colorTarget = framebuffer;
         if (copySceneColorPending){

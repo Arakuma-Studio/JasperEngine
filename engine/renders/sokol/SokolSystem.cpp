@@ -5,6 +5,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <vector>
 
 #include "System.h"
 #include "sokol_gfx.h"
@@ -69,6 +71,36 @@ void SokolSystem::setup(){
     SokolCmdQueue::start();
 }
 
+namespace{
+    // the passes of the frame being drawn and of the last committed one (frame stats only)
+    struct PassRecord{
+        const char* label;
+        int width;
+        int height;
+        int samples;
+    };
+    std::vector<PassRecord> framePasses;
+    std::vector<PassRecord> lastFramePasses;
+}
+
+void SokolSystem::recordPass(const sg_pass& pass){
+    if (!sg_stats_enabled())
+        return;
+    PassRecord record = {pass.label ? pass.label : "pass", 0, 0, 1};
+    sg_view view = pass.attachments.colors[0].id != SG_INVALID_ID ? pass.attachments.colors[0] : pass.attachments.depth_stencil;
+    if (view.id != SG_INVALID_ID){
+        sg_image image = sg_query_view_image(view);
+        record.width = sg_query_image_width(image);
+        record.height = sg_query_image_height(image);
+        record.samples = sg_query_image_sample_count(image);
+    }else{
+        record.width = pass.swapchain.width;
+        record.height = pass.swapchain.height;
+        record.samples = pass.swapchain.sample_count > 0 ? pass.swapchain.sample_count : 1;
+    }
+    framePasses.push_back(record);
+}
+
 std::string SokolSystem::getFrameStatsLine(){
     if (!sg_stats_enabled())
         return std::string();
@@ -83,7 +115,27 @@ std::string SokolSystem::getFrameStatsLine(){
         stats.total.images.alive, stats.total.images.allocated, frame.images.allocated,
         stats.total.pipelines.alive, stats.total.pipelines.allocated,
         stats.total.views.alive, stats.total.views.allocated);
-    return std::string(line);
+    // the pass list: label and target size of each pass in order, repeats folded ("shadow
+    // 2048x2048 x3"), "msaa N" for a multisampled target
+    std::string list;
+    for (size_t i = 0; i < lastFramePasses.size();){
+        const PassRecord& record = lastFramePasses[i];
+        size_t count = 1;
+        while (i + count < lastFramePasses.size() && std::strcmp(lastFramePasses[i + count].label, record.label) == 0 &&
+               lastFramePasses[i + count].width == record.width && lastFramePasses[i + count].height == record.height &&
+               lastFramePasses[i + count].samples == record.samples){
+            count++;
+        }
+        char item[160];
+        std::snprintf(item, sizeof(item), "%s%s %dx%d%s", list.empty() ? "" : ", ", record.label, record.width, record.height,
+                      record.samples > 1 ? (record.samples == 4 ? " msaa 4" : " msaa 2") : "");
+        list += item;
+        if (count > 1){
+            list += " x" + std::to_string(count);
+        }
+        i += count;
+    }
+    return std::string(line) + "; pass list: " + list;
 }
 
 void SokolSystem::commitQueue(){
@@ -96,6 +148,10 @@ void SokolSystem::executeQueue(){
 
 void SokolSystem::commit(){
     sg_commit();
+    if (sg_stats_enabled()){
+        lastFramePasses.swap(framePasses);
+        framePasses.clear();
+    }
 }
 
 void SokolSystem::shutdown(){

@@ -4,6 +4,7 @@
 #include "SokolCamera.h"
 
 #include "System.h"
+#include "SokolSystem.h"
 
 #include "sokol_gfx.h"
 #include <cmath>
@@ -40,6 +41,16 @@ void SokolCamera::setClearDepth(float clearDepth){
     pass.action.depth.clear_value = clearDepth;
 }
 
+void SokolCamera::setLabel(const char* label){
+    pass.label = label;
+}
+
+// sg_begin_pass, and the pass's place in the frame stats' pass list
+static void beginPass(const sg_pass& pass){
+    sg_begin_pass(pass);
+    SokolSystem::recordPass(pass);
+}
+
 void SokolCamera::setLoadActionLoad(){
     pass.action.colors[0].load_action = SG_LOADACTION_LOAD;
 }
@@ -47,7 +58,7 @@ void SokolCamera::setLoadActionLoad(){
 void SokolCamera::startRenderPass(FramebufferRender* framebuffer, size_t face){
     pass.swapchain = {};
     pass.attachments = framebuffer->backend.get(face);
-    sg_begin_pass(pass);
+    beginPass(pass);
 }
 
 void SokolCamera::startRenderPass(int width, int height){
@@ -55,13 +66,13 @@ void SokolCamera::startRenderPass(int width, int height){
     pass.swapchain = System::instance().getSokolSwapchain();
     pass.swapchain.width = width;
     pass.swapchain.height = height;
-    sg_begin_pass(pass);
+    beginPass(pass);
 }
 
 void SokolCamera::startRenderPass(){
     pass.attachments = {};
     pass.swapchain = System::instance().getSokolSwapchain();
-    sg_begin_pass(pass);
+    beginPass(pass);
 }
 
 void SokolCamera::startSplitRenderPass(FramebufferRender* framebuffer){
@@ -71,7 +82,7 @@ void SokolCamera::startSplitRenderPass(FramebufferRender* framebuffer){
     // depth and stencil default to DONTCARE (invalidated on GLES and tilers)
     split.action.depth.store_action = SG_STOREACTION_STORE;
     split.action.stencil.store_action = SG_STOREACTION_STORE;
-    sg_begin_pass(split);
+    beginPass(split);
 }
 
 void SokolCamera::resumeRenderPass(FramebufferRender* framebuffer){
@@ -81,7 +92,7 @@ void SokolCamera::resumeRenderPass(FramebufferRender* framebuffer){
     resumed.action.colors[0].load_action = SG_LOADACTION_LOAD;
     resumed.action.depth.load_action = SG_LOADACTION_LOAD;
     resumed.action.stencil.load_action = SG_LOADACTION_LOAD;
-    sg_begin_pass(resumed);
+    beginPass(resumed);
 }
 
 void SokolCamera::applyViewport(Rect rect){

@@ -23,6 +23,10 @@ void CameraRender::setClearDepth(float clearDepth){
     backend.setClearDepth(clearDepth);
 }
 
+void CameraRender::setLabel(const char* label){
+    backend.setLabel(label);
+}
+
 void CameraRender::setLoadActionLoad(){
     backend.setLoadActionLoad();
 }
