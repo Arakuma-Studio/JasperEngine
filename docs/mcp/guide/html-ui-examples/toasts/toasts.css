@@ -1,0 +1,98 @@
+/* Toasts. Design tokens first: change the look here. */
+:root {
+  --info: #60a5fa;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --error: #f87171;
+  --text: #f8fafc;
+  --toast: rgba(15, 18, 28, 0.9);
+  --radius: 14px;
+  --width: min(360px, calc(100vw - 32px));
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  color: var(--text);
+}
+
+/* The stack: newest at the bottom, clicks pass between the toasts to the game */
+.toast-stack {
+  position: fixed;
+  top: clamp(16px, 3vh, 28px);
+  right: clamp(16px, 2vw, 28px);
+  width: var(--width);
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  pointer-events: none;
+}
+
+/* One toast; --tone colors its bar, icon and countdown */
+.toast {
+  --tone: var(--info);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem 0.95rem 1.1rem;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--tone) 16%, transparent), transparent 55%),
+    var(--toast);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: var(--radius);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.toast::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--tone);
+}
+
+.toast-success { --tone: var(--success); }
+.toast-warning { --tone: var(--warning); }
+.toast-error { --tone: var(--error); }
+
+.toast svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: var(--tone);
+}
+
+.message {
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+/* the countdown: shrinks to nothing over the toast's life (ToastsUI sets the duration) */
+.toast-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--tone);
+  opacity: 0.7;
+  transform-origin: left center;
+  animation: countdown 3s linear forwards;
+}
+
+@keyframes countdown {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}

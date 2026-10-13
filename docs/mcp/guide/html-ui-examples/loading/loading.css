@@ -1,0 +1,213 @@
+/* Loading screen. Design tokens first: change the look here. */
+:root {
+  --accent: #f472b6;
+  --accent-2: #a78bfa;
+  --text: #fdf4ff;
+  --muted: rgba(250, 232, 255, 0.65);
+  --card: rgba(18, 8, 28, 0.72);
+  --line: rgba(244, 114, 182, 0.22);
+  --radius: 16px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  color: var(--text);
+}
+
+/* ---- The art: sky gradient, two star fields, a planet ---- */
+.loading {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(60% 50% at 75% 100%, rgba(244, 114, 182, 0.35), transparent 70%),
+    radial-gradient(70% 60% at 10% 0%, rgba(167, 139, 250, 0.25), transparent 70%),
+    linear-gradient(180deg, #07031a 0%, #1a0930 55%, #3a0d36 100%);
+}
+
+.stars {
+  position: absolute;
+  inset: 0;
+  background-repeat: repeat;
+  animation: drift 60s linear infinite;
+}
+
+.stars.far {
+  opacity: 0.5;
+  background-image:
+    radial-gradient(1px 1px at 20px 30px, #ffffff, transparent),
+    radial-gradient(1px 1px at 120px 80px, #ffffff, transparent),
+    radial-gradient(1px 1px at 70px 150px, #ffffff, transparent),
+    radial-gradient(1px 1px at 170px 190px, #ffffff, transparent);
+  background-size: 200px 220px;
+}
+
+.stars.near {
+  opacity: 0.8;
+  background-image:
+    radial-gradient(1.5px 1.5px at 40px 60px, #ffffff, transparent),
+    radial-gradient(2px 2px at 220px 140px, #fbcfe8, transparent),
+    radial-gradient(1.5px 1.5px at 300px 260px, #ffffff, transparent);
+  background-size: 340px 320px;
+  animation-duration: 30s;
+}
+
+@keyframes drift {
+  from { background-position: 0 0; }
+  to { background-position: -680px 160px; }
+}
+
+.planet {
+  position: absolute;
+  right: -8vw;
+  bottom: -38vh;
+  width: 70vh;
+  height: 70vh;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f9a8d4 0%, #be185d 35%, #4a044e 70%, #1e0322 100%);
+  box-shadow: 0 0 80px rgba(244, 114, 182, 0.45), inset -30px -30px 80px rgba(0, 0, 0, 0.55);
+}
+
+/* ---- Title ---- */
+.chapter {
+  position: absolute;
+  left: clamp(24px, 7vw, 96px);
+  top: clamp(24px, 12vh, 120px);
+}
+
+.eyebrow {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+h1 {
+  margin-top: 0.5rem;
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  font-weight: 800;
+  line-height: 1.05;
+  text-shadow: 0 6px 30px rgba(0, 0, 0, 0.6);
+}
+
+/* ---- The card: spinner, bar, tip ---- */
+.loading-card {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(24px, 6vh, 56px);
+  transform: translateX(-50%);
+  width: min(640px, 92vw);
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  flex: none;
+}
+
+.bar {
+  flex: 1;
+  min-width: 0;
+}
+
+.bar-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.45rem;
+  font-size: 0.85rem;
+}
+
+.label {
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.percent {
+  font-weight: 800;
+  color: var(--text);
+}
+
+.track {
+  height: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+}
+
+.fill {
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  border-radius: 5px;
+  box-shadow: 0 0 14px rgba(244, 114, 182, 0.7);
+}
+
+.tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  min-height: 2.6em;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.tip svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-top: 0.1rem;
+  color: #fde68a;
+}
+
+/* ---- Done: the prompt pulses ---- */
+.press-key {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(clamp(24px, 6vh, 56px) + 180px);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-align: center;
+  text-transform: uppercase;
+  text-shadow: 0 0 18px rgba(244, 114, 182, 0.8);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+/* Portrait screens: the title over the card */
+@media (max-aspect-ratio: 1/1) {
+  .planet {
+    right: -30vw;
+    bottom: -20vh;
+  }
+}
