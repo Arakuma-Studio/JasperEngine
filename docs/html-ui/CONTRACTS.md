@@ -223,8 +223,8 @@ Conventions that apply everywhere:
 
 | Name | Kind | Provider | Consumers | Ref |
 |---|---|---|---|---|
-| `HtmlUIInspector` (`documents`, `documentInfo`, `query`, `hitTest`, `detail`, `styles`, `elementRect`, `withViewport`, `pushDataModel`), `InspectElement` (+ `effects`, P5) | C++ | P4 p4-inspector | P4 tools, P5 | P4 §3.3.1 |
-| `HtmlUIAssertions::run(Scene*, Entity, AssertSpec)` | C++ | P4 p4-inspector | P4 tools | P4 §3.3.2 |
+| `HtmlUIInspector` (`documents`, `documentInfo`, `query`, `hitTest`, `detail`, `styles`, `elementRect`, `withViewport` (+ p4-inspector: `withViewport(scene, entity, w, h, fn, error)`, the context the entity's document is in, a texture-mode document's own), `pushDataModel`), `InspectElement` (+ `effects`, P5), `InspectStyle` (+ p4-inspector: `file`, `line`, `column` of `source`); every path asset-relative (`DocumentInfo::html`, `source` `ui/menu.css:42:3`: the tools prefix the assets directory); `hitTest` empty where the engine passes the pointer to the game; selectors are CSS through the compat rewrite (pseudo-element selectors refused) (`engine/core/htmlui/HtmlUIInspector.h`; internal helpers `HtmlUIInspectorInternal.h`) | C++ | P4 p4-inspector | P4 tools, P5 | P4 §3.3.1, §4.1.1 |
+| `HtmlUIAssertions::run(Scene*, Entity, AssertSpec)` (`engine/core/htmlui/HtmlUIAssertions.h`; messages and per-kind rules in P4 §4.1.1) | C++ | P4 p4-inspector | P4 tools | P4 §3.3.2, §4.1.1 |
 | `ProjectChecks::isUiFile`, `projectFiles(root) -> compat::FileAccess`, `checkUiFiles`, `Finding{…, code, suggestion}` | editor C++ | P4 p4-checks | P4 tools, P5 (`.frag` checks) | P4 §3.4.1 |
 | CLI `check --ui` (+ hook), `ui-support` (JSON with phase-2 statuses), `tools/mcp/gen_html_ui_support.py` → `docs/mcp/guide/html-ui-support.md` | CLI/tool | P4 p4-checks | P5 (matrix rows, `ui-effects` next to `ui-support`) | P4 §3.4 |
 | MCP `inspect_ui`, `assert_ui`, `create_ui_document`; `send_input {target}`; `import_files` fonts/icons/URLs/`from_document`; resources `jasper://examples/html-ui`; tool budget caps | MCP | P4 p4-mcp-tools | P5 (`effects` key, budget, `MODULES`) | P4 §3.6 |

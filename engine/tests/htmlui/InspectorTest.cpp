@@ -832,6 +832,19 @@ TEST_F(InspectorTest, TextureModeDocument){
         EXPECT_RECT(one(scene, texture.getEntity(), "#a").border, 0, 0, 256, 40);
     }, error)) << error;
     EXPECT_RECT(one(scene, screen.getEntity(), "#s").border, 0, 0, 640, 40);
+
+    // fn turns the document into a screen one: its texture context goes, nothing is restored on it
+    UIDocumentSystem& system = *scene->getSystem<UIDocumentSystem>();
+    ASSERT_TRUE(HtmlUIInspector::withViewport(scene, texture.getEntity(), 300, 100, [&](){
+        component.renderMode = UIDocumentRenderMode::SCREEN;
+        system.reloadDocument(texture.getEntity(), false);
+        EXPECT_EQ(system.getTextureContext(texture.getEntity()), nullptr);
+    }, error)) << error;
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    ASSERT_TRUE(HtmlUIInspector::documentInfo(scene, texture.getEntity(), info, error)) << error;
+    EXPECT_FALSE(info.renderToTexture);
+    EXPECT_EQ(info.width, 1280.0f);
+    EXPECT_RECT(one(scene, texture.getEntity(), "#a").border, 0, 0, 640, 40);
 }
 
 // a full reload between queries: refs taken before resolve in the new document

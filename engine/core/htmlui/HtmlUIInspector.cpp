@@ -639,7 +639,7 @@ namespace {
         return text;
     }
 
-    void computeStyle(const Doc& doc, Rml::Element* element, const StyleTarget& target, StyleSources* sources, InspectStyle& style){
+    void computeStyle(Rml::Element* element, const StyleTarget& target, StyleSources* sources, InspectStyle& style){
         style = InspectStyle();
         style.property = target.css;
         switch (target.kind){
@@ -666,7 +666,6 @@ namespace {
                 style.source = "not supported";
                 break;
         }
-        (void)doc;
     }
 
     bool resolveTargets(const std::vector<std::string>& properties, std::vector<StyleTarget>& targets, std::string& error){
@@ -724,8 +723,11 @@ namespace {
         return true;
     }
 
-    bool withContext(HtmlUIContext* context, float width, float height, const std::function<void()>& fn, std::string& error){
-        if (!context || !context->getRmlContext()){
+    // context(): the context to lay out, found again when restoring: fn may remove a
+    // texture-mode document (its context goes with it) or reload one
+    bool withContext(const std::function<HtmlUIContext*()>& context, float width, float height, const std::function<void()>& fn, std::string& error){
+        HtmlUIContext* target = context();
+        if (!target || !target->getRmlContext()){
             error = "the scene has no HTML UI context (no UI Document is loaded)";
             return false;
         }
@@ -735,15 +737,18 @@ namespace {
         }
         // restores the dimensions even when fn throws
         struct Restore {
-            HtmlUIContext* context;
+            const std::function<HtmlUIContext*()>& context;
+            HtmlUIContext* target;
             Rml::Vector2i dimensions;
             ~Restore(){
-                context->setDimensions(dimensions);
-                context->update();
+                if (context() != target)
+                    return;
+                target->setDimensions(dimensions);
+                target->update();
             }
-        } restore{context, context->getDimensions()};
-        context->setDimensions(Rml::Vector2i((int)std::lround(width), (int)std::lround(height)));
-        context->update();
+        } restore{context, target, target->getDimensions()};
+        target->setDimensions(Rml::Vector2i((int)std::lround(width), (int)std::lround(height)));
+        target->update();
         if (fn)
             fn();
         return true;
@@ -1428,7 +1433,7 @@ bool HtmlUIInspector::detail(Scene* scene, Entity entity, const std::string& ref
     StyleSources sources(doc, refs);
     for (const StyleTarget& target : targets){
         InspectStyle style;
-        computeStyle(doc, element, target, &sources, style);
+        computeStyle(element, target, &sources, style);
         out.styles.push_back(std::move(style));
     }
     return true;
@@ -1452,7 +1457,7 @@ bool HtmlUIInspector::styles(Scene* scene, Entity entity, const std::vector<std:
         std::vector<InspectStyle> values;
         for (const StyleTarget& target : targets){
             InspectStyle style;
-            computeStyle(doc, element, target, nullptr, style);
+            computeStyle(element, target, nullptr, style);
             values.push_back(std::move(style));
         }
         out.push_back(std::move(values));
@@ -1490,7 +1495,7 @@ bool HtmlUIInspector::withViewport(Scene* scene, float width, float height, cons
         return false;
     }
     std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
-    return withContext(system ? system->getContext() : nullptr, width, height, fn, error);
+    return withContext([&system](){ return system ? system->getContext() : nullptr; }, width, height, fn, error);
 }
 
 bool HtmlUIInspector::withViewport(Scene* scene, Entity entity, float width, float height, const std::function<void()>& fn, std::string& error){
@@ -1503,10 +1508,14 @@ bool HtmlUIInspector::withViewport(Scene* scene, Entity entity, float width, flo
         return false;
     }
     std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
-    HtmlUIContext* context = system ? system->getTextureContext(entity) : nullptr;
-    if (!context && system)
-        context = system->getContext();
-    return withContext(context, width, height, fn, error);
+    if (!system){
+        error = "the scene has no HTML UI context (no UI Document is loaded)";
+        return false;
+    }
+    // the context chosen now: a texture-mode document's own, else the scene's
+    const bool texture = system->getTextureContext(entity) != nullptr;
+    return withContext([&system, entity, texture](){ return texture ? system->getTextureContext(entity) : system->getContext(); },
+                       width, height, fn, error);
 }
 
 bool HtmlUIInspector::pushDataModel(Scene* scene, Entity entity, const std::string& name, lua_State* L){
