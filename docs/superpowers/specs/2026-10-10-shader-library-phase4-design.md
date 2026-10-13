@@ -156,9 +156,13 @@ user-pass and editor work is also written out in `/tmp/shader-research/p4-api.md
   `post_processing.<snake name>` per field) and MCP `get/set_scene_settings` (the `post_processing`
   object merges, `null` resets; every post-processing key of one call is one command). Lua:
   `scene.postProcessing` (a copy), `PostProcessingSettings`, `TonemapMode`, `MonochromeMode`. The
-  inspector section and the presets are the editor wave's; the Scene view has
-  `SceneDisplaySettings::showPostProcessing` (default off; `Engine::ViewLayer::postProcessing`,
-  `RenderSystem::ViewDesc::postProcessing`), the Game view applies the scene's.
+  inspector section and the presets are the editor wave's. Editor views: the Game view (its own
+  pass or a second view) draws the scene's post-processing; the Scene view does not unless
+  `SceneDisplaySettings::showPostProcessing` (default off, no UI yet) or a camera preview
+  (`RenderSystem::setDisablePostProcessing` for the edit-mode frame, `Engine::ViewLayer::
+  postProcessing` / `ViewDesc::postProcessing` for a second view). Off, the colour passes bypass
+  the post colour (no variant change) and the uber pass is skipped (MCP test
+  `test_post_processing_views.py`).
 - Tiers (`RenderSystem::getPostProcessingTiers`). The uber pass runs when FXAA, chromatic
   aberration, pixelate, CRT, edge detect, grain, sharpen, bloom or blur is on, or the render scale
   is below 1. Without it the shaders do everything colour-only (T0). With it the grade, monochrome,
