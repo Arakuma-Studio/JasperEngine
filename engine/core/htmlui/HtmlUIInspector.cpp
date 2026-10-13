@@ -1214,7 +1214,9 @@ namespace {
 
 }
 
-Rml::Element* inspect::hitAt(const Doc& doc, float x, float y, bool wholeContext){
+Rml::Element* inspect::hitAt(const Doc& doc, float x, float y, bool wholeContext, Rml::Element** topmost){
+    if (topmost)
+        *topmost = nullptr;
     Rml::Context* context = doc.document->GetContext();
     if (!context)
         return nullptr;
@@ -1222,9 +1224,11 @@ Rml::Element* inspect::hitAt(const Doc& doc, float x, float y, bool wholeContext
                                      : context->GetElementAtPoint(Rml::Vector2f(x, y), nullptr, doc.document);
     while (hit && !isDomElement(hit))
         hit = hit->GetParentNode();
-    if (!hit || hit == context->GetRootElement() || isTransparentCanvas(hit))
+    if (!hit || hit == context->GetRootElement())
         return nullptr;
-    return hit;
+    if (topmost)
+        *topmost = hit;
+    return isTransparentCanvas(hit) ? nullptr : hit;
 }
 
 void inspect::hitStack(const Doc& doc, Rml::Element* hit, std::vector<Rml::Element*>& out){

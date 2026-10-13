@@ -106,8 +106,8 @@ namespace {
 
     // The line boxes of an element's direct text: each line's text measured as the font engine
     // lays it out (the widths RmlUi keeps are only filled when it draws), from the baseline
-    // RmlUi places it at, as tall as the line height (half-leading around ascent + descent).
-    // Collapsible white space at the ends of a line hangs and is left out.
+    // RmlUi places it at, as tall as the line height. Collapsible white space at the ends of a
+    // line hangs and is left out.
     std::vector<InspectRect> textLines(Rml::Element* element){
         std::vector<InspectRect> lines;
         if (isLeaf(element))
@@ -120,9 +120,17 @@ namespace {
             const Rml::FontFaceHandle font = text->GetFontFaceHandle();
             if (!font)
                 continue;
+            // the line box above the baseline as the layout places it (InlineBoxBase::GetStrut, as
+            // Chromium: whole-pixel ascent and descent, the half-leading rounded down)
             const Rml::FontMetrics& metrics = Rml::GetFontEngineInterface()->GetFontMetrics(font);
             const float lineHeight = text->GetLineHeight();
-            const float top = metrics.ascent + (lineHeight - (metrics.ascent + metrics.descent)) * 0.5f;
+            float ascent = std::floor(metrics.ascent + 0.5f);
+            float descent = std::floor(metrics.descent + 0.5f);
+            if (descent < metrics.descent && ascent >= 1.0f){
+                descent += 1.0f;
+                ascent -= 1.0f;
+            }
+            const float top = ascent + std::floor(0.5f * (lineHeight - (ascent + descent)));
             const Rml::Vector2f origin = text->GetAbsoluteOffset(Rml::BoxArea::Border);
             for (const Rml::ElementText::Line& line : text->GetLines()){
                 const std::string& content = line.text;
@@ -192,7 +200,7 @@ namespace {
             text = element->GetComputedValues().color();
             for (Rml::Element* walk = element; walk; walk = walk->GetParentNode()){
                 const Rml::Style::ComputedValues& computed = walk->GetComputedValues();
-                layers.push_back(Layer{computed.background_color(), computed.has_decorator(), computed.opacity()});
+                layers.push_back(Layer{computed.background_color(), computed.has_decorator() || computed.has_background_image(), computed.opacity()});
                 if (rmlui_dynamic_cast<Rml::ElementDocument*>(walk))
                     break;
             }
@@ -307,14 +315,18 @@ namespace {
                 fail(element, "pointer-events: none: the pointer goes through it" + at);
                 return;
             }
-            Rml::Element* hit = hitAt(doc, x, y, true);
-            if (!hit){
-                fail(element, "the pointer falls through to the game" + at);
+            // the context's topmost element: another document over this one keeps the pointer
+            // even where it is transparent (its <html>/<body> takes it, the engine passes it on
+            // to the game, not to the documents below)
+            Rml::Element* topmost = nullptr;
+            Rml::Element* hit = hitAt(doc, x, y, true, &topmost);
+            Rml::ElementDocument* hitDocument = topmost ? topmost->GetOwnerDocument() : nullptr;
+            if (topmost && hitDocument != doc.document){
+                fail(element, "covered by the UI document " + documentName(hitDocument) + (hit ? "" : " (its transparent page takes the pointer)") + at);
                 return;
             }
-            Rml::ElementDocument* hitDocument = hit->GetOwnerDocument();
-            if (hitDocument != doc.document){
-                fail(element, "covered by the UI document " + documentName(hitDocument) + at);
+            if (!hit){
+                fail(element, "the pointer falls through to the game" + at);
                 return;
             }
             if (!isInclusiveAncestor(element, hit))
