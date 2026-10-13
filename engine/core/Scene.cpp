@@ -606,6 +606,19 @@ bool Scene::removePostProcessUniform(unsigned int index, const std::string& name
     return true;
 }
 
+const PostProcessingSettings& Scene::getPostProcessing() const{
+    return settings.postProcessing;
+}
+
+void Scene::setPostProcessing(const PostProcessingSettings& postProcessing){
+    PostProcessingSettings clamped = postProcessing;
+    clamped.clamp();
+    if (clamped == settings.postProcessing)
+        return;
+    settings.postProcessing = clamped;
+    getSystem<RenderSystem>()->needUpdatePostProcessing();
+}
+
 void Scene::setPostProcessPassEnabled(unsigned int index, bool enabled){
     if (index >= settings.postProcess.size()){
         Log::error("Post-process pass %u does not exist, cannot enable it", index);

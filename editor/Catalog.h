@@ -291,6 +291,26 @@ namespace jasperengine::editor{
             return nullptr;
         }
 
+        // Scene property "post_processing.<snake name>": a PostProcessingSettings field (bool,
+        // int (Int and Enum fields: the enum's value), float, Vector3, std::string), null for
+        // any other name
+        static const PostProcessingSettings::Field* getPostProcessingField(const std::string& propertyName) {
+            static const std::string prefix = "post_processing.";
+            if (propertyName.compare(0, prefix.size(), prefix) != 0) return nullptr;
+            return PostProcessingSettings::findField(propertyName.substr(prefix.size()));
+        }
+
+        template<typename T>
+        static bool postProcessingFieldMatches(const PostProcessingSettings::Field& field) {
+            using FT = PostProcessingSettings::FieldType;
+            if constexpr (std::is_same_v<T, bool>) return field.type == FT::Bool;
+            else if constexpr (std::is_same_v<T, int>) return field.type == FT::Int || field.type == FT::Enum;
+            else if constexpr (std::is_same_v<T, float>) return field.type == FT::Float;
+            else if constexpr (std::is_same_v<T, Vector3>) return field.type == FT::Vector3;
+            else if constexpr (std::is_same_v<T, std::string>) return field.type == FT::String;
+            else return false;
+        }
+
         template<typename T>
         static T getSceneProperty(Scene* scene, const std::string& propertyName) {
             if (!scene) {
@@ -306,10 +326,23 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
                 if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
                 if constexpr (std::is_same_v<T, std::string>) return std::string();
+                if constexpr (std::is_same_v<T, PostProcessingSettings>) return PostProcessingSettings();
                 // Add other types as needed
             }
 
-            if (propertyName == "background_color") {
+            if (const PostProcessingSettings::Field* field = getPostProcessingField(propertyName)) {
+                if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float> ||
+                              std::is_same_v<T, Vector3> || std::is_same_v<T, std::string>) {
+                    if (postProcessingFieldMatches<T>(*field))
+                        return *(const T*)scene->getPostProcessing().getFieldRef(*field);
+                }
+            }
+            else if (propertyName == "post_processing") {
+                if constexpr (std::is_same_v<T, PostProcessingSettings>) {
+                    return scene->getPostProcessing();
+                }
+            }
+            else if (propertyName == "background_color") {
                 if constexpr (std::is_same_v<T, Vector4>) {
                     return scene->getBackgroundColor();
                 }
@@ -508,6 +541,7 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
             if constexpr (std::is_same_v<T, std::string>) return std::string();
             if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) return std::vector<PostProcessPass>();
+            if constexpr (std::is_same_v<T, PostProcessingSettings>) return PostProcessingSettings();
             // Add other types as needed
         }
 
@@ -521,7 +555,17 @@ namespace jasperengine::editor{
         static T getScenePropertyDefault(const std::string& propertyName) {
             static const SceneSettings d;
 
-            if (propertyName == "background_color") {
+            if (const PostProcessingSettings::Field* field = getPostProcessingField(propertyName)) {
+                if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float> ||
+                              std::is_same_v<T, Vector3> || std::is_same_v<T, std::string>) {
+                    if (postProcessingFieldMatches<T>(*field))
+                        return *(const T*)d.postProcessing.getFieldRef(*field);
+                }
+            }
+            else if (propertyName == "post_processing") {
+                if constexpr (std::is_same_v<T, PostProcessingSettings>) return d.postProcessing;
+            }
+            else if (propertyName == "background_color") {
                 if constexpr (std::is_same_v<T, Vector4>) return d.backgroundColor;
             }
             else if (propertyName == "shadows_quality") {
@@ -641,7 +685,22 @@ namespace jasperengine::editor{
         static void setSceneProperty(Scene* scene, const std::string& propertyName, const T& value) {
             if (!scene) return;
 
-            if (propertyName == "background_color") {
+            if (const PostProcessingSettings::Field* field = getPostProcessingField(propertyName)) {
+                if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float> ||
+                              std::is_same_v<T, Vector3> || std::is_same_v<T, std::string>) {
+                    if (postProcessingFieldMatches<T>(*field)) {
+                        PostProcessingSettings settings = scene->getPostProcessing();
+                        *(T*)field->ref(settings) = value;
+                        scene->setPostProcessing(settings);
+                    }
+                }
+            }
+            else if (propertyName == "post_processing") {
+                if constexpr (std::is_same_v<T, PostProcessingSettings>) {
+                    scene->setPostProcessing(value);
+                }
+            }
+            else if (propertyName == "background_color") {
                 if constexpr (std::is_same_v<T, Vector4>) {
                     scene->setBackgroundColor(value);
                 }

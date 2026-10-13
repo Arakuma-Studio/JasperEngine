@@ -1065,6 +1065,8 @@ namespace jasperengine{
 		bool postProcessLoaded;
 		bool postProcessNeedReload;
 		bool postProcessNeedUpdateUniforms;    // rewrite pass values, no chain rebuild
+		// the scene's PostProcessingSettings changed since they were applied (phase 4)
+		bool postProcessingDirty = true;
 		bool postProcessNeedsDepth;            // a pass samples the depth texture
 		bool postProcessNeedsGBuffer;          // a pass samples the G-buffer (needs SSR)
 		CameraRender postProcessPassRender;    // drives the offscreen post passes
@@ -1669,6 +1671,8 @@ namespace jasperengine{
 		bool meshVariantShadersReady(Entity entity, const MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain);
 		void needReloadPostProcess();
 		void needUpdatePostProcessUniforms();
+		// the scene's PostProcessingSettings changed (Scene::setPostProcessing)
+		void needUpdatePostProcessing();
 		void needReloadUIs();
 		void needReloadSky();
 		void prepareMeshForDataReload(Entity entity, MeshComponent& mesh);

@@ -323,6 +323,9 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeScene(Scene* scene);
         static Scene* decodeScene(Scene* scene, const YAML::Node& node);
+        // PostProcessingSettings: the fields away from their defaults (an empty map when none)
+        static YAML::Node encodePostProcessing(const PostProcessingSettings& settings);
+        static PostProcessingSettings decodePostProcessing(const YAML::Node& node);
 
         static YAML::Node encodeEntitySelection(const std::vector<Entity>& entities, const EntityRegistry* registry, const Project* project = nullptr, const SceneProject* sceneProject = nullptr);
         static std::vector<Entity> decodeEntitySelection(const YAML::Node& entityNode, EntityRegistry* registry, std::vector<Entity>* entities = nullptr, Project* project = nullptr, SceneProject* sceneProject = nullptr, Entity parent = NULL_ENTITY, bool createNewIfExists = true, std::unordered_map<Entity, Entity>* entityRemap = nullptr);

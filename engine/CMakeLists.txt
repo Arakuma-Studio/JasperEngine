@@ -763,6 +763,7 @@ set(JASPERENGINE_SRCS
     core/Input.cpp
     core/Log.cpp
     core/Scene.cpp
+    core/SceneSettings.cpp
     core/System.cpp
     core/action/Action.cpp
     core/action/AlphaTween.cpp

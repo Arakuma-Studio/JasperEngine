@@ -8031,6 +8031,10 @@ void RenderSystem::needUpdatePostProcessUniforms(){
     postProcessNeedUpdateUniforms = true;
 }
 
+void RenderSystem::needUpdatePostProcessing(){
+    postProcessingDirty = true;
+}
+
 void RenderSystem::loadPostProcess(){
     if (postProcessLoaded && !postProcessNeedReload)
         return;
