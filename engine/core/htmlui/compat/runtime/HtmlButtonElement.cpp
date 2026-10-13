@@ -41,6 +41,10 @@ HtmlButtonElement::~HtmlButtonElement(){
         RemoveEventListener(id, guard.get(), false);
 }
 
+bool HtmlButtonElement::HasButtonLayout() const{
+    return true;
+}
+
 std::string HtmlButtonElement::getType() const{
     std::string type = forms::lowerAttribute(const_cast<HtmlButtonElement*>(this), "type", "submit");
     if (type != "reset" && type != "button")

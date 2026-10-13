@@ -95,6 +95,25 @@ TEST_F(CompatElementTest, ButtonSubmitsItsFormWithNameAndValue){
     EXPECT_EQ(submits.events[1]["out"], "o");
 }
 
+// P4-G2: a <button> taller than its content centers it vertically, as Chromium's anonymous button
+// content box does (safe; in the content box), whatever align-content says; a flex button is a
+// flex container
+TEST_F(CompatElementTest, ButtonCentersItsContentVertically){
+    ASSERT_NE(show("<button id='a'><div id='ac' style='height: 20px;'/></button>"
+                   "<button id='b' style='padding: 10px 0 30px; align-content: start;'><div id='bc' style='height: 20px;'/></button>"
+                   "<button id='c' style='height: 10px;'><div id='cc' style='height: 20px;'/></button>"
+                   "<button id='d' style='display: flex;'><div id='dc' style='height: 20px;'/></button>",
+                   "button { display: inline-block; box-sizing: border-box; width: 60px; height: 80px; padding: 0; border: 0; }"), nullptr);
+    ASSERT_NE(rmlui_dynamic_cast<HtmlButtonElement*>(byId("a")), nullptr);
+    const auto top = [this](const char* button, const char* child){
+        return byId(child)->GetAbsoluteOffset(Rml::BoxArea::Border).y - byId(button)->GetAbsoluteOffset(Rml::BoxArea::Content).y;
+    };
+    EXPECT_FLOAT_EQ(top("a", "ac"), 30.0f);
+    EXPECT_FLOAT_EQ(top("b", "bc"), 10.0f);
+    EXPECT_FLOAT_EQ(top("c", "cc"), 0.0f);
+    EXPECT_FLOAT_EQ(top("d", "dc"), 0.0f);
+}
+
 TEST_F(CompatElementTest, DisabledButtonGetsNoClick){
     ASSERT_NE(show("<form id='f'><button id='go' disabled=''>Go</button></form>", kControls), nullptr);
     Recorder submits, clicks;
