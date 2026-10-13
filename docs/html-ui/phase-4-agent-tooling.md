@@ -2201,6 +2201,19 @@ meaning of the navigation buttons:
   framework leaves. Rows keep their order (inserted before the template). There is no
   `getElementsBy*` in the Lua API.
 
+**Examples** (merged from `p4-examples` while this package ran): the `x > 0 ? x + '%' : '0'`
+workaround of the hud, loading and inventory bindings is gone (plain `x + '%'`); the inventory
+test counts `.grid > .slot` as 24 without `:not([data-for])`. The menus are gamepad-navigable,
+checked in `test_html_ui_examples.py` after each golden (the goldens are unchanged):
+`main_menu` (the d-pad through the buttons, A presses, the d-pad stays on the open settings
+panel and B closes it), `pause_menu` (Start opens on Resume, B closes; `onGamepadButtonDown`,
+as its Escape uses `onKeyDown`), `settings` (the first tab has the focus at load; tabs, every
+control of the tab, the footer; ranges adjust, switches toggle, selects open and choose; Escape
+or B is Back), `inventory` (slots `tabindex="0"`, the tooltip follows the focus, A picks up and
+puts down, B cancels or closes, View toggles the window, the first gamepad key focuses the first
+slot), and the shop's confirmation dialog (the d-pad stays on its buttons, B cancels and gives
+the focus back to the card's Buy).
+
 **Tests.** `engine/tests/htmlui/TestInputGamepad.cpp` (14: grid and list navigation with
 scrolling, `nav-*` overrides, activation and `:active` with a checkbox and `preventDefault`, B as
 a cancelable Escape and its pass to the game, a modal dialog, range adjust, select open/navigate/
