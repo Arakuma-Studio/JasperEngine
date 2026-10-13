@@ -67,9 +67,13 @@ docker run --rm -v "$ROOT:/src" "$IMAGE" rm -rf "/src/$OUT"
 mkdir -p "$ROOT/$OUT" "$MAIN/build/.cache/ccache"
 cp -r "$PROJECT" "$ROOT/$OUT/project"
 
+# DOCKER_CPUS caps the CPUs of the run (and llvmpipe/lavapipe's thread count) on a shared host.
+CPU_FLAGS=()
+[[ -n "${DOCKER_CPUS:-}" ]] && CPU_FLAGS=(--cpus "$DOCKER_CPUS" -e LP_NUM_THREADS="$DOCKER_CPUS")
+
 # The host's passwd/group give the container user a name, which the D-Bus
 # session the editor's file dialogs need insists on.
-docker run --rm \
+docker run --rm "${CPU_FLAGS[@]}" \
     --user "$(id -u):$(id -g)" \
     -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
     -v "$ROOT:/src" -w "/src/$OUT" \
