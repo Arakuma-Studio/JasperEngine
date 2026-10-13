@@ -64,6 +64,8 @@ namespace jasperengine{
         const void* getVulkanImageHandler() const;
 
         uint32_t getViewId() const;
+        int getWidth() const;
+        int getHeight() const;
         static bool isViewValid(uint32_t viewId);
 
         bool isCreated();

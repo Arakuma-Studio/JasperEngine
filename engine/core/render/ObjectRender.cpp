@@ -89,3 +89,7 @@ void ObjectRender::destroy(){
 int ObjectRender::getLivePipelineCount(){
     return SokolObject::getLivePipelineCount();
 }
+
+void ObjectRender::setMsaaSamples(int samples){
+    SokolObject::setMsaaSamples(samples);
+}

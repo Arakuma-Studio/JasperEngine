@@ -56,6 +56,10 @@ namespace jasperengine {
 
         // pipelines made by every object and not destroyed yet (diagnostics)
         static int getLivePipelineCount();
+        // the sample count (2 or 4) the PIP_MSAA* pipelines of objects loaded from now on take:
+        // the multisampled scene target of the post-processed camera (RenderSystem sets it
+        // before its scene's objects load)
+        static void setMsaaSamples(int samples);
     };
 }
 

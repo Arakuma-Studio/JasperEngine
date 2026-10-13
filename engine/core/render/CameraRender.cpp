@@ -27,6 +27,10 @@ void CameraRender::setLabel(const char* label){
     backend.setLabel(label);
 }
 
+void CameraRender::setMultisample(FramebufferRender* msaa){
+    backend.setMultisample(msaa);
+}
+
 void CameraRender::setLoadActionLoad(){
     backend.setLoadActionLoad();
 }

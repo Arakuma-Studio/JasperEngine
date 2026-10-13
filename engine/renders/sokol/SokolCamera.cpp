@@ -55,9 +55,26 @@ void SokolCamera::setLoadActionLoad(){
     pass.action.colors[0].load_action = SG_LOADACTION_LOAD;
 }
 
+void SokolCamera::setMultisample(FramebufferRender* msaa){
+    multisample = msaa ? &msaa->backend : nullptr;
+}
+
+sg_attachments SokolCamera::attachmentsOf(FramebufferRender* framebuffer, size_t face){
+    if (multisample)
+        return multisample->getResolved(framebuffer->backend);
+    return framebuffer->backend.get(face);
+}
+
 void SokolCamera::startRenderPass(FramebufferRender* framebuffer, size_t face){
     pass.swapchain = {};
-    pass.attachments = framebuffer->backend.get(face);
+    pass.attachments = attachmentsOf(framebuffer, face);
+    if (multisample){
+        // the samples resolve into the framebuffer at the end and are dropped
+        sg_pass resolved = pass;
+        resolved.action.colors[0].store_action = SG_STOREACTION_DONTCARE;
+        beginPass(resolved);
+        return;
+    }
     beginPass(pass);
 }
 
@@ -78,7 +95,7 @@ void SokolCamera::startRenderPass(){
 void SokolCamera::startSplitRenderPass(FramebufferRender* framebuffer){
     sg_pass split = pass;
     split.swapchain = {};
-    split.attachments = framebuffer->backend.get(0);
+    split.attachments = attachmentsOf(framebuffer, 0);
     // depth and stencil default to DONTCARE (invalidated on GLES and tilers)
     split.action.depth.store_action = SG_STOREACTION_STORE;
     split.action.stencil.store_action = SG_STOREACTION_STORE;
@@ -88,7 +105,10 @@ void SokolCamera::startSplitRenderPass(FramebufferRender* framebuffer){
 void SokolCamera::resumeRenderPass(FramebufferRender* framebuffer){
     sg_pass resumed = pass;
     resumed.swapchain = {};
-    resumed.attachments = framebuffer->backend.get(0);
+    resumed.attachments = attachmentsOf(framebuffer, 0);
+    if (multisample){
+        resumed.action.colors[0].store_action = SG_STOREACTION_DONTCARE;
+    }
     resumed.action.colors[0].load_action = SG_LOADACTION_LOAD;
     resumed.action.depth.load_action = SG_LOADACTION_LOAD;
     resumed.action.stencil.load_action = SG_LOADACTION_LOAD;

@@ -503,7 +503,13 @@ bool SokolTexture::createFramebufferTexture(
         img_desc.pixel_format = stencil ? SG_PIXELFORMAT_DEPTH_STENCIL : SG_PIXELFORMAT_DEPTH;
         img_desc.label = stencil ? "framebuffer-depth-stencil-image" : "framebuffer-depth-image";
     } else {
-        img_desc.pixel_format = (colorFormat == ColorFormat::RED) ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
+        if (colorFormat == ColorFormat::RED){
+            img_desc.pixel_format = SG_PIXELFORMAT_R8;
+        }else if (colorFormat == ColorFormat::SRGB8A8){
+            img_desc.pixel_format = SG_PIXELFORMAT_SRGB8A8;
+        }else{
+            img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+        }
         img_desc.label = "framebuffer-color-image";
     }
 
@@ -595,6 +601,18 @@ const void* SokolTexture::getVulkanImageHandler() const{
     }
 
     return nullptr;
+}
+
+int SokolTexture::getWidth() const{
+    if (image.id == SG_INVALID_ID || !sg_isvalid())
+        return 0;
+    return sg_query_image_width(image);
+}
+
+int SokolTexture::getHeight() const{
+    if (image.id == SG_INVALID_ID || !sg_isvalid())
+        return 0;
+    return sg_query_image_height(image);
 }
 
 uint32_t SokolTexture::getViewId() const{

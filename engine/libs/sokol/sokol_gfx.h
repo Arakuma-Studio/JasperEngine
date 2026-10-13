@@ -11698,7 +11698,12 @@ _SOKOL_PRIVATE void _sg_gl_end_render_pass(const _sg_attachments_ptrs_t* atts) {
                 invalidate_atts[att_index++] = (GLenum)(GL_COLOR_ATTACHMENT0 + i);
             }
         }
-        if (!atts->ds_view) {
+        // JasperEngine fix: upstream (and this copy) tested !atts->ds_view, so a pass WITH a
+        // depth-stencil attachment never invalidated it, whatever its store action, and a pass
+        // without one invalidated attachments that do not exist (ignored by GL). Invalidate the
+        // depth and stencil a pass has when it does not store them, as the other backends'
+        // DONTCARE does; an attachment the framebuffer lacks (depth-only) is ignored by GL.
+        if (atts->ds_view) {
             if (_sg.gl.depth_store_action == SG_STOREACTION_DONTCARE) {
                 invalidate_atts[att_index++] = GL_DEPTH_ATTACHMENT;
             }

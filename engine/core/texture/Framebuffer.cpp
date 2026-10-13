@@ -35,7 +35,7 @@ void Framebuffer::create(){
     if (numColorAttachments > 1){
         render.createFramebufferMRT(width, height, minFilter, magFilter, wrapU, wrapV, numColorAttachments, colorFormats, depth == FramebufferDepth::DEPTH_STENCIL);
     }else{
-        render.createFramebuffer(TextureType::TEXTURE_2D, width, height, minFilter, magFilter, wrapU, wrapV, false, depth);
+        render.createFramebuffer(TextureType::TEXTURE_2D, width, height, minFilter, magFilter, wrapU, wrapV, false, depth, colorFormats[0]);
     }
     version++;
 }

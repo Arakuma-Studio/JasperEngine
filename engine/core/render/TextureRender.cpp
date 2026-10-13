@@ -98,6 +98,14 @@ uint32_t TextureRender::getViewId() const{
     return backend.getViewId();
 }
 
+int TextureRender::getWidth() const{
+    return backend.getWidth();
+}
+
+int TextureRender::getHeight() const{
+    return backend.getHeight();
+}
+
 bool TextureRender::isViewValid(uint32_t viewId){
     return SokolTexture::isViewValid(viewId);
 }

@@ -38,27 +38,20 @@ namespace jasperengine{
         sg_buffer loadIndexBuffer;
         size_t loadIndexOffset;
 
-        sg_pipeline pip;
-        sg_pipeline depth_pip;
-        sg_pipeline shadow_depth_pip;
-        sg_pipeline rtt_pip;
-        sg_pipeline rtt_invert_pip;
-        sg_pipeline gbuffer_pip;
-        sg_pipeline nodepth_pip;
-        sg_pipeline rtt_nodepth_pip;
-        sg_pipeline zprepass_pip;
-        sg_pipeline zprepass_rtt_pip;
-        sg_pipeline effect_pip;
+        // the pipeline types (PipelineType), by bit index
+        static constexpr int PIPELINE_TYPES = 15;
+        sg_pipeline pipelines[PIPELINE_TYPES];
 
         sg_pipeline_desc pipeline_desc;
 
         // the render state endLoad built the pipelines with, so a variant can be rebuilt from pipeline_desc
         RenderState loadState;
+        // the sample count of the PIP_MSAA* pipelines (setMsaaSamples when endLoad ran)
+        int msaaSamples;
 
 #ifdef JASPERENGINE_EDITOR
         // Editor-only variants of the pipelines that cull no face, one per pipeline type,
         // created on the first draw that asks for one and destroyed with the others
-        static constexpr int PIPELINE_TYPES = 11;
         sg_pipeline noCullPipelines[PIPELINE_TYPES];
         // types whose pipeline already culls nothing, by bit index
         uint16_t noCullSame;
@@ -87,6 +80,9 @@ namespace jasperengine{
     public:
         // pipelines made by every object and not destroyed yet (diagnostics)
         static int getLivePipelineCount();
+        // the sample count the PIP_MSAA* pipelines of the objects loaded from now on take (the
+        // post-processed camera's multisampled scene target, 2 or 4)
+        static void setMsaaSamples(int samples);
 
         SokolObject();
         SokolObject(const SokolObject& rhs);

@@ -17,6 +17,17 @@ using namespace jasperengine;
 namespace {
     // pipelines made and not destroyed yet (SokolObject::getLivePipelineCount)
     std::atomic<int> livePipelines(0);
+    // SokolObject::setMsaaSamples
+    std::atomic<int> loadMsaaSamples(4);
+
+    // the bit index of a pipeline type
+    int pipelineIndex(PipelineType pipType){
+        int index = 0;
+        while (index < 16 && (1 << index) != (int)pipType){
+            index++;
+        }
+        return index;
+    }
 
     sg_pipeline makePipeline(const sg_pipeline_desc& desc){
         const sg_pipeline pipeline = Engine::isAsyncThread() ? SokolCmdQueue::add_command_make_pipeline(desc) : sg_make_pipeline(desc);
@@ -39,17 +50,10 @@ namespace {
 }
 
 SokolObject::SokolObject(){
-    pip.id = SG_INVALID_ID;
-    depth_pip.id = SG_INVALID_ID;
-    shadow_depth_pip.id = SG_INVALID_ID;
-    rtt_pip.id = SG_INVALID_ID;
-    rtt_invert_pip.id = SG_INVALID_ID;
-    gbuffer_pip.id = SG_INVALID_ID;
-    nodepth_pip.id = SG_INVALID_ID;
-    rtt_nodepth_pip.id = SG_INVALID_ID;
-    zprepass_pip.id = SG_INVALID_ID;
-    zprepass_rtt_pip.id = SG_INVALID_ID;
-    effect_pip.id = SG_INVALID_ID;
+    for (sg_pipeline& pipeline : pipelines){
+        pipeline.id = SG_INVALID_ID;
+    }
+    msaaSamples = 1;
     bind = {};
     loadIndexBuffer.id = SG_INVALID_ID;
     loadIndexOffset = 0;
@@ -72,6 +76,10 @@ void SokolObject::resetPipelines(){
 
 int SokolObject::getLivePipelineCount(){
     return livePipelines.load();
+}
+
+void SokolObject::setMsaaSamples(int samples){
+    loadMsaaSamples = samples > 1 ? samples : 1;
 }
 
 SokolObject::SokolObject(const SokolObject& rhs) = default;
@@ -252,17 +260,9 @@ void SokolObject::beginLoad(PrimitiveType primitiveType){
     // forgets every pipeline without destroying it (a copy may share them; destroy() releases
     // a load's own), so what endLoad does not make again is never drawn or destroyed stale
     bind = {0};
-    pip = {0};
-    depth_pip = {0};
-    shadow_depth_pip = {0};
-    rtt_pip = {0};
-    rtt_invert_pip = {0};
-    gbuffer_pip = {0};
-    nodepth_pip = {0};
-    rtt_nodepth_pip = {0};
-    zprepass_pip = {0};
-    zprepass_rtt_pip = {0};
-    effect_pip = {0};
+    for (sg_pipeline& pipeline : pipelines){
+        pipeline = {0};
+    }
     pipeline_desc = {0};
     resetPipelines();
 
@@ -419,12 +419,13 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
         break;
 
     case PipelineType::PIP_ZPREPASS_RTT:
+    case PipelineType::PIP_ZPREPASS_MSAA:
         desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
         desc.depth.write_enabled = true;
         desc.depth.bias = loadState.depthBias;
         desc.depth.bias_slope_scale = loadState.depthBiasSlope;
         desc.colors[0].write_mask = SG_COLORMASK_NONE;
-        desc.sample_count = 1;
+        desc.sample_count = (pipType == PipelineType::PIP_ZPREPASS_MSAA) ? msaaSamples : 1;
         // the offscreen colour pass it draws into has a depth-stencil attachment
         desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
         desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
@@ -492,7 +493,10 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
     case PipelineType::PIP_RTT:
     case PipelineType::PIP_RTT_NODEPTH:
     case PipelineType::PIP_RTT_INVERT:
-        desc.sample_count = 1;
+    case PipelineType::PIP_MSAA:
+    case PipelineType::PIP_MSAA_NODEPTH:
+        // the multisampled scene target is PIP_RTT's at its sample count
+        desc.sample_count = (pipType == PipelineType::PIP_MSAA || pipType == PipelineType::PIP_MSAA_NODEPTH) ? msaaSamples : 1;
         desc.depth.write_enabled = loadState.depthWrite;
         desc.depth.compare = getCompareFunc(loadState.depthCompare);
         desc.depth.bias = loadState.depthBias;
@@ -514,7 +518,7 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
             }
             desc.face_winding = getFaceWinding(winding);
         }
-        if (pipType == PipelineType::PIP_RTT_NODEPTH){
+        if (pipType == PipelineType::PIP_RTT_NODEPTH || pipType == PipelineType::PIP_MSAA_NODEPTH){
             desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
             desc.depth.write_enabled = false;
         }
@@ -534,41 +538,43 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
         }
         desc.face_winding = getFaceWinding(rttWinding);
         break;
+
+    // a fullscreen pass of the bloom chain: an SRGB8A8 target without depth, written whole
+    case PipelineType::PIP_POST:
+        desc.sample_count = 1;
+        desc.colors[0].pixel_format = SG_PIXELFORMAT_SRGB8A8;
+        desc.colors[0].blend.enabled = false;
+        desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
+        desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+        desc.depth.write_enabled = false;
+        desc.face_winding = getFaceWinding(rttWinding);
+        break;
     }
 
     return desc;
 }
 
 sg_pipeline& SokolObject::pipelineOf(PipelineType pipType){
-    switch (pipType){
-    case PipelineType::PIP_DEPTH: return depth_pip;
-    case PipelineType::PIP_ZPREPASS: return zprepass_pip;
-    case PipelineType::PIP_ZPREPASS_RTT: return zprepass_rtt_pip;
-    case PipelineType::PIP_SHADOW_DEPTH: return shadow_depth_pip;
-    case PipelineType::PIP_GBUFFER: return gbuffer_pip;
-    case PipelineType::PIP_RTT: return rtt_pip;
-    case PipelineType::PIP_RTT_INVERT: return rtt_invert_pip;
-    case PipelineType::PIP_DEFAULT_NODEPTH: return nodepth_pip;
-    case PipelineType::PIP_RTT_NODEPTH: return rtt_nodepth_pip;
-    case PipelineType::PIP_EFFECT: return effect_pip;
-    default: return pip;
-    }
+    const int index = pipelineIndex(pipType);
+    return pipelines[index < PIPELINE_TYPES ? index : 0];
 }
 
-bool SokolObject::endLoad(uint16_t pipelines, const RenderState& state){
+bool SokolObject::endLoad(uint16_t types, const RenderState& state){
     loadState = state;
+    msaaSamples = loadMsaaSamples.load();
 
     // creation order of the pipeline types
-    static const PipelineType types[] = {
+    static const PipelineType order[] = {
         PipelineType::PIP_DEPTH, PipelineType::PIP_ZPREPASS, PipelineType::PIP_ZPREPASS_RTT,
         PipelineType::PIP_SHADOW_DEPTH, PipelineType::PIP_GBUFFER,
         PipelineType::PIP_DEFAULT, PipelineType::PIP_DEFAULT_NODEPTH,
         PipelineType::PIP_RTT, PipelineType::PIP_RTT_NODEPTH, PipelineType::PIP_RTT_INVERT,
-        PipelineType::PIP_EFFECT
+        PipelineType::PIP_EFFECT, PipelineType::PIP_POST,
+        PipelineType::PIP_ZPREPASS_MSAA, PipelineType::PIP_MSAA, PipelineType::PIP_MSAA_NODEPTH
     };
 
-    for (PipelineType type : types){
-        if (!(pipelines & (int)type)){
+    for (PipelineType type : order){
+        if (!(types & (int)type)){
             continue;
         }
         sg_pipeline& pipeline = pipelineOf(type);
@@ -594,10 +600,7 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
 
 #ifdef JASPERENGINE_EDITOR
     if (disableFaceCulling){
-        int index = 0;
-        while (index < PIPELINE_TYPES && (1 << index) != (int)pipType){
-            index++;
-        }
+        const int index = pipelineIndex(pipType);
         if (index < PIPELINE_TYPES){
             sg_pipeline& variant = noCullPipelines[index];
             if (variant.id == SG_INVALID_ID && !(noCullSame & (1u << index))){
@@ -637,17 +640,9 @@ void SokolObject::draw(unsigned int baseElement, unsigned int vertexCount, unsig
 
 void SokolObject::destroy(){
     if (sg_isvalid()){
-        destroyPipeline(pip);
-        destroyPipeline(depth_pip);
-        destroyPipeline(shadow_depth_pip);
-        destroyPipeline(rtt_pip);
-        destroyPipeline(rtt_invert_pip);
-        destroyPipeline(gbuffer_pip);
-        destroyPipeline(nodepth_pip);
-        destroyPipeline(rtt_nodepth_pip);
-        destroyPipeline(zprepass_pip);
-        destroyPipeline(zprepass_rtt_pip);
-        destroyPipeline(effect_pip);
+        for (sg_pipeline& pipeline : pipelines){
+            destroyPipeline(pipeline);
+        }
 #ifdef JASPERENGINE_EDITOR
         for (sg_pipeline& variant : noCullPipelines){
             destroyPipeline(variant);
@@ -655,17 +650,9 @@ void SokolObject::destroy(){
 #endif
     }
 
-    pip.id = SG_INVALID_ID;
-    depth_pip.id = SG_INVALID_ID;
-    shadow_depth_pip.id = SG_INVALID_ID;
-    rtt_pip.id = SG_INVALID_ID;
-    rtt_invert_pip.id = SG_INVALID_ID;
-    gbuffer_pip.id = SG_INVALID_ID;
-    nodepth_pip.id = SG_INVALID_ID;
-    rtt_nodepth_pip.id = SG_INVALID_ID;
-    zprepass_pip.id = SG_INVALID_ID;
-    zprepass_rtt_pip.id = SG_INVALID_ID;
-    effect_pip.id = SG_INVALID_ID;
+    for (sg_pipeline& pipeline : pipelines){
+        pipeline.id = SG_INVALID_ID;
+    }
     resetPipelines();
     bind = {};
     pipeline_desc = {};

@@ -141,7 +141,8 @@ namespace jasperengine{
         SHADOW2D,   // 1D polar shadow pass: occluder segments into a 2D-light atlas row
         BLIT,       // fullscreen upscale of the fixed-resolution scene color
         // keep appending: the ShaderKey stores this enum and validates cached .sdat
-        POSTPROCESS // fullscreen user post-process pass
+        POSTPROCESS, // fullscreen user post-process pass
+        BLOOM        // the bloom and blur chain's passes (phase 4: prefilter, dual-filter down and up)
     };
 
     enum class AttributeType{
@@ -297,7 +298,11 @@ namespace jasperengine{
     enum class ColorFormat{
         RED,
         RGBA,
-        RED16 // single channel, 16-bit unsigned normalized (2 bytes/texel)
+        RED16, // single channel, 16-bit unsigned normalized (2 bytes/texel)
+        // RGBA8 stored sRGB-encoded: the hardware decodes on sampling (before filtering) and
+        // encodes on write, so a chain of them filters in linear light (the bloom chain).
+        // Colour-renderable and filterable in core GLES 3.0, GL 3.0, D3D11, Metal and Vulkan
+        SRGB8A8
     };
 
     enum class TextureFilter{
@@ -335,7 +340,16 @@ namespace jasperengine{
         PIP_ZPREPASS_RTT = 1 << 9, // same into an offscreen color pass
         // a fullscreen effect pass into an offscreen target with a depth-only attachment it
         // never tests (FramebufferDepth::DEPTH: SSAO, SSR, their blurs, post-process buffer 1)
-        PIP_EFFECT      = 1 << 10
+        PIP_EFFECT      = 1 << 10,
+        // a fullscreen pass into an SRGB8A8 target without depth (FramebufferDepth::NONE,
+        // ColorFormat::SRGB8A8): the bloom and blur chain (phase 4), no blending
+        PIP_POST        = 1 << 11,
+        // PIP_RTT, PIP_RTT_NODEPTH and PIP_ZPREPASS_RTT into the multisampled scene target of
+        // the post-processed camera (PostProcessingSettings::msaaSamples); their sample count
+        // is ObjectRender::setMsaaSamples' when the object loaded
+        PIP_MSAA        = 1 << 12,
+        PIP_MSAA_NODEPTH = 1 << 13,
+        PIP_ZPREPASS_MSAA = 1 << 14
     };
 
     // the depth attachment of an offscreen framebuffer

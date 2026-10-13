@@ -78,15 +78,33 @@ namespace{
         int width;
         int height;
         int samples;
+        // (JASPERENGINE_FRAME_STATS_ACTIONS) the colour's load action, the depth's store
+        // action, and whether the pass has a depth attachment
+        sg_load_action colorLoad;
+        sg_store_action depthStore;
+        bool depth;
     };
     std::vector<PassRecord> framePasses;
     std::vector<PassRecord> lastFramePasses;
+
+    // JASPERENGINE_FRAME_STATS_ACTIONS=1: the pass list names each pass's colour load action and
+    // depth store action (render-target hygiene: what a tiler loads and stores)
+    bool passActionsListed(){
+        static const bool listed = [](){
+            const char* value = std::getenv("JASPERENGINE_FRAME_STATS_ACTIONS");
+            return value && value[0] != '\0' && value[0] != '0';
+        }();
+        return listed;
+    }
 }
 
 void SokolSystem::recordPass(const sg_pass& pass){
     if (!sg_stats_enabled())
         return;
-    PassRecord record = {pass.label ? pass.label : "pass", 0, 0, 1};
+    PassRecord record = {pass.label ? pass.label : "pass", 0, 0, 1,
+                         pass.action.colors[0].load_action, pass.action.depth.store_action, true};
+    if (pass.attachments.colors[0].id != SG_INVALID_ID || pass.attachments.depth_stencil.id != SG_INVALID_ID)
+        record.depth = pass.attachments.depth_stencil.id != SG_INVALID_ID;
     sg_view view = pass.attachments.colors[0].id != SG_INVALID_ID ? pass.attachments.colors[0] : pass.attachments.depth_stencil;
     if (view.id != SG_INVALID_ID){
         sg_image image = sg_query_view_image(view);
@@ -121,15 +139,25 @@ std::string SokolSystem::getFrameStatsLine(){
     for (size_t i = 0; i < lastFramePasses.size();){
         const PassRecord& record = lastFramePasses[i];
         size_t count = 1;
+        const bool actions = passActionsListed();
         while (i + count < lastFramePasses.size() && std::strcmp(lastFramePasses[i + count].label, record.label) == 0 &&
                lastFramePasses[i + count].width == record.width && lastFramePasses[i + count].height == record.height &&
-               lastFramePasses[i + count].samples == record.samples){
+               lastFramePasses[i + count].samples == record.samples &&
+               (!actions || (lastFramePasses[i + count].colorLoad == record.colorLoad &&
+                             lastFramePasses[i + count].depthStore == record.depthStore &&
+                             lastFramePasses[i + count].depth == record.depth))){
             count++;
         }
-        char item[160];
+        char item[200];
         std::snprintf(item, sizeof(item), "%s%s %dx%d%s", list.empty() ? "" : ", ", record.label, record.width, record.height,
                       record.samples > 1 ? (record.samples == 4 ? " msaa 4" : " msaa 2") : "");
         list += item;
+        if (actions){
+            // sokol's defaults: colour load CLEAR, depth store DONTCARE
+            const char* load = record.colorLoad == SG_LOADACTION_LOAD ? "load" : (record.colorLoad == SG_LOADACTION_DONTCARE ? "dontcare" : "clear");
+            const char* depth = !record.depth ? "no depth" : (record.depthStore == SG_STOREACTION_STORE ? "depth store" : "depth discard");
+            list += std::string(" {") + load + ", " + depth + "}";
+        }
         if (count > 1){
             list += " x" + std::to_string(count);
         }

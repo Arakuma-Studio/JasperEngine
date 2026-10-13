@@ -15,6 +15,11 @@ namespace jasperengine{
 
     private:
         sg_pass pass;
+        // the multisampled target the colour passes draw into, resolving into theirs (null: none)
+        SokolFramebuffer* multisample = nullptr;
+
+        // the attachments of a pass into framebuffer (through the multisampled target if set)
+        sg_attachments attachmentsOf(FramebufferRender* framebuffer, size_t face);
 
     public:
         SokolCamera();
@@ -25,6 +30,11 @@ namespace jasperengine{
         void setClearColor(Vector4 clearColor);
         void setClearDepth(float clearDepth = 1.0f);
         void setLoadActionLoad();
+        // Draws the passes started from now on into a multisampled target (FramebufferRender::
+        // createMultisampleFramebuffer, same size) that resolves into the framebuffer they name at
+        // their end; its samples are never stored (resolved in the tile on tilers) unless the pass
+        // is split. Null: passes draw into their framebuffer.
+        void setMultisample(FramebufferRender* msaa);
         // the pass's name (a string literal) in debuggers and the frame stats' pass list
         void setLabel(const char* label);
 
