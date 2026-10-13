@@ -2079,23 +2079,20 @@ the pinned headless shell with the references' fonts).
   `content: ""`, its `::before`/`::after` text or block, plus padding and border (border-box or
   content-box), a positioned `::before` adding nothing. The UA sheet's size is the companion
   `--html-check-size` (`13px`, `auto` under `none`); `HtmlInputElement::GetIntrinsicDimensions`
-  reads it: with the theme the intrinsic size is 13px less the borders and padding of a border-box
-  control, without a ratio (RmlUi's was 16x16 with ratio 1); without it a checkbox or radio is not
+  asks `HasNativeAppearance()` (G5): with the theme the intrinsic size is 13x13 (the themed box has
+  no border or padding, G6), without a ratio (RmlUi's was 16x16 with ratio 1); without it a checkbox or radio is not
   replaced and is laid out as a block container. Checkboxes and radios are `overflow: visible`
   (Chromium; the UA's `input { overflow: hidden }` clipped their generated boxes and made them
   scroll containers, whose baseline is the bottom margin edge). Their baseline is their last
   line's, and an empty `::before` gives none (P4-G11: zero-height line boxes do not exist for
   baselines, CSS 2.1 §9.4.2; the fork took them). Fixture `layout/checkbox-content-size`; tests
-  `AppearanceNone.CheckboxIsSizedByItsContent`, `Layout.Baseline.ZeroHeightLines`. Not changed:
-  a themed checkbox or radio in a box that is not 13x13 is drawn as a stretched box (Chromium
-  draws its 13px square centered), and an author background shows on a themed checkbox (Chromium
-  paints the theme's white).
+  `AppearanceNone.CheckboxIsSizedByItsContent`, `Layout.Baseline.ZeroHeightLines`. (The themed
+  checkbox in a box that is not 13x13, and the author's background on it: G6 below.)
 - **G3, `display: inline` buttons** (fork P4-G10): an element with `HasButtonLayout()` (the
   engine's `<button>`, button, submit and reset inputs) computes `display: inline` and
   `inline-table` as `inline-block` (HTML's button layout; Chromium's computed value with its
   theme); with `appearance: none` Chromium keeps the computed `inline` but lays the button out the
-  same, the engine reports `inline-block`. Other display values are unchanged (Chromium also
-  blockifies `table` and `list-item` on themed buttons). Fixture `layout/button-display-inline`;
+  same (the reported value: G8). Other display types: G9. Fixture `layout/button-display-inline`;
   tests `form.input.button.display_inline`, `ButtonDisplay.InlineIsInlineBlock`.
 - **G4, the inputs the engine approximates** (`color`, `date`, `time`, `datetime-local`, `month`,
   `week`, `file`): Chromium draws their `::before`/`::after` around its own shadow content (a
@@ -2104,6 +2101,61 @@ the pinned headless shell with the references' fonts).
   input-type notes, so the `HTMLUI-HTML-0008` warning each one already gets at load and the
   support matrix, say "no ::before/::after"; the `meter` row says it is drawn as a progress bar,
   also with `appearance: none`; the guide lists them.
+- **G5, `appearance` is not inherited** (the coordinator's follow-up, as G6 … G9): the
+  `appearance` rewrite writes custom properties, which inherit, so a container's
+  `appearance: none` reached the controls in it (CSS UI 4: `appearance` is not inherited). The UA
+  sheet resets every appearance companion to its themed value on `input, select, button,
+  textarea, progress` (the meter is a progress): the author's `appearance` on the control
+  outranks it (the root band), an ancestor's no longer reaches it; the controls' parts inherit
+  from the control. accent-color's companions stay inherited, as accent-color is. The look itself
+  is `--html-appearance` (`auto`/`none`), which `HtmlInputElement` and `HtmlButtonElement` read
+  (`HasNativeAppearance`, fork P4-G12). Fixture `paint/appearance-not-inherited`; tests
+  `AppearanceNone.IsNotInherited`, `CompatUaSheet.AppearanceAutoWritesTheSheetsFallbacks` (every
+  companion `appearance` writes is reset on the controls, with the value `auto` writes).
+- **G6, the themed checkbox** (fork P4-G12, `HtmlInputElement`): Chromium's theme computes a
+  checkbox's or radio's border, padding and border radius as 0, does not paint its background
+  (an author's colour or image) and draws the control in a square of the box's smaller side,
+  centered (at half pixels), scaled with it. `HasThemedBox()` does the first two in the fork;
+  `HtmlInputElement` draws the theme as an SVG over the box (rasterized by LunaSVG, a virtual file
+  per drawing), in colours the UA sheet sets per state (`--html-theme-fill`, `-stroke`, `-mark`:
+  unchecked, checked, disabled, the accent and its contrast), which author styles do not reach.
+  The shapes were calibrated against the pinned Chromium (its own SVG renderer gives the native
+  control's pixels exactly): a checkbox is a rounded square (radius 2px) filled and stroked 1px
+  half a pixel inside its edge, checked the whole square filled and a check stroked 16% of the
+  side through (20%, 50%), (40%, 70%), (80%, 20%); a radio a circle filled and stroked likewise,
+  checked an accent ring and a dot of 60%; disabled, Chromium's translucent grays (measured over
+  black and white: `#f5f5f5ad`, `#bababaab`, checked `#c5c5c5c6` with a 60% white mark). The
+  checkbox's pixels now match Chromium's at the default tolerances (fixture
+  `paint/checkbox-theme-box`: boxes from 13x13 to 30x30, odd sizes, the author's background,
+  border, padding, radius, a content-box size, disabled, a light accent). Not verified at the
+  strict metric: radios. Their geometry is Chromium's (checked in the SVG, and the same SVG in
+  Chromium equals its native radio), but LunaSVG anti-aliases a thin circle differently from
+  Skia (the 1px ring and the dot's edge: 12 to 60 pixels over 24 levels in a 13 to 30px radio,
+  found with a host build of LunaSVG against Chromium's pixels; neither supersampling nor Skia's
+  conic flattening, emulated, closed it), so the fixture has no radio and the radio's geometry
+  is checked by `AppearanceNone.ThemedCheckboxIsACenteredSquare`. The check SVGs, `--html-check`
+  and the other companions of the CSS-drawn theme are gone (CONTRACTS). Found on the way:
+  radios without a name were one group (checking one unchecked the others; fork P4-G13); a
+  themed progress bar's value now carries the track's half-alpha line, as in Chromium
+  (`--html-progress-fill-line`).
+- **G7, the theme's hover look**: not changed. Chromium darkens a hovered themed checkbox's
+  frame; the engine draws it as at rest.
+- **G8, computed values as Chromium reports them**: `UIElement::getStyle` (Lua) and the
+  inspector (`inspect_ui`, `assert_ui`) read the cascaded value; for what Chromium's theme
+  adjusts they report its computed value (`forms::themedComputedValue`): a themed checkbox's or
+  radio's border widths, styles, padding and radii (`0px`, `none`), a themed button's display
+  (`inline-block` for `inline`, `block` for `table`, …), and with `appearance: none` the declared
+  display (`inline`) while the fork lays it out as an inline-block (its computed value).
+  A themed checkbox's background is reported as declared (Chromium does too; it is not painted).
+  Test `ButtonDisplay.ComputedAsChromiumReportsIt`.
+- **G9, buttons with other display types** (fork P4-G12, P4-G14): with the look, Chromium's
+  theme computes `table` and `list-item` as `block` and the internal table types and
+  `inline-table` as `inline-block`; without it HTML's button layout makes them `flow-root` (no
+  marker) or `inline-block`. And a block-level button is as wide as its content (HTML: the
+  fit-content width; Chromium), its auto margins taking the rest, a flex or grid item stretched
+  as any: the engine's filled the line (`display: block` buttons, common in written CSS).
+  Fixture `layout/button-display-types`; tests `form.input.themed_box`,
+  `form.input.button.block_fit_content`, `ButtonDisplay.ComputedAsChromiumReportsIt`.
 - **Examples and goldens**: no example worked around the gaps. The settings example's selects
   (`appearance: none` with their own border, padding and chevron) lose the menu list's 4px inner
   padding and 16px arrow box, as in Chromium; they are on the Graphics tab, outside its golden
