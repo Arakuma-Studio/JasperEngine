@@ -93,6 +93,10 @@ namespace jasperengine{
         static std::string getShaderTypeName(ShaderType shaderType, bool lowerCase = false);
         static bool parseShaderTypeToken(const std::string& typeToken, ShaderType& shaderType);
         static int getShaderPropertyCount(ShaderType shaderType);
+        // the variant bit of the post-processing colour (USE_POST_COLOR, includes/post_color.glsl:
+        // phase 4's in-shader tier) of a shader type, 0 for a type that never applies it (UI,
+        // depth, effects)
+        static uint32_t getPostColorProperty(ShaderType shaderType);
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);
         static uint32_t getPropertiesFromKey(ShaderKey key);

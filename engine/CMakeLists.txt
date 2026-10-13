@@ -890,6 +890,7 @@ set(JASPERENGINE_SRCS
     core/util/Angle.cpp
     core/util/Base64.cpp
     core/util/Color.cpp
+    core/util/PostColorLut.cpp
     core/util/STBText.cpp
     core/util/StringUtils.cpp
     core/util/UniqueToken.cpp

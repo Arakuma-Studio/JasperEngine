@@ -32,11 +32,17 @@ namespace jasperengine::editor {
     // the scene's maxLightsPerObject). Only a script can change it at runtime: with
     // allLightCapacities (the project's scripts set maxLightsPerObject) every tier is
     // collected, else only the scene's own.
+    //
+    // The post-processing colour (phase 4, one global variant bit of mesh, points, lines and
+    // sky variants) follows the scene's PostProcessingSettings; with scriptsSetPostProcessing
+    // (a project script mentions postProcessing) both states are collected. The uber pass's
+    // variant is the scene settings' (features a script turns on compile at runtime).
     class ShaderVariantCollector {
     public:
         static void collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
                                  const std::vector<ShaderVariantContent>& prefabContents,
-                                 std::set<ShaderKey>& keys, bool allLightCapacities = false);
+                                 std::set<ShaderKey>& keys, bool allLightCapacities = false,
+                                 bool scriptsSetPostProcessing = false);
     };
 
 }

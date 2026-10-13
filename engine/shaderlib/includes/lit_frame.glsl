@@ -4,7 +4,8 @@
 // 2 vectors (camera position, ambient), 3 with fog, 4 with shadows, 5 with SSAO, 6 with
 // IBL; the engine uploads the reflected size. Filled with the frame block by
 // RenderSystem::updatePassFrame (lit_frame_t in RenderSystem.h). Engine-internal: library
-// shaders use includes/frame.glsl.
+// shaders use includes/frame.glsl. A variant with the post-processing colour (USE_POST_COLOR)
+// has its three vectors before the prefix (lit_frame_block_t).
 //
 // includes/lights.glsl (shadows), includes/shadows.glsl, includes/ibl.glsl and
 // includes/fog.glsl read it when LIT_FRAME_DECLARED is defined, the frame block otherwise.
@@ -13,6 +14,13 @@
 #define LIT_FRAME_DECLARED
 
 uniform u_fs_litFrame {
+    #ifdef USE_POST_COLOR
+        // the post-processing colour's parameters (includes/post_color.glsl), first so a variant
+        // without them keeps its prefix: the engine uploads lit_frame_block_t from them
+        vec4 postColor_vignetteScaleOffset;
+        vec4 postColor_vignetteColor;
+        vec4 postColor_params;
+    #endif
     vec4 cameraPosition_fogEnd;     // xyz camera world position, w fog linear end
     vec4 ambient_fogType;           // rgb scene ambient, w fog type (0 linear, 1 exp, 2 exp2)
     #if defined(HAS_FOG) || defined(USE_SHADOWS) || defined(USE_SSAO) || defined(USE_IBL)

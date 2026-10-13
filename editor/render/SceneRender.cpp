@@ -646,7 +646,7 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
     // view only (the Game view and the game keep the scene's culling); a previewed scene
     // camera covers the view as the Engine's native canvas would size it
     layers.push_back({scene, viewCamera, full, !previewing, false, displaySettings.disableFog, (float)width, (float)height,
-                      displaySettings.disableFaceCulling});
+                      displaySettings.disableFaceCulling, displaySettings.showPostProcessing || previewing});
 
     if (gameLayers){
         // The game's layer scenes (a HUD) cover its canvas, framed in this view at the

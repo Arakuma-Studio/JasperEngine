@@ -321,6 +321,12 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
         "Shader %s (%s) generated successfully",
         getShaderDisplayName(shaderKey).c_str(),
         ShaderPool::getShaderLangStr(backend).c_str());
+    // a variant over the per-stage budget may not bind on some devices (GLES3: 16 texture units)
+    const std::string over = ShaderVariantCompiler::checkResourceBudget(shaderData);
+    if (!over.empty()){
+        Out::warning("Shader %s (%s) is over the resource budget: %s", getShaderDisplayName(shaderKey).c_str(),
+                     ShaderPool::getShaderLangStr(backend).c_str(), over.c_str());
+    }
 
     return shaderData;
 }

@@ -353,6 +353,31 @@ bool SokolTexture::createDynamicTexture(const std::string& label, int width, int
     return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
 }
 
+bool SokolTexture::createDynamicColorTexture(const std::string& label, int width, int height){
+    sg_image_desc imageDesc = {};
+    imageDesc.usage.dynamic_update = true;
+    imageDesc.width = width;
+    imageDesc.height = height;
+    imageDesc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    imageDesc.label = label.c_str();
+
+    sg_sampler_desc samplerDesc = {};
+    samplerDesc.min_filter = SG_FILTER_LINEAR;
+    samplerDesc.mag_filter = SG_FILTER_LINEAR;
+    samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+
+    if (Engine::isAsyncThread()){
+        image = SokolCmdQueue::add_command_make_image(imageDesc);
+        sampler = SokolCmdQueue::add_command_make_sampler(samplerDesc);
+    }else{
+        image = sg_make_image(imageDesc);
+        sampler = sg_make_sampler(samplerDesc);
+    }
+    createTextureView(label.c_str());
+    return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
+}
+
 void SokolTexture::updateTexture(const void* data, size_t size){
     if (image.id == SG_INVALID_ID || !data || size == 0)
         return;

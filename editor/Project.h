@@ -969,6 +969,10 @@ namespace jasperengine::editor{
         // a project script sets the scene's maxLightsPerObject (the export then ships the lit
         // variants of every light capacity tier, see ShaderVariantCollector)
         bool scriptsSetLightCapacity() const;
+        // a project script sets the scene's post-processing (both states of its colour variant bit ship)
+        bool scriptsSetPostProcessing() const;
+        // a project script contains text
+        bool scriptsMention(const char* text) const;
         // The shader keys a loaded scene needs, derived from content without drawing anything:
         // its GameObjects and every prefab of the build (one a script spawns into it), in every
         // lighting setup they can make (see ShaderVariantCollector)

@@ -72,9 +72,12 @@ vec4 getBaseColor(){
             return texture(sampler2D(u_occlusionTexture, u_occlusion_smp), getOcclusionUV());
         }
 
-        vec4 getEmissiveTexture(){
-            return texture(sampler2D(u_emissiveTexture, u_emissive_smp), getEmissiveUV());
-        }
+        // (mesh.frag leaves the texture out of a painted terrain with the post-processing colour)
+        #ifndef NO_EMISSIVE_TEXTURE
+            vec4 getEmissiveTexture(){
+                return texture(sampler2D(u_emissiveTexture, u_emissive_smp), getEmissiveUV());
+            }
+        #endif
     #endif
 #endif
 

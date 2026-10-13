@@ -321,6 +321,7 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & (1 << 28)) defs.push_back({"USE_VERTEX_LIGHTS", "1"});          // 'Vtl'
     // bits 29-30: capacity tier of the per-object lights blocks ('Lc4', 'L16', neither = 8)
     defs.push_back({"LIGHT_CAPACITY", (prop & (1 << 29)) ? "4" : ((prop & (1 << 30)) ? "16" : "8")});
+    if (prop & (1u << 31)) defs.push_back({"USE_POST_COLOR", "1"});          // 'Pcl'
 }
 
 void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
@@ -365,11 +366,26 @@ void addPointsPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, c
     if (prop & (1 << 1))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
     if (prop & (1 << 2))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
     if (prop & (1 << 3))  defs.push_back({"HAS_TEXTURERECT", "1"});          // 'Txr'
+    if (prop & (1 << 4))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
 }
 
 void addLinesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
     if (prop & (1 << 0))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
     if (prop & (1 << 1))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
+    if (prop & (1 << 2))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
+}
+
+// the uber pass's features (RenderSystem::UberFeature)
+void addUberPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
+    static const char* const defines[] = {"UBER_FXAA", "UBER_CHROMATIC", "UBER_PIXELATE", "UBER_CRT", "UBER_EDGE", "UBER_GRAIN",
+                                          "UBER_SHARPEN", "UBER_LUT", "UBER_VIGNETTE", "UBER_DITHER", "UBER_BLOOM", "UBER_BLUR"};
+    for (int bit = 0; bit < (int)(sizeof(defines) / sizeof(defines[0])); bit++) {
+        if (prop & (1u << bit)) defs.push_back({defines[bit], "1"});
+    }
+}
+
+void addSkyPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
+    if (prop & (1 << 0))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
 }
 
 // Entry points and #defines of a built-in variant
@@ -401,6 +417,7 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
     }else if (shaderType == ShaderType::SKYBOX){
         args.vert_file = "sky.vert";
         args.frag_file = "sky.frag";
+        addSkyPropertyDefinitions(args.defines, properties);
     }else if (shaderType == ShaderType::SSAO){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "ssao.frag";
@@ -420,8 +437,15 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
         args.vert_file = "shadow2d.vert";
         args.frag_file = "shadow2d.frag";
     }else if (shaderType == ShaderType::BLIT){
-        args.vert_file = "fullscreen.vert";
-        args.frag_file = "blit.frag";
+        if (properties == 0){
+            args.vert_file = "fullscreen.vert";
+            args.frag_file = "blit.frag";
+        }else{
+            // the uber pass (phase 4): the blit with post-processing features
+            args.vert_file = "uber.vert";
+            args.frag_file = "uber.frag";
+            addUberPropertyDefinitions(args.defines, properties);
+        }
     }else if (shaderType == ShaderType::POSTPROCESS){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "postprocess.frag";
@@ -896,4 +920,22 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
     (void)report; (void)stopped;
     return fail("This build has no runtime shader compiler (JASPERENGINE_RUNTIME_SHADERS is off)");
 #endif
+}
+
+std::string ShaderVariantCompiler::checkResourceBudget(const ShaderData& data) {
+    std::string over;
+    for (const ShaderStage& stage : data.stages) {
+        const char* name = stage.type == ShaderStageType::VERTEX ? "vertex" : "fragment";
+        auto check = [&](size_t count, size_t limit, const char* what) {
+            if (count > limit) {
+                if (!over.empty()) over += "; ";
+                over += std::string(name) + " stage: " + std::to_string(count) + " " + what + " (limit " + std::to_string(limit) + ")";
+            }
+        };
+        check(stage.uniformblocks.size(), 8, "uniform blocks");
+        check(stage.textures.size(), 16, "textures");
+        check(stage.samplers.size(), 16, "samplers");
+        check(stage.textureSamplerPairs.size(), 16, "texture-sampler pairs");
+    }
+    return over;
 }

@@ -50,6 +50,9 @@ namespace jasperengine{
                     ColorFormat colorFormat = ColorFormat::RGBA, bool stencil = false);
 
         bool createDynamicTexture(const std::string& label, int width, int height);
+        // RGBA8, linear filtering, clamped, rewritten whole by updateTexture at most once a frame
+        // (the post-processing colour LUTs)
+        bool createDynamicColorTexture(const std::string& label, int width, int height);
         void updateTexture(const void* data, size_t size);
 
         void destroyTexture();

@@ -1,8 +1,11 @@
 // Final colour of library shaders: every library shader writes its output through
 // finalizeColor, which applies the scene fog (HAS_FOG, routed by the blend mode define) and
 // the linear -> display encoding the engine uses (the colour targets are RGBA8 holding
-// sRGB-encoded colour). Later phases extend this function (tonemap, grade, vignette,
-// dither) without touching the shaders that call it. Both follow the blend mode the variant
+// sRGB-encoded colour). With the post-processing colour (phase 4, USE_POST_COLOR) the
+// encoding also applies the exposure, tone mapping, grade, vignette and dither
+// (includes/post_color.glsl): encodeOutput for a shader's own colour, encodeAdditiveOutput for
+// one a blend adds; a filter a blend multiplies by, and the scene colour (graded already),
+// keep the plain encodeColor. Both follow the blend mode the variant
 // draws with (BLEND_*): finalizeColor takes a colour as its texture stores it (premultiplied
 // for the premultiplied blend), finalizeStraightColor a straight-alpha colour the shader
 // computed (it premultiplies it for that blend).
@@ -11,10 +14,31 @@
 #define OUTPUT_GLSL
 
 #include "includes/srgb.glsl"
+#include "includes/post_color.glsl"
 
 #ifdef HAS_FOG
     #include "includes/fog.glsl"
 #endif
+
+// The display encoding of a shader's own linear colour (clamped at 0): with the
+// post-processing colour, its exposure, tone mapping, grade, vignette and dither
+vec3 encodeOutput(vec3 linearColor){
+    #ifdef USE_POST_COLOR
+        return postColorEncode(linearColor);
+    #else
+        return linearTosRGB(max(linearColor, vec3(0.0)));
+    #endif
+}
+
+// encodeOutput for a colour a blend adds to the target (black adds nothing; the vignette only
+// darkens it)
+vec3 encodeAdditiveOutput(vec3 linearColor){
+    #ifdef USE_POST_COLOR
+        return postColorEncodeAdditive(linearColor);
+    #else
+        return linearTosRGB(max(linearColor, vec3(0.0)));
+    #endif
+}
 
 // The fog distance of this fragment (fog.glsl), which finalizeColor and the others fog by;
 // the ...AtFogDistance forms take another one: a shader drawing onto another surface (a
@@ -52,6 +76,12 @@ vec3 fadeByFog(vec3 linearColor, vec3 neutral){
 // add on top
 vec4 finalizeBlendedColorAtFogDistance(vec4 linearColor, vec3 neutral, float fogDistance){
     vec3 color = fadeByFogAtFogDistance(linearColor.rgb, neutral, fogDistance);
+    // a colour added to the target takes the post-processing colour as an added one; a filter
+    // the target is multiplied by stays a plain factor (the target is graded already)
+    #ifdef USE_POST_COLOR
+        if (neutral.r < 0.5)
+            return vec4(encodeAdditiveOutput(color), linearColor.a);
+    #endif
     return vec4(linearTosRGB(max(color, vec3(0.0))), linearColor.a);
 }
 
@@ -84,7 +114,13 @@ vec4 finalizeColorAtFogDistance(vec4 linearColor, float fogDistance){
                 color = getFogColorAtDistance(color, fogDistance);
             #endif
         #endif
-        return vec4(linearTosRGB(max(color, vec3(0.0))), linearColor.a);
+        #if defined(BLEND_PREMULTIPLIED) && defined(USE_POST_COLOR)
+            // the curve and grade of the straight colour, premultiplied again
+            float coverage = max(linearColor.a, 1e-4);
+            return vec4(encodeOutput(color / coverage) * linearColor.a, linearColor.a);
+        #else
+            return vec4(encodeOutput(color), linearColor.a);
+        #endif
     #endif
 }
 
@@ -103,7 +139,7 @@ vec4 finalizeStraightColorAtFogDistance(vec4 linearColor, float fogDistance){
         #ifdef HAS_FOG
             color = getFogColorAtDistance(color, fogDistance);
         #endif
-        return vec4(linearTosRGB(max(color, vec3(0.0))) * linearColor.a, linearColor.a);
+        return vec4(encodeOutput(color) * linearColor.a, linearColor.a);
     #else
         return finalizeColorAtFogDistance(linearColor, fogDistance);
     #endif
@@ -125,7 +161,9 @@ vec3 applyFog(vec3 linearColor){
 }
 
 // finalizeStraightColor for a straight-alpha colour whose fog is already in it (applyFog,
-// the scene colour): the same shaping for the blend and the same encoding, no fog added
+// the scene colour): the same shaping for the blend and the same encoding, no fog added. No
+// post-processing colour either: the scene colour has it already (a colour of the shader's
+// own goes through encodeOutput)
 vec4 finalizeFoggedColor(vec4 linearColor){
     #if defined(BLEND_MULTIPLY)
         vec3 color = mix(vec3(1.0), linearColor.rgb, linearColor.a);
@@ -161,7 +199,7 @@ vec4 finalizeStraightColorOverScene(vec4 linearColor, vec3 behind, float behindW
     #if defined(BLEND_ADDITIVE) || defined(BLEND_MULTIPLY)
         return finalizeStraightColor(linearColor);
     #else
-        vec3 own = encodeColor(applyFog(linearColor.rgb));
+        vec3 own = encodeOutput(applyFog(linearColor.rgb));
         // a own + (1 - a) (w behind + (1 - w) target) is coverage c = a + (1 - a) w of
         // mix(own, behind, (1 - a) w / c) over the target
         float behindShare = (1.0 - linearColor.a) * behindWeight;
