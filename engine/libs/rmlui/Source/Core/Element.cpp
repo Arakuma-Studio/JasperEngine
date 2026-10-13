@@ -3603,6 +3603,17 @@ bool Element::UpdateAnimationDisplay()
 	return displayed && meta->style.RestartTransitionsFromStartingStyle();
 }
 
+void Element::UpdateTransformStates()
+{
+	// Parents first: an element combines its transform with its parent's state. Everything is marked dirty, since a
+	// new layout moves boxes without dirtying the transforms that depend on their position.
+	DirtyTransformState(true, true);
+	UpdateTransformState();
+	const int num_children = GetNumChildren(true);
+	for (int i = 0; i < num_children; i++)
+		GetChild(i)->UpdateTransformStates();
+}
+
 void Element::DirtyTransformState(bool perspective_dirty, bool transform_dirty)
 {
 	dirty_perspective |= perspective_dirty;
