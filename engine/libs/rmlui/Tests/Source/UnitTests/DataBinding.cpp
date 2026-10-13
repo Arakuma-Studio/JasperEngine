@@ -4,6 +4,7 @@
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <cmath>
+#include <RmlUi/Core/Elements/ElementFormControl.h>
 #include <doctest.h>
 
 using namespace Rml;
@@ -984,6 +985,73 @@ TEST_CASE("data_binding.data-value")
 	REQUIRE(p->GetInnerRML() == "cheerful ant");
 	REQUIRE(input->GetAttribute<String>("value", "") == "cheerful ant");
 	REQUIRE(div->GetAttribute<String>("value", "") == "parent");
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+// Fork (P4-G9): data-attr-<attribute> on an HTML boolean attribute (disabled, checked, hidden, ...) is present or absent: false
+// removes it, true sets it empty, as data-attrif does (disabled="false" disabled). Other attributes get the value's text; other
+// values (a string, a number) are written as they are.
+TEST_CASE("data_binding.data-attr-boolean")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+
+	static const String document_rml = R"(
+<rml>
+<head>
+	<title>Test</title>
+</head>
+<body data-model="flags">
+	<input id="input" type="text" data-attr-disabled="locked" data-attr-readonly="!locked" data-attr-title="locked"/>
+	<div id="div" data-attr-hidden="locked" data-attr-open="label" data-attrif-selected="locked"/>
+</body>
+</rml>
+)";
+
+	Rml::DataModelConstructor constructor = context->CreateDataModel("flags");
+	REQUIRE(constructor);
+	bool locked = false;
+	Rml::String label = "yes";
+	constructor.Bind("locked", &locked);
+	constructor.Bind("label", &label);
+	DataModelHandle handle = constructor.GetModelHandle();
+
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+	TestsShell::RenderLoop();
+
+	Element* input = document->GetElementById("input");
+	Element* div = document->GetElementById("div");
+	CHECK(!input->HasAttribute("disabled"));
+	CHECK(input->HasAttribute("readonly"));
+	CHECK(input->GetAttribute<String>("readonly", "x") == "");
+	CHECK(!rmlui_dynamic_cast<ElementFormControl*>(input)->IsDisabled());
+	CHECK(input->GetAttribute<String>("title", "") == "0"); // not a boolean attribute: the value's text, as before
+	CHECK(!div->HasAttribute("hidden"));
+	CHECK(div->GetAttribute<String>("open", "") == "yes"); // a string is written as it is
+	CHECK(!div->HasAttribute("selected"));
+
+	locked = true;
+	handle.DirtyVariable("locked");
+	TestsShell::RenderLoop();
+	CHECK(input->HasAttribute("disabled"));
+	CHECK(input->GetAttribute<String>("disabled", "x") == "");
+	CHECK(rmlui_dynamic_cast<ElementFormControl*>(input)->IsDisabled());
+	CHECK(!input->HasAttribute("readonly"));
+	CHECK(input->GetAttribute<String>("title", "") == "1");
+	CHECK(div->HasAttribute("hidden"));
+	CHECK(div->HasAttribute("selected")); // data-attrif keeps working
+
+	locked = false;
+	handle.DirtyVariable("locked");
+	TestsShell::RenderLoop();
+	CHECK(!input->HasAttribute("disabled"));
+	CHECK(!rmlui_dynamic_cast<ElementFormControl*>(input)->IsDisabled());
+	CHECK(!div->HasAttribute("hidden"));
+	CHECK(!div->HasAttribute("selected"));
 
 	document->Close();
 	TestsShell::ShutdownShell();
