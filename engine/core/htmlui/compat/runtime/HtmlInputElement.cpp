@@ -18,6 +18,7 @@
 #include <RmlUi/Core/Input.h>
 #include <RmlUi/Core/MeshUtilities.h>
 #include <RmlUi/Core/RenderManager.h>
+#include <RmlUi/Core/StringUtilities.h>
 
 #include <algorithm>
 #include <cmath>
@@ -412,6 +413,31 @@ float HtmlInputElement::GetBaseline() const{
 }
 
 bool HtmlInputElement::GetIntrinsicDimensions(Rml::Vector2f& dimensions, float& ratio){
+    if (htmlType == "checkbox" || htmlType == "radio"){
+        // Chromium's theme makes an auto width or height 13px (the border box). Without the theme
+        // (`appearance: none`: the user-agent sheet's --html-check-size companion is auto) a
+        // checkbox or radio is an inline-block sized by its content (its ::before and ::after,
+        // padding and border; 0x0 without), so it is not replaced: laid out as a block container.
+        const Rml::Property* size = GetProperty("--html-check-size");
+        if (size && Rml::StringUtilities::StripWhitespace(size->Get<Rml::String>()) == "auto")
+            return false;
+        const Rml::ComputedValues& computed = GetComputedValues();
+        const auto edge = [](const Rml::Style::LengthPercentage& length){
+            return length.type == Rml::Style::LengthPercentage::Length ? length.value : 0.0f;
+        };
+        float edgesX = edge(computed.padding_left()) + edge(computed.padding_right());
+        float edgesY = edge(computed.padding_top()) + edge(computed.padding_bottom());
+        if (computed.box_sizing() == Rml::Style::BoxSizing::BorderBox){
+            edgesX += computed.border_left_width() + computed.border_right_width();
+            edgesY += computed.border_top_width() + computed.border_bottom_width();
+        }else{
+            edgesX = edgesY = 0.0f;
+        }
+        // each auto dimension on its own: no ratio (a 20px wide checkbox stays 13px tall)
+        dimensions = Rml::Vector2f(std::max(13.0f - edgesX, 0.0f), std::max(13.0f - edgesY, 0.0f));
+        ratio = -1.0f;
+        return true;
+    }
     if (htmlType == "range"){
         // RmlUi's slider is 16px tall; a range with an auto height (appearance: none, through the
         // user-agent sheet's companions) is as tall as its track's border box, as in Chromium

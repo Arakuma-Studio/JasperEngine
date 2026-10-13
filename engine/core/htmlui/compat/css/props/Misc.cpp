@@ -76,6 +76,27 @@ namespace {
                 // the track's own colors (not the checkbox's and select's --html-control-*)
                 {"--html-slider-track-bg", "#efefef"},
                 {"--html-slider-track-border-color", "#b2b2b2"},
+                // checkbox and radio: the theme's size (p4-gaps2)
+                {"--html-check-size", "13px"},
+                // selects, buttons and progress bars have their own (p4-gaps2): html.css keeps
+                // other borders and backgrounds for them than for checkboxes
+                {"--html-select-bg", "#ffffff"},
+                {"--html-select-padding", "1px 0 1px 4px"},
+                {"--html-select-arrow-width", "16px"},
+                {"--html-button-padding", "2px 7px"},
+                {"--html-button-border-width", "1px"},
+                {"--html-button-border-style", "solid"},
+                {"--html-button-border", "#767676"},
+                {"--html-button-hover-bg", "#e5e5e5"},
+                {"--html-button-hover-border", "#4f4f4f"},
+                {"--html-button-active-bg", "#f5f5f5"},
+                {"--html-button-active-border", "#8d8d8d"},
+                {"--html-progress-border-width", "0.25em"},
+                {"--html-progress-radius", "0.5em"},
+                {"--html-progress-bg", "#00000000"},
+                {"--html-progress-track", "inset 0 0 0 1px #b2b2b2, inset 0 0 0 1em #efefef"},
+                {"--html-progress-fill-radius", "0.25em 0 0 0.25em"},
+                {"--html-progress-fill", "var(--html-accent, #0075ff)"},
             };
             const std::string_view ua = UserAgentStyle::source();
             for (auto& entry : out){
@@ -258,10 +279,12 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
     if (keyword == "none"){
         context.emit("--html-check", "none");
         context.emit("--html-check-baseline", "0px");
+        // checkbox and radio: no frame, rounding, fill or ring (Chromium's html.css gives them none),
+        // sized by their content (::before/::after, padding, border), not 13x13
         context.emit("--html-control-bg", "transparent");
         context.emit("--html-control-border", "transparent");
-        // checkbox and radio: no frame, rounding, fill or ring (Chromium's html.css gives them none)
         context.emit("--html-control-border-width", "0px");
+        context.emit("--html-check-size", "auto");
         // text fields, buttons, selects: the theme's 2px rounding (Chromium's html.css has none)
         context.emit("--html-control-radius", "0px");
         // text fields: html.css's `padding: 1px 2px; border: 2px inset` (the fork draws inset: BorderStyle, p3-paint)
@@ -271,11 +294,34 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         context.emit("--html-check-radius", "0px");
         context.emit("--html-radio-radius", "0px");
         context.emit("--html-check-fill", "transparent");
-        context.emit("--html-radio-ring", "none");
+        // (box-shadow companions are list entries next to the outline's: a shadow that draws nothing, not none)
+        context.emit("--html-radio-ring", "0 0 0 0 #0000");
         context.emit("--html-control-disabled-border", "transparent");
         context.emit("--html-check-disabled-fill", "transparent");
+        // select: html.css's 1px #767676 border on ButtonFace, no arrow, none of the menu list's
+        // inner padding (Chromium)
+        context.emit("--html-select-bg", "#efefef");
+        context.emit("--html-select-padding", "0px");
+        context.emit("--html-select-arrow-width", "0px");
         context.emit("--html-select-arrow", "none");
         context.emit("--html-select-arrow-color", "transparent");
+        // buttons: html.css's `padding: 1px 6px; border: 2px outset ButtonBorder` (black), the same
+        // on hover and press (the fork draws outset: BorderStyle, p3-paint)
+        context.emit("--html-button-padding", "1px 6px");
+        context.emit("--html-button-border-width", "2px");
+        context.emit("--html-button-border-style", context.fork(ForkFeature::BorderStyle) ? "outset" : "solid");
+        context.emit("--html-button-border", "#000000");
+        context.emit("--html-button-hover-bg", "#efefef");
+        context.emit("--html-button-hover-border", "#000000");
+        context.emit("--html-button-active-bg", "#efefef");
+        context.emit("--html-button-active-border", "#000000");
+        // progress: html.css's ::-webkit-progress-bar (gray, the whole box) and -value (green)
+        context.emit("--html-progress-border-width", "0px");
+        context.emit("--html-progress-radius", "0px");
+        context.emit("--html-progress-bg", "#808080");
+        context.emit("--html-progress-track", "0 0 0 0 #0000");
+        context.emit("--html-progress-fill-radius", "0px");
+        context.emit("--html-progress-fill", "#008000");
         context.emit("--html-thumb", "none");
         // a range without its look: no value fill, as tall as its track (Chromium)
         context.emit("--html-slider-fill", "transparent");
@@ -302,7 +348,12 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
                                       "--html-select-arrow", "--html-select-arrow-color", "--html-thumb", "--html-slider-fill", "--html-slider-height",
                                       "--html-slider-track-margin", "--html-slider-track-inset", "--html-slider-thumb-margin", "--html-slider-thumb-transform",
                                       "--html-slider-track-height", "--html-slider-track-border",
-                                      "--html-slider-track-bg", "--html-slider-track-border-color"})
+                                      "--html-slider-track-bg", "--html-slider-track-border-color", "--html-check-size", "--html-select-bg",
+                                      "--html-select-padding", "--html-select-arrow-width", "--html-button-padding", "--html-button-border-width",
+                                      "--html-button-border-style", "--html-button-border", "--html-button-hover-bg", "--html-button-hover-border",
+                                      "--html-button-active-bg", "--html-button-active-border", "--html-progress-border-width",
+                                      "--html-progress-radius", "--html-progress-bg", "--html-progress-track", "--html-progress-fill-radius",
+                                      "--html-progress-fill"})
             context.emit(companion, uaCompanionDefault(companion));
         return;
     }

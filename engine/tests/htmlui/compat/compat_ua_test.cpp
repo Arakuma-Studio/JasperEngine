@@ -300,7 +300,7 @@ TEST(CompatUaSheet, EveryElementWithADisplayHasARule){
 TEST(CompatUaSheet, SourceCarriesChromiumDefaults){
     const std::string source(UserAgentStyle::source());
     for (const char* expected : {"margin: 8px;", "font-size: 2em;", "margin: 0.67em 0;", "padding-left: 40px;", "border-spacing: 2px;",
-                                 "font-size: 13.333px;", "width: 13px;", "width: 129px;", "width: 10em;", "#767676", "#efefef",
+                                 "font-size: 13.333px;", "width: var(--html-check-size, 13px);", "width: 129px;", "width: 10em;", "#767676", "#efefef",
                                  "var(--html-accent, #0075ff)", "var(--html-check,", "var(--html-control-bg, #ffffff)",
                                  "var(--html-control-border, #767676)", "var(--html-select-arrow,", "var(--html-thumb,",
                                  "--html-box-shadow: 0 0 0 0 #0000;", "--html-outline-shadow: 0 0 0 0 #0000;", ":focus-visible",

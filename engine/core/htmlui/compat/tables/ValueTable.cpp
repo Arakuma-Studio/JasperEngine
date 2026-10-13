@@ -21,9 +21,9 @@ namespace {
     using FF = ForkFeature;
 
     const ValueSupport rows[] = {
-        {"-moz-appearance", "none", R, FF::None, R, "--html-check: none; --html-control-bg: transparent; --html-control-border: transparent; --html-select-arrow: none; --html-thumb: none", "control companions cleared (exact)", ""},
+        {"-moz-appearance", "none", R, FF::None, R, "UA control companions set to html.css's look", "each control as Chromium's html.css styles it without its theme (exact): checkboxes and radios bare and sized by their content, selects keep their 1px border on ButtonFace without arrow or inner padding, buttons a 2px outset border, progress bars a gray bar with a green value", ""},
         {"-moz-appearance", "auto", R, FF::None, R, "UA control companions", "the UA control look written into the companions", ""},
-        {"-webkit-appearance", "none", R, FF::None, R, "--html-check: none; --html-control-bg: transparent; --html-control-border: transparent; --html-select-arrow: none; --html-thumb: none", "control companions cleared (exact)", ""},
+        {"-webkit-appearance", "none", R, FF::None, R, "UA control companions set to html.css's look", "each control as Chromium's html.css styles it without its theme (exact): checkboxes and radios bare and sized by their content, selects keep their 1px border on ButtonFace without arrow or inner padding, buttons a 2px outset border, progress bars a gray bar with a green value", ""},
         {"-webkit-appearance", "auto", R, FF::None, R, "UA control companions", "the UA control look written into the companions", ""},
         {"-webkit-background-clip", "text", A, FF::None, A, "solid color", "with a transparent fill: gradient text drawn in a solid color (Warning); otherwise dropped (Info)", ""},
         {"-webkit-box-align", "start", R, FF::None, R, "flex-start", "mapped to align-items", ""},
@@ -90,7 +90,7 @@ namespace {
         {"animation-timing-function", "steps()", F, FF::TimingFunctions, N, "linear-in-out", "stepped easing drawn as linear until the fork has TimingFunctions (Warning)", ""},
         {"animation-timing-function", "step-start", F, FF::TimingFunctions, N, "linear-in-out", "stepped easing drawn as linear until the fork has TimingFunctions (Warning)", ""},
         {"animation-timing-function", "step-end", F, FF::TimingFunctions, N, "linear-in-out", "stepped easing drawn as linear until the fork has TimingFunctions (Warning)", ""},
-        {"appearance", "none", R, FF::None, R, "--html-check: none; --html-control-bg: transparent; --html-control-border: transparent; --html-select-arrow: none; --html-thumb: none", "control companions cleared (exact)", ""},
+        {"appearance", "none", R, FF::None, R, "UA control companions set to html.css's look", "each control as Chromium's html.css styles it without its theme (exact): checkboxes and radios bare and sized by their content, selects keep their 1px border on ButtonFace without arrow or inner padding, buttons a 2px outset border, progress bars a gray bar with a green value", ""},
         {"appearance", "auto", R, FF::None, R, "UA control companions", "the UA control look written into the companions", ""},
         {"backdrop-filter", "drop-shadow()", R, FF::None, R, "drop-shadow(<color> <x> <y> <blur>)", "arguments reordered for RmlUi", ""},
         {"backdrop-filter", "url()", U, FF::None, U, "", "SVG filters are not supported (Warning)", "use the built-in filter functions"},

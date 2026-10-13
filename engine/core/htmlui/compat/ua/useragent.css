@@ -332,6 +332,12 @@ input {
     overflow: hidden;
 }
 
+/* html.css: a search field is border-box (its default width the text field's border box) */
+input[type="search"] {
+    box-sizing: border-box;
+    width: 185px;
+}
+
 input::placeholder, textarea::placeholder {
     color: #757575;
 }
@@ -360,12 +366,16 @@ input:disabled, textarea:disabled {
 }
 
 /* buttons: `padding: 1px 6px; border: 2px outset ButtonBorder` laid out, painted as a 1px
-   #767676 frame with 2px corners */
+   #767676 frame with 2px corners. Without the look (`appearance: none`, the companions) they are
+   html.css's: that padding and a 2px outset black border (ButtonBorder), the same on hover and
+   press. */
 button, input[type="button"], input[type="submit"], input[type="reset"], input[type="file"] {
     box-sizing: border-box;
     width: auto;
-    padding: 2px 7px;
-    border: 1px solid #767676;
+    padding: var(--html-button-padding, 2px 7px);
+    border-width: var(--html-button-border-width, 1px);
+    border-style: var(--html-button-border-style, solid);
+    border-color: var(--html-button-border, #767676);
     border-radius: var(--html-control-radius, 2px);
     background-color: ButtonFace;
     color: ButtonText;
@@ -378,16 +388,24 @@ button {
     white-space: normal;
 }
 
+/* the file input approximation (a disabled "Choose File" button) keeps its look: Chromium's
+   appearance applies to its inner button, which `appearance: none` on the input leaves */
+input[type="file"] {
+    padding: 2px 7px;
+    border-width: 1px;
+    border-style: solid;
+}
+
 button:enabled:hover, input[type="button"]:enabled:hover, input[type="submit"]:enabled:hover,
 input[type="reset"]:enabled:hover {
-    background-color: #e5e5e5;
-    border-color: #4f4f4f;
+    background-color: var(--html-button-hover-bg, #e5e5e5);
+    border-color: var(--html-button-hover-border, #4f4f4f);
 }
 
 button:enabled:active, input[type="button"]:enabled:active, input[type="submit"]:enabled:active,
 input[type="reset"]:enabled:active {
-    background-color: #f5f5f5;
-    border-color: #8d8d8d;
+    background-color: var(--html-button-active-bg, #f5f5f5);
+    border-color: var(--html-button-active-border, #8d8d8d);
 }
 
 button:disabled, input[type="button"]:disabled, input[type="submit"]:disabled,
@@ -408,17 +426,22 @@ input[type="image"] {
 
 /* checkbox and radio: 13x13, painted like Chromium's theme. The frame, the rounding, the
    check and the ring are the theme's: without it (`appearance: none`, the companions) the
-   control has no border, background or radius, as Chromium's html.css gives it none. */
+   control has no border, background or radius, as Chromium's html.css gives it none, and no
+   size: it is sized by its content (its ::before and ::after, padding and border), as an
+   inline-block (HtmlInputElement). */
 input[type="checkbox"], input[type="radio"] {
     box-sizing: border-box;
-    width: 13px;
-    height: 13px;
+    width: var(--html-check-size, 13px);
+    height: var(--html-check-size, 13px);
     padding: 0;
     border-width: var(--html-control-border-width, 1px);
     border-style: solid;
     border-color: var(--html-control-border, #767676);
     border-radius: var(--html-check-radius, 2px);
     background-color: var(--html-control-bg, #ffffff);
+    /* not clipped (Chromium): ::before and ::after may leave the box, and the baseline of one
+       sized by its content is its last line's */
+    overflow: visible;
     cursor: default;
 }
 
@@ -527,34 +550,40 @@ input[type="range"]:disabled sliderbar, input[type="range"]:disabled sliderprogr
    tall, centered, with a 1px line inside the track that the value covers. The fill is RmlUi's
    `fill`, laid out in the content box. The track is the padding box between two transparent
    borders: its colour is an inset shadow (a background colour would also cover the border
-   box, as CSS paints it). */
+   box, as CSS paints it). Without the look (`appearance: none`, the companions) the bar is
+   html.css's ::-webkit-progress-bar and -value: the whole box gray, the value green. */
 progress {
     box-sizing: border-box;
     width: 10em;
     height: 1em;
     vertical-align: -0.2em;
-    border-width: 0.25em 0;
+    border-top-width: var(--html-progress-border-width, 0.25em);
+    border-bottom-width: var(--html-progress-border-width, 0.25em);
+    border-left-width: 0;
+    border-right-width: 0;
     border-style: solid;
     border-color: transparent;
-    border-radius: 0.5em;
-    background-color: transparent;
-    box-shadow: inset 0 0 0 1px #b2b2b2, inset 0 0 0 1em #efefef;
+    border-radius: var(--html-progress-radius, 0.5em);
+    background-color: var(--html-progress-bg, #00000000);
+    box-shadow: var(--html-progress-track, inset 0 0 0 1px #b2b2b2, inset 0 0 0 1em #efefef);
 }
 
 progress fill {
-    border-radius: 0.25em 0 0 0.25em;
-    background-color: var(--html-accent, #0075ff);
+    border-radius: var(--html-progress-fill-radius, 0.25em 0 0 0.25em);
+    background-color: var(--html-progress-fill, var(--html-accent, #0075ff));
 }
 
-/* select: a white box with a 1px frame and Chromium's chevron */
+/* select: a white box with a 1px frame and Chromium's chevron. Without the look (`appearance:
+   none`, the companions) html.css's: the same 1px #767676 border on ButtonFace, no arrow, and
+   none of the menu list's inner padding. */
 select {
     box-sizing: border-box;
     padding: 0;
     border-width: 1px;
     border-style: solid;
-    border-color: var(--html-control-border, #767676);
+    border-color: #767676;
     border-radius: var(--html-control-radius, 2px);
-    background-color: var(--html-control-bg, #ffffff);
+    background-color: var(--html-select-bg, #ffffff);
     color: FieldText;
     white-space: pre;
     cursor: default;
@@ -562,12 +591,12 @@ select {
 
 /* Chromium's internal menulist padding, which author padding adds to */
 select selectvalue {
-    padding: 1px 0 1px 4px;
+    padding: var(--html-select-padding, 1px 0 1px 4px);
 }
 
 /* the chevron is drawn in the select's text color (Chromium): the color through the arrow's mask */
 select selectarrow {
-    width: 16px;
+    width: var(--html-select-arrow-width, 16px);
     background-color: var(--html-select-arrow-color, currentcolor);
     mask-image: var(--html-select-arrow, url("/@htmlui/ua/arrow-down.svg"));
     mask-size: 10px 6px;
