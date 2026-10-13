@@ -154,11 +154,17 @@ namespace {
         return snapshot;
     }
 
+    // a control whose value a data model holds (data-value, data-checked): the binding gives the
+    // new element its value; restoring the old one would write it back into the model
+    bool isBoundControl(Rml::Element* element){
+        return element->HasAttribute("data-value") || element->HasAttribute("data-checked");
+    }
+
     // form values first (they can change the layout), scroll once laid out, then focus
     void restoreValues(Rml::ElementDocument* document, const DocumentSnapshot& snapshot){
         for (const auto& pair : snapshot.elements){
             Rml::Element* element = document->GetElementById(pair.first);
-            if (!element)
+            if (!element || isBoundControl(element))
                 continue;
             const ElementState& state = pair.second;
 
