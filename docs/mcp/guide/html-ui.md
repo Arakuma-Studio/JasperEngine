@@ -998,10 +998,12 @@ downloads each once into `assets/htmlui-imports/` and records it in
   background (`[HTML UI] importing <url>`), then the document reloads (Editor Settings >
   General > HTML UI > Import Remote Resources turns it off).
 - **MCP** `import_files`: `{"from_document": "assets/ui/menu.html"}` imports every remote URL
-  of a `.html`/`.css` (and with `rewrite`, the default, replaces them with the local paths);
+  of a `.html`/`.css` (and with `rewrite`, the default, replaces them with paths relative to the
+  file, one project undo step; a Google Fonts link becomes the generated `@font-face` stylesheet);
   `{"fonts": ["Inter:400,700"]}` imports Google Fonts as TTF plus an `@font-face` stylesheet;
   `{"icons": ["lucide:play"]}` writes `.svg` files; `{"sources": ["https://..."]}` imports
-  single files.
+  single files. The files go to `to_dir` (default `assets/ui/imported`); a URL that fails is
+  listed in the result's failed entries without failing the others.
 - **CLI**: `jasperengine-editor import-ui --project <dir> assets/ui/menu.html [more documents]
   [--dest <dir>] [--force] [-q]` imports synchronously, prints the diagnostics compiler-style
   and exits 1 when an import failed. A URL that failed is not retried automatically in the
@@ -1138,7 +1140,9 @@ For the game itself: `Engine.mouseCursor = CursorType.GRAB`.
 **Testing input with `send_input`** (play mode): mouse and touch events take
 `"target": "<selector>"` (the center of the first visible match; `to_target` for drags and
 swipes; `document` picks the UI Document) instead of `x`/`y`, resolved when the event runs, so
-a panel opened by the previous click can be targeted. `key` events reach the focused element;
+a panel opened by the previous click can be targeted. Without `document` the topmost document
+with a visible match wins (texture-mode documents are skipped); the result lists each resolved
+point and its document. `key` events reach the focused element;
 `text` types a string; `ime` (`text`, `cursor`) / `ime_commit` / `ime_cancel` drive a
 composition; `mouse_leave` / `mouse_enter` move the pointer out of and into the game; wheel
 offsets follow GLFW (`dy > 0` scrolls up); `gamepad` events (`button` `"a"`, `"b"`, `"dpad_down"`,
@@ -1271,8 +1275,10 @@ at other sizes. Typical sets:
 
 `screenshot {"view": "game"}` shows the whole Game view (documents of the selected scene in
 edit mode, of the running scenes in play). `inspect_ui`/`assert_ui` return cropped, outlined
-images of what they matched: cyan for matches, red for failures. Texture-mode documents and
-other viewports have no image (the tools say so).
+images of what they matched: cyan for matches, red for failures, amber for the overlap partner
+or container of a failure. Texture-mode documents, documents of a scene the Game view does not
+show, and other viewports have no image (the tools say so). The structured result says where
+the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 
 ### UI Documents in the editor
 

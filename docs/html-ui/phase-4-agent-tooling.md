@@ -2081,6 +2081,98 @@ Where the result differs from or makes precise 3.8.1, 3.8.2 (README), 3.8.4, 3.8
 - **Tests:** 5.6, 5.7, plus the whole HTML UI suite and `test_protocol.py`, `test_autosync.py`,
   `test_checks.py`, `test_stubs.py`, `test_ui_anchors.py`, `test_play.py`, `test_assets.py`.
 
+#### 4.5.1 `p4-mcp-tools` as implemented
+
+Where the code differs from or makes precise 3.6, 3.8.3, 5.6 and 5.7 (also in `CONTRACTS.md`):
+
+- **Files.** `editor/mcp/tools/HtmlUiTools.cpp` (the three tools, the document resolution, the
+  outlined images, the resources, `htmlui_mcp::elementCenter`), `HtmlUiShared.h`. Registered last
+  (`McpTools.h`, `McpServer.cpp`), one source line in `CMakeLists.txt`; the Xcode project lists no
+  editor source, so it needed nothing.
+- **Paths.** The inspector, the assertions and the component speak asset-relative paths
+  (4.1.1); the tools convert at their boundary: `document.html`, diagnostics (through
+  `ProjectChecks::uiFinding`, the CLI's conversion, so the sets compare equal) and style
+  sources (`InspectStyle::file` replaced by its project-relative path).
+- **Document resolution.** As 3.6, plus: the other open (edit) or running (play) scenes are
+  searched only when `scene` is omitted; an `entity` that is not in the default scene is looked
+  up in those scenes too (one match wins, several are an error listing them). The load wait
+  ends at once when the load failed (`UIDocumentComponent::loadFailed`) instead of after 5 s; a
+  document without a filename is its own error (`set_properties ... filename`).
+- **Output additions.** Every tool that returns an image adds `image: {canvas_rect: [x, y, w, h],
+  width, height}` to its structured result (the canvas px the cropped image shows: the edit-mode
+  Game view draws the canvas at about 0.7 scale, so callers map rects with it) and, when there is
+  no image, `image_note` (why). `inspect_ui` with `viewport` adds `document.laid_out_at`.
+  `send_input` results list `targets: [{event, target, point: [x, y] canvas px, document: {scene,
+  entity, html}}]` (3.6.4's "the event result reports the resolved point") and a text line each.
+- **`inspect_ui`.** `entity` also conflicts with `file` (the same message). With `at` the result
+  has `hit` and no `elements`; `detail: full` and `styles` then apply to the hit stack. The text
+  cap (12,000 characters) applies to the outline; `detail: full` text is capped separately and
+  the structured details are complete. `file` outside the assets directory is an error (compat
+  paths are asset-relative, as `check --ui` skips such files). Screenshot outlines: the
+  selector's matches (or the topmost hit), not their listed descendants.
+- **`assert_ui`.** Other viewports run through `HtmlUIInspector::withViewport(scene, entity, ...)`
+  (the context the document is in, 4.1.1). `checks` in the result: one entry per (viewport,
+  check), `index` naming the check; `failures` carry `other_ref`/`other_rect` when there is a
+  partner; inconclusive contrast elements also get a text line. `screenshot: always` outlines
+  every visible match of `selector` and `with` in cyan, failures over them. Argument errors are
+  tool errors: an unknown `type`, a missing `selector`, `count` without `count`/`min`/`max`, more
+  than 6 viewports.
+- **`create_ui_document`.** The GameObject is one `CreateEntityCmd(..., UI_DOCUMENT)` (what the
+  Hierarchy's *Create > UI > UI Document* runs: Transform + UI Document), not GAMEOBJECT +
+  `AddComponentCmd`. Order inside the step: the GameObject and its `properties` / `sort_order`
+  first (so an unknown property fails before any file is written), then the files (project
+  history), then `filename`, then `attach_script`: the document loads once, with its files there
+  (`load_count` 1). `properties.filename` is refused (use `html`). `script` defaults to true for
+  the examples and false for `blank` (3.7.4); an existing html with an example template still gets
+  the template's Lua written (if missing) and attached. The default name is
+  `HtmlUiExamples::titleName(stem)` ("Title Screen"). `files_kept` lists the kept html first.
+- **`send_input`.** The `events` items stay free-form, but their schema declares `target`,
+  `to_target` and `document` (+92 characters) so the names are discoverable (the guide and
+  instructions name `to_target`). A click resolves its target once (down and up at the same
+  point); a drag or swipe resolves both ends when it starts. Texture-mode documents are skipped
+  (their elements are not at canvas points); naming one in `document` is an error. `document`
+  resolves among the running scenes' documents.
+- **`import_files`.** The importers run on a worker thread (they block on the network) and the
+  call waits up to 10 minutes; the main thread then rewrites the file, calls
+  `ImportManifest::reload()` (as the editor's automatic import does) and syncs the written files
+  and the manifest. Local and remote sources mix in one call. For the remote kinds `to_dir` must
+  be inside the assets directory. `remote` has one entry per URL (or per icon / font request),
+  plus the document's other written files; `rewrite` replaces each URL also in its HTML-escaped
+  form (`&amp;`). Nothing imported and something failed: `isError`.
+- **HTMLUI-IMP-0001 / -0009** (3.6.5): the suggestions and the registry help name
+  `MCP import_files from_document`; the `.diag.txt` goldens and `compat_url_test.cpp` follow.
+- **`w3::luaToJson`** (`PlayTools.cpp`): data-model proxies are userdata with `__pairs`; the
+  serializer walks them like tables (only for `luaToJson`: `eval_lua` output is unchanged).
+- **`select_scene` fix** (`SceneTools.cpp`): it also focuses the scene's window
+  (`SceneWindow::requestPlayFocus`). A focused Scene view selects its own scene every frame, so the
+  selection did not stick and the Game view (and the "scene the Game view shows" rule of the
+  images) kept the other scene.
+- **Instructions.** The "UI" bullet of "2D and 3D" names both systems and points to the new
+  section; the earlier "HTML/CSS UI" bullet's facts moved into the section (the Console line
+  format, `check --ui`), which also states the shared rules of 3.6.7 once (entity resolution,
+  refs, boxes in canvas px, the load wait). 18.5 KB in four chunks.
+- **Resources.** The index lists `blank` too, marked "(template)"; an unknown file is a
+  resource-not-found error naming the examples.
+- **Budget** (`tool_budget.py`, fixture project): before, 130 tools, 93,151 characters
+  (`send_input` 1,780, `import_files` 452; 3.6.7 measured 92,956 earlier); after, 133 tools,
+  99,006: `inspect_ui` 1,806, `assert_ui` 2,128, `create_ui_document` 1,289 (its parameter
+  descriptions shortened to fit), `send_input` 1,995 (+215), `import_files` 869 (+417).
+  `test_budget` asserts these caps against those baselines.
+- **Wave-1 marks replaced:** `test_html_ui_checks.py` (the parity check's `inspect_ui {file}` and
+  live-document comparison; the example trees of `test_cli_ui_speed` are required),
+  `test_html_ui_reload.py` (`load_count()` always reads `inspect_ui`), `test_html_ui_examples.py`
+  (`ensure_scene` is `create_ui_document {template}` with `script: true`, clicks / hovers / the
+  drag use `send_input {target}`, the `inspect_ui` hover check, the resource check, the
+  `_asserts` tests, whose image check maps through `image.canvas_rect`), `test_html_ui_docs.py`
+  (`test_guide_names_exist`, `click()` with `target`).
+- **Tests.** `test_html_ui_tools.py` (37 cases: 5.6's 29 plus create with a unicode path, a
+  3000-element document, quick successive reloads, play-mode inspection with Lua-made state, the
+  gamepad focus seen by `inspect_ui`, stacked documents with pointer pass-through, texture-mode
+  documents refused as targets, ...), `test_html_ui_agent_sim.py` (6 cases, 5.7; the simulated
+  agent writes the Lua with `create_ui_document {script: true}` and fixes in two rounds, the CSS
+  warnings after reading them; the mirror starts empty, so the editor's automatic import fails
+  and leaves the page as the CLI sees it, and fills before `import_files`).
+
 ### 4.6 `p4-input`: gamepads in documents, two data-binding fixes (corrective)
 
 - **Goal:** what 4.4.1 found missing: 3.8.1 §10 (pointer, keyboard **and gamepad** reach the
