@@ -74,8 +74,9 @@ std::vector<PostProcessingPreset> makePresets() {
         s.lift = Vector3(0.02f, 0.0f, 0.04f);
         s.gain = Vector3(1.05f, 1.0f, 0.95f);
         s.vignetteEnabled = true;
-        s.vignetteIntensity = 0.45f;
-        s.vignetteSmoothness = 0.4f;
+        // gentle: clipped highlights stay bright towards the edges
+        s.vignetteIntensity = 0.3f;
+        s.vignetteSmoothness = 0.6f;
         s.pixelateEnabled = true;
         s.pixelateSize = 4.0f;
         presets.push_back({"stylised", "Stylised",

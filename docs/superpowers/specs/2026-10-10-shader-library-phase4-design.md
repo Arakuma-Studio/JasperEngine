@@ -253,3 +253,83 @@ user-pass and editor work is also written out in `/tmp/shader-research/p4-api.md
   settings; uber features a script turns on compile at runtime.
 - Fixture `tools/fixtures/post-processing` (`PP_CASE`, `PP_SCENE=saved`, `PP_CYCLE=1`; its script's
   header lists the cases).
+
+### 5.3 Editor (sl/p4-editor)
+
+- Inspector (§2.1). Scene settings > Post-processing (`editor/window/InspectorPostProcessing.cpp`)
+  draws `PostProcessingSettings` in groups: Color (exposure and tone mapping; colour grading with
+  the LUT texture, contribution and LUT size; monochrome; dither), Lens (vignette, chromatic
+  aberration, film grain), Anti-aliasing (FXAA, MSAA), Stylised (pixelate, CRT, edge detect,
+  sharpen), Bloom, Blur, Resolution (render scale). Each group has a checkbox (mixed while only
+  some of its flagged effects are on; off turns every effect of the group off and resets its
+  neutral-value ones, on turns its flagged effects on); Bloom and Blur are one effect each, so
+  their group checkbox is the effect's. An effect's parameters are hidden while it is off. Every
+  effect shows its cost tier ("T0 in shader", "T1 uber pass", "T2 bloom chain") with a tooltip,
+  asked of the engine: `RenderSystem::getPostProcessingTiers` of a default set with only that
+  effect on (MSAA, which runs no pass, has its own text). Rows edit `post_processing.<field>`
+  (`ScenePropertyCmd`, a drag merges into one step); group toggles, reset arrows and presets
+  replace the whole struct (`post_processing`) in one step. Field-table rows the groups do not
+  name are drawn under "Other" by their type, so a field added to `SceneSettings.cpp` appears
+  without editor code. A note says only the main camera is post-processed, and the Camera
+  inspector has a "Post" row saying whether the selected camera is the post-processed one.
+- Presets (`editor/PostProcessingPresets.*`): `none`; `mobile` (Neutral curve, light grade with a
+  16^3 LUT, FXAA, faint bloom: threshold 0.9, intensity 0.6, scatter 0.5); `console` (ACES, grade,
+  vignette 0.3, dither, FXAA, bloom, chromatic aberration 0.15, grain 0.12); `stylised` (pixelate
+  4, contrast 1.45 / saturation 1.4 with a warm lift/gain, vignette 0.3); `crt_retro` (CRT,
+  pixelate 3, chromatic aberration 0.25, grain 0.15, warm grade; T1 only). A preset is a whole
+  `PostProcessingSettings` (it replaces every field, the LUT image too). The inspector's Preset
+  combo shows the matching preset or "Custom". MCP `list_post_processing_presets` (fields and
+  estimated cost of each; `current`: the scene's preset or null, settings, cost readout,
+  `applied` while playing) and `apply_post_processing_preset` (one undo step; refused on UI
+  scenes), in `SceneTools.cpp`.
+- Cost readout ("Estimated cost", §2.7). An estimate, labelled as one, from the research cost
+  model (§11 of fast-postprocessing.md): this engine = the enabled user passes (at the scene's
+  scaled size), a bloom and a blur chain (7 passes, 0.165 x renderScale^2 of a screen each) and
+  the uber pass (1 full-resolution pass); Unity URP 14 for the same effects = the 1024x32 LUT
+  bake, bloom at half resolution with 6 mips (16 passes, 0.75 x scale^2), one Full Screen Pass
+  renderer feature for each effect URP has no built-in for (pixelate, CRT, edge detect, sharpen,
+  blur, each user pass), the uber pass, and the final pass for FXAA or a render scale below 1
+  (plus FXAA's scaling setup). The research's reference set gives 8 passes / 1 at full
+  resolution / 1.17 screens against 19 / 2 / 2.77 (checked by the MCP test). Notes cover the
+  in-shader cost, fixed resolution (the uber pass is the blit drawn anyway), render scale and
+  user passes. Deviation from "the measured pass list from frame stats": the list is recorded
+  only when `JASPERENGINE_FRAME_STATS` is set at startup and lives in the sokol layer with no
+  accessor the editor can reach without an engine change, so while playing the readout shows
+  what the renderer applies (`getActivePostProcessingTiers`: in-shader colour, uber pass and its
+  features) and its tooltip points at the variable for the measured list.
+- Scene view (§5.1's `showPostProcessing`): a toggle button left of Gizmos and a "Show
+  post-processing" row in the Gizmos menu's Rendering section (not in UI scenes), saved per
+  scene in the workspace file like the other display settings; MCP `set_scene_camera`
+  `display.show_post_processing`, which now saves the workspace after a display change.
+- User passes (§2.5). The chain is the "Custom Passes" subsection. Each pass's shader row has the
+  library picker for `ShaderType::POSTPROCESS` manifests (`drawLibraryShaderCombo`: it lists the
+  `@shader postprocess` library shaders once the manifest type exists) next to the fork and file
+  buttons; MCP `post_process` accepts `"library:<name>"` (checked by `checkShaderReference` for
+  POSTPROCESS). On this base `PostProcessPass` has no new fields yet: the rows for them (custom
+  textures, original scene input, resolution scale) come from one table, `passFields()` in
+  InspectorPostProcessing.cpp (label, help, kind Bool/Float/Texture, accessor), empty here: each
+  field sl/p4-effects adds needs one entry there (and its key in SceneTools' `post_process`
+  JSON).
+- Fix (pre-existing, p4-core): MCP `post_processing.lut_texture` stored the path as given, so in a
+  project with an assets directory it stored `assets/x.png` where the engine and the inspector use
+  the assets-relative `x.png`. It is now project-relative in MCP (as every MCP asset path) and
+  stored assets-relative.
+- Docs: `docs/mcp/guide/post-processing.md` (`jasper://docs/post-processing`: tiers and costs,
+  presets, the readout's fields, mobile advice, fields, Lua); the agent guide names the preset
+  tools (other lines trimmed: 16,382 of 16,384 bytes); lua-api lists `TonemapMode` and
+  `MonochromeMode`; TOOLS.md regenerated (135 tools).
+- Checks run (4 cores): full `tools/build.sh linux`; the MCP suite pinned to 4 cores (279 passed,
+  3 slow ones skipped; the one failure, the agent guide naming `render_scale`, fixed and its file
+  re-run green); new `test_post_processing_presets.py` (presets list/apply/undo/redo/save, cost
+  readout, LUT path, Scene view toggle persistence); the 21 scene and prefab files of the fixture
+  projects re-saved with this editor and with a build of 1623a48d: all byte-identical; inspector
+  screenshots over MCP with the Mobile preset applied (a temporary scroll hack, reverted:
+  groups, tiers, the Bloom group, the cost readout 8 / 1 / 1.17 against URP 19 / 2 / 2.77);
+  `tools/fixtures/post-processing` on GL with `PP_SCENE=saved` after applying each preset to a
+  copy of Saved.scene through MCP: all pass. None draws the pre-phase-4 pass list; Mobile and
+  Console add `uber 1280x720` (features Fxa,Lut,Blm and Fxa,Cab,Grn,Lut,Vig,Dth,Blm; the Neutral
+  and ACES curves visibly compress the lit wall, Console shows grain, fringes and vignette),
+  Stylised (Pix,Lut,Vig: large pixels, punchy colour) and CRT Retro (Cab,Pix,Crt,Grn,Lut: curved
+  tube, scanlines, fringes) one uber pass each; the HUD layer is untouched in all. The bloom
+  chain is not on this base (`uberBloomTexture` null binds black), so the measured pass lists of
+  Mobile and Console are 1 pass where the estimate counts the chain's 7.
