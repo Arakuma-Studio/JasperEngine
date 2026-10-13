@@ -14,10 +14,17 @@ A construct that is not native is reported where it is written (`check --ui`, th
 
 ## Elements
 
+### Elements: other
+
 | Element | Support | Notes | Instead |
 |---|---|---|---|
 | `*-*` | native | generic inline element (Info HTMLUI-HTML-0018) |  |
 | `[data-lucide]` | rewritten | replaced by the inline Lucide SVG of the named icon |  |
+
+### Elements: a-n
+
+| Element | Support | Notes | Instead |
+|---|---|---|---|
 | `a` | emulated | HtmlAnchorElement |  |
 | `abbr` | native | UA inline styles |  |
 | `acronym` | native | UA inline styles |  |
@@ -102,6 +109,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `noembed` | native | obsolete; hidden by the UA sheet |  |
 | `noframes` | native | obsolete; hidden by the UA sheet |  |
 | `noscript` | rewritten | children kept and rendered (scripting is off; Info) |  |
+
+### Elements: o-x
+
+| Element | Support | Notes | Instead |
+|---|---|---|---|
 | `object` | unsupported | placeholder div.htmlui-unsupported (Warning) (HTMLUI-HTML-0002) | use <img>, or render a texture through UIDocument render-to-texture |
 | `ol` | native | UA display and spacing |  |
 | `optgroup` | rewritten | flattened: options hoisted into the select with a disabled header option (Info) |  |
@@ -187,6 +199,8 @@ A construct that is not native is reported where it is written (`check --ui`, th
 
 `*` = every element; `data-*`, `aria-*` and `on*` are patterns.
 
+### Attributes: a-i
+
 | Attribute | Element | Support | Notes | Instead |
 |---|---|---|---|---|
 | `action` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
@@ -261,6 +275,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `itemprop` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `itemscope` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `itemtype` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+
+### Attributes: l-s
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `lang` | `*` | rewritten | kept, plus a presentational hint |  |
 | `loading` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `loop` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
@@ -328,6 +347,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `state-machine-id` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `step` | `*` | native | kept |  |
 | `style` | `*` | rewritten | rewritten by the CSS stage, positions preserved |  |
+
+### Attributes: t-w
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `tabindex` | `*` | rewritten | -1 -> tab-index: none; focus: auto; 0 -> tab-index: auto; positive order ignored |  |
 | `target` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
 | `theme-id` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -349,6 +373,8 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `width` | `video` | native | intrinsic size hint (below author CSS) |  |
 
 ## CSS properties
+
+### Properties: vendor-prefixed and custom
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
@@ -402,6 +428,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `-webkit-touch-callout` | ignored | browser interaction hint; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `-webkit-user-drag` | ignored | browser interaction hint; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `-webkit-user-select` | ignored | browser interaction hint; no effect in a game UI (HTMLUI-CSS-0003) |  |
+
+### Properties: a
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `accent-color` | rewritten | the UA sheet colors checkboxes, radios, range and progress with it |  |
 | `align-content` | native | start/end/self-start/self-end/normal/baseline forms mapped (rewritten); safe/unsafe dropped |  |
 | `align-items` | native | start/end/self-start/self-end/normal/baseline forms mapped (rewritten); safe/unsafe dropped |  |
@@ -429,6 +460,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `appearance` | rewritten | none / auto write the control companions; exact for the UA-styled controls |  |
 | `aspect-ratio` | native | no aspect-ratio layout until the fork has BoxParity; on img/svg the intrinsic ratio applies | set an explicit height, or height: 0; padding-bottom: <ratio %> |
 | `azimuth` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
+
+### Properties: backdrop-filter to border-block-start-radius
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `backdrop-filter` | native | drop-shadow() reordered |  |
 | `backface-visibility` | unsupported | not supported (Info) (HTMLUI-CSS-0002) | hide the element from Lua when it faces away |
 | `background` | native | layers -> decorators (gradients native, url() through html-layer); first CSS layer on top |  |
@@ -476,6 +512,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `border-block-start-clip` | unsupported | partial borders (CSS Borders 4 draft) are not supported (HTMLUI-CSS-0002) | use separate elements for the visible border segments |
 | `border-block-start-color` | rewritten | physical top/bottom |  |
 | `border-block-start-radius` | unsupported | side radius shorthand (CSS Borders 4 draft) is not supported (HTMLUI-CSS-0002) | set the two corner radii, e.g. border-top-left-radius and border-top-right-radius |
+
+### Properties: border-block-start-style to border-left-clip
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `border-block-start-style` | rewritten | physical top/bottom; styles as for border-style (the fork's with BorderStyle; without it none/hidden -> width 0, other styles solid) |  |
 | `border-block-start-width` | rewritten | physical top/bottom |  |
 | `border-block-style` | rewritten | physical top/bottom; styles as for border-style (the fork's with BorderStyle; without it none/hidden -> width 0, other styles solid) |  |
@@ -519,6 +560,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `border-inline-width` | rewritten | physical left/right (LTR; an RTL root swaps them) |  |
 | `border-left` | native | width and color longhands per side; style none/hidden -> width 0, other styles solid until the fork has BorderStyle; missing color -> current color companion |  |
 | `border-left-clip` | unsupported | partial borders (CSS Borders 4 draft) are not supported (HTMLUI-CSS-0002) | use separate elements for the visible border segments |
+
+### Properties: border-left-color to break-inside
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `border-left-color` | native | colors normalized; currentcolor through the --html-current-color companion |  |
 | `border-left-radius` | unsupported | side radius shorthand (CSS Borders 4 draft) is not supported (HTMLUI-CSS-0002) | set the two corner radii, e.g. border-top-left-radius and border-top-right-radius |
 | `border-left-style` | native | none/hidden -> width 0; other styles drawn solid until the fork has BorderStyle |  |
@@ -558,6 +604,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `break-after` | ignored | paged media; no pages in a game UI (HTMLUI-CSS-0003) |  |
 | `break-before` | ignored | paged media; no pages in a game UI (HTMLUI-CSS-0003) |  |
 | `break-inside` | ignored | paged media; no pages in a game UI (HTMLUI-CSS-0003) |  |
+
+### Properties: caption-side to container
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `caption-side` | unsupported | not supported (Info) (HTMLUI-CSS-0002) | move the caption content after the table |
 | `caret` | unsupported | caret shorthand is not supported (HTMLUI-CSS-0002) | use caret-color |
 | `caret-animation` | unsupported | caret blinking control is not supported (HTMLUI-CSS-0002) | remove it; the caret blinks |
@@ -603,6 +654,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `contain-intrinsic-size` | ignored | rendering optimization hint; no visible effect in a game UI (HTMLUI-CSS-0003) |  |
 | `contain-intrinsic-width` | ignored | rendering optimization hint; no visible effect in a game UI (HTMLUI-CSS-0003) |  |
 | `container` | unsupported | container queries (@container) are not supported (HTMLUI-CSS-0002) | use @media on the viewport size, or toggle classes from Lua |
+
+### Properties: container-name to corner-top-shape
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `container-name` | unsupported | container queries (@container) are not supported (HTMLUI-CSS-0002) | use @media on the viewport size, or toggle classes from Lua |
 | `container-type` | unsupported | container queries (@container) are not supported (HTMLUI-CSS-0002) | use @media on the viewport size, or toggle classes from Lua |
 | `content` | native | only meaningful on ::before/::after (and ::marker with ListMarkers), which need the fork; ignored elsewhere |  |
@@ -642,6 +698,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `corner-top-right` | unsupported | corner shorthand (draft) is not supported (HTMLUI-CSS-0002) | use border-radius |
 | `corner-top-right-shape` | unsupported | corner shapes other than round are not supported (HTMLUI-CSS-0002) | use border-radius for round corners, or clip-path: polygon() for bevels |
 | `corner-top-shape` | unsupported | corner shapes other than round are not supported (HTMLUI-CSS-0002) | use border-radius for round corners, or clip-path: polygon() for bevels |
+
+### Properties: counter-increment to cursor
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `counter-increment` | native | without the fork's PseudoElements only the implicit list-item counter is emulated (ol start, li value, reversed) | number the items with ol / li, or write the numbers in the markup |
 | `counter-reset` | native | without the fork's PseudoElements only the implicit list-item counter is emulated (ol start, li value, reversed) | number the items with ol / li, or write the numbers in the markup |
 | `counter-set` | native | without the fork's PseudoElements only the implicit list-item counter is emulated (ol start, li value, reversed) | number the items with ol / li, or write the numbers in the markup |
@@ -649,6 +710,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `cue-after` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `cue-before` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `cursor` | native | names mapped to the engine's cursors; url() cursors dropped (Info) |  |
+
+### Properties: d-e
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `decorator` | native | RmlUi engine extension |  |
 | `direction` | rewritten | written as -rmlui-direction |  |
 | `display` | native | per-value support in the value table; grid falls back to flex + wrap until the fork has Grid |  |
@@ -657,6 +723,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `dynamic-range-limit` | ignored | HDR hint; the UI renders in standard dynamic range (HTMLUI-CSS-0003) |  |
 | `elevation` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `empty-cells` | ignored | ignored (Info) (HTMLUI-CSS-0003) |  |
+
+### Properties: field-sizing to font-variant-east-asian
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `field-sizing` | unsupported | not supported (Info) (HTMLUI-CSS-0002) | set an explicit width (or rows) on the control |
 | `fill` | emulated | applied on the svg root |  |
 | `fill-break` | unsupported | CSS Fill and Stroke 3 (draft) is not supported (Info) (HTMLUI-CSS-0002) | use fill and stroke on the svg root, or attributes inside the SVG file |
@@ -710,6 +781,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `font-variant-alternates` | unsupported | not supported (Info) (HTMLUI-CSS-0002) | use a font whose default glyphs are the alternates you need |
 | `font-variant-caps` | unsupported | not supported (Info) (HTMLUI-CSS-0002) | load a small-caps face with @font-face, or use text-transform: uppercase with a smaller font-size |
 | `font-variant-east-asian` | unsupported | not supported (Info) (HTMLUI-CSS-0002) | use a font with the wanted East Asian glyph forms |
+
+### Properties: font-variant-emoji to frame-sizing
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `font-variant-emoji` | unsupported | not supported (Info) (HTMLUI-CSS-0002) | use an emoji font in font-family |
 | `font-variant-ligatures` | unsupported | not supported (Info) (HTMLUI-CSS-0002) | use a font whose default ligatures are the ones you need |
 | `font-variant-numeric` | unsupported | not supported; tabular digits shift (Warning) (HTMLUI-CSS-0002) | use a font with tabular figures by default, or fixed-width inline-blocks for digits |
@@ -721,6 +797,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `footnote-policy` | ignored | paged media; no pages in a game UI (HTMLUI-CSS-0003) |  |
 | `forced-color-adjust` | ignored | no forced-colors mode in a game UI (HTMLUI-CSS-0003) |  |
 | `frame-sizing` | unsupported | iframes are not supported (HTMLUI-CSS-0002) | load the content as its own UIDocument and size it explicitly |
+
+### Properties: g-h
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `gap` | native | normal -> 0 (rewritten) |  |
 | `glyph-orientation-vertical` | unsupported | vertical text is not supported (Warning) (HTMLUI-CSS-0002) | rotate the element with transform: rotate(90deg), or stack the characters in a column |
 | `grid` | native | read by the display: grid flex-wrap fallback until the fork has Grid (Info) |  |
@@ -749,6 +830,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `hyphenate-limit-lines` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `hyphenate-limit-zone` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `hyphens` | ignored | soft hyphens (&shy;) break lines with the fork ('manual'); automatic hyphenation is not supported (Info) (HTMLUI-CSS-0003) | insert soft hyphens (&shy;) where words may break |
+
+### Properties: i-l
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `image-animation` | unsupported | control of animated images is not supported (HTMLUI-CSS-0002) | use a static image, a sprite animation or a Lottie animation |
 | `image-color` | native | RmlUi engine extension |  |
 | `image-orientation` | ignored | image orientation hint; ignored (HTMLUI-CSS-0003) |  |
@@ -798,6 +884,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `list-style-image` | native | marker image drawn by li until the fork has ListMarkers |  |
 | `list-style-position` | native | without ListMarkers inside is approximated (drawn outside, content shifted) |  |
 | `list-style-type` | native | markers drawn by li and summary until the fork has ListMarkers; other counter styles -> decimal (with the fork as in CSS) or disc |  |
+
+### Properties: margin to min-width
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `margin` | native | auto native |  |
 | `margin-block` | rewritten | physical margins (horizontal writing mode) |  |
 | `margin-block-end` | rewritten | physical margins (horizontal writing mode) |  |
@@ -851,7 +942,17 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `min-intrinsic-sizing` | unsupported | not supported (HTMLUI-CSS-0002) | set min-width / min-height explicitly |
 | `min-size` | unsupported | not supported (draft) (HTMLUI-CSS-0002) | use min-width and min-height |
 | `min-width` | native | auto -> 0px (rewritten) and sizing keywords approximated until the fork has BoxParity |  |
+
+### Properties: mix-blend-mode
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `mix-blend-mode` | unsupported | blend modes are not supported (HTMLUI-CSS-0002) | use opacity, or pre-blended images |
+
+### Properties: n-o
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `nav` | native | RmlUi engine extension (keyboard / gamepad navigation) |  |
 | `nav-down` | native | RmlUi engine extension (keyboard / gamepad navigation) |  |
 | `nav-left` | native | RmlUi engine extension (keyboard / gamepad navigation) |  |
@@ -899,6 +1000,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `overscroll-behavior-inline` | rewritten | folded into overscroll-behavior |  |
 | `overscroll-behavior-x` | rewritten | folded into overscroll-behavior |  |
 | `overscroll-behavior-y` | rewritten | folded into overscroll-behavior |  |
+
+### Properties: p-q
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `padding` | native |  |  |
 | `padding-block` | rewritten | physical paddings (horizontal writing mode) |  |
 | `padding-block-end` | rewritten | physical paddings (horizontal writing mode) |  |
@@ -939,6 +1045,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `print-color-adjust` | ignored | printing only; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `property-name` | unsupported | template layout (draft) is not supported (HTMLUI-CSS-0002) | lay out the content with flex or block elements |
 | `quotes` | native | q elements get literal quotes from the HTML stage; with the fork's PseudoElements the open-quote/close-quote of content use it | write the quotation marks in the text |
+
+### Properties: r
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `reading-flow` | ignored | reading and focus order only; ignored (HTMLUI-CSS-0003) |  |
 | `reading-order` | ignored | reading and focus order only; ignored (HTMLUI-CSS-0003) |  |
 | `region-fragment` | unsupported | CSS regions are not supported (HTMLUI-CSS-0002) | move the content into the target element in the markup |
@@ -982,6 +1093,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `rule-visibility-items` | unsupported | gap decorations are not supported (HTMLUI-CSS-0002) | draw separators with borders on the items |
 | `rule-width` | unsupported | gap decorations are not supported (HTMLUI-CSS-0002) | draw separators with borders on the items |
 | `running` | ignored | paged media; no pages in a game UI (HTMLUI-CSS-0003) |  |
+
+### Properties: scale to speak-as
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `scale` | native | until the fork has IndividualTransforms: combined into transform (translate rotate scale <transform>), base rule merge (Info) |  |
 | `scroll-axis-lock` | unsupported | not supported (draft) (HTMLUI-CSS-0002) | restrict scrolling with overflow-x / overflow-y |
 | `scroll-behavior` | ignored | smooth scrolling hint; ignored (HTMLUI-CSS-0003) | Use focus navigation or Lua scrolling (element:scrollIntoView{behavior = "smooth"}). |
@@ -1033,6 +1149,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `spatial-navigation-function` | unsupported | CSS spatial navigation is not supported (HTMLUI-CSS-0002) | use the RmlUi nav, nav-up, nav-right, nav-down, nav-left properties |
 | `speak` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `speak-as` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
+
+### Properties: speak-header to stroke-width
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `speak-header` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `speak-numeral` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `speak-punctuation` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
@@ -1062,6 +1183,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `stroke-repeat` | unsupported | CSS Fill and Stroke 3 (draft) is not supported (Info) (HTMLUI-CSS-0002) | use fill and stroke on the svg root, or attributes inside the SVG file |
 | `stroke-size` | unsupported | CSS Fill and Stroke 3 (draft) is not supported (Info) (HTMLUI-CSS-0002) | use fill and stroke on the svg root, or attributes inside the SVG file |
 | `stroke-width` | emulated | applied on the svg root |  |
+
+### Properties: tab-index to text-underline-position
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `tab-index` | native | RmlUi engine extension |  |
 | `tab-size` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `table-layout` | ignored | table layout algorithm hint; ignored (Info) (HTMLUI-CSS-0003) |  |
@@ -1104,6 +1230,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `text-transform` | native | full-width and full-size-kana dropped (Info) |  |
 | `text-underline-offset` | native | decoration details are not supported (Info); native with the fork | draw a custom line with border-bottom (and padding-bottom) or a box-shadow |
 | `text-underline-position` | unsupported | decoration details are not supported (Info) (HTMLUI-CSS-0002) | draw a custom line with border-bottom (and padding-bottom) or a box-shadow |
+
+### Properties: text-wrap to translate
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `text-wrap` | native | nowrap -> white-space: nowrap; balance, pretty, stable ignored (Info; with the fork they wrap greedily) |  |
 | `text-wrap-mode` | native | combined with white-space-collapse into the equivalent white-space (native with the fork) |  |
 | `text-wrap-style` | rewritten | balance, pretty, stable ignored (Info) |  |
@@ -1124,6 +1255,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `transition-property` | native | merged into the shorthand; base rule when alone |  |
 | `transition-timing-function` | native | merged into the shorthand; base rule when alone |  |
 | `translate` | native | until the fork has IndividualTransforms: combined into transform (translate rotate scale <transform>), base rule merge (Info) |  |
+
+### Properties: u-z
+
+| Property | Support | Notes | Instead |
+|---|---|---|---|
 | `unicode-bidi` | ignored | bidi embedding control; text direction comes from direction / dir (HTMLUI-CSS-0003) |  |
 | `user-select` | native | browser interaction hint; no effect in a game UI (with the fork: none turns selection off in text inputs; text and all select nothing outside them, Info) |  |
 | `vector-effect` | unsupported | SVG-internal styling is not supported (Info) (HTMLUI-CSS-0002) | set it as a presentation attribute inside the SVG file |
@@ -1168,9 +1304,9 @@ A construct that is not native is reported where it is written (`check --ui`, th
 
 ## Values, functions and units
 
-### Values
-
 Values of a property that are not handled like the property's other values; `<...>` names a value type.
+
+### Values: vendor-prefixed and custom properties
 
 | Property | Value | Support | Notes | Instead |
 |---|---|---|---|---|
@@ -1193,6 +1329,11 @@ Values of a property that are not handled like the property's other values; `<..
 | `-webkit-box-pack` | `justify` | rewritten | mapped to justify-content |  |
 | `-webkit-box-pack` | `start` | rewritten | mapped to justify-content |  |
 | `-webkit-text-fill-color` | `transparent` | approximated | with background-clip: text the gradient text is drawn in a solid color (Warning) (HTMLUI-CSS-0006) |  |
+
+### Values: a
+
+| Property | Value | Support | Notes | Instead |
+|---|---|---|---|---|
 | `align-content` | `baseline` | rewritten | baseline content alignment falls back to start |  |
 | `align-content` | `end` | native | end is flex-end until the fork has BoxParity |  |
 | `align-content` | `first baseline` | rewritten | baseline content alignment falls back to start |  |
@@ -1245,6 +1386,11 @@ Values of a property that are not handled like the property's other values; `<..
 | `animation-timing-function` | `steps()` | native | stepped easing drawn as linear until the fork has TimingFunctions (Warning) |  |
 | `appearance` | `auto` | rewritten | the UA control look written into the companions |  |
 | `appearance` | `none` | rewritten | control companions cleared (exact) |  |
+
+### Values: b
+
+| Property | Value | Support | Notes | Instead |
+|---|---|---|---|---|
 | `backdrop-filter` | `drop-shadow()` | rewritten | arguments reordered for RmlUi |  |
 | `backdrop-filter` | `url()` | unsupported | SVG filters are not supported (Warning) (HTMLUI-CSS-0004) | use the built-in filter functions |
 | `background` | `-webkit-image-set()` | rewritten | candidate chosen by the dp ratio |  |
@@ -1279,6 +1425,11 @@ Values of a property that are not handled like the property's other values; `<..
 | `border-width` | `medium` | rewritten | keyword width (exact) |  |
 | `border-width` | `thick` | rewritten | keyword width (exact) |  |
 | `border-width` | `thin` | rewritten | keyword width (exact) |  |
+
+### Values: c-d
+
+| Property | Value | Support | Notes | Instead |
+|---|---|---|---|---|
 | `clear` | `inline-end` | rewritten | LTR; an RTL root swaps it |  |
 | `clear` | `inline-start` | rewritten | LTR; an RTL root swaps it |  |
 | `clip-path` | `circle()` | emulated | exact geometry; no hit-test clipping (Info) |  |
@@ -1369,6 +1520,11 @@ Values of a property that are not handled like the property's other values; `<..
 | `display` | `table-header-group` | approximated | header not moved to the start (Info) (HTMLUI-CSS-0005) |  |
 | `display` | `table-row` | native |  |  |
 | `display` | `table-row-group` | native |  |  |
+
+### Values: f-j
+
+| Property | Value | Support | Notes | Instead |
+|---|---|---|---|---|
 | `filter` | `drop-shadow()` | rewritten | arguments reordered for RmlUi |  |
 | `filter` | `url()` | unsupported | SVG filters are not supported (Warning) (HTMLUI-CSS-0004) | use the built-in filter functions |
 | `flex` | `<number>` | rewritten | a single number expanded |  |
@@ -1425,6 +1581,11 @@ Values of a property that are not handled like the property's other values; `<..
 | `justify-content` | `start` | native | flex layout: start is flex-start until the fork has BoxParity |  |
 | `justify-content` | `stretch` | native | stretch behaves as flex-start in flex layout until the fork has BoxParity |  |
 | `justify-content` | `unsafe` | native | overflow alignment keyword dropped (Info) until the fork has BoxParity |  |
+
+### Values: l-m
+
+| Property | Value | Support | Notes | Instead |
+|---|---|---|---|---|
 | `line-height` | `normal` | native | Chromium's normal depends on the font (1.15-1.25 for common UI fonts); the fork computes it from the font's metrics (LineHeightNormal) |  |
 | `list-style-position` | `inside` | approximated | drawn outside with the li's content shifted by the marker width (Info) (HTMLUI-CSS-0005) |  |
 | `list-style-position` | `outside` | emulated | marker drawn outside the content |  |
@@ -1471,6 +1632,11 @@ Values of a property that are not handled like the property's other values; `<..
 | `min-width` | `max-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
 | `min-width` | `min-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
 | `min-width` | `stretch` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
+
+### Values: o-t
+
+| Property | Value | Support | Notes | Instead |
+|---|---|---|---|---|
 | `outline-color` | `invert` | native | invert drawn as black |  |
 | `outline-style` | `auto` | native | the UA focus ring colors |  |
 | `outline-style` | `dashed` | native | outline drawn solid (Info) |  |
@@ -1538,6 +1704,11 @@ Values of a property that are not handled like the property's other values; `<..
 | `transition-timing-function` | `step-end` | native | stepped easing drawn as linear until the fork has TimingFunctions (Warning) |  |
 | `transition-timing-function` | `step-start` | native | stepped easing drawn as linear until the fork has TimingFunctions (Warning) |  |
 | `transition-timing-function` | `steps()` | native | stepped easing drawn as linear until the fork has TimingFunctions (Warning) |  |
+
+### Values: v-w
+
+| Property | Value | Support | Notes | Instead |
+|---|---|---|---|---|
 | `visibility` | `collapse` | rewritten | collapse drawn as hidden |  |
 | `white-space` | `break-spaces` | rewritten | trailing spaces do not wrap |  |
 | `white-space-collapse` | `break-spaces` | rewritten | mapped to the equivalent white-space (with text-wrap-mode) |  |
@@ -1557,7 +1728,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `word-wrap` | `normal` | rewritten | nothing written |  |
 | `writing-mode` | `horizontal-tb` | rewritten | the only supported mode; nothing written |  |
 
-### Functions
+### Functions: other
 
 | Function | Support | Notes | Instead |
 |---|---|---|---|
@@ -1569,6 +1740,11 @@ Values of a property that are not handled like the property's other values; `<..
 | `-webkit-radial-gradient()` | rewritten | legacy prefixed form mapped to the standard gradient (angles converted) |  |
 | `-webkit-repeating-linear-gradient()` | rewritten | legacy prefixed form mapped to the standard gradient (angles converted) |  |
 | `-webkit-repeating-radial-gradient()` | rewritten | legacy prefixed form mapped to the standard gradient (angles converted) |  |
+
+### Functions: a-m
+
+| Function | Support | Notes | Instead |
+|---|---|---|---|
 | `abs()` | approximated | static folding in every fork state (load-time context for relative units) (HTMLUI-CSS-0005) |  |
 | `acos()` | approximated | static folding in every fork state (load-time context for relative units) (HTMLUI-CSS-0005) |  |
 | `asin()` | approximated | static folding in every fork state (load-time context for relative units) (HTMLUI-CSS-0005) |  |
@@ -1619,6 +1795,11 @@ Values of a property that are not handled like the property's other values; `<..
 | `min()` | native | static folding until the fork has Calc |  |
 | `minmax()` | native | read by the grid fallback until the fork has Grid |  |
 | `mod()` | approximated | static folding in every fork state (load-time context for relative units) (HTMLUI-CSS-0005) |  |
+
+### Functions: o-x
+
+| Function | Support | Notes | Instead |
+|---|---|---|---|
 | `oklab()` | native | normalized to #rrggbbaa (gamut-clipped to sRGB), relative colors with a static origin; with a var() the fork substitutes at runtime it is written for the fork (ColorFunctions, in the colour, border, outline, background, text-shadow and text-decoration properties) |  |
 | `oklch()` | native | normalized to #rrggbbaa (gamut-clipped to sRGB), relative colors with a static origin; with a var() the fork substitutes at runtime it is written for the fork (ColorFunctions, in the colour, border, outline, background, text-shadow and text-decoration properties) |  |
 | `opacity()` | native |  |  |
@@ -1722,127 +1903,139 @@ Values of a property that are not handled like the property's other values; `<..
 
 ## Selectors, pseudo-classes and pseudo-elements
 
-| Selector | Kind | Support | Notes | Instead |
-|---|---|---|---|---|
-| `#id` | selector | native | root band added; the author id of html -> body#htmlui-root |  |
-| `&` | selector | rewritten | nesting flattened |  |
-| `*` | selector | native | root band added so the root also matches |  |
-| `+` | selector | native |  |  |
-| `.class` | selector | native | root band added |  |
-| `:-webkit-any()` | pseudo-class | native | expanded into the cross product until the fork has RootIsWhere |  |
-| `::-moz-placeholder` | pseudo-element | rewritten | only color, opacity and font-* declarations kept (others dropped, Info) |  |
-| `::-moz-progress-bar` | pseudo-element | rewritten | the progress fill |  |
-| `::-moz-range-progress` | pseudo-element | rewritten | descendant sliderprogress |  |
-| `::-moz-range-thumb` | pseudo-element | rewritten | descendant sliderbar |  |
-| `::-moz-range-track` | pseudo-element | rewritten | descendant slidertrack |  |
-| `::-moz-selection` | pseudo-element | rewritten | descendant selection element |  |
-| `::-webkit-input-placeholder` | pseudo-element | rewritten | only color, opacity and font-* declarations kept (others dropped, Info) |  |
-| `::-webkit-progress-bar` | pseudo-element | rewritten | the progress element itself |  |
-| `::-webkit-progress-value` | pseudo-element | rewritten | the progress fill |  |
-| `::-webkit-scrollbar` | pseudo-element | rewritten | child scrollbar elements |  |
-| `::-webkit-scrollbar-button` | pseudo-element | rewritten | scrollbar arrow buttons |  |
-| `::-webkit-scrollbar-corner` | pseudo-element | rewritten | scrollbar corner |  |
-| `::-webkit-scrollbar-thumb` | pseudo-element | rewritten | same for scrollbarhorizontal |  |
-| `::-webkit-scrollbar-track` | pseudo-element | rewritten | same for scrollbarhorizontal |  |
-| `::-webkit-scrollbar-track-piece` | pseudo-element | rewritten | same for scrollbarhorizontal |  |
-| `::-webkit-slider-runnable-track` | pseudo-element | rewritten | descendant slidertrack |  |
-| `::-webkit-slider-thumb` | pseudo-element | rewritten | descendant sliderbar |  |
-| `::after` | pseudo-element | native | rule dropped until the fork has PseudoElements (Warning HTMLUI-SEL-0003) |  |
-| `::backdrop` | pseudo-element | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | add a full-screen element behind the dialog |
-| `::before` | pseudo-element | native | rule dropped until the fork has PseudoElements (Warning HTMLUI-SEL-0003) |  |
-| `::cue` | pseudo-element | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | show captions as text elements |
-| `::details-content` | pseudo-element | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the content elements of details directly |
-| `::file-selector-button` | pseudo-element | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | use a button element |
-| `::first-letter` | pseudo-element | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | wrap the first letter in a span |
-| `::first-line` | pseudo-element | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | wrap the first line in a span |
-| `::highlight()` | pseudo-element | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | wrap the range in a span |
-| `::marker` | pseudo-element | native | child marker element of the list marker emulation until the fork has ListMarkers |  |
-| `::part()` | pseudo-element | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the element directly (no shadow DOM) |
-| `::picker()` | pseudo-element | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the select element |
-| `::placeholder` | pseudo-element | rewritten | only color, opacity and font-* declarations kept (others dropped, Info) |  |
-| `::selection` | pseudo-element | rewritten | descendant selection element |  |
-| `::slotted()` | pseudo-element | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the element directly (no shadow DOM) |
-| `::view-transition` | pseudo-element | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | animate with transitions or @keyframes |
-| `::view-transition-group()` | pseudo-element | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | animate with transitions or @keyframes |
-| `::view-transition-image-pair()` | pseudo-element | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | animate with transitions or @keyframes |
-| `::view-transition-new()` | pseudo-element | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | animate with transitions or @keyframes |
-| `::view-transition-old()` | pseudo-element | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | animate with transitions or @keyframes |
-| `:active` | pseudo-class | native |  |  |
-| `:after` | pseudo-element | native | rule dropped until the fork has PseudoElements (Warning HTMLUI-SEL-0003) |  |
-| `:any-link` | pseudo-class | native | exact (no visited state) |  |
-| `:before` | pseudo-element | native | rule dropped until the fork has PseudoElements (Warning HTMLUI-SEL-0003) |  |
-| `:blank` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
-| `:checked` | pseudo-class | native | also on option |  |
-| `:default` | pseudo-class | native | rule dropped (Warning) until the fork has SelectorsLevel4 | set a class on the default control |
-| `:defined` | pseudo-class | rewritten | removed from its compound (always true; Info) |  |
-| `:dir()` | pseudo-class | unsupported | rule dropped (Info) (HTMLUI-SEL-0001) | select on the dir attribute: [dir=rtl] |
-| `:disabled` | pseudo-class | native |  |  |
-| `:empty` | pseudo-class | native |  |  |
-| `:enabled` | pseudo-class | native | exact; with SelectorsLevel4 a disabled fieldset disables its controls too |  |
-| `:first-child` | pseudo-class | native |  |  |
-| `:first-of-type` | pseudo-class | native |  |  |
-| `:focus` | pseudo-class | native | without the fork's FocusPseudoClasses RmlUi sets :focus on the whole chain; FocusTracker keeps :html-focus on the leaf |  |
-| `:focus-visible` | pseudo-class | native | without FocusPseudoClasses: set by FocusTracker for keyboard and navigation focus |  |
-| `:focus-within` | pseudo-class | native | without FocusPseudoClasses: RmlUi's :focus chain is exactly :focus-within |  |
-| `:fullscreen` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
-| `:has()` | pseudo-class | native | rule dropped (Warning) until the fork has Has | set a class from Lua |
-| `:host` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the element directly |
-| `:host()` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the element directly |
-| `:host-context()` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | use a descendant selector |
-| `:hover` | pseudo-class | native |  |  |
-| `:in-range` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
-| `:indeterminate` | pseudo-class | native | rule dropped (Warning) until the fork has SelectorsLevel4; with it: an indeterminate attribute on a checkbox, a radio group with none checked, a progress without value | set a class from Lua |
-| `:invalid` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
-| `:is()` | pseudo-class | native | expanded into the cross product until the fork has RootIsWhere |  |
-| `:lang()` | pseudo-class | approximated | matches the lang attribute without inheritance (Info) (HTMLUI-SEL-0002) |  |
-| `:last-child` | pseudo-class | native |  |  |
-| `:last-of-type` | pseudo-class | native |  |  |
-| `:link` | pseudo-class | native | exact (no visited state) |  |
-| `:matches()` | pseudo-class | native | expanded into the cross product until the fork has RootIsWhere |  |
-| `:modal` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | select dialog[open] |
-| `:not()` | pseudo-class | native | a complex argument is expanded where RmlUi needs it |  |
-| `:nth-child()` | pseudo-class | native |  |  |
-| `:nth-child(of S)` | pseudo-class | native | the An+B of S form: rule dropped (Warning) until the fork has SelectorsLevel4 | add a class to the elements to count |
-| `:nth-last-child()` | pseudo-class | native |  |  |
-| `:nth-last-of-type()` | pseudo-class | native |  |  |
-| `:nth-of-type()` | pseudo-class | native |  |  |
-| `:only-child` | pseudo-class | native |  |  |
-| `:only-of-type` | pseudo-class | native |  |  |
-| `:optional` | pseudo-class | native | attribute equivalent until the fork has SelectorsLevel4 |  |
-| `:out-of-range` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
-| `:paused` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
-| `:placeholder-shown` | pseudo-class | native |  |  |
-| `:playing` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
-| `:popover-open` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
-| `:read-only` | pseudo-class | native | attribute equivalent until the fork has SelectorsLevel4 |  |
-| `:read-write` | pseudo-class | native | attribute equivalent until the fork has SelectorsLevel4 |  |
-| `:required` | pseudo-class | native | attribute equivalent until the fork has SelectorsLevel4 |  |
-| `:root` | pseudo-class | rewritten | the HTML root is the RML document element (exact) |  |
-| `:scope` | pseudo-class | native | the document root |  |
-| `:state()` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
-| `:target` | pseudo-class | native | rule dropped (Warning) until the fork has SelectorsLevel4; with it: the element whose id is the document URL's fragment | set a class from Lua |
-| `:target-within` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
-| `:user-invalid` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
-| `:user-valid` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
-| `:valid` | pseudo-class | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
-| `:visited` | pseudo-class | unsupported | never matches; rule dropped (Info) (HTMLUI-SEL-0001) | style links with :link or [href] |
-| `:where()` | pseudo-class | native | expanded until the fork has RootIsWhere; specificity not zero (Info) |  |
-| `>` | selector | native |  |  |
-| `[attr i]` | selector | native | case-insensitive matching lost (Info) until the fork has SelectorsLevel4 |  |
-| `[attr s]` | selector | native | flag removed (Info) until the fork has SelectorsLevel4 |  |
-| `[attr$=value]` | selector | native |  |  |
-| `[attr*=value]` | selector | native |  |  |
-| `[attr=value]` | selector | native |  |  |
-| `[attr]` | selector | native |  |  |
-| `[attr^=value]` | selector | native |  |  |
-| `[attr\|=value]` | selector | native |  |  |
-| `[attr~=value]` | selector | native |  |  |
-| `descendant` | selector | native |  |  |
-| `namespace` | selector | unsupported | namespaced selectors (ns\|e): rule dropped (Warning) (HTMLUI-SEL-0001) | remove the namespace prefix |
-| `selector list` | selector | native | split per selector |  |
-| `type` | selector | native | html -> body, body -> htmlbody, template -> htmltemplate; root band added |  |
-| `\|\|` | selector | unsupported | column combinator: rule dropped (Warning) (HTMLUI-SEL-0001) | select the cells by class |
-| `~` | selector | native |  |  |
+### Selectors and combinators
+
+| Selector | Support | Notes | Instead |
+|---|---|---|---|
+| `#id` | native | root band added; the author id of html -> body#htmlui-root |  |
+| `&` | rewritten | nesting flattened |  |
+| `*` | native | root band added so the root also matches |  |
+| `+` | native |  |  |
+| `.class` | native | root band added |  |
+| `>` | native |  |  |
+| `[attr i]` | native | case-insensitive matching lost (Info) until the fork has SelectorsLevel4 |  |
+| `[attr s]` | native | flag removed (Info) until the fork has SelectorsLevel4 |  |
+| `[attr$=value]` | native |  |  |
+| `[attr*=value]` | native |  |  |
+| `[attr=value]` | native |  |  |
+| `[attr]` | native |  |  |
+| `[attr^=value]` | native |  |  |
+| `[attr\|=value]` | native |  |  |
+| `[attr~=value]` | native |  |  |
+| `descendant` | native |  |  |
+| `namespace` | unsupported | namespaced selectors (ns\|e): rule dropped (Warning) (HTMLUI-SEL-0001) | remove the namespace prefix |
+| `selector list` | native | split per selector |  |
+| `type` | native | html -> body, body -> htmlbody, template -> htmltemplate; root band added |  |
+| `\|\|` | unsupported | column combinator: rule dropped (Warning) (HTMLUI-SEL-0001) | select the cells by class |
+| `~` | native |  |  |
+
+### Pseudo-classes
+
+| Pseudo-class | Support | Notes | Instead |
+|---|---|---|---|
+| `:-webkit-any()` | native | expanded into the cross product until the fork has RootIsWhere |  |
+| `:active` | native |  |  |
+| `:any-link` | native | exact (no visited state) |  |
+| `:blank` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
+| `:checked` | native | also on option |  |
+| `:default` | native | rule dropped (Warning) until the fork has SelectorsLevel4 | set a class on the default control |
+| `:defined` | rewritten | removed from its compound (always true; Info) |  |
+| `:dir()` | unsupported | rule dropped (Info) (HTMLUI-SEL-0001) | select on the dir attribute: [dir=rtl] |
+| `:disabled` | native |  |  |
+| `:empty` | native |  |  |
+| `:enabled` | native | exact; with SelectorsLevel4 a disabled fieldset disables its controls too |  |
+| `:first-child` | native |  |  |
+| `:first-of-type` | native |  |  |
+| `:focus` | native | without the fork's FocusPseudoClasses RmlUi sets :focus on the whole chain; FocusTracker keeps :html-focus on the leaf |  |
+| `:focus-visible` | native | without FocusPseudoClasses: set by FocusTracker for keyboard and navigation focus |  |
+| `:focus-within` | native | without FocusPseudoClasses: RmlUi's :focus chain is exactly :focus-within |  |
+| `:fullscreen` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
+| `:has()` | native | rule dropped (Warning) until the fork has Has | set a class from Lua |
+| `:host` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the element directly |
+| `:host()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the element directly |
+| `:host-context()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | use a descendant selector |
+| `:hover` | native |  |  |
+| `:in-range` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
+| `:indeterminate` | native | rule dropped (Warning) until the fork has SelectorsLevel4; with it: an indeterminate attribute on a checkbox, a radio group with none checked, a progress without value | set a class from Lua |
+| `:invalid` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
+| `:is()` | native | expanded into the cross product until the fork has RootIsWhere |  |
+| `:lang()` | approximated | matches the lang attribute without inheritance (Info) (HTMLUI-SEL-0002) |  |
+| `:last-child` | native |  |  |
+| `:last-of-type` | native |  |  |
+| `:link` | native | exact (no visited state) |  |
+| `:matches()` | native | expanded into the cross product until the fork has RootIsWhere |  |
+| `:modal` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | select dialog[open] |
+| `:not()` | native | a complex argument is expanded where RmlUi needs it |  |
+| `:nth-child()` | native |  |  |
+| `:nth-child(of S)` | native | the An+B of S form: rule dropped (Warning) until the fork has SelectorsLevel4 | add a class to the elements to count |
+| `:nth-last-child()` | native |  |  |
+| `:nth-last-of-type()` | native |  |  |
+| `:nth-of-type()` | native |  |  |
+| `:only-child` | native |  |  |
+| `:only-of-type` | native |  |  |
+| `:optional` | native | attribute equivalent until the fork has SelectorsLevel4 |  |
+| `:out-of-range` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
+| `:paused` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
+| `:placeholder-shown` | native |  |  |
+| `:playing` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
+| `:popover-open` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
+| `:read-only` | native | attribute equivalent until the fork has SelectorsLevel4 |  |
+| `:read-write` | native | attribute equivalent until the fork has SelectorsLevel4 |  |
+| `:required` | native | attribute equivalent until the fork has SelectorsLevel4 |  |
+| `:root` | rewritten | the HTML root is the RML document element (exact) |  |
+| `:scope` | native | the document root |  |
+| `:state()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
+| `:target` | native | rule dropped (Warning) until the fork has SelectorsLevel4; with it: the element whose id is the document URL's fragment | set a class from Lua |
+| `:target-within` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | set a class from Lua |
+| `:user-invalid` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
+| `:user-valid` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
+| `:valid` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | validate from Lua and set a class |
+| `:visited` | unsupported | never matches; rule dropped (Info) (HTMLUI-SEL-0001) | style links with :link or [href] |
+| `:where()` | native | expanded until the fork has RootIsWhere; specificity not zero (Info) |  |
+
+### Pseudo-elements
+
+| Pseudo-element | Support | Notes | Instead |
+|---|---|---|---|
+| `::-moz-placeholder` | rewritten | only color, opacity and font-* declarations kept (others dropped, Info) |  |
+| `::-moz-progress-bar` | rewritten | the progress fill |  |
+| `::-moz-range-progress` | rewritten | descendant sliderprogress |  |
+| `::-moz-range-thumb` | rewritten | descendant sliderbar |  |
+| `::-moz-range-track` | rewritten | descendant slidertrack |  |
+| `::-moz-selection` | rewritten | descendant selection element |  |
+| `::-webkit-input-placeholder` | rewritten | only color, opacity and font-* declarations kept (others dropped, Info) |  |
+| `::-webkit-progress-bar` | rewritten | the progress element itself |  |
+| `::-webkit-progress-value` | rewritten | the progress fill |  |
+| `::-webkit-scrollbar` | rewritten | child scrollbar elements |  |
+| `::-webkit-scrollbar-button` | rewritten | scrollbar arrow buttons |  |
+| `::-webkit-scrollbar-corner` | rewritten | scrollbar corner |  |
+| `::-webkit-scrollbar-thumb` | rewritten | same for scrollbarhorizontal |  |
+| `::-webkit-scrollbar-track` | rewritten | same for scrollbarhorizontal |  |
+| `::-webkit-scrollbar-track-piece` | rewritten | same for scrollbarhorizontal |  |
+| `::-webkit-slider-runnable-track` | rewritten | descendant slidertrack |  |
+| `::-webkit-slider-thumb` | rewritten | descendant sliderbar |  |
+| `::after` | native | rule dropped until the fork has PseudoElements (Warning HTMLUI-SEL-0003) |  |
+| `:after` | native | rule dropped until the fork has PseudoElements (Warning HTMLUI-SEL-0003) |  |
+| `::backdrop` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | add a full-screen element behind the dialog |
+| `::before` | native | rule dropped until the fork has PseudoElements (Warning HTMLUI-SEL-0003) |  |
+| `:before` | native | rule dropped until the fork has PseudoElements (Warning HTMLUI-SEL-0003) |  |
+| `::cue` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | show captions as text elements |
+| `::details-content` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the content elements of details directly |
+| `::file-selector-button` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | use a button element |
+| `::first-letter` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | wrap the first letter in a span |
+| `::first-line` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | wrap the first line in a span |
+| `::highlight()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | wrap the range in a span |
+| `::marker` | native | child marker element of the list marker emulation until the fork has ListMarkers |  |
+| `::part()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the element directly (no shadow DOM) |
+| `::picker()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the select element |
+| `::placeholder` | rewritten | only color, opacity and font-* declarations kept (others dropped, Info) |  |
+| `::selection` | rewritten | descendant selection element |  |
+| `::slotted()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | style the element directly (no shadow DOM) |
+| `::view-transition` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | animate with transitions or @keyframes |
+| `::view-transition-group()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | animate with transitions or @keyframes |
+| `::view-transition-image-pair()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | animate with transitions or @keyframes |
+| `::view-transition-new()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | animate with transitions or @keyframes |
+| `::view-transition-old()` | unsupported | rule dropped (Warning) (HTMLUI-SEL-0001) | animate with transitions or @keyframes |
 
 ## At-rules
 
@@ -1942,6 +2135,8 @@ Values of a property that are not handled like the property's other values; `<..
 
 Severity "by case": the construct decides (the default is given).
 
+### AT
+
 | Code | Severity | Meaning |
 |---|---|---|
 | `HTMLUI-AT-0001` | by case (warning) | **Unsupported at-rule** (`unsupported-at-rule`): The at-rule is not supported and was dropped with its contents (@container, @scope, @starting-style: Warning; @page, @namespace, @counter-style, ...: Info), or an @import came after other rules. |
@@ -1955,6 +2150,11 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-AT-0009` | warning | **Invalid keyframes** (`keyframes-invalid`): A keyframe selector or the content of a keyframe block is invalid; it was dropped. |
 | `HTMLUI-AT-0010` | info | **@property approximated** (`property-approximated`): @property is emulated by setting the initial value on the root element; inherits: false cannot be honored. |
 | `HTMLUI-AT-0011` | info | **@font-face descriptor** (`font-face-descriptor`): An @font-face descriptor was dropped or approximated (unicode-range, font-display, variable weight ranges, ...). |
+
+### CSS
+
+| Code | Severity | Meaning |
+|---|---|---|
 | `HTMLUI-CSS-0001` | warning | **Unknown property** (`unknown-property`): The name is not a CSS property (a typo, or a property of another product). The suggestion is the closest known property. |
 | `HTMLUI-CSS-0002` | by case (warning) | **Unsupported property** (`unsupported-property`): The CSS property is not supported by the engine and was dropped (Info when the difference is minor). The suggestion says what to write instead. |
 | `HTMLUI-CSS-0003` | info | **Ignored property** (`ignored-property`): The property is accepted and dropped because it has no effect in a game UI (printing, speech, browser-only hints). |
@@ -1978,12 +2178,22 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-CSS-0021` | by case (warning) | **Animation approximated** (`animation-approximated`): Part of an animation is approximated: per-keyframe easing dropped, a fractional iteration count rounded, the backwards fill mode not applied during the delay, ... |
 | `HTMLUI-CSS-0022` | by case (warning) | **Font source** (`font-source`): An @font-face source was skipped (WOFF/WOFF2/SVG/EOT, local(): Info), or the rule has no TrueType/OpenType source and was dropped (Warning). Convert the font to TTF or OTF; remote fonts are imported as TTF by the editor. |
 | `HTMLUI-CSS-0023` | info | **Unknown font family** (`unknown-font-family`): No @font-face declares the family and the engine does not know it; the text uses the next family of the list or the engine's fallback font. |
+
+### GEN
+
+| Code | Severity | Meaning |
+|---|---|---|
 | `HTMLUI-GEN-0001` | error | **File not found** (`file-not-found`): A file the document references (the document itself, a stylesheet, an image, a script or a font) does not exist at the resolved asset-relative path. Check the path: relative paths resolve against the referencing file's directory, paths starting with '/' against the assets directory. |
 | `HTMLUI-GEN-0002` | info | **Diagnostics truncated** (`diagnostics-truncated`): The per-document diagnostic limit was reached; later diagnostics were not recorded. Fix the reported problems and load the document again to see the rest. |
 | `HTMLUI-GEN-0003` | warning | **Invalid UTF-8** (`invalid-utf8`): The file contains bytes that are not valid UTF-8; they were replaced by U+FFFD. Save the file as UTF-8. |
 | `HTMLUI-GEN-0004` | error | **Internal error** (`internal-error`): The compatibility layer failed on this input. This is a bug in the engine; the message has the details. The document may render incompletely. |
 | `HTMLUI-GEN-0005` | warning | **Charset other than UTF-8** (`non-utf8-charset`): The document or stylesheet declares a character encoding other than UTF-8 (<meta charset>, @charset). The engine always decodes UTF-8: save the file as UTF-8 and declare utf-8. |
 | `HTMLUI-GEN-0006` | warning | **RmlUi message** (`rmlui-message`): RmlUi, the engine's layout library, rejected or warned about the converted document or stylesheet. The location is mapped back to your file. Simplify the construct or report the case: converted output should always be accepted. |
+
+### HTML
+
+| Code | Severity | Meaning |
+|---|---|---|
 | `HTMLUI-HTML-0001` | info | **HTML parse error** (`html-parse-error`): The HTML parser recovered from a syntax error exactly the way browsers do (for example a missing end tag). The document renders as in a browser; fix the markup to silence the note. |
 | `HTMLUI-HTML-0002` | warning | **Unsupported element** (`unsupported-element`): The element has no engine equivalent (video, audio, iframe, canvas, object, ...); it was replaced by a placeholder box of the browser's default size or dropped. The suggestion names an alternative: an image, a Lottie animation or a render-to-texture document. |
 | `HTMLUI-HTML-0003` | info | **Element mapped** (`element-mapped`): The element was mapped to an equivalent the engine supports (meter to progress, optgroup flattened into its select, output to span, picture resolved to one img, ...). |
@@ -2010,6 +2220,11 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-HTML-0024` | warning | **Unsupported image format** (`unsupported-image-format`): The engine cannot decode this image format (WebP, AVIF, ...). Convert the image to PNG or JPEG (or SVG). |
 | `HTMLUI-HTML-0025` | info | **Dialog not modal** (`dialog-not-modal`): Dialogs open and close, but showModal() has no backdrop and does not trap the focus. Add a backdrop element styled in CSS if needed. |
 | `HTMLUI-HTML-0026` | warning | **Self-closing tag** (`self-closing-tag`): In HTML, <div/> (any element that is not void, such as img, br or input) does not close the element: everything after it goes inside it until its parent ends, which changes the layout. Browsers do the same. Write <div></div>. |
+
+### IMP
+
+| Code | Severity | Meaning |
+|---|---|---|
 | `HTMLUI-IMP-0001` | error | **Remote resource not imported** (`not-imported`): The document references a remote URL that has no entry in the project's import manifest (assets/htmlui-imports/manifest.json); a fallback is used. The editor imports it when it loads the document (Editor Settings > HTML UI > Import Remote Resources), and so does jasperengine-editor import-ui; the runtime never downloads. |
 | `HTMLUI-IMP-0002` | error | **Download failed** (`download-failed`): The editor could not download a remote resource (network error, HTTP error, timeout, unknown Google Fonts family). |
 | `HTMLUI-IMP-0003` | warning | **Unsupported content** (`unsupported-content`): The downloaded content has a type the engine cannot use (WebP, AVIF, ...); it was saved but will not render. |
@@ -2019,6 +2234,11 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-IMP-0007` | warning | **WOFF only** (`woff-only`): The remote font is only available as WOFF/WOFF2, which the engine cannot read. Provide a TTF or OTF version. |
 | `HTMLUI-IMP-0008` | info | **License note** (`license-note`): The license of an imported resource was recorded, or it is unknown and must be verified before shipping. |
 | `HTMLUI-IMP-0009` | warning | **Manifest file missing** (`manifest-file-missing`): An import manifest entry points to a file that does not exist; re-import the resource. |
+
+### SEL
+
+| Code | Severity | Meaning |
+|---|---|---|
 | `HTMLUI-SEL-0001` | warning | **Unsupported selector** (`unsupported-selector`): The selector uses a feature the engine cannot match (:has(), form validation states, ...); the rule was dropped. Set a class from Lua instead. |
 | `HTMLUI-SEL-0002` | info | **Selector rewritten** (`selector-rewritten`): A selector feature was mapped to an engine equivalent (:lang() to an attribute selector, :defined removed, ...). |
 | `HTMLUI-SEL-0003` | warning | **Pseudo-element pending** (`pseudo-element-pending`): ::before and ::after need a patch of the engine's layout library that is not present yet; the rule was dropped. Add a real element instead. |
@@ -2027,6 +2247,11 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-SEL-0006` | info | **:visited dropped** (`visited-dropped`): There is no browsing history, so :visited never matches; the rule was dropped. |
 | `HTMLUI-SEL-0007` | warning | **Invalid selector** (`invalid-selector`): The selector has a syntax error; the rule was dropped, as in a browser. |
 | `HTMLUI-SEL-0008` | info | **Selector ignored** (`selector-ignored`): A selector feature that cannot apply in a game UI (:dir(), an unknown vendor-prefixed pseudo-class or pseudo-element Chromium also drops) was dropped with its selector or rule. |
+
+### SVG
+
+| Code | Severity | Meaning |
+|---|---|---|
 | `HTMLUI-SVG-0001` | info | **SVG recolored** (`svg-recolor`): The SVG mixes currentColor with fixed colors; it is rasterized again whenever the element's color changes. |
 | `HTMLUI-SVG-0002` | warning | **SVG content unsupported** (`svg-unsupported-content`): The SVG contains content the renderer cannot draw (foreignObject, ...); it was dropped. |
 | `HTMLUI-SVG-0003` | info | **CSS inside SVG** (`svg-internal-css`): CSS rules that target elements inside an SVG are not applied; style the shapes with SVG attributes, or set fill and stroke on the <svg> element. |

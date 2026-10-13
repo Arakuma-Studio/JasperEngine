@@ -91,6 +91,75 @@ def table(columns: list[str], rows: list[list[str]]) -> list[str]:
     return lines
 
 
+# jasper://docs serves a section above 6 KB as its "### " parts: a big table is cut into
+# alphabetical parts of about this size
+PART_BYTES = 6000
+
+
+def initial(name: str) -> str:
+    name = name.lstrip("`:@").lower()
+    return name[0] if name and name[0].isalpha() else "-"
+
+
+def parts(title: str, columns: list[str], rows: list[list[str]], names: list[str], other: str = "other") -> list[str]:
+    """The table, or (when it is big) the table cut at initial letters into "### <title>: a-c"
+    parts; a letter bigger than a part alone is cut by name ("### <title>: border-…-color")."""
+    whole = table(columns, rows)
+    if sum(len(line) + 1 for line in whole) <= PART_BYTES:
+        return whole
+
+    def row_size(row: list[str]) -> int:
+        return len("| " + " | ".join(row) + " |") + 1
+
+    groups: list[tuple[str, list[tuple[str, list[str]]]]] = []   # initial -> (name, row), in table order
+    for row, name in zip(rows, names):
+        key = initial(name)
+        if not groups or groups[-1][0] != key:
+            groups.append((key, []))
+        groups[-1][1].append((name, row))
+
+    out: list[str] = []
+
+    def emit(label: str, items: list[tuple[str, list[str]]]):
+        out.extend(["", f"### {title}: {label}", ""])
+        out.extend(table(columns, [row for _, row in items]))
+
+    def letters(chunk: list[tuple[str, list]]) -> str:
+        first, last = chunk[0][0], chunk[-1][0]
+        if first == "-":
+            return other
+        return first if first == last else f"{first}-{last}"
+
+    def span(items: list[tuple[str, list[str]]]) -> str:
+        first, last = cell(items[0][0]), cell(items[-1][0])
+        return first if first == last else f"{first} to {last}"
+
+    chunk: list[tuple[str, list]] = []
+    size = 0
+    for key, items in groups:
+        group_size = sum(row_size(row) for _, row in items)
+        if chunk and (size + group_size > PART_BYTES or key == "-" or chunk[-1][0] == "-"):
+            emit(letters(chunk), [item for _, its in chunk for item in its])
+            chunk, size = [], 0
+        if group_size > PART_BYTES and key != "-":
+            # one letter alone is too big: by name ranges
+            piece: list[tuple[str, list[str]]] = []
+            piece_size = 0
+            for item in items:
+                if piece and piece_size + row_size(item[1]) > PART_BYTES:
+                    emit(span(piece), piece)
+                    piece, piece_size = [], 0
+                piece.append(item)
+                piece_size += row_size(item[1])
+            emit(span(piece), piece)
+            continue
+        chunk.append((key, items))
+        size += group_size
+    if chunk:
+        emit(letters(chunk), [item for _, its in chunk for item in its])
+    return out[1:]
+
+
 def render(data: dict) -> str:
     by_kind: dict[str, list[dict]] = {k: [] for k in KINDS}
     for feature in data["features"]:
@@ -112,40 +181,49 @@ def render(data: dict) -> str:
             out.append(row)
         return out
 
+    def names(kind: str, first) -> list[str]:
+        return [first(f)[0] for f in sorted(by_kind[kind], key=lambda f: sort_key(*first(f)))]
+
     lines = [HEADER.rstrip("\n"), ""]
 
+    name_key = lambda f: [f["name"]]   # noqa: E731
     lines += ["## Elements", ""]
-    lines += table(["Element", "Support", "Notes", "Instead"], rows("element", lambda f: [f["name"]]))
+    lines += parts("Elements", ["Element", "Support", "Notes", "Instead"], rows("element", name_key), names("element", name_key))
     lines += ["", "### Input types", ""]
     lines += table(["`<input type>`", "Support", "Notes", "Instead"], rows("input_type", lambda f: [f["name"]]))
 
     lines += ["", "## Attributes", "", "`*` = every element; `data-*`, `aria-*` and `on*` are patterns.", ""]
-    lines += table(["Attribute", "Element", "Support", "Notes", "Instead"],
-                   rows("attribute", lambda f: [f["name"], f.get("element", "*")]))
+    attribute_key = lambda f: [f["name"], f.get("element", "*")]   # noqa: E731
+    lines += parts("Attributes", ["Attribute", "Element", "Support", "Notes", "Instead"],
+                   rows("attribute", attribute_key), names("attribute", attribute_key))
 
     lines += ["", "## CSS properties", ""]
-    lines += table(["Property", "Support", "Notes", "Instead"], rows("property", lambda f: [f["name"]]))
+    property_key = lambda f: [f["name"]]   # noqa: E731
+    lines += parts("Properties", ["Property", "Support", "Notes", "Instead"], rows("property", property_key),
+                   names("property", property_key), other="vendor-prefixed and custom")
 
-    lines += ["", "## Values, functions and units", "", "### Values", "",
+    lines += ["", "## Values, functions and units", "",
               "Values of a property that are not handled like the property's other values; `<...>` names a value type.", ""]
-    lines += table(["Property", "Value", "Support", "Notes", "Instead"],
-                   rows("value", lambda f: [f.get("property", ""), f["name"]]))
-    lines += ["", "### Functions", ""]
-    lines += table(["Function", "Support", "Notes", "Instead"], rows("function", lambda f: [f["name"] + "()"]))
+    value_key = lambda f: [f.get("property", ""), f["name"]]   # noqa: E731
+    lines += parts("Values", ["Property", "Value", "Support", "Notes", "Instead"], rows("value", value_key),
+                   names("value", value_key), other="vendor-prefixed and custom properties")
+    function_key = lambda f: [f["name"] + "()"]   # noqa: E731
+    function_rows = parts("Functions", ["Function", "Support", "Notes", "Instead"], rows("function", function_key),
+                          names("function", function_key))
+    lines += ([""] if function_rows[0].startswith("### ") else ["", "### Functions", ""]) + function_rows
     lines += ["", "### Units", ""]
-    lines += table(["Unit", "Support", "Notes", "Instead"], rows("unit", lambda f: [f["name"]]))
+    lines += table(["Unit", "Support", "Notes", "Instead"], rows("unit", name_key))
 
-    lines += ["", "## Selectors, pseudo-classes and pseudo-elements", ""]
-    kind_names = {"selector": "selector", "pseudo_class": "pseudo-class", "pseudo_element": "pseudo-element"}
-    selector_rows = []
-    for kind in ("selector", "pseudo_class", "pseudo_element"):
-        for f in by_kind[kind]:
-            selector_rows.append((sort_key(f["name"], kind),
-                                  [code_cell(f["name"]), kind_names[kind], cell(f["support"]), notes(f),
-                                   cell(f.get("suggestion", ""))]))
-    selector_rows.sort(key=lambda r: r[0])
-    lines += table(["Selector", "Kind", "Support", "Notes", "Instead"], [r for _, r in selector_rows])
-
+    lines += ["", "## Selectors, pseudo-classes and pseudo-elements"]
+    for kind, title, column in (("selector", "Selectors and combinators", "Selector"),
+                                ("pseudo_class", "Pseudo-classes", "Pseudo-class"),
+                                ("pseudo_element", "Pseudo-elements", "Pseudo-element")):
+        # by name, the leading colons aside
+        key = lambda f: [f["name"].lstrip(":"), f["name"]]   # noqa: E731
+        items = sorted(by_kind[kind], key=lambda f: sort_key(*key(f)))
+        kind_rows = [[code_cell(f["name"]), cell(f["support"]), notes(f), cell(f.get("suggestion", ""))] for f in items]
+        part = parts(title, [column, "Support", "Notes", "Instead"], kind_rows, [f["name"] for f in items])
+        lines += ([""] if part[0].startswith("### ") else ["", f"### {title}", ""]) + part
     lines += ["", "## At-rules", ""]
     lines += table(["At-rule", "Support", "Notes", "Instead"], rows("at_rule", lambda f: [f["name"]]))
     lines += ["", "### Media features and types", ""]
@@ -162,7 +240,13 @@ def render(data: dict) -> str:
         if d.get("help"):
             meaning += ": " + cell(d["help"])
         diag_rows.append([code_cell(d["code"]), cell(severity), meaning])
-    lines += table(["Code", "Severity", "Meaning"], diag_rows)
+    # one part per area (GEN, HTML, CSS, ...)
+    areas: dict[str, list[list[str]]] = {}
+    for d, row in zip(sorted(data.get("diagnostics", []), key=lambda d: d["code"]), diag_rows):
+        areas.setdefault(d["code"].split("-")[1], []).append(row)
+    for area, area_rows in areas.items():
+        lines += [f"### {area}", ""] + table(["Code", "Severity", "Meaning"], area_rows) + [""]
+    lines.pop()
     return "\n".join(lines) + "\n"
 
 
