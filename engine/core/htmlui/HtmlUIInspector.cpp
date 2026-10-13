@@ -987,12 +987,16 @@ std::string inspect::Refs::of(Rml::Element* element){
 // ---- geometry ----
 
 InspectRect inspect::boxRect(Rml::Element* element, Rml::BoxArea area){
+    if (!hasLayoutBox(element))
+        return InspectRect{0, 0, 0, 0};
     const Rml::Vector2f position = element->GetAbsoluteOffset(area);
     const Rml::Vector2f size = element->GetBox().GetSize(area);
     return transformed(element, InspectRect{position.x, position.y, size.x, size.y});
 }
 
 InspectRect inspect::borderRect(Rml::Element* element){
+    if (!hasLayoutBox(element))
+        return InspectRect{0, 0, 0, 0};
     const Rml::Vector2f origin = element->GetAbsoluteOffset(Rml::BoxArea::Border);
     const Rml::Vector2f size = element->GetBox().GetSize(Rml::BoxArea::Border);
     InspectRect rect{origin.x, origin.y, size.x, size.y};
@@ -1106,6 +1110,19 @@ Rml::Element* inspect::displayNoneAt(Rml::Element* element){
             break;
     }
     return nullptr;
+}
+
+bool inspect::hasLayoutBox(Rml::Element* element){
+    if (!element || element->GetComputedValues().display() == Rml::Style::Display::Contents)
+        return false;
+    for (Rml::Element* walk = element; walk; walk = walk->GetParentNode()){
+        if (walk->GetComputedValues().display() == Rml::Style::Display::None)
+            return false;
+        if (rmlui_dynamic_cast<Rml::ElementDocument*>(walk))
+            return true;
+    }
+    // not in a document
+    return false;
 }
 
 float inspect::effectiveOpacity(Rml::Element* element){
@@ -1388,20 +1405,23 @@ bool HtmlUIInspector::detail(Scene* scene, Entity entity, const std::string& ref
     box.padding = boxRect(element, Rml::BoxArea::Padding);
     box.border = boxRect(element, Rml::BoxArea::Border);
     box.margin = boxRect(element, Rml::BoxArea::Margin);
-    const Rml::Box& layout = element->GetBox();
-    const auto edges = [&layout](Rml::BoxArea area){
-        return InspectEdges{layout.GetEdge(area, Rml::BoxEdge::Top), layout.GetEdge(area, Rml::BoxEdge::Right),
-                            layout.GetEdge(area, Rml::BoxEdge::Bottom), layout.GetEdge(area, Rml::BoxEdge::Left)};
-    };
-    box.paddingEdges = edges(Rml::BoxArea::Padding);
-    box.borderEdges = edges(Rml::BoxArea::Border);
-    box.marginEdges = edges(Rml::BoxArea::Margin);
-    box.scrollWidth = element->GetScrollWidth();
-    box.scrollHeight = element->GetScrollHeight();
-    box.clientWidth = element->GetClientWidth();
-    box.clientHeight = element->GetClientHeight();
-    box.scrollLeft = element->GetScrollLeft();
-    box.scrollTop = element->GetScrollTop();
+    // no box (display: none here or above): every size is 0, as the browser's APIs report it
+    if (hasLayoutBox(element)){
+        const Rml::Box& layout = element->GetBox();
+        const auto edges = [&layout](Rml::BoxArea area){
+            return InspectEdges{layout.GetEdge(area, Rml::BoxEdge::Top), layout.GetEdge(area, Rml::BoxEdge::Right),
+                                layout.GetEdge(area, Rml::BoxEdge::Bottom), layout.GetEdge(area, Rml::BoxEdge::Left)};
+        };
+        box.paddingEdges = edges(Rml::BoxArea::Padding);
+        box.borderEdges = edges(Rml::BoxArea::Border);
+        box.marginEdges = edges(Rml::BoxArea::Margin);
+        box.scrollWidth = element->GetScrollWidth();
+        box.scrollHeight = element->GetScrollHeight();
+        box.clientWidth = element->GetClientWidth();
+        box.clientHeight = element->GetClientHeight();
+        box.scrollLeft = element->GetScrollLeft();
+        box.scrollTop = element->GetScrollTop();
+    }
 
     for (const auto& attribute : element->GetAttributes()){
         if (doc.compat && hc::LuaHooks::isHiddenAttribute(attribute.first))

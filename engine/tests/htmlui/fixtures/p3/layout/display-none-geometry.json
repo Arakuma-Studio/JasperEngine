@@ -1,0 +1,12 @@
+{
+ "comment": "an element hidden with display: none, and its descendants, have no box: getBoundingClientRect() is all zeros (offsetWidth/Height, clientWidth/Height and scrollWidth/Height 0); shown again they are laid out where they were. display: contents generates no box either. GeometryApiParity compares the element API's and the inspector's geometry with these references.",
+ "viewport": [360, 200],
+ "steps": [
+  {"capture": "shown"},
+  {"setStyle": ["#panel", "display", "none"]},
+  {"setStyle": ["#after", "display", "none"]},
+  {"capture": "hidden"},
+  {"setStyle": ["#panel", "display", ""]},
+  {"capture": "back"}
+ ]
+}
