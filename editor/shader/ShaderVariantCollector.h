@@ -48,8 +48,9 @@ namespace jasperengine::editor {
                                  const std::vector<std::string>& scriptPostProcessingFields = {});
 
         // The PostProcessingSettings switches a script may flip (their camelCase names): the
-        // effects of the uber pass, the bloom and blur, and the grade, vignette and dither the
-        // uber pass takes from the shaders
+        // effects of the uber pass, the bloom and blur, the grade (monochrome is part of its
+        // LUT), vignette and dither the uber pass takes from the shaders, and the render scale
+        // (below 1 alone: the upscale variant)
         static const std::vector<std::string>& getScriptableEffectFields();
         // The uber variants a scene may switch to at runtime (phase 4): its settings', and when
         // scripts set post-processing the combinations of the switches they name (every

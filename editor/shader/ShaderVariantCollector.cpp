@@ -618,7 +618,7 @@ const std::vector<std::string>& editor::ShaderVariantCollector::getScriptableEff
     static const std::vector<std::string> fields = {
         "fxaaEnabled", "chromaticAberrationEnabled", "pixelateEnabled", "crtEnabled", "edgeDetectEnabled",
         "filmGrainEnabled", "sharpenEnabled", "bloomEnabled", "blurEnabled",
-        "colorGradingEnabled", "vignetteEnabled", "ditherEnabled"
+        "colorGradingEnabled", "monochromeEnabled", "vignetteEnabled", "ditherEnabled", "renderScale"
     };
     return fields;
 }
@@ -640,15 +640,22 @@ std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const P
     const std::vector<std::string>& candidates = namedFields.empty() ? getScriptableEffectFields() : namedFields;
     for (const std::string& name : candidates){
         const PostProcessingSettings::Field* field = PostProcessingSettings::findField(name);
-        if (field && field->type == PostProcessingSettings::FieldType::Bool)
+        // the bool switches, and the render scale (below 1 runs the uber pass: its upscale)
+        if (field && (field->type == PostProcessingSettings::FieldType::Bool || name == "renderScale"))
             switches.push_back(field);
     }
     auto flipped = [&](uint32_t mask){
         PostProcessingSettings candidate = settings;
         for (size_t i = 0; i < switches.size(); i++){
             if (mask & (1u << i)){
-                bool* value = static_cast<bool*>(switches[i]->ref(candidate));
-                *value = !*value;
+                if (switches[i]->type == PostProcessingSettings::FieldType::Bool){
+                    bool* value = static_cast<bool*>(switches[i]->ref(candidate));
+                    *value = !*value;
+                }else{
+                    // the render scale: full against scaled
+                    float* value = static_cast<float*>(switches[i]->ref(candidate));
+                    *value = *value < 1.0f ? 1.0f : 0.5f;
+                }
             }
         }
         // a switched-on effect at its neutral value would add nothing: its default instead
