@@ -539,6 +539,10 @@ void WidgetTextInput::ProcessEvent(Event& event)
 		// a capture listener of an ancestor prevented the key's action
 		if (event.IsDefaultPrevented())
 			break;
+		// a key a gamepad sends (it carries a "gamepad" parameter) moves the focus or activates, it does not edit: it
+		// goes on to the document's listeners, so the d-pad leaves the field and B reaches the menu
+		if (event.GetParameters().count("gamepad") > 0)
+			break;
 
 		Input::KeyIdentifier key_identifier = (Input::KeyIdentifier)event.GetParameter<int>("key_identifier", 0);
 		bool numlock = event.GetParameter<int>("num_lock_key", 0) > 0;

@@ -592,6 +592,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("allowEventsOutCanvas", &Engine::isAllowEventsOutCanvas, &Engine::setAllowEventsOutCanvas)
         .addStaticProperty("ignoreEventsHandledByUI", &Engine::isIgnoreEventsHandledByUI, &Engine::setIgnoreEventsHandledByUI)
         .addStaticFunction("isUIEventReceived", &Engine::isUIEventReceived)
+        .addStaticFunction("wantsGamepadNavigation", &Engine::wantsGamepadNavigation)
         .addStaticProperty("updateTime", &Engine::getUpdateTime, &Engine::setUpdateTime)
         .addStaticFunction("setUpdateTimeMS", &Engine::setUpdateTimeMS)
         .addStaticProperty("interpolationAlpha", &Engine::getInterpolationAlpha)

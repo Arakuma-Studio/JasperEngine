@@ -797,6 +797,121 @@ TEST_CASE("data_binding.allow_missing_variables")
 	TestsShell::ShutdownShell();
 }
 
+// fork P4-4: a data-style view whose expression reads a missing variable leaves the property unset, without the
+// "Syntax error parsing inline property declaration" warning; a value invalid with every variable present still warns
+TEST_CASE("data_binding.style_missing_variables")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+
+	static const String document_rml = R"(
+<rml>
+<head>
+	<title>Test</title>
+	<link type="text/template" href="/assets/window.rml"/>
+</head>
+<body template="window" data-model="late_style">
+<div id="missing" data-style-width="health + '%'">missing</div>
+<div id="known" data-style-width="known + '%'">known</div>
+<div id="invalid" data-style-width="'abc'">invalid</div>
+</body>
+</rml>
+)";
+
+	Rml::DataModelConstructor constructor = context->CreateDataModel("late_style", nullptr, true);
+	REQUIRE(constructor);
+	int known = 40;
+	constructor.Bind("known", &known);
+	DataModelHandle handle = constructor.GetModelHandle();
+
+	// 'width: abc;' is the only warning
+	TestsShell::SetNumExpectedWarnings(1);
+
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+	TestsShell::RenderLoop();
+
+	Element* missing = document->GetElementById("missing");
+	CHECK(missing->GetLocalProperty("width") == nullptr);
+	REQUIRE(document->GetElementById("known")->GetLocalProperty("width"));
+	CHECK(document->GetElementById("known")->GetLocalProperty("width")->ToString() == "40%");
+	CHECK(document->GetElementById("invalid")->GetLocalProperty("width") == nullptr);
+
+	// bound later: the property appears
+	int health = 25;
+	constructor.Bind("health", &health);
+	handle.DirtyVariable("health");
+	TestsShell::RenderLoop();
+	REQUIRE(missing->GetLocalProperty("width"));
+	CHECK(missing->GetLocalProperty("width")->ToString() == "25%");
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+// fork P4-5: the hidden template a data-for view keeps after its rows is no sibling for structural selectors
+TEST_CASE("data_binding.for_template_not_a_sibling")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+
+	static const String document_rml = R"(
+<rml>
+<head>
+	<title>Test</title>
+	<link type="text/template" href="/assets/window.rml"/>
+	<style>
+		.row { display: block; width: 10px; height: 10px; }
+		.row:first-child { height: 11px; }
+		.row:last-child { width: 77px; }
+		.row:only-child { width: 55px; }
+		.row + .tail { height: 33px; }
+	</style>
+</head>
+<body template="window" data-model="for_rows">
+<div id="list"><p class="row" data-for="r : rows">{{ r }}</p></div>
+<div id="list2"><p class="row" data-for="r : rows">{{ r }}</p><p class="tail">tail</p></div>
+</body>
+</rml>
+)";
+
+	Rml::DataModelConstructor constructor = context->CreateDataModel("for_rows");
+	REQUIRE(constructor);
+	REQUIRE(constructor.RegisterArray<Vector<int>>());
+	Vector<int> rows = {1, 2, 3};
+	constructor.Bind("rows", &rows);
+	DataModelHandle handle = constructor.GetModelHandle();
+
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+	TestsShell::RenderLoop();
+
+	Element* list = document->GetElementById("list");
+	REQUIRE(list->GetNumChildren() == 4);
+	CHECK(list->GetChild(3)->HasAttribute("data-for"));
+	CHECK(list->GetChild(0)->GetInnerRML() == "1");
+	CHECK(list->GetChild(2)->GetInnerRML() == "3");
+	CHECK(list->GetChild(0)->GetProperty("height")->ToString() == "11px");
+	CHECK(list->GetChild(1)->GetProperty("width")->ToString() == "10px");
+	CHECK(list->GetChild(2)->GetProperty("width")->ToString() == "77px");
+	// the element after the rows follows the last row, not the template
+	Element* list2 = document->GetElementById("list2");
+	REQUIRE(list2->GetNumChildren() == 5);
+	CHECK(list2->GetChild(4)->GetProperty("height")->ToString() == "33px");
+
+	rows = {7};
+	handle.DirtyVariable("rows");
+	TestsShell::RenderLoop();
+	REQUIRE(list->GetNumChildren() == 2);
+	CHECK(list->GetChild(0)->GetInnerRML() == "7");
+	CHECK(list->GetChild(0)->GetProperty("width")->ToString() == "55px");
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
 static const String set_enum_rml = R"(
 <rml>
 <head>

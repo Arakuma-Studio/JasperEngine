@@ -1,7 +1,8 @@
 -- Pause menu logic: attach to the GameObject that has the UI Document (pause_menu.html).
 -- Escape opens and closes the menu. While it is open the game is frozen (Engine.timeScale = 0);
 -- the menu still animates, because HTML UI runs on the UI clock. Resume closes it, the other
--- buttons log "pause_menu: <id>".
+-- buttons log "pause_menu: <id>". On a gamepad Start opens and closes it and B closes it; the
+-- d-pad moves between the buttons and A presses one (the document does that by itself).
 ---@class PauseMenuUI : ScriptInstance
 local PauseMenuUI = {
     properties = {}
@@ -34,6 +35,7 @@ function PauseMenuUI:init()
     end
 
     RegisterEngineEvent(self, "onKeyDown")
+    RegisterEngineEvent(self, "onGamepadButtonDown")
     RegisterEvent(self, self.doc.onLoad, "onDocumentLoad")
     self:onDocumentLoad()
 end
@@ -54,6 +56,15 @@ end
 function PauseMenuUI:onKeyDown(key, isRepeat, mods)
     if key == Input.KEY_ESCAPE and not isRepeat then
         self:setOpen(not self.isOpen)
+    end
+end
+
+-- Engine gamepad event: Start and B are not used by the menu's buttons, so the game sees them
+function PauseMenuUI:onGamepadButtonDown(gamepad, button)
+    if button == Input.GAMEPAD_BUTTON_START then
+        self:setOpen(not self.isOpen)
+    elseif button == Input.GAMEPAD_BUTTON_B and self.isOpen then
+        self:setOpen(false)
     end
 end
 

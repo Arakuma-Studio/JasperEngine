@@ -2,6 +2,8 @@
 -- The controls are bound two ways to the "settings" data model: reading self.model.music gives
 -- what the slider shows. Tabs switch the "active" class, a key-binding button waits for the
 -- next key, Reset restores the defaults and Apply logs "settings: apply" with the values.
+-- Escape (a gamepad's B) is Back. On a gamepad the d-pad moves between the controls (a range
+-- adjusts with left/right), A presses, toggles or opens; the first tab has the focus at load.
 ---@class SettingsUI : ScriptInstance
 local SettingsUI = {
     properties = {}
@@ -51,7 +53,7 @@ function SettingsUI:init()
     self.onKeyDown = function(event) self:captureKey(event) end
     self.onReset = function() self:reset() end
     self.onApply = function() self:apply() end
-    self.onBack = function() Log.print("settings: back") end
+    self.onBack = function() self:back() end
 
     RegisterEvent(self, self.doc.onLoad, "onDocumentLoad")
     self:onDocumentLoad()
@@ -67,6 +69,7 @@ function SettingsUI:onDocumentLoad()
     byId(doc, "apply"):addEventListener("click", self.onApply)
     byId(doc, "back"):addEventListener("click", self.onBack)
     self:selectTab(self.tab or "tab-graphics")
+    byId(doc, self.tab or "tab-graphics"):focus()   -- where the gamepad starts
 end
 
 ---@param tabId string
@@ -83,7 +86,13 @@ end
 ---@param event UIEvent
 function SettingsUI:captureKey(event)
     local action = self.model.capturing
-    if action == "" then return end
+    if action == "" then
+        if event.key == "Escape" then   -- Escape or the gamepad's B
+            self:back()
+            event:preventDefault()
+        end
+        return
+    end
     if event.key ~= "Escape" then
         self.model.keys[action] = keyLabel(event.key)
     end
@@ -91,6 +100,10 @@ function SettingsUI:captureKey(event)
     -- the key is the binding: it must not press the focused button too
     event:preventDefault()
     event:stopPropagation()
+end
+
+function SettingsUI:back()
+    Log.print("settings: back")
 end
 
 function SettingsUI:reset()

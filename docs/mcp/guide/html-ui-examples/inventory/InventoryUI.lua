@@ -1,6 +1,9 @@
 -- Inventory logic: attach to the GameObject that has the UI Document (inventory.html).
 -- The grid shows the "inventory" data model's 24 entries. Drag a slot onto another to swap
 -- them, hover a filled slot for its tooltip, close with the X; I shows and hides the window.
+-- A click (or the gamepad's A) on a filled slot picks its item up and one on another slot puts
+-- it down there; Escape (B) cancels that, or closes the window. The gamepad's View button shows
+-- and hides it; the d-pad moves between the slots (they have tabindex="0").
 ---@class InventoryUI : ScriptInstance
 local InventoryUI = {
     properties = {}
@@ -65,7 +68,9 @@ function InventoryUI:init()
         weight = 0,
         maxWeight = 60,
         items = items,
+        picked = 0,   -- 1-based slot of the item picked up with a click or A, 0 = none
         hover = function(event, i) self:showTooltip(event.currentTarget, i + 1) end,
+        select = function(event, i) self:select(i + 1) end,
         unhover = function() self:hideTooltip() end,
         pick = function(event, i) self.dragFrom = i + 1 end,
         drop = function(event, i) self:swap(self.dragFrom, i + 1) end,
@@ -73,7 +78,10 @@ function InventoryUI:init()
     self:updateWeight()
 
     self.onClose = function() self.doc:hide() end
+    ---@param event UIEvent
+    self.onKey = function(event) self:keyDown(event) end
     RegisterEngineEvent(self, "onKeyDown")
+    RegisterEngineEvent(self, "onGamepadButtonDown")
     RegisterEvent(self, self.doc.onLoad, "onDocumentLoad")
     self:onDocumentLoad()
 end
@@ -81,6 +89,43 @@ end
 -- After the first load and every reload
 function InventoryUI:onDocumentLoad()
     byId(self.doc, "close"):addEventListener("click", self.onClose)
+    self.doc:addEventListener("keydown", self.onKey)
+end
+
+---@param event UIEvent
+function InventoryUI:keyDown(event)
+    if event.key == "Escape" then
+        if self.model.picked ~= 0 then self.model.picked = 0 else self.doc:hide() end
+        event:preventDefault()
+    elseif event.gamepad >= 0 and not self.doc:querySelector(".slot:focus, .close:focus") then
+        -- the first gamepad key focuses the first slot: the grid takes the d-pad from then on
+        local first = self.doc:querySelector(".grid > .slot")
+        if first then first:focus() end
+        event:preventDefault()
+    end
+end
+
+---@param index integer 1-based
+function InventoryUI:select(index)
+    local picked = self.model.picked
+    if picked ~= 0 then
+        self.model.picked = 0
+        self:swap(picked, index)
+    elseif self.model.items[index].id ~= "" then
+        self.model.picked = index
+    end
+end
+
+function InventoryUI:onGamepadButtonDown(gamepad, button)
+    if button == Input.GAMEPAD_BUTTON_BACK then
+        if self.doc.visible then
+            self.doc:hide()
+        else
+            self.doc:show()
+            local first = self.doc:querySelector(".grid > .slot")
+            if first then first:focus() end   -- the gamepad goes on in the grid
+        end
+    end
 end
 
 function InventoryUI:onKeyDown(key, isRepeat, mods)

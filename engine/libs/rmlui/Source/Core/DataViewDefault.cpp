@@ -192,6 +192,15 @@ bool DataViewStyle::Update(DataModel& model)
 
 	if (element && GetExpression().Run(expr_interface, variant))
 	{
+		// A variable the model does not have yet (allow_missing_variables) makes no declaration ('health + "%"' would be
+		// 'width: %'): the property stays unset until the variable exists, as a browser framework renders nothing for an
+		// undefined value. A value that is still invalid with every variable present is reported by SetProperty.
+		if (expr_interface.HasMissingVariable())
+		{
+			element->RemoveProperty(property_name);
+			return false;
+		}
+
 		const String value = variant.Get<String>();
 		const Property* p = element->GetLocalProperty(property_name);
 		if (!p || p->Get<String>() != value)

@@ -14,6 +14,7 @@
 #include "htmlui/compat/SourceFiles.h"
 #include "htmlui/compat/SupportTables.h"
 #include "htmlui/compat/css/CssRewriter.h"
+#include "object/ui/UIElementInternal.h"
 #include "subsystem/UIDocumentSystem.h"
 
 #include <RmlUi/Core/ComputedValues.h>
@@ -857,8 +858,10 @@ bool inspect::select(const Doc& doc, const std::string& selector, std::vector<Rm
     return true;
 }
 
+// no text node, and no data-for template (the hidden element RmlUi keeps after the rows, which the
+// Lua DOM skips too, UIElementAccess::isDataForTemplate)
 bool inspect::isElement(const Rml::Element* element){
-    return element && !rmlui_dynamic_cast<const Rml::ElementText*>(element);
+    return element && !rmlui_dynamic_cast<const Rml::ElementText*>(element) && !UIElementAccess::isDataForTemplate(element);
 }
 
 bool inspect::isLeaf(const Rml::Element* element){

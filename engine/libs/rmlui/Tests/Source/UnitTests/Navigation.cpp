@@ -558,3 +558,136 @@ TEST_CASE("Navigation.NoTabbableElements")
 	document->Close();
 	TestsShell::ShutdownShell();
 }
+
+static const String spatial_list_rml = R"(
+<rml>
+<head>
+<style>
+	body {
+		position: relative;
+		width: 400px;
+		height: 600px;
+		background-color: #ddd;
+	}
+	.box {
+		display: block;
+		width: 50px;
+		height: 40px;
+		tab-index: auto;
+		background-color: #c33;
+	}
+	#list {
+		position: absolute;
+		top: 60px;
+		left: 0px;
+		width: 100px;
+		height: 100px;
+		overflow: auto;
+	}
+	#list .box { margin-bottom: 30px; }
+	#top { position: absolute; top: 0px; left: 0px; }
+	#side { position: absolute; top: 10px; left: 200px; }
+	#bottom { position: absolute; top: 175px; left: 0px; }
+</style>
+</head>
+<body id="main">
+	<div id="top" class="box"/>
+	<div id="side" class="box"/>
+	<div id="list">
+		<div id="i1" class="box"/>
+		<div id="i2" class="box"/>
+		<div id="i3" class="box"/>
+		<div id="i4" class="box"/>
+		<div id="i5" class="box"/>
+		<div id="i6" class="box"/>
+	</div>
+	<div id="bottom" class="box"/>
+</body>
+</rml>
+)";
+
+// fork P4-2: the target of gamepad navigation (no arrow key behaviour changes)
+TEST_CASE("Navigation.FindNavigationTarget")
+{
+	Context* context = TestsShell::GetContext();
+
+	auto Target = [](ElementDocument* document, const String& start_id, NavigationSearchDirection direction) -> String {
+		Element* target = document->FindNavigationTarget(document->GetElementById(start_id), direction);
+		return target ? target->GetId() : String("(none)");
+	};
+
+	SUBCASE("Grid without nav properties: spatial in all four directions, no wrap")
+	{
+		ElementDocument* document = context->LoadDocumentFromMemory(navigation_grid_rml);
+		document->Show();
+		TestsShell::RenderLoop();
+
+		CHECK(Target(document, "b2", NavigationSearchDirection::Up) == "a2");
+		CHECK(Target(document, "b2", NavigationSearchDirection::Down) == "c2");
+		CHECK(Target(document, "b2", NavigationSearchDirection::Left) == "b1");
+		CHECK(Target(document, "b2", NavigationSearchDirection::Right) == "b3");
+		CHECK(Target(document, "a1", NavigationSearchDirection::Up) == "(none)");
+		CHECK(Target(document, "a1", NavigationSearchDirection::Left) == "(none)");
+		CHECK(Target(document, "c3", NavigationSearchDirection::Down) == "(none)");
+		CHECK(Target(document, "c3", NavigationSearchDirection::Right) == "(none)");
+		// the aligned element wins over a nearer diagonal one
+		CHECK(Target(document, "a3", NavigationSearchDirection::Down) == "b3");
+
+		// arrow keys are unchanged: without a nav property they do nothing
+		CHECK(FocusAndPressWithContext(context, document, "b2", Input::KI_DOWN) == "b2");
+
+		// a declared property decides, as for the arrow keys
+		Element* b2 = document->GetElementById("b2");
+		b2->SetProperty("nav-down", "none");
+		b2->SetProperty("nav-up", "#c3");
+		b2->SetProperty("nav-left", "tree-order");
+		document->UpdateDocument();
+		CHECK(Target(document, "b2", NavigationSearchDirection::Down) == "(none)");
+		CHECK(Target(document, "b2", NavigationSearchDirection::Up) == "c3");
+		CHECK(Target(document, "b2", NavigationSearchDirection::Left) == "b1");
+		CHECK(Target(document, "b2", NavigationSearchDirection::Right) == "b3");
+
+		// hidden and unfocusable elements are skipped
+		document->GetElementById("c2")->SetProperty("display", "none");
+		document->GetElementById("b3")->SetProperty("focus", "none");
+		document->UpdateDocument();
+		CHECK(Target(document, "a2", NavigationSearchDirection::Down) == "b2");
+		CHECK(Target(document, "b1", NavigationSearchDirection::Right) == "b2");
+		// down, the near diagonal b2 beats the far aligned c3 (the gap across weighs 2 vertically, as in Chromium)
+		CHECK(Target(document, "a3", NavigationSearchDirection::Down) == "b2");
+		// sideways the gap weighs 30: from b1 right the aligned b2, not the nearer-looking a2 above it
+		CHECK(Target(document, "b1", NavigationSearchDirection::Right) == "b2");
+
+		document->Close();
+	}
+
+	SUBCASE("Scroll containers: entered where visible, searched first from inside")
+	{
+		ElementDocument* document = context->LoadDocumentFromMemory(spatial_list_rml);
+		document->Show();
+		TestsShell::RenderLoop();
+
+		CHECK(Target(document, "top", NavigationSearchDirection::Down) == "i1");
+		CHECK(Target(document, "i1", NavigationSearchDirection::Up) == "top");
+		// i3 is scrolled out of view below the list, #bottom is nearer: the list goes on first
+		CHECK(Target(document, "i2", NavigationSearchDirection::Down) == "i3");
+
+		// scrolled by 110px: only i3 is in view; i2 (just above it) and i4 (level with #side) are not
+		Element* list = document->GetElementById("list");
+		list->SetScrollTop(110.f);
+		document->GetElementById("side")->SetProperty("top", "150px");
+		document->UpdateDocument();
+		CHECK(Target(document, "top", NavigationSearchDirection::Down) == "i3");
+		CHECK(Target(document, "side", NavigationSearchDirection::Left) == "bottom");
+
+		// from the last item the focus leaves the list
+		document->GetElementById("bottom")->SetProperty("top", "470px");
+		document->UpdateDocument();
+		CHECK(Target(document, "i6", NavigationSearchDirection::Down) == "bottom");
+		CHECK(Target(document, "bottom", NavigationSearchDirection::Up) == "i3");
+
+		document->Close();
+	}
+
+	TestsShell::ShutdownShell();
+}

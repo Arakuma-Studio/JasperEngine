@@ -7,9 +7,11 @@
 
 namespace Rml {
 
+// Text nodes, and the hidden template a data-for view keeps after its rows (the rows are the siblings an author sees,
+// as with the comment node a browser framework leaves): skipped by structural selectors and sibling combinators.
 static inline bool IsTextElement(const Element* element)
 {
-	return element->GetTagName() == "#text";
+	return element->GetTagName() == "#text" || element->HasAttribute("data-for");
 }
 
 // Returns true if a positive integer can be found for n in the equation an + b = count.

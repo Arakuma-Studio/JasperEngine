@@ -29,8 +29,12 @@ namespace jasperengine{
         void stopPropagation(); void stopImmediatePropagation();
         void preventDefault(); bool isDefaultPrevented() const;
 
-        // keys: DOM key ("a", "A", "Enter") and code ("KeyA"), the engine key code (Input.KEY_*)
+        // keys: DOM key ("a", "A", "Enter") and code ("KeyA"), the engine key code (Input.KEY_*).
+        // A gamepad's keys (p4-input): key "ArrowUp" ... (d-pad, left stick), "Enter" (A), "Escape" (B),
+        // else the code; code "GamepadDPadUp", "GamepadA", ...; keyCode the keyboard key it stands for
+        // (or 0); getGamepad() the pad's id (Input), -1 for the keyboard
         std::string getKey() const; std::string getCode() const; int getKeyCode() const; bool isRepeat() const;
+        int getGamepad() const;
         bool getCtrlKey() const; bool getShiftKey() const; bool getAltKey() const; bool getMetaKey() const;
 
         // pointer position in document px; button in DOM numbering (0 left, 1 middle, 2 right)

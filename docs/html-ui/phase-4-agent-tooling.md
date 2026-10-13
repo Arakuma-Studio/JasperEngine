@@ -1584,6 +1584,8 @@ not-installed skips.
 **Wave 1** (parallel, starting from `html-ui` with phases 0-3): `p4-inspector`, `p4-checks`,
 `p4-examples`, `p4-guide`.
 **Wave 2** (after wave 1 is merged): `p4-mcp-tools`.
+**Corrective** (after `p4-guide`, next to `p4-examples`, before `p4-mcp-tools`): `p4-input`
+(4.6), for what `p4-guide` found missing in the code.
 
 ### 4.1 `p4-inspector`: engine inspection and assertion API
 
@@ -1883,9 +1885,9 @@ Where the code differs from 3.7, 3.9 and 5.4 (also in `CONTRACTS.md`):
   drag and drop is the engine's CSS property `drag: drag-drop` on `.slot` (browsers ignore it;
   RmlUi has no `drag` attribute) with `data-event-dragstart="pick(i)"` /
   `data-event-dragdrop="drop(i)"`. A `data-for` element stays in the DOM, hidden, as the
-  **last** child of its parent: `.slot:nth-child(1)` is the first slot, and a count of `.slot`
-  that includes hidden elements is 25 (the manifest's `count .slot = 24` assumes `assert_ui`
-  counts what is shown).
+  **last** child of its parent: `.slot:nth-child(1)` is the first slot. *(p4-input, 4.6.1: the
+  Lua DOM, the inspector and `assert_ui` leave the template out, so `.slot` counts 24, as the
+  manifest's `count .slot = 24` says.)*
 - **Settings switches**: an invisible `<input type="checkbox">` over a `span.knob` whose
   `::before` is the knob (`input:checked + .knob`): the engine generated no `::before`/`::after`
   on `<input>` (Chromium does). Since `p4-gaps` the switch is the checkbox itself (4.3.2 G5).
@@ -2068,13 +2070,13 @@ Where the result differs from or makes precise 3.8.1, 3.8.2 (README), 3.8.4, 3.8
   ```` ```html ````/```` ```css ````/```` ```lua ```` block is good; a block preceded by a line
   `` `<project path>`: `` is a complete file; bad examples live in tables. The examples table
   of section 14 follows 3.7.2.
-- **Differences from 3.8.1 found in the code**: gamepads do not reach documents (3.8.1 §10
-  said they do): the guide says so and the menu script handles `onGamepadButtonDown` in Lua. In
-  edit mode a `data-style-*` expression of a model no script created yet evaluates with empty
-  values and RmlUi logs `Syntax error parsing inline property declaration 'width: %;'` once per
-  load (harmless, gone in play, not a compat diagnostic): the guide explains it; it is a
-  phase-1 data-binding behaviour, not changed here. RmlUi keeps the `data-for` element in the DOM
-  (hidden, after its rows): the guide says `querySelectorAll` counts it.
+- **Differences from 3.8.1 found in the code** (all three fixed since by `p4-input`, 4.6.1; the
+  guide now says what 4.6.1 describes): gamepads did not reach documents (3.8.1 §10 said they
+  do): the guide said so and the menu script handled `onGamepadButtonDown` in Lua. In edit mode
+  a `data-style-*` expression of a model no script created yet evaluated with empty values and
+  RmlUi logged `Syntax error parsing inline property declaration 'width: %;'` once per load: the
+  guide explained it. RmlUi keeps the `data-for` element in the DOM (hidden, after its rows):
+  the guide said `querySelectorAll` counts it.
 - **Stubs** (`generate_lua_stubs.py`): `HtmlUITypes.lua` is generated and holds
   `---@alias UIEventType` (the names of `HtmlUIEventListener.cpp`, RmlUi's event table and the
   engine's elements: `click` ... `transitioncancel`, `toggle`, `close`, `cancel`,
@@ -2124,7 +2126,8 @@ Where the result differs from or makes precise 3.8.1, 3.8.2 (README), 3.8.4, 3.8
   guide's complete scripts, a `GOOD_UI_LUA` and, when present, the example scripts in a
   workspace with the project's stubs (`test_stubs.lua_workspace`); `BAD_UI_LUA` also has
   `mouseenter`, `classList.add` with a dot and `el.onclick = f`.
-: tools, send_input/import_files extensions, resources, instructions, agent simulation
+
+### 4.5 `p4-mcp-tools`: tools, send_input/import_files extensions, resources, instructions, agent simulation
 
 - **Goal:** 3.6, 3.8.3; turn the wave-1 skips into real calls; the agent simulation.
 - **Owned:**
@@ -2154,6 +2157,152 @@ Where the result differs from or makes precise 3.8.1, 3.8.2 (README), 3.8.4, 3.8
   - TOOLS.md regenerated with `gen_tool_docs.py`.
 - **Tests:** 5.6, 5.7, plus the whole HTML UI suite and `test_protocol.py`, `test_autosync.py`,
   `test_checks.py`, `test_stubs.py`, `test_ui_anchors.py`, `test_play.py`, `test_assets.py`.
+
+### 4.6 `p4-input`: gamepads in documents, two data-binding fixes (corrective)
+
+- **Goal:** what 4.4.1 found missing: 3.8.1 §10 (pointer, keyboard **and gamepad** reach the
+  focused document first) made true, designed as a browser-like extension; no Console line for a
+  well-formed `data-style-*` binding of a model that does not exist yet; the `data-for` template
+  out of DOM queries.
+- **Owned:** the gamepad parts of `Engine.cpp`/`Engine.h` and `UIDocumentSystemInput.cpp`,
+  `engine/tests/htmlui/TestInputGamepad.cpp`, `TestDataBindingDom.cpp`,
+  `tools/mcp/tests/test_html_ui_gamepad.py`; fork patches P4-2 … P4-5.
+- **Deps:** `p4-guide` merged. `p4-mcp-tools` also edits `PlayTools.cpp` (`target`); `p4-input`
+  does not need to (`send_input` already sends gamepad buttons and axes).
+
+#### 4.6.1 `p4-input` as implemented
+
+**Gamepad: the model.** The W3C Gamepad API is polled and gives a page no events and no
+navigation; game UIs map the pad to keyboard-like navigation instead. The model chosen is the
+one Edge on Xbox and Windows (UWP) uses for gamepad key events, extended with the keyboard
+meaning of the navigation buttons:
+
+- Every button, the four directions of the left stick and the two triggers are **keys**:
+  `keydown`/`keyup` at the focused element (else the focused document), bubbling, cancelable.
+  `event.code` names the pad key in Edge's names: `GamepadDPadUp/Down/Left/Right`,
+  `GamepadLeftThumbstickUp/Down/Left/Right`, `GamepadA`, `GamepadB`, `GamepadX`, `GamepadY`,
+  `GamepadLeftShoulder`, `GamepadRightShoulder`, `GamepadLeftTrigger`, `GamepadRightTrigger`,
+  `GamepadView` (Back), `GamepadMenu` (Start), `GamepadLeftThumbstickButton`,
+  `GamepadRightThumbstickButton`, and `GamepadGuide` (no Edge name). `event.key` is what the key
+  means: `ArrowUp` … for the d-pad and the stick, `Enter` for A, `Escape` for B, the code for the
+  others; `event.keyCode` the engine key it stands for (`D_KEY_UP` …, `D_KEY_ENTER`,
+  `D_KEY_ESCAPE`, else 0); `event.gamepad` the pad id (-1 for the keyboard; `UIEvent::getGamepad`).
+  So a listener written for the keyboard serves the pad, and one that needs the pad tells them
+  apart by `code`. The engine's Lua gamepad API (`onGamepadButtonDown/Up`, `onGamepadAxisMove`,
+  `Input.isGamepadButtonPressed/getGamepadAxis`) stays the game's.
+- **Default actions** (skipped when a listener calls `preventDefault()`, or when the event was
+  stopped, which is how controls report that they used it; a listener that moved the focus
+  counts as having handled it):
+  - directions: the focused element's `nav-<direction>` decides when it declares one (RmlUi's
+    arrow-key rules: `none`, `#id`, `auto`, `horizontal`, `vertical`, `tree-order`); otherwise
+    spatial navigation (`ElementDocument::FindNavigationTarget`, fork P4-2): the nearest focusable
+    element (visible, `tab-index: auto`, not `focus: none` or disabled) whose box lies in that
+    direction (it ends beyond the source's edge and starts at most halfway into the smaller box),
+    by the CSS Spatial Navigation distance as Chromium weighs it, `euclidean + along + w ×
+    across-gap − √across-overlap` with `w` 30 for left/right (a sideways step stays in its row)
+    and 2 for up/down (a vertical step may drift across columns: a settings row's label on the
+    left, its control on the right), ties in tree order; first among the elements of the nearest scroll container around the focus (items
+    scrolled out of view included: a list scrolls to its next item before the focus leaves),
+    then the whole document, where an element inside another scroll container counts only if it
+    intersects that container's visible box. No wrap-around. The target gets `Focus(true)`
+    (`:focus-visible`) and `ScrollIntoView` with `Nearest` alignment. A focused range adjusts
+    (the controls see the arrow: `WidgetSlider`), an open select moves through its options
+    (`WidgetDropDown`); a text field and a closed select never keep the d-pad (they see no key,
+    `KI_UNKNOWN`).
+  - A: the keyboard's activation: `KI_RETURN` for the controls (RmlUi's document clicks a
+    focused `tab-index: auto` element, compat's `activateFromKey` clicks buttons, links and
+    summaries, a select opens or chooses), `KI_SPACE` on a checkbox or radio (it toggles on the
+    release, as in HTML), nothing on a text field (no line break, no implicit submit; the virtual
+    keyboard is requested, as a tap does). `:active` on the focused element from the down to the
+    up (not when prevented).
+  - B: `KI_ESCAPE` for the controls (a modal `<dialog>` cancels and closes); an open select
+    closes (`HideSelectBox`). Otherwise nothing: menus close in their `keydown` listener.
+  - any key shows `:focus-visible` on the focused element (also one a click focused).
+  - The key the controls see is the event's `key_identifier` parameter; scripts see the pad's key
+    and code (`gamepad`, `gamepad_key`, `repeat` parameters). The fork's text widget leaves events
+    with a `gamepad` parameter to the document (P4-3), so the d-pad leaves a field and B reaches
+    the menu.
+- **Gamepad focus and consuming.** The documents take the pad while an element **in the Tab
+  order** (`tab-index: auto`: a button, link, form control, `tabindex="0"`) of a shown document
+  has the focus of the context keys go to (the screen's, or the texture-mode document that took
+  the last press, as for keys). RmlUi focuses any clicked element (`focus: auto` is the
+  default), so a clicked HUD panel or a `tabindex="-1"` element has the keys but not the pad: the
+  d-pad stays the game's. With such a focus, the directions and A are always consumed (also at
+  the edge of a menu: the player does not move while a menu is used); B and the other keys when
+  a listener or a control stopped or prevented them; an up when its down was consumed (the game
+  never gets an up without a down). Without one, the keys still go to the focused document (as
+  keyboard keys do) and nothing is consumed. Consumed keys skip `onGamepadButtonDown/Up` while
+  `Engine::ignoreEventsHandledByUI`.
+- **Axes.** The left stick is a d-pad: a direction is pressed when its axis passes 0.5 and is
+  the dominant one, and held until its own component drops below 0.3 (hysteresis, no flapping at
+  the diagonal). Triggers (rest −1) press past 0 (half way) and release below −0.2. Left-stick
+  axis moves are consumed while a document has gamepad focus or the held stick direction was
+  consumed; trigger moves while the trigger key's down was consumed; the right stick never. An
+  axis the documents take is first reported to the game once at its rest value (0, triggers −1),
+  so a player walking when a menu opens stops. Polling (`Input.getGamepadAxis`) always reads the
+  device; `Engine::wantsGamepadNavigation()` (Lua `Engine.wantsGamepadNavigation()`) tells a
+  polling game that a document has gamepad focus.
+- **Repeat.** A held d-pad or stick direction whose down a document consumed repeats after
+  0.4 s, then every 0.1 s (`keydown` with `repeat`), on the UI clock (`HtmlUIClock::now()`,
+  `Engine::updateGamepadNavigation` after `flushCharInput` at the start of `systemDraw`): frozen
+  with a held simulation, deterministic under a fixed time; a long frame gives one repeat, not a
+  burst. A down that arrives again without its up is a repeat.
+- **Routing** (`Engine.cpp`): the documents first, top scene layer first, the first scene whose
+  documents consume stops the walk (`dispatchToDocuments`, as keys); ups and the disconnect's
+  releases go to every scene's documents. `UIDocumentSystem::eventOnGamepadKeyDown(int gamepad,
+  GamepadUIKey, bool repeat)`, `eventOnGamepadKeyUp`, `hasGamepadFocus`; `GamepadUIKey`
+  (`UIDocumentSystem.h`); `RmlKeyMap::gamepadDomCode/gamepadDomKey/gamepadEngineKey`. A
+  disconnect releases what the pad held (`:active`, ups).
+- **Platforms.** Every platform layer already funnels its pads into `Engine::systemGamepad*`
+  (Linux evdev `GamepadLinux.cpp` and the editor's `BackendLinux.cpp`, Windows XInput
+  `GamepadWin.cpp`, macOS and iOS GameController `JasperEngineGameController.mm`, Android
+  `NativeEngine.cpp` (GameActivity), Web `JasperEngineWeb.cpp` (the Gamepad API, polled per
+  frame), the editor's MCP `send_input`): the routing is platform-independent, with the stick's
+  down-positive Y every layer already produces. Built and tested here: Linux (glcore, Vulkan),
+  Web and Android builds; Windows, macOS and iOS not built (no code of theirs changed).
+
+**Data binding.**
+
+- `data-style-*` (fork P4-4): in a model created with `allow_missing_variables` (the engine's
+  placeholder models of edit mode, and Lua models), an expression that reads a variable the
+  model does not have yet leaves the property unset (removed) instead of setting the empty
+  default's text (`health + '%'` was `width: %`, a syntax warning per load). The variable's
+  arrival sets it. A value invalid with every variable present still warns. The guide's note is
+  gone; `test_html_ui_docs.py` no longer exempts the line.
+- `data-for` template: the Lua DOM (`UIDocument`/`UIElement` `querySelector(All)`,
+  `getElementById`, `children`, `childElementCount`, `first/lastElementChild`,
+  `next/previousElementSibling`) and the inspector (`inspect::isElement`: `query`, the tree,
+  refs) skip the hidden element RmlUi keeps after the rows (`UIElementAccess::isDataForTemplate`:
+  it carries `data-for`, the rows do not). Structural selectors and sibling combinators skip it
+  too (fork P4-5), so `li:last-child` is the last row, as with the comment node a browser
+  framework leaves. Rows keep their order (inserted before the template). There is no
+  `getElementsBy*` in the Lua API.
+
+**Examples** (merged from `p4-examples` while this package ran): the `x > 0 ? x + '%' : '0'`
+workaround of the hud, loading and inventory bindings is gone (plain `x + '%'`); the inventory
+test counts `.grid > .slot` as 24 without `:not([data-for])`. The menus are gamepad-navigable,
+checked in `test_html_ui_examples.py` after each golden (the goldens are unchanged):
+`main_menu` (the d-pad through the buttons, A presses, the d-pad stays on the open settings
+panel and B closes it), `pause_menu` (Start opens on Resume, B closes; `onGamepadButtonDown`,
+as its Escape uses `onKeyDown`), `settings` (the first tab has the focus at load; tabs, every
+control of the tab, the footer; ranges adjust, switches toggle, selects open and choose; Escape
+or B is Back), `inventory` (slots `tabindex="0"`, the tooltip follows the focus, A picks up and
+puts down, B cancels or closes, View toggles the window, the first gamepad key focuses the first
+slot), and the shop's confirmation dialog (the d-pad stays on its buttons, B cancels and gives
+the focus back to the card's Buy).
+
+**Tests.** `engine/tests/htmlui/TestInputGamepad.cpp` (14: grid and list navigation with
+scrolling, `nav-*` overrides, activation and `:active` with a checkbox and `preventDefault`, B as
+a cancelable Escape and its pass to the game, a modal dialog, range adjust, select open/navigate/
+choose/close, a text field that does not trap, consume vs game with the axis rest value and
+`ignoreEventsHandledByUI` off, `:focus-visible`, repeat timing on the fixture clock with the
+stick, shoulders/triggers/other buttons as keys and a disconnect, a clicked panel);
+`TestTextureMode.cpp` `GamepadKeysFollowTheKeys`; `TestDataBindingDom.cpp` (2); RmlUi unit
+tests `Navigation.FindNavigationTarget`, `form.input.text.gamepad_keys`,
+`data_binding.style_missing_variables`, `data_binding.for_template_not_a_sibling`;
+`tools/mcp/tests/test_html_ui_gamepad.py` (8, play mode through `send_input` gamepad events:
+d-pad and A, focus-visible screenshot, B, shoulder and trigger, range and stick repeat, the
+unfocused pad is the game's, edit-mode silence, data-for rows).
 
 ---
 
