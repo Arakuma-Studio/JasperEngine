@@ -424,25 +424,27 @@ input[type="image"] {
     cursor: pointer;
 }
 
-/* checkbox and radio: 13x13, painted like Chromium's theme. The frame, the rounding, the
-   check and the ring are the theme's: without it (`appearance: none`, the companions) the
-   control has no border, background or radius, as Chromium's html.css gives it none, and no
-   size: it is sized by its content (its ::before and ::after, padding and border), as an
-   inline-block (HtmlInputElement). */
+/* checkbox and radio: 13x13, painted like Chromium's theme. As in Chromium, the theme draws the
+   control: its border, padding and border radius are 0 and its background is not painted
+   (fork P4-G12, HasThemedBox); HtmlInputElement draws the theme (a square of the box's smaller
+   side, centered: Chromium's shapes) in the colours below, which author styles do not reach.
+   Without the theme (`appearance: none`) the control is html.css's: no border, padding or
+   background, and no size: it is sized by its content (its ::before and ::after, padding and
+   border), as an inline-block (HtmlInputElement). */
 input[type="checkbox"], input[type="radio"] {
     box-sizing: border-box;
     width: var(--html-check-size, 13px);
     height: var(--html-check-size, 13px);
     padding: 0;
-    border-width: var(--html-control-border-width, 1px);
-    border-style: solid;
-    border-color: var(--html-control-border, #767676);
-    border-radius: var(--html-check-radius, 2px);
-    background-color: var(--html-control-bg, #ffffff);
+    border-width: 0;
+    background-color: transparent;
     /* not clipped (Chromium): ::before and ::after may leave the box, and the baseline of one
        sized by its content is its last line's */
     overflow: visible;
     cursor: default;
+    --html-theme-fill: var(--html-control-bg, #ffffff);
+    --html-theme-stroke: var(--html-control-border, #767676);
+    --html-theme-mark: #00000000;
 }
 
 /* a checkbox's baseline is its border box's bottom edge (Chromium's themed control), not its
@@ -455,29 +457,39 @@ input[type="checkbox"] {
 
 input[type="radio"] {
     margin: 3px 3px 0 5px;
-    border-radius: var(--html-radio-radius, 9999px);
 }
 
+/* checked: the checkbox filled with the accent and its mark in the accent's contrast; the radio
+   an accent ring and dot on the contrast colour */
 input[type="checkbox"]:checked {
-    border-color: var(--html-check-fill, var(--html-accent, #0075ff));
-    background-color: var(--html-check-fill, var(--html-accent, #0075ff));
-    decorator: var(--html-check, html-layer("/@htmlui/ua/check.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll));
+    --html-theme-fill: var(--html-check-fill, var(--html-accent, #0075ff));
+    --html-theme-stroke: #00000000;
+    --html-theme-mark: var(--html-accent-contrast, #ffffff);
 }
 
-/* the checked radio: an accent ring, a white gap and an accent dot */
 input[type="radio"]:checked {
-    border-color: var(--html-check-fill, var(--html-accent, #0075ff));
-    background-color: var(--html-check-fill, var(--html-accent, #0075ff));
-    box-shadow: var(--html-radio-ring, inset 0 0 0 1.5px var(--html-accent-contrast, #ffffff));
+    --html-theme-fill: var(--html-accent-contrast, #ffffff);
+    --html-theme-stroke: var(--html-check-fill, var(--html-accent, #0075ff));
+    --html-theme-mark: var(--html-check-fill, var(--html-accent, #0075ff));
 }
 
+/* disabled: Chromium's light theme draws it gray and translucent, whatever the accent (measured
+   over black and white backgrounds); a checked checkbox's mark is white at 60% */
 input[type="checkbox"]:disabled, input[type="radio"]:disabled {
-    border-color: var(--html-control-disabled-border, #7676764d);
+    --html-theme-fill: #f5f5f5ad;
+    --html-theme-stroke: var(--html-control-disabled-border, #bababaab);
 }
 
-input[type="checkbox"]:checked:disabled, input[type="radio"]:checked:disabled {
-    border-color: var(--html-check-disabled-fill, #0075ff4d);
-    background-color: var(--html-check-disabled-fill, #0075ff4d);
+input[type="checkbox"]:checked:disabled {
+    --html-theme-fill: var(--html-check-disabled-fill, #c5c5c5c6);
+    --html-theme-stroke: #00000000;
+    --html-theme-mark: #ffffff99;
+}
+
+input[type="radio"]:checked:disabled {
+    --html-theme-fill: #f5f5f5ad;
+    --html-theme-stroke: var(--html-check-disabled-fill, #c5c5c5c6);
+    --html-theme-mark: var(--html-check-disabled-fill, #c5c5c5c6);
 }
 
 /* range: 129x16 with a 2px margin; RmlUi's slider widget parts. Chromium paints an 8px track
@@ -568,9 +580,12 @@ progress {
     box-shadow: var(--html-progress-track, inset 0 0 0 1px #b2b2b2, inset 0 0 0 1em #efefef);
 }
 
+/* the track's 1px line is stroked over the value too, at half alpha (Chromium): above, below and
+   at its start */
 progress fill {
     border-radius: var(--html-progress-fill-radius, 0.25em 0 0 0.25em);
     background-color: var(--html-progress-fill, var(--html-accent, #0075ff));
+    box-shadow: var(--html-progress-fill-line, inset 0 1px 0 0 #76767680, inset 0 -1px 0 0 #76767680, inset 1px 0 0 0 #76767680);
 }
 
 /* select: a white box with a 1px frame and Chromium's chevron. Without the look (`appearance:
@@ -786,6 +801,58 @@ scrollbarcorner {
 }
 
 /* 8. Companion resets: these companions must not inherit (3.9.8) ------------------------- */
+
+/* `appearance` is not inherited (CSS UI 4): the companions an `appearance` declaration writes
+   take the themed look's values again on every control, so a container's `appearance: none`
+   does not reach the controls in it; an author `appearance` on the control wins (author rules
+   outrank this sheet). Their parts (select arrow, slider, progress fill) inherit
+   them from the control. accent-color's companions (--html-accent, --html-accent-contrast) are
+   inherited, as accent-color is. */
+input, select, button, textarea, progress {
+    --html-appearance: auto;
+    --html-check-baseline: -3px;
+    --html-control-bg: #ffffff;
+    --html-control-border: #767676;
+    --html-field-padding: 2px 3px;
+    --html-field-border-width: 1px;
+    --html-field-border-style: solid;
+    --html-control-radius: 2px;
+    --html-check-fill: var(--html-accent, #0075ff);
+    --html-control-disabled-border: #bababaab;
+    --html-check-disabled-fill: #c5c5c5c6;
+    --html-select-arrow: url("/@htmlui/ua/arrow-down.svg");
+    --html-select-arrow-color: currentcolor;
+    --html-thumb: none;
+    --html-slider-fill: var(--html-accent, #0075ff);
+    --html-slider-height: 16px;
+    --html-slider-track-margin: 4px;
+    --html-slider-track-inset: 1px;
+    --html-slider-thumb-margin: -2px;
+    --html-slider-thumb-transform: scale(0.9375);
+    --html-slider-track-height: 6px;
+    --html-slider-track-border: 1px;
+    --html-slider-track-bg: #efefef;
+    --html-slider-track-border-color: #b2b2b2;
+    --html-check-size: 13px;
+    --html-select-bg: #ffffff;
+    --html-select-padding: 1px 0 1px 4px;
+    --html-select-arrow-width: 16px;
+    --html-button-padding: 2px 7px;
+    --html-button-border-width: 1px;
+    --html-button-border-style: solid;
+    --html-button-border: #767676;
+    --html-button-hover-bg: #e5e5e5;
+    --html-button-hover-border: #4f4f4f;
+    --html-button-active-bg: #f5f5f5;
+    --html-button-active-border: #8d8d8d;
+    --html-progress-border-width: 0.25em;
+    --html-progress-radius: 0.5em;
+    --html-progress-bg: #00000000;
+    --html-progress-track: inset 0 0 0 1px #b2b2b2, inset 0 0 0 1em #efefef;
+    --html-progress-fill-radius: 0.25em 0 0 0.25em;
+    --html-progress-fill: var(--html-accent, #0075ff);
+    --html-progress-fill-line: inset 0 1px 0 0 #76767680, inset 0 -1px 0 0 #76767680, inset 1px 0 0 0 #76767680;
+}
 
 * {
     --html-box-shadow: 0 0 0 0 #0000;

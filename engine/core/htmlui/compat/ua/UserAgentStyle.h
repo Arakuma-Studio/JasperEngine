@@ -26,7 +26,7 @@ namespace jasperengine::htmlui::compat {
         static constexpr const char* kSourcePath = "@htmlui/useragent.css";
 
         struct EmbeddedFile {
-            const char* name;              // "useragent.css", "check.svg"
+            const char* name;              // "useragent.css", "arrow-down.svg"
             const unsigned char* data;
             size_t size;
         };
@@ -48,7 +48,7 @@ namespace jasperengine::htmlui::compat {
         // "@htmlui/ua.rcss" for present(), "@htmlui/ua-<bits hex>.rcss" for other sets (tests
         // forcing features: RmlUi caches sheets by path)
         static std::string virtualPath(const ForkFeatures& fork);
-        // "@htmlui/ua/<name>" for every embedded file except the stylesheet (check.svg, ...),
+        // "@htmlui/ua/<name>" for every embedded file except the stylesheet (arrow-down.svg, ...),
         // process lifetime; idempotent
         static void registerInternalFiles();
         // drops the rewritten sheets (tests; the next get() rewrites again)

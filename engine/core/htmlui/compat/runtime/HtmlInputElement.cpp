@@ -6,6 +6,7 @@
 #include "htmlui/compat/css/CssSerialize.h"
 #include "htmlui/compat/runtime/HtmlButtonElement.h"
 #include "htmlui/compat/runtime/HtmlFormSupport.h"
+#include "htmlui/compat/VirtualFiles.h"
 
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Core.h>
@@ -22,7 +23,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
+#include <functional>
 
 using namespace jasperengine::htmlui::compat;
 
@@ -217,6 +220,11 @@ void HtmlInputElement::applyType(){
     if (htmlType == "color" && GetAttribute<Rml::String>("value", "").empty())
         SetAttribute("value", "#000000");
     imageDirty = true;
+
+}
+
+bool HtmlInputElement::HasNativeAppearance() const{
+    return forms::hasNativeAppearance(this);
 }
 
 void HtmlInputElement::OnAttributeChange(const Rml::ElementAttributes& changed_attributes){
@@ -415,26 +423,14 @@ float HtmlInputElement::GetBaseline() const{
 bool HtmlInputElement::GetIntrinsicDimensions(Rml::Vector2f& dimensions, float& ratio){
     if (htmlType == "checkbox" || htmlType == "radio"){
         // Chromium's theme makes an auto width or height 13px (the border box). Without the theme
-        // (`appearance: none`: the user-agent sheet's --html-check-size companion is auto) a
+        // (`appearance: none`; the user-agent sheet's --html-check-size companion is auto) a
         // checkbox or radio is an inline-block sized by its content (its ::before and ::after,
         // padding and border; 0x0 without), so it is not replaced: laid out as a block container.
-        const Rml::Property* size = GetProperty("--html-check-size");
-        if (size && Rml::StringUtilities::StripWhitespace(size->Get<Rml::String>()) == "auto")
+        if (!HasNativeAppearance())
             return false;
-        const Rml::ComputedValues& computed = GetComputedValues();
-        const auto edge = [](const Rml::Style::LengthPercentage& length){
-            return length.type == Rml::Style::LengthPercentage::Length ? length.value : 0.0f;
-        };
-        float edgesX = edge(computed.padding_left()) + edge(computed.padding_right());
-        float edgesY = edge(computed.padding_top()) + edge(computed.padding_bottom());
-        if (computed.box_sizing() == Rml::Style::BoxSizing::BorderBox){
-            edgesX += computed.border_left_width() + computed.border_right_width();
-            edgesY += computed.border_top_width() + computed.border_bottom_width();
-        }else{
-            edgesX = edgesY = 0.0f;
-        }
-        // each auto dimension on its own: no ratio (a 20px wide checkbox stays 13px tall)
-        dimensions = Rml::Vector2f(std::max(13.0f - edgesX, 0.0f), std::max(13.0f - edgesY, 0.0f));
+        // each auto dimension on its own: no ratio (a 20px wide checkbox stays 13px tall); the
+        // themed box has no border or padding (the fork's P4-G12)
+        dimensions = Rml::Vector2f(13.0f, 13.0f);
         ratio = -1.0f;
         return true;
     }
@@ -480,10 +476,123 @@ bool HtmlInputElement::GetIntrinsicDimensions(Rml::Vector2f& dimensions, float& 
 void HtmlInputElement::OnResize(){
     Rml::ElementFormControlInput::OnResize();
     imageGeometry.Clear();
+    themeGeometry.Clear();
+}
+
+// ---------------------------------------------------------------- themed checkbox and radio
+
+namespace {
+    // a colour of the theme (the user-agent sheet's --html-theme-* properties: #rgb[a] or
+    // #rrggbb[aa], transparent) as SVG paint: "none" when transparent
+    std::string themePaint(Rml::Element* element, const char* property){
+        const Rml::Property* value = element->GetProperty(property);
+        std::string text = value ? Rml::StringUtilities::StripWhitespace(value->Get<Rml::String>()) : std::string();
+        std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+        if (text.size() == 4 || text.size() == 5){
+            std::string longer = "#";
+            for (size_t i = 1; i < text.size(); i++)
+                longer += std::string(2, text[i]);
+            text = longer;
+        }
+        if (text.size() != 7 && text.size() != 9)
+            return "none";
+        if (text[0] != '#' || text.find_first_not_of("0123456789abcdef", 1) != std::string::npos)
+            return "none";
+        const int alpha = text.size() == 9 ? (int)std::strtol(text.substr(7, 2).c_str(), nullptr, 16) : 255;
+        if (alpha == 0)
+            return "none";
+        std::string paint = "\"" + text.substr(0, 7) + "\"";
+        if (alpha < 255){
+            char opacity[32];
+            std::snprintf(opacity, sizeof(opacity), "%.4f", alpha / 255.0);
+            paint += std::string(" ") + "opacity=\"" + opacity + "\"";
+        }
+        return paint;
+    }
+
+    std::string number(float value){
+        char text[32];
+        std::snprintf(text, sizeof(text), "%.4g", value);
+        return text;
+    }
+
+    // `attribute="paint" attribute-opacity="a"`, nothing for none
+    std::string paintAttribute(const char* attribute, const std::string& paint){
+        if (paint == "none")
+            return std::string(" ") + attribute + "=\"none\"";
+        const size_t space = paint.find(' ');
+        if (space == std::string::npos)
+            return std::string(" ") + attribute + "=" + paint;
+        return std::string(" ") + attribute + "=" + paint.substr(0, space) + " " + attribute + "-" + paint.substr(space + 1);
+    }
+}
+
+// Chromium's theme (NativeThemeBase, measured against the pinned Chromium: these shapes match its
+// pixels at 13 to 100px): a square of the box's smaller side, centered (at a fraction of a pixel
+// too). A checkbox is a rounded square (radius 2px) filled and stroked 1px inside its edge; checked,
+// the whole square filled and a check stroked 16% of its side through (20%, 50%), (40%, 70%),
+// (80%, 20%). A radio is a circle filled and stroked 1px inside its edge; checked, a dot of 60%.
+std::string HtmlInputElement::themeSvg(Rml::Vector2f size){
+    const float side = std::min(size.x, size.y);
+    const float x = (size.x - side) * 0.5f, y = (size.y - side) * 0.5f;
+    const bool checked = IsPseudoClassSet("checked");
+    const std::string fill = themePaint(this, "--html-theme-fill");
+    const std::string stroke = themePaint(this, "--html-theme-stroke");
+    const std::string mark = themePaint(this, "--html-theme-mark");
+    std::string svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"" + number(size.x) + "\" height=\"" + number(size.y) +
+                      "\" viewBox=\"0 0 " + number(size.x) + " " + number(size.y) + "\">";
+    if (htmlType == "checkbox"){
+        if (checked){
+            svg += "<rect x=\"" + number(x) + "\" y=\"" + number(y) + "\" width=\"" + number(side) + "\" height=\"" + number(side) +
+                   "\" rx=\"2\"" + paintAttribute("fill", fill) + "/>";
+            const auto point = [&](float px, float py){ return number(x + px * side) + " " + number(y + py * side); };
+            svg += "<path d=\"M" + point(0.2f, 0.5f) + " L" + point(0.4f, 0.7f) + " L" + point(0.8f, 0.2f) + "\" fill=\"none\"" +
+                   paintAttribute("stroke", mark) + " stroke-width=\"" + number(side * 0.16f) + "\"/>";
+        }else{
+            svg += "<rect x=\"" + number(x + 0.5f) + "\" y=\"" + number(y + 0.5f) + "\" width=\"" + number(std::max(side - 1.0f, 0.0f)) +
+                   "\" height=\"" + number(std::max(side - 1.0f, 0.0f)) + "\" rx=\"2\"" + paintAttribute("fill", fill) +
+                   paintAttribute("stroke", stroke) + " stroke-width=\"1\"/>";
+        }
+    }else{
+        const std::string cx = number(x + side * 0.5f), cy = number(y + side * 0.5f);
+        svg += "<circle cx=\"" + cx + "\" cy=\"" + cy + "\" r=\"" + number(std::max(side - 1.0f, 0.0f) * 0.5f) + "\"" +
+               paintAttribute("fill", fill) + paintAttribute("stroke", stroke) + " stroke-width=\"1\"/>";
+        if (checked)
+            svg += "<circle cx=\"" + cx + "\" cy=\"" + cy + "\" r=\"" + number(side * 0.3f) + "\"" + paintAttribute("fill", mark) + "/>";
+    }
+    return svg + "</svg>";
+}
+
+void HtmlInputElement::renderTheme(){
+    Rml::RenderManager* renderManager = GetRenderManager();
+    const Rml::Box& box = GetBox();
+    const Rml::Vector2f size = box.GetSize(Rml::BoxArea::Content);   // the border box: a themed box has no border or padding
+    if (!renderManager || size.x <= 0.0f || size.y <= 0.0f)
+        return;
+    const std::string svg = themeSvg(size);
+    if (svg != themeXml){
+        themeXml = svg;
+        // a virtual file per drawing (the shapes are few: shared by every control drawn alike)
+        const std::string path = "@htmlui/theme/" + std::to_string(std::hash<std::string>()(svg)) + ".svg";
+        if (!VirtualFiles::exists(path))
+            VirtualFiles::add(path, svg);
+        themeImage.load(this, "/" + path);
+        themeGeometry.Clear();
+    }
+    if (!themeImage.isSvg())
+        return;
+    if (!themeGeometry.IsSet()){
+        themeTexture = themeImage.texture(this, size);
+        themeGeometry.Set(Rml::Rectanglef::FromPositionSize(box.GetPosition(Rml::BoxArea::Content), size),
+                          Rml::Colourb(255, 255, 255, 255).ToPremultiplied(GetDrawOpacity()));
+    }
+    themeGeometry.Render(this, themeTexture);
 }
 
 void HtmlInputElement::OnRender(){
     Rml::ElementFormControlInput::OnRender();
+    if ((htmlType == "checkbox" || htmlType == "radio") && HasThemedBox())
+        renderTheme();
     if (htmlType != "image" || !imageLoaded)
         return;
     Rml::RenderManager* renderManager = GetRenderManager();

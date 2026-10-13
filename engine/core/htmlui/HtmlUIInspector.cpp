@@ -14,6 +14,7 @@
 #include "htmlui/compat/SourceFiles.h"
 #include "htmlui/compat/SupportTables.h"
 #include "htmlui/compat/css/CssRewriter.h"
+#include "htmlui/compat/runtime/HtmlFormSupport.h"
 #include "object/ui/UIElementInternal.h"
 #include "subsystem/UIDocumentSystem.h"
 
@@ -323,6 +324,10 @@ namespace {
 
     // the computed value of an RmlUi property as CSS text
     std::string valueText(Rml::Element* element, Rml::PropertyId id){
+        // what Chromium's theme adjusts (a themed checkbox's box, a button's display): its value
+        std::string themed;
+        if (hc::forms::themedComputedValue(element, id, themed))
+            return themed;
         const Rml::Property* found = element->GetProperty(id);
         if (!found)
             return std::string();

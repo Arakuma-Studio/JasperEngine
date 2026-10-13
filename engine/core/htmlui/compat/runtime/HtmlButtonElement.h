@@ -32,6 +32,9 @@ namespace jasperengine::htmlui::compat {
         // laid out as Chromium lays out a button: its content centered vertically as one block
         // (the fork's P4-G2)
         bool HasButtonLayout() const override;
+        // CSS `appearance` is not none (the --html-appearance companion): its display types as
+        // Chromium's theme computes them (the fork's P4-G12)
+        bool HasNativeAppearance() const override;
 
     protected:
         void OnAttributeChange(const Rml::ElementAttributes& changed_attributes) override;

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: appearance is not inherited</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #223344; }
+  input, select, button, textarea, progress { position: absolute; margin: 0; font-family: "Ahem"; font-size: 10px; line-height: 1; }
+  /* a container without its look: the controls in it keep theirs */
+  .plain { position: absolute; left: 0; top: 0; width: 340px; height: 120px; appearance: none; -webkit-appearance: none; }
+  #c1 { left: 10px; top: 10px; }
+  #c2 { left: 30px; top: 10px; }
+  #s1 { left: 90px; top: 10px; }
+  #b1 { left: 160px; top: 10px; }
+  #t1 { left: 10px; top: 40px; width: 60px; }
+  /* the control's own appearance: none still applies */
+  #c3 { left: 10px; top: 90px; appearance: none; width: 12px; height: 12px; border: 2px solid #556677; }
+  #s2 { left: 40px; top: 90px; appearance: none; }
+  #b2 { left: 110px; top: 90px; appearance: none; }
+</style>
+</head>
+<body><div class="plain"><input type="checkbox" id="c1"><input type="checkbox" id="c2" checked><select id="s1"><option>XXX</option></select><button id="b1">XX</button><input id="t1" value="XX"><input type="checkbox" id="c3"><select id="s2"><option>XXX</option></select><button id="b2">XX</button></div></body>
+</html>

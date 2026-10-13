@@ -1,18 +1,14 @@
 #htmlui-root input[type="checkbox"] {
---html-check: none;
+--html-appearance: none;
 --html-check-baseline: 0px;
 --html-control-bg: transparent;
 --html-control-border: transparent;
---html-control-border-width: 0px;
 --html-check-size: auto;
 --html-control-radius: 0px;
 --html-field-padding: 1px 2px;
 --html-field-border-width: 2px;
 --html-field-border-style: inset;
---html-check-radius: 0px;
---html-radio-radius: 0px;
 --html-check-fill: transparent;
---html-radio-ring: 0 0 0 0 #0000;
 --html-control-disabled-border: transparent;
 --html-check-disabled-fill: transparent;
 --html-select-bg: #efefef;
@@ -34,6 +30,7 @@
 --html-progress-track: 0 0 0 0 #0000;
 --html-progress-fill-radius: 0px;
 --html-progress-fill: #008000;
+--html-progress-fill-line: 0 0 0 0 #0000;
 --html-thumb: none;
 --html-slider-fill: transparent;
 --html-slider-height: auto;
@@ -47,20 +44,16 @@
 --html-slider-track-border-color: transparent;
 }
 #htmlui-root select {
---html-check: none;
+--html-appearance: none;
 --html-check-baseline: 0px;
 --html-control-bg: transparent;
 --html-control-border: transparent;
---html-control-border-width: 0px;
 --html-check-size: auto;
 --html-control-radius: 0px;
 --html-field-padding: 1px 2px;
 --html-field-border-width: 2px;
 --html-field-border-style: inset;
---html-check-radius: 0px;
---html-radio-radius: 0px;
 --html-check-fill: transparent;
---html-radio-ring: 0 0 0 0 #0000;
 --html-control-disabled-border: transparent;
 --html-check-disabled-fill: transparent;
 --html-select-bg: #efefef;
@@ -82,6 +75,7 @@
 --html-progress-track: 0 0 0 0 #0000;
 --html-progress-fill-radius: 0px;
 --html-progress-fill: #008000;
+--html-progress-fill-line: 0 0 0 0 #0000;
 --html-thumb: none;
 --html-slider-fill: transparent;
 --html-slider-height: auto;
@@ -95,21 +89,17 @@
 --html-slider-track-border-color: transparent;
 }
 #htmlui-root .restore {
---html-check: html-layer("/@htmlui/ua/check.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll);
+--html-appearance: auto;
 --html-check-baseline: -3px;
 --html-control-bg: #ffffffff;
 --html-control-border: #767676ff;
---html-control-border-width: 1px;
 --html-field-padding: 2px 3px;
 --html-field-border-width: 1px;
 --html-field-border-style: solid;
 --html-control-radius: 2px;
---html-check-radius: 2px;
---html-radio-radius: 9999px;
 --html-check-fill: var(--html-accent, #0075ff);
---html-radio-ring: inset 0 0 0 1.5px var(--html-accent-contrast, #ffffff);
---html-control-disabled-border: #7676764d;
---html-check-disabled-fill: #0075ff4d;
+--html-control-disabled-border: #bababaab;
+--html-check-disabled-fill: #c5c5c5c6;
 --html-select-arrow: url("/@htmlui/ua/arrow-down.svg");
 --html-select-arrow-color: currentcolor;
 --html-thumb: none;
@@ -141,23 +131,20 @@
 --html-progress-track: inset 0 0 0 1px #b2b2b2, inset 0 0 0 1em #efefef;
 --html-progress-fill-radius: 0.25em 0 0 0.25em;
 --html-progress-fill: var(--html-accent, #0075ff);
+--html-progress-fill-line: inset 0 1px 0 0 #76767680, inset 0 -1px 0 0 #76767680, inset 1px 0 0 0 #76767680;
 }
 #htmlui-root .button {
---html-check: html-layer("/@htmlui/ua/check.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll);
+--html-appearance: auto;
 --html-check-baseline: -3px;
 --html-control-bg: #ffffffff;
 --html-control-border: #767676ff;
---html-control-border-width: 1px;
 --html-field-padding: 2px 3px;
 --html-field-border-width: 1px;
 --html-field-border-style: solid;
 --html-control-radius: 2px;
---html-check-radius: 2px;
---html-radio-radius: 9999px;
 --html-check-fill: var(--html-accent, #0075ff);
---html-radio-ring: inset 0 0 0 1.5px var(--html-accent-contrast, #ffffff);
---html-control-disabled-border: #7676764d;
---html-check-disabled-fill: #0075ff4d;
+--html-control-disabled-border: #bababaab;
+--html-check-disabled-fill: #c5c5c5c6;
 --html-select-arrow: url("/@htmlui/ua/arrow-down.svg");
 --html-select-arrow-color: currentcolor;
 --html-thumb: none;
@@ -189,4 +176,5 @@
 --html-progress-track: inset 0 0 0 1px #b2b2b2, inset 0 0 0 1em #efefef;
 --html-progress-fill-radius: 0.25em 0 0 0.25em;
 --html-progress-fill: var(--html-accent, #0075ff);
+--html-progress-fill-line: inset 0 1px 0 0 #76767680, inset 0 -1px 0 0 #76767680, inset 1px 0 0 0 #76767680;
 }

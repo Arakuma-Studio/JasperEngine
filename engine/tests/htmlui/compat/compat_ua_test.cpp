@@ -301,7 +301,7 @@ TEST(CompatUaSheet, SourceCarriesChromiumDefaults){
     const std::string source(UserAgentStyle::source());
     for (const char* expected : {"margin: 8px;", "font-size: 2em;", "margin: 0.67em 0;", "padding-left: 40px;", "border-spacing: 2px;",
                                  "font-size: 13.333px;", "width: var(--html-check-size, 13px);", "width: 129px;", "width: 10em;", "#767676", "#efefef",
-                                 "var(--html-accent, #0075ff)", "var(--html-check,", "var(--html-control-bg, #ffffff)",
+                                 "var(--html-accent, #0075ff)", "--html-theme-fill: var(--html-control-bg, #ffffff);", "var(--html-control-bg, #ffffff)",
                                  "var(--html-control-border, #767676)", "var(--html-select-arrow,", "var(--html-thumb,",
                                  "--html-box-shadow: 0 0 0 0 #0000;", "--html-outline-shadow: 0 0 0 0 #0000;", ":focus-visible",
                                  "scrollbarvertical", "width: 15px;", "selection", ".htmlui-unsupported"})
@@ -326,7 +326,7 @@ TEST(CompatUaSheet, InternalImagesAreEmbeddedAndServed){
         ASSERT_NE(end, std::string::npos);
         referenced.insert(source.substr(at + 12, end - at - 12));
     }
-    EXPECT_GE(referenced.size(), 6u);   // check, select arrow, four scrollbar arrows
+    EXPECT_GE(referenced.size(), 5u);   // select arrow, four scrollbar arrows
 
     UserAgentStyle::get();
     for (const std::string& name : referenced){
@@ -413,12 +413,37 @@ TEST(CompatUaSheet, AppearanceAutoWritesTheSheetsFallbacks){
         fallback.erase(fallback.find_last_not_of(" \n") + 1);
         fallbacks[name].insert(normalized(fallback));
     }
+    // the controls' reset rule (p4-gaps2: `appearance` is not inherited) declares each companion
+    // with the look's value: the same as auto writes
+    std::map<std::string, std::string> reset;
+    const size_t rule = source.find("input, select, button, textarea, progress {\n    --html-appearance:");
+    ASSERT_NE(rule, std::string::npos) << "no reset rule of the appearance companions on the controls";
+    const size_t ruleEnd = source.find('}', rule);
+    for (size_t at = source.find("--html-", rule); at != std::string::npos && at < ruleEnd; at = source.find("--html-", at + 1)){
+        if (at >= 4 && source.compare(at - 4, 4, "var(") == 0)
+            continue;
+        const size_t colon = source.find(':', at);
+        const size_t semicolon = source.find(';', at);
+        std::string value = source.substr(colon + 1, semicolon - colon - 1);
+        value.erase(0, value.find_first_not_of(' '));
+        reset[source.substr(at, colon - at)] = normalized(value);
+        at = semicolon;
+    }
     for (const auto& pair : written){
         SCOPED_TRACE(pair.first);
+        const auto declared = reset.find(pair.first);
+        ASSERT_NE(declared, reset.end()) << "the controls' reset rule does not declare it: it would inherit";
+        EXPECT_EQ(pair.second, declared->second);
         const auto read = fallbacks.find(pair.first);
-        ASSERT_NE(read, fallbacks.end()) << "the user-agent sheet never reads it with a fallback";
+        if (read == fallbacks.end()){
+            // read by the runtime only (--html-appearance: HasNativeAppearance)
+            EXPECT_EQ(pair.first, "--html-appearance");
+            continue;
+        }
         ASSERT_EQ(read->second.size(), 1u) << "read with different fallbacks: " << *read->second.begin() << " and "
                                            << *read->second.rbegin() << " (auto can write one)";
         EXPECT_EQ(pair.second, *read->second.begin());
     }
+    for (const auto& pair : reset)
+        EXPECT_TRUE(written.count(pair.first)) << pair.first << " is reset on the controls and not written by appearance";
 }

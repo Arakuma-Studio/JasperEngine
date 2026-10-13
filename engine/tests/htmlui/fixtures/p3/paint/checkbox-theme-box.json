@@ -1,0 +1,4 @@
+{
+ "comment": "a checkbox with its look, as Chromium's theme draws it: in a box that is not 13x13 a square of the box's smaller side, centered (at half pixels too), its frame 1px, its check scaled; the author's background (colour or image), border, padding and border radius have no effect (border and padding compute to 0, so a content-box size is the box); checked, disabled, a light accent-color (a dark check). (Radios are drawn with the same geometry, a circle and a 60% dot; their anti-aliased edges are not compared here: LunaSVG and Skia rasterize circles differently, see the phase-4 spec 4.3.3.)",
+ "viewport": [270, 100]
+}

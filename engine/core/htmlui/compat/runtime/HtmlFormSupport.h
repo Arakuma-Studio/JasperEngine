@@ -10,6 +10,8 @@
 
 #include "Export.h"
 
+#include <RmlUi/Core/ID.h>
+
 #include <cstdint>
 #include <string>
 
@@ -46,6 +48,15 @@ namespace jasperengine::htmlui::compat::forms {
     bool activateFromKey(Rml::Element* element, Rml::Event& event, Activation activation = Activation::EnterAndSpace);
 
     bool isDisabled(Rml::Element* element);
+    // CSS `appearance` of a control is not none: the user-agent sheet's --html-appearance
+    // companion, which the `appearance` rewrite writes and every control resets (p4-gaps2)
+    bool hasNativeAppearance(const Rml::Element* element);
+    // Chromium's computed value of a property its theme adjusts (LayoutTheme::AdjustStyle): a
+    // themed checkbox's or radio's border, padding and border radius are 0, a button's display
+    // types (the fork's computed display, P4-G10, P4-G12; with `appearance: none` Chromium keeps
+    // the declared one, laid out the same); false for every other property and element, whose
+    // value is the cascaded one
+    bool themedComputedValue(Rml::Element* element, Rml::PropertyId id, std::string& text);
     std::string lowerAttribute(Rml::Element* element, const char* name, const char* fallback = "");
 
 }

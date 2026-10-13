@@ -18,6 +18,8 @@
 
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/VirtualFiles.h"
+#include "htmlui/compat/runtime/HtmlFormSupport.h"
+#include "htmlui/compat/runtime/HtmlInputElement.h"
 
 #include "HtmlUI.h"
 #include "RmlSystem.h"
@@ -146,10 +148,12 @@ TEST(AppearanceNone, ControlsKeepTheirOwnHtmlCssLook){
     EXPECT_FLOAT_EQ(page.byId("ba")->GetComputedValues().border_top_width(), 1.0f);
     EXPECT_EQ(page.byId("ba")->GetComputedValues().border_top_color(), gray);
 
-    // the checkbox still loses its frame and fill
+    // the checkbox loses its theme, and has no frame or fill; with it its box is the theme's
+    EXPECT_FALSE(page.byId("c")->HasNativeAppearance());
+    EXPECT_FALSE(page.byId("c")->HasThemedBox());
     EXPECT_FLOAT_EQ(page.byId("c")->GetComputedValues().border_top_width(), 0.0f);
     EXPECT_EQ(page.byId("c")->GetComputedValues().background_color().alpha, 0);
-    EXPECT_FLOAT_EQ(page.byId("ca")->GetComputedValues().border_top_width(), 1.0f);
+    EXPECT_TRUE(page.byId("ca")->HasThemedBox());
 
     // progress: the whole box gray, the value green, no rounding
     const Rml::ComputedValues& progress = page.byId("p")->GetComputedValues();
@@ -208,4 +212,94 @@ TEST(ButtonDisplay, InlineIsInlineBlock){
     EXPECT_EQ(page.byId("t")->GetDisplay(), Rml::Style::Display::Inline);
     EXPECT_EQ(borderSize(page.byId("b")), Rml::Vector2f(60, 30));
     EXPECT_EQ(borderSize(page.byId("i")), Rml::Vector2f(60, 30));
+}
+
+// `appearance` is not inherited: a container's appearance: none leaves the controls in it themed
+// (the user-agent sheet resets the companions on every control); the control's own still applies
+TEST(AppearanceNone, IsNotInherited){
+    Page page("inherit", ".plain { appearance: none; } #own { appearance: none; }",
+              "<div class='plain'><input id='c' type='checkbox'><select id='s'><option>a</option></select><button id='b'>b</button>"
+              "<input id='own' type='checkbox'><input id='g' type='range'><progress id='p' value='0.5'></progress></div>");
+    ASSERT_TRUE(page.document);
+    EXPECT_TRUE(page.byId("c")->HasNativeAppearance());
+    EXPECT_TRUE(page.byId("c")->HasThemedBox());
+    EXPECT_EQ(page.byId("s")->GetComputedValues().background_color(), Rml::Colourb(255, 255, 255, 255));
+    EXPECT_FLOAT_EQ(part(page.byId("s"), "selectarrow")->GetComputedValues().width().value, 16.0f);
+    EXPECT_FLOAT_EQ(page.byId("b")->GetComputedValues().border_top_width(), 1.0f);
+    EXPECT_FLOAT_EQ(page.byId("g")->GetComputedValues().height().value, 16.0f);   // the themed range's height
+    EXPECT_EQ(page.byId("p")->GetComputedValues().background_color().alpha, 0);   // not the gray bar of appearance: none
+    EXPECT_FALSE(page.byId("own")->HasNativeAppearance());
+    EXPECT_EQ(borderSize(page.byId("own")), Rml::Vector2f(0, 0));
+}
+
+// A themed checkbox or radio as Chromium's theme draws it: the author's background, border, padding
+// and border radius have no effect (the fork's P4-G12), the theme is a square of the box's smaller
+// side, centered; getComputedStyle and the inspector report Chromium's values
+TEST(AppearanceNone, ThemedCheckboxIsACenteredSquare){
+    Page page("themed", "input { margin: 0; } #c { width: 30px; height: 20px; background: red; border: 3px solid blue; padding: 4px; border-radius: 6px; } "
+                        "#r { width: 20px; height: 40px; box-sizing: content-box; border: 2px solid blue; }",
+              "<input id='c' type='checkbox' checked><input id='r' type='radio'>");
+    ASSERT_TRUE(page.document);
+    Rml::Element* checkbox = page.byId("c");
+    EXPECT_EQ(borderSize(checkbox), Rml::Vector2f(30, 20));
+    EXPECT_EQ(checkbox->GetComputedValues().background_color().alpha, 0);
+    EXPECT_FALSE(checkbox->GetComputedValues().has_border_radius());
+    // the theme: a 20px square centered in the 30x20 box, filled with the accent, the check through it
+    auto* input = rmlui_dynamic_cast<htmlui::compat::HtmlInputElement*>(checkbox);
+    ASSERT_NE(input, nullptr);
+    const std::string svg = input->themeSvg(Rml::Vector2f(30, 20));
+    EXPECT_NE(svg.find("<rect x=\"5\" y=\"0\" width=\"20\" height=\"20\" rx=\"2\" fill=\"#0075ff\"/>"), std::string::npos) << svg;
+    EXPECT_NE(svg.find("<path d=\"M9 10 L13 14 L21 4\" fill=\"none\" stroke=\"#ffffff\" stroke-width=\"3.2\"/>"), std::string::npos) << svg;
+    // content-box: the border is 0, so the box is its width and height; the circle centered in it
+    EXPECT_EQ(borderSize(page.byId("r")), Rml::Vector2f(20, 40));
+    auto* radio = rmlui_dynamic_cast<htmlui::compat::HtmlInputElement*>(page.byId("r"));
+    ASSERT_NE(radio, nullptr);
+    const std::string circle = radio->themeSvg(Rml::Vector2f(20, 40));
+    EXPECT_NE(circle.find("<circle cx=\"10\" cy=\"20\" r=\"9.5\" fill=\"#ffffff\" stroke=\"#767676\" stroke-width=\"1\"/>"), std::string::npos) << circle;
+
+    std::string text;
+    ASSERT_TRUE(htmlui::compat::forms::themedComputedValue(checkbox, Rml::PropertyId::BorderTopWidth, text));
+    EXPECT_EQ(text, "0px");
+    ASSERT_TRUE(htmlui::compat::forms::themedComputedValue(checkbox, Rml::PropertyId::PaddingLeft, text));
+    EXPECT_EQ(text, "0px");
+    EXPECT_FALSE(htmlui::compat::forms::themedComputedValue(checkbox, Rml::PropertyId::BackgroundColor, text));   // Chromium: the author's
+
+    // without the theme the author's box applies, and the part is hidden
+    checkbox->SetProperty("--html-appearance", "none");
+    page.context->Update();
+    EXPECT_EQ(checkbox->GetComputedValues().background_color(), Rml::Colourb(255, 0, 0, 255));
+    EXPECT_FLOAT_EQ(checkbox->GetComputedValues().border_top_width(), 3.0f);
+    EXPECT_FALSE(checkbox->HasThemedBox());
+    EXPECT_FALSE(htmlui::compat::forms::themedComputedValue(checkbox, Rml::PropertyId::BorderTopWidth, text));
+}
+
+// A button's computed display as Chromium reports it: with its look the theme's (inline-block for
+// inline, block for table and list-item); with appearance: none the declared one (laid out as an
+// inline-block or a block all the same); a block-level button is as wide as its content
+TEST(ButtonDisplay, ComputedAsChromiumReportsIt){
+    Page page("button-display", "button { margin: 0; } .n { appearance: none; }",
+              "<div style='width: 300px'><button id='a' style='display: inline'>b</button><button id='b' class='n' style='display: inline'>b</button>"
+              "<button id='c' style='display: table'>b</button><button id='d' class='n' style='display: table-cell'>b</button>"
+              "<button id='e' style='display: block'>b</button><button id='f' style='display: block; margin: 0 auto'>b</button></div>"
+              "<div style='display: flex; flex-direction: column; width: 300px'><button id='g'>b</button></div>");
+    ASSERT_TRUE(page.document);
+    const auto reported = [&](const char* id){
+        std::string text;
+        if (htmlui::compat::forms::themedComputedValue(page.byId(id), Rml::PropertyId::Display, text))
+            return text;
+        return page.byId(id)->GetProperty(Rml::PropertyId::Display)->ToString();
+    };
+    EXPECT_EQ(reported("a"), "inline-block");
+    EXPECT_EQ(reported("b"), "inline");
+    EXPECT_EQ(reported("c"), "block");
+    EXPECT_EQ(reported("d"), "table-cell");
+    EXPECT_EQ(page.byId("b")->GetDisplay(), Rml::Style::Display::InlineBlock);
+    EXPECT_EQ(page.byId("d")->GetDisplay(), Rml::Style::Display::Block);
+    // fit-content: the block-level buttons are as wide as their content, centered by auto margins
+    const float width = borderSize(page.byId("e")).x;
+    EXPECT_LT(width, 100.0f);
+    EXPECT_FLOAT_EQ(borderSize(page.byId("c")).x, width);
+    EXPECT_FLOAT_EQ(page.byId("f")->GetBox().GetEdge(Rml::BoxArea::Margin, Rml::BoxEdge::Left), (300.0f - width) * 0.5f);
+    // a flex item is stretched as any
+    EXPECT_FLOAT_EQ(borderSize(page.byId("g")).x, 300.0f);
 }
