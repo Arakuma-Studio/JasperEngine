@@ -163,6 +163,11 @@ public:
 	/// block, 'safe' (content taller than the box starts at its top), whatever 'align-content' says. A button laid out as a flex
 	/// or grid container is laid out as any other.
 	virtual bool HasButtonLayout() const;
+	/// Fork (P4-G5): whether the element's ::before and ::after boxes are generated and laid out. By default an element that
+	/// is not replaced has them and a replaced one (an image, a text field, a select) does not; a form control overrides it
+	/// as Chromium decides: checkbox, radio and range inputs have them (laid out in their content box), text and button
+	/// inputs do not.
+	virtual bool HasGeneratedContentBoxes();
 
 	/// Checks if a given point in screen coordinates lies within the bordered area of this element.
 	/// @param[in] point The point to test.

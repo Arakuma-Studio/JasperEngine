@@ -2151,6 +2151,11 @@ bool Element::HasButtonLayout() const
 	return false;
 }
 
+bool Element::HasGeneratedContentBoxes()
+{
+	return !IsReplaced();
+}
+
 void Element::DirtyBorderTopCut()
 {
 	meta->background_border.DirtyBackground();

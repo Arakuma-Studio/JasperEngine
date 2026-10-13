@@ -286,3 +286,81 @@ TEST_CASE("PseudoElements.Transition")
 	document->Close();
 	TestsShell::ShutdownShell();
 }
+
+// Fork (P4-G5): which elements have ::before and ::after boxes, as Chromium decides: checkbox, radio and range inputs have them,
+// laid out in their content box (the custom switch: a knob positioned in an 'appearance: none' checkbox); text and button
+// inputs, images and other replaced elements do not.
+TEST_CASE("PseudoElements.FormControls")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+
+	const String document_rml = R"(<rml>
+<head>
+	<style>
+		body { width: 600px; height: 400px; font-family: LatoLatin; font-size: 16px; }
+		input { display: inline-block; }
+		.dot::before { content: ""; display: block; width: 10px; height: 10px; background-color: red; }
+		.tag::after { content: "X"; }
+		.switch { position: relative; width: 40px; height: 20px; border: 1px #000; padding: 0; box-sizing: border-box; }
+		.switch::before { content: ""; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; background-color: blue; }
+		.switch:checked::before { left: 22px; }
+	</style>
+</head>
+<body>
+	<input type="checkbox" id="checkbox" class="dot" style="width: 13px; height: 13px; border: 1px #000; box-sizing: border-box;"/>
+	<input type="radio" id="radio" class="tag"/>
+	<input type="range" id="range" class="dot"/>
+	<input type="checkbox" id="switch" class="switch"/>
+	<input type="text" id="text" class="dot tag"/>
+	<input type="button" id="button" class="tag" value="B"/>
+	<input type="submit" id="submit" class="dot"/>
+	<img id="img" class="dot tag" src="/assets/high_scores_alien_1.tga"/>
+	<div id="div" class="dot tag"/>
+</body>
+</rml>)";
+
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml, "assets/");
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+
+	const auto has = [&](const char* id, PseudoElementType type) { return document->GetElementById(id)->GetPseudoElement(type) != nullptr; };
+	CHECK(has("checkbox", PseudoElementType::Before));
+	CHECK(has("radio", PseudoElementType::After));
+	CHECK(has("range", PseudoElementType::Before));
+	CHECK(has("switch", PseudoElementType::Before));
+	CHECK(has("div", PseudoElementType::Before));
+	CHECK(has("div", PseudoElementType::After));
+	for (const char* id : {"text", "button", "submit", "img"})
+	{
+		INFO(id);
+		CHECK(!has(id, PseudoElementType::Before));
+		CHECK(!has(id, PseudoElementType::After));
+	}
+
+	// Laid out in the checkbox's content box (inside its border), at its top left.
+	Element* checkbox = document->GetElementById("checkbox");
+	Element* dot = checkbox->GetPseudoElement(PseudoElementType::Before);
+	CHECK(dot->GetBox().GetSize() == Vector2f(10.f, 10.f));
+	CHECK(dot->GetAbsoluteOffset(BoxArea::Border) == checkbox->GetAbsoluteOffset(BoxArea::Content));
+
+	// The switch's knob: absolutely positioned in the relative checkbox, moved by :checked.
+	Element* switch_input = document->GetElementById("switch");
+	Element* knob = switch_input->GetPseudoElement(PseudoElementType::Before);
+	CHECK(knob->GetAbsoluteOffset(BoxArea::Border) == switch_input->GetAbsoluteOffset(BoxArea::Padding) + Vector2f(2.f, 2.f));
+	switch_input->SetAttribute("checked", "");
+	context->Update();
+	CHECK(knob->GetAbsoluteOffset(BoxArea::Border) == switch_input->GetAbsoluteOffset(BoxArea::Padding) + Vector2f(22.f, 2.f));
+
+	// A text input that becomes a checkbox gains them; a checkbox that becomes a text input loses them.
+	document->GetElementById("text")->SetAttribute("type", "checkbox");
+	checkbox->SetAttribute("type", "text");
+	context->Update();
+	CHECK(has("text", PseudoElementType::Before));
+	CHECK(!has("checkbox", PseudoElementType::Before));
+
+	TestsShell::RenderLoop();
+	document->Close();
+	TestsShell::ShutdownShell();
+}

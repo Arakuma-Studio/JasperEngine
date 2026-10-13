@@ -165,3 +165,61 @@ TEST_CASE("form.input.button.centered_content")
 	document->Close();
 	TestsShell::ShutdownShell();
 }
+
+// Fork (P4-G3): a single-line text field taller than its line centers the line (Chromium), also when it is shorter.
+TEST_CASE("form.input.text.centered_line")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+
+	const String document_rml = R"(<rml>
+	<head>
+		<style>
+			body { width: 600px; height: 600px; font-family: LatoLatin; font-size: 16px; }
+			input { display: block; width: 200px; }
+		</style>
+	</head>
+	<body>
+		<input type="text" id="tall" value="Text" style="height: 50px;"/>
+		<input type="password" id="padded" value="Text" style="height: 50px; padding: 4px 0 16px;"/>
+		<input type="text" id="short" value="Text" style="height: 6px;"/>
+		<textarea id="area" style="height: 80px;">Text</textarea>
+	</body>
+	</rml>)";
+
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	context->Render();
+
+	// The top of the field's text, from its content box.
+	const auto text_top = [&](const char* id) {
+		Element* field = document->GetElementById(id);
+		for (int i = 0; i < field->GetNumChildren(true); i++)
+		{
+			Element* child = field->GetChild(i);
+			if (child->GetTagName() == "#text")
+				return child->GetAbsoluteOffset(BoxArea::Border).y - field->GetAbsoluteOffset(BoxArea::Content).y;
+		}
+		FAIL("no text element");
+		return 0.f;
+	};
+
+	Element* tall = document->GetElementById("tall");
+	const float line_height = tall->GetLineHeight();
+	CHECK(text_top("tall") == doctest::Approx(0.5f * (50.f - line_height)));
+	CHECK(text_top("padded") == doctest::Approx(0.5f * (50.f - line_height))); // (content-box: 50px of content)
+	CHECK(text_top("short") == doctest::Approx(0.5f * (6.f - line_height)));
+	// A multi-line field keeps its lines at the top.
+	CHECK(text_top("area") == doctest::Approx(0.f));
+
+	// A larger font in the same height: the line moves with it.
+	tall->SetProperty("font-size", "30px");
+	context->Update();
+	context->Render();
+	CHECK(text_top("tall") == doctest::Approx(0.5f * (50.f - tall->GetLineHeight())));
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
