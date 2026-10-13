@@ -10,7 +10,8 @@ class DocumentHeader;
 class ElementText;
 class StyleSheet;
 class StyleSheetContainer;
-enum class NavigationSearchDirection;
+/** Direction of directional (arrow key, gamepad) navigation. */
+enum class NavigationSearchDirection { Up, Down, Left, Right };
 
 /** ModalFlag controls the modal state of the document. */
 enum class ModalFlag {
@@ -117,6 +118,18 @@ public:
 	/// @param[in] wrap_around True to continue searching wrapping around the document root.
 	/// @return The next tabbable element, or nullptr if none could be found.
 	Element* FindNextTabElement(Element* current_element, bool forward, bool wrap_around = true);
+
+	/// Finds the element directional navigation moves the focus to from the given element, as a gamepad does. When the
+	/// element declares the navigation property of the direction (nav-up, nav-right, nav-down, nav-left), it decides, as for
+	/// the arrow keys. Otherwise spatial navigation: the nearest focusable element in that direction, first inside the
+	/// nearest scroll container around the element (its parts scrolled out of view included), then in the whole document,
+	/// where an element inside another scroll container counts only when it is visible in it. Nearest is the CSS Spatial
+	/// Navigation distance: Euclidean distance + distance along the direction + 30 x the gap across it - sqrt(overlap
+	/// across it); ties go to the first in tree order.
+	/// @param[in] current_element The element to start from, usually the focused one.
+	/// @param[in] direction The direction to move in.
+	/// @return The element to focus, or nullptr if there is none in that direction.
+	Element* FindNavigationTarget(Element* current_element, NavigationSearchDirection direction);
 
 	/// Loads an inline script into the document. Note that the base implementation does nothing, but script plugins can hook into this method.
 	/// @param[in] content The script content.
