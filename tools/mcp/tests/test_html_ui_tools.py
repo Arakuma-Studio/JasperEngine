@@ -558,6 +558,9 @@ async def test_inspect_flags(ed: Editor):
     ed.check("overflow-x" in flags["box"], f"#box overflows: {flags}")
     ed.check("clipped" in flags["child"], f"#child is clipped: {flags}")
     ed.check("hidden" in flags["hidden-panel"] and "hidden" in flags["inside"], f"hidden: {flags}")
+    boxes = {e.get("id"): e["box"] for e in r.structured["elements"]}
+    ed.check(boxes["hidden-panel"] == [0, 0, 0, 0] and boxes["inside"] == [0, 0, 0, 0],
+             f"display: none has no box (p4-gaps G4): {boxes['hidden-panel']}, {boxes['inside']}")
     ed.check(re.search(r"div#box .*!overflow-x", r.text) and re.search(r"div#child .*!clipped", r.text) and
              re.search(r"div#hidden-panel .*\bhidden\b", r.text), f"flags in the text: {r.text}")
     S["flags"] = made["entity"]["id"]
