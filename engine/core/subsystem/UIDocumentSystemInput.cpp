@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // UIDocumentSystem input (phase 1, p1-input, spec §3.6.2): HtmlUIInputState, pointer ids,
-// touch, wheel, keys, text and IME, and the consume rules.
+// touch, wheel, keys, text and IME, and the consume rules. Gamepad keys: phase 4, p4-input.
 
 #include "UIDocumentSystem.h"
 
@@ -18,6 +18,8 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/Elements/ElementFormControlSelect.h>
+#include <RmlUi/Core/ScrollTypes.h>
 
 #include <bitset>
 #include <set>
@@ -38,6 +40,16 @@ namespace jasperengine{
         // the editor sends the character before the key down.
         std::vector<int> pendingControlKeys;
         std::vector<int> controlKeyDowns;
+        // p4-input: the gamepad keys whose down this system dispatched, until their up
+        struct GamepadKey {
+            int gamepad;
+            GamepadUIKey key;
+            Rml::Input::KeyIdentifier rmlKey;          // what the controls saw on the down; the up repeats it
+            bool consumed;
+            Rml::ObserverPtr<Rml::Element> focus;      // the focused element of the down
+            Rml::ObserverPtr<Rml::Element> active;     // A: the element held :active until the up
+        };
+        std::vector<GamepadKey> gamepadKeys;
     };
 
 }
@@ -129,6 +141,78 @@ namespace {
                type == "url" || type == "tel" || type == "number";
     }
 
+    bool isInputOfType(Rml::Element* element, std::initializer_list<const char*> types){
+        if (!element || element->GetTagName() != "input")
+            return false;
+        const Rml::String type = element->GetAttribute<Rml::String>("type", "text");
+        for (const char* candidate : types){
+            if (type == candidate)
+                return true;
+        }
+        return false;
+    }
+
+    bool isGamepadDirection(GamepadUIKey key){
+        return key >= GamepadUIKey::DPAD_UP && key <= GamepadUIKey::LEFT_STICK_RIGHT;
+    }
+
+    Rml::NavigationSearchDirection navigationDirection(GamepadUIKey key){
+        switch (key){
+            case GamepadUIKey::DPAD_UP: case GamepadUIKey::LEFT_STICK_UP: return Rml::NavigationSearchDirection::Up;
+            case GamepadUIKey::DPAD_DOWN: case GamepadUIKey::LEFT_STICK_DOWN: return Rml::NavigationSearchDirection::Down;
+            case GamepadUIKey::DPAD_LEFT: case GamepadUIKey::LEFT_STICK_LEFT: return Rml::NavigationSearchDirection::Left;
+            default: return Rml::NavigationSearchDirection::Right;
+        }
+    }
+
+    Rml::Input::KeyIdentifier arrowKey(GamepadUIKey key){
+        switch (navigationDirection(key)){
+            case Rml::NavigationSearchDirection::Up: return Rml::Input::KI_UP;
+            case Rml::NavigationSearchDirection::Down: return Rml::Input::KI_DOWN;
+            case Rml::NavigationSearchDirection::Left: return Rml::Input::KI_LEFT;
+            default: return Rml::Input::KI_RIGHT;
+        }
+    }
+
+    // The keyboard key the controls of the focused element see for a gamepad key (the event's
+    // key_identifier; scripts see the gamepad's key and code). Directions reach only the controls
+    // that use them while focused (a range adjusts, an open select moves through its options);
+    // everywhere else they navigate, so a text field or a closed select does not keep the d-pad.
+    // A is Space on a checkbox or radio (it toggles on release), nothing on a text field (no line
+    // break, no submit), else Enter (a click on press); B is Escape (a modal <dialog> closes)
+    Rml::Input::KeyIdentifier gamepadControlKey(GamepadUIKey key, Rml::Element* focus, bool selectOpen){
+        if (isGamepadDirection(key))
+            return (selectOpen || isInputOfType(focus, {"range"})) ? arrowKey(key) : Rml::Input::KI_UNKNOWN;
+        if (key == GamepadUIKey::A){
+            if (isTextControl(focus, false))
+                return Rml::Input::KI_UNKNOWN;
+            return isInputOfType(focus, {"checkbox", "radio"}) ? Rml::Input::KI_SPACE : Rml::Input::KI_RETURN;
+        }
+        if (key == GamepadUIKey::B)
+            return Rml::Input::KI_ESCAPE;
+        return Rml::Input::KI_UNKNOWN;
+    }
+
+    // a keydown/keyup of a gamepad key: key_identifier for the controls, the modifiers of a key
+    // event (none), and the gamepad parameters UIEvent reads (key, code, gamepad, repeat); the fork's
+    // text widget leaves events with "gamepad" to the document (P4-3)
+    bool dispatchGamepadKey(Rml::Element* target, Rml::EventId id, Rml::Input::KeyIdentifier rmlKey, int gamepad, GamepadUIKey key,
+                            bool repeat, bool* defaultPrevented){
+        static const char* const modifiers[] = {"ctrl_key", "shift_key", "alt_key", "meta_key", "caps_lock_key", "num_lock_key", "scroll_lock_key"};
+        Rml::Dictionary parameters;
+        parameters["key_identifier"] = (int)rmlKey;
+        for (const char* modifier : modifiers)
+            parameters[modifier] = 0;
+        parameters["gamepad"] = gamepad;
+        parameters["gamepad_key"] = (int)key;
+        parameters["repeat"] = repeat ? 1 : 0;
+        bool prevented = false;
+        const bool propagated = target->DispatchEvent(id, parameters, &prevented);
+        if (defaultPrevented)
+            *defaultPrevented = prevented;
+        return propagated;
+    }
+
     // the focused element when it is a real element of a shown document; null for none, the
     // context root or a document
     Rml::Element* focusedElement(Rml::Context* context){
@@ -136,6 +220,16 @@ namespace {
         if (!focus || focus == context->GetRootElement() || rmlui_dynamic_cast<Rml::ElementDocument*>(focus))
             return nullptr;
         return isInShownDocument(focus) ? focus : nullptr;
+    }
+
+
+    // The element a gamepad navigates from: a focused element Tab reaches (a button, a link, a
+    // form control, tabindex="0"). An element a click or a script focused that is not in the Tab
+    // order (a clicked panel, tabindex="-1") has the keys but not the gamepad, so a click on a HUD
+    // does not take the d-pad from the game
+    Rml::Element* gamepadFocusElement(Rml::Context* context){
+        Rml::Element* focus = focusedElement(context);
+        return (focus && focus->GetComputedValues().tab_index() == Rml::Style::TabIndex::Auto) ? focus : nullptr;
     }
 
 }
@@ -388,6 +482,115 @@ CursorType UIDocumentSystem::getPointerCursor() const{
         return CursorType::ARROW;
 
     return RmlSystem::cursorFromCss(hover->GetComputedValues().cursor());
+}
+
+bool UIDocumentSystem::eventOnGamepadKeyDown(int gamepad, GamepadUIKey key, bool repeat){
+    HtmlUIContext* keys = keyContext();   // the context keys go to (a texture document's after its press)
+    if (!keys || key == GamepadUIKey::COUNT)
+        return false;
+
+    HtmlUIInputState& state = getInputState();
+    Rml::Context* rmlContext = keys->getRmlContext();
+    Rml::Element* focus = gamepadFocusElement(rmlContext);
+    // as a keyboard key: the focused element, else the focused document (or the root)
+    Rml::Element* target = rmlContext->GetFocusElement() ? rmlContext->GetFocusElement() : rmlContext->GetRootElement();
+
+    Rml::ElementFormControlSelect* select = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(focus);
+    const bool selectOpen = select && select->IsSelectBoxVisible();
+    const Rml::Input::KeyIdentifier rmlKey = gamepadControlKey(key, focus, selectOpen);
+
+    // gamepad input shows where the focus is, also on an element a click focused
+    if (focus && !focus->IsPseudoClassSet("focus-visible"))
+        focus->SetPseudoClass("focus-visible", true);
+
+    // A: :active while held, as a pressed button
+    const bool press = key == GamepadUIKey::A && focus && !repeat;
+    if (press)
+        focus->SetPseudoClass("active", true);
+
+    bool prevented = false;
+    const bool propagated = dispatchGamepadKey(target, Rml::EventId::Keydown, rmlKey, gamepad, key, repeat, &prevented);
+    if (press && prevented)
+        focus->SetPseudoClass("active", false);
+
+    bool consumed = false;
+    if (focus){
+        // a listener stopped or prevented it, a control used it, or a listener moved the focus
+        const bool handled = !propagated || prevented || rmlContext->GetFocusElement() != focus;
+        consumed = handled;
+
+        if (isGamepadDirection(key)){
+            // a focused document takes the d-pad and the stick, also where nothing is in that direction
+            consumed = true;
+            if (!handled && !selectOpen){
+                Rml::ElementDocument* document = focus->GetOwnerDocument();
+                if (Rml::Element* next = document ? document->FindNavigationTarget(focus, navigationDirection(key)) : nullptr){
+                    if (next->Focus(true))
+                        next->ScrollIntoView(Rml::ScrollIntoViewOptions(Rml::ScrollAlignment::Nearest, Rml::ScrollAlignment::Nearest));
+                }
+            }
+        }else if (key == GamepadUIKey::A){
+            consumed = true;
+            // a text field: the virtual keyboard (Android, iOS, Web), as a tap on it
+            if (!prevented && isTextControl(focus, false))
+                keys->getTextInputHandler().requestKeyboard();
+        }else if (key == GamepadUIKey::B){
+            // an open select closes, as on Escape in a browser
+            if (!handled && selectOpen){
+                select->HideSelectBox();
+                consumed = true;
+            }
+        }
+    }
+
+    if (!repeat){
+        for (auto it = state.gamepadKeys.begin(); it != state.gamepadKeys.end(); ++it){
+            if (it->gamepad == gamepad && it->key == key){
+                state.gamepadKeys.erase(it);
+                break;
+            }
+        }
+        HtmlUIInputState::GamepadKey held{gamepad, key, rmlKey, consumed, Rml::ObserverPtr<Rml::Element>(), Rml::ObserverPtr<Rml::Element>()};
+        if (focus)
+            held.focus = focus->GetObserverPtr();
+        if (press && !prevented)
+            held.active = focus->GetObserverPtr();
+        state.gamepadKeys.push_back(held);
+    }
+
+    return consumed;
+}
+
+bool UIDocumentSystem::eventOnGamepadKeyUp(int gamepad, GamepadUIKey key){
+    if (!inputState)
+        return false;
+    HtmlUIInputState& state = *inputState;
+
+    auto it = state.gamepadKeys.begin();
+    while (it != state.gamepadKeys.end() && !(it->gamepad == gamepad && it->key == key))
+        ++it;
+    if (it == state.gamepadKeys.end())
+        return false;
+    const HtmlUIInputState::GamepadKey held = *it;
+    state.gamepadKeys.erase(it);
+
+    if (Rml::Element* active = held.active.get())
+        active->SetPseudoClass("active", false);
+
+    if (HtmlUIContext* keys = keyContext()){
+        Rml::Context* rmlContext = keys->getRmlContext();
+        Rml::Element* target = rmlContext->GetFocusElement() ? rmlContext->GetFocusElement() : rmlContext->GetRootElement();
+        // the controls see the up of their down only (a Space up on the next focused button would click it)
+        const Rml::Input::KeyIdentifier rmlKey = (target == held.focus.get()) ? held.rmlKey : Rml::Input::KI_UNKNOWN;
+        dispatchGamepadKey(target, Rml::EventId::Keyup, rmlKey, gamepad, key, false, nullptr);
+    }
+
+    return held.consumed;
+}
+
+bool UIDocumentSystem::hasGamepadFocus() const{
+    HtmlUIContext* keys = keyContext();
+    return keys && gamepadFocusElement(keys->getRmlContext()) != nullptr;
 }
 
 void UIDocumentSystem::updateInput(){

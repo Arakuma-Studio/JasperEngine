@@ -23,10 +23,17 @@ public:
 	bool CallTransform(const String& name, const VariantList& arguments, Variant& out_result);
 	bool EventCallback(const String& name, const VariantList& arguments);
 
+	/// True after GetValue read a variable a model created with allow_missing_variables does not have (yet): its value
+	/// was the empty default.
+	bool HasMissingVariable() const { return missing_variable; }
+
 private:
 	DataModel* data_model = nullptr;
 	Element* element = nullptr;
 	Event* event = nullptr;
+	mutable bool missing_variable = false;
+
+	friend class DataExpression;
 };
 
 class DataExpression {

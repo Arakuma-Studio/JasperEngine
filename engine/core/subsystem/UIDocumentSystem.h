@@ -51,6 +51,17 @@ namespace jasperengine{
     // phase of a pointer event handed to texture-mode documents (dispatchWorldPointer)
     enum class PointerPhase { DOWN, MOVE, UP, CANCEL };
 
+    // What a gamepad gives documents (phase-4 p4-input; Engine::systemGamepad*): its buttons, the four
+    // directions of the left stick and the two triggers, each a key of keydown/keyup events (DOM `code`
+    // "GamepadDPadUp", "GamepadA", ...; RmlKeyMap::gamepadDomCode)
+    enum class GamepadUIKey {
+        DPAD_UP, DPAD_DOWN, DPAD_LEFT, DPAD_RIGHT,
+        LEFT_STICK_UP, LEFT_STICK_DOWN, LEFT_STICK_LEFT, LEFT_STICK_RIGHT,
+        A, B, X, Y, LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_TRIGGER, RIGHT_TRIGGER,
+        VIEW, MENU, GUIDE, LEFT_THUMB, RIGHT_THUMB,
+        COUNT   // none
+    };
+
     enum class HtmlUIMessageLevel { Info, Warning, Error };
 
     // an RmlUi message attributed to a document (Inspector "Messages", getDocumentMessages)
@@ -133,6 +144,17 @@ namespace jasperengine{
         bool hasPointerCapture(int pointer, int button, bool touch) const;
         // the CSS cursor of the element under the pointer, ARROW when the pointer is not over content
         CursorType getPointerCursor() const;
+        // p4-input: a gamepad key (Engine's routing turns buttons, the left stick and the triggers into
+        // keys and repeats held directions) as a keydown/keyup at the focused element of the context keys
+        // go to, with the keyboard's default actions where the key stands for one (d-pad and stick:
+        // the arrows, A: Enter / Space, B: Escape) and spatial navigation for the directions. Consumed:
+        // with an element focused, the directions and A always; the other keys when a listener or a
+        // control stopped or prevented them. A key up is consumed when its down was
+        bool eventOnGamepadKeyDown(int gamepad, GamepadUIKey key, bool repeat);
+        bool eventOnGamepadKeyUp(int gamepad, GamepadUIKey key);
+        // an element of a shown document has the focus of the context keys go to: the documents take the
+        // gamepad's navigation (the d-pad, the left stick, A)
+        bool hasGamepadFocus() const;
 
         // --- p1-editor (UIDocumentSystemReload.cpp, §3.8.6-§3.8.7); paths are asset-relative ---
         struct Reloaded { Entity entity; bool stylesheetOnly; };

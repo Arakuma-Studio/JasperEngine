@@ -103,6 +103,13 @@ namespace {
         return RmlKeyMap::fromRmlKey((Rml::Input::KeyIdentifier)event->GetParameter<int>("key_identifier", 0));
     }
 
+    // the GamepadUIKey of a key event a gamepad sent (p4-input); -1 for a keyboard's and other events
+    int gamepadKey(Rml::Event* event){
+        if (!event || !event->GetParameters().count("gamepad_key"))
+            return -1;
+        return event->GetParameter<int>("gamepad_key", -1);
+    }
+
     int engineModifiers(Rml::Event* event){
         static const char* const names[] = {"ctrl_key", "shift_key", "alt_key", "meta_key", "caps_lock_key", "num_lock_key", "scroll_lock_key"};
         int rmlMods = 0;
@@ -117,22 +124,36 @@ namespace {
 
 std::string UIEvent::getKey() const{
     Rml::Event* event = liveEvent(state);
+    const int pad = gamepadKey(event);
+    if (pad >= 0)
+        return RmlKeyMap::gamepadDomKey(pad);
     const int key = engineKey(event);
     return (key >= 0) ? RmlKeyMap::domKey(key, engineModifiers(event)) : std::string();
 }
 
 std::string UIEvent::getCode() const{
-    const int key = engineKey(liveEvent(state));
+    Rml::Event* event = liveEvent(state);
+    const int pad = gamepadKey(event);
+    if (pad >= 0)
+        return RmlKeyMap::gamepadDomCode(pad);
+    const int key = engineKey(event);
     return (key >= 0) ? RmlKeyMap::domCode(key) : std::string();
 }
 
 int UIEvent::getKeyCode() const{
-    const int key = engineKey(liveEvent(state));
+    Rml::Event* event = liveEvent(state);
+    const int pad = gamepadKey(event);
+    const int key = (pad >= 0) ? RmlKeyMap::gamepadEngineKey(pad) : engineKey(event);
     return (key >= 0) ? key : 0;
 }
 
 bool UIEvent::isRepeat() const{
     return HtmlUIEventNames::isRepeat(liveEvent(state));
+}
+
+int UIEvent::getGamepad() const{
+    Rml::Event* event = liveEvent(state);
+    return (gamepadKey(event) >= 0) ? event->GetParameter<int>("gamepad", -1) : -1;
 }
 
 bool UIEvent::getCtrlKey() const{

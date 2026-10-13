@@ -180,7 +180,7 @@ under "A complete UI script"):
       <button id="settings" class="btn"><i data-lucide="settings"></i> Settings</button>
       <button id="quit" class="btn"><i data-lucide="log-out"></i> Quit</button>
     </nav>
-    <p id="status" class="status">Arrow keys and Enter, or click</p>
+    <p id="status" class="status">Arrows or d-pad, Enter or A, or click</p>
   </main>
 </body>
 </html>
@@ -563,7 +563,8 @@ get no input). Create elements with `createElement` or `innerHTML`, then `append
 |---|---|
 | `click`, `dblclick`, `mousedown`, `mouseup`, `mousemove`, `mouseover`, `mouseout` | the pointer (mouse and touch) |
 | `wheel` | the mouse wheel (`deltaX`, `deltaY` in steps, positive down/right) |
-| `keydown`, `keyup`, `textinput` | the keyboard, to the focused element |
+| `keydown`, `keyup` | the keyboard and gamepads, to the focused element ("Input and focus") |
+| `textinput` | typed text, to the focused element |
 | `focus`, `blur` | focus changes |
 | `input` | every edit of a text field, every toggle |
 | `change` | a text field on blur when its value changed; checkboxes, radios, selects, ranges when they change |
@@ -582,8 +583,9 @@ events (use `mouseover`/`mouseout` and `mousedown`).
 A listener gets a `UIEvent`: `type`, `target`, `currentTarget`, `eventPhase` (1 capture,
 2 target, 3 bubble), `button` (0 left, 1 middle, 2 right), `clientX`/`clientY` (document px),
 `deltaX`/`deltaY`, `ctrlKey`, `shiftKey`, `altKey`, `metaKey`, `key` (browser key names:
-`"Enter"`, `"Escape"`, `"ArrowUp"`, `"a"`), `code` (`"KeyA"`), `keyCode` (`Input.KEY_*`),
-`repeat` (`event["repeat"]`), `data` (`textinput`), `animationName`, `propertyName`,
+`"Enter"`, `"Escape"`, `"ArrowUp"`, `"a"`), `code` (`"KeyA"`; a gamepad's `"GamepadA"`, ...),
+`keyCode` (`Input.KEY_*`), `repeat` (`event["repeat"]`), `gamepad` (the pad's id, -1 for the
+keyboard), `data` (`textinput`), `animationName`, `propertyName`,
 `elapsedTime`, `detail` (a copy of the `dispatchEvent` detail), `defaultPrevented`, and
 `stopPropagation()`, `stopImmediatePropagation()`, `preventDefault()`. The event is valid only
 while the listener runs. `preventDefault()` skips the element's own action (a checkbox does not
@@ -664,9 +666,8 @@ function MenuUI:init()
         if button then self:activate(button.id) end
     end
     ---@param event UIEvent
-    self.onKey = function(event) self:key(event) end
+    self.onKey = function(event) self:key(event) end   -- keyboard and gamepad (the d-pad is ArrowUp/ArrowDown)
     RegisterEvent(self, self.doc.onLoad, "bind")
-    RegisterEngineEvent(self, "onGamepadButtonDown")   -- gamepads do not reach documents
     self:bind()
 end
 
@@ -684,22 +685,17 @@ end
 ---@param step integer
 function MenuUI:move(step)
     self.index = (self.index - 1 + step) % #self.buttons + 1
-    self.buttons[self.index]:focus()       -- Enter or Space then clicks the focused button
+    self.buttons[self.index]:focus()       -- Enter, Space or the gamepad's A then clicks it
 end
 
 ---@param event UIEvent
 function MenuUI:key(event)
+    -- the arrow keys, the d-pad and the left stick: wrap around (preventDefault: no spatial step too)
     local step = (event.key == "ArrowDown" and 1) or (event.key == "ArrowUp" and -1) or 0
     if step ~= 0 then
         self:move(step)
         event:preventDefault()
     end
-end
-
-function MenuUI:onGamepadButtonDown(gamepad, button)
-    if button == Input.GAMEPAD_BUTTON_DPAD_DOWN then self:move(1)
-    elseif button == Input.GAMEPAD_BUTTON_DPAD_UP then self:move(-1)
-    elseif button == Input.GAMEPAD_BUTTON_A then self.buttons[self.index]:click() end
 end
 
 ---@param id string
@@ -811,9 +807,10 @@ return HudUI
   change freely. Tables with keys 1..n are arrays (an empty table is an empty array). Only nil,
   booleans, numbers, strings and tables are stored; functions become `data-event-*` callbacks
   `fn(event, args...)`.
-- `data-for` indices are 0-based, Lua's are 1-based: `model.items[i + 1]`. The `data-for`
-  element itself stays in the DOM, hidden, after its rows (it is the template), so
-  `querySelectorAll` and `childElementCount` count one more element than there are rows.
+- `data-for` indices are 0-based, Lua's are 1-based: `model.items[i + 1]`. The rows are the
+  elements: `querySelectorAll`, `children`, `childElementCount`, `getElementById`, `inspect_ui`
+  and selectors such as `li:last-child` see the rows only, in order (the hidden template RmlUi
+  keeps after them is left out).
 - Proxy methods: `onChange(name, fn)` (after the document wrote a value; returns an id),
   `removeOnChange(id)`, `dirty(name)` / `dirtyAll()` (after changing a table the proxy did not
   see), `get(path)` / `set(path, value)` (`"items[0].name"`, 0-based), `getName()`, `isValid()`.
@@ -822,10 +819,9 @@ return HudUI
   `removeDataModel`, the component or the scene (then any use of its proxy raises
   `data model 'hud' was removed`).
 - **Edit mode** has no Lua, so a model no script created yet is empty: `{{ }}` shows nothing,
-  and a `data-style-*` expression such as `health + '%'` evaluates to `%`, which RmlUi
-  rejects with one Console line per load, `[HTML UI] Syntax error parsing inline property
-  declaration 'width: %;'`. It is harmless and does not appear in play; it is not a
-  diagnostic of your file (`check --ui` and `problems` stay clean).
+  `data-for` makes no rows, and a `data-style-*` expression that reads a missing value (such as
+  `health + '%'`) sets nothing until the model has it, silently. A value that is invalid with
+  every variable present (`data-style-width="'abc'"`) is still reported.
 - **From a test** (play mode), set values with `eval_lua`:
   `object('HUD', 'UIDocument'):getDataModel('hud').health = 25`; read them back with
   `inspect_ui {"models": true}`.
@@ -1024,15 +1020,18 @@ downloads each once into `assets/htmlui-imports/` and records it in
 
 ## Input and focus
 
-Documents get the mouse (buttons, move, wheel), multi-touch, the keyboard, text with IME and
-the clipboard, in play mode, in exported games and through `send_input`. A pointer event goes
-to the screen documents first (top scene layer first, then higher `sortOrder`), then to the
-component UI, then to documents on meshes, then to the game. Keys and text go to the documents
-before the game.
+### Pointer input and pass-through
+
+Documents get the mouse (buttons, move, wheel), multi-touch, the keyboard, gamepads, text with
+IME and the clipboard, in play mode, in exported games and through `send_input`. A pointer event
+goes to the screen documents first (top scene layer first, then higher `sortOrder`), then to the
+component UI, then to documents on meshes, then to the game. Keys, gamepad buttons and text go to
+the focused document before the game.
 
 **An event a document handles does not reach the game**: not the component UI under it, nor,
 while `Engine.ignoreEventsHandledByUI` is on (the default), the game's `onMouseDown`,
-`onKeyDown`, `onCharInput`, `onMouseScroll`, `onTouchStart`, ... callbacks.
+`onKeyDown`, `onCharInput`, `onMouseScroll`, `onTouchStart`, `onGamepadButtonDown`,
+`onGamepadAxisMove`, ... callbacks.
 
 **Pointer pass-through: a transparent page lets the pointer through unless you listen on the
 page or the document.**
@@ -1064,6 +1063,8 @@ end)
   go to whoever got the press. The wheel is taken when it scrolls an element (one step is 80
   px) or the pointer is over content.
 
+### Focus, keys and gamepads
+
 **Focus and keys.**
 
 - Tab moves the focus through buttons, links, inputs and `tabindex="0"` elements
@@ -1073,10 +1074,47 @@ end)
   last press. They are consumed when a listener stops or prevents them, or when a text field
   has focus (except Escape and F1-F25); otherwise the game gets them. Enter and Space activate
   a focused button or summary, Enter a link, Space toggles a checkbox.
-- **Keyboard and gamepad menus**: focus the first button on load and move the focus on arrow
-  keys in a `keydown` listener. **Gamepads do not reach documents**: subscribe
-  `RegisterEngineEvent(self, "onGamepadButtonDown")` and move the focus or `click()` from
-  there. The script under "A complete UI script" does both.
+- **Keyboard menus**: focus the first button on load. The arrow keys move the focus only where
+  `nav-up` / `nav-down` / `nav-left` / `nav-right` (or the shorthand `nav`) say so: `auto`
+  (the nearest element that way), an `#id`, `none`, `horizontal`, `vertical`, `tree-order`; or
+  move it in a `keydown` listener, as the script under "A complete UI script" does (that
+  listener serves the gamepad too).
+
+**Gamepads reach the focused document first.** While an element Tab reaches (a button, link,
+form control or `tabindex="0"`) has the focus, the gamepad drives the document like a keyboard:
+
+| Gamepad | `keydown` / `keyup` `key` | `code` | Default action |
+|---|---|---|---|
+| d-pad, left stick | `"ArrowUp"` ... `"ArrowRight"` | `"GamepadDPadUp"` ..., `"GamepadLeftThumbstickUp"` ... | moves the focus to the nearest element that way and scrolls it into view; a focused range adjusts with left/right, an open select moves through its options |
+| A | `"Enter"` | `"GamepadA"` | activates the focused element as the keyboard does (Enter: a click on press; Space on a checkbox or radio: a toggle on release; a select opens and chooses); `:active` while held; on a text field it opens the virtual keyboard |
+| B | `"Escape"` | `"GamepadB"` | closes an open select or a modal `<dialog>`; otherwise nothing: your menu closes on it |
+| X, Y, shoulders, triggers, View, Menu, Guide, stick buttons | the `code` | `"GamepadX"`, `"GamepadY"`, `"GamepadLeftShoulder"`, `"GamepadRightShoulder"`, `"GamepadLeftTrigger"`, `"GamepadRightTrigger"`, `"GamepadView"` (Back), `"GamepadMenu"` (Start), `"GamepadGuide"`, `"GamepadLeftThumbstickButton"`, `"GamepadRightThumbstickButton"` | none |
+
+- `event.gamepad` is the pad's id (`-1` for the keyboard), `event.keyCode` the keyboard key it
+  stands for (`Input.KEY_DOWN`, `Input.KEY_ENTER`, `Input.KEY_ESCAPE`; 0 for the others), so a
+  listener written for the keyboard (`event.key == "Escape"`) serves the gamepad too.
+  `event:preventDefault()` cancels the default action.
+- Navigation is spatial unless the focused element declares `nav-*` for that direction (which
+  then decides, as for the arrow keys): the nearest focusable element in that direction, inside
+  the list (the nearest scroll container) first, then anywhere in the document where it is
+  visible. There is no wrap-around. A text field or a closed select never keeps the d-pad.
+- Held d-pad and stick directions repeat after 0.4 s, every 0.1 s (`event["repeat"]` is true).
+  The stick counts past half way (released below 0.3); triggers count past half way.
+- **Consumed**: with such an element focused, the d-pad, the left stick and A are the
+  document's (the player does not walk while a menu is used, also at the menu's edge); B and
+  the other buttons only when a listener calls `preventDefault()` or `stopPropagation()` (or a
+  control uses them); everything else goes on to the game's `onGamepadButtonDown/Up` and
+  `onGamepadAxisMove`. A stick the menu takes is reported once at rest to the game. With no
+  such element focused (nothing focused, or a clicked panel), the gamepad is the game's; the
+  document still hears the keys. Focus a button to give a menu the gamepad (`autofocus`,
+  `el:focus()`), blur it (or hide the document) to give it back.
+- `Input.isGamepadButtonPressed` / `Input.getGamepadAxis` always read the device: a game that
+  polls checks `Engine.wantsGamepadNavigation()` (true while a document has such a focus).
+- `:focus-visible` shows on the element the gamepad moves to, and on a clicked element once the
+  gamepad is used, so style it (`.btn:focus-visible`).
+- Documents on meshes get the gamepad like the keys: the one that took the last press.
+
+### Touch, text fields and the cursor
 
 **Touch.** Every finger is a pointer; taps are clicks. Hover-only affordances do not exist on
 touch: show them by default or on `:focus`/`:active`, or use `@media (hover: hover)`, evaluated
@@ -1103,7 +1141,9 @@ swipes; `document` picks the UI Document) instead of `x`/`y`, resolved when the 
 a panel opened by the previous click can be targeted. `key` events reach the focused element;
 `text` types a string; `ime` (`text`, `cursor`) / `ime_commit` / `ime_cancel` drive a
 composition; `mouse_leave` / `mouse_enter` move the pointer out of and into the game; wheel
-offsets follow GLFW (`dy > 0` scrolls up).
+offsets follow GLFW (`dy > 0` scrolls up); `gamepad` events (`button` `"a"`, `"b"`, `"dpad_down"`,
+`"right_bumper"`, ...; `action` `press`/`down`/`up`; or `axis` `"left_y"` with a `value`) drive the
+gamepad paths above.
 
 ## Responsive layout
 

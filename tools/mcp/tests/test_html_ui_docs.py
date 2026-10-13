@@ -249,7 +249,7 @@ async def test_guide_structure():
                    "renderMode", "getTargetTexture",                           # texture mode
                    "Google Fonts", "import_files", "data-lucide",              # fonts and icons
                    "Chromium parity", "Parity stops at",                       # where parity stops
-                   "Gamepads do not reach documents",
+                   "Gamepads reach the focused document first",
                    ".jasperengine/engine-api/html-ui-examples/", "check --ui"):
         check(phrase.lower() in text.lower(), f"the guide does not say {phrase!r}")
     named = [b["path"] for b in guide_blocks(text) if b["path"]]
@@ -491,7 +491,8 @@ async def play_checks(ed: Editor):
     await ed.call("send_input", events=[{"type": "key", "key": "enter"}], frames_after=3)
     ed.check_eq(await text_of(ed, "Menu", "#status"), "Selected: settings", "Enter clicks the focused button")
 
-    # gamepad: the script's onGamepadButtonDown
+    # gamepad: the d-pad and A reach the focused document as ArrowDown and Enter (the script's keydown
+    # listener moves the focus, A clicks the focused button)
     await ed.call("send_input", events=[{"type": "gamepad", "button": "dpad_down", "action": "press"},
                                         {"type": "gamepad", "button": "a", "action": "press"}], frames_after=3)
     ed.check_eq(await focused_id(ed), "quit", "gamepad dpad_down")
@@ -510,7 +511,7 @@ async def play_checks(ed: Editor):
         local fill = doc:getElementById('health-fill')
         return doc:getElementById('health-label').textContent, fill.classList:contains('low'),
                math.floor(fill:getBoundingClientRect().width + 0.5), doc:getElementById('score').textContent,
-               #doc:querySelectorAll('#log li') - 1, doc:querySelectorAll('#log li')[1].textContent""")
+               #doc:querySelectorAll('#log li'), doc:querySelectorAll('#log li')[1].textContent""")
     ed.check_eq(values, ["25 / 100", True, 70, "1200", 1, "-75 HP"], "the HUD follows its model")
     await click(ed, "HUD", "#heal")
     ed.check_eq(await lua(ed, "return object('HUD', 'UIDocument'):getDataModel('hud').health"), [35],
@@ -562,9 +563,8 @@ async def play_checks(ed: Editor):
                doc:getElementById('line').textContent""")
     ed.check_eq(values, [True, True, True, "READY"], "the texture-mode script")
 
-    # the edit-mode load of the HUD (no model yet) logs the one line the guide explains under "Data binding"
-    explained = "Syntax error parsing inline property declaration 'width: %;'"
-    errors = [m for m in await errors_since(ed) if ("[HTML UI]" in m or "Lua" in m or "rror" in m) and explained not in m]
+    # nothing logged, also not by the edit-mode load of the HUD (its model did not exist yet)
+    errors = [m for m in await errors_since(ed) if "[HTML UI]" in m or "Lua" in m or "rror" in m]
     ed.check(not errors, f"errors or warnings while playing the guide's snippets: {errors[:10]}")
 
 

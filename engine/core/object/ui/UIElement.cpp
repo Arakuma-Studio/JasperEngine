@@ -64,8 +64,9 @@ namespace {
         }
     }
 
+    // an element of the DOM scripts see: no text node, no data-for template
     bool isElementNode(Rml::Element* element){
-        return element && !rmlui_dynamic_cast<Rml::ElementText*>(element);
+        return element && !rmlui_dynamic_cast<Rml::ElementText*>(element) && !UIElementAccess::isDataForTemplate(element);
     }
 
     Rml::Element* rootOf(Rml::Element* element){
@@ -490,7 +491,21 @@ int UIElement::getChildElementCount() const{
 
 UIElement UIElement::querySelector(const std::string& selector) const{
     HTMLUI_ELEMENT(UIElement())
-    return wrap(element->QuerySelector(selectorFor(element, selector)));
+    const std::string rewritten = selectorFor(element, selector);
+    Rml::Element* found = element->QuerySelector(rewritten);
+    // past a data-for template: the first match that is not one
+    if (UIElementAccess::isDataForTemplate(found)){
+        Rml::ElementList elements;
+        element->QuerySelectorAll(elements, rewritten);
+        found = nullptr;
+        for (Rml::Element* candidate : elements){
+            if (!UIElementAccess::isDataForTemplate(candidate)){
+                found = candidate;
+                break;
+            }
+        }
+    }
+    return wrap(found);
 }
 
 std::vector<UIElement> UIElement::querySelectorAll(const std::string& selector) const{
@@ -500,7 +515,8 @@ std::vector<UIElement> UIElement::querySelectorAll(const std::string& selector) 
     std::vector<UIElement> result;
     result.reserve(elements.size());
     for (Rml::Element* found : elements){
-        result.push_back(wrap(found));
+        if (!UIElementAccess::isDataForTemplate(found))
+            result.push_back(wrap(found));
     }
     return result;
 }

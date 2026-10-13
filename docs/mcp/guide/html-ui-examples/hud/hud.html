@@ -7,8 +7,8 @@
   absolutely placed compass letters), keyframes for the low-health pulse, and a full-screen
   damage vignette that HudUI.lua flashes with anime. HudUI:damage(n), :fire() and :reload()
   are the game's API; the "demo" property plays them by itself.
-  In the editor (no Lua) the model is empty: the texts are blank and each bound size falls back
-  to 0 (the "> 0 ? ... : '0'" in the expressions), so no invalid style is set. Press Play.
+  In the editor (no Lua) the model is empty: the texts are blank and the bound sizes are not set
+  (the stylesheet's own sizes show) until the model has its values. Press Play.
 -->
 <html lang="en">
 <head>
@@ -28,12 +28,12 @@
       </div>
       <div class="meter health">
         <i data-lucide="heart"></i>
-        <div class="track"><div id="health-fill" class="fill" data-style-width="health > 0 ? health + '%' : '0'"></div></div>
+        <div class="track"><div id="health-fill" class="fill" data-style-width="health + '%'"></div></div>
         <span class="hud-label value">{{ health }}</span>
       </div>
       <div class="meter shield">
         <i data-lucide="shield"></i>
-        <div class="track"><div id="shield-fill" class="fill" data-style-width="shield > 0 ? shield + '%' : '0'"></div></div>
+        <div class="track"><div id="shield-fill" class="fill" data-style-width="shield + '%'"></div></div>
         <span class="hud-label value">{{ shield }}</span>
       </div>
     </section>
@@ -59,17 +59,17 @@
     <section class="hud-panel abilities">
       <div class="ability" data-class-ready="abilities[0].cooldown <= 0">
         <i data-lucide="flame"></i>
-        <div class="cooldown" data-style-height="abilities[0].cooldown > 0 ? abilities[0].cooldown + '%' : '0'"></div>
+        <div class="cooldown" data-style-height="abilities[0].cooldown + '%'"></div>
         <kbd>Q</kbd>
       </div>
       <div class="ability" data-class-ready="abilities[1].cooldown <= 0">
         <i data-lucide="shield-plus"></i>
-        <div class="cooldown" data-style-height="abilities[1].cooldown > 0 ? abilities[1].cooldown + '%' : '0'"></div>
+        <div class="cooldown" data-style-height="abilities[1].cooldown + '%'"></div>
         <kbd>E</kbd>
       </div>
       <div class="ability" data-class-ready="abilities[2].cooldown <= 0">
         <i data-lucide="wind"></i>
-        <div class="cooldown" data-style-height="abilities[2].cooldown > 0 ? abilities[2].cooldown + '%' : '0'"></div>
+        <div class="cooldown" data-style-height="abilities[2].cooldown + '%'"></div>
         <kbd>R</kbd>
       </div>
     </section>

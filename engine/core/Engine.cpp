@@ -39,6 +39,8 @@
 #include "sokol_time.h"
 
 #include <algorithm>
+#include <cmath>
+#include <map>
 #include <functional>
 
 using namespace jasperengine;
@@ -1168,6 +1170,8 @@ void Engine::systemDraw(){
 
     // the input of this frame is over: no low surrogate will follow a pending high one
     flushCharInput();
+    // held gamepad directions repeat on the UI clock
+    updateGamepadNavigation();
 
     drawSemaphore.acquire();
 
@@ -1506,6 +1510,157 @@ namespace {
                 }
             }
         }
+    }
+
+    // ---- gamepads to documents (phase 4, p4-input): buttons, the left stick's directions and the
+    // triggers become keys of the focused document (UIDocumentSystem::eventOnGamepadKeyDown/Up)
+
+    constexpr double gamepadRepeatDelay = 0.4;       // seconds a direction is held before it repeats
+    constexpr double gamepadRepeatInterval = 0.1;    // then one repeat per interval
+    constexpr float stickPressThreshold = 0.5f;      // a left stick direction is pressed past this
+    constexpr float stickReleaseThreshold = 0.3f;    // and released below it
+    constexpr float triggerPressThreshold = 0.0f;    // triggers rest at -1: pressed past half way
+    constexpr float triggerReleaseThreshold = -0.2f;
+
+    struct GamepadUIHeld {
+        int gamepad;
+        GamepadUIKey key;
+        bool consumed;      // a document took the down
+        double nextRepeat;  // UI clock
+    };
+
+    struct GamepadUIState {
+        std::vector<GamepadUIHeld> held;
+        std::map<int, GamepadUIKey> stick;                 // the direction each pad's left stick holds
+        std::map<std::pair<int, int>, float> gameAxes;     // the last value of each axis the game got
+    };
+    GamepadUIState gamepadUI;
+
+    GamepadUIKey gamepadKeyOfButton(int button){
+        switch (button){
+            case D_GAMEPAD_BUTTON_A: return GamepadUIKey::A;
+            case D_GAMEPAD_BUTTON_B: return GamepadUIKey::B;
+            case D_GAMEPAD_BUTTON_X: return GamepadUIKey::X;
+            case D_GAMEPAD_BUTTON_Y: return GamepadUIKey::Y;
+            case D_GAMEPAD_BUTTON_LEFT_BUMPER: return GamepadUIKey::LEFT_SHOULDER;
+            case D_GAMEPAD_BUTTON_RIGHT_BUMPER: return GamepadUIKey::RIGHT_SHOULDER;
+            case D_GAMEPAD_BUTTON_BACK: return GamepadUIKey::VIEW;
+            case D_GAMEPAD_BUTTON_START: return GamepadUIKey::MENU;
+            case D_GAMEPAD_BUTTON_GUIDE: return GamepadUIKey::GUIDE;
+            case D_GAMEPAD_BUTTON_LEFT_THUMB: return GamepadUIKey::LEFT_THUMB;
+            case D_GAMEPAD_BUTTON_RIGHT_THUMB: return GamepadUIKey::RIGHT_THUMB;
+            case D_GAMEPAD_BUTTON_DPAD_UP: return GamepadUIKey::DPAD_UP;
+            case D_GAMEPAD_BUTTON_DPAD_RIGHT: return GamepadUIKey::DPAD_RIGHT;
+            case D_GAMEPAD_BUTTON_DPAD_DOWN: return GamepadUIKey::DPAD_DOWN;
+            case D_GAMEPAD_BUTTON_DPAD_LEFT: return GamepadUIKey::DPAD_LEFT;
+            default: return GamepadUIKey::COUNT;
+        }
+    }
+
+    bool isGamepadDirectionKey(GamepadUIKey key){
+        return key >= GamepadUIKey::DPAD_UP && key <= GamepadUIKey::LEFT_STICK_RIGHT;
+    }
+
+    bool isGamepadTrigger(int axis){
+        return axis == D_GAMEPAD_AXIS_LEFT_TRIGGER || axis == D_GAMEPAD_AXIS_RIGHT_TRIGGER;
+    }
+
+    GamepadUIHeld* findGamepadHeld(int gamepad, GamepadUIKey key){
+        for (GamepadUIHeld& held : gamepadUI.held){
+            if (held.gamepad == gamepad && held.key == key)
+                return &held;
+        }
+        return nullptr;
+    }
+
+    // the focused document first, as a key: the first scene (top layer first) whose documents consume it
+    bool gamepadKeyDown(const std::vector<Scene*>& scenes, int gamepad, GamepadUIKey key){
+        if (key == GamepadUIKey::COUNT)
+            return false;
+        // a down without an up between (a platform repeating it) is a repeat
+        if (GamepadUIHeld* held = findGamepadHeld(gamepad, key)){
+            dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
+                return documents->eventOnGamepadKeyDown(gamepad, key, true);
+            });
+            return held->consumed;
+        }
+        const bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
+            return documents->eventOnGamepadKeyDown(gamepad, key, false);
+        }) != nullptr;
+        gamepadUI.held.push_back(GamepadUIHeld{gamepad, key, consumed, HtmlUIClock::now() + gamepadRepeatDelay});
+        return consumed;
+    }
+
+    // every scene's documents hear the up (each consumes the ups of the downs it consumed), as key ups
+    bool gamepadKeyUp(const std::vector<Scene*>& scenes, int gamepad, GamepadUIKey key){
+        if (key == GamepadUIKey::COUNT)
+            return false;
+        for (auto it = gamepadUI.held.begin(); it != gamepadUI.held.end(); ++it){
+            if (it->gamepad == gamepad && it->key == key){
+                gamepadUI.held.erase(it);
+                break;
+            }
+        }
+        bool consumed = false;
+        for (Scene* scene : scenes){
+            if (scene->getSystem<UIDocumentSystem>()->eventOnGamepadKeyUp(gamepad, key))
+                consumed = true;
+        }
+        return consumed;
+    }
+
+    // the left stick's direction: the one held stays while its component is past the release
+    // threshold; else the dominant axis past the press threshold
+    GamepadUIKey stickDirection(float x, float y, GamepadUIKey current){
+        switch (current){
+            case GamepadUIKey::LEFT_STICK_UP: if (-y >= stickReleaseThreshold) return current; break;
+            case GamepadUIKey::LEFT_STICK_DOWN: if (y >= stickReleaseThreshold) return current; break;
+            case GamepadUIKey::LEFT_STICK_LEFT: if (-x >= stickReleaseThreshold) return current; break;
+            case GamepadUIKey::LEFT_STICK_RIGHT: if (x >= stickReleaseThreshold) return current; break;
+            default: break;
+        }
+        if (std::max(std::fabs(x), std::fabs(y)) < stickPressThreshold)
+            return GamepadUIKey::COUNT;
+        if (std::fabs(x) >= std::fabs(y))
+            return (x > 0.0f) ? GamepadUIKey::LEFT_STICK_RIGHT : GamepadUIKey::LEFT_STICK_LEFT;
+        return (y > 0.0f) ? GamepadUIKey::LEFT_STICK_DOWN : GamepadUIKey::LEFT_STICK_UP;
+    }
+
+    bool documentsHaveGamepadFocus(const std::vector<Scene*>& scenes){
+        for (Scene* scene : scenes){
+            if (canSendDocumentEvents(scene) && scene->getSystem<UIDocumentSystem>()->hasGamepadFocus())
+                return true;
+        }
+        return false;
+    }
+
+    // an axis move as keys; true when the documents take the axis
+    bool gamepadAxisToDocuments(const std::vector<Scene*>& scenes, int gamepad, int axis, float value){
+        if (axis == D_GAMEPAD_AXIS_LEFT_X || axis == D_GAMEPAD_AXIS_LEFT_Y){
+            auto it = gamepadUI.stick.find(gamepad);
+            const GamepadUIKey current = (it != gamepadUI.stick.end()) ? it->second : GamepadUIKey::COUNT;
+            const GamepadUIKey next = stickDirection(Input::getGamepadAxis(gamepad, D_GAMEPAD_AXIS_LEFT_X),
+                                                     Input::getGamepadAxis(gamepad, D_GAMEPAD_AXIS_LEFT_Y), current);
+            if (next != current){
+                gamepadUI.stick[gamepad] = next;
+                gamepadKeyUp(scenes, gamepad, current);
+                gamepadKeyDown(scenes, gamepad, next);
+            }
+            // a focused document takes the stick, so the player does not move while a menu is used
+            const GamepadUIHeld* held = findGamepadHeld(gamepad, next);
+            return (held && held->consumed) || documentsHaveGamepadFocus(scenes);
+        }
+        if (isGamepadTrigger(axis)){
+            const GamepadUIKey key = (axis == D_GAMEPAD_AXIS_LEFT_TRIGGER) ? GamepadUIKey::LEFT_TRIGGER : GamepadUIKey::RIGHT_TRIGGER;
+            const GamepadUIHeld* held = findGamepadHeld(gamepad, key);
+            if (!held && value > triggerPressThreshold)
+                gamepadKeyDown(scenes, gamepad, key);
+            else if (held && value < triggerReleaseThreshold)
+                gamepadKeyUp(scenes, gamepad, key);
+            held = findGamepadHeld(gamepad, key);
+            return held && held->consumed;
+        }
+        return false;
     }
 
 }
@@ -1950,21 +2105,88 @@ void Engine::systemGamepadConnect(int gamepad, const std::string& name){
 }
 
 void Engine::systemGamepadDisconnect(int gamepad){
+    // the documents let go of what the pad held (:active, the keys' ups)
+    const std::vector<Scene*> scenes = getScenesSnapshot();
+    std::vector<GamepadUIKey> held;
+    for (const GamepadUIHeld& entry : gamepadUI.held){
+        if (entry.gamepad == gamepad)
+            held.push_back(entry.key);
+    }
+    for (GamepadUIKey key : held)
+        gamepadKeyUp(scenes, gamepad, key);
+    gamepadUI.stick.erase(gamepad);
+    for (auto it = gamepadUI.gameAxes.begin(); it != gamepadUI.gameAxes.end();){
+        if (it->first.first == gamepad) it = gamepadUI.gameAxes.erase(it); else ++it;
+    }
+
     Input::removeGamepad(gamepad);
     Engine::onGamepadDisconnect.call(gamepad);
 }
 
 void Engine::systemGamepadButtonDown(int gamepad, int button){
     Input::addGamepadButtonPressed(gamepad, button);
-    Engine::onGamepadButtonDown.call(gamepad, button);
+
+    const bool consumed = gamepadKeyDown(getScenesSnapshot(), gamepad, gamepadKeyOfButton(button));
+
+    if (!ignoreEventsHandledByUI || !consumed)
+        Engine::onGamepadButtonDown.call(gamepad, button);
 }
 
 void Engine::systemGamepadButtonUp(int gamepad, int button){
     Input::releaseGamepadButtonPressed(gamepad, button);
-    Engine::onGamepadButtonUp.call(gamepad, button);
+
+    // consumed iff its down was, so the game never gets an up without a down
+    const bool consumed = gamepadKeyUp(getScenesSnapshot(), gamepad, gamepadKeyOfButton(button));
+
+    if (!ignoreEventsHandledByUI || !consumed)
+        Engine::onGamepadButtonUp.call(gamepad, button);
 }
 
 void Engine::systemGamepadAxisMove(int gamepad, int axis, float value){
     Input::setGamepadAxisValue(gamepad, axis, value);
+
+    const bool consumed = gamepadAxisToDocuments(getScenesSnapshot(), gamepad, axis, value);
+
+    const std::pair<int, int> id(gamepad, axis);
+    if (ignoreEventsHandledByUI && consumed){
+        // the game does not keep a value it got before the documents took the axis (a player
+        // walking on when a menu opens): it gets the rest value once
+        const float rest = isGamepadTrigger(axis) ? -1.0f : 0.0f;
+        auto it = gamepadUI.gameAxes.find(id);
+        if (it != gamepadUI.gameAxes.end() && it->second != rest){
+            it->second = rest;
+            Engine::onGamepadAxisMove.call(gamepad, axis, rest);
+        }
+        return;
+    }
+    gamepadUI.gameAxes[id] = value;
     Engine::onGamepadAxisMove.call(gamepad, axis, value);
+}
+
+bool Engine::wantsGamepadNavigation(){
+    return documentsHaveGamepadFocus(getScenesSnapshot());
+}
+
+void Engine::updateGamepadNavigation(){
+    if (gamepadUI.held.empty())
+        return;
+
+    const double now = HtmlUIClock::now();
+    std::vector<Scene*> scenes;
+    // by index: a listener may press or release keys (send_input, Lua)
+    for (size_t i = 0; i < gamepadUI.held.size(); i++){
+        GamepadUIHeld& held = gamepadUI.held[i];
+        if (!isGamepadDirectionKey(held.key) || !held.consumed || now < held.nextRepeat)
+            continue;
+        held.nextRepeat += gamepadRepeatInterval;
+        if (held.nextRepeat <= now)
+            held.nextRepeat = now + gamepadRepeatInterval;
+        const int gamepad = held.gamepad;
+        const GamepadUIKey key = held.key;
+        if (scenes.empty())
+            scenes = getScenesSnapshot();
+        dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
+            return documents->eventOnGamepadKeyDown(gamepad, key, true);
+        });
+    }
 }
