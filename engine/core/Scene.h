@@ -236,6 +236,12 @@ namespace jasperengine{
         void setPostProcessPassEnabled(unsigned int index, bool enabled);
         bool isPostProcessPassEnabled(unsigned int index) const;
 
+        // the engine's post-processing of the main camera (PostProcessingSettings in
+        // SceneSettings.h); setting it clamps the values and lets RenderSystem rebake what
+        // changed (the colour LUT, the shaders' post-processing define, the uber pass)
+        const PostProcessingSettings& getPostProcessing() const;
+        void setPostProcessing(const PostProcessingSettings& postProcessing);
+
         bool canReceiveUIEvents();
 
         UIEventState getEnableUIEvents() const;

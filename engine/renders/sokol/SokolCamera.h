@@ -25,6 +25,8 @@ namespace jasperengine{
         void setClearColor(Vector4 clearColor);
         void setClearDepth(float clearDepth = 1.0f);
         void setLoadActionLoad();
+        // the pass's name (a string literal) in debuggers and the frame stats' pass list
+        void setLabel(const char* label);
 
         void startRenderPass(FramebufferRender* framebuffer, size_t face);
         void startRenderPass(int width, int height);

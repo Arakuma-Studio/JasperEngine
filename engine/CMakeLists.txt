@@ -763,6 +763,7 @@ set(JASPERENGINE_SRCS
     core/Input.cpp
     core/Log.cpp
     core/Scene.cpp
+    core/SceneSettings.cpp
     core/System.cpp
     core/action/Action.cpp
     core/action/AlphaTween.cpp
@@ -889,6 +890,7 @@ set(JASPERENGINE_SRCS
     core/util/Angle.cpp
     core/util/Base64.cpp
     core/util/Color.cpp
+    core/util/PostColorLut.cpp
     core/util/STBText.cpp
     core/util/StringUtils.cpp
     core/util/UniqueToken.cpp

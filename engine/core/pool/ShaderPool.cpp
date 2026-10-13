@@ -415,22 +415,32 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
     }
 }
 
+uint32_t ShaderPool::getPostColorProperty(ShaderType shaderType){
+    switch (shaderType) {
+        case ShaderType::MESH:   return 1u << 31;
+        case ShaderType::POINTS: return 1u << 4;
+        case ShaderType::LINES:  return 1u << 2;
+        case ShaderType::SKYBOX: return 1u << 0;
+        default:                 return 0;
+    }
+}
+
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 31;
+        case ShaderType::MESH:   return 32;
         case ShaderType::DEPTH:  return 14;
         case ShaderType::GBUFFER: return 10;
         case ShaderType::UI:     return 4;
-        case ShaderType::POINTS: return 4;
-        case ShaderType::LINES:  return 2;
-        case ShaderType::SKYBOX: return 0;
+        case ShaderType::POINTS: return 5;
+        case ShaderType::LINES:  return 3;
+        case ShaderType::SKYBOX: return 1;
         case ShaderType::SSAO:   return 0;
         case ShaderType::SSAO_BLUR: return 0;
         case ShaderType::SSR:    return 0;
         case ShaderType::SSR_BLUR: return 0;
         case ShaderType::COMPOSITE: return 0;
         case ShaderType::SHADOW2D: return 0;
-        case ShaderType::BLIT:   return 0;
+        case ShaderType::BLIT:   return 12;
         default:                 return 0;
     }
 }
@@ -470,6 +480,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // 29-30: light capacity tier, neither = 8 lights
             case 29: return shortName ? "Lc4" : "Light Capacity 4";
             case 30: return shortName ? "L16" : "Light Capacity 16";
+            // the post-processing colour (phase 4, USE_POST_COLOR): one global bit
+            case 31: return shortName ? "Pcl" : "Post Color";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -516,11 +528,33 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 1: return shortName ? "Vc3" : "Vertex Color 3";
             case 2: return shortName ? "Vc4" : "Vertex Color 4";
             case 3: return shortName ? "Txr" : "Texture Rect";
+            case 4: return shortName ? "Pcl" : "Post Color";
         }
     } else if (shaderType == ShaderType::LINES) {
         switch (bit) {
             case 0: return shortName ? "Vc3" : "Vertex Color 3";
             case 1: return shortName ? "Vc4" : "Vertex Color 4";
+            case 2: return shortName ? "Pcl" : "Post Color";
+        }
+    } else if (shaderType == ShaderType::SKYBOX) {
+        switch (bit) {
+            case 0: return shortName ? "Pcl" : "Post Color";
+        }
+    } else if (shaderType == ShaderType::BLIT) {
+        // the uber pass's features (RenderSystem::UberFeature); 0 is the plain blit
+        switch (bit) {
+            case 0: return shortName ? "Fxa" : "FXAA";
+            case 1: return shortName ? "Cab" : "Chromatic Aberration";
+            case 2: return shortName ? "Pix" : "Pixelate";
+            case 3: return shortName ? "Crt" : "CRT";
+            case 4: return shortName ? "Edg" : "Edge Detect";
+            case 5: return shortName ? "Grn" : "Film Grain";
+            case 6: return shortName ? "Shp" : "Sharpen";
+            case 7: return shortName ? "Lut" : "Color Grade LUT";
+            case 8: return shortName ? "Vig" : "Vignette";
+            case 9: return shortName ? "Dth" : "Dither";
+            case 10: return shortName ? "Blm" : "Bloom";
+            case 11: return shortName ? "Blr" : "Blur";
         }
     }
     return shortName ? "?" : "Unknown";

@@ -4,7 +4,8 @@
 // the bind slots. The members up to ambient are a contract with the library shaders; the
 // engine may only append members after it, identically in both blocks (today the shadow
 // PCF radius lights.glsl reads and the fog fog.glsl reads when this block is declared
-// first; the built-in Lit has its own smaller camera block, includes/lit_frame.glsl).
+// first; the built-in Lit has its own smaller camera block, includes/lit_frame.glsl), but for
+// the post-processing colour's three vectors, which only the fragment block has (USE_POST_COLOR).
 
 #if defined(FRAME_VS) && !defined(FRAME_VS_DECLARED)
 #define FRAME_VS_DECLARED
@@ -43,5 +44,12 @@ uniform u_fs_frame {
     vec4 lightingInfo;           // x 3D shadow PCF tap radius (Scene shadowQuality)
     vec4 fogColor_type;          // rgb fog colour, w type: 0 linear, 1 exponential, 2 exponential squared
     vec4 fogDensity_start_end;   // x density, z linear start, w linear end
+    #ifdef USE_POST_COLOR
+        // the post-processing colour's parameters (includes/post_color.glsl, frame_t::postColor);
+        // the fragment stage only, so its block is larger than the vertex stage's
+        vec4 postColor_vignetteScaleOffset;
+        vec4 postColor_vignetteColor;
+        vec4 postColor_params;
+    #endif
 } frame;
 #endif

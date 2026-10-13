@@ -74,7 +74,12 @@ namespace jasperengine{
     struct JASPERENGINE_API ShaderLibraryBindings{
         int slotVSFrame = -1;
         int slotFSFrame = -1;
-        unsigned int frameSize = 0; // bytes of the block the shader declares
+        unsigned int frameSize = 0;   // bytes of the vertex block the shader declares
+        unsigned int frameSizeFS = 0; // of the fragment block (larger with the post colour)
+        // the post-processing colour (phase 4, includes/post_color.glsl): its own block when
+        // the shader has no frame or Lit block to hold it, and its LUT
+        int slotFSPostColor = -1;
+        std::pair<int, int> slotPostColorLut = {-1, -1};
         std::vector<ShaderTextureSlot> textures;
         int slotFSSceneInputs = -1;
         unsigned int sceneInputsSize = 0;
@@ -88,6 +93,9 @@ namespace jasperengine{
             slotVSFrame = -1;
             slotFSFrame = -1;
             frameSize = 0;
+            frameSizeFS = 0;
+            slotFSPostColor = -1;
+            slotPostColorLut = {-1, -1};
             textures.clear();
             slotFSSceneInputs = -1;
             sceneInputsSize = 0;

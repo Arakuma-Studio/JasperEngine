@@ -540,6 +540,16 @@ void RenderSystem::destroy(){
     destroySSR();
     destroyBlit();
     destroyPostProcess();
+    destroyUber();
+    rv().postSceneFramebuffer.destroy();
+    rv().postSceneWidth = 0;
+    rv().postSceneHeight = 0;
+    // the post-processing LUTs, rebaked by the next applyPostProcessing
+    postTailLut.destroyTexture();
+    postTailLutSize = 0;
+    postGradeLut.destroyTexture();
+    postGradeLutSize = 0;
+    postProcessingDirty = true;
     // scene inputs: the targets, the copy, and who reads them (loaded again with the scene)
     releaseSceneInputTargets(primaryView, true);
     primaryView.sceneColorRedirect.destroy();
@@ -2420,6 +2430,7 @@ void RenderSystem::renderReflectionProbeCapture(){
     updatePassFrame(captureCamera, captureTransform, Vector2((float)resolution, (float)resolution));
     passResolution = Vector2((float)resolution, (float)resolution);
     runtime.capturePass.setClearColor(probe->includeSky ? scene->getBackgroundColor() : Vector4(0.0f, 0.0f, 0.0f, 1.0f));
+    runtime.capturePass.setLabel("reflection probe");
     runtime.capturePass.startRenderPass(&runtime.captureFramebuffer, (size_t)face);
 
     auto skys = scene->getComponentArray<SkyboxComponent>();
@@ -2712,6 +2723,7 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.ssr = scene->isSSREnabled();
     environment.depthPrepass = scene->isDepthPrepassEnabled();
     environment.sceneDepth = sceneDepthPrograms;
+    environment.postColor = postColorVariants;
     return environment;
 }
 
@@ -2939,14 +2951,15 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
     }
     if (PointsComponent* points = scene->findComponent<PointsComponent>(entity)){
         const bool hasTexture = !points->texture.empty();
-        add(ShaderType::POINTS, ShaderPool::getPointsProperties(hasTexture, false, true, hasTexture && points->hasTextureRect),
+        add(ShaderType::POINTS, ShaderPool::getPointsProperties(hasTexture, false, true, hasTexture && points->hasTextureRect) | postColorProperty(ShaderType::POINTS),
             shaderId(points->customShader, ShaderType::POINTS, points->shaderFeatures, points->blendMode));
     }
     if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)){
-        add(ShaderType::LINES, ShaderPool::getLinesProperties(false, true), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
+        add(ShaderType::LINES, ShaderPool::getLinesProperties(false, true) | postColorProperty(ShaderType::LINES),
+            shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
     }
     if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity)){
-        add(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX, sky->shaderFeatures, MaterialBlendMode::AUTO));
+        add(ShaderType::SKYBOX, postColorProperty(ShaderType::SKYBOX), shaderId(sky->customShader, ShaderType::SKYBOX, sky->shaderFeatures, MaterialBlendMode::AUTO));
     }
 }
 
@@ -2979,6 +2992,18 @@ void RenderSystem::logRenderObjects(){
                (sceneInputUsage & ShaderRequire_SceneColor) ? "yes" : "no", lastSceneInputStats.passes, lastSceneInputStats.depthPrePasses,
                lastSceneInputStats.sharedDepth, lastSceneInputStats.colorCopies, sceneInputTargets, sceneInputStats.targetsCreated,
                sceneColorRedirect ? "yes" : "no");
+    // shader library phase 4: what the post-processing runs (nothing printed while it is off)
+    if (postTiers.tailColor || postTiers.uber){
+        std::string features;
+        for (int bit = 0; bit < UBER_FEATURE_COUNT; bit++){
+            if (postTiers.uberFeatures & (1u << bit))
+                features += (features.empty() ? "" : ",") + ShaderPool::getShaderPropertyName(ShaderType::BLIT, bit, true);
+        }
+        Log::print("Post-processing: in-shader colour %s (%s, LUT %d), uber pass %s (features %s, render scale %.2f, MSAA %d)",
+                   postTiers.tailColor ? "on" : "off", postTiers.tailGrade ? "curve, grade, vignette, dither" : "exposure and curve",
+                   postTailLutSize, postTiers.uber ? "on" : "off", features.empty() ? "none" : features.c_str(),
+                   postTiers.renderScale, postTiers.msaaSamples);
+    }
 }
 
 uint32_t RenderSystem::getSceneInputUsage() const{
@@ -3304,6 +3329,9 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
                     inputs.terrain, inputs.instanced, p_ibl, inputs.mirror, p_ssao, p_light2d, p_shadows2d,
                     p_alphaMask, p_alphaOpaque, p_instanceFade, p_terrainSurface,
                     p_vertexLights, lightCapacity);
+    // the post-processing colour (phase 4): the scene's, for every colour variant
+    if (environment.postColor)
+        variant.properties |= ShaderPool::getPostColorProperty(ShaderType::MESH);
 
     // the depth shader feeds shadow maps (casters) and the SSAO depth pre-pass
     // (SSR uses its own G-buffer shader). A depth fork is built even without a
@@ -3355,15 +3383,29 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
                                              std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest){
     bindings.clear();
 
-    // the frame block, by name; both stages declare the same layout
+    // the frame block, by name; both stages declare the same layout but for the post colour's
+    // members the fragment one may append (USE_POST_COLOR)
     bindings.slotVSFrame = shaderData.getUniformBlockIndexByName("u_vs_frame");
     bindings.slotFSFrame = shaderData.getUniformBlockIndexByName("u_fs_frame");
-    if (bindings.slotVSFrame != -1 || bindings.slotFSFrame != -1){
+    if (bindings.slotVSFrame != -1){
         unsigned int sizeBytes = 0;
-        if (!shaderData.getUniformBlockMembers(bindings.slotVSFrame != -1 ? "u_vs_frame" : "u_fs_frame", sizeBytes))
+        if (!shaderData.getUniformBlockMembers("u_vs_frame", sizeBytes))
             sizeBytes = 0;
         bindings.frameSize = std::min((unsigned int)sizeof(frame_t), sizeBytes);
     }
+    if (bindings.slotFSFrame != -1){
+        unsigned int sizeBytes = 0;
+        if (!shaderData.getUniformBlockMembers("u_fs_frame", sizeBytes))
+            sizeBytes = 0;
+        bindings.frameSizeFS = std::min((unsigned int)sizeof(frame_t), sizeBytes);
+    }
+
+    // the post-processing colour (includes/post_color.glsl): its block when no other holds it,
+    // and its LUT, bound per draw (applyPostColor)
+    bindings.slotFSPostColor = shaderData.getUniformBlockIndexByName("u_fs_postColor");
+    bindings.slotPostColorLut = shaderData.getTextureIndexByName("u_postColorLut");
+    if (bindings.slotPostColorLut.first != -1)
+        render.addTexture(bindings.slotPostColorLut, ShaderStageType::FRAGMENT, &emptyWhite);
 
     // the scene inputs (includes/scene.glsl), bound to the neutral fallbacks until a draw
     // binds its pass's (applySceneInputs)
@@ -3510,14 +3552,328 @@ void RenderSystem::updatePassFrame(const CameraComponent& camera, const Transfor
 void RenderSystem::updatePassFrame(const CameraComponent& camera, const Transform& cameraTransform, const Vector2& resolution){
     fillFrameBlock(passFrame, camera, cameraTransform, resolution);
     // the engine-internal members appended after ambient, and Lit's camera block
-    fillFrameLighting(passFrame, passLitFrame, camera);
+    fillFrameLighting(passFrame, passLitFrameBlock.lit, camera);
+    // no post-processing colour unless the pass is the post-processed camera's colour pass
+    // (renderCameraPass sets it then)
+    fillPassPostColor(false, Rect(), 0.0f);
+}
+
+PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSettings& settings){
+    PostProcessingTiers tiers;
+    tiers.renderScale = std::min(std::max(settings.renderScale, 0.5f), 1.0f);
+    tiers.msaaSamples = settings.msaaSamples >= 4 ? 4 : (settings.msaaSamples >= 2 ? 2 : 1);
+
+    uint32_t features = 0;
+    if (settings.fxaaEnabled) features |= UBER_FXAA;
+    if (settings.chromaticAberrationEnabled && settings.chromaticAberrationIntensity > 0.0f) features |= UBER_CHROMATIC;
+    if (settings.pixelateEnabled && settings.pixelateSize > 1.0f) features |= UBER_PIXELATE;
+    if (settings.crtEnabled) features |= UBER_CRT;
+    if (settings.edgeDetectEnabled && settings.edgeDetectIntensity > 0.0f) features |= UBER_EDGE;
+    if (settings.filmGrainEnabled && settings.filmGrainIntensity > 0.0f) features |= UBER_GRAIN;
+    if (settings.sharpenEnabled && settings.sharpenIntensity > 0.0f) features |= UBER_SHARPEN;
+    if (settings.bloomEnabled && settings.bloomIntensity > 0.0f) features |= UBER_BLOOM;
+    if (settings.blurEnabled) features |= UBER_BLUR;
+
+    const bool curve = PostColorLut::hasCurve(settings);
+    const bool grade = PostColorLut::hasGrade(settings);
+    const bool vignette = settings.vignetteEnabled && settings.vignetteIntensity > 0.0f;
+    const bool dither = settings.ditherEnabled;
+
+    // (msaaSamples does not run the uber pass: the multisampled scene target is not made yet,
+    // see the phase 4 spec's implementation notes)
+    tiers.uber = features != 0 || tiers.renderScale < 1.0f;
+    if (tiers.uber){
+        // the grade, vignette and dither move to the uber pass (after the bloom composite and
+        // the chromatic aberration, so they are graded once); exposure and the curve stay in
+        // the shaders, which have the unclamped linear colour
+        if (grade) features |= UBER_LUT;
+        if (vignette) features |= UBER_VIGNETTE;
+        if (dither) features |= UBER_DITHER;
+        tiers.tailColor = curve;
+        tiers.tailGrade = false;
+    }else{
+        tiers.tailColor = curve || grade || vignette || dither;
+        tiers.tailGrade = true;
+    }
+    tiers.uberFeatures = features;
+    return tiers;
+}
+
+void RenderSystem::bakePostColorLut(TextureRender& texture, int& textureSize, PostColorLut::Stage stage){
+    const PostProcessingSettings& settings = scene->getPostProcessing();
+    const int n = settings.lutSize > 16 ? 32 : 16;
+    if (texture.isCreated() && textureSize != n){
+        texture.destroyTexture();
+        textureSize = 0;
+    }
+    if (!texture.isCreated()){
+        if (!texture.createDynamicColorTexture(stage == PostColorLut::Stage::GRADE ? "post grade LUT" : "post colour LUT", n * n, n))
+            return;
+        textureSize = n;
+    }
+    PostColorLut::bake(settings, postLutStrip.size > 1 ? &postLutStrip : nullptr, stage, n, postLutPixels);
+    texture.updateTexture(postLutPixels.data(), postLutPixels.size());
+}
+
+void RenderSystem::applyPostProcessing(){
+    if (!postProcessingDirty || !Engine::isViewLoaded())
+        return;
+    postProcessingDirty = false;
+
+    const PostProcessingSettings& settings = scene->getPostProcessing();
+    const PostProcessingTiers tiers = getPostProcessingTiers(settings);
+
+    // the user's LUT strip, read once per path (a missing or malformed one is logged and left out)
+    const std::string stripPath = settings.colorGradingEnabled ? settings.lutTexture : std::string();
+    if (stripPath != postLutStripPath){
+        postLutStripPath = stripPath;
+        if (!PostColorLut::loadStrip(stripPath, postLutStrip))
+            postLutStrip = PostColorLut::Strip();
+    }
+
+    // the in-shader LUT: exposure, curve and (without the uber pass) the grade
+    if (tiers.tailColor){
+        bakePostColorLut(postTailLut, postTailLutSize, tiers.tailGrade ? PostColorLut::Stage::ALL : PostColorLut::Stage::CURVE);
+    }else if (postTailLut.isCreated()){
+        postTailLut.destroyTexture();
+        postTailLutSize = 0;
+    }
+    // the uber pass's grade
+    if (tiers.uberFeatures & UBER_LUT){
+        bakePostColorLut(postGradeLut, postGradeLutSize, PostColorLut::Stage::GRADE);
+    }else if (postGradeLut.isCreated()){
+        postGradeLut.destroyTexture();
+        postGradeLutSize = 0;
+    }
+
+    // one global variant change per toggle of the in-shader colour; the values above are data
+    if (tiers.tailColor != postColorVariants){
+        postColorVariants = tiers.tailColor;
+        needReloadMeshVariants();
+        needReloadPoints();
+        needReloadLines();
+        needReloadSky();
+    }
+    postTiers = tiers;
+}
+
+uint32_t RenderSystem::postColorProperty(ShaderType type) const{
+    return postColorVariants ? ShaderPool::getPostColorProperty(type) : 0;
+}
+
+void RenderSystem::setPassPostColor(const post_color_t& postColor){
+    passPostColor = postColor;
+    passFrame.postColor = postColor;
+    passLitFrameBlock.postColor = postColor;
+}
+
+void RenderSystem::fillPassPostColor(bool active, const Rect& viewport, float targetHeight){
+    post_color_t postColor;
+    postColor.vignetteScaleOffset = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    postColor.vignetteColor = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    postColor.params = Vector4(0.0f, -1.0f, 0.0f, 0.0f);
+    if (!active || !postTiers.tailColor || !postTailLut.isCreated()){
+        setPassPostColor(postColor);
+        return;
+    }
+    const PostProcessingSettings& settings = scene->getPostProcessing();
+    postColor.params.w = (float)postTailLutSize;
+    // vignette and dither belong to the tail without the uber pass (which does them otherwise)
+    if (postTiers.tailGrade){
+        if (settings.vignetteEnabled && settings.vignetteIntensity > 0.0f){
+            fillVignette(settings, viewport, targetHeight, postColor.vignetteScaleOffset, postColor.vignetteColor,
+                         postColor.params.x, postColor.params.y);
+        }
+        if (settings.ditherEnabled)
+            postColor.params.z = 1.0f / 255.0f;
+    }
+    setPassPostColor(postColor);
+}
+
+void RenderSystem::fillVignette(const PostProcessingSettings& settings, const Rect& viewport, float targetHeight,
+                                Vector4& scaleOffset, Vector4& color, float& falloffScale, float& falloffBias) const{
+    const float w = viewport.getWidth();
+    const float h = viewport.getHeight();
+    if (w <= 0.0f || h <= 0.0f){
+        scaleOffset = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+        color = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+        falloffScale = 0.0f;
+        falloffBias = -1.0f;
+        return;
+    }
+    // the viewport's centre in gl_FragCoord: viewports are applied from the bottom
+    // (SokolCamera::applyViewport), gl_FragCoord counts from the bottom on GL only
+    const float centreX = viewport.getX() + 0.5f * w;
+    const float centreY = Engine::isOpenGL() ? viewport.getY() + 0.5f * h : targetHeight - (viewport.getY() + 0.5f * h);
+    // 1 at the edges; roundness scales x towards the height's units (a circle)
+    const float scaleX = (1.0f + (w / h - 1.0f) * settings.vignetteRoundness) / (0.5f * w);
+    const float scaleY = 1.0f / (0.5f * h);
+    scaleOffset = Vector4(scaleX, scaleY, centreX * scaleX, centreY * scaleY);
+    color = Vector4(settings.vignetteColor.x, settings.vignetteColor.y, settings.vignetteColor.z, settings.vignetteIntensity);
+    // falloff over dot(p, p): from start to start + width, start and width by smoothness
+    const float start = 0.6f * (1.0f - settings.vignetteSmoothness);
+    const float width = 0.2f + 1.6f * settings.vignetteSmoothness;
+    falloffScale = 1.0f / width;
+    falloffBias = -start / width;
+}
+
+bool RenderSystem::loadUber(uint32_t features){
+    if (uberLoaded && uberFeatures == features)
+        return true;
+    if (features == 0)
+        return false;
+    if (uberLoaded && uberFeatures != features)
+        destroyUber();
+
+    // the variant may still be building (async in the editor, at runtime without precompiled ones)
+    std::shared_ptr<ShaderRender> shader = ShaderPool::get(ShaderType::BLIT, features);
+    if (!shader || !shader->isCreated())
+        return false;
+    uberShader = shader;
+    uberFeatures = features;
+
+    // the swapchain (PIP_DEFAULT) or a target (PIP_RTT: the editor's views, a render-to-texture camera)
+    ShaderData& shaderData = uberShader.get()->shaderData;
+    uberRender.beginLoad(PrimitiveType::TRIANGLES);
+    uberRender.setShader(uberShader.get());
+    uberSlotVSParams = shaderData.getUniformBlockIndexByName("u_vs_uberParams");
+    uberSlotFSParams = shaderData.getUniformBlockIndexByName("u_fs_uberParams");
+    uberSlotSource = shaderData.getTextureIndexByName("u_sceneColorTexture");
+    uberSlotLut = shaderData.getTextureIndexByName("u_colorLut");
+    uberSlotBloom = shaderData.getTextureIndexByName("u_bloomTexture");
+    uberSlotBlur = shaderData.getTextureIndexByName("u_blurTexture");
+    if (!uberRender.endLoad(PIP_RTT | PIP_DEFAULT, false, true, CullingMode::BACK, WindingOrder::CCW)){
+        uberShader.reset();
+        uberFeatures = 0;
+        return false;
+    }
+    uberLoaded = true;
+    return true;
+}
+
+void RenderSystem::destroyUber(){
+    if (uberLoaded){
+        uberRender.destroy();
+    }
+    if (uberShader){
+        uberShader.reset();
+        ShaderPool::remove(ShaderType::BLIT, uberFeatures);
+    }
+    uberLoaded = false;
+    uberFeatures = 0;
+    uberSlotVSParams = -1;
+    uberSlotFSParams = -1;
+    uberSlotSource = {-1, -1};
+    uberSlotLut = {-1, -1};
+    uberSlotBloom = {-1, -1};
+    uberSlotBlur = {-1, -1};
+}
+
+bool RenderSystem::ensurePostSceneFramebuffer(unsigned int width, unsigned int height){
+    if (width == 0 || height == 0)
+        return false;
+    if (rv().postSceneFramebuffer.isCreated() && rv().postSceneWidth == width && rv().postSceneHeight == height)
+        return true;
+
+    rv().postSceneFramebuffer.destroy();
+    // the scene at the render scale, bilinear for the upscale and the uber pass's taps
+    rv().postSceneFramebuffer.setWidth(width);
+    rv().postSceneFramebuffer.setHeight(height);
+    rv().postSceneFramebuffer.setMinFilter(TextureFilter::LINEAR);
+    rv().postSceneFramebuffer.setMagFilter(TextureFilter::LINEAR);
+    rv().postSceneFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    rv().postSceneFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    rv().postSceneFramebuffer.create();
+    rv().postSceneWidth = width;
+    rv().postSceneHeight = height;
+    return rv().postSceneFramebuffer.isCreated();
+}
+
+void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight,
+                              FramebufferRender* destination, const Rect& viewport){
+    // the background around the viewport, as the blit (CLEAR: a tiler loads nothing)
+    uberPassRender.setClearColor(scene->getBackgroundColor());
+    uberPassRender.setLabel("uber");
+
+    PipelineType pip = PIP_RTT;
+    bool flipGL = false;
+    float targetHeight = 0.0f;
+    if (destination){
+        uberPassRender.startRenderPass(destination);
+        targetHeight = viewport.getY() + viewport.getHeight();
+    }else if (Framebuffer* target = targetFramebuffer()){
+        if (!target->isCreated()){
+            target->create();
+        }
+        // source and destination are both flipped on GL
+        uberPassRender.startRenderPass(&target->getRender());
+        targetHeight = (float)target->getHeight();
+    }else{
+        uberPassRender.startRenderPass();
+        pip = PIP_DEFAULT;
+        // the source was rendered flipped (PIP_RTT) but the GL swapchain is not
+        flipGL = Engine::isOpenGL();
+        targetHeight = (float)System::instance().getScreenHeight();
+    }
+    uberPassRender.applyViewport(viewport);
+
+    if (uberRender.beginDraw(pip)){
+        const PostProcessingSettings& settings = scene->getPostProcessing();
+        uberRender.addTexture(uberSlotSource, ShaderStageType::FRAGMENT, source);
+        if (uberSlotLut.first != -1)
+            uberRender.addTexture(uberSlotLut, ShaderStageType::FRAGMENT, postGradeLut.isCreated() ? &postGradeLut : &emptyWhite);
+        if (uberSlotBloom.first != -1)
+            uberRender.addTexture(uberSlotBloom, ShaderStageType::FRAGMENT, uberBloomTexture ? uberBloomTexture : &emptyBlack);
+        if (uberSlotBlur.first != -1)
+            uberRender.addTexture(uberSlotBlur, ShaderStageType::FRAGMENT, uberBlurTexture ? uberBlurTexture : source);
+
+        const Vector4 uvScaleOffset = flipGL ? Vector4(1.0f, 0.0f, -1.0f, 1.0f) : Vector4(1.0f, 0.0f, 1.0f, 0.0f);
+        const float sw = (float)std::max(sourceWidth, 1u);
+        const float sh = (float)std::max(sourceHeight, 1u);
+        const float vw = std::max(viewport.getWidth(), 1.0f);
+        const float vh = std::max(viewport.getHeight(), 1.0f);
+        vs_uber.uvScaleOffset = uvScaleOffset;
+        vs_uber.sourceTexel = Vector4(1.0f / sw, 1.0f / sh, sw, sh);
+        fs_uber.uvScaleOffset = uvScaleOffset;
+        fs_uber.sourceTexel = vs_uber.sourceTexel;
+        fs_uber.outputTexel = Vector4(1.0f / vw, 1.0f / vh, vw, vh);
+        fs_uber.effects = Vector4(settings.chromaticAberrationIntensity, settings.pixelateSize, settings.filmGrainIntensity, settings.filmGrainResponse);
+        fs_uber.crt = Vector4(settings.crtScanlines, settings.crtMask, settings.crtCurvature, settings.crtVignette);
+        fs_uber.edgeSharpenTime = Vector4(settings.edgeDetectThreshold, settings.edgeDetectIntensity, settings.sharpenIntensity,
+                                          (float)std::fmod(frameTime, 1000.0));
+        fs_uber.edgeColorDither = Vector4(settings.edgeDetectColor.x, settings.edgeDetectColor.y, settings.edgeDetectColor.z,
+                                          settings.ditherEnabled ? 1.0f / 255.0f : 0.0f);
+        float falloffScale = 0.0f;
+        float falloffBias = -1.0f;
+        fillVignette(settings, viewport, targetHeight, fs_uber.vignetteScaleOffset, fs_uber.vignetteColor, falloffScale, falloffBias);
+        // a scanline per source row once a row is two output pixels or more, else every three
+        const float rowPixels = vh / sh;
+        fs_uber.vignetteLutScan = Vector4(falloffScale, falloffBias, (float)postGradeLutSize, rowPixels >= 2.0f ? rowPixels : 3.0f);
+        // the bloom tint is a colour picked in sRGB; the composite adds in linear light
+        const Vector3 tint = Color::sRGBToLinear(settings.bloomTint);
+        fs_uber.bloomBlur = Vector4(tint.x * settings.bloomIntensity, tint.y * settings.bloomIntensity, tint.z * settings.bloomIntensity,
+                                    settings.blurIntensity);
+
+        uberRender.applyUniformBlock(uberSlotVSParams, sizeof(vs_uber_t), &vs_uber);
+        uberRender.applyUniformBlock(uberSlotFSParams, sizeof(fs_uber_t), &fs_uber);
+        uberRender.draw(0, 3, 1);
+    }
+    uberPassRender.endRenderPass();
 }
 
 void RenderSystem::applyFrameBlock(ObjectRender& render, const ShaderLibraryBindings& bindings){
     if (bindings.slotVSFrame != -1)
         render.applyUniformBlock(bindings.slotVSFrame, bindings.frameSize, &passFrame);
     if (bindings.slotFSFrame != -1)
-        render.applyUniformBlock(bindings.slotFSFrame, bindings.frameSize, &passFrame);
+        render.applyUniformBlock(bindings.slotFSFrame, bindings.frameSizeFS, &passFrame);
+    applyPostColor(render, bindings);
+}
+
+void RenderSystem::applyPostColor(ObjectRender& render, const ShaderLibraryBindings& bindings){
+    if (bindings.slotFSPostColor != -1)
+        render.applyUniformBlock(bindings.slotFSPostColor, sizeof(post_color_t), &passPostColor);
+    if (bindings.slotPostColorLut.first != -1)
+        render.addTexture(bindings.slotPostColorLut, ShaderStageType::FRAGMENT, postTailLut.isCreated() ? &postTailLut : &emptyWhite);
 }
 
 void RenderSystem::applySceneInputs(ObjectRender& render, const ShaderLibraryBindings& bindings){
@@ -4294,6 +4650,10 @@ void RenderSystem::setDisableFog(bool disableFog){
     needReloadMeshVariants();
 }
 
+void RenderSystem::setDisablePostProcessing(bool disablePostProcessing){
+    primaryView.postProcessing = !disablePostProcessing;
+}
+
 void RenderSystem::setDisableFixedResolution(bool disableFixedResolution){
     // No reload needed: the editor always renders through Engine::getFramebuffer(),
     // so the PIP_RTT pipeline is already baked whether fixed resolution is on or off.
@@ -4651,7 +5011,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             // the built-in Lit's camera block (includes/lit_frame.glsl): the prefix it declares
             mesh.submeshes[i].slotFSLitFrame = shaderData.getUniformBlockIndexByName("u_fs_litFrame");
             shaderData.getUniformBlockMembers("u_fs_litFrame", mesh.submeshes[i].sizeFSLitFrame);
-            mesh.submeshes[i].sizeFSLitFrame = std::min(mesh.submeshes[i].sizeFSLitFrame, (unsigned int)sizeof(lit_frame_t));
+            mesh.submeshes[i].sizeFSLitFrame = std::min(mesh.submeshes[i].sizeFSLitFrame, (unsigned int)sizeof(lit_frame_block_t));
             mesh.submeshes[i].slotFSLighting = shaderData.getUniformBlockIndex(UniformBlockType::FS_LIGHTING);
             if (p_ibl){
                 mesh.submeshes[i].slotFSReflectionProbe = shaderData.getUniformBlockIndex(UniformBlockType::FS_REFLECTION_PROBE);
@@ -5891,7 +6251,7 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
         extra.sizeFSObjectLights = std::min(extra.sizeFSObjectLights, (unsigned int)sizeof(object_lights_t));
         extra.slotFSLitFrame = shaderData.getUniformBlockIndexByName("u_fs_litFrame");
         shaderData.getUniformBlockMembers("u_fs_litFrame", extra.sizeFSLitFrame);
-        extra.sizeFSLitFrame = std::min(extra.sizeFSLitFrame, (unsigned int)sizeof(lit_frame_t));
+        extra.sizeFSLitFrame = std::min(extra.sizeFSLitFrame, (unsigned int)sizeof(lit_frame_block_t));
         extra.slotFSLighting = shaderData.getUniformBlockIndex(UniformBlockType::FS_LIGHTING);
     }
     extra.slotFSLighting2D = (properties & (1u << 22)) ? shaderData.getUniformBlockIndex(UniformBlockType::FS_LIGHTING2D) : -1;
@@ -5981,7 +6341,8 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
             render.applyUniformBlock(extra.slotFSObjectLights, extra.sizeFSObjectLights, &objectLightsBlock);
         }
         if (extra.slotFSLitFrame != -1){
-            render.applyUniformBlock(extra.slotFSLitFrame, extra.sizeFSLitFrame, &passLitFrame);
+            render.applyUniformBlock(extra.slotFSLitFrame, extra.sizeFSLitFrame,
+                (properties & ShaderPool::getPostColorProperty(ShaderType::MESH)) ? (void*)&passLitFrameBlock : (void*)&passLitFrameBlock.lit);
         }
         if (extra.slotFSLighting != -1){
             buildLegacyLighting(mesh, properties, legacyLightingBlock);
@@ -6664,7 +7025,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     render.applyUniformBlock(mesh.submeshes[i].slotFSObjectLights, mesh.submeshes[i].sizeFSObjectLights, &objectLightsBlock);
                 }
                 if (mesh.submeshes[i].slotFSLitFrame != -1){
-                    render.applyUniformBlock(mesh.submeshes[i].slotFSLitFrame, mesh.submeshes[i].sizeFSLitFrame, &passLitFrame);
+                    // a variant with the post colour has its parameters first (lit_frame_block_t)
+                    render.applyUniformBlock(mesh.submeshes[i].slotFSLitFrame, mesh.submeshes[i].sizeFSLitFrame,
+                        (mesh.submeshes[i].shaderProperties & ShaderPool::getPostColorProperty(ShaderType::MESH)) ? (void*)&passLitFrameBlock : (void*)&passLitFrameBlock.lit);
                 }
                 if (mesh.submeshes[i].slotFSLighting != -1){
                     buildLegacyLighting(mesh, mesh.submeshes[i].shaderProperties, legacyLightingBlock);
@@ -7087,6 +7450,7 @@ TextureRender* RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResol
     fs_ssao.noiseScale = Vector4((float)w / 4.0f, (float)h / 4.0f, 1.0f / (float)w, 1.0f / (float)h);
 
     ssaoPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0));
+    ssaoPassRender.setLabel("ssao");
     ssaoPassRender.startRenderPass(&rv().ssaoFramebuffer.getRender());
     if (ssaoRender.beginDraw(PIP_EFFECT)){
         ShaderData& sd = ssaoShader.get()->shaderData;
@@ -7102,6 +7466,7 @@ TextureRender* RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResol
     fs_ssao_blur.texelSize = Vector4(1.0f / (float)w, 1.0f / (float)h, 0.0, 0.0);
 
     ssaoPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0));
+    ssaoPassRender.setLabel("ssao blur");
     ssaoPassRender.startRenderPass(&rv().ssaoBlurFramebuffer.getRender());
     if (ssaoBlurRender.beginDraw(PIP_EFFECT)){
         ShaderData& bd = ssaoBlurShader.get()->shaderData;
@@ -7134,6 +7499,7 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
     }
 
     ssaoPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0)); // background -> depth ~1.0
+    ssaoPassRender.setLabel("depth pre-pass");
     ssaoPassRender.startRenderPass(&target.getRender());
     passResolution = Vector2((float)width, (float)height);
 
@@ -7476,6 +7842,7 @@ TextureRender* RenderSystem::copySceneColor(TextureRender* source, const Rect& v
                                 viewport.getHeight() / (float)targetHeight, rowStart / (float)targetHeight);
 
     sceneInputPassRender.setClearColor(Vector4(0.0f, 0.0f, 0.0f, 1.0f));
+    sceneInputPassRender.setLabel("scene colour copy");
     sceneInputPassRender.startRenderPass(&target->framebuffer.getRender());
     if (sceneColorCopyRender.beginDraw(PIP_EFFECT)){
         ShaderData& shaderData = sceneColorCopyShader.get()->shaderData;
@@ -7663,6 +8030,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
     Matrix4 viewMatrix = camera.viewMatrix;
 
     gbufferPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0)); // color[0] background -> depth ~1.0
+    gbufferPassRender.setLabel("gbuffer");
     gbufferPassRender.startRenderPass(&rv().gbufferFramebuffer.getRender());
 
     auto transforms = scene->getComponentArray<Transform>();
@@ -7835,6 +8203,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
     fs_ssr.misc = Vector4(1.0f / (float)w, 1.0f / (float)h, flipGL, scene->getSSRBlur());
 
     ssrPassRender.setClearColor(Vector4(0.0, 0.0, 0.0, 0.0));
+    ssrPassRender.setLabel("ssr");
     ssrPassRender.startRenderPass(&rv().ssrFramebuffer.getRender());
     if (ssrRender.beginDraw(PIP_EFFECT)){
         ShaderData& sd = ssrShader.get()->shaderData;
@@ -7859,6 +8228,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
         fs_ssr_blur.params = Vector4(1.0f / (float)w, 1.0f / (float)h, blurRadius, flipGL);
 
         ssrPassRender.setClearColor(Vector4(0.0, 0.0, 0.0, 0.0));
+        ssrPassRender.setLabel("ssr blur");
         ssrPassRender.startRenderPass(&rv().ssrBlurFramebuffer.getRender());
         if (ssrBlurRender.beginDraw(PIP_EFFECT)){
             ShaderData& bd = ssrBlurShader.get()->shaderData;
@@ -7900,6 +8270,7 @@ void RenderSystem::renderSSR(CameraComponent& camera, FramebufferRender* destina
         }
     }
 
+    ssrPassRender.setLabel("ssr composite");
     ssrPassRender.setClearColor(scene->getBackgroundColor());
     PipelineType compositePip;
     if (destination){
@@ -7991,6 +8362,7 @@ void RenderSystem::renderBlit(TextureRender* source, Rect viewport){
     // bars outside the viewport keep the background color (same as the direct
     // path, which clears the whole destination before applying the viewport)
     fixedResPassRender.setClearColor(scene->getBackgroundColor());
+    fixedResPassRender.setLabel("blit");
 
     PipelineType blitPip;
     bool flipGL = false;
@@ -8029,6 +8401,10 @@ void RenderSystem::needReloadPostProcess(){
 
 void RenderSystem::needUpdatePostProcessUniforms(){
     postProcessNeedUpdateUniforms = true;
+}
+
+void RenderSystem::needUpdatePostProcessing(){
+    postProcessingDirty = true;
 }
 
 void RenderSystem::loadPostProcess(){
@@ -8189,6 +8565,7 @@ void RenderSystem::renderPostProcess(FramebufferRender* destination){
         PostProcessRuntime& pass = postProcessPasses[i];
         bool writeDestination = destination && (i + 1 == (int)postProcessPasses.size());
 
+        postProcessPassRender.setLabel("user post-process");
         if (writeDestination){
             postProcessPassRender.startRenderPass(destination);
         }else{
@@ -8635,7 +9012,7 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
         }
     }
 
-    points.shaderProperties = ShaderPool::getPointsProperties(p_hasTexture, false, true, p_hasTextureRect);
+    points.shaderProperties = ShaderPool::getPointsProperties(p_hasTexture, false, true, p_hasTextureRect) | postColorProperty(ShaderType::POINTS);
     const std::string& pointsShaderBase = points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader;
     const std::string pointsShaderSrc = getComponentShaderReference(pointsShaderBase, points.shaderFeatures, points.blendMode);
     points.customShaderId = ShaderPool::registerCustomShader(pointsShaderSrc);
@@ -8735,7 +9112,7 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
 
     render.beginLoad(PrimitiveType::LINES);
 
-    lines.shaderProperties = ShaderPool::getLinesProperties(false, true);
+    lines.shaderProperties = ShaderPool::getLinesProperties(false, true) | postColorProperty(ShaderType::LINES);
     const std::string& linesShaderBase = lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader;
     const std::string linesShaderSrc = getComponentShaderReference(linesShaderBase, lines.shaderFeatures, lines.blendMode);
     lines.customShaderId = ShaderPool::registerCustomShader(linesShaderSrc);
@@ -9053,14 +9430,15 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
     const std::string& skyShaderBase = sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader;
     const std::string skyShaderSrc = getComponentShaderReference(skyShaderBase, sky.shaderFeatures, MaterialBlendMode::AUTO);
     sky.customShaderId = ShaderPool::registerCustomShader(skyShaderSrc);
-    sky.shader = ShaderPool::get(ShaderType::SKYBOX, 0, sky.customShaderId);
+    sky.shaderProperties = postColorProperty(ShaderType::SKYBOX);
+    sky.shader = ShaderPool::get(ShaderType::SKYBOX, sky.shaderProperties, sky.customShaderId);
     if (!sky.shader->isCreated()){
         // A custom shader that failed to compile falls back to the built-in shader (so the
         // object stays visible and loading finishes); retried after its source changes.
-        if (sky.customShaderId != 0 && ShaderPool::isShaderBuildFailed(ShaderType::SKYBOX, 0, sky.customShaderId)){
+        if (sky.customShaderId != 0 && ShaderPool::isShaderBuildFailed(ShaderType::SKYBOX, sky.shaderProperties, sky.customShaderId)){
             Log::error("Custom shader '%s' failed to compile; using the built-in shader", skyShaderSrc.c_str());
             sky.customShaderId = 0;
-            sky.shader = ShaderPool::get(ShaderType::SKYBOX, 0, 0);
+            sky.shader = ShaderPool::get(ShaderType::SKYBOX, sky.shaderProperties, 0);
         }
         if (!sky.shader->isCreated())
             return false;
@@ -9157,7 +9535,7 @@ void RenderSystem::destroySky(Entity entity, SkyboxComponent& sky){
         //Destroy shader
         if (sky.shader){
             sky.shader.reset();
-            ShaderPool::remove(ShaderType::SKYBOX, 0, sky.customShaderId);
+            ShaderPool::remove(ShaderType::SKYBOX, sky.shaderProperties, sky.customShaderId);
         }
 
         //Destroy texture
@@ -10013,7 +10391,7 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
     auto skyArray = scene->getComponentArray<SkyboxComponent>();
     if (skyArray->size() > 0) {
         const SkyboxComponent& sky = skyArray->getComponentFromIndex(0);
-        count(sky.loaded || (!sky.loadCalled && isShaderUnavailable(sky.shader, ShaderType::SKYBOX, 0, sky.customShaderId)));
+        count(sky.loaded || (!sky.loadCalled && isShaderUnavailable(sky.shader, ShaderType::SKYBOX, sky.shaderProperties, sky.customShaderId)));
     }
 }
 
@@ -10791,6 +11169,10 @@ void RenderSystem::updateSwapchainRedirect(){
             redirect = postProcessLoaded && blitLoaded && !postProcessPasses.empty()
                     && ensurePostProcessFramebuffers(w, h);
         }
+        // the uber pass (phase 4) reads the scene from an offscreen target too
+        if (!redirect && postTiers.uber){
+            redirect = loadUber(postTiers.uberFeatures);
+        }
         // the scene colour (phase 3) is copied out of an offscreen colour target: in a scene
         // with an object reading it (or one gone a short while ago), the camera may draw into
         // one blitted to the screen, decided each frame by what it sees (updateSceneColorRedirect)
@@ -11028,6 +11410,9 @@ void RenderSystem::update(double dt){
     }
 
     int numLights = checkLightsAndShadow();
+
+    // changed post-processing settings: LUT bakes and the variant bit the objects load with below
+    applyPostProcessing();
 
     auto transforms = scene->getComponentArray<Transform>();
     auto cameras = scene->getComponentArray<CameraComponent>();
@@ -12425,6 +12810,7 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
 
             if (!projectivePassStarted){
                 shadowAtlasPassRender.setClearDepth(1.0f);
+                shadowAtlasPassRender.setLabel("shadow");
                 shadowAtlasPassRender.startRenderPass(&projectiveAtlas);
                 projectivePassStarted = true;
             }
@@ -12465,6 +12851,7 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
             }
 
             Rect slotRect = getShadowPointAtlasSlotRect(slotIndex);
+            shadowPointAtlasPassRender.setLabel("point shadow");
             shadowPointAtlasPassRender.startRenderPass(&pointAtlas);
             shadowPointAtlasPassRender.applyViewport(slotRect);
             shadowPointAtlasPassRender.applyScissor(slotRect);
@@ -12523,6 +12910,7 @@ void RenderSystem::render2DShadows(){
             shadow2DAtlasPassRender.setLoadActionLoad();
         }
         Rect rowRect(0.0f, (float)light.shadowMapIndex, (float)shadow2DAtlasWidth, 1.0f);
+        shadow2DAtlasPassRender.setLabel("2d shadow");
         shadow2DAtlasPassRender.startRenderPass(&shadow2DAtlasFramebuffer);
         shadow2DAtlasPassRender.applyViewport(rowRect);
         shadow2DAtlasPassRender.applyScissor(rowRect);
@@ -12744,13 +13132,45 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     Framebuffer* target = targetFramebuffer();
     const Rect viewRect = targetViewRect();
 
+    // The uber pass (shader library phase 4): the post-processed camera (as the post-process
+    // chain: the main camera of the base layer, or a main camera drawing into a texture; the
+    // view lets it) draws its scene offscreen, at the render scale, and the uber pass draws that
+    // to the destination with its effects. With fixed resolution it is the blit: it reads the
+    // fixed-resolution target (no extra pass).
+    bool useUber = false;
+    unsigned int uberSceneWidth = 0;
+    unsigned int uberSceneHeight = 0;
+    if (postTiers.uber && isMainCamera && (isBaseLayer() || pass.renderToTexture) && rv().postProcessing
+            && (target || pass.renderToTexture || useFixedRes || swapchainRedirect) && loadUber(postTiers.uberFeatures)){
+        if (useFixedRes){
+            uberSceneWidth = rv().fixedResWidth;
+            uberSceneHeight = rv().fixedResHeight;
+            useUber = true;
+        }else{
+            const float baseWidth = pass.renderToTexture ? (float)camera.framebuffer->getWidth() : viewRect.getWidth();
+            const float baseHeight = pass.renderToTexture ? (float)camera.framebuffer->getHeight() : viewRect.getHeight();
+            uberSceneWidth = (unsigned int)std::max(1L, std::lround(baseWidth * postTiers.renderScale));
+            uberSceneHeight = (unsigned int)std::max(1L, std::lround(baseHeight * postTiers.renderScale));
+            useUber = ensurePostSceneFramebuffer(uberSceneWidth, uberSceneHeight);
+        }
+    }
+    // what the uber pass reads: the scene colour pass, SSR and the post-process chain write it
+    FramebufferRender* uberSource = nullptr;
+    if (useUber){
+        uberSource = useFixedRes ? &rv().fixedResFramebuffer.getRender() : &rv().postSceneFramebuffer.getRender();
+    }
+
     bool useSSR = false;
     FramebufferRender* ssrDestination = nullptr;
-    if (isMainCamera && scene->isSSREnabled() && (target || pass.renderToTexture || useFixedRes || swapchainRedirect)){
+    if (isMainCamera && scene->isSSREnabled() && (target || pass.renderToTexture || useFixedRes || useUber || swapchainRedirect)){
         loadSSR();
         unsigned int sw = (unsigned int)viewRect.getWidth();
         unsigned int sh = (unsigned int)viewRect.getHeight();
-        if (useFixedRes){
+        if (useUber){
+            // SSR composites into the uber pass's source, at the render scale
+            sw = uberSceneWidth;
+            sh = uberSceneHeight;
+        }else if (useFixedRes){
             // effects run at the fixed resolution: SSR composites into the
             // fixed-res target, which the blit then upscales
             sw = rv().fixedResWidth;
@@ -12778,18 +13198,22 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     FramebufferRender* postDestination = nullptr;
     if (isMainCamera && !scene->getPostProcessPasses().empty()
             && (isBaseLayer() || pass.renderToTexture)
-            && (target || pass.renderToTexture || useFixedRes || swapchainRedirect)){
+            && (target || pass.renderToTexture || useFixedRes || useUber || swapchainRedirect)){
         loadPostProcess();
 
         // only a swapchain destination ends the chain with a blit
-        bool needsBlit = !(target || pass.renderToTexture || useFixedRes);
+        bool needsBlit = !(target || pass.renderToTexture || useFixedRes || useUber);
         if (needsBlit){
             loadBlit();
         }
 
         unsigned int pw = useSSR ? rv().ssrWidth : (unsigned int)viewRect.getWidth();
         unsigned int ph = useSSR ? rv().ssrHeight : (unsigned int)viewRect.getHeight();
-        if (useFixedRes){
+        if (useUber){
+            // the chain runs before the uber pass, at the render scale, into its source
+            pw = uberSceneWidth;
+            ph = uberSceneHeight;
+        }else if (useFixedRes){
             pw = rv().fixedResWidth;
             ph = rv().fixedResHeight;
         }
@@ -12821,11 +13245,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // Exported builds whose scene reads the scene colour draw the scene camera offscreen
     // (updateSwapchainRedirect), then blit it to the swapchain, when nothing else does
     const bool useSceneColorRedirect = isMainCamera && !pass.renderToTexture && !target && !useFixedRes && !useSSR && !usePostProcess
-            && sceneColorRedirect && rv().sceneColorRedirect.isCreated();
+            && !useUber && sceneColorRedirect && rv().sceneColorRedirect.isCreated();
 
     // whether this camera's color pass targets an offscreen framebuffer
     // (selects PIP_RTT pipelines and flipped rendering on GL)
-    bool offscreenTarget = pass.renderToTexture || target || useFixedRes || useSSR || usePostProcess || useSceneColorRedirect;
+    bool offscreenTarget = pass.renderToTexture || target || useFixedRes || useUber || useSSR || usePostProcess || useSceneColorRedirect;
 
     // The colour target of the pass (null: the swapchain), its size and viewport, as the
     // branches below pick them: the scene inputs are made to match it
@@ -12839,6 +13263,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }else if (usePostProcess){
             sceneInputTargetWidth = rv().postProcessWidth;
             sceneInputTargetHeight = rv().postProcessHeight;
+        }else if (useUber){
+            sceneInputTargetWidth = uberSceneWidth;
+            sceneInputTargetHeight = uberSceneHeight;
         }else if (useFixedRes){
             sceneInputTargetWidth = rv().fixedResWidth;
             sceneInputTargetHeight = rv().fixedResHeight;
@@ -12898,6 +13325,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // for a pass split by the scene-colour copy)
     FramebufferRender* colorTarget = nullptr;
     bool colorPassViewportApplied = false;
+    camera.render.setLabel(pass.renderToTexture ? "camera rtt" : (isBaseLayer() ? "camera" : "camera layer"));
     auto startColorPass = [&](FramebufferRender* framebuffer){
         colorTarget = framebuffer;
         if (copySceneColorPending){
@@ -12911,7 +13339,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         // capture the real destination for the composite / post-process chain, then
         // redirect the scene into the offscreen color buffer
         FramebufferRender* destination = nullptr;
-        if (pass.renderToTexture){
+        if (useUber){
+            // the uber pass draws the real destination
+            destination = uberSource;
+        }else if (pass.renderToTexture){
             if (!camera.framebuffer->isCreated()){
                 camera.framebuffer->create();
             }
@@ -12948,6 +13379,12 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         // full offscreen target; letterbox/upscale happens in the blit pass
         colorPassViewport = Rect(0, 0, (float)rv().fixedResWidth, (float)rv().fixedResHeight);
         startColorPass(&rv().fixedResFramebuffer.getRender());
+    }else if (useUber){
+        // the scene at the render scale; the uber pass draws it at the view rect
+        colorPassViewport = Rect(0, 0, (float)uberSceneWidth, (float)uberSceneHeight);
+        startColorPass(&rv().postSceneFramebuffer.getRender());
+        camera.render.applyViewport(colorPassViewport);
+        colorPassViewportApplied = true;
     }else if (useSceneColorRedirect){
         // the whole redirect target; renderBlit draws it at the view rect afterwards
         colorPassViewport = Rect(0, 0, (float)rv().sceneColorRedirect.getWidth(), (float)rv().sceneColorRedirect.getHeight());
@@ -12976,6 +13413,16 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     passFrame.resolution = Vector4(passResolution.x, passResolution.y,
                                    passResolution.x > 0.0f ? 1.0f / passResolution.x : 0.0f,
                                    passResolution.y > 0.0f ? 1.0f / passResolution.y : 0.0f);
+
+    // the post-processing colour of this colour pass: the scene's for the post-processed camera
+    // (the main camera of the base layer, as the post-process chain; not mirrors, probes or other
+    // render-to-texture cameras), neutral for the others (updatePassFrame)
+    if (postTiers.tailColor && isMainCamera && (isBaseLayer() || pass.renderToTexture) && rv().postProcessing){
+        // (an engine target is covered whole; the view's target or the swapchain may letterbox)
+        const float targetHeight = (target && (!colorTarget || colorTarget == &target->getRender())) ? (float)target->getHeight()
+                                 : (colorTarget ? colorPassViewport.getY() + colorPassViewport.getHeight() : (float)System::instance().getScreenHeight());
+        fillPassPostColor(true, colorPassViewport, targetHeight);
+    }
 
     // the scene inputs' block of this pass, and the copy of the opaque queue and the sky the
     // draws requiring the scene colour sample (a 3D pass copies after its opaque queue, a 2D
@@ -13279,10 +13726,22 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         renderPostProcess(postDestination);
     }
 
+    // The uber pass: the scene (and what SSR and the chain made of it) to the real destination,
+    // upscaled; with fixed resolution it is that blit. Layer scenes draw after this (load
+    // action), so overlaid UI scenes stay at native resolution and untouched.
+    if (useUber){
+        const unsigned int sourceWidth = useFixedRes ? rv().fixedResWidth : rv().postSceneWidth;
+        const unsigned int sourceHeight = useFixedRes ? rv().fixedResHeight : rv().postSceneHeight;
+        if (pass.renderToTexture){
+            renderUber(&uberSource->getColorTexture(), sourceWidth, sourceHeight, &camera.framebuffer->getRender(),
+                       Rect(0, 0, (float)camera.framebuffer->getWidth(), (float)camera.framebuffer->getHeight()));
+        }else{
+            renderUber(&uberSource->getColorTexture(), sourceWidth, sourceHeight, nullptr, targetViewRect());
+        }
     // Fixed game resolution: upscale the offscreen scene color to the view
     // rect of the real destination. Layer scenes draw after this (load
     // action), so overlaid UI scenes stay at native resolution.
-    if (useFixedRes){
+    }else if (useFixedRes){
         renderFixedResolutionBlit();
     }
 
@@ -13489,6 +13948,10 @@ void RenderSystem::destroyRenderView(RenderView& view){
     view.postProcessFramebuffer[1].destroy();
     view.postProcessWidth = 0;
     view.postProcessHeight = 0;
+
+    view.postSceneFramebuffer.destroy();
+    view.postSceneWidth = 0;
+    view.postSceneHeight = 0;
 
     releaseSceneInputTargets(view, true);
     view.sceneColorRedirect.destroy();
@@ -14082,6 +14545,7 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     view.fixedResolution = desc.fixedResolution;
     view.disableFog = desc.disableFog;
     view.disableFaceCulling = desc.disableFaceCulling;
+    view.postProcessing = desc.postProcessing;
 
     activeView = &view;
 

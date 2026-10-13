@@ -577,12 +577,17 @@ void setMainCameraTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ scene settings
 
-enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, Filter, PostProcess };
+enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, Filter, PostProcess,
+                         PostProcessing, PostProcessingField };
 
 struct SceneSetting {
-    const char* name;
+    std::string name;
     SettingKind kind;
-    const char* help;
+    std::string help;
+    // listed by get_scene_settings without names (the post-processing fields are in
+    // post_processing; each is still readable and settable by its own name)
+    bool listed = true;
+    const PostProcessingSettings::Field* field = nullptr;
 };
 
 const std::vector<SceneSetting>& sceneSettings() {
@@ -625,9 +630,110 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"default_points_shader", SettingKind::String, "library:<name> or forked shader base path for points (\"\" built-in)"},
         {"default_lines_shader", SettingKind::String, "library:<name> or forked shader base path for lines (\"\" built-in)"},
         {"post_process", SettingKind::PostProcess,
-         "post-process passes in order: [{shader: fork base path, enabled: bool, uniforms: {name: [x,y,z,w]}}]"}
+         "post-process passes in order: [{shader: fork base path, enabled: bool, uniforms: {name: [x,y,z,w]}}]"},
+        {"post_processing", SettingKind::PostProcessing,
+         "the engine's post-processing of the main camera: {field: value} of the fields away from their defaults; "
+         "setting an object changes the fields it names, null resets all. Each field is also the setting "
+         "post_processing.<field>"}
     };
-    return settings;
+    static const std::vector<SceneSetting> all = [](){
+        std::vector<SceneSetting> list = settings;
+        for (const PostProcessingSettings::Field& field : PostProcessingSettings::getFields()) {
+            SceneSetting setting{std::string("post_processing.") + field.snakeName, SettingKind::PostProcessingField, field.help, false, &field};
+            list.push_back(setting);
+        }
+        return list;
+    }();
+    return all;
+}
+
+// one post-processing field as JSON (enums by name)
+Json postProcessingFieldToJson(const PostProcessingSettings& settings, const PostProcessingSettings::Field& field) {
+    using FT = PostProcessingSettings::FieldType;
+    const void* ref = settings.getFieldRef(field);
+    switch (field.type) {
+        case FT::Bool: return *(const bool*)ref;
+        case FT::Int: return *(const int*)ref;
+        case FT::Float: return McpValues::number(*(const float*)ref);
+        case FT::Vector3: return McpValues::toJson(*(const Vector3*)ref);
+        case FT::String: return *(const std::string*)ref;
+        case FT::Enum: return std::string(field.enumNames[*(const int*)ref]);
+    }
+    return nullptr;
+}
+
+// the fields away from their defaults, by snake name
+Json postProcessingToJson(const PostProcessingSettings& settings) {
+    static const PostProcessingSettings defaults;
+    Json object = Json::object();
+    for (const PostProcessingSettings::Field& field : PostProcessingSettings::getFields()) {
+        Json value = postProcessingFieldToJson(settings, field);
+        if (value != postProcessingFieldToJson(defaults, field)) object[field.snakeName] = value;
+    }
+    return object;
+}
+
+std::string enumNamesText(const PostProcessingSettings::Field& field) {
+    std::string text;
+    for (int i = 0; field.enumNames[i]; i++) text += std::string(i ? ", " : "") + field.enumNames[i];
+    return text;
+}
+
+// parses `value` into the field of `settings`; false with `error`
+bool postProcessingFieldFromJson(Project* project, const PostProcessingSettings::Field& field, const Json& value,
+                                 PostProcessingSettings& settings, std::string& error) {
+    using FT = PostProcessingSettings::FieldType;
+    const std::string name = std::string("post_processing.") + field.snakeName;
+    void* ref = field.ref(settings);
+    auto range = [&]() {
+        return " (" + Json(McpValues::number(field.minValue)).dump() + " to " + Json(McpValues::number(field.maxValue)).dump() + ")";
+    };
+    switch (field.type) {
+        case FT::Bool:
+            if (!value.is_boolean()) { error = name + " must be true or false."; return false; }
+            *(bool*)ref = value.get<bool>();
+            return true;
+        case FT::Int: {
+            if (!value.is_number_integer()) { error = name + " must be an integer."; return false; }
+            const int v = value.get<int>();
+            if (std::string(field.name) == "lutSize" && v != 16 && v != 32) { error = name + " must be 16 or 32."; return false; }
+            if (std::string(field.name) == "msaaSamples" && v != 1 && v != 2 && v != 4) { error = name + " must be 1, 2 or 4."; return false; }
+            *(int*)ref = v;
+            return true;
+        }
+        case FT::Float: {
+            if (!value.is_number()) { error = name + " must be a number" + range() + "."; return false; }
+            const float v = value.get<float>();
+            if (!(v >= field.minValue && v <= field.maxValue)) { error = name + " must be a number" + range() + "."; return false; }
+            *(float*)ref = v;
+            return true;
+        }
+        case FT::Vector3: {
+            Vector3 v = *(Vector3*)ref;
+            if (!McpValues::parseVector3(value, v)) { error = name + " must be [x,y,z] (or \"#RRGGBB\")."; return false; }
+            *(Vector3*)ref = v;
+            return true;
+        }
+        case FT::String: {
+            if (!value.is_string()) { error = name + " must be a project image path (\"\" none)."; return false; }
+            const std::string path = value.get<std::string>();
+            if (!path.empty() && !fs::exists(project->getProjectPath() / path)) {
+                error = name + ": no file \"" + path + "\" in the project.";
+                return false;
+            }
+            *(std::string*)ref = path;
+            return true;
+        }
+        case FT::Enum: {
+            const std::string text = value.is_string() ? value.get<std::string>() : std::string();
+            for (int i = 0; field.enumNames[i]; i++) {
+                if (text == field.enumNames[i]) { *(int*)ref = i; return true; }
+            }
+            error = name + " must be one of: " + enumNamesText(field) + ".";
+            return false;
+        }
+    }
+    return false;
 }
 
 const SceneSetting* findSetting(const std::string& name) {
@@ -640,10 +746,11 @@ const SceneSetting* findSetting(const std::string& name) {
 std::string settingNamesText() {
     std::string text;
     for (const SceneSetting& setting : sceneSettings()) {
+        if (!setting.listed) continue;
         if (!text.empty()) text += ", ";
         text += setting.name;
     }
-    return text;
+    return text + ", post_processing.<field> (the fields of post_processing)";
 }
 
 const char* kindName(SettingKind kind) {
@@ -660,6 +767,8 @@ const char* kindName(SettingKind kind) {
         case SettingKind::LightState:
         case SettingKind::Filter: return "enum";
         case SettingKind::PostProcess: return "post_process";
+        case SettingKind::PostProcessing: return "post_processing";
+        case SettingKind::PostProcessingField: return "post_processing_field";
     }
     return "unknown";
 }
@@ -683,12 +792,21 @@ Json postProcessToJson(const std::vector<PostProcessPass>& passes) {
 }
 
 template<typename T>
+Json readSetting(Scene* scene, const SceneSetting& setting, bool defaults);
+
+Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults);
+
+template<typename T>
 Json readSetting(Scene* scene, const SceneSetting& setting, bool defaults) {
     return defaults ? Json(Catalog::getScenePropertyDefault<T>(setting.name)) : Json(Catalog::getSceneProperty<T>(scene, setting.name));
 }
 
 Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = false) {
     switch (setting.kind) {
+        case SettingKind::PostProcessing:
+            return postProcessingToJson(defaults || !scene ? PostProcessingSettings() : scene->getPostProcessing());
+        case SettingKind::PostProcessingField:
+            return postProcessingFieldToJson(defaults || !scene ? PostProcessingSettings() : scene->getPostProcessing(), *setting.field);
         case SettingKind::Bool: return readSetting<bool>(scene, setting, defaults);
         case SettingKind::Int: return readSetting<int>(scene, setting, defaults);
         case SettingKind::Float:
@@ -731,6 +849,34 @@ bool shaderBaseExists(Project* project, const std::string& base) {
     if (base.empty()) return true;
     Util::CustomShaderPaths paths = project->resolveCustomShaderFiles(base);
     return fs::exists(project->getProjectPath() / paths.vert) && fs::exists(project->getProjectPath() / paths.frag);
+}
+
+// A post_processing or post_processing.<field> value applied to `settings` (every one of a call
+// edits the same struct, so they compose in one command); false with `error`
+bool applyPostProcessingSetting(Project* project, const SceneSetting& setting, const Json& value,
+                                PostProcessingSettings& settings, std::string& error) {
+    if (setting.kind == SettingKind::PostProcessingField)
+        return postProcessingFieldFromJson(project, *setting.field, value, settings, error);
+    if (value.is_null()) {
+        settings = PostProcessingSettings();
+        return true;
+    }
+    if (!value.is_object()) {
+        error = setting.name + " must be an object {field: value} (null resets every field).";
+        return false;
+    }
+    for (auto it = value.begin(); it != value.end(); ++it) {
+        const PostProcessingSettings::Field* field = PostProcessingSettings::findField(it.key());
+        if (!field) {
+            std::string names;
+            for (const PostProcessingSettings::Field& f : PostProcessingSettings::getFields())
+                names += std::string(names.empty() ? "" : ", ") + f.snakeName;
+            error = setting.name + ": unknown field \"" + it.key() + "\". Fields: " + names + ".";
+            return false;
+        }
+        if (!postProcessingFieldFromJson(project, *field, it.value(), settings, error)) return false;
+    }
+    return true;
 }
 
 // The ScenePropertyCmd setting `value`, null with `error`
@@ -802,6 +948,9 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (setting.kind == SettingKind::LightState) return new ScenePropertyCmd<LightState>(project, id, name, (LightState)parsed);
             return new ScenePropertyCmd<TextureFilter>(project, id, name, (TextureFilter)parsed);
         }
+        case SettingKind::PostProcessing:
+        case SettingKind::PostProcessingField:
+            break; // setSceneSettingsTool gathers them (applyPostProcessingSetting)
         case SettingKind::PostProcess: {
             if (!value.is_array()) return expect("an array of {shader, enabled, uniforms}");
             std::vector<PostProcessPass> passes;
@@ -852,7 +1001,9 @@ void getSceneSettingsTool(const CallPtr& call) {
             wanted.push_back(setting);
         }
     } else {
-        for (const SceneSetting& setting : sceneSettings()) wanted.push_back(&setting);
+        for (const SceneSetting& setting : sceneSettings()) {
+            if (setting.listed) wanted.push_back(&setting);
+        }
     }
     const bool detail = args.value("detail", false);
     Json values = Json::object();
@@ -865,12 +1016,26 @@ void getSceneSettingsTool(const CallPtr& call) {
         if (detail) {
             Json entry = {{"type", kindName(setting->kind)}, {"default", settingValue(nullptr, *setting, true)}, {"help", setting->help}};
             if (const McpValues::EnumOptions* options = settingOptions(setting->kind)) entry["options"] = McpValues::enumNames(*options);
+            if (setting->field) {
+                using FT = PostProcessingSettings::FieldType;
+                entry["field_type"] = setting->field->type == FT::Bool ? "bool" : setting->field->type == FT::Int ? "int"
+                                    : setting->field->type == FT::Float ? "float" : setting->field->type == FT::Vector3 ? "vector3"
+                                    : setting->field->type == FT::Enum ? "enum" : "string";
+                if (setting->field->type == FT::Enum) {
+                    Json names = Json::array();
+                    for (int i = 0; setting->field->enumNames[i]; i++) names.push_back(setting->field->enumNames[i]);
+                    entry["options"] = names;
+                } else if (setting->field->type == FT::Float || setting->field->type == FT::Int || setting->field->type == FT::Vector3) {
+                    entry["min"] = McpValues::number(setting->field->minValue);
+                    entry["max"] = McpValues::number(setting->field->maxValue);
+                }
+            }
             schemaOut[setting->name] = entry;
         }
     }
     Json data = {{"scene_id", scene->id}, {"settings", values}};
     if (detail) data["schema"] = schemaOut;
-    if (wanted.size() == sceneSettings().size()) {
+    if (!args.contains("names") || !args["names"].is_array() || args["names"].empty()) {
         // not a setting: what the last frame made for the draws reading the scene (phase 3), the
         // inspector's Scene Color > In Use row
         const uint32_t inUse = Catalog::getSceneInputsInUse(scene->scene);
@@ -894,6 +1059,8 @@ void setSceneSettingsTool(const CallPtr& call) {
         return;
     }
     auto* multi = new MultiPropertyCmd();
+    PostProcessingSettings postProcessing = scene->scene->getPostProcessing();
+    bool postProcessingSet = false;
     for (auto it = args["settings"].begin(); it != args["settings"].end(); ++it) {
         const SceneSetting* setting = findSetting(it.key());
         if (!setting) {
@@ -903,6 +1070,15 @@ void setSceneSettingsTool(const CallPtr& call) {
             return;
         }
         std::string error;
+        if (setting->kind == SettingKind::PostProcessing || setting->kind == SettingKind::PostProcessingField) {
+            if (!applyPostProcessingSetting(project, *setting, it.value(), postProcessing, error)) {
+                delete multi;
+                call->fail(error);
+                return;
+            }
+            postProcessingSet = true;
+            continue;
+        }
         Command* cmd = buildSettingCommand(project, scene, *setting, it.value(), error);
         if (!cmd) {
             delete multi;
@@ -910,6 +1086,9 @@ void setSceneSettingsTool(const CallPtr& call) {
             return;
         }
         multi->addCommand(std::unique_ptr<Command>(cmd));
+    }
+    if (postProcessingSet) {
+        multi->addCommand(std::unique_ptr<Command>(new ScenePropertyCmd<PostProcessingSettings>(project, scene->id, "post_processing", postProcessing)));
     }
     const uint32_t id = scene->id;
     std::string error;
@@ -1082,7 +1261,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "Get Scene Settings";
         tool.description =
             "Scene settings (Inspector > Scene: lighting, shadows, gravity, LOD, SSAO, SSR, fixed resolution, "
-            "default shaders, post_process). detail=true adds type, default, options, help. Without names also "
+            "default shaders, post_process, post_processing: the fields away from their defaults; each field is also "
+            "post_processing.<field>). detail=true adds type, default, options, help. Without names also "
             "scene_inputs_in_use: what the last frame made for shaders reading the scene (scenedepth, scenecolor).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
@@ -1100,7 +1280,9 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "Set Scene Settings";
         tool.description =
             "Sets scene settings: {name: value}, names and shapes from get_scene_settings. post_process replaces the "
-            "pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": [0.5,0,0,0]}}].";
+            "pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": [0.5,0,0,0]}}]. "
+            "post_processing {field: value} changes the fields it names (null resets all), as post_processing.<field> does; "
+            "every post-processing value of a call is one step.";
         tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")}}, {"settings"});
         tool.annotations.idempotent = true;
         tool.handler = setSceneSettingsTool;

@@ -474,6 +474,9 @@ namespace jasperengine {
             float canvasHeight = 0.0f;
             // the camera's passes cull no face (the Scene view's debug toggle)
             bool disableFaceCulling = false;
+            // the scene's post-processing applies to the camera (the Game view; the Scene view
+            // has it off unless its display setting turns it on)
+            bool postProcessing = true;
         };
 
         // Draws a secondary view: the editor's Scene view while the game plays, or its

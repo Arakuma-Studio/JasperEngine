@@ -1332,6 +1332,7 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.fixedResolution = layer.fixedResolution;
         desc.disableFog = layer.disableFog;
         desc.disableFaceCulling = layer.disableFaceCulling;
+        desc.postProcessing = layer.postProcessing;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
         layer.scene->getSystem<RenderSystem>()->drawView(viewId, desc);

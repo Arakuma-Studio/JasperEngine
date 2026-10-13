@@ -65,10 +65,17 @@ out vec4 g_finalColor;
     #ifndef MATERIAL_UNLIT
         uniform texture2D u_metallicRoughnessTexture;
         uniform texture2D u_occlusionTexture;
-        uniform texture2D u_emissiveTexture;
         uniform sampler u_metallicRoughness_smp;
         uniform sampler u_occlusion_smp;
-        uniform sampler u_emissive_smp;
+        // a painted terrain with the post-processing colour leaves its base material's emissive
+        // texture out: its slot is the colour LUT's (the variant is at 16 textures without it;
+        // the emissive factor still applies)
+        #if defined(HAS_TERRAIN_PBR) && defined(USE_POST_COLOR)
+            #define NO_EMISSIVE_TEXTURE
+        #else
+            uniform texture2D u_emissiveTexture;
+            uniform sampler u_emissive_smp;
+        #endif
     #endif
     // the normal map is sampled by the lit path and by the 2D light path (which
     // otherwise keeps the unlit fast path)
@@ -182,6 +189,8 @@ const float M_PI = 3.141592653589793;
 #ifdef HAS_FOG
     #include "includes/fog.glsl"
 #endif
+// the post-processing colour (USE_POST_COLOR; after lit_frame.glsl, which holds its parameters)
+#include "includes/post_color.glsl"
 
 void main() {
     vec4 baseColor = getBaseColor();
@@ -220,7 +229,11 @@ void main() {
         #ifdef HAS_FOG
             baseColor.rgb = getFogColor(baseColor.rgb);
         #endif
-        g_finalColor = (vec4(linearTosRGB(baseColor.rgb), baseColor.a));
+        #ifdef USE_POST_COLOR
+            g_finalColor = vec4(postColorEncode(baseColor.rgb), baseColor.a);
+        #else
+            g_finalColor = (vec4(linearTosRGB(baseColor.rgb), baseColor.a));
+        #endif
         return;
     #endif
 
@@ -381,7 +394,7 @@ void main() {
         #endif
 
         f_emissive = pbrParams.emissiveFactor;
-        #if defined(HAS_UV_SET1) || defined(HAS_UV_SET2)
+        #if (defined(HAS_UV_SET1) || defined(HAS_UV_SET2)) && !defined(NO_EMISSIVE_TEXTURE)
             f_emissive *= sRGBToLinear(getEmissiveTexture().rgb);
         #endif
 
@@ -397,6 +410,10 @@ void main() {
             color.rgb = getFogColor(color.rgb);
         #endif
 
-        g_finalColor = vec4(linearTosRGB(color.rgb), baseColor.a);
+        #ifdef USE_POST_COLOR
+            g_finalColor = vec4(postColorEncode(color.rgb), baseColor.a);
+        #else
+            g_finalColor = vec4(linearTosRGB(color.rgb), baseColor.a);
+        #endif
     #endif
 }

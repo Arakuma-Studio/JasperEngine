@@ -825,6 +825,43 @@ std::string editor::Factory::formatAttributeDataType(AttributeDataType type) {
     }
 }
 
+// the PostProcessingSettings fields away from their defaults, one assignment each
+std::string editor::Factory::formatPostProcessing(int indentSpaces, const PostProcessingSettings& settings, const std::string& variableName) {
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    static const PostProcessingSettings defaults;
+    using FieldType = PostProcessingSettings::FieldType;
+    for (const PostProcessingSettings::Field& field : PostProcessingSettings::getFields()) {
+        const void* value = settings.getFieldRef(field);
+        const void* def = defaults.getFieldRef(field);
+        std::string text;
+        switch (field.type) {
+            case FieldType::Bool:
+                if (*(const bool*)value != *(const bool*)def) text = formatBool(*(const bool*)value);
+                break;
+            case FieldType::Int:
+                if (*(const int*)value != *(const int*)def) text = std::to_string(*(const int*)value);
+                break;
+            case FieldType::Float:
+                if (*(const float*)value != *(const float*)def) text = formatFloat(*(const float*)value);
+                break;
+            case FieldType::Vector3:
+                if (*(const Vector3*)value != *(const Vector3*)def) text = formatVector3(*(const Vector3*)value);
+                break;
+            case FieldType::String:
+                if (*(const std::string*)value != *(const std::string*)def) text = formatString(*(const std::string*)value);
+                break;
+            case FieldType::Enum:
+                if (*(const int*)value != *(const int*)def)
+                    text = std::string(field.enumType) + "::" + field.enumValues[*(const int*)value];
+                break;
+        }
+        if (!text.empty())
+            code << ind << variableName << "." << field.name << " = " << text << ";\n";
+    }
+    return code.str();
+}
+
 std::string editor::Factory::formatTextureFilter(TextureFilter filter) {
     switch (filter) {
         case TextureFilter::NEAREST: return "TextureFilter::NEAREST";
@@ -3058,6 +3095,13 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
                 << formatShaderUniforms(pass.uniforms) << "});\n";
         }
         out << ind3 << "scene->setPostProcessPasses(postProcess);\n";
+        out << ind2 << "}\n";
+    }
+    if (scene->getPostProcessing() != PostProcessingSettings()) {
+        out << ind2 << "{\n";
+        out << ind3 << "PostProcessingSettings postProcessing;\n";
+        out << formatPostProcessing(indentSpaces + 8, scene->getPostProcessing(), "postProcessing");
+        out << ind3 << "scene->setPostProcessing(postProcessing);\n";
         out << ind2 << "}\n";
     }
     out << ind << "}\n\n";

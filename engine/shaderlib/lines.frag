@@ -21,6 +21,8 @@ out vec4 g_finalColor;
 #endif
 
 #include "includes/srgb.glsl"
+// the post-processing colour (USE_POST_COLOR)
+#include "includes/post_color.glsl"
 
 vec4 getLineColor(){
    vec4 color = vec4(1.0, 1.0, 1.0, 1.0);
@@ -38,5 +40,9 @@ vec4 getLineColor(){
 void main() {  
     vec4 color = getLineColor();
 
-    g_finalColor = (vec4(linearTosRGB(color.rgb), color.a));
+    #ifdef USE_POST_COLOR
+        g_finalColor = vec4(postColorEncode(color.rgb), color.a);
+    #else
+        g_finalColor = (vec4(linearTosRGB(color.rgb), color.a));
+    #endif
 }

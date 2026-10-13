@@ -78,6 +78,17 @@ namespace {
             {"terrain", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.terrain = true; i.texCoord1 = false; i.tangent = false; }},
             {"terrain, fog, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
                 i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; }},
+            // the post-processing colour (phase 4, USE_POST_COLOR): its parameters in the frame
+            // block or a block of its own, and its LUT texture, next to everything else
+            {"post colour", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.postColor = true; }},
+            {"post colour, fog, shadows", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){
+                e.postColor = true; e.fog = true; e.lights = true; e.shadows = true; }},
+            {"post colour, 2d lights + shadows, sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                e.postColor = true; i.textureRect = true; e.lights2D = true; e.shadows2D = true; }},
+            {"post colour, instanced, skinning", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                e.postColor = true; i.instanced = true; i.instanceFade = true; i.skinning = true; }},
+            {"post colour, terrain, fog, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                e.postColor = true; i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; }},
         };
         return cases;
     }
@@ -224,6 +235,14 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
                             if (!allOn.empty())
                                 addMesh(label + ", fog, " + blendLabel(blend) + ", all features", referenceOf(allOn, blend), inputs, fogEnvironment);
                         }
+                        // the same with the post-processing colour (output.glsl encodes by the blend)
+                        MeshShaderEnvironment postEnvironment = fogEnvironment;
+                        postEnvironment.postColor = true;
+                        for (MaterialBlendMode blend : blendModes){
+                            addMesh(label + ", fog, post colour, " + blendLabel(blend), referenceOf({}, blend), inputs, postEnvironment);
+                            if (!allOn.empty())
+                                addMesh(label + ", fog, post colour, " + blendLabel(blend) + ", all features", referenceOf(allOn, blend), inputs, postEnvironment);
+                        }
                     }else{
                         addMesh(label, referenceOf({}), inputs, lightingEnvironment);
                         addMesh(label + ", all features", referenceOf(allOn), inputs, lightingEnvironment);
@@ -282,6 +301,21 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
             if (!allOn.empty())
                 add(properties.front().first + " [" + blendLabel(blend) + ", all features]", referenceOf(allOn, blend), type, properties.front().second);
         }
+        // the post-processing colour (phase 4): every variant with it, each blend mode with all features
+        const uint32_t postColor = ShaderPool::getPostColorProperty(type);
+        if (postColor){
+            for (const auto& variant : properties){
+                add(variant.first + " [post colour]", referenceOf({}), type, variant.second | postColor);
+                if (!allOn.empty())
+                    add(variant.first + " [post colour, all features]", referenceOf(allOn), type, variant.second | postColor);
+            }
+            for (MaterialBlendMode blend : blendModes){
+                add(properties.front().first + " [post colour, " + blendLabel(blend) + "]", referenceOf({}, blend), type, properties.front().second | postColor);
+                if (!allOn.empty())
+                    add(properties.front().first + " [post colour, " + blendLabel(blend) + ", all features]", referenceOf(allOn, blend),
+                        type, properties.front().second | postColor);
+            }
+        }
     }
 
     return variants;
@@ -331,6 +365,15 @@ editor::ShaderLibraryMatrix::Result editor::ShaderLibraryMatrix::run(const std::
             std::string log;
             if (ShaderVariantCompiler::compile(key, backend, &sources, data, &error, &log)){
                 result.compiled++;
+                // the per-stage budget every backend has (a GLES3 device: 16 texture units)
+                const std::string over = ShaderVariantCompiler::checkResourceBudget(data);
+                if (!over.empty()){
+                    result.failed++;
+                    const std::string message = "over the resource budget: " + over + " (" + variant.label + ", " +
+                        ShaderPool::getShaderTypeName(variant.type, true) + " " + variantName + ", " + backendToken(backend) + ")";
+                    if (reported.insert(message).second)
+                        result.problems.push_back({fragFile, 0, true, message});
+                }
                 if (variant.type != ShaderType::DEPTH && backend == backends.front())
                     reflections.push_back(data);
                 continue;

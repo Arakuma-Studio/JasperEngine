@@ -29,6 +29,7 @@
 #include "buffer/ExternalBuffer.h"
 #include "shader/ShaderBuildTypes.h"
 #include "shader/ShaderManifest.h"
+#include "util/PostColorLut.h"
 #include "Engine.h"
 #include <map>
 #include <array>
@@ -62,6 +63,14 @@ namespace jasperengine{
 		Vector4 atlasInfo;                       // x = 1/atlasWidth, y = 1/MAX_LIGHTS_2D, z = atlasWidth, w = PCF tap radius
 	} fs_lighting2d_t;
 
+	// The post-processing colour's parameters (phase 4, shaderlib/includes/post_color.glsl),
+	// per camera pass: the end of u_fs_frame, the start of u_fs_litFrame, or u_fs_postColor
+	typedef struct post_color_t {
+		Vector4 vignetteScaleOffset; // p = gl_FragCoord.xy * xy - zw (centred, 1 at the edges)
+		Vector4 vignetteColor;       // rgb display colour, a intensity (0 = none)
+		Vector4 params;              // x, y vignette falloff, z dither amplitude, w LUT side (0 = no LUT)
+	} post_color_t;
+
 	// u_vs_frame / u_fs_frame (shaderlib/includes/frame.glsl): per-camera-pass data for any
 	// shader that declares the block. The layout up to ambient is a contract with the
 	// library shaders; engine-internal members may only be appended after it, in the
@@ -81,6 +90,8 @@ namespace jasperengine{
 		Vector4 lightingInfo;           // x 3D shadow PCF tap radius
 		Vector4 fogColor_type;          // rgb fog colour, w type (0 linear, 1 exponential, 2 exponential squared)
 		Vector4 fogDensity_start_end;   // x density, z linear start, w linear end
+		// the fragment block of a variant with the post-processing colour (USE_POST_COLOR)
+		post_color_t postColor;
 	} frame_t;
 
 	// u_vs_objectLights / u_fs_objectLights (shaderlib/includes/lights.glsl) at the largest
@@ -103,6 +114,13 @@ namespace jasperengine{
 		Vector4 viewport_ssao_envRotation; // xy 1 / viewport size, z SSAO flags (1 debug, 2 Y flip), w environment rotation
 		Vector4 environmentColor;          // rgb environment colour (linear)
 	} lit_frame_t;
+
+	// u_fs_litFrame of a variant with the post-processing colour: its parameters first, then the
+	// prefix of lit_frame_t the variant declares
+	typedef struct lit_frame_block_t {
+		post_color_t postColor;
+		lit_frame_t lit;
+	} lit_frame_block_t;
 
 	typedef struct fs_terrain_layers_t {
 		Vector4 colorFactor[MAX_TERRAIN_LAYERS]; // rgb = linear tint, w = 1 on a PBR layer
@@ -197,6 +215,25 @@ namespace jasperengine{
 		Vector4 envColor; // rgb = env color (linear), w = env rotation (radians)
 	} fs_composite_t;
 
+	// the uber pass's parameters (shaderlib/uber.vert, uber.frag)
+	typedef struct vs_uber_t {
+		Vector4 uvScaleOffset;       // source UV = position * xz + yw
+		Vector4 sourceTexel;         // xy 1 / source size, zw source size
+	} vs_uber_t;
+	typedef struct fs_uber_t {
+		Vector4 uvScaleOffset;
+		Vector4 sourceTexel;
+		Vector4 outputTexel;         // xy 1 / output viewport size, zw its size
+		Vector4 effects;             // x chromatic aberration, y pixel block (output pixels), z grain, w grain response
+		Vector4 crt;                 // x scanlines, y mask, z curvature, w tube vignette
+		Vector4 edgeSharpenTime;     // x edge threshold, y edge intensity, z sharpen, w time
+		Vector4 edgeColorDither;     // rgb edge colour (display), a dither amplitude
+		Vector4 vignetteScaleOffset; // as post_color_t
+		Vector4 vignetteColor;
+		Vector4 vignetteLutScan;     // x, y vignette falloff, z grade LUT side, w scanline period (output pixels)
+		Vector4 bloomBlur;           // rgb bloom tint * intensity (linear), a blur mix
+	} fs_uber_t;
+
 	typedef struct fs_blit_t {
 		// source UV = destination UV * xz + yw: (1, 0, 1, 0) copies, (1, 0, -1, 1) flips Y (a GL
 		// swapchain destination), anything else reads a part of the source (a scene-colour copy
@@ -245,6 +282,46 @@ namespace jasperengine{
 		// a loaded object reads the scene depth (@require scenedepth) or a post pass samples the
 		// depth: every mesh has a depth program, so the opaque depth pre-pass can draw it
 		bool sceneDepth = false;
+		// the post-processing colour (phase 4, USE_POST_COLOR): one global bit, see
+		// RenderSystem::getPostProcessingTiers
+		bool postColor = false;
+	};
+
+	// The uber pass's compile-time features (shader library phase 4): the property bits of a
+	// ShaderType::BLIT variant (shaderlib/uber.vert / uber.frag; properties 0 is the plain
+	// blit, blit.frag). Appended only: the bits are part of saved shader keys.
+	enum UberFeature : uint32_t {
+		UBER_FXAA         = 1u << 0,  // 'Fxa' FXAA 3.11 console, luma from green
+		UBER_CHROMATIC    = 1u << 1,  // 'Cab' chromatic aberration (red and blue taps)
+		UBER_PIXELATE     = 1u << 2,  // 'Pix' pixelate (UV snapped to blocks)
+		UBER_CRT          = 1u << 3,  // 'Crt' CRT curvature, scanlines, mask, tube vignette
+		UBER_EDGE         = 1u << 4,  // 'Edg' Sobel edges on luma
+		UBER_GRAIN        = 1u << 5,  // 'Grn' film grain
+		UBER_SHARPEN      = 1u << 6,  // 'Shp' sharpen
+		UBER_LUT          = 1u << 7,  // 'Lut' the colour grade's LUT (display domain)
+		UBER_VIGNETTE     = 1u << 8,  // 'Vig' vignette
+		UBER_DITHER       = 1u << 9,  // 'Dth' dither
+		UBER_BLOOM        = 1u << 10, // 'Blm' bloom composite (u_bloomTexture, the bloom chain's)
+		UBER_BLUR         = 1u << 11, // 'Blr' blur composite (u_blurTexture, the blur chain's)
+		UBER_FEATURE_COUNT = 12
+	};
+
+	// What a PostProcessingSettings turns on (shader library phase 4): the in-shader colour
+	// (tier T0, USE_POST_COLOR in mesh, sky, points and lines variants), the uber pass (T1/T2)
+	// and its features. RenderSystem::getPostProcessingTiers.
+	struct PostProcessingTiers {
+		// the shaders' variants apply the post-processing colour (exposure, curve, and without
+		// the uber pass the grade, vignette and dither): the scene's variant bit
+		bool tailColor = false;
+		// the tail's LUT holds the grade too and the tail does vignette and dither (no uber pass)
+		bool tailGrade = false;
+		// the uber pass runs after the scene (one fullscreen pass, the fixed-resolution blit's)
+		bool uber = false;
+		// its BLIT variant bits (RenderSystem::UberFeature)
+		uint32_t uberFeatures = 0;
+		// the 3D scene's resolution scale (uber only) and MSAA samples (1, 2, 4)
+		float renderScale = 1.0f;
+		int msaaSamples = 1;
 	};
 
 	// What the shader variant of a submesh depends on in its mesh and GameObject
@@ -735,6 +812,12 @@ namespace jasperengine{
 			unsigned int fixedResHeight = 0;
 			Framebuffer fixedResFramebuffer;   // offscreen scene color at the fixed size
 
+			// the post-processed camera's scene, at the render scale, that the uber pass draws to
+			// the destination (phase 4; with fixed resolution the uber pass reads fixedResFramebuffer)
+			unsigned int postSceneWidth = 0;
+			unsigned int postSceneHeight = 0;
+			Framebuffer postSceneFramebuffer;
+
 			unsigned int postProcessWidth = 0;
 			unsigned int postProcessHeight = 0;
 			Framebuffer postProcessFramebuffer[2]; // ping-pong targets
@@ -747,6 +830,9 @@ namespace jasperengine{
 			// the scene camera's colour pass when only the scene colour needs it offscreen
 			// (exported builds drawing to the swapchain): blitted to the swapchain after
 			Framebuffer sceneColorRedirect;
+			// the scene's post-processing applies to the view camera (ViewDesc::postProcessing;
+			// always for the frame's own view)
+			bool postProcessing = true;
 
 #ifdef JASPERENGINE_EDITOR
 			bool secondary = false;
@@ -1007,7 +1093,12 @@ namespace jasperengine{
 		// filled once per pass and uploaded to every draw whose shader declares it, and the
 		// built-in Lit's part of it (u_fs_litFrame)
 		frame_t passFrame;
-		lit_frame_t passLitFrame;
+		// (its lit member is the prefix every Lit variant declares; a variant with the post
+		// colour uploads from postColor)
+		lit_frame_block_t passLitFrameBlock;
+		// the post-processing colour's parameters of the camera pass (post_color_t): the
+		// scene's in the main camera's colour pass, neutral elsewhere (updatePassFrame)
+		post_color_t passPostColor;
 
 		// SSR: per-frame fullscreen passes for the main camera. The opaque color pass
 		// renders into sceneColorFramebuffer, the ssr pass marches the depth pre-pass
@@ -1043,6 +1134,26 @@ namespace jasperengine{
 		// fixedResFramebuffer and a fullscreen blit pass upscales it to the
 		// real destination (view rect).
 		bool blitLoaded;
+		// the uber pass (phase 4): a BLIT variant with the features of postTiers, replacing the
+		// fixed-resolution blit when that is on, else one pass after the scene
+		bool uberLoaded = false;
+		uint32_t uberFeatures = 0;         // the variant loaded
+		CameraRender uberPassRender;
+		ObjectRender uberRender;
+		std::shared_ptr<ShaderRender> uberShader;
+		int uberSlotVSParams = -1;
+		int uberSlotFSParams = -1;
+		std::pair<int, int> uberSlotSource = {-1, -1};
+		std::pair<int, int> uberSlotLut = {-1, -1};
+		std::pair<int, int> uberSlotBloom = {-1, -1};
+		std::pair<int, int> uberSlotBlur = {-1, -1};
+		vs_uber_t vs_uber;
+		fs_uber_t fs_uber;
+		// what the uber pass composites (the bloom chain's output and its blurred copy, phase 4
+		// T2): null binds black (bloom) and the scene itself (blur), so a variant with the
+		// feature compiles and draws without them
+		TextureRender* uberBloomTexture = nullptr;
+		TextureRender* uberBlurTexture = nullptr;
 		CameraRender fixedResPassRender;   // drives the upscale blit pass
 		ObjectRender blitRender;           // fullscreen blit.frag draw
 		std::shared_ptr<ShaderRender> blitShader;
@@ -1065,6 +1176,23 @@ namespace jasperengine{
 		bool postProcessLoaded;
 		bool postProcessNeedReload;
 		bool postProcessNeedUpdateUniforms;    // rewrite pass values, no chain rebuild
+		// the scene's PostProcessingSettings changed since they were applied (phase 4)
+		bool postProcessingDirty = true;
+		// what the applied settings turn on (getPostProcessingTiers), and their colour LUTs
+		PostProcessingTiers postTiers;
+		// MeshShaderEnvironment::postColor the objects load with (the variant bit)
+		bool postColorVariants = false;
+		// the in-shader LUT (shaper domain, includes/post_color.glsl), side postTailLutSize
+		TextureRender postTailLut;
+		int postTailLutSize = 0;
+		// the uber pass's grade LUT (display domain), side postGradeLutSize
+		TextureRender postGradeLut;
+		int postGradeLutSize = 0;
+		// the user's LUT strip (PostProcessingSettings::lutTexture), loaded from postLutStripPath
+		std::string postLutStripPath;
+		PostColorLut::Strip postLutStrip;
+		// the bake buffer, kept between bakes
+		std::vector<uint8_t> postLutPixels;
 		bool postProcessNeedsDepth;            // a pass samples the depth texture
 		bool postProcessNeedsGBuffer;          // a pass samples the G-buffer (needs SSR)
 		CameraRender postProcessPassRender;    // drives the offscreen post passes
@@ -1196,6 +1324,28 @@ namespace jasperengine{
 		void fillFrameBlock(frame_t& frame, const CameraComponent& camera, const Transform& cameraTransform, const Vector2& resolution);
 		void updatePassFrame(const CameraComponent& camera, const Transform& cameraTransform);
 		void updatePassFrame(const CameraComponent& camera, const Transform& cameraTransform, const Vector2& resolution);
+		// the post-processing (phase 4): applies changed settings (LUT bakes, variant bit);
+		// the colour pass's post colour parameters (neutral unless active: the main camera of
+		// the base layer, post-processing on in the view), for its viewport in a target of
+		// targetHeight pixels; the post colour block (tiny block, frame and Lit's) and LUT of a draw
+		void applyPostProcessing();
+		void bakePostColorLut(TextureRender& texture, int& textureSize, PostColorLut::Stage stage);
+		void setPassPostColor(const post_color_t& postColor);
+		void fillPassPostColor(bool active, const Rect& viewport, float targetHeight);
+		void applyPostColor(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// the vignette's parameters for a viewport of a target targetHeight high (gl_FragCoord)
+		void fillVignette(const PostProcessingSettings& settings, const Rect& viewport, float targetHeight,
+		                  Vector4& scaleOffset, Vector4& color, float& falloffScale, float& falloffBias) const;
+		// the uber pass: loads the variant of features (false while its shader builds), its
+		// scene target, and the pass from source (sourceWidth x sourceHeight) into destination
+		// (null: the view's target or the swapchain) at viewport
+		bool loadUber(uint32_t features);
+		void destroyUber();
+		bool ensurePostSceneFramebuffer(unsigned int width, unsigned int height);
+		void renderUber(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight,
+		                FramebufferRender* destination, const Rect& viewport);
+		// the post colour bit of a shader type's variants while the scene's objects load with it
+		uint32_t postColorProperty(ShaderType type) const;
 		// the size of the target a camera's colour pass renders into
 		Vector2 passFrameResolution(const CameraComponent& camera) const;
 		void applyFrameBlock(ObjectRender& render, const ShaderLibraryBindings& bindings);
@@ -1531,6 +1681,9 @@ namespace jasperengine{
 		// editor always renders through Engine::getFramebuffer(), so PIP_RTT is
 		// already baked either way.
 		void setDisableFixedResolution(bool disableFixedResolution);
+		// the frame's own view draws without the scene's post-processing (the editor's edit-mode
+		// Scene view): the colour passes bypass the post colour (no variant change), no uber pass
+		void setDisablePostProcessing(bool disablePostProcessing);
 
 		// the depth pass alpha-tests the submesh (MASK, or the legacy AUTO + textureShadow);
 		// the editor derives export keys from it, so the rule lives in one place
@@ -1669,6 +1822,12 @@ namespace jasperengine{
 		bool meshVariantShadersReady(Entity entity, const MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain);
 		void needReloadPostProcess();
 		void needUpdatePostProcessUniforms();
+		// the scene's PostProcessingSettings changed (Scene::setPostProcessing)
+		void needUpdatePostProcessing();
+		// what a set of post-processing settings turns on (the export collector and the editor
+		// use it to pick the same variants), and what the renderer applies now
+		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings);
+		const PostProcessingTiers& getActivePostProcessingTiers() const { return postTiers; }
 		void needReloadUIs();
 		void needReloadSky();
 		void prepareMeshForDataReload(Entity entity, MeshComponent& mesh);
@@ -1720,6 +1879,10 @@ namespace jasperengine{
 			bool fixedResolution = false;
 			// draws as if the scene had no fog
 			bool disableFog = false;
+			// the scene's post-processing applies to the view camera (the Game view; the Scene
+			// view leaves it off by default): with it off the colour passes draw as if the scene
+			// had none (its variants keep the post colour bit, bypassed)
+			bool postProcessing = true;
 			// the view camera's passes cull no face (the Scene view's debug toggle)
 			bool disableFaceCulling = false;
 			// canvas an auto-resize camera covers in this view (0: as the camera is)

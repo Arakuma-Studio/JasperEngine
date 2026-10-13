@@ -166,14 +166,24 @@ namespace {
     uint32_t environmentBits(const MeshShaderEnvironment& e){
         return (e.lights ? 1u : 0u) | (e.shadows ? 2u : 0u) | (e.ibl ? 4u : 0u) | (e.reflectionProbes ? 8u : 0u) |
             (e.fog ? 16u : 0u) | (e.lights2D ? 32u : 0u) | (e.shadows2D ? 64u : 0u) | (e.ssao ? 128u : 0u) |
-            (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u) | ((uint32_t)e.lightCapacity << 10) | (e.sceneDepth ? (1u << 20) : 0u);
+            (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u) | ((uint32_t)e.lightCapacity << 10) | (e.sceneDepth ? (1u << 20) : 0u) |
+            (e.postColor ? (1u << 21) : 0u);
+    }
+
+    // the states of the post-processing colour bit (RenderSystem::getPostProcessingTiers) the
+    // scene's variants can be in: its settings', and both when a script changes them
+    std::vector<bool> postColorStates(Scene* scene, bool scriptsSetPostProcessing){
+        const bool own = RenderSystem::getPostProcessingTiers(scene->getPostProcessing()).tailColor;
+        if (scriptsSetPostProcessing)
+            return {own, !own};
+        return {own};
     }
 
     // The lighting setups a scene can be in: its own content, with any of the build's prefabs
     // spawned in it. A skybox's environment maps light meshes only once they are built, so
     // the setups without them are reachable too (an asynchronous load draws before that).
     std::vector<MeshShaderEnvironment> reachableEnvironments(Scene* scene, uint32_t sceneFacts, const std::vector<uint32_t>& prefabFacts,
-                                                             bool allLightCapacities){
+                                                             bool allLightCapacities, const std::vector<bool>& postColor){
         std::set<uint32_t> reached{sceneFacts};
         std::vector<uint32_t> pending{sceneFacts};
         while (!pending.empty()){
@@ -196,16 +206,19 @@ namespace {
         std::vector<MeshShaderEnvironment> environments;
         std::set<uint32_t> distinct;
         for (uint32_t facts : withLoading){
-            MeshShaderEnvironment environment = toEnvironment(facts, scene);
-            if (distinct.insert(environmentBits(environment)).second){
-                environments.push_back(environment);
-            }
-            // a script setting maxLightsPerObject reaches the other capacity tiers
-            if (allLightCapacities && environment.lights){
-                for (int capacity : {4, 8, 16}){
-                    environment.lightCapacity = capacity;
-                    if (distinct.insert(environmentBits(environment)).second){
-                        environments.push_back(environment);
+            for (bool postColorOn : postColor){
+                MeshShaderEnvironment environment = toEnvironment(facts, scene);
+                environment.postColor = postColorOn;
+                if (distinct.insert(environmentBits(environment)).second){
+                    environments.push_back(environment);
+                }
+                // a script setting maxLightsPerObject reaches the other capacity tiers
+                if (allLightCapacities && environment.lights){
+                    for (int capacity : {4, 8, 16}){
+                        environment.lightCapacity = capacity;
+                        if (distinct.insert(environmentBits(environment)).second){
+                            environments.push_back(environment);
+                        }
                     }
                 }
             }
@@ -341,8 +354,8 @@ namespace {
 
     class Collector {
     public:
-        Collector(Scene* scene, const std::vector<MeshShaderEnvironment>& environments, std::set<ShaderKey>& keys):
-            scene(scene), environments(environments), keys(keys) {}
+        Collector(Scene* scene, const std::vector<MeshShaderEnvironment>& environments, const std::vector<bool>& postColor, std::set<ShaderKey>& keys):
+            scene(scene), environments(environments), postColor(postColor), keys(keys) {}
 
         void collect(const editor::ShaderVariantContent& content){
             EntityRegistry* registry = content.registry;
@@ -390,6 +403,8 @@ namespace {
     private:
         Scene* scene;
         const std::vector<MeshShaderEnvironment>& environments;
+        // the post colour bit's states, for the points, lines and sky (meshes: environments)
+        const std::vector<bool>& postColor;
         std::set<ShaderKey>& keys;
 
         // The effective custom shader: the component's, the scene default, or built-in, with
@@ -402,9 +417,16 @@ namespace {
 
         // A custom shader that fails to build falls back to the built-in variant at runtime
         void insertKeys(ShaderType type, uint32_t properties, uint16_t customId){
-            keys.insert(ShaderPool::getShaderKey(type, properties, customId));
-            if (customId != 0){
-                keys.insert(ShaderPool::getShaderKey(type, properties, 0));
+            // a mesh's post colour bit comes with its environment; the others take it here
+            const uint32_t postColorBit = type == ShaderType::MESH ? 0 : ShaderPool::getPostColorProperty(type);
+            for (bool postColorOn : postColor){
+                const uint32_t variant = properties | (postColorOn ? postColorBit : 0u);
+                keys.insert(ShaderPool::getShaderKey(type, variant, customId));
+                if (customId != 0){
+                    keys.insert(ShaderPool::getShaderKey(type, variant, 0));
+                }
+                if (!postColorBit)
+                    break;
             }
         }
 
@@ -594,10 +616,11 @@ namespace {
 
 void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
                                                   const std::vector<ShaderVariantContent>& prefabContents,
-                                                  std::set<ShaderKey>& keys, bool allLightCapacities){
+                                                  std::set<ShaderKey>& keys, bool allLightCapacities, bool scriptsSetPostProcessing){
     if (!scene || !sceneContent.registry){
         return;
     }
+    const std::vector<bool> postColor = postColorStates(scene, scriptsSetPostProcessing);
 
     const uint32_t sceneFacts = collectFacts(sceneContent, scene);
     std::vector<uint32_t> prefabFacts;
@@ -613,9 +636,9 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         }
     }
 
-    const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities);
+    const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor);
 
-    Collector collector(scene, environments, keys);
+    Collector collector(scene, environments, postColor, keys);
     collector.collect(sceneContent);
     for (const ShaderVariantContent& prefab : prefabContents){
         if (prefab.registry){
@@ -643,6 +666,12 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     }
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
+    // the uber pass of the scene's post-processing (phase 4: a BLIT variant of its features;
+    // features a script turns on compile at runtime)
+    const PostProcessingTiers postTiers = RenderSystem::getPostProcessingTiers(scene->getPostProcessing());
+    if (postTiers.uber && postTiers.uberFeatures != 0){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, postTiers.uberFeatures));
+    }
     // 2D lights with shadows render occluder segments through the shadow2d pass, once an
     // occluder exists (a script can spawn one, so the light alone asks for it)
     if (allFacts & FACT_SHADOW_LIGHTS_2D){

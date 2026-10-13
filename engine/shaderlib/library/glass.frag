@@ -220,15 +220,17 @@ void main() {
     // as the blends would draw them, in display values: the scene times the transmission
     // filter, the reflection over it by the fresnel (it replaces what the glass lets
     // through), the glint added
-    vec3 reflected = encodeColor(applyFog(reflection));
+    // (the glass's own colours take the post-processing colour, encodeOutput; the filter and the
+    // scene colour behind, graded already, do not)
     #if defined(BLEND_ADDITIVE)
         // what the glass adds: its reflection and glint
-        g_finalColor = vec4(reflected * fresnel + encodeColor(glint), 1.0);
+        g_finalColor = vec4(encodeAdditiveOutput(applyFog(reflection)) * fresnel + encodeAdditiveOutput(glint), 1.0);
     #elif defined(BLEND_MULTIPLY)
         // what the glass multiplies by: its transmission filter
         g_finalColor = vec4(encodeColor(transmission), 1.0);
     #else
-        vec3 color = mix(encodeColor(behind) * encodeColor(transmission), reflected, fresnel) + encodeColor(glint);
+        vec3 reflected = encodeOutput(applyFog(reflection));
+        vec3 color = mix(encodeColor(behind) * encodeColor(transmission), reflected, fresnel) + encodeAdditiveOutput(glint);
         g_finalColor = vec4(color, 1.0);
     #endif
 }

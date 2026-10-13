@@ -1,0 +1,107 @@
+// Post-processing colour (shader library phase 4, tier T0): exposure, tone mapping, colour
+// grade, vignette and dither applied at the end of every mesh, library, sky, points and lines
+// shader, so the frame needs no post-processing pass for them. UI shaders never apply it.
+//
+// Only variants compiled with USE_POST_COLOR (one global variant bit, set while the scene's
+// PostProcessingSettings need it, RenderSystem::getPostProcessingTiers) declare anything here;
+// without it postColorEncode is linearTosRGB and the shaders compile as before.
+//
+// The colour work is one lookup in a strip LUT the engine bakes on the CPU from the settings
+// (u_postColorLut: N*N x N, N 16 or 32, blue across the slices): the linear colour goes in
+// through the shaper sqrt(x / (x + 1)) (0..inf to 0..1, near-linear in the display range) and
+// comes out display-encoded, exposure, curve, grade and encoding baked in. When the uber pass
+// runs (FXAA, bloom...) the LUT holds the exposure and the curve only (they need the unclamped
+// linear colour) and the uber pass grades the frame. Vignette and dither are maths on
+// gl_FragCoord; the engine zeroes them when the uber pass does them.
+//
+// Parameters: three vectors in the block the variant uploads anyway, in this order of
+// preference: the built-in Lit's camera block (includes/lit_frame.glsl, before its members),
+// the frame block (includes/frame.glsl, after its members), else a block of their own,
+// u_fs_postColor. Include this file after those (output.glsl and mesh.frag do).
+//
+//   postColor_vignetteScaleOffset  xy, zw: p = gl_FragCoord.xy * xy - zw, centred, 1 at the edges
+//   postColor_vignetteColor        rgb display colour, a intensity (0 = none)
+//   postColor_params               x, y: falloff w = saturate(dot(p, p) * x + y); z dither
+//                                  amplitude (0 = none); w LUT side N, 0 = no LUT (a pass
+//                                  without post-processing: render-to-texture cameras,
+//                                  reflection probes, the editor's Scene view)
+
+#ifndef POST_COLOR_GLSL
+#define POST_COLOR_GLSL
+
+#include "includes/srgb.glsl"
+
+#ifdef USE_POST_COLOR
+
+    #if defined(LIT_FRAME_DECLARED)
+        #define POST_COLOR_BLOCK litFrame
+    #elif defined(FRAME_FS_DECLARED)
+        #define POST_COLOR_BLOCK frame
+    #else
+        uniform u_fs_postColor {
+            vec4 postColor_vignetteScaleOffset;
+            vec4 postColor_vignetteColor;
+            vec4 postColor_params;
+        } postColorBlock;
+        #define POST_COLOR_BLOCK postColorBlock
+    #endif
+
+    uniform texture2D u_postColorLut;
+    uniform sampler u_postColorLut_smp;
+
+    // a colour LUT strip of side n: uvw in 0..1, blue picks the slices (two taps, mixed)
+    vec3 samplePostColorLut(vec3 uvw, float n){
+        float slice = clamp(uvw.b, 0.0, 1.0) * (n - 1.0);
+        float base = floor(slice);
+        vec2 rg = clamp(uvw.rg, 0.0, 1.0) * (n - 1.0) + 0.5;
+        vec2 uv = vec2((rg.x + base * n) / (n * n), rg.y / n);
+        vec3 a = texture(sampler2D(u_postColorLut, u_postColorLut_smp), uv).rgb;
+        vec3 b = texture(sampler2D(u_postColorLut, u_postColorLut_smp), uv + vec2(1.0 / n, 0.0)).rgb;
+        return mix(a, b, slice - base);
+    }
+
+    // interleaved gradient noise, 0..1 (Jimenez): cheap, stable per pixel
+    float postColorNoise(vec2 pixel){
+        return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
+    }
+
+    // the LUT (exposure, curve, grade, encoding) of a linear colour
+    vec3 postColorLut(vec3 linearColor){
+        vec4 params = POST_COLOR_BLOCK.postColor_params;
+        vec3 x = max(linearColor, vec3(0.0));
+        if (params.w > 0.5){
+            return samplePostColorLut(sqrt(x / (x + 1.0)), params.w);
+        }
+        return linearTosRGB(x);
+    }
+
+    // the vignette's amount at this fragment (0..1, times its intensity)
+    float postColorVignette(){
+        vec4 scaleOffset = POST_COLOR_BLOCK.postColor_vignetteScaleOffset;
+        vec2 p = gl_FragCoord.xy * scaleOffset.xy - scaleOffset.zw;
+        vec4 params = POST_COLOR_BLOCK.postColor_params;
+        float w = clamp(dot(p, p) * params.x + params.y, 0.0, 1.0);
+        return w * w * (3.0 - 2.0 * w) * POST_COLOR_BLOCK.postColor_vignetteColor.a;
+    }
+
+    float postColorDither(){
+        return (postColorNoise(gl_FragCoord.xy) - 0.5) * POST_COLOR_BLOCK.postColor_params.z;
+    }
+
+    // a shader's own colour: linear in, display-encoded out
+    vec3 postColorEncode(vec3 linearColor){
+        vec3 color = postColorLut(linearColor);
+        color = mix(color, POST_COLOR_BLOCK.postColor_vignetteColor.rgb, postColorVignette());
+        return color + vec3(postColorDither());
+    }
+
+    // a colour a blend adds to what is behind (additive glows): black adds nothing (a grade's
+    // lift is the frame's, not the glow's) and the vignette can only darken it
+    vec3 postColorEncodeAdditive(vec3 linearColor){
+        // (no dither: what is behind has it, and the target would clamp its negative half)
+        return max(postColorLut(linearColor) - postColorLut(vec3(0.0)), vec3(0.0)) * (1.0 - postColorVignette());
+    }
+
+#endif
+
+#endif

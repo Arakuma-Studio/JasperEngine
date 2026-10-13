@@ -96,6 +96,11 @@ namespace jasperengine {
         static bool compile(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
                             ShaderData& out, std::string* error = nullptr, std::string* log = nullptr,
                             const ProgressFn& progress = {}, const std::function<bool()>& cancelled = {});
+
+        // The engine's per-stage resource budget a compiled variant must fit on every backend
+        // (shadercompiler.h: 8 uniform blocks, 16 textures, 16 samplers, 16 texture-sampler
+        // pairs; GLES3 has 16 fragment texture units). Empty when it fits, else what is over.
+        static std::string checkResourceBudget(const ShaderData& data);
     };
 
 }
