@@ -771,6 +771,12 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     // Fixed game resolution only applies while playing: edit-mode viewports stay
     // at native resolution (gizmos and overlays would otherwise mismatch).
     scene->getSystem<RenderSystem>()->setDisableFixedResolution(!isPlaying);
+    // The scene's post-processing (phase 4) is the game's: off in the edit-mode Scene view unless
+    // its display setting shows it or a scene camera is previewed; the Game view's pass (this
+    // frame drawn through the game camera) has it (free to toggle: the colour passes bypass the
+    // post colour, the uber pass is skipped)
+    viewDisablesPostProcessing = !isPlaying && !displaySettings.showPostProcessing && !isPreviewCameraActive();
+    scene->getSystem<RenderSystem>()->setDisablePostProcessing(viewDisablesPostProcessing && gameViewCameraEntity == NULL_ENTITY);
 
     if (!isPlaying){
         syncSceneCamera();
@@ -2203,6 +2209,8 @@ void editor::SceneRender::beginGameViewPass(Entity cameraEntity, Framebuffer* ta
     scene->getSystem<RenderSystem>()->setDrawEditorOverlays(false);
     // the Game view culls as the game does, whatever the Scene view shows
     scene->getSystem<RenderSystem>()->setDisableFaceCulling(false);
+    // and draws the scene's post-processing
+    scene->getSystem<RenderSystem>()->setDisablePostProcessing(false);
 
     // Only the game's own layers: no gizmo, overlay or view-gizmo scenes
     Engine::removeAllSceneLayers(false);
@@ -2215,6 +2223,7 @@ void editor::SceneRender::beginGameViewPass(Entity cameraEntity, Framebuffer* ta
 
 void editor::SceneRender::endGameViewPass(){
     gameViewCameraEntity = NULL_ENTITY;
+    scene->getSystem<RenderSystem>()->setDisablePostProcessing(viewDisablesPostProcessing);
     if (!isPlaying){
         syncSceneCamera();
     }

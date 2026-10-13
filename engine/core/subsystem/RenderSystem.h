@@ -1681,6 +1681,9 @@ namespace jasperengine{
 		// editor always renders through Engine::getFramebuffer(), so PIP_RTT is
 		// already baked either way.
 		void setDisableFixedResolution(bool disableFixedResolution);
+		// the frame's own view draws without the scene's post-processing (the editor's edit-mode
+		// Scene view): the colour passes bypass the post colour (no variant change), no uber pass
+		void setDisablePostProcessing(bool disablePostProcessing);
 
 		// the depth pass alpha-tests the submesh (MASK, or the legacy AUTO + textureShadow);
 		// the editor derives export keys from it, so the rule lives in one place

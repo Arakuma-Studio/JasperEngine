@@ -340,6 +340,8 @@ namespace jasperengine::editor{
         // endGameViewPass() hands the scene back to the editor camera, and the next
         // editor draw needs activate() again.
         void beginGameViewPass(Entity cameraEntity, Framebuffer* target);
+        // the Scene view's frame draws without the scene's post-processing (update)
+        bool viewDisablesPostProcessing = false;
         void endGameViewPass();
         ToolsLayer* getToolsLayer();
         UILayer* getUILayer();

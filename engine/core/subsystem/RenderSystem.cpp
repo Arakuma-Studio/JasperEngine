@@ -4650,6 +4650,10 @@ void RenderSystem::setDisableFog(bool disableFog){
     needReloadMeshVariants();
 }
 
+void RenderSystem::setDisablePostProcessing(bool disablePostProcessing){
+    primaryView.postProcessing = !disablePostProcessing;
+}
+
 void RenderSystem::setDisableFixedResolution(bool disableFixedResolution){
     // No reload needed: the editor always renders through Engine::getFramebuffer(),
     // so the PIP_RTT pipeline is already baked whether fixed resolution is on or off.
