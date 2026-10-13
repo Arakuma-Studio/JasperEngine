@@ -9,7 +9,7 @@
   --slot: rgba(255, 255, 255, 0.04);
   --line: rgba(245, 185, 66, 0.18);
   --radius: 16px;
-  --cell: 64px;
+  --cell: 72px;
 }
 
 * {
@@ -28,7 +28,7 @@ body {
 }
 
 .inventory {
-  width: min(880px, 94vw);
+  width: min(780px, 96vw);
   display: flex;
   flex-direction: column;
   background:
@@ -180,7 +180,7 @@ h3 {
   grid-template-columns: repeat(6, var(--cell));
   grid-auto-rows: var(--cell);
   gap: 8px;
-  justify-content: end;
+  justify-content: center;
   align-content: start;
 }
 
@@ -222,8 +222,8 @@ h3 {
 }
 
 .slot img {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
 }
 
 .count {
@@ -333,7 +333,7 @@ h3 {
 /* Narrow screens: equipment above the grid, smaller cells */
 @media (max-width: 1100px) {
   :root {
-    --cell: 56px;
+    --cell: 62px;
   }
 
   .content {

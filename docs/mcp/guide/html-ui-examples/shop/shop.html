@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<!--
+  Shop: a merchant screen.
+  Shows: a responsive card grid (grid-template-columns: repeat(auto-fill, minmax())), cards from
+  a data model (data-for), filter chips that set the model's filter (data-event-click,
+  data-class-active, data-if), buy buttons disabled when gold is short (data-attrif-disabled,
+  :disabled, :has() dims the card), a confirmation dialog with a quantity stepper, gradients and
+  glows. ShopUI.lua opens the dialog, takes the gold and counts the purse down with anime on a
+  plain Lua number. In the editor (no Lua) the grid is empty: press Play to see the wares.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Shop</title>
+  <link rel="stylesheet" href="shop.css">
+</head>
+<body>
+  <div class="page" data-model="shop">
+    <div class="shop">
+      <header class="head">
+        <span class="merchant"><i data-lucide="store"></i></span>
+        <div class="title">
+          <h2>Old Tobin's Wares</h2>
+          <p>Wandering merchant &middot; prices change at dawn</p>
+        </div>
+        <span id="gold" class="gold"><i data-lucide="coins"></i>{{ gold }}</span>
+      </header>
+
+      <nav class="chips" aria-label="Filter">
+        <button class="chip" id="chip-all" data-class-active="filter == 'all'" data-event-click="setFilter('all')">All</button>
+        <button class="chip" id="chip-weapons" data-class-active="filter == 'weapons'" data-event-click="setFilter('weapons')"><i data-lucide="sword"></i>Weapons</button>
+        <button class="chip" id="chip-armor" data-class-active="filter == 'armor'" data-event-click="setFilter('armor')"><i data-lucide="shield"></i>Armor</button>
+        <button class="chip" id="chip-potions" data-class-active="filter == 'potions'" data-event-click="setFilter('potions')"><i data-lucide="flask-conical"></i>Potions</button>
+      </nav>
+
+      <div class="grid">
+        <article class="card" data-for="item, i : items" data-if="filter == 'all' || item.kind == filter"
+                 data-class-rare="item.rarity == 'Rare'" data-class-epic="item.rarity == 'Epic'">
+          <div class="icon"><img data-attr-src="item.icon" alt=""></div>
+          <h3 class="name">{{ item.name }}</h3>
+          <p class="rarity">{{ item.rarity }}</p>
+          <p class="stats">{{ item.stats }}</p>
+          <div class="buy-row">
+            <span class="price"><i data-lucide="coins"></i>{{ item.price }}</span>
+            <button class="buy" data-attrif-disabled="gold < item.price" data-event-click="buy(i)">Buy</button>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <div class="overlay" id="confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div class="modal">
+        <div class="modal-icon"><img data-attr-src="pendingIcon" alt=""></div>
+        <h3 id="confirm-title">Buy {{ pendingName }}?</h3>
+        <div class="stepper">
+          <button id="qty-minus" aria-label="One less" data-attrif-disabled="qty <= 1"><i data-lucide="minus"></i></button>
+          <span id="qty" class="qty">{{ qty }}</span>
+          <button id="qty-plus" aria-label="One more" data-attrif-disabled="(qty + 1) * pendingPrice > gold"><i data-lucide="plus"></i></button>
+        </div>
+        <p class="total">Total <span class="price"><i data-lucide="coins"></i>{{ qty * pendingPrice }}</span></p>
+        <div class="modal-actions">
+          <button class="ghost" id="confirm-cancel">Cancel</button>
+          <button class="primary" id="confirm-buy"><i data-lucide="shopping-bag"></i>Buy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

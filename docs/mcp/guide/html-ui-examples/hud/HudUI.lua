@@ -16,6 +16,15 @@ local HudUI = {
 local MAGAZINE = 30
 local COOLDOWNS = { 8, 12, 5 }   -- seconds per ability (Q, E, R)
 
+-- 12450 -> "12,450"
+---@param n integer
+---@return string
+local function thousands(n)
+    local text = tostring(math.floor(n))
+    local formatted = text:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+    return (formatted:gsub("^,", ""))
+end
+
 ---@param doc UIDocument
 ---@param id string
 ---@return UIElement
@@ -31,13 +40,14 @@ function HudUI:init()
     self.model = self.doc:createDataModel("hud", {
         health = 100,
         shield = 50,
-        score = 12450,
+        score = thousands(12450),   -- text: the number is self.score
         timer = "00:00",
         weapon = "Pulse Rifle",
         ammo = MAGAZINE,
         reserve = 90,
         abilities = { { cooldown = 0 }, { cooldown = 65 }, { cooldown = 0 } },
     })
+    self.score = 12450
     self.elapsed = 0          -- game seconds since the start (pauses with the game)
     self.shownSecond = -1
     self.demoClock = 0
@@ -70,7 +80,8 @@ end
 function HudUI:fire()
     if self.model.ammo == 0 then return false end
     self.model.ammo = self.model.ammo - 1
-    self.model.score = self.model.score + 10
+    self.score = self.score + 10
+    self.model.score = thousands(self.score)
     return true
 end
 

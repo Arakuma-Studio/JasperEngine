@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<!--
+  Toasts: stacked notifications in the top-right corner.
+  Shows: a flex column stack, per-kind colors through one custom property (--tone), an accent
+  bar (::before), a countdown bar animated with CSS keyframes (scaleX, transform-origin), and
+  toasts that ToastsUI.lua builds with createElement + innerHTML (Lucide icons included),
+  appendChild, slides in and out with anime and removes with remove().
+  ToastsUI:show(text, kind, seconds) is the API: kind info | success | warning | error.
+  The three toasts marked data-sample show the design in the editor; the script removes them.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Toasts</title>
+  <link rel="stylesheet" href="toasts.css">
+</head>
+<body>
+  <div id="toasts" class="toast-stack" aria-live="polite">
+    <div class="toast toast-info" data-sample>
+      <i data-lucide="scroll-text"></i>
+      <p class="message">New quest: The Sunken Archive</p>
+      <div class="toast-progress"></div>
+    </div>
+    <div class="toast toast-success" data-sample>
+      <i data-lucide="trophy"></i>
+      <p class="message">Achievement unlocked: Deep Diver</p>
+      <div class="toast-progress"></div>
+    </div>
+    <div class="toast toast-warning" data-sample>
+      <i data-lucide="triangle-alert"></i>
+      <p class="message">Low oxygen. Find an air pocket</p>
+      <div class="toast-progress"></div>
+    </div>
+  </div>
+</body>
+</html>

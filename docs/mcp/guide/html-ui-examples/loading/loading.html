@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<!--
+  Loading screen.
+  Shows: full-screen art from layered gradients with drifting star fields (keyframes on
+  background-position), a Lottie spinner (<lottie>, an animation authored for this example),
+  a progress bar and percentage bound to a data model (data-style-width, {{ }}), tips that
+  cross-fade (anime), and a pulsing prompt shown with data-if when loading is done.
+  LoadingUI.lua fills the bar over the "duration" property (seconds of game time), then waits
+  for any key or click. In the editor (no Lua) the bar and percentage are empty.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Loading</title>
+  <link rel="stylesheet" href="loading.css">
+</head>
+<body>
+  <div class="loading" id="loading" data-model="loading">
+    <div class="stars far"></div>
+    <div class="stars near"></div>
+    <div class="planet"></div>
+
+    <header class="chapter">
+      <p class="eyebrow">Chapter 3</p>
+      <h1>The Sunken Archive</h1>
+    </header>
+
+    <section class="loading-card">
+      <div class="status">
+        <lottie id="spinner" class="spinner" src="assets/spinner.json" autoplay loop></lottie>
+        <div class="bar">
+          <div class="bar-head">
+            <span class="label">Loading</span>
+            <span id="percent" class="percent">{{ progress }}%</span>
+          </div>
+          <div id="progress-track" class="track">
+            <div id="progress-fill" class="fill" data-style-width="progress + '%'"></div>
+          </div>
+        </div>
+      </div>
+      <p class="tip" id="tip"><i data-lucide="lightbulb"></i><span id="tip-text">Hold Shift to sprint; your stamina comes back faster while you crouch.</span></p>
+    </section>
+
+    <p id="press-key" class="press-key" data-if="progress >= 100">Press any key to continue</p>
+  </div>
+</body>
+</html>

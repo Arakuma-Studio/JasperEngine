@@ -105,7 +105,7 @@ body {
   content: "";
   position: absolute;
   inset: 0;
-  background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 2px), rgba(9, 13, 22, 0.55) calc(10% - 2px) 10%);
+  background: linear-gradient(to left, rgba(9, 13, 22, 0.6) 2px, transparent 2px) 0 0 / 10% 100% repeat-x;
 }
 
 .fill {
@@ -336,6 +336,31 @@ body {
 
 .weapon.empty .ammo {
   color: var(--health);
+}
+
+/* ---- Center: crosshair ---- */
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+}
+
+.crosshair::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 /* ---- Damage flash (HudUI.lua animates its opacity) ---- */
