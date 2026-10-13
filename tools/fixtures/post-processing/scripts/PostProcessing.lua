@@ -359,7 +359,7 @@ end
 function PostProcessing:onUpdate()
     self.frames = self.frames + 1
     if self.cycle then
-        self.time = self.time + Engine.getDeltatime()
+        self.time = self.time + Engine.deltatime
         if self.time >= self.period then
             self.time = 0
             self.index = self.index % #ORDER + 1

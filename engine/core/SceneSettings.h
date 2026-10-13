@@ -69,12 +69,12 @@ namespace jasperengine{
         float exposure = 0.0f;
         TonemapMode tonemap = TonemapMode::NONE;
 
-        // colour grade, on the display-encoded colour after the tone mapping, in this order:
-        // white balance (temperature, tint: -1..1), contrast around mid grey, lift / gamma /
-        // gain per channel (lift adds to the shadows, gain scales, gamma bends the midtones),
-        // saturation, then the LUT strip (lutTexture: a project image laid out N*N x N, N 16
-        // to 64, display colour in and out, as Unity's and Photoshop's strips) mixed in by
-        // lutContribution
+        // colour grade after the tone mapping, in this order: white balance (temperature, tint:
+        // -1..1, on the linear colour), then on the display-encoded colour contrast around mid
+        // grey, lift / gamma / gain per channel (lift adds to the shadows, gain scales, gamma
+        // bends the midtones), saturation, and the LUT strip (lutTexture: a project image laid
+        // out N*N x N, Unity's layout with green 0 at the bottom row, display colour in and out)
+        // mixed in by lutContribution
         bool colorGradingEnabled = false;
         float temperature = 0.0f;
         float tint = 0.0f;
