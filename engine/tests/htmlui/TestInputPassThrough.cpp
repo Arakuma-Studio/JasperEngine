@@ -12,6 +12,9 @@
 #include "Engine.h"
 #include "HtmlUIContext.h"
 #include "Input.h"
+#include "object/ui/UIDataModel.h"
+#include "object/ui/UIEvent.h"
+#include "object/ui/UIValue.h"
 
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
@@ -327,4 +330,116 @@ TEST_F(InputPassThroughTest, PointerEventsNone){
     EXPECT_EQ(tip["click"], 1);
     EXPECT_EQ(low["click"], 1);
     EXPECT_EQ(gameDowns, 0);
+}
+
+// a page that listens for the pointer takes it on its empty parts, as a browser page does: a
+// body click listener on a transparent HUD gets the click and the game does not
+TEST_F(InputPassThroughTest, AListeningPageTakesThePointer){
+    // (a body is as tall as its content, as in a browser: this one fills the viewport)
+    UIDocument hud = add("hud", "html, body { margin: 0; }\nbody { min-height: 100vh; }\n", "<p>HUD</p>", 0);
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    int bodyClicks = 0;
+    const uint64_t id = hud.getBody().addEventListener("click", [&](UIEvent&){ bodyClicks++; });
+    ASSERT_NE(id, 0u);
+
+    click(900, 600);
+    EXPECT_EQ(bodyClicks, 1);
+    EXPECT_EQ(gameDowns, 0) << "the page takes the click";
+    EXPECT_TRUE(system().eventOnPointerMove(0, 900, 600, 0, false, false));
+
+    // removing the listener gives the empty page back to the game
+    hud.getBody().removeEventListener(id);
+    click(900, 600);
+    EXPECT_EQ(bodyClicks, 1);
+    EXPECT_EQ(gameDowns, 1);
+
+    // a document listener gets the empty parts outside a short body too ("click outside")
+    UIDocument shortBody = add("short", "html, body { margin: 0; }\n", "<p>short</p>", 1);
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    int documentClicks = 0;
+    const uint64_t onDocument = shortBody.addEventListener("click", [&](UIEvent&){ documentClicks++; });
+    click(900, 600);
+    EXPECT_EQ(documentClicks, 1);
+    EXPECT_EQ(gameDowns, 1);
+    shortBody.removeEventListener(onDocument);
+    shortBody.setVisible(false);
+    GpuEnvironment::drawFrames(1);
+
+    // a listener on the document (the <html> element) counts too, and a wheel listener takes the
+    // whole page (the decision is per document)
+    const uint64_t wheel = hud.addEventListener("wheel", [](UIEvent&){});
+    click(900, 600);
+    EXPECT_EQ(gameDowns, 1);
+    Engine::systemMouseScroll(0, -1, 0);
+    EXPECT_EQ(gameScrolls, 0);
+    hud.removeEventListener(wheel);
+    click(900, 600);
+    EXPECT_EQ(gameDowns, 2);
+    // keys and other non-pointer listeners do not take the pointer
+    const uint64_t keys = hud.addEventListener("keydown", [](UIEvent&){});
+    click(900, 600);
+    EXPECT_EQ(gameDowns, 3);
+    hud.removeEventListener(keys);
+}
+
+// "click outside closes the dropdown": a mousedown listener on the upper document closes its
+// menu, and the button of the lower document under the press is not clicked
+TEST_F(InputPassThroughTest, ClickOutsideClosesTheDropdown){
+    UIDocument lower = add("lower", std::string(kButtonCss) + "#low { left: 100px; top: 100px; }\n"
+                                    "#name { position: absolute; left: 100px; top: 300px; width: 200px; }\n",
+                           "<button id=\"low\">Low</button><input id=\"name\" type=\"text\">", 0);
+    UIDocument upper = add("upper", "html, body { margin: 0; }\n#menu { position: absolute; left: 600px; top: 100px; width: 200px; height: 150px; display: none; background: #333; }\n"
+                                    "#menu.open { display: block; }\n",
+                           "<div id=\"menu\" class=\"open\"><p>Item</p></div>", 1);
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    Counter& low = listen(element(lower, "low"), {"click", "mousedown"});
+    UIElement menu = upper.getElementById("menu");
+    ASSERT_TRUE(menu.isValid());
+    int closes = 0;
+    const uint64_t outside = upper.addEventListener("mousedown", [&](UIEvent& event){
+        if (!menu.contains(event.getTarget()) && menu.containsClass("open")){
+            menu.removeClass("open");
+            closes++;
+        }
+    });
+    click(650, 150);
+    EXPECT_EQ(closes, 0) << "a press inside the menu keeps it open";
+    click(150, 120);
+    EXPECT_EQ(closes, 1);
+    EXPECT_FALSE(menu.containsClass("open"));
+    EXPECT_EQ(low["mousedown"], 0);
+    EXPECT_EQ(low["click"], 0) << "the press closing the menu does not click below";
+    EXPECT_EQ(gameDowns, 0);
+
+    // the listening page covers the lower document's field; a press on it takes the focus
+    // from a field that had it
+    click(150, 310);
+    EXPECT_EQ(closes, 1);
+    ASSERT_TRUE(element(lower, "name")->Focus());
+    EXPECT_TRUE(Engine::wantsTextComposition());
+    click(900, 600);
+    EXPECT_NE(context()->GetFocusElement(), element(lower, "name"));
+    EXPECT_FALSE(Engine::wantsTextComposition());
+
+    // without the listener the press goes through again
+    upper.removeEventListener(outside);
+    click(150, 120);
+    EXPECT_EQ(low["click"], 1);
+}
+
+// a data-event-* binding on <body> is a listener too
+TEST_F(InputPassThroughTest, ADataEventBindingTakesThePointer){
+    page("bound", "html, body { margin: 0; }\n", "");
+    write("ui/bound.html", "<!DOCTYPE html><html><head><link rel=\"stylesheet\" href=\"bound.css\"></head>"
+                           "<body style=\"margin: 0; min-height: 100vh\" data-model=\"taps\" data-event-click=\"count = count + 1\"><p>{{count}}</p></body></html>");
+    UIDocument bound = fixture->addDocument("ui/bound.html");
+    UIValue initial = UIValue::object();
+    initial["count"] = 0;
+    UIDataModel model = bound.createDataModel("taps", initial);
+    ASSERT_TRUE(model.isValid());
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    click(900, 600);
+    GpuEnvironment::drawFrames(1);
+    EXPECT_EQ(gameDowns, 0);
+    EXPECT_EQ(model.get("count").asNumber(), 1.0);
 }

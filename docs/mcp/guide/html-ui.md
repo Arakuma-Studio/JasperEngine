@@ -671,10 +671,19 @@ document nor, while `Engine.ignoreEventsHandledByUI` is on (the default), the ga
 callbacks (`onMouseDown`, `onKeyDown`, `onCharInput`, `onMouseScroll`, `onTouchStart`, ...).
 - Pointer (press, release, move, touch): consumed when the element under the pointer is an
   element of a document, or a document (`body`) that paints a background (a colour with
-  alpha above 0, a gradient or an image), as a browser page over a canvas would. A transparent
-  `body` lets the pointer through: to the next UI Document below it (lower `sortOrder`), then
-  to the game, so a HUD under a transparent menu document still gets clicks where the menu
-  has nothing. A press there that no document takes also blurs the focused field. An element with `pointer-events: none` is
+  alpha above 0, a gradient or an image), as a browser page over a canvas would.
+  **Transparent pages let the pointer through unless you listen on the page or the
+  document.** Where a page has no element and no background, the pointer goes to the next UI
+  Document below it (lower `sortOrder`), then to the game, so a HUD under a transparent menu
+  document still gets clicks where the menu has nothing. To make a page block instead, give
+  it a background, or add a pointer listener (`click`, `mousedown`, `mouseup`, `mousemove`,
+  `wheel`, `contextmenu`, ... with `addEventListener` or `data-event-*`) on the document
+  (`doc:addEventListener`) or on `doc.body`: the page then gets its empty parts, as in a
+  browser, which is what "click outside closes the menu" needs. It is decided per document:
+  any pointer listener there takes every pointer event on the empty parts; removing it gives
+  them back. A `body` is as tall as its content, so a body listener only gets clicks inside
+  it; listen on the document to catch every empty part. A press that no document takes
+  blurs the focused field. An element with `pointer-events: none` is
   skipped by the hit test, so a full-screen wrapper with it is click-through (its children
   can set `pointer-events: auto`). A release (and the moves of a drag) belongs to whoever got
   the press.

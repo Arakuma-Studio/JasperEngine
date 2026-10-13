@@ -1730,8 +1730,9 @@ Where the implementation differs from or makes precise §3.3 (and what it found 
   upper screen document used to keep the pointer from the documents below even where it was
   transparent: its `<html>` is `min-height: 100%`, so it was the hit, `isContent` called it
   not content, and the engine passed the pointer to the game. Now a page that paints no
-  background is not hit at all and the pointer goes on to the next document below in z-order,
-  then to the game (fork patch P4-1 `Rml::Context::SetPointerPassThrough`,
+  background, and whose document has no pointer listener (on `<html>` or `<body>`: a listening
+  page takes the pointer on its empty parts, as in a browser), is not hit at all and the
+  pointer goes on to the next document below in z-order, then to the game (fork patch P4-1 `Rml::Context::SetPointerPassThrough`,
   `HtmlUIContext::passesPointerThrough`, phase-1 spec §3.6.2 "as implemented",
   `TestInputPassThrough.cpp`). `hitTest` stays per entity; `unobstructed` fails only on an
   element of another document over the element.
@@ -1739,8 +1740,9 @@ Where the implementation differs from or makes precise §3.3 (and what it found 
   pseudo-classes, pseudo-elements, texture-mode documents, reloads between queries and inside
   `withViewport`, stylesheet restyles, unicode text and ids, `.rml` documents, data models, a
   3 302-element tree), `AssertionsTest` 10 cases (every kind: pass, fail with its numbers, edge
-  cases of §5.1, other viewports, a document over another), `InputPassThroughTest` 7 cases
-  (clicks and hover through an upper page, the upper element winning, capture and drag over
+  cases of §5.1, other viewports, a document over another), `InputPassThroughTest` 10 cases
+  (clicks and hover through an upper page, listening pages taking the pointer (body, document,
+  wheel, `data-event-*`, "click outside" closing a dropdown, removal restoring the pass-through), the upper element winning, capture and drag over
   another document, both pages empty, three layers, painted pages, `pointer-events: none`),
   `PointerPassThrough.documents` in the vendored RmlUi suite.
 

@@ -61,7 +61,8 @@ namespace jasperengine {
         // The pointer routing rule (phase-1 spec §3.6.2, as implemented by p4-inspector): a
         // document, or the <body> of an HTML document (RML htmlbody), that paints no background
         // (no colour with alpha, decorator or image layer; for a document, nor its canvas body's)
-        // is not hit itself. Its elements still are, and the point goes on to the documents
+        // and whose document listens for no pointer event (on the document or its <body>:
+        // addEventListener from Lua or C++, or data-event-*) is not hit itself. Its elements still are, and the point goes on to the documents
         // below in z-order, then to the game when none takes it. Every hit test of the context
         // uses it (Rml::Context::SetPointerPassThrough): hover, presses, touches, wheel, drags.
         static bool passesPointerThrough(Rml::Element* element);

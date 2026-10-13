@@ -1037,7 +1037,20 @@ after the screen context declined the event.
     reaches the lower document's element, and the game only when no document has an element
     there. Before, the upper document's full-screen page (`html { min-height: 100% }`) was
     the hover element, did not block, and the event went to the game: lower documents never
-    got the pointer. Every hit test of the context follows the rule (hover, press, release,
+    got the pointer. *The listener exception:* a page whose document listens for the
+    pointer is hit like an element, so it takes the pointer on its empty parts, as a browser
+    page does ("click outside closes the menu"). "Listens" means a listener for click,
+    dblclick, mousedown/up/move/over/out, wheel, contextmenu, pointer* or touch* on the
+    document element (`<html>`, `UIDocument:addEventListener`) or on the HTML `<body>`, added
+    with `addEventListener` (Lua or C++, `HtmlUIEventListener`) or as a `data-event-<type>`
+    binding (the engine's inline handlers; `on*` attributes are JavaScript and are dropped,
+    HTMLUI-HTML-0005). The decision is per document, not per event type: the context has one
+    hover chain that every pointer event follows (`:hover`, the cursor, the target of moves,
+    presses, clicks and the wheel), so a page that took the wheel but passed presses would
+    give a click a different target than its press. Removing the last such listener restores
+    the pass-through (the next pointer event sees it). A `<body>` is as tall as its content,
+    as in a browser: a body listener gets the events inside the body's box, a document
+    listener every empty part. Every hit test of the context follows the rule (hover, press, release,
     wheel, touch, drag hover), so the cursor, `:hover` and the consume rules agree. A press
     keeps its capture (`capturedButtons`/`capturedTouches`, the active element, RmlUi's drag
     element) while the pointer moves over another document. A primary press or touch that no

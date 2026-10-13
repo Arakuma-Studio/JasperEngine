@@ -9,6 +9,7 @@
 #include "compat/runtime/RuntimeRegistry.h"
 #include "compat/CompatOptions.h"
 #include "compat/DocumentLoader.h"
+#include "object/ui/HtmlUIEventListener.h"
 
 #include "Engine.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -45,6 +46,33 @@ namespace {
         if (HtmlUIContext::passesPointerThrough(element))
             return false;
         return isAttached(element);
+    }
+
+    // a DOM pointer event type: what makes a listening page take the pointer
+    bool isPointerEvent(const std::string& type){
+        static const char* const types[] = {"click", "dblclick", "mousedown", "mouseup", "mousemove", "mouseover", "mouseout",
+                                            "wheel", "mousescroll", "contextmenu"};
+        for (const char* name : types){
+            if (type == name)
+                return true;
+        }
+        return type.compare(0, 7, "pointer") == 0 || type.compare(0, 5, "touch") == 0;
+    }
+
+    // a pointer listener on the element: addEventListener (Lua or C++) or a data-event-* binding
+    // (the engine's inline handlers: on* attributes are JavaScript, dropped by the compat layer)
+    bool listensForPointer(Rml::Element* element){
+        if (!element)
+            return false;
+        for (HtmlUIEventListener* listener : HtmlUIEventListener::listenersOf(element)){
+            if (isPointerEvent(listener->getDomType()) || isPointerEvent(listener->getRmlType()))
+                return true;
+        }
+        for (const auto& attribute : element->GetAttributes()){
+            if (attribute.first.compare(0, 11, "data-event-") == 0 && isPointerEvent(attribute.first.substr(11)))
+                return true;
+        }
+        return false;
     }
 
     // a background colour with alpha, a decorator or a background image layer
@@ -146,15 +174,25 @@ bool HtmlUIContext::passesPointerThrough(Rml::Element* element){
     const bool page = document || (element->GetTagName() == "htmlbody" && htmlui::compat::DocumentLoader::isCompatDocument(element));
     if (!page || paintsBackground(element))
         return false;
-    // the body's background painted over the whole canvas (the fork's canvas background, phase 3)
-    if (document && document->HasCanvasBackground() && !document->GetCanvasBodyTag().empty()){
-        for (int i = 0; i < document->GetNumChildren(); i++){
-            Rml::Element* child = document->GetChild(i);
-            if (child->GetTagName() == document->GetCanvasBodyTag())
-                return !paintsBackground(child);
+    if (!document)
+        document = element->GetOwnerDocument();
+    // the document and its <body> (the HTML body, or the canvas body of the fork's canvas background)
+    Rml::Element* body = nullptr;
+    if (document){
+        const std::string bodyTag = document->HasCanvasBackground() && !document->GetCanvasBodyTag().empty() ? document->GetCanvasBodyTag()
+                                                                                                           : std::string("htmlbody");
+        for (int i = 0; i < document->GetNumChildren() && !body; i++){
+            if (document->GetChild(i)->GetTagName() == bodyTag)
+                body = document->GetChild(i);
         }
     }
-    return true;
+    // the body's background painted over the whole canvas (the fork's canvas background, phase 3)
+    if (element == document && body && document->HasCanvasBackground() && paintsBackground(body))
+        return false;
+    // a page that listens for the pointer takes it on its empty parts, as a browser page does
+    // ("click outside closes the menu"); per document: the context has one hover chain, which
+    // every pointer event (moves, presses, clicks, wheel) follows
+    return !(listensForPointer(document) || listensForPointer(body));
 }
 
 void HtmlUIContext::destroy(){

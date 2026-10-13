@@ -157,9 +157,13 @@ and keeps working; both systems coexist in the same scene.
   (`ignoreEventsHandledByUI`). Mouse wheel, key up, text input, enter/leave and multi-touch
   reach documents; keys are offered to the focused document before the game.
 - Stacked documents: a page (a document, or an HTML document's `<body>`) that paints no
-  background is not hit itself; the pointer goes on to the next screen document below in
-  z-order, then to the game (fork hook `Context::SetPointerPassThrough`, P4-1). Hover,
-  presses, wheel, touches and focus follow it; a press keeps its capture until its release.
+  background and whose document listens for no pointer event (on `<html>`/the document or
+  `<body>`: click, dblclick, mouse*, wheel, contextmenu, pointer*, touch*, from Lua/C++
+  `addEventListener` or `data-event-*`) is not hit itself; the pointer goes on to the next
+  screen document below in z-order, then to the game (fork hook
+  `Context::SetPointerPassThrough`, P4-1). A listening page takes the pointer on its empty
+  parts, as a browser page does ("click outside closes the menu"). Hover, presses, wheel,
+  touches and focus follow it; a press keeps its capture until its release.
 - Platform additions: clipboard API and mouse cursor in `System` (all platforms), IME
   composition where the platform layer supports it.
 
@@ -221,7 +225,7 @@ binding (the sections above already say them in place):
 | 15 | The RmlUi debugger is compiled only into the editor, Debug exports and the test build | phase 1 §3.8.7 |
 | 16 | Excluded with reasons: X11 multi-touch, in-document IME preedit on Linux and in the editor Game view, Lottie expressions/audio, UV hits on skinned meshes (bind pose); CSS features of phase 3 §2.2 (e.g. `writing-mode`, `@container`, `subgrid`, `mix-blend-mode`) are diagnosed, not implemented | phase 1 §2, phase 3 §2.2 |
 | 17 | The browser-parity fixtures that scroll content past a clip edge render without MSAA (sidecar `"samples": 1`): llvmpipe and lavapipe (Mesa 23.2.1, the test image's drivers) let half the samples of the row above and the column left of a scissor rectangle through under MSAA (`MsaaScissor.*` reproduces it with raw sokol calls); the renderer is unchanged | phase 3 §3.12.10, §5.2 |
-| 18 | A transparent page passes the pointer to the documents below it in z-order before the game (phase 1 had it pass straight to the game, so an upper full-screen document blocked every lower one); a fork hook, P4-1 | phase 1 §3.6.2 "as implemented (p4-inspector)" |
+| 18 | A transparent page that does not listen for the pointer passes it to the documents below it in z-order before the game (phase 1 had every transparent page pass it straight to the game, so an upper full-screen document blocked every lower one, and its own page listeners got the empty-area events); a page with a pointer listener on its document or `<body>` takes them, per document; a fork hook, P4-1 | phase 1 §3.6.2 "as implemented (p4-inspector)" |
 
 ## Research facts (verified in code, October 2026)
 
