@@ -84,13 +84,18 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 
 | Shader | Type | Category | Lighting | Default blend |
 |---|---|---|---|---|
+| [Blur](#libraryblur) `library:blur` | postprocess | Post-processing | none | - |
+| [CRT](#librarycrt) `library:crt` | postprocess | Post-processing | none | - |
 | [Decal](#librarydecal) `library:decal` | mesh | Effects | none | alpha |
 | [Depth fade](#librarydepth_fade) `library:depth_fade` | mesh | Effects | none | alpha |
 | [Directional Tint](#librarydirectional_tint) `library:directional_tint` | mesh | Stylized | none | opaque |
 | [Dissolve](#librarydissolve) `library:dissolve` | mesh | Effects | none, pixel | opaque |
+| [Edge Neon](#libraryedge_neon) `library:edge_neon` | postprocess | Post-processing | none | - |
 | [Fake Lit](#libraryfake_lit) `library:fake_lit` | mesh | Stylized | none, vertex | opaque |
 | [Flipbook](#libraryflipbook) `library:flipbook` | mesh | Effects | none | alpha |
 | [Foliage](#libraryfoliage) `library:foliage` | mesh | Nature | pixel, vertex, none | opaque |
+| [Frosted Panel](#libraryfrosted_panel) `library:frosted_panel` | ui | 2D | none | alpha (Auto) |
+| [Game Boy](#librarygameboy) `library:gameboy` | postprocess | Post-processing | none | - |
 | [Glass](#libraryglass) `library:glass` | mesh | Effects | none, pixel | alpha |
 | [Gradient Sky](#librarygradient_sky) `library:gradient_sky` | sky | Sky | none | - |
 | [Heat Haze](#libraryheat_haze) `library:heat_haze` | mesh | Effects | none | alpha |
@@ -101,6 +106,8 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Panner](#librarypanner) `library:panner` | mesh | Effects | none | opaque |
 | [Panoramic Sky](#librarypanoramic_sky) `library:panoramic_sky` | sky | Sky | none | - |
 | [Particle](#libraryparticle) `library:particle` | points | Particles | none | alpha (Auto) |
+| [Pixelate](#librarypixelate) `library:pixelate` | postprocess | Post-processing | none | - |
+| [Posterize](#libraryposterize) `library:posterize` | postprocess | Post-processing | none | - |
 | [Procedural Sky](#libraryprocedural_sky) `library:procedural_sky` | sky | Sky | none | - |
 | [Projected decal](#libraryprojected_decal) `library:projected_decal` | mesh | Effects | none | alpha |
 | [Rim](#libraryrim) `library:rim` | mesh | Effects | none | additive |
@@ -889,6 +896,20 @@ Pickup animation in the vertex stage: spins about the object's up axis and bobs 
 
 ## 2D
 
+<a id="libraryfrosted_panel"></a>
+### Frosted Panel (`library:frosted_panel`)
+
+A panel of frosted glass: the blurred scene behind it, tinted. Needs the scene below to have post-processing Blur on, and the panel in a scene drawn after it (a HUD layer scene); elsewhere it shows its tint.
+
+- **Type**: UI (a UI component's custom shader); category 2D.
+- **Default state**: the engine's (alpha blend).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `tintColor` | colour | (0.85, 0.9, 1, 1) | Tint colour |
+| `tintAmount` | range 0 to 1 | 0.2 | Tint amount |
+| `brightness` | range 0 to 2 | 1.1 | Brightness of the scene behind |
+
 <a id="librarysprite"></a>
 ### Sprite (`library:sprite`)
 
@@ -1084,6 +1105,99 @@ Sky, horizon and ground colours with a sun disc and halo at the main directional
 | Feature | Default | Description |
 |---|---|---|
 | `CLOUDS` | off | Clouds |
+
+## Post-processing
+
+<a id="libraryblur"></a>
+### Blur (`library:blur`)
+
+A soft blur in one pass: 13 taps on two rings, averaged in linear light. For a wide or full-screen blur the engine's post-processing Blur (a quarter-resolution chain) is much cheaper; this one is for a chain of your own (with a pass scale below 1 it widens for free).
+
+- **Type**: post-process (a pass of the scene's post-process chain); category Post-processing.
+- **Inputs**: the previous pass's colour (`u_sceneColorTexture`) (the engine also binds `u_originalSceneTexture`, `u_depthTexture`, `u_gbufferTexture`, `u_ssaoTexture` to a pass declaring them).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `radius` | range 0 to 16 | 3 | Radius (source pixels) |
+| `amount` | range 0 to 1 | 1 | Amount (0: the source as it is) |
+
+<a id="librarycrt"></a>
+### CRT (`library:crt`)
+
+An old tube screen: barrel curvature, scanlines, an aperture grille, colour fringing and dark corners. A user post-process pass (the engine's post-processing has a cheaper CRT in its uber pass).
+
+- **Type**: post-process (a pass of the scene's post-process chain); category Post-processing.
+- **Inputs**: the previous pass's colour (`u_sceneColorTexture`) (the engine also binds `u_originalSceneTexture`, `u_depthTexture`, `u_gbufferTexture`, `u_ssaoTexture` to a pass declaring them).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `curvature` | range 0 to 1 | 0.3 | Curvature |
+| `lines` | float | 240 | Scanlines over the height |
+| `scanlines` | range 0 to 1 | 0.5 | Scanline darkness |
+| `mask` | range 0 to 1 | 0.3 | Aperture grille |
+| `fringe` | range 0 to 4 | 1 | Colour fringing (pixels) |
+| `vignette` | range 0 to 1 | 0.4 | Dark corners |
+
+<a id="libraryedge_neon"></a>
+### Edge Neon (`library:edge_neon`)
+
+Glowing outlines: the picture's edges (Sobel on brightness) lit in a neon colour that can cycle through the hues, over a darkened scene.
+
+- **Type**: post-process (a pass of the scene's post-process chain); category Post-processing.
+- **Inputs**: the previous pass's colour (`u_sceneColorTexture`) (the engine also binds `u_originalSceneTexture`, `u_depthTexture`, `u_gbufferTexture`, `u_ssaoTexture` to a pass declaring them).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `edgeColor` | HDR colour | (0.1, 1, 0.9, 1) | Edge colour |
+| `threshold` | range 0 to 1 | 0.1 | Edge threshold |
+| `intensity` | range 0 to 4 | 1.5 | Edge brightness |
+| `darken` | range 0 to 1 | 0.7 | Darken the scene |
+| `hueSpeed` | float | 0 | Hue cycle (turns per second) |
+
+<a id="librarygameboy"></a>
+### Game Boy (`library:gameboy`)
+
+A four-shade handheld screen: big pixels, the brightness mapped to four greens with an ordered dither between them.
+
+- **Type**: post-process (a pass of the scene's post-process chain); category Post-processing.
+- **Inputs**: the previous pass's colour (`u_sceneColorTexture`) (the engine also binds `u_originalSceneTexture`, `u_depthTexture`, `u_gbufferTexture`, `u_ssaoTexture` to a pass declaring them).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `pixelSize` | range 1 to 16 | 4 | Pixel size (output pixels) |
+| `dither` | range 0 to 1 | 0.6 | Dither |
+| `contrast` | range 0.5 to 2 | 1.1 | Contrast |
+| `shade0` | colour | (0.06, 0.22, 0.06, 1) | Darkest |
+| `shade1` | colour | (0.19, 0.38, 0.19, 1) | Dark |
+| `shade2` | colour | (0.55, 0.67, 0.06, 1) | Light |
+| `shade3` | colour | (0.61, 0.74, 0.06, 1) | Lightest |
+
+<a id="librarypixelate"></a>
+### Pixelate (`library:pixelate`)
+
+Big square pixels: the picture in blocks of a few output pixels, each the colour at its centre. Pair it with a pass scale below 1 to make it cheaper still.
+
+- **Type**: post-process (a pass of the scene's post-process chain); category Post-processing.
+- **Inputs**: the previous pass's colour (`u_sceneColorTexture`) (the engine also binds `u_originalSceneTexture`, `u_depthTexture`, `u_gbufferTexture`, `u_ssaoTexture` to a pass declaring them).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `pixelSize` | range 1 to 64 | 8 | Block size (pixels) |
+| `roundCorners` | range 0 to 1 | 0 | Rounded blocks (dark gaps) |
+
+<a id="libraryposterize"></a>
+### Posterize (`library:posterize`)
+
+Fewer colours: each channel rounded to a few levels, with an optional ordered dither that trades the bands for a fine pattern.
+
+- **Type**: post-process (a pass of the scene's post-process chain); category Post-processing.
+- **Inputs**: the previous pass's colour (`u_sceneColorTexture`) (the engine also binds `u_originalSceneTexture`, `u_depthTexture`, `u_gbufferTexture`, `u_ssaoTexture` to a pass declaring them).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `levels` | range 2 to 32 | 5 | Levels per channel |
+| `dither` | range 0 to 1 | 0.5 | Dither |
+| `saturation` | range 0 to 2 | 1 | Saturation |
 
 ## Outline and stencil
 
