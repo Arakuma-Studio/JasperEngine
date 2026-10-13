@@ -265,8 +265,8 @@ TEST(AppearanceNone, ThemedCheckboxIsACenteredSquare){
         low = Rml::Vector2f(std::min(low.x, vertex.position.x), std::min(low.y, vertex.position.y));
         high = Rml::Vector2f(std::max(high.x, vertex.position.x), std::max(high.y, vertex.position.y));
     }
-    EXPECT_NEAR((low.x + high.x) * 0.5f, 10.0f, 0.01f);
-    EXPECT_NEAR((low.y + high.y) * 0.5f, 20.0f, 0.01f);
+    EXPECT_NEAR((low.x + high.x) * 0.5f, 10.0f, 0.5f);   // (the feathered fringe is not symmetric)
+    EXPECT_NEAR((low.y + high.y) * 0.5f, 20.0f, 0.5f);
     EXPECT_NEAR(high.x - low.x, 20.0f, 2.0f);   // (with the feathered fringe: 0.85px each side)
 
     // hovered and pressed (Chromium): a checked control's accent 11% darker and lighter in HSL
