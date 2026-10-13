@@ -148,8 +148,10 @@ namespace {
 		const float gap = Math::Max(0.f, Math::Max(to.p0[cross] - from.p1[cross], from.p0[cross] - to.p1[cross]));
 		const float overlap = Math::Max(0.f, Math::Min(from.p1[cross], to.p1[cross]) - Math::Max(from.p0[cross], to.p0[cross]));
 
-		static constexpr float CrossAxisWeight = 30.f;
-		out_distance = Math::SquareRoot(main * main + gap * gap) + main + CrossAxisWeight * gap - Math::SquareRoot(overlap);
+		// Chromium's weights: a sideways step must stay in its row, a vertical one may drift across columns (a label on
+		// the left, its control on the right)
+		const float cross_axis_weight = horizontal ? 30.f : 2.f;
+		out_distance = Math::SquareRoot(main * main + gap * gap) + main + cross_axis_weight * gap - Math::SquareRoot(overlap);
 		return true;
 	}
 

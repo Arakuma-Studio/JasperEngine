@@ -124,8 +124,8 @@ public:
 	/// the arrow keys. Otherwise spatial navigation: the nearest focusable element in that direction, first inside the
 	/// nearest scroll container around the element (its parts scrolled out of view included), then in the whole document,
 	/// where an element inside another scroll container counts only when it is visible in it. Nearest is the CSS Spatial
-	/// Navigation distance: Euclidean distance + distance along the direction + 30 x the gap across it - sqrt(overlap
-	/// across it); ties go to the first in tree order.
+	/// Navigation distance as Chromium weighs it: Euclidean distance + distance along the direction + the gap across it
+	/// times 30 (left/right) or 2 (up/down) - sqrt(overlap across it); ties go to the first in tree order.
 	/// @param[in] current_element The element to start from, usually the focused one.
 	/// @param[in] direction The direction to move in.
 	/// @return The element to focus, or nullptr if there is none in that direction.
