@@ -1,7 +1,6 @@
 # Shader library, phase 4: fast post-processing
 
-Status: approved scope; implementation details are refined against the merged phase 1-3
-code before work starts.
+Status: approved scope, refined against the merged phase 1-3 code (tag `shader-library-phase3`).
 Depends on: phases 1-3, in particular `includes/output.glsl` (`finalizeColor`), the frame
 block and the existing user post-process chain.
 Research: `/tmp/shader-research/fast-postprocessing.md` (sources, cost model, pitfalls).
@@ -25,6 +24,35 @@ aberration + bloom + grain + FXAA): 8 passes, 1 full-resolution pass, about 1.2 
 areas shaded, versus Unity URP 19 passes / 2 full-resolution / 2.8 screen areas.
 
 ## 2. Requirements
+
+### 2.0 Decisions and conventions (binding)
+
+- **Settings:** one plain struct `PostProcessingSettings` in `engine/core/SceneSettings.h`
+  (`SceneSettings::postProcessing`), defined in full by the first phase 4 agent (every
+  effect's enable flag and parameters, render scale, MSAA), so later agents build on it.
+  The existing user chain (`SceneSettings::postProcess`, `PostProcessPass`) stays and is
+  extended (§2.5). Serialization, Factory codegen, Catalog, Lua, MCP and the inspector follow
+  phases 1-3 (§10 of phase 1). Default-constructed = today's output, byte-identical saves.
+- **T0 implementation:** exposure + tonemap + colour grade are baked on the CPU into one small
+  strip LUT (e.g. 32x32x32 laid out 1024x32, or 16^3 on low end) whenever the settings change;
+  shaders apply it with one texture tap in `finalizeColor` (and the `finalize*` variants),
+  plus vignette and dither maths. The LUT and its parameters reach shaders without growing
+  the per-draw upload beyond a few bytes (pack into existing engine blocks or a tiny block)
+  and within the sampler budget: the built-in Lit worst case already uses 15 of 16 samplers
+  per stage — count and prove every variant still fits on every backend, or bake the
+  vignette/dither into shaders without a new sampler for the worst case and document.
+  A global define (part of the variant key, one switch per setting toggle, never per object)
+  selects T0 on/off; when T1/T2 is active, the colour work moves to the uber pass instead.
+  UI shaders never apply it.
+- **Precision:** SPIRV-Cross emits `highp` for everything today (phase 1 notes). Post shaders
+  (uber, bloom, blur) declare `mediump` explicitly where precision allows so GLES gets fp16
+  (`RelaxedPrecision`); prove on the GLES3 output that the qualifiers come through.
+- **Measurement:** reuse `JASPERENGINE_FRAME_STATS` (phase 3) to report passes, draws and
+  target sizes per frame; §2.7 extends it with a per-pass list (name, target size).
+- **Backends:** verify on GL, Vulkan and GLES3 at runtime (`SMOKE_BACKEND`), all six by
+  compilation.
+- Phase 1 §13, phase 2 §5 and phase 3 §4 notes are binding (finalize* functions, frame block,
+  scene inputs: a post pass reading depth uses the phase 3 depth sources).
 
 ### 2.1 Settings
 
