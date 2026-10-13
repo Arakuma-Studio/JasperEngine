@@ -6,6 +6,7 @@ editor, doing what you would do by hand:
 
 - create and edit scenes, GameObjects, components, prefabs (variants included), materials,
   shaders, and Lua or C++ scripts
+- build HTML/CSS game UI (menus, HUDs) and check its layout
 - play the game, send keyboard, mouse and touch input, inspect runtime state, and take
   screenshots of the Scene and Game views
 - read the Console, then export and build the game
@@ -17,7 +18,8 @@ your own agent, model and API account.
 The server also gives the agent a guide to the engine: Unity terms mapped to engine names,
 how to address objects, the edit, play and fix loop, scripting rules, and physics rules. The
 guide is sent when the agent connects and is also available as the resource `jasper://guide`.
-Longer references are under [guide/](guide/), for example the [Lua API](guide/lua-api.md).
+Longer references are under [guide/](guide/), for example the [Lua API](guide/lua-api.md) and
+[HTML/CSS UI](guide/html-ui.md) with its generated [support matrix](guide/html-ui-support.md).
 The design is in [DESIGN.md](DESIGN.md).
 
 ## Two ways to connect
@@ -182,14 +184,20 @@ Agents edit code with their own tools, not through MCP file tools:
   (`.jasperengine/engine-api/lua/scripts/<Name>.lua`). See
   [guide/editor-integration.md](guide/editor-integration.md).
 - **Changes are picked up automatically.** Before every tool call the server looks for Lua,
-  C++, shader, `.material` and image files changed on disk since the last call (a stat scan
-  of the project, skipping hidden folders such as `.jasperengine` and `.git`, `build`,
+  C++, shader, `.material`, HTML UI (`.html`, `.htm`, `.css`) and asset files (images and
+  `.svg`, fonts `.ttf`/`.otf`, `.json`/`.lottie`) changed on disk since the last call (a stat
+  scan of the project, skipping hidden folders such as `.jasperengine` and `.git`, `build`,
   `node_modules` and `trash`). If any changed, the editor reloads clean code editor buffers,
   re-parses script properties, compiles the shader forks that use a changed shader, refreshes
   materials, textures and the Project window, and that call's result carries
   `external_changes: {changed, added, removed, problems: [{path, line, message}]}` and one
-  text line. While a scene plays, the changes are listed as `deferred` and picked up when
-  play stops. Files the MCP tools write themselves are not reported. `.scene`, `.prefab`,
+  text line. UI documents that use a changed file reload before the tool runs, in edit mode
+  and while playing (a stylesheet change restyles in place, keeping elements and listeners),
+  once even though the editor's own watcher also sees the change: `external_changes` then
+  lists them in `ui_reloaded`, and their findings (and those of a changed `.html`/`.css` no
+  document uses) as `problems` with `col`, `severity`, `code` and `suggestion`, the same as
+  `jasperengine-editor check --ui`. Other changes made while a scene plays are listed as
+  `deferred` and picked up when play stops. Files the MCP tools write themselves are not reported. `.scene`, `.prefab`,
   `project.yaml` and the terrain maps the terrain tools write are not watched: edit them with
   the tools. `sync_files` forces a full
   rescan; `editor_status.auto_sync` shows the scan's size and cost.
@@ -255,7 +263,8 @@ Main ideas:
 
 Tool definitions (name, description, input schema) are sent to the agent in every session,
 so keep them lean: `tools/mcp/tool_budget.py` prints each tool's size and the total (target:
-under ~90K characters, about 22K tokens). Shared conventions (scene/entity references, value
+under ~100K characters, about 25K tokens; the HTML UI tools brought it to ~99K: new tools must
+pay for themselves by trimming). Shared conventions (scene/entity references, value
 shapes, undo) belong in the server instructions (`McpInstructions.cpp`), not in every tool.
 
 ```sh

@@ -1967,7 +1967,86 @@ Where the code differs from 3.7, 3.9 and 5.4 (also in `CONTRACTS.md`):
   search, README updates.
 - **Tests:** 5.5. Tool-name checks against `tools/list` skip until wave 2.
 
-### 4.5 `p4-mcp-tools`: tools, send_input/import_files extensions, resources, instructions, agent simulation
+#### 4.4.1 `p4-guide` as implemented
+
+Where the result differs from or makes precise 3.8.1, 3.8.2 (README), 3.8.4, 3.8.5 and 5.5 (also in
+`CONTRACTS.md`):
+
+- **Guide** (`docs/mcp/guide/html-ui.md`, 86 KB, down from 97 KB): the 16 sections by the titles
+  of 3.8.1, every phase-1/2/3 fact moved into the matching section (the component and texture
+  mode into 1, `.rml` into 4, the rewrites/limits tables condensed into 5 "CSS that works" /
+  "CSS that differs" with their codes, imports and Lucide into 9, editor workflow and hot
+  reload into 12), plus a "What Chromium parity means, and where it stops" subsection, the
+  pointer pass-through rule in bold in 10, and the edit-mode notes. DocsTools serves a `## `
+  section above 6 KB as its `### ` subsections (the section's lead-in goes with the first one),
+  so the big sections open with a subsection of their own ("UI Documents: the model",
+  "Elements and default styles", "The element API") and subsection titles say what they are
+  ("CSS that works", "UI events"); every served part is under 7.5 KB.
+- **Snippets** are the guide's own, not copied from the example files (p4-examples was built in
+  parallel and is not merged into this branch): a menu (`assets/ui/menu.html`, `menu.css`,
+  `scripts/MenuUI.lua`: clicks, keyboard and gamepad focus, an anime stagger, the bind-on-load
+  pattern), a HUD (`hud.html`, `hud.css`, `scripts/HudUI.lua`: data binding, a click-through
+  panel), `scripts/Terminal.lua` (texture mode) and fragments. Convention: every
+  ```` ```html ````/```` ```css ````/```` ```lua ```` block is good; a block preceded by a line
+  `` `<project path>`: `` is a complete file; bad examples live in tables. The examples table
+  of section 14 follows 3.7.2.
+- **Differences from 3.8.1 found in the code**: gamepads do not reach documents (3.8.1 §10
+  said they do): the guide says so and the menu script handles `onGamepadButtonDown` in Lua. In
+  edit mode a `data-style-*` expression of a model no script created yet evaluates with empty
+  values and RmlUi logs `Syntax error parsing inline property declaration 'width: %;'` once per
+  load (harmless, gone in play, not a compat diagnostic): the guide explains it; it is a
+  phase-1 data-binding behaviour, not changed here. RmlUi keeps the `data-for` element in the DOM
+  (hidden, after its rows): the guide says `querySelectorAll` counts it.
+- **Stubs** (`generate_lua_stubs.py`): `HtmlUITypes.lua` is generated and holds
+  `---@alias UIEventType` (the names of `HtmlUIEventListener.cpp`, RmlUi's event table and the
+  engine's elements: `click` ... `transitioncancel`, `toggle`, `close`, `cancel`,
+  `htmlnavigate`, the `<lottie>` events; `mouseenter`, `mouseleave`, `pointer*`, `touch*`,
+  `contextmenu`, `beforeinput`, `composition*` left out) and `---@class UIDiagnostic`. A custom
+  event name of `dispatchEvent` needs `---@cast name UIEventType` to listen to it.
+  `getDiagnostics` returns `UIDiagnostic[]`, `getTargetTexture` `Framebuffer|nil`,
+  `setColorScheme` / `insertAdjacentHTML` take their literal values. `HTML_UI_CLASS_DOCS` adds
+  the guide's URI to `UIDocument`, `UIElement`, `UIEvent` and `anime`; `HTML_UI_FIELD_OVERRIDES`
+  replaces stale field docs (`tagName` is upper case in `.html` documents, `innerHTML` is HTML,
+  `body`, `documentElement`). The parameter classes 3.8.5 names (`AnimeParams`,
+  `AnimeStaggerOptions`, `AnimeTimelineOptions`, `AnimeSpringOptions`) exist since phase 1 as
+  `AnimeAnimationParams`, `AnimeStaggerParams`, `AnimeTimelineParams`, `AnimeSpringParams` (in
+  `engine/core/script/binding/stubs/anime.lua`), `UIRect` comes from the binding, and the typed
+  `createDataModel`/`getDataModel`/`classList`/`style`/`dataset`/anime overrides were phase 1's:
+  kept as they are.
+- **API search** (`generate_api_suggestions.py`): `anime` is bound with
+  `beginClass<Anime>("anime")` + `addStaticFunction`, which the parser already reads (no
+  namespace case was needed). `MANUAL_SYMBOLS` replaces the details built from C++ headers (wrong
+  for Lua: `removeEventListener(uint64_t listenerId)`, `createDataModel(string, UIValue)`, the
+  empty `anime.animate()`) with the Lua signatures, and adds `UIDataModel` (class and proxy
+  methods) and `anime.utils` / `anime.eases`. `searchDocs` needed nothing.
+- **AGENTS.md**: the section of 3.8.4 plus one sentence on pointer pass-through; the examples
+  path is computed like the other engine-api paths. AGENTS.md is written when the project is
+  first read through `jasper://project/AGENTS.md`, played or built (not by `create_project`
+  itself), so `test_agents_md_section` reads the resource.
+- **README** (`docs/mcp/README.md`): the intro bullet, the pick-up paragraph (HTML UI and asset
+  types, live reload in edit mode and play, `ui_reloaded`, the UI `problems` keys) and the
+  budget sentence of 3.6.7 (its numbers are p4-mcp-tools'); `docs/mcp/guide/README.md` rows for
+  `html-ui.md` and `html-ui-support.md`, and the examples folder.
+- **Tests** (`test_html_ui_docs.py`, 11 cases): 5.5's cases, with these differences:
+  `test_guide_names_exist` is split: the Lua-name part runs now
+  (`test_guide_lua_names_in_stubs`: every `doc:`/`el:`/`document:` call and `anime.*` /
+  `anime.utils.*` / `anime.eases.*` name of the guide is in the generated stubs), the tool part
+  skips until wave 2 (`WAVE-2`; it allows the output field names the guide explains and the
+  project-setting values). `check_script` runs a chunk's top level, so a fragment is checked
+  inside a function (complete files as they are), and the Lua of `<script type="text/lua">`
+  blocks too. `test_guide_css_html_snippets_clean` runs `check --ui` (CLI) on every html/css
+  block, giving fragments real files for what they name. Added: `test_guide_structure` (the
+  16 titles in order, the rules the guide must state) and `test_guide_snippets_play` (the
+  complete files and fragments loaded in a UI scene: clean in edit mode; in play the menu's
+  icons, entrance animation, focus, ArrowDown/Enter, gamepad dpad/A, a click through the
+  transparent HUD page, the HUD's `{{ }}`, `data-style-width`, `data-class-low`, `data-for`,
+  `data-event-click`, the element-API, anime (timeline call, table animation) and pass-through
+  fragments run through `eval_lua` as a script would, Lottie playing, `@font-face` loading,
+  `font-effect`, texture mode; no Console error or warning). `test_luals_ui_stubs` checks the
+  guide's complete scripts, a `GOOD_UI_LUA` and, when present, the example scripts in a
+  workspace with the project's stubs (`test_stubs.lua_workspace`); `BAD_UI_LUA` also has
+  `mouseenter`, `classList.add` with a dot and `el.onclick = f`.
+: tools, send_input/import_files extensions, resources, instructions, agent simulation
 
 - **Goal:** 3.6, 3.8.3; turn the wave-1 skips into real calls; the agent simulation.
 - **Owned:**
