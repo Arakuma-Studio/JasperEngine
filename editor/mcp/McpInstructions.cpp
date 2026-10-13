@@ -56,7 +56,7 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
    (undo_group: one undo step). Edit code with your own tools (see Code).
 3. Save the scenes you changed.
 4. Play the start scene; a C++ project builds first (seconds to minutes).
-5. Look: screenshot the Game view (the Scene view for layout). Drive the game with
+5. Look: screenshot the Game view (Scene view for layout). Drive the game with
    send_input / wait; query runtime state while playing (get_runtime_entity, eval_lua).
 6. Read the Console since your last cursor: compile, script and Lua errors, missing assets.
 7. Stop, fix, repeat until the Console is clean and the screenshot shows what you intended.
@@ -235,7 +235,7 @@ before editing: keep its declarations, includes, varyings and output, change the
 end of main(), parameters in its u_fs_customParams block (set_shader_uniform); rules and depth
 forks: jasper://docs/shaders. A failing shader draws as the built-in one (error in the Console).
 Post-processing (main camera only): apply_post_processing_preset, then set_scene_settings
-post_processing.<field>. Mobile: in-shader colour, render_scale, few passes
+post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 (jasper://docs/post-processing).
 
 ## Build and ship
