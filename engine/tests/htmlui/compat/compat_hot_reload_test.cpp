@@ -292,6 +292,8 @@ TEST_F(CompatHotReloadTest, RestyleReplacesTheDiagnostics){
     reloaded = system.reloadChangedFiles({"ui/hot.css", "ui/more.css"});
     ASSERT_EQ(reloaded.size(), 1u);
     EXPECT_EQ(count("ui/hot.css") + count("ui/more.css"), 0u) << "fixed: gone";
+    // the reloads logged the warnings: 'mix-blend-mode' twice (two restyles), 'zoom' once
+    expectedWarnings = 3;
 }
 
 namespace {
