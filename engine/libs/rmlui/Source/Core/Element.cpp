@@ -2156,6 +2156,16 @@ bool Element::HasGeneratedContentBoxes()
 	return !IsReplaced();
 }
 
+bool Element::HasNativeAppearance() const
+{
+	return false;
+}
+
+bool Element::HasThemedBox() const
+{
+	return false;
+}
+
 void Element::DirtyBorderTopCut()
 {
 	meta->background_border.DirtyBackground();

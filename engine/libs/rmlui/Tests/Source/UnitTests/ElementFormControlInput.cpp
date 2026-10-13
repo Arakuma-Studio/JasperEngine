@@ -2,7 +2,10 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/ComputedValues.h>
+#include <RmlUi/Core/ElementInstancer.h>
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>
+#include <RmlUi/Core/Factory.h>
 #include <RmlUi/Core/EventListener.h>
 #include <RmlUi/Core/Input.h>
 #include <doctest.h>
@@ -212,6 +215,91 @@ TEST_CASE("form.input.button.display_inline")
 	context->Update();
 	CHECK(text->GetDisplay() == Style::Display::InlineBlock);
 	CHECK(button->GetDisplay() == Style::Display::Inline);
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+namespace {
+// An embedder's input with an 'appearance': its native look unless it has the class 'none' (fork, P4-G12).
+class ThemedInput : public ElementFormControlInput {
+public:
+	explicit ThemedInput(const String& tag) : ElementFormControlInput(tag) {}
+	bool HasNativeAppearance() const override { return !const_cast<ThemedInput*>(this)->IsClassSet("none"); }
+};
+} // namespace
+
+// Fork (P4-G12): a themed checkbox or radio has no border, padding, border radius or painted background (Chromium's theme);
+// without its look the author's apply. A button's display types as Chromium's theme and HTML's button layout give them.
+TEST_CASE("form.input.themed_box")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	static ElementInstancerGeneric<ThemedInput> instancer;
+	Factory::RegisterElementInstancer("tinput", &instancer);
+
+	const String document_rml = R"(<rml>
+	<head>
+		<style>
+			body { width: 600px; height: 600px; font-family: LatoLatin; font-size: 16px; }
+			tinput { display: inline-block; box-sizing: border-box; width: 30px; height: 20px; border: 3px solid #f00; padding: 4px;
+				border-radius: 6px; background-color: #f00; decorator: horizontal-gradient(#f00 #00f); }
+			.b { display: table-cell; width: auto; height: auto; }
+			.none { cursor: pointer; } /* (the embedder's appearance changes a declaration: its values are computed again) */
+			#plain { display: inline-block; width: 30px; height: 20px; padding: 4px; }
+		</style>
+	</head>
+	<body>
+		<tinput type="checkbox" id="checkbox"/><tinput type="radio" id="radio"/><tinput type="text" id="text"/>
+		<tinput type="button" id="cell" class="b" value="x"/><tinput type="button" id="table" class="b" style="display: table" value="x"/>
+		<tinput type="button" id="item" class="b" style="display: list-item" value="x"/><input type="checkbox" id="plain"/>
+	</body>
+	</rml>)";
+
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+
+	const auto themed = [&](const char* id) {
+		const ComputedValues& computed = document->GetElementById(id)->GetComputedValues();
+		return computed.border_top_width() == 0.f && computed.border_left_width() == 0.f && computed.padding_top().value == 0.f &&
+			computed.padding_left().value == 0.f && !computed.has_border_radius() && computed.background_color().alpha == 0 &&
+			!computed.has_decorator();
+	};
+	const auto plain = [&](const char* id) {
+		const ComputedValues& computed = document->GetElementById(id)->GetComputedValues();
+		return computed.border_top_width() == 3.f && computed.padding_top().value == 4.f && computed.has_border_radius() &&
+			computed.background_color().alpha == 255 && computed.has_decorator();
+	};
+	CHECK(themed("checkbox"));
+	CHECK(themed("radio"));
+	CHECK(plain("text"));
+	CHECK(document->GetElementById("checkbox")->GetBox().GetSize(BoxArea::Border) == Vector2f(30.f, 20.f));
+	CHECK(document->GetElementById("checkbox")->GetBox().GetSize(BoxArea::Content) == Vector2f(30.f, 20.f));
+
+	// Without the look (and relaid out).
+	Element* checkbox = document->GetElementById("checkbox");
+	checkbox->SetClass("none", true);
+	context->Update();
+	CHECK(plain("checkbox"));
+	CHECK(checkbox->GetBox().GetSize(BoxArea::Content) == Vector2f(16.f, 6.f));
+	checkbox->SetClass("none", false);
+	context->Update();
+	CHECK(themed("checkbox"));
+	CHECK(checkbox->GetBox().GetSize(BoxArea::Content) == Vector2f(30.f, 20.f));
+
+	// RmlUi's own input has no appearance: unchanged.
+	CHECK(document->GetElementById("plain")->GetComputedValues().padding_top().value == 4.f);
+
+	// Buttons: table and list-item are blocks; an internal table type is an inline-block with the look, a block without.
+	CHECK(document->GetElementById("table")->GetDisplay() == Style::Display::Block);
+	CHECK(document->GetElementById("item")->GetDisplay() == Style::Display::Block);
+	Element* cell = document->GetElementById("cell");
+	CHECK(cell->GetDisplay() == Style::Display::InlineBlock);
+	cell->SetClass("none", true);
+	context->Update();
+	CHECK(cell->GetDisplay() == Style::Display::Block);
 
 	document->Close();
 	TestsShell::ShutdownShell();

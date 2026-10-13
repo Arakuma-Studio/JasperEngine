@@ -175,6 +175,11 @@ bool ElementFormControlInput::HasGeneratedContentBoxes()
 	return type_name == "checkbox" || type_name == "radio" || type_name == "range";
 }
 
+bool ElementFormControlInput::HasThemedBox() const
+{
+	return (type_name == "checkbox" || type_name == "radio") && HasNativeAppearance();
+}
+
 bool ElementFormControlInput::GetIntrinsicDimensions(Vector2f& dimensions, float& ratio)
 {
 	if (type)

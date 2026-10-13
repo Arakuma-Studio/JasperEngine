@@ -375,6 +375,8 @@ private:
 	UniquePtr<PropertyIdSet> explicit_inherit;
 
 	PropertyIdSet dirty_properties;
+	// The element had a themed box when its values were last computed (fork, P4-G12).
+	bool themed_box = false;
 	UnorderedSet<String> dirty_variables;
 	UnorderedSet<ShorthandId> dirty_var_shorthands;
 #ifdef RMLUI_MATH_EXPRESSIONS
