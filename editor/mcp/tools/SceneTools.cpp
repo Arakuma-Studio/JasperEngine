@@ -29,6 +29,7 @@
 #include "window/ProjectWindow.h"
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <memory>
 
@@ -717,7 +718,14 @@ bool postProcessingFieldFromJson(Project* project, const PostProcessingSettings:
         }
         case FT::Vector3: {
             Vector3 v = *(Vector3*)ref;
-            if (!McpValues::parseVector3(value, v)) { error = name + " must be [x,y,z] (or \"#RRGGBB\")."; return false; }
+            if (!McpValues::parseVector3(value, v)) { error = name + " must be [x,y,z] (or \"#RRGGBB\")" + range() + "."; return false; }
+            // refused outside the range, as the other number fields (the setter would clamp it silently)
+            for (float c : {v.x, v.y, v.z}) {
+                if (!(c >= field.minValue && c <= field.maxValue)) {
+                    error = name + " components must be numbers" + range() + ".";
+                    return false;
+                }
+            }
             *(Vector3*)ref = v;
             return true;
         }
@@ -738,11 +746,20 @@ bool postProcessingFieldFromJson(Project* project, const PostProcessingSettings:
             return true;
         }
         case FT::Enum: {
-            const std::string text = value.is_string() ? value.get<std::string>() : std::string();
-            for (int i = 0; field.enumNames[i]; i++) {
-                if (text == field.enumNames[i]) { *(int*)ref = i; return true; }
+            // by name (any case) or by its int (the index in the names), as every MCP enum
+            int count = 0;
+            while (field.enumNames[count]) count++;
+            if (value.is_number_integer()) {
+                const long long index = value.get<long long>();
+                if (index >= 0 && index < count) { *(int*)ref = (int)index; return true; }
+            } else if (value.is_string()) {
+                std::string text = value.get<std::string>();
+                std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+                for (int i = 0; i < count; i++) {
+                    if (text == field.enumNames[i]) { *(int*)ref = i; return true; }
+                }
             }
-            error = name + " must be one of: " + enumNamesText(field) + ".";
+            error = name + " must be one of: " + enumNamesText(field) + " (or its index 0 to " + std::to_string(count - 1) + ").";
             return false;
         }
     }
@@ -800,12 +817,11 @@ Json postProcessToJson(const std::vector<PostProcessPass>& passes, Project* proj
     Json list = Json::array();
     for (const PostProcessPass& pass : passes) {
         Json item = {{"shader", pass.shader}, {"enabled", pass.enabled}, {"uniforms", McpValues::shaderUniformsToJson(pass.uniforms)}};
-        // (phase 4) only when set: the pass's textures by uniform (image paths) and its scale
-        Json textures = Json::object();
-        for (const auto& [uniform, texture] : pass.textures) {
-            // project-relative, as every MCP asset path
-            if (!texture.empty()) textures[uniform] = project ? Json(McpValues::assetPathToJson(project, texture.getPath(0))) : Json(texture.getPath(0));
-        }
+        // (phase 4) only when set: the pass's textures by uniform and its scale. A texture is
+        // written as the shader textures of a material are (a project-relative path, or
+        // {path, filters, wraps} / {cube} when it has them), so a read-modify-write of the
+        // chain keeps its sampler settings and cube maps
+        Json textures = McpValues::shaderTexturesToJson(project, nullptr, pass.textures);
         if (!textures.empty()) item["textures"] = textures;
         if (pass.scale != 1.0f) item["scale"] = pass.scale;
         list.push_back(item);
@@ -981,8 +997,16 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                 const Json& item = value[i];
                 const std::string where = name + "[" + std::to_string(i) + "]";
                 if (!item.is_object()) {
-                    error = where + " must be {shader, enabled, uniforms}.";
+                    error = where + " must be {shader, enabled, uniforms, textures, scale}.";
                     return nullptr;
+                }
+                // a misspelt key would otherwise be dropped without a word
+                for (auto key = item.begin(); key != item.end(); ++key) {
+                    static const std::set<std::string> known = {"shader", "enabled", "uniforms", "textures", "scale"};
+                    if (!known.count(key.key())) {
+                        error = where + ": unknown key \"" + key.key() + "\". A pass is {shader, enabled, uniforms, textures, scale}.";
+                        return nullptr;
+                    }
                 }
                 PostProcessPass pass;
                 pass.shader = item.value("shader", std::string());
@@ -999,9 +1023,19 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                     error = where + ".shader \"" + pass.shader + "\": no forked shader there (fork the post-process shader first).";
                     return nullptr;
                 }
+                if (item.contains("enabled") && !item["enabled"].is_boolean()) {
+                    error = where + ".enabled must be true or false.";
+                    return nullptr;
+                }
                 pass.enabled = item.value("enabled", true);
                 std::string why;
-                if (item.contains("uniforms") && !McpValues::shaderUniformsFromJson(item["uniforms"], pass.uniforms, why)) {
+                // a library shader's uniforms are its manifest's parameters (@property): unknown
+                // members are refused and colours may be "#RRGGBB" (sRGB, stored linear), as a
+                // material's shaderParams; a fork's are any member of its u_fs_postParams
+                const bool uniformsOk = !item.contains("uniforms") ||
+                    (library ? McpValues::shaderParamsFromJson(manifest.get(), true, item["uniforms"], pass.uniforms, why)
+                             : McpValues::shaderUniformsFromJson(item["uniforms"], pass.uniforms, why));
+                if (!uniformsOk) {
                     error = where + ".uniforms: " + why;
                     return nullptr;
                 }
@@ -1115,6 +1149,14 @@ void setSceneSettingsTool(const CallPtr& call) {
         }
         std::string error;
         if (setting->kind == SettingKind::PostProcessing || setting->kind == SettingKind::PostProcessingField) {
+            // as apply_post_processing_preset and the inspector (which has no Post-processing
+            // section there): a UI scene's camera is never post-processed
+            if (scene->sceneType == SceneType::SCENE_UI) {
+                delete multi;
+                call->fail("\"" + scene->name + "\" is a UI scene: UI scenes are never post-processed (set " + it.key() +
+                           " on the 2D or 3D scene whose main camera draws the game).");
+                return;
+            }
             if (!applyPostProcessingSetting(project, *setting, it.value(), postProcessing, error)) {
                 delete multi;
                 call->fail(error);
@@ -1171,10 +1213,7 @@ Json postProcessingCostToJson(const PostProcessingCost& cost) {
 }
 
 PostProcessingCost sceneCost(Scene* scene, const PostProcessingSettings& settings) {
-    int userPasses = 0;
-    for (const PostProcessPass& pass : scene->getPostProcessPasses())
-        if (pass.enabled) userPasses++;
-    return estimatePostProcessingCost(settings, userPasses, Catalog::getSceneProperty<bool>(scene, "fixed_resolution_enabled"));
+    return estimatePostProcessingCost(settings, scene->getPostProcessPasses(), Catalog::getSceneProperty<bool>(scene, "fixed_resolution_enabled"));
 }
 
 std::string costText(const PostProcessingCost& cost) {
@@ -1218,7 +1257,7 @@ void listPostProcessingPresetsTool(const CallPtr& call) {
     std::string text = std::to_string(getPostProcessingPresets().size()) + " post-processing preset(s); "
                        "apply_post_processing_preset applies one (estimated cost after the scene, alone):";
     for (const PostProcessingPreset& preset : getPostProcessingPresets()) {
-        const PostProcessingCost cost = estimatePostProcessingCost(preset.settings, 0, false);
+        const PostProcessingCost cost = estimatePostProcessingCost(preset.settings, {}, false);
         presets.push_back({{"id", preset.id}, {"name", preset.name}, {"description", preset.description},
                            {"settings", postProcessingToJson(preset.settings, project)},
                            {"cost", {{"passes", cost.engine.passCount}, {"screens", McpValues::number(cost.engine.fullscreen)},

@@ -54,7 +54,7 @@ namespace {
         std::vector<ParamDef> params;
         const char* help;
         void (*isolate)(PostProcessingSettings& settings);
-        const char* tierText; // replaces the derived tier text (MSAA: no pass at all)
+        const char* tierText; // replaces the derived tier text (MSAA: part of the scene pass)
     };
 
     struct GroupDef {
@@ -99,13 +99,17 @@ namespace {
             {"Anti-aliasing", {
                 {"FXAA", "fxaa_enabled", {},
                  "FXAA 3.11 (console quality) on the final image: smooths geometry and shader edges for about 5 taps "
-                 "per pixel (9 on edges). Use it or MSAA, not both.",
+                 "per pixel (9 on edges). It and MSAA can both be on; one is usually enough.",
                  [](PostProcessingSettings& s) { s.fxaaEnabled = true; }, nullptr},
                 {"MSAA", nullptr, {{"msaa_samples", "MSAA"}},
-                 "Multisampling of the main camera's scene (geometry edges only). Off when the uber pass draws FXAA.",
+                 "Multisampling of the main camera's scene (geometry edges only), clamped to what the device supports. "
+                 "It and FXAA can both be on; one is usually enough.",
                  [](PostProcessingSettings& s) { s.msaaSamples = 4; },
-                 "0 passes: a tile-based GPU resolves it in tile memory (2x is nearly free, 4x costs bandwidth). Stored "
-                 "with the scene; the renderer applies it once the multisampled scene target exists."},
+                 "Part of the scene pass: a tile-based GPU resolves the samples in tile memory (2x is nearly free, 4x costs "
+                 "bandwidth; GLES resolves with a blit), into the target the other effects read. In an exported game with "
+                 "nothing else offscreen (no uber pass, custom pass or fixed resolution) the scene resolves into a target "
+                 "blitted to the screen: one more full-resolution pass. Desktop GPUs pay the multisampled target's memory "
+                 "and bandwidth."},
             }},
             {"Stylised", {
                 {"Pixelate", "pixelate_enabled", {{"pixelate_size", "Size"}},
@@ -213,7 +217,7 @@ namespace {
     }
 
     const char* tierTag(const EffectDef& effect) {
-        if (effect.tierText) return "0 passes";
+        if (effect.tierText) return "scene pass";
         PostProcessingSettings only;
         effect.isolate(only);
         switch (editor::getPostProcessingCostTier(only)) {
@@ -432,11 +436,9 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
 }
 
 void editor::InspectorWindow::drawPostProcessingCost(SceneProject* sceneProject, const PostProcessingSettings& settings){
-    int userPasses = 0;
-    for (const PostProcessPass& pass : Catalog::getSceneProperty<std::vector<PostProcessPass>>(sceneProject->scene, "post_process"))
-        if (pass.enabled) userPasses++;
+    const std::vector<PostProcessPass> passes = Catalog::getSceneProperty<std::vector<PostProcessPass>>(sceneProject->scene, "post_process");
     const bool fixedResolution = Catalog::getSceneProperty<bool>(sceneProject->scene, "fixed_resolution_enabled");
-    const PostProcessingCost cost = estimatePostProcessingCost(settings, userPasses, fixedResolution);
+    const PostProcessingCost cost = estimatePostProcessingCost(settings, passes, fixedResolution);
 
     const bool open = ImGui::TreeNodeEx("##pp_cost", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth,
                                         ICON_FA_GAUGE_HIGH " Estimated cost");
@@ -526,7 +528,7 @@ void editor::InspectorWindow::drawScenePostProcessing(SceneProject* sceneProject
                 if (ImGui::Selectable(preset.name.c_str(), matched == &preset) && matched != &preset)
                     setAll(preset.settings);
                 if (ImGui::IsItemHovered()) {
-                    const PostProcessingCost cost = estimatePostProcessingCost(preset.settings, 0, false);
+                    const PostProcessingCost cost = estimatePostProcessingCost(preset.settings, {}, false);
                     wrappedTooltip(preset.description + "\n\nEstimate: " + std::to_string(cost.engine.passCount) + " passes, " +
                                    formatFloat(cost.engine.fullscreen) + " screens shaded (Unity URP: " +
                                    std::to_string(cost.urp.passCount) + " passes, " + formatFloat(cost.urp.fullscreen) + ").");

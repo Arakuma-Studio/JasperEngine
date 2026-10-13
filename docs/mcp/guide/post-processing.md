@@ -17,8 +17,13 @@ its tier, not on its maths:
 |---|---|---|
 | T0, in the shaders | exposure, tone mapping (`tonemap`: none, aces, neutral, reinhard, agx), colour grading (white balance, contrast, saturation, lift/gamma/gain, LUT strip), monochrome (grayscale/sepia), vignette, dither | **0 passes**: one LUT tap at the end of every scene shader (baked on the CPU when a value changes) |
 | T1, the uber pass | FXAA, chromatic aberration, pixelate, CRT, edge detect, film grain, sharpen, `render_scale` below 1 | **1 fullscreen pass** shared by all of them; with fixed resolution it is the upscale blit drawn anyway (no pass added). With it on, the grade, vignette and dither move into it (still no pass of their own) |
-| T2, the chain | bloom, blur | **7 small passes** from a quarter of the resolution (about 0.17 of a screen) plus the uber pass that composites them |
-| T3, custom passes | `post_process` passes (library `@shader postprocess` shaders or your forks) | **1 pass each** at the scene's resolution, before the uber pass |
+| T2, the chain | bloom, blur | small passes from a quarter of the resolution plus the uber pass that composites them: bloom **7** (about 0.17 of a screen), blur **1 + 2 x ceil(`blur_radius`)** (3 at radius 1, 5 to radius 2, 7 above) |
+| T3, custom passes | `post_process` passes (library `@shader postprocess` shaders or your forks) | **1 pass each** at the scene's resolution times the pass's `scale` squared, before the uber pass. Without the uber pass an exported game ends the chain with a blit to the screen (with fixed resolution, a copy after a last pass below full size) |
+
+MSAA (`msaa_samples` 2 or 4) is part of the scene pass: the samples resolve at its end (in tile
+memory on tile-based GPUs) into the offscreen target the effects read. In an exported game with
+nothing else offscreen (no uber pass, custom pass or fixed resolution) the scene resolves into a
+target blitted to the screen: **1 more full-resolution pass**. FXAA and MSAA can both be on.
 
 Reference set (tonemap + grade + vignette + chromatic aberration + bloom + grain + FXAA at
 1080p, an estimate from the renderers' source, not a measurement): 8 passes, 1 at full
@@ -54,8 +59,8 @@ scene_shading, notes}`; while playing also `applied` (what the renderer runs: `i
   looks soft. A HUD in a layer scene stays at full resolution.
 - One T1 effect turns the uber pass on; more T1 effects then cost only their few taps.
 - Bloom is cheap here (quarter resolution); keep `bloom_intensity` modest.
-- Avoid stacking custom `post_process` passes: each one is a full pass. Use FXAA or MSAA,
-  not both.
+- Avoid stacking custom `post_process` passes: each one is a full pass (a `scale` below 1
+  makes it cheaper). One of FXAA or MSAA is usually enough.
 - Measure: run with `JASPERENGINE_FRAME_STATS=1` (editor or exported game) and read the
   "Frame stats ... pass list:" lines in the log.
 

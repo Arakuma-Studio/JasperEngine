@@ -34,7 +34,7 @@ namespace jasperengine::editor {
         CHAIN       // T2: the quarter-resolution bloom/blur chain plus the uber pass
     };
     PostProcessingCostTier getPostProcessingCostTier(const PostProcessingSettings& onlyThisEffect);
-    // "T0: 0 passes (in the shaders)", ... for tooltips
+    // "T0, 0 passes: ...", ... for tooltips
     const char* getPostProcessingCostTierLabel(PostProcessingCostTier tier);
 
     // One render pass of a cost estimate
@@ -66,12 +66,15 @@ namespace jasperengine::editor {
         float sceneShading = 1.0f;
         // effects URP has no built-in for (counted as one full-screen renderer feature pass each)
         std::vector<std::string> urpCustom;
-        // remarks for the readout (fixed resolution, MSAA not applied yet...)
+        // remarks for the readout (fixed resolution, render scale, user passes, MSAA...)
         std::vector<std::string> notes;
     };
-    // userPasses: enabled user post-process passes (SceneSettings::postProcess); fixedResolution:
-    // the scene renders at a fixed resolution (the uber pass replaces its blit)
-    PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& settings, int userPasses, bool fixedResolution);
+    // passes: the scene's user post-process chain (SceneSettings::postProcess; the enabled ones
+    // count, each at its scale); fixedResolution: the scene renders at a fixed resolution (the
+    // uber pass replaces its blit). The engine side counts what an exported game draws to the
+    // screen (the chain's final blit, MSAA's resolve blit when nothing else is offscreen).
+    PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& settings, const std::vector<PostProcessPass>& passes,
+                                                  bool fixedResolution);
 
     // the uber pass features as words ("FXAA, grade LUT, vignette"), from the variant bit names
     std::string describeUberFeatures(uint32_t uberFeatures);
