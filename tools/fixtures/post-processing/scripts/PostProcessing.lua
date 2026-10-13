@@ -6,6 +6,8 @@
 --   point light (values far above 1: exposure and the tone mapping curves), saturated boxes
 --   and spheres (grade, saturation, monochrome), a dark corner (lift), a blended pane (blends
 --   after the curve), points and a line renderer (the in-shader colour on every shader type),
+--   additive glows (built-in points, mesh and lines) and a multiply quad on a black backdrop,
+--   a white unlit cube,
 --   a render-to-texture camera on a screen at the top right (its image takes no
 --   post-processing of its own: the screen in the main camera's image is graded once), and a
 --   HUD in a layer scene (white text over a grey bar: never post-processed, native resolution).
@@ -36,6 +38,14 @@
 --     user_pass (library pixelate at scale 0.5, then the project's shaders/pp_overlay: its own
 --     texture and the original scene left of the split), user_pass_bloom (the same with bloom:
 --     the chain runs before the uber pass)
+--   review fixes: render_scale (render scale 0.5 alone: the plain upscale pass), console (the
+--     editor's Console preset), console_still (the same without its per-frame grain) and ca_fxaa
+--     (FXAA under a strong chromatic aberration: probe a pole's edge, every channel smoothed),
+--     blend and blend_uber (a lifted, contrasted grade under a purple vignette, in the shaders
+--     and in the uber pass: the additive glows on the black backdrop show no square, the
+--     multiply quad stays a plain factor), white16 and white32 (a grade with tone mapping NONE
+--     at both LUT sides: the white cube is 255), fixed_nearest (FXAA and sharpen at a NEAREST
+--     fixed resolution: per fixed-resolution pixel, upscaled nearest)
 --   PP_SCENE=saved  Saved.scene: the same objects (this script) with post-processing saved in
 --                   the scene file (the "mobile" set without grain): YAML, export code, runtime
 --   PP_CYCLE=1      every case in turn, one per PP_CYCLE_SECONDS (4): the variant bit and the
@@ -243,6 +253,63 @@ case("mobile_full", function(p)
     p.bloomEnabled = true
     p.bloomThreshold = 0.75
 end)
+-- review fixes: render scale alone (a plain upscale pass), the Console preset (and without
+-- its per-frame grain, for pixel probes of FXAA under chromatic aberration), blends over black
+-- under a lifted, contrasted grade with a coloured vignette (T0, and the same in the uber pass),
+-- whites at both LUT sizes with tone mapping NONE, FXAA and sharpen on a NEAREST fixed resolution
+case("render_scale", function(p) p.renderScale = 0.5 end)
+local function console(p)
+    p.tonemap = TonemapMode.ACES
+    p.colorGradingEnabled = true
+    p.temperature = 0.05
+    p.contrast = 1.1
+    p.saturation = 1.05
+    p.vignetteEnabled = true
+    p.vignetteIntensity = 0.3
+    p.ditherEnabled = true
+    p.fxaaEnabled = true
+    p.bloomEnabled = true
+    p.chromaticAberrationEnabled = true
+    p.chromaticAberrationIntensity = 0.15
+    p.filmGrainEnabled = true
+    p.filmGrainIntensity = 0.12
+end
+case("console", console)
+case("console_still", function(p)
+    console(p)
+    p.filmGrainEnabled = false
+end)
+case("ca_fxaa", function(p)
+    p.fxaaEnabled = true
+    p.chromaticAberrationEnabled = true
+    p.chromaticAberrationIntensity = 1.0
+end)
+local function lifted(p)
+    p.colorGradingEnabled = true
+    p.lift = Vector3(0.15, 0.12, 0.18)
+    p.contrast = 1.3
+    p.vignetteEnabled = true
+    p.vignetteIntensity = 0.8
+    p.vignetteColor = Vector3(0.35, 0.1, 0.45)
+end
+case("blend", lifted)
+case("blend_uber", function(p)
+    lifted(p)
+    p.fxaaEnabled = true
+end)
+local function whites(p, side)
+    p.colorGradingEnabled = true
+    p.saturation = 1.2
+    p.lutSize = side
+end
+case("white16", function(p) whites(p, 16) end)
+case("white32", function(p) whites(p, 32) end)
+case("fixed_nearest", function(p)
+    p.fxaaEnabled = true
+    p.sharpenEnabled = true
+    p.sharpenIntensity = 0.6
+end)
+
 -- MSAA
 case("msaa2", function(p) p.msaaSamples = 2 end)
 case("msaa4", function(p) p.msaaSamples = 4 end)
@@ -360,6 +427,52 @@ local function buildScene(self, scene, keep)
         lines:addLine(Vector3(i * 0.25, 0.0, 0.0), Vector3(i * 0.25 + 0.4, 1.0, 0.0), Vector4(0.2, 1.0, 0.6, 1.0))
     end
 
+    -- blends over black (review fix): a black backdrop with additive built-in points, an
+    -- additive built-in mesh and additive lines (their black adds nothing: no lifted square
+    -- around a glow), and a multiply quad (a plain factor, not graded)
+    local backdrop = keep(Primitive(scene))
+    backdrop:createBox(2.6, 1.7, 0.05)
+    backdrop.position = Vector3(3.6, 1.3, 3.4)
+    backdrop.receiveLights = false
+    backdrop.castShadows = false
+    backdrop:setColor(0.0, 0.0, 0.0)
+    local glowPoints = keep(Points(scene))
+    glowPoints.position = Vector3(2.7, 1.7, 3.5)
+    glowPoints:setTexture("textures/glow.png")
+    glowPoints.blendMode = MaterialBlendMode.ADDITIVE
+    for i = 0, 3 do
+        glowPoints:addPoint(Vector3(i * 0.45, 0.0, 0.0), Vector4(1.0, 0.5 + i * 0.15, 0.2, 1.0), 0.6, 0.0)
+    end
+    local glowQuad = keep(Primitive(scene))
+    glowQuad:createBox(0.8, 0.8, 0.01)
+    glowQuad.position = Vector3(3.0, 0.95, 3.5)
+    glowQuad.receiveLights = false
+    glowQuad.castShadows = false
+    glowQuad:setTexture("textures/glow.png")
+    glowQuad:setColor(0.3, 0.7, 1.0)
+    configure(glowQuad, function(m) m.blendMode = MaterialBlendMode.ADDITIVE end)
+    local glowLines = keep(LineRenderer(scene))
+    glowLines.position = Vector3(3.6, 0.6, 3.5)
+    glowLines.blendMode = MaterialBlendMode.ADDITIVE
+    for i = 0, 4 do
+        glowLines:addLine(Vector3(i * 0.15, 0.0, 0.0), Vector3(i * 0.15, 0.6, 0.0), Vector4(0.02 + i * 0.1, 0.02, 0.02, 1.0))
+    end
+    local filter = keep(Primitive(scene))
+    filter:createBox(0.7, 0.7, 0.01)
+    filter.position = Vector3(1.75, 0.75, 3.6)
+    filter.receiveLights = false
+    filter.castShadows = false
+    filter:setColor(0.5, 0.5, 0.5)
+    configure(filter, function(m) m.blendMode = MaterialBlendMode.MULTIPLY end)
+
+    -- a white unlit cube (review fix: whites reach 255 with tone mapping NONE at every LUT size)
+    local white = keep(Primitive(scene))
+    white:createBox(0.5, 0.5, 0.5)
+    white.position = Vector3(1.6, 2.7, 0.5)
+    white.receiveLights = false
+    white.castShadows = false
+    white:setColor(1.0, 1.0, 1.0)
+
     -- a render-to-texture camera on a screen at the top right
     local rtt = keep(Camera(scene))
     rtt.type = CameraType.CAMERA_PERSPECTIVE
@@ -421,9 +534,11 @@ local function applyCase(self, name)
     apply(p)
     self.scene.postProcessing = p
     self.scene.postProcessPasses = PASSES[name] and PASSES[name]() or {}
-    if name == "fixed" or name == "t1_fixed" or name == "msaa4_fixed" then
+    if name == "fixed" or name == "t1_fixed" or name == "msaa4_fixed" or name == "fixed_nearest" then
         self.scene.fixedResolutionEnabled = true
         self.scene:setFixedResolutionSize(640, 360)
+        -- (NEAREST, the default: the effects run per fixed-resolution pixel, upscaled nearest)
+        self.scene.fixedResolutionFilter = TextureFilter.NEAREST
     else
         self.scene.fixedResolutionEnabled = false
     end
