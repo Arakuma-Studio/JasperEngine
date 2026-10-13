@@ -28,6 +28,9 @@ int main(int argc, char* argv[]) {
     if (argc >= 2 && std::strcmp(argv[1], "check") == 0) {
         return editor::CommandLine::runCheckCommand(argc - 1, argv + 1, argv[0]);
     }
+    if (argc >= 2 && std::strcmp(argv[1], "ui-support") == 0) {
+        return editor::CommandLine::runUiSupportCommand(argc - 1, argv + 1, argv[0]);
+    }
     if (argc >= 2 && std::strcmp(argv[1], "import-ui") == 0) {
         return editor::CommandLine::runImportUiCommand(argc - 1, argv + 1, argv[0]);
     }

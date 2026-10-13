@@ -22,14 +22,19 @@ namespace jasperengine::editor::mcp {
     // Automatic pick-up of files the agent edits on disk with its own tools (Read/Edit/git...).
     //
     // Before every top-level tools/call, a cheap stat-based scan finds the project's Lua, C++,
-    // shader, .material and image files that changed since the last scan (not .scene / .prefab /
+    // shader, .material, HTML UI (.html/.htm/.css) and asset (images, .svg, .ttf/.otf,
+    // .json/.lottie) files that changed since the last scan (not .scene / .prefab /
     // project.yaml, nor the terrain maps the terrain tools write: the editor owns those). If
     // any did, the sync_files pick-up runs on them (code editor buffers, script properties, Lua
-    // syntax, materials, shader forks, textures, asset database) and the call's result gets
-    //   external_changes: {changed, added?, removed?, problems: [{path, line, message}],
-    //                      script_properties?, deferred?}
+    // syntax, materials, shader forks, textures, HTML UI documents, asset database) and the
+    // call's result gets
+    //   external_changes: {changed, added?, removed?,
+    //                      problems: [{path, line, message} (+ col, severity, code, suggestion for UI)],
+    //                      script_properties?, ui_reloaded?, ui_current?, deferred?}
     // plus one text line. Shader forks using a changed shader file are compiled before the
-    // tool runs, so their errors are in `problems` too.
+    // tool runs, so their errors are in `problems` too. HTML UI documents reading a changed file
+    // reload before the tool runs (w4::syncHtmlUi; UIDocumentSystem::reloadChangedFiles, whose
+    // stamps the editor's HtmlUIWatcher shares, so a change is reloaded once).
     //
     // Files the MCP tools write themselves are not external: syncFiles (the funnel of
     // write_file, create_script, the material and asset tools) restamps what it handled, and
@@ -40,11 +45,14 @@ namespace jasperengine::editor::mcp {
     //
     // While a scene plays, the editor does not re-parse scripts (Play restores the scene from a
     // snapshot when it stops), so changes are listed with `deferred` (Lua syntax still checked)
-    // and picked up on the first call after Play stops.
+    // and picked up on the first call after Play stops. HTML UI files are not deferred: the
+    // running and the edit-time documents reload at once (changed images reach the documents
+    // at once and the scene textures after Play).
     //
-    // Large projects: hot files (changed this session), folders and code files are checked
-    // whole on every scan (up to 2000 each, beyond that they rotate too); images rotate
-    // within a time budget and the next scan resumes where the last one stopped.
+    // Large projects: hot files (changed this session), folders and code files (HTML UI
+    // included) are checked whole on every scan (up to 2000 each, beyond that they rotate too);
+    // assets (images, fonts, json/lottie) rotate within a time budget and the next scan resumes
+    // where the last one stopped.
     //
     // Main thread only.
     class McpAutoSync {
@@ -85,8 +93,12 @@ namespace jasperengine::editor::mcp {
         // {files, dirs, checked, complete, scan_ms, settle_ms, scan_cpu_ms, settle_cpu_ms} (editor_status)
         Json stats() const;
 
-        // Files the scan tracks: Lua, C++, shaders, .material, images (by extension)
+        // Files the scan tracks: Lua, C++, shaders, .material, HTML UI and assets (by extension)
         static bool isTrackedFile(const std::string& path);
+        // .html/.htm/.css: the code tier (checked whole every scan)
+        static bool isUiCodeFile(const std::string& path);
+        // images (.svg included), .ttf/.otf, .json/.lottie: the rotating assets tier
+        static bool isAssetFile(const std::string& path);
         // Folders the scan skips: hidden (.jasperengine, .git...), build, node_modules, trash
         static bool isSkippedDirName(const std::string& name);
         // Files the editor writes from its own state (terrain_maps/terrain_edit_*.png): not tracked
@@ -116,11 +128,11 @@ namespace jasperengine::editor::mcp {
         std::filesystem::path root;                // project folder of the baseline; empty = none
         int64_t serverStartNs = 0;                 // serverStarted(), ns since the Unix epoch
         bool startupBaselineTaken = false;
-        FileMap code;                              // Lua, C++, shaders, materials
-        FileMap images;
+        FileMap code;                              // Lua, C++, shaders, materials, .html/.htm/.css
+        FileMap assets;                            // images, fonts, .json/.lottie
         std::map<std::string, int64_t> dirs;       // project-relative folder ("" = root) -> mtime
         std::vector<std::string> hot;              // recently changed files, newest last
-        std::string dirCursor, codeCursor, imageCursor;
+        std::string dirCursor, codeCursor, assetCursor;
 
         // Found by a settle scan but older than the call: reported by the next call
         std::map<std::string, Pending> pendingExternal;
@@ -137,7 +149,7 @@ namespace jasperengine::editor::mcp {
         bool ensureRoot(McpContext& ctx, bool* rebased = nullptr);
         void baseline(const std::filesystem::path& projectRoot);
         void walkDir(const std::string& rel, std::vector<Change>* changes, int depth);
-        void scan(std::vector<Change>& changes, double budgetMs, size_t minImages, bool& complete);
+        void scan(std::vector<Change>& changes, double budgetMs, size_t minAssets, bool& complete);
         void checkDir(const std::string& rel, std::vector<Change>& changes);
         void checkFile(const std::string& rel, std::vector<Change>& changes);
         void removeTree(const std::string& relDir, std::vector<Change>* changes);
@@ -149,6 +161,10 @@ namespace jasperengine::editor::mcp {
         void restamp(const std::string& rel);
 
         static void merge(std::map<std::string, Pending>& into, const std::string& rel, char kind, bool report);
+        // syncFiles' problems as reported ({path, line?, message} + the UI keys when present)
+        static Json compactProblems(const Json& problems);
+        // ui_reloaded (when not empty) and ui_current (when > 0)
+        static void addUiReport(Json& report, const Json& reloaded, int current);
         // Runs the sync_files pick-up on the changes; the report (null if none is reportable)
         Json process(McpContext& ctx, const std::vector<Change>& changes, std::vector<std::string>& shaderFiles);
     };

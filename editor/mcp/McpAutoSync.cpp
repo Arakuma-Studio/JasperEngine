@@ -36,7 +36,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-// A scan (before a call, and the settle after it) stops checking images after this much time
+// A scan (before a call, and the settle after it) stops checking assets after this much time
 // (at least a quarter of it is theirs); the next one resumes where it stopped.
 constexpr double SCAN_BUDGET_MS = 2.0;
 constexpr double SETTLE_BUDGET_MS = 1.0;
@@ -151,9 +151,21 @@ McpAutoSync& McpAutoSync::get() {
 }
 
 bool McpAutoSync::isTrackedFile(const std::string& path) {
-    if (Util::isScriptFile(path) || Util::isShaderFile(path) || Util::isMaterialFile(path) || Util::isImageFile(path)) return true;
+    if (Util::isScriptFile(path) || Util::isShaderFile(path) || Util::isMaterialFile(path)) return true;
+    if (isUiCodeFile(path) || isAssetFile(path)) return true;
     const std::string ext = lowerExtension(path);
     return ext == ".c" || ext == ".inl";
+}
+
+bool McpAutoSync::isUiCodeFile(const std::string& path) {
+    const std::string ext = lowerExtension(path);
+    return ext == ".html" || ext == ".htm" || ext == ".css";
+}
+
+bool McpAutoSync::isAssetFile(const std::string& path) {
+    if (Util::isImageFile(path)) return true;
+    const std::string ext = lowerExtension(path);
+    return ext == ".ttf" || ext == ".otf" || ext == ".json" || ext == ".lottie";
 }
 
 bool McpAutoSync::isEditorOwnedFile(const std::string& rel) {
@@ -197,7 +209,7 @@ std::string McpAutoSync::absolute(const std::string& rel) const {
 }
 
 McpAutoSync::FileMap& McpAutoSync::mapFor(const std::string& rel) {
-    return Util::isImageFile(rel) ? images : code;
+    return isAssetFile(rel) ? assets : code;
 }
 
 // ------------------------------------------------------------------ baseline
@@ -219,7 +231,7 @@ bool McpAutoSync::ensureRoot(McpContext& ctx, bool* rebased) {
             std::error_code ec;
             if (serverStartNs > 0 && !startup.empty() && fs::equivalent(startup, path, ec)) {
                 const int64_t since = serverStartNs - SETTLE_SLACK_NS;
-                for (const FileMap* map : {&code, &images}) {
+                for (const FileMap* map : {&code, &assets}) {
                     for (const auto& [rel, stamp] : *map) {
                         if (stamp.mtime >= since) recent.insert(rel);
                     }
@@ -241,14 +253,14 @@ bool McpAutoSync::ensureRoot(McpContext& ctx, bool* rebased) {
 void McpAutoSync::baseline(const fs::path& projectRoot) {
     root = projectRoot;
     code.clear();
-    images.clear();
+    assets.clear();
     dirs.clear();
     hot.clear();
     pendingExternal.clear();
     deferred.clear();
     dirCursor.clear();
     codeCursor.clear();
-    imageCursor.clear();
+    assetCursor.clear();
     walkDir("", nullptr, 0);
 }
 
@@ -325,7 +337,7 @@ int64_t McpAutoSync::nearestDirTime(const std::string& rel) const {
 void McpAutoSync::removeTree(const std::string& relDir, std::vector<Change>* changes) {
     const std::string prefix = prefixOf(relDir);
     const int64_t when = changes ? nearestDirTime(relDir) : 0;
-    for (FileMap* map : {&code, &images}) {
+    for (FileMap* map : {&code, &assets}) {
         for (auto it = map->lower_bound(prefix); it != map->end() && it->first.compare(0, prefix.size(), prefix) == 0;) {
             if (changes) changes->push_back({it->first, 'r', when});
             it = map->erase(it);
@@ -398,7 +410,7 @@ void McpAutoSync::checkDir(const std::string& rel, std::vector<Change>& changes)
     }
     if (ec) return;   // a listing that failed half-way must not remove anything
 
-    for (FileMap* map : {&code, &images}) {
+    for (FileMap* map : {&code, &assets}) {
         forDirectChildren(*map, rel, [&](const std::string& child) {
             if (presentFiles.count(child)) return;
             map->erase(child);
@@ -411,7 +423,7 @@ void McpAutoSync::checkDir(const std::string& rel, std::vector<Change>& changes)
     });
 }
 
-void McpAutoSync::scan(std::vector<Change>& changes, double budgetMs, size_t minImages, bool& complete) {
+void McpAutoSync::scan(std::vector<Change>& changes, double budgetMs, size_t minAssets, bool& complete) {
     const auto start = std::chrono::steady_clock::now();
     const auto budget = std::chrono::microseconds(static_cast<int64_t>(budgetMs * 1000.0));
     complete = true;
@@ -448,7 +460,8 @@ void McpAutoSync::scan(std::vector<Change>& changes, double budgetMs, size_t min
     };
 
     // Folders (new and removed files) and code files are what the agent edits: checked whole
-    // on every scan unless there are very many; images share what is left of the budget
+    // on every scan unless there are very many; assets (images, fonts, json) share what is left
+    // of the budget
     const auto never = std::chrono::steady_clock::time_point::max();
     const bool dirsWhole = dirs.size() <= WHOLE_TIER_MAX;
     if (!sweep(dirs, dirCursor, [&](const std::string& rel) { checkDir(rel, changes); },
@@ -456,10 +469,10 @@ void McpAutoSync::scan(std::vector<Change>& changes, double budgetMs, size_t min
     const bool codeWhole = code.size() <= WHOLE_TIER_MAX;
     if (!sweep(code, codeCursor, [&](const std::string& rel) { checkFile(rel, changes); },
                codeWhole ? never : start + budget * 65 / 100, MIN_ITEMS)) complete = false;
-    // Images: the rest of the budget, but at least a quarter of it whatever the rest took
-    const auto imagesDeadline = std::max(start + budget, std::chrono::steady_clock::now() + budget / 4);
-    if (!sweep(images, imageCursor, [&](const std::string& rel) { checkFile(rel, changes); },
-               imagesDeadline, minImages)) complete = false;
+    // Assets: the rest of the budget, but at least a quarter of it whatever the rest took
+    const auto assetsDeadline = std::max(start + budget, std::chrono::steady_clock::now() + budget / 4);
+    if (!sweep(assets, assetCursor, [&](const std::string& rel) { checkFile(rel, changes); },
+               assetsDeadline, minAssets)) complete = false;
 }
 
 void McpAutoSync::restamp(const std::string& rel) {
@@ -469,7 +482,7 @@ void McpAutoSync::restamp(const std::string& rel) {
     if (!exists) {
         // a file, or a folder with what it held
         code.erase(rel);
-        images.erase(rel);
+        assets.erase(rel);
         removeTree(rel, nullptr);
         return;
     }
@@ -503,6 +516,27 @@ void McpAutoSync::merge(std::map<std::string, Pending>& into, const std::string&
 
 // ------------------------------------------------------------------ pick-up and report
 
+Json McpAutoSync::compactProblems(const Json& problems) {
+    Json out = Json::array();
+    for (const Json& problem : problems) {
+        Json item = {{"path", problem.value("path", std::string())}};
+        if (problem.contains("line")) item["line"] = problem["line"];
+        // HTML UI problems (w4::syncHtmlUi) also carry col, severity, code and suggestion
+        for (const char* key : {"col", "severity", "code"}) {
+            if (problem.contains(key)) item[key] = problem[key];
+        }
+        item["message"] = problem.value("message", std::string());
+        if (problem.contains("suggestion")) item["suggestion"] = problem["suggestion"];
+        out.push_back(item);
+    }
+    return out;
+}
+
+void McpAutoSync::addUiReport(Json& report, const Json& reloaded, int current) {
+    if (!reloaded.empty()) report["ui_reloaded"] = reloaded;
+    if (current > 0) report["ui_current"] = current;
+}
+
 Json McpAutoSync::process(McpContext& ctx, const std::vector<Change>& changes, std::vector<std::string>& shaderFiles) {
     std::vector<fs::path> paths;
     std::set<std::string> reportable;
@@ -526,14 +560,8 @@ Json McpAutoSync::process(McpContext& ctx, const std::vector<Change>& changes, s
     if (!added.empty()) report["added"] = added;
     if (!removed.empty()) report["removed"] = removed;
 
-    Json problems = Json::array();
-    for (const Json& problem : result.value("problems", Json::array())) {
-        Json item = {{"path", problem.value("path", std::string())}};
-        if (problem.contains("line")) item["line"] = problem["line"];
-        item["message"] = problem.value("message", std::string());
-        problems.push_back(item);
-    }
-    report["problems"] = problems;
+    report["problems"] = compactProblems(result.value("problems", Json::array()));
+    addUiReport(report, result.value("ui_reloaded", Json::array()), result.value("ui_current", 0));
 
     Json scripts = Json::array();
     for (const Json& item : result.value("script_properties", Json::array())) {
@@ -581,9 +609,37 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
             run(nullptr);
             return;
         }
-        Json changed = Json::array(), added = Json::array(), removed = Json::array(), problems = Json::array();
+        // HTML UI files are not deferred: the documents (the running ones and the edit-time
+        // ones) reload now. Images go to the documents now and to the scene textures after Play.
+        std::vector<fs::path> uiPaths, imagePaths;
+        bool otherDeferred = false;
         for (const auto& [rel, pending] : merged) {
+            const fs::path path = (root / fs::u8path(rel)).lexically_normal();
+            if (isUiCodeFile(rel) || (isAssetFile(rel) && !Util::isImageFile(rel))) {
+                uiPaths.push_back(path);
+                continue;
+            }
+            if (Util::isImageFile(rel)) imagePaths.push_back(path);
             merge(deferred, rel, pending.kind, pending.report);
+            if (pending.report) otherDeferred = true;
+        }
+        Json uiProblems = Json::array(), uiReloaded = Json::array();
+        int uiCurrent = 0;
+        if (!uiPaths.empty()) {
+            const Json synced = w4::syncFiles(ctx, uiPaths, false);
+            uiProblems = synced.value("problems", Json::array());
+            uiReloaded = synced.value("ui_reloaded", Json::array());
+            uiCurrent = synced.value("ui_current", 0);
+        }
+        if (!imagePaths.empty()) {
+            const Json synced = w4::syncHtmlUi(ctx, imagePaths);
+            for (const Json& problem : synced["problems"]) uiProblems.push_back(problem);
+            for (const Json& item : synced["reloaded"]) uiReloaded.push_back(item);
+            uiCurrent += synced.value("current", 0);
+        }
+
+        Json changed = Json::array(), added = Json::array(), removed = Json::array(), problems = compactProblems(uiProblems);
+        for (const auto& [rel, pending] : merged) {
             if (!pending.report) continue;
             if (changed.size() < REPORT_PATHS_MAX) changed.push_back(rel);
             if (pending.kind == 'a' && added.size() < REPORT_PATHS_MAX) added.push_back(rel);
@@ -605,7 +661,11 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
         if (!added.empty()) report["added"] = added;
         if (!removed.empty()) report["removed"] = removed;
         report["problems"] = problems;
-        report["deferred"] = "A scene is playing: script properties, shaders, materials and textures are picked up when play stops.";
+        addUiReport(report, uiReloaded, uiCurrent);
+        if (otherDeferred) {
+            report["deferred"] = "A scene is playing: script properties, shaders, materials and textures are picked up when play stops"
+                                 " (HTML UI documents reloaded now).";
+        }
         run(report);
         return;
     }
@@ -775,9 +835,34 @@ void McpAutoSync::attach(Json& result, const Json& report) {
             }
             text += " " + problem.value("path", std::string());
             if (problem.contains("line") && problem["line"].get<int>() > 0) text += ":" + std::to_string(problem["line"].get<int>());
-            text += ": " + shortMessage(problem.value("message", std::string()), 200) + ";";
+            if (problem.value("severity", std::string()) == "warning") {
+                text += ": warning: " + shortMessage(problem.value("message", std::string()), 200);
+                if (!problem.value("code", std::string()).empty()) text += " [" + problem["code"].get<std::string>() + "]";
+                text += ";";
+            } else {
+                text += ": " + shortMessage(problem.value("message", std::string()), 200) + ";";
+            }
             shown++;
         }
+    }
+    const Json uiReloaded = report.value("ui_reloaded", Json::array());
+    const int uiCurrent = report.value("ui_current", 0);
+    if (!uiReloaded.empty() || uiCurrent > 0) {
+        text += " Reloaded UI:";
+        size_t listed = 0;
+        for (const Json& item : uiReloaded) {
+            if (listed == 4) {
+                text += " and " + std::to_string(uiReloaded.size() - listed) + " more";
+                break;
+            }
+            const std::string name = item.contains("entity") ? item["entity"].value("name", std::string()) : std::string();
+            text += std::string(listed ? ", " : " ") + item.value("html", std::string()) + " in \"" + name + "\"" +
+                    (item.value("stylesheet_only", false) ? " (styles only)" : "");
+            listed++;
+        }
+        if (uiReloaded.empty()) text += " none";
+        if (uiCurrent > 0) text += "; " + std::to_string(uiCurrent) + " document(s) were already current";
+        text += ".";
     }
     if (report.contains("deferred")) text += " " + report["deferred"].get<std::string>();
     if (!result.contains("content") || !result["content"].is_array()) result["content"] = Json::array();
@@ -786,7 +871,7 @@ void McpAutoSync::attach(Json& result, const Json& report) {
 
 Json McpAutoSync::stats() const {
     auto round3 = [](double v) { return std::round(v * 1000.0) / 1000.0; };
-    return {{"files", code.size() + images.size()}, {"dirs", dirs.size()}, {"checked", lastScanChecked},
+    return {{"files", code.size() + assets.size()}, {"dirs", dirs.size()}, {"checked", lastScanChecked},
             {"complete", lastComplete}, {"scan_ms", round3(lastScanMs)}, {"settle_ms", round3(lastSettleMs)},
             {"scan_cpu_ms", round3(lastScanCpuMs)}, {"settle_cpu_ms", round3(lastSettleCpuMs)}};
 }
