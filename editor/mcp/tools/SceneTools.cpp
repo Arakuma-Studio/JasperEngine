@@ -796,14 +796,15 @@ const McpValues::EnumOptions* settingOptions(SettingKind kind) {
     }
 }
 
-Json postProcessToJson(const std::vector<PostProcessPass>& passes) {
+Json postProcessToJson(const std::vector<PostProcessPass>& passes, Project* project = nullptr) {
     Json list = Json::array();
     for (const PostProcessPass& pass : passes) {
         Json item = {{"shader", pass.shader}, {"enabled", pass.enabled}, {"uniforms", McpValues::shaderUniformsToJson(pass.uniforms)}};
         // (phase 4) only when set: the pass's textures by uniform (image paths) and its scale
         Json textures = Json::object();
         for (const auto& [uniform, texture] : pass.textures) {
-            if (!texture.empty()) textures[uniform] = texture.getPath(0);
+            // project-relative, as every MCP asset path
+            if (!texture.empty()) textures[uniform] = project ? Json(McpValues::assetPathToJson(project, texture.getPath(0))) : Json(texture.getPath(0));
         }
         if (!textures.empty()) item["textures"] = textures;
         if (pass.scale != 1.0f) item["scale"] = pass.scale;
@@ -862,7 +863,7 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
                                          *settingOptions(setting.kind));
         case SettingKind::PostProcess:
             return postProcessToJson(defaults ? Catalog::getScenePropertyDefault<std::vector<PostProcessPass>>(setting.name)
-                                              : Catalog::getSceneProperty<std::vector<PostProcessPass>>(scene, setting.name));
+                                              : Catalog::getSceneProperty<std::vector<PostProcessPass>>(scene, setting.name), project);
     }
     return nullptr;
 }

@@ -8,6 +8,8 @@ type="postprocess" lists the library's post-process shaders."""
 from __future__ import annotations
 
 import struct
+
+import yaml
 import zlib
 
 from harness import Editor
@@ -60,16 +62,18 @@ async def test_post_process_passes(ed: Editor):
 
     await ed.call("save_scene", scene=sid)
     text = (ed.project / SCENE).read_text()
-    ed.check("shader: library:pixelate" in text and "scale: 0.5" in text, "the pass and its scale are saved")
-    ed.check(text.count("scale:") == 1, "a pass at full scale saves no scale")
+    saved = yaml.safe_load(text)["scene"].get("postProcess", [])
+    ed.check_eq(saved[0].get("shader"), "library:pixelate")
+    ed.check_eq(saved[0].get("scale"), 0.5, "the pass's scale is saved")
+    ed.check("scale" not in saved[1], "a pass at full scale saves no scale")
 
     # a library shader of another type, a scale out of range, an undeclared library texture: refused
     await ed.check_error("set_scene_settings", scene=sid, settings={"post_process": [{"shader": "library:toon"}]},
-                         contains="post-process")
+                         contains="postprocess")
     await ed.check_error("set_scene_settings", scene=sid, settings={"post_process": [{"shader": "library:blur", "scale": 2}]},
                          contains="0.1")
     await ed.check_error("set_scene_settings", scene=sid, settings={
-        "post_process": [{"shader": "library:blur", "textures": {"u_nope": "textures/grain.png"}}]}, contains="no texture")
+        "post_process": [{"shader": "library:blur", "textures": {"u_nope": "assets/textures/grain.png"}}]}, contains="no texture")
     pp = (await ed.call("get_scene_settings", scene=sid, names=["post_process"]))["settings"]["post_process"]
     ed.check_eq(pp[0]["shader"], "library:pixelate", "a refused call changes nothing")
 
@@ -77,14 +81,17 @@ async def test_post_process_passes(ed: Editor):
     fork = await ed.call("fork_shader", scene=sid, target="post_process", name="PassWithTexture")
     base = fork["custom_shader"]
     await ed.call("set_scene_settings", scene=sid, settings={"post_process": [
-        {"shader": base, "textures": {"u_overlayTexture": "textures/grain.png"}}]})
+        {"shader": base, "textures": {"u_overlayTexture": "assets/textures/grain.png"}}]})
     pp = (await ed.call("get_scene_settings", scene=sid, names=["post_process"]))["settings"]["post_process"]
-    ed.check_eq(pp[0].get("textures"), {"u_overlayTexture": "textures/grain.png"})
+    ed.check_eq(pp[0].get("textures"), {"u_overlayTexture": "assets/textures/grain.png"}, "project-relative, as given")
     await ed.call("save_scene", scene=sid)
     text = (ed.project / SCENE).read_text()
     ed.check("u_overlayTexture" in text and "grain.png" in text, "the pass texture is saved")
 
-    # no chain: the file is as before the passes
+    # no chain: no postProcess key, as before the passes (shaderKeys and maxValues record what was
+    # loaded meanwhile)
     await ed.call("set_scene_settings", scene=sid, settings={"post_process": []})
     await ed.call("save_scene", scene=sid)
-    ed.check_eq((ed.project / SCENE).read_text(), before, "an empty chain re-saves the scene unchanged")
+    after = yaml.safe_load((ed.project / SCENE).read_text())
+    ed.check("postProcess" not in after["scene"], "an empty chain saves no postProcess key")
+    ed.check_eq(after["scene"], yaml.safe_load(before)["scene"], "the scene settings re-save as before the passes")
