@@ -10,7 +10,9 @@
 #   tools/build.sh shell <target>      interactive shell in that target's image
 #
 # BUILD_TYPE overrides the CMake build type (default Release, Debug for web).
-# SKIP_ENGINE=1 builds only the editor for linux. JOBS caps build parallelism.
+# SKIP_ENGINE=1 builds only the editor for linux. JOBS caps build parallelism and, with
+# CPUS (default: JOBS), the CPUs the container may use (docker --cpus), which also caps
+# what ignores JOBS: the Android gradle/ninja build and the test binaries.
 # GRAPHIC_BACKEND=vulkan builds the linux editor for Vulkan (build/linux/editor-vulkan).
 # htmlui-tests: HTMLUI_BACKEND=glcore|vulkan (default glcore), RUN=0 builds only,
 # HTMLUI_TEST_ARGS goes to the test binary (e.g. --gtest_filter=Golden*),
@@ -86,6 +88,9 @@ mkdir -p "$ROOT/$OUT" "$ROOT/$CACHE/home" "$MAIN/$CACHE/ccache"
 
 TTY_FLAGS=()
 [[ -t 0 && -t 1 ]] && TTY_FLAGS=(-it)
+CPU_FLAGS=()
+CPUS="${CPUS:-${JOBS:-}}"
+[[ -n "$CPUS" ]] && CPU_FLAGS=(--cpus "$CPUS")
 ENV_FLAGS=()
 [[ -n "${JASPER_HTMLUI_UPDATE_GOLDEN:-}" ]] && ENV_FLAGS+=(-e "JASPER_HTMLUI_UPDATE_GOLDEN=$JASPER_HTMLUI_UPDATE_GOLDEN")
 # the HTML UI performance tests' tolerance on a loaded host (compat_perf_test.cpp)
@@ -93,7 +98,7 @@ ENV_FLAGS=()
 [[ -n "${HTMLUI_LIVE_NETWORK:-}" ]] && ENV_FLAGS+=(-e "HTMLUI_LIVE_NETWORK=$HTMLUI_LIVE_NETWORK")
 
 run() {
-    docker run --rm "${TTY_FLAGS[@]}" \
+    docker run --rm "${TTY_FLAGS[@]}" "${CPU_FLAGS[@]}" \
         --user "$(id -u):$(id -g)" \
         -v "$ROOT:/src" -w /src \
         -v "$MAIN/.git:$MAIN/.git:ro" \
