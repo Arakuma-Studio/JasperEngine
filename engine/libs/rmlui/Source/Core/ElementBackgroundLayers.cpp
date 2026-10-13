@@ -228,8 +228,11 @@ namespace {
 		return kind == ElementBackgroundLayers::Kind::Background ? background : mask;
 	}
 
+	// A list property of the element. Shared, not a raw pointer: a value resolved from var() lives in the style's one
+	// returned-property storage, which the next resolved property replaces (a background with var() in both its image
+	// and its size freed the image list while it was drawn).
 	template <typename T>
-	const T* GetList(Element* element, PropertyId id, const Property** out_property = nullptr)
+	SharedPtr<const T> GetList(Element* element, PropertyId id, SharedPtr<const PropertySource>* out_source = nullptr)
 	{
 		if (id == PropertyId::Invalid)
 			return nullptr;
@@ -238,10 +241,12 @@ namespace {
 			property = element->GetProperty(id);
 		if (!property || property->unit != Unit::STYLE_VALUE)
 			return nullptr;
-		if (out_property)
-			*out_property = property;
 		const StyleValuePtr& value = property->value.GetReference<StyleValuePtr>();
-		return rmlui_dynamic_cast<const T*>(value.get());
+		if (!rmlui_dynamic_cast<const T*>(value.get()))
+			return nullptr;
+		if (out_source)
+			*out_source = property->source;
+		return std::static_pointer_cast<const T>(value);
 	}
 
 	// The rectangle of a box area of the element's box 'index', relative to its border box's origin.
@@ -283,16 +288,16 @@ ElementBackgroundLayers::~ElementBackgroundLayers()
 
 bool ElementBackgroundLayers::HasLayers(Element* element, Kind kind)
 {
-	const ImageLayerList* images = GetList<ImageLayerList>(element, Ids(kind).image);
+	const SharedPtr<const ImageLayerList> images = GetList<ImageLayerList>(element, Ids(kind).image);
 	return images && images->HasImages();
 }
 
 BoxArea ElementBackgroundLayers::GetColourClip(Element* element)
 {
-	const LayerKeywordList* clips = GetList<LayerKeywordList>(element, PropertyId::BackgroundClip);
+	const SharedPtr<const LayerKeywordList> clips = GetList<LayerKeywordList>(element, PropertyId::BackgroundClip);
 	if (!clips || clips->GetCount() == 0)
 		return BoxArea::Border;
-	const ImageLayerList* images = GetList<ImageLayerList>(element, PropertyId::BackgroundImage);
+	const SharedPtr<const ImageLayerList> images = GetList<ImageLayerList>(element, PropertyId::BackgroundImage);
 	const size_t num_layers = (images && !images->layers.empty()) ? GetLayerCount(element, PropertyId::BackgroundImage, *images) : 1;
 	return BoxArea(clips->values[(num_layers - 1) % clips->GetCount()]);
 }
@@ -335,23 +340,23 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 
 	RenderManager* render_manager = element->GetRenderManager();
 	const LayerIds& ids = Ids(kind);
-	const Property* image_property = nullptr;
-	const ImageLayerList* images = GetList<ImageLayerList>(element, ids.image, &image_property);
+	SharedPtr<const PropertySource> image_source;
+	const SharedPtr<const ImageLayerList> images = GetList<ImageLayerList>(element, ids.image, &image_source);
 	if (!render_manager || !images || !images->HasImages())
 		return;
 
-	const LayerPositionList* positions_x = GetList<LayerPositionList>(element, ids.position_x);
-	const LayerPositionList* positions_y = GetList<LayerPositionList>(element, ids.position_y);
-	const LayerSizeList* sizes = GetList<LayerSizeList>(element, ids.size);
-	const LayerKeywordList* repeats = GetList<LayerKeywordList>(element, ids.repeat);
-	const LayerKeywordList* origins = GetList<LayerKeywordList>(element, ids.origin);
-	const LayerKeywordList* clips = GetList<LayerKeywordList>(element, ids.clip);
-	const LayerKeywordList* attachments = GetList<LayerKeywordList>(element, ids.attachment);
+	const SharedPtr<const LayerPositionList> positions_x = GetList<LayerPositionList>(element, ids.position_x);
+	const SharedPtr<const LayerPositionList> positions_y = GetList<LayerPositionList>(element, ids.position_y);
+	const SharedPtr<const LayerSizeList> sizes = GetList<LayerSizeList>(element, ids.size);
+	const SharedPtr<const LayerKeywordList> repeats = GetList<LayerKeywordList>(element, ids.repeat);
+	const SharedPtr<const LayerKeywordList> origins = GetList<LayerKeywordList>(element, ids.origin);
+	const SharedPtr<const LayerKeywordList> clips = GetList<LayerKeywordList>(element, ids.clip);
+	const SharedPtr<const LayerKeywordList> attachments = GetList<LayerKeywordList>(element, ids.attachment);
 
 	// The path url()s and decorator textures are relative to.
 	String base_path;
-	if (image_property && image_property->source)
-		base_path = image_property->source->path;
+	if (image_source)
+		base_path = image_source->path;
 	else if (ElementDocument* document = element->GetOwnerDocument())
 		base_path = document->GetSourceURL();
 
@@ -381,7 +386,7 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 		if (layer.kind == ImageLayer::Kind::None)
 			continue;
 
-		auto item = [i](const void* /*list*/, size_t count) -> size_t { return count ? size_t(i) % count : 0; };
+		auto item = [i](const auto& /*list*/, size_t count) -> size_t { return count ? size_t(i) % count : 0; };
 		const LengthPercentageValue position_x =
 			positions_x && !positions_x->values.empty() ? positions_x->values[item(positions_x, positions_x->values.size())] : LengthPercentageValue(0.f, Unit::PERCENT);
 		const LengthPercentageValue position_y =
