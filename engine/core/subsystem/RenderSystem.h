@@ -1956,6 +1956,10 @@ namespace jasperengine{
 		void needUpdatePostProcessUniforms();
 		// the scene's PostProcessingSettings changed (Scene::setPostProcessing)
 		void needUpdatePostProcessing();
+		// the images post-processing reads changed on disk (the editor's file pick-up): the LUT
+		// strip (read by path, cached while the path stays) is read again and the user chain
+		// reloads, taking its pass textures again from the scene
+		void invalidatePostProcessTextures();
 		// what a set of post-processing settings turns on (the export collector and the editor
 		// use it to pick the same variants), and what the renderer applies now
 		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings);
