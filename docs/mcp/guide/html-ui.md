@@ -18,7 +18,7 @@ placed in pixels) still exists and still works; documents draw in front of it. U
 component UI for a few pixel-placed widgets, HTML/CSS for anything with layout, styling,
 lists, forms or animation.
 
-**The model.**
+### UI Documents: the model
 
 - A **UI Document** is a component (`UIDocumentComponent`, YAML/MCP name `uidocument`,
   Unity's UIDocument) showing one `.html` file. One document per GameObject: make it with
@@ -76,7 +76,7 @@ Parity stops at:
 
 - **No JavaScript, no network at run time, no `<video>`, `<canvas>` or `<iframe>`** (by
   design). Remote fonts and images are imported into the project by the editor.
-- **The unsupported CSS** listed under "CSS" ("What differs"): container queries, blend modes,
+- **The unsupported CSS** listed under "CSS that differs": container queries, blend modes,
   vertical text, multi-column layout, `subgrid`, scroll snapping, ... Each use is reported.
 - **Small differences without a diagnostic**, also listed there: whole-pixel font sizes, no
   `text-align: justify`, table column sizing, no built-in monospace or serif face.
@@ -87,7 +87,10 @@ code and a fix ("The loop in detail"). Zero warnings means the page is drawn as 
 ### Documents on meshes (texture mode)
 
 A document can render into a texture shown on a mesh (a screen in the 3D world, a terminal)
-or in an `Image`; pointer input on the mesh reaches the document.
+or in an `Image`; pointer input on the mesh reaches the document. A script on the document's
+GameObject:
+
+`scripts/Terminal.lua`:
 
 ```lua
 ---@class Terminal : ScriptInstance
@@ -155,7 +158,7 @@ read_console {}
 `template` is `blank` (default: an `.html` with a heading, its `.css`, no script) or one of the
 examples ("Examples"). Fix every `problems` entry first: each names the line, what the engine
 does with it and the fix. A page written by hand looks like this (its Lua is the complete script
-under "Lua API"):
+under "A complete UI script"):
 
 `assets/ui/menu.html`:
 
@@ -206,8 +209,9 @@ body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify
 @media (max-width: 800px) { .menu { padding: 20px; } .btn { font-size: 16px; } }
 ```
 
-Without the new tools the same is `write_file` for each file, `create_entity type=ui_document
-name=Menu`, `set_properties` (`filename`: `assets/ui/menu.html`) and `attach_script`.
+The same by hand: write the files, then `create_entity {"type": "ui_document", "name": "Menu"}`,
+`set_properties {"entity": "Menu", "values": {"uidocument": {"filename": "assets/ui/menu.html"}}}`
+and `attach_script {"entity": "Menu", "path": "scripts/MenuUI.lua"}`.
 
 ## Files
 
@@ -244,6 +248,8 @@ browser. `<html>` is the root and `<body>` its child: `html {}`, `:root {}`, `bo
 for a full-screen menu (it covers the whole canvas, as in CSS). A transparent page lets the
 pointer through to what is below ("Input and focus").
 
+### Elements and default styles
+
 Elements and their default styles come from Chromium's user-agent stylesheet: headings,
 paragraphs, lists with markers, tables, links (`#0000ee`, underlined), `body { margin: 8px }`,
 and form controls in Chromium's light theme (buttons, text fields, checkboxes and radios in the
@@ -272,7 +278,7 @@ style those through their pseudo-elements (`::-webkit-slider-thumb`, `::-webkit-
 | `<svg>` (inline), `<i data-lucide="name">`, `<lottie>` | vector images, built-in icons, Lottie animations ("Images, SVG, Lottie, fonts, icons") |
 | `<ol>`/`<ul>`/`<li>` | markers from `list-style-type`, `list-style-image`, `list-style-position`, `ol start`, `reversed`, `li value`, `::marker`; any `display: list-item` element gets one |
 | `<fieldset>`/`<legend>` | the legend sits on the top border, which leaves a gap for it, with any border, radius, padding and background; `fieldset disabled` disables its controls |
-| `<table>` | tables with the limits under "CSS" (give tables and columns a width) |
+| `<table>` | tables, with the limits under "CSS that differs" (give tables and columns a width) |
 
 **Instead of:**
 
@@ -321,7 +327,7 @@ of CSS 2 plus `:hover`, `:active`, `:nth-child()`, `:not()`, and RmlUi's own `de
 Write standard CSS; the engine translates it, exactly in almost every case. What every
 property, value, function, unit, selector and at-rule does: `jasper://docs/html-ui-support`.
 
-### What works
+### CSS that works
 
 Native or exactly rewritten, as in Chrome:
 
@@ -371,7 +377,12 @@ Native or exactly rewritten, as in Chrome:
   `opacity`, `saturate`, `sepia`); `backdrop-filter`; `mask-image`/`mask` layers;
   `clip-path` shapes (`inset()`, `circle()`, `ellipse()`, `polygon()`, `path()`);
   `object-fit`; `image-rendering: pixelated`; `accent-color` and `appearance: none` on form
-  controls; `cursor` keywords. Everything is anti-aliased (MSAA 4x by default).
+  controls; `cursor` keywords. Everything is anti-aliased (MSAA 4x by default). Filters apply
+  left to right to the element and everything it contains (overflowing children too);
+  `drop-shadow` without a colour uses the text colour; `backdrop-filter` filters what is behind
+  the border box; mask layers take images and gradients with size, position and repeat (not
+  `mask-mode`, `-origin`, `-clip`, `-composite`); a transition between two `url()` backgrounds
+  cross-fades them.
 - **Transforms**: `transform` (2D and 3D functions, `perspective`), the individual `translate`,
   `rotate`, `scale` properties, `transform-origin`.
 - **Transitions and animations**, exactly as in Chromium: `transition` (any property change
@@ -405,7 +416,7 @@ Native or exactly rewritten, as in Chrome:
   `:root[data-theme="light"]`) follow a change from a script
   (`doc.documentElement.classList:toggle("dark")`), and their custom properties with them.
 
-### What differs
+### CSS that differs
 
 Each item below is reported where you write it (the code in brackets), with the replacement:
 
@@ -480,7 +491,7 @@ colour is multiplied by the element's `opacity`):
 Each blurred shadow, glow or blur of a text draws through an offscreen layer: fine for titles
 and counters, not for long body text.
 
-### Units, fonts and icons
+### CSS units, fonts and icons
 
 - `px` is a canvas pixel; `vw`/`vh` (and `dvh`, `svh`, `lvh`) are the canvas, which has one
   size (no mobile browser bars: `100vh` is exact); `rem` follows `html { font-size }`; `em`,
@@ -503,6 +514,8 @@ Scripts reach a document through `UIDocument`, a GameObject wrapper, and its ele
 (`el.textContent = "Ready"`). The LuaLS stubs (`.jasperengine/engine-api/lua/UIDocument.lua`,
 `UIElement.lua`, `UIEvent.lua`, `HtmlUITypes.lua`, `anime.lua`) type all of it, event names
 included (`UIEventType`).
+
+### The element API
 
 ```lua
 local doc = UIDocument(self.scene, self.entity)   -- in a script on the document's GameObject
@@ -542,7 +555,7 @@ classes (`htmlui-*`) are invisible to scripts. Show and hide parts of a page wit
 get no input). Create elements with `createElement` or `innerHTML`, then `appendChild`;
 `remove()` removes one.
 
-### Events
+### UI events
 
 | DOM name | Fired by |
 |---|---|
@@ -620,11 +633,13 @@ end)
 </script>
 ```
 
-### A complete script
+### A complete UI script
 
-`scripts/MenuUI.lua`, the logic of the menu of "Quick start" (attach it to the menu's
-GameObject): click handlers, keyboard and gamepad navigation, an entrance animation, and the bind-on-load
-pattern that survives hot reload. The examples follow the same pattern.
+The logic of the menu of "Quick start" (attach it to the menu's GameObject): click handlers,
+keyboard and gamepad navigation, an entrance animation, and the bind-on-load pattern that
+survives hot reload. The examples follow the same pattern.
+
+`scripts/MenuUI.lua`:
 
 ```lua
 ---@class MenuUI : ScriptInstance
@@ -791,15 +806,21 @@ return HudUI
   change freely. Tables with keys 1..n are arrays (an empty table is an empty array). Only nil,
   booleans, numbers, strings and tables are stored; functions become `data-event-*` callbacks
   `fn(event, args...)`.
-- `data-for` indices are 0-based, Lua's are 1-based: `model.items[i + 1]`.
+- `data-for` indices are 0-based, Lua's are 1-based: `model.items[i + 1]`. The `data-for`
+  element itself stays in the DOM, hidden, after its rows (it is the template), so
+  `querySelectorAll` and `childElementCount` count one more element than there are rows.
 - Proxy methods: `onChange(name, fn)` (after the document wrote a value; returns an id),
   `removeOnChange(id)`, `dirty(name)` / `dirtyAll()` (after changing a table the proxy did not
   see), `get(path)` / `set(path, value)` (`"items[0].name"`, 0-based), `getName()`, `isValid()`.
   These names cannot be data keys.
 - A model belongs to the document that created it: it survives reloads and goes with
   `removeDataModel`, the component or the scene (then any use of its proxy raises
-  `data model 'hud' was removed`). A document that uses a model no script
-  created yet (edit mode) shows its `{{ }}` empty.
+  `data model 'hud' was removed`).
+- **Edit mode** has no Lua, so a model no script created yet is empty: `{{ }}` shows nothing,
+  and a `data-style-*` expression such as `health + '%'` evaluates to `%`, which RmlUi
+  rejects with one Console line per load, `[HTML UI] Syntax error parsing inline property
+  declaration 'width: %;'`. It is harmless and does not appear in play; it is not a
+  diagnostic of your file (`check --ui` and `problems` stay clean).
 - **From a test** (play mode), set values with `eval_lua`:
   `object('HUD', 'UIDocument'):getDataModel('hud').health = 25`; read them back with
   `inspect_ui {"models": true}`.
@@ -1050,7 +1071,7 @@ end)
 - **Keyboard and gamepad menus**: focus the first button on load and move the focus on arrow
   keys in a `keydown` listener. **Gamepads do not reach documents**: subscribe
   `RegisterEngineEvent(self, "onGamepadButtonDown")` and move the focus or `click()` from
-  there. The complete script under "Lua API" does both.
+  there. The script under "A complete UI script" does both.
 
 **Touch.** Every finger is a pointer; taps are clicks. Hover-only affordances do not exist on
 touch: show them by default or on `:focus`/`:active`, or use `@media (hover: hover)`, evaluated
@@ -1103,7 +1124,7 @@ The page is the canvas, so responsiveness is about the canvas size:
 
 ## The loop in detail
 
-### Diagnostics
+### UI diagnostics
 
 Everything the engine drops, approximates or cannot find is reported with the place in **your**
 file, a stable code and a fix:
@@ -1139,7 +1160,7 @@ introduced it (errors every time). JSON findings carry `code` and `suggestion`. 
 `docs/mcp/checks.md` in the engine repository; `jasperengine-editor ui-support` prints the support
 tables as JSON.
 
-### Hot reload
+### UI hot reload
 
 The editor checks every document's files (the `.html`, stylesheets, templates, images, fonts,
 SVG and Lottie files, imports) every 0.25 s and before every MCP call, in edit mode and during
@@ -1149,7 +1170,7 @@ play:
 |---|---|
 | a `.css`, linked or `@import`ed | restyled in place: elements, listeners, scroll and focus stay |
 | an image | redrawn with the new file; the document stays |
-| the `.html`, an SVG, a Lottie file, a font, a `<script src>` Lua file | the document reloads (keeping what "Lua API > Reloads" lists), its `<script type="text/lua">` runs again in play, `onUnload` then `onLoad` fire |
+| the `.html`, an SVG, a Lottie file, a font, a `<script src>` Lua file | the document reloads (keeping what "Reloads, `onLoad` and lifetimes" lists), its `<script type="text/lua">` runs again in play, `onUnload` then `onLoad` fire |
 | `assets/htmlui-imports/manifest.json` | documents using the imported URL restyle or reload |
 
 Files that did not exist yet count too (creating a missing stylesheet loads it), and a save in
@@ -1201,14 +1222,14 @@ at other sizes. Typical sets:
 | Settings, forms | `text_fits` of labels, `within_parent` of rows, `min_size` of controls |
 | Toasts, lists | `no_overlap`, `within_viewport` with the most entries shown |
 
-### Screenshots
+### UI screenshots
 
 `screenshot {"view": "game"}` shows the whole Game view (documents of the selected scene in
 edit mode, of the running scenes in play). `inspect_ui`/`assert_ui` return cropped, outlined
 images of what they matched: cyan for matches, red for failures. Texture-mode documents and
 other viewports have no image (the tools say so).
 
-### In the editor
+### UI Documents in the editor
 
 - *Assets > Create > HTML Document* writes `NewDocument.html` and `.css`; *Create > UI > UI
   Document* in the Hierarchy adds the GameObject; drag the `.html` onto the Inspector's
@@ -1305,7 +1326,7 @@ its listeners in a method called from `init` and registered on `doc.onLoad`.
   only when its frame changes (a 30 fps animation 30 times a second; paused, never). Texture
   documents redraw only when they change.
 - Anti-aliasing: Project Settings > Graphics > HTML UI MSAA (`graphics.html_ui_msaa_samples`:
-  1, 2, 4 or 8, default 4).
+  1, 2, 4 or 8, default 4; devices that cannot multisample use 1).
 - Measure: the Game view's statistics overlay (`configure_game_view {"show_stats": true}`)
   shows the documents' passes, draws and pipeline switches of the last frame
   (`UIDocumentSystem::getRenderStats()` in C++).
