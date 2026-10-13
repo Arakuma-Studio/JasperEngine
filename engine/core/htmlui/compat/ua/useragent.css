@@ -612,7 +612,7 @@ select selectvalue {
 /* the chevron is drawn in the select's text color (Chromium): the color through the arrow's mask */
 select selectarrow {
     width: var(--html-select-arrow-width, 16px);
-    background-color: var(--html-select-arrow-color, currentcolor);
+    background-color: currentcolor;
     mask-image: var(--html-select-arrow, url("/@htmlui/ua/arrow-down.svg"));
     mask-size: 10px 6px;
     mask-position: 3px 50%;
@@ -821,7 +821,6 @@ input, select, button, textarea, progress {
     --html-control-disabled-border: #bababaab;
     --html-check-disabled-fill: #c5c5c5c6;
     --html-select-arrow: url("/@htmlui/ua/arrow-down.svg");
-    --html-select-arrow-color: currentcolor;
     --html-thumb: none;
     --html-slider-fill: var(--html-accent, #0075ff);
     --html-slider-height: 16px;

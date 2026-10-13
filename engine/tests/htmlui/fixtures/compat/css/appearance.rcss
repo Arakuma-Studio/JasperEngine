@@ -15,7 +15,6 @@
 --html-select-padding: 0px;
 --html-select-arrow-width: 0px;
 --html-select-arrow: none;
---html-select-arrow-color: transparent;
 --html-button-padding: 1px 6px;
 --html-button-border-width: 2px;
 --html-button-border-style: solid;
@@ -60,7 +59,6 @@
 --html-select-padding: 0px;
 --html-select-arrow-width: 0px;
 --html-select-arrow: none;
---html-select-arrow-color: transparent;
 --html-button-padding: 1px 6px;
 --html-button-border-width: 2px;
 --html-button-border-style: solid;
@@ -101,7 +99,6 @@
 --html-control-disabled-border: #bababaab;
 --html-check-disabled-fill: #c5c5c5c6;
 --html-select-arrow: url("/@htmlui/ua/arrow-down.svg");
---html-select-arrow-color: currentcolor;
 --html-thumb: none;
 --html-slider-fill: var(--html-accent, #0075ff);
 --html-slider-height: 16px;
@@ -146,7 +143,6 @@
 --html-control-disabled-border: #bababaab;
 --html-check-disabled-fill: #c5c5c5c6;
 --html-select-arrow: url("/@htmlui/ua/arrow-down.svg");
---html-select-arrow-color: currentcolor;
 --html-thumb: none;
 --html-slider-fill: var(--html-accent, #0075ff);
 --html-slider-height: 16px;

@@ -60,7 +60,6 @@ namespace {
                 {"--html-control-disabled-border", "#bababaab"},
                 {"--html-check-disabled-fill", "#c5c5c5c6"},
                 {"--html-select-arrow", "url(\"/@htmlui/ua/arrow-down.svg\")"},
-                {"--html-select-arrow-color", "currentcolor"},
                 {"--html-thumb", "none"},
                 {"--html-slider-fill", "var(--html-accent, #0075ff)"},
                 {"--html-slider-height", "16px"},
@@ -295,7 +294,6 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
         context.emit("--html-select-padding", "0px");
         context.emit("--html-select-arrow-width", "0px");
         context.emit("--html-select-arrow", "none");
-        context.emit("--html-select-arrow-color", "transparent");
         // buttons: html.css's `padding: 1px 6px; border: 2px outset ButtonBorder` (black), the same
         // on hover and press (the fork draws outset: BorderStyle, p3-paint)
         context.emit("--html-button-padding", "1px 6px");
@@ -337,7 +335,7 @@ void jasperengine::htmlui::compat::rewriteAppearance(DeclContext& context){
                                       "--html-field-padding", "--html-field-border-width",
                                       "--html-field-border-style", "--html-control-radius", "--html-check-fill",
                                       "--html-control-disabled-border", "--html-check-disabled-fill",
-                                      "--html-select-arrow", "--html-select-arrow-color", "--html-thumb", "--html-slider-fill", "--html-slider-height",
+                                      "--html-select-arrow", "--html-thumb", "--html-slider-fill", "--html-slider-height",
                                       "--html-slider-track-margin", "--html-slider-track-inset", "--html-slider-thumb-margin", "--html-slider-thumb-transform",
                                       "--html-slider-track-height", "--html-slider-track-border",
                                       "--html-slider-track-bg", "--html-slider-track-border-color", "--html-check-size", "--html-select-bg",
