@@ -2143,6 +2143,16 @@ Where the code differs from or makes precise 3.6, 3.8.3, 5.6 and 5.7 (also in `C
   `MCP import_files from_document`; the `.diag.txt` goldens and `compat_url_test.cpp` follow.
 - **`w3::luaToJson`** (`PlayTools.cpp`): data-model proxies are userdata with `__pairs`; the
   serializer walks them like tables (only for `luaToJson`: `eval_lua` output is unchanged).
+- **Transforms at other viewports** (fork P4-6, `HtmlUIInspector.cpp` `withContext`): 4.1.1's
+  boxes use the last render's transforms, so inside `withViewport` a panel centered with
+  `translateX(-50%)` kept its offset from the current size (the `dialogue` and `loading` manifest
+  checks failed at 720x1280). `Element::UpdateTransformStates()` (new, public) recomputes them;
+  `withViewport` calls it after the layout at the requested size and after restoring
+  (`InspectorTest.WithViewportTransforms`).
+- **`send_input` targets and opacity.** `elementCenter` takes the first match that is shown (not
+  `display: none` / `visibility: hidden` / zero size), an opaque one first, else a transparent one:
+  the pointer reaches an `opacity: 0` element, as in a browser (the `settings` switches are an
+  invisible checkbox over a styled knob). `found` also gives the element's `ref`.
 - **`select_scene` fix** (`SceneTools.cpp`): it also focuses the scene's window
   (`SceneWindow::requestPlayFocus`). A focused Scene view selects its own scene every frame, so the
   selection did not stick and the Game view (and the "scene the Game view shows" rule of the

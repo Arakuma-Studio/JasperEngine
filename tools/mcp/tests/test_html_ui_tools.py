@@ -209,6 +209,7 @@ CLICKS_HTML = """<!DOCTYPE html>
   <div class="column">
     <button id="ok">OK</button>
     <button id="open">Open</button>
+    <button id="ghost">Ghost</button>
   </div>
   <div id="panel" class="hidden"><button class="close">Close</button></div>
 </body>
@@ -222,6 +223,7 @@ button:focus { background-color: #4060c0; }
 #panel { position: absolute; left: 500px; top: 100px; width: 300px; height: 200px; background-color: #202838; }
 #panel .close { margin: 20px; width: 120px; }
 .hidden { display: none; }
+#ghost { opacity: 0; }
 """
 
 CLICKS_LUA = """---@class ClicksProbe : ScriptInstance
@@ -236,6 +238,7 @@ end
 function ClicksProbe:bind()
     local doc = self.doc
     doc:getElementById("ok"):addEventListener("click", function() print("tools: ok") end)
+    doc:getElementById("ghost"):addEventListener("click", function() print("tools: ghost") end)
     doc:getElementById("open"):addEventListener("click", function() doc:getElementById("panel").classList:remove("hidden") end)
     doc:querySelector("#panel .close"):addEventListener("click", function()
         print("tools: close")
@@ -922,7 +925,11 @@ async def test_send_input_target_click(ed: Editor):
         r = await ed.call_raw("send_input", {"events": [{"type": "mouse", "action": "click", "target": ""}]})
         ed.check(r.is_error and "CSS selector" in r.text, f"empty target: {r.text}")
         r = await ed.call_raw("send_input", {"events": [{"type": "mouse", "action": "click", "target": "#panel .close"}]})
-        ed.check(r.is_error and "none visible" in r.text, f"a hidden element: {r.text}")
+        ed.check(r.is_error and "none shown" in r.text, f"a hidden element: {r.text}")
+        # an opacity 0 element (the invisible checkbox over a styled switch) still takes the click
+        r = await ed.call_raw("send_input", {"events": [{"type": "mouse", "action": "click", "target": "#ghost"}], "frames_after": 5})
+        ed.check(not r.is_error and "tools: ghost" in await console_lines(ed), f"a transparent target: {r.text}")
+        ed.check_eq(r.structured["targets"][0]["document"]["ref"], "#ghost", "the element's ref")
         r = await ed.call_raw("send_input", {"events": [{"type": "mouse", "action": "click", "target": "#ok", "to_target": "#open"}]})
         ed.check(r.is_error and "to_target is for mouse drag" in r.text, f"to_target on a click: {r.text}")
 

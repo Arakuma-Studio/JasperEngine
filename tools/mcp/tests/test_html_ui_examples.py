@@ -205,8 +205,10 @@ async def ensure_scene(ed: Editor, name: str) -> dict:
     made = await ed.call("create_scene", name=f"UITest_{name}", type="2D")
     scene = made["scene"]["id"]
     await ed.call("set_scene_settings", scene=scene, settings={"background_color": BACKGROUND})
-    # script: blank's Lua too (the examples' default), as every example has it attached
-    created = await ed.call("create_ui_document", scene=scene, name=name, html=html_rel(name), template=name, script=True)
+    # script: blank's Lua too (the examples' default), as every example has it attached; overwrite: the
+    # LuaLS test copies the library's scripts (not renamed for <name>_assets/) into the Lua dir first
+    created = await ed.call("create_ui_document", scene=scene, name=name, html=html_rel(name), template=name, script=True,
+                            overwrite=True)
     entity = created["entity"]["id"]
     check(created["script"] == {"path": f"{LUA_DIR}/{entry['lua']}", "attached": True}, f"{name}: the template's script: {created['script']}")
     counts = created["document"]["diagnostics_count"]
@@ -907,31 +909,38 @@ def _make_tests(name: str) -> None:
             await ed.call("wait", frames=90)
             await before(ed, name, True)
             r = await ed.call("assert_ui", entity=name, checks=entry["checks"], viewports=entry["viewports"])
-            check(r["passed"], f"{name}: assert_ui failed: {json.dumps(r['checks'])[:2000]}")
-            # one deliberate failure: a label 20px wide does not fit
-            selector = next(c["selector"] for c in entry["checks"] if c["type"] == "text_fits").split(",")[0].strip()
-            await lua(ed, f"{doc_lua(name)}:querySelector({json.dumps(selector)}).style.width = '20px'")
+            check(r["passed"], f"{name}: assert_ui failed: {json.dumps([c for c in r['checks'] if not c['passed']])[:3000]}")
+            # one deliberate failure: a label 20px wide does not fit (blank has no text_fits check: its h1)
+            selector = next((c["selector"] for c in entry["checks"] if c["type"] == "text_fits"),
+                            entry["checks"][0]["selector"]).split(",")[0].strip()
+            # the first match on screen (a hidden one, in an inactive tab, is not checked); width does not apply
+            # to an inline box: it becomes an inline-block
+            shown = next(e for e in (await ed.call("inspect_ui", entity=name, selector=selector, depth=0,
+                                                   styles=["display"]))["elements"] if "hidden" not in e.get("flags", []))
+            selector = shown["ref"]
+            shrink = "e.style.width = '20px'" + ("; e.style.display = 'inline-block'" if shown["styles"]["display"] == "inline" else "")
+            await lua(ed, f"local e = {doc_lua(name)}:querySelector({json.dumps(selector)}); {shrink}")
             await ed.call("wait", frames=2)
             raw = await ed.call_raw("assert_ui", {"entity": name, "checks": [{"type": "text_fits", "selector": selector}],
                                                   "screenshot": "on_failure", "max_width": 0})
             result = raw.value
             check(not raw.is_error and not result["passed"], f"{name}: the shrunk label fails text_fits")
-            failure = result["checks"][0]["failures"][0]
-            check(failure["ref"], "the failure names the element")
+            failures = result["checks"][0]["failures"]
+            check(failures[0]["ref"], "the failure names the element")
             check(raw.images, "a failed assertion returns an image")
             img = pngdiff.decode(raw.images[0][0])
-            # the image is the Game view cropped around the failure: image.canvas_rect is the part of
-            # the canvas it shows
+            # the image is the Game view cropped around the failures: image.canvas_rect is the part of
+            # the canvas it shows; each failing element (the label and others its width squeezes) is outlined
             cx, cy, cw, _ = result["image"]["canvas_rect"]
             scale = img[0] / cw
-            rx, ry, rw, rh = failure["rect"]
-            rx, ry = rx - cx, ry - cy
+            rects = [((f["rect"][0] - cx) * scale, (f["rect"][1] - cy) * scale, f["rect"][2] * scale, f["rect"][3] * scale)
+                     for f in failures]
             reds = [(x, y) for y in range(img[1]) for x in range(img[0])
                     if img[2][(y * img[0] + x) * 4] > 200 and img[2][(y * img[0] + x) * 4 + 1] < 60 and img[2][(y * img[0] + x) * 4 + 2] < 60]
             check(reds, "red outline pixels in the image")
             for x, y in reds:
-                check(rx * scale - 4 <= x <= (rx + rw) * scale + 4 and ry * scale - 4 <= y <= (ry + rh) * scale + 4,
-                      f"a red pixel at {x},{y} outside the reported rect {failure['rect']}")
+                check(any(rx - 4 <= x <= rx + rw + 4 and ry - 4 <= y <= ry + rh + 4 for rx, ry, rw, rh in rects),
+                      f"a red pixel at {x},{y} outside the reported rects {[f['rect'] for f in failures]} (image {result['image']})")
         finally:
             await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
 

@@ -1673,22 +1673,41 @@ bool elementCenter(McpContext& ctx, const Json& documentRef, const std::string& 
     }
     std::string searched;
     for (const Candidate& c : candidates) {
-        hui::InspectRect rect;
+        std::vector<hui::InspectElement> matches;
+        bool more = false;
         std::string why;
-        if (hui::HtmlUIInspector::elementRect(c.sp->scene, c.entity, selector, rect, why)) {
-            x = rect.x + rect.width / 2.0;
-            y = rect.y + rect.height / 2.0;
+        if (!hui::HtmlUIInspector::query(c.sp->scene, c.entity, selector, 0, 1000, matches, more, why)) {
+            // an invalid selector is invalid in every document
+            if (why.find("is not valid") != std::string::npos) {
+                error = why;
+                return false;
+            }
+            searched += (searched.empty() ? "" : "; ") + documentLabel(project, c.sp, c.entity, true) + ": " + why;
+            continue;
+        }
+        // the first visible match; else the first transparent one: a pointer still reaches an element
+        // with opacity 0 (the invisible checkbox over a styled switch), as in a browser
+        const hui::InspectElement* pick = nullptr;
+        for (const hui::InspectElement& e : matches) {
+            if (e.flags.hidden || e.flags.zeroSize) continue;
+            if (!e.flags.transparent) {
+                pick = &e;
+                break;
+            }
+            if (!pick) pick = &e;
+        }
+        if (pick) {
+            x = pick->border.x + pick->border.width / 2.0;
+            y = pick->border.y + pick->border.height / 2.0;
             if (found) {
                 *found = {{"scene", c.sp->id}, {"entity", McpRefs::entityJson(c.sp, c.entity)},
-                          {"html", documentHtml(project, c.sp, c.entity)}};
+                          {"html", documentHtml(project, c.sp, c.entity)}, {"ref", pick->ref}};
             }
             return true;
         }
-        // an invalid selector is invalid in every document
-        if (why.find("is not valid") != std::string::npos) {
-            error = why;
-            return false;
-        }
+        why = matches.empty() ? "selector \"" + selector + "\" matched nothing"
+                              : "selector \"" + selector + "\" matched " + std::to_string(matches.size()) + " element" +
+                                    (matches.size() == 1 ? "" : "s") + ", none shown (display: none, visibility: hidden or zero size)";
         searched += (searched.empty() ? "" : "; ") + documentLabel(project, c.sp, c.entity, true) + ": " + why;
     }
     error = "no visible element matches \"" + selector + "\". UI Documents searched (topmost first): " + searched;

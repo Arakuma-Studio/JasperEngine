@@ -666,6 +666,26 @@ TEST_F(InspectorTest, WithViewport){
     EXPECT_RECT(one(scene, entity, "#two").border, 200, 0, 200, 50);
 }
 
+// withViewport: CSS transforms follow the other size (a panel centered with translateX(-50%)), and the restored
+// layout's transforms are back before anything renders (fork P4-6, p4-mcp-tools: assert_ui viewports)
+TEST_F(InspectorTest, WithViewportTransforms){
+    page("vpt", "* { margin: 0; }\n"
+                ".panel { position: absolute; left: 50%; top: 0; width: 50%; height: 100px; transform: translateX(-50%); }\n",
+         "<div id=\"panel\" class=\"panel\"></div>");
+    SceneFixture fixture;
+    UIDocument document = fixture.addDocument("ui/vpt.html");
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    Scene* scene = &fixture.getScene();
+    const Entity entity = document.getEntity();
+
+    EXPECT_RECT(one(scene, entity, "#panel").border, 320, 0, 640, 100);
+    std::string error;
+    ASSERT_TRUE(HtmlUIInspector::withViewport(scene, entity, 720, 1280, [&](){
+        EXPECT_RECT(one(scene, entity, "#panel").border, 180, 0, 360, 100);
+    }, error)) << error;
+    EXPECT_RECT(one(scene, entity, "#panel").border, 320, 0, 640, 100);
+}
+
 // 10. invalid selectors are errors; elementRect skips hidden matches
 TEST_F(InspectorTest, SelectorsAndElementRect){
     page("sel", "* { margin: 0; }\n.target { width: 30px; height: 20px; }\n.first { display: none; }\n.faint { opacity: 0; }\n",

@@ -736,20 +736,26 @@ namespace {
             error = "viewport " + number(width) + "x" + number(height) + " is not valid (1 to 16384 px each)";
             return false;
         }
+        // the transforms follow the layout (rendering computes them, and nothing renders in between: fork P4-6)
+        const auto layOut = [](HtmlUIContext* laidOut, Rml::Vector2i dimensions){
+            laidOut->setDimensions(dimensions);
+            laidOut->update();
+            if (Rml::Element* root = laidOut->getRmlContext() ? laidOut->getRmlContext()->GetRootElement() : nullptr)
+                root->UpdateTransformStates();
+        };
         // restores the dimensions even when fn throws
         struct Restore {
             const std::function<HtmlUIContext*()>& context;
             HtmlUIContext* target;
             Rml::Vector2i dimensions;
+            void (*layOut)(HtmlUIContext*, Rml::Vector2i);
             ~Restore(){
                 if (context() != target)
                     return;
-                target->setDimensions(dimensions);
-                target->update();
+                layOut(target, dimensions);
             }
-        } restore{context, target, target->getDimensions()};
-        target->setDimensions(Rml::Vector2i((int)std::lround(width), (int)std::lround(height)));
-        target->update();
+        } restore{context, target, target->getDimensions(), layOut};
+        layOut(target, Rml::Vector2i((int)std::lround(width), (int)std::lround(height)));
         if (fn)
             fn();
         return true;
