@@ -1896,8 +1896,9 @@ Where the code differs from 3.7, 3.9 and 5.4 (also in `CONTRACTS.md`):
 - **Toasts**: at most 5 showing; a sixth sends the oldest away with its exit animation (removed
   when it ends). The countdown bar is a CSS animation whose duration Lua sets.
 - **Lua**: as 3.7.1, plus: listener functions are made once in `init` and added again in
-  `onDocumentLoad` (adding a function twice is ignored), properties are typed by the editor from
-  `properties` (no `---@field` for them: the editor's stubs declare them).
+  `onDocumentLoad` (adding a function twice is ignored); properties are declared with
+  `---@field` under the class (the editor's script stubs skip what a script declares), so the
+  scripts check clean with or without the project's generated stubs.
 - **examples.json**: `assets` lists every asset file; `checks` use `assert_ui`'s field names
   (`single_line`, `unobstructed`, `allow_scroll`, `container`, `background`); viewports per
   example (portrait 720x1280 where the layout is meant for it: menus, dialogue, toasts, loading).

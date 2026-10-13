@@ -3,6 +3,7 @@
 -- self.model.progress from its own loading). Tips change every 4 seconds with a cross-fade.
 -- At 100% it logs "loading: done" and waits for any key or click: "loading: continue".
 ---@class LoadingUI : ScriptInstance
+---@field duration number
 local LoadingUI = {
     properties = {
         { name = "duration", displayName = "Duration", type = "float", default = 3.0 },
