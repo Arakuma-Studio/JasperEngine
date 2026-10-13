@@ -5,6 +5,8 @@
 
 #include "Generator.h"
 #include "component/ScriptComponent.h"
+#include "htmlui/compat/CompatOptions.h"
+#include "htmlui/compat/Diagnostics.h"
 #include "script/ScriptProperty.h"
 
 #include "json.hpp"
@@ -22,13 +24,14 @@ namespace jasperengine::editor {
 
     class Project;
 
-    // The checks of a project's Lua scripts, forked shaders and C++ scripts, shared by the
-    // `check` CLI subcommand (cli/CommandLine.cpp) and the MCP tools check_script,
-    // check_shader, compile_scripts and sync_files, so a shell, a CI job or an agent hook gets
-    // what an agent gets through MCP. docs/mcp/checks.md describes the CLI.
+    // The checks of a project's Lua scripts, forked shaders, C++ scripts and HTML/CSS UI files,
+    // shared by the `check` CLI subcommand (cli/CommandLine.cpp) and the MCP tools
+    // check_script, check_shader, compile_scripts and sync_files (and the automatic pick-up), so
+    // a shell, a CI job or an agent hook gets what an agent gets through MCP.
+    // docs/mcp/checks.md describes the CLI.
     class ProjectChecks {
     public:
-        // One problem, compiler style. tool: "lua", "shader" or "cpp". path: project-relative
+        // One problem, compiler style. tool: "lua", "shader", "cpp" or "ui". path: project-relative
         // with '/' (absolute when outside the project, "" when the problem has no file). line
         // and col are 1-based, 0 when unknown. severity: "error" or "warning".
         struct Finding {
@@ -38,14 +41,17 @@ namespace jasperengine::editor {
             int col = 0;
             std::string severity;
             std::string message;
+            std::string code;        // ui: the compat diagnostic code ("HTMLUI-CSS-0002"); "" for the other tools
+            std::string suggestion;  // ui: the fix; "" when none
         };
 
+        // {tool, path, line, col, severity, message}, plus code and suggestion when not empty
         static nlohmann::json toJson(const Finding& finding);
         static nlohmann::json toJson(const std::vector<Finding>& findings);
-        // "path:line:col: severity: message", leaving out the unknown parts ("tool: severity:
-        // message" without a path); the message on one line
+        // "path:line:col: severity: message (fix: suggestion) [code]", leaving out the unknown
+        // parts ("tool: severity: message" without a path); the message on one line
         static std::string toText(const Finding& finding);
-        // by tool (lua, shader, cpp), then path, line, column
+        // by tool (lua, shader, cpp, ui), then path, line, column
         static void sortFindings(std::vector<Finding>& findings);
         static size_t countSeverity(const std::vector<Finding>& findings, const std::string& severity);
 
@@ -144,6 +150,41 @@ namespace jasperengine::editor {
         // lines of the output; notes are dropped
         static CppBuildReport summarizeCppBuild(const std::filesystem::path& projectRoot, bool success,
                                                 const std::vector<std::string>& output);
+
+        // ---- HTML/CSS UI: the compatibility layer's diagnostics (engine/core/htmlui/compat), the
+        // same code that runs when a document loads
+
+        // .html, .htm, .css (any case)
+        static bool isUiFile(const std::string& path);
+        // The project's assets directory from its project.yaml (assetsDir, default the project root)
+        static std::filesystem::path assetsRootFromProjectFile(const std::filesystem::path& projectRoot);
+        // Sandboxed project loader for compat: paths are asset-relative and resolve under the
+        // project's assets directory; absolute paths and '..' escapes are refused (compat reports
+        // those files as missing)
+        static jasperengine::htmlui::compat::FileAccess projectFiles(const std::filesystem::path& projectRoot);
+        // A compat diagnostic as a finding (tool "ui"): its asset-relative file shown
+        // project-relative, severity error/warning/info, code and suggestion
+        static Finding uiFinding(const std::filesystem::path& projectRoot, const std::filesystem::path& assetsRoot,
+                                 const jasperengine::htmlui::compat::Diagnostic& diagnostic);
+        struct UiCheck {
+            std::vector<Finding> findings;   // tool "ui", severity "error"/"warning" (Info dropped), code, suggestion
+            size_t documents = 0;            // .html/.htm converted
+            size_t stylesheets = 0;          // .css checked on their own
+            std::vector<std::string> files;  // project-relative: every file checked or read by the checks
+        };
+        // files empty: the whole project, meaning every .html/.htm of the assets directory outside
+        // skipped directories except the web export's custom shell (project.yaml
+        // web.customHtmlShell), then every .css none of those documents depends on. files given
+        // (absolute): an .html/.htm is converted as a document, a .css is checked on its own
+        // (files outside the assets directory are skipped). A diagnostic located in a linked
+        // stylesheet is reported at that stylesheet's path; identical findings (a stylesheet
+        // linked by several documents) are reported once. Pure parsing: no engine start.
+        static UiCheck checkUiFiles(const std::filesystem::path& projectRoot, const std::vector<std::filesystem::path>& files);
+        // `jasperengine-editor ui-support`: the compat support tables as JSON
+        // {version, editor_version, features: [{kind, name, support, note, suggestion, code, ...}],
+        //  diagnostics: [{code, name, severity, summary}]} (support computed with the fork
+        // features present)
+        static nlohmann::json uiSupportJson();
 
         // ---- shaders
 

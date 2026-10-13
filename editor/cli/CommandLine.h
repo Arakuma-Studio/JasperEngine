@@ -22,8 +22,11 @@ namespace jasperengine::editor {
 
         static int runBenchmarkHelp(const char* executableName);
 
-        // Checks a project's Lua scripts, shader forks and C++ scripts (see docs/mcp/checks.md)
+        // Checks a project's Lua scripts, shader forks, C++ scripts and HTML/CSS UI files (see docs/mcp/checks.md)
         static int runCheckCommand(int argc, char** argv, const char* executableName);
+
+        // Prints the HTML/CSS compatibility support tables as JSON (developer: docs generation)
+        static int runUiSupportCommand(int argc, char** argv, const char* executableName);
 
         // Imports the remote resources of HTML UI documents (editor/htmlui/HtmlUiImportCli.h)
         static int runImportUiCommand(int argc, char** argv, const char* executableName);

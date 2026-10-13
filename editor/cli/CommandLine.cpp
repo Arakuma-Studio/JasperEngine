@@ -235,8 +235,9 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " shaders [options]        Generate shaders.\n"
         << "  " << commandName << " benchmark [options]      Measure scene FPS with vsync off.\n"
         << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n"
-        << "  " << commandName << " check [options]          Check Lua scripts, shader forks and C++ scripts (compiler-style).\n"
+        << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts and HTML/CSS UI (compiler-style).\n"
         << "  " << commandName << " import-ui [options]      Import the remote resources of HTML UI documents.\n"
+        << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
         << "  " << commandName << " --mcp-port <port>        Open the editor with the MCP server on HTTP.\n\n"
         << "Run a subcommand with --help for its options.\n";
@@ -1491,8 +1492,9 @@ int CommandLine::runSceneDumpCommand(int argc, char** argv, const char* executab
 // ---- check: the project checks of the MCP tools, from a shell, CI or an agent hook ----
 //
 // Lua scripts (syntax, then the top level run in an isolated lua_State to read the properties),
-// shader forks (compiled as check_shader compiles them) and C++ scripts (built as Play and
-// compile_scripts build them). See docs/mcp/checks.md.
+// shader forks (compiled as check_shader compiles them), C++ scripts (built as Play and
+// compile_scripts build them) and HTML/CSS UI files (the compatibility layer's diagnostics, as
+// the documents load). See docs/mcp/checks.md.
 namespace {
 
 struct CheckOptions {
@@ -1500,6 +1502,7 @@ struct CheckOptions {
     bool lua = false;
     bool shaders = false;
     bool cpp = false;
+    bool ui = false;
     bool all = false;
     bool filesGiven = false;
     std::vector<std::string> files;
@@ -1519,7 +1522,9 @@ void printCheckUsage(const std::string& commandName) {
         << "                           (as the editor reads script properties).\n"
         << "      --shaders            Shader forks: compiled as the editor compiles them.\n"
         << "      --cpp                C++ scripts: configured and built like Play does (slow the first time).\n"
-        << "      --all                All three. Default: --lua --shaders.\n"
+        << "      --ui                 HTML/CSS UI documents: the compatibility diagnostics (dropped or rewritten\n"
+        << "                           constructs, missing or remote files) with file:line:col, code and fix.\n"
+        << "      --all                Lua, shaders, C++ and UI. Default: --lua --shaders --ui.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
         << "      --format <format>    text (default) or json.\n"
@@ -1527,11 +1532,13 @@ void printCheckUsage(const std::string& commandName) {
         << "      --hook               Agent hook mode: read the hook's JSON on stdin (any tool: Claude Code\n"
         << "                           Edit/Write/Bash, Codex apply_patch/shell), check the files it names and\n"
         << "                           the project files changed since the last --hook run (shell edits), print\n"
-        << "                           problems on stderr and exit 2 when there are errors (0 otherwise, 1 when\n"
-        << "                           it can't run). Logs each run to .jasperengine/check-hook.log.\n"
+        << "                           problems on stderr and exit 2 when there are errors or new UI warnings\n"
+        << "                           (UI warnings are shown once), 0 otherwise, 1 when it can't run. Logs each\n"
+        << "                           run to .jasperengine/check-hook.log.\n"
         << "  -h, --help               Show this help.\n\n"
         << "Text output, one line per problem, paths relative to the project:\n"
         << "  path:line:col: error|warning: message   (unknown line or column left out)\n"
+        << "  UI findings add the fix and the code: path:line:col: warning: message (fix: ...) [HTMLUI-CSS-0002]\n"
         << "Exit code: 0 no errors (warnings allowed), 1 errors, 2 usage error.\n";
 }
 
@@ -1550,6 +1557,8 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.shaders = true;
         } else if (arg == "--cpp") {
             options.cpp = true;
+        } else if (arg == "--ui") {
+            options.ui = true;
         } else if (arg == "--all") {
             options.all = true;
         } else if (arg == "--files") {
@@ -1639,6 +1648,7 @@ struct HookStamp {
 
 bool isHookTrackedFile(const std::string& rel) {
     if (Util::isLuaFile(rel) || Util::isShaderFile(rel) || Util::isHeaderFile(rel) || Util::isSourceFile(rel)) return true;
+    if (ProjectChecks::isUiFile(rel)) return true;
     const std::string ext = fs::path(rel).extension().string();
     return ext == ".c" || ext == ".inl";
 }
@@ -1646,7 +1656,7 @@ bool isHookTrackedFile(const std::string& rel) {
 std::map<std::string, HookStamp> scanHookFiles(const fs::path& root) {
     std::map<std::string, HookStamp> files;
     static const std::vector<std::string> extensions = {".lua", ".vert", ".frag", ".glsl", ".h", ".hh", ".hpp", ".hxx",
-                                                        ".cpp", ".cc", ".cxx", ".c", ".inl"};
+                                                        ".cpp", ".cc", ".cxx", ".c", ".inl", ".html", ".htm", ".css"};
     for (const fs::path& file : ProjectChecks::findProjectFiles(root, extensions)) {
         std::error_code ec;
         HookStamp stamp;
@@ -1660,7 +1670,16 @@ std::map<std::string, HookStamp> scanHookFiles(const fs::path& root) {
     return files;
 }
 
-bool loadHookState(const fs::path& file, std::map<std::string, HookStamp>& state) {
+// .jasperengine/check-hook-state.json: {"version": 2, "files": {rel: [time, size]},
+// "ui_reported": {rel: ["code|message", ...]}}. Version 1 (no ui_reported) is read as before.
+struct HookState {
+    std::map<std::string, HookStamp> files;
+    // the UI warnings already shown, per project-relative file: shown once, after the edit
+    // that introduced them (the key has no line, so moving code does not show it again)
+    std::map<std::string, std::set<std::string>> uiReported;
+};
+
+bool loadHookState(const fs::path& file, HookState& state) {
     std::string text;
     if (!ProjectChecks::readFile(file, text)) return false;
     try {
@@ -1668,7 +1687,15 @@ bool loadHookState(const fs::path& file, std::map<std::string, HookStamp>& state
         if (!json.is_object() || !json.contains("files") || !json["files"].is_object()) return false;
         for (auto it = json["files"].begin(); it != json["files"].end(); ++it) {
             if (!it.value().is_array() || it.value().size() != 2) continue;
-            state[it.key()] = {it.value()[0].get<int64_t>(), it.value()[1].get<uintmax_t>()};
+            state.files[it.key()] = {it.value()[0].get<int64_t>(), it.value()[1].get<uintmax_t>()};
+        }
+        if (json.contains("ui_reported") && json["ui_reported"].is_object()) {
+            for (auto it = json["ui_reported"].begin(); it != json["ui_reported"].end(); ++it) {
+                if (!it.value().is_array()) continue;
+                for (const nlohmann::json& key : it.value()) {
+                    if (key.is_string()) state.uiReported[it.key()].insert(key.get<std::string>());
+                }
+            }
         }
         return true;
     } catch (const std::exception&) {
@@ -1676,10 +1703,14 @@ bool loadHookState(const fs::path& file, std::map<std::string, HookStamp>& state
     }
 }
 
-void saveHookState(const fs::path& file, const std::map<std::string, HookStamp>& state) {
+void saveHookState(const fs::path& file, const HookState& state) {
     nlohmann::json files = nlohmann::json::object();
-    for (const auto& [rel, stamp] : state) files[rel] = {stamp.time, stamp.size};
-    const nlohmann::json json = {{"version", 1}, {"files", files}};
+    for (const auto& [rel, stamp] : state.files) files[rel] = {stamp.time, stamp.size};
+    nlohmann::json uiReported = nlohmann::json::object();
+    for (const auto& [rel, keys] : state.uiReported) {
+        if (!keys.empty()) uiReported[rel] = std::vector<std::string>(keys.begin(), keys.end());
+    }
+    const nlohmann::json json = {{"version", 2}, {"files", files}, {"ui_reported", uiReported}};
     std::error_code ec;
     fs::create_directories(file.parent_path(), ec);
     // a hook running in parallel must never read half a file
@@ -1699,11 +1730,15 @@ void saveHookState(const fs::path& file, const std::map<std::string, HookStamp>&
     if (ec) fs::remove(temp, ec);
 }
 
-// The files changed since the last run (all recently changed ones on the first run), and the new state
-std::vector<std::string> hookChangedFiles(const fs::path& root) {
-    const fs::path stateFile = root / ".jasperengine" / HOOK_STATE_FILE;
-    std::map<std::string, HookStamp> previous;
-    const bool hasState = loadHookState(stateFile, previous);
+fs::path hookStateFile(const fs::path& root) {
+    return root / ".jasperengine" / HOOK_STATE_FILE;
+}
+
+// The files changed since the last run (all recently changed ones on the first run); `state`
+// gets the new stamps (the caller saves it)
+std::vector<std::string> hookChangedFiles(const fs::path& root, HookState& state) {
+    HookState previous;
+    const bool hasState = loadHookState(hookStateFile(root), previous);
     const std::map<std::string, HookStamp> now = scanHookFiles(root);
     const int64_t recent = static_cast<int64_t>(
         (fs::file_time_type::clock::now() - std::chrono::minutes(HOOK_FIRST_RUN_MINUTES)).time_since_epoch().count());
@@ -1713,10 +1748,15 @@ std::vector<std::string> hookChangedFiles(const fs::path& root) {
             if (stamp.time >= recent) changed.push_back(rel);
             continue;
         }
-        auto it = previous.find(rel);
-        if (it == previous.end() || it->second.time != stamp.time || it->second.size != stamp.size) changed.push_back(rel);
+        auto it = previous.files.find(rel);
+        if (it == previous.files.end() || it->second.time != stamp.time || it->second.size != stamp.size) changed.push_back(rel);
     }
-    saveHookState(stateFile, now);
+    state.files = now;
+    state.uiReported = std::move(previous.uiReported);
+    // a file that is gone takes its shown warnings with it
+    for (auto it = state.uiReported.begin(); it != state.uiReported.end();) {
+        it = now.count(it->first) ? std::next(it) : state.uiReported.erase(it);
+    }
     return changed;
 }
 
@@ -1924,11 +1964,13 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool lua = options.lua || options.all;
     bool shaders = options.shaders || options.all;
     const bool cpp = options.cpp || options.all;
-    if (!options.lua && !options.shaders && !options.cpp && !options.all) lua = shaders = true;
+    bool ui = options.ui || options.all;
+    if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.all) lua = shaders = ui = true;
 
     fs::path base = fs::current_path(ec);
     std::vector<std::string> files = options.files;
     std::string hookTool;
+    HookState hookState;
     if (options.hook) {
         std::ostringstream input;
         input << std::cin.rdbuf();
@@ -1938,7 +1980,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             return 1;
         }
         // what the agent's shell (or any other tool) changed since the last run
-        for (const std::string& rel : hookChangedFiles(root)) files.push_back((root / rel).string());
+        for (const std::string& rel : hookChangedFiles(root, hookState)) files.push_back((root / rel).string());
+        saveHookState(hookStateFile(root), hookState);
         if (files.empty()) {
             const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
             appendHookLog(root, hookTool, {}, "nothing changed", 0, seconds);
@@ -1949,6 +1992,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     // what to check
     std::vector<fs::path> luaFiles;
     std::vector<std::string> shaderFiles;
+    std::vector<fs::path> uiFiles;
     bool cppFiles = false;
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
@@ -1976,6 +2020,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
                 if (shaders) shaderFiles.push_back(name);
             } else if (Util::isHeaderFile(name) || Util::isSourceFile(name) || rel.extension() == ".c" || rel.extension() == ".inl") {
                 cppFiles = true;
+            } else if (ProjectChecks::isUiFile(name)) {
+                if (ui) uiFiles.push_back(path);
             }
         }
     } else if (lua) {
@@ -1984,7 +2030,14 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     const bool luaWanted = fileMode ? !luaFiles.empty() : lua;
     const bool shadersWanted = fileMode ? !shaderFiles.empty() : shaders;
     const bool cppWanted = cpp && (!fileMode || cppFiles);
+    const bool uiWanted = fileMode ? !uiFiles.empty() : ui;
 
+    // The UI check is pure parsing (no engine): first, and the engine starts only for the others
+    ProjectChecks::UiCheck uiCheck;
+    if (uiWanted) {
+        QuietOutput quiet;
+        uiCheck = ProjectChecks::checkUiFiles(root, fileMode ? uiFiles : std::vector<fs::path>());
+    }
     CheckRun run;
     if (luaWanted || shadersWanted || cppWanted) {
         QuietOutput quiet;
@@ -1995,17 +2048,46 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         if (options.hook) appendHookLog(root, hookTool, checkedNames, "error: " + run.fatal, usageExit, 0.0);
         return usageExit;
     }
+    if (uiWanted) {
+        run.findings.insert(run.findings.end(), uiCheck.findings.begin(), uiCheck.findings.end());
+        run.checked.push_back({"ui", uiCheck.documents + uiCheck.stylesheets});
+    }
     ProjectChecks::sortFindings(run.findings);
     const size_t errors = ProjectChecks::countSeverity(run.findings, "error");
     const size_t warnings = ProjectChecks::countSeverity(run.findings, "warning");
     const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
 
     if (options.hook) {
-        for (const ProjectChecks::Finding& finding : run.findings) std::cerr << ProjectChecks::toText(finding) << "\n";
+        // UI errors always show; a UI warning shows once, after the edit that introduced it
+        std::map<std::string, std::set<std::string>> uiWarnings;   // path -> its current warning keys
+        size_t uiShown = 0, otherWarnings = 0;
+        for (const ProjectChecks::Finding& finding : run.findings) {
+            if (finding.tool == "ui" && finding.severity == "warning") {
+                const std::string key = finding.code + "|" + finding.message;
+                uiWarnings[finding.path].insert(key);
+                auto known = hookState.uiReported.find(finding.path);
+                if (known != hookState.uiReported.end() && known->second.count(key)) continue;
+                uiShown++;
+            } else if (finding.severity == "warning") {
+                otherWarnings++;
+            }
+            std::cerr << ProjectChecks::toText(finding) << "\n";
+        }
         for (const std::string& line : run.cppLogTail) std::cerr << "  " << line << "\n";
+        if (uiShown > 0) {
+            std::cerr << "(UI warnings are shown once, after the edit that introduced them; " << commandName
+                      << " check --ui lists them all)\n";
+        }
         std::cerr.flush();
-        const int code = errors ? 2 : 0;
-        appendHookLog(root, hookTool, checkedNames, plural(errors, "error") + ", " + plural(warnings, "warning"), code, seconds);
+        // fixed warnings drop out: every file the UI check covered takes its current set
+        if (uiWanted) {
+            for (const std::string& path : uiCheck.files) hookState.uiReported.erase(path);
+            for (auto& [path, keys] : uiWarnings) hookState.uiReported[path] = keys;
+            saveHookState(hookStateFile(root), hookState);
+        }
+        const int code = (errors || uiShown) ? 2 : 0;
+        appendHookLog(root, hookTool, checkedNames, plural(errors, "error") + ", " + plural(otherWarnings + uiShown, "warning"), code,
+                      seconds);
         return code;
     }
 
@@ -2025,7 +2107,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     }
     if (!options.quiet) {
         std::string what;
-        const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}};
+        const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"}};
         for (const auto& [category, count] : run.checked) {
             what += (what.empty() ? "" : ", ") + category + " " + plural(count, units.at(category));
         }
@@ -2042,6 +2124,35 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
 int CommandLine::runCheckCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return runCheck(argc, argv, getCommandName(executableName));
+}
+
+// ---- ui-support: the compatibility layer's support tables as JSON (tools/mcp/gen_html_ui_support.py
+// renders them to docs/mcp/guide/html-ui-support.md)
+
+int CommandLine::runUiSupportCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    const std::string commandName = getCommandName(executableName);
+    auto usage = [&](std::ostream& out) {
+        out << "Usage:\n"
+            << "  " << commandName << " ui-support\n\n"
+            << "Prints the HTML/CSS support tables of the compatibility layer as JSON on stdout: every\n"
+            << "element, attribute, input type, CSS property, value, function, unit, selector, at-rule and\n"
+            << "media feature with its support (native, rewritten, approximated, emulated, fallback,\n"
+            << "unsupported, ignored; with the fork features of this build), and the diagnostic codes.\n"
+            << "tools/mcp/gen_html_ui_support.py renders it to docs/mcp/guide/html-ui-support.md.\n";
+    };
+    for (int i = 1; i < argc; i++) {
+        const std::string arg = argv[i];
+        if (arg == "-h" || arg == "--help") {
+            usage(std::cout);
+            return 0;
+        }
+        std::cerr << commandName << " ui-support: unknown option: " << arg << "\n\n";
+        usage(std::cerr);
+        return 2;
+    }
+    std::cout << ProjectChecks::uiSupportJson().dump(1) << std::endl;
+    return 0;
 }
 
 int CommandLine::runImportUiCommand(int argc, char** argv, const char* executableName) {
