@@ -432,7 +432,7 @@ bool HtmlInputElement::GetIntrinsicDimensions(Rml::Vector2f& dimensions, float& 
         return Rml::ElementFormControlInput::GetIntrinsicDimensions(dimensions, ratio);
     if (imageDirty){
         imageDirty = false;
-        imageGeometry = Rml::Geometry();
+        imageGeometry.Clear();
         const std::string source = GetAttribute<Rml::String>("src", "");
         imageLoaded = !source.empty() && image.load(this, source);
     }
@@ -453,7 +453,7 @@ bool HtmlInputElement::GetIntrinsicDimensions(Rml::Vector2f& dimensions, float& 
 
 void HtmlInputElement::OnResize(){
     Rml::ElementFormControlInput::OnResize();
-    imageGeometry = Rml::Geometry();
+    imageGeometry.Clear();
 }
 
 void HtmlInputElement::OnRender(){
@@ -464,13 +464,12 @@ void HtmlInputElement::OnRender(){
     const Rml::Vector2f size = GetBox().GetSize(Rml::BoxArea::Content);
     if (!renderManager || size.x <= 0.0f || size.y <= 0.0f)
         return;
-    if (!imageGeometry){
+    if (!imageGeometry.IsSet()){
         imageTexture = image.texture(this, size);
         const Rml::ComputedValues& computed = GetComputedValues();
-        Rml::Mesh mesh;
-        Rml::MeshUtilities::GenerateQuad(mesh, Rml::Vector2f(0, 0), size, computed.image_color().ToPremultiplied(GetDrawOpacity()),
-                                         Rml::Vector2f(0, 0), Rml::Vector2f(1, 1));
-        imageGeometry = renderManager->MakeGeometry(std::move(mesh));
+        imageGeometry.Set(Rml::Rectanglef::FromPositionSize(GetBox().GetPosition(Rml::BoxArea::Content), size),
+                          computed.image_color().ToPremultiplied(GetDrawOpacity()));
     }
-    imageGeometry.Render(GetAbsoluteOffset(Rml::BoxArea::Content), imageTexture);
+    // trimmed to the content edge curve of a rounded box, as an <img> (the fork's P4-G1)
+    imageGeometry.Render(this, imageTexture);
 }

@@ -7,6 +7,7 @@
 #include "Export.h"
 #include "htmlui/compat/runtime/DecoratorCommon.h"
 
+#include <RmlUi/Core/ElementUtilities.h>
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>
 #include <RmlUi/Core/Geometry.h>
 
@@ -88,7 +89,7 @@ namespace jasperengine::htmlui::compat {
         decorators::Image image;
         bool imageLoaded = false;
         bool imageDirty = true;
-        Rml::Geometry imageGeometry;
+        Rml::ReplacedContentGeometry imageGeometry;
         Rml::Texture imageTexture;
     };
 

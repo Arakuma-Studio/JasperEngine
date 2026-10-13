@@ -530,6 +530,69 @@ TEST_F(CompatElementTest, ImageSizeFitAndSampling){
     EXPECT_TRUE(svg);
 }
 
+// P4-G1: the picture of a rounded <img> is trimmed to its content edge curve: by the mesh (the
+// content box filled like a background, feathered curves) when it covers the content box or lies
+// inside the curve, under a clip mask when it crosses the curve
+TEST_F(CompatElementTest, RoundedImageIsTrimmedToTheContentCurve){
+    const auto pictureOf = [this](const char* id, size_t& vertices){
+        vertices = 0;
+        for (const RecordingRenderInterface::Draw& draw : recording.getDraws()){
+            const RecordingRenderInterface::Texture* texture = recording.getTexture(draw.texture);
+            if (texture && texture->source.find("wide4x2.png") != std::string::npos &&
+                draw.translation == byId(id)->GetAbsoluteOffset(Rml::BoxArea::Border)){
+                vertices = recording.getGeometry(draw.geometry)->vertices.size();
+                return true;
+            }
+        }
+        return false;
+    };
+    size_t vertices = 0;
+
+    // square: a quad, no mask
+    ASSERT_NE(show("<img id='a' src='wide4x2.png' style='width: 40px; height: 40px;'/>", kControls), nullptr);
+    ASSERT_TRUE(pictureOf("a", vertices));
+    EXPECT_EQ(vertices, 4u);
+    EXPECT_EQ(recording.clipMaskRenders, 0);
+
+    // fill, rounded: the rounded content box, no mask; texture coordinates follow the quad
+    ASSERT_NE(show("<img id='a' src='wide4x2.png' style='width: 40px; height: 40px; border-radius: 50%;'/>", kControls), nullptr);
+    ASSERT_TRUE(pictureOf("a", vertices));
+    EXPECT_GT(vertices, 16u);
+    EXPECT_EQ(recording.clipMaskRenders, 0);
+
+    // padding and a border: the curve's radii lose them (20 - 4 - 10 = 6), the picture is the content box
+    ASSERT_NE(show("<img id='a' src='wide4x2.png' style='width: 40px; height: 40px; padding: 10px; border: 4px solid #000; "
+                   "border-radius: 20px;'/>", kControls), nullptr);
+    ASSERT_TRUE(pictureOf("a", vertices));
+    EXPECT_GT(vertices, 16u);
+    for (const RecordingRenderInterface::Draw& draw : recording.getDraws()){
+        const RecordingRenderInterface::Texture* texture = recording.getTexture(draw.texture);
+        if (!texture || texture->source.find("wide4x2.png") == std::string::npos)
+            continue;
+        for (const Rml::Vertex& vertex : recording.getGeometry(draw.geometry)->vertices){
+            // (the feathered ring reaches a little over the edge)
+            EXPECT_GE(vertex.position.x, 14.0f - 1.5f);
+            EXPECT_LE(vertex.position.x, 54.0f + 1.5f);
+            EXPECT_NEAR(vertex.tex_coord.x, (vertex.position.x - 14.0f) / 40.0f, 1e-4f);
+        }
+    }
+    EXPECT_EQ(recording.clipMaskRenders, 0);
+
+    // contain: a 40 x 20 picture across the curves of a 50% radius: a quad under a clip mask
+    ASSERT_NE(show("<img id='a' src='wide4x2.png' style='width: 40px; height: 40px; border-radius: 50%; object-fit: contain;'/>", kControls),
+              nullptr);
+    ASSERT_TRUE(pictureOf("a", vertices));
+    EXPECT_EQ(vertices, 4u);
+    EXPECT_EQ(recording.clipMaskSets, 1);
+
+    // none: a 4 x 2 picture in the middle, inside the curve: a quad, no mask
+    ASSERT_NE(show("<img id='a' src='wide4x2.png' style='width: 40px; height: 40px; border-radius: 8px; object-fit: none;'/>", kControls),
+              nullptr);
+    ASSERT_TRUE(pictureOf("a", vertices));
+    EXPECT_EQ(vertices, 4u);
+    EXPECT_EQ(recording.clipMaskRenders, 0);
+}
+
 // ---------------------------------------------------------------- label
 
 TEST_F(CompatElementTest, LabelsActivateTheirHtmlControl){
