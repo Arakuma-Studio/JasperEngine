@@ -32,6 +32,12 @@ additions only; append, don't reorder.
   agents build at once on a 12-core host.
 - Editor only (faster): `SKIP_ENGINE=1 JOBS=3 tools/build.sh linux`.
 - Web: `JOBS=3 tools/build.sh web`. Android: `JOBS=3 tools/build.sh android`.
+- CPU cap: `JOBS` also caps the CPUs the build/test container may use (`docker --cpus`;
+  `CPUS` overrides it), which is the only cap on what ignores `-j`: the Android gradle/ninja
+  build and the test binaries (llvmpipe threads). Always pass `JOBS` (the coordinator gives the
+  number), also to `android`, `htmlui-tests` and `run-rmlui-tests.sh`. For the MCP suite
+  (`tools/mcp/run-tests.sh`, which runs editors on the host) use `-j 1` or `-j 2` as told and set
+  `LP_NUM_THREADS=2` so llvmpipe does not start a thread per host core.
 - Vulkan on Linux: configure a second build with `GRAPHIC_BACKEND=vulkan` when your package
   touches rendering (see the phase spec for how).
 - Windows, macOS and iOS cannot be built on this host. Keep code portable (no POSIX-only
