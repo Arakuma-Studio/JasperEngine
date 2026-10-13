@@ -28,7 +28,7 @@ Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
 Most other components keep Unity's name plus "Component" (AudioSourceComponent,
-ParticleSystemComponent, LineRendererComponent, RectTransformComponent, Light2DComponent...).
+ParticleSystemComponent, Light2DComponent...).
 Build Settings = export; Scenes in Build = the scene list in project.yaml.
 
 ## Addressing
@@ -56,10 +56,9 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
    (undo_group: one undo step). Edit code with your own tools (see Code).
 3. Save the scenes you changed.
 4. Play the start scene; a C++ project builds first (seconds to minutes).
-5. Look: screenshot the Game view (and the Scene view for layout). Drive the game with
+5. Look: screenshot the Game view (the Scene view for layout). Drive the game with
    send_input / wait; query runtime state while playing (get_runtime_entity, eval_lua).
-6. Read the Console since your last cursor: compile errors, "Script crash in scene ..."
-   entries, Lua errors, missing assets.
+6. Read the Console since your last cursor: compile, script and Lua errors, missing assets.
 7. Stop, fix, repeat until the Console is clean and the screenshot shows what you intended.
    Never claim a script works without playing it and reading the Console.
 Long operations (play with a C++ build, export, build players) take wait/timeout_seconds;
@@ -92,8 +91,8 @@ A Lua script returns a module table; attach it to a GameObject through its Scrip
 self.scene is the Scene, self.entity the GameObject's numeric id (NOT an object: never call
 self.entity:...). Wrap it: GameObject(self.scene, self.entity), Sprite(...), Text(...),
 Rigidbody2D(...), AudioSource(...); a constructor given only self.scene CREATES a new
-GameObject. Declare the module `---@class Name : ScriptInstance` (Name = the file name, as the
-templates do): lua-language-server then types self and its properties and catches typos.
+GameObject. Declare the module `---@class Name : ScriptInstance` (Name = the file name): lua-language-server
+then types self and its properties and catches typos.
 
 ```lua
 ---@class Player : ScriptInstance
@@ -197,7 +196,7 @@ R"JE(
   actors, static for floors and level geometry, kinematic for scripted movers.
 - Collider sizes are local to the mesh and scaled by the GameObject's scale: never pre-divide
   or pre-multiply by scale. Do not guess sizes: omit them to fit the mesh bounds, or read the
-  measured mesh bounds. Growing a collider's height grows it both ways about its center.
+  measured mesh bounds.
 - Mass comes from collider volume/area x density (3D default 1000, water; 2D 1 per square
   meter), never set directly. Size forces as mass x acceleration; if movement needs huge
   forces, lower the density instead.
@@ -235,6 +234,9 @@ when nothing fits: fork_shader copies the built-in shader and sets customShader.
 before editing: keep its declarations, includes, varyings and output, change the math near the
 end of main(), parameters in its u_fs_customParams block (set_shader_uniform); rules and depth
 forks: jasper://docs/shaders. A failing shader draws as the built-in one (error in the Console).
+Post-processing (main camera only): apply_post_processing_preset, then set_scene_settings
+post_processing.<field>. Mobile: in-shader colour, render_scale, few passes
+(jasper://docs/post-processing).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
