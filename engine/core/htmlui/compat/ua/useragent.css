@@ -445,6 +445,7 @@ input[type="checkbox"], input[type="radio"] {
     --html-theme-fill: var(--html-control-bg, #ffffff);
     --html-theme-stroke: var(--html-control-border, #767676);
     --html-theme-mark: #00000000;
+    --html-theme-shade: none;
 }
 
 /* a checkbox's baseline is its border box's bottom edge (Chromium's themed control), not its
@@ -471,6 +472,26 @@ input[type="radio"]:checked {
     --html-theme-fill: var(--html-accent-contrast, #ffffff);
     --html-theme-stroke: var(--html-check-fill, var(--html-accent, #0075ff));
     --html-theme-mark: var(--html-check-fill, var(--html-accent, #0075ff));
+}
+
+/* hovered and pressed (Chromium): the unchecked frame darker (#4f4f4f) and lighter (#8d8d8d); a
+   checked control's accent colours shaded by HtmlInputElement (--html-theme-shade) */
+input[type="checkbox"]:enabled:hover, input[type="radio"]:enabled:hover {
+    --html-theme-stroke: #4f4f4f;
+    --html-theme-shade: hover;
+}
+
+input[type="checkbox"]:enabled:active, input[type="radio"]:enabled:active {
+    --html-theme-stroke: #8d8d8d;
+    --html-theme-shade: active;
+}
+
+input[type="checkbox"]:checked:enabled:hover, input[type="checkbox"]:checked:enabled:active {
+    --html-theme-stroke: #00000000;
+}
+
+input[type="radio"]:checked:enabled:hover, input[type="radio"]:checked:enabled:active {
+    --html-theme-stroke: var(--html-check-fill, var(--html-accent, #0075ff));
 }
 
 /* disabled: Chromium's light theme draws it gray and translucent, whatever the accent (measured

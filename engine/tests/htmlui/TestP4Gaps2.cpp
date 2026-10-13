@@ -257,8 +257,40 @@ TEST(AppearanceNone, ThemedCheckboxIsACenteredSquare){
     EXPECT_EQ(borderSize(page.byId("r")), Rml::Vector2f(20, 40));
     auto* radio = rmlui_dynamic_cast<htmlui::compat::HtmlInputElement*>(page.byId("r"));
     ASSERT_NE(radio, nullptr);
-    const std::string circle = radio->themeSvg(Rml::Vector2f(20, 40));
-    EXPECT_NE(circle.find("<circle cx=\"10\" cy=\"20\" r=\"9.5\" fill=\"#ffffff\" stroke=\"#767676\" stroke-width=\"1\"/>"), std::string::npos) << circle;
+    // (a radio is the fork's circle geometry: a 20px circle centered at (10, 20))
+    const Rml::Mesh circle = radio->themeRadioMesh(Rml::Vector2f(20, 40), 1.0f, 1.0f);
+    ASSERT_FALSE(circle.vertices.empty());
+    Rml::Vector2f low(1e9f, 1e9f), high(-1e9f, -1e9f);
+    for (const Rml::Vertex& vertex : circle.vertices){
+        low = Rml::Vector2f(std::min(low.x, vertex.position.x), std::min(low.y, vertex.position.y));
+        high = Rml::Vector2f(std::max(high.x, vertex.position.x), std::max(high.y, vertex.position.y));
+    }
+    EXPECT_NEAR((low.x + high.x) * 0.5f, 10.0f, 0.01f);
+    EXPECT_NEAR((low.y + high.y) * 0.5f, 20.0f, 0.01f);
+    EXPECT_NEAR(high.x - low.x, 20.0f, 2.0f);   // (with the feathered fringe: 0.85px each side)
+
+    // hovered and pressed (Chromium): a checked control's accent 11% darker and lighter in HSL
+    // lightness, the other way round for a light accent; the unchecked frame #4f4f4f and #8d8d8d
+    const auto near = [](Rml::Colourb a, Rml::Colourb b){
+        return std::abs(a.red - b.red) <= 1 && std::abs(a.green - b.green) <= 1 && std::abs(a.blue - b.blue) <= 1 && a.alpha == b.alpha;
+    };
+    checkbox->SetProperty("--html-theme-shade", "hover");
+    page.context->Update();
+    EXPECT_TRUE(near(input->themeColours().fill, Rml::Colourb(0x00, 0x5c, 0xc8, 255)));
+    checkbox->SetProperty("--html-theme-shade", "active");
+    page.context->Update();
+    EXPECT_TRUE(near(input->themeColours().fill, Rml::Colourb(0x37, 0x93, 0xff, 255)));
+    checkbox->SetProperty("--html-accent", "#f0c040");          // accent-color: #f0c040 (a dark mark)
+    checkbox->SetProperty("--html-accent-contrast", "#3b3b3b");
+    page.context->Update();
+    EXPECT_TRUE(near(input->themeColours().fill, Rml::Colourb(0xe6, 0xac, 0x12, 255)));
+    checkbox->RemoveProperty("--html-theme-shade");
+    checkbox->RemoveProperty("--html-accent");
+    checkbox->RemoveProperty("--html-accent-contrast");
+    page.byId("r")->SetPseudoClass("hover", true);
+    page.context->Update();
+    EXPECT_EQ(radio->themeColours().stroke, Rml::Colourb(0x4f, 0x4f, 0x4f, 255));
+    page.byId("r")->SetPseudoClass("hover", false);
 
     std::string text;
     ASSERT_TRUE(htmlui::compat::forms::themedComputedValue(checkbox, Rml::PropertyId::BorderTopWidth, text));

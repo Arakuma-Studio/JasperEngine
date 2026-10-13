@@ -274,7 +274,7 @@ the engine approximates (`color`, the date and time types, `file`). `appearance`
 element itself, not to the controls inside it. With its look a checkbox or radio is Chrome's:
 your `background`, `border`, `padding` and `border-radius` on it have no effect (style it with
 `appearance: none` instead), and in a box that is not 13x13 it is drawn as a square of the
-smaller side, centered. A button with `display: inline` is an inline-block, and a block-level
+smaller side, centered, darker when hovered and lighter when pressed. A button with `display: inline` is an inline-block, and a block-level
 button (`display: block`, `flex`, …) is as wide as its label unless you give it a width, as in
 Chrome (`margin: 0 auto` centers it). A button's content
 and a `<select>`'s or a text field's line are centered vertically in a taller box, and

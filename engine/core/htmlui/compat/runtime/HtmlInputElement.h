@@ -10,6 +10,7 @@
 #include <RmlUi/Core/ElementUtilities.h>
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>
 #include <RmlUi/Core/Geometry.h>
+#include <RmlUi/Core/Mesh.h>
 
 #include <memory>
 #include <string>
@@ -64,6 +65,13 @@ namespace jasperengine::htmlui::compat {
         // a themed checkbox or radio: Chromium's theme as an SVG drawing of `size` (its box), in
         // the colours of the user-agent sheet's --html-theme-fill, -stroke and -mark
         std::string themeSvg(Rml::Vector2f size);
+        // a themed radio: Chromium's theme as the fork's circle geometry (relative to the box)
+        Rml::Mesh themeRadioMesh(Rml::Vector2f size, float featherUnit, float opacity);
+        // the theme's colours for the control's state (hover and press shades included)
+        struct ThemeColours {
+            Rml::Colourb fill, stroke, mark;   // transparent: not drawn
+        };
+        ThemeColours themeColours();
 
     protected:
         void OnAttributeChange(const Rml::ElementAttributes& changed_attributes) override;
@@ -99,6 +107,8 @@ namespace jasperengine::htmlui::compat {
         std::string themeXml;
         Rml::ReplacedContentGeometry themeGeometry;
         Rml::Texture themeTexture;
+        Rml::Geometry themeMesh;              // a radio
+        std::string themeMeshKey;
 
         // type=image
         decorators::Image image;

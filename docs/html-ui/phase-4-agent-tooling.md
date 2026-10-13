@@ -2129,19 +2129,36 @@ the pinned headless shell with the references' fonts).
   black and white: `#f5f5f5ad`, `#bababaab`, checked `#c5c5c5c6` with a 60% white mark). The
   checkbox's pixels now match Chromium's at the default tolerances (fixture
   `paint/checkbox-theme-box`: boxes from 13x13 to 30x30, odd sizes, the author's background,
-  border, padding, radius, a content-box size, disabled, a light accent). Not verified at the
-  strict metric: radios. Their geometry is Chromium's (checked in the SVG, and the same SVG in
-  Chromium equals its native radio), but LunaSVG anti-aliases a thin circle differently from
-  Skia (the 1px ring and the dot's edge: 12 to 60 pixels over 24 levels in a 13 to 30px radio,
-  found with a host build of LunaSVG against Chromium's pixels; neither supersampling nor Skia's
-  conic flattening, emulated, closed it), so the fixture has no radio and the radio's geometry
-  is checked by `AppearanceNone.ThemedCheckboxIsACenteredSquare`. The check SVGs, `--html-check`
+  border, padding, radius, a content-box size, disabled, a light accent, and hovered and pressed:
+  G7). Radios are drawn with the fork's circle geometry (`MeshUtilities::GenerateBackgroundBorder`
+  of a `border-radius: 50%` box, its feathered edges, as P3-P1/P3-P2 draw borders; an SVG
+  rasterized by LunaSVG first), in the same colours: a ring and a dot of 60%. They do not reach
+  the strict metric, measured, so the fixture has none (nothing loosened): with Chromium's
+  geometry (a 1px ring inside the box, the dot 60%) 254 pixels of eight radios of 13 to 30px
+  (`paint/checkbox-theme-box` with a row of radios, 270x150) were off by more than 24 levels,
+  about 25 per radio, in 1-5 pixel clusters along the ring, against a limit of 40 for the whole
+  image; the closest variant (the ring 0.15px inside the box and 0.9px wide, the dot 0.2px
+  smaller; kept) 198; the LunaSVG drawing 207; eight variants measured. Chromium's native circles
+  are Skia's analytic coverage of a thin ring, every pixel of which is an edge pixel; the fork's
+  feathering fades an edge linearly over a pixel (the reason `paint/radius-percent-circle`, the
+  fork's filled `border-radius: 50%` circles, already needs a 0.31 % tolerance, not the default).
+  The radio's geometry and colours are checked by `AppearanceNone.ThemedCheckboxIsACenteredSquare`.
+  The check SVGs, `--html-check`
   and the other companions of the CSS-drawn theme are gone (CONTRACTS). Found on the way:
   radios without a name were one group (checking one unchecked the others; fork P4-G13); a
   themed progress bar's value now carries the track's half-alpha line, as in Chromium
   (`--html-progress-fill-line`).
-- **G7, the theme's hover look**: not changed. Chromium darkens a hovered themed checkbox's
-  frame; the engine draws it as at rest.
+- **G7, hovered and pressed themed checkboxes and radios** (measured in Chromium, default and
+  custom accents): unchecked, the 1px frame is `#4f4f4f` hovered and `#8d8d8d` pressed (the UA
+  sheet's `:enabled:hover`/`:active` rules); checked, the accent colours (a checkbox's fill, a
+  radio's ring and dot) have their HSL lightness 11% lower hovered and 11% higher pressed, the
+  other way round for a light accent (one with the dark mark): `#0075ff` gives `#005cc8` and
+  `#3793ff`, `#f0c040` gives `#f4d174` and `#e6ac12` (within one level of Chromium's for every
+  accent measured). The sheet names the state (`--html-theme-shade: hover|active`),
+  `HtmlInputElement::themeColours` shades the accent; disabled controls are not shaded. Fixture
+  `paint/checkbox-theme-box`'s captures `hover-checked`, `hover-unchecked`, `hover-light`,
+  `active-checked`, `active-unchecked` (all at the default tolerances); test
+  `AppearanceNone.ThemedCheckboxIsACenteredSquare`.
 - **G8, computed values as Chromium reports them**: `UIElement::getStyle` (Lua) and the
   inspector (`inspect_ui`, `assert_ui`) read the cascaded value; for what Chromium's theme
   adjusts they report its computed value (`forms::themedComputedValue`): a themed checkbox's or
