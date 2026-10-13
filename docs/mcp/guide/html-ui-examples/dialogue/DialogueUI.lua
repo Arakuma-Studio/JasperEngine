@@ -48,8 +48,9 @@ function DialogueUI:init()
         if event.key == " " then
             self:advance()
             event:preventDefault()
-        elseif tonumber(event.key) and self:typed() then
-            self:pick(tonumber(event.key))
+        else
+            local digit = tonumber(event.key)
+            if digit and self:typed() then self:pick(math.floor(digit)) end
         end
     end
 
@@ -134,13 +135,13 @@ function DialogueUI:render()
     if list.childElementCount == shownChoices then return end
     for _, child in ipairs(list.children) do child:remove() end
     for i = 1, shownChoices do
-        local button = doc:createElement("button")
+        local button = assert(doc:createElement("button"))
         button.className = "choice"
-        local key = doc:createElement("span")
+        local key = assert(doc:createElement("span"))
         key.className = "key"
         key.textContent = tostring(i)
         button:appendChild(key)
-        button:appendChild(doc:createTextNode(self.choices[i]))
+        button:appendChild(assert(doc:createTextNode(self.choices[i])))
         button:addEventListener("click", function(event)
             event:stopPropagation()   -- the box behind would complete the next line at once
             self:pick(i)

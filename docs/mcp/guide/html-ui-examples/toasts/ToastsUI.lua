@@ -49,11 +49,11 @@ function ToastsUI:show(text, kind, seconds)
     kind = ICONS[kind or "info"] and kind or "info"
     seconds = seconds or 3
 
-    local toast = self.doc:createElement("div")
+    local toast = assert(self.doc:createElement("div"))
     toast.className = "toast toast-" .. kind
     toast.innerHTML = '<i data-lucide="' .. ICONS[kind] .. '"></i><p class="message"></p><div class="toast-progress"></div>'
-    toast:querySelector(".message").textContent = text   -- text, never parsed as HTML
-    toast:querySelector(".toast-progress").style.animationDuration = seconds .. "s"
+    assert(toast:querySelector(".message")).textContent = text   -- text, never parsed as HTML
+    assert(toast:querySelector(".toast-progress")).style.animationDuration = seconds .. "s"
     byId(self.doc, "toasts"):appendChild(toast)
 
     anime.animate(toast, {

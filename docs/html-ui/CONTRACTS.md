@@ -49,7 +49,7 @@ Conventions that apply everywhere:
 | `TestSystem::setAssetPath(path)` (another asset root for a test; "" = the fixtures) | test API | P2 p2-ua (additive, harness of P0) | P2 golden pages, P3 fixtures | P2 §5.3 |
 | `tools/htmlui/run-rmlui-tests.sh [--docker] [--clean] [-- <doctest args>]` (host or the engine's Linux image, standalone fork tests; `RUN_BENCHMARKS=1`, `BENCHMARK_ARGS`, `RUN=0`, `RMLUI_UPSTREAM_DIR`, `RMLUI_FORK_DIR`, `RMLUI_TESTS_FREETYPE=source`; driver `tools/htmlui/rmlui-tests/`) | script | P3 p3-testkit | P3, P5 fork patches | P3 §5.1 |
 | `tools/htmlui/import-taffy-fixtures.py import\|known-failures\|classify` | script | P3 p3-testkit | P3 p3-layout, p3-grid, p3-text | P3 §5.3 |
-| `tools/mcp/pngdiff.py` | test lib | P4 p4-examples | P4, P5 | P4 §3.9 |
+| `tools/mcp/pngdiff.py`: `decode(png) -> (w, h, rgba)` (8-bit grey/RGB/RGBA, the five filters), `encode(img)` or `encode(w, h, rgba)`, `crop`, `downscale` (box filter, area-weighted at fractional ratios), `compare(a, b, channel_tolerance=24, max_fraction=0.01) -> (ok, fraction, diff_png)`, `flat(img, tolerance=2)`, `load(path)`; CLI `pngdiff.py a.png b.png [--size WxH] [--diff out.png]` | test lib | P4 p4-examples | P4, P5 | P4 §3.9, §4.3.1 |
 
 ## 2. Engine core
 
@@ -229,7 +229,8 @@ Conventions that apply everywhere:
 | CLI `check --ui` (+ hook: state `version: 2`, `ui_reported`), `ui-support` (JSON with phase-2 statuses; features `{kind, name, support, note, suggestion, code?, severity?, property?, element?}`, diagnostics `{code, name, severity, by_case, summary, help}`), `tools/mcp/gen_html_ui_support.py` (`--out`, `--json-out`, `--check`) → `docs/mcp/guide/html-ui-support.md` | CLI/tool | P4 p4-checks | P5 (matrix rows, `ui-effects` next to `ui-support`) | P4 §3.4, §4.2.1 |
 | `DocumentLoader::restyle(document, shared_ptr, options)`: a new compile replaces the binding's diagnostics (compile, font check, kept Lua script errors) | C++ (fix) | P4 p4-checks (in P2's file) | `getDiagnostics`, P4 pick-up | P4 §4.2.1 |
 | MCP `inspect_ui`, `assert_ui`, `create_ui_document`; `send_input {target}`; `import_files` fonts/icons/URLs/`from_document`; resources `jasper://examples/html-ui`; tool budget caps | MCP | P4 p4-mcp-tools | P5 (`effects` key, budget, `MODULES`) | P4 §3.6 |
-| Example library `docs/mcp/guide/html-ui-examples/`, `HtmlUiExamples` | data/editor | P4 p4-examples | — | P4 §3.7 |
+| Example library `docs/mcp/guide/html-ui-examples/` (`examples.json` `{version: 1, examples: [{name, title, example, description, demonstrates, html, css, lua, assets, viewports, checks}]}`, checks in `assert_ui`'s schema), `HtmlUiExamples` (`files`, `find(path)`, `manifest`, `names` (examples, then blank), `has`, `writeTo(dir, error)`, `instantiate(name, htmlRel, luaDirRel, Instance&, error)`, `pascalName`, `titleName`; the only includer of the generated `html_ui_examples.h`), the project copy `.jasperengine/engine-api/html-ui-examples/` (written by `Generator::writeEditorTooling`, in `.luarc.json` `workspace.ignoreDir`), goldens `engine/tests/htmlui/golden/examples/<name>.png` (1280x720) | data/editor | P4 p4-examples | P4 p4-mcp-tools (`create_ui_document`, resources), p4-guide | P4 §3.7, §4.3.1 |
+| Fixes found by the examples: fork P4-E1 (lists read from `var()`-resolved longhands held while used: background layers, transition and animation lists); `UIDocumentSystem` reloads restore no form value into a control with `data-value`/`data-checked`; `RmlRenderer::SaveLayerIntoTexture` takes document-px dimensions and offset and holds target pixels (a tiled box shadow on a scaled canvas) | C++ (fixes) | P4 p4-examples (in P1/P3 files) | — | P4 §4.3.1, FORK.md P4-E1 |
 
 ## 13. Effects (phase 5)
 

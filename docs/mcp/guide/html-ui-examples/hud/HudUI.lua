@@ -6,7 +6,6 @@
 --   HudUI:reload()    refills the magazine from the reserve
 -- Set the "demo" property to have it fire, reload and take damage by itself.
 ---@class HudUI : ScriptInstance
----@field demo boolean
 local HudUI = {
     properties = {
         { name = "demo", displayName = "Demo", type = "bool", default = false },

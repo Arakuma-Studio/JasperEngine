@@ -36,3 +36,4 @@ Icons of the HTML/CSS UI:
 | Data | Version | Location | License | Used for |
 |---|---|---|---|---|
 | [Lucide](https://github.com/lucide-icons/lucide) icons | 1.53.0 (`b56741cf30c0`) | `engine/libs/lucide/` (`lucide.pack`, `LICENSE`, `VERSION`) | ISC; the icons derived from [Feather](https://github.com/feathericons/feather) (listed in `LICENSE`) MIT | built-in `data-lucide` icons of HTML documents |
+| [Lucide](https://github.com/lucide-icons/lucide) icons | 1.53.0 | `docs/mcp/guide/html-ui-examples/{inventory,shop}/assets/items/*.svg` (`docs/mcp/guide/html-ui-examples/LICENSE-lucide.txt`) | ISC (as above) | the item pictures of the HTML UI example library (recoloured copies) |

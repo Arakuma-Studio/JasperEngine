@@ -39,6 +39,7 @@ function SettingsUI:init()
     self.doc = UIDocument(self.scene, self.entity)
 
     -- Data model first: the document reloads once to bind it
+    ---@type table<string, any>
     local values = { capturing = "", keys = {} }
     for name, value in pairs(DEFAULTS) do values[name] = value end
     for action, key in pairs(DEFAULT_KEYS) do values.keys[action] = key end

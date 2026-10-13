@@ -63,6 +63,9 @@ GOLDEN_SIZE = (1280, 720)
 COMPARE_SIZE = (640, 360)
 CHANNEL_TOLERANCE = 24
 MAX_FRACTION = 0.01
+# Two runs from fresh starts: the same image but for the antialiased edge pixels of rounded boxes
+# under blurred shadows, which vary by a few pixels between play sessions (at most 0.01%)
+RUNS_MAX_FRACTION = 0.0001
 
 # Per example: the public surface the spec (§3.7.2), the tests and the docs name
 SURFACE = {
@@ -82,6 +85,12 @@ SURFACE = {
     "loading": ["div.loading", "lottie#spinner", "#progress-track", "#progress-fill", "#percent", ".tip", "#press-key", ".loading-card"],
     "blank": ["main.screen", "h1"],
 }
+
+# Examples whose CSS animations run from the document's load (infinite keyframes) and that make
+# no data model (createDataModel reloads a document): play keeps the document the editor loaded,
+# so their phase at play start depends on the wall time spent in edit mode. The test reloads them
+# once play is held, which starts them on the fixed UI clock.
+RESTART_CSS = {"main_menu"}
 
 S: dict = {}   # per example: {"scene", "entity"}, and "editor" (the Editor the scenes were made in)
 
@@ -174,7 +183,7 @@ async def ensure_scene(ed: Editor, name: str) -> dict:
     if state and state.get("editor") is ed:
         return state
     entry = ENTRIES[name]
-    copy_example(ed.project, name, ed.project / PROJECT_COPY)
+    copy_example(ed.project, name, await wait_project_copy(ed, ed.project))
     await ed.call("sync_files")
     made = await ed.call("create_scene", name=f"UITest_{name}", type="2D")
     scene = made["scene"]["id"]
@@ -623,9 +632,12 @@ async def shop_after(ed: Editor, n: str) -> None:
     await click(ed, n, "#confirm-buy", frames_after=60)
     check("shop: bought axe x1" in await console_messages(ed), "the purchase logs")
     check(await lua(ed, f"return {doc_lua(n)}:getElementById('gold').textContent") == ["520"], "#gold counted down by the price")
-    await click(ed, n, "#chip-potions")
-    check(await lua(ed, f"local n = 0; for _, c in ipairs({doc_lua(n)}:querySelectorAll('.card')) do "
-                        f"if c.offsetHeight > 0 then n = n + 1 end end; return n") == [2], "the Potions chip shows two cards")
+    # (read through the computed display: a card data-if hides keeps its last offsetHeight in the engine)
+    await click(ed, n, "#chip-potions", frames_after=20)
+    shown = await lua(ed, f"local names = {{}}; for _, c in ipairs({doc_lua(n)}:querySelectorAll('.card')) do "
+                          f"if c.style.display ~= 'none' then names[#names + 1] = c:querySelector('.name').textContent end end; "
+                          f"return table.concat(names, ', ')")
+    check(shown == ["Health Potion, Golden Apple"], f"the Potions chip shows the potions: {shown}")
 
 
 async def toasts_before(ed: Editor, n: str, first: bool) -> None:
@@ -721,6 +733,8 @@ def _make_tests(name: str) -> None:
             for run in range(2):
                 cursor = await console_cursor(ed)
                 await ed.call("play", action="start", scene=state["scene"], fixed_fps=60, auto_pause=True)
+                if name in RESTART_CSS:
+                    await lua(ed, f"{doc_lua(name)}:reload()")
                 await ed.call("wait", frames=90)
                 await before(ed, name, run == 0)
                 captures.append(await capture(ed, f"{name}.play{run}"))
@@ -733,7 +747,7 @@ def _make_tests(name: str) -> None:
             await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
 
         first, second = captures
-        same, fraction, diff = pngdiff.compare(first, second, CHANNEL_TOLERANCE, 0.0)
+        same, fraction, diff = pngdiff.compare(first, second, CHANNEL_TOLERANCE, RUNS_MAX_FRACTION)
         if not same:
             (ed.scratch.root / f"{name}.runs.diff.png").write_bytes(diff or b"")
             ed.keep = True
@@ -767,6 +781,8 @@ def _make_tests(name: str) -> None:
         before, _ = STEPS[name]
         try:
             await ed.call("play", action="start", scene=state["scene"], fixed_fps=60, auto_pause=True)
+            if name in RESTART_CSS:
+                await lua(ed, f"{doc_lua(name)}:reload()")
             await ed.call("wait", frames=90)
             await before(ed, name, True)
             r = await ed.call("assert_ui", entity=name, checks=entry["checks"], viewports=entry["viewports"])

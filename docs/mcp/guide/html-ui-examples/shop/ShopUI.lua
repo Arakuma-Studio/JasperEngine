@@ -106,7 +106,7 @@ function ShopUI:confirm()
         value = self.gold,
         duration = 600,
         ease = "outQuad",
-        modifier = anime.utils.round(0),
+        modifier = function(value) return math.floor(value + 0.5) end,   -- whole coins
         onUpdate = function() self.model.gold = purse.value end,
     })
 end
