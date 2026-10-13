@@ -409,11 +409,11 @@ ResolvedUrl UrlResolver::resolve(std::string_view url, const std::string& fromFi
             if (!result.entry){
                 sink->report(codes::NotImported, ref,
                              "remote " + describe(resourceKind) + " '" + result.url + "' is not imported; " + fallbackOf(resourceKind),
-                             "import it: load the document in the editor (it imports remote resources), or run jasperengine-editor import-ui", {}, result.url);
+                             "import it: load the document in the editor (it imports remote resources), run jasperengine-editor import-ui, or MCP import_files from_document", {}, result.url);
             }else if (!result.exists){
                 sink->report(codes::ManifestFileMissing, ref,
                              "the import of '" + result.url + "' points to '" + result.assetPath + "', which does not exist",
-                             "re-import it: load the document in the editor (it imports remote resources), or run jasperengine-editor import-ui", {}, result.url);
+                             "re-import it: load the document in the editor (it imports remote resources), run jasperengine-editor import-ui, or MCP import_files from_document", {}, result.url);
             }
             break;
         case UrlKind::OtherScheme:

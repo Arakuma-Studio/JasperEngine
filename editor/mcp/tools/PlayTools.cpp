@@ -10,6 +10,7 @@
 //   list_runtime_entities / get_runtime_entity / set_runtime_property   live GameObjects
 //   send_input            keyboard / text / mouse / touch / gamepad sequences across frames
 #include "McpTools.h"
+#include "HtmlUiShared.h"
 #include "PlayViewCommon.h"
 
 #include "mcp/McpCall.h"
@@ -749,6 +750,7 @@ struct LuaSerializer {
     int maxDepth = 4;
     size_t maxItems = 200;
     size_t maxString = 4000;
+    bool iteratePairs = false;   // userdata with __pairs (data-model proxies) as tables
     std::unordered_set<const void*> visiting;
 
     std::string sceneNameOf(Scene* scene) const {
@@ -855,10 +857,75 @@ struct LuaSerializer {
             auto scene = luabridge::Stack<Scene*>::get(L, index);
             if (scene && *scene) return Json{{"type", "Scene"}, {"name", sceneNameOf(*scene)}};
         }
-        (void)depth;
+        if (iteratePairs && typeName.empty() && luaL_getmetafield(L, index, "__pairs") != LUA_TNIL) {
+            lua_pop(L, 1);
+            return pairsToJson(index, depth);
+        }
         std::string text = luaL_tolstring(L, index, nullptr);
         lua_pop(L, 1);
         return text;
+    }
+
+    // A userdata walked through its __pairs (next, state, control), as `pairs` does: an array when
+    // its keys are 1..n in order, else an object
+    Json pairsToJson(int index, int depth) {
+        const void* ptr = lua_topointer(L, index);
+        if (visiting.count(ptr)) return "<cycle>";
+        const int top = lua_gettop(L);
+        luaL_getmetafield(L, index, "__pairs");
+        lua_pushvalue(L, index);
+        if (lua_pcall(L, 1, 3, 0) != LUA_OK) {
+            lua_settop(L, top);
+            std::string text = luaL_tolstring(L, index, nullptr);
+            lua_pop(L, 1);
+            return text;
+        }
+        visiting.insert(ptr);
+        Json array = Json::array();
+        Json object = Json::object();
+        bool sequence = true;
+        size_t count = 0;
+        bool more = false;
+        while (true) {
+            lua_pushvalue(L, top + 1);
+            lua_pushvalue(L, top + 2);
+            lua_pushvalue(L, top + 3);
+            if (lua_pcall(L, 2, 2, 0) != LUA_OK || lua_isnil(L, -2)) {
+                lua_settop(L, top + 3);
+                break;
+            }
+            if (count >= maxItems) {
+                more = true;
+                lua_settop(L, top + 3);
+                break;
+            }
+            std::string key;
+            if (lua_type(L, -2) == LUA_TNUMBER && lua_isinteger(L, -2)) {
+                const lua_Integer k = lua_tointeger(L, -2);
+                if (k != static_cast<lua_Integer>(count) + 1) sequence = false;
+                key = std::to_string(k);
+            } else {
+                sequence = false;
+                lua_pushvalue(L, -2);
+                key = luaL_tolstring(L, -1, nullptr);
+                lua_pop(L, 2);
+            }
+            Json value = depth + 1 >= maxDepth && (lua_type(L, -1) == LUA_TTABLE || lua_type(L, -1) == LUA_TUSERDATA)
+                             ? Json("<nested>") : toJson(-1, depth + 1);
+            array.push_back(value);
+            object[key] = std::move(value);
+            count++;
+            lua_pop(L, 1);                 // the value: the key becomes the next control value
+            lua_replace(L, top + 3);
+        }
+        lua_settop(L, top);
+        visiting.erase(ptr);
+        Json out = sequence && count > 0 ? array : object;
+        if (more) {
+            if (out.is_array()) out.push_back("... more");
+            else out["..."] = "more";
+        }
+        return out;
     }
 
     Json tableToJson(int index, int depth) {
@@ -937,6 +1004,20 @@ struct LuaSerializer {
         return out;
     }
 };
+
+} // namespace
+
+namespace w3 {
+
+Json luaToJson(Project* project, lua_State* L, int index, int maxDepth, size_t maxItems) {
+    LuaSerializer serializer{L, project, maxDepth, maxItems};
+    serializer.iteratePairs = true;
+    return serializer.toJson(index, 0);
+}
+
+} // namespace w3
+
+namespace {
 
 LuaEvalContext* evalContext(lua_State* L) {
     return static_cast<LuaEvalContext*>(lua_touserdata(L, lua_upvalueindex(1)));
@@ -2123,6 +2204,7 @@ struct InputRun {
     bool finished = false;
     HeldInput heldBefore;           // what was held before the run (cutInputShort)
     std::shared_ptr<Advance> advance = std::make_shared<Advance>();
+    std::shared_ptr<Json> targets = std::make_shared<Json>(Json::array());   // resolved target / to_target points
 };
 
 // Coordinates (canvas / normalized / view) → view pixels; error when outside the game canvas
@@ -2200,9 +2282,58 @@ bool readPoint(const Json& event, const char* xKey, const char* yKey, const char
     return false;
 }
 
-// Turns one event into steps; false + error for a malformed event
+// A point of a mouse / touch event: x, y in the event's space, or `target`, the center of a UI
+// Document element (htmlui_mcp::elementCenter, canvas px) found when the step runs, so an element
+// an earlier event showed can be targeted
+struct EventPoint {
+    bool given = false;
+    double x = 0, y = 0;
+    std::string target;
+    Json document;   // the UI Document to search (null: every one, topmost first)
+};
+
+// {xKey, yKey} / arrayKey [x,y] / targetKey; false + error when the target is not a selector
+bool readEventPoint(const Json& event, const char* xKey, const char* yKey, const char* arrayKey, const char* targetKey,
+                    EventPoint& out, std::string& error) {
+    if (event.contains(targetKey) && !event[targetKey].is_null()) {
+        if (!event[targetKey].is_string() || event[targetKey].get<std::string>().empty()) {
+            error = std::string(targetKey) + " must be a CSS selector of a UI Document element";
+            return false;
+        }
+        out.target = event[targetKey].get<std::string>();
+        out.document = event.contains("document") ? event["document"] : Json();
+        out.given = true;
+        return true;
+    }
+    out.given = readPoint(event, xKey, yKey, arrayKey, out.x, out.y);
+    return true;
+}
+
+// The point in view pixels ("" or the error); a resolved target is reported in `targets`
+std::string resolveEventPoint(McpContext& ctx, const EventPoint& point, const std::string& space, size_t eventIndex,
+                              const std::shared_ptr<Json>& targets, Vector2& out) {
+    std::string error;
+    if (point.target.empty()) {
+        return toViewPoint(space, point.x, point.y, out, error) ? std::string() : error;
+    }
+    double x = 0, y = 0;
+    Json document;
+    if (!htmlui_mcp::elementCenter(ctx, point.document, point.target, x, y, error, &document) ||
+        !toViewPoint("canvas", x, y, out, error)) {
+        return "target \"" + point.target + "\": " + error;
+    }
+    if (targets) {
+        targets->push_back({{"event", eventIndex}, {"target", point.target},
+                            {"point", Json::array({std::round(x * 10.0) / 10.0, std::round(y * 10.0) / 10.0})},
+                            {"document", document}});
+    }
+    return std::string();
+}
+
+// Turns one event into steps; false + error for a malformed event. Resolved targets go to `targets`.
 bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defaultSpace, int gapFrames,
-                     std::vector<InputStep>& steps, std::string& error) {
+                     std::vector<InputStep>& steps, std::string& error, size_t eventIndex = 0,
+                     const std::shared_ptr<Json>& targets = nullptr) {
     if (!event.is_object()) {
         error = "each event must be an object with a type";
         return false;
@@ -2328,19 +2459,27 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
             error = "button must be left, right or middle";
             return false;
         }
-        double x = 0, y = 0;
-        const bool hasPoint = readPoint(event, "x", "y", "position", x, y);
+        EventPoint from, to;
+        if (!readEventPoint(event, "x", "y", "position", "target", from, error) ||
+            !readEventPoint(event, "to_x", "to_y", "to", "to_target", to, error)) {
+            return false;
+        }
+        const bool hasPoint = from.given;
         // down / up / click without a point: where the pointer is
         if (!hasPoint && (action == "move" || action == "drag")) {
-            error = "mouse " + action + " needs x and y (or position [x,y])";
+            error = "mouse " + action + " needs x and y (or position [x,y], or target)";
+            return false;
+        }
+        if (!to.target.empty() && action != "drag") {
+            error = "to_target is for mouse drag and touch swipe";
             return false;
         }
         // Simulate Touch: the left button is a finger, as in the editor
         const bool asTouch = touchMode && button == D_MOUSE_BUTTON_LEFT;
-        auto moveTo = [c, space, mods, asTouch](double px, double py) -> std::string {
-            Vector2 p;
-            std::string err;
-            if (!toViewPoint(space, px, py, p, err)) return err;
+        auto resolve = [c, space, eventIndex, targets](const EventPoint& point, Vector2& out) {
+            return resolveEventPoint(*c, point, space, eventIndex, targets, out);
+        };
+        auto moveTo = [c, mods, asTouch](Vector2 p) -> std::string {
             markPointerInjected(*c);
             HeldInput& held = state().held;
             if (asTouch) {
@@ -2355,10 +2494,8 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
             held.mousePosKnown = true;
             return std::string();
         };
-        auto pressAt = [c, space, mods, button, asTouch, hasPoint](double px, double py) -> std::string {
-            Vector2 p = currentPointerView();
-            std::string err;
-            if (hasPoint && !toViewPoint(space, px, py, p, err)) return err;
+        auto pressAt = [c, mods, button, asTouch](bool known, Vector2 p) -> std::string {
+            if (!known) p = currentPointerView();
             markPointerInjected(*c);
             HeldInput& held = state().held;
             if (asTouch) {
@@ -2373,13 +2510,9 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
             held.mousePosKnown = true;
             return std::string();
         };
-        auto releaseAt = [c, space, mods, button, asTouch, hasPoint](double px, double py) -> std::string {
+        auto releaseAt = [c, mods, button, asTouch](bool known, Vector2 p) -> std::string {
             HeldInput& held = state().held;
-            Vector2 p = currentPointerView();
-            if (hasPoint) {
-                std::string err;
-                if (!toViewPoint(space, px, py, p, err)) return err;
-            }
+            if (!known) p = currentPointerView();
             markPointerInjected(*c);
             if (asTouch) {
                 Engine::systemTouchEnd(0, p.x, p.y);
@@ -2392,44 +2525,69 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
             held.mousePosKnown = true;
             return std::string();
         };
+        // a point resolved once per event: a click's down and up happen at the same place
+        auto at = std::make_shared<Vector2>();
 
         if (action == "move") {
-            add([moveTo, x, y]() { return moveTo(x, y); }, gapFrames, 0, "mouse move");
-        } else if (action == "down") {
-            add([pressAt, x, y]() { return pressAt(x, y); }, gapFrames, 0, "mouse down");
-        } else if (action == "up") {
-            add([releaseAt, x, y]() { return releaseAt(x, y); }, gapFrames, 0, "mouse up");
+            add([resolve, moveTo, from]() {
+                Vector2 p;
+                const std::string err = resolve(from, p);
+                return err.empty() ? moveTo(p) : err;
+            }, gapFrames, 0, "mouse move");
+        } else if (action == "down" || action == "up") {
+            const bool down = action == "down";
+            add([resolve, pressAt, releaseAt, from, hasPoint, down]() {
+                Vector2 p;
+                if (hasPoint) {
+                    const std::string err = resolve(from, p);
+                    if (!err.empty()) return err;
+                }
+                return down ? pressAt(hasPoint, p) : releaseAt(hasPoint, p);
+            }, gapFrames, 0, down ? "mouse down" : "mouse up");
         } else if (action == "click" || action == "double_click") {
             const int clicks = action == "double_click" ? 2 : 1;
             for (int i = 0; i < clicks; i++) {
-                add([pressAt, x, y]() { return pressAt(x, y); }, holdFrames, holdMs, "mouse down");
-                add([releaseAt, x, y]() { return releaseAt(x, y); }, gapFrames, 0, "mouse up");
+                add([resolve, pressAt, from, hasPoint, at, i]() {
+                    if (hasPoint && i == 0) {
+                        const std::string err = resolve(from, *at);
+                        if (!err.empty()) return err;
+                    }
+                    return pressAt(hasPoint, *at);
+                }, holdFrames, holdMs, "mouse down");
+                add([releaseAt, hasPoint, at]() { return releaseAt(hasPoint, *at); }, gapFrames, 0, "mouse up");
             }
         } else if (action == "drag") {
-            double tx = 0, ty = 0;
-            if (!readPoint(event, "to_x", "to_y", "to", tx, ty)) {
-                error = "mouse drag needs to: [x,y] (or to_x, to_y)";
+            if (!to.given) {
+                error = "mouse drag needs to: [x,y] (or to_x, to_y, or to_target)";
                 return false;
             }
             const int stepsCount = std::clamp(event.value("steps", 10), 1, 1000);
-            add([pressAt, x, y]() { return pressAt(x, y); }, 1, 0, "drag start");
+            // both ends are resolved when the drag starts (before it moves anything)
+            auto path = std::make_shared<std::pair<Vector2, Vector2>>();
+            add([resolve, pressAt, from, to, path]() {
+                std::string err = resolve(from, path->first);
+                if (err.empty()) err = resolve(to, path->second);
+                return err.empty() ? pressAt(true, path->first) : err;
+            }, 1, 0, "drag start");
             for (int i = 1; i <= stepsCount; i++) {
-                const double t = double(i) / stepsCount;
-                const double px = x + (tx - x) * t;
-                const double py = y + (ty - y) * t;
-                add([moveTo, px, py]() { return moveTo(px, py); }, 1, 0, "drag move");
+                const float t = float(i) / stepsCount;
+                add([moveTo, path, t]() {
+                    const Vector2 a = path->first, b = path->second;
+                    return moveTo(Vector2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t));
+                }, 1, 0, "drag move");
             }
-            add([releaseAt, tx, ty]() { return releaseAt(tx, ty); }, gapFrames, 0, "drag end");
+            add([releaseAt, path]() { return releaseAt(true, path->second); }, gapFrames, 0, "drag end");
         } else if (action == "scroll") {
             const float dx = event.value("dx", 0.0f);
             const float dy = event.value("dy", event.value("amount", 1.0f));
-            add([c, hasPoint, moveTo, x, y, dx, dy, mods]() {
+            add([resolve, hasPoint, moveTo, from, dx, dy, mods]() {
                 if (hasPoint) {
-                    std::string err = moveTo(x, y);
+                    Vector2 p;
+                    std::string err = resolve(from, p);
+                    if (err.empty()) err = moveTo(p);
                     if (!err.empty()) return err;
                 }
                 Engine::systemMouseScroll(dx, dy, mods);
-                (void)c;
                 return std::string();
             }, gapFrames, 0, "scroll");
         } else {
@@ -2442,69 +2600,93 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
     if (type == "touch") {
         const std::string action = lowerCopy(event.value("action", "tap"));
         const int pointer = std::clamp(event.value("pointer", 0), 0, 9);
-        double x = 0, y = 0;
-        const bool hasPoint = readPoint(event, "x", "y", "position", x, y);
-        if (!hasPoint && action != "end" && action != "cancel") {
-            error = "touch " + action + " needs x and y";
+        EventPoint from, to;
+        if (!readEventPoint(event, "x", "y", "position", "target", from, error) ||
+            !readEventPoint(event, "to_x", "to_y", "to", "to_target", to, error)) {
             return false;
         }
-        auto start = [c, space, pointer](double px, double py) -> std::string {
-            Vector2 p;
-            std::string err;
-            if (!toViewPoint(space, px, py, p, err)) return err;
+        const bool hasPoint = from.given;
+        if (!hasPoint && action != "end" && action != "cancel") {
+            error = "touch " + action + " needs x and y (or target)";
+            return false;
+        }
+        if (!to.target.empty() && action != "swipe") {
+            error = "to_target is for mouse drag and touch swipe";
+            return false;
+        }
+        auto resolve = [c, space, eventIndex, targets](const EventPoint& point, Vector2& out) {
+            return resolveEventPoint(*c, point, space, eventIndex, targets, out);
+        };
+        auto start = [c, pointer](Vector2 p) -> std::string {
             markPointerInjected(*c);
             Engine::systemTouchStart(pointer, p.x, p.y);
             state().held.touches[pointer] = p;
             return std::string();
         };
-        auto move = [c, space, pointer](double px, double py) -> std::string {
-            Vector2 p;
-            std::string err;
-            if (!toViewPoint(space, px, py, p, err)) return err;
+        auto move = [c, pointer](Vector2 p) -> std::string {
             markPointerInjected(*c);
             Engine::systemTouchMove(pointer, p.x, p.y);
             state().held.touches[pointer] = p;
             return std::string();
         };
-        auto end = [c, space, pointer, hasPoint](double px, double py) -> std::string {
+        auto end = [c, pointer](bool known, Vector2 p) -> std::string {
             HeldInput& held = state().held;
-            Vector2 p = held.touches.count(pointer) ? held.touches[pointer] : held.mousePos;
-            if (hasPoint) {
-                std::string err;
-                if (!toViewPoint(space, px, py, p, err)) return err;
-            }
+            if (!known) p = held.touches.count(pointer) ? held.touches[pointer] : held.mousePos;
             markPointerInjected(*c);
             Engine::systemTouchEnd(pointer, p.x, p.y);
             held.touches.erase(pointer);
             return std::string();
         };
-        if (action == "start") add([start, x, y]() { return start(x, y); }, gapFrames, 0, "touch start");
-        else if (action == "move") add([move, x, y]() { return move(x, y); }, gapFrames, 0, "touch move");
-        else if (action == "end") add([end, x, y]() { return end(x, y); }, gapFrames, 0, "touch end");
-        else if (action == "cancel") {
+        auto at = std::make_shared<Vector2>();
+        if (action == "start" || action == "move") {
+            const bool begin = action == "start";
+            add([resolve, start, move, from, begin]() {
+                Vector2 p;
+                const std::string err = resolve(from, p);
+                if (!err.empty()) return err;
+                return begin ? start(p) : move(p);
+            }, gapFrames, 0, begin ? "touch start" : "touch move");
+        } else if (action == "end") {
+            add([resolve, end, from, hasPoint]() {
+                Vector2 p;
+                if (hasPoint) {
+                    const std::string err = resolve(from, p);
+                    if (!err.empty()) return err;
+                }
+                return end(hasPoint, p);
+            }, gapFrames, 0, "touch end");
+        } else if (action == "cancel") {
             add([pointer]() {
                 Engine::systemTouchCancel(pointer);
                 state().held.touches.erase(pointer);
                 return std::string();
             }, gapFrames, 0, "touch cancel");
         } else if (action == "tap") {
-            add([start, x, y]() { return start(x, y); }, holdFrames, holdMs, "touch start");
-            add([end, x, y]() { return end(x, y); }, gapFrames, 0, "touch end");
+            add([resolve, start, from, at]() {
+                const std::string err = resolve(from, *at);
+                return err.empty() ? start(*at) : err;
+            }, holdFrames, holdMs, "touch start");
+            add([end, at]() { return end(true, *at); }, gapFrames, 0, "touch end");
         } else if (action == "swipe") {
-            double tx = 0, ty = 0;
-            if (!readPoint(event, "to_x", "to_y", "to", tx, ty)) {
-                error = "touch swipe needs to: [x,y]";
+            if (!to.given) {
+                error = "touch swipe needs to: [x,y] (or to_target)";
                 return false;
             }
             const int stepsCount = std::clamp(event.value("steps", 10), 1, 1000);
-            add([start, x, y]() { return start(x, y); }, 1, 0, "swipe start");
+            auto path = std::make_shared<std::pair<Vector2, Vector2>>();
+            add([resolve, start, from, to, path]() {
+                std::string err = resolve(from, path->first);
+                if (err.empty()) err = resolve(to, path->second);
+                return err.empty() ? start(path->first) : err;
+            }, 1, 0, "swipe start");
             for (int i = 1; i <= stepsCount; i++) {
-                const double t = double(i) / stepsCount;
-                const double px = x + (tx - x) * t;
-                const double py = y + (ty - y) * t;
-                add([move, px, py]() { return move(px, py); }, 1, 0, "swipe move");
+                const float t = float(i) / stepsCount;
+                add([move, path, t]() {
+                    const Vector2 a = path->first, b = path->second;
+                    return move(Vector2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t));
+                }, 1, 0, "swipe move");
             }
-            add([end, tx, ty]() { return end(tx, ty); }, gapFrames, 0, "swipe end");
+            add([end, path]() { return end(true, path->second); }, gapFrames, 0, "swipe end");
         } else {
             error = "touch action must be tap, start, move, end, cancel or swipe";
             return false;
@@ -2699,7 +2881,7 @@ std::shared_ptr<InputRun> buildInputRun(const CallPtr& call, const Json& events,
     run->heldBefore = state().held;
     for (size_t i = 0; i < events.size(); i++) {
         std::string error;
-        if (!buildEventSteps(ctx, events[i], space, gap, run->steps, error)) {
+        if (!buildEventSteps(ctx, events[i], space, gap, run->steps, error, i, run->targets)) {
             call->fail(argName + "[" + std::to_string(i) + "]: " + error + ".");
             return nullptr;
         }
@@ -2723,6 +2905,7 @@ void finishInputRun(const std::shared_ptr<InputRun>& run) {
     data["held_input"] = heldInputJson();
     data["console"] = console.entries;
     data["next_cursor"] = console.nextCursor;
+    if (!run->targets->empty()) data["targets"] = *run->targets;
 
     const bool ended = ctx.project()->getPlaySessionSceneId() != run->playId;
     std::string text;
@@ -2738,6 +2921,10 @@ void finishInputRun(const std::shared_ptr<InputRun>& run) {
         if (Engine::isSimulationHeld()) text += " Held again (auto_pause).";
     }
     if (!state().held.empty()) text += " Still held: " + heldInputJson().dump() + " (released at stop or with release_all).";
+    for (const Json& target : *run->targets) {
+        text += "\nTarget \"" + target["target"].get<std::string>() + "\" (event " + target["event"].dump() + ") at canvas " +
+                target["point"].dump() + " in " + target["document"].value("html", std::string("?")) + ".";
+    }
     if (!console.entries.empty()) text += "\nConsole:\n" + w3::formatConsoleText(console.entries, 4000);
     replyWithOptionalScreenshot(call, isError ? ToolResult::error(text, data) : ToolResult::success(text, data));
 }
@@ -3206,6 +3393,9 @@ void registerPlayTools(McpRegistry& registry) {
 
     {
         ToolDef tool;
+        // free-form events; the UI Document keys are declared so clients see their names
+        Json eventItem = anyObject("");
+        eventItem["properties"] = {{"target", string("")}, {"to_target", string("")}, {"document", entityRef()}};
         tool.name = "send_input";
         tool.title = "Send Input";
         tool.description =
@@ -3215,14 +3405,15 @@ void registerPlayTools(McpRegistry& registry) {
             "ime: text, cursor (code points; -1 selects) = composition; ime_commit: text; ime_cancel\n"
             "mouse_leave, mouse_enter: the pointer leaves/enters the game\nmouse: action "
             "click|double_click|down|up|move|drag|scroll, x, y (click/down/up: default the pointer's position), "
-            "button left|right|middle, to [x,y] + steps (drag), dx, dy\ntouch: action tap|start|move|end|cancel|swipe, pointer, x, y, to\ngamepad: "
+            "button left|right|middle, to [x,y] + steps (drag), dx, dy\ntouch: action tap|start|move|end|cancel|swipe, pointer, x, y, to\n"
+            "mouse/touch: target / to_target = CSS selector of a UI Document element (its center; document: which)\ngamepad: "
             "gamepad (0), button (a, b, start, dpad_up...) + action, or axis (left_x..right_trigger) + value "
             "-1..1\nwait: frames, ms. release_all.\nspace: canvas = canvas pixels from top-left "
             "(Input.getMousePosition); normalized = 0..1; view = Game view pixels. down holds until "
             "up/release_all/stop. Returns frames, console lines, play state. auto_pause: runs only for the "
             "events + frames_after.";
         tool.inputSchema = object({
-            {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", anyObject("")}}},
+            {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", eventItem}}},
             {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},
             {"gap_frames", withDefault(integer("Between events.", 0, 1000), 1)},
             {"frames_after", withDefault(integer("Run before replying.", 0, 100000), 1)},

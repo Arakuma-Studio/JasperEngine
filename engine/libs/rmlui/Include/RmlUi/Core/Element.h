@@ -609,6 +609,10 @@ public:
 	Element* GetClosestScrollableContainer();
 	/// Returns the element's transform state.
 	const TransformState* GetTransformState() const noexcept;
+	/// Recomputes the transform state (CSS transforms and perspective) of this element and its descendants from
+	/// the current layout, as rendering does for each element it draws. For tools that read transformed boxes
+	/// between a layout and the next render (fork, phase 4: P4-6).
+	void UpdateTransformStates();
 	/// Returns the data model of this element.
 	DataModel* GetDataModel() const;
 	//@}

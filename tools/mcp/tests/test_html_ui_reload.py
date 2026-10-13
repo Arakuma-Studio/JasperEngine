@@ -219,8 +219,8 @@ async def test_no_errors(ed: Editor):
 # stamps), and reports `ui_reloaded`, `ui_current` and the diagnostics as `problems`.
 #
 # The reloads are counted from the Console lines both reloaders write ("[HTML UI] Restyled
-# ui/pick/panel.html in scene ..."): one line per reload of a document, whoever does it. WAVE-2:
-# p4-mcp-tools also checks inspect_ui's document.load_count where load_count() returns a number.
+# ui/pick/panel.html in scene ..."): one line per reload of a document, whoever does it, and
+# through inspect_ui's document.load_count (p4-mcp-tools).
 # =============================================================================================
 
 P = {}   # phase-4 state: scene id, entity ids
@@ -364,10 +364,8 @@ class Reloads:
 RELOADS = Reloads()
 
 
-async def load_count(ed: Editor, entity: str) -> int | None:
-    """inspect_ui's document.load_count, when the tool exists (WAVE-2: p4-mcp-tools)."""
-    if not ed.has_tool("inspect_ui"):
-        return None
+async def load_count(ed: Editor, entity: str) -> int:
+    """inspect_ui's document.load_count."""
     r = await ed.call("inspect_ui", scene=P["scene"], entity=entity, depth=0, limit=1)
     return r["document"]["load_count"]
 
@@ -463,8 +461,7 @@ async def test_css_edit_reloads_before_call(ed: Editor):
     ed.check_eq((item["stylesheet_only"], item["scene"], item["entity"]["name"]), (True, P["scene"], "Panel"), f"{item}")
     ed.check(f'Reloaded UI: {PANEL} in "Panel" (styles only)' in r.text, f"the text line: {r.text[-400:]}")
     ed.check_eq(await RELOADS.of(ed, "ui/pick/panel.html"), before + attempt + 1, "one reload per edit")
-    if count_before is not None:
-        ed.check_eq(await load_count(ed, "Panel"), count_before + attempt + 1, "load_count")
+    ed.check_eq(await load_count(ed, "Panel"), count_before + attempt + 1, "load_count")
     P["last_color"] = color
 
 
@@ -475,8 +472,7 @@ async def test_no_double_reload_autosync_first(ed: Editor):
     r = await status(ed)
     ed.check(ext_of(r) is None, f"nothing new: {ext_of(r)}")
     ed.check_eq(await RELOADS.of(ed, "ui/pick/panel.html"), before, "the poller did not reload it again")
-    if count_before is not None:
-        ed.check_eq(await load_count(ed, "Panel"), count_before, "load_count unchanged")
+    ed.check_eq(await load_count(ed, "Panel"), count_before, "load_count unchanged")
 
 
 async def test_no_double_reload_poller_first(ed: Editor):
@@ -492,8 +488,7 @@ async def test_no_double_reload_poller_first(ed: Editor):
     ed.check("1 document(s) were already current" in r.text, f"the text says so: {r.text[-300:]}")
     ed.check_eq(rgb(value), (0, 0, 255), f"the new color: {value}")
     ed.check_eq(await RELOADS.of(ed, "ui/pick/panel.html"), before + 1, "reloaded once in total")
-    if count_before is not None:
-        ed.check_eq(await load_count(ed, "Panel"), count_before + 1, "load_count +1 in total")
+    ed.check_eq(await load_count(ed, "Panel"), count_before + 1, "load_count +1 in total")
 
 
 BROKEN_PANEL = """<html>
@@ -613,8 +608,7 @@ async def test_mcp_write_not_external(ed: Editor):
     ed.check_eq(rgb(value), (255, 0, 255), f"reloaded by write_file: {value}")
     await asyncio.sleep(0.6)
     ed.check_eq(await RELOADS.of(ed, "ui/pick/panel.html"), before + 1, "reloaded once")
-    if count_before is not None:
-        ed.check_eq(await load_count(ed, "Panel"), count_before + 1, "load_count +1")
+    ed.check_eq(await load_count(ed, "Panel"), count_before + 1, "load_count +1")
 
 
 async def test_image_dependency_reload(ed: Editor):

@@ -189,17 +189,12 @@ R"JE(
   their target by default (useTarget): the GameObject's rotation is ignored until you call
   disableTarget(). Orbit: position = target + (cos(pitch)sin(yaw), sin(pitch),
   cos(pitch)cos(yaw)) * distance, then setTarget(target).
-- UI (text, image, button, panel, scrollbar, progressbar, input field, layout group):
-  create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes and UI
-  scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a UI
-  camera: put HUDs and menus in a UI scene attached as a child scene (set_child_scene).
-- HTML/CSS UI: a uidocument component (filename = an .html under assets; create_entity
-  type=ui_document) draws that document over its scene, in front of the component UI. Write
-  standard HTML5 and CSS as for a browser, with <script type="text/lua"> instead of JavaScript.
-  Saved .html/.css changes reload by themselves (edit and play mode); after each save read the
-  Console: every difference from a browser is a line "[HTML UI] file:line:col: severity:
-  message (fix: ...) [HTMLUI-CSS-0004]" and each load ends with "<file>: 0 errors, ...".
-  jasper://docs/html-ui lists what is rewritten and what is not supported yet.
+- UI, two systems. Component UI (text, image, button, panel, scrollbar, progressbar, input
+  field, layout group): create_ui lays out in pixels with y DOWN from the parent's top-left, in
+  2D scenes and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer
+  input needs a UI camera: put HUDs and menus in a UI scene attached as a child scene
+  (set_child_scene). HTML/CSS UI (pages drawn over the scene, in front of the component UI):
+  the section "HTML/CSS UI" below.
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
@@ -251,6 +246,29 @@ Scenes in Build order and the start scene live in project.yaml (project tools). 
 long job (wait/timeout_seconds, get_job). The 2D/3D physics switches only strip backends from
 the export; guard code with JASPERENGINE_PHYSICS_2D / JASPERENGINE_PHYSICS_3D if needed.
 Before exporting: every scene saved, Console clean in play, the start scene correct.
+)JE"
+R"JE(
+## HTML/CSS UI
+Menus, HUDs and dialogs: write standard HTML + CSS; logic is Lua (no JavaScript, no browser).
+create_ui_document makes a GameObject whose UI Document loads assets/ui/<name>.html (template:
+blank, or an example such as main_menu, hud, inventory, settings, shop) and writes its .css and
+Lua. Edit the files with your own tools: before your next call the documents reload (also while
+playing) and external_changes lists what the engine drops or rewrites, with file:line:col, code
+and a fix: fix those first. inspect_ui: element tree (ref = reusable selector, box in canvas px =
+send_input coords, overflow/clipped/hidden flags), computed styles with the rule that set them,
+hit test (at), data models. assert_ui: checks such as text_fits, no_overlap, within_parent,
+within_viewport, visible, contrast, min_size, optionally at other viewports, with an outlined
+image of failures. While playing, send_input mouse/touch events take target: "<selector>".
+Remote fonts, icons, Lottie and images: import_files (fonts, icons, from_document). Edit mode has
+no Lua, so dynamic content appears only in play. Reference: jasper://docs/html-ui (Lua API,
+data binding, anime animations), jasper://docs/html-ui-support (what CSS works),
+examples in .jasperengine/engine-api/html-ui-examples/.
+The UI tools share these rules: entity is the GameObject with the UI Document (omitted: the
+scene's only one, else the only one of the open scenes, or of the running ones in play); a
+ref works as a selector again; boxes are [x, y, width, height] in canvas px (CSS px), origin top
+left; they wait up to 5 s for a document to load and report why one did not. The Console shows
+the same diagnostics at every load ("[HTML UI] file:line:col: severity: message (fix: ...)
+[HTMLUI-CSS-0004]"); jasperengine-editor check --ui gives them without the editor.
 
 ## Pitfalls
 - Unsaved scenes are lost when the editor closes; save after each working step.

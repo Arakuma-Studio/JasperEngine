@@ -167,7 +167,7 @@ TEST(CompatUrl, RemoteThroughTheManifest){
     ASSERT_EQ(sink.size(), 1u);
     EXPECT_EQ(sink.diagnostics()[0].code, codes::NotImported);
     EXPECT_EQ(sink.diagnostics()[0].severity, Severity::Error);
-    EXPECT_EQ(sink.diagnostics()[0].suggestion, "import it: load the document in the editor (it imports remote resources), or run jasperengine-editor import-ui");
+    EXPECT_EQ(sink.diagnostics()[0].suggestion, "import it: load the document in the editor (it imports remote resources), run jasperengine-editor import-ui, or MCP import_files from_document");
     EXPECT_NE(sink.diagnostics()[0].message.find("fonts fall back"), std::string::npos);
 
     // an entry whose file is gone

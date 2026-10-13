@@ -11,8 +11,8 @@ Snippet convention (the guide's, so it cannot rot): every ```html / ```css / ```
 good example; a block preceded by a line "`<project path>`:" is a complete file written at that
 path, the others are fragments. Bad examples live in tables, never in those fences.
 
-Wave-2 tool checks (create_ui_document, inspect_ui, assert_ui names) are guarded by
-ed.require_tools: WAVE-2 marks each place p4-mcp-tools turns into a real check.
+The tool names the guide uses (create_ui_document, inspect_ui, assert_ui, their parameters) are
+checked against tools/list (p4-mcp-tools).
 """
 
 from __future__ import annotations
@@ -207,17 +207,8 @@ def prelude(entity: str) -> str:
     return f"local self = {{ scene = getScene('{S['scene_name']}'), entity = entity('{entity}') }}\n"
 
 
-async def center(ed: Editor, entity: str, selector: str) -> tuple[float, float]:
-    values = await lua(ed, f"""
-        local r = assert(object('{entity}', 'UIDocument'):querySelector('{selector}'), 'no {selector}'):getBoundingClientRect()
-        return r.x + r.width / 2, r.y + r.height / 2""")
-    return values[0], values[1]
-
-
 async def click(ed: Editor, entity: str, selector: str) -> None:
-    # WAVE-2: send_input {target: selector} once p4-mcp-tools has it; canvas coordinates work today
-    x, y = await center(ed, entity, selector)
-    await ed.call("send_input", events=[{"type": "mouse", "action": "click", "x": x, "y": y}], space="canvas",
+    await ed.call("send_input", events=[{"type": "mouse", "action": "click", "target": selector, "document": entity}],
                   frames_after=3)
 
 
@@ -337,8 +328,16 @@ async def test_guide_served(ed: Editor):
 def backticked_words(text: str) -> set[str]:
     words = set()
     for span in re.findall(r"`([^`\n]+)`", text):
-        words.update(re.findall(r"(?<![\w./-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(]|\.\w)", span))
+        # (a path segment such as `src="menu_assets/logo.svg"` is no name)
+        words.update(re.findall(r"(?<![\w./-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(/]|\.\w)", span))
     return words
+
+
+# send_input's events are free-form objects (spec §3.6.4): their vocabulary is in its description and
+# in PlayTools.cpp, not in its schema (event types, gamepad buttons and axes the guide names)
+SEND_INPUT_EVENT_WORDS = {"mouse_leave", "mouse_enter", "ime_commit", "ime_cancel", "release_all", "left_bumper", "right_bumper",
+                          "left_thumb", "right_thumb", "dpad_up", "dpad_right", "dpad_down", "dpad_left", "left_x", "left_y",
+                          "right_x", "right_y", "left_trigger", "right_trigger"}
 
 
 def lua_call_names(text: str) -> set[tuple[str, str]]:
@@ -371,9 +370,8 @@ async def test_guide_lua_names_in_stubs(ed: Editor):
 
 
 async def test_guide_names_exist(ed: Editor):
-    # WAVE-2: the guide names the phase-4 tools (create_ui_document, inspect_ui, assert_ui) and
-    # parameters p4-mcp-tools adds (send_input target, import_files fonts/icons/from_document)
-    ed.require_tools("create_ui_document", "inspect_ui", "assert_ui")
+    # the guide names the phase-4 tools (create_ui_document, inspect_ui, assert_ui) and the parameters
+    # p4-mcp-tools adds (send_input target, import_files fonts/icons/from_document)
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from test_autosync import schema_words  # noqa: E402
     words: set = set()
@@ -397,7 +395,7 @@ async def test_guide_names_exist(ed: Editor):
     outputs = {"external_changes", "ui_reloaded", "stylesheet_only", "render_target", "load_count", "sort_order",
                "fit_width", "fit_height", "zero_size"}
     unknown = sorted(w for w in backticked_words(guide_text())
-                     if w not in ed.tool_names and w not in words and w not in outputs)
+                     if w not in ed.tool_names and w not in words and w not in outputs and w not in SEND_INPUT_EVENT_WORDS)
     ed.check(not unknown, f"the guide names unknown tools/parameters: {unknown}")
     for tool, params in {"create_ui_document": ["html", "template"], "inspect_ui": ["selector", "at", "viewport", "models", "file"],
                          "assert_ui": ["checks", "viewports"], "import_files": ["fonts", "icons", "from_document"],
