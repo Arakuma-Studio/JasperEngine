@@ -49,6 +49,8 @@ public:
 
 	/// Returns the element's inherent size.
 	bool GetIntrinsicDimensions(Vector2f& dimensions, float& ratio) override;
+	/// Fork (P4-G5): ::before and ::after are drawn on a progress bar, as Chromium draws them.
+	bool HasGeneratedContentBoxes() override;
 
 protected:
 	void OnRender() override;

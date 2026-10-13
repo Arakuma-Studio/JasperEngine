@@ -287,9 +287,9 @@ TEST_CASE("PseudoElements.Transition")
 	TestsShell::ShutdownShell();
 }
 
-// Fork (P4-G5): which elements have ::before and ::after boxes, as Chromium decides: checkbox, radio and range inputs have them,
-// laid out in their content box (the custom switch: a knob positioned in an 'appearance: none' checkbox); text and button
-// inputs, images and other replaced elements do not.
+// Fork (P4-G5): which elements have ::before and ::after boxes, as Chromium decides: checkbox, radio and range inputs and
+// progress bars have them, laid out in their content box (the custom switch: a knob positioned in an 'appearance: none'
+// checkbox); text and button inputs, images and other replaced elements do not.
 TEST_CASE("PseudoElements.FormControls")
 {
 	Context* context = TestsShell::GetContext();
@@ -317,6 +317,7 @@ TEST_CASE("PseudoElements.FormControls")
 	<input type="submit" id="submit" class="dot"/>
 	<img id="img" class="dot tag" src="/assets/high_scores_alien_1.tga"/>
 	<div id="div" class="dot tag"/>
+	<progress id="progress" class="tag" value="0.5"/>
 </body>
 </rml>)";
 
@@ -332,6 +333,7 @@ TEST_CASE("PseudoElements.FormControls")
 	CHECK(has("switch", PseudoElementType::Before));
 	CHECK(has("div", PseudoElementType::Before));
 	CHECK(has("div", PseudoElementType::After));
+	CHECK(has("progress", PseudoElementType::After)); // replaced, but Chromium draws them
 	for (const char* id : {"text", "button", "submit", "img"})
 	{
 		INFO(id);

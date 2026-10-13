@@ -53,6 +53,11 @@ void ElementProgress::SetValue(float in_value)
 	SetAttribute("value", in_value);
 }
 
+bool ElementProgress::HasGeneratedContentBoxes()
+{
+	return true;
+}
+
 bool ElementProgress::GetIntrinsicDimensions(Vector2f& dimensions, float& /*ratio*/)
 {
 	dimensions.x = 256 * ElementUtilities::GetDensityIndependentPixelRatio(this);
