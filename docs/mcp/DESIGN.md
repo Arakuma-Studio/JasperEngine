@@ -69,7 +69,7 @@ editor/mcp/
   McpAutoSync.{h,cpp}     picks up files the agent edited on disk before every tools/call
   EngineApiContext.{h,cpp}, TerrainMaps.{h,cpp}   helpers of the docs and terrain tools
   tools/
-    McpTools.h            the register functions; W4Shared.h, PlayViewCommon.h: helpers shared by modules
+    McpTools.h            the register functions; W4Shared.h, PlayViewCommon.h, HtmlUiShared.h: helpers shared by modules
     CoreTools.cpp         batch, get_job, cancel_job, undo/redo, editor_status, respond_dialog
     ProjectTools.cpp      project lifecycle and settings
     SceneTools.cpp        scenes and scene settings
@@ -84,6 +84,7 @@ editor/mcp/
     DocsTools.cpp         engine API docs and resources
     BuildTools.cpp        export, build and player jobs
     WorldTools.cpp        terrain, tilemaps, animation, physics, UI and audio
+    HtmlUiTools.cpp       HTML/CSS UI: inspect_ui, assert_ui, create_ui_document, the example resources
 ```
 
 Every `tools/*.cpp` defines one function, e.g. `void registerSceneTools(McpRegistry&)`;

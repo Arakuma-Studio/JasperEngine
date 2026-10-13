@@ -104,6 +104,7 @@ void McpServer::registerAllTools() {
     registerDocsTools(reg);
     registerBuildTools(reg);
     registerWorldTools(reg);
+    registerHtmlUiTools(reg);
 }
 
 void McpServer::stop() {

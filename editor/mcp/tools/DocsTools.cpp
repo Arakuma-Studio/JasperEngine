@@ -157,6 +157,7 @@ std::string docsIndex() {
         text += "- `jasper://docs/" + doc.name + "`: " + doc.title +
                 (doc.sections.empty() ? "" : " (an index of " + std::to_string(doc.sections.size()) + " sections)") + "\n";
     }
+    text += "- `jasper://examples/html-ui`: HTML/CSS UI examples (menus, HUD, inventory, settings...) to copy\n";
     text += "- `jasper://project/AGENTS.md`: the open project's AGENTS.md (layout, build, generated files)\n";
     text += "- `jasper://project/{path}`: any text file of the open project (scripts, materials, shaders...)\n";
     text += "\nTools: `search_engine_api` (API symbols + these docs), `search_engine_source` / `read_engine_source` "

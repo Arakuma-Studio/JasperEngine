@@ -4,14 +4,14 @@ generated support matrix (tools/mcp/gen_html_ui_support.py), and the parity of t
 with what the editor reports for the same files (external_changes problems, a live document's
 diagnostics).
 
-The CLI tests run on scratch copies of the fixture (no editor). The parity test uses the editor.
-Wave-2 tool calls (inspect_ui) are guarded by ed.has_tool: WAVE-2 marks each place p4-mcp-tools
-turns into a real call.
+The CLI tests run on scratch copies of the fixture (no editor). The parity test uses the editor
+(and inspect_ui, p4-mcp-tools).
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -22,9 +22,15 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import harness
-from harness import Editor, TestFailure, skip
+from harness import Editor, TestFailure
 
 TIMEOUT = 900
+
+# No network: the editor's automatic import of LLM_HTML's remote URLs (the parity test loads it in a
+# live document) reads this mirror, a folder that does not exist, and fails, so the editor and the CLI
+# see the same page (with the network, the font could arrive in the middle of the comparison). Set
+# before the editor starts; a test file that imports this one sets its own mirror afterwards.
+os.environ["JASPERENGINE_IMPORT_MIRROR"] = str(Path(tempfile.gettempdir()) / "jasper-uicheck-no-network")
 
 FINDING_KEYS = {"tool", "path", "line", "col", "severity", "message"}
 TEXT_LINE = re.compile(r"^(?P<path>[^:]+):(?P<line>\d+):(?P<col>\d+): (?P<severity>error|warning): (?P<message>.*?)"
@@ -677,9 +683,7 @@ async def test_cli_ui_speed():
         check_eq(len({f["path"] for f in data["findings"]}), 80, "every LLM document and its css have findings")
 
     trees = example_trees()
-    if not trees:
-        # WAVE-2: the example library lands with p4-examples (wave 1); this part runs once it is merged
-        skip("the HTML UI examples (docs/mcp/guide/html-ui-examples, p4-examples) are not in this tree yet")
+    check(trees is not None, "the HTML UI examples (docs/mcp/guide/html-ui-examples) are missing")
     with scratch_project() as project:
         shutil.copytree(trees, project / "assets" / "html-ui-examples")
         t0 = time.monotonic()
@@ -823,8 +827,8 @@ async def test_parity_cli_mcp(ed: Editor):
     runtime_only = {"HTMLUI-CSS-0023", "HTMLUI-GEN-0006"}
     ed.check_eq({x for x in live if x[4] not in runtime_only}, cli, "a live document's diagnostics == CLI findings")
 
-    if not ed.has_tool("inspect_ui"):
-        # WAVE-2 (p4-mcp-tools): inspect_ui {file} and inspect_ui of the live document join the parity check
-        skip("inspect_ui arrives with p4-mcp-tools (wave 2): CLI, external_changes and the live document agree")
     r = await ed.call("inspect_ui", file="assets/ui/shop_llm.html")
     ed.check_eq(normalized(r["diagnostics"]), cli, "inspect_ui {file} == CLI findings")
+    r = await ed.call("inspect_ui", scene=PARITY_SCENE["scene"], entity="Shop", depth=0, limit=1)
+    ed.check_eq({x for x in normalized(r["diagnostics"]) if x[0] and x[4] not in runtime_only}, cli,
+                "inspect_ui of the live document == CLI findings")

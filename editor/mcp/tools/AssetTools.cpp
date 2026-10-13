@@ -30,6 +30,8 @@
 #include "command/type/ScenePropertyCmd.h"
 #include "command/type/UnlinkMaterialCmd.h"
 #include "component/MeshComponent.h"
+#include "htmlui/HtmlUiImporters.h"
+#include "htmlui/compat/ImportManifest.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 #include "texture/Material.h"
@@ -119,6 +121,7 @@ void checkShadersAsync(const CallPtr& call, std::vector<ProjectChecks::ShaderUse
 namespace {
 
 using namespace w4;
+namespace importers = jasperengine::editor::htmlui;
 
 // ------------------------------------------------------------------ helpers
 
@@ -1190,33 +1193,70 @@ void deleteAssetTool(const CallPtr& call) {
              Json{{"deleted", deleted}});
 }
 
-void importFilesTool(const CallPtr& call) {
+// The remote half of import_files (phase-4 spec §3.6.5): the HTML UI importers (network) run on a
+// worker thread; the main thread then rewrites the document and makes the editor notice the files.
+struct RemoteImport {
+    fs::path projectRoot;
+    std::string destDir;                  // project-relative, inside the assets
+    std::vector<std::string> urls, fonts, icons;
+    std::string document;                 // from_document, project-relative ("" = none)
+    // filled by the worker
+    std::vector<std::pair<std::string, importers::ImportResult>> results;   // what was asked -> its result
+    importers::ImportResult documentResult;
+    std::atomic<bool> done{false};
+};
+
+bool isRemoteUrl(const std::string& text) {
+    std::string lower = text.substr(0, 8);
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return lower.rfind("http://", 0) == 0 || lower.rfind("https://", 0) == 0;
+}
+
+// An optional array of strings argument; false after failing the call
+bool stringArray(const CallPtr& call, const char* key, std::vector<std::string>& out) {
+    const Json& args = call->args();
+    if (!args.contains(key) || args[key].is_null()) return true;
+    if (!args[key].is_array()) {
+        call->fail(std::string(key) + " must be an array of strings.");
+        return false;
+    }
+    for (const Json& item : args[key]) {
+        if (!item.is_string() || item.get<std::string>().empty()) {
+            call->fail(std::string(key) + " must be an array of non-empty strings.");
+            return false;
+        }
+        out.push_back(item.get<std::string>());
+    }
+    return true;
+}
+
+// Copies local files and folders into to_dir (one project undo step); false after failing the call
+bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local, Json& data, std::string& text) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
-    if (!args.contains("sources") || !args["sources"].is_array() || args["sources"].empty()) {
-        call->fail("sources must be a non-empty array of absolute file or folder paths.");
-        return;
+    if (!args.contains("to_dir") || args["to_dir"].is_null()) {
+        call->fail("to_dir is required with local sources (a project folder, e.g. \"assets/sprites\").");
+        return false;
     }
     fs::path target;
-    if (!resolveExisting(call, "to_dir", target, false)) return;
+    if (!resolveExisting(call, "to_dir", target, false)) return false;
     std::error_code ec;
     std::vector<std::string> sources;
     Json imported = Json::array();
-    for (const Json& item : args["sources"]) {
-        if (!item.is_string()) continue;
-        const fs::path source = fs::path(item.get<std::string>()).lexically_normal();
+    for (const std::string& item : local) {
+        const fs::path source = fs::u8path(item).lexically_normal();
         if (!source.is_absolute() || !fs::exists(source, ec)) {
-            call->fail(item.get<std::string>() + " must be an existing absolute path.");
-            return;
+            call->fail(item + " must be an existing absolute path (or an http(s) URL).");
+            return false;
         }
         if (Util::isInsidePath(source, project->getProjectPath())) {
-            call->fail(item.get<std::string>() + " is already in the project; use move_asset (copy: true) instead.");
-            return;
+            call->fail(item + " is already in the project; use move_asset (copy: true) instead.");
+            return false;
         }
         const fs::path dest = target / source.filename();
         if (fs::exists(dest, ec) && !args.value("overwrite", false)) {
             call->fail(projectRelative(project, dest) + " already exists; pass overwrite: true to replace it.");
-            return;
+            return false;
         }
         sources.push_back(source.string());
         imported.push_back(projectRelative(project, dest));
@@ -1225,22 +1265,214 @@ void importFilesTool(const CallPtr& call) {
         fs::create_directories(target, ec);
         if (ec) {
             call->fail("Can't create " + projectRelative(project, target) + ": " + ec.message());
-            return;
+            return false;
         }
     }
     if (!addProjectCommand(call->ctx(), new CopyFileCmd(project, sources, target.string(), true))) {
         call->fail("Copying the files failed.");
-        return;
+        return false;
     }
     std::vector<fs::path> changed;
-    for (const Json& rel : imported) changed.push_back(project->getProjectPath() / rel.get<std::string>());
+    for (const Json& rel : imported) changed.push_back(project->getProjectPath() / fs::u8path(rel.get<std::string>()));
     syncFiles(call->ctx(), changed, false);
-    Json data = {{"imported", imported}};
-    std::string text = "Imported " + std::to_string(imported.size()) + " item(s) into " + projectRelative(project, target) + ".";
+    data["imported"] = imported;
+    text = "Imported " + std::to_string(imported.size()) + " item(s) into " + projectRelative(project, target) + ".";
     if (!project->isInsideAssetsPath(target)) {
         text += " Note: outside the assets directory (" + projectRelative(project, project->getAssetsPath()) + "), components can't reference them.";
     }
+    return true;
+}
+
+// Every occurrence of `from` (also HTML-escaped, & as &amp;) in text replaced by `to`; the count
+size_t replaceAll(std::string& text, const std::string& from, const std::string& to) {
+    size_t count = 0;
+    std::vector<std::string> forms = {from};
+    std::string escaped;
+    for (char c : from) escaped += c == '&' ? std::string("&amp;") : std::string(1, c);
+    if (escaped != from) forms.push_back(escaped);
+    for (const std::string& form : forms) {
+        for (size_t at = text.find(form); at != std::string::npos; at = text.find(form, at + to.size())) {
+            text.replace(at, form.size(), to);
+            count++;
+        }
+    }
+    return count;
+}
+
+void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>& state, Json data, std::string text, bool timedOut) {
+    McpContext& ctx = call->ctx();
+    Project* project = ctx.project();
+    if (timedOut) {
+        call->fail((text.empty() ? std::string() : text + " ") +
+                   "The remote import is still running after 10 minutes (it goes on in the background; the files appear "
+                   "in " + state->destDir + " when it ends).", data);
+        return;
+    }
+    Json remote = Json::array(), failed = Json::array();
+    std::vector<fs::path> changed;
+    size_t written = 0;
+    auto addFiles = [&](const importers::ImportResult& result) {
+        for (const std::string& file : result.written) {
+            changed.push_back(state->projectRoot / fs::u8path(file));
+            written++;
+        }
+        for (const auto& [what, why] : result.failed) failed.push_back({{"source", what}, {"error", why}});
+        if (!result.fontFaceCss.empty()) data["font_face_css"] = result.fontFaceCss;
+    };
+    for (const auto& [source, result] : state->results) {
+        addFiles(result);
+        if (!result.written.empty()) remote.push_back({{"source", source}, {"files", result.written}});
+    }
+
+    // from_document: the URLs it imported, then (rewrite) each replaced in the file by its path relative to the file
+    std::string rewriteNote;
+    if (!state->document.empty()) {
+        const importers::ImportResult& result = state->documentResult;
+        addFiles(result);
+        std::set<std::string> covered;
+        for (const auto& [url, local] : result.replaced) {
+            remote.push_back({{"source", url}, {"files", Json::array({local})}});
+            covered.insert(local);
+        }
+        Json rest = Json::array();
+        for (const std::string& file : result.written) if (!covered.count(file)) rest.push_back(file);
+        if (!rest.empty()) remote.push_back({{"source", state->document}, {"files", rest}});
+
+        const Json& args = call->args();
+        if (args.value("rewrite", true) && !result.replaced.empty()) {
+            const fs::path file = state->projectRoot / fs::u8path(state->document);
+            std::string content, error;
+            if (!ProjectChecks::readFile(file, content)) {
+                rewriteNote = " Can't read " + state->document + " to rewrite it.";
+            } else {
+                const fs::path dir = file.parent_path().lexically_normal();
+                Json replacements = Json::array();
+                for (const auto& [url, local] : result.replaced) {
+                    // a Google Fonts css2 link becomes its generated @font-face stylesheet
+                    const std::string to = (state->projectRoot / fs::u8path(local)).lexically_normal().lexically_relative(dir).generic_u8string();
+                    if (replaceAll(content, url, to) > 0) replacements.push_back({{"from", url}, {"to", to}});
+                }
+                if (!replacements.empty()) {
+                    if (writeFilesUndoable(ctx, {{file, content}}, error)) {
+                        data["rewritten"] = {{"file", state->document}, {"replacements", replacements}};
+                    } else {
+                        rewriteNote = " Rewriting " + state->document + " failed: " + error;
+                    }
+                }
+            }
+        }
+    }
+    if (written > 0) {
+        // the runtime resolves remote URLs through the manifest (a document that keeps them: rewrite false)
+        jasperengine::htmlui::compat::ImportManifest::reload();
+        changed.push_back(project->getAssetsPath() / fs::u8path(jasperengine::htmlui::compat::ImportManifest::kPath));
+        syncFiles(ctx, changed, false);
+        if (ProjectWindow* window = ctx.projectWindow()) window->refreshCurrentDirectory();
+    }
+    data["remote"] = remote;
+    data["failed"] = failed;
+
+    std::string summary = "Remote import into " + state->destDir + ": " + std::to_string(written) + " file(s) written";
+    if (data.contains("font_face_css")) summary += ", @font-face stylesheet " + data["font_face_css"].get<std::string>() + " (link it)";
+    summary += ".";
+    if (data.contains("rewritten")) {
+        summary += " Rewrote " + std::to_string(data["rewritten"]["replacements"].size()) + " URL(s) in " + state->document +
+                   " (undo scope project restores them).";
+    }
+    summary += rewriteNote;
+    for (const Json& f : failed) summary += "\nFailed: " + f["source"].get<std::string>() + ": " + f["error"].get<std::string>();
+    text += (text.empty() ? "" : "\n") + summary;
+    const bool nothing = written == 0 && !data.contains("imported") && !data.contains("rewritten") &&
+                         state->documentResult.replaced.empty();
+    if (nothing && !failed.empty()) {
+        call->fail(text, data);
+        return;
+    }
     call->ok(text, data);
+}
+
+void importFilesTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    std::vector<std::string> sources, fonts, icons;
+    if (!stringArray(call, "sources", sources) || !stringArray(call, "fonts", fonts) || !stringArray(call, "icons", icons)) return;
+    const bool fromDocument = args.contains("from_document") && !args["from_document"].is_null();
+    if (sources.empty() && fonts.empty() && icons.empty() && !fromDocument) {
+        call->fail("pass sources, fonts, icons or from_document.");
+        return;
+    }
+    std::vector<std::string> local, urls;
+    for (const std::string& source : sources) (isRemoteUrl(source) ? urls : local).push_back(source);
+    if (!local.empty() && (!args.contains("to_dir") || args["to_dir"].is_null())) {
+        call->fail("to_dir is required with local sources (a project folder, e.g. \"assets/sprites\").");
+        return;
+    }
+
+    auto state = std::make_shared<RemoteImport>();
+    state->projectRoot = project->getProjectPath();
+    const bool remote = !urls.empty() || !fonts.empty() || !icons.empty() || fromDocument;
+    if (remote) {
+        fs::path dest;
+        std::string error;
+        const std::string assetsRel = projectRelative(project, project->getAssetsPath());
+        const std::string destArg = args.contains("to_dir") && args["to_dir"].is_string() ? args["to_dir"].get<std::string>()
+                                                                                            : (assetsRel.empty() ? "" : assetsRel + "/") + "ui/imported";
+        if (!McpRefs::resolveProjectPath(project, destArg, dest, error, false)) {
+            call->fail(error);
+            return;
+        }
+        if (!project->isInsideAssetsPath(dest.lexically_normal())) {
+            call->fail("to_dir must be inside the assets directory (" + assetsRel + "/) for remote imports: documents load from there.");
+            return;
+        }
+        state->destDir = projectRelative(project, dest.lexically_normal());
+        if (fromDocument) {
+            fs::path document;
+            if (!args["from_document"].is_string() ||
+                !McpRefs::resolveProjectPath(project, args["from_document"].get<std::string>(), document, error, true)) {
+                call->fail(error.empty() ? "from_document must be a project-relative .html or .css path." : error);
+                return;
+            }
+            document = document.lexically_normal();
+            if (!ProjectChecks::isUiFile(document.generic_u8string())) {
+                call->fail("from_document must be an .html, .htm or .css file.");
+                return;
+            }
+            if (!project->isInsideAssetsPath(document)) {
+                call->fail("from_document must be inside the assets directory (" + assetsRel + "/).");
+                return;
+            }
+            state->document = projectRelative(project, document);
+        }
+        state->urls = urls;
+        state->fonts = fonts;
+        state->icons = icons;
+    }
+
+    Json data = Json::object();
+    std::string text;
+    if (!local.empty() && !importLocalFiles(call, local, data, text)) return;
+    if (!remote) {
+        call->ok(text, data);
+        return;
+    }
+
+    std::thread([state]() {
+        const std::string dest = state->destDir;
+        for (const std::string& url : state->urls) state->results.emplace_back(url, importers::importUrl(state->projectRoot, url, dest));
+        if (!state->fonts.empty()) {
+            std::string label;
+            for (const std::string& f : state->fonts) label += (label.empty() ? "" : ", ") + f;
+            state->results.emplace_back(label, importers::importGoogleFonts(state->projectRoot, state->fonts, dest));
+        }
+        for (const std::string& icon : state->icons) {
+            state->results.emplace_back(icon, importers::importLucideIcons(state->projectRoot, {icon}, dest));
+        }
+        if (!state->document.empty()) state->documentResult = importers::importDocumentReferences(state->projectRoot, state->document, dest);
+        state->done.store(true, std::memory_order_release);
+    }).detach();
+    call->waitUntil([state]() { return state->done.load(std::memory_order_acquire); }, 600000,
+                    [call, state, data, text](bool timedOut) { finishRemoteImport(call, state, data, text, timedOut); });
 }
 
 // ------------------------------------------------------------------ materials
@@ -2345,12 +2577,18 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Import Files";
         tool.description =
             "Copy files/folders from absolute paths on this machine into a project folder (created if missing), like "
-            "dropping them on the Project window. Assets go under the assets directory. No downloads.";
+            "dropping them on the Project window. Assets go under the assets directory. Remote (network): URLs in sources, "
+            "fonts [\"Inter:400,700\"] (Google Fonts -> .ttf + @font-face css), icons [\"lucide:play\"] (.svg), "
+            "from_document (import every remote URL a .html/.css uses and rewrite it).";
         tool.inputSchema = object({
-            {"sources", array(string(""), "Absolute paths.")},
-            {"to_dir", assetPath("e.g. \"assets/sprites\".")},
-            {"overwrite", withDefault(boolean(""), false)}
-        }, {"sources", "to_dir"});
+            {"sources", array(string(""), "Absolute paths or http(s) URLs.")},
+            {"to_dir", assetPath("e.g. \"assets/sprites\" (remote default assets/ui/imported).")},
+            {"overwrite", withDefault(boolean(""), false)},
+            {"fonts", array(string(""), "")},
+            {"icons", array(string(""), "")},
+            {"from_document", assetPath(".html/.css")},
+            {"rewrite", withDefault(boolean(""), true)}
+        });
         tool.annotations.openWorld = true;
         tool.handler = importFilesTool;
         registry.addTool(std::move(tool));

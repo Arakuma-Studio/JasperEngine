@@ -408,11 +408,14 @@ namespace {
                 }
                 const ClipRegion clip = clipOf(firstText ? firstText : element, skip);
                 if (clip.bounded){
-                    const InspectRect visible = intersect(text, clip.rect);
-                    const float hiddenX = text.width - visible.width;
-                    const float hiddenY = text.height - visible.height;
+                    // the clip regions are boxes through their CSS transforms: the text goes through its own
+                    // (a card centered with translateX(-50%) is not cut where its layout box would be)
+                    const InspectRect shown = transformedRect(element, text);
+                    const InspectRect visible = intersect(shown, clip.rect);
+                    const float hiddenX = shown.width - visible.width;
+                    const float hiddenY = shown.height - visible.height;
                     if (hiddenX > spec.tolerance || hiddenY > spec.tolerance){
-                        Rml::Element* clipper = clipperCutting(clip, text, spec.tolerance);
+                        Rml::Element* clipper = clipperCutting(clip, shown, spec.tolerance);
                         problems.push_back("text is cut by the overflow of " + (clipper ? refs.of(clipper) : std::string("an ancestor")) + " (" +
                                            px(hiddenX > spec.tolerance ? hiddenX : hiddenY) + " hidden)");
                     }

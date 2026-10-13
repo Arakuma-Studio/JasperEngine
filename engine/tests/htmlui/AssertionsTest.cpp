@@ -363,6 +363,23 @@ TEST_F(AssertionsTest, TextFits){
     EXPECT_EQ(run(make(AssertKind::TextFits, ".nope")).failures.at(0).message, "selector matched nothing");
 }
 
+// TextFits and a transformed card (p4-mcp-tools, the loading example at 1024x768): the clip regions are boxes
+// through their transforms, so the text goes through its own. Laid out, the card centered with left: 50% and
+// translateX(-50%) runs past the right of its overflow: hidden page; drawn, it is inside.
+TEST_F(AssertionsTest, TextFitsInATransformedBox){
+    load("transformed", "* { margin: 0; }\n"
+         ".page { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; overflow: hidden; }\n"
+         ".card { position: absolute; left: 50%; top: 100px; width: 1000px; transform: translateX(-50%); }\n"
+         "#right { display: block; text-align: right; }\n"
+         "#cut { position: absolute; left: 1200px; top: 300px; white-space: nowrap; }\n",
+         "<div class=\"page\"><div class=\"card\"><span id=\"right\">99%</span></div><span id=\"cut\">cut by the page</span></div>\n");
+    AssertResult result = run(make(AssertKind::TextFits, "#right"));
+    EXPECT_TRUE(result.passed) << describe(result);
+    result = run(make(AssertKind::TextFits, "#cut"));
+    ASSERT_EQ(result.failures.size(), 1u) << describe(result);
+    EXPECT_NE(result.failures[0].message.find("text is cut by the overflow of"), std::string::npos) << describe(result);
+}
+
 TEST_F(AssertionsTest, NoOverlap){
     load("overlap", std::string(kLayoutCss) +
          ".card { position: absolute; width: 100px; height: 100px; }\n"

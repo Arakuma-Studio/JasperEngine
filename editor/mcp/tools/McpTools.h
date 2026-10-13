@@ -22,5 +22,6 @@ namespace jasperengine::editor::mcp {
     void registerDocsTools(McpRegistry& registry);
     void registerBuildTools(McpRegistry& registry);
     void registerWorldTools(McpRegistry& registry);
+    void registerHtmlUiTools(McpRegistry& registry);
 
 }

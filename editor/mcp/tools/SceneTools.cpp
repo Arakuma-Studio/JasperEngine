@@ -23,6 +23,7 @@
 #include "command/type/SetMainCameraCmd.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
+#include "window/SceneWindow.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -247,6 +248,8 @@ void selectSceneTool(const CallPtr& call) {
         return;
     }
     project->setSelectedSceneId(scene->id);
+    // its tab takes the focus too: a focused Scene view selects its own scene every frame
+    if (SceneWindow* window = call->ctx().sceneWindow()) window->requestPlayFocus(scene->id);
     call->ok("Selected scene " + std::to_string(scene->id) + " \"" + scene->name + "\".", Json{{"scene", sceneInfo(project, *scene)}});
 }
 

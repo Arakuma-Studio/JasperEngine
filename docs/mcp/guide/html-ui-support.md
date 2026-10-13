@@ -2225,7 +2225,7 @@ Severity "by case": the construct decides (the default is given).
 
 | Code | Severity | Meaning |
 |---|---|---|
-| `HTMLUI-IMP-0001` | error | **Remote resource not imported** (`not-imported`): The document references a remote URL that has no entry in the project's import manifest (assets/htmlui-imports/manifest.json); a fallback is used. The editor imports it when it loads the document (Editor Settings > HTML UI > Import Remote Resources), and so does jasperengine-editor import-ui; the runtime never downloads. |
+| `HTMLUI-IMP-0001` | error | **Remote resource not imported** (`not-imported`): The document references a remote URL that has no entry in the project's import manifest (assets/htmlui-imports/manifest.json); a fallback is used. The editor imports it when it loads the document (Editor Settings > HTML UI > Import Remote Resources), and so do jasperengine-editor import-ui and MCP import_files from_document; the runtime never downloads. |
 | `HTMLUI-IMP-0002` | error | **Download failed** (`download-failed`): The editor could not download a remote resource (network error, HTTP error, timeout, unknown Google Fonts family). |
 | `HTMLUI-IMP-0003` | warning | **Unsupported content** (`unsupported-content`): The downloaded content has a type the engine cannot use (WebP, AVIF, ...); it was saved but will not render. |
 | `HTMLUI-IMP-0004` | info | **Imported** (`imported`): A remote resource was downloaded into assets/htmlui-imports/ and recorded in the manifest. |
@@ -2233,7 +2233,7 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-IMP-0006` | warning | **Font variant unavailable** (`font-variant-unavailable`): The font provider does not offer a requested weight or style; the text falls back to the nearest available one. |
 | `HTMLUI-IMP-0007` | warning | **WOFF only** (`woff-only`): The remote font is only available as WOFF/WOFF2, which the engine cannot read. Provide a TTF or OTF version. |
 | `HTMLUI-IMP-0008` | info | **License note** (`license-note`): The license of an imported resource was recorded, or it is unknown and must be verified before shipping. |
-| `HTMLUI-IMP-0009` | warning | **Manifest file missing** (`manifest-file-missing`): An import manifest entry points to a file that does not exist; re-import the resource. |
+| `HTMLUI-IMP-0009` | warning | **Manifest file missing** (`manifest-file-missing`): An import manifest entry points to a file that does not exist; re-import the resource (load the document in the editor, jasperengine-editor import-ui, or MCP import_files from_document). |
 
 ### SEL
 

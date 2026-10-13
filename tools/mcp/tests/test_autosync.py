@@ -397,6 +397,10 @@ async def test_instructions_name_real_tools(ed: Editor):
         "check_shader": ["shader"],
         "sync_files": ["full"],
         "create_ui": ["root"],
+        "create_ui_document": ["html", "template"],
+        "inspect_ui": ["selector", "at"],
+        "assert_ui": ["checks", "viewports"],
+        "import_files": ["fonts", "icons", "from_document"],
     }
     for tool, names in pairs.items():
         ed.check(tool in tools, f"guide tool {tool} missing")
