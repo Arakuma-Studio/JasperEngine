@@ -2121,9 +2121,10 @@ meaning of the navigation buttons:
     spatial navigation (`ElementDocument::FindNavigationTarget`, fork P4-2): the nearest focusable
     element (visible, `tab-index: auto`, not `focus: none` or disabled) whose box lies in that
     direction (it ends beyond the source's edge and starts at most halfway into the smaller box),
-    by the CSS Spatial Navigation distance `euclidean + along + 30 × across-gap − √across-overlap`
-    (30 both ways: game menus are grids, alignment matters more than in text), ties in tree
-    order; first among the elements of the nearest scroll container around the focus (items
+    by the CSS Spatial Navigation distance as Chromium weighs it, `euclidean + along + w ×
+    across-gap − √across-overlap` with `w` 30 for left/right (a sideways step stays in its row)
+    and 2 for up/down (a vertical step may drift across columns: a settings row's label on the
+    left, its control on the right), ties in tree order; first among the elements of the nearest scroll container around the focus (items
     scrolled out of view included: a list scrolls to its next item before the focus leaves),
     then the whole document, where an element inside another scroll container counts only if it
     intersects that container's visible box. No wrap-around. The target gets `Focus(true)`
