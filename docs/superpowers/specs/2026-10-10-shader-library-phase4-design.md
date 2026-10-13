@@ -404,7 +404,7 @@ user-pass and editor work is also written out in `/tmp/shader-research/p4-api.md
   above the threshold; research 3.5 option 1); the blurred scene is not available to the scene it
   is made from (see above); MSAA through sokol on GLES3 is a renderbuffer and a blit resolve (not
   `EXT_multisampled_render_to_texture`); glslang warns "all default precisions are highp" for the
-  post shaders, as for the uber pass (harmless: the qualifiers come through).
+  post shaders, as for the uber pass (harmless: the qualifiers come through; silenced in 5.6).
 
 ### 5.3 Editor (sl/p4-editor)
 
@@ -591,7 +591,8 @@ on a black backdrop, and a white unlit cube.
   user chain's and bloom chain's own targets (LINEAR). Not fixed (editor-only, by design of 5.1):
   with the Scene view's "Show post-processing" on and the Game view open, both draw the primary
   view at different sizes in one frame, so the scaled target and the bloom targets are remade
-  twice a frame there.
+  twice a frame there. (Superseded by 5.6: the two views never share a RenderView; measured, nothing
+  is remade.)
 - Engine behaviour matches 5.5's cost estimate: render scale alone is one uber pass; MSAA in an
   exported game with nothing else offscreen is the scene pass plus a blit; blur is
   `1 + 2 x getBlurLevels(radius)` passes.
@@ -691,3 +692,115 @@ each reproduced on 3097628f first (MCP test or xdotool probe), then fixed with a
   Scanlines over the height 240.000, Scanline darkness 0.500, Aperture grille 0.300, Colour
   fringing 1.000, Dark corners 0.400, its manifest's labels and sliders
   (`/tmp/shader-research/p4-fix-editor-shots/`).
+
+### 5.6 Final pass (sl/p4-final)
+
+The merged tree (`shader-library` fad09cd2: phases 1-4 with both phase 4 review-fix branches) built
+and ran unchanged; nothing in the combination was broken. Changes of this pass:
+
+- Two editor views (5.4's open item). Not reproducible: the Scene view and the Game view never draw
+  through one `RenderView`. Stopped, the Scene view is the frame (`primaryView`) and the Game view a
+  second view (`Engine::drawView`, its own `RenderView` with its own scaled-scene, bloom, blur and
+  MSAA targets) whenever both are shown; with the Scene tab hidden the Game view is the frame alone
+  (`renderGameViewPass`); playing, the game is the frame and the Scene view the second view. So the
+  targets were already per view (5.1/5.2), and the alternation 5.4 expected does not happen. Proved
+  with frame stats: `JASPERENGINE_FRAME_STATS=all` now also logs a line per second view after its own
+  commit (`Frame stats (frame N, view V)`, `SystemRender::logFrameStats(frame, view)`), and
+  `tools/mcp/tests/test_post_processing_two_views.py` docks the Game view in the bottom panel beside
+  the Scene view (a layout ini), turns on bloom, FXAA and render scale 0.75 with "Show
+  post-processing", and checks in edit and play mode that both views draw the uber pass and the
+  bloom chain every frame at their sizes (edit: frame `uber 944x510`, bloom 177x95; view 2 `uber
+  1234x213`, bloom 231x40; play: the same swapped) and that none of 180 / 270 measured commits makes
+  an image (`0 made last frame`, images made constant).
+- glslang's "all default precisions are highp" warning (5.2's limits): bloom.frag, uber.frag and the
+  six library post shaders state `precision highp float; precision highp int;` (the defaults they
+  had; in library shaders after the manifest). Every built-in uber/bloom output (SPIR-V and the five
+  cross-compiled languages) is byte-identical; the compile matrices print no diagnostic.
+- Docs. `docs/mcp/guide/post-processing.md` gains a Limits section (every design limit below) and a
+  Custom passes section (`post_process` items, Lua `PostProcessPass`); its frame-stats advice names
+  `JASPERENGINE_READY_SIGNAL` (without it nothing is logged). The inspector's tooltips state the
+  limits where they apply (tone mapping, chromatic aberration, MSAA, bloom, blur, render scale), the
+  "Applied now" tooltip names the right variables, and `render_scale`'s field help no longer says
+  "UI stays native" (5.1: the main camera's UI scales with the scene; a layer scene's HUD stays
+  native). New `docs/shaders/README.md` links the library reference (lighting modes, the per-object
+  light cap), the shaders, post-processing and Lua guides and the four phase specs; the root README
+  links it; `lua-api.md` lists `scene.postProcessPasses`. `docs/shaders/library.md` regenerated (no
+  change).
+- Phases 1-3 notes re-read: their final passes (1: 13.6, 2: 5.9, 3: 4.8) left nothing open; every
+  item is fixed or a design limit stated in the spec and the user-facing text.
+
+Known limitations that remain (design limits, each documented):
+
+1. 8-bit (LDR) scene: exposure and the curve run in the shaders, transparent objects blend after
+   the curve; bloom is LDR (a full-white surface above the threshold glows). 5.1, 5.2; guide
+   Limits; tone mapping and bloom tooltips.
+2. UI the main camera draws is post-processed and render-scaled; point sprites keep their size in
+   scaled pixels. 5.1; guide Limits and Mobile advice; render scale tooltip and field help.
+3. The blurred scene (frosted panels) exists only for layer scenes drawn after the post-processed
+   scene. 5.2; guide Limits; blur tooltip; `includes/blurred_scene.glsl`.
+4. MSAA: not on mirrors, other render-to-texture cameras, layer scenes or the edit-mode Scene view
+   without its toggle; a sample count change reloads objects; GLES resolves with a blit (no
+   `EXT_multisampled_render_to_texture`); lavapipe has no 2x. 5.2; guide Limits; MSAA tooltip.
+5. Chromatic aberration over FXAA: a fringe wider than a pixel is a shifted, not re-antialiased,
+   copy. 5.4 item 2; guide Limits; tooltip.
+6. Neutral tone mapping at LUT side 16: up to about 3.3/255 off its shoulder (side 32: 1.0). 5.4
+   item 4; guide Limits.
+7. A painted terrain (`HAS_TERRAIN_PBR`) with the post colour leaves its base material's emissive
+   texture out (sampler budget). 5.1; mesh.frag; guide Limits; tone mapping tooltip. Pre-existing
+   (phase 1-3): a painted terrain with 2D lights and 2D shadows exceeds 16 textures.
+8. Uber variants or chains a script reaches beyond the export collector's set compile at runtime
+   (the previous image is kept meanwhile). 5.2, 5.4 items 8-9; guide Limits and Lua.
+9. The editor's cost readout is an estimate; the measured pass list is in the log only. 5.3;
+   readout tooltip; guide.
+10. The GUI has no image watcher: an image edited outside the editor is picked up by the next MCP
+    call or `sync_files`. 5.5 item 9.
+11. D3D11 and Metal are compiled, not run (no such backend on the Linux hosts). Phase 3 4.8.
+
+Checks run on the final commit (4 cores, one heavy job at a time):
+
+1. Full `tools/build.sh linux` (after every engine or shader change; the last on c199f768).
+2. `shaders --library all --backend all`: 40 shaders, 13842 compiles, 0 failures, 0 diagnostics.
+   92 built-in specs x 6 backends (552 compiles, 0 failures, 0 warnings, none over the 8-block /
+   16-texture budget): Lit 4/8/16 x pixel/vertex/mixed with shadows, IBL, SSAO, fog, normal map,
+   skinning, morph, instancing and fade, each also with 'Pcl'; unlit alpha modes (+Pcl); 2D lights
+   and shadows (+Pcl); terrain incl. `mesh:Ter,Puc,Nor,Shw,Tpb,Tan,Nmp` and the painted terrain with
+   IBL, SSAO and Pcl; mirror (+Pcl); depth incl. `Txr`; G-buffer; UI; points and lines (+Pcl); sky
+   (+Pcl); shadow2d; blit; every uber feature alone, 'Scl', the mobile/console/stylised/CRT sets,
+   bloom+blur and all twelve features at once; the five bloom programs; postprocess, ssao, ssr,
+   composite.
+3. GL smoke tests, screenshots read: `post-processing` all 55 cases plus `PP_SCENE=saved` (tone
+   curves compressing the lit wall, grade, cross-process LUT, grey, sepia, vignette, FXAA, fringes,
+   pixels, curved CRT tube, edges, grain, render scale with doubled point sprites, fixed resolution,
+   bloom/tint/wide, full and half blur, the frosted panel showing the blurred wall, the purple
+   blend cases without squares, whites, MSAA, the six library post shaders, the user passes' split;
+   the HUD untouched in every case); `shader-library` all groups, each group alone, `P3B_VIEW=glass`
+   and `checks` at 18/28/38/48 s; `scene-inputs` default and all 19 switches; `stencil` (+ prepass,
+   effects); `extra-pass` (+ figure); `shader-regressions` ("[SR] leak check passed");
+   `unified-lighting`; `runtime-shaders`; `prefab-runtime` ([PRT] PASS). All PASS.
+4. GLES3 and Vulkan: `post-processing` (16 runs: mobile_full, render_scale, msaa4, msaa4_bloom,
+   bloom, blur, frosted, blend, blend_uber, console_still, white16, fixed_nearest, user_pass_bloom,
+   lib_crt, tail, saved), `scene-inputs` (default, SSR, 2D, mirror, env, split, ortho, post,
+   identity), `shader-library` core, phase2, phase3a, phase3b (one group per run), `stencil`: all
+   PASS, the same images as GL (mean per-pixel difference 0.00-0.38 of 255 outside the time-animated
+   objects and the per-frame grain).
+5. `tools/fixtures/shader-library-export/check.sh` on GL and Vulkan: 7 scenes ok each (Lit 0.97,
+   Blend 1.18, 2D 0.23, UI 0.41, Stencil 0.57, Phase3A 0.84, Phase3B 0.47).
+6. MCP suite (`-j 2`, pinned to 4 cores): 291 passed, 0 failed, 3 skipped (the slow build ones).
+7. Export `--backend all`: `shader-library-export` 307, `scene-inputs` 24, `post-processing` 29
+   variants on each of the six backends, none failed or missing.
+8. Re-save of the 10 fixture projects (31 scenes, prefabs and project.yaml) by this editor and by a
+   build of `shader-library-phase3` (temporary worktree under /tmp, removed): 29 byte-identical; the
+   two `post-processing` scenes differ only in phase 4 data (`postProcessing:` and the precompiled
+   blit/bloom variants the phase 3 editor does not know).
+9. Post-processing off against `shader-library-phase3` + 42fa1db8 + 8d4121b8 (temporary worktree,
+   removed): the 6-light identity scene (`scene-inputs` `SI_SCENE=identity`, and a built-in-only copy
+   of it, `/tmp/p4final/idn-project`) default, SSAO, SSR, both and the depth pre-pass: 0 differing
+   pixels and identical frame-stats lines (2 / 5 / 5 / 7 / 2 passes, 32 / 41 / 41 / 43 / 39 draws,
+   same uploads, images, pipelines, views and pass lists). Against 0c59f0a0 (+ the DOCKER_CPUS
+   commit, temporary worktree, removed), the built-in copy with SSAO/SSR off, SSAO, SSR, both and
+   the pre-pass: 0 differing pixels.
+10. `mobile_full` measured pass list: GL and GLES3 `shadow 6144x2048 x2, camera rtt 480x270, camera
+    1280x720, bloom prefilter 320x180, bloom down 160x90, bloom down 80x45, bloom down 40x22, bloom up
+    80x45, bloom up 160x90, bloom up 320x180, uber 1280x720, camera layer 1280x720`; Vulkan the same
+    plus the platform's present `blit 1280x720` (as before phase 4). After the scene: 8 passes, 1 at
+    full resolution, 1.165 screens: the §1 budget.
