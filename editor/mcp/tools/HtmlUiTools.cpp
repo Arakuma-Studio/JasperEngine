@@ -560,6 +560,14 @@ bool outlinedImage(const w3::CaptureResult& capture, const std::vector<Outline>&
             const double grow = (320 - (x1 - x0 + 1)) / 2.0;
             x0 -= grow;
             x1 += grow;
+            // at an edge of the canvas the box moves inward instead of shrinking
+            if (x0 < clipX0) {
+                x1 += clipX0 - x0;
+                x0 = clipX0;
+            } else if (x1 > clipX1) {
+                x0 -= x1 - clipX1;
+                x1 = clipX1;
+            }
         }
         cropX0 = std::max(clipX0, static_cast<int>(std::floor(x0)));
         cropX1 = std::min(clipX1, static_cast<int>(std::ceil(x1)));
@@ -1782,10 +1790,10 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"parent", entityRef("Parent (default: scene root).")},
-            {"name", string("GameObject name (default: from the file name).")},
-            {"html", assetPath("Project-relative .html in the assets dir.")},
+            {"name", string("Default: from the file name.")},
+            {"html", assetPath(".html in the assets dir.")},
             {"template", withDefault(stringEnum("", HtmlUiExamples::names()), "blank")},
-            {"script", boolean("Create + attach the template's Lua (default: true when it has one).")},
+            {"script", boolean("Attach the template's Lua (default: examples yes, blank no).")},
             {"sort_order", integer("", -32768, 32767)},
             {"overwrite", boolean("Replace existing files.")},
             {"properties", anyObject("Other UI Document properties.")}
