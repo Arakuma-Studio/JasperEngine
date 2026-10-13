@@ -2017,7 +2017,18 @@ unit test that fails without the fix.
   or got a new one: the same frame had other curve edges from session to session. The key holds
   the feathering and the element's feather unit; background image layers' rounded clips follow the
   feather unit too. `test_html_ui_examples.py` compares its two runs at exactly 0 %
-  (`RUNS_MAX_FRACTION = 0.0`, 4.3.1 had 0.01 %).
+  (`RUNS_MAX_FRACTION = 0.0`, 4.3.1 had 0.01 %). A second cause, found through a flaky
+  `MsaaScissor.HtmlUIClipEdge` (one failure in a full run, a few unexpected pixels): the readbacks
+  (`glGetTexImage` in the test harness's `Readback.cpp` and in the editor's
+  `GraphicUtils::readFramebufferPixels`, which MCP screenshots use) returned a texture with some
+  16x16 blocks not rasterized yet, about one render in 70 of a new context: GL requires the read to
+  wait for the commands that render into the texture, Mesa 23.2.1's llvmpipe with its rasterizer
+  threads did not always (a second read of the same texture was whole, and the screen it was
+  composited onto was too; 1000 renders of each sample count gave one image each once the read
+  waited). Both readbacks call `glFinish()` first: the renderer itself was deterministic, and no
+  test accepts more than before. `MsaaScissor.HtmlUIClipEdgeReadsBackTheSameImage` renders the page
+  in 200 new contexts and requires one image (it failed 5 runs out of 5 without the `glFinish`).
+  Vulkan's readback already waited (`vkQueueWaitIdle`).
 - **G8, the guide's examples table** follows `examples.json` (`main_menu` uses the built-in Lucide
   icons, `data-lucide`; `hud`'s damage flash; `shop`'s quantity dialog and `data-attr-disabled`);
   `test_guide_examples_table` checks the rows, their order and their checks against the manifest.
