@@ -2376,11 +2376,12 @@ mask), `background-image-crossfade`, `svg-background-repeat`, `theme-color-varia
 toggled), `color-mix-currentcolor-transition`, `logical-grid`, `counters-flex`,
 `all-unset-buttons-grid`, `background-layers-transition`, `text-shadow-group-opacity`, and the five
 agent-written sample pages `sample-main-menu`, `sample-settings`, `sample-inventory`, `sample-hud`,
-`sample-dialog`. The sample pages are text-heavy (`"boxes": true`: the boxes are the oracle, the
-image is compared and reported): with their text made transparent they matched Chromium at the
-strict metric when added (checked with scratch copies, not committed); the text itself differs
-in glyph rasterization (hinting, synthetic bold drawn by bitmap dilation rather than Skia's outline
-emboldening).
+`sample-dialog`. The sample pages are text-heavy (`"boxes": true, "noText": true`, §5.2): the boxes
+and the image without text are gated at the default tolerances, the full image is reported (the
+glyphs differ in rasterization: hinting, synthetic bold drawn by bitmap dilation rather than Skia's
+outline emboldening). The other text-heavy fixtures (`all-unset-buttons-grid`, `counters-flex`,
+`text-shadow-group-opacity`, `text/text-transform-unicode`, `text/zero-width-space`,
+`values/font-family-fallback`, `values/line-height-normal`) carry the same gate.
 
 **Found and fixed by the fixtures** (fork rows in FORK.md P3-I*): content of scroll containers
 clipped to the scrollport (P3-I2), scrollbar thumb margins (P3-I3), absolutely positioned boxes as
@@ -2534,7 +2535,12 @@ The agent-browser MCP tool is not used for goldens (shared browser, non-determin
   the image and no 4-connected bad cluster exceeds 16 pixels. Text-heavy fixtures additionally
   carry `"boxes": true` (the box comparison below is the primary oracle; pixels use the same
   metric). Per-fixture overrides are allowed only with a comment in the sidecar explaining the
-  rasterization difference.
+  rasterization difference. *As implemented (p3-integration):* a text-heavy fixture also carries
+  `"noText": true` (required with `"boxes": true`): every capture is taken a second time with the text
+  made transparent on both sides (the reference: the steps rerun with phase 2's `NO_TEXT_CSS`; the
+  engine: the same frame drawn without glyphs, text decorations and symbol markers, as the phase-2
+  golden pages' no-text render) and that image is gated at the default metric; only the full image
+  with its glyphs is reported. The text caret is hidden in every capture on both sides.
 - Box comparison: for each id'ed element, engine border box (`Element::GetAbsoluteOffset(Border)`
   + `GetBox().GetSize(Border)`) vs Chrome `getBoundingClientRect()` (untransformed elements),
   |Δ| ≤ 1 px on x, y, width, height.

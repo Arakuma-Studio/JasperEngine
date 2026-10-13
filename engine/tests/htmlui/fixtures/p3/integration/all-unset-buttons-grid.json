@@ -1,7 +1,7 @@
 {
  "comment": "Buttons reset with all: unset and restyled as grid items (place-items centers the label, span 2), a button left fully unset (inline, no border, no padding); hovering one and focusing another from the keyboard (all: unset keeps them focusable: :focus-visible shows the author's outline). Text: the boxes are the oracle.",
  "viewport": [320, 110],
- "boxes": true,
+ "boxes": true, "noText": true,
  "steps": [
   {"capture": "rest"},
   {"hover": "#b2"},

@@ -42,7 +42,9 @@
 //   {viewport: [w, h], steps: [...], boxes, tolerance, samples, comment}; the steps (hover, focus, press,
 //   release, addClass, removeClass, setStyle, setAttr, scroll, advance, capture) run in order, every
 //   capture step (or one at the end when there is none) writes golden/browser/<area>/<name>[.<suffix>].png
-//   and the boxes of every element with an id into <name>.boxes.json. JavaScript stays off (the steps
+//   and the boxes of every element with an id into <name>.boxes.json; with "noText": true the steps run a
+//   second time in a fresh browser with the text made transparent (NO_TEXT_CSS, as page mode's no-text render)
+//   into <name>[.<suffix>].notext.png. JavaScript stays off (the steps
 //   run in the page's isolated evaluation), transitions are on, and every animation and transition is
 //   paused when it starts and seeked to the time `advance` steps accumulated (frame-exact captures).
 // - Taffy fixtures (but those of excluded.txt): engine/tests/htmlui/fixtures/taffy/<suite>/<name>.html at 1024x768, boxes only: the
@@ -718,7 +720,7 @@ function resolveFixtures(specs){
     return { p3: [...p3.values()], taffy };
 }
 
-// The sidecar (spec 5.2): viewport, steps, boxes, tolerance (with a comment saying why), selfTest
+// The sidecar (spec 5.2): viewport, steps, boxes, noText, tolerance (with a comment saying why), selfTest
 // (fixtures of the testkit area only: {expect: "mismatch", referenceCss}: the CSS is injected in the
 // reference alone, so the engine must be reported as different).
 function loadSidecar(area, name){
@@ -770,7 +772,9 @@ function loadSidecar(area, name){
         throw new Error(`${where}: "samples" is 1 or 4, with a "comment" saying why`);
     if (sidecar.selfTest !== undefined && area !== 'testkit')
         throw new Error(`${where}: "selfTest" is for the harness's own fixtures (fixtures/p3/testkit)`);
-    return { viewport, steps, boxes: sidecar.boxes === true, selfTest: sidecar.selfTest ?? null };
+    if (sidecar.noText !== undefined && sidecar.noText !== true && sidecar.noText !== false)
+        throw new Error(`${where}: "noText" must be true or false`);
+    return { viewport, steps, boxes: sidecar.boxes === true, noText: sidecar.noText === true, selfTest: sidecar.selfTest ?? null };
 }
 
 // in the page (JavaScript off: Playwright evaluates in its own world, where state persists):
@@ -896,13 +900,38 @@ async function newFixtureContext(browser, viewport, blocked){
 async function renderP3Fixture(launchBrowser, { area, name }, boxesOnly){
     const sidecar = loadSidecar(area, name);
     const label = `${area}/${name}`;
-    const browser = await launchBrowser();
     const blocked = new Set();
+    const captures = await runP3Fixture(launchBrowser, sidecar, area, name, label, boxesOnly, '', blocked);
+    // "noText": the same run again with the text made transparent (the phase-2 golden pages' no-text
+    // render): <name>[.<capture>].notext.png, gated strictly by BrowserParityTest
+    const noText = (sidecar.noText && !boxesOnly) ? await runP3Fixture(launchBrowser, sidecar, area, name, label, false, NO_TEXT_CSS, blocked) : [];
+
+    const files = {};
+    for (const { suffix, png } of captures){
+        if (png)
+            files[`${area}/${name}${suffix ? '.' + suffix : ''}.png`] = png;
+    }
+    for (const { suffix, png } of noText)
+        files[`${area}/${name}${suffix ? '.' + suffix : ''}.notext.png`] = png;
+    const document = {
+        fixture: `${area}/${name}.html`,
+        viewport: sidecar.viewport,
+        browser: `Chromium ${BROWSER_VERSION}`,
+        captures: Object.fromEntries(captures.map(({ suffix, boxes }) => [suffix, boxes])),
+    };
+    files[`${area}/${name}.boxes.json`] = Buffer.from(JSON.stringify(document, null, 1) + '\n');
+    return { files, blocked: [...blocked] };
+}
+
+// One run of a fixture's steps in a fresh browser; extraCss is injected with the root scrollbar rule (the
+// no-text pass: from the start, so no step sees the text style change).
+async function runP3Fixture(launchBrowser, sidecar, area, name, label, boxesOnly, extraCss, blocked){
+    const browser = await launchBrowser();
     try {
         const context = await newFixtureContext(browser, sidecar.viewport, blocked);
         const page = await context.newPage();
         await page.goto(pathToFileURL(path.join(P3_DIR, area, `${name}.html`)).href, { waitUntil: 'load' });
-        await injectStyle(page, (await viewportScrolls(page) ? '' : ROOT_SCROLLBAR_CSS) + (sidecar.selfTest?.referenceCss ?? ''));
+        await injectStyle(page, (await viewportScrolls(page) ? '' : ROOT_SCROLLBAR_CSS) + (sidecar.selfTest?.referenceCss ?? '') + extraCss);
         await waitForFonts(page, label);
         await adoptAnimations(page);
 
@@ -967,20 +996,7 @@ async function renderP3Fixture(launchBrowser, { area, name }, boxesOnly){
         if (!sidecar.steps.some((step) => 'capture' in step))
             await capture('');
         await context.close();
-
-        const files = {};
-        for (const { suffix, png } of captures){
-            if (png)
-                files[`${area}/${name}${suffix ? '.' + suffix : ''}.png`] = png;
-        }
-        const document = {
-            fixture: `${area}/${name}.html`,
-            viewport: sidecar.viewport,
-            browser: `Chromium ${BROWSER_VERSION}`,
-            captures: Object.fromEntries(captures.map(({ suffix, boxes }) => [suffix, boxes])),
-        };
-        files[`${area}/${name}.boxes.json`] = Buffer.from(JSON.stringify(document, null, 1) + '\n');
-        return { files, blocked: [...blocked] };
+        return captures;
     } finally {
         await browser.close();
     }

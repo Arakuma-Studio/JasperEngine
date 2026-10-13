@@ -386,6 +386,10 @@ TEST(BrowserFixtures, ManifestAndReferencesAreConsistent){
         if (sidecar.sampleCount != 4){
             EXPECT_FALSE(sidecar.comment.empty()) << "\"samples\" needs a comment";
         }
+        // a text-heavy fixture (its full image reported only) keeps a strict image gate without its text
+        if (sidecar.boxes){
+            EXPECT_TRUE(sidecar.noText) << "\"boxes\": true (text-heavy) needs \"noText\": true";
+        }
         if (!sidecar.referenceCss.empty() || sidecar.expectMismatch){
             EXPECT_EQ(fixture.area, "testkit") << "selfTest is for the harness's own fixtures";
         }
@@ -399,6 +403,13 @@ TEST(BrowserFixtures, ManifestAndReferencesAreConsistent){
             EXPECT_TRUE(loadPng(browserReferenceDirectory() + "/" + captureFile(fixture, suffix), image)) << captureFile(fixture, suffix);
             EXPECT_EQ(image.width, sidecar.width);
             EXPECT_EQ(image.height, sidecar.height);
+            if (sidecar.noText){
+                const std::string noTextFile = captureFile(fixture, suffix);
+                Image noText;
+                EXPECT_TRUE(loadPng(browserReferenceDirectory() + "/" + noTextFile.substr(0, noTextFile.size() - 4) + ".notext.png", noText))
+                    << noTextFile << " without text";
+                EXPECT_EQ(noText.width, sidecar.width);
+            }
             ASSERT_TRUE(boxes.count(suffix)) << "capture '" << suffix << "' has no boxes";
             for (const LayoutBox& box : boxes[suffix])
                 EXPECT_NE(html.find("id=\"" + box.id + "\""), std::string::npos) << box.id;
@@ -463,6 +474,21 @@ TEST_P(BrowserParity, MatchesChromium){
             metrics << file << ": " << image.text() << (sidecar.boxes ? " (reported only: text-heavy)" : "") << "\n";
             if (!image.passes() && !sidecar.boxes)
                 failures.push_back(file + " image: " + image.text() + "; heat map " + base + ".diff.png");
+            if (sidecar.noText){
+                // the image without text: gated at the sidecar's gate, also for a text-heavy fixture
+                const std::string noTextFile = file.substr(0, file.size() - 4) + ".notext.png";
+                Image noTextReference;
+                savePng(base + ".notext.png", capture.noTextImage);
+                if (!loadPng(browserReferenceDirectory() + "/" + noTextFile, noTextReference)){
+                    failures.push_back(noTextFile + ": no reference image");
+                }else{
+                    const StrictMetrics noText = compareStrict(capture.noTextImage, noTextReference, sidecar.gate);
+                    savePng(base + ".notext.diff.png", strictHeatMap(capture.noTextImage, noTextReference, sidecar.gate));
+                    metrics << noTextFile << ": " << noText.text() << "\n";
+                    if (!noText.passes())
+                        failures.push_back(noTextFile + " image: " + noText.text() + "; heat map " + base + ".notext.diff.png");
+                }
+            }
             const std::vector<std::string> boxes = compareBoxes(capture.boxes, referenceBoxes[capture.suffix], sidecar.boxTolerance);
             metrics << file << " boxes: " << boxes.size() << " differences\n";
             for (const std::string& difference : boxes){

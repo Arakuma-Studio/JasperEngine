@@ -1,10 +1,10 @@
 {
- "comment": "An agent-written game main menu: a gradient page centering a translucent card (flex), custom properties and calc(), letter-spacing/uppercase title with a glow, a flex column of links with a ::before accent bar faded in and a translateX on :hover (transitions captured at the end), a gradient primary item. Text-heavy (boxes are the oracle): the glyph rasterization differs from Chromium's (FreeType hinting, synthetic bold outline vs bitmap dilation); with the text made transparent the page matches at the strict metric (checked when it was added).",
+ "comment": "An agent-written game main menu: a gradient page centering a translucent card (flex), custom properties and calc(), letter-spacing/uppercase title with a glow, a flex column of links with a ::before accent bar faded in and a translateX on :hover (transitions captured at the end), a gradient primary item. Text-heavy (boxes are the oracle): the glyph rasterization differs from Chromium's (FreeType hinting, synthetic bold outline vs bitmap dilation); the page without its text is gated at the strict metric (noText).",
  "viewport": [
   640,
   400
  ],
- "boxes": true,
+ "boxes": true, "noText": true,
  "steps": [
   {
    "capture": "rest"
