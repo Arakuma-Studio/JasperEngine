@@ -1877,8 +1877,9 @@ Where the code differs from 3.7, 3.9 and 5.4 (also in `CONTRACTS.md`):
   `createElement`/`createTextNode`/`appendChild`; `shop` cards are `article.card`; `main_menu`'s
   `h1.logo` sits in `header#brand` with an SVG emblem, and every menu button logs
   `main_menu: <id>` (`#settings` also opens the panel: 5.4's ArrowDown + Enter checks it).
-- **Data binding**: buy buttons use `data-attrif-disabled="gold < item.price"` (RmlUi's boolean
-  attribute view; `data-attr-disabled` writes `disabled="false"`, which disables);
+- **Data binding**: buy buttons used `data-attrif-disabled="gold < item.price"` (RmlUi's boolean
+  attribute view; `data-attr-disabled` wrote `disabled="false"`, which disabled; since `p4-gaps`
+  they use `data-attr-disabled`, 4.3.2 G9);
   drag and drop is the engine's CSS property `drag: drag-drop` on `.slot` (browsers ignore it;
   RmlUi has no `drag` attribute) with `data-event-dragstart="pick(i)"` /
   `data-event-dragdrop="drop(i)"`. A `data-for` element stays in the DOM, hidden, as the
@@ -1886,8 +1887,8 @@ Where the code differs from 3.7, 3.9 and 5.4 (also in `CONTRACTS.md`):
   that includes hidden elements is 25 (the manifest's `count .slot = 24` assumes `assert_ui`
   counts what is shown).
 - **Settings switches**: an invisible `<input type="checkbox">` over a `span.knob` whose
-  `::before` is the knob (`input:checked + .knob`): the engine generates no `::before`/`::after`
-  on `<input>` (Chromium does with `appearance: none`; reported as a parity gap, not fixed here).
+  `::before` is the knob (`input:checked + .knob`): the engine generated no `::before`/`::after`
+  on `<input>` (Chromium does). Since `p4-gaps` the switch is the checkbox itself (4.3.2 G5).
 - **HUD**: `HudUI:damage(n)` takes the shield first, so 5.4's step is `damage(80)` (50 shield,
   then 30 health: `#health-fill` at 70%). The score is shown with thousands separators.
 - **Loading**: 5.4's "wait 1.5 s" is the 90 frames every example plays first (3 s of
@@ -1918,9 +1919,10 @@ Where the code differs from 3.7, 3.9 and 5.4 (also in `CONTRACTS.md`):
   maximize_on_play: true}`: the headless editor's Game view (1600x900 window) shows the canvas at
   1415x796 while playing (904x509 without maximizing). The crop is box-filtered down to
   1280x720 for the committed golden and both are compared at 640x360 (tolerance 24, at most 1%).
-  The test scenes clear to `(0.09, 0.1, 0.13)`. The two runs must agree within the tolerance on
-  all but 0.01% of the pixels (not fraction 0): the antialiased edges of rounded boxes under
-  blurred shadows vary by a few pixels between play sessions (5 to 42 of 1.1 M pixels measured).
+  The test scenes clear to `(0.09, 0.1, 0.13)`. The two runs had to agree within the tolerance on
+  all but 0.01% of the pixels: the antialiased edges of rounded boxes under blurred shadows varied
+  by a few pixels between play sessions (5 to 42 of 1.1 M pixels measured; `p4-gaps` found the
+  cause, 4.3.2 G7, and the runs agree exactly).
   Play keeps the document the editor loaded, so CSS animations that run from the load have a
   phase that depends on the wall time spent in edit mode: the test reloads `main_menu` (infinite
   keyframes, no data model) once play is held (`RESTART_CSS`); a document that makes a data model
@@ -1944,13 +1946,88 @@ Where the code differs from 3.7, 3.9 and 5.4 (also in `CONTRACTS.md`):
   - `RmlRenderer::SaveLayerIntoTexture`: a box shadow larger than the context (rendered in tiles,
     P3-I14) drew its background and border scaled and shifted on a scaled canvas (the editor's
     Game view, high-DPI screens).
-- **Parity gaps found and worked around in the examples** (not fixed; for phase 2/3 owners):
+- **Parity gaps found and worked around in the examples** (fixed by `p4-gaps`, 4.3.2):
   `border-radius` on an `<img>` does not clip the picture (a wrapper with `overflow: hidden`
   does); a `<button>` taller than its content does not center it vertically as Chromium does
   (the examples use flex); a `<select>` with a fixed `height` keeps its text at the top (padding
   instead); no `::before`/`::after` on `<input>`; `offsetWidth`/`offsetHeight` of an element
   hidden with `display: none` (`data-if`) keep their last value instead of 0; `check --ui --files` on a stylesheet alone warns
   about a shorthand whose `var()` only an inline style defines (a default in the sheet avoids it).
+
+#### 4.3.2 `p4-gaps` as implemented (corrective package)
+
+The parity gaps 4.3.1 lists, and the examples' non-deterministic goldens, fixed at their root
+(also in `CONTRACTS.md` and `FORK.md` P4-G1 … P4-G9). Each has a browser-parity fixture in the
+matching `fixtures/p3/<area>/` with a Chromium reference, passing at the default tolerances, and a
+unit test that fails without the fix.
+
+- **G1, `border-radius` on replaced elements** (fork P4-G1): replaced content is trimmed to the
+  *content* edge curve (CSS Backgrounds 3 §5.3, Chromium; HtmlImageElement clipped to the padding
+  box curve, the fork's img, the SVG plugin's svg (an `<img>` with an SVG source is one), `<lottie>`
+  and `input type=image` not at all). The fork's `ReplacedContentGeometry` draws the picture as the
+  content box filled like a background (the feathered curves of a background, the quad's texture
+  coordinates) when it covers the content box or lies inside the curve, and under a clip mask
+  (`ScopedReplacedContentClip`) when it crosses the curve (`object-fit: contain` in a pill): a
+  stencil mask alone aliased the curves. Fixture `paint/replaced-radius` (pastel pictures on grey:
+  the strict metric judges the trimmed shape, not curve rasterization, see its sidecar).
+- **G2, buttons** (fork P4-G2): `Element::HasButtonLayout()` (the engine's `<button>`, button and
+  submit inputs): as a block container the content is centered vertically as one block, safely,
+  whatever `align-content` says, in the content box (padding, `min-height`, `display: block` and
+  `flow-root` too); flex and grid buttons are flex and grid containers, as in Chromium. The
+  baseline moves with the centered line; a button without a line has its baseline at its content
+  box's bottom. Fixture `layout/button-centering`. (A `display: inline` button stays an inline box:
+  Chromium makes it an inline-block; not changed.)
+- **G3, selects and text fields** (fork P4-G3): a select's value is centered in its content box and
+  its arrow in its padding box, a single-line text field's line in its content box (not safely, as
+  Chromium). The UA chevron (`compat/ua/arrow-down.svg`) is stroked at 2.1 instead of 1.6: at the
+  same place its strokes rasterized lighter than Chromium's. Fixture `layout/select-height`.
+  Not changed: a select with `appearance: none` keeps no border in the engine (Chromium keeps
+  html.css's 1px border, and drops the menu list's 4px inner start padding); the companions clear
+  it with the checkbox's.
+- **G4, geometry of elements without a box**: RmlUi keeps the box an element had when it is
+  hidden. The element API (`UIElement`: `getBoundingClientRect`, `getBoundingBox`,
+  `offsetLeft/Top/Width/Height`, `clientWidth/Height`, `scrollTop/Left/Width/Height`, so Lua) and
+  the inspector's boxes (`inspect_ui`, `assert_ui`) report 0 for an element with `display: none`
+  on it or an ancestor (a false `data-if`), `display: contents`, or outside a document
+  (`inspect::hasLayoutBox`), as browsers do. The fork's own getters are unchanged (RmlUi reads them
+  internally). Fixture `layout/display-none-geometry`; `GeometryApiParity.MatchesChromium` compares
+  the API and the inspector with its Chromium boxes.
+- **G5, `::before`/`::after` on inputs** (fork P4-G5): `Element::HasGeneratedContentBoxes()` decides
+  whether they exist (default: not replaced); inputs answer as Chromium 153: checkbox, radio and
+  range have them (laid out in the input's content box), text-like and button-like types do not (a
+  button input drew them). Chromium also draws them on `color`, `file` and the date/time types,
+  which the engine approximates by a text field or a button: they draw none. A checkbox with
+  `appearance: none` and no size stays 13x13 (the UA sheet's size; Chromium sizes it by its
+  content). Fixture `pseudo/input-before-after`. The settings example's switches are now
+  `input[type=checkbox].switch` with `appearance: none`, the knob their `::before`.
+- **G6, `check --ui --files` on a stylesheet**: a stylesheet named on its own is checked in the
+  context of the project's documents that load it (their checks' findings in the sheet and its
+  imports): a variable a style attribute or another sheet defines is no finding, one no document
+  defines (a typo) is. `compat::checkStylesheet` (a sheet no document loads) does not report
+  HTMLUI-CSS-0012 for a declaration that needs a variable the sheet and its imports do not
+  declare (any of them); one they declare with two values is still reported. Never a false
+  positive, typos caught when the documents are known. Tests `test_cli_ui_stylesheet_variables`,
+  `CompatApi.CheckStylesheetLeavesUndeclaredVariablesToItsDocuments`. `main_menu.css` lost the
+  `--value` default that avoided the warning.
+- **G7, non-deterministic rendering** (fork P4-G7): the box-shadow cache's key had no pixel size,
+  so after the editor's Game view changed scale (play, maximized) an element kept the shadow
+  texture (with its background and border) made at the old size while another element held it,
+  or got a new one: the same frame had other curve edges from session to session. The key holds
+  the feathering and the element's feather unit; background image layers' rounded clips follow the
+  feather unit too. `test_html_ui_examples.py` compares its two runs at exactly 0 %
+  (`RUNS_MAX_FRACTION = 0.0`, 4.3.1 had 0.01 %).
+- **G8, the guide's examples table** follows `examples.json` (`main_menu` uses the built-in Lucide
+  icons, `data-lucide`; `hud`'s damage flash; `shop`'s quantity dialog and `data-attr-disabled`);
+  `test_guide_examples_table` checks the rows, their order and their checks against the manifest.
+- **G9, `data-attr-<boolean attribute>`** (fork P4-G9): on HTML's boolean attributes a false value
+  removes the attribute and true sets it empty (`data-attrif-*` unchanged); other attributes and
+  string or number values are written as before. The shop example's buy buttons use
+  `data-attr-disabled`. Tests `data_binding.data-attr-boolean`,
+  `ScriptDataModelTest.BooleanAttributesFollowTheModel`.
+- **Examples changed**: settings (switches, selects with a height), dialogue (the portrait is a
+  rounded `<img>`, no wrapper), shop (`data-attr-disabled`), main_menu (no `--value` default); their
+  goldens regenerated and inspected. The guide's notes say what now works (form-control
+  pseudo-elements, centering, rounded pictures, boolean `data-attr`, geometry of hidden elements).
 
 ### 4.4 `p4-guide`: guide, AGENTS.md, stubs, API search
 
