@@ -6,6 +6,8 @@
 
 #include "Scene.h"
 #include "component/UIDocumentComponent.h"
+#include "htmlui/HtmlUIContext.h"
+#include "htmlui/compat/LuaHooks.h"
 #include "subsystem/UIDocumentSystem.h"
 
 #include <RmlUi/Core/ComputedValues.h>
@@ -315,22 +317,27 @@ namespace {
                 fail(element, "pointer-events: none: the pointer goes through it" + at);
                 return;
             }
-            // the context's topmost element: another document over this one keeps the pointer
-            // even where it is transparent (its <html>/<body> takes it, the engine passes it on
-            // to the game, not to the documents below)
-            Rml::Element* topmost = nullptr;
-            Rml::Element* hit = hitAt(doc, x, y, true, &topmost);
-            Rml::ElementDocument* hitDocument = topmost ? topmost->GetOwnerDocument() : nullptr;
-            if (topmost && hitDocument != doc.document){
-                fail(element, "covered by the UI document " + documentName(hitDocument) + (hit ? "" : " (its transparent page takes the pointer)") + at);
-                return;
-            }
+            // the context's topmost element: an element of another document over this one covers it
+            // (a transparent page does not: the pointer passes through it)
+            Rml::Element* hit = hitAt(doc, x, y, true);
             if (!hit){
                 fail(element, "the pointer falls through to the game" + at);
                 return;
             }
+            Rml::ElementDocument* hitDocument = hit->GetOwnerDocument();
+            if (hitDocument != doc.document){
+                fail(element, "covered by " + otherDocumentRef(hit) + " of the UI document " + documentName(hitDocument) + at);
+                return;
+            }
             if (!isInclusiveAncestor(element, hit))
                 fail(element, "covered by " + refs.of(hit) + at, hit, borderRect(hit));
+        }
+
+        // an element of another document, for messages: its id or tag
+        static std::string otherDocumentRef(Rml::Element* element){
+            if (!element->GetId().empty())
+                return "#" + element->GetId();
+            return "<" + compat::LuaHooks::localName(element) + ">";
         }
 
         // the asset path of another document of the scene, for messages

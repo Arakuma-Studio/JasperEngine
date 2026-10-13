@@ -1206,34 +1206,21 @@ namespace {
         return false;
     }
 
-    // a document or the <body> of an HTML document without a background lets the pointer through
-    // (HtmlUIContext::isContent)
-    bool isTransparentCanvas(Rml::Element* element){
-        const bool canvas = rmlui_dynamic_cast<Rml::ElementDocument*>(element) ||
-                            (element->GetTagName() == "htmlbody" && hc::DocumentLoader::isCompatDocument(element));
-        if (!canvas)
-            return false;
-        const Rml::Style::ComputedValues& computed = element->GetComputedValues();
-        return computed.background_color().alpha == 0 && !computed.has_decorator();
-    }
 
 }
 
-Rml::Element* inspect::hitAt(const Doc& doc, float x, float y, bool wholeContext, Rml::Element** topmost){
-    if (topmost)
-        *topmost = nullptr;
+Rml::Element* inspect::hitAt(const Doc& doc, float x, float y, bool wholeContext){
     Rml::Context* context = doc.document->GetContext();
     if (!context)
         return nullptr;
+    // (the context skips the pages the pointer passes through: HtmlUIContext::passesPointerThrough)
     Rml::Element* hit = wholeContext ? context->GetElementAtPoint(Rml::Vector2f(x, y))
                                      : context->GetElementAtPoint(Rml::Vector2f(x, y), nullptr, doc.document);
     while (hit && !isDomElement(hit))
         hit = hit->GetParentNode();
-    if (!hit || hit == context->GetRootElement())
+    if (!hit || hit == context->GetRootElement() || HtmlUIContext::passesPointerThrough(hit))
         return nullptr;
-    if (topmost)
-        *topmost = hit;
-    return isTransparentCanvas(hit) ? nullptr : hit;
+    return hit;
 }
 
 void inspect::hitStack(const Doc& doc, Rml::Element* hit, std::vector<Rml::Element*>& out){

@@ -37,21 +37,20 @@ namespace {
         return document && document->GetParentNode();
     }
 
-    // An element that takes the pointer (phase-1 spec §3.6.2): not the context root, and
-    // either an element inside a document or a document that paints its background (a
-    // background colour with alpha, or a decorator), as a browser canvas would. A transparent
-    // document lets the pointer through to the game. The <body> of an HTML document (RML
-    // htmlbody, phase 2) is part of that canvas: transparent, it lets the pointer through too.
+    // An element that takes the pointer (phase-1 spec §3.6.2): not the context root, attached,
+    // and not a page the pointer passes through (HtmlUIContext::passesPointerThrough).
     bool isContent(Rml::Context* context, Rml::Element* element){
         if (!element || element == context->GetRootElement())
             return false;
-        if (rmlui_dynamic_cast<Rml::ElementDocument*>(element) ||
-            (element->GetTagName() == "htmlbody" && htmlui::compat::DocumentLoader::isCompatDocument(element))){
-            const Rml::Style::ComputedValues& values = element->GetComputedValues();
-            if (values.background_color().alpha == 0 && !values.has_decorator())
-                return false;
-        }
+        if (HtmlUIContext::passesPointerThrough(element))
+            return false;
         return isAttached(element);
+    }
+
+    // a background colour with alpha, a decorator or a background image layer
+    bool paintsBackground(const Rml::Element* element){
+        const Rml::Style::ComputedValues& values = element->GetComputedValues();
+        return values.background_color().alpha != 0 || values.has_decorator() || values.has_background_image();
     }
 
     // htmlnavigate reaching the context root unprevented (phase-2 §3.11.2, hook H4)
@@ -110,6 +109,8 @@ bool HtmlUIContext::create(Rml::Vector2i dimensions){
         return false;
     }
     textInputHandler->setContext(context);
+    // a transparent page passes the pointer on to the documents below it, then to the game
+    context->SetPointerPassThrough([](Rml::Element* element){ return passesPointerThrough(element); });
     // the caret area: context pixels to canvas pixels (texture contexts set their own mapper)
     textInputHandler->setCanvasMapper([this](const Rect& area){
         const Rml::Vector2i size = this->dimensions;
@@ -123,6 +124,36 @@ bool HtmlUIContext::create(Rml::Vector2i dimensions){
     HtmlUI::registerContext(this);
     applyThemes();
 
+    return true;
+}
+
+void HtmlUIContext::releaseFocus(){
+    // a primary press no document takes goes to the game: the focus leaves the element that had
+    // it (as a press on an empty page focused that page before transparent pages passed the
+    // pointer through), so keys and text are the game's again
+    Rml::Element* focus = context ? context->GetFocusElement() : nullptr;
+    if (!focus || focus == context->GetRootElement())
+        return;
+    Rml::ElementDocument* document = focus->GetOwnerDocument();
+    if (document && focus != document)
+        document->Focus();
+}
+
+bool HtmlUIContext::passesPointerThrough(Rml::Element* element){
+    if (!element)
+        return false;
+    Rml::ElementDocument* document = rmlui_dynamic_cast<Rml::ElementDocument*>(element);
+    const bool page = document || (element->GetTagName() == "htmlbody" && htmlui::compat::DocumentLoader::isCompatDocument(element));
+    if (!page || paintsBackground(element))
+        return false;
+    // the body's background painted over the whole canvas (the fork's canvas background, phase 3)
+    if (document && document->HasCanvasBackground() && !document->GetCanvasBodyTag().empty()){
+        for (int i = 0; i < document->GetNumChildren(); i++){
+            Rml::Element* child = document->GetChild(i);
+            if (child->GetTagName() == document->GetCanvasBodyTag())
+                return !paintsBackground(child);
+        }
+    }
     return true;
 }
 
@@ -267,6 +298,7 @@ bool HtmlUIContext::processMouseButtonDown(int button, int modifiers){
             activeElement = hover->GetObserverPtr();
         }else{
             activeElement.reset();
+            releaseFocus();
         }
     }
 

@@ -265,19 +265,17 @@ TEST_F(AssertionsTest, VisibleCoveredByAnotherDocument){
     spec.unobstructed = true;
     AssertResult result = run(spec);
     ASSERT_EQ(result.failures.size(), 1u) << describe(result);
-    EXPECT_EQ(result.failures[0].message, "covered by the UI document ui/top.html at (70, 30)");
-    // where the upper document is transparent its page still takes the pointer, as the engine routes it
+    EXPECT_EQ(result.failures[0].message, "covered by #sheet of the UI document ui/top.html at (70, 30)");
+    // where the upper document's page is transparent the pointer passes through it, as the engine routes it
     spec.selector = "#free";
     result = run(spec);
-    ASSERT_EQ(result.failures.size(), 1u) << describe(result);
-    EXPECT_EQ(result.failures[0].message, "covered by the UI document ui/top.html (its transparent page takes the pointer) at (560, 30)");
+    EXPECT_TRUE(result.passed) << describe(result);
     UIDocumentSystem& system = *scene()->getSystem<UIDocumentSystem>();
-    EXPECT_FALSE(system.eventOnPointerMove(560, 30, 0)) << "the engine passes the pointer to the game";
+    EXPECT_TRUE(system.eventOnPointerMove(560, 30, 0)) << "the document below takes the pointer";
     Rml::Element* hover = system.getContext()->getRmlContext()->GetHoverElement();
     ASSERT_NE(hover, nullptr);
-    EXPECT_EQ(hover->GetOwnerDocument()->GetSourceURL(), "ui/top.html") << "not to the document below";
+    EXPECT_EQ(hover->GetId(), "free");
     system.eventOnMouseLeave();
-    EXPECT_TRUE(run(make(AssertKind::Visible, "#free")).passed) << "visible, only not reachable";
 }
 
 TEST_F(AssertionsTest, TextFits){

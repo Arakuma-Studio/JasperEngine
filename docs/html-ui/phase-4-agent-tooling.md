@@ -1662,8 +1662,9 @@ Where the implementation differs from or makes precise §3.3 (and what it found 
 - **Hit tests** search the entity's document only (`Context::GetElementAtPoint` from it), climb
   from non-DOM parts (scrollbars, pseudo-elements) to their element, and return nothing where
   the engine lets the pointer through to the game: a document or HTML `<body>` without a
-  background colour or decorator (`HtmlUIContext::isContent`). The stack ends at `<body>` (or is
-  `[html]` when the root itself is hit). `InspectorTest.HitTestFollowsTheEngineRouting` checks
+  background (`HtmlUIContext::passesPointerThrough`). The stack ends at `<body>` (or is
+  `[html]` when the root itself is hit; with the routing rule above, such a page is never the
+  hit). `InspectorTest.HitTestFollowsTheEngineRouting` checks
   "empty" against `UIDocumentSystem::eventOnPointerMove` returning "not consumed".
 - **Values** (`detail`, `styles`): lengths in px with at most 2 decimals (`em`, `rem`, `vw`, …
   resolved for the element, `font-size` its computed size), percentages as written, numbers
@@ -1698,8 +1699,8 @@ Where the implementation differs from or makes precise §3.3 (and what it found 
     0.05)`, `border box is 0px x 40px`, `border box [x,y wxh] is outside the WxH viewport`,
     `fully clipped by the overflow of <ref>`; `unobstructed` takes the context's topmost element
     at the centre of the visible part: `covered by <ref> at (x, y)` (otherRef/otherRect the
-    cover), `covered by the UI document ui/top.html at (x, y)` (also over that document's
-    transparent page, which still takes the pointer: see the finding below),
+    cover), `covered by #sheet of the UI document ui/top.html at (x, y)` (an element of another
+    document; a transparent page is not one: the pointer passes through it, see below),
     `pointer-events: none: the pointer goes through it at (x, y)`.
   - `TextFits`: text line boxes come from the layout (each line's baseline, the strut's
     whole-pixel ascent/descent and half-leading as `InlineBoxBase::GetStrut`, the line height)
@@ -1725,17 +1726,23 @@ Where the implementation differs from or makes precise §3.3 (and what it found 
     `contrast 1.23:1 (#777777 on #888888) is below 4.5:1` (` (large text)` when 3:1 applied).
   - `MinSize` skips hidden and transparent matches; a zero-size one fails:
     `is 40x40px, smaller than 44x44px`.
-- **Finding (not changed: phase 1 input routing).** A screen document over another keeps the
-  pointer from it even where it is transparent: its `<html>` is `min-height: 100%`, so
-  `GetElementAtPoint` returns the upper document's page, `HtmlUIContext::isContent` calls it
-  not content, and the engine passes the pointer to the game instead of the document below
-  (`AssertionsTest.VisibleCoveredByAnotherDocument` pins it). `assert_ui visible unobstructed`
-  reports it; whether lower documents should receive such points is for the input owners.
+- **Input routing through stacked documents (fixed here, at the coordinator's request).** An
+  upper screen document used to keep the pointer from the documents below even where it was
+  transparent: its `<html>` is `min-height: 100%`, so it was the hit, `isContent` called it
+  not content, and the engine passed the pointer to the game. Now a page that paints no
+  background is not hit at all and the pointer goes on to the next document below in z-order,
+  then to the game (fork patch P4-1 `Rml::Context::SetPointerPassThrough`,
+  `HtmlUIContext::passesPointerThrough`, phase-1 spec §3.6.2 "as implemented",
+  `TestInputPassThrough.cpp`). `hitTest` stays per entity; `unobstructed` fails only on an
+  element of another document over the element.
 - **Tests:** `InspectorTest` 21 cases (§5.1 1-10, plus empty and whitespace-only documents,
   pseudo-classes, pseudo-elements, texture-mode documents, reloads between queries and inside
   `withViewport`, stylesheet restyles, unicode text and ids, `.rml` documents, data models, a
   3 302-element tree), `AssertionsTest` 10 cases (every kind: pass, fail with its numbers, edge
-  cases of §5.1, other viewports, a document covering another).
+  cases of §5.1, other viewports, a document over another), `InputPassThroughTest` 7 cases
+  (clicks and hover through an upper page, the upper element winning, capture and drag over
+  another document, both pages empty, three layers, painted pages, `pointer-events: none`),
+  `PointerPassThrough.documents` in the vendored RmlUi suite.
 
 ### 4.2 `p4-checks`: `check --ui`, hook, `ui-support`, hot reload pick-up
 

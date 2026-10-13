@@ -671,8 +671,10 @@ document nor, while `Engine.ignoreEventsHandledByUI` is on (the default), the ga
 callbacks (`onMouseDown`, `onKeyDown`, `onCharInput`, `onMouseScroll`, `onTouchStart`, ...).
 - Pointer (press, release, move, touch): consumed when the element under the pointer is an
   element of a document, or a document (`body`) that paints a background (a colour with
-  alpha above 0, or a decorator), as a browser page over a canvas would. A transparent
-  `body` lets the pointer through to the game. An element with `pointer-events: none` is
+  alpha above 0, a gradient or an image), as a browser page over a canvas would. A transparent
+  `body` lets the pointer through: to the next UI Document below it (lower `sortOrder`), then
+  to the game, so a HUD under a transparent menu document still gets clicks where the menu
+  has nothing. A press there that no document takes also blurs the focused field. An element with `pointer-events: none` is
   skipped by the hit test, so a full-screen wrapper with it is click-through (its children
   can set `pointer-events: auto`). A release (and the moves of a drag) belongs to whoever got
   the press.

@@ -58,6 +58,13 @@ namespace jasperengine {
         // true when the hovered/active element blocks the pointer: an element inside a
         // document, or a document with a background colour or a decorator (phase 1)
         bool isPointerOverContent() const;
+        // The pointer routing rule (phase-1 spec §3.6.2, as implemented by p4-inspector): a
+        // document, or the <body> of an HTML document (RML htmlbody), that paints no background
+        // (no colour with alpha, decorator or image layer; for a document, nor its canvas body's)
+        // is not hit itself. Its elements still are, and the point goes on to the documents
+        // below in z-order, then to the game when none takes it. Every hit test of the context
+        // uses it (Rml::Context::SetPointerPassThrough): hover, presses, touches, wheel, drags.
+        static bool passesPointerThrough(Rml::Element* element);
         void setDebuggerVisible(bool visible);
 
         // --- phase 2 (p2-html, hooks H1/H1b/H4) ---
@@ -147,6 +154,8 @@ namespace jasperengine {
         std::function<void(Rml::ElementDocument*, const std::string&, const std::string&)> navigateHandler;
         std::unique_ptr<Rml::EventListener> navigateListener;   // on the context root (bubble phase)
         void applyThemes();
+        // a primary press or touch no document took: the focused element loses the focus
+        void releaseFocus();
         // documents laid out with viewport-dependent values follow a size change (§3.12.1)
         void restyleForViewport();
     };

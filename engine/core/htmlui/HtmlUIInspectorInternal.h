@@ -120,10 +120,9 @@ namespace jasperengine::htmlui::inspect {
 
     // The DOM element that receives the pointer at (x, y): among this document's elements only
     // (wholeContext = false), or the context's topmost, which may be in another document. Null
-    // when the point falls through to the game (no element, or a transparent <html>/<body>).
-    // topmost (optional): the element there before that last rule, which may be the transparent
-    // <html>/<body> of another document that keeps the pointer from this one
-    Rml::Element* hitAt(const Doc& doc, float x, float y, bool wholeContext, Rml::Element** topmost = nullptr);
+    // when the point falls through to the game. A page that paints no background passes the
+    // pointer on to the documents below (HtmlUIContext::passesPointerThrough).
+    Rml::Element* hitAt(const Doc& doc, float x, float y, bool wholeContext);
     // the hit and its ancestors up to <body> (or <html> when it is the hit), topmost first
     void hitStack(const Doc& doc, Rml::Element* hit, std::vector<Rml::Element*>& out);
 
