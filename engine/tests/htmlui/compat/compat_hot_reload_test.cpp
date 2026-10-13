@@ -26,6 +26,7 @@
 
 #include "lua.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -250,6 +251,47 @@ TEST_F(CompatHotReloadTest, SheetsRestyleAndTheDocumentReloads){
     EXPECT_TRUE(frame.is(525, 225, 0, 255, 0));
     // one summary line per load: two loads and two restyles
     EXPECT_LE(TestSystem::get().countLogs(0, "ui/hot.html: 0 errors"), 4u);
+}
+
+// p4-checks: a stylesheet-only reload replaces the document's diagnostics (getDiagnostics is
+// of the last (re)load, which MCP's pick-up reports), an @imported sheet's included
+TEST_F(CompatHotReloadTest, RestyleReplacesTheDiagnostics){
+    SceneFixture fixture;
+    UIDocument document = fixture.addDocument("ui/hot.html");
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    UIDocumentSystem& system = documentSystem(fixture.getScene());
+    auto count = [&](const std::string& file){
+        size_t found = 0;
+        for (const hc::Diagnostic& diagnostic : system.getDiagnostics(document.getEntity())){
+            if (diagnostic.file == file && diagnostic.code == hc::codes::UnsupportedProperty)
+                found++;
+        }
+        return found;
+    };
+    EXPECT_EQ(count("ui/hot.css"), 0u);
+
+    write("ui/hot.css", std::string(documentCss) + "#pic { mix-blend-mode: screen; }\n");
+    std::vector<UIDocumentSystem::Reloaded> reloaded = system.reloadChangedFiles({"ui/hot.css"});
+    ASSERT_EQ(reloaded.size(), 1u);
+    EXPECT_TRUE(reloaded[0].stylesheetOnly);
+    EXPECT_EQ(count("ui/hot.css"), 1u) << "the edited sheet's warning";
+    const std::vector<hc::Diagnostic>& now = system.getDiagnostics(document.getEntity());
+    const auto blend = std::find_if(now.begin(), now.end(), [](const hc::Diagnostic& d){ return d.code == hc::codes::UnsupportedProperty; });
+    ASSERT_NE(blend, now.end());
+    EXPECT_EQ(blend->line, 8u);
+
+    write("ui/more.css", std::string(importedCss) + "#imp { zoom: 2; }\n");
+    reloaded = system.reloadChangedFiles({"ui/more.css"});
+    ASSERT_EQ(reloaded.size(), 1u);
+    EXPECT_TRUE(reloaded[0].stylesheetOnly);
+    EXPECT_EQ(count("ui/more.css"), 1u) << "the @imported sheet's warning";
+    EXPECT_EQ(count("ui/hot.css"), 1u) << "kept: the linked sheet still has it";
+
+    write("ui/hot.css", documentCss);
+    write("ui/more.css", importedCss);
+    reloaded = system.reloadChangedFiles({"ui/hot.css", "ui/more.css"});
+    ASSERT_EQ(reloaded.size(), 1u);
+    EXPECT_EQ(count("ui/hot.css") + count("ui/more.css"), 0u) << "fixed: gone";
 }
 
 namespace {
