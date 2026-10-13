@@ -312,11 +312,13 @@ async def test_editor_loop(ed: Editor):
 
 
 async def test_fix_and_reload(ed: Editor):
-    # round 1: the errors (JavaScript, canvas) and the layout bug; the click handlers in the Lua script
-    disk_write(ed, HTML, FIXED_HTML)
-    disk_write(ed, CSS, FIXED_CSS_1)
-    disk_write(ed, LUA, FIXED_LUA)
+    # round 1: the errors (JavaScript, canvas) and the layout bug; the click handlers in the Lua script.
+    # The three files are written back to back, as one edit: the editor's poller (0.25 s) would reload
+    # twice if it ran between them (each reload is still counted once, but the round would be two).
     fill_mirror()
+    time.sleep(0.02)
+    for rel, text in ((LUA, FIXED_LUA), (CSS, FIXED_CSS_1), (HTML, FIXED_HTML)):
+        (ed.project / rel).write_text(text, encoding="utf-8")
     r = await ed.call_raw("import_files", {"from_document": HTML})
     check(not r.is_error, r.text)
     ext = r.structured.get("external_changes")
