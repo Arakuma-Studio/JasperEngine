@@ -598,9 +598,11 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/shader/ShaderLibraryDoc.cpp
 
     ${EDITOR_DIR}/material/MaterialPresets.cpp
+    ${EDITOR_DIR}/PostProcessingPresets.cpp
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
+    ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
