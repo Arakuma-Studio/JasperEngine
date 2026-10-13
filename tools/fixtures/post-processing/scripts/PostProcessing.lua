@@ -22,10 +22,25 @@
 --     vignette case's vignette drawn by the uber pass, with FXAA: the same image), t1 (FXAA,
 --     chromatic aberration, grain: the pass budget of T1), t1_fixed (the same at a fixed
 --     resolution: no extra pass)
+--   T2, the bloom and blur chain (quarter resolution and below, composited by the uber pass):
+--     bloom (the lamp and the lit wall), bloom_tint (orange, low threshold, tight scatter),
+--     bloom_wide (scatter 1), blur (the whole screen), blur_half (radius 1, half mixed in),
+--     frosted (blur intensity 0: only the blurred texture, which the HUD's frosted panel shows;
+--     in every other case the panel shows its tint), mobile_full (the section 1 budget set:
+--     aces, grade, vignette, dither, FXAA, chromatic aberration, bloom, grain)
+--   MSAA (the scene camera's multisampled target): msaa2, msaa4 (no other effect: resolved into
+--     a target blitted to the swapchain), msaa4_bloom (resolved into the uber pass's source),
+--     msaa4_fixed (resolved into the fixed-resolution target, 640x360)
+--   T3, user post-process passes (scene.postProcessPasses): lib_crt, lib_pixelate (pass scale
+--     0.5), lib_posterize, lib_edge_neon, lib_gameboy, lib_blur (the library post shaders),
+--     user_pass (library pixelate at scale 0.5, then the project's shaders/pp_overlay: its own
+--     texture and the original scene left of the split), user_pass_bloom (the same with bloom:
+--     the chain runs before the uber pass)
 --   PP_SCENE=saved  Saved.scene: the same objects (this script) with post-processing saved in
 --                   the scene file (the "mobile" set without grain): YAML, export code, runtime
 --   PP_CYCLE=1      every case in turn, one per PP_CYCLE_SECONDS (4): the variant bit and the
---                   uber pass switching at runtime (frame stats: no per-object variant churn)
+--                   uber pass switching at runtime (frame stats: no per-object variant churn);
+--                   PP_CYCLE_CASES="off,bloom,..." cycles those only
 --
 -- The log says which case runs ("[PP] case ..."); JASPERENGINE_FRAME_STATS=1 adds the pass list.
 local PostProcessing = { properties = {} }
@@ -46,12 +61,33 @@ local function configure(mesh, apply)
     end
 end
 
--- the cases: a function editing a PostProcessingSettings copy
+-- the cases: a function editing a PostProcessingSettings copy, and the user post-process
+-- passes of the T3 cases (a function returning them)
 local CASES = {}
 local ORDER = {}
-local function case(name, apply)
+local PASSES = {}
+local function case(name, apply, passes)
     CASES[name] = apply
+    PASSES[name] = passes
     table.insert(ORDER, name)
+end
+
+local function libraryPass(name, scale, params)
+    local pass = PostProcessPass()
+    pass.shader = "library:" .. name
+    pass.scale = scale or 1.0
+    for member, value in pairs(params or {}) do
+        pass:setUniform(member, value)
+    end
+    return pass
+end
+
+local function userPasses()
+    local overlay = PostProcessPass()
+    overlay.shader = "shaders/pp_overlay"
+    overlay:setTexture("u_overlayTexture", "textures/checker.png")
+    overlay:setUniform("split", 0.45)
+    return { libraryPass("pixelate", 0.5, { pixelSize = 4.0 }), overlay }
 end
 
 local function grade(p)
@@ -166,6 +202,64 @@ end)
 case("t1_fixed", function(p)
     CASES.t1(p)
 end)
+-- T2: bloom and blur
+case("bloom", function(p)
+    p.bloomEnabled = true
+    p.bloomThreshold = 0.75
+    p.bloomIntensity = 1.5
+end)
+case("bloom_tint", function(p)
+    p.bloomEnabled = true
+    p.bloomThreshold = 0.5
+    p.bloomKnee = 0.8
+    p.bloomIntensity = 2.0
+    p.bloomTint = Vector3(1.0, 0.55, 0.25)
+    p.bloomScatter = 0.35
+end)
+case("bloom_wide", function(p)
+    p.bloomEnabled = true
+    p.bloomThreshold = 0.6
+    p.bloomIntensity = 1.2
+    p.bloomScatter = 1.0
+end)
+case("blur", function(p)
+    p.blurEnabled = true
+    p.blurRadius = 2.5
+end)
+case("blur_half", function(p)
+    p.blurEnabled = true
+    p.blurRadius = 1.0
+    p.blurIntensity = 0.5
+end)
+case("frosted", function(p)
+    p.blurEnabled = true
+    p.blurRadius = 3.0
+    p.blurIntensity = 0.0
+end)
+-- the pass budget of section 1 of the phase 4 spec (tonemap, grade, vignette, chromatic
+-- aberration, bloom, grain, FXAA; dither too)
+case("mobile_full", function(p)
+    CASES.mobile(p)
+    p.bloomEnabled = true
+    p.bloomThreshold = 0.75
+end)
+-- MSAA
+case("msaa2", function(p) p.msaaSamples = 2 end)
+case("msaa4", function(p) p.msaaSamples = 4 end)
+case("msaa4_bloom", function(p)
+    p.msaaSamples = 4
+    CASES.bloom(p)
+end)
+case("msaa4_fixed", function(p) p.msaaSamples = 4 end)
+-- T3: user post-process passes
+case("lib_crt", function(p) end, function() return { libraryPass("crt") } end)
+case("lib_pixelate", function(p) end, function() return { libraryPass("pixelate", 0.5, { pixelSize = 6.0, roundCorners = 0.6 }) } end)
+case("lib_posterize", function(p) end, function() return { libraryPass("posterize") } end)
+case("lib_edge_neon", function(p) end, function() return { libraryPass("edge_neon", 1.0, { hueSpeed = 0.1 }) } end)
+case("lib_gameboy", function(p) end, function() return { libraryPass("gameboy") } end)
+case("lib_blur", function(p) end, function() return { libraryPass("blur", 1.0, { radius = 4.0 }) } end)
+case("user_pass", function(p) end, userPasses)
+case("user_pass_bloom", function(p) CASES.bloom(p) end, userPasses)
 
 local function buildScene(self, scene, keep)
     -- the sky: a smooth gradient (8-bit banding shows in it without dither)
@@ -180,6 +274,16 @@ local function buildScene(self, scene, keep)
     sun:setDirection(-0.35, -1.0, -0.5)
     sun.intensity = 1.6
     sun.shadows = true
+
+    -- the lamp itself: a small emissive bulb (bloom)
+    local bulb = keep(Primitive(scene))
+    bulb:createSphere(0.22)
+    bulb.position = Vector3(-4.5, 1.6, -2.2)
+    bulb.castShadows = false
+    bulb:setColor(1.0, 0.9, 0.7)
+    configure(bulb, function(m)
+        m.emissiveFactor = Vector3(3.0, 2.6, 1.8)
+    end)
 
     -- a strong light close to a white wall: far above 1 in the middle of the wall
     local lamp = keep(Light(scene))
@@ -288,6 +392,23 @@ local function buildScene(self, scene, keep)
     text:setColor(1.0, 1.0, 1.0, 1.0)
     text.position = Vector3(26, 22, 0)
     self.hudText = text
+
+    -- a frosted panel over the bright wall: the blurred scene behind it when the scene has
+    -- blur on (PP_CASE=frosted, blur), its tint otherwise
+    local panel = Polygon(hud)
+    panel:addVertex(0, 0)
+    panel:addVertex(360, 0)
+    panel:addVertex(0, 220)
+    panel:addVertex(360, 220)
+    panel:setColor(1.0, 1.0, 1.0, 1.0)
+    panel.position = Vector3(40, 300, 0)
+    panel.customShader = "library:frosted_panel"
+    self.hudPanel = panel
+    local label = Text(hud)
+    label.text = "frosted panel"
+    label.fontSize = 22
+    label:setColor(0.1, 0.1, 0.15, 1.0)
+    label.position = Vector3(56, 312, 0)
 end
 
 local function applyCase(self, name)
@@ -299,7 +420,8 @@ local function applyCase(self, name)
     local p = PostProcessingSettings()
     apply(p)
     self.scene.postProcessing = p
-    if name == "fixed" or name == "t1_fixed" then
+    self.scene.postProcessPasses = PASSES[name] and PASSES[name]() or {}
+    if name == "fixed" or name == "t1_fixed" or name == "msaa4_fixed" then
         self.scene.fixedResolutionEnabled = true
         self.scene:setFixedResolutionSize(640, 360)
     else
@@ -348,6 +470,13 @@ function PostProcessing:init()
 
     self.cycle = os.getenv("PP_CYCLE") == "1"
     self.period = tonumber(os.getenv("PP_CYCLE_SECONDS") or "") or 4
+    local only = os.getenv("PP_CYCLE_CASES")
+    if only and only ~= "" then
+        ORDER = {}
+        for name in string.gmatch(only, "[^,]+") do
+            table.insert(ORDER, name)
+        end
+    end
     if self.cycle then
         self.index = 1
         applyCase(self, ORDER[1])
