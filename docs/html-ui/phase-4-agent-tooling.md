@@ -2107,7 +2107,9 @@ the pinned headless shell with the references' fonts).
   sheet resets every appearance companion to its themed value on `input, select, button,
   textarea, progress` (the meter is a progress): the author's `appearance` on the control
   outranks it (the root band), an ancestor's no longer reaches it; the controls' parts inherit
-  from the control. accent-color's companions stay inherited, as accent-color is. The look itself
+  from the control. (`--html-select-arrow-color` is gone: reset to `currentcolor` on the select it
+  drew the arrow in the select's own colour's fallback, black; the arrow is `currentcolor` and 0px
+  wide without the look.) accent-color's companions stay inherited, as accent-color is. The look itself
   is `--html-appearance` (`auto`/`none`), which `HtmlInputElement` and `HtmlButtonElement` read
   (`HasNativeAppearance`, fork P4-G12). Fixture `paint/appearance-not-inherited`; tests
   `AppearanceNone.IsNotInherited`, `CompatUaSheet.AppearanceAutoWritesTheSheetsFallbacks` (every

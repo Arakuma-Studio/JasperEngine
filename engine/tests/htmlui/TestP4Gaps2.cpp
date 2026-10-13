@@ -13,6 +13,9 @@
 // - AppearanceNone.CheckboxIsSizedByItsContent: a checkbox or radio without its theme is an
 //   inline-block sized by its ::before/::after, padding and border; with it an auto size is 13px;
 // - ButtonDisplay.InlineIsInlineBlock: the engine's <button> with display: inline.
+// - the coordinator's follow-up (phase-4 spec 4.3.3 G5-G9): AppearanceNone.IsNotInherited,
+//   AppearanceNone.ThemedCheckboxIsACenteredSquare (Chromium's theme, its computed values),
+//   ButtonDisplay.ComputedAsChromiumReportsIt (display types, fit-content block buttons).
 
 #include "harness/RecordingRenderInterface.h"
 
