@@ -1188,6 +1188,7 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("code", &UIEvent::getCode)
         .addProperty("keyCode", &UIEvent::getKeyCode)
         .addProperty("repeat", &UIEvent::isRepeat)
+        .addProperty("gamepad", &UIEvent::getGamepad)
         .addProperty("ctrlKey", &UIEvent::getCtrlKey)
         .addProperty("shiftKey", &UIEvent::getShiftKey)
         .addProperty("altKey", &UIEvent::getAltKey)

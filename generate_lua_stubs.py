@@ -2021,6 +2021,7 @@ HTML_UI_FIELD_OVERRIDES = {
     ('UIElement', 'textContent'): {'doc': ['the text of the descendants; assigning replaces the children with that text (never parsed)']},
     ('UIDocument', 'body'): {'doc': ['the <body> element (the root of an .rml document)']},
     ('UIDocument', 'documentElement'): {'doc': ['the <html> element (CSS :root; the same as body in an .rml document)']},
+    ('UIEvent', 'gamepad'): {'doc': ['the id of the gamepad that sent this keydown/keyup (code "GamepadA", ...), -1 for the keyboard']},
 }
 
 # HTML UI (phase 4, p4-guide): the event names of UIElement/UIDocument addEventListener
@@ -2036,8 +2037,8 @@ HTML_UI_EVENT_TYPES = [
     ('mouseover', 'the pointer entered the element or a child (bubbles)'),
     ('mouseout', 'the pointer left the element or a child (bubbles)'),
     ('wheel', 'the mouse wheel (event.deltaX/deltaY in steps, positive down/right)'),
-    ('keydown', 'a key press on the focused element (event.key: "Enter", "Escape", "ArrowUp", "a")'),
-    ('keyup', 'a key release'),
+    ('keydown', 'a key press on the focused element (event.key: "Enter", "Escape", "ArrowUp", "a"); gamepads too (event.code: "GamepadA", "GamepadDPadUp", ...)'),
+    ('keyup', 'a key release (keyboard or gamepad)'),
     ('textinput', 'text typed into the focused element (event.data)'),
     ('focus', 'the element got the focus'),
     ('blur', 'the element lost the focus'),

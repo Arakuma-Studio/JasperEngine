@@ -36,6 +36,16 @@ namespace jasperengine {
         // "ArrowLeft", "Backspace", "Tab", "Shift", "F5"); "Unidentified" when unknown
         static std::string domKey(int dKey, int dMods);
 
+        // p4-input: the keys of a gamepad (GamepadUIKey, UIDocumentSystem.h, as an int). `code`: the
+        // Xbox gamepad key names browsers on Xbox and Windows (UWP) give key events ("GamepadA",
+        // "GamepadDPadUp", "GamepadLeftThumbstickUp", "GamepadLeftShoulder", "GamepadView",
+        // "GamepadMenu", ...; "GamepadGuide" for the guide button); "" for none. `key`: what the key
+        // means: the d-pad and the left stick "ArrowUp" ..., A "Enter", B "Escape", the others their code.
+        // The engine key: D_KEY_UP ..., D_KEY_ENTER, D_KEY_ESCAPE, else D_KEY_UNKNOWN
+        static std::string gamepadDomCode(int gamepadKey);
+        static std::string gamepadDomKey(int gamepadKey);
+        static int gamepadEngineKey(int gamepadKey);
+
         // the Cmd → Ctrl mapping of toRmlModifiers: on by default on __APPLE__ only; tests
         // switch it to check both platforms
         static void setAppleModifiers(bool enabled);

@@ -285,6 +285,8 @@ namespace jasperengine {
         static bool transformCoordPos(float& x, float& y);
         // systemDraw: a high surrogate that never got its low one reaches documents as U+FFFD
         static void flushCharInput();
+        // systemDraw: the held gamepad directions a document took repeat (UI clock)
+        static void updateGamepadNavigation();
         static void calculateCanvas();
         static void includeScene(Scene* scene);
         // Copy for iteration outside sceneListMutex: callbacks invoked while iterating are
@@ -518,11 +520,20 @@ namespace jasperengine {
         // to screen pixels for System::setTextInputArea
         static void setTextInputArea(const Rect& canvasRect);
 
+        // Gamepads reach the focused document first, as keys (UIDocumentSystem::eventOnGamepadKeyDown):
+        // the buttons, the left stick's directions (pressed past 0.5, released below 0.3) and the
+        // triggers (pressed past half way); held d-pad and stick directions repeat after 0.4 s, every
+        // 0.1 s. What a document consumed does not reach onGamepadButtonDown/Up and onGamepadAxisMove
+        // while ignoreEventsHandledByUI; an axis the documents take is first reset to its rest value
+        // for the game. Input's polling functions always read the device
         static void systemGamepadConnect(int gamepad, const std::string& name);
         static void systemGamepadDisconnect(int gamepad);
         static void systemGamepadButtonDown(int gamepad, int button);
         static void systemGamepadButtonUp(int gamepad, int button);
         static void systemGamepadAxisMove(int gamepad, int axis, float value);
+        // an element of a document has focus, so the d-pad, the left stick and A go to the UI
+        // (a game that polls Input can check it)
+        static bool wantsGamepadNavigation();
 
         //-----JasperEngine user events-----
         // Safe accessor for the Init event

@@ -10,13 +10,10 @@
 
 #include "UIElement.h"
 
+#include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ObserverPtr.h>
 
 #include <memory>
-
-namespace Rml {
-    class Element;
-}
 
 namespace jasperengine{
 
@@ -32,6 +29,10 @@ namespace jasperengine{
         static Rml::Element* get(const UIElement& element){ return element.get(); }
         // a weak handle to element (an invalid UIElement for nullptr)
         static UIElement wrap(Rml::Element* element){ return UIElement::wrap(element); }
+        // the hidden template RmlUi keeps after the rows of a data-for (the rows lose the attribute):
+        // DOM queries, child lists and the inspector skip it, as the rows are the elements the author
+        // sees (p4-input; the fork's structural selectors skip it too, P4-5)
+        static bool isDataForTemplate(const Rml::Element* element){ return element && element->HasAttribute("data-for"); }
     };
 
 }
