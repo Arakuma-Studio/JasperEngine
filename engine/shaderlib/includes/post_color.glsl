@@ -10,9 +10,9 @@
 // (u_postColorLut: N*N x N, N 16 or 32, blue across the slices): the linear colour goes in
 // through the shaper sqrt(x / (x + k)) (0..inf to 0..1, near-linear in the display range; k
 // near 1, RenderSystem::getPostColorShaper) and comes out display-encoded, exposure, curve,
-// grade and encoding baked in. When the uber pass
-// runs (FXAA, bloom...) the LUT holds the exposure and the curve only (they need the unclamped
-// linear colour) and the uber pass grades the frame. Vignette and dither are maths on
+// grade and encoding baked in. When the uber pass runs (FXAA, bloom...) the LUT holds the
+// exposure and the curve only (they need the unclamped linear colour) and the uber pass
+// grades the frame. Vignette and dither are maths on
 // gl_FragCoord; the engine zeroes them when the uber pass does them.
 //
 // Parameters: four vectors in the block the variant uploads anyway, in this order of
