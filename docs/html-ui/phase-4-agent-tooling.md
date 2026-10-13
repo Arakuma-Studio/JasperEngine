@@ -1995,7 +1995,7 @@ unit test that fails without the fix.
 - **G5, `::before`/`::after` on inputs** (fork P4-G5): `Element::HasGeneratedContentBoxes()` decides
   whether they exist (default: not replaced); inputs answer as Chromium 153: checkbox, radio and
   range have them (laid out in the input's content box), text-like and button-like types do not (a
-  button input drew them). Chromium also draws them on `color`, `file` and the date/time types,
+  button input drew them); progress bars (and so the engine's `<meter>`) have them too. Chromium also draws them on `color`, `file` and the date/time types,
   which the engine approximates by a text field or a button: they draw none. A checkbox with
   `appearance: none` and no size stays 13x13 (the UA sheet's size; Chromium sizes it by its
   content). Fixture `pseudo/input-before-after`. The settings example's switches are now

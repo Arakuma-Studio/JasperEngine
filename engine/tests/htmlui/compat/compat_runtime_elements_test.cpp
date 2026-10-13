@@ -612,6 +612,29 @@ TEST_F(CompatElementTest, RoundedImageIsTrimmedToTheContentCurve){
     EXPECT_EQ(recording.clipMaskRenders, 0);
 }
 
+// P4-G5: ::before and ::after on the engine's inputs as Chromium draws them: checkbox, radio and
+// range yes; text-like, button-like and the types the engine approximates by a text field or a
+// button (color, date, file, reset, image) no
+TEST_F(CompatElementTest, InputsHaveGeneratedContentAsInChromium){
+    const char* types[] = {"checkbox", "radio", "range", "text", "password", "number", "submit", "button", "reset", "image", "file", "color", "date"};
+    std::string body;
+    for (const char* type : types)
+        body += std::string("<input id='") + type + "' type='" + type + "' class='g'/>";
+    ASSERT_NE(show(body, std::string(kControls) + ".g::before { content: ''; display: block; width: 4px; height: 4px; } .g::after { content: 'x'; }"),
+              nullptr);
+    for (const char* type : types){
+        const bool expected = std::string(type) == "checkbox" || std::string(type) == "radio" || std::string(type) == "range";
+        Rml::Element* input = byId(type);
+        ASSERT_NE(input, nullptr) << type;
+        EXPECT_EQ(input->GetPseudoElement(Rml::PseudoElementType::Before) != nullptr, expected) << type;
+        EXPECT_EQ(input->GetPseudoElement(Rml::PseudoElementType::After) != nullptr, expected) << type;
+    }
+    // laid out in the checkbox's content box
+    Rml::Element* before = byId("checkbox")->GetPseudoElement(Rml::PseudoElementType::Before);
+    EXPECT_EQ(before->GetBox().GetSize(), Rml::Vector2f(4, 4));
+    EXPECT_EQ(before->GetAbsoluteOffset(Rml::BoxArea::Border), byId("checkbox")->GetAbsoluteOffset(Rml::BoxArea::Content));
+}
+
 // ---------------------------------------------------------------- label
 
 TEST_F(CompatElementTest, LabelsActivateTheirHtmlControl){
