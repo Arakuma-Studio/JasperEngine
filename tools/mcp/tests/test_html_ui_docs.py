@@ -31,7 +31,7 @@ from harness import REPO, Editor, skip
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_html_ui_basic import Shot, near  # noqa: E402
 from test_html_ui_checks import check, check_eq, fail, run_json, scratch_project, tiny_png, write  # noqa: E402
-from test_stubs import LUA_DIR, lua_workspace, luals_check, stub_files, wait_tooling  # noqa: E402
+from test_stubs import clangd_check, find_tool, lua_workspace, luals_check, stub_files, wait_tooling  # noqa: E402
 
 TIMEOUT = 900
 
@@ -652,6 +652,25 @@ async def test_luals_ui_stubs(ed: Editor):
         shutil.rmtree(ws.parent, ignore_errors=True)
         for d in dirs:
             shutil.rmtree(d, ignore_errors=True)
+
+
+async def test_guide_cpp_snippet_parses(ed: Editor):
+    """The guide's C++ block, in a function of a project script, against the project's API headers."""
+    if not find_tool("clangd"):
+        skip("clangd is not installed; the guide's C++ block is checked with it")
+    await wait_tooling(ed)
+    blocks = [b for b in guide_blocks() if b["lang"] == "cpp"]
+    ed.check(blocks, "the guide has a C++ block")
+    path = ed.project / "scripts" / "GuideCppCheck.cpp"
+    try:
+        for b in blocks:
+            body = "\n".join("    " + line for line in b["code"].splitlines())
+            path.write_text('#include "JasperEngine.h"\n\nusing namespace jasperengine;\n\n'
+                            f"void guideCpp(Scene* scene, Entity entity) {{\n{body}\n}}\n", encoding="utf-8")
+            n, errors = clangd_check(path)
+            ed.check_eq(n, 0, f"guide line {b['line']}: clangd errors in the C++ block: {errors}")
+    finally:
+        path.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------- 9. AGENTS.md (last: switches the project)

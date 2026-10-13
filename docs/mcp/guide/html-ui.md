@@ -546,7 +546,7 @@ is the global `document`.
 | Classes and style | `classList:add(...)`, `remove(...)`, `toggle(name[, force])`, `contains(name)`; `style.backgroundColor` or `style["background-color"]` (write: inline, `""` or nil removes; read: the computed value as CSS text), `style:getPropertyValue/setProperty/removeProperty`, `style.cssText` |
 | Forms | `value`, `checked`, `disabled` (read the new value in `input`/`change` listeners from `event.target.value`) |
 | Focus and actions | `focus()`, `blur()`, `click()`; `<dialog>`: `show()`, `showModal()`, `close([value])`; `<lottie>`: `play()`, `pause()`, `stop()`, `seek(s)`, ... |
-| Geometry and scroll | `getBoundingClientRect()` (`x y width height top left right bottom`, canvas px, through transforms), `offsetLeft/Top/Width/Height`, `clientWidth/Height`, `scrollTop`, `scrollLeft`, `scrollWidth`, `scrollHeight`, `scrollIntoView([alignToTop])`, `scrollTo(x, y[, smooth])`, `scrollBy(dx, dy[, smooth])` |
+| Geometry and scroll | `getBoundingClientRect()` (`x y width height top left right bottom`, document px = canvas px for screen documents, through transforms), `offsetLeft/Top/Width/Height`, `clientWidth/Height`, `scrollTop`, `scrollLeft`, `scrollWidth`, `scrollHeight`, `scrollIntoView([alignToTop])`, `scrollTo(x, y[, smooth])`, `scrollBy(dx, dy[, smooth])` |
 | Events | `addEventListener(type, fn[, capture or {capture=, once=}])`, `removeEventListener(type, fn[, capture])`, `dispatchEvent(type[, detail[, bubbles]])` (false when a listener prevented it) |
 
 Queries that find nothing return `nil`. The engine's own attributes (`data-htmlui-*`) and
@@ -578,7 +578,7 @@ get no input). Create elements with `createElement` or `innerHTML`, then `append
 events (use `mouseover`/`mouseout` and `mousedown`).
 
 A listener gets a `UIEvent`: `type`, `target`, `currentTarget`, `eventPhase` (1 capture,
-2 target, 3 bubble), `button` (0 left, 1 middle, 2 right), `clientX`/`clientY` (canvas px),
+2 target, 3 bubble), `button` (0 left, 1 middle, 2 right), `clientX`/`clientY` (document px),
 `deltaX`/`deltaY`, `ctrlKey`, `shiftKey`, `altKey`, `metaKey`, `key` (browser key names:
 `"Enter"`, `"Escape"`, `"ArrowUp"`, `"a"`), `code` (`"KeyA"`), `keyCode` (`Input.KEY_*`),
 `repeat` (`event["repeat"]`), `data` (`textinput`), `animationName`, `propertyName`,
@@ -1067,7 +1067,7 @@ end)
 - Keys go to the focused element (bubbling to the document) of the document that took the
   last press. They are consumed when a listener stops or prevents them, or when a text field
   has focus (except Escape and F1-F25); otherwise the game gets them. Enter and Space activate
-  a focused button, link, checkbox or summary.
+  a focused button or summary, Enter a link, Space toggles a checkbox.
 - **Keyboard and gamepad menus**: focus the first button on load and move the focus on arrow
   keys in a `keydown` listener. **Gamepads do not reach documents**: subscribe
   `RegisterEngineEvent(self, "onGamepadButtonDown")` and move the focus or `click()` from
@@ -1310,7 +1310,8 @@ its listeners in a method called from `init` and registered on `doc.onLoad`.
 
 - **Animate `transform` and `opacity`**, not layout properties (`width`, `top`, `margin`,
   `font-size`): transforms and opacity change one value per frame, layout properties lay the
-  document out again. For a moving bar, `transform: scaleX()` beats `width`.
+  document out again. For a bar animated every frame, `transform: scaleX()` beats `width`; a
+  width set once per event (the HUD above) is fine.
 - **Layers cost passes.** A static document without filters, masks or shadows is one offscreen
   pass and uploads nothing per frame. Every `filter`, `backdrop-filter`, `mask-image`, blurred
   `box-shadow` and blurred `text-shadow` draws through extra offscreen passes (a blur 4 to 6, a
@@ -1335,7 +1336,7 @@ its listeners in a method called from `init` and registered on `doc.onLoad`.
 
 C++ scripts have the same API with get/set methods (`#include "JasperEngine.h"`); events take
 `std::function`s and return ids, data models are `UIDataModel` handles over `UIValue` trees.
-The headers are in the project's `.jasperengine/engine-api/` (`object/ui/UIDocument.h`,
+The headers are in the project's `.jasperengine/engine-api/core/` (`object/ui/UIDocument.h`,
 `UIElement.h`, `UIEvent.h`, `UIDataModel.h`, `htmlui/HtmlUI.h`, `htmlui/anim/Anime.h`).
 
 ```cpp
