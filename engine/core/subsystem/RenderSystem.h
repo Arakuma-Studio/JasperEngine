@@ -234,6 +234,22 @@ namespace jasperengine{
 		Vector4 bloomBlur;           // rgb bloom tint * intensity (linear), a blur mix
 	} fs_uber_t;
 
+	// the bloom and blur chain's passes (shaderlib/bloom.vert, bloom.frag)
+	typedef struct vs_bloom_t {
+		Vector4 offset;              // xy tap distance in source UV
+	} vs_bloom_t;
+	typedef struct fs_bloom_t {
+		Vector4 curve;               // threshold: x threshold - knee, y 2 knee, z 0.25 / knee, w threshold (linear)
+		Vector4 params;              // x scatter (the upsample's mix with its level)
+	} fs_bloom_t;
+
+	// u_fs_blurredScene (shaderlib/includes/blurred_scene.glsl): where a draw reads the blurred
+	// scene of the frame (PostProcessingSettings::blurEnabled), for frosted UI panels
+	typedef struct blurred_scene_t {
+		Vector4 screenToUV;          // blurred texture UV = gl_FragCoord.xy * xy + zw
+		Vector4 params;              // x 1 when the blurred scene is bound (0: black, none this frame)
+	} blurred_scene_t;
+
 	typedef struct fs_blit_t {
 		// source UV = destination UV * xz + yw: (1, 0, 1, 0) copies, (1, 0, -1, 1) flips Y (a GL
 		// swapchain destination), anything else reads a part of the source (a scene-colour copy
@@ -787,6 +803,20 @@ namespace jasperengine{
 		// and the targets sized to the view (SSAO, SSR, fixed resolution, post-process).
 		// draw() uses primaryView; the editor's secondary views keep their own, so a
 		// second view in the same frame reallocates nothing and disturbs nothing.
+		// The bloom or the blur chain of a view (phase 4, T2): SRGB8A8 targets without depth at
+		// 1/4, 1/8, 1/16 and 1/32 of the uber pass's source, the way down (down[i]) and up
+		// (up[i], the size of down[i]); made for the levels in use, resized in place
+		struct PostChainTargets{
+			static const int LEVELS = 4;
+			Framebuffer down[LEVELS];
+			Framebuffer up[LEVELS - 1];
+			unsigned int sourceWidth = 0;
+			unsigned int sourceHeight = 0;
+			int levels = -1;              // the down levels below the first that exist
+			void destroy();
+			bool isCreated() const{ return levels >= 0; }
+		};
+
 		struct RenderView{
 			InstanceView instanceViews[1 + MAX_SHADOW_ATLAS_SLOTS];
 			LodView lodView;
@@ -820,7 +850,32 @@ namespace jasperengine{
 
 			unsigned int postProcessWidth = 0;
 			unsigned int postProcessHeight = 0;
-			Framebuffer postProcessFramebuffer[2]; // ping-pong targets
+			// the user chain's full-size targets: 0 takes the scene (depth-stencil), 1 and 2 the
+			// passes (2 only while a pass after the first reads the original scene, which then
+			// stays in 0)
+			Framebuffer postProcessFramebuffer[3];
+			// the chain's passes below full size (PostProcessPass::scale): two targets per size,
+			// made when a size is used, freed in the frame it is not
+			struct PostScaledTargets{
+				unsigned int width = 0;
+				unsigned int height = 0;
+				Framebuffer framebuffer[2];
+				bool used = false;
+			};
+			std::vector<std::unique_ptr<PostScaledTargets>> postScaledTargets;
+
+			// the bloom and blur chains (phase 4)
+			PostChainTargets bloomTargets;
+			PostChainTargets blurTargets;
+			// the multisampled scene target of the post-processed camera (PostProcessingSettings::
+			// msaaSamples): its colour pass draws into it and resolves into its usual target
+			Framebuffer msaaFramebuffer;
+			unsigned int msaaWidth = 0;
+			unsigned int msaaHeight = 0;
+			int msaaSamples = 1;
+			// what the multisampled scene resolves into when the camera would draw to the
+			// swapchain (exported builds without another offscreen effect): blitted to it after
+			Framebuffer msaaResolveFramebuffer;
 
 			// scene inputs (shader library phase 3) of the camera passes drawn in this view:
 			// packed depth and colour copies by size, reused across passes and frames, freed
@@ -1154,6 +1209,39 @@ namespace jasperengine{
 		// feature compiles and draws without them
 		TextureRender* uberBloomTexture = nullptr;
 		TextureRender* uberBlurTexture = nullptr;
+		// The bloom and blur chain (phase 4, T2; shaderlib/bloom.frag): one program per pass kind
+		enum BloomProgramKind{
+			BLOOM_PREFILTER_THRESHOLD,   // 'Pre,Thr' the bloom's prefilter
+			BLOOM_PREFILTER_PLAIN,       // 'Pre' the blur's prefilter
+			BLOOM_DOWN,                  // dual-filter downsample
+			BLOOM_UP_MIX,                // 'Ups,Mix' the bloom's upsample (with its level by scatter)
+			BLOOM_UP,                    // 'Ups' the blur's upsample
+			BLOOM_PROGRAMS
+		};
+		struct BloomProgram{
+			std::shared_ptr<ShaderRender> shader;
+			ObjectRender render;
+			bool loaded = false;
+			int slotVSParams = -1;
+			int slotFSParams = -1;
+			std::pair<int, int> slotSource = {-1, -1};
+			std::pair<int, int> slotLevel = {-1, -1};
+		};
+		BloomProgram bloomPrograms[BLOOM_PROGRAMS];
+		// MSAA of the post-processed camera (PostProcessingSettings::msaaSamples, as the device
+		// has it): the sample count the objects' PIP_MSAA pipelines are made with (1: none)
+		int msaaPipelineSamples = 1;
+		// exported builds drawing to the swapchain: the multisampled scene resolves offscreen
+		// and is blitted (updateSwapchainRedirect)
+		bool msaaRedirect = false;
+		CameraRender bloomPassRender;
+		vs_bloom_t vs_bloom;
+		fs_bloom_t fs_bloom;
+		// the blurred scene of the frame's last base-layer post-processed camera, for the draws
+		// after it in the same view (layer scenes: frosted UI panels; includes/blurred_scene.glsl),
+		// null while there is none; shared by every scene's RenderSystem
+		static TextureRender* frameBlurredScene;
+		static blurred_scene_t frameBlurredSceneBlock;
 		CameraRender fixedResPassRender;   // drives the upscale blit pass
 		ObjectRender blitRender;           // fullscreen blit.frag draw
 		std::shared_ptr<ShaderRender> blitShader;
@@ -1172,6 +1260,13 @@ namespace jasperengine{
 			std::pair<int, int> slotDepth;
 			std::pair<int, int> slotGBuffer;
 			std::pair<int, int> slotSSAO;
+			// the scene before the chain (phase 4: u_originalSceneTexture)
+			std::pair<int, int> slotOriginal = {-1, -1};
+			// its manifest (a library shader's or a fork's, for its @property defaults), its
+			// textures and what it reads of the engine's shader-library data (frame block...)
+			std::shared_ptr<const ShaderManifest> manifest;
+			std::vector<std::pair<std::string, Texture>> textures;
+			ShaderLibraryBindings bindings;
 		};
 		bool postProcessLoaded;
 		bool postProcessNeedReload;
@@ -1182,6 +1277,9 @@ namespace jasperengine{
 		PostProcessingTiers postTiers;
 		// MeshShaderEnvironment::postColor the objects load with (the variant bit)
 		bool postColorVariants = false;
+		// the bit changed: the loaded points, lines and sky keep drawing their variant until the
+		// new ones are built, then reload (as meshes do, needReloadMeshVariants)
+		bool postColorReloadPending = false;
 		// the in-shader LUT (shaper domain, includes/post_color.glsl), side postTailLutSize
 		TextureRender postTailLut;
 		int postTailLutSize = 0;
@@ -1193,6 +1291,7 @@ namespace jasperengine{
 		PostColorLut::Strip postLutStrip;
 		// the bake buffer, kept between bakes
 		std::vector<uint8_t> postLutPixels;
+		bool postProcessKeepsOriginal = false; // a pass after the first reads the original scene
 		bool postProcessNeedsDepth;            // a pass samples the depth texture
 		bool postProcessNeedsGBuffer;          // a pass samples the G-buffer (needs SSR)
 		CameraRender postProcessPassRender;    // drives the offscreen post passes
@@ -1342,6 +1441,28 @@ namespace jasperengine{
 		bool loadUber(uint32_t features);
 		void destroyUber();
 		bool ensurePostSceneFramebuffer(unsigned int width, unsigned int height);
+		// whether the variants the loaded points, lines and sky take with the current colour bit
+		// are built (or failed: the load falls back), asking for them
+		bool postColorVariantsReady();
+		// the bloom chain's programs (BloomProgramKind) loaded; false while one is building
+		bool loadBloomProgram(BloomProgramKind kind);
+		void destroyBloomPrograms();
+		// the chain's targets for a source size and down levels (0..3), made or resized
+		bool ensurePostChainTargets(PostChainTargets& targets, unsigned int sourceWidth, unsigned int sourceHeight, int levels);
+		// one pass of the chain: source (and level, a mixed upsample's) into target
+		void renderBloomPass(BloomProgramKind kind, const char* label, TextureRender* source, unsigned int sourceWidth,
+		                     unsigned int sourceHeight, TextureRender* level, Framebuffer& target, const Vector4& offset);
+		// The bloom chain (threshold, 3 levels down and up with the scatter mix) or the blur chain
+		// (no threshold, levels from the blur radius) of the uber pass's source: its result at a
+		// quarter of the source's size, or null while its programs build
+		TextureRender* renderBloomChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight);
+		TextureRender* renderBlurChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight);
+		// the multisampled scene target for a colour target of this size (made or resized)
+		bool ensureMsaaFramebuffer(unsigned int width, unsigned int height, int samples);
+		// the target the multisampled scene resolves into before its blit to the swapchain
+		bool ensureMsaaResolveFramebuffer(unsigned int width, unsigned int height);
+		// binds the frame's blurred scene to a draw that reads it (includes/blurred_scene.glsl)
+		void applyBlurredScene(ObjectRender& render, const ShaderLibraryBindings& bindings);
 		void renderUber(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight,
 		                FramebufferRender* destination, const Rect& viewport);
 		// the post colour bit of a shader type's variants while the scene's objects load with it
@@ -1635,7 +1756,14 @@ namespace jasperengine{
 		void destroyPostProcess();
 		bool ensurePostProcessFramebuffers(unsigned int width, unsigned int height);
 		// runs the chain from ping-pong buffer 0 into destination (swapchain when null)
-		void renderPostProcess(FramebufferRender* destination);
+		// the chain into the destination (null: the swapchain, or with keepResult its last
+		// output is returned, the uber pass's source)
+		TextureRender* renderPostProcess(FramebufferRender* destination, bool keepResult = false);
+		// a full-size or scaled target of the user chain, not the one it reads (input) nor the
+		// original scene while kept
+		Framebuffer* postProcessOutput(unsigned int width, unsigned int height, TextureRender* input);
+		// a copy of a chain target into a destination framebuffer (the last pass below full size)
+		void renderPostProcessCopy(TextureRender* source, FramebufferRender* destination);
 
 		bool drawUI(UIComponent& ui, Transform& transform, PipelineType pipType);
 		void destroyUI(Entity entity, UIComponent& ui);

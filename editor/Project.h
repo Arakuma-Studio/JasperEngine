@@ -971,6 +971,9 @@ namespace jasperengine::editor{
         bool scriptsSetLightCapacity() const;
         // a project script sets the scene's post-processing (both states of its colour variant bit ship)
         bool scriptsSetPostProcessing() const;
+        // the PostProcessingSettings switches project scripts name (ShaderVariantCollector::
+        // getScriptableEffectFields), for the uber variants an export ships
+        std::vector<std::string> scriptsPostProcessingFields() const;
         // a project script contains text
         bool scriptsMention(const char* text) const;
         // The shader keys a loaded scene needs, derived from content without drawing anything:

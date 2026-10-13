@@ -22,6 +22,7 @@
 #include "command/type/SetChildSceneStartActiveCmd.h"
 #include "command/type/SetMainCameraCmd.h"
 #include "util/Util.h"
+#include "shader/ShaderManifest.h"
 #include "window/ProjectWindow.h"
 
 #include <algorithm>
@@ -630,7 +631,8 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"default_points_shader", SettingKind::String, "library:<name> or forked shader base path for points (\"\" built-in)"},
         {"default_lines_shader", SettingKind::String, "library:<name> or forked shader base path for lines (\"\" built-in)"},
         {"post_process", SettingKind::PostProcess,
-         "post-process passes in order: [{shader: fork base path, enabled: bool, uniforms: {name: [x,y,z,w]}}]"},
+         "post-process passes in order: [{shader: fork base path or \"library:<name>\" (list_shaders type=\"postprocess\"), "
+         "enabled: bool, uniforms: {name: [x,y,z,w]}, textures: {uniform: image path}, scale: 0.1..1 (output resolution)}]"},
         {"post_processing", SettingKind::PostProcessing,
          "the engine's post-processing of the main camera: {field: value} of the fields away from their defaults; "
          "setting an object changes the fields it names, null resets all. Each field is also the setting "
@@ -786,7 +788,15 @@ const McpValues::EnumOptions* settingOptions(SettingKind kind) {
 Json postProcessToJson(const std::vector<PostProcessPass>& passes) {
     Json list = Json::array();
     for (const PostProcessPass& pass : passes) {
-        list.push_back({{"shader", pass.shader}, {"enabled", pass.enabled}, {"uniforms", McpValues::shaderUniformsToJson(pass.uniforms)}});
+        Json item = {{"shader", pass.shader}, {"enabled", pass.enabled}, {"uniforms", McpValues::shaderUniformsToJson(pass.uniforms)}};
+        // (phase 4) only when set: the pass's textures by uniform (image paths) and its scale
+        Json textures = Json::object();
+        for (const auto& [uniform, texture] : pass.textures) {
+            if (!texture.empty()) textures[uniform] = texture.getPath(0);
+        }
+        if (!textures.empty()) item["textures"] = textures;
+        if (pass.scale != 1.0f) item["scale"] = pass.scale;
+        list.push_back(item);
     }
     return list;
 }
@@ -952,7 +962,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
         case SettingKind::PostProcessingField:
             break; // setSceneSettingsTool gathers them (applyPostProcessingSetting)
         case SettingKind::PostProcess: {
-            if (!value.is_array()) return expect("an array of {shader, enabled, uniforms}");
+            if (!value.is_array()) return expect("an array of {shader, enabled, uniforms, textures, scale}");
             std::vector<PostProcessPass> passes;
             for (size_t i = 0; i < value.size(); i++) {
                 const Json& item = value[i];
@@ -963,7 +973,14 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                 }
                 PostProcessPass pass;
                 pass.shader = item.value("shader", std::string());
-                if (!shaderBaseExists(project, pass.shader)) {
+                // a library post-process shader (phase 4) or a project fork
+                const bool library = ShaderReference::isLibrary(pass.shader);
+                std::shared_ptr<const ShaderManifest> manifest = library ? ShaderManifests::get(pass.shader) : nullptr;
+                if (library && (!manifest || !manifest->hasType || manifest->type != ShaderType::POSTPROCESS)) {
+                    error = where + ".shader \"" + pass.shader + "\": not a library post-process shader (list_shaders type=\"postprocess\").";
+                    return nullptr;
+                }
+                if (!library && !shaderBaseExists(project, pass.shader)) {
                     error = where + ".shader \"" + pass.shader + "\": no forked shader there (fork the post-process shader first).";
                     return nullptr;
                 }
@@ -972,6 +989,18 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                 if (item.contains("uniforms") && !McpValues::shaderUniformsFromJson(item["uniforms"], pass.uniforms, why)) {
                     error = where + ".uniforms: " + why;
                     return nullptr;
+                }
+                if (item.contains("textures") &&
+                        !McpValues::shaderTexturesFromJson(project, scene, manifest.get(), library, item["textures"], pass.textures, why)) {
+                    error = where + ".textures: " + why;
+                    return nullptr;
+                }
+                if (item.contains("scale")) {
+                    if (!item["scale"].is_number() || item["scale"].get<double>() < 0.1 || item["scale"].get<double>() > 1.0) {
+                        error = where + ".scale must be a number from 0.1 to 1 (the pass's resolution, a fraction of the chain's).";
+                        return nullptr;
+                    }
+                    pass.scale = item["scale"].get<float>();
                 }
                 passes.push_back(pass);
             }

@@ -20,8 +20,9 @@
 //
 // Colour maths is mediump (fp16 on GLES where the GPU has it); UVs and texel sizes stay highp
 // (the parameter block too: GL uploads it as one vec4 array).
-// The bloom and blur textures are the phase 4 bloom chain's; with none bound the engine binds
-// black (bloom adds nothing) and the source (blur mixes in nothing).
+// The bloom and blur textures are the phase 4 bloom chain's (SRGB8A8: linear when sampled, in
+// the gamma-2 domain the chain's prefilter decoded the scene to); with none bound the engine
+// binds black (bloom adds nothing) and the source with a blur mix of 0.
 
 #if defined(UBER_FXAA) || defined(UBER_SHARPEN) || defined(UBER_EDGE)
     #define UBER_CORNERS
@@ -178,7 +179,8 @@ void main(){
         color = sqrt(color * color + bloom * uber.bloomBlur.rgb);
     #endif
     #ifdef UBER_BLUR
-        mediump vec3 blurred = texture(sampler2D(u_blurTexture, u_blur_smp), uv).rgb;
+        // the chain's colour is linear (gamma 2, as its prefilter decoded it)
+        mediump vec3 blurred = sqrt(texture(sampler2D(u_blurTexture, u_blur_smp), uv).rgb);
         color = mix(color, blurred, uber.bloomBlur.a);
     #endif
 

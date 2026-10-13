@@ -3093,6 +3093,10 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
         for (const PostProcessPass& pass : scene->getPostProcessPasses()) {
             out << ind3 << "postProcess.push_back({" << formatString(pass.shader) << ", " << formatBool(pass.enabled) << ", "
                 << formatShaderUniforms(pass.uniforms) << "});\n";
+            // (phase 4) only when set, so the code of a chain without them is unchanged
+            out << formatShaderTextures(indentSpaces + 8, pass.textures, "postProcess.back().textures", projectPath);
+            if (pass.scale != 1.0f)
+                out << ind3 << "postProcess.back().scale = " << formatFloat(pass.scale) << ";\n";
         }
         out << ind3 << "scene->setPostProcessPasses(postProcess);\n";
         out << ind2 << "}\n";

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneSettings.h"
+#include "shader/ShaderManifest.h"
 
 #include <algorithm>
 #include <cmath>
@@ -127,4 +128,12 @@ void PostProcessingSettings::clamp(){
     msaaSamples = msaaSamples >= 4 ? 4 : (msaaSamples >= 2 ? 2 : 1);
     if ((int)tonemap < 0 || (int)tonemap > (int)TonemapMode::AGX) tonemap = TonemapMode::NONE;
     if ((int)monochromeMode < 0 || (int)monochromeMode > (int)MonochromeMode::SEPIA) monochromeMode = MonochromeMode::GRAYSCALE;
+}
+
+bool PostProcessPass::setTexture(const std::string& uniform, const std::string& path){
+    return ShaderLibraryValues::setTexture(textures, uniform, path);
+}
+
+std::string PostProcessPass::getTexture(const std::string& uniform) const{
+    return ShaderLibraryValues::getTexture(textures, uniform);
 }

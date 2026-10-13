@@ -428,6 +428,9 @@ TextureRender RenderSystem::emptyCubeGray;
 
 bool RenderSystem::emptyTexturesCreated = false;
 
+TextureRender* RenderSystem::frameBlurredScene = nullptr;
+blurred_scene_t RenderSystem::frameBlurredSceneBlock;
+
 RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
     instanceViewsDirty = true;
     signature.set(scene->getComponentId<Transform>());
@@ -541,9 +544,20 @@ void RenderSystem::destroy(){
     destroyBlit();
     destroyPostProcess();
     destroyUber();
+    destroyBloomPrograms();
     rv().postSceneFramebuffer.destroy();
     rv().postSceneWidth = 0;
     rv().postSceneHeight = 0;
+    rv().bloomTargets.destroy();
+    rv().blurTargets.destroy();
+    rv().msaaFramebuffer.destroy();
+    rv().msaaWidth = 0;
+    rv().msaaHeight = 0;
+    rv().msaaSamples = 1;
+    rv().msaaResolveFramebuffer.destroy();
+    if (frameBlurredScene == &rv().blurTargets.up[0].getRender().getColorTexture() ||
+            frameBlurredScene == &rv().blurTargets.down[0].getRender().getColorTexture())
+        frameBlurredScene = nullptr;
     // the post-processing LUTs, rebaked by the next applyPostProcessing
     postTailLut.destroyTexture();
     postTailLutSize = 0;
@@ -3427,6 +3441,11 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
     bindings.slotEnvironment = shaderData.getTextureIndexByName("u_environmentTexture");
     if (bindings.slotEnvironment.first != -1)
         render.addTexture(bindings.slotEnvironment, ShaderStageType::FRAGMENT, &emptyCubeBlack);
+    // the frame's blurred scene (includes/blurred_scene.glsl), black until a draw binds it
+    bindings.slotFSBlurredScene = shaderData.getUniformBlockIndexByName("u_fs_blurredScene");
+    bindings.slotBlurredScene = shaderData.getTextureIndexByName("u_blurredSceneTexture");
+    if (bindings.slotBlurredScene.first != -1)
+        render.addTexture(bindings.slotBlurredScene, ShaderStageType::FRAGMENT, &emptyBlack);
 
     // the textures the manifest declares, else (a shader without one) the ones set by name
     auto addTexture = [&](const std::string& uniform, int fallback){
@@ -3646,15 +3665,51 @@ void RenderSystem::applyPostProcessing(){
         postGradeLutSize = 0;
     }
 
-    // one global variant change per toggle of the in-shader colour; the values above are data
+    // one global variant change per toggle of the in-shader colour; the values above are data.
+    // Every object keeps drawing its variant until its new one is built (meshes each, points,
+    // lines and sky together: update, postColorVariantsReady)
     if (tiers.tailColor != postColorVariants){
         postColorVariants = tiers.tailColor;
         needReloadMeshVariants();
-        needReloadPoints();
-        needReloadLines();
-        needReloadSky();
+        postColorReloadPending = true;
     }
     postTiers = tiers;
+}
+
+bool RenderSystem::postColorVariantsReady(){
+    if (!Engine::isViewLoaded())
+        return false;
+    // a variant is ready when built or failed (its load falls back to the built-in one)
+    auto ready = [](ShaderType type, uint32_t properties, uint16_t customId){
+        return ShaderPool::get(type, properties, customId)->isCreated() || ShaderPool::isShaderBuildFailed(type, properties, customId);
+    };
+    bool allReady = true;
+    auto pointsArray = scene->getComponentArray<PointsComponent>();
+    for (size_t i = 0; i < pointsArray->size(); i++){
+        const PointsComponent& points = pointsArray->getComponentFromIndex(i);
+        if (!points.loaded || points.needReload)
+            continue;
+        const uint32_t bit = ShaderPool::getPostColorProperty(ShaderType::POINTS);
+        const uint32_t properties = (points.shaderProperties & ~bit) | postColorProperty(ShaderType::POINTS);
+        allReady = ready(ShaderType::POINTS, properties, points.customShaderId) && allReady;
+    }
+    auto linesArray = scene->getComponentArray<LineRendererComponent>();
+    for (size_t i = 0; i < linesArray->size(); i++){
+        const LineRendererComponent& lines = linesArray->getComponentFromIndex(i);
+        if (!lines.loaded || lines.needReload)
+            continue;
+        const uint32_t bit = ShaderPool::getPostColorProperty(ShaderType::LINES);
+        const uint32_t properties = (lines.shaderProperties & ~bit) | postColorProperty(ShaderType::LINES);
+        allReady = ready(ShaderType::LINES, properties, lines.customShaderId) && allReady;
+    }
+    auto skyArray = scene->getComponentArray<SkyboxComponent>();
+    for (size_t i = 0; i < skyArray->size(); i++){
+        const SkyboxComponent& sky = skyArray->getComponentFromIndex(i);
+        if (!sky.loaded || sky.needReload)
+            continue;
+        allReady = ready(ShaderType::SKYBOX, postColorProperty(ShaderType::SKYBOX), sky.customShaderId) && allReady;
+    }
+    return allReady;
 }
 
 uint32_t RenderSystem::postColorProperty(ShaderType type) const{
@@ -3851,14 +3906,262 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
         fs_uber.vignetteLutScan = Vector4(falloffScale, falloffBias, (float)postGradeLutSize, rowPixels >= 2.0f ? rowPixels : 3.0f);
         // the bloom tint is a colour picked in sRGB; the composite adds in linear light
         const Vector3 tint = Color::sRGBToLinear(settings.bloomTint);
+        // (the blur mixes in nothing until its chain made a texture: the source is bound instead)
         fs_uber.bloomBlur = Vector4(tint.x * settings.bloomIntensity, tint.y * settings.bloomIntensity, tint.z * settings.bloomIntensity,
-                                    settings.blurIntensity);
+                                    uberBlurTexture ? settings.blurIntensity : 0.0f);
 
         uberRender.applyUniformBlock(uberSlotVSParams, sizeof(vs_uber_t), &vs_uber);
         uberRender.applyUniformBlock(uberSlotFSParams, sizeof(fs_uber_t), &fs_uber);
         uberRender.draw(0, 3, 1);
     }
     uberPassRender.endRenderPass();
+
+    // where a later pass into the same destination (a layer scene's) reads the blurred scene: the
+    // UV the uber pass sampled its source at for that pixel. Viewports count from the bottom;
+    // gl_FragCoord does on GL only (see fillVignette)
+    const float vx = viewport.getX();
+    const float vy = viewport.getY();
+    const float vw = std::max(viewport.getWidth(), 1.0f);
+    const float vh = std::max(viewport.getHeight(), 1.0f);
+    Vector4& screenToUV = frameBlurredSceneBlock.screenToUV;
+    if (!Engine::isOpenGL()){
+        screenToUV = Vector4(1.0f / vw, 1.0f / vh, -vx / vw, -(targetHeight - vy - vh) / vh);
+    }else if (flipGL){
+        screenToUV = Vector4(1.0f / vw, -1.0f / vh, -vx / vw, 1.0f + vy / vh);
+    }else{
+        screenToUV = Vector4(1.0f / vw, 1.0f / vh, -vx / vw, -vy / vh);
+    }
+    frameBlurredSceneBlock.params = Vector4(1.0f, 0.0f, 0.0f, 0.0f);
+}
+
+void RenderSystem::PostChainTargets::destroy(){
+    for (Framebuffer& framebuffer : down)
+        framebuffer.destroy();
+    for (Framebuffer& framebuffer : up)
+        framebuffer.destroy();
+    sourceWidth = 0;
+    sourceHeight = 0;
+    levels = -1;
+}
+
+bool RenderSystem::loadBloomProgram(BloomProgramKind kind){
+    BloomProgram& program = bloomPrograms[kind];
+    if (program.loaded)
+        return true;
+
+    // ShaderType::BLOOM bits: 'Pre' prefilter, 'Thr' threshold, 'Ups' upsample, 'Mix' level mix
+    static const uint32_t properties[BLOOM_PROGRAMS] = {
+        (1u << 0) | (1u << 1), (1u << 0), 0u, (1u << 2) | (1u << 3), (1u << 2)
+    };
+    // the variant may still be building (async in the editor, at runtime without precompiled ones)
+    std::shared_ptr<ShaderRender> shader = ShaderPool::get(ShaderType::BLOOM, properties[kind]);
+    if (!shader || !shader->isCreated())
+        return false;
+    program.shader = shader;
+
+    ShaderData& shaderData = shader.get()->shaderData;
+    program.render.beginLoad(PrimitiveType::TRIANGLES);
+    program.render.setShader(shader.get());
+    program.slotVSParams = shaderData.getUniformBlockIndexByName("u_vs_bloomParams");
+    program.slotFSParams = shaderData.getUniformBlockIndexByName("u_fs_bloomParams");
+    program.slotSource = shaderData.getTextureIndexByName("u_sourceTexture");
+    program.slotLevel = shaderData.getTextureIndexByName("u_levelTexture");
+    // SRGB8A8 targets without depth, written whole
+    if (!program.render.endLoad(PIP_POST, false, false, CullingMode::BACK, WindingOrder::CCW)){
+        program.render.destroy();
+        program.shader.reset();
+        return false;
+    }
+    program.loaded = true;
+    return true;
+}
+
+void RenderSystem::destroyBloomPrograms(){
+    static const uint32_t properties[BLOOM_PROGRAMS] = {
+        (1u << 0) | (1u << 1), (1u << 0), 0u, (1u << 2) | (1u << 3), (1u << 2)
+    };
+    for (int kind = 0; kind < BLOOM_PROGRAMS; kind++){
+        BloomProgram& program = bloomPrograms[kind];
+        if (program.loaded)
+            program.render.destroy();
+        if (program.shader){
+            program.shader.reset();
+            ShaderPool::remove(ShaderType::BLOOM, properties[kind]);
+        }
+        program = BloomProgram();
+    }
+}
+
+bool RenderSystem::ensurePostChainTargets(PostChainTargets& targets, unsigned int sourceWidth, unsigned int sourceHeight, int levels){
+    if (sourceWidth == 0 || sourceHeight == 0)
+        return false;
+    if (targets.isCreated() && targets.sourceWidth == sourceWidth && targets.sourceHeight == sourceHeight && targets.levels == levels)
+        return true;
+
+    // made again in place: a new size or level count replaces the old targets (no pile-up)
+    targets.destroy();
+    for (int level = 0; level <= levels; level++){
+        // 1/4, 1/8, 1/16, 1/32 of the source (at least a texel)
+        const unsigned int divisor = 4u << level;
+        const unsigned int width = std::max(1u, sourceWidth / divisor);
+        const unsigned int height = std::max(1u, sourceHeight / divisor);
+        Framebuffer* sizes[2] = {&targets.down[level], level < levels ? &targets.up[level] : nullptr};
+        for (Framebuffer* framebuffer : sizes){
+            if (!framebuffer)
+                continue;
+            ColorFormat format = ColorFormat::SRGB8A8;
+            framebuffer->setColorAttachments(1, &format);
+            framebuffer->setDepthAttachment(FramebufferDepth::NONE);
+            framebuffer->setWidth(width);
+            framebuffer->setHeight(height);
+            framebuffer->setMinFilter(TextureFilter::LINEAR);
+            framebuffer->setMagFilter(TextureFilter::LINEAR);
+            framebuffer->setWrapU(TextureWrap::CLAMP_TO_EDGE);
+            framebuffer->setWrapV(TextureWrap::CLAMP_TO_EDGE);
+            framebuffer->create();
+            if (!framebuffer->isCreated()){
+                targets.destroy();
+                return false;
+            }
+        }
+    }
+    targets.sourceWidth = sourceWidth;
+    targets.sourceHeight = sourceHeight;
+    targets.levels = levels;
+    return true;
+}
+
+bool RenderSystem::ensureMsaaFramebuffer(unsigned int width, unsigned int height, int samples){
+    if (width == 0 || height == 0 || samples < 2)
+        return false;
+    if (rv().msaaFramebuffer.isCreated() && rv().msaaWidth == width && rv().msaaHeight == height && rv().msaaSamples == samples)
+        return true;
+    // made again in place for a new size (no pile-up)
+    rv().msaaFramebuffer.destroy();
+    rv().msaaWidth = 0;
+    rv().msaaHeight = 0;
+    rv().msaaSamples = 1;
+    if (!rv().msaaFramebuffer.getRender().createMultisampleFramebuffer((int)width, (int)height, samples))
+        return false;
+    rv().msaaWidth = width;
+    rv().msaaHeight = height;
+    rv().msaaSamples = samples;
+    return true;
+}
+
+bool RenderSystem::ensureMsaaResolveFramebuffer(unsigned int width, unsigned int height){
+    if (width == 0 || height == 0)
+        return false;
+    Framebuffer& resolve = rv().msaaResolveFramebuffer;
+    if (resolve.isCreated() && resolve.getWidth() == width && resolve.getHeight() == height)
+        return true;
+    resolve.destroy();
+    resolve.setWidth(width);
+    resolve.setHeight(height);
+    resolve.setMinFilter(TextureFilter::LINEAR);
+    resolve.setMagFilter(TextureFilter::LINEAR);
+    resolve.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    resolve.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    // only resolved into (the multisampled target has the depth)
+    resolve.setDepthAttachment(FramebufferDepth::NONE);
+    resolve.create();
+    return resolve.isCreated();
+}
+
+void RenderSystem::renderBloomPass(BloomProgramKind kind, const char* label, TextureRender* source, unsigned int sourceWidth,
+                                   unsigned int sourceHeight, TextureRender* level, Framebuffer& target, const Vector4& offset){
+    BloomProgram& program = bloomPrograms[kind];
+    // CLEAR: the pass writes every texel, so a tiler loads nothing (DONTCARE does nothing on GL)
+    bloomPassRender.setClearColor(Vector4(0.0f, 0.0f, 0.0f, 1.0f));
+    bloomPassRender.setLabel(label);
+    bloomPassRender.startRenderPass(&target.getRender());
+    if (program.render.beginDraw(PIP_POST)){
+        program.render.addTexture(program.slotSource, ShaderStageType::FRAGMENT, source);
+        if (program.slotLevel.first != -1)
+            program.render.addTexture(program.slotLevel, ShaderStageType::FRAGMENT, level ? level : &emptyBlack);
+        vs_bloom.offset = offset;
+        program.render.applyUniformBlock(program.slotVSParams, sizeof(vs_bloom_t), &vs_bloom);
+        if (program.slotFSParams != -1)
+            program.render.applyUniformBlock(program.slotFSParams, sizeof(fs_bloom_t), &fs_bloom);
+        program.render.draw(0, 3, 1);
+    }
+    bloomPassRender.endRenderPass();
+    (void)sourceWidth;
+    (void)sourceHeight;
+}
+
+TextureRender* RenderSystem::renderBloomChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight){
+    if (!loadBloomProgram(BLOOM_PREFILTER_THRESHOLD) || !loadBloomProgram(BLOOM_DOWN) || !loadBloomProgram(BLOOM_UP_MIX))
+        return nullptr;
+    PostChainTargets& targets = rv().bloomTargets;
+    const int levels = PostChainTargets::LEVELS - 1;
+    if (!ensurePostChainTargets(targets, sourceWidth, sourceHeight, levels))
+        return nullptr;
+
+    const PostProcessingSettings& settings = scene->getPostProcessing();
+    // the threshold is a display brightness: in the linear (gamma-2) domain the chain works in,
+    // its square; the soft knee a fraction of it (Unity's curve)
+    const float threshold = settings.bloomThreshold * settings.bloomThreshold;
+    const float knee = threshold * settings.bloomKnee + 1e-5f;
+    fs_bloom.curve = Vector4(threshold - knee, 2.0f * knee, 0.25f / knee, threshold);
+    fs_bloom.params = Vector4(settings.bloomScatter, 0.0f, 0.0f, 0.0f);
+
+    // the scene to 1/4: taps one source texel off the centre (the 2x2 quadrants of the 4x4 box)
+    renderBloomPass(BLOOM_PREFILTER_THRESHOLD, "bloom prefilter", source, sourceWidth, sourceHeight, nullptr, targets.down[0],
+                    Vector4(1.0f / (float)sourceWidth, 1.0f / (float)sourceHeight, 0.0f, 0.0f));
+    // down: taps one texel of the larger image (half of the smaller) off the centre
+    for (int level = 0; level < levels; level++){
+        Framebuffer& from = targets.down[level];
+        renderBloomPass(BLOOM_DOWN, "bloom down", &from.getRender().getColorTexture(), from.getWidth(), from.getHeight(), nullptr,
+                        targets.down[level + 1], Vector4(1.0f / (float)from.getWidth(), 1.0f / (float)from.getHeight(), 0.0f, 0.0f));
+    }
+    // up: from the smallest, each mixed with its level of the way down by the scatter
+    Framebuffer* from = &targets.down[levels];
+    for (int level = levels - 1; level >= 0; level--){
+        renderBloomPass(BLOOM_UP_MIX, "bloom up", &from->getRender().getColorTexture(), from->getWidth(), from->getHeight(),
+                        &targets.down[level].getRender().getColorTexture(), targets.up[level],
+                        Vector4(0.5f / (float)from->getWidth(), 0.5f / (float)from->getHeight(), 0.0f, 0.0f));
+        from = &targets.up[level];
+    }
+    return &targets.up[0].getRender().getColorTexture();
+}
+
+TextureRender* RenderSystem::renderBlurChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight){
+    if (!loadBloomProgram(BLOOM_PREFILTER_PLAIN) || !loadBloomProgram(BLOOM_DOWN) || !loadBloomProgram(BLOOM_UP))
+        return nullptr;
+    // the radius: as many dual-filter levels (each doubles the reach), the taps spread by the
+    // fraction left (0: the quarter-resolution box alone)
+    const float radius = std::min(std::max(scene->getPostProcessing().blurRadius, 0.0f), 4.0f);
+    const int levels = std::min(PostChainTargets::LEVELS - 1, (int)std::ceil(radius - 1e-3f));
+    const float spread = levels > 0 ? radius / (float)levels : 1.0f;
+    PostChainTargets& targets = rv().blurTargets;
+    if (!ensurePostChainTargets(targets, sourceWidth, sourceHeight, levels))
+        return nullptr;
+
+    renderBloomPass(BLOOM_PREFILTER_PLAIN, "blur prefilter", source, sourceWidth, sourceHeight, nullptr, targets.down[0],
+                    Vector4(1.0f / (float)sourceWidth, 1.0f / (float)sourceHeight, 0.0f, 0.0f));
+    for (int level = 0; level < levels; level++){
+        Framebuffer& from = targets.down[level];
+        renderBloomPass(BLOOM_DOWN, "blur down", &from.getRender().getColorTexture(), from.getWidth(), from.getHeight(), nullptr,
+                        targets.down[level + 1], Vector4(spread / (float)from.getWidth(), spread / (float)from.getHeight(), 0.0f, 0.0f));
+    }
+    Framebuffer* from = &targets.down[levels];
+    for (int level = levels - 1; level >= 0; level--){
+        renderBloomPass(BLOOM_UP, "blur up", &from->getRender().getColorTexture(), from->getWidth(), from->getHeight(), nullptr,
+                        targets.up[level], Vector4(0.5f * spread / (float)from->getWidth(), 0.5f * spread / (float)from->getHeight(), 0.0f, 0.0f));
+        from = &targets.up[level];
+    }
+    return &from->getRender().getColorTexture();
+}
+
+void RenderSystem::applyBlurredScene(ObjectRender& render, const ShaderLibraryBindings& bindings){
+    if (bindings.slotFSBlurredScene != -1){
+        static const blurred_scene_t none = {Vector4(0.0f, 0.0f, 0.0f, 0.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
+        render.applyUniformBlock(bindings.slotFSBlurredScene, sizeof(blurred_scene_t),
+                                 frameBlurredScene ? (void*)&frameBlurredSceneBlock : (void*)&none);
+    }
+    if (bindings.slotBlurredScene.first != -1)
+        render.addTexture(bindings.slotBlurredScene, ShaderStageType::FRAGMENT, frameBlurredScene ? frameBlurredScene : &emptyBlack);
 }
 
 void RenderSystem::applyFrameBlock(ObjectRender& render, const ShaderLibraryBindings& bindings){
@@ -3867,6 +4170,7 @@ void RenderSystem::applyFrameBlock(ObjectRender& render, const ShaderLibraryBind
     if (bindings.slotFSFrame != -1)
         render.applyUniformBlock(bindings.slotFSFrame, bindings.frameSizeFS, &passFrame);
     applyPostColor(render, bindings);
+    applyBlurredScene(render, bindings);
 }
 
 void RenderSystem::applyPostColor(ObjectRender& render, const ShaderLibraryBindings& bindings){
@@ -5341,6 +5645,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             if (shaderEnvironment.depthPrepass){
                 if (pipelines & PIP_DEFAULT) depthPipelines |= PIP_ZPREPASS;
                 if (pipelines & PIP_RTT) depthPipelines |= PIP_ZPREPASS_RTT;
+                if (pipelines & (PIP_MSAA | PIP_MSAA_NODEPTH)) depthPipelines |= PIP_ZPREPASS_MSAA;
             }
             if (!depthRender.endLoad(depthPipelines, depthState)){
                 return false;
@@ -8422,6 +8727,7 @@ void RenderSystem::loadPostProcess(){
     postProcessLoaded = false;
     postProcessNeedsDepth = false;
     postProcessNeedsGBuffer = false;
+    postProcessKeepsOriginal = false;
 
     const std::vector<PostProcessPass>& passes = scene->getPostProcessPasses();
 
@@ -8432,7 +8738,8 @@ void RenderSystem::loadPostProcess(){
         PostProcessRuntime pass;
         pass.passIndex = i;
 
-        // an empty path is the built-in passthrough, also the fallback of a failed fork
+        // an empty path is the built-in passthrough, also the fallback of a failed fork; a
+        // "library:<name>" reference is a library post-process shader (phase 4)
         pass.customId = ShaderPool::registerCustomShader(passes[i].shader);
         pass.shader = ShaderPool::get(ShaderType::POSTPROCESS, 0, pass.customId);
         if (pass.customId != 0 && ShaderPool::isShaderBuildFailed(ShaderType::POSTPROCESS, 0, pass.customId)){
@@ -8448,7 +8755,7 @@ void RenderSystem::loadPostProcess(){
         pass.render.setShader(pass.shader.get());
         // the chain never targets the swapchain directly, renderPostProcess blits for that
         // PIP_RTT into buffer 0 and the destination (colour targets with depth-stencil),
-        // PIP_EFFECT into buffer 1 (depth only)
+        // PIP_EFFECT into the others (depth only)
         if (!pass.render.endLoad(PIP_RTT | PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
             return;
 
@@ -8457,15 +8764,29 @@ void RenderSystem::loadPostProcess(){
         pass.slotDepth = sd.getTextureIndexByName("u_depthTexture");
         pass.slotGBuffer = sd.getTextureIndexByName("u_gbufferTexture");
         pass.slotSSAO = sd.getTextureIndexByName("u_ssaoTexture");
+        pass.slotOriginal = sd.getTextureIndexByName("u_originalSceneTexture");
 
         if (pass.slotDepth.first != -1)
             postProcessNeedsDepth = true;
         if (pass.slotGBuffer.first != -1)
             postProcessNeedsGBuffer = true;
+        // the first pass reads the original as its input; a later one needs it kept
+        if (pass.slotOriginal.first != -1 && !postProcessPasses.empty())
+            postProcessKeepsOriginal = true;
 
-        // stored by name, so a renamed or removed member just drops
+        // its textures (manifest @texture, or the ones set by name) and the shader-library data
+        // it declares, bound to the fallbacks first; a texture still loading retries the load
+        if (pass.customId != 0)
+            pass.manifest = ShaderManifests::get(passes[i].shader);
+        pass.textures = passes[i].textures;
+        const ShaderManifest* manifest = (pass.manifest && pass.manifest->present) ? pass.manifest.get() : nullptr;
+        if (!loadShaderLibraryBindings(pass.bindings, sd, pass.render, pass.textures, manifest))
+            return;
+
+        // stored by name, so a renamed or removed member just drops; unset members take the
+        // manifest's @property defaults
         if (pass.params.resolve(sd, "u_fs_postParams")){
-            pass.params.writeValues(passes[i].uniforms);
+            pass.params.writeValues(passes[i].uniforms, nullptr, manifest);
         }
 
         postProcessPasses.push_back(std::move(pass));
@@ -8484,7 +8805,8 @@ void RenderSystem::updatePostProcessUniforms(){
     for (int i = 0; i < (int)postProcessPasses.size(); i++){
         PostProcessRuntime& pass = postProcessPasses[i];
         if (pass.passIndex < (int)passes.size()){
-            pass.params.writeValues(passes[pass.passIndex].uniforms);
+            const ShaderManifest* manifest = (pass.manifest && pass.manifest->present) ? pass.manifest.get() : nullptr;
+            pass.params.writeValues(passes[pass.passIndex].uniforms, nullptr, manifest);
         }
     }
 
@@ -8499,13 +8821,15 @@ void RenderSystem::destroyPostProcess(){
     }
     postProcessPasses.clear();
 
-    rv().postProcessFramebuffer[0].destroy();
-    rv().postProcessFramebuffer[1].destroy();
+    for (Framebuffer& framebuffer : rv().postProcessFramebuffer)
+        framebuffer.destroy();
+    rv().postScaledTargets.clear();
 
     rv().postProcessWidth = 0;
     rv().postProcessHeight = 0;
     postProcessNeedsDepth = false;
     postProcessNeedsGBuffer = false;
+    postProcessKeepsOriginal = false;
     postProcessNeedReload = false;
     postProcessNeedUpdateUniforms = false;
     postProcessLoaded = false;
@@ -8515,19 +8839,27 @@ bool RenderSystem::ensurePostProcessFramebuffers(unsigned int width, unsigned in
     if (width == 0 || height == 0)
         return false;
 
-    if (rv().postProcessFramebuffer[0].isCreated() && rv().postProcessWidth == width && rv().postProcessHeight == height)
-        return true;
+    // the third full-size target only while a later pass reads the original scene
+    const int count = postProcessKeepsOriginal ? 3 : 2;
+    if (rv().postProcessFramebuffer[0].isCreated() && rv().postProcessWidth == width && rv().postProcessHeight == height){
+        if (count == 2 && rv().postProcessFramebuffer[2].isCreated())
+            rv().postProcessFramebuffer[2].destroy();
+        if (count == 2 || rv().postProcessFramebuffer[2].isCreated())
+            return true;
+    }
 
-    // the chain ping-pongs between the two; its last pass writes the real destination
-    for (int i = 0; i < 2; i++){
+    // the chain ping-pongs between them; its last pass writes the real destination
+    for (int i = 0; i < 3; i++){
         rv().postProcessFramebuffer[i].destroy();
+        if (i >= count)
+            continue;
         rv().postProcessFramebuffer[i].setWidth(width);
         rv().postProcessFramebuffer[i].setHeight(height);
         rv().postProcessFramebuffer[i].setMinFilter(TextureFilter::LINEAR);
         rv().postProcessFramebuffer[i].setMagFilter(TextureFilter::LINEAR);
         rv().postProcessFramebuffer[i].setWrapU(TextureWrap::CLAMP_TO_EDGE);
         rv().postProcessFramebuffer[i].setWrapV(TextureWrap::CLAMP_TO_EDGE);
-        // buffer 0 takes the colour pass (meshes, stencil); buffer 1 only the chain's passes
+        // buffer 0 takes the colour pass (meshes, stencil); the others only the chain's passes
         rv().postProcessFramebuffer[i].setDepthAttachment(i == 0 ? FramebufferDepth::DEPTH_STENCIL : FramebufferDepth::DEPTH);
         rv().postProcessFramebuffer[i].create();
     }
@@ -8535,10 +8867,78 @@ bool RenderSystem::ensurePostProcessFramebuffers(unsigned int width, unsigned in
     rv().postProcessWidth = width;
     rv().postProcessHeight = height;
 
-    return rv().postProcessFramebuffer[0].isCreated() && rv().postProcessFramebuffer[1].isCreated();
+    for (int i = 0; i < count; i++){
+        if (!rv().postProcessFramebuffer[i].isCreated())
+            return false;
+    }
+    return true;
 }
 
-void RenderSystem::renderPostProcess(FramebufferRender* destination){
+Framebuffer* RenderSystem::postProcessOutput(unsigned int width, unsigned int height, TextureRender* input){
+    auto isInput = [input](Framebuffer& framebuffer){
+        return &framebuffer.getRender().getColorTexture() == input;
+    };
+    if (width == rv().postProcessWidth && height == rv().postProcessHeight){
+        // 1 first (the first pass writes it, as before phase 4), then 2 (made only while the
+        // original scene is kept), then 0 (which holds the original scene while it is kept)
+        static const int order[3] = {1, 2, 0};
+        for (int index : order){
+            if (index == 0 && postProcessKeepsOriginal)
+                continue;
+            Framebuffer& framebuffer = rv().postProcessFramebuffer[index];
+            if (framebuffer.isCreated() && !isInput(framebuffer))
+                return &framebuffer;
+        }
+        return nullptr;
+    }
+
+    // below full size: two targets of that size, made when first used
+    RenderView::PostScaledTargets* targets = nullptr;
+    for (auto& entry : rv().postScaledTargets){
+        if (entry->width == width && entry->height == height){
+            targets = entry.get();
+            break;
+        }
+    }
+    if (!targets){
+        rv().postScaledTargets.push_back(std::make_unique<RenderView::PostScaledTargets>());
+        targets = rv().postScaledTargets.back().get();
+        targets->width = width;
+        targets->height = height;
+        for (Framebuffer& framebuffer : targets->framebuffer){
+            framebuffer.setWidth(width);
+            framebuffer.setHeight(height);
+            framebuffer.setMinFilter(TextureFilter::LINEAR);
+            framebuffer.setMagFilter(TextureFilter::LINEAR);
+            framebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+            framebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+            framebuffer.setDepthAttachment(FramebufferDepth::DEPTH);
+            framebuffer.create();
+        }
+    }
+    targets->used = true;
+    for (Framebuffer& framebuffer : targets->framebuffer){
+        if (framebuffer.isCreated() && !isInput(framebuffer))
+            return &framebuffer;
+    }
+    return nullptr;
+}
+
+void RenderSystem::renderPostProcessCopy(TextureRender* source, FramebufferRender* destination){
+    postProcessPassRender.setClearColor(Vector4(0.0f, 0.0f, 0.0f, 1.0f));
+    postProcessPassRender.setLabel("user post-process copy");
+    postProcessPassRender.startRenderPass(destination);
+    if (blitRender.beginDraw(PIP_RTT)){
+        ShaderData& bd = blitShader.get()->shaderData;
+        blitRender.addTexture(bd.getTextureIndex(TextureShaderType::SCENECOLORTEXTURE), ShaderStageType::FRAGMENT, source);
+        fs_blit.params = Vector4(1.0f, 0.0f, 1.0f, 0.0f);
+        blitRender.applyUniformBlock(blitSlotParams, sizeof(fs_blit_t), &fs_blit);
+        blitRender.draw(0, 3, 1);
+    }
+    postProcessPassRender.endRenderPass();
+}
+
+TextureRender* RenderSystem::renderPostProcess(FramebufferRender* destination, bool keepResult){
     // depth is the SSR G-buffer or the chain's own pre-pass; the G-buffer
     // normal/roughness only exists while SSR is on
     TextureRender* depthTexture = &emptyBlack;
@@ -8556,43 +8956,78 @@ void RenderSystem::renderPostProcess(FramebufferRender* destination){
     TextureRender* ssaoTexture = rv().currentSSAOTexture ? rv().currentSSAOTexture : &emptyWhite;
 
     // the color pass (or the SSR composite) was redirected into buffer 0
-    TextureRender* input = &rv().postProcessFramebuffer[0].getRender().getColorTexture();
-    int pingPong = 1;
+    TextureRender* original = &rv().postProcessFramebuffer[0].getRender().getColorTexture();
+    TextureRender* input = original;
 
     updatePostProcessUniforms();
 
+    const std::vector<PostProcessPass>& scenePasses = scene->getPostProcessPasses();
+    for (auto& entry : rv().postScaledTargets)
+        entry->used = false;
+
+    bool wroteDestination = false;
     for (int i = 0; i < (int)postProcessPasses.size(); i++){
         PostProcessRuntime& pass = postProcessPasses[i];
-        bool writeDestination = destination && (i + 1 == (int)postProcessPasses.size());
+        const float scale = pass.passIndex < (int)scenePasses.size() ? scenePasses[pass.passIndex].getAppliedScale() : 1.0f;
+        const unsigned int width = scale < 1.0f ? std::max(1u, (unsigned int)std::lround(rv().postProcessWidth * scale)) : rv().postProcessWidth;
+        const unsigned int height = scale < 1.0f ? std::max(1u, (unsigned int)std::lround(rv().postProcessHeight * scale)) : rv().postProcessHeight;
+        const bool fullSize = width == rv().postProcessWidth && height == rv().postProcessHeight;
+        // the last pass writes the destination itself unless it is smaller (then a copy does)
+        const bool writeDestination = destination && fullSize && (i + 1 == (int)postProcessPasses.size());
 
+        Framebuffer* output = writeDestination ? nullptr : postProcessOutput(width, height, input);
+        if (!writeDestination && !output)
+            break;
+
+        // CLEAR: the pass writes every pixel, so a tiler loads nothing (DONTCARE does nothing on GL)
+        postProcessPassRender.setClearColor(Vector4(0.0f, 0.0f, 0.0f, 1.0f));
         postProcessPassRender.setLabel("user post-process");
-        if (writeDestination){
-            postProcessPassRender.startRenderPass(destination);
-        }else{
-            postProcessPassRender.startRenderPass(&rv().postProcessFramebuffer[pingPong].getRender());
-        }
+        postProcessPassRender.startRenderPass(writeDestination ? destination : &output->getRender());
 
-        // buffer 1 is depth only (ensurePostProcessFramebuffers)
-        if (pass.render.beginDraw((!writeDestination && pingPong == 1) ? PIP_EFFECT : PIP_RTT)){
+        // buffer 0 and the destination have a depth-stencil attachment, the others depth only
+        const bool rtt = writeDestination || output == &rv().postProcessFramebuffer[0];
+        if (pass.render.beginDraw(rtt ? PIP_RTT : PIP_EFFECT)){
             pass.render.addTexture(pass.slotSceneColor, ShaderStageType::FRAGMENT, input);
             pass.render.addTexture(pass.slotDepth, ShaderStageType::FRAGMENT, depthTexture);
             pass.render.addTexture(pass.slotGBuffer, ShaderStageType::FRAGMENT, gbufferTexture);
             pass.render.addTexture(pass.slotSSAO, ShaderStageType::FRAGMENT, ssaoTexture);
-            applyCustomUniforms(pass.render, pass.params, frameTime, Vector2((float)rv().postProcessWidth, (float)rv().postProcessHeight));
+            pass.render.addTexture(pass.slotOriginal, ShaderStageType::FRAGMENT, original);
+            // its own textures (a camera target may have been made again) and engine data
+            bindShaderTextures(pass.bindings, pass.render, pass.textures);
+            applyFrameBlock(pass.render, pass.bindings);
+            applyCustomUniforms(pass.render, pass.params, frameTime, Vector2((float)width, (float)height));
             pass.render.draw(0, 3, 1);
         }
         postProcessPassRender.endRenderPass();
 
-        if (!writeDestination){
-            input = &rv().postProcessFramebuffer[pingPong].getRender().getColorTexture();
-            pingPong = 1 - pingPong;
+        if (writeDestination){
+            wroteDestination = true;
+        }else{
+            input = &output->getRender().getColorTexture();
         }
     }
 
-    // the swapchain is written by the blit pass, which handles the GL orientation flip
-    if (!destination){
+    // sizes no pass used this frame go (a scale changed)
+    auto& scaled = rv().postScaledTargets;
+    scaled.erase(std::remove_if(scaled.begin(), scaled.end(), [](const std::unique_ptr<RenderView::PostScaledTargets>& entry){
+        return !entry->used;
+    }), scaled.end());
+
+    if (destination){
+        // a last pass below full size, or a chain that stopped: copied to the destination
+        if (!wroteDestination){
+            loadBlit();
+            if (blitLoaded)
+                renderPostProcessCopy(input, destination);
+        }
+    }else if (keepResult){
+        // the uber pass reads the last output as it is (no copy, and no scene target of its own)
+        return input;
+    }else{
+        // the swapchain is written by the blit pass, which handles the GL orientation flip
         renderBlit(input, targetViewRect());
     }
+    return nullptr;
 }
 
 void RenderSystem::presentFramebufferToSwapchain(Framebuffer* source){
@@ -11173,13 +11608,22 @@ void RenderSystem::updateSwapchainRedirect(){
         if (!redirect && postTiers.uber){
             redirect = loadUber(postTiers.uberFeatures);
         }
+        // so does MSAA: the multisampled scene resolves offscreen, then is blitted
+        msaaRedirect = false;
+        if (!redirect && msaaPipelineSamples > 1){
+            loadBlit();
+            redirect = msaaRedirect = blitLoaded;
+        }
         // the scene colour (phase 3) is copied out of an offscreen colour target: in a scene
         // with an object reading it (or one gone a short while ago), the camera may draw into
         // one blitted to the screen, decided each frame by what it sees (updateSceneColorRedirect)
         sceneColorRedirectAllowed = !redirect && sceneColorReaders;
     }else{
         sceneColorRedirectAllowed = false;
+        msaaRedirect = false;
     }
+    if (!msaaRedirect && rv().msaaResolveFramebuffer.isCreated())
+        rv().msaaResolveFramebuffer.destroy();
     if (!sceneColorRedirectAllowed){
         sceneColorRedirect = false;
         sceneColorRedirectHold = 0;
@@ -11383,6 +11827,12 @@ uint16_t RenderSystem::getScenePipelines() const{
                 (sceneColorRedirectAllowed && cameraEntity == mainCameraEntity)){
             pipelines |= camera.depthTest ? PIP_RTT : PIP_RTT_NODEPTH;
         }
+
+        // the post-processed camera's multisampled scene target (phase 4 MSAA; not a mirror's
+        // inverted winding)
+        if (cameraEntity == mainCameraEntity && msaaPipelineSamples > 1 && !camera.invertCulling){
+            pipelines |= camera.depthTest ? PIP_MSAA : PIP_MSAA_NODEPTH;
+        }
     }
 
     // mirrors and probe capture render with reversed winding (see isRenderingFlipped)
@@ -11413,6 +11863,32 @@ void RenderSystem::update(double dt){
 
     // changed post-processing settings: LUT bakes and the variant bit the objects load with below
     applyPostProcessing();
+
+    // the points, lines and sky of a colour bit switch reload once their new variants are built
+    if (postColorReloadPending && postColorVariantsReady()){
+        postColorReloadPending = false;
+        needReloadPoints();
+        needReloadLines();
+        needReloadSky();
+    }
+
+    // MSAA (phase 4): the sample count the objects' PIP_MSAA pipelines take, as the device has
+    // it; another count than they were made with reloads them (getScenePipelines adds the type)
+    {
+        const int msaa = (postTiers.msaaSamples > 1 && Engine::isViewLoaded()) ? FramebufferRender::getMaxMsaaSamples(postTiers.msaaSamples) : 1;
+        if (msaa != msaaPipelineSamples){
+            const bool countChanged = msaa > 1 && msaaPipelineSamples > 1;
+            msaaPipelineSamples = msaa;
+            if (countChanged){
+                needReloadMeshes();
+                needReloadUIs();
+                needReloadPoints();
+                needReloadLines();
+                needReloadSky();
+            }
+        }
+        ObjectRender::setMsaaSamples(msaaPipelineSamples);
+    }
 
     auto transforms = scene->getComponentArray<Transform>();
     auto cameras = scene->getComponentArray<CameraComponent>();
@@ -12981,6 +13457,10 @@ void RenderSystem::draw(){
 void RenderSystem::drawCameras(bool includeMain){
     auto cameras = scene->getComponentArray<CameraComponent>();
 
+    // the blurred scene a view's passes may read is its base layer's of this frame
+    if (includeMain && isBaseLayer())
+        frameBlurredScene = nullptr;
+
     // assigns each rendering camera its own terrain CDLOD view slot this frame:
     // main camera = 0 (selected in update(), also used by the shadow pass), each
     // render-to-texture camera = 1..N-1; cameras past the cap reuse the main view
@@ -13151,15 +13631,18 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             const float baseHeight = pass.renderToTexture ? (float)camera.framebuffer->getHeight() : viewRect.getHeight();
             uberSceneWidth = (unsigned int)std::max(1L, std::lround(baseWidth * postTiers.renderScale));
             uberSceneHeight = (unsigned int)std::max(1L, std::lround(baseHeight * postTiers.renderScale));
-            useUber = ensurePostSceneFramebuffer(uberSceneWidth, uberSceneHeight);
+            // its source target is made below, unless the post-process chain's output is it
+            useUber = true;
         }
     }
-    // what the uber pass reads: the scene colour pass, SSR and the post-process chain write it
-    FramebufferRender* uberSource = nullptr;
-    if (useUber){
-        uberSource = useFixedRes ? &rv().fixedResFramebuffer.getRender() : &rv().postSceneFramebuffer.getRender();
+    // the bloom and blur chains' targets go with their effect (not for a frame the uber pass
+    // waits for its variant)
+    if (isMainCamera && (isBaseLayer() || pass.renderToTexture)){
+        if (!(postTiers.uberFeatures & UBER_BLOOM) && rv().bloomTargets.isCreated())
+            rv().bloomTargets.destroy();
+        if (!(postTiers.uberFeatures & UBER_BLUR) && rv().blurTargets.isCreated())
+            rv().blurTargets.destroy();
     }
-
     bool useSSR = false;
     FramebufferRender* ssrDestination = nullptr;
     if (isMainCamera && scene->isSSREnabled() && (target || pass.renderToTexture || useFixedRes || useUber || swapchainRedirect)){
@@ -13231,6 +13714,29 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
 
+    // what the uber pass reads: the scene colour pass or SSR write it (the fixed-resolution
+    // target, else the scene target at the render scale); after the user post-process chain, the
+    // chain's last output (no target of its own: renderPostProcess keeps its result)
+    FramebufferRender* uberSource = nullptr;
+    const bool uberReadsChain = useUber && usePostProcess && !useFixedRes;
+    if (useUber && !uberReadsChain){
+        if (useFixedRes){
+            uberSource = &rv().fixedResFramebuffer.getRender();
+        }else if (ensurePostSceneFramebuffer(uberSceneWidth, uberSceneHeight)){
+            uberSource = &rv().postSceneFramebuffer.getRender();
+        }else{
+            useUber = false;
+        }
+    }
+    if (useUber && !uberSource && !uberReadsChain)
+        useUber = false;
+    // the scene target the uber pass does not read goes (the chain's output is its source now)
+    if (uberReadsChain && rv().postSceneFramebuffer.isCreated()){
+        rv().postSceneFramebuffer.destroy();
+        rv().postSceneWidth = 0;
+        rv().postSceneHeight = 0;
+    }
+
     // Screen-space AO is produced once for the main camera before its color pass.
     // When SSR is active its G-buffer already holds the camera depth (color[0]), so
     // SSAO reuses it instead of running a second geometry pre-pass. Other cameras
@@ -13247,9 +13753,24 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     const bool useSceneColorRedirect = isMainCamera && !pass.renderToTexture && !target && !useFixedRes && !useSSR && !usePostProcess
             && !useUber && sceneColorRedirect && rv().sceneColorRedirect.isCreated();
 
+    // Exported builds with MSAA and no other offscreen effect: the multisampled scene resolves
+    // into a target blitted to the swapchain (MSAA needs an offscreen colour target)
+    const bool useMsaaRedirect = isMainCamera && !pass.renderToTexture && !target && !useFixedRes && !useSSR && !usePostProcess
+            && !useUber && !useSceneColorRedirect && msaaRedirect && isBaseLayer() && rv().postProcessing
+            && ensureMsaaResolveFramebuffer((unsigned int)viewRect.getWidth(), (unsigned int)viewRect.getHeight());
+
     // whether this camera's color pass targets an offscreen framebuffer
     // (selects PIP_RTT pipelines and flipped rendering on GL)
-    bool offscreenTarget = pass.renderToTexture || target || useFixedRes || useUber || useSSR || usePostProcess || useSceneColorRedirect;
+    bool offscreenTarget = pass.renderToTexture || target || useFixedRes || useUber || useSSR || usePostProcess || useSceneColorRedirect
+            || useMsaaRedirect;
+
+    // MSAA (phase 4): the post-processed camera's colour pass draws into a multisampled target
+    // that resolves, at the end of the pass, into the offscreen target it would draw into (so
+    // what reads that target, SSR, the chain, the bloom and the uber pass, reads it resolved)
+    int passMsaa = 1;
+    if (msaaPipelineSamples > 1 && isMainCamera && (isBaseLayer() || pass.renderToTexture) && rv().postProcessing
+            && offscreenTarget && !camera.invertCulling)
+        passMsaa = msaaPipelineSamples;
 
     // The colour target of the pass (null: the swapchain), its size and viewport, as the
     // branches below pick them: the scene inputs are made to match it
@@ -13275,6 +13796,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }else if (useSceneColorRedirect){
             sceneInputTargetWidth = rv().sceneColorRedirect.getWidth();
             sceneInputTargetHeight = rv().sceneColorRedirect.getHeight();
+        }else if (useMsaaRedirect){
+            sceneInputTargetWidth = rv().msaaResolveFramebuffer.getWidth();
+            sceneInputTargetHeight = rv().msaaResolveFramebuffer.getHeight();
         }
         if (sceneInputTargetWidth){
             sceneInputViewport = Rect(0, 0, (float)sceneInputTargetWidth, (float)sceneInputTargetHeight);
@@ -13308,6 +13832,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
     PipelineType colorPip = colorPipeline(camera, offscreenTarget);
+    if (passMsaa > 1)
+        colorPip = camera.depthTest ? PIP_MSAA : PIP_MSAA_NODEPTH;
     bool distanceSort = sortsByDistance(camera);
 
     if (isBaseLayer() || pass.renderToTexture){
@@ -13328,6 +13854,16 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     camera.render.setLabel(pass.renderToTexture ? "camera rtt" : (isBaseLayer() ? "camera" : "camera layer"));
     auto startColorPass = [&](FramebufferRender* framebuffer){
         colorTarget = framebuffer;
+        if (passMsaa > 1){
+            // the multisampled target the size of the one it resolves into
+            TextureRender& resolve = framebuffer->getColorTexture();
+            if (ensureMsaaFramebuffer((unsigned int)resolve.getWidth(), (unsigned int)resolve.getHeight(), passMsaa)){
+                camera.render.setMultisample(&rv().msaaFramebuffer.getRender());
+            }else{
+                passMsaa = 1;
+                colorPip = colorPipeline(camera, offscreenTarget);
+            }
+        }
         if (copySceneColorPending){
             camera.render.startSplitRenderPass(framebuffer);
         }else{
@@ -13389,6 +13925,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         // the whole redirect target; renderBlit draws it at the view rect afterwards
         colorPassViewport = Rect(0, 0, (float)rv().sceneColorRedirect.getWidth(), (float)rv().sceneColorRedirect.getHeight());
         startColorPass(&rv().sceneColorRedirect.getRender());
+    }else if (useMsaaRedirect){
+        // the whole resolve target; renderBlit draws it at the view rect afterwards
+        colorPassViewport = Rect(0, 0, (float)rv().msaaResolveFramebuffer.getWidth(), (float)rv().msaaResolveFramebuffer.getHeight());
+        startColorPass(&rv().msaaResolveFramebuffer.getRender());
     }else if (!pass.renderToTexture){
         if (target){
             if (!target->isCreated()){
@@ -13503,7 +14043,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // the same draws, depth only, with the color pass's own MVP; a color fork
     // without a depth fork is left out since its vertices may not match
     if (depthPrepass){
-        const PipelineType prepassPip = offscreenTarget ? PIP_ZPREPASS_RTT : PIP_ZPREPASS;
+        const PipelineType prepassPip = passMsaa > 1 ? PIP_ZPREPASS_MSAA : (offscreenTarget ? PIP_ZPREPASS_RTT : PIP_ZPREPASS);
         Matrix4 renderVP = camera.viewProjectionMatrix;
         if (isRenderingFlipped(camera)){
             renderVP = Matrix4::scaleMatrix(Vector3(1, -1, 1)) * renderVP;
@@ -13708,6 +14248,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     }
 
     camera.render.endRenderPass();
+    camera.render.setMultisample(nullptr);
     passSceneDepth = nullptr;
     passSceneColor = nullptr;
 
@@ -13722,22 +14263,32 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     }
 
     // buffer 0 now holds the scene color (or the SSR composite)
+    TextureRender* chainResult = nullptr;
     if (usePostProcess){
-        renderPostProcess(postDestination);
+        chainResult = renderPostProcess(postDestination, uberReadsChain);
     }
 
     // The uber pass: the scene (and what SSR and the chain made of it) to the real destination,
     // upscaled; with fixed resolution it is that blit. Layer scenes draw after this (load
     // action), so overlaid UI scenes stay at native resolution and untouched.
-    if (useUber){
-        const unsigned int sourceWidth = useFixedRes ? rv().fixedResWidth : rv().postSceneWidth;
-        const unsigned int sourceHeight = useFixedRes ? rv().fixedResHeight : rv().postSceneHeight;
+    if (useUber && (uberSource || chainResult)){
+        TextureRender* sourceTexture = chainResult ? chainResult : &uberSource->getColorTexture();
+        const unsigned int sourceWidth = chainResult ? (unsigned int)chainResult->getWidth() : (useFixedRes ? rv().fixedResWidth : rv().postSceneWidth);
+        const unsigned int sourceHeight = chainResult ? (unsigned int)chainResult->getHeight() : (useFixedRes ? rv().fixedResHeight : rv().postSceneHeight);
+        // T2: the bloom and blur chains of what the uber pass reads (quarter resolution and below)
+        uberBloomTexture = (postTiers.uberFeatures & UBER_BLOOM) ? renderBloomChain(sourceTexture, sourceWidth, sourceHeight) : nullptr;
+        uberBlurTexture = (postTiers.uberFeatures & UBER_BLUR) ? renderBlurChain(sourceTexture, sourceWidth, sourceHeight) : nullptr;
         if (pass.renderToTexture){
-            renderUber(&uberSource->getColorTexture(), sourceWidth, sourceHeight, &camera.framebuffer->getRender(),
+            renderUber(sourceTexture, sourceWidth, sourceHeight, &camera.framebuffer->getRender(),
                        Rect(0, 0, (float)camera.framebuffer->getWidth(), (float)camera.framebuffer->getHeight()));
         }else{
-            renderUber(&uberSource->getColorTexture(), sourceWidth, sourceHeight, nullptr, targetViewRect());
+            renderUber(sourceTexture, sourceWidth, sourceHeight, nullptr, targetViewRect());
+            // the passes after it in this view (layer scenes) may read the blurred scene
+            if (uberBlurTexture)
+                frameBlurredScene = uberBlurTexture;
         }
+        uberBloomTexture = nullptr;
+        uberBlurTexture = nullptr;
     // Fixed game resolution: upscale the offscreen scene color to the view
     // rect of the real destination. Layer scenes draw after this (load
     // action), so overlaid UI scenes stay at native resolution.
@@ -13748,6 +14299,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // the scene drawn offscreen for its scene-colour copy, onto the swapchain
     if (useSceneColorRedirect){
         renderBlit(&rv().sceneColorRedirect.getRender().getColorTexture(), targetViewRect());
+    }
+    // the resolved multisampled scene, onto the swapchain
+    if (useMsaaRedirect){
+        renderBlit(&rv().msaaResolveFramebuffer.getRender().getColorTexture(), targetViewRect());
     }
 }
 
@@ -13944,14 +14499,24 @@ void RenderSystem::destroyRenderView(RenderView& view){
     view.fixedResWidth = 0;
     view.fixedResHeight = 0;
 
-    view.postProcessFramebuffer[0].destroy();
-    view.postProcessFramebuffer[1].destroy();
+    for (Framebuffer& framebuffer : view.postProcessFramebuffer)
+        framebuffer.destroy();
+    view.postScaledTargets.clear();
     view.postProcessWidth = 0;
     view.postProcessHeight = 0;
 
     view.postSceneFramebuffer.destroy();
     view.postSceneWidth = 0;
     view.postSceneHeight = 0;
+    if (frameBlurredScene && view.blurTargets.isCreated())
+        frameBlurredScene = nullptr;
+    view.bloomTargets.destroy();
+    view.blurTargets.destroy();
+    view.msaaFramebuffer.destroy();
+    view.msaaWidth = 0;
+    view.msaaHeight = 0;
+    view.msaaSamples = 1;
+    view.msaaResolveFramebuffer.destroy();
 
     releaseSceneInputTargets(view, true);
     view.sceneColorRedirect.destroy();

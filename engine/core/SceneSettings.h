@@ -6,6 +6,7 @@
 
 #include "render/Render.h"
 #include "shader/ShaderUniforms.h"
+#include "texture/Texture.h"
 #include "math/Vector2.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
@@ -182,13 +183,24 @@ namespace jasperengine{
         void clamp();
     };
 
-    // One user post-process pass: a forked fullscreen shader run after the scene color.
-    // Uniforms are keyed by the name reflected from the shader's u_fs_postParams block,
-    // so a renamed or removed member just drops and an unset one stays zero.
+    // One user post-process pass (tier T3 of phase 4): a fullscreen shader run after the scene
+    // colour (and SSR), before the engine's uber pass. It reads the previous pass's colour
+    // (u_sceneColorTexture), and may declare u_originalSceneTexture (the scene before the chain),
+    // u_depthTexture, u_gbufferTexture, u_ssaoTexture and its own textures. Uniforms are keyed by
+    // the name reflected from the shader's u_fs_postParams block, so a renamed or removed member
+    // just drops and an unset one takes the manifest's default (zero without one).
     struct PostProcessPass {
-        std::string shader; // project-relative fork base, empty = built-in passthrough
+        // a project fork base path, "library:<name>" (a library post-process shader,
+        // @shader postprocess), or empty: the built-in passthrough
+        std::string shader;
         bool enabled = true;
         ShaderUniformValues uniforms;
+        // the shader's textures by uniform (its manifest's @texture, or any it declares when it
+        // has no manifest); one it declares and has none of binds the manifest default (white)
+        std::vector<std::pair<std::string, Texture>> textures;
+        // the pass's output resolution, a fraction of the chain's (0.1..1): the next pass (or a
+        // copy to the destination, after the last) samples it bilinearly
+        float scale = 1.0f;
 
         // applied by Scene::setPostProcessPasses (Scene::setPostProcessUniform edits a live pass)
         void setUniform(const std::string& name, const Vector4& value) { ShaderUniforms::set(uniforms, name, value); }
@@ -197,6 +209,11 @@ namespace jasperengine{
         void setUniform(const std::string& name, float value) { setUniform(name, Vector4(value, 0.0f, 0.0f, 0.0f)); }
         Vector4 getUniform(const std::string& name) const { return ShaderUniforms::get(uniforms, name); }
         bool removeUniform(const std::string& name) { return ShaderUniforms::remove(uniforms, name); }
+        // a texture by uniform from a project image path (empty: removed, the default binds)
+        bool setTexture(const std::string& uniform, const std::string& path);
+        std::string getTexture(const std::string& uniform) const;
+        // the scale as the engine applies it (0.1..1)
+        float getAppliedScale() const { return scale < 0.1f ? 0.1f : (scale > 1.0f ? 1.0f : scale); }
     };
 
     // Plain-data scene configuration whose member initializers are the engine's factory

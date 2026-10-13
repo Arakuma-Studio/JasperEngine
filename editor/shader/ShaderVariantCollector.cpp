@@ -614,9 +614,65 @@ namespace {
 
 }
 
+const std::vector<std::string>& editor::ShaderVariantCollector::getScriptableEffectFields(){
+    static const std::vector<std::string> fields = {
+        "fxaaEnabled", "chromaticAberrationEnabled", "pixelateEnabled", "crtEnabled", "edgeDetectEnabled",
+        "filmGrainEnabled", "sharpenEnabled", "bloomEnabled", "blurEnabled",
+        "colorGradingEnabled", "vignetteEnabled", "ditherEnabled"
+    };
+    return fields;
+}
+
+std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const PostProcessingSettings& settings, bool scriptsSetPostProcessing,
+                                                                         const std::vector<std::string>& namedFields){
+    std::set<uint32_t> features;
+    auto add = [&features](const PostProcessingSettings& candidate){
+        const PostProcessingTiers tiers = RenderSystem::getPostProcessingTiers(candidate);
+        if (tiers.uber && tiers.uberFeatures != 0)
+            features.insert(tiers.uberFeatures);
+    };
+    add(settings);
+    if (!scriptsSetPostProcessing)
+        return features;
+
+    // the switches: the ones the scripts name, else all of them
+    std::vector<const PostProcessingSettings::Field*> switches;
+    const std::vector<std::string>& candidates = namedFields.empty() ? getScriptableEffectFields() : namedFields;
+    for (const std::string& name : candidates){
+        const PostProcessingSettings::Field* field = PostProcessingSettings::findField(name);
+        if (field && field->type == PostProcessingSettings::FieldType::Bool)
+            switches.push_back(field);
+    }
+    auto flipped = [&](uint32_t mask){
+        PostProcessingSettings candidate = settings;
+        for (size_t i = 0; i < switches.size(); i++){
+            if (mask & (1u << i)){
+                bool* value = static_cast<bool*>(switches[i]->ref(candidate));
+                *value = !*value;
+            }
+        }
+        // a switched-on effect at its neutral value would add nothing: its default instead
+        static const PostProcessingSettings defaults;
+        if (candidate.bloomEnabled && candidate.bloomIntensity <= 0.0f) candidate.bloomIntensity = defaults.bloomIntensity;
+        if (candidate.chromaticAberrationEnabled && candidate.chromaticAberrationIntensity <= 0.0f)
+            candidate.chromaticAberrationIntensity = defaults.chromaticAberrationIntensity;
+        return candidate;
+    };
+    if (!namedFields.empty() && switches.size() <= 4){
+        // every combination of the few switches the scripts name
+        for (uint32_t mask = 1; mask < (1u << switches.size()); mask++)
+            add(flipped(mask));
+    }else{
+        for (size_t i = 0; i < switches.size(); i++)
+            add(flipped(1u << i));
+    }
+    return features;
+}
+
 void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
                                                   const std::vector<ShaderVariantContent>& prefabContents,
-                                                  std::set<ShaderKey>& keys, bool allLightCapacities, bool scriptsSetPostProcessing){
+                                                  std::set<ShaderKey>& keys, bool allLightCapacities, bool scriptsSetPostProcessing,
+                                                  const std::vector<std::string>& scriptPostProcessingFields){
     if (!scene || !sceneContent.registry){
         return;
     }
@@ -666,11 +722,26 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     }
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
-    // the uber pass of the scene's post-processing (phase 4: a BLIT variant of its features;
-    // features a script turns on compile at runtime)
-    const PostProcessingTiers postTiers = RenderSystem::getPostProcessingTiers(scene->getPostProcessing());
-    if (postTiers.uber && postTiers.uberFeatures != 0){
-        keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, postTiers.uberFeatures));
+    // the uber pass of the scene's post-processing (phase 4: a BLIT variant of its features),
+    // and the ones its scripts plausibly switch to; the bloom and blur chain's programs with them
+    bool bloom = false;
+    bool blur = false;
+    for (uint32_t features : plausibleUberFeatures(scene->getPostProcessing(), scriptsSetPostProcessing, scriptPostProcessingFields)){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, features));
+        bloom = bloom || (features & UBER_BLOOM);
+        blur = blur || (features & UBER_BLUR);
+    }
+    // ShaderType::BLOOM bits: 'Pre' 1, 'Thr' 2, 'Ups' 4, 'Mix' 8 (RenderSystem::loadBloomProgram)
+    if (bloom || blur){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 0));
+    }
+    if (bloom){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 1u | 2u));
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 4u | 8u));
+    }
+    if (blur){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 1u));
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 4u));
     }
     // 2D lights with shadows render occluder segments through the shadow2d pass, once an
     // occluder exists (a script can spawn one, so the light alone asks for it)

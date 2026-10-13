@@ -280,6 +280,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
             case ShaderType::POINTS: return "points (a Points component's custom shader)";
             case ShaderType::LINES: return "lines (a Line Renderer's custom shader)";
             case ShaderType::SKYBOX: return "sky (the Sky component's custom shader)";
+            case ShaderType::POSTPROCESS: return "post-process (a pass of the scene's post-process chain)";
             default: return ShaderManifest::getShaderTypeToken(type);
         }
     }
@@ -325,6 +326,11 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 
         const std::string state = stateText(manifest.state);
         const std::string engineState = (type == ShaderType::SKYBOX) ? "the engine's" : "the engine's (alpha blend)";
+        if (type == ShaderType::POSTPROCESS){
+            // a fullscreen pass writes every pixel of its target: no state of its own
+            out << "- **Inputs**: the previous pass's colour (`u_sceneColorTexture`)"
+                << " (the engine also binds `u_originalSceneTexture`, `u_depthTexture`, `u_gbufferTexture`, `u_ssaoTexture` to a pass declaring them).\n";
+        }else{
     out << "- **Default state**: " << (state.empty() ? engineState : state);
         for (const ShaderManifestStateRule& rule : manifest.stateRules){
             const std::string ruleText = stateText(rule.state);
@@ -332,6 +338,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
                 out << "; " << condition(rule.define, rule.negate) << ": " << ruleText;
         }
         out << ".\n";
+        }
         if (type == ShaderType::MESH)
             out << "- **Depth program**: " << (manifest.depth ? "yes (shadows and depth follow its vertices and clipping)" : "no (the built-in one)") << ".\n";
 
@@ -398,7 +405,7 @@ std::string editor::ShaderLibraryDoc::generate(const std::vector<std::string>& n
             modes += (i ? ", " : "") + ShaderManifest::getLightingModeName(m.lighting[i]);
         const ShaderType type = m.hasType ? m.type : ShaderType::MESH;
         // a sky does not blend; Auto elsewhere is the engine's alpha blend
-        std::string blend = (type == ShaderType::SKYBOX) ? "-" : "alpha (Auto)";
+        std::string blend = (type == ShaderType::SKYBOX || type == ShaderType::POSTPROCESS) ? "-" : "alpha (Auto)";
         switch (m.state.blend){
             case MaterialBlendMode::NONE: blend = "opaque"; break;
             case MaterialBlendMode::ALPHA: blend = "alpha"; break;
@@ -414,7 +421,7 @@ std::string editor::ShaderLibraryDoc::generate(const std::vector<std::string>& n
 
     // the entries by category: the library's own from the basic to the specialised, then any
     // other in the order it first appears (names are sorted)
-    std::vector<std::string> categories = {"Basic", "Lit", "Stylized", "Effects", "Nature", "Animated", "2D", "Particles", "Sky"};
+    std::vector<std::string> categories = {"Basic", "Lit", "Stylized", "Effects", "Nature", "Animated", "2D", "Particles", "Sky", "Post-processing"};
     std::map<std::string, std::vector<const Entry*>> byCategory;
     for (const Entry& entry : entries){
         const std::string category = entry.manifest->category.empty() ? "Other" : entry.manifest->category;

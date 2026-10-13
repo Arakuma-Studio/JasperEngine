@@ -553,8 +553,10 @@ void Scene::setPostProcessPasses(const std::vector<PostProcessPass>& passes){
     // only uniform values changed: keep the compiled chain
     bool sameChain = passes.size() == settings.postProcess.size();
     for (size_t i = 0; sameChain && i < passes.size(); i++){
+        // (textures are bound when the chain loads)
         sameChain = passes[i].shader == settings.postProcess[i].shader &&
-                    passes[i].enabled == settings.postProcess[i].enabled;
+                    passes[i].enabled == settings.postProcess[i].enabled &&
+                    passes[i].textures == settings.postProcess[i].textures;
     }
 
     settings.postProcess = passes;

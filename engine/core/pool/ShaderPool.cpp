@@ -112,6 +112,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::POSTPROCESS;
         return true;
     }
+    if (typeToken == "bloom") {
+        shaderType = ShaderType::BLOOM;
+        return true;
+    }
 
     return false;
 }
@@ -411,6 +415,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::SHADOW2D: return lowerCase ? "shadow2d" : "Shadow 2D";
         case ShaderType::BLIT:   return lowerCase ? "blit"   : "Blit";
         case ShaderType::POSTPROCESS: return lowerCase ? "postprocess" : "Post-process";
+        case ShaderType::BLOOM:  return lowerCase ? "bloom"  : "Bloom";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -441,6 +446,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::COMPOSITE: return 0;
         case ShaderType::SHADOW2D: return 0;
         case ShaderType::BLIT:   return 12;
+        case ShaderType::BLOOM:  return 4;
         default:                 return 0;
     }
 }
@@ -555,6 +561,14 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 9: return shortName ? "Dth" : "Dither";
             case 10: return shortName ? "Blm" : "Bloom";
             case 11: return shortName ? "Blr" : "Blur";
+        }
+    } else if (shaderType == ShaderType::BLOOM) {
+        // the pass of the bloom and blur chain (bloom.frag); 0 is the dual-filter downsample
+        switch (bit) {
+            case 0: return shortName ? "Pre" : "Prefilter";
+            case 1: return shortName ? "Thr" : "Threshold";
+            case 2: return shortName ? "Ups" : "Upsample";
+            case 3: return shortName ? "Mix" : "Mix Level";
         }
     }
     return shortName ? "?" : "Unknown";

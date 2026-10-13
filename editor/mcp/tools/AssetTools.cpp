@@ -2045,10 +2045,10 @@ void listShadersTool(const CallPtr& call) {
     const Json& args = call->args();
     const std::string type = args.value("type", std::string());
     // the types a library shader may have (a filter outside them would silently list nothing)
-    static const char* const shaderTypes[] = {"mesh", "ui", "points", "lines", "sky"};
+    static const char* const shaderTypes[] = {"mesh", "ui", "points", "lines", "sky", "postprocess"};
     if (!type.empty() && std::none_of(std::begin(shaderTypes), std::end(shaderTypes), [&](const char* t) { return type == t; })) {
-        call->fail("Unknown shader type \"" + type + "\". Valid types: mesh, ui, points, lines, sky (sprites and tilemaps are "
-                   "meshes: their shader is a mesh shader).");
+        call->fail("Unknown shader type \"" + type + "\". Valid types: mesh, ui, points, lines, sky, postprocess (sprites and "
+                   "tilemaps are meshes: their shader is a mesh shader).");
         return;
     }
     std::string name = args.value("name", std::string());
@@ -2893,12 +2893,12 @@ void registerAssetTools(McpRegistry& registry) {
         tool.description =
             "The engine's library shaders (\"library:<name>\"): pick one before forking. Each has a type (mesh shaders go "
             "on a material: set_properties submeshes[i].material.shader; ui/points/lines/sky ones in the component's "
-            "customShader), lighting modes, and with detail its parameters (shaderParams, colours linear), textures "
+            "customShader; postprocess ones are passes of set_scene_settings post_process), lighting modes, and with detail its parameters (shaderParams, colours linear), textures "
             "(shaderTextures), features/keywords (shaderFeatures), required inputs and default render state (state, "
             "shadows), with the require_rules/state_rules a feature or keyword turns on. scene_inputs/cost_note: reads the "
             "scene depth/colour, an extra pass per camera.";
         tool.inputSchema = object({
-            {"type", stringEnum("", {"mesh", "ui", "points", "lines", "sky"})},
+            {"type", stringEnum("", {"mesh", "ui", "points", "lines", "sky", "postprocess"})},
             {"name", string("One shader (\"toon\" or \"library:toon\"); implies detail.")},
             {"detail", withDefault(boolean("Parameters, textures, features, keywords, inputs, state and their rules."), false)}
         });

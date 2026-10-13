@@ -3349,6 +3349,13 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         passNode["enabled"] = pass.enabled;
         if (!pass.uniforms.empty())
             passNode["uniforms"] = encodeShaderUniforms(pass.uniforms);
+        // (phase 4) written only when set, so a chain saved before them re-saves unchanged
+        if (!pass.textures.empty()) {
+            YAML::Node textures = encodeShaderTextures(pass.textures, false);
+            if (textures.size() > 0) passNode["textures"] = textures;
+        }
+        if (pass.scale != 1.0f)
+            passNode["scale"] = pass.scale;
         sceneNode["postProcess"].push_back(passNode);
     }
 
@@ -3545,6 +3552,8 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
             pass.shader = passNode["shader"] ? passNode["shader"].as<std::string>() : "";
             pass.enabled = passNode["enabled"] ? YamlNumbers::as<bool>(passNode["enabled"]) : true;
             pass.uniforms = decodeShaderUniforms(passNode["uniforms"]);
+            pass.textures = decodeShaderTextures(passNode["textures"]);
+            pass.scale = decodeFinite(passNode["scale"], 1.0f);
             postProcess.push_back(pass);
         }
     }

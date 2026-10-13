@@ -584,6 +584,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("SHADOW2D", ShaderType::SHADOW2D)
         .addVariable("BLIT", ShaderType::BLIT)
         .addVariable("POSTPROCESS", ShaderType::POSTPROCESS)
+        .addVariable("BLOOM", ShaderType::BLOOM)
         .endNamespace();
 
     // Shader variants by spec ("mesh:Uv1,Vc4"), or by type and property bits; an
@@ -781,6 +782,10 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             luabridge::overload<const std::string&, float>(&PostProcessPass::setUniform))
         .addFunction("getUniform", &PostProcessPass::getUniform)
         .addFunction("removeUniform", &PostProcessPass::removeUniform)
+        // (phase 4) the pass's own textures by uniform, and its resolution scale
+        .addFunction("setTexture", &PostProcessPass::setTexture)
+        .addFunction("getTexture", &PostProcessPass::getTexture)
+        .addProperty("scale", &PostProcessPass::scale, &PostProcessPass::scale)
         .endClass();
 
     // a copy: edit it, then assign it back (scene.postProcessing = post)

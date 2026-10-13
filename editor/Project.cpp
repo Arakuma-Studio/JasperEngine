@@ -1229,10 +1229,28 @@ void editor::Project::cleanupScriptFilePath(const std::filesystem::path& deleted
     }
 }
 
+// the images the scene's settings name: its post-process passes' textures (phase 4)
+static bool visitSceneSettingsAssetPaths(Scene* scene, const std::function<bool(std::string&)>& transform) {
+    std::vector<PostProcessPass> passes = scene->getPostProcessPasses();
+    bool changed = false;
+    for (PostProcessPass& pass : passes) {
+        for (auto& texture : pass.textures) {
+            changed |= visitTexturePaths(texture.second, transform);
+        }
+    }
+    if (changed) {
+        scene->setPostProcessPasses(passes);
+    }
+    return changed;
+}
+
 void editor::Project::applyAssetPathChange(const std::function<bool(std::string&)>& transform) {
     for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
         SceneProject& sceneProject = *sceneProjectPtr;
-        if (!sceneProject.scene || !visitAssetPathsInRegistry(sceneProject.scene, transform)) {
+        if (!sceneProject.scene)
+            continue;
+        const bool settingsChanged = visitSceneSettingsAssetPaths(sceneProject.scene, transform);
+        if (!visitAssetPathsInRegistry(sceneProject.scene, transform) && !settingsChanged) {
             continue;
         }
 
@@ -3145,8 +3163,9 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
         prefabContents.push_back(std::move(content));
     }
 
+    const bool scriptsPost = scriptsSetPostProcessing();
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, scriptsSetLightCapacity(),
-                                         scriptsSetPostProcessing());
+                                         scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>());
 }
 
 bool editor::Project::scriptsMention(const char* text) const {
@@ -3173,6 +3192,25 @@ bool editor::Project::scriptsSetPostProcessing() const {
     // scene.postProcessing (Lua) or Scene::setPostProcessing (C++): the post-processing colour's
     // variant bit can change at runtime
     return scriptsMention("ostProcessing");
+}
+
+std::vector<std::string> editor::Project::scriptsPostProcessingFields() const {
+    std::vector<std::string> named;
+    std::vector<std::string> contents;
+    for (const fs::path& script : findProjectFiles([](const std::string& path) { return Util::isScriptFile(path); })) {
+        std::ifstream file(getProjectPath() / script, std::ios::binary);
+        if (file)
+            contents.emplace_back((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    }
+    for (const std::string& field : ShaderVariantCollector::getScriptableEffectFields()) {
+        for (const std::string& content : contents) {
+            if (content.find(field) != std::string::npos) {
+                named.push_back(field);
+                break;
+            }
+        }
+    }
+    return named;
 }
 
 void editor::Project::buildStandaloneShaderCache() {

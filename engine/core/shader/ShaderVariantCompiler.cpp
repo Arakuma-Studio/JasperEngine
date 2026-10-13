@@ -384,6 +384,13 @@ void addUberPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     }
 }
 
+void addBloomPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
+    if (prop & (1 << 0))  defs.push_back({"BLOOM_PREFILTER", "1"});          // 'Pre'
+    if (prop & (1 << 1))  defs.push_back({"BLOOM_THRESHOLD", "1"});          // 'Thr'
+    if (prop & (1 << 2))  defs.push_back({"BLOOM_UPSAMPLE", "1"});           // 'Ups'
+    if (prop & (1 << 3))  defs.push_back({"BLOOM_MIX", "1"});                // 'Mix'
+}
+
 void addSkyPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
     if (prop & (1 << 0))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
 }
@@ -449,6 +456,10 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
     }else if (shaderType == ShaderType::POSTPROCESS){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "postprocess.frag";
+    }else if (shaderType == ShaderType::BLOOM){
+        args.vert_file = "bloom.vert";
+        args.frag_file = "bloom.frag";
+        addBloomPropertyDefinitions(args.defines, properties);
     }else{
         return false;
     }
@@ -609,6 +620,9 @@ bool ShaderVariantCompiler::getLibraryShaderPaths(const std::string& reference, 
         vertFile = prefix + ".vert";
     }else if (shaderType == ShaderType::MESH){
         vertFile = "library/surface.vert";
+    }else if (shaderType == ShaderType::POSTPROCESS){
+        // a post-process pass: the fullscreen triangle every pass draws
+        vertFile = "fullscreen.vert";
     }else{
         return fail("Library shader '" + name + "' has no vertex shader (library/" + name + ".vert)");
     }

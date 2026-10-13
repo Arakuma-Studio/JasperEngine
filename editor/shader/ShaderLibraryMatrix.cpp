@@ -275,6 +275,10 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
                     addMesh(modeLabel + ", " + meshCase.label, referenceOf(allOn), caseInputs, caseEnvironment);
             }
         }
+    }else if (type == ShaderType::POSTPROCESS){
+        // a post-process pass (phase 4): one variant per feature set, no blend or colour bit
+        for (const auto& features : featureSets)
+            add("pass [" + features.first + "]", ShaderReference::getVariantReference(base, features.second), type, 0);
     }else{
         // the variants RenderSystem loads a component of the type with
         std::vector<std::pair<std::string, uint32_t>> properties;

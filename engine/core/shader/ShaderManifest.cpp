@@ -175,6 +175,8 @@ namespace {
         if (name == "points") { type = ShaderType::POINTS; return true; }
         if (name == "lines")  { type = ShaderType::LINES; return true; }
         if (name == "sky")    { type = ShaderType::SKYBOX; return true; }
+        // a user post-process pass (PostProcessPass, phase 4): fullscreen.vert and the frag
+        if (name == "postprocess") { type = ShaderType::POSTPROCESS; return true; }
         return false;
     }
 
@@ -342,7 +344,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
         if (directive == "shader"){
             ShaderType parsed;
             if (args.size() != 1 || !parseShaderTypeName(args[0].text, parsed)){
-                report(lineNumber, true, "@shader takes one of mesh, ui, points, lines, sky");
+                report(lineNumber, true, "@shader takes one of mesh, ui, points, lines, sky, postprocess");
                 continue;
             }
             if (hasType && parsed != type){
@@ -986,7 +988,8 @@ void ShaderManifest::validateReflection(const std::vector<const ShaderData*>& va
             continue;
         for (const ShaderStage& stage : data->stages){
             for (const ShaderUniformBlock& block : stage.uniformblocks){
-                if (block.name != "u_vs_customParams" && block.name != "u_fs_customParams")
+                // (a post-process pass's parameters are u_fs_postParams)
+                if (block.name != "u_vs_customParams" && block.name != "u_fs_customParams" && block.name != "u_fs_postParams")
                     continue;
                 for (const ShaderUniform& uniform : block.uniforms)
                     members[ShaderData::getUniformShortName(uniform.name)] = uniform.type;
@@ -1000,7 +1003,7 @@ void ShaderManifest::validateReflection(const std::vector<const ShaderData*>& va
         auto it = members.find(property.member);
         if (it == members.end()){
             diagnostics.push_back({file, property.line, true, "@property '" + property.member +
-                "' is not a member of u_vs_customParams or u_fs_customParams"});
+                "' is not a member of u_vs_customParams, u_fs_customParams or u_fs_postParams"});
             continue;
         }
         size_t components = 0;
@@ -1245,6 +1248,7 @@ std::string ShaderManifest::getShaderTypeToken(ShaderType type){
         case ShaderType::POINTS: return "points";
         case ShaderType::LINES:  return "lines";
         case ShaderType::SKYBOX: return "sky";
+        case ShaderType::POSTPROCESS: return "postprocess";
         default:                 return "";
     }
 }
