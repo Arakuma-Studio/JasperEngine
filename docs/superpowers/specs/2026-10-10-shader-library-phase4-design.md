@@ -254,6 +254,158 @@ user-pass and editor work is also written out in `/tmp/shader-research/p4-api.md
 - Fixture `tools/fixtures/post-processing` (`PP_CASE`, `PP_SCENE=saved`, `PP_CYCLE=1`; its script's
   header lists the cases).
 
+### 5.2 Effects (sl/p4-effects)
+
+- Bloom (§2.4). `ShaderType::BLOOM` (appended; `bloom.vert` / `bloom.frag`, property bits 'Pre'
+  prefilter, 'Thr' threshold, 'Ups' upsample, 'Mix' level mix; 0 is the downsample). Every tap UV
+  is computed in the vertex stage; colour maths is `mediump` (the GLES3 output has
+  `precision mediump float` with `highp` UVs). `RenderSystem::renderBloomChain`: a 4-tap prefilter
+  from the uber pass's source straight to 1/4 (taps one source texel off the centre: the 2x2
+  quadrant centres of the 4x4 box), each tap decoded with the gamma-2 approximation (`c*c`, which
+  the uber composite `sqrt(c*c + bloom)` inverts) and a soft-knee threshold on the brightest linear
+  channel (threshold squared: it is a display brightness; knee = threshold x bloomKnee, Unity's
+  curve); then 3 dual-filter downsamples (5 taps, one texel of the larger image off) and 3
+  upsamples (8 taps, half a texel of the smaller), each upsample mixed with the down level of its
+  size by `bloomScatter` (0 the 1/4 level alone, a tight glow; 1 the widest blur; this needs the
+  up targets apart from the down ones: 7 targets, 0.09 of a screen of memory). Targets are
+  `SRGB8A8` without depth (`ColorFormat::SRGB8A8`, `FramebufferDepth::NONE`, pipeline `PIP_POST`,
+  no blending): the hardware decodes before filtering and encodes on write, so the chain filters
+  in linear light. SRGB8A8 is colour-renderable and filterable in core GLES 3.0 (`GL_SRGB8_ALPHA8`),
+  on GL 3.0+ (sokol enables `GL_FRAMEBUFFER_SRGB` for offscreen passes), D3D11
+  (`R8G8B8A8_UNORM_SRGB`: render target and filtering required from feature level 10), Metal
+  (`RGBA8Unorm_sRGB`, all features) and Vulkan (`R8G8B8A8_SRGB`: sampled-filter, colour attachment
+  and blend are mandatory format features); run on GL, GLES3 and Vulkan. Targets live per view
+  (`RenderView::bloomTargets`), are made again in place when the source size changes (destroyed
+  first, no pile-up) and freed when the effect goes off. Pass labels "bloom prefilter", "bloom
+  down", "bloom up"; every pass CLEARs (a tiler loads nothing). The uber pass's `u_bloomTexture`
+  is the chain's 1/4 result.
+- Blur. The same chain without threshold or mix (`renderBlurChain`, labels "blur ..."), its
+  dual-filter levels from `blurRadius` (`RenderSystem::getBlurLevels`: ceil(radius), 0..3, the
+  taps spread by radius / levels; 0 is the quarter-resolution box alone): 1 + 2 x levels passes
+  (3 at the default radius 1, 7 from radius 2.01). The uber pass mixes it by `blurIntensity`
+  (decoding it: `sqrt`), 0 while the chain has no texture yet. Frosted panels: the blurred scene
+  is bound by name, `u_blurredSceneTexture` / `u_blurredScene_smp` with the block
+  `u_fs_blurredScene` (`includes/blurred_scene.glsl`: `blurredSceneUV()` from `gl_FragCoord`,
+  `blurredScene(uv)` the engine's linear colour, `blurredSceneAvailable()`), to any shader
+  declaring them (UI, mesh, points, lines, sky: `ShaderLibraryBindings`). It exists for the passes
+  drawn after the base layer's uber pass in the same view, i.e. layer scenes (a HUD), which is
+  where a panel over the post-processed scene is drawn; in the blurred scene itself (whose image
+  the blur is made of: a panel there would blur itself frame after frame) and without blur it
+  is black with `available` 0. `blurIntensity` 0 makes only the texture. Library UI shader
+  `frosted_panel` (tint, tint amount, brightness; its tint alone without a blurred scene).
+- User passes (§2.5). `PostProcessPass` gains `textures` (by uniform: the manifest's `@texture`,
+  or any name for a shader without a manifest; bound with the manifest default when unset) and
+  `scale` (0.1..1, the pass's output resolution). A pass may declare `u_originalSceneTexture`
+  (the scene before the chain): when a pass after the first does, buffer 0 keeps it and a third
+  full-size target is made. Passes below full size draw into per-size targets (two per size,
+  freed in a frame no pass uses that size); a last pass below full size is copied to the
+  destination ("user post-process copy"). With the uber pass, the chain's last output IS the
+  uber pass's source: `postSceneFramebuffer` is not made (one full-size target less than 5.1).
+  `@shader postprocess` (manifest type, `fullscreen.vert`, parameters in `u_fs_postParams` with
+  `@property` defaults): library `crt`, `pixelate`, `posterize`, `edge_neon`, `gameboy`, `blur`;
+  the library matrix compiles them (one variant per feature set), `docs/shaders/library.md` has a
+  Post-processing section, `list_shaders type=postprocess`. Data paths: scene YAML `textures` /
+  `scale` and exported code only when set (a chain without them saves and generates as before),
+  Lua `pass:setTexture(uniform, path)`, `getTexture`, `pass.scale`, MCP `post_process` items
+  `textures` {uniform: path} and `scale` (refused outside 0.1..1; library textures checked against
+  the manifest); asset renames rewrite pass textures. A pass's own textures are rebound every draw;
+  changing them reloads the chain. The user chain's passes now CLEAR (they loaded).
+- Render-target hygiene (§2.6). Measured with `JASPERENGINE_FRAME_STATS_ACTIONS=1` (new: each
+  pass list entry ends with `{colour load, depth store}`): every fullscreen pass CLEARs (uber,
+  blit, bloom, blur, user passes, SSR composite...); only the camera layer (it draws over the
+  scene) and the point-shadow faces after the first LOAD (the projective shadow atlas lists
+  `load`: it has no colour attachment); depth is stored only by the projective
+  shadow atlas (sampled later) and split colour passes (resumed after the scene-colour copy). The
+  GLES3 invalidation: sokol's `_sg_gl_end_render_pass` invalidated depth and stencil only when the
+  pass had NO depth-stencil attachment (`if (!atts->ds_view)`, identical in upstream sokol master
+  of 2026-10-13), so on GLES a DONTCARE depth was never invalidated; fixed in the vendored header
+  (`if (atts->ds_view)`; GL ignores invalidating an attachment a depth-only framebuffer lacks).
+  Vulkan/Metal/D3D11 already honoured DONTCARE, so nothing relied on the GLES behaviour.
+- MSAA (§2.6). `msaaSamples` (clamped to what the device has: `getMaxMsaaSamples` asks
+  `GL_MAX_SAMPLES`, Vulkan's framebuffer colour/depth/stencil sample counts, D3D11 quality
+  levels; lavapipe has 1 and 4, so `msaa2` runs without MSAA there, llvmpipe GL rounds 2 up to 4)
+  gives every object `PIP_MSAA` (and `PIP_MSAA_NODEPTH`, `PIP_ZPREPASS_MSAA`) pipelines at that
+  count, and the post-processed camera's colour pass a multisampled colour + depth-stencil target
+  (`RenderView::msaaFramebuffer`) resolving at the end of the pass into the offscreen target it
+  would draw into: the fixed-resolution target, the uber pass's scene target, SSR's scene colour,
+  the chain's buffer 0, a render-to-texture main camera's framebuffer or the editor's view
+  target. So SSR, the user chain, scene inputs (the scene-colour copy splits the pass: the split
+  stores and resolves, the resume loads), bloom and the uber pass all read the resolved colour;
+  the G-buffer, SSAO and scene-depth pre-passes stay single-sampled (their own targets). Fixed
+  resolution and render scale: the multisampled target is at that size. Exported builds without
+  another offscreen effect draw to the swapchain: the scene resolves into a target blitted to it
+  (one full-resolution pass more: "camera 1280x720 msaa 4, blit 1280x720"; with any T1/T2 effect
+  the resolve is free, inside the colour pass). The samples are never stored (DONTCARE: resolved
+  in the tile on Metal and Vulkan tilers; GLES resolves with glBlitFramebuffer, the research's
+  caveat). Not applied: mirrors' inverted-winding passes and render-to-texture cameras other than
+  the post-processed one, the edit-mode Scene view (no post-processing), layer scenes; a change of
+  sample count reloads the objects. FXAA and MSAA can both be on (the editor advises one).
+- Runtime switching. (a) The colour bit: points, lines and sky no longer reload at once; they keep
+  drawing their variant until every new one is built (`postColorVariantsReady`, asking for them),
+  then reload together (meshes already did, phase 3). Measured with `PP_CYCLE=1
+  PP_CYCLE_CASES=off,aces,off,bloom,mobile_full,blur,frosted,msaa4,msaa4_bloom,lib_crt,
+  user_pass_bloom,off,tail,off` (`JASPERENGINE_FRAME_STATS=all`, GL): every frame from the first
+  ready one draws all 134 draws (142 with a bloom chain), including the colour bit switches
+  (5.1 measured one frame without points, lines and sky); a frame whose uber variant is still
+  compiling at runtime draws without the uber pass. (b) Export: `ShaderVariantCollector::
+  plausibleUberFeatures`: the scene's uber variant, and when scripts mention `postProcessing`, the
+  variants of the switches they name (`getScriptableEffectFields`: the nine uber effects, bloom,
+  blur, and the grade, vignette and dither the uber pass takes; `Project::
+  scriptsPostProcessingFields`): every combination when they name up to 4, else each flipped
+  alone over the scene's settings, and each switch flipped alone when they name none (at most
+  13 variants); the bloom programs those need (5 at most). Anything else a script reaches
+  compiles at runtime (as before).
+- Pass budget (§1), measured on the fixture (GL, GLES3 and Vulkan agree; `mobile_full`: ACES,
+  grade, vignette, dither, FXAA, chromatic aberration, bloom, grain): `shadow 6144x2048 x2, camera rtt
+  480x270, camera 1280x720, bloom prefilter 320x180, bloom down 160x90, bloom down 80x45, bloom down
+  40x22, bloom up 80x45, bloom up 160x90, bloom up 320x180, uber 1280x720, camera layer 1280x720`. After the scene:
+  8 passes (7 bloom + uber), 1 at full resolution, as the table; shaded area after the scene
+  1 + 0.0625 + 0.0156 + 0.0039 + 0.0010 + 0.0039 + 0.0156 + 0.0625 = 1.165 screens. Bloom's
+  targets: 320x180, 160x90, 80x45, 40x22 (+ 80x45, 160x90, 320x180 up). This matches the editor's
+  cost estimate (5.3) for bloom; its blur count now follows `getBlurLevels`. Other measured lists
+  (GL): blur radius 2.5 `blur prefilter 320x180, blur down x3, blur up x3, uber`; blur radius 1
+  `blur prefilter 320x180, blur down 160x90, blur up 320x180, uber`; `msaa4` (exported, nothing
+  else) `camera 1280x720 msaa 4, blit 1280x720`; `msaa4_bloom` `camera 1280x720 msaa 4, bloom x7,
+  uber` (no extra pass); `msaa4_fixed` `camera 640x360 msaa 4, blit 1280x720` (the fixed
+  resolution's blit, as without MSAA); `lib_pixelate` `camera 1280x720, user post-process 640x360,
+  blit 1280x720`; `user_pass_bloom` `camera, user post-process 640x360, user post-process
+  1280x720, bloom x7, uber` (no scene target or copy for the uber pass). On Vulkan the exported
+  game ends with the platform's present blit, as before phase 4.
+- Editor (5.3's hooks): `passFields()` has the scale; the pass's texture slots are rows by uniform
+  (its manifest's `@texture`s and any set), drop an image, right-click clears; the original scene is
+  a shader input, no field. The cost estimate's blur chain counts `1 + 2 x getBlurLevels(radius)`
+  passes (bloom: 7, as measured).
+- Checks run (branch merged with `shader-library` cc8baac4): full `tools/build.sh linux`;
+  `shaders --library all --backend all` (40 shaders, 13842 compiles, 0 failures; the six post
+  shaders 1 variant each, frosted_panel 7); 40 built-in specs x 6 backends (240 compiles, 0
+  failures: the five bloom programs, blit/uber with Blm, Blr and both alone and with FXAA, the
+  mobile set, every feature, CRT, pixelate, edge, sharpen, LUT/vignette/dither combinations,
+  postprocess, Pcl mesh/points/lines/sky, ssao/ssr/composite); the GLES3 bloom output has
+  `precision mediump float` with `highp` UVs. `post-processing` fixture on GL (every new case,
+  screenshots read: bloom glows on the lit wall, sky and points, tint, wide scatter, full and half
+  blur, the frosted panel showing the blurred wall behind it, MSAA smoothing the poles' edges
+  (8630 pixels changed, 2x = 4x on llvmpipe), CRT, pixelate with rounded blocks at half
+  resolution, posterize, edge neon, gameboy, blur, the user pass's split with the original scene
+  on the left and the pixelated chain on the right under the checker overlay), Vulkan (same 18
+  runs, same images; msaa2 runs without MSAA on lavapipe) and GLES3 (same 18 runs, same images,
+  pass actions listed); `PP_CYCLE` subset on GL (above). GL smokes of `shader-library`,
+  `scene-inputs`, `stencil`, `extra-pass`, `unified-lighting`, `runtime-shaders` pass with normal
+  screenshots. Post-processing off against the `shader-library-phase3` tag built with the frame
+  stats and DOCKER_CPUS commits (temporary worktree, removed): frame stats lines (passes, draws,
+  pipelines, uploads, images, views, pass list) identical on `shader-library`, `scene-inputs`
+  and `stencil`; `stencil` pixel-identical, `scene-inputs` differs only on the animated heat
+  haze's edge (1054 pixels, at most 9/255) and `shader-library` only on its time-animated objects
+  (the shine sweep, the spinning and bobbing ones), the capture times differing. Re-save: the
+  phase 3 editor and this one re-save `shader-library`, `scene-inputs`, `stencil`,
+  `shader-library-export`, `extra-pass`, `unified-lighting` byte-identically (scenes and
+  project.yaml; only the generated Lua API stubs and AGENTS.md differ). `check.sh` (7 scenes ok).
+  MCP suite 281 passed, 0 failed, 3 skipped (new `test_post_process_passes.py`).
+- Not done / limits: bloom is LDR (the scene target is clamped: a white wall blooms like a lamp
+  above the threshold; research 3.5 option 1); the blurred scene is not available to the scene it
+  is made from (see above); MSAA through sokol on GLES3 is a renderbuffer and a blit resolve (not
+  `EXT_multisampled_render_to_texture`); glslang warns "all default precisions are highp" for the
+  post shaders, as for the uber pass (harmless: the qualifiers come through).
+
 ### 5.3 Editor (sl/p4-editor)
 
 - Inspector (§2.1). Scene settings > Post-processing (`editor/window/InspectorPostProcessing.cpp`)
