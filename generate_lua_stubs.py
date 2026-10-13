@@ -1963,12 +1963,13 @@ _LISTENER_OPTIONS = 'boolean|UIEventListenerOptions'
 for _cls, _target in (('UIElement', 'the element'), ('UIDocument', 'the document element')):
     OVERRIDES[(_cls, 'addEventListener')] = {
         'doc': [f'Calls `listener` with a UIEvent when a `type` event reaches {_target} (browser names: click,',
-                'keydown, input, change, wheel ...). `options` is `true` for the capture phase, or',
-                '`{capture = boolean, once = boolean}`. The same function, type and phase again is ignored.'],
-        'overloads': [([('type', 'string'), ('listener', _LISTENER), ('options?', _LISTENER_OPTIONS)], '')]}
+                'keydown, input, change, wheel ...: UIEventType). `options` is `true` for the capture phase, or',
+                '`{capture = boolean, once = boolean}`. The same function, type and phase again is ignored.',
+                'A custom event of dispatchEvent: `---@cast name UIEventType` first (any name works at run time).'],
+        'overloads': [([('type', 'UIEventType'), ('listener', _LISTENER), ('options?', _LISTENER_OPTIONS)], '')]}
     OVERRIDES[(_cls, 'removeEventListener')] = {
         'doc': ['Removes the listener added with the same type, function and capture phase.'],
-        'overloads': [([('type', 'string'), ('listener', _LISTENER), ('options?', _LISTENER_OPTIONS)], '')]}
+        'overloads': [([('type', 'UIEventType'), ('listener', _LISTENER), ('options?', _LISTENER_OPTIONS)], '')]}
 OVERRIDES[('UIElement', 'dispatchEvent')] = {
     'doc': ['Sends a `type` event from the element (custom names too); listeners read `detail` as',
             '`event.detail` (a copy). Returns false when a listener called preventDefault().'],
@@ -1986,6 +1987,118 @@ OVERRIDES[('UIClassList', 'add')] = {
     'doc': ['Adds the classes.'], 'overloads': [([('...', 'string')], '')]}
 OVERRIDES[('UIClassList', 'remove')] = {
     'doc': ['Removes the classes.'], 'overloads': [([('...', 'string')], '')]}
+
+# HTML UI (phase 4, p4-guide): precise types of what the bindings return as `any` or plain strings
+OVERRIDES[('UIDocument', 'getDiagnostics')] = {
+    'doc': ['Every finding of the last (re)load, notes included, in source order (the Console shows errors and',
+            'warnings). Codes: jasper://docs/html-ui-support.'],
+    'overloads': [([], 'UIDiagnostic[]')]}
+OVERRIDES[('UIDocument', 'getTargetTexture')] = {
+    'doc': ['The texture a TEXTURE-mode document renders into (RGBA8, straight alpha), the same object while the',
+            'component exists: give it to a Mesh, Primitive or Image with setTexture. nil for a SCREEN document.'],
+    'overloads': [([], 'Framebuffer|nil')]}
+OVERRIDES[('UIDocument', 'setColorScheme')] = {
+    'doc': ['Switches prefers-color-scheme for every document of the scene ("light" by default).'],
+    'overloads': [([('scheme', '"light"|"dark"')], '')]}
+OVERRIDES[('UIElement', 'insertAdjacentHTML')] = {
+    'doc': ['Parses `html` (like innerHTML) and inserts it relative to the element.'],
+    'overloads': [([('position', '"beforebegin"|"afterbegin"|"beforeend"|"afterend"'), ('html', 'string')], '')]}
+
+# HTML UI (phase 4, p4-guide): class doc lines appended to the generated ones (the guide's URI)
+HTML_UI_CLASS_DOCS = {
+    'UIDocument': ['Get it with `UIDocument(self.scene, self.entity)` in a script on the document\'s GameObject.',
+                   'Guide: jasper://docs/html-ui (Lua API, data binding, events); CSS support: jasper://docs/html-ui-support.'],
+    'UIElement': ['Guide: jasper://docs/html-ui ("Lua API"). Members use colons: el:querySelector(".x"), el.classList:add("on").'],
+    'UIEvent': ['Guide: jasper://docs/html-ui ("Lua API", events table).'],
+    'anime': ['Anime.js v4 for HTML UI elements, on the UI clock (unscaled game time). Guide: jasper://docs/html-ui',
+              '("Animation"). Call with a dot: anime.animate("#title", {opacity = {from = 0}, duration = 400}).'],
+}
+
+# HTML UI (phase 4, p4-guide): field docs and types replacing what the C++ comments say
+HTML_UI_FIELD_OVERRIDES = {
+    ('UIElement', 'tagName'): {'doc': ['the DOM name: upper case in .html documents ("DIV", "BUTTON"), lower case in .rml']},
+    ('UIElement', 'innerHTML'): {'doc': ['the children as HTML (parsed and rewritten like the document; RML in .rml documents)']},
+    ('UIElement', 'textContent'): {'doc': ['the text of the descendants; assigning replaces the children with that text (never parsed)']},
+    ('UIDocument', 'body'): {'doc': ['the <body> element (the root of an .rml document)']},
+    ('UIDocument', 'documentElement'): {'doc': ['the <html> element (CSS :root; the same as body in an .rml document)']},
+}
+
+# HTML UI (phase 4, p4-guide): the event names of UIElement/UIDocument addEventListener
+# (engine/core/object/ui/HtmlUIEventListener.cpp, RmlUi's EventSpecification and the engine's
+# own elements). mouseenter, mouseleave, pointer*, touch*, contextmenu, beforeinput and
+# composition* never reach documents (addEventListener warns), so they are not listed.
+HTML_UI_EVENT_TYPES = [
+    ('click', 'a press and release on the element (Enter/Space on a focused button too)'),
+    ('dblclick', 'a double click'),
+    ('mousedown', 'a pointer press (event.button: 0 left, 1 middle, 2 right)'),
+    ('mouseup', 'a pointer release'),
+    ('mousemove', 'the pointer moved over the element'),
+    ('mouseover', 'the pointer entered the element or a child (bubbles)'),
+    ('mouseout', 'the pointer left the element or a child (bubbles)'),
+    ('wheel', 'the mouse wheel (event.deltaX/deltaY in steps, positive down/right)'),
+    ('keydown', 'a key press on the focused element (event.key: "Enter", "Escape", "ArrowUp", "a")'),
+    ('keyup', 'a key release'),
+    ('textinput', 'text typed into the focused element (event.data)'),
+    ('focus', 'the element got the focus'),
+    ('blur', 'the element lost the focus'),
+    ('input', 'every edit of a text field, every toggle of a checkbox or radio'),
+    ('change', 'a committed value: text fields on blur, checkboxes, radios, selects and ranges at once'),
+    ('submit', 'a form was submitted (button or Enter in a text field)'),
+    ('reset', 'a form was reset'),
+    ('scroll', 'the element scrolled'),
+    ('resize', 'the element changed size'),
+    ('load', 'the document (or a <lottie> animation) loaded'),
+    ('unload', 'the document unloads'),
+    ('show', 'the document was shown'),
+    ('hide', 'the document was hidden'),
+    ('dragstart', 'a drag began on an element with drag="drag" or drag="drag-drop"'),
+    ('drag', 'the dragged element moved'),
+    ('dragend', 'the drag ended'),
+    ('dragover', 'a dragged element entered this element'),
+    ('dragmove', 'a dragged element moved over this element'),
+    ('dragout', 'a dragged element left this element'),
+    ('dragdrop', 'a dragged element was dropped on this element'),
+    ('animationstart', 'a CSS animation started (event.animationName)'),
+    ('animationiteration', 'a CSS animation began a new iteration'),
+    ('animationend', 'a CSS animation ended'),
+    ('animationcancel', 'a CSS animation was removed before its end'),
+    ('transitionrun', 'a CSS transition was created (event.propertyName)'),
+    ('transitionstart', 'a CSS transition began (after its delay)'),
+    ('transitionend', 'a CSS transition ended'),
+    ('transitioncancel', 'a CSS transition was removed before its end'),
+    ('toggle', 'a <details> opened or closed'),
+    ('close', 'a <dialog> closed'),
+    ('cancel', 'Escape closes a modal <dialog> (close follows)'),
+    ('htmlnavigate', 'a link was activated (preventDefault keeps the document)'),
+    ('play', '<lottie>: playback started'),
+    ('pause', '<lottie>: playback stopped'),
+    ('loop', '<lottie>: an iteration ended and the next began'),
+    ('complete', '<lottie>: the last iteration ended'),
+    ('error', '<lottie>: the animation could not load (event.detail.message)'),
+]
+
+
+def html_ui_types_file():
+    """HtmlUITypes.lua: the LuaLS shapes of the HTML UI API that no binding declares."""
+    L = ['-- HTML UI (UIDocument, UIElement, UIEvent, anime): shared types. Guide: jasper://docs/html-ui', '',
+         '---The event names documents dispatch (browser names). A custom name of dispatchEvent needs a',
+         '---`---@cast name UIEventType` to pass the check; it works at run time.',
+         '---@alias UIEventType']
+    for name, what in HTML_UI_EVENT_TYPES:
+        L.append(f'---| "{name}" # {what}')
+    L += ['',
+          '---A finding of UIDocument:getDiagnostics() (the codes: jasper://docs/html-ui-support)',
+          '---@class UIDiagnostic',
+          '---@field severity "error"|"warning"|"info"',
+          '---@field code string # stable, "HTMLUI-CSS-0004"',
+          '---@field name string # the code\'s name, "unsupported-value"',
+          '---@field message string',
+          '---@field suggestion string # the fix, "" when there is none',
+          '---@field file string # asset-relative ("ui/menu.css"), "" when generated',
+          '---@field line integer # 1-based, 0 = unknown',
+          '---@field column integer # 1-based, 0 = unknown',
+          '---@field text string # the whole line as the Console prints it']
+    return FILE_HEADER + '\n'.join(L) + '\n'
 
 # Precise LuaLS types of parameters whose C++ type says nothing (luabridge::LuaRef becomes
 # `any`): (Lua class, member, parameter name) -> Lua type. A `luabridge::LuaRef` parameter of a
@@ -2382,6 +2495,10 @@ class Builder:
                     if line not in doc:
                         doc.append(line)
         m.doc = doc
+        field = HTML_UI_FIELD_OVERRIDES.get((c.name, m.name))
+        if field:
+            m.lua_type = field.get('type', m.lua_type)
+            m.doc = list(field.get('doc', m.doc))
 
     def unresolve(self, c, m, why):
         m.unresolved.append(why)
@@ -2556,6 +2673,7 @@ class Emitter:
                 if line not in cls_doc:
                     cls_doc.append(line)
         cls_doc += self.cond_notes(c.cond)
+        cls_doc += [line for line in HTML_UI_CLASS_DOCS.get(c.name, []) if line not in cls_doc]
         L += doc_lines(cls_doc)
         L.append(f'---@class {c.name}' + (f' : {c.base}' if c.base else '') if not c.name.startswith('FunctionSubscribe_')
                  else f'---@class {c.name} : FunctionSubscribe')
@@ -2829,6 +2947,7 @@ class Emitter:
             self.emit_class(c)
         self.emit_globals()
         self.emit_script()
+        self.files['HtmlUITypes.lua'] = html_ui_types_file()
         self.plugin = luals_plugin(self.static_fields)
         return self.files
 
